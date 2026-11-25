@@ -6,21 +6,20 @@
 
 #import <utility>
 
+#import "base/check.h"
 #import "ios/chrome/browser/device_sharing/model/device_sharing_manager.h"
 #import "ios/chrome/browser/device_sharing/model/device_sharing_manager_impl.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 
 namespace {
-std::unique_ptr<KeyedService> BuildDeviceSharingManager(ProfileIOS* profile) {
-  return std::make_unique<DeviceSharingManagerImpl>(profile);
-}
-}  // namespace
 
-// static
-DeviceSharingManagerFactory::TestingFactory
-DeviceSharingManagerFactory::GetDefaultFactory() {
-  return base::BindOnce(&BuildDeviceSharingManager);
+// Build an instance of DeviceSharingManagerImpl.
+std::unique_ptr<KeyedService> BuildDeviceSharingManager(ProfileIOS& profile) {
+  CHECK(!profile.IsOffTheRecord());
+  return std::make_unique<DeviceSharingManagerImpl>(profile.GetPrefs());
 }
+
+}  // namespace
 
 DeviceSharingManagerFactory::DeviceSharingManagerFactory(PassKey key)
     : TypedProfileKeyedServiceFactoryIOS(
@@ -30,6 +29,6 @@ DeviceSharingManagerFactory::DeviceSharingManagerFactory(PassKey key)
 
 std::unique_ptr<KeyedService>
 DeviceSharingManagerFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildDeviceSharingManager(profile);
 }

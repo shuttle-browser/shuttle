@@ -446,8 +446,9 @@ TEST_F(TranslatePrefsTest, RemoveFromLanguageListRemovesRemainingUnsupported) {
   std::vector<std::string> languages;
   languages = {"en", "en-US", "en-FOO"};
   accept_languages_tester_->SetLanguagePrefs(languages);
-  accept_languages_tester_->ExpectAcceptLanguagePrefs("en,en-US,en-FOO");
+  accept_languages_tester_->ExpectSelectedLanguagePrefs("en,en-US,en-FOO");
   translate_prefs_->RemoveFromLanguageList(ParseTag("en-US"));
+  accept_languages_tester_->ExpectSelectedLanguagePrefs("en");
   accept_languages_tester_->ExpectAcceptLanguagePrefs("en");
   translate_prefs_->RemoveFromLanguageList(ParseTag("en"));
   accept_languages_tester_->ExpectAcceptLanguagePrefs("");
@@ -478,7 +479,6 @@ TEST_F(TranslatePrefsTest, RemoveFromLanguageListClearsRecentLanguage) {
 
 TEST_F(TranslatePrefsTest, MoveLanguageToTheTop) {
   std::vector<std::string> languages;
-  std::string enabled;
   const int offset = 0;  // ignored
 
   // First we test all cases that result in no change.
@@ -564,7 +564,6 @@ TEST_F(TranslatePrefsTest, MoveLanguageToTheTop) {
 
 TEST_F(TranslatePrefsTest, MoveLanguageUp) {
   std::vector<std::string> languages;
-  std::string enabled;
 
   //---------------------------------------------------------------------------
   // First we test all cases that result in no change.
@@ -782,7 +781,6 @@ TEST_F(TranslatePrefsTest, MoveLanguageUp) {
 
 TEST_F(TranslatePrefsTest, MoveLanguageDown) {
   std::vector<std::string> languages;
-  std::string enabled;
 
   //---------------------------------------------------------------------------
   // First we test all cases that result in no change.

@@ -236,11 +236,11 @@ std::unique_ptr<app_restore::WindowInfo> BuildWindowInfo(
   return window_info;
 }
 
-bool IsBrowserAppId(const std::string& id) {
+bool IsBrowserAppId(std::string_view id) {
   return id == app_constants::kChromeAppId;
 }
 
-void GetFaviconForUrl(const std::string& page_url,
+void GetFaviconForUrl(std::string_view page_url,
                       base::OnceCallback<void(const gfx::ImageSkia&)> callback,
                       base::CancelableTaskTracker* tracker) {
   // TODO(crbug.com/553389413): Resolve the desk owner's account in the caller

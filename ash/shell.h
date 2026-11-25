@@ -5,8 +5,10 @@
 #ifndef ASH_SHELL_H_
 #define ASH_SHELL_H_
 
+#include <cstdint>
 #include <memory>
 #include <optional>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -20,13 +22,13 @@
 #include "ash/public/cpp/session/session_observer.h"
 #include "ash/public/cpp/shelf_types.h"
 #include "ash/public/cpp/tab_strip_delegate.h"
-#include "ash/quick_pair/keyed_service/quick_pair_mediator.h"
 #include "ash/system/input_device_settings/touchscreen_metrics_recorder.h"
 #include "ash/system/toast/system_nudge_pause_manager_impl.h"
 #include "ash/wm/system_modal_container_event_filter_delegate.h"
 #include "base/functional/callback_forward.h"
 #include "base/gtest_prod_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/scoped_observation_traits.h"
@@ -66,12 +68,7 @@ class ImageSkia;
 class Point;
 }  // namespace gfx
 
-namespace keyboard {
-class KeyboardUIFactory;
-}
-
 namespace ui {
-class ContextFactory;
 class KeyboardCapability;
 class UserActivityPowerManagerNotifier;
 }  // namespace ui
@@ -88,8 +85,8 @@ namespace wm {
 class AcceleratorFilter;
 class ActivationClient;
 class CompoundEventFilter;
+class DecorationController;
 class FocusController;
-class ShadowController;
 class VisibilityController;
 class WindowModalityController;
 }  // namespace wm
@@ -501,6 +498,9 @@ class ASH_EXPORT Shell : public SessionObserver,
   DarkLightModeControllerImpl* dark_light_mode_controller() {
     return dark_light_mode_controller_.get();
   }
+  ::wm::DecorationController* decoration_controller() {
+    return decoration_controller_.get();
+  }
   DesksController* desks_controller() { return desks_controller_.get(); }
   SavedDeskController* saved_desk_controller() {
     return saved_desk_controller_.get();
@@ -751,9 +751,6 @@ class ASH_EXPORT Shell : public SessionObserver,
   FeatureDiscoveryDurationReporterImpl* feature_discover_reporter() {
     return feature_discover_reporter_.get();
   }
-  ::wm::ShadowController* shadow_controller() {
-    return shadow_controller_.get();
-  }
   ShelfConfig* shelf_config() { return shelf_config_.get(); }
   ShelfController* shelf_controller() { return shelf_controller_.get(); }
   ShellDelegate* shell_delegate() { return shell_delegate_.get(); }
@@ -981,14 +978,7 @@ class ASH_EXPORT Shell : public SessionObserver,
   explicit Shell(std::unique_ptr<ShellDelegate> shell_delegate);
   ~Shell() override;
 
-  void Init(
-      ui::ContextFactory* context_factory,
-      PrefService* local_state,
-      std::unique_ptr<keyboard::KeyboardUIFactory> keyboard_ui_factory,
-      std::unique_ptr<ash::quick_pair::Mediator::Factory>
-          quick_pair_mediator_factory,
-      scoped_refptr<dbus::Bus> dbus_bus,
-      std::unique_ptr<display::NativeDisplayDelegate> native_display_delegate);
+  void Init(ShellInitParams init_params);
 
   // Initializes the display manager and related components.
   void InitializeDisplayManager();
@@ -1182,7 +1172,7 @@ class ASH_EXPORT Shell : public SessionObserver,
   std::unique_ptr<GameDashboardController> game_dashboard_controller_;
   // Owned by |focus_controller_|.
   raw_ptr<AshFocusRules> focus_rules_ = nullptr;
-  std::unique_ptr<::wm::ShadowController> shadow_controller_;
+  std::unique_ptr<::wm::DecorationController> decoration_controller_;
   std::unique_ptr<::wm::VisibilityController> visibility_controller_;
   std::unique_ptr<::wm::WindowModalityController> window_modality_controller_;
   raw_ptr<PrefService> local_state_ = nullptr;

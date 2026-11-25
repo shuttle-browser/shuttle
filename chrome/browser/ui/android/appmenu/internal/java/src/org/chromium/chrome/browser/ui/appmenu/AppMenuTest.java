@@ -137,7 +137,7 @@ public class AppMenuTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> sActivity.setContentView(R.layout.test_app_menu_activity_layout));
         when(mWindowAndroid.getKeyboardDelegate()).thenReturn(mKeyboardDelegate);
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
         when(mMockAppMenuHandler.getAppMenu()).thenReturn(mMockAppMenu);
         when(mMockAppMenuHandler.showAppMenu(any(), anyBoolean()))
                 .thenAnswer(
@@ -1342,7 +1342,7 @@ public class AppMenuTest {
     @Test
     @MediumTest
     public void testAppMenu_keyboardVisible() throws Exception {
-        doReturn(true).when(mKeyboardDelegate).isKeyboardShowing(any());
+        doReturn(true).when(mKeyboardDelegate).isKeyboardObscuring(any());
         ThreadUtils.runOnUiThreadBlocking(() -> mAppMenuCoordinator.showAppMenuForKeyboardEvent());
 
         verify(mKeyboardDelegate, timeout(500))
@@ -1351,7 +1351,7 @@ public class AppMenuTest {
         verify(mKeyboardDelegate).hideKeyboard(any());
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    mKeyboardListenerCaptor.getValue().keyboardVisibilityChanged(false);
+                    mKeyboardListenerCaptor.getValue().keyboardObscuringChanged(false);
                 });
 
         waitForMenuToShow(0, mAppMenuHandler);
@@ -1366,7 +1366,7 @@ public class AppMenuTest {
         ThreadUtils.runOnUiThreadBlocking(() -> mAppMenuHandler.getAppMenu().dismiss());
         mMenuObserver.menuHiddenCallback.waitForCallback(0);
 
-        doReturn(true).when(mKeyboardDelegate).isKeyboardShowing(any());
+        doReturn(true).when(mKeyboardDelegate).isKeyboardObscuring(any());
         ThreadUtils.runOnUiThreadBlocking(() -> mAppMenuCoordinator.showAppMenuForKeyboardEvent());
 
         verify(mKeyboardDelegate, timeout(500))
@@ -1375,10 +1375,33 @@ public class AppMenuTest {
         verify(mKeyboardDelegate).hideKeyboard(any());
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    mKeyboardListenerCaptor.getValue().keyboardVisibilityChanged(false);
+                    mKeyboardListenerCaptor.getValue().keyboardObscuringChanged(false);
                 });
 
         waitForMenuToShow(1, mAppMenuHandler);
+    }
+
+    // Regression test for crbug.com/578623946: a second request while the first was still
+    // waiting for the keyboard left the first listener registered forever.
+    @Test
+    @MediumTest
+    public void testAppMenu_keyboardVisible_secondRequestReplacesFirst() throws Exception {
+        doReturn(true).when(mKeyboardDelegate).isKeyboardObscuring(any());
+        ThreadUtils.runOnUiThreadBlocking(() -> mAppMenuCoordinator.showAppMenuForKeyboardEvent());
+        ThreadUtils.runOnUiThreadBlocking(() -> mAppMenuCoordinator.showAppMenuForKeyboardEvent());
+
+        verify(mKeyboardDelegate, timeout(500).times(2))
+                .addKeyboardVisibilityListener(mKeyboardListenerCaptor.capture());
+        KeyboardVisibilityDelegate.KeyboardVisibilityListener first =
+                mKeyboardListenerCaptor.getAllValues().get(0);
+        KeyboardVisibilityDelegate.KeyboardVisibilityListener second =
+                mKeyboardListenerCaptor.getAllValues().get(1);
+        Assert.assertNotSame(first, second);
+        verify(mKeyboardDelegate).removeKeyboardVisibilityListener(first);
+
+        ThreadUtils.runOnUiThreadBlocking(() -> second.keyboardObscuringChanged(false));
+        waitForMenuToShow(0, mAppMenuHandler);
+        verify(mKeyboardDelegate).removeKeyboardVisibilityListener(second);
     }
 
     @Test

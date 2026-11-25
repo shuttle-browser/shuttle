@@ -19,6 +19,10 @@ TEST(PayloadTypeMappingTest, MapsPayloadTypeToWireEnum) {
             ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_EXPERIMENTAL_TRIGGERING);
   EXPECT_EQ(ToDownstreamProtoPayloadType(PayloadType::kActuation),
             ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_ACTUATION);
+  EXPECT_EQ(ToDownstreamProtoPayloadType(PayloadType::kTaskIngress),
+            ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_TASK_INGRESS);
+  EXPECT_EQ(ToDownstreamProtoPayloadType(PayloadType::kProbe),
+            ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_PROBE);
 }
 
 TEST(PayloadTypeMappingTest, RoundTripsEveryRoutablePayloadType) {
@@ -39,6 +43,12 @@ TEST(PayloadTypeMappingTest, MapsWireEnumToPayloadType) {
   EXPECT_EQ(FromDownstreamProtoPayloadType(
                 ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_ACTUATION),
             PayloadType::kActuation);
+  EXPECT_EQ(FromDownstreamProtoPayloadType(
+                ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_TASK_INGRESS),
+            PayloadType::kTaskIngress);
+  EXPECT_EQ(
+      FromDownstreamProtoPayloadType(ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_PROBE),
+      PayloadType::kProbe);
 }
 
 TEST(PayloadTypeMappingTest, RejectsUnspecifiedWireEnum) {
@@ -70,6 +80,12 @@ TEST(PayloadTypeMappingTest, ExpectedTypeUrlIsUniquePerPayloadType) {
     EXPECT_TRUE(seen.insert(ExpectedTypeUrl(payload_type)).second)
         << "Duplicate type_url: " << ExpectedTypeUrl(payload_type);
   }
+}
+
+TEST(PayloadTypeMappingTest, ExpectedTypeUrlForTaskIngress) {
+  EXPECT_EQ(ExpectedTypeUrl(PayloadType::kTaskIngress),
+            "type.googleapis.com/"
+            "browser_actuator.TaskIngressDownstreamPayload");
 }
 
 }  // namespace

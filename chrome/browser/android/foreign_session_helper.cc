@@ -31,7 +31,8 @@
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/jni_zero/default_conversions.h"
-#include "ui/base/window_open_disposition.h"
+#include "third_party/jni_zero/jni_zero.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "url/android/gurl_android.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
@@ -180,10 +181,9 @@ bool ForeignSessionHelper::ShouldSkipSession(
   return true;
 }
 
-static int64_t JNI_ForeignSessionHelper_Init(Profile* profile) {
-  ForeignSessionHelper* foreign_session_helper =
-      new ForeignSessionHelper(profile);
-  return reinterpret_cast<intptr_t>(foreign_session_helper);
+static jni_zero::JniUniquePtr<ForeignSessionHelper> JNI_ForeignSessionHelper_Init(
+    Profile* profile) {
+  return jni_zero::MakeUnique<ForeignSessionHelper>(profile);
 }
 
 ForeignSessionHelper::ForeignSessionHelper(Profile* profile)
@@ -204,10 +204,6 @@ ForeignSessionHelper::ForeignSessionHelper(Profile* profile)
 
 ForeignSessionHelper::~ForeignSessionHelper() = default;
 
-void ForeignSessionHelper::Destroy() {
-  delete this;
-}
-
 bool ForeignSessionHelper::IsTabSyncEnabled() {
   sync_sessions::SessionSyncService* service =
       SessionSyncServiceFactory::GetInstance()->GetForProfile(profile_);
@@ -226,9 +222,8 @@ void ForeignSessionHelper::TriggerSessionSync() {
 }
 
 void ForeignSessionHelper::SetOnForeignSessionCallback(
-    JNIEnv* env,
     const JavaRef<jobject>& callback) {
-  callback_.Reset(env, callback);
+  callback_.Reset(callback);
 }
 
 void ForeignSessionHelper::FireForeignSessionCallback() {
@@ -356,8 +351,8 @@ bool ForeignSessionHelper::OpenForeignSessionTab(TabAndroid* tab_android,
     return false;
   }
 
-  WindowOpenDisposition disposition =
-      static_cast<WindowOpenDisposition>(j_disposition);
+  ui::mojom::WindowOpenDisposition disposition =
+      static_cast<ui::mojom::WindowOpenDisposition>(j_disposition);
   SessionRestore::RestoreForeignSessionTab(web_contents, *session_tab,
                                            disposition);
 
@@ -450,7 +445,7 @@ content::WebContents* ForeignSessionHelper::RestoreTabWithRenderer(
 
   return SessionRestore::RestoreForeignSessionTab(
       web_contents, *foreground_session_tab,
-      WindowOpenDisposition::kCurrentTab);
+      ui::mojom::WindowOpenDisposition::kCurrentTab);
 }
 
 bool ForeignSessionHelper::RestoreTabNoRenderer(
@@ -466,7 +461,7 @@ bool ForeignSessionHelper::RestoreTabNoRenderer(
 
   SessionRestore::RestoreForeignSessionTab(
       web_contents, *background_session_tab,
-      WindowOpenDisposition::kNewBackgroundTab,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       /*skip_renderer_creation=*/true);
   return true;
 }

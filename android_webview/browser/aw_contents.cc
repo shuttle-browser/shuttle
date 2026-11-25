@@ -434,6 +434,8 @@ void AwContents::InitSensitiveContentClient(JNIEnv* env) {
 }
 
 AwContents::~AwContents() {
+  // Drop the Java peer first so that nothing below can call back into it.
+  java_ref_.reset();
   DCHECK_EQ(this, AwContents::FromWebContents(web_contents_.get()));
 
   if (associated_rph_id_) {
@@ -550,20 +552,16 @@ base::android::ScopedJavaLocalRef<jobject> AwContents::GetJavaObject() {
   return java_ref_.get(env);
 }
 
-void AwContents::Destroy(JNIEnv* env) {
-  java_ref_.reset();
-  delete this;
-}
-
-static int64_t JNI_AwContents_Init(JNIEnv* env,
-                                   int64_t browser_context_pointer) {
+static jni_zero::JniUniquePtr<AwContents> JNI_AwContents_Init(
+    JNIEnv* env,
+    int64_t browser_context_pointer) {
   AwBrowserContext* browser_context =
       reinterpret_cast<AwBrowserContext*>(browser_context_pointer);
   std::unique_ptr<WebContents> web_contents(content::WebContents::Create(
       content::WebContents::CreateParams(browser_context)));
   // Return an 'uninitialized' instance; most work is deferred until the
   // subsequent SetJavaPeers() call.
-  return reinterpret_cast<intptr_t>(new AwContents(std::move(web_contents)));
+  return jni_zero::MakeUnique<AwContents>(std::move(web_contents));
 }
 
 static bool JNI_AwContents_HasRequiredHardwareExtensions(JNIEnv* env) {
@@ -1300,9 +1298,10 @@ void AwContents::OnComputeScroll(JNIEnv* env, int64_t animation_time_millis) {
       base::TimeTicks() + base::Milliseconds(animation_time_millis));
 }
 
-int64_t AwContents::ReleasePopupAwContents(JNIEnv* env) {
+jni_zero::JniUniquePtr<AwContents> AwContents::ReleasePopupAwContents(
+    JNIEnv* env) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  return reinterpret_cast<intptr_t>(pending_contents_.release());
+  return jni_zero::MakeUnique(std::move(pending_contents_));
 }
 
 gfx::Point AwContents::GetLocationOnScreen() {
@@ -1590,24 +1589,16 @@ AwContents::PrerenderInfo::~PrerenderInfo() {
 
 void AwContents::PrerenderInfo::OnLifecycleStateChanged(
     content::PrerenderLifecycleStatus status) {
+  // Empty vector - to be swapped with any callbacks that need execution.
+  std::vector<base::OnceClosure> status_callbacks;
   switch (status) {
     case content::PrerenderLifecycleStatus::kActivated:
-      for (auto& cb : activation_callbacks) {
-        if (cb) {
-          std::move(cb).Run();
-        }
-      }
-      activation_callbacks.clear();
+      std::swap(activation_callbacks, status_callbacks);
       break;
     case content::PrerenderLifecycleStatus::kHttpBadResponse:
     case content::PrerenderLifecycleStatus::kStop:
     case content::PrerenderLifecycleStatus::kOtherFailure:
-      for (auto& cb : error_callbacks) {
-        if (cb) {
-          std::move(cb).Run();
-        }
-      }
-      error_callbacks.clear();
+      std::swap(error_callbacks, status_callbacks);
       break;
     case content::PrerenderLifecycleStatus::kHTTPSuccessResponse:
       // WebView does not need to react to headers received successfully.
@@ -1615,6 +1606,15 @@ void AwContents::PrerenderInfo::OnLifecycleStateChanged(
     case content::PrerenderLifecycleStatus::kCancelled:
       break;
   }
+
+  // Run the captured callbacks (if any).
+  for (auto& cb : status_callbacks) {
+    if (cb) {
+      std::move(cb).Run();
+    }
+  }
+  // Do not touch `this` after running callbacks, as they may have caused
+  // the object to be deleted.
 }
 
 int64_t AwContents::StartPrerendering(

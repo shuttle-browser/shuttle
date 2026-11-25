@@ -23,7 +23,7 @@ enum class SharedTabGroupRecallTypeDesktop {
   kOpenedFromSubmenuFromBookmarksBar = 4,
   kOpenedFromSubmenuFromEverythingMenu = 5,
   kOpenedFromSubmenuFromAppMenu = 6,
-  kOpenedFromSubmenuFromMacSystemMenu = 7,
+  // kOpenedFromSubmenuFromMacSystemMenu = 7,  // Obsolete: Mac menu removed.
   kOpenedFromSubmenuFromOrganizerPanel = 8,
   kMaxValue = kOpenedFromSubmenuFromOrganizerPanel
 };
@@ -51,7 +51,7 @@ enum class SavedTabGroupOpenedSubmenuDesktop {
   kBookmarksBar = 0,
   kEverythingMenu = 1,
   kAppMenu = 2,
-  kMacSystemMenu = 3,
+  // kMacSystemMenu = 3,  // Obsolete: Mac menu removed.
   kOrganizerPanel = 4,
   kMaxValue = kOrganizerPanel
 };
@@ -83,6 +83,8 @@ void RecordSharedTabGroupRecallType(SharedTabGroupRecallTypeDesktop action);
 void RecordSharedTabGroupManageType(SharedTabGroupManageTypeDesktop action);
 void RecordSavedTabGroupOpenedSubmenu(
     SavedTabGroupOpenedSubmenuDesktop submenu_type);
+void RecordTabGroupContextMenuAccessed(
+    SavedTabGroupOpenedSubmenuDesktop submenu_source);
 void RecordTabGroupContextMenuAction(
     SavedTabGroupOpenedSubmenuDesktop submenu_source,
     TabGroupMenuAction::Type action);

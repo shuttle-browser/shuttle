@@ -13,7 +13,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include "base/containers/id_map.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
@@ -39,7 +38,7 @@ class FilePath;
 namespace storage {
 class FileSystemURL;
 struct FileSystemInfo;
-class ShareableFileReference;
+class ScopedFile;
 }  // namespace storage
 
 namespace content {
@@ -134,7 +133,6 @@ class CONTENT_EXPORT FileSystemManagerImpl
 
  private:
   class FileSystemCancellableOperationImpl;
-  class ReceivedSnapshotListenerImpl;
   using OperationID = storage::FileSystemOperationRunner::OperationID;
   using OperationListenerID = int;
   struct WriteSyncCallbackEntry;
@@ -222,7 +220,6 @@ class CONTENT_EXPORT FileSystemManagerImpl
   void Cancel(
       OperationID op_id,
       blink::mojom::FileSystemCancellableOperation::CancelCallback callback);
-  void DidReceiveSnapshotFile(int snapshot_id);
   void OnConnectionError();
 
   // Callback functions to be used when each file operation is finished.
@@ -260,13 +257,12 @@ class CONTENT_EXPORT FileSystemManagerImpl
                      const storage::FileSystemInfo& info,
                      const base::FilePath& file_path,
                      storage::FileSystemContext::ResolvedEntryType type);
-  void DidCreateSnapshot(
-      CreateSnapshotFileCallback callback,
-      const storage::FileSystemURL& url,
-      base::File::Error result,
-      const base::File::Info& info,
-      const base::FilePath& platform_path,
-      scoped_refptr<storage::ShareableFileReference> file_ref);
+  void DidCreateSnapshot(CreateSnapshotFileCallback callback,
+                         const storage::FileSystemURL& url,
+                         base::File::Error result,
+                         const base::File::Info& info,
+                         const base::FilePath& platform_path,
+                         storage::ScopedFile temp_file);
   void ContinueDidCreateSnapshot(CreateSnapshotFileCallback callback,
                                  const storage::FileSystemURL& url,
                                  base::File::Error result,
@@ -312,18 +308,11 @@ class CONTENT_EXPORT FileSystemManagerImpl
       receivers_;
   mojo::UniqueReceiverSet<blink::mojom::FileSystemCancellableOperation>
       cancellable_operations_;
-  mojo::UniqueReceiverSet<blink::mojom::ReceivedSnapshotListener>
-      snapshot_listeners_;
 
   std::unordered_map<OperationListenerID,
                      mojo::Remote<blink::mojom::FileSystemOperationListener>>
       op_listeners_;
   OperationListenerID next_operation_listener_id_ = 1;
-
-  // Used to keep snapshot files alive while a DidCreateSnapshot
-  // is being sent to the renderer.
-  base::IDMap<scoped_refptr<storage::ShareableFileReference>>
-      in_transit_snapshot_files_;
 
   base::WeakPtrFactory<FileSystemManagerImpl> weak_factory_{this};
 };

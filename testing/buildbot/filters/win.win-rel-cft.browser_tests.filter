@@ -152,7 +152,6 @@ BrowserRootViewBrowserTest.*
 -SingleClientReadingListSyncTest.*
 -SingleClientSavedTabGroupsSyncTest.*
 -SingleClientSearchEnginesSyncTest.*
--SingleClientSearchEnginesSyncTestWithSeparateLocalAndAccountSearchEnginesEnabled.*
 -SingleClientSecondaryAccountSyncTest.*
 -SingleClientSendTabToSelfSyncTest.*
 -SingleClientSessionsSyncTest.*
@@ -164,8 +163,7 @@ BrowserRootViewBrowserTest.*
 -SingleClientStandaloneTransportWithReplaceSyncWithSigninSyncTest.*
 -SingleClientSyncInvalidationsTest.*
 -SingleClientThemesSyncTest.*
--SingleClientThemesSyncTestWithAccountThemesSeparation.*
--SingleClientThemesSyncTestWithAccountThemesSeparationInSigninPendingState.*
+-SingleClientThemesSyncInSigninPendingStateTest.*
 -SingleClientTrackedPreferencesSyncTest.*
 -SingleClientTrackedPreferencesSyncTestWithAttack.*
 -SingleClientUserConsentsSyncTest.*

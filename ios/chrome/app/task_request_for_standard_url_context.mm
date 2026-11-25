@@ -7,22 +7,34 @@
 #import <UIKit/UIKit.h>
 
 #import "base/check_deref.h"
+#import "base/functional/bind.h"
+#import "base/functional/callback_helpers.h"
+#import "base/ios/block_types.h"
 #import "base/metrics/histogram_functions.h"
 #import "base/metrics/histogram_macros.h"
 #import "base/metrics/user_metrics.h"
 #import "components/prefs/pref_service.h"
+#import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/app/custom_scheme_buildflags.h"
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/app/startup/app_launch_metrics.h"
 #import "ios/chrome/app/startup/app_startup_utils.h"
+#import "ios/chrome/app/task_request_private.h"
 #import "ios/chrome/app/task_request_url_context_private.h"
 #import "ios/chrome/browser/default_browser/model/utils.h"
+#import "ios/chrome/browser/google_one/shared/google_one_deep_link_util.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/passwords/model/remote_actor/remote_actor_constants.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
+#import "ios/chrome/browser/shared/model/browser/browser.h"
+#import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/google_one_commands.h"
+#import "ios/chrome/browser/shared/public/features/features.h"
 #import "net/base/apple/url_conversions.h"
 #import "net/base/url_util.h"
 #import "url/gurl.h"
@@ -41,6 +53,30 @@ NSString* const kExternalActionDefaultBrowserSettings =
 NSString* const kExternalActionOpenNTP = @"OpenNTP";
 NSString* const kExternalActionAppStoreGeminiPromo = @"appstoregeminipromo";
 NSString* const kExternalActionAppSwitcherTesting = @"appswitchertesting";
+
+// If `url` is a handled Google One deep link URL and the feature is enabled,
+// populates `out_url` (if non-null) with the normalized HTTPS GURL and returns
+// true.
+bool GetGoogleOneDeepLinkURL(NSURL* url, GURL* out_url) {
+  if (!url) {
+    return false;
+  }
+  GURL external_gurl = net::GURLWithNSURL(url);
+  if (!external_gurl.SchemeIsHTTPOrHTTPS() &&
+      !external_gurl.SchemeIs(kSecureCustomScheme) &&
+      !external_gurl.SchemeIs(kInsecureCustomScheme)) {
+    return false;
+  }
+  GURL candidate_url;
+  if (!IsGoogleOneDeepLinkURL(external_gurl, &candidate_url) ||
+      !IsGoogleOneDeepLinkEnabled()) {
+    return false;
+  }
+  if (out_url) {
+    *out_url = std::move(candidate_url);
+  }
+  return true;
+}
 
 // Returns the single path component of `url` if it has the format
 // "/<component>", or nil if the path is invalid or has multiple segments.
@@ -88,12 +124,26 @@ void RecordExternalActionMetrics(NSURL* url) {
   base::UmaHistogramEnumeration(kExternalActionHistogram, action);
 }
 
+// Presents the Google One screen for `url` on the current browser of
+// `scene_state`.
+void ShowGoogleOneForURL(SceneState* scene_state, const GURL& url) {
+  if (Browser* browser = scene_state.browserProviderInterface.currentBrowser) {
+    id<GoogleOneCommands> google_one_handler =
+        HandlerForProtocol(browser->GetCommandDispatcher(), GoogleOneCommands);
+    [google_one_handler showGoogleOneForURL:url];
+  }
+}
+
 }  // namespace
 
-@implementation TaskRequestForStandardURLContext
+@implementation TaskRequestForStandardURLContext {
+  // Whether Gaia ID extraction has been attempted once ApplicationContext is
+  // available.
+  BOOL _gaiaIDExtracted;
+}
 
-- (void)recordStartupMetrics {
-  [super recordStartupMetrics];
+- (void)recordMetrics {
+  [super recordMetrics];
 
   NSURL* url = self.URLContext.URL;
   if (!url) {
@@ -148,6 +198,7 @@ void RecordExternalActionMetrics(NSURL* url) {
   GURL virtualGURL;
   TabOpeningPostOpeningAction postOpeningAction =
       TabOpeningPostOpeningAction::NO_ACTION;
+  ProceduralBlock postOpeningCompletion = nil;
   ApplicationModeForTabOpening targetMode =
       ApplicationModeForTabOpening::UNDETERMINED;
 
@@ -225,8 +276,16 @@ void RecordExternalActionMetrics(NSURL* url) {
     if (!externalGURL.is_valid()) {
       return;
     }
-    // TODO(crbug.com/493816082): Handle Google One deep links, Default Browser
-    // promo notifications, and App Switcher parameters.
+    GURL googleOneURL;
+    if (IsGoogleOneDeepLinkEnabled() &&
+        IsGoogleOneDeepLinkURL(externalGURL, &googleOneURL)) {
+      externalGURL = GURL();
+      __weak SceneState* weakSceneState = sceneState;
+      postOpeningCompletion = base::CallbackToBlock(
+          base::BindOnce(&ShowGoogleOneForURL, weakSceneState, googleOneURL));
+    }
+    // TODO(crbug.com/493816082): Handle Default Browser promo notifications and
+    // App Switcher parameters.
   }
 
   [self openTabWithSceneState:sceneState
@@ -234,7 +293,25 @@ void RecordExternalActionMetrics(NSURL* url) {
                    virtualURL:virtualGURL
                    targetMode:targetMode
             postOpeningAction:postOpeningAction
+        postOpeningCompletion:postOpeningCompletion
              fromWidgetOrSiri:NO];
+}
+
+- (NSString*)gaiaID {
+  if (!_gaiaIDExtracted && ![super gaiaID] && GetApplicationContext()) {
+    _gaiaIDExtracted = YES;
+    GURL googleOneURL;
+    if (GetGoogleOneDeepLinkURL(self.URLContext.URL, &googleOneURL)) {
+      NSString* accountParam = GoogleOneAccountFromURL(googleOneURL);
+      if (accountParam.length > 0) {
+        GaiaId gaiaID = FindGaiaIdForGoogleOneAccount(accountParam);
+        if (!gaiaID.empty()) {
+          self.gaiaID = gaiaID.ToNSString();
+        }
+      }
+    }
+  }
+  return [super gaiaID];
 }
 
 @end

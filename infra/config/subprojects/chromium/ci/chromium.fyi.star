@@ -3,6 +3,7 @@
 # found in the LICENSE file.
 """Definitions of builders in the chromium.fyi builder group."""
 
+load("@chromium-luci//args.star", "args")
 load("@chromium-luci//branches.star", "branches")
 load("@chromium-luci//builder_config.star", "builder_config")
 load("@chromium-luci//builder_health_indicators.star", "health_spec")
@@ -1702,6 +1703,7 @@ fyi_ios_builder(
             "mac_26_arm64",
             "mac_toolchain",
             "out_dir_arg",
+            "xcode_27_beta",
             "xctest",
         ],
     ),
@@ -1717,8 +1719,8 @@ fyi_ios_builder(
 )
 
 fyi_ios_builder(
-    name = "ios26-beta-simulator",
-    description_html = "Builds iOS debug simulator targets with Xcode n-1 and runs tests on iOS 26 beta simulator with Xcode n.",
+    name = "ios27-duo-beta-simulator",
+    description_html = "Builds iOS debug simulator targets with Xcode 27.0 and runs tests on the latest iOS 27 beta simulator.",
     schedule = "0 0,4,8,12,16,20 * * *",
     triggered_by = [],
     builder_spec = builder_config.builder_spec(
@@ -1745,11 +1747,11 @@ fyi_ios_builder(
             "xctest",
         ],
     ),
-    # ios26-beta-sim compiles with xcode version n-1, but
-    # runs testers with xcode n during an xcode roll.
+    # ios27-duo-beta-sim compiles with Xcode 27.0, but runs tests on the latest
+    # iOS 27 beta simulator.
     targets = targets.bundle(
         targets = [
-            "ios26_beta_simulator_tests",
+            "ios27_duo_beta_simulator_tests",
         ],
         additional_compile_targets = [
             "all",
@@ -1771,8 +1773,8 @@ fyi_ios_builder(
     os = os.MAC_BETA,
     cpu = cpu.ARM64,
     console_view_entry = consoles.console_view_entry(
-        category = "iOS|iOS26",
-        short_name = "ios26",
+        category = "iOS|iOS27",
+        short_name = "duobeta",
     ),
 )
 
@@ -1835,8 +1837,8 @@ fyi_ios_builder(
 )
 
 fyi_ios_builder(
-    name = "ios26-sdk-simulator",
-    description_html = "Builds and runs iOS debug simulator tests using the iOS 26 SDK and Xcode n.",
+    name = "ios27-duo-simulator",
+    description_html = "Builds and runs iOS debug Duo simulator tests using the iOS 27 SDK.",
     schedule = "0 2,6,10,14,18,22 * * *",
     triggered_by = [],
     builder_spec = builder_config.builder_spec(
@@ -1863,11 +1865,9 @@ fyi_ios_builder(
             "xctest",
         ],
     ),
-    # ios26-sdk-sim compiles with xcode version n, and runs
-    # testers with xcode n during an xcode roll.
     targets = targets.bundle(
         targets = [
-            "ios26_sdk_simulator_tests",
+            "ios27_duo_simulator_tests",
         ],
         additional_compile_targets = [
             "all",
@@ -1886,8 +1886,8 @@ fyi_ios_builder(
     os = os.MAC_BETA,
     cpu = cpu.ARM64,
     console_view_entry = consoles.console_view_entry(
-        category = "iOS|iOS26",
-        short_name = "sdk26",
+        category = "iOS|iOS27",
+        short_name = "duo",
     ),
     xcode = xcode.xcode_beta,
 )
@@ -1960,6 +1960,10 @@ fyi_mac_builder(
         category = "mac",
         short_name = "bld",
     ),
+    experiments = {
+        "luci.buildbucket.run_in_turboci": 100,
+        "luci.buildbucket.run_in_turboci.grpc_client": 100,
+    },
 )
 
 fyi_mac_builder(
@@ -2261,7 +2265,7 @@ ci.builder(
             "no_safe_browsing",
             "release_builder",
             "remoteexec",
-            "x86",
+            "x64",
             "no_symbols",
             "win",
         ],
@@ -2672,6 +2676,150 @@ ci.builder(
         ),
     ],
     contact_team_email = "chrome-gpu-team@google.com",
+)
+
+ci.builder(
+    name = "linux-devtools-frontend-rel",
+    description_html = "Builder for DevTools Frontend tests",
+    builder_spec = builder_config.copy_from("ci/Linux Builder"),
+    builder_config_settings = builder_config.ci_settings(
+        retry_failed_shards = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Linux Builder",
+            "no_devtools_bundled_chromium_deps",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "devtools_api_tests",
+            "devtools_e2e_tests",
+            "devtools_node_unit_tests",
+            "devtools_unit_tests",
+        ],
+        mixins = [
+            "linux-jammy",
+        ],
+        per_test_modifications = {
+            "devtools_e2e_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 8,
+                ),
+            ),
+            "devtools_unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+        },
+    ),
+    os = os.LINUX_DEFAULT,
+    ssd = None,
+    # TODO(crbug.com/563186272): Enable when verified.
+    gardener_rotations = args.ignore_default(None),
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "devtools",
+    ),
+    contact_team_email = "chrome-devtools@google.com",
+)
+
+ci.builder(
+    name = "mac-devtools-frontend-rel",
+    description_html = "Builder for DevTools Frontend tests",
+    builder_spec = builder_config.copy_from("ci/mac-arm64-rel"),
+    builder_config_settings = builder_config.ci_settings(
+        retry_failed_shards = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/mac-arm64-rel",
+            "no_devtools_bundled_chromium_deps",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "devtools_api_tests",
+            "devtools_e2e_tests",
+            "devtools_node_unit_tests",
+            "devtools_unit_tests",
+        ],
+        mixins = [
+            "mac_default_arm64",
+        ],
+        per_test_modifications = {
+            "devtools_e2e_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 8,
+                ),
+            ),
+            "devtools_unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+        },
+    ),
+    builderless = True,
+    cores = None,
+    os = os.MAC_DEFAULT,
+    cpu = cpu.ARM64,
+    # TODO(crbug.com/563186272): Enable when verified.
+    gardener_rotations = args.ignore_default(None),
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "devtools",
+    ),
+    contact_team_email = "chrome-devtools@google.com",
+)
+
+ci.builder(
+    name = "win-devtools-frontend-rel",
+    description_html = "Builder for DevTools Frontend tests",
+    builder_spec = builder_config.copy_from("ci/Win x64 Builder"),
+    builder_config_settings = builder_config.ci_settings(
+        retry_failed_shards = True,
+    ),
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win x64 Builder",
+            "no_devtools_bundled_chromium_deps",
+        ],
+    ),
+    targets = targets.bundle(
+        targets = [
+            "devtools_api_tests",
+            "devtools_e2e_tests",
+            "devtools_node_unit_tests",
+            "devtools_unit_tests",
+        ],
+        mixins = [
+            "x86-64",
+            "win10",
+        ],
+        per_test_modifications = {
+            "devtools_e2e_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 8,
+                ),
+            ),
+            "devtools_unit_tests": targets.mixin(
+                swarming = targets.swarming(
+                    shards = 4,
+                ),
+            ),
+        },
+    ),
+    os = os.WINDOWS_DEFAULT,
+    ssd = None,
+    # TODO(crbug.com/563186272): Enable when verified.
+    gardener_rotations = args.ignore_default(None),
+    tree_closing = False,
+    console_view_entry = consoles.console_view_entry(
+        category = "devtools",
+    ),
+    contact_team_email = "chrome-devtools@google.com",
 )
 
 ci.builder(

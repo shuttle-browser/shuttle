@@ -9,6 +9,7 @@
 #import "ios/chrome/browser/autofill/ui_bundled/autofill_app_interface.h"
 #import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_settings_constants.h"
 #import "ios/chrome/browser/settings/ui_bundled/settings_root_table_constants.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_table_view_controller_constants.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_actions.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
@@ -65,15 +66,11 @@ id<GREYMatcher> DeleteConfirmationButton() {
 // Helper to open the CVC storage settings.
 - (void)openCvcStorageSettings {
   [ChromeEarlGreyUI openSettingsMenu];
-  if ([ChromeEarlGrey isYourSavedInfoSettingsPageIosEnabled]) {
-    [ChromeEarlGreyUI
-        tapSettingsMenuButton:grey_accessibilityID(
-                                  @"kSettingsAutofillAndPasswordsCellId")];
-    [[EarlGrey selectElementWithMatcher:PaymentMethodsButton()]
-        performAction:grey_tap()];
-  } else {
-    [ChromeEarlGreyUI tapSettingsMenuButton:PaymentMethodsButton()];
-  }
+  [ChromeEarlGreyUI
+      tapSettingsMenuButton:grey_accessibilityID(
+                                kSettingsAutofillAndPasswordsCellId)];
+  [[EarlGrey selectElementWithMatcher:PaymentMethodsButton()]
+      performAction:grey_tap()];
   [[EarlGrey selectElementWithMatcher:CvcStorageButton()]
       performAction:grey_tap()];
 }
@@ -205,13 +202,7 @@ id<GREYMatcher> DeleteConfirmationButton() {
 }
 
 // Tests that the user actions for the delete CVCs flow are recorded correctly.
-// TODO(crbug.com/451607065): Test is disabled on device.
-#if !TARGET_OS_SIMULATOR
-#define MAYBE_testDeleteActionsAreRecorded DISABLED_testDeleteActionsAreRecorded
-#else
-#define MAYBE_testDeleteActionsAreRecorded testDeleteActionsAreRecorded
-#endif
-- (void)MAYBE_testDeleteActionsAreRecorded {
+- (void)testDeleteActionsAreRecorded {
   base::UserActionTester userActionTester;
 
   // Create & save local credit card.

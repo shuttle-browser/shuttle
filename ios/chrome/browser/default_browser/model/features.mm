@@ -13,7 +13,7 @@ bool IsShareDefaultBrowserStatusEnabled() {
 }
 
 BASE_FEATURE(kIOSSettingsDefaultBrowserPromoV2,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 const char kIOSSettingsDefaultBrowserPromoTypeParam[] =
     "SettingsDefaultBrowserPromoType";
@@ -101,12 +101,4 @@ BASE_FEATURE(kDefaultBrowserPipTextVideo, base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsDefaultBrowserPipTextVideoEnabled() {
   return base::FeatureList::IsEnabled(kDefaultBrowserPipTextVideo);
-}
-
-BASE_FEATURE(kQuerySwitcherInfoSignalForDefaultBrowserMetrics,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-bool IsQuerySwitcherInfoSignalForDefaultBrowserMetricsEnabled() {
-  return base::FeatureList::IsEnabled(
-      kQuerySwitcherInfoSignalForDefaultBrowserMetrics);
 }

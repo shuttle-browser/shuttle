@@ -182,7 +182,7 @@ public class AppRatingPromoControllerTest {
 
     @Test
     @EnableFeatures(ChromeFeatureList.ANDROID_APP_RATING_PROMPT)
-    @DisableFeatures(ChromeFeatureList.INTERRUPTIVE_IPH_COOLDOWN_GROUP)
+    @DisableFeatures(ChromeFeatureList.USER_EDUCATION_INTERRUPTIVE_COOLDOWN_GROUP)
     public void testOnSegmentationResultReceived_HighEngagement() {
         Assert.assertTrue(
                 "Promo should potentially be shown if all conditions are met.",
@@ -202,7 +202,7 @@ public class AppRatingPromoControllerTest {
         verify(mTracker)
                 .shouldTriggerHelpUi(
                         eq(FeatureConstants.APP_RATING_PROMPT_FEATURE),
-                        eq(new FeatureProperties(UiFormat.DIALOG, false, false, false)));
+                        eq(new FeatureProperties(UiFormat.DIALOG, false, false)));
         verify(mPrefService).setBoolean(Pref.APP_RATING_PROMPT_SHOWN, true);
         verify(mAppRatingManager)
                 .requestAndShowReviewFlow(eq(mActivity), mRunnableCapturer.capture());
@@ -215,7 +215,43 @@ public class AppRatingPromoControllerTest {
     @Test
     @EnableFeatures({
         ChromeFeatureList.ANDROID_APP_RATING_PROMPT,
-        ChromeFeatureList.INTERRUPTIVE_IPH_COOLDOWN_GROUP
+        ChromeFeatureList.USER_EDUCATION_INTERRUPTIVE_COOLDOWN_GROUP
+    })
+    @DisableFeatures(ChromeFeatureList.USER_EDUCATION_FRAMEWORK)
+    public void testOnSegmentationResultReceived_HighEngagement_FrameworkDisabled() {
+        Assert.assertTrue(
+                "Promo should potentially be shown if all conditions are met.",
+                AppRatingPromoController.maybeShowPromo(mProfile, mActivity, ALLOWED_COUNTRY));
+        verify(mSegmentationService)
+                .getClassificationResult(any(), any(), any(), mCallbackCapturer.capture());
+
+        ClassificationResult result =
+                new ClassificationResult(
+                        PredictionStatus.SUCCEEDED,
+                        new String[] {SegmentationPlatformConstants.SEARCH_USER_MODEL_LABEL_HIGH},
+                        0L);
+
+        mCallbackCapturer.getValue().onResult(result);
+
+        // Verify the review flow is triggered for high engagement users.
+        verify(mTracker)
+                .shouldTriggerHelpUi(
+                        eq(FeatureConstants.APP_RATING_PROMPT_FEATURE),
+                        eq(new FeatureProperties(UiFormat.DIALOG, false, false)));
+        verify(mPrefService).setBoolean(Pref.APP_RATING_PROMPT_SHOWN, true);
+        verify(mAppRatingManager)
+                .requestAndShowReviewFlow(eq(mActivity), mRunnableCapturer.capture());
+
+        // Complete the review flow
+        mRunnableCapturer.getValue().run();
+        verify(mTracker).dismissed(FeatureConstants.APP_RATING_PROMPT_FEATURE);
+    }
+
+    @Test
+    @EnableFeatures({
+        ChromeFeatureList.ANDROID_APP_RATING_PROMPT,
+        ChromeFeatureList.USER_EDUCATION_FRAMEWORK,
+        ChromeFeatureList.USER_EDUCATION_INTERRUPTIVE_COOLDOWN_GROUP
     })
     public void testOnSegmentationResultReceived_HighEngagement_CooldownGroupEnabled() {
         Assert.assertTrue(
@@ -235,7 +271,7 @@ public class AppRatingPromoControllerTest {
         verify(mTracker)
                 .shouldTriggerHelpUi(
                         eq(FeatureConstants.APP_RATING_PROMPT_FEATURE),
-                        eq(new FeatureProperties(UiFormat.DIALOG, true, true, true)));
+                        eq(new FeatureProperties(UiFormat.DIALOG, true, true)));
         verify(mAppRatingManager)
                 .requestAndShowReviewFlow(eq(mActivity), mRunnableCapturer.capture());
     }

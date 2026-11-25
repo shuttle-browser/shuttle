@@ -129,6 +129,8 @@ static_library("test_support") {
     "../memory/mock_memory_pressure_listener.h",
     "../memory_coordinator/mock_memory_consumer.cc",
     "../memory_coordinator/mock_memory_consumer.h",
+    "../memory_coordinator/scoped_memory_pressure_level_override.cc",
+    "../memory_coordinator/scoped_memory_pressure_level_override.h",
     "../memory_coordinator/test_memory_consumer_registry.cc",
     "../memory_coordinator/test_memory_consumer_registry.h",
     "../task/sequence_manager/test/fake_task.cc",
@@ -225,6 +227,8 @@ static_library("test_support") {
     "scoped_mock_clock_override.h",
     "scoped_mock_time_message_loop_task_runner.cc",
     "scoped_mock_time_message_loop_task_runner.h",
+    "scoped_not_fatal_until_severity_override.cc",
+    "scoped_not_fatal_until_severity_override.h",
     "scoped_path_override.cc",
     "scoped_path_override.h",
     "scoped_run_loop_timeout.cc",
@@ -286,6 +290,7 @@ static_library("test_support") {
 
   deps = [
     ":proto_test_support",
+    "//base:check_version_internal",
     "//testing/libfuzzer:fuzztest_init_support",
     "//third_party/google_benchmark",
     "//third_party/icu:icuuc",
@@ -364,6 +369,8 @@ static_library("test_support") {
 
   if (is_android) {
     sources += [
+      "../android/device_info_test_support.cc",
+      "../android/device_info_test_support.h",
       "android/content_uri_test_utils.cc",
       "android/content_uri_test_utils.h",
       "android/java_handler_thread_helpers.cc",

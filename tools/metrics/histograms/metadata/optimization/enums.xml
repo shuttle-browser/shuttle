@@ -139,28 +139,11 @@ chromium-metrics-reviews@google.com.
   <int value="10" label="ProofreaderSmallExpert"/>
   <int value="11" label="SpeechRecognitionSmallExpert"/>
   <int value="12" label="SummarizerSmallExpert"/>
+  <int value="13" label="LayaEnWint8"/>
+  <int value="14" label="LayaMlWint8"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/optimization_guide/core/model_execution/on_device_model_names.h:OnDeviceBaseModelEnum) -->
-
-<enum name="OnDeviceModelAdaptationAvailability">
-  <int value="0" label="Adaptation model was available"/>
-  <int value="1" label="Base model was not available"/>
-  <int value="2"
-      label="Base model spec was invalid, so adaptation model cannot be
-             fetched"/>
-  <int value="3" label="Adaptation model was not available"/>
-  <int value="4" label="The received adaptation model was invalid"/>
-  <int value="5"
-      label="The received adaptation model was incompatible with the base
-             model"/>
-  <int value="6"
-      label="The execution config in the adaptation model was invalid"/>
-  <int value="7" label="The model execution feature was not recently used."/>
-  <int value="8"
-      label="The received adaptation model was incompatible with the base
-             model's performance hints"/>
-</enum>
 
 <enum name="OnDeviceModelPerformanceClass">
   <int value="0" label="Unknown"/>
@@ -397,7 +380,7 @@ chromium-metrics-reviews@google.com.
   </int>
   <int value="7" label="Cancelled">
     Execution was cancelled because either AddContext or ExecuteModel was called
-    again.
+    again, or the client cancelled the request.
   </int>
   <int value="8" label="Destroyed while waiting">
     The Session was destroyed while waiting for a response. This likely means
@@ -885,6 +868,8 @@ chromium-metrics-reviews@google.com.
   <int value="132" label="AUTOFILL_AT_MEMORY_BLOCKED"/>
   <int value="133" label="FILTER_EXECUTION_STRATEGY"/>
   <int value="134" label="PAYMENT_QR_CODE_MERCHANT_URL_REGEX_ALLOWLIST"/>
+  <int value="135" label="QUICK_ANSWERS"/>
+  <int value="136" label="DICTATION_ELIGIBLE"/>
 </enum>
 
 <enum name="PageContentAnnotationsStorageStatus">

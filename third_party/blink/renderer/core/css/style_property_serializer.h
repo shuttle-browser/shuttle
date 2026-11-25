@@ -36,6 +36,7 @@ namespace blink {
 class CSSProperty;
 class CSSPropertyName;
 class CSSPropertyValueSet;
+class PropertyRegistry;
 class StylePropertyShorthand;
 
 enum class CSSGapDecorationPropertyDirection : int;
@@ -44,7 +45,9 @@ class CORE_EXPORT StylePropertySerializer {
   STACK_ALLOCATED();
 
  public:
-  explicit StylePropertySerializer(const CSSPropertyValueSet&);
+  explicit StylePropertySerializer(
+      const CSSPropertyValueSet&,
+      const PropertyRegistry* private_property_registry = nullptr);
 
   String AsText() const;
   String SerializeShorthand(CSSPropertyID) const;
@@ -60,7 +63,7 @@ class CORE_EXPORT StylePropertySerializer {
       const CSSProperty& first_corner,
       const CSSProperty& second_corner) const;
   String CornerShapeValue() const;
-  String CornersValue() const;
+  String CornerValue() const;
   String SingleCornerShorthandValue(const StylePropertyShorthand&) const;
   String CornerPairShorthandValue(const StylePropertyShorthand&) const;
   String GetLayeredShorthandValue(const StylePropertyShorthand&) const;
@@ -241,6 +244,7 @@ class CORE_EXPORT StylePropertySerializer {
   };
 
   const CSSPropertyValueSetForSerializer property_set_;
+  const PropertyRegistry* private_property_registry_;
 };
 
 }  // namespace blink

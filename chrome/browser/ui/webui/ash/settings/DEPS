@@ -10,7 +10,6 @@ include_rules = [
   # Existing dependencies within //chrome. There is an active effort to
   # refactor //chrome/browser/ui/ash to break these dependencies; see b/332804822.
   # Whenever possible, avoid adding new //chrome dependencies to this list.
-  "+chrome/browser/enterprise/browser_management",
   "+chrome/browser/nearby_sharing",
   "+chrome/browser/policy",
   "+chrome/browser/profiles",
@@ -60,6 +59,10 @@ specific_include_rules = {
   ],
   'os_settings_features_util\\.cc' : [
     "+ash/edusumer/graduation_utils.h",
+  ],
+  'os_settings_features_util_unittest\\.cc' : [
+    "+chrome/browser/ash/login/test/chrome_user_session_test_environment_delegate.h",
+    "+chrome/browser/ash/settings/scoped_cros_settings_test_helper.h",
   ],
   'power_section\\.(cc|h)' : [
     '+ash/shell.h',

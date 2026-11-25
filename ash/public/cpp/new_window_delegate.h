@@ -71,8 +71,8 @@ class ASH_PUBLIC_EXPORT NewWindowDelegate {
   // If the |from| is kArc, then the new window is annotated a special tag,
   // so that on requesting to opening ARC app from the page, confirmation
   // dialog will be skipped.
-  // |Disposition| corresponds to the subset of |WindowOpenDisposition| that is
-  // supported by crosapi.
+  // |Disposition| corresponds to the subset of
+  // `ui::mojom::WindowOpenDisposition` that is supported by crosapi.
   enum class OpenUrlFrom {
     kUnspecified,
     kUserInteraction,
@@ -94,8 +94,8 @@ class ASH_PUBLIC_EXPORT NewWindowDelegate {
   // Invoked when an accelerator is used to open the file manager.
   virtual void OpenFileManager() = 0;
 
-  // Opens File Manager in the MyFiles/Downloads folder.
-  virtual void OpenDownloadsFolder() = 0;
+  // Opens File Manager in `account_id`'s MyFiles/Downloads folder.
+  virtual void OpenDownloadsFolder(const AccountId& account_id) = 0;
 
   // Invoked when the user opens Crosh.
   virtual void OpenCrosh() = 0;

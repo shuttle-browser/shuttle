@@ -29,6 +29,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
+#include "third_party/jni_zero/jni_zero.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "chrome/android/chrome_jni_headers/ContextualSearchManager_jni.h"
@@ -50,35 +51,26 @@ ContextualSearchManager::ContextualSearchManager(JNIEnv* env,
                                                  Profile* profile)
     : profile_(profile) {
   java_manager_.Reset(obj);
-  Java_ContextualSearchManager_setNativeManager(
-      env, obj, reinterpret_cast<intptr_t>(this));
   delegate_ = std::make_unique<ContextualSearchDelegateImpl>(
       profile->GetURLLoaderFactory(),
       TemplateURLServiceFactory::GetForProfile(profile));
 }
 
-ContextualSearchManager::~ContextualSearchManager() {
-  JNIEnv* env = base::android::AttachCurrentThread();
-  Java_ContextualSearchManager_clearNativeManager(env, java_manager_);
-}
-
-void ContextualSearchManager::Destroy(JNIEnv* env) {
-  delete this;
-}
+ContextualSearchManager::~ContextualSearchManager() = default;
 
 void ContextualSearchManager::StartSearchTermResolutionRequest(
     JNIEnv* env,
-    const base::android::JavaRef<jobject>& j_contextual_search_context,
+    NativeContextualSearchContext* contextual_search_context,
     const JavaRef<jobject>& j_base_web_contents) {
   WebContents* base_web_contents =
       WebContents::FromJavaWebContents(j_base_web_contents);
   CHECK(base_web_contents, base::NotFatalUntil::M161);
-  base::WeakPtr<NativeContextualSearchContext> contextual_search_context =
-      NativeContextualSearchContext::FromJavaContextualSearchContext(
-          j_contextual_search_context);
+  base::WeakPtr<ContextualSearchContext> contextual_search_context_weak =
+      contextual_search_context ? contextual_search_context->AsWeakPtr()
+                                : nullptr;
   // Calls back to OnSearchTermResolutionResponse.
   delegate_->StartSearchTermResolutionRequest(
-      contextual_search_context, base_web_contents,
+      contextual_search_context_weak, base_web_contents,
       base::BindRepeating(
           &ContextualSearchManager::OnSearchTermResolutionResponse,
           base::Unretained(this)));
@@ -86,16 +78,16 @@ void ContextualSearchManager::StartSearchTermResolutionRequest(
 
 void ContextualSearchManager::GatherSurroundingText(
     JNIEnv* env,
-    const base::android::JavaRef<jobject>& j_contextual_search_context,
+    NativeContextualSearchContext* contextual_search_context,
     const JavaRef<jobject>& j_base_web_contents) {
   WebContents* base_web_contents =
       WebContents::FromJavaWebContents(j_base_web_contents);
   CHECK(base_web_contents, base::NotFatalUntil::M161);
-  base::WeakPtr<NativeContextualSearchContext> contextual_search_context =
-      NativeContextualSearchContext::FromJavaContextualSearchContext(
-          j_contextual_search_context);
+  base::WeakPtr<ContextualSearchContext> contextual_search_context_weak =
+      contextual_search_context ? contextual_search_context->AsWeakPtr()
+                                : nullptr;
   delegate_->GatherAndSaveSurroundingText(
-      contextual_search_context, base_web_contents,
+      contextual_search_context_weak, base_web_contents,
       base::BindRepeating(
           &ContextualSearchManager::OnTextSurroundingSelectionAvailable,
           base::Unretained(this)));
@@ -156,12 +148,11 @@ void ContextualSearchManager::OnTextSurroundingSelectionAvailable(
       env, java_manager_, encoding, surrounding_text, start_offset, end_offset);
 }
 
-static int64_t JNI_ContextualSearchManager_Init(JNIEnv* env,
-                                                const JavaRef<jobject>& obj,
-                                                Profile* profile) {
-  ContextualSearchManager* manager =
-      new ContextualSearchManager(env, obj, profile);
-  return reinterpret_cast<intptr_t>(manager);
+static jni_zero::JniUniquePtr<ContextualSearchManager>
+JNI_ContextualSearchManager_Init(JNIEnv* env,
+                                 const JavaRef<jobject>& obj,
+                                 Profile* profile) {
+  return jni_zero::MakeUnique<ContextualSearchManager>(env, obj, profile);
 }
 
 static bool JNI_ContextualSearchPolicy_IsContextualSearchResolutionUrlValid(

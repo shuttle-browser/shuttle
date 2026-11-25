@@ -43,6 +43,7 @@
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_features.h"
+#include "content/public/common/content_switches.h"
 #include "content/public/common/isolated_world_ids.h"
 #include "content/public/common/url_constants.h"
 #include "content/public/test/back_forward_cache_util.h"
@@ -116,10 +117,11 @@ class DelayLoadStartAndExecuteJavascript : public content::WebContentsObserver {
    public:
     explicit TabHelper(DelayLoadStartAndExecuteJavascript* owner)
         : owner_(owner) {
-      TabModelList::AddObserver(this);
-      for (TabModel* model : TabModelList::models()) {
+      TabModelList::AddGlobalObserver(this);
+      TabModelList::ForEachAll([this](TabModel* model) {
         OnTabModelAdded(model);
-      }
+        return true;
+      });
     }
 
     ~TabHelper() override { StopObserving(); }
@@ -148,7 +150,7 @@ class DelayLoadStartAndExecuteJavascript : public content::WebContentsObserver {
    private:
     void StopObserving() {
       tab_model_observations_.RemoveAllObservations();
-      TabModelList::RemoveObserver(this);
+      TabModelList::RemoveGlobalObserver(this);
     }
 
     raw_ptr<DelayLoadStartAndExecuteJavascript> owner_;
@@ -893,6 +895,12 @@ IN_PROC_BROWSER_TEST_F(WebNavigationApiTest, PendingDeletion) {
 // in behavior between ExtensionBrowserTest::NavigateToURL() and
 // ui_test_utils::NavigateToURL().
 IN_PROC_BROWSER_TEST_F(WebNavigationApiTest, Crash) {
+#if BUILDFLAG(IS_WIN)
+  // Avoid timeouts symbolizing stack traces in the intentionally crashed
+  // renderer process on Windows.
+  base::CommandLine::ForCurrentProcess()->AppendSwitch(
+      ::switches::kDisableInProcessStackTraces);
+#endif
   // TODO(crbug.com/40248833): Use https in the test and remove this allowlist
   // entry.
   ScopedAllowHttpForHostnamesForTesting scoped_allow_http(

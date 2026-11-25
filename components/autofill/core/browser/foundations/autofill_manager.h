@@ -124,9 +124,6 @@ class AutofillManager
                                                LifecycleState previous,
                                                LifecycleState new_state) {}
 
-    virtual void OnBeforeLanguageDetermined(AutofillManager& manager) {}
-    virtual void OnAfterLanguageDetermined(AutofillManager& manager) {}
-
     // Unlike other events, OnFormsSeen() determines both heuristic and server
     // types. OnAfterFormsSeen() is fired after the heuristic type detection is
     // complete (if it started at all). Whether the server types have been
@@ -448,7 +445,8 @@ class AutofillManager
   virtual bool CanShowAutofillUi() const;
 
   // Forwards call to the same-named `AutofillDriver` function.
-  virtual void TriggerFormExtractionInAllFrames(
+  void TriggerFormExtractionInAllFrames(
+      bool force,
       base::OnceCallback<void(bool success)> form_extraction_finished_callback);
 
   // Returns server predictions for fields identified by `field_ids` in a form
@@ -487,11 +485,8 @@ class AutofillManager
 
   AutofillDriver& driver() { return *driver_; }
 
-  // Reparses all known forms.
-  virtual void ReparseKnownForms();
-
-  // After subscribing, FieldClassificationModelHandler::OnModelUpdated() will
-  // trigger ReparseKnownForms(). There may be a handler for Autofill and/or
+  // After subscribing, `FieldClassificationModelHandler::OnModelUpdated()` will
+  // trigger form extraction. There may be a handler for Autofill and/or
   // Password Manager.
   void SubscribeToMlModelChanges(FieldClassificationModelHandler& handler);
 
@@ -663,19 +658,6 @@ class AutofillManager
 
   std::unique_ptr<autofill_metrics::FormInteractionsUkmLogger>
   CreateFormInteractionsUkmLogger();
-
-  // If `kAutofillSynchronousAfterParsing` is disabled:
-  // Returns a callback that runs `callback` on the main thread after all
-  // ongoing async parsing operations have finished.
-  //
-  // If `kAutofillSynchronousAfterParsing` is enabled (default behavior):
-  // Just returns callback; enforces no asynchronicity.
-  //
-  // TODO(crbug.com/448144129): Remove once `kAutofillSynchronousAfterParsing`
-  // can be cleaned up.
-  template <typename... Args>
-  base::OnceCallback<void(Args...)> AfterParsingFinishesDeprecated(
-      base::OnceCallback<void(Args...)> callback);
 
   // Provides driver-level context to the shared code of the component.
   // `*driver_` owns this object.

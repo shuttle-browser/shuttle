@@ -73,7 +73,7 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/color_palette.h"
@@ -211,7 +211,6 @@ PaymentHandlerWebFlowViewController::PaymentHandlerWebFlowViewController(
     base::WeakPtr<PaymentRequestSpec> spec,
     base::WeakPtr<PaymentRequestState> state,
     base::WeakPtr<PaymentRequestDialogView> dialog,
-    content::WebContents* payment_request_web_contents,
     Profile* profile,
     GURL target,
     PaymentHandlerOpenWindowCallback first_navigation_complete_callback)
@@ -223,7 +222,7 @@ PaymentHandlerWebFlowViewController::PaymentHandlerWebFlowViewController(
                                                  content::kMaxURLDisplayChars)),
       first_navigation_complete_callback_(
           std::move(first_navigation_complete_callback)),
-      dialog_manager_delegate_(dialog.get(), payment_request_web_contents) {}
+      dialog_manager_delegate_(dialog.get()) {}
 
 PaymentHandlerWebFlowViewController::~PaymentHandlerWebFlowViewController() {
   if (web_contents()) {
@@ -485,7 +484,7 @@ content::WebContents* PaymentHandlerWebFlowViewController::OpenURLFromTab(
   // Reject CURRENT_TAB to maintain existing behavior for internal navigations.
   // OpenURLFromTab is implemented so that external links (e.g. PageInfo "Learn
   // more") are routed to the parent tab.
-  if (params.disposition == WindowOpenDisposition::kCurrentTab) {
+  if (params.disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
     return nullptr;
   }
   if (!state() || !state()->GetWebContents()) {
@@ -498,7 +497,7 @@ content::WebContents* PaymentHandlerWebFlowViewController::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -507,8 +506,8 @@ content::WebContents* PaymentHandlerWebFlowViewController::AddNewContents(
   BrowserWindowInterface* const browser =
       ProfileBrowserCollection::GetForProfile(profile_)->GetLastActiveBrowser();
   if (browser && user_gesture &&
-      (disposition == WindowOpenDisposition::kNewForegroundTab ||
-       disposition == WindowOpenDisposition::kNewPopup)) {
+      (disposition == ui::mojom::WindowOpenDisposition::kNewForegroundTab ||
+       disposition == ui::mojom::WindowOpenDisposition::kNewPopup)) {
     chrome::AddWebContents(browser, source, std::move(new_contents), target_url,
                            disposition, window_features);
   }
@@ -1021,8 +1020,7 @@ void PaymentHandlerWebFlowViewController::OnRequestsFinalized() {
 
 void PaymentHandlerWebFlowViewController::OnRequestDecided(
     permissions::PermissionAction action) {
-  base::UmaHistogramEnumeration("PaymentRequest.Camera.PromptAction", action,
-                                permissions::PermissionAction::NUM);
+  base::UmaHistogramEnumeration("PaymentRequest.Camera.PromptAction", action);
 
   if (!chip_model_ || !permission_dashboard_view()) {
     return;

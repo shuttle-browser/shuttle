@@ -311,6 +311,7 @@ public class OmniboxMetrics {
                     case AutocompleteRequestType.IMAGE_GENERATION -> ".ImageGeneration";
                     case AutocompleteRequestType.CANVAS -> ".Canvas";
                     case AutocompleteRequestType.DEEP_SEARCH -> ".DeepSearch";
+                    case AutocompleteRequestType.PTM -> ".PTM";
                     default -> ".Search";
                 };
 
@@ -506,7 +507,6 @@ public class OmniboxMetrics {
      */
     public static void recordTouchDownPrefetchResult(
             AutocompleteMatch navSuggestion, @Nullable AutocompleteMatch prefetchSuggestion) {
-
         @PrefetchResult
         int result =
                 prefetchSuggestion == null

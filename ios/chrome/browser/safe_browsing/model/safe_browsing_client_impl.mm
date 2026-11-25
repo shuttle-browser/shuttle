@@ -125,7 +125,8 @@ void SafeBrowsingClientImpl::OnSecurityInterstitialShown(
         /*net_error_code=*/0,
         pref_service_->GetBoolean(prefs::kSafeBrowsingProceedAnywayDisabled),
         referrer_chain,
-        /*tab_title=*/base::UTF16ToUTF8(web_state->GetTitle()));
+        /*tab_title=*/base::UTF16ToUTF8(web_state->GetTitle()),
+        /*initiator=*/std::nullopt);
   }
 }
 
@@ -165,4 +166,10 @@ SafeBrowsingClientImpl::CreateClientSideDetectionHost(
       intelligent_scan_delegate, profile->GetPrefs(),
       IdentityManagerFactory::GetForProfile(profile),
       ios::HistoryServiceFactory::GetForProfile(profile));
+}
+
+void SafeBrowsingClientImpl::OnSuspiciousSiteWarningTriggered(
+    const security_interstitials::UnsafeResource& resource) {
+  // TODO(crbug.com/583869103): Wired to `SuspiciousSiteTabHelper` in a
+  // follow-up CL.
 }

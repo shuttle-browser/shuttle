@@ -9,6 +9,10 @@
 
 #include "base/values.h"
 
+namespace optimization_guide::proto {
+class ToolDeclaration;
+}  // namespace optimization_guide::proto
+
 namespace actor {
 
 // Identifier for each shared browser tool in ActorKeyedService.
@@ -19,6 +23,7 @@ namespace actor {
 enum class ToolId {
   // Navigates the active tab to a specified URL.
   kNavigate = 0,
+  kMinValue = kNavigate,
   // Clicks an element on the active page by DOM node ID.
   kClick = 1,
   // Switches to an open tab in the active browser window matching a query.
@@ -98,13 +103,14 @@ enum class ToolId {
   kCloseGeminiPanel = 38,
   // Opens a URL in the given tab or in a new tab in that tab's window.
   kOpenUrl = 39,
-  kMaxValue = kOpenUrl,
+  // Searches within the currently active website using its search bar or
+  // OpenSearch Description Document (OSDD) template.
+  kSiteBasedSearch = 40,
+  kMaxValue = kSiteBasedSearch,
 };
-
 // In-memory metadata and parameter schema for a shared browser tool. Prefer
 // building instances with `ToolDefinitionBuilder`.
 struct ToolDefinition {
-  ToolDefinition(ToolId id, std::string name, std::string description);
   ToolDefinition(ToolId id,
                  std::string name,
                  std::string description,
@@ -119,6 +125,11 @@ struct ToolDefinition {
   // Needed to make a copy of `ToolDefinition`, because `base::DictValue` is
   // move-only.
   ToolDefinition Clone() const;
+
+  // Converts this definition to a `ToolDeclaration` wire proto. Serializes
+  // `parameters_json_schema` as compact JSON when it declares at least one
+  // parameter under `"properties"`; omits it for parameterless tools.
+  optimization_guide::proto::ToolDeclaration ToProto() const;
 
   // Chrome-internal identifier for this tool.
   ToolId id;

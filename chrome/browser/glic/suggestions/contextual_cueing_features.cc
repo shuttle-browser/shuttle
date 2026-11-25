@@ -7,6 +7,9 @@
 #include "base/metrics/field_trial_params.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_feature.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/common/chrome_features.h"
 #include "components/variations/service/variations_service.h"
 
@@ -16,9 +19,20 @@ BASE_FEATURE(kContextualCueing, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicZeroStateSuggestions, base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kGlicZeroStateSuggestionsPreconnectWithoutCredentials,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kEnableAutoOpenGlicSidePanel, base::FEATURE_DISABLED_BY_DEFAULT);
 
-bool IsContextualCueingEnabled() {
+BASE_FEATURE(kGlicBrowsingHistoryZeroStateSuggestions,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsContextualCueingEnabled(content::BrowserContext* context) {
+  if (!GetGlicProviderSpec(Profile::FromBrowserContext(context))
+           .SupportsFeature(GlicFeature::kContextualCueing)) {
+    return false;
+  }
+
   // If the feature is overridden (e.g. via server-side config or command-line),
   // use that state.
   auto* feature_list = base::FeatureList::GetInstance();
@@ -34,7 +48,12 @@ bool IsContextualCueingEnabled() {
   return glic::GlicEnabling::IsEnabledByGlobalCriteria();
 }
 
-bool IsZeroStateSuggestionsEnabled() {
+bool IsZeroStateSuggestionsEnabled(content::BrowserContext* context) {
+  if (!GetGlicProviderSpec(Profile::FromBrowserContext(context))
+           .SupportsFeature(GlicFeature::kZeroStateSuggestions)) {
+    return false;
+  }
+
   // If the feature is overridden (e.g. via server-side config or command-line),
   // use that state.
   auto* feature_list = base::FeatureList::GetInstance();
@@ -149,5 +168,27 @@ const base::FeatureParam<int> kMaxPinnedPagesForTriggeringSuggestions(
     &kGlicZeroStateSuggestions,
     "ZSSMaxPinnedPagesForTriggeringSuggestions",
     10);
+
+const base::FeatureParam<int> kMaxRecentPages(
+    &kGlicBrowsingHistoryZeroStateSuggestions,
+    "ZSSMaxRecentPages",
+    15);
+
+const base::FeatureParam<base::TimeDelta> kMaxRecentDuration(
+    &kGlicBrowsingHistoryZeroStateSuggestions,
+    "ZSSMaxRecentDuration",
+    base::Minutes(30));
+
+constexpr base::FeatureParam<RecentPagesSource>::Option
+    kRecentPagesSourceOptions[] = {
+        {RecentPagesSource::kAllRecentVisits, "all_recent_visits"},
+        {RecentPagesSource::kOpenTabsOnly, "open_tabs_only"},
+};
+
+const base::FeatureParam<RecentPagesSource> kRecentPagesSource(
+    &kGlicBrowsingHistoryZeroStateSuggestions,
+    "ZSSRecentPagesSource",
+    RecentPagesSource::kAllRecentVisits,
+    &kRecentPagesSourceOptions);
 
 }  // namespace glic

@@ -25,13 +25,11 @@
 #include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
 #include "chrome/browser/ui/autofill/payments/save_card_bubble_controller.h"
 #include "chrome/browser/ui/autofill/payments/save_card_ui.h"
-#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/hats/trust_safety_sentiment_service.h"
 #include "chrome/browser/ui/hats/trust_safety_sentiment_service_factory.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
-#include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
@@ -56,9 +54,9 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/visibility.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/base/window_open_disposition.h"
 
 namespace autofill {
 
@@ -572,9 +570,6 @@ void SaveCardBubbleControllerImpl::OnSaveButton(
               TrustSafetySentimentServiceFactory::GetForProfile(GetProfile())) {
         sentiment_service->SavedCard();
       }
-      // Show an animated card saved confirmation message next time
-      // UpdatePageActionIcon() is called.
-      should_show_card_saved_label_animation_ = true;
       std::move(local_save_card_prompt_callback_)
           .Run(payments::PaymentsAutofillClient::SaveCardOfferUserDecision::
                    kAccepted);
@@ -810,22 +805,6 @@ std::u16string SaveCardBubbleControllerImpl::GetSavePaymentIconTooltipText()
   }
 }
 
-// TODO(crbug.com/374815809): Remove this method.
-bool SaveCardBubbleControllerImpl::ShouldShowSavingPaymentAnimation() const {
-  return false;
-}
-
-bool SaveCardBubbleControllerImpl::ShouldShowPaymentSavedLabelAnimation()
-    const {
-  return should_show_card_saved_label_animation_;
-}
-
-void SaveCardBubbleControllerImpl::OnAnimationEnded() {
-  // Do not repeat the animation next time UpdatePageActionIcon() is called,
-  // unless explicitly set somewhere else.
-  should_show_card_saved_label_animation_ = false;
-}
-
 bool SaveCardBubbleControllerImpl::IsIconVisible() const {
   if (current_bubble_type_ == PaymentsBubbleType::kInactive) {
     CHECK(!bubble_view());
@@ -837,13 +816,6 @@ bool SaveCardBubbleControllerImpl::IsIconVisible() const {
 
 AutofillBubbleBase* SaveCardBubbleControllerImpl::GetPaymentBubbleView() const {
   return bubble_view();
-}
-
-int SaveCardBubbleControllerImpl::GetSaveSuccessAnimationStringId() const {
-  return options_.card_save_type ==
-                 payments::PaymentsAutofillClient::CardSaveType::kCvcSaveOnly
-             ? IDS_AUTOFILL_CVC_SAVED
-             : IDS_AUTOFILL_CARD_SAVED;
 }
 
 // static
@@ -873,11 +845,6 @@ bool SaveCardBubbleControllerImpl::ShouldReshowOnTabVisible() const {
          current_bubble_type_ == PaymentsBubbleType::kUploadComplete;
 }
 
-std::optional<PageActionIconType>
-SaveCardBubbleControllerImpl::GetPageActionIconType() {
-  return PageActionIconType::kSaveCard;
-}
-
 #if !BUILDFLAG(IS_ANDROID)
 std::optional<actions::ActionId>
 SaveCardBubbleControllerImpl::GetActionIdForPageAction() {
@@ -889,20 +856,6 @@ SaveCardBubbleControllerImpl::GetPageActionTooltipText() {
   return GetSavePaymentIconTooltipText();
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
-
-AutofillBubbleHandler*
-SaveCardBubbleControllerImpl::GetAutofillBubbleHandler() {
-  // We may be in a non-tab WebContents such as a side panel or extension popup;
-  // in those cases we cannot access the AutofillBubbleHandler.
-  tabs::TabInterface* tab =
-      tabs::TabInterface::MaybeGetFromContents(web_contents());
-  if (!tab) {
-    return nullptr;
-  }
-  BrowserWindowInterface* browser = tab->GetBrowserWindowInterface();
-  CHECK(browser);
-  return AutofillBubbleHandler::Get(browser->GetUnownedUserDataHost());
-}
 
 void SaveCardBubbleControllerImpl::DoShowBubble() {
   if (!IsWebContentsActive()) {
@@ -974,12 +927,13 @@ void SaveCardBubbleControllerImpl::DoShowBubble() {
 }
 
 bool SaveCardBubbleControllerImpl::CanBeReshown() const {
-  if (was_url_opened_ &&
-      current_bubble_type_ == PaymentsBubbleType::kUploadComplete) {
-    return true;
+  if (current_bubble_type_ == PaymentsBubbleType::kInactive) {
+    return false;
   }
-  return current_bubble_type_ != PaymentsBubbleType::kUploadComplete &&
-         current_bubble_type_ != PaymentsBubbleType::kInactive;
+  if (current_bubble_type_ == PaymentsBubbleType::kUploadComplete) {
+    return !IsShowingBubble() || was_url_opened_;
+  }
+  return true;
 }
 
 BubbleType SaveCardBubbleControllerImpl::GetBubbleType() const {
@@ -1068,10 +1022,11 @@ void SaveCardBubbleControllerImpl::ShowIconOnly() {
 void SaveCardBubbleControllerImpl::OpenUrl(const GURL& url) {
   was_url_opened_ = true;
 
-  web_contents()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
-                              url, WindowOpenDisposition::kNewForegroundTab,
-                              ui::PAGE_TRANSITION_LINK),
-                          /*navigation_handle_callback=*/{});
+  web_contents()->OpenURL(
+      content::OpenURLParams::CreateBrowserInitiated(
+          url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+          ui::PAGE_TRANSITION_LINK),
+      /*navigation_handle_callback=*/{});
 }
 
 bool SaveCardBubbleControllerImpl::IsWebContentsActive() {

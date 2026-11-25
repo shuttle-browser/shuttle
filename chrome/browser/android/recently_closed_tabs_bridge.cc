@@ -27,7 +27,8 @@
 #include "components/tab_groups/tab_group_id.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
-#include "ui/base/window_open_disposition.h"
+#include "third_party/jni_zero/jni_zero.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "url/android/gurl_android.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
@@ -299,10 +300,6 @@ RecentlyClosedTabsBridge::~RecentlyClosedTabsBridge() {
   }
 }
 
-void RecentlyClosedTabsBridge::Destroy(JNIEnv* env) {
-  delete this;
-}
-
 bool RecentlyClosedTabsBridge::GetRecentlyClosedEntries(
     JNIEnv* env,
     const JavaRef<jobject>& jentries_list,
@@ -317,8 +314,7 @@ bool RecentlyClosedTabsBridge::GetRecentlyClosedEntries(
   return true;
 }
 
-bool RecentlyClosedTabsBridge::OpenRecentlyClosedTab(JNIEnv* env,
-                                                     TabModel* model,
+bool RecentlyClosedTabsBridge::OpenRecentlyClosedTab(TabModel* model,
                                                      int32_t tab_session_id,
                                                      int32_t j_disposition) {
   if (!tab_restore_service_) {
@@ -339,7 +335,7 @@ bool RecentlyClosedTabsBridge::OpenRecentlyClosedTab(JNIEnv* env,
   std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
       tab_restore_service_->RestoreEntryById(
           &restore_context, entry_id,
-          static_cast<WindowOpenDisposition>(j_disposition));
+          static_cast<ui::mojom::WindowOpenDisposition>(j_disposition));
   return !restored_tabs.value_or({}).empty();
 }
 
@@ -361,9 +357,46 @@ bool RecentlyClosedTabsBridge::OpenRecentlyClosedEntry(
   std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
       tab_restore_service_->RestoreEntryById(
           &restore_context, SessionID::FromSerializedValue(entry_session_id),
-          WindowOpenDisposition::kNewBackgroundTab);
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab);
   RestoreAndroidTabGroups(env, model, restore_context.GetTabGroups());
   return !restored_tabs.value_or({}).empty();
+}
+
+std::vector<int32_t> RecentlyClosedTabsBridge::RestoreForUndo(
+    JNIEnv* env,
+    TabModel* model,
+    int32_t entry_id,
+    const std::vector<int32_t>& tab_ids,
+    const std::vector<int32_t>& indices,
+    const std::vector<bool>& pinned) {
+  EnsureTabRestoreService();
+  if (!tab_restore_service_ || !model) {
+    // Return an empty vector if there is no service or model.
+    return {};
+  }
+
+  CHECK_EQ(tab_ids.size(), indices.size());
+  CHECK_EQ(tab_ids.size(), pinned.size());
+
+  std::vector<AndroidLiveTabContextUndoRestoreWrapper::ClosedTab> closed_tabs;
+  closed_tabs.reserve(tab_ids.size());
+  for (size_t i = 0; i < tab_ids.size(); ++i) {
+    closed_tabs.push_back({tab_ids[i], indices[i], pinned[i]});
+  }
+
+  AndroidLiveTabContextUndoRestoreWrapper restore_context(
+      model, std::move(closed_tabs));
+  std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
+      tab_restore_service_->RestoreEntryById(
+          &restore_context, SessionID::FromSerializedValue(entry_id),
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab);
+
+  if (!restored_tabs.has_value()) {
+    // Return an empty vector if the entry does not exist.
+    return {};
+  }
+
+  return restore_context.GetRestoredIdsByPlacementIndex();
 }
 
 bool RecentlyClosedTabsBridge::OpenMostRecentlyClosedEntry(JNIEnv* env,
@@ -378,21 +411,22 @@ bool RecentlyClosedTabsBridge::OpenMostRecentlyClosedEntry(JNIEnv* env,
   }
 
   AndroidLiveTabContextRestoreWrapper restore_context(model);
-  // Do not use OpenMostRecentEntry as it uses WindowOpenDisposition::kUnknown.
-  // WindowOpenDisposition::kUnknown looks for a desktop window to use (N/A on
-  // Android) this ends up replacing `restore_context` with the base
+  // Do not use OpenMostRecentEntry as it uses
+  // ui::mojom::WindowOpenDisposition::kUnknown.
+  // ui::mojom::WindowOpenDisposition::kUnknown looks for a desktop window to
+  // use (N/A on Android) this ends up replacing `restore_context` with the base
   // AndroidLiveTabContext. `restore_context` is required to rebuild groups
   // information. To avoid this just use the first entry in entries when
   // restoring.
   std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
       tab_restore_service_->RestoreEntryById(
           &restore_context, tab_restore_service_->entries().front()->id,
-          WindowOpenDisposition::kNewBackgroundTab);
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab);
   RestoreAndroidTabGroups(env, model, restore_context.GetTabGroups());
   return !restored_tabs.value_or({}).empty();
 }
 
-void RecentlyClosedTabsBridge::ClearRecentlyClosedEntries(JNIEnv* env) {
+void RecentlyClosedTabsBridge::ClearRecentlyClosedEntries() {
   EnsureTabRestoreService();
   if (tab_restore_service_) {
     tab_restore_service_->ClearEntries();
@@ -400,7 +434,6 @@ void RecentlyClosedTabsBridge::ClearRecentlyClosedEntries(JNIEnv* env) {
 }
 
 void RecentlyClosedTabsBridge::ClearLeastRecentlyUsedClosedEntries(
-    JNIEnv* env,
     int32_t num_to_remove) {
   EnsureTabRestoreService();
   if (tab_restore_service_) {
@@ -451,12 +484,11 @@ void RecentlyClosedTabsBridge::RestoreAndroidTabGroups(
   }
 }
 
-static int64_t JNI_RecentlyClosedBridge_Init(JNIEnv* env,
-                                             const JavaRef<jobject>& jbridge,
-                                             Profile* profile) {
-  RecentlyClosedTabsBridge* bridge = new RecentlyClosedTabsBridge(
-      ScopedJavaGlobalRef<jobject>(env, jbridge), profile);
-  return reinterpret_cast<intptr_t>(bridge);
+static jni_zero::JniUniquePtr<RecentlyClosedTabsBridge>
+JNI_RecentlyClosedBridge_Init(const JavaRef<jobject>& jbridge,
+                              Profile* profile) {
+  return jni_zero::MakeUnique<RecentlyClosedTabsBridge>(
+      ScopedJavaGlobalRef<jobject>(jbridge), profile);
 }
 
 }  // namespace recent_tabs

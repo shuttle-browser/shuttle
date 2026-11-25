@@ -10,7 +10,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
     VisualBrowserProxy {
   onPinStateReceived = new FakeChromeEvent();
   onPresentationStateReceived = new FakeChromeEvent();
-  onAwaitingTranslationChanged = new FakeChromeEvent();
   restoreSettingsFromPrefs = new FakeChromeEvent();
 
   inSidePanelPresentationState: number = 1;
@@ -41,7 +40,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
   activeDistillationMethod: number = 0;
   distillationTypeScreen2x: number = 0;
   distillationTypeReadability: number = 1;
-  lineFocusEnabled: boolean = true;
   lineFocusOn: boolean = false;
   lineFocusOff: number = 50;
   lineFocusSmallStaticWindow: number = 51;
@@ -56,7 +54,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
   lineFocusLastNonDisabledValue: number = 50;
   activePresentationState: number = 1;
   pdf: boolean = false;
-  awaitingTranslation: boolean = false;
   originalPageMetrics: OriginalPageMetrics = {
     hasMathML: false,
     maybeHasKeyPoints: false,
@@ -66,7 +63,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
   letterSpacing: number = 0;
   colorTheme: number = 0;
   translateEntryPointEnabled: boolean = false;
-  sendFeedbackEnabled: boolean = false;
   experimentalPlaybackUiEnabled: boolean = false;
   imagesEnabled: boolean = true;
   linksEnabled: boolean = true;
@@ -107,7 +103,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
       'getLowContrastDarkTheme',
       'getColorTheme',
       'requestImageData',
-      'isLineFocusEnabled',
       'getLineFocusOff',
       'getLineFocusSmallStaticWindow',
       'getLineFocusMediumStaticWindow',
@@ -126,11 +121,9 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
       'onFontSizeReset',
       'isReadAnythingTranslateEntryPointEnabled',
       'onTranslationRequested',
-      'isReadAnythingSendFeedbackEnabled',
       'togglePresentation',
       'togglePinState',
       'sendPinStateRequest',
-      'sendGetPresentationStateRequest',
       'shouldShowUi',
       'getLastNonDisabledLineFocus',
       'isLineFocusOn',
@@ -140,7 +133,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
       'isLinksEnabled',
       'getActivePresentationState',
       'isPdf',
-      'isAwaitingTranslation',
       'getMaxLineWidth',
       'getOriginalPageMetrics',
       'getKeyPointsRegex',
@@ -299,11 +291,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
     this.fetchedImages.push(nodeId);
   }
 
-  isLineFocusEnabled(): boolean {
-    this.methodCalled('isLineFocusEnabled');
-    return this.lineFocusEnabled;
-  }
-
   getLineFocusOff(): number {
     this.methodCalled('getLineFocusOff');
     return this.lineFocusOff;
@@ -399,11 +386,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
     return this.pdf;
   }
 
-  isAwaitingTranslation(): boolean {
-    this.methodCalled('isAwaitingTranslation');
-    return this.awaitingTranslation;
-  }
-
   getOriginalPageMetrics(): OriginalPageMetrics {
     this.methodCalled('getOriginalPageMetrics');
     return this.originalPageMetrics;
@@ -456,11 +438,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
     this.methodCalled('onTranslationRequested');
   }
 
-  isReadAnythingSendFeedbackEnabled(): boolean {
-    this.methodCalled('isReadAnythingSendFeedbackEnabled');
-    return this.sendFeedbackEnabled;
-  }
-
   onLinksEnabledToggled(): void {
     this.methodCalled('onLinksEnabledToggled');
     this.linksEnabled = !this.linksEnabled;
@@ -482,10 +459,6 @@ export class TestVisualBrowserProxy extends TestBrowserProxy implements
 
   sendPinStateRequest(): void {
     this.methodCalled('sendPinStateRequest');
-  }
-
-  sendGetPresentationStateRequest(): void {
-    this.methodCalled('sendGetPresentationStateRequest');
   }
 
   shouldShowUi(): boolean {

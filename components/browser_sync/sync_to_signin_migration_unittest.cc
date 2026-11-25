@@ -36,6 +36,10 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#if BUILDFLAG(IS_CHROMEOS)
+#include "components/signin/public/base/signin_switches.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 namespace browser_sync {
 namespace {
 
@@ -92,8 +96,7 @@ class SyncToSigninMigrationTestBase {
   SyncToSigninMigrationTestBase(bool migration_feature_enabled,
                                 bool force_migration_feature_enabled) {
     features_.InitWithFeatureStates(
-        {{syncer::kReplaceSyncPromosWithSignInPromos, true},
-         {switches::kMigrateSyncingUserToSignedIn, migration_feature_enabled},
+        {{switches::kMigrateSyncingUserToSignedIn, migration_feature_enabled},
          {switches::kForceMigrateSyncingUserToSignedIn,
           force_migration_feature_enabled}});
 
@@ -127,9 +130,18 @@ class SyncToSigninMigrationTestBase {
     sync_prefs_->SetSelectedTypesForSyncingUser(
         settings->IsSyncEverythingEnabled(),
         settings->GetRegisteredSelectableTypes(), settings->GetSelectedTypes());
-#if !BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(IS_CHROMEOS)
+    sync_prefs_->SetSelectedOsTypes(settings->IsSyncAllOsTypesEnabled(),
+                                    settings->GetRegisteredSelectableOsTypes(),
+                                    settings->GetSelectedOsTypes());
+    if (settings->IsSyncFeatureDisabledViaDashboard()) {
+      sync_prefs_->SetSyncFeatureDisabledViaDashboard();
+    } else {
+      sync_prefs_->ClearSyncFeatureDisabledViaDashboard();
+    }
+#else
     sync_prefs_->SetInitialSyncFeatureSetupComplete();
-#endif  // !BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
     if (include_status_recorder) {
       // Populate migration-specific Sync status prefs.
@@ -552,6 +564,52 @@ TEST_P(SyncToSigninMigrationTest, SyncDisabledByPolicy) {
           .empty());
 }
 
+#if BUILDFLAG(IS_CHROMEOS)
+TEST_P(SyncToSigninMigrationTest, SyncActive_KeepsOsTypes) {
+  // Sync is active, with a custom selection of OS data types.
+  ASSERT_EQ(sync_service_.GetTransportState(),
+            syncer::SyncService::TransportState::ACTIVE);
+  ASSERT_TRUE(sync_service_.HasSyncConsent());
+  sync_service_.GetUserSettings()->SetSelectedOsTypes(
+      /*sync_all_os_types=*/false,
+      {syncer::UserSelectableOsType::kOsWifiConfigurations});
+  RecordStateToPrefs();
+
+  MaybeMigrateSyncingUserToSignedInWrapper(
+      IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+
+  // The user should have been migrated, with the OS data types unchanged.
+  EXPECT_FALSE(pref_service_.GetBoolean(prefs::kGoogleServicesConsentedToSync));
+  EXPECT_FALSE(sync_prefs_->IsSyncAllOsTypesEnabled());
+  EXPECT_EQ(sync_prefs_->GetSelectedOsTypes(),
+            syncer::UserSelectableOsTypeSet(
+                {syncer::UserSelectableOsType::kOsWifiConfigurations}));
+}
+
+TEST_P(SyncToSigninMigrationTest, SyncDisabledViaDashboard_DisablesOsTypes) {
+  // The user is signed in and opted in to Sync, but Sync-the-feature was reset
+  // via the dashboard (with all browser and OS data types enabled by default).
+  sync_service_.MimicDashboardClear();
+  ASSERT_FALSE(sync_service_.IsSyncFeatureEnabled());
+  ASSERT_TRUE(sync_service_.HasSyncConsent());
+  const GaiaId gaia_id = sync_service_.GetAccountInfo().gaia;
+  RecordStateToPrefs();
+  ASSERT_TRUE(sync_prefs_->IsSyncFeatureDisabledViaDashboard());
+  ASSERT_TRUE(sync_prefs_->IsSyncAllOsTypesEnabled());
+
+  MaybeMigrateSyncingUserToSignedInWrapper(
+      IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+
+  // The user should have been migrated, with all OS data types turned off while
+  // browser data types remain enabled and `disabled_via_dashboard` stays set.
+  EXPECT_FALSE(pref_service_.GetBoolean(prefs::kGoogleServicesConsentedToSync));
+  EXPECT_TRUE(sync_prefs_->IsSyncFeatureDisabledViaDashboard());
+  EXPECT_FALSE(sync_prefs_->IsSyncAllOsTypesEnabled());
+  EXPECT_TRUE(sync_prefs_->GetSelectedOsTypes().empty());
+  EXPECT_FALSE(sync_prefs_->GetSelectedTypesForAccount(gaia_id).empty());
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 TEST_P(SyncToSigninMigrationTest, SyncPaused_MinDelayNotPassed) {
   // Sync-the-feature is enabled, but in the "paused" state due to a persistent
   // auth error.
@@ -798,6 +856,105 @@ TEST_P(SyncToSigninMigrationTest, UndoFeaturePreventsMigration) {
       "Sync.SyncToSigninMigrationDecision",
       /*SyncToSigninMigrationDecision::kUndoNotNecessary*/ 7, 1);
 }
+
+#if BUILDFLAG(IS_CHROMEOS)
+TEST_P(SyncToSigninMigrationTest,
+       UndoChromeOsUseConsentLevelSigninPreventsMigration) {
+  base::test::ScopedFeatureList undo_feature(
+      switches::kUndoChromeOsUseConsentLevelSignin);
+
+  // Everything is active.
+  ASSERT_EQ(sync_service_.GetTransportState(),
+            syncer::SyncService::TransportState::ACTIVE);
+  ASSERT_TRUE(sync_service_.HasSyncConsent());
+
+  // Save the above state to prefs.
+  RecordStateToPrefs();
+
+  // Take a copy of all current pref values, to verify that the migration
+  // doesn't modify any of them.
+  const base::DictValue all_prefs =
+      pref_service_.user_prefs_store()->GetValues();
+
+  base::HistogramTester histograms;
+
+  // Trigger the migration.
+  MaybeMigrateSyncingUserToSignedInWrapper(
+      IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+
+  // Even though the user would be eligible,
+  // `kUndoChromeOsUseConsentLevelSignin` should prevent the migration from
+  // happening to avoid an infinite migration/revert loop with Ash.
+  EXPECT_EQ(pref_service_.user_prefs_store()->GetValues(), all_prefs);
+
+  histograms.ExpectUniqueSample(
+      "Sync.SyncToSigninMigrationDecision",
+      /*SyncToSigninMigrationDecision::kDontMigrateChromeOsUndoSigninEnabled*/
+      10, 1);
+}
+
+TEST_P(SyncToSigninMigrationTest,
+       UndoChromeOsUseConsentLevelSigninUndoesPreviousMigration) {
+  ASSERT_EQ(sync_service_.GetTransportState(),
+            syncer::SyncService::TransportState::ACTIVE);
+  ASSERT_TRUE(sync_service_.HasSyncConsent());
+  const GaiaId gaia_id = sync_service_.GetAccountInfo().gaia;
+  const std::string email = sync_service_.GetAccountInfo().email;
+  RecordStateToPrefs();
+
+  // First, migrate the user to the signed-in non-syncing state.
+  MaybeMigrateSyncingUserToSignedInWrapper(
+      IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+  ASSERT_FALSE(pref_service_.GetBoolean(prefs::kGoogleServicesConsentedToSync));
+  ASSERT_EQ(pref_service_.GetString(
+                prefs::kGoogleServicesSyncingGaiaIdMigratedToSignedIn),
+            gaia_id.ToString());
+
+  // Enable `kUndoChromeOsUseConsentLevelSignin` on a subsequent startup.
+  base::test::ScopedFeatureList undo_feature(
+      switches::kUndoChromeOsUseConsentLevelSignin);
+
+  // Session 1: The previous migration should be cleanly undone.
+  {
+    base::HistogramTester histograms;
+    MaybeMigrateSyncingUserToSignedInWrapper(
+        IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+
+    histograms.ExpectUniqueSample(
+        "Sync.SyncToSigninMigrationDecision",
+        /*SyncToSigninMigrationDecision::kUndoMigration*/ 6, 1);
+    EXPECT_TRUE(
+        pref_service_.GetBoolean(prefs::kGoogleServicesConsentedToSync));
+    EXPECT_EQ(pref_service_.GetString(prefs::kGoogleServicesLastSyncingGaiaId),
+              gaia_id.ToString());
+    EXPECT_EQ(
+        pref_service_.GetString(prefs::kGoogleServicesLastSyncingUsername),
+        email);
+    EXPECT_TRUE(
+        pref_service_
+            .GetString(prefs::kGoogleServicesSyncingGaiaIdMigratedToSignedIn)
+            .empty());
+    EXPECT_FALSE(pref_service_.GetUserPrefValue(
+        prefs::kGoogleServicesSyncingUserMigrationType));
+  }
+
+  // Session 2+: Now that the migration was undone, subsequent startups should
+  // skip re-migrating the user.
+  {
+    const base::DictValue all_prefs =
+        pref_service_.user_prefs_store()->GetValues();
+    base::HistogramTester histograms;
+    MaybeMigrateSyncingUserToSignedInWrapper(
+        IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+
+    EXPECT_EQ(pref_service_.user_prefs_store()->GetValues(), all_prefs);
+    histograms.ExpectUniqueSample(
+        "Sync.SyncToSigninMigrationDecision",
+        /*SyncToSigninMigrationDecision::kDontMigrateChromeOsUndoSigninEnabled*/
+        10, 1);
+  }
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 INSTANTIATE_TEST_SUITE_P(
     ,

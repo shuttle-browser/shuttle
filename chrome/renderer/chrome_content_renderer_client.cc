@@ -85,11 +85,6 @@
 #include "components/content_settings/core/common/content_settings_pattern.h"
 #include "components/continuous_search/renderer/search_result_extractor_impl.h"
 #include "components/country_codes/country_codes.h"
-#include "components/dom_distiller/content/renderer/distillability_agent.h"
-#include "components/dom_distiller/content/renderer/distiller_js_render_frame_observer.h"
-#include "components/dom_distiller/core/dom_distiller_features.h"
-#include "components/dom_distiller/core/dom_distiller_switches.h"
-#include "components/dom_distiller/core/url_constants.h"
 #include "components/error_page/common/error.h"
 #include "components/error_page/common/localized_error.h"
 #include "components/facilitated_payments/content/renderer/facilitated_payments_agent.h"
@@ -110,12 +105,12 @@
 #include "components/page_content_annotations/core/page_content_annotations_features.h"
 #include "components/page_load_metrics/renderer/metrics_render_frame_observer.h"
 #include "components/paint_preview/buildflags/buildflags.h"
-#include "components/password_manager/core/common/password_manager_features.h"
+#include "components/password_manager/core/common/remote_actor/remote_actor_features.h"
 #include "components/pdf/common/constants.h"
 #include "components/pdf/common/pdf_util.h"
 #include "components/permissions/features.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/content/renderer/threat_dom_details.h"
+#include "components/safe_browsing/content/renderer/threat_details/threat_dom_details.h"
 #include "components/sampling_profiler/process_type.h"
 #include "components/sampling_profiler/thread_profiler.h"
 #include "components/security_interstitials/content/renderer/security_interstitial_page_controller_delegate_impl.h"
@@ -132,6 +127,11 @@
 #include "components/wallet/content/renderer/image_extractor.h"
 #include "components/wallet/core/common/wallet_features.h"
 #include "components/web_cache/renderer/web_cache_impl.h"
+#include "components/web_distiller/content/renderer/distillability_agent.h"
+#include "components/web_distiller/content/renderer/distiller_js_render_frame_observer.h"
+#include "components/web_distiller/core/url_constants.h"
+#include "components/web_distiller/core/web_distiller_features.h"
+#include "components/web_distiller/core/web_distiller_switches.h"
 #include "components/webapps/renderer/web_page_metadata_agent.h"
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_features.h"
@@ -569,7 +569,7 @@ void ChromeContentRendererClient::RenderThreadStarted() {
   bool should_restrict_chrome_search_scheme =
       !command_line->HasSwitch(switches::kInstantProcess);
 
-#if !BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
   // If the feature is enabled, the `kInstantProcess` command line switch is
   // replaced by the `is_instant_process` flag, which is set later. As a result,
   // we cannot perform chrome-search scheme registration at this stage. This
@@ -579,15 +579,15 @@ void ChromeContentRendererClient::RenderThreadStarted() {
   if (base::FeatureList::IsEnabled(features::kInstantUsesSpareRenderer)) {
     should_restrict_chrome_search_scheme = false;
   }
-#endif  // !BUILDFLAG(IS_ANDROID)
+#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
   if (should_restrict_chrome_search_scheme) {
     WebSecurityPolicy::RegisterURLSchemeAsDisplayIsolated(chrome_search_scheme);
   }
 
-  WebString dom_distiller_scheme(
-      WebString::FromAscii(dom_distiller::kDomDistillerScheme));
+  WebString web_distiller_scheme(
+      WebString::FromAscii(web_distiller::kWebDistillerScheme));
   // TODO(nyquist): Add test to ensure this happens when the flag is set.
-  WebSecurityPolicy::RegisterURLSchemeAsDisplayIsolated(dom_distiller_scheme);
+  WebSecurityPolicy::RegisterURLSchemeAsDisplayIsolated(web_distiller_scheme);
 
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || \
     BUILDFLAG(IS_WIN)
@@ -739,27 +739,40 @@ void ChromeContentRendererClient::RenderFrameCreated(
   }
 
   // Set up a render frame observer to test if this page is a distiller page.
-  new dom_distiller::DistillerJsRenderFrameObserver(
+  new web_distiller::DistillerJsRenderFrameObserver(
       render_frame, ISOLATED_WORLD_ID_CHROME_INTERNAL);
 
-  if (dom_distiller::ShouldStartDistillabilityService()) {
+  if (web_distiller::ShouldStartDistillabilityService()) {
     // Create DistillabilityAgent to send distillability updates to
     // DistillabilityDriver in the browser process.
-    new dom_distiller::DistillabilityAgent(render_frame, DCHECK_IS_ON());
+    new web_distiller::DistillabilityAgent(render_frame, DCHECK_IS_ON());
   }
 
   blink::AssociatedInterfaceRegistry* associated_interfaces =
       render_frame_observer->associated_interfaces();
 
-  if (!render_frame->IsInFencedFrameTree() ||
-      base::FeatureList::IsEnabled(blink::features::kFencedFramesAPIChanges)) {
+  const bool is_pdf_renderer =
+#if BUILDFLAG(ENABLE_PDF)
+      pdf::IsPdfRenderer();
+#else
+      false;
+#endif
+  if (!is_pdf_renderer && (!render_frame->IsInFencedFrameTree() ||
+                           base::FeatureList::IsEnabled(
+                               blink::features::kFencedFramesAPIChanges))) {
     auto password_autofill_agent = std::make_unique<PasswordAutofillAgent>(
         render_frame, associated_interfaces);
     auto password_generation_agent = std::make_unique<PasswordGenerationAgent>(
         render_frame, password_autofill_agent.get(), associated_interfaces);
-    new AutofillAgent(render_frame, std::move(password_autofill_agent),
-                      std::move(password_generation_agent),
-                      associated_interfaces);
+    auto* autofill_agent = new AutofillAgent(
+        render_frame, std::move(password_autofill_agent),
+        std::move(password_generation_agent), associated_interfaces);
+    if (base::FeatureList::IsEnabled(
+            autofill::features::kAutofillCustomFormControlScripts)) {
+      autofill_agent->EnableCustomFormControlScripts(
+          ISOLATED_WORLD_ID_AUTOFILL_CUSTOM_FORM_CONTROLS,
+          *associated_interfaces);
+    }
   }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -944,6 +957,10 @@ bool ChromeContentRendererClient::IsDomStorageDisabled() const {
   // opaque origins). This avoids a renderer kill by the browser process which
   // isn't expecting PDF renderer processes to ever use DOM storage
   // interfaces. See https://crbug.com/357014503.
+  //
+  // TODO(crbug.com/559567801): Remove this once `features::kPdfOpaqueOrigin`
+  // ships, since PDF documents will then have opaque origins, for which DOM
+  // storage access already throws a SecurityError.
   return pdf::IsPdfRenderer();
 #else
   return false;
@@ -958,6 +975,10 @@ bool ChromeContentRendererClient::AreDedicatedWorkersDisabled() const {
   // throws a SecurityError DOMException. This avoids a renderer kill by the
   // browser process which isn't expecting PDF renderer processes to ever create
   // dedicated workers. See https://crbug.com/553118313.
+  //
+  // TODO(crbug.com/559567801): Remove this once `features::kPdfOpaqueOrigin`
+  // ships, since PDF documents will then have opaque origins, for which
+  // creating a dedicated worker already throws a SecurityError.
   return pdf::IsPdfRenderer();
 #else
   return false;

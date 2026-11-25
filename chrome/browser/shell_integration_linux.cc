@@ -16,10 +16,12 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "base/base_paths.h"
+#include "base/check.h"
 #include "base/command_line.h"
 #include "base/containers/flat_set.h"
 #include "base/environment.h"
@@ -36,6 +38,7 @@
 #include "base/path_service.h"
 #include "base/process/launch.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -55,6 +58,7 @@
 #include "chrome/grit/branded_strings.h"
 #include "components/version_info/version_info.h"
 #include "content/public/browser/browser_thread.h"
+#include "third_party/blink/public/common/manifest/manifest_util.h"
 #include "third_party/libxml/chromium/xml_writer.h"
 #include "third_party/re2/src/re2/re2.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -391,6 +395,8 @@ std::string GetWMClassFromAppName(std::string app_name) {
 
 std::string GetXdgAppIdForWebApp(std::string app_name,
                                  const base::FilePath& profile_path) {
+  CHECK(!app_name.empty());
+  CHECK(!profile_path.empty());
   auto remainder = base::RemovePrefix(app_name, web_app::kCrxAppPrefix);
   if (remainder) {
     app_name = std::string(*remainder);
@@ -421,7 +427,7 @@ std::string GetPerProfileDesktopId(const base::FilePath& profile_path) {
 
 std::string GetInstalledPerProfileDesktopId(
     const base::FilePath& profile_path) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   if (!base::FeatureList::IsEnabled(features::kLinuxPerProfileAppId) ||
       !ProfilesWithInstalledDesktopEntry().contains(profile_path)) {
     return std::string();
@@ -431,7 +437,7 @@ std::string GetInstalledPerProfileDesktopId(
 
 void SetPerProfileDesktopEntryInstalled(const base::FilePath& profile_path,
                                         bool installed) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   const bool changed =
       installed
           ? ProfilesWithInstalledDesktopEntry().insert(profile_path).second
@@ -443,13 +449,13 @@ void SetPerProfileDesktopEntryInstalled(const base::FilePath& profile_path,
 
 base::CallbackListSubscription RegisterPerProfileDesktopEntryChangedCallback(
     base::RepeatingCallback<void(const base::FilePath&)> callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   return PerProfileDesktopEntryChangedCallbacks().Add(std::move(callback));
 }
 
 void DetectInstalledPerProfileDesktopEntries(
     const std::vector<base::FilePath>& profile_paths) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   if (!base::FeatureList::IsEnabled(features::kLinuxPerProfileAppId)) {
     return;
   }
@@ -585,6 +591,69 @@ std::string GetIconName() {
 #endif
 }
 
+base::FilePath GetSnapRealHome(base::Environment* env) {
+  CHECK(env);
+  if (base::nix::GetAppSandbox() != base::nix::AppSandbox::kSnap) {
+    return base::FilePath();
+  }
+  base::FilePath real_home(env->GetVar("SNAP_REAL_HOME").value_or(""));
+  if (real_home.empty() || !real_home.IsAbsolute()) {
+    return base::FilePath();
+  }
+  return real_home;
+}
+
+base::FilePath GetHostXDGDataWriteLocation(base::Environment* env) {
+  base::FilePath real_home = GetSnapRealHome(env);
+  if (!real_home.empty()) {
+    return real_home.Append(".local").Append("share");
+  }
+  return base::nix::GetXDGDataWriteLocation(env);
+}
+
+base::FilePath GetHostDesktopDirectory(base::Environment* env) {
+  base::FilePath real_home = GetSnapRealHome(env);
+  if (real_home.empty()) {
+    base::FilePath desktop_path;
+    base::PathService::Get(base::DIR_USER_DESKTOP, &desktop_path);
+    return desktop_path;
+  }
+
+  // Parse XDG_DESKTOP_DIR like xdg_user_dir_lookup() does, but relative to the
+  // real home. Lines look like XDG_DESKTOP_DIR="$HOME/Desktop" or
+  // XDG_DESKTOP_DIR="/absolute/path".
+  std::string contents;
+  if (base::ReadFileToString(
+          real_home.Append(".config").Append("user-dirs.dirs"), &contents)) {
+    for (std::string_view line :
+         base::SplitStringPiece(contents, "\n", base::TRIM_WHITESPACE,
+                                base::SPLIT_WANT_NONEMPTY)) {
+      std::optional<std::string_view> value =
+          base::RemovePrefix(line, "XDG_DESKTOP_DIR=\"");
+      if (!value) {
+        continue;
+      }
+      size_t end = value->find('"');
+      if (end == std::string_view::npos) {
+        continue;
+      }
+      std::string_view path = value->substr(0, end);
+      if (path.starts_with("$HOME")) {
+        std::string_view relative = path.substr(5);
+        if (!relative.empty() && relative[0] != '/') {
+          continue;
+        }
+        relative = base::TrimString(relative, "/", base::TRIM_LEADING);
+        return relative.empty() ? real_home : real_home.Append(relative);
+      }
+      if (path.starts_with('/')) {
+        return base::FilePath(path);
+      }
+    }
+  }
+  return real_home.Append("Desktop");
+}
+
 bool GetExistingShortcutContents(base::Environment* env,
                                  const base::FilePath& desktop_filename,
                                  std::string* output) {
@@ -593,6 +662,13 @@ bool GetExistingShortcutContents(base::Environment* env,
 
   std::vector<base::FilePath> search_paths =
       base::nix::GetXDGDataSearchLocations(env);
+  // In a snap, launchers are installed into the real home, which isn't one of
+  // the XDG data directories. Outside of a snap, this is XDG_DATA_HOME, which
+  // already is the first search path.
+  base::FilePath host_data_dir = GetHostXDGDataWriteLocation(env);
+  if (!std::ranges::contains(search_paths, host_data_dir)) {
+    search_paths.insert(search_paths.begin(), host_data_dir);
+  }
 
   for (std::vector<base::FilePath>::const_iterator i = search_paths.begin();
        i != search_paths.end(); ++i) {
@@ -608,7 +684,8 @@ bool GetExistingShortcutContents(base::Environment* env,
 }
 
 std::optional<base::SafeBaseName> GetUniqueWebShortcutFilename(
-    const std::string& name) {
+    const std::string& name,
+    const base::FilePath& desktop_path) {
   // Use a prefix, because xdg-desktop-menu requires it.
   std::string filename =
       base::StrCat({chrome::kBrowserProcessExecutableName, "-", name});
@@ -621,8 +698,7 @@ std::optional<base::SafeBaseName> GetUniqueWebShortcutFilename(
   CHECK(opt_base_name_no_extension);
   base::FilePath base_name_no_extension = opt_base_name_no_extension->path();
 
-  base::FilePath desktop_path;
-  if (!base::PathService::Get(base::DIR_USER_DESKTOP, &desktop_path)) {
+  if (desktop_path.empty()) {
     return std::nullopt;
   }
 
@@ -681,8 +757,11 @@ std::string GetDesktopFileContents(
   base::CommandLine cmd_line = shell_integration::CommandLineArgsForLauncher(
       url, extension_id, profile_path, run_on_os_login_mode);
   cmd_line.SetProgram(chrome_exe_path);
+  const std::string wmclass =
+      extension_id.empty() ? GetWMClassFromAppName(app_name)
+                           : GetXdgAppIdForWebApp(app_name, profile_path);
   return GetDesktopFileContentsForCommand(
-      cmd_line, app_name, url, title, icon_name, categories, mime_type,
+      cmd_line, app_name, url, title, icon_name, wmclass, categories, mime_type,
       no_display, GetDirectLaunchMimeTypeHandler(), std::move(action_info));
 }
 
@@ -697,6 +776,7 @@ std::string GetDesktopFileContentsForCommandImpl(
     const GURL& url,
     const std::u16string& title,
     const std::string& icon_name,
+    const std::string& wmclass,
     const std::string& categories,
     const std::string& mime_type,
     bool no_display,
@@ -774,7 +854,6 @@ std::string GetDesktopFileContentsForCommandImpl(
   if (no_display)
     g_key_file_set_string(key_file, kDesktopEntry, "NoDisplay", "true");
 
-  std::string wmclass = GetWMClassFromAppName(app_name);
   g_key_file_set_string(key_file, kDesktopEntry, "StartupWMClass",
                         wmclass.c_str());
 
@@ -802,14 +881,15 @@ std::string GetDesktopFileContentsForCommand(
     const GURL& url,
     const std::u16string& title,
     const std::string& icon_name,
+    const std::string& wmclass,
     const std::string& categories,
     const std::string& mime_type,
     bool no_display,
     std::string_view extra_mime_types,
     std::set<web_app::DesktopActionInfo> action_info) {
   return GetDesktopFileContentsForCommandImpl(
-      command_line, app_name, url, title, icon_name, categories, mime_type,
-      no_display, extra_mime_types, std::move(action_info),
+      command_line, app_name, url, title, icon_name, wmclass, categories,
+      mime_type, no_display, extra_mime_types, std::move(action_info),
       /*accepts_uris=*/false);
 }
 
@@ -827,7 +907,8 @@ std::string GetDesktopFileContentsForProfile(const base::FilePath& chrome_exe,
   // a handler, but URLs dropped onto the launcher still open in the profile.
   return GetDesktopFileContentsForCommandImpl(
       command_line, /*app_name=*/desktop_id, /*url=*/GURL(), title,
-      icon_path.value(), /*categories=*/"Network;WebBrowser;",
+      icon_path.value(), GetWMClassFromAppName(desktop_id),
+      /*categories=*/"Network;WebBrowser;",
       /*mime_type=*/"", /*no_display=*/false, /*extra_mime_types=*/"",
       /*action_info=*/{}, /*accepts_uris=*/true);
 }
@@ -940,14 +1021,12 @@ std::string GetMimeTypesRegistrationFileContents(
 
   for (const auto& file_handler : file_handlers) {
     for (const auto& accept_entry : file_handler.accept) {
-      // FreeDesktop URL scheme associations use "x-scheme-handler/*"
-      // pseudo-MIME types in .desktop entries, which belong to protocol
-      // handlers rather than file handlers. Skip them here so they are
-      // filtered out from shared MIME-info registration XML files.
-      if (base::EqualsCaseInsensitiveASCII(accept_entry.mime_type,
-                                           "x-scheme-handler") ||
-          base::StartsWith(accept_entry.mime_type, "x-scheme-handler/",
-                           base::CompareCase::INSENSITIVE_ASCII)) {
+      // Only register valid standard IANA top-level MIME types. FreeDesktop
+      // pseudo-MIME types (such as "x-scheme-handler/*", "x-content/*",
+      // "x-directory/*", and "x-special/*") and other "x-*" top-level types
+      // are skipped here so they are filtered out from shared MIME-info
+      // registration XML files.
+      if (!blink::IsValidFileHandlerMimeType(accept_entry.mime_type)) {
         continue;
       }
       writer.StartElement("mime-type");

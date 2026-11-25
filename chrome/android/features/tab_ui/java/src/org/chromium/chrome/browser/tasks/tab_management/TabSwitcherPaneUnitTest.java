@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -30,6 +31,7 @@ import android.content.SharedPreferences.OnSharedPreferenceChangeListener;
 import android.view.ContextThemeWrapper;
 import android.view.View;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.Nullable;
 import androidx.core.util.Pair;
 import androidx.test.core.app.ApplicationProvider;
@@ -42,6 +44,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.ArgumentMatcher;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -49,6 +52,7 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.Callback;
 import org.chromium.base.CallbackUtils;
 import org.chromium.base.Token;
+import org.chromium.base.UnownedUserDataHost;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
@@ -81,6 +85,8 @@ import org.chromium.chrome.browser.profiles.ProfileProvider;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabArchiveSettings;
 import org.chromium.chrome.browser.tab.TabSelectionType;
+import org.chromium.chrome.browser.tab_bottom_sheet.TabBottomSheetManager;
+import org.chromium.chrome.browser.tab_bottom_sheet.TabBottomSheetUtils;
 import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncServiceFactory;
 import org.chromium.chrome.browser.tab_ui.RecyclerViewPosition;
 import org.chromium.chrome.browser.tab_ui.TabListMode;
@@ -108,6 +114,7 @@ import org.chromium.components.tab_group_sync.SavedTabGroup;
 import org.chromium.components.tab_group_sync.TabGroupSyncService;
 import org.chromium.components.user_prefs.UserPrefs;
 import org.chromium.components.user_prefs.UserPrefsJni;
+import org.chromium.ui.base.WindowAndroid;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -457,6 +464,122 @@ public class TabSwitcherPaneUnitTest {
     }
 
     @Test
+    public void testRequestOpenTabGroupDialog_OnlyWhenVisible() {
+        mTabModel.setActive(/* active= */ true);
+        Token tabGroupId = Token.createRandom();
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.COLD);
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+        assertFalse(mTabSwitcherPane.requestOpenTabGroupDialog(tabGroupId));
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.WARM);
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+        assertNotNull(coordinator);
+        assertFalse(mTabSwitcherPane.requestOpenTabGroupDialog(tabGroupId));
+        verify(coordinator, never()).requestOpenTabGroupDialog(tabGroupId);
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.HOT);
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+        assertTrue(mTabSwitcherPane.requestOpenTabGroupDialog(tabGroupId));
+        verify(coordinator).requestOpenTabGroupDialog(tabGroupId);
+    }
+
+    @Test
+    public void testLoadHintPreview_showsTabsWithoutBecomingVisible() {
+        mTabModel.setActive(true);
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+        assertNotNull(coordinator);
+        verify(coordinator).showPreviewTabs(mTabList);
+        verify(coordinator, never()).resetWithListOfTabs(any());
+        verify(coordinator).setInitialScrollIndexOffset();
+        verify(coordinator, never()).requestAccessibilityFocusOnCurrentTab();
+    }
+
+    @Test
+    public void testLoadHintPreview_cancelsPendingCleanup() {
+        mTabSwitcherPane.notifyLoadHint(LoadHint.WARM);
+        // Once the coordinator exists, a warm pane schedules a soft cleanup.
+        mTabSwitcherPane.notifyLoadHint(LoadHint.WARM);
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+
+        verify(coordinator, never()).softCleanup();
+    }
+
+    @Test
+    public void testLoadHintPreview_tabStateNotInitialized_recordsNoTiming() {
+        when(mTabModel.isTabStateInitialized()).thenReturn(false);
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+        var watcher =
+                HistogramWatcher.newBuilder()
+                        .expectNoRecords(
+                                "Android.GridTabSwitcher.TimeToTabStateInitializedFromShown")
+                        .build();
+
+        when(mTabModel.isTabStateInitialized()).thenReturn(true);
+        mTabSwitcherPane.showAllTabs();
+
+        verify(coordinator).showPreviewTabs(mTabList);
+        watcher.assertExpected();
+    }
+
+    @Test
+    public void testLoadHintPreview_inactiveModel_showsTabs() {
+        mTabModel.setActive(false);
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+
+        verify(mTabSwitcherPane.getTabSwitcherPaneCoordinator()).showPreviewTabs(mTabList);
+    }
+
+    @Test
+    public void testLoadHintPreviewThenWarm_stopsTrackingBeforeCleanup() {
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.WARM);
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+
+        InOrder inOrder = inOrder(coordinator);
+        inOrder.verify(coordinator).prepareHiding();
+        inOrder.verify(coordinator).softCleanup();
+    }
+
+    @Test
+    public void testLoadHintPreviewThenHot_keepsTracking() {
+        mTabModel.setActive(true);
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.HOT);
+
+        verify(coordinator, never()).prepareHiding();
+        verify(coordinator).resetWithListOfTabs(mTabList);
+        verify(coordinator).requestAccessibilityFocusOnCurrentTab();
+    }
+
+    @Test
+    public void testLoadHintPreviewThenCold_stopsTrackingBeforeCleanup() {
+        mTabSwitcherPane.notifyLoadHint(LoadHint.PREVIEW);
+        TabSwitcherPaneCoordinator coordinator = mTabSwitcherPane.getTabSwitcherPaneCoordinator();
+
+        mTabSwitcherPane.notifyLoadHint(LoadHint.COLD);
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
+
+        InOrder inOrder = inOrder(coordinator);
+        inOrder.verify(coordinator).prepareHiding();
+        inOrder.verify(coordinator).softCleanup();
+        assertNull(mTabSwitcherPane.getTabSwitcherPaneCoordinator());
+    }
+
+    @Test
     public void testGetRootView() {
         assertNotNull(mTabSwitcherPane.getRootView());
     }
@@ -612,6 +735,27 @@ public class TabSwitcherPaneUnitTest {
                 mTabSwitcherPane
                         .createHideHubLayoutAnimatorProvider(mHubContainerView)
                         .getPlannedAnimationType());
+    }
+
+    @Test
+    public void testExpandAnimationBackgroundColor_usesColorOfSheetToReshow() {
+        WindowAndroid windowAndroid = mock(WindowAndroid.class);
+        when(windowAndroid.getUnownedUserDataHost()).thenReturn(new UnownedUserDataHost());
+        Tab tab = mock(Tab.class);
+        when(tab.getWindowAndroid()).thenReturn(windowAndroid);
+        @ColorInt int defaultColor = mTabSwitcherPane.getExpandAnimationBackgroundColor(tab);
+        @ColorInt int sheetColor = defaultColor ^ 0x00FFFFFF;
+
+        TabBottomSheetManager tabBottomSheetManager = mock(TabBottomSheetManager.class);
+        TabBottomSheetUtils.attachManagerToWindow(windowAndroid, tabBottomSheetManager);
+        when(tabBottomSheetManager.getSheetColorToReshowAfterTabSwitcher(tab))
+                .thenReturn(sheetColor);
+        assertEquals(sheetColor, mTabSwitcherPane.getExpandAnimationBackgroundColor(tab));
+
+        when(tabBottomSheetManager.getSheetColorToReshowAfterTabSwitcher(tab)).thenReturn(null);
+        assertEquals(defaultColor, mTabSwitcherPane.getExpandAnimationBackgroundColor(tab));
+
+        TabBottomSheetUtils.detachManagerFromWindow(windowAndroid);
     }
 
     @Test

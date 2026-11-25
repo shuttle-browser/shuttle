@@ -4,7 +4,7 @@
 
 #import "ios/chrome/browser/enterprise/proxy/model/enterprise_proxy_tab_helper.h"
 
-#import "base/check.h"
+#import "base/check_deref.h"
 #import "components/enterprise/net/core/enterprise_proxy_error_service.h"
 #import "ios/web/public/navigation/navigation_context.h"
 #import "ios/web/public/web_state.h"
@@ -12,17 +12,31 @@
 EnterpriseProxyTabHelper::EnterpriseProxyTabHelper(
     web::WebState* web_state,
     enterprise_net::EnterpriseProxyErrorService* error_service)
-    : error_service_(error_service) {
-  CHECK(error_service_);
+    : web_state_(*web_state), error_service_(CHECK_DEREF(error_service)) {
   web_state_observation_.Observe(web_state);
 }
 
 EnterpriseProxyTabHelper::~EnterpriseProxyTabHelper() {
   // A navigation still pending when the WebState is destroyed never finishes,
-  // so `DidFinishNavigation()` can't drop the error recorded for it.
+  // so `DidFinishNavigation()` can't drop the disguised error recorded for it.
   if (pending_navigation_id_.has_value()) {
     error_service_->RemoveDisguisedError(*pending_navigation_id_);
   }
+}
+
+void EnterpriseProxyTabHelper::SetDelegate(Delegate* delegate) {
+  delegate_ = delegate;
+}
+
+void EnterpriseProxyTabHelper::SignIn() {
+  // The delegate is missing for the WebStates that aren't tabs, like the Lens
+  // overlay and AI Mode ones, which are handled separately
+  // (crbug.com/578096267), and for a tab that is no longer in a `Browser`, e.g.
+  // when a tap is delivered after the tab was detached.
+  if (!delegate_) {
+    return;
+  }
+  delegate_->SignIn(&web_state_.get());
 }
 
 void EnterpriseProxyTabHelper::DidStartNavigation(
@@ -49,10 +63,11 @@ void EnterpriseProxyTabHelper::DidRedirectNavigation(
 void EnterpriseProxyTabHelper::DidFinishNavigation(
     web::WebState* web_state,
     web::NavigationContext* navigation_context) {
-  // Drops the error recorded for this navigation if nothing took it, e.g. the
-  // navigation was stopped. A failed navigation finishes only after
-  // `PrepareErrorPage()` ran, so an error page could already take its error.
-  // Runs before the pending check so that replaced navigations are covered.
+  // Drops the disguised error recorded for this navigation if nothing took it,
+  // e.g. the navigation was stopped. A navigation that shows an error page
+  // finishes only after `PrepareErrorPage()` ran, so the Secure Gateway error
+  // page has already taken its error. Runs before the pending check so that
+  // replaced navigations are covered.
   error_service_->RemoveDisguisedError(navigation_context->GetNavigationId());
 
   // A newer navigation may have replaced the pending one before an older

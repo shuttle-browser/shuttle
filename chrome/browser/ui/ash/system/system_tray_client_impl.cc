@@ -44,6 +44,7 @@
 #include "chrome/browser/ash/policy/core/device_cloud_policy_manager_ash.h"
 #include "chrome/browser/ash/policy/core/user_cloud_policy_manager_ash.h"
 #include "chrome/browser/ash/system/system_clock.h"
+#include "chrome/browser/chromeos/extensions/vpn_provider/vpn_service.h"
 #include "chrome/browser/chromeos/extensions/vpn_provider/vpn_service_factory.h"
 #include "chrome/browser/enterprise/browser_management/management_identity.h"
 #include "chrome/browser/profiles/profile.h"
@@ -79,8 +80,8 @@
 #include "components/user_manager/user_manager.h"
 #include "third_party/cros_system_api/dbus/shill/dbus-constants.h"
 #include "third_party/icu/source/i18n/unicode/timezone.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/event_constants.h"
 #include "url/gurl.h"
 
@@ -189,7 +190,7 @@ void OpenInBrowser(const GURL& event_url) {
       CHECK_DEREF(SessionManager::Get()->GetActiveSession());
   ash::BrowserController::GetInstance()->OpenUrl(
       session.account_id(), event_url,
-      {.disposition = WindowOpenDisposition::kSwitchToTab,
+      {.disposition = ui::mojom::WindowOpenDisposition::kSwitchToTab,
        .transition = ui::PAGE_TRANSITION_AUTO_BOOKMARK,
        .ignore_path_for_tab_reuse = true});
 }
@@ -573,7 +574,7 @@ void SystemTrayClientImpl::ShowPaletteHelp() {
       CHECK_DEREF(SessionManager::Get()->GetActiveSession());
   ash::BrowserController::GetInstance()->OpenUrl(
       session.account_id(), GURL(ash::external_urls::kPaletteHelpURL),
-      {.disposition = WindowOpenDisposition::kSingletonTab,
+      {.disposition = ui::mojom::WindowOpenDisposition::kSingletonTab,
        .transition = ui::PAGE_TRANSITION_AUTO_BOOKMARK});
 }
 

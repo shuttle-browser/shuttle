@@ -12,14 +12,15 @@
 #include "base/memory/weak_ptr.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
+#include "chrome/browser/ui/views/tabs/common/tab_group_focus_animation_state.h"
 #include "chrome/browser/ui/views/tabs/groups/tab_group_editor_bubble_tracker.h"
 #include "chrome/browser/ui/views/tabs/hovercard/hover_card_anchor_target.h"
+#include "chrome/browser/ui/views/tabs/hovercard/hover_card_update_type.h"
 #include "chrome/browser/ui/views/tabs/hovercard/tab_hover_card_controller.h"
 #include "chrome/browser/ui/views/tabs/shared/tab_strip_types.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "ui/base/metadata/metadata_header_macros.h"
-#include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/views/context_menu_controller.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/layout/flex_layout_view.h"
@@ -61,17 +62,23 @@ class TabGroupHeaderView : public views::FlexLayoutView,
     virtual void CancelHeaderDrag() = 0;
     virtual const TabGroup& GetTabGroup() const = 0;
     virtual const tabs::TabGroupData& GetTabGroupData() const = 0;
-    virtual void UpdateHoverCard(int update_type) const = 0;
-    virtual void HideHoverCard(int update_type) const = 0;
+    virtual void UpdateHoverCard(HoverCardUpdateType update_type) const = 0;
+    virtual void HideHoverCard(HoverCardUpdateType update_type) const = 0;
     virtual bool IsFocusInTabStrip() = 0;
     virtual std::unique_ptr<ExpandOnHoverLock> AcquireExpandOnHoverLock() = 0;
     virtual std::unique_ptr<TabHoverCardController::ScopedHideHoverCardLock>
     AcquireHoverCardHideLock() = 0;
 
-    virtual void ShiftGroupUp() = 0;
-    virtual void ShiftGroupDown() = 0;
+    virtual void ShiftGroupPrevious() = 0;
+    virtual void ShiftGroupNext() = 0;
 
+    // Whether the group is focused in the model.
     virtual bool IsGroupFocused() const = 0;
+    // Whether the header should use the focused chip style (taller chip,
+    // focused insets, always-visible editor button, no collapse icon). True
+    // for focused groups and for ephemeral groups, which keep the focused
+    // style while they animate out of focus.
+    virtual bool ShouldUseFocusedHeaderStyle() const = 0;
     virtual bool IsUnfocusButtonFocused() const = 0;
     virtual bool CanShowEditorBubbleButton() const = 0;
     virtual HorizontalTabClosingHelper* GetTabClosingHelper() const = 0;
@@ -124,6 +131,8 @@ class TabGroupHeaderView : public views::FlexLayoutView,
   void OnDataChanged(const tabs::TabGroupData& tab_group_data);
   void OnTabCountChanged();
 
+  void SetFocusAnimationState(const TabGroupFocusAnimationState& state);
+
   tab_groups::TabGroupId group() const;
 
   views::LabelButton* editor_bubble_button() { return editor_bubble_button_; }
@@ -132,6 +141,9 @@ class TabGroupHeaderView : public views::FlexLayoutView,
     return attention_indicator_;
   }
   views::Label* title_label_for_testing() { return group_header_label_; }
+  TabGroupEditorBubbleTracker* editor_bubble_tracker_for_testing() {
+    return &editor_bubble_tracker_;
+  }
 
  private:
   void UpdateEditorBubbleButtonVisibility(
@@ -144,12 +156,17 @@ class TabGroupHeaderView : public views::FlexLayoutView,
   void UpdateAttentionState(bool needs_attention);
 
   int GetCornerRadius() const;
-  gfx::RoundedCornersF GetCornerRadii() const;
   int GetHorizontalInset() const;
+  gfx::Insets ApplyTitleVisualCenteringOffset(gfx::Insets insets) const;
+  gfx::Insets GetTargetHeaderInsets() const;
   gfx::Insets GetHeaderInsets() const;
+  // Whether the delegate's group is an ephemeral (non-group focus) group.
+  bool IsEphemeralGroup() const;
+  void UpdateBackground();
 
   SkColor GetBackgroundColor() const;
   SkColor GetForegroundColor() const;
+  SkColor GetContentForegroundColor() const;
   void UpdateColors();
 
   const raw_ref<Delegate> delegate_;
@@ -157,6 +174,7 @@ class TabGroupHeaderView : public views::FlexLayoutView,
   tab_groups::TabGroupVisualData tab_group_visual_data_;
   bool needs_attention_ = false;
   bool is_shared_ = false;
+  TabGroupFocusAnimationState focus_animation_state_;
 
   // The sync icon that is displayed in the tab group header of saved groups in
   // the tabstrip.

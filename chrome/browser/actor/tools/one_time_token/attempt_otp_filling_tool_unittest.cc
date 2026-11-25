@@ -7,13 +7,17 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/strings/strcat.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_command_line.h"
@@ -67,14 +71,15 @@ class MockActorOneTimeTokenFillingService
   MockActorOneTimeTokenFillingService() = default;
   ~MockActorOneTimeTokenFillingService() override = default;
 
-  MOCK_METHOD(autofill::FormFillingContextStatus,
+  MOCK_METHOD(autofill::FormFillingContextValidationResult,
               ValidateFormFillingContext,
-              (tabs::TabHandle, base::span<const autofill::FieldGlobalId>),
+              (content::WebContents*,
+               base::span<const autofill::FieldGlobalId>),
               (const, override));
   MOCK_METHOD(
       void,
       OnPasswordFillingStarted,
-      (tabs::TabHandle, const url::Origin&, bool, base::span<const int>),
+      (content::WebContents*, const url::Origin&, bool, base::span<const int>),
       (override));
   MOCK_METHOD(void, AbortLoginTracking, (), (override));
   MOCK_METHOD(std::optional<autofill::ActorLoginContext>,
@@ -92,17 +97,18 @@ class MockActorOneTimeTokenFillingService
   MOCK_METHOD(
       void,
       RetrieveOtp,
-      (tabs::TabHandle,
+      (content::WebContents*,
        const url::Origin&,
        const std::vector<autofill::FieldGlobalId>&,
        bool,
+       autofill::ActorOneTimeTokenFillingService::PredictedOtpType,
        base::OnceCallback<
            void(base::expected<std::string,
                                one_time_tokens::OneTimeTokenRetrievalError>)>),
       (override));
   MOCK_METHOD(void,
               FillOtp,
-              (tabs::TabHandle,
+              (content::WebContents*,
                const std::vector<autofill::FieldGlobalId>&,
                const std::string&,
                base::OnceCallback<void(bool)>),
@@ -231,11 +237,21 @@ class AttemptOtpFillingToolTest : public testing::Test {
       : task_environment_(base::test::TaskEnvironment::TimeSource::MOCK_TIME) {}
   ~AttemptOtpFillingToolTest() override = default;
 
+  void TearDown() override {
+    actor_surface_.reset();
+    mock_tab_.reset();
+    delegate_.reset();
+    web_contents_ = nullptr;
+    web_contents_factory_.reset();
+    profile_.reset();
+    task_environment_.RunUntilIdle();
+  }
+
   void SetUp() override {
     profile_ = TestingProfile::Builder().Build();
     delegate_ = std::make_unique<FakeToolDelegate>(profile_.get());
     mock_tab_ = std::make_unique<tabs::MockTabInterface>();
-    web_contents_ = web_contents_factory_.CreateWebContents(profile_.get());
+    web_contents_ = web_contents_factory_->CreateWebContents(profile_.get());
     content::NavigationSimulator::NavigateAndCommitFromBrowser(
         web_contents_, GURL("https://example.com"));
     EXPECT_CALL(*mock_tab_, GetContents())
@@ -243,7 +259,8 @@ class AttemptOtpFillingToolTest : public testing::Test {
     actor_surface_ = std::make_unique<ActorSurfaceImpl>(
         ActorSurfaceHandle::CreateForTesting(), mock_tab_->GetHandle());
     EXPECT_CALL(delegate_->mock_otp_service(), ValidateFormFillingContext)
-        .WillRepeatedly(Return(autofill::FormFillingContextStatus::kSecure));
+        .WillRepeatedly(
+            Return(autofill::FormFillingContextValidationResult::kSecure));
     ON_CALL(delegate_->mock_otp_service(), GetLoginContextOrigin())
         .WillByDefault(
             Return(url::Origin::Create(GURL("https://example.com"))));
@@ -289,6 +306,10 @@ class AttemptOtpFillingToolTest : public testing::Test {
                                  predicted_otp_type, std::move(verifier));
   }
 
+  // Invokes the tool with `FillOtp()` pending, destroys the tool and expects
+  // `kCancelledDuringFillOtp` as the only sample.
+  void InvokeAndExpectCancelledDuringFillOtp();
+
   // Ensures `tool` passes time-of-use validation for `target` by setting up an
   // `AnnotatedPageContent` with an element corresponding to `target`.
   void SetupSuccessfulTimeOfUseValidation(AttemptOtpFillingTool& tool,
@@ -333,7 +354,8 @@ class AttemptOtpFillingToolTest : public testing::Test {
       variations::VariationsIdsProvider::Mode::kUseSignedInState};
   content::BrowserTaskEnvironment task_environment_;
   std::unique_ptr<TestingProfile> profile_;
-  content::TestWebContentsFactory web_contents_factory_;
+  std::optional<content::TestWebContentsFactory> web_contents_factory_{
+      std::in_place};
   raw_ptr<content::WebContents> web_contents_ = nullptr;
   affiliations::FakeAffiliationService fake_affiliation_service_;
   std::unique_ptr<FakeToolDelegate> delegate_;
@@ -367,6 +389,33 @@ using optimization_guide::DocumentIdentifierUserData;
 using optimization_guide::proto::AnnotatedPageContent;
 using webui::mojom::GmailOtpErrorReason;
 using webui::mojom::GmailOtpOptInResult;
+
+std::string ValidateFormFillingContextHistogram(std::string_view step) {
+  return base::StrCat(
+      {kAttemptOtpFillingValidateFormFillingContextHistogram, ".", step});
+}
+
+std::string ConsentFetchDurationHistogram(std::string_view outcome) {
+  return base::StrCat(
+      {kAttemptOtpFillingConsentFetchDurationHistogram, ".", outcome});
+}
+
+std::string ToolInvocationHistogram(std::string_view opt_in_state) {
+  return base::StrCat({kAttemptOtpFillingToolHistogram, ".", opt_in_state});
+}
+
+void ExpectNoCancellationRecorded(const base::HistogramTester& tester) {
+  for (AttemptOtpFillingToolEvent event : {
+           AttemptOtpFillingToolEvent::kCancelledDuringConsentFetch,
+           AttemptOtpFillingToolEvent::kCancelledDuringOptInCard,
+           AttemptOtpFillingToolEvent::kCancelledDuringLoginFlowVerification,
+           AttemptOtpFillingToolEvent::kCancelledDuringOtpRetrieval,
+           AttemptOtpFillingToolEvent::kCancelledDuringConfirmationDialog,
+           AttemptOtpFillingToolEvent::kCancelledDuringFillOtp,
+       }) {
+    tester.ExpectBucketCount(kAttemptOtpFillingToolHistogram, event, 0);
+  }
+}
 }  // namespace
 
 // When the user grants permission to opt in to Gmail OTPs, the tool
@@ -388,12 +437,12 @@ TEST_F(AttemptOtpFillingToolTest, Validate_OptInPermissionGranted) {
   EXPECT_TRUE(IsAutofillGmailOtpFillingEnabled(prefs()));
   EXPECT_EQ(base::Time(),
             GetAutofillGmailOtpFillingActivationDismissalTimestamp(prefs()));
-  histogram_tester_.ExpectBucketCount(kGmailOtpOptInCardInteractionHistogram,
-                                      GmailOtpOptInCardInteraction::kShowCard,
-                                      1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpOptInCardInteractionHistogram,
       GmailOtpOptInCardInteraction::kPermissionGranted, 1);
+  // `Validate()` succeeded and the attempt continues to `Invoke()`, so no
+  // ToolInvocation outcome is recorded yet.
+  histogram_tester_.ExpectTotalCount(kAttemptOtpFillingToolHistogram, 0);
 }
 
 // When the user denies permission to opt in to Gmail OTPs, the tool
@@ -418,10 +467,10 @@ TEST_F(AttemptOtpFillingToolTest, Validate_OptInPermissionDenied) {
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kOptInPermissionDenied, 1);
-  histogram_tester_.ExpectBucketCount(kGmailOtpOptInCardInteractionHistogram,
-                                      GmailOtpOptInCardInteraction::kShowCard,
-                                      1);
   histogram_tester_.ExpectBucketCount(
+      ToolInvocationHistogram("NotOptedIn"),
+      AttemptOtpFillingToolEvent::kOptInPermissionDenied, 1);
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpOptInCardInteractionHistogram,
       GmailOtpOptInCardInteraction::kPermissionDenied, 1);
 }
@@ -444,13 +493,10 @@ TEST_F(AttemptOtpFillingToolTest, Validate_OptInPermissionCallbackError) {
   EXPECT_FALSE(IsAutofillGmailOtpFillingEnabled(prefs()));
   EXPECT_EQ(base::Time::Now() - base::Days(90),
             GetAutofillGmailOtpFillingActivationDismissalTimestamp(prefs()));
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kOptInErrorResponse, 1);
-  histogram_tester_.ExpectBucketCount(kGmailOtpOptInCardInteractionHistogram,
-                                      GmailOtpOptInCardInteraction::kShowCard,
-                                      1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpOptInCardInteractionHistogram,
       GmailOtpOptInCardInteraction::kErrorResponse, 1);
 }
@@ -478,6 +524,9 @@ TEST_F(AttemptOtpFillingToolTest,
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kWithinOptInCoolOffPeriod, 1);
+  histogram_tester_.ExpectBucketCount(
+      ToolInvocationHistogram("NotOptedIn"),
+      AttemptOtpFillingToolEvent::kWithinOptInCoolOffPeriod, 1);
 }
 
 // When Gmail OTP is disabled, and we're outside the cool off period for asking
@@ -495,9 +544,330 @@ TEST_F(AttemptOtpFillingToolTest,
   tool.Validate(future.GetCallback());
 
   // expect call to RequestToShowGmailOtpOptInDialog, see EXPECT_CALL above
+  // Nothing is recorded while the opt-in card is pending.
+  histogram_tester_.ExpectTotalCount(kAttemptOtpFillingToolHistogram, 0);
+  histogram_tester_.ExpectTotalCount(kGmailOtpOptInCardInteractionHistogram, 0);
+}
+
+TEST_F(AttemptOtpFillingToolTest,
+       Validate_ConsentFetchSuccess_RecordsDuration) {
+  autofill::ActorOneTimeTokenFillingService::
+      FetchUserDataProcessingConsentCallback consent_callback;
+  EXPECT_CALL(delegate().mock_otp_service(), FetchUserDataProcessingConsent)
+      .WillOnce([&consent_callback](
+                    autofill::ActorOneTimeTokenFillingService::
+                        FetchUserDataProcessingConsentCallback callback) {
+        consent_callback = std::move(callback);
+      });
+  AttemptOtpFillingTool tool = CreateTool({PageTarget(gfx::Point(10, 10))});
+  SetAutofillGmailOtpFillingEnabled(prefs(), true);
+  tool.Validate(base::DoNothing());
+
+  task_environment_.FastForwardBy(base::Milliseconds(500));
+  one_time_tokens::UserDataProcessingConsentStates states;
+  states.comms_apps = one_time_tokens::ConsentState::kEnabled;
+  states.google_apps = one_time_tokens::ConsentState::kEnabled;
+  std::move(consent_callback).Run(states);
+
+  histogram_tester_.ExpectUniqueSample(
+      ConsentFetchDurationHistogram("Success"), 500, 1);
+  histogram_tester_.ExpectTotalCount(
+      ConsentFetchDurationHistogram("Error"), 0);
+}
+
+TEST_F(AttemptOtpFillingToolTest, Validate_ConsentFetchError_RecordsDuration) {
+  autofill::ActorOneTimeTokenFillingService::
+      FetchUserDataProcessingConsentCallback consent_callback;
+  EXPECT_CALL(delegate().mock_otp_service(), FetchUserDataProcessingConsent)
+      .WillOnce([&consent_callback](
+                    autofill::ActorOneTimeTokenFillingService::
+                        FetchUserDataProcessingConsentCallback callback) {
+        consent_callback = std::move(callback);
+      });
+  AttemptOtpFillingTool tool = CreateTool({PageTarget(gfx::Point(10, 10))});
+  SetAutofillGmailOtpFillingEnabled(prefs(), true);
+  tool.Validate(base::DoNothing());
+
+  task_environment_.FastForwardBy(base::Milliseconds(500));
+  std::move(consent_callback).Run(std::nullopt);
+
+  histogram_tester_.ExpectUniqueSample(
+      ConsentFetchDurationHistogram("Error"), 500, 1);
+  histogram_tester_.ExpectTotalCount(
+      ConsentFetchDurationHistogram("Success"), 0);
+}
+
+// Destroying the tool while the consent fetch is pending records
+// `kCancelledDuringConsentFetch`. A late response records nothing.
+TEST_F(AttemptOtpFillingToolTest, Validate_DestroyedDuringConsentFetch) {
+  autofill::ActorOneTimeTokenFillingService::
+      FetchUserDataProcessingConsentCallback consent_callback;
+  EXPECT_CALL(delegate().mock_otp_service(), FetchUserDataProcessingConsent)
+      .WillOnce([&consent_callback](
+                    autofill::ActorOneTimeTokenFillingService::
+                        FetchUserDataProcessingConsentCallback callback) {
+        consent_callback = std::move(callback);
+      });
+  {
+    AttemptOtpFillingTool tool = CreateTool({PageTarget(gfx::Point(10, 10))});
+    tool.Validate(base::DoNothing());
+    ExpectNoCancellationRecorded(histogram_tester_);
+  }
+
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
-      AttemptOtpFillingToolEvent::kStartFillingAttempt, 1);
+      AttemptOtpFillingToolEvent::kCancelledDuringConsentFetch, 1);
+  base::HistogramTester::CountsMap counts_before_late_response =
+      histogram_tester_.GetTotalCountsForPrefix("OneTimeTokens.");
+  std::move(consent_callback).Run(std::nullopt);
+  EXPECT_EQ(counts_before_late_response,
+            histogram_tester_.GetTotalCountsForPrefix("OneTimeTokens."));
+  histogram_tester_.ExpectTotalCount(ConsentFetchDurationHistogram("Success"), 0);
+  histogram_tester_.ExpectTotalCount(ConsentFetchDurationHistogram("Error"), 0);
+}
+
+// Destroying the tool while the opt-in card is shown records
+// `kCancelledDuringOptInCard` and the card's `kCancelled`. A late response
+// records nothing.
+TEST_F(AttemptOtpFillingToolTest, Validate_DestroyedDuringOptInCard) {
+  ToolDelegate::GmailOtpOptInCallback opt_in_callback;
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpOptInDialog)
+      .WillOnce(
+          [&opt_in_callback](ToolDelegate::GmailOtpOptInCallback callback) {
+            opt_in_callback = std::move(callback);
+          });
+  SetAutofillGmailOtpFillingEnabled(prefs(), false);
+  SetAutofillGmailOtpFillingActivationDismissalTimestamp(
+      prefs(), base::Time::Now() - base::Days(90));
+  {
+    AttemptOtpFillingTool tool = CreateTool({PageTarget(gfx::Point(10, 10))});
+    tool.Validate(base::DoNothing());
+    ExpectNoCancellationRecorded(histogram_tester_);
+  }
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kCancelledDuringOptInCard, 1);
+  histogram_tester_.ExpectBucketCount(
+      ToolInvocationHistogram("NotOptedIn"),
+      AttemptOtpFillingToolEvent::kCancelledDuringOptInCard, 1);
+  histogram_tester_.ExpectUniqueSample(kGmailOtpOptInCardInteractionHistogram,
+                                       GmailOtpOptInCardInteraction::kCancelled,
+                                       1);
+  base::HistogramTester::CountsMap counts_before_late_response =
+      histogram_tester_.GetTotalCountsForPrefix("OneTimeTokens.");
+  std::move(opt_in_callback)
+      .Run(GmailOtpOptInResult::NewResponse(
+          webui::mojom::GmailOtpOptInResponse::New(true)));
+  EXPECT_EQ(counts_before_late_response,
+            histogram_tester_.GetTotalCountsForPrefix("OneTimeTokens."));
+}
+
+// When the consent fetch and the opt-in card reply synchronously, destroying
+// the tool afterwards records no cancellation. This guards against setting the
+// pending cancellation event after the asynchronous call instead of before it.
+TEST_F(AttemptOtpFillingToolTest,
+       Validate_SynchronousCallbacks_NoCancellationOnDestruction) {
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpOptInDialog)
+      .WillOnce(RunOnceCallback<0>(GmailOtpOptInResult::NewResponse(
+          webui::mojom::GmailOtpOptInResponse::New(true))));
+  SetAutofillGmailOtpFillingEnabled(prefs(), false);
+  SetAutofillGmailOtpFillingActivationDismissalTimestamp(
+      prefs(), base::Time::Now() - base::Days(90));
+  {
+    AttemptOtpFillingTool tool = CreateTool({PageTarget(gfx::Point(10, 10))});
+    TestFuture<ActionResultPtr> future;
+    tool.Validate(future.GetCallback());
+    EXPECT_EQ(kOk, future.Take()->code);
+  }
+
+  ExpectNoCancellationRecorded(histogram_tester_);
+}
+
+// Like `ToolController`, destroys the tool from inside the `Validate()`
+// callback. The pending cancellation event must already be reset by then.
+TEST_F(AttemptOtpFillingToolTest,
+       Validate_ToolDestroyedInsideCallback_NoCancellation) {
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpOptInDialog)
+      .WillOnce(RunOnceCallback<0>(GmailOtpOptInResult::NewResponse(
+          webui::mojom::GmailOtpOptInResponse::New(true))));
+  SetAutofillGmailOtpFillingEnabled(prefs(), false);
+  SetAutofillGmailOtpFillingActivationDismissalTimestamp(
+      prefs(), base::Time::Now() - base::Days(90));
+  auto tool = std::make_unique<AttemptOtpFillingTool>(
+      TaskId(1), delegate(), *actor_surface_,
+      std::vector<PageTarget>{PageTarget(gfx::Point(10, 10))},
+      /*for_signin=*/true, AttemptOtpFillingToolRequest::OtpType::kUnknown,
+      std::make_unique<ActorLoginFlowVerifier>(fake_affiliation_service_));
+
+  tool->Validate(base::BindLambdaForTesting([&tool](ActionResultPtr result) {
+    EXPECT_EQ(kOk, result->code);
+    tool.reset();
+  }));
+
+  EXPECT_FALSE(tool);
+  ExpectNoCancellationRecorded(histogram_tester_);
+}
+
+// Destroying the tool after a completed `Validate()` and `Invoke()` records no
+// cancellation.
+TEST_F(AttemptOtpFillingToolTest,
+       ValidateThenInvoke_HappyPath_NoCancellationOnDestruction) {
+  EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
+      .WillOnce(Return(CreateValidLoginContext()));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  EXPECT_CALL(delegate().mock_otp_service(), FillOtp(_, _, "123456", _))
+      .WillOnce(RunOnceCallback<3>(true));
+  SetAutofillGmailOtpFillingEnabled(prefs(), true);
+  PageTarget target(gfx::Point(10, 10));
+  {
+    AttemptOtpFillingTool tool = CreateTool({target});
+    TestFuture<ActionResultPtr> validate_future;
+    tool.Validate(validate_future.GetCallback());
+    ASSERT_EQ(kOk, validate_future.Take()->code);
+    SetupSuccessfulTimeOfUseValidation(tool, target);
+    TestFuture<ActionResultPtr> invoke_future;
+    tool.Invoke(invoke_future.GetCallback());
+    ASSERT_EQ(kOk, invoke_future.Take()->code);
+  }
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kFillingOtpSuccess, 1);
+  histogram_tester_.ExpectBucketCount(
+      ToolInvocationHistogram("AlreadyOptedIn"),
+      AttemptOtpFillingToolEvent::kFillingOtpSuccess, 1);
+  ExpectNoCancellationRecorded(histogram_tester_);
+}
+
+// Destroying the tool during login-flow verification records
+// `kCancelledDuringLoginFlowVerification`.
+TEST_F(AttemptOtpFillingToolTest, Invoke_DestroyedDuringLoginFlowVerification) {
+  auto verifier =
+      std::make_unique<testing::NiceMock<MockActorLoginFlowVerifier>>(
+          fake_affiliation_service_);
+  // Never replies, so the tool keeps waiting.
+  EXPECT_CALL(*verifier, VerifyIsActorLoginFlow);
+  PageTarget target(gfx::Point(10, 10));
+  {
+    AttemptOtpFillingTool tool = CreateTool(
+        {target}, /*for_signin=*/true,
+        AttemptOtpFillingToolRequest::OtpType::kUnknown, std::move(verifier));
+    SetupSuccessfulTimeOfUseValidation(tool, target);
+    tool.Invoke(base::DoNothing());
+    ExpectNoCancellationRecorded(histogram_tester_);
+  }
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kCancelledDuringLoginFlowVerification, 1);
+  histogram_tester_.ExpectTotalCount(kAttemptOtpFillingToolHistogram, 1);
+}
+
+// Destroying the tool during OTP retrieval records
+// `kCancelledDuringOtpRetrieval`.
+TEST_F(AttemptOtpFillingToolTest, Invoke_DestroyedDuringOtpRetrieval) {
+  EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
+      .WillOnce(Return(CreateValidLoginContext()));
+  // Never replies, so the tool keeps waiting.
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp);
+  PageTarget target(gfx::Point(10, 10));
+  {
+    AttemptOtpFillingTool tool = CreateTool({target});
+    SetupSuccessfulTimeOfUseValidation(tool, target);
+    tool.Invoke(base::DoNothing());
+    // Login-flow verification replies asynchronously.
+    task_environment_.RunUntilIdle();
+    ExpectNoCancellationRecorded(histogram_tester_);
+  }
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kCancelledDuringOtpRetrieval, 1);
+  histogram_tester_.ExpectTotalCount(kAttemptOtpFillingToolHistogram, 1);
+}
+
+// Destroying the tool during the confirmation dialog records
+// `kCancelledDuringConfirmationDialog` and the dialog's `kCancelled`.
+TEST_F(AttemptOtpFillingToolTest, Invoke_DestroyedDuringConfirmationDialog) {
+  EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
+      .WillOnce(Return(std::nullopt));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  // Never replies, so the tool keeps waiting.
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpConfirmationDialog("123456", _));
+  PageTarget target(gfx::Point(10, 10));
+  {
+    AttemptOtpFillingTool tool = CreateTool({target});
+    SetupSuccessfulTimeOfUseValidation(tool, target);
+    tool.Invoke(base::DoNothing());
+    // Login-flow verification replies asynchronously.
+    task_environment_.RunUntilIdle();
+    ExpectNoCancellationRecorded(histogram_tester_);
+  }
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kCancelledDuringConfirmationDialog, 1);
+  histogram_tester_.ExpectTotalCount(kAttemptOtpFillingToolHistogram, 1);
+  histogram_tester_.ExpectUniqueSample(
+      kGmailOtpConfirmationDialogInteractionHistogram,
+      GmailOtpConfirmationDialogInteraction::kCancelled, 1);
+}
+
+// Shared by the three `Invoke_DestroyedDuringFillOtp_*` tests below, one per
+// `FillOtp()` call site: without confirmation, after confirmation, and with a
+// mock OTP.
+void AttemptOtpFillingToolTest::InvokeAndExpectCancelledDuringFillOtp() {
+  // Never replies, so the tool keeps waiting.
+  EXPECT_CALL(delegate().mock_otp_service(), FillOtp(_, _, "123456", _));
+  PageTarget target(gfx::Point(10, 10));
+  {
+    AttemptOtpFillingTool tool = CreateTool({target});
+    SetupSuccessfulTimeOfUseValidation(tool, target);
+    tool.Invoke(base::DoNothing());
+    // Login-flow verification replies asynchronously.
+    task_environment_.RunUntilIdle();
+    ExpectNoCancellationRecorded(histogram_tester_);
+  }
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kCancelledDuringFillOtp, 1);
+  histogram_tester_.ExpectTotalCount(kAttemptOtpFillingToolHistogram, 1);
+}
+
+TEST_F(AttemptOtpFillingToolTest,
+       Invoke_DestroyedDuringFillOtp_WithoutConfirmation) {
+  EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
+      .WillOnce(Return(CreateValidLoginContext()));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpConfirmationDialog).Times(0);
+  InvokeAndExpectCancelledDuringFillOtp();
+}
+
+TEST_F(AttemptOtpFillingToolTest,
+       Invoke_DestroyedDuringFillOtp_AfterConfirmation) {
+  EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
+      .WillOnce(Return(std::nullopt));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpConfirmationDialog("123456", _))
+      .WillOnce(RunOnceCallback<1>(
+          webui::mojom::GmailOtpConfirmationResult::NewResponse(
+              webui::mojom::GmailOtpConfirmationResponse::New(
+                  /*permission_granted=*/true))));
+  InvokeAndExpectCancelledDuringFillOtp();
+}
+
+TEST_F(AttemptOtpFillingToolTest, Invoke_DestroyedDuringFillOtp_MockOtp) {
+  base::test::ScopedCommandLine scoped_command_line;
+  scoped_command_line.GetProcessCommandLine()->AppendSwitchASCII(
+      switches::kAttemptOtpFillingToolMockValueSkipsChecks, "123456");
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp).Times(0);
+  InvokeAndExpectCancelledDuringFillOtp();
 }
 
 // Time of use validation returns kTabWentAway when the target tab is not
@@ -570,7 +940,8 @@ TEST_F(AttemptOtpFillingToolTest, TimeOfUseValidation_HappyPath) {
 // context is insecure.
 TEST_F(AttemptOtpFillingToolTest, TimeOfUseValidation_InsecureContext) {
   EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
-      .WillOnce(Return(autofill::FormFillingContextStatus::kInsecureContext));
+      .WillOnce(
+          Return(autofill::FormFillingContextValidationResult::kInsecurePage));
   auto* user_data = DocumentIdentifierUserData::GetOrCreateForCurrentDocument(
       web_contents_->GetPrimaryMainFrame());
   std::string doc_token = user_data->serialized_token();
@@ -590,14 +961,22 @@ TEST_F(AttemptOtpFillingToolTest, TimeOfUseValidation_InsecureContext) {
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kFormFillingStatusInsecureContext, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("TimeOfUse"),
+      autofill::FormFillingContextValidationResult::kInsecurePage, 1);
 }
 
 // `Invoke()` returns `kOk` when all conditions are met.
 TEST_F(AttemptOtpFillingToolTest, Invoke_HappyPath) {
   EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
       .WillOnce(Return(CreateValidLoginContext()));
-  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+  EXPECT_CALL(
+      delegate().mock_otp_service(),
+      RetrieveOtp(
+          _, _, _, _,
+          autofill::ActorOneTimeTokenFillingService::PredictedOtpType::kEmail,
+          _))
+      .WillOnce(RunOnceCallback<5>("123456"));
   EXPECT_CALL(delegate().mock_otp_service(), FillOtp(_, _, "123456", _))
       .WillOnce(RunOnceCallback<3>(true));
   PageTarget target(gfx::Point(10, 10));
@@ -658,6 +1037,11 @@ TEST_F(AttemptOtpFillingToolTest,
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kFillingOtpSuccess, 1);
+  histogram_tester_.ExpectTotalCount(ToolInvocationHistogram("AlreadyOptedIn"),
+                                     0);
+  histogram_tester_.ExpectTotalCount(ToolInvocationHistogram("NewlyOptedIn"),
+                                     0);
+  histogram_tester_.ExpectTotalCount(ToolInvocationHistogram("NotOptedIn"), 0);
 }
 
 // `Invoke()` fails with `kOtpFillFailure` when the result of
@@ -666,7 +1050,7 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_ErrorFilling) {
   EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
       .WillOnce(Return(CreateValidLoginContext()));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
   EXPECT_CALL(delegate().mock_otp_service(), FillOtp(_, _, "123456", _))
       .WillOnce(RunOnceCallback<3>(false));
   PageTarget target(gfx::Point(10, 10));
@@ -683,54 +1067,72 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_ErrorFilling) {
       AttemptOtpFillingToolEvent::kFillingOtpError, 1);
 }
 
-// `Invoke()` fails with `OneTimeTokenRetrievalError::kUnknown` when retrieving
-// the OTP fails.
-TEST_F(AttemptOtpFillingToolTest, Invoke_ErrorRetrievingGmailOtp) {
+struct RetrieveOtpErrorTestCase {
+  std::string_view test_name;
+  one_time_tokens::OneTimeTokenRetrievalError error;
+  mojom::ActionResultCode expected_code;
+  std::string_view expected_message;
+  AttemptOtpFillingToolEvent expected_event;
+};
+
+class AttemptOtpFillingToolRetrieveOtpErrorTest
+    : public AttemptOtpFillingToolTest,
+      public testing::WithParamInterface<RetrieveOtpErrorTestCase> {};
+
+// `Invoke()` maps an OTP retrieval error to the result returned to the model
+// and records a single ToolInvocation sample.
+TEST_P(AttemptOtpFillingToolRetrieveOtpErrorTest, Invoke_RetrievalError) {
+  const RetrieveOtpErrorTestCase& test_case = GetParam();
   EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
       .WillOnce(Return(CreateValidLoginContext()));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>(base::unexpected(
-          one_time_tokens::OneTimeTokenRetrievalError::kUnknown)));
+      .WillOnce(RunOnceCallback<5>(base::unexpected(test_case.error)));
   PageTarget target(gfx::Point(10, 10));
-  AttemptOtpFillingTool tool = CreateTool({target});
   SetAutofillGmailOtpFillingEnabled(prefs(), true);
-  SetupSuccessfulTimeOfUseValidation(tool, target);
+  {
+    AttemptOtpFillingTool tool = CreateTool({target});
+    SetupSuccessfulTimeOfUseValidation(tool, target);
 
-  TestFuture<ActionResultPtr> future;
-  tool.Invoke(future.GetCallback());
+    TestFuture<ActionResultPtr> future;
+    tool.Invoke(future.GetCallback());
 
-  ActionResultPtr action_result = future.Take();
-  EXPECT_EQ(kOtpRetrievalError, action_result->code);
-  EXPECT_EQ("An error occurred during OTP retrieval: 0",
-            action_result->message);
-  histogram_tester_.ExpectBucketCount(
-      kAttemptOtpFillingToolHistogram,
-      AttemptOtpFillingToolEvent::kOtpRetrievalError, 1);
+    ActionResultPtr action_result = future.Take();
+    EXPECT_EQ(test_case.expected_code, action_result->code);
+    EXPECT_EQ(test_case.expected_message, action_result->message);
+  }
+  histogram_tester_.ExpectUniqueSample(kAttemptOtpFillingToolHistogram,
+                                       test_case.expected_event, 1);
 }
 
-// `Invoke()` fails with `kOtpRetrievalTimeout` when the OTP retrieval times
-// out.
-TEST_F(AttemptOtpFillingToolTest, Invoke_TimeoutRetrievingGmailOtp) {
-  EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
-      .WillOnce(Return(CreateValidLoginContext()));
-  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>(base::unexpected(
-          one_time_tokens::OneTimeTokenRetrievalError::kSubscriptionExpired)));
-  PageTarget target(gfx::Point(10, 10));
-  AttemptOtpFillingTool tool = CreateTool({target});
-  SetAutofillGmailOtpFillingEnabled(prefs(), true);
-  SetupSuccessfulTimeOfUseValidation(tool, target);
-
-  TestFuture<ActionResultPtr> future;
-  tool.Invoke(future.GetCallback());
-
-  ActionResultPtr action_result = future.Take();
-  EXPECT_EQ(mojom::ActionResultCode::kOtpRetrievalTimeout, action_result->code);
-  EXPECT_EQ("OTP retrieval timed out.", action_result->message);
-  histogram_tester_.ExpectBucketCount(
-      kAttemptOtpFillingToolHistogram,
-      AttemptOtpFillingToolEvent::kOtpRetrievalError, 1);
-}
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    AttemptOtpFillingToolRetrieveOtpErrorTest,
+    testing::Values(
+        RetrieveOtpErrorTestCase{
+            .test_name = "Unknown",
+            .error = one_time_tokens::OneTimeTokenRetrievalError::kUnknown,
+            .expected_code = kOtpRetrievalError,
+            .expected_message = "An error occurred during OTP retrieval: 0",
+            .expected_event = AttemptOtpFillingToolEvent::kOtpRetrievalError},
+        RetrieveOtpErrorTestCase{
+            .test_name = "SubscriptionExpired",
+            .error = one_time_tokens::OneTimeTokenRetrievalError::
+                kSubscriptionExpired,
+            .expected_code = mojom::ActionResultCode::kOtpRetrievalTimeout,
+            .expected_message = "OTP retrieval timed out.",
+            .expected_event = AttemptOtpFillingToolEvent::kOtpRetrievalTimeout},
+        // A sender-domain mismatch is reported to the model as a timeout.
+        RetrieveOtpErrorTestCase{
+            .test_name = "GmailOtpSenderDomainMismatch",
+            .error = one_time_tokens::OneTimeTokenRetrievalError::
+                kGmailOtpSenderDomainMismatch,
+            .expected_code = mojom::ActionResultCode::kOtpRetrievalTimeout,
+            .expected_message = "OTP retrieval timed out.",
+            .expected_event =
+                AttemptOtpFillingToolEvent::kGmailOtpSenderDomainMismatch}),
+    [](const testing::TestParamInfo<RetrieveOtpErrorTestCase>& info) {
+      return std::string(info.param.test_name);
+    });
 
 TEST_F(AttemptOtpFillingToolTest,
        Validate_OptInPermissionCallbackNullResponse) {
@@ -745,13 +1147,10 @@ TEST_F(AttemptOtpFillingToolTest,
   tool.Validate(future.GetCallback());
 
   EXPECT_EQ(kOtpUnableToFill, future.Take()->code);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kOptInNullResponse, 1);
-  histogram_tester_.ExpectBucketCount(kGmailOtpOptInCardInteractionHistogram,
-                                      GmailOtpOptInCardInteraction::kShowCard,
-                                      1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpOptInCardInteractionHistogram,
       GmailOtpOptInCardInteraction::kErrorResponse, 1);
 }
@@ -908,7 +1307,144 @@ TEST_F(AttemptOtpFillingToolTest, Validate_ConsentFetchReturnsNullopt) {
       AttemptOtpFillingToolEvent::
           kUnableToRetrieveGmailAndGoogleSmartFeaturesConsent,
       1);
+  histogram_tester_.ExpectTotalCount(
+      kGmailAndGoogleSmartFeaturesConsentHistogram, 0);
 }
+
+struct GmailAndGoogleSmartFeaturesConsentTestCase {
+  std::string_view test_name;
+  one_time_tokens::ConsentState gmail;
+  one_time_tokens::ConsentState google;
+  ActorOtpGmailAndGoogleSmartFeaturesConsent expected;
+};
+
+class AttemptOtpFillingToolGmailAndGoogleSmartFeaturesConsentTest
+    : public AttemptOtpFillingToolTest,
+      public testing::WithParamInterface<
+          GmailAndGoogleSmartFeaturesConsentTestCase> {};
+
+// `Validate()` records the combination of both consent states once the consent
+// fetch succeeds.
+TEST_P(AttemptOtpFillingToolGmailAndGoogleSmartFeaturesConsentTest,
+       Validate_RecordsConsentState) {
+  const GmailAndGoogleSmartFeaturesConsentTestCase& test_case = GetParam();
+  EXPECT_CALL(delegate().mock_otp_service(), FetchUserDataProcessingConsent)
+      .WillOnce(
+          RunOnceCallback<0>(one_time_tokens::UserDataProcessingConsentStates{
+              .comms_apps = test_case.gmail, .google_apps = test_case.google}));
+  AttemptOtpFillingTool tool = CreateTool({PageTarget(gfx::Point(10, 10))});
+  SetAutofillGmailOtpFillingEnabled(prefs(), true);
+
+  TestFuture<ActionResultPtr> future;
+  tool.Validate(future.GetCallback());
+  ASSERT_TRUE(future.Wait());
+
+  histogram_tester_.ExpectUniqueSample(
+      kGmailAndGoogleSmartFeaturesConsentHistogram, test_case.expected, 1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    AttemptOtpFillingToolGmailAndGoogleSmartFeaturesConsentTest,
+    testing::Values(
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "EnabledEnabled",
+            .gmail = one_time_tokens::ConsentState::kEnabled,
+            .google = one_time_tokens::ConsentState::kEnabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailEnabledGoogleEnabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "EnabledDisabled",
+            .gmail = one_time_tokens::ConsentState::kEnabled,
+            .google = one_time_tokens::ConsentState::kDisabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailEnabledGoogleDisabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "EnabledUnknown",
+            .gmail = one_time_tokens::ConsentState::kEnabled,
+            .google = one_time_tokens::ConsentState::kUnknown,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailEnabledGoogleUnknown},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "EnabledUndefined",
+            .gmail = one_time_tokens::ConsentState::kEnabled,
+            .google = one_time_tokens::ConsentState::kUndefined,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailEnabledGoogleUndefined},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "DisabledEnabled",
+            .gmail = one_time_tokens::ConsentState::kDisabled,
+            .google = one_time_tokens::ConsentState::kEnabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailDisabledGoogleEnabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "DisabledDisabled",
+            .gmail = one_time_tokens::ConsentState::kDisabled,
+            .google = one_time_tokens::ConsentState::kDisabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailDisabledGoogleDisabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "DisabledUnknown",
+            .gmail = one_time_tokens::ConsentState::kDisabled,
+            .google = one_time_tokens::ConsentState::kUnknown,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailDisabledGoogleUnknown},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "DisabledUndefined",
+            .gmail = one_time_tokens::ConsentState::kDisabled,
+            .google = one_time_tokens::ConsentState::kUndefined,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailDisabledGoogleUndefined},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UnknownEnabled",
+            .gmail = one_time_tokens::ConsentState::kUnknown,
+            .google = one_time_tokens::ConsentState::kEnabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUnknownGoogleEnabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UnknownDisabled",
+            .gmail = one_time_tokens::ConsentState::kUnknown,
+            .google = one_time_tokens::ConsentState::kDisabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUnknownGoogleDisabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UnknownUnknown",
+            .gmail = one_time_tokens::ConsentState::kUnknown,
+            .google = one_time_tokens::ConsentState::kUnknown,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUnknownGoogleUnknown},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UnknownUndefined",
+            .gmail = one_time_tokens::ConsentState::kUnknown,
+            .google = one_time_tokens::ConsentState::kUndefined,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUnknownGoogleUndefined},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UndefinedEnabled",
+            .gmail = one_time_tokens::ConsentState::kUndefined,
+            .google = one_time_tokens::ConsentState::kEnabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUndefinedGoogleEnabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UndefinedDisabled",
+            .gmail = one_time_tokens::ConsentState::kUndefined,
+            .google = one_time_tokens::ConsentState::kDisabled,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUndefinedGoogleDisabled},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UndefinedUnknown",
+            .gmail = one_time_tokens::ConsentState::kUndefined,
+            .google = one_time_tokens::ConsentState::kUnknown,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUndefinedGoogleUnknown},
+        GmailAndGoogleSmartFeaturesConsentTestCase{
+            .test_name = "UndefinedUndefined",
+            .gmail = one_time_tokens::ConsentState::kUndefined,
+            .google = one_time_tokens::ConsentState::kUndefined,
+            .expected = ActorOtpGmailAndGoogleSmartFeaturesConsent::
+                kGmailUndefinedGoogleUndefined}),
+    [](const testing::TestParamInfo<GmailAndGoogleSmartFeaturesConsentTestCase>&
+           info) { return std::string(info.param.test_name); });
 
 // `Validate()` bypasses consent retrieval and opt-in dialog when
 // `kAttemptOtpFillingToolMockValueSkipsChecks` is set.
@@ -934,7 +1470,8 @@ TEST_F(AttemptOtpFillingToolTest,
 
 TEST_F(AttemptOtpFillingToolTest, TimeOfUseValidation_FormNotFound) {
   EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
-      .WillOnce(Return(autofill::FormFillingContextStatus::kFormNotFound));
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::
+                           kFormStructureNotFound));
   auto* user_data = DocumentIdentifierUserData::GetOrCreateForCurrentDocument(
       web_contents_->GetPrimaryMainFrame());
   std::string doc_token = user_data->serialized_token();
@@ -958,7 +1495,8 @@ TEST_F(AttemptOtpFillingToolTest, TimeOfUseValidation_FormNotFound) {
 
 TEST_F(AttemptOtpFillingToolTest, TimeOfUseValidation_TabNotAvailable) {
   EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
-      .WillOnce(Return(autofill::FormFillingContextStatus::kTabNotAvailable));
+      .WillOnce(Return(
+          autofill::FormFillingContextValidationResult::kTabNotAvailable));
   auto* user_data = DocumentIdentifierUserData::GetOrCreateForCurrentDocument(
       web_contents_->GetPrimaryMainFrame());
   std::string doc_token = user_data->serialized_token();
@@ -997,7 +1535,7 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_ActorLoginVerificationFailed) {
   EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
       .WillOnce(Return(CreateValidLoginContext()));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
 
   // The confirmation dialog is shown. User declines it.
   webui::mojom::GmailOtpConfirmationResponsePtr response =
@@ -1052,10 +1590,7 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_ActorLoginVerificationFailed) {
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kGmailOtpConfirmationDeclinedByUser, 1);
-  histogram_tester_.ExpectBucketCount(
-      kGmailOtpConfirmationDialogInteractionHistogram,
-      GmailOtpConfirmationDialogInteraction::kShowDialog, 1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpConfirmationDialogInteractionHistogram,
       GmailOtpConfirmationDialogInteraction::kPermissionDenied, 1);
   histogram_tester_.ExpectBucketCount(kActorOtpVerifyIsActorLoginFlowHistogram,
@@ -1067,13 +1602,14 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_InsecureBeforeFilling) {
   EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
       .WillOnce(Return(CreateValidLoginContext()));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
   // `TimeOfUseValidation()` is called during setup and invokes
   // `ValidateFormFillingContext()`. `Invoke()` calls it a second time during
   // OTP filling. This test specifically tests the call in `Invoke()`.
   EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
-      .WillOnce(Return(autofill::FormFillingContextStatus::kSecure))
-      .WillOnce(Return(autofill::FormFillingContextStatus::kInsecureContext));
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      .WillOnce(
+          Return(autofill::FormFillingContextValidationResult::kInsecurePage));
   PageTarget target(gfx::Point(10, 10));
   AttemptOtpFillingTool tool = CreateTool({target});
   SetAutofillGmailOtpFillingEnabled(prefs(), true);
@@ -1086,6 +1622,74 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_InsecureBeforeFilling) {
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kFormFillingNotSecureBeforeFilling, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("TimeOfUse"),
+      autofill::FormFillingContextValidationResult::kSecure, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("AfterOtpRetrieved"),
+      autofill::FormFillingContextValidationResult::kInsecurePage, 1);
+}
+
+TEST_F(AttemptOtpFillingToolTest, Invoke_FormNotFoundBeforeFilling) {
+  EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
+      .WillOnce(Return(CreateValidLoginContext()));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
+      // `TimeOfUseValidation()`
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      // `OnOtpRetrieved()`
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::
+                           kFormStructureNotFound));
+  EXPECT_CALL(delegate().mock_otp_service(), FillOtp).Times(0);
+  PageTarget target(gfx::Point(10, 10));
+  AttemptOtpFillingTool tool = CreateTool({target});
+  SetAutofillGmailOtpFillingEnabled(prefs(), true);
+  SetupSuccessfulTimeOfUseValidation(tool, target);
+
+  TestFuture<ActionResultPtr> future;
+  tool.Invoke(future.GetCallback());
+
+  EXPECT_EQ(mojom::ActionResultCode::kFormFillingFieldNotFound,
+            future.Take()->code);
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kFormNotFoundBeforeFilling, 1);
+}
+
+TEST_F(AttemptOtpFillingToolTest,
+       Invoke_TabNotAvailableBeforeFillingAfterConfirmation) {
+  EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
+      .WillOnce(Return(std::nullopt));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  // `OnGmailOtpConfirmationResponse()` calls `ValidateFormFillingContext()`,
+  // and this test fails that check.
+  EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
+      // `TimeOfUseValidation()`
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      // `OnOtpRetrieved()`
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      // `OnGmailOtpConfirmationResponse()`
+      .WillOnce(Return(
+          autofill::FormFillingContextValidationResult::kTabNotAvailable));
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpConfirmationDialog("123456", _))
+      .WillOnce(RunOnceCallback<1>(
+          webui::mojom::GmailOtpConfirmationResult::NewResponse(
+              webui::mojom::GmailOtpConfirmationResponse::New(
+                  /*permission_granted=*/true))));
+  EXPECT_CALL(delegate().mock_otp_service(), FillOtp).Times(0);
+  PageTarget target(gfx::Point(10, 10));
+  AttemptOtpFillingTool tool = CreateTool({target}, /*for_signin=*/true);
+  SetupSuccessfulTimeOfUseValidation(tool, target);
+
+  TestFuture<ActionResultPtr> future;
+  tool.Invoke(future.GetCallback());
+
+  EXPECT_EQ(mojom::ActionResultCode::kTabWentAway, future.Take()->code);
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kTabNotAvailableBeforeFilling, 1);
 }
 
 // `Invoke()` returns `kOk` when all conditions are met using a `DomNode`
@@ -1094,7 +1698,7 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_DomNode_HappyPath) {
   EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
       .WillOnce(Return(CreateValidLoginContext()));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
   EXPECT_CALL(delegate().mock_otp_service(), FillOtp(_, _, "123456", _))
       .WillOnce(RunOnceCallback<3>(true));
   std::string doc_token =
@@ -1116,11 +1720,14 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_NoLoginContextAvailable_Approved) {
   EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
       .WillOnce(Return(std::nullopt));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
-  // ValidateFormFillingContext is called twice: once in TimeOfUseValidation,
-  // once before FillOtp
+      .WillOnce(RunOnceCallback<5>("123456"));
+  // `ValidateFormFillingContext()` is called once per step: in
+  // `TimeOfUseValidation()`, after the OTP is retrieved, and after the
+  // confirmation dialog is approved.
   EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
-      .WillRepeatedly(Return(autofill::FormFillingContextStatus::kSecure));
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure));
 
   // The confirmation dialog is shown. User approves it.
   webui::mojom::GmailOtpConfirmationResponsePtr response =
@@ -1146,19 +1753,67 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_NoLoginContextAvailable_Approved) {
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kFillingOtpSuccess, 1);
-  histogram_tester_.ExpectBucketCount(
-      kGmailOtpConfirmationDialogInteractionHistogram,
-      GmailOtpConfirmationDialogInteraction::kShowDialog, 1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpConfirmationDialogInteractionHistogram,
       GmailOtpConfirmationDialogInteraction::kPermissionGranted, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("TimeOfUse"),
+      autofill::FormFillingContextValidationResult::kSecure, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("AfterOtpRetrieved"),
+      autofill::FormFillingContextValidationResult::kSecure, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("AfterConfirmation"),
+      autofill::FormFillingContextValidationResult::kSecure, 1);
+}
+
+// A failed validation after the user approves the confirmation dialog is
+// recorded for that step, with the check that failed.
+TEST_F(AttemptOtpFillingToolTest, Invoke_ValidationFailsAfterConfirmation) {
+  EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
+      .WillOnce(Return(std::nullopt));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  EXPECT_CALL(delegate().mock_otp_service(), ValidateFormFillingContext)
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::kSecure))
+      .WillOnce(Return(autofill::FormFillingContextValidationResult::
+                           kOtpFieldsFromDifferentOrigins));
+  webui::mojom::GmailOtpConfirmationResponsePtr response =
+      webui::mojom::GmailOtpConfirmationResponse::New(
+          /*permission_granted=*/true);
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpConfirmationDialog("123456", _))
+      .WillOnce(RunOnceCallback<1>(
+          webui::mojom::GmailOtpConfirmationResult::NewResponse(
+              std::move(response))));
+  EXPECT_CALL(delegate().mock_otp_service(), FillOtp).Times(0);
+
+  PageTarget target(gfx::Point(10, 10));
+  AttemptOtpFillingTool tool = CreateTool({target}, /*for_signin=*/true);
+  SetupSuccessfulTimeOfUseValidation(tool, target);
+
+  TestFuture<ActionResultPtr> future;
+  tool.Invoke(future.GetCallback());
+
+  EXPECT_EQ(mojom::ActionResultCode::kOtpInsecureContext, future.Take()->code);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("TimeOfUse"),
+      autofill::FormFillingContextValidationResult::kSecure, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("AfterOtpRetrieved"),
+      autofill::FormFillingContextValidationResult::kSecure, 1);
+  histogram_tester_.ExpectUniqueSample(
+      ValidateFormFillingContextHistogram("AfterConfirmation"),
+      autofill::FormFillingContextValidationResult::
+          kOtpFieldsFromDifferentOrigins,
+      1);
 }
 
 TEST_F(AttemptOtpFillingToolTest, Invoke_NoLoginContextAvailable_Declined) {
   EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
       .WillOnce(Return(std::nullopt));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
 
   // The confirmation dialog is shown. User declines it.
   webui::mojom::GmailOtpConfirmationResponsePtr response =
@@ -1173,22 +1828,22 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_NoLoginContextAvailable_Declined) {
   EXPECT_CALL(delegate().mock_otp_service(), FillOtp).Times(0);
 
   PageTarget target(gfx::Point(10, 10));
-  AttemptOtpFillingTool tool = CreateTool({target}, /*for_signin=*/true);
-  SetupSuccessfulTimeOfUseValidation(tool, target);
+  {
+    AttemptOtpFillingTool tool = CreateTool({target}, /*for_signin=*/true);
+    SetupSuccessfulTimeOfUseValidation(tool, target);
 
-  TestFuture<ActionResultPtr> future;
-  tool.Invoke(future.GetCallback());
+    TestFuture<ActionResultPtr> future;
+    tool.Invoke(future.GetCallback());
 
-  EXPECT_EQ(kOtpUserDeclinedFillingConfirmation, future.Take()->code);
+    EXPECT_EQ(kOtpUserDeclinedFillingConfirmation, future.Take()->code);
+  }
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kGmailOtpConfirmationDeclinedByUser, 1);
-  histogram_tester_.ExpectBucketCount(
-      kGmailOtpConfirmationDialogInteractionHistogram,
-      GmailOtpConfirmationDialogInteraction::kShowDialog, 1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpConfirmationDialogInteractionHistogram,
       GmailOtpConfirmationDialogInteraction::kPermissionDenied, 1);
+  ExpectNoCancellationRecorded(histogram_tester_);
 }
 
 TEST_F(AttemptOtpFillingToolTest,
@@ -1196,7 +1851,7 @@ TEST_F(AttemptOtpFillingToolTest,
   EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
       .WillOnce(Return(std::nullopt));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
 
   // The confirmation dialog returns an error.
   EXPECT_CALL(delegate(), RequestToShowGmailOtpConfirmationDialog("123456", _))
@@ -1218,10 +1873,7 @@ TEST_F(AttemptOtpFillingToolTest,
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kGmailOtpConfirmationResponseNotValid, 1);
-  histogram_tester_.ExpectBucketCount(
-      kGmailOtpConfirmationDialogInteractionHistogram,
-      GmailOtpConfirmationDialogInteraction::kShowDialog, 1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpConfirmationDialogInteractionHistogram,
       GmailOtpConfirmationDialogInteraction::kErrorResponse, 1);
 }
@@ -1272,19 +1924,22 @@ TEST_F(AttemptOtpFillingToolTest, Invoke_FrameLostDuringVerification) {
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp).Times(0);
 
   PageTarget target(gfx::Point(10, 10));
-  AttemptOtpFillingTool tool = CreateTool(
-      {target}, /*for_signin=*/true,
-      AttemptOtpFillingToolRequest::OtpType::kUnknown, std::move(verifier));
-  SetupSuccessfulTimeOfUseValidation(tool, target);
+  {
+    AttemptOtpFillingTool tool = CreateTool(
+        {target}, /*for_signin=*/true,
+        AttemptOtpFillingToolRequest::OtpType::kUnknown, std::move(verifier));
+    SetupSuccessfulTimeOfUseValidation(tool, target);
 
-  TestFuture<ActionResultPtr> future;
-  tool.Invoke(future.GetCallback());
+    TestFuture<ActionResultPtr> future;
+    tool.Invoke(future.GetCallback());
 
-  EXPECT_EQ(mojom::ActionResultCode::kOtpTargetFrameNotFound,
-            future.Take()->code);
+    EXPECT_EQ(mojom::ActionResultCode::kOtpTargetFrameNotFound,
+              future.Take()->code);
+  }
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kNoTargetFrameWithOtpFound, 1);
+  ExpectNoCancellationRecorded(histogram_tester_);
 }
 
 TEST_F(AttemptOtpFillingToolTest,
@@ -1292,7 +1947,7 @@ TEST_F(AttemptOtpFillingToolTest,
   EXPECT_CALL(delegate().mock_otp_service(), GetLoginContextOrigin())
       .WillOnce(Return(std::nullopt));
   EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
-      .WillOnce(RunOnceCallback<4>("123456"));
+      .WillOnce(RunOnceCallback<5>("123456"));
 
   // The confirmation dialog returns a null response.
   webui::mojom::GmailOtpConfirmationResultPtr response;
@@ -1313,12 +1968,45 @@ TEST_F(AttemptOtpFillingToolTest,
   histogram_tester_.ExpectBucketCount(
       kAttemptOtpFillingToolHistogram,
       AttemptOtpFillingToolEvent::kGmailOtpConfirmationResponseNotValid, 1);
-  histogram_tester_.ExpectBucketCount(
-      kGmailOtpConfirmationDialogInteractionHistogram,
-      GmailOtpConfirmationDialogInteraction::kShowDialog, 1);
-  histogram_tester_.ExpectBucketCount(
+  histogram_tester_.ExpectUniqueSample(
       kGmailOtpConfirmationDialogInteractionHistogram,
       GmailOtpConfirmationDialogInteraction::kErrorResponse, 1);
+}
+
+TEST_F(AttemptOtpFillingToolTest,
+       ValidateThenInvoke_OptInPermissionGranted_NewlyOptedInRecorded) {
+  EXPECT_CALL(delegate(), RequestToShowGmailOtpOptInDialog)
+      .WillOnce(RunOnceCallback<0>(GmailOtpOptInResult::NewResponse(
+          webui::mojom::GmailOtpOptInResponse::New(true))));
+  EXPECT_CALL(delegate().mock_otp_service(), ConsumeLoginContext())
+      .WillOnce(Return(CreateValidLoginContext()));
+  EXPECT_CALL(delegate().mock_otp_service(), RetrieveOtp)
+      .WillOnce(RunOnceCallback<5>("123456"));
+  EXPECT_CALL(delegate().mock_otp_service(), FillOtp)
+      .WillOnce(RunOnceCallback<3>(true));
+
+  PageTarget target(gfx::Point(10, 10));
+  AttemptOtpFillingTool tool = CreateTool({target}, /*for_signin=*/true);
+  SetAutofillGmailOtpFillingEnabled(prefs(), false);
+  SetAutofillGmailOtpFillingActivationDismissalTimestamp(
+      prefs(), base::Time::Now() - base::Days(90));
+
+  TestFuture<ActionResultPtr> validate_future;
+  tool.Validate(validate_future.GetCallback());
+  EXPECT_EQ(kOk, validate_future.Take()->code);
+
+  SetupSuccessfulTimeOfUseValidation(tool, target);
+
+  TestFuture<ActionResultPtr> invoke_future;
+  tool.Invoke(invoke_future.GetCallback());
+  EXPECT_EQ(kOk, invoke_future.Take()->code);
+
+  histogram_tester_.ExpectBucketCount(
+      kAttemptOtpFillingToolHistogram,
+      AttemptOtpFillingToolEvent::kFillingOtpSuccess, 1);
+  histogram_tester_.ExpectBucketCount(
+      ToolInvocationHistogram("NewlyOptedIn"),
+      AttemptOtpFillingToolEvent::kFillingOtpSuccess, 1);
 }
 
 }  // namespace actor

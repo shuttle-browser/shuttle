@@ -17,11 +17,9 @@
 #include "chrome/common/actor.mojom.h"
 #include "chrome/common/actor/action_result.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
-#include "components/tabs/public/tab_interface.h"
 
 namespace actor {
 
-using ::tabs::TabHandle;
 
 namespace {
 
@@ -45,9 +43,10 @@ ToolRequest::CreateToolResult CreateHistoryTool(
   ActorSurface* actor_surface = actor_surface_handle.Get();
 
   if (!actor_surface) {
-    return {/*tool=*/nullptr, MakeResult(mojom::ActionResultCode::kTabWentAway,
-                                         /*requires_page_stabilization=*/false,
-                                         "The tab is no longer present.")};
+    return {/*tool=*/nullptr,
+            MakeResult(mojom::ActionResultCode::kTabWentAway,
+                       /*requires_page_stabilization=*/false,
+                       "The target surface is no longer present.")};
   }
 
   return {std::make_unique<HistoryTool>(task_id, tool_delegate, *actor_surface,

@@ -39,6 +39,7 @@ import org.mockito.junit.MockitoRule;
 import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowDialog;
 import org.robolectric.shadows.ShadowLooper;
+import org.robolectric.shadows.ShadowToast;
 
 import org.chromium.base.UserDataHost;
 import org.chromium.base.lifetime.Destroyable;
@@ -58,6 +59,8 @@ import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.ui.base.MimeTypeUtils;
 import org.chromium.ui.base.TestActivity;
 import org.chromium.url.GURL;
+import org.chromium.url.JUnitTestOrigins;
+import org.chromium.url.Origin;
 
 import java.io.File;
 
@@ -69,7 +72,8 @@ import java.io.File;
         instrumentedPackages = {"androidx.fragment.app", "androidx.pdf"},
         shadows = {
             PdfCoordinatorUnitTest.ShadowPdfViewerFragment.class,
-            PdfCoordinatorUnitTest.ShadowEditablePdfViewerFragment.class
+            PdfCoordinatorUnitTest.ShadowEditablePdfViewerFragment.class,
+            ShadowToast.class
         })
 public class PdfPageUnitTest {
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
@@ -128,6 +132,7 @@ public class PdfPageUnitTest {
 
     @After
     public void tearDown() throws Exception {
+        ShadowToast.reset();
         ChromeFileProvider.setGeneratedUriForTesting(null);
         PdfContentProvider.cleanUpForTesting();
         PdfCoordinator.skipLoadPdfForTesting(false);
@@ -227,9 +232,44 @@ public class PdfPageUnitTest {
                         argThat(
                                 params ->
                                         params.getUrl().equals(PDF_LINK)
-                                                && params.getShouldReplaceCurrentEntry()),
+                                                && params.getShouldReplaceCurrentEntry()
+                                                && params.getInitiatorOrigin() == null),
                         eq(false));
         assertFalse("Transient file should be deleted on reload", tempFile.exists());
+
+        pdfPage.destroy();
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.INLINE_PDF_V2)
+    public void testReload_HttpPdf_PreservesInitiatorOrigin() throws Exception {
+        File tempFile = File.createTempFile("test_pdf", ".pdf");
+        tempFile.deleteOnExit();
+        Origin initiatorOrigin = JUnitTestOrigins.createTuple("https", "initiator.example", 443);
+        PdfInfo pdfInfo = PdfInfo.initReuse(/* preferReuse= */ false, initiatorOrigin);
+        PdfPage pdfPage =
+                new PdfPage(
+                        mMockNativePageHost,
+                        mMockTab,
+                        mActivity,
+                        mPdfPageUrl,
+                        pdfInfo,
+                        DEFAULT_TAB_TITLE,
+                        mPdfFragmentViewTracker);
+        Assert.assertEquals(initiatorOrigin, pdfPage.getInitiatorOrigin());
+        pdfPage.onDownloadComplete(FILE_NAME, tempFile.getAbsolutePath(), true);
+
+        pdfPage.reload();
+
+        verify(mMockNativePageHost)
+                .loadUrl(
+                        argThat(
+                                params ->
+                                        params.getUrl().equals(PDF_LINK)
+                                                && params.getShouldReplaceCurrentEntry()
+                                                && initiatorOrigin.equals(
+                                                        params.getInitiatorOrigin())),
+                        eq(false));
 
         pdfPage.destroy();
     }
@@ -1135,5 +1175,27 @@ public class PdfPageUnitTest {
                         mPdfFragmentViewTracker);
         pdfPage.download();
         verify(mMockNativePageHost).downloadUrl(PDF_LINK);
+    }
+
+    @Test
+    public void testOnDownloadFailed_NotifiesCoordinator() {
+        PdfPage pdfPage =
+                new PdfPage(
+                        mMockNativePageHost,
+                        mMockTab,
+                        mActivity,
+                        mPdfPageUrl,
+                        mPdfInfo,
+                        DEFAULT_TAB_TITLE,
+                        mPdfFragmentViewTracker);
+        pdfPage.onDownloadFailed();
+
+        Assert.assertEquals(
+                View.GONE,
+                pdfPage.mPdfCoordinator.getView().findViewById(R.id.progress_bar).getVisibility());
+        Assert.assertTrue(
+                ShadowToast.showedCustomToast(
+                        mActivity.getString(R.string.pdf_download_failed), R.id.toast_text));
+        pdfPage.destroy();
     }
 }

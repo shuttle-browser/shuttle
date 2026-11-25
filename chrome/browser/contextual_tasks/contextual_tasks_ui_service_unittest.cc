@@ -738,8 +738,13 @@ TEST_F(ContextualTasksUiServiceTest,
   ON_CALL(*aim_eligibility_service_, IsCobrowseEligible())
       .WillByDefault(Return(false));
 
+  // Opening in the side panel requires a window with a panel controller.
+  NiceMock<MockBrowserWindowInterface> browser;
+  NiceMock<MockContextualTasksPanelController> panel_controller(&browser);
+
   auto web_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));
+  webui::SetBrowserWindowInterface(web_contents.get(), &browser);
   sessions::SessionTabHelper::CreateForWebContents(
       web_contents.get(),
       base::BindRepeating([](content::WebContents* contents) {
@@ -772,6 +777,98 @@ TEST_F(ContextualTasksUiServiceTest,
       blink::mojom::WindowFeatures()));
 
   run_loop.Run();
+}
+
+// Without a window, the side panel cannot be opened, so the navigation is not
+// intercepted.
+TEST_F(
+    ContextualTasksUiServiceTest,
+    HandleNavigation_AiPage_CobrowseIneligible_WithAttachedTab_NoBrowserWindow_NotIntercepted) {
+  base::test::ScopedFeatureList scoped_feature_list(kContextualTasksSidePanel);
+  GURL ai_url(kAiPageUrl);
+  ON_CALL(*aim_eligibility_service_, IsAimUrl(_, _))
+      .WillByDefault(Return(true));
+  ON_CALL(*aim_eligibility_service_, IsCobrowseEligible())
+      .WillByDefault(Return(false));
+
+  auto web_contents = content::WebContentsTester::CreateTestWebContents(
+      profile_.get(), content::SiteInstance::Create(profile_.get()));
+  sessions::SessionTabHelper::CreateForWebContents(
+      web_contents.get(),
+      base::BindRepeating([](content::WebContents* contents) {
+        return static_cast<sessions::SessionTabHelperDelegate*>(nullptr);
+      }));
+
+  auto mock_session = std::make_unique<testing::NiceMock<
+      contextual_search::MockContextualSearchSessionHandle>>();
+  contextual_search::FileInfo file_info;
+  file_info.tab_session_id =
+      sessions::SessionTabHelper::IdForTab(web_contents.get());
+  std::vector<contextual_search::FileInfo> submitted_files = {file_info};
+  ON_CALL(*mock_session, GetSubmittedContextFileInfos)
+      .WillByDefault(Return(submitted_files));
+
+  auto* helper = ContextualSearchWebContentsHelper::GetOrCreateForWebContents(
+      web_contents.get());
+  helper->SetTaskSession(std::nullopt, std::move(mock_session),
+                         /*input_state_model=*/nullptr);
+
+  EXPECT_CALL(*service_for_nav_, OnNavigationToAiPageIntercepted(_, _, _, _))
+      .Times(0);
+
+  EXPECT_FALSE(service_for_nav_->HandleNavigation(
+      CreateOpenUrlParams(ai_url, false), web_contents.get(),
+      /*is_from_embedded_page=*/false, /*from_can_create_window=*/false,
+      /*is_same_site_or_from_ui=*/true, false, std::nullopt, std::nullopt,
+      blink::mojom::WindowFeatures()));
+}
+
+// Regression test for crbug.com/564580575: a window without a panel controller
+// (e.g. an incognito window on Android without a ContextualTasksBridge) cannot
+// open the side panel, so the navigation is not intercepted.
+TEST_F(
+    ContextualTasksUiServiceTest,
+    HandleNavigation_AiPage_CobrowseIneligible_WithAttachedTab_NoPanelController_NotIntercepted) {
+  base::test::ScopedFeatureList scoped_feature_list(kContextualTasksSidePanel);
+  GURL ai_url(kAiPageUrl);
+  ON_CALL(*aim_eligibility_service_, IsAimUrl(_, _))
+      .WillByDefault(Return(true));
+  ON_CALL(*aim_eligibility_service_, IsCobrowseEligible())
+      .WillByDefault(Return(false));
+
+  NiceMock<MockBrowserWindowInterface> browser;
+
+  auto web_contents = content::WebContentsTester::CreateTestWebContents(
+      profile_.get(), content::SiteInstance::Create(profile_.get()));
+  webui::SetBrowserWindowInterface(web_contents.get(), &browser);
+  sessions::SessionTabHelper::CreateForWebContents(
+      web_contents.get(),
+      base::BindRepeating([](content::WebContents* contents) {
+        return static_cast<sessions::SessionTabHelperDelegate*>(nullptr);
+      }));
+
+  auto mock_session = std::make_unique<testing::NiceMock<
+      contextual_search::MockContextualSearchSessionHandle>>();
+  contextual_search::FileInfo file_info;
+  file_info.tab_session_id =
+      sessions::SessionTabHelper::IdForTab(web_contents.get());
+  std::vector<contextual_search::FileInfo> submitted_files = {file_info};
+  ON_CALL(*mock_session, GetSubmittedContextFileInfos)
+      .WillByDefault(Return(submitted_files));
+
+  auto* helper = ContextualSearchWebContentsHelper::GetOrCreateForWebContents(
+      web_contents.get());
+  helper->SetTaskSession(std::nullopt, std::move(mock_session),
+                         /*input_state_model=*/nullptr);
+
+  EXPECT_CALL(*service_for_nav_, OnNavigationToAiPageIntercepted(_, _, _, _))
+      .Times(0);
+
+  EXPECT_FALSE(service_for_nav_->HandleNavigation(
+      CreateOpenUrlParams(ai_url, false), web_contents.get(),
+      /*is_from_embedded_page=*/false, /*from_can_create_window=*/false,
+      /*is_same_site_or_from_ui=*/true, false, std::nullopt, std::nullopt,
+      blink::mojom::WindowFeatures()));
 }
 
 TEST_F(
@@ -834,8 +931,13 @@ TEST_F(
   ON_CALL(*service_for_nav_, IsUrlForPrimaryAccount(_))
       .WillByDefault(Return(false));
 
+  // Opening in the side panel requires a window with a panel controller.
+  NiceMock<MockBrowserWindowInterface> browser;
+  NiceMock<MockContextualTasksPanelController> panel_controller(&browser);
+
   auto web_contents = content::WebContentsTester::CreateTestWebContents(
       profile_.get(), content::SiteInstance::Create(profile_.get()));
+  webui::SetBrowserWindowInterface(web_contents.get(), &browser);
   sessions::SessionTabHelper::CreateForWebContents(
       web_contents.get(),
       base::BindRepeating([](content::WebContents* contents) {
@@ -2027,11 +2129,12 @@ TEST_F(ContextualTasksUiServiceTest,
   EXPECT_CALL(*service_for_nav_, OnThreadLinkClicked(_, _, _, _, _)).Times(0);
   EXPECT_CALL(*service_for_nav_, OnSearchResultsNavigationInSidePanel(
                                      OpenURLParamsHasUrl(navigated_url), _))
-      .WillOnce([&](content::OpenURLParams url_params,
-                    ContextualTasksUIInterface* web_ui_interface) {
-        intercepted_params = std::move(url_params);
-        run_loop.Quit();
-      });
+      .WillOnce(
+          [&](content::OpenURLParams url_params,
+              base::WeakPtr<ContextualTasksUIInterface> web_ui_interface) {
+            intercepted_params = std::move(url_params);
+            run_loop.Quit();
+          });
   EXPECT_CALL(*service_for_nav_, OnNavigationToAiPageIntercepted(_, _, _, _))
       .Times(0);
   EXPECT_TRUE(service_for_nav_->HandleNavigationImpl(
@@ -3290,9 +3393,9 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* browser) {
+                    base::WeakPtr<BrowserWindowInterface> browser) {
         EXPECT_EQ(external_url, params.url);
-        // CURRENT_TAB should be converted to NEW_FOREGROUND_TAB.
+        // `kCurrentTab` should be converted to `kNewForegroundTab`.
         EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   params.disposition);
         run_loop.Quit();
@@ -3338,7 +3441,7 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* browser) {
+                    base::WeakPtr<BrowserWindowInterface> browser) {
         EXPECT_EQ(external_url, params.url);
         EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
                   params.disposition);
@@ -3643,7 +3746,7 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* target_browser) {
+                    base::WeakPtr<BrowserWindowInterface> target_browser) {
         EXPECT_EQ(citation_url, params.url);
         EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   params.disposition);
@@ -3720,7 +3823,7 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* target_browser) {
+                    base::WeakPtr<BrowserWindowInterface> target_browser) {
         EXPECT_EQ(organic_url, params.url);
         EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   params.disposition);
@@ -3984,16 +4087,18 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* target_browser) {
+                    base::WeakPtr<BrowserWindowInterface> target_browser) {
         EXPECT_EQ(citation_url, params.url);
-        EXPECT_EQ(WindowOpenDisposition::kNewBackgroundTab, params.disposition);
+        EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
+                  params.disposition);
         run_loop.Quit();
       });
 
-  content::OpenURLParams open_params(citation_url, content::Referrer(),
-                                     WindowOpenDisposition::kNewBackgroundTab,
-                                     ui::PageTransition::PAGE_TRANSITION_LINK,
-                                     /*is_renderer_initiated=*/true);
+  content::OpenURLParams open_params(
+      citation_url, content::Referrer(),
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
+      ui::PageTransition::PAGE_TRANSITION_LINK,
+      /*is_renderer_initiated=*/true);
 
   EXPECT_TRUE(service_for_nav_->HandleNavigation(
       std::move(open_params), panel_contents.get(),
@@ -4156,7 +4261,7 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* browser) {
+                    base::WeakPtr<BrowserWindowInterface> browser) {
         EXPECT_EQ(shopping_url, params.url);
         EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   params.disposition);
@@ -4197,7 +4302,7 @@ TEST_F(
   EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
       .WillOnce([&](const content::OpenURLParams& params,
                     const blink::mojom::WindowFeatures& features,
-                    BrowserWindowInterface* browser) {
+                    base::WeakPtr<BrowserWindowInterface> browser) {
         EXPECT_EQ(organic_url, params.url);
         EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   params.disposition);
@@ -5569,8 +5674,9 @@ TEST_F(ContextualTasksUiServiceTest,
   params.frame_tree_node_id =
       source_contents->GetPrimaryMainFrame()->GetFrameTreeNodeId();
 
+  base::WeakPtrFactory<BrowserWindowInterface> weak_browser_factory(&browser);
   real_service_->OpenUrlForTesting(params, blink::mojom::WindowFeatures(),
-                                   &browser);
+                                   weak_browser_factory.GetWeakPtr());
 
   EXPECT_EQ(web_contents->GetVisibleURL(), target_url);
 }
@@ -5831,5 +5937,145 @@ TEST_F(ContextualTasksUiServiceTest, SidePanelUrlChangesSyncStaleCsParam) {
                              captcha_url, panel_contents.get()));
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+// Incognito always uses dark mode, on all platforms.
+TEST_F(ContextualTasksUiServiceTest,
+       SidePanelUrlChangesUseDarkModeInIncognito) {
+  Profile* otr_profile =
+      profile_->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  std::unique_ptr<content::WebContents> panel_contents =
+      content::WebContentsTester::CreateTestWebContents(
+          otr_profile, content::SiteInstance::Create(otr_profile));
+
+  const GURL url = ContextualTasksUiService::AddRequiredSidePanelUrlChanges(
+      GURL("https://www.google.com/search?udm=50&q=test"),
+      panel_contents.get());
+
+  std::string cs_value;
+  ASSERT_TRUE(net::GetValueForKeyInQuery(url, "cs", &cs_value));
+  EXPECT_EQ(cs_value, "1");
+}
+
+TEST_F(ContextualTasksUiServiceTest,
+       HandleSidePanelExternalNavigation_BrowserDestroyedBeforeTaskRuns) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kContextualTasksClobberActiveTab);
+
+  auto panel_contents = content::WebContentsTester::CreateTestWebContents(
+      profile_.get(), content::SiteInstance::Create(profile_.get()));
+  auto active_tab_contents = content::WebContentsTester::CreateTestWebContents(
+      profile_.get(), content::SiteInstance::Create(profile_.get()));
+  GURL initial_url("https://initial.example.com/");
+  content::WebContentsTester::For(active_tab_contents.get())
+      ->SetLastCommittedURL(initial_url);
+
+  tabs::MockTabInterface active_tab;
+  ON_CALL(active_tab, GetContents)
+      .WillByDefault(Return(active_tab_contents.get()));
+
+  auto browser_window =
+      std::make_unique<NiceMock<MockBrowserWindowInterface>>();
+  base::WeakPtrFactory<BrowserWindowInterface> weak_browser_factory(
+      browser_window.get());
+  ON_CALL(*browser_window, GetWeakPtr())
+      .WillByDefault(Return(weak_browser_factory.GetWeakPtr()));
+
+  NiceMock<MockTabListInterface> mock_tab_list;
+  ON_CALL(mock_tab_list, GetActiveTab).WillByDefault(Return(&active_tab));
+  auto tab_list_registration =
+      std::make_unique<ui::ScopedUnownedUserData<TabListInterface>>(
+          browser_window->GetUnownedUserDataHost(), mock_tab_list);
+
+  webui::SetBrowserWindowInterface(panel_contents.get(), browser_window.get());
+
+  content::OpenURLParams params(
+      GURL("https://example.com/article"), content::Referrer(),
+      ui::mojom::WindowOpenDisposition::kCurrentTab, ui::PAGE_TRANSITION_LINK,
+      /*is_renderer_initiated=*/true);
+  params.initiator_origin = url::Origin::Create(GURL("https://www.google.com"));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
+      .WillOnce([&](const content::OpenURLParams& url_params,
+                    const blink::mojom::WindowFeatures& window_features,
+                    base::WeakPtr<BrowserWindowInterface> browser) {
+        EXPECT_FALSE(browser);
+        EXPECT_TRUE(browser.WasInvalidated());
+        real_service_->OpenUrlForTesting(url_params, window_features,
+                                         std::move(browser));
+        run_loop.Quit();
+      });
+
+  EXPECT_TRUE(service_for_nav_->HandleSidePanelExternalNavigation(
+      params, panel_contents.get(), /*tab=*/nullptr,
+      blink::mojom::WindowFeatures()));
+
+  // Destroy the BrowserWindowInterface before the posted OpenUrl task executes.
+  webui::SetBrowserWindowInterface(panel_contents.get(), nullptr);
+  tab_list_registration.reset();
+  weak_browser_factory.InvalidateWeakPtrs();
+  browser_window.reset();
+
+  run_loop.Run();
+
+  // The active tab must not have been navigated after the browser window was
+  // destroyed.
+  EXPECT_EQ(active_tab_contents->GetLastCommittedURL(), initial_url);
+  EXPECT_TRUE(active_tab_contents->GetVisibleURL().is_empty());
+}
+
+TEST_F(ContextualTasksUiServiceTest,
+       HandleCitationClick_BrowserDestroyedBeforeTaskRuns) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(kContextualTasksClobberActiveTab);
+
+  auto panel_contents = content::WebContentsTester::CreateTestWebContents(
+      profile_.get(), content::SiteInstance::Create(profile_.get()));
+
+  auto browser_window =
+      std::make_unique<NiceMock<MockBrowserWindowInterface>>();
+  base::WeakPtrFactory<BrowserWindowInterface> weak_browser_factory(
+      browser_window.get());
+  ON_CALL(*browser_window, GetWeakPtr())
+      .WillByDefault(Return(weak_browser_factory.GetWeakPtr()));
+
+  NiceMock<MockTabListInterface> mock_tab_list;
+  auto tab_list_registration =
+      std::make_unique<ui::ScopedUnownedUserData<TabListInterface>>(
+          browser_window->GetUnownedUserDataHost(), mock_tab_list);
+
+  webui::SetBrowserWindowInterface(panel_contents.get(), browser_window.get());
+
+  content::OpenURLParams params(
+      GURL("https://example.com/article#:~:text=sample+text"),
+      content::Referrer(), ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui::PAGE_TRANSITION_LINK,
+      /*is_renderer_initiated=*/true);
+  params.initiator_origin = url::Origin::Create(GURL("https://www.google.com"));
+
+  base::RunLoop run_loop;
+  EXPECT_CALL(*service_for_nav_, OpenUrl(_, _, _))
+      .WillOnce([&](const content::OpenURLParams& url_params,
+                    const blink::mojom::WindowFeatures& window_features,
+                    base::WeakPtr<BrowserWindowInterface> browser) {
+        EXPECT_FALSE(browser);
+        EXPECT_TRUE(browser.WasInvalidated());
+        real_service_->OpenUrlForTesting(url_params, window_features,
+                                         std::move(browser));
+        run_loop.Quit();
+      });
+
+  EXPECT_TRUE(service_for_nav_->HandleCitationClick(
+      params, panel_contents.get(), /*tab=*/nullptr,
+      blink::mojom::WindowFeatures()));
+
+  // Destroy the BrowserWindowInterface before the posted OpenUrl task executes.
+  webui::SetBrowserWindowInterface(panel_contents.get(), nullptr);
+  tab_list_registration.reset();
+  weak_browser_factory.InvalidateWeakPtrs();
+  browser_window.reset();
+
+  run_loop.Run();
+}
 
 }  // namespace contextual_tasks

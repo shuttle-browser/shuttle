@@ -33,8 +33,8 @@ import static androidx.browser.trusted.LaunchHandlerClientMode.NAVIGATE_NEW;
 
 import static org.chromium.build.NullUtil.assumeNonNull;
 import static org.chromium.chrome.browser.app.tab_activity_glue.PopupCreatorImpl.EXTRA_REQUESTED_WINDOW_FEATURES;
-import static org.chromium.chrome.browser.flags.ChromeFeatureList.sCctTabSwitcherEnabledForChromeExperiment;
-import static org.chromium.chrome.browser.flags.ChromeFeatureList.sCctTabSwitcherEnabledForEmbedderExperiment;
+import static org.chromium.chrome.browser.flags.ChromeFeatureList.sTabbedCctIfAllowedByEmbedder;
+import static org.chromium.chrome.browser.flags.ChromeFeatureList.sTabbedCctIfEnabledByEmbedder;
 
 import android.app.Activity;
 import android.app.ActivityOptions;
@@ -175,10 +175,10 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
     public static final String EXTRA_UI_TYPE =
             "org.chromium.chrome.browser.customtabs.EXTRA_UI_TYPE";
 
-    public static final String EXTRA_CCT_TAB_SWITCHER_ENABLED_FOR_CHROME_EXPERIMENT =
-            "org.chromium.chrome.browser.customtabs.EXTRA_CCT_TAB_SWITCHER_ENABLED_FOR_CHROME_EXPERIMENT";
-    public static final String EXTRA_CCT_TAB_SWITCHER_ENABLED_FOR_EMBEDDER_EXPERIMENT =
-            "org.chromium.chrome.browser.customtabs.EXTRA_CCT_TAB_SWITCHER_ENABLED_FOR_EMBEDDER_EXPERIMENT";
+    public static final String EXTRA_TABBED_CCT_ALLOWED_BY_EMBEDDER =
+            "androidx.browser.customtabs.extra.EXTRA_TABBED_CCT_ALLOWED_BY_EMBEDDER";
+    public static final String EXTRA_TABBED_CCT_ENABLED_BY_EMBEDDER =
+            "androidx.browser.customtabs.extra.EXTRA_TABBED_CCT_ENABLED_BY_EMBEDDER";
 
     /** Extra that defines the initial background color (RGB color stored as an integer). */
     public static final String EXTRA_INITIAL_BACKGROUND_COLOR =
@@ -702,12 +702,12 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
             builder.setPartialTabToolbarCornerRadius(
                     getToolbarCornerRadiusFromIntent(context, intent));
 
-            builder.setCctTabSwitcherEnabledForChromeExperiment(
+            builder.setTabbedCctAllowedByEmbedder(
                     IntentUtils.safeGetBooleanExtra(
-                            intent, EXTRA_CCT_TAB_SWITCHER_ENABLED_FOR_CHROME_EXPERIMENT, false));
-            builder.setCctTabSwitcherEnabledForEmbedderExperiment(
+                            intent, EXTRA_TABBED_CCT_ALLOWED_BY_EMBEDDER, false));
+            builder.setTabbedCctEnabledByEmbedder(
                     IntentUtils.safeGetBooleanExtra(
-                            intent, EXTRA_CCT_TAB_SWITCHER_ENABLED_FOR_EMBEDDER_EXPERIMENT, false));
+                            intent, EXTRA_TABBED_CCT_ENABLED_BY_EMBEDDER, false));
             // The default behavior is that the PCCT's height is resizable.
             @ActivityHeightResizeBehavior
             int activityHeightResizeBehavior =
@@ -745,13 +745,26 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
                 openInBrowserState = CustomTabsButtonState.BUTTON_STATE_OFF;
             }
             builder.setOpenInBrowserState(openInBrowserState);
+            builder.setLightColorSchemeParams(
+                    CustomTabColorProviderImpl.getColorSchemeParams(
+                            intent, CustomTabsIntent.COLOR_SCHEME_LIGHT));
+            builder.setDarkColorSchemeParams(
+                    CustomTabColorProviderImpl.getColorSchemeParams(
+                            intent, CustomTabsIntent.COLOR_SCHEME_DARK));
+            builder.setInitialBackgroundColor(
+                    CustomTabColorProviderImpl.retrieveInitialBackgroundColor(intent));
+            builder.setCustomButtonParams(CustomButtonParamsImpl.fromIntent(context, intent));
 
             mDataHolder = builder.build();
         }
 
-        // ColorProvider is not stored in CustomTabIntentDataHolder because the colorScheme can
-        // change when the Activity is recreated (e.g. when the system dark/light theme changes).
-        mColorProvider = new CustomTabColorProviderImpl(intent, context, colorScheme);
+        // Color scheme params for both schemes live in the holder; the ColorProvider is re-derived
+        // for the colorScheme in use because it can change on Activity recreation.
+        mColorProvider =
+                new CustomTabColorProviderImpl(
+                        mDataHolder.getColorSchemeParams(colorScheme),
+                        context,
+                        mDataHolder.mInitialBackgroundColor);
 
         if (getUiType() == CustomTabsUiType.POPUP) {
             mShareState = CustomTabsIntent.SHARE_STATE_OFF;
@@ -772,7 +785,7 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
             }
         }
 
-        retrieveCustomButtons(intent, context);
+        retrieveCustomButtons(context);
 
         List<Bundle> menuItems =
                 IntentUtils.getParcelableArrayListExtra(intent, CustomTabsIntent.EXTRA_MENU_ITEMS);
@@ -919,19 +932,24 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
     }
 
     /**
-     * Gets custom buttons from the intent and updates {@link #mCustomButtonParams}, {@link
-     * #mBottombarButtons} and {@link #mToolbarButtons}.
+     * Gets custom buttons from {@link #mDataHolder} and updates {@link #mCustomButtonParams},
+     * {@link #mBottombarButtons} and {@link #mToolbarButtons}. If a toolbar button's icon no longer
+     * fits the toolbar (e.g. after an in-place {@link CustomButtonParams#update} call or a density
+     * configuration change), it is demoted to the bottom bar and {@link
+     * CustomButtonParams#updateShowOnToolbar(boolean)} is updated to match.
      */
-    private void retrieveCustomButtons(Intent intent, Context context) {
+    private void retrieveCustomButtons(Context context) {
         assert mCustomButtonParams == null;
-        mCustomButtonParams = CustomButtonParamsImpl.fromIntent(context, intent);
+        mCustomButtonParams = new ArrayList<>(mDataHolder.mCustomButtonParams);
         Set<Integer> googleBottomBarSupportedCustomButtonParamIds =
                 getGoogleBottomBarSupportedCustomButtonParamIds();
         for (CustomButtonParams params : mCustomButtonParams) {
             if (googleBottomBarSupportedCustomButtonParamIds.contains(params.getId())) {
                 mGoogleBottomBarButtons.add(params);
                 params.updateShowOnToolbar(false);
-            } else if (!params.showOnToolbar()) {
+            } else if (!params.showOnToolbar() || !params.doesIconFitToolbar(context)) {
+                // Keep mIsOnToolbar in sync if the button was demoted due to icon size.
+                params.updateShowOnToolbar(false);
                 mBottombarButtons.add(params);
             } else if (canAddMoreToolbarItems()) {
                 mToolbarButtons.add(params);
@@ -2021,14 +2039,14 @@ public class CustomTabIntentDataProvider extends BrowserServicesIntentDataProvid
     }
 
     @Override
-    public boolean isCctTabSwitcherEnabled() {
+    public boolean isTabbedCctEnabled() {
         boolean isEnabledForEmbedderExperiment =
-                sCctTabSwitcherEnabledForEmbedderExperiment.isEnabled()
-                        && mDataHolder.mCctTabSwitcherEnabledForEmbedderExperiment;
+                sTabbedCctIfEnabledByEmbedder.isEnabled()
+                        && mDataHolder.mTabbedCctEnabledByEmbedder;
 
         boolean isEnabledForChromeExperiment =
-                sCctTabSwitcherEnabledForChromeExperiment.isEnabled()
-                        && mDataHolder.mCctTabSwitcherEnabledForChromeExperiment;
+                sTabbedCctIfAllowedByEmbedder.isEnabled()
+                        && mDataHolder.mTabbedCctAllowedByEmbedder;
 
         return isEnabledForEmbedderExperiment || isEnabledForChromeExperiment;
     }

@@ -49,11 +49,10 @@ import org.chromium.content_public.browser.LoadUrlParams;
 public class OfflinePageDownloadBridge {
     private static @Nullable OfflinePageDownloadBridge sInstance;
     private static boolean sIsTesting;
-    private long mNativeOfflinePageDownloadBridge;
 
     /**
-     * @return An {@link OfflinePageDownloadBridge} instance singleton.  If one
-     *         is not available this will create a new one.
+     * @return An {@link OfflinePageDownloadBridge} instance singleton. If one is not available this
+     *     will create a new one.
      */
     public static OfflinePageDownloadBridge getInstance() {
         if (sInstance == null) {
@@ -63,15 +62,8 @@ public class OfflinePageDownloadBridge {
     }
 
     private OfflinePageDownloadBridge() {
-        mNativeOfflinePageDownloadBridge =
-                sIsTesting ? 0L : OfflinePageDownloadBridgeJni.get().init(this);
-    }
-
-    /** Destroys the native portion of the bridge. */
-    public void destroy() {
-        if (mNativeOfflinePageDownloadBridge != 0) {
-            OfflinePageDownloadBridgeJni.get().destroy(mNativeOfflinePageDownloadBridge);
-            mNativeOfflinePageDownloadBridge = 0;
+        if (!sIsTesting) {
+            OfflinePageDownloadBridgeJni.get().init();
         }
     }
 
@@ -176,18 +168,18 @@ public class OfflinePageDownloadBridge {
     }
 
     /**
-     * Starts download of the page currently open in the specified Tab.
-     * If tab's contents are not yet loaded completely, we'll wait for it
-     * to load enough for snapshot to be reasonable. If the Chrome is made
-     * background and killed, the background request remains that will
-     * eventually load the page in background and obtain its offline
-     * snapshot.
+     * Starts download of the page currently open in the specified Tab. If tab's contents are not
+     * yet loaded completely, we'll wait for it to load enough for snapshot to be reasonable. If the
+     * Chrome is made background and killed, the background request remains that will eventually
+     * load the page in background and obtain its offline snapshot.
      *
      * @param tab a tab contents of which will be saved locally.
      * @param origin the object encapsulating application origin of the request.
+     * @param fromAppMenu whether the download is started from the app menu.
      */
-    public static void startDownload(Tab tab, OfflinePageOrigin origin) {
-        OfflinePageDownloadBridgeJni.get().startDownload(tab, origin.encodeAsJsonString());
+    public static void startDownload(Tab tab, OfflinePageOrigin origin, boolean fromAppMenu) {
+        OfflinePageDownloadBridgeJni.get()
+                .startDownload(tab, origin.encodeAsJsonString(), fromAppMenu);
     }
 
     /** Shows a "Downloading ..." toast for the requested items already scheduled for download. */
@@ -220,10 +212,8 @@ public class OfflinePageDownloadBridge {
 
     @NativeMethods
     interface Natives {
-        long init(OfflinePageDownloadBridge self);
+        void init();
 
-        void destroy(long nativeOfflinePageDownloadBridge);
-
-        void startDownload(Tab tab, @JniType("std::string") String origin);
+        void startDownload(Tab tab, @JniType("std::string") String origin, boolean fromAppMenu);
     }
 }

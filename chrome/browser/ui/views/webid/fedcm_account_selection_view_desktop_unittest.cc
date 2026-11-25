@@ -41,9 +41,13 @@
 #include "content/public/test/web_contents_tester.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_unittest_util.h"
 #include "ui/views/test/mock_input_event_activation_protector.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
@@ -2549,6 +2553,37 @@ TEST_F(FedCmAccountSelectionViewDesktopTest,
   controller->CloseModalDialog();
 }
 
+// Tests that closing the pop-up window does not use the view if that destroys
+// it, e.g. if closing the pop-up activates another tab. Regression test for
+// crbug.com/574762567.
+TEST_F(FedCmAccountSelectionViewDesktopTest, ClosePopupWindowDestroysView) {
+  std::unique_ptr<TestFedCmAccountSelectionView> controller =
+      CreateAndShow(accounts_);
+  CreateAndShowPopupWindow(*controller);
+  EXPECT_CALL(*controller->GetPopupWindow(), ClosePopupWindow)
+      .WillOnce([&controller]() { controller.reset(); });
+
+  // This should not crash.
+  controller->CloseModalDialog();
+}
+
+// Tests that showing a pop-up window while one is open does not use the view if
+// resizing and focusing the open pop-up window destroys it.
+TEST_F(FedCmAccountSelectionViewDesktopTest,
+       ResizeAndFocusPopupWindowDestroysView) {
+  std::unique_ptr<TestFedCmAccountSelectionView> controller =
+      CreateAndShow(accounts_);
+  CreateAndShowPopupWindow(*controller);
+  EXPECT_CALL(*controller->GetPopupWindow(), ResizeAndFocusPopupWindow)
+      .WillOnce([&controller]() { controller.reset(); });
+
+  // This should not crash.
+  EXPECT_FALSE(controller->ShowModalDialog(GURL(u"https://example.com"),
+                                           blink::mojom::RpMode::kActive,
+                                           base::DoNothing()));
+  EXPECT_FALSE(controller);
+}
+
 // Tests that opening a popup after a verifying sheet, then closing the popup,
 // notifies the observer.
 TEST_F(FedCmAccountSelectionViewDesktopTest,
@@ -2874,14 +2909,10 @@ TEST_F(FedCmAccountSelectionViewDesktopTest,
   EXPECT_TRUE(controller->IsDialogWidgetVisible());
 }
 
-// Tests that changing visibility from hidden to visible, also updates the
-// dialog position. This is needed in case the web contents was resized while
-// hidden.
-// TODO(https://crbug.com/441908440): Is this test really valid here since
-// visibility is controlled by the TabDialogManager rather than it the
-// controller handling all that work.
+// Tests that transitioning tab visibility updates the dialog position and
+// restores dialog visibility on `FedCmAccountSelectionView`.
 TEST_F(FedCmAccountSelectionViewDesktopTest,
-       DISABLED_VisibilityChangesUpdatesDialogPosition) {
+       VisibilityChangesUpdatesDialogPosition) {
   std::unique_ptr<TestFedCmAccountSelectionView> controller =
       CreateAndShow(accounts_);
   controller->dialog_position_updated_ = false;
@@ -3371,10 +3402,73 @@ TEST_F(FedCmAccountSelectionViewAmbientBubbleTest,
   EXPECT_EQ(credential.email, u"user@example.com");
   EXPECT_EQ(credential.idp_name, u"idp.example");
   // The picture is cropped at the size shown in the bubble, so it isn't
-  // scaled.
+  // scaled. The IdP has no icon, so the picture has no badge.
   EXPECT_EQ(credential.icon.Size(),
             gfx::Size(ambient_signin::kAccountPictureSize,
                       ambient_signin::kAccountPictureSize));
+  EXPECT_TRUE(credential.badge.IsEmpty());
+}
+
+TEST_F(FedCmAccountSelectionViewAmbientBubbleTest,
+       AmbientBubbleBadgesPictureWithIdpIcon) {
+  idp_data_->idp_metadata.brand_decoded_icon =
+      gfx::test::CreateImage(/*size=*/32, SK_ColorBLUE);
+  std::unique_ptr<TestFedCmAccountSelectionView> controller =
+      CreateAndShow(accounts_);
+
+  ambient_signin::AmbientLoginPermissionRequest* request =
+      WaitForAmbientBubble();
+  ASSERT_TRUE(request);
+  ASSERT_EQ(request->federated_credentials().size(), 1u);
+  const ambient_signin::FederatedCredential& credential =
+      request->federated_credentials()[0];
+  // The picture is unchanged, since the bubble draws the badge.
+  EXPECT_EQ(credential.icon.Size(),
+            gfx::Size(ambient_signin::kAccountPictureSize,
+                      ambient_signin::kAccountPictureSize));
+  // The IdP's icon is cropped into a circle at the size of the badge's image,
+  // so it isn't scaled.
+  ASSERT_EQ(credential.badge.Size(),
+            gfx::Size(ambient_signin::kBadgeImageSize,
+                      ambient_signin::kBadgeImageSize));
+  const SkBitmap* badge =
+      credential.badge.Rasterize(/*color_provider=*/nullptr).bitmap();
+  ASSERT_TRUE(badge);
+  EXPECT_EQ(badge->getColor(ambient_signin::kBadgeImageSize / 2,
+                            ambient_signin::kBadgeImageSize / 2),
+            SK_ColorBLUE);
+  EXPECT_EQ(SkColorGetA(badge->getColor(0, 0)), SK_AlphaTRANSPARENT);
+}
+
+TEST_F(FedCmAccountSelectionViewAmbientBubbleTest,
+       AmbientBubbleDoesNotBadgePictureWithSmallIdpIcon) {
+  // The badge needs an icon of at least 20 pixels, so that the icon's safe
+  // zone isn't scaled up to fill the 16 DIP badge.
+  idp_data_->idp_metadata.brand_decoded_icon =
+      gfx::test::CreateImage(/*size=*/16);
+  std::unique_ptr<TestFedCmAccountSelectionView> controller =
+      CreateAndShow(accounts_);
+
+  ambient_signin::AmbientLoginPermissionRequest* request =
+      WaitForAmbientBubble();
+  ASSERT_TRUE(request);
+  ASSERT_EQ(request->federated_credentials().size(), 1u);
+  EXPECT_TRUE(request->federated_credentials()[0].badge.IsEmpty());
+}
+
+TEST_F(FedCmAccountSelectionViewAmbientBubbleTest,
+       AmbientBubbleDoesNotBadgePictureWithNonSquareIdpIcon) {
+  // Like in the regular FedCM UI, the badge needs a square icon.
+  idp_data_->idp_metadata.brand_decoded_icon =
+      gfx::test::CreateImage(/*width=*/32, /*height=*/24);
+  std::unique_ptr<TestFedCmAccountSelectionView> controller =
+      CreateAndShow(accounts_);
+
+  ambient_signin::AmbientLoginPermissionRequest* request =
+      WaitForAmbientBubble();
+  ASSERT_TRUE(request);
+  ASSERT_EQ(request->federated_credentials().size(), 1u);
+  EXPECT_TRUE(request->federated_credentials()[0].badge.IsEmpty());
 }
 
 TEST_F(FedCmAccountSelectionViewAmbientBubbleTest,
@@ -3875,10 +3969,10 @@ TEST_F(FedCmAccountSelectionViewAmbientBubbleTest,
       ->RequestPermission(
           main_frame,
           std::make_unique<ambient_signin::AmbientLoginPermissionRequest>(
-              GURL("https://rp.example"), GURL("https://rp.example"),
+              GURL("https://rp.example"),
               std::vector<ambient_signin::PasskeyOrPasswordCredential>(),
               /*credential_selected_callback=*/base::DoNothing(),
-              /*permission_decided_callback=*/base::DoNothing()));
+              ambient_signin::AmbientLoginPermissionRequest::Options{}));
   ASSERT_TRUE(WaitForAmbientBubble());
 
   std::unique_ptr<TestFedCmAccountSelectionView> controller =

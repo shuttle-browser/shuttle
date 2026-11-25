@@ -14,6 +14,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "chrome/browser/glic/glic_enums.h"
 #include "chrome/browser/glic/host/glic.mojom.h"
 #include "chrome/browser/glic/host/glic_webui.mojom.h"
@@ -80,11 +81,16 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   void DidRequestContextFromTab();
   void OnTurnCompleted(mojom::WebClientModel model, base::TimeDelta duration);
   void OnReaction(mojom::MetricUserInputReactionType reaction_type);
+  void OnInputFocused();
   void OnGlicScrollAttempt();
   void OnGlicScrollComplete(bool success);
 
   // Called when the opt-in CTA is shown.
   void OnOptinImpression();
+
+  // Multi-tab tooltip metrics.
+  void OnTooltipImpression(mojom::TooltipImpressionType impression);
+  void OnTooltipHidden();
 
   // TODO(crbug.com/545714879): Remove OptInShownCallback once
   // OnFreOptInShown is logged directly or via direct profile helpers instead of
@@ -167,6 +173,10 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // Sets `initial_invocation_source_` if it has not been set yet.
   void MaybeSetInitialInvocationSource(mojom::InvocationSource source);
 
+  // Called before showing the instance to resolve any unseen completed response
+  // and record return source if the instance has conversation history.
+  void OnWillShow(const ShowOptions& options, bool has_conversation_id);
+
   // Called when the UI is shown and it was not already showing for this
   // instance.
   void OnOpen(glic::mojom::InvocationSource source, const ShowOptions& options);
@@ -178,7 +188,7 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   bool ResetShownState(EmbedderKey key);
 
   // Called when a tab that was bound to this instance is destroyed.
-  void OnBoundTabDestroyed();
+  void OnBoundTabDestroyed(tabs::TabInterface* tab, bool is_active_embedder);
 
   // Called when GlicInstanceImpl::CreateTab is called.
   void OnCreateTab();
@@ -215,6 +225,16 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // Called when the client is ready to show.
   void OnClientReady();
 
+  // Called when the web client is cleared (reload, crash, navigation, or
+  // hibernation).
+  void OnWebClientCleared();
+
+  // Updates metrics state when the user accepts the native FRE.
+  void OnNativeFreAccepted();
+
+  // Updates metrics state when the user accepts the WebUI FRE.
+  void OnWebFreAccepted();
+
   // Guest actionability milestones for Glic.Instance.TimeToActionable, reported
   // by GlicWebClientManager.
 
@@ -232,8 +252,9 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // crashes or commits a new primary main-frame navigation.
   void OnGuestReset();
 
-  // Returns whether the current guest document is still waiting to record its
-  // initial TimeToActionable metric.
+  // Returns whether the current guest document still needs an actionable
+  // compositor frame callback (for Glic.Instance.TimeToActionable or
+  // Glic.Fre.AcceptToChatActionable).
   bool IsWaitingForActionable() const;
 
   void OnUserResizeStarted(const gfx::Size& start_size);
@@ -316,8 +337,18 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // by the number of attached tabs.
   void RecordResponseLatencyByAttachedTabCount(base::TimeDelta latency);
 
+  // Records whether a multi-tab prompt was submitted after a tooltip
+  // impression.
+  void OnTooltipMultiTabPromptSubmitted();
+
+  // Records ClosedWhileShown and PanelCloseWithin10s if a multi-tab tooltip was
+  // shown since the last close or web-client load, then clears tooltip close
+  // state so each episode counts at most once.
+  void RecordTooltipClosedMetrics();
+
   void RecordSkillsInvokeFunnelStep(SkillsInvokeFunnel invoke_funnel);
   void RecordAndResetAutoOpenPdfMetric();
+  void RecordOptInImpression();
   void MaybeRecordOptInImpression();
 
   // Records the duration and prompt count for the first time the side panel is
@@ -328,7 +359,41 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // while the client was still loading.
   void MaybeRecordTimeToDismissWhileLoading();
 
+  void RecordPanelPresentationTime(base::TimeTicks end_time);
   void RecordTimeToActionable(base::TimeTicks end_time);
+  void UpdateNativeFreStateForShow(const ShowOptions& options);
+  void MaybeRecordAcceptToChatActionable(base::TimeTicks now);
+  void CancelNativeFreWait();
+  bool CanRecordOptInImpression() const;
+
+  bool IsVisible() const;
+
+  // Tracks a response that has finished streaming while the panel was
+  // hidden or in an inactive window, pending resolution when the panel
+  // becomes showing or active (or finalization if the instance is
+  // destroyed first).
+  struct PendingCompletedResponse {
+    base::TimeTicks completion_time;
+    bool is_actor = false;
+    bool was_showing = false;
+    std::optional<mojom::InvocationSource> return_source;
+  };
+
+  void RecordTurnShowingOutcome(bool is_actor, GlicTurnShowingOutcome outcome);
+  void RecordCompletedWhileHiddenShown(bool is_actor,
+                                       mojom::InvocationSource return_source,
+                                       base::TimeDelta time_to_show);
+  void RecordCompletedWhileHiddenDestroyed(
+      bool is_actor,
+      base::TimeDelta time_until_destroyed);
+  void MaybeResolvePendingResponse();
+  void FinalizePendingResponse(base::TimeTicks now);
+
+  enum class NativeFreState {
+    kNone,
+    kWaitingForAccept,
+    kAccepted,
+  };
 
   base::flat_map<GlicInstanceEvent, int> event_counts_;
   EmbedderType current_ui_mode_ = EmbedderType::kUnknown;
@@ -362,6 +427,8 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
     // Whether a frame was submitted while an invocation was being timed but the
     // panel was hidden. Recorded when the panel is shown again.
     bool frame_submitted_while_hidden = false;
+    // Whether this guest document has submitted an actionable compositor frame.
+    bool guest_frame_submitted = false;
     std::optional<base::TimeTicks> actionable_mark_time;
   };
 
@@ -370,6 +437,7 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // The last invocation source that was used to show the panel.
   mojom::InvocationSource last_invocation_source_ =
       mojom::InvocationSource::kUnsupported;
+  std::optional<PendingCompletedResponse> pending_completed_response_;
   std::optional<uint64_t> active_invocation_id_ = std::nullopt;
   // When `active_invocation_id_` was set. Null when there is no invocation in
   // flight. Used to report how far into an invocation a failure happened.
@@ -380,6 +448,12 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   InvocationLoadState invocation_load_state_;
   InvocationLoadState actionable_invocation_state_;
   base::TimeTicks web_ui_load_start_time_;
+  base::TimeTicks client_ready_time_;
+  base::TimeTicks open_start_time_;
+  bool was_client_ready_on_open_ = false;
+  bool input_focused_for_current_open_ = false;
+  bool input_focused_for_current_invocation_ = false;
+  bool input_focused_after_client_ready_ = false;
 
   base::TimeTicks last_active_time_;
   bool is_active_ = false;
@@ -406,6 +480,8 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   GuestActionableState guest_actionable_;
   bool is_opt_in_pending_ = false;
   bool opt_in_impression_recorded_for_current_open_ = false;
+  NativeFreState native_fre_state_ = NativeFreState::kNone;
+  base::TimeTicks fre_accept_to_actionable_start_time_;
   bool has_consented_ = false;
   OptInShownCallback opt_in_shown_callback_;
 
@@ -440,6 +516,16 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // Incremented on user input when current_ui_mode_ is kSidePanel, and logged
   // when the side panel is closed or tab is switched for the first time.
   size_t side_panel_prompt_count_ = 0;
+
+  // Timestamp of the last tooltip impression, used to check whether the panel
+  // closes within 10s of a tooltip showing.
+  base::TimeTicks last_tooltip_impression_time_;
+
+  // Tracks if a tooltip was shown during the current session.
+  bool tooltip_shown_in_session_ = false;
+
+  // Tracks whether a multi-tab tooltip is currently displayed to the user.
+  bool tooltip_currently_visible_ = false;
 
   base::WeakPtrFactory<GlicInstanceMetrics> weak_ptr_factory_{this};
 };

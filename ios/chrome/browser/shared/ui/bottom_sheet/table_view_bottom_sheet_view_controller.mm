@@ -63,6 +63,9 @@ NSString* const kCustomDetentIdentifier = @"customDetent";
 
   // The window on which `_windowTraitChangeRegistration` is registered.
   __weak UIWindow* _observedWindow;
+
+  // The row that is selected in the table view.
+  NSInteger _selectedRow;
 }
 
 @end
@@ -71,20 +74,24 @@ NSString* const kCustomDetentIdentifier = @"customDetent";
 
 - (void)reloadTableViewData {
   [_tableView reloadData];
-  if ([self rowCount] > 0) {
-    // `reloadData` clears the table view's selection, so it needs to be
-    // restored to keep it in sync with the checkmark.
-    [self selectFirstRow];
-  }
+  // `reloadData` clears the table view's selection, so it needs to be restored
+  // to keep it in sync with the checkmark.
+  [self selectCurrentRow];
   [self updateHeight];
+}
+
+- (void)setSelectedRow:(NSInteger)selectedRow {
+  if (_selectedRow == selectedRow) {
+    return;
+  }
+  _selectedRow = selectedRow;
+  if (_tableView) {
+    [self selectCurrentRow];
+  }
 }
 
 - (void)reconfigureCellAtIndexPath:(NSIndexPath*)indexPath {
   [_tableView reconfigureRowsAtIndexPaths:@[ indexPath ]];
-}
-
-- (NSInteger)selectedRow {
-  return _tableView.indexPathForSelectedRow.row;
 }
 
 - (CGFloat)tableViewWidth {
@@ -154,7 +161,7 @@ NSString* const kCustomDetentIdentifier = @"customDetent";
   _minimizedHeightConstraint.active = _tableViewIsMinimized;
   _heightConstraint.active = !_tableViewIsMinimized;
 
-  [self selectFirstRow];
+  [self selectCurrentRow];
 
   return _tableView;
 }
@@ -214,8 +221,8 @@ NSString* const kCustomDetentIdentifier = @"customDetent";
 
   [self setUpBottomSheetDetents];
 
-  // Set selection to the first one.
-  [self selectFirstRow];
+  // Set selection to the selected row.
+  [self selectCurrentRow];
 
   [self registerForTraitChanges:@[ UITraitPreferredContentSizeCategory.class ]
                      withAction:@selector(updateHeightOnTraitChange)];
@@ -254,6 +261,7 @@ NSString* const kCustomDetentIdentifier = @"customDetent";
 
 - (void)tableView:(UITableView*)tableView
     didSelectRowAtIndexPath:(NSIndexPath*)indexPath {
+  _selectedRow = indexPath.row;
   [tableView cellForRowAtIndexPath:indexPath].accessoryType =
       UITableViewCellAccessoryCheckmark;
 }
@@ -300,11 +308,21 @@ NSString* const kCustomDetentIdentifier = @"customDetent";
   return 2.5;
 }
 
-// Select the first row in the table view.
-- (void)selectFirstRow {
-  [_tableView selectRowAtIndexPath:[NSIndexPath indexPathForRow:0 inSection:0]
+// Selects the current row in the table view.
+- (void)selectCurrentRow {
+  NSIndexPath* oldIndexPath = _tableView.indexPathForSelectedRow;
+  if (oldIndexPath) {
+    [_tableView deselectRowAtIndexPath:oldIndexPath animated:NO];
+    [_tableView cellForRowAtIndexPath:oldIndexPath].accessoryType =
+        UITableViewCellAccessoryNone;
+  }
+  NSIndexPath* newIndexPath = [NSIndexPath indexPathForRow:_selectedRow
+                                                 inSection:0];
+  [_tableView selectRowAtIndexPath:newIndexPath
                           animated:NO
                     scrollPosition:UITableViewScrollPositionNone];
+  [_tableView cellForRowAtIndexPath:newIndexPath].accessoryType =
+      UITableViewCellAccessoryCheckmark;
 }
 
 // Mocks cells to compute the table view height for the given number of rows.

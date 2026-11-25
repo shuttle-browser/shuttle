@@ -50,6 +50,7 @@
 #include "crypto/crypto_buildflags.h"
 #include "device/fido/public/features.h"
 #include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/compositor/compositor_switches.h"
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -168,7 +169,8 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, ChooserExceptionList) {
 }
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, ChooserExceptionListEntry) {
-  RunTest("settings/chooser_exception_list_entry_test.js", "mocha.run()");
+  RunTest("settings/chooser_exception_list_entry_test.js",
+          "runMochaSuite('ChooserExceptionListEntry')");
 }
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, CollapseRadioButton) {
@@ -196,6 +198,10 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, DefaultBrowser) {
   RunTest("settings/default_browser_test.js", "mocha.run()");
 }
 #endif
+
+IN_PROC_BROWSER_TEST_F(SettingsTest, DeviceTabVisibilityPage) {
+  RunTest("settings/device_tab_visibility_page_test.js", "mocha.run()");
+}
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, DoNotTrackToggle) {
   RunTest("settings/do_not_track_toggle_test.js", "mocha.run()");
@@ -232,10 +238,6 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, AiPage) {
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, AiInfoCard) {
   RunTest("settings/ai_info_card_test.js", "mocha.run()");
-}
-
-IN_PROC_BROWSER_TEST_F(SettingsTest, HistorySearchSubpage) {
-  RunTest("settings/ai_history_search_subpage_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, AiModeSearchPage) {
@@ -288,6 +290,10 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, FileSystemSettingsListEntries) {
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, FileSystemSettingsListEntryItems) {
   RunTest("settings/file_system_site_entry_item_test.js", "mocha.run()");
+}
+
+IN_PROC_BROWSER_TEST_F(SettingsTest, GeneralPageIndex) {
+  RunTest("settings/general_page_index_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, HelpPage) {
@@ -556,6 +562,11 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, SettingsRefresh2026) {
           "runMochaSuite('SettingsRefresh2026')");
 }
 
+IN_PROC_BROWSER_TEST_F(SettingsTest, SettingsSearch2026) {
+  RunTest("settings/settings_ui_test.js",
+          "runMochaSuite('SettingsSearch2026')");
+}
+
 IN_PROC_BROWSER_TEST_F(SettingsTest, ActiveTimer) {
   RunTest("settings/active_timer_test.js", "mocha.run()");
 }
@@ -579,6 +590,33 @@ IN_PROC_BROWSER_TEST_F(SettingsGlicSubpageLearnMoreTest,
                        GlicSettingsLearnMoreEnabled) {
   RunTest("settings/glic_subpage_test.js",
           "runMochaSuite('GlicSubpage LearnMoreEnabled')");
+}
+
+IN_PROC_BROWSER_TEST_F(SettingsTest, GeicSubpage) {
+  RunTest("settings/geic_subpage_test.js",
+          "runMochaSuite('GeicSubpage Default')");
+}
+
+class SettingsGeicSubpageLearnMoreTest : public SettingsBrowserTest {
+ public:
+  SettingsGeicSubpageLearnMoreTest() {
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {{features::kGlicLearnMoreURLConfig,
+          {
+              {"geic-default-tab-access-toggle-learn-more-url",
+               "https://google.com/"},
+          }}},
+        /*disabled_features=*/{});
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(SettingsGeicSubpageLearnMoreTest,
+                       GeicSettingsLearnMoreEnabled) {
+  RunTest("settings/geic_subpage_test.js",
+          "runMochaSuite('GeicSubpage LearnMoreEnabled')");
 }
 
 class SettingsGlicPageHeaderLearnMoreTest : public SettingsBrowserTest {
@@ -1225,6 +1263,14 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, SettingsRadioGroup) {
   RunTest("settings/settings_radio_group_test.js", "mocha.run()");
 }
 
+IN_PROC_BROWSER_TEST_F(SettingsTest, SettingsSearchDropdown) {
+  RunTest("settings/settings_search_dropdown_test.js", "mocha.run()");
+}
+
+IN_PROC_BROWSER_TEST_F(SettingsTest, SettingsSearchManager) {
+  RunTest("settings/settings_search_manager_test.js", "mocha.run()");
+}
+
 IN_PROC_BROWSER_TEST_F(SettingsTest, SimpleConfirmationDialog) {
   RunTest("settings/simple_confirmation_dialog_test.js", "mocha.run()");
 }
@@ -1277,11 +1323,11 @@ IN_PROC_BROWSER_TEST_F(SettingsTest, Slider) {
   RunTest("settings/settings_slider_test.js", "mocha.run()");
 }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 IN_PROC_BROWSER_TEST_F(SettingsTest, SmartCardReadersPage) {
   RunTest("settings/smart_card_readers_page_test.js", "mocha.run()");
 }
-#endif  // BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(ENABLE_SMART_CARD)
 
 IN_PROC_BROWSER_TEST_F(SettingsTest, SpeedPage) {
   RunTest("settings/speed_page_test.js", "runMochaSuite('SpeedPage')");
@@ -1386,6 +1432,10 @@ using SettingsAiPageOfficialTest = SettingsBrowserTest;
 
 IN_PROC_BROWSER_TEST_F(SettingsAiPageOfficialTest, AiPageOfficial) {
   RunTest("settings/ai_page_official_test.js", "mocha.run()");
+}
+
+IN_PROC_BROWSER_TEST_F(SettingsAiPageOfficialTest, OnDeviceAiPage) {
+  RunTest("settings/on_device_ai_page_test.js", "mocha.run()");
 }
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 
@@ -1694,10 +1744,27 @@ IN_PROC_BROWSER_TEST_F(SettingsGeolocationPageTest, GeolocationPage) {
           "runMochaSuite('GeolocationPage')");
 }
 
-class JavascriptOptimizerPageTest : public SettingsBrowserTest {};
+class JavascriptOptimizerPageTest : public SettingsBrowserTest {
+ public:
+  JavascriptOptimizerPageTest() {
+    scoped_feature_list_.InitAndDisableFeature(
+        content_settings::features::kBlockV8OptimizerOnUnfamiliarSites);
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
 
 IN_PROC_BROWSER_TEST_F(JavascriptOptimizerPageTest, JavascriptOptimizerPage) {
   RunTest("settings/v8_page_test.js", "runMochaSuite('V8Page')");
+}
+
+// TODO(crbug.com/570186404): Remove once kBlockV8OptimizerOnUnfamiliarSites is
+// removed.
+IN_PROC_BROWSER_TEST_F(JavascriptOptimizerPageTest,
+                       BlockOnUnfamiliarSitesFeatureEnabled) {
+  RunTest("settings/v8_page_test.js",
+          "runMochaSuite('V8Page_BlockOnUnfamiliarSitesFeatureEnabled')");
 }
 
 using SettingsRouteTest = SettingsBrowserTest;
@@ -1974,6 +2041,10 @@ IN_PROC_BROWSER_TEST_F(YourSavedInfoTest, CollapsibleAutofillSettingsCard) {
 
 IN_PROC_BROWSER_TEST_F(YourSavedInfoTest, AutofillPage) {
   RunTest("settings/autofill_page_test.js", "mocha.run()");
+}
+
+IN_PROC_BROWSER_TEST_F(YourSavedInfoTest, AutofillPageV2) {
+  RunTest("settings/autofill_page_v2_test.js", "mocha.run()");
 }
 
 // TODO(crbug.com/545478765): Flaky on Windows.

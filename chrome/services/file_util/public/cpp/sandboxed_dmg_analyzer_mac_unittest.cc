@@ -19,7 +19,7 @@
 #include "chrome/common/safe_browsing/archive_analyzer_results.h"
 #include "chrome/services/file_util/fake_file_util_service.h"
 #include "chrome/services/file_util/file_util_service.h"
-#include "components/safe_browsing/content/common/file_type_policies.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "content/public/test/browser_task_environment.h"
 #include "content/public/test/test_utils.h"
@@ -96,10 +96,6 @@ class SandboxedDMGAnalyzerTest : public testing::TestWithParam<bool> {
 };
 
 TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDMG) {
-  if (GetParam()) {
-    GTEST_SKIP() << "TODO(crbug.com/575525008): Remove once Rust DMG parser "
-                    "is implemented.";
-  }
   base::FilePath path;
   ASSERT_NO_FATAL_FAILURE(path = GetFilePath("mach_o_in_dmg.dmg"));
 
@@ -174,10 +170,6 @@ TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDMG) {
 }
 
 TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDMGNoPartitionName) {
-  if (GetParam()) {
-    GTEST_SKIP() << "TODO(crbug.com/575525008): Remove once Rust DMG parser "
-                    "is implemented.";
-  }
   base::FilePath path;
   ASSERT_NO_FATAL_FAILURE(
       path = GetFilePath("mach_o_in_dmg_no_partition_name.dmg"));
@@ -253,10 +245,6 @@ TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDMGNoPartitionName) {
 }
 
 TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDmgNoSignature) {
-  if (GetParam()) {
-    GTEST_SKIP() << "TODO(crbug.com/575525008): Remove once Rust DMG parser "
-                    "is implemented.";
-  }
   base::FilePath unsigned_dmg;
   ASSERT_NO_FATAL_FAILURE(unsigned_dmg = GetFilePath("mach_o_in_dmg.dmg"));
 
@@ -269,10 +257,6 @@ TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDmgNoSignature) {
 }
 
 TEST_P(SandboxedDMGAnalyzerTest, AnalyzeDmgWithSignature) {
-  if (GetParam()) {
-    GTEST_SKIP() << "TODO(crbug.com/575525008): Remove once Rust DMG parser "
-                    "is implemented.";
-  }
   base::FilePath signed_dmg;
   EXPECT_TRUE(base::PathService::Get(chrome::DIR_TEST_DATA, &signed_dmg));
   signed_dmg = signed_dmg.AppendASCII("safe_browsing")

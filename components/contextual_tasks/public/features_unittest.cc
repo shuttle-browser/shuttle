@@ -5,8 +5,15 @@
 #include "components/contextual_tasks/public/features.h"
 
 #include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
 #include "components/contextual_tasks/public/host_override.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/device_info.h"
+#include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
+#endif
 
 namespace contextual_tasks {
 
@@ -102,6 +109,11 @@ TEST(FeaturesTest, ForcedEmbeddedPageHost_SetOverrideRuntime) {
 }
 
 TEST(FeaturesTest, IsContextualTasksUnboundedMenuEnabled_DefaultDisabled) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures(
+      /*enabled_features=*/{},
+      /*disabled_features=*/{kContextualTasksUnboundedMenu,
+                             kContextualTasksSidePanelRearchitecture});
   EXPECT_FALSE(IsContextualTasksUnboundedMenuEnabled());
 }
 
@@ -119,11 +131,76 @@ TEST(FeaturesTest,
 }
 
 TEST(FeaturesTest, IsContextualTasksUIEnabled_SidePanelRearchitectureEnabled) {
+#if BUILDFLAG(IS_ANDROID)
+  // On Android, Contextual Tasks UI is only enabled on the desktop form factor.
+  base::android::device_info::set_is_desktop_for_testing(true);
+  base::ScopedClosureRunner reset_is_desktop(base::BindOnce(
+      &base::android::device_info::reset_is_desktop_for_testing));
+#endif
   base::test::ScopedFeatureList scoped_features;
   scoped_features.InitWithFeatures({kContextualTasksSidePanelRearchitecture},
                                    {kContextualTasks, kContextualTasksSidePanel,
                                     kContextualTasksRearchitecture});
   EXPECT_TRUE(IsContextualTasksUIEnabled());
+}
+
+TEST(FeaturesTest,
+     IsContextualTasksEphemeralEntryPointEnabled_DefaultDisabled) {
+  EXPECT_FALSE(IsContextualTasksEphemeralEntryPointEnabled());
+}
+
+TEST(FeaturesTest, IsContextualTasksEphemeralEntryPointEnabled_LegacyParam) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitAndEnableFeatureWithParameters(
+      kContextualTasksEphemeralBrandedEntryPoint,
+      {{"ContextualTasksEntryPoint", "toolbar-ephemeral-branded"}});
+  EXPECT_TRUE(IsContextualTasksEphemeralEntryPointEnabled());
+}
+
+TEST(FeaturesTest,
+     IsContextualTasksEphemeralEntryPointEnabled_PinButtonRefactor) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures(
+      {kContextualTasksPinningV2, kContextualTasksEphemeralPinButtonRefactor},
+      {});
+  EXPECT_TRUE(IsContextualTasksEphemeralEntryPointEnabled());
+}
+
+TEST(FeaturesTest,
+     IsContextualTasksEphemeralEntryPointEnabled_RefactorRequiresPinningV2) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures({kContextualTasksEphemeralPinButtonRefactor},
+                                   {kContextualTasksPinningV2});
+  EXPECT_FALSE(IsContextualTasksEphemeralEntryPointEnabled());
+}
+
+TEST(FeaturesTest,
+     IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled_FeatureDisabled) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitAndDisableFeature(
+      kEphemeralPinningVisibleWhenPermanentlyPinned);
+  EXPECT_FALSE(IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled());
+}
+
+TEST(FeaturesTest,
+     IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled_FeatureEnabled) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures(
+      {kEphemeralPinningVisibleWhenPermanentlyPinned},
+      {kContextualTasksEphemeralPinButtonRefactor});
+  EXPECT_TRUE(IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled());
+}
+
+// The two-button mode is unsupported under the ephemeral pin button refactor.
+TEST(FeaturesTest,
+     IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled_PinButtonRefactor) {
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures(
+      {kEphemeralPinningVisibleWhenPermanentlyPinned, kContextualTasksPinningV2,
+       kContextualTasksEphemeralPinButtonRefactor},
+      {});
+  ASSERT_TRUE(IsContextualTasksEphemeralPinButtonRefactorEnabled());
+  EXPECT_FALSE(IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled());
 }
 
 TEST(FeaturesTest, GetEphemeralButtonContextMenuOption_FeatureDisabled) {
@@ -187,5 +264,36 @@ TEST(FeaturesTest, GetEphemeralButtonContextMenuOption_LegacyBooleanFallback) {
               GetEphemeralButtonContextMenuOption());
   }
 }
+
+#if BUILDFLAG(IS_ANDROID)
+TEST(FeaturesTest, IsContextualTasksUIEnabled_DesktopAndroid) {
+  base::android::device_info::set_is_desktop_for_testing(true);
+  base::ScopedClosureRunner reset_is_desktop(base::BindOnce(
+      &base::android::device_info::reset_is_desktop_for_testing));
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures(
+      {kContextualTasksSidePanel},
+      {kContextualTasks, kContextualTasksRearchitecture,
+       kContextualTasksSidePanelRearchitecture});
+
+  EXPECT_TRUE(IsContextualTasksFormFactorSupported());
+  EXPECT_TRUE(IsContextualTasksUIEnabled());
+}
+
+TEST(FeaturesTest, IsContextualTasksUIEnabled_NotDesktopAndroid) {
+  base::android::device_info::set_is_desktop_for_testing(false);
+  base::ScopedClosureRunner reset_is_desktop(base::BindOnce(
+      &base::android::device_info::reset_is_desktop_for_testing));
+  base::test::ScopedFeatureList scoped_features;
+  scoped_features.InitWithFeatures(
+      {kContextualTasksSidePanel, kContextualTasks,
+       kContextualTasksRearchitecture, kContextualTasksSidePanelRearchitecture},
+      {});
+
+  // Phones and tablets are not supported, even with every flag enabled.
+  EXPECT_FALSE(IsContextualTasksFormFactorSupported());
+  EXPECT_FALSE(IsContextualTasksUIEnabled());
+}
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace contextual_tasks

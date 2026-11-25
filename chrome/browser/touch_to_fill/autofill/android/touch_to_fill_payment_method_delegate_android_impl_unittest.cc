@@ -7,7 +7,6 @@
 #include <optional>
 #include <vector>
 
-#include "base/containers/to_vector.h"
 #include "base/functional/callback.h"
 #include "base/notreached.h"
 #include "base/strings/utf_string_conversions.h"
@@ -201,6 +200,7 @@ class MockBrowserAutofillManager : public TestBrowserAutofillManager {
               (mojom::ActionPersistence action_persistence,
                const FormGlobalId& form_id,
                const FieldGlobalId& field_id,
+               FillingProduct filling_product,
                const FillingPayload& filling_payload,
                AutofillTriggerSource trigger_source,
                bool require_user_confirmation,
@@ -424,7 +424,7 @@ TEST_F(TouchToFillPaymentMethodDelegateAndroidImplUnitTest,
   EXPECT_CALL(autofill_manager(),
               FillOrPreviewForm(
                   mojom::ActionPersistence::kFill, form_.global_id(),
-                  form_.fields()[0].global_id(),
+                  form_.fields()[0].global_id(), FillingProduct::kCreditCard,
                   ::testing::VariantWith<const CreditCard*>(Pointee(test_card)),
                   AutofillTriggerSource::kKeyboardAccessoryOrBottomSheet,
                   /*require_user_confirmation=*/false, _));
@@ -734,13 +734,6 @@ TEST_P(TouchToFillPaymentMethodDelegateAndroidImplPaymentMethodUnitTest,
 
 class TouchToFillPaymentMethodDelegateAndroidImplCreditCardUnitTest
     : public TouchToFillPaymentMethodDelegateAndroidImplUnitTest {
- public:
-  static std::vector<CreditCard> GetCardsToSuggest(
-      std::vector<const CreditCard*> credit_cards) {
-    return base::ToVector(credit_cards,
-                          [](const CreditCard* card) { return *card; });
-  }
-
  protected:
   void SetUp() override {
     TouchToFillPaymentMethodDelegateAndroidImplUnitTest::SetUp();

@@ -8,6 +8,7 @@ import static android.view.View.MeasureSpec.UNSPECIFIED;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.AdditionalMatchers.geq;
@@ -45,6 +46,7 @@ import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.graphics.drawable.Drawable;
 import android.view.View;
 import android.view.View.MeasureSpec;
 import android.view.ViewGroup.LayoutParams;
@@ -83,6 +85,7 @@ import org.chromium.chrome.browser.omnibox.LocationBarLayout;
 import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
 import org.chromium.chrome.browser.omnibox.status.StatusCoordinator;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider.IncognitoStateObserver;
@@ -110,15 +113,18 @@ import org.chromium.chrome.browser.toolbar.top.CaptureReadinessResult.TopToolbar
 import org.chromium.chrome.browser.toolbar.top.ToolbarUtils.ToolbarComponentId;
 import org.chromium.chrome.browser.toolbar.top.TopToolbarCoordinator.ToolbarColorObserver;
 import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator;
+import org.chromium.chrome.browser.ui.native_page.NativePage;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.browser.user_education.UserEducationHelper;
 import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.components.embedder_support.util.UrlConstants;
 import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.components.omnibox.OmniboxFeatureList;
 import org.chromium.ui.base.ViewUtils;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.widget.ChromeImageButton;
 import org.chromium.ui.widget.ToastManager;
+import org.chromium.url.JUnitTestGURLs;
 
 import java.util.HashSet;
 import java.util.Set;
@@ -160,6 +166,7 @@ public final class ToolbarTabletUnitTest {
     @Mock private WindowAndroid mWindowAndroid;
 
     private Activity mActivity;
+    private OmniboxResourceProvider mOmniboxResourceProvider;
     private ToolbarTablet mToolbarTablet;
     private LinearLayout mToolbarTabletLayout;
     private ImageButton mHomeButton;
@@ -176,7 +183,7 @@ public final class ToolbarTabletUnitTest {
 
     private final Answer<Object> mAddIncognitoObserverInIncognitoMode =
             (invocation) -> {
-                IncognitoStateProvider.IncognitoStateObserver observer = invocation.getArgument(0);
+                IncognitoStateObserver observer = invocation.getArgument(0);
                 observer.onIncognitoStateChanged(/* isIncognito= */ true);
                 return null;
             };
@@ -186,6 +193,8 @@ public final class ToolbarTabletUnitTest {
     public void setUp() {
         mActivity = Robolectric.buildActivity(Activity.class).setup().get();
         mActivity.setTheme(R.style.Theme_BrowserUI_DayNight);
+        mOmniboxResourceProvider =
+                new OmniboxResourceProvider(mActivity, BrandedColorScheme.APP_DEFAULT);
 
         mTintObservers = new HashSet<>();
         doAnswer(
@@ -365,6 +374,85 @@ public final class ToolbarTabletUnitTest {
                 mToolbarTabletLayout.getChildAt(3));
     }
 
+    @Test
+    public void testTtcButtonHiddenUntilWanted() {
+        View ttcButton = mToolbarTablet.findViewById(R.id.ttc_toolbar_button);
+        assertNotNull(ttcButton);
+        assertEquals(View.GONE, ttcButton.getVisibility());
+
+        mToolbarTablet.setTtcButtonState(
+                /* wanted= */ false, /* active= */ false, /* onClickListener= */ null);
+        assertEquals(View.GONE, ttcButton.getVisibility());
+    }
+
+    @Test
+    public void testTtcButtonActiveState() {
+        View ttcButton = mToolbarTablet.findViewById(R.id.ttc_toolbar_button);
+        Drawable defaultBackground = ttcButton.getBackground();
+
+        mToolbarTablet.setTtcButtonState(
+                /* wanted= */ false, /* active= */ true, /* onClickListener= */ null);
+        assertTrue(ttcButton.isActivated());
+        assertNotEquals(defaultBackground, ttcButton.getBackground());
+
+        // Back to the default background once the session ends.
+        mToolbarTablet.setTtcButtonState(
+                /* wanted= */ false, /* active= */ false, /* onClickListener= */ null);
+        assertFalse(ttcButton.isActivated());
+        assertEquals(defaultBackground, ttcButton.getBackground());
+    }
+
+    @Test
+    public void testTtcButtonClick() {
+        View ttcButton = mToolbarTablet.findViewById(R.id.ttc_toolbar_button);
+        int[] clicks = {0};
+        mToolbarTablet.setTtcButtonState(
+                /* wanted= */ false, /* active= */ false, v -> clicks[0]++);
+
+        ttcButton.performClick();
+        assertEquals(1, clicks[0]);
+    }
+
+    @Test
+    public void testIsShowingNtp_usesTabUrl() {
+        mToolbarTablet.initialize(
+                mToolbarDataProvider,
+                null,
+                mMenuButtonCoordinator,
+                mTabSwitcherButtonCoordinator,
+                null,
+                mUserEducationHelper,
+                mTrackerSupplier,
+                mProgressBar,
+                mReloadButtonCoordinator,
+                mBackButtonCoordinator,
+                mForwardButtonCoordinator,
+                mHomeButtonCoordinator,
+                mSigninButtonCoordinator,
+                mDownloadButtonCoordinator,
+                mThemeColorProvider,
+                mIncognitoStateProvider,
+                /* incognitoWindowCountSupplier= */ () -> 1,
+                mWindowAndroid,
+                mOmniboxResourceProvider);
+        assertFalse(mToolbarTablet.isShowingNtp());
+
+        Tab tab = mock(Tab.class);
+        when(mToolbarDataProvider.getTab()).thenReturn(tab);
+        when(tab.getUrl()).thenReturn(JUnitTestGURLs.NTP_URL);
+        assertTrue(mToolbarTablet.isShowingNtp());
+
+        when(tab.getUrl()).thenReturn(JUnitTestGURLs.EXAMPLE_URL);
+        assertFalse(mToolbarTablet.isShowingNtp());
+
+        // Native NTP whose URL is not recognized as an NTP URL.
+        NativePage nativePage = mock(NativePage.class);
+        when(nativePage.getHost()).thenReturn(UrlConstants.NTP_HOST);
+        when(tab.isNativePage()).thenReturn(true);
+        when(tab.getNativePage()).thenReturn(nativePage);
+        assertTrue(mToolbarTablet.isShowingNtp());
+    }
+
     @EnableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
     @Test
     public void testButtonPositionIncognito() {
@@ -392,7 +480,8 @@ public final class ToolbarTabletUnitTest {
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ () -> 1,
-                mWindowAndroid);
+                mWindowAndroid,
+                mOmniboxResourceProvider);
         when(mToolbarDataProvider.getNewTabPageDelegate()).thenReturn(mNewTabPageDelegate);
         when(mToolbarDataProvider.isIncognitoBranded()).thenReturn(true);
         mToolbarTablet.onTabOrModelChanged();
@@ -470,7 +559,8 @@ public final class ToolbarTabletUnitTest {
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ () -> 1,
-                mWindowAndroid);
+                mWindowAndroid,
+                mOmniboxResourceProvider);
         when(mToolbarDataProvider.getNewTabPageDelegate()).thenReturn(mNewTabPageDelegate);
         when(mToolbarDataProvider.isIncognitoBranded()).thenReturn(true);
         mToolbarTablet.onTabOrModelChanged();
@@ -542,7 +632,8 @@ public final class ToolbarTabletUnitTest {
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ () -> 1,
-                mWindowAndroid);
+                mWindowAndroid,
+                mOmniboxResourceProvider);
         ImageButton btn = mToolbarTablet.findViewById(R.id.forward_button);
 
         doReturn(null).when(mToolbarDataProvider).getTab();

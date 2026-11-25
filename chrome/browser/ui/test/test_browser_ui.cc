@@ -7,9 +7,11 @@
 #include <optional>
 
 #include "base/command_line.h"
+#include "base/notreached.h"
 #include "base/test/gtest_util.h"
 #include "base/test/test_switches.h"
 #include "build/build_config.h"
+#include "content/public/test/browser_test_utils.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/ui_base_switches.h"
 #include "ui/views/controls/webview/webview.h"
@@ -136,7 +138,15 @@ ui::test::ActionResult TestBrowserUi::VerifyPixelUi(
   if (auto* const view_el = element->AsA<views::TrackedElementViews>()) {
     view = view_el->view();
   } else if (auto* const webui_el = element->AsA<ui::TrackedElementWebUI>()) {
-    view = webui_el->GetWebView();
+    views::WebView* const web_view = webui_el->GetWebView();
+#ifdef SUPPORTS_PIXEL_TEST
+    if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+            switches::kVerifyPixels) &&
+        web_view && web_view->GetWebContents()) {
+      content::WaitForCopyableViewInWebContents(web_view->GetWebContents());
+    }
+#endif
+    view = web_view;
     if (!effective_options.region.has_value()) {
       effective_options.region = webui_el->GetBoundsInWebContents();
     } else {
@@ -209,9 +219,19 @@ ui::test::ActionResult TestBrowserUi::VerifyPixelUi(
     window_rect = region_rect;
   }
 
+  gfx::NativeWindow snapshot_window = widget->GetNativeWindow();
+  if (options.capture_root_window) {
+#if defined(USE_AURA)
+    aura::Window* const root = snapshot_window->GetRootWindow();
+    aura::Window::ConvertRectToTarget(snapshot_window, root, &window_rect);
+    snapshot_window = root;
+#else
+    NOTREACHED() << "capture_root_window requires Aura";
+#endif
+  }
+
   const bool success = pixel_diff.CompareNativeWindowScreenshot(
-      screenshot_name, widget->GetNativeWindow(), window_rect,
-      GetPixelMatchAlgorithm());
+      screenshot_name, snapshot_window, window_rect, GetPixelMatchAlgorithm());
   return success ? ui::test::ActionResult::kSucceeded
                  : ui::test::ActionResult::kFailed;
 #else

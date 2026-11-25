@@ -106,12 +106,18 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   // Boolean pref that determines if errors are allowed to be shown.
   registry->RegisterBooleanPref(prefs::kGlicShowErrorAllowed, false);
 
+  registry->RegisterIntegerPref(prefs::kGlicAssistantSelection,
+                                std::to_underlying(AssistantSelection::kAuto));
+
   // Boolean pref for the daisy chain new tabs setting.
   registry->RegisterBooleanPref(prefs::kGlicKeepSidepanelOpenOnNewTabsEnabled,
                                 true);
 
   // Boolean pref for enabling shake trigger.
   registry->RegisterBooleanPref(prefs::kGlicShakeTriggerEnabled, false);
+
+  // Boolean pref set once the Quick Answers FRE is accepted.
+  registry->RegisterBooleanPref(prefs::kGlicQuickAnswersFreAccepted, false);
 
   // Boolean pref that enables or disables experimental triggering.
   registry->RegisterBooleanPref(prefs::kGlicExperimentalTriggeringEnabled,
@@ -150,8 +156,6 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
       prefs::kGlicLastProfileReadyState,
       static_cast<int>(glic::mojom::ProfileReadyState::kReady));
   registry->RegisterIntegerPref(prefs::kGlicMarketingAutoOpenCount, 0);
-  registry->RegisterStringPref(prefs::kGlicPromotionSourceCohort,
-                               std::string());
 #if BUILDFLAG(IS_ANDROID)
   registry->RegisterBooleanPref(prefs::kGlicLastCanActuateInBackground, false);
 #endif  // BUILDFLAG(IS_ANDROID)

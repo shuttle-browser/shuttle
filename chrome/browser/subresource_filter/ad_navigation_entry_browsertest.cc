@@ -19,7 +19,8 @@
 #include "net/dns/mock_host_resolver.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
 #include "testing/gmock/include/gmock/gmock.h"
-#include "ui/base/window_open_disposition.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "url/url_constants.h"
 
 namespace subresource_filter {
@@ -248,7 +249,7 @@ IN_PROC_BROWSER_TEST_F(AdNavigationEntryBrowserTest,
   // starts at frame_factory.html.
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), GetURL("frame_factory.html"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // Quick sanity check to ensure our new active tab only has 1 history entry.
@@ -942,7 +943,7 @@ IN_PROC_BROWSER_TEST_F(BackToAdInterventionDisabledBrowserTest,
   // starts at frame_factory.html.
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), GetURL("frame_factory.html"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // Quick sanity check to ensure our new active tab only has 1 history entry.

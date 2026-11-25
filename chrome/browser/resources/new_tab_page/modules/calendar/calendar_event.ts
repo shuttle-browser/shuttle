@@ -85,7 +85,7 @@ export class CalendarEventElement extends CalendarEventElementBase {
 
   protected accessor attachmentListClass_: string = '';
   protected accessor formattedStartTime_: string = '';
-  protected intersectionObserver_: IntersectionObserver|null = null;
+  private intersectionObserver_: IntersectionObserver|null = null;
   protected accessor timeStatus_: string = '';
 
   override willUpdate(changedProperties: PropertyValues<this>) {
@@ -141,7 +141,7 @@ export class CalendarEventElement extends CalendarEventElementBase {
     // Start time of event in milliseconds since Windows epoch.
     const startTime = toJsTimestamp(this.event.startTime);
     // Current time in milliseconds since Windows epoch.
-    const now = WindowProxy.getInstance().now().valueOf();
+    const now = WindowProxy.getInstance().currentTimeMs();
 
     const minutesUntilMeeting =
         Math.round((startTime - now) / kMillisecondsInMinute);

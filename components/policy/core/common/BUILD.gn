@@ -55,6 +55,14 @@ source_set("util") {
       "//components/session_manager/core",
     ]
   }
+
+  if (is_ios) {
+    sources += [
+      "cloud/cloud_policy_util_ios.h",
+      "cloud/cloud_policy_util_ios.mm",
+    ]
+    frameworks = [ "Foundation.framework" ]
+  }
 }
 
 source_set("internal") {
@@ -339,7 +347,6 @@ source_set("internal") {
       "android/android_combined_policy_provider.h",
       "android/policy_converter.cc",
       "android/policy_converter.h",
-      "android/policy_feature_map.cc",
       "android/policy_map_android.cc",
       "android/policy_map_android.h",
       "android/policy_service_android.cc",
@@ -548,6 +555,7 @@ source_set("unit_tests") {
     "cloud/cloud_policy_core_unittest.cc",
     "cloud/cloud_policy_refresh_scheduler_unittest.cc",
     "cloud/cloud_policy_service_unittest.cc",
+    "cloud/cloud_policy_util_unittest.cc",
     "cloud/device_management_service_unittest.cc",
     "cloud/dm_token_unittest.cc",
     "cloud/user_info_fetcher_unittest.cc",
@@ -651,7 +659,10 @@ source_set("unit_tests") {
     }
 
     if (is_ios) {
-      sources += [ "policy_loader_ios_unittest.mm" ]
+      sources += [
+        "cloud/cloud_policy_util_ios_unittest.mm",
+        "policy_loader_ios_unittest.mm",
+      ]
     }
   }
   if (is_win || is_linux || is_chromeos) {

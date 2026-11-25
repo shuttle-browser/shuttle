@@ -90,6 +90,9 @@
 #include "ui/events/keycodes/dom/dom_keyboard_layout_map.h"
 #include "ui/gfx/geometry/dip_util.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/transform.h"
+#include "ui/gfx/geometry/transform_util.h"
+#include "ui/gfx/geometry/vector2d_f.h"
 #include "ui/gfx/mac/coordinate_conversion.h"
 #include "ui/gfx/native_ui_types.h"
 #include "ui/menus/cocoa/text_services_context_menu.h"
@@ -351,6 +354,9 @@ void RenderWidgetHostViewMac::MigrateNSViewBridge(
     display::Screen::Get()->AddObserver(in_process_ns_view_bridge_.get());
     return;
   }
+
+  // Unbounded surfaces are not supported for remote NSViews (e.g. PWAs).
+  DCHECK(!unbounded_surface_window_);
 
   mojo::PendingAssociatedRemote<remote_cocoa::mojom::RenderWidgetHostNSViewHost>
       client = remote_ns_view_client_receiver_.BindNewEndpointAndPassRemote();
@@ -1834,8 +1840,13 @@ void RenderWidgetHostViewMac::SetActive(bool active) {
       host()->LostFocus();
     }
   }
-  if (HasFocus())
+  // Always deactivate text input when becoming inactive, so that Secure Event
+  // Input isn't left enabled for a focused password field in a window that is
+  // no longer key. Don't gate deactivation on HasFocus(), which already returns
+  // false once the window has resigned key. https://crbug.com/577708579
+  if (!active || HasFocus()) {
     SetTextInputActive(active);
+  }
   if (!active)
     UnlockPointer();
 }
@@ -2463,6 +2474,51 @@ void RenderWidgetHostViewMac::SyncGetFirstRectForRange(
   std::move(callback).Run(out_rect, out_actual_range, success);
 }
 
+void RenderWidgetHostViewMac::GetFirstRectForRange(
+    const gfx::Range& requested_range,
+    GetFirstRectForRangeCallback callback) {
+  TRACE_EVENT1("ime", "RenderWidgetHostViewMac::GetFirstRectForRange",
+               "requested range", requested_range.ToString());
+  RenderWidgetHostImpl* focused_widget = GetFocusedWidget();
+  if (!focused_widget) {
+    std::move(callback).Run(std::nullopt);
+    return;
+  }
+
+  // Ask the renderer for the bounds, since waiting for it here doesn't block
+  // and the cache may only have approximate bounds (e.g. the caret's, when
+  // kCachedFirstRectAllowRangeOutsideSelection is enabled).
+  TextInputClientMac::GetInstance()->AsyncGetFirstRectForRange(
+      focused_widget, requested_range,
+      base::BindOnce(&RenderWidgetHostViewMac::OnGotFirstRectForRange,
+                     weak_factory_.GetWeakPtr(), requested_range,
+                     GetDeviceScaleFactor(), std::move(callback)));
+}
+
+void RenderWidgetHostViewMac::OnGotFirstRectForRange(
+    const gfx::Range& requested_range,
+    float device_scale_factor,
+    GetFirstRectForRangeCallback callback,
+    gfx::Rect blink_rect) {
+  gfx::Rect rect =
+      gfx::ScaleToEnclosingRect(blink_rect, 1.f / device_scale_factor);
+
+  // If the renderer returns an empty rect, fall back to the cached bounds.
+  if (rect.IsEmpty() && GetFocusedWidget()) {
+    gfx::Rect cached_rect;
+    if (GetCachedFirstRectForCharacterRange(requested_range, &cached_rect,
+                                            /*actual_range=*/nullptr) ==
+        GetCachedFirstRectResult::kFound) {
+      rect = cached_rect;
+    }
+  }
+
+  // Clamp to the viewport so that a compromised renderer can't place UI outside
+  // the page. See https://crbug.com/519210950.
+  rect.AdjustToFit(gfx::Rect(GetVisibleViewportSize()));
+  std::move(callback).Run(rect);
+}
+
 void RenderWidgetHostViewMac::ExecuteEditCommand(const std::string& command) {
   if (host()->delegate()) {
     host()->delegate()->ExecuteEditCommand(command, std::nullopt);
@@ -2719,19 +2775,32 @@ void RenderWidgetHostViewMac::OnGotStringForDictionaryOverlay(
     // https://crbug.com/737032
     auto* widget_host = content::RenderWidgetHost::FromID(
         target_widget_process_id, target_widget_routing_id);
-    gfx::Point updated_baseline_point = baseline_point_in_layout_space;
-    if (widget_host) {
-      if (auto* rwhv = widget_host->GetView()) {
-        updated_baseline_point = rwhv->TransformPointToRootCoordSpace(
-            baseline_point_in_layout_space);
+    // Layout space is physical pixels, but the transform below and ns_view_
+    // expect DIPs. Scale to DIPs before transforming.
+    gfx::PointF baseline_point =
+        gfx::ScalePoint(gfx::PointF(baseline_point_in_layout_space),
+                        1.f / GetDeviceScaleFactor());
+    // Values from an out-of-process iframe are in the iframe's own coordinates,
+    // which don't include its position or scale in the root view (such as from
+    // a pinch-zoom), so convert them to the root view's coordinates here.
+    RenderWidgetHostViewBase* target_view =
+        widget_host ? RenderWidgetHostImpl::From(widget_host)->GetView()
+                    : nullptr;
+    gfx::Transform to_root;
+    if (target_view &&
+        target_view->GetTransformToViewCoordSpace(this, &to_root)) {
+      baseline_point = to_root.MapPoint(baseline_point);
+      std::optional<gfx::Vector2dF> scale =
+          gfx::TryComputeTransform2dScaleComponents(to_root);
+      if (scale && scale->y() > 0) {
+        for (auto& attribute : attributed_string->attributes) {
+          attribute->font_point_size *= scale->y();
+        }
       }
     }
-    // Layout space is physical pixels. Scale
-    // it to get DIPs, which is what ns_view_ expects.
-    updated_baseline_point = gfx::ScaleToRoundedPoint(
-        updated_baseline_point, 1.f / GetDeviceScaleFactor());
+
     ns_view_->ShowDictionaryOverlay(std::move(attributed_string),
-                                    updated_baseline_point);
+                                    gfx::ToRoundedPoint(baseline_point));
   }
 }
 
@@ -2775,6 +2844,8 @@ RenderWidgetHostViewMac::MaybeUpdateScreenInfosForHiDPI() {
 void RenderWidgetHostViewMac::CreateUnboundedSurface(
     const gfx::Rect& bounds_in_screen,
     base::WeakPtr<RenderWidgetHostViewBase> subframe_view) {
+  // Unbounded surfaces are not supported for remote NSViews (e.g. PWAs).
+  DCHECK(!remote_ns_view_);
   unbounded_surface_window_ = std::make_unique<UnboundedSurfaceWindowMac>(
       this, bounds_in_screen, std::move(subframe_view));
   // Blink only sends cursor changes, so seed the new window with the cursor

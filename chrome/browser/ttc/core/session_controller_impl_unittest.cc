@@ -8,15 +8,16 @@
 #include <cstdint>
 #include <memory>
 #include <numbers>
+#include <string>
 #include <vector>
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ttc/app/public/audio_controller.h"
-#include "chrome/browser/ttc/app/public/conversation.h"
 #include "chrome/browser/ttc/core/buildflags.h"
 #include "chrome/browser/ttc/core/features.h"
 #include "chrome/browser/ttc/core/states.h"
@@ -29,10 +30,17 @@
 #include "chrome/browser/ttc/core/ttc_keyed_service_factory.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/ttc/app/public/conversation.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/jni_android.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/test/native_unit_test_support_jni/BrowserWindowInterfaceIteratorAndroidNativeUnitTestSupport_jni.h"
+#endif
 
 namespace ttc {
 
@@ -45,20 +53,30 @@ class MockSessionControllerObserver : public SessionController::Observer {
   MOCK_METHOD(void, OnError, (ErrorCode), (override));
   MOCK_METHOD(void,
               OnToolExecutionCompleted,
-              (const std::string&, bool),
+              (const std::string&, const base::DictValue&, bool),
               (override));
   MOCK_METHOD(void, OnInputTranscription, (const std::string&), (override));
   MOCK_METHOD(void, OnOutputTranscription, (const std::string&), (override));
   MOCK_METHOD(void,
+              OnTranscriptionsUpdated,
+              (const std::string&, const std::string&),
+              (override));
+  MOCK_METHOD(void,
               OnModelAudioEnvelopeReady,
               (const AudioEnvelope&),
               (override));
+  MOCK_METHOD(void, OnMicMutedChanged, (bool), (override));
+  MOCK_METHOD(void, OnSpeakerChanged, (Speaker), (override));
 };
 
 class TtcSessionControllerImplTest : public testing::Test {
  public:
   TtcSessionControllerImplTest() {
     scoped_feature_list_.InitAndEnableFeature(kTtc);
+  }
+
+  void SetUp() override {
+    testing::Test::SetUp();
     service_ = static_cast<TtcKeyedService*>(
         TtcKeyedServiceFactory::GetInstance()->SetTestingFactoryAndUse(
             &profile_,
@@ -126,12 +144,15 @@ TEST_F(TtcSessionControllerImplTest,
   controller.OnModelInterrupted();
 
   EXPECT_CALL(observer, OnInputTranscription("hello")).Times(1);
+  EXPECT_CALL(observer, OnTranscriptionsUpdated("hello", "")).Times(1);
   controller.OnInputTranscription("hello");
 
   EXPECT_CALL(observer, OnOutputTranscription("world")).Times(1);
+  EXPECT_CALL(observer, OnTranscriptionsUpdated("hello", "world")).Times(1);
   controller.OnOutputTranscription("world");
 
-  EXPECT_CALL(observer, OnToolExecutionCompleted("unknown_tool", false))
+  EXPECT_CALL(observer,
+              OnToolExecutionCompleted("unknown_tool", testing::_, false))
       .Times(1);
   EXPECT_CALL(observer, OnError(ErrorCode::kInternalBackendError)).Times(1);
   EXPECT_CALL(observer, OnSessionLifecycleChanged(SessionLifecycle::kFinished))
@@ -199,6 +220,151 @@ TEST_F(TtcSessionControllerImplTest, DispatchesAudioEnvelopeToObservers) {
   controller.RemoveObserver(&observer);
 }
 
+TEST_F(TtcSessionControllerImplTest, SessionTimesOutAfterInactivity) {
+  service_->StartSession();
+  EXPECT_TRUE(service_->is_session_active());
+
+  MockSessionControllerObserver observer;
+  EXPECT_CALL(observer,
+              OnSessionLifecycleChanged(SessionLifecycle::kInitializing))
+      .Times(1);
+  service_->session_controller()->AddObserver(&observer);
+
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  EXPECT_CALL(observer, OnError(ErrorCode::kInactivityTimeout)).Times(1);
+  EXPECT_CALL(observer, OnSessionLifecycleChanged(SessionLifecycle::kFinished))
+      .Times(1);
+
+  task_environment_.FastForwardBy(base::Minutes(1) + base::Seconds(1));
+  EXPECT_FALSE(service_->is_session_active());
+}
+
+TEST_F(TtcSessionControllerImplTest, UserSpeechAudioResetsInactivityTimer) {
+  service_->StartSession();
+  EXPECT_TRUE(service_->is_session_active());
+
+  MockSessionControllerObserver observer;
+  EXPECT_CALL(observer,
+              OnSessionLifecycleChanged(SessionLifecycle::kInitializing))
+      .Times(1);
+  service_->session_controller()->AddObserver(&observer);
+
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  // User speaks (energy >= 0.05).
+  service_->session_controller()->UserAudioLevelUpdate(0.1f);
+
+  // Fast forward another 4 minutes (8 minutes total since session start).
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  EXPECT_CALL(observer, OnError(ErrorCode::kInactivityTimeout)).Times(1);
+  EXPECT_CALL(observer, OnSessionLifecycleChanged(SessionLifecycle::kFinished))
+      .Times(1);
+
+  // Reaching 5 minutes after speech event triggers timeout.
+  task_environment_.FastForwardBy(base::Minutes(1) + base::Seconds(1));
+  EXPECT_FALSE(service_->is_session_active());
+}
+
+TEST_F(TtcSessionControllerImplTest, AmbientNoiseDoesNotResetInactivityTimer) {
+  service_->StartSession();
+  EXPECT_TRUE(service_->is_session_active());
+
+  MockSessionControllerObserver observer;
+  EXPECT_CALL(observer,
+              OnSessionLifecycleChanged(SessionLifecycle::kInitializing))
+      .Times(1);
+  service_->session_controller()->AddObserver(&observer);
+
+  // Deliver ambient noise (0.01 < 0.05) every minute.
+  for (int i = 0; i < 4; ++i) {
+    task_environment_.FastForwardBy(base::Minutes(1));
+    service_->session_controller()->UserAudioLevelUpdate(0.01f);
+    EXPECT_TRUE(service_->is_session_active());
+  }
+
+  EXPECT_CALL(observer, OnError(ErrorCode::kInactivityTimeout)).Times(1);
+  EXPECT_CALL(observer, OnSessionLifecycleChanged(SessionLifecycle::kFinished))
+      .Times(1);
+
+  // Reaching 5 minutes triggers timeout despite ambient noise.
+  task_environment_.FastForwardBy(base::Minutes(1) + base::Seconds(1));
+  EXPECT_FALSE(service_->is_session_active());
+}
+
+TEST_F(TtcSessionControllerImplTest, InputTranscriptionsResetInactivityTimer) {
+  service_->StartSession();
+  EXPECT_TRUE(service_->is_session_active());
+
+  testing::NiceMock<MockSessionControllerObserver> observer;
+  EXPECT_CALL(observer,
+              OnSessionLifecycleChanged(SessionLifecycle::kInitializing))
+      .Times(1);
+  service_->session_controller()->AddObserver(&observer);
+
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  // Input transcription resets timer.
+  EXPECT_CALL(observer, OnInputTranscription("hello")).Times(1);
+  service_->session_controller()->OnInputTranscription("hello");
+
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  EXPECT_CALL(observer, OnError(ErrorCode::kInactivityTimeout)).Times(1);
+  EXPECT_CALL(observer, OnSessionLifecycleChanged(SessionLifecycle::kFinished))
+      .Times(1);
+
+  task_environment_.FastForwardBy(base::Minutes(1) + base::Seconds(1));
+  EXPECT_FALSE(service_->is_session_active());
+}
+
+TEST_F(TtcSessionControllerImplTest, ModelTurnPausesInactivityTimer) {
+  service_->StartSession();
+  EXPECT_TRUE(service_->is_session_active());
+
+  MockSessionControllerObserver observer;
+  EXPECT_CALL(observer,
+              OnSessionLifecycleChanged(SessionLifecycle::kInitializing))
+      .Times(1);
+  service_->session_controller()->AddObserver(&observer);
+
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  // Model begins response.
+  EXPECT_CALL(observer, OnModelTurnStarted()).Times(1);
+  service_->session_controller()->OnModelTurnStarted();
+
+  // Audio energy arrives while model is speaking; timer must not restart.
+  service_->session_controller()->UserAudioLevelUpdate(0.1f);
+
+  // 3 minutes pass during model generation/speech.
+  task_environment_.FastForwardBy(base::Minutes(3));
+  EXPECT_TRUE(service_->is_session_active());
+
+  // Model turn completes.
+  EXPECT_CALL(observer, OnModelTurnComplete()).Times(1);
+  service_->session_controller()->OnModelTurnComplete();
+
+  // 4 minutes pass in user inactivity.
+  task_environment_.FastForwardBy(base::Minutes(4));
+  EXPECT_TRUE(service_->is_session_active());
+
+  EXPECT_CALL(observer, OnError(ErrorCode::kInactivityTimeout)).Times(1);
+  EXPECT_CALL(observer, OnSessionLifecycleChanged(SessionLifecycle::kFinished))
+      .Times(1);
+
+  // 1 minute later (5 minutes after model turn completed), timeout fires.
+  task_environment_.FastForwardBy(base::Minutes(1) + base::Seconds(1));
+  EXPECT_FALSE(service_->is_session_active());
+}
+
 #if BUILDFLAG(ENABLE_TTC_WEBUI)
 TEST_F(TtcSessionControllerImplTest, TtcEvalHarnessStartSessionAndExecuteTurn) {
   TtcEvalHarness harness(*service_);
@@ -224,7 +390,7 @@ TEST_F(TtcSessionControllerImplTest, TtcEvalHarnessStartSessionAndExecuteTurn) {
   service_->session_controller()->OnInputTranscription("voice");
   service_->session_controller()->OnOutputTranscription("model ");
   service_->session_controller()->OnOutputTranscription("voice");
-  harness.OnToolExecutionCompleted("navigate", true);
+  harness.OnToolExecutionCompleted("navigate", base::DictValue(), true);
   service_->session_controller()->OnModelTurnComplete();
 
   mojom::TurnResultPtr result = turn_future.Take();
@@ -266,5 +432,164 @@ TEST_F(TtcSessionControllerImplTest,
   harness.EndSession();
 }
 #endif  // BUILDFLAG(ENABLE_TTC_WEBUI)
+
+TEST_F(TtcSessionControllerImplTest, SetMicMuted) {
+  // Declared first so it outlives `controller`, whose destructor still asks the
+  // conversation whether the mic is muted.
+  bool muted = false;
+  SessionControllerImpl controller(*service_);
+  controller.SetSessionLifecycle(SessionLifecycle::kLive);
+  ON_CALL(*mock_conversation_, IsMicMuted()).WillByDefault([&muted] {
+    return muted;
+  });
+  EXPECT_CALL(*mock_conversation_, SetMicMuted(true))
+      .WillOnce([&muted](bool value) { muted = value; });
+  EXPECT_CALL(*mock_conversation_, SetMicMuted(false))
+      .WillOnce([&muted](bool value) { muted = value; });
+  testing::NiceMock<MockSessionControllerObserver> observer;
+  controller.AddObserver(&observer);
+
+  {
+    testing::InSequence sequence;
+    EXPECT_CALL(observer, OnMicMutedChanged(true)).Times(1);
+    EXPECT_CALL(observer, OnMicMutedChanged(false)).Times(1);
+  }
+  EXPECT_TRUE(controller.SetMicMuted(true));
+  EXPECT_TRUE(controller.IsMicMuted());
+  // Already muted: nothing to do, and nothing to report.
+  EXPECT_FALSE(controller.SetMicMuted(true));
+  EXPECT_TRUE(controller.SetMicMuted(false));
+  EXPECT_FALSE(controller.IsMicMuted());
+
+  controller.RemoveObserver(&observer);
+}
+
+TEST_F(TtcSessionControllerImplTest, MicCanOnlyBeMutedOnceLive) {
+  SessionControllerImpl controller(*service_);
+  ON_CALL(*mock_conversation_, IsMicMuted())
+      .WillByDefault(testing::Return(true));
+
+  // Capture hasn't started yet, but that isn't muting.
+  EXPECT_FALSE(controller.IsMicMuted());
+  EXPECT_CALL(*mock_conversation_, SetMicMuted(testing::_)).Times(0);
+  EXPECT_FALSE(controller.SetMicMuted(true));
+}
+
+TEST_F(TtcSessionControllerImplTest, FinishedSessionIgnoresMicMute) {
+  SessionControllerImpl controller(*service_);
+
+  // A fatal error ends the session.
+  controller.OnError(ErrorCode::kInternalBackendError);
+  ASSERT_EQ(controller.GetSessionLifecycle(), SessionLifecycle::kFinished);
+
+  EXPECT_CALL(*mock_conversation_, SetMicMuted(testing::_)).Times(0);
+  EXPECT_FALSE(controller.SetMicMuted(true));
+}
+
+TEST_F(TtcSessionControllerImplTest, SpeakerChangesReachObservers) {
+  SessionControllerImpl controller(*service_);
+  testing::NiceMock<MockSessionControllerObserver> observer;
+  controller.AddObserver(&observer);
+  EXPECT_EQ(controller.GetSpeaker(), Speaker::kIdle);
+
+  {
+    testing::InSequence sequence;
+    EXPECT_CALL(observer, OnSpeakerChanged(Speaker::kUser)).Times(1);
+    EXPECT_CALL(observer, OnSpeakerChanged(Speaker::kModel)).Times(1);
+  }
+  controller.OnSpeakerChanged(Speaker::kUser);
+  EXPECT_EQ(controller.GetSpeaker(), Speaker::kUser);
+  // Unchanged: nothing to report.
+  controller.OnSpeakerChanged(Speaker::kUser);
+  controller.OnSpeakerChanged(Speaker::kModel);
+  EXPECT_EQ(controller.GetSpeaker(), Speaker::kModel);
+
+  controller.RemoveObserver(&observer);
+}
+
+TEST_F(TtcSessionControllerImplTest, FinishedSessionStopsReportingSpeaker) {
+  SessionControllerImpl controller(*service_);
+  testing::NiceMock<MockSessionControllerObserver> observer;
+  controller.AddObserver(&observer);
+  controller.SetSessionLifecycle(SessionLifecycle::kFinished);
+
+  EXPECT_CALL(observer, OnSpeakerChanged).Times(0);
+  controller.OnSpeakerChanged(Speaker::kModel);
+  EXPECT_EQ(controller.GetSpeaker(), Speaker::kIdle);
+
+  controller.RemoveObserver(&observer);
+}
+
+TEST_F(TtcSessionControllerImplTest, FinishedSessionStopsUpdatingTranscripts) {
+  SessionControllerImpl controller(*service_);
+  testing::NiceMock<MockSessionControllerObserver> observer;
+  controller.AddObserver(&observer);
+
+  EXPECT_CALL(observer, OnTranscriptionsUpdated("Hello", ""));
+  controller.OnInputTranscription("Hello");
+
+  // A fatal error ends the session.
+  controller.OnError(ErrorCode::kInternalBackendError);
+  ASSERT_EQ(controller.GetSessionLifecycle(), SessionLifecycle::kFinished);
+
+  EXPECT_CALL(observer, OnTranscriptionsUpdated).Times(0);
+  controller.OnOutputTranscription("Hi");
+
+  controller.RemoveObserver(&observer);
+}
+
+#if BUILDFLAG(IS_ANDROID)
+// Creates Android browser windows that register with GlobalBrowserCollection
+// the way ChromeAndroidTaskTracker does in production, and destroys them all on
+// destruction. Windows are identified by the Android task id they live in.
+class ScopedAndroidBrowserWindows {
+ public:
+  ScopedAndroidBrowserWindows() = default;
+  ScopedAndroidBrowserWindows(const ScopedAndroidBrowserWindows&) = delete;
+  ScopedAndroidBrowserWindows& operator=(const ScopedAndroidBrowserWindows&) =
+      delete;
+  ~ScopedAndroidBrowserWindows() {
+    Java_BrowserWindowInterfaceIteratorAndroidNativeUnitTestSupport_destroyAllBrowserWindows(
+        base::android::AttachCurrentThread());
+  }
+
+  BrowserWindowInterface* Create(Profile& profile, int task_id) {
+    return reinterpret_cast<BrowserWindowInterface*>(
+        Java_BrowserWindowInterfaceIteratorAndroidNativeUnitTestSupport_createBrowserWindow(
+            base::android::AttachCurrentThread(), task_id,
+            profile.GetJavaObject()));
+  }
+
+  void Destroy(int task_id) {
+    Java_BrowserWindowInterfaceIteratorAndroidNativeUnitTestSupport_destroyBrowserWindow(
+        base::android::AttachCurrentThread(), task_id);
+  }
+};
+
+TEST_F(TtcSessionControllerImplTest, GetBrowserWindowInterfaceNoWindows) {
+  SessionControllerImpl controller(*service_);
+  EXPECT_EQ(controller.GetBrowserWindowInterface(), nullptr);
+}
+
+TEST_F(TtcSessionControllerImplTest,
+       GetBrowserWindowInterfaceFollowsProfileWindows) {
+  ScopedAndroidBrowserWindows windows;
+
+  // A window that already exists when the session starts.
+  BrowserWindowInterface* window1 = windows.Create(profile_, /*task_id=*/1);
+  ASSERT_TRUE(window1);
+  SessionControllerImpl controller(*service_);
+  EXPECT_EQ(controller.GetBrowserWindowInterface(), window1);
+
+  // A newly created window is not the last active one.
+  BrowserWindowInterface* window2 = windows.Create(profile_, /*task_id=*/2);
+  ASSERT_TRUE(window2);
+  EXPECT_EQ(controller.GetBrowserWindowInterface(), window1);
+
+  // Closing the current window falls back to the remaining one.
+  windows.Destroy(/*task_id=*/1);
+  EXPECT_EQ(controller.GetBrowserWindowInterface(), window2);
+}
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace ttc

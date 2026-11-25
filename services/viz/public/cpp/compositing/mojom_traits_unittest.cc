@@ -647,7 +647,7 @@ TEST_F(CompositingStructTraitsTest, CompositorFrame) {
       gpu::ClientSharedImage::CreateForTesting(
           gpu::SharedImageMetadata{.format = multi_plane_format,
                                    .size = tr_size,
-                                   .alpha_type = kPremul_SkAlphaType}),
+                                   .alpha_type = kUnpremul_SkAlphaType}),
       TransferableResource::ResourceSource::kTest, gpu::SyncToken());
   multi_plane_resource.id = multi_plane_id;
 
@@ -1118,7 +1118,6 @@ TEST_F(CompositingStructTraitsTest, RenderPass) {
   EXPECT_EQ(kHasDamageFromContributingContent,
             output->has_damage_from_contributing_content);
   EXPECT_EQ(kHasPerQuadDamage, output->has_per_quad_damage);
-  EXPECT_EQ(kGenerateMipmap, output->generate_mipmap);
   ASSERT_EQ(1u, output->copy_requests.size());
   EXPECT_EQ(kCopyOutputArea, output->copy_requests.front()->area());
 

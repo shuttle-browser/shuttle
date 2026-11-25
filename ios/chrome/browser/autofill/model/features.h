@@ -37,4 +37,14 @@ BASE_DECLARE_FEATURE(kAutofillAiAsyncReauthAvailability);
 // Enables the unified manual fallback sheet.
 BASE_DECLARE_FEATURE(kIOSUnifiedManualFallbackSheet);
 
+// Feature flag to require a user gesture and active user interaction before
+// displaying the payments bottom sheet.
+BASE_DECLARE_FEATURE(kAutofillPaymentsBottomSheetRequiresUserGesture);
+
+// Enables restoring and re-showing pending Autofill save prompts (such as
+// Autofill AI Save Entity and Save Card bottom sheets) when the user returns
+// to the originating tab after navigating away to view external disclosure
+// links or via the tab grid.
+BASE_DECLARE_FEATURE(kAutofillReshowSavePromptOnTabReturn);
+
 #endif  // IOS_CHROME_BROWSER_AUTOFILL_MODEL_FEATURES_H_

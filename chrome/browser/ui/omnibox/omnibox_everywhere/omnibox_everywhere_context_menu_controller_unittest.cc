@@ -47,6 +47,7 @@
 #include "ui/base/mojom/menu_source_type.mojom.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/menus/simple_menu_model.h"
+#include "ui/views/controls/menu/menu_controller.h"
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/controls/menu/menu_runner_handler.h"
 #include "ui/views/test/menu_runner_test_api.h"
@@ -463,6 +464,21 @@ TEST_F(OmniboxEverywhereContextMenuControllerTest,
   EXPECT_FALSE(controller_->IsOpen());
 }
 
+// The overflow menu is a Views menu on every platform, not a native macOS menu.
+TEST_F(OmniboxEverywhereContextMenuControllerTest, OverflowMenuIsViewsMenu) {
+  controller_->SetMenuRunnerFactoryForTesting({});
+  controller_->ShowOverflowMenu(gfx::Rect(100, 100, 28, 28),
+                                ui::mojom::MenuSourceType::kMouse,
+                                base::DoNothing());
+  ASSERT_TRUE(views::MenuController::GetActiveInstance());
+
+  views::MenuController::GetActiveInstance()->Cancel(
+      views::MenuController::ExitType::kAll);
+  EXPECT_FALSE(controller_->IsOpen());
+  // Run the close tasks before TearDown() destroys the controller.
+  task_environment()->RunUntilIdle();
+}
+
 TEST_F(OmniboxEverywhereContextMenuControllerTest,
        ContextMenuModelEditableElement) {
   content::ContextMenuParams params;
@@ -576,6 +592,14 @@ TEST_F(OmniboxEverywhereContextMenuControllerTest, ContextMenuEmojiCommand) {
     EXPECT_TRUE(controller_->IsCommandIdEnabled(CommandId::kEmoji));
     EXPECT_EQ(emoji_panel_shown_count(), 0);
     controller_->ExecuteCommand(CommandId::kEmoji, 0);
+    EXPECT_EQ(emoji_panel_shown_count(), 0);
+    task_environment()->RunUntilIdle();
+    EXPECT_EQ(emoji_panel_shown_count(), 1);
+
+    // Cancelling after posting the ShowEmojiPanel task aborts it.
+    controller_->ExecuteCommand(CommandId::kEmoji, 0);
+    controller_->Cancel();
+    task_environment()->RunUntilIdle();
     EXPECT_EQ(emoji_panel_shown_count(), 1);
   }
 }

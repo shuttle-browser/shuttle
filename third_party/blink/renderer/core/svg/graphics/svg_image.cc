@@ -31,6 +31,8 @@
 #include "base/memory/scoped_refptr.h"
 #include "third_party/blink/renderer/core/animation/document_animations.h"
 #include "third_party/blink/renderer/core/animation/document_timeline.h"
+#include "third_party/blink/renderer/core/css/document_style_environment_variables.h"
+#include "third_party/blink/renderer/core/css/style_engine.h"
 #include "third_party/blink/renderer/core/dom/element_traversal.h"
 #include "third_party/blink/renderer/core/dom/flat_tree_traversal.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -61,8 +63,10 @@
 #include "third_party/blink/renderer/platform/graphics/paint/paint_record_builder.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_shader.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread.h"
 #include "third_party/blink/renderer/platform/scheduler/public/main_thread_scheduler.h"
+#include "third_party/blink/renderer/platform/scheduler/public/thread_scheduler.h"
 #include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
@@ -83,10 +87,13 @@ bool HasSmilAnimations(const Document& document) {
 void SVGImageViewInfo::Trace(Visitor* visitor) const {
   visitor->Trace(view_spec_);
   visitor->Trace(target_);
+  visitor->Trace(link_parameters_);
 }
 
-SVGImage::SVGImage(ImageObserver* observer, bool is_multipart)
-    : Image(observer, is_multipart),
+SVGImage::SVGImage(ImageObserver* observer,
+                   bool is_multipart,
+                   bool is_cors_same_origin)
+    : Image(observer, is_multipart, is_cors_same_origin),
       // TODO(chikamune): use an existing AgentGroupScheduler
       // SVG will be shared via MemoryCache (which is renderer process
       // global cache) across multiple AgentSchedulingGroups. That's
@@ -104,14 +111,25 @@ SVGImage::SVGImage(ImageObserver* observer, bool is_multipart)
       has_pending_timeline_rewind_(false) {}
 
 SVGImage::~SVGImage() {
+  if (chrome_client_) {
+    chrome_client_->DetachImage();
+  }
   if (document_host_) {
-    // Store `document_host_` in a local variable and clear it so that
-    // SVGImageChromeClient knows we're destructed.
+    // Clear `document_host_` before shutdown so re-entrant queries observe
+    // that teardown has started.
     auto* document_host = document_host_.Release();
-    document_host->Shutdown();
+    // Avoid synchronous page/frame teardown in ~SVGImage(), as cancelling
+    // inner loads or detaching frames can re-enter image/resource code or
+    // allocate on the Oilpan heap mid-sweep.
+    if (!RuntimeEnabledFeatures::SvgImageDeferShutdownEnabled() ||
+        !ThreadScheduler::Current()->CleanupTaskRunner()->PostTask(
+            FROM_HERE, BindOnce(&IsolatedSVGDocumentHost::Shutdown,
+                                WrapPersistent(document_host)))) {
+      document_host->Shutdown();
+    }
   }
 
-  // Verify that page teardown destroyed the Chrome
+  // Verify that `chrome_client_` does not retain a dangling pointer to `this`.
   DCHECK(!chrome_client_ || !chrome_client_->GetImage());
 }
 
@@ -233,6 +251,15 @@ void SVGImage::ApplyViewInfo(const SVGImageViewInfo* viewinfo) {
   root_element->GetDocument().SetCSSTarget(target);
   const SVGViewSpec* viewspec = viewinfo ? viewinfo->ViewSpec() : nullptr;
   root_element->SetViewSpec(viewspec);
+
+  if (RuntimeEnabledFeatures::CSSLinkParametersPropertyEnabled()) {
+    DocumentStyleEnvironmentVariables& env_vars =
+        root_element->GetDocument()
+            .GetStyleEngine()
+            .EnsureEnvironmentVariables();
+    env_vars.ApplyLinkParameters(viewinfo ? viewinfo->GetLinkParameters()
+                                          : nullptr);
+  }
 }
 
 std::optional<NaturalSizingInfo> SVGImage::GetNaturalDimensions(
@@ -495,7 +522,11 @@ std::optional<PaintRecord> SVGImage::PaintRecordForCurrentFrame(
     UpdateCachedAnimationState();
   }
 
-  return view->GetPaintRecord(cull_rect);
+  PaintRecord record = view->GetPaintRecord(cull_rect);
+  if (!IsCorsSameOrigin()) {
+    record.SetIsReadBackDisallowed();
+  }
+  return record;
 }
 
 static bool DrawNeedsLayer(const cc::PaintFlags& flags) {
@@ -937,7 +968,8 @@ String SVGImage::FilenameExtension() const {
 }
 
 const AtomicString& SVGImage::MimeType() const {
-  DEFINE_STATIC_LOCAL(const AtomicString, svg_mime_type, ("image/svg+xml"));
+  DEFINE_STATIC_LOCAL(const AtomicString, svg_mime_type,
+                      (AtomicString::FromLiteral<"image/svg+xml">()));
   return svg_mime_type;
 }
 

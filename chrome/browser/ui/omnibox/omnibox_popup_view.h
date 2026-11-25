@@ -19,9 +19,10 @@
 #include "base/time/time.h"
 #include "components/omnibox/browser/omnibox_popup_selection.h"
 #include "ui/base/mojom/menu_source_type.mojom-forward.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 class OmniboxController;
+class OmniboxPopupHost;
 class OmniboxPopupPresenterBase;
 class OmniboxResultView;
 class OmniboxSuggestionButtonRowView;
@@ -43,6 +44,10 @@ class OmniboxPopupView {
   virtual ~OmniboxPopupView();
 
   virtual OmniboxPopupPresenterBase* presenter();
+
+  // Returns the OmniboxPopupHost that shows the popup's WebUI, or null if the
+  // popup has none.
+  virtual OmniboxPopupHost* popup_host() const;
 
   // Returns true if the popup is currently open.
   virtual bool IsOpen() const = 0;
@@ -76,7 +81,8 @@ class OmniboxPopupView {
                              OmniboxPopupSelection::Step step) {}
 
   // Informs the popup of user intent to open its current selection.
-  virtual void OpenCurrentSelection(WindowOpenDisposition disposition) {}
+  virtual void OpenCurrentSelection(
+      ui::mojom::WindowOpenDisposition disposition) {}
 
   // Saves state to the given tab.
   virtual void SaveStateToTab(content::WebContents* contents) {}
@@ -108,6 +114,10 @@ class OmniboxPopupView {
 
   // Called when the omnibox loses focus.
   virtual void OnBlur() {}
+
+  // Blurs the omnibox, collapsing the dropdown and keeping the popup open only
+  // for a draft, like clicking into the page, but leaves nothing focused.
+  virtual void Blur() {}
 
   // Called when the WebUI omnibox reports a manual blur.
   virtual void OnManualBlur() {}

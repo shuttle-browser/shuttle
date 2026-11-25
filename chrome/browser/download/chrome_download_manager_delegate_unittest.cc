@@ -60,7 +60,7 @@
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/content/common/file_type_policies_test_util.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies_test_util.h"
 #include "components/safe_search_api/safe_search_util.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "content/public/browser/download_item_utils.h"
@@ -800,16 +800,11 @@ TEST_F(ChromeDownloadManagerDelegateTest, NoSafetyChecksNotBlockedByPolicy) {
 TEST_F(ChromeDownloadManagerDelegateTest, InterceptDownloadByOfflinePages) {
   const GURL kUrl("http://example.com/foo");
   std::string mime_type = "text/html";
-  bool should_intercept = delegate()->InterceptDownloadIfApplicable(
-      kUrl, "", "", mime_type, "", 10, false /*is_transient*/,
-      false /*is_content_initiated*/, nullptr);
-  EXPECT_TRUE(should_intercept);
-
+  bool should_intercept = false;
   {
     base::test::ScopedFeatureList feature_list;
-    feature_list.InitAndEnableFeature(
+    feature_list.InitAndDisableFeature(
         download::features::kEnableDownloadSaveAsContextMenu);
-
     base::android::device_info::set_is_desktop_for_testing(false);
     base::ScopedClosureRunner reset_desktop(base::BindOnce(
         &base::android::device_info::reset_is_desktop_for_testing));
@@ -819,6 +814,20 @@ TEST_F(ChromeDownloadManagerDelegateTest, InterceptDownloadByOfflinePages) {
     EXPECT_TRUE(should_intercept);
 
     base::android::device_info::set_is_desktop_for_testing(true);
+    should_intercept = delegate()->InterceptDownloadIfApplicable(
+        kUrl, "", "", mime_type, "", 10, false /*is_transient*/,
+        false /*is_content_initiated*/, nullptr);
+    EXPECT_FALSE(should_intercept);
+  }
+
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndEnableFeature(
+        download::features::kEnableDownloadSaveAsContextMenu);
+
+    base::android::device_info::set_is_desktop_for_testing(false);
+    base::ScopedClosureRunner reset_desktop(base::BindOnce(
+        &base::android::device_info::reset_is_desktop_for_testing));
     should_intercept = delegate()->InterceptDownloadIfApplicable(
         kUrl, "", "", mime_type, "", 10, false /*is_transient*/,
         false /*is_content_initiated*/, nullptr);
@@ -868,7 +877,6 @@ TEST_F(ChromeDownloadManagerDelegateTest, InterceptDownloadForAutomotive) {
   if (!base::android::device_info::is_automotive()) {
     GTEST_SKIP() << "This test should only run on automotive.";
   }
-  base::HistogramTester histograms;
 
   TestDownloadMessageBridge* message_bridge = new TestDownloadMessageBridge();
   delegate()->SetDownloadMessageBridgeForTesting(
@@ -886,10 +894,28 @@ TEST_F(ChromeDownloadManagerDelegateTest, InterceptDownloadForAutomotive) {
       kUrl, "", "", mime_type, "", 10, false /*is_transient*/,
       false /*is_content_initiated*/, nullptr);
   EXPECT_TRUE(should_intercept);
-  histograms.ExpectUniqueSample("Download.Blocked.ContentType.Automotive",
-                                download::DownloadContent::kPdf, 1);
 
   EXPECT_EQ(1, message_bridge->GetMessageShownCount());
+}
+
+TEST_F(ChromeDownloadManagerDelegateTest,
+       InterceptDownloadIfApplicable_LocalPdfOnlyDroppedWhenTransient) {
+  if (base::android::device_info::is_automotive()) {
+    GTEST_SKIP() << "Automotive blocks unsupported downloads separately.";
+  }
+
+  const bool should_open_pdf_inline = delegate()->ShouldOpenPdfInline();
+  for (const GURL& url :
+       {GURL("content://com.example/x.pdf"), GURL("file:///sdcard/x.pdf")}) {
+    EXPECT_FALSE(delegate()->InterceptDownloadIfApplicable(
+        url, "", "", "application/pdf", "", 10, /*is_transient=*/false,
+        /*is_content_initiated=*/false, nullptr));
+    EXPECT_EQ(
+        should_open_pdf_inline,
+        delegate()->InterceptDownloadIfApplicable(
+            url, "", "", "application/pdf", "", 10,
+            /*is_transient=*/true, /*is_content_initiated=*/false, nullptr));
+  }
 }
 #endif
 
@@ -3259,12 +3285,17 @@ class TestDownloadDialogBridge : public DownloadDialogBridge {
 }  // namespace
 
 TEST_F(ChromeDownloadManagerDelegateTest, RequestConfirmation_Android) {
+  base::android::device_info::set_is_desktop_for_testing(false);
+  base::ScopedClosureRunner reset_desktop(base::BindOnce(
+      &base::android::device_info::reset_is_desktop_for_testing));
+
   DeleteContents();
   SetContents(CreateTestWebContents());
 
   base::test::ScopedFeatureList scoped_list;
-  scoped_list.InitAndDisableFeature(
-      download::features::kEnableDownloadSaveAsSystemFileDialog);
+  scoped_list.InitWithFeatures(
+      {}, {download::features::kEnableDownloadSaveAsContextMenu,
+           download::features::kEnableDownloadSaveAsSystemFileDialog});
   profile()->GetTestingPrefService()->SetInteger(
       prefs::kPromptForDownloadAndroid,
       static_cast<int>(DownloadPromptStatus::SHOW_PREFERENCE));

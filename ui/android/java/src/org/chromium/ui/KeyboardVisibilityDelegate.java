@@ -26,9 +26,11 @@ public class KeyboardVisibilityDelegate {
     public interface KeyboardVisibilityListener {
         /**
          * Called whenever the keyboard might have changed.
-         * @param isShowing A boolean that's true if the keyboard is now visible.
+         *
+         * @param isObscuring A boolean that's true if the keyboard is now visible and obscuring the
+         *     window layout.
          */
-        void keyboardVisibilityChanged(boolean isShowing);
+        void keyboardObscuringChanged(boolean isObscuring);
     }
 
     private final ObserverList<KeyboardVisibilityListener> mKeyboardVisibilityListeners =
@@ -120,26 +122,26 @@ public class KeyboardVisibilityDelegate {
      * @param view A {@link View}.
      * @return Whether or not the software keyboard is visible.
      */
-    public boolean isKeyboardShowing(View view) {
-        return KeyboardUtils.isAndroidSoftKeyboardShowing(view);
+    public boolean isKeyboardObscuring(View view) {
+        return KeyboardUtils.isAndroidSoftKeyboardObscuring(view);
     }
 
     /**
      * To be called when the keyboard visibility state might have changed. Informs listeners of the
      * state change IFF there actually was a change.
      *
-     * @param isShowing The current (guesstimated) state of the keyboard.
+     * @param isObscuring The current (guesstimated) obscuring state of the keyboard.
      */
-    protected void notifyListeners(boolean isShowing) {
+    protected void notifyListeners(boolean isObscuring) {
         for (KeyboardVisibilityListener listener : mKeyboardVisibilityListeners) {
-            listener.keyboardVisibilityChanged(isShowing);
+            listener.keyboardObscuringChanged(isObscuring);
         }
     }
 
     /**
      * Adds a listener that is updated of keyboard visibility changes. This works as a best guess.
      *
-     * @see org.chromium.ui.KeyboardVisibilityDelegate#isKeyboardShowing(Context, View)
+     * @see #isKeyboardObscuring(View)
      */
     public void addKeyboardVisibilityListener(KeyboardVisibilityListener listener) {
         if (mKeyboardVisibilityListeners.isEmpty()) {

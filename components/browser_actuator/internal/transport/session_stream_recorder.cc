@@ -5,6 +5,8 @@
 #include "components/browser_actuator/internal/transport/session_stream_recorder.h"
 
 #include <algorithm>
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
@@ -15,12 +17,14 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
-#include "base/functional/bind.h"
-#include "base/functional/callback.h"
+#include "base/containers/adapters.h"
+#include "base/containers/circular_deque.h"
 #include "base/json/json_writer.h"
 #include "base/json/values_util.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/sequence_checker.h"
+#include "base/strings/strcat.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "base/values.h"
@@ -71,6 +75,10 @@ constexpr std::optional<PayloadType> FromUpstreamProtoPayloadType(
       return PayloadType::kExperimentalTriggering;
     case ACTUATOR_UPSTREAM_PAYLOAD_TYPE_ACTUATION:
       return PayloadType::kActuation;
+    case ACTUATOR_UPSTREAM_PAYLOAD_TYPE_TASK_INGRESS:
+      return PayloadType::kTaskIngress;
+    case ACTUATOR_UPSTREAM_PAYLOAD_TYPE_PROBE:
+      return PayloadType::kProbe;
     case ACTUATOR_UPSTREAM_PAYLOAD_TYPE_UNSPECIFIED:
     default:
       return std::nullopt;
@@ -90,6 +98,153 @@ std::string_view PayloadTypeName(ActuatorUpstreamPayloadType type) {
   return PayloadTypeName(FromUpstreamProtoPayloadType(type));
 }
 
+// `Any::Is<T>()` is unavailable for LITE_RUNTIME protos, so `type_url` is
+// compared by hand. An empty value is accepted because the server does not
+// always populate it (crbug.com/572804026).
+bool HasExpectedPayloadTypeUrl(std::string_view type_url,
+                               PayloadType payload_type) {
+  return type_url.empty() || type_url == ExpectedTypeUrl(payload_type);
+}
+
+std::string FormatScrubbedProbePayload(std::string_view payload) {
+  static constexpr size_t kScrubbedProbePayloadPreviewBytes = 40;
+  return base::StrCat(
+      {"[<", base::NumberToString(payload.size()),
+       " synthetic bytes elided; head=",
+       base::TruncateUTF8ToByteSize(payload, kScrubbedProbePayloadPreviewBytes),
+       "...>]"});
+}
+
+// Synthetic `ProbeRequest` and `ProbeResponse` payloads can be up to 10 MB.
+// Because `SessionStreamRecorder` retains recorded entries in memory for the
+// lifetime of the profile, payloads larger than 128 bytes are replaced on
+// ingest with a compact summary marker preserving the original byte length and
+// leading `PROBE:...` header prefix. The 128-byte threshold exceeds the maximum
+// summary marker length (~97 bytes), keeping scrubbing strictly size-reducing
+// and idempotent.
+std::optional<std::string> TryScrubTransportProbePayload(
+    std::string_view serialized_probe) {
+  static constexpr size_t kMaxRecordedProbePayloadBytes = 128;
+  TransportProbe probe;
+  if (!probe.ParseFromString(serialized_probe)) {
+    return std::nullopt;
+  }
+  switch (probe.payload_case()) {
+    case TransportProbe::kRequest:
+      if (probe.request().payload().size() > kMaxRecordedProbePayloadBytes) {
+        probe.mutable_request()->set_payload(
+            FormatScrubbedProbePayload(probe.request().payload()));
+        return probe.SerializeAsString();
+      }
+      break;
+    case TransportProbe::kResponse:
+      if (probe.response().payload().size() > kMaxRecordedProbePayloadBytes) {
+        probe.mutable_response()->set_payload(
+            FormatScrubbedProbePayload(probe.response().payload()));
+        return probe.SerializeAsString();
+      }
+      break;
+    case TransportProbe::PAYLOAD_NOT_SET:
+      break;
+  }
+  return std::nullopt;
+}
+
+void MaybeScrubTransportProbePayload(std::string& serialized_probe) {
+  if (std::optional<std::string> scrubbed =
+          TryScrubTransportProbePayload(serialized_probe)) {
+    // Move-assign a fresh string rather than calling `SerializeToString()` in
+    // place, which would call `clear()`/`resize()` and retain the multi-MB
+    // heap `capacity()` for the lifetime of the profile.
+    serialized_probe = *std::move(scrubbed);
+  }
+}
+
+template <typename EnvelopeProto, typename ToPayloadTypeFn>
+void ScrubEnvelopeProbePayloads(EnvelopeProto& envelope,
+                                ToPayloadTypeFn to_payload_type) {
+  for (auto& typed_payload : *envelope.mutable_typed_payloads()) {
+    if (to_payload_type(typed_payload.payload_type()) == PayloadType::kProbe &&
+        typed_payload.has_proto_payload() &&
+        HasExpectedPayloadTypeUrl(typed_payload.proto_payload().type_url(),
+                                  PayloadType::kProbe) &&
+        !typed_payload.proto_payload().value().empty()) {
+      MaybeScrubTransportProbePayload(
+          *typed_payload.mutable_proto_payload()->mutable_value());
+    }
+  }
+}
+
+void ScrubLargeProbePayloads(ActuatorDownstreamMessage& message) {
+  ScrubEnvelopeProbePayloads(message, &FromDownstreamProtoPayloadType);
+}
+
+void ScrubLargeProbePayloads(ActuatorUpstreamMessage& message) {
+  ScrubEnvelopeProbePayloads(message, &FromUpstreamProtoPayloadType);
+}
+
+template <typename EnvelopeProto, typename ToPayloadTypeFn>
+base::DictValue SerializeEnvelopeWithDecodedPayloads(
+    const EnvelopeProto& envelope,
+    ToPayloadTypeFn to_payload_type) {
+  base::DictValue dict = browser_actuator::ToValue(envelope).TakeDict();
+  base::ListValue* payloads_list = dict.FindList("typed_payloads");
+  if (!payloads_list) {
+    return dict;
+  }
+  const size_t count =
+      std::min(payloads_list->size(),
+               static_cast<size_t>(envelope.typed_payloads_size()));
+  for (size_t i = 0; i < count; ++i) {
+    const auto& typed_payload = envelope.typed_payloads(static_cast<int>(i));
+    if (!typed_payload.has_proto_payload() ||
+        typed_payload.proto_payload().value().empty()) {
+      continue;
+    }
+    const std::optional<PayloadType> payload_type =
+        to_payload_type(typed_payload.payload_type());
+    if (!payload_type.has_value() || (*payload_type != PayloadType::kControl &&
+                                      *payload_type != PayloadType::kProbe)) {
+      continue;
+    }
+    if (!HasExpectedPayloadTypeUrl(typed_payload.proto_payload().type_url(),
+                                   *payload_type)) {
+      continue;
+    }
+    base::DictValue* payload_dict = (*payloads_list)[i].GetIfDict();
+    if (!payload_dict) {
+      continue;
+    }
+    if (*payload_type == PayloadType::kControl) {
+      ControlCommand parsed_command;
+      if (parsed_command.ParseFromString(
+              typed_payload.proto_payload().value())) {
+        payload_dict->Set("decoded_control_command",
+                          browser_actuator::ToValue(parsed_command));
+      }
+    } else if (*payload_type == PayloadType::kProbe) {
+      TransportProbe parsed_probe;
+      if (parsed_probe.ParseFromString(typed_payload.proto_payload().value())) {
+        payload_dict->Set("decoded_transport_probe",
+                          browser_actuator::ToValue(parsed_probe));
+      }
+    }
+  }
+  return dict;
+}
+
+base::DictValue SerializeMessageForDiagnostics(
+    const ActuatorDownstreamMessage& message) {
+  return SerializeEnvelopeWithDecodedPayloads(message,
+                                              &FromDownstreamProtoPayloadType);
+}
+
+base::DictValue SerializeMessageForDiagnostics(
+    const ActuatorUpstreamMessage& message) {
+  return SerializeEnvelopeWithDecodedPayloads(message,
+                                              &FromUpstreamProtoPayloadType);
+}
+
 SessionEventSnapshot BuildEventSnapshot(
     const SessionMetadata& metadata,
     const SessionStreamRecorder::Entry& entry,
@@ -98,15 +253,35 @@ SessionEventSnapshot BuildEventSnapshot(
   event.timestamp = ToWallTime(metadata, entry.timestamp);
   event.is_downstream =
       std::holds_alternative<ActuatorDownstreamMessage>(entry.message);
+  event.http_response_code = entry.http_response_code;
+  event.downstream_status = entry.downstream_status;
 
   std::visit(
-      [&event](const auto& msg) {
+      [&event, max_message_bytes](const auto& msg) {
+        bool has_oversized_payload = false;
         for (const auto& payload : msg.typed_payloads()) {
           event.payload_types.emplace_back(
               PayloadTypeName(payload.payload_type()));
+          if (payload.proto_payload().value().size() > max_message_bytes) {
+            has_oversized_payload = true;
+          }
         }
-        event.message =
-            base::WriteJson(browser_actuator::ToValue(msg)).value_or("");
+        if (has_oversized_payload) {
+          auto truncated_msg = msg;
+          for (auto& payload : *truncated_msg.mutable_typed_payloads()) {
+            if (payload.proto_payload().value().size() > max_message_bytes) {
+              payload.mutable_proto_payload()->mutable_value()->resize(
+                  max_message_bytes);
+              event.message_truncated = true;
+            }
+          }
+          event.message =
+              base::WriteJson(SerializeMessageForDiagnostics(truncated_msg))
+                  .value_or("");
+        } else {
+          event.message =
+              base::WriteJson(SerializeMessageForDiagnostics(msg)).value_or("");
+        }
       },
       entry.message);
 
@@ -121,7 +296,7 @@ SessionEventSnapshot BuildEventSnapshot(
 
 SessionSnapshot BuildSessionSnapshot(
     const SessionMetadata& metadata,
-    const std::vector<SessionStreamRecorder::Entry>& entries,
+    const base::circular_deque<SessionStreamRecorder::Entry>& entries,
     size_t max_events,
     size_t max_message_bytes) {
   SessionSnapshot snapshot;
@@ -132,7 +307,8 @@ SessionSnapshot BuildSessionSnapshot(
   }
   snapshot.total_downstream_messages = metadata.total_downstream_messages;
   snapshot.total_upstream_messages = metadata.total_upstream_messages;
-  snapshot.total_events = entries.size();
+  snapshot.total_events =
+      metadata.total_downstream_messages + metadata.total_upstream_messages;
 
   size_t kept_count = std::min(max_events, entries.size());
   size_t start_index = entries.size() - kept_count;
@@ -165,17 +341,40 @@ base::DictValue SessionMetadata::ToValue() const {
   return dict;
 }
 
+void SessionStreamRecorder::Observer::OnDownstreamMessage(
+    base::TimeTicks timestamp,
+    const ActuatorDownstreamMessage& message,
+    DownstreamDeliveryStatus status) {}
+
+void SessionStreamRecorder::Observer::OnUpstreamMessage(
+    base::TimeTicks timestamp,
+    const ActuatorUpstreamMessage& message,
+    int http_response_code) {}
+
 base::DictValue SessionStreamRecorder::Entry::ToValue() const {
   base::DictValue dict;
   dict.Set("timestamp_ticks", timestamp.since_origin().InMicrosecondsF());
   if (const auto* downstream =
           std::get_if<ActuatorDownstreamMessage>(&message)) {
     dict.Set("direction", "Downstream");
-    dict.Set("message", browser_actuator::ToValue(*downstream));
+    dict.Set("message", SerializeMessageForDiagnostics(*downstream));
+    switch (downstream_status) {
+      case DownstreamDeliveryStatus::kSuccess:
+        dict.Set("downstream_status", "Success");
+        break;
+      case DownstreamDeliveryStatus::kFailure:
+        dict.Set("downstream_status", "Failure");
+        break;
+      case DownstreamDeliveryStatus::kUnknown:
+      default:
+        dict.Set("downstream_status", "Unknown");
+        break;
+    }
   } else {
     dict.Set("direction", "Upstream");
-    dict.Set("message", browser_actuator::ToValue(
+    dict.Set("message", SerializeMessageForDiagnostics(
                             std::get<ActuatorUpstreamMessage>(message)));
+    dict.Set("http_response_code", http_response_code);
   }
   return dict;
 }
@@ -193,59 +392,81 @@ SessionStreamRecorder::SessionStreamRecorder(std::string_view session_id)
 
 SessionStreamRecorder::~SessionStreamRecorder() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  MarkSessionClosed();
-  weak_ptr_factory_.InvalidateWeakPtrs();
-  if (destruction_callback_) {
-    std::move(destruction_callback_).Run(metadata_, std::move(entries_));
-  }
-}
-
-void SessionStreamRecorder::OnMessage(PayloadType payload_type,
-                                      std::string_view serialized_payload) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  // Rebuild the single-payload message that the entry list records.
-  ActuatorDownstreamMessage downstream;
-  downstream.set_session_id(session_id_);
-  auto* typed_payload = downstream.add_typed_payloads();
-  typed_payload->set_payload_type(
-      payload_type == PayloadType::kUnspecified
-          ? ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_UNSPECIFIED
-          : ToDownstreamProtoPayloadType(payload_type));
-  typed_payload->mutable_proto_payload()->set_value(
-      std::string(serialized_payload));
-  RecordDownstreamMessage(std::move(downstream));
 }
 
 void SessionStreamRecorder::RecordDownstreamMessage(
-    ActuatorDownstreamMessage message) {
+    ActuatorDownstreamMessage message,
+    DownstreamDeliveryStatus status) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  ScrubLargeProbePayloads(message);
   metadata_.total_downstream_messages++;
+  for (ActuatorDownstreamTypedPayload& typed_payload :
+       *message.mutable_typed_payloads()) {
+    if (typed_payload.has_proto_payload() &&
+        typed_payload.proto_payload().type_url().empty()) {
+      if (std::optional<PayloadType> payload_type =
+              FromDownstreamProtoPayloadType(typed_payload.payload_type())) {
+        typed_payload.mutable_proto_payload()->set_type_url(
+            std::string(ExpectedTypeUrl(*payload_type)));
+      }
+    }
+  }
+  if (entries_.size() >= kMaxEntriesPerSession) {
+    entries_.pop_front();
+  }
   base::TimeTicks now = base::TimeTicks::Now();
   entries_.push_back(Entry{
       .timestamp = now,
       .message = std::move(message),
+      .downstream_status = status,
   });
   const auto& recorded_message =
       std::get<ActuatorDownstreamMessage>(entries_.back().message);
   for (auto& observer : observers_) {
-    observer.OnDownstreamMessage(now, recorded_message);
+    observer.OnDownstreamMessage(now, recorded_message, status);
   }
 }
 
-void SessionStreamRecorder::RecordUpstreamMessage(
-    ActuatorUpstreamMessage message) {
+bool SessionStreamRecorder::UpdateUpstreamResponseCode(
+    int64_t client_sequence_number,
+    int http_response_code) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  for (Entry& entry : base::Reversed(entries_)) {
+    if (std::holds_alternative<ActuatorUpstreamMessage>(entry.message)) {
+      const auto& upstream = std::get<ActuatorUpstreamMessage>(entry.message);
+      if (upstream.client_sequence_number() == client_sequence_number &&
+          entry.http_response_code == 0) {
+        entry.http_response_code = http_response_code;
+        for (auto& observer : observers_) {
+          observer.OnUpstreamMessage(entry.timestamp, upstream,
+                                     http_response_code);
+        }
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+void SessionStreamRecorder::RecordUpstreamMessage(
+    ActuatorUpstreamMessage message,
+    int http_response_code) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  ScrubLargeProbePayloads(message);
   metadata_.total_upstream_messages++;
+  if (entries_.size() >= kMaxEntriesPerSession) {
+    entries_.pop_front();
+  }
   base::TimeTicks now = base::TimeTicks::Now();
   entries_.push_back(Entry{
       .timestamp = now,
       .message = std::move(message),
+      .http_response_code = http_response_code,
   });
   const auto& recorded_message =
       std::get<ActuatorUpstreamMessage>(entries_.back().message);
   for (auto& observer : observers_) {
-    observer.OnUpstreamMessage(now, recorded_message);
+    observer.OnUpstreamMessage(now, recorded_message, http_response_code);
   }
 }
 
@@ -269,7 +490,7 @@ const SessionMetadata& SessionStreamRecorder::metadata() const {
   return metadata_;
 }
 
-const std::vector<SessionStreamRecorder::Entry>&
+const base::circular_deque<SessionStreamRecorder::Entry>&
 SessionStreamRecorder::entries() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return entries_;
@@ -283,87 +504,100 @@ void SessionStreamRecorder::MarkSessionClosed() {
   }
 }
 
-void SessionStreamRecorder::SetDestructionCallback(
-    DestructionCallback callback) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  destruction_callback_ = std::move(callback);
-}
-
-base::WeakPtr<SessionStreamRecorder> SessionStreamRecorder::GetWeakPtr() {
-  return weak_ptr_factory_.GetWeakPtr();
-}
-
 SessionStreamRecorderFactory::SessionStreamRecorderFactory() = default;
 
 SessionStreamRecorderFactory::~SessionStreamRecorderFactory() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 }
 
-FactoryId SessionStreamRecorderFactory::GetFactoryId() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return FactoryId::kSessionStreamRecorder;
-}
-
-// LINT.IfChange(RecorderPayloadTypes)
-std::vector<PayloadType>
-SessionStreamRecorderFactory::GetSupportedPayloadTypes() const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return {PayloadType::kControl, PayloadType::kExperimentalTriggering,
-          PayloadType::kActuation};
-}
-// LINT.ThenChange(//components/browser_actuator/public/transport/common.h:PayloadType)
-
-std::unique_ptr<TransportHandler> SessionStreamRecorderFactory::OnNewSession(
+void SessionStreamRecorderFactory::OnSessionRegistered(
     TransportSession* session) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!session) {
-    return nullptr;
+    return;
   }
-  auto recorder =
-      std::make_unique<SessionStreamRecorder>(session->GetSessionId());
-  recorder->SetDestructionCallback(
-      base::BindOnce(&SessionStreamRecorderFactory::OnRecorderDestroyed,
-                     weak_ptr_factory_.GetWeakPtr(), recorder.get()));
-  active_recorders_.push_back(recorder->GetWeakPtr());
-  return recorder;
+  std::string_view session_id = session->GetSessionId();
+  // The registry never registers an ID that is still active, but retire any
+  // leftover recorder so its history is not lost.
+  RetireRecorder(session_id);
+  active_recorders_.push_back(
+      std::make_unique<SessionStreamRecorder>(session_id));
 }
 
-void SessionStreamRecorderFactory::OnUpstreamMessage(
-    std::string_view session_id,
-    const ActuatorUpstreamMessage& message) {
+void SessionStreamRecorderFactory::OnSessionRemoved(
+    std::string_view session_id) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  for (const auto& weak_recorder : active_recorders_) {
-    if (weak_recorder && weak_recorder->session_id() == session_id) {
-      weak_recorder->RecordUpstreamMessage(message);
-      return;
-    }
+  RetireRecorder(session_id);
+}
+
+void SessionStreamRecorderFactory::OnDownstreamMessage(
+    std::string_view session_id,
+    const ActuatorDownstreamMessage& message,
+    DownstreamDeliveryStatus status) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (SessionStreamRecorder* recorder = FindActiveRecorder(session_id)) {
+    recorder->RecordDownstreamMessage(message, status);
   }
   // No active recorder for this session (unknown or already closed). Drop it.
 }
 
-void SessionStreamRecorderFactory::OnRecorderDestroyed(
-    SessionStreamRecorder* recorder,
-    const SessionMetadata& metadata,
-    std::vector<SessionStreamRecorder::Entry> entries) {
+void SessionStreamRecorderFactory::OnUpstreamMessage(
+    std::string_view session_id,
+    const ActuatorUpstreamMessage& message,
+    int http_response_code) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  std::erase_if(active_recorders_, [recorder](const auto& ptr) {
-    return !ptr || ptr.get() == recorder;
-  });
-  retained_sessions_.push_back(RetainedSessionHistory{
-      .metadata = metadata,
-      .entries = std::move(entries),
-  });
+  if (http_response_code != 0) {
+    if (SessionStreamRecorder* recorder = FindActiveRecorder(session_id)) {
+      recorder->UpdateUpstreamResponseCode(message.client_sequence_number(),
+                                           http_response_code);
+      return;
+    }
+    auto it = std::ranges::find(retained_recorders_, session_id,
+                                &SessionStreamRecorder::session_id);
+    if (it != retained_recorders_.end()) {
+      (*it)->UpdateUpstreamResponseCode(message.client_sequence_number(),
+                                        http_response_code);
+    }
+    return;
+  }
+  if (SessionStreamRecorder* recorder = FindActiveRecorder(session_id)) {
+    recorder->RecordUpstreamMessage(message, /*http_response_code=*/0);
+  }
+  // No active recorder for this session (unknown or already closed). Drop it.
+}
+
+SessionStreamRecorder* SessionStreamRecorderFactory::FindActiveRecorder(
+    std::string_view session_id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  auto it = std::ranges::find(active_recorders_, session_id,
+                              &SessionStreamRecorder::session_id);
+  return it == active_recorders_.end() ? nullptr : it->get();
+}
+
+void SessionStreamRecorderFactory::RetireRecorder(std::string_view session_id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  auto it = std::ranges::find(active_recorders_, session_id,
+                              &SessionStreamRecorder::session_id);
+  if (it == active_recorders_.end()) {
+    return;
+  }
+  (*it)->MarkSessionClosed();
+  retained_recorders_.push_back(std::move(*it));
+  active_recorders_.erase(it);
+  if (retained_recorders_.size() > kMaxRetainedSessions) {
+    retained_recorders_.erase(retained_recorders_.begin());
+  }
 }
 
 size_t SessionStreamRecorderFactory::GetActiveRecordersCountForTesting() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  size_t count = 0;
-  for (const auto& ptr : active_recorders_) {
-    if (ptr) {
-      count++;
-    }
-  }
-  return count;
+  return active_recorders_.size();
+}
+
+SessionStreamRecorder*
+SessionStreamRecorderFactory::GetActiveRecorderForTesting(
+    std::string_view session_id) {
+  return FindActiveRecorder(session_id);
 }
 
 base::DictValue SessionStreamRecorderFactory::ExportAllSessionsAsValue() const {
@@ -376,34 +610,27 @@ base::DictValue SessionStreamRecorderFactory::ExportSessionsAsValue(
   base::DictValue root_dict;
   base::ListValue sessions_list;
 
-  auto should_include = [&session_ids](std::string_view id) {
-    return !session_ids.has_value() || std::ranges::contains(*session_ids, id);
-  };
-
-  auto append_session =
-      [&sessions_list](
-          const SessionMetadata& metadata,
-          const std::vector<SessionStreamRecorder::Entry>& entries) {
-        base::DictValue session_dict = metadata.ToValue();
-        base::ListValue events_list;
-        for (const auto& entry : entries) {
-          events_list.Append(entry.ToValue());
+  auto append_sessions =
+      [&sessions_list,
+       &session_ids](const std::vector<std::unique_ptr<SessionStreamRecorder>>&
+                         recorders) {
+        for (const auto& recorder : recorders) {
+          if (session_ids.has_value() &&
+              !std::ranges::contains(*session_ids, recorder->session_id())) {
+            continue;
+          }
+          base::DictValue session_dict = recorder->metadata().ToValue();
+          base::ListValue events_list;
+          for (const auto& entry : recorder->entries()) {
+            events_list.Append(entry.ToValue());
+          }
+          session_dict.Set("events", std::move(events_list));
+          sessions_list.Append(std::move(session_dict));
         }
-        session_dict.Set("events", std::move(events_list));
-        sessions_list.Append(std::move(session_dict));
       };
 
-  for (const auto& weak_recorder : active_recorders_) {
-    if (weak_recorder && should_include(weak_recorder->session_id())) {
-      append_session(weak_recorder->metadata(), weak_recorder->entries());
-    }
-  }
-
-  for (const auto& retained : retained_sessions_) {
-    if (should_include(retained.metadata.session_id)) {
-      append_session(retained.metadata, retained.entries);
-    }
-  }
+  append_sessions(active_recorders_);
+  append_sessions(retained_recorders_);
 
   root_dict.Set("sessions", std::move(sessions_list));
   return root_dict;
@@ -414,18 +641,14 @@ std::vector<SessionSnapshot> SessionStreamRecorderFactory::GetAllSessions(
     size_t max_message_bytes) const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   std::vector<SessionSnapshot> sessions;
+  sessions.reserve(active_recorders_.size() + retained_recorders_.size());
 
-  for (const auto& weak_recorder : active_recorders_) {
-    if (weak_recorder) {
-      sessions.push_back(BuildSessionSnapshot(weak_recorder->metadata(),
-                                              weak_recorder->entries(),
-                                              max_events, max_message_bytes));
+  for (const auto* recorders : {&active_recorders_, &retained_recorders_}) {
+    for (const auto& recorder : *recorders) {
+      sessions.push_back(BuildSessionSnapshot(recorder->metadata(),
+                                              recorder->entries(), max_events,
+                                              max_message_bytes));
     }
-  }
-
-  for (const auto& retained : retained_sessions_) {
-    sessions.push_back(BuildSessionSnapshot(retained.metadata, retained.entries,
-                                            max_events, max_message_bytes));
   }
 
   std::sort(sessions.begin(), sessions.end(),
@@ -447,6 +670,12 @@ std::string SessionStreamRecorderFactory::ExportSessionsAsJson(
   return base::WriteJsonWithOptions(ExportSessionsAsValue(session_ids),
                                     base::OPTIONS_PRETTY_PRINT)
       .value_or("");
+}
+
+void SessionStreamRecorderFactory::Clear() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  active_recorders_.clear();
+  retained_recorders_.clear();
 }
 
 }  // namespace browser_actuator::transport

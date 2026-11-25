@@ -6,6 +6,8 @@ package org.chromium.chrome.browser.tabmodel;
 
 import androidx.annotation.IntDef;
 
+import org.jni_zero.JniPtr;
+
 import org.chromium.base.Token;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.supplier.LazyOneshotSupplier;
@@ -20,11 +22,13 @@ import org.chromium.chrome.browser.tab.TabId;
 import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tabmodel.NextTabPolicy.NextTabPolicySupplier;
+import org.chromium.chrome.browser.tabmodel.undo.UndoClosureSnapshot;
 import org.chromium.components.tab_groups.TabGroupColorId;
 import org.chromium.components.tabs.TabStripCollection;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -58,8 +62,9 @@ public interface TabModel extends TabList {
     int getTabModelType();
 
     /**
-     * Returns whether the given {@link TabModelType} is dormant (e.g. archived or headless, which
-     * never hold WebContents).
+     * Returns whether the given {@link TabModelType} is dormant ({@link TabModelType#ARCHIVED} or
+     * {@link TabModelType#HEADLESS}). Tabs in dormant models never hold a {@code WebContents}, and
+     * {@link TabModelType#HEADLESS} is intended to become strictly read-only in the future.
      */
     static boolean isDormantTabModel(@TabModelType int tabModelType) {
         return tabModelType == TabModelType.ARCHIVED || tabModelType == TabModelType.HEADLESS;
@@ -69,16 +74,20 @@ public interface TabModel extends TabList {
     @Nullable Profile getProfile();
 
     /**
-     * Associates this tab model with a browser window. This should be called shortly after startup
-     * to associate the tab model with a AndroidBrowserWindow.
+     * Associates this tab model with a native {@code AndroidBrowserWindow}. This should be called
+     * shortly after startup. Note that this is model-level window association, distinct from
+     * per-tab window attachment ({@link Tab#isDetachedFromActivity()}) and model attachment ({@link
+     * Tab#hasParentCollection()}).
      *
      * @param nativeAndroidBrowserWindow The native AndroidBrowserWindow pointer.
      */
     void associateWithBrowserWindow(long nativeAndroidBrowserWindow);
 
     /**
-     * Dissociates this tab model from a browser window. This should be called before the browser
-     * window is destroyed.
+     * Dissociates this tab model from a native {@code AndroidBrowserWindow}. This should be called
+     * before the browser window is destroyed. Note that this is model-level window association,
+     * distinct from per-tab window attachment ({@link Tab#isDetachedFromActivity()}) and model
+     * attachment ({@link Tab#hasParentCollection()}).
      */
     void dissociateWithBrowserWindow();
 
@@ -96,21 +105,22 @@ public interface TabModel extends TabList {
     TabRemover getTabRemover();
 
     /**
-     * Returns which tab would be selected if the specified tab {@code id} were closed.
+     * Returns which tab would become the current (active) tab if the specified tab {@code id} were
+     * closed.
      *
      * @param id The ID of tab which would be closed.
      * @param uponExit If the next tab is being selected upon exit or backgrounding of the app.
-     * @return The id of the next tab that would be visible.
+     * @return The next {@link Tab} that would become active, or {@code null} if none.
      */
     @Nullable Tab getNextTabIfClosed(@TabId int id, boolean uponExit);
 
     /**
-     * Finds the next tab to select hierarchically (child -> sibling -> parent) when closing the
+     * Finds the next tab to activate hierarchically (child -> sibling -> parent) when closing the
      * given tab.
      *
      * @param closingTab The {@link Tab} that is closing.
      * @param closingTabs The collection of all tabs that are closing.
-     * @return The next {@link Tab} to select, or {@code null} if no candidate is found.
+     * @return The next {@link Tab} to activate, or {@code null} if no candidate is found.
      */
     default @Nullable Tab getHierarchicalNextTab(Tab closingTab, List<Tab> closingTabs) {
         return null;
@@ -119,12 +129,16 @@ public interface TabModel extends TabList {
     boolean supportsPendingClosures();
 
     /**
+     * Returns whether the tab with {@code tabId} has a pending closure.
+     *
      * @param tabId The id of the {@link Tab} that might have a pending closure.
-     * @return Whether or not the {@link Tab} specified by {@code tabId} has a pending closure.
      */
     boolean isClosurePending(@TabId int tabId);
 
-    /** Commits all pending closures, closing all tabs that had a chance to be undone. */
+    /**
+     * Commits all pending closures, closing all tabs that had a chance to be undone, and notifies
+     * observers to dismiss any active undo affordances.
+     */
     void commitAllTabClosures();
 
     /**
@@ -136,11 +150,26 @@ public interface TabModel extends TabList {
 
     /**
      * Cancels a pending {@link Tab} closure, bringing the tab back into this model. Note that this
-     * will select the rewound {@link Tab}.
+     * will activate the rewound {@link Tab} if no tab is currently active in the model.
      *
      * @param tabId The id of the {@link Tab} to undo.
      */
     void cancelTabClosure(@TabId int tabId);
+
+    /**
+     * Restores the closed tabs captured by {@code snapshot} when the user triggers undo.
+     *
+     * @param snapshot The closure snapshot captured at close time.
+     * @param reselect Whether to reselect a tab that was selected prior to closure.
+     * @return Restored tab IDs using the same indexing as {@code snapshot.tabs}, i.e. element
+     *     {@code i} is the restored ID of {@code snapshot.tabs.get(i)}, or {@link
+     *     Tab#INVALID_TAB_ID} if that tab could not be restored.
+     */
+    default int[] restoreClosedTabsForUndo(UndoClosureSnapshot snapshot, boolean reselect) {
+        int[] result = new int[snapshot.tabs.size()];
+        Arrays.fill(result, Tab.INVALID_TAB_ID);
+        return result;
+    }
 
     /**
      * Restores the most recent closure, bringing the tab(s) back into their original tab model or
@@ -161,16 +190,17 @@ public interface TabModel extends TabList {
     long getMostRecentClosureTime();
 
     /**
-     * @return The complete {@link TabList} this {@link TabModel} represents. Note that this may be
-     *     different than this actual {@link TabModel} if it supports pending closures {@link
-     *     #supportsPendingClosures()}, as this will include all pending closure tabs.
+     * Returns the complete (rewound) {@link TabList} this {@link TabModel} represents. Note that
+     * this may be different than this actual {@link TabModel} if it supports pending closures
+     * {@link #supportsPendingClosures()}, as this will include all tabs with pending undoable
+     * closures from {@code PendingTabClosureManager} (where {@link Tab#isClosing()} is true).
      */
     TabList getComprehensiveModel();
 
     /**
-     * Returns a supplier of the current {@link Tab}. The tab may be null if no tab is present in
-     * the model or selected. The contained tab should always match the result of {@code
-     * getTabAt(index())}.
+     * Returns a supplier of the current (active) {@link Tab}. The tab may be null if no tab is
+     * present in the model or no tab is active. The contained tab should always match the result of
+     * {@code getTabAt(index())}.
      */
     NullableObservableSupplier<Tab> getCurrentTabSupplier();
 
@@ -178,16 +208,16 @@ public interface TabModel extends TabList {
     NextTabPolicySupplier getNextTabPolicySupplier();
 
     /**
-     * Selects a tab by its index.
+     * Activates a tab by its index (setting it as the current tab).
      *
-     * @param i The index of the tab to select.
+     * @param i The index of the tab to activate.
      * @param type The type of selection.
      */
     void setIndex(int i, @TabSelectionType int type);
 
     /**
-     * @return Whether this tab model is currently selected in the correspond {@link
-     *     TabModelSelector}.
+     * Returns whether this tab model is currently the active model in the corresponding {@link
+     * TabModelSelector}.
      */
     boolean isActiveModel();
 
@@ -255,20 +285,26 @@ public interface TabModel extends TabList {
     void clearMultiSelection(boolean notifyObservers);
 
     /**
-     * Checks if a tab is part of the current selection. A tab is considered selected if it is
-     * either the currently active tab or has been explicitly added to the multi-selection group.
+     * Checks if a tab is part of the multi-selection set. Multi-selection is distinct from
+     * single-tab activation, though {@link TabModel}'s multi-selection set implicitly includes the
+     * current (active) tab when a tab is active (and not in an {@link TabModelType#ARCHIVED} model,
+     * where {@link #index()} is {@link TabList#INVALID_TAB_INDEX}) in addition to any tabs
+     * explicitly added to the multi-selection group.
      *
      * @param tabId The ID of the tab to check.
-     * @return true if the tab is selected, false otherwise.
+     * @return true if the tab is part of the multi-selection set, false otherwise.
      */
     boolean isTabMultiSelected(int tabId);
 
     /**
-     * Gets the total number of selected tabs. This includes the currently active tab plus any other
-     * tabs explicitly added to the multi-selection group. If no tabs are multi-selected, this will
-     * return 1 (for the active tab). If there are no tabs in the model, this will return 0.
+     * Gets the total number of tabs in the multi-selection set. Multi-selection is distinct from
+     * single-tab activation, though {@link TabModel}'s multi-selection set implicitly includes the
+     * current (active) tab plus any other tabs explicitly added to the multi-selection group. If no
+     * other tabs are multi-selected, this will return 1 when an active tab is present ({@code
+     * getCurrentTabSupplier().get() != null}), or 0 if no tab is currently active (e.g. when the
+     * model is empty or during background restore before initialization completes).
      *
-     * @return The total count of selected tabs.
+     * @return The total count of tabs in the multi-selection set.
      */
     int getMultiSelectedTabsCount();
 
@@ -350,7 +386,7 @@ public interface TabModel extends TabList {
      * Returns the {@link TabStripCollection} associated with this {@link TabModel} if tab
      * collections are enabled. Otherwise, returns null.
      */
-    @Nullable TabStripCollection getTabStripCollection();
+    @Nullable JniPtr<TabStripCollection> getTabStripCollection();
 
     /** Returns {@link ActivityType} of the this tab model. */
     default int getActivityTypeForTesting() {
@@ -417,8 +453,8 @@ public interface TabModel extends TabList {
 
     /**
      * Returns the representative tab for an index or null if one does not exist. For an individual
-     * tab this is the tab itself. For a tab group this is the most recently selected tab in the
-     * group.
+     * tab this is the tab itself. For a tab group this is the most recently shown/activated tab in
+     * the group.
      *
      * @deprecated Do not index into collapsed representative tab lists. Use {@link #getTabAt(int)}
      *     for flat tab model indices or {@link #getTabsInGroup(Token)} for tab group members.
@@ -468,7 +504,8 @@ public interface TabModel extends TabList {
     int getIndexOfTabInGroup(Tab tab);
 
     /**
-     * Returns the last shown tab id in the tab group with {@code tabGroupId}.
+     * Returns the ID of the most recently shown/activated tab in the tab group with {@code
+     * tabGroupId}.
      *
      * @deprecated Do not rely on mutable last-shown representative tab state for tab groups.
      *     Operate on {@link Token} {@code tabGroupId} and {@link #getTabsInGroup(Token)} directly,
@@ -490,13 +527,6 @@ public interface TabModel extends TabList {
     void moveGroupToIndex(Token tabGroupId, int newIndex);
 
     /**
-     * This method checks if an impending group merge action will result in a new group creation.
-     *
-     * @param tabsToMerge The list of tabs to be merged including all source and destination tabs.
-     */
-    boolean willMergingCreateNewGroup(List<Tab> tabsToMerge);
-
-    /**
      * Creates a tab group containing a single tab.
      *
      * @param tab The tab to create the group for.
@@ -516,20 +546,11 @@ public interface TabModel extends TabList {
     void createTabGroupForTabGroupSync(List<Tab> tabs, Token tabGroupId);
 
     /**
-     * This method merges the source group that contains the {@code sourceTabId} to the destination
-     * group that contains the {@code destinationTabId}. This method only operates if two groups are
-     * in the same {@code TabModel}.
-     *
-     * @param sourceTabId The id of the {@link Tab} to get the source group.
-     * @param destinationTabId The id of a {@link Tab} to get the destination group.
-     */
-    void mergeTabsToGroup(@TabId int sourceTabId, @TabId int destinationTabId);
-
     /**
-     * This method appends a list of {@link Tab}s to the destination group that contains the {@code}
-     * destinationTab. The {@link TabModel} ordering of the tabs in the given list is not preserved.
-     * After calling this method, the {@link TabModel} ordering of these tabs would become the
-     * ordering of {@code tabs}.
+     * Appends a list of {@link Tab}s to the destination group that contains the {@code
+     * destinationTab}. The {@link TabModel} ordering of the tabs in the given list is not
+     * preserved. After calling this method, the {@link TabModel} ordering of these tabs would
+     * become the ordering of {@code tabs}.
      *
      * @param tabs List of {@link Tab}s to be appended.
      * @param destinationTab The destination {@link Tab} to be append to.
@@ -541,8 +562,8 @@ public interface TabModel extends TabList {
     }
 
     /**
-     * This method merges a list of {@link Tab}s into the destination group that contains the
-     * {@code} destinationTab.
+     * Merges a list of {@link Tab}s into the destination group that contains the {@code
+     * destinationTab}.
      *
      * @param tabs List of {@link Tab}s to be merged. The ordering of this list is preserved.
      * @param destinationTab The destination {@link Tab}. If not in a group, a new group will be
@@ -643,7 +664,7 @@ public interface TabModel extends TabList {
      * exist, then GREY will be returned. This method is intended to be used by UI surfaces that
      * want to show a color, and they need the color returned to be valid.
      *
-     * @param tabGroupId The tab group ID whose related tab group color will be fetched if found.
+     * @param tabGroupId The tab group ID whose tab group color will be fetched if found.
      * @return The color that should be used for this group.
      */
     @TabGroupColorId
@@ -662,7 +683,4 @@ public interface TabModel extends TabList {
 
     /** Sets whether the tab group is expanded or collapsed, with optional animation. */
     void setTabGroupCollapsed(Token tabGroupId, boolean isCollapsed, boolean animate);
-
-    /** Deletes the record that the group is collapsed, setting it to expanded. */
-    void deleteTabGroupCollapsed(Token tabGroupId);
 }

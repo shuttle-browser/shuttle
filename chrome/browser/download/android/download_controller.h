@@ -64,7 +64,8 @@ class DownloadController : public DownloadControllerBase {
   static void CloseTabIfEmpty(content::WebContents* web_contents,
                               download::DownloadItem* download);
 
-  // Schedules the removal of a download item on the UI thread.
+  // Schedules the removal of a download item asynchronously on the current
+  // thread.
   static void ScheduleRemoveDownloadItem(download::DownloadItem* download);
 
   // Callback when user permission prompt finishes. Args: whether file access
@@ -105,7 +106,7 @@ class DownloadController : public DownloadControllerBase {
   bool OnSensitiveDownload(download::DownloadItem* item);
 
   // Shows the UI warnings from Safe Browsing malicious APK download check.
-  // Returns whether the dialog was shown.
+  // Returns whether a warning was shown (whether in dialog form or otherwise).
   bool ShowDangerousDownloadWarning(DownloadUIModel& model);
 
   // Helper methods to start android download on UI thread.
@@ -113,13 +114,17 @@ class DownloadController : public DownloadControllerBase {
                             const DownloadInfo& info);
 
   // Get profile key from download item.
-  ProfileKey* GetProfileKey(download::DownloadItem* download_item);
+  static ProfileKey* GetProfileKey(download::DownloadItem* download_item);
 
   // Callback after we prompt the user to enable app verification.
   void EnableVerifyAppsDone(safe_browsing::VerifyAppsEnabledResult result);
 
   // Notify Java that download is complete, so the user can be informed.
   void OnDownloadComplete(download::DownloadItem* item);
+
+  // Notify Java that a transient inline PDF download failed, so the PDF
+  // page can inform the user.
+  void OnDownloadFailed(download::DownloadItem* item);
 
   // Whether or not we should show an app verification prompt for `item`
   bool ShouldShowAppVerificationPrompt(download::DownloadItem* item);

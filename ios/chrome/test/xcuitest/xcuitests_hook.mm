@@ -208,10 +208,19 @@ id<ReauthenticationProtocol> GetFakeReauthenticationModule() {
   return nil;
 }
 
+UIViewController<ChromeLensViewFinderController>*
+GetOverriddenLensViewFinderController() {
+  return nil;
+}
+
 bool ShouldPauseStartupAtBackgroundStage() {
   return false;
 }
 
 void UnpauseStartupAtBackgroundStage() {}
+
+ChromeConnectionOptions* GetOverriddenConnectionOptions() {
+  return nil;
+}
 
 }  // namespace tests_hook

@@ -15,6 +15,7 @@
 #include "chrome/browser/thumbnail/generator/android/thumbnail_media_parser.h"
 #include "chrome/browser/thumbnail/generator/thumbnail_util.h"
 #include "content/public/browser/browser_thread.h"
+#include "third_party/jni_zero/jni_zero.h"
 #include "ui/gfx/android/java_bitmap.h"
 
 // Must come after headers that provide symbols used by @JniType.
@@ -32,7 +33,7 @@ void ForwardJavaCallback(const ScopedJavaGlobalRef<jobject>& java_delegate,
                          int icon_size,
                          const ScopedJavaGlobalRef<jobject>& callback,
                          SkBitmap thumbnail) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_ThumbnailGenerator_onThumbnailRetrieved(env, java_delegate, content_id,
                                                icon_size, thumbnail, callback);
@@ -40,7 +41,7 @@ void ForwardJavaCallback(const ScopedJavaGlobalRef<jobject>& java_delegate,
 
 void OnThumbnailScaled(base::OnceCallback<void(SkBitmap)> java_callback,
                        SkBitmap scaled_thumbnail) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   std::move(java_callback).Run(std::move(scaled_thumbnail));
 }
 
@@ -48,20 +49,17 @@ void OnThumbnailScaled(base::OnceCallback<void(SkBitmap)> java_callback,
 
 ThumbnailGenerator::ThumbnailGenerator(const JavaRef<jobject>& jobj)
     : java_delegate_(jobj) {
-  DCHECK(!jobj.is_null());
+  CHECK(!jobj.is_null(), base::NotFatalUntil::M163);
 }
 
-ThumbnailGenerator::~ThumbnailGenerator() = default;
-
-void ThumbnailGenerator::Destroy() {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  delete this;
+ThumbnailGenerator::~ThumbnailGenerator() {
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 }
 
 void ThumbnailGenerator::OnImageThumbnailRetrieved(
     base::OnceCallback<void(SkBitmap)> java_callback,
     const SkBitmap& thumbnail) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   // Send the bitmap back to Java-land.
   std::move(java_callback).Run(std::move(thumbnail));
@@ -74,7 +72,7 @@ void ThumbnailGenerator::OnVideoThumbnailRetrieved(
     bool success,
     chrome::mojom::MediaMetadataPtr media_metadata,
     SkBitmap thumbnail) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   // Scale the bitmap before sending back to Java.
   ScaleDownBitmap(icon_size, std::move(thumbnail),
@@ -95,7 +93,7 @@ void ThumbnailGenerator::RetrieveThumbnail(const JavaRef<jstring>& jcontent_id,
                                            const std::string& mime_type,
                                            int32_t icon_size,
                                            const JavaRef<jobject>& callback) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   base::FilePath file_path = base::FilePath::FromUTF8Unsafe(file_path_str);
 
@@ -130,8 +128,9 @@ void ThumbnailGenerator::RetrieveThumbnail(const JavaRef<jstring>& jcontent_id,
 }
 
 // static
-static int64_t JNI_ThumbnailGenerator_Init(const JavaRef<jobject>& jobj) {
-  return reinterpret_cast<intptr_t>(new ThumbnailGenerator(jobj));
+static jni_zero::JniUniquePtr<ThumbnailGenerator> JNI_ThumbnailGenerator_Init(
+    const JavaRef<jobject>& jobj) {
+  return jni_zero::MakeUnique<ThumbnailGenerator>(jobj);
 }
 
 DEFINE_JNI(ThumbnailGenerator)

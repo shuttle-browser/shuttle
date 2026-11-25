@@ -115,10 +115,10 @@ enum class ResponseSegmentation {
   kAnchoredContextualCueAttachedAudio = 90,
   kAnchoredContextualCueDetachedText = 91,
   kAnchoredContextualCueDetachedAudio = 92,
-  kWebContentsContextMenuAttachedText = 93,
-  kWebContentsContextMenuAttachedAudio = 94,
-  kWebContentsContextMenuDetachedText = 95,
-  kWebContentsContextMenuDetachedAudio = 96,
+  kObsoleteWebContentsContextMenuAttachedText = 93,
+  kObsoleteWebContentsContextMenuAttachedAudio = 94,
+  kObsoleteWebContentsContextMenuDetachedText = 95,
+  kObsoleteWebContentsContextMenuDetachedAudio = 96,
   kTextSelectionNudgeAttachedText = 97,
   kTextSelectionNudgeAttachedAudio = 98,
   kTextSelectionNudgeDetachedText = 99,
@@ -223,7 +223,11 @@ enum class ResponseSegmentation {
   kActorToolAttachedAudio = 198,
   kActorToolDetachedText = 199,
   kActorToolDetachedAudio = 200,
-  kMaxValue = kActorToolDetachedAudio,
+  kActivityListBubbleAttachedText = 201,
+  kActivityListBubbleAttachedAudio = 202,
+  kActivityListBubbleDetachedText = 203,
+  kActivityListBubbleDetachedAudio = 204,
+  kMaxValue = kActivityListBubbleDetachedAudio,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicResponseSegmentation)
 
@@ -267,7 +271,8 @@ enum class GlicDragAndDropValidationResult {
   kPageContextIneligible = 10,
   kUnknownDragSource = 11,
   kSourceFrameDestroyed = 12,
-  kMaxValue = kSourceFrameDestroyed,
+  kFreNotCompleted = 13,
+  kMaxValue = kFreNotCompleted,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicDragAndDropValidationResult)
 
@@ -371,7 +376,9 @@ enum class GlicInstanceEvent {
   kResponseStoppedOther = 57,
   kResponseStoppedSuccess = 58,
   kWebUiStateGuestLoaded = 59,
-  kMaxValue = kWebUiStateGuestLoaded,
+  kInputFocused = 60,
+  kWebUiStatePendingProviderChangeGeminiToGeic = 61,
+  kMaxValue = kWebUiStatePendingProviderChangeGeminiToGeic,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicInstanceEvent)
 
@@ -405,6 +412,17 @@ enum class OnboardingFunnelStep {
   kMaxValue = kFirstPromptSubmitted,
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicOnboardingFunnelStep)
+
+// LINT.IfChange(GlicTurnShowingOutcome)
+enum class GlicTurnShowingOutcome {
+  kShowingAndActive = 0,
+  kShowingInactiveThenActive = 1,
+  kShowingInactiveNeverActive = 2,
+  kHiddenThenShowing = 3,
+  kHiddenNeverShowing = 4,
+  kMaxValue = kHiddenNeverShowing,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicTurnShowingOutcome)
 
 std::string GetDaisyChainSourceString(DaisyChainSource source);
 

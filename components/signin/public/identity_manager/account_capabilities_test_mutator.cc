@@ -210,6 +210,14 @@ void AccountCapabilitiesTestMutator::set_must_fetch_apple_age_range_in_chrome(
 }
 #endif
 
+void AccountCapabilitiesTestMutator::
+    set_must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(
+        bool value) {
+  capabilities_->capabilities_map_
+      [kMustShowEquallyWeightedButtonsForPrivatePassesInChromeAutofillCapabilityName] =
+      value;
+}
+
 #if BUILDFLAG(IS_IOS)
 void AccountCapabilitiesTestMutator::set_must_skip_apple_age_range_in_chrome(
     bool value) {
@@ -217,6 +225,26 @@ void AccountCapabilitiesTestMutator::set_must_skip_apple_age_range_in_chrome(
       ->capabilities_map_[kMustSkipAppleAgeRangeInChromeCapabilityName] = value;
 }
 #endif
+
+void AccountCapabilitiesTestMutator::
+    set_should_be_addressed_in_feminine_grammatical_gender(bool value) {
+  capabilities_
+      ->capabilities_map_[kShouldBeAddressedInFeminineGrammaticalGender] =
+      value;
+}
+
+void AccountCapabilitiesTestMutator::
+    set_should_be_addressed_in_masculine_grammatical_gender(bool value) {
+  capabilities_
+      ->capabilities_map_[kShouldBeAddressedInMasculineGrammaticalGender] =
+      value;
+}
+
+void AccountCapabilitiesTestMutator::
+    set_should_be_addressed_in_neuter_grammatical_gender(bool value) {
+  capabilities_
+      ->capabilities_map_[kShouldBeAddressedInNeuterGrammaticalGender] = value;
+}
 
 void AccountCapabilitiesTestMutator::
     set_supports_wallet_private_passes_in_autofill(bool value) {

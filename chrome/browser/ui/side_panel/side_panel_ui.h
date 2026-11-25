@@ -13,6 +13,7 @@
 #include "ui/gfx/geometry/rect.h"
 
 class BrowserWindowInterface;
+class SidePanelEntry;
 
 namespace content {
 class WebContents;
@@ -29,6 +30,8 @@ class SidePanelUI {
 
   static SidePanelUI* From(BrowserWindowInterface* browser);
   static const SidePanelUI* From(const BrowserWindowInterface* browser);
+
+  virtual void TearDownPreBrowserWindowDestruction() {}
 
   // Open side panel with entry_id.
   virtual void Show(SidePanelEntryId entry_id,
@@ -76,6 +79,16 @@ class SidePanelUI {
   // not set or if the side panel is closed.
   virtual int GetCurrentEntryDefaultContentWidth() const = 0;
 
+  // Temporarily overrides the open side panel's content width to `width`
+  // without updating the manual width preference. `width` is the content width
+  // excluding the border area and does not reflect the entire side panel's
+  // width.
+  virtual void OverrideContentsWidth(int width) = 0;
+
+  // Resets the open side panel's content width override, restoring its stored
+  // manual width preference or the current entry's default width.
+  virtual void ResetContentsWidthOverride() = 0;
+
   // Return whether any entry is being shown in the side panel.
   // Note: this returns false if `entry` is current loading but not actually
   // shown.
@@ -114,6 +127,8 @@ class SidePanelUI {
   // Prevent content swapping delays from happening for testing.
   // This should be called before the side panel is first shown.
   virtual void SetNoDelaysForTesting(bool no_delays_for_testing) = 0;
+
+  virtual SidePanelEntry* GetLoadingEntryForTesting() const;
 };
 
 #endif  // CHROME_BROWSER_UI_SIDE_PANEL_SIDE_PANEL_UI_H_

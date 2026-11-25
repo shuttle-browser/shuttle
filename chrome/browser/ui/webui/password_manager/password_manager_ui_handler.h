@@ -6,11 +6,13 @@
 #define CHROME_BROWSER_UI_WEBUI_PASSWORD_MANAGER_PASSWORD_MANAGER_UI_HANDLER_H_
 
 #include "base/containers/flat_map.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/extensions/api/passwords_private/passwords_private_delegate.h"
 #include "chrome/browser/password_manager/password_change/password_change_from_checkup_delegate.h"
 #include "chrome/browser/ui/webui/password_manager/password_manager.mojom.h"
+#include "components/password_manager/core/browser/ui/actor_login_permission.h"
 #include "components/password_manager/core/browser/ui/saved_passwords_presenter.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
@@ -21,6 +23,10 @@ class PasswordsPrivateDelegate;
 
 namespace content {
 class WebContents;
+}
+
+namespace password_manager {
+class PasswordManagerClient;
 }
 
 // This class acts as the IPC proxy between the Password Manager
@@ -40,12 +46,16 @@ class PasswordManagerUIHandler
     : public password_manager::mojom::PageHandler,
       public extensions::PasswordsPrivateDelegate::Observer {
  public:
+  // `web_contents` and `password_manager_client` are retained as raw pointers
+  // and must outlive `PasswordManagerUIHandler`. `web_contents` must be non-null.
+  // `password_manager_client` may be null in non-tab WebContents contexts.
   PasswordManagerUIHandler(
       mojo::PendingReceiver<password_manager::mojom::PageHandler> receiver,
       mojo::PendingRemote<password_manager::mojom::Page> page,
       scoped_refptr<extensions::PasswordsPrivateDelegate>
           passwords_private_delegate,
-      content::WebContents* web_contents);
+      content::WebContents* web_contents,
+      password_manager::PasswordManagerClient* password_manager_client);
 
   PasswordManagerUIHandler(const PasswordManagerUIHandler&) = delete;
   PasswordManagerUIHandler& operator=(const PasswordManagerUIHandler&) = delete;
@@ -70,6 +80,10 @@ class PasswordManagerUIHandler
 
   void RemovePasswordException(int id) override;
 
+  void MuteInsecureCredential(int id) override;
+
+  void UnmuteInsecureCredential(int id) override;
+
   void StartBulkPasswordCheck() override;
 
   void MovePasswordsToAccount(const std::vector<int>& ids) override;
@@ -80,7 +94,7 @@ class PasswordManagerUIHandler
       GetActorLoginPermissionsCallback callback) override;
 
   void RevokeActorLoginPermission(
-      password_manager::mojom::ActorLoginPermissionPtr site) override;
+      const password_manager::ActorLoginPermission& site) override;
 
   void ChangePasswordManagerPin(
       ChangePasswordManagerPinCallback callback) override;
@@ -139,6 +153,7 @@ class PasswordManagerUIHandler
       PasswordChangeFromCheckupDelegate::PasswordAutomaticChangeState state);
 
   raw_ptr<content::WebContents> web_contents_;
+  raw_ptr<password_manager::PasswordManagerClient> password_manager_client_;
   scoped_refptr<extensions::PasswordsPrivateDelegate>
       passwords_private_delegate_;
 

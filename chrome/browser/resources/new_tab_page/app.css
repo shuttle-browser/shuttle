@@ -6,7 +6,6 @@
  * #type=style-lit
  * #import=chrome://resources/cr_elements/cr_shared_style_lit.css.js
  * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
- * #scheme=relative
  * #include=cr-shared-style-lit cr-icons-lit
  * #css_wrapper_metadata_end */
 
@@ -542,9 +541,6 @@ ntp-lens-upload-dialog {
 
 #lhsWrapper {
   flex-shrink: 0;
-  /* This is one layer above rhs, so that the tooltips can overflow on top of
-   * rhs. */
-  z-index: 2;
 }
 
 /* The query container for the @container rules above. This can't be
@@ -557,6 +553,41 @@ ntp-lens-upload-dialog {
    * #rhsContent is wider, e.g. at 500% zoom. */
   overflow-x: auto;
   overflow-y: hidden;
+}
+
+/* With the LHS present, #rhsWrapper changes width on every frame of the LHS
+ * transition. Keep the slotted #backgroundImage iframe at a constant viewport
+ * width centered (or edge-aligned for 3P themes) inside this RHS clip box so
+ * the out-of-process iframe translates smoothly with the RHS content without
+ * re-laying out on every animation frame. */
+#backgroundImageContainer {
+  display: flex;
+  height: 100%;
+  /* 100cqw = width of the rhsWrapper (query container). */
+  inset-inline-start: calc(100% - 100cqw);
+  justify-content: center;
+  overflow: hidden;
+  pointer-events: none;
+  position: fixed;
+  top: 0;
+  width: 100cqw;
+  z-index: -2;
+}
+
+#backgroundImageContainer[data-position-x='left'] {
+  justify-content: left;
+}
+
+#backgroundImageContainer[data-position-x='right'] {
+  justify-content: right;
+}
+
+#backgroundImageContainer ::slotted(#backgroundImage) {
+  border: none;
+  display: block;
+  flex-shrink: 0;
+  height: 100%;
+  width: max(100%, 100vw);
 }
 
 #rhsContent {

@@ -18,6 +18,7 @@ namespace blink {
 
 enum class GridItemContributionType;
 class ConstraintSpace;
+class GridGapGeometry;
 struct GridItemPlacementData;
 
 class CORE_EXPORT GridLayoutAlgorithm
@@ -88,17 +89,18 @@ class CORE_EXPORT GridLayoutAlgorithm
   LogicalSize GetGridAvailableSize() const { return grid_available_size_; }
 
   // Initializes the track sizes of a grid sizing subtree.
-  void InitializeTrackSizes(
-      const GridSizingSubtree& sizing_subtree,
-      const SubgriddedItemData& opt_subgrid_data,
-      const std::optional<GridTrackSizingDirection>& opt_track_direction) const;
+  void InitializeTrackSizes(const GridSizingSubtree& sizing_subtree,
+                            const SubgriddedItemData& opt_subgrid_data,
+                            const std::optional<GridTrackSizingDirection>&
+                                opt_track_direction = std::nullopt) const;
 
   // Computes and caches the used track sizes of a grid sizing subtree.
-  void CompleteTrackSizingAlgorithm(const GridSizingSubtree& sizing_subtree,
-                                    const SubgriddedItemData& opt_subgrid_data,
-                                    GridTrackSizingDirection track_direction,
-                                    SizingConstraint sizing_constraint,
-                                    bool* opt_needs_additional_pass) const;
+  void CompleteTrackSizingAlgorithm(
+      const GridSizingSubtree& sizing_subtree,
+      const SubgriddedItemData& opt_subgrid_data,
+      GridTrackSizingDirection track_direction,
+      SizingConstraint sizing_constraint,
+      bool* opt_needs_additional_pass = nullptr) const;
 
   // Performs the final baseline alignment pass of a grid sizing subtree.
   void ComputeBaselineAlignment(
@@ -223,7 +225,7 @@ class CORE_EXPORT GridLayoutAlgorithm
       const GridLayoutSubtree& layout_subtree,
       Vector<EBreakBetween>* out_row_break_between,
       Vector<GridItemPlacementData>* out_grid_items_placement_data = nullptr,
-      const GapGeometry** out_unfragmented_gap_geometry = nullptr,
+      const GridGapGeometry** out_unfragmented_gap_geometry = nullptr,
       Vector<wtf_size_t>* out_track_idx_to_set_idx = nullptr);
 
   // Layout the |grid_items| for fragmentation (when there is a known
@@ -235,7 +237,7 @@ class CORE_EXPORT GridLayoutAlgorithm
       const GridItems& grid_items,
       const GridLayoutSubtree& layout_subtree,
       const Vector<EBreakBetween>& row_break_between,
-      const GapGeometry* full_gap_geometry,
+      const GridGapGeometry* full_gap_geometry,
       const Vector<wtf_size_t>* track_idx_to_set_idx,
       Vector<wtf_size_t>* column_gaps_segment_ranges_start_indices,
       Vector<GridItemPlacementData>* grid_item_placement_data,

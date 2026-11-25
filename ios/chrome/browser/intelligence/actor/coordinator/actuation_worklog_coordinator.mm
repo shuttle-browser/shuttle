@@ -8,11 +8,8 @@
 #import "ios/chrome/browser/intelligence/actor/coordinator/actuation_suggestions_consumer.h"
 #import "ios/chrome/browser/intelligence/actor/coordinator/actuation_suggestions_coordinator.h"
 #import "ios/chrome/browser/intelligence/actor/coordinator/actuation_worklog_mediator.h"
-#import "ios/chrome/browser/intelligence/actor/model/actor_service.h"
-#import "ios/chrome/browser/intelligence/actor/model/actor_service_factory.h"
 #import "ios/chrome/browser/intelligence/actor/ui/actuation_worklog_view_controller.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 
 @interface ActuationWorklogCoordinator () <ActuationSuggestionsConsumer>
 @end
@@ -31,20 +28,15 @@
 - (void)start {
   CHECK(self.browser);
 
-  actor::ActorService* actorService =
-      actor::ActorServiceFactory::GetForProfile(self.browser->GetProfile());
-
   _viewController = [[ActuationWorklogViewController alloc] init];
-  _mediator =
-      [[ActuationWorklogMediator alloc] initWithActorService:actorService];
+  _mediator = [[ActuationWorklogMediator alloc] init];
   _mediator.consumer = _viewController;
   _mediator.suggestionsConsumer = self;
   _viewController.mutator = _mediator;
 }
 
 - (void)stop {
-  [_suggestionsCoordinator stop];
-  _suggestionsCoordinator = nil;
+  [self clearSuggestions];
   [_mediator disconnect];
   _mediator = nil;
   _viewController.mutator = nil;
@@ -62,8 +54,14 @@
                          browser:self.browser
                      suggestions:suggestions
                      worklogItem:worklogItem];
+  _suggestionsCoordinator.delegate = _mediator;
   [_suggestionsCoordinator start];
   _viewController.suggestionsPresenter = _suggestionsCoordinator;
+}
+
+- (void)updateActiveWorklogItemForReselectedSuggestion:
+    (ActuationWorklogItem*)worklogItem {
+  _suggestionsCoordinator.worklogItem = worklogItem;
 }
 
 - (void)clearSuggestions {
@@ -74,11 +72,13 @@
 
 #pragma mark - Public
 
-- (void)startObservingTaskWithID:(actor::ActorTaskId)taskID {
-  [_mediator startObservingTaskWithID:taskID];
+- (void)startObservingDataSource:(id<ActorTaskDataSource>)dataSource
+                   actionHandler:(id<ActorTaskActionHandler>)actionHandler {
+  [_mediator startObservingDataSource:dataSource actionHandler:actionHandler];
 }
 
 - (void)stopObservingTask {
+  [self clearSuggestions];
   [_mediator stopObservingTask];
 }
 

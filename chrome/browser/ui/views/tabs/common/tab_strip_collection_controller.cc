@@ -5,15 +5,21 @@
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
 
 #include <algorithm>
+#include <memory>
+#include <string_view>
+#include <utility>
 #include <variant>
 
 #include "base/check_deref.h"
+#include "base/i18n/rtl.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/user_metrics.h"
 #include "base/metrics/user_metrics_action.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
+#include "chrome/browser/ui/animation/browser_animation_controller.h"
+#include "chrome/browser/ui/animation/browser_animation_types.h"
 #include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -31,6 +37,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/animations/focus_mode_animations.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
@@ -50,11 +57,14 @@
 #include "components/tabs/public/tab_context_menu_command.h"
 #include "components/tabs/public/tab_group.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/peak_gpu_memory_tracker_factory.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/compositor/compositor.h"
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/view.h"
 #include "ui/views/view_utils.h"
+#include "ui/views/widget/widget.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/boca/on_task/on_task_locked_controller.h"
@@ -94,6 +104,16 @@ TabStripCollectionController::TabStripCollectionController(
     OnGlassFrameEligibilityChanged(
         service->IsBrowserWindowEligible(browser_view_->browser()));
   }
+
+  // Subscribers are notified in subscription order. This must run before any
+  // tab group or container view subscribes, since those views read
+  // `GetFocusTransition()` from their own callbacks and rely on it already
+  // being cleared when the motion ends.
+  focus_animation_subscription_ = GetBrowserAnimationController()->Subscribe(
+      FocusModeAnimations::kFocusMode,
+      base::BindRepeating(
+          &TabStripCollectionController::OnFocusAnimationUpdated,
+          base::Unretained(this)));
 }
 
 TabStripCollectionController::~TabStripCollectionController() {
@@ -192,12 +212,12 @@ void TabStripCollectionController::ExtendSelectionPrevious(
   ExtendSelectionRelative(tab_interface, /*leading=*/true, gesture_detail);
 }
 
-void TabStripCollectionController::ShiftGroupUp(
+void TabStripCollectionController::ShiftGroupPrevious(
     const tab_groups::TabGroupId& group) {
   ShiftGroupRelative(group, -1);
 }
 
-void TabStripCollectionController::ShiftGroupDown(
+void TabStripCollectionController::ShiftGroupNext(
     const tab_groups::TabGroupId& group) {
   ShiftGroupRelative(group, 1);
 }
@@ -312,7 +332,33 @@ void TabStripCollectionController::SelectTab(
     tab_index = split_tabs::GetIndexOfLastActiveTab(model_, split_id.value());
   }
 
+  views::Widget* widget = browser_view_ ? browser_view_->GetWidget() : nullptr;
+  std::unique_ptr<viz::PeakGpuMemoryTracker> tracker;
+  if (model_->active_index() != tab_index.value() && widget &&
+      widget->GetCompositor()) {
+    tracker = content::PeakGpuMemoryTrackerFactory::Create(
+        viz::PeakGpuMemoryTracker::Usage::CHANGE_TAB);
+  }
+
   model_->ActivateTabAt(tab_index.value(), gesture_detail);
+
+  if (tracker) {
+    if (views::Widget* post_activate_widget =
+            browser_view_ ? browser_view_->GetWidget() : nullptr;
+        post_activate_widget && post_activate_widget->GetCompositor()) {
+      post_activate_widget->GetCompositor()
+          ->RequestSuccessfulPresentationTimeForNextFrame(base::BindOnce(
+              [](std::unique_ptr<viz::PeakGpuMemoryTracker> tracker,
+                 const viz::FrameTimingDetails& frame_timing_details) {
+                // This callback will be ran once the ui::Compositor presents
+                // the next frame. The destruction of `tracker` will get the
+                // peak GPU memory and record a histogram.
+              },
+              std::move(tracker)));
+    } else {
+      tracker->Cancel();
+    }
+  }
 }
 
 void TabStripCollectionController::CloseTab(
@@ -421,6 +467,9 @@ void TabStripCollectionController::ToggleTabGroupCollapsedState(
 
   if (origin != ToggleTabGroupCollapsedStateOrigin::kMenuAction ||
       should_toggle_group) {
+    if (is_currently_collapsed && tab_closing_helper_) {
+      tab_closing_helper_->ExitTabClosingMode();
+    }
     model_->ChangeTabGroupVisuals(
         group->id(),
         tab_groups::TabGroupVisualData(group->visual_data()->title(),
@@ -498,6 +547,8 @@ void TabStripCollectionController::ShowTabContextMenu(
 
   context_menu_controller_->RunMenuAt(point, source_type,
                                       collection_node->view()->GetWidget());
+  base::UmaHistogramEnumeration("TabStrip.Tab.Views.ActivationAction",
+                                TabActivationTypes::kContextMenu);
 }
 
 void TabStripCollectionController::ShowGroupEditorBubble(
@@ -590,6 +641,72 @@ void TabStripCollectionController::TabGroupFocusChanged(
     std::optional<tab_groups::TabGroupId> new_focused_group_id,
     std::optional<tab_groups::TabGroupId> old_focused_group_id) {
   CHECK(browser_view_);
+  CHECK(new_focused_group_id.has_value() || old_focused_group_id.has_value());
+
+  BrowserAnimationController* const anim_controller =
+      GetBrowserAnimationController();
+  focus_transition_.reset();
+  const bool should_animate = ShouldAnimateLayout();
+  const bool is_entering = new_focused_group_id.has_value();
+
+  // Each sequence of `kEnter` starts from its persisted value. After a direct
+  // switch between groups that value is the focused resting state, so reset
+  // to the unfocused resting values first. The layouts invalidated by that
+  // reset must snap: this runs inside the model notification's
+  // `ScopedAnimateLayout()`, and the real motion starts right below.
+  if (is_entering && old_focused_group_id.has_value()) {
+    base::AutoReset<bool> snap_layout(&is_animating_layout_change_, false);
+    anim_controller->Reset(FocusModeAnimations::kFocusMode,
+                           FocusModeAnimations::kExit);
+  }
+
+  focus_transition_ =
+      FocusTransition{.target_group = is_entering ? *new_focused_group_id
+                                                  : *old_focused_group_id};
+  if (is_entering && old_focused_group_id.has_value()) {
+    TabGroupModel* const group_model = model_->group_model();
+    const TabGroup* const previous_group =
+        group_model->GetTabGroup(*old_focused_group_id);
+    const TabGroup* const target_group =
+        group_model->GetTabGroup(*new_focused_group_id);
+    focus_transition_->previous_group = *old_focused_group_id;
+    if (!previous_group->is_ephemeral()) {
+      focus_transition_->previous_group_color =
+          previous_group->visual_data()->color();
+    }
+    focus_transition_->target_group_color =
+        target_group->visual_data()->color();
+    focus_transition_->target_follows_previous =
+        model_->GetIndexOfTab(target_group->GetFirstTab()) >
+        model_->GetIndexOfTab(previous_group->GetFirstTab());
+  }
+
+  if (tab_closing_helper_) {
+    tab_closing_helper_->ExitTabClosingMode();
+  }
+
+  const auto motion =
+      is_entering ? FocusModeAnimations::kEnter : FocusModeAnimations::kExit;
+  if (should_animate) {
+    if (!is_entering && !ephemeral_group_removal_lock_) {
+      ephemeral_group_removal_lock_ =
+          model_->TakeEphemeralGroupRemovalLock(*old_focused_group_id);
+    }
+    base::AutoReset<bool> starting(&focus_transition_->is_starting_focus_motion,
+                                   true);
+    // A direct switch between groups plays `kEnter` but is logged separately.
+    const bool is_direct_switch =
+        is_entering && old_focused_group_id.has_value();
+    anim_controller->Start(
+        FocusModeAnimations::kFocusMode, motion,
+        /*group_histogram_override=*/GetFocusAnimationHistogramGroupPrefix(),
+        /*motion_histogram_override=*/
+        is_direct_switch ? std::make_optional<std::string_view>(
+                               FocusModeAnimations::kSwitchMotionHistogramName)
+                         : std::nullopt);
+  } else {
+    anim_controller->Reset(FocusModeAnimations::kFocusMode, motion);
+  }
 
   if (auto* tab_strip_view = browser_view_->tab_strip_view()) {
     tab_strip_view->OnTabGroupFocusChanged(new_focused_group_id,
@@ -801,9 +918,17 @@ void TabStripCollectionController::ShiftTabRelative(
   }
 
   model_->MoveWebContentsAt(start_index, target_index, false);
+  int message_id;
+  if (root_node_->orientation() == TabStripOrientation::kHorizontal) {
+    message_id = ((offset > 0) ^ base::i18n::IsRTL())
+                     ? IDS_TAB_AX_ANNOUNCE_MOVED_RIGHT
+                     : IDS_TAB_AX_ANNOUNCE_MOVED_LEFT;
+  } else {
+    message_id = (offset > 0) ? IDS_TAB_AX_ANNOUNCE_MOVED_DOWN
+                              : IDS_TAB_AX_ANNOUNCE_MOVED_UP;
+  }
   browser_view_->GetViewAccessibility().AnnounceText(
-      l10n_util::GetStringUTF16((offset > 0) ? IDS_TAB_AX_ANNOUNCE_MOVED_DOWN
-                                             : IDS_TAB_AX_ANNOUNCE_MOVED_UP));
+      l10n_util::GetStringUTF16(message_id));
 }
 
 void TabStripCollectionController::ExtendSelectionRelative(
@@ -936,6 +1061,55 @@ BrowserFrameView* TabStripCollectionController::GetBrowserFrameView() const {
              : nullptr;
 }
 
+BrowserAnimationController*
+TabStripCollectionController::GetBrowserAnimationController() const {
+  return BrowserAnimationController::From(browser_view_->browser());
+}
+
+std::string_view
+TabStripCollectionController::GetFocusAnimationHistogramGroupPrefix() const {
+  switch (root_node_->orientation()) {
+    case TabStripOrientation::kHorizontal:
+      return FocusModeAnimations::kHistogramGroupPrefixHorizontal;
+    case TabStripOrientation::kVertical:
+      return FocusModeAnimations::kHistogramGroupPrefixVertical;
+  }
+}
+
+void TabStripCollectionController::OnFocusAnimationUpdated(
+    const BrowserAnimationController* controller,
+    BrowserAnimationUpdate status) {
+  switch (status) {
+    case BrowserAnimationUpdate::kStarted:
+    case BrowserAnimationUpdate::kProgressed:
+      break;
+    case BrowserAnimationUpdate::kCanceled:
+      // `Start()` cancels the motion it interrupts; `focus_transition_` already
+      // describes the new transition then, so only an external cancel ends it.
+      if (focus_transition_.has_value() &&
+          !focus_transition_->is_starting_focus_motion) {
+        EndFocusTransition();
+      }
+      break;
+    case BrowserAnimationUpdate::kEnded:
+      EndFocusTransition();
+      break;
+  }
+}
+
+void TabStripCollectionController::EndFocusTransition() {
+  // Release the lock while `ShouldAnimateLayout()` is still false, so the
+  // layout change caused by the group's dissolution snaps rather than
+  // animating a second time.
+  ephemeral_group_removal_lock_.RunAndReset();
+  focus_transition_.reset();
+}
+
+std::optional<TabStripCollectionController::FocusTransition>
+TabStripCollectionController::GetFocusTransition() const {
+  return focus_transition_;
+}
+
 void TabStripCollectionController::OnGlassFrameEligibilityChanged(
     bool is_eligible) {
   is_glass_frame_ = is_eligible;
@@ -944,6 +1118,15 @@ void TabStripCollectionController::OnGlassFrameEligibilityChanged(
 
 int TabStripCollectionController::GetStrokeThickness() const {
   return browser_view_ && browser_view_->ShouldDrawTabStrokes() ? 1 : 0;
+}
+
+bool TabStripCollectionController::CanPaintThrobberToLayer() const {
+  // Disable layer-painting of throbbers if dragging, if any tab animation is
+  // in progress, or in fullscreen.
+  const views::Widget* widget =
+      browser_view_ ? browser_view_->GetWidget() : nullptr;
+  return widget && !drag_handler_->IsDragging() &&
+         !animation_coordinator_.IsAnimating() && !widget->IsFullscreen();
 }
 
 base::AutoReset<bool> TabStripCollectionController::ScopedAnimateLayout() {
@@ -957,6 +1140,12 @@ bool TabStripCollectionController::ShouldAnimateLayout() const {
   Profile* profile = GetBrowserView()->browser()->GetProfile();
   CHECK(profile);
   if (SessionRestore::IsRestoring(profile)) {
+    return false;
+  }
+  if (!drag_handler_->detached_drag_range().is_empty()) {
+    return false;
+  }
+  if (focus_transition_.has_value()) {
     return false;
   }
   return is_animating_layout_change_ || drag_handler_->IsDragging();

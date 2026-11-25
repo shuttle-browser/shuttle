@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "ash/constants/ash_pref_names.h"
 #include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
@@ -29,7 +30,6 @@
 #include "chrome/browser/ash/printing/history/test_print_job_database.h"
 #include "chrome/browser/ash/printing/print_management/printing_manager_factory.h"
 #include "chrome/browser/ash/printing/test_cups_print_job_manager.h"
-#include "chrome/browser/chromeos/printing/test_cups_wrapper.h"
 #include "chrome/browser/extensions/api/printing/fake_print_job_controller.h"
 #include "chrome/browser/extensions/api/printing/print_job_submitter.h"
 #include "chrome/browser/history/history_service_factory.h"
@@ -44,6 +44,7 @@
 #include "chromeos/ash/components/login/login_state/login_state.h"
 #include "chromeos/ash/experiences/extensions/common/api/printing.h"
 #include "chromeos/printing/printer_configuration.h"
+#include "chromeos/printing/test_cups_wrapper.h"
 #include "components/account_id/account_id.h"
 #include "components/account_id/account_id_literal.h"
 #include "components/history/core/test/history_service_test_util.h"
@@ -453,7 +454,8 @@ class PrintingAPIHandlerUnittest : public testing::Test {
     base::ListValue extensions_list;
     extensions_list.Append(kExtensionId);
     testing_profile_->GetTestingPrefService()->SetList(
-        prefs::kPrintingAPIExtensionsAllowlist, std::move(extensions_list));
+        ash::prefs::kPrintingAPIExtensionsAllowlist,
+        std::move(extensions_list));
 
     const char kExtensionName[] = "Printing extension";
     const char kPermissionName[] = "printing";

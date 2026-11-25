@@ -27,6 +27,10 @@ inline std::string_view PayloadTypeToMetricSuffix(PayloadType payload_type) {
       return "ExperimentalTriggering";
     case PayloadType::kActuation:
       return "Actuation";
+    case PayloadType::kTaskIngress:
+      return "TaskIngress";
+    case PayloadType::kProbe:
+      return "Probe";
     case PayloadType::kUnspecified:
       NOTREACHED();
   }
@@ -57,6 +61,11 @@ enum class DownstreamPayloadDropReason {
 inline void RecordDownstreamPayloadDropped(DownstreamPayloadDropReason reason) {
   base::UmaHistogramEnumeration(
       "Browser.Actuator.Transport.Downstream.PayloadDropped", reason);
+}
+
+inline void RecordInitIngressSource(InitIngressSource ingress_source) {
+  base::UmaHistogramEnumeration("Browser.Actuator.Transport.InitIngressSource",
+                                ingress_source);
 }
 
 // Tracks and records telemetry metrics for an in-flight upstream request.

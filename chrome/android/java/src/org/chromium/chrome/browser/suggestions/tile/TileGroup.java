@@ -6,14 +6,15 @@ package org.chromium.chrome.browser.suggestions.tile;
 
 import static org.chromium.build.NullUtil.assumeNonNull;
 
+import android.graphics.drawable.Drawable;
 import android.text.TextUtils;
 import android.util.SparseArray;
 import android.view.View;
 
-import androidx.annotation.DrawableRes;
 import androidx.annotation.IntDef;
 import androidx.annotation.VisibleForTesting;
 
+import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.native_page.ContextMenuManager;
@@ -106,10 +107,9 @@ public class TileGroup implements MostVisitedSites.Observer {
         @Nullable String getAiModeTileContentDescription();
 
         /**
-         * @return Icon drawable resource ID for the AI Mode tile.
+         * @return Icon drawable for the AI Mode tile, or null if unavailable.
          */
-        @DrawableRes
-        int getAiModeTileIconDrawableId();
+        @Nullable Drawable getAiModeTileIconDrawable();
 
         /**
          * @param originalTile The tile to edit, or null to add a new tile.
@@ -122,6 +122,12 @@ public class TileGroup implements MostVisitedSites.Observer {
          * opportunity to undo the operation.
          */
         void showTileUnpinSnackbar(Runnable undoHandler);
+
+        /**
+         * Displays the snackbar to inform the user that a tile was removed and to offer the
+         * opportunity to undo the operation.
+         */
+        void showTileRemovedSnackbar(Runnable undoHandler);
 
         /**
          * Returns the score of a recent suggestion identified by {@code url}, or {@link
@@ -201,10 +207,9 @@ public class TileGroup implements MostVisitedSites.Observer {
         @Nullable String getAiModeTileContentDescription();
 
         /**
-         * @return Icon drawable resource ID for the AI Mode tile.
+         * @return Icon drawable for the AI Mode tile, or null if unavailable.
          */
-        @DrawableRes
-        int getAiModeTileIconDrawableId();
+        @Nullable Drawable getAiModeTileIconDrawable();
     }
 
     /** Delegate for handling interactions with tiles. */
@@ -338,6 +343,8 @@ public class TileGroup implements MostVisitedSites.Observer {
 
     private boolean mHasReceivedData;
 
+    private @Nullable List<SiteSuggestion> mCurrentSiteSuggestions;
+
     // TODO(dgn): Attempt to avoid cycling dependencies with TileRenderer. Is there a better way?
     private final TileSetupDelegate mTileSetupDelegate =
             new TileSetupDelegate() {
@@ -377,8 +384,8 @@ public class TileGroup implements MostVisitedSites.Observer {
                 }
 
                 @Override
-                public @DrawableRes int getAiModeTileIconDrawableId() {
-                    return mTileGroupDelegate.getAiModeTileIconDrawableId();
+                public @Nullable Drawable getAiModeTileIconDrawable() {
+                    return mTileGroupDelegate.getAiModeTileIconDrawable();
                 }
             };
 
@@ -424,6 +431,25 @@ public class TileGroup implements MostVisitedSites.Observer {
         for (Tile tile : findTilesForUrl(siteUrl)) {
             mTileRenderer.updateIcon(tile, mTileSetupDelegate);
         }
+    }
+
+    @Override
+    public void onAiModeTileConfigChanged() {
+        reloadTilesFromCurrentSuggestions();
+    }
+
+    /**
+     * Re-runs {@link #loadTiles()} on the most recently loaded suggestions so the AI Mode tile is
+     * re-evaluated (shown, updated, or hidden) without a new native suggestion delivery. Any
+     * suggestions deferred to {@link #onSwitchToForeground(boolean)} are preserved.
+     */
+    private void reloadTilesFromCurrentSuggestions() {
+        if (mCurrentSiteSuggestions == null) return;
+
+        @Nullable List<SiteSuggestion> deferredSuggestions = mPendingChanges.siteSuggestions;
+        mPendingChanges.siteSuggestions = new ArrayList<>(mCurrentSiteSuggestions);
+        loadTiles();
+        mPendingChanges.siteSuggestions = deferredSuggestions;
     }
 
     /**
@@ -529,6 +555,7 @@ public class TileGroup implements MostVisitedSites.Observer {
             }
         }
 
+        mCurrentSiteSuggestions = mPendingChanges.siteSuggestions;
         mPendingChanges.siteSuggestions = null;
 
         List<Tile> newPersonalizedTiles = mTileSections.get(TileSectionType.PERSONALIZED);
@@ -977,21 +1004,106 @@ public class TileGroup implements MostVisitedSites.Observer {
             return success;
         }
 
+        /**
+         * Unpins {@code tile} in native {@code CustomLinksManager}, shifts the AI Mode tile index
+         * if needed, and shows an Undo snackbar.
+         */
         private void deleteCustomLinkAndUpdateOnSuccess(Tile tile) {
-            // On success, onSiteSuggestionsAvailable() triggers.
-            boolean success = mTileGroupDelegate.deleteCustomLink(tile.getUrl());
-            if (success) {
-                mTileGroupDelegate.showTileUnpinSnackbar(
-                        () -> {
-                            // Perform undo by adding the tile back at its original index.
-                            addCustomLinkAndUpdateOnSuccess(
-                                    tile.getTitle(), tile.getUrl(), tile.getIndex());
-                        });
+            List<Tile> personalTiles =
+                    assumeNonNull(mTileSections.get(TileSectionType.PERSONALIZED));
+            int oldAiIndex = findAiModeTile(personalTiles);
+
+            // 1. Classic path: no AI Mode tile, so the screen index equals the native index.
+            if (oldAiIndex < 0) {
+                // On success, onSiteSuggestionsAvailable() triggers.
+                boolean success = mTileGroupDelegate.deleteCustomLink(tile.getUrl());
+                if (success) {
+                    mTileGroupDelegate.showTileUnpinSnackbar(
+                            () -> {
+                                // Performs undo by adding the tile back at its original index.
+                                addCustomLinkAndUpdateOnSuccess(
+                                        tile.getTitle(), tile.getUrl(), tile.getIndex());
+                            });
+                }
+                return;
             }
+
+            // 2. Aurora V2 path: translates the screen index to the C++ custom-link index
+            // (excluding the AI Mode tile) for the Undo action. Computes it now because
+            // mTileGroupDelegate.deleteCustomLink() below synchronously triggers loadTiles(),
+            // which rebuilds mTileSections, so personalTiles is stale by the time Undo runs.
+            int customLinkIndexForUndo =
+                    countCustomLinksBeforeIndex(personalTiles, tile.getIndex());
+            var prefs = ChromeSharedPreferences.getInstance();
+
+            // Non-null only when the AI Mode tile sits to the right of the unpinned custom link,
+            // so its stored index goes stale and needs to shift left by 1. Reads the stored index
+            // rather than oldAiIndex: injectAiModeTile() clamps the stored index without writing
+            // it back. Null means the stored index stays fresh and no change is needed.
+            @Nullable Integer staleAiIndex =
+                    (oldAiIndex > tile.getIndex())
+                            ? prefs.readInt(
+                                    ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX,
+                                    /* defaultValue= */ 0)
+                            : null;
+            if (staleAiIndex != null) {
+                // Saves the new index now: mTileGroupDelegate.deleteCustomLink() below
+                // synchronously triggers loadTiles() -> injectAiModeTile(), which reads this
+                // preference to place the AI Mode tile.
+                prefs.writeInt(ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX, staleAiIndex - 1);
+            }
+
+            // 3. Deletes the custom link in C++; onSiteSuggestionsAvailable() triggers on success.
+            boolean success = mTileGroupDelegate.deleteCustomLink(tile.getUrl());
+            if (!success) {
+                // Rolls back the AI Mode index if deleting the custom link in C++ failed.
+                if (staleAiIndex != null) {
+                    prefs.writeInt(ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX, staleAiIndex);
+                }
+                return;
+            }
+
+            // 4. Shows the Undo snackbar to restore the AI Mode index and the custom link.
+            mTileGroupDelegate.showTileUnpinSnackbar(
+                    () -> {
+                        if (staleAiIndex != null) {
+                            prefs.writeInt(
+                                    ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX, staleAiIndex);
+                        }
+                        // Performs undo by adding the tile back at its original C++ index.
+                        boolean undoSuccess =
+                                addCustomLinkAndUpdateOnSuccess(
+                                        tile.getTitle(), tile.getUrl(), customLinkIndexForUndo);
+                        // Rolls back if re-inserting the custom link in C++ failed.
+                        if (!undoSuccess && staleAiIndex != null) {
+                            prefs.writeInt(
+                                    ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX,
+                                    staleAiIndex - 1);
+                        }
+                    });
         }
 
+        /** Hides the AI Mode tile by resetting its stored index and shows an Undo snackbar. */
         private void deleteAiModeTileAndUpdateOnSuccess() {
-            // TODO(crbug.com/549681251): Implements AI Mode tile removal and undo snackbar
+            var prefs = ChromeSharedPreferences.getInstance();
+            int savedAiIndex =
+                    prefs.readInt(
+                            ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX, /* defaultValue= */ 0);
+            prefs.writeInt(ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX, /* value= */ -1);
+            RecordUserAction.record("Suggestions.AIM.Unpinned");
+
+            // Writing the preference alone does not reload tiles (there is no native call here to
+            // trigger loadTiles()), so re-run loadTiles() on the cached suggestions to drop the
+            // AI Mode tile from the UI.
+            reloadTilesFromCurrentSuggestions();
+
+            mTileGroupDelegate.showTileRemovedSnackbar(
+                    () -> {
+                        prefs.writeInt(
+                                ChromePreferenceKeys.NTP_MVT_AI_MODE_TILE_INDEX, savedAiIndex);
+                        RecordUserAction.record("Suggestions.AIM.UndoUnpin");
+                        reloadTilesFromCurrentSuggestions();
+                    });
         }
 
         /**

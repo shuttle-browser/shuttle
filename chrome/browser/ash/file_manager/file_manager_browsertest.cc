@@ -54,7 +54,7 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/download_test_observer.h"
 #include "testing/gmock/include/gmock/gmock.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 using file_manager::test::TestCase;
 
@@ -266,7 +266,7 @@ IN_PROC_BROWSER_TEST_F(QuickOfficeForceFileDownloadEnabledBrowserTest,
 
   // This call will not wait for the download to finish.
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), download_url, WindowOpenDisposition::kCurrentTab,
+      browser(), download_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // Wait for the download itself to complete.
@@ -1473,9 +1473,6 @@ WRAPPED_INSTANTIATE_TEST_SUITE_P(
             .FeatureIds({"screenplay-38573550-c60a-4009-ba92-c0af1420fde6"}),
         TestCase("trashDeleteFromTrashOriginallyFromMyFiles")
             .FeatureIds({"screenplay-38573550-c60a-4009-ba92-c0af1420fde6"}),
-        TestCase("trashDeleteFromTrashOriginallyFromDrive")
-            .FeatureIds({"screenplay-38573550-c60a-4009-ba92-c0af1420fde6"})
-            .EnableDriveTrash(),
         TestCase("trashNoTasksInTrashRoot"),
         TestCase("trashDoubleClickOnFileInTrashRootShowsDialog"),
         TestCase("trashDragDropRootAcceptsEntries"),

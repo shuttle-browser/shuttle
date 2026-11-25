@@ -13,9 +13,7 @@
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
-#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/policy_change_commands.h"
 #import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
@@ -35,8 +33,7 @@ void ChangeProfileSignoutContinuation(
     base::OnceClosure closure) {
   // The regular browser should be used to complete the signout, even if in
   // incognito mode.
-  Browser* browser =
-      scene_state.browserProviderInterface.mainBrowserProvider.browser;
+  Browser* browser = scene_state.browserProviderInterface.mainBrowser;
   CHECK(browser);
 
   AuthenticationService* authentication_service =
@@ -79,8 +76,7 @@ void ChangeProfileForceSignoutContinuation(SceneState* scene_state,
   if (scene_is_active) {
     // Try to show the signout prompt in all cases: if there is a sign
     // in in progress, the UI will prevent the prompt from showing.
-    Browser* browser =
-        scene_state.browserProviderInterface.currentBrowserProvider.browser;
+    Browser* browser = scene_state.browserProviderInterface.currentBrowser;
     CHECK(browser);
     id<PolicyChangeCommands> policy_change_handler = HandlerForProtocol(
         browser->GetCommandDispatcher(), PolicyChangeCommands);

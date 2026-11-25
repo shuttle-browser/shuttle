@@ -329,14 +329,16 @@ gfx::Transform DevToolsEmulator::EnableDeviceEmulation(
   const ViewportEmulationMode previous_mode = GetViewportEmulationMode();
   emulation_params_ = params;
   device_metrics_enabled_ = true;
-  const bool needs_lifecycle_update = ApplyViewportEmulationMode(previous_mode);
+  bool needs_lifecycle_update = ApplyViewportEmulationMode(previous_mode);
+
+  needs_lifecycle_update |= SetForceViewportMeta(params.force_viewport_meta);
+  needs_lifecycle_update |= SetForceTextSizeAdjust(params.force_text_size_adjust);
+  needs_lifecycle_update |= SetForceAndroidOverlayScrollbar(
+      params.force_android_overlay_scrollbar);
+
   if (needs_lifecycle_update) {
     UpdateLifecycleAfterEmulationProfileChange();
   }
-
-  SetForceViewportMeta(params.force_viewport_meta);
-  SetForceTextSizeAdjust(params.force_text_size_adjust);
-  SetForceAndroidOverlayScrollbar(params.force_android_overlay_scrollbar);
 
   web_view_->SetCompositorDeviceScaleFactorOverride(params.device_scale_factor);
 
@@ -368,13 +370,14 @@ void DevToolsEmulator::DisableDeviceEmulation() {
     DisableMobileEmulation();
   }
   device_metrics_enabled_ = false;
-  const bool needs_lifecycle_update = ApplyViewportEmulationMode(previous_mode);
+  bool needs_lifecycle_update = ApplyViewportEmulationMode(previous_mode);
+  needs_lifecycle_update |= SetForceAndroidOverlayScrollbar(false);
+  needs_lifecycle_update |= SetForceViewportMeta(false);
+  needs_lifecycle_update |= SetForceTextSizeAdjust(false);
+
   if (needs_lifecycle_update) {
     UpdateLifecycleAfterEmulationProfileChange();
   }
-  SetForceAndroidOverlayScrollbar(false);
-  SetForceViewportMeta(false);
-  SetForceTextSizeAdjust(false);
   web_view_->SetCompositorDeviceScaleFactorOverride(0.f);
 
   if (web_view_->MainFrameImpl()) {
@@ -645,10 +648,10 @@ void DevToolsEmulator::SetScrollbarsHidden(bool hidden) {
       scrollbars_hidden_ || embedder_hide_scrollbars_);
 }
 
-void DevToolsEmulator::SetForceAndroidOverlayScrollbar(
+bool DevToolsEmulator::SetForceAndroidOverlayScrollbar(
     bool force_android_overlay_scrollbar) {
   if (force_android_overlay_scrollbar_ == force_android_overlay_scrollbar) {
-    return;
+    return false;
   }
   force_android_overlay_scrollbar_ = force_android_overlay_scrollbar;
   web_view_->GetPage()->GetSettings().SetForceAndroidOverlayScrollbar(
@@ -660,15 +663,12 @@ void DevToolsEmulator::SetForceAndroidOverlayScrollbar(
 
   web_view_->GetPage()->UsesOverlayScrollbarsChanged();
 
-  if (web_view_->MainFrameImpl()) {
-    web_view_->MainFrameImpl()->GetFrameView()->UpdateLifecycleToLayoutClean(
-        DocumentUpdateReason::kInspector);
-  }
+  return true;
 }
 
-void DevToolsEmulator::SetForceViewportMeta(bool force_viewport_meta) {
+bool DevToolsEmulator::SetForceViewportMeta(bool force_viewport_meta) {
   if (force_viewport_meta_ == force_viewport_meta) {
-    return;
+    return false;
   }
   force_viewport_meta_ = force_viewport_meta;
   // ViewportMetaEnabled enables parsing of <meta name="viewport">, while
@@ -680,29 +680,23 @@ void DevToolsEmulator::SetForceViewportMeta(bool force_viewport_meta) {
       force_viewport_meta_ || emulate_mobile_enabled() ||
       embedder_viewport_enabled_);
 
-  if (web_view_->MainFrameImpl()) {
-    web_view_->MainFrameImpl()->GetFrameView()->UpdateLifecycleToLayoutClean(
-        DocumentUpdateReason::kInspector);
-  }
+  return true;
 }
 
-void DevToolsEmulator::SetForceTextSizeAdjust(bool force_text_size_adjust) {
+bool DevToolsEmulator::SetForceTextSizeAdjust(bool force_text_size_adjust) {
   force_text_size_adjust_ = force_text_size_adjust;
   const bool enabled =
       force_text_size_adjust_ || embedder_text_size_adjust_enabled_;
   if (web_view_->GetPage()->GetSettings().GetTextSizeAdjustEnabled() ==
       enabled) {
-    return;
+    return false;
   }
   // TODO(https://crbug.com/564804235): `SetTextSizeAdjustEnabled` does not
   // clear `MatchedPropertiesCache`, so already-rendered elements only update
   // after navigation or cache invalidation.
   web_view_->GetPage()->GetSettings().SetTextSizeAdjustEnabled(enabled);
 
-  if (web_view_->MainFrameImpl()) {
-    web_view_->MainFrameImpl()->GetFrameView()->UpdateLifecycleToLayoutClean(
-        DocumentUpdateReason::kInspector);
-  }
+  return true;
 }
 
 void DevToolsEmulator::SetDocumentCookieDisabled(bool disabled) {
@@ -720,186 +714,44 @@ void DevToolsEmulator::SetForceDarkModeEnabled(bool enabled) {
   }
 }
 
-void DevToolsEmulator::SetStandardFontFamily(const AtomicString& name,
-                                             UScriptCode script) {
-  if (embedder_font_families_) {
-    embedder_font_families_->UpdateStandard(name, script);
-  }
-  if (standard_font_family_override_scripts_.Contains(script)) {
-    return;
-  }
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateStandard(name, script)) {
-    settings.NotifyGenericFontFamilyChange();
-  }
-}
-
-void DevToolsEmulator::SetFixedFontFamily(const AtomicString& name,
-                                          UScriptCode script) {
-  if (embedder_font_families_) {
-    embedder_font_families_->UpdateFixed(name, script);
-  }
-  if (fixed_font_family_override_scripts_.Contains(script)) {
-    return;
-  }
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateFixed(name, script)) {
-    settings.NotifyGenericFontFamilyChange();
-  }
-}
-
-void DevToolsEmulator::SetSerifFontFamily(const AtomicString& name,
-                                          UScriptCode script) {
-  if (embedder_font_families_) {
-    embedder_font_families_->UpdateSerif(name, script);
-  }
-  if (serif_font_family_override_scripts_.Contains(script)) {
-    return;
-  }
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateSerif(name, script)) {
-    settings.NotifyGenericFontFamilyChange();
-  }
-}
-
-void DevToolsEmulator::SetSansSerifFontFamily(const AtomicString& name,
-                                              UScriptCode script) {
-  if (embedder_font_families_) {
-    embedder_font_families_->UpdateSansSerif(name, script);
-  }
-  if (sans_serif_font_family_override_scripts_.Contains(script)) {
-    return;
-  }
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateSansSerif(name, script)) {
-    settings.NotifyGenericFontFamilyChange();
-  }
-}
-
-void DevToolsEmulator::SetCursiveFontFamily(const AtomicString& name,
+void DevToolsEmulator::SetGenericFontFamily(GenericFontFamily family,
+                                            const AtomicString& name,
                                             UScriptCode script) {
   if (embedder_font_families_) {
-    embedder_font_families_->UpdateCursive(name, script);
+    embedder_font_families_->Update(family, name, script);
   }
-  if (cursive_font_family_override_scripts_.Contains(script)) {
+  if (font_family_override_scripts_[static_cast<size_t>(family)].Contains(
+          script)) {
     return;
   }
   Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateCursive(name, script)) {
+  if (settings.GetGenericFontFamilySettings().Update(family, name, script)) {
     settings.NotifyGenericFontFamilyChange();
   }
 }
 
-void DevToolsEmulator::SetFantasyFontFamily(const AtomicString& name,
-                                            UScriptCode script) {
-  if (embedder_font_families_) {
-    embedder_font_families_->UpdateFantasy(name, script);
-  }
-  if (fantasy_font_family_override_scripts_.Contains(script)) {
+void DevToolsEmulator::SetGenericFontFamilyOverrides(
+    const Vector<GenericFontFamilyOverride>& overrides) {
+  if (overrides.empty()) {
     return;
   }
   Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateFantasy(name, script)) {
+  if (!embedder_font_families_) {
+    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
+  }
+  bool changed = false;
+  for (const GenericFontFamilyOverride& entry : overrides) {
+    Vector<UScriptCode>& override_scripts =
+        font_family_override_scripts_[static_cast<size_t>(entry.family)];
+    if (!override_scripts.Contains(entry.script)) {
+      override_scripts.push_back(entry.script);
+    }
+    changed |= settings.GetGenericFontFamilySettings().Update(
+        entry.family, entry.name, entry.script);
+  }
+  if (changed) {
     settings.NotifyGenericFontFamilyChange();
   }
-}
-
-void DevToolsEmulator::SetMathFontFamily(const AtomicString& name,
-                                         UScriptCode script) {
-  if (embedder_font_families_) {
-    embedder_font_families_->UpdateMath(name, script);
-  }
-  if (math_font_family_override_scripts_.Contains(script)) {
-    return;
-  }
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (settings.GetGenericFontFamilySettings().UpdateMath(name, script)) {
-    settings.NotifyGenericFontFamilyChange();
-  }
-}
-
-void DevToolsEmulator::SetStandardFontFamilyOverride(const AtomicString& name,
-                                                     UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!standard_font_family_override_scripts_.Contains(script)) {
-    standard_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateStandard(name, script);
-}
-
-void DevToolsEmulator::SetFixedFontFamilyOverride(const AtomicString& name,
-                                                  UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!fixed_font_family_override_scripts_.Contains(script)) {
-    fixed_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateFixed(name, script);
-}
-
-void DevToolsEmulator::SetSerifFontFamilyOverride(const AtomicString& name,
-                                                  UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!serif_font_family_override_scripts_.Contains(script)) {
-    serif_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateSerif(name, script);
-}
-
-void DevToolsEmulator::SetSansSerifFontFamilyOverride(const AtomicString& name,
-                                                      UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!sans_serif_font_family_override_scripts_.Contains(script)) {
-    sans_serif_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateSansSerif(name, script);
-}
-
-void DevToolsEmulator::SetCursiveFontFamilyOverride(const AtomicString& name,
-                                                    UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!cursive_font_family_override_scripts_.Contains(script)) {
-    cursive_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateCursive(name, script);
-}
-
-void DevToolsEmulator::SetFantasyFontFamilyOverride(const AtomicString& name,
-                                                    UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!fantasy_font_family_override_scripts_.Contains(script)) {
-    fantasy_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateFantasy(name, script);
-}
-
-void DevToolsEmulator::SetMathFontFamilyOverride(const AtomicString& name,
-                                                 UScriptCode script) {
-  Settings& settings = web_view_->GetPage()->GetSettings();
-  if (!embedder_font_families_) {
-    embedder_font_families_.emplace(settings.GetGenericFontFamilySettings());
-  }
-  if (!math_font_family_override_scripts_.Contains(script)) {
-    math_font_family_override_scripts_.push_back(script);
-  }
-  settings.GetGenericFontFamilySettings().UpdateMath(name, script);
 }
 
 void DevToolsEmulator::SetDefaultFontSize(int size) {
@@ -943,13 +795,9 @@ void DevToolsEmulator::ResetFontOverrides() {
     embedder_font_families_.reset();
     settings.NotifyGenericFontFamilyChange();
   }
-  standard_font_family_override_scripts_.clear();
-  fixed_font_family_override_scripts_.clear();
-  serif_font_family_override_scripts_.clear();
-  sans_serif_font_family_override_scripts_.clear();
-  cursive_font_family_override_scripts_.clear();
-  fantasy_font_family_override_scripts_.clear();
-  math_font_family_override_scripts_.clear();
+  for (Vector<UScriptCode>& override_scripts : font_family_override_scripts_) {
+    override_scripts.clear();
+  }
   if (default_font_size_override_) {
     default_font_size_override_.reset();
     settings.SetDefaultFontSize(embedder_default_font_size_);

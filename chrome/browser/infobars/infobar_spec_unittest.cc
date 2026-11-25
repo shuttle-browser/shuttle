@@ -10,7 +10,7 @@
 #include "components/infobars/core/infobar_delegate.h"
 #include "content/public/browser/web_contents.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -31,6 +31,7 @@ TEST_F(InfoBarSpecTest, BuildDefaultSpec) {
   EXPECT_EQ(spec.icon(), nullptr);
   EXPECT_EQ(spec.icon_id(), 0);
   EXPECT_TRUE(spec.expire_on_navigation());
+  EXPECT_FALSE(spec.is_promotional());
   EXPECT_TRUE(spec.close_on_accept());
   EXPECT_TRUE(spec.close_on_cancel());
   EXPECT_TRUE(spec.close_on_extra_button());
@@ -79,6 +80,7 @@ TEST_F(InfoBarSpecTest, BuildCustomSpec) {
           .SetPriority(InfoBarDelegate::InfobarPriority::kCriticalSecurity)
           .SetIconId(123)
           .SetExpireOnNavigation(false)
+          .SetIsPromotional(true)
           .AddOkButton(ok_label, ok_cb)
           .AddCancelButton(cancel_label, cancel_cb)
           .SetDismissAction(dismiss_cb)
@@ -93,6 +95,7 @@ TEST_F(InfoBarSpecTest, BuildCustomSpec) {
             InfoBarDelegate::InfobarPriority::kCriticalSecurity);
   EXPECT_EQ(spec.icon_id(), 123);
   EXPECT_FALSE(spec.expire_on_navigation());
+  EXPECT_TRUE(spec.is_promotional());
   EXPECT_EQ(spec.ok_button_label(), ok_label);
   EXPECT_FALSE(spec.ok_button_callback().is_null());
   EXPECT_EQ(spec.cancel_button_label(), cancel_label);
@@ -149,7 +152,7 @@ TEST_F(InfoBarSpecTest, BuildSpecWithTemplateAndSubstitutions) {
   bool link_clicked = false;
   auto link_cb = base::BindRepeating(
       [](bool* clicked, content::WebContents*, size_t index,
-         WindowOpenDisposition) {
+         ui::mojom::WindowOpenDisposition) {
         *clicked = true;
         return true;
       },
@@ -171,7 +174,7 @@ TEST_F(InfoBarSpecTest, BuildSpecWithTemplateAndSubstitutions) {
 
   ASSERT_FALSE(spec.inline_link_callback().is_null());
   EXPECT_TRUE(spec.inline_link_callback().Run(
-      nullptr, 0, WindowOpenDisposition::kCurrentTab));
+      nullptr, 0, ui::mojom::WindowOpenDisposition::kCurrentTab));
   EXPECT_TRUE(link_clicked);
 }
 

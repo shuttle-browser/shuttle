@@ -9,6 +9,8 @@
 
 #include "base/command_line.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/strings/strcat.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "components/optimization_guide/core/access_token_helper.h"
 #include "components/optimization_guide/core/feature_registry/feature_keys.h"
@@ -20,6 +22,7 @@
 #include "components/optimization_guide/proto/model_execution.pb.h"
 #include "components/variations/net/variations_http_headers.h"
 #include "google_apis/gaia/gaia_constants.h"
+#include "net/base/load_timing_info.h"
 #include "net/base/url_util.h"
 #include "net/http/http_response_headers.h"
 #include "net/http/http_status_code.h"
@@ -85,7 +88,6 @@ void ModelExecutionFetcherImpl::ExecuteModel(
     return;
   }
 
-  fetch_start_time_ = base::TimeTicks::Now();
   model_execution_feature_ = feature;
   model_execution_callback_ = std::move(callback);
 
@@ -99,23 +101,30 @@ void ModelExecutionFetcherImpl::ExecuteModel(
       signin::OAuthConsumerId::kOptimizationGuideModelExecution,
       base::BindOnce(&ModelExecutionFetcherImpl::OnAccessTokenReceived,
                      weak_ptr_factory_.GetWeakPtr(), feature,
-                     serialized_request, timeout));
+                     serialized_request, timeout, base::TimeTicks::Now()));
 }
 
 void ModelExecutionFetcherImpl::OnAccessTokenReceived(
     ModelBasedCapabilityKey feature,
     const std::string& serialized_request,
     std::optional<base::TimeDelta> timeout,
+    base::TimeTicks access_token_request_start_time,
     const std::string& access_token) {
-  if (IsAccessTokenRequiredForFeature(feature) && access_token.empty()) {
-    RecordRequestStatusHistogram(
-        *model_execution_feature_,
-        ModelExecutionFetcherRequestStatus::kUserNotSignedIn);
-    std::move(model_execution_callback_)
-        .Run(base::unexpected(
-            OptimizationGuideModelExecutionError::FromModelExecutionError(
-                ModelExecutionError::kPermissionDenied)));
-    return;
+  if (IsAccessTokenRequiredForFeature(feature)) {
+    if (access_token.empty()) {
+      RecordRequestStatusHistogram(
+          *model_execution_feature_,
+          ModelExecutionFetcherRequestStatus::kUserNotSignedIn);
+      std::move(model_execution_callback_)
+          .Run(base::unexpected(
+              OptimizationGuideModelExecutionError::FromModelExecutionError(
+                  ModelExecutionError::kPermissionDenied)));
+      return;
+    }
+    base::UmaHistogramTimes(
+        base::StrCat({"OptimizationGuide.ModelExecution.AccessTokenLatency.",
+                      GetStringNameForModelExecutionFeature(feature)}),
+        base::TimeTicks::Now() - access_token_request_start_time);
   }
 
   auto resource_request = std::make_unique<network::ResourceRequest>();
@@ -133,6 +142,7 @@ void ModelExecutionFetcherImpl::OnAccessTokenReceived(
   }
 
   resource_request->method = "POST";
+  resource_request->enable_load_timing = true;
   resource_request->credentials_mode = network::mojom::CredentialsMode::kOmit;
   AppendHeadersIfNeeded(*resource_request);
 
@@ -161,6 +171,25 @@ void ModelExecutionFetcherImpl::OnURLLoadComplete(
       active_url_loader_->ResponseInfo()->headers) {
     response_code =
         active_url_loader_->ResponseInfo()->headers->response_code();
+  }
+
+  if (const network::mojom::URLResponseHead* const response_info =
+          active_url_loader_->ResponseInfo()) {
+    const net::LoadTimingInfo::ConnectTiming& connect_timing =
+        response_info->load_timing.connect_timing;
+    const base::TimeTicks start = !connect_timing.domain_lookup_start.is_null()
+                                      ? connect_timing.domain_lookup_start
+                                      : connect_timing.connect_start;
+    const base::TimeDelta connect_latency =
+        (!start.is_null() && !connect_timing.connect_end.is_null() &&
+         connect_timing.connect_end >= start)
+            ? (connect_timing.connect_end - start)
+            : base::TimeDelta();
+    base::UmaHistogramMediumTimes(
+        base::StrCat(
+            {"OptimizationGuide.ModelExecution.ConnectLatency.",
+             GetStringNameForModelExecutionFeature(*model_execution_feature_)}),
+        connect_latency);
   }
 
   // Reset the active URL loader here since actions happening during response

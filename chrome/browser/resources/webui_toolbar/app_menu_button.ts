@@ -8,7 +8,6 @@ import './icons.js';
 import '//resources/cr_elements/icons.html.js';
 
 import {loadTimeData} from '//resources/js/load_time_data.js';
-import {TrackedElementManager} from '//resources/js/tracked_element/tracked_element_manager.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {TimerHelper} from '/shared/timer_helper.js';
@@ -212,8 +211,17 @@ export class AppMenuButtonElement extends AppMenuButtonElementBase {
     }
   }
 
+  protected onKeydown_(e: KeyboardEvent) {
+    // To match Views' MenuButtonController::OnKeyPressed behavior, Up and Down
+    // arrow keys open the menu on keydown. (Enter and Space already synthesize
+    // a click event with detail === 0 on the inner <button>.)
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      this.handleMenuClick_(e);
+    }
+  }
+
   private handleMenuClick_(e: Event) {
-    TrackedElementManager.getInstance().notifyElementActivated(this);
     this.browserProxy_.toolbarUIHandler.showContextMenu(
         ContextMenuType.kAppMenu, getContextMenuPosition(this),
         getClickSourceType(e), /*showMenuToken=*/ null);

@@ -147,12 +147,14 @@ class MEDIA_EXPORT AudioOutputDevice : public AudioRendererSink,
   // This enum is used for UMA, so the only allowed operation on this definition
   // is to add new states to the bottom, update kMaxValue, and update the
   // histogram "Media.Audio.Render.StreamCallbackError2".
+  // LINT.IfChange(Error)
   enum Error {
     kNoError = 0,
     kErrorDuringCreation = 1,
     kErrorDuringRendering = 2,
     kMaxValue = kErrorDuringRendering
   };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:AudioRenderDeviceError)
 
   // Methods called on IO thread ----------------------------------------------
   // The following methods are tasks posted on the IO thread that need to
@@ -167,13 +169,6 @@ class MEDIA_EXPORT AudioOutputDevice : public AudioRendererSink,
   void FlushOnIOThread();
   void ShutDownOnIOThread();
   void SetVolumeOnIOThread(double volume);
-
-  // Process device authorization result on the IO thread.
-  void ProcessDeviceAuthorizationOnIOThread(
-      OutputDeviceStatus device_status,
-      const AudioParameters& output_params,
-      const std::string& matched_device_id,
-      bool timed_out);
 
   void NotifyRenderCallbackOfError();
 
@@ -196,9 +191,6 @@ class MEDIA_EXPORT AudioOutputDevice : public AudioRendererSink,
 
   // For UMA stats. May only be accessed on the IO thread.
   Error had_error_ = kNoError;
-
-  // Last set volume.
-  double volume_ = 1.0;
 
   // The media session ID used to identify which input device to be started.
   // Only used by Unified IO.

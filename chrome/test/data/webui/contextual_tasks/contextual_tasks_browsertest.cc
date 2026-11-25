@@ -7,6 +7,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_test_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/web_ui_mocha_browser_test.h"
@@ -62,8 +63,14 @@ class ContextualTasksBrowserTest : public WebUIMochaBrowserTest {
     scoped_feature_list_.InitWithFeatures(
         {contextual_tasks::kContextualTasks,
          contextual_tasks::kContextualTasksForceEntryPointEligibility},
-        {});
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture});
     set_test_loader_host(chrome::kChromeUIContextualTasksHost);
+  }
+
+  void SetUp() override {
+    SKIP_IF_CONTEXTUAL_TASKS_UNSUPPORTED();
+    WebUIMochaBrowserTest::SetUp();
   }
 
   void SetUpInProcessBrowserTestFixture() override {
@@ -155,6 +162,13 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest,
           "runMochaTest('ContextualTasksAppTest', "
           "'new thread click keeps thread when browser moves tab to new "
           "thread')");
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest,
+                       App_DarkModeUpdatesToolbarButtonIconColor) {
+  RunTest("contextual_tasks/app_test.js",
+          "runMochaTest('ContextualTasksAppTest', "
+          "'dark mode updates toolbar button icon color token')");
 }
 
 // Run each BasicMode nested suite as a separate test so each group has its own
@@ -619,29 +633,15 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, UnboundedMenu) {
   RunTest("contextual_tasks/unbounded_menu_test.js", "mocha.run();");
 }
 
-// TODO(crbug.com/564474841): Flaky on Linux-js coverage.
-// Disabled on Linux after timing out during JS coverage collection, after all
-// Mocha assertions passed.
-#if BUILDFLAG(IS_LINUX)
-#define MAYBE_Composebox_Voice_SurfaceAndStartup_CoherenceTrue \
-  DISABLED_Composebox_Voice_SurfaceAndStartup_CoherenceTrue
-#define MAYBE_Composebox_Voice_SurfaceAndStartup_CoherenceFalse \
-  DISABLED_Composebox_Voice_SurfaceAndStartup_CoherenceFalse
-#else
-#define MAYBE_Composebox_Voice_SurfaceAndStartup_CoherenceTrue \
-  Composebox_Voice_SurfaceAndStartup_CoherenceTrue
-#define MAYBE_Composebox_Voice_SurfaceAndStartup_CoherenceFalse \
-  Composebox_Voice_SurfaceAndStartup_CoherenceFalse
-#endif
 IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest,
-                       MAYBE_Composebox_Voice_SurfaceAndStartup_CoherenceTrue) {
+                       Composebox_Voice_SurfaceAndStartup_CoherenceTrue) {
   RunTest("contextual_tasks/composebox_test.js",
           "runMochaSuite('ContextualTasksComposeboxForkVoiceTest "
           "\\\\(coherence = true\\\\) SurfaceAndStartup')");
 }
 
 IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest,
-                       MAYBE_Composebox_Voice_SurfaceAndStartup_CoherenceFalse) {
+                       Composebox_Voice_SurfaceAndStartup_CoherenceFalse) {
   RunTest("contextual_tasks/composebox_test.js",
           "runMochaSuite('ContextualTasksComposeboxForkVoiceTest "
           "\\\\(coherence = false\\\\) SurfaceAndStartup')");
@@ -704,13 +704,11 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest,
 // TODO(crbug.com/565086795): Flaky on Android.
 #if BUILDFLAG(IS_ANDROID)
 #define MAYBE_PostMessageHandler DISABLED_PostMessageHandler
-#define MAYBE_TopToolbarTest DISABLED_TopToolbarTest
 #define MAYBE_OverflowMenu DISABLED_OverflowMenu
 #define MAYBE_Toolbar DISABLED_Toolbar
 #define MAYBE_OnboardingTooltip DISABLED_OnboardingTooltip
 #else
 #define MAYBE_PostMessageHandler PostMessageHandler
-#define MAYBE_TopToolbarTest TopToolbarTest
 #define MAYBE_OverflowMenu OverflowMenu
 #define MAYBE_Toolbar Toolbar
 #define MAYBE_OnboardingTooltip OnboardingTooltip
@@ -719,7 +717,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, MAYBE_PostMessageHandler) {
   RunTest("contextual_tasks/post_message_handler_test.js", "mocha.run();");
 }
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, MAYBE_TopToolbarTest) {
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, TopToolbarTest) {
   RunTest("contextual_tasks/top_toolbar_test.js", "mocha.run();");
 }
 

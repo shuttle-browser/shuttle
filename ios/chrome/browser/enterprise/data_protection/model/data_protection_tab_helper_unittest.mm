@@ -176,11 +176,9 @@ class DataProtectionTabHelperTest : public PlatformTest {
     builder.AddTestingFactory(
         DataProtectionUrlLookupServiceFactory::GetInstance(),
         base::BindRepeating(&CreateDataProtectionUrlLookupService));
-
+    builder.SetSharedURLLoaderFactory(
+        test_url_loader_factory_.GetSafeWeakWrapper());
     profile_ = std::move(builder).Build();
-    profile_->SetSharedURLLoaderFactory(
-        base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
-            &test_url_loader_factory_));
 
     // Enable real-time lookup by default via prefs.
     profile_->GetPrefs()->SetInteger(
@@ -340,15 +338,18 @@ TEST_F(DataProtectionTabHelperTest, RealTimeLookupBlock) {
   EXPECT_EQ(fake_rt_lookup_service_->start_lookup_count(), 1u);
 
   histogram_tester.ExpectUniqueSample(
-      DataProtectionTabHelper::kScreenshotBlockLookupSuccessHistogram, true, 1);
+      DataProtectionTabHelper::kRealTimeURLLookupSuccessHistogram, true, 1);
   histogram_tester.ExpectUniqueSample(
       DataProtectionTabHelper::kScreenshotBlockSourceHistogram,
       ScreenshotBlockSource::kRealtimeLookup, 1);
+  histogram_tester.ExpectUniqueSample(
+      DataProtectionTabHelper::kWatermarkTriggeredHistogram, false, 1);
 }
 
 // Tests that the watermark text is correctly updated when the real-time lookup
 // returns a matched rule with a watermark message.
 TEST_F(DataProtectionTabHelperTest, RealTimeLookupWatermark) {
+  base::HistogramTester histogram_tester;
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(kEnableEnterpriseWatermarkingIOS);
   GURL protected_url(kProtectedUrl);
@@ -386,6 +387,9 @@ TEST_F(DataProtectionTabHelperTest, RealTimeLookupWatermark) {
   // Verify that the observer was notified with the watermark text.
   EXPECT_THAT(observer_.watermark_text(),
               ::testing::HasSubstr("Test Watermark"));
+
+  histogram_tester.ExpectUniqueSample(
+      DataProtectionTabHelper::kWatermarkTriggeredHistogram, true, 1);
 }
 
 // Tests that watermarking lookups occur even if screenshot protection is
@@ -546,10 +550,11 @@ TEST_F(DataProtectionTabHelperTest, RealTimeLookupFailed) {
   EXPECT_EQ(fake_rt_lookup_service_->start_lookup_count(), 1u);
 
   histogram_tester.ExpectUniqueSample(
-      DataProtectionTabHelper::kScreenshotBlockLookupSuccessHistogram, false,
-      1);
+      DataProtectionTabHelper::kRealTimeURLLookupSuccessHistogram, false, 1);
   histogram_tester.ExpectTotalCount(
       DataProtectionTabHelper::kScreenshotBlockSourceHistogram, 0);
+  histogram_tester.ExpectTotalCount(
+      DataProtectionTabHelper::kWatermarkTriggeredHistogram, 0);
 }
 
 // Tests that real-time lookup is skipped when no DM token is present.
@@ -623,8 +628,7 @@ TEST_F(DataProtectionTabHelperTest, RealTimeLookupNotSet) {
 
 // Tests that real-time lookup is skipped in Incognito.
 TEST_F(DataProtectionTabHelperTest, IncognitoSkipsRealTimeLookup) {
-  TestProfileIOS* incognito_profile =
-      profile_->CreateOffTheRecordProfileWithTestingFactories({});
+  ProfileIOS* incognito_profile = profile_->GetOffTheRecordProfile();
 
   auto incognito_web_state =
       std::make_unique<web::FakeWebState>(web::WebStateID::NewUnique());

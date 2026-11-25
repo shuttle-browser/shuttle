@@ -4,6 +4,7 @@
 
 #include "components/enterprise/net/core/enterprise_proxy_service.h"
 
+#include <optional>
 #include <set>
 #include <string_view>
 #include <utility>
@@ -28,6 +29,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "net/base/auth.h"
+#include "net/http/http_util.h"
 #include "net/log/net_log.h"
 #include "net/log/net_log_event_type.h"
 #include "net/log/net_log_source_type.h"
@@ -41,6 +43,12 @@ namespace {
 constexpr std::string_view kDisguisedErrorCodes[] = {
     "403", "500", "502", "503", "504",
 };
+
+// Basic auth username key carrying the browser user agent. Secure Gateway
+// ignores standard headers such as `user-agent` when they are encoded in the
+// credentials, and reads this key when the CONNECT request has no User-Agent
+// header.
+constexpr char kUserAgentCredentialKey[] = "x-user-agent";
 
 std::string_view DecisionToString(
     EnterpriseProxyService::ProxyAuthChallengeMatch::Decision decision) {
@@ -203,17 +211,21 @@ EnterpriseProxyService::EnterpriseProxyService(
     EnterpriseNetworkAuthService* auth_service,
     GetURLLoaderFactoryCallback url_loader_factory_callback,
     enterprise::ProfileIdService* profile_id_service,
-    net::NetLog* net_log)
+    net::NetLog* net_log,
+    std::optional<std::string> user_agent)
     : pref_service_(pref_service),
       auth_service_(auth_service),
       url_loader_factory_callback_(std::move(url_loader_factory_callback)),
       profile_id_service_(profile_id_service),
+      user_agent_(std::move(user_agent)),
       net_log_(net::NetLogWithSource::Make(
           net_log,
           net::NetLogSourceType::ENTERPRISE_PROXY_SERVICE)) {
   CHECK(pref_service_);
   CHECK(auth_service_);
   CHECK(url_loader_factory_callback_);
+  CHECK(!user_agent_.has_value() ||
+        net::HttpUtil::IsValidHeaderValue(*user_agent_));
   net::NetworkChangeNotifier::AddNetworkChangeObserver(this);
   auth_service_observation_.Observe(auth_service_);
   pref_change_registrar_.Init(pref_service_);
@@ -445,29 +457,32 @@ void EnterpriseProxyService::Shutdown() {
   observers_.Clear();
 }
 
-void EnterpriseProxyService::OnProvisioningDomainStateChanged(
+void EnterpriseProxyService::UpdateManagerRefreshStateAndCache(
     ProxyProvisioningDomainManager* domain_manager) {
-  const size_t old_count = refreshing_managers_.size();
-
   if (domain_manager->is_refresh_in_progress()) {
     refreshing_managers_.insert(domain_manager);
   } else {
     refreshing_managers_.erase(domain_manager);
-    // Do not overwrite previously cached valid configurations with transient
-    // or blocked failure states.
-    if (domain_manager->state() !=
-            ProvisioningDomainProxyConfig::State::kFailedTransient &&
-        domain_manager->state() !=
-            ProvisioningDomainProxyConfig::State::kFailedBlocked) {
-      std::string policy_hash = ComputePolicyHash(domain_manager->policy());
-      if (!policy_hash.empty()) {
-        ScopedDictPrefUpdate update(pref_service_,
-                                    kProvisioningDomainProxyConfigs);
-        update->Set(policy_hash, domain_manager->ToDict());
-      }
-    }
   }
 
+  // Only persist valid or refresh-needed states; do not overwrite previously
+  // cached configurations with in-flight fetches or failure states.
+  const ProvisioningDomainProxyConfig::State state = domain_manager->state();
+  if (state == ProvisioningDomainProxyConfig::State::kValid ||
+      state == ProvisioningDomainProxyConfig::State::kRefreshNeeded) {
+    std::string policy_hash = ComputePolicyHash(domain_manager->policy());
+    if (!policy_hash.empty()) {
+      ScopedDictPrefUpdate update(pref_service_,
+                                  kProvisioningDomainProxyConfigs);
+      update->Set(policy_hash, domain_manager->ToDict());
+    }
+  }
+}
+
+void EnterpriseProxyService::OnProvisioningDomainStateChanged(
+    ProxyProvisioningDomainManager* domain_manager) {
+  const size_t old_count = refreshing_managers_.size();
+  UpdateManagerRefreshStateAndCache(domain_manager);
   const size_t new_count = refreshing_managers_.size();
 
   if (old_count == 0 && new_count > 0) {
@@ -567,22 +582,24 @@ void EnterpriseProxyService::RecreateProvisioningDomainManagers(
     if (!policy_hash.empty()) {
       active_policy_hashes.insert(policy_hash);
     }
-    provisioning_domain_observations_.AddObservation(manager.get());
-    OnProvisioningDomainStateChanged(manager.get());
+    ProxyProvisioningDomainManager* manager_ptr = manager.get();
+    provisioning_domain_observations_.AddObservation(manager_ptr);
     provisioning_domain_managers_.push_back(std::move(manager));
+    UpdateManagerRefreshStateAndCache(manager_ptr);
+  }
+
+  if (!refreshing_managers_.empty()) {
+    VLOG_POLICY(1, ENTERPRISE_PROXY)
+        << "Enterprise proxy configuration refresh in progress; pausing "
+           "network traffic.";
+    net_log_.BeginEvent(net::NetLogEventType::ENTERPRISE_PROXY_NETWORK_PAUSE);
   }
 
   // Prune cache entries for policy hashes that are no longer configured.
   ScopedDictPrefUpdate update(pref_service_, kProvisioningDomainProxyConfigs);
-  std::vector<std::string> keys_to_remove;
-  for (const auto [key, value] : *update) {
-    if (!active_policy_hashes.contains(key)) {
-      keys_to_remove.push_back(key);
-    }
-  }
-  for (const auto& key : keys_to_remove) {
-    update->Remove(key);
-  }
+  update->EraseIf([&](const auto& entry) {
+    return !active_policy_hashes.contains(entry.first);
+  });
 
   const net::ProxyConfig::DynamicRoutingConfig new_routing_config =
       GetDynamicRoutingConfig();
@@ -616,6 +633,12 @@ std::string EnterpriseProxyService::BuildBasicAuthUsername(
   net::HttpRequestHeaders resolved_proxy_headers =
       ResolveExtraHeadersWithValues(proxy_headers, profile_id,
                                     accept_languages);
+  if (user_agent_.has_value()) {
+    // Secure Gateway matches the key case-sensitively, and `SetHeader()` would
+    // keep the casing of a PvD entry, so that entry is removed first.
+    resolved_proxy_headers.RemoveHeader(kUserAgentCredentialKey);
+    resolved_proxy_headers.SetHeader(kUserAgentCredentialKey, *user_agent_);
+  }
 
   std::vector<std::string> query_params;
   for (const auto& [key, val] : resolved_proxy_headers.GetHeaderVector()) {

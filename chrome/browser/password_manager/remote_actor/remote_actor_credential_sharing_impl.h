@@ -14,13 +14,12 @@
 #include "base/memory/weak_ptr.h"
 #include "chrome/common/password_manager/remote_actor_credential_sharing.mojom.h"
 #include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/remote_actor/remote_actor_config.h"
 #include "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_controller.h"
 #include "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_result.h"
 #include "content/public/browser/document_user_data.h"
 #include "mojo/public/cpp/bindings/associated_receiver.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
-
-class Profile;
 
 namespace content {
 class RenderFrameHost;
@@ -84,9 +83,10 @@ class RemoteActorCredentialSharingImpl
                                     const std::string& domain,
                                     const std::string& task_id);
 
-  // Checks if enterprise policy (GeminiSparkSettings) permits remote actor
-  // credential sharing.
-  bool IsAllowedByPolicy(Profile* profile);
+  // Returns true if the request is allowed via either transient user activation
+  // on `render_frame_host()` or a one-time fallback for a popup with a
+  // same-site opener whose navigation was initiated by a user gesture.
+  bool HasValidUserActivation();
 
   // RemoteActorCredentialSharingController::Delegate:
   void ShowCredentialSelection(
@@ -111,6 +111,11 @@ class RemoteActorCredentialSharingImpl
 
   DialogFactory dialog_factory_;
 
+  // Tracks whether the one-time popup activation fallback for this document has
+  // already been consumed.
+  bool popup_activation_consumed_ = false;
+
+  std::optional<RemoteActorConfig> actor_config_;
   std::unique_ptr<RemoteActorCredentialSharingController> controller_;
   std::unique_ptr<RemoteActorSelectionDialogController> dialog_controller_;
 

@@ -46,7 +46,6 @@
 #include "ui/base/l10n/time_format.h"
 #include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -251,6 +250,32 @@ void ForeignSessionHandler::OpenForeignSessionAllTabs(
   restore_windows_callback_.Run(profile_, windows);
 }
 
+void ForeignSessionHandler::OpenForeignSessionWindow(
+    const std::string& session_tag,
+    int32_t window_id) {
+  sync_sessions::OpenTabsUIDelegate* open_tabs =
+      GetOpenTabsUIDelegate(profile_);
+  if (!open_tabs) {
+    return;
+  }
+
+  // Note: we don't own the ForeignSessions themselves.
+  std::vector<const ::sessions::SessionWindow*> windows =
+      open_tabs->GetForeignSession(session_tag);
+  if (windows.empty()) {
+    DVLOG(1) << "ForeignSessionHandler failed to get session data from"
+                "OpenTabsUIDelegate.";
+    return;
+  }
+
+  for (const ::sessions::SessionWindow* window : windows) {
+    if (window && window->window_id.id() == window_id) {
+      restore_windows_callback_.Run(profile_, {window});
+      return;
+    }
+  }
+}
+
 void ForeignSessionHandler::OpenForeignSessionTab(
     const std::string& session_tag,
     int32_t tab_id_value,
@@ -277,15 +302,16 @@ void ForeignSessionHandler::OpenForeignSessionTab(
     return;
   }
 
-  WindowOpenDisposition disposition = ui::DispositionFromClick(
+  ui::mojom::WindowOpenDisposition disposition = ui::DispositionFromClick(
       modifiers->middle_button, modifiers->alt_key, modifiers->ctrl_key,
       modifiers->meta_key, modifiers->shift_key);
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (side_panel_ui_ && disposition == WindowOpenDisposition::kCurrentTab) {
+  if (side_panel_ui_ &&
+      disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
     // In the side panel, never replace the current tab but open a new tab
     // instead.
-    disposition = WindowOpenDisposition::kNewForegroundTab;
+    disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
 
   if (side_panel_ui_ && side_panel_ui_->metrics_recorder()) {

@@ -29,6 +29,7 @@
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/native_library.h"
 #include "base/no_destructor.h"
@@ -39,6 +40,7 @@
 #include "base/system/system_monitor.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/scoped_thread_priority.h"
+#include "base/time/time.h"
 #include "base/win/core_winrt_util.h"
 #include "base/win/delayload_helpers.h"
 #include "base/win/scoped_co_mem.h"
@@ -102,11 +104,6 @@ enum BlockedCameraNames {
   // This one must be last, and equal to the previous enumerated value.
   BLOCKED_CAMERA_MAX = BLOCKED_CAMERA_PLEORA_EBUS,
 };
-
-#define UWP_ENUM_ERROR_HANDLER(hr, err_log)                         \
-  DLOG(WARNING) << err_log << logging::SystemErrorCodeToString(hr); \
-  origin_task_runner_->PostTask(                                    \
-      FROM_HERE, base::BindOnce(std::move(device_info_callback), nullptr))
 
 // Blocked devices are identified by a characteristic prefix of the name.
 // This prefix is used case-insensitively. This list must be kept in sync with
@@ -367,16 +364,17 @@ class VideoCaptureDeviceFactoryWin::ComThreadData
                 scoped_refptr<base::SingleThreadTaskRunner> com_thread_runner,
                 scoped_refptr<base::SingleThreadTaskRunner> origin_task_runner,
                 bool use_media_foundation,
-                scoped_refptr<DXGIDeviceManager> dxgi_device_manager)
+                scoped_refptr<DXGIDeviceManager> dxgi_device_manager,
+                mojom::VideoCaptureDeviceEnumerationMode enumeration_mode)
       : device_factory_(std::move(device_factory)),
         com_thread_runner_(std::move(com_thread_runner)),
         origin_task_runner_(std::move(origin_task_runner)),
         use_media_foundation_(use_media_foundation),
-        dxgi_device_manager_(std::move(dxgi_device_manager)) {}
+        dxgi_device_manager_(std::move(dxgi_device_manager)),
+        enumeration_mode_(enumeration_mode) {}
 
   void GetDevicesInfoOnComThread(
       VideoCaptureDeviceFactoryWin* factory,
-      mojom::VideoCaptureDeviceEnumerationMode enumeration_mode,
       GetDevicesInfoCallback result_callback);
   void EnumerateDevicesUWP(std::vector<VideoCaptureDeviceInfo> devices_info,
                            GetDevicesInfoCallback result_callback);
@@ -390,6 +388,10 @@ class VideoCaptureDeviceFactoryWin::ComThreadData
   friend class base::RefCountedThreadSafe<ComThreadData>;
   ~ComThreadData() = default;
 
+  void RecordEnumerationDurationAndPostResult(
+      GetDevicesInfoCallback result_callback,
+      std::vector<VideoCaptureDeviceInfo> devices_info);
+
   absl::flat_hash_set<
       raw_ptr<IAsyncOperation<DeviceInformationCollection*>, CtnExperimental>>
       async_ops_;
@@ -398,6 +400,9 @@ class VideoCaptureDeviceFactoryWin::ComThreadData
   scoped_refptr<base::SingleThreadTaskRunner> origin_task_runner_;
   bool use_media_foundation_;
   scoped_refptr<DXGIDeviceManager> dxgi_device_manager_;
+  const mojom::VideoCaptureDeviceEnumerationMode enumeration_mode_;
+  // This must only be accessed on the COM thread.
+  base::TimeTicks enumeration_start_time_;
 };
 
 class VideoCaptureDeviceFactoryWin::UsageReportHandler
@@ -870,21 +875,21 @@ void VideoCaptureDeviceFactoryWin::GetDevicesInfo(
           weak_ptr_factory_.GetWeakPtr(), com_thread_.task_runner(),
           base::SingleThreadTaskRunner::GetCurrentDefault(),
           use_media_foundation_,
-          use_d3d11_with_media_foundation_ ? dxgi_device_manager_ : nullptr);
+          use_d3d11_with_media_foundation_ ? dxgi_device_manager_ : nullptr,
+          enumeration_mode);
   // Passing `this` as a raw pointer to `com_thread_` is safe because
   // `this` owns the `com_thread_`.
   com_thread_.task_runner()->PostTask(
       FROM_HERE, base::BindOnce(&VideoCaptureDeviceFactoryWin::ComThreadData::
                                     GetDevicesInfoOnComThread,
-                                com_thread_data_, this, enumeration_mode,
-                                std::move(callback)));
+                                com_thread_data_, this, std::move(callback)));
 }
 
 void VideoCaptureDeviceFactoryWin::ComThreadData::GetDevicesInfoOnComThread(
     VideoCaptureDeviceFactoryWin* factory,
-    mojom::VideoCaptureDeviceEnumerationMode enumeration_mode,
     GetDevicesInfoCallback result_callback) {
   DCHECK(com_thread_runner_->BelongsToCurrentThread());
+  enumeration_start_time_ = base::TimeTicks::Now();
   // It's not required to run MediaFoundation and DirectShow enumeration on
   // the COM thread, but as it can take a long time in some cases, it makes
   // sense to run them here too to not block the main utility thread, which
@@ -892,18 +897,18 @@ void VideoCaptureDeviceFactoryWin::ComThreadData::GetDevicesInfoOnComThread(
   std::vector<VideoCaptureDeviceInfo> devices_info;
   MFToDirectShowDeviceIdMap mf_to_direct_show_device_ids;
   if (use_media_foundation_) {
-    devices_info = factory->GetDevicesInfoMediaFoundation(enumeration_mode,
+    devices_info = factory->GetDevicesInfoMediaFoundation(enumeration_mode_,
                                                           dxgi_device_manager_);
     factory->AugmentDevicesListWithDirectShowOnlyDevices(
-        enumeration_mode, &mf_to_direct_show_device_ids, &devices_info);
+        enumeration_mode_, &mf_to_direct_show_device_ids, &devices_info);
   } else {
     devices_info =
-        factory->GetDevicesInfoDirectShow(enumeration_mode, devices_info);
+        factory->GetDevicesInfoDirectShow(enumeration_mode_, devices_info);
   }
 
   GetDevicesInfoCallback device_info_ready_callback = base::BindOnce(
       &VideoCaptureDeviceFactoryWin::DeviceInfoReady, device_factory_,
-      enumeration_mode, std::move(mf_to_direct_show_device_ids),
+      enumeration_mode_, std::move(mf_to_direct_show_device_ids),
       std::move(result_callback));
   EnumerateDevicesUWP(std::move(devices_info),
                       std::move(device_info_ready_callback));
@@ -912,14 +917,18 @@ void VideoCaptureDeviceFactoryWin::ComThreadData::GetDevicesInfoOnComThread(
 void VideoCaptureDeviceFactoryWin::ComThreadData::EnumerateDevicesUWP(
     std::vector<VideoCaptureDeviceInfo> devices_info,
     GetDevicesInfoCallback result_callback) {
+  DCHECK(com_thread_runner_->BelongsToCurrentThread());
   DCHECK_GE(base::win::OSInfo::GetInstance()->version_number().build, 10240u);
 
-  // When an error occurs below, the `UWP_ENUM_ERROR_HANDLER()` macro runs
-  // `device_info_callback` with a `nullptr` operation.
   auto device_info_callback = base::BindOnce(
       &VideoCaptureDeviceFactoryWin::ComThreadData::FoundAllDevicesUWP,
       scoped_refptr<ComThreadData>(this), std::move(devices_info),
       std::move(result_callback));
+  const auto handle_error = [&device_info_callback](HRESULT hr,
+                                                    const char* error_message) {
+    DLOG(WARNING) << error_message << logging::SystemErrorCodeToString(hr);
+    std::move(device_info_callback).Run(nullptr);
+  };
 
   ComPtr<ABI::Windows::Devices::Enumeration::IDeviceInformationStatics>
       dev_info_statics;
@@ -932,7 +941,7 @@ void VideoCaptureDeviceFactoryWin::ComThreadData::EnumerateDevicesUWP(
       RuntimeClass_Windows_Devices_Enumeration_DeviceInformation>(
       &dev_info_statics);
   if (FAILED(hr)) {
-    UWP_ENUM_ERROR_HANDLER(hr, "DeviceInformation factory failed: ");
+    handle_error(hr, "DeviceInformation factory failed: ");
     return;
   }
 
@@ -941,7 +950,7 @@ void VideoCaptureDeviceFactoryWin::ComThreadData::EnumerateDevicesUWP(
       ScopedHString::Create(kVideoAndSensorCamerasAqsString);
   hr = dev_info_statics->FindAllAsyncAqsFilter(aqs_filter.get(), &async_op);
   if (FAILED(hr)) {
-    UWP_ENUM_ERROR_HANDLER(hr, "Find all devices asynchronously failed: ");
+    handle_error(hr, "Find all devices asynchronously failed: ");
     return;
   }
 
@@ -974,10 +983,10 @@ void VideoCaptureDeviceFactoryWin::ComThreadData::FoundAllDevicesUWP(
     std::vector<VideoCaptureDeviceInfo> devices_info,
     GetDevicesInfoCallback result_callback,
     IAsyncOperation<DeviceInformationCollection*>* operation) {
+  DCHECK(com_thread_runner_->BelongsToCurrentThread());
   if (!operation) {
-    origin_task_runner_->PostTask(
-        FROM_HERE,
-        base::BindOnce(std::move(result_callback), std::move(devices_info)));
+    RecordEnumerationDurationAndPostResult(std::move(result_callback),
+                                           std::move(devices_info));
     return;
   }
 
@@ -1039,14 +1048,31 @@ void VideoCaptureDeviceFactoryWin::ComThreadData::FoundAllDevicesUWP(
 
   FindAndSetDefaultVideoCamera(&devices_info);
 
-  origin_task_runner_->PostTask(
-      FROM_HERE,
-      base::BindOnce(std::move(result_callback), std::move(devices_info)));
+  RecordEnumerationDurationAndPostResult(std::move(result_callback),
+                                         std::move(devices_info));
 
   auto it = async_ops_.find(operation);
   CHECK(it != async_ops_.end());
   (*it)->Release();
   async_ops_.erase(it);
+}
+
+void VideoCaptureDeviceFactoryWin::ComThreadData::
+    RecordEnumerationDurationAndPostResult(
+        GetDevicesInfoCallback result_callback,
+        std::vector<VideoCaptureDeviceInfo> devices_info) {
+  DCHECK(com_thread_runner_->BelongsToCurrentThread());
+  const std::string_view histogram_name =
+      enumeration_mode_ ==
+              mojom::VideoCaptureDeviceEnumerationMode::kDevicesOnly
+          ? "Media.VideoCapture.Win.DeviceEnumeration.Duration.DevicesOnly"
+          : "Media.VideoCapture.Win.DeviceEnumeration.Duration."
+            "DevicesWithCapabilities";
+  base::UmaHistogramMediumTimes(
+      histogram_name, base::TimeTicks::Now() - enumeration_start_time_);
+  origin_task_runner_->PostTask(
+      FROM_HERE,
+      base::BindOnce(std::move(result_callback), std::move(devices_info)));
 }
 
 void VideoCaptureDeviceFactoryWin::UpdateDevicesInfoAvailability(

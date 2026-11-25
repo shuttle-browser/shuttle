@@ -6,10 +6,12 @@
 #define CHROME_BROWSER_ENTERPRISE_CONNECTORS_REPORTING_EXTENSION_ACTOR_TRACKER_H_
 
 #include <optional>
+#include <string_view>
 
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "extensions/common/extension_id.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 namespace content {
 class BrowserContext;
@@ -17,8 +19,23 @@ class BrowserContext;
 
 namespace enterprise_connectors {
 
-// Tracks active extension actor attribution on a WebContents for enterprise
+// Tracks the extension that most recently acted on this tab, for enterprise
 // security reporting events.
+//
+//                    reload / back
+//        +-------------------------------+
+//        |                               v
+//   +------+  extension  +--------+  reload /  +---------+
+//   | None | ----------> | Tagged | ---------> | Pending |
+//   +------+   action    +--------+    back    +---------+
+//     ^  ^                 |   ^                 |
+//     |  |  user action    |   |   navigation    |
+//     |  +-----------------+   +--- finishes ----+
+//     |                                          |
+//     +--------------- user action --------------+
+//
+// Pending means the extension started a navigation that would otherwise look
+// like the user's (e.g. tabs.goBack), so the actor is kept through it.
 class ExtensionActorTracker
     : public content::WebContentsObserver,
       public content::WebContentsUserData<ExtensionActorTracker> {
@@ -32,12 +49,10 @@ class ExtensionActorTracker
   // `browser_context`.
   static bool IsEnabled(content::BrowserContext* browser_context);
 
-  // Marks `web_contents` as acted on by `extension_id`. When
-  // `is_initial_navigation` is true, attribution is preserved across the first
-  // cross-document primary main-frame commit.
+  // Marks `web_contents` as acted on by `extension_id` via `command`.
   static void SetActiveActor(content::WebContents* web_contents,
                              const extensions::ExtensionId& extension_id,
-                             bool is_initial_navigation = false);
+                             std::string_view command);
 
   // Clears active extension actor attribution on `web_contents`.
   static void ClearActiveActor(content::WebContents* web_contents);
@@ -47,6 +62,8 @@ class ExtensionActorTracker
       content::WebContents* web_contents);
 
   // content::WebContentsObserver:
+  void DidStartNavigation(
+      content::NavigationHandle* navigation_handle) override;
   void DidFinishNavigation(
       content::NavigationHandle* navigation_handle) override;
   void DidGetUserInteraction(const blink::WebInputEvent& event) override;
@@ -54,7 +71,7 @@ class ExtensionActorTracker
                            content::RenderFrameHost* source_render_frame_host,
                            const GURL& url,
                            const content::Referrer& referrer,
-                           WindowOpenDisposition disposition,
+                           ui::mojom::WindowOpenDisposition disposition,
                            ui::PageTransition transition,
                            bool started_from_context_menu,
                            bool renderer_initiated) override;
@@ -63,6 +80,11 @@ class ExtensionActorTracker
   friend class content::WebContentsUserData<ExtensionActorTracker>;
 
   explicit ExtensionActorTracker(content::WebContents* web_contents);
+
+  static void SetActiveActorInternal(
+      content::WebContents* web_contents,
+      const extensions::ExtensionId& extension_id,
+      bool is_initial_navigation);
 
   std::optional<extensions::ExtensionId> active_actor_id_;
   bool is_initial_navigation_ = false;

@@ -10,7 +10,10 @@
 #include "base/check.h"
 #include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
+#include "base/functional/callback_helpers.h"
+#include "base/location.h"
 #include "base/memory/raw_ptr.h"
+#include "base/run_loop.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
@@ -37,6 +40,8 @@
 #include "chromeos/constants/chromeos_features.h"
 #include "components/embedder_support/switches.h"
 #include "components/permissions/permission_request_manager.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/content_client.h"
@@ -451,6 +456,70 @@ IN_PROC_BROWSER_TEST_P(MultiScreenCaptureInIsolatedWebAppBrowserTest,
                                               track_ids, &error_name));
   EXPECT_EQ(error_name, "NotAllowedError");
 }
+
+IN_PROC_BROWSER_TEST_P(MultiScreenCaptureInIsolatedWebAppBrowserTest,
+                       InFlightGetAllScreensMediaStoppedOnUserSwitch) {
+  if (!IsPermissionPolicySet()) {
+    GTEST_SKIP();
+  }
+  SetScreens(/*screen_count=*/1u);
+  content::RenderFrameHost* app_frame = OpenApp(allowed_url_info_1().app_id());
+
+  const AccountId secondary_account_id = AccountId::FromUserEmailGaiaId(
+      "secondary@example.com", GaiaId("secondary-gaia-id"));
+  user_manager::UserManager::Get()->EnsureUser(secondary_account_id,
+                                               user_manager::UserType::kRegular,
+                                               /*is_ephemeral=*/false);
+  session_manager::SessionManager::Get()->CreateSession(
+      secondary_account_id,
+      user_manager::TestHelper::GetFakeUsernameHash(secondary_account_id),
+      /*new_user=*/false, /*has_active_session=*/true);
+
+  ASSERT_TRUE(content::ExecJs(app_frame, R"(
+    window.inFlightCapturePromise = (async () => {
+      try {
+        const streams = await Promise.race([
+          navigator.mediaDevices.getAllScreensMedia(),
+          new Promise(resolve => setTimeout(() => resolve(null), 500)),
+        ]);
+        if (!streams) {
+          return 'stopped-before-first-frame';
+        }
+        if (streams.length === 0 || streams[0].getVideoTracks().length === 0) {
+          return 'no-tracks';
+        }
+        const track = streams[0].getVideoTracks()[0];
+        if (track.readyState === 'live') {
+          await Promise.race([
+            new Promise(resolve => { track.addEventListener('ended', resolve); }),
+            new Promise(resolve => setTimeout(resolve, 500)),
+          ]);
+        }
+        return track.readyState;
+      } catch (error) {
+        return 'error:' + error.name;
+      }
+    })();
+    true;
+  )"));
+
+  // Flush the IO thread once so `GenerateStreams` has posted
+  // `CheckRequestAllScreensAllowed` to the UI thread and the UI thread has
+  // admitted the request, while `EnumerateScreens` ->
+  // `HandleAccessRequestResponse` -> `MultiCaptureStarted` is still in flight.
+  base::RunLoop io_flush_loop;
+  content::GetIOThreadTaskRunner({})->PostTaskAndReply(
+      FROM_HERE, base::DoNothing(), io_flush_loop.QuitClosure());
+  io_flush_loop.Run();
+
+  session_manager::SessionManager::Get()->SwitchActiveSession(
+      secondary_account_id);
+
+  // An in-flight getAllScreensMedia() request admitted before the active user
+  // switch must not survive as a live track after the switch.
+  EXPECT_NE("live",
+            content::EvalJs(app_frame, "window.inFlightCapturePromise"));
+}
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 // Test that getDisplayMedia and getAllScreensMedia are independent,
@@ -493,9 +562,25 @@ class InteractionBetweenGetAllScreensMediaAndGetDisplayMediaTest
                            base::StringPrintf("run(\"%s\");", method.c_str()));
   }
 
+  void FlushBrowserMediaStopTasks() {
+    // Flush IO -> UI -> IO -> UI so
+    // `MediaStreamDispatcherHost::StopStreamDevice`
+    // (`MediaStreamManager::StopStreamDevice`), any resulting UI-thread
+    // indicator cleanup, and any browser-to-renderer `OnDeviceStopped` Mojo
+    // notifications have been posted before renderer track state is queried.
+    for (int i = 0; i < 2; ++i) {
+      base::RunLoop io_flush_loop;
+      content::GetIOThreadTaskRunner({})->PostTaskAndReply(
+          FROM_HERE, base::DoNothing(), io_flush_loop.QuitClosure());
+      io_flush_loop.Run();
+    }
+  }
+
   content::EvalJsResult ProgrammaticallyStop(const std::string& method) {
-    return content::EvalJs(contents_,
-                           base::StringPrintf("stop(\"%s\");", method.c_str()));
+    content::EvalJsResult result = content::EvalJs(
+        contents_, base::StringPrintf("stop(\"%s\");", method.c_str()));
+    FlushBrowserMediaStopTasks();
+    return result;
   }
 
   content::EvalJsResult AreAllTracksLive(const std::string& method) {
@@ -515,11 +600,9 @@ INSTANTIATE_TEST_SUITE_P(
     InteractionBetweenGetAllScreensMediaAndGetDisplayMediaTest,
     ::testing::Bool());
 
-// crbug.com/441674610: Disabled as failing on ChromeOS without being able to
-// reproduce.
 IN_PROC_BROWSER_TEST_P(
     InteractionBetweenGetAllScreensMediaAndGetDisplayMediaTest,
-    DISABLED_ProgrammaticallyStoppingOneDoesNotStopTheOther) {
+    ProgrammaticallyStoppingOneDoesNotStopTheOther) {
   SetScreens(/*screen_count=*/1u);
   ASSERT_EQ(Run(method1_), base::Value());
   ASSERT_EQ(Run(method2_), base::Value());
@@ -529,12 +612,11 @@ IN_PROC_BROWSER_TEST_P(
   EXPECT_EQ(true, AreAllTracksLive(method2_));
 }
 
-// crbug.com/441674610: Disabled as failing on ChromeOS without being able to
-// reproduce. Identical to StoppingOneDoesNotStopTheOther other than that this
-// following test stops the second-started method first.
+// Identical to ProgrammaticallyStoppingOneDoesNotStopTheOther other than that
+// this following test stops the second-started method first.
 IN_PROC_BROWSER_TEST_P(
     InteractionBetweenGetAllScreensMediaAndGetDisplayMediaTest,
-    DISABLED_ProgrammaticallyStoppingOneDoesNotStopTheOtherInverseOrder) {
+    ProgrammaticallyStoppingOneDoesNotStopTheOtherInverseOrder) {
   SetScreens(/*screen_count=*/1u);
   ASSERT_EQ(Run(method1_), base::Value());
   ASSERT_EQ(Run(method2_), base::Value());
@@ -544,17 +626,15 @@ IN_PROC_BROWSER_TEST_P(
   EXPECT_EQ(false, AreAllTracksLive(method2_));
 }
 
-// crbug.com/441674610: Disabled as failing on ChromeOS without being able to
-// reproduce.
 IN_PROC_BROWSER_TEST_P(
     InteractionBetweenGetAllScreensMediaAndGetDisplayMediaTest,
-    DISABLED_UserStoppingGetDisplayMediaDoesNotStopGetAllScreensMedia) {
+    UserStoppingGetDisplayMediaDoesNotStopGetAllScreensMedia) {
   SetScreens(/*screen_count=*/1u);
   ASSERT_EQ(Run(method1_), base::Value());
   ASSERT_EQ(Run(method2_), base::Value());
 
   // The capture which was started via getDisplayMedia() caused the
-  // browser to show the user UX for stopping that capture. Simlate a user
+  // browser to show the user UX for stopping that capture. Simulate a user
   // interaction with that UX.
   MediaCaptureDevicesDispatcher::GetInstance()
       ->GetMediaStreamCaptureIndicator()
@@ -563,7 +643,9 @@ IN_PROC_BROWSER_TEST_P(
   EXPECT_EQ(content::EvalJs(contents_,
                             "waitUntilStoppedByUser(\"getDisplayMedia\");"),
             base::Value());
+  FlushBrowserMediaStopTasks();
 
+  EXPECT_EQ(false, AreAllTracksLive("getDisplayMedia"));
   // Test-focus - the capture started through gASM was not affected
   // by the user's interaction with the capture started via gDM.
   EXPECT_EQ(true, AreAllTracksLive("getAllScreensMedia"));

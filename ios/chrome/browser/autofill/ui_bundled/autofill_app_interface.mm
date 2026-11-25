@@ -4,13 +4,18 @@
 
 #import "ios/chrome/browser/autofill/ui_bundled/autofill_app_interface.h"
 
+#import <algorithm>
+#import <vector>
+
 #import "base/apple/foundation_util.h"
 #import "base/check.h"
+#import "base/containers/span.h"
 #import "base/functional/callback_helpers.h"
 #import "base/no_destructor.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/strings/utf_string_conversions.h"
 #import "base/test/ios/wait_util.h"
+#import "base/time/time.h"
 #import "base/uuid.h"
 #import "components/application_locale_storage/application_locale_storage.h"
 #import "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
@@ -20,12 +25,21 @@
 #import "components/autofill/core/browser/data_model/addresses/autofill_profile_test_api.h"
 #import "components/autofill/core/browser/data_model/addresses/autofill_structured_address_component.h"
 #import "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#import "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
+#import "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
 #import "components/autofill/core/browser/field_types.h"
+#import "components/autofill/core/browser/filling/field_filling_util.h"
 #import "components/autofill/core/browser/form_import/form_data_importer.h"
 #import "components/autofill/core/browser/form_import/payments/payments_form_data_importer.h"
+#import "components/autofill/core/browser/form_structure.h"
 #import "components/autofill/core/browser/foundations/autofill_client.h"
+#import "components/autofill/core/browser/foundations/autofill_manager_test_api.h"
 #import "components/autofill/core/browser/foundations/browser_autofill_manager_test_api.h"
+#import "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager.h"
+#import "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager_impl.h"
+#import "components/autofill/core/browser/network/autofill_ai/autofill_ai_personal_context_access_manager_impl_test_api.h"
 #import "components/autofill/core/browser/payments/credit_card_save_manager.h"
+#import "components/autofill/core/browser/payments/multiple_request_payments_network_interface.h"
 #import "components/autofill/core/browser/payments/payments_autofill_client.h"
 #import "components/autofill/core/browser/payments/payments_network_interface.h"
 #import "components/autofill/core/browser/payments/virtual_card_enrollment_manager.h"
@@ -43,6 +57,7 @@
 #import "components/password_manager/core/browser/password_store/password_store_consumer.h"
 #import "components/password_manager/core/browser/password_store/password_store_interface.h"
 #import "components/password_manager/core/browser/password_string.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_ai_personal_context_access_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
 #import "ios/chrome/browser/autofill/ui_bundled/chrome_autofill_client_ios.h"
 #import "ios/chrome/browser/passwords/model/ios_chrome_profile_password_store_factory.h"
@@ -50,7 +65,7 @@
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
-#import "ios/chrome/common/ui/reauthentication/fake_reauthentication_module.h"
+#import "ios/chrome/browser/shared/public/commands/form_input_accessory_commands.h"
 #import "ios/chrome/test/app/chrome_test_util.h"
 #import "ios/chrome/test/app/tab_test_util.h"
 #import "ios/public/provider/chrome/browser/risk_data/risk_data_api.h"
@@ -249,16 +264,19 @@ class FakeCreditCardServer : public CreditCardSaveManager::ObserverForTest {
         ->GetPaymentsNetworkInterface();
   }
 
+  // Access the `MultipleRequestPaymentsNetworkInterface`.
+  static payments::MultipleRequestPaymentsNetworkInterface*
+  GetMultipleRequestPaymentsNetworkInterface() {
+    return GetAutofillClient()
+        .GetPaymentsAutofillClient()
+        ->GetMultipleRequestPaymentsNetworkInterface();
+  }
+
+  // Access the `AutofillClient` for the current `WebState`.
   static AutofillClient& GetAutofillClient() {
     web::WebState* web_state = chrome_test_util::GetCurrentWebState();
-    web::WebFramesManager* frames_manager =
-        autofill::AutofillJavaScriptFeature::GetInstance()->GetWebFramesManager(
-            web_state);
-    web::WebFrame* main_frame = frames_manager->GetMainWebFrame();
     DCHECK(web_state);
-    return AutofillDriverIOS::FromWebStateAndWebFrame(web_state, main_frame)
-        ->GetAutofillManager()
-        .client();
+    return *autofill::AutofillClientIOS::FromWebState(web_state);
   }
 
   // Delete all failed attempds registered on every cards.
@@ -363,6 +381,14 @@ class FakeCreditCardServer : public CreditCardSaveManager::ObserverForTest {
 
     // Set a fake access token to avoid fetch requests.
     payments_network_interface->set_access_token_for_testing(
+        "fake_access_token");
+
+    payments::MultipleRequestPaymentsNetworkInterface*
+        multiple_request_payments_network_interface =
+            FakeCreditCardServer::GetMultipleRequestPaymentsNetworkInterface();
+    multiple_request_payments_network_interface
+        ->set_url_loader_factory_for_testing(shared_url_loader_factory_);
+    multiple_request_payments_network_interface->set_access_token_for_testing(
         "fake_access_token");
 
     // Observe actions in CreditCardSaveManager.
@@ -678,6 +704,14 @@ class FakeCreditCardServer : public CreditCardSaveManager::ObserverForTest {
     payments_network_interface->set_access_token_for_testing(
         "fake_access_token");
   }
+  if (autofill::payments::
+          MultipleRequestPaymentsNetworkInterface* multiple_request_interface =
+              autofill::FakeCreditCardServer::
+                  GetMultipleRequestPaymentsNetworkInterface()) {
+    // Set a fake access token to avoid fetch requests.
+    multiple_request_interface->set_access_token_for_testing(
+        "fake_access_token");
+  }
 }
 
 + (void)setFormFillMaxStrikes:(int)max forCard:(NSString*)card {
@@ -751,6 +785,15 @@ class FakeCreditCardServer : public CreditCardSaveManager::ObserverForTest {
       autofill::EntityInstance::EntityId(base::SysNSStringToUTF8(uuid)));
 }
 
++ (void)removeEntityModifiedSince:(NSDate*)time {
+  autofill::EntityDataManager* entityDataManager = [self entityDataManager];
+  if (!entityDataManager) {
+    return;
+  }
+  entityDataManager->RemoveEntityInstancesModifiedBetween(
+      base::Time::FromNSDate(time), base::Time::Max());
+}
+
 + (BOOL)savePassportEntity {
   autofill::EntityDataManager* entityDataManager = [self entityDataManager];
   if (!entityDataManager) {
@@ -780,6 +823,96 @@ class FakeCreditCardServer : public CreditCardSaveManager::ObserverForTest {
       autofill::test::MaskEntityInstance(entity);
   entityDataManager->AddOrUpdateEntityInstance(masked_entity);
   return base::SysUTF8ToNSString(guid_str);
+}
+
++ (void)startPersonalContextPassportPrefetch {
+  autofill::AutofillAiPersonalContextAccessManagerImpl* accessManager =
+      [self personalContextAccessManager];
+  CHECK(accessManager);
+  autofill::EntityType passportType(autofill::EntityTypeName::kPassport);
+  autofill::test_api(*accessManager)
+      .SetTypeStatus(passportType,
+                     autofill::AutofillAiPersonalContextAccessManager::
+                         RequestStatus::kPending);
+  autofill::test_api(*accessManager).CachePresenceSignal(passportType);
+}
+
++ (BOOL)savePersonalContextPassportEntity {
+  autofill::EntityDataManager* entityDataManager = [self entityDataManager];
+  autofill::AutofillAiPersonalContextAccessManagerImpl* accessManager =
+      [self personalContextAccessManager];
+  if (!entityDataManager || !accessManager) {
+    return NO;
+  }
+
+  CHECK(base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForFileOperationTimeout, ^bool {
+        return !entityDataManager->HasPendingQueries();
+      }));
+
+  autofill::test::PassportEntityOptions options = {};
+  base::Uuid uuid = base::Uuid::GenerateRandomV4();
+  std::string guidString = uuid.AsLowercaseString();
+  options.guid = guidString;
+  options
+      .record_type = autofill::EntityInstance::PersonalContextRecordTypePayload{
+      .sources = {
+          autofill::EntityInstance::PersonalContextRecordTypePayload::Source{
+              .url = GURL("https://mail.google.com/mail/u/0/#inbox/1"),
+              .metadata =
+                  autofill::EntityInstance::PersonalContextRecordTypePayload::
+                      GmailSourceMetadata{
+                          .title = "Passport confirmation",
+                      },
+          },
+      }};
+
+  autofill::EntityInstance entity =
+      autofill::test::GetPassportEntityInstance(options);
+
+  autofill::EntityInstance maskedEntity =
+      autofill::test::MaskEntityInstance(entity);
+  entityDataManager->SetPersonalContextEntitiesForTesting({maskedEntity});
+
+  autofill::EntityType passportType(autofill::EntityTypeName::kPassport);
+  autofill::test_api(*accessManager)
+      .SetTypeStatus(passportType,
+                     autofill::AutofillAiPersonalContextAccessManager::
+                         RequestStatus::kSuccess);
+  autofill::test_api(*accessManager).CacheUnmaskedSpiiEntity(std::move(entity));
+  autofill::test_api(*accessManager)
+      .NotifyPrefetchStatusObservers(base::span_from_ref(maskedEntity));
+
+  if (web::WebState* webState = chrome_test_util::GetCurrentWebState()) {
+    if (auto* client = static_cast<autofill::ChromeAutofillClientIOS*>(
+            autofill::AutofillClientIOS::FromWebState(webState))) {
+      // Calling resetAutofillSuggestionsLoadingStates eventually causes
+      // suggestions to be re-fetched. So, the loading indicator can be replaced
+      // with actual suggestions.
+      [client->form_input_accessory_commands_handler()
+          resetAutofillSuggestionsLoadingStates];
+    }
+  }
+  return YES;
+}
+
++ (void)clearPersonalContextPassportEntity {
+  if (autofill::EntityDataManager* entityDataManager =
+          [self entityDataManager]) {
+    entityDataManager->SetPersonalContextEntitiesForTesting({});
+  }
+  if (autofill::AutofillAiPersonalContextAccessManagerImpl* accessManager =
+          [self personalContextAccessManager]) {
+    autofill::test_api(*accessManager)
+        .ResetStateForType(
+            autofill::EntityType(autofill::EntityTypeName::kPassport));
+  }
+}
+
++ (NSString*)obfuscatedValue:(NSString*)value
+         visibleSuffixLength:(NSUInteger)visibleSuffixLength {
+  return base::SysUTF16ToNSString(autofill::GetObfuscatedValue(
+      base::SysNSStringToUTF16(value), visibleSuffixLength));
 }
 
 + (BOOL)saveVehicleEntity {
@@ -832,6 +965,13 @@ class FakeCreditCardServer : public CreditCardSaveManager::ObserverForTest {
       .GetEntityDataManager();
 }
 
++ (autofill::AutofillAiPersonalContextAccessManagerImpl*)
+    personalContextAccessManager {
+  ProfileIOS* profile = chrome_test_util::GetOriginalProfile();
+  return static_cast<autofill::AutofillAiPersonalContextAccessManagerImpl*>(
+      IOSAutofillAiPersonalContextAccessManagerFactory::GetForProfile(profile));
+}
+
 namespace {
 
 autofill::AutofillDriverIOS* GetMainFrameAutofillDriver() {
@@ -882,6 +1022,49 @@ GetScopedMockNetworkChangeNotifier() {
 
   ConditionBlock condition = ^BOOL {
     return [self isFormCachedInMainFrame];
+  };
+  return base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForPageLoadTimeout, condition);
+}
+
+// Returns `YES` if the main frame has at least one cached `FormStructure` and
+// all cached forms have received server (or `kAutofillOverridePredictions`)
+// predictions via `AutofillManager::OnLoadedServerPredictions`.
++ (BOOL)areServerPredictionsCachedInMainFrame {
+  autofill::AutofillDriverIOS* driver = GetMainFrameAutofillDriver();
+  if (!driver) {
+    // The main `WebFrame` may not be registered yet right after navigation.
+    return NO;
+  }
+  std::vector<const autofill::FormStructure*> form_structures =
+      autofill::test_api(driver->GetAutofillManager()).form_structures();
+  if (form_structures.empty()) {
+    return NO;
+  }
+  return std::ranges::all_of(
+      form_structures, [](const autofill::FormStructure* form_structure) {
+        return !form_structure->server_predictions_received_timestamp()
+                    .is_null();
+      });
+}
+
++ (BOOL)waitForServerPredictionsInMainFrame {
+  __block BOOL did_trigger_scan = NO;
+  ConditionBlock condition = ^BOOL {
+    if ([self areServerPredictionsCachedInMainFrame]) {
+      return YES;
+    }
+    // Trigger `ScanForms` at most once if the initial page-load scan missed the
+    // form (for example, before the main `WebFrame` became available), without
+    // re-scanning on every poll tick and resetting in-flight prediction
+    // queries.
+    if (!did_trigger_scan && ![self isFormCachedInMainFrame]) {
+      if (autofill::AutofillDriverIOS* driver = GetMainFrameAutofillDriver()) {
+        driver->ScanForms(/*immediately=*/true);
+        did_trigger_scan = YES;
+      }
+    }
+    return NO;
   };
   return base::test::ios::WaitUntilConditionOrTimeout(
       base::test::ios::kWaitForPageLoadTimeout, condition);

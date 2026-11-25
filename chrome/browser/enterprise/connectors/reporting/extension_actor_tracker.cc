@@ -4,14 +4,21 @@
 
 #include "chrome/browser/enterprise/connectors/reporting/extension_actor_tracker.h"
 
+#include <utility>
+
 #include "base/feature_list.h"
+#include "base/logging.h"
 #include "chrome/browser/enterprise/connectors/connectors_service.h"
+#include "chrome/browser/extensions/api/tabs/tabs_api.h"
 #include "components/enterprise/connectors/core/features.h"
+#include "components/enterprise/connectors/core/reporting_constants.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/common/constants.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
+#include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -21,6 +28,39 @@ namespace {
 
 bool IsExtensionOrigin(const std::optional<url::Origin>& origin) {
   return origin.has_value() && origin->scheme() == extensions::kExtensionScheme;
+}
+
+// Returns true if `transition` is a reload or a back/forward navigation.
+bool IsReloadOrHistoryTransition(ui::PageTransition transition) {
+  return ui::PageTransitionCoreTypeIs(transition, ui::PAGE_TRANSITION_RELOAD) ||
+         (transition & ui::PAGE_TRANSITION_FORWARD_BACK);
+}
+
+// Returns true if `command` navigates to an existing session history entry.
+bool IsHistoryNavigation(std::string_view command) {
+  return command == extensions::TabsGoBackFunction::static_function_name() ||
+         command == extensions::TabsGoForwardFunction::static_function_name() ||
+         command == "Page.navigateToHistoryEntry";
+}
+
+// Returns true if `command` starts a top-level tab navigation that doesn't have
+// the extension as its initiator. CDP commands are defined in
+// `third_party/blink/public/devtools_protocol/domains/Page.pdl`.
+bool IsNavigation(std::string_view command) {
+  return command == extensions::TabsCreateFunction::static_function_name() ||
+         command == extensions::TabsReloadFunction::static_function_name() ||
+         command == "Page.reload" || IsHistoryNavigation(command);
+}
+
+// Returns true if `command` can actuate a tab and should be tracked. CDP
+// commands and domains are defined in `v8/include/js_protocol.pdl` and
+// `third_party/blink/public/devtools_protocol/domains/`.
+bool IsTracked(std::string_view command) {
+  return IsNavigation(command) ||
+         command == extensions::TabsUpdateFunction::static_function_name() ||
+         command == "Page.navigate" || command == "Runtime.evaluate" ||
+         command == "Runtime.callFunctionOn" || command.starts_with("Input.") ||
+         command == "DOM.focus" || command.starts_with("DOM.set");
 }
 
 }  // namespace
@@ -34,7 +74,9 @@ bool ExtensionActorTracker::IsEnabled(
   }
   auto* service =
       ConnectorsServiceFactory::GetForBrowserContext(browser_context);
-  return service && service->GetReportingSettings().has_value();
+  return service &&
+         (service->GetReportingSettings().has_value() ||
+          service->GetAppliedRealTimeUrlCheck() != REAL_TIME_CHECK_DISABLED);
 }
 
 ExtensionActorTracker::ExtensionActorTracker(content::WebContents* web_contents)
@@ -44,7 +86,7 @@ ExtensionActorTracker::ExtensionActorTracker(content::WebContents* web_contents)
 ExtensionActorTracker::~ExtensionActorTracker() = default;
 
 // static
-void ExtensionActorTracker::SetActiveActor(
+void ExtensionActorTracker::SetActiveActorInternal(
     content::WebContents* web_contents,
     const extensions::ExtensionId& extension_id,
     bool is_initial_navigation) {
@@ -54,7 +96,22 @@ void ExtensionActorTracker::SetActiveActor(
   }
   auto* tracker = GetOrCreateForWebContents(web_contents);
   tracker->active_actor_id_ = extension_id;
-  tracker->is_initial_navigation_ = is_initial_navigation;
+  tracker->is_initial_navigation_ |= is_initial_navigation;
+}
+
+// static
+void ExtensionActorTracker::SetActiveActor(
+    content::WebContents* web_contents,
+    const extensions::ExtensionId& extension_id,
+    std::string_view command) {
+  if (!web_contents || !IsTracked(command)) {
+    return;
+  }
+  // Skip about:blank, which `tabs.create` commits first, except for history.
+  bool is_initial_navigation =
+      IsNavigation(command) && (IsHistoryNavigation(command) ||
+                                !web_contents->GetVisibleURL().IsAboutBlank());
+  SetActiveActorInternal(web_contents, extension_id, is_initial_navigation);
 }
 
 // static
@@ -79,47 +136,49 @@ std::optional<extensions::ExtensionId> ExtensionActorTracker::GetActiveActor(
   return tracker ? tracker->active_actor_id_ : std::nullopt;
 }
 
+void ExtensionActorTracker::DidStartNavigation(
+    content::NavigationHandle* navigation_handle) {
+  // Browser-initiated navigations (e.g. omnibox, bookmarks) are user input,
+  // unless an extension just started this reload or history navigation.
+  ui::PageTransition transition = navigation_handle->GetPageTransition();
+  bool is_extension_reload_or_history =
+      is_initial_navigation_ && IsReloadOrHistoryTransition(transition);
+  if (!navigation_handle->IsInPrimaryMainFrame() ||
+      navigation_handle->IsRendererInitiated() ||
+      (transition & ui::PAGE_TRANSITION_FROM_API) ||
+      is_extension_reload_or_history) {
+    return;
+  }
+  if (active_actor_id_) {
+    DVLOG(1) << "Browser-initiated navigation cleared extension actor "
+             << *active_actor_id_;
+  }
+  active_actor_id_.reset();
+  is_initial_navigation_ = false;
+}
+
 void ExtensionActorTracker::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
-  if (!navigation_handle) {
-    return;
-  }
-
-  // Download navigations do not commit, so preserve attribution.
-  if (navigation_handle->IsDownload()) {
-    if (IsExtensionOrigin(navigation_handle->GetInitiatorOrigin())) {
-      active_actor_id_ = navigation_handle->GetInitiatorOrigin()->host();
-    }
-    if (navigation_handle->IsInPrimaryMainFrame()) {
-      is_initial_navigation_ = false;
-    }
-    return;
-  }
-
-  // Ignore subframe, uncommitted, and same-document navigations.
-  if (!navigation_handle->IsInPrimaryMainFrame() ||
-      !navigation_handle->HasCommitted() ||
-      navigation_handle->IsSameDocument() ||
+  if (!navigation_handle || !navigation_handle->IsInPrimaryMainFrame() ||
       navigation_handle->GetURL().IsAboutBlank()) {
     return;
   }
 
-  if (IsExtensionOrigin(navigation_handle->GetInitiatorOrigin())) {
+  bool is_initial_navigation = std::exchange(is_initial_navigation_, false);
+
+  // A reload or back/forward keeps the original initiator, even when the user
+  // starts it (e.g. by bypassing an interstitial).
+  if (IsExtensionOrigin(navigation_handle->GetInitiatorOrigin()) &&
+      !IsReloadOrHistoryTransition(navigation_handle->GetPageTransition())) {
     active_actor_id_ = navigation_handle->GetInitiatorOrigin()->host();
-    is_initial_navigation_ = false;
     return;
   }
 
-  // Preserve attribution across the first navigation when a tab is opened or
-  // navigated by an extension API.
-  if (is_initial_navigation_) {
-    is_initial_navigation_ = false;
-    return;
-  }
-
-  // Form submissions preserve attribution so login events reported after the
-  // navigation commits retain the active actor.
-  if (active_actor_id_.has_value() && navigation_handle->IsFormSubmission()) {
+  // Preserve attribution across the initial extension navigation, uncommitted
+  // or same-document navigations, and form submissions.
+  if (is_initial_navigation || !navigation_handle->HasCommitted() ||
+      navigation_handle->IsSameDocument() ||
+      (active_actor_id_.has_value() && navigation_handle->IsFormSubmission())) {
     return;
   }
 
@@ -142,7 +201,7 @@ void ExtensionActorTracker::DidOpenRequestedURL(
     content::RenderFrameHost* source_render_frame_host,
     const GURL& url,
     const content::Referrer& referrer,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     ui::PageTransition transition,
     bool started_from_context_menu,
     bool renderer_initiated) {
@@ -153,8 +212,8 @@ void ExtensionActorTracker::DidOpenRequestedURL(
   // Propagate attribution to child tabs/popups (`window.open`), or clear any
   // stale attribution.
   if (active_actor_id_.has_value()) {
-    SetActiveActor(new_contents, *active_actor_id_,
-                   /*is_initial_navigation=*/true);
+    SetActiveActorInternal(new_contents, *active_actor_id_,
+                           /*is_initial_navigation=*/true);
   } else {
     ClearActiveActor(new_contents);
   }

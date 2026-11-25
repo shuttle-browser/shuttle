@@ -165,8 +165,6 @@ class LocationBarBadgeMediatorTest : public PlatformTest {
     builder.AddTestingFactory(
         AuthenticationServiceFactory::GetInstance(),
         AuthenticationServiceFactory::GetDefaultFactory());
-    builder.AddTestingFactory(GeminiServiceFactory::GetInstance(),
-                              GeminiServiceFactory::GetDefaultFactory());
     builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
                               base::BindRepeating(&CreateMockSyncService));
     builder.AddTestingFactory(
@@ -310,11 +308,6 @@ class LocationBarBadgeMediatorTest : public PlatformTest {
     OCMStub([mock_delegate_ canShowChip:[OCMArg any]]).andReturn(YES);
     EXPECT_CALL(*tracker_, ShouldTriggerHelpUI(testing::_))
         .WillRepeatedly(testing::Return(true));
-  }
-
-  void SetFloatyInvoked(bool invoked) {
-    GeminiBrowserAgent::FromBrowser(browser_.get())->is_floaty_invoked_ =
-        invoked;
   }
 
   web::WebTaskEnvironment task_environment_{
@@ -486,7 +479,7 @@ TEST_F(LocationBarBadgeMediatorTest, TestGeminiChipNotShownIfTooRecent) {
 // Tests that the Gemini contextual cue chip is not shown if the floaty is
 // already invoked.
 TEST_F(LocationBarBadgeMediatorTest, TestGeminiChipNotShownIfFloatyInvoked) {
-  SetFloatyInvoked(true);
+  GeminiBrowserAgent::FromBrowser(browser_.get())->SetContainerInvoked(true);
 
   AllowGeminiChipToShow(/*show_gemini_chip=*/false, /*trigger_help_ui=*/true,
                         /*badge_is_visible=*/false);

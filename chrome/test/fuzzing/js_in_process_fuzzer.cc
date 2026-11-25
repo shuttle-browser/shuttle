@@ -12,6 +12,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/chrome_features.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "chrome/test/fuzzing/in_process_fuzzer.h"
 #include "chrome/test/fuzzing/in_process_fuzzer_buildflags.h"
@@ -25,6 +26,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/test/browser_test_utils.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
+#include "services/webnn/public/mojom/features.mojom-features.h"
 
 // This is an example use of the InProcessFuzzer framework.
 // It runs arbitrary JS within the context of an existing
@@ -41,6 +43,9 @@ class JsInProcessFuzzer : public InProcessFuzzer {
   base::CommandLine::StringVector GetChromiumCommandLineArguments() override;
 
   int Fuzz(const uint8_t* data, size_t size) override;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 REGISTER_IN_PROCESS_FUZZER(JsInProcessFuzzer)
@@ -105,7 +110,17 @@ JsInProcessFuzzer::JsInProcessFuzzer()
     : InProcessFuzzer(InProcessFuzzerOptions{
           .run_loop_timeout_behavior = kJsRunLoopTimeoutBehavior,
           .run_loop_timeout = kJsExecutionTimeout,
-      }) {}
+      }) {
+  // Use a ScopedFeatureList to enable WebMachineLearningNeuralNetwork,
+  // as BrowserTestBase::SetUp() overwrites the command-line argument.
+  //
+  // TopChromeWebUISharedRenderer moves the top-chrome WebUIs to their own
+  // profile, which fails a CHECK in single-process mode, where every frame
+  // uses the same renderer process.
+  scoped_feature_list_.InitWithFeatures(
+      {webnn::mojom::features::kWebMachineLearningNeuralNetwork},
+      {features::kTopChromeWebUISharedRenderer});
+}
 
 void JsInProcessFuzzer::SetUpOnMainThread() {
   InProcessFuzzer::SetUpOnMainThread();
@@ -170,7 +185,6 @@ JsInProcessFuzzer::GetChromiumCommandLineArguments() {
                         "--expose-gc --fuzzing --future --harmony"),
       FILE_PATH_LITERAL("--enable-blink-features=MojoJS,MojoJSTest"),
       FILE_PATH_LITERAL("--enable-experimental-web-platform-features"),
-      FILE_PATH_LITERAL("--enable-features=WebMachineLearningNeuralNetwork"),
       // Disable this to avoid crashing the testing framework when invalid Mojo
       // messages are received which happens a lot for some interfaces. We're
       // trading off worse runtime accuracy for better fuzzer performance.

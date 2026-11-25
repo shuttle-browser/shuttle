@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/task/single_thread_task_runner.h"
@@ -21,6 +22,7 @@
 #include "chrome/browser/policy/chrome_browser_policy_connector.h"
 #include "chrome/browser/policy/client_data_delegate_android.h"
 #include "chrome/common/chrome_paths.h"
+#include "components/enterprise/browser/controller/browser_dm_token_storage.h"
 #include "components/enterprise/client_certificates/core/browser_cloud_management_delegate.h"
 #include "components/enterprise/client_certificates/core/certificate_provisioning_service.h"
 #include "components/enterprise/client_certificates/core/dm_server_client.h"
@@ -28,6 +30,7 @@
 #include "components/enterprise/client_certificates/core/key_upload_client.h"
 #include "components/policy/core/common/cloud/machine_level_user_cloud_policy_manager.h"
 #include "components/policy/core/common/configuration_policy_provider.h"
+#include "components/policy/core/common/features.h"
 #include "components/policy/core/common/policy_namespace.h"
 #include "components/policy/core/common/policy_service.h"
 #include "components/policy/policy_constants.h"
@@ -92,6 +95,15 @@ void DeferredInitializationRunner::OnProviderUpdatePropagated(
   }
 
   policy_service->RemoveProviderUpdateObserver(this);
+
+  // `BrowserDMTokenStorage` cached the enrollment token, at the latest when
+  // `ReadyToInit()` checked for a DM token, before the platform policies
+  // carrying it reached the `PolicyService`. Have it read the token again so
+  // that the deferred initialization doesn't use the stale value.
+  if (base::FeatureList::IsEnabled(
+          features::kCbcmRefreshEnrollmentTokenBeforeDeferredInit)) {
+    BrowserDMTokenStorage::Get()->RefreshEnrollmentToken();
+  }
   std::move(callback_).Run();
 }
 
@@ -288,7 +300,8 @@ ChromeBrowserCloudManagementControllerAndroid::
 std::unique_ptr<enterprise_connectors::DeviceTrustKeyManager>
 ChromeBrowserCloudManagementControllerAndroid::CreateDeviceTrustKeyManager() {
   return std::make_unique<enterprise_connectors::DeviceTrustKeyManagerAndroid>(
-      std::make_unique<enterprise_connectors::AndroidAttestationTokenClient>());
+      std::make_unique<enterprise_connectors::AndroidAttestationTokenClient>(),
+      g_browser_process->local_state());
 }
 
 }  // namespace policy

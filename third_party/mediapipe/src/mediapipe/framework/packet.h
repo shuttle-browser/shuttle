@@ -26,30 +26,26 @@
 #include <utility>
 #include <vector>
 
-#include "absl/base/attributes.h"
-#include "absl/base/macros.h"
-#include "absl/base/optimization.h"
-#include "absl/functional/any_invocable.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_cat.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/base/attributes.h"           // from @com_google_absl
+#include "absl/base/macros.h"               // from @com_google_absl
+#include "absl/base/optimization.h"         // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"            // from @com_google_absl
+#include "absl/log/absl_log.h"              // from @com_google_absl
+#include "absl/memory/memory.h"             // from @com_google_absl
+#include "absl/status/status.h"             // from @com_google_absl
+#include "absl/status/status_macros.h"      // from @com_google_absl
+#include "absl/status/statusor.h"           // from @com_google_absl
+#include "absl/strings/str_cat.h"           // from @com_google_absl
+#include "absl/synchronization/mutex.h"     // from @com_google_absl
 #include "google/protobuf/message.h"
 #include "google/protobuf/message_lite.h"
 #include "mediapipe/framework/deps/no_destructor.h"
 #include "mediapipe/framework/deps/registration.h"
 #include "mediapipe/framework/port.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/proto_ns.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_builder.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/framework/timestamp.h"
 #include "mediapipe/framework/tool/type_util.h"
 #include "mediapipe/framework/type_map.h"
@@ -98,8 +94,8 @@ class Packet {
 
   // Move constructor and assignment operator that take non-const rvalue
   // reference.
-  Packet(Packet&&);
-  Packet& operator=(Packet&&);
+  Packet(Packet&&) noexcept;
+  Packet& operator=(Packet&&) noexcept;
 
   // Returns a Packet that contains the same data as *this, and has the
   // given timestamp. Does not modify *this.
@@ -174,16 +170,16 @@ class Packet {
   // general recommendation is to avoid calling this function.
   //
   // Example usage:
-  //   MP_ASSIGN_OR_RETURN(std::unique_ptr<Detection> detection,
+  //   ABSL_ASSIGN_OR_RETURN(std::unique_ptr<Detection> detection,
   //                    p.ConsumeOrCopy<Detection>());
   //   // The unique_ptr type can be omitted with auto.
-  //   MP_ASSIGN_OR_RETURN(auto detection, p.ConsumeOrCopy<Detection>());
-  //   If you would like to crash on failure (prefer MP_ASSIGN_OR_RETURN):
+  //   ABSL_ASSIGN_OR_RETURN(auto detection, p.ConsumeOrCopy<Detection>());
+  //   If you would like to crash on failure (prefer ABSL_ASSIGN_OR_RETURN):
   //   auto detection = p.ConsumeOrCopy<Detection>().value();
   //   // In functions which do not return absl::Status use an adaptor
-  //   // function as the third argument to MP_ASSIGN_OR_RETURN.  In tests,
+  //   // function as the third argument to ABSL_ASSIGN_OR_RETURN.  In tests,
   //   // use an adaptor which returns void.
-  //   MP_ASSIGN_OR_RETURN(auto detection, p.ConsumeOrCopy<Detection>(),
+  //   ABSL_ASSIGN_OR_RETURN(auto detection, p.ConsumeOrCopy<Detection>(),
   //                    _.With([](const absl::Status& status) {
   //                      MP_EXPECT_OK(status);
   //                      // Use CHECK_OK to crash and report a usable line
@@ -270,6 +266,8 @@ class Packet {
   std::string RegisteredTypeName() const;
   // Returns a string with the best guess at the type name.
   std::string DebugTypeName() const;
+
+  void swap(Packet& other) noexcept;
 
  private:
   friend Packet packet_internal::Create(packet_internal::HolderBase* holder);
@@ -427,10 +425,10 @@ class ForeignHolder;
 
 class HolderBase {
  public:
-  HolderBase() {}
+  HolderBase() = default;
   HolderBase(const HolderBase&) = delete;
   HolderBase& operator=(const HolderBase&) = delete;
-  virtual ~HolderBase();
+  virtual ~HolderBase() = default;
   template <typename T>
   bool PayloadIsOfType() const {
     return GetTypeId() == kTypeId<T>;
@@ -566,7 +564,7 @@ class Holder : public HolderBase, private HolderPayloadRegistrator<T> {
       typename std::enable_if<!std::is_array<U>::value ||
                               std::extent<U>::value != 0>::type* = 0) {
     if (HasForeignOwner()) {
-      return InternalError(
+      return absl::InternalError(
           "Foreign holder can't release data ptr without ownership.");
     }
     // Casts away constness to make the data mutable after the release.
@@ -717,19 +715,17 @@ inline absl::StatusOr<std::unique_ptr<T>> Packet::ConsumeOrCopy(
   return absl::InternalError("Unbounded array isn't supported.");
 }
 
-inline Packet::Packet(Packet&& packet) {
+inline Packet::Packet(Packet&& packet) noexcept
+    : holder_(std::move(packet.holder_)),
+      timestamp_(std::exchange(packet.timestamp_, Timestamp::Unset())) {
   VLOG(4) << "Using move constructor of " << packet.DebugString();
-  holder_ = std::move(packet.holder_);
-  timestamp_ = packet.timestamp_;
-  packet.timestamp_ = Timestamp::Unset();
 }
 
-inline Packet& Packet::operator=(Packet&& packet) {
+inline Packet& Packet::operator=(Packet&& packet) noexcept {
   VLOG(4) << "Using move assignment operator of " << packet.DebugString();
   if (this != &packet) {
     holder_ = std::move(packet.holder_);
-    timestamp_ = packet.timestamp_;
-    packet.timestamp_ = Timestamp::Unset();
+    timestamp_ = std::exchange(packet.timestamp_, Timestamp::Unset());
   }
   return *this;
 }
@@ -758,7 +754,7 @@ inline const T& Packet::Get() const {
 // safe to concurrently call Share() on the same packet from multiple threads.
 template <typename T>
 inline absl::StatusOr<std::shared_ptr<const T>> Packet::Share() const {
-  MP_RETURN_IF_ERROR(ValidateAsType<T>());
+  ABSL_RETURN_IF_ERROR(ValidateAsType<T>());
   const T* ptr = &Get<T>();
   return std::shared_ptr<const T>(
       ptr, [packet = *this](const T* ptr) mutable { packet = {}; });

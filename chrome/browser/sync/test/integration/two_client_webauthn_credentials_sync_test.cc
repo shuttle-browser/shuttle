@@ -26,20 +26,12 @@ class TwoClientWebAuthnCredentialsSyncTest
     : public SyncTest,
       public testing::WithParamInterface<SyncTest::SetupSyncMode> {
  public:
-  TwoClientWebAuthnCredentialsSyncTest() : SyncTest(TWO_CLIENT) {
-    if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
-      scoped_feature_list_.InitAndEnableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    }
-  }
+  TwoClientWebAuthnCredentialsSyncTest() : SyncTest(TWO_CLIENT) {}
   ~TwoClientWebAuthnCredentialsSyncTest() override = default;
 
   SyncTest::SetupSyncMode GetSetupSyncMode() const override {
     return GetParam();
   }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 INSTANTIATE_TEST_SUITE_P(,
@@ -55,14 +47,14 @@ IN_PROC_BROWSER_TEST_P(TwoClientWebAuthnCredentialsSyncTest,
   webauthn::PasskeyModel& model0 = GetModel(0);
   EXPECT_EQ(model0.GetAllSyncIds().size(), 0u);
   sync_pb::WebauthnCredentialSpecifics passkey0 = NewPasskey();
-  const std::string sync_id0 = model0.AddNewPasskeyForTesting(passkey0);
+  model0.AddNewPasskeyForTesting(passkey0);
   EXPECT_EQ(model0.GetAllSyncIds().size(), 1u);
 
   webauthn::PasskeyModel& model1 = GetModel(1);
   ASSERT_TRUE(AwaitAllModelsMatch());
   EXPECT_EQ(model1.GetAllSyncIds().size(), 1u);
 
-  const std::string sync_id1 = model1.AddNewPasskeyForTesting(NewPasskey());
+  model1.AddNewPasskeyForTesting(NewPasskey());
   ASSERT_TRUE(AwaitAllModelsMatch());
   EXPECT_EQ(model1.GetAllSyncIds().size(), 2u);
 

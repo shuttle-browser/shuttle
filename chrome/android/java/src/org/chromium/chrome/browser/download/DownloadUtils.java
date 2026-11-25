@@ -43,6 +43,7 @@ import org.chromium.base.FileUtils;
 import org.chromium.base.IntentUtils;
 import org.chromium.base.Log;
 import org.chromium.base.PackageManagerUtils;
+import org.chromium.base.StrictModeContext;
 import org.chromium.base.TriState;
 import org.chromium.build.annotations.Contract;
 import org.chromium.build.annotations.NullMarked;
@@ -297,7 +298,7 @@ public class DownloadUtils {
                     origin);
         } else {
             // Otherwise, the download can be started immediately.
-            OfflinePageDownloadBridge.startDownload(tab, origin);
+            OfflinePageDownloadBridge.startDownload(tab, origin, fromAppMenu);
         }
         tracker.notifyEvent(EventConstants.DOWNLOAD_PAGE_STARTED);
     }
@@ -349,13 +350,25 @@ public class DownloadUtils {
 
         // It's ok to use blocking calls on main thread here, since the user is waiting to open or
         // share the file to other apps.
-        boolean isOnSDCard = DownloadDirectoryProvider.isDownloadOnSDCard(filePath);
-        if (isOnSDCard) {
-            // Use custom file provider to generate content URI for download on SD card.
-            return DownloadFileProvider.createContentUri(filePath);
+        try (StrictModeContext ignored = StrictModeContext.allowDiskReads()) {
+            boolean isOnSDCard = DownloadDirectoryProvider.isDownloadOnSDCard(filePath);
+            if (isOnSDCard) {
+                // Use custom file provider to generate content URI for download on SD card.
+                return DownloadFileProvider.createContentUri(filePath);
+            }
+            // Use FileProvider to generate content URI or file URI.
+            Uri uri = FileUtils.getUriForFile(new File(filePath));
+            if (UrlConstants.CONTENT_SCHEME.equals(uri.getScheme())) {
+                return uri;
+            }
+            // Fall back to DownloadFileProvider for files in the app-private primary download
+            // directory that are not covered by FileProvider.
+            Uri downloadProviderUri = DownloadFileProvider.createContentUri(filePath);
+            if (UrlConstants.CONTENT_SCHEME.equals(downloadProviderUri.getScheme())) {
+                return downloadProviderUri;
+            }
+            return uri;
         }
-        // Use FileProvider to generate content URI or file URI.
-        return FileUtils.getUriForFile(new File(filePath));
     }
 
     /**
@@ -481,7 +494,10 @@ public class DownloadUtils {
         DownloadManagerService service = DownloadManagerService.getDownloadManagerService();
         boolean isIncognito = OtrProfileId.isOffTheRecord(req.mOtrProfileId);
 
-        if (ChromeFeatureList.isEnabled(ChromeFeatureList.OPEN_DOWNLOAD_IN_PREFERRED_APP)) {
+        // TODO(crbug.com/521890621): Remove isDesktop() check to enable on all form factors once
+        // the non-desktop rollout is complete.
+        if (ChromeFeatureList.isEnabled(ChromeFeatureList.OPEN_DOWNLOAD_IN_PREFERRED_APP)
+                || DeviceInfo.isDesktop()) {
             Intent targetIntent = createViewIntent(req);
             Context context = req.mContext;
             String chromePackage = context.getPackageName();
@@ -1027,8 +1043,11 @@ public class DownloadUtils {
     }
 
     private static boolean openDownloadInFilesAppIfNoHandlerFound() {
+        // TODO(crbug.com/521890621): Remove isDesktop() check to enable on all form factors once
+        // the non-desktop rollout is complete.
         return ChromeFeatureList.isEnabled(
-                ChromeFeatureList.OPEN_DOWNLOAD_IN_FILES_APP_IF_NO_HANDLER_FOUND);
+                        ChromeFeatureList.OPEN_DOWNLOAD_IN_FILES_APP_IF_NO_HANDLER_FOUND)
+                || DeviceInfo.isDesktop();
     }
 
     @NativeMethods

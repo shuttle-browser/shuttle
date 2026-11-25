@@ -30,14 +30,12 @@ namespace {
 struct Boundary {
   uint32_t start_character_offset = 0;
   uint32_t end_character_offset = 0;
-  base::TimeDelta audio_timestamp;
 
   friend bool operator==(const Boundary&, const Boundary&) = default;
 
   friend void PrintTo(const Boundary& boundary, std::ostream* os) {
     *os << "{start: " << boundary.start_character_offset
-        << ", end: " << boundary.end_character_offset
-        << ", audio_timestamp: " << boundary.audio_timestamp << "}";
+        << ", end: " << boundary.end_character_offset << "}";
   }
 };
 
@@ -52,12 +50,10 @@ WordTiming MakeWord(base::TimeDelta start_time,
   return word;
 }
 
-// Returns the boundary the renderer reports for `word` when `audio_timestamp`
-// is the media time at which it starts.
-Boundary BoundaryFor(const WordTiming& word, base::TimeDelta audio_timestamp) {
+// Returns the boundary the renderer reports for `word`.
+Boundary BoundaryFor(const WordTiming& word) {
   return {.start_character_offset = word.start_character_offset,
-          .end_character_offset = word.end_character_offset,
-          .audio_timestamp = audio_timestamp};
+          .end_character_offset = word.end_character_offset};
 }
 
 }  // namespace
@@ -116,12 +112,15 @@ class ReadAloudAudioRendererTest : public testing::Test {
 
   // Records every boundary the renderer dispatches into `boundaries_`.
   void RecordBoundaries() {
-    renderer_->SetWordBoundaryCallback(base::BindRepeating(
-        [](std::vector<Boundary>* out, uint32_t start, uint32_t end,
-           base::TimeDelta audio_timestamp) {
-          out->push_back({start, end, audio_timestamp});
-        },
-        &boundaries_));
+    renderer_->SetWordBoundaryCallback(
+        base::BindRepeating([](std::vector<Boundary>* out, uint32_t start,
+                               uint32_t end) { out->push_back({start, end}); },
+                            &boundaries_));
+  }
+
+  void RecordEndOfStream() {
+    renderer_->SetEndOfStreamCallback(base::BindRepeating(
+        [](int* count) { ++(*count); }, &end_of_stream_count_));
   }
 
   // Renders one buffer of `params.frames_per_buffer()` frames with the given
@@ -160,8 +159,9 @@ class ReadAloudAudioRendererTest : public testing::Test {
   base::test::TaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   std::unique_ptr<AudioSegmentQueue> queue_;
-  // Outlives `renderer_`, whose callback points at it.
+  // Outlives `renderer_`, whose callbacks point at them.
   std::vector<Boundary> boundaries_;
+  int end_of_stream_count_ = 0;
   std::unique_ptr<ReadAloudAudioRenderer> renderer_;
 };
 
@@ -573,20 +573,17 @@ TEST_F(ReadAloudAudioRendererTest, DispatchesEachWordExactlyWhenAudible) {
   // The first word starts at media time 0, which is audible right away. A
   // zero fast-forward runs the posted pump without advancing time.
   task_environment_.FastForwardBy(base::TimeDelta());
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(first, base::TimeDelta())));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(first)));
 
   // The second word starts 10 ms in. It must not be reported early...
   task_environment_.FastForwardBy(base::Milliseconds(9));
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(first, base::TimeDelta())));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(first)));
 
   // ...and is reported on time by the scheduled pump alone, without waiting
   // for another Render().
   task_environment_.FastForwardBy(base::Milliseconds(1));
-  EXPECT_THAT(boundaries_, testing::ElementsAre(
-                               BoundaryFor(first, base::TimeDelta()),
-                               BoundaryFor(second, base::Milliseconds(10))));
+  EXPECT_THAT(boundaries_,
+              testing::ElementsAre(BoundaryFor(first), BoundaryFor(second)));
 }
 
 TEST_F(ReadAloudAudioRendererTest, DispatchesAllWordsDueInTheSamePumpRun) {
@@ -606,8 +603,7 @@ TEST_F(ReadAloudAudioRendererTest, DispatchesAllWordsDueInTheSamePumpRun) {
   task_environment_.FastForwardBy(base::TimeDelta());
 
   EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(first, base::TimeDelta()),
-                                   BoundaryFor(second, base::TimeDelta())));
+              testing::ElementsAre(BoundaryFor(first), BoundaryFor(second)));
 }
 
 TEST_F(ReadAloudAudioRendererTest, DispatchesWordBoundariesAtPlaybackRate) {
@@ -628,8 +624,7 @@ TEST_F(ReadAloudAudioRendererTest, DispatchesWordBoundariesAtPlaybackRate) {
   EXPECT_THAT(boundaries_, testing::IsEmpty());
 
   task_environment_.FastForwardBy(base::Milliseconds(1));
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(word, base::Milliseconds(10))));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word)));
 }
 
 TEST_F(ReadAloudAudioRendererTest,
@@ -651,8 +646,7 @@ TEST_F(ReadAloudAudioRendererTest,
 
   // 1 ms into the second segment is 11 ms into the media timeline.
   task_environment_.FastForwardBy(base::Milliseconds(1));
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(word, base::Milliseconds(11))));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word)));
 }
 
 TEST_F(ReadAloudAudioRendererTest,
@@ -709,7 +703,7 @@ TEST_F(ReadAloudAudioRendererTest, ResumesDispatchWhenRenderResumesAfterStall) {
   EXPECT_THAT(boundaries_, testing::IsEmpty());
 
   task_environment_.FastForwardBy(buffer_duration);
-  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word, word_start)));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word)));
 }
 
 TEST_F(ReadAloudAudioRendererTest, FlushDropsBoundariesQueuedBeforeFlush) {
@@ -733,8 +727,7 @@ TEST_F(ReadAloudAudioRendererTest, FlushDropsBoundariesQueuedBeforeFlush) {
   RenderOnce(params);
   task_environment_.FastForwardBy(base::Seconds(1));
 
-  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(
-                               word_after_flush, base::Milliseconds(1))));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word_after_flush)));
 }
 
 TEST_F(ReadAloudAudioRendererTest,
@@ -755,8 +748,7 @@ TEST_F(ReadAloudAudioRendererTest,
   RenderOnce(params);
   task_environment_.FastForwardBy(base::Milliseconds(1));
 
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(word, base::Milliseconds(1))));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word)));
 }
 
 TEST_F(ReadAloudAudioRendererTest, DispatchesFirstWordAfterOutputDelay) {
@@ -777,8 +769,7 @@ TEST_F(ReadAloudAudioRendererTest, DispatchesFirstWordAfterOutputDelay) {
   EXPECT_THAT(boundaries_, testing::IsEmpty());
 
   task_environment_.FastForwardBy(base::Milliseconds(1));
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(word, base::TimeDelta())));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word)));
 }
 
 TEST_F(ReadAloudAudioRendererTest,
@@ -814,8 +805,136 @@ TEST_F(ReadAloudAudioRendererTest,
   EXPECT_THAT(boundaries_, testing::IsEmpty());
 
   task_environment_.FastForwardBy(base::Milliseconds(1));
-  EXPECT_THAT(boundaries_,
-              testing::ElementsAre(BoundaryFor(word, base::Milliseconds(300))));
+  EXPECT_THAT(boundaries_, testing::ElementsAre(BoundaryFor(word)));
+}
+
+TEST_F(ReadAloudAudioRendererTest,
+       DoesNotDispatchEndOfStreamOnUnderflowWithoutMarkEndOfStream) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+  ASSERT_TRUE(queue_->Push(GenerateSegment(params, /*frames=*/480)));
+
+  RenderOnce(params);
+  RenderOnce(params);
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 0);
+}
+
+TEST_F(ReadAloudAudioRendererTest,
+       PostsEndOfStreamAsynchronouslyWhenMarkedWithNothingBuffered) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+
+  EXPECT_FALSE(renderer_->MarkEndOfStream());
+  EXPECT_EQ(end_of_stream_count_, 0);
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 1);
+
+  RenderOnce(params);
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 1);
+}
+
+TEST_F(ReadAloudAudioRendererTest,
+       MarkEndOfStreamWhenAlreadyDrainedReNotifies) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+  EXPECT_FALSE(renderer_->MarkEndOfStream());
+  task_environment_.FastForwardBy(base::TimeDelta());
+  ASSERT_EQ(end_of_stream_count_, 1);
+
+  EXPECT_FALSE(renderer_->MarkEndOfStream());
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 2);
+}
+
+TEST_F(ReadAloudAudioRendererTest,
+       DispatchesEndOfStreamOnlyAfterAlgorithmBufferAndOutputDelayDrain) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+  ASSERT_TRUE(queue_->Push(GenerateSegment(params, /*frames=*/960)));
+
+  // 1st render: pops 20 ms into `algorithm_`, writes 10 ms with 10 ms delay.
+  RenderOnce(params, /*delay=*/base::Milliseconds(10));
+  ASSERT_TRUE(queue_->GetBufferedDuration().is_zero());
+  EXPECT_TRUE(renderer_->MarkEndOfStream());
+  EXPECT_EQ(end_of_stream_count_, 0);
+
+  // 2nd & 3rd renders: drains remaining 10 ms from `algorithm_`, leaving 10 ms
+  // in hardware output delay.
+  RenderOnce(params, /*delay=*/base::Milliseconds(10));
+  RenderOnce(params, /*delay=*/base::Milliseconds(10));
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 0);
+
+  // 4th render: hardware delay drains (`front == back == 20 ms`); posts EOS.
+  RenderOnce(params, /*delay=*/base::Milliseconds(10));
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 1);
+
+  RenderOnce(params, /*delay=*/base::Milliseconds(10));
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 1);
+}
+
+TEST_F(ReadAloudAudioRendererTest,
+       SetPlaybackRateDoesNotDropPendingEndOfStreamNotification) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+  // Enqueue a word timing past the segment duration so `word_boundaries_` stays
+  // non-empty and `SetPlaybackRate()` exercises `CancelPendingPump()` while the
+  // posted `NotifyEndOfStream()` task is in flight.
+  const WordTiming late_word = MakeWord(base::Milliseconds(100),
+                                        /*start_character_offset=*/0,
+                                        /*end_character_offset=*/4);
+  ASSERT_TRUE(queue_->Push(
+      GenerateSegmentWithTimings(params, /*frames=*/480, {late_word})));
+  EXPECT_TRUE(renderer_->MarkEndOfStream());
+
+  RenderOnce(params);
+  RenderOnce(params);
+  // `RenderOnce()` has posted `NotifyEndOfStream()`, but it has not run yet.
+  ASSERT_EQ(end_of_stream_count_, 0);
+
+  renderer_->SetPlaybackRate(2.0);
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 1);
+}
+
+TEST_F(ReadAloudAudioRendererTest, FlushDropsPendingEndOfStreamNotification) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+  ASSERT_TRUE(queue_->Push(GenerateSegment(params, /*frames=*/480)));
+  EXPECT_TRUE(renderer_->MarkEndOfStream());
+
+  RenderOnce(params);
+  RenderOnce(params);
+  renderer_->Flush();
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 0);
+}
+
+TEST_F(ReadAloudAudioRendererTest,
+       FlushClearsReceivedEndOfStreamForSubsequentSegments) {
+  const media::AudioParameters params = MakeParams();
+  ASSERT_TRUE(renderer_->Initialize(params, queue_.get()));
+  RecordEndOfStream();
+  EXPECT_FALSE(renderer_->MarkEndOfStream());
+  task_environment_.FastForwardBy(base::TimeDelta());
+  ASSERT_EQ(end_of_stream_count_, 1);
+
+  renderer_->Flush();
+  ASSERT_TRUE(queue_->Push(GenerateSegment(params, /*frames=*/480)));
+  RenderOnce(params);
+  RenderOnce(params);
+  task_environment_.FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(end_of_stream_count_, 1);
 }
 
 }  // namespace readaloud

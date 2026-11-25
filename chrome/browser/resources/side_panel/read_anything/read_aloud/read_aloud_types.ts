@@ -4,13 +4,11 @@
 
 import {NodeStore} from '../content/node_store.js';
 
-import {AudioBrowserProxyImpl} from './audio_browser_proxy.js';
 import {ReadAloudNodeStore} from './read_aloud_node_store.js';
 
 // This file contains type definitions for the data structures
-// used in the read aloud feature. It provides an abstraction layer for
-// representing text nodes and segments, allowing the core logic to work
-// with different text segmentation strategies.
+// used in the read aloud feature, such as the nodes, segments, and sentences
+// used for text segmentation.
 
 // Set of display types that signal a line break. Using a Set allows O(1)
 // lookup instead of array scanning during text traversal.
@@ -28,117 +26,55 @@ const LINE_BREAKING_DISPLAY_TYPES = new Set([
   'table-footer-group',
 ]);
 
-// Wrapper class to represent a node used by read aloud. The type of node
-// could be either a DOM node or an AXNode depending on what type of text
-// segmentation method is used.
-export abstract class ReadAloudNode {
-  abstract equals(other: ReadAloudNode|undefined|null): boolean;
-
-  abstract domNode(): Node|undefined;
-
-  // TODO: crbug.com/440400392: This method is a convenience method for working
-  // with AxReadAloudNodes during the refactor and should be deleted once
-  // the Phrase Highlighting flag is fully enabled.
-  static createFromAxNode(
-      axNodeId: number, nodeStore = NodeStore.getInstance()): ReadAloudNode
-      |undefined {
-    const domNode: Node|undefined = nodeStore.getDomNode(axNodeId);
-    if (!domNode &&
-        AudioBrowserProxyImpl.getInstance().isPhraseHighlightingEnabled()) {
-      // If there's no DOM node yet, it might not have gotten added to the
-      // node store yet, so create an AxReadAloudNode instead.
-      // TODO: crbug.com/440400392- This shouldn't be necessary but is a
-      // fallback to help ensure that the text segmentation refactor does not
-      // impact the V8 segmentation implementation.
-      return new AxReadAloudNodeImpl(axNodeId, nodeStore);
-    }
-    if (!domNode) {
-      return undefined;
-    }
-    return this.create(domNode, nodeStore);
-  }
-
-  static create(node: Node, nodeStore = NodeStore.getInstance()): ReadAloudNode
-      |undefined {
-    if (!AudioBrowserProxyImpl.getInstance().isPhraseHighlightingEnabled()) {
-      return new DomReadAloudNodeImpl(node);
-    }
-
-    const axNodeId = nodeStore.getAxId(node);
-    if (axNodeId) {
-      return new AxReadAloudNodeImpl(axNodeId, nodeStore);
-    }
-
-    return undefined;
-  }
-}
-
-export class AxReadAloudNode extends ReadAloudNode {
-  protected constructor(
-      public readonly axNodeId: number,
-      private readonly nodeStore_ = NodeStore.getInstance()) {
-    super();
-  }
-
-  equals(other: ReadAloudNode|undefined|null): boolean {
-    if (!(other instanceof AxReadAloudNode)) {
-      return false;
-    }
-
-    return this.axNodeId === other.axNodeId;
-  }
-
-  domNode(): Node|undefined {
-    return this.nodeStore_.getDomNode(this.axNodeId);
-  }
-}
-
-// TODO: crbug.com/440400392: The Impl classes are a tool for working
-// with ReadAloudNodes during the refactor in order to enforce more strict
-// ReadAloudNode creation. These classes should be deleted once
-// the Phrase Highlighting flag is fully enabled and sooner, if possible.
-
-// Impl class to help enforce that AxReadAloudNode should only be constructed
-// by one of the #create methods in ReadAloudNode.
-// This class should not be exported.
-class AxReadAloudNodeImpl extends AxReadAloudNode {
-  constructor(axNodeId: number, nodeStore = NodeStore.getInstance()) {
-    super(axNodeId, nodeStore);
-  }
-}
-
-// Represents a node used by read aloud that's based entirely on the DOM.
-export class DomReadAloudNode extends ReadAloudNode {
+// Represents a DOM node used by read aloud.
+export class ReadAloudNode {
   private readonly nearestBlockAncestor_: Node|undefined;
   private isSuperscript_?: boolean;
 
-  protected constructor(protected node: Node) {
-    super();
+  // ReadAloudNodes should be created with ReadAloudNode.create() or
+  // ReadAloudNode.createFromAxNode().
+  private constructor(private node_: Node) {
     ReadAloudNodeStore.getInstance().register(this);
     // nearestBlockAncestor_ only needs to be set once.
     this.nearestBlockAncestor_ = this.getNearestBlockAncestor_();
   }
 
+  static create(node: Node): ReadAloudNode {
+    return new ReadAloudNode(node);
+  }
+
+  // Creates a ReadAloudNode for the DOM node associated with the given
+  // AXNodeID, if there is one.
+  static createFromAxNode(
+      axNodeId: number, nodeStore = NodeStore.getInstance()): ReadAloudNode
+      |undefined {
+    const domNode: Node|undefined = nodeStore.getDomNode(axNodeId);
+    if (!domNode) {
+      return undefined;
+    }
+    return ReadAloudNode.create(domNode);
+  }
+
   equals(other: ReadAloudNode|undefined|null): boolean {
-    if (!(other instanceof DomReadAloudNode)) {
+    if (!other) {
       return false;
     }
-    return this.node.isSameNode(other.node);
+    return this.node_.isSameNode(other.node_);
   }
 
   getText(): string {
-    return this.node.textContent || '';
+    return this.node_.textContent || '';
   }
 
-  domNode(): Node|undefined {
-    return this.node;
+  domNode(): Node {
+    return this.node_;
   }
 
   // Refresh the DOM node associated with this read aloud node if the original
   // node has been changed, such as from highlighting. The replacement is in
   // place, so the block ancestor is unchanged.
   refresh(newNode: Node) {
-    this.node = newNode;
+    this.node_ = newNode;
   }
 
   // Returns true if the DOM node associated with this ReadAloudNode is
@@ -152,11 +88,7 @@ export class DomReadAloudNode extends ReadAloudNode {
       return this.isSuperscript_;
     }
 
-    const domNode = this.node;
-    if (!domNode) {
-      this.isSuperscript_ = false;  // Cache the result
-      return false;
-    }
+    const domNode = this.node_;
     const element = domNode.nodeType === Node.ELEMENT_NODE ?
         domNode as Element :
         domNode.parentElement;
@@ -173,7 +105,7 @@ export class DomReadAloudNode extends ReadAloudNode {
 
   private getNearestBlockAncestor_(): Node|undefined {
     const nodeStore = NodeStore.getInstance();
-    const parent = this.node.parentElement;
+    const parent = this.node_.parentElement;
     let currentAncestor: Element|null = parent;
     while (currentAncestor) {
       // Reuse the cached block ancestor and memoize for the immediate parent.
@@ -202,15 +134,6 @@ export class DomReadAloudNode extends ReadAloudNode {
   }
 }
 
-// Impl class to help enforce that DomReadAloudNode should only be constructed
-// by one of the #create methods in ReadAloudNode.
-// This class should not be exported.
-class DomReadAloudNodeImpl extends DomReadAloudNode {
-  constructor(node: Node) {
-    super(node);
-  }
-}
-
 // A segment of text within a single node.
 export interface Segment {
   node: ReadAloudNode;
@@ -229,12 +152,16 @@ export interface Sentence {
 export interface SegmentedSentence {
   sentenceInfo: Sentence;
   segments: Segment[];
+  // The start offsets of each phrase within sentenceInfo.text. Undefined if
+  // the phrase boundaries haven't been requested yet, and empty if they've
+  // been requested but aren't available.
+  phraseBoundaries?: number[];
 }
 
 // A representation of a node linked with its starting offset within a broader
 // block of text
 export interface OffsetByNode {
-  node: DomReadAloudNode;
+  node: ReadAloudNode;
   startOffset: number;
 }
 

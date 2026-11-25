@@ -77,6 +77,7 @@ const getAttributeMethod = Element.prototype.getAttribute;
 const hasAttributeMethod = Element.prototype.hasAttribute;
 const setAttributeMethod = Element.prototype.setAttribute;
 const matchesMethod = Element.prototype.matches;
+const closestMethod = Element.prototype.closest;
 
 // These safe getters prevent DOM stomping/clobbering by calling the getter
 // on the prototype instead of directly on the element.
@@ -169,6 +170,20 @@ function safeMatches(element: Element, selector: string): boolean {
     return element.matches(selector);
   }
   return matchesMethod.call(element, selector);
+}
+
+// Returns the equivalent of `element.closest(selector)` but directly calls the
+// `Element` prototype to prevent clobbering.
+function safeClosest(element: Element, selector: string): Element|null {
+  if (typeof element.closest === 'function') {
+    return element.closest(selector);
+  }
+  return closestMethod.call(element, selector);
+}
+
+// Returns whether an element is marked inert or within an inert subtree.
+function isElementInert(element: Element): boolean {
+  return safeClosest(element, '[inert]') !== null;
 }
 
 // Returns the equivalent of `element.isContentEditable` but directly calls the
@@ -520,6 +535,7 @@ const ATTR_VALUE_FALSE = 'false';
 const ATTR_VALUE_CURSOR_AUTO = 'auto';
 const ATTR_VALUE_CURSOR_NOT_ALLOWED = 'not-allowed';
 const ATTR_VALUE_CURSOR_POINTER = 'pointer';
+const ATTR_VALUE_POINTER_EVENTS_NONE = 'none';
 const ATTR_VALUE_ROLE_BUTTON = 'button';
 const ATTR_VALUE_ROLE_LINK = 'link';
 const ATTR_VALUE_ROLE_CHECKBOX = 'checkbox';
@@ -1359,11 +1375,53 @@ function getComputedStyleForElement(
  * @return The viewport rectangle.
  */
 function getViewportRect(doc: Document): Rect {
-  // Using documentElement.clientWidth/Height instead of
-  // window.innerWidth/Height to exclude scrollbars, which is more consistent
-  // with how Blink calculates the viewport area.
+  // On WebKit iOS, `getBoundingClientRect()` and the tab screenshot reflect the
+  // visual viewport, while `clientWidth` and `clientHeight` reflect the
+  // unzoomed layout viewport. Use `window.visualViewport` for the main frame so
+  // the viewport rectangle matches the visible area and screenshot when zoomed.
+  const visualViewport = (doc === document && window === window.top) ?
+      window.visualViewport :
+      null;
+  const visualViewportWidth = visualViewport?.width;
+  const visualViewportHeight = visualViewport?.height;
+  if (typeof visualViewportWidth === 'number' &&
+      Number.isFinite(visualViewportWidth) && visualViewportWidth > 0 &&
+      typeof visualViewportHeight === 'number' &&
+      Number.isFinite(visualViewportHeight) && visualViewportHeight > 0) {
+    return createRect(0, 0, visualViewportWidth, visualViewportHeight);
+  }
+  // Using clientWidth/Height instead of window.innerWidth/Height to exclude
+  // scrollbars, which is more consistent with how Blink calculates the
+  // viewport area. In quirks mode ('BackCompat'), the layout viewport is the
+  // client size of `body` rather than `documentElement`, which is the whole
+  // `<html>` box.
+  const viewportElement = doc.compatMode === 'BackCompat' ?
+      (doc.body ?? doc.documentElement) :
+      doc.documentElement;
   return createRect(
-      0, 0, doc.documentElement.clientWidth, doc.documentElement.clientHeight);
+      0, 0, safeClientWidth(viewportElement),
+      safeClientHeight(viewportElement));
+}
+
+/**
+ * Returns the geometry of a node that stands for the viewport, like Blink's
+ * `LayoutView` root node.
+ *
+ * @param viewportBox The enclosing rect of the viewport.
+ * @return The geometry covering the viewport.
+ */
+function createViewportGeometry(viewportBox: Rect): PageContentGeometry {
+  // Blink's viewport style is always `position: absolute`, whatever the
+  // position of `body`.
+  const geometry: PageContentGeometry = {
+    outerBoundingBox: {...viewportBox},
+    cssPosition: PageContentCssPosition.ABSOLUTE,
+  };
+  // Like `addNodeGeometry()`, empty visible boxes are omitted.
+  if (viewportBox.width > 0 && viewportBox.height > 0) {
+    geometry.visibleBoundingBox = {...viewportBox};
+  }
+  return geometry;
 }
 
 /**
@@ -1415,9 +1473,21 @@ function isGenericContainer(
     return false;
   }
 
-  // Treat as container if we extracted interaction info (e.g. it's scrollable).
+  // Treat as container if we extracted interaction info (e.g. it's scrollable,
+  // clickable, focusable, or has explicit disabled semantics like
+  // aria-disabled, cursor: not-allowed, or disabled). Elements with only
+  // pointer-events: none without other semantics should not be preserved as
+  // generic containers.
   if (interactionInfo) {
-    return true;
+    const hasOtherDisabledReasons =
+        interactionInfo.interactionDisabledReasons.some(
+            reason => reason !==
+                PageContentInteractionDisabledReason.POINTER_EVENTS_NONE);
+    if (interactionInfo.scrollerInfo ||
+        interactionInfo.clickabilityReasons.length > 0 ||
+        interactionInfo.isFocusable || hasOtherDisabledReasons) {
+      return true;
+    }
   }
 
   const style = getComputedStyleForElement(element, styleCache);
@@ -1612,7 +1682,23 @@ function getNodeInteractionInfo(
     interactionDisabledReasons.push(
         PageContentInteractionDisabledReason.CURSOR_NOT_ALLOWED);
   }
+  // Check pointer-events: none and inert subtrees.
+  const isPointerEventsNone =
+      style?.pointerEvents === ATTR_VALUE_POINTER_EVENTS_NONE ||
+      isElementInert(element);
+  if (isPointerEventsNone) {
+    interactionDisabledReasons.push(
+        PageContentInteractionDisabledReason.POINTER_EVENTS_NONE);
+  }
   interactionInfo.isDisabled = isDisabled;
+
+  // Early return if pointer-events: none blocks input interaction, matching
+  // Blink. Skipping positive clickability computation avoids computing signals
+  // that can never be dispatched, and prevents unspecialized containers from
+  // surviving.
+  if (isPointerEventsNone) {
+    return interactionDisabledReasons.length > 0 ? interactionInfo : undefined;
+  }
 
   const clickabilityReasons = interactionInfo.clickabilityReasons;
 
@@ -3548,10 +3634,25 @@ function addNodeGeometry(
 
   // Match Blink's IsAnchoredOffscreen logic: if an interactive node is
   // clipped completely offscreen inside an overflow container, drop
-  // nodeInteractionInfo so offscreen carousel items are not retained.
+  // positive interaction signals but retain explicit disabled reasons
+  // (and add VISUALLY_UNREACHABLE) so downstream consumers know the
+  // element was disabled and why.
   if (!geometry.visibleBoundingBox && attributes.nodeInteractionInfo &&
       context.hasOverflowClip) {
-    delete attributes.nodeInteractionInfo;
+    const existingDisabledReasons =
+        attributes.nodeInteractionInfo.interactionDisabledReasons || [];
+    const isDisabled = attributes.nodeInteractionInfo.isDisabled;
+    attributes.nodeInteractionInfo = {
+      clickabilityReasons: [],
+      isDisabled: isDisabled,
+      interactionDisabledReasons: existingDisabledReasons,
+      isFocusable: false,
+    };
+    if (!attributes.nodeInteractionInfo.interactionDisabledReasons.includes(
+            PageContentInteractionDisabledReason.VISUALLY_UNREACHABLE)) {
+      attributes.nodeInteractionInfo.interactionDisabledReasons.push(
+          PageContentInteractionDisabledReason.VISUALLY_UNREACHABLE);
+    }
   }
 
   // Determine the new clip context to pass down to children. An element that
@@ -4061,6 +4162,10 @@ function computeZOrder(rootNode: PageContentNode, rootDoc: Document) {
       });
       nodeCounter++;
     }
+    if (node.contentAttributes.attributeType ===
+        PageContentAttributeType.IFRAME) {
+      return;
+    }
     for (const child of node.childrenNodes) {
       traverse(child);
     }
@@ -4127,6 +4232,12 @@ function computeZOrder(rootNode: PageContentNode, rootDoc: Document) {
 
   const sweepPoints: SweepPoint[] = [];
   for (const node of actionableNodes) {
+    // `ROOT` spans the full viewport and represents the background canvas
+    // (always Z-order 1 in Blink), so overlap checks against it are redundant.
+    if (node.apcNode.contentAttributes.attributeType ===
+        PageContentAttributeType.ROOT) {
+      continue;
+    }
     const box = node.visibleBox;
     sweepPoints.push({top: box.y, pointType: SWEEP_POINT_START, node});
     sweepPoints.push(
@@ -4213,7 +4324,13 @@ function computeZOrder(rootNode: PageContentNode, rootDoc: Document) {
   const graph = new Map<ActionableNode, Set<ActionableNode>>();
 
   for (const node of actionableNodes) {
-    domNodeIdToNode.set(node.domNodeId, node);
+    // Negative `z-index` elements paint behind `<body>`; without hit-testing
+    // `ROOT` against all nodes, ranking `ROOT` above a negative `z-index`
+    // element would raise `ROOT`'s score above unrelated non-overlapping nodes.
+    if (node.apcNode.contentAttributes.attributeType !==
+        PageContentAttributeType.ROOT) {
+      domNodeIdToNode.set(node.domNodeId, node);
+    }
     graph.set(node, new Set<ActionableNode>());
   }
 
@@ -4423,6 +4540,7 @@ export function extractAnnotatedPageContent(
       actionableMode, undefined, styleCache);
 
   const viewportRect = getViewportRect(document);
+  const viewportGeometry = toEnclosingRect(viewportRect);
 
   // Stack to track the current ancestry chain. At this point it is known that
   // that there is at least a root node that is walkable.
@@ -4444,6 +4562,16 @@ export function extractAnnotatedPageContent(
         styleCache),
   }];
 
+  // Matching Blink's `LayoutView`, the root node of each frame should stand for
+  // that frame's viewport because consumers use the main frame root's visible
+  // box as the reference frame of the tab screenshot (e.g. server-side
+  // Set-of-Marks). `body` geometry still clips its descendants through the
+  // clipping context above.
+  if (actionableMode) {
+    rootNode.contentAttributes.geometry =
+        createViewportGeometry(viewportGeometry);
+  }
+
   // Collect interactive nodes (focused element, selection start/end).
   const interactiveNodeIds = getInteractiveNodeIds(document);
 
@@ -4454,13 +4582,6 @@ export function extractAnnotatedPageContent(
       extractPasswordScreenshotRedactions, styleCache);
 
   const pageInteractionInfo = extractPageInteractionInfo(document);
-
-  // Start the viewport at (0, 0) as it represents the entire page surface which
-  // is the root surface. This deliberately extracts the layout viewport bounds,
-  // rather than accounting for visual viewport offsets (e.g., pinch-to-zoom),
-  // to maintain parity with Blink's ConvertViewportGeometry in
-  // components/optimization_guide/content/browser/page_content_proto_provider.cc.
-  const viewportGeometry = toEnclosingRect(viewportRect);
 
   if (actionableMode) {
     computeZOrder(rootNode, document);

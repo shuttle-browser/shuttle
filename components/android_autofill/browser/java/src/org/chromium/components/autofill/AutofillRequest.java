@@ -67,6 +67,7 @@ public class AutofillRequest {
      */
     public boolean autofill(final SparseArray<AutofillValue> values) {
         int filledCount = 0;
+        @Nullable Boolean includeSelectOptionValues = null;
         for (int i = 0; i < values.size(); ++i) {
             int id = values.keyAt(i);
             if (toSessionId(id) != mFormData.mSessionId) continue;
@@ -79,9 +80,17 @@ public class AutofillRequest {
             try {
                 switch (field.getControlType()) {
                     case FormFieldData.ControlType.LIST:
+                        if (includeSelectOptionValues == null) {
+                            includeSelectOptionValues =
+                                    AndroidAutofillFeatures
+                                            .ANDROID_AUTOFILL_INCLUDE_SELECT_OPTION_VALUES
+                                            .isEnabled();
+                        }
                         int j = value.getListValue();
-                        if (j < 0 || j >= field.mOptionValues.length) continue;
-                        field.setAutofillValue(field.mOptionValues[j]);
+                        int numOptions = field.mOptions.size();
+                        int maxOptions = includeSelectOptionValues ? numOptions * 2 : numOptions;
+                        if (j < 0 || j >= maxOptions) continue;
+                        field.setAutofillValue(field.mOptions.get(j % numOptions).getValue());
                         break;
                     case FormFieldData.ControlType.TOGGLE:
                         break;
@@ -119,7 +128,7 @@ public class AutofillRequest {
         if (field == null) return null;
         switch (field.getControlType()) {
             case FormFieldData.ControlType.LIST:
-                int i = FormData.findIndex(field.mOptionValues, field.getValue());
+                int i = FormData.findOptionIndex(field.mOptions, field.getValue());
                 if (i == -1) return null;
                 return AutofillValue.forList(i);
             case FormFieldData.ControlType.TOGGLE:

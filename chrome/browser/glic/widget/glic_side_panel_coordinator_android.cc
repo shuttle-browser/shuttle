@@ -16,11 +16,13 @@
 #include "chrome/browser/context_sharing/tab_bottom_sheet/android/co_browse_views_bridge.h"
 #include "chrome/browser/context_sharing/tab_bottom_sheet/android/tab_bottom_sheet_bridge.h"
 #include "chrome/browser/glic/android/jni_headers/GlicBottomSheetComponentProvider_jni.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/jni_zero/jni_zero.h"
 #include "ui/android/window_android.h"
 
 namespace glic {
@@ -37,15 +39,6 @@ GlicSidePanelCoordinatorAndroid::GlicSidePanelCoordinatorAndroid(
   will_detach_subscription_ = tab_->RegisterWillDetach(
       base::BindRepeating(&GlicSidePanelCoordinatorAndroid::OnTabWillDetach,
                           base::Unretained(this)));
-
-  views_bridge_ = std::make_unique<context_sharing::CoBrowseViewsBridge>(
-      *tab, context_sharing::TabBottomSheetClientType::kGlic,
-      context_sharing::CoBrowseContainerType::kBottomSheet,
-      CreateBottomSheetContentProvider(),
-      /*enable_pinch_to_zoom=*/false, kColorGlicBackground,
-      kColorGlicPlaceholderElem);
-  tab_bottom_sheet_bridge_ =
-      std::make_unique<context_sharing::TabBottomSheetBridge>(this, tab);
   manager_initialized_subscription_ =
       context_sharing::TabBottomSheetBridge::RegisterManagerInitializedCallback(
           base::BindRepeating(
@@ -56,13 +49,15 @@ GlicSidePanelCoordinatorAndroid::GlicSidePanelCoordinatorAndroid(
 GlicSidePanelCoordinatorAndroid::~GlicSidePanelCoordinatorAndroid() = default;
 
 void GlicSidePanelCoordinatorAndroid::Show(const ShowOptions& options) {
-  if (options.initial_state == ShowOptions::InitialState::kExpanded &&
-      state_ == State::kShown) {
-    return;
+  if (options.show_native_fre) {
+    showing_native_fre_ = true;
   }
 
-  if (options.initial_state == ShowOptions::InitialState::kPeeked &&
-      state_ == State::kPeek) {
+  if ((options.initial_state == ShowOptions::InitialState::kExpanded &&
+       state_ == State::kShown) ||
+      (options.initial_state == ShowOptions::InitialState::kPeeked &&
+       state_ == State::kPeek)) {
+    UpdateJavaNativeFre();
     return;
   }
 
@@ -70,6 +65,8 @@ void GlicSidePanelCoordinatorAndroid::Show(const ShowOptions& options) {
     SetState(State::kBackgrounded);
     return;
   }
+
+  EnsureBridgesCreated();
 
   // If the Java bottom sheet manager layout infrastructure is not ready yet
   // (e.g. during startup or activity recreation before layout inflation
@@ -85,6 +82,8 @@ void GlicSidePanelCoordinatorAndroid::Show(const ShowOptions& options) {
     }
     return;
   }
+
+  UpdateJavaNativeFre();
 
   views_bridge_->SetWebContents(web_contents_.get(), /*request_focus=*/false);
   bool shown = tab_bottom_sheet_bridge_->Show(
@@ -104,6 +103,7 @@ void GlicSidePanelCoordinatorAndroid::Show(const ShowOptions& options) {
     // Java layer will NOT fire the onBottomSheetClosed callback. We must
     // immediately transition to closed so we don't leak state and deadlock
     // future Close() calls.
+    ResetNativeFre();
     SetState(State::kClosed);
   }
   pending_show_options_.reset();
@@ -117,32 +117,68 @@ void GlicSidePanelCoordinatorAndroid::SetWebContents(
   } else {
     web_contents_.reset();
   }
-  views_bridge_->SetWebContents(web_contents, /*request_focus=*/false);
+  if (views_bridge_) {
+    views_bridge_->SetWebContents(web_contents, /*request_focus=*/false);
+  }
+}
+
+void GlicSidePanelCoordinatorAndroid::SetIsLoading(bool is_loading) {
+  is_loading_ = is_loading;
+  UpdateJavaIsLoading();
+}
+
+void GlicSidePanelCoordinatorAndroid::UpdateJavaIsLoading() {
+  if (views_bridge_) {
+    views_bridge_->SetIsLoading(ShouldShowLoadingPlaceholder());
+  }
+}
+
+bool GlicSidePanelCoordinatorAndroid::ShouldShowLoadingPlaceholder() const {
+  // The native FRE takes precedence over the loading placeholder. Once the FRE
+  // is accepted or dismissed, the placeholder shows if Glic is still loading.
+  return is_loading_ && !showing_native_fre_;
 }
 
 void GlicSidePanelCoordinatorAndroid::Close(const CloseOptions& options) {
   pending_show_options_.reset();
   restore_expanded_on_recreation_ = false;
-  if (state_ == State::kClosed) {
-    return;
-  }
-
-  if (state_ == State::kBackgrounded) {
+  if (state_ == State::kClosed || state_ == State::kBackgrounded) {
+    ResetNativeFre();
     SetState(State::kClosed);
     return;
   }
 
+  CHECK(tab_bottom_sheet_bridge_);
   tab_bottom_sheet_bridge_->Close(/* animate= */ !options.suppress_animations);
 }
 
 void GlicSidePanelCoordinatorAndroid::SuppressBottomSheetForTesting(  // IN-TEST
     bool suppress) {
+  EnsureBridgesCreated();
   tab_bottom_sheet_bridge_->SuppressBottomSheetForTesting(suppress);  // IN-TEST
 }
 
 bool GlicSidePanelCoordinatorAndroid::GetRestoreExpandedOnRecreationForTesting()
     const {
   return restore_expanded_on_recreation_;
+}
+
+bool GlicSidePanelCoordinatorAndroid::HasBridgesForTesting() const {
+  return views_bridge_ != nullptr && tab_bottom_sheet_bridge_ != nullptr;
+}
+
+bool GlicSidePanelCoordinatorAndroid::HasJavaWebContentsForTesting() const {
+  return views_bridge_ &&
+         views_bridge_->HasJavaWebContentsForTesting();  // IN-TEST
+}
+
+bool GlicSidePanelCoordinatorAndroid::IsShowingNativeFreForTesting() const {
+  return ShouldShowNativeFre();
+}
+
+bool GlicSidePanelCoordinatorAndroid::ShouldShowLoadingPlaceholderForTesting()
+    const {
+  return ShouldShowLoadingPlaceholder();
 }
 
 bool GlicSidePanelCoordinatorAndroid::IsShowing() const {
@@ -207,7 +243,9 @@ void GlicSidePanelCoordinatorAndroid::OnTabWillDeactivate(
   SaveStateBeforeDeactivation();
   SetState(State::kBackgrounded);
 
-  tab_bottom_sheet_bridge_->Close(/* animate= */ false);
+  if (tab_bottom_sheet_bridge_) {
+    tab_bottom_sheet_bridge_->Close(/* animate= */ false);
+  }
 }
 
 void GlicSidePanelCoordinatorAndroid::OnTabWillDetach(
@@ -221,7 +259,9 @@ void GlicSidePanelCoordinatorAndroid::OnTabWillDetach(
   if (state_ != State::kClosed) {
     SaveStateBeforeDeactivation();
     SetState(State::kBackgrounded);
-    tab_bottom_sheet_bridge_->Close(/* animate= */ false);
+    if (tab_bottom_sheet_bridge_) {
+      tab_bottom_sheet_bridge_->Close(/* animate= */ false);
+    }
   }
 }
 
@@ -230,6 +270,7 @@ void GlicSidePanelCoordinatorAndroid::OnClosed() {
   if (state_ == State::kBackgrounded) {
     return;
   }
+  ResetNativeFre();
   restore_expanded_on_recreation_ = false;
   SetState(State::kClosed);
 }
@@ -253,6 +294,7 @@ void GlicSidePanelCoordinatorAndroid::OnManagerInitialized(
       web_contents ? web_contents->GetTopLevelNativeWindow() : nullptr;
 
   if (tab_window == window) {
+    EnsureBridgesCreated();
     // Rebuild CoBrowseViews now that TabBottomSheetManager is registered on the
     // window, ensuring the PeekViewManager is instantiated non-null.
     views_bridge_->CreateCoBrowseViews(web_contents_.get(),
@@ -266,11 +308,77 @@ void GlicSidePanelCoordinatorAndroid::OnManagerInitialized(
   }
 }
 
+void GlicSidePanelCoordinatorAndroid::EnsureBridgesCreated() {
+  if (!views_bridge_) {
+    views_bridge_ = std::make_unique<context_sharing::CoBrowseViewsBridge>(
+        *tab_, context_sharing::TabBottomSheetClientType::kGlic,
+        context_sharing::CoBrowseContainerType::kBottomSheet,
+        CreateBottomSheetContentProvider(),
+        /*enable_pinch_to_zoom=*/false, kColorGlicBackground,
+        kColorGlicPlaceholderElem,
+        base::BindRepeating(&GlicSidePanelCoordinatorAndroid::Close,
+                            weak_ptr_factory_.GetWeakPtr(), CloseOptions()));
+  }
+  if (!tab_bottom_sheet_bridge_) {
+    tab_bottom_sheet_bridge_ =
+        std::make_unique<context_sharing::TabBottomSheetBridge>(this, &*tab_);
+  }
+}
+
 base::android::ScopedJavaLocalRef<jobject>
 GlicSidePanelCoordinatorAndroid::CreateBottomSheetContentProvider() {
   JNIEnv* env = base::android::AttachCurrentThread();
-  return Java_GlicBottomSheetComponentProvider_createProvider(
-      env, tab_->GetProfile()->GetJavaObject());
+  if (!component_provider_) {
+    component_provider_ = Java_GlicBottomSheetComponentProvider_createProvider(
+        env, tab_->GetProfile()->GetJavaObject(), jni_zero::MakeRaw(this));
+  }
+  return base::android::ScopedJavaLocalRef<jobject>(env, component_provider_);
 }
+
+void GlicSidePanelCoordinatorAndroid::SetNativeFreAcceptedCallback(
+    base::RepeatingClosure callback) {
+  on_native_fre_accepted_ = std::move(callback);
+}
+
+void GlicSidePanelCoordinatorAndroid::OnNativeFreAccepted(JNIEnv* env) {
+  // Java owns the FRE view teardown after accept, so only clear the state.
+  showing_native_fre_ = false;
+  UpdateJavaIsLoading();
+  if (on_native_fre_accepted_) {
+    on_native_fre_accepted_.Run();
+  }
+}
+
+bool GlicSidePanelCoordinatorAndroid::ShouldShowNativeFre() const {
+  return showing_native_fre_ &&
+         !GlicEnabling::HasConsentedForProfile(tab_->GetProfile());
+}
+
+void GlicSidePanelCoordinatorAndroid::UpdateJavaNativeFre() {
+  // TODO(b/571546684): Observe FRE completion so an accept in another window
+  // hides this FRE.
+  if (!ShouldShowNativeFre()) {
+    ResetNativeFre();
+    return;
+  }
+  UpdateJavaIsLoading();
+  if (!component_provider_) {
+    return;
+  }
+  Java_GlicBottomSheetComponentProvider_configureNativeFre(
+      base::android::AttachCurrentThread(), component_provider_,
+      /*showNativeFre=*/true);
+}
+
+void GlicSidePanelCoordinatorAndroid::ResetNativeFre() {
+  if (std::exchange(showing_native_fre_, false) && component_provider_) {
+    Java_GlicBottomSheetComponentProvider_configureNativeFre(
+        base::android::AttachCurrentThread(), component_provider_,
+        /*showNativeFre=*/false);
+  }
+  UpdateJavaIsLoading();
+}
+
+DEFINE_JNI(GlicBottomSheetComponentProvider)
 
 }  // namespace glic

@@ -7,26 +7,20 @@
 
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "services/device/public/mojom/screen_orientation_lock_types.mojom-shared.h"
 #include "third_party/blink/public/common/common_export.h"
 #include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-forward.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
 #include "third_party/blink/public/mojom/manifest/manifest_launch_handler.mojom.h"
 
 class GURL;
 
 namespace blink {
 
-// Checks whether the manifest has no fields set.
-BLINK_COMMON_EXPORT bool IsEmptyManifest(const mojom::Manifest& manifest);
-BLINK_COMMON_EXPORT bool IsEmptyManifest(const mojom::ManifestPtr& manifest);
-
 // Returns if the given manifest matches the default manifest.
-BLINK_COMMON_EXPORT bool IsDefaultManifest(const mojom::Manifest& manifest,
-                                           const GURL& document_url);
-BLINK_COMMON_EXPORT bool IsDefaultManifest(const mojom::ManifestPtr& manifest,
+BLINK_COMMON_EXPORT bool IsDefaultManifest(const Manifest& manifest,
                                            const GURL& document_url);
 
 // Returns the blink::mojom::Manifest_TextDirection which matches |dir|.
@@ -79,6 +73,13 @@ WebScreenOrientationLockTypeFromString(const std::string& orientation);
 
 BLINK_COMMON_EXPORT std::optional<mojom::ManifestLaunchHandler::ClientMode>
 ClientModeFromString(const std::string& client_mode);
+
+// Returns true if `mime_type` is a valid MIME type for a web app file handler
+// entry: it must parse as a parameterless `type/subtype` HTTP token pair
+// (with no leading or trailing whitespace) whose top-level type is a registered
+// IANA top-level media type (excluding `x-*` top-level types, such as
+// FreeDesktop pseudo-MIME types like `x-scheme-handler/*` or `x-content/*`).
+BLINK_COMMON_EXPORT bool IsValidFileHandlerMimeType(std::string_view mime_type);
 
 }  // namespace blink
 

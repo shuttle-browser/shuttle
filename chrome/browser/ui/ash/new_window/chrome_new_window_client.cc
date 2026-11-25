@@ -78,9 +78,9 @@
 #include "extensions/common/extension.h"
 #include "ui/aura/window.h"
 #include "ui/base/dragdrop/os_exchange_data.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/url_constants.h"
 
 namespace {
@@ -224,17 +224,17 @@ void ChromeNewWindowClient::NewWindowForDetachingTab(
 }
 
 namespace {
-WindowOpenDisposition ToWindowOpenDisposition(
+ui::mojom::WindowOpenDisposition ToWindowOpenDisposition(
     ash::NewWindowDelegate::Disposition disposition) {
   switch (disposition) {
     case ash::NewWindowDelegate::Disposition::kNewForegroundTab:
-      return WindowOpenDisposition::kNewForegroundTab;
+      return ui::mojom::WindowOpenDisposition::kNewForegroundTab;
     case ash::NewWindowDelegate::Disposition::kNewWindow:
-      return WindowOpenDisposition::kNewWindow;
+      return ui::mojom::WindowOpenDisposition::kNewWindow;
     case ash::NewWindowDelegate::Disposition::kOffTheRecord:
-      return WindowOpenDisposition::kOffTheRecord;
+      return ui::mojom::WindowOpenDisposition::kOffTheRecord;
     case ash::NewWindowDelegate::Disposition::kSwitchToTab:
-      return WindowOpenDisposition::kSwitchToTab;
+      return ui::mojom::WindowOpenDisposition::kSwitchToTab;
   }
 }
 }  // namespace
@@ -331,10 +331,11 @@ void ChromeNewWindowClient::OpenFileManager() {
       return;
     }
 
-    proxy->Launch(update.AppId(),
-                  apps::GetEventFlags(WindowOpenDisposition::kNewForegroundTab,
-                                      /*prefer_container=*/true),
-                  apps::LaunchSource::kFromKeyboard);
+    proxy->Launch(
+        update.AppId(),
+        apps::GetEventFlags(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+                            /*prefer_container=*/true),
+        apps::LaunchSource::kFromKeyboard);
   };
 
   bool result = proxy->AppRegistryCache().ForOneApp(
@@ -342,22 +343,24 @@ void ChromeNewWindowClient::OpenFileManager() {
   CHECK(result, base::NotFatalUntil::M162);
 }
 
-void ChromeNewWindowClient::OpenDownloadsFolder() {
-  Profile* const profile = ProfileManager::GetActiveUserProfile();
-  base::FilePath target_directory =
-      file_manager::util::GetDownloadsFolderForProfile(profile);
+void ChromeNewWindowClient::OpenDownloadsFolder(const AccountId& account_id) {
+  const user_manager::User& user =
+      CHECK_DEREF(user_manager::UserManager::Get()->FindUser(account_id));
+  const base::FilePath target_directory =
+      file_manager::util::GetDownloadsFolder(user);
+
+  Profile* const profile = Profile::FromBrowserContext(
+      ash::BrowserContextHelper::Get()->GetBrowserContextByUser(&user));
   if (OpenFilesSwa(profile, target_directory)) {
     return;
   }
 
   apps::AppServiceProxy* proxy =
       apps::AppServiceProxyFactory::GetForProfile(profile);
-  auto downloads_path =
-      file_manager::util::GetDownloadsFolderForProfile(profile);
   CHECK(proxy, base::NotFatalUntil::M162);
 
   auto launch_files_app = [proxy,
-                           downloads_path](const apps::AppUpdate& update) {
+                           target_directory](const apps::AppUpdate& update) {
     if (update.Readiness() != apps::Readiness::kReady) {
       LOG(WARNING)
           << "Couldn't launch Files app because it isn't ready, readiness: "
@@ -366,10 +369,10 @@ void ChromeNewWindowClient::OpenDownloadsFolder() {
     }
 
     std::vector<base::FilePath> launch_files;
-    launch_files.push_back(downloads_path);
+    launch_files.push_back(target_directory);
     proxy->LaunchAppWithFiles(
         update.AppId(),
-        apps::GetEventFlags(WindowOpenDisposition::kNewForegroundTab,
+        apps::GetEventFlags(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                             /*prefer_container=*/true),
         apps::LaunchSource::kFromKeyboard, std::move(launch_files));
   };

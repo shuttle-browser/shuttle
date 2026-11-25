@@ -58,9 +58,11 @@ DesktopPaymentsWindowManagerInteractiveUiTest*
 *DeviceSignalsDisclaimerModalPixelTest.*
 *DeviceSignalsDisclaimerProfilePickerPixelTest.*
 *DocumentPictureInPicturePixelTest.*
+*DocumentPipDialogPixelTest.*
 EditAddressProfileDialogControllerImplTest.InvokeUi_*
 *EmbeddedPermissionPromptUiTest.InvokeUi_*
 MahiMenuPixelBrowserTest.*
+ManagedUserProfileNoticeUIModalPixelTest.*
 ManagedUserProfileNoticeUIWindowPixelTest.*
 ExtensionInstallDialogViewInteractiveBrowserTest.*
 ExtensionUninstallDialogViewInteractiveBrowserTest.*
@@ -157,11 +159,12 @@ ReportUnsafeSiteDialogInteractiveUiTest.ExcludeScreenshotPixelTest
 SafetyTipPageInfoBubbleViewDialogTest.*
 ScreenCaptureNotificationUiBrowserTest.*
 SearchEngineChoiceUIPixelTest.*
+SearchEnginePickerPixelBrowserTest.*
 SecurePaymentConfirmationDialogViewTest.InvokeUi_*
 *SendTabToSelfBubbleTest.*
 SendTabToSelfInteractiveUiTest.*
 SendTabToSelfIphInteractiveUiTest.CaptureTutorialScreenshots
-SendTabToSelfToolbarIconControllerInteractiveUiTest.*
+SendTabToSelfReceivingUiHandlerInteractiveUiTest.*
 SessionCrashedBubbleViewTest.*
 SettingsOverriddenExplicitChoiceDialogInteractiveUiTest.*
 *SharedPasswordsNotificationBubbleInteractiveUiTest.*
@@ -170,8 +173,6 @@ SingleBookmarkUploadDialogPixelTest.InvokeUi
 SearchAIModeSignInPromoViewPixelTest.*
 *SkillsPageScreenshotInteractiveUITest.*
 SplitTabButtonInteractiveTest.ButtonUpdatesOnSplit
-SyncConfirmationUIDialogPixelTest.*
-SyncConfirmationUIWindowPixelTest.*
 SyncPassphraseDialogBrowserTest.*
 TabDialogManagerPixelTest.*
 TabGroupEditorBubbleViewDialogBrowserTest.*

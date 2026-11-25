@@ -35,7 +35,6 @@ import org.chromium.chrome.browser.dragdrop.ChromeTabDropDataAndroid;
 import org.chromium.chrome.browser.dragdrop.ChromeTabGroupDropDataAndroid;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabGroupMetadata;
-import org.chromium.chrome.browser.tabmodel.TabList;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tasks.tab_management.TabDragHandlerBase;
 import org.chromium.chrome.browser.tasks.tab_management.TabListModel;
@@ -247,7 +246,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertTrue(result.insertBefore);
@@ -283,7 +282,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(1, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertFalse(result.insertBefore);
@@ -312,7 +311,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -348,7 +346,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertTrue(result.insertBefore);
@@ -374,7 +372,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -410,7 +407,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(20, result.destGroupTabId);
+        assertEquals(groupId, result.destGroupId);
         assertFalse(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertFalse(result.insertBefore);
@@ -435,7 +432,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -471,7 +467,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(1, result.destTabIndex);
-        assertEquals(20, result.destGroupTabId);
+        assertEquals(groupId, result.destGroupId);
         assertTrue(result.insertBefore);
         assertFalse(result.isGroupTopOrBottomBoundary);
         assertEquals(2, result.adapterPosition);
@@ -495,7 +491,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -532,7 +527,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex);
-        assertEquals(20, result.destGroupTabId);
+        assertEquals(groupId, result.destGroupId);
         assertFalse(result.insertBefore);
         assertFalse(result.isGroupTopOrBottomBoundary);
         assertEquals(2, result.adapterPosition);
@@ -556,7 +551,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -593,7 +587,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.insertBefore);
         assertTrue(result.isGroupTopOrBottomBoundary);
         assertEquals(2, result.adapterPosition);
@@ -616,7 +610,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -652,7 +645,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.insertBefore);
         assertTrue(result.isGroupTopOrBottomBoundary);
         assertEquals(2, result.adapterPosition);
@@ -677,7 +670,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -722,7 +714,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                         /* isPinnedDrag= */ false);
         assertNotNull(resultTop);
         assertEquals(1, resultTop.destTabIndex);
-        assertEquals(20, resultTop.destGroupTabId);
+        assertEquals(groupId, resultTop.destGroupId);
         assertTrue(resultTop.insertBefore);
 
         // Hover over Child 2 bottom half (y = 140) -> destTabIndex = 2 (inserts after child 2,
@@ -736,7 +728,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                         /* isPinnedDrag= */ false);
         assertNotNull(resultBottom);
         assertEquals(2, resultBottom.destTabIndex);
-        assertEquals(20, resultBottom.destGroupTabId);
+        assertEquals(groupId, resultBottom.destGroupId);
         assertFalse(resultBottom.insertBefore);
     }
 
@@ -761,7 +753,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, true)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -777,7 +768,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.insertBefore);
         assertTrue(result.isGroupTopOrBottomBoundary);
         assertFalse(result.isPinned);
@@ -801,7 +792,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, true)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -817,7 +807,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex); // 1 + 1 = 2 (after tab21)
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.insertBefore);
         assertTrue(result.isGroupTopOrBottomBoundary);
         assertFalse(result.isPinned);
@@ -846,7 +836,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -884,7 +873,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.insertBefore);
         assertTrue(result.isGroupTopOrBottomBoundary);
         assertEquals(0, result.adapterPosition); // Snaps to header viewholder
@@ -908,7 +897,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, false)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 
@@ -946,7 +934,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex); // 1 + 1 = 2 (after tab21)
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.insertBefore);
         assertTrue(result.isGroupTopOrBottomBoundary);
         assertEquals(2, result.adapterPosition); // Snaps to last child viewholder
@@ -982,7 +970,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.insertBefore);
         assertFalse(result.isGroupTopOrBottomBoundary);
     }
@@ -1013,7 +1001,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(1, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.insertBefore);
         assertFalse(result.isGroupTopOrBottomBoundary);
     }
@@ -1060,7 +1048,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.PINNED_GRID, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertTrue(result.insertBefore);
@@ -1105,7 +1093,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.PINNED_GRID, result.targetType);
         assertEquals(1, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertFalse(result.insertBefore);
@@ -1150,7 +1138,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.PINNED_GRID, result.targetType);
         assertEquals(2, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertFalse(result.insertBefore);
@@ -1176,7 +1164,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(0, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertTrue(result.isPinned);
         assertTrue(result.isZeroPinnedState);
         assertTrue(result.insertBefore);
@@ -1237,7 +1225,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertTrue(result.isZeroNormalTabsState);
@@ -1415,7 +1403,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(result);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, result.targetType);
         assertEquals(2, result.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, result.destGroupTabId);
+        assertNull(result.destGroupId);
         assertFalse(result.isPinned);
         assertFalse(result.isZeroPinnedState);
         assertTrue(result.isZeroNormalTabsState);
@@ -1616,7 +1604,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(resultSingleTab);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, resultSingleTab.targetType);
         assertEquals(2, resultSingleTab.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, resultSingleTab.destGroupTabId);
+        assertNull(resultSingleTab.destGroupId);
         assertFalse(resultSingleTab.isPinned);
         assertFalse(resultSingleTab.isZeroPinnedState);
         assertNull(resultSingleTab.targetViewHolder);
@@ -1637,7 +1625,7 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
         assertNotNull(resultGroup);
         assertEquals(DropTargetResult.TargetType.MAIN_LIST, resultGroup.targetType);
         assertEquals(2, resultGroup.destTabIndex);
-        assertEquals(TabList.INVALID_TAB_INDEX, resultGroup.destGroupTabId);
+        assertNull(resultGroup.destGroupId);
         assertFalse(resultGroup.isPinned);
         assertFalse(resultGroup.isZeroPinnedState);
         assertTrue(resultGroup.isZeroNormalTabsState);
@@ -1848,7 +1836,6 @@ public class VerticalExternalViewDragDropReorderStrategyUnitTest {
                                 TabListModel.CardProperties.ModelType.TAB_GROUP)
                         .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
                         .with(TabProperties.IS_COLLAPSED, true)
-                        .with(TabProperties.TAB_ID, 20)
                         .build();
         addMainListItem(headerModel, TabProperties.UiType.TAB_GROUP, 0, 0, 300, 50);
 

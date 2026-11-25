@@ -4,9 +4,7 @@
 
 #import "ios/chrome/browser/signin/model/system_identity_manager.h"
 
-#import "base/functional/bind.h"
 #import "base/functional/callback.h"
-#import "google_apis/gaia/gaia_id.h"
 
 namespace {
 
@@ -119,9 +117,3 @@ void SystemIdentityManager::FireIdentityAccessTokenRefreshFailed(
     observer.OnIdentityAccessTokenRefreshFailed(identity, error, scopes);
   }
 }
-
-bool SystemIdentityManager::IsScopeLimitedError(
-    id<RefreshAccessTokenError> error) {
-  return false;
-}
-

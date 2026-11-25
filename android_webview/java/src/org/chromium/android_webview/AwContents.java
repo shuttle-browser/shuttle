@@ -61,8 +61,11 @@ import androidx.core.graphics.Insets;
 import org.jni_zero.CalledByNative;
 import org.jni_zero.CalledByNativeUnchecked;
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniPtr;
 import org.jni_zero.JniRawPtr;
 import org.jni_zero.JniType;
+import org.jni_zero.JniTypeToken;
+import org.jni_zero.JniUniquePtr;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.android_webview.AwDisplayCutoutController.Delegate;
@@ -161,6 +164,7 @@ import java.lang.ref.WeakReference;
 import java.net.MalformedURLException;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
@@ -413,7 +417,11 @@ public class AwContents implements SmartClipProvider {
         public abstract void onComplete(long requestId);
     }
 
-    private long mNativeAwContents;
+    @JniType("::android_webview::AwContents")
+    interface NativeAwContents extends JniTypeToken {}
+
+    // Owned by mDestroyConsumer, which destroys it on destroyNatives() or when this is GC'ed.
+    private @Nullable JniUniquePtr<NativeAwContents> mNativeAwContents;
     private AwBrowserContext mBrowserContext;
     private ViewGroup mContainerView;
     private volatile ViewGroup mPrimaryContainerView;
@@ -464,7 +472,7 @@ public class AwContents implements SmartClipProvider {
     private boolean mIsContentVisible;
     private boolean mIsUpdateVisibilityTaskPending;
     private final Runnable mUpdateVisibilityRunnable;
-    @Nullable private Runnable mInvalidateListener;
+    @Nullable private InvalidateListener mInvalidateListener;
     @Nullable private AwWebSurface mWebSurface;
 
     private final SparseArray<WindowAndroid.IntentCallback> mOutstandingIntents =
@@ -599,15 +607,19 @@ public class AwContents implements SmartClipProvider {
     }
 
     private static final class AwContentsDestroyConsumer implements Consumer<Boolean> {
-        private final long mNativeAwContents;
+        private final JniUniquePtr<NativeAwContents> mNativeAwContents;
+        private final List<JniRawPtr<?>> mSafePointers;
         // Hold onto a reference to the window (via its wrapper), so that it is not destroyed
         // until we are done here.
         private WindowAndroidWrapper mWindowAndroid;
 
         private AwContentsDestroyConsumer(
-                long nativeAwContents, WindowAndroidWrapper windowAndroid) {
+                JniUniquePtr<NativeAwContents> nativeAwContents,
+                WindowAndroidWrapper windowAndroid,
+                List<JniRawPtr<?>> safePointers) {
             mNativeAwContents = nativeAwContents;
             mWindowAndroid = windowAndroid;
+            mSafePointers = safePointers;
             mWindowAndroid.incrementRefFromDestroyRunnable();
         }
 
@@ -621,9 +633,25 @@ public class AwContents implements SmartClipProvider {
         public void accept(Boolean isExplicitCleanup) {
             if (!isExplicitCleanup) {
                 TraceEvent.instant("CleanupReference.garbageCollection.AwContents");
+                // Java peers are already unreachable, so ~AwContents() will see null weak refs.
+                releaseSafePointers();
             }
-            AwContentsJni.get().destroy(mNativeAwContents);
+            mNativeAwContents.destroy();
+            releaseSafePointers();
             mWindowAndroid.decrementRefFromDestroyRunnable();
+        }
+
+        private void releaseSafePointers() {
+            for (JniRawPtr<?> ptr : mSafePointers) {
+                ptr.release();
+            }
+            mSafePointers.clear();
+        }
+    }
+
+    void registerSafePointer(@Nullable JniRawPtr<?> ptr) {
+        if (ptr != null && mSafePointers != null) {
+            mSafePointers.add(ptr);
         }
     }
 
@@ -658,9 +686,12 @@ public class AwContents implements SmartClipProvider {
                     new NullAwViewMethods(
                             AwContents.this, mCurrentInternalAccessAdapter, mContainerView);
 
-            // Associate this AwContents with the FullScreenView.
+            // Associate this AwContents with the FullScreenView. Skip passing size of
+            // FullScreenView down: FullScreenView is newly created and detached so has initial size
+            // 0x0 before layout. Avoid this temporary resize to 0x0 which can cause flickers and
+            // sometimes layout problems in the web page.
             setInternalAccessAdapter(mFullScreenView.getInternalAccessAdapter());
-            setContainerView(mFullScreenView);
+            setContainerView(mFullScreenView, /* keepCurrentSize= */ true);
         }
 
         private void exitFullScreen() {
@@ -678,7 +709,7 @@ public class AwContents implements SmartClipProvider {
                             mFullScreenView));
             mCurrentAwViewMethods = mPrimaryAwViewMethods;
             setInternalAccessAdapter(mPrimaryInternalAccessAdapter);
-            setContainerView(mPrimaryContainerView);
+            setContainerView(mPrimaryContainerView, /* keepCurrentSize= */ false);
 
             // Return focus to the WebView.
             if (mWasContainerViewFocused) {
@@ -700,6 +731,7 @@ public class AwContents implements SmartClipProvider {
     // (ie before it is destroyed).
     private CleanupReference mCleanupReference;
     private AwContentsDestroyConsumer mDestroyConsumer;
+    private @Nullable List<JniRawPtr<?>> mSafePointers;
 
     @AnyThread
     public void onWebViewClientUpdated(WebViewClient client) {
@@ -1212,7 +1244,7 @@ public class AwContents implements SmartClipProvider {
             setNewAwContents(
                     AwContentsJni.get().init(mBrowserContext.getNativeBrowserContextPointer()));
 
-            setContainerView(containerView);
+            setContainerView(containerView, /* keepCurrentSize= */ false);
         }
 
         // Drain any scheduled prefetch requests that may have happened during this constructor's
@@ -1444,7 +1476,17 @@ public class AwContents implements SmartClipProvider {
         setInternalAccessAdapter(internalAccessAdapter);
         mPrimaryContainerView = newContainerView;
         mDisplayCutoutController.unregisterContainerView(mContainerView);
-        setContainerView(newContainerView);
+
+        // A new container is created detached, so it is still 0x0 unless it has been laid out.
+        // Keep the page at its current size until the new container is laid out and passes its real
+        // size down through onSizeChanged(). If we don't do this, we accidentally trigger a
+        // relayout.
+        boolean keepCurrentSize =
+                !newContainerView.isLaidOut()
+                        && newContainerView.getWidth() == 0
+                        && newContainerView.getHeight() == 0;
+        setContainerView(newContainerView, keepCurrentSize);
+
         mDisplayCutoutController.registerContainerView(newContainerView);
     }
 
@@ -1453,7 +1495,11 @@ public class AwContents implements SmartClipProvider {
                 "Android.WebView.WebContent.AdoptResult", result, AdoptResult.COUNT);
     }
 
-    private void setContainerView(ViewGroup newContainerView) {
+    /**
+     * @param keepCurrentSize Whether to keep the current size instead of passing down the size of
+     *     {@code newContainerView}, which hasn't been laid out yet.
+     */
+    private void setContainerView(ViewGroup newContainerView, boolean keepCurrentSize) {
         boolean isSwappingView = mContainerView != null && mContainerView != newContainerView;
 
         if (isSwappingView) {
@@ -1493,10 +1539,7 @@ public class AwContents implements SmartClipProvider {
             mPrimaryAwViewMethods.onDetachedFromWindow();
         }
 
-        // Skip passing size of FullScreenView down. FullScreenView is newly created and detached
-        // so has initial size 0x0 before layout. Avoid this temporary resize to 0x0 which can
-        // cause flickers and sometimes layout problems in the web page.
-        if ((mContainerView instanceof FullScreenView)) {
+        if (keepCurrentSize) {
             assert !containerViewAttached;
         } else {
             mPrimaryAwViewMethods.onSizeChanged(
@@ -1724,10 +1767,10 @@ public class AwContents implements SmartClipProvider {
      * TAKE CARE! This method can get called multiple times per java instance. Code accordingly.
      * ^^^^^^^^^  See the native class declaration for more details on relative object lifetimes.
      */
-    private void setNewAwContents(long newAwContentsPtr) {
+    private void setNewAwContents(JniUniquePtr<NativeAwContents> newAwContentsPtr) {
         // Move the TextClassifier to the new WebContents.
         TextClassifier textClassifier = mWebContents != null ? getTextClassifier() : null;
-        if (mNativeAwContents != 0) {
+        if (mNativeAwContents != null) {
             destroyNatives();
             mWebContents = null;
             mWebContentsInternalsHolder = null;
@@ -1736,9 +1779,10 @@ public class AwContents implements SmartClipProvider {
             mJavascriptInjector = null;
         }
 
-        assert mNativeAwContents == 0 && mCleanupReference == null && mWebContents == null;
+        assert mNativeAwContents == null && mCleanupReference == null && mWebContents == null;
 
         mNativeAwContents = newAwContentsPtr;
+        mSafePointers = new ArrayList<>();
         updateNativeAwGLFunctor();
 
         mWebContents = AwContentsJni.get().getWebContents(mNativeAwContents);
@@ -1805,7 +1849,8 @@ public class AwContents implements SmartClipProvider {
 
         // The native side object has been bound to this java instance, so now is the time to
         // bind all the native->java relationships.
-        mDestroyConsumer = new AwContentsDestroyConsumer(mNativeAwContents, mWindowAndroid);
+        mDestroyConsumer =
+                new AwContentsDestroyConsumer(mNativeAwContents, mWindowAndroid, mSafePointers);
         mCleanupReference = new CleanupReference(this, mDestroyConsumer);
         if (textClassifier != null) setTextClassifier(textClassifier);
         if (mOnscreenContentProvider != null) {
@@ -1831,14 +1876,15 @@ public class AwContents implements SmartClipProvider {
     public void supplyContentsForPopup(AwContents newContents) {
         if (TRACE) Log.i(TAG, "%s supplyContentsForPopup", this);
         if (isDestroyed(WARN)) return;
-        long popupNativeAwContents = AwContentsJni.get().releasePopupAwContents(mNativeAwContents);
-        if (popupNativeAwContents == 0) {
+        JniUniquePtr<NativeAwContents> popupNativeAwContents =
+                AwContentsJni.get().releasePopupAwContents(mNativeAwContents);
+        if (popupNativeAwContents == null) {
             Log.w(TAG, "Popup WebView bind failed: no pending content.");
             if (newContents != null) newContents.destroy();
             return;
         }
         if (newContents == null) {
-            AwContentsJni.get().destroy(popupNativeAwContents);
+            popupNativeAwContents.destroy();
             return;
         }
 
@@ -1945,8 +1991,11 @@ public class AwContents implements SmartClipProvider {
     // Recap: supplyContentsForPopup() is called on the parent window's content, this method is
     // called on the popup window's content.
     // See //android_webview/docs/how-does-on-create-window-work.md for more details.
-    private void receivePopupContents(long popupNativeAwContents) {
-        if (isDestroyed(WARN)) return;
+    private void receivePopupContents(JniUniquePtr<NativeAwContents> popupNativeAwContents) {
+        if (isDestroyed(WARN)) {
+            popupNativeAwContents.destroy();
+            return;
+        }
         // Capture as reset the view state for mNativeAwContents.
         StateSnapshot prePopupState = captureStateAndResetView();
 
@@ -2099,11 +2148,12 @@ public class AwContents implements SmartClipProvider {
     @VisibleForTesting
     public void destroyNatives() {
         if (mCleanupReference != null) {
-            assert mNativeAwContents != 0;
+            assert mNativeAwContents != null;
 
             mWebContentsObserver.observe(null);
             mWebContentsObserver = null;
-            mNativeAwContents = 0;
+            mNativeAwContents = null;
+            mSafePointers = null;
             mWebContents = null;
             mWebContentsInternals = null;
             mNavigationController = null;
@@ -2114,7 +2164,7 @@ public class AwContents implements SmartClipProvider {
 
         assert mWebContents == null;
         assert mNavigationController == null;
-        assert mNativeAwContents == 0;
+        assert mNativeAwContents == null;
 
         onDestroyed();
     }
@@ -2157,7 +2207,7 @@ public class AwContents implements SmartClipProvider {
 
     private @Nullable JniRawPtr<AwHeaderInterceptorStore.Native>
             supplyNativeHeaderInterceptorStore() {
-        return mNativeAwContents == 0
+        return mNativeAwContents == null
                 ? null
                 : AwContentsJni.get().getHeaderInterceptorStoreFromJava(mNativeAwContents);
     }
@@ -2194,7 +2244,7 @@ public class AwContents implements SmartClipProvider {
         if (TRACE) Log.i(TAG, "%s getPdfExporter", this);
         if (isDestroyed(WARN)) return null;
         if (mAwPdfExporter == null) {
-            mAwPdfExporter = new AwPdfExporter(mContainerView);
+            mAwPdfExporter = new AwPdfExporter(mContainerView, this);
             AwContentsJni.get().createPdfExporter(mNativeAwContents, mAwPdfExporter);
         }
         return mAwPdfExporter;
@@ -4428,12 +4478,22 @@ public class AwContents implements SmartClipProvider {
         return mIsAttachedToWindow;
     }
 
+    /** Listener notified when an external surface needs to redraw. */
+    public interface InvalidateListener {
+        /**
+         * Called when the surface needs to be redrawn. {@code insideVSync} is true during a VSync
+         * BeginFrame (equivalent to {@link View#invalidate()}) and false outside VSync (equivalent
+         * to {@link View#postInvalidateOnAnimation()}).
+         */
+        void onInvalidate(boolean insideVSync);
+    }
+
     /**
      * Sets a listener to be notified when an external surface (e.g. {@link AwWebSurface}) needs to
      * redraw. This covers both native invalidations and View framework callbacks (like scroll or
      * window attachment) that normally invalidate {@code mContainerView} directly.
      */
-    public void setInvalidateListener(@Nullable Runnable listener) {
+    public void setInvalidateListener(@Nullable InvalidateListener listener) {
         mInvalidateListener = listener;
     }
 
@@ -4452,7 +4512,7 @@ public class AwContents implements SmartClipProvider {
     @CalledByNative
     private void postInvalidate(boolean insideVSync) {
         if (mInvalidateListener != null) {
-            mInvalidateListener.run();
+            mInvalidateListener.onInvalidate(insideVSync);
             return;
         }
         if (insideVSync) {
@@ -5259,9 +5319,7 @@ public class AwContents implements SmartClipProvider {
 
     @NativeMethods
     interface Natives {
-        long init(long browserContextPointer);
-
-        void destroy(long nativeAwContents);
+        JniUniquePtr<NativeAwContents> init(long browserContextPointer);
 
         boolean hasRequiredHardwareExtensions();
 
@@ -5278,7 +5336,7 @@ public class AwContents implements SmartClipProvider {
         AwContents fromWebContents(WebContents webContents);
 
         void setJavaPeers(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 AwContents awContents,
                 AwWebContentsDelegate webViewWebContentsDelegate,
                 AwContentsClientBridge contentsClientBridge,
@@ -5286,44 +5344,46 @@ public class AwContents implements SmartClipProvider {
                 InterceptNavigationDelegate navigationInterceptionDelegate,
                 AwNavigationClient navigationClient);
 
-        void initializeAndroidAutofill(long nativeAwContents);
+        void initializeAndroidAutofill(JniPtr<NativeAwContents> self);
 
-        void initSensitiveContentClient(long nativeAwContents);
+        void initSensitiveContentClient(JniPtr<NativeAwContents> self);
 
-        WebContents getWebContents(long nativeAwContents);
+        WebContents getWebContents(JniPtr<NativeAwContents> self);
 
-        AwBrowserContext getBrowserContext(long nativeAwContents);
+        AwBrowserContext getBrowserContext(JniPtr<NativeAwContents> self);
 
         JniRawPtr<AwHeaderInterceptorStore.Native> getHeaderInterceptorStoreFromJava(
-                long nativeAwContents);
+                JniPtr<NativeAwContents> self);
 
-        void setCompositorFrameConsumer(long nativeAwContents, long nativeCompositorFrameConsumer);
+        void setCompositorFrameConsumer(
+                JniPtr<NativeAwContents> self, long nativeCompositorFrameConsumer);
 
-        void documentHasImages(long nativeAwContents, Message message);
+        void documentHasImages(JniPtr<NativeAwContents> self, Message message);
 
         // Delivers `payload`, which must hold a SharedArrayBuffer, to the main frame's
         // document. Unlike WebContents#postMessageToMainFrame this can carry the shared
         // memory region backing the buffer. An empty `targetOrigin` is a wildcard.
         void postSharedArrayBufferMessageToMainFrame(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 MessagePayload payload,
                 @JniType("std::u16string") String targetOrigin,
                 @Nullable MessagePort[] ports);
 
         void generateMHTML(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 @JniType("std::string") String path,
                 Callback<String> callback);
 
         void addVisitedLinks(
-                long nativeAwContents, @JniType("std::vector<std::string>") String[] visitedLinks);
+                JniPtr<NativeAwContents> self,
+                @JniType("std::vector<std::string>") String[] visitedLinks);
 
-        void zoomBy(long nativeAwContents, float delta);
+        void zoomBy(JniPtr<NativeAwContents> self, float delta);
 
-        void onComputeScroll(long nativeAwContents, long currentAnimationTimeMillis);
+        void onComputeScroll(JniPtr<NativeAwContents> self, long currentAnimationTimeMillis);
 
         boolean onDraw(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 Canvas canvas,
                 boolean isHardwareAccelerated,
                 int scrollX,
@@ -5334,101 +5394,106 @@ public class AwContents implements SmartClipProvider {
                 int visibleBottom,
                 boolean forceAuxiliaryBitmapRendering);
 
-        float getVelocityInPixelsPerSecond(long nativeAwContents);
+        float getVelocityInPixelsPerSecond(JniPtr<NativeAwContents> self);
 
-        boolean needToDrawBackgroundColor(long nativeAwContents);
+        boolean needToDrawBackgroundColor(JniPtr<NativeAwContents> self);
 
-        void findAllAsync(long nativeAwContents, @JniType("std::u16string") String searchString);
+        void findAllAsync(
+                JniPtr<NativeAwContents> self, @JniType("std::u16string") String searchString);
 
-        void findNext(long nativeAwContents, boolean forward);
+        void findNext(JniPtr<NativeAwContents> self, boolean forward);
 
-        void clearMatches(long nativeAwContents);
+        void clearMatches(JniPtr<NativeAwContents> self);
 
-        void clearCache(long nativeAwContents, boolean includeDiskFiles);
+        void clearCache(JniPtr<NativeAwContents> self, boolean includeDiskFiles);
 
-        byte[] getCertificate(long nativeAwContents);
+        byte[] getCertificate(JniPtr<NativeAwContents> self);
 
-        void updateLastHitTestData(long nativeAwContents);
+        void updateLastHitTestData(JniPtr<NativeAwContents> self);
 
-        void onSizeChanged(long nativeAwContents, int w, int h, int ow, int oh);
+        void onSizeChanged(JniPtr<NativeAwContents> self, int w, int h, int ow, int oh);
 
-        void scrollTo(long nativeAwContents, int x, int y);
+        void scrollTo(JniPtr<NativeAwContents> self, int x, int y);
 
-        void restoreScrollAfterTransition(long nativeAwContents, int x, int y);
+        void restoreScrollAfterTransition(JniPtr<NativeAwContents> self, int x, int y);
 
-        void smoothScroll(long nativeAwContents, int targetX, int targetY, long durationMs);
+        void smoothScroll(JniPtr<NativeAwContents> self, int targetX, int targetY, long durationMs);
 
-        void setViewVisibility(long nativeAwContents, boolean visible);
+        void setViewVisibility(JniPtr<NativeAwContents> self, boolean visible);
 
-        void setWindowVisibility(long nativeAwContents, boolean visible);
+        void setWindowVisibility(JniPtr<NativeAwContents> self, boolean visible);
 
-        void setIsPaused(long nativeAwContents, boolean paused);
+        void setIsPaused(JniPtr<NativeAwContents> self, boolean paused);
 
-        void onAttachedToWindow(long nativeAwContents, int w, int h);
+        void onAttachedToWindow(JniPtr<NativeAwContents> self, int w, int h);
 
-        void onDetachedFromWindow(long nativeAwContents);
+        void onDetachedFromWindow(JniPtr<NativeAwContents> self);
 
-        boolean isVisible(long nativeAwContents);
+        boolean isVisible(JniPtr<NativeAwContents> self);
 
-        boolean isDisplayingInterstitialForTesting(long nativeAwContents);
+        boolean isDisplayingInterstitialForTesting(JniPtr<NativeAwContents> self);
 
-        void setDipScale(long nativeAwContents, float dipScale);
+        void setDipScale(JniPtr<NativeAwContents> self, float dipScale);
 
         @JniType("std::string")
-        String getScheme(long nativeAwContents);
+        String getScheme(JniPtr<NativeAwContents> self);
 
-        void onInputEvent(long nativeAwContents);
+        void onInputEvent(JniPtr<NativeAwContents> self);
 
         // Returns null if save state fails.
-        byte[] getOpaqueState(long nativeAwContents, int maxSize, boolean includeForwardState);
+        byte[] getOpaqueState(
+                JniPtr<NativeAwContents> self, int maxSize, boolean includeForwardState);
 
         // Returns false if restore state fails.
-        boolean restoreFromOpaqueState(long nativeAwContents, byte[] state);
+        boolean restoreFromOpaqueState(JniPtr<NativeAwContents> self, byte[] state);
 
-        long releasePopupAwContents(long nativeAwContents);
+        @Nullable
+        JniUniquePtr<NativeAwContents> releasePopupAwContents(JniPtr<NativeAwContents> self);
 
-        void focusFirstNode(long nativeAwContents);
+        void focusFirstNode(JniPtr<NativeAwContents> self);
 
-        void setBackgroundColor(long nativeAwContents, int color);
+        void setBackgroundColor(JniPtr<NativeAwContents> self, int color);
 
-        long capturePicture(long nativeAwContents, int width, int height);
+        long capturePicture(JniPtr<NativeAwContents> self, int width, int height);
 
-        void enableOnNewPicture(long nativeAwContents, boolean enabled);
+        void enableOnNewPicture(JniPtr<NativeAwContents> self, boolean enabled);
 
         void insertVisualStateCallback(
-                long nativeAwContents, long requestId, VisualStateCallback callback);
+                JniPtr<NativeAwContents> self, long requestId, VisualStateCallback callback);
 
-        void clearView(long nativeAwContents);
+        void clearView(JniPtr<NativeAwContents> self);
 
         void setExtraHeadersForUrl(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 @JniType("std::string") String url,
                 @JniType("std::string") String extraHeaders);
 
         void invokeGeolocationCallback(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 boolean value,
                 @JniType("std::string") String requestingFrame);
 
-        int getEffectivePriority(long nativeAwContents);
+        int getEffectivePriority(JniPtr<NativeAwContents> self);
 
-        void setJsOnlineProperty(long nativeAwContents, boolean networkUp);
+        void setJsOnlineProperty(JniPtr<NativeAwContents> self, boolean networkUp);
 
-        void trimMemory(long nativeAwContents, int level, boolean visible);
+        void trimMemory(JniPtr<NativeAwContents> self, int level, boolean visible);
 
-        void createPdfExporter(long nativeAwContents, AwPdfExporter awPdfExporter);
+        void createPdfExporter(JniPtr<NativeAwContents> self, AwPdfExporter awPdfExporter);
 
         void preauthorizePermission(
-                long nativeAwContents, @JniType("std::string") String origin, long resources);
+                JniPtr<NativeAwContents> self,
+                @JniType("std::string") String origin,
+                long resources);
 
-        void grantFileSchemeAccesstoChildProcess(long nativeAwContents);
+        void grantFileSchemeAccesstoChildProcess(JniPtr<NativeAwContents> self);
 
-        void resumeLoadingCreatedPopupWebContents(long nativeAwContents);
+        void resumeLoadingCreatedPopupWebContents(JniPtr<NativeAwContents> self);
 
-        AwRenderProcess getRenderProcess(long nativeAwContents);
+        AwRenderProcess getRenderProcess(JniPtr<NativeAwContents> self);
 
         int addPersistentJavaScript(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 @JniType("std::u16string") String script,
                 @JniType("js_injection::mojom::DocumentInjectionTime")
                         @DocumentInjectionTime.EnumType
@@ -5436,39 +5501,43 @@ public class AwContents implements SmartClipProvider {
                 @JniType("std::vector<std::string>") String[] allowedOriginRules,
                 int worldId);
 
-        void removePersistentJavaScript(long nativeAwContents, int scriptId);
+        void removePersistentJavaScript(JniPtr<NativeAwContents> self, int scriptId);
 
         @JniType("std::u16string")
         String addWebMessageListener(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 WebMessageListenerHolder listener,
                 @JniType("std::u16string") String jsObjectName,
                 @JniType("std::vector<std::string>") String[] allowedOrigins,
                 int worldId);
 
         void removeWebMessageListener(
-                long nativeAwContents, @JniType("std::u16string") String jsObjectName, int worldId);
+                JniPtr<NativeAwContents> self,
+                @JniType("std::u16string") String jsObjectName,
+                int worldId);
 
         @JniType("std::vector")
-        WebMessageListenerInfo[] getWebMessageListenerInfos(long nativeAwContents);
+        WebMessageListenerInfo[] getWebMessageListenerInfos(JniPtr<NativeAwContents> self);
 
         @JniType("std::vector")
-        PersistentJavascriptInfo[] getPersistentJavascripts(long nativeAwContents);
+        PersistentJavascriptInfo[] getPersistentJavascripts(JniPtr<NativeAwContents> self);
 
-        void flushBackForwardCache(long nativeAwContents, int reason);
+        void flushBackForwardCache(JniPtr<NativeAwContents> self, int reason);
 
         long startPrerendering(
-                long nativeAwContents,
+                JniPtr<NativeAwContents> self,
                 @JniType("std::string") String prerenderingUrl,
                 @Nullable AwPrefetchParameters prefetchParameters,
                 @JniType("base::OnceClosure") Runnable activationCallback,
                 @JniType("base::OnceClosure") Runnable errorCallback);
 
-        void cancelPrerendering(long nativeAwContents, long prerenderId);
+        void cancelPrerendering(JniPtr<NativeAwContents> self, long prerenderId);
 
-        void cancelAllPrerendering(long nativeAwContents);
+        void cancelAllPrerendering(JniPtr<NativeAwContents> self);
 
         void setGoogleAccountMirroringEnabled(
-                long nativeAwContents, boolean enabled, @JniType("std::string") String gaiaId);
+                JniPtr<NativeAwContents> self,
+                boolean enabled,
+                @JniType("std::string") String gaiaId);
     }
 }

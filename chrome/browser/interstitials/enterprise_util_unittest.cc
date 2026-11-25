@@ -13,17 +13,19 @@
 #include "chrome/browser/enterprise/connectors/test/deep_scanning_test_utils.h"
 #include "chrome/browser/policy/dm_token_utils.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
+#include "chrome/browser/safe_browsing/navigation_observer/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
 #include "chrome/test/base/testing_profile_manager.h"
+#include "components/enterprise/buildflags/buildflags.h"
+#include "components/enterprise/connectors/core/features.h"
 #include "components/enterprise/connectors/core/reporting_test_utils.h"
 #include "components/enterprise/isolated_mode/isolated_mode_features.h"
 #include "components/enterprise/isolated_mode/prefs.h"
 #include "components/policy/core/common/cloud/dm_token.h"
 #include "components/policy/core/common/cloud/mock_cloud_policy_client.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager.h"
+#include "components/safe_browsing/content/browser/navigation_observer/safe_browsing_navigation_observer_manager.h"
 #include "components/safe_browsing/core/browser/referrer_chain_provider.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/sessions/core/session_id.h"
@@ -43,8 +45,14 @@
 #include "chrome/browser/safe_browsing/test_extension_event_observer.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS) && BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 
-#if BUILDFLAG(IS_ANDROID)
-#include "components/enterprise/connectors/core/features.h"
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) && \
+    BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "chrome/browser/enterprise/connectors/reporting/extension_actor_tracker.h"
+#endif
+
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+#include "chrome/browser/enterprise/connectors/reporting/tab_cdp_actor_tracker.h"
+#include "components/enterprise/common/proto/synced/browser_events.pb.h"
 #endif
 
 using ::testing::_;
@@ -507,3 +515,112 @@ TEST_F(InterstitialEnterpriseUtilTest,
   EXPECT_EQ("Test Tab Title",
             event_request.events().Get(0).interstitial_event().tab_title());
 }
+
+#if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) && \
+    BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+TEST_F(InterstitialEnterpriseUtilTest,
+       InterstitialEventsIncludeExtensionInitiator) {
+  scoped_feature_list_.InitAndEnableFeature(
+      enterprise_connectors::kEnterpriseExtensionActorAttribution);
+  Profile* profile = profile_manager_.CreateTestingProfile("testing_profile");
+  EnableReportingPolicy(profile);
+
+  content::WebContents* web_contents =
+      web_contents_factory_.CreateWebContents(profile);
+  enterprise_connectors::ExtensionActorTracker::SetActiveActor(
+      web_contents, "abcdefghijklmnopabcdefghijklmnop", "Page.navigate");
+
+  auto expect_upload_with_initiator = [&](auto trigger) {
+    base::RunLoop run_loop;
+    ::chrome::cros::reporting::proto::UploadEventsRequest event_request;
+    EXPECT_CALL(*client_, UploadSecurityEvent)
+        .WillOnce(
+            [&event_request, &run_loop](
+                bool,
+                ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+                policy::CloudPolicyClient::ResultCallback) {
+              event_request = std::move(request);
+              run_loop.Quit();
+            });
+    trigger();
+    run_loop.Run();
+
+    ASSERT_EQ(1, event_request.events_size());
+    EXPECT_EQ("abcdefghijklmnopabcdefghijklmnop",
+              event_request.events(0).initiator().chrome_extension().id());
+  };
+
+  expect_upload_with_initiator([&]() {
+    MaybeTriggerUrlFilteringInterstitialEvent(
+        web_contents, GURL("https://phishing.com/"), "ENTERPRISE_BLOCKED_SEEN",
+        safe_browsing::RTLookupResponse(), "Test Tab Title");
+  });
+  expect_upload_with_initiator([&]() {
+    MaybeTriggerSecurityInterstitialShownEvent(
+        web_contents, GURL("https://phishing.com/"), "PHISHING",
+        /*net_error_code=*/0, "Test Tab Title");
+  });
+  expect_upload_with_initiator([&]() {
+    MaybeTriggerSecurityInterstitialProceededEvent(
+        web_contents, GURL("https://phishing.com/"), "PHISHING",
+        /*net_error_code=*/0, "Test Tab Title");
+  });
+}
+#endif  // BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS) &&
+        // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+TEST_F(InterstitialEnterpriseUtilTest, InterstitialEventsIncludeCdpInitiator) {
+  scoped_feature_list_.InitAndEnableFeature(
+      enterprise_connectors::kEventReportingCdpAttribution);
+  Profile* profile = profile_manager_.CreateTestingProfile("testing_profile");
+  EnableReportingPolicy(profile);
+
+  content::WebContents* web_contents =
+      web_contents_factory_.CreateWebContents(profile);
+  enterprise_connectors::TabCdpActorTracker::GetOrCreateForWebContents(
+      web_contents)
+      ->buffer()
+      .OnDevToolsUiAttached();
+
+  auto expect_upload_with_initiator = [&](auto trigger) {
+    base::RunLoop run_loop;
+    ::chrome::cros::reporting::proto::UploadEventsRequest event_request;
+    EXPECT_CALL(*client_, UploadSecurityEvent)
+        .WillOnce(
+            [&event_request, &run_loop](
+                bool /*include_device_info*/,
+                ::chrome::cros::reporting::proto::UploadEventsRequest&& request,
+                policy::CloudPolicyClient::ResultCallback /*callback*/) {
+              event_request = std::move(request);
+              run_loop.Quit();
+            });
+    trigger();
+    run_loop.Run();
+
+    ASSERT_EQ(1, event_request.events_size());
+    EXPECT_EQ(::chrome::cros::reporting::proto::BrowserFeatureInfo::
+                  FEATURE_TYPE_DEVTOOLS_UI,
+              event_request.events(0)
+                  .initiator()
+                  .browser_feature_info()
+                  .feature_type());
+  };
+
+  expect_upload_with_initiator([&]() {
+    MaybeTriggerUrlFilteringInterstitialEvent(
+        web_contents, GURL("https://phishing.com/"), "ENTERPRISE_BLOCKED_SEEN",
+        safe_browsing::RTLookupResponse(), "Test Tab Title");
+  });
+  expect_upload_with_initiator([&]() {
+    MaybeTriggerSecurityInterstitialShownEvent(
+        web_contents, GURL("https://phishing.com/"), "PHISHING",
+        /*net_error_code=*/0, "Test Tab Title");
+  });
+  expect_upload_with_initiator([&]() {
+    MaybeTriggerSecurityInterstitialProceededEvent(
+        web_contents, GURL("https://phishing.com/"), "PHISHING",
+        /*net_error_code=*/0, "Test Tab Title");
+  });
+}
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)

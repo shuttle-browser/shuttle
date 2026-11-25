@@ -5,6 +5,7 @@
 #include "chrome/browser/chrome_content_browser_client.h"
 
 #include <memory>
+#include <string>
 #include <string_view>
 #include <vector>
 
@@ -126,8 +127,8 @@
 #include "ui/base/clipboard/clipboard_buffer.h"
 #include "ui/base/clipboard/clipboard_monitor.h"
 #include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider.h"
 #include "ui/color/color_provider_key.h"
 #include "ui/color/color_provider_manager.h"
@@ -1139,7 +1140,7 @@ IN_PROC_BROWSER_TEST_F(ProtocolHandlerLocalOnlyTest,
       browser()->tab_strip_model()->GetActiveWebContents();
   {
     content::WebContentsConsoleObserver observer(web_contents);
-    observer.SetPattern("Not allowed to launch 'local+custom:test'.");
+    observer.SetPattern("Not allowed to launch 'local+custom:'.");
     ASSERT_TRUE(
         content::ExecJs(web_contents, "location.href = 'local+custom:test';"));
     ASSERT_TRUE(observer.Wait());
@@ -1185,7 +1186,7 @@ IN_PROC_BROWSER_TEST_F(ProtocolHandlerLocalOnlyUnmanagedTest,
   content::WebContents* web_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
   content::WebContentsConsoleObserver observer(web_contents);
-  observer.SetPattern("Not allowed to launch 'local+custom:test'.");
+  observer.SetPattern("Not allowed to launch 'local+custom:'.");
 
   ASSERT_TRUE(
       content::ExecJs(web_contents, "location.href = 'local+custom:test';"));
@@ -2000,6 +2001,9 @@ IN_PROC_BROWSER_TEST_F(IsClipboardPasteAllowedTest,
 
 class ChromeContentBrowserClientClipboardTest : public InProcessBrowserTest {
  public:
+  static constexpr std::string_view kPastedText =
+      "text copied from another app";
+
   ChromeContentBrowserClientClipboardTest() = default;
 
   void SetUpOnMainThread() override {
@@ -2039,6 +2043,56 @@ class ChromeContentBrowserClientClipboardTest : public InProcessBrowserTest {
         embedded_test_server()->GetURL(
             "a.com",
             base::StrCat({"/cross_site_iframe_factory.html?", frame_tree}))));
+  }
+
+  // Navigates to a page whose main frame, returned in `rfh`, has a focused
+  // textarea added by AddFocusedTextarea().
+  void NavigateToPageWithFocusedTextarea(content::RenderFrameHost** rfh) {
+    ASSERT_TRUE(embedded_test_server()->Start());
+    ASSERT_TRUE(ui_test_utils::NavigateToURL(
+        browser(), embedded_test_server()->GetURL("/empty.html")));
+    *rfh = browser()
+               ->tab_strip_model()
+               ->GetActiveWebContents()
+               ->GetPrimaryMainFrame();
+    (*rfh)->GetRenderWidgetHost()->Focus();
+    ASSERT_NO_FATAL_FAILURE(AddFocusedTextarea(*rfh));
+  }
+
+  // Appends a focused textarea to `rfh`'s document without giving `rfh` user
+  // activation. Sets `window.pastedText` to a promise that resolves to the
+  // textarea's value once the next paste command has been handled, whether or
+  // not reading the clipboard was allowed.
+  void AddFocusedTextarea(content::RenderFrameHost* rfh) {
+    // The paste event is dispatched before the clipboard text is inserted, so
+    // read the textarea's value in a later task.
+    ASSERT_TRUE(content::ExecJs(rfh, R"(
+          const textarea = document.createElement('textarea');
+          document.body.appendChild(textarea);
+          window.pastedText = new Promise(resolve => {
+            document.addEventListener('paste', () => {
+              setTimeout(() => resolve(textarea.value));
+            }, {once: true});
+          });
+          textarea.focus();
+        )",
+                                content::EXECUTE_SCRIPT_NO_USER_GESTURE));
+  }
+
+  // Waits for the paste command to be handled in `rfh`, and returns the text
+  // pasted into the textarea added by AddFocusedTextarea().
+  content::EvalJsResult GetPastedText(content::RenderFrameHost* rfh) {
+    // Don't use a user gesture, as activating `rfh` before it handles the
+    // paste command could authorize reading the clipboard.
+    return content::EvalJs(rfh, "pastedText",
+                           content::EXECUTE_SCRIPT_NO_USER_GESTURE);
+  }
+
+  // Gives the page containing `rfh` focus again without changing which of its
+  // frames is focused, since the page loses focus whenever its browser window
+  // is deactivated, e.g. by another test's window when tests run in parallel.
+  void FocusPage(content::RenderFrameHost* rfh) {
+    rfh->GetRenderWidgetHost()->Focus();
   }
 };
 
@@ -2289,6 +2343,92 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_TRUE(IsClipboardPasteAllowed(rfh));
 }
 
+// Browser-issued paste (e.g. macOS Edit > Paste) serves as user activation,
+// allowing clipboard access without prior activation.
+// (https://crbug.com/559872994)
+IN_PROC_BROWSER_TEST_F(ChromeContentBrowserClientClipboardTest,
+                       PasteAllowedByPasteCommand_MainFrame) {
+  content::BrowserTestClipboardScope clipboard;
+  clipboard.SetText(std::string(kPastedText));
+  content::RenderFrameHost* rfh = nullptr;
+  ASSERT_NO_FATAL_FAILURE(NavigateToPageWithFocusedTextarea(&rfh));
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  FocusPage(rfh);
+  ASSERT_TRUE(rfh->IsFocused());
+  ASSERT_FALSE(rfh->HasTransientUserActivation());
+  ASSERT_FALSE(web_contents->HasRecentInteraction());
+  ASSERT_FALSE(IsClipboardPasteAllowed(rfh));
+
+  web_contents->Paste();
+  EXPECT_TRUE(IsClipboardPasteAllowed(rfh));
+  EXPECT_EQ(kPastedText, GetPastedText(rfh));
+  EXPECT_FALSE(rfh->HasTransientUserActivation());
+  EXPECT_TRUE(web_contents->HasRecentInteraction());
+}
+
+// Browser-issued paste and match style serves as user activation, allowing
+// clipboard access without prior activation. (https://crbug.com/559872994)
+IN_PROC_BROWSER_TEST_F(ChromeContentBrowserClientClipboardTest,
+                       PasteAllowedByPasteAndMatchStyleCommand_MainFrame) {
+  content::BrowserTestClipboardScope clipboard;
+  clipboard.SetText(std::string(kPastedText));
+  content::RenderFrameHost* rfh = nullptr;
+  ASSERT_NO_FATAL_FAILURE(NavigateToPageWithFocusedTextarea(&rfh));
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  FocusPage(rfh);
+  ASSERT_TRUE(rfh->IsFocused());
+  ASSERT_FALSE(rfh->HasTransientUserActivation());
+  ASSERT_FALSE(web_contents->HasRecentInteraction());
+  ASSERT_FALSE(IsClipboardPasteAllowed(rfh));
+
+  web_contents->PasteAndMatchStyle();
+  EXPECT_TRUE(IsClipboardPasteAllowed(rfh));
+  EXPECT_EQ(kPastedText, GetPastedText(rfh));
+  EXPECT_FALSE(rfh->HasTransientUserActivation());
+  EXPECT_TRUE(web_contents->HasRecentInteraction());
+}
+
+// Browser-issued paste in a cross-origin iframe serves as user activation,
+// allowing clipboard access without prior activation.
+// (https://crbug.com/559872994)
+IN_PROC_BROWSER_TEST_F(ChromeContentBrowserClientClipboardTest,
+                       PasteAllowedByPasteCommand_CrossOriginSubframe) {
+  content::BrowserTestClipboardScope clipboard;
+  clipboard.SetText(std::string(kPastedText));
+  content::RenderFrameHost* parent_rfh = nullptr;
+  content::RenderFrameHost* child_rfh = nullptr;
+  ASSERT_NO_FATAL_FAILURE(
+      NavigateToPageWithCrossOriginIframe(&parent_rfh, &child_rfh));
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  parent_rfh->GetRenderWidgetHost()->Focus();
+  // If the page wasn't focused when the iframe loaded, e.g. because another
+  // test's window was active, focusing the page makes the iframe's renderer
+  // focus the main frame. Wait for that before focusing the iframe, so that it
+  // can't override focusing the iframe.
+  ASSERT_TRUE(
+      content::ExecJs(child_rfh, "", content::EXECUTE_SCRIPT_NO_USER_GESTURE));
+  ASSERT_TRUE(content::ExecJs(parent_rfh,
+                              "document.querySelector('iframe').focus();",
+                              content::EXECUTE_SCRIPT_NO_USER_GESTURE));
+  ASSERT_NO_FATAL_FAILURE(AddFocusedTextarea(child_rfh));
+  FocusPage(parent_rfh);
+  ASSERT_TRUE(child_rfh->IsFocused());
+  ASSERT_FALSE(parent_rfh->HasTransientUserActivation());
+  ASSERT_FALSE(child_rfh->HasTransientUserActivation());
+  ASSERT_FALSE(web_contents->HasRecentInteraction());
+  ASSERT_FALSE(IsClipboardPasteAllowed(child_rfh));
+
+  web_contents->Paste();
+  EXPECT_TRUE(IsClipboardPasteAllowed(child_rfh));
+  EXPECT_EQ(kPastedText, GetPastedText(child_rfh));
+  EXPECT_FALSE(parent_rfh->HasTransientUserActivation());
+  EXPECT_FALSE(child_rfh->HasTransientUserActivation());
+  EXPECT_TRUE(web_contents->HasRecentInteraction());
+}
+
 class TopChromeChromeContentBrowserClientTest
     : public ChromeContentBrowserClientBrowserTest {
  public:
@@ -2485,7 +2625,7 @@ IN_PROC_BROWSER_TEST_F(ChromeContentBrowserClientBrowserTest, OpenURL) {
   for (const GURL& url : urls) {
     content::OpenURLParams params =
         content::OpenURLParams::CreateBrowserInitiated(
-            url, WindowOpenDisposition::kNewForegroundTab,
+            url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
             ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
     // TODO(peter): We should have more in-depth browser tests for the window
     // opening functionality, which also covers Android. This test can currently

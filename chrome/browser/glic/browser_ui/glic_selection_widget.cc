@@ -12,6 +12,7 @@
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
 #include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_ink_drop_util.h"
@@ -30,16 +31,15 @@
 #include "ui/compositor/scoped_layer_animation_settings.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/animation/tween.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/gfx/text_elider.h"
 #include "ui/gfx/text_utils.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/views/accessibility/view_accessibility.h"
-#include "ui/views/animation/ink_drop.h"
 #include "ui/views/bubble/bubble_border.h"
 #include "ui/views/controls/button/image_button.h"
 #include "ui/views/controls/button/image_button_factory.h"
 #include "ui/views/controls/button/md_text_button.h"
-#include "ui/views/controls/highlight_path_generator.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/style/typography.h"
 #include "ui/views/view_class_properties.h"
@@ -60,12 +60,11 @@ constexpr int kSmallChipCornerRadius = 15;
 constexpr int kSmallChipVerticalOffset = 4;
 constexpr base::TimeDelta kFadeInDuration = base::Milliseconds(250);
 
-std::u16string GetCtaLabel() {
-  std::string cta = features::kGlicSelectionPromptCta.Get();
-  if (cta == features::kGlicSelectionPromptCtaTellMe) {
+std::u16string GetCtaLabel(std::string_view cta) {
+  if (cta == GlicSelectionInlineCueFeatureParams::kCtaTellMe) {
     return l10n_util::GetStringUTF16(IDS_GLIC_SELECTION_CTA_TELL_ME);
   }
-  if (cta == features::kGlicSelectionPromptCtaExplain) {
+  if (cta == GlicSelectionInlineCueFeatureParams::kCtaExplain) {
     return l10n_util::GetStringUTF16(IDS_GLIC_SELECTION_CTA_EXPLAIN);
   }
   return l10n_util::GetStringUTF16(IDS_GLIC_BUTTON_ENTRYPOINT_ASK_GEMINI_LABEL);
@@ -83,8 +82,10 @@ class GlicSelectionContentsView : public views::View {
   METADATA_HEADER(GlicSelectionContentsView, views::View)
 
  public:
-  GlicSelectionContentsView(GlicSelectionWidgetDelegate* widget_delegate,
-                            const std::u16string& selected_text)
+  GlicSelectionContentsView(
+      GlicSelectionWidgetDelegate* widget_delegate,
+      const std::u16string& selected_text,
+      const GlicSelectionInlineCueFeatureParams& feature_params)
       : widget_delegate_(widget_delegate) {
     const bool is_small_chip =
         base::FeatureList::IsEnabled(features::kGlicSelectionSmallChip);
@@ -95,16 +96,16 @@ class GlicSelectionContentsView : public views::View {
     auto border1 = std::make_unique<views::BubbleBorder>(
         views::BubbleBorder::NONE, views::BubbleBorder::STANDARD_SHADOW);
     border1->set_background_color(ui::kColorSysSurface);
+    gfx::RoundedCornersF small_chip_corners;
     if (is_small_chip) {
-      if (features::kGlicSelectionSmallChipOnTop.Get()) {
-        border1->set_rounded_corners(
-            gfx::RoundedCornersF(kSmallChipCornerRadius, kSmallChipCornerRadius,
-                                 kSmallChipCornerRadius, 0));
-      } else {
-        border1->set_rounded_corners(gfx::RoundedCornersF(
-            0, kSmallChipCornerRadius, kSmallChipCornerRadius,
-            kSmallChipCornerRadius));
-      }
+      small_chip_corners = features::kGlicSelectionSmallChipOnTop.Get()
+                               ? gfx::RoundedCornersF(kSmallChipCornerRadius,
+                                                      kSmallChipCornerRadius,
+                                                      kSmallChipCornerRadius, 0)
+                               : gfx::RoundedCornersF(0, kSmallChipCornerRadius,
+                                                      kSmallChipCornerRadius,
+                                                      kSmallChipCornerRadius);
+      border1->set_rounded_corners(small_chip_corners);
     } else {
       border1->set_rounded_corners(gfx::RoundedCornersF(kCornerRadius));
     }
@@ -147,7 +148,8 @@ class GlicSelectionContentsView : public views::View {
     auto ask_gemini_tooltip = l10n_util::GetStringFUTF16(
         IDS_GLIC_SELECTION_ASK_ABOUT,
         base::StrCat({u"\"", truncated_text, u"\""}));
-    std::u16string cta_label = is_small_chip ? u"" : GetCtaLabel();
+    std::u16string cta_label =
+        is_small_chip ? u"" : GetCtaLabel(feature_params.cta);
     auto* ask_gemini_btn =
         ask_pill_->AddChildView(std::make_unique<views::MdTextButton>(
             base::BindRepeating(
@@ -174,7 +176,7 @@ class GlicSelectionContentsView : public views::View {
     } else {
       ask_gemini_btn->SetCustomPadding(gfx::Insets::TLBR(5, 6, 5, 6));
     }
-    ask_gemini_btn->SetBgColorOverrideDeprecated(SK_ColorTRANSPARENT);
+    ask_gemini_btn->SetBgColorOverride(SK_ColorTRANSPARENT);
     ask_gemini_btn->SetInstallFocusRingOnFocus(false);
 
     ask_gemini_btn_ = ask_gemini_btn;
@@ -190,22 +192,13 @@ class GlicSelectionContentsView : public views::View {
 
     if (is_small_chip) {
       ask_gemini_btn->GetViewAccessibility().SetName(ask_gemini_tooltip);
-      ask_gemini_btn->SetShowInkDropWhenHotTracked(false);
-      ask_gemini_btn->SetHasInkDropActionOnClick(false);
-      views::InkDrop::Get(ask_gemini_btn)
-          ->SetMode(views::InkDropHost::InkDropMode::OFF);
+      ask_gemini_btn->SetCornerRadii(small_chip_corners);
     } else {
-      views::InkDrop::Get(ask_gemini_btn)
-          ->SetMode(views::InkDropHost::InkDropMode::ON);
-      ask_gemini_btn->SetHasInkDropActionOnClick(true);
-      ask_gemini_btn->SetShowInkDropWhenHotTracked(true);
       constexpr int kBtnCornerRadius = kCornerRadius - 2;
-      views::InstallRoundRectHighlightPathGenerator(
-          ask_gemini_btn, gfx::Insets(), kBtnCornerRadius);
       ask_gemini_btn->SetCornerRadius(kBtnCornerRadius);
     }
 
-    if (features::kGlicSelectionShowCopyButtons.Get() && !is_small_chip) {
+    if (feature_params.show_copy_buttons && !is_small_chip) {
       // Copy Button
       auto copy_tooltip = gfx::LocateAndRemoveAcceleratorChar(
           l10n_util::GetStringUTF16(IDS_APP_COPY), nullptr, nullptr);
@@ -278,6 +271,9 @@ class GlicSelectionContentsView : public views::View {
 
   void OnMouseEntered(const ui::MouseEvent& event) override {
     RefreshAskGeminiState();
+    if (widget_delegate_) {
+      widget_delegate_->action_delegate().OnHovered();
+    }
   }
 
   void OnMouseExited(const ui::MouseEvent& event) override {
@@ -337,7 +333,8 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(GlicSelectionWidgetDelegate,
 GlicSelectionWidgetDelegate::GlicSelectionWidgetDelegate(
     ActionDelegate& action_delegate,
     const gfx::Rect& anchor_rect,
-    const std::u16string& selected_text)
+    const std::u16string& selected_text,
+    const GlicSelectionInlineCueFeatureParams& feature_params)
     : BubbleDialogDelegate(
           nullptr,
           base::FeatureList::IsEnabled(features::kGlicSelectionSmallChip)
@@ -349,8 +346,8 @@ GlicSelectionWidgetDelegate::GlicSelectionWidgetDelegate(
           /*autosize=*/true),
       action_delegate_(action_delegate),
       original_anchor_rect_(anchor_rect) {
-  SetContentsView(
-      std::make_unique<GlicSelectionContentsView>(this, selected_text));
+  SetContentsView(std::make_unique<GlicSelectionContentsView>(
+      this, selected_text, feature_params));
 
   SetButtons(static_cast<int>(ui::mojom::DialogButton::kNone));
   SetShowCloseButton(false);

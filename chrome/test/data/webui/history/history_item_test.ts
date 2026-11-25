@@ -12,6 +12,11 @@ import {eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test
 
 import {TestHistoryBrowserProxy} from './test_browser_proxy.js';
 import {createHistoryEntry, createSearchEntry} from './test_util.js';
+// <if expr="is_android">
+// clang-format off
+import {assertPx} from './test_util.js';
+// clang-format on
+// </if>
 
 const TEST_HISTORY_RESULTS = [
   createHistoryEntry('2016-03-16 10:00', 'http://www.google.com'),
@@ -72,6 +77,7 @@ suite('<history-item> unit test', function() {
     assertNotEquals(initialTitle, time.title);
   });
 
+  // <if expr="not is_android">
   test(
       'website title margin adapts to critical actions flag', async function() {
         loadTimeData.overrideValues({isCriticalActionsEnabled: true});
@@ -96,7 +102,153 @@ suite('<history-item> unit test', function() {
                 .getPropertyValue('--website-title-margin-start')
                 .trim());
       });
+  // </if>
 });
+
+// <if expr="is_android">
+suite('<history-item> android test', function() {
+  let startItem: HistoryItemElement;
+  let nextItem: HistoryItemElement;
+  let dir: string;
+
+  setup(async function() {
+    dir = document.documentElement.dir;
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    loadTimeData.overrideValues({
+      isBrowsingHistoryCollapsibleDayCardsEnabled: true,
+      isCriticalActionsEnabled: false,
+    });
+    BrowserProxyImpl.setInstance(new TestHistoryBrowserProxy());
+
+    startItem = document.createElement('history-item');
+    startItem.item = TEST_HISTORY_RESULTS[0]!;
+    startItem.toggleAttribute('is-card-start', true);
+    document.body.appendChild(startItem);
+    nextItem = document.createElement('history-item');
+    nextItem.item = TEST_HISTORY_RESULTS[1]!;
+    nextItem.toggleAttribute('is-card-end', true);
+    document.body.appendChild(nextItem);
+    await microtasksFinished();
+  });
+
+  teardown(function() {
+    document.documentElement.dir = dir;
+  });
+
+  function rectOf(item: HistoryItemElement, selector: string): DOMRect {
+    const element = item.shadowRoot.querySelector(selector);
+    assertTrue(!!element, selector);
+    return element.getBoundingClientRect();
+  }
+
+  test('DomainUnderTitle', function() {
+    const titleRect = rectOf(startItem, '.website-title');
+    const domainRect = rectOf(startItem, '#domain');
+    assertPx(titleRect.left, domainRect.left);
+    // Allow for layout rounding at fractional device scale factors.
+    assertTrue(domainRect.top >= titleRect.bottom - 0.05);
+  });
+
+  test('TimeGapSeparator', async function() {
+    startItem.hasTimeGap = true;
+    await microtasksFinished();
+    const separator = startItem.shadowRoot.querySelector('#time-gap-separator');
+    assertTrue(!!separator);
+    assertFalse(isVisible(separator));
+  });
+
+  test('ActorIconKeepsDomainUnderTitle', async function() {
+    loadTimeData.overrideValues({isCriticalActionsEnabled: true});
+    const item = document.createElement('history-item');
+    item.item = {...TEST_HISTORY_RESULTS[0]!, isActorVisit: true};
+    document.body.appendChild(item);
+    await microtasksFinished();
+    const titleRect = rectOf(item, '.website-title');
+    assertPx(titleRect.left, rectOf(item, '#domain').left);
+    assertTrue(
+        rectOf(item, '#title-and-domain #actor-icon').right <= titleRect.left);
+  });
+
+  function corners(item: HistoryItemElement, selector: string): string {
+    const element = item.shadowRoot.querySelector(selector);
+    assertTrue(!!element, selector);
+    const style = element.computedStyleMap();
+    return [
+      'border-top-left-radius',
+      'border-top-right-radius',
+      'border-bottom-left-radius',
+      'border-bottom-right-radius',
+    ].map(property => String(style.get(property)))
+        .join(' ');
+  }
+
+  test('HoverLayerFollowsCardCorners', function() {
+    for (const item of [startItem, nextItem]) {
+      assertEquals(
+          corners(item, '#background'), corners(item, '#item-container'));
+    }
+  });
+
+  test('CollapsedHeaderKeepsLayout', async function() {
+    const expandedHeader = rectOf(startItem, '#date-accessed');
+    const expandedTitle = rectOf(startItem, '[role=heading]');
+    const expandedButton = rectOf(startItem, '#cardCollapseButton');
+    startItem.isCardCollapsed = true;
+    await microtasksFinished();
+    assertTrue(startItem.hasAttribute('is-card-collapsed'));
+    assertPx(expandedHeader.height, rectOf(startItem, '#date-accessed').height);
+    assertPx(expandedTitle.top, rectOf(startItem, '[role=heading]').top);
+    assertPx(expandedButton.top, rectOf(startItem, '#cardCollapseButton').top);
+  });
+
+  function getOffsets(
+      item: HistoryItemElement, fromRight: boolean): Record<string, number> {
+    const rowRect = item.getBoundingClientRect();
+    const offsets: Record<string, number> = {};
+    for (const selector
+             of ['#checkbox', '#timeAccessed', '.website-icon',
+                 '.website-title', '#domain']) {
+      const rect = rectOf(item, selector);
+      offsets[selector] =
+          fromRight ? rowRect.right - rect.right : rect.left - rowRect.left;
+    }
+    return offsets;
+  }
+
+  test('SearchResultsUseFixedDateColumn', async function() {
+    startItem.item = {...TEST_HISTORY_RESULTS[0]!, readableTimestamp: 'Jun 6'};
+    nextItem.item = {
+      ...TEST_HISTORY_RESULTS[1]!,
+      readableTimestamp: 'A date much longer than the date column',
+    };
+    await microtasksFinished();
+    const longTime = nextItem.$.timeAccessed;
+
+    // Long times are truncated without moving the tile.
+    const browseIconLeft = startItem.$.icon.getBoundingClientRect().left;
+    assertPx(browseIconLeft, nextItem.$.icon.getBoundingClientRect().left);
+    assertTrue(longTime.scrollWidth > longTime.clientWidth);
+
+    // Search results get a wider date column. Short and long dates still
+    // leave the tiles in one column, and long dates are truncated.
+    startItem.toggleAttribute('is-search', true);
+    nextItem.toggleAttribute('is-search', true);
+    const searchIconLeft = startItem.$.icon.getBoundingClientRect().left;
+    assertTrue(searchIconLeft > browseIconLeft);
+    assertPx(searchIconLeft, nextItem.$.icon.getBoundingClientRect().left);
+    assertTrue(longTime.scrollWidth > longTime.clientWidth);
+  });
+
+  test('RightToLeft', function() {
+    const ltrOffsets = getOffsets(startItem, /* fromRight= */ false);
+    document.documentElement.dir = 'rtl';
+    const rtlOffsets = getOffsets(startItem, /* fromRight= */ true);
+    for (const [selector, offset] of Object.entries(ltrOffsets)) {
+      assertPx(offset, rtlOffsets[selector]!, selector);
+    }
+  });
+});
+// </if>
 
 suite('<history-item> integration test', function() {
   let element: HistoryListElement;
@@ -286,7 +438,9 @@ suite('<history-item> integration test', function() {
     assertFalse(collapse.hasAttribute('opened'));
     const timeGapSeparator =
         items[1]!.shadowRoot.querySelector<HTMLElement>('#time-gap-separator');
+    // <if expr="not is_android">
     assertTrue(isVisible(timeGapSeparator));
+    // </if>
 
     actorExpandBtn!.click();
     await microtasksFinished();
@@ -360,7 +514,9 @@ suite('<history-item> integration test', function() {
     actorExpandBtn!.click();
     await microtasksFinished();
     assertFalse(collapse.hasAttribute('opened'));
+    // <if expr="not is_android">
     assertTrue(isVisible(timeGapSeparator));
+    // </if>
     assertEquals(
         1, testProxy.actionMap['HistoryPage_CriticalActionsCollapsed']);
   });
@@ -538,4 +694,90 @@ suite('<history-item> integration test', function() {
             items[0]!.shadowRoot.querySelectorAll('.critical-action-row');
         assertEquals(1, actionRows.length);
       });
+
+  test('day card collapse disabled by default', async function() {
+    loadTimeData.overrideValues({
+      isBrowsingHistoryCollapsibleDayCardsEnabled: false,
+    });
+    element.addNewResults(TEST_HISTORY_RESULTS, false, true);
+    await microtasksFinished();
+
+    const items = element.shadowRoot.querySelectorAll('history-item');
+    assertEquals(TEST_HISTORY_RESULTS.length, items.length);
+    assertEquals(
+        null, items[0]!.shadowRoot.querySelector('#cardCollapseButton'));
+
+    const dateAccessed =
+        items[0]!.shadowRoot.querySelector<HTMLElement>('#date-accessed')!;
+    dateAccessed.click();
+    await microtasksFinished();
+
+    assertFalse(items[0]!.isCardCollapsed);
+    assertTrue(isVisible(items[1]!));
+  });
+
+  test('collapse and expand day card', async function() {
+    loadTimeData.overrideValues({
+      isBrowsingHistoryCollapsibleDayCardsEnabled: true,
+    });
+    element.addNewResults(TEST_HISTORY_RESULTS, false, true);
+    await microtasksFinished();
+
+    const items = element.shadowRoot.querySelectorAll('history-item');
+    assertEquals(TEST_HISTORY_RESULTS.length, items.length);
+
+    assertTrue(items[0]!.isCardStart);
+    assertFalse(items[0]!.isCardEnd);
+    assertFalse(items[0]!.isCardCollapsed);
+    assertTrue(items[4]!.isCardEnd);
+
+    const dateAccessed =
+        items[0]!.shadowRoot.querySelector<HTMLElement>('#date-accessed')!;
+    assertEquals('true', dateAccessed.getAttribute('aria-expanded'));
+    const collapseBtn = items[0]!.shadowRoot.querySelector<HTMLElement>(
+        '#cardCollapseButton')!;
+    assertTrue(!!collapseBtn);
+    assertEquals(
+        'cr:keyboard-arrow-up', collapseBtn.getAttribute('iron-icon'));
+    const cardCollapse =
+        items[0]!.shadowRoot.querySelector<HTMLElement>('#card-collapse')!;
+    assertTrue(cardCollapse.hasAttribute('opened'));
+    assertTrue(isVisible(items[1]!));
+    assertTrue(isVisible(items[4]!));
+
+    // Collapse the 2016-03-16 card via the header collapse button.
+    collapseBtn.click();
+    await microtasksFinished();
+
+    assertTrue(items[0]!.isCardCollapsed);
+    assertTrue(items[0]!.isCardEnd);
+    assertEquals('false', dateAccessed.getAttribute('aria-expanded'));
+    assertEquals(
+        'cr:keyboard-arrow-down', collapseBtn.getAttribute('iron-icon'));
+    assertFalse(cardCollapse.hasAttribute('opened'));
+    assertFalse(isVisible(
+        items[0]!.shadowRoot.querySelector<HTMLElement>('#item-container')));
+    assertFalse(isVisible(items[1]!));
+    assertFalse(isVisible(items[2]!));
+    assertFalse(isVisible(items[3]!));
+    assertFalse(isVisible(items[4]!));
+
+    // The 2016-03-15 card remains visible and expanded.
+    assertFalse(items[5]!.isCardCollapsed);
+    assertTrue(isVisible(items[5]!));
+
+    // Re-expand the 2016-03-16 card by clicking the card header.
+    dateAccessed.click();
+    await microtasksFinished();
+
+    assertFalse(items[0]!.isCardCollapsed);
+    assertFalse(items[0]!.isCardEnd);
+    assertTrue(items[4]!.isCardEnd);
+    assertEquals('true', dateAccessed.getAttribute('aria-expanded'));
+    assertEquals(
+        'cr:keyboard-arrow-up', collapseBtn.getAttribute('iron-icon'));
+    assertTrue(cardCollapse.hasAttribute('opened'));
+    assertTrue(isVisible(items[1]!));
+    assertTrue(isVisible(items[4]!));
+  });
 });

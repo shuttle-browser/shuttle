@@ -154,6 +154,8 @@ class CORE_EXPORT LayoutInline : public LayoutBoxModelObject {
   PhysicalRect LinesVisualOverflowBoundingBox() const;
   PhysicalRect VisualOverflowRect() const final;
 
+  void RecalcVisualOverflow() final;
+
   bool HasInlineFragments() const final;
   wtf_size_t FirstInlineFragmentItemIndex() const final;
   void ClearFirstInlineFragmentItemIndex() final;
@@ -275,8 +277,6 @@ class CORE_EXPORT LayoutInline : public LayoutBoxModelObject {
   // LayoutInline. It maybe flipped to true later for other conditions.
   bool ComputeInitialShouldCreateBoxFragment() const;
   bool ComputeInitialShouldCreateBoxFragment(const ComputedStyle& style) const;
-
-  PhysicalRect CulledInlineVisualOverflowBoundingBox() const;
 
   // PhysicalRectCollector should be like a function:
   // void (const PhysicalRect&).

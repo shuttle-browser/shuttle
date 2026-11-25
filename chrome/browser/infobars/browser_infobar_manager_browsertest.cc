@@ -19,16 +19,18 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/pref_names.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "components/infobars/content/content_infobar_manager.h"
 #include "components/infobars/core/confirm_infobar_delegate.h"
 #include "components/infobars/core/infobar.h"
 #include "components/infobars/core/infobar_delegate.h"
+#include "components/prefs/pref_service.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/test/browser_test.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/gfx/vector_icon_types.h"
 #include "url/gurl.h"
 
@@ -532,7 +534,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
               }))
           .SetInlineLinkCallback(base::BindLambdaForTesting(
               [&](content::WebContents* contents, size_t index,
-                  WindowOpenDisposition) {
+                  ui::mojom::WindowOpenDisposition) {
                 link_contents = contents;
                 clicked_index = index;
                 return false;
@@ -562,7 +564,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
 
   // Clicking the inline link routes to the spec's callback.
   EXPECT_FALSE(delegate->InlineSubstitutionLinkClicked(
-      0u, WindowOpenDisposition::kCurrentTab));
+      0u, ui::mojom::WindowOpenDisposition::kCurrentTab));
   EXPECT_EQ(web_contents, link_contents);
   EXPECT_EQ(0u, clicked_index);
 }
@@ -660,8 +662,9 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
                                            /*accessible_name=*/std::nullopt);
                 return substitutions;
               }))
-          .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [](content::WebContents*, size_t, WindowOpenDisposition) {
+          .SetInlineLinkCallback(
+              base::BindLambdaForTesting([](content::WebContents*, size_t,
+                                            ui::mojom::WindowOpenDisposition) {
                 return true;  // Close the infobar.
               }))
           .SetResultCallback(base::BindLambdaForTesting(
@@ -688,7 +691,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
   // The click asks to close; the removal must report kLinkClicked as the
   // terminal result, not kIgnored.
   EXPECT_TRUE(delegate->InlineSubstitutionLinkClicked(
-      0u, WindowOpenDisposition::kNewForegroundTab));
+      0u, ui::mojom::WindowOpenDisposition::kNewForegroundTab));
   infobar_manager->RemoveInfoBar(infobar);
   ASSERT_EQ(1u, results.size());
   EXPECT_EQ(InfoBarResult::kLinkClicked, results[0]);
@@ -707,8 +710,9 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
                                            /*accessible_name=*/std::nullopt);
                 return substitutions;
               }))
-          .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [](content::WebContents*, size_t, WindowOpenDisposition) {
+          .SetInlineLinkCallback(
+              base::BindLambdaForTesting([](content::WebContents*, size_t,
+                                            ui::mojom::WindowOpenDisposition) {
                 return false;  // Keep the infobar open.
               }))
           .SetResultCallback(base::BindLambdaForTesting(
@@ -724,7 +728,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
       infobar_manager->infobars()[0]->delegate()->AsConfirmInfoBarDelegate();
   ASSERT_TRUE(delegate);
   EXPECT_FALSE(delegate->InlineSubstitutionLinkClicked(
-      0u, WindowOpenDisposition::kCurrentTab));
+      0u, ui::mojom::WindowOpenDisposition::kCurrentTab));
   EXPECT_EQ(1u, infobar_manager->infobars().size());
   browser()->tab_strip_model()->CloseWebContentsAt(0,
                                                    TabCloseTypes::CLOSE_NONE);
@@ -1279,7 +1283,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest, CentralizedMetrics) {
                                       1);
 
   // 5. LinkClicked and check "LinkClicked" metric.
-  delegate->LinkClicked(WindowOpenDisposition::kCurrentTab);
+  delegate->LinkClicked(ui::mojom::WindowOpenDisposition::kCurrentTab);
   histogram_tester.ExpectUniqueSample("InfoBar.Centralized.LinkClicked",
                                       identifier, 1);
 }
@@ -1620,7 +1624,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
   infobars::InfoBar* tab0_infobar = tab0_manager->infobars()[0];
 
   if (tab0_infobar->delegate()->LinkClicked(
-          WindowOpenDisposition::kNewForegroundTab)) {
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab)) {
     tab0_infobar->RemoveSelf();
   }
 
@@ -1647,8 +1651,9 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
                                            /*accessible_name=*/std::nullopt);
                 return substitutions;
               }))
-          .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [&](content::WebContents*, size_t, WindowOpenDisposition) {
+          .SetInlineLinkCallback(
+              base::BindLambdaForTesting([&](content::WebContents*, size_t,
+                                             ui::mojom::WindowOpenDisposition) {
                 chrome::AddTabAt(browser(), GURL("about:blank"), -1, true);
                 return true;
               }))
@@ -1669,7 +1674,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
   ASSERT_TRUE(tab0_delegate);
 
   if (tab0_delegate->InlineSubstitutionLinkClicked(
-          0u, WindowOpenDisposition::kNewForegroundTab)) {
+          0u, ui::mojom::WindowOpenDisposition::kNewForegroundTab)) {
     tab0_infobar->RemoveSelf();
   }
 
@@ -1695,9 +1700,8 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
                 return substitutions;
               }))
           .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [](content::WebContents*, size_t, WindowOpenDisposition) {
-                return true;
-              }))
+              [](content::WebContents*, size_t,
+                 ui::mojom::WindowOpenDisposition) { return true; }))
           .SetResultCallback(base::BindLambdaForTesting(
               [&](content::WebContents*, InfoBarResult result) {
                 results.push_back(result);
@@ -1712,7 +1716,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
   ASSERT_TRUE(delegate);
 
   EXPECT_TRUE(delegate->InlineSubstitutionLinkClicked(
-      0u, WindowOpenDisposition::kCurrentTab));
+      0u, ui::mojom::WindowOpenDisposition::kCurrentTab));
   ASSERT_EQ(1u, results.size());
   EXPECT_EQ(InfoBarResult::kLinkClicked, results[0]);
 
@@ -1735,8 +1739,9 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
                                            /*accessible_name=*/std::nullopt);
                 return substitutions;
               }))
-          .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [&](content::WebContents*, size_t, WindowOpenDisposition) {
+          .SetInlineLinkCallback(
+              base::BindLambdaForTesting([&](content::WebContents*, size_t,
+                                             ui::mojom::WindowOpenDisposition) {
                 chrome::AddTabAt(browser(), GURL("about:blank"), -1, true);
                 manager()->Hide(identifier);
                 return true;
@@ -1757,7 +1762,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
   ASSERT_TRUE(tab0_delegate);
 
   if (tab0_delegate->InlineSubstitutionLinkClicked(
-          0u, WindowOpenDisposition::kNewForegroundTab)) {
+          0u, ui::mojom::WindowOpenDisposition::kNewForegroundTab)) {
     tab0_infobar->RemoveSelf();
   }
 
@@ -1790,7 +1795,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
       browser()->tab_strip_model()->GetActiveWebContents());
   infobars::InfoBar* window1_infobar = window1_tab0_manager->infobars()[0];
   if (window1_infobar->delegate()->LinkClicked(
-          WindowOpenDisposition::kNewForegroundTab)) {
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab)) {
     window1_infobar->RemoveSelf();
   }
 
@@ -1820,8 +1825,9 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
                                            /*accessible_name=*/std::nullopt);
                 return substitutions;
               }))
-          .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [&](content::WebContents*, size_t, WindowOpenDisposition) {
+          .SetInlineLinkCallback(
+              base::BindLambdaForTesting([&](content::WebContents*, size_t,
+                                             ui::mojom::WindowOpenDisposition) {
                 chrome::AddTabAt(browser(), GURL("about:blank"), -1, true);
                 browser()->tab_strip_model()->ActivateTabAt(0);
                 return false;
@@ -1842,7 +1848,7 @@ IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
   ASSERT_TRUE(tab0_delegate);
 
   if (tab0_delegate->InlineSubstitutionLinkClicked(
-          0u, WindowOpenDisposition::kCurrentTab)) {
+          0u, ui::mojom::WindowOpenDisposition::kCurrentTab)) {
     tab0_infobar->RemoveSelf();
   }
 
@@ -1871,8 +1877,9 @@ IN_PROC_BROWSER_TEST_F(
                                            /*accessible_name=*/std::nullopt);
                 return substitutions;
               }))
-          .SetInlineLinkCallback(base::BindLambdaForTesting(
-              [&](content::WebContents*, size_t, WindowOpenDisposition) {
+          .SetInlineLinkCallback(
+              base::BindLambdaForTesting([&](content::WebContents*, size_t,
+                                             ui::mojom::WindowOpenDisposition) {
                 chrome::AddTabAt(browser(), GURL("about:blank"), -1, true);
                 return true;
               }))
@@ -1895,7 +1902,7 @@ IN_PROC_BROWSER_TEST_F(
   ASSERT_TRUE(tab0_delegate);
 
   if (tab0_delegate->InlineSubstitutionLinkClicked(
-          0u, WindowOpenDisposition::kNewForegroundTab)) {
+          0u, ui::mojom::WindowOpenDisposition::kNewForegroundTab)) {
     tab0_infobar->RemoveSelf();
   }
   ASSERT_EQ(1u, results.size());
@@ -1934,7 +1941,7 @@ IN_PROC_BROWSER_TEST_F(
           browser()->tab_strip_model()->GetActiveWebContents())
           ->infobars()[0];
   EXPECT_FALSE(window1_infobar->delegate()->LinkClicked(
-      WindowOpenDisposition::kNewBackgroundTab));
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab));
 
   infobars::InfoBar* window2_infobar =
       ContentInfoBarManager::FromWebContents(
@@ -1954,6 +1961,52 @@ IN_PROC_BROWSER_TEST_F(
   CloseBrowserSynchronously(browser2);
   ASSERT_EQ(1u, results.size());
   EXPECT_EQ(InfoBarResult::kAccepted, results[0]);
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserInfoBarManagerBrowserTest,
+                       PromotionalSpecsRespectPromotionsEnabledPref) {
+  const auto promo_tab_id = InfoBarDelegate::TEST_INFOBAR;
+  const auto promo_global_id =
+      InfoBarDelegate::DEFAULT_BROWSER_INFOBAR_DELEGATE;
+  const auto non_promo_id = InfoBarDelegate::PAGE_INFO_INFOBAR_DELEGATE;
+
+  manager()->Register(InfoBarSpec::Builder(promo_tab_id)
+                          .SetMessageText(u"Promo Tab")
+                          .SetScope(InfoBarScope::kTab)
+                          .SetIsPromotional(true)
+                          .Build());
+  manager()->Register(InfoBarSpec::Builder(promo_global_id)
+                          .SetMessageText(u"Promo Global")
+                          .SetScope(InfoBarScope::kGlobal)
+                          .SetIsPromotional(true)
+                          .Build());
+  manager()->Register(InfoBarSpec::Builder(non_promo_id)
+                          .SetMessageText(u"Non-Promo")
+                          .SetScope(InfoBarScope::kTab)
+                          .Build());
+
+  tabs::TabInterface* tab = browser()->tab_strip_model()->GetActiveTab();
+  auto* infobar_manager =
+      ContentInfoBarManager::FromWebContents(tab->GetContents());
+
+  g_browser_process->local_state()->SetBoolean(prefs::kPromotionsEnabled,
+                                               false);
+
+  EXPECT_FALSE(manager()->Show(tab, promo_tab_id));
+  EXPECT_FALSE(manager()->ShowGlobally(promo_global_id));
+  EXPECT_EQ(0u, infobar_manager->infobars().size());
+
+  infobars::InfoBar* non_promo = manager()->Show(tab, non_promo_id);
+  ASSERT_TRUE(non_promo);
+  EXPECT_EQ(1u, infobar_manager->infobars().size());
+  EXPECT_FALSE(manager()->Replace(non_promo, promo_tab_id));
+  EXPECT_EQ(1u, infobar_manager->infobars().size());
+
+  g_browser_process->local_state()->SetBoolean(prefs::kPromotionsEnabled, true);
+
+  EXPECT_TRUE(manager()->Replace(non_promo, promo_tab_id));
+  EXPECT_TRUE(manager()->ShowGlobally(promo_global_id));
+  EXPECT_EQ(2u, infobar_manager->infobars().size());
 }
 
 }  // namespace infobars

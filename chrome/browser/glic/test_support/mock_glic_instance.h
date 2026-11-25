@@ -58,6 +58,7 @@ class MockGlicInstance : public GlicInstance {
               (),
               (override));
   MOCK_METHOD(bool, IsActuating, (), (const, override));
+  MOCK_METHOD(bool, HasLiveSurface, (), (const, override));
   MOCK_METHOD(void, CancelTask, (), (override));
   MOCK_METHOD(bool, IsInvoking, (), (const, override));
   MOCK_METHOD(void, CancelInvoke, (), (override));
@@ -81,6 +82,7 @@ class MockGlicInstance : public GlicInstance {
   }
 
  private:
+  InstanceId id_{InstanceId::Create(1, 0)};
   ObservableValue<mojom::PanelState> panel_state_;
   base::WeakPtrFactory<MockGlicInstance> weak_ptr_factory_{this};
 };

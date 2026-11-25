@@ -20,11 +20,12 @@
 #include <utility>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/core/bypass_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/collection_item_id.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 namespace api2 {
@@ -75,10 +76,10 @@ class BypassCalculator : public Node {
     int size = std::min(input_streams.size(), output_streams.size());
     for (int i = 0; i < size; ++i) {
       std::pair<std::string, int> in_tag, out_tag;
-      MP_RETURN_IF_ERROR(tool::ParseTagIndex(options.pass_input_stream(i),
-                                             &in_tag.first, &in_tag.second));
-      MP_RETURN_IF_ERROR(tool::ParseTagIndex(options.pass_output_stream(i),
-                                             &out_tag.first, &out_tag.second));
+      ABSL_RETURN_IF_ERROR(tool::ParseTagIndex(options.pass_input_stream(i),
+                                               &in_tag.first, &in_tag.second));
+      ABSL_RETURN_IF_ERROR(tool::ParseTagIndex(
+          options.pass_output_stream(i), &out_tag.first, &out_tag.second));
       auto input_id = input_map.GetId(in_tag.first, in_tag.second);
       auto output_id = output_map.GetId(out_tag.first, out_tag.second);
       result[input_id] = output_id;
@@ -92,7 +93,7 @@ class BypassCalculator : public Node {
     auto options = cc->Options<BypassCalculatorOptions>();
     RET_CHECK_EQ(options.pass_input_stream().size(),
                  options.pass_output_stream().size());
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         auto pass_streams,
         GetPassMap(options, *cc->Inputs().TagMap(), *cc->Outputs().TagMap()));
     std::set<CollectionItemId> pass_out;
@@ -121,7 +122,7 @@ class BypassCalculator : public Node {
   // Saves the map of passthrough input and output stream ids.
   absl::Status Open(CalculatorContext* cc) override {
     auto options = cc->Options<BypassCalculatorOptions>();
-    MP_ASSIGN_OR_RETURN(
+    ABSL_ASSIGN_OR_RETURN(
         pass_streams_,
         GetPassMap(options, *cc->Inputs().TagMap(), *cc->Outputs().TagMap()));
     return absl::OkStatus();

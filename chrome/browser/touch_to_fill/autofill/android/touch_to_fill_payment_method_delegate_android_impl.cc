@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "base/check_deref.h"
-#include "base/containers/to_vector.h"
 #include "base/functional/callback.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -395,11 +394,11 @@ void TouchToFillPaymentMethodDelegateAndroidImpl::ScanCreditCard() {
 void TouchToFillPaymentMethodDelegateAndroidImpl::OnCreditCardScanned(
     const CreditCard& card) {
   HideTouchToFill();
-  manager_->FillOrPreviewForm(mojom::ActionPersistence::kFill,
-                              query_form_.global_id(), query_field_.global_id(),
-                              &card, AutofillTriggerSource::kScanCreditCard,
-                              /*require_user_confirmation=*/false,
-                              /*blocked_fields=*/{});
+  manager_->FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, query_form_.global_id(),
+      query_field_.global_id(), FillingProduct::kCreditCard, &card,
+      AutofillTriggerSource::kScanCreditCard,
+      /*require_user_confirmation=*/false, /*blocked_fields=*/{});
 }
 
 void TouchToFillPaymentMethodDelegateAndroidImpl::ShowPaymentMethodSettings() {
@@ -423,7 +422,7 @@ void TouchToFillPaymentMethodDelegateAndroidImpl::
   // Java.
   manager_->FillOrPreviewForm(
       mojom::ActionPersistence::kFill, query_form_.global_id(),
-      query_field_.global_id(), &card_to_fill,
+      query_field_.global_id(), FillingProduct::kCreditCard, &card_to_fill,
       AutofillTriggerSource::kKeyboardAccessoryOrBottomSheet,
       /*require_user_confirmation=*/false,
       /*blocked_fields=*/{});
@@ -443,7 +442,8 @@ void TouchToFillPaymentMethodDelegateAndroidImpl::BnplSuggestionSelected(
               delegate->manager_->FillOrPreviewForm(
                   mojom::ActionPersistence::kFill,
                   delegate->query_form_.global_id(),
-                  delegate->query_field_.global_id(), &card,
+                  delegate->query_field_.global_id(),
+                  FillingProduct::kCreditCard, &card,
                   AutofillTriggerSource::kKeyboardAccessoryOrBottomSheet,
                   /*require_user_confirmation=*/false,
                   /*blocked_fields=*/{});

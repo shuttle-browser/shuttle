@@ -4,14 +4,13 @@
 
 #include "chrome/browser/ttc/core/page_context_util.h"
 
-#include <string_view>
 #include <utility>
 
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
-#include "chrome/common/webui_url_constants.h"
+#include "chrome/browser/actor/enterprise_policy_checker.h"
+#include "chrome/browser/search/search.h"
 #include "components/actor/core/safety_list_manager.h"
-#include "content/public/common/url_constants.h"
 #include "url/gurl.h"
 
 namespace ttc {
@@ -22,17 +21,16 @@ namespace {
 // Similar to, but stricter than, Glic's IsTabValidForSharing() (see
 // chrome/browser/glic/host/context/glic_sharing_utils.cc), which also allows
 // file: URLs and a few other WebUI pages.
-// TODO(b/555804152): On Android the New Tab Page is native
-// (chrome-native://newtab/) and so is not supported here. Decide whether it
-// should be.
+//
+// The WebUI New Tab Page is allowed on every platform that serves one, which
+// includes desktop Android. The native New Tab Page used on mobile Android has
+// no DOM to extract and is not supported.
+//
+// TODO(crbug.com/555804152): Decide what page context, if any, the mobile
+// Android native New Tab Page should produce.
 bool IsSchemeAndHostSupported(const GURL& url) {
-  if (url.SchemeIs(content::kChromeUIScheme)) {
-    const std::string_view host = url.host();
-    if (host == chrome::kChromeUINewTabHost ||
-        host == chrome::kChromeUINewTabPageHost ||
-        host == chrome::kChromeUINewTabPageThirdPartyHost) {
-      return true;
-    }
+  if (search::IsWebUINewTabPageOrigin(url)) {
+    return true;
   }
   // Excludes all other chrome:// URLs, as well as file:, javascript:, about:,
   // data:, blob:, chrome-extension:, etc.
@@ -41,9 +39,18 @@ bool IsSchemeAndHostSupported(const GURL& url) {
 
 }  // namespace
 
-void IsUrlSupportedForPageContext(const GURL& url,
-                                  base::OnceCallback<void(bool)> callback) {
+void IsUrlSupportedForPageContext(
+    const GURL& url,
+    const actor::EnterprisePolicyChecker* enterprise_policy_checker,
+    base::OnceCallback<void(bool)> callback) {
   if (!IsSchemeAndHostSupported(url)) {
+    std::move(callback).Run(false);
+    return;
+  }
+
+  if (enterprise_policy_checker &&
+      enterprise_policy_checker->Evaluate(url) ==
+          actor::EnterprisePolicyChecker::UrlBlockReason::kExplicitlyBlocked) {
     std::move(callback).Run(false);
     return;
   }

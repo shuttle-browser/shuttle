@@ -5,6 +5,7 @@
 #ifndef IOS_CHROME_BROWSER_MINI_MAP_MODEL_MINI_MAP_TAB_HELPER_H_
 #define IOS_CHROME_BROWSER_MINI_MAP_MODEL_MINI_MAP_TAB_HELPER_H_
 
+#import "base/memory/weak_ptr.h"
 #import "ios/web/public/navigation/web_state_policy_decider.h"
 #import "ios/web/public/web_state.h"
 #import "ios/web/public/web_state_observer.h"
@@ -26,12 +27,6 @@ class MiniMapTabHelper : public web::WebStateUserData<MiniMapTabHelper>,
   // Sets the MiniMapCommands that can display mini maps.
   void SetMiniMapCommands(id<MiniMapCommands> mini_map_handler);
 
-  // Called when the mini map UI was shown successfully.
-  void OnMiniMapSuccess();
-
-  // Called when the mini map UI failed to show.
-  void OnMiniMapFailure();
-
   // WebStateObserver overrides:
   void PageLoaded(
       web::WebState* web_state,
@@ -48,6 +43,18 @@ class MiniMapTabHelper : public web::WebStateUserData<MiniMapTabHelper>,
   // Whether the navigation to `url` should be intercepted.
   bool ShouldInterceptRequest(NSURL* url, ui::PageTransition page_transition);
 
+  // Presents the mini map native preview for `url`.
+  void PresentMiniMapNativePreview(const GURL& url);
+
+  // Cancels `callback` and opens `url` with `transition_type` if `this` and
+  // `web_state()` are still valid.
+  void CancelAndOpenURL(PolicyDecisionCallback callback,
+                        const GURL& url,
+                        ui::PageTransition transition_type);
+
+  // Opens `params` in `web_state()` if it is still valid.
+  void OpenURL(web::WebState::OpenURLParams params);
+
   // Whether the web_state is currently on Google SRP.
   bool is_on_google_srp_ = false;
 
@@ -57,14 +64,7 @@ class MiniMapTabHelper : public web::WebStateUserData<MiniMapTabHelper>,
   // Service to observe Profile scoped prefs.
   raw_ptr<MiniMapService> mini_map_service_;
 
-  // Callback to resolve the policy decision for the intercepted request.
-  PolicyDecisionCallback policy_callback_;
-
-  // The URL to open if the mini map failed to be shown in the treatment arm.
-  GURL pending_treatment_url_;
-
-  // The transition type for the pending treatment URL.
-  ui::PageTransition pending_transition_type_;
+  base::WeakPtrFactory<MiniMapTabHelper> weak_ptr_factory_{this};
 };
 
 #endif  // IOS_CHROME_BROWSER_MINI_MAP_MODEL_MINI_MAP_TAB_HELPER_H_

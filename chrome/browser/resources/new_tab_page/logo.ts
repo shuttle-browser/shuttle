@@ -92,7 +92,7 @@ export class LogoElement extends CrLitElement {
   protected accessor useGoogleLogo26_: boolean =
       loadTimeData.getBoolean('useGoogleLogo26');
   protected accessor imageUrl_: string = '';
-  protected accessor showAnimation_: boolean = false;
+  private accessor showAnimation_: boolean = false;
   protected accessor showShareDialog_: boolean = false;
   protected accessor imageDoodleTabIndex_: number = -1;
   protected accessor webuiRoundedIconsEnabled_: boolean =
@@ -112,14 +112,6 @@ export class LogoElement extends CrLitElement {
       this.doodle_ = doodle;
       this.loaded_ = true;
     });
-  }
-
-  override connectedCallback() {
-    super.connectedCallback();
-  }
-
-  override disconnectedCallback() {
-    super.disconnectedCallback();
   }
 
   override willUpdate(changedProperties: PropertyValues<this>) {

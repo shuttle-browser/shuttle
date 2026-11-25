@@ -166,8 +166,8 @@ FLAG_COVERED = 256
 # Relevant for non-locale .pak symbols. Indicates a pak entry is stored
 # uncompressed.
 FLAG_UNCOMPRESSED = 512
-# Relevant for .data & .rodata symbols. Indicates the symbol is a Feature flag
-# placed in the .data..cr_features section.
+# Relevant for .data, .data.rel.ro & .rodata symbols. Indicates the symbol is a
+# Feature flag placed in a section with the .cr_features suffix.
 FLAG_FEATURE = 1024
 
 
@@ -839,17 +839,22 @@ class Symbol(BaseSymbol):
     self.template_name = full_name if template_name is None else template_name
     self.name = full_name if name is None else name
 
+  # The pss properties are hot, so avoid calling other properties.
   @property
   def pss(self):
-    return float(self.size) / self.num_aliases
+    aliases = self.aliases
+    return self.size / len(aliases) if aliases else float(self.size)
 
   @property
   def pss_without_padding(self):
-    return float(self.size_without_padding) / self.num_aliases
+    aliases = self.aliases
+    size = self.size - self.padding
+    return size / len(aliases) if aliases else float(size)
 
   @property
   def padding_pss(self):
-    return float(self.padding) / self.num_aliases
+    aliases = self.aliases
+    return self.padding / len(aliases) if aliases else float(self.padding)
 
 
 class DeltaSymbol(BaseSymbol):
@@ -860,11 +865,12 @@ class DeltaSymbol(BaseSymbol):
   to one symbol in the |before|, and then be an alias to another in |after|.
   """
 
-  __slots__ = ('before_symbol', 'after_symbol')
+  __slots__ = ('before_symbol', 'after_symbol', '_diff_status')
 
   def __init__(self, before_symbol, after_symbol):
     self.before_symbol = before_symbol
     self.after_symbol = after_symbol
+    self._diff_status = None
 
   def __repr__(self):
     before_container_name = (
@@ -902,6 +908,16 @@ class DeltaSymbol(BaseSymbol):
 
   @property
   def diff_status(self):
+    # Cached since it is queried many times per symbol (e.g. clustering,
+    # filtering, and describing), and is expensive to compute. Assumes that
+    # before_symbol and after_symbol are not modified after diffing.
+    ret = self._diff_status
+    if ret is None:
+      ret = self._ComputeDiffStatus()
+      self._diff_status = ret
+    return ret
+
+  def _ComputeDiffStatus(self):
     if self.before_symbol is None:
       return DIFF_STATUS_ADDED
     if self.after_symbol is None:
@@ -913,7 +929,14 @@ class DeltaSymbol(BaseSymbol):
     #     symbols all happen the same size (hence delta size = 0).
     # The purpose of checking PSS is to account for (2). However, this means (1)
     # would produce much more diffs than before!
-    if self.size != 0 or self.pss != 0:
+    # When neither symbol has aliases (and |before_symbol| is not
+    # padding-only), delta PSS == delta size, so skip computing PSS.
+    before = self.before_symbol
+    after = self.after_symbol
+    if self.size != 0 or (
+      (before.aliases or after.aliases or before.size == before.padding)
+      and self.pss != 0
+    ):
       return DIFF_STATUS_CHANGED
     return DIFF_STATUS_UNCHANGED
 
@@ -967,53 +990,55 @@ class DeltaSymbol(BaseSymbol):
 
   @property
   def padding_pss(self):
-    if self.after_symbol is None:
-      return -self.before_symbol.padding_pss
-    if self.before_symbol is None:
-      return self.after_symbol.padding_pss
+    before = self.before_symbol
+    after = self.after_symbol
+    if after is None:
+      return -before.padding_pss
+    if before is None:
+      return after.padding_pss
     # Padding tracked in aggregate, except for padding-only symbols.
-    if self.before_symbol.size_without_padding == 0:
-      return self.after_symbol.padding_pss - self.before_symbol.padding_pss
+    if before.size == before.padding:
+      return after.padding_pss - before.padding_pss
     return 0
 
   @property
   def padding(self):
-    if self.after_symbol is None:
-      return -self.before_symbol.padding
-    if self.before_symbol is None:
-      return self.after_symbol.padding
+    before = self.before_symbol
+    after = self.after_symbol
+    if after is None:
+      return -before.padding
+    if before is None:
+      return after.padding
     # Padding tracked in aggregate, except for padding-only symbols.
-    if self.before_symbol.size_without_padding == 0:
-      return self.after_symbol.padding - self.before_symbol.padding
+    if before.size == before.padding:
+      return after.padding - before.padding
     return 0
 
   @property
   def pss(self):
-    if self.after_symbol is None:
-      return -self.before_symbol.pss
-    if self.before_symbol is None:
-      return self.after_symbol.pss
+    before = self.before_symbol
+    after = self.after_symbol
+    if after is None:
+      return -before.pss
+    if before is None:
+      return after.pss
     # Padding tracked in aggregate, except for padding-only symbols.
-    if self.before_symbol.size_without_padding == 0:
-      return self.after_symbol.pss - self.before_symbol.pss
-    return (
-      self.after_symbol.pss_without_padding
-      - self.before_symbol.pss_without_padding
-    )
+    if before.size == before.padding:
+      return after.pss - before.pss
+    return after.pss_without_padding - before.pss_without_padding
 
   @property
   def size(self):
-    if self.after_symbol is None:
-      return -self.before_symbol.size
-    if self.before_symbol is None:
-      return self.after_symbol.size
+    before = self.before_symbol
+    after = self.after_symbol
+    if after is None:
+      return -before.size
+    if before is None:
+      return after.size
     # Padding tracked in aggregate, except for padding-only symbols.
-    if self.before_symbol.size_without_padding == 0:
-      return self.after_symbol.padding - self.before_symbol.padding
-    return (
-      self.after_symbol.size_without_padding
-      - self.before_symbol.size_without_padding
-    )
+    if before.size == before.padding:
+      return after.padding - before.padding
+    return (after.size - after.padding) - (before.size - before.padding)
 
   @property
   def pss_without_padding(self):

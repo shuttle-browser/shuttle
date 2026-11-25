@@ -96,9 +96,9 @@
 #include "ui/views/test/test_platform_native_widget.h"
 #include "ui/views/widget/native_widget_aura.h"
 #include "ui/wm/core/base_focus_rules.h"
+#include "ui/wm/core/decoration_controller.h"
+#include "ui/wm/core/decoration_controller_delegate.h"
 #include "ui/wm/core/focus_controller.h"
-#include "ui/wm/core/shadow_controller.h"
-#include "ui/wm/core/shadow_controller_delegate.h"
 #include "ui/wm/core/window_properties.h"
 #endif
 
@@ -1519,13 +1519,11 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, GetAccelerator) {
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, GetAllChildWidgets) {
-  Widget::Widgets widgets =
-      Widget::GetAllChildWidgets(widget()->GetNativeView());
+  Widget::GetAllChildWidgets(widget()->GetNativeView());
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, GetAllOwnedWidgets) {
-  Widget::Widgets widgets =
-      Widget::GetAllOwnedWidgets(widget()->GetNativeView());
+  Widget::GetAllOwnedWidgets(widget()->GetNativeView());
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, GetAndSetZOrderLevel) {
@@ -1829,7 +1827,8 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, OnNativeWidgetCreated) {
-  EXPECT_DCHECK_DEATH(widget()->OnNativeWidgetCreated());
+  EXPECT_CHECK_DEATH(widget()->OnNativeWidgetCreated(),
+                     base::NotFatalUntil::M163);
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
@@ -1839,7 +1838,8 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
        OnNativeWidgetDestroying) {
-  EXPECT_DCHECK_DEATH(widget()->OnNativeWidgetDestroying());
+  EXPECT_CHECK_DEATH(widget()->OnNativeWidgetDestroying(),
+                     base::NotFatalUntil::M163);
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
@@ -1905,10 +1905,6 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, OnScrollEvent) {
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
        OnSizeConstraintsChanged) {
   widget()->OnSizeConstraintsChanged();
-}
-
-TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, LayerTreeChanged) {
-  widget()->LayerTreeChanged();
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest,
@@ -1977,8 +1973,9 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, ReorderNativeViews) {
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, ReparentNativeView) {
-  EXPECT_DCHECK_DEATH(
-      Widget::ReparentNativeView(widget()->GetNativeView(), gfx::NativeView()));
+  EXPECT_CHECK_DEATH(
+      Widget::ReparentNativeView(widget()->GetNativeView(), gfx::NativeView()),
+      base::NotFatalUntil::M163);
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, Restore) {
@@ -2165,7 +2162,8 @@ TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, ThemeChanged) {
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, UnlockPaintAsActive) {
   // UnlockPaintAsActive() is called in the destructor of PaintAsActiveLock.
   // External invocation is not allowed.
-  EXPECT_DCHECK_DEATH(widget()->UnlockPaintAsActive());
+  EXPECT_CHECK_DEATH(widget()->UnlockPaintAsActive(),
+                     base::NotFatalUntil::M163);
 }
 
 TEST_P(WidgetWithDestroyedNativeViewOrNativeWidgetTest, UpdateWindowIcon) {
@@ -6284,7 +6282,7 @@ class WidgetShadowTest : public WidgetTest {
 
   void TearDown() override {
 #if defined(USE_AURA) && !BUILDFLAG(ENABLE_DESKTOP_AURA)
-    shadow_controller_.reset();
+    decoration_controller_.reset();
     focus_controller_.reset();
 #endif
     WidgetTest::TearDown();
@@ -6325,12 +6323,12 @@ class WidgetShadowTest : public WidgetTest {
   void InitControllers() {
     focus_controller_ =
         std::make_unique<wm::FocusController>(new TestFocusRules);
-    shadow_controller_ = std::make_unique<wm::ShadowController>(
+    decoration_controller_ = std::make_unique<wm::DecorationController>(
         focus_controller_.get(), nullptr);
   }
 
   std::unique_ptr<wm::FocusController> focus_controller_;
-  std::unique_ptr<wm::ShadowController> shadow_controller_;
+  std::unique_ptr<wm::DecorationController> decoration_controller_;
 #endif  // !BUILDFLAG(ENABLE_DESKTOP_AURA) && !BUILDFLAG(IS_MAC)
 };
 
@@ -6353,11 +6351,12 @@ TEST_F(WidgetShadowTest, MAYBE_ShadowsInRootWindow) {
   bool top_level_window_should_have_shadow = false;
 #endif
 
-  // To start, just create a Widget. This constructs the first ShadowController
-  // which will start observing the environment for additional aura::Window
-  // initialization. The very first ShadowController in DesktopNativeWidgetAura
-  // is created after the call to aura::Window::Init(), so the ShadowController
-  // Impl class won't ever see this first Window being initialized.
+  // To start, just create a Widget. This constructs the first
+  // DecorationController which will start observing the environment for
+  // additional aura::Window initialization. The very first DecorationController
+  // in DesktopNativeWidgetAura is created after the call to
+  // aura::Window::Init(), so the DecorationController Impl class won't ever see
+  // this first Window being initialized.
   name_ = "other_top_level";
   Widget* other_top_level = CreateTopLevelNativeWidget();
 
@@ -7103,6 +7102,11 @@ class ThemeChangeTrackingView : public View {
 BEGIN_METADATA(ThemeChangeTrackingView)
 END_METADATA
 
+class TestSetNativeThemeWidget : public Widget {
+ public:
+  using Widget::SetNativeTheme;
+};
+
 }  // namespace
 
 // TODO(crbug.com/555907780): Re-enable this test on Mac.
@@ -7169,6 +7173,110 @@ TEST_F(WidgetTest, ThemeChangedDoesNotShortCircuitWhenFeatureDisabled) {
 
   // Calling ThemeChanged() again should not short-circuit when disabled.
   widget->ThemeChanged();
+  EXPECT_EQ(tracking_view->theme_changed_count(), initial_count + 1);
+}
+
+// Tests that `Widget::SetNativeTheme()` skips a redundant `ThemeChanged()` pass
+// when the effective `NativeTheme` does not change.
+TEST_F(WidgetTest, SetNativeThemeSkipsRedundantThemeChanged) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{features::kSkipRedundantSetNativeThemeUpdate},
+      /*disabled_features=*/{::features::kThemeChangeOptimization});
+
+  auto widget = std::make_unique<TestSetNativeThemeWidget>();
+  widget->Init(
+      CreateParamsForTestWidget(Widget::InitParams::CLIENT_OWNS_WIDGET));
+  auto* tracking_view =
+      widget->SetContentsView(std::make_unique<ThemeChangeTrackingView>());
+
+  const int initial_count = tracking_view->theme_changed_count();
+  EXPECT_GT(initial_count, 0);
+
+  // Calling `SetNativeTheme(nullptr)` when `native_theme_` is already `nullptr`
+  // should not trigger `ThemeChanged()`, and should keep observing the
+  // effective `NativeTheme`.
+  widget->SetNativeTheme(nullptr);
+  EXPECT_EQ(tracking_view->theme_changed_count(), initial_count);
+  widget->GetNativeTheme()->NotifyOnNativeThemeUpdated();
+  EXPECT_EQ(tracking_view->theme_changed_count(), initial_count + 1);
+
+  const int count_after_notify = tracking_view->theme_changed_count();
+  // Calling `SetNativeTheme()` with the same `NativeTheme` that
+  // `GetNativeTheme()` already returns should not trigger another
+  // `ThemeChanged()` pass.
+  widget->SetNativeTheme(widget->GetNativeTheme());
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify);
+
+  // Calling `SetNativeTheme()` again with the same already-set `NativeTheme`
+  // should also not trigger `ThemeChanged()`.
+  widget->SetNativeTheme(widget->GetNativeTheme());
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify);
+
+  // Resetting to `nullptr` when `native_theme_` equals the fallback
+  // `GetNativeTheme()` keeps the same effective theme and should not trigger a
+  // theme update.
+  widget->SetNativeTheme(nullptr);
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify);
+
+  // Assigning a different `NativeTheme` while `native_theme_` is `nullptr`
+  // should trigger a theme update.
+  ASSERT_NE(widget->GetNativeTheme(), ui::NativeTheme::GetInstanceForWeb());
+  widget->SetNativeTheme(ui::NativeTheme::GetInstanceForWeb());
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify + 1);
+
+  // Updating from one non-null `NativeTheme` to another (`is_update`) should
+  // also trigger a theme update.
+  widget->SetNativeTheme(ui::NativeTheme::GetInstanceForNativeUi());
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify + 2);
+
+  // Resetting from a non-default `NativeTheme` back to `nullptr` changes the
+  // effective theme, triggers a theme update, and switches observation back to
+  // the fallback `GetNativeTheme()`.
+  widget->SetNativeTheme(ui::NativeTheme::GetInstanceForWeb());
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify + 3);
+  widget->SetNativeTheme(nullptr);
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify + 4);
+  widget->GetNativeTheme()->NotifyOnNativeThemeUpdated();
+  EXPECT_EQ(tracking_view->theme_changed_count(), count_after_notify + 5);
+
+  // Calling `SetNativeTheme()` before `Init()` should record the theme without
+  // crashing or double-observing during `Init()`, and skip a redundant
+  // post-`Init()` `SetNativeTheme()` with the same theme.
+  auto pre_init_widget = std::make_unique<TestSetNativeThemeWidget>();
+  pre_init_widget->SetNativeTheme(ui::NativeTheme::GetInstanceForWeb());
+  pre_init_widget->Init(
+      CreateParamsForTestWidget(Widget::InitParams::CLIENT_OWNS_WIDGET));
+  EXPECT_EQ(pre_init_widget->GetNativeTheme(),
+            ui::NativeTheme::GetInstanceForWeb());
+  auto* pre_init_tracking_view = pre_init_widget->SetContentsView(
+      std::make_unique<ThemeChangeTrackingView>());
+  const int pre_init_count = pre_init_tracking_view->theme_changed_count();
+  pre_init_widget->SetNativeTheme(ui::NativeTheme::GetInstanceForWeb());
+  EXPECT_EQ(pre_init_tracking_view->theme_changed_count(), pre_init_count);
+  ui::NativeTheme::GetInstanceForWeb()->NotifyOnNativeThemeUpdated();
+  EXPECT_EQ(pre_init_tracking_view->theme_changed_count(), pre_init_count + 1);
+}
+
+// Tests that `Widget::SetNativeTheme()` still triggers `ThemeChanged()` when
+// `kSkipRedundantSetNativeThemeUpdate` is disabled.
+TEST_F(WidgetTest, SetNativeThemeDoesNotShortCircuitWhenFeatureDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{},
+      /*disabled_features=*/{features::kSkipRedundantSetNativeThemeUpdate,
+                             ::features::kThemeChangeOptimization});
+
+  auto widget = std::make_unique<TestSetNativeThemeWidget>();
+  widget->Init(
+      CreateParamsForTestWidget(Widget::InitParams::CLIENT_OWNS_WIDGET));
+  auto* tracking_view =
+      widget->SetContentsView(std::make_unique<ThemeChangeTrackingView>());
+
+  const int initial_count = tracking_view->theme_changed_count();
+  EXPECT_GT(initial_count, 0);
+
+  widget->SetNativeTheme(widget->GetNativeTheme());
   EXPECT_EQ(tracking_view->theme_changed_count(), initial_count + 1);
 }
 
@@ -7280,6 +7388,158 @@ TEST_F(WidgetTest, ScheduleThemeChangedRunsSynchronouslyWhenDisabled) {
   widget->ScheduleThemeChanged();
   // When feature is disabled, ScheduleThemeChanged runs synchronously.
   EXPECT_EQ(tracking_view->theme_changed_count(), initial_count + 1);
+}
+
+TEST_F(WidgetTest,
+       ChildWidgetShortCircuitsUnchangedKeyAndIgnoresParentDestruction) {
+  base::test::ScopedFeatureList feature_list(
+      ::features::kThemeChangeOptimization);
+
+  ui::MockOsSettingsProvider os_settings_provider;
+  os_settings_provider.SetPreferredColorScheme(
+      ui::NativeTheme::PreferredColorScheme::kLight);
+
+  std::unique_ptr<Widget> parent_widget =
+      CreateTestWidget(Widget::InitParams::CLIENT_OWNS_WIDGET);
+
+  Widget::InitParams child_params = CreateParams(
+      Widget::InitParams::CLIENT_OWNS_WIDGET, Widget::InitParams::TYPE_POPUP);
+  child_params.parent = parent_widget->GetNativeView();
+  child_params.child = true;
+  std::unique_ptr<Widget> child_widget =
+      CreateTestWidget(std::move(child_params));
+
+  auto* child_tracking_view = child_widget->SetContentsView(
+      std::make_unique<ThemeChangeTrackingView>());
+
+  // Override child widget's color mode to kDark.
+  child_widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kDark);
+  child_widget->ThemeChanged();
+  const int count_after_child_override =
+      child_tracking_view->theme_changed_count();
+  EXPECT_GT(count_after_child_override, 0);
+
+  // Changing parent widget's color mode to kDark does not change child_widget's
+  // effective ColorProviderKey (since child already overrides color_mode to
+  // kDark), so child_widget should short-circuit ThemeChanged().
+  parent_widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kDark);
+  parent_widget->ThemeChanged();
+  RunPendingMessages();
+  EXPECT_EQ(child_tracking_view->theme_changed_count(),
+            count_after_child_override);
+
+  // Changing parent widget's user color DOES change child_widget's effective
+  // ColorProviderKey, so child_widget must run ThemeChanged().
+  parent_widget->SetUserColorOverride(SK_ColorBLUE);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return child_tracking_view->theme_changed_count() ==
+           count_after_child_override + 1;
+  }));
+
+  // Detach the native view so `child_widget`'s NativeWidget survives
+  // `parent_widget` destruction while `child_widget->parent_` and
+  // `parent_theme_observer_` remain attached until `~ColorProviderSource()`.
+  // Destroying `parent_widget` must not trigger a spurious ThemeChanged() on
+  // `child_widget`, and must transition `child_widget` back to observing
+  // NativeTheme directly.
+  internal::NativeWidgetPrivate::ReparentNativeView(
+      child_widget->GetNativeView(), gfx::NativeView());
+  ASSERT_EQ(child_widget->parent(), parent_widget.get());
+  parent_widget.reset();
+  EXPECT_EQ(child_widget->parent(), nullptr);
+  RunPendingMessages();
+  EXPECT_EQ(child_tracking_view->theme_changed_count(),
+            count_after_child_override + 1);
+
+  // Clearing child_widget's override and toggling OS color scheme should update
+  // the orphaned child_widget via its fallback NativeTheme observation.
+  child_widget->SetColorModeOverride(std::nullopt);
+  child_widget->ThemeChanged();
+  const int count_after_orphan_reset =
+      child_tracking_view->theme_changed_count();
+  os_settings_provider.SetPreferredColorScheme(
+      ui::NativeTheme::PreferredColorScheme::kDark);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return child_tracking_view->theme_changed_count() ==
+           count_after_orphan_reset + 1;
+  }));
+}
+
+TEST_F(WidgetTest, ChildWidgetDoesNotDoubleUpdateOnNativeThemeChange) {
+  base::test::ScopedFeatureList feature_list(
+      ::features::kThemeChangeOptimization);
+
+  ui::MockOsSettingsProvider os_settings_provider;
+  os_settings_provider.SetPreferredColorScheme(
+      ui::NativeTheme::PreferredColorScheme::kLight);
+
+  std::unique_ptr<Widget> parent_widget =
+      CreateTestWidget(Widget::InitParams::CLIENT_OWNS_WIDGET);
+
+  Widget::InitParams child_params = CreateParams(
+      Widget::InitParams::CLIENT_OWNS_WIDGET, Widget::InitParams::TYPE_POPUP);
+  child_params.parent = parent_widget->GetNativeView();
+  child_params.child = true;
+  std::unique_ptr<Widget> child_widget =
+      CreateTestWidget(std::move(child_params));
+
+  auto* child_tracking_view = child_widget->SetContentsView(
+      std::make_unique<ThemeChangeTrackingView>());
+
+  parent_widget->ThemeChanged();
+  child_widget->ThemeChanged();
+  RunPendingMessages();
+  const int child_initial_count = child_tracking_view->theme_changed_count();
+  EXPECT_GT(child_initial_count, 0);
+
+  // Toggling OS color scheme updates parent_widget via NativeTheme, which then
+  // notifies child_widget via ParentThemeObserver once (without child_widget
+  // also observing NativeTheme directly).
+  os_settings_provider.SetPreferredColorScheme(
+      ui::NativeTheme::PreferredColorScheme::kDark);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return child_tracking_view->theme_changed_count() ==
+           child_initial_count + 1;
+  }));
+  RunPendingMessages();
+  EXPECT_EQ(child_tracking_view->theme_changed_count(),
+            child_initial_count + 1);
+
+  // Reparenting `child_widget` to nullptr must restore direct NativeTheme
+  // observation.
+  child_widget->Reparent(nullptr);
+  RunPendingMessages();
+  const int count_after_reparent = child_tracking_view->theme_changed_count();
+  os_settings_provider.SetPreferredColorScheme(
+      ui::NativeTheme::PreferredColorScheme::kLight);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return child_tracking_view->theme_changed_count() ==
+           count_after_reparent + 1;
+  }));
+}
+
+TEST_F(WidgetTest, ScheduledThemeChangeCancelledOnNativeWidgetDestruction) {
+  base::test::ScopedFeatureList feature_list(
+      ::features::kThemeChangeOptimization);
+
+  std::unique_ptr<Widget> widget =
+      CreateTestWidget(Widget::InitParams::CLIENT_OWNS_WIDGET);
+  auto* tracking_view =
+      widget->SetContentsView(std::make_unique<ThemeChangeTrackingView>());
+
+  widget->ThemeChanged();
+  RunPendingMessages();
+  const int initial_count = tracking_view->theme_changed_count();
+  EXPECT_GT(initial_count, 0);
+
+  // Schedule a forced theme update, then synchronously destroy the native
+  // widget while keeping the CLIENT_OWNS_WIDGET `widget` instance alive.
+  widget->ResetLastColorProviderKey();
+  widget->ScheduleThemeChanged();
+  widget->CloseNow();
+  RunPendingMessages();
+
+  EXPECT_EQ(tracking_view->theme_changed_count(), initial_count);
 }
 
 TEST_F(WidgetTest, NonClientViewOverlayViewOwnership) {

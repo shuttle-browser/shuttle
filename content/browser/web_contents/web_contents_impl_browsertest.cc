@@ -105,6 +105,7 @@
 #include "content/public/test/mock_web_contents_observer.h"
 #include "content/public/test/navigation_handle_observer.h"
 #include "content/public/test/no_renderer_crashes_assertion.h"
+#include "content/public/test/popup_test_utils.h"
 #include "content/public/test/prerender_test_util.h"
 #include "content/public/test/resource_load_observer.h"
 #include "content/public/test/test_content_browser_client.h"
@@ -116,7 +117,6 @@
 #include "content/shell/browser/shell_browser_context.h"
 #include "content/shell/browser/shell_content_browser_client.h"
 #include "content/test/content_browser_test_utils_internal.h"
-#include "content/test/mock_reduce_accept_language_controller_delegate.h"
 #include "mojo/public/cpp/bindings/clone_traits.h"
 #include "mojo/public/cpp/test_support/test_utils.h"
 #include "net/base/features.h"
@@ -145,6 +145,7 @@
 #include "ui/accessibility/ax_mode.h"
 #include "ui/base/clipboard/clipboard_format_type.h"
 #include "ui/base/data_transfer_policy/data_transfer_endpoint.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/color/color_provider_utils.h"
 #include "ui/display/screen.h"
@@ -595,8 +596,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, OpenURLSubframe) {
   // Navigate with the subframe's FrameTreeNode ID.
   const GURL url(embedded_test_server()->GetURL("/title1.html"));
   OpenURLParams params = OpenURLParams::CreateRendererInitiated(
-      url, WindowOpenDisposition::kCurrentTab, ui::PAGE_TRANSITION_LINK,
-      Referrer(),
+      url, ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui::PAGE_TRANSITION_LINK, Referrer(),
       wc->GetPrimaryMainFrame()->GetCurrentInitiatorNavigationState(),
       /*started_from_context_menu=*/false, frame_tree_node_id);
   params.initiator_origin = wc->GetPrimaryMainFrame()->GetLastCommittedOrigin();
@@ -624,8 +625,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, OpenURLNonExistentSubframe) {
   // Navigate with the invalid FrameTreeNode ID.
   const GURL url(embedded_test_server()->GetURL("/title2.html"));
   OpenURLParams params = OpenURLParams::CreateRendererInitiated(
-      url, WindowOpenDisposition::kCurrentTab, ui::PAGE_TRANSITION_LINK,
-      Referrer(),
+      url, ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui::PAGE_TRANSITION_LINK, Referrer(),
       wc->GetPrimaryMainFrame()->GetCurrentInitiatorNavigationState(),
       /*started_from_context_menu=*/false, frame_tree_node_id);
   params.initiator_origin = wc->GetPrimaryMainFrame()->GetLastCommittedOrigin();
@@ -2033,7 +2034,7 @@ class TestWCDelegateForDialogsAndFullscreen : public JavaScriptDialogManager,
       WebContents* source,
       std::unique_ptr<WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override {
@@ -3282,8 +3283,8 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTestClientHintsEnabled,
       NavigationController::LoadURLParams(
           embedded_test_server()->GetURL("/test.html")));
   EXPECT_TRUE(WaitForLoadStop(shell()->web_contents()));
-  const std::string mobile_id = network::GetClientHintToNameMap().at(
-      network::mojom::WebClientHintsType::kUAMobile);
+  const std::string mobile_id(network::kClientHintToNameMap.at(
+      network::mojom::WebClientHintsType::kUAMobile));
   const net::test_server::HttpRequest& request = request_future.Get();
   ASSERT_TRUE(request.headers.contains(mobile_id));
   // "?!" corresponds to "mobile=true".
@@ -3307,9 +3308,10 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTestClientHintsEnabled,
       ->browser_context()
       ->set_client_hints_controller_delegate(&client_hints_controller_delegate);
 
-  std::vector<std::string> accept_ch_tokens;
-  for (const auto& pair : network::GetClientHintToNameMap())
+  std::vector<std::string_view> accept_ch_tokens;
+  for (const auto& pair : network::kClientHintToNameMap) {
     accept_ch_tokens.push_back(pair.second);
+  }
   http2_server.SetAlpsAcceptCH("", base::JoinString(accept_ch_tokens, ","));
   http2_server.ServeFilesFromSourceDirectory("content/test/data");
 
@@ -3340,95 +3342,6 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTestClientHintsEnabled,
   ShellContentBrowserClient::Get()
       ->browser_context()
       ->set_client_hints_controller_delegate(nullptr);
-}
-
-class WebContentsImplBrowserTestReduceAcceptLanguageOn
-    : public WebContentsImplBrowserTest {
- public:
-  void SetUp() override {
-    scoped_feature_list_.Reset();
-    scoped_feature_list_.InitWithFeatures(
-        {network::features::kReduceAcceptLanguage}, {});
-    WebContentsImplBrowserTest::SetUp();
-  }
-
-  void VerifyAcceptLanguageHeader(net::EmbeddedTestServer& http_server) {
-    ReduceAcceptLanguageControllerDelegate* delegate =
-        ShellContentBrowserClient::Get()
-            ->browser_context()
-            ->GetReduceAcceptLanguageControllerDelegate();
-
-    ASSERT_EQ(delegate->GetUserAcceptLanguages(),
-              std::vector<std::string>({"en-us", "en"}));
-
-    http_server.ServeFilesFromSourceDirectory("content/test/data");
-
-    base::RunLoop run_loop;
-    http_server.RegisterRequestMonitor(base::BindRepeating(
-        [](base::RunLoop* run_loop,
-           const net::test_server::HttpRequest& request) {
-          if (request.relative_url.compare("/empty.html") == 0) {
-            // Default mock user language is "en-us,en", see
-            // content/shell/browser/shell_content_browser_client.h
-            ASSERT_EQ(request.headers.at("Accept-Language"), "en-us,en;q=0.9");
-            run_loop->Quit();
-          }
-        },
-        &run_loop));
-
-    auto handle = http_server.StartAndReturnHandle();
-    EXPECT_TRUE(NavigateToURL(shell(), http_server.GetURL("/empty.html")));
-
-    run_loop.Run();
-  }
-
-  void VerifyPersistAndGetReduceAcceptLanguage(
-      const GURL& url,
-      const std::string& persist_lang,
-      const std::optional<std::string>& expect_lang) {
-    ReduceAcceptLanguageControllerDelegate* delegate =
-        ShellContentBrowserClient::Get()
-            ->browser_context()
-            ->GetReduceAcceptLanguageControllerDelegate();
-
-    url::Origin origin = url::Origin::Create(url);
-    delegate->PersistReducedLanguage(origin, persist_lang);
-    const std::optional<std::string>& language =
-        delegate->GetReducedLanguage(origin);
-    EXPECT_EQ(expect_lang, language);
-
-    delegate->ClearReducedLanguage(origin);
-    EXPECT_FALSE(delegate->GetReducedLanguage(origin).has_value());
-  }
-};
-
-// Verifies accept-language are updated when DidStartNavigation().
-IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTestReduceAcceptLanguageOn,
-                       HttpsReduceAcceptLanguageInNavigation) {
-  net::EmbeddedTestServer http2_server(
-      net::EmbeddedTestServer::TYPE_HTTPS,
-      net::test_server::HttpConnection::Protocol::kHttp2);
-  VerifyAcceptLanguageHeader(http2_server);
-}
-
-IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTestReduceAcceptLanguageOn,
-                       HttpReduceAcceptLanguageInNavigation) {
-  net::EmbeddedTestServer http_server_http(net::EmbeddedTestServer::TYPE_HTTP);
-  VerifyAcceptLanguageHeader(http_server_http);
-}
-
-IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTestReduceAcceptLanguageOn,
-                       PersistAndGetReduceAcceptLanguage) {
-  std::string test_lang("en-us");
-  VerifyPersistAndGetReduceAcceptLanguage(/*url=*/GURL("https://example.com/"),
-                                          /*persist_lang=*/test_lang,
-                                          /*expect_lang=*/test_lang);
-  VerifyPersistAndGetReduceAcceptLanguage(/*url=*/GURL("http://example.com/"),
-                                          /*persist_lang=*/test_lang,
-                                          /*expect_lang=*/test_lang);
-  VerifyPersistAndGetReduceAcceptLanguage(/*url=*/GURL("ws://example.com/"),
-                                          /*persist_lang=*/test_lang,
-                                          /*expect_lang=*/std::nullopt);
 }
 
 IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest,
@@ -3902,7 +3815,6 @@ class LoadStateWaiter : public WebContentsDelegate {
 IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, DISABLED_UpdateLoadState) {
   std::u16string a_host = url_formatter::IDNToUnicode("a.com");
   std::u16string b_host = url_formatter::IDNToUnicode("b.com");
-  std::u16string paused_host = url_formatter::IDNToUnicode("paused.com");
 
   // Controlled responses for image requests made in the test. They will
   // alternate being the "most interesting" for the purposes of notifying the
@@ -4144,7 +4056,7 @@ class DestroyOpenerOnAddNewContentsDelegate : public WebContentsDelegate {
       WebContents* source,
       std::unique_ptr<WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override {
@@ -5186,7 +5098,7 @@ class MockDidOpenRequestedURLObserver : public WebContentsObserver {
                     RenderFrameHost* source_render_frame_host,
                     const GURL& url,
                     const Referrer& referrer,
-                    WindowOpenDisposition disposition,
+                    ui::mojom::WindowOpenDisposition disposition,
                     ui::PageTransition transition,
                     bool started_from_context_menu,
                     bool renderer_initiated));
@@ -5214,7 +5126,7 @@ IN_PROC_BROWSER_TEST_F(WebContentsImplBrowserTest, CtrlClickSubframeLink) {
                   subframe,      // source_render_frame_host
                   embedded_test_server()->GetURL("/title1.html"),
                   ::testing::Field(&Referrer::url, main_url),
-                  WindowOpenDisposition::kNewForegroundTab,
+                  ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                   ::testing::Truly([](ui::PageTransition arg) {
                     return ui::PageTransitionCoreTypeIs(
                         arg, ui::PAGE_TRANSITION_LINK);

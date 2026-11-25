@@ -29,6 +29,10 @@
 #include "printing/buildflags/buildflags.h"
 #include "third_party/abseil-cpp/absl/strings/ascii.h"
 
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
+#endif
+
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_extension_constants.h"
 #include "ash/constants/ash_features.h"
@@ -72,7 +76,9 @@ WebUIAllUrlsBrowserTest::WebUIAllUrlsBrowserTest() {
   enable_feature(contextual_cueing::kContextualCueingV2);
 
 #if !BUILDFLAG(IS_ANDROID)
+  enable_feature(features::kCraft);
   enable_feature(features::kIsolatedWebApps);
+  enable_feature(organizer_panel::kOrganizerPanel);
 #endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
@@ -83,10 +89,6 @@ WebUIAllUrlsBrowserTest::WebUIAllUrlsBrowserTest() {
 
   const std::vector<base::test::FeatureRef> disabled_features = {
       privacy_sandbox::kPrivacySandboxAdPrivacyUxDeprecation};
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  enable_feature(switches::kMagiChromePasskeySignIn, {{"flow_type", "banner"}});
-#endif
 
   feature_list_.InitWithFeaturesAndParameters(enabled_features,
                                               disabled_features);

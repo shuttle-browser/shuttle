@@ -4,13 +4,20 @@
 
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_controller.h"
 
+#include <string_view>
 #include <utility>
 
 #include "base/callback_list.h"
+#include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ref.h"
-#include "base/notreached.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
+#include "base/strings/strcat.h"
 #include "chrome/app/vector_icons/vector_icons.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/actions/actions_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/animation/browser_animation_controller.h"
@@ -18,23 +25,30 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_prefs.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
 #include "chrome/browser/ui/views/tabs/organizer/organizer_panel_host.h"
+#include "chrome/browser/ui/views/tabs/organizer/organizer_panel_view.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
+#include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
-#include "extensions/buildflags/buildflags.h"
+#include "components/feature_engagement/public/feature_constants.h"
+#include "components/prefs/pref_service.h"
+#include "components/signin/public/base/consent_level.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/site_engagement/content/site_engagement_helper.h"
+#include "components/site_engagement/content/site_engagement_service.h"
+#include "content/public/browser/web_contents.h"
 #include "ui/actions/actions.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/views/view.h"
 #include "ui/views/view_tracker.h"
 #include "ui/views/view_utils.h"
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-#include "chrome/browser/profiles/profile.h"
-#include "extensions/browser/extension_util.h"
-#endif
 
 namespace {
 
@@ -51,6 +65,61 @@ void OnVerticalTabStripAnimation(
   if (motion == TabStripAnimations::kCollapseOnHover ||
       motion == TabStripAnimations::kCollapse) {
     panel_controller->SetOrganizerVisible(false);
+  }
+}
+
+// LINT.IfChange(OrganizerSection)
+std::string_view GetHistogramSectionName(organizer::SectionId section_id) {
+  switch (section_id) {
+    case organizer::SectionId::kCrossDeviceTabs:
+      return "CrossDeviceTabs";
+    case organizer::SectionId::kOpenTabs:
+      return "OpenTabs";
+    case organizer::SectionId::kRecentlyClosed:
+      return "RecentlyClosed";
+    case organizer::SectionId::kTabGroups:
+      return "TabGroups";
+  }
+}
+// LINT.ThenChange(//tools/metrics/histograms/metadata/tab/histograms.xml:OrganizerSection)
+
+bool ShouldRecordSectionMetrics(Profile& profile,
+                                organizer::SectionId section_id) {
+  switch (section_id) {
+    case organizer::SectionId::kCrossDeviceTabs: {
+      if (!organizer_panel::IsOrganizerPanelForeignTabsEnabled()) {
+        return false;
+      }
+      signin::IdentityManager* const identity_manager =
+          IdentityManagerFactory::GetForProfile(&profile);
+      return identity_manager &&
+             identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin);
+    }
+    case organizer::SectionId::kRecentlyClosed:
+      return !profile.IsIncognitoProfile();
+    case organizer::SectionId::kOpenTabs:
+    case organizer::SectionId::kTabGroups:
+      return true;
+  }
+}
+
+void RecordSectionStateMetricsOnOpen(Profile& profile) {
+  PrefService* const prefs = profile.GetPrefs();
+  CHECK(prefs);
+  for (const auto& entry : organizer::GetAllSectionStates(*prefs)) {
+    if (!ShouldRecordSectionMetrics(profile, entry.section_id)) {
+      continue;
+    }
+    const std::string_view section_name =
+        GetHistogramSectionName(entry.section_id);
+    base::UmaHistogramBoolean(
+        base::StrCat(
+            {"Tabs.Organizer.Section.", section_name, ".ExpandedStateOnOpen"}),
+        entry.state.expanded);
+    base::UmaHistogramBoolean(
+        base::StrCat(
+            {"Tabs.Organizer.Section.", section_name, ".ShowAllStateOnOpen"}),
+        entry.state.show_all);
   }
 }
 
@@ -86,15 +155,23 @@ class OrganizerPanelController::PanelViewManager {
 
   void OnVerticalTabStripModeChanged() {
     if (UpdatePanelViewHost()) {
-      controller_->SetOrganizerVisible(false, /*immediate=*/true);
+      if (controller_->IsOrganizerPanelVisible()) {
+        controller_->SetOrganizerVisible(false, /*immediate=*/true);
+      } else {
+        controller_->NotifyStateChanged();
+      }
     }
   }
 
   std::unique_ptr<views::View> SetPanelView(
       std::unique_ptr<views::View> panel_view) {
+    const auto old_location = current_location_;
     std::unique_ptr<views::View> old_panel = RemovePanelView();
     if (panel_view) {
       AddPanelView(std::move(panel_view));
+    }
+    if (current_location_ != old_location) {
+      controller_->NotifyStateChanged();
     }
     return old_panel;
   }
@@ -229,21 +306,31 @@ void OrganizerPanelController::SetOrganizerVisible(bool visible,
   }
 
   is_visible_ = visible;
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-  if (!is_visible_) {
-    active_extension_id_.reset();
+  base::RecordAction(base::UserMetricsAction(
+      is_visible_ ? "OrganizerPanel.Open" : "OrganizerPanel.Close"));
+  if (is_visible_) {
+    if (auto* const interface =
+            BrowserUserEducationInterface::From(&*browser_window_)) {
+      const base::Feature& iph_feature =
+          feature_engagement::kIPH_VerticalTabsTabGroupsInOrganizerFeature;
+      if (interface->IsFeaturePromoActive(iph_feature)) {
+        interface->NotifyFeaturePromoFeatureUsed(
+            iph_feature, FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
+      } else if (interface->IsFeaturePromoQueued(iph_feature)) {
+        interface->AbortFeaturePromo(iph_feature);
+      }
+    }
+    UpdatePanelWebContents();
+    Profile* const profile = browser_window_->GetProfile();
+    CHECK(profile);
+    RecordSectionStateMetricsOnOpen(*profile);
   }
-#endif
   if (immediate) {
     BrowserAnimationController::From(&*browser_window_)
-        ->Reset(OrganizerPanelAnimations::kOrganizerPanel,
-                is_visible_ ? OrganizerPanelAnimations::kShow
-                            : OrganizerPanelAnimations::kHide);
+        ->Reset(OrganizerPanelAnimations::kOrganizerPanel, GetTargetMotion());
   } else {
     BrowserAnimationController::From(&*browser_window_)
-        ->Start(OrganizerPanelAnimations::kOrganizerPanel,
-                is_visible_ ? OrganizerPanelAnimations::kShow
-                            : OrganizerPanelAnimations::kHide);
+        ->Start(OrganizerPanelAnimations::kOrganizerPanel, GetTargetMotion());
   }
 
   NotifyStateChanged();
@@ -254,44 +341,70 @@ OrganizerPanelController::GetCurrentOrganizerPanelLocation() const {
   return panel_view_manager_->current_location();
 }
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
-void OrganizerPanelController::OpenForExtension(
-    const extensions::ExtensionId& extension_id) {
-  Profile* const profile = browser_window_->GetProfile();
-  if (profile->IsOffTheRecord() &&
-      !extensions::util::IsIncognitoEnabled(extension_id, profile)) {
-    return;
+BrowserAnimationMotion OrganizerPanelController::GetTargetMotion() const {
+  bool vts_enabled = false;
+  if (auto* const vts_controller =
+          tabs::VerticalTabStripStateController::From(&*browser_window_)) {
+    vts_enabled = vts_controller->ShouldDisplayVerticalTabs();
   }
-
-  if (is_visible_ && active_extension_id_ == extension_id) {
-    return;
+  if (vts_enabled) {
+    if (panel_view_manager_->current_location() ==
+        OrganizerPanelLocation::kVerticalTabStrip) {
+      return is_visible_ ? OrganizerPanelAnimations::kShowInVerticalTabs
+                         : OrganizerPanelAnimations::kHideInVerticalTabs;
+    }
+    return is_visible_ ? OrganizerPanelAnimations::kShowExpandFromVerticalTabs
+                       : OrganizerPanelAnimations::kHideExpandFromVerticalTabs;
   }
-
-  active_extension_id_ = extension_id;
-  SetOrganizerVisible(true);
+  return is_visible_ ? OrganizerPanelAnimations::kShowInTray
+                     : OrganizerPanelAnimations::kHideInTray;
 }
-
-void OrganizerPanelController::ToggleForExtension(
-    const extensions::ExtensionId& extension_id) {
-  if (is_visible_ && active_extension_id_ == extension_id) {
-    SetOrganizerVisible(false);
-    return;
-  }
-  OpenForExtension(extension_id);
-}
-
-void OrganizerPanelController::CloseForExtension(
-    const extensions::ExtensionId& extension_id) {
-  if (!is_visible_ || active_extension_id_ != extension_id) {
-    return;
-  }
-  SetOrganizerVisible(false);
-}
-#endif
 
 base::CallbackListSubscription OrganizerPanelController::RegisterOnStateChanged(
     StateChangedCallback callback) {
   return on_state_changed_callback_list_.Add(std::move(callback));
+}
+
+content::WebContents* OrganizerPanelController::EnsureWebContentsCreated() {
+  if (web_contents_) {
+    return web_contents_.get();
+  }
+
+  auto* const preload_manager = WebUIContentsPreloadManager::GetInstance();
+  CHECK(preload_manager);
+  WebUIContentsPreloadManager::RequestResult result = preload_manager->Request(
+      GURL(chrome::kChromeUIOrganizerPanelURL), browser_window_->GetProfile());
+  web_contents_ = std::move(result.web_contents);
+  webui::SetBrowserWindowInterface(web_contents_.get(), &*browser_window_);
+  web_contents_->SetSupportsDraggableRegions(true);
+  if (site_engagement::SiteEngagementService::IsEnabled()) {
+    site_engagement_helper_ =
+        std::make_unique<site_engagement::SiteEngagementService::Helper>(
+            web_contents_.get());
+  }
+  return web_contents_.get();
+}
+
+void OrganizerPanelController::RegisterPanelView(
+    OrganizerPanelView* panel_view) {
+  CHECK(!panel_view_);
+  CHECK(!is_visible_);
+  panel_view_ = panel_view;
+}
+
+void OrganizerPanelController::UnregisterPanelView(
+    OrganizerPanelView* panel_view) {
+  CHECK_EQ(panel_view_, panel_view);
+  panel_view_ = nullptr;
+}
+
+void OrganizerPanelController::UpdatePanelWebContents() {
+  if (!is_visible_ || !panel_view_) {
+    return;
+  }
+  if (content::WebContents* const contents = EnsureWebContentsCreated()) {
+    panel_view_->AttachWebContents(contents);
+  }
 }
 
 std::unique_ptr<views::View> OrganizerPanelController::SetPanelView(

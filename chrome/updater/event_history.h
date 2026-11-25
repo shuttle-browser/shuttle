@@ -98,6 +98,9 @@ struct HistoryEventError {
 template <typename T>
 class HistoryEventBuilder {
  public:
+  HistoryEventBuilder(const HistoryEventBuilder&) = delete;
+  HistoryEventBuilder& operator=(const HistoryEventBuilder&) = delete;
+
   // Events are assigned a process-unique identifier on construction (see
   // `GenerateEventId`), though this may be overridden via this setter.
   T& SetEventId(const std::string& event_id) {
@@ -175,6 +178,8 @@ class HistoryEventBuilder {
 
  protected:
   HistoryEventBuilder() = default;
+  HistoryEventBuilder(HistoryEventBuilder&&) noexcept = default;
+  HistoryEventBuilder& operator=(HistoryEventBuilder&&) noexcept = default;
   virtual ~HistoryEventBuilder() = default;
 
   // To be implemented by concrete event types. Implementors should add
@@ -189,8 +194,8 @@ class HistoryEventBuilder {
 class InstallEndEvent : public HistoryEventBuilder<InstallEndEvent> {
  public:
   InstallEndEvent();
-  InstallEndEvent(InstallEndEvent&&);
-  InstallEndEvent& operator=(InstallEndEvent&&);
+  InstallEndEvent(InstallEndEvent&&) noexcept;
+  InstallEndEvent& operator=(InstallEndEvent&&) noexcept;
   InstallEndEvent(const InstallEndEvent&) = delete;
   InstallEndEvent& operator=(const InstallEndEvent&) = delete;
   ~InstallEndEvent() override;
@@ -209,8 +214,8 @@ class InstallStartEvent : public HistoryEventBuilder<InstallStartEvent> {
   using EndEventType = InstallEndEvent;
 
   InstallStartEvent();
-  InstallStartEvent(InstallStartEvent&&);
-  InstallStartEvent& operator=(InstallStartEvent&&);
+  InstallStartEvent(InstallStartEvent&&) noexcept;
+  InstallStartEvent& operator=(InstallStartEvent&&) noexcept;
   InstallStartEvent(const InstallStartEvent&) = delete;
   InstallStartEvent& operator=(const InstallStartEvent&) = delete;
   ~InstallStartEvent() override;
@@ -227,8 +232,8 @@ class InstallStartEvent : public HistoryEventBuilder<InstallStartEvent> {
 class UninstallEndEvent : public HistoryEventBuilder<UninstallEndEvent> {
  public:
   UninstallEndEvent();
-  UninstallEndEvent(UninstallEndEvent&&);
-  UninstallEndEvent& operator=(UninstallEndEvent&&);
+  UninstallEndEvent(UninstallEndEvent&&) noexcept;
+  UninstallEndEvent& operator=(UninstallEndEvent&&) noexcept;
   UninstallEndEvent(const UninstallEndEvent&) = delete;
   UninstallEndEvent& operator=(const UninstallEndEvent&) = delete;
   ~UninstallEndEvent() override;
@@ -243,8 +248,8 @@ class UninstallStartEvent : public HistoryEventBuilder<UninstallStartEvent> {
   using EndEventType = UninstallEndEvent;
 
   UninstallStartEvent();
-  UninstallStartEvent(UninstallStartEvent&&);
-  UninstallStartEvent& operator=(UninstallStartEvent&&);
+  UninstallStartEvent(UninstallStartEvent&&) noexcept;
+  UninstallStartEvent& operator=(UninstallStartEvent&&) noexcept;
   UninstallStartEvent(const UninstallStartEvent&) = delete;
   UninstallStartEvent& operator=(const UninstallStartEvent&) = delete;
   ~UninstallStartEvent() override;
@@ -265,8 +270,8 @@ class UninstallStartEvent : public HistoryEventBuilder<UninstallStartEvent> {
 class QualifyEndEvent : public HistoryEventBuilder<QualifyEndEvent> {
  public:
   QualifyEndEvent();
-  QualifyEndEvent(QualifyEndEvent&&);
-  QualifyEndEvent& operator=(QualifyEndEvent&&);
+  QualifyEndEvent(QualifyEndEvent&&) noexcept;
+  QualifyEndEvent& operator=(QualifyEndEvent&&) noexcept;
   QualifyEndEvent(const QualifyEndEvent&) = delete;
   QualifyEndEvent& operator=(const QualifyEndEvent&) = delete;
   ~QualifyEndEvent() override;
@@ -285,8 +290,8 @@ class QualifyStartEvent : public HistoryEventBuilder<QualifyStartEvent> {
   using EndEventType = QualifyEndEvent;
 
   QualifyStartEvent();
-  QualifyStartEvent(QualifyStartEvent&&);
-  QualifyStartEvent& operator=(QualifyStartEvent&&);
+  QualifyStartEvent(QualifyStartEvent&&) noexcept;
+  QualifyStartEvent& operator=(QualifyStartEvent&&) noexcept;
   QualifyStartEvent(const QualifyStartEvent&) = delete;
   QualifyStartEvent& operator=(const QualifyStartEvent&) = delete;
   ~QualifyStartEvent() override;
@@ -299,8 +304,8 @@ class QualifyStartEvent : public HistoryEventBuilder<QualifyStartEvent> {
 class ActivateEndEvent : public HistoryEventBuilder<ActivateEndEvent> {
  public:
   ActivateEndEvent();
-  ActivateEndEvent(ActivateEndEvent&&);
-  ActivateEndEvent& operator=(ActivateEndEvent&&);
+  ActivateEndEvent(ActivateEndEvent&&) noexcept;
+  ActivateEndEvent& operator=(ActivateEndEvent&&) noexcept;
   ActivateEndEvent(const ActivateEndEvent&) = delete;
   ActivateEndEvent& operator=(const ActivateEndEvent&) = delete;
   ~ActivateEndEvent() override;
@@ -319,8 +324,8 @@ class ActivateStartEvent : public HistoryEventBuilder<ActivateStartEvent> {
   using EndEventType = ActivateEndEvent;
 
   ActivateStartEvent();
-  ActivateStartEvent(ActivateStartEvent&&);
-  ActivateStartEvent& operator=(ActivateStartEvent&&);
+  ActivateStartEvent(ActivateStartEvent&&) noexcept;
+  ActivateStartEvent& operator=(ActivateStartEvent&&) noexcept;
   ActivateStartEvent(const ActivateStartEvent&) = delete;
   ActivateStartEvent& operator=(const ActivateStartEvent&) = delete;
   ~ActivateStartEvent() override;
@@ -336,6 +341,8 @@ class PersistedDataEvent : public HistoryEventBuilder<PersistedDataEvent> {
     RegisteredApp();
     RegisteredApp(const RegisteredApp&);
     RegisteredApp& operator=(const RegisteredApp&);
+    RegisteredApp(RegisteredApp&&) noexcept;
+    RegisteredApp& operator=(RegisteredApp&&) noexcept;
     ~RegisteredApp();
     std::string app_id;
     std::string version;
@@ -344,8 +351,8 @@ class PersistedDataEvent : public HistoryEventBuilder<PersistedDataEvent> {
   };
 
   PersistedDataEvent();
-  PersistedDataEvent(PersistedDataEvent&&);
-  PersistedDataEvent& operator=(PersistedDataEvent&&);
+  PersistedDataEvent(PersistedDataEvent&&) noexcept;
+  PersistedDataEvent& operator=(PersistedDataEvent&&) noexcept;
   PersistedDataEvent(const PersistedDataEvent&) = delete;
   PersistedDataEvent& operator=(const PersistedDataEvent&) = delete;
   ~PersistedDataEvent() override;
@@ -368,8 +375,8 @@ class PersistedDataEvent : public HistoryEventBuilder<PersistedDataEvent> {
 class PostRequestEndEvent : public HistoryEventBuilder<PostRequestEndEvent> {
  public:
   PostRequestEndEvent();
-  PostRequestEndEvent(PostRequestEndEvent&&);
-  PostRequestEndEvent& operator=(PostRequestEndEvent&&);
+  PostRequestEndEvent(PostRequestEndEvent&&) noexcept;
+  PostRequestEndEvent& operator=(PostRequestEndEvent&&) noexcept;
   PostRequestEndEvent(const PostRequestEndEvent&) = delete;
   PostRequestEndEvent& operator=(const PostRequestEndEvent&) = delete;
   ~PostRequestEndEvent() override;
@@ -389,8 +396,8 @@ class PostRequestStartEvent
   using EndEventType = PostRequestEndEvent;
 
   PostRequestStartEvent();
-  PostRequestStartEvent(PostRequestStartEvent&&);
-  PostRequestStartEvent& operator=(PostRequestStartEvent&&);
+  PostRequestStartEvent(PostRequestStartEvent&&) noexcept;
+  PostRequestStartEvent& operator=(PostRequestStartEvent&&) noexcept;
   PostRequestStartEvent(const PostRequestStartEvent&) = delete;
   PostRequestStartEvent& operator=(const PostRequestStartEvent&) = delete;
   ~PostRequestStartEvent() override;
@@ -407,8 +414,8 @@ class PostRequestStartEvent
 class LoadPolicyEndEvent : public HistoryEventBuilder<LoadPolicyEndEvent> {
  public:
   LoadPolicyEndEvent();
-  LoadPolicyEndEvent(LoadPolicyEndEvent&&);
-  LoadPolicyEndEvent& operator=(LoadPolicyEndEvent&&);
+  LoadPolicyEndEvent(LoadPolicyEndEvent&&) noexcept;
+  LoadPolicyEndEvent& operator=(LoadPolicyEndEvent&&) noexcept;
   LoadPolicyEndEvent(const LoadPolicyEndEvent&) = delete;
   LoadPolicyEndEvent& operator=(const LoadPolicyEndEvent&) = delete;
   ~LoadPolicyEndEvent() override;
@@ -429,8 +436,8 @@ class LoadPolicyStartEvent : public HistoryEventBuilder<LoadPolicyStartEvent> {
   using EndEventType = LoadPolicyEndEvent;
 
   LoadPolicyStartEvent();
-  LoadPolicyStartEvent(LoadPolicyStartEvent&&);
-  LoadPolicyStartEvent& operator=(LoadPolicyStartEvent&&);
+  LoadPolicyStartEvent(LoadPolicyStartEvent&&) noexcept;
+  LoadPolicyStartEvent& operator=(LoadPolicyStartEvent&&) noexcept;
   LoadPolicyStartEvent(const LoadPolicyStartEvent&) = delete;
   LoadPolicyStartEvent& operator=(const LoadPolicyStartEvent&) = delete;
   ~LoadPolicyStartEvent() override;
@@ -443,8 +450,8 @@ class LoadPolicyStartEvent : public HistoryEventBuilder<LoadPolicyStartEvent> {
 class UpdateEndEvent : public HistoryEventBuilder<UpdateEndEvent> {
  public:
   UpdateEndEvent();
-  UpdateEndEvent(UpdateEndEvent&&);
-  UpdateEndEvent& operator=(UpdateEndEvent&&);
+  UpdateEndEvent(UpdateEndEvent&&) noexcept;
+  UpdateEndEvent& operator=(UpdateEndEvent&&) noexcept;
   UpdateEndEvent(const UpdateEndEvent&) = delete;
   UpdateEndEvent& operator=(const UpdateEndEvent&) = delete;
   ~UpdateEndEvent() override;
@@ -472,8 +479,8 @@ class UpdateStartEvent : public HistoryEventBuilder<UpdateStartEvent> {
   using EndEventType = UpdateEndEvent;
 
   UpdateStartEvent();
-  UpdateStartEvent(UpdateStartEvent&&);
-  UpdateStartEvent& operator=(UpdateStartEvent&&);
+  UpdateStartEvent(UpdateStartEvent&&) noexcept;
+  UpdateStartEvent& operator=(UpdateStartEvent&&) noexcept;
   UpdateStartEvent(const UpdateStartEvent&) = delete;
   UpdateStartEvent& operator=(const UpdateStartEvent&) = delete;
   ~UpdateStartEvent() override;
@@ -496,8 +503,8 @@ class UpdaterProcessEndEvent
     : public HistoryEventBuilder<UpdaterProcessEndEvent> {
  public:
   UpdaterProcessEndEvent();
-  UpdaterProcessEndEvent(UpdaterProcessEndEvent&&);
-  UpdaterProcessEndEvent& operator=(UpdaterProcessEndEvent&&);
+  UpdaterProcessEndEvent(UpdaterProcessEndEvent&&) noexcept;
+  UpdaterProcessEndEvent& operator=(UpdaterProcessEndEvent&&) noexcept;
   UpdaterProcessEndEvent(const UpdaterProcessEndEvent&) = delete;
   UpdaterProcessEndEvent& operator=(const UpdaterProcessEndEvent&) = delete;
   ~UpdaterProcessEndEvent() override;
@@ -517,8 +524,8 @@ class UpdaterProcessStartEvent
   using EndEventType = UpdaterProcessEndEvent;
 
   UpdaterProcessStartEvent();
-  UpdaterProcessStartEvent(UpdaterProcessStartEvent&&);
-  UpdaterProcessStartEvent& operator=(UpdaterProcessStartEvent&&);
+  UpdaterProcessStartEvent(UpdaterProcessStartEvent&&) noexcept;
+  UpdaterProcessStartEvent& operator=(UpdaterProcessStartEvent&&) noexcept;
   UpdaterProcessStartEvent(const UpdaterProcessStartEvent&) = delete;
   UpdaterProcessStartEvent& operator=(const UpdaterProcessStartEvent&) = delete;
   ~UpdaterProcessStartEvent() override;
@@ -554,8 +561,8 @@ class UpdaterProcessStartEvent
 class AppCommandEndEvent : public HistoryEventBuilder<AppCommandEndEvent> {
  public:
   AppCommandEndEvent();
-  AppCommandEndEvent(AppCommandEndEvent&&);
-  AppCommandEndEvent& operator=(AppCommandEndEvent&&);
+  AppCommandEndEvent(AppCommandEndEvent&&) noexcept;
+  AppCommandEndEvent& operator=(AppCommandEndEvent&&) noexcept;
   AppCommandEndEvent(const AppCommandEndEvent&) = delete;
   AppCommandEndEvent& operator=(const AppCommandEndEvent&) = delete;
   ~AppCommandEndEvent() override;
@@ -576,8 +583,8 @@ class AppCommandStartEvent : public HistoryEventBuilder<AppCommandStartEvent> {
   using EndEventType = AppCommandEndEvent;
 
   AppCommandStartEvent();
-  AppCommandStartEvent(AppCommandStartEvent&&);
-  AppCommandStartEvent& operator=(AppCommandStartEvent&&);
+  AppCommandStartEvent(AppCommandStartEvent&&) noexcept;
+  AppCommandStartEvent& operator=(AppCommandStartEvent&&) noexcept;
   AppCommandStartEvent(const AppCommandStartEvent&) = delete;
   AppCommandStartEvent& operator=(const AppCommandStartEvent&) = delete;
   ~AppCommandStartEvent() override;

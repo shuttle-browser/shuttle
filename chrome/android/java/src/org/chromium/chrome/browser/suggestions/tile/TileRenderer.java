@@ -9,12 +9,12 @@ import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
 import android.graphics.drawable.Drawable;
+import android.text.Layout;
 import android.view.KeyEvent;
 import android.view.LayoutInflater;
 import android.view.View;
 
 import androidx.annotation.DimenRes;
-import androidx.annotation.DrawableRes;
 import androidx.annotation.LayoutRes;
 import androidx.annotation.VisibleForTesting;
 import androidx.core.content.res.ResourcesCompat;
@@ -266,6 +266,11 @@ public class TileRenderer {
                                 .inflate(mTileLayoutResId, parent, false);
 
         tileView.initialize(tile, mTitleLinesCount);
+        if (tile.isAiMode()) {
+            // Allows the AI Mode title translation to wrap to a second line, like the "Add new"
+            // button.
+            allowTitleToWrapToTwoLines(tileView);
+        }
 
         if (!mNativeInitializationComplete || setupDelegate == null) {
             return tileView;
@@ -366,15 +371,27 @@ public class TileRenderer {
                     RecordUserAction.record("Suggestions.Button.AddItem");
                     setupDelegate.getCustomTileModificationDelegate().add();
                 });
-        // Allow "Add new" title translation to wrap to second line. We change max lines instead of
-        // lines to avoid (clickable) blank line appearing at bottom if the title fits in one line.
-        tileView.setTitleMaxLines(2);
+        // Allows the "Add new" title translation to wrap to a second line.
+        allowTitleToWrapToTwoLines(tileView);
         // Prevent Custom Tile swap key from  propagating (i.e., suppress scrolls) to make the
         // button's behavior more similar to Custom Tiles.
         tileView.setOnKeyListener(
                 (View view, int keyCode, KeyEvent event) ->
                         TileUtils.isCustomTileSwapKeyCombo(keyCode, event));
         return tileView;
+    }
+
+    /**
+     * Lets a tile title that is forced onto one line wrap to a second line instead of getting cut
+     * off. Raises max lines instead of lines to avoid a (clickable) blank line appearing at the
+     * bottom when the title fits in one line. The default high-quality breaker minimizes the line
+     * count, so a word wider than the tile, e.g. under a large font size, gets split mid-word. The
+     * simple breaker breaks at the space instead, and the end ellipsis trims any word that still
+     * overflows.
+     */
+    private static void allowTitleToWrapToTwoLines(TileView tileView) {
+        tileView.setTitleMaxLines(/* maxLines= */ 2);
+        tileView.setTitleBreakStrategy(Layout.BREAK_STRATEGY_SIMPLE);
     }
 
     /** Returns whether the tile represents a Search query. */
@@ -438,10 +455,15 @@ public class TileRenderer {
      */
     public void updateIcon(final Tile tile, TileGroup.TileSetupDelegate setupDelegate) {
         if (isSearchTile(tile)) {
-            setTileIconFromResAsync(tile, setupDelegate, R.drawable.ic_suggestion_magnifier);
+            Drawable drawable =
+                    ResourcesCompat.getDrawable(
+                            mContext.getResources(),
+                            R.drawable.ic_suggestion_magnifier,
+                            /* theme= */ null);
+            setTileIconFromDrawableAsync(tile, setupDelegate, drawable);
         } else if (tile.isAiMode()) {
-            setTileIconFromResAsync(
-                    tile, setupDelegate, setupDelegate.getAiModeTileIconDrawableId());
+            setTileIconFromDrawableAsync(
+                    tile, setupDelegate, setupDelegate.getAiModeTileIconDrawable());
         } else if (mImageFetcher != null) {
             mImageFetcher.makeLargeIconRequest(
                     tile.getUrl(),
@@ -462,8 +484,12 @@ public class TileRenderer {
         tile.setType(TileVisualType.ICON_REAL);
     }
 
-    public void setTileIconFromResAsync(
-            Tile tile, TileGroup.TileSetupDelegate setupDelegate, @DrawableRes int res) {
+    /**
+     * Asynchronously sets the tile icon from {@code drawable}, rendering bitmaps untinted as {@link
+     * TileVisualType#ICON_REAL} and other drawables tinted as {@link TileVisualType#ICON_DEFAULT}.
+     */
+    public void setTileIconFromDrawableAsync(
+            Tile tile, TileGroup.TileSetupDelegate setupDelegate, @Nullable Drawable drawable) {
         // We already have an icon, and could trigger the update instantly.
         // Problem is, the TileView is likely not attached yet and the update would not be
         // properly reflected. Yield.
@@ -471,11 +497,16 @@ public class TileRenderer {
         PostTask.postTask(
                 TaskTraits.UI_DEFAULT,
                 () -> {
-                    tile.setIcon(ResourcesCompat.getDrawable(mContext.getResources(), res, null));
+                    tile.setIcon(drawable);
+                    boolean isBitmap = drawable instanceof BitmapDrawable;
                     tile.setIconTint(
-                            ChromeColors.getSecondaryIconTint(
-                                    mContext, /* forceLightIconTint= */ false));
-                    tile.setType(TileVisualType.ICON_DEFAULT);
+                            isBitmap
+                                    ? null
+                                    : ChromeColors.getSecondaryIconTint(
+                                            mContext, /* forceLightIconTint= */ false));
+                    // Uses ICON_REAL for 3P favicon bitmaps so SuggestionsTileView renders them at
+                    // the 24dp favicon size instead of stretching them to the 26dp monogram size.
+                    tile.setType(isBitmap ? TileVisualType.ICON_REAL : TileVisualType.ICON_DEFAULT);
                     if (iconCallback != null) iconCallback.run();
                 });
     }

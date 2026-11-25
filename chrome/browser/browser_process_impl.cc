@@ -22,6 +22,8 @@
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
+#include "base/i18n/language_tag.h"
+#include "base/i18n/tag_converters.h"
 #include "base/location.h"
 #include "base/memory/ptr_util.h"
 #include "base/metrics/histogram_functions.h"
@@ -43,6 +45,7 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "build/config/linux/dbus/buildflags.h"
+#include "chrome/browser/accessibility/accessibility_prefs/accessibility_prefs_controller.h"
 #include "chrome/browser/accessibility/soda_installer_impl.h"
 #include "chrome/browser/battery/battery_metrics.h"
 #include "chrome/browser/browser_process_platform_part.h"
@@ -58,6 +61,7 @@
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/google/google_brand.h"
 #include "chrome/browser/gpu/gpu_mode_manager.h"
+#include "chrome/browser/headless/headless_mode_util.h"
 #include "chrome/browser/icon_manager.h"
 #include "chrome/browser/intranet_redirect_detector.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
@@ -190,7 +194,6 @@
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/accessibility/accessibility_prefs/android/accessibility_prefs_controller.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/ssl/chrome_security_state_client.h"
 #include "chrome/browser/webapps/webapps_client_android.h"
@@ -557,18 +560,6 @@ void BrowserProcessImpl::Init() {
       user_value->GetIfBool().value_or(false) != chrome::IsIsolationEnabled()) {
     local_state()->ClearPref(prefs::kProcessIsolationEnabled);
   }
-
-  // After potentially clearing the untrusted user value, if the effective value
-  // of the pref (which now comes from policies, or a trusted user value, or
-  // default) differs from the actual state, queue a state update.
-  if (local_state()->GetBoolean(prefs::kProcessIsolationEnabled) !=
-      chrome::IsIsolationEnabled()) {
-    UpdateProcessIsolationState();
-  }
-  pref_change_registrar_.Add(
-      prefs::kProcessIsolationEnabled,
-      base::BindRepeating(&BrowserProcessImpl::UpdateProcessIsolationState,
-                          base::Unretained(this)));
 #endif  // BUILDFLAG(IS_WIN)
 
   CHECK(!webrtc_event_log_manager_, base::NotFatalUntil::M162);
@@ -605,7 +596,10 @@ void BrowserProcessImpl::Init() {
   const std::string& locale =
       startup_data_->chrome_feature_list_creator()->actual_locale();
   CHECK(!locale.empty());
-  features_->application_locale_storage()->Set(locale);
+  if (std::optional<base::i18n::LanguageTag> locale_tag =
+          base::i18n::GetLanguageTagFromString(locale)) {
+    features_->application_locale_storage()->SetTag(*std::move(locale_tag));
+  }
 }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -1246,16 +1240,18 @@ const std::string& BrowserProcessImpl::GetApplicationLocale() {
   }
 
   CHECK(features_->application_locale_storage());
-  const std::string& locale = features_->application_locale_storage()->Get();
-  CHECK(!locale.empty(), base::NotFatalUntil::M162);
-  return locale;
+  CHECK(!application_locale_.empty(), base::NotFatalUntil::M162);
+  return application_locale_;
 }
 
 void BrowserProcessImpl::SetApplicationLocale(
     const std::string& actual_locale) {
   CHECK(features_);
   CHECK(features_->application_locale_storage());
-  features_->application_locale_storage()->Set(actual_locale);
+  if (std::optional<base::i18n::LanguageTag> locale_tag =
+          base::i18n::GetLanguageTagFromString(actual_locale)) {
+    features_->application_locale_storage()->SetTag(*std::move(locale_tag));
+  }
 }
 
 DownloadStatusUpdater* BrowserProcessImpl::download_status_updater() {
@@ -1477,6 +1473,11 @@ void BrowserProcessImpl::StartAutoupdateTimer() {
 #if !BUILDFLAG(IS_CHROMEOS)
 activity_reporter::ActivityReporter* BrowserProcessImpl::activity_reporter() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!activity_reporter_ && headless::IsHeadlessMode()) {
+    // Headless Chrome is not user-visible, so its use must not be reported as
+    // active use of the browser.
+    activity_reporter_ = activity_reporter::CreateActivityReporterDisabled();
+  }
   if (!activity_reporter_) {
     activity_reporter_ = activity_reporter::CreateActivityReporter(
         base::BindRepeating(
@@ -1723,6 +1724,23 @@ void BrowserProcessImpl::PreMainMessageLoopRun() {
       },
       base::TimeTicks::Now()));
 
+#if BUILDFLAG(IS_WIN)
+  // After potentially clearing the untrusted user value in Init(), if the
+  // effective value of the pref (which now comes from policies, or a trusted
+  // user value, or default) differs from the actual state, queue a state
+  // update. This must happen after `os_crypt_async_` is created so
+  // `SetIsolationState` can wait for `os_crypt_async_` initialization before
+  // re-encrypting the key.
+  if (local_state()->GetBoolean(prefs::kProcessIsolationEnabled) !=
+      chrome::IsIsolationEnabled()) {
+    UpdateProcessIsolationState();
+  }
+  pref_change_registrar_.Add(
+      prefs::kProcessIsolationEnabled,
+      base::BindRepeating(&BrowserProcessImpl::UpdateProcessIsolationState,
+                          base::Unretained(this)));
+#endif  // BUILDFLAG(IS_WIN)
+
   // browser_policy_connector() is created very early because local_state()
   // needs policy to be initialized with the managed preference values.
   // However, policy fetches from the network and loading of disk caches
@@ -1915,7 +1933,7 @@ void BrowserProcessImpl::CreateGCMDriver() {
            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN}));
 
   gcm_driver_ = gcm::CreateGCMDriverDesktop(
-      base::WrapUnique(new gcm::GCMClientFactory), local_state(), store_path,
+      base::WrapUnique(new gcm::GCMClientFactory), store_path,
       base::BindRepeating(&RequestProxyResolvingSocketFactory),
       system_network_context_manager()->GetSharedURLLoaderFactory(),
       content::GetNetworkConnectionTracker(), chrome::GetChannel(),
@@ -1947,16 +1965,19 @@ void BrowserProcessImpl::ApplyDefaultBrowserPolicy() {
   }
 }
 
-void BrowserProcessImpl::OnLocaleChanged(const std::string& new_locale) {
+void BrowserProcessImpl::OnLocaleChanged(
+    const base::i18n::LanguageTag& new_locale) {
+  application_locale_ = new_locale.tag_string();
+
   // TODO(crbug.com/406985310): The cache for IO thread should be integrated
   // into ApplicationLocaleStorage.
-  ChromeContentBrowserClient::SetApplicationLocale(new_locale);
+  ChromeContentBrowserClient::SetApplicationLocale(application_locale_);
 
   // TODO(crbug.com/406985310): Implement ApplicationLocaleStorage::Observer for
   // TranslateDownloadManager, or refactor //components/translate so that it can
   // directly depend on ApplicationLocaleStorage.
   translate::TranslateDownloadManager::GetInstance()->set_application_locale(
-      new_locale);
+      application_locale_);
 }
 
 void BrowserProcessImpl::Pin() {

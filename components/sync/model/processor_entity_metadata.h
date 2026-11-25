@@ -157,7 +157,7 @@ class ProcessorEntityMetadata {
 
   // Records that the asynchronous upload handshake completed and returned the
   // resumable session `upload_url`.
-  void RecordAttachmentUploadStarted(const GURL& upload_url);
+  void RecordAttachmentUploadResumeUrlReceived(const GURL& upload_url);
 
   // Records that the outgoing attachment upload finished and returned
   // `temporary_blob_id`, clearing `pending_upload` from metadata.
@@ -165,7 +165,7 @@ class ProcessorEntityMetadata {
 
   // Clears `pending_upload` from metadata if an attachment upload is queued or
   // in progress.
-  void RecordAttachmentUploadCancelled();
+  void RecordPendingAttachmentUploadCleared();
 
  private:
   explicit ProcessorEntityMetadata(sync_pb::EntityMetadata metadata);

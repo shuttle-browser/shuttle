@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_AIM_POPUP_WEBUI_CONTENT_H_
 #define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_AIM_POPUP_WEBUI_CONTENT_H_
 
+#include <memory>
+
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_base_content.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/metadata/view_factory.h"
@@ -16,7 +18,8 @@ class WebContents;
 class LocationBar;
 class OmniboxController;
 class OmniboxPopupAimHandler;
-class OmniboxPopupPresenterBase;
+class OmniboxPopupContentDelegate;
+class OmniboxPopupContentSizer;
 
 // The content WebView for the popup of a WebUI Omnibox.
 class OmniboxAimPopupWebUIContent : public OmniboxPopupWebUIBaseContent {
@@ -24,9 +27,19 @@ class OmniboxAimPopupWebUIContent : public OmniboxPopupWebUIBaseContent {
 
  public:
   OmniboxAimPopupWebUIContent() = delete;
-  OmniboxAimPopupWebUIContent(OmniboxPopupPresenterBase* presenter,
+  OmniboxAimPopupWebUIContent(OmniboxPopupContentDelegate* content_delegate,
+                              OmniboxPopupContentSizer* sizer,
+                              OmniboxPopupContentConfig config,
                               LocationBar* location_bar,
                               OmniboxController* controller);
+  // `contents` is a WebContents to adopt, or null; see
+  // `OmniboxPopupWebUIBaseContent`.
+  OmniboxAimPopupWebUIContent(OmniboxPopupContentDelegate* content_delegate,
+                              OmniboxPopupContentSizer* sizer,
+                              OmniboxPopupContentConfig config,
+                              LocationBar* location_bar,
+                              OmniboxController* controller,
+                              std::unique_ptr<ContentsWrapper> contents);
   OmniboxAimPopupWebUIContent(const OmniboxAimPopupWebUIContent&) = delete;
   OmniboxAimPopupWebUIContent& operator=(const OmniboxAimPopupWebUIContent&) =
       delete;
@@ -54,6 +67,7 @@ class OmniboxAimPopupWebUIContent : public OmniboxPopupWebUIBaseContent {
   // flow via the popup state change; `draft_applied_on_close_` skips 5c.
   void Clear() override;
   void OnContextMenuClosed() override;
+  bool CanReleaseContentsWrapper() override;
 
   // Hands `input` to the omnibox, replacing its text. Under Full WebUI this
   // also restores focus by reopening the full popup, unless `query_submitted`
@@ -108,6 +122,10 @@ class OmniboxAimPopupWebUIContent : public OmniboxPopupWebUIBaseContent {
   // Prevents `OnClearCallback()` from re-applying a draft that `CloseUI()`
   // already transferred.
   bool draft_applied_on_close_ = false;
+
+  // Whether a `ClearPopup()` reply is pending. The reply applies the draft to
+  // this window's omnibox.
+  bool clear_in_flight_ = false;
 
   base::WeakPtrFactory<OmniboxAimPopupWebUIContent> weak_factory_{this};
 };

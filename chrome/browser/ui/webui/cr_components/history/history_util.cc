@@ -4,7 +4,6 @@
 
 #include "chrome/browser/ui/webui/cr_components/history/history_util.h"
 
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/sync_service_factory.h"
@@ -60,6 +59,7 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"historyListTabLabel", IDS_HISTORY_CLUSTERS_BY_DATE_TAB_LABEL},
       {"historyMenuButton", IDS_HISTORY_HISTORY_MENU_DESCRIPTION},
       {"historyMenuItem", IDS_HISTORY_HISTORY_MENU_ITEM},
+      {"historyPromoClose", IDS_HISTORY_PROMO_CLOSE},
       {"itemsSelected", IDS_HISTORY_ITEMS_SELECTED},
       {"itemsUnselected", IDS_HISTORY_ITEMS_UNSELECTED},
       {"loading", IDS_HISTORY_LOADING},
@@ -68,6 +68,8 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"openAll", IDS_HISTORY_OTHER_SESSIONS_OPEN_ALL},
       {"openSelected", IDS_HISTORY_OPEN},
       {"openTabsMenuItem", IDS_HISTORY_OPEN_TABS_MENU_ITEM},
+      {"openWindowPlural", IDS_HISTORY_OTHER_SESSIONS_OPEN_WINDOW_PLURAL},
+      {"openWindowSingular", IDS_HISTORY_OTHER_SESSIONS_OPEN_WINDOW_SINGULAR},
       {"noMatchingResults", IDS_HISTORY_NO_MATCHING_RESULTS},
       {"noResults", IDS_HISTORY_NO_RESULTS},
       {"noSearchResults", IDS_HISTORY_NO_SEARCH_RESULTS},
@@ -83,12 +85,14 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
       {"searchPrompt", IDS_HISTORY_SEARCH_PROMPT},
       {"searchResult", IDS_HISTORY_SEARCH_RESULT},
       {"searchResults", IDS_HISTORY_SEARCH_RESULTS},
-      {"searchResultExactMatch", IDS_HISTORY_SEARCH_EXACT_MATCH_RESULT},
-      {"searchResultExactMatches", IDS_HISTORY_SEARCH_EXACT_MATCH_RESULTS},
       {"sourceFilterAllActors", IDS_HISTORY_ACTOR_FILTER_ALL_ACTORS},
       {"sourceFilterChipsAriaLabel",
        IDS_HISTORY_SOURCE_FILTER_CHIPS_ARIA_LABEL},
       {"sourceFilterChipUser", IDS_HISTORY_SOURCE_FILTER_CHIP_USER},
+      {"syncedTabsWindowHeaderPlural",
+       IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_PLURAL},
+      {"syncedTabsWindowHeaderSingular",
+       IDS_HISTORY_OTHER_SESSIONS_WINDOW_HEADER_SINGULAR},
       {"title", IDS_HISTORY_TITLE},
   };
   source->AddLocalizedStrings(kStrings);
@@ -115,43 +119,6 @@ content::WebUIDataSource* HistoryUtil::PopulateCommonSourceForHistory(
   source->AddInteger(
       "lastSelectedTab",
       prefs->GetInteger(history_clusters::prefs::kLastSelectedTab));
-
-  history_embeddings::PopulateSourceForWebUI(source, profile);
-
-  static constexpr webui::LocalizedString kHistoryEmbeddingsStrings[] = {
-      {"historyEmbeddingsAnswersPromoBody",
-       IDS_HISTORY_EMBEDDINGS_ANSWERS_PROMO_BODY},
-      {"historyEmbeddingsAnswersPromoHeading",
-       IDS_HISTORY_EMBEDDINGS_ANSWERS_PROMO_HEADING},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt1",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_1},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt2",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_2},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt3",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_3},
-      {"historyEmbeddingsAnswersSearchAlternativePrompt4",
-       IDS_HISTORY_EMBEDDINGS_SEARCH_ANSWERS_ALTERNATIVE_PROMPT_4},
-      {"historyEmbeddingsPromoBody", IDS_HISTORY_EMBEDDINGS_PROMO_BODY},
-      {"historyEmbeddingsPromoClose", IDS_HISTORY_EMBEDDINGS_PROMO_CLOSE},
-      {"historyEmbeddingsPromoHeading", IDS_HISTORY_EMBEDDINGS_PROMO_HEADING},
-      {"historyEmbeddingsPromoLabel", IDS_HISTORY_EMBEDDINGS_PROMO_LABEL},
-      {"historyEmbeddingsPromoSettingsLinkText",
-       IDS_HISTORY_EMBEDDIGNS_PROMO_SETTINGS_LINK_TEXT},
-      {"historyEmbeddingsShowByLabel",
-       IDS_HISTORY_EMBEDDINGS_SHOW_BY_ARIA_LABEL},
-      {"historyEmbeddingsShowByDate", IDS_HISTORY_EMBEDDINGS_SHOW_BY_DATE},
-      {"historyEmbeddingsShowByGroup", IDS_HISTORY_EMBEDDINGS_SHOW_BY_GROUP},
-      {"historyEmbeddingsSuggestion1", IDS_HISTORY_EMBEDDINGS_SUGGESTION_1},
-      {"historyEmbeddingsSuggestion2", IDS_HISTORY_EMBEDDINGS_SUGGESTION_2},
-      {"historyEmbeddingsSuggestion3", IDS_HISTORY_EMBEDDINGS_SUGGESTION_3},
-      {"historyEmbeddingsSuggestion1AriaLabel",
-       IDS_HISTORY_EMBEDDINGS_SUGGESTION_1_ARIA_LABEL},
-      {"historyEmbeddingsSuggestion2AriaLabel",
-       IDS_HISTORY_EMBEDDINGS_SUGGESTION_2_ARIA_LABEL},
-      {"historyEmbeddingsSuggestion3AriaLabel",
-       IDS_HISTORY_EMBEDDINGS_SUGGESTION_3_ARIA_LABEL},
-  };
-  source->AddLocalizedStrings(kHistoryEmbeddingsStrings);
 
   webui::SetupWebUIDataSource(source, kHistoryResources,
                               IDR_HISTORY_HISTORY_HTML);

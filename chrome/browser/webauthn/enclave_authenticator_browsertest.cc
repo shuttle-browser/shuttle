@@ -33,6 +33,7 @@
 #include "base/synchronization/lock.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/scoped_logging_settings.h"
 #include "base/test/simple_test_clock.h"
@@ -50,7 +51,6 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/webauthn/passkey_upgrade_request_controller.h"
 #include "chrome/browser/webauthn/authenticator_request_dialog_controller.h"
@@ -113,7 +113,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "device/fido/win/fake_webauthn_api.h"
@@ -121,7 +121,6 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "base/test/run_until.h"
 #include "base/test/test_future.h"
 #include "chrome/browser/sync/test/integration/sync_service_impl_harness.h"
 #include "chrome/browser/webauthn/chrome_authenticator_request_delegate_mac.h"
@@ -952,11 +951,7 @@ class EnclaveAuthenticatorBrowserTest : public EnclaveAuthenticatorTestBase {
     scoped_feature_list_.InitWithFeatures(
         {device::kWebAuthnCreatePinWhenSystemUvDisabled,
          device::kWebAuthnEnclaveUseAuthDataFromEnclave},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove the two omnibox features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+        {});
   }
   ~EnclaveAuthenticatorBrowserTest() override = default;
 
@@ -1759,16 +1754,9 @@ IN_PROC_BROWSER_TEST_F(
 
 class OpportunisticKeyRetrievalEnclaveAuthenticatorBrowserTest
     : public EnclaveAuthenticatorBrowserTest {
- public:
-  OpportunisticKeyRetrievalEnclaveAuthenticatorBrowserTest() {
-    scoped_feature_list_.InitWithFeatures(
-        {device::kWebAuthnOpportunisticRetrieval,
-         device::kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange},
-        {});
-  }
-
  private:
-  base::test::ScopedFeatureList scoped_feature_list_;
+  base::test::ScopedFeatureList scoped_feature_list_{
+      device::kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange};
 };
 
 // Regression test for https://crbug.com/465139934 ("Chrome crashes after
@@ -2884,7 +2872,7 @@ IN_PROC_BROWSER_TEST_F(EnclaveAuthenticatorBrowserTest, BiometricsInPWA) {
 
   ASSERT_TRUE(NavigateToURLWithDisposition(
       app_browser, https_server_.GetURL("www.example.com", "/title1.html"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
   content::WebContents* web_contents =
       app_browser->tab_strip_model()->GetActiveWebContents();
@@ -4501,7 +4489,7 @@ IN_PROC_BROWSER_TEST_F(EnclaveAuthenticatorBrowserTest,
   // A second WebContents attempts a transaction while the first is pending.
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_.GetURL("www.example.com", "/title1.html"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   content::WebContents* second_web_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
@@ -5252,6 +5240,11 @@ IN_PROC_BROWSER_TEST_F(EnclaveAuthenticatorBrowserTest, CmtgKeyTimeout) {
   dialog_model()->OnGPMPinEntered(u"123456");
 
   // Fast forward only after the transaction is actively waiting for keys.
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return request_delegate()
+        ->enclave_controller_for_testing()
+        ->is_waiting_for_cmtg_keys_for_testing();
+  }));
   timer_task_runner_->FastForwardBy(
       GPMEnclaveController::kFetchDeviceKeysTimeout);
 

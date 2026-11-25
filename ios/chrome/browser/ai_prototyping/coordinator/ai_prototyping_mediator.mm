@@ -617,6 +617,7 @@ std::string GetJournalLogsAsJson(actor::AggregatedJournal* journal) {
 
   actorService->PerformActions(
       task_id, actions, "Executing AI Prototyping actions",
+      /*added_writable_mainframe_origins=*/{},
       base::BindOnce(^(actor::PerformActionsResult result) {
         [weakSelf onActionsPerformed:std::move(result.action_results)
                          withActions:actions
@@ -937,6 +938,10 @@ std::string GetJournalLogsAsJson(actor::AggregatedJournal* journal) {
             (void (^)(ActorFormSuggestion* selectedSuggestion,
                       BOOL shouldStorePermission))completionHandler {
   completionHandler(suggestions.firstObject, NO);
+}
+
+- (void)actorTaskDidCancelSuggestionSelection:(actor::ActorTaskId)taskID {
+  // No-op: suggestions are selected synchronously, so none is ever pending.
 }
 
 - (void)actorTask:(actor::ActorTaskId)taskID

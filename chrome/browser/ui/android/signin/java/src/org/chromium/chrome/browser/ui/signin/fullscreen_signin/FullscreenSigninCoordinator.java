@@ -74,8 +74,7 @@ public class FullscreenSigninCoordinator implements IdentityManager.Observer {
          *
          * @param slowestLoadPoint The slowest load point to be recorded.
          */
-        void recordLoadCompletedHistograms(
-                @FullscreenSigninMediator.LoadPoint int slowestLoadPoint);
+        void recordLoadCompletedHistograms(@FullscreenSigninLoadPoint int slowestLoadPoint);
 
         /** Records *.FromLaunch.NativeInitialized histogram. */
         void recordNativeInitializedHistogram();
@@ -144,7 +143,39 @@ public class FullscreenSigninCoordinator implements IdentityManager.Observer {
                 ConfirmManagedSyncDataDialogCoordinator.Listener listener) {}
     }
 
-    private final FullscreenSigninMediator mMediator;
+    /** Mediator for the fullscreen sign-in MVC. */
+    interface Mediator {
+        PropertyModel getModel();
+
+        void destroy();
+
+        void reset();
+
+        boolean isContinueOrDismissClicked();
+
+        void onAccountAdded(String accountEmail);
+
+        void setConfig(FullscreenSigninConfig config);
+
+        void onAddAccountCanceled();
+
+        void onDeviceLockCanceled();
+
+        void proceedWithSignIn();
+
+        void dismiss();
+
+        // Test-only accessors.
+        Drawable getProfilePictureForTesting();
+
+        void setStartAnimationForTesting(boolean start);
+
+        @Nullable BadgeConfig getSigninAnimationBadgeConfigForTesting();
+
+        @Nullable BadgeConfig getContinueButtonBadgeConfigForTesting();
+    }
+
+    private final Mediator mMediator;
     private final Delegate mDelegate;
     @Nullable private IdentityManager mIdentityManager;
     private boolean mDestroyed;
@@ -244,12 +275,24 @@ public class FullscreenSigninCoordinator implements IdentityManager.Observer {
         }
     }
 
-    public void onAccountAdded(String accountName) {
-        mMediator.onAccountAdded(accountName);
+    public void onAccountAdded(String accountEmail) {
+        mMediator.onAccountAdded(accountEmail);
+    }
+
+    public void setConfig(FullscreenSigninConfig config) {
+        mMediator.setConfig(config);
     }
 
     public void onAddAccountCanceled() {
         mMediator.onAddAccountCanceled();
+    }
+
+    /**
+     * Called when the device lock activity launched via {@link Delegate#displayDeviceLockPage}
+     * finishes without a device lock being set (e.g. the user backs out).
+     */
+    public void onDeviceLockCanceled() {
+        mMediator.onDeviceLockCanceled();
     }
 
     /** Continue the sign-in process with the currently selected account. */
@@ -260,6 +303,11 @@ public class FullscreenSigninCoordinator implements IdentityManager.Observer {
     /** Abandon the sign-in process and dismiss the sign-in page. */
     public void cancelSignInAndDismiss() {
         mMediator.dismiss();
+    }
+
+    /** Disables the sign-in animation for the duration of the test. */
+    public static void disableAnimationsForTesting() {
+        FullscreenSigninMediator.disableAnimationsForTesting(); // IN-TEST
     }
 
     public Drawable getProfilePictureForTesting() {

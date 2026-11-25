@@ -14,9 +14,7 @@
 #import "base/functional/callback.h"
 #import "base/observer_list.h"
 #import "base/observer_list_types.h"
-#import "base/scoped_observation.h"
 #include "base/sequence_checker.h"
-#import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/browser/signin/model/system_account_updater.h"
 #import "ios/chrome/browser/signin/model/system_identity_manager.h"
 
@@ -108,9 +106,57 @@ enum class IOSAccountProfileMappingStartupState {
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:IOSAccountProfileMappingStartupState)
 
+// Enum for `Signin.IOSAccountProfileMappingCleanupAction` histogram.
+// Entries should not be renumbered and numeric values should never be reused.
+// LINT.IfChange(IOSAccountProfileMappingCleanupAction)
+enum class IOSAccountProfileMappingCleanupAction {
+  // Cohorts A1, A2: Deleted `profiles[0]` (`UUID_M`, uninitialized) and kept
+  // `profiles[1]` (`orig_profile`, initialized).
+  kDeletedFirstManagedProfileUninit = 0,
+  // Cohort A3: Both Managed profiles were initialized; abandoned `profiles[0]`
+  // (`UUID_M`, older `LastActiveTime`, kept on disk in
+  // `prefs::kAbandonedProfiles`) and kept `profiles[1]` (`orig_profile`, more
+  // recent `LastActiveTime`).
+  kAbandonedFirstManagedProfileInitOlder = 1,
+  // Cohort A3: Both Managed profiles were initialized; abandoned `profiles[1]`
+  // (`orig_profile`, older `LastActiveTime`, kept on disk in
+  // `prefs::kAbandonedProfiles`) and kept `profiles[0]` (`UUID_M`, more recent
+  // or tied `LastActiveTime`).
+  kAbandonedSecondManagedProfileInitOlder = 2,
+  // Cohorts B1, B2: Deleted `profiles[1]` (`UUID_M`, uninitialized) and kept
+  // `profiles[0]` (`orig_profile`, initialized).
+  kDeletedSecondManagedProfileUninit = 3,
+  // Cohort C1: Detached the managed Gaia ID from an uninitialized Personal
+  // profile (`UUID_P`), keeping its attachment to the Managed profile.
+  kDetachedFromUninitPersonalProfile = 4,
+  // Cohort C2: Detached the managed Gaia ID from an initialized Personal
+  // profile (`UUID_P`) where it was not the primary account, keeping its
+  // attachment to the Managed profile.
+  kDetachedFromInitPersonalProfileNotPrimary = 5,
+  // Cohort C3: Detached the managed Gaia ID from an initialized Personal
+  // profile (`UUID_P`) where it was the primary account, keeping its attachment
+  // to the Managed profile.
+  kDetachedFromInitPersonalProfilePrimary = 6,
+  // Unexpected (`kTwoUninitManagedProfiles`): Both Managed profiles were
+  // uninitialized; deleted `profiles[1]` and kept `profiles[0]`.
+  kDeletedSecondManagedProfileBothUninit = 7,
+  // Unexpected (`kThreeOrMoreProfiles`): Attached to 3 or more profiles; left
+  // untouched.
+  kSkippedThreeOrMoreProfiles = 8,
+  // Unexpected (`kMultipleCorruptedManagedAccounts`): 2 or more Gaia IDs were
+  // attached to multiple profiles; left untouched.
+  kSkippedMultipleCorruptedAccounts = 9,
+  kMaxValue = kSkippedMultipleCorruptedAccounts,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:IOSAccountProfileMappingCleanupAction)
+
 // Class to map the identities from SystemIdentityManager to profiles.
+// Unless stated otherwise, this class and its `Observer` ignore the
+// `kRestrictAccountsToPatterns` policy and deal with accounts on the device
+// even if they are filtered by `kRestrictAccountsToPatterns`.
 class AccountProfileMapper {
  public:
+  // Observer handling events related to `AccountProfileMapper`.
   class Observer : public base::CheckedObserver {
    public:
     Observer() = default;
@@ -175,7 +221,8 @@ class AccountProfileMapper {
   bool IsSigninSupported();
 
   // Returns the name of the profile to which `gaia_id` is assigned, or nullopt
-  // if no such profile exists.
+  // if no such profile exists. `gaia_id` does not need to correspond to an
+  // account on the device.
   std::optional<std::string> FindProfileNameForGaiaID(
       const GaiaId& gaia_id) const;
 

@@ -29,6 +29,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/synchronization/lock.h"
 #include "base/task/current_thread.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
@@ -204,8 +205,8 @@
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/chrome_test_extension_loader.h"
@@ -585,7 +586,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, TestMixedContentWithSamePageNavigation) {
 
   // Go back (which should also be a same-document navigation) and test that the
   // security indicator is still downgraded because of the mixed form.
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   EXPECT_TRUE(content::WaitForLoadStop(tab));
   ssl_test_util::CheckSecurityState(
       tab, CertError::NONE, expected_level,
@@ -738,7 +739,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, GoBackToMixedContent) {
       browser(), embedded_test_server()->GetURL("/ssl/google.html")));
   ssl_test_util::CheckUnauthenticatedState(
       browser()->tab_strip_model()->GetActiveWebContents(), AuthState::NONE);
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   EXPECT_TRUE(content::WaitForLoadStop(tab));
   // After going back, the mixed content indicator should no longer be present.
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
@@ -1064,7 +1065,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, TestHTTPSExpiredCertAndGoBackViaButton) {
       tab, net::CERT_STATUS_DATE_INVALID, AuthState::SHOWING_INTERSTITIAL);
 
   // Simulate user clicking on back button (crbug.com/40373975).
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   EXPECT_TRUE(content::WaitForLoadStop(tab));
 
   // We should be back at the original good page.
@@ -1814,7 +1815,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, TestBadHTTPSDownload) {
   // active interstitial simply hides the interstitial.
   ASSERT_TRUE(chrome_browser_interstitials::IsShowingSSLInterstitial(tab));
   EXPECT_TRUE(chrome::CanGoBack(browser()));
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
 }
 
 //
@@ -2047,7 +2048,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, TestDisplaysInsecureContentTwoTabs) {
 
   GURL url = https_server_.GetURL(replacement_path);
   NavigateParams params(browser(), url, ui::PAGE_TRANSITION_TYPED);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   params.tabstrip_index = 0;
   params.source_contents = tab1;
   Navigate(&params);
@@ -2088,7 +2089,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_TestRunsInsecureContentTwoTabs) {
   // because we are using process-per-site in SetUpCommandLine.
   GURL url = https_server_.GetURL(replacement_path);
   NavigateParams params(browser(), url, ui::PAGE_TRANSITION_TYPED);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   params.source_contents = tab1;
   Navigate(&params);
   WebContents* tab2 = params.navigated_or_inserted_contents;
@@ -4122,7 +4123,8 @@ IN_PROC_BROWSER_TEST_F(SSLNetworkTimeBrowserTest, OnDemandFetchClockOk) {
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_expired_.GetURL("/"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
 
   // Once |interstitial_timer_observer| has fired, the request has been
   // sent. Override the nonce that NetworkTimeTracker expects so that
@@ -4166,7 +4168,8 @@ IN_PROC_BROWSER_TEST_F(SSLNetworkTimeBrowserTest, OnDemandFetchClockWrong) {
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_expired_.GetURL("/"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
 
   // Once |interstitial_timer_observer| has fired, the request has been
   // sent. Override the nonce that NetworkTimeTracker expects so that
@@ -4223,7 +4226,8 @@ IN_PROC_BROWSER_TEST_F(SSLNetworkTimeBrowserTest, StopBeforeTimeoutExpires) {
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_expired_.GetURL("/"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   interstitial_timer_observer.WaitForTimerStarted();
 
   EXPECT_TRUE(contents->IsLoading());
@@ -4256,12 +4260,13 @@ IN_PROC_BROWSER_TEST_F(SSLNetworkTimeBrowserTest, ReloadBeforeTimeoutExpires) {
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_expired_.GetURL("/"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   interstitial_timer_observer.WaitForTimerStarted();
 
   EXPECT_TRUE(contents->IsLoading());
   content::TestNavigationObserver observer(contents);
-  chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   observer.Wait();
 
   // Make sure that the |SSLErrorHandler| is deleted.
@@ -4293,16 +4298,17 @@ IN_PROC_BROWSER_TEST_F(SSLNetworkTimeBrowserTest,
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_expired_.GetURL("/"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   interstitial_timer_observer.WaitForTimerStarted();
 
   EXPECT_TRUE(contents->IsLoading());
   content::TestNavigationObserver observer(contents, 1);
-  browser()->OpenURL(
-      content::OpenURLParams::CreateBrowserInitiated(
-          https_server_.GetURL("/"), WindowOpenDisposition::kCurrentTab,
-          ui::PAGE_TRANSITION_TYPED),
-      /*navigation_handle_callback=*/{});
+  browser()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+                         https_server_.GetURL("/"),
+                         ui::mojom::WindowOpenDisposition::kCurrentTab,
+                         ui::PAGE_TRANSITION_TYPED),
+                     /*navigation_handle_callback=*/{});
   observer.Wait();
 
   // Make sure that the |SSLErrorHandler| is deleted.
@@ -4644,7 +4650,8 @@ IN_PROC_BROWSER_TEST_F(CommonNameMismatchBrowserTest,
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_mismatched_url,
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   interstitial_timer_observer.WaitForTimerStarted();
 
   EXPECT_TRUE(contents->IsLoading());
@@ -4703,12 +4710,13 @@ IN_PROC_BROWSER_TEST_F(CommonNameMismatchBrowserTest,
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_mismatched_url,
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   interstitial_timer_observer.WaitForTimerStarted();
 
   EXPECT_TRUE(contents->IsLoading());
   content::TestNavigationObserver observer(contents, 1);
-  chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   observer.Wait();
 
   SSLErrorHandler* ssl_error_handler =
@@ -4763,16 +4771,17 @@ IN_PROC_BROWSER_TEST_F(CommonNameMismatchBrowserTest,
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), https_server_mismatched_url,
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   interstitial_timer_observer.WaitForTimerStarted();
 
   EXPECT_TRUE(contents->IsLoading());
   content::TestNavigationObserver observer(contents, 1);
-  browser()->OpenURL(
-      content::OpenURLParams::CreateBrowserInitiated(
-          GURL("https://google.com"), WindowOpenDisposition::kCurrentTab,
-          ui::PAGE_TRANSITION_TYPED),
-      /*navigation_handle_callback=*/{});
+  browser()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+                         GURL("https://google.com"),
+                         ui::mojom::WindowOpenDisposition::kCurrentTab,
+                         ui::PAGE_TRANSITION_TYPED),
+                     /*navigation_handle_callback=*/{});
   observer.Wait();
 
   SSLErrorHandler* ssl_error_handler =
@@ -4781,6 +4790,205 @@ IN_PROC_BROWSER_TEST_F(CommonNameMismatchBrowserTest,
   EXPECT_FALSE(ssl_error_handler);
   EXPECT_FALSE(chrome_browser_interstitials::IsShowingInterstitial(contents));
   EXPECT_FALSE(contents->IsLoading());
+}
+
+// Verifies that when a certificate name mismatch redirects to a suggested URL,
+// the navigation preserves the original navigation's initiator and request
+// context (such as SameSite cookie restrictions and Fetch Metadata headers).
+IN_PROC_BROWSER_TEST_F(CommonNameMismatchBrowserTest,
+                       PreservesNavigationContextOnRedirect) {
+  net::EmbeddedTestServer https_server(net::EmbeddedTestServer::TYPE_HTTPS);
+  base::Lock lock;
+  std::map<std::string, net::test_server::HttpRequest> observed_get_requests;
+  https_server.RegisterRequestMonitor(base::BindLambdaForTesting(
+      [&](const net::test_server::HttpRequest& request) {
+        if (request.method == net::test_server::METHOD_GET) {
+          base::AutoLock auto_lock(lock);
+          observed_get_requests[request.relative_url] = request;
+        }
+      }));
+  const std::string bounce_after_head_path = "/bounce-after-head";
+  const std::string redirect_back_path = "/ssl/google.html?case=redirect_back";
+  https_server.RegisterRequestHandler(base::BindLambdaForTesting(
+      [&](const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url != bounce_after_head_path) {
+          return nullptr;
+        }
+        auto response = std::make_unique<net::test_server::BasicHttpResponse>();
+        if (request.method == net::test_server::METHOD_HEAD) {
+          response->set_code(net::HTTP_OK);
+          return response;
+        }
+        response->set_code(net::HTTP_FOUND);
+        response->AddCustomHeader(
+            "Location",
+            https_server.GetURL("other.test", redirect_back_path).spec());
+        return response;
+      }));
+  https_server.AddDefaultHandlers(GetChromeTestDataDir());
+  ASSERT_TRUE(https_server.Start());
+
+  scoped_refptr<net::X509Certificate> cert = https_server.GetCertificate();
+
+  net::CertVerifyResult verify_result_mismatch;
+  verify_result_mismatch.verified_cert =
+      net::ImportCertFromFile(net::GetTestCertsDirectory(), "spdy_pooling.pem");
+  verify_result_mismatch.cert_status = net::CERT_STATUS_COMMON_NAME_INVALID;
+  mock_cert_verifier()->AddResultForCertAndHost(
+      cert.get(), "example.org", verify_result_mismatch,
+      net::ERR_CERT_COMMON_NAME_INVALID);
+
+  net::CertVerifyResult verify_result_valid;
+  verify_result_valid.verified_cert =
+      net::ImportCertFromFile(net::GetTestCertsDirectory(), "spdy_pooling.pem");
+  mock_cert_verifier()->AddResultForCertAndHost(cert.get(), "www.example.org",
+                                                verify_result_valid, net::OK);
+  mock_cert_verifier()->AddResultForCertAndHost(cert.get(), "other.test",
+                                                verify_result_valid, net::OK);
+
+  WebContents* contents = browser()->tab_strip_model()->GetActiveWebContents();
+
+  const GURL www_base_url =
+      https_server.GetURL("www.example.org", "/ssl/google.html");
+  ASSERT_TRUE(content::SetCookie(contents->GetBrowserContext(), www_base_url,
+                                 "strict_cookie=1; SameSite=Strict; Secure"));
+  ASSERT_TRUE(content::SetCookie(contents->GetBrowserContext(), www_base_url,
+                                 "lax_cookie=1; SameSite=Lax; Secure"));
+
+  // 1. Cross-site renderer-initiated navigation without user activation.
+  const GURL initiator_url = https_server.GetURL("other.test", "/title1.html");
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), initiator_url));
+
+  const std::string cross_site_path = "/ssl/google.html?case=cross_site";
+  const GURL mismatched_cross_site_url =
+      https_server.GetURL("example.org", cross_site_path);
+  const GURL suggested_cross_site_url =
+      https_server.GetURL("www.example.org", cross_site_path);
+  {
+    content::TestNavigationObserver observer(contents, 1);
+    ASSERT_TRUE(content::ExecJs(
+        contents,
+        content::JsReplace("location.href = $1;", mismatched_cross_site_url),
+        content::EXECUTE_SCRIPT_NO_USER_GESTURE));
+    observer.Wait();
+  }
+  EXPECT_EQ(suggested_cross_site_url, contents->GetLastCommittedURL());
+  {
+    base::AutoLock auto_lock(lock);
+    auto it = observed_get_requests.find(cross_site_path);
+    ASSERT_NE(it, observed_get_requests.end());
+    const auto& headers = it->second.headers;
+    auto cookie_it = headers.find("Cookie");
+    ASSERT_NE(cookie_it, headers.end());
+    EXPECT_NE(cookie_it->second.find("lax_cookie=1"), std::string::npos);
+    EXPECT_EQ(cookie_it->second.find("strict_cookie=1"), std::string::npos);
+    auto site_it = headers.find("Sec-Fetch-Site");
+    ASSERT_NE(site_it, headers.end());
+    EXPECT_EQ("cross-site", site_it->second);
+    EXPECT_EQ(headers.find("Sec-Fetch-User"), headers.end());
+  }
+
+  // 2. Browser-initiated navigation (should include SameSite=Strict cookie).
+  const std::string browser_path = "/ssl/google.html?case=browser";
+  const GURL mismatched_browser_url =
+      https_server.GetURL("example.org", browser_path);
+  const GURL suggested_browser_url =
+      https_server.GetURL("www.example.org", browser_path);
+  {
+    content::TestNavigationObserver observer(contents, 1);
+    ASSERT_TRUE(
+        ui_test_utils::NavigateToURL(browser(), mismatched_browser_url));
+    observer.Wait();
+  }
+  EXPECT_EQ(suggested_browser_url, contents->GetLastCommittedURL());
+  {
+    base::AutoLock auto_lock(lock);
+    auto it = observed_get_requests.find(browser_path);
+    ASSERT_NE(it, observed_get_requests.end());
+    const auto& headers = it->second.headers;
+    auto cookie_it = headers.find("Cookie");
+    ASSERT_NE(cookie_it, headers.end());
+    EXPECT_NE(cookie_it->second.find("lax_cookie=1"), std::string::npos);
+    EXPECT_NE(cookie_it->second.find("strict_cookie=1"), std::string::npos);
+    auto site_it = headers.find("Sec-Fetch-Site");
+    ASSERT_NE(site_it, headers.end());
+    EXPECT_EQ("none", site_it->second);
+    auto user_it = headers.find("Sec-Fetch-User");
+    ASSERT_NE(user_it, headers.end());
+    EXPECT_EQ("?1", user_it->second);
+  }
+
+  // 3. Cross-site server redirect before hitting the name mismatch error.
+  const std::string redirect_target_path = "/ssl/google.html?case=redirect";
+  const GURL mismatched_redirect_target_url =
+      https_server.GetURL("example.org", redirect_target_path);
+  const GURL suggested_redirect_target_url =
+      https_server.GetURL("www.example.org", redirect_target_path);
+  const GURL cross_site_redirect_url = https_server.GetURL(
+      "other.test",
+      "/server-redirect?" + mismatched_redirect_target_url.spec());
+  {
+    content::TestNavigationObserver observer(contents, 1);
+    ASSERT_TRUE(
+        ui_test_utils::NavigateToURL(browser(), cross_site_redirect_url));
+    observer.Wait();
+  }
+  EXPECT_EQ(suggested_redirect_target_url, contents->GetLastCommittedURL());
+  {
+    base::AutoLock auto_lock(lock);
+    auto it = observed_get_requests.find(redirect_target_path);
+    ASSERT_NE(it, observed_get_requests.end());
+    const auto& headers = it->second.headers;
+    auto cookie_it = headers.find("Cookie");
+    ASSERT_NE(cookie_it, headers.end());
+    EXPECT_NE(cookie_it->second.find("lax_cookie=1"), std::string::npos);
+    EXPECT_EQ(cookie_it->second.find("strict_cookie=1"), std::string::npos);
+    auto site_it = headers.find("Sec-Fetch-Site");
+    ASSERT_NE(site_it, headers.end());
+    EXPECT_EQ("cross-site", site_it->second);
+  }
+
+  // 4. Same-site initiator bouncing through a cross-site redirect before
+  // hitting the name mismatch error, then redirecting back to that cross-site
+  // origin. Neither origin's authority should be treated as same-site
+  // initiator for the subsequent redirect.
+  const GURL other_base_url =
+      https_server.GetURL("other.test", "/ssl/google.html");
+  ASSERT_TRUE(content::SetCookie(contents->GetBrowserContext(), other_base_url,
+                                 "strict_cookie=1; SameSite=Strict; Secure"));
+  ASSERT_TRUE(content::SetCookie(contents->GetBrowserContext(), other_base_url,
+                                 "lax_cookie=1; SameSite=Lax; Secure"));
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), https_server.GetURL("www.example.org", "/title1.html")));
+  const GURL mismatched_bounce_url =
+      https_server.GetURL("example.org", bounce_after_head_path);
+  const GURL redirect_via_other_url = https_server.GetURL(
+      "other.test", "/server-redirect?" + mismatched_bounce_url.spec());
+  {
+    content::TestNavigationObserver observer(contents, 1);
+    ASSERT_TRUE(content::ExecJs(
+        contents,
+        content::JsReplace("location.href = $1;", redirect_via_other_url),
+        content::EXECUTE_SCRIPT_NO_USER_GESTURE));
+    observer.Wait();
+  }
+  EXPECT_EQ(https_server.GetURL("other.test", redirect_back_path),
+            contents->GetLastCommittedURL());
+  {
+    base::AutoLock auto_lock(lock);
+    auto it = observed_get_requests.find(redirect_back_path);
+    ASSERT_NE(it, observed_get_requests.end());
+    const auto& headers = it->second.headers;
+    auto cookie_it = headers.find("Cookie");
+    ASSERT_NE(cookie_it, headers.end());
+    EXPECT_NE(cookie_it->second.find("lax_cookie=1"), std::string::npos);
+    EXPECT_EQ(cookie_it->second.find("strict_cookie=1"), std::string::npos);
+    auto site_it = headers.find("Sec-Fetch-Site");
+    ASSERT_NE(site_it, headers.end());
+    EXPECT_EQ("cross-site", site_it->second);
+    EXPECT_EQ(headers.find("Sec-Fetch-User"), headers.end());
+  }
 }
 
 class SSLBlockingPageIDNTest
@@ -4853,7 +5061,8 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, RestoreHasSSLState) {
   std::unique_ptr<WebContents> tab2 = WebContents::Create(params);
   WebContents* raw_tab2 = tab2.get();
   tab->GetDelegate()->AddNewContents(
-      nullptr, std::move(tab2), url, WindowOpenDisposition::kNewForegroundTab,
+      nullptr, std::move(tab2), url,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       blink::mojom::WindowFeatures(), false, nullptr);
   std::vector<std::unique_ptr<content::NavigationEntry>> entries;
   entries.push_back(std::move(restored_entry));
@@ -4878,7 +5087,8 @@ void SetupRestoredTabWithNavigation(
   observer.Wait();
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser, GURL("about:blank"), WindowOpenDisposition::kNewBackgroundTab,
+      browser, GURL("about:blank"),
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   chrome::CloseTab(browser);
 
@@ -4902,7 +5112,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest,
   WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
 
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   EXPECT_TRUE(content::WaitForLoadStop(tab));
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
 }
@@ -4965,7 +5175,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, ExistingPageHTTPToHTTPSSSLState) {
   ssl_test_util::CheckUnauthenticatedState(tab, AuthState::NONE);
 
   content::TestNavigationObserver observer(tab, 1);
-  chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   observer.Wait();
 
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
@@ -4989,7 +5199,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, ExistingPageHTTPSToHTTPSSLState) {
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
 
   content::TestNavigationObserver observer(tab, 1);
-  chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   observer.Wait();
 
   ssl_test_util::CheckUnauthenticatedState(tab, AuthState::NONE);
@@ -5009,7 +5219,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_RestoreThenNavigateHasSSLState) {
   GURL url1(https_server_.GetURL("/ssl/google.html"));
   GURL url2(https_server_.GetURL("/ssl/page_with_refs.html"));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url1, WindowOpenDisposition::kNewForegroundTab,
+      browser(), url1, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url2));
   chrome::CloseTab(browser());
@@ -5020,7 +5230,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_RestoreThenNavigateHasSSLState) {
 
   WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
   content::TestNavigationManager observer(tab, url1);
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   ASSERT_TRUE(observer.WaitForNavigationFinished());
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
 }
@@ -5195,7 +5405,7 @@ IN_PROC_BROWSER_TEST_F(SSLUITest, DISABLED_PushStateSSLState) {
   observer.Wait();
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
 
-  chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   EXPECT_TRUE(content::WaitForLoadStop(tab));
   ssl_test_util::CheckAuthenticatedState(tab, AuthState::NONE);
 }
@@ -5753,34 +5963,42 @@ IN_PROC_BROWSER_TEST_F(SSLUITest,
 }
 
 namespace {
-// Redirects (with 307 code) requests with a redirect_to_http path to
-// http://example.org. This custom handler is required for tests that include
-// GET method forms to the redirect URL, since the built in /server-redirect-307
-// handler takes the redirect-to URL as a query parameter, so it is not usable
-// for GET method forms.
+// Redirects (with 307 or 302 code) requests with a redirect_to_http or
+// redirect_302_to_http path to http://example.org, preserving any query
+// parameters. This custom handler is required for tests that include GET method
+// forms to the redirect URL, since the built in /server-redirect-307 handler
+// takes the redirect-to URL as a query parameter, so it is not usable for GET
+// method forms.
 std::unique_ptr<net::test_server::HttpResponse> FormActionHTTPRedirectHandler(
     const net::EmbeddedTestServer* test_server,
     const net::test_server::HttpRequest& request) {
   GURL absolute_url = test_server->GetURL(request.relative_url);
-  if (absolute_url.GetPath() != "/redirect_to_http") {
+  if (absolute_url.GetPath() != "/redirect_to_http" &&
+      absolute_url.GetPath() != "/redirect_302_to_http") {
     return nullptr;
   }
   GURL::Replacements replacements;
   replacements.SetHostStr("example.org");
   replacements.SetSchemeStr("http");
+  if (!absolute_url.query().empty()) {
+    replacements.SetQueryStr(absolute_url.query());
+  }
   const GURL redirect_url =
       test_server->base_url().ReplaceComponents(replacements);
 
   std::unique_ptr<net::test_server::BasicHttpResponse> http_response(
       new net::test_server::BasicHttpResponse);
-  http_response->set_code(net::HTTP_TEMPORARY_REDIRECT);
+  http_response->set_code(absolute_url.GetPath() == "/redirect_302_to_http"
+                              ? net::HTTP_FOUND
+                              : net::HTTP_TEMPORARY_REDIRECT);
   http_response->AddCustomHeader("Location", redirect_url.spec());
   return std::move(http_response);
 }
 }  // namespace
 
 // Checks no interstitial is shown for mixed forms caused for a GET form with
-// a 307 redirect to http, and that metrics are logged correctly.
+// no form data and a 307 redirect to http, and that metrics are logged
+// correctly.
 IN_PROC_BROWSER_TEST_F(SSLUITest,
                        TestDisplaysInsecureFormSubmissionWarningRedirectGet) {
   ASSERT_TRUE(embedded_test_server()->Start());
@@ -5809,6 +6027,106 @@ IN_PROC_BROWSER_TEST_F(SSLUITest,
           tab);
   // There should have been no interstitial triggered.
   EXPECT_FALSE(helper);
+}
+
+// Checks interstitial is shown for mixed forms caused by a GET form with query
+// parameters redirecting (via 302 or 307) to http.
+IN_PROC_BROWSER_TEST_F(
+    SSLUITest,
+    TestDisplaysInsecureFormSubmissionWarningRedirectGetWithFormData) {
+  ASSERT_TRUE(embedded_test_server()->Start());
+  https_server_.RegisterRequestHandler(
+      base::BindRepeating(&FormActionHTTPRedirectHandler, &https_server_));
+  ASSERT_TRUE(https_server_.Start());
+
+  ScopedAllowHttpForHostnamesForTesting scoped_allow_http(
+      {"example.org"}, browser()->GetProfile()->GetPrefs());
+
+  std::string replacement_path = GetFilePathWithHostAndPortReplacement(
+      "/ssl/page_displays_form_redirects_insecure_get.html",
+      embedded_test_server()->host_port_pair());
+
+  for (const char* redirect_path :
+       {"/redirect_302_to_http", "/redirect_to_http"}) {
+    ASSERT_TRUE(ui_test_utils::NavigateToURL(
+        browser(), https_server_.GetURL(replacement_path)));
+    WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
+    content::TestNavigationObserver nav_observer(tab, 1);
+    ASSERT_TRUE(content::ExecJs(
+        tab, content::JsReplace(
+                 "const form = document.getElementById('insecureForm');"
+                 "form.action = $1;"
+                 "const input = document.createElement('input');"
+                 "input.type = 'hidden';"
+                 "input.name = 'field';"
+                 "input.value = 'sample_data';"
+                 "form.appendChild(input);"
+                 "submitForm();",
+                 redirect_path)));
+    nav_observer.Wait();
+    security_interstitials::SecurityInterstitialTabHelper* helper =
+        security_interstitials::SecurityInterstitialTabHelper::FromWebContents(
+            tab);
+    ASSERT_TRUE(helper);
+    EXPECT_TRUE(helper->IsDisplayingInterstitial());
+    EXPECT_EQ(
+        helper->GetBlockingPageForCurrentlyCommittedNavigationForTesting()
+            ->GetTypeForTesting(),
+        security_interstitials::InsecureFormBlockingPage::kTypeForTesting);
+  }
+}
+
+class SSLUITestMixedFormsGetRedirectsDisabled : public SSLUITest {
+ public:
+  SSLUITestMixedFormsGetRedirectsDisabled() {
+    scoped_feature_list_.InitAndDisableFeature(
+        security_interstitials::kBlockMixedFormsGetRedirects);
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+// Checks no interstitial is shown for mixed forms caused by a GET form with
+// query parameters redirecting to http when kBlockMixedFormsGetRedirects is
+// disabled.
+IN_PROC_BROWSER_TEST_F(SSLUITestMixedFormsGetRedirectsDisabled,
+                       NoInterstitialOnGetRedirectWithFormData) {
+  ASSERT_TRUE(embedded_test_server()->Start());
+  https_server_.RegisterRequestHandler(
+      base::BindRepeating(&FormActionHTTPRedirectHandler, &https_server_));
+  ASSERT_TRUE(https_server_.Start());
+
+  ScopedAllowHttpForHostnamesForTesting scoped_allow_http(
+      {"example.org"}, browser()->GetProfile()->GetPrefs());
+
+  std::string replacement_path = GetFilePathWithHostAndPortReplacement(
+      "/ssl/page_displays_form_redirects_insecure_get.html",
+      embedded_test_server()->host_port_pair());
+
+  for (const char* redirect_path :
+       {"/redirect_302_to_http", "/redirect_to_http"}) {
+    ASSERT_TRUE(ui_test_utils::NavigateToURL(
+        browser(), https_server_.GetURL(replacement_path)));
+    WebContents* tab = browser()->tab_strip_model()->GetActiveWebContents();
+    content::TestNavigationObserver nav_observer(tab, 1);
+    ASSERT_TRUE(content::ExecJs(
+        tab, content::JsReplace(
+                 "const form = document.getElementById('insecureForm');"
+                 "form.action = $1;"
+                 "const input = document.createElement('input');"
+                 "input.type = 'hidden';"
+                 "input.name = 'field';"
+                 "input.value = 'sample_data';"
+                 "form.appendChild(input);"
+                 "submitForm();",
+                 redirect_path)));
+    nav_observer.Wait();
+    security_interstitials::SecurityInterstitialTabHelper* helper =
+        security_interstitials::SecurityInterstitialTabHelper::FromWebContents(
+            tab);
+    EXPECT_FALSE(helper);
+  }
 }
 
 class MixedFormsPolicyTest : public policy::PolicyTest {};

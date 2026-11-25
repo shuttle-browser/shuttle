@@ -5,10 +5,12 @@
 #include "chrome/browser/page_load_metrics/observers/new_tab_page_page_load_metrics_observer.h"
 
 #include "base/notreached.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/common/url_constants.h"
-#include "chrome/common/webui_url_constants.h"
 #include "components/page_load_metrics/browser/page_load_metrics_util.h"
 #include "content/public/browser/navigation_handle.h"
+#include "content/public/common/url_constants.h"
+#include "url/origin.h"
 
 namespace {
 
@@ -47,8 +49,8 @@ NewTabPagePageLoadMetricsObserver::OnStart(
     bool started_in_foreground) {
   // Observes chrome://new-tab-page and chrome-untrusted://new-tab-page
   // but not third-party NTPs.
-  if (url::IsSameOriginWith(navigation_handle->GetURL(),
-                            chrome::ChromeUINewTabPageURLAsGURL()) ||
+  if (search::IsNewTabPageOrigin(
+          url::Origin::Create(navigation_handle->GetURL())) ||
       url::IsSameOriginWith(navigation_handle->GetURL(),
                             GURL(chrome::kChromeUIUntrustedNewTabPageUrl))) {
     return CONTINUE_OBSERVING;
@@ -75,8 +77,11 @@ NewTabPagePageLoadMetricsObserver::OnFencedFramesStart(
 void NewTabPagePageLoadMetricsObserver::OnFirstContentfulPaintInPage(
     const page_load_metrics::mojom::PageLoadTiming& timing) {
   CHECK(timing.paint_timing->first_contentful_paint);
-  PAGE_LOAD_HISTOGRAM(kNewTabPageFirstContentfulPaintHistogram,
-                      *timing.paint_timing->first_contentful_paint);
+  if (page_load_metrics::WasStartedInForegroundOptionalEventInForeground(
+          timing.paint_timing->first_contentful_paint, GetDelegate())) {
+    PAGE_LOAD_HISTOGRAM(kNewTabPageFirstContentfulPaintHistogram,
+                        *timing.paint_timing->first_contentful_paint);
+  }
 }
 
 page_load_metrics::PageLoadMetricsObserver::ObservePolicy
@@ -101,10 +106,10 @@ void NewTabPagePageLoadMetricsObserver::RecordSessionEndHistograms(
           .GetLargestContentfulPaintHandler()
           .MergeMainFrameAndSubframes();
 
-  if (!largest_contentful_paint.ContainsValidTime()) {
-    return;
+  if (largest_contentful_paint.ContainsValidTime() &&
+      page_load_metrics::WasStartedInForegroundOptionalEventInForeground(
+          largest_contentful_paint.Time(), GetDelegate())) {
+    PAGE_LOAD_HISTOGRAM(kNewTabPageLargestContentfulPaintHistogram,
+                        largest_contentful_paint.Time().value());
   }
-
-  PAGE_LOAD_HISTOGRAM(kNewTabPageLargestContentfulPaintHistogram,
-                      largest_contentful_paint.Time().value());
 }

@@ -202,19 +202,6 @@ BASE_FEATURE_PARAM(base::TimeDelta,
 // Accept-Language HTTP header only.
 BASE_FEATURE(kReduceAcceptLanguageHTTP, base::FEATURE_DISABLED_BY_DEFAULT);
 
-// When enabled this feature will limit the total number of languages for
-// Accept-Language to enhance privacy. See details in
-// https://datatracker.ietf.org/doc/html/rfc7231#section-9.7.
-BASE_FEATURE(kReduceAcceptLanguageCount, base::FEATURE_ENABLED_BY_DEFAULT);
-
-// When non-zero, the number of Accept-Language of this size will return as the
-// HTTP header and JavaScript getter.
-BASE_FEATURE_PARAM(int,
-                   kMaxAcceptLanguage,
-                   &kReduceAcceptLanguageCount,
-                   /*name=*/"MaxAcceptLanguage",
-                   /*default_value=*/10);
-
 // Enables Local Network Access checks.
 // Blocks local network requests without user permission to prevent exploitation
 // of vulnerable local devices.
@@ -413,8 +400,7 @@ BASE_FEATURE(kAllowSameOriginCredentialsWithDisableWebSecurity,
 
 // https://github.com/patcg-individual-drafts/topics
 // Kill switch for the Topics API.
-BASE_FEATURE(kBrowsingTopics, base::FEATURE_ENABLED_BY_DEFAULT);
-
+BASE_FEATURE(kBrowsingTopics, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kIncreaseCookieAccessCacheSize, base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -564,5 +550,24 @@ BASE_FEATURE(kEnforceIsolatedWorldOriginLock, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kForwardProxyAuthWithoutPrompt, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPrewarmCryptbase, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kRateLimitProxyConfigPolls, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// Minimum interval between consecutive `OnLazyProxyConfigPoll()` Mojo IPCs sent
+// by `ProxyConfigServiceMojo`. Kept well below `PollingProxyConfigService`'s
+// 10-second `kPollIntervalSec` so IPC/queuing jitter cannot delay an eligible
+// browser-side poll window while still coalescing subresource request bursts.
+BASE_FEATURE_PARAM(base::TimeDelta,
+                   kRateLimitProxyConfigPollsInterval,
+                   &kRateLimitProxyConfigPolls,
+                   base::Seconds(1));
+
+BASE_FEATURE(kDnsHostMappingExperiment, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE_PARAM(std::string,
+                   kDnsHostMappingExperimentRules,
+                   &kDnsHostMappingExperiment,
+                   /*name=*/"rules",
+                   /*default_value=*/"");
 
 }  // namespace network::features

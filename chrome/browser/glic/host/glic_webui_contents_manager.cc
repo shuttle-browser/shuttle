@@ -86,13 +86,6 @@ GlicWebUIContentsManager::GlicWebUIContentsManager(Profile* profile,
 
 GlicWebUIContentsManager::~GlicWebUIContentsManager() {
   page_handler_ = nullptr;
-  if (!base::FeatureList::IsEnabled(features::kGlicInvokeErrorRecoveryFixes)) {
-    auto callbacks = std::move(pending_wait_for_load_callbacks_);
-    pending_wait_for_load_callbacks_.clear();
-    for (auto& [_, callback] : callbacks) {
-      std::move(callback).Run(/*failed=*/true);
-    }
-  }
   SetContentsManagerForWebContents(web_contents(), nullptr);
   Observe(nullptr);
 #if BUILDFLAG(IS_ANDROID)
@@ -149,8 +142,6 @@ void GlicWebUIContentsManager::DidFinishNavigation(
   printing::InitializePrintingForWebContents(web_contents());
 #endif
 
-  host_->OnWebContentsNavigated();
-
   // Re-attach to the (possibly new) GlicUI.
   if (auto* glic_ui = GlicUI::From(web_contents())) {
     glic_ui->AttachToHost(host_);
@@ -202,14 +193,24 @@ void GlicWebUIContentsManager::PrimaryMainFrameRenderProcessGone(
 }
 
 void GlicWebUIContentsManager::SetVisibility(content::Visibility visibility) {
+  last_visibility_ = visibility;
   web_contents()->UpdateWebContentsVisibility(visibility);
+  UpdateGuestMounted();
+}
+
+void GlicWebUIContentsManager::OnHostNativeLoadingChanged(bool is_showing) {
+  UpdateGuestMounted();
+}
+
+void GlicWebUIContentsManager::UpdateGuestMounted() {
   // Unlike NoWebview mode, there's no separate overlay WebContents to swap in,
-  // so the <webview> guest is treated as mounted whenever the WebUI is visible.
-  // This is an approximation: chrome://glic can draw its own loading UI over
-  // the guest. Its error UI destroys the <webview>, which detaches the tracker
-  // from the Host.
-  web_client_manager_.SetGuestMounted(visibility ==
-                                      content::Visibility::VISIBLE);
+  // so the <webview> guest is treated as mounted whenever the WebUI is visible
+  // and not covered by the native loading placeholder.
+  const content::Visibility visibility =
+      host_ ? host_->web_contents_visibility() : last_visibility_;
+  web_client_manager_.SetGuestMounted(
+      visibility == content::Visibility::VISIBLE &&
+      (!host_ || !host_->IsShowingNativeLoading()));
 }
 
 content::WebContents* GlicWebUIContentsManager::active_web_contents() const {
@@ -325,7 +326,7 @@ void GlicWebUIContentsManager::WebUIPageHandlerRemoved(
 void GlicWebUIContentsManager::OnWebUiLoadComplete(
     GlicPageHandler* page_handler,
     uint64_t request_id,
-    bool failed) {
+    std::optional<ClientLoadErrorReason> error_reason) {
   if (page_handler != page_handler_) {
     return;
   }
@@ -336,9 +337,13 @@ void GlicWebUIContentsManager::OnWebUiLoadComplete(
   auto callback = std::move(it->second);
   pending_wait_for_load_callbacks_.erase(it);
   if (host_) {
-    host_->SetClientLoadFailed(page_handler, failed);
+    if (error_reason.has_value()) {
+      host_->SetClientLoadFailed(page_handler, *error_reason);
+    } else {
+      host_->ClearClientLoadFailed(page_handler);
+    }
   }
-  std::move(callback).Run(failed);
+  std::move(callback).Run(/*failed=*/error_reason.has_value());
 }
 
 }  // namespace glic

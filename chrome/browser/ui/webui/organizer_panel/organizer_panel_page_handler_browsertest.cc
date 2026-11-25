@@ -19,10 +19,12 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/webui/organizer_panel/organizer_panel.mojom.h"
+#include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
+#include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -50,6 +52,13 @@ class FakeOrganizerPanelPage : public organizer_panel::mojom::Page {
     }
   }
 
+  void OnIsInTrayViewChanged(bool in_tray_view) override {
+    is_in_tray_view_ = in_tray_view;
+    if (is_in_tray_view_changed_quit_closure_) {
+      std::move(is_in_tray_view_changed_quit_closure_).Run();
+    }
+  }
+
   void OnSectionsStateChanged(
       base::flat_map<std::string, organizer_panel::mojom::SectionStatePtr>
           sections_state) override {
@@ -65,6 +74,12 @@ class FakeOrganizerPanelPage : public organizer_panel::mojom::Page {
     run_loop.Run();
   }
 
+  void WaitForIsInTrayViewChanged() {
+    base::RunLoop run_loop;
+    is_in_tray_view_changed_quit_closure_ = run_loop.QuitClosure();
+    run_loop.Run();
+  }
+
   void WaitForSectionsStateChanged() {
     base::RunLoop run_loop;
     quit_closure_ = run_loop.QuitClosure();
@@ -75,6 +90,8 @@ class FakeOrganizerPanelPage : public organizer_panel::mojom::Page {
     return vertical_tabs_enabled_;
   }
 
+  std::optional<bool> is_in_tray_view() const { return is_in_tray_view_; }
+
   const base::flat_map<std::string, organizer_panel::mojom::SectionStatePtr>&
   sections_state() const {
     return sections_state_;
@@ -83,9 +100,11 @@ class FakeOrganizerPanelPage : public organizer_panel::mojom::Page {
  private:
   mojo::Receiver<organizer_panel::mojom::Page> receiver_{this};
   std::optional<bool> vertical_tabs_enabled_;
+  std::optional<bool> is_in_tray_view_;
   base::flat_map<std::string, organizer_panel::mojom::SectionStatePtr>
       sections_state_;
   base::OnceClosure vertical_tabs_enabled_changed_quit_closure_;
+  base::OnceClosure is_in_tray_view_changed_quit_closure_;
   base::OnceClosure quit_closure_;
 };
 
@@ -244,5 +263,69 @@ IN_PROC_BROWSER_TEST_F(OrganizerPanelPageHandlerBrowserTest,
   vt_controller->SetVerticalTabsEnabled(false);
   page.WaitForVerticalTabsEnabledChanged();
   EXPECT_EQ(false, page.vertical_tabs_enabled());
+}
+
+IN_PROC_BROWSER_TEST_F(OrganizerPanelPageHandlerBrowserTest,
+                       OnIsInTrayViewChangedNotifiesPage) {
+  auto* vt_controller = tabs::VerticalTabStripStateController::From(browser());
+  ASSERT_TRUE(vt_controller);
+  vt_controller->SetVerticalTabsEnabled(false);
+
+  FakeOrganizerPanelPage page;
+  mojo::Remote<organizer_panel::mojom::PageHandler> handler_remote;
+  OrganizerPanelPageHandler handler(
+      handler_remote.BindNewPipeAndPassReceiver(), page.BindAndPassRemote(),
+      browser()->GetTabStripModel()->GetActiveWebContents());
+
+  page.WaitForIsInTrayViewChanged();
+  EXPECT_EQ(true, page.is_in_tray_view());
+
+  vt_controller->SetVerticalTabsEnabled(true);
+  page.WaitForIsInTrayViewChanged();
+  EXPECT_EQ(false, page.is_in_tray_view());
+
+  vt_controller->SetExpandOnHoverEnabled(false);
+  vt_controller->RequestCollapse(true);
+  page.WaitForIsInTrayViewChanged();
+  EXPECT_EQ(true, page.is_in_tray_view());
+}
+
+IN_PROC_BROWSER_TEST_F(OrganizerPanelPageHandlerBrowserTest,
+                       PreloadedContentsAttachesBrowserWindowInterface) {
+  auto* vt_controller = tabs::VerticalTabStripStateController::From(browser());
+  ASSERT_TRUE(vt_controller);
+  vt_controller->SetVerticalTabsEnabled(true);
+
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContents::Create(
+          content::WebContents::CreateParams(browser()->GetProfile()));
+
+  FakeOrganizerPanelPage page;
+  mojo::Remote<organizer_panel::mojom::PageHandler> handler_remote;
+  OrganizerPanelPageHandler handler(handler_remote.BindNewPipeAndPassReceiver(),
+                                    page.BindAndPassRemote(),
+                                    web_contents.get());
+
+  // Initially not attached to any BrowserWindowInterface, so page was not
+  // notified.
+  EXPECT_FALSE(page.vertical_tabs_enabled().has_value());
+  EXPECT_FALSE(page.is_in_tray_view().has_value());
+
+  // Attach BrowserWindowInterface to simulated preloaded contents.
+  webui::SetBrowserWindowInterface(web_contents.get(), browser());
+  page.WaitForVerticalTabsEnabledChanged();
+  if (!page.is_in_tray_view().has_value()) {
+    page.WaitForIsInTrayViewChanged();
+  }
+  EXPECT_EQ(true, page.vertical_tabs_enabled());
+  EXPECT_EQ(false, page.is_in_tray_view());
+
+  vt_controller->SetVerticalTabsEnabled(false);
+  page.WaitForVerticalTabsEnabledChanged();
+  if (page.is_in_tray_view() != true) {
+    page.WaitForIsInTrayViewChanged();
+  }
+  EXPECT_EQ(false, page.vertical_tabs_enabled());
+  EXPECT_EQ(true, page.is_in_tray_view());
 }
 }  // namespace

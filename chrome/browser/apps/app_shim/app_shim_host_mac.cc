@@ -4,6 +4,7 @@
 
 #include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
 
+#include <string_view>
 #include <utility>
 
 #include "base/apple/foundation_util.h"
@@ -27,6 +28,7 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/child_process_host.h"
 #include "content/public/common/process_type.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 
 AppShimHost::AppShimHost(AppShimHost::Client* client,
@@ -88,6 +90,8 @@ void AppShimHost::ChannelError(uint32_t custom_reason,
   LOG(ERROR) << "Channel error custom_reason:" << custom_reason
              << " description: " << description;
 
+  RecordLifecycleState(LifecycleState::kTerminatedAfterConnect);
+
   if (auto* provider = metrics::SubprocessMetricsProvider::GetInstance()) {
     provider->DeregisterSubprocessAllocator(child_process_id_);
   } else {
@@ -106,6 +110,10 @@ void AppShimHost::LaunchShimInternal(
   CHECK(!bootstrap_, base::NotFatalUntil::M161);
   launch_weak_factory_.InvalidateWeakPtrs();
   pending_chrome_initiated_launch_mode_ = launch_mode;
+  initial_launch_mode_ = launch_mode;
+  launch_initiated_time_ = base::TimeTicks::Now();
+  has_received_pid_ = false;
+  RecordLifecycleState(LifecycleState::kLaunchInitiated);
   client_->OnShimLaunchRequested(
       this, update_behavior, launch_mode,
       base::BindOnce(&AppShimHost::OnShimProcessLaunched,
@@ -127,14 +135,13 @@ void AppShimHost::OnShimProcessLaunched(
   // If the shim process was created, then await either an AppShimHostBootstrap
   // connecting or the process exiting.
   if (shim_process.IsValid()) {
+    has_received_pid_ = true;
+    RecordLifecycleState(LifecycleState::kPidReceived);
     return;
   }
 
   // Shim launch failing is treated the same as the shim launching but
   // terminating before connecting.
-  if (web_app::RecreateShimsRequested(update_behavior)) {
-    MaybeRecordLaunchResult(LaunchResult::kFailedProcessCreation);
-  }
   OnShimProcessTerminated(update_behavior, launch_mode);
 }
 
@@ -142,6 +149,10 @@ void AppShimHost::OnShimProcessTerminated(
     web_app::LaunchShimUpdateBehavior update_behavior,
     web_app::ShimLaunchMode launch_mode) {
   CHECK(!bootstrap_, base::NotFatalUntil::M161);
+
+  RecordLifecycleState(has_received_pid_
+                           ? LifecycleState::kDisconnectedBeforeHandshake
+                           : LifecycleState::kLaunchFailed);
 
   if (auto* provider = metrics::SubprocessMetricsProvider::GetInstance()) {
     provider->DeregisterSubprocessAllocator(child_process_id_);
@@ -169,7 +180,9 @@ void AppShimHost::OnShimProcessTerminated(
   // user that the process launch failed.
   DLOG(ERROR) << "Failed to launch recreated shim, giving up.";
 
-  MaybeRecordLaunchResult(LaunchResult::kFailedTerminatedBeforeConnection);
+  MaybeRecordLaunchResult(has_received_pid_
+                              ? LaunchResult::kFailedTerminatedBeforeConnection
+                              : LaunchResult::kFailedProcessCreation);
 
   // OnShimProcessDisconnected will delete |this|.
   client_->OnShimProcessDisconnected(this);
@@ -211,6 +224,7 @@ void AppShimHost::OnBootstrapConnected(
   // external launch happen to race).
   launch_weak_factory_.InvalidateWeakPtrs();
 
+  RecordLifecycleState(LifecycleState::kBootstrapConnected);
   MaybeRecordLaunchResult(LaunchResult::kSuccess);
 
   CHECK(!bootstrap_, base::NotFatalUntil::M161);
@@ -338,6 +352,30 @@ chrome::mojom::AppShim* AppShimHost::GetAppShim() const {
   return app_shim_.get();
 }
 
+void AppShimHost::SetBadgeLabel(
+    const std::string& badge_label,
+    chrome::mojom::AppShim::SetBadgeLabelCallback callback) {
+  GetAppShim()->SetBadgeLabel(
+      badge_label,
+      base::BindOnce(&AppShimHost::OnSetBadgeLabelComplete,
+                     weak_factory_.GetWeakPtr(),
+                     mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+                         std::move(callback),
+                         chrome::mojom::AppShimBadgeResult::kNoResponse)));
+}
+
+void AppShimHost::OnSetBadgeLabelComplete(
+    chrome::mojom::AppShim::SetBadgeLabelCallback callback,
+    chrome::mojom::AppShimBadgeResult result) {
+  if (notification_permission_status_overridden_for_testing_) {
+    result = last_notification_permission_status_ ==
+                     mac_notifications::mojom::PermissionStatus::kGranted
+                 ? chrome::mojom::AppShimBadgeResult::kSuccess
+                 : chrome::mojom::AppShimBadgeResult::kBlockedByOSPermission;
+  }
+  std::move(callback).Run(result);
+}
+
 void AppShimHost::BindChildHistogramFetcherFactory(
     mojo::PendingReceiver<metrics::mojom::ChildHistogramFetcherFactory>
         factory) {
@@ -348,6 +386,29 @@ bool AppShimHost::IsWebiumRenderer() const {
   return false;
 }
 
+void AppShimHost::RecordLifecycleState(LifecycleState state) {
+  if (!initial_launch_mode_) {
+    return;
+  }
+  std::string_view mode_str =
+      (*initial_launch_mode_ == web_app::ShimLaunchMode::kBackground)
+          ? "Background"
+          : "Normal";
+  base::UmaHistogramEnumeration(
+      base::StrCat({"Apps.AppShim.Lifecycle.", mode_str}), state);
+
+  if (state == LifecycleState::kBootstrapConnected) {
+    base::UmaHistogramMediumTimes(
+        base::StrCat({"Apps.AppShim.TimeToConnect.", mode_str}),
+        base::TimeTicks::Now() - launch_initiated_time_);
+  } else if (state == LifecycleState::kDisconnectedBeforeHandshake ||
+             state == LifecycleState::kLaunchFailed) {
+    base::UmaHistogramMediumTimes(
+        base::StrCat({"Apps.AppShim.TimeToFailure.", mode_str}),
+        base::TimeTicks::Now() - launch_initiated_time_);
+  }
+}
+
 void AppShimHost::MaybeRecordLaunchResult(LaunchResult result) {
   if (!pending_chrome_initiated_launch_mode_) {
     return;
@@ -355,10 +416,10 @@ void AppShimHost::MaybeRecordLaunchResult(LaunchResult result) {
   if (result == LaunchResult::kSuccess && shim_recreated_) {
     result = LaunchResult::kSuccessAfterRecreate;
   }
-  std::string mode_str = (*pending_chrome_initiated_launch_mode_ ==
-                          web_app::ShimLaunchMode::kBackground)
-                             ? "Background"
-                             : "Normal";
+  std::string_view mode_str = (*pending_chrome_initiated_launch_mode_ ==
+                               web_app::ShimLaunchMode::kBackground)
+                                  ? "Background"
+                                  : "Normal";
   base::UmaHistogramEnumeration(
       base::StrCat({"Apps.AppShim.LaunchResult.", mode_str}), result);
   pending_chrome_initiated_launch_mode_.reset();

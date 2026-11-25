@@ -60,8 +60,9 @@ public class AccessibilityState {
          *       obscuring, touch exploration, etc.)
          * </ul>
          *
-         * For a full list of triggers, see: {AccessibilityState#registerObservers} For a full list
-         * of tracked settings, see: {AccessibilityState.State}
+         * For a full list of triggers, see:
+         * {AccessibilityStateDelegateImpl#registerObserversOnBackgroundThread} For a full list of
+         * tracked settings, see: {AccessibilityState.State}
          *
          * <p>This method passes both the previous and new (old current vs. now current)
          * accessibility state. Clients that are only interested in a subset of the state should
@@ -208,6 +209,12 @@ public class AccessibilityState {
         sListeners.add(listener);
     }
 
+    /** Should be called on UI thread. */
+    public static void removeListener(Listener listener) {
+        assert ThreadUtils.runningOnUiThread();
+        sListeners.remove(listener);
+    }
+
     public static Set<Listener> getListeners() {
         return sListeners;
     }
@@ -252,6 +259,7 @@ public class AccessibilityState {
         return getDelegate().isKnownScreenReaderEnabled();
     }
 
+    @CalledByNative
     public static boolean isSamsungTalkBackEnabled() {
         return getDelegate().isSamsungTalkBackEnabled();
     }
@@ -274,13 +282,13 @@ public class AccessibilityState {
 
     /**
      * Helper method to return the value that is equivalent to the deprecated approach:
-     *     ChromeAccessibilityUtil.get().isAccessibilityEnabled()
+     * ChromeAccessibilityUtil.get().isAccessibilityEnabled()
      *
-     * Avoid calling this method at all costs. The naming of this method is misleading and its
+     * <p>Avoid calling this method at all costs. The naming of this method is misleading and its
      * usage is tricky. Use the more granular methods of this class.
      *
-     * Returns true if an accessibility service is running that uses touch exploration OR a service
-     * is running that can perform gestures.
+     * <p>Returns true if an accessibility service is running that uses touch exploration OR a
+     * service is running that can perform gestures.
      *
      * @return true when touch exploration or gesture performing services are running.
      */
@@ -358,10 +366,6 @@ public class AccessibilityState {
         return getDelegate().getAccessibilityToolFlags();
     }
 
-    public static void registerObservers() {
-        getDelegate().registerObservers();
-    }
-
     public static void initializeOnStartup(AccessibilityStateVisibilityManager visibilityManager) {
         getDelegate().initializeOnStartup(visibilityManager);
     }
@@ -375,8 +379,6 @@ public class AccessibilityState {
         void onContrastLevelChanged(boolean highContrastEnabled);
 
         void onTextCursorBlinkIntervalChanged(int textCursorBlinkInterval);
-
-        void onSamsungTalkBackStateChanged(boolean enabled);
 
         void recordAccessibilityServiceInfoHistograms();
     }

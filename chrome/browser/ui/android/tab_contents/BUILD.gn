@@ -13,9 +13,11 @@ source_set("tab_contents") {
     "//chrome/browser/profiles",
     "//chrome/browser/search_engines",
     "//chrome/browser/ui/android:context_menu_helper",
-    "//components/dom_distiller/core",
+    "//chrome/browser/ui/tab_contents",
     "//components/search_engines",
+    "//components/web_distiller/core",
     "//content/public/browser",
+    "//content/public/common",
     "//ui/gfx",
   ]
 }
@@ -31,8 +33,9 @@ source_set("unit_tests") {
     "//chrome/test:test_support",
     "//chrome/test/base:browser_test_waiters",
     "//chrome/test/base:chrome_render_view_host_test_harness",
-    "//components/dom_distiller/core",
     "//components/search_engines:test_support",
+    "//components/web_distiller/core",
+    "//content/public/common",
     "//content/test:test_support",
     "//testing/gtest",
     "//ui/gfx",

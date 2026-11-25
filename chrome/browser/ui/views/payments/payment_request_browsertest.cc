@@ -22,7 +22,7 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "testing/gmock/include/gmock/gmock.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/views/controls/styled_label.h"
 #include "url/gurl.h"
 
@@ -86,7 +86,7 @@ IN_PROC_BROWSER_TEST_F(PaymentRequestNoShippingTest, OpenAndNavigateToSame) {
 IN_PROC_BROWSER_TEST_F(PaymentRequestNoShippingTest, OpenAndReload) {
   OpenPaymentRequestDialog();
   ResetEventWaiter(DialogEvent::DIALOG_CLOSED);
-  chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
   ASSERT_TRUE(WaitForObservedEvent());
 }
 
@@ -240,10 +240,8 @@ class PaymentsRequestVisualTest
 
 IN_PROC_BROWSER_TEST_F(PaymentsRequestVisualTest, InvokeUi_NoShipping) {
   // Installs two apps so that the Payment Request UI will be shown.
-  std::string a_method_name;
   InstallPaymentApp("a.com", "/payment_request_success_responder.js",
                     &a_method_name_);
-  std::string b_method_name;
   InstallPaymentApp("b.com", "/payment_request_success_responder.js",
                     &b_method_name_);
 

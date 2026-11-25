@@ -99,7 +99,6 @@ interface CoreProbes {
   void DidFireWebGLErrorOrWarning(Element*, const String& message);
   void DidResizeMainFrame(LocalFrame*);
   void ApplyAcceptLanguageOverride(ExecutionContext*, String* accept_language);
-  void ApplyAcceptLanguageOverride(CoreProbeSink*, String* accept_language);
   void ApplyCPUPerformanceOverride(CoreProbeSink*, mojom::blink::PerformanceTier& tier);
   void ApplyHardwareConcurrencyOverride(CoreProbeSink*, unsigned int& hardware_concurrency);
   void ApplyDataSaverOverride(CoreProbeSink*, bool& data_saver);
@@ -154,6 +153,7 @@ interface CoreProbes {
   void DidReceiveWebSocketMessage(ExecutionContext*, uint64_t identifier, int opcode, bool masked, const Vector<base::span<const uint8_t>>& data);
   void DidSendWebSocketMessage(ExecutionContext*, uint64_t identifier, int opcode, bool masked, base::span<const uint8_t> payload);
   void DidReceiveWebSocketMessageError(ExecutionContext*, uint64_t identifier, const String& error_message);
+  void WillCreateWebTransport(ExecutionContext*, std::optional<base::UnguessableToken>* devtools_token);
   void WebTransportCreated([Keep] ExecutionContext*, uint64_t transport_id, const KURL& request_url);
   void WebTransportConnectionEstablished(ExecutionContext*, uint64_t transport_id);
   void WebTransportClosed(ExecutionContext*, uint64_t transport_id);
@@ -216,7 +216,7 @@ interface CoreProbes {
   void WillStartDebuggerTask(CoreProbeSink*);
   void DidFinishDebuggerTask(CoreProbeSink*);
   void LifecycleEvent([Keep] LocalFrame*, DocumentLoader*, const char* name, double timestamp);
-  void PaintTiming([Keep] Document*, const char* name, double timestamp);
+  void PaintTiming([Keep] Document*, const char* name, base::TimeTicks timestamp);
   void DidCreateAudioContext(ExecutionContext*);
   void DidCloseAudioContext(ExecutionContext*);
   void DidResumeAudioContext(ExecutionContext*);
@@ -253,7 +253,7 @@ interface CoreProbes {
   void UpdateAffectedByStartingStylesFlag([Keep] Node* node, std::optional<bool> override_flag);
   void WebMCPToolAdded([Keep] Document* document, const ToolData& tool);
   void WebMCPToolRemoved([Keep] Document* document, const ToolData& tool);
-  void WebMCPToolExecuted([Keep] Document* document, const String& name, const String& input_arguments, const ToolInvocationToken& invocation_id);
+  void WebMCPToolExecuted([Keep] Document* document, const String& name, const std::optional<ScriptToolToken>& tool_id, const String& input_arguments, const ToolInvocationToken& invocation_id);
   void WebMCPToolResponded([Keep] Document* document, const String& result, const ToolInvocationToken& invocation_id);
   void WebMCPToolFailed([Keep] Document* document, const ScriptToolError& result, const ToolInvocationToken& invocation_id, ScriptException exception);
 }

@@ -47,6 +47,10 @@ std::string_view CreationSourceToString(waap::NewWindowCreationSource source) {
       return ".MoveTabsToNewWindow";
     case waap::NewWindowCreationSource::kLaunch:
       return ".Launch";
+    case waap::NewWindowCreationSource::kNavigation:
+      return ".Navigation";
+    case waap::NewWindowCreationSource::kExtension:
+      return ".Extension";
     case waap::NewWindowCreationSource::kUnknown:
       NOTREACHED();
   }
@@ -254,6 +258,11 @@ void WaapUIMetricsService::SkipStartupForTesting() {
   g_is_first_paint_recorded = true;
   g_is_first_contentful_paint_recorded = true;
   g_is_startup_process_recorded = true;
+}
+
+// static
+bool WaapUIMetricsService::IsStartupBrowserWindowFirstPaintRecorded() {
+  return g_is_browser_window_first_paint_recorded;
 }
 
 // static

@@ -6,7 +6,6 @@
 
 #import <utility>
 
-#import "base/feature_list.h"
 #import "components/safe_browsing/core/browser/db/v5_search_hashes_cache.h"
 #import "components/safe_browsing/core/browser/hashprefix_realtime/hash_realtime_service.h"
 #import "components/safe_browsing/ios/browser/web_ui/web_ui_ios_info_singleton.h"
@@ -25,14 +24,16 @@ network::mojom::NetworkContext* GetNetworkContext() {
 }  // namespace
 
 HashRealTimeServiceFactory::HashRealTimeServiceFactory(PassKey key)
-    : TypedProfileKeyedServiceFactoryIOS(std::move(key),
-                                         "HashRealTimeService") {
+    : TypedProfileKeyedServiceFactoryIOS(
+          std::move(key),
+          "HashRealTimeService",
+          ProfileSelection::kOwnInstanceInIncognito) {
   DependsOn(V5SearchHashesCacheFactory::GetInstance());
   DependsOn(OhttpKeyServiceFactory::GetInstance());
 }
 
 std::unique_ptr<KeyedService>
-HashRealTimeServiceFactory::BuildServiceInstanceFor(ProfileIOS* profile) const {
+HashRealTimeServiceFactory::BuildServiceInstanceFor(ProfileIOS& profile) const {
   SafeBrowsingService* safe_browsing_service =
       GetApplicationContext()->GetSafeBrowsingService();
   if (!safe_browsing_service) {
@@ -42,5 +43,6 @@ HashRealTimeServiceFactory::BuildServiceInstanceFor(ProfileIOS* profile) const {
       base::BindRepeating(&GetNetworkContext),
       V5SearchHashesCacheFactory::GetForProfile(profile),
       OhttpKeyServiceFactory::GetForProfile(profile),
-      /*webui_delegate=*/safe_browsing::WebUIIOSInfoSingleton::GetInstance());
+      /*webui_delegate=*/safe_browsing::WebUIIOSInfoSingleton::GetInstance(),
+      profile.IsOffTheRecord() ? "Incognito" : "Regular");
 }

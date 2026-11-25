@@ -33,9 +33,9 @@ android_library("java") {
     ":jni_headers",
   ]
   sources = [
+    "java/src/org/chromium/components/webauthn/AndroidApiCallMetrics.java",
     "java/src/org/chromium/components/webauthn/AuthenticationContextProvider.java",
     "java/src/org/chromium/components/webauthn/AuthenticatorConstants.java",
-    "java/src/org/chromium/components/webauthn/AuthenticatorErrorResponseCallback.java",
     "java/src/org/chromium/components/webauthn/AuthenticatorFactory.java",
     "java/src/org/chromium/components/webauthn/AuthenticatorImpl.java",
     "java/src/org/chromium/components/webauthn/Barrier.java",
@@ -231,6 +231,7 @@ robolectric_library("junit") {
   deps = [
     ":java",
     ":test_support_java",
+    "$google_play_services_package:google_play_services_basement_java",
     "$google_play_services_package:google_play_services_identity_credentials_java",
     "$google_play_services_package:google_play_services_tasks_java",
     "//base:base_java",

@@ -46,6 +46,43 @@ POSSIBLE_SUFFIXES = [
     for suffix_2 in ["", TESTING_SUFFIX]
 ]
 
+# Crubit's C++ support library (the headers and the handful of `.cc` files
+# that Crubit-generated C++ bindings rely on) lives in
+# `//third_party/rust-toolchain/lib/third_party/crubit/support/`, which is
+# not imported into AOSP. Soong instead ships the same sources as the
+# `crubit_support_cc_srcs` filegroup, and the headers as the
+# `crubit_support_headers` header library (both in prebuilts/rust-toolchain).
+#
+# Cronet cannot use Android's prebuilt `libcrubit_support_cc` either, because
+# it is built against Android's libc++ while Cronet vendors its own. gn2bp
+# therefore collapses every GN entry point to the support library (the
+# `group`s in //build/rust/crubit/BUILD.gn below) into a single synthetic
+# `static_library` target, `CRUBIT_CPP_SUPPORT_TARGET`, which translators.py
+# turns into one `cc_library_static` compiling the filegroup with Cronet's own
+# flags and libc++. The synthetic target borrows its compile configuration
+# (cflags, defines, include_dirs) from the support `source_set`s it replaces,
+# so that it is built exactly like GN would build them.
+CRUBIT_CPP_SUPPORT_TARGET = '//build/rust/crubit:cpp_support'
+CRUBIT_CPP_SUPPORT_ENTRY_POINTS = frozenset(
+    {
+        '//build/rust/crubit:crubit',
+        '//build/rust/crubit:cpp_api_from_rust_bindings_cpp_deps',
+    }
+)
+# Representative Crubit C++ support `source_set` in GN from which
+# `CRUBIT_CPP_SUPPORT_TARGET` borrows its compile flags, defines, and
+# include_dirs (all Crubit support `source_set`s share the same GN configs).
+CRUBIT_REPRESENTATIVE_SOURCE_SET = '//third_party/rust-toolchain/lib/third_party/crubit/support/internal:bindings_support'
+# Soong modules provided by prebuilts/rust-toolchain.
+CRUBIT_SUPPORT_CC_SRCS_FILEGROUP = 'crubit_support_cc_srcs'
+CRUBIT_SUPPORT_HEADERS_MODULE = 'crubit_support_headers'
+
+
+def is_crubit_cpp_support_target(target_name):
+    """Returns whether `target_name` is (a suffixed variant of) the synthetic
+    Crubit C++ support target, see `CRUBIT_CPP_SUPPORT_TARGET`."""
+    return target_name.startswith(CRUBIT_CPP_SUPPORT_TARGET)
+
 
 def repo_root():
     """Returns an absolute path to the repository root."""
@@ -164,7 +201,34 @@ def _determine_target_type(target_name, desc):
         metadata_key in metadata
         for metadata_key in ("java_library_deps", "java_library_sources")
     ):
+        inputs = metadata.get("java_library_inputs", [])
+        if inputs and all(
+            inp.startswith("//out/") and inp.endswith(".jar") for inp in inputs
+        ):
+            # `android_java_prebuilt` targets wrapping generated `//out/*.jar`
+            # files (e.g. `repackage_test_jars_without_jni_java`) have no Java
+            # sources of their own and only forward dependencies.
+            return 'group'
+        if not inputs and not metadata.get("java_library_deps", []):
+            # Empty `android_resources` group targets have `java_library_deps`
+            # metadata with neither inputs nor dependencies.
+            return 'group'
         return 'java_library'
+
+    if script in (
+        "//build/util/generate_wrapper.py",
+        "//build/android/gyp/generate_android_wrapper.py",
+        "//build/android/gyp/prepare_resources.py",
+        "//build/android/gyp/rename_java_classes.py",
+        "//build/android/gyp/zip.py",
+        "//components/cronet/tools/check_combined_proguard_file.py",
+        "//components/cronet/tools/generate_proguard_file.py",
+    ):
+        # High-level GN test/packaging wrapper actions (`test`/`cronet_test`,
+        # `cronet_instrumentation_test_apk`, `prepare_resources`, `repackage_jars`,
+        # `dist_jar`, `collect_proguard_configs`) are unwrapped as groups into
+        # their underlying C++, Java, and resource targets.
+        return 'group'
 
     if type_ == "executable" and desc.get("crate_root", None):
         return "rust_executable"
@@ -228,6 +292,7 @@ class GnParser:
 
             def __init__(self):
                 self.sources = set()
+                self.data = set()
                 self.cflags = []
                 self.defines = set()
                 self.include_dirs = set()
@@ -312,6 +377,9 @@ class GnParser:
             self.build_file_path = ""
             self.crate_name = None
             self.crate_root = None
+            # Maps crate alias names to their resolved GN target names for
+            # Rust targets with `aliased_deps`.
+            self.aliased_deps = {}
             # Populated for `crubit_cpp_from_rust` targets from their GN
             # metadata (`crate_header`, `crate_namespace`, `rust_target`).
             self.crubit_rust_target = None
@@ -355,7 +423,7 @@ class GnParser:
             )
 
         def update(self, other, arch):
-            for key in ('defines', 'deps', 'include_dirs'):
+            for key in ('defines', 'deps', 'include_dirs', 'data'):
                 getattr(self.common, key).update(getattr(other.common, key))
             for key in ('cflags', 'ldflags'):
                 getattr(self.common, key).extend(getattr(other.common, key))
@@ -364,7 +432,13 @@ class GnParser:
                 getattr(self, key).update(getattr(other, key))
 
             if arch in self.arch and arch in other.arch:
-                for key_in_arch in ('defines', 'include_dirs', 'deps', 'libs'):
+                for key_in_arch in (
+                    'defines',
+                    'include_dirs',
+                    'deps',
+                    'libs',
+                    'data',
+                ):
                     getattr(self.arch[arch], key_in_arch).update(
                         getattr(other.arch[arch], key_in_arch)
                     )
@@ -421,6 +495,7 @@ class GnParser:
 
             for key in (
                 'sources',
+                'data',
                 'cflags',
                 'defines',
                 'include_dirs',
@@ -508,6 +583,24 @@ class GnParser:
         target_name = gn2bp_common.label_without_toolchain(gn_target_name)
         desc = gn_desc[gn_target_name]
         arch, chromium_arch = self._get_arch(desc['toolchain'])
+
+        if target_name in CRUBIT_CPP_SUPPORT_ENTRY_POINTS:
+            target_name = CRUBIT_CPP_SUPPORT_TARGET
+            rep_label = CRUBIT_REPRESENTATIVE_SOURCE_SET
+            if arch == 'host':
+                rep_label = self._label_with_toolchain(
+                    rep_label, desc['toolchain']
+                )
+            rep_desc = gn_desc[rep_label]
+            desc = {
+                'type': 'static_library',
+                'toolchain': desc['toolchain'],
+                'cflags': rep_desc.get('cflags', []),
+                'cflags_cc': rep_desc.get('cflags_cc', []),
+                'defines': rep_desc.get('defines', []),
+                'include_dirs': rep_desc.get('include_dirs', []),
+            }
+
         metadata = desc.get("metadata", {})
 
         if arch == 'host':
@@ -558,17 +651,16 @@ class GnParser:
                 _remove_out_prefix(output) for output in desc['outputs']
             )
             target.arch[arch].args = desc['args']
-        elif target.type == 'source_set':
-            target.arch[arch].sources.update(
-                source
-                for source in desc.get('sources', [])
-                if not source.startswith("//out")
-            )
         elif target.is_linker_unit_type():
             target.arch[arch].sources.update(
                 source
                 for source in desc.get('sources', [])
                 if not source.startswith("//out")
+            )
+            target.arch[arch].inputs.update(
+                inp
+                for inp in desc.get('inputs', [])
+                if not inp.startswith(("//out", "//build/config/"))
             )
         elif target.type == 'aidl_interface':
             # It's assumed that all of AIDLs' attributes are not arch-specific.
@@ -704,8 +796,134 @@ class GnParser:
                 # Don't continue the dependencies exploration.
                 return target
         elif target.type == 'group':
-            # Group targets are bubbled upward without creating an equivalent GN target.
-            pass
+            # Group targets (including unwrapped high-level test/packaging
+            # wrappers) are bubbled upward without creating an equivalent Soong
+            # module.
+            script = desc.get("script", "")
+            if script in (
+                "//build/android/gyp/prepare_resources.py",
+                "//components/cronet/tools/check_combined_proguard_file.py",
+            ):
+                target.arch[arch].sources.update(
+                    source
+                    for source in desc.get('sources', [])
+                    if not source.startswith("//out")
+                )
+                deps = []
+            elif (
+                script == "//components/cronet/tools/generate_proguard_file.py"
+            ):
+                deps = []
+            elif script == "//build/util/generate_wrapper.py":
+                # GTest wrapper (`test` / `cronet_test`): unwrap `<target>__apk`
+                # into its C++ test shared_library (`<target>__library`) and the
+                # Java libraries / resource groups attached to `<target>__apk__java`.
+                unwrapped_deps = []
+                for d in deps:
+                    if gn2bp_common.label_without_toolchain(d).endswith(
+                        "__apk"
+                    ):
+                        apk_deps = gn_desc.get(d, {}).get("deps", [])
+                        for ad in apk_deps:
+                            ad_desc = gn_desc.get(ad, {})
+                            ad_no_tc = gn2bp_common.label_without_toolchain(ad)
+                            if ad_desc.get("type") == "shared_library":
+                                unwrapped_deps.append(ad)
+                            elif ad_no_tc.endswith("__apk__java"):
+                                for jd in ad_desc.get("deps", []):
+                                    jd_no_tc = (
+                                        gn2bp_common.label_without_toolchain(jd)
+                                    )
+                                    jd_desc = gn_desc.get(jd, {})
+                                    is_res_group = any(
+                                        gn2bp_common.label_without_toolchain(
+                                            dep
+                                        ).endswith("__prepare")
+                                        for dep in jd_desc.get("deps", [])
+                                    )
+                                    if jd in gn_desc and (
+                                        is_res_group
+                                        or (
+                                            _determine_target_type(
+                                                jd_no_tc, jd_desc
+                                            )
+                                            == "java_library"
+                                            and not jd_no_tc.endswith(
+                                                "_single_jar_java"
+                                            )
+                                        )
+                                    ):
+                                        unwrapped_deps.append(jd)
+                deps = unwrapped_deps
+            elif script == "//build/android/gyp/generate_android_wrapper.py":
+                # Instrumentation APK wrapper (`cronet_instrumentation_test_apk`):
+                # unwrap into the native test shared libraries, manifest, and
+                # resource groups it packages.
+                unwrapped_deps = []
+                candidate_deps = list(deps)
+                for d in deps:
+                    if gn2bp_common.label_without_toolchain(d).endswith(
+                        "__write_deps"
+                    ):
+                        candidate_deps.extend(
+                            gn_desc.get(d, {}).get("deps", [])
+                        )
+                for d in candidate_deps:
+                    d_desc = gn_desc.get(d, {})
+                    if d_desc.get("type") == "shared_library":
+                        unwrapped_deps.append(d)
+                    elif gn2bp_common.label_without_toolchain(d).endswith(
+                        "__test_apk"
+                    ):
+                        for td in d_desc.get("deps", []):
+                            td_desc = gn_desc.get(td, {})
+                            td_no_tc = gn2bp_common.label_without_toolchain(td)
+                            if td_desc.get("type") == "shared_library":
+                                unwrapped_deps.append(td)
+                            elif td_no_tc.endswith(
+                                "__build_config_crbug_908819"
+                            ):
+                                target.arch[arch].sources.update(
+                                    inp
+                                    for inp in td_desc.get("inputs", [])
+                                    if inp.endswith("AndroidManifest.xml")
+                                    and not inp.startswith("//out")
+                                )
+                            elif td_no_tc.endswith("__test_apk__java"):
+                                for jd in td_desc.get("deps", []):
+                                    jd_desc = gn_desc.get(jd, {})
+                                    if any(
+                                        gn2bp_common.label_without_toolchain(
+                                            dep
+                                        ).endswith("__prepare")
+                                        for dep in jd_desc.get("deps", [])
+                                    ):
+                                        unwrapped_deps.append(jd)
+                deps = unwrapped_deps
+            elif script == "//build/android/gyp/zip.py":
+                deps = [
+                    d
+                    for d in deps
+                    if not gn2bp_common.label_without_toolchain(d).endswith(
+                        "__build_config_crbug_908819"
+                    )
+                ]
+            elif any(
+                gn2bp_common.label_without_toolchain(d).endswith("__prepare")
+                for d in deps
+            ):
+                deps = [
+                    d
+                    for d in deps
+                    if gn2bp_common.label_without_toolchain(d).endswith(
+                        "__prepare"
+                    )
+                ]
+            elif any(
+                k in metadata
+                for k in ("java_library_deps", "java_library_sources")
+            ):
+                deps = list(metadata.get("java_library_deps", []))
         elif target.type == 'generated_file':
             # generated_file() targets are evaluated by GN at `gn gen` time:
             # they write a file (e.g. jni_zero's `*__type_catalogs.json`) by
@@ -719,8 +937,12 @@ class GnParser:
         elif target.type == 'copy':
             # Copy targets, except for a few exception (see handling of action
             # targets above), are bubbled upward without creating an equivalent
-            # GN target.
-            pass
+            # GN target. Record their source files so Copybara imports them.
+            target.arch[arch].sources.update(
+                source
+                for source in desc.get('sources', [])
+                if not source.startswith("//out")
+            )
         elif target.type == 'crubit_cpp_from_rust':
             crate_header_rel_path = metadata["crate_header"][0]
             target.source_subdir = (
@@ -773,6 +995,37 @@ class GnParser:
             target.rust_package_version = _extract_rust_package_version(
                 desc['rustenv']
             )
+            for aliased_deps_scope in metadata.get("rust_aliased_deps", []):
+                for alias_name, dep_label in aliased_deps_scope.items():
+                    if dep_label.startswith(":"):
+                        dep_label = (
+                            f"//{_get_build_path_from_label(target_name)}"
+                            f"{dep_label}"
+                        )
+                    else:
+                        dep_label = gn2bp_common.label_without_toolchain(
+                            dep_label
+                        )
+                        if ":" not in dep_label:
+                            dep_label = (
+                                f"{dep_label}:{dep_label.rsplit('/', 1)[-1]}"
+                            )
+                    if arch == 'host':
+                        dep_label = self._label_with_toolchain(
+                            dep_label, desc["toolchain"]
+                        )
+                    dep_target = self.parse_gn_desc(
+                        gn_desc, dep_label, is_test_target
+                    )
+                    if (
+                        dep_target.type == 'group'
+                        and arch in dep_target.arch
+                        and len(dep_target.arch[arch].direct_deps) == 1
+                    ):
+                        (resolved_dep_name,) = dep_target.arch[arch].direct_deps
+                    else:
+                        resolved_dep_name = dep_target.name
+                    target.aliased_deps[alias_name] = resolved_dep_name
         else:
             raise Exception(
                 f"Encountered GN target with unknown type\nCulprit target: {gn_target_name}\ntype: {target.type}"
@@ -786,6 +1039,9 @@ class GnParser:
         public_headers = [x for x in desc.get('public', []) if x != '*']
         target.public_headers.update(public_headers)
         target.build_file_path = _get_build_path_from_label(target_name)
+        target.arch[arch].data.update(
+            d for d in desc.get('data', []) if not d.startswith("//out")
+        )
         target.arch[arch].cflags.extend(
             _filter_cflags(desc.get('cflags', []) + desc.get('cflags_cc', []))
         )
@@ -974,3 +1230,4 @@ class GnParser:
                         dep.arch[arch].transitive_static_libs_deps
                     )
                     arch_obj.deps.update(arch_obj.transitive_static_libs_deps)
+                    arch_obj.data.update(dep.arch[arch].data)

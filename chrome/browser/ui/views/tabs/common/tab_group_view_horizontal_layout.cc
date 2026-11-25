@@ -16,6 +16,7 @@
 #include "chrome/browser/ui/views/tabs/common/tab_group_unfocus_button.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_layout_utils.h"
+#include "ui/gfx/animation/tween.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/views/layout/proposed_layout.h"
@@ -29,21 +30,24 @@ TabGroupViewHorizontalLayout::TabGroupViewHorizontalLayout() = default;
 TabGroupViewHorizontalLayout::~TabGroupViewHorizontalLayout() = default;
 
 int TabGroupViewHorizontalLayout::GetCrossoverWidth() const {
+  if (!cached_crossover_width_) {
+    cached_crossover_width_ = CalculateCrossoverWidth();
+  }
+  return *cached_crossover_width_;
+}
+
+void TabGroupViewHorizontalLayout::OnLayoutChanged() {
+  TabGroupView::LayoutManager::OnLayoutChanged();
+  cached_crossover_width_.reset();
+}
+
+int TabGroupViewHorizontalLayout::CalculateCrossoverWidth() const {
   if (!TabGroupView().collection_node_) {
     return 0;
   }
-  int crossover_width = 0;
+  const HeaderLayoutInfo header = ComputeHeaderInfo();
+  int crossover_width = header.total_width();
   size_t count = 0;
-  const bool has_header = TabGroupView().group_header_ &&
-                          TabGroupView().group_header_->GetVisible();
-  if (has_header) {
-    crossover_width += TabGroupView().group_header_->GetPreferredSize().width();
-    if (TabGroupView().IsGroupFocused() && TabGroupView().unfocus_header_) {
-      crossover_width +=
-          TabGroupView().unfocus_header_->GetPreferredSize().width() +
-          kFocusedHeadersGap;
-    }
-  }
   if (!TabGroupView().IsCollapsed()) {
     for (const auto* child :
          TabGroupView().collection_node_->GetDirectChildren()) {
@@ -59,58 +63,15 @@ int TabGroupViewHorizontalLayout::GetCrossoverWidth() const {
     }
   }
   const int tab_overlap = TabStyle::Get()->GetTabOverlap();
-  const int header_overlap = TabGroupStyle::GetTabGroupOverlapAdjustment();
-  if (count > 0 && has_header) {
+  if (count > 0 && header.has_header()) {
     crossover_width =
-        std::max(0, crossover_width - header_overlap -
+        std::max(0, crossover_width - header.overlap -
                         static_cast<int>(count - 1) * tab_overlap);
   } else if (count > 1) {
     crossover_width = std::max(
         0, crossover_width - static_cast<int>(count - 1) * tab_overlap);
   }
   return crossover_width;
-}
-
-gfx::Size TabGroupViewHorizontalLayout::GetMinimumSize(
-    const views::View* host) const {
-  if (!TabGroupView().collection_node_) {
-    return gfx::Size();
-  }
-  int min_width = 0;
-  size_t count = 0;
-  const bool has_header = TabGroupView().group_header_ &&
-                          TabGroupView().group_header_->GetVisible();
-  if (has_header) {
-    min_width += TabGroupView().group_header_->GetPreferredSize().width();
-    if (TabGroupView().IsGroupFocused() && TabGroupView().unfocus_header_) {
-      min_width += TabGroupView().unfocus_header_->GetPreferredSize().width() +
-                   kFocusedHeadersGap;
-    }
-  }
-  if (!TabGroupView().IsCollapsed()) {
-    for (const auto* child :
-         TabGroupView().collection_node_->GetDirectChildren()) {
-      if (!CanBeVisible(child)) {
-        continue;
-      }
-      auto drag_data = TabGroupView().GetVisualDataForDraggedView(*child);
-      if (drag_data && drag_data->should_hide) {
-        continue;
-      }
-      min_width += child->GetMinimumSize().width();
-      count++;
-    }
-  }
-  const int tab_overlap = TabStyle::Get()->GetTabOverlap();
-  const int header_overlap = TabGroupStyle::GetTabGroupOverlapAdjustment();
-  if (count > 0 && has_header) {
-    min_width = std::max(0, min_width - header_overlap -
-                                static_cast<int>(count - 1) * tab_overlap);
-  } else if (count > 1) {
-    min_width =
-        std::max(0, min_width - static_cast<int>(count - 1) * tab_overlap);
-  }
-  return gfx::Size(min_width, TabStyle::Get()->GetStandardHeight());
 }
 
 views::ProposedLayout TabGroupViewHorizontalLayout::CalculateProposedLayout(
@@ -121,44 +82,29 @@ views::ProposedLayout TabGroupViewHorizontalLayout::CalculateProposedLayout(
   }
 
   const int tab_overlap = TabStyle::Get()->GetTabOverlap();
-  const int header_overlap = TabGroupStyle::GetTabGroupOverlapAdjustment();
   const int container_height = TabStyle::Get()->GetStandardHeight();
 
-  // Place the group header.
-  int header_width = 0;
+  // Place the Unfocus button and the group header. A header with zero width
+  // is laid out hidden so it neither paints nor takes events.
+  const HeaderLayoutInfo header = ComputeHeaderInfo();
+  const int header_width = header.total_width();
   if (TabGroupView().group_header_) {
-    const bool is_focused = TabGroupView().IsGroupFocused();
-    const int header_height = is_focused ? TabGroupStyle::GetFocusedChipHeight()
-                                         : TabGroupStyle::GetEmptyChipSize();
-    const int header_y = TabGroupStyle::GetTitleChipOffset(header_height).y();
-    int x_offset = 0;
+    const int header_y =
+        TabGroupStyle::GetTitleChipOffset(header.header_height).y();
     if (TabGroupView().unfocus_header_) {
-      if (is_focused) {
-        const int unfocus_width =
-            TabGroupView()
-                .unfocus_header_
-                ->GetPreferredSize(views::SizeBounds({}, header_height))
-                .width();
-        gfx::Rect unfocus_bounds(0, header_y, unfocus_width, header_height);
-        layouts.child_layouts.emplace_back(TabGroupView().unfocus_header_.get(),
-                                           true, unfocus_bounds);
-        x_offset = unfocus_width + kFocusedHeadersGap;
-      } else {
-        layouts.child_layouts.emplace_back(TabGroupView().unfocus_header_.get(),
-                                           false, gfx::Rect());
-      }
+      const bool unfocus_visible = TabGroupView().ShouldShowUnfocusButton();
+      layouts.child_layouts.emplace_back(
+          TabGroupView().unfocus_header_.get(), unfocus_visible,
+          unfocus_visible ? gfx::Rect(0, header_y, header.unfocus_width,
+                                      header.header_height)
+                          : gfx::Rect());
     }
-    const int main_header_width =
-        TabGroupView()
-            .group_header_
-            ->GetPreferredSize(views::SizeBounds({}, header_height))
-            .width();
-    gfx::Rect header_bounds(x_offset, header_y, main_header_width,
-                            header_height);
+    const bool header_visible = header.header_width > 0;
     layouts.child_layouts.emplace_back(
-        TabGroupView().group_header_.get(),
-        TabGroupView().group_header_->GetVisible(), header_bounds);
-    header_width = x_offset + main_header_width;
+        TabGroupView().group_header_.get(), header_visible,
+        header_visible ? gfx::Rect(header.header_x(), header_y,
+                                   header.header_width, header.header_height)
+                       : gfx::Rect());
   }
 
   TabStripCollectionLayoutInfo collection = CollectVisibleChildLayoutInfo(
@@ -176,57 +122,114 @@ views::ProposedLayout TabGroupViewHorizontalLayout::CalculateProposedLayout(
           this));
 
   const size_t num_children = collection.visible_children.size();
-  const int header_space = (header_width > 0 && num_children > 0)
-                               ? header_width - header_overlap
-                               : header_width;
+  const bool is_collapsed = TabGroupView().IsCollapsed();
+  const int header_space =
+      (header_width > 0 && num_children > 0 && !is_collapsed)
+          ? std::max(0, header_width - header.overlap)
+          : header_width;
   const int overlap_total = collection.overlap_total;
 
   int x = header_space;
 
   if (num_children > 0) {
-    const int net_preferred_width =
-        std::max(0, collection.total_preferred_width - overlap_total);
+    if (is_collapsed) {
+      for (const auto& info : collection.visible_children) {
+        auto drag_data = TabGroupView().GetVisualDataForDraggedView(*info.view);
+        int child_x = drag_data ? drag_data->offset.x() : header_width;
+        layouts.child_layouts.emplace_back(
+            info.view.get(), true, gfx::Rect(child_x, 0, 0, container_height));
+      }
+    } else {
+      const int net_preferred_width =
+          std::max(0, collection.total_preferred_width - overlap_total);
 
-    int available_width =
-        size_bounds.width().value_or(net_preferred_width + header_space);
-    int width_for_children = std::max(0, available_width - header_space);
+      int available_width =
+          size_bounds.width().value_or(net_preferred_width + header_space);
+      int width_for_children = std::max(0, available_width - header_space);
 
-    const int available_for_children_allocation =
-        width_for_children + overlap_total;
+      const int available_for_children_allocation =
+          width_for_children + overlap_total;
 
-    std::vector<int> allocated_widths = CalculateProportionalChildWidths(
-        available_for_children_allocation, collection.preferred_widths,
-        collection.crossover_widths, collection.min_widths,
-        collection.total_preferred_width, collection.total_crossover_width,
-        collection.total_min_width);
+      std::vector<int> allocated_widths = CalculateProportionalChildWidths(
+          available_for_children_allocation, collection.preferred_widths,
+          collection.crossover_widths, collection.min_widths,
+          collection.total_preferred_width, collection.total_crossover_width,
+          collection.total_min_width);
 
-    for (size_t i = 0; i < collection.visible_children.size(); ++i) {
-      const auto& info = collection.visible_children[i];
-      int child_width = allocated_widths[i];
+      for (size_t i = 0; i < collection.visible_children.size(); ++i) {
+        const auto& info = collection.visible_children[i];
+        int child_width = allocated_widths[i];
 
-      auto drag_data = TabGroupView().GetVisualDataForDraggedView(*info.view);
-      int child_x = drag_data ? drag_data->offset.x() : x;
-      gfx::Rect bounds(child_x, 0, child_width, container_height);
-      layouts.child_layouts.emplace_back(info.view.get(), true, bounds);
+        auto drag_data = TabGroupView().GetVisualDataForDraggedView(*info.view);
+        int child_x = drag_data ? drag_data->offset.x() : x;
+        gfx::Rect bounds(child_x, 0, child_width, container_height);
+        layouts.child_layouts.emplace_back(info.view.get(), true, bounds);
 
-      x += child_width - tab_overlap;
+        x += child_width - tab_overlap;
+      }
     }
   }
 
+  // If collapsed, the group only takes up the width of the header.
   const int total_group_width =
-      num_children > 0 ? (x + tab_overlap) : header_width;
+      (num_children > 0 && !is_collapsed) ? (x + tab_overlap) : header_width;
 
   if (TabGroupView().group_line_) {
-    const bool show_group_line =
-        !TabGroupView().IsGroupFocused() && !TabGroupView().IsCollapsed();
+    const bool show_group_line = TabGroupView().ShouldShowGroupLine();
     gfx::Rect group_line_bounds(0, 0, total_group_width, container_height);
     layouts.child_layouts.emplace_back(TabGroupView().group_line_.get(),
                                        show_group_line, group_line_bounds);
   }
 
-  // If collapsed, the group only takes up the width of the header.
-  layouts.host_size =
-      gfx::Size(TabGroupView().IsCollapsed() ? header_width : total_group_width,
-                container_height);
+  layouts.host_size = gfx::Size(total_group_width, container_height);
   return layouts;
+}
+
+TabGroupViewHorizontalLayout::HeaderLayoutInfo
+TabGroupViewHorizontalLayout::ComputeHeaderInfo() const {
+  HeaderLayoutInfo info;
+  if (!TabGroupView().group_header_) {
+    return info;
+  }
+  const float focus_progress = TabGroupView().GetFocusProgress();
+
+  // The header chip grows taller and the Unfocus button slides in ahead of it
+  // as the group gains focus; both reverse as it loses focus. Ephemeral groups
+  // always use the focused height and instead collapse horizontally to zero
+  // width as they dissolve.
+  const int focused_height = TabGroupStyle::GetFocusedChipHeight();
+  info.header_height =
+      TabGroupView().is_ephemeral()
+          ? focused_height
+          : gfx::Tween::LinearIntValueBetween(focus_progress,
+                                              TabGroupStyle::GetEmptyChipSize(),
+                                              focused_height);
+
+  if (TabGroupView().unfocus_header_) {
+    info.unfocus_width = gfx::Tween::LinearIntValueBetween(
+        focus_progress, 0,
+        TabGroupView()
+            .unfocus_header_
+            ->GetPreferredSize(views::SizeBounds({}, focused_height))
+            .width());
+    if (info.unfocus_width > 0) {
+      info.gap = gfx::Tween::LinearIntValueBetween(focus_progress, 0,
+                                                   kFocusedHeadersGap);
+    }
+  }
+  const int target_header_width =
+      TabGroupView()
+          .group_header_
+          ->GetPreferredSize(views::SizeBounds({}, info.header_height))
+          .width();
+  const int target_overlap = TabGroupStyle::GetTabGroupOverlapAdjustment();
+  info.header_width = TabGroupView().is_ephemeral()
+                          ? gfx::Tween::LinearIntValueBetween(
+                                focus_progress, 0, target_header_width)
+                          : target_header_width;
+  info.overlap =
+      TabGroupView().is_ephemeral()
+          ? gfx::Tween::LinearIntValueBetween(focus_progress, 0, target_overlap)
+          : target_overlap;
+  return info;
 }

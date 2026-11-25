@@ -28,32 +28,32 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.supplier.ObservableSuppliers;
-import org.chromium.base.test.params.ParameterAnnotations;
+import org.chromium.base.test.params.ParameterAnnotations.UseMethodParameter;
+import org.chromium.base.test.params.ParameterAnnotations.UseRunnerDelegate;
 import org.chromium.base.test.params.ParameterProvider;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.UrlUtils;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
-import org.chromium.chrome.browser.dom_distiller.DomDistillerTabUtils;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.profiles.ProfileManager;
+import org.chromium.chrome.browser.reader_mode.ReaderModeTabUtils;
 import org.chromium.chrome.browser.tab.MockTab;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObserver;
 import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tabmodel.TabClosingSource;
+import org.chromium.chrome.browser.toolbar.LocationBarModel.OfflineStatus;
 import org.chromium.chrome.browser.toolbar.top.ToolbarLayout;
 import org.chromium.chrome.browser.url_constants.UrlConstantResolver;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
@@ -75,8 +75,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Tests for LocationBarModel. */
 @RunWith(ParameterizedRunner.class)
-@ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
+@UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
 @Batch(Batch.PER_CLASS)
 public class LocationBarModelTest {
     @Rule
@@ -204,7 +203,7 @@ public class LocationBarModelTest {
 
     @Test
     @MediumTest
-    @ParameterAnnotations.UseMethodParameter(IncognitoTransitionParamProvider.class)
+    @UseMethodParameter(IncognitoTransitionParamProvider.class)
     // TODO(crbug.com/457847264): Restrict to phones after launch.
     @DisableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
     public void testOnIncognitoStateChange_toolbarDataProvider(
@@ -259,7 +258,7 @@ public class LocationBarModelTest {
 
     @Test
     @MediumTest
-    @ParameterAnnotations.UseMethodParameter(IncognitoTransitionParamProvider.class)
+    @UseMethodParameter(IncognitoTransitionParamProvider.class)
     // TODO(crbug.com/457847264): Restrict to phones after launch.
     @DisableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
     public void testOnIncognitoStateChange_switchTab(boolean fromIncognito, boolean toIncognito) {
@@ -311,7 +310,7 @@ public class LocationBarModelTest {
 
     @Test
     @MediumTest
-    @ParameterAnnotations.UseMethodParameter(IncognitoTransitionParamProvider.class)
+    @UseMethodParameter(IncognitoTransitionParamProvider.class)
     // TODO(crbug.com/457847264): Restrict to phones after launch.
     @DisableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
     public void testOnIncognitoStateChange_newTab(boolean fromIncognito, boolean toIncognito) {
@@ -472,8 +471,10 @@ public class LocationBarModelTest {
         mActivityTestRule.loadUrl(urlA);
         // Pre-load the second tab. Switching to a frozen tab dispatches onContentChanged, which
         // resets the flags on its own and would mask the bug this test is guarding against.
-        mActivityTestRule.loadUrlInNewTab(urlB, /* incognito= */ false);
-        ChromeTabUtils.switchTabInCurrentTabModel(activity, 0);
+        Tab tabA = mPage.getTab();
+        WebPageStation pageB = mPage.openNewTabFast().loadWebPageProgrammatically(urlB);
+        Tab tabB = pageB.getTab();
+        WebPageStation pageA = pageB.selectTabFast(tabA, WebPageStation::newBuilder);
 
         assertEquals(
                 urlA,
@@ -490,7 +491,7 @@ public class LocationBarModelTest {
                     locationBarModel.notifySecurityStateChanged();
                 });
 
-        ChromeTabUtils.switchTabInCurrentTabModel(activity, 1);
+        pageA.selectTabFast(tabB, WebPageStation::newBuilder);
 
         CriteriaHelper.pollUiThread(
                 () -> urlB.equals(locationBarModel.getCurrentGurl().getSpec()),
@@ -530,8 +531,8 @@ public class LocationBarModelTest {
             super(
                     context,
                     NewTabPageDelegate.EMPTY,
-                    DomDistillerTabUtils::getFormattedUrlFromOriginalDistillerUrl,
-                    new LocationBarModel.OfflineStatus() {},
+                    ReaderModeTabUtils::getFormattedUrlFromOriginalDistillerUrl,
+                    new OfflineStatus() {},
                     ObservableSuppliers.createNonNull(ControlsPosition.TOP));
             initializeWithNative();
 

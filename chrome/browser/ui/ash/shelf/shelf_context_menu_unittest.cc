@@ -70,7 +70,6 @@
 #include "components/viz/test/test_gpu_service_holder.h"
 #include "ui/aura/window_event_dispatcher.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/display.h"
 #include "ui/views/widget/widget.h"
 #include "url/gurl.h"
@@ -124,7 +123,7 @@ class ShelfContextMenuTest : public ChromeAshTestBase {
 
   void SetUpInitParams(ash::AshTestHelper::InitParams& init_params) override {
     ChromeAshTestBase::SetUpInitParams(init_params);
-    init_params.start_session = false;
+    init_params.users.clear();
   }
 
   void SetUp() override {

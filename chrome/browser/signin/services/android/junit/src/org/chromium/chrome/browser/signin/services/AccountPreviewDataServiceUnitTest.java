@@ -8,6 +8,8 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import org.junit.Before;
 import org.junit.Rule;
@@ -17,6 +19,7 @@ import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
+import org.chromium.base.Callback;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.components.signin.SigninFeatures;
@@ -38,12 +41,21 @@ public class AccountPreviewDataServiceUnitTest {
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private AccountPreviewDataService.Natives mNativeMock;
+    @Mock private Callback<AccountPreviewPreference> mCallbackMock;
     private AccountPreviewDataService mService;
 
     @Before
     public void setUp() {
         AccountPreviewDataServiceJni.setInstanceForTesting(mNativeMock);
         mService = new AccountPreviewDataService(NATIVE_SERVICE_PTR);
+    }
+
+    @Test
+    public void testGetPreferredAccountForSigninAsync() {
+        long timeoutMs = 1500L;
+        mService.getPreferredAccountForSigninAsync(mCallbackMock, timeoutMs);
+        verify(mNativeMock)
+                .getPreferredAccountForSigninAsync(NATIVE_SERVICE_PTR, mCallbackMock, timeoutMs);
     }
 
     @Test
@@ -111,5 +123,12 @@ public class AccountPreviewDataServiceUnitTest {
 
         assertFalse(pref.equals(prefDifferentFormFactor));
         assertNotEquals(pref.hashCode(), prefDifferentFormFactor.hashCode());
+    }
+
+    @Test
+    public void testGetPreferredAccountFREFetchTimeoutMs() {
+        when(mNativeMock.getPreferredAccountFREFetchTimeoutMs()).thenReturn(1500L);
+        assertEquals(1500L, mService.getPreferredAccountFREFetchTimeoutMs());
+        verify(mNativeMock).getPreferredAccountFREFetchTimeoutMs();
     }
 }

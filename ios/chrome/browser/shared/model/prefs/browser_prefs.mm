@@ -21,7 +21,6 @@
 #import "components/component_updater/component_updater_service.h"
 #import "components/content_settings/core/browser/host_content_settings_map.h"
 #import "components/contextual_search/contextual_search_service.h"
-#import "components/dom_distiller/core/distilled_page_prefs.h"
 #import "components/enterprise/browser/groups/groups_prefs.h"
 #import "components/enterprise/browser/identifiers/identifiers_prefs.h"
 #import "components/enterprise/browser/reporting/prefs.h"
@@ -71,7 +70,6 @@
 #import "components/proxy_config/pref_proxy_config_tracker_impl.h"
 #import "components/regional_capabilities/regional_capabilities_prefs.h"
 #import "components/safe_browsing/core/common/safe_browsing_prefs.h"
-#import "components/safety_check/safety_check_pref_names.h"
 #import "components/safety_check/safety_check_prefs.h"
 #import "components/saved_tab_groups/public/pref_names.h"
 #import "components/search_engines/template_url_prepopulate_data.h"
@@ -104,11 +102,13 @@
 #import "components/universal_optout/prefs.h"
 #import "components/update_client/update_client.h"
 #import "components/variations/service/variations_service.h"
+#import "components/web_distiller/core/distilled_page_prefs.h"
 #import "components/web_resource/web_resource_pref_names.h"
 #import "components/webui/chrome_urls/pref_names.h"
 #import "components/webui/flags/pref_service_flags_storage.h"
 #import "ios/chrome/app/spotlight/spotlight_util.h"
 #import "ios/chrome/app/variations_app_state_agent.h"
+#import "ios/chrome/browser/authentication/account_switching_promo/model/account_switching_promo_prefs.h"
 #import "ios/chrome/browser/authentication/history_sync/model/history_sync_utils.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_coordinator.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin_promo_view_mediator.h"
@@ -147,14 +147,13 @@
 #import "ios/chrome/browser/upgrade/model/upgrade_constants.h"
 #import "ios/chrome/browser/voice/model/voice_search_prefs_registration.h"
 #import "ios/chrome/browser/web/model/font_size/font_size_tab_helper.h"
-#import "ios/chrome/browser/welcome_back/model/welcome_back_prefs.h"
 #import "ios/chrome/common/app_group/app_group_constants.h"
 #import "ios/components/cookie_util/cookie_constants.h"
 #import "ios/web/common/features.h"
 #import "ui/base/l10n/l10n_util.h"
 
 #if !BUILDFLAG(IS_IOS_MACCATALYST)
-#import "ios/chrome/browser/default_browser/default_status/model/default_status_helper_prefs.h"
+#import "ios/chrome/browser/default_browser/default_status/model/default_status_helper.h"
 #endif  // !BUILDFLAG(IS_IOS_MACCATALYST)
 
 namespace {
@@ -247,28 +246,17 @@ inline constexpr char kTailoredSecuritySyncFlowLastUserInteractionState[] =
 inline constexpr char kTailoredSecuritySyncFlowObservedOutcomeUnsetTimestamp[] =
     "safebrowsing.aesb_sync_flow_observed_outcome_unset_timestamp";
 
-// Renames a boolean pref within a PrefService.
-void RenameBooleanPref(std::string_view target_pref_name,
-                       std::string_view source_pref_name,
-                       PrefService* pref_service) {
-  const PrefService::Preference* target_pref =
-      pref_service->FindPreference(target_pref_name);
-  CHECK(target_pref);
+// Deprecated 10/2026.
+inline constexpr char kWelcomeBackEligibleItems[] =
+    "ios.welcomeback.eligible_items";
 
-  const PrefService::Preference* source_pref =
-      pref_service->FindPreference(source_pref_name);
-  CHECK(source_pref);
+// Deprecated 10/2026.
+inline constexpr char kHistorySearchSettingState[] =
+    "optimization_guide.history_search_setting_state";
 
-  // Only migrate the pref if 1. it is not set in target,
-  // 2. it is not the default in source.
-  if (target_pref->IsDefaultValue() && !source_pref->IsDefaultValue()) {
-    pref_service->SetBoolean(target_pref_name,
-                             pref_service->GetBoolean(source_pref_name));
-  }
-
-  // In all cases, clear the pref from source.
-  pref_service->ClearPref(source_pref_name);
-}
+// Deprecated 11/2026.
+inline constexpr char kBundledSettingsCheckedMigrateUserToEnhancedBundle[] =
+    "safebrowsing.bundled_settings.checked_migrate_user_to_enhanced_bundle";
 
 }  // namespace
 
@@ -309,7 +297,6 @@ void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
   TipsNotificationClient::RegisterLocalStatePrefs(registry);
   auto_deletion::AutoDeletionService::RegisterLocalStatePrefs(registry);
   push_notification_prefs::RegisterLocalStatePrefs(registry);
-  RegisterWelcomeBackLocalStatePrefs(registry);
   feature_engagement::RegisterLocalStatePrefs(registry);
 
 #if !BUILDFLAG(IS_IOS_MACCATALYST)
@@ -512,6 +499,9 @@ void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
   // Deprecated 08/2026.
   registry->RegisterTimePref(kWaitingForMultiProfileForcedMigrationTimestamp,
                              base::Time());
+
+  // Deprecated 10/2026.
+  registry->RegisterListPref(kWelcomeBackEligibleItems);
 }
 
 void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
@@ -526,7 +516,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   cross_device::RegisterProfilePrefs(registry);
   CrossPlatformPromosService::RegisterProfilePrefs(registry);
   data_controls::RegisterProfilePrefs(registry);
-  dom_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
+  web_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
   enterprise::RegisterIdentifiersProfilePrefs(registry);
   enterprise_connectors::RegisterProfilePrefs(registry);
   enterprise_data_protection::RegisterProfilePrefs(registry);
@@ -886,11 +876,9 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterTimeDeltaPref(
       prefs::kDeviceAuthorizationStartupFetchBackoff, base::TimeDelta());
 
-  // Use `safety_check::prefs::kSafetyCheckHomeModuleEnabled` instead.
-  registry->RegisterBooleanPref(
-      prefs::kHomeCustomizationMagicStackSafetyCheckEnabled, true);
-
   registry->RegisterBooleanPref(prefs::kUniversalOptOutErrorToastShown, false);
+
+  signin::RegisterAccountSwitchingPromoProfilePrefs(registry);
 
   // Deprecated 12/2025.
   registry->RegisterStringPref(kAutofillStatesDataDir, std::string());
@@ -946,9 +934,13 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
       kTailoredSecuritySyncFlowLastUserInteractionState, 0);
   registry->RegisterTimePref(
       kTailoredSecuritySyncFlowObservedOutcomeUnsetTimestamp, base::Time());
-
   // Deprecated 10/2026.
   registry->RegisterIntegerPref(kCustomLinksAiModeTileIndex, 0);
+  registry->RegisterIntegerPref(kHistorySearchSettingState, 0);
+
+  // Deprecated 11/2026.
+  registry->RegisterBooleanPref(
+      kBundledSettingsCheckedMigrateUserToEnhancedBundle, false);
 }
 
 // This method should be periodically pruned of year+ old migrations.
@@ -980,6 +972,9 @@ void MigrateObsoleteLocalStatePrefs(PrefService* prefs) {
 
   // Added 08/2026.
   prefs->ClearPref(kWaitingForMultiProfileForcedMigrationTimestamp);
+
+  // Added 10/2026.
+  prefs->ClearPref(kWelcomeBackEligibleItems);
 }
 
 // This method should be periodically pruned of year+ old migrations.
@@ -989,11 +984,6 @@ void MigrateObsoleteProfilePrefs(PrefService* prefs) {
 
   // Check MigrateDeprecatedAutofillPrefs() to see if this is safe to remove.
   autofill::prefs::MigrateDeprecatedAutofillPrefs(prefs);
-
-  // Added 10/2025.
-  RenameBooleanPref(safety_check::prefs::kSafetyCheckHomeModuleEnabled,
-                    prefs::kHomeCustomizationMagicStackSafetyCheckEnabled,
-                    prefs);
 
   // Added 12/2025.
   prefs->ClearPref(kAutofillStatesDataDir);
@@ -1040,7 +1030,6 @@ void MigrateObsoleteProfilePrefs(PrefService* prefs) {
   prefs->ClearPref(kTailoredSecuritySyncFlowLastRunTime);
   prefs->ClearPref(kTailoredSecuritySyncFlowLastUserInteractionState);
   prefs->ClearPref(kTailoredSecuritySyncFlowObservedOutcomeUnsetTimestamp);
-
   if (prefs->FindPreference(prefs::kIosMostVisitedAiModeTileIndex)
           ->IsDefaultValue() &&
       !prefs->FindPreference(kCustomLinksAiModeTileIndex)->IsDefaultValue()) {
@@ -1048,6 +1037,10 @@ void MigrateObsoleteProfilePrefs(PrefService* prefs) {
                       prefs->GetInteger(kCustomLinksAiModeTileIndex));
   }
   prefs->ClearPref(kCustomLinksAiModeTileIndex);
+  prefs->ClearPref(kHistorySearchSettingState);
+
+  // Added 11/2026.
+  prefs->ClearPref(kBundledSettingsCheckedMigrateUserToEnhancedBundle);
 }
 
 void MigrateObsoleteUserDefault() {

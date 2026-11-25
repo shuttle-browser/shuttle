@@ -32,10 +32,9 @@ class TabAndroid;
 // https://chromium.googlesource.com/chromium/src/+/HEAD/docs/ui/android/mvc_overview.md
 class SidePanelCoordinatorAndroid : public SidePanelUIBase {
  public:
-  DECLARE_USER_DATA(SidePanelCoordinatorAndroid);
-
   // Returns the `SidePanelCoordinatorAndroid` associated with the given
   // `browser`. A `nullptr` will be returned if `browser` is a `nullptr`.
+  // Note: Production callers should prefer `SidePanelUI::From(browser)`.
   static SidePanelCoordinatorAndroid* From(BrowserWindowInterface* browser);
 
   SidePanelCoordinatorAndroid(
@@ -57,6 +56,7 @@ class SidePanelCoordinatorAndroid : public SidePanelUIBase {
   bool HasContentToShow(TabAndroid* tab);
   void OnPanelContainerUpdated(int old_width, int new_width);
   void OnPanelContentReplaced();
+  void OnPanelResized(int width_dp);
   void OnActiveChanged(bool active);
   void OnWillAutoClose(bool is_showable);
   void OnWillAutoRestore();
@@ -68,6 +68,8 @@ class SidePanelCoordinatorAndroid : public SidePanelUIBase {
              bool suppress_animations) override;
   void Toggle(SidePanelEntryKey key,
               SidePanelOpenTrigger open_trigger) override;
+  void OverrideContentsWidth(int width) override;
+  void ResetContentsWidthOverride() override;
   void OnActiveTabChanged(content::WebContents* old_contents,
                           content::WebContents* new_contents,
                           bool tab_removed_for_deletion) override;
@@ -167,6 +169,12 @@ class SidePanelCoordinatorAndroid : public SidePanelUIBase {
 
   UniqueKey GetCurrentKeyNonNull() const;
   SidePanelEntry* GetEntryForCurrentKeyNonNull() const;
+
+  // Returns the side panel container width (in dp) persisted for `entry`, i.e.
+  // the width the user last picked for it by resizing the side panel, or
+  // nullopt if there's none.
+  std::optional<int32_t> GetPersistedPanelWidthDp(
+      const SidePanelEntry& entry) const;
 
   // The key for a `SidePanelEntry` that can be shown.
   struct ShowableKey {
@@ -275,9 +283,6 @@ class SidePanelCoordinatorAndroid : public SidePanelUIBase {
   jni_zero::ScopedJavaGlobalWeakRef java_coordinator_;
 
   SidePanelDeferredEntryTracker deferred_entry_tracker_{browser()};
-
-  ui::ScopedUnownedUserData<SidePanelCoordinatorAndroid>
-      scoped_unowned_user_data_;
 
   SidePanelTabModelObserver tab_model_observer_;
 };

@@ -121,6 +121,7 @@ public class GroupWindowCheckerUnitTest {
         List<Tab> tabList = List.of(mTab1);
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(token1);
+        mSyncUtils.invalidate();
 
         List<GroupWindowInfo> sortedList =
                 mSyncUtils.getSortedGroupList(
@@ -142,6 +143,59 @@ public class GroupWindowCheckerUnitTest {
     }
 
     @Test
+    public void testGetSortedGroupList_zeroSyncGroupsIncludesLocalGroups() {
+        Token localGroupId = Token.createRandom();
+        when(mSyncService.getAllGroupIds()).thenReturn(new String[0]);
+        when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(localGroupId));
+        when(mTabModel.containsTabGroup(localGroupId)).thenReturn(true);
+        when(mTabModel.getTabGroupTitle(localGroupId)).thenReturn("Local Group");
+        when(mTabModel.getTabsInGroup(localGroupId)).thenReturn(List.of());
+
+        when(mTab1.getTabGroupId()).thenReturn(localGroupId);
+        when(mTab1.isClosing()).thenReturn(false);
+        List<Tab> tabList = List.of(mTab1);
+        when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
+        mSyncUtils.invalidate();
+
+        List<GroupWindowInfo> sortedList =
+                mSyncUtils.getSortedGroupList(
+                        this::tabGroupSelectionPredicate,
+                        (g1, g2) -> g1.title.compareToIgnoreCase(g2.title));
+        assertEquals(1, sortedList.size());
+        assertEquals(localGroupId, sortedList.get(0).localId);
+        assertTrue(mSyncUtils.hasOtherGroups(/* currentGroupId= */ null));
+    }
+
+    @Test
+    public void testGetSortedGroupList_deduplicatesGroupInBothSyncAndLocal() {
+        Token groupId = Token.createRandom();
+        SavedTabGroup group = createSavedTabGroup(groupId, "Sync Title");
+        group.localId = new LocalTabGroupId(groupId);
+        group.savedTabs.add(new SavedTabGroupTab());
+
+        when(mSyncService.getAllGroupIds()).thenReturn(new String[] {"sync1"});
+        when(mSyncService.getGroup("sync1")).thenReturn(group);
+
+        when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(groupId));
+        when(mTabModel.containsTabGroup(groupId)).thenReturn(true);
+        when(mTabModel.getTabGroupTitle(groupId)).thenReturn("Local Title");
+        when(mTabModel.getTabsInGroup(groupId)).thenReturn(List.of());
+
+        when(mTab1.getTabGroupId()).thenReturn(groupId);
+        when(mTab1.isClosing()).thenReturn(false);
+        List<Tab> tabList = List.of(mTab1);
+        when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
+        mSyncUtils.invalidate();
+
+        List<GroupWindowInfo> sortedList =
+                mSyncUtils.getSortedGroupList(
+                        this::tabGroupSelectionPredicate,
+                        (g1, g2) -> g1.title.compareToIgnoreCase(g2.title));
+        assertEquals(1, sortedList.size());
+        assertEquals(groupId, sortedList.get(0).localId);
+    }
+
+    @Test
     public void testGetState_hidden() {
         SavedTabGroup group = new SavedTabGroup();
         group.localId = null;
@@ -159,6 +213,7 @@ public class GroupWindowCheckerUnitTest {
         List<Tab> tabList = List.of(mTab1);
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(token);
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(group);
         assertEquals(GroupWindowState.IN_CURRENT, state);
@@ -172,6 +227,7 @@ public class GroupWindowCheckerUnitTest {
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(token);
         when(mTab1.isClosing()).thenReturn(true);
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(group);
         assertEquals(GroupWindowState.IN_CURRENT_CLOSING, state);
@@ -185,6 +241,7 @@ public class GroupWindowCheckerUnitTest {
         List<Tab> tabList = List.of(mTab1);
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(new Token(200L, 1L));
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(group);
         assertEquals(GroupWindowState.IN_ANOTHER, state);
@@ -209,6 +266,7 @@ public class GroupWindowCheckerUnitTest {
         when(headlessModel.containsTabGroup(token)).thenReturn(true);
         when(selector.getModel(false)).thenReturn(headlessModel);
         when(tabWindowManager.getTabModelSelectorById(1)).thenReturn(selector);
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(group);
         assertEquals(GroupWindowState.IN_ANOTHER, state);
@@ -221,6 +279,7 @@ public class GroupWindowCheckerUnitTest {
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(token);
         when(mTab1.isClosing()).thenReturn(false);
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(token);
         assertEquals(GroupWindowState.IN_CURRENT, state);
@@ -233,6 +292,7 @@ public class GroupWindowCheckerUnitTest {
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(token);
         when(mTab1.isClosing()).thenReturn(true);
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(token);
         assertEquals(GroupWindowState.IN_CURRENT_CLOSING, state);
@@ -244,6 +304,7 @@ public class GroupWindowCheckerUnitTest {
         List<Tab> tabList = List.of(mTab1);
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(Token.createRandom());
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(token);
         assertEquals(GroupWindowState.IN_ANOTHER, state);
@@ -275,6 +336,7 @@ public class GroupWindowCheckerUnitTest {
         when(headlessModel.containsTabGroup(token)).thenReturn(true);
         when(selector.getModel(false)).thenReturn(headlessModel);
         when(tabWindowManager.getTabModelSelectorById(1)).thenReturn(selector);
+        mSyncUtils.invalidate();
 
         @GroupWindowState int state = mSyncUtils.getState(token);
         assertEquals(GroupWindowState.IN_ANOTHER, state);
@@ -298,6 +360,8 @@ public class GroupWindowCheckerUnitTest {
         when(mTabList.iterator()).thenAnswer(invocation -> tabList1.iterator());
 
         TabModel otherIncognitoModel = mock(TabModel.class);
+        TabList otherTabList = mock(TabList.class);
+        when(otherIncognitoModel.getComprehensiveModel()).thenReturn(otherTabList);
         when(otherIncognitoModel.isIncognito()).thenReturn(true);
         when(otherIncognitoModel.getAllTabGroupIds()).thenReturn(Set.of(group2));
         when(otherIncognitoModel.getTabGroupTitle(group2)).thenReturn("Incognito Group 2");
@@ -309,6 +373,7 @@ public class GroupWindowCheckerUnitTest {
         TabModelSelector selector2 = mock(TabModelSelector.class);
         when(selector2.getModel(true)).thenReturn(otherIncognitoModel);
         when(tabWindowManager.getAllTabModelSelectors()).thenReturn(List.of(selector1, selector2));
+        mSyncUtils.invalidate();
 
         List<GroupWindowInfo> sortedList =
                 mSyncUtils.getSortedGroupList(
@@ -337,6 +402,8 @@ public class GroupWindowCheckerUnitTest {
         when(mTabList.iterator()).thenAnswer(invocation -> tabList1.iterator());
 
         TabModel otherIncognitoModel = mock(TabModel.class);
+        TabList otherTabList = mock(TabList.class);
+        when(otherIncognitoModel.getComprehensiveModel()).thenReturn(otherTabList);
         when(otherIncognitoModel.isIncognito()).thenReturn(true);
         when(otherIncognitoModel.getAllTabGroupIds()).thenReturn(Set.of(group2));
         when(otherIncognitoModel.getTabGroupTitle(group2)).thenReturn("Incognito Group 2");
@@ -348,6 +415,7 @@ public class GroupWindowCheckerUnitTest {
         TabModelSelector selector2 = mock(TabModelSelector.class);
         when(selector2.getModel(true)).thenReturn(otherIncognitoModel);
         when(tabWindowManager.getAllTabModelSelectors()).thenReturn(List.of(selector1, selector2));
+        mSyncUtils.invalidate();
 
         List<GroupWindowInfo> sortedList =
                 mSyncUtils.getSortedGroupList(
@@ -374,6 +442,7 @@ public class GroupWindowCheckerUnitTest {
         when(mTabList.iterator()).thenAnswer(invocation -> tabList1.iterator());
 
         when(tabWindowManager.getAllTabModelSelectors()).thenReturn(List.of());
+        mSyncUtils.invalidate();
 
         List<GroupWindowInfo> sortedList =
                 mSyncUtils.getSortedGroupList(
@@ -465,7 +534,9 @@ public class GroupWindowCheckerUnitTest {
         when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(token1));
         when(mTabModel.getTabGroupTitle(token1)).thenReturn("title1");
         when(mTabModel.containsTabGroup(token1)).thenReturn(true);
-        when(mTabModel.getTabsInGroup(token1)).thenReturn(List.of());
+        Tab tab1 = mock(Tab.class);
+        when(mTabModel.getTabsInGroup(token1)).thenReturn(List.of(tab1));
+        mSyncUtils.invalidate();
 
         assertFalse(mSyncUtils.hasOtherGroups(token1));
         assertTrue(mSyncUtils.hasOtherGroups(null));
@@ -474,7 +545,33 @@ public class GroupWindowCheckerUnitTest {
         when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(token1, token2));
         when(mTabModel.getTabGroupTitle(token2)).thenReturn("title2");
         when(mTabModel.containsTabGroup(token2)).thenReturn(true);
-        when(mTabModel.getTabsInGroup(token2)).thenReturn(List.of());
+        Tab tab2 = mock(Tab.class);
+        when(mTabModel.getTabsInGroup(token2)).thenReturn(List.of(tab2));
+        mSyncUtils.invalidate();
+
+        assertTrue(mSyncUtils.hasOtherGroups(token1));
+    }
+
+    @Test
+    public void testHasOtherGroups_regularModel_unsyncedLocalGroups() {
+        Token token1 = Token.createRandom();
+        when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(token1));
+        when(mTabModel.getTabGroupTitle(token1)).thenReturn("title1");
+        when(mTabModel.containsTabGroup(token1)).thenReturn(true);
+        Tab tab1 = mock(Tab.class);
+        when(mTabModel.getTabsInGroup(token1)).thenReturn(List.of(tab1));
+        mSyncUtils.invalidate();
+
+        assertFalse(mSyncUtils.hasOtherGroups(token1));
+        assertTrue(mSyncUtils.hasOtherGroups(null));
+
+        Token token2 = Token.createRandom();
+        when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(token1, token2));
+        when(mTabModel.getTabGroupTitle(token2)).thenReturn("title2");
+        when(mTabModel.containsTabGroup(token2)).thenReturn(true);
+        Tab tab2 = mock(Tab.class);
+        when(mTabModel.getTabsInGroup(token2)).thenReturn(List.of(tab2));
+        mSyncUtils.invalidate();
 
         assertTrue(mSyncUtils.hasOtherGroups(token1));
     }
@@ -515,6 +612,7 @@ public class GroupWindowCheckerUnitTest {
         when(mSyncService.getGroup("localId")).thenReturn(localGroup);
         when(mTabList.iterator()).thenAnswer(invocation -> List.of(mTab1).iterator());
         when(mTab1.getTabGroupId()).thenReturn(token1);
+        mSyncUtils.invalidate();
 
         assertFalse(mSyncUtils.hasOtherGroups(token1));
         assertTrue(mSyncUtils.hasOtherGroups(null));
@@ -533,6 +631,7 @@ public class GroupWindowCheckerUnitTest {
         when(mTab1.getTabGroupId()).thenReturn(closingToken);
         when(mTab1.isClosing()).thenReturn(true);
         when(mTabList.iterator()).thenAnswer(invocation -> List.of(mTab1).iterator());
+        mSyncUtils.invalidate();
 
         assertTrue(mSyncUtils.hasOtherGroups(null));
         assertTrue(mSyncUtils.hasOtherGroups(Token.createRandom()));
@@ -551,6 +650,7 @@ public class GroupWindowCheckerUnitTest {
         when(mTab1.getTabGroupId()).thenReturn(closingToken);
         when(mTab1.isClosing()).thenReturn(true);
         when(mTabList.iterator()).thenAnswer(invocation -> List.of(mTab1).iterator());
+        mSyncUtils.invalidate();
 
         assertFalse(mSyncUtils.hasOtherGroups(null));
         assertEquals(0, mSyncUtils.getDefaultSortedGroupList().size());
@@ -614,8 +714,14 @@ public class GroupWindowCheckerUnitTest {
         when(mModelWindow2.getTabsInGroup(closingToken)).thenReturn(Collections.emptyList());
         when(mModelWindow2.getTabGroupTitle(closingToken))
                 .thenReturn("Live Window 2 Closing Title");
+        TabModelSelector selectorWindow1 = mock(TabModelSelector.class);
+        when(selectorWindow1.getModel(false)).thenReturn(mTabModel);
+        when(mTabWindowManager.getAllTabModelSelectors())
+                .thenReturn(List.of(selectorWindow1, mSelectorWindow2));
+        when(mModelWindow2.getAllTabGroupIds()).thenReturn(Collections.emptySet());
         when(mModelWindow2.getTabGroupColorWithFallback(closingToken))
                 .thenReturn(TabGroupColorId.RED);
+        mSyncUtils.invalidate();
 
         assertEquals(GroupWindowState.HIDDEN, mSyncUtils.getState(closingGroup));
 
@@ -693,11 +799,110 @@ public class GroupWindowCheckerUnitTest {
         List<Tab> tabList = List.of(mTab1);
         when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
         when(mTab1.getTabGroupId()).thenReturn(token);
+        mSyncUtils.invalidate();
 
         GroupWindowInfo info = mSyncUtils.fromSavedTabGroup(group);
         assertEquals(GroupWindowState.IN_CURRENT, info.groupWindowState);
         assertEquals("collab-1", info.collaborationId);
         assertTrue(info.isArchived);
         assertEquals("Test Group", info.title);
+    }
+
+    @Test
+    public void testInvalidate_rebuildsSnapshot() {
+        Token token = Token.createRandom();
+        SavedTabGroup group = createSavedTabGroup(token, "title1");
+        group.localId = new LocalTabGroupId(token);
+        group.savedTabs.add(new SavedTabGroupTab());
+
+        when(mSyncService.getAllGroupIds()).thenReturn(new String[] {"id1"});
+        when(mSyncService.getGroup("id1")).thenReturn(group);
+
+        List<Tab> tabList = List.of(mTab1);
+        when(mTabList.iterator()).thenAnswer(invocation -> tabList.iterator());
+        when(mTab1.getTabGroupId()).thenReturn(token);
+        when(mTab1.isClosing()).thenReturn(false);
+
+        mSyncUtils.invalidate();
+        assertEquals(GroupWindowState.IN_CURRENT, mSyncUtils.getState(group));
+
+        // Tab becomes closing in model
+        when(mTab1.isClosing()).thenReturn(true);
+        // Before invalidate, snapshot still has active token
+        assertEquals(GroupWindowState.IN_CURRENT, mSyncUtils.getState(group));
+
+        // After invalidate, snapshot is rebuilt reflecting IN_CURRENT_CLOSING
+        mSyncUtils.invalidate();
+        assertEquals(GroupWindowState.IN_CURRENT_CLOSING, mSyncUtils.getState(group));
+    }
+
+    @Test
+    public void testGetSortedGroupList_activeTabsExcludeClosingTabs() {
+        Token localGroupId = Token.createRandom();
+        Tab activeTab = mock(Tab.class);
+        when(activeTab.getTabGroupId()).thenReturn(localGroupId);
+        when(activeTab.isClosing()).thenReturn(false);
+
+        Tab closingTab = mock(Tab.class);
+        when(closingTab.getTabGroupId()).thenReturn(localGroupId);
+        when(closingTab.isClosing()).thenReturn(true);
+
+        when(mSyncService.getAllGroupIds()).thenReturn(new String[0]);
+        when(mTabModel.getAllTabGroupIds()).thenReturn(Set.of(localGroupId));
+        when(mTabModel.containsTabGroup(localGroupId)).thenReturn(true);
+        when(mTabModel.getTabGroupTitle(localGroupId)).thenReturn("Local Group");
+
+        List<Tab> comprehensiveTabs = List.of(activeTab, closingTab);
+        when(mTabList.iterator()).thenAnswer(invocation -> comprehensiveTabs.iterator());
+
+        mSyncUtils.invalidate();
+
+        List<GroupWindowInfo> sortedList =
+                mSyncUtils.getSortedGroupList(
+                        this::tabGroupSelectionPredicate,
+                        (g1, g2) -> g1.title.compareToIgnoreCase(g2.title));
+
+        assertEquals(1, sortedList.size());
+        assertEquals(1, sortedList.get(0).tabCount);
+    }
+
+    @Test
+    @EnableFeatures(
+            ChromeFeatureList.CROSS_WINDOW_TAB_GROUP_OPERATIONS + ":remote_group_operations/true")
+    public void testFromSavedTabGroup_closingInAnotherWindow_withSelectorsStubbed() {
+        TabWindowManagerSingleton.setTabWindowManagerForTesting(mTabWindowManager);
+
+        Token closingToken = Token.createRandom();
+        SavedTabGroup closingGroup = createSavedTabGroup(closingToken, "staleRemoteTitle");
+        closingGroup.color = TabGroupColorId.BLUE;
+        closingGroup.localId = new LocalTabGroupId(closingToken);
+        closingGroup.savedTabs.add(new SavedTabGroupTab());
+
+        when(mTabWindowManager.findWindowIdForTabGroup(closingToken, true)).thenReturn(1);
+        TabModelSelector selectorWindow2 = mock(TabModelSelector.class);
+        when(mTabWindowManager.getTabModelSelectorById(1)).thenReturn(selectorWindow2);
+        when(selectorWindow2.getModel(false)).thenReturn(mModelWindow2);
+        TabModelSelector selectorWindow1 = mock(TabModelSelector.class);
+        when(selectorWindow1.getModel(false)).thenReturn(mTabModel);
+        when(mTabWindowManager.getAllTabModelSelectors())
+                .thenReturn(List.of(selectorWindow1, selectorWindow2));
+        when(mClosingTabInWindow2.getTabGroupId()).thenReturn(closingToken);
+        when(mClosingTabInWindow2.isClosing()).thenReturn(true);
+        when(mComprehensiveModelWindow2.iterator())
+                .thenAnswer(inv -> List.of(mClosingTabInWindow2).iterator());
+        when(mModelWindow2.getComprehensiveModel()).thenReturn(mComprehensiveModelWindow2);
+        when(mModelWindow2.getAllTabGroupIds()).thenReturn(Collections.emptySet());
+
+        when(mModelWindow2.getTabGroupTitle(closingToken))
+                .thenReturn("Live Window 2 Closing Title");
+        when(mModelWindow2.getTabGroupColorWithFallback(closingToken))
+                .thenReturn(TabGroupColorId.RED);
+        mSyncUtils.invalidate();
+
+        GroupWindowInfo info = mSyncUtils.fromSavedTabGroup(closingGroup);
+        assertEquals(GroupWindowState.HIDDEN, info.groupWindowState);
+        assertEquals("Live Window 2 Closing Title", info.title);
+        assertEquals(TabGroupColorId.RED, info.color);
+        assertEquals(1, info.tabCount);
     }
 }

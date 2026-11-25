@@ -6,20 +6,26 @@
 
 #include <cstdint>
 #include <optional>
+#include <string>
+#include <string_view>
 #include <utility>
 
 #include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/types/expected.h"
 #include "base/uuid.h"
 #include "components/browser_actuator/internal/transport/control_transport_handler.h"
 #include "components/browser_actuator/internal/transport/downstream_message_sequencer.h"
+#include "components/browser_actuator/internal/transport/probe_transport_handler.h"
 #include "components/browser_actuator/internal/transport/proto/transport_messages.pb.h"
 #include "components/browser_actuator/internal/transport/resume_body_connection_delegate.h"
 #include "components/browser_actuator/internal/transport/stream_connection_delegate.h"
 #include "components/browser_actuator/internal/transport/transport_handler_factory_registry_impl.h"
+#include "components/browser_actuator/internal/transport/transport_message_observer.h"
 #include "components/browser_actuator/internal/transport/transport_session_impl.h"
 #include "components/browser_actuator/internal/transport/transport_session_registry_impl.h"
 #include "components/browser_actuator/internal/transport/upstream_message_client/upstream_message_client.h"
@@ -34,7 +40,17 @@ TransportChannelImpl::TransportChannelImpl(
   CHECK(upstream_message_client_);
   handler_registry_ = std::make_unique<TransportHandlerFactoryRegistryImpl>();
   session_registry_ = std::make_unique<TransportSessionRegistryImpl>(
-      weak_ptr_factory_.GetWeakPtr());
+      weak_ptr_factory_.GetWeakPtr(),
+      base::BindRepeating(
+          [](base::WeakPtr<TransportChannelImpl> self,
+             std::string_view session_id,
+             const ActuatorDownstreamMessage& message) {
+            if (self) {
+              self->NotifyDownstreamMessage(session_id, message,
+                                            DownstreamDeliveryStatus::kSuccess);
+            }
+          },
+          weak_ptr_factory_.GetWeakPtr()));
   session_registry_->AddObserver(this);
 
   control_handler_factory_ = std::make_unique<ControlTransportHandlerFactory>(
@@ -43,6 +59,29 @@ TransportChannelImpl::TransportChannelImpl(
       base::BindRepeating(&TransportSessionRegistryImpl::DestroySession,
                           session_registry_->GetWeakPtr()));
   handler_registry_->RegisterFactory(control_handler_factory_.get());
+
+  probe_handler_factory_ = std::make_unique<ProbeTransportHandlerFactory>(
+      base::BindRepeating(
+          [](base::WeakPtr<TransportChannelImpl> self,
+             std::string_view session_id) -> std::optional<int64_t> {
+            return self ? self->GetDispatchingSequenceNumber(session_id)
+                        : std::nullopt;
+          },
+          weak_ptr_factory_.GetWeakPtr()),
+      base::BindRepeating(
+          [](base::WeakPtr<TransportChannelImpl> self,
+             std::string_view session_id, const TransportProbe& probe,
+             std::optional<int64_t> responding_to_sequence_number)
+              -> base::expected<void, SendUpstreamMessageError> {
+            if (!self) {
+              return base::unexpected(
+                  SendUpstreamMessageError::kChannelDisconnected);
+            }
+            return self->SendProbeReply(session_id, probe,
+                                        responding_to_sequence_number);
+          },
+          weak_ptr_factory_.GetWeakPtr()));
+  handler_registry_->RegisterFactory(probe_handler_factory_.get());
 
   // The resume delegate carries no state: on every connection attempt it asks
   // the channel to rebuild the WatchSessionsRequest body from the current
@@ -70,6 +109,9 @@ TransportChannelImpl::~TransportChannelImpl() {
   if (session_registry_) {
     session_registry_->RemoveObserver(this);
   }
+  if (handler_registry_ && probe_handler_factory_) {
+    handler_registry_->UnregisterFactory(probe_handler_factory_.get());
+  }
   if (handler_registry_ && control_handler_factory_) {
     handler_registry_->UnregisterFactory(control_handler_factory_.get());
   }
@@ -83,6 +125,17 @@ void TransportChannelImpl::Disconnect() {
   downstream_connection_state_ = DownstreamConnectionState::kDisconnected;
   if (stream_client_) {
     stream_client_->Disconnect();
+  }
+}
+
+void TransportChannelImpl::ResetForAccountChange() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  Disconnect();
+  if (session_registry_) {
+    session_registry_->Clear();
+  }
+  if (upstream_message_client_) {
+    upstream_message_client_->CancelPendingRequests();
   }
 }
 
@@ -132,6 +185,16 @@ void TransportChannelImpl::ReconnectStream() {
   }
 }
 
+void TransportChannelImpl::CloseAndDestroySession(std::string_view session_id) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  const std::string owned_session_id(session_id);
+  ControlCommand command;
+  command.mutable_close_session();
+  SendUpstreamMessage(owned_session_id, PayloadType::kControl, command,
+                      /*responding_to_sequence_number=*/std::nullopt);
+  session_registry_->DestroySession(owned_session_id);
+}
+
 // Downstream: route each message to its session so the *session* advances its
 // own resume position.
 void TransportChannelImpl::OnStreamMessage(const std::string& message) {
@@ -150,21 +213,41 @@ void TransportChannelImpl::OnStreamMessage(const std::string& message) {
   }
 
   TransportSessionImpl* session =
-      session_registry_->GetOrCreateSession(downstream->session_id());
+      session_registry_->GetSessionImpl(downstream->session_id());
   if (!session) {
+    DVLOG(1) << "Ignoring downstream message for unknown or closed session: "
+             << downstream->session_id();
     return;
   }
 
   const int64_t sequence_number = downstream->sequence_number();
+  std::optional<ActuatorDownstreamMessage> dropped_copy;
+  if (!observers_.empty()) {
+    dropped_copy = *downstream;
+  }
   base::expected<void, DownstreamMessageSequencer::Error> result =
       session->ProcessDownstreamMessage(std::move(*downstream));
   if (!result.has_value()) {
     switch (result.error()) {
       case DownstreamMessageSequencer::Error::kBufferFull:
+        if (session->consecutive_buffer_full_errors() >=
+            TransportSessionImpl::kMaxConsecutiveBufferFullErrors) {
+          DLOG(WARNING) << "Tearing down session " << session->GetSessionId()
+                        << " after receiving "
+                        << session->consecutive_buffer_full_errors()
+                        << " consecutive reorder-buffer overflows without "
+                           "advancing sequence cursor";
+          CloseAndDestroySession(session->GetSessionId());
+          break;
+        }
         DVLOG(1) << "Downstream reorder buffer full for session "
                  << session->GetSessionId()
                  << "; reconnecting stream to request replay from "
                  << session->last_seen_sequence_number();
+        if (dropped_copy.has_value()) {
+          NotifyDownstreamMessage(session->GetSessionId(), *dropped_copy,
+                                  DownstreamDeliveryStatus::kFailure);
+        }
         ReconnectStream();
         break;
       case DownstreamMessageSequencer::Error::kInvalidSequenceNumber:
@@ -175,16 +258,11 @@ void TransportChannelImpl::OnStreamMessage(const std::string& message) {
                       << session->consecutive_invalid_sequence_numbers() << ")";
         if (session->consecutive_invalid_sequence_numbers() >=
             TransportSessionImpl::kMaxConsecutiveInvalidSequenceNumbers) {
-          const std::string session_id(session->GetSessionId());
-          DLOG(WARNING) << "Tearing down session " << session_id
+          DLOG(WARNING) << "Tearing down session " << session->GetSessionId()
                         << " after receiving "
                         << session->consecutive_invalid_sequence_numbers()
                         << " consecutive invalid sequence numbers";
-          ControlCommand command;
-          command.mutable_close_session();
-          SendUpstreamMessage(session_id, PayloadType::kControl, command,
-                              /*responding_to_sequence_number=*/std::nullopt);
-          session_registry_->DestroySession(session_id);
+          CloseAndDestroySession(session->GetSessionId());
         }
         break;
     }
@@ -224,12 +302,24 @@ void TransportChannelImpl::SendUpstreamMessage(
       *responding_to_sequence_number >= 0) {
     validated_responding_to_seq = *responding_to_sequence_number;
   }
+  // SendUpstreamMessage can invoke its callback synchronously on immediate
+  // OAuth failure before returning `upstream`, so SyncSendState buffers the
+  // status code to guarantee `http_response_code = 0` is notified first.
+  struct SyncSendState {
+    bool in_sync_call = true;
+    std::optional<int> response_code;
+  };
+  auto sync_state = base::MakeRefCounted<base::RefCountedData<SyncSendState>>();
+
   ActuatorUpstreamMessage upstream =
       upstream_message_client_->SendUpstreamMessage(
           session_id, client_sequence_number, validated_responding_to_seq,
           payload_type, message,
           base::BindOnce(
-              [](std::string session_id, bool success, int response_code) {
+              [](base::WeakPtr<TransportChannelImpl> self,
+                 scoped_refptr<base::RefCountedData<SyncSendState>> sync_state,
+                 std::string session_id, int64_t client_sequence_number,
+                 bool success, int response_code) {
                 if (!success) {
                   VLOG(1) << "Failed to send upstream message for session "
                           << session_id << " (response code: " << response_code
@@ -237,11 +327,50 @@ void TransportChannelImpl::SendUpstreamMessage(
                   // TODO(crbug.com/532661039): Consider adding retry buffering
                   // or closing the channel.
                 }
+                if (sync_state->data.in_sync_call) {
+                  sync_state->data.response_code = response_code;
+                  return;
+                }
+                if (self) {
+                  self->NotifyUpstreamResponse(
+                      session_id, client_sequence_number, response_code);
+                }
               },
-              std::string(session_id)));
+              weak_ptr_factory_.GetWeakPtr(), sync_state,
+              std::string(session_id), client_sequence_number));
 
+  sync_state->data.in_sync_call = false;
   observers_.Notify(&TransportMessageObserver::OnUpstreamMessage,
-                    std::string_view(upstream.session_id()), upstream);
+                    std::string_view(upstream.session_id()), upstream,
+                    /*http_response_code=*/0);
+  if (sync_state->data.response_code.has_value()) {
+    NotifyUpstreamResponse(upstream.session_id(), client_sequence_number,
+                           *sync_state->data.response_code);
+  }
+}
+
+void TransportChannelImpl::NotifyDownstreamMessage(
+    std::string_view session_id,
+    const ActuatorDownstreamMessage& message,
+    DownstreamDeliveryStatus status) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  observers_.Notify(&TransportMessageObserver::OnDownstreamMessage, session_id,
+                    message, status);
+}
+
+void TransportChannelImpl::NotifyUpstreamResponse(
+    std::string_view session_id,
+    int64_t client_sequence_number,
+    int response_code) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (observers_.empty()) {
+    return;
+  }
+  ActuatorUpstreamMessage response_msg;
+  response_msg.set_session_id(std::string(session_id));
+  response_msg.set_client_sequence_number(client_sequence_number);
+  observers_.Notify(&TransportMessageObserver::OnUpstreamMessage, session_id,
+                    response_msg, response_code);
 }
 
 std::string TransportChannelImpl::BuildWatchSessionsRequestBody() {
@@ -263,6 +392,27 @@ std::string TransportChannelImpl::BuildWatchSessionsRequestBody() {
 
 std::string TransportChannelImpl::BuildWatchSessionsRequestBodyForTesting() {
   return BuildWatchSessionsRequestBody();
+}
+
+std::optional<int64_t> TransportChannelImpl::GetDispatchingSequenceNumber(
+    std::string_view session_id) const {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  TransportSessionImpl* session = session_registry_->GetSessionImpl(session_id);
+  return session ? session->dispatching_sequence_number() : std::nullopt;
+}
+
+base::expected<void, SendUpstreamMessageError>
+TransportChannelImpl::SendProbeReply(
+    std::string_view session_id,
+    const TransportProbe& probe,
+    std::optional<int64_t> responding_to_sequence_number) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!session_registry_->GetSessionImpl(session_id)) {
+    return base::unexpected(SendUpstreamMessageError::kChannelDisconnected);
+  }
+  SendUpstreamMessage(session_id, PayloadType::kProbe, probe,
+                      responding_to_sequence_number);
+  return {};
 }
 
 }  // namespace browser_actuator::transport

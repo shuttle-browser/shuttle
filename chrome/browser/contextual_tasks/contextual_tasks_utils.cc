@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "base/check.h"
 #include "base/containers/fixed_flat_map.h"
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
@@ -37,6 +38,7 @@
 #include "content/public/browser/navigation_handle.h"
 #include "net/http/http_response_headers.h"
 #if !BUILDFLAG(IS_ANDROID)
+#include "build/branding_buildflags.h"
 #include "chrome/browser/contextual_tasks/active_task_context_provider.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_web_contents_user_data.h"
 #include "chrome/browser/themes/theme_service.h"
@@ -45,8 +47,10 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
+#include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/contextual_tasks/contextual_tasks_ephemeral_button_controller.h"
 #include "chrome/grit/branded_strings.h"
+#include "chrome/grit/theme_resources.h"
 #include "components/contextual_tasks/public/features.h"
 #include "components/lens/contextual_input.h"
 #include "components/lens/lens_overlay_mime_type.h"
@@ -56,6 +60,10 @@
 #include "components/sessions/core/session_id.h"
 #include "components/strings/grit/components_strings.h"
 #include "ui/actions/actions.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/resource/resource_bundle.h"
+#include "ui/gfx/image/image.h"
+#include "ui/gfx/image/image_skia.h"
 #endif
 #include "chrome/common/webui_url_constants.h"
 #include "components/contextual_search/contextual_search_metrics_recorder.h"
@@ -76,11 +84,11 @@
 #include "third_party/lens_server_proto/aim_communication.pb.h"
 #include "third_party/lens_server_proto/search_communication.pb.h"
 #include "ui/base/device_form_factor.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
+#include "ui/color/color_provider_key.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/contextual_tasks/android/contextual_tasks_panel_host_android.h"
 #include "chrome/browser/contextual_tasks/android/contextual_tasks_panel_host_desktop_android.h"
 #else
 #include "chrome/browser/contextual_tasks/contextual_tasks_panel_host_desktop.h"
@@ -656,16 +664,6 @@ void SendInjectedInputRemovedUpdate(AimMessagePoster* message_poster,
   message_poster->PostAimMessage(client_to_aim_message);
 }
 
-bool ShouldShowSidePanel() {
-#if BUILDFLAG(IS_ANDROID)
-  return IsAndroidDesktopFormFactor() &&
-         !base::FeatureList::IsEnabled(
-             kContextualTasksOverrideShowBottomSheetOnLargeScreen);
-#else
-  return true;
-#endif
-}
-
 bool IsAndroidMobileFormFactor() {
 #if BUILDFLAG(IS_ANDROID)
   return ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_PHONE;
@@ -695,12 +693,10 @@ bool IsUrlValidForContextSharing(const GURL& url) {
 std::unique_ptr<ContextualTasksPanelHost> ContextualTasksPanelHost::Create(
     BrowserWindowInterface* browser_window) {
 #if BUILDFLAG(IS_ANDROID)
-  if (ShouldShowSidePanel()) {
-    return std::make_unique<ContextualTasksPanelHostDesktopAndroid>(
-        browser_window);
-  } else {
-    return std::make_unique<ContextualTasksPanelHostAndroid>(browser_window);
-  }
+  // We shouldn't reach this method for phones and tablets.
+  CHECK(IsContextualTasksFormFactorSupported());
+  return std::make_unique<ContextualTasksPanelHostDesktopAndroid>(
+      browser_window);
 #else
   return std::make_unique<ContextualTasksPanelHostDesktop>(browser_window);
 #endif
@@ -737,6 +733,26 @@ void UpdatePinButtonVisibilityState(BrowserWindowInterface* browser_window) {
   if (!action_item) {
     return;
   }
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  if (features::IsWebUIPinnedToolbarActionsEnabled() &&
+      ShouldUseSuperGIconForPinButtons()) {
+    // WebUI pinned toolbar actions resolves known resource images by comparing
+    // the ImageSkia backing object against ResourceBundle, and applies the icon
+    // size delta in CSS. Replace the resized ImageSkia with the raw resource
+    // image if it is not already set so WebUI's known-resource check succeeds.
+    const gfx::ImageSkia* const raw_super_g =
+        ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+            IDR_GOOGLE_G_GRADIENT_20);
+    if (raw_super_g && (!action_item->GetImage().IsImage() ||
+                        !action_item->GetImage()
+                             .GetImage()
+                             .AsImageSkia()
+                             .BackedBySameObjectAs(*raw_super_g))) {
+      action_item->SetImage(ui::ImageModel::FromImageSkia(*raw_super_g));
+    }
+  }
+#endif
 
   const bool is_pinning_eligible =
       contextual_tasks::EntryPointEligibilityManager::IsPinningEligible(
@@ -916,23 +932,24 @@ void RecordExtensionQueuedSearchMessagesDropped(size_t count) {
       count);
 }
 
-void RecordSidePanelLinkClickedMetrics(WindowOpenDisposition disposition) {
+void RecordSidePanelLinkClickedMetrics(
+    ui::mojom::WindowOpenDisposition disposition) {
   ContextualTasksLinkOpenDisposition open_disposition =
       ContextualTasksLinkOpenDisposition::kOther;
   switch (disposition) {
-    case WindowOpenDisposition::kCurrentTab:
+    case ui::mojom::WindowOpenDisposition::kCurrentTab:
       open_disposition = ContextualTasksLinkOpenDisposition::kCurrentTab;
       break;
-    case WindowOpenDisposition::kNewForegroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
       open_disposition = ContextualTasksLinkOpenDisposition::kNewForegroundTab;
       break;
-    case WindowOpenDisposition::kNewBackgroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
       open_disposition = ContextualTasksLinkOpenDisposition::kNewBackgroundTab;
       break;
-    case WindowOpenDisposition::kNewWindow:
+    case ui::mojom::WindowOpenDisposition::kNewWindow:
       open_disposition = ContextualTasksLinkOpenDisposition::kNewWindow;
       break;
-    case WindowOpenDisposition::kOffTheRecord:
+    case ui::mojom::WindowOpenDisposition::kOffTheRecord:
       open_disposition = ContextualTasksLinkOpenDisposition::kOffTheRecord;
       break;
     default:
@@ -948,26 +965,38 @@ void RecordSidePanelLinkClickedMetrics(WindowOpenDisposition disposition) {
       open_disposition);
 }
 
-bool ShouldUseDarkMode(Profile* profile, const GURL& url) {
-  std::optional<bool> url_dark_mode = GetDarkModeFromUrl(url);
-  if (url_dark_mode.has_value()) {
+bool ShouldUseDarkMode(content::WebContents* web_contents, const GURL& url) {
+  CHECK(web_contents);
+  // 1. An explicit CS URL param wins.
+  if (std::optional<bool> url_dark_mode = GetDarkModeFromUrl(url)) {
     return *url_dark_mode;
   }
-  return ShouldUseDarkMode(profile);
+  // 2. Use dark mode if it's incognito or the Desktop theme is dark.
+  if (ShouldUseDarkModeForProfile(
+          Profile::FromBrowserContext(web_contents->GetBrowserContext()))) {
+    return true;
+  }
+#if BUILDFLAG(IS_ANDROID)
+  // 3. TODO(crbug.com/536100150): Android has no ThemeService, so fall back to
+  // the WebContents color mode, which follows the app's light/dark setting.
+  return web_contents->GetColorMode() == ui::ColorProviderKey::ColorMode::kDark;
+#else
+  return false;
+#endif
 }
 
-bool ShouldUseDarkMode(Profile* profile) {
-#if !BUILDFLAG(IS_ANDROID)
+bool ShouldUseDarkModeForProfile(Profile* profile) {
   // Assume light mode as fallback.
   if (!profile) {
     return false;
   }
 
   // Always use dark mode in incognito.
-  if (profile->IsOffTheRecord()) {
+  if (profile->IsIncognitoProfile()) {
     return true;
   }
 
+#if !BUILDFLAG(IS_ANDROID)
   // In all other cases, respect the theme service dark mode preferences.
   ThemeService* theme_service = ThemeServiceFactory::GetForProfile(profile);
   return theme_service && theme_service->BrowserUsesDarkColors();

@@ -5,6 +5,7 @@
 #include "chrome/browser/apps/app_shim/web_app_shim_manager_delegate_mac.h"
 
 #include <algorithm>
+#include <optional>
 
 #include "base/barrier_closure.h"
 #include "base/check.h"
@@ -13,6 +14,7 @@
 #include "base/logging.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
+#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/web_applications/web_app_dialogs.h"
 #include "chrome/browser/web_applications/extensions/launch.h"
@@ -26,10 +28,13 @@
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/chrome_switches.h"
+#include "components/content_settings/core/browser/host_content_settings_map.h"
+#include "components/content_settings/core/common/content_settings.h"
+#include "components/content_settings/core/common/content_settings_types.h"
 #include "components/services/app_service/public/cpp/app_launch_params.h"
 #include "components/services/app_service/public/cpp/app_launch_util.h"
 #include "net/base/filename_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 namespace web_app {
 
@@ -242,7 +247,9 @@ void WebAppShimManagerDelegate::LaunchApp(
     const GURL& override_url,
     chrome::mojom::AppShimLoginItemRestoreState login_item_restore_state,
     base::OnceClosure launch_finished_callback) {
-  CHECK(AppIsInstalled(profile, app_id), base::NotFatalUntil::M161);
+  // TODO(crbug.com/578137790): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(AppIsInstalled(profile, app_id));
   if (UseFallback(profile, app_id)) {
     fallback_delegate_->LaunchApp(profile, app_id, files, urls, override_url,
                                   login_item_restore_state,
@@ -267,9 +274,9 @@ void WebAppShimManagerDelegate::LaunchApp(
     launch_source = apps::LaunchSource::kFromOsLogin;
   }
 
-  apps::AppLaunchParams params(app_id, launch_container,
-                               WindowOpenDisposition::kNewForegroundTab,
-                               launch_source);
+  apps::AppLaunchParams params(
+      app_id, launch_container,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab, launch_source);
   // Don't assign `files` to `params.launch_files` until we're sure this is a
   // permitted file launch.
   std::vector<base::FilePath> launch_files = files;
@@ -450,6 +457,37 @@ WebAppShimManagerDelegate::GetAppShortcutsMenuItemInfos(
   }
 
   return dock_menu_items;
+}
+
+std::optional<ContentSetting>
+WebAppShimManagerDelegate::GetChromeNotificationPermission(
+    Profile* profile,
+    const webapps::AppId& app_id) {
+  if (!profile || !AreWebAppsEnabled(profile)) {
+    return std::nullopt;
+  }
+  WebAppProvider* provider = WebAppProvider::GetForWebApps(profile);
+  if (!provider || !provider->on_registry_ready().is_signaled()) {
+    return std::nullopt;
+  }
+  // Safe to use `registrar_unsafe()` here for a synchronous read-only query on
+  // the UI thread to look up the app's start URL for notification permission
+  // metrics.
+  if (!provider->registrar_unsafe().AppMatches(
+          app_id, WebAppFilter::SupportsOsNotifications())) {
+    return std::nullopt;
+  }
+  const GURL start_url = provider->registrar_unsafe().GetAppStartUrl(app_id);
+  if (!start_url.is_valid()) {
+    return std::nullopt;
+  }
+  HostContentSettingsMap* settings_map =
+      HostContentSettingsMapFactory::GetForProfile(profile);
+  if (!settings_map) {
+    return std::nullopt;
+  }
+  return settings_map->GetContentSetting(start_url, start_url,
+                                         ContentSettingsType::NOTIFICATIONS);
 }
 
 }  // namespace web_app

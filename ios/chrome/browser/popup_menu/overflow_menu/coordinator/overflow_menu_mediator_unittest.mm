@@ -54,7 +54,6 @@
 #import "components/translate/core/browser/translate_prefs.h"
 #import "components/translate/core/language_detection/language_detection_model.h"
 #import "ios/chrome/browser/bookmarks/model/bookmark_model_factory.h"
-#import "ios/chrome/browser/dom_distiller/model/distiller_service_factory.h"
 #import "ios/chrome/browser/home_customization/model/home_background_customization_service.h"
 #import "ios/chrome/browser/home_customization/model/home_background_customization_service_factory.h"
 #import "ios/chrome/browser/home_customization/model/user_uploaded_image_manager_factory.h"
@@ -111,6 +110,7 @@
 #import "ios/chrome/browser/toolbar/legacy/ui_bundled/test/toolbar_test_navigation_manager.h"
 #import "ios/chrome/browser/web/model/font_size/font_size_java_script_feature.h"
 #import "ios/chrome/browser/web/model/font_size/font_size_tab_helper.h"
+#import "ios/chrome/browser/web_distiller/model/distiller_service_factory.h"
 #import "ios/chrome/browser/whats_new/coordinator/whats_new_util.h"
 #import "ios/chrome/browser/whats_new/public/constants.h"
 #import "ios/chrome/grit/ios_branded_strings.h"
@@ -133,6 +133,8 @@
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "ui/base/device_form_factor.h"
 #import "ui/base/l10n/l10n_util.h"
+#import "ui/base/l10n/l10n_util_mac.h"
+#import "ui/gfx/image/image.h"
 
 using sync_preferences::PrefServiceMockFactory;
 using sync_preferences::PrefServiceSyncable;
@@ -994,12 +996,8 @@ TEST_F(OverflowMenuMediatorTest, TestFamilyLinkInfoShown) {
   ASSERT_TRUE(HasFamilyLinkInfoItem());
 }
 
-// Tests that the identity button is not shown when user is signed out even
-// if the IdentityAwareness feature is enabled.
+// Tests that the identity button is not shown when user is signed out.
 TEST_F(OverflowMenuMediatorTest, TestIdentityButtonHiddenWhenSignedOut) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(kIdentityAwareness);
-
   // Setup the mediator.
   CreateMediator(/*incognito=*/NO);
   mediator_.authenticationService =
@@ -1011,11 +1009,8 @@ TEST_F(OverflowMenuMediatorTest, TestIdentityButtonHiddenWhenSignedOut) {
 }
 
 // Tests that the identity button is shown in its own group when user is signed
-// out and the IdentityAwareness feature is enabled.
+// in.
 TEST_F(OverflowMenuMediatorTest, TestIdentityButtonVisibleWhenSignedIn) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(kIdentityAwareness);
-
   // Sign in user.
   const FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
   fake_system_identity_manager()->AddIdentity(identity);
@@ -1047,9 +1042,6 @@ TEST_F(OverflowMenuMediatorTest, TestIdentityButtonVisibleWhenSignedIn) {
 // Tests that the identity button is hidden in incognito mode even when signed
 // in.
 TEST_F(OverflowMenuMediatorTest, TestIdentityButtonHiddenInIncognitoMode) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(kIdentityAwareness);
-
   // Sign in user.
   const FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
   fake_system_identity_manager()->AddIdentity(identity);
@@ -1062,16 +1054,15 @@ TEST_F(OverflowMenuMediatorTest, TestIdentityButtonHiddenInIncognitoMode) {
       AuthenticationServiceFactory::GetForProfile(personal_profile_);
   mediator_.model = model_;
 
-  // Check the identity item is not present.
+  // Check the identity item and action are not present.
   EXPECT_FALSE(HasItem(kToolsMenuIdentityId, /*enabled=*/YES));
+  EXPECT_EQ(
+      nil, [mediator_ actionForActionType:overflow_menu::ActionType::Identity]);
 }
 
 // Tests that the identity button is hidden when sign-in is disabled, even when
-// the user is signed in and the IdentityAwareness feature is enabled.
+// the user is signed in.
 TEST_F(OverflowMenuMediatorTest, TestIdentityButtonHiddenWhenSigninDisabled) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(kIdentityAwareness);
-
   // Sign in user.
   const FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
   fake_system_identity_manager()->AddIdentity(identity);
@@ -1125,6 +1116,85 @@ TEST_F(OverflowMenuMediatorTest, TestBookmarksToolsMenuButtons) {
 
   ios::BookmarkModelFactory::GetForProfile(personal_profile_)
       ->RemoveAllUserBookmarks(FROM_HERE);
+  EXPECT_TRUE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
+  EXPECT_FALSE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
+}
+
+// Tests that 1) the tools menu has an enabled 'Add to Bookmarks' button when
+// the current URL is not in bookmarks, 2) the bookmark button changes to an
+// enabled 'Edit bookmark' button when navigating to a URL bookmarked in account
+// storage (`account_mobile_node()`), and 3) the bookmark button changes back to
+// 'Add to Bookmarks' when the account bookmark is removed.
+TEST_F(OverflowMenuMediatorTest, TestBookmarksToolsMenuButtonsAccountStorage) {
+  const GURL nonBookmarkedURL("https://nonbookmarked.url");
+  const GURL bookmarkedURL("https://bookmarked.url");
+
+  web_state_->SetCurrentURL(nonBookmarkedURL);
+  SetUpActiveWebState();
+
+  CreateMediator(/*incognito=*/NO);
+  SetUpBookmarks();
+  bookmark_model_->CreateAccountPermanentFolders();
+  bookmark_model_->AddURL(bookmark_model_->account_mobile_node(), 0,
+                          base::SysNSStringToUTF16(@"Test account bookmark"),
+                          bookmarkedURL);
+  mediator_.webStateList = browser_->GetWebStateList();
+
+  // Force model update.
+  mediator_.model = model_;
+
+  EXPECT_TRUE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
+  EXPECT_FALSE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
+
+  // Navigate to bookmarked url.
+  web_state_->SetCurrentURL(bookmarkedURL);
+  web::FakeNavigationContext context;
+  web_state_->OnNavigationFinished(&context);
+
+  EXPECT_FALSE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
+  EXPECT_TRUE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
+
+  bookmark_model_->RemoveAllUserBookmarks(FROM_HERE);
+  EXPECT_TRUE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
+  EXPECT_FALSE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
+}
+
+// Tests that when a URL is bookmarked in both local storage (`mobile_node()`)
+// and account storage (`account_mobile_node()`), removing the local bookmark
+// keeps 'Edit bookmark' enabled until the account bookmark is also removed.
+TEST_F(OverflowMenuMediatorTest, TestBookmarksToolsMenuButtonsBothStorages) {
+  const GURL bookmarkedURL("https://bookmarked.url");
+
+  web_state_->SetCurrentURL(bookmarkedURL);
+  SetUpActiveWebState();
+
+  CreateMediator(/*incognito=*/NO);
+  SetUpBookmarks();
+  bookmark_model_->CreateAccountPermanentFolders();
+  const bookmarks::BookmarkNode* localNode = bookmark_model_->AddURL(
+      bookmark_model_->mobile_node(), 0,
+      base::SysNSStringToUTF16(@"Test local bookmark"), bookmarkedURL);
+  bookmark_model_->AddURL(bookmark_model_->account_mobile_node(), 0,
+                          base::SysNSStringToUTF16(@"Test account bookmark"),
+                          bookmarkedURL);
+  mediator_.webStateList = browser_->GetWebStateList();
+
+  // Force model update.
+  mediator_.model = model_;
+
+  EXPECT_FALSE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
+  EXPECT_TRUE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
+
+  // Removing only the local bookmark should keep 'Edit bookmark' enabled
+  // because the URL is still bookmarked in account storage.
+  bookmark_model_->Remove(
+      localNode, bookmarks::metrics::BookmarkEditSource::kOther, FROM_HERE);
+  EXPECT_FALSE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
+  EXPECT_TRUE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
+
+  // Removing account permanent folders removes the remaining bookmark and
+  // switches the button back to 'Add to Bookmarks'.
+  bookmark_model_->RemoveAccountPermanentFolders();
   EXPECT_TRUE(HasItem(kToolsMenuAddToBookmarks, /*enabled=*/YES));
   EXPECT_FALSE(HasItem(kToolsMenuEditBookmark, /*enabled=*/YES));
 }
@@ -1660,8 +1730,8 @@ TEST_F(OverflowMenuMediatorTest,
              image_fetcher::ImageDataFetcherCallback* image_data_callback,
              image_fetcher::ImageFetcherCallback* image_callback,
              image_fetcher::ImageFetcherParams params) {
-            std::move(*image_data_callback)
-                .Run(std::string(), image_fetcher::RequestMetadata());
+            std::move(*image_callback)
+                .Run(gfx::Image(), image_fetcher::RequestMetadata());
           });
   mediator_.imageFetcher = &mockImageFetcher;
 
@@ -1763,16 +1833,14 @@ TEST_F(OverflowMenuMediatorTest,
   [mockGeminiHandler verify];
 }
 
-// Test that the identity action displays the AI tier ring when the user is
-// signed in, eligible for AI subscription, and has no account error, and
-// updates when the tier or sync error state changes.
+// Test that the identity action displays the AI tier ring and Google
+// membership accessibility label when the user is signed in, eligible for AI
+// subscription, and has no account error, and updates when the tier or sync
+// error state changes.
 TEST_F(OverflowMenuMediatorTest,
        TestIdentityActionShowsAITierRingWhenEligibleAndNoError) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      /*enabled_features=*/{kIdentityAwareness,
-                            kAiSubscriptionAvatarRingFollowupIOS},
-      /*disabled_features=*/{});
+  base::test::ScopedFeatureList scoped_feature_list(
+      kAiSubscriptionAvatarRingFollowupIOS);
 
   personal_profile_->GetPrefs()->SetInteger(
       subscription_eligibility::prefs::kAiSubscriptionTier, 1);
@@ -1793,24 +1861,38 @@ TEST_F(OverflowMenuMediatorTest,
   OverflowMenuAction* identity_action = GetAction(kToolsMenuIdentityId);
   ASSERT_NE(nil, identity_action);
   EXPECT_TRUE(identity_action.showsAITierRing);
+  const FakeSystemIdentity* identity = [FakeSystemIdentity fakeIdentity1];
+  NSString* expected_label = l10n_util::GetNSStringF(
+      IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_NAME_AND_EMAIL_GOOGLE_MEMBERSHIP,
+      base::SysNSStringToUTF16(identity.userFullName),
+      base::SysNSStringToUTF16(identity.userEmail));
+  EXPECT_NSEQ(expected_label, identity_action.customAccessibilityLabel);
 
-  // Updating the AI subscription tier to 0 should remove the ring.
+  // Updating the AI subscription tier to 0 should remove the ring and custom
+  // accessibility label.
   personal_profile_->GetPrefs()->SetInteger(
       subscription_eligibility::prefs::kAiSubscriptionTier, 0);
   EXPECT_FALSE(identity_action.showsAITierRing);
+  EXPECT_NSEQ(nil, identity_action.customAccessibilityLabel);
 
-  // Updating the AI subscription tier back to 1 should restore the ring.
+  // Updating the AI subscription tier back to 1 should restore the ring and
+  // custom accessibility label.
   personal_profile_->GetPrefs()->SetInteger(
       subscription_eligibility::prefs::kAiSubscriptionTier, 1);
   EXPECT_TRUE(identity_action.showsAITierRing);
+  EXPECT_NSEQ(expected_label, identity_action.customAccessibilityLabel);
 
-  // Introducing a sync error should remove the ring.
+  // Introducing a sync error should remove the ring and custom accessibility
+  // label.
   sync_service->SetPersistentAuthError();
   sync_service->FireStateChanged();
   EXPECT_FALSE(identity_action.showsAITierRing);
+  EXPECT_NSEQ(nil, identity_action.customAccessibilityLabel);
 
-  // Resolving the sync error should restore the ring.
+  // Resolving the sync error should restore the ring and custom accessibility
+  // label.
   sync_service->ClearAuthError();
   sync_service->FireStateChanged();
   EXPECT_TRUE(identity_action.showsAITierRing);
+  EXPECT_NSEQ(expected_label, identity_action.customAccessibilityLabel);
 }

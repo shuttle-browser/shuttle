@@ -23,9 +23,6 @@ class RE2;
 
 namespace autofill {
 
-struct AddressToken;
-struct SortedTokenComparisonResult;
-
 // Represents the validation status of value stored in the AutofillProfile.
 // The associated integer values used to store the verification code in SQL and
 // should not be modified.
@@ -354,11 +351,6 @@ class AddressComponent {
   // not by `this`
   void RegisterSynthesizedSubcomponent(AddressComponent* synthesized_component);
 
-  // Returns a vector containing sorted normalized tokens of the
-  // value of the component. The tokens are lazily calculated when first
-  // needed.
-  const std::vector<AddressToken> GetSortedTokens() const;
-
   // Recursively unsets all subcomponents.
   void RecursivelyUnsetSubcomponents();
 
@@ -442,12 +434,6 @@ class AddressComponent {
 
   // Clears all parsed and formatted values.
   void ClearAllParsedAndFormattedValues();
-
-  // Consumes an additional token into the most appropriate subcomponent.
-  // Can be implemented by the specific node types.
-  // The fall-back solution uses the first empty node.
-  // If no empty node is available, it appends the value to the first node.
-  virtual void ConsumeAdditionalToken(const std::u16string& token_value);
 
   // Returns a reference to the root node of the tree.
   AddressComponent& GetRootNode();

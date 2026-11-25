@@ -128,7 +128,7 @@ TEST(RawHashSetLayout, SmallCapacity) {
   {
     SCOPED_TRACE("capacity=1 no alignment after generation");
     constexpr size_t kSlotSize = 1;
-    RawHashSetLayout layout(1, kSlotSize, /*slot_align=*/1,
+    RawHashSetLayout layout(1, kSlotSize, /*slot_align_mask=*/0,
                             /*has_infoz=*/false, /*blocked_element_count=*/0);
     EXPECT_EQ(layout.control_offset(), NumGenerationBytes());
     EXPECT_EQ(layout.slot_offset(), NumGenerationBytes());
@@ -138,7 +138,7 @@ TEST(RawHashSetLayout, SmallCapacity) {
     SCOPED_TRACE("capacity=1 with alignment after generation");
     constexpr size_t kSlotSize = 8;
     constexpr size_t kAlignment = 4;
-    RawHashSetLayout layout(1, kSlotSize, kAlignment,
+    RawHashSetLayout layout(1, kSlotSize, /*slot_align_mask=*/kAlignment - 1,
                             /*has_infoz=*/false, /*blocked_element_count=*/0);
     EXPECT_EQ(layout.control_offset(),
               NumGenerationBytes() == 0 ? 0 : kAlignment);
@@ -152,11 +152,13 @@ TEST(RawHashSetLayout, CreateForSmallNonSooGrowth) {
     for (size_t slot_align : {1u, 2u, 4u, 8u, 16u}) {
       for (size_t slot_size : {slot_align, slot_align * 2, slot_align * 3}) {
         for (bool has_infoz : {false, true}) {
-          RawHashSetLayout expected(NextCapacity(size), slot_size, slot_align,
+          RawHashSetLayout expected(NextCapacity(size), slot_size,
+                                    /*slot_align_mask=*/slot_align - 1,
                                     has_infoz, /*blocked_element_count=*/0);
           RawHashSetLayout actual =
               RawHashSetLayout::CreateForSmallNonSooGrowth(
-                  size, slot_size, slot_align, has_infoz);
+                  size, slot_size, /*slot_align_mask=*/slot_align - 1,
+                  has_infoz);
           EXPECT_EQ(actual.control_offset(), expected.control_offset());
           EXPECT_EQ(actual.generation_offset(), expected.generation_offset());
           EXPECT_EQ(actual.slot_offset(), expected.slot_offset());
@@ -178,7 +180,8 @@ void VerifyMiddleSizeTableLayout(size_t capacity, size_t slot_size,
                << " padding: " << padding);
   ASSERT_GT(capacity, 1);
   ASSERT_LE(capacity, GrowthInfoLowerBound::kMaxGrowthLeftLowerBound);
-  RawHashSetLayout layout(capacity, slot_size, slot_align, has_infoz,
+  RawHashSetLayout layout(capacity, slot_size,
+                          /*slot_align_mask=*/slot_align - 1, has_infoz,
                           blocked_element_count);
   EXPECT_EQ(layout.control_offset(), padding + NumGenerationBytes());
   size_t expected_slot_offset =
@@ -214,7 +217,7 @@ TEST(RawHashSetLayout, MiddleSize) {
 TEST(RawHashSetLayout, SmallWithInfoZ) {
   {
     SCOPED_TRACE("capacity=1 no alignment after generation");
-    RawHashSetLayout layout(1, /*slot_size=*/1, /*slot_align=*/1,
+    RawHashSetLayout layout(1, /*slot_size=*/1, /*slot_align_mask=*/0,
                             /*has_infoz=*/true, /*blocked_element_count=*/0);
     EXPECT_EQ(layout.control_offset(),
               // growth_info is always 8 bytes for sampled tables.
@@ -227,7 +230,7 @@ TEST(RawHashSetLayout, SmallWithInfoZ) {
     constexpr size_t kAlignment = 8;
     constexpr size_t kCapacity = 3;
     RawHashSetLayout layout(kCapacity, /*slot_size=*/kSlotSize,
-                            /*slot_align=*/kAlignment,
+                            /*slot_align_mask=*/kAlignment - 1,
                             /*has_infoz=*/true, /*blocked_element_count=*/0);
     size_t padding = NumGenerationBytes() == 0 ? 1 : 0;
     padding += sizeof(HashtablezInfoHandle) == 4 ? 0 : 4;
@@ -253,7 +256,8 @@ void VerifyLargeTableLayout(size_t capacity, size_t slot_size,
                << " slot_align: " << slot_align << " has_infoz: " << has_infoz
                << " blocked_element_count: " << blocked_element_count);
   ASSERT_GT(capacity, GrowthInfoLowerBound::kMaxGrowthLeftLowerBound);
-  RawHashSetLayout layout(capacity, slot_size, slot_align, has_infoz,
+  RawHashSetLayout layout(capacity, slot_size,
+                          /*slot_align_mask=*/slot_align - 1, has_infoz,
                           blocked_element_count);
   size_t padding = NumGenerationBytes() == 0 ? 1 : 0;
   EXPECT_EQ(layout.control_offset(),
@@ -961,8 +965,7 @@ TEST(Batch, DropDeletes) {
   }
 }
 
-template <class T, bool kTransferable = false, bool kSoo = false,
-          bool kDestroyTrivial = false>
+template <class T, bool kTransferable = false, bool kDestroyTrivial = false>
 struct ValuePolicy {
   using slot_type = T;
   using key_type = T;
@@ -1011,8 +1014,6 @@ struct ValuePolicy {
   static constexpr HashSlotFn get_hash_slot_fn() {
     return nullptr;
   }
-
-  static constexpr bool soo_enabled() { return kSoo; }
 };
 
 using IntPolicy = ValuePolicy<int64_t>;
@@ -1054,9 +1055,8 @@ class SizedValue {
   static_assert(N >= sizeof(int64_t));
   int64_t vals_[N / sizeof(int64_t)];
 };
-template <int N, bool kSoo>
-using SizedValuePolicy =
-    ValuePolicy<SizedValue<N>, /*kTransferable=*/true, kSoo>;
+template <int N>
+using SizedValuePolicy = ValuePolicy<SizedValue<N>, /*kTransferable=*/true>;
 
 // Value is aligned as type T and contains N copies of it.
 template <typename T, int N>
@@ -1181,10 +1181,10 @@ struct StringTable
   using Base::Base;
 };
 
-template <typename T, bool kTransferable = false, bool kSoo = false,
-          bool kDestroyTrivial = false, class Alloc = std::allocator<T>>
+template <typename T, bool kTransferable = false, bool kDestroyTrivial = false,
+          class Alloc = std::allocator<T>>
 struct ValueTable : InstantiateRawHashSet<
-                        ValuePolicy<T, kTransferable, kSoo, kDestroyTrivial>,
+                        ValuePolicy<T, kTransferable, kDestroyTrivial>,
                         hash_default_hash<T>, std::equal_to<T>, Alloc>::type {
   using Base = typename ValueTable::raw_hash_set;
   using Base::Base;
@@ -1290,7 +1290,7 @@ struct FreezableAlloc : std::allocator<T> {
 
 template <int N>
 struct FreezableSizedValueSooTable
-    : raw_hash_set<SizedValuePolicy<N, /*kSoo=*/true>,
+    : raw_hash_set<SizedValuePolicy<N>,
                    container_internal::hash_default_hash<SizedValue<N>>,
                    std::equal_to<SizedValue<N>>,
                    FreezableAlloc<SizedValue<N>>> {
@@ -1324,28 +1324,29 @@ using NonSooIntTableSlotType = SizedValue<kNonSooSize>;
 static_assert(sizeof(NonSooIntTableSlotType) > MaxSooSlotSize(), "too small");
 using NonSooIntTable = ValueTable<NonSooIntTableSlotType>;
 using NonSooIntTableTrivialDestroy =
-    ValueTable<NonSooIntTableSlotType, /*kTransferable=*/false, /*kSoo=*/false,
+    ValueTable<NonSooIntTableSlotType, /*kTransferable=*/false,
                /*kDestroyTrivial=*/true>;
-using SooInt32Table =
-    ValueTable<int32_t, /*kTransferable=*/true, /*kSoo=*/true>;
-using SooIntTable = ValueTable<int64_t, /*kTransferable=*/true, /*kSoo=*/true>;
+using SooInt32Table = ValueTable<int32_t, /*kTransferable=*/true>;
+using SooIntTable = ValueTable<int64_t, /*kTransferable=*/true>;
 using SooIntTableTrivialDestroy =
-    ValueTable<int64_t, /*kTransferable=*/true, /*kSoo=*/true,
-               /*kDestroyTrivial=*/true>;
-using NonMemcpyableSooIntTable =
-    ValueTable<int64_t, /*kTransferable=*/false, /*kSoo=*/true>;
+    ValueTable<int64_t, /*kTransferable=*/true, /*kDestroyTrivial=*/true>;
+using NonMemcpyableSooIntTable = ValueTable<int64_t, /*kTransferable=*/false>;
 using MemcpyableSooIntCustomAllocTable =
-    ValueTable<int64_t, /*kTransferable=*/true, /*kSoo=*/true,
-               /*kDestroyTrivial=*/false,
+    ValueTable<int64_t, /*kTransferable=*/true, /*kDestroyTrivial=*/false,
                ChangingSizeAndTrackingTypeAlloc<int64_t>>;
 using NonMemcpyableSooIntCustomAllocTable =
-    ValueTable<int64_t, /*kTransferable=*/false, /*kSoo=*/true,
-               /*kDestroyTrivial=*/false,
+    ValueTable<int64_t, /*kTransferable=*/false, /*kDestroyTrivial=*/false,
                ChangingSizeAndTrackingTypeAlloc<int64_t>>;
 
 TEST(Table, EmptyFunctorOptimization) {
   static_assert(std::is_empty_v<std::equal_to<absl::string_view>>);
   static_assert(std::is_empty_v<std::allocator<int>>);
+#if defined(_MSC_VER) && _MSC_VER < 1929
+  // ABSL_ATTRIBUTE_NO_UNIQUE_ADDRESS expands to nothing for MSVC compatibility
+  // versions below 19.29 (e.g. clang with `-fms-compatibility-version=19.25`),
+  // so empty functors still take space.
+  GTEST_SKIP() << "ABSL_ATTRIBUTE_NO_UNIQUE_ADDRESS is a no-op.";
+#endif
 
   struct MockTable {
     uint64_t size;
@@ -1800,6 +1801,9 @@ TYPED_TEST(ExtendedSooTest, ClearDifferentSizes) {
 }
 
 TYPED_TEST(ExtendedSooTest, ReserveTwice) {
+  // We need to disable hashtablez to avoid issues related to SOO and sampling.
+  DisableSampling();
+
   for (int reserve_size = 0; reserve_size < 32; ++reserve_size) {
     for (int reserve_size2 = reserve_size; reserve_size2 < 32;
          ++reserve_size2) {
@@ -2068,7 +2072,7 @@ TYPED_TEST(SooTest, ClearBug) {
   }
   ASSERT_EQ(capacity, t.capacity());
   intptr_t original = reinterpret_cast<intptr_t>(&*t.find(2));
-  t.clear();
+  t.erase(t.begin(), t.end());
   ASSERT_EQ(capacity, t.capacity());
   for (size_t i = 0; i < max_size; ++i) {
     t.insert(i);
@@ -2357,6 +2361,9 @@ TYPED_TEST(SooTest, HintInsert) {
 }
 
 TYPED_TEST(SooTest, RehashZeroForSmallTable) {
+  // We need to disable hashtablez to avoid issues related to SOO and sampling.
+  DisableSampling();
+
   TypeParam t{0};
   EXPECT_EQ(t.capacity(), 1);
   t.rehash(0);
@@ -2369,6 +2376,9 @@ TYPED_TEST(SooTest, RehashZeroForSmallTable) {
 }
 
 TYPED_TEST(SooTest, RangeConstructorReservation) {
+  // We need to disable hashtablez to avoid issues related to SOO and sampling.
+  DisableSampling();
+
   constexpr int kMaxSize = 25;
   std::vector<int> v;
   for (int size = 1; size <= kMaxSize; ++size) {
@@ -2520,6 +2530,9 @@ TYPED_TEST(SooTest, UnstablePointers) {
 TYPED_TEST(SooTest, IteratorInvalidAssertsEqualityOperator) {
   if (!IsAssertEnabled() && !SwisstableGenerationsEnabled())
     GTEST_SKIP() << "Assertions not enabled.";
+
+  // We need to disable hashtablez to avoid issues related to SOO and sampling.
+  DisableSampling();
 
   TypeParam t;
   t.insert(1);
@@ -2747,24 +2760,22 @@ class SmallTableResizeTest : public testing::Test {};
 using SmallTableTypes = ::testing::Types<
     IntTable, TransferableIntTable, SooIntTable,
     // int8
-    ValueTable<int8_t, /*kTransferable=*/true, /*kSoo=*/true>,
-    ValueTable<int8_t, /*kTransferable=*/false, /*kSoo=*/true>,
+    ValueTable<int8_t, /*kTransferable=*/true>,
+    ValueTable<int8_t, /*kTransferable=*/false>,
     // int16
-    ValueTable<int16_t, /*kTransferable=*/true, /*kSoo=*/true>,
+    ValueTable<int16_t, /*kTransferable=*/true>,
     // int128
-    ValueTable<SizedValue<16>, /*kTransferable=*/true, /*kSoo=*/true>,
+    ValueTable<SizedValue<16>, /*kTransferable=*/true>,
     // Special tables.
     MinimumAlignmentUint8Table, CustomAllocIntTable, ChangingSizeAllocIntTable,
     BadTable,
     // alignment 1, size 2.
-    ValueTable<AlignedValue<uint8_t, 2>, /*kTransferable=*/true, /*kSoo=*/true>,
+    ValueTable<AlignedValue<uint8_t, 2>, /*kTransferable=*/true>,
     // alignment 1, size 7.
-    ValueTable<AlignedValue<uint8_t, 7>, /*kTransferable=*/true, /*kSoo=*/true>,
-    ValueTable<AlignedValue<uint8_t, 7>, /*kTransferable=*/false,
-               /*kSoo=*/true>,
+    ValueTable<AlignedValue<uint8_t, 7>, /*kTransferable=*/true>,
+    ValueTable<AlignedValue<uint8_t, 7>, /*kTransferable=*/false>,
     // alignment 2, size 6.
-    ValueTable<AlignedValue<uint16_t, 3>, /*kTransferable=*/true,
-               /*kSoo=*/true>>;
+    ValueTable<AlignedValue<uint16_t, 3>, /*kTransferable=*/true>>;
 TYPED_TEST_SUITE(SmallTableResizeTest, SmallTableTypes);
 
 TYPED_TEST(SmallTableResizeTest, InsertIntoSmallTable) {
@@ -3830,9 +3841,8 @@ TEST(Table, StringViewConversionCount) {
     }
   };
 
-  const auto test_table = [](auto soo) {
-    using Policy = ValuePolicy<absl::string_view, /*kTransferable=*/true,
-                               /*kSoo=*/decltype(soo)::value>;
+  const auto test_table = [] {
+    using Policy = ValuePolicy<absl::string_view, /*kTransferable=*/true>;
     using Table = raw_hash_set<Policy, hash_default_hash<absl::string_view>,
                                hash_default_eq<absl::string_view>>;
     Table t;
@@ -3897,8 +3907,7 @@ TEST(Table, StringViewConversionCount) {
     }
   };
 
-  test_table(/*soo=*/std::false_type{});
-  test_table(/*soo=*/std::true_type{});
+  test_table();
 }
 
 TEST(Iterator, IsDefaultConstructible) {
@@ -4808,10 +4817,17 @@ TEST(Table, InvalidReferenceUseCrashesWithSanitizers) {
   // RehashProbabilityConstant().
   int i = 0;
   while (t.capacity() <= RehashProbabilityConstant()) {
-    // ptr will become invalidated on rehash.
-    const auto* ptr = &*t.begin();
-    t.insert(++i);
-    EXPECT_DEATH_IF_SUPPORTED(std::cout << **ptr, "use-after-free") << i;
+    ++i;
+    EXPECT_DEATH_IF_SUPPORTED(
+        {
+          // ptr will become invalidated on rehash.
+          const auto* ptr = &*t.begin();
+          t.insert(i);
+          std::cout << **ptr;
+        },
+        "use-after-free")
+        << i;
+    t.insert(i);
   }
 }
 
@@ -4850,18 +4866,20 @@ using RawHashSetAlloc = raw_hash_set<IntPolicy, hash_default_hash<int64_t>,
 TEST(Table, AllocatorPropagation) { TestAllocPropagation<RawHashSetAlloc>(); }
 
 struct CountedHash {
+  explicit CountedHash(int* count) : count(count) {}
   size_t operator()(int64_t value) const {
-    ++count;
+    ++(*count);
     return static_cast<size_t>(value);
   }
-  mutable int count = 0;
+  int* count = nullptr;
 };
 
 struct CountedHashIntTable
     : raw_hash_set<IntPolicy, CountedHash, std::equal_to<int>,
                    std::allocator<int>> {
   using Base = typename CountedHashIntTable::raw_hash_set;
-  using Base::Base;
+  CountedHashIntTable() : Base(0, CountedHash(&count)) {}
+  int count = 0;
 };
 
 TEST(Table, CountedHash) {
@@ -4879,7 +4897,7 @@ TEST(Table, CountedHash) {
   DisableSampling();
 
   using Table = CountedHashIntTable;
-  auto HashCount = [](const Table& t) { return t.hash_function().count; };
+  auto HashCount = [](const Table& t) { return t.count; };
   {
     Table t;
     t.find(0);

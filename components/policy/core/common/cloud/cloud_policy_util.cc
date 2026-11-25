@@ -79,10 +79,26 @@
 #endif
 
 #if BUILDFLAG(IS_IOS)
+#include "base/feature_list.h"
 #include "base/ios/device_util.h"
+#include "components/policy/core/common/cloud/cloud_policy_util_ios.h"
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/android_info.h"
+#include "base/android/device_info.h"
+#include "base/feature_list.h"
 #endif
 
 namespace policy {
+
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kReportAndroidMachineName, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_IOS)
+BASE_FEATURE(kIOSReportMachineName, base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_IOS)
 
 namespace em = enterprise_management;
 
@@ -99,7 +115,15 @@ std::string GetMachineName() {
     return hostname;
   return std::string();
 #elif BUILDFLAG(IS_IOS)
-  // Use the Vendor ID as the machine name.
+  if (base::FeatureList::IsEnabled(kIOSReportMachineName)) {
+    // Prefer the device name configured by the MDM administrator, if any,
+    // since the user-visible device name isn't accessible to the app.
+    if (std::string mdm_device_name = GetIOSManagedDeviceName();
+        !mdm_device_name.empty()) {
+      return mdm_device_name;
+    }
+  }
+  // Fall back to the Vendor ID as the machine name.
   return ios::device_util::GetVendorId();
 #elif BUILDFLAG(IS_MAC)
   // Do not use NSHost currentHost, as it's very slow. http://crbug.com/138570
@@ -139,7 +163,16 @@ std::string GetMachineName() {
   }
   return std::string();
 #elif BUILDFLAG(IS_ANDROID)
-  return std::string();
+  if (!base::FeatureList::IsEnabled(kReportAndroidMachineName)) {
+    return std::string();
+  }
+  std::string device_name = base::android::device_info::device_name();
+  if (!device_name.empty()) {
+    return device_name;
+  }
+  // Fall back to the hardware model (`Build.MODEL`) when the user-configured
+  // device name (`Settings.Global.DEVICE_NAME`) is unset or inaccessible.
+  return base::android::android_info::model();
 #elif BUILDFLAG(IS_CHROMEOS)
   NOTREACHED();
 #else

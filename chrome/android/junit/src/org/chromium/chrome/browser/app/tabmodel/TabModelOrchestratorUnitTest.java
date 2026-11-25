@@ -281,6 +281,19 @@ public class TabModelOrchestratorUnitTest {
     }
 
     @Test
+    public void testDestroyTabPersistentStore_Idempotent() {
+        mTabModelOrchestrator.destroyTabPersistentStore();
+        mTabModelOrchestrator.destroyTabPersistentStore();
+        verify(mMockTabPersistentStore).destroy();
+        verify(mMockShadowPersistentStore).destroy();
+
+        mTabModelOrchestrator.destroy();
+        mTabModelOrchestrator.destroyTabPersistentStore();
+        verify(mMockTabPersistentStore).destroy();
+        verify(mMockShadowPersistentStore).destroy();
+    }
+
+    @Test
     public void testDestroyAfterDestroyTabPersistentStore() {
         mTabModelOrchestrator.destroyTabPersistentStore();
         verify(mMockTabPersistentStore).destroy();
@@ -309,6 +322,23 @@ public class TabModelOrchestratorUnitTest {
         mTabModelOrchestrator.destroy();
         verify(mMockTabPersistentStore).destroy();
         verify(mMockShadowPersistentStore).destroy();
+    }
+
+    @Test
+    public void testInitForTesting_DestroysPreviousStores() {
+        TabPersistentStore replacementStore = mock(TabPersistentStore.class);
+        TabPersistentStore replacementShadowStore = mock(TabPersistentStore.class);
+
+        mTabModelOrchestrator.initForTesting(
+                mMockTabModelSelectorBase,
+                replacementStore,
+                mTabPersistencePolicy,
+                replacementShadowStore);
+
+        verify(mMockTabPersistentStore).destroy();
+        verify(mMockShadowPersistentStore).destroy();
+        verify(replacementStore, never()).destroy();
+        verify(replacementShadowStore, never()).destroy();
     }
 
     private void readTabState(

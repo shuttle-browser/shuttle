@@ -4,9 +4,15 @@
 
 #include "chrome/browser/ui/views/tabs/common/unpinned_tab_container_view.h"
 
+#include <optional>
+#include <vector>
+
+#include "chrome/browser/ui/animation/browser_animation_controller.h"
+#include "chrome/browser/ui/animation/browser_animation_types.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/views/animations/focus_mode_animations.h"
 #include "chrome/browser/ui/views/tabs/common/dragged_tabs_container.h"
 #include "chrome/browser/ui/views/tabs/common/split_tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
@@ -14,15 +20,21 @@
 #include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
+#include "chrome/browser/ui/views/tabs/common/tab_strip_layout_utils.h"
+#include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "chrome/browser/ui/views/tabs/common/tab_view.h"
 #include "chrome/browser/ui/views/tabs/common/unpinned_tab_container_view_horizontal_layout.h"
 #include "chrome/browser/ui/views/tabs/common/unpinned_tab_container_view_vertical_layout.h"
 #include "components/tabs/public/tab_group.h"
 #include "content/public/browser/navigation_controller.h"
+#include "ui/base/class_property.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/compositor/layer.h"
+#include "ui/gfx/animation/tween.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/views/controls/scroll_view.h"
 #include "ui/views/layout/layout_types.h"
+#include "ui/views/layout/normalized_geometry.h"
 #include "ui/views/layout/proposed_layout.h"
 #include "ui/views/view.h"
 #include "ui/views/view_class_properties.h"
@@ -32,24 +44,76 @@
 
 namespace {
 
+// Set on a view while it holds a layer reference for a focus transition fade
+// (see `FadeViewForFocusTransition()` / `UnfadeViewForFocusTransition()`).
+DEFINE_UI_CLASS_PROPERTY_KEY(bool, kFadedForFocusTransitionKey, false)
+
+// All `kFocusMode` sequences persist between motions, so the controller always
+// has a value for them.
+float GetFocusModeValue(const BrowserAnimationController& controller,
+                        BrowserAnimationSequence sequence) {
+  return static_cast<float>(
+      controller.GetCurrentValue(FocusModeAnimations::kFocusMode, sequence)
+          .value());
+}
+
+// The fade helpers walk the container's children(), which can still hold a
+// group view whose node is gone (pending deletion), so `IsValid()` is required.
+bool IsViewForGroup(const views::View& view, tab_groups::TabGroupId group_id) {
+  const auto* group_view = views::AsViewClass<TabGroupView>(&view);
+  return group_view && group_view->IsValid() &&
+         group_view->GetTabGroup().id() == group_id;
+}
+
+void FadeViewForFocusTransition(views::View* view, float opacity) {
+  if (!view->GetProperty(kFadedForFocusTransitionKey)) {
+    view->SetProperty(kFadedForFocusTransitionKey, true);
+    AcquireViewLayer(view);
+  }
+  view->layer()->SetOpacity(opacity);
+}
+
+void UnfadeViewForFocusTransition(views::View* view) {
+  if (!view->GetProperty(kFadedForFocusTransitionKey)) {
+    return;
+  }
+  view->SetProperty(kFadedForFocusTransitionKey, false);
+  // Restore full opacity before releasing; another holder (e.g. a drag) may
+  // keep the layer alive.
+  view->layer()->SetOpacity(1.0f);
+  ReleaseViewLayer(view);
+}
+
 // The following are percentages used to determine the amount that dragged
 // tabs must be peeking into/out of a tab group view in order for the handling
 // drag container to change.
 //
-// If the group is handling the drag, then the dragged tabs should
-// exit the group if 10% of the header's size (height or width) is peeking out
-// of the group.
+// If the group is handling the drag, then the dragged tabs should exit the
+// group if at least kMin{Height/Width}PctForGroupExit of any tab's size
+// (height or width) is peeking out of the group.
 //
 // If this (the unpinned tabs container) is handling the drag, then
-// the dragged tabs should enter the group if 40% of the header's size
-// (height or width) is peeking into the group.
+// the dragged tabs should enter the group if at least
+// kMin{Height/Width}PctForGroupEntry of any tab's size (height or width) is
+// peeking into the group.
 //
-// The latter percentage should be greater than the former
-// to make it easy to place dragged tabs between two groups.
-constexpr float kMinHeaderHeightPctForGroupExit = 0.1;
-constexpr float kMinHeaderHeightPctForGroupEntry = 0.4;
-static_assert(kMinHeaderHeightPctForGroupExit <
-              kMinHeaderHeightPctForGroupEntry);
+// The latter percentage should be larger enough than the former to make it easy
+// to place dragged tabs between two groups.
+constexpr float kMinHeightPctForGroupExit = 0.1;
+constexpr float kMinHeightPctForGroupEntry = 0.4;
+
+// For horizontal tabs, these percentages are calculated based on the tab bounds
+// prior to adjusting for the tab overlap.
+constexpr float kMinWidthPctForGroupExit = 0.0;
+constexpr float kMinWidthPctForGroupEntry = 0.25;
+
+// Before checking intersection with group bounds, adjust tab bounds by half the
+// tab overlap so that dragging a tab out of a group (especially at low tab
+// widths) doesn't cause the tab to immediately enter the group again on the
+// next drag update.
+int HorizontalOverlapAdjustment() {
+  return TabStyle::Get()->GetTabOverlap() / 2;
+}
 
 class UnpinnedTabContainerViewTargeter : public views::ViewTargeterDelegate {
  public:
@@ -115,6 +179,13 @@ UnpinnedTabContainerView::UnpinnedTabContainerView(
   collection_node->set_attach_child_to_node(base::BindRepeating(
       &TabCollectionAnimatingLayoutManager::AnimateAndReparentView,
       base::Unretained(&layout_manager_.get())));
+  // A child reparented to another node must not keep its focus transition fade.
+  collection_node->set_detach_child_from_node(base::BindRepeating(
+      [](UnpinnedTabContainerView* container, views::View* child) {
+        UnfadeViewForFocusTransition(child);
+        return container->RemoveChildViewT(child);
+      },
+      base::Unretained(this)));
 
   node_destroyed_subscription_ = collection_node_->RegisterWillDestroyCallback(
       base::BindOnce(&UnpinnedTabContainerView::ResetCollectionNode,
@@ -129,6 +200,14 @@ UnpinnedTabContainerView::UnpinnedTabContainerView(
             &UnpinnedTabContainerView::OnCollapseStateChanged,
             base::Unretained(this)));
   }
+
+  focus_animation_subscription_ =
+      collection_node_->GetController()
+          ->GetBrowserAnimationController()
+          ->Subscribe(FocusModeAnimations::kFocusMode,
+                      base::BindRepeating(
+                          &UnpinnedTabContainerView::OnFocusAnimationUpdated,
+                          base::Unretained(this)));
 }
 
 UnpinnedTabContainerView::~UnpinnedTabContainerView() = default;
@@ -140,6 +219,41 @@ int UnpinnedTabContainerView::LayoutManager::GetUnconstrainedPreferredWidth()
 
 void UnpinnedTabContainerView::LayoutManager::OnInstalled(views::View* host) {
   CHECK(IsViewClass<class UnpinnedTabContainerView>(host));
+}
+
+views::ProposedLayout
+UnpinnedTabContainerView::LayoutManager::CalculateProposedLayout(
+    const views::SizeBounds& size_bounds) const {
+  if (!UnpinnedTabContainerView().collection_node_) {
+    return CalculateProposedLayout(size_bounds, std::nullopt);
+  }
+  const TabStripCollectionController* const controller =
+      UnpinnedTabContainerView().collection_node_->GetController();
+  const auto transition = controller->GetFocusTransition();
+  if (!transition.has_value()) {
+    return CalculateProposedLayout(size_bounds, controller->GetFocusedGroup());
+  }
+  const float progress =
+      static_cast<float>(controller->GetBrowserAnimationController()
+                             ->GetCurrentValue(FocusModeAnimations::kFocusMode,
+                                               FocusModeAnimations::kProgress)
+                             .value());
+  if (transition->previous_group.has_value()) {
+    return CalculateProposedLayout(
+        size_bounds, progress < TabGroupView::kFocusSwitchHandoffProgress
+                         ? transition->previous_group
+                         : transition->target_group);
+  }
+  if (progress <= 0.0f) {
+    return CalculateProposedLayout(size_bounds, transition->previous_group);
+  }
+  if (progress >= 1.0f) {
+    return CalculateProposedLayout(size_bounds, transition->target_group);
+  }
+  return BlendProposedLayouts(
+      progress,
+      CalculateProposedLayout(size_bounds, transition->previous_group),
+      CalculateProposedLayout(size_bounds, transition->target_group));
 }
 
 const UnpinnedTabContainerView&
@@ -304,6 +418,8 @@ int UnpinnedTabContainerView::GetUnconstrainedPreferredWidth() const {
 }
 
 void UnpinnedTabContainerView::ResetCollectionNode() {
+  ReleaseFocusTransitionFade();
+  focus_animation_subscription_ = {};
   collapsed_state_changed_subscription_ = {};
   collection_node_ = nullptr;
 }
@@ -311,6 +427,81 @@ void UnpinnedTabContainerView::ResetCollectionNode() {
 void UnpinnedTabContainerView::OnCollapseStateChanged(
     tabs::VerticalTabStripCollapseState state) {
   InvalidateLayout();
+}
+
+void UnpinnedTabContainerView::OnFocusAnimationUpdated(
+    const BrowserAnimationController* controller,
+    BrowserAnimationUpdate status) {
+  if (!collection_node_) {
+    return;
+  }
+  switch (status) {
+    case BrowserAnimationUpdate::kStarted:
+      // Children are layered on the first `kProgressed` step instead: the fade
+      // is still at its resting value here, and reduced motion ends the motion
+      // synchronously.
+      break;
+    case BrowserAnimationUpdate::kProgressed:
+      UpdateFocusTransitionFade(*controller);
+      break;
+    case BrowserAnimationUpdate::kEnded:
+    case BrowserAnimationUpdate::kCanceled:
+      ReleaseFocusTransitionFade();
+      break;
+  }
+  // Re-lay out from the transition's current progress (see
+  // `LayoutManager::CalculateProposedLayout()`). The transitioning group's view
+  // invalidates too, but this keeps the container following the motion if that
+  // view goes away mid-transition and settles it when the motion ends.
+  InvalidateLayout();
+}
+
+void UnpinnedTabContainerView::UpdateFocusTransitionFade(
+    const BrowserAnimationController& controller) {
+  const auto transition =
+      collection_node_->GetController()->GetFocusTransition();
+  if (!transition.has_value()) {
+    return;
+  }
+  if (!transition->previous_group.has_value()) {
+    const float opacity = GetFocusModeValue(
+        controller, FocusModeAnimations::kUnrelatedTabsOpacity);
+    for (views::View* child : children()) {
+      if (IsViewForGroup(*child, transition->target_group)) {
+        UnfadeViewForFocusTransition(child);
+      } else {
+        FadeViewForFocusTransition(child, opacity);
+      }
+    }
+    return;
+  }
+
+  // During a switch only the active group fades: the outgoing group fades out
+  // before the handoff and the incoming group fades in after it.
+  const float progress =
+      GetFocusModeValue(controller, FocusModeAnimations::kProgress);
+  const bool is_incoming_phase =
+      progress >= TabGroupView::kFocusSwitchHandoffProgress;
+  const tab_groups::TabGroupId active_group = is_incoming_phase
+                                                  ? transition->target_group
+                                                  : *transition->previous_group;
+  const float phase_progress =
+      TabGroupView::GetFocusSwitchPhaseProgress(progress, is_incoming_phase);
+  const float opacity =
+      is_incoming_phase ? phase_progress : 1.0f - phase_progress;
+  for (views::View* child : children()) {
+    if (IsViewForGroup(*child, active_group)) {
+      FadeViewForFocusTransition(child, opacity);
+    } else {
+      UnfadeViewForFocusTransition(child);
+    }
+  }
+}
+
+void UnpinnedTabContainerView::ReleaseFocusTransitionFade() {
+  for (views::View* child : children()) {
+    UnfadeViewForFocusTransition(child);
+  }
 }
 
 views::ScrollView* UnpinnedTabContainerView::GetScrollViewForContainer() const {
@@ -321,9 +512,9 @@ views::ScrollView* UnpinnedTabContainerView::GetScrollViewForContainer() const {
       const_cast<UnpinnedTabContainerView*>(this));
 }
 
-void UnpinnedTabContainerView::UpdateTargetLayoutForDrag(
+void UnpinnedTabContainerView::SnapViewsToTargetLayout(
     const std::vector<const views::View*>& views_to_snap) {
-  layout_manager_->ResetViewsToTargetLayout(views_to_snap);
+  layout_manager_->SnapViewsToTargetLayout(views_to_snap);
 }
 const views::ProposedLayout& UnpinnedTabContainerView::GetLayoutForDrag()
     const {
@@ -340,10 +531,11 @@ DraggedTabsContainer& UnpinnedTabContainerView::GetTabDragTarget(
 
   gfx::Point point_in_container =
       views::View::ConvertPointFromScreen(this, point_in_screen);
-  std::optional<gfx::Rect> dragging_view_bounds =
-      IsHandlingDrag() ? std::make_optional(
-                             GetDraggingViewsBoundsAtPoint(point_in_container))
-                       : std::nullopt;
+  std::optional<std::pair<gfx::Rect, gfx::Rect>> extremal_dragging_view_bounds =
+      IsHandlingDrag()
+          ? std::make_optional(
+                GetExtremalDraggingViewsBoundsAtPoint(point_in_container))
+          : std::nullopt;
   const views::ProposedLayout& target_layout = layout_manager_->target_layout();
   const bool is_horizontal = orientation_ == TabStripOrientation::kHorizontal;
   for (const views::ChildLayout& layout : target_layout.child_layouts) {
@@ -359,33 +551,38 @@ DraggedTabsContainer& UnpinnedTabContainerView::GetTabDragTarget(
       return *group_view;
     }
 
+    const gfx::Rect group_bounds = GetMirroredRect(layout.bounds);
     if (group_view->IsHandlingDrag()) {
-      if (ShouldDragRemainInGroup(*group_view, layout.bounds,
-                                  point_in_screen)) {
+      if (ShouldDragRemainInGroup(*group_view, group_bounds, point_in_screen)) {
         return *group_view;
       } else {
         return *this;
       }
     }
 
-    const gfx::Rect group_bounds = GetMirroredRect(layout.bounds);
-    if (dragging_view_bounds) {
-      const auto header_size = is_horizontal
-                                   ? group_view->group_header()->width()
-                                   : group_view->group_header()->height();
-      const auto required_overlap_amount =
-          header_size * kMinHeaderHeightPctForGroupEntry;
-      if (HasMinimumOverlap(
-              *dragging_view_bounds, group_bounds,
-              is_horizontal ? std::make_optional(required_overlap_amount)
-                            : std::nullopt,
-              is_horizontal ? std::nullopt
-                            : std::make_optional(required_overlap_amount))) {
-        return *group_view;
+    if (extremal_dragging_view_bounds) {
+      for (auto bounds : {extremal_dragging_view_bounds->first,
+                          extremal_dragging_view_bounds->second}) {
+        const auto required_overlap_amount =
+            is_horizontal ? bounds.width() * kMinWidthPctForGroupEntry
+                          : bounds.height() * kMinHeightPctForGroupEntry;
+        if (is_horizontal) {
+          bounds.Inset(gfx::Insets::VH(0, HorizontalOverlapAdjustment()));
+        }
+        if (HasMinimumOverlap(
+                bounds, group_bounds,
+                is_horizontal ? std::make_optional(required_overlap_amount)
+                              : std::nullopt,
+                is_horizontal ? std::nullopt
+                              : std::make_optional(required_overlap_amount))) {
+          return *group_view;
+        }
       }
     } else if (is_horizontal
-                   ? (group_bounds.x() <= point_in_container.x() &&
-                      group_bounds.right() >= point_in_container.x())
+                   ? (group_bounds.x() <= point_in_container.x() -
+                                              HorizontalOverlapAdjustment() &&
+                      group_bounds.right() >= point_in_container.x() +
+                                                  HorizontalOverlapAdjustment())
                    : (group_bounds.y() <= point_in_container.y() &&
                       group_bounds.bottom() >= point_in_container.y())) {
       // If neither the group or this container are handling a drag and the drag
@@ -406,34 +603,37 @@ bool UnpinnedTabContainerView::ShouldDragRemainInGroup(
     return true;
   }
 
+  const bool is_horizontal = orientation_ == TabStripOrientation::kHorizontal;
+  const auto orientation = is_horizontal ? views::LayoutOrientation::kHorizontal
+                                         : views::LayoutOrientation::kVertical;
   gfx::Point point_in_group =
       views::View::ConvertPointFromScreen(&group_view, point_in_screen);
-  auto dragging_view_bounds_in_group =
-      group_view.GetDraggingViewsBoundsAtPoint(point_in_group);
-  auto dragging_view_bounds_from_group = views::View::ConvertRectToTarget(
-      &group_view, this, dragging_view_bounds_in_group);
-
-  const bool is_horizontal = orientation_ == TabStripOrientation::kHorizontal;
-  const auto header_size = is_horizontal ? group_view.group_header()->width()
-                                         : group_view.group_header()->height();
-  const auto dragging_size = is_horizontal
-                                 ? dragging_view_bounds_from_group.width()
-                                 : dragging_view_bounds_from_group.height();
-
-  // Note, it's possible the size of the group has not been updated to reflect
-  // that a set of dragged tabs were added, meaning it's possible the size of
-  // the dragged tabs is greater than the size of the group.
-  // For this case, the tabs should remain in the group, even if the required
-  // amount is peeking out, until the group has a chance to update its sizing.
-  const auto required_overlap_amount =
-      dragging_size - (header_size * kMinHeaderHeightPctForGroupExit);
-
-  return HasMinimumOverlap(
-      dragging_view_bounds_from_group, GetMirroredRect(proposed_group_bounds),
-      is_horizontal ? std::make_optional(required_overlap_amount)
-                    : std::nullopt,
-      is_horizontal ? std::nullopt
-                    : std::make_optional(required_overlap_amount));
+  std::pair<gfx::Rect, gfx::Rect> extremal_dragging_view_bounds =
+      group_view.GetExtremalDraggingViewsBoundsAtPoint(point_in_group);
+  for (auto bounds_in_group : {extremal_dragging_view_bounds.first,
+                               extremal_dragging_view_bounds.second}) {
+    auto bounds_from_group = views::Normalize(
+        orientation,
+        views::View::ConvertRectToTarget(&group_view, this, bounds_in_group));
+    const auto peek_out_amount =
+        bounds_from_group.size_main() *
+        (is_horizontal ? kMinWidthPctForGroupExit : kMinHeightPctForGroupExit);
+    if (is_horizontal) {
+      bounds_from_group.Inset(HorizontalOverlapAdjustment(), 0);
+    }
+    const auto required_overlap_amount =
+        bounds_from_group.size_main() - peek_out_amount;
+    if (!HasMinimumOverlap(
+            views::Denormalize(orientation, bounds_from_group),
+            proposed_group_bounds,
+            is_horizontal ? std::make_optional(required_overlap_amount)
+                          : std::nullopt,
+            is_horizontal ? std::nullopt
+                          : std::make_optional(required_overlap_amount))) {
+      return false;
+    }
+  }
+  return true;
 }
 
 const TabCollectionNode* UnpinnedTabContainerView::GetCollectionNodeFromView(

@@ -26,7 +26,6 @@
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/browser/browser_list.h"
 #import "ios/chrome/browser/shared/model/browser/browser_list_factory.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
@@ -140,29 +139,27 @@
 
 #pragma mark - BrowserProviderInterface
 
-- (id<BrowserProvider>)mainBrowserProvider {
-  return _mainInterface;
+- (Browser*)mainBrowser {
+  return _mainInterface.browser;
 }
 
-- (id<BrowserProvider>)incognitoBrowserProvider {
-  if (!self.hasIncognitoBrowserProvider) {
-    // Ensure that the method return nil if self.hasIncognitoBrowserProvider
-    // returns NO.
-    return nil;
+- (Browser*)incognitoBrowser {
+  if (!self.hasIncognitoBrowser) {
+    return nullptr;
   }
 
-  return _incognitoInterface;
+  return _incognitoInterface.browser;
 }
 
-- (id<BrowserProvider>)currentBrowserProvider {
-  return _currentInterface;
+- (Browser*)currentBrowser {
+  return _currentInterface.browser;
 }
 
 // This method should almost never return NO since the incognitoInterface
 // is not lazily created, but it is possible for it to return YES after
 // -shutdown or as a transient state while the OTR Profile is
 // being detroyed and recreated (see SceneController).
-- (BOOL)hasIncognitoBrowserProvider {
+- (BOOL)hasIncognitoBrowser {
   return _mainInterface && _incognitoInterface;
 }
 

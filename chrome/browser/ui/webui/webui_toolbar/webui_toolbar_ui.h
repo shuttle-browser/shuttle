@@ -20,7 +20,6 @@
 #include "components/browser_apis/browser_controls/browser_controls_api.mojom-forward.h"
 #include "components/browser_apis/browser_controls/browser_controls_api_data_model.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api.mojom.h"
-#include "components/omnibox/browser/searchbox.mojom.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
 #include "content/public/browser/webui_config.h"
@@ -35,16 +34,12 @@
 
 class CommandUpdater;
 
-namespace contextual_search {
-class ContextualSearchSessionHandle;
-}  // namespace contextual_search
-
 namespace user_education {
 class HelpBubbleHandler;
 }  // namespace user_education
 
 class OmniboxController;
-class WebuiOmniboxHandler;
+class Profile;
 
 // The webui controller for the webui toolbar. This class has a two part
 // initialization. The controller is not ready to use until after
@@ -56,8 +51,7 @@ class WebUIDataSource;
 
 class WebUIToolbarUI : public TopChromeWebUIController,
                        public content::WebContentsObserver,
-                       public help_bubble::mojom::HelpBubbleHandlerFactory,
-                       public searchbox::mojom::PageHandlerFactory {
+                       public help_bubble::mojom::HelpBubbleHandlerFactory {
  public:
   // Provides dependencies to this controller during init.
   class DependencyProvider {
@@ -96,6 +90,17 @@ class WebUIToolbarUI : public TopChromeWebUIController,
 
   static constexpr std::string_view GetWebUIName() { return "WebUIToolbar"; }
 
+  struct ProfileButtonEligibility {
+    bool is_profile_eligible_for_glic = false;
+    bool can_show_avatar_for_profile = false;
+    bool operator==(const ProfileButtonEligibility&) const = default;
+  };
+
+  // Computes the per-frame Glic and avatar button eligibility for `profile`.
+  // It can change while the browser runs, and a prewarmed toolbar reads it
+  // when it navigates, which can be long before a window adopts it.
+  static ProfileButtonEligibility GetProfileButtonEligibility(Profile* profile);
+
   void BindInterface(
       mojo::PendingReceiver<browser_controls_api::mojom::BrowserControlsService>
           receiver);
@@ -108,9 +113,6 @@ class WebUIToolbarUI : public TopChromeWebUIController,
   void BindInterface(
       mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandlerFactory>
           receiver);
-
-  void BindInterface(
-      mojo::PendingReceiver<searchbox::mojom::PageHandlerFactory> receiver);
 
   virtual void OnToolbarStateChanged(
       const toolbar_ui_api::mojom::ToolbarState& state);
@@ -157,11 +159,6 @@ class WebUIToolbarUI : public TopChromeWebUIController,
       mojo::PendingReceiver<help_bubble::mojom::HelpBubbleHandler> handler,
       base::WeakPtr<ui::TrackedElementHandler> tracked_element_handler);
 
-  // searchbox::mojom::PageHandlerFactory:
-  void CreatePageHandler(
-      mojo::PendingRemote<searchbox::mojom::Page> page,
-      mojo::PendingReceiver<searchbox::mojom::PageHandler> receiver) override;
-
   content::WebUIController::DisplayDisposition GetDisplayDisposition()
       const override;
 
@@ -190,22 +187,12 @@ class WebUIToolbarUI : public TopChromeWebUIController,
   void InitBrowserControlsService(DependencyProvider& dependency_provider);
   void InitToolbarUIService(DependencyProvider& dependency_provider);
 
-  // Lazily creates and returns a reference to the owned contextual search
-  // session handle for `omnibox_handler_`.
-  contextual_search::ContextualSearchSessionHandle*
-  GetOrCreateContextualSessionHandle();
-
   // Returns the profile of the window of the toolbar. See
   // webui::GetUserProfile().
   Profile* GetUserProfile() const;
 
   bool is_initialized_ = false;
   raw_ptr<OmniboxController> omnibox_controller_ = nullptr;
-
-  // Must outlive `omnibox_handler_`.
-  std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
-      session_handle_;
-  std::unique_ptr<WebuiOmniboxHandler> omnibox_handler_;
 
   std::unique_ptr<browser_controls_api::BrowserControlsService>
       browser_controls_service_;
@@ -241,14 +228,6 @@ class WebUIToolbarUI : public TopChromeWebUIController,
   std::unique_ptr<user_education::HelpBubbleHandler> help_bubble_handler_;
   mojo::Receiver<help_bubble::mojom::HelpBubbleHandlerFactory>
       help_bubble_service_{this};
-
-  mojo::Receiver<searchbox::mojom::PageHandlerFactory>
-      searchbox_page_factory_receiver_{this};
-
-  // These two are used if searchbox CreatePageHandler is called before Init();
-  mojo::PendingRemote<searchbox::mojom::Page> delayed_searchbox_page_;
-  mojo::PendingReceiver<searchbox::mojom::PageHandler>
-      delayed_searchbox_receiver_;
 
   base::WeakPtrFactory<WebUIToolbarUI> weak_ptr_factory_{this};
 

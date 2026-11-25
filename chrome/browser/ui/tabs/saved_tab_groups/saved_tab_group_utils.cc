@@ -65,8 +65,8 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/range/range.h"
 #include "url/gurl.h"
 
@@ -85,9 +85,6 @@ GetSharedTabGroupRecallTypeMetric(
     case tab_groups::TabGroupMenuContext::APP_MENU:
       return tab_groups::saved_tab_groups::metrics::
           SharedTabGroupRecallTypeDesktop::kOpenedFromSubmenuFromAppMenu;
-    case tab_groups::TabGroupMenuContext::MAC_SYSTEM_MENU:
-      return tab_groups::saved_tab_groups::metrics::
-          SharedTabGroupRecallTypeDesktop::kOpenedFromSubmenuFromMacSystemMenu;
     case tab_groups::TabGroupMenuContext::ORGANIZER_PANEL:
       return tab_groups::saved_tab_groups::metrics::
           SharedTabGroupRecallTypeDesktop::kOpenedFromSubmenuFromOrganizerPanel;
@@ -107,15 +104,16 @@ GetSavedTabGroupSubmenuOpenedMetric(
     case tab_groups::TabGroupMenuContext::APP_MENU:
       return tab_groups::saved_tab_groups::metrics::
           SavedTabGroupOpenedSubmenuDesktop::kAppMenu;
-    case tab_groups::TabGroupMenuContext::MAC_SYSTEM_MENU:
-      return tab_groups::saved_tab_groups::metrics::
-          SavedTabGroupOpenedSubmenuDesktop::kMacSystemMenu;
     case tab_groups::TabGroupMenuContext::ORGANIZER_PANEL:
       return tab_groups::saved_tab_groups::metrics::
           SavedTabGroupOpenedSubmenuDesktop::kOrganizerPanel;
   }
 }
 
+// The three mappings below must stay in sync: each TabGroupMenuContext maps to
+// one surface across the entry point histogram, exit reason histogram, and
+// user action.
+// LINT.IfChange(TabGroupMenuContextFocusSurface)
 TabGroupFocusEntryPoint GetTabGroupFocusEntryPoint(
     const tab_groups::TabGroupMenuContext& context) {
   switch (context) {
@@ -126,9 +124,6 @@ TabGroupFocusEntryPoint GetTabGroupFocusEntryPoint(
       return TabGroupFocusEntryPoint::kAppMenu;
     case tab_groups::TabGroupMenuContext::ORGANIZER_PANEL:
       return TabGroupFocusEntryPoint::kOrganizerPanel;
-    case tab_groups::TabGroupMenuContext::MAC_SYSTEM_MENU:
-      // The Mac system menu does not offer a focus option.
-      NOTREACHED();
   }
 }
 
@@ -142,11 +137,35 @@ TabGroupFocusExitReason GetTabGroupFocusExitReason(
       return TabGroupFocusExitReason::kAppMenu;
     case tab_groups::TabGroupMenuContext::ORGANIZER_PANEL:
       return TabGroupFocusExitReason::kOrganizerPanel;
-    case tab_groups::TabGroupMenuContext::MAC_SYSTEM_MENU:
-      // The Mac system menu does not offer an unfocus option.
-      NOTREACHED();
   }
 }
+
+// Records a per-surface user action for focusing or unfocusing a group from a
+// saved tab group menu.
+void RecordFocusToggleUserAction(const tab_groups::TabGroupMenuContext& context,
+                                 bool is_unfocus) {
+  switch (context) {
+    // Both the group button context menu and the Everything menu live on the
+    // bookmarks bar, so they share a single surface.
+    case tab_groups::TabGroupMenuContext::SAVED_TAB_GROUP_BUTTON_CONTEXT_MENU:
+    case tab_groups::TabGroupMenuContext::SAVED_TAB_GROUP_EVERYTHING_MENU:
+      base::RecordAction(base::UserMetricsAction(
+          is_unfocus ? "TabGroups_SavedTabGroups_BookmarksBar_UnfocusGroup"
+                     : "TabGroups_SavedTabGroups_BookmarksBar_FocusGroup"));
+      return;
+    case tab_groups::TabGroupMenuContext::APP_MENU:
+      base::RecordAction(base::UserMetricsAction(
+          is_unfocus ? "TabGroups_SavedTabGroups_AppMenu_UnfocusGroup"
+                     : "TabGroups_SavedTabGroups_AppMenu_FocusGroup"));
+      return;
+    case tab_groups::TabGroupMenuContext::ORGANIZER_PANEL:
+      base::RecordAction(base::UserMetricsAction(
+          is_unfocus ? "TabGroups_SavedTabGroups_OrganizerPanel_UnfocusGroup"
+                     : "TabGroups_SavedTabGroups_OrganizerPanel_FocusGroup"));
+      return;
+  }
+}
+// LINT.ThenChange(:TabGroupMenuContextFocusSurface)
 
 }  // namespace
 
@@ -433,7 +452,7 @@ void SavedTabGroupUtils::OpenUrlInNewUngroupedTab(
     BrowserWindowInterface* browser,
     const GURL& url) {
   NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_BOOKMARK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   params.started_from_context_menu = true;
   Navigate(&params);
 }
@@ -534,7 +553,7 @@ content::NavigationHandle* SavedTabGroupUtils::OpenTabInBrowser(
     const GURL& url,
     BrowserWindowInterface* browser,
     Profile* profile,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     std::optional<int> tabstrip_index,
     std::optional<tab_groups::TabGroupId> local_group_id) {
   NavigateParams params(profile, url, ui::PAGE_TRANSITION_AUTO_BOOKMARK);
@@ -947,8 +966,10 @@ void SavedTabGroupUtils::PerformTabGroupMenuAction(
 
       TabStripModel* const tab_strip_model = target_browser->GetTabStripModel();
       if (tab_strip_model->GetFocusedGroup() == local_group_id.value()) {
+        RecordFocusToggleUserAction(context, /*is_unfocus=*/true);
         tab_strip_model->ExitFocusMode(GetTabGroupFocusExitReason(context));
       } else {
+        RecordFocusToggleUserAction(context, /*is_unfocus=*/false);
         base::UmaHistogramEnumeration("TabGroups.Focus.EntryPoint",
                                       GetTabGroupFocusEntryPoint(context));
         tab_strip_model->EnterFocusMode(local_group_id.value());

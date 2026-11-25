@@ -12,6 +12,7 @@
 #import "base/ios/block_types.h"
 
 @protocol ContentSuggestionsViewControllerAudience;
+enum class ContentSuggestionsModuleType;
 class PrefService;
 @protocol TipsMagicStackMediatorDelegate;
 @class TipsModuleConfig;
@@ -57,6 +58,7 @@ enum class TipIdentifier;
                               imageFetcher
     backgroundCustomizationService:
         (HomeBackgroundCustomizationService*)backgroundCustomizationService
+             localStatePrefService:(PrefService*)localStatePrefService
     NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;
@@ -73,6 +75,18 @@ enum class TipIdentifier;
 // on the current homepage but does not affect its functionality elsewhere.
 // The `completion` is called after the removal is finished.
 - (void)removeModuleWithCompletion:(ProceduralBlock)completion;
+
+// Commits any pending in-place interaction (such as a selected NTP theme
+// swatch) and removes the module from the Magic Stack.
+- (void)completeInPlaceInteractionIfNeeded;
+
+// Updates the inline switch state for the Tips Notifications module if the
+// state changed.
+- (void)setTipsNotificationsSwitchEnabled:(BOOL)enabled;
+
+// Logs Magic Stack engagement for `type` if engagement has not already been
+// logged for the current card impression.
+- (void)logEngagementIfNeededForType:(ContentSuggestionsModuleType)type;
 
 @end
 

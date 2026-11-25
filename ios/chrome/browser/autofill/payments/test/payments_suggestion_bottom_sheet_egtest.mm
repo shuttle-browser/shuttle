@@ -32,6 +32,7 @@
 #import "ios/testing/earl_grey/earl_grey_test.h"
 #import "ios/testing/earl_grey/matchers.h"
 #import "ios/web/public/test/element_selector.h"
+#import "net/base/url_util.h"
 #import "net/test/embedded_test_server/default_handlers.h"
 #import "ui/base/l10n/l10n_util_mac.h"
 
@@ -43,6 +44,13 @@ namespace {
 const char kCreditCardWithAutofocusUrl[] = "/credit_card_autofocused.html";
 const char kDestinationUrl[] = "/destination.html";
 const char kDestinationPageText[] = "You've arrived";
+const char kCreditCardChildAutofocusUrl[] = "/credit_card_child_autofocus.html";
+const char kCreditCardChildFrameUrl[] = "/credit_card_child_frame.html";
+// Time to wait to verify that the bottom sheet does not appear. 500 ms provides
+// enough margin for any asynchronous bottom-sheet presentation logic to run
+// without unnecessarily slowing down the test suite.
+constexpr base::TimeDelta kBottomSheetAbsenceCheckDelay =
+    base::Milliseconds(500);
 const char kFormCardNumber[] = "CCNo";
 const char kFormCardExpirationMonth[] = "CCExpiresMonth";
 const char kFormCardExpirationYear[] = "CCExpiresYear";
@@ -119,8 +127,9 @@ id<GREYMatcher> KeyboardAccessoryCreditCardSuggestionChip() {
             (testAttemptToOpenPaymentsBottomSheetWithoutCreditCardOnV3)]) {
     config.features_enabled.push_back(kAutofillPaymentsSheetV3Ios);
   }
-  if ([self isRunningTest:@selector
-            (FLAKY_testPaymentsBottomSheetNotShownAfterFieldTypeChanges)]) {
+  if ([self isRunningTest:
+                @selector(
+                    testPaymentsBottomSheetNotShownAfterFieldTypeChanges)]) {
     config.features_enabled.push_back(
         kAutofillPaymentsSheetDetachInvalidatedListenersIos);
   }
@@ -285,8 +294,7 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
 
 // Tests that the Payments Bottom Sheet appears when tapping on a credit card
 // related field.
-// TODO(crbug.com/444085918): Test is flaky.
-- (void)FLAKY_testOpenPaymentsBottomSheetUseCreditCard {
+- (void)testOpenPaymentsBottomSheetUseCreditCard {
   [self loadPaymentsPage];
 
   [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
@@ -321,8 +329,7 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
 
 // Tests that the Payments Bottom Sheet appears when tapping on a credit card
 // related field with the new blur logic.
-// TODO(crbug.com/444033658): Fix test and re-enable.
-- (void)DISABLED_testOpenPaymentsBottomSheetUseCreditCardWithNewBlur {
+- (void)testOpenPaymentsBottomSheetUseCreditCardWithNewBlur {
   [self loadPaymentsPage];
 
   [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
@@ -403,8 +410,7 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
 
 // Tests that the expected metric is logged when accepting a suggestion from
 // the bottom sheet that is not the first one in the list.
-// TODO(crbug.com/415030578): Fix test and re-enable.
-- (void)DISABLED_testAcceptedSuggestionIndexLogged {
+- (void)testAcceptedSuggestionIndexLogged {
   // Add a credit card to the Personal Data Manager.
   [AutofillAppInterface saveMaskedCreditCard];
 
@@ -740,7 +746,7 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
   // Give enough time so the sheet would have shown if it was wrongly
   // triggered after dismissing the card unmask dialog (can be from any action,
   // it doesn't matter).
-  base::test::ios::SpinRunLoopWithMinDelay(base::Milliseconds(500));
+  base::test::ios::SpinRunLoopWithMinDelay(kBottomSheetAbsenceCheckDelay);
 
   // Verify that the sheet didn't pop up after filling from the KA on the
   // autofocused field. Use the continue button of the sheet as a proxy.
@@ -752,7 +758,7 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
 // as a credit card field dynamically changes to a non-credit card field type
 // (e.g. password) before it is tapped, verifying that listeners are correctly
 // detached during re-evaluations.
-- (void)FLAKY_testPaymentsBottomSheetNotShownAfterFieldTypeChanges {
+- (void)testPaymentsBottomSheetNotShownAfterFieldTypeChanges {
   [self loadPaymentsPage];
 
   // At this point, the page is loaded and listeners are attached.
@@ -812,7 +818,7 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
 }
 
 // Test that payments bottom sheet is dismissed upon cross-document navigation.
-- (void)DISABLED_testPaymentsBottomSheetDismissesOnCrossDocumentNavigation {
+- (void)testPaymentsBottomSheetDismissesOnCrossDocumentNavigation {
   [self loadPaymentsPage];
 
   // Tap on the credit card field to trigger the Payments Bottom Sheet. Use the
@@ -852,6 +858,66 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
                  @"kNavigationOrTabChange upon navigation dismissal.");
 }
 
+// Tests that the Payments Bottom Sheet is not shown when a credit card field
+// in a child frame is autofocused without user interaction.
+- (void)testPaymentsBottomSheetNotShownOnChildFrameAutofocus {
+  net::test_server::EmbeddedTestServer secondTestServer;
+  secondTestServer.ServeFilesFromSourceDirectory(
+      "ios/testing/data/http_server_files");
+  GREYAssertTrue(secondTestServer.Start(),
+                 @"Second test server did not start.");
+
+  const GURL childFrameURL = secondTestServer.GetURL(kCreditCardChildFrameUrl);
+  const GURL parentURL = net::AppendQueryParameter(
+      self.testServer->GetURL(kCreditCardChildAutofocusUrl), "child_src",
+      childFrameURL.spec());
+  [ChromeEarlGrey loadURL:parentURL];
+  [ChromeEarlGrey
+      waitForWebStateContainingText:"Autofill Test - Child Frame Autofocus"];
+  [ChromeEarlGrey
+      waitForJavaScriptCondition:@"window.childFrameLoaded === true"];
+  [AutofillAppInterface considerCreditCardFormSecureForTesting];
+
+  // Wait for Autofill to parse the child frame credit card form so that
+  // bottom-sheet listeners are attached before triggering programmatic focus.
+  bool formParsed = base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForActionTimeout, ^bool {
+        return [MetricsAppInterface
+                   expectTotalCount:0
+                       forHistogram:@"Autofill.FormEvents.CreditCard"] != nil;
+      });
+  GREYAssertTrue(formParsed, @"Autofill did not parse the child frame form.");
+
+  // Trigger programmatic focus in the child frame after listeners attach.
+  [ChromeEarlGrey evaluateJavaScriptForSideEffect:
+                      @"document.getElementById('child_frame').contentWindow."
+                      @"postMessage({type: 'triggerAutofocus'}, '*');"];
+  [ChromeEarlGrey
+      waitForJavaScriptCondition:@"window.childAutofocusTriggered === true"];
+
+  // Verify that the focus event reached the browser and was rejected due to
+  // lacking user interaction.
+  constexpr int kUserNotInteractingBucket =
+      2;  // PaymentsBottomSheetUserGestureStatus::kUserNotInteracting
+  bool rejectionLogged = base::test::ios::WaitUntilConditionOrTimeout(
+      base::test::ios::kWaitForActionTimeout, ^bool {
+        return [MetricsAppInterface
+                   expectUniqueSampleWithCount:1
+                                     forBucket:kUserNotInteractingBucket
+                                  forHistogram:@"IOS.PaymentsBottomSheet."
+                                               @"UserGestureStatus"] == nil;
+      });
+  GREYAssertTrue(rejectionLogged,
+                 @"Expected kUserNotInteracting to be recorded.");
+
+  // Wait minimum time to ensure the sheet does not appear.
+  base::test::ios::SpinRunLoopWithMinDelay(kBottomSheetAbsenceCheckDelay);
+
+  // Verify that the sheet was not shown.
+  [[EarlGrey selectElementWithMatcher:ContinueButton()]
+      assertWithMatcher:grey_nil()];
+}
+
 @end
 
 // Test suite for testing the new blur approach.
@@ -864,6 +930,11 @@ void CheckAutofillSuggestionAcceptedIndexMetricsCount(
 
 - (bool)shouldUseNewBlur {
   return YES;
+}
+
+- (void)testPaymentsBottomSheetNotShownOnChildFrameAutofocus {
+  EARL_GREY_TEST_SKIPPED(
+      @"Programmatic focus does not emit mousedown under NewBlur.");
 }
 
 // No op test to have the test fixture visible.

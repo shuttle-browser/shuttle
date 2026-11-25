@@ -22,19 +22,19 @@
 #include <memory>
 #include <vector>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/calculators/tensor/image_to_tensor_converter.h"
 #include "mediapipe/calculators/tensor/image_to_tensor_utils.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/tensor.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/gpu/MPPMetalHelper.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/common/types.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"  // from @litert
+#include "tensorflow/lite/delegates/gpu/common/types.h"  // from @litert
 
 #if MEDIAPIPE_METAL_ENABLED
 #include "mediapipe/framework/formats/tensor_mtl_buffer_view.h"
@@ -154,7 +154,7 @@ class SubRectExtractorMetal {
       id<MTLDevice> device, OutputFormat output_format,
       BorderMode border_mode) {
     id<MTLRenderPipelineState> pipeline_state;
-    MP_RETURN_IF_ERROR(SubRectExtractorMetal::MakePipelineState(
+    ABSL_RETURN_IF_ERROR(SubRectExtractorMetal::MakePipelineState(
         device, output_format, border_mode, &pipeline_state));
 
     return absl::make_unique<SubRectExtractorMetal>(device, pipeline_state,
@@ -345,9 +345,9 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
   absl::Status Init(CalculatorContext* cc, BorderMode border_mode) {
     metal_helper_ = [[MPPMetalHelper alloc] initWithCalculatorContext:cc];
     RET_CHECK(metal_helper_);
-    MP_ASSIGN_OR_RETURN(extractor_, SubRectExtractorMetal::Make(
-                                        metal_helper_.mtlDevice,
-                                        OutputFormat::kF32C4, border_mode));
+    ABSL_ASSIGN_OR_RETURN(extractor_, SubRectExtractorMetal::Make(
+                                          metal_helper_.mtlDevice,
+                                          OutputFormat::kF32C4, border_mode));
     return absl::OkStatus();
   }
 
@@ -358,14 +358,14 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
     if (input.format() != mediapipe::GpuBufferFormat::kBGRA32 &&
         input.format() != mediapipe::GpuBufferFormat::kRGBAHalf64 &&
         input.format() != mediapipe::GpuBufferFormat::kRGBAFloat128) {
-      return InvalidArgumentError(absl::StrCat(
+      return absl::InvalidArgumentError(absl::StrCat(
           "Only 4-channel texture input formats are supported, passed format: ",
           static_cast<uint32_t>(input.format())));
     }
     RET_CHECK_EQ(tensor_buffer_offset, 0)
         << "The non-zero tensor_buffer_offset input is not supported yet.";
     const auto& output_shape = output_tensor.shape();
-    MP_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
+    ABSL_RETURN_IF_ERROR(ValidateTensorShape(output_shape));
 
     @autoreleasepool {
       id<MTLTexture> texture =
@@ -373,7 +373,7 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
 
       constexpr float kInputImageRangeMin = 0.0f;
       constexpr float kInputImageRangeMax = 1.0f;
-      MP_ASSIGN_OR_RETURN(
+      ABSL_ASSIGN_OR_RETURN(
           auto transform,
           GetValueRangeTransformation(kInputImageRangeMin, kInputImageRangeMax,
                                       range_min, range_max));
@@ -381,7 +381,7 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
       id<MTLCommandBuffer> command_buffer = [metal_helper_ commandBuffer];
       const auto& buffer_view =
           MtlBufferView::GetWriteView(output_tensor, command_buffer);
-      MP_RETURN_IF_ERROR(extractor_->Execute(
+      ABSL_RETURN_IF_ERROR(extractor_->Execute(
           texture, roi,
           /*flip_horizontally=*/false, transform.scale, transform.offset,
           tflite::gpu::HW(output_shape.dims[1], output_shape.dims[2]),
@@ -412,7 +412,7 @@ class ImageToTensorMetalConverter : public ImageToTensorConverter {
 absl::StatusOr<std::unique_ptr<ImageToTensorConverter>> CreateMetalConverter(
     CalculatorContext* cc, BorderMode border_mode) {
   auto result = absl::make_unique<ImageToTensorMetalConverter>();
-  MP_RETURN_IF_ERROR(result->Init(cc, border_mode));
+  ABSL_RETURN_IF_ERROR(result->Init(cc, border_mode));
 
   return result;
 }

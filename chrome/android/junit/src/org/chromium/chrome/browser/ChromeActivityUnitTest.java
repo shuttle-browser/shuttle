@@ -5,7 +5,6 @@
 package org.chromium.chrome.browser;
 
 import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -28,8 +27,6 @@ import android.view.ViewGroup;
 import android.window.OnBackInvokedDispatcher;
 
 import androidx.annotation.Nullable;
-
-import com.google.android.play.core.appupdate.AppUpdateManager;
 
 import org.json.JSONException;
 import org.json.JSONObject;
@@ -65,15 +62,14 @@ import org.chromium.chrome.browser.app.appmenu.AppMenuPropertiesDelegateImpl;
 import org.chromium.chrome.browser.app.metrics.LaunchCauseMetrics;
 import org.chromium.chrome.browser.app.tabmodel.TabModelOrchestrator;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
-import org.chromium.chrome.browser.dom_distiller.ReaderModeManager;
 import org.chromium.chrome.browser.flags.ActivityType;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.media.FullscreenVideoPictureInPictureController;
-import org.chromium.chrome.browser.omaha.inline.InAppUpdateController;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileProvider;
 import org.chromium.chrome.browser.readaloud.ReadAloudController;
+import org.chromium.chrome.browser.reader_mode.ReaderModeManager;
 import org.chromium.chrome.browser.settings.SettingsActivity;
 import org.chromium.chrome.browser.settings.SettingsPage;
 import org.chromium.chrome.browser.tab.Tab;
@@ -88,11 +84,11 @@ import org.chromium.chrome.browser.ui.RootUiCoordinator;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuPropertiesDelegate;
 import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
-import org.chromium.components.dom_distiller.core.DomDistillerUrlUtilsJni;
 import org.chromium.components.embedder_support.util.UrlConstants;
 import org.chromium.components.policy.EnterpriseInfo;
 import org.chromium.components.ukm.UkmRecorder;
 import org.chromium.components.ukm.UkmRecorderJni;
+import org.chromium.components.web_distiller.core.WebDistillerUrlUtilsJni;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content_public.browser.RenderFrameHost;
 import org.chromium.content_public.browser.WebContents;
@@ -119,7 +115,7 @@ public class ChromeActivityUnitTest {
     @Mock PictureInPictureUiState mPictureInPictureUiState;
     @Mock EnterpriseInfo mEnterpriseInfo;
     @Mock UkmRecorder.Natives mUkmRecorderJniMock;
-    @Mock DomDistillerUrlUtilsJni mDomDistillerUrlUtilsJni;
+    @Mock WebDistillerUrlUtilsJni mWebDistillerUrlUtilsJni;
     @Mock private TabStateThemeResourceProvider mThemeResourceProvider;
     @Mock LayoutManagerImpl mLayoutManagerMock;
     @Captor ArgumentCaptor<LoadUrlParams> mLoadUrlParamsCaptor;
@@ -245,22 +241,12 @@ public class ChromeActivityUnitTest {
             // Override the method in test so it can be accessible in test body.
             super.onPreCreate();
         }
-
-        public void performDestroyForTesting() {
-            try {
-                super.onDestroy();
-            } catch (Exception ignored) {
-                // super.onDestroy() performs extensive activity teardown requiring lifecycle
-                // initialization not set up in this test. InAppUpdateController teardown occurs
-                // at the very start of onDestroy().
-            }
-        }
     }
 
     @Before
     public void setup() {
         mActivity = Robolectric.buildActivity(TestActivity.class).setup().get();
-        DomDistillerUrlUtilsJni.setInstanceForTesting(mDomDistillerUrlUtilsJni);
+        WebDistillerUrlUtilsJni.setInstanceForTesting(mWebDistillerUrlUtilsJni);
     }
 
     @Test
@@ -376,7 +362,7 @@ public class ChromeActivityUnitTest {
         when(mTabModel.getProfile()).thenReturn(mProfile);
         when(mActivityTab.getUserDataHost()).thenReturn(userDataHost);
         when(mActivityTab.getUrl()).thenReturn(JUnitTestGURLs.EXAMPLE_URL);
-        when(mDomDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(false);
+        when(mWebDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(false);
 
         assertTrue(
                 chromeActivity.onMenuOrKeyboardAction(
@@ -396,7 +382,7 @@ public class ChromeActivityUnitTest {
         when(mTabModel.getProfile()).thenReturn(mProfile);
         when(mActivityTab.getUserDataHost()).thenReturn(userDataHost);
         when(mActivityTab.getUrl()).thenReturn(JUnitTestGURLs.CHROME_DISTILLER_EXAMPLE_URL);
-        when(mDomDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(true);
+        when(mWebDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(true);
 
         assertTrue(
                 chromeActivity.onMenuOrKeyboardAction(
@@ -691,48 +677,5 @@ public class ChromeActivityUnitTest {
 
         verify(mTabModel).setIndex(1, TabSelectionType.FROM_USER);
         assertEquals(1, userActionTester.getActionCount("MobileMenuSelectTabFromGroup"));
-    }
-
-    @Test
-    @EnableFeatures(ChromeFeatureList.IN_APP_UPDATE_FLOW)
-    public void testInAppUpdateController_lazyInitAndNullSnackbarSupplier() {
-        TestChromeActivity chromeActivity = new TestChromeActivity();
-        InAppUpdateController controller = chromeActivity.getInAppUpdateController();
-        assertNotNull(controller);
-        assertEquals(controller, chromeActivity.getInAppUpdateController());
-    }
-
-    @Test
-    @DisableFeatures(ChromeFeatureList.IN_APP_UPDATE_FLOW)
-    public void testInAppUpdateController_disabledWhenFeatureOff() {
-        TestChromeActivity chromeActivity = new TestChromeActivity();
-        assertNull(chromeActivity.getInAppUpdateController());
-    }
-
-    @Test
-    @EnableFeatures(ChromeFeatureList.IN_APP_UPDATE_FLOW)
-    public void testInAppUpdateController_onActivityResultWithNative() {
-        InAppUpdateController.setAppUpdateManagerForTesting(Mockito.mock(AppUpdateManager.class));
-        TestChromeActivity chromeActivity = new TestChromeActivity();
-        assertTrue(
-                chromeActivity.onActivityResultWithNative(
-                        InAppUpdateController.REQUEST_CODE_IN_APP_UPDATE,
-                        Activity.RESULT_OK,
-                        null));
-        assertFalse(chromeActivity.onActivityResultWithNative(99999, Activity.RESULT_OK, null));
-    }
-
-    @Test
-    @EnableFeatures(ChromeFeatureList.IN_APP_UPDATE_FLOW)
-    public void testInAppUpdateController_onDestroyTeardown() {
-        TestChromeActivity chromeActivity = new TestChromeActivity();
-        InAppUpdateController controller1 = chromeActivity.getInAppUpdateController();
-        assertNotNull(controller1);
-
-        chromeActivity.performDestroyForTesting();
-
-        InAppUpdateController controller2 = chromeActivity.getInAppUpdateController();
-        assertNotNull(controller2);
-        Assert.assertNotSame(controller1, controller2);
     }
 }

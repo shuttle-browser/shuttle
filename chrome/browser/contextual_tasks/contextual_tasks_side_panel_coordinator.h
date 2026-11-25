@@ -24,6 +24,9 @@
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "extensions/buildflags/buildflags.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "net/cookies/canonical_cookie.h"
+#include "services/network/public/mojom/cookie_manager.mojom.h"
 #include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 #include "url/gurl.h"
@@ -87,6 +90,7 @@ class ContextualTasksSidePanelCoordinator
       public ContextualTasksPanelHost::Observer,
       public TabListInterfaceObserver,
       public signin::IdentityManager::Observer,
+      public network::mojom::CookieChangeListener,
       content::WebContentsObserver
 #if !BUILDFLAG(IS_ANDROID)
     ,
@@ -130,12 +134,6 @@ class ContextualTasksSidePanelCoordinator
     omnibox::ChromeAimEntryPoint entry_point =
         omnibox::ChromeAimEntryPoint::UNKNOWN_AIM_ENTRY_POINT;
 
-    // Whether the current open session reopened a previously collapsed panel
-    // for an existing thread via the pinned or ephemeral toolbar button
-    // (rather than starting from a fresh entry point or switching threads via
-    // thread history). Reset on `Show()` and when switching tasks.
-    bool is_reopened_via_toolbar_button = false;
-
     // The time when this task's panel was opened.
     base::TimeTicks open_time_ticks;
 
@@ -151,6 +149,10 @@ class ContextualTasksSidePanelCoordinator
     // session.
     size_t link_click_count = 0;
 
+    // Number of queries submitted from this task's panel during the current
+    // open session.
+    size_t query_submit_count = 0;
+
     // Observer for the embedded WebContents in the side panel.
     std::unique_ptr<SidePanelWebContentsObserver> web_contents_observer;
 
@@ -159,8 +161,6 @@ class ContextualTasksSidePanelCoordinator
     // panel loads the page.
     GURL restored_url;
   };
-
-  DECLARE_USER_DATA(ContextualTasksSidePanelCoordinator);
 
   explicit ContextualTasksSidePanelCoordinator(
       BrowserWindowInterface* browser_window,
@@ -179,9 +179,6 @@ class ContextualTasksSidePanelCoordinator
   ContextualTasksSidePanelCoordinator& operator=(
       const ContextualTasksSidePanelCoordinator&) = delete;
   ~ContextualTasksSidePanelCoordinator() override;
-
-  static ContextualTasksSidePanelCoordinator* From(
-      BrowserWindowInterface* window);
 
   // ContextualTasksPanelController:
   void AddObserver(ContextualTasksPanelController::Observer* observer) override;
@@ -212,7 +209,6 @@ class ContextualTasksSidePanelCoordinator
   bool HasResults() const override;
   ContextualTasksPanelController::EntrySource GetActiveEntrySource()
       const override;
-  bool IsActiveSessionReopenedViaToolbarButton() const override;
   bool IsOnboardingTooltipVisible() const override;
   void SetErrorPageVisible(bool visible) override;
   bool IsErrorPageVisible() const override;
@@ -221,6 +217,7 @@ class ContextualTasksSidePanelCoordinator
                      base::Uuid task_id) override;
   void OnAiInteraction() override;
   void OnLinkClicked() override;
+  void OnQuerySubmitted() override;
   void SetPendingTaskForTab(tabs::TabInterface* tab,
                             const base::Uuid& task_id) override;
   content::WebContents* GetActiveWebContents() const override;
@@ -243,9 +240,7 @@ class ContextualTasksSidePanelCoordinator
   bool CanExpandToFullTab() const override;
   void ShowPageInfoBubble(bool is_pointer_interaction) override;
   void OnLogoPointerDown() override;
-  ContextualTasksPermissionController* permission_controller() {
-    return permission_controller_.get();
-  }
+  ContextualTasksPermissionController* permission_controller() override;
 #if !BUILDFLAG(IS_ANDROID)
   ContextualTasksOnboardingTooltipController*
   onboarding_controller_for_testing() {
@@ -294,6 +289,9 @@ class ContextualTasksSidePanelCoordinator
       const GoogleServiceAuthError& error) override;
   void OnIdentityManagerShutdown(
       signin::IdentityManager* identity_manager) override;
+
+  // network::mojom::CookieChangeListener:
+  void OnCookieChange(const net::CookieChangeInfo& change) override;
 
 #if !BUILDFLAG(IS_ANDROID)
   // ThemeServiceObserver:
@@ -508,7 +506,7 @@ class ContextualTasksSidePanelCoordinator
 
   base::CallbackListSubscription eligibility_change_subscription_;
 
-  ui::ScopedUnownedUserData<ContextualTasksSidePanelCoordinator>
+  ui::ScopedUnownedUserData<ContextualTasksPanelController>
       scoped_unowned_user_data_;
 
   bool in_cobrowsing_session_ = false;
@@ -573,6 +571,10 @@ class ContextualTasksSidePanelCoordinator
   // user signs out of Google on the web, so they no longer show or restore
   // content from the signed-out account.
   void ResetWebContentsToZeroStateAfterWebSignOut();
+  void CheckOffTheRecordSigninCookie();
+  void OnOffTheRecordCookiesRead(
+      const net::CookieAccessResultList& cookies,
+      const net::CookieAccessResultList& excluded_cookies);
 
   // Whether the user was signed in to at least one Google account on the web
   // the last time the cookie jar was observed.
@@ -580,6 +582,8 @@ class ContextualTasksSidePanelCoordinator
   base::ScopedObservation<signin::IdentityManager,
                           signin::IdentityManager::Observer>
       identity_manager_observation_{this};
+  mojo::Receiver<network::mojom::CookieChangeListener>
+      otr_cookie_listener_receiver_{this};
 
 #if !BUILDFLAG(IS_ANDROID)
   // Refreshes cached side panel `WebContents` when the profile's effective dark

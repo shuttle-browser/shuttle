@@ -15,7 +15,10 @@ import org.chromium.chrome.browser.tab_ui.TabContentManager;
 import org.chromium.chrome.browser.tabmodel.IncognitoTabModelImpl.IncognitoTabModelDelegate;
 import org.chromium.chrome.browser.tabmodel.NextTabPolicy.NextTabPolicySupplier;
 
-/** Stores all the variables needed to create an Incognito TabModelImpl when it is needed. */
+/**
+ * Stores all the variables needed to create an Incognito {@link TabCollectionTabModelImpl} (for
+ * {@link IncognitoTabModelInternal}) when it is needed.
+ */
 @NullMarked
 class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
     private final ProfileProvider mProfileProvider;
@@ -27,7 +30,7 @@ class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
     private final AsyncTabParamsManager mAsyncTabParamsManager;
     private final TabModelDelegate mModelDelegate;
     private final TabRemover mTabRemover;
-    private final TabUngrouperFactory mTabUngrouperFactory;
+    private final TabUngrouper mTabUngrouper;
 
     private final @ActivityType int mActivityType;
     private final @Nullable @CustomTabProfileType Integer mCustomTabProfileType;
@@ -35,9 +38,10 @@ class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
     /**
      * Constructor for an IncognitoTabModelImplCreator, used by {@link IncognitoTabModelImpl}.
      *
-     * <p>Creating an instance of this class does not create the Incognito TabModelImpl immediately.
-     * The {@link IncognitoTabModelImpl} will use this class to create the real TabModelImpl when it
-     * will actually be used.
+     * <p>Creating an instance of this class does not create the Incognito {@link
+     * TabCollectionTabModelImpl} immediately. The {@link IncognitoTabModelImpl} (implementing
+     * {@link IncognitoTabModelInternal}) will use this class to create the real {@link
+     * TabCollectionTabModelImpl} when it will actually be used.
      *
      * @param profileProvider Provides access to the necessary Profiles for this model.
      * @param regularTabCreator Creates regular tabs.
@@ -50,7 +54,7 @@ class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
      * @param customTabProfileType Profile type of the custom tab, or null if not a custom tab.
      * @param modelDelegate Delegate to handle external dependencies and interactions.
      * @param tabRemover Delegate to handle removing tabs tabs.
-     * @param tabUngrouperFactory Factory to create a {@link TabUngrouper}.
+     * @param tabUngrouper The {@link TabUngrouper} used to ungroup tabs.
      */
     IncognitoTabModelImplCreator(
             ProfileProvider profileProvider,
@@ -64,7 +68,7 @@ class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
             @Nullable @CustomTabProfileType Integer customTabProfileType,
             TabModelDelegate modelDelegate,
             TabRemover tabRemover,
-            TabUngrouperFactory tabUngrouperFactory) {
+            TabUngrouper tabUngrouper) {
         mProfileProvider = profileProvider;
         mRegularTabCreator = regularTabCreator;
         mIncognitoTabCreator = incognitoTabCreator;
@@ -76,7 +80,7 @@ class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
         mCustomTabProfileType = customTabProfileType;
         mModelDelegate = modelDelegate;
         mTabRemover = tabRemover;
-        mTabUngrouperFactory = tabUngrouperFactory;
+        mTabUngrouper = tabUngrouper;
     }
 
     @Override
@@ -95,8 +99,7 @@ class IncognitoTabModelImplCreator implements IncognitoTabModelDelegate {
                         mModelDelegate,
                         mAsyncTabParamsManager,
                         mTabRemover,
-                        /* isIncognitoBranded= */ true,
-                        mTabUngrouperFactory,
+                        mTabUngrouper,
                         () -> createBatch(mProfileProvider.getOriginalProfile()),
                         /* supportUndo= */ false);
         return model;

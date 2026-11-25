@@ -21,6 +21,7 @@ import androidx.fragment.app.FragmentActivity;
 
 import org.jni_zero.CalledByNative;
 
+import org.chromium.base.ContentUriOwner;
 import org.chromium.base.ContentUriUtils;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.Log;
@@ -304,7 +305,8 @@ public class PdfUtils {
         return new PdfInfo(
                 nativePage.getTitle(),
                 nativePage.getCanonicalFilepath(),
-                nativePage.isDownloadSafe());
+                nativePage.isDownloadSafe(),
+                nativePage.getInitiatorOrigin());
     }
 
     static String getFileNameFromUrl(@Nullable String url, String defaultTitle) {
@@ -427,7 +429,7 @@ public class PdfUtils {
                 return null;
             }
         } catch (IllegalArgumentException | NullPointerException e) {
-            Log.e(TAG, "Couldn't generate Uri: " + e);
+            Log.e(TAG, "Couldn't generate Uri", e);
             return null;
         }
     }
@@ -476,7 +478,7 @@ public class PdfUtils {
             return pdfPageUrl;
         } catch (UnsupportedEncodingException e) {
             recordIsPdfDownloadUrlEncoded(false);
-            Log.e(TAG, "Unsupported encoding: " + e.getMessage());
+            Log.e(TAG, "Unsupported encoding", e);
             return null;
         }
     }
@@ -504,7 +506,7 @@ public class PdfUtils {
             // #getQueryParameter has already decoded the url.
             return uri.getQueryParameter(UrlConstants.PDF_URL_QUERY_PARAM);
         } catch (UnsupportedOperationException | NullPointerException e) {
-            Log.e(TAG, "Unsupported encoding: " + e.getMessage());
+            Log.e(TAG, "Unsupported encoding", e);
             return null;
         }
     }
@@ -605,6 +607,38 @@ public class PdfUtils {
         }
 
         return null;
+    }
+
+    /**
+     * Returns the URL to load to re-download the PDF for a committed navigation that did not show a
+     * native page, or {@code null} if no re-download is needed.
+     *
+     * @param url The URL that was loaded.
+     * @param isPdf Whether the navigation is for PDF content.
+     */
+    public static @Nullable String getPdfReDownloadUrlForNavigation(GURL url, boolean isPdf) {
+        String urlSpec = url.getSpec();
+        // This is restricted to HTTP(S) URLs specifically, as these are the only schemes that
+        // necessitate a PDF re-download.
+        if (isPdf) return getPdfReDownloadUrl(urlSpec);
+
+        if (!UrlConstants.CHROME_NATIVE_SCHEME.equals(url.getScheme())
+                || !UrlConstants.PDF_HOST.equals(url.getHost())) {
+            return null;
+        }
+
+        String downloadUrl = getPdfReDownloadUrl(urlSpec);
+        if (downloadUrl != null) return downloadUrl;
+
+        // getPdfReDownloadUrl restricts to HTTP(S). Explicitly allow blob schemes since they are
+        // ephemeral and require re-load.
+        if (!ChromeFeatureList.sAndroidHandlePdfInIframe.isEnabled()) return null;
+
+        String decodedUrl = decodePdfPageUrl(urlSpec);
+        if (decodedUrl == null || !decodedUrl.startsWith(UrlConstants.BLOB_SCHEME + ":")) {
+            return null;
+        }
+        return decodedUrl;
     }
 
     /**
@@ -823,8 +857,20 @@ public class PdfUtils {
             return false;
         }
 
-        if (!ContentUriUtils.isUriFromThisApp(uri, context)) {
+        @ContentUriOwner int owner = ContentUriUtils.resolveContentUriOwner(uri);
+        if (owner != ContentUriOwner.EXPORTED_FROM_CURRENT_APP
+                && owner != ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP) {
             return true;
+        }
+
+        // Legitimate Chrome-generated provider URIs never contain percent-encoding or userinfo
+        // in their authority. Rejecting these blocks forged URIs that used encoding (such as %2E)
+        // to bypass upstream string-based authority checks.
+        String encodedAuthority = uri.getEncodedAuthority();
+        if (TextUtils.isEmpty(encodedAuthority)
+                || encodedAuthority.indexOf('%') >= 0
+                || encodedAuthority.indexOf('@') >= 0) {
+            return false;
         }
 
         // Chrome's main FileProvider (uses file_paths.xml). We only allow sharing from the
@@ -832,8 +878,13 @@ public class PdfUtils {
         // Sensitive directories like "passwords" or "cache" (net-export) are blocked.
         if (authority.endsWith(".FileProvider")) {
             List<String> pathSegments = uri.getPathSegments();
-            if (pathSegments == null || pathSegments.isEmpty()) {
+            if (pathSegments == null || pathSegments.size() < 2) {
                 return false;
+            }
+            for (String segment : pathSegments) {
+                if (TextUtils.isEmpty(segment) || ".".equals(segment) || "..".equals(segment)) {
+                    return false;
+                }
             }
             String firstSegment = pathSegments.get(0);
             return "pdfs".equals(firstSegment) || "downloads".equals(firstSegment);
@@ -845,7 +896,14 @@ public class PdfUtils {
         // (legacy SD card), and "external_volume" (Android R+ SD card).
         if (authority.endsWith(".DownloadFileProvider")) {
             List<String> pathSegments = uri.getPathSegments();
-            if (pathSegments == null || pathSegments.isEmpty()) {
+            if (pathSegments == null || pathSegments.size() != 1) {
+                return false;
+            }
+            String fileParam = uri.getQueryParameter("file");
+            if (TextUtils.isEmpty(fileParam)
+                    || fileParam.equals("..")
+                    || fileParam.contains("../")
+                    || fileParam.contains("/..")) {
                 return false;
             }
             String firstSegment = pathSegments.get(0);

@@ -102,6 +102,9 @@ constexpr std::string_view kEligiblePageMimeType = "text/html";
 // Prompt auto-submitted by `CreateAutoSubmitStartupState()`.
 NSString* const kAutoSubmitPrompt = @"Explain this page";
 
+// UMA histogram key for Gemini Live dormant reasons.
+constexpr char kLiveDormantReasonHistogram[] = "IOS.Gemini.Live.DormantReason";
+
 std::unique_ptr<KeyedService> BuildFeatureEngagementMockTracker(
     ProfileIOS* profile) {
   return std::make_unique<feature_engagement::test::MockTracker>();
@@ -736,6 +739,22 @@ TEST_F(GeminiBrowserAgentTest, TestShowFloatyIfInvokedWithWebNavigation) {
   EXPECT_EQ(ios::provider::GeminiViewState::kExpanded, GetLastShownViewState());
 }
 
+// Tests that a floaty is shown regardless of transition time when the source is
+// from keyboard dismissal.
+TEST_F(GeminiBrowserAgentTest, TestShowFloatyIfInvokedWithKeyboard) {
+  SetIsFloatyInvoked(true);
+  gemini_browser_agent_->HideFloatyIfInvoked(
+      /*animated=*/false, /*source=*/gemini::FloatyUpdateSource::Keyboard);
+  gemini_browser_agent_->SetLastShownViewState(
+      ios::provider::GeminiViewState::kExpanded);
+
+  gemini_browser_agent_->ShowFloatyIfInvoked(
+      /*animated=*/false, /*source=*/gemini::FloatyUpdateSource::Keyboard);
+
+  EXPECT_FALSE(IsFloatyTemporarilyHidden());
+  EXPECT_EQ(ios::provider::GeminiViewState::kExpanded, GetLastShownViewState());
+}
+
 // Tests if a floaty is shown during a simulated view controller transition.
 TEST_F(GeminiBrowserAgentTest,
        TestShowFloatyIfInvokedDuringViewControllerTransition) {
@@ -1197,6 +1216,53 @@ TEST_F(GeminiBrowserAgentTest,
   EXPECT_EQ(ios::provider::GetCurrentMode(),
             ios::provider::GeminiViewMode::kFloaty);
   EXPECT_EQ(GetProcessingStatus(), ios::provider::GeminiClientMode::kDormant);
+
+  EXPECT_OCMOCK_VERIFY(mock_snackbar_handler);
+}
+
+// Tests that `OnProcessingStatusChanged` records dormant metrics without
+// running legacy dormant UI handling when `kIOSGeminiBottomSheetMigration` is
+// enabled.
+TEST_F(GeminiBrowserAgentTest,
+       TestOnProcessingStatusChangedLiveDormantBottomSheetMigration) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      {kAssistantContainer, kIOSGeminiBottomSheetMigration, kGeminiLive,
+       kGeminiLiveDormantReasons},
+      {});
+  base::HistogramTester histogram_tester;
+
+  id mock_snackbar_handler = OCMProtocolMock(@protocol(SnackbarCommands));
+  [browser_->GetCommandDispatcher()
+      startDispatchingToTarget:mock_snackbar_handler
+                   forProtocol:@protocol(SnackbarCommands)];
+
+  SetIsFloatyInvoked(true);
+  web_state_->SetCurrentURL(GURL(kEligiblePageURL));
+  web_state_->WasShown();
+
+  ios::provider::SwitchToMode(ios::provider::GeminiViewMode::kLive,
+                              /*animated=*/false);
+  EXPECT_EQ(ios::provider::GetCurrentMode(),
+            ios::provider::GeminiViewMode::kLive);
+
+  OCMReject([mock_snackbar_handler showSnackbarMessage:[OCMArg any]
+                                          bottomOffset:0.0])
+      .ignoringNonObjectArgs();
+  OCMReject([mock_snackbar_handler showSnackbarMessage:[OCMArg any]]);
+
+  gemini_browser_agent_->OnProcessingStatusChanged(
+      ios::provider::GeminiClientMode::kDormant,
+      ios::provider::GeminiDormantReason::kInactivityTimeout);
+
+  // Legacy mode-switch and snackbar are skipped because
+  // `GeminiContainerMediator` handles dormant UI in the bottom sheet flow.
+  EXPECT_EQ(ios::provider::GetCurrentMode(),
+            ios::provider::GeminiViewMode::kLive);
+  EXPECT_EQ(GetProcessingStatus(), ios::provider::GeminiClientMode::kDormant);
+  histogram_tester.ExpectUniqueSample(
+      kLiveDormantReasonHistogram, IOSGeminiDormantReason::kInactivityTimeout,
+      1);
 
   EXPECT_OCMOCK_VERIFY(mock_snackbar_handler);
 }

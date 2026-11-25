@@ -30,9 +30,9 @@ import type {ContextUploadErrorType} from '//resources/mojo/components/omnibox/c
 import {ContextUploadStatus, ToolMode} from '//resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
 import type {UnguessableToken} from '//resources/mojo/mojo/public/mojom/base/unguessable_token.mojom-webui.js';
 
-import {OmniboxEverywhereBrowserProxyImpl} from './browser_proxy.js';
 import {getCss} from './composebox.css.js';
 import {getHtml} from './composebox.html.js';
+import {browserProxyFactory} from './omnibox_everywhere.mojom-webui.js';
 
 export interface OmniboxEverywhereComposeboxElement {
   $: {
@@ -79,7 +79,7 @@ export class OmniboxEverywhereComposeboxElement extends
         type: Boolean,
         reflect: true,
       },
-      isPendingScreenshot: {
+      isPendingContextUpload: {
         type: Boolean,
       },
       isActive: {
@@ -92,7 +92,7 @@ export class OmniboxEverywhereComposeboxElement extends
   }
 
   accessor isActive: boolean = true;
-  accessor isPendingScreenshot: boolean = false;
+  accessor isPendingContextUpload: boolean = false;
   accessor isLensHelpBubbleShowing: boolean = false;
 
   /**
@@ -115,6 +115,13 @@ export class OmniboxEverywhereComposeboxElement extends
   override onVoiceSearchButtonClick() {
     this.dispatchEvent(
         new Event('open-voice-search', {bubbles: true, composed: true}));
+  }
+
+  // Report text input focus to the app. A `focusin` moving between two
+  // controls inside this shadow tree is not dispatched past it.
+  override onInputFocusin() {
+    super.onInputFocusin();
+    this.fire('text-input-focused');
   }
 
   private wasScreenshotMenuOpenOnPointerDown_: boolean = false;
@@ -159,13 +166,12 @@ export class OmniboxEverywhereComposeboxElement extends
     const rect = e?.detail?.anchorRect ||
         this.getContextEntrypointElement()?.getBoundingClientRect();
     if (rect) {
-      OmniboxEverywhereBrowserProxyImpl.getInstance()
-          .handler.showContextActionMenu({
-            x: Math.round(rect.x),
-            y: Math.round(rect.y),
-            width: Math.round(rect.width),
-            height: Math.round(rect.height),
-          });
+      browserProxyFactory.getInstance().handler.showContextActionMenu({
+        x: Math.round(rect.x),
+        y: Math.round(rect.y),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height),
+      });
     }
   }
   private webuiOmniboxSimplificationEnabled_: boolean =
@@ -186,7 +192,7 @@ export class OmniboxEverywhereComposeboxElement extends
 
   override connectedCallback() {
     super.connectedCallback();
-    if (!this.isPendingScreenshot) {
+    if (!this.isPendingContextUpload) {
       this.playGlowAnimation();
       this.refreshTabSuggestions(/*forceRefresh=*/ true);
       // Because Omnibox Everywhere sets `searchbox-next-enabled`, the mixin's
@@ -223,8 +229,8 @@ export class OmniboxEverywhereComposeboxElement extends
           this.webuiOmniboxSimplificationEnabled_ && !inToolMode;
     }
 
-    if (changedProperties.has('isPendingScreenshot')) {
-      if (this.isPendingScreenshot) {
+    if (changedProperties.has('isPendingContextUpload')) {
+      if (this.isPendingContextUpload) {
         this.showDropdown = false;
         this.result = null;
       } else {
@@ -287,18 +293,21 @@ export class OmniboxEverywhereComposeboxElement extends
   }
 
   override shouldHideDropdown(): boolean {
-    if (this.isPendingScreenshot) {
+    if (this.isPendingContextUpload) {
       return true;
     }
     return super.shouldHideDropdown();
   }
 
   override computeShowDropdown(): boolean {
+    if (this.isPendingContextUpload) {
+      return false;
+    }
     return this.isContextMenuOpen || super.computeShowDropdown();
   }
 
   override onAutocompleteResultChanged(result: AutocompleteResult) {
-    if (this.isPendingScreenshot) {
+    if (this.isPendingContextUpload) {
       // Suppress stale / premature autocomplete results from the previous
       // omnibox session while screenshot capture is pending.
       return;
@@ -308,10 +317,14 @@ export class OmniboxEverywhereComposeboxElement extends
 
   override addFileContextFromBrowser(
       uuid: UnguessableToken, fileInfo: SelectedFileInfo) {
-    const wasPendingScreenshot = this.isPendingScreenshot;
-    this.isPendingScreenshot = false;
+    // When a screenshot or file chooser upload finishes, exit the collapsed
+    // `isPendingContextUpload` pill state and trigger the entry glow animation
+    // plus fresh tab/autocomplete suggestions that were suppressed while the
+    // native picker was open.
+    const wasPendingContextUpload = this.isPendingContextUpload;
+    this.isPendingContextUpload = false;
     super.addFileContextFromBrowser(uuid, fileInfo);
-    if (wasPendingScreenshot) {
+    if (wasPendingContextUpload) {
       this.playGlowAnimation();
       this.refreshTabSuggestions(/*forceRefresh=*/ true);
       this.queryAutocomplete(/* clearMatches= */ true);
@@ -319,12 +332,12 @@ export class OmniboxEverywhereComposeboxElement extends
   }
 
   override onInputInput(e: CustomEvent<Event>) {
-    this.isPendingScreenshot = false;
+    this.isPendingContextUpload = false;
     super.onInputInput(e);
   }
 
   onScreenshotCaptureCancelled() {
-    this.isPendingScreenshot = false;
+    this.isPendingContextUpload = false;
     this.refreshTabSuggestions(/*forceRefresh=*/ true);
     this.queryAutocomplete(/* clearMatches= */ true);
   }
@@ -334,9 +347,15 @@ export class OmniboxEverywhereComposeboxElement extends
     this.showDropdown = this.computeShowDropdown();
   }
 
+  // Mirrors ComposeboxMixin.onContextMenuClosed() minus focusInput(); keep in
+  // sync. Focusing the input expands the window, so closing the menu at the
+  // 480px resting size (or when it's canceled by demotion) would expand it. The
+  // app restores focus when the window isn't resting.
   override async onContextMenuClosed(): Promise<void> {
     this.isContextMenuOpen = false;
-    await super.onContextMenuClosed();
+    this.contextMenuOpened = false;
+    this.shareTabsFlyoutOpen = false;
+    await this.updateComplete;
     this.showDropdown = this.computeShowDropdown();
   }
 

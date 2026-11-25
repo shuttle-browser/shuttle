@@ -684,7 +684,7 @@ class CORE_EXPORT Element : public ContainerNode {
   DOMRect* GetBoundingClientRect();
   DOMRect* GetBoundingClientRectForBinding();
 
-  ContainerQueryList* matchContainer(const String& query);
+  ContainerQueryList* matchContainer(const String& query, ExceptionState&);
 
   // Call the NoLifecycleUpdate variants if you are sure that the lifcycle is
   // already updated to at least pre-paint clean.
@@ -924,8 +924,7 @@ class CORE_EXPORT Element : public ContainerNode {
       const QualifiedName& attribute_name) {
     return attribute_name.BloomFilter();
   }
-  static TinyBloomFilter FilterForString(const AtomicString& str) {
-    unsigned hash = str.Hash();
+  static constexpr TinyBloomFilter FilterForHash(unsigned hash) {
     TinyBloomFilter filter = 0;
     // Build a 32-bit Bloom filter, with k=2. We extract the two
     // (5-bit) hashes that we need from non-overlapping parts of the
@@ -933,6 +932,9 @@ class CORE_EXPORT Element : public ContainerNode {
     filter |= 1u << (hash & 31);
     filter |= 1u << ((hash >> 5) & 31);
     return filter;
+  }
+  static TinyBloomFilter FilterForString(const AtomicString& str) {
+    return FilterForHash(str.Hash());
   }
   bool SubtreeMayMatchClassOrAttrFilter(TinyBloomFilter filter) const {
     bool match = CouldMatchFilter(filter);
@@ -1963,6 +1965,10 @@ class CORE_EXPORT Element : public ContainerNode {
   // Returns true if the element is an ad-related video stream.
   bool IsVideoAd() const;
 
+  // Returns true if the element is an ad that has been detected to stay in
+  // place in the viewport while the page scrolls.
+  bool IsStickyAd() const;
+
   // Returns true if the element is an overlay popup ad.
   bool IsOverlayPopupAd() const;
 
@@ -2142,17 +2148,6 @@ class CORE_EXPORT Element : public ContainerNode {
   void UpdateAncestorWithDirAuto(UpdateAncestorTraversal traversal);
   void AdjustDirectionalityIfNeededAfterChildrenChanged(
       const ChildrenChange& change);
-
-  // True if this element carries the container timing ignore marker, either
-  // spelled `containertimingignore` or with the deprecated dashed
-  // `containertiming-ignore` spelling. Both are functional; the dashed one
-  // additionally warns in the console.
-  //
-  // TODO(crbug.com/539984792): the dashed spelling is going away right after
-  // the origin trial ends. Once it does, drop this helper and inline
-  // FastHasAttribute(html_names::kContainertimingignoreAttr) back into its
-  // callers.
-  bool HasContainerTimingIgnoreAttribute() const;
 
   // The "nonce" attribute is hidden when:
   // 1) The Content-Security-Policy is delivered from the HTTP headers.
@@ -2660,8 +2655,8 @@ class CORE_EXPORT Element : public ContainerNode {
                             const QualifiedName&,
                             const AtomicString& value,
                             AttributeModificationReason);
-  void AppendAttributeInternal(const QualifiedName&,
-                               const AtomicString& value,
+  void AppendAttributeInternal(QualifiedName,
+                               AtomicString value,
                                AttributeModificationReason);
   void RemoveAttributeInternal(wtf_size_t index, AttributeModificationReason);
   AtomicString TrustedTypesCheckForAttribute(const QualifiedName&,

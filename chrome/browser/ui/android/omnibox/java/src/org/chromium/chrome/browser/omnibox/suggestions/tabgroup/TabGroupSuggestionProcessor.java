@@ -16,6 +16,7 @@ import androidx.annotation.StringRes;
 import androidx.core.content.ContextCompat;
 
 import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.omnibox.styles.SuggestionSpannable;
@@ -23,7 +24,6 @@ import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteUIContext;
 import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewProcessor;
 import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewProperties;
 import org.chromium.chrome.browser.omnibox.suggestions.basic.SuggestionViewProperties;
-import org.chromium.chrome.tab_ui.R;
 import org.chromium.components.omnibox.AutocompleteInput;
 import org.chromium.components.omnibox.AutocompleteMatch;
 import org.chromium.components.omnibox.OmniboxSuggestionType;
@@ -73,7 +73,7 @@ public class TabGroupSuggestionProcessor extends BaseSuggestionViewProcessor {
                 new OmniboxDrawableState(
                         ContextCompat.getDrawable(mContext, R.drawable.ic_grid_view_24dp),
                         /* useRoundedCorners= */ false,
-                        /* isLarge= */ false,
+                        OmniboxDrawableState.IconSize.SMALL,
                         /* allowTint= */ true);
         OmniboxResourceProvider resourceProvider = mUiContext.resourceProvider;
         model.set(BaseSuggestionViewProperties.ICON, state);
@@ -84,7 +84,9 @@ public class TabGroupSuggestionProcessor extends BaseSuggestionViewProcessor {
         applyHighlightToMatchRegions(descriptionText, suggestion.getDescriptionClassifications());
         applyTextColor(descriptionText, resourceProvider.getSuggestionUrlTextColor());
         model.set(SuggestionViewProperties.TEXT_LINE_2_TEXT, descriptionText);
-        model.set(SuggestionViewProperties.CONTENT_DESCRIPTION, getContentDescription(suggestion));
+        model.set(
+                SuggestionViewProperties.CONTENT_DESCRIPTION_SUPPLIER,
+                () -> getContentDescription(suggestion));
     }
 
     private SuggestionSpannable getTitleSpannable(AutocompleteMatch suggestion) {

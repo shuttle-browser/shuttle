@@ -5,7 +5,6 @@
 import 'chrome://contextual-tasks/app.js';
 
 import type {ContextualTasksAppElement} from 'chrome://contextual-tasks/app.js';
-import {BrowserProxyImpl} from 'chrome://contextual-tasks/contextual_tasks_browser_proxy.js';
 import {ComposeboxFile} from 'chrome://resources/cr_components/composebox/common.js';
 import {LensOverlayDismissalSource, PageHandlerRemote as ComposeboxPageHandlerRemote} from 'chrome://resources/cr_components/composebox/composebox.mojom-webui.js';
 import {ComposeboxProxyImpl} from 'chrome://resources/cr_components/composebox/composebox_proxy.js';
@@ -23,14 +22,12 @@ import {TestMock} from 'chrome://webui-test/test_mock.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 import type {CtComposeboxAppParts} from './contextual_tasks_test_utils.js';
-import {assertStyle, createCtComposeboxApp, deleteLastFile, FAKE_TOKEN_STRING, FAKE_TOKEN_STRING_2, fixtureUrl, getSubmitButton, getSubmitContainer} from './contextual_tasks_test_utils.js';
-import {TestContextualTasksBrowserProxy} from './test_contextual_tasks_browser_proxy.js';
+import {assertStyle, createCtComposeboxApp, deleteLastFile, disableAnimationsRecursively, FAKE_TOKEN_STRING, FAKE_TOKEN_STRING_2, fixtureUrl, getSubmitButton, getSubmitContainer, setupTestHandler} from './contextual_tasks_test_utils.js';
 import {ADD_FILE_CONTEXT_FN, uploadFileAndVerify} from './test_searchbox_utils.js';
 
 suite('ContextualTasksComposeboxFilesTest', () => {
   let contextualTasksApp: ContextualTasksAppElement;
   let composebox: any;
-  let testProxy: TestContextualTasksBrowserProxy;
   let mockComposeboxPageHandler: TestMock<ComposeboxPageHandlerRemote>&
       ComposeboxPageHandlerRemote;
   let mockSearchboxPageHandler: TestMock<SearchboxPageHandlerRemote>&
@@ -94,8 +91,7 @@ suite('ContextualTasksComposeboxFilesTest', () => {
       forcedEmbeddedPageHost: '',
     });
 
-    testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -446,8 +442,7 @@ suite('ContextualTasksComposeboxForkFilesTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    const testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -694,6 +689,7 @@ suite('ContextualTasksComposeboxForkFilesTest', () => {
             showInCurrentTabChip: true,
             showInPreviousTabChip: false,
             isLoading: false,
+            recentTab: false,
           },
           null);
       await searchboxCallbackRouterRemote.$.flushForTesting();
@@ -712,25 +708,6 @@ suite('ContextualTasksComposeboxForkFilesTest', () => {
     });
   });
 });
-
-function disableAnimationsRecursively(element: Element) {
-  const noAnimation = document.createElement('style');
-  noAnimation.textContent = `
-    :host, * {
-    transition: none !important;
-    animation: none !important;
-    transition-duration: 0s !important;
-    animation-duration: 0s !important;
-    }
-  `;
-
-  if (element.shadowRoot) {
-    element.shadowRoot.appendChild(noAnimation);
-
-    const children = element.shadowRoot.querySelectorAll('*');
-    children.forEach(child => disableAnimationsRecursively(child));
-  }
-}
 
 suite('ContextualTasksComposeboxForkAutoTabTest', () => {
   const AUTO_TOKEN = '0000000000000000AAAAAAAAAAAAAA01';
@@ -758,6 +735,7 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
   }
 
@@ -886,8 +864,7 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    const testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -1536,7 +1513,6 @@ suite('ContextualTasksComposeboxForkAutoTabTest', () => {
         async () => {
           await mountApp();
           const {innerComposebox} = parts;
-          innerComposebox.shouldShowGhostFiles = true;
           await innerComposebox.updateComplete;
 
           let resolveAddTabContext!: (token: UnguessableToken) => void;

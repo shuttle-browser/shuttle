@@ -52,6 +52,15 @@ class OpenXrTestHelper {
   // TestHookRegistration
   void SetTestHook(mojo::PendingRemote<device_test::mojom::XRTestHook> hook);
 
+  // Moves the session to STOPPING, as a runtime does when it stops a session.
+  // After the app calls xrEndSession(), the session becomes IDLE and then
+  // `state_after_end`: READY to run again, or EXITING. With nullopt, it stays
+  // IDLE until MakeSessionReady().
+  void StopSession(std::optional<XrSessionState> state_after_end);
+  // Moves an IDLE session to READY. A session that is still STOPPING becomes
+  // READY once the app calls xrEndSession().
+  void MakeSessionReady();
+
   // Helper methods called by the mock OpenXR runtime. These methods will
   // call back into the test hook, thus communicating with the test object
   // on the browser process side.
@@ -137,6 +146,12 @@ class OpenXrTestHelper {
   void SetVulkanInstance(VkInstance vk_instance);
   PFN_vkGetInstanceProcAddr GetVulkanGetInstanceProcAddr() const;
   VkInstance GetVulkanInstance() const;
+  // Swapchain images are created on and read back with this device.
+  void SetVulkanDevice(VkPhysicalDevice physical_device,
+                       VkDevice device,
+                       uint32_t queue_family_index,
+                       uint32_t queue_index);
+  const std::vector<VkImage>& GetSwapchainImages(XrSwapchain swapchain);
 #endif
 
   uint32_t NextSwapchainImageIndex(XrSwapchain swapchain);
@@ -236,6 +251,22 @@ class OpenXrTestHelper {
                                     device::ViewData& data);
   SkColor ReadTextureColor(const XrSwapchainSubImage&);
   std::vector<SkColor> ReadCubeMapFirstPixelColor(XrSwapchain swapchain);
+#elif BUILDFLAG(IS_LINUX)
+  struct VulkanFunctions;
+  struct VulkanSwapchainImages {
+    VulkanSwapchainImages();
+    ~VulkanSwapchainImages();
+    VulkanSwapchainImages(VulkanSwapchainImages&&);
+    VulkanSwapchainImages& operator=(VulkanSwapchainImages&&);
+
+    VkFormat format = VK_FORMAT_UNDEFINED;
+    std::vector<VkImage> images;
+    std::vector<VkDeviceMemory> memories;
+  };
+  void CreateTextures(XrSwapchain swapchain);
+  void DestroyTextures(XrSwapchain swapchain);
+  void CopyTextureDataIntoFrameData(const XrSwapchainSubImage& sub_image,
+                                    device::ViewData& data);
 #endif
   void AddDimensions(const device::OpenXrViewConfiguration& view_config,
                      uint32_t& width,
@@ -266,6 +297,8 @@ class OpenXrTestHelper {
   // Properties that changes depending on the state of the runtime.
   uint32_t frame_count_ = 0;
   XrSessionState session_state_ = XR_SESSION_STATE_UNKNOWN;
+  // The state after IDLE when the app calls xrEndSession(). See StopSession().
+  std::optional<XrSessionState> state_after_end_;
   bool frame_begin_ = false;
   uint32_t next_handle_ = 0;
   XrTime next_predicted_display_time_ = 0;
@@ -287,6 +320,15 @@ class OpenXrTestHelper {
 #elif BUILDFLAG(IS_LINUX)
   PFN_vkGetInstanceProcAddr vulkan_get_instance_proc_addr_ = nullptr;
   VkInstance vulkan_instance_ = VK_NULL_HANDLE;
+  VkPhysicalDevice vulkan_physical_device_ = VK_NULL_HANDLE;
+  VkDevice vulkan_device_ = VK_NULL_HANDLE;
+  uint32_t vulkan_queue_family_index_ = 0;
+  uint32_t vulkan_queue_index_ = 0;
+  std::unique_ptr<VulkanFunctions> vulkan_functions_;
+  // Acquired and last released image index, and images per swapchain.
+  absl::flat_hash_map<XrSwapchain, uint32_t> acquired_swapchain_textures_;
+  absl::flat_hash_map<XrSwapchain, uint32_t> released_swapchain_textures_;
+  absl::flat_hash_map<XrSwapchain, VulkanSwapchainImages> vulkan_images_;
 #endif
 
   // paths_ is used to keep tracked of strings that already has a corresponding

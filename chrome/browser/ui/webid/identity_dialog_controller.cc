@@ -4,10 +4,14 @@
 
 #include "chrome/browser/ui/webid/identity_dialog_controller.h"
 
+#include <algorithm>
+#include <cstddef>
 #include <memory>
 #include <utility>
 
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "build/build_config.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
@@ -16,8 +20,13 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/segmentation_platform/segmentation_platform_service_factory.h"
+#include "chrome/browser/ui/hats/hats_service.h"
+#include "chrome/browser/ui/hats/hats_service_factory.h"
+#include "chrome/browser/ui/hats/survey_config.h"
 #include "chrome/browser/ui/webid/account_selection_view.h"
 #include "chrome/browser/webid/identity_provider_permission_request.h"
+#include "components/autofill/core/browser/studies/hats_surveys_util.h"
+#include "components/autofill/core/common/autofill_features.h"
 #include "components/favicon/content/content_favicon_driver.h"
 #include "components/favicon/core/favicon_driver.h"
 #include "components/permissions/permission_request_manager.h"
@@ -29,6 +38,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/webid/federated_embedder_login_request.h"
 #include "content/public/browser/webid/identity_credential_source.h"
+#include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "third_party/blink/public/mojom/webid/federated_request.mojom-shared.h"
 #include "third_party/blink/public/mojom/webid/federated_request.mojom.h"
 #include "url/origin.h"
@@ -43,11 +53,82 @@
 
 using content::webid::FederatedLoginResult;
 
+namespace {
+
+// Estimates the likely `LoginState` for a given list of accounts for HaT
+// surveys where the user dismisses the offer without selecting an account.
+// Returns `kSignIn` if any account is for signing in, otherwise `kSignUp`
+// (including if there are no available accounts).
+content::IdentityRequestAccount::LoginState EstimateLoginStateForHats(
+    const std::vector<IdentityRequestAccountPtr>& accounts) {
+  return std::ranges::any_of(
+             accounts,
+             [](const auto& account) {
+               return account->idp_claimed_login_state.value_or(
+                          account->browser_trusted_login_state) ==
+                      content::IdentityRequestAccount::LoginState::kSignIn;
+             })
+             ? content::IdentityRequestAccount::LoginState::kSignIn
+             : content::IdentityRequestAccount::LoginState::kSignUp;
+}
+
+// Triggers HaT survey about the personalization experience with FedCM. Only
+// shows the survey when the user did not close or switch the tab and the user
+// is eligible according to the HaTS guidelines.
+void MaybeTriggerPersonalizationAndTrustHatsSurvey(
+    content::WebContents* web_contents,
+    const std::string& trigger,
+    blink::mojom::RpMode rp_mode,
+    content::IdentityRequestAccount::LoginState login_state,
+    size_t num_accounts_shown) {
+  if (!web_contents ||
+      !base::FeatureList::IsEnabled(
+          autofill::features::kAutofillPersonalizationAndTrustFedCmSurvey)) {
+    return;
+  }
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  HatsService* hats_service =
+      HatsServiceFactory::GetForProfile(profile, /*create_if_necessary=*/true);
+  if (!hats_service) {
+    return;
+  }
+
+  // Prevent identification of the user or visited website by recording
+  // (potentially unique) high account counts as "5+".
+  constexpr int kMaxRecordedAccountsCount = 5;
+  SurveyStringData survey_data{
+      {"FedCM UI mode",
+       rp_mode == blink::mojom::RpMode::kActive ? "active" : "passive"},
+      {"FedCM interaction type",
+       login_state == content::IdentityRequestAccount::LoginState::kSignIn
+           ? "sign-in"
+           : "sign-up"},
+      {"Number of accounts shown",
+       autofill::FormatCountForHats(num_accounts_shown,
+                                    kMaxRecordedAccountsCount)},
+      {"Origin of the website (eTLD+1)",
+       net::registry_controlled_domains::GetDomainAndRegistry(
+           web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin(),
+           net::registry_controlled_domains::INCLUDE_PRIVATE_REGISTRIES)},
+  };
+  // Launch survey with delay of 0ms in order to avoid running it
+  // synchronously which might disrupt tear-down on dismissal surveys.
+  hats_service->LaunchDelayedSurveyForWebContents(
+      trigger, web_contents,
+      /*timeout_ms=*/0,
+      /*product_specific_bits_data=*/{},
+      /*product_specific_string_data=*/std::move(survey_data));
+}
+
+}  // namespace
+
 IdentityDialogController::IdentityDialogController(
     content::WebContents* rp_web_contents,
     segmentation_platform::SegmentationPlatformService* service,
     optimization_guide::OptimizationGuideDecider* decider)
-    : rp_web_contents_(rp_web_contents),
+    : content::WebContentsObserver(rp_web_contents),
+      rp_web_contents_(rp_web_contents),
       segmentation_platform_service_(service),
       optimization_guide_decider_(decider) {
   Profile* profile = Profile::FromBrowserContext(
@@ -132,7 +213,14 @@ void IdentityDialogController::OnActorTaskStateChanged(actor::ActorTask& task) {
 void IdentityDialogController::UpdateTaskId(actor::TaskId task_id) {
   acting_task_id_ = task_id;
   if (account_view_) {
+    // Showing the UI again may dismiss it synchronously, which may destroy
+    // this object.
+    base::WeakPtr<IdentityDialogController> weak_this =
+        weak_ptr_factory_.GetWeakPtr();
     account_view_->SetCanShowUi(acting_task_id_.is_null());
+    if (!weak_this) {
+      return;
+    }
     if (acting_task_id_.is_null() && did_invoke_show_ui_) {
       did_show_ui_ = true;
     }
@@ -273,6 +361,18 @@ bool IdentityDialogController::ShowAccountsDialog(
   // because the caller may have destroyed this object.
   if (account_view_->Show(rp_data, identity_provider_data, accounts, rp_mode,
                           new_accounts)) {
+    if (on_account_selection_) {
+      // `OnAccountSelected()` may be called synchronously from `Show()`, e.g.
+      // after the IdP login pop-up. Only set this estimate if
+      // `OnAccountSelected()`, which sets the login state to a more accurate
+      // value, was not yet executed.
+      chooser_survey_data_ = {
+          .login_state = EstimateLoginStateForHats(accounts),
+          .num_accounts_shown = accounts.size(),
+      };
+    } else if (chooser_survey_data_) {
+      chooser_survey_data_->num_accounts_shown = accounts.size();
+    }
     DidInvokeShowUi();
     return true;
   }
@@ -388,8 +488,12 @@ bool IdentityDialogController::ShowLoadingDialog(
   // Because the loading dialog is not interactable, we do not count it for
   // did_show_ui_, as it is not useful for IDPs in calculating a click-through
   // rate.
-  return account_view_->ShowLoadingDialog(rp_data, idp_for_display, rp_context,
-                                          rp_mode);
+  if (account_view_->ShowLoadingDialog(rp_data, idp_for_display, rp_context,
+                                       rp_mode)) {
+    did_show_loading_ui_ = true;
+    return true;
+  }
+  return false;
 }
 
 bool IdentityDialogController::ShowVerifyingDialog(
@@ -401,6 +505,8 @@ bool IdentityDialogController::ShowVerifyingDialog(
     AccountsDisplayedCallback accounts_displayed_callback) {
   on_accounts_displayed_ = std::move(accounts_displayed_callback);
   rp_mode_ = rp_mode;
+  is_auto_reauthn_ =
+      (sign_in_mode == content::IdentityRequestAccount::SignInMode::kAuto);
 
   // If the dialog is triggered in active mode and the FedCM UI should not be
   // shown, early return as if successful so the flow continues.
@@ -413,9 +519,13 @@ bool IdentityDialogController::ShowVerifyingDialog(
     return false;
   }
   // Do not modify any member variables if the verifying dialog is not shown
-  // because the caller may have destroyed this object.
+  // or if showing it destroyed this object, e.g. because the dialog was
+  // dismissed right away.
+  base::WeakPtr<IdentityDialogController> weak_this =
+      weak_ptr_factory_.GetWeakPtr();
   if (account_view_->ShowVerifyingDialog(rp_data, idp_data, account,
-                                         sign_in_mode, rp_mode)) {
+                                         sign_in_mode, rp_mode) &&
+      weak_this) {
     DidInvokeShowUi();
     return true;
   }
@@ -509,6 +619,11 @@ void IdentityDialogController::OnAccountSelected(
   }
   CHECK(on_account_selection_);
 
+  if (chooser_survey_data_) {
+    chooser_survey_data_->login_state = login_state;
+  } else {
+    chooser_survey_data_ = {.login_state = login_state};
+  }
   CollectTrainingData(UserAction::kSuccess);
 
   // We only allow dismiss after account selection on active modes and not on
@@ -536,11 +651,23 @@ void IdentityDialogController::OnDismiss(DismissReason dismiss_reason) {
     if (dismiss_reason == DismissReason::kCloseButton ||
         dismiss_reason == DismissReason::kSwipe) {
       CollectTrainingData(UserAction::kClosed);
+      if (on_account_selection_ && chooser_survey_data_) {
+        // Only trigger if the user dismissed the account selection dialog
+        // without selecting an account (excludes error/failure dialogs and
+        // post-selection cancellation in active mode).
+        MaybeTriggerPersonalizationAndTrustHatsSurvey(
+            web_contents(),
+            kHatsSurveyTriggerAutofillPersonalizationAndTrustFedCmDismissed,
+            rp_mode_, chooser_survey_data_->login_state,
+            chooser_survey_data_->num_accounts_shown);
+      }
     } else {
       CollectTrainingData(UserAction::kIgnored);
     }
   }
 
+  chooser_survey_data_.reset();
+  is_auto_reauthn_ = false;
   on_account_selection_.Reset();
   on_native_result_.Reset();
   std::move(on_dismiss_).Run(dismiss_reason);
@@ -563,6 +690,36 @@ gfx::NativeView IdentityDialogController::GetNativeView() {
 
 content::WebContents* IdentityDialogController::GetWebContents() {
   return rp_web_contents_;
+}
+
+void IdentityDialogController::OnFedCmFederatedLogin(bool success) {
+  if (success) {
+    // Only trigger surveys if login succeeded and UI was displayed to the user
+    // (excluding headless/silent flows).
+    if (is_auto_reauthn_ && (did_show_ui_ || did_show_loading_ui_)) {
+      // Trigger the auto-reauthn survey when the flow completed automatically
+      // after presenting the verifying UI or active-mode loading UI.
+      MaybeTriggerPersonalizationAndTrustHatsSurvey(
+          web_contents(),
+          kHatsSurveyTriggerAutofillPersonalizationAndTrustFedCmAutoReauthn,
+          rp_mode_, content::IdentityRequestAccount::LoginState::kSignIn,
+          /*num_accounts_shown=*/1);
+    } else if (did_show_ui_ && chooser_survey_data_) {
+      // Trigger the explicit acceptance survey only if an account was
+      // explicitly selected in the account selection dialog. If the dialog was
+      // closed before completion, `chooser_survey_data_` was reset in
+      // `OnDismiss()`.
+      MaybeTriggerPersonalizationAndTrustHatsSurvey(
+          web_contents(),
+          kHatsSurveyTriggerAutofillPersonalizationAndTrustFedCmAccepted,
+          rp_mode_, chooser_survey_data_->login_state,
+          chooser_survey_data_->num_accounts_shown);
+    }
+  }
+
+  // Clear transient flow state once the login event has been handled.
+  chooser_survey_data_.reset();
+  is_auto_reauthn_ = false;
 }
 
 void IdentityDialogController::ShowUrl(LinkType type, const GURL& url) {

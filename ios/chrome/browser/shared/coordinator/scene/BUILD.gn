@@ -28,6 +28,8 @@ source_set("scene_activation_level") {
 
 source_set("scene_state_header") {
   sources = [
+    "chrome_connection_options.h",
+    "chrome_connection_options.mm",
     "connection_information.h",
     "scene_agent.h",
     "scene_controller.h",
@@ -135,6 +137,7 @@ source_set("scene") {
     "//ios/chrome/browser/app_store_rating/model",
     "//ios/chrome/browser/app_store_rating/model:features",
     "//ios/chrome/browser/appearance/ui_bundled",
+    "//ios/chrome/browser/authentication/account_switching_promo/model",
     "//ios/chrome/browser/authentication/age_mismatch_signout/coordinator:scene_agent",
     "//ios/chrome/browser/authentication/signin/fullscreen_promo/model",
     "//ios/chrome/browser/authentication/ui_bundled",
@@ -287,6 +290,7 @@ source_set("unit_tests") {
   deps = [
     ":scene",
     ":scene_state_header",
+    ":scene_state_observer",
     ":scene_testing",
     ":task_updater_scene_agent",
     "//base/test:test_support",

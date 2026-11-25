@@ -4,6 +4,7 @@
 
 import SwiftUI
 import UIKit
+import ios_chrome_browser_shared_ui_util_util_swiftui
 import ios_chrome_common_ui_colors_swift
 
 /// A SwiftUI wrapper around `AITierAvatarView`.
@@ -20,13 +21,13 @@ private struct OverflowMenuIdentityAvatarView: UIViewRepresentable {
 
   func updateUIView(_ uiView: UIView, context: Context) {
     uiView.subviews.forEach { $0.removeFromSuperview() }
-    guard
-      let avatarView = AITierAvatarView(
-        avatarImage: image,
-        avatarDiameter: diameter,
-        showsAITierRing: showsAITierRing
-      )
-    else {
+    let configuration = AITierAvatarContentConfiguration(
+      avatarImage: image,
+      diameter: diameter,
+      sizeType: .fullView,
+      showsAITierRing: showsAITierRing
+    )
+    guard let avatarView = AITierAvatarView(configuration: configuration) else {
       return
     }
     uiView.addSubview(avatarView)
@@ -97,6 +98,9 @@ struct OverflowMenuIdentityRow: View {
     )
     .accentColor(.textPrimary)
     .listRowBackground(background)
+    .ifLet(action.customAccessibilityLabel) { view, accessibilityLabel in
+      view.accessibilityLabel(accessibilityLabel)
+    }
     .accessibilityIdentifier(action.accessibilityIdentifier)
     .disabled(!action.enabled || action.enterpriseDisabled)
     .listRowSeparatorTint(.overflowMenuSeparator)

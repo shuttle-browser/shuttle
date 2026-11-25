@@ -7,7 +7,10 @@
 #import <Foundation/Foundation.h>
 #import <WebKit/WebKit.h>
 
+#import <algorithm>
+
 #import "base/apple/foundation_util.h"
+#import "base/apple/scoped_objc_class_swizzler.h"
 #import "base/format_macros.h"
 #import "base/json/json_reader.h"
 #import "base/logging.h"
@@ -44,6 +47,10 @@ using chrome_test_util::ShareButton;
 
 namespace {
 
+// Tracks the root window matcher set via
+// `[EarlGrey setRootMatcherForSubsequentInteractions:]`.
+id<GREYMatcher> g_root_window_matcher = nil;
+
 // Default polling interval for `GREYCondition` waits, avoiding
 // `GREYCondition`'s 0.5s default sleep when `pollInterval` is omitted.
 constexpr base::TimeDelta kDefaultPollInterval = base::Milliseconds(100);
@@ -70,6 +77,18 @@ bool WaitForAppInterfaceCondition(base::TimeDelta timeout,
     [ChromeEarlGreyAppInterface cancelPendingWait];
   }
   return success;
+}
+
+// Polls in-app until the UI element matching `matcher` satisfies
+// `assertion_matcher` within `timeout`.
+bool WaitForUIElementWithMatcher(id<GREYMatcher> matcher,
+                                 id<GREYMatcher> assertion_matcher,
+                                 base::TimeDelta timeout) {
+  return WaitForAppInterfaceCondition(
+      timeout, [ChromeEarlGreyAppInterface
+                   prepareConditionForUIElementWithMatcher:matcher
+                                               rootMatcher:g_root_window_matcher
+                                          assertionMatcher:assertion_matcher]);
 }
 
 constexpr base::TimeDelta kDuoTransitionTimeout = base::Seconds(10);
@@ -109,6 +128,39 @@ double SimulatedDuoHingeAngleForStatus(UIHingeStatus status) {
 
 // Accessibility ID of the Activity menu.
 NSString* const kActivityMenuIdentifier = @"ActivityListView";
+
+// Accessibility ID of the system region behind a popover that dismisses it
+// when tapped.
+NSString* const kPopoverDismissRegionIdentifier = @"PopoverDismissRegion";
+
+// Accessibility ID of the out-of-process Activity View content.
+NSString* const kShareSheetContainerIdentifier =
+    @"ShareSheet.RemoteContainerView";
+
+// Returns the center of the largest band of `region` that is not covered by
+// `excluded`, among the bands above, below, left and right of `excluded`.
+CGPoint PointInRegionOutsideOfRect(CGRect region, CGRect excluded) {
+  CGFloat space_above = CGRectGetMinY(excluded) - CGRectGetMinY(region);
+  CGFloat space_below = CGRectGetMaxY(region) - CGRectGetMaxY(excluded);
+  CGFloat space_left = CGRectGetMinX(excluded) - CGRectGetMinX(region);
+  CGFloat space_right = CGRectGetMaxX(region) - CGRectGetMaxX(excluded);
+  CGFloat max_space =
+      std::max({space_above, space_below, space_left, space_right});
+  if (max_space == space_above) {
+    return CGPointMake(CGRectGetMidX(region),
+                       CGRectGetMinY(region) + space_above / 2);
+  }
+  if (max_space == space_below) {
+    return CGPointMake(CGRectGetMidX(region),
+                       CGRectGetMaxY(excluded) + space_below / 2);
+  }
+  if (max_space == space_left) {
+    return CGPointMake(CGRectGetMinX(region) + space_left / 2,
+                       CGRectGetMidY(region));
+  }
+  return CGPointMake(CGRectGetMaxX(excluded) + space_right / 2,
+                     CGRectGetMidY(region));
+}
 
 NSString* const kWaitForPageToStartLoadingError = @"Page did not start to load";
 NSString* const kWaitForPageToFinishLoadingError =
@@ -168,6 +220,32 @@ void GREYAssertErrorNil(NSError* error, NSString* format, ...) {
 }
 }  // namespace chrome_test_util
 
+// Intercepts `-[EarlGreyImpl setRootMatcherForSubsequentInteractions:]` so
+// `ChromeEarlGrey`'s in-app UI waits use the same root window matcher as
+// `EarlGrey`.
+// TODO(crbug.com/576674495): Remove once `EarlGreyImpl` exposes a getter for
+// its root window matcher.
+@implementation EarlGreyImpl (ChromeEarlGreyRootMatcher)
+
++ (void)load {
+  static dispatch_once_t once_token;
+  dispatch_once(&once_token, ^{
+    method_exchangeImplementations(
+        class_getInstanceMethod(
+            self, @selector(setRootMatcherForSubsequentInteractions:)),
+        class_getInstanceMethod(
+            self, @selector(cr_setRootMatcherForSubsequentInteractions:)));
+  });
+}
+
+- (void)cr_setRootMatcherForSubsequentInteractions:
+    (id<GREYMatcher>)rootWindowMatcher {
+  g_root_window_matcher = rootWindowMatcher;
+  [self cr_setRootMatcherForSubsequentInteractions:rootWindowMatcher];
+}
+
+@end
+
 id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
   return grey_longPressWithDuration(duration.InSecondsF());
 }
@@ -177,17 +255,11 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 #pragma mark - Test Utilities
 
 - (void)waitForMatcher:(id<GREYMatcher>)matcher {
-  ConditionBlock condition = ^{
-    NSError* error = nil;
-    [[EarlGrey selectElementWithMatcher:matcher] assertWithMatcher:grey_notNil()
-                                                             error:&error];
-    return error == nil;
-  };
   NSString* errorString =
       [NSString stringWithFormat:@"Waiting for matcher %@ failed.", matcher];
   EG_TEST_HELPER_ASSERT_TRUE(
-      base::test::ios::WaitUntilConditionOrTimeout(
-          base::test::ios::kWaitForUIElementTimeout, condition),
+      WaitForUIElementWithMatcher(matcher, grey_notNil(),
+                                  kWaitForUIElementTimeout),
       errorString);
 }
 
@@ -590,11 +662,19 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
                                                             url:urlString];
 }
 
+// Loads `URL` in the current `WebState` with appearance and page load
+// timeouts. Returns `nil` on success, or an `NSError*` if starting
+// navigation fails (e.g. if not on an active tab) or if waiting for the
+// `WebState` or page load times out.
 - (NSError*)loadURL:(const GURL&)URL
     webStateAppearanceTimeout:(base::TimeDelta)webStateAppearanceTimeout
               pageLoadTimeout:(base::TimeDelta)pageLoadTimeout {
   NSString* spec = base::SysUTF8ToNSString(URL.spec());
-  [ChromeEarlGreyAppInterface startLoadingURL:spec];
+  NSError* startLoadingError =
+      [ChromeEarlGreyAppInterface startLoadingURL:spec];
+  if (startLoadingError) {
+    return startLoadingError;
+  }
   // Wait for url loading completion is not neccessary. No timeout is specified.
   if (webStateAppearanceTimeout.is_zero() && pageLoadTimeout.is_zero()) {
     return nil;
@@ -639,7 +719,7 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 }
 
 - (void)loadURL:(const GURL&)URL {
-  return [self loadURL:URL waitForCompletion:YES];
+  [self loadURL:URL waitForCompletion:YES];
 }
 
 - (BOOL)isLoading {
@@ -651,20 +731,8 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
       stringWithFormat:
           @"Failed waiting for element with matcher %@ to become visible",
           matcher];
-
-  GREYCondition* waitForElement = [GREYCondition
-      conditionWithName:errorDescription
-                  block:^{
-                    NSError* error = nil;
-                    [[EarlGrey selectElementWithMatcher:matcher]
-                        assertWithMatcher:grey_sufficientlyVisible()
-                                    error:&error];
-                    return error == nil;
-                  }];
-
-  bool matchedElement =
-      [waitForElement waitWithTimeout:kWaitForUIElementTimeout.InSecondsF()
-                         pollInterval:kDefaultPollInterval.InSecondsF()];
+  bool matchedElement = WaitForUIElementWithMatcher(
+      matcher, grey_sufficientlyVisible(), kWaitForUIElementTimeout);
   EG_TEST_HELPER_ASSERT_TRUE(matchedElement, errorDescription);
 }
 
@@ -674,20 +742,8 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
       stringWithFormat:
           @"Failed waiting for element with matcher %@ to become not visible",
           matcher];
-
-  GREYCondition* waitForElement = [GREYCondition
-      conditionWithName:errorDescription
-                  block:^{
-                    NSError* error = nil;
-                    [[EarlGrey selectElementWithMatcher:matcher]
-                        assertWithMatcher:grey_sufficientlyVisible()
-                                    error:&error];
-                    return error != nil;
-                  }];
-
-  bool matchedElement =
-      [waitForElement waitWithTimeout:kWaitForUIElementTimeout.InSecondsF()
-                         pollInterval:kDefaultPollInterval.InSecondsF()];
+  bool matchedElement = WaitForUIElementWithMatcher(
+      matcher, grey_not(grey_sufficientlyVisible()), kWaitForUIElementTimeout);
   EG_TEST_HELPER_ASSERT_TRUE(matchedElement, errorDescription);
 }
 
@@ -713,14 +769,7 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 
 - (BOOL)testUIElementAppearanceWithMatcher:(id<GREYMatcher>)matcher
                                    timeout:(base::TimeDelta)timeout {
-  ConditionBlock condition = ^{
-    NSError* error = nil;
-    [[EarlGrey selectElementWithMatcher:matcher] assertWithMatcher:grey_notNil()
-                                                             error:&error];
-    return error == nil;
-  };
-
-  return WaitUntilConditionOrTimeout(timeout, condition);
+  return WaitForUIElementWithMatcher(matcher, grey_notNil(), timeout);
 }
 
 - (void)waitForUIElementToDisappearWithMatcher:(id<GREYMatcher>)matcher {
@@ -733,15 +782,7 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
   NSString* errorDescription = [NSString
       stringWithFormat:
           @"Failed waiting for element with matcher %@ to disappear", matcher];
-
-  ConditionBlock condition = ^{
-    NSError* error = nil;
-    [[EarlGrey selectElementWithMatcher:matcher] assertWithMatcher:grey_nil()
-                                                             error:&error];
-    return error == nil;
-  };
-
-  bool matched = WaitUntilConditionOrTimeout(timeout, condition);
+  bool matched = WaitForUIElementWithMatcher(matcher, grey_nil(), timeout);
   EG_TEST_HELPER_ASSERT_TRUE(matched, errorDescription);
 }
 
@@ -842,6 +883,14 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 }
 
 #pragma mark - WebState Utilities (EG2)
+
+- (void)scrollWebStateElementIntoViewWithID:(std::string_view)elementID {
+  [self
+      evaluateJavaScriptForSideEffect:
+          [NSString stringWithFormat:
+                        @"document.getElementById('%.*s').scrollIntoView();",
+                        static_cast<int>(elementID.size()), elementID.data()]];
+}
 
 - (void)tapWebStateElementWithID:(NSString*)elementID {
   EG_TEST_HELPER_ASSERT_NO_ERROR(
@@ -1454,8 +1503,9 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
     inWindowWithNumber:(int)windowNumber
      waitForCompletion:(BOOL)wait {
   NSString* spec = base::SysUTF8ToNSString(URL.spec());
-  [ChromeEarlGreyAppInterface startLoadingURL:spec
-                           inWindowWithNumber:windowNumber];
+  EG_TEST_HELPER_ASSERT_NO_ERROR([ChromeEarlGreyAppInterface
+         startLoadingURL:spec
+      inWindowWithNumber:windowNumber]);
   if (wait) {
     [self waitForPageToFinishLoadingInWindowWithNumber:windowNumber];
     // Loading URL (especially the first time) can trigger alerts.
@@ -1464,9 +1514,7 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 }
 
 - (void)loadURL:(const GURL&)URL inWindowWithNumber:(int)windowNumber {
-  return [self loadURL:URL
-      inWindowWithNumber:windowNumber
-       waitForCompletion:YES];
+  [self loadURL:URL inWindowWithNumber:windowNumber waitForCompletion:YES];
 }
 
 - (BOOL)isLoadingInWindowWithNumber:(int)windowNumber {
@@ -1718,10 +1766,6 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 // Returns whether the UseLensToSearchForImage feature is enabled;
 - (BOOL)isUseLensToSearchForImageEnabled {
   return [ChromeEarlGreyAppInterface isUseLensToSearchForImageEnabled];
-}
-
-- (BOOL)isYourSavedInfoSettingsPageIosEnabled {
-  return [ChromeEarlGreyAppInterface isYourSavedInfoSettingsPageIosEnabled];
 }
 
 - (BOOL)isUnfocusedOmniboxAtBottom {
@@ -2086,6 +2130,37 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
   [self waitForWebStateVisibleURL:URL];
 }
 
+// Dismisses the Activity View by tapping outside of its bounds.
+- (void)dismissActivityViewByTappingOutside:(XCUIApplication*)application {
+  if (@available(iOS 27, *)) {
+    XCUIElement* dismissRegion =
+        application.otherElements[kPopoverDismissRegionIdentifier].firstMatch;
+    XCUIElement* shareSheet =
+        application.otherElements[kShareSheetContainerIdentifier].firstMatch;
+    if (dismissRegion.exists && shareSheet.exists) {
+      // On iOS 27, the Activity View is an anchored popover whose position
+      // depends on the device, so the window center may be covered by it. The
+      // EarlGrey tap on the window also intermittently failed to dismiss the
+      // popover, so tap through XCUITest outside of the popover instead.
+      // `-closeActivitySheet` is not used, because it taps the center of the
+      // dismiss region, which may also be covered by the popover.
+      CGPoint tapPoint =
+          PointInRegionOutsideOfRect(dismissRegion.frame, shareSheet.frame);
+      XCUICoordinate* screenOrigin =
+          [application coordinateWithNormalizedOffset:CGVectorMake(0, 0)];
+      [[screenOrigin coordinateWithOffset:CGVectorMake(tapPoint.x, tapPoint.y)]
+          tap];
+      return;
+    }
+  }
+
+  // Before iOS 27, tapping the window center dismisses the Activity View. A
+  // point computed from the container frame does not work there, because on
+  // iOS 18 iPhones the container spans the whole screen.
+  [[EarlGrey selectElementWithMatcher:grey_keyWindow()]
+      performAction:grey_tap()];
+}
+
 - (void)verifyShareActionWithURL:(const GURL&)URL
                        pageTitle:(NSString*)pageTitle {
   // Synchronization off due to an infinite spinner.
@@ -2107,9 +2182,7 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
              @"Either hostString %d or pageTitle %d was not present",
              hostStringPresent, pageTitlePresent);
 
-  // Dismiss the Activity View by tapping outside its bounds.
-  [[EarlGrey selectElementWithMatcher:grey_keyWindow()]
-      performAction:grey_tap()];
+  [self dismissActivityViewByTappingOutside:currentApplication];
 
   [self verifyActivitySheetNotVisible];
 }
@@ -2248,6 +2321,16 @@ id<GREYAction> grey_longPressWithDuration(base::TimeDelta duration) {
 
 - (bool)hasFirstRunSentinel {
   return [ChromeEarlGreyAppInterface hasFirstRunSentinel];
+}
+
+#pragma mark - Post Restore Utilities
+
+- (void)writeDeviceRestoreSentinel {
+  [ChromeEarlGreyAppInterface writeDeviceRestoreSentinel];
+}
+
+- (void)removeDeviceRestoreSentinel {
+  [ChromeEarlGreyAppInterface removeDeviceRestoreSentinel];
 }
 
 #pragma mark - Notification Utilities

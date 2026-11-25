@@ -318,7 +318,8 @@ struct AuthenticatorRequestDialogModel
     struct CredentialInfo {
       CredentialInfo(device::AuthenticatorType source_in,
                      std::vector<uint8_t> user_id_in,
-                     std::optional<base::Time> last_used_time_in);
+                     std::optional<base::Time> last_used_time_in,
+                     bool is_apple_passwords_in = false);
       CredentialInfo(const CredentialInfo&);
       ~CredentialInfo();
       bool operator==(const CredentialInfo&) const;
@@ -326,6 +327,7 @@ struct AuthenticatorRequestDialogModel
       const device::AuthenticatorType source;
       const std::vector<uint8_t> user_id;
       const std::optional<base::Time> last_used_time;
+      const bool is_apple_passwords;
     };
     using Credential = base::StrongAlias<class CredentialTag, CredentialInfo>;
 
@@ -458,6 +460,9 @@ struct AuthenticatorRequestDialogModel
   // Whether the platform can check biometrics and has biometrics configured.
   std::optional<bool> platform_has_biometrics;
   UIPresentation ui_presentation = UIPresentation::kModal;
+  // Experimental: if true, an Ambient request shows only the omnibox chip. See
+  // `kWebAuthnAmbientChipOnlyTimeout`.
+  bool ambient_chip_only = false;
   // Stores the pre-calculated GPM UV method for `getAssertion`.
   // This is set by `ChromeAuthenticatorRequestDelegate` before `StartFlow` is
   // called on the controller. This is used for immediate mode requests.

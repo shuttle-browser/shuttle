@@ -26,11 +26,13 @@
 #import "components/password_manager/core/browser/password_store/password_form_converters.h"
 #import "components/password_manager/core/browser/password_store/stored_credential.h"
 #import "components/password_manager/core/browser/password_string.h"
+#import "components/signin/public/base/signin_metrics.h"
 #import "components/strings/grit/components_strings.h"
 #import "components/sync/test/test_sync_service.h"
 #import "components/trusted_vault/trusted_vault_client.h"
 #import "components/ukm/test_ukm_recorder.h"
 #import "ios/chrome/browser/passwords/model/features.h"
+#import "ios/chrome/browser/shared/public/commands/primary_account_reauth_commands.h"
 #import "ios/chrome/browser/shared/public/commands/sync_presenter_commands.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "services/metrics/public/cpp/ukm_recorder.h"
@@ -40,6 +42,7 @@
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
 #import "ui/base/l10n/l10n_util.h"
+#import "ui/base/mojom/window_open_disposition.mojom.h"
 #import "url/gurl.h"
 
 namespace {
@@ -67,7 +70,7 @@ class MockInfoBarManager : public infobars::InfoBarManager {
   MOCK_METHOD(void,
               OpenURL,
               (const GURL& url,
-               WindowOpenDisposition disposition,
+               ui::mojom::WindowOpenDisposition disposition,
                const std::string& text_fragment),
               (override));
 };
@@ -87,6 +90,7 @@ class IOSChromeSavePasswordInfoBarDelegateTest : public PlatformTest {
 
   void TearDown() override {
     EXPECT_OCMOCK_VERIFY(mock_sync_presenter_);
+    EXPECT_OCMOCK_VERIFY(mock_primary_account_reauth_handler_);
     PlatformTest::TearDown();
   }
 
@@ -109,6 +113,8 @@ class IOSChromeSavePasswordInfoBarDelegateTest : public PlatformTest {
 
     mock_sync_presenter_ =
         OCMStrictProtocolMock(@protocol(SyncPresenterCommands));
+    mock_primary_account_reauth_handler_ =
+        OCMStrictProtocolMock(@protocol(PrimaryAccountReauthCommands));
 
     url_ = GURL(kUrl);
 
@@ -147,6 +153,7 @@ class IOSChromeSavePasswordInfoBarDelegateTest : public PlatformTest {
     delegate_ = std::make_unique<IOSChromeSavePasswordInfoBarDelegate>(
         password_update, std::move(form_manager), ukm_source_id_,
         /*is_replacement=*/false, mock_sync_presenter_,
+        mock_primary_account_reauth_handler_,
         /*settings_commands_handler=*/nil, profile_store_.get(),
         account_store_.get(), &sync_service_);
     const int different_nav_entry_id = kNavEntryId - 1;
@@ -184,6 +191,7 @@ class IOSChromeSavePasswordInfoBarDelegateTest : public PlatformTest {
       nullptr;
 
   id mock_sync_presenter_;
+  id mock_primary_account_reauth_handler_;
 };
 
 TEST_F(IOSChromeSavePasswordInfoBarDelegateTest, GetUserNameText) {
@@ -923,8 +931,13 @@ TEST_F(IOSChromeSavePasswordInfoBarDelegateTest,
   // Verify that the password manager does NOT save.
   EXPECT_CALL(*form_manager_ptr_, Save).Times(0);
 
-  OCMExpect([mock_sync_presenter_
-      showPrimaryAccountReauthWithDismissalCompletion:[OCMArg any]]);
+  OCMExpect([mock_primary_account_reauth_handler_
+      showPrimaryAccountReauthWithAccessPoint:signin_metrics::AccessPoint::
+                                                  kReauthInfoBar
+                            reauthAccessPoint:signin_metrics::
+                                                  ReauthAccessPoint::
+                                                      kReauthInfoBar
+                          dismissalCompletion:[OCMArg any]]);
 
   // Tap on "Accept".
   EXPECT_FALSE(delegate_->Accept());
@@ -1020,12 +1033,17 @@ TEST_F(IOSChromeSavePasswordInfoBarDelegateTest,
   delegate_ptr->InfobarPresenting(/*automatic=*/true);
 
   __block SyncPresenterCompletionCallback captured_completion;
-  OCMExpect(
-      [mock_sync_presenter_ showPrimaryAccountReauthWithDismissalCompletion:
-                                [OCMArg checkWithBlock:^BOOL(id obj) {
-                                  captured_completion = obj;
-                                  return YES;
-                                }]]);
+  OCMExpect([mock_primary_account_reauth_handler_
+      showPrimaryAccountReauthWithAccessPoint:signin_metrics::AccessPoint::
+                                                  kReauthInfoBar
+                            reauthAccessPoint:signin_metrics::
+                                                  ReauthAccessPoint::
+                                                      kReauthInfoBar
+                          dismissalCompletion:[OCMArg
+                                                  checkWithBlock:^BOOL(id obj) {
+                                                    captured_completion = obj;
+                                                    return YES;
+                                                  }]]);
 
   // Tap on "Accept" -> starts reauth and returns false.
   EXPECT_FALSE(delegate_ptr->Accept());
@@ -1133,12 +1151,17 @@ TEST_F(IOSChromeSavePasswordInfoBarDelegateTest,
       std::make_unique<infobars::InfoBar>(std::move(delegate_)));
 
   __block SyncPresenterCompletionCallback captured_completion;
-  OCMExpect(
-      [mock_sync_presenter_ showPrimaryAccountReauthWithDismissalCompletion:
-                                [OCMArg checkWithBlock:^BOOL(id obj) {
-                                  captured_completion = obj;
-                                  return YES;
-                                }]]);
+  OCMExpect([mock_primary_account_reauth_handler_
+      showPrimaryAccountReauthWithAccessPoint:signin_metrics::AccessPoint::
+                                                  kReauthInfoBar
+                            reauthAccessPoint:signin_metrics::
+                                                  ReauthAccessPoint::
+                                                      kReauthInfoBar
+                          dismissalCompletion:[OCMArg
+                                                  checkWithBlock:^BOOL(id obj) {
+                                                    captured_completion = obj;
+                                                    return YES;
+                                                  }]]);
 
   // Tap on "Accept" -> starts reauth and returns false.
   EXPECT_FALSE(delegate_ptr->Accept());
@@ -1175,12 +1198,17 @@ TEST_F(IOSChromeSavePasswordInfoBarDelegateTest,
       std::make_unique<infobars::InfoBar>(std::move(delegate_)));
 
   __block SyncPresenterCompletionCallback captured_completion;
-  OCMExpect(
-      [mock_sync_presenter_ showPrimaryAccountReauthWithDismissalCompletion:
-                                [OCMArg checkWithBlock:^BOOL(id obj) {
-                                  captured_completion = obj;
-                                  return YES;
-                                }]]);
+  OCMExpect([mock_primary_account_reauth_handler_
+      showPrimaryAccountReauthWithAccessPoint:signin_metrics::AccessPoint::
+                                                  kReauthInfoBar
+                            reauthAccessPoint:signin_metrics::
+                                                  ReauthAccessPoint::
+                                                      kReauthInfoBar
+                          dismissalCompletion:[OCMArg
+                                                  checkWithBlock:^BOOL(id obj) {
+                                                    captured_completion = obj;
+                                                    return YES;
+                                                  }]]);
 
   // Tap on "Accept" -> starts reauth and returns false.
   EXPECT_FALSE(delegate_ptr->Accept());
@@ -1324,12 +1352,17 @@ TEST_F(IOSChromeSavePasswordInfoBarDelegateTest,
       std::make_unique<infobars::InfoBar>(std::move(delegate_)));
 
   __block SyncPresenterCompletionCallback captured_completion;
-  OCMExpect(
-      [mock_sync_presenter_ showPrimaryAccountReauthWithDismissalCompletion:
-                                [OCMArg checkWithBlock:^BOOL(id obj) {
-                                  captured_completion = obj;
-                                  return YES;
-                                }]]);
+  OCMExpect([mock_primary_account_reauth_handler_
+      showPrimaryAccountReauthWithAccessPoint:signin_metrics::AccessPoint::
+                                                  kReauthInfoBar
+                            reauthAccessPoint:signin_metrics::
+                                                  ReauthAccessPoint::
+                                                      kReauthInfoBar
+                          dismissalCompletion:[OCMArg
+                                                  checkWithBlock:^BOOL(id obj) {
+                                                    captured_completion = obj;
+                                                    return YES;
+                                                  }]]);
 
   // Tap on "Accept" -> starts reauth and returns false.
   EXPECT_FALSE(delegate_ptr->Accept());
@@ -1358,12 +1391,17 @@ TEST_F(IOSChromeSavePasswordInfoBarDelegateTest, IsHandlingPasswordError) {
   EXPECT_FALSE(delegate_->IsHandlingPasswordError());
 
   __block SyncPresenterCompletionCallback captured_completion;
-  OCMExpect(
-      [mock_sync_presenter_ showPrimaryAccountReauthWithDismissalCompletion:
-                                [OCMArg checkWithBlock:^BOOL(id obj) {
-                                  captured_completion = obj;
-                                  return YES;
-                                }]]);
+  OCMExpect([mock_primary_account_reauth_handler_
+      showPrimaryAccountReauthWithAccessPoint:signin_metrics::AccessPoint::
+                                                  kReauthInfoBar
+                            reauthAccessPoint:signin_metrics::
+                                                  ReauthAccessPoint::
+                                                      kReauthInfoBar
+                          dismissalCompletion:[OCMArg
+                                                  checkWithBlock:^BOOL(id obj) {
+                                                    captured_completion = obj;
+                                                    return YES;
+                                                  }]]);
 
   // After clicking accept, `IsHandlingPasswordError` should return true.
   EXPECT_FALSE(delegate_->Accept());

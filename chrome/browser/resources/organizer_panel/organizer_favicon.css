@@ -1,0 +1,66 @@
+/* Copyright 2026 The Chromium Authors
+ * Use of this source code is governed by a BSD-style license that can be
+ * found in the LICENSE file. */
+
+/* #css_wrapper_metadata_start
+ * #type=style-lit
+ * #scheme=relative
+ * #css_wrapper_metadata_end */
+
+:host {
+  display: flex;
+}
+
+.favicons {
+  /* With 16px icons, a 4px layout overlap (-4px margin) and 4px gap require an
+   * 8px clip on the first icon, yielding an 8px + 4px + 16px = 28px footprint. */
+  --organizer-favicon-clip_:
+      calc(var(--organizer-favicon-gap_) + var(--organizer-favicon-overlap_));
+  --organizer-favicon-gap_: 4px;
+  --organizer-favicon-overlap_: 4px;
+  --organizer-favicon-size_: 16px;
+  align-items: center;
+  display: flex;
+  justify-content: center;
+}
+
+.favicons .favicon {
+  background-position: center center;
+  background-repeat: no-repeat;
+  box-sizing: border-box;
+  height: var(--organizer-favicon-size_);
+  mask-position: center center;
+  mask-repeat: no-repeat;
+  position: relative;
+  width: var(--organizer-favicon-size_);
+}
+
+.favicons .favicon.ntp {
+  background-color: var(--color-organizer-panel-foreground,
+      var(--cr-primary-text-color));
+}
+
+:host(:not([stack-vertically])) #firstFavicon:has(+ #secondFavicon) {
+  clip-path: inset(0 var(--organizer-favicon-clip_) 0 0);
+}
+
+:host-context([dir=rtl]):host(:not([stack-vertically]))
+    #firstFavicon:has(+ #secondFavicon) {
+  clip-path: inset(0 0 0 var(--organizer-favicon-clip_));
+}
+
+:host(:not([stack-vertically])) #secondFavicon {
+  margin-inline-start: calc(-1 * var(--organizer-favicon-overlap_));
+}
+
+:host([stack-vertically]) .favicons {
+  flex-direction: column;
+}
+
+:host([stack-vertically]) #firstFavicon:has(+ #secondFavicon) {
+  clip-path: inset(0 0 var(--organizer-favicon-clip_) 0);
+}
+
+:host([stack-vertically]) #secondFavicon {
+  margin-block-start: calc(-1 * var(--organizer-favicon-overlap_));
+}

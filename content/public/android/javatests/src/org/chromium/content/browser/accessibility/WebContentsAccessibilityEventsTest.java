@@ -213,6 +213,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_addAlertContent() {
         performTest(
                 "add-alert-content.html",
@@ -789,6 +790,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_ariaTreeCollapse() {
         performTest(
                 "aria-tree-collapse.html",
@@ -798,6 +800,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_ariaTreeExpand() {
         performTest(
                 "aria-tree-expand.html",
@@ -1056,6 +1059,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_popoverExpandedChanged() {
         performTest(
                 "popover-expanded-changed.html",
@@ -1074,6 +1078,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_focusListboxMultiselect() {
         performTest(
                 "focus-listbox-multiselect.html",
@@ -1264,6 +1269,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_liveRegionAtomicChangedInnerText() {
         performTest(
                 "live-region-atomic-change-innertext.html",
@@ -1282,6 +1288,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_liveRegionElemReparent() {
         performTest(
                 "live-region-elem-reparent.html",
@@ -1340,6 +1347,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_menuBarShowHideMenus() {
         performTest(
                 "menubar-show-hide-menus.html",
@@ -1592,6 +1600,7 @@ public class WebContentsAccessibilityEventsTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "crbug.com/578209512")
     public void test_selectSelectedAddRemove() {
         performTest(
                 "select-selected-add-remove.html",

@@ -5,7 +5,8 @@
 import 'chrome://contextual-tasks/app.js';
 
 import type {ContextualTasksAppElement} from 'chrome://contextual-tasks/app.js';
-import {BrowserProxyImpl} from 'chrome://contextual-tasks/contextual_tasks_browser_proxy.js';
+import type {PageRemote} from 'chrome://contextual-tasks/contextual_tasks.mojom-webui.js';
+import {ToolbarBrowserProxyImpl} from 'chrome://contextual-tasks/contextual_tasks_toolbar_browser_proxy.js';
 import {ComposeboxFile, GlifAnimationState, SubmitButtonIconType} from 'chrome://resources/cr_components/composebox/common.js';
 import {PageHandlerRemote as ComposeboxPageHandlerRemote} from 'chrome://resources/cr_components/composebox/composebox.mojom-webui.js';
 import type {ComposeboxDropdownElement} from 'chrome://resources/cr_components/composebox/composebox_dropdown.js';
@@ -19,14 +20,14 @@ import {createAutocompleteMatch, createAutocompleteResultForTesting} from 'chrom
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {SuggestInventory} from 'chrome://resources/mojo/components/omnibox/browser/fusebox_action.mojom-webui.js';
 /* clang-format off */
-import {PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerRemote as SearchboxPageHandlerRemote} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import {PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerRemote as SearchboxPageHandlerRemote, RenderType, SideType} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 // <if expr="not is_android">
 import {TabAttachmentSource} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 // </if>
 /* clang-format on */
 import type {AutocompleteResult, PageRemote as SearchboxPageRemote, SelectedFileInfo} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import type {UnguessableToken} from 'chrome://resources/mojo/mojo/public/mojom/base/unguessable_token.mojom-webui.js';
-import {assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {assertDeepEquals, assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {createSuggestTemplateInfo, MockInputState} from 'chrome://webui-test/cr_components/searchbox/searchbox_test_utils.js';
 import type {MetricsTracker} from 'chrome://webui-test/metrics_test_support.js';
 import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
@@ -34,9 +35,10 @@ import {MockTimer} from 'chrome://webui-test/mock_timer.js';
 import {TestMock} from 'chrome://webui-test/test_mock.js';
 import {$$, eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
-import {createCtComposeboxApp, fixtureUrl, getInputValue, getSubmitButton, getSubmitContainer, simulateUserInput} from './contextual_tasks_test_utils.js';
+import {createCtComposeboxApp, disableAnimationsRecursively, fixtureUrl, getInputValue, getSubmitButton, getSubmitContainer, setupTestHandler, simulateUserInput} from './contextual_tasks_test_utils.js';
 import type {CtComposeboxAppParts} from './contextual_tasks_test_utils.js';
-import {TestContextualTasksBrowserProxy} from './test_contextual_tasks_browser_proxy.js';
+import type {TestContextualTasksPageHandler} from './test_contextual_tasks_browser_proxy.js';
+import {TestToolbarBrowserProxy} from './test_contextual_tasks_browser_proxy.js';
 import {setupAutocompleteResults} from './test_searchbox_utils.js';
 
 declare global {
@@ -60,29 +62,11 @@ function pressEnter(element: HTMLElement) {
   }));
 }
 
-function disableAnimationsRecursively(element: Element) {
-  const noAnimation = document.createElement('style');
-  noAnimation.textContent = `
-    :host, * {
-      transition: none !important;
-      animation: none !important;
-      transition-duration: 0s !important;
-      animation-duration: 0s !important;
-    }
-  `;
-
-  if (element.shadowRoot) {
-    element.shadowRoot.appendChild(noAnimation);
-
-    const children = element.shadowRoot.querySelectorAll('*');
-    children.forEach(child => disableAnimationsRecursively(child));
-  }
-}
-
 suite('ContextualTasksComposeboxTest', () => {
   let contextualTasksApp: ContextualTasksAppElement;
   let composebox: any;
-  let testProxy: TestContextualTasksBrowserProxy;
+  let testHandler: TestContextualTasksPageHandler;
+  let callbackRouterRemote: PageRemote;
   let mockComposeboxPageHandler: TestMock<ComposeboxPageHandlerRemote>&
       ComposeboxPageHandlerRemote;
   let mockSearchboxPageHandler: TestMock<SearchboxPageHandlerRemote>&
@@ -166,8 +150,9 @@ suite('ContextualTasksComposeboxTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    const testSetup = setupTestHandler(fixtureUrl);
+    testHandler = testSetup.handler;
+    callbackRouterRemote = testSetup.callbackRouterRemote;
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -471,8 +456,8 @@ suite('ContextualTasksComposeboxTest', () => {
           isTopLevel: true,
         } as unknown as chrome.webviewTag.LoadStartEvent;
 
-        testProxy.handler.setIsAiPage(true);
-        testProxy.handler.setIsZeroState(false);
+        testHandler.setIsAiPage(true);
+        testHandler.setIsZeroState(false);
 
         let resolver: () => void;
         const navFinished = new Promise<void>(resolve => {
@@ -537,8 +522,8 @@ suite('ContextualTasksComposeboxTest', () => {
           isTopLevel: true,
         } as unknown as chrome.webviewTag.LoadStartEvent;
 
-        testProxy.handler.setIsAiPage(true);
-        testProxy.handler.setIsZeroState(true);
+        testHandler.setIsAiPage(true);
+        testHandler.setIsZeroState(true);
 
         let resolver: () => void;
         const navFinished = new Promise<void>(resolve => {
@@ -609,7 +594,7 @@ suite('ContextualTasksComposeboxTest', () => {
 
     const app = document.createElement('contextual-tasks-app');
 
-    testProxy.callbackRouterRemote.onZeroStateChange(false);
+    callbackRouterRemote.onZeroStateChange(false);
 
     document.body.appendChild(app);
     await app.updateComplete;
@@ -621,8 +606,8 @@ suite('ContextualTasksComposeboxTest', () => {
     mockSearchboxPageHandler.reset();
 
     // Mock `isZeroState_` updating value from parent.
-    testProxy.callbackRouterRemote.onZeroStateChange(true);
-    await testProxy.callbackRouterRemote.$.flushForTesting();
+    callbackRouterRemote.onZeroStateChange(true);
+    await callbackRouterRemote.$.flushForTesting();
 
     assertEquals(1, mockSearchboxPageHandler.getCallCount('queryAutocomplete'));
   });
@@ -653,7 +638,7 @@ suite('ContextualTasksComposeboxTest', () => {
 
         const app = document.createElement('contextual-tasks-app');
 
-        testProxy.callbackRouterRemote.onZeroStateChange(false);
+        callbackRouterRemote.onZeroStateChange(false);
 
         document.body.appendChild(app);
 
@@ -666,7 +651,7 @@ suite('ContextualTasksComposeboxTest', () => {
         mockSearchboxPageHandler.reset();
 
         // Mock `isZeroState_` updating value from parent.
-        testProxy.callbackRouterRemote.onZeroStateChange(false);
+        callbackRouterRemote.onZeroStateChange(false);
 
         assertEquals(
             0, mockSearchboxPageHandler.getCallCount('queryAutocomplete'));
@@ -831,8 +816,8 @@ suite('ContextualTasksComposeboxTest', () => {
         Promise.resolve({metricSource: 'CO_BROWSING_COMPOSEBOX'}));
 
     // Set to zero state to ensure autocomplete is queried.
-    testProxy.callbackRouterRemote.onZeroStateChange(true);
-    await testProxy.callbackRouterRemote.$.flushForTesting();
+    callbackRouterRemote.onZeroStateChange(true);
+    await callbackRouterRemote.$.flushForTesting();
 
     // Simulate a load to initialize state.
     const loadStartEventOnline =
@@ -893,7 +878,7 @@ suite('ContextualTasksComposeboxTest', () => {
         'Composebox should still be hidden before reload');
 
     // 5. Simulate reload while online.
-    testProxy.callbackRouterRemote.onZeroStateChange(true);
+    callbackRouterRemote.onZeroStateChange(true);
     const loadStartEventBackOnline =
         new Event('loadstart') as Event & {isTopLevel?: boolean, url?: string};
     loadStartEventBackOnline.isTopLevel = true;
@@ -997,8 +982,8 @@ suite('ContextualTasksComposeboxTest', () => {
         eventFired, 'Event should be fired when clicking chip to remove');
 
     // Reset to zero state.
-    testProxy.callbackRouterRemote.onZeroStateChange(true);
-    await testProxy.callbackRouterRemote.$.flushForTesting();
+    callbackRouterRemote.onZeroStateChange(true);
+    await callbackRouterRemote.$.flushForTesting();
     await microtasksFinished();
     await contextualTasksApp.updateComplete;
     await contextualTasksApp.$.composebox.updateComplete;
@@ -1050,6 +1035,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
     searchboxCallbackRouterRemote.updateAutoSuggestedTabContext(tabInfo, null);
     await searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1125,6 +1111,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
     innerComposebox.aimThreadRestoredTabs = [restoredTab];
 
@@ -1153,6 +1140,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
     searchboxCallbackRouterRemote.updateAutoSuggestedTabContext(newTab, null);
     await searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1173,6 +1161,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
     searchboxCallbackRouterRemote.updateAutoSuggestedTabContext(tabInfo, null);
     await searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1221,6 +1210,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
     searchboxCallbackRouterRemote.updateAutoSuggestedTabContext(autoTab, null);
     await searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1237,6 +1227,7 @@ suite('ContextualTasksComposeboxTest', () => {
         showInCurrentTabChip: false,
         showInPreviousTabChip: false,
         isLoading: false,
+        recentTab: false,
       },
       {
         tabId: 3,
@@ -1246,6 +1237,7 @@ suite('ContextualTasksComposeboxTest', () => {
         showInCurrentTabChip: false,
         showInPreviousTabChip: false,
         isLoading: false,
+        recentTab: false,
       },
     ];
     await innerComposebox.updateComplete;
@@ -1275,6 +1267,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: false,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
     searchboxCallbackRouterRemote.updateAutoSuggestedTabContext(tabInfo, null);
     await searchboxCallbackRouterRemote.$.flushForTesting();
@@ -1292,6 +1285,7 @@ suite('ContextualTasksComposeboxTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
       lastActive: {internalValue: BigInt(1)},
     };
 
@@ -1443,7 +1437,6 @@ suite('ContextualTasksComposeboxTest', () => {
 // Fork SMOKE SUITE
 // =============================================================================
 suite('ContextualTasksComposeboxForkSmokeTest', () => {
-  let testProxy: TestContextualTasksBrowserProxy;
   let mockComposeboxPageHandler: TestMock<ComposeboxPageHandlerRemote>&
       ComposeboxPageHandlerRemote;
   let mockSearchboxPageHandler: TestMock<SearchboxPageHandlerRemote>&
@@ -1478,8 +1471,7 @@ suite('ContextualTasksComposeboxForkSmokeTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -1553,7 +1545,6 @@ suite('ContextualTasksComposeboxForkSmokeTest', () => {
 // Fork BASIC INPUT/SUBMIT/CLEAR SUITE
 // =============================================================================
 suite('ContextualTasksComposeboxForkBasicInputTest', () => {
-  let testProxy: TestContextualTasksBrowserProxy;
   let mockComposeboxPageHandler: TestMock<ComposeboxPageHandlerRemote>&
       ComposeboxPageHandlerRemote;
   let mockSearchboxPageHandler: TestMock<SearchboxPageHandlerRemote>&
@@ -1589,8 +1580,7 @@ suite('ContextualTasksComposeboxForkBasicInputTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -1886,8 +1876,7 @@ suite('ContextualTasksComposeboxForkDropdownTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    const testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -2135,13 +2124,77 @@ suite('ContextualTasksComposeboxForkDropdownTest', () => {
         assertEquals(
             0, mockSearchboxPageHandler.getCallCount('openAutocompleteMatch'));
       });
+
+  test(
+      'delegates sync match carry-over and smart compose gating to mixin',
+      async () => {
+        const {innerComposebox} = parts;
+        innerComposebox.composeboxNoFlickerSuggestionsFix = true;
+        innerComposebox.smartComposeEnabled = true;
+
+        const zpsGroupMap = {
+          40000: {
+            header: 'Explore ideas',
+            renderType: RenderType.kGrid,
+            sideType: SideType.kDefaultPrimary,
+          },
+        };
+        searchboxCallbackRouterRemote.autocompleteResultChanged(
+            createAutocompleteResultForTesting({
+              queryId: innerComposebox.activeQueryId,
+              input: '',
+              matches: [
+                createAutocompleteMatch({
+                  fillIntoEdit: 'idea 1',
+                  type: 'search-suggest',
+                  suggestionGroupId: 40000,
+                }),
+              ],
+              suggestionGroupsMap: zpsGroupMap,
+            }));
+        await searchboxCallbackRouterRemote.$.flushForTesting();
+        await innerComposebox.updateComplete;
+
+        mockTimer.install();
+        const inputElement =
+            innerComposebox.getInputElement()
+                .shadowRoot.querySelector<HTMLElement>('#input')!;
+        simulateUserInput(inputElement, 'a');
+        mockTimer.tick(300);
+        await mockSearchboxPageHandler.whenCalled('queryAutocomplete');
+
+        // Synchronous verbatim-only pass should carry over non-verbatim matches
+        // and suggestionGroupsMap, and must not apply smartComposeInlineHint.
+        searchboxCallbackRouterRemote.autocompleteResultChanged(
+            createAutocompleteResultForTesting({
+              queryId: innerComposebox.activeQueryId,
+              input: 'a',
+              matches: [
+                createAutocompleteMatch({
+                  fillIntoEdit: 'a',
+                  type: 'search-what-you-typed',
+                  allowedToBeDefaultMatch: true,
+                }),
+              ],
+              suggestionGroupsMap: {},
+              smartComposeInlineHint: 'sync hint',
+            }));
+        await searchboxCallbackRouterRemote.$.flushForTesting();
+        mockTimer.tick(0);
+        await innerComposebox.updateComplete;
+
+        assertEquals(2, innerComposebox.result!.matches.length);
+        assertDeepEquals(
+            zpsGroupMap, innerComposebox.result!.suggestionGroupsMap);
+        assertEquals('', innerComposebox.smartComposeInlineHint);
+      });
 });
 
 // =============================================================================
 // Fork CONTEXT MENU / SMART TAB SHARING SUITE
 // =============================================================================
 suite('ContextualTasksComposeboxForkContextMenuTest', () => {
-  let testProxy: TestContextualTasksBrowserProxy;
+  let callbackRouterRemote: PageRemote;
   let mockComposeboxPageHandler: TestMock<ComposeboxPageHandlerRemote>&
       ComposeboxPageHandlerRemote;
   let mockSearchboxPageHandler: TestMock<SearchboxPageHandlerRemote>&
@@ -2194,8 +2247,7 @@ suite('ContextualTasksComposeboxForkContextMenuTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    callbackRouterRemote = setupTestHandler(fixtureUrl).callbackRouterRemote;
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -2299,8 +2351,8 @@ suite('ContextualTasksComposeboxForkContextMenuTest', () => {
         }
 
         // Baseline: leaving zero state marks the animation ineligible.
-        testProxy.callbackRouterRemote.onZeroStateChange(false);
-        await testProxy.callbackRouterRemote.$.flushForTesting();
+        callbackRouterRemote.onZeroStateChange(false);
+        await callbackRouterRemote.$.flushForTesting();
         await settleChain();
         assertEquals(
             GlifAnimationState.INELIGIBLE, entrypointButton.glifAnimationState);
@@ -2313,8 +2365,8 @@ suite('ContextualTasksComposeboxForkContextMenuTest', () => {
         mockComposeboxPageHandler.resetResolver('canShowNextboxAnimation');
         mockComposeboxPageHandler.setResultFor(
             'canShowNextboxAnimation', Promise.resolve({canShow: true}));
-        testProxy.callbackRouterRemote.onZeroStateChange(true);
-        await testProxy.callbackRouterRemote.$.flushForTesting();
+        callbackRouterRemote.onZeroStateChange(true);
+        await callbackRouterRemote.$.flushForTesting();
         await settleChain();
         assertEquals(
             1,
@@ -2329,8 +2381,8 @@ suite('ContextualTasksComposeboxForkContextMenuTest', () => {
         assertTrue(glowWrapper.classList.contains('glow-container'));
 
         // Leaving zero state retracts the glow render contract.
-        testProxy.callbackRouterRemote.onZeroStateChange(false);
-        await testProxy.callbackRouterRemote.$.flushForTesting();
+        callbackRouterRemote.onZeroStateChange(false);
+        await callbackRouterRemote.$.flushForTesting();
         await settleChain();
         assertEquals(
             GlifAnimationState.INELIGIBLE, entrypointButton.glifAnimationState);
@@ -2587,8 +2639,7 @@ suite('ContextualTasksComposeboxResizeTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    const testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -2719,8 +2770,7 @@ suite('ContextualTasksComposeboxForkGlowTest', () => {
       energyEffectEnabled: true,
     });
 
-    const testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     const mockComposeboxPageHandler =
         TestMock.fromClass(ComposeboxPageHandlerRemote);
@@ -2824,8 +2874,7 @@ suite('ContextualTasksComposeboxForkErrorScrimTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
 
-    const testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler(fixtureUrl);
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -2973,7 +3022,6 @@ function createVoiceResults(transcripts: string[]): SpeechRecognitionEvent {
       'ContextualTasksComposeboxForkVoiceTest ' +
           `(coherence = ${coherenceEnabled})`,
       () => {
-        let testProxy: TestContextualTasksBrowserProxy;
         let mockComposeboxPageHandler: TestMock<ComposeboxPageHandlerRemote>&
             ComposeboxPageHandlerRemote;
         let mockSearchboxPageHandler: TestMock<SearchboxPageHandlerRemote>&
@@ -3014,8 +3062,8 @@ function createVoiceResults(transcripts: string[]): SpeechRecognitionEvent {
 
           metrics = fakeMetricsPrivate();
 
-          testProxy = new TestContextualTasksBrowserProxy(fixtureUrl);
-          BrowserProxyImpl.setInstance(testProxy);
+          setupTestHandler(fixtureUrl);
+          ToolbarBrowserProxyImpl.setInstance(new TestToolbarBrowserProxy());
 
           mockRecognition = null;
           windowProxy = TestMock.fromClass(WindowProxy);
@@ -3057,6 +3105,7 @@ function createVoiceResults(transcripts: string[]): SpeechRecognitionEvent {
           parts = await createCtComposeboxApp();
           searchboxCallbackRouterRemote.onInputStateChanged(
               new MockInputState());
+          await searchboxCallbackRouterRemote.$.flushForTesting();
           await microtasksFinished();
         });
 
@@ -3073,6 +3122,11 @@ function createVoiceResults(transcripts: string[]): SpeechRecognitionEvent {
           if (mockRecognition) {
             mockRecognition.flushEnd();
           }
+          // Unmount the app so active voice animation loops (<recording-wave>,
+          // <audio-wave>, and <search-animated-glow>) run disconnectedCallback
+          // and cancel requestAnimationFrame callbacks before JS coverage
+          // collection begins.
+          document.body.innerHTML = window.trustedTypes!.emptyHTML;
         });
 
         function getVoiceSearch() {

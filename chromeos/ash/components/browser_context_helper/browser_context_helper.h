@@ -113,10 +113,6 @@ class COMPONENT_EXPORT(ASH_BROWSER_CONTEXT_HELPER) BrowserContextHelper {
   user_manager::User* GetUserByBrowserContext(
       content::BrowserContext* browser_context);
 
-  // Returns user browser context dir in a format of "u-${user_id_hash}".
-  static std::string GetUserBrowserContextDirName(
-      std::string_view user_id_hash);
-
   // Returns browser context path that corresponds to the given |user_id_hash|.
   base::FilePath GetBrowserContextPathByUserIdHash(
       std::string_view user_id_hash);

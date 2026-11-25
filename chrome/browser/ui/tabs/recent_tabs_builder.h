@@ -18,8 +18,8 @@
 #include "ui/base/models/image_model.h"
 #include "url/gurl.h"
 
-// Represents a single item in the Recent Tabs hierarchy (header, command,
-// tab, window, group, split, or device).
+// Represents a single item in the Recent Tabs or Other Device Tabs hierarchy
+// (header, command, tab, window, group, split, or device).
 class RecentTabItem {
  public:
   enum class Type {
@@ -31,6 +31,7 @@ class RecentTabItem {
     kSplit,    // Recently closed split view
     kDevice,   // Remote device session
     kDivider,  // Divider / separator
+    kMoreTabs,  // Submenu with the tabs of a device that don't fit inline
   };
 
   RecentTabItem(Type type, std::u16string title);
@@ -117,6 +118,13 @@ class RecentTabsBuilder {
       BrowserWindowInterface* browser);
   static std::vector<RecentTabItem> BuildLocalEntries(Profile* profile);
   static std::vector<RecentTabItem> BuildRemoteEntries(Profile* profile);
+
+  // Builds the items (`kHeader` device titles, `kTab` rows, `kMoreTabs`
+  // submenus for the tabs beyond the per-device cap, and `kDivider` separators
+  // between devices) for the "Other device tabs" submenu, ordered by recency.
+  // Returns an empty vector if `profile` is ineligible or has no foreign
+  // sessions with open tabs.
+  static std::vector<RecentTabItem> BuildOtherDeviceTabs(Profile* profile);
 };
 
 #endif  // CHROME_BROWSER_UI_TABS_RECENT_TABS_BUILDER_H_

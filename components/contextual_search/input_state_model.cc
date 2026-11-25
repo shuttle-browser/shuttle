@@ -16,14 +16,18 @@
 #include "base/logging.h"
 #include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/contextual_search/contextual_search_types.h"
+#include "components/contextual_search/input_state_model_routing.h"
 #include "components/contextual_search/pref_names.h"
 #include "components/lens/contextual_input.h"
+#include "components/omnibox/common/composebox_features.h"
+#include "components/omnibox/common/input_state.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "net/base/url_util.h"
 #include "third_party/omnibox_proto/input_type.pb.h"
 #include "third_party/omnibox_proto/rule_set.pb.h"
+#include "third_party/omnibox_proto/tool_config.pb.h"
 #include "url/gurl.h"
 
 namespace contextual_search {
@@ -355,16 +359,9 @@ void InputStateModel::PopulateConfig(const SearchboxConfig& config) {
     } else {
       state_.model_section_config.reset();
     }
-    if (mutable_config.has_hint_text()) {
-      state_.hint_text = mutable_config.hint_text();
-    } else {
-      state_.hint_text.clear();
-    }
-    if (rule_set_.has_max_total_inputs()) {
-      state_.max_total_inputs = rule_set_.max_total_inputs();
-    } else {
-      state_.max_total_inputs = 0;
-    }
+    default_hint_text_ = mutable_config.hint_text();
+    personalized_hint_text_ = mutable_config.personalized_hint_text();
+    UpdateHintText();
     state_.max_inputs_by_type.clear();
     for (const auto& rule : rule_set_.input_type_rules()) {
       if (rule.has_input_type() && rule.has_max_instance()) {
@@ -386,6 +383,7 @@ void InputStateModel::SetIdentityState(
   browser_identity_matches_aim_identity_ =
       browser_identity_matches_aim_identity;
 
+  UpdateHintText();
   RebuildAllowedInputTypes();
   UpdateDisabledState();
   NotifySubscribers();
@@ -425,6 +423,8 @@ InputStateModel::InputStateModel(
       is_signed_in_(new_input_state_model.is_signed_in_),
       browser_identity_matches_aim_identity_(
           new_input_state_model.browser_identity_matches_aim_identity_),
+      default_hint_text_(new_input_state_model.default_hint_text_),
+      personalized_hint_text_(new_input_state_model.personalized_hint_text_),
       current_url_(new_input_state_model.current_url_) {
   if (session_handle_) {
     session_handle_->set_current_url(current_url_);
@@ -446,6 +446,10 @@ InputStateModel::InputStateModel(
   user_modified_tool_in_thread_ =
       new_input_state_model.user_modified_tool_in_thread_;
   lens_crop_ = new_input_state_model.lens_crop_;
+  lens_crop_sequence_ = new_input_state_model.lens_crop_sequence_;
+  // The copy goes to the next surface (e.g. AI Mode follow-ups) and doesn't
+  // keep the opt-in, so reset `will_fulfill_in_aim`.
+  RecomputeRouting();
 }
 
 InputStateModel::~InputStateModel() = default;
@@ -492,6 +496,7 @@ std::vector<omnibox::InputType> InputStateModel::GetCurrentInputTypes(
       GetPendingTabContextCount(*session_handle, uploaded_files.size());
   input_types.reserve(uploaded_files.size() + num_pending_tabs);
   for (const auto& file_info : uploaded_files) {
+    // LINT.IfChange(GetCurrentInputTypes)
     if (file_info.tab_url) {
       input_types.push_back(omnibox::InputType::INPUT_TYPE_BROWSER_TAB);
       continue;
@@ -511,6 +516,7 @@ std::vector<omnibox::InputType> InputStateModel::GetCurrentInputTypes(
         input_types.push_back(omnibox::InputType::INPUT_TYPE_UNSPECIFIED);
         break;
     }
+    // LINT.ThenChange(//components/contextual_search/input_state_model_routing.cc:CountAttachments)
   }
   input_types.insert(input_types.end(), num_pending_tabs,
                      omnibox::InputType::INPUT_TYPE_BROWSER_TAB);
@@ -545,8 +551,9 @@ std::vector<omnibox::InputType> InputStateModel::GetEffectiveInputTypes()
         is_browser_tab_allowed = false;
       }
     }
-    if (state_.active_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED) {
-      const omnibox::ModelRule* rule = GetModelRule(state_.active_model);
+    const ModelMode rules_model = GetModelForRules();
+    if (rules_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED) {
+      const omnibox::ModelRule* rule = GetModelRule(rules_model);
       if (!rule || (!rule->allow_all_input_types() &&
                     !std::ranges::contains(
                         rule->allowed_input_types(),
@@ -606,6 +613,12 @@ void InputStateModel::SetActiveTool(ToolMode tool) {
 }
 
 void InputStateModel::SetActiveModel(ModelMode model) {
+  if (dynamic_aim_fulfillment_enabled_) {
+    // The page doesn't auto-select a model in this mode, so a model set by the
+    // page (e.g. from the model menu) means AI Mode, and clearing it (e.g. on
+    // close) leaves AI Mode. Routing turns it back on if still needed.
+    aim_mode_active_ = model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED;
+  }
   UpdateSelectedState(state_.active_tool, model);
 }
 
@@ -785,6 +798,14 @@ const omnibox::ModelRule* InputStateModel::GetModelRule(ModelMode model) const {
   return nullptr;
 }
 
+ModelMode InputStateModel::GetModelForRules() const {
+  if (dynamic_aim_fulfillment_enabled_ &&
+      state_.active_model == omnibox::ModelMode::MODEL_MODE_UNSPECIFIED) {
+    return state_.GetDefaultModel();
+  }
+  return state_.active_model;
+}
+
 const omnibox::ToolRule* InputStateModel::GetToolRule(ToolMode tool) const {
   auto it = std::find_if(state_.tool_configs.begin(), state_.tool_configs.end(),
                          [&](const auto& config) {
@@ -804,8 +825,8 @@ void InputStateModel::UpdateDisabledTools() {
   // - Incompatible with the current inputs.
   state_.disabled_tools.clear();
   state_.disabled_tools.reserve(state_.allowed_tools.size());
-  const omnibox::ModelRule* active_model_rule =
-      GetModelRule(state_.active_model);
+  const ModelMode rules_model = GetModelForRules();
+  const omnibox::ModelRule* model_rule = GetModelRule(rules_model);
   const auto effective_inputs = GetEffectiveInputTypes();
   for (const auto& tool : state_.allowed_tools) {
     if (tool == state_.active_tool) {
@@ -814,9 +835,9 @@ void InputStateModel::UpdateDisabledTools() {
     }
 
     bool incompatible_with_model =
-        state_.active_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED &&
-        active_model_rule && !active_model_rule->allow_all_tools() &&
-        !std::ranges::contains(active_model_rule->allowed_tools(), tool);
+        rules_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED &&
+        model_rule && !model_rule->allow_all_tools() &&
+        !std::ranges::contains(model_rule->allowed_tools(), tool);
 
     const omnibox::ToolRule* tool_rule = GetToolRule(tool);
     bool incompatible_with_inputs =
@@ -889,8 +910,8 @@ void InputStateModel::UpdateDisabledInputTypes() {
     current_input_counts[input_type]++;
   }
 
-  const omnibox::ModelRule* active_model_rule =
-      GetModelRule(state_.active_model);
+  const ModelMode rules_model = GetModelForRules();
+  const omnibox::ModelRule* model_rule = GetModelRule(rules_model);
   const omnibox::ToolRule* active_tool_rule = GetToolRule(state_.active_tool);
 
   for (const auto& input_type : state_.allowed_input_types) {
@@ -906,10 +927,9 @@ void InputStateModel::UpdateDisabledInputTypes() {
     }
 
     bool incompatible_with_model =
-        state_.active_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED &&
-        active_model_rule && !active_model_rule->allow_all_input_types() &&
-        !std::ranges::contains(active_model_rule->allowed_input_types(),
-                               input_type);
+        rules_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED &&
+        model_rule && !model_rule->allow_all_input_types() &&
+        !std::ranges::contains(model_rule->allowed_input_types(), input_type);
 
     bool incompatible_with_tool =
         state_.active_tool != omnibox::ToolMode::TOOL_MODE_UNSPECIFIED &&
@@ -928,10 +948,62 @@ void InputStateModel::UpdateDisabledInputTypes() {
 }
 
 void InputStateModel::UpdateDisabledState() {
+  RecomputeRouting();
   RebuildAllowedInputTypes();
   UpdateDisabledTools();
   UpdateDisabledModels();
   UpdateDisabledInputTypes();
+}
+
+void InputStateModel::EnableDynamicAimFulfillment() {
+  if (dynamic_aim_fulfillment_enabled_) {
+    return;
+  }
+  dynamic_aim_fulfillment_enabled_ = true;
+  UpdateDisabledState();
+  NotifySubscribers();
+}
+
+void InputStateModel::EnterAimMode() {
+  aim_mode_active_ = true;
+  UpdateDisabledState();
+  NotifySubscribers();
+}
+
+void InputStateModel::RecomputeRouting() {
+  if (!dynamic_aim_fulfillment_enabled_) {
+    state_.will_fulfill_in_aim = true;
+    return;
+  }
+  std::vector<FileInfo> file_infos;
+  size_t pending_tabs = 0;
+  if (session_handle_) {
+    file_infos = session_handle_->GetUploadedContextFileInfos();
+    pending_tabs =
+        GetPendingTabContextCount(*session_handle_, file_infos.size());
+  }
+  const FulfillmentDecision decision = ComputeFulfillment(
+      state_, aim_mode_active_, CountAttachments(file_infos, pending_tabs),
+      EligibleAttachmentsForMode(SrpInputModeFromFeatureParams()),
+      has_valid_config_);
+  state_.will_fulfill_in_aim = decision.will_fulfill_in_aim;
+  // Going to AIM enters AI Mode, unless it's only because no config has
+  // arrived yet.
+  if (has_valid_config_ && state_.will_fulfill_in_aim) {
+    aim_mode_active_ = true;
+  }
+  state_.active_model = decision.model;
+}
+
+void InputStateModel::UpdateHintText() {
+  if (base::FeatureList::IsEnabled(omnibox::kComposeboxPersonalizedHintText) &&
+      !is_off_the_record_ && is_signed_in_ &&
+      browser_identity_matches_aim_identity_ &&
+      !personalized_hint_text_.empty()) {
+    state_.hint_text = personalized_hint_text_;
+    return;
+  }
+  state_.hint_text = default_hint_text_;
 }
 
 void InputStateModel::RebuildAllowedInputTypes() {
@@ -972,23 +1044,32 @@ void InputStateModel::RebuildAllowedInputTypes() {
       IsDriveSupported() && sharing_enabled) {
     state_.allowed_input_types.push_back(omnibox::INPUT_TYPE_DRIVE);
   }
+
+  if (rule_set_.has_max_total_inputs()) {
+    state_.max_total_inputs = rule_set_.max_total_inputs();
+  } else if (state_.allowed_input_types.empty()) {
+    state_.max_total_inputs = 0;
+  } else {
+    state_.max_total_inputs = omnibox::kDefaultMaxTotalInputs;
+  }
 }
 
 std::map<std::string, std::string> InputStateModel::GetAdditionalQueryParams() {
   std::map<std::string, std::string> additional_params;
+  bool disable_active_model_selection = false;
   if (state_.active_tool != omnibox::ToolMode::TOOL_MODE_UNSPECIFIED) {
-    const auto tool_it =
-        std::find_if(state_.tool_configs.begin(), state_.tool_configs.end(),
-                     [&](const omnibox::ToolConfig& config) {
-                       return config.tool() == state_.active_tool;
-                     });
+    const auto tool_it = std::ranges::find(
+        state_.tool_configs, state_.active_tool, &omnibox::ToolConfig::tool);
     if (tool_it != state_.tool_configs.end()) {
+      disable_active_model_selection =
+          tool_it->disable_active_model_selection();
       for (const auto& param : tool_it->aim_url_params()) {
         additional_params[param.param_key()] = param.param_value();
       }
     }
   }
-  if (state_.active_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED) {
+  if (!disable_active_model_selection &&
+      state_.active_model != omnibox::ModelMode::MODEL_MODE_UNSPECIFIED) {
     const auto model_it =
         std::find_if(state_.model_configs.begin(), state_.model_configs.end(),
                      [&](const omnibox::ModelConfig& config) {
@@ -1000,8 +1081,9 @@ std::map<std::string, std::string> InputStateModel::GetAdditionalQueryParams() {
       }
     }
   } else {
-    // If no model is selected, add a default param to indicate that the query
-    // is an AIM query.
+    // If no model is selected, or the active tool disables active model
+    // selection, add a default param to indicate that the query is an AIM
+    // query.
     additional_params[kUdmParamKey] = "50";
   }
   // `nem` (from a model) takes priority over `udm` (e.g. from a tool).
@@ -1019,6 +1101,7 @@ void InputStateModel::SetLensCrop(const std::string& data_uri) {
   // There is only ever one region crop; setting a crop replaces any existing
   // crop.
   lens_crop_ = LensCrop{data_uri};
+  ++lens_crop_sequence_;
   NotifySubscribers();
 }
 
@@ -1032,6 +1115,7 @@ std::optional<std::string> InputStateModel::GetLensCrop() const {
 void InputStateModel::RemoveLensCrop() {
   if (lens_crop_.has_value()) {
     lens_crop_.reset();
+    ++lens_crop_sequence_;
     NotifySubscribers();
   }
 }

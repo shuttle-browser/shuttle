@@ -247,8 +247,8 @@ TEST_F(
 
   // Expect the context_token is set in the full card request.
   EXPECT_EQ(GetCvcAuthenticator()
-                .GetFullCardRequest()
-                ->GetUnmaskRequestDetailsForTesting()
+                .full_card_request_for_testing()
+                .GetUnmaskRequestDetailsForTesting()
                 ->context_token,
             context_token);
 }
@@ -578,7 +578,6 @@ TEST_F(CreditCardAccessManagerRiskBasedMaskedServerCardUnmaskingTest,
 #endif  // BUILDFLAG(IS_ANDROID)
 
   base::HistogramTester histogram_tester;
-  std::string test_number = "4444333322221111";
   const CreditCard* enrolled_card =
       CreateServerCard(kTestGUID, kTestNumber, kTestServerId, /*cvc=*/u"",
                        CreditCard::RecordType::kMaskedServerCard,

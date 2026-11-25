@@ -16,20 +16,20 @@ include_rules = [
   # directory basis. See //tools/chromeos/gen_deps.sh for details.
   "+chrome/browser/ash/magic_boost",
   "+chrome/browser/feedback/show_feedback_page.h",
-  "+chrome/browser/profiles",
+  "+chrome/browser/profiles/profile.h",
   "+chrome/browser/ui/browser_window/public/profile_browser_collection.h",
   "+chrome/test/base",
 ]
 
 specific_include_rules = {
-  "mahi_availability\\.cc": [
-    "+chrome/browser/browser_process.h",
-  ],
   "mahi_availability_unittest\\.cc": [
     "+chrome/browser/ash/browser_delegate/keyed_service_provider",
     "+chrome/browser/ash/login/test",
     "+chrome/browser/ash/settings",
     "+chrome/browser/signin",
+  ],
+  "mahi_cache_manager\\.cc": [
+    "+third_party/zstd/src/lib/zstd.h",
   ],
   "mahi_ui_browsertest\\.cc": [
     "+chrome/browser/renderer_context_menu/render_view_context_menu.h",

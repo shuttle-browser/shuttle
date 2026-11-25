@@ -5,13 +5,12 @@
 #include "chrome/browser/ui/read_anything/read_anything_omnibox_controller.h"
 
 #include "base/metrics/histogram_functions.h"
-#include "chrome/browser/dom_distiller/tab_utils.h"
+#include "chrome/browser/reader_mode/tab_utils.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_enums.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "content/public/browser/page.h"
 #include "content/public/browser/web_contents.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
@@ -27,15 +26,14 @@ ReadAnythingOmniboxController::ReadAnythingOmniboxController(
   // enabled and the tab has the required window and page action features.
   CHECK(features::IsReadAnythingOmniboxChipEnabled());
   CHECK(tab_->GetBrowserWindowInterface());
-  CHECK(tab_->GetTabFeatures());
-  CHECK(tab_->GetTabFeatures()->page_action_controller());
+  auto* page_action_controller = page_actions::PageActionController::From(tab_);
+  CHECK(page_action_controller);
 
   read_anything::ReadAnythingEntryPointController::
       RegisterForSuggestReadingMode(
           tab_->GetBrowserWindowInterface()->GetProfile());
 
-  RegisterAsPageActionObserver(
-      *tab_->GetTabFeatures()->page_action_controller());
+  RegisterAsPageActionObserver(*page_action_controller);
   tab_subscriptions_.push_back(tab_->RegisterWillDetach(
       base::BindRepeating(&ReadAnythingOmniboxController::TabWillDetach,
                           weak_factory_.GetWeakPtr())));
@@ -83,6 +81,7 @@ void ReadAnythingOmniboxController::Activate(
     ReadAnythingOpenTrigger open_trigger,
     std::optional<base::TimeDelta> completed_session_duration) {
   if (active) {
+    last_close_reason_.reset();
     if (iph_response_timer_ && iph_response_timer_->IsRunning()) {
       iph_response_timer_->Stop();
       RecordOpenedAfterPromo();
@@ -104,17 +103,13 @@ void ReadAnythingOmniboxController::Activate(
     if (open_trigger == ReadAnythingOpenTrigger::kOmniboxChip) {
       was_triggered_ = true;
     }
+    return;
   }
-}
 
-void ReadAnythingOmniboxController::OnReadingModePresenterChanged() {
-  auto* read_anything_controller = ReadAnythingController::From(tab_);
-  CHECK(read_anything_controller);
-  // If Reading mode was just closed by the user, re-show the omnibox entrypoint
-  // without the IPH.
-  if (read_anything_controller->GetPresentationState() ==
-          ReadAnythingController::PresentationState::kInactive &&
-      last_close_reason_ == ReadAnythingCloseReason::kClosedByUser) {
+  // Reading Mode was hidden. If the user closed it, re-show the omnibox
+  // entry point without the IPH.
+  if (last_close_reason_ == ReadAnythingCloseReason::kClosedByUser &&
+      !IsIrrelevant()) {
     entry_point_shown_time_ = base::TimeTicks::Now();
     read_anything::ReadAnythingEntryPointController::UpdatePageActionVisibility(
         /*should_show_page_action=*/true, tab_);
@@ -148,6 +143,7 @@ void ReadAnythingOmniboxController::OnDiscardContents(
   was_last_checked_page_distillable_ = false;
   was_page_checked_ = false;
   entry_point_shown_time_ = base::TimeTicks();
+  last_close_reason_.reset();
 }
 
 void ReadAnythingOmniboxController::PrimaryPageChanged(content::Page& page) {
@@ -157,6 +153,7 @@ void ReadAnythingOmniboxController::PrimaryPageChanged(content::Page& page) {
   // Reset the distillable indicator when the page changes.
   was_last_checked_page_distillable_ = false;
   was_page_checked_ = false;
+  last_close_reason_.reset();
   if (IsIrrelevant()) {
     entry_point_shown_time_ = base::TimeTicks();
     return;

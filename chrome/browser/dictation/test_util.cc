@@ -48,19 +48,6 @@ base::test::ScopedFeatureList CreateEnablingFeatureList() {
   return feature_list;
 }
 
-base::test::ScopedFeatureList CreateEnablingFeatureList(
-    bool session_ends_on_stream_end) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitWithFeaturesAndParameters(
-      {{kDictation,
-        {{"use_component_extension", "false"},
-         {"session_ends_on_stream_end",
-          session_ends_on_stream_end ? "true" : "false"},
-         {"auto_session_end_delay", "0ms"}}}},
-      {});
-  return feature_list;
-}
-
 const extensions::Extension* LoadTestExtensionInManualMode(Profile* profile) {
   extensions::ExtensionRegistryTestHelper observer(
       std::string(kDictationTestExtensionId).c_str(), profile);
@@ -354,6 +341,12 @@ MockSessionControllerDelegate::MockSessionControllerDelegate() {
   ON_CALL(*this, CreateStreamProvider(_)).WillByDefault([]() {
     return std::make_unique<testing::NiceMock<MockStreamProvider>>();
   });
+  ON_CALL(*this, BindWakeLockProvider(_))
+      .WillByDefault(
+          [this](
+              mojo::PendingReceiver<device::mojom::WakeLockProvider> receiver) {
+            wake_lock_provider_.BindReceiver(std::move(receiver));
+          });
 }
 MockSessionControllerDelegate::~MockSessionControllerDelegate() = default;
 
@@ -370,6 +363,10 @@ std::unique_ptr<SessionUi> MockDictationKeyedService::CreateUi(
   auto mock_ui = std::make_unique<testing::NiceMock<MockSessionUi>>();
   mock_ui->set_show_reviewing_page_status(ConsumeShowReviewingPageStatus());
   return mock_ui;
+}
+void MockDictationKeyedService::BindWakeLockProvider(
+    mojo::PendingReceiver<device::mojom::WakeLockProvider> receiver) {
+  wake_lock_provider_.BindReceiver(std::move(receiver));
 }
 
 FakeGlobalAcceleratorListener::FakeGlobalAcceleratorListener() = default;

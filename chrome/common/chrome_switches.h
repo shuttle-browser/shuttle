@@ -315,13 +315,10 @@ inline constexpr char kEnableBookmarkUndo[] = "enable-bookmark-undo";
 // Enables Domain Reliability Monitoring.
 inline constexpr char kEnableDomainReliability[] = "enable-domain-reliability";
 
-#if BUILDFLAG(IS_CHROMEOS)
 // If enabled, DevTools will allow creating pwa_handler, to enable executing
-// CDP methods (i.e. PWA.install) on browsers connected remotely
+// CDP methods (i.e. PWA.install) on browsers connected remotely.
 inline constexpr char kEnableDevToolsPwaHandler[] =
     "enable-devtools-pwa-handler";
-
-#endif
 
 // Enables logging for extension activity.
 inline constexpr char kEnableExtensionActivityLogging[] =
@@ -1026,6 +1023,12 @@ inline constexpr char kSourceShortcutLocationDesktop[] = "desktop";
 inline constexpr char kSourceShortcutLocationStartMenu[] = "start-menu";
 inline constexpr char kSourceShortcutLocationTaskbar[] = "taskbar";
 
+// Indicates that the browser was originally launched with the
+// `--single-argument` switch before crossing the process isolation boundary,
+// where positional arguments are re-serialized after `--` to prevent
+// command-line switch smuggling. Used to record launch metrics.
+inline constexpr char kSourceSingleArgument[] = "source-single-argument";
+
 // Identifies Chrome instances that start in foreground mode at startup to
 // record related metrics.
 inline constexpr char kStartupForegroundLaunch[] = "startup-foreground-launch";
@@ -1069,7 +1072,8 @@ inline constexpr char kGeicGuestURL[] = "geic-guest-url";
 // counterpart of `--glic-always-skip-fre`.
 inline constexpr char kGeicAlwaysSkipFre[] = "geic-always-skip-fre";
 
-// Clears all GEiC FRE status at startup. `--geic-always-skip-fre` wins over it.
+// Resets the GEiC FRE for the current GE instance at startup.
+// `--geic-always-skip-fre` wins over it.
 inline constexpr char kGeicResetFre[] = "geic-reset-fre";
 
 inline constexpr char kSkillsV2Origin[] = "skills-v2-origin";

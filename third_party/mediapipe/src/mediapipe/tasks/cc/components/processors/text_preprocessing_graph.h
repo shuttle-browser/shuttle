@@ -16,7 +16,8 @@ limitations under the License.
 #ifndef MEDIAPIPE_TASKS_CC_COMPONENTS_PROCESSORS_TEXT_PREPROCESSING_GRAPH_H_
 #define MEDIAPIPE_TASKS_CC_COMPONENTS_PROCESSORS_TEXT_PREPROCESSING_GRAPH_H_
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/tasks/cc/components/processors/proto/text_preprocessing_graph_options.pb.h"
 #include "mediapipe/tasks/cc/core/model_resources.h"
 
@@ -33,7 +34,7 @@ namespace processors {
 //
 //   auto& preprocessing =
 //       graph.AddNode("mediapipe.tasks.components.processors.TextPreprocessingSubgraph");
-//   MP_RETURN_IF_ERROR(ConfigureTextPreprocessingSubgraph(
+//   ABSL_RETURN_IF_ERROR(ConfigureTextPreprocessingSubgraph(
 //       model_resources,
 //       &preprocessing.GetOptions<TextPreprocessingGraphOptions>()));
 //

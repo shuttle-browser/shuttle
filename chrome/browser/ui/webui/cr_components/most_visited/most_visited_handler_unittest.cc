@@ -26,7 +26,6 @@
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/webui/resources/cr_components/most_visited/most_visited.mojom.h"
 
 namespace {
@@ -66,9 +65,7 @@ class MostVisitedAutoRemovalTest
     handler_ = std::make_unique<MostVisitedHandler>(
         mojo::PendingReceiver<most_visited::mojom::MostVisitedPageHandler>(),
         page_.BindAndGetRemote(), &profile_, web_contents_.get(),
-        std::make_unique<NTPUserDataLogger>(&profile_, GURL(),
-                                            base::TimeTicks::Now()),
-        base::Time::Now());
+        std::make_unique<NTPUserDataLogger>(&profile_, GURL()));
     handler_->EnableTileTypes(
         ntp_tiles::MostVisitedSites::EnableTileTypesOptions().with_custom_links(
             GetParam().custom_links_enabled));

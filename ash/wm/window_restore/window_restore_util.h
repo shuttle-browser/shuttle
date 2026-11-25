@@ -6,6 +6,7 @@
 #define ASH_WM_WINDOW_RESTORE_WINDOW_RESTORE_UTIL_H_
 
 #include <string>
+#include <string_view>
 
 #include "ash/ash_export.h"
 #include "base/functional/callback_forward.h"
@@ -71,13 +72,13 @@ std::unique_ptr<::app_restore::WindowInfo> BuildWindowInfo(
     std::optional<int> activation_index,
     const std::vector<raw_ptr<aura::Window, VectorExperimental>>& mru_windows);
 
-bool IsBrowserAppId(const std::string& id);
+bool IsBrowserAppId(std::string_view id);
 
 // Fetches the favicon for `page_url` for the active user session and returns
 // it, standardized, via `callback`. Runs `callback` with an empty image if
 // there is no active session, no favicon service for the user, or the page has
 // no favicon. `tracker` owns the cancelable request.
-void GetFaviconForUrl(const std::string& page_url,
+void GetFaviconForUrl(std::string_view page_url,
                       base::OnceCallback<void(const gfx::ImageSkia&)> callback,
                       base::CancelableTaskTracker* tracker);
 

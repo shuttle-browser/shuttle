@@ -5,11 +5,10 @@
 /* #css_wrapper_metadata_start
  * #type=style-lit
  * #import=//resources/cr_elements/cr_shared_vars.css.js
- * #import=//resources/cr_elements/cr_spinner_style_lit.css.js
  * #import=/signin_shared.css.js
  * #import=/signin_vars.css.js
  * #scheme=relative
- * #include=signin-shared cr-spinner-style-lit
+ * #include=signin-shared
  * #css_wrapper_metadata_end */
 
 :host {
@@ -17,6 +16,8 @@
   --color-button-foreground-prominent: var(--color-sys-on-primary);
   --color-button-foreground: var(--color-sys-primary);
   --color-button-border: var(--color-sys-tonal-outline);
+  --color-radio-button-foreground-checked: var(--color-sys-primary);
+  --color-radio-button-foreground-unchecked: var(--color-sys-outline);
   color: var(--color-sys-on-surface);
   display: flex;
   flex-direction: column;
@@ -83,48 +84,6 @@
   margin-block: auto;
 }
 
-.action-button {
-  width: 88px;
-}
-
-.tangible-button {
+.action-container cr-button {
   min-width: 88px;
-}
-
-.success-icon,
-.timeout-icon,
-.error-icon {
-  height: 130px;
-  width: 180px;
-}
-
-.success-icon {
-  content: url(images/enrollment_success.svg);
-}
-
-.timeout-icon {
-  content: url(images/enrollment_timeout.svg);
-}
-
-.error-icon {
-  content: url(images/enrollment_failure.svg);
-}
-
-@media (prefers-color-scheme: dark) {
-  .success-icon {
-    content: url(images/enrollment_success_dark.svg);
-  }
-
-  .timeout-icon {
-    content: url(images/enrollment_timeout_dark.svg);
-  }
-
-  .error-icon {
-    content: url(images/enrollment_failure_dark.svg);
-  }
-}
-
-.spinner {
-  --cr-spinner-size: 60px;
-  display: inline-block;
 }

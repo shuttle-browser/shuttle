@@ -8,7 +8,6 @@
 #include "base/test/gtest_util.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/private_ai/private_ai_service_factory.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/common/channel_info.h"
 #include "chrome/test/base/chrome_test_utils.h"
 #include "chrome/test/base/platform_browser_test.h"
@@ -30,14 +29,8 @@ namespace {
 class ConnectionFactoryImplBrowserTest : public PlatformBrowserTest {
  public:
   ConnectionFactoryImplBrowserTest() {
-    feature_list_.InitWithFeaturesAndParameters(
-        /*enabled_features=*/
-        {{kPrivateAi, {{kPrivateAiApiKey.name, "test-api-key"}}}},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove these two Features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+    feature_list_.InitAndEnableFeatureWithParameters(
+        kPrivateAi, {{kPrivateAiApiKey.name, "test-api-key"}});
   }
   ~ConnectionFactoryImplBrowserTest() override = default;
 
@@ -84,16 +77,8 @@ IN_PROC_BROWSER_TEST_F(ConnectionFactoryImplBrowserTest,
   EXPECT_TRUE(connection);
 }
 
-// TODO(crbug.com/542347163): Re-enable test.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
-#define MAYBE_FactoryCtorFailsWithoutApiKey \
-  DISABLED_FactoryCtorFailsWithoutApiKey
-#else
-#define MAYBE_FactoryCtorFailsWithoutApiKey FactoryCtorFailsWithoutApiKey
-#endif
 IN_PROC_BROWSER_TEST_F(ConnectionFactoryImplBrowserTest,
-                       MAYBE_FactoryCtorFailsWithoutApiKey) {
+                       FactoryCtorFailsWithoutApiKey) {
   GURL url("wss://private-ai.googleapis.com");
   EXPECT_CHECK_DEATH(ConnectionFactoryImpl(
       url, GetNetworkContextGetter(), GetLogger(), GetOakSessionDriver(),

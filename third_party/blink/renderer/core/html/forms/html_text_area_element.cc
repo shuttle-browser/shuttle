@@ -155,7 +155,8 @@ HTMLTextAreaElement::HTMLTextAreaElement(Document& document)
       // Prewarm 'monospace', the default font family for `<textarea>`. The
       // default language should be fine for this purpose because most users set
       // the same family for all languages.
-      FontCache::PrewarmFamily(settings->GetGenericFontFamilySettings().Fixed(
+      FontCache::PrewarmFamily(settings->GetGenericFontFamilySettings().Get(
+          GenericFontFamily::kFixed,
           LayoutLocale::GetDefault().GetScriptForFont()));
       g_is_default_font_prewarmed = true;
     }
@@ -177,7 +178,8 @@ FormControlType HTMLTextAreaElement::FormControlType() const {
 }
 
 const AtomicString& HTMLTextAreaElement::FormControlTypeAsString() const {
-  DEFINE_STATIC_LOCAL(const AtomicString, textarea, ("textarea"));
+  DEFINE_STATIC_LOCAL(const AtomicString, textarea,
+                      (AtomicString::FromLiteral<"textarea">()));
   return textarea;
 }
 
@@ -485,6 +487,7 @@ void HTMLTextAreaElement::SubtreeHasChanged() {
     GetDocument().GetPage()->GetChromeClient().DidClearValueInTextField(*this);
   }
   GetDocument().GetPage()->GetChromeClient().DidChangeValueInTextField(*this);
+  GetDocument().DidHaveFormEdit();
 }
 
 void HTMLTextAreaElement::HandleBeforeTextInsertedEvent(
@@ -886,8 +889,7 @@ HTMLElement* HTMLTextAreaElement::UpdatePlaceholderText() {
   if (!placeholder) {
     auto* new_element = MakeGarbageCollected<HTMLDivElement>(GetDocument());
     placeholder = new_element;
-    placeholder->SetShadowPseudoId(
-        shadow_element_names::kPseudoInputPlaceholder);
+    UpdatePlaceholderShadowPseudoId(*placeholder);
     placeholder->setAttribute(html_names::kIdAttr,
                               shadow_element_names::kIdPlaceholder);
     placeholder->SetInlineStyleProperty(

@@ -24,7 +24,6 @@ import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.filters.SmallTest;
 
 import org.junit.Before;
-import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -33,16 +32,12 @@ import org.mockito.junit.MockitoRule;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
-import org.chromium.chrome.browser.permissions.PermissionTestRule;
 import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.browser.settings.SettingsActivity;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
-import org.chromium.chrome.test.batch.BlankCTATabInitialStateRule;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.util.ChromeRenderTestRule;
@@ -60,7 +55,6 @@ import java.util.concurrent.TimeoutException;
 
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(AllSiteSettingsTest.TEST_BATCH_NAME)
-@CommandLineFlags.Add(ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE)
 // TODO(https://crbug.com/464015936): these tests could be flaky because of AnimatedProgressBar.
 @DisableFeatures({ChromeFeatureList.ANDROID_ANIMATED_PROGRESS_BAR_IN_BROWSER})
 public class AllSiteSettingsTest {
@@ -78,17 +72,9 @@ public class AllSiteSettingsTest {
                     .setBugComponent(Component.UI_BROWSER_MOBILE_SETTINGS)
                     .build();
 
-    @ClassRule
-    public static final AutoResetCtaTransitTestRule sActivityTestRule =
-            ChromeTransitTestRules.autoResetCtaActivityRule();
-
-    @ClassRule
-    public static final PermissionTestRule sPermissionTestRule =
-            new PermissionTestRule(sActivityTestRule.getActivityTestRule(), true);
-
     @Rule
-    public BlankCTATabInitialStateRule mBlankCTATabInitialStateRule =
-            new BlankCTATabInitialStateRule(sActivityTestRule.getActivityTestRule(), false);
+    public final AutoResetCtaTransitTestRule mActivityTestRule =
+            ChromeTransitTestRules.autoResetCtaActivityRule();
 
     private static BrowserContextHandle getBrowserContextHandle() {
         return ProfileManager.getLastUsedRegularProfile();
@@ -96,6 +82,7 @@ public class AllSiteSettingsTest {
 
     @Before
     public void setUp() throws TimeoutException {
+        mActivityTestRule.startOnBlankPage();
         SiteSettingsTestUtils.cleanUpCookiesAndPermissions();
     }
 

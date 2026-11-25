@@ -16,7 +16,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ttc/app/audio_controller_impl.h"
 #include "chrome/browser/ttc/app/conversation_impl.h"
-#include "chrome/browser/ttc/app/public/conversation.h"
 #include "chrome/browser/ttc/app/public/make_conversation.h"
 #include "chrome/browser/ttc/core/features.h"
 #include "chrome/browser/ttc/core/session_controller_impl.h"
@@ -25,6 +24,7 @@
 #include "chrome/test/base/chrome_test_utils.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/optimization_guide/core/optimization_guide_proto_util.h"
+#include "components/ttc/app/public/conversation.h"
 #include "components/ttc/app/ttc_mes_client.h"
 #include "content/public/browser/browser_context.h"
 #include "media/audio/audio_system_impl.h"
@@ -222,10 +222,12 @@ void AppBrowserTestBase::OpenBackendConnection() {
                               ConnectionState::kConnected);
 }
 
-void AppBrowserTestBase::CloseBackendConnection() {
+void AppBrowserTestBase::CloseBackendConnection(
+    optimization_guide::RemoteModelExecutionSession::DisconnectReason reason) {
   CHECK_DEREF(model_execution_session())
       .SetConnectionState(optimization_guide::RemoteModelExecutionSession::
-                              ConnectionState::kDisconnected);
+                              ConnectionState::kDisconnected,
+                          reason);
 }
 
 void AppBrowserTestBase::SimulateResponse(
@@ -284,7 +286,8 @@ std::unique_ptr<Conversation> AppBrowserTestBase::MakeConversation(
             [this]() -> std::unique_ptr<media::AudioSystem> {
               return std::make_unique<media::AudioSystemImpl>(
                   audio_manager_.get());
-            }));
+            }),
+        session_controller.GetDebugSink());
   }
 
   return MakeConversationImpl(session_controller, std::move(audio_controller));

@@ -6,7 +6,6 @@
 
 #include <memory>
 #include <optional>
-#include <set>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -15,13 +14,17 @@
 #include "base/base64.h"
 #include "base/check_deref.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/json/json_writer.h"
-#include "base/no_destructor.h"
+#include "base/location.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/types/expected.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/actor/actor_surface_handle.h"
+#include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/actor_task_metadata.h"
+#include "chrome/browser/actor/enterprise_policy_checker.h"
 #include "chrome/browser/actor/tab_observation_strategy.h"
 #include "chrome/browser/actor/tools/click_tool_request.h"
 #include "chrome/browser/actor/tools/find_and_highlight_tool_request.h"
@@ -46,19 +49,28 @@
 #include "chrome/browser/ttc/core/page_context_util.h"
 #include "chrome/browser/ttc/core/session_controller_impl.h"
 #include "chrome/browser/ttc/core/session_journal_impl.h"
+#include "chrome/browser/ttc/core/ttc_keyed_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/common/actor.mojom.h"
 #include "chrome/common/actor/action_result.h"
+#include "chrome/common/webui_url_constants.h"
 #include "components/actor/core/journal_details_builder.h"
 #include "components/actor/core/shared_types.h"
 #include "components/page_content_annotations/content/page_context_fetcher.h"
 #include "components/sessions/core/session_id.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/page.h"
+#include "content/public/browser/reload_type.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/visibility.h"
 #include "content/public/browser/web_contents.h"
 #include "url/gurl.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/device_info.h"
+#endif
 
 namespace ttc {
 
@@ -80,6 +92,17 @@ void OnToolCallFinished(
   }
   journal_event->EndEntry(std::move(details).Build());
   std::move(callback).Run(std::move(response));
+}
+
+// Whether window management tools are offered. They only make sense where
+// Chrome runs in a desktop-style windowing environment with multiple
+// user-visible windows: desktop platforms, and Android in desktop mode.
+bool SupportsWindowManagementTools() {
+#if BUILDFLAG(IS_ANDROID)
+  return base::android::device_info::is_desktop();
+#else
+  return true;
+#endif
 }
 
 // Parses the `node_id` argument sent by the server. The model sees `node_id`
@@ -134,13 +157,80 @@ std::optional<actor::ScrollPageToolRequest::Direction> ParseScrollDirection(
 
 }  // namespace
 
+ToolController::ToolCallState::ToolCallState(ToolRequest request,
+                                             ToolResponseCallback callback)
+    : request(std::move(request)), callback(std::move(callback)) {}
+
+ToolController::ToolCallState::ToolCallState(ToolCallState&&) = default;
+
+ToolController::ToolCallState& ToolController::ToolCallState::operator=(
+    ToolCallState&&) = default;
+
+ToolController::ToolCallState::~ToolCallState() = default;
+
 ToolController::ToolController(SessionControllerImpl& session_controller)
     : session_controller_(session_controller) {}
 
 ToolController::~ToolController() = default;
 
+// The actor only runs one action at a time per task, so tool calls are run one
+// at a time in the order they're received: if a tool call is already
+// running, `tool_request` is queued until all earlier calls have finished.
 void ToolController::ProcessToolCall(const ToolRequest& tool_request,
                                      ToolResponseCallback callback) {
+  const bool must_wait =
+      in_flight_tool_call_.has_value() || !pending_tool_calls_.empty();
+  if (must_wait) {
+    session_controller_->GetJournal().Log(
+        "TtcToolCallQueued",
+        actor::JournalDetailsBuilder()
+            .Add("name", tool_request.name)
+            .Add("arguments",
+                 base::WriteJson(tool_request.arguments).value_or(""))
+            .Build());
+  }
+
+  pending_tool_calls_.emplace_back(tool_request.Clone(), std::move(callback));
+  if (!must_wait) {
+    RunNextToolCall();
+  }
+}
+
+void ToolController::RunNextToolCall() {
+  CHECK(!in_flight_tool_call_);
+  CHECK(!pending_tool_calls_.empty());
+  in_flight_tool_call_.emplace(std::move(pending_tool_calls_.front()));
+  pending_tool_calls_.pop_front();
+  RunToolCall(in_flight_tool_call_->request,
+              base::BindOnce(&ToolController::OnToolCallDone,
+                             weak_factory_.GetWeakPtr()));
+}
+
+void ToolController::OnToolCallDone(ToolResponse response) {
+  CHECK(in_flight_tool_call_);
+  ToolCallState tool_call = std::move(*in_flight_tool_call_);
+  in_flight_tool_call_.reset();
+
+  // Start the next tool call asynchronously rather than from within the
+  // previous call's completion, which may run synchronously from inside
+  // RunToolCall() (e.g. on invalid arguments). This avoids reentrancy and
+  // unbounded recursion when many queued calls fail synchronously.
+  if (!pending_tool_calls_.empty()) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(&ToolController::RunNextToolCall,
+                                  weak_factory_.GetWeakPtr()));
+  }
+
+  // Replying may end the session and destroy `this`, so do it last.
+  std::move(tool_call.callback).Run(std::move(response));
+}
+
+void ToolController::RunToolCall(const ToolRequest& tool_request,
+                                 ToolResponseCallback callback) {
+  // The task may have been stopped while this call was queued. Replace it
+  // before journaling so that the call is journaled under the task it runs in.
+  session_controller_->EnsureActorTaskCreated();
+
   callback = base::BindOnce(
       &OnToolCallFinished,
       session_controller_->GetJournal().BeginAsyncEvent(
@@ -191,6 +281,21 @@ void ToolController::ProcessToolCall(const ToolRequest& tool_request,
       case actor::ToolId::kCloseTab:
         CloseCurrentTab(std::move(callback));
         return;
+      case actor::ToolId::kCreateTab:
+        CreateNewTab(std::move(callback));
+        return;
+      case actor::ToolId::kCloseWindow:
+        if (SupportsWindowManagementTools()) {
+          CloseCurrentWindow(std::move(callback));
+          return;
+        }
+        break;
+      case actor::ToolId::kCreateWindow:
+        if (SupportsWindowManagementTools()) {
+          CreateNewWindow(std::move(callback));
+          return;
+        }
+        break;
       case actor::ToolId::kSwitchTab:
         SwitchTab(tool_request.arguments, std::move(callback));
         return;
@@ -251,32 +356,29 @@ std::vector<ToolDefinition> ToolController::GetToolDefinitions() {
   // TODO(b/573150754): Add kClick, kType, and kSelectOption once MES supports
   // rewriting dom_node_id for TOCTOU checks and ProcessToolCall() dispatches
   // their registry names.
-  static const base::NoDestructor<std::set<actor::ToolId>> kSupportedToolIds({
-      actor::ToolId::kPerformSearch,
-      actor::ToolId::kGoBack,
-      actor::ToolId::kGoForward,
-      actor::ToolId::kReloadPage,
-      actor::ToolId::kFindAndHighlight,
-      actor::ToolId::kPlayVideo,
-      actor::ToolId::kPauseVideo,
-      actor::ToolId::kSeekToTimestamp,
-      actor::ToolId::kTranslatePage,
-      actor::ToolId::kPromptGeminiPanel,
-      actor::ToolId::kCloseGeminiPanel,
-      actor::ToolId::kCloseTab,
-      actor::ToolId::kSwitchTab,
-      actor::ToolId::kOpenUrl,
-      actor::ToolId::kEnterFullscreen,
-      actor::ToolId::kExitFullscreen,
-      actor::ToolId::kOpenKnownPage,
-  });
+  static constexpr actor::ToolIdSet kSupportedToolIds = {
+      actor::ToolId::kPerformSearch,    actor::ToolId::kGoBack,
+      actor::ToolId::kGoForward,        actor::ToolId::kReloadPage,
+      actor::ToolId::kFindAndHighlight, actor::ToolId::kPlayVideo,
+      actor::ToolId::kPauseVideo,       actor::ToolId::kSeekToTimestamp,
+      actor::ToolId::kTranslatePage,    actor::ToolId::kPromptGeminiPanel,
+      actor::ToolId::kCloseGeminiPanel, actor::ToolId::kCloseTab,
+      actor::ToolId::kCreateTab,        actor::ToolId::kSwitchTab,
+      actor::ToolId::kOpenUrl,          actor::ToolId::kEnterFullscreen,
+      actor::ToolId::kExitFullscreen,   actor::ToolId::kOpenKnownPage,
+  };
 
+  actor::ToolIdSet supported_tool_ids = kSupportedToolIds;
+  if (SupportsWindowManagementTools()) {
+    supported_tool_ids.Put(actor::ToolId::kCreateWindow);
+  }
   std::vector<const actor::ToolDefinition*> actor_tools =
-      actor_service->tool_registry().GetToolsByIds(*kSupportedToolIds);
+      actor_service->tool_registry().GetToolsByIds(supported_tool_ids);
 
   // Legacy tools defined below: click_element, set_text, select_option,
-  // scroll_page, and get_screenshot.
-  constexpr size_t kNumLegacyTools = 5;
+  // scroll_page, and get_screenshot; plus close_window where window tools are
+  // supported.
+  constexpr size_t kNumLegacyTools = 6;
   std::vector<ToolDefinition> tools;
   tools.reserve(actor_tools.size() + kNumLegacyTools);
   for (const actor::ToolDefinition* actor_tool : actor_tools) {
@@ -285,7 +387,9 @@ std::vector<ToolDefinition> ToolController::GetToolDefinitions() {
     tool.description = actor_tool->description;
     tool.parameters_json_schema = actor_tool->parameters_json_schema.Clone();
     tool.behavior = ToolDefinition::Behavior::kBlocking;
-    tool.verbalization = ToolDefinition::Verbalization::kSilentAction;
+    tool.verbalization = actor_tool->id == actor::ToolId::kFindAndHighlight
+                             ? ToolDefinition::Verbalization::kStandard
+                             : ToolDefinition::Verbalization::kSilentAction;
     tools.push_back(std::move(tool));
   }
 
@@ -347,21 +451,20 @@ std::vector<ToolDefinition> ToolController::GetToolDefinitions() {
   select_option.parameters_json_schema =
       base::DictValue()
           .Set("type", "object")
-          .Set(
-              "properties",
-              base::DictValue()
-                  .Set("node_id",
-                       base::DictValue()
-                           .Set("type", "integer")
-                           .Set("description",
-                                "The numeric node ID of the target dropdown "
-                                "element (e.g. 101)."))
-                  .Set("value", base::DictValue()
+          .Set("properties",
+               base::DictValue()
+                   .Set("node_id",
+                        base::DictValue()
+                            .Set("type", "integer")
+                            .Set("description",
+                                 "The numeric node ID of the target dropdown "
+                                 "element (e.g. 101)."))
+                   .Set("text", base::DictValue()
                                     .Set("type", "string")
                                     .Set("description",
-                                         "The value of the <option> element to "
+                                         "The text of the <option> element to "
                                          "select.")))
-          .Set("required", base::ListValue().Append("node_id").Append("value"));
+          .Set("required", base::ListValue().Append("node_id").Append("text"));
   select_option.behavior = ToolDefinition::Behavior::kBlocking;
   select_option.verbalization = ToolDefinition::Verbalization::kSilentAction;
   tools.push_back(std::move(select_option));
@@ -416,8 +519,22 @@ std::vector<ToolDefinition> ToolController::GetToolDefinitions() {
       "Capture a screenshot of the active webpage's current viewport.";
   // The tool takes no arguments, so its schema is left empty.
   get_screenshot.behavior = ToolDefinition::Behavior::kBlocking;
-  get_screenshot.verbalization = ToolDefinition::Verbalization::kSilentAction;
+  get_screenshot.verbalization = ToolDefinition::Verbalization::kStandard;
   tools.push_back(std::move(get_screenshot));
+
+  if (SupportsWindowManagementTools()) {
+    // Defined here rather than taken from the registry: the registry's
+    // close_window takes a window_id, but the model has no window IDs. TTC
+    // closes the window containing the tracked tab, as enter_fullscreen does.
+    ToolDefinition close_window;
+    close_window.name =
+        std::string(actor::CloseWindowToolRequest::kModelFacingName);
+    close_window.description = "Close the active browser window.";
+    // The tool takes no arguments, so its schema is left empty.
+    close_window.behavior = ToolDefinition::Behavior::kBlocking;
+    close_window.verbalization = ToolDefinition::Verbalization::kSilentAction;
+    tools.push_back(std::move(close_window));
+  }
 
   return tools;
 }
@@ -457,6 +574,21 @@ void ToolController::CloseCurrentTab(ToolResponseCallback callback) {
       std::move(callback));
 }
 
+void ToolController::CloseCurrentWindow(ToolResponseCallback callback) {
+  PerformActionOnTrackedContents(
+      [](actor::ActorSurfaceHandle actor_surface_handle)
+          -> std::unique_ptr<actor::ToolRequest> {
+        // The tracked tab is always in a window, so this can't be null.
+        const BrowserWindowInterface& browser =
+            CHECK_DEREF(actor_surface_handle.GetTabHandle()
+                            .Get()
+                            ->GetBrowserWindowInterface());
+        return std::make_unique<actor::CloseWindowToolRequest>(
+            browser.GetSessionID().id());
+      },
+      std::move(callback));
+}
+
 void ToolController::CloseGeminiPanel(ToolResponseCallback callback) {
   PerformActionOnTrackedContents(
       [](actor::ActorSurfaceHandle actor_surface_handle)
@@ -465,6 +597,26 @@ void ToolController::CloseGeminiPanel(ToolResponseCallback callback) {
             actor_surface_handle);
       },
       std::move(callback));
+}
+
+void ToolController::CreateNewTab(ToolResponseCallback callback) {
+  // `actor::CreateTabToolRequest` opens an about:blank tab, so open the New
+  // Tab Page in a new tab via `actor::OpenUrlToolRequest` instead, matching
+  // what Ctrl/Cmd+T does.
+  PerformActionOnTrackedContents(
+      [](actor::ActorSurfaceHandle actor_surface_handle)
+          -> std::unique_ptr<actor::ToolRequest> {
+        return std::make_unique<actor::OpenUrlToolRequest>(
+            actor_surface_handle, GURL(chrome::kChromeUINewTabURL),
+            /*open_in_new_tab=*/true);
+      },
+      std::move(callback));
+}
+
+void ToolController::CreateNewWindow(ToolResponseCallback callback) {
+  // The new window becomes active, so the session's tracked tab follows it.
+  PerformAction(std::make_unique<actor::CreateWindowToolRequest>(),
+                std::move(callback));
 }
 
 void ToolController::FindAndHighlight(const base::DictValue& arguments,
@@ -490,13 +642,6 @@ void ToolController::FindAndHighlight(const base::DictValue& arguments,
 // TODO(b/573253710): Migrate this to be an actor tool once ActorKeyedService
 // returns `ToolResponse`s.
 void ToolController::GetScreenshot(ToolResponseCallback callback) {
-  if (is_capturing_screenshot_) {
-    std::move(callback).Run(ToolResponse::Error(
-        actor::mojom::ActionResultCode::kScreenshotCaptureThrottled,
-        "A screenshot capture is already in progress"));
-    return;
-  }
-
   content::WebContents* contents =
       session_controller_->GetVoiceFocusedWebContents();
   if (!contents) {
@@ -505,14 +650,17 @@ void ToolController::GetScreenshot(ToolResponseCallback callback) {
     return;
   }
 
-  is_capturing_screenshot_ = true;
   content::Page& page = contents->GetPrimaryPage();
   const GURL& url = page.GetMainDocument().GetLastCommittedURL();
+  // The session this controller belongs to is owned by the TtcKeyedService.
+  const TtcKeyedService& ttc_service =
+      CHECK_DEREF(TtcKeyedService::Get(GetProfile()));
 
   IsUrlSupportedForPageContext(
-      url, base::BindOnce(&ToolController::OnGetScreenshotUrlChecked,
-                          weak_factory_.GetWeakPtr(), page.GetWeakPtr(),
-                          std::move(callback)));
+      url, ttc_service.enterprise_policy_checker(),
+      base::BindOnce(&ToolController::OnGetScreenshotUrlChecked,
+                     weak_factory_.GetWeakPtr(), page.GetWeakPtr(),
+                     std::move(callback)));
 }
 
 void ToolController::OnGetScreenshotUrlChecked(
@@ -520,7 +668,6 @@ void ToolController::OnGetScreenshotUrlChecked(
     ToolResponseCallback callback,
     bool is_url_supported) {
   if (!is_url_supported) {
-    is_capturing_screenshot_ = false;
     std::move(callback).Run(
         ToolResponse::Error(actor::mojom::ActionResultCode::kUrlBlocked,
                             "URL is not supported for screenshot capture"));
@@ -530,14 +677,12 @@ void ToolController::OnGetScreenshotUrlChecked(
   content::WebContents* web_contents =
       session_controller_->GetVoiceFocusedWebContents();
   if (!web_contents) {
-    is_capturing_screenshot_ = false;
     std::move(callback).Run(ToolResponse::Error(
         actor::mojom::ActionResultCode::kTabWentAway, "No active tab"));
     return;
   }
 
   if (!page || &*page != &web_contents->GetPrimaryPage()) {
-    is_capturing_screenshot_ = false;
     std::move(callback).Run(ToolResponse::Error(
         actor::mojom::ActionResultCode::kScreenshotCaptureFailed,
         "Focused page changed before screenshot capture"));
@@ -545,7 +690,6 @@ void ToolController::OnGetScreenshotUrlChecked(
   }
 
   if (web_contents->IsCrashed()) {
-    is_capturing_screenshot_ = false;
     std::move(callback).Run(ToolResponse::Error(
         actor::mojom::ActionResultCode::kRendererCrashed, "Renderer crashed"));
     return;
@@ -579,7 +723,6 @@ void ToolController::OnGetScreenshotFetched(
     base::expected<
         std::unique_ptr<page_content_annotations::FetchPageContextResult>,
         page_content_annotations::FetchPageContextErrorDetails> result) {
-  is_capturing_screenshot_ = false;
   screenshot_fetcher_.reset();
 
   if (!result.has_value()) {
@@ -757,6 +900,52 @@ void ToolController::PromptGeminiPanel(const base::DictValue& arguments,
 }
 
 void ToolController::ReloadPage(ToolResponseCallback callback) {
+  // The actor rejects every action on a crashed tab, including reloading it,
+  // and leaves recovering the tab to its client (see
+  // ExecutionEngine::KickOffNextAction()), so reload a crashed tab directly.
+  content::WebContents* contents =
+      session_controller_->GetVoiceFocusedWebContents();
+  if (contents && contents->IsCrashed()) {
+    // Bypassing the actor also bypasses its enterprise policy check, which
+    // blocks navigations to URLs the policy explicitly blocks.
+    const actor::EnterprisePolicyChecker* policy_checker =
+        CHECK_DEREF(TtcKeyedService::Get(GetProfile()))
+            .enterprise_policy_checker();
+    if (policy_checker &&
+        policy_checker->Evaluate(contents->GetLastCommittedURL()) ==
+            actor::EnterprisePolicyChecker::UrlBlockReason::
+                kExplicitlyBlocked) {
+      std::move(callback).Run(
+          ToolResponse::Error(actor::mojom::ActionResultCode::kUrlBlocked,
+                              "URL is blocked by enterprise policy"));
+      return;
+    }
+    // Tool calls run one at a time, so no other reload can be in progress.
+    CHECK(!crashed_tab_reload_callback_);
+    if (tabs::TabInterface* active_tab =
+            tabs::TabInterface::MaybeGetFromContents(contents)) {
+      actor::ActorKeyedService* actor_service =
+          actor::ActorKeyedService::Get(GetProfile());
+      CHECK(actor_service);
+      if (actor::ActorTask* task =
+              actor_service->GetTask(session_controller_->GetActorTaskId())) {
+        task->AddTab(active_tab->GetHandle(), /*stop_task_on_detach=*/true,
+                     base::DoNothing());
+      }
+    }
+    crashed_tab_reload_callback_ = std::move(callback);
+    Observe(contents);
+    contents->GetController().Reload(content::ReloadType::NORMAL,
+                                     /*check_for_repost=*/true);
+    // Reload() doesn't start a navigation if it asks the user to confirm
+    // resubmitting a form.
+    if (crashed_tab_reload_callback_ &&
+        !contents->GetController().GetPendingEntry()) {
+      FinishCrashedTabReload();
+    }
+    return;
+  }
+
   PerformActionOnTrackedContents(
       [](actor::ActorSurfaceHandle actor_surface_handle)
           -> std::unique_ptr<actor::ToolRequest> {
@@ -764,6 +953,19 @@ void ToolController::ReloadPage(ToolResponseCallback callback) {
             actor_surface_handle);
       },
       std::move(callback));
+}
+
+void ToolController::FinishCrashedTabReload() {
+  Observe(nullptr);
+  std::move(crashed_tab_reload_callback_).Run(ToolResponse::Success());
+}
+
+void ToolController::DidFinishNavigation(
+    content::NavigationHandle* navigation_handle) {
+  if (navigation_handle->IsInPrimaryMainFrame() &&
+      !navigation_handle->IsSameDocument()) {
+    FinishCrashedTabReload();
+  }
 }
 
 void ToolController::ScrollPage(const base::DictValue& arguments,
@@ -848,19 +1050,21 @@ void ToolController::SelectOption(const base::DictValue& arguments,
     return;
   }
 
-  const std::string* value = arguments.FindString("value");
-  if (!value) {
+  const std::string* text = arguments.FindString("text");
+  if (!text) {
     std::move(callback).Run(
         ToolResponse::Error(actor::mojom::ActionResultCode::kArgumentsInvalid,
-                            "Missing value argument"));
+                            "Missing text argument"));
     return;
   }
 
+  // In Ttc options are selected based on visible text.
   PerformActionOnTrackedContents(
-      [&page_target, &value](actor::ActorSurfaceHandle actor_surface_handle)
+      [&page_target, &text](actor::ActorSurfaceHandle actor_surface_handle)
           -> std::unique_ptr<actor::ToolRequest> {
-        return std::make_unique<actor::SelectToolRequest>(actor_surface_handle,
-                                                          *page_target, *value);
+        return std::make_unique<actor::SelectToolRequest>(
+            actor_surface_handle, *page_target, *text,
+            actor::mojom::SelectAction::OptionMatchMode::kText);
       },
       std::move(callback));
 }
@@ -957,8 +1161,6 @@ void ToolController::PerformActionOnTrackedContents(
     ToolResponseCallback callback) {
   // Resolved via the session's VoiceFocusedContentsTracker rather than a
   // TabStripModel, which Android doesn't have.
-  // TODO(crbug.com/570587982): The Android tracker and the tools routed
-  // through it here are only covered by tests on desktop.
   content::WebContents* contents =
       session_controller_->GetVoiceFocusedWebContents();
   tabs::TabInterface* active_tab =
@@ -982,6 +1184,11 @@ void ToolController::PerformAction(std::unique_ptr<actor::ToolRequest> action,
   actor::ActorKeyedService* actor_service =
       actor::ActorKeyedService::Get(GetProfile());
   CHECK(actor_service);
+
+  // TTC currently doesn't record and send an observation for the page after
+  // acting, so there's no need to wait for the page to settle before responding
+  // to the model.
+  action->SetSkipObservationDelay(true);
 
   std::vector<std::unique_ptr<actor::ToolRequest>> actions;
   actions.push_back(std::move(action));

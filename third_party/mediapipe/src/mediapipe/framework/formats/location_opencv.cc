@@ -14,14 +14,15 @@
 
 #include "mediapipe/framework/formats/location_opencv.h"
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/substitute.h"
+#include "absl/log/absl_check.h"      // from @com_google_absl
+#include "absl/log/absl_log.h"        // from @com_google_absl
+#include "absl/memory/memory.h"       // from @com_google_absl
+#include "absl/status/status.h"       // from @com_google_absl
+#include "absl/status/statusor.h"     // from @com_google_absl
+#include "absl/strings/substitute.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/annotation/rasterization.pb.h"
 #include "mediapipe/framework/formats/location.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
-#include "mediapipe/framework/port/statusor.h"
 
 namespace mediapipe {
 
@@ -46,7 +47,7 @@ Rectangle_i MaskToRectangle(const LocationData& location_data) {
 }
 
 std::unique_ptr<cv::Mat> MaskToMat(const LocationData::BinaryMask& mask) {
-  auto image = absl::make_unique<cv::Mat>();
+  auto image = std::make_unique<cv::Mat>();
   *image = cv::Mat::zeros(cv::Size(mask.width(), mask.height()), CV_32FC1);
   for (const auto& interval : mask.rasterization().interval()) {
     for (int x = interval.left_x(); x <= interval.right_x(); ++x) {
@@ -68,7 +69,7 @@ absl::StatusOr<std::unique_ptr<cv::Mat>> RectangleToMat(
         rect.ymax()));
   }
   // Allocate image and set pixels of foreground mask.
-  auto image = absl::make_unique<cv::Mat>();
+  auto image = std::make_unique<cv::Mat>();
   *image = cv::Mat::zeros(cv::Size(image_width, image_height), CV_32FC1);
   for (int y = rect.ymin(); y < rect.ymax(); ++y) {
     for (int x = rect.xmin(); x < rect.xmax(); ++x) {

@@ -17,6 +17,7 @@
 #import "ios/web/public/test/fakes/fake_web_frames_manager.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #import "ios/web/public/test/web_task_environment.h"
+#import "testing/gmock/include/gmock/gmock.h"
 #import "testing/gtest/include/gtest/gtest.h"
 #import "testing/platform_test.h"
 #import "url/gurl.h"
@@ -36,16 +37,23 @@ class FakeTtcPageContextMonitorDelegate
     return fetched_contexts_;
   }
 
+  const std::vector<PageContextWrapperError>& fetched_errors() const {
+    return fetched_errors_;
+  }
+
   // `TtcPageContextMonitor::Delegate` implementation:
   void OnPageContextFetched(
       PageContextWrapperCallbackResponse response) override {
     if (response.has_value() && response.value()) {
       fetched_contexts_.push_back(*response.value());
+    } else if (!response.has_value()) {
+      fetched_errors_.push_back(response.error());
     }
   }
 
  private:
   std::vector<optimization_guide::proto::PageContext> fetched_contexts_;
+  std::vector<PageContextWrapperError> fetched_errors_;
 };
 
 // Builds a synthetic `PageContext` proto for `url` and `title`.
@@ -132,17 +140,25 @@ TEST_F(TtcPageContextMonitorTest, WaitsForPageLoadedWhenInitiallyLoading) {
   TtcPageContextMonitor monitor(web_state_, &delegate_);
   EXPECT_FALSE(HasPendingWrapper(monitor));
 
-  // A failed page load must not trigger extraction.
+  // A failed page load must not trigger extraction and must notify the delegate
+  // of the failure.
   web_state_.OnPageLoaded(web::PageLoadCompletionStatus::FAILURE);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+  ASSERT_EQ(delegate_.fetched_errors().size(), 1u);
+  EXPECT_EQ(delegate_.fetched_errors()[0],
+            PageContextWrapperError::kGenericError);
 
   web_state_.SetLoading(false);
   web_state_.OnPageLoaded(web::PageLoadCompletionStatus::SUCCESS);
   EXPECT_TRUE(HasPendingWrapper(monitor));
 
-  // A subsequent failed page load cancels any in-flight extraction.
+  // A subsequent failed page load cancels any in-flight extraction and reports
+  // `kGenericError`.
   web_state_.OnPageLoaded(web::PageLoadCompletionStatus::FAILURE);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+  ASSERT_EQ(delegate_.fetched_errors().size(), 2u);
+  EXPECT_EQ(delegate_.fetched_errors()[1],
+            PageContextWrapperError::kGenericError);
 }
 
 // Tests that a committed cross-document navigation cancels any in-flight
@@ -211,14 +227,20 @@ TEST_F(TtcPageContextMonitorTest, SameDocumentNavigationExtractsImmediately) {
 }
 
 // Tests that ineligible pages (such as `chrome://newtab`) do not trigger
-// extraction.
+// extraction and instead report `kPageNotExtractableError` to the delegate.
 TEST_F(TtcPageContextMonitorTest, SkipsIneligiblePages) {
   web_state_.SetCurrentURL(GURL("chrome://newtab"));
   TtcPageContextMonitor monitor(web_state_, &delegate_);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+  ASSERT_EQ(delegate_.fetched_errors().size(), 1u);
+  EXPECT_EQ(delegate_.fetched_errors()[0],
+            PageContextWrapperError::kPageNotExtractableError);
 
   web_state_.OnPageLoaded(web::PageLoadCompletionStatus::SUCCESS);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+  ASSERT_EQ(delegate_.fetched_errors().size(), 2u);
+  EXPECT_EQ(delegate_.fetched_errors()[1],
+            PageContextWrapperError::kPageNotExtractableError);
 }
 
 // Tests that `Disconnect()` stops observing the `WebState` and suppresses
@@ -232,7 +254,9 @@ TEST_F(TtcPageContextMonitorTest, DisconnectStopsObservation) {
   EXPECT_FALSE(HasPendingWrapper(monitor));
 
   web_state_.OnPageLoaded(web::PageLoadCompletionStatus::SUCCESS);
+  web_state_.OnPageLoaded(web::PageLoadCompletionStatus::FAILURE);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+  EXPECT_TRUE(delegate_.fetched_errors().empty());
 }
 
 // Tests that constructing `TtcPageContextMonitor` on an unrealized `WebState`
@@ -241,6 +265,24 @@ TEST_F(TtcPageContextMonitorTest, SkipsUnrealizedWebStateOnConstruction) {
   web_state_.SetIsRealized(false);
   TtcPageContextMonitor monitor(web_state_, &delegate_);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+}
+
+// Tests that a renderer termination cancels any pending extraction and reports
+// `kPageNotExtractableError` to the delegate, and is ignored after
+// `Disconnect()`.
+TEST_F(TtcPageContextMonitorTest, RenderProcessGoneCancelsPendingExtraction) {
+  TtcPageContextMonitor monitor(web_state_, &delegate_);
+  EXPECT_TRUE(HasPendingWrapper(monitor));
+
+  web_state_.OnRenderProcessGone();
+  EXPECT_FALSE(HasPendingWrapper(monitor));
+  ASSERT_EQ(delegate_.fetched_errors().size(), 1u);
+  EXPECT_EQ(delegate_.fetched_errors()[0],
+            PageContextWrapperError::kPageNotExtractableError);
+
+  monitor.Disconnect();
+  web_state_.OnRenderProcessGone();
+  EXPECT_EQ(delegate_.fetched_errors().size(), 1u);
 }
 
 // Tests that destroying the monitored `WebState` cancels any pending extraction
@@ -257,4 +299,88 @@ TEST_F(TtcPageContextMonitorTest, WebStateDestroyedCancelsPendingExtraction) {
   transient_web_state.reset();
   EXPECT_EQ(monitor.web_state(), nullptr);
   EXPECT_FALSE(HasPendingWrapper(monitor));
+}
+
+// Tests that `TtcPageContextMonitor` records `kBegin` and `kEnd` journal
+// entries with `actionable=true`, `result=ok`, and `size_bytes` when extraction
+// succeeds.
+TEST_F(TtcPageContextMonitorTest,
+       LogsBeginAndEndJournalEntriesOnSuccessfulExtraction) {
+  TTCJournal journal;
+  const GURL url("https://example.com/initial");
+  TtcPageContextMonitor monitor(web_state_, &delegate_, &journal);
+  ASSERT_EQ(journal.entries().size(), 1u);
+
+  SimulateExtractionCompleted(monitor, url,
+                              MakePageContextResponse(url, "Initial Page"));
+
+  ASSERT_EQ(journal.entries().size(), 2u);
+  EXPECT_EQ(journal.entries()[0].type, TTCJournalEntryType::kBegin);
+  EXPECT_EQ(journal.entries()[0].event_name, "TtcPageContextExtraction");
+  EXPECT_THAT(journal.entries()[0].details,
+              testing::Contains(TTCJournalDetail{"actionable", "true"}));
+  EXPECT_EQ(journal.entries()[1].type, TTCJournalEntryType::kEnd);
+  EXPECT_EQ(journal.entries()[1].event_name, "TtcPageContextExtraction");
+  EXPECT_EQ(journal.entries()[1].summary, "Extracted APC (45 B)");
+  EXPECT_THAT(journal.entries()[1].details,
+              testing::IsSupersetOf({
+                  TTCJournalDetail{"result", "ok"},
+                  TTCJournalDetail{"size_bytes", "45"},
+              }));
+}
+
+// Tests that cancelling an in-flight extraction via `Disconnect()` records a
+// `kEnd` journal entry with `result=cancelled`.
+TEST_F(TtcPageContextMonitorTest,
+       DisconnectLogsCancelledJournalEntryForPendingExtraction) {
+  TTCJournal journal;
+  TtcPageContextMonitor monitor(web_state_, &delegate_, &journal);
+  ASSERT_EQ(journal.entries().size(), 1u);
+
+  monitor.Disconnect();
+
+  ASSERT_EQ(journal.entries().size(), 2u);
+  EXPECT_EQ(journal.entries()[1].type, TTCJournalEntryType::kEnd);
+  EXPECT_EQ(journal.entries()[1].event_name, "TtcPageContextExtraction");
+  EXPECT_THAT(journal.entries()[1].details,
+              testing::Contains(TTCJournalDetail{"result", "cancelled"}));
+}
+
+// Tests that `TtcPageContextMonitor` records a `kEnd` journal entry with
+// `result=stale_url` when `WebState` navigated away before extraction finished.
+TEST_F(TtcPageContextMonitorTest,
+       LogsStaleUrlJournalEntryWhenExtractionCompletesAfterUrlChange) {
+  TTCJournal journal;
+  TtcPageContextMonitor monitor(web_state_, &delegate_, &journal);
+  ASSERT_EQ(journal.entries().size(), 1u);
+  web_state_.SetCurrentURL(GURL("https://example.com/other"));
+
+  SimulateExtractionCompleted(
+      monitor, GURL("https://example.com/initial"),
+      MakePageContextResponse(GURL("https://example.com/initial"), "Stale"));
+
+  ASSERT_EQ(journal.entries().size(), 2u);
+  EXPECT_EQ(journal.entries()[1].type, TTCJournalEntryType::kEnd);
+  EXPECT_THAT(journal.entries()[1].details,
+              testing::Contains(TTCJournalDetail{"result", "stale_url"}));
+}
+
+// Tests that `TtcPageContextMonitor` records a `kEnd` journal entry with
+// `result=error` and `error=generic_error` when extraction fails.
+TEST_F(TtcPageContextMonitorTest, LogsErrorJournalEntryWhenExtractionFails) {
+  TTCJournal journal;
+  TtcPageContextMonitor monitor(web_state_, &delegate_, &journal);
+  ASSERT_EQ(journal.entries().size(), 1u);
+
+  SimulateExtractionCompleted(
+      monitor, GURL("https://example.com/initial"),
+      base::unexpected(PageContextWrapperError::kGenericError));
+
+  ASSERT_EQ(journal.entries().size(), 2u);
+  EXPECT_EQ(journal.entries()[1].type, TTCJournalEntryType::kEnd);
+  EXPECT_THAT(journal.entries()[1].details,
+              testing::IsSupersetOf({
+                  TTCJournalDetail{"result", "error"},
+                  TTCJournalDetail{"error", "generic_error"},
+              }));
 }

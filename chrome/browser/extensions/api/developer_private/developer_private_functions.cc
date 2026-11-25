@@ -54,7 +54,6 @@
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/sync/base/features.h"
 #include "content/public/common/drop_data.h"
 #include "extensions/browser/crx_installer.h"
 #include "extensions/browser/disable_reason.h"
@@ -84,7 +83,7 @@
 #include "third_party/re2/src/re2/re2.h"
 #include "ui/base/clipboard/file_info.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/android/extensions/extension_site_settings_android.h"
@@ -136,7 +135,7 @@
 #include "extensions/common/url_pattern.h"
 #include "extensions/common/url_pattern_set.h"
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
-#include "storage/browser/blob/shareable_file_reference.h"
+#include "storage/browser/blob/scoped_file.h"
 #include "storage/browser/file_system/external_mount_points.h"
 #include "storage/browser/file_system/file_system_context.h"
 #include "storage/browser/file_system/file_system_operation.h"
@@ -649,8 +648,9 @@ DeveloperPrivateOpenReviewPageFunction::Run() {
   GURL review_url = util::GetCWSWritingReviewUrl(
       params->extension_id, util::CWSReviewSource::kExtensionsPage);
 
-  ExtensionTabUtil::NavigateToURL(WindowOpenDisposition::kNewForegroundTab,
-                                  web_contents, review_url, base::DoNothing());
+  ExtensionTabUtil::NavigateToURL(
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab, web_contents,
+      review_url, base::DoNothing());
 
   return RespondNow(NoArguments());
 }
@@ -2280,12 +2280,7 @@ DeveloperPrivateUploadExtensionToAccountFunction::Run() {
   // - the extension is already associated with the signed in user's account.
   // - the extension is not syncable (for example, if it's unpacked).
   if (!AccountExtensionTracker::Get(profile_)->CanUploadAsAccountExtension(
-          *extension)
-#if BUILDFLAG(IS_CHROMEOS)
-      ||
-      !base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos)
-#endif
-  ) {
+          *extension)) {
     return RespondNow(Error(ErrorUtils::FormatErrorMessage(
         kCannotUploadExtensionToAccount, extension_id_)));
   }
@@ -2572,7 +2567,7 @@ void DeveloperPrivateLoadDirectoryFunction::SnapshotFileCallback(
     base::File::Error result,
     const base::File::Info& file_info,
     const base::FilePath& src_path,
-    scoped_refptr<storage::ShareableFileReference> file_ref) {
+    storage::ScopedFile temp_file) {
   if (result != base::File::FILE_OK) {
     error_ = "Error in copying files from sync filesystem.";
     success_ = false;
@@ -2583,12 +2578,13 @@ void DeveloperPrivateLoadDirectoryFunction::SnapshotFileCallback(
       FROM_HERE,
       {base::MayBlock(), base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN},
       base::BindOnce(&DeveloperPrivateLoadDirectoryFunction::CopyFile, this,
-                     src_path, target_path));
+                     src_path, target_path, std::move(temp_file)));
 }
 
 void DeveloperPrivateLoadDirectoryFunction::CopyFile(
     const base::FilePath& src_path,
-    const base::FilePath& target_path) {
+    const base::FilePath& target_path,
+    storage::ScopedFile temp_file) {
   if (!base::CreateDirectory(target_path.DirName())) {
     error_ = "Error in copying files from sync filesystem.";
     success_ = false;

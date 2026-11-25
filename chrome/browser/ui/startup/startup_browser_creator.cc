@@ -100,6 +100,7 @@
 #include "printing/buildflags/buildflags.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
+#include "ash/constants/ash_pref_names.h"
 #include "ash/constants/ash_switches.h"
 #include "chrome/browser/ash/app_mode/app_launch_utils.h"
 #include "chrome/browser/ash/app_mode/kiosk_app_types.h"
@@ -360,7 +361,7 @@ bool IsSilentLaunchEnabled(const base::CommandLine& command_line,
 
 #if BUILDFLAG(IS_CHROMEOS)
   return profile->GetPrefs()->GetBoolean(
-      prefs::kStartupBrowserWindowLaunchSuppressed);
+      ash::prefs::kStartupBrowserWindowLaunchSuppressed);
 #else
   return false;
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -398,8 +399,8 @@ bool MaybeLaunchAppShortcutWindow(const base::CommandLine& command_line,
   if (!url.is_empty() && url.is_valid()) {
     content::ChildProcessSecurityPolicy* policy =
         content::ChildProcessSecurityPolicy::GetInstance();
-    if (policy->IsWebSafeScheme(url.GetScheme()) ||
-        url.SchemeIs(url::kFileScheme)) {
+    if (url.SchemeIsHTTPOrHTTPS() || url.SchemeIs(url::kFileScheme) ||
+        policy->IsWebSafeScheme(url.GetScheme())) {
       const content::WebContents* web_contents =
           apps::OpenExtensionAppShortcutWindow(profile, url);
       if (web_contents) {
@@ -680,14 +681,12 @@ std::optional<bool> MaybeHandleValidateCrx(
   }
 
   extensions::StartupHelper helper;
-  std::string message;
   std::string error;
   if (helper.ValidateCrx(command_line, &error)) {
-    message = std::string("ValidateCrx Success");
+    printf("ValidateCrx Success\n");
   } else {
-    message = std::string("ValidateCrx Failure: ") + error;
+    printf("ValidateCrx Failure: %s\n", error.c_str());
   }
-  printf("%s\n", message.c_str());
   return false;
 }
 

@@ -561,7 +561,7 @@ TEST_F(PaletteTrayNoSessionTestWithInternalStylus,
   };
 
   // Add a external display, then sign in.
-  UpdateDisplay("300x200,300x200");
+  UpdateDisplay("320x200,320x200");
   display::test::DisplayManagerTestApi(display_manager())
       .SetFirstDisplayAsInternalDisplay();
   Shell::RootWindowControllerList controllers =
@@ -603,7 +603,7 @@ class PaletteTrayTestWithOOBE : public PaletteTrayTest {
   // PaletteTrayTest:
   void SetUpInitParams(AshTestHelper::InitParams& init_params) override {
     PaletteTrayTest::SetUpInitParams(init_params);
-    init_params.start_session = false;
+    init_params.users.clear();
   }
 };
 
@@ -648,7 +648,7 @@ class PaletteTrayTestMultiDisplay : public PaletteTrayTest {
         switches::kAshEnablePaletteOnAllDisplays);
 
     // Add a external display, then sign in.
-    UpdateDisplay("300x200,300x200");
+    UpdateDisplay("320x200,320x200");
     display::test::DisplayManagerTestApi(display_manager())
         .SetFirstDisplayAsInternalDisplay();
     Shell::RootWindowControllerList controllers =

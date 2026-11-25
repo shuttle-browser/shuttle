@@ -1741,6 +1741,18 @@ class NearbySharingServiceImplSendFailureTest
             /*feature_mask=*/std::get<1>(GetParam())) {}
 };
 
+// size_t parameter is |feature_mask|.
+using InvalidFileAttachmentNameTestData = std::tuple<std::string, size_t>;
+
+class NearbySharingServiceInvalidFileAttachmentNameTest
+    : public NearbySharingServiceImplTestBase,
+      public testing::WithParamInterface<InvalidFileAttachmentNameTestData> {
+ public:
+  NearbySharingServiceInvalidFileAttachmentNameTest()
+      : NearbySharingServiceImplTestBase(
+            /*feature_mask=*/std::get<1>(GetParam())) {}
+};
+
 class TestObserver : public NearbySharingService::Observer {
  public:
   explicit TestObserver(NearbySharingService* service) : service_(service) {
@@ -3315,6 +3327,71 @@ TEST_P(NearbySharingServiceImplTest,
   run_loop.Run();
 
   // To avoid UAF in OncomingTransferUpdate().
+  service_->UnregisterReceiveSurface(&callback);
+}
+
+TEST_P(NearbySharingServiceInvalidFileAttachmentNameTest,
+       IncomingConnection_InvalidFileAttachmentNameRejected) {
+  const std::string& invalid_file_name = std::get<0>(GetParam());
+  fake_nearby_connections_manager_->SetRawAuthenticationToken(kEndpointId,
+                                                              Token());
+  SetUpAdvertisementDecoder(ValidV1EndpointInfo(),
+                            /*return_empty_advertisement=*/false,
+                            /*return_empty_device_name=*/false,
+                            /*expected_number_of_calls=*/1u);
+
+  std::string intro = "introduction_frame";
+  std::vector<uint8_t> bytes(intro.begin(), intro.end());
+  EXPECT_CALL(mock_decoder_, DecodeFrame(testing::Eq(bytes), testing::_))
+      .WillOnce([&invalid_file_name](
+                    const std::vector<uint8_t>& data,
+                    ash::nearby::MockNearbySharingDecoder::DecodeFrameCallback
+                        callback) {
+        std::vector<sharing::mojom::FileMetadataPtr> mojo_file_metadatas;
+        mojo_file_metadatas.push_back(sharing::mojom::FileMetadata::New(
+            invalid_file_name, sharing::mojom::FileMetadata::Type::kAudio,
+            /*payload_id=*/1, /*size=*/100, "mime_type",
+            /*id=*/123));
+
+        sharing::mojom::V1FramePtr mojo_v1frame =
+            sharing::mojom::V1Frame::NewIntroduction(
+                sharing::mojom::IntroductionFrame::New(
+                    std::move(mojo_file_metadatas),
+                    std::vector<sharing::mojom::TextMetadataPtr>(),
+                    /*required_package=*/std::nullopt,
+                    std::vector<sharing::mojom::WifiCredentialsMetadataPtr>()));
+
+        sharing::mojom::FramePtr mojo_frame =
+            sharing::mojom::Frame::NewV1(std::move(mojo_v1frame));
+
+        std::move(callback).Run(std::move(mojo_frame));
+      });
+  connection_.AppendReadableData(std::move(bytes));
+
+  SetConnectionType(net::NetworkChangeNotifier::CONNECTION_WIFI);
+  NiceMock<MockTransferUpdateCallback> callback;
+  base::RunLoop run_loop;
+  EXPECT_CALL(callback, OnTransferUpdate(testing::_, testing::_))
+      .WillOnce([&run_loop](const ShareTarget& share_target,
+                            TransferMetadata metadata) {
+        EXPECT_TRUE(metadata.is_final_status());
+        EXPECT_EQ(TransferMetadata::Status::kUnsupportedAttachmentType,
+                  metadata.status());
+        EXPECT_TRUE(share_target.is_incoming);
+        EXPECT_EQ(0u, share_target.file_attachments.size());
+        run_loop.Quit();
+      });
+
+  SetUpKeyVerification(/*is_incoming=*/true,
+                       sharing::mojom::PairedKeyResultFrame_Status::kSuccess);
+  SetUpForegroundReceiveSurface(callback);
+  service_->OnIncomingConnectionAccepted(kEndpointId, ValidV1EndpointInfo(),
+                                         &connection_);
+  ProcessLatestPublicCertificateDecryption(/*expected_num_calls=*/1,
+                                           /*success=*/true);
+  run_loop.Run();
+
+  // To avoid UAF in OnIncomingTransferUpdate().
   service_->UnregisterReceiveSurface(&callback);
 }
 
@@ -5588,5 +5665,18 @@ INSTANTIATE_TEST_SUITE_P(
                         nearby_share::mojom::Visibility::kSelectedContacts,
                         nearby_share::mojom::Visibility::kNoOne),
         testing::Range<size_t>(0, 1 << kTestFeatures.size())));
+
+INSTANTIATE_TEST_SUITE_P(
+    NearbySharingServiceImplTest,
+    NearbySharingServiceInvalidFileAttachmentNameTest,
+    testing::Combine(testing::Values(std::string(),
+                                     std::string("evil\0.txt", 9),
+                                     std::string("."),
+                                     std::string(".."),
+                                     std::string("../../evil.txt"),
+                                     std::string("subdir/evil.txt"),
+                                     std::string("/etc/passwd"),
+                                     std::string("evil.txt/")),
+                     testing::Range<size_t>(0, 1 << kTestFeatures.size())));
 
 }  // namespace NearbySharingServiceUnitTests

@@ -16,7 +16,6 @@
 #include "chrome/common/chrome_features.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
-#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
@@ -26,7 +25,6 @@ namespace actor {
 using content::RenderFrameHost;
 using content::WebContents;
 using optimization_guide::DocumentIdentifierUserData;
-using tabs::TabHandle;
 
 namespace {
 constexpr absl::Overload ToMojoFn{
@@ -55,9 +53,10 @@ ToolRequest::CreateToolResult PageToolRequest::CreateTool(
     TaskId task_id,
     ToolDelegate& tool_delegate) const {
   if (!GetActorSurfaceHandle().Get()) {
-    return {/*tool=*/nullptr, MakeResult(mojom::ActionResultCode::kTabWentAway,
-                                         /*requires_page_stabilization=*/false,
-                                         "The tab is no longer present.")};
+    return {/*tool=*/nullptr,
+            MakeResult(mojom::ActionResultCode::kTabWentAway,
+                       /*requires_page_stabilization=*/false,
+                       "The target surface is no longer present.")};
   }
 
   return {std::make_unique<PageTool>(task_id, tool_delegate, *this),

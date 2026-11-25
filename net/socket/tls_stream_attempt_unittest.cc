@@ -696,16 +696,8 @@ TEST_F(TlsStreamAttemptTest, TrustAnchorIDsInitialSuccess) {
     int rv = helper.Start();
     EXPECT_THAT(rv, IsError(ERR_IO_PENDING));
 
-    base::HistogramTester histogram_tester;
     rv = helper.WaitForCompletion();
     EXPECT_THAT(rv, IsOk());
-    histogram_tester.ExpectTotalCount("Net.SSL_Connection_Error_TrustAnchorIDs",
-                                      0);
-    histogram_tester.ExpectTotalCount(
-        "Net.SSL_Connection_Latency_TrustAnchorIDs", 0);
-    histogram_tester.ExpectUniqueSample(
-        "Net.SSL.TrustAnchorIDsResult",
-        SSLClientSocket::TrustAnchorIDsResult::kNoDnsSuccessInitial, 1);
   }
 }
 
@@ -741,16 +733,8 @@ TEST_F(TlsStreamAttemptTest, TrustAnchorIDsNoTrustAnchorIDsConfigured) {
   int rv = helper.Start();
   EXPECT_THAT(rv, IsError(ERR_IO_PENDING));
 
-  base::HistogramTester histogram_tester;
   rv = helper.WaitForCompletion();
   EXPECT_THAT(rv, IsOk());
-  histogram_tester.ExpectTotalCount("Net.SSL_Connection_Error_TrustAnchorIDs",
-                                    0);
-  histogram_tester.ExpectTotalCount("Net.SSL_Connection_Latency_TrustAnchorIDs",
-                                    0);
-  histogram_tester.ExpectUniqueSample(
-      "Net.SSL.TrustAnchorIDsResult",
-      SSLClientSocket::TrustAnchorIDsResult::kNoDnsSuccessInitial, 1);
 }
 
 //

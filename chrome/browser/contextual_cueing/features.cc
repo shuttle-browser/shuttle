@@ -9,7 +9,7 @@ namespace contextual_cueing {
 BASE_FEATURE(kContextualCueingV2, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kContextualCueingV2EnforceAgeRestriction,
              base::FEATURE_DISABLED_BY_DEFAULT);
-BASE_FEATURE(kContextualCueingV2MultiSource, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kContextualCueingV2MultiSource, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kContextualCueingV2AllowOverridingUcbScoring,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -32,6 +32,16 @@ const base::FeatureParam<int> kMaxNumBackgroundTabs(
     &kContextualCueingV2,
     "ContextualCueingV2MaxNumBackgroundTabs",
     10);
+
+const base::FeatureParam<int> kMaxNumHistoricalTabs(
+    &kContextualCueingV2,
+    "ContextualCueingV2MaxNumHistoricalTabs",
+    0);
+
+const base::FeatureParam<base::TimeDelta> kHistoricalTabsTimeWindow(
+    &kContextualCueingV2,
+    "ContextualCueingV2HistoricalTabsTimeWindow",
+    base::Hours(24));
 
 const base::FeatureParam<bool> kDisableCueBackoff(
     &kContextualCueingV2,

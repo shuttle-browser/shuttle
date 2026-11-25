@@ -38,6 +38,7 @@
 #include "base/threading/thread.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
+#include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 
@@ -277,6 +278,9 @@ bool ImportantFileWriter::WriteFileAtomicallyImpl(
     std::string_view histogram_suffix,
     bool from_instance,
     ReplaceFileCallback replace_file_callback) {
+  TRACE_EVENT("base", "ImportantFileWriter::WriteFileAtomicallyImpl",
+              "histogram_suffix", histogram_suffix, "path",
+              path.BaseName().AsUTF8Unsafe());
   const TimeTicks write_start = TimeTicks::Now();
   if (!from_instance) {
     ImportantFileWriterCleaner::AddDirectory(path.DirName());
@@ -290,20 +294,6 @@ bool ImportantFileWriter::WriteFileAtomicallyImpl(
   base::wcslcpy(path_copy, path.value().c_str(), std::size(path_copy));
   base::debug::Alias(path_copy);
 #endif  // BUILDFLAG(IS_WIN) && DCHECK_IS_ON()
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // On Chrome OS, chrome gets killed when it cannot finish shutdown quickly,
-  // and this function seems to be one of the slowest shutdown steps.
-  // Include some info to the report for investigation. crbug.com/418627
-  // TODO(hashimoto): Remove this.
-  struct {
-    size_t data_size;
-    char path[128];
-  } file_info;
-  file_info.data_size = data.size();
-  strlcpy(file_info.path, path.value().c_str(), std::size(file_info.path));
-  debug::Alias(&file_info);
-#endif
 
   // Write the data to a temp file then rename to avoid data loss if we crash
   // while writing the file. Ensure that the temp file is on the same volume
@@ -529,6 +519,10 @@ void ImportantFileWriter::ScheduleWriteWithBackgroundDataSerializer(
 }
 
 void ImportantFileWriter::DoScheduledWrite() {
+  TRACE_EVENT("base", "ImportantFileWriter::DoScheduledWrite",
+              "histogram_suffix", histogram_suffix_, "path",
+              path_.BaseName().AsUTF8Unsafe());
+
   // One of the serializers should be set.
   DCHECK(!std::holds_alternative<std::monostate>(serializer_));
 

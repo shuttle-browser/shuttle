@@ -14,8 +14,8 @@
 #include "base/memory/weak_ptr.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "ui/base/mojom/menu_source_type.mojom-forward.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
 #include "url/gurl.h"
 
@@ -98,10 +98,10 @@ class OmniboxEverywhereService : public KeyedService {
                         ui::mojom::MenuSourceType source_type,
                         base::OnceClosure on_closed);
   void OpenUrl(const GURL& url,
-               WindowOpenDisposition disposition,
+               ui::mojom::WindowOpenDisposition disposition,
                ui::PageTransition transition);
   virtual void OpenUrl(const GURL& url,
-                       WindowOpenDisposition disposition,
+                       ui::mojom::WindowOpenDisposition disposition,
                        ui::PageTransition transition,
                        base::OnceCallback<void(content::NavigationHandle&)>
                            navigation_handle_callback);
@@ -136,7 +136,7 @@ class OmniboxEverywhereService : public KeyedService {
   void NavigateInBrowserWindow(
       BrowserWindowInterface* bwi,
       const GURL& url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       ui::PageTransition transition,
       base::OnceCallback<void(content::NavigationHandle&)>
           navigation_handle_callback);

@@ -8,10 +8,12 @@
 
 #include "base/functional/bind.h"
 #include "base/test/test_future.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_test_utils.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_test_util.h"
+#include "components/contextual_tasks/public/features.h"
 #include "components/search_engines/template_url_data.h"
 #include "components/search_engines/template_url_service.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -106,6 +108,7 @@ ContextualTasksUiServiceTestBase::~ContextualTasksUiServiceTestBase() = default;
 
 void ContextualTasksUiServiceTestBase::SetUp() {
   content::RenderViewHostTestHarness::SetUp();
+  SKIP_IF_CONTEXTUAL_TASKS_UNSUPPORTED();
   // IdentityTestEnvironment must be created after the TaskEnvironment.
   identity_test_env_ = std::make_unique<signin::IdentityTestEnvironment>();
 
@@ -197,6 +200,13 @@ void ContextualTasksUiServiceTestBase::SetUp() {
 }
 
 void ContextualTasksUiServiceTestBase::TearDown() {
+  // Don't use IsSkipped(): some tests skip from the test body after a
+  // full SetUp() and still need the fixture cleanup below.
+  if (!contextual_tasks::IsContextualTasksFormFactorSupported()) {
+    // SetUp() skipped the test after setting up the harness.
+    content::RenderViewHostTestHarness::TearDown();
+    return;
+  }
   real_service_ = nullptr;
   service_for_nav_ = nullptr;
   ContextualTasksUiServiceFactory::GetInstance()->SetTestingFactory(

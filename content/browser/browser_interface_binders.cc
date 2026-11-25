@@ -31,6 +31,7 @@
 #include "content/browser/contacts/contacts_manager_impl.h"
 #include "content/browser/content_index/content_index_service_impl.h"
 #include "content/browser/cookie_store/cookie_store_manager.h"
+#include "content/browser/cross_origin_storage/cross_origin_storage_manager_impl.h"
 #include "content/browser/declarative_performance_observer/declarative_performance_observer.h"
 #include "content/browser/device_posture/device_posture_provider_impl.h"
 #include "content/browser/eye_dropper_chooser_impl.h"
@@ -120,6 +121,7 @@
 #include "services/device/public/cpp/compute_pressure/buildflags.h"
 #include "services/device/public/cpp/device_features.h"
 #include "services/device/public/mojom/battery_monitor.mojom.h"
+#include "services/device/public/mojom/haptics.mojom.h"
 #include "services/device/public/mojom/vibration_manager.mojom.h"
 #include "services/metrics/public/mojom/ukm_interface.mojom.h"
 #include "services/metrics/ukm_recorder_factory_impl.h"
@@ -254,7 +256,10 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
+#include "base/apple/foundation_util.h"
+#include "base/files/file_path.h"
 #include "content/browser/renderer_host/text_input_host_impl.h"
+#include "content/public/browser/child_process_host.h"
 #include "services/webnn/public/cpp/coreml_initializer.h"
 #include "third_party/blink/public/mojom/input/text_input_host.mojom.h"
 #endif
@@ -262,6 +267,9 @@
 #if BUILDFLAG(IS_CHROMEOS)
 #include "content/browser/lock_screen/lock_screen_service_impl.h"
 #include "third_party/blink/public/mojom/lock_screen/lock_screen.mojom.h"
+#endif
+
+#if BUILDFLAG(ENABLE_SMART_CARD)
 #include "third_party/blink/public/mojom/smart_card/smart_card.mojom.h"
 #endif
 
@@ -302,6 +310,17 @@ void BindTextDetection(
   GetShapeDetectionService()->BindTextDetection(std::move(receiver));
 }
 
+#if BUILDFLAG(IS_MAC)
+void InitializeWebNNCacheDirAndRun(base::OnceClosure callback) {
+  // SwiftShader is disabled by default, so the GPU process runs in this helper.
+  // When enabled, it runs in the (GPU) helper, which has the same bundle ID.
+  static const base::NoDestructor<base::FilePath> gpu_helper_app_path(
+      base::apple::GetInnermostAppBundlePath(
+          ChildProcessHost::GetChildPath(ChildProcessHost::CHILD_NORMAL)));
+  webnn::InitializeCacheDirAndRun(*gpu_helper_app_path, std::move(callback));
+}
+#endif
+
 void BindWebNNContextProviderForRenderFrame(
     RenderFrameHost* host,
     mojo::PendingReceiver<webnn::mojom::WebNNContextProvider> receiver) {
@@ -317,7 +336,7 @@ void BindWebNNContextProviderForRenderFrame(
   auto* process_host = static_cast<RenderProcessHostImpl*>(host->GetProcess());
   const bool is_incognito = host->GetBrowserContext()->IsOffTheRecord();
 #if BUILDFLAG(IS_MAC)
-  webnn::InitializeCacheDirAndRun(
+  InitializeWebNNCacheDirAndRun(
       base::BindOnce(&viz::GpuClient::BindWebNNContextProvider,
                      process_host->GetGpuClient()->GetWeakPtr(),
                      std::move(receiver), is_incognito));
@@ -359,7 +378,7 @@ void BindWebNNContextProviderForWorker(
       static_cast<RenderProcessHostImpl*>(host->GetProcessHost());
   const bool is_incognito = process_host->GetBrowserContext()->IsOffTheRecord();
 #if BUILDFLAG(IS_MAC)
-  webnn::InitializeCacheDirAndRun(
+  InitializeWebNNCacheDirAndRun(
       base::BindOnce(&viz::GpuClient::BindWebNNContextProvider,
                      process_host->GetGpuClient()->GetWeakPtr(),
                      std::move(receiver), is_incognito));
@@ -896,6 +915,28 @@ void BindImageCaptureImpl(
   ImageCaptureImpl::Create(frame_host, std::move(receiver));
 }
 
+void BindCrossOriginStorageManager(
+    RenderFrameHost* frame_host,
+    mojo::PendingReceiver<blink::mojom::CrossOriginStorageManager> receiver) {
+  CrossOriginStorageManagerImpl::BindForFrame(frame_host, std::move(receiver));
+}
+
+void BindCrossOriginStorageManagerForDedicatedWorker(
+    DedicatedWorkerHost* host,
+    mojo::PendingReceiver<blink::mojom::CrossOriginStorageManager> receiver) {
+  CrossOriginStorageManagerImpl::BindForWorker(host, host->GetProcessHost(),
+                                               host->GetWorkerStorageKey(),
+                                               std::move(receiver));
+}
+
+void BindCrossOriginStorageManagerForSharedWorker(
+    SharedWorkerHost* host,
+    mojo::PendingReceiver<blink::mojom::CrossOriginStorageManager> receiver) {
+  CrossOriginStorageManagerImpl::BindForWorker(host, host->GetProcessHost(),
+                                               host->GetWorkerStorageKey(),
+                                               std::move(receiver));
+}
+
 void BindDevicePostureProvider(
     RenderFrameHost* frame_host,
     mojo::PendingReceiver<blink::mojom::DevicePostureProvider> receiver) {
@@ -1061,6 +1102,11 @@ void PopulateBinderMapWithContext(
                                         host->GetWeakDocumentPtr()),
                                     std::move(receiver));
       }));
+
+  if (base::FeatureList::IsEnabled(blink::features::kCrossOriginStorage)) {
+    map->Add<blink::mojom::CrossOriginStorageManager>(
+        base::BindRepeating(&BindCrossOriginStorageManager));
+  }
 
   map->Add<blink::mojom::DedicatedWorkerHostFactory>(
       &BindRenderFrameHostImpl<
@@ -1398,10 +1444,7 @@ void PopulateBinderMapWithContext(
   map->Add<blink::mojom::SerialService>(
       &BindRenderFrameHostImpl<&RenderFrameHostImpl::BindSerialService>);
 
-  map->Add<blink::mojom::ModelContextHost>(
-      &BindRenderFrameHostImpl<&RenderFrameHostImpl::BindModelContextHost>);
-
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   map->Add<blink::mojom::SmartCardService>(
       &BindRenderFrameHostImpl<&RenderFrameHostImpl::GetSmartCardService>);
 #endif
@@ -1450,7 +1493,7 @@ void PopulateBinderMapWithContext(
   map->Add<device::mojom::BatteryMonitor>(&BindBatteryMonitor);
   map->Add<blink::mojom::ColorChooserFactory>(&BindColorChooserFactoryForFrame);
   map->Add<blink::mojom::EyeDropperChooser>(&EyeDropperChooserImpl::Create);
-  map->Add<blink::mojom::HapticsService>(&HapticsServiceImpl::Create);
+  map->Add<device::mojom::HapticsService>(&HapticsServiceImpl::Create);
   map->Add<blink::mojom::CookieStore>(
       &CookieStoreManager::BindReceiverForFrame);
   map->Add<blink::mojom::ContentIndexService>(
@@ -1583,6 +1626,11 @@ void PopulateDedicatedWorkerBinders(DedicatedWorkerHost* host,
   // |DedicatedWorkerHost::broker_|.
   map->Add<blink::mojom::IdleManager>(base::BindRepeating(
       &DedicatedWorkerHost::CreateIdleManager, base::Unretained(host)));
+  if (base::FeatureList::IsEnabled(blink::features::kCrossOriginStorage)) {
+    map->Add<blink::mojom::CrossOriginStorageManager>(
+        base::BindRepeating(&BindCrossOriginStorageManagerForDedicatedWorker,
+                            base::Unretained(host)));
+  }
   map->Add<blink::mojom::DedicatedWorkerHostFactory>(
       base::BindRepeating(&DedicatedWorkerHost::CreateNestedDedicatedWorker,
                           base::Unretained(host)));
@@ -1765,6 +1813,9 @@ void PopulateSharedWorkerBinders(SharedWorkerHost* host, mojo::BinderMap* map) {
       &CreateReportingServiceProxyForSharedWorker, base::Unretained(host)));
   map->Add<blink::mojom::BucketManagerHost>(base::BindRepeating(
       &SharedWorkerHost::CreateBucketManagerHost, base::Unretained(host)));
+  map->Add<blink::mojom::FileSystemAccessManager>(
+      base::BindRepeating(&SharedWorkerHost::CreateFileSystemAccessManager,
+                          base::Unretained(host)));
   map->Add<blink::mojom::AIManager>(
       base::BindRepeating(&ContentBrowserClient::BindAIManager,
                           base::Unretained(GetContentClient()->browser()),
@@ -1772,6 +1823,10 @@ void PopulateSharedWorkerBinders(SharedWorkerHost* host, mojo::BinderMap* map) {
                           base::Unretained(host), /*rfh=*/nullptr));
   map->Add<blink::mojom::LockManager>(base::BindRepeating(
       &SharedWorkerHost::CreateLockManager, base::Unretained(host)));
+  if (base::FeatureList::IsEnabled(blink::features::kCrossOriginStorage)) {
+    map->Add<blink::mojom::CrossOriginStorageManager>(base::BindRepeating(
+        &BindCrossOriginStorageManagerForSharedWorker, base::Unretained(host)));
+  }
 
 #if BUILDFLAG(ENABLE_COMPUTE_PRESSURE)
   if (base::FeatureList::IsEnabled(blink::features::kComputePressure)) {
@@ -1813,9 +1868,6 @@ void PopulateSharedWorkerBinders(SharedWorkerHost* host, mojo::BinderMap* map) {
       &RenderProcessHostImpl::BindWebrtcVideoPerfHistory, host));
 
   // RenderProcessHost binders taking a StorageKey
-  map->Add<blink::mojom::FileSystemAccessManager>(
-      BindWorkerReceiverForStorageKey(
-          &RenderProcessHostImpl::BindFileSystemAccessManager, host));
   map->Add<blink::mojom::FileSystemManager>(BindWorkerReceiverForStorageKey(
       &RenderProcessHostImpl::BindFileSystemManager, host));
   map->Add<blink::mojom::IDBFactory>(

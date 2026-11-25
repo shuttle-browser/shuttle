@@ -27,7 +27,6 @@
 #include "chrome/test/base/testing_profile.h"
 #include "components/pref_registry/pref_registry_syncable.h"
 #include "components/sync/base/data_type.h"
-#include "components/sync/base/features.h"
 #include "components/sync/model/sync_change.h"
 #include "components/sync/protocol/entity_specifics.pb.h"
 #include "components/sync/protocol/theme_specifics.pb.h"
@@ -89,8 +88,9 @@ auto HasThemeSpecifics(const sync_pb::ThemeSpecifics& specifics) {
                                            EqualsProto(specifics)))))));
 }
 
-class ThemeLocalDataBatchUploaderTestBase
-    : public extensions::ExtensionServiceTestBase {
+class ThemeLocalDataBatchUploaderTest
+    : public extensions::ExtensionServiceTestBase,
+      public testing::WithParamInterface<sync_pb::ThemeSpecifics> {
  protected:
   void SetUp() override {
     // Setting a matching update URL is necessary to make the test theme
@@ -190,20 +190,6 @@ class ThemeLocalDataBatchUploaderTestBase
   std::unique_ptr<syncer::FakeSyncChangeProcessor> fake_change_processor_;
   scoped_refptr<extensions::Extension> theme_extension_;
   std::unique_ptr<ThemeLocalDataBatchUploader> batch_uploader_;
-};
-
-class ThemeLocalDataBatchUploaderTest
-    : public ThemeLocalDataBatchUploaderTestBase,
-      public testing::WithParamInterface<sync_pb::ThemeSpecifics> {
- public:
-  ThemeLocalDataBatchUploaderTest() {
-    feature_list_.InitWithFeatures(
-        /*enabled_features=*/{syncer::kSeparateLocalAndAccountThemes},
-        /*disabled_features=*/{});
-  }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
 };
 
 TEST_F(ThemeLocalDataBatchUploaderTest,
@@ -747,9 +733,6 @@ using ThemeLocalDataBatchUploaderDeathTest = ThemeLocalDataBatchUploaderTest;
 
 TEST_F(ThemeLocalDataBatchUploaderDeathTest,
        TriggerLocalDataMigrationForItemsWithMoreThanOneItem) {
-  const std::string kExpectedErrorMessageHint =
-      "Only one local theme can exist";
-
   // Local user color theme.
   theme_service()->SetUserColorAndBrowserColorVariant(
       SK_ColorBLUE, ui::mojom::BrowserColorVariant::kTonalSpot);
@@ -769,7 +752,6 @@ TEST_F(ThemeLocalDataBatchUploaderDeathTest,
 
 TEST_F(ThemeLocalDataBatchUploaderDeathTest,
        TriggerLocalDataMigrationForItemsWithInvalidItemIdType) {
-  const std::string kExpectedErrorMessageHint = "Invalid item ID type";
   const syncer::LocalDataItemModel::DataId illegal_item = 1;
 
   // Local user color theme.
@@ -787,7 +769,6 @@ TEST_F(ThemeLocalDataBatchUploaderDeathTest,
 
 TEST_F(ThemeLocalDataBatchUploaderDeathTest,
        TriggerLocalDataMigrationForItemsWithInvalidItemId) {
-  const std::string kExpectedErrorMessageHint = "Invalid item ID";
   const syncer::LocalDataItemModel::DataId illegal_item = "another-theme";
 
   // Local user color theme.

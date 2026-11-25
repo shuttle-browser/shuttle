@@ -38,6 +38,7 @@
 #import "components/signin/public/base/signin_switches.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
 #import "components/strings/grit/components_strings.h"
+#import "components/subscription_eligibility/ai_subscription_tier_names.h"
 #import "components/subscription_eligibility/objc/subscription_eligibility_observer_bridge.h"
 #import "components/subscription_eligibility/subscription_eligibility_service.h"
 #import "ios/chrome/browser/aim/model/ai_mode_button_service_ios.h"
@@ -113,6 +114,7 @@
 #import "ios/web/public/web_state.h"
 #import "skia/ext/skia_utils_ios.h"
 #import "ui/base/l10n/l10n_util.h"
+#import "ui/gfx/image/image.h"
 #import "url/gurl.h"
 
 @interface NewTabPageMediator (ImageFetcher)
@@ -255,21 +257,24 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
             std::get_if<sync_pb::NtpCustomBackground>(&custom_background)) {
       image_fetcher::ImageFetcher* imageFetcher =
           [strongMediator imageFetcherService]->GetImageFetcher(
-              image_fetcher::ImageFetcherConfig::kReducedMode);
+              image_fetcher::ImageFetcherConfig::kDiskCacheOnly);
       GURL imageURL = GURL(ntpBackground->url());
-      imageFetcher->FetchImageData(
+      image_fetcher::ImageFetcherParams params(kTrafficAnnotation,
+                                               kImageFetcherUmaClient);
+      params.set_transcode_format(
+          image_fetcher::ImageFetcherParams::TranscodeFormat::kJpeg);
+      imageFetcher->FetchImage(
           imageURL,
-          base::BindOnce(^(const std::string& imageData,
+          base::BindOnce(^(const gfx::Image& image,
                            const image_fetcher::RequestMetadata& metadata) {
-            bool success = !imageData.empty();
+            bool success = !image.IsEmpty();
             base::UmaHistogramEnumeration(
                 "IOS.HomeCustomization.Background.Ntp.CacheCleanupEvent",
                 success
                     ? NtpBackgroundCacheCleanupEvent::kCleanupCompletedSuccess
                     : NtpBackgroundCacheCleanupEvent::kCleanupCompletedFailure);
           }),
-          image_fetcher::ImageFetcherParams(kTrafficAnnotation,
-                                            kImageFetcherUmaClient));
+          params);
       base::UmaHistogramEnumeration(
           "IOS.HomeCustomization.Background.Ntp.CacheCleanupEvent",
           NtpBackgroundCacheCleanupEvent::kRefetchTriggered);
@@ -383,11 +388,11 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
   BOOL _mediatorSetUp;
   // Callback for the thumbnail image fetch.
   std::unique_ptr<base::CancelableOnceCallback<
-      void(const std::string&, const image_fetcher::RequestMetadata&)>>
+      void(const gfx::Image&, const image_fetcher::RequestMetadata&)>>
       _thumbnailCallback;
   // Callback for the high-resolution image fetch.
   std::unique_ptr<base::CancelableOnceCallback<
-      void(const std::string&, const image_fetcher::RequestMetadata&)>>
+      void(const gfx::Image&, const image_fetcher::RequestMetadata&)>>
       _imageCallback;
   // The URL of the background image currently being fetched.
   GURL _pendingBackgroundURL;
@@ -675,6 +680,9 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
   }
   _fullscreenBrowserAgentObserverBridge.reset();
   _fullscreenBrowserAgent = nullptr;
+  [_bottomOmniboxEnabled stop];
+  _bottomOmniboxEnabled.observer = nil;
+  _bottomOmniboxEnabled = nil;
   base::UmaHistogramBoolean("IOS.NTP.LandscapeMode", _wasNTPInLandscape);
 }
 
@@ -763,6 +771,10 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
   _signedInIdentity = self.authService->GetPrimaryIdentity();
   [self updateAccountImage];
   [self updateAccountErrorBadge];
+  if (GetAimButtonRefactorArm() ==
+      AimButtonRefactorArm::kImageGenerationQuickAction) {
+    [self updateAIMQuickActionsAvailability];
+  }
 }
 
 - (void)extendedAccountInfoDidUpdate:(const AccountInfo&)info {
@@ -936,7 +948,8 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
   BOOL imageGenerationAllowed =
       arm == AimButtonRefactorArm::kAttachImageQuickAction
           ? NO
-          : [inputState isToolAvailable:ComposeboxMode::kImageGeneration];
+          : _signedInIdentity &&
+                [inputState isToolAvailable:ComposeboxMode::kImageGeneration];
   BOOL attachImagesAllowed =
       [inputState isAttachmentAvailable:ComposeboxAttachmentOption::kGallery] &&
       inputState.remainingNumberOfImagesAllowed > 0;
@@ -958,7 +971,9 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
 
     BOOL hasAITier =
         IsAiSubscriptionAvatarRingIOSEnabled() &&
-        _subscriptionEligibilityService->GetAiSubscriptionTier() > 0;
+        subscription_eligibility::GetAiSubscriptionTierDisplayInfo(
+            _subscriptionEligibilityService->GetAiSubscriptionTier())
+            .show_decoration;
     [self.imageUpdater updateAccountWithName:_signedInIdentity.userFullName
                                        email:_signedInIdentity.userEmail
                                  avatarImage:avatarImage
@@ -1180,30 +1195,24 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
 
   image_fetcher::ImageFetcher* imageFetcher =
       _imageFetcherService->GetImageFetcher(
-          image_fetcher::ImageFetcherConfig::kReducedMode);
+          image_fetcher::ImageFetcherConfig::kDiskCacheOnly);
 
   __weak __typeof(self) weakSelf = self;
 
   _thumbnailCallback = std::make_unique<base::CancelableOnceCallback<void(
-      const std::string&, const image_fetcher::RequestMetadata&)>>(
-      base::BindOnce(^(const std::string& image_data,
+      const gfx::Image&, const image_fetcher::RequestMetadata&)>>(
+      base::BindOnce(^(const gfx::Image& image,
                        const image_fetcher::RequestMetadata& metadata) {
-        if (!image_data.empty()) {
-          NSData* data = [NSData dataWithBytes:image_data.data()
-                                        length:image_data.length()];
-          UIImage* image = [UIImage imageWithData:data];
-          if (image) {
-            // Temporarily sets the thumbnail as the background until the
-            // high-resolution image is loaded.
-            [weakSelf setCustomBackground:background image:image];
-          }
-          return;
+        if (!image.IsEmpty()) {
+          // Temporarily sets the thumbnail as the background until the
+          // high-resolution image is loaded.
+          [weakSelf setCustomBackground:background image:image.ToUIImage()];
         }
       }));
 
   _imageCallback = std::make_unique<base::CancelableOnceCallback<void(
-      const std::string&, const image_fetcher::RequestMetadata&)>>(
-      base::BindOnce(^(const std::string& image_data,
+      const gfx::Image&, const image_fetcher::RequestMetadata&)>>(
+      base::BindOnce(^(const gfx::Image& image,
                        const image_fetcher::RequestMetadata& metadata) {
         __typeof(self) strongSelf = weakSelf;
         if (!strongSelf) {
@@ -1222,13 +1231,8 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
           strongSelf->_thumbnailCallback.reset();
         }
 
-        if (!image_data.empty()) {
-          NSData* data = [NSData dataWithBytes:image_data.data()
-                                        length:image_data.length()];
-          UIImage* image = [UIImage imageWithData:data];
-          if (image) {
-            [strongSelf setCustomBackground:background image:image];
-          }
+        if (!image.IsEmpty()) {
+          [strongSelf setCustomBackground:background image:image.ToUIImage()];
         } else {
           base::UmaHistogramSparse(
               "IOS.HomeCustomization.Background.Ntp.ImageDownloadErrorCode",
@@ -1239,15 +1243,17 @@ void CleanupImageFetcherCacheIfNeeded(PrefService* pref_service,
         strongSelf->_pendingBackgroundURL = GURL();
       }));
 
+  image_fetcher::ImageFetcherParams params(kTrafficAnnotation,
+                                           kImageFetcherUmaClient);
+  params.set_transcode_format(
+      image_fetcher::ImageFetcherParams::TranscodeFormat::kJpeg);
+
   // Retrieving the thumbnail URL should hit the cache, so it returns almost
   // instantly.
-  imageFetcher->FetchImageData(thumbnailURL, _thumbnailCallback->callback(),
-                               image_fetcher::ImageFetcherParams(
-                                   kTrafficAnnotation, kImageFetcherUmaClient));
+  imageFetcher->FetchImage(thumbnailURL, _thumbnailCallback->callback(),
+                           params);
 
-  imageFetcher->FetchImageData(imageURL, _imageCallback->callback(),
-                               image_fetcher::ImageFetcherParams(
-                                   kTrafficAnnotation, kImageFetcherUmaClient));
+  imageFetcher->FetchImage(imageURL, _imageCallback->callback(), params);
 }
 
 - (void)markSafariDataImportSetupListItemAsComplete {

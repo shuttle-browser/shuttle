@@ -5,8 +5,10 @@
 package org.chromium.chrome.browser.tasks.tab_management;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -17,8 +19,12 @@ import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tasks.tab_management.TabListModel.CardProperties;
 import org.chromium.chrome.browser.tasks.tab_management.TabListModel.CardProperties.ModelType;
 import org.chromium.chrome.browser.tasks.tab_management.TabProperties.UiType;
+import org.chromium.chrome.browser.tasks.tab_management.data_provider.TabGroupItem;
+import org.chromium.chrome.browser.tasks.tab_management.data_provider.TabItem;
 import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
 import org.chromium.ui.modelutil.PropertyModel;
+
+import java.util.List;
 
 /** Unit tests for {@link TabListModel}. */
 @RunWith(BaseRobolectricTestRunner.class)
@@ -77,6 +83,171 @@ public class TabListModelUnitTest {
         tabListModel.add(listItemWithType(ModelType.MESSAGE));
         assertEquals(newFirstTabItem.model, tabListModel.getFirstTabPropertyModel());
     }
+
+    @Test
+    public void testTabRegionStart() {
+        TabListModel tabListModel = new TabListModel();
+        assertEquals(0, tabListModel.tabRegionStart());
+
+        // Only message cards: the tab region starts after all of them.
+        tabListModel.add(listItemWithType(ModelType.MESSAGE));
+        assertEquals(1, tabListModel.tabRegionStart());
+        tabListModel.add(listItemWithType(ModelType.MESSAGE));
+        assertEquals(tabListModel.size(), tabListModel.tabRegionStart());
+
+        // Leading message cards are skipped.
+        tabListModel.add(listItemWithType(ModelType.TAB_GROUP));
+        assertEquals(2, tabListModel.tabRegionStart());
+        tabListModel.add(listItemWithType(ModelType.TAB));
+        assertEquals(2, tabListModel.tabRegionStart());
+
+        // Trailing message cards are ignored.
+        tabListModel.add(listItemWithType(ModelType.MESSAGE));
+        assertEquals(2, tabListModel.tabRegionStart());
+
+        // Tabs only: the tab region starts at the beginning.
+        tabListModel.clear();
+        assertEquals(0, tabListModel.tabRegionStart());
+        tabListModel.add(listItemWithType(ModelType.TAB));
+        assertEquals(0, tabListModel.tabRegionStart());
+        tabListModel.add(listItemWithType(ModelType.TAB_GROUP));
+        assertEquals(0, tabListModel.tabRegionStart());
+    }
+
+    // TabListDataProvider item lookup tests.
+
+    @Test
+    public void testMatchesItem_TabItem() {
+        PropertyModel tabModel = tabListItem(/* tabId= */ 1).model;
+        PropertyModel messageModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.MESSAGE)
+                        .with(TabProperties.TAB_ID, 1)
+                        .build();
+        PropertyModel groupModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.TAB_GROUP)
+                        .with(TabProperties.TAB_ID, 1)
+                        .with(TabProperties.TAB_GROUP_HEADER_ID, Token.createRandom())
+                        .build();
+
+        TabItem matchingItem = tabItem(/* tabId= */ 1);
+        TabItem otherItem = tabItem(/* tabId= */ 2);
+
+        assertTrue(TabListModel.matchesItem(tabModel, matchingItem));
+        assertFalse(TabListModel.matchesItem(tabModel, otherItem));
+        assertFalse(TabListModel.matchesItem(messageModel, matchingItem));
+        assertFalse(TabListModel.matchesItem(groupModel, matchingItem));
+    }
+
+    @Test
+    public void testMatchesItem_TabGroupItem() {
+        Token groupId = Token.createRandom();
+        PropertyModel groupModel = tabGroupListItem(groupId).model;
+        PropertyModel tabWithHeaderModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.TAB)
+                        .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
+                        .build();
+        PropertyModel tabModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.TAB)
+                        .build();
+
+        TabGroupItem matchingItem = tabGroupItem(groupId);
+        TabGroupItem otherItem = tabGroupItem(Token.createRandom());
+
+        assertTrue(TabListModel.matchesItem(groupModel, matchingItem));
+        assertTrue(TabListModel.matchesItem(tabWithHeaderModel, matchingItem));
+        assertFalse(TabListModel.matchesItem(groupModel, otherItem));
+        assertFalse(TabListModel.matchesItem(tabModel, matchingItem));
+    }
+
+    @Test
+    public void testMatchesItems() {
+        TabListModel tabListModel = new TabListModel();
+        tabListModel.add(listItemWithType(ModelType.MESSAGE));
+        tabListModel.add(tabListItem(/* tabId= */ 1));
+        tabListModel.add(tabListItem(/* tabId= */ 2));
+
+        // Message cards are ignored.
+        assertTrue(
+                tabListModel.matchesItems(
+                        List.of(tabItem(/* tabId= */ 1), tabItem(/* tabId= */ 2))));
+        // Order matters.
+        assertFalse(
+                tabListModel.matchesItems(
+                        List.of(tabItem(/* tabId= */ 2), tabItem(/* tabId= */ 1))));
+        // Missing items.
+        assertFalse(tabListModel.matchesItems(List.of(tabItem(/* tabId= */ 1))));
+    }
+
+    @Test
+    public void testResolveInsertionIndex_NullAfter() {
+        TabListModel tabListModel = new TabListModel();
+        // Empty model.
+        assertEquals(0, tabListModel.resolveInsertionIndex(/* after= */ null));
+
+        // Leading message card.
+        tabListModel.add(listItemWithType(ModelType.MESSAGE));
+        assertEquals(1, tabListModel.resolveInsertionIndex(/* after= */ null));
+
+        // Existing tabs: insert before them, after the message card.
+        tabListModel.add(tabListItem(/* tabId= */ 1));
+        tabListModel.add(tabListItem(/* tabId= */ 2));
+        assertEquals(1, tabListModel.resolveInsertionIndex(/* after= */ null));
+    }
+
+    @Test
+    public void testIndexFromItemAndResolveInsertionIndex_TabItem() {
+        TabListModel tabListModel = new TabListModel();
+        tabListModel.add(listItemWithType(ModelType.MESSAGE));
+        tabListModel.add(tabListItem(/* tabId= */ 1));
+        tabListModel.add(tabListItem(/* tabId= */ 2));
+
+        assertEquals(1, tabListModel.indexFromItem(tabItem(/* tabId= */ 1)));
+        assertEquals(2, tabListModel.indexFromItem(tabItem(/* tabId= */ 2)));
+        assertEquals(2, tabListModel.resolveInsertionIndex(tabItem(/* tabId= */ 1)));
+        assertEquals(3, tabListModel.resolveInsertionIndex(tabItem(/* tabId= */ 2)));
+    }
+
+    @Test
+    public void testIndexFromItemAndResolveInsertionIndex_TabGroupItem() {
+        TabListModel tabListModel = new TabListModel();
+        Token groupId = Token.createRandom();
+        Token headerGroupId = Token.createRandom();
+        tabListModel.add(tabListItem(/* tabId= */ 1));
+        // A TAB_GROUP card.
+        tabListModel.add(tabGroupListItem(groupId));
+        // A TAB card carrying a TAB_GROUP_HEADER_ID.
+        PropertyModel headerModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.TAB)
+                        .with(TabProperties.TAB_GROUP_HEADER_ID, headerGroupId)
+                        .build();
+        tabListModel.add(new ListItem(UiType.TAB, headerModel));
+
+        assertEquals(1, tabListModel.indexFromItem(tabGroupItem(groupId)));
+        assertEquals(2, tabListModel.indexFromItem(tabGroupItem(headerGroupId)));
+        assertEquals(2, tabListModel.resolveInsertionIndex(tabGroupItem(groupId)));
+        assertEquals(3, tabListModel.resolveInsertionIndex(tabGroupItem(headerGroupId)));
+    }
+
+    @Test
+    public void testIndexFromItem_NotFound() {
+        TabListModel tabListModel = new TabListModel();
+        assertEquals(
+                TabModel.INVALID_TAB_INDEX, tabListModel.indexFromItem(tabItem(/* tabId= */ 1)));
+
+        tabListModel.add(tabListItem(/* tabId= */ 1));
+        assertEquals(
+                TabModel.INVALID_TAB_INDEX, tabListModel.indexFromItem(tabItem(/* tabId= */ 2)));
+        assertEquals(
+                TabModel.INVALID_TAB_INDEX,
+                tabListModel.indexFromItem(tabGroupItem(Token.createRandom())));
+    }
+
+    // End TabListDataProvider item lookup tests.
 
     @Test
     public void testArchivedTabGroupHelpers() {
@@ -167,5 +338,35 @@ public class TabListModelUnitTest {
         assertEquals(item0, tabListModel.get(0));
         assertEquals(item1, tabListModel.get(1));
         assertEquals(item2, tabListModel.get(2));
+    }
+
+    private ListItem tabListItem(int tabId) {
+        PropertyModel propertyModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.TAB)
+                        .with(TabProperties.TAB_ID, tabId)
+                        .build();
+        return new ListItem(UiType.TAB, propertyModel);
+    }
+
+    private TabItem tabItem(int tabId) {
+        return new TabItem(
+                tabId,
+                /* isSelected= */ false,
+                /* isPinned= */ false,
+                /* isMultiSelected= */ false);
+    }
+
+    private ListItem tabGroupListItem(Token groupId) {
+        PropertyModel propertyModel =
+                new PropertyModel.Builder(TabProperties.ALL_KEYS_TAB_GRID)
+                        .with(CardProperties.CARD_TYPE, ModelType.TAB_GROUP)
+                        .with(TabProperties.TAB_GROUP_HEADER_ID, groupId)
+                        .build();
+        return new ListItem(UiType.TAB_GROUP, propertyModel);
+    }
+
+    private TabGroupItem tabGroupItem(Token groupId) {
+        return new TabGroupItem(groupId, /* isSelected= */ false, /* isCollapsed= */ false);
     }
 }

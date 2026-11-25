@@ -5,6 +5,7 @@
 /* #css_wrapper_metadata_start
  * #type=style-lit
  * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
+ * #import=chrome://resources/cr_elements/cr_shared_vars.css.js
  * #import=chrome://omnibox-popup.top-chrome/shared/omnibox_popup_shared_style.css.js
  * #include=cr-icons-lit omnibox-popup-shared-style
  * #css_wrapper_metadata_end */
@@ -86,6 +87,23 @@
   box-shadow: none;
 }
 
+/* Once the popup has painted, LocationBarView stops painting its native ring,
+ * so this is the only focus ring. Blink drops box-shadow in forced colors
+ * mode, so draw it as an outline there, also 1px outside and 1px inside the
+ * location bar boundary. */
+@media (forced-colors: active) {
+  :host(:not([dropdown-is-visible])) #inputWrapper:focus-within,
+  :host([is-logically-focused_]:not([dropdown-is-visible])) #inputWrapper {
+    outline: var(--cr-focus-outline-hcm);
+    outline-offset: -1px;
+  }
+
+  :host(:not([dropdown-is-visible]))
+      #inputWrapper:has(#composeButton:is(:focus-within, [has-virtual-focus])) {
+    outline: none;
+  }
+}
+
 /* TODO(b/511199705): Widget is too wide when dropdown is visible. This is a
    workaround until we fix that. */
 :host([dropdown-is-visible]) {
@@ -157,6 +175,14 @@ cr-searchbox-input::part(mirror) {
   padding-bottom: 2px;
   padding-inline: 0;
   padding-top: 0;
+}
+
+/* Like the Views omnibox, the default search engine placeholder (shown while
+ * the AIM button has focus) uses the regular text color to draw attention to
+ * the omnibox, while the keyword placeholder stays dim to differentiate it
+ * from user input. */
+cr-searchbox-input:not([in-keyword-mode]) {
+  --color-searchbox-placeholder: var(--color-omnibox-text);
 }
 
 /* Pad the input and #mirror alike, rather than adding a margin outside the

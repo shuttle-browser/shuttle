@@ -6,35 +6,31 @@
 
 #include "base/android/scoped_java_ref.h"
 #include "base/notreached.h"
+#include "chrome/browser/profiles/profile.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/jni_zero/jni_zero.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "chrome/android/chrome_jni_headers/NtbWebUiCoordinator_jni.h"
 
 namespace android {
 
-static int64_t JNI_NtbWebUiCoordinator_Init(
-    JNIEnv* env,
-    const base::android::JavaRef<jobject>& caller,
-    int32_t session_id,
-    int64_t activity_creation_uptime_ms) {
-  return 0;
+class TabStripNtbWebUiHost {
+ public:
+  content::WebContents* GetWebContents() { NOTREACHED(); }
+  void Resize(int32_t width_px, int32_t height_px) { NOTREACHED(); }
+  void SetButtonVisible(bool visible) { NOTREACHED(); }
+};
+
+static jni_zero::JniUniquePtr<TabStripNtbWebUiHost>
+JNI_NtbWebUiCoordinator_Init(const base::android::JavaRef<jobject>& caller,
+                             Profile* profile,
+                             int64_t activity_creation_uptime_ms) {
+  return nullptr;
 }
 
-static content::WebContents* JNI_NtbWebUiCoordinator_GetWebContents(
-    JNIEnv* env,
-    int64_t host_ptr) {
-  NOTREACHED();
-}
-
-static void JNI_NtbWebUiCoordinator_Resize(JNIEnv* env,
-                                           int64_t host_ptr,
-                                           int32_t width_px,
-                                           int32_t height_px) {
-  NOTREACHED();
-}
-
-static void JNI_NtbWebUiCoordinator_Destroy(JNIEnv* env, int64_t host_ptr) {
+static void JNI_NtbWebUiCoordinator_SetTabModel(TabStripNtbWebUiHost* host,
+                                                int32_t session_id) {
   NOTREACHED();
 }
 

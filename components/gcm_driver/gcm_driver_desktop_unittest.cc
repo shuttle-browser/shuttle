@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <memory>
+#include <string>
 
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/bind.h"
@@ -27,10 +28,7 @@
 #include "components/gcm_driver/fake_gcm_client_factory.h"
 #include "components/gcm_driver/gcm_app_handler.h"
 #include "components/gcm_driver/gcm_client_factory.h"
-#include "components/gcm_driver/gcm_connection_observer.h"
 #include "components/os_crypt/async/browser/test_utils.h"
-#include "components/prefs/pref_registry_simple.h"
-#include "components/prefs/testing_pref_service.h"
 #include "net/url_request/url_request_context_getter.h"
 #include "net/url_request/url_request_test_util.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -50,36 +48,6 @@ const char kScope[] = "GCM";
 const char kInstanceID1[] = "IID1";
 const char kInstanceID2[] = "IID2";
 
-class FakeGCMConnectionObserver : public GCMConnectionObserver {
- public:
-  FakeGCMConnectionObserver();
-  ~FakeGCMConnectionObserver() override;
-
-  // gcm::GCMConnectionObserver implementation:
-  void OnConnected(const net::IPEndPoint& ip_endpoint) override;
-  void OnDisconnected() override;
-
-  bool connected() const { return connected_; }
-
- private:
-  bool connected_;
-};
-
-FakeGCMConnectionObserver::FakeGCMConnectionObserver() : connected_(false) {
-}
-
-FakeGCMConnectionObserver::~FakeGCMConnectionObserver() {
-}
-
-void FakeGCMConnectionObserver::OnConnected(
-    const net::IPEndPoint& ip_endpoint) {
-  connected_ = true;
-}
-
-void FakeGCMConnectionObserver::OnDisconnected() {
-  connected_ = false;
-}
-
 void PumpCurrentLoop() {
   base::RunLoop(base::RunLoop::Type::kNestableTasksAllowed).RunUntilIdle();
 }
@@ -89,18 +57,15 @@ void PumpUILoop() {
 }
 
 std::vector<std::string> ToSenderList(const std::string& sender_ids) {
-  return base::SplitString(
-      sender_ids, ",", base::KEEP_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
+  return base::SplitString(sender_ids, ",", base::KEEP_WHITESPACE,
+                           base::SPLIT_WANT_NONEMPTY);
 }
 
 }  // namespace
 
 class GCMDriverTest : public testing::Test {
  public:
-  enum WaitToFinish {
-    DO_NOT_WAIT,
-    WAIT
-  };
+  enum WaitToFinish { DO_NOT_WAIT, WAIT };
 
   GCMDriverTest();
 
@@ -115,9 +80,6 @@ class GCMDriverTest : public testing::Test {
 
   GCMDriverDesktop* driver() { return driver_.get(); }
   FakeGCMAppHandler* gcm_app_handler() { return gcm_app_handler_.get(); }
-  FakeGCMConnectionObserver* gcm_connection_observer() {
-    return gcm_connection_observer_.get();
-  }
   const std::string& registration_id() const { return registration_id_; }
   GCMClient::Result registration_result() const { return registration_result_; }
   const std::string& send_message_id() const { return send_message_id_; }
@@ -160,8 +122,9 @@ class GCMDriverTest : public testing::Test {
   void UnregisterCompleted(GCMClient::Result result);
 
   void AsyncOperationCompleted() {
-    if (async_operation_completed_callback_)
+    if (async_operation_completed_callback_) {
       std::move(async_operation_completed_callback_).Run();
+    }
   }
   void set_async_operation_completed_callback(base::OnceClosure callback) {
     async_operation_completed_callback_ = std::move(callback);
@@ -170,7 +133,6 @@ class GCMDriverTest : public testing::Test {
  private:
   std::unique_ptr<os_crypt_async::OSCryptAsync> os_crypt_;
   base::ScopedTempDir temp_dir_;
-  TestingPrefServiceSimple prefs_;
   base::test::SingleThreadTaskEnvironment task_environment_{
       base::test::SingleThreadTaskEnvironment::MainThreadType::UI};
   base::Thread io_thread_;
@@ -178,7 +140,6 @@ class GCMDriverTest : public testing::Test {
 
   std::unique_ptr<GCMDriverDesktop> driver_;
   std::unique_ptr<FakeGCMAppHandler> gcm_app_handler_;
-  std::unique_ptr<FakeGCMConnectionObserver> gcm_connection_observer_;
 
   base::OnceClosure async_operation_completed_callback_;
 
@@ -199,8 +160,7 @@ GCMDriverTest::GCMDriverTest()
       send_result_(GCMClient::UNKNOWN_ERROR),
       unregistration_result_(GCMClient::UNKNOWN_ERROR) {}
 
-GCMDriverTest::~GCMDriverTest() {
-}
+GCMDriverTest::~GCMDriverTest() = default;
 
 void GCMDriverTest::SetUp() {
   io_thread_.Start();
@@ -208,8 +168,9 @@ void GCMDriverTest::SetUp() {
 }
 
 void GCMDriverTest::TearDown() {
-  if (!driver_)
+  if (!driver_) {
     return;
+  }
 
   ShutdownDriver();
   driver_.reset();
@@ -252,7 +213,7 @@ void GCMDriverTest::CreateDriver() {
       std::unique_ptr<GCMClientFactory>(new FakeGCMClientFactory(
           base::SingleThreadTaskRunner::GetCurrentDefault(),
           io_thread_.task_runner())),
-      chrome_build_info, &prefs_, temp_dir_.GetPath(), base::DoNothing(),
+      chrome_build_info, temp_dir_.GetPath(), base::DoNothing(),
       base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
           &test_url_loader_factory_),
       network::TestNetworkConnectionTracker::GetInstance(),
@@ -261,14 +222,9 @@ void GCMDriverTest::CreateDriver() {
       os_crypt_.get());
 
   gcm_app_handler_ = std::make_unique<FakeGCMAppHandler>();
-  gcm_connection_observer_ = std::make_unique<FakeGCMConnectionObserver>();
-
-  driver_->AddConnectionObserver(gcm_connection_observer_.get());
 }
 
 void GCMDriverTest::ShutdownDriver() {
-  if (gcm_connection_observer())
-    driver()->RemoveConnectionObserver(gcm_connection_observer());
   driver()->Shutdown();
 }
 
@@ -290,8 +246,9 @@ void GCMDriverTest::Register(const std::string& app_id,
   driver_->Register(app_id, sender_ids,
                     base::BindOnce(&GCMDriverTest::RegisterCompleted,
                                    base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverTest::Send(const std::string& app_id,
@@ -303,8 +260,9 @@ void GCMDriverTest::Send(const std::string& app_id,
   driver_->Send(
       app_id, receiver_id, message,
       base::BindOnce(&GCMDriverTest::SendCompleted, base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverTest::GetEncryptionInfo(const std::string& app_id,
@@ -314,8 +272,9 @@ void GCMDriverTest::GetEncryptionInfo(const std::string& app_id,
   driver_->GetEncryptionInfo(
       app_id, base::BindOnce(&GCMDriverTest::GetEncryptionInfoCompleted,
                              base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverTest::Unregister(const std::string& app_id,
@@ -325,8 +284,9 @@ void GCMDriverTest::Unregister(const std::string& app_id,
   driver_->Unregister(app_id,
                       base::BindOnce(&GCMDriverTest::UnregisterCompleted,
                                      base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverTest::WaitForAsyncOperation() {
@@ -364,21 +324,17 @@ void GCMDriverTest::UnregisterCompleted(GCMClient::Result result) {
 TEST_F(GCMDriverTest, Create) {
   // Create GCMDriver first. By default GCM is set to delay start.
   CreateDriver();
-  EXPECT_FALSE(driver()->IsStarted());
+  EXPECT_FALSE(driver()->IsStartedForTesting());
 
   // Adding an app handler will not start GCM.
   AddAppHandlers();
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_FALSE(driver()->IsStarted());
-  EXPECT_FALSE(driver()->IsConnected());
-  EXPECT_FALSE(gcm_connection_observer()->connected());
+  EXPECT_FALSE(driver()->IsStartedForTesting());
 
   // The GCM registration will kick off the GCM.
   Register(kTestAppID1, ToSenderList("sender"), GCMDriverTest::WAIT);
-  EXPECT_TRUE(driver()->IsStarted());
-  EXPECT_TRUE(driver()->IsConnected());
-  EXPECT_TRUE(gcm_connection_observer()->connected());
+  EXPECT_TRUE(driver()->IsStartedForTesting());
 }
 
 TEST_F(GCMDriverTest, Shutdown) {
@@ -390,49 +346,47 @@ TEST_F(GCMDriverTest, Shutdown) {
 
   ShutdownDriver();
   EXPECT_FALSE(HasAppHandlers());
-  EXPECT_FALSE(driver()->IsConnected());
-  EXPECT_FALSE(gcm_connection_observer()->connected());
 }
 
 TEST_F(GCMDriverTest, StartOrStopGCMOnDemand) {
   CreateDriver();
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_FALSE(driver()->IsStarted());
+  EXPECT_FALSE(driver()->IsStartedForTesting());
 
   // Adding an app handler will not start GCM.
   driver()->AddAppHandler(kTestAppID1, gcm_app_handler());
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_FALSE(driver()->IsStarted());
+  EXPECT_FALSE(driver()->IsStartedForTesting());
 
   // The GCM registration will kick off the GCM.
   Register(kTestAppID1, ToSenderList("sender"), GCMDriverTest::WAIT);
-  EXPECT_TRUE(driver()->IsStarted());
+  EXPECT_TRUE(driver()->IsStartedForTesting());
 
   // Add another app handler.
   driver()->AddAppHandler(kTestAppID2, gcm_app_handler());
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_TRUE(driver()->IsStarted());
+  EXPECT_TRUE(driver()->IsStartedForTesting());
 
   // GCMClient remains active after one app handler is gone.
   driver()->RemoveAppHandler(kTestAppID1);
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_TRUE(driver()->IsStarted());
+  EXPECT_TRUE(driver()->IsStartedForTesting());
 
   // GCMClient should be stopped after the last app handler is gone.
   driver()->RemoveAppHandler(kTestAppID2);
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_FALSE(driver()->IsStarted());
+  EXPECT_FALSE(driver()->IsStartedForTesting());
 
   // GCMClient is restarted after an app handler has been added.
   driver()->AddAppHandler(kTestAppID2, gcm_app_handler());
   PumpIOLoop();
   PumpUILoop();
-  EXPECT_TRUE(driver()->IsStarted());
+  EXPECT_TRUE(driver()->IsStartedForTesting());
 }
 
 TEST_F(GCMDriverTest, RegisterFailed) {
@@ -482,9 +436,7 @@ TEST_F(GCMDriverTest, GCMClientNotReadyBeforeRegistration) {
   // The registration is on hold until GCMClient is ready.
   std::vector<std::string> sender_ids;
   sender_ids.push_back("sender1");
-  Register(kTestAppID1,
-                     sender_ids,
-                     GCMDriverTest::DO_NOT_WAIT);
+  Register(kTestAppID1, sender_ids, GCMDriverTest::DO_NOT_WAIT);
   PumpIOLoop();
   PumpUILoop();
   EXPECT_TRUE(registration_id().empty());
@@ -541,11 +493,9 @@ class GCMDriverFunctionalTest : public GCMDriverTest {
   void SetUp() override;
 };
 
-GCMDriverFunctionalTest::GCMDriverFunctionalTest() {
-}
+GCMDriverFunctionalTest::GCMDriverFunctionalTest() = default;
 
-GCMDriverFunctionalTest::~GCMDriverFunctionalTest() {
-}
+GCMDriverFunctionalTest::~GCMDriverFunctionalTest() = default;
 
 void GCMDriverFunctionalTest::SetUp() {
   GCMDriverTest::SetUp();
@@ -686,8 +636,7 @@ TEST_F(GCMDriverFunctionalTest, UnregisterWhenAsyncOperationPending) {
   // Test that unregistration fails with async operation pending when there is a
   // registration already in progress.
   Unregister(kTestAppID1, GCMDriverTest::WAIT);
-  EXPECT_EQ(GCMClient::ASYNC_OPERATION_PENDING,
-            unregistration_result());
+  EXPECT_EQ(GCMClient::ASYNC_OPERATION_PENDING, unregistration_result());
 
   // Complete the unregistration.
   WaitForAsyncOperation();
@@ -700,8 +649,7 @@ TEST_F(GCMDriverFunctionalTest, UnregisterWhenAsyncOperationPending) {
   // Test that unregistration fails with async operation pending when there is
   // an unregistration already in progress.
   Unregister(kTestAppID1, GCMDriverTest::WAIT);
-  EXPECT_EQ(GCMClient::ASYNC_OPERATION_PENDING,
-            unregistration_result());
+  EXPECT_EQ(GCMClient::ASYNC_OPERATION_PENDING, unregistration_result());
   ClearResults();
 
   // Complete unregistration.
@@ -718,8 +666,7 @@ TEST_F(GCMDriverFunctionalTest, RegisterWhenAsyncOperationPending) {
   // Test that registration fails with async operation pending when there is a
   // registration already in progress.
   Register(kTestAppID1, sender_ids, GCMDriverTest::WAIT);
-  EXPECT_EQ(GCMClient::ASYNC_OPERATION_PENDING,
-            registration_result());
+  EXPECT_EQ(GCMClient::ASYNC_OPERATION_PENDING, registration_result());
   ClearResults();
 
   // Complete the registration.
@@ -757,17 +704,13 @@ TEST_F(GCMDriverFunctionalTest, RegisterAfterUnfinishedUnregister) {
 
 TEST_F(GCMDriverFunctionalTest, Send) {
   OutgoingMessage message;
-  message.id = "1@ack";
+  message.id = "1";
   message.data["key1"] = "value1";
   message.data["key2"] = "value2";
   Send(kTestAppID1, kUserID1, message, GCMDriverTest::WAIT);
 
   EXPECT_EQ(message.id, send_message_id());
   EXPECT_EQ(GCMClient::SUCCESS, send_result());
-
-  gcm_app_handler()->WaitForNotification();
-  EXPECT_EQ(message.id, gcm_app_handler()->acked_message_id());
-  EXPECT_EQ(kTestAppID1, gcm_app_handler()->app_id());
 }
 
 TEST_F(GCMDriverFunctionalTest, SendError) {
@@ -786,10 +729,8 @@ TEST_F(GCMDriverFunctionalTest, SendError) {
   EXPECT_EQ(FakeGCMAppHandler::SEND_ERROR_EVENT,
             gcm_app_handler()->received_event());
   EXPECT_EQ(kTestAppID1, gcm_app_handler()->app_id());
-  EXPECT_EQ(message.id,
-            gcm_app_handler()->send_error_details().message_id);
-  EXPECT_NE(GCMClient::SUCCESS,
-            gcm_app_handler()->send_error_details().result);
+  EXPECT_EQ(message.id, gcm_app_handler()->send_error_details().message_id);
+  EXPECT_NE(GCMClient::SUCCESS, gcm_app_handler()->send_error_details().result);
   EXPECT_EQ(message.data,
             gcm_app_handler()->send_error_details().additional_data);
 }
@@ -826,8 +767,7 @@ TEST_F(GCMDriverFunctionalTest, MessageWithCollapseKeyReceived) {
             gcm_app_handler()->received_event());
   EXPECT_EQ(kTestAppID1, gcm_app_handler()->app_id());
   EXPECT_EQ(message.data, gcm_app_handler()->message().data);
-  EXPECT_EQ(message.collapse_key,
-            gcm_app_handler()->message().collapse_key);
+  EXPECT_EQ(message.collapse_key, gcm_app_handler()->message().collapse_key);
 }
 
 TEST_F(GCMDriverFunctionalTest, EncryptedMessageReceivedError) {
@@ -910,11 +850,9 @@ class GCMDriverInstanceIDTest : public GCMDriverTest {
   int instance_id_resolved_counter_ = 0;
 };
 
-GCMDriverInstanceIDTest::GCMDriverInstanceIDTest() {
-}
+GCMDriverInstanceIDTest::GCMDriverInstanceIDTest() = default;
 
-GCMDriverInstanceIDTest::~GCMDriverInstanceIDTest() {
-}
+GCMDriverInstanceIDTest::~GCMDriverInstanceIDTest() = default;
 
 void GCMDriverInstanceIDTest::GetReady() {
   CreateDriver();
@@ -931,12 +869,14 @@ void GCMDriverInstanceIDTest::GetInstanceID(const std::string& app_id,
       app_id,
       base::BindOnce(&GCMDriverInstanceIDTest::GetInstanceIDDataCompleted,
                      base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverInstanceIDTest::GetInstanceIDDataCompleted(
-    const std::string& instance_id, const std::string& extra_data) {
+    const std::string& instance_id,
+    const std::string& extra_data) {
   instance_id_ = instance_id;
   extra_data_ = extra_data;
 
@@ -955,8 +895,9 @@ void GCMDriverInstanceIDTest::GetToken(const std::string& app_id,
       app_id, authorized_entity, scope, /*time_to_live=*/base::TimeDelta(),
       base::BindOnce(&GCMDriverTest::RegisterCompleted,
                      base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverInstanceIDTest::DeleteToken(const std::string& app_id,
@@ -969,8 +910,9 @@ void GCMDriverInstanceIDTest::DeleteToken(const std::string& app_id,
       app_id, authorized_entity, scope,
       base::BindOnce(&GCMDriverTest::UnregisterCompleted,
                      base::Unretained(this)));
-  if (wait_to_finish == WAIT)
+  if (wait_to_finish == WAIT) {
     run_loop.Run();
+  }
 }
 
 void GCMDriverInstanceIDTest::AddInstanceIDData(const std::string& app_id,
@@ -1120,6 +1062,44 @@ TEST_F(GCMDriverInstanceIDTest, GCMClientNotReadyBeforeDeleteToken) {
   // DeleteToken operation will be invoked after GCMClient becomes ready.
   GetGCMClient()->PerformDelayedStart();
   WaitForAsyncOperation();
+  EXPECT_EQ(GCMClient::SUCCESS, unregistration_result());
+}
+
+TEST_F(GCMDriverInstanceIDTest, StopClearsPendingTokenCallbacks) {
+  CreateDriver();
+  PumpIOLoop();
+  PumpUILoop();
+
+  // Hold GCMClient startup so GetToken and DeleteToken stay queued.
+  GetGCMClient()->set_start_mode_overridding(
+      FakeGCMClient::FORCE_TO_ALWAYS_DELAY_START_GCM);
+
+  AddAppHandlers();
+  GetToken(kTestAppID1, kUserID1, kScope, GCMDriverTest::DO_NOT_WAIT);
+  DeleteToken(kTestAppID1, kUserID1, kScope, GCMDriverTest::DO_NOT_WAIT);
+  PumpIOLoop();
+  PumpUILoop();
+  ASSERT_TRUE(registration_id().empty());
+
+  // Removing all app handlers stops GCMDriverDesktop and clears
+  // pending token callbacks so subsequent requests do not
+  // fail with ASYNC_OPERATION_PENDING.
+  RemoveAppHandlers();
+  PumpIOLoop();
+  PumpUILoop();
+
+  GetGCMClient()->set_start_mode_overridding(FakeGCMClient::RESPECT_START_MODE);
+  AddAppHandlers();
+  PumpIOLoop();
+  PumpUILoop();
+
+  const std::string expected_token =
+      FakeGCMClient::GenerateInstanceIDToken(kUserID1, kScope);
+  GetToken(kTestAppID1, kUserID1, kScope, GCMDriverTest::WAIT);
+  EXPECT_EQ(expected_token, registration_id());
+  EXPECT_EQ(GCMClient::SUCCESS, registration_result());
+
+  DeleteToken(kTestAppID1, kUserID1, kScope, GCMDriverTest::WAIT);
   EXPECT_EQ(GCMClient::SUCCESS, unregistration_result());
 }
 

@@ -72,6 +72,7 @@ import org.chromium.chrome.browser.tasks.tab_management.TabUiTestHelper;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.transit.ntp.IncognitoNewTabPageStation;
 import org.chromium.chrome.test.transit.page.CtaPageStation;
 import org.chromium.chrome.test.transit.page.WebPageStation;
@@ -246,8 +247,7 @@ public class TabsTest {
                 BottomBarTestUtils.findViewById(
                         mActivityTestRule.getActivity(), R.id.tab_switcher_button);
         onViewWaiting(Matchers.is(tabSwitcherBtn)).check(matches(isDisplayed())).perform(click());
-        LayoutTestUtils.waitForLayout(
-                mActivityTestRule.getActivity().getLayoutManager(), LayoutType.HUB);
+        LayoutTestUtils.waitForHubLayout(mActivityTestRule.getActivity());
 
         int newTabButtonId =
                 BottomBarTestUtils.isBottomBarVisible(mActivityTestRule.getActivity())
@@ -256,8 +256,7 @@ public class TabsTest {
         View newTabBtn =
                 BottomBarTestUtils.findViewById(mActivityTestRule.getActivity(), newTabButtonId);
         onViewWaiting(Matchers.is(newTabBtn)).check(matches(isDisplayed())).perform(click());
-        LayoutTestUtils.waitForLayout(
-                mActivityTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        LayoutTestUtils.waitForBrowsingLayout(mActivityTestRule.getActivity());
 
         int currentTabCount =
                 runOnUiThreadBlocking(
@@ -290,7 +289,7 @@ public class TabsTest {
                     boolean isKeyboardShowing =
                             mActivityTestRule
                                     .getKeyboardDelegate()
-                                    .isKeyboardShowing(
+                                    .isKeyboardObscuring(
                                             mActivityTestRule
                                                     .getActivity()
                                                     .getTabsViewForTesting());
@@ -325,7 +324,7 @@ public class TabsTest {
         assertWaitForKeyboardStatus(true);
 
         // Switch to the 1st tab.
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivityTestRule.getActivity(), 1);
+        ChromeTriggers.selectTabProgrammatically(mActivityTestRule.getActivity(), 1);
         assertWaitForKeyboardStatus(false);
 
         // Click node in the 1st tab.
@@ -427,7 +426,6 @@ public class TabsTest {
      */
     @Test
     @SmallTest
-    @DisableIf.Device(DeviceFormFactor.AUTOMOTIVE) // crbug.com/572964289
     public void testNewTabSetsContentViewSize() throws TimeoutException {
         ChromeTabUtils.newTabFromMenu(
                 InstrumentationRegistry.getInstrumentation(), mActivityTestRule.getActivity());
@@ -446,10 +444,12 @@ public class TabsTest {
                         .replace("\"", "");
 
         DisplayMetrics metrics = mActivityTestRule.getActivity().getResources().getDisplayMetrics();
+        float dipScale =
+                mActivityTestRule.getActivity().getWindowAndroid().getDisplay().getDipScale();
 
         // For non-integer pixel ratios like the N7v1 (1.333...), the layout system will actually
         // ceil the width.
-        int expectedWidth = (int) Math.ceil(metrics.widthPixels / metrics.density);
+        int expectedWidth = (int) Math.ceil(metrics.widthPixels / dipScale);
 
         String[] nums = innerText.split(",");
         assertTrue(nums.length == 2);
@@ -712,7 +712,7 @@ public class TabsTest {
         CriteriaHelper.pollUiThread(
                 () -> {
                     boolean keyboardVisible =
-                            mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar);
+                            mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar);
                     Criteria.checkThat(keyboardVisible, Matchers.is(true));
                 });
 
@@ -732,7 +732,7 @@ public class TabsTest {
         CriteriaHelper.pollUiThread(
                 () -> {
                     boolean keyboardVisible =
-                            mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar);
+                            mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar);
                     Criteria.checkThat(keyboardVisible, Matchers.is(true));
                 });
 
@@ -746,7 +746,7 @@ public class TabsTest {
         CriteriaHelper.pollUiThread(
                 () -> {
                     boolean keyboardVisible =
-                            mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar);
+                            mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar);
                     Criteria.checkThat(keyboardVisible, Matchers.is(false));
                 });
     }

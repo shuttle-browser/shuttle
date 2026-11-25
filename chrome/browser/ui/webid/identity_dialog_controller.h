@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_WEBID_IDENTITY_DIALOG_CONTROLLER_H_
 #define CHROME_BROWSER_UI_WEBID_IDENTITY_DIALOG_CONTROLLER_H_
 
+#include <cstddef>
 #include <memory>
 #include <optional>
 #include <string>
@@ -19,6 +20,7 @@
 #include "components/segmentation_platform/public/result.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/page_user_data.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/webid/identity_request_dialog_controller.h"
 #include "third_party/blink/public/mojom/webid/federated_request.mojom-shared.h"
 #include "ui/gfx/native_ui_types.h"
@@ -54,7 +56,8 @@ class IdentityDialogControllerBrowserTest;
 // browser-mediated federated sign-in flows.
 class IdentityDialogController
     : public content::IdentityRequestDialogController,
-      public AccountSelectionView::Delegate {
+      public AccountSelectionView::Delegate,
+      public content::WebContentsObserver {
  public:
   explicit IdentityDialogController(
       content::WebContents* rp_web_contents,
@@ -168,6 +171,9 @@ class IdentityDialogController
   content::IdentityRequestDialogController::PassiveDialogVolume
   GetPassiveDialogVolume() const override;
 
+  // content::WebContentsObserver:
+  void OnFedCmFederatedLogin(bool success) override;
+
   // Allows setting a mock AccountSelectionView for testing purposes.
   void SetAccountSelectionViewForTesting(
       std::unique_ptr<AccountSelectionView> account_view);
@@ -224,6 +230,20 @@ class IdentityDialogController
   // Whether we show any FedCM UI or not. Excludes the loading dialog since that
   // one is not something that modifies user state or is actionable by the user.
   bool did_show_ui_ = false;
+  // Whether the loading dialog was shown to the user.
+  bool did_show_loading_ui_ = false;
+  // Whether the user experienced auto-reauthn (verifying dialog in passive
+  // mode or loading dialog in active mode), used for HaTS surveys.
+  bool is_auto_reauthn_ = false;
+
+  // Account chooser data for HaTS surveys; std::nullopt if no chooser was
+  // shown.
+  struct AccountChooserSurveyData {
+    content::IdentityRequestAccount::LoginState
+        login_state;  // Estimate until selection.
+    size_t num_accounts_shown = 0;
+  };
+  std::optional<AccountChooserSurveyData> chooser_survey_data_;
   std::optional<content::IdentityRequestDialogController::PassiveDialogVolume>
       passive_dialog_volume_;
   GetPassiveDialogVolumeCallback passive_dialog_volume_callback_;

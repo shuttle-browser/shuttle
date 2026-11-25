@@ -22,6 +22,7 @@
 #include "chrome/browser/web_applications/web_contents/web_contents_manager.h"
 #include "components/webapps/browser/web_contents/web_app_url_loader.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "url/origin.h"
 
 namespace web_app {
@@ -132,7 +133,7 @@ void FetchInstallInfoFromInstallUrlCommand::OnGetWebAppInstallInfo(
 void FetchInstallInfoFromInstallUrlCommand::
     OnManifestRetrievedMaybeFetchInstallInfo(
         std::unique_ptr<WebAppInstallInfo> web_app_info,
-        blink::mojom::ManifestPtr opt_manifest,
+        std::optional<blink::Manifest> opt_manifest,
         bool valid_manifest_for_web_app,
         webapps::InstallableStatusCode error_code) {
   CHECK(web_app_info);
@@ -148,7 +149,7 @@ void FetchInstallInfoFromInstallUrlCommand::
   // create a WebAppInstallInfo from it.
   if (opt_manifest) {
     WebAppInstallInfoConstructOptions construct_options;
-    construct_options.download_page_favicons = opt_manifest->icons.empty();
+    construct_options.download_page_favicons = opt_manifest->icons().empty();
 
     manifest_to_install_info_job_ =
         ManifestToWebAppInstallInfoJob::CreateAndStart(
@@ -161,7 +162,6 @@ void FetchInstallInfoFromInstallUrlCommand::
                 &FetchInstallInfoFromInstallUrlCommand::OnInstallInfoFetched,
                 weak_ptr_factory_.GetWeakPtr()),
             construct_options, web_app_info->Clone());
-
     return;
   }
 

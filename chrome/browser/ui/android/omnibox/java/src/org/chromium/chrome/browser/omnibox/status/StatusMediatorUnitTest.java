@@ -42,6 +42,7 @@ import org.mockito.quality.Strictness;
 import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
 
+import org.chromium.base.Callback;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.OneshotSupplierImpl;
@@ -62,6 +63,8 @@ import org.chromium.chrome.browser.omnibox.fusebox.ComposeboxQueryControllerBrid
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxLayoutMode;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
 import org.chromium.chrome.browser.omnibox.status.StatusCoordinator.PageInfoAction;
+import org.chromium.chrome.browser.omnibox.status.StatusMediator.StatusIconType;
+import org.chromium.chrome.browser.omnibox.status.StatusProperties.PermissionIconResource;
 import org.chromium.chrome.browser.omnibox.status.StatusProperties.StatusIconResource;
 import org.chromium.chrome.browser.omnibox.status.StatusView.IconTransitionType;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
@@ -137,9 +140,7 @@ public final class StatusMediatorUnitTest {
     @Mock private TemplateUrl mGeminiTemplate;
 
     @Captor private ArgumentCaptor<PermissionDialogController.Observer> mPermissionObserverCaptor;
-
-    @Captor
-    private ArgumentCaptor<org.chromium.base.Callback<StatusIconResource>> mFaviconCallbackCaptor;
+    @Captor private ArgumentCaptor<Callback<StatusIconResource>> mFaviconCallbackCaptor;
 
     private Context mContext;
     private OmniboxResourceProvider mResourceProvider;
@@ -874,8 +875,7 @@ public final class StatusMediatorUnitTest {
                 /* pageIsPaintPreview= */ false);
         assertFalse(mModel.get(StatusProperties.SHOW_STATUS_VIEW));
 
-        StatusProperties.PermissionIconResource icon =
-                new StatusProperties.PermissionIconResource(null, /* isIncognito= */ false);
+        PermissionIconResource icon = new PermissionIconResource(null, /* isIncognito= */ false);
         mMediator.showPermissionIcon(icon);
 
         assertTrue(mModel.get(StatusProperties.SHOW_STATUS_VIEW));
@@ -1003,6 +1003,9 @@ public final class StatusMediatorUnitTest {
 
         mMediator.updateLocationBarIcon(IconTransitionType.CROSSFADE);
 
+        assertEquals(
+                StatusIconType.FUSEBOX_PLUS_BUTTON,
+                mMediator.getStatusIconTypeSupplier().get().intValue());
         assertNotNull(mModel.get(StatusProperties.STATUS_ICON_RESOURCE));
         assertEquals(
                 R.drawable.ic_add_round_20dp_with_inset,

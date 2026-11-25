@@ -61,7 +61,7 @@
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
 #include "components/privacy_sandbox/privacy_sandbox_prefs.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
+#include "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/subresource_filter/content/browser/subresource_filter_content_settings_manager.h"
@@ -2052,15 +2052,9 @@ TEST_F(PageInfoTest, TimeOpenMetrics) {
   page_info();
 }
 
-// Tests that metrics are recorded on a PageInfo for pages with
+// Tests that metrics are recorded on a `PageInfo` for pages with
 // various Safety Tip statuses.
-// See https://crbug.com/40710931 for why the test is disabled on Android.
-#if BUILDFLAG(IS_ANDROID)
-#define MAYBE_SafetyTipMetrics DISABLED_SafetyTipMetrics
-#else
-#define MAYBE_SafetyTipMetrics SafetyTipMetrics
-#endif
-TEST_F(PageInfoTest, MAYBE_SafetyTipMetrics) {
+TEST_F(PageInfoTest, SafetyTipMetrics) {
   struct TestCase {
     const security_state::SafetyTipInfo safety_tip_info;
   };

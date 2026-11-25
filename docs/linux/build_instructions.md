@@ -320,7 +320,7 @@ load("@builtin//struct.star", "module")
 def __platform_properties(ctx):
     # fyi: this image is created by
     # https://chromium.googlesource.com/infra/infra/+/refs/heads/main/rbe/images/siso-chromium/linux/Dockerfile
-    container_image = "docker://gcr.io/chops-public-images-prod/rbe/siso-chromium/linux@sha256:d7cb1ab14a0f20aa669c23f22c15a9dead761dcac19f43985bf9dd5f41fbef3a"
+    container_image = "docker://gcr.io/chops-public-images-prod/rbe/siso-chromium/linux@sha256:2ab815965d0886100cec5495c53757698d7c73fa21b344b42ff182234391e47a"
     return {
         "default": {
             # set platform properties for your worker.
@@ -386,8 +386,6 @@ Then, add the following GN args to your `args.gn`:
 use_remoteexec = true
 use_siso = true
 ```
-
-If `args.gn` contains `use_reclient`, remove it.
 
 That's it. Remember to always use `autoninja` for building Chromium as described
 below, instead of directly invoking `siso` or `ninja`.

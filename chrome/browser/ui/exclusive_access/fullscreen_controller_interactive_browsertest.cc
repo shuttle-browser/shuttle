@@ -41,10 +41,13 @@
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/metrics/content/subprocess_metrics_provider.h"
 #include "components/permissions/fake_usb_chooser_controller.h"
+#include "components/permissions/features.h"
 #include "components/permissions/permission_request_manager.h"
 #include "components/permissions/prediction_service/permission_ui_selector.h"
 #include "components/permissions/test/mock_permission_request.h"
 #include "components/permissions/test/permission_request_observer.h"
+#include "content/public/browser/permission_request_description.h"
+#include "content/public/browser/permission_result.h"
 #include "content/public/browser/render_view_host.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
@@ -55,15 +58,17 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/hit_test_region_observer.h"
+#include "content/public/test/mock_permission_controller.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/frame/user_activation_state.h"
 #include "third_party/blink/public/common/switches.h"
 #include "third_party/blink/public/mojom/frame/fullscreen.mojom.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 #include "ui/display/test/virtual_display_util.h"
 #include "ui/display/types/display_constants.h"
@@ -496,6 +501,46 @@ IN_PROC_BROWSER_TEST_F(FullscreenControllerInteractiveTest,
   }
   ASSERT_FALSE(IsPointerLocked());
   ASSERT_FALSE(IsWindowFullscreenForTabOrPending());
+}
+
+// Tests that escaping pointer lock and fullscreen together still blocks an
+// immediate pointer lock request from the page.
+IN_PROC_BROWSER_TEST_F(FullscreenControllerInteractiveTest,
+                       EscapingPointerLockAndFullscreenBlocksRelock) {
+  auto test_server_handle = embedded_test_server()->StartAndReturnHandle();
+  ASSERT_TRUE(test_server_handle);
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), embedded_test_server()->GetURL(kFullscreenPointerLockHTML)));
+
+  // Enter fullscreen, then lock the pointer with a user gesture.
+  ASSERT_NO_FATAL_FAILURE(ToggleTabFullscreen(true));
+  PressKeyAndWaitForPointerLockRequest(ui::VKEY_1);
+  ASSERT_TRUE(IsPointerLocked());
+
+  {
+    ui_test_utils::FullscreenWaiter waiter(browser(),
+                                           {.tab_fullscreen = false});
+    SendEscapeToExclusiveAccessManager();
+    waiter.Wait();
+  }
+  ASSERT_FALSE(IsPointerLocked());
+
+  // Wait for the page to see the unlock, so the next request reaches the
+  // browser instead of failing in the renderer.
+  WebContents* tab = browser()->GetTabStripModel()->GetActiveWebContents();
+  ASSERT_TRUE(content::ExecJs(tab, R"(new Promise(resolve => {
+        if (!document.pointerLockElement) {
+          resolve();
+          return;
+        }
+        document.addEventListener('pointerlockchange', resolve, {once: true});
+      }))",
+                              content::EXECUTE_SCRIPT_NO_USER_GESTURE));
+
+  // Lock the pointer with a user gesture right after the escape. It should be
+  // rejected.
+  PressKeyAndWaitForPointerLockRequest(ui::VKEY_1);
+  EXPECT_FALSE(IsPointerLocked());
 }
 
 // Tests pointer lock then fullscreen.
@@ -2356,7 +2401,8 @@ IN_PROC_BROWSER_TEST_F(FullscreenControllerInteractiveTest,
                        ClosingTabExitsFullscreenSafely) {
   // Add a new tab so the browser doesn't close when we close the active tab.
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GURL("about:blank"), WindowOpenDisposition::kNewForegroundTab,
+      browser(), GURL("about:blank"),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WebContents* active_tab =
@@ -2424,3 +2470,129 @@ IN_PROC_BROWSER_TEST_F(StartFullscreenInteractiveTest,
   WaitForViewportSizeToMatchDisplay(new_browser);
 }
 #endif  // BUILDFLAG(IS_WIN)
+
+class FullscreenControllerKeyboardLockPromptTest
+    : public FullscreenControllerInteractiveTest {
+ protected:
+  void SetUpOnMainThread() override {
+    FullscreenControllerInteractiveTest::SetUpOnMainThread();
+    // The page can't enter fullscreen from the initial about:blank tab, or
+    // without focus.
+    ASSERT_TRUE(embedded_test_server()->Start());
+    ASSERT_TRUE(ui_test_utils::NavigateToURL(
+        browser(), embedded_test_server()->GetURL("/simple.html")));
+    ASSERT_TRUE(ui_test_utils::BringBrowserWindowToFront(browser()));
+  }
+
+  // Unlike EnterActiveTabFullscreen(), these go through the page, so
+  // WebContents sends any outstanding keyboard lock request to the browser
+  // again when entering fullscreen, as it does for a real page.
+  void EnterFullscreenFromPage() {
+    ui_test_utils::FullscreenWaiter waiter(browser(), {.tab_fullscreen = true});
+    ASSERT_TRUE(
+        content::ExecJs(browser()->GetTabStripModel()->GetActiveWebContents(),
+                        "document.documentElement.requestFullscreen()"));
+    waiter.Wait();
+  }
+
+  void ExitFullscreenFromPage() {
+    ui_test_utils::FullscreenWaiter waiter(browser(),
+                                           {.tab_fullscreen = false});
+    ASSERT_TRUE(
+        content::ExecJs(browser()->GetTabStripModel()->GetActiveWebContents(),
+                        "document.exitFullscreen()"));
+    waiter.Wait();
+  }
+
+  // Returns a RequestPermissionsFromCurrentDocument() action that answers
+  // every requested permission with `status`.
+  static auto RespondWith(content::PermissionStatus status) {
+    return
+        [status](content::RenderFrameHost* render_frame_host,
+                 content::PermissionRequestDescription request_description,
+                 base::OnceCallback<void(
+                     const std::vector<content::PermissionResult>&)> callback) {
+          std::move(callback).Run(std::vector<content::PermissionResult>(
+              request_description.permissions.size(),
+              content::PermissionResult(
+                  status, content::PermissionStatusSource::UNSPECIFIED)));
+        };
+  }
+
+  bool IsKeyboardLockActive() {
+    return GetExclusiveAccessManager()
+        ->keyboard_lock_controller()
+        ->IsKeyboardLockActive();
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_{
+      permissions::features::kKeyboardLockPrompt};
+};
+
+// Regression test for crbug.com/379954091: a dismissed keyboard lock prompt
+// must not be shown again when the page re-enters fullscreen.
+IN_PROC_BROWSER_TEST_F(FullscreenControllerKeyboardLockPromptTest,
+                       DismissedRequestIsNotResentOnFullscreenReentry) {
+  {
+    testing::InSequence sequence;
+    EXPECT_CALL(*permission_controller(), RequestPermissionsFromCurrentDocument)
+        .WillOnce(RespondWith(content::PermissionStatus::ASK));
+    EXPECT_CALL(*permission_controller(), RequestPermissionsFromCurrentDocument)
+        .WillOnce(RespondWith(content::PermissionStatus::GRANTED));
+  }
+
+  EnterFullscreenFromPage();
+  ASSERT_FALSE(RequestKeyboardLock(/*esc_key_locked=*/true));
+  ExitFullscreenFromPage();
+  EnterFullscreenFromPage();
+
+  // A new lock() call from the page still asks for permission. Before the fix,
+  // re-entering fullscreen also re-sent the dismissed request, which showed up
+  // here as a third permission request.
+  ASSERT_TRUE(RequestKeyboardLock(/*esc_key_locked=*/true));
+  EXPECT_TRUE(IsKeyboardLockActive());
+}
+
+// A granted keyboard lock comes back when the page re-enters fullscreen.
+IN_PROC_BROWSER_TEST_F(FullscreenControllerKeyboardLockPromptTest,
+                       GrantedRequestIsRestoredOnFullscreenReentry) {
+  // The initial request, and the one re-sent on re-entering fullscreen.
+  EXPECT_CALL(*permission_controller(), RequestPermissionsFromCurrentDocument)
+      .Times(2);
+
+  EnterFullscreenFromPage();
+  ASSERT_TRUE(RequestKeyboardLock(/*esc_key_locked=*/true));
+  ExitFullscreenFromPage();
+  EXPECT_FALSE(IsKeyboardLockActive());
+
+  base::RunLoop run_loop;
+  GetExclusiveAccessManager()
+      ->keyboard_lock_controller()
+      ->set_lock_state_callback_for_test(run_loop.QuitClosure());
+  EnterFullscreenFromPage();
+  run_loop.Run();
+  EXPECT_TRUE(IsKeyboardLockActive());
+}
+
+// Exiting fullscreen with Esc unlocks the keyboard but keeps the request, so a
+// granted lock comes back when the page re-enters fullscreen.
+IN_PROC_BROWSER_TEST_F(FullscreenControllerKeyboardLockPromptTest,
+                       GrantedRequestIsRestoredAfterEscExit) {
+  EXPECT_CALL(*permission_controller(), RequestPermissionsFromCurrentDocument)
+      .Times(2);
+
+  EnterFullscreenFromPage();
+  ASSERT_TRUE(RequestKeyboardLock(/*esc_key_locked=*/false));
+  ASSERT_TRUE(SendEscapeToExclusiveAccessManager());
+  WaitForTabFullscreenExit();
+  EXPECT_FALSE(IsKeyboardLockActive());
+
+  base::RunLoop run_loop;
+  GetExclusiveAccessManager()
+      ->keyboard_lock_controller()
+      ->set_lock_state_callback_for_test(run_loop.QuitClosure());
+  EnterFullscreenFromPage();
+  run_loop.Run();
+  EXPECT_TRUE(IsKeyboardLockActive());
+}

@@ -6,7 +6,6 @@
 
 #import <algorithm>
 
-#import "base/strings/sys_string_conversions.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
 #import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/browser/authentication/ui_bundled/cells/table_view_identity_item.h"
@@ -14,9 +13,9 @@
 #import "ios/chrome/browser/authentication/ui_bundled/identity_chooser/identity_chooser_consumer.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/signin/model/system_identity.h"
 
 @interface IdentityChooserMediator () <IdentityManagerObserving> {
@@ -65,7 +64,6 @@
   _identityManagerObserver.reset();
   _identityManager = nullptr;
 }
-
 
 #pragma mark - Private
 
@@ -133,6 +131,11 @@
 #pragma mark - IdentityManagerObserving
 
 - (void)extendedAccountInfoDidUpdate:(const AccountInfo&)info {
+  // TODO(crbug.com/576575308): `extendedAccountInfoDidUpdate:` can be called
+  // for accounts on the device that are filtered by
+  // `prefs::kRestrictAccountsToPatterns` via
+  // `ChromeAccountManagerService::OnIdentityOnDeviceUpdated`, for which
+  // `GetIdentityOnDeviceWithGaiaID` returns `nil`.
   id<SystemIdentity> identity =
       _accountManagerService->GetIdentityOnDeviceWithGaiaID(info.GetGaiaId());
   CHECK(identity);

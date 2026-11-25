@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/passwords/passwords_leak_dialog_delegate.h"
 #include "chrome/browser/ui/passwords/passwords_model_delegate.h"
 #include "components/password_manager/core/browser/password_form.h"
+#include "components/password_manager/core/browser/password_store/actionable_error.h"
 #include "components/password_manager/core/browser/password_string.h"
 #include "testing/gmock/include/gmock/gmock.h"
 
@@ -25,7 +26,7 @@ class PasswordsModelDelegateMock : public PasswordsModelDelegate {
 
   ~PasswordsModelDelegateMock() override;
 
-  MOCK_METHOD(content::WebContents*, GetWebContents, (), (const override));
+  MOCK_METHOD(content::WebContents*, GetWebContents, (), (const, override));
   MOCK_METHOD(password_manager::PasswordFormMetricsRecorder*,
               GetPasswordFormMetricsRecorder,
               (),
@@ -34,44 +35,47 @@ class PasswordsModelDelegateMock : public PasswordsModelDelegate {
               GetPasswordFeatureManager,
               (),
               (override));
-  MOCK_METHOD(url::Origin, GetOrigin, (), (const override));
-  MOCK_METHOD(password_manager::ui::State, GetState, (), (const override));
+  MOCK_METHOD(url::Origin, GetOrigin, (), (const, override));
+  MOCK_METHOD(password_manager::ui::State, GetState, (), (const, override));
   MOCK_METHOD(const password_manager::PasswordForm&,
               GetPendingPassword,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(password_manager::metrics_util::CredentialSourceType,
               GetCredentialSource,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(
       const std::vector<std::unique_ptr<password_manager::PasswordForm>>&,
       GetCurrentForms,
       (),
-      (const override));
+      (const, override));
   MOCK_METHOD(const std::optional<password_manager::PasswordForm>&,
               GetManagePasswordsSingleCredentialDetailsModeCredential,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(password_manager::InteractionsStats*,
               GetCurrentInteractionStats,
               (),
-              (const override));
-  MOCK_METHOD(size_t, GetTotalNumberCompromisedPasswords, (), (const override));
-  MOCK_METHOD(bool, BubbleIsManualFallbackForSaving, (), (const override));
+              (const, override));
+  MOCK_METHOD(size_t,
+              GetTotalNumberCompromisedPasswords,
+              (),
+              (const, override));
+  MOCK_METHOD(bool, BubbleIsManualFallbackForSaving, (), (const, override));
   MOCK_METHOD(bool,
               GpmPinCreatedDuringRecentPasskeyCreation,
               (),
-              (const override));
-  MOCK_METHOD(const std::string&, PasskeyRpId, (), (const override));
+              (const, override));
+  MOCK_METHOD(const std::string&, PasskeyRpId, (), (const, override));
   MOCK_METHOD(const std::u16string&,
               PasswordChangeUsername,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(const std::u16string&,
               PasswordChangeNewPassword,
               (),
-              (const override));
+              (const, override));
   MOCK_METHOD(void, OnBubbleShown, (), (override));
   MOCK_METHOD(void, OnBubbleHidden, (), (override));
   MOCK_METHOD(void, OnNoInteraction, (), (override));
@@ -124,10 +128,6 @@ class PasswordsModelDelegateMock : public PasswordsModelDelegate {
               (override));
   MOCK_METHOD(void, MaybeShowIOSPasswordPromo, (), (override));
   MOCK_METHOD(void, RelaunchChrome, (), (override));
-  MOCK_METHOD(PasswordChangeDelegate*,
-              GetPasswordChangeDelegate,
-              (),
-              (const override));
   MOCK_METHOD(PasswordsLeakDialogDelegate*,
               GetPasswordsLeakDialogDelegate,
               (),
@@ -136,11 +136,17 @@ class PasswordsModelDelegateMock : public PasswordsModelDelegate {
   MOCK_METHOD(void, OnMouseEntered, (), (override));
   MOCK_METHOD(void, OnMouseExited, (), (override));
   MOCK_METHOD(void,
-              SavePasswordAfterTrustedVaultErrorResolution,
-              (),
+              SavePasswordAfterErrorResolution,
+              (const std::u16string&, const password_manager::PasswordString&),
               (override));
-  MOCK_METHOD(void, StartTrustedVaultErrorResolutionFlow, (), (override));
-  MOCK_METHOD(bool, IsSavingBlockedByTrustedVaultError, (), (const, override));
+  MOCK_METHOD(void,
+              StartErrorResolutionFlow,
+              (password_manager::ActionableError),
+              (override));
+  MOCK_METHOD(password_manager::ActionableError,
+              GetErrorBlockingSaving,
+              (),
+              (const, override));
 
   base::WeakPtr<PasswordsModelDelegateMock> AsWeakPtr() {
     return weak_ptr_factory_.GetWeakPtr();

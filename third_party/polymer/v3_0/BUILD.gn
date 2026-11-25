@@ -9,7 +9,7 @@ import("//ui/webui/resources/tools/generate_grd.gni")
 import("//ui/webui/resources/tools/minify_js.gni")
 import("//ui/webui/webui_features.gni")
 
-assert((!is_android && !is_ios) || enable_webui_ntp)
+assert(!is_android && !is_ios)
 
 js_files = [
   "iron-a11y-keys-behavior/iron-a11y-keys-behavior.js",
@@ -125,12 +125,11 @@ ts_library("library") {
     "//chrome/browser/resources/settings:build_ts",
     "//chrome/browser/resources/settings_shared:build_ts",
     "//chrome/test/data/webui:build_ts",
-    "//chrome/test/data/webui/cr_components/help_bubble:build_ts",
     "//chrome/test/data/webui/cr_elements:build_ts",
+    "//chrome/test/data/webui/lens:build_ts",
     "//chrome/test/data/webui/password_manager:build_ts",
     "//chrome/test/data/webui/print_preview:build_ts",
     "//chrome/test/data/webui/settings:build_ts",
-    "//ui/webui/resources/cr_components/help_bubble:build_ts",
     "//ui/webui/resources/cr_elements:build_ts",
   ]
 

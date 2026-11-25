@@ -10,6 +10,7 @@ assert(enable_extensions_core)
 
 chromeos_schema_sources_ = [
   "accessibility_private.json",
+  "autotest_private.webidl",
   "certificate_provider.webidl",
   "certificate_provider_internal.webidl",
   "echo_private.json",
@@ -19,7 +20,10 @@ chromeos_schema_sources_ = [
   "file_system_provider_internal.idl",
   "image_loader_private.webidl",
   "input_method_private.json",
+  "login.webidl",
+  "login_screen_storage.webidl",
   "login_screen_ui.webidl",
+  "login_state.idl",
   "odfs_config_private.idl",
   "smart_card_provider_private.idl",
   "speech_recognition_private.idl",

@@ -4,7 +4,6 @@
 
 #include "base/callback_list.h"
 #include "base/test/run_until.h"
-#include "base/test/scoped_feature_list.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/public/features.h"
@@ -15,6 +14,7 @@
 #include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/glic/test_support/glic_test_environment.h"
 #include "chrome/browser/glic/test_support/glic_test_util.h"
+#include "chrome/browser/glic/test_support/scoped_geic_test_features.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/themes/custom_theme_supplier.h"
 #include "chrome/browser/themes/theme_helper.h"
@@ -28,7 +28,10 @@
 #include "chrome/browser/ui/views/interaction/browser_elements_views.h"
 #include "chrome/browser/ui/views/tabs/glic/tab_strip_glic_button.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_action_container.h"
+#include "chrome/browser/ui/views/toolbar/test_support/glic_button_test_accessor.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_glic_actor_task_icon.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_glic_button.h"
+#include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
@@ -44,9 +47,12 @@
 #include "ui/events/event_constants.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/scoped_animation_duration_scale_mode.h"
 #include "ui/views/controls/button/button.h"
 #include "ui/views/controls/button/label_button.h"
+#include "ui/views/mouse_watcher.h"
 #include "ui/views/view_utils.h"
+#include "ui/views/widget/widget.h"
 
 namespace glic {
 namespace {
@@ -112,41 +118,27 @@ bool NormalIconIsResource(views::LabelButton* button, int resource_id) {
 IN_PROC_BROWSER_TEST_F(GlicButtonTest, NormalIconIsGlicIcon) {
   ASSERT_TRUE(glic_button());
   EXPECT_TRUE(NormalIconIsResource(glic_button(), IDR_GLIC_BUTTON_ALT_ICON));
-  auto* service = glic::GlicKeyedService::Get(browser()->GetProfile());
-  ASSERT_TRUE(service);
-  EXPECT_EQ(service->provider_spec().GetSettingsSection(),
-            glic::GlicSettingsSection::kGemini);
-  EXPECT_EQ(service->provider_spec().GetSettingsSubpage(),
-            chrome::kGlicSettingsSubpage);
-  EXPECT_EQ(service->provider_spec().GetEntryPointIconId(),
-            IDR_GLIC_BUTTON_ALT_ICON);
+  const auto& spec = glic::GetGlicProviderSpec(browser()->GetProfile());
+  EXPECT_EQ(spec.GetSettingsSectionId(), glic::kGeminiSettingsSectionId);
+  EXPECT_EQ(spec.GetSettingsSubpage(), chrome::kGlicSettingsSubpage);
+  EXPECT_EQ(spec.GetEntryPointIconId(), IDR_GLIC_BUTTON_ALT_ICON);
 }
 
 // With Gemini Enterprise enabled for the profile, the button shows the GEiC
 // icon instead.
 class GlicButtonGeicIconTest : public GlicButtonTest {
- public:
-  GlicButtonGeicIconTest() {
-    feature_list_.InitAndEnableFeatureWithParameters(
-        features::kGeic,
-        {{"geic-guest-url", "https://business.gemini.google/panel"}});
-  }
-
  private:
-  base::test::ScopedFeatureList feature_list_;
+  ScopedGeicTestFeatures geic_features_;
 };
 
 IN_PROC_BROWSER_TEST_F(GlicButtonGeicIconTest, NormalIconIsGeicIcon) {
   ASSERT_TRUE(glic_button());
   EXPECT_TRUE(NormalIconIsResource(glic_button(), IDR_GEIC_BUTTON_ICON));
-  auto* service = glic::GlicKeyedService::Get(browser()->GetProfile());
-  ASSERT_TRUE(service);
-  EXPECT_EQ(service->provider_spec().GetSettingsSection(),
-            glic::GlicSettingsSection::kGeminiEnterprise);
-  EXPECT_EQ(service->provider_spec().GetSettingsSubpage(),
-            chrome::kGlicEnterpriseSettingsSubpage);
-  EXPECT_EQ(service->provider_spec().GetEntryPointIconId(),
-            IDR_GEIC_BUTTON_ICON);
+  const auto& spec = glic::GetGlicProviderSpec(browser()->GetProfile());
+  EXPECT_EQ(spec.GetSettingsSectionId(),
+            glic::kGeminiEnterpriseSettingsSectionId);
+  EXPECT_EQ(spec.GetSettingsSubpage(), chrome::kGlicEnterpriseSettingsSubpage);
+  EXPECT_EQ(spec.GetEntryPointIconId(), IDR_GEIC_BUTTON_ICON);
 }
 
 IN_PROC_BROWSER_TEST_F(GlicButtonTest, ContextMenuPinned) {
@@ -280,8 +272,25 @@ class GlicButtonThemeTest : public GlicButtonTest {
                 }));
   }
 
+  void SetUpOnMainThread() override {
+    GlicButtonTest::SetUpOnMainThread();
+    // `TabStripGlicButton` selects between active- and inactive-frame colors
+    // based on `Widget::ShouldPaintAsActive()`, while the tests below assert
+    // active-frame theme colors. Lock active painting so parallel browser_tests
+    // windows stealing OS focus do not flip the button to inactive colors.
+    paint_as_active_lock_ = BrowserView::GetBrowserViewForBrowser(browser())
+                                ->GetWidget()
+                                ->LockPaintAsActive();
+  }
+
+  void TearDownOnMainThread() override {
+    paint_as_active_lock_.reset();
+    GlicButtonTest::TearDownOnMainThread();
+  }
+
  private:
   base::CallbackListSubscription create_services_subscription_;
+  std::unique_ptr<views::Widget::PaintAsActiveLock> paint_as_active_lock_;
 };
 
 IN_PROC_BROWSER_TEST_F(GlicButtonThemeTest, CustomThemeFallback) {
@@ -361,10 +370,24 @@ class ToolbarGlicButtonThemeTest : public InProcessBrowserTest {
                 }));
   }
 
+  void SetUpOnMainThread() override {
+    InProcessBrowserTest::SetUpOnMainThread();
+    // Keep the browser widget painting as active so parallel browser_tests
+    // windows stealing OS focus do not trigger `PaintAsActive` visual state
+    // changes mid-test.
+    paint_as_active_lock_ = BrowserView::GetBrowserViewForBrowser(browser())
+                                ->GetWidget()
+                                ->LockPaintAsActive();
+  }
+
+  void TearDownOnMainThread() override {
+    paint_as_active_lock_.reset();
+    InProcessBrowserTest::TearDownOnMainThread();
+  }
+
  protected:
-  glic::ToolbarGlicButton* glic_button() {
-    return views::AsViewClass<glic::ToolbarGlicButton>(
-        glic::GlicButtonInterface::FromBrowser(browser()));
+  GlicButtonTestAccessor glic_button() {
+    return GlicButtonTestAccessor(browser());
   }
 
  private:
@@ -377,28 +400,29 @@ class ToolbarGlicButtonThemeTest : public InProcessBrowserTest {
 
   GlicTestEnvironment glic_test_env_;
   base::CallbackListSubscription create_services_subscription_;
+  std::unique_ptr<views::Widget::PaintAsActiveLock> paint_as_active_lock_;
 };
 
 IN_PROC_BROWSER_TEST_F(ToolbarGlicButtonThemeTest, CustomThemeFallback) {
   FakeThemeService* fake_theme_service = static_cast<FakeThemeService*>(
       ThemeServiceFactory::GetForProfile(browser()->GetProfile()));
   ASSERT_TRUE(fake_theme_service);
-  ASSERT_TRUE(glic_button());
+  ASSERT_TRUE(glic_button().GetControl());
 
   // 1. By default, the button should not use the fallback text color.
-  EXPECT_NE(glic_button()->GetTextColorForTesting(views::Button::STATE_NORMAL),
-            glic_button()->GetColorProvider()->GetColor(
+  EXPECT_NE(glic_button().GetTextColor(),
+            glic_button().GetColorProvider()->GetColor(
                 kColorAvatarButtonHighlightDefaultForeground));
 
   // 2. Enable the custom theme fallback in the fake theme service.
   fake_theme_service->set_using_extension_theme(true);
 
   // Trigger OnThemeChanged to update the button colors.
-  glic_button()->OnThemeChanged();
+  glic_button().OnThemeChanged();
 
   // 3. Verify that the button now uses the custom theme fallback color.
-  EXPECT_EQ(glic_button()->GetTextColorForTesting(views::Button::STATE_NORMAL),
-            glic_button()->GetColorProvider()->GetColor(
+  EXPECT_EQ(glic_button().GetTextColor(),
+            glic_button().GetColorProvider()->GetColor(
                 kColorAvatarButtonHighlightDefaultForeground));
 }
 
@@ -407,7 +431,7 @@ IN_PROC_BROWSER_TEST_F(ToolbarGlicButtonThemeTest,
   FakeThemeService* fake_theme_service = static_cast<FakeThemeService*>(
       ThemeServiceFactory::GetForProfile(browser()->GetProfile()));
   ASSERT_TRUE(fake_theme_service);
-  ASSERT_TRUE(glic_button());
+  ASSERT_TRUE(glic_button().GetControl());
 
   auto theme_supplier = base::MakeRefCounted<TestCustomThemeSupplier>();
   theme_supplier->SetColor(ThemeProperties::COLOR_FRAME_ACTIVE, SK_ColorBLACK);
@@ -416,21 +440,104 @@ IN_PROC_BROWSER_TEST_F(ToolbarGlicButtonThemeTest,
       SkColorSetRGB(0x20, 0x20, 0x20));
   fake_theme_service->set_using_extension_theme(true);
   fake_theme_service->SetCustomThemeSupplier(theme_supplier);
-  glic_button()->OnThemeChanged();
+  glic_button().OnThemeChanged();
 
-  const SkColor text_color =
-      glic_button()->GetTextColorForTesting(views::Button::STATE_NORMAL);
-  const SkColor expected_fg_color = glic_button()->GetColorProvider()->GetColor(
+  const SkColor text_color = glic_button().GetTextColor();
+  const SkColor expected_fg_color = glic_button().GetColorProvider()->GetColor(
       kColorAvatarButtonHighlightDefaultForeground);
   EXPECT_EQ(text_color, expected_fg_color);
 
   // The text color must be light and contrast adequately with the dark
   // background.
-  const SkColor bg_color = glic_button()->GetColorProvider()->GetColor(
+  const SkColor bg_color = glic_button().GetColorProvider()->GetColor(
       kColorAvatarButtonHighlightDefault);
   EXPECT_FALSE(color_utils::IsDark(text_color));
   EXPECT_GE(color_utils::GetContrastRatio(text_color, bg_color),
             color_utils::kMinimumReadableContrastRatio);
+}
+
+class ToolbarGlicActivityHubTest : public InProcessBrowserTest {
+ public:
+  ToolbarGlicActivityHubTest()
+      : glic_test_env_({},
+                       GetEnabledFeatures(),
+                       GetDefaultDisabledGlicTestFeatures()) {}
+
+ protected:
+  ToolbarView* toolbar() {
+    return BrowserView::GetBrowserViewForBrowser(browser())->toolbar();
+  }
+
+  void UpdateGlicSplitButtonUi(const GlicSplitButtonUiState& state) {
+    ToolbarView* toolbar_view = toolbar();
+    toolbar_view->UpdateGlicSplitButtonUi(state);
+    // Flush any deferred nudge show/hide queued when the OS cursor happens to
+    // rest over `ToolbarView` on a Swarming bot.
+    static_cast<views::MouseWatcherListener*>(toolbar_view)
+        ->MouseMovedOutOfHost();
+  }
+
+ private:
+  static std::vector<base::test::FeatureRef> GetEnabledFeatures() {
+    std::vector<base::test::FeatureRef> enabled =
+        GetDefaultEnabledGlicTestFeatures();
+    enabled.push_back(features::kGlicHorizontalTabToolbarButton);
+    enabled.push_back(features::kGlicActivityHub);
+    return enabled;
+  }
+
+  GlicTestEnvironment glic_test_env_;
+};
+
+IN_PROC_BROWSER_TEST_F(ToolbarGlicActivityHubTest,
+                       UpdateGlicSplitButtonUiTransitions) {
+  gfx::ScopedAnimationDurationScaleMode disable_animations(
+      gfx::ScopedAnimationDurationScaleMode::ZERO_DURATION);
+
+  ToolbarView* toolbar_view = toolbar();
+  ASSERT_TRUE(toolbar_view);
+  auto* primary_button = views::AsViewClass<ToolbarGlicButton>(
+      GlicButtonInterface::FromBrowser(browser()));
+  ASSERT_TRUE(primary_button);
+  const std::u16string default_label(primary_button->GetText());
+  ASSERT_FALSE(default_label.empty());
+  auto* task_icon = toolbar_view->glic_actor_task_icon();
+  ASSERT_TRUE(task_icon);
+
+  // 1. Show kChevron: primary button stays expanded, secondary is focusable.
+  GlicSplitButtonUiState state;
+  state.secondary_action = GlicSplitButtonUiState::SecondaryAction::kChevron;
+  UpdateGlicSplitButtonUi(state);
+  EXPECT_TRUE(task_icon->GetVisible());
+  EXPECT_TRUE(task_icon->IsFocusable());
+  EXPECT_EQ(task_icon->GetText(), u"");
+  EXPECT_EQ(primary_button->GetText(), default_label);
+
+  // 2. Transition from kChevron to kText with label collapses primary button.
+  state.secondary_action = GlicSplitButtonUiState::SecondaryAction::kText;
+  state.secondary_label = u"Check task";
+  UpdateGlicSplitButtonUi(state);
+  EXPECT_TRUE(task_icon->GetVisible());
+  EXPECT_TRUE(task_icon->IsFocusable());
+  EXPECT_TRUE(toolbar_view->GetIsShowingGlicActorTaskIconNudge());
+  EXPECT_EQ(task_icon->GetText(), u"Check task");
+  EXPECT_EQ(primary_button->GetText(), u"");
+
+  // 3. Transition from kText back to kChevron clears the secondary label,
+  // restores the primary button label, and keeps the chevron focusable.
+  state.secondary_action = GlicSplitButtonUiState::SecondaryAction::kChevron;
+  state.secondary_label = u"";
+  UpdateGlicSplitButtonUi(state);
+  EXPECT_TRUE(task_icon->GetVisible());
+  EXPECT_TRUE(task_icon->IsFocusable());
+  EXPECT_FALSE(toolbar_view->GetIsShowingGlicActorTaskIconNudge());
+  EXPECT_EQ(task_icon->GetText(), u"");
+  EXPECT_EQ(primary_button->GetText(), default_label);
+
+  // 4. Transition from kChevron to kNone hides the secondary button.
+  state.secondary_action = GlicSplitButtonUiState::SecondaryAction::kNone;
+  UpdateGlicSplitButtonUi(state);
+  EXPECT_FALSE(task_icon->GetVisible());
 }
 
 }  // namespace

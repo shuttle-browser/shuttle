@@ -20,11 +20,13 @@
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client_channel.h"
+#include "content/public/browser/devtools_agent_host_observer.h"
 #include "content/public/browser/devtools_external_agent_proxy.h"
 #include "content/public/browser/devtools_external_agent_proxy_delegate.h"
 #include "content/public/browser/devtools_manager_delegate.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/test/navigation_simulator.h"
+#include "content/public/test/test_browser_context.h"
 #include "content/public/test/test_content_browser_client.h"
 #include "content/public/test/test_utils.h"
 #include "content/test/test_render_view_host.h"
@@ -119,14 +121,28 @@ class RecordingDevToolsManagerDelegate : public DevToolsManagerDelegate {
     }
   }
 
+  bool AllowInspectingRenderFrameHost(RenderFrameHost* rfh) override {
+    return rfh->GetBrowserContext() != not_inspectable_browser_context_;
+  }
+
   DevToolsAgentHostClient* last_attached_client() const {
     return last_attached_client_;
   }
   DevToolsAgentHost* last_attached_host() const { return last_attached_host_; }
 
+  void set_not_inspectable_browser_context(BrowserContext* browser_context) {
+    not_inspectable_browser_context_ = browser_context;
+  }
+
  private:
   raw_ptr<DevToolsAgentHostClient> last_attached_client_ = nullptr;
   raw_ptr<DevToolsAgentHost> last_attached_host_ = nullptr;
+  raw_ptr<BrowserContext> not_inspectable_browser_context_ = nullptr;
+};
+
+class ForceCreationObserver : public DevToolsAgentHostObserver {
+ public:
+  bool ShouldForceDevToolsAgentHostCreation() override { return true; }
 };
 
 RecordingDevToolsManagerDelegate*
@@ -294,13 +310,18 @@ TEST_F(DevToolsAgentHostImplTest, TestExternalProxy) {
 
 class CustomMetadataDevToolsClientHost : public TestDevToolsClientHost {
  public:
-  explicit CustomMetadataDevToolsClientHost(PeerMetadata peer_metadata)
-      : peer_metadata_(std::move(peer_metadata)) {}
+  explicit CustomMetadataDevToolsClientHost(
+      PeerMetadata peer_metadata,
+      std::string type_for_metrics = "RemoteDebugger")
+      : peer_metadata_(std::move(peer_metadata)),
+        type_for_metrics_(std::move(type_for_metrics)) {}
 
+  std::string GetTypeForMetrics() override { return type_for_metrics_; }
   PeerMetadata GetPeerMetadata() override { return peer_metadata_; }
 
  private:
   PeerMetadata peer_metadata_;
+  std::string type_for_metrics_;
 };
 
 TEST_F(DevToolsAgentHostImplTest,
@@ -314,7 +335,8 @@ TEST_F(DevToolsAgentHostImplTest,
   CustomMetadataDevToolsClientHost root_client(
       {.transport_type =
            DevToolsAgentHostClient::PeerMetadata::TransportType::kWebSocket,
-       .peer_address = kPeerAddress});
+       .peer_address = kPeerAddress},
+      "RemoteDebugger");
   root_client.InspectAgentHost(browser_host.get());
   ASSERT_NE(RecordingDevToolsManagerDelegate::last_instance, nullptr);
 
@@ -332,6 +354,7 @@ TEST_F(DevToolsAgentHostImplTest,
       RecordingDevToolsManagerDelegate::last_instance->last_attached_client();
   ASSERT_NE(child_client, nullptr);
   EXPECT_NE(child_client, &root_client);
+  EXPECT_EQ(child_client->GetTypeForMetrics(), "RemoteDebugger");
   DevToolsAgentHostClient::PeerMetadata child_metadata =
       child_client->GetPeerMetadata();
   EXPECT_EQ(child_metadata.transport_type,
@@ -351,7 +374,8 @@ TEST_F(DevToolsAgentHostImplTest,
   CustomMetadataDevToolsClientHost root_client(
       {.transport_type =
            DevToolsAgentHostClient::PeerMetadata::TransportType::kPipe,
-       .peer_address = std::nullopt});
+       .peer_address = std::nullopt},
+      "RemoteDebugger");
   root_client.InspectAgentHost(browser_host.get());
   ASSERT_NE(RecordingDevToolsManagerDelegate::last_instance, nullptr);
 
@@ -369,10 +393,51 @@ TEST_F(DevToolsAgentHostImplTest,
       RecordingDevToolsManagerDelegate::last_instance->last_attached_client();
   ASSERT_NE(child_client, nullptr);
   EXPECT_NE(child_client, &root_client);
+  EXPECT_EQ(child_client->GetTypeForMetrics(), "RemoteDebugger");
   DevToolsAgentHostClient::PeerMetadata child_metadata =
       child_client->GetPeerMetadata();
   EXPECT_EQ(child_metadata.transport_type,
             DevToolsAgentHostClient::PeerMetadata::TransportType::kPipe);
+  EXPECT_EQ(child_metadata.peer_address, std::nullopt);
+
+  root_client.Close();
+}
+
+TEST_F(DevToolsAgentHostImplTest,
+       TargetHandlerSessionDelegatesExtensionTypeViaSetAutoAttach) {
+  scoped_refptr<DevToolsAgentHost> page_host =
+      DevToolsAgentHost::GetOrCreateFor(web_contents());
+  scoped_refptr<DevToolsAgentHost> browser_host =
+      DevToolsAgentHost::CreateForDiscovery();
+
+  CustomMetadataDevToolsClientHost root_client(
+      {.transport_type =
+           DevToolsAgentHostClient::PeerMetadata::TransportType::kUnknown,
+       .peer_address = std::nullopt},
+      "Extension");
+  root_client.InspectAgentHost(browser_host.get());
+  ASSERT_NE(RecordingDevToolsManagerDelegate::last_instance, nullptr);
+
+  constexpr char kAutoAttachCmd[] =
+      "{\"id\":1,\"method\":\"Target.setAutoAttach\","
+      "\"params\":{\"autoAttach\":true,\"waitForDebuggerOnStart\":false,"
+      "\"flatten\":true}}";
+  browser_host->DispatchProtocolMessage(
+      &root_client, base::byte_span_from_cstring(kAutoAttachCmd));
+
+  EXPECT_EQ(
+      RecordingDevToolsManagerDelegate::last_instance->last_attached_host(),
+      page_host.get());
+  DevToolsAgentHostClient* child_client =
+      RecordingDevToolsManagerDelegate::last_instance->last_attached_client();
+  ASSERT_NE(child_client, nullptr);
+  EXPECT_NE(child_client, &root_client);
+  EXPECT_EQ(child_client->GetTypeForMetrics(), "Extension");
+  EXPECT_NE(child_client->GetTypeForMetrics(), "DevTools");
+  DevToolsAgentHostClient::PeerMetadata child_metadata =
+      child_client->GetPeerMetadata();
+  EXPECT_EQ(child_metadata.transport_type,
+            DevToolsAgentHostClient::PeerMetadata::TransportType::kUnknown);
   EXPECT_EQ(child_metadata.peer_address, std::nullopt);
 
   root_client.Close();
@@ -414,6 +479,40 @@ TEST_F(DevToolsAgentHostImplTest,
   EXPECT_EQ(connector_metadata.peer_address, kPeerAddress);
 
   root_client.Close();
+}
+
+// Agent hosts aren't created to list or discover targets for pages that
+// can't be inspected, since clients can't attach to them.
+TEST_F(DevToolsAgentHostImplTest, NoImplicitHostsForNotInspectablePages) {
+  DevToolsManager::GetInstance();
+  ASSERT_TRUE(RecordingDevToolsManagerDelegate::last_instance);
+  TestBrowserContext not_inspectable_context;
+  RecordingDevToolsManagerDelegate::last_instance
+      ->set_not_inspectable_browser_context(&not_inspectable_context);
+
+  std::unique_ptr<WebContents> not_inspectable =
+      TestWebContents::Create(&not_inspectable_context, nullptr);
+  DevToolsAgentHost::GetOrCreateAll();
+  EXPECT_FALSE(DevToolsAgentHost::HasFor(not_inspectable.get()));
+  EXPECT_TRUE(DevToolsAgentHost::HasFor(web_contents()));
+
+  // While targets are discovered, hosts are created only for new WebContents
+  // that can be inspected. They are created once a WebContents gets a
+  // delegate.
+  ForceCreationObserver observer;
+  DevToolsAgentHost::AddObserver(&observer);
+  TestWebContentsDelegate delegate;
+  std::unique_ptr<WebContents> new_not_inspectable =
+      TestWebContents::Create(&not_inspectable_context, nullptr);
+  new_not_inspectable->SetDelegate(&delegate);
+  std::unique_ptr<WebContents> new_inspectable =
+      TestWebContents::Create(browser_context(), nullptr);
+  new_inspectable->SetDelegate(&delegate);
+  EXPECT_FALSE(DevToolsAgentHost::HasFor(new_not_inspectable.get()));
+  EXPECT_TRUE(DevToolsAgentHost::HasFor(new_inspectable.get()));
+  new_not_inspectable->SetDelegate(nullptr);
+  new_inspectable->SetDelegate(nullptr);
+  DevToolsAgentHost::RemoveObserver(&observer);
 }
 
 }  // namespace content

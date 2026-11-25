@@ -7,6 +7,7 @@ package org.chromium.chrome.browser.tab_bottom_sheet;
 import static org.hamcrest.CoreMatchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -30,6 +31,7 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import org.chromium.base.CallbackUtils;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
@@ -42,6 +44,7 @@ import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.Restriction;
+import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.content.WebContentsFactory;
 import org.chromium.chrome.browser.context_sharing.R;
@@ -63,6 +66,7 @@ import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.chrome.test.util.browser.LocationSettingsTestUtil;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetType;
 import org.chromium.components.browser_ui.modaldialog.ModalDialogView;
 import org.chromium.components.browser_ui.widget.TouchEventProvider;
 import org.chromium.content.browser.input.ImeAdapterImpl;
@@ -95,6 +99,11 @@ public class TabBottomSheetManagerTest {
 
                 @Override
                 public void onBottomSheetSuppressed() {}
+
+                @Override
+                public @Nullable Tab getTab() {
+                    return null;
+                }
             };
 
     private CoBrowseViews mCoBrowseViews;
@@ -132,7 +141,8 @@ public class TabBottomSheetManagerTest {
                                     TabBottomSheetClientType.UNKNOWN,
                                     CoBrowseContainerType.BOTTOM_SHEET,
                                     /* requestFocus= */ false,
-                                    new TestCoBrowseComponentProvider());
+                                    new TestCoBrowseComponentProvider(),
+                                    CallbackUtils.emptyRunnable());
                     mManager =
                             (TabBottomSheetManagerImpl)
                                     tabbedRootUiCoordinator.getTabBottomSheetManagerForTesting();
@@ -301,7 +311,8 @@ public class TabBottomSheetManagerTest {
                                         TabBottomSheetClientType.UNKNOWN,
                                         CoBrowseContainerType.BOTTOM_SHEET,
                                         /* requestFocus= */ false,
-                                        new TestCoBrowseComponentProvider()));
+                                        new TestCoBrowseComponentProvider(),
+                                        CallbackUtils.emptyRunnable()));
 
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -357,7 +368,8 @@ public class TabBottomSheetManagerTest {
                                         TabBottomSheetClientType.UNKNOWN,
                                         CoBrowseContainerType.BOTTOM_SHEET,
                                         /* requestFocus= */ false,
-                                        new TestCoBrowseComponentProvider()));
+                                        new TestCoBrowseComponentProvider(),
+                                        CallbackUtils.emptyRunnable()));
 
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -412,6 +424,29 @@ public class TabBottomSheetManagerTest {
         // Close tab switcher
         tabSwitcher.leaveHubToPreviousTabViaBack(WebPageStation.newBuilder());
 
+        blockUntilSheetFullyRestored();
+    }
+
+    @Test
+    @SmallTest
+    public void testSheetColorToReshowAfterTabSwitcher_onlyForTheSheetsTab() {
+        Tab sheetTab = ThreadUtils.runOnUiThreadBlocking(() -> mActivity.getActivityTab());
+        NativeInterfaceDelegate delegate = mock(NativeInterfaceDelegate.class);
+        when(delegate.getTab()).thenReturn(sheetTab);
+        showBottomSheetAndBlockUntilReady(delegate);
+
+        RegularTabSwitcherStation tabSwitcher = mInitialStation.openRegularTabSwitcher();
+        CriteriaHelper.pollUiThread(() -> !mManager.isSheetShowing());
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    assertEquals(
+                            (Integer) Color.WHITE,
+                            mManager.getSheetColorToReshowAfterTabSwitcher(sheetTab));
+                    assertNull(mManager.getSheetColorToReshowAfterTabSwitcher(mock(Tab.class)));
+                });
+
+        tabSwitcher.leaveHubToPreviousTabViaBack(WebPageStation.newBuilder());
         blockUntilSheetFullyRestored();
     }
 
@@ -573,6 +608,8 @@ public class TabBottomSheetManagerTest {
         // Create and show another bottom sheet content of higher priority.
         BottomSheetContent otherContent = mock(BottomSheetContent.class);
         when(otherContent.getPriority()).thenReturn(BottomSheetContent.ContentPriority.HIGH);
+        when(otherContent.getSheetType())
+                .thenReturn(new BottomSheetType.Builder().setUserInitiated(true).build());
         when(otherContent.allowInSheetContentSnackbars()).thenReturn(true);
         var alwaysFalse =
                 ThreadUtils.runOnUiThreadBlocking(() -> ObservableSuppliers.alwaysFalse());
@@ -629,7 +666,8 @@ public class TabBottomSheetManagerTest {
                                         TabBottomSheetClientType.UNKNOWN,
                                         CoBrowseContainerType.BOTTOM_SHEET,
                                         /* requestFocus= */ false,
-                                        new TestCoBrowseComponentProvider()));
+                                        new TestCoBrowseComponentProvider(),
+                                        CallbackUtils.emptyRunnable()));
 
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -679,6 +717,7 @@ public class TabBottomSheetManagerTest {
 
     @Test
     @SmallTest
+    @Restriction(DeviceFormFactor.PHONE)
     public void testBottomSheetHiddenOnIncognito() {
         showBottomSheetAndBlockUntilReady();
 

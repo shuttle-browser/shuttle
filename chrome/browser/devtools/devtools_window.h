@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_DEVTOOLS_DEVTOOLS_WINDOW_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/callback_list.h"
@@ -23,6 +24,7 @@
 #include "content/public/browser/devtools_manager_delegate.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/web_contents_observer.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"  // nogncheck crbug.com/40147906
@@ -442,7 +444,7 @@ class DevToolsWindow : public DevToolsUIBindings::Delegate,
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override;
@@ -477,7 +479,8 @@ class DevToolsWindow : public DevToolsUIBindings::Delegate,
   void SetInspectedPageBounds(const gfx::Rect& rect) override;
   void InspectElementCompleted() override;
   void SetIsDocked(bool is_docked) override;
-  void OpenInNewTab(const std::string& url) override;
+  void OpenInNewTab(const std::string& url,
+                    const std::optional<std::string>& initiator_id) override;
   void OpenSearchResultsInNewTab(const std::string& url) override;
   void SetWhitelistedShortcuts(const std::string& message) override;
   void SetEyeDropperActive(bool active) override;
@@ -495,7 +498,11 @@ class DevToolsWindow : public DevToolsUIBindings::Delegate,
   int GetOpenedByForLogging() override;
   int GetClosedByForLogging() override;
 
-  void OpenInNewTab(const GURL& url);
+  // Opens `url` in a new tab. The navigation is attributed to the frame of
+  // the inspected page or to the worker that `initiator_id` identifies (by
+  // DevTools target id or frame id), or to an opaque origin otherwise.
+  void OpenInNewTab(const GURL& url,
+                    const std::optional<std::string>& initiator_id);
   void ColorPickedInEyeDropper(int r, int g, int b, int a);
 
   // content::WebContentsObserver

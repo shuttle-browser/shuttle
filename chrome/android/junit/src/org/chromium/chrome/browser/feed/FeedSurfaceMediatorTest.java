@@ -15,6 +15,7 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -58,8 +59,6 @@ import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.feed.FeedSurfaceProvider.RestoringState;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.gesturenav.GestureNavigationUtils;
-import org.chromium.chrome.browser.gesturenav.GestureNavigationUtilsJni;
 import org.chromium.chrome.browser.preferences.Pref;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileManager;
@@ -73,6 +72,8 @@ import org.chromium.components.prefs.PrefService;
 import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.components.search_engines.TemplateUrlService.TemplateUrlServiceObserver;
 import org.chromium.components.signin.identitymanager.IdentityManager;
+import org.chromium.content.browser.navigation_transitions.BackForwardTransitionAnimationManagerImpl;
+import org.chromium.content.browser.navigation_transitions.BackForwardTransitionAnimationManagerImplJni;
 import org.chromium.ui.base.DeviceFormFactor;
 
 import java.time.Duration;
@@ -91,7 +92,7 @@ public class FeedSurfaceMediatorTest {
 
     // Mocked JNI.
     @Mock private FeedServiceBridge.Natives mFeedServiceBridgeJniMock;
-    @Mock private GestureNavigationUtils.Natives mGestureNavigationUtilsJniMock;
+    @Mock private BackForwardTransitionAnimationManagerImpl.Natives mAnimationManagerJniMock;
     @Mock private FeedSurfaceCoordinator mFeedSurfaceCoordinator;
     @Mock private IdentityServicesProvider mIdentityService;
     @Mock private PrefChangeRegistrar mPrefChangeRegistrar;
@@ -119,7 +120,8 @@ public class FeedSurfaceMediatorTest {
         mActivity = Robolectric.buildActivity(Activity.class).get();
         mRecyclerView = new RecyclerView(mActivity);
         FeedServiceBridgeJni.setInstanceForTesting(mFeedServiceBridgeJniMock);
-        GestureNavigationUtilsJni.setInstanceForTesting(mGestureNavigationUtilsJniMock);
+        BackForwardTransitionAnimationManagerImplJni.setInstanceForTesting(
+                mAnimationManagerJniMock);
 
         ApplicationStatus.onStateChangeForTesting(mActivity, ActivityState.CREATED);
 
@@ -471,7 +473,7 @@ public class FeedSurfaceMediatorTest {
     @Test
     @EnableFeatures(ChromeFeatureList.FEED_NULL_ITEM_ANIMATOR_ON_SCROLL_RESTORE)
     public void testScrollRestore_disablesItemAnimatorUntilRestoreCompletes() {
-        when(mGestureNavigationUtilsJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
+        when(mAnimationManagerJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
         RecyclerView.ItemAnimator originalAnimator = new DefaultItemAnimator();
         TestRecyclerView recyclerView = createTestRecyclerView(originalAnimator);
         createMediatorWithScrollStateToRestore(/* position= */ 3);
@@ -494,7 +496,7 @@ public class FeedSurfaceMediatorTest {
     @Test
     @DisableFeatures(ChromeFeatureList.FEED_NULL_ITEM_ANIMATOR_ON_SCROLL_RESTORE)
     public void testScrollRestore_featureFlagDisabled_usesNoOpItemAnimator() {
-        when(mGestureNavigationUtilsJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
+        when(mAnimationManagerJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
         RecyclerView.ItemAnimator originalAnimator = new DefaultItemAnimator();
         TestRecyclerView recyclerView = createTestRecyclerView(originalAnimator);
         createMediatorWithScrollStateToRestore(/* position= */ 3);
@@ -515,7 +517,7 @@ public class FeedSurfaceMediatorTest {
 
     @Test
     public void testScrollRestore_beforeReachingSavedPosition_keepsItemAnimator() {
-        when(mGestureNavigationUtilsJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
+        when(mAnimationManagerJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
         RecyclerView.ItemAnimator originalAnimator = new DefaultItemAnimator();
         TestRecyclerView recyclerView = createTestRecyclerView(originalAnimator);
         createMediatorWithScrollStateToRestore(/* position= */ 3);
@@ -530,8 +532,7 @@ public class FeedSurfaceMediatorTest {
 
     @Test
     public void testScrollRestore_withoutBackForwardTransitions_keepsItemAnimator() {
-        when(mGestureNavigationUtilsJniMock.shouldAnimateBackForwardTransitions())
-                .thenReturn(false);
+        when(mAnimationManagerJniMock.shouldAnimateBackForwardTransitions()).thenReturn(false);
         RecyclerView.ItemAnimator originalAnimator = new DefaultItemAnimator();
         TestRecyclerView recyclerView = createTestRecyclerView(originalAnimator);
         createMediatorWithScrollStateToRestore(/* position= */ 3);
@@ -542,6 +543,48 @@ public class FeedSurfaceMediatorTest {
         assertEquals(originalAnimator, recyclerView.getItemAnimator());
     }
 
+    @Test
+    public void testScrollRestore_noSavedStateDuringUpdateContent_keepsNoStateToRestore() {
+        when(mPrefService.getBoolean(Pref.ARTICLES_LIST_VISIBLE)).thenReturn(true);
+        when(mPrefService.getBoolean(Pref.ENABLE_SNIPPETS)).thenReturn(true);
+        when(mPrefService.getBoolean(Pref.ENABLE_SNIPPETS_BY_DSE)).thenReturn(true);
+        mFeedSurfaceMediator = createMediator();
+        doAnswer(
+                        invocation -> {
+                            mFeedSurfaceMediator.restoreSavedInstanceState(null);
+                            return null;
+                        })
+                .when(mFeedSurfaceCoordinator)
+                .setupHeaders(true);
+
+        mFeedSurfaceMediator.updateContent();
+
+        assertEquals(RestoringState.NO_STATE_TO_RESTORE, getRestoringState());
+    }
+
+    @Test
+    public void testScrollRestore_topPositionZeroOffset_setsNoStateToRestore() {
+        when(mPrefService.getBoolean(Pref.ARTICLES_LIST_VISIBLE)).thenReturn(true);
+        when(mPrefService.getBoolean(Pref.ENABLE_SNIPPETS)).thenReturn(true);
+        when(mPrefService.getBoolean(Pref.ENABLE_SNIPPETS_BY_DSE)).thenReturn(true);
+        mFeedSurfaceMediator = createMediator();
+        doAnswer(
+                        invocation -> {
+                            FeedScrollState state = new FeedScrollState();
+                            state.position = 0;
+                            state.lastPosition = 1;
+                            state.offset = 0;
+                            mFeedSurfaceMediator.restoreSavedInstanceState(state.toJson());
+                            return null;
+                        })
+                .when(mFeedSurfaceCoordinator)
+                .setupHeaders(true);
+
+        mFeedSurfaceMediator.updateContent();
+
+        assertEquals(RestoringState.NO_STATE_TO_RESTORE, getRestoringState());
+    }
+
     /**
      * Uses a real RecyclerView to check that list changes laid out while the scroll restore has
      * item animations disabled don't leave stale views behind, e.g. a stuck loading spinner.
@@ -549,7 +592,7 @@ public class FeedSurfaceMediatorTest {
     @Test
     @EnableFeatures(ChromeFeatureList.FEED_NULL_ITEM_ANIMATOR_ON_SCROLL_RESTORE)
     public void testScrollRestore_listChangesDuringRestore_leaveNoStaleViews() {
-        when(mGestureNavigationUtilsJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
+        when(mAnimationManagerJniMock.shouldAnimateBackForwardTransitions()).thenReturn(true);
         Activity activity = Robolectric.buildActivity(Activity.class).setup().get();
         FrameLayout root = new FrameLayout(activity);
         activity.setContentView(root);

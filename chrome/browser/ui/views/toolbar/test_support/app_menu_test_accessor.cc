@@ -13,8 +13,10 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
+#include "chrome/browser/ui/views/toolbar/webui_test_utils.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/user_education/common/user_education_class_properties.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test_utils.h"
 #include "ui/accessibility/ax_action_data.h"
@@ -71,16 +73,12 @@ content::WebContents* GetWebContentsFromView(views::View* view) {
 
 }  // namespace
 
-AppMenuTestAccessor::AppMenuTestAccessor(BrowserWindowInterface* browser) {
-  CHECK(browser);
-  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser);
+AppMenuTestAccessor::AppMenuTestAccessor(BrowserWindowInterface* browser)
+    : browser_(browser) {
+  CHECK(browser_);
+  BrowserView* browser_view = BrowserView::GetBrowserViewForBrowser(browser_);
   CHECK(browser_view);
   control_ = browser_view->toolbar_button_provider()->GetAppMenuControl();
-  CHECK(control_);
-}
-
-AppMenuTestAccessor::AppMenuTestAccessor(AppMenuControl* control)
-    : control_(control) {
   CHECK(control_);
 }
 
@@ -142,9 +140,9 @@ bool AppMenuTestAccessor::HandleAccessibleAction(
   }
 
   std::string acc_name = l10n_util::GetStringUTF8(IDS_ACCNAME_APP);
-
-  content::WaitForAccessibilityTreeToContainNodeWithName(web_contents,
-                                                         acc_name);
+  if (!WaitForWebUIToolbarAccessibilityNode(browser_, acc_name)) {
+    return false;
+  }
 
   content::FindAccessibilityNodeCriteria find_criteria;
   find_criteria.name = acc_name;
@@ -197,6 +195,30 @@ bool AppMenuTestAccessor::IsHighlighted() const {
                            "!!document.querySelector('toolbar-app')?.shadowRoot"
                            "?.querySelector('#app-menu')?.classList.contains("
                            "'anchor-highlight')")
+        .ExtractBool();
+  }
+  return false;
+}
+
+bool AppMenuTestAccessor::HasInProductHelpPromo() const {
+  CHECK(control_);
+  views::View* view = control_->GetFocusablePaneView();
+  if (!view) {
+    return false;
+  }
+  if (views::InkDropHost* ink_drop = views::InkDrop::Get(view)) {
+    return view->GetProperty(user_education::kHasInProductHelpPromoKey) &&
+           ink_drop->in_attention_state_for_testing();
+  }
+  if (content::WebContents* web_contents = GetWebContentsFromView(view)) {
+    return content::EvalJs(
+               web_contents,
+               "(() => {"
+               "  const appMenu = document.querySelector('toolbar-app')"
+               "      ?.shadowRoot?.querySelector('#app-menu');"
+               "  return !!appMenu && appMenu.hasHelpBubble === true &&"
+               "      appMenu.classList.contains('help-anchor-highlight');"
+               "})()")
         .ExtractBool();
   }
   return false;

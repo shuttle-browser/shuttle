@@ -35,8 +35,12 @@ namespace autofill {
 
 MerchantPromoCodeManager::MerchantPromoCodeManager(
     AutofillClient* autofill_client) {
-  if (base::FeatureList::IsEnabled(
-          features::kAutofillEnableWalletDirectOffers)) {
+  // TODO(crbug.com/546252995): Look into the test setup so that
+  // `autofill_client` is never null and this test-only null check can be
+  // removed.
+  // `autofill_client` is null for mocks, which don't need to observe.
+  if (autofill_client && base::FeatureList::IsEnabled(
+                             features::kAutofillEnableWalletDirectOffers)) {
     autofill_managers_observation_.Observe(
         autofill_client, ScopedAutofillManagersObservation::
                              InitializationPolicy::kObservePreexistingManagers);
@@ -204,6 +208,14 @@ void MerchantPromoCodeManager::DidShowSuggestions() {
   page_metrics_.has_logged_suggestions_shown = true;
   autofill_metrics::LogPromoCodeFormEvent(
       autofill_metrics::PromoCodeFormEvent::kPromoCodeSuggestionsShown);
+}
+
+void MerchantPromoCodeManager::LogManageOffersSelectedMetrics() {
+  if (!page_metrics_.has_logged_manage_offers_clicked) {
+    page_metrics_.has_logged_manage_offers_clicked = true;
+    autofill_metrics::LogPromoCodeFormEvent(
+        autofill_metrics::PromoCodeFormEvent::kManageOffersClicked);
+  }
 }
 
 void MerchantPromoCodeManager::Reset() {

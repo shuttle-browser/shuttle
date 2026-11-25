@@ -178,22 +178,24 @@ std::unique_ptr<KeyedService> CreateGCMProfileService(
     base::WeakPtr<fake_server::FakeServerSyncInvalidationSender>
         invalidation_sender,
     content::BrowserContext* context) {
+  // Use `USER_VISIBLE` so `GCMKeyStore` initialization is not blocked by
+  // `BEST_EFFORT` execution fences while tests await device info or sharing
+  // registration.
   scoped_refptr<base::SequencedTaskRunner> blocking_task_runner(
       base::ThreadPool::CreateSequencedTaskRunner(
-          {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+          {base::MayBlock(), base::TaskPriority::USER_VISIBLE,
            base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN}));
 
   Profile* profile = Profile::FromBrowserContext(context);
   auto fake_gcm_driver =
       std::make_unique<FakeSyncGCMDriver>(profile, blocking_task_runner);
-  fake_gcm_driver->WaitForAppIdBeforeConnection(
-      fake_server::FakeServerSyncInvalidationSender::kSyncInvalidationsAppId);
 
   CHECK(invalidation_sender);
   invalidation_sender->AddFakeGCMDriver(fake_gcm_driver.get());
   // `FakeSyncGCMDriver` may outlive `invalidation_sender`, as `SyncTest`
-  // destroys `fake_server_sync_invalidation_sender_` in `TearDownOnMainThread()`
-  // before `ProfileManager` destroys profiles and their `KeyedService`s.
+  // destroys `fake_server_sync_invalidation_sender_` in
+  // `TearDownOnMainThread()` before `ProfileManager` destroys profiles and
+  // their `KeyedService`s.
   fake_gcm_driver->SetOnDestroyedCallback(base::BindOnce(
       &fake_server::FakeServerSyncInvalidationSender::RemoveFakeGCMDriver,
       invalidation_sender, fake_gcm_driver.get()));
@@ -1318,8 +1320,6 @@ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
                 "Add new types below if they can run in transport mode");
 
 #if BUILDFLAG(IS_ANDROID)
-  // On Android, `kReplaceSyncPromosWithSignInPromos` has been enabled by
-  // default for a long time, so it is not expected to be exercised in tests.
   CHECK(syncer::IsReplaceSyncPromosWithSignInPromosEnabled());
 #endif  // BUILDFLAG(IS_ANDROID)
 
@@ -1347,28 +1347,16 @@ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
   if (base::FeatureList::IsEnabled(
           switches::kEnablePreferencesAccountStorage)) {
     allowed_types.Put(syncer::PRIORITY_PREFERENCES);
-#if BUILDFLAG(IS_ANDROID)
     allowed_types.Put(syncer::PREFERENCES);
-#else
-    // On desktop, support for transport mode for preferences is implemented
-    // alongside that of search engines.
-    if (base::FeatureList::IsEnabled(
-            syncer::kSeparateLocalAndAccountSearchEngines)) {
-      allowed_types.Put(syncer::PREFERENCES);
-    }
-#endif  // BUILDFLAG(IS_ANDROID)
   }
   if (base::FeatureList::IsEnabled(
           switches::kSyncEnableBookmarksInTransportMode)) {
     allowed_types.Put(syncer::BOOKMARKS);
   }
-  if (syncer::IsReadingListAccountStorageEnabled()) {
-    allowed_types.Put(syncer::READING_LIST);
-  }
+  allowed_types.Put(syncer::READING_LIST);
   if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
     allowed_types.Put(syncer::AUTOFILL_WALLET_METADATA);
-    if (base::FeatureList::IsEnabled(
-            syncer::kSyncEncryptedTabContextContainer)) {
+    if (base::FeatureList::IsEnabled(syncer::kSyncEncryptedTabContext)) {
       allowed_types.Put(syncer::ENCRYPTED_TAB_CONTEXT_CONTAINER);
       allowed_types.Put(syncer::ENCRYPTED_TAB_CONTEXT_ITEM);
     }
@@ -1404,16 +1392,8 @@ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
     }
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
-#if BUILDFLAG(IS_CHROMEOS)
-    if (base::FeatureList::IsEnabled(
-            syncer::kReplaceSyncPromosWithSignInPromos)) {
-      allowed_types.Put(syncer::EXTENSIONS);
-      allowed_types.Put(syncer::EXTENSION_SETTINGS);
-    }
-#else
     allowed_types.Put(syncer::EXTENSIONS);
     allowed_types.Put(syncer::EXTENSION_SETTINGS);
-#endif
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   }
   allowed_types.Put(syncer::AUTOFILL_VALUABLE);
@@ -1462,8 +1442,7 @@ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
     allowed_types.Put(syncer::CONTEXTUAL_TASK);
   }
 
-  if (base::FeatureList::IsEnabled(
-          syncer::kSeparateLocalAndAccountSearchEngines) &&
+  if (
       // Support for transport mode for search engines is implemented alongside
       // that of preferences.
       base::FeatureList::IsEnabled(switches::kEnablePreferencesAccountStorage)
@@ -1475,9 +1454,7 @@ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
   }
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(syncer::kSeparateLocalAndAccountThemes)) {
-    allowed_types.Put(syncer::THEMES);
-  }
+  allowed_types.Put(syncer::THEMES);
 
   // These types are excluded on Android as they run outside Chrome.
   allowed_types.Put(syncer::INCOMING_PASSWORD_SHARING_INVITATION);

@@ -281,6 +281,7 @@ public class AutofillProvider {
             FocusField focusField = mRequest.getFocusField();
             @Nullable Rect clampedBounds = clampToVisibleBounds(focusField.absBound);
             if (clampedBounds == null) return;
+            maybeRefetchAutofillManager();
             getAutofillManagerWrapper()
                     .requestAutofill(
                             mContainerView,
@@ -316,6 +317,7 @@ public class AutofillProvider {
         mPrefillRequest = new PrefillRequest(form);
         mStructureProvidedForPrefillRequest = false;
 
+        maybeRefetchAutofillManager();
         getAutofillManagerWrapper()
                 .notifyVirtualViewsReady(mContainerView, mPrefillRequest.getPrefillHints());
     }
@@ -347,6 +349,7 @@ public class AutofillProvider {
 
         transformFormFieldToContainViewCoordinates(formData);
         initializeFrameworkWrapper();
+        maybeRefetchAutofillManager();
         mAutofillUMA.onSessionStarted(getAutofillManagerWrapper().isDisabled());
         mRequest =
                 new AutofillRequest(
@@ -601,6 +604,10 @@ public class AutofillProvider {
                 return;
             }
 
+            // The WebView may have moved to another Activity since the session started, e.g.
+            // when the app recreates its Activity and keeps the WebView.
+            if (!causedByValueChange) maybeRefetchAutofillManager();
+
             // Notify focus changed.
             if (prev != null) {
                 notifyVirtualViewExited(mContainerView, prev.fieldIndex);
@@ -675,6 +682,22 @@ public class AutofillProvider {
             initializeFrameworkWrapper();
         }
         return mAutofillManager;
+    }
+
+    private void maybeRefetchAutofillManager() {
+        if (mAutofillManager == null) return;
+        Context context = getContext();
+        if (!mAutofillManager.canRefetch(context)) return;
+        // Check the feature only when a refetch is possible, so that only the affected WebViews
+        // are enrolled in the experiment.
+        if (!AndroidAutofillFeatures.ANDROID_AUTOFILL_REFETCH_MANAGER_IF_DISABLED.isEnabled()) {
+            return;
+        }
+        if (mAutofillManager.refetch(context) && mAutofillUMA != null) {
+            mAutofillUMA.setCurrentProvider(
+                    mAutofillManager.isAwGCurrentAutofillService(),
+                    mAutofillManager.getPackageName());
+        }
     }
 
     /**
@@ -1003,6 +1026,9 @@ public class AutofillProvider {
      */
     @CalledByNative
     public boolean isAutofillDisabled() {
+        // Native calls this when a new page loads and skips the page's metrics if Autofill is
+        // disabled. Refetch first in case the app has moved the WebView to an Activity.
+        maybeRefetchAutofillManager();
         return mAutofillManager != null && mAutofillManager.isDisabled();
     }
 

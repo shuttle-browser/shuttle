@@ -33,6 +33,7 @@
 #include "third_party/omnibox_proto/chrome_searchbox_stats.pb.h"
 #include "third_party/omnibox_proto/model_mode.pb.h"
 #include "third_party/omnibox_proto/tool_mode.pb.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/gfx/vector_icon_types.h"
 #include "ui/webui/resources/cr_components/composebox/composebox.mojom.h"
 
@@ -50,9 +51,16 @@ class WebContents;
 namespace searchbox_internal {
 // Internal constants for icon resource paths shared by SearchboxHandler and its
 // subclasses.
-extern const char* kSearchSparkIconResourceName;
-extern const char* kReplyRotated180IconResourceName;
-extern const char* kDockToRightIconResourceName;
+inline constexpr char kSearchSparkIconResourceName[] =
+    "//resources/cr_components/searchbox/icons/search_spark.svg";
+inline constexpr char kReplyRotated180IconResourceName[] =
+    "//resources/cr_components/searchbox/icons/reply_rotated180.svg";
+// Side panel icons. Following Chrome's naming, "dock_to_right" shows the side
+// panel on the left and "dock_to_left" shows it on the right.
+inline constexpr char kDockToLeftIconResourceName[] =
+    "//resources/cr_components/searchbox/icons/dock_to_left.svg";
+inline constexpr char kDockToRightIconResourceName[] =
+    "//resources/cr_components/searchbox/icons/dock_to_right.svg";
 }  // namespace searchbox_internal
 
 namespace gfx {
@@ -208,9 +216,14 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       searchbox::mojom::SmartComposeStatsPtr smart_compose_stats) override {}
   void SetPopupSelection(
       searchbox::mojom::OmniboxPopupSelectionPtr selection) override;
-  void OpenPopupSelection(uint32_t result_sequence_id,
-                          searchbox::mojom::OmniboxPopupSelectionPtr selection,
-                          WindowOpenDisposition disposition) override;
+  void OpenPopupSelection(
+      uint32_t result_sequence_id,
+      searchbox::mojom::OmniboxPopupSelectionPtr selection,
+      searchbox::mojom::ActionModifiersPtr modifiers) override;
+  void OpenPopupSelectionWithDisposition(
+      uint32_t result_sequence_id,
+      searchbox::mojom::OmniboxPopupSelectionPtr selection,
+      ui::mojom::WindowOpenDisposition disposition) override;
   void OnNavigationLikely(
       uint8_t line,
       const GURL& url,
@@ -370,14 +383,14 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
 
   void OpenMatch(OmniboxPopupSelection selection,
                  AutocompleteMatch match,
-                 WindowOpenDisposition disposition,
+                 ui::mojom::WindowOpenDisposition disposition,
                  base::TimeTicks match_selection_timestamp,
                  const searchbox::AutocompleteSnapshot& snapshot);
 
   void OnDefaultSearchExtensionDialogDone(
       OmniboxPopupSelection selection,
       AutocompleteMatch match,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       base::TimeTicks match_selection_timestamp,
       OmniboxClient::ExtensionControlledDialogResult dialog_result);
 
@@ -416,7 +429,7 @@ class SearchboxHandler : public searchbox::mojom::PageHandler,
       size_t line,
       const TemplateURLService* turl_service,
       searchbox::mojom::AutocompleteMatch* mojom_match) const;
-  virtual WindowOpenDisposition ComputeWindowOpenDisposition(
+  virtual ui::mojom::WindowOpenDisposition ComputeWindowOpenDisposition(
       uint8_t mouse_button,
       bool alt_key,
       bool ctrl_key,

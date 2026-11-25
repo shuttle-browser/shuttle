@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/image/image_clone_calculator.pb.h"
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image.h"
-#include "mediapipe/framework/port/status.h"
 
 #if !MEDIAPIPE_DISABLE_GPU
 #include "mediapipe/gpu/gl_calculator_helper.h"
@@ -64,7 +65,7 @@ class ImageCloneCalculator : public Node {
           "GPU processing is disabled in build flags");
     }
 #else
-    MP_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(
+    ABSL_RETURN_IF_ERROR(mediapipe::GlCalculatorHelper::UpdateContract(
         cc, /*request_gpu_as_optional=*/true));
 #endif  // MEDIAPIPE_DISABLE_GPU
     return absl::OkStatus();
@@ -103,7 +104,7 @@ class ImageCloneCalculator : public Node {
     if (output_on_gpu_ && !input_on_gpu) {
 #if !MEDIAPIPE_DISABLE_GPU
       if (!gpu_initialized_) {
-        MP_RETURN_IF_ERROR(gpu_helper_.Open(cc));
+        ABSL_RETURN_IF_ERROR(gpu_helper_.Open(cc));
         gpu_initialized_ = true;
       }
       gpu_helper_.RunInGlContext([&output]() { output->ConvertToGpu(); });

@@ -77,9 +77,6 @@ const SettingsPersonalizationOptionsElementBase =
 const ANONYMIZED_URL_COLLECTION_ID =
     'kAnonymizedUrlCollectionPersonalizationSettingId';
 
-export type PersonalizationOptionsElement =
-    SettingsPersonalizationOptionsElement;
-
 export class SettingsPersonalizationOptionsElement extends
     SettingsPersonalizationOptionsElementBase {
   static get is() {
@@ -108,11 +105,13 @@ export class SettingsPersonalizationOptionsElement extends
 
       showSignoutDialog_: {type: Boolean},
 
+      // <if expr="_google_chrome">
       shouldUseMetricsConsentRestructure_: {type: Boolean},
-
-      syncFirstSetupInProgress_: {type: Boolean},
+      // </if>
 
       // <if expr="not is_chromeos">
+      syncFirstSetupInProgress_: {type: Boolean},
+
       signinAvailable_: {type: Boolean},
 
       chromeSigninUserChoiceInfo_: {type: Object},
@@ -133,11 +132,14 @@ export class SettingsPersonalizationOptionsElement extends
       loadTimeData.getBoolean('showSearchAggregatorSuggest');
 
   protected accessor showSignoutDialog_: boolean = false;
-  protected accessor syncFirstSetupInProgress_: boolean = false;
+  // <if expr="_google_chrome">
   protected accessor shouldUseMetricsConsentRestructure_: boolean =
       loadTimeData.getBoolean('shouldUseMetricsConsentRestructure');
+  // </if>
 
   // <if expr="not is_chromeos">
+  protected accessor syncFirstSetupInProgress_: boolean = false;
+
   protected accessor signinAvailable_: boolean =
       loadTimeData.getBoolean('signinAvailable');
 
@@ -145,7 +147,7 @@ export class SettingsPersonalizationOptionsElement extends
       undefined;
   // </if>
 
-  protected accessor spellCheckDictionariesPref_:
+  private accessor spellCheckDictionariesPref_:
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
 
   private browserProxy_: PrivacyPageBrowserProxy =
@@ -160,6 +162,7 @@ export class SettingsPersonalizationOptionsElement extends
     this.mirrorPref('spellcheck.dictionaries', 'spellCheckDictionariesPref_');
   }
 
+  // <if expr="not is_chromeos">
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
 
@@ -167,6 +170,7 @@ export class SettingsPersonalizationOptionsElement extends
       this.syncFirstSetupInProgress_ = this.computeSyncFirstSetupInProgress_();
     }
   }
+  // </if>
 
   override firstUpdated(changedProperties: PropertyValues<this>) {
     super.firstUpdated(changedProperties);
@@ -191,9 +195,11 @@ export class SettingsPersonalizationOptionsElement extends
         this.$.urlCollectionToggle.getBubbleAnchor(), {paddingTop: 10});
   }
 
+  // <if expr="not is_chromeos">
   private computeSyncFirstSetupInProgress_(): boolean {
     return !!this.syncStatus.firstSetupInProgress;
   }
+  // </if>
 
   protected showPriceEmailNotificationsToggle_(): boolean {
     if (!loadTimeData.getBoolean('changePriceEmailNotificationsEnabled')) {

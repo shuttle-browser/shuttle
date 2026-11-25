@@ -74,24 +74,20 @@ component("features") {
     "model_execution/on_device_features.h",
 
     # TODO(crbug.com/514743962): These should all be broken up and removed.
-    "optimization_guide_enums.h",
     "optimization_guide_features.cc",
     "optimization_guide_features.h",
   ]
   public_deps = [
     "//base",
     "//components/optimization_guide/public/mojom",
+    "//url",
   ]
   deps = [
     "//components/optimization_guide:machine_learning_tflite_buildflags",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/optimization_guide/public/mojom:mojom_shared_cpp_sources",
     "//components/prefs",
-    "//components/variations",
     "//google_apis",
-    "//net",
-    "//third_party/metrics_proto",
-    "//ui/base",
   ]
   if (is_android) {
     deps += [ "//components/version_info/android:channel_getter" ]
@@ -183,10 +179,6 @@ source_set("core_util") {
     "//ui/accessibility:ax_enums_mojo",
     "//url",
   ]
-  visibility = [
-    "./*",
-    "//services/on_device_model/android/*",
-  ]
 }
 
 source_set("model_execution") {
@@ -270,13 +262,24 @@ source_set("model_execution") {
   }
 }
 
+source_set("manifest_provider") {
+  sources = [ "model_execution/manifest_provider.h" ]
+  public_deps = [ "//base" ]
+}
+
 source_set("ondevice") {
   # TODO: crbug.com/421262905 - Should not need these without model_execution
   sources = [
     "model_execution/on_device_capability.cc",
     "model_execution/on_device_capability.h",
+    "model_execution/on_device_model_names.cc",
+    "model_execution/on_device_model_names.h",
     "model_execution/on_device_prefs.cc",
     "model_execution/on_device_prefs.h",
+  ]
+  public_deps = [
+    "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/optimization_guide/public/mojom",
   ]
   deps = [
     ":core_util",
@@ -286,8 +289,6 @@ source_set("ondevice") {
     "//build:branding_buildflags",
     "//components/optimization_guide:optimization_guide_buildflags",
     "//components/optimization_guide/optimization_guide_internals/webui:mojo_bindings",
-    "//components/optimization_guide/proto:optimization_guide_proto",
-    "//components/optimization_guide/public/mojom",
     "//components/policy/core/common",
     "//components/prefs",
     "//components/variations/net",
@@ -298,8 +299,8 @@ source_set("ondevice") {
   ]
   if (build_with_model_execution) {
     sources += [
-      "model_execution/aqa_response_parser.cc",
-      "model_execution/aqa_response_parser.h",
+      "model_execution/broker_init.cc",
+      "model_execution/broker_init.h",
       "model_execution/fieldwise_response_parser.cc",
       "model_execution/fieldwise_response_parser.h",
       "model_execution/json_response_parser.cc",
@@ -324,8 +325,6 @@ source_set("ondevice") {
       "model_execution/on_device_model_execution_proto_value_utils.h",
       "model_execution/on_device_model_feature_adapter.cc",
       "model_execution/on_device_model_feature_adapter.h",
-      "model_execution/on_device_model_names.cc",
-      "model_execution/on_device_model_names.h",
       "model_execution/on_device_model_validator.cc",
       "model_execution/on_device_model_validator.h",
       "model_execution/on_device_telemetry_logger.cc",
@@ -354,10 +353,7 @@ source_set("ondevice") {
     deps += [
       ":core_util",
       ":on_device_model_execution_proto_generator",
-      ":prediction",
       "//components/component_updater",
-      "//components/optimization_guide/proto:optimization_guide_proto",
-      "//components/optimization_guide/public/mojom",
       "//components/prefs",
       "//components/update_client",
       "//components/version_info",
@@ -374,8 +370,6 @@ source_set("ondevice") {
         "model_execution/android/android_manifest.h",
         "model_execution/android/model_broker_android.cc",
         "model_execution/android/model_broker_android.h",
-        "model_execution/on_device_model_adaptation_loader.cc",
-        "model_execution/on_device_model_adaptation_loader.h",
       ]
       deps += [
         "//build:branding_buildflags",
@@ -390,9 +384,12 @@ source_set("ondevice") {
 
 if (build_with_model_execution) {
   source_set("manifest_broker") {
+    public_deps = [ ":manifest_provider" ]
     sources = [
       "model_execution/manifest_broker/asset_priorities.cc",
       "model_execution/manifest_broker/asset_priorities.h",
+      "model_execution/manifest_broker/disk_space_status.cc",
+      "model_execution/manifest_broker/disk_space_status.h",
       "model_execution/manifest_broker/manifest.cc",
       "model_execution/manifest_broker/manifest.h",
       "model_execution/manifest_broker/manifest_asset_manager.cc",
@@ -448,6 +445,7 @@ if (build_with_model_execution) {
       "//components/optimization_guide/core/model_execution/configs:substitution_builders",
     ]
     deps = [
+      ":features",
       ":manifest_broker",
       ":ondevice",
       ":ondevice_test_support",
@@ -662,10 +660,8 @@ if (build_with_model_execution) {
     public_deps = [ "//components/optimization_guide/core/model_execution/configs:substitution_builders" ]
     deps = [
       ":core_util",
-      ":delivery_test_support",
       ":features",
       ":ondevice",
-      ":prediction",
       "//base",
       "//base/test:test_support",
       "//components/component_updater:test_support",
@@ -681,6 +677,8 @@ if (build_with_model_execution) {
     ]
     if (is_android) {
       sources += [
+        "model_execution/test/fake_android_manifest_asset.cc",
+        "model_execution/test/fake_android_manifest_asset.h",
         "model_execution/test/fake_model_broker_android.cc",
         "model_execution/test/fake_model_broker_android.h",
       ]
@@ -706,17 +704,6 @@ group("test_support") {
       ":manifest_broker_test_support",
       ":ondevice_test_support",
       "//components/optimization_guide/core/model_execution/configs:substitution_builders",
-    ]
-  }
-}
-
-if (is_ios) {
-  source_set("eg_test_support+eg2") {
-    testonly = true
-    sources = [ "optimization_guide_enums.h" ]
-    public_deps = [
-      ":core_util",
-      ":hints_test_support",
     ]
   }
 }
@@ -800,6 +787,7 @@ source_set("delivery_unit_tests") {
     ":prediction",
     "//base",
     "//base/test:test_support",
+    "//build:branding_buildflags",
     "//components/component_updater",
     "//components/download/public/background_service/test:test_support",
     "//components/optimization_guide/proto:optimization_guide_proto",
@@ -807,6 +795,7 @@ source_set("delivery_unit_tests") {
     "//components/services/unzip:in_process",
     "//components/sync_preferences:test_support",
     "//components/variations:test_support",
+    "//google_apis",
     "//services/network:test_support",
     "//testing/gtest",
     "//third_party/zlib/google:zip",
@@ -869,11 +858,12 @@ if (build_with_model_execution && !is_chrome_for_testing) {
   source_set("ondevice_unit_tests") {
     testonly = true
     sources = [
-      "model_execution/aqa_response_parser_unittest.cc",
+      "model_execution/broker_init_unittest.cc",
       "model_execution/configs/summarize_solution_config_unittest.cc",
       "model_execution/fieldwise_response_parser_unittest.cc",
       "model_execution/json_response_parser_unittest.cc",
       "model_execution/manifest_broker/asset_priorities_unittest.cc",
+      "model_execution/manifest_broker/disk_space_status_unittest.cc",
       "model_execution/manifest_broker/manifest_asset_manager_unittest.cc",
       "model_execution/manifest_broker/manifest_broker_service_crash_unittest.cc",
       "model_execution/manifest_broker/manifest_broker_state_unittest.cc",
@@ -928,7 +918,10 @@ if (build_with_model_execution && !is_chrome_for_testing) {
       "//third_party/tflite:buildflags",
     ]
     if (is_android) {
-      sources += [ "model_execution/android/model_broker_android_unittest.cc" ]
+      sources += [
+        "model_execution/android/android_manifest_unittest.cc",
+        "model_execution/android/model_broker_android_unittest.cc",
+      ]
       deps += [
         "//services/on_device_model/android",
         "//services/on_device_model/android:test_support",
@@ -960,6 +953,7 @@ source_set("unit_tests") {
     ":unit_tests_bundle_data",
     "//base",
     "//base/test:test_support",
+    "//build:branding_buildflags",
     "//components/optimization_guide/core/inference:unit_tests",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/prefs:test_support",

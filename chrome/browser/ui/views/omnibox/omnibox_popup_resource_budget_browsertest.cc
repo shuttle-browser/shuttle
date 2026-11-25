@@ -21,6 +21,7 @@
 #include "base/callback_list.h"
 #include "base/command_line.h"
 #include "base/containers/span.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
@@ -31,6 +32,7 @@
 #include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
@@ -38,20 +40,24 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+#include "chrome/browser/ui/omnibox/omnibox_popup_state_manager.h"
 #include "chrome/browser/ui/omnibox/omnibox_popup_view.h"
 #include "chrome/browser/ui/omnibox/omnibox_popup_webui_creation.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_host.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_webui_base_content.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/test_switches.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/omnibox/browser/mock_aim_eligibility_service.h"
+#include "components/omnibox/common/omnibox_features.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
@@ -99,11 +105,14 @@ bool IsOmniboxPopup(content::WebContents* contents) {
   return contents->GetVisibleURL().host() == chrome::kChromeUIOmniboxPopupHost;
 }
 
-// Counts popup resources owned by `profile`, across all browser windows.
+// Counts popup resources for `profile`, across all browser windows. With
+// kTopChromeWebUISharedRenderer, the popups are in TopChromeWebUIProfile, so
+// they are counted by their user profile.
 PopupResources CountPopupResources(Profile* profile) {
   PopupResources resources;
   for (content::WebContents* contents : content::GetAllWebContents()) {
-    if (contents->GetBrowserContext() != profile || !IsOmniboxPopup(contents)) {
+    if (webui::GetUserProfile(contents) != profile ||
+        !IsOmniboxPopup(contents)) {
       continue;
     }
     resources.web_contents.push_back(contents);
@@ -120,7 +129,7 @@ PopupResources CountPopupResources(Profile* profile) {
       continue;
     }
     const OmniboxPopupPresenterBase* presenters[] = {
-        location_bar->GetOmniboxPopupView()->presenter(),
+        location_bar->GetOmniboxPopupPresenterForTesting(),
         location_bar->GetOmniboxPopupAimPresenter()};
     for (const OmniboxPopupPresenterBase* presenter : presenters) {
       // Widgets close asynchronously after hide; ignore ones on their way out.
@@ -185,7 +194,59 @@ void LogPopupResources(std::string_view label,
             << " total_pmf_kb=" << total_kb;
 }
 
+// Returns the popup presenters of `profile`'s browser windows that exist.
+std::vector<OmniboxPopupPresenterBase*> GetPopupPresenters(Profile* profile) {
+  std::vector<OmniboxPopupPresenterBase*> presenters;
+  for (BrowserWindowInterface* browser : GetAllBrowserWindowInterfaces()) {
+    LocationBarView* location_bar = browser->GetProfile() == profile
+                                        ? GetLocationBarView(browser)
+                                        : nullptr;
+    if (!location_bar) {
+      continue;
+    }
+    OmniboxPopupPresenterBase* window_presenters[] = {
+        location_bar->GetOmniboxPopupPresenterForTesting(),
+        location_bar->GetOmniboxPopupAimPresenter()};
+    for (OmniboxPopupPresenterBase* presenter : window_presenters) {
+      if (presenter) {
+        presenters.push_back(presenter);
+      }
+    }
+  }
+  return presenters;
+}
+
+// Waits until every popup presenter has created its content. The deferrals
+// (`omnibox::kOmniboxWebUIPopupDeferCreation` and
+// `omnibox::kOmniboxAimPopupDeferCreation`, on by default on ChromeOS) create
+// it after the window's first presented frame, and the budget is the state
+// after that. With `omnibox::kOmniboxWebUIPopupShareAcrossWindows`, a window
+// skips creating a popup of a kind that another window has, so it waits until
+// one presenter of each kind has its content.
+void WaitForPopupContentsToBeCreated(Profile* profile) {
+  const bool shared = base::FeatureList::IsEnabled(
+      omnibox::kOmniboxWebUIPopupShareAcrossWindows);
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    std::vector<OmniboxPopupPresenterBase*> presenters =
+        GetPopupPresenters(profile);
+    auto kind_has_content = [&](const OmniboxPopupPresenterBase* presenter) {
+      return std::ranges::any_of(presenters,
+                                 [&](const OmniboxPopupPresenterBase* other) {
+                                   return other->GetSharedPopupKind() ==
+                                              presenter->GetSharedPopupKind() &&
+                                          other->GetWebUIContent();
+                                 });
+    };
+    return std::ranges::all_of(presenters,
+                               [&](const OmniboxPopupPresenterBase* presenter) {
+                                 return presenter->GetWebUIContent() ||
+                                        (shared && kind_has_content(presenter));
+                               });
+  }));
+}
+
 void WaitForPopupsToLoad(Profile* profile) {
+  WaitForPopupContentsToBeCreated(profile);
   for (content::WebContents* contents :
        CountPopupResources(profile).web_contents) {
     EXPECT_TRUE(content::WaitForLoadStop(contents));
@@ -257,16 +318,24 @@ class OmniboxPopupResourceBudgetBrowserTest
   }
 
   // Waits for `profile`'s popups to load, logs them and checks the budgets.
+  void CheckProfileBudget(std::string_view label,
+                          Profile* profile,
+                          size_t windows,
+                          size_t max_web_contents) {
+    WaitForPopupsToLoad(profile);
+    PopupResources resources = CountPopupResources(profile);
+    LogPopupResources(label, windows, resources);
+    EXPECT_LE(resources.web_contents.size(), max_web_contents);
+    EXPECT_LE(resources.hidden_widgets, kMaxHiddenPopupWidgets);
+    EXPECT_LE(resources.processes.size(), kPopupRenderProcessesPerProfile);
+  }
+
   void CheckBudget(std::string_view label,
                    Profile* profile,
                    size_t windows,
                    size_t web_contents_per_window) {
-    WaitForPopupsToLoad(profile);
-    PopupResources resources = CountPopupResources(profile);
-    LogPopupResources(label, windows, resources);
-    EXPECT_LE(resources.web_contents.size(), windows * web_contents_per_window);
-    EXPECT_LE(resources.hidden_widgets, kMaxHiddenPopupWidgets);
-    EXPECT_LE(resources.processes.size(), kPopupRenderProcessesPerProfile);
+    CheckProfileBudget(label, profile, windows,
+                       windows * web_contents_per_window);
   }
 
  private:
@@ -351,8 +420,9 @@ IN_PROC_BROWSER_TEST_P(OmniboxPopupResourceBudgetBrowserTest,
   }
   LocationBarView* location_bar = GetLocationBarView(browser());
   ASSERT_TRUE(location_bar);
+  WaitForPopupContentsToBeCreated(browser()->GetProfile());
   content::WebContents* contents = location_bar->GetOmniboxPopupView()
-                                       ->presenter()
+                                       ->popup_host()
                                        ->GetWebUIContent()
                                        ->GetWrappedWebContents();
   ExpectPopupLoadsOnlyApp(contents, "omnibox-popup-app",
@@ -369,8 +439,9 @@ IN_PROC_BROWSER_TEST_P(OmniboxPopupResourceBudgetBrowserTest,
   }
   LocationBarView* location_bar = GetLocationBarView(browser());
   ASSERT_TRUE(location_bar);
+  WaitForPopupContentsToBeCreated(browser()->GetProfile());
   content::WebContents* contents = location_bar->GetOmniboxPopupView()
-                                       ->presenter()
+                                       ->popup_host()
                                        ->GetWebUIContent()
                                        ->GetWrappedWebContents();
   ExpectPopupLoadsOnlyApp(contents, "omnibox-full-app",
@@ -384,6 +455,7 @@ IN_PROC_BROWSER_TEST_P(OmniboxPopupResourceBudgetBrowserTest,
                        AimPopupLoadsOnlyAimApp) {
   LocationBarView* location_bar = GetLocationBarView(browser());
   ASSERT_TRUE(location_bar);
+  WaitForPopupContentsToBeCreated(browser()->GetProfile());
   content::WebContents* contents = location_bar->GetOmniboxPopupAimPresenter()
                                        ->GetWebUIContent()
                                        ->GetWrappedWebContents();
@@ -514,10 +586,58 @@ IN_PROC_BROWSER_TEST_P(OmniboxPopupResourceBudgetInBrowserTestsTest,
   LocationBarView* location_bar = GetLocationBarView(browser());
   ASSERT_TRUE(location_bar);
   OmniboxPopupPresenterBase* presenter =
-      location_bar->GetOmniboxPopupView()->presenter();
+      location_bar->GetOmniboxPopupPresenterForTesting();
   ASSERT_TRUE(presenter);
   EXPECT_FALSE(presenter->GetWebUIContent());
   EXPECT_TRUE(presenter->GetOrCreateWebUIContent(
       OmniboxPopupPresenterBase::CreationReason::kShow));
   EXPECT_EQ(CountPopupResources(profile).web_contents.size(), 1u);
+}
+
+// With `kOmniboxWebUIPopupShareAcrossWindows`, a profile's windows share one
+// classic and one AI Mode popup, so total popup WebContents stay bounded by
+// `kPopupWebContentsPerWindow` regardless of how many windows are open.
+//
+// Only the classic popup: the full popup is not shared yet.
+class OmniboxPopupResourceBudgetShareAcrossWindowsBrowserTest
+    : public OmniboxPopupResourceBudgetBrowserTest {
+ public:
+  OmniboxPopupResourceBudgetShareAcrossWindowsBrowserTest() = default;
+
+ private:
+  base::test::ScopedFeatureList share_feature_list_{
+      omnibox::kOmniboxWebUIPopupShareAcrossWindows};
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    OmniboxPopupResourceBudgetShareAcrossWindowsBrowserTest,
+    testing::Values(false),
+    [](const testing::TestParamInfo<bool>& info) { return "Classic"; });
+
+IN_PROC_BROWSER_TEST_P(OmniboxPopupResourceBudgetShareAcrossWindowsBrowserTest,
+                       DoesNotScaleWithWindowCount) {
+  Profile* profile = browser()->GetProfile();
+  CheckProfileBudget("shared_one_window", profile, 1,
+                     kPopupWebContentsPerWindow);
+
+  BrowserWindowInterface* last_browser = nullptr;
+  for (size_t i = 0; i < kExtraWindows; ++i) {
+    last_browser = CreateBrowser(profile);
+  }
+  CheckProfileBudget("shared_many_windows", profile, 1 + kExtraWindows,
+                     kPopupWebContentsPerWindow);
+
+  // Using both popups in another window moves the existing WebContents
+  // instead of creating new ones.
+  LocationBarView* location_bar = GetLocationBarView(last_browser);
+  ASSERT_TRUE(location_bar);
+  EXPECT_TRUE(location_bar->GetOmniboxPopupPresenterForTesting()
+                  ->GetOrCreateWebUIContent(
+                      OmniboxPopupPresenterBase::CreationReason::kShow));
+  EXPECT_TRUE(
+      location_bar->GetOmniboxPopupAimPresenter()->GetOrCreateWebUIContent(
+          OmniboxPopupPresenterBase::CreationReason::kShow));
+  CheckProfileBudget("shared_after_move", profile, 1 + kExtraWindows,
+                     kPopupWebContentsPerWindow);
 }

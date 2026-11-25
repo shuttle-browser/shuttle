@@ -7,8 +7,11 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
+
+#include "base/i18n/language_tag.h"
 
 namespace ash::local_search_service {
 
@@ -43,11 +46,12 @@ struct Content {
   // TODO(jiameng): it will be used by kInvertedIndex only. We may consider
   // extending to kLinearMap.
   double weight = 1.0;
-  Content(const std::string& id,
-          const std::u16string& content,
-          double weight = 1.0);
+  Content(std::string id, std::u16string content, double weight = 1.0);
   Content();
-  Content(const Content& content);
+  Content(const Content& other);
+  Content(Content&& other);
+  Content& operator=(const Content& other);
+  Content& operator=(Content&& other);
   ~Content();
 };
 
@@ -65,12 +69,15 @@ struct Data {
   // Locale of the data. This is currently used by inverted index only.
   // If unset, we will use system configured locale.
   // TODO(jiameng): apply locale-dependent tokenization to linear map.
-  std::string locale;
-  Data(const std::string& id,
-       const std::vector<Content>& contents,
-       const std::string& locale = "");
+  std::optional<base::i18n::LanguageTag> locale;
+  Data(std::string id,
+       std::vector<Content> contents,
+       std::optional<base::i18n::LanguageTag> locale = std::nullopt);
   Data();
   Data(const Data& data);
+  Data(Data&& data);
+  Data& operator=(const Data& data);
+  Data& operator=(Data&& data);
   ~Data();
 };
 
@@ -91,8 +98,11 @@ struct SearchParams {
 
 struct Position {
   Position();
+  Position(std::string content_id, uint32_t start, uint32_t length);
   Position(const Position& position);
-  Position(const std::string& content_id, uint32_t start, uint32_t length);
+  Position(Position&& position);
+  Position& operator=(const Position& position);
+  Position& operator=(Position&& position);
   ~Position();
   std::string content_id;
   // TODO(jiameng): |start| and |end| will be implemented for inverted index
@@ -119,10 +129,11 @@ struct Result {
   // multiple matching contents.
   std::vector<Position> positions;
   Result();
+  Result(std::string id, double score, std::vector<Position> positions);
   Result(const Result& result);
-  Result(const std::string& id,
-         double score,
-         const std::vector<Position>& positions);
+  Result(Result&& result);
+  Result& operator=(const Result& result);
+  Result& operator=(Result&& result);
   ~Result();
 };
 
@@ -150,8 +161,11 @@ struct WeightedPosition {
   double weight;
   Position position;
   WeightedPosition();
+  WeightedPosition(double weight, Position position);
   WeightedPosition(const WeightedPosition& weighted_position);
-  WeightedPosition(double weight, const Position& position);
+  WeightedPosition(WeightedPosition&& weighted_position);
+  WeightedPosition& operator=(const WeightedPosition& weighted_position);
+  WeightedPosition& operator=(WeightedPosition&& weighted_position);
   ~WeightedPosition();
 };
 
@@ -159,8 +173,11 @@ struct WeightedPosition {
 // positions in one document.
 struct Token {
   Token();
+  Token(std::u16string text, std::vector<WeightedPosition> pos);
   Token(const Token& token);
-  Token(const std::u16string& text, const std::vector<WeightedPosition>& pos);
+  Token(Token&& token);
+  Token& operator=(const Token& token);
+  Token& operator=(Token&& token);
   ~Token();
   std::u16string content;
   std::vector<WeightedPosition> positions;

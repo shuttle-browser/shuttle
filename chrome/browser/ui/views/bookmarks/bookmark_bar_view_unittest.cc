@@ -9,21 +9,25 @@
 #include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/time/time.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "chrome/browser/bookmarks/bookmark_bar_utils.h"
 #include "chrome/browser/bookmarks/bookmark_merged_surface_service.h"
 #include "chrome/browser/bookmarks/bookmark_merged_surface_service_factory.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/bookmarks/bookmark_test_helpers.h"
 #include "chrome/browser/bookmarks/managed_bookmark_service_factory.h"
+#include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/search_engines/template_url_service_test_util.h"
-#include "chrome/browser/ui/bookmarks/bookmark_utils.h"
-#include "chrome/browser/ui/bookmarks/controllers/bookmark_bar_ui_controller.h"
-#include "chrome/browser/ui/bookmarks/controllers/bookmark_bar_ui_controller_impl.h"
-#include "chrome/browser/ui/bookmarks/controllers/desktop_bookmark_bar_ui_controller_injector.h"
+#include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
+#include "chrome/browser/ui/bookmarks/bookmark_stats.h"
+#include "chrome/browser/ui/bookmarks/controllers/desktop_bookmark_bar_injector.h"
 #include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
+#include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/bookmarks/bookmark_bar_menu_delegate.h"
 #include "chrome/browser/ui/views/bookmarks/bookmark_bar_view_test_helper.h"
 #include "chrome/browser/ui/views/bookmarks/saved_tab_groups/saved_tab_group_bar.h"
 #include "chrome/grit/generated_resources.h"
@@ -34,20 +38,39 @@
 #include "components/bookmarks/common/bookmark_metrics.h"
 #include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/bookmarks/test/bookmark_test_helpers.h"
+#include "components/browser_apis/ui_controllers/bookmark_bar/bookmark_bar_ui_controller.h"
+#include "components/favicon/core/test/mock_favicon_service.h"
+#include "components/favicon_base/favicon_types.h"
 #include "components/prefs/pref_service.h"
+#include "components/saved_tab_groups/test_support/mock_tab_group_sync_service.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/search_engines/template_url_service_client.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "content/public/browser/page_navigator.h"
+#include "testing/gmock/include/gmock/gmock.h"
+#include "ui/accessibility/ax_action_data.h"
+#include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/base/clipboard/clipboard_format_type.h"
 #include "ui/base/dragdrop/drag_drop_types.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
+#include "ui/events/base_event_utils.h"
+#include "ui/events/event.h"
+#include "ui/events/event_constants.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/point_f.h"
+#include "ui/gfx/image/image_unittest_util.h"
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/controls/button/label_button.h"
 #include "ui/views/controls/button/menu_button.h"
+#include "ui/views/controls/menu/menu_delegate.h"
+#include "ui/views/controls/menu/menu_item_view.h"
+#include "ui/views/controls/menu/submenu_view.h"
+#include "ui/views/focus/focus_manager.h"
 #include "ui/views/style/platform_style.h"
+#include "ui/views/test/button_test_api.h"
 #include "ui/views/test/views_test_utils.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
@@ -74,6 +97,15 @@ class BookmarkBarViewBaseTest : public ChromeViewsTestBase {
     profile_builder.AddTestingFactory(
         BookmarkMergedSurfaceServiceFactory::GetInstance(),
         BookmarkMergedSurfaceServiceFactory::GetDefaultFactory());
+    // The real service calls SavedTabGroupBar::OnInitialized() from a posted
+    // task, which needs capabilities() that the mock browser doesn't provide.
+    profile_builder.AddTestingFactory(
+        tab_groups::TabGroupSyncServiceFactory::GetInstance(),
+        base::BindRepeating(
+            [](content::BrowserContext*) -> std::unique_ptr<KeyedService> {
+              return std::make_unique<
+                  testing::NiceMock<tab_groups::MockTabGroupSyncService>>();
+            }));
     profile_ = profile_builder.Build();
 
     BookmarkMergedSurfaceServiceFactory::GetForProfile(profile_.get())
@@ -175,13 +207,10 @@ class BookmarkBarViewBaseTest : public ChromeViewsTestBase {
   std::unique_ptr<BookmarkBarView> CreateBookmarkModelAndBookmarkBarView() {
     WaitForBookmarkModelToLoad();
 
-    auto injector =
-        std::make_unique<DesktopBookmarkBarUIControllerInjector>(browser());
-    auto controller =
-        std::make_unique<BookmarkBarUIControllerImpl>(std::move(injector));
-
     auto bookmark_bar_view = std::make_unique<BookmarkBarView>(
-        browser(), std::move(controller), nullptr);
+        browser(),
+        DesktopBookmarkBarInjector::CreateBookmarkBarUIController(browser()),
+        nullptr);
     test_helper_ =
         std::make_unique<BookmarkBarViewTestHelper>(bookmark_bar_view.get());
     return bookmark_bar_view;
@@ -465,7 +494,8 @@ TEST_F(BookmarkBarViewTest, RemoveAccountNodesNotAllAccountNodesVisible) {
   EXPECT_EQ("a b", GetStringForVisibleButtons());
 }
 
-// Assertions for moving a node on the bookmark bar.
+// Tests that moving a `BookmarkNode` on the bookmark bar updates button
+// ordering and visibility.
 TEST_F(BookmarkBarViewTest, MoveNode) {
   const BookmarkNode* bookmark_bar_node = model()->bookmark_bar_node();
   AddNodesToBookmarkBarFromModelString("a b c d e f ");
@@ -520,9 +550,47 @@ TEST_F(BookmarkBarViewInWidgetTest, ButtonVisiblityUpdatesOverflowMenu) {
   EXPECT_EQ(3u, overflow_menu->GetSubmenu()->GetMenuItems().size());
 }
 
-// TODO(crbug.com/375364962): Deflake and re-enable.
-// Assertions for changing the title of a node.
-TEST_F(BookmarkBarViewTest, DISABLED_ChangeTitle) {
+TEST_F(BookmarkBarViewInWidgetTest, FolderButtonShowsMenu) {
+  widget()->Show();
+  AddNodesToBookmarkBarFromModelString("F1:[ a b ] ");
+  ASSERT_EQ(1u, test_helper_->GetBookmarkButtonCount());
+  auto* folder_button =
+      views::AsViewClass<views::MenuButton>(test_helper_->GetBookmarkButton(0));
+  ASSERT_TRUE(folder_button);
+
+  folder_button->Activate(nullptr);
+  views::MenuItemView* menu = bookmark_bar_view()->GetMenu();
+  ASSERT_TRUE(menu && menu->HasSubmenu());
+  EXPECT_EQ(2u, menu->GetSubmenu()->GetMenuItems().size());
+
+  ui::AXActionData action_data;
+  action_data.action = ax::mojom::Action::kCollapse;
+  EXPECT_TRUE(folder_button->HandleAccessibleAction(action_data));
+  EXPECT_FALSE(bookmark_bar_view()->GetMenu());
+
+  action_data.action = ax::mojom::Action::kExpand;
+  EXPECT_TRUE(folder_button->HandleAccessibleAction(action_data));
+  EXPECT_TRUE(bookmark_bar_view()->GetMenu());
+}
+
+TEST_F(BookmarkBarViewInWidgetTest, AppsShortcutForwardsEventFlags) {
+  widget()->Show();
+  EXPECT_CALL(browser_window_interface_,
+              OpenURL(testing::Field(
+                          &content::OpenURLParams::disposition,
+                          ui::mojom::WindowOpenDisposition::kNewBackgroundTab),
+                      testing::_));
+
+  views::test::ButtonTestApi(test_helper_->apps_page_shortcut())
+      .NotifyClick(ui::MouseEvent(ui::EventType::kMousePressed, gfx::Point(),
+                                  gfx::Point(), ui::EventTimeForNow(),
+                                  ui::EF_MIDDLE_MOUSE_BUTTON,
+                                  ui::EF_MIDDLE_MOUSE_BUTTON));
+}
+
+// Tests that changing a `BookmarkNode` title updates button text and visibility
+// as available space and label widths change.
+TEST_F(BookmarkBarViewTest, ChangeTitle) {
   const BookmarkNode* bookmark_bar_node = model()->bookmark_bar_node();
   AddNodesToBookmarkBarFromModelString("a b c d e f ");
   EXPECT_EQ(0u, test_helper_->GetBookmarkButtonCount());
@@ -570,6 +638,8 @@ TEST_F(BookmarkBarViewTest, DISABLED_ChangeTitle) {
   EXPECT_EQ("a1 b1 c d1 e f1", GetStringForVisibleButtons());
 }
 
+// Tests that `BookmarkBarView` supports expected drop formats, including URLs
+// and bookmark entries.
 TEST_F(BookmarkBarViewTest, GetDropFormats) {
   int formats = 0;
   std::set<ui::ClipboardFormatType> format_types;
@@ -579,6 +649,8 @@ TEST_F(BookmarkBarViewTest, GetDropFormats) {
             format_types.end());
 }
 
+// Tests that dropping a URL onto `BookmarkBarView` invokes the drop callback
+// and adds the bookmark button.
 TEST_F(BookmarkBarViewTest, DropCallbackTest) {
   AddNodesToBookmarkBarFromModelString("a b c d e f ");
   EXPECT_EQ(0u, test_helper_->GetBookmarkButtonCount());
@@ -605,6 +677,8 @@ TEST_F(BookmarkBarViewTest, DropCallbackTest) {
   EXPECT_EQ(output_drag_op, ui::mojom::DragOperation::kCopy);
 }
 
+// Tests that mutating the `BookmarkModel` during an active drag updates drop
+// state correctly.
 TEST_F(BookmarkBarViewTest, MutateModelDuringDrag) {
   AddNodesToBookmarkBarFromModelString("a b c d e f ");
   SizeUntilButtonsVisible(7);
@@ -837,7 +911,10 @@ TEST_F(BookmarkBarViewTest, MAYBE_AccessibleRoleDescription) {
 class BookmarkBarViewWithCounter : public BookmarkBarView {
  public:
   explicit BookmarkBarViewWithCounter(BrowserWindowInterface* browser)
-      : BookmarkBarView(browser, nullptr, nullptr) {}
+      : BookmarkBarView(
+            browser,
+            DesktopBookmarkBarInjector::CreateBookmarkBarUIController(browser),
+            nullptr) {}
 
   size_t GetSchedulePaintCount() const { return schedule_paint_count_; }
 
@@ -913,6 +990,419 @@ TEST_F(BookmarkBarViewWithCounterTest,
 
   model()->EndExtensiveChanges();
   EXPECT_EQ(bookmark_bar_view_with_counter()->GetSchedulePaintCount(), 1u);
+}
+
+class BookmarkBarViewFaviconTest : public BookmarkBarViewTest {
+ public:
+  void SetUp() override {
+    BookmarkBarViewTest::SetUp();
+    favicon_service_ = static_cast<favicon::MockFaviconService*>(
+        FaviconServiceFactory::GetInstance()->SetTestingFactoryAndUse(
+            profile(),
+            base::BindRepeating(
+                [](content::BrowserContext*) -> std::unique_ptr<KeyedService> {
+                  return std::make_unique<
+                      testing::NiceMock<favicon::MockFaviconService>>();
+                })));
+    ON_CALL(*favicon_service_,
+            GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+        .WillByDefault([this](const GURL& page_url,
+                              favicon_base::FaviconImageCallback callback,
+                              base::CancelableTaskTracker* tracker) {
+          favicon_base::FaviconImageResult result;
+          result.image = current_favicon_;
+          result.icon_url = page_url.Resolve("/favicon.ico");
+          return tracker->PostTask(
+              base::SingleThreadTaskRunner::GetCurrentDefault().get(),
+              FROM_HERE,
+              base::BindOnce(std::move(callback), std::move(result)));
+        });
+  }
+
+  void TearDown() override {
+    menu_item_ = nullptr;
+    bar_bookmark_ = nullptr;
+    other_bookmark_ = nullptr;
+    menu_delegate_.reset();
+    root_menu_.reset();
+    favicon_service_ = nullptr;
+    BookmarkBarViewTest::TearDown();
+  }
+
+  void InitBookmarksAndMenu() {
+    bar_bookmark_ =
+        model()->AddURL(model()->bookmark_bar_node(), 0, u"example", url_);
+    other_bookmark_ =
+        model()->AddURL(model()->other_node(), 0, u"other example", url_);
+    SizeUntilButtonsVisible(1);
+    ASSERT_GE(test_helper_->GetBookmarkButtonCount(), 1u);
+
+    menu_delegate_ = std::make_unique<BookmarkBarMenuDelegate>(
+        browser(), nullptr, &dummy_menu_delegate_,
+        BookmarkLaunchLocation::kSubfolder);
+    menu_delegate_->SetActiveMenu(BookmarkParentFolder::OtherFolder(), 0);
+    root_menu_.reset(menu_delegate_->menu());
+    ASSERT_GE(root_menu_->GetSubmenu()->GetMenuItems().size(), 2u);
+    menu_item_ = root_menu_->GetSubmenu()->GetMenuItemAt(1);
+    ASSERT_EQ(u"other example", menu_item_->title());
+
+    task_environment()->FastForwardBy(base::TimeDelta());
+    ASSERT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+              ui::ImageModel::FromImage(initial_favicon_));
+    ASSERT_EQ(menu_item_->GetIcon(),
+              ui::ImageModel::FromImage(initial_favicon_));
+    testing::Mock::VerifyAndClearExpectations(favicon_service_);
+  }
+
+  views::LabelButton* bar_button() {
+    return test_helper_->GetBookmarkButton(0);
+  }
+
+ protected:
+  const GURL url_{"https://www.example.com"};
+  const gfx::Image initial_favicon_ = gfx::test::CreateImage(16, SK_ColorRED);
+  const gfx::Image updated_favicon_ = gfx::test::CreateImage(16, SK_ColorBLUE);
+  gfx::Image current_favicon_ = initial_favicon_;
+  raw_ptr<favicon::MockFaviconService> favicon_service_ = nullptr;
+
+  views::MenuDelegate dummy_menu_delegate_;
+  std::unique_ptr<views::MenuItemView> root_menu_;
+  std::unique_ptr<BookmarkBarMenuDelegate> menu_delegate_;
+  raw_ptr<const BookmarkNode> bar_bookmark_ = nullptr;
+  raw_ptr<const BookmarkNode> other_bookmark_ = nullptr;
+  raw_ptr<views::MenuItemView> menu_item_ = nullptr;
+};
+
+TEST_F(BookmarkBarViewFaviconTest, ThrottlesFrequentFaviconChanges) {
+  ASSERT_NO_FATAL_FAILURE(InitBookmarksAndMenu());
+
+  current_favicon_ = updated_favicon_;
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(url_, testing::_, testing::_))
+      .Times(0);
+  const base::TimeDelta step = base::Milliseconds(200);
+  for (int i = 0; i < 3; ++i) {
+    model()->OnFaviconsChanged({url_}, GURL());
+    EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+              ui::ImageModel::FromImage(initial_favicon_));
+    EXPECT_EQ(menu_item_->GetIcon(),
+              ui::ImageModel::FromImage(initial_favicon_));
+    task_environment()->FastForwardBy(step);
+    EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+              ui::ImageModel::FromImage(initial_favicon_));
+    EXPECT_EQ(menu_item_->GetIcon(),
+              ui::ImageModel::FromImage(initial_favicon_));
+  }
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(url_, testing::_, testing::_))
+      .Times(2);
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay -
+                                    step);
+  EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(updated_favicon_));
+  EXPECT_EQ(menu_item_->GetIcon(), ui::ImageModel::FromImage(updated_favicon_));
+}
+
+TEST_F(BookmarkBarViewFaviconTest, DefersFaviconUpdateLoadedDuringTimer) {
+  ASSERT_NO_FATAL_FAILURE(InitBookmarksAndMenu());
+
+  current_favicon_ = updated_favicon_;
+  const base::TimeDelta step = base::Milliseconds(200);
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(url_, testing::_, testing::_))
+      .Times(2);
+  model()->OnFaviconsChanged({url_}, GURL());
+  model()->GetFavicon(bar_bookmark_);
+  model()->GetFavicon(other_bookmark_);
+  task_environment()->FastForwardBy(step);
+  ASSERT_TRUE(bar_bookmark_->is_favicon_loaded());
+  ASSERT_TRUE(other_bookmark_->is_favicon_loaded());
+  EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(initial_favicon_));
+  EXPECT_EQ(menu_item_->GetIcon(), ui::ImageModel::FromImage(initial_favicon_));
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+      .Times(0);
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay -
+                                    step);
+  EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(updated_favicon_));
+  EXPECT_EQ(menu_item_->GetIcon(), ui::ImageModel::FromImage(updated_favicon_));
+}
+
+TEST_F(BookmarkBarViewFaviconTest, UpdatesFaviconOnNodeChangedDuringTimer) {
+  ASSERT_NO_FATAL_FAILURE(InitBookmarksAndMenu());
+
+  const GURL new_url("https://www.new-example.com");
+  const gfx::Image final_favicon = gfx::test::CreateImage(16, SK_ColorGREEN);
+
+  current_favicon_ = updated_favicon_;
+  model()->OnFaviconsChanged({url_}, GURL());
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(url_, testing::_, testing::_))
+      .Times(0);
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(new_url, testing::_, testing::_))
+      .Times(2);
+  model()->SetURL(bar_bookmark_, new_url,
+                  bookmarks::metrics::BookmarkEditSource::kOther);
+  model()->SetURL(other_bookmark_, new_url,
+                  bookmarks::metrics::BookmarkEditSource::kOther);
+  task_environment()->FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(updated_favicon_));
+  EXPECT_EQ(menu_item_->GetIcon(), ui::ImageModel::FromImage(updated_favicon_));
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+      .Times(0);
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay);
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  current_favicon_ = final_favicon;
+  model()->OnFaviconsChanged({new_url}, GURL());
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(new_url, testing::_, testing::_))
+      .Times(2);
+  model()->SetTitle(bar_bookmark_, u"renamed",
+                    bookmarks::metrics::BookmarkEditSource::kOther);
+  model()->SetTitle(other_bookmark_, u"renamed",
+                    bookmarks::metrics::BookmarkEditSource::kOther);
+  task_environment()->FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(bar_button()->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(final_favicon));
+  EXPECT_EQ(menu_item_->GetIcon(), ui::ImageModel::FromImage(final_favicon));
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+      .Times(0);
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay);
+}
+
+TEST_F(BookmarkBarViewFaviconTest, CancelsFaviconTimerOnNodeRemoval) {
+  const GURL folder_url("https://www.folder-example.com");
+  const BookmarkNode* folder =
+      model()->AddFolder(model()->other_node(), 0, u"folder");
+  model()->AddURL(folder, 0, u"folder example", folder_url);
+
+  ASSERT_NO_FATAL_FAILURE(InitBookmarksAndMenu());
+  ASSERT_EQ(3u, root_menu_->GetSubmenu()->GetMenuItems().size());
+  views::MenuItemView* folder_menu_item =
+      root_menu_->GetSubmenu()->GetMenuItemAt(2);
+  ASSERT_EQ(u"folder", folder_menu_item->title());
+  menu_delegate_->WillShowMenu(folder_menu_item);
+  ASSERT_EQ(1u, folder_menu_item->GetSubmenu()->GetMenuItems().size());
+  views::MenuItemView* folder_child_item =
+      folder_menu_item->GetSubmenu()->GetMenuItemAt(0);
+  task_environment()->FastForwardBy(base::TimeDelta());
+  ASSERT_EQ(folder_child_item->GetIcon(),
+            ui::ImageModel::FromImage(initial_favicon_));
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+      .Times(0);
+  model()->OnFaviconsChanged({folder_url}, GURL());
+  model()->Remove(folder, bookmarks::metrics::BookmarkEditSource::kOther,
+                  FROM_HERE);
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay);
+
+  model()->OnFaviconsChanged({url_}, GURL());
+  model()->RemoveAllUserBookmarks(FROM_HERE);
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay);
+}
+
+TEST_F(BookmarkBarViewFaviconTest,
+       SkipsFaviconUpdatesForHiddenOverflowButtons) {
+  const GURL overflow_url("https://www.overflow-example.com");
+  const BookmarkNode* visible_bookmark =
+      model()->AddURL(model()->bookmark_bar_node(), 0, u"visible", url_);
+  const BookmarkNode* overflow_bookmark = model()->AddURL(
+      model()->bookmark_bar_node(), 1, u"overflow", overflow_url);
+  SizeUntilButtonsVisible(1);
+  ASSERT_EQ(2u, test_helper_->GetBookmarkButtonCount());
+  views::LabelButton* visible_button = test_helper_->GetBookmarkButton(0);
+  views::LabelButton* overflow_button = test_helper_->GetBookmarkButton(1);
+  ASSERT_TRUE(visible_button->GetVisible());
+  ASSERT_FALSE(overflow_button->GetVisible());
+
+  task_environment()->FastForwardBy(base::TimeDelta());
+  ASSERT_TRUE(visible_bookmark->is_favicon_loaded());
+  ASSERT_TRUE(overflow_bookmark->is_favicon_loaded());
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  current_favicon_ = updated_favicon_;
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+      .Times(0);
+  model()->OnFaviconsChanged({overflow_url}, GURL());
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay);
+
+  model()->OnFaviconsChanged({url_}, GURL());
+  SizeDownUntilButtonsVisible(0);
+  ASSERT_FALSE(visible_button->GetVisible());
+  task_environment()->FastForwardBy(BookmarkBarView::kFaviconUpdateDelay);
+  testing::Mock::VerifyAndClearExpectations(favicon_service_);
+
+  EXPECT_CALL(*favicon_service_,
+              GetFaviconImageForPageURL(testing::_, testing::_, testing::_))
+      .Times(2);
+  SizeUntilButtonsVisible(2);
+  ASSERT_TRUE(visible_button->GetVisible());
+  ASSERT_TRUE(overflow_button->GetVisible());
+  EXPECT_EQ(visible_button->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(initial_favicon_));
+  task_environment()->FastForwardBy(base::TimeDelta());
+  EXPECT_EQ(visible_button->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(updated_favicon_));
+  EXPECT_EQ(overflow_button->GetImageModel(views::Button::STATE_NORMAL),
+            ui::ImageModel::FromImage(updated_favicon_));
+}
+
+class BookmarkBarViewAreaKeyboardNavigationTest
+    : public BookmarkBarViewInWidgetTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  BookmarkBarViewAreaKeyboardNavigationTest() {
+    area_nav_feature_list_.InitWithFeatureState(
+        features::kBookmarkBarAreaKeyboardNavigation, GetParam());
+  }
+
+  // False on macOS even when the feature is enabled.
+  bool IsAreaNavigationActive() const {
+    return GetParam() && views::PlatformStyle::kDefaultFocusBehavior ==
+                             views::View::FocusBehavior::ALWAYS;
+  }
+
+  void ShowWithBookmarks(const std::string& model_string) {
+    widget()->Show();
+    AddNodesToBookmarkBarFromModelString(model_string);
+    bookmark_bar_view()->SetBounds(
+        0, 0, 5000, bookmark_bar_view()->GetPreferredSize().height());
+    views::test::RunScheduledLayout(bookmark_bar_view());
+  }
+
+  void PressKey(ui::KeyboardCode key_code) {
+    ui::KeyEvent event(ui::EventType::kKeyPressed, key_code, ui::EF_NONE);
+    widget()->OnKeyEvent(&event);
+  }
+
+  views::View* GetFocusedView() {
+    return widget()->GetFocusManager()->GetFocusedView();
+  }
+
+ protected:
+  // ViewsTestBase:
+  std::unique_ptr<views::Widget> AllocateTestWidget() override {
+    return std::make_unique<FocusWithoutActivationWidget>();
+  }
+
+ private:
+  // Some platforms (e.g. Wayland on Weston) never activate test windows, and
+  // FocusManager defers focus requests on inactive widgets.
+  class FocusWithoutActivationWidget : public views::Widget {
+   public:
+    bool CanFocusViewsWithoutActivation() const override { return true; }
+  };
+
+  base::test::ScopedFeatureList area_nav_feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         BookmarkBarViewAreaKeyboardNavigationTest,
+                         testing::Bool());
+
+TEST_P(BookmarkBarViewAreaKeyboardNavigationTest, BookmarkAreaFocusBehavior) {
+  ShowWithBookmarks("a b c ");
+  ASSERT_EQ(3u, test_helper_->GetBookmarkButtonCount());
+
+  EXPECT_EQ(IsAreaNavigationActive()
+                ? views::PlatformStyle::kDefaultFocusBehavior
+                : views::View::FocusBehavior::ACCESSIBLE_ONLY,
+            test_helper_->GetBookmarkButton(0)->GetFocusBehavior());
+  EXPECT_EQ(views::View::FocusBehavior::ACCESSIBLE_ONLY,
+            test_helper_->GetBookmarkButton(1)->GetFocusBehavior());
+  EXPECT_EQ(views::View::FocusBehavior::ACCESSIBLE_ONLY,
+            test_helper_->GetBookmarkButton(2)->GetFocusBehavior());
+}
+
+TEST_P(BookmarkBarViewAreaKeyboardNavigationTest,
+       BookmarkAreaFocusBehaviorFollowsFirstVisible) {
+  if (!IsAreaNavigationActive()) {
+    GTEST_SKIP() << "Area keyboard navigation is not active.";
+  }
+  ShowWithBookmarks("a b c ");
+  ASSERT_EQ(3u, test_helper_->GetBookmarkButtonCount());
+
+  model()->Remove(model()->bookmark_bar_node()->children()[0].get(),
+                  bookmarks::metrics::BookmarkEditSource::kOther, FROM_HERE);
+  views::test::RunScheduledLayout(bookmark_bar_view());
+  ASSERT_EQ(2u, test_helper_->GetBookmarkButtonCount());
+
+  EXPECT_EQ(views::PlatformStyle::kDefaultFocusBehavior,
+            test_helper_->GetBookmarkButton(0)->GetFocusBehavior());
+  EXPECT_EQ(views::View::FocusBehavior::ACCESSIBLE_ONLY,
+            test_helper_->GetBookmarkButton(1)->GetFocusBehavior());
+}
+
+// The Tab Groups area has at most one Tab-focusable button.
+TEST_P(BookmarkBarViewAreaKeyboardNavigationTest, TabGroupAreaFocusBehavior) {
+  if (!IsAreaNavigationActive()) {
+    GTEST_SKIP() << "Area keyboard navigation is not active.";
+  }
+  ShowWithBookmarks("a ");
+  tab_groups::SavedTabGroupBar* stg_bar = test_helper_->saved_tab_group_bar();
+  ASSERT_TRUE(stg_bar);
+  views::test::RunScheduledLayout(stg_bar);
+
+  const std::vector<views::View*> buttons =
+      stg_bar->GetVisibleKeyboardNavigationButtons();
+  for (size_t i = 0; i < buttons.size(); ++i) {
+    EXPECT_EQ(i == 0 ? views::PlatformStyle::kDefaultFocusBehavior
+                     : views::View::FocusBehavior::ACCESSIBLE_ONLY,
+              buttons[i]->GetFocusBehavior());
+  }
+}
+
+// Left/Right arrows move focus within the Bookmarks area and wrap around.
+TEST_P(BookmarkBarViewAreaKeyboardNavigationTest, ArrowKeysWrapWithinArea) {
+  if (!IsAreaNavigationActive()) {
+    GTEST_SKIP() << "Area keyboard navigation is not active.";
+  }
+  ShowWithBookmarks("a b c ");
+  ASSERT_EQ(3u, test_helper_->GetBookmarkButtonCount());
+
+  views::View* a = test_helper_->GetBookmarkButton(0);
+  views::View* b = test_helper_->GetBookmarkButton(1);
+  views::View* c = test_helper_->GetBookmarkButton(2);
+  ASSERT_FALSE(bookmark_bar_view()->overflow_button()->GetVisible());
+  // The "All Bookmarks" button, if visible, is the last item of the area.
+  views::View* last = bookmark_bar_view()->all_bookmarks_button()->GetVisible()
+                          ? bookmark_bar_view()->all_bookmarks_button()
+                          : c;
+
+  a->RequestFocus();
+  ASSERT_EQ(a, GetFocusedView());
+
+  PressKey(ui::VKEY_RIGHT);
+  EXPECT_EQ(b, GetFocusedView());
+  PressKey(ui::VKEY_RIGHT);
+  EXPECT_EQ(c, GetFocusedView());
+  PressKey(ui::VKEY_LEFT);
+  EXPECT_EQ(b, GetFocusedView());
+  PressKey(ui::VKEY_LEFT);
+  EXPECT_EQ(a, GetFocusedView());
+
+  PressKey(ui::VKEY_LEFT);
+  EXPECT_EQ(last, GetFocusedView());
+  PressKey(ui::VKEY_RIGHT);
+  EXPECT_EQ(a, GetFocusedView());
 }
 
 }  // namespace

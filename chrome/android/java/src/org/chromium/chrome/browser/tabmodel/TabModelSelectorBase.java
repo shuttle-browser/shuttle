@@ -8,10 +8,11 @@ import static org.chromium.build.NullUtil.assumeNonNull;
 
 import android.app.Activity;
 
+import org.jni_zero.JniPtr;
+
 import org.chromium.base.Callback;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.ObserverList;
-import org.chromium.base.ResettersForTesting;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.NullableObservableSupplier;
@@ -20,7 +21,6 @@ import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.tab.Tab;
-import org.chromium.chrome.browser.tab.TabCreationState;
 import org.chromium.chrome.browser.tab.TabDestroyStatus;
 import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab_ui.TabContentManager;
@@ -36,8 +36,6 @@ import java.util.Objects;
 public abstract class TabModelSelectorBase
         implements TabModelSelector, IncognitoTabModelObserver, TabModelDelegate {
     private static final int MODEL_NOT_FOUND = -1;
-
-    private static @Nullable TabModelSelectorObserver sObserverForTesting;
 
     /**
      * Elements in {@link mTabModels} should be kept in sync with elements in {@link
@@ -110,33 +108,11 @@ public abstract class TabModelSelectorBase
         mPendingObservers.clear();
         mPendingObservers.trimToSize();
 
-        TabModelObserver tabModelObserver =
-                new TabModelObserver() {
-                    @Override
-                    public void didAddTab(
-                            Tab tab,
-                            @TabLaunchType int type,
-                            @TabCreationState int creationState,
-                            boolean markedForSelection) {
-                        notifyNewTabCreated(tab);
-                    }
-                };
-
-        addObserverToAllModels(tabModelObserver);
-
-        if (sObserverForTesting != null) {
-            addObserver(sObserverForTesting);
-        }
         mIncognitoTabModel.addIncognitoObserver(this);
 
         incognitoModel.setActive(mStartIncognito);
         normalModel.setActive(!mStartIncognito);
         mTabModelSupplier.set(mTabModelInternals.get(activeModelIndex));
-    }
-
-    public static void setObserverForTests(@Nullable TabModelSelectorObserver observer) {
-        sObserverForTesting = observer;
-        ResettersForTesting.register(() -> sObserverForTesting = null);
     }
 
     /**
@@ -408,17 +384,6 @@ public abstract class TabModelSelectorBase
         return status;
     }
 
-    /**
-     * Notifies all the listeners that a new tab has been created.
-     *
-     * @param tab The tab that has been created.
-     */
-    private void notifyNewTabCreated(Tab tab) {
-        for (TabModelSelectorObserver listener : mObservers) {
-            listener.onNewTabCreated(tab);
-        }
-    }
-
     @Override
     public void enterReparentingMode() {
         mReparentingInProgress = true;
@@ -427,6 +392,14 @@ public abstract class TabModelSelectorBase
     @Override
     public boolean isReparentingInProgress() {
         return mReparentingInProgress;
+    }
+
+    @Override
+    public void detachTabForReparenting(Tab tab) {
+        assert mReparentingInProgress;
+        int index = getModelIndex(tab.isIncognito());
+        if (index == MODEL_NOT_FOUND) return;
+        mTabModelInternals.get(index).detachTabForReparenting(tab);
     }
 
     @Override
@@ -461,9 +434,9 @@ public abstract class TabModelSelectorBase
 
     @Override
     public @Nullable TabModel getTabModelForTabStripCollection(
-            TabStripCollection tabStripCollection) {
+            JniPtr<TabStripCollection> tabStripCollection) {
         for (TabModel tabModel : getModels()) {
-            TabStripCollection modelCollection = tabModel.getTabStripCollection();
+            JniPtr<TabStripCollection> modelCollection = tabModel.getTabStripCollection();
             if (!Objects.equals(modelCollection, tabStripCollection)) continue;
             return tabModel;
         }

@@ -22,7 +22,6 @@ include_rules = [
   "+chrome/browser/ash/wallpaper_handlers",
   "+chrome/browser/chromeos/extensions/login_screen/login/cleanup",
   "+chrome/browser/component_updater",
-  "+chrome/browser/metrics",
   "+chrome/browser/profiles",
   "+chrome/browser/ui/ash",
   "+chrome/browser/ui/webui/ash/login",
@@ -49,9 +48,6 @@ specific_include_rules = {
   ],
   "demo_session\\.cc": [
     "+ash/login/resources/grit"
-  ],
-  "demo_setup_browsertest\\.cc": [
-    "+chrome/grit",
   ],
   "demo_session_browsertest\\.cc": [
     "+chrome/browser/signin/identity_manager_factory.h",

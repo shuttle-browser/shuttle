@@ -7,11 +7,13 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/signin/signin_promo.h"  // nogncheck
+#include "components/signin/public/base/signin_switches.h"
 #endif
 #include "components/grit/components_resources.h"
 #include "components/security_interstitials/content/security_interstitial_controller_client.h"
@@ -23,8 +25,8 @@
 #include "content/public/common/referrer.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/profiles/profile.h"
@@ -74,7 +76,10 @@ SupervisedUserVerificationPage::SupervisedUserVerificationPage(
       sign_in_continue_url_(GaiaUrls::GetInstance()->blank_page_url()),
 #if !BUILDFLAG(IS_ANDROID)
       reauth_url_(signin::GetChromeReauthURL(
-          {.email = email_to_reauth_, .continue_url = sign_in_continue_url_})),
+          {.email = email_to_reauth_,
+           .continue_url = sign_in_continue_url_,
+           .proceed_to_challenge = base::FeatureList::IsEnabled(
+               switches::kReauthSkipIdentifierPageFollowup)})),
 #endif
       child_account_service_(child_account_service) {
   if (child_account_service_) {
@@ -175,7 +180,14 @@ void SupervisedUserVerificationPage::CommandReceived(
   }
   int cmd = 0;
   bool retval = base::StringToInt(command, &cmd);
-  DCHECK(retval);
+  // This CHECK() is safe because if `base::StringToInt()` fails, it will return
+  // 0. 0 is valid command, i.e. `security_interstitials::CMD_DONT_PROCEED`.
+  // Since the `switch` causes NOTREACHED() when `cmd` is
+  // `security_interstitials::CMD_DONT_PROCEED`, this process will crash.
+  // However if the `StringToInt()` fails, we should not use a valid command
+  // value. We cannot find whether the `command` is CMD_DONT_PROCEED or just an
+  // invalid string.
+  CHECK(retval, base::NotFatalUntil::M163);
 
   switch (cmd) {
     case security_interstitials::CMD_OPEN_LOGIN: {
@@ -201,7 +213,7 @@ void SupervisedUserVerificationPage::CommandReceived(
 #else
       content::OpenURLParams params =
           content::OpenURLParams::CreateBrowserInitiated(
-              reauth_url_, WindowOpenDisposition::kNewForegroundTab,
+              reauth_url_, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_LINK);
       auto* signin_web_contents =
           SecurityInterstitialPage::web_contents()->OpenURL(

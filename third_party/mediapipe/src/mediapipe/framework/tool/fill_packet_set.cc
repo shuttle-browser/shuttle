@@ -17,9 +17,11 @@
 #include <utility>
 #include <vector>
 
-#include "absl/memory/memory.h"
+#include "absl/memory/memory.h"          // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/status/status_builder.h"  // from @com_google_absl
+#include "absl/status/statusor.h"        // from @com_google_absl
 #include "mediapipe/framework/port/status_builder.h"
-#include "mediapipe/framework/port/statusor.h"
 #include "mediapipe/framework/tool/status_util.h"
 
 namespace mediapipe {
@@ -34,7 +36,7 @@ absl::StatusOr<std::unique_ptr<PacketSet>> FillPacketSet(
   }
   std::vector<absl::Status> errors;
   auto packet_set =
-      absl::make_unique<PacketSet>(input_side_packet_types.TagMap());
+      std::make_unique<PacketSet>(input_side_packet_types.TagMap());
   const auto& names = input_side_packet_types.TagMap()->Names();
   for (CollectionItemId id = input_side_packet_types.BeginId();
        id < input_side_packet_types.EndId(); ++id) {
@@ -56,12 +58,11 @@ absl::StatusOr<std::unique_ptr<PacketSet>> FillPacketSet(
     if (!status.ok()) {
       std::pair<std::string, int> tag_index =
           input_side_packet_types.TagAndIndexFromId(id);
-      errors.push_back(
-          mediapipe::StatusBuilder(status, MEDIAPIPE_LOC).SetPrepend()
-          << "Packet \""
-          << input_side_packet_types.TagMap()->Names()[id.value()]
-          << "\" with tag \"" << tag_index.first << "\" and index "
-          << tag_index.second << " failed validation.  ");
+      errors.push_back(absl::StatusBuilder(status, MEDIAPIPE_LOC).SetPrepend()
+                       << "Packet \""
+                       << input_side_packet_types.TagMap()->Names()[id.value()]
+                       << "\" with tag \"" << tag_index.first << "\" and index "
+                       << tag_index.second << " failed validation.  ");
     }
   }
   if (!errors.empty()) {

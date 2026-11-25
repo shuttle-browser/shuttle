@@ -4,7 +4,6 @@
 
 #include "components/download/public/common/download_features.h"
 
-#include "build/android_buildflags.h"
 #include "build/build_config.h"
 
 namespace download {
@@ -68,6 +67,12 @@ BASE_FEATURE(kUseParallelRequestsForQUIC, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kDeleteOverwrittenDownloads, base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kRemoveOldDownloadsFromHistory, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(base::TimeDelta,
+                   kRemoveOldDownloadsFromHistoryMinAge,
+                   &kRemoveOldDownloadsFromHistory,
+                   base::Days(90));
+
 BASE_FEATURE(kAllowFileBufferSizeControl, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kAllowedMixedContentInlinePdf, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -79,27 +84,37 @@ BASE_FEATURE(kEnableAsyncNotificationManagerForDownload,
 BASE_FEATURE(kEnableSavePackageForOffTheRecord,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// TODO(crbug.com/521890621): Enable on all form factors once the non-desktop
+// rollout is complete.
 BASE_FEATURE(kOpenDownloadInFilesAppIfNoHandlerFound,
-#if BUILDFLAG(IS_DESKTOP_ANDROID)
-             base::FEATURE_ENABLED_BY_DEFAULT
-#else
-             base::FEATURE_DISABLED_BY_DEFAULT
-#endif  // BUILDFLAG(IS_DESKTOP_ANDROID)
-);
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
+// TODO(crbug.com/521890621): Enable on LFF once the non-desktop rollout is
+// complete.
 BASE_FEATURE(kOpenDownloadInNewTab, base::FEATURE_DISABLED_BY_DEFAULT);
 
+// TODO(crbug.com/521890621): Part of this feature is desktop-only (b/555382195)
+// and part is LFF. Enable the LFF part on LFF once the rollout is complete.
 BASE_FEATURE(kEnableDownloadSaveAsContextMenu,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Desktop-only feature (see b/555382195).
 BASE_FEATURE(kEnableDownloadSaveAsSystemFileDialog,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kRetrieveDisplayNamesForHistoryDownloads,
              base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 BASE_FEATURE(kDeferredDownloadHistoryLoading,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+#if BUILDFLAG(IS_WIN)
+BASE_FEATURE(kEnableDownloadOpenWithContextMenu,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_WIN)
+
+BASE_FEATURE(kPreserveDownloadLastModified,
              base::FEATURE_DISABLED_BY_DEFAULT);
 }  // namespace features
 

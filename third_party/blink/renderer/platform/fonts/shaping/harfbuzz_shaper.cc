@@ -67,6 +67,7 @@
 #include "third_party/blink/renderer/platform/wtf/text/format.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
 #include "third_party/blink/renderer/platform/wtf/text/unicode.h"
+#include "third_party/blink/renderer/platform/wtf/thread_specific.h"
 
 namespace blink {
 
@@ -188,10 +189,10 @@ FontFallbackPriority ApplyFontVariantEmojiOnFallbackPriority(
   // font-variant-emoji property should not override emoji variation selectors,
   // see https://www.w3.org/TR/css-fonts-4/#font-variant-emoji-prop.
   if (!HasVsFallbackPriority(curr_font_fallback_priority)) {
-    if (font_variant_emoji == kEmojiVariantEmoji) {
+    if (font_variant_emoji == FontVariantEmoji::kEmoji) {
       return FontFallbackPriority::kEmojiEmoji;
     }
-    if (font_variant_emoji == kTextVariantEmoji) {
+    if (font_variant_emoji == FontVariantEmoji::kText) {
       return FontFallbackPriority::kText;
     }
   }

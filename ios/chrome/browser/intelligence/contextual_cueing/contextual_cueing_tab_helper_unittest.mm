@@ -5,18 +5,37 @@
 #import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cueing_tab_helper.h"
 
 #import <memory>
+#import <string>
+#import <string_view>
+#import <utility>
 #import <vector>
 
+#import "base/files/file_path.h"
 #import "base/functional/bind.h"
+#import "base/memory/scoped_refptr.h"
+#import "base/metrics/field_trial_params.h"
+#import "base/strings/stringprintf.h"
+#import "base/strings/utf_string_conversions.h"
+#import "base/task/cancelable_task_tracker.h"
 #import "base/task/sequenced_task_runner.h"
 #import "base/test/metrics/histogram_tester.h"
 #import "base/test/run_until.h"
 #import "base/test/scoped_feature_list.h"
 #import "base/test/test_future.h"
+#import "base/test/values_test_util.h"
+#import "base/time/time.h"
+#import "base/values.h"
 #import "components/contextual_cueing/contextual_cueing_enums.h"
 #import "components/feature_engagement/public/event_constants.h"
 #import "components/feature_engagement/public/feature_constants.h"
 #import "components/feature_engagement/test/mock_tracker.h"
+#import "components/history/core/browser/history_backend.h"
+#import "components/history/core/browser/history_db_task.h"
+#import "components/history/core/browser/history_service.h"
+#import "components/history/core/browser/history_types.h"
+#import "components/history/core/browser/sync/history_backend_for_sync.h"
+#import "components/infobars/core/confirm_infobar_delegate.h"
+#import "components/infobars/core/infobar.h"
 #import "components/infobars/core/infobar_manager.h"
 #import "components/optimization_guide/core/delivery/test_optimization_guide_model_provider.h"
 #import "components/optimization_guide/core/model_execution/remote_model_executor.h"
@@ -25,6 +44,8 @@
 #import "components/optimization_guide/proto/features/contextual_cueing.pb.h"
 #import "components/page_content_annotations/core/page_content_annotation_type.h"
 #import "components/prefs/pref_service.h"
+#import "components/private_insights/events/contextual_cue_log_event.pb.h"
+#import "components/private_insights/private_insights_service.h"
 #import "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
 #import "components/signin/public/identity_manager/account_info.h"
 #import "components/signin/public/identity_manager/identity_manager.h"
@@ -33,6 +54,7 @@
 #import "components/sync/service/sync_user_settings.h"
 #import "components/sync/test/test_sync_service.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/history/model/history_service_factory.h"
 #import "ios/chrome/browser/infobars/model/infobar_manager_impl.h"
 #import "ios/chrome/browser/intelligence/bwg/metrics/gemini_metrics.h"
 #import "ios/chrome/browser/intelligence/bwg/model/fake_gemini_service.h"
@@ -52,6 +74,8 @@
 #import "ios/chrome/browser/location_bar/badge/model/location_bar_badge_configuration.h"
 #import "ios/chrome/browser/optimization_guide/model/fake_optimization_guide_service.h"
 #import "ios/chrome/browser/optimization_guide/model/optimization_guide_service_factory.h"
+#import "ios/chrome/browser/private_insights/model/private_insights_service_factory.h"
+#import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
 #import "ios/chrome/browser/shared/public/commands/location_bar_badge_commands.h"
@@ -59,11 +83,14 @@
 #import "ios/chrome/browser/signin/model/identity_test_environment_browser_state_adaptor.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
+#import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/web/public/test/fakes/fake_navigation_context.h"
 #import "ios/web/public/test/fakes/fake_navigation_manager.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #import "ios/web/public/test/web_task_environment.h"
 #import "ios/web/public/web_state_id.h"
+#import "services/network/public/cpp/shared_url_loader_factory.h"
+#import "testing/gmock/include/gmock/gmock.h"
 #import "testing/gtest/include/gtest/gtest.h"
 #import "testing/gtest_mac.h"
 #import "testing/platform_test.h"
@@ -218,6 +245,9 @@ class TestOptimizationGuideService : public FakeOptimizationGuideService {
       optimization_guide::OptimizationGuideModelExecutionResultCallback
           callback) override {
     last_service_type_ = options.service_type;
+    last_request_ =
+        static_cast<const optimization_guide::proto::ContextualCueingRequest&>(
+            request_metadata);
     FakeOptimizationGuideService::ExecuteModel(feature, request_metadata,
                                                options, std::move(callback));
   }
@@ -227,9 +257,16 @@ class TestOptimizationGuideService : public FakeOptimizationGuideService {
     return last_service_type_;
   }
 
+  const std::optional<optimization_guide::proto::ContextualCueingRequest>&
+  last_request() const {
+    return last_request_;
+  }
+
  private:
   std::optional<optimization_guide::ModelExecutionServiceType>
       last_service_type_;
+  std::optional<optimization_guide::proto::ContextualCueingRequest>
+      last_request_;
 };
 
 std::unique_ptr<KeyedService> CreateFakeOptimizationGuideService(
@@ -322,6 +359,12 @@ std::unique_ptr<KeyedService> CreateTestTracker(ProfileIOS* context) {
   return tracker;
 }
 
+// Returns the `kGeminiContextualSuggestionsCues` params the tests run with.
+base::FieldTrialParams CreateCuesFeatureParams() {
+  return {{kGeminiContextualSuggestionsCuesOnDeviceClassifierParam, "true"},
+          {kGeminiContextualSuggestionsCuesServerModelExecutionParam, "true"}};
+}
+
 }  // namespace
 
 class ContextualCueingTabHelperTest : public PlatformTest {
@@ -329,10 +372,7 @@ class ContextualCueingTabHelperTest : public PlatformTest {
   void SetUp() override {
     PlatformTest::SetUp();
     scoped_feature_list_.InitWithFeaturesAndParameters(
-        {{kGeminiContextualSuggestionsCues,
-          {{kGeminiContextualSuggestionsCuesOnDeviceClassifierParam, "true"},
-           {kGeminiContextualSuggestionsCuesServerModelExecutionParam,
-            "true"}}},
+        {{kGeminiContextualSuggestionsCues, CreateCuesFeatureParams()},
          {kPageActionMenu, {}}},
         {});
 
@@ -362,6 +402,9 @@ class ContextualCueingTabHelperTest : public PlatformTest {
         IdentityManagerFactory::GetInstance(),
         base::BindRepeating(&IdentityTestEnvironmentBrowserStateAdaptor::
                                 BuildIdentityManagerForTests));
+    builder.AddTestingFactory(ios::HistoryServiceFactory::GetInstance(),
+                              ios::HistoryServiceFactory::GetDefaultFactory());
+    AddTestingFactories(builder);
     profile_ = std::move(builder).Build();
 
     fake_opt_guide_service_ = static_cast<TestOptimizationGuideService*>(
@@ -400,6 +443,7 @@ class ContextualCueingTabHelperTest : public PlatformTest {
   }
 
   void TearDown() override {
+    history_task_tracker_.TryCancelAll();
     web_state_.reset();
     fake_page_classification_vertical_service_ = nullptr;
     fake_page_classification_service_ = nullptr;
@@ -408,6 +452,9 @@ class ContextualCueingTabHelperTest : public PlatformTest {
     profile_.reset();
     PlatformTest::TearDown();
   }
+
+  // Lets subclasses add testing factories before `profile_` is built.
+  virtual void AddTestingFactories(TestProfileIOS::Builder& builder) {}
 
   void OnPageClassified(
       ContextualCueingTabHelper* tab_helper,
@@ -468,9 +515,58 @@ class ContextualCueingTabHelperTest : public PlatformTest {
         {});
   }
 
+  void AddLocalVisit(history::HistoryService* history_service,
+                     const GURL& url,
+                     const std::u16string& title,
+                     base::Time visit_time,
+                     bool is_known_to_sync = true) {
+    class AddLocalVisitTask : public history::HistoryDBTask {
+     public:
+      AddLocalVisitTask(const GURL& url,
+                        const std::u16string& title,
+                        base::Time visit_time,
+                        bool is_known_to_sync)
+          : url_(url),
+            title_(title),
+            visit_time_(visit_time),
+            is_known_to_sync_(is_known_to_sync) {}
+
+      bool RunOnDBThread(history::HistoryBackend* backend,
+                         history::HistoryDatabase* db) override {
+        history::URLRow url_row(url_);
+        url_row.set_title(title_);
+        url_row.set_visit_count(1);
+        url_row.set_last_visit(visit_time_);
+        backend->AddPagesWithDetails({url_row}, history::SOURCE_BROWSED);
+        if (is_known_to_sync_) {
+          history::VisitRow visit_row;
+          if (backend->GetLastVisitByTime(visit_time_, &visit_row)) {
+            static_cast<history::HistoryBackendForSync*>(backend)
+                ->MarkVisitAsKnownToSync(visit_row.visit_id);
+          }
+        }
+        return true;
+      }
+
+      void DoneRunOnMainThread() override {}
+
+     private:
+      GURL url_;
+      std::u16string title_;
+      base::Time visit_time_;
+      bool is_known_to_sync_;
+    };
+    history_service->ScheduleDBTask(
+        FROM_HERE,
+        std::make_unique<AddLocalVisitTask>(url, title, visit_time,
+                                            is_known_to_sync),
+        &history_task_tracker_);
+  }
+
   base::test::ScopedFeatureList scoped_feature_list_;
   web::WebTaskEnvironment task_environment_;
   std::unique_ptr<TestProfileIOS> profile_;
+  base::CancelableTaskTracker history_task_tracker_;
   raw_ptr<TestOptimizationGuideService> fake_opt_guide_service_ = nullptr;
   raw_ptr<FakeOnDevicePageClassificationService>
       fake_page_classification_service_ = nullptr;
@@ -491,8 +587,7 @@ TEST_F(ContextualCueingTabHelperTest, CreateAndRetrieve) {
 
 // Tests that classification is ignored for off-the-record profiles.
 TEST_F(ContextualCueingTabHelperTest, IgnoresOffTheRecordProfile) {
-  ProfileIOS* otr_profile =
-      profile_->CreateOffTheRecordProfileWithTestingFactories();
+  ProfileIOS* otr_profile = profile_->GetOffTheRecordProfile();
   auto otr_web_state = std::make_unique<web::FakeWebState>();
   otr_web_state->SetBrowserState(otr_profile);
   otr_web_state->SetCurrentURL(GURL("https://example.com"));
@@ -966,6 +1061,196 @@ TEST_F(ContextualCueingTabHelperTest, BackgroundTabsCollectionFlow) {
   EXPECT_EQ(observer.cue_call_count_, 1);
 
   tab_helper->RemoveObserver(&observer);
+}
+
+// Tests that historical tabs are not populated by default when
+// `kMaxHistoricalTabs` is 0.
+TEST_F(ContextualCueingTabHelperTest, HistoricalTabsDisabledByDefault) {
+  const GURL test_url("https://example.com/store/item123");
+  web_state_->SetCurrentURL(test_url);
+
+  history::HistoryService* history_service =
+      ios::HistoryServiceFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(history_service);
+  AddLocalVisit(history_service, GURL("https://example.com/history1"),
+                u"History 1", base::Time::Now() - base::Minutes(5));
+
+  auto response = CreateTestCueResponse("Buy now", "Explore deals");
+  fake_opt_guide_service_->SetResponse(
+      optimization_guide::ModelBasedCapabilityKey::kContextualCueing, response,
+      "optimization_guide.proto.ContextualCueingResponse");
+
+  ContextualCueingTabHelper::CreateForWebState(web_state_.get());
+  auto* tab_helper = ContextualCueingTabHelper::FromWebState(web_state_.get());
+
+  std::vector<page_content_annotations::Category> categories = {
+      {page_content_annotations::CategoryType::kShopping, 0.85f}};
+  OnPageClassified(tab_helper, test_url, categories);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return tab_helper->GetContextualCue().has_value(); }));
+
+  ASSERT_TRUE(fake_opt_guide_service_->last_request().has_value());
+  EXPECT_EQ(fake_opt_guide_service_->last_request()->historical_tabs_size(), 0);
+}
+
+// Tests that historical tabs are populated from `HistoryService` in
+// reverse-chronological order, including search URLs, while excluding
+// non-HTTP(S) URLs, visits from foreign devices, visits not known to sync,
+// visits outside `kHistoricalTabsTimeWindow`, and deduplicating against the
+// active tab, background tabs, and prior historical tabs via `GetWithoutRef()`.
+TEST_F(ContextualCueingTabHelperTest, HistoricalTabsPopulatedAndDeduplicated) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  InitFeatureListWithExtraParams(scoped_feature_list,
+                                 {{kMaxHistoricalTabs.name, "10"}});
+
+  FakeContextualCueingDelegate delegate;
+  delegate.SetBackgroundTabs({
+      {GURL("https://example.com/bg1"), "Background Tab 1"},
+  });
+
+  const GURL test_url("https://example.com/store/item123");
+  web_state_->SetCurrentURL(test_url);
+
+  history::HistoryService* history_service =
+      ios::HistoryServiceFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(history_service);
+
+  const base::Time now = base::Time::Now();
+  // Active and background tab URLs (including with #ref) should be
+  // deduplicated.
+  AddLocalVisit(history_service,
+                GURL("https://example.com/store/item123#reviews"),
+                u"Active Tab With Ref", now - base::Minutes(1));
+  AddLocalVisit(history_service, GURL("https://example.com/bg1#section"),
+                u"Background Tab With Ref", now - base::Minutes(2));
+  // Non-HTTP(S) URLs should be excluded.
+  AddLocalVisit(history_service, GURL("file:///tmp/local.html"), u"Local File",
+                now - base::Minutes(3));
+  // Visits older than `kHistoricalTabsTimeWindow` (24h) should be excluded.
+  AddLocalVisit(history_service, GURL("https://example.com/old_visit"),
+                u"Old Visit", now - base::Hours(25));
+  // Visits from a foreign device (non-empty `originator_cache_guid`) should be
+  // excluded.
+  class AddForeignVisitTask : public history::HistoryDBTask {
+   public:
+    explicit AddForeignVisitTask(base::Time visit_time)
+        : visit_time_(visit_time) {}
+    bool RunOnDBThread(history::HistoryBackend* backend,
+                       history::HistoryDatabase* db) override {
+      history::VisitRow foreign_visit;
+      foreign_visit.visit_time = visit_time_;
+      foreign_visit.transition = ui::PageTransitionFromInt(
+          ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_CHAIN_START |
+          ui::PAGE_TRANSITION_CHAIN_END);
+      foreign_visit.originator_cache_guid = "foreign_device_guid";
+      foreign_visit.is_known_to_sync = true;
+      backend->AddSyncedVisit(GURL("https://example.com/foreign_visit"),
+                              u"Foreign Visit", /*hidden=*/false, foreign_visit,
+                              std::nullopt, std::nullopt);
+      return true;
+    }
+    void DoneRunOnMainThread() override {}
+
+   private:
+    base::Time visit_time_;
+  };
+  history_service->ScheduleDBTask(
+      FROM_HERE, std::make_unique<AddForeignVisitTask>(now - base::Minutes(4)),
+      &history_task_tracker_);
+  // Local visits not known to sync should be excluded.
+  AddLocalVisit(history_service, GURL("https://example.com/unsynced_visit"),
+                u"Unsynced Visit", now - base::Minutes(5),
+                /*is_known_to_sync=*/false);
+
+  // Eligible visits (including search URLs and #ref deduplication within
+  // history).
+  AddLocalVisit(history_service, GURL("https://example.com/history1"),
+                u"History 1", now - base::Minutes(30));
+  AddLocalVisit(history_service,
+                GURL("https://www.google.com/search?q=test+query"),
+                u"Google Search", now - base::Minutes(20));
+  AddLocalVisit(history_service, GURL("https://example.com/history2#part1"),
+                u"History 2 Old", now - base::Minutes(15));
+  AddLocalVisit(history_service, GURL("https://example.com/history2#part2"),
+                u"History 2 New", now - base::Minutes(10));
+
+  auto response = CreateTestCueResponse("Buy now", "Explore deals");
+  fake_opt_guide_service_->SetResponse(
+      optimization_guide::ModelBasedCapabilityKey::kContextualCueing, response,
+      "optimization_guide.proto.ContextualCueingResponse");
+
+  ContextualCueingTabHelper::CreateForWebState(web_state_.get());
+  auto* tab_helper = ContextualCueingTabHelper::FromWebState(web_state_.get());
+  tab_helper->SetDelegate(&delegate);
+
+  std::vector<page_content_annotations::Category> categories = {
+      {page_content_annotations::CategoryType::kShopping, 0.85f}};
+  OnPageClassified(tab_helper, test_url, categories);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return tab_helper->GetContextualCue().has_value(); }));
+
+  ASSERT_TRUE(fake_opt_guide_service_->last_request().has_value());
+  const auto& request = *fake_opt_guide_service_->last_request();
+  ASSERT_EQ(request.historical_tabs_size(), 3);
+
+  EXPECT_EQ(request.historical_tabs(0).url(),
+            "https://example.com/history2#part2");
+  EXPECT_EQ(request.historical_tabs(0).title(), "History 2 New");
+  EXPECT_FALSE(request.historical_tabs(0).has_tab_id());
+
+  EXPECT_EQ(request.historical_tabs(1).url(),
+            "https://www.google.com/search?q=test+query");
+  EXPECT_EQ(request.historical_tabs(1).title(), "Google Search");
+  EXPECT_FALSE(request.historical_tabs(1).has_tab_id());
+
+  EXPECT_EQ(request.historical_tabs(2).url(), "https://example.com/history1");
+  EXPECT_EQ(request.historical_tabs(2).title(), "History 1");
+  EXPECT_FALSE(request.historical_tabs(2).has_tab_id());
+}
+
+// Tests that `historical_tabs` is capped at `kMaxHistoricalTabs`.
+TEST_F(ContextualCueingTabHelperTest, MaxHistoricalTabsRespected) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  InitFeatureListWithExtraParams(scoped_feature_list,
+                                 {{kMaxHistoricalTabs.name, "5"}});
+
+  const GURL test_url("https://example.com/store/item123");
+  web_state_->SetCurrentURL(test_url);
+
+  history::HistoryService* history_service =
+      ios::HistoryServiceFactory::GetForProfile(profile_.get());
+  ASSERT_TRUE(history_service);
+
+  const base::Time now = base::Time::Now();
+  const size_t max_historical_tabs = kMaxHistoricalTabs.Get();
+  const size_t total_visits = max_historical_tabs + 5;
+  for (size_t i = 0; i < total_visits; ++i) {
+    AddLocalVisit(
+        history_service,
+        GURL(base::StringPrintf("https://example.com/history/%zu", i)),
+        base::UTF8ToUTF16(base::StringPrintf("History %zu", i)),
+        now - base::Minutes(i + 1));
+  }
+
+  auto response = CreateTestCueResponse("Buy now", "Explore deals");
+  fake_opt_guide_service_->SetResponse(
+      optimization_guide::ModelBasedCapabilityKey::kContextualCueing, response,
+      "optimization_guide.proto.ContextualCueingResponse");
+
+  ContextualCueingTabHelper::CreateForWebState(web_state_.get());
+  auto* tab_helper = ContextualCueingTabHelper::FromWebState(web_state_.get());
+
+  std::vector<page_content_annotations::Category> categories = {
+      {page_content_annotations::CategoryType::kShopping, 0.85f}};
+  OnPageClassified(tab_helper, test_url, categories);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return tab_helper->GetContextualCue().has_value(); }));
+
+  ASSERT_TRUE(fake_opt_guide_service_->last_request().has_value());
+  EXPECT_EQ(
+      static_cast<size_t>(
+          fake_opt_guide_service_->last_request()->historical_tabs_size()),
+      max_historical_tabs);
 }
 
 // Tests that error page navigations do not count towards page spacing.
@@ -2428,6 +2713,491 @@ TEST_F(ContextualCueingTabHelperTest, TestSetGeminiInvokedIsIdempotent) {
   EXPECT_FALSE(tab_helper->GetContextualCue().has_value());
 
   tab_helper->RemoveObserver(&observer);
+}
+
+namespace {
+
+using private_insights::events::ContextualCueLogEvent;
+
+// Page that the cue is shown on in the Private Insights logging tests.
+constexpr char kCuePageUrl[] = "https://example.com/store/item1";
+constexpr char16_t kCuePageTitle[] = u"Item 1";
+constexpr char kCuePageTitleUtf8[] = "Item 1";
+
+// Background tabs that the delegate offers in the `recent_pages` tests.
+constexpr char kBackgroundTabUrl1[] = "https://example.com/bg1";
+constexpr char kBackgroundTabTitle1[] = "Background Tab 1";
+constexpr char kBackgroundTabUrl2[] = "https://example.com/bg2";
+constexpr char kBackgroundTabTitle2[] = "Background Tab 2";
+
+// Keys of the page objects that `recent_pages` lists as JSON.
+constexpr char kRecentPageTitleKey[] = "title";
+constexpr char kRecentPageUrlKey[] = "url";
+
+// Records the events that the tab helper logs, instead of queuing them for
+// upload.
+class MockPrivateInsightsService
+    : public private_insights::PrivateInsightsService {
+ public:
+  MockPrivateInsightsService(
+      PrefService* local_state,
+      const base::FilePath& profile_dir,
+      scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory)
+      : private_insights::PrivateInsightsService(
+            local_state,
+            profile_dir,
+            std::move(url_loader_factory)) {}
+  MOCK_METHOD(void,
+              LogContextualCueEvent,
+              (ContextualCueLogEvent event),
+              (override));
+};
+
+// Builds a `MockPrivateInsightsService`. It is never `Init()`-ed, so it never
+// uploads and needs no URL loader factory.
+std::unique_ptr<KeyedService> BuildMockPrivateInsightsService(
+    ProfileIOS& profile) {
+  return std::make_unique<testing::NiceMock<MockPrivateInsightsService>>(
+      GetApplicationContext()->GetLocalState(), profile.GetStatePath(),
+      /*url_loader_factory=*/nullptr);
+}
+
+// Returns `CreateCuesFeatureParams()` with `kEnablePrivateInsightsLogging` set
+// to `logging_enabled`.
+base::FieldTrialParams CreateCuesFeatureParamsWithLogging(
+    bool logging_enabled) {
+  base::FieldTrialParams params = CreateCuesFeatureParams();
+  params[kEnablePrivateInsightsLogging.name] =
+      logging_enabled ? "true" : "false";
+  return params;
+}
+
+// Matches a `ContextualCueLogEvent` of `event_type` that has a `cue_id`.
+testing::Matcher<ContextualCueLogEvent> IsCueEvent(
+    ContextualCueLogEvent::EventType event_type) {
+  return testing::AllOf(
+      testing::Property(&ContextualCueLogEvent::event_type, event_type),
+      testing::Property(&ContextualCueLogEvent::cue_id,
+                        testing::Not(testing::IsEmpty())));
+}
+
+// Returns the `recent_pages` entry of the page at `url` titled `title`.
+base::DictValue CreateRecentPage(std::string_view url, std::string_view title) {
+  return base::DictValue()
+      .Set(kRecentPageTitleKey, title)
+      .Set(kRecentPageUrlKey, url);
+}
+
+}  // namespace
+
+// Fixture for the Private Insights logging of `ContextualCueingTabHelper`. It
+// enables logging, injects a `MockPrivateInsightsService`, and creates the tab
+// helper on `kCuePageUrl`.
+class ContextualCueingTabHelperPrivateInsightsTest
+    : public ContextualCueingTabHelperTest {
+ protected:
+  void SetUp() override {
+    ContextualCueingTabHelperTest::SetUp();
+    logging_feature_list_.InitAndEnableFeatureWithParameters(
+        kGeminiContextualSuggestionsCues,
+        CreateCuesFeatureParamsWithLogging(/*logging_enabled=*/true));
+    ASSERT_TRUE(IsPrivateInsightsLoggingEnabled());
+
+    mock_service_ = static_cast<MockPrivateInsightsService*>(
+        PrivateInsightsServiceFactory::GetForProfile(*profile_));
+    ASSERT_TRUE(mock_service_);
+
+    web_state_->SetCurrentURL(GURL(kCuePageUrl));
+    web_state_->SetTitle(kCuePageTitle);
+    ContextualCueingTabHelper::CreateForWebState(web_state_.get());
+    tab_helper_ = ContextualCueingTabHelper::FromWebState(web_state_.get());
+  }
+
+  void TearDown() override {
+    tab_helper_ = nullptr;
+    mock_service_ = nullptr;
+    ContextualCueingTabHelperTest::TearDown();
+  }
+
+  void AddTestingFactories(TestProfileIOS::Builder& builder) override {
+    builder.AddTestingFactory(
+        PrivateInsightsServiceFactory::GetInstance(),
+        base::BindRepeating(&BuildMockPrivateInsightsService));
+  }
+
+  // Simulates a committed navigation of `web_state_` to `url`.
+  void SimulateNavigation(const GURL& url, bool is_same_document) {
+    web_state_->SetCurrentURL(url);
+    web::FakeNavigationContext navigation_context;
+    navigation_context.SetUrl(url);
+    navigation_context.SetHasCommitted(true);
+    navigation_context.SetIsSameDocument(is_same_document);
+    web_state_->OnNavigationFinished(&navigation_context);
+  }
+
+  // Delivers a cue for `kCuePageUrl` through classification and server model
+  // execution, with the background tabs of `delegate_` sent in the request.
+  void ReceiveCueFromServer() {
+    tab_helper_->SetDelegate(&delegate_);
+    fake_opt_guide_service_->SetResponse(
+        optimization_guide::ModelBasedCapabilityKey::kContextualCueing,
+        CreateTestCueResponse("Buy now", "Explore deals"),
+        "optimization_guide.proto.ContextualCueingResponse");
+    std::vector<page_content_annotations::Category> categories = {
+        {page_content_annotations::CategoryType::kShopping, 0.85f}};
+    OnPageClassified(tab_helper_, GURL(kCuePageUrl), categories);
+    ASSERT_TRUE(base::test::RunUntil(
+        [&]() { return tab_helper_->GetContextualCue().has_value(); }));
+  }
+
+  // Expects exactly one SHOWN and then one CLICKED to be logged, and saves them
+  // in `shown_event` and `clicked_event`.
+  void ExpectShownThenClicked(ContextualCueLogEvent* shown_event,
+                              ContextualCueLogEvent* clicked_event) {
+    testing::InSequence sequence;
+    EXPECT_CALL(*mock_service_,
+                LogContextualCueEvent(IsCueEvent(ContextualCueLogEvent::SHOWN)))
+        .WillOnce(testing::SaveArg<0>(shown_event));
+    EXPECT_CALL(*mock_service_, LogContextualCueEvent(
+                                    IsCueEvent(ContextualCueLogEvent::CLICKED)))
+        .WillOnce(testing::SaveArg<0>(clicked_event));
+  }
+
+  // Expects SHOWN to be logged once and no other event, so that a CLICKED
+  // fails the test.
+  void ExpectOnlyShown() {
+    EXPECT_CALL(*mock_service_, LogContextualCueEvent(
+                                    IsCueEvent(ContextualCueLogEvent::SHOWN)));
+  }
+
+  // `PrivateInsightsService` CHECKs that local state exists.
+  IOSChromeScopedTestingLocalState scoped_testing_local_state_;
+  base::test::ScopedFeatureList logging_feature_list_;
+  // Outlives `tab_helper_`, which `TearDown()` destroys with `web_state_`.
+  FakeContextualCueingDelegate delegate_;
+  raw_ptr<MockPrivateInsightsService> mock_service_ = nullptr;
+  raw_ptr<ContextualCueingTabHelper> tab_helper_ = nullptr;
+};
+
+// Tests that CLICKED is built from the snapshot taken when the cue was shown:
+// it carries the `cue_id`, page and cue texts of SHOWN even though the cue was
+// invalidated and the page changed in between.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       ClickAfterInvalidationLogsShownSnapshot) {
+  const optimization_guide::proto::ContextualCue cue = CreatePresentableCue();
+  tab_helper_->SetContextualCueForTesting(cue);
+  ContextualCueLogEvent shown_event;
+  ContextualCueLogEvent clicked_event;
+  ExpectShownThenClicked(&shown_event, &clicked_event);
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  // Invoking Gemini invalidates the cue in a posted task.
+  tab_helper_->SetGeminiInvoked(true);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return !tab_helper_->GetContextualCue().has_value(); }));
+  // Changes the live page without a navigation event, which would end the
+  // presentation, so that CLICKED can only get the page from the snapshot.
+  web_state_->SetCurrentURL(GURL("https://example.com/store/item2"));
+  web_state_->SetTitle(u"Item 2");
+  tab_helper_->RecordCueClicked();
+
+  EXPECT_EQ(clicked_event.cue_id(), shown_event.cue_id());
+  for (const ContextualCueLogEvent* event : {&shown_event, &clicked_event}) {
+    EXPECT_EQ(event->cue_context().active_page().url(), kCuePageUrl);
+    EXPECT_EQ(event->cue_context().active_page().title(), kCuePageTitleUtf8);
+    EXPECT_EQ(event->cue_details().suggestion_text(),
+              cue.anchored_message_cue().anchored_message_text());
+    EXPECT_EQ(event->cue_details().button_text(),
+              cue.anchored_message_cue().action_text());
+    EXPECT_EQ(event->cue_details().prompt(),
+              cue.gemini_in_chrome_surface().prompt());
+  }
+}
+
+// Tests that each presentation gets a fresh `cue_id`, and that a click is
+// logged for the latest presentation.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest, EachShowHasFreshCueId) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+
+  std::vector<ContextualCueLogEvent> events;
+  EXPECT_CALL(*mock_service_, LogContextualCueEvent)
+      .Times(3)
+      .WillRepeatedly([&events](ContextualCueLogEvent event) {
+        events.push_back(std::move(event));
+      });
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueDismissed();
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueClicked();
+
+  ASSERT_THAT(events,
+              testing::ElementsAre(IsCueEvent(ContextualCueLogEvent::SHOWN),
+                                   IsCueEvent(ContextualCueLogEvent::SHOWN),
+                                   IsCueEvent(ContextualCueLogEvent::CLICKED)));
+  EXPECT_NE(events[0].cue_id(), events[1].cue_id());
+  EXPECT_EQ(events[2].cue_id(), events[1].cue_id());
+}
+
+// Tests that a presentation logs at most one CLICKED.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest, SecondClickLogsNothing) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ContextualCueLogEvent shown_event;
+  ContextualCueLogEvent clicked_event;
+  ExpectShownThenClicked(&shown_event, &clicked_event);
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueClicked();
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that a dismissal logs nothing and ends the presentation, so that a
+// later click logs nothing either.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest, DismissLogsNothing) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ExpectOnlyShown();
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueDismissed();
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that a show rejected by the Feature Engagement Tracker still ends the
+// previous presentation, so that a later click is not logged for it.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       RejectedShowEndsPreviousPresentation) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ExpectOnlyShown();
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  // Hiding the tab drops the cue and ends the Feature Engagement Tracker
+  // session, but keeps the presentation.
+  web_state_->WasHidden();
+
+  ON_CALL(*mock_tracker_,
+          ShouldTriggerHelpUI(
+              testing::Ref(feature_engagement::kIPHiOSGeminiContextualCueChip)))
+      .WillByDefault(testing::Return(false));
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ASSERT_FALSE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that a navigation to a new page ends the presentation, as it tears the
+// cue down, so that a later click (e.g. on the legacy chip) logs nothing.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       ClickAfterNavigationLogsNothing) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ExpectOnlyShown();
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  SimulateNavigation(GURL("https://example.com/store/item2"),
+                     /*is_same_document=*/false);
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that a fragment navigation keeps the presentation, as it does not
+// invalidate the cue either, so that a later click logs CLICKED.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       ClickAfterFragmentNavigationLogsClicked) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ContextualCueLogEvent shown_event;
+  ContextualCueLogEvent clicked_event;
+  ExpectShownThenClicked(&shown_event, &clicked_event);
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  SimulateNavigation(GURL(std::string(kCuePageUrl) + "#reviews"),
+                     /*is_same_document=*/true);
+  ASSERT_TRUE(tab_helper_->GetContextualCue().has_value());
+  tab_helper_->RecordCueClicked();
+
+  EXPECT_EQ(clicked_event.cue_id(), shown_event.cue_id());
+}
+
+// Tests that hiding the tab keeps the presentation, so that a click recorded
+// after Gemini hid the tab (e.g. if presented full screen) is still logged.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       ClickAfterTabHiddenLogsClicked) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ContextualCueLogEvent shown_event;
+  ContextualCueLogEvent clicked_event;
+  ExpectShownThenClicked(&shown_event, &clicked_event);
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  web_state_->WasHidden();
+  ASSERT_FALSE(tab_helper_->GetContextualCue().has_value());
+  tab_helper_->RecordCueClicked();
+
+  EXPECT_EQ(clicked_event.cue_id(), shown_event.cue_id());
+}
+
+// Tests that opting out of Gemini suggestions ends the presentation, as it
+// tears the cue down, so that a later click logs nothing.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       ClickAfterOptOutLogsNothing) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ExpectOnlyShown();
+
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  profile_->GetPrefs()->SetBoolean(prefs::kIOSGeminiSuggestionsSetting, false);
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that nothing is logged while `kEnablePrivateInsightsLogging` is off,
+// even with contextual cues enabled.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       NoEventsWhenLoggingDisabled) {
+  base::test::ScopedFeatureList disable_logging;
+  disable_logging.InitAndEnableFeatureWithParameters(
+      kGeminiContextualSuggestionsCues,
+      CreateCuesFeatureParamsWithLogging(/*logging_enabled=*/false));
+  ASSERT_TRUE(IsGeminiContextualSuggestionsCuesEnabled());
+  ASSERT_FALSE(IsPrivateInsightsLoggingEnabled());
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+
+  EXPECT_CALL(*mock_service_, LogContextualCueEvent).Times(0);
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that nothing is logged when the Feature Engagement Tracker rejects the
+// cue, which is then never shown.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       NoEventsWhenFeatureEngagementTrackerRejects) {
+  ON_CALL(*mock_tracker_,
+          ShouldTriggerHelpUI(
+              testing::Ref(feature_engagement::kIPHiOSGeminiContextualCueChip)))
+      .WillByDefault(testing::Return(false));
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+
+  EXPECT_CALL(*mock_service_, LogContextualCueEvent).Times(0);
+  EXPECT_FALSE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that nothing is logged, and nothing crashes, for an off-the-record
+// profile, which never has a `PrivateInsightsService`.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       NoEventsForOffTheRecordProfile) {
+  ProfileIOS* otr_profile = profile_->GetOffTheRecordProfile();
+  ASSERT_TRUE(otr_profile);
+  ASSERT_EQ(PrivateInsightsServiceFactory::GetForProfile(*otr_profile),
+            nullptr);
+  auto otr_web_state = std::make_unique<web::FakeWebState>();
+  otr_web_state->SetBrowserState(otr_profile);
+  otr_web_state->SetCurrentURL(GURL(kCuePageUrl));
+  ContextualCueingTabHelper::CreateForWebState(otr_web_state.get());
+  ContextualCueingTabHelper* otr_tab_helper =
+      ContextualCueingTabHelper::FromWebState(otr_web_state.get());
+  otr_tab_helper->SetContextualCueForTesting(CreatePresentableCue());
+
+  EXPECT_CALL(*mock_service_, LogContextualCueEvent).Times(0);
+  ASSERT_TRUE(otr_tab_helper->RecordCueShown());
+  otr_tab_helper->RecordCueClicked();
+}
+
+// Tests that nothing is logged for a presentation without a cue.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest, NoEventsWithoutCue) {
+  ASSERT_FALSE(tab_helper_->GetContextualCue().has_value());
+
+  EXPECT_CALL(*mock_service_, LogContextualCueEvent).Times(0);
+  EXPECT_TRUE(tab_helper_->RecordCueShown());
+  tab_helper_->RecordCueClicked();
+}
+
+// Tests that SHOWN lists, as `recent_pages`, the delegate's background tabs
+// that were sent with the request that produced the cue.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       RecentPagesListBackgroundTabsSentWithRequest) {
+  delegate_.SetBackgroundTabs({
+      {GURL(kBackgroundTabUrl1), kBackgroundTabTitle1},
+      // Not sent, as it duplicates the active page.
+      {GURL(kCuePageUrl), kCuePageTitleUtf8},
+      {GURL(kBackgroundTabUrl2), kBackgroundTabTitle2},
+  });
+  ASSERT_NO_FATAL_FAILURE(ReceiveCueFromServer());
+
+  ContextualCueLogEvent shown_event;
+  EXPECT_CALL(*mock_service_,
+              LogContextualCueEvent(IsCueEvent(ContextualCueLogEvent::SHOWN)))
+      .WillOnce(testing::SaveArg<0>(&shown_event));
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+
+  EXPECT_THAT(
+      shown_event.cue_context().recent_pages(),
+      base::test::IsJson(base::ListValue()
+                             .Append(CreateRecentPage(kBackgroundTabUrl1,
+                                                      kBackgroundTabTitle1))
+                             .Append(CreateRecentPage(kBackgroundTabUrl2,
+                                                      kBackgroundTabTitle2))));
+}
+
+// Tests that background tabs are only logged for the cue that their request
+// produced, and are not kept for a later cue.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       RecentPagesNotReusedForLaterCue) {
+  delegate_.SetBackgroundTabs(
+      {{GURL(kBackgroundTabUrl1), kBackgroundTabTitle1}});
+  ContextualCueLogEvent shown_event;
+  EXPECT_CALL(*mock_service_,
+              LogContextualCueEvent(IsCueEvent(ContextualCueLogEvent::SHOWN)))
+      .Times(2)
+      .WillRepeatedly(testing::SaveArg<0>(&shown_event));
+
+  ASSERT_NO_FATAL_FAILURE(ReceiveCueFromServer());
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+  ASSERT_THAT(shown_event.cue_context().recent_pages(),
+              base::test::IsJson(base::ListValue().Append(
+                  CreateRecentPage(kBackgroundTabUrl1, kBackgroundTabTitle1))));
+
+  // Hiding the tab invalidates the cue and ends the Feature Engagement Tracker
+  // session, so that another cue can be shown.
+  web_state_->WasHidden();
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ASSERT_TRUE(tab_helper_->RecordCueShown());
+
+  EXPECT_THAT(shown_event.cue_context().recent_pages(),
+              base::test::IsJson(base::ListValue()));
+}
+
+// Tests that the infobar logs SHOWN when it is presented and CLICKED when its
+// button is tapped.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest,
+       InfobarLogsShownAndClicked) {
+  web_state_->SetNavigationManager(
+      std::make_unique<web::FakeNavigationManager>());
+  InfoBarManagerImpl::CreateForWebState(web_state_.get());
+  infobars::InfoBarManager* infobar_manager =
+      InfoBarManagerImpl::FromWebState(web_state_.get());
+  ContextualCueLogEvent shown_event;
+  ContextualCueLogEvent clicked_event;
+  ExpectShownThenClicked(&shown_event, &clicked_event);
+
+  NotifyContextualCueReceived(tab_helper_, CreatePresentableCue());
+  ASSERT_EQ(infobar_manager->infobars().size(), 1u);
+  ConfirmInfoBarDelegate* infobar_delegate =
+      infobar_manager->infobars()[0]->delegate()->AsConfirmInfoBarDelegate();
+  ASSERT_TRUE(infobar_delegate);
+  infobar_delegate->Accept();
+
+  EXPECT_EQ(clicked_event.cue_id(), shown_event.cue_id());
+}
+
+// Tests that the omnibox chip logs SHOWN when it is shown and CLICKED when it
+// is tapped.
+TEST_F(ContextualCueingTabHelperPrivateInsightsTest, ChipLogsShownAndClicked) {
+  tab_helper_->SetContextualCueForTesting(CreatePresentableCue());
+  ContextualCueLogEvent shown_event;
+  ContextualCueLogEvent clicked_event;
+  ExpectShownThenClicked(&shown_event, &clicked_event);
+
+  ASSERT_TRUE(tab_helper_->ShowContextualCueChip(
+      OCMProtocolMock(@protocol(LocationBarBadgeCommands))));
+  // Like `LocationBarBadgeMediator`, a tap starts Gemini before recording the
+  // click.
+  tab_helper_->SetGeminiInvoked(true);
+  tab_helper_->RecordCueClicked();
+
+  EXPECT_EQ(clicked_event.cue_id(), shown_event.cue_id());
 }
 
 }  // namespace contextual_cueing

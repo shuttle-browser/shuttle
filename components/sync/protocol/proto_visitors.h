@@ -491,6 +491,7 @@ VISIT_PROTO_FIELDS(const sync_pb::CustomNudgeDelay& proto) {
 VISIT_PROTO_FIELDS(const sync_pb::ClientCommand& proto) {
   VISIT(set_sync_poll_interval);
   VISIT(max_commit_batch_size);
+  VISIT(max_target_commit_batch_specifics_bytes);
   VISIT(throttle_delay_seconds);
   VISIT(client_invalidation_hint_buffer_size);
   VISIT_REP(custom_nudge_delays);
@@ -511,7 +512,6 @@ VISIT_PROTO_FIELDS(const sync_pb::ClientConfigParams& proto) {
 }
 
 VISIT_PROTO_FIELDS(const sync_pb::ClientStatus& proto) {
-  VISIT(hierarchy_conflict_detected);
   VISIT(is_sync_feature_enabled);
 }
 
@@ -720,6 +720,7 @@ VISIT_PROTO_FIELDS(
     const sync_pb::EncryptedTabContextContainerSpecifics& proto) {
   VISIT(uuid);
   VISIT(encryption_key);
+  VISIT_BYTES(container_access_token);
 }
 
 VISIT_PROTO_FIELDS(const sync_pb::EntityMetadata& proto) {
@@ -956,7 +957,7 @@ VISIT_PROTO_FIELDS(const sync_pb::ReplacedNavigation& proto) {
 
 VISIT_PROTO_FIELDS(const sync_pb::CryptographerData& proto) {
   VISIT(key_bag);
-  VISIT(default_key_name);
+  VISIT(primary_key_name);
   VISIT(cross_user_sharing_keys);
 }
 
@@ -1001,8 +1002,6 @@ VISIT_PROTO_FIELDS(const sync_pb::CrossUserSharingPrivateKey& proto) {
 }
 
 VISIT_PROTO_FIELDS(const sync_pb::NigoriKey& proto) {
-  VISIT(deprecated_name);
-  VISIT_SECRET(deprecated_user_key);
   VISIT_SECRET(encryption_key);
   VISIT_SECRET(mac_key);
 }
@@ -1431,6 +1430,7 @@ VISIT_PROTO_FIELDS(const sync_pb::ScrollPosition& proto) {
 VISIT_PROTO_FIELDS(const sync_pb::PageContext& proto) {
   VISIT(form_field_info);
   VISIT(scroll_position);
+  VISIT(url);
 }
 
 VISIT_PROTO_FIELDS(const sync_pb::FormFieldInfo& proto) {
@@ -1542,11 +1542,8 @@ VISIT_PROTO_FIELDS(
 }
 
 VISIT_PROTO_FIELDS(const sync_pb::SyncCycleCompletedEventInfo& proto) {
-  VISIT(num_encryption_conflicts);
-  VISIT(num_hierarchy_conflicts);
   VISIT(num_server_conflicts);
   VISIT(num_updates_downloaded);
-  VISIT(num_reflected_updates_downloaded);
   VISIT(caller_info);
   VISIT_ENUM(get_updates_origin);
 }
@@ -1671,9 +1668,14 @@ VISIT_PROTO_FIELDS(const google::protobuf::Timestamp& proto) {
   visitor.Visit(proto, "nanos", proto.nanos());
 }
 
+VISIT_PROTO_FIELDS(
+    const sync_pb::TabContextContainerAccessToken::Payload& proto) {
+  VISIT(container_key);
+}
+
 VISIT_PROTO_FIELDS(const sync_pb::TabContextContainerAccessToken& proto) {
   VISIT(name);
-  VISIT_BYTES(encrypted_container_key);
+  VISIT_BYTES(encrypted_payload);
   VISIT(expire_time);
 }
 
@@ -2458,8 +2460,7 @@ VISIT_PROTO_FIELDS(const sync_pb::JourneySpecifics::HistoryEntry& proto) {
   VISIT(visit_timestamp_windows_epoch_micros);
 }
 
-VISIT_PROTO_FIELDS(
-    const sync_pb::JourneySpecifics::ContinuationQuery& proto) {
+VISIT_PROTO_FIELDS(const sync_pb::JourneySpecifics::ContinuationQuery& proto) {
   VISIT(title);
   VISIT(prompt);
 }
@@ -2521,12 +2522,23 @@ VISIT_PROTO_FIELDS(const sync_pb::EntitySuppressionKey& proto) {
   VISIT_REP(attributes);
 }
 
+VISIT_PROTO_FIELDS(
+    const sync_pb::AutofillEntitySuppressionSpecifics::Suppression& proto) {
+  VISIT(hash);
+}
+
+VISIT_PROTO_FIELDS(
+    const sync_pb::AutofillEntitySuppressionSpecifics::Confirmation& proto) {
+  VISIT(hash);
+}
+
 VISIT_PROTO_FIELDS(const sync_pb::AutofillEntitySuppressionSpecifics& proto) {
   VISIT(guid);
   VISIT(entity_suppression_key);
-  VISIT(schema_version);
   VISIT(creation_time_windows_epoch_micros);
   VISIT(entity_suppression_hash);
+  VISIT(suppression);
+  VISIT(confirmation);
 }
 
 }  // namespace syncer

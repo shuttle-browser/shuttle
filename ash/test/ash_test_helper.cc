@@ -75,6 +75,7 @@
 #include "ui/aura/window.h"
 #include "ui/aura/window_tree_host.h"
 #include "ui/base/ime/ash/mock_input_method_manager_impl.h"
+#include "ui/base/ime/ash/scoped_input_method_manager_for_testing.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/display/display_switches.h"
 #include "ui/display/manager/display_manager.h"
@@ -98,9 +99,12 @@ std::unique_ptr<views::TestViewsDelegate> MakeTestViewsDelegate() {
 }
 }  // namespace
 
-AshTestHelper::InitParams::InitParams() = default;
-AshTestHelper::InitParams::InitParams(InitParams&&) = default;
-AshTestHelper::InitParams::~InitParams() = default;
+// static
+std::vector<LoginInfo> AshTestHelper::InitParams::DefaultUsers() {
+  std::vector<LoginInfo> users;
+  users.push_back(LoginInfo{});
+  return users;
+}
 
 class AshTestHelper::BluezDBusManagerInitializer {
  public:
@@ -154,7 +158,7 @@ AshTestHelper::~AshTestHelper() {
 }
 
 void AshTestHelper::SetUp() {
-  SetUp(InitParams());
+  SetUp({.users = InitParams::DefaultUsers()});
 }
 
 void AshTestHelper::TearDown() {
@@ -303,10 +307,7 @@ void AshTestHelper::TearDown() {
   // Note on non-reverse order: Kept alive through AuraTestHelper::TearDown()
   // because window/Aura teardown may trigger IME-related cleanups.
   // TODO(crbug.com/332481586): Revisit teardown ordering.
-  if (input_method_manager_) {
-    input_method_manager_ = nullptr;
-    input_method::InputMethodManager::Shutdown();
-  }
+  scoped_input_method_manager_.reset();
 
   // Tests can mark a display internal; clear that again so later tests in this
   // process do not see a stale internal display. SetUp() clears it too, but
@@ -398,10 +399,16 @@ void AshTestHelper::SetUp(InitParams init_params) {
       !session_manager::SessionManager::Get()) {
     user_session_test_environment_ =
         std::make_unique<ash::test::UserSessionTestEnvironment>(
-            init_params.local_state);
-  } else if (!session_manager::SessionManager::Get()) {
-    session_manager_ = std::make_unique<session_manager::SessionManager>(
-        std::make_unique<session_manager::FakeSessionManagerDelegate>());
+            init_params.local_state,
+            std::move(init_params.user_session_test_environment_delegate));
+  } else {
+    // The delegate is only for UserSessionTestEnvironment, which is not
+    // created in this case.
+    CHECK(!init_params.user_session_test_environment_delegate);
+    if (!session_manager::SessionManager::Get()) {
+      session_manager_ = std::make_unique<session_manager::SessionManager>(
+          std::make_unique<session_manager::FakeSessionManagerDelegate>());
+    }
   }
 
   // SystemLocationProvider has to be initialized before GeolocationController,
@@ -444,10 +451,7 @@ void AshTestHelper::SetUp(InitParams init_params) {
   // This block of objects are conditionally initialized here rather than in the
   // constructor to make it easier for test classes to override them.
   if (!input_method::InputMethodManager::Get()) {
-    // |input_method_manager_| is not owned and is cleaned up in TearDown()
-    // by calling InputMethodManager::Shutdown().
-    input_method_manager_ = new input_method::MockInputMethodManagerImpl();
-    input_method::InputMethodManager::Initialize(input_method_manager_);
+    scoped_input_method_manager_.emplace();
   }
   if (floss::features::IsFlossEnabled()) {
     if (!floss::FlossDBusManager::IsInitialized()) {
@@ -622,12 +626,22 @@ void AshTestHelper::SetUp(InitParams init_params) {
   session_controller_client_->InitializeAndSetClient();
 
   // Sign-in after UI is shown.
-  if (init_params.start_session) {
+  if (!init_params.users.empty()) {
     // TODO(crbug.com/383441831): Remove Reset();
     session_controller_client_->Reset();
 
-    SimulateUserLogin({});
+    const bool require_account_id = init_params.users.size() > 1;
+    for (const auto& user : init_params.users) {
+      CHECK(!require_account_id || user.account_id.has_value());
+      SimulateUserLogin(user);
+    }
   }
+}
+
+input_method::MockInputMethodManagerImpl*
+AshTestHelper::input_method_manager() {
+  return scoped_input_method_manager_ ? scoped_input_method_manager_->get()
+                                      : nullptr;
 }
 
 display::Display AshTestHelper::GetSecondaryDisplay() const {

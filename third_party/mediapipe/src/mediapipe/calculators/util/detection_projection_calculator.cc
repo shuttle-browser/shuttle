@@ -18,13 +18,14 @@
 #include <limits>
 #include <vector>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/detection.pb.h"
 #include "mediapipe/framework/formats/location.h"
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/port/point2.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 namespace mediapipe {
 
@@ -164,7 +165,7 @@ absl::Status DetectionProjectionCalculator::Process(CalculatorContext* cc) {
     std::vector<Detection> output_detections;
     for (const auto& detection : input_packet.Get<std::vector<Detection>>()) {
       Detection output_detection = detection;
-      MP_RETURN_IF_ERROR(ProjectDetection(project_fn, &output_detection));
+      ABSL_RETURN_IF_ERROR(ProjectDetection(project_fn, &output_detection));
       output_detections.push_back(std::move(output_detection));
     }
 

@@ -61,7 +61,12 @@
 #         angle-swiftshader
 #         angle-vulkan ]
 # Skia Renderer
-# tags: [ renderer-skia-gl
+# tags: [ renderer-graphite-dawn-d3d11
+#         renderer-graphite-dawn-d3d12
+#         renderer-graphite-dawn-gl
+#         renderer-graphite-dawn-metal
+#         renderer-graphite-dawn-vulkan
+#         renderer-skia-gl
 #         renderer-skia-vulkan
 #         renderer-software ]
 # Driver
@@ -90,6 +95,8 @@
 #         webgpu-shared-worker ]
 # WebGPU Compat context
 # tags: [ compat-default compat-min-es31 ]
+# WebGPU default features
+# tags: [ unsafe-webgpu-disabled unsafe-webgpu-enabled ]
 # Clang coverage
 # tags: [ clang-coverage no-clang-coverage ]
 # Skia Graphite
@@ -119,7 +126,7 @@ crbug.com/1096431 [ fuchsia fuchsia-board-qemu-x64 ] TraceTest_Video* [ Skip ]
 crbug.com/1009860 [ win ] SwapChainTraceTest_CanvasUnacceleratedLowLatency2D [ Skip ]
 
 # Software compositing is not supported on Android/ChromeOS/Fuchsia: we skip the
-# tests that disable GPU compositing (--disable-gpu-compositing).
+# tests that disable GPU acceleration (--disable-gpu).
 [ android ] TraceTest_RepeatedWebGLTo2D_SoftwareCompositing [ Skip ]
 [ android ] TraceTest_Canvas2DTabSwitch_SoftwareCompositing [ Skip ]
 [ android ] TraceTest_WebGLReadPixelsTabSwitch_SoftwareCompositing [ Skip ]
@@ -205,6 +212,7 @@ crbug.com/364179193 [ linux ] TraceTest_Video_Media_Stream_Incompatible_Stride [
 # WebGL's accelerated canvas capture is currently only supported on Win, Mac, ChromeOS.
 crbug.com/1201009 [ fuchsia ] WebGLCanvasCaptureTraceTest_VideoStreamFromWebGLCanvas_OneCopy [ Failure ]
 crbug.com/1201009 [ fuchsia ] WebGLCanvasCaptureTraceTest_VideoStreamFromWebGLCanvas_TwoCopy_Accelerated [ Failure ]
+crbug.com/575495101 [ fuchsia fuchsia-board-qemu-x64 ] TraceTest_WebGLFloat [ Failure ]
 
 # VP9 zero copy appears to be broken on newer driver versions.
 crbug.com/329691945 [ win amd-0x7340 ] VideoPathTraceTest_DirectComposition_Video_VP9 [ Failure ]
@@ -212,15 +220,12 @@ crbug.com/329691945 [ win amd-0x7340 ] VideoPathTraceTest_DirectComposition_Vide
 crbug.com/329691945 [ win amd-0x7340 ] VideoPathTraceTest_DirectComposition_Video_VP9_NV12 [ Failure ]
 
 # Failures with SkiaGraphite
-crbug.com/329138770 [ graphite-enabled no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_ComputePipelineCrossOriginsCacheMisses [ Failure ]
-crbug.com/329138770 [ graphite-enabled no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_ComputePipelineDifferentOrigins [ Failure ]
-crbug.com/329138770 [ graphite-enabled no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_ComputePipelineIncognito [ Failure ]
-crbug.com/329138770 [ graphite-enabled no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_RenderPipelineCrossOriginsCacheMisses [ Failure ]
-crbug.com/329138770 [ graphite-enabled no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_RenderPipelineDifferentOrigins [ Failure ]
-crbug.com/329138770 [ graphite-enabled no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_RenderPipelineIncognito [ Failure ]
-
-# Very Flaky on all win platforms
-crbug.com/517156647 [ no-clang-coverage release win ] SwapChainTraceTest_IsOpaque [ Failure ]
+crbug.com/329138770 [ renderer-graphite-dawn-d3d11 no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_ComputePipelineCrossOriginsCacheMisses [ Failure ]
+crbug.com/329138770 [ renderer-graphite-dawn-d3d11 no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_ComputePipelineDifferentOrigins [ Failure ]
+crbug.com/329138770 [ renderer-graphite-dawn-d3d11 no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_ComputePipelineIncognito [ Failure ]
+crbug.com/329138770 [ renderer-graphite-dawn-d3d11 no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_RenderPipelineCrossOriginsCacheMisses [ Failure ]
+crbug.com/329138770 [ renderer-graphite-dawn-d3d11 no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_RenderPipelineDifferentOrigins [ Failure ]
+crbug.com/329138770 [ renderer-graphite-dawn-d3d11 no-clang-coverage nvidia-0x2184 nvidia_lt_32.0.15.8180 release target-cpu-32 win10 ] WebGPUCachingTraceTest_RenderPipelineIncognito [ Failure ]
 
 # Win/AMD RX 7600 / RX 5500XT failures
 crbug.com/402989071 [ win11 amd ] TraceTest_MediaFoundationD3D11VideoCapture [ Failure ]
@@ -280,13 +285,6 @@ crbug.com/438512194 [ win11 amd-0x7340 ] OverlayModeTraceTest_DirectComposition_
 crbug.com/438512194 [ win11 amd-0x7340 ] OverlayModeTraceTest_DirectComposition_Video_VP9_VP_SCALING [ Failure ]
 crbug.com/438512194 [ win11 amd-0x7340 ] OverlayModeTraceTest_DirectComposition_Video_VP9_YUY2 [ Failure ]
 
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Underlay [ Failure ]
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Video_MP4_Rounded_Corner [ Failure ]
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Video_SW_Decode [ Failure ]
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Video_VP9 [ Failure ]
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Video_VP9_NV12 [ Failure ]
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Video_VP9_VP_SCALING [ Failure ]
-crbug.com/515133241 [ win11 amd-0x7550 ] OverlayModeTraceTest_DirectComposition_Video_VP9_YUY2 [ Failure ]
 
 crbug.com/515133241 [ win11 nvidia-0x2c02 ] OverlayModeTraceTest_DirectComposition_Underlay [ Failure ]
 crbug.com/515133241 [ win11 nvidia-0x2c02 ] OverlayModeTraceTest_DirectComposition_Video_MP4_Rounded_Corner [ Failure ]
@@ -301,13 +299,9 @@ crbug.com/453704683 [ win11 qualcomm-0x36334330 ] OverlayModeTraceTest_DirectCom
 
 crbug.com/536977885 [ mac asan apple-angle-metal-renderer:-apple-m2 ] * [ RetryOnFailure ]
 
-crbug.com/567498386 [ win10 nvidia-0x2184 target-cpu-32 ] OverlayModeTraceTest_DirectComposition_Video_MP4_FourColors_Aspect_4x3 [ Failure ]
+crbug.com/567498386 [ win ] OverlayModeTraceTest_DirectComposition_Video_MP4_FourColors_Aspect_4x3 [ Failure ]
 
-crbug.com/568529652 [ android android-pixel-2 ] TraceTest_Canvas2DRedBox [ RetryOnFailure ]
-crbug.com/568316653 [ win10 intel-0x4680 ] VideoPathTraceTest_DirectComposition_Underlay [ RetryOnFailure ]
-crbug.com/568316653 [ win10 intel-0x4680 ] VideoPathTraceTest_DirectComposition_Video_MP4_Rounded_Corner [ RetryOnFailure ]
-crbug.com/576731811 [ android android-sm-s911u1 ] TraceTest_RepeatedWebGLTo2D [ Failure ]
-crbug.com/576731811 [ android android-sm-s911u1 ] WebGLCanvasCaptureTraceTest_VideoStreamFromWebGLAlphaCanvas [ Failure ]
+crbug.com/568529652 [ android android-pixel-2 no-clang-coverage ] TraceTest_Canvas2DRedBox [ RetryOnFailure ]
 
 ###############################
 # Permanent Slow Expectations #

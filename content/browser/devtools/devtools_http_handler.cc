@@ -16,6 +16,7 @@
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/files/file_util.h"
+#include "base/files/important_file_writer.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/json/json_writer.h"
@@ -312,7 +313,11 @@ void StartServerOnHandlerThread(
           output_directory.Append(kDevToolsActivePortFileName);
       std::string port_target_string = base::StringPrintf(
           "%d\n%s", ip_address->port(), browser_guid.c_str());
-      if (!base::WriteFile(path, port_target_string)) {
+      // Write to a temporary file and rename it over `path`. This replaces a
+      // symlink that another process planted at `path` instead of following
+      // it. base::WriteFile() follows symlinks on POSIX.
+      if (!base::ImportantFileWriter::WriteFileAtomically(path,
+                                                          port_target_string)) {
         PLOG(ERROR) << "Error writing DevTools active port to file " << path;
       }
     }
@@ -999,7 +1004,6 @@ void DevToolsHttpHandler::SendJson(int connection_id,
     base::JSONWriter::WriteWithOptions(
         *value, base::JSONWriter::OPTIONS_PRETTY_PRINT, &json_value);
   }
-  std::string json_message = base::WriteJson(message).value_or("");
 
   net::HttpServerResponseInfo response(status_code);
   response.AddHeader("Content-Security-Policy", "frame-ancestors 'none'");

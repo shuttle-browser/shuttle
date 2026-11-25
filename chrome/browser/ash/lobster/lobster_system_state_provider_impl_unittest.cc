@@ -36,6 +36,7 @@
 #include "ui/base/ime/ash/extension_ime_util.h"
 #include "ui/base/ime/ash/input_method_descriptor.h"
 #include "ui/base/ime/ash/mock_input_method_manager.h"
+#include "ui/base/ime/ash/scoped_input_method_manager_for_testing.h"
 #include "ui/base/ime/text_input_type.h"
 #include "ui/display/tablet_state.h"
 #include "ui/display/test/test_screen.h"
@@ -93,37 +94,29 @@ class LobsterSystemStateProviderImplBaseTest : public testing::Test {
  public:
   LobsterSystemStateProviderImplBaseTest()
       : test_screen_(/*create_display=*/true, /*register_screen=*/true),
-        system_state_provider_(
-            &pref_,
-            identity_test_environment_.identity_manager(),
-            base::BindRepeating([]() {
-              return TestingBrowserProcess::GetGlobal()->variations_service();
-            }),
-            /*is_in_demo_mode=*/false),
-        metrics_enabled_state_provider_(/*consent=*/false, /*enabled=*/false) {
-    // Sets up InputMethodManager
-    InputMethodManagerFake::Initialize(new InputMethodManagerFake);
-
-    RegisterSystemStateProviderPrefs();
-
-    // Sets up test variations service
-    PrefService* local_state =
-        TestingBrowserProcess::GetGlobal()->local_state();
-    metrics_state_manager_ = metrics::MetricsStateManager::Create(
-        local_state, &metrics_enabled_state_provider_,
-        /*backup_registry_key=*/std::wstring(),
-        /*user_data_dir=*/base::FilePath(),
-        metrics::StartupVisibility::kUnknown);
-    variations_service_ = std::make_unique<variations::TestVariationsService>(
-        local_state, metrics_state_manager_.get());
+        metrics_enabled_state_provider_(/*consent=*/false, /*enabled=*/false),
+        metrics_state_manager_(metrics::MetricsStateManager::Create(
+            TestingBrowserProcess::GetGlobal()->local_state(),
+            &metrics_enabled_state_provider_,
+            /*backup_registry_key=*/std::wstring(),
+            /*user_data_dir=*/base::FilePath(),
+            metrics::StartupVisibility::kUnknown)),
+        variations_service_(std::make_unique<variations::TestVariationsService>(
+            TestingBrowserProcess::GetGlobal()->local_state(),
+            metrics_state_manager_.get())),
+        system_state_provider_(variations_service_.get(),
+                               &pref_,
+                               identity_test_environment_.identity_manager(),
+                               /*is_in_demo_mode=*/false) {
     TestingBrowserProcess::GetGlobal()->SetVariationsService(
         variations_service_.get());
+
+    RegisterSystemStateProviderPrefs();
   }
 
   ~LobsterSystemStateProviderImplBaseTest() override {
     TestingBrowserProcess::GetGlobal()->SetVariationsService(nullptr);
     variations_service_.reset();
-    InputMethodManagerFake::Shutdown();
   }
 
   void RegisterSystemStateProviderPrefs() {
@@ -212,15 +205,19 @@ class LobsterSystemStateProviderImplBaseTest : public testing::Test {
   content::BrowserTaskEnvironment task_environment_;
 
  private:
+  // Sets up InputMethodManager. Declared before `system_state_provider_`,
+  // which uses it, so that it outlives it.
+  ash::input_method::ScopedInputMethodManagerForTesting<InputMethodManagerFake>
+      input_method_manager_;
   base::test::ScopedFeatureList feature_list_;
   std::unique_ptr<net::test::MockNetworkChangeNotifier> network_notifier_;
   TestingPrefServiceSimple pref_;
   signin::IdentityTestEnvironment identity_test_environment_;
   display::test::TestScreen test_screen_;
-  LobsterSystemStateProviderImpl system_state_provider_;
-  std::unique_ptr<variations::TestVariationsService> variations_service_;
   metrics::TestEnabledStateProvider metrics_enabled_state_provider_;
   std::unique_ptr<metrics::MetricsStateManager> metrics_state_manager_;
+  std::unique_ptr<variations::TestVariationsService> variations_service_;
+  LobsterSystemStateProviderImpl system_state_provider_;
 };
 
 class LobsterSystemStateProviderImplGeolocationTest

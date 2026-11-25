@@ -145,9 +145,9 @@ void AppendText(const String& value,
 TextControlElement::TextControlElement(const QualifiedName& tag_name,
                                        Document& doc)
     : HTMLFormControlElementWithState(tag_name, doc),
-      last_change_was_user_edit_(false),
       cached_selection_start_(0),
-      cached_selection_end_(0) {
+      cached_selection_end_(0),
+      last_change_was_user_edit_(false) {
   cached_selection_direction_ =
       doc.GetFrame() && doc.GetFrame()
                             ->GetEditor()
@@ -779,8 +779,10 @@ unsigned TextControlElement::selectionEnd() const {
 
 static const AtomicString& DirectionString(
     TextFieldSelectionDirection direction) {
-  DEFINE_STATIC_LOCAL(const AtomicString, forward, ("forward"));
-  DEFINE_STATIC_LOCAL(const AtomicString, backward, ("backward"));
+  DEFINE_STATIC_LOCAL(const AtomicString, forward,
+                      (AtomicString::FromLiteral<"forward">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, backward,
+                      (AtomicString::FromLiteral<"backward">()));
 
   switch (direction) {
     case kSelectionHasNoDirection:

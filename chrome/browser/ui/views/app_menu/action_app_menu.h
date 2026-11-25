@@ -13,6 +13,7 @@
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/timer/elapsed_timer.h"
@@ -26,6 +27,7 @@
 #include "ui/views/controls/menu/menu_delegate.h"
 
 class ActionAppMenuManager;
+class AppMenuFocusController;
 class AppMenuSearchBarView;
 class BrowserWindowInterface;
 
@@ -68,6 +70,7 @@ class ActionAppMenu : public views::MenuDelegate,
   void UpdateMenuItem(actions::BaseAction* action,
                       actions::BaseAction* target_parent_action,
                       actions::BaseAction* insert_after = nullptr) override;
+  void RebuildSubmenu(actions::ActionId submenu_id) override;
   void CloseMenu() override;
 
   // views::MenuDelegate:
@@ -101,8 +104,10 @@ class ActionAppMenu : public views::MenuDelegate,
   bool ShouldDragActivateChildButtons() const override;
 
   // AppMenuSearchController::Delegate:
-  void ShowSearchResults(actions::ActionItem* results) override;
-  void RestoreMenu() override;
+  void ShowSearchResults(
+      actions::ActionItem* results,
+      std::unique_ptr<actions::ActionItem> old_results) override;
+  void RestoreMenu(std::unique_ptr<actions::ActionItem> old_results) override;
 
   views::MenuItemView* root_menu_item_for_testing() { return root_; }
   AppMenuSearchBarView* search_bar_for_testing() { return search_bar_; }
@@ -121,6 +126,19 @@ class ActionAppMenu : public views::MenuDelegate,
   void ClearItemsBelowSearchBarForTesting();
 
  private:
+  // Defers OnMenuClosed() teardown while mutating menu items in place so
+  // suspended population frames do not read destroyed action items.
+  class ScopedCloseGuard {
+   public:
+    explicit ScopedCloseGuard(ActionAppMenu* menu);
+    ScopedCloseGuard(const ScopedCloseGuard&) = delete;
+    ScopedCloseGuard& operator=(const ScopedCloseGuard&) = delete;
+    ~ScopedCloseGuard();
+
+   private:
+    const raw_ptr<ActionAppMenu> menu_;
+  };
+
   void RunMenu(views::Widget* parent,
                views::MenuButtonController* host,
                const gfx::Rect& anchor_screen_bounds,
@@ -133,6 +151,12 @@ class ActionAppMenu : public views::MenuDelegate,
   void RemoveSubmenuActionsFromMap(views::MenuItemView* parent_menu_item);
 
   void CancelAndEvaluate(actions::ActionId action_id, int mouse_event_flags);
+
+  // Pins the root menu to its current width: the submenu's minimum preferred
+  // width is the floor and GetMaxWidthForMenu() is the ceiling while the
+  // returned runner is alive. Running it releases the width again. Returns an
+  // empty runner if the menu hasn't been laid out yet.
+  base::ScopedClosureRunner LockMenuWidth();
 
   void ClearItemsBelowSearchBar();
 
@@ -194,14 +218,24 @@ class ActionAppMenu : public views::MenuDelegate,
   // The root menu item view. Owned by `menu_runner_`.
   raw_ptr<views::MenuItemView> root_ = nullptr;
 
+  // Holds the root menu at the width of the normal menu while search results
+  // replace its rows. Declared after `menu_runner_` so that it releases the
+  // width before the menu is destroyed.
+  base::ScopedClosureRunner menu_width_lock_;
+
   // The search bar view in the menu, if kChroMenuSearch is enabled.
   raw_ptr<AppMenuSearchBarView> search_bar_ = nullptr;
 
   // Runs the searches for search_bar_. Created along with the search bar.
   std::unique_ptr<AppMenuSearchController> search_controller_;
 
+  // Manages owner browser focus/IME state and search bar focus retention while
+  // the menu is open.
+  std::unique_ptr<AppMenuFocusController> focus_controller_;
+
   // The states associated with the populated app menu.
   bool has_notification_header_ = false;
+  bool showing_search_results_ = false;
   size_t section_header_count_ = 0;
 
   struct ActionExecutionParams {
@@ -219,6 +253,15 @@ class ActionAppMenu : public views::MenuDelegate,
   ActionAppMenuMetrics metrics_;
 
   int next_id_ = COMMAND_ID_FIRST_UNBOUNDED;
+
+  int close_guard_depth_ = 0;
+  bool close_deferred_ = false;
+
+  // The previous search results, kept alive while rebuilding so that row
+  // removals do not invalidate items before new rows are populated, and owned
+  // here so OnMenuClosed() deletes them before ActionAppMenuManager deletes
+  // the underlying ActionItems.
+  std::unique_ptr<actions::ActionItem> old_search_results_;
 
   base::WeakPtrFactory<ActionAppMenu> weak_ptr_factory_{this};
 };

@@ -35,14 +35,12 @@
 #include "chrome/browser/storage_access_api/storage_access_grant_permission_context.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/webid/federated_identity_permission_context.h"
 #include "chrome/browser/webid/federated_identity_permission_context_factory.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
-#include "components/component_updater/installer_policies/first_party_sets_component_installer_policy.h"
 #include "components/content_settings/browser/page_specific_content_settings.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
@@ -88,7 +86,7 @@
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/features_generated.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "url/origin.h"
 
 using content::BrowserThread;
@@ -450,7 +448,8 @@ class StorageAccessAPIBaseBrowserTest : public policy::PolicyTest {
   void NavigateToNewTabWithFrame(std::string_view host) {
     GURL main_url(https_server_.GetURL(host, "/iframe.html"));
     ui_test_utils::NavigateToURLWithDisposition(
-        browser(), main_url, WindowOpenDisposition::kNewForegroundTab,
+        browser(), main_url,
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   }
 
@@ -686,15 +685,10 @@ class StorageAccessAPIOriginIsolationBrowserTest
   }
 
   std::vector<base::test::FeatureRef> GetDisabledFeatures() override {
-    // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox is
-    // enabled and then remove the two omnibox Features below.
     if (!GetParam()) {
-      return {features::kOriginKeyedProcessesByDefault,
-              omnibox::internal::kWebUIOmniboxPopup,
-              omnibox::internal::kWebUIOmniboxAimPopup};
+      return {features::kOriginKeyedProcessesByDefault};
     }
-    return {omnibox::internal::kWebUIOmniboxPopup,
-            omnibox::internal::kWebUIOmniboxAimPopup};
+    return {};
   }
 };
 
@@ -2704,10 +2698,10 @@ IN_PROC_BROWSER_TEST_F(StorageAccessAPIBrowserTest,
                                     /*create_if_needed=*/true),
                                 /*from_user_gesture=*/true));
 
-  NavigateToURLWithDisposition(incognito_browser,
-                               https_server().GetURL(kHostA, "/iframe.html"),
-                               WindowOpenDisposition::kNewForegroundTab,
-                               ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
+  NavigateToURLWithDisposition(
+      incognito_browser, https_server().GetURL(kHostA, "/iframe.html"),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   NavigateFrameTo(EchoCookiesURL(kHostB), incognito_browser);
 
   EXPECT_FALSE(content::ExecJs(GetFrame(incognito_browser),
@@ -2720,10 +2714,10 @@ IN_PROC_BROWSER_TEST_F(StorageAccessAPIBrowserTest, IncognitoCanUseAPI) {
                                     /*create_if_needed=*/true),
                                 /*from_user_gesture=*/true));
 
-  NavigateToURLWithDisposition(incognito_browser,
-                               https_server().GetURL(kHostA, "/empty.html"),
-                               WindowOpenDisposition::kNewForegroundTab,
-                               ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
+  NavigateToURLWithDisposition(
+      incognito_browser, https_server().GetURL(kHostA, "/empty.html"),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // Even in an incognito profile, it's possible to use the Storage Access API
   // if all the requirements are satisfied.

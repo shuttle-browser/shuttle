@@ -1385,7 +1385,7 @@ static bool HaveSameOutOfFlowAncestor(const Node& anchor_node,
       if (ancestor->IsOutOfFlowPositioned()) {
         return ancestor;
       }
-      ancestor = ancestor->ContainingBlock();
+      ancestor = ancestor->ContainingBox();
     }
     return static_cast<LayoutObject*>(nullptr);
   };
@@ -1905,6 +1905,18 @@ static bool IsEmptyNonEditableNodeInEditable(const Node& node) {
 bool EditingIgnoresContent(const Node& node) {
   return !node.CanContainRangeEndPoint() ||
          IsEmptyNonEditableNodeInEditable(node);
+}
+
+TextControlElement* EnclosingCaretNavigableTextControl(
+    const Position& position) {
+  if (!RuntimeEnabledFeatures::ReadOnlyTextControlSelectionEnabled()) {
+    return nullptr;
+  }
+  TextControlElement* text_control = EnclosingTextControl(position);
+  if (!text_control || text_control->IsDisabledFormControl()) {
+    return nullptr;
+  }
+  return text_control;
 }
 
 ContainerNode* RootEditableElementOrTreeScopeRootNodeOf(

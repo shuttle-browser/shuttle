@@ -79,13 +79,7 @@ class COMPONENT_EXPORT(PLATFORM_WINDOW) PlatformWindowDelegate {
   // is identified by the sequence id.
   // This is used by OnStateChanged and currently only by ozone/wayland.
   struct COMPONENT_EXPORT(PLATFORM_WINDOW) State {
-    bool operator==(const State& rhs) const {
-      return std::tie(window_state, tiled_edges, bounds_dip, size_px,
-                      window_scale, ui_scale, occlusion_state) ==
-             std::tie(rhs.window_state, tiled_edges, rhs.bounds_dip,
-                      rhs.size_px, rhs.window_scale, rhs.ui_scale,
-                      rhs.occlusion_state);
-    }
+    friend bool operator==(const State&, const State&) = default;
 
     // Current platform window state.
     PlatformWindowState window_state = PlatformWindowState::kUnknown;
@@ -96,6 +90,13 @@ class COMPONENT_EXPORT(PLATFORM_WINDOW) PlatformWindowDelegate {
     // Bounds in DIP. The origin of `bounds_dip` does not affect whether it
     // produces a new frame or not. Only the size of `bounds_dip` does.
     gfx::Rect bounds_dip;
+
+    // Size of the window geometry (excluding client-side decoration insets) in
+    // Wayland DIP, i.e. not scaled by `ui_scale`. This is kept alongside
+    // `bounds_dip` because converting `bounds_dip` back by `ui_scale` may not
+    // reproduce the size configured by the compositor. Changes to it alone do
+    // not produce a new frame. Used only by the Wayland backend.
+    gfx::Size geometry_size_dip;
 
     // Size in pixels. Note that it's required to keep information in both DIP
     // and pixels since it is not always possible to convert between them.

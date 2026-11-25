@@ -634,7 +634,7 @@ void WebAppUiManagerImpl::TriggerInstallDialogForManifestInstall(
     content::WebContents* initiating_web_contents,
     base::WeakPtr<content::Page> initiating_page,
     std::unique_ptr<webapps::MlInstallOperationTracker> tracker,
-    blink::mojom::ManifestPtr manifest,
+    blink::Manifest manifest,
     const GURL& manifest_url,
     const GURL& requesting_page_url,
     InstallCallback callback) {
@@ -862,7 +862,9 @@ void WebAppUiManagerImpl::MaybeCreateEnableSupportedLinksInfobar(
                                                             launch_name);
   if (delegate) {
     infobars::ContentInfoBarManager::FromWebContents(web_contents)
-        ->AddInfoBar(CreateConfirmInfoBar(std::move(delegate)));
+        ->AddInfoBar(CreateConfirmInfoBar(
+            ConfirmInfoBarCreationAllowlist::GetPassKeyForMigration(),
+            std::move(delegate)));
   }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 }

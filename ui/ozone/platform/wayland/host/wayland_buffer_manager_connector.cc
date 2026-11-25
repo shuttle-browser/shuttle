@@ -54,7 +54,7 @@ void WaylandBufferManagerConnector::OnGpuServiceLaunched(
   binder_.Run(
       ozone::mojom::WaylandBufferManagerGpu::Name_,
       buffer_manager_gpu_remote.BindNewPipeAndPassReceiver().PassPipe());
-  DCHECK(buffer_manager_gpu_remote);
+  CHECK(buffer_manager_gpu_remote, base::NotFatalUntil::M163);
 
   wl::SharedImageFormatsWithModifiersMap shared_image_formats_with_modifiers =
       buffer_manager_host_->GetSupportedSharedImageFormats();
@@ -62,18 +62,28 @@ void WaylandBufferManagerConnector::OnGpuServiceLaunched(
 #if defined(WAYLAND_GBM)
   supports_dma_buf = buffer_manager_host_->SupportsDmabuf();
 #endif
-  buffer_manager_gpu_remote->Initialize(
-      std::move(pending_remote), shared_image_formats_with_modifiers,
-      supports_dma_buf, buffer_manager_host_->SupportsViewporter(),
-      buffer_manager_host_->SupportsAcquireFence(),
-      buffer_manager_host_->SupportsOverlays(),
-      buffer_manager_host_->SupportsSinglePixelBuffer());
+  auto capabilities = ozone::mojom::WaylandBufferManagerCapabilities::New();
+  capabilities->supports_dma_buf = supports_dma_buf;
+  capabilities->supports_viewporter =
+      buffer_manager_host_->SupportsViewporter();
+  capabilities->supports_acquire_fence =
+      buffer_manager_host_->SupportsAcquireFence();
+  capabilities->supports_overlays = buffer_manager_host_->SupportsOverlays();
+  capabilities->supports_single_pixel_buffer =
+      buffer_manager_host_->SupportsSinglePixelBuffer();
+  capabilities->compositor_tone_maps_using_clli =
+      buffer_manager_host_->CompositorToneMapsUsingClli();
+  capabilities->compositor_tone_maps_using_mdcv =
+      buffer_manager_host_->CompositorToneMapsUsingMdcv();
+  buffer_manager_gpu_remote->Initialize(std::move(pending_remote),
+                                        shared_image_formats_with_modifiers,
+                                        std::move(capabilities));
 }
 
 void WaylandBufferManagerConnector::OnTerminateGpuProcess(std::string message) {
   DCHECK_CALLED_ON_VALID_THREAD(ui_thread_checker_);
 
-  DCHECK(!terminate_callback_.is_null());
+  CHECK(!terminate_callback_.is_null(), base::NotFatalUntil::M163);
   std::move(terminate_callback_).Run(std::move(message));
 }
 

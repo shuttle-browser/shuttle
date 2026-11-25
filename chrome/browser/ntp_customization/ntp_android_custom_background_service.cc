@@ -5,6 +5,8 @@
 #include "chrome/browser/ntp_customization/ntp_android_custom_background_service.h"
 
 #include <climits>
+#include <memory>
+#include <utility>
 
 #include "base/auto_reset.h"
 #include "base/check_op.h"
@@ -12,7 +14,6 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/task/sequenced_task_runner.h"
 #include "build/android_buildflags.h"
 #include "chrome/browser/ntp_customization/ntp_android_background_service_factory.h"
 #include "chrome/browser/ntp_customization/ntp_android_theme_sync_bridge.h"
@@ -32,6 +33,97 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/webui/buildflags.h"
 
+namespace {
+
+// TODO(crbug.com/488439751): Desktop Android devices neither push themes to
+// sync nor apply them from sync yet, see NotifySyncBridge() and
+// OnThemeChangedFromSync().
+#if !BUILDFLAG(ENABLE_WEBUI_NTP)
+
+// Builds the specifics describing the Chrome color or custom background
+// stored in `pref_service`; empty for the default theme. A local image is not
+// stored there, so while one is selected this is the theme chosen before it.
+sync_pb::ThemeAndroidSpecifics GetThemeSpecificsFromPrefs(
+    const PrefService& pref_service) {
+  sync_pb::ThemeAndroidSpecifics specifics;
+
+  const base::DictValue& color_dict =
+      pref_service.GetDict(prefs::kNtpAndroidChromeColorDict);
+  std::optional<int> color_id = color_dict.FindInt(kNtpAndroidThemeColorIdKey);
+  if (color_id.has_value() && *color_id > 0) {
+    specifics.mutable_chrome_color_info()->set_theme_color_id(*color_id);
+    return specifics;
+  }
+
+  const base::Value* pref =
+      pref_service.GetUserPrefValue(prefs::kNtpAndroidCustomBackgroundDict);
+  if (!pref || !pref->is_dict() || pref->GetDict().empty()) {
+    return specifics;
+  }
+
+  *specifics.mutable_ntp_background() =
+      themes::GetProtoFromBackgroundDict(pref->GetDict());
+
+  std::optional<int> main_color =
+      pref->GetDict().FindInt(kNtpCustomBackgroundMainColor);
+  if (main_color.value_or(0) == 0) {
+    specifics.mutable_ntp_background()->clear_main_color();
+  } else {
+    sync_pb::UserColorTheme* user_color_theme =
+        specifics.mutable_user_color_theme();
+    user_color_theme->set_color(static_cast<uint32_t>(*main_color));
+    user_color_theme->set_browser_color_variant(
+        sync_pb::UserColorTheme::TONAL_SPOT);
+  }
+  return specifics;
+}
+
+// Whether `a` and `b` describe the same theme, be it a Chrome color, a custom
+// background or the default theme. Compares only the fields
+// OnThemeChangedFromSync() acts on: attributions and resume token don't affect
+// which theme is applied; whether a refresh timestamp is set determines
+// `daily_refresh_enabled`, whereas its exact non-zero value doesn't.
+bool AreThemeSpecificsEquivalent(const sync_pb::ThemeAndroidSpecifics& a,
+                                 const sync_pb::ThemeAndroidSpecifics& b) {
+  return a.chrome_color_info().theme_color_id() ==
+             b.chrome_color_info().theme_color_id() &&
+         a.ntp_background().url() == b.ntp_background().url() &&
+         a.ntp_background().collection_id() ==
+             b.ntp_background().collection_id() &&
+         (a.ntp_background().refresh_timestamp_unix_epoch_seconds() != 0) ==
+             (b.ntp_background().refresh_timestamp_unix_epoch_seconds() != 0) &&
+         a.ntp_background().main_color() == b.ntp_background().main_color();
+}
+
+// Whether OnThemeChangedFromSync() resets to the default theme for
+// `specifics`: neither a valid Chrome color nor a non-empty custom background.
+bool IsDefaultTheme(const sync_pb::ThemeAndroidSpecifics& specifics) {
+  return specifics.chrome_color_info().theme_color_id() <= 0 &&
+         themes::GetBackgroundDictFromProto(specifics.ntp_background()).empty();
+}
+
+// Returns whether `specifics` describes the theme stored in `pref_service`,
+// in which case applying it again would be a no-op that notifies nobody.
+//
+// A local image is not synced, so sync still holds the theme chosen before
+// it, or the default theme. Neither carries news for this device; only a
+// theme newly chosen on another device replaces the local image.
+bool IsThemeAlreadyApplied(const PrefService& pref_service,
+                           const sync_pb::ThemeAndroidSpecifics& specifics) {
+  if (IsDefaultTheme(specifics) &&
+      pref_service.GetBoolean(
+          prefs::kNtpAndroidCustomBackgroundLocalToDevice)) {
+    return true;
+  }
+
+  return AreThemeSpecificsEquivalent(specifics,
+                                     GetThemeSpecificsFromPrefs(pref_service));
+}
+
+#endif  // !BUILDFLAG(ENABLE_WEBUI_NTP)
+
+}  // namespace
+
 // static
 void NtpAndroidCustomBackgroundService::RegisterProfilePrefs(
     PrefRegistrySimple* registry) {
@@ -50,7 +142,8 @@ NtpAndroidCustomBackgroundService::NtpAndroidCustomBackgroundService(
           profile->GetPrefs(),
           NtpAndroidBackgroundServiceFactory::GetForProfile(profile),
           prefs::kNtpAndroidCustomBackgroundDict,
-          prefs::kNtpAndroidCustomBackgroundLocalToDevice) {
+          prefs::kNtpAndroidCustomBackgroundLocalToDevice),
+      profile_(profile) {
   active_custom_background_ = GetCustomBackground();
 
   // TODO(crbug.com/488439751): Desktop Android devices manage NTP themes using
@@ -59,6 +152,7 @@ NtpAndroidCustomBackgroundService::NtpAndroidCustomBackgroundService(
   // finalized.
 #if !BUILDFLAG(ENABLE_WEBUI_NTP)
   if (base::FeatureList::IsEnabled(syncer::kNewTabPageCustomizationThemeSync)) {
+    is_theme_sync_ready_ = false;
     theme_sync_bridge_ =
         std::make_unique<ntp_customization::NtpAndroidThemeSyncBridge>(
             std::make_unique<syncer::ClientTagBasedDataTypeProcessor>(
@@ -68,6 +162,9 @@ NtpAndroidCustomBackgroundService::NtpAndroidCustomBackgroundService(
             std::move(store_factory),
             base::BindRepeating(
                 &NtpAndroidCustomBackgroundService::OnThemeChangedFromSync,
+                weak_ptr_factory_.GetWeakPtr()),
+            base::BindRepeating(
+                &NtpAndroidCustomBackgroundService::OnThemeSyncReady,
                 weak_ptr_factory_.GetWeakPtr()));
   }
 #endif
@@ -77,15 +174,11 @@ NtpAndroidCustomBackgroundService::~NtpAndroidCustomBackgroundService() {
   if (theme_collection_bridge_) {
     theme_collection_bridge_->DisconnectCustomBackgroundService();
   }
-  if (synced_theme_bridge_) {
-    synced_theme_bridge_->DisconnectCustomBackgroundService();
-  }
 }
 
 void NtpAndroidCustomBackgroundService::SelectLocalBackgroundImage(
     const base::FilePath& path) {
   active_custom_background_ = std::nullopt;
-  pref_service_->ClearPref(prefs::kNtpAndroidChromeColorDict);
   pref_service_->SetBoolean(prefs::kNtpAndroidCustomBackgroundLocalToDevice,
                             true);
 }
@@ -106,41 +199,67 @@ NtpAndroidCustomBackgroundService::GetSyncControllerDelegate() {
   return theme_sync_bridge_->change_processor()->GetControllerDelegate();
 }
 
+void NtpAndroidCustomBackgroundService::OnThemeSyncReady() {
+  is_theme_sync_ready_ = true;
+  if (synced_theme_bridge_) {
+    synced_theme_bridge_->OnThemeSyncReady();
+  }
+}
+
 void NtpAndroidCustomBackgroundService::SetThemeCollectionBridge(
     NtpThemeCollectionBridge* bridge) {
   theme_collection_bridge_ = bridge;
 }
 
-void NtpAndroidCustomBackgroundService::SetSyncedThemeBridge(
-    NtpSyncedThemeBridge* bridge) {
-  synced_theme_bridge_ = bridge;
-  // TODO(crbug.com/488439751): This part will need to be refactored once
-  // continuous sync for daily update images is implemented.
-  //
-  // If an existing non-local custom background is already saved in preferences
-  // (e.g. delivered by sync in a previous session or before this bridge was
-  // attached), sync will not re-emit OnThemeChangedFromSync on startup.
-  // Notify the newly attached bridge so Java fetches the remote background
-  // image and applies it to the NTP.
-  // We post this asynchronously to ensure the bridge initialization and native
-  // pointer registration complete before callbacks into Java execute.
-  if (base::FeatureList::IsEnabled(syncer::kNewTabPageCustomizationThemeSync) &&
-      synced_theme_bridge_ &&
-      !pref_service_->GetBoolean(
-          prefs::kNtpAndroidCustomBackgroundLocalToDevice) &&
-      GetCustomBackground().has_value()) {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(&NtpAndroidCustomBackgroundService::ReApplySyncedTheme,
-                       weak_ptr_factory_.GetWeakPtr()));
+NtpSyncedThemeBridge*
+NtpAndroidCustomBackgroundService::GetOrCreateSyncedThemeBridge() {
+  if (!synced_theme_bridge_) {
+    synced_theme_bridge_ = std::make_unique<NtpSyncedThemeBridge>(profile_);
   }
+
+  return synced_theme_bridge_.get();
 }
 
-void NtpAndroidCustomBackgroundService::ReApplySyncedTheme() {
-  // Nothing changed in preferences, but the stored theme collection is
-  // reported to the synced theme bridge as if it had just arrived from sync.
-  base::AutoReset<bool> auto_reset(&applying_sync_update_, true);
-  NotifyAboutBackgrounds();
+void NtpAndroidCustomBackgroundService::SetSyncedThemeBridgeForTesting(
+    std::unique_ptr<NtpSyncedThemeBridge> bridge) {
+  synced_theme_bridge_ = std::move(bridge);
+}
+
+void NtpAndroidCustomBackgroundService::GetStoredContinuousThemeAndNotify() {
+  // `theme_sync_bridge_` only exists where theme sync is enabled (feature on
+  // and not Desktop Android). Local uploaded images are managed by Java and
+  // never synced.
+  if (!theme_sync_bridge_ || !synced_theme_bridge_ ||
+      pref_service_->GetBoolean(
+          prefs::kNtpAndroidCustomBackgroundLocalToDevice)) {
+    return;
+  }
+
+  // The bridge is called directly rather than through NotifyAboutBackgrounds()
+  // on purpose: nothing changed in preferences, so active_custom_background_
+  // (already initialized from preferences in the constructor) and the
+  // NtpCustomBackgroundServiceObservers must not be touched. Java decides
+  // whether the delivered theme is already active.
+  std::optional<int> color_id =
+      pref_service_->GetDict(prefs::kNtpAndroidChromeColorDict)
+          .FindInt(kNtpAndroidThemeColorIdKey);
+  if (color_id.value_or(0) > 0) {
+    synced_theme_bridge_->OnChromeColorSynced(*color_id);
+    return;
+  }
+
+  if (GetCustomBackground().has_value()) {
+    synced_theme_bridge_->OnThemeCollectionUpdated(/*is_sync=*/true);
+    return;
+  }
+
+  // No user value in either dictionary means the default theme. A custom
+  // background dictionary that exists but is invalid (e.g. partially written)
+  // is not delivered.
+  if (!pref_service_->GetUserPrefValue(
+          prefs::kNtpAndroidCustomBackgroundDict)) {
+    synced_theme_bridge_->OnDefaultThemeSynced();
+  }
 }
 
 void NtpAndroidCustomBackgroundService::SetCustomBackgroundInfo(
@@ -179,6 +298,20 @@ void NtpAndroidCustomBackgroundService::ResetCustomBackgroundInfo() {
   pref_service_->SetBoolean(prefs::kNtpAndroidCustomBackgroundLocalToDevice,
                             false);
   NotifySyncBridge();
+}
+
+void NtpAndroidCustomBackgroundService::RefreshBackgroundIfNeeded() {
+  // Only fetch the next image if the stored background is a daily refresh
+  // theme collection. Java requests the next image based on SharedPreferences,
+  // which may still hold the local daily refresh after a synced static image
+  // replaced it in preferences, e.g. while its download is in flight or after
+  // the download failed.
+  std::optional<CustomBackground> background = GetCustomBackground();
+  if (!background.has_value() || !background->daily_refresh_enabled) {
+    return;
+  }
+
+  NtpCustomBackgroundServiceBase::RefreshBackgroundIfNeeded();
 }
 
 void NtpAndroidCustomBackgroundService::OnNextCollectionImageAvailable() {
@@ -322,6 +455,10 @@ void NtpAndroidCustomBackgroundService::OnThemeChangedFromSync(
 #if BUILDFLAG(ENABLE_WEBUI_NTP)
   return;
 #else
+  if (IsThemeAlreadyApplied(*pref_service_, specifics)) {
+    return;
+  }
+
   if (specifics.has_chrome_color_info()) {
     int color_id = specifics.chrome_color_info().has_theme_color_id()
                        ? specifics.chrome_color_info().theme_color_id()
@@ -375,34 +512,7 @@ void NtpAndroidCustomBackgroundService::NotifySyncBridge() {
     return;
   }
 
-  sync_pb::ThemeAndroidSpecifics specifics;
-
-  const base::DictValue& color_dict =
-      pref_service_->GetDict(prefs::kNtpAndroidChromeColorDict);
-  std::optional<int> color_id = color_dict.FindInt(kNtpAndroidThemeColorIdKey);
-  if (color_id.has_value() && *color_id > 0) {
-    specifics.mutable_chrome_color_info()->set_theme_color_id(*color_id);
-  } else {
-    const base::Value* pref =
-        pref_service_->GetUserPrefValue(prefs::kNtpAndroidCustomBackgroundDict);
-    if (pref && pref->is_dict() && !pref->GetDict().empty()) {
-      *specifics.mutable_ntp_background() =
-          themes::GetProtoFromBackgroundDict(pref->GetDict());
-
-      std::optional<int> main_color =
-          pref->GetDict().FindInt(kNtpCustomBackgroundMainColor);
-      if (main_color.value_or(0) == 0) {
-        specifics.mutable_ntp_background()->clear_main_color();
-      } else {
-        sync_pb::UserColorTheme* user_color_theme =
-            specifics.mutable_user_color_theme();
-        user_color_theme->set_color(static_cast<uint32_t>(*main_color));
-        user_color_theme->set_browser_color_variant(
-            sync_pb::UserColorTheme::TONAL_SPOT);
-      }
-    }
-  }
-  theme_sync_bridge_->UpdateTheme(specifics);
+  theme_sync_bridge_->UpdateTheme(GetThemeSpecificsFromPrefs(*pref_service_));
 #endif
 }
 

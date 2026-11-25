@@ -96,7 +96,6 @@ executable("cast_runner_exe") {
     "//content/public/common",
     "//media",
     "//third_party/blink/common",
-    "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.modular:*",
   ]
 
   sources = [ "cast/main.cc" ]
@@ -212,9 +211,11 @@ test("cast_runner_integration_tests") {
     "//build/config/fuchsia/test/network.shard.test-cml",
     "//fuchsia_web/common/test/test_realm_root.shard.test-cml",
     "//fuchsia_web/runners/cast/cast_runner_integration_test.shard.test-cml",
-    "//third_party/fuchsia-sdk/sdk/pkg/sys/component/realm_builder_absolute.shard.cml",
+    "//third_party/fuchsia-sdk/sdk/pkg/sys/component/realm_builder_subpackage.shard.cml",
     "//third_party/fuchsia-sdk/sdk/pkg/vulkan/client.shard.cml",
   ]
+  subpackages =
+      [ "//third_party/fuchsia-sdk/sdk/packages/realm_builder_server" ]
 }
 
 test("cast_runner_browsertests") {

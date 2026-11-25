@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
-import {BrowserProxyImpl, DownloadProgressRingStatus, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import {BrowserProxyImpl, DownloadProgressRingStatus, IconTable, IconType, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 suite('PinnedToolbarAction', function() {
   let action: any;
@@ -109,7 +109,7 @@ suite('PinnedToolbarAction', function() {
   });
 
   test('Sets draggable attribute based on enabled state', async () => {
-    const button = action.shadowRoot!.querySelector('cr-icon-button');
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button');
     assertEquals('true', button.getAttribute('draggable'));
 
     action.state = {
@@ -221,8 +221,41 @@ suite('PinnedToolbarAction', function() {
     assertEquals(null, getBadge());
   });
 
+  test('Applies the icon size delta', async () => {
+    action.style.setProperty('--toolbar-button-icon-size', '20px');
+    const icon: HTMLElement =
+        action.shadowRoot.querySelector('icon-from-table');
+    const getIconSize = () => {
+      const style = getComputedStyle(icon);
+      return [style.width, style.height];
+    };
+
+    // By default, the icon is drawn at the toolbar button icon size.
+    await microtasksFinished();
+    assertEquals('20px', getIconSize()[0]);
+    assertEquals('20px', getIconSize()[1]);
+
+    // A negative delta shrinks the icon.
+    action.state = {
+      ...action.state,
+      iconSizeDelta: -2,
+    };
+    await microtasksFinished();
+    assertEquals('18px', getIconSize()[0]);
+    assertEquals('18px', getIconSize()[1]);
+
+    // Clearing the delta restores the default size.
+    action.state = {
+      ...action.state,
+      iconSizeDelta: 0,
+    };
+    await microtasksFinished();
+    assertEquals('20px', getIconSize()[0]);
+    assertEquals('20px', getIconSize()[1]);
+  });
+
   test('Sets draggable attribute based on poppedOut state', async () => {
-    const button = action.shadowRoot!.querySelector('cr-icon-button')!;
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button')!;
     assertEquals('true', button.getAttribute('draggable'));
 
     action.poppedOut = true;
@@ -251,7 +284,7 @@ suite('PinnedToolbarAction', function() {
     };
     BrowserProxyImpl.setInstance({toolbarUIHandler: mockHandler} as any);
 
-    const button = action.shadowRoot!.querySelector('cr-icon-button');
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button');
     button.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'ArrowLeft',
       ctrlKey: true,
@@ -274,7 +307,8 @@ suite('PinnedToolbarAction', function() {
   });
 
   test('Sets aria-pressed based on highlighted state', async () => {
-    const button = action.shadowRoot!.querySelector('cr-icon-button')!;
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button')!
+                       .shadowRoot!.querySelector('#button')!;
     assertEquals('false', button.getAttribute('aria-pressed'));
 
     action.state = {
@@ -344,7 +378,7 @@ suite('PinnedToolbarAction', function() {
     };
     BrowserProxyImpl.setInstance({toolbarUIHandler: mockHandler} as any);
 
-    const button = action.shadowRoot!.querySelector('cr-icon-button')!;
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button')!;
     // `HighlightTracker` initializes `lastUnhighlightedTime` to 0 and skips
     // clicks when `performance.now() - lastUnhighlightedTime < 100`. Ensure the
     // initial click is outside that 100ms suppression window even if the test
@@ -382,4 +416,98 @@ suite('PinnedToolbarAction', function() {
         'click', {button: 0, pointerType: 'mouse', bubbles: true}));
     assertEquals(2, invokeCalls);
   });
+
+  test('Disabled action ignores pointer events', async () => {
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button')!;
+    assertFalse(getComputedStyle(button).pointerEvents === 'none');
+
+    action.state = {
+      ...action.state,
+      enabled: false,
+    };
+    await microtasksFinished();
+    // Prevents hover/pressed highlights, clicks and context menus.
+    assertEquals('none', getComputedStyle(button).pointerEvents);
+
+    action.state = {
+      ...action.state,
+      enabled: true,
+    };
+    await microtasksFinished();
+    assertFalse(getComputedStyle(button).pointerEvents === 'none');
+  });
+
+  test('Does not set an accessible description', () => {
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button')!
+                       .shadowRoot!.querySelector('#button')!;
+    assertEquals('', button.getAttribute('aria-description'));
+  });
+
+  test('Icon uses the button foreground color', async () => {
+    const iconTable = IconTable.getInstance();
+    iconTable.applyUpdates([{
+      handleId: 1n,
+      iconUrlOrName: 'puppy.svg',
+      iconType: IconType.kMaskUrl,
+      color: {value: 0xFFFF0000},
+    }]);
+
+    const button = action.shadowRoot!.querySelector('toolbar-chip-button')!;
+    button.style.setProperty('--toolbar-chip-fg-color', 'rgb(0, 255, 0)');
+    action.state = {
+      ...action.state,
+      icon: {handleId: 1n},
+    };
+    await microtasksFinished();
+
+    const iconFromTable = action.shadowRoot!.querySelector('icon-from-table')!;
+    await iconFromTable.updateComplete;
+    const renderer =
+        iconFromTable.shadowRoot!.querySelector('#maskIconContainer');
+    assertTrue(!!renderer);
+    // The icon table's color is ignored in favor of the button's foreground
+    // color, as in native PinnedActionToolbarButton.
+    assertEquals('rgb(0, 255, 0)', getComputedStyle(renderer).color);
+
+    iconTable.reset();
+  });
+
+  test(
+      'Disabled action uses inactive icon color without extra opacity',
+      async () => {
+        const rootStyle = document.documentElement.style;
+        rootStyle.setProperty('--color-toolbar-button-icon', 'rgb(1, 2, 3)');
+        rootStyle.setProperty(
+            '--color-toolbar-button-icon-inactive', 'rgb(4, 5, 6)');
+        try {
+          const button =
+              action.shadowRoot!.querySelector('toolbar-chip-button')!;
+          const innerButton = button.shadowRoot!.querySelector('#button')!;
+
+          action.state = {
+            ...action.state,
+            enabled: false,
+          };
+          await microtasksFinished();
+
+          let style = getComputedStyle(button);
+          assertEquals('rgb(4, 5, 6)', style.color);
+          assertEquals('none', style.forcedColorAdjust);
+          assertEquals('1', getComputedStyle(innerButton).opacity);
+
+          action.state = {
+            ...action.state,
+            enabled: true,
+          };
+          await microtasksFinished();
+
+          style = getComputedStyle(button);
+          assertEquals('rgb(1, 2, 3)', style.color);
+          assertEquals('auto', style.forcedColorAdjust);
+          assertEquals('1', getComputedStyle(innerButton).opacity);
+        } finally {
+          rootStyle.removeProperty('--color-toolbar-button-icon');
+          rootStyle.removeProperty('--color-toolbar-button-icon-inactive');
+        }
+      });
 });

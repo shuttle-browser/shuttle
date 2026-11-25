@@ -13,10 +13,14 @@
 
 #crUrlListItem {
   --organizer-list-section-item-trailing-icon-size_: 16px;
-  --organizer-list-section-item-trailing-button-size_: 24px;
+  --organizer-list-section-item-trailing-button-size_: 32px;
   --cr-url-list-item-padding: 4px 8px;
 
   border-radius: 8px;
+}
+
+#crUrlListItem:not([size=compact]):not([size=large]) {
+  --cr-url-list-item-height: 52px;
 }
 
 #crUrlListItem::part(iconContainer) {
@@ -28,8 +32,8 @@
 }
 
 #crUrlListItem::part(suffix) {
-  margin-inline-end: 0;
-  padding-right: 4px;
+  margin-inline-end: -4px;
+  padding-inline-end: 0;
 }
 
 #content {
@@ -65,15 +69,20 @@
       var(--organizer-list-section-item-trailing-icon-size_);
   --cr-icon-button-margin-end: 0;
   --cr-icon-button-margin-start: 0;
-  --cr-icon-button-size:
-      var(--organizer-list-section-item-trailing-button-size_);
-  display: none;
+  --cr-icon-button-size: 0px;
+  opacity: 0;
+  pointer-events: none;
+  position: absolute;
 }
 
 :host(.hovered) #actionButton,
 :host(:focus-within) #actionButton,
 #crUrlListItem.hovered #actionButton {
-  display: inline-flex;
+  --cr-icon-button-size:
+      var(--organizer-list-section-item-trailing-button-size_);
+  opacity: 1;
+  pointer-events: auto;
+  position: relative;
 }
 
 :host(.hovered) #trailingIcon.has-action-button,

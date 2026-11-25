@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/views/tabs/common/tab_group_line_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_unfocus_button.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
+#include "ui/gfx/animation/tween.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/views/layout/proposed_layout.h"
@@ -29,16 +30,19 @@ constexpr int kFocusedHeadersGap = 2;
 TabGroupViewVerticalLayout::TabGroupViewVerticalLayout() = default;
 TabGroupViewVerticalLayout::~TabGroupViewVerticalLayout() = default;
 
-gfx::Size TabGroupViewVerticalLayout::GetMinimumSize(
-    const views::View* host) const {
-  return CalculateProposedLayout(views::SizeBounds(0, 0)).host_size;
-}
-
 views::ProposedLayout TabGroupViewVerticalLayout::CalculateProposedLayout(
     const views::SizeBounds& size_bounds) const {
   views::ProposedLayout layouts;
+  const float focus_progress = TabGroupView().GetFocusProgress();
+  // Ephemeral groups collapse their header, and the spacing around it, to zero
+  // as they dissolve back into ungrouped tabs.
+  const auto scale_for_ephemeral = [&](int value) {
+    return TabGroupView().is_ephemeral()
+               ? gfx::Tween::LinearIntValueBetween(focus_progress, 0, value)
+               : value;
+  };
   int width = 0;
-  int height = kGroupHeaderVerticalMargin;
+  int height = scale_for_ephemeral(kGroupHeaderVerticalMargin);
   auto tab_strip_collapse_state = TabGroupView().GetTabStripCollapseState();
 
   gfx::Rect header_bounds;
@@ -56,47 +60,68 @@ views::ProposedLayout TabGroupViewVerticalLayout::CalculateProposedLayout(
   }
 
   if (TabGroupView().unfocus_header_) {
-    if (TabGroupView().IsGroupFocused()) {
-      gfx::Rect unfocus_bounds;
-      unfocus_bounds.set_x(header_bounds.x());
-      unfocus_bounds.set_y(height);
-      unfocus_bounds.set_height(kGroupHeaderHeight);
-      if (size_bounds.width().is_bounded()) {
-        unfocus_bounds.set_width(size_bounds.width().value() -
-                                 unfocus_bounds.x());
-      }
-      layouts.child_layouts.emplace_back(TabGroupView().unfocus_header_.get(),
-                                         true, unfocus_bounds);
-      height += unfocus_bounds.height() + kFocusedHeadersGap;
+    // The Unfocus button grows in above the header as the group gains focus
+    // and shrinks away as it loses focus.
+    gfx::Rect unfocus_bounds;
+    unfocus_bounds.set_x(header_bounds.x());
+    unfocus_bounds.set_y(height);
+    unfocus_bounds.set_height(gfx::Tween::LinearIntValueBetween(
+        focus_progress, 0, kGroupHeaderHeight));
+    if (size_bounds.width().is_bounded()) {
+      unfocus_bounds.set_width(size_bounds.width().value() -
+                               unfocus_bounds.x());
+    }
+    const bool unfocus_visible = TabGroupView().ShouldShowUnfocusButton();
+    layouts.child_layouts.emplace_back(
+        TabGroupView().unfocus_header_.get(), unfocus_visible,
+        unfocus_visible ? unfocus_bounds : gfx::Rect());
+    if (unfocus_visible) {
+      height +=
+          unfocus_bounds.height() + gfx::Tween::LinearIntValueBetween(
+                                        focus_progress, 0, kFocusedHeadersGap);
       width = std::max(width, unfocus_bounds.width());
-    } else {
-      layouts.child_layouts.emplace_back(TabGroupView().unfocus_header_.get(),
-                                         false, gfx::Rect());
     }
   }
 
   header_bounds.set_y(height);
-  header_bounds.set_height(kGroupHeaderHeight);
+  header_bounds.set_height(scale_for_ephemeral(kGroupHeaderHeight));
   // If width is bounded, the group header should respect the width constraints
   // and take up the available width excluding trailing horizontal padding.
   if (size_bounds.width().is_bounded()) {
     header_bounds.set_width(size_bounds.width().value() - header_bounds.x());
   }
 
-  layouts.child_layouts.emplace_back(TabGroupView().group_header_.get(),
-                                     TabGroupView().group_header_->GetVisible(),
-                                     header_bounds);
+  const bool header_visible = header_bounds.height() > 0;
+  layouts.child_layouts.emplace_back(
+      TabGroupView().group_header_.get(), header_visible,
+      header_visible ? header_bounds : gfx::Rect());
 
-  height +=
-      header_bounds.height() + kGroupHeaderVerticalMargin + kTabVerticalPadding;
-  width = std::max(width, header_bounds.width() + header_bounds.x());
+  if (header_visible) {
+    height +=
+        header_bounds.height() +
+        scale_for_ephemeral(kGroupHeaderVerticalMargin + kTabVerticalPadding);
+    width = std::max(width, header_bounds.width() + header_bounds.x());
+  }
 
-  // If the tab strip is not collapsed then the group line is below and left
-  // aligned with the header.
+  // When expanded, grouped tabs are inset by `kTabLeadingPadding` in the
+  // unfocused state and slide to `x = 0` as the group gains focus; the group
+  // line keeps its constant offset to the left of the tabs so it slides out
+  // with them rather than fading over their leading edge.
+  const int base_child_x =
+      tab_strip_collapse_state != tabs::VerticalTabStripCollapseState::kExpanded
+          ? GetLayoutConstant(
+                LayoutConstant::kVerticalTabStripHorizontalPadding)
+          : (TabGroupView().is_ephemeral()
+                 ? 0
+                 : gfx::Tween::LinearIntValueBetween(
+                       focus_progress, TabGroupView::kTabLeadingPadding, 0));
+  const int child_x = base_child_x + TabGroupView().GetFocusSwitchSlideOffset();
+
   if (tab_strip_collapse_state ==
       tabs::VerticalTabStripCollapseState::kExpanded) {
     group_line_bounds.set_x(
-        (TabGroupView::kTabLeadingPadding - kGroupLineWidth) / 2);
+        base_child_x -
+        (TabGroupView::kTabLeadingPadding + kGroupLineWidth) / 2);
     group_line_bounds.set_y(height);
   }
 
@@ -104,8 +129,6 @@ views::ProposedLayout TabGroupViewVerticalLayout::CalculateProposedLayout(
       TabGroupView().collection_node_
           ? TabGroupView().collection_node_->GetDirectChildren()
           : TabCollectionNode::ChildViews();
-
-  const bool is_focused = TabGroupView().IsGroupFocused();
 
   // Layout children in order. Children will have their preferred height and
   // fill available width.
@@ -115,26 +138,15 @@ views::ProposedLayout TabGroupViewVerticalLayout::CalculateProposedLayout(
     auto drag_data = TabGroupView().GetVisualDataForDraggedView(*child);
     CHECK(!drag_data || !drag_data->should_hide);
     bounds.set_y(drag_data ? drag_data->offset.y() : height);
-
-    // If the tab strip is not collapsed and not focused then the groups tabs
-    // should be inset.
-    int child_x = 0;
-    if (tab_strip_collapse_state !=
-        tabs::VerticalTabStripCollapseState::kExpanded) {
-      child_x =
-          GetLayoutConstant(LayoutConstant::kVerticalTabStripHorizontalPadding);
-    } else if (!is_focused) {
-      child_x = TabGroupView::kTabLeadingPadding;
-    }
     bounds.set_x(child_x);
     // If width is bounded, child views should respect the width constraints
     // and take up the available width excluding trailing horizontal padding.
     if (size_bounds.width().is_bounded()) {
-      bounds.set_width(size_bounds.width().value() - bounds.x());
+      bounds.set_width(size_bounds.width().value() - base_child_x);
     }
     layouts.child_layouts.emplace_back(child, child->GetVisible(), bounds);
     height += bounds.height() + kTabVerticalPadding;
-    width = std::max(width, bounds.width() + bounds.x());
+    width = std::max(width, bounds.width() + base_child_x);
   }
   // Remove excess padding.
   height -= kTabVerticalPadding;
@@ -142,8 +154,7 @@ views::ProposedLayout TabGroupViewVerticalLayout::CalculateProposedLayout(
   if (!children.empty()) {
     group_line_bounds.set_height(height - group_line_bounds.y());
   }
-  const bool show_group_line =
-      !TabGroupView().IsGroupFocused() && !TabGroupView().is_collapsed();
+  const bool show_group_line = TabGroupView().ShouldShowGroupLine();
   if (TabGroupView().group_line_) {
     layouts.child_layouts.emplace_back(TabGroupView().group_line_.get(),
                                        show_group_line, group_line_bounds);
@@ -152,7 +163,7 @@ views::ProposedLayout TabGroupViewVerticalLayout::CalculateProposedLayout(
   // Add extra padding below the group if not collapsed.
   const bool is_group_collapsed = TabGroupView().IsCollapsed();
   if (!is_group_collapsed) {
-    height += kTabVerticalPadding;
+    height += scale_for_ephemeral(kTabVerticalPadding);
   }
 
   // If the group is focused and we are handling a drag, we need to account for

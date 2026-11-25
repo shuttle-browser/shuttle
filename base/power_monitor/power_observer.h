@@ -37,6 +37,12 @@ class BASE_EXPORT PowerStateObserver {
   virtual void OnBatteryPowerStatusChange(
       BatteryPowerStatus battery_power_status) = 0;
 
+  // Notification of a change in the system's power saver mode, e.g. the
+  // "power-saver" power profile on Linux. This is independent of the battery
+  // power status: the system may be in power saver mode while on external
+  // power, or on battery power without being in power saver mode.
+  virtual void OnPowerSaverModeChange(bool enabled) {}
+
  protected:
   virtual ~PowerStateObserver() = default;
 };
@@ -72,7 +78,7 @@ class BASE_EXPORT PowerThermalObserver {
   // CPU or switching on the fans if available. API clients may react to the new
   // state by reducing expensive computing tasks (e.g. video encoding), or
   // notifying the user. The same |new_state| might be received repeatedly.
-  // TODO(crbug.com/1071431): implemented on MacOS, extend to Linux/CrOs.
+  // Implemented only on macOS.
   virtual void OnThermalStateChange(DeviceThermalState new_state) = 0;
 
   // Notification of a change in the operating system's advertised speed limit

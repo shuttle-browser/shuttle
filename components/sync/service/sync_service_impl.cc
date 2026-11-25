@@ -350,7 +350,7 @@ void SyncServiceImpl::Initialize(DataTypeController::TypeVector controllers) {
 #if BUILDFLAG(IS_CHROMEOS)
     // Disable OS data types to avoid automatic local data upload upon policy
     // removal, as OS data types do not support dual storage with UNO.
-    if (!HasSyncConsent() && IsReplaceSyncPromosWithSignInPromosEnabled()) {
+    if (!HasSyncConsent()) {
       user_settings_->SetSelectedOsTypes(/*sync_all_os_types=*/false,
                                          UserSelectableOsTypeSet());
     } else {
@@ -378,8 +378,7 @@ void SyncServiceImpl::Initialize(DataTypeController::TypeVector controllers) {
       IsLocalSyncEnabled() ||
 #if BUILDFLAG(IS_CHROMEOS)
       (!user_settings_->IsSyncFeatureDisabledViaDashboard() &&
-       (!base::FeatureList::IsEnabled(kReplaceSyncPromosWithSignInPromos) ||
-        HasSyncConsent()));
+       HasSyncConsent());
 #else
       HasSyncConsent();
 #endif  // BUILDFLAG(IS_CHROMEOS)
@@ -935,6 +934,11 @@ SyncService::UserActionableError SyncServiceImpl::GetUserActionableError()
                ? UserActionableError::kNeedsTrustedVaultKeyForEverything
                : UserActionableError::kNeedsTrustedVaultKeyForPasswords;
   }
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+  if (passkeys_locked_ && GetActiveDataTypes().Has(WEBAUTHN_CREDENTIAL)) {
+    return UserActionableError::kPasskeysLocked;
+  }
+#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
   if (user_settings_->IsTrustedVaultRecoverabilityDegraded()) {
     return user_settings_->IsEncryptEverythingEnabled()
                ? UserActionableError::
@@ -1459,10 +1463,9 @@ void SyncServiceImpl::ReconfigureDataTypesDueToCrypto() {
 void SyncServiceImpl::PassphraseTypeChanged(PassphraseType passphrase_type) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
-  // If kReplaceSyncPromosWithSignInPromos is enabled, new users with custom
-  // passphrase should have kAutofill disabled upon the initial sign-in. This is
-  // done to prevent confusion, as addresses are NOT encrypted by the custom
-  // passphrase
+  // New users with custom passphrase should have kAutofill disabled upon the
+  // initial sign-in. This is done to prevent confusion, as addresses are NOT
+  // encrypted by the custom passphrase.
   //
   // This check is skipped on desktop (Windows, Mac, Linux) and ChromeOS because
   // the user interface on those platforms already clarifies this nuance about
@@ -1475,8 +1478,7 @@ void SyncServiceImpl::PassphraseTypeChanged(PassphraseType passphrase_type) {
       GetSyncAccountStateForPrefs() ==
           SyncPrefs::SyncAccountState::kSignedInWithoutSyncConsent &&
       sync_prefs_.DoesTypeHaveDefaultValueForAccount(
-          UserSelectableType::kAutofill, GetAccountInfo().gaia) &&
-      IsReplaceSyncPromosWithSignInPromosEnabled()) {
+          UserSelectableType::kAutofill, GetAccountInfo().gaia)) {
     GetUserSettings()->SetSelectedType(UserSelectableType::kAutofill, false);
   }
 #endif
@@ -1940,7 +1942,7 @@ void SyncServiceImpl::OnSyncClientDisabledByPolicyChanged() {
 #if BUILDFLAG(IS_CHROMEOS)
     // Disable OS data types to avoid automatic local data upload upon policy
     // removal, as OS data types do not support dual storage with UNO.
-    if (!HasSyncConsent() && IsReplaceSyncPromosWithSignInPromosEnabled()) {
+    if (!HasSyncConsent()) {
       user_settings_->SetSelectedOsTypes(/*sync_all_os_types=*/false,
                                          UserSelectableOsTypeSet());
     } else {
@@ -2222,6 +2224,16 @@ void SyncServiceImpl::SetInvalidationsForSessionsEnabled(bool enabled) {
   UpdateDataTypesForInvalidations();
 }
 #endif  // BUILDFLAG(IS_ANDROID)
+
+void SyncServiceImpl::SetPasskeysLocked(bool passkeys_locked) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (passkeys_locked_ == passkeys_locked) {
+    return;
+  }
+  passkeys_locked_ = passkeys_locked;
+  DVLOG(2) << "Notify observers on SetPasskeysLocked";
+  NotifyObservers();
+}
 
 void SyncServiceImpl::SendExplicitPassphraseToPlatformClient() {
   RunOrQueueTaskOnEngineInitialized(base::BindOnce(

@@ -27,7 +27,7 @@ class TemplateURLServiceFactory final
   // ProfileKeyedServiceFactoryIOS implementation.
   void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) final;
   std::unique_ptr<KeyedService> BuildServiceInstanceFor(
-      ProfileIOS* profile) const final;
+      ProfileIOS& profile) const final;
 };
 
 }  // namespace ios

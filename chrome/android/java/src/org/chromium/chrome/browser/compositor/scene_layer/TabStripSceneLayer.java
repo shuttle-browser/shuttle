@@ -7,12 +7,17 @@ package org.chromium.chrome.browser.compositor.scene_layer;
 import static org.chromium.chrome.browser.tasks.tab_management.TabUiThemeUtil.FOLIO_FOOT_LENGTH_DP;
 
 import android.content.res.Resources;
+import android.graphics.RectF;
 
 import androidx.annotation.ColorInt;
 import androidx.annotation.DrawableRes;
 import androidx.annotation.VisibleForTesting;
 
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniPtr;
+import org.jni_zero.JniRawPtr;
+import org.jni_zero.JniType;
+import org.jni_zero.JniTypeToken;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.base.Token;
@@ -23,7 +28,9 @@ import org.chromium.chrome.R;
 import org.chromium.chrome.browser.compositor.LayerTitleCache;
 import org.chromium.chrome.browser.compositor.layouts.components.TintedCompositorButton;
 import org.chromium.chrome.browser.compositor.layouts.components.TintedCompositorTextButton;
+import org.chromium.chrome.browser.compositor.overlays.strip.NtbWebUiCoordinator;
 import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutGroupTitle;
+import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutHelper;
 import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutHelperManager;
 import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutTab;
 import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutTrailingButtonsCoordinator;
@@ -44,8 +51,17 @@ import org.chromium.ui.util.StyleUtils;
 @JNINamespace("android")
 @NullMarked
 public class TabStripSceneLayer extends SceneOverlayLayer {
+    @JniType("::android::TabStripSceneLayer")
+    interface NativeTabStripSceneLayer extends JniTypeToken {}
+
     private static boolean sTestFlag;
-    private long mNativePtr;
+
+    /**
+     * Typed, non-owning alias of the native object. The native object is owned by {@link
+     * SceneLayer} and freed in {@link SceneLayer#destroy()}; this handle must be released first.
+     */
+    private @Nullable JniRawPtr<NativeTabStripSceneLayer> mNativePtr;
+
     private final float mDpToPx;
 
     /**
@@ -55,6 +71,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
      */
     public TabStripSceneLayer(float density, long activityCreationUptimeMs) {
         mDpToPx = density;
+        if (mNativePtr == null) return;
         TabStripSceneLayerJni.get()
                 .setConstants(
                         mNativePtr,
@@ -78,17 +95,18 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
 
     @Override
     protected void initializeNative() {
-        if (mNativePtr == 0) {
+        if (mNativePtr == null) {
             mNativePtr = TabStripSceneLayerJni.get().init(this);
         }
         // Set flag for testing
         if (!sTestFlag) {
-            assert mNativePtr != 0;
+            assert mNativePtr != null;
         }
     }
 
     @Override
     public void setContentTree(SceneLayer contentTree) {
+        if (mNativePtr == null) return;
         TabStripSceneLayerJni.get().setContentTree(mNativePtr, contentTree);
     }
 
@@ -106,8 +124,6 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
      * @param stripLayoutGroupTitlesToRender Array of strip layout group titles.
      * @param yOffset Current browser controls offset in dp.
      * @param selectedTabId The ID of the selected tab.
-     * @param hoveredTabId The ID of the hovered tab, if any. If no tab is hovered on, this ID will
-     *     be invalid.
      * @param scrimColor The color of the scrim overlay that covers the tab strip.
      * @param scrimOpacity The opacity of the scrim overlay that covers the tab strip.
      * @param leftPaddingDp The left padding for the tab strip in dp.
@@ -123,14 +139,13 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
             StripLayoutGroupTitle[] stripLayoutGroupTitlesToRender,
             float yOffset,
             @TabId int selectedTabId,
-            @TabId int hoveredTabId,
             @ColorInt int scrimColor,
             float scrimOpacity,
             float leftPaddingDp,
             float rightPaddingDp,
             float topPaddingDp) {
 
-        if (mNativePtr == 0) return;
+        if (mNativePtr == null) return;
         final boolean visible = yOffset > -layoutHelper.getHeight();
 
         // This will hide the tab strips if necessary.
@@ -153,13 +168,15 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                     leftPaddingPx,
                     rightPaddingPx,
                     topPaddingPx);
-            pushGroupIndicators(stripLayoutGroupTitlesToRender, layerTitleCache);
-            pushStripTabs(layoutHelper, layerTitleCache, stripLayoutTabsToRender, selectedTabId);
+            pushGroupIndicators(stripLayoutGroupTitlesToRender);
+            pushStripTabs(layoutHelper, stripLayoutTabsToRender, selectedTabId);
+            pushLinkDropIndicator(layoutHelper);
         }
         TabStripSceneLayerJni.get().finishBuildingFrame(mNativePtr);
     }
 
     public void updateOffsetTag(@Nullable OffsetTag offsetTag) {
+        if (mNativePtr == null) return;
         TabStripSceneLayerJni.get().updateOffsetTag(mNativePtr, offsetTag);
     }
 
@@ -173,6 +190,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
             float leftPaddingPx,
             float rightPaddingPx,
             float topPaddingPx) {
+        if (mNativePtr == null) return;
         Resources res = layoutHelper.getContext().getResources();
         final int width = Math.round(layoutHelper.getWidth() * mDpToPx);
         final int height = Math.round(layoutHelper.getHeight() * mDpToPx);
@@ -190,16 +208,23 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                         topPaddingPx);
 
         TintedCompositorButton newTabButton = layoutHelper.getNewTabButton();
-        long ntbWebUiHost = layoutHelper.getNtbWebUiNativePtr();
-        if (ntbWebUiHost != 0) {
+        JniPtr<NtbWebUiCoordinator.NativeTabStripNtbWebUiHost> ntbWebUiHost =
+                layoutHelper.getNtbWebUiNativePtr();
+        if (ntbWebUiHost != null) {
+            RectF touchTarget = newTabButton.getTouchTargetBounds();
+            // touchTarget is relative to the ControlContainer (where touchTarget.top includes
+            // topPadding via setTouchTargetInsets), whereas updateNtbWebUi accepts coordinates
+            // relative to tab_strip_layer_, which is already offset by y = topPaddingPx.
+            // TODO(crbug.com/565326385): Apply layoutHelper.getNewTabBtnVisualOffset() in the
+            // WebUI CSS while keeping mInputView and the WebUI scene layer aligned.
             TabStripSceneLayerJni.get()
                     .updateNtbWebUi(
                             mNativePtr,
                             ntbWebUiHost,
-                            Math.round(newTabButton.getDrawX() * mDpToPx),
-                            Math.round(newTabButton.getDrawY() * mDpToPx),
-                            Math.round(newTabButton.getWidth() * mDpToPx),
-                            Math.round(newTabButton.getHeight() * mDpToPx));
+                            Math.round(touchTarget.left * mDpToPx),
+                            Math.round(touchTarget.top * mDpToPx - topPaddingPx),
+                            Math.round(touchTarget.width() * mDpToPx),
+                            Math.round(touchTarget.height() * mDpToPx));
         } else {
             TabStripSceneLayerJni.get()
                     .updateNewTabButton(
@@ -237,7 +262,6 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                             Math.round(glicButton.getWidth() * mDpToPx),
                             Math.round(glicButton.getHeight() * mDpToPx),
                             glicButtonVisible,
-                            glicButton.getShouldApplyHoverBackground(),
                             glicButton.getTint(),
                             glicButton.isHighlighted() || layoutHelper.isIncognito(),
                             glicButton.getBackgroundTint(),
@@ -276,7 +300,6 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                             Math.round(glicActorButton.getWidth() * mDpToPx),
                             Math.round(glicActorButton.getHeight() * mDpToPx),
                             glicActorButtonVisible,
-                            glicActorButton.getShouldApplyHoverBackground(),
                             glicActorButton.getTint(),
                             /* shouldTint= */ true,
                             glicActorButton.getBackgroundTint(),
@@ -361,9 +384,9 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
     @VisibleForTesting
     /* package */ void pushStripTabs(
             StripLayoutHelperManager layoutHelper,
-            LayerTitleCache layerTitleCache,
             StripLayoutTab[] stripTabs,
             @TabId int selectedTabId) {
+        if (mNativePtr == null) return;
         final int tabsCount = stripTabs != null ? stripTabs.length : 0;
         @ColorInt
         int underlineStartColor =
@@ -458,8 +481,8 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
         }
     }
 
-    /* package */ void pushGroupIndicators(
-            StripLayoutGroupTitle[] groupTitles, LayerTitleCache layerTitleCache) {
+    /* package */ void pushGroupIndicators(StripLayoutGroupTitle[] groupTitles) {
+        if (mNativePtr == null) return;
         final int titlesCount = groupTitles != null ? groupTitles.length : 0;
 
         for (int i = 0; i < titlesCount; i++) {
@@ -495,18 +518,35 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
         }
     }
 
+    @VisibleForTesting
+    /* package */ void pushLinkDropIndicator(StripLayoutHelperManager layoutHelper) {
+        if (mNativePtr == null) return;
+        StripLayoutHelper activeHelper = layoutHelper.getActiveStripLayoutHelper();
+        TabStripSceneLayerJni.get()
+                .updateLinkDropIndicator(
+                        mNativePtr,
+                        R.drawable.ic_tab_strip_drop_arrow,
+                        activeHelper.getLinkDropIndicatorXDp() * mDpToPx,
+                        activeHelper.isLinkDropIndicatorVisible(),
+                        TabUiThemeUtil.getLinkDropIndicatorColor(
+                                layoutHelper.getContext(), layoutHelper.isIncognito()));
+    }
+
     @Override
     public void destroy() {
+        if (mNativePtr != null) {
+            mNativePtr.release();
+            mNativePtr = null;
+        }
         super.destroy();
-        mNativePtr = 0;
     }
 
     @NativeMethods
     public interface Natives {
-        long init(TabStripSceneLayer self);
+        JniRawPtr<NativeTabStripSceneLayer> init(TabStripSceneLayer self);
 
         void setConstants(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 int reorderBackgroundTopMargin,
                 int reorderBackgroundBottomMargin,
                 int reorderBackgroundPaddingShort,
@@ -518,17 +558,17 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 long activityCreationUptimeMs);
 
         void beginBuildingFrame(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 boolean visible,
                 ResourceManager resourceManager,
                 LayerTitleCache layerTitleCache);
 
-        void finishBuildingFrame(long nativeTabStripSceneLayer);
+        void finishBuildingFrame(JniPtr<NativeTabStripSceneLayer> self);
 
-        void updateOffsetTag(long nativeTabStripSceneLayer, @Nullable OffsetTag offsetTag);
+        void updateOffsetTag(JniPtr<NativeTabStripSceneLayer> self, @Nullable OffsetTag offsetTag);
 
         void updateTabStripLayer(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 int width,
                 int height,
                 float yOffset,
@@ -540,7 +580,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 float topPaddingPx);
 
         void updateNewTabButton(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 @DrawableRes int resourceId,
                 @DrawableRes int backgroundResourceId,
                 float x,
@@ -556,22 +596,21 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 @ColorInt int keyboardFocusRingColor);
 
         void updateNtbWebUi(
-                long nativeTabStripSceneLayer,
-                long nativeTabStripNtbWebUiHost,
+                JniPtr<NativeTabStripSceneLayer> self,
+                JniPtr<NtbWebUiCoordinator.NativeTabStripNtbWebUiHost> host,
                 float x,
                 float y,
                 float width,
                 float height);
 
         void updateGlicButton(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 @DrawableRes int resourceId,
                 float x,
                 float y,
                 float buttonWidth,
                 float buttonHeight,
                 boolean visible,
-                boolean isHovered,
                 @ColorInt int tint,
                 boolean shouldTint,
                 @ColorInt int backgroundTint,
@@ -595,14 +634,13 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 @ColorInt int dismissKeyboardFocusRingColor);
 
         void updateGlicActorButton(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 @DrawableRes int resourceId,
                 float x,
                 float y,
                 float buttonWidth,
                 float buttonHeight,
                 boolean visible,
-                boolean isHovered,
                 @ColorInt int tint,
                 boolean shouldTint,
                 @ColorInt int backgroundTint,
@@ -618,7 +656,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 float cornerRadiusInner);
 
         void updateModelSelectorButton(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 @DrawableRes int resourceId,
                 @DrawableRes int backgroundResourceId,
                 float x,
@@ -633,7 +671,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 @ColorInt int keyboardFocusRingColor);
 
         void updateTabSearchButton(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 @DrawableRes int resourceId,
                 @DrawableRes int backgroundResourceId,
                 float x,
@@ -647,8 +685,15 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 @DrawableRes int keyboardFocusRingResourceId,
                 @ColorInt int keyboardFocusRingColor);
 
+        void updateLinkDropIndicator(
+                JniPtr<NativeTabStripSceneLayer> self,
+                @DrawableRes int resourceId,
+                float centerXPx,
+                boolean visible,
+                @ColorInt int tint);
+
         void updateTabStripFade(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 boolean isLeft,
                 @ColorInt int fadeColor,
                 float opacity,
@@ -657,7 +702,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 float paddingPx);
 
         void putStripTabLayer(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 @TabId int id,
                 @DrawableRes int closeResourceId,
                 @DrawableRes int closeBackgroundResourceId,
@@ -718,7 +763,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 int underlineWidthThreshold);
 
         void putGroupIndicatorLayer(
-                long nativeTabStripSceneLayer,
+                JniPtr<NativeTabStripSceneLayer> self,
                 boolean incognito,
                 boolean foreground,
                 boolean collapsed,
@@ -744,7 +789,7 @@ public class TabStripSceneLayer extends SceneOverlayLayer {
                 int keyboardFocusRingOffset,
                 int keyboardFocusRingWidth);
 
-        void setContentTree(long nativeTabStripSceneLayer, SceneLayer contentTree);
+        void setContentTree(JniPtr<NativeTabStripSceneLayer> self, SceneLayer contentTree);
     }
 
     public void initializeNativeForTesting() {

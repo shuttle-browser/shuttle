@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/views/profiles/avatar_toolbar_button.h"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -52,7 +53,6 @@
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/profiles/profile_colors_util.h"
 #include "chrome/browser/ui/profiles/profile_view_utils.h"
-#include "chrome/browser/ui/signin/dice_migration_service.h"
 #include "chrome/browser/ui/toolbar/avatar_toolbar_iph_controller.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -98,6 +98,7 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "components/sync/base/data_type.h"
 #include "components/sync/base/features.h"
@@ -149,6 +150,7 @@ const char kSignedInImageUrl[] =
 
 constexpr std::string_view kTestPassphrase = "testpassphrase";
 
+#if !BUILDFLAG(IS_CHROMEOS)
 constexpr std::u16string_view kTestEmail = u"test@gmail.com";
 std::u16string test_email() {
   return std::u16string(kTestEmail);
@@ -157,6 +159,7 @@ constexpr std::u16string_view kTestGivenName = u"TestName";
 std::u16string test_given_name() {
   return std::u16string(kTestGivenName);
 }
+#endif
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 constexpr std::u16string_view kWorkBadge(u"Custom Label");
 std::u16string work_badge() {
@@ -978,9 +981,7 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest, GuestWindowCount) {
   CloseBrowserSynchronously(browser2);
   EXPECT_FALSE(GetWindowCountInAvatarButtonText(browser1).has_value());
 }
-#endif
-
-#if BUILDFLAG(IS_CHROMEOS)
+#else
 class AvatarToolbarButtonAshBrowserTest
     : public AvatarToolbarButtonBrowserTestBase {
  protected:
@@ -1069,8 +1070,252 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest, SigninBrowser) {
   EXPECT_TRUE(avatar_accessor1.GetVisible());
   EXPECT_TRUE(avatar_accessor1.WaitForEnabled(false));
 }
+
+IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
+                       DefaultBrowserOptimizations) {
+  AvatarToolbarButtonTestAccessor avatar_accessor(browser());
+  ASSERT_FALSE(avatar_accessor.GetVisible());
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+
+  if (!GetParam()) {
+    // On a regular ChromeOS browser (`!CanShowForProfile()`), `label()` should
+    // not paint to a layer, whereas on an Incognito browser it does.
+    auto has_child_layer = [](const views::View* view) {
+      return std::ranges::any_of(
+          view->children(),
+          [](const views::View* child) { return child->layer() != nullptr; });
+    };
+
+    AvatarToolbarButton* avatar_button =
+        BrowserView::GetBrowserViewForBrowser(browser())
+            ->toolbar()
+            ->avatar_toolbar_button();
+    ASSERT_TRUE(avatar_button);
+    EXPECT_FALSE(has_child_layer(avatar_button));
+
+    BrowserWindowInterface* incognito_browser =
+        CreateIncognitoBrowser(browser()->GetProfile());
+    AvatarToolbarButton* incognito_avatar_button =
+        BrowserView::GetBrowserViewForBrowser(incognito_browser)
+            ->toolbar()
+            ->avatar_toolbar_button();
+    ASSERT_TRUE(incognito_avatar_button);
+    EXPECT_TRUE(has_child_layer(incognito_avatar_button));
+  }
+
+  // Triggering sign-in/sync greeting and sync errors on a regular ChromeOS
+  // profile should not transition out of `kNormal` or show text, since those
+  // state providers are not created when `!CanShowForProfile()`.
+  EnableSyncWithImage(u"test@gmail.com");
+  EXPECT_FALSE(avatar_accessor.GetVisible());
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+
+  SimulateSyncError();
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+  ClearSyncError();
+
+  SimulatePassphraseError();
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+  ClearPassphraseError();
+
+  SimulateUpgradeClientError();
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+  ClearUpgradeClientError();
+
+  SimulateBookmarksLimitExceededError();
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+  ClearBookmarksLimitExceededError();
+
+  // Even with normal animation duration, setting and clearing an explicit state
+  // while hidden (`!GetVisible()`) should skip animations and update/clear text
+  // synchronously.
+  gfx::ScopedAnimationDurationScaleMode normal_duration(
+      gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
+  base::ScopedClosureRunner hide_callback =
+      GetAvatarToolbarButtonInterface(browser())->SetExplicitButtonState(
+          u"Explicit Text",
+          /*accessibility_label=*/std::nullopt,
+          /*explicit_action=*/std::nullopt,
+          /*should_announce=*/false);
+  EXPECT_EQ(avatar_accessor.GetState(),
+            AvatarToolbarButtonState::kExplicitTextShowing);
+  EXPECT_EQ(avatar_accessor.GetText(), u"Explicit Text");
+
+  hide_callback.RunAndReset();
+  EXPECT_EQ(avatar_accessor.GetState(), AvatarToolbarButtonState::kNormal);
+  EXPECT_EQ(avatar_accessor.GetText(), std::u16string());
+}
 #endif
 
+// Test suite for testing `AvatarToolbarButton`'s responsibility of updating
+// color information in `ProfileAttributesStorage`.
+class AvatarToolbarButtonProfileColorBrowserTest
+    : public AvatarToolbarButtonBrowserTestBase,
+      public WithParamInterface<ColorThemeType> {
+ public:
+  AvatarToolbarButtonProfileColorBrowserTest() = default;
+
+  void SetUpOnMainThread() override {
+    AvatarToolbarButtonBrowserTestBase::SetUpOnMainThread();
+    theme_service(browser()->GetProfile())
+        ->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kLight);
+  }
+
+  void SetColorTheme(Profile* profile, SkColor color) {
+    ThemeService* service = theme_service(profile);
+    switch (GetParam()) {
+      case ColorThemeType::kAutogeneratedTheme:
+        service->BuildAutogeneratedThemeFromColor(color);
+        break;
+      case ColorThemeType::kUserColor:
+        service->SetUserColorAndBrowserColorVariant(color, kColorVariant);
+        service->UseDeviceTheme(false);
+        break;
+    }
+  }
+
+  void SetDefaultTheme(Profile* profile) {
+    ThemeService* service = theme_service(profile);
+    switch (GetParam()) {
+      case ColorThemeType::kAutogeneratedTheme:
+        service->UseDefaultTheme();
+        break;
+      case ColorThemeType::kUserColor:
+        service->SetUserColorAndBrowserColorVariant(SK_ColorTRANSPARENT,
+                                                    kColorVariant);
+        service->UseDeviceTheme(false);
+        break;
+    }
+  }
+
+  ThemeService* theme_service(Profile* profile) {
+    return ThemeServiceFactory::GetForProfile(profile);
+  }
+
+  ProfileThemeColors ComputeProfileThemeColorsForBrowser(
+      BrowserWindowInterface* target_browser = nullptr) {
+    target_browser = target_browser ? target_browser : browser();
+    return GetCurrentProfileThemeColors(
+        *BrowserWindow::FromBrowser(target_browser)->GetColorProvider(),
+        *ThemeServiceFactory::GetForProfile(target_browser->GetProfile()));
+  }
+};
+
+// Tests that the profile theme colors are updated when an autogenerated theme
+// is set up.
+IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
+                       PRE_AutogeneratedTheme) {
+  Profile* profile = browser()->GetProfile();
+  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
+  SetDefaultTheme(profile);
+  EXPECT_EQ(entry->GetProfileThemeColors(),
+            ComputeProfileThemeColorsForBrowser());
+
+  SetColorTheme(profile, SK_ColorGREEN);
+  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
+  EXPECT_EQ(theme_colors, ComputeProfileThemeColorsForBrowser());
+
+  // Check that a switch to another autogenerated theme updates the colors.
+  SetColorTheme(profile, SK_ColorMAGENTA);
+  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
+  EXPECT_NE(theme_colors, theme_colors2);
+  EXPECT_NE(theme_colors2, GetDefaultProfileThemeColors());
+  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser());
+
+  // Reset the cached colors to test that they're recreated on the next startup.
+  entry->SetProfileThemeColors(std::nullopt);
+  EXPECT_EQ(entry->GetProfileThemeColors(), GetDefaultProfileThemeColors());
+}
+
+// Tests that the profile theme colors are updated to reflect the autogenerated
+// colors on startup.
+IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
+                       AutogeneratedTheme) {
+  EXPECT_EQ(GetProfileAttributesEntry(browser()->GetProfile())
+                ->GetProfileThemeColors(),
+            ComputeProfileThemeColorsForBrowser());
+}
+
+// Tests that switching to the default theme updates profile colors.
+IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
+                       DefaultTheme) {
+  Profile* profile = browser()->GetProfile();
+  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
+
+  SetColorTheme(profile, SK_ColorGREEN);
+  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
+  EXPECT_EQ(theme_colors, ComputeProfileThemeColorsForBrowser());
+
+  SetDefaultTheme(profile);
+  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
+  EXPECT_NE(theme_colors, theme_colors2);
+  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser());
+}
+
+// Tests that a theme is updated after opening a browser.
+IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
+                       UpdateThemeOnBrowserUpdate) {
+  Profile* profile = browser()->GetProfile();
+  // Keeps the browser process and the profile alive while a browser window is
+  // closed.
+  ScopedKeepAlive keep_alive(KeepAliveOrigin::BROWSER,
+                             KeepAliveRestartOption::DISABLED);
+  ScopedProfileKeepAlive profile_keep_alive(
+      profile, ProfileKeepAliveOrigin::kBackgroundMode);
+  SetDefaultTheme(profile);
+  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
+  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
+  CloseBrowserSynchronously(browser());
+
+  SetColorTheme(profile, SK_ColorGREEN);
+  // Colors haven't been changed yet because the profile has no active browsers.
+  EXPECT_EQ(theme_colors, entry->GetProfileThemeColors());
+
+  auto* target_browser = CreateBrowser(profile);
+  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
+  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser(target_browser));
+}
+
+// Tests profile colors are updated when the browser's color scheme has changed.
+IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
+                       ProfileColorsUpdateOnColorSchemeChange) {
+  theme_service(browser()->GetProfile())
+      ->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kDark);
+  Profile* profile = browser()->GetProfile();
+  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
+
+  SetDefaultTheme(profile);
+  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
+  EXPECT_EQ(theme_colors, ComputeProfileThemeColorsForBrowser());
+
+  theme_service(browser()->GetProfile())
+      ->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kLight);
+  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
+  EXPECT_NE(theme_colors, theme_colors2);
+  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser());
+}
+
+INSTANTIATE_TEST_SUITE_P(,
+                         AvatarToolbarButtonProfileColorBrowserTest,
+                         testing::Values(ColorThemeType::kAutogeneratedTheme,
+                                         ColorThemeType::kUserColor),
+                         [](const auto& info) {
+                           switch (info.param) {
+                             case ColorThemeType::kAutogeneratedTheme:
+                               return "AutogeneratedTheme";
+                             case ColorThemeType::kUserColor:
+                               return "UserColor";
+                           }
+                         });
+
+// Avatar button is not shown on Ash regular profiles.
+#if !BUILDFLAG(IS_CHROMEOS)
 // Test suite to mark test with Sync enabled (simulating Sync granted already -
 // Enabling sync and only after clearing states performing checks) that have a
 // Signin equivalent test. This test suite can be directly removed when removing
@@ -1102,7 +1347,7 @@ using AvatarToolbarButtonWithSyncBrowserTest = AvatarToolbarButtonBrowserTest;
   test_type(test_suite, test_name)  // Actual test implementation starts here.
 
 // TODO(b/331746545): Check flaky test issue on windows.
-#if !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_WIN)
+#if !BUILDFLAG(IS_WIN)
 TEST_WITH_SIGNED_IN_FROM_PRE(IN_PROC_BROWSER_TEST_P,
                              AvatarToolbarButtonBrowserTest,
                              ShowNameOnSignin) {
@@ -1141,7 +1386,7 @@ TEST_WITH_SIGNED_IN_FROM_PRE(IN_PROC_BROWSER_TEST_P,
   SetHasInProductHelpPromo(false);
   EXPECT_TRUE(avatar_accessor.WaitForText(u""));
 }
-#endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_WIN)
+#endif  // !BUILDFLAG(IS_WIN)
 
 // Check www.crbug.com/331499330: This test makes sure that no states attempt to
 // request an update during their construction. But rather do so after all the
@@ -1203,7 +1448,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonWithSyncBrowserTest,
   ExpectSyncPaused(browser());
 }
 
-#if !BUILDFLAG(IS_CHROMEOS)
 // Checks that "Signin pending" has higher priority than passphrase errors.
 // Adapted regression test for https://crbug.com/368997513
 IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
@@ -1220,7 +1464,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
   EXPECT_TRUE(avatar_accessor.WaitForText(
       l10n_util::GetStringUTF16(IDS_AVATAR_BUTTON_SIGNIN_PAUSED)));
 }
-#endif
 
 IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonWithSyncBrowserTest, SyncError) {
   AvatarToolbarButtonInterface* avatar_button =
@@ -1255,9 +1498,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonWithSyncBrowserTest,
   EXPECT_TRUE(avatar_accessor.WaitForText(std::u16string()));
 }
 
-// Avatar button is not shown on Ash. No need to perform those tests as the info
-// checked might not be adapted.
-#if !BUILDFLAG(IS_CHROMEOS)
 IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonWithSyncBrowserTest,
                        BookmarksLimitExceededErrorOpensProfileMenu) {
   AvatarToolbarButtonInterface* avatar_button =
@@ -1272,7 +1512,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonWithSyncBrowserTest,
   // a test harness for this purpose.
   EXPECT_TRUE(ProfileMenuCoordinator::From(browser())->IsShowing());
 }
-#endif
 
 IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
                        BookmarksLimitExceededErrorForSignedInUser) {
@@ -1416,9 +1655,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
   EXPECT_FALSE(avatar->HasExplicitButtonState());
 }
 
-// Avatar button is not shown on Ash. No need to perform those tests as the info
-// checked might not be adapted.
-#if !BUILDFLAG(IS_CHROMEOS)
 IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest, SignInOutIconEffect) {
   ASSERT_TRUE(WaitForIsSignedInImageUsed(false));
 
@@ -1506,8 +1742,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
   EXPECT_EQ(AvatarToolbarButtonTestAccessor(new_browser).GetText(),
             std::u16string());
 }
-
-#endif
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 
@@ -2641,170 +2875,6 @@ IN_PROC_BROWSER_TEST_F(
       l10n_util::GetStringUTF16(IDS_AVATAR_BUTTON_SIGNIN_PROMO)));
 }
 
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
-// Test suite for testing `AvatarToolbarButton`'s responsibility of updating
-// color information in `ProfileAttributesStorage`.
-class AvatarToolbarButtonProfileColorBrowserTest
-    : public AvatarToolbarButtonBrowserTestBase,
-      public WithParamInterface<ColorThemeType> {
- public:
-  AvatarToolbarButtonProfileColorBrowserTest() = default;
-
-  void SetUpOnMainThread() override {
-    AvatarToolbarButtonBrowserTestBase::SetUpOnMainThread();
-    theme_service(browser()->GetProfile())
-        ->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kLight);
-  }
-
-  void SetColorTheme(Profile* profile, SkColor color) {
-    ThemeService* service = theme_service(profile);
-    switch (GetParam()) {
-      case ColorThemeType::kAutogeneratedTheme:
-        service->BuildAutogeneratedThemeFromColor(color);
-        break;
-      case ColorThemeType::kUserColor:
-        service->SetUserColorAndBrowserColorVariant(color, kColorVariant);
-        service->UseDeviceTheme(false);
-        break;
-    }
-  }
-
-  void SetDefaultTheme(Profile* profile) {
-    ThemeService* service = theme_service(profile);
-    switch (GetParam()) {
-      case ColorThemeType::kAutogeneratedTheme:
-        service->UseDefaultTheme();
-        break;
-      case ColorThemeType::kUserColor:
-        service->SetUserColorAndBrowserColorVariant(SK_ColorTRANSPARENT,
-                                                    kColorVariant);
-        service->UseDeviceTheme(false);
-        break;
-    }
-  }
-
-  ThemeService* theme_service(Profile* profile) {
-    return ThemeServiceFactory::GetForProfile(profile);
-  }
-
-  ProfileThemeColors ComputeProfileThemeColorsForBrowser(
-      BrowserWindowInterface* target_browser = nullptr) {
-    target_browser = target_browser ? target_browser : browser();
-    return GetCurrentProfileThemeColors(
-        *BrowserWindow::FromBrowser(target_browser)->GetColorProvider(),
-        *ThemeServiceFactory::GetForProfile(target_browser->GetProfile()));
-  }
-};
-
-// Tests that the profile theme colors are updated when an autogenerated theme
-// is set up.
-IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
-                       PRE_AutogeneratedTheme) {
-  Profile* profile = browser()->GetProfile();
-  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
-  SetDefaultTheme(profile);
-  EXPECT_EQ(entry->GetProfileThemeColors(),
-            ComputeProfileThemeColorsForBrowser());
-
-  SetColorTheme(profile, SK_ColorGREEN);
-  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
-  EXPECT_EQ(theme_colors, ComputeProfileThemeColorsForBrowser());
-
-  // Check that a switch to another autogenerated theme updates the colors.
-  SetColorTheme(profile, SK_ColorMAGENTA);
-  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
-  EXPECT_NE(theme_colors, theme_colors2);
-  EXPECT_NE(theme_colors2, GetDefaultProfileThemeColors());
-  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser());
-
-  // Reset the cached colors to test that they're recreated on the next startup.
-  entry->SetProfileThemeColors(std::nullopt);
-  EXPECT_EQ(entry->GetProfileThemeColors(), GetDefaultProfileThemeColors());
-}
-
-// Tests that the profile theme colors are updated to reflect the autogenerated
-// colors on startup.
-IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
-                       AutogeneratedTheme) {
-  EXPECT_EQ(GetProfileAttributesEntry(browser()->GetProfile())
-                ->GetProfileThemeColors(),
-            ComputeProfileThemeColorsForBrowser());
-}
-
-// Tests that switching to the default theme updates profile colors.
-IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
-                       DefaultTheme) {
-  Profile* profile = browser()->GetProfile();
-  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
-
-  SetColorTheme(profile, SK_ColorGREEN);
-  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
-  EXPECT_EQ(theme_colors, ComputeProfileThemeColorsForBrowser());
-
-  SetDefaultTheme(profile);
-  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
-  EXPECT_NE(theme_colors, theme_colors2);
-  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser());
-}
-
-// Tests that a theme is updated after opening a browser.
-IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
-                       UpdateThemeOnBrowserUpdate) {
-  Profile* profile = browser()->GetProfile();
-  // Keeps the browser process and the profile alive while a browser window is
-  // closed.
-  ScopedKeepAlive keep_alive(KeepAliveOrigin::BROWSER,
-                             KeepAliveRestartOption::DISABLED);
-  ScopedProfileKeepAlive profile_keep_alive(
-      profile, ProfileKeepAliveOrigin::kBackgroundMode);
-  SetDefaultTheme(profile);
-  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
-  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
-  CloseBrowserSynchronously(browser());
-
-  SetColorTheme(profile, SK_ColorGREEN);
-  // Colors haven't been changed yet because the profile has no active browsers.
-  EXPECT_EQ(theme_colors, entry->GetProfileThemeColors());
-
-  auto* target_browser = CreateBrowser(profile);
-  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
-  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser(target_browser));
-}
-
-// Tests profile colors are updated when the browser's color scheme has changed.
-IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonProfileColorBrowserTest,
-                       ProfileColorsUpdateOnColorSchemeChange) {
-  theme_service(browser()->GetProfile())
-      ->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kDark);
-  Profile* profile = browser()->GetProfile();
-  ProfileAttributesEntry* entry = GetProfileAttributesEntry(profile);
-
-  SetDefaultTheme(profile);
-  ProfileThemeColors theme_colors = entry->GetProfileThemeColors();
-  EXPECT_EQ(theme_colors, ComputeProfileThemeColorsForBrowser());
-
-  theme_service(browser()->GetProfile())
-      ->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kLight);
-  ProfileThemeColors theme_colors2 = entry->GetProfileThemeColors();
-  EXPECT_NE(theme_colors, theme_colors2);
-  EXPECT_EQ(theme_colors2, ComputeProfileThemeColorsForBrowser());
-}
-
-INSTANTIATE_TEST_SUITE_P(,
-                         AvatarToolbarButtonProfileColorBrowserTest,
-                         testing::Values(ColorThemeType::kAutogeneratedTheme,
-                                         ColorThemeType::kUserColor),
-                         [](const auto& info) {
-                           switch (info.param) {
-                             case ColorThemeType::kAutogeneratedTheme:
-                               return "AutogeneratedTheme";
-                             case ColorThemeType::kUserColor:
-                               return "UserColor";
-                           }
-                         });
-
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
 class AvatarToolbarButtonEnterpriseBadgingBrowserTest
     : public AvatarToolbarButtonWithInteractiveFeaturePromoBrowserTest {
  public:
@@ -2919,7 +2989,6 @@ IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonEnterpriseBadgingBrowserTest,
 
 IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonEnterpriseBadgingBrowserTest,
                        DefaultBadgeDisabledbyPolicy) {
-  std::u16string work_label = u"Work";
   AvatarToolbarButtonTestAccessor avatar_accessor(browser());
   browser()->GetProfile()->GetPrefs()->SetInteger(
       prefs::kEnterpriseProfileBadgeToolbarSettings, 1);
@@ -3724,263 +3793,6 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonBrowserTest,
   EXPECT_TRUE(avatar_accessor.WaitForText(std::u16string()));
 }
 
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-class AvatarToolbarButtonSignInBenefitsIphBrowserTest
-    : public InteractiveFeaturePromoTestMixin<
-          AvatarToolbarButtonBrowserTestBase> {
- public:
-  AvatarToolbarButtonSignInBenefitsIphBrowserTest()
-      : InteractiveFeaturePromoTestMixin(UseDefaultTrackerAllowingPromos(
-            {feature_engagement::kIPHSignInBenefitsFeature})) {
-    // Disable the migration feature flag for PRE tests. This allows simulating
-    // users signing in before the sync-to-signin migration.
-    if (content::IsPreTest()) {
-      feature_list_.InitWithFeatures(
-          /*enabled_features=*/{},
-          /*disabled_features=*/{
-              syncer::kReplaceSyncPromosWithSignInPromos,
-              feature_engagement::kIPHSignInBenefitsNewSigninFeature});
-    } else {
-      feature_list_.InitWithFeatures(
-          /*enabled_features=*/{syncer::kReplaceSyncPromosWithSignInPromos},
-          /*disabled_features=*/{
-              feature_engagement::kIPHSignInBenefitsNewSigninFeature});
-    }
-  }
-
-  bool WillShowPromo() {
-    auto* const user_education = BrowserUserEducationInterface::From(browser());
-    return user_education->IsFeaturePromoActive(
-               feature_engagement::kIPHSignInBenefitsFeature) ||
-           user_education->IsFeaturePromoQueued(
-               feature_engagement::kIPHSignInBenefitsFeature);
-  }
-
- protected:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsIphBrowserTest,
-                       PRE_ShownForUsersSignedInBeforeMigration) {
-  // Sign in a user before the sync-to-signin migration.
-  Signin(/*email=*/u"test@gmail.com", /*name=*/u"Account");
-
-  PrefService* prefs = browser()->GetProfile()->GetPrefs();
-  prefs->ClearPref(prefs::kPrimaryAccountSetAfterSigninMigration);
-  ASSERT_FALSE(
-      prefs->GetBoolean(prefs::kPrimaryAccountSetAfterSigninMigration));
-}
-
-// Tests that the IPH bubble for signin benefits is shown for users who have
-// signed in before the sync-to-signin migration.
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsIphBrowserTest,
-                       ShownForUsersSignedInBeforeMigration) {
-  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kFirstTabContents);
-  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSecondTabContents);
-
-  RunTestSequence(
-      InstrumentTab(kFirstTabContents, 0),
-      WaitForPromo(feature_engagement::kIPHSignInBenefitsFeature),
-      PressNonDefaultPromoButton(), InstrumentTab(kSecondTabContents, 1),
-      WaitForWebContentsReady(kSecondTabContents,
-                              GURL(chrome::kChromeUIAccountSettingsURL)),
-      CheckPromoActive(feature_engagement::kIPHSignInBenefitsFeature, false));
-}
-
-// Tests that the IPH bubble for signin benefits is not shown for users who have
-// signed in after the sync-to-signin migration.
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsIphBrowserTest,
-                       NotShownForUsersSignedInAfterMigration) {
-  // Sign in a user after the sync-to-signin migration.
-  Signin(/*email=*/u"test@gmail.com", /*name=*/u"Account");
-
-  ASSERT_NE(GetAvatarToolbarButtonInterface(browser()), nullptr);
-  // Attempt to show the IPH.
-  AvatarToolbarIphController::From(browser())->MaybeShowSignInBenefitsIPH();
-  EXPECT_FALSE(WillShowPromo());
-}
-
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsIphBrowserTest,
-                       PRE_NotShownForUsersMigratedFromDice) {
-  // Sign in a user before the sync-to-signin migration.
-  Signin(/*email=*/u"test@gmail.com", /*name=*/u"Account");
-
-  PrefService* prefs = browser()->GetProfile()->GetPrefs();
-  prefs->ClearPref(prefs::kPrimaryAccountSetAfterSigninMigration);
-  ASSERT_FALSE(
-      prefs->GetBoolean(prefs::kPrimaryAccountSetAfterSigninMigration));
-
-  // Simulate user having migrated from DICe.
-  prefs->SetBoolean(kDiceMigrationMigrated, true);
-}
-
-// Tests that the IPH bubble for signin benefits is not shown for users who have
-// migrated from DICe.
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsIphBrowserTest,
-                       NotShownForUsersMigratedFromDice) {
-  ASSERT_NE(GetAvatarToolbarButtonInterface(browser()), nullptr);
-  // Attempt to show the IPH.
-  AvatarToolbarIphController::From(browser())->MaybeShowSignInBenefitsIPH();
-  EXPECT_FALSE(WillShowPromo());
-}
-
-class AvatarToolbarButtonSignInBenefitsNewSigninIphBrowserTest
-    : public InteractiveFeaturePromoTestMixin<
-          AvatarToolbarButtonBrowserTestBase> {
- public:
-  AvatarToolbarButtonSignInBenefitsNewSigninIphBrowserTest()
-      : InteractiveFeaturePromoTestMixin(UseDefaultTrackerAllowingPromos(
-            {feature_engagement::kIPHSignInBenefitsNewSigninFeature})) {
-    feature_list_.InitWithFeatureStates(
-        {{syncer::kReplaceSyncPromosWithSignInPromos, false},
-         {feature_engagement::kIPHSignInBenefitsFeature, false},
-         {feature_engagement::kIPHSignInBenefitsNewSigninFeature,
-          !content::IsPreTest()}});
-  }
-
-  bool WillShowPromo() {
-    auto* const user_education = BrowserUserEducationInterface::From(browser());
-    return user_education->IsFeaturePromoActive(
-               feature_engagement::kIPHSignInBenefitsNewSigninFeature) ||
-           user_education->IsFeaturePromoQueued(
-               feature_engagement::kIPHSignInBenefitsNewSigninFeature);
-  }
-
- protected:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsNewSigninIphBrowserTest,
-                       PRE_ShownForUsersSignedInBeforeMigration) {
-  Signin(/*email=*/u"test@gmail.com", /*name=*/u"Account");
-  browser()->GetProfile()->GetPrefs()->ClearPref(
-      prefs::kPrimaryAccountSetAfterSigninMigration);
-}
-
-IN_PROC_BROWSER_TEST_F(AvatarToolbarButtonSignInBenefitsNewSigninIphBrowserTest,
-                       ShownForUsersSignedInBeforeMigration) {
-  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kFirstTabContents);
-  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSecondTabContents);
-
-  RunTestSequence(
-      InstrumentTab(kFirstTabContents, 0),
-      WaitForPromo(feature_engagement::kIPHSignInBenefitsNewSigninFeature),
-      PressNonDefaultPromoButton(), InstrumentTab(kSecondTabContents, 1),
-      WaitForWebContentsReady(kSecondTabContents,
-                              GURL(chrome::kChromeUIAccountSettingsURL)),
-      CheckPromoActive(feature_engagement::kIPHSignInBenefitsNewSigninFeature,
-                       false));
-}
-
-// Parameterized test for the new sign-in benefits IPH.
-// It verifies that the new IPH is shown only if the legacy IPH was not shown.
-// - PRE_PRE_: Sign-in with features disabled (requirement for any IPH to show).
-// - PRE_: Restart Chrome with or without showing the legacy IPH
-// (parameterized).
-// - Main: Check that the new IPH is only shown if the legacy one was not.
-class AvatarToolbarButtonSignInBenefitsNewSigninIphParameterizedTest
-    : public InteractiveFeaturePromoTestMixin<
-          AvatarToolbarButtonBrowserTestBase>,
-      public testing::WithParamInterface<bool> {
- public:
-  AvatarToolbarButtonSignInBenefitsNewSigninIphParameterizedTest()
-      : InteractiveFeaturePromoTestMixin(UseDefaultTrackerAllowingPromos(
-            {feature_engagement::kIPHSignInBenefitsFeature,
-             feature_engagement::kIPHSignInBenefitsNewSigninFeature})) {
-    std::string test_name =
-        ::testing::UnitTest::GetInstance()->current_test_info()->name();
-    bool is_pre_pre = test_name.find("PRE_PRE_") != std::string::npos;
-    bool is_pre = !is_pre_pre && test_name.find("PRE_") != std::string::npos;
-
-    std::vector<base::test::FeatureRef> enabled;
-    std::vector<base::test::FeatureRef> disabled;
-
-    const std::vector<base::test::FeatureRef> kDisabledPromoFeatures = {
-        syncer::kReplaceSyncPromosWithSignInPromos,
-        feature_engagement::kIPHSignInBenefitsFeature,
-        feature_engagement::kIPHSignInBenefitsNewSigninFeature};
-
-    if (is_pre_pre) {
-      // Disable all features to avoid any startup promos while signing in.
-      disabled = kDisabledPromoFeatures;
-    } else if (is_pre) {
-      if (ShouldShowLegacyIphInPre()) {
-        enabled = {syncer::kReplaceSyncPromosWithSignInPromos,
-                   feature_engagement::kIPHSignInBenefitsFeature};
-        disabled = {feature_engagement::kIPHSignInBenefitsNewSigninFeature};
-      } else {
-        // The PRE_ test should have the same feature config as the PRE_PRE_
-        // when the legacy IPH should not be shown, because we conceptually want
-        // this step to do nothing in this case. It will behave just as if
-        // Chrome was restarted without configuration change.
-        disabled = kDisabledPromoFeatures;
-      }
-    } else {
-      // Main test: enable new features and disable old ones to test suppression
-      // check.
-      enabled = {feature_engagement::kIPHSignInBenefitsNewSigninFeature};
-      disabled = {syncer::kReplaceSyncPromosWithSignInPromos,
-                  feature_engagement::kIPHSignInBenefitsFeature};
-    }
-
-    feature_list_.InitWithFeatures(enabled, disabled);
-    delay_override_.emplace(
-        AvatarToolbarIphController::SetScopedIPHMinDelayAfterCreationForTesting(
-            base::TimeDelta()));
-  }
-
-  bool ShouldShowLegacyIphInPre() const { return GetParam(); }
-
-  bool WillShowPromo() {
-    auto* const user_education = BrowserUserEducationInterface::From(browser());
-    return user_education->IsFeaturePromoActive(
-               feature_engagement::kIPHSignInBenefitsNewSigninFeature) ||
-           user_education->IsFeaturePromoQueued(
-               feature_engagement::kIPHSignInBenefitsNewSigninFeature);
-  }
-
- protected:
-  base::test::ScopedFeatureList feature_list_;
-  std::optional<base::AutoReset<base::TimeDelta>> delay_override_;
-};
-
-IN_PROC_BROWSER_TEST_P(
-    AvatarToolbarButtonSignInBenefitsNewSigninIphParameterizedTest,
-    PRE_PRE_NotShownIfLegacyWasShown) {
-  Signin(/*email=*/u"test@gmail.com", /*name=*/u"Account");
-  browser()->GetProfile()->GetPrefs()->ClearPref(
-      prefs::kPrimaryAccountSetAfterSigninMigration);
-}
-
-IN_PROC_BROWSER_TEST_P(
-    AvatarToolbarButtonSignInBenefitsNewSigninIphParameterizedTest,
-    PRE_NotShownIfLegacyWasShown) {
-  if (ShouldShowLegacyIphInPre()) {
-    RunTestSequence(
-        WaitForPromo(feature_engagement::kIPHSignInBenefitsFeature));
-  }
-}
-
-IN_PROC_BROWSER_TEST_P(
-    AvatarToolbarButtonSignInBenefitsNewSigninIphParameterizedTest,
-    NotShownIfLegacyWasShown) {
-  if (ShouldShowLegacyIphInPre()) {
-    // Legacy was shown in PRE_ test, so new IPH should be suppressed.
-    EXPECT_FALSE(WillShowPromo());
-  } else {
-    // Legacy was not shown in PRE_ test, so new IPH should be shown.
-    RunTestSequence(
-        WaitForPromo(feature_engagement::kIPHSignInBenefitsNewSigninFeature));
-  }
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    All,
-    AvatarToolbarButtonSignInBenefitsNewSigninIphParameterizedTest,
-    testing::Bool());
-#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-
-#if !BUILDFLAG(IS_CHROMEOS)
 class MockPasskeyUnlockManager : public webauthn::PasskeyUnlockManager {
  public:
   MOCK_METHOD(bool, ShouldDisplayErrorUi, (), (const, override));
@@ -3989,13 +3801,6 @@ class MockPasskeyUnlockManager : public webauthn::PasskeyUnlockManager {
 class AvatarToolbarButtonPasskeyUnlockErrorBrowserTest
     : public AvatarToolbarButtonBrowserTest {
  public:
-  AvatarToolbarButtonPasskeyUnlockErrorBrowserTest() {
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{device::kPasskeyUnlockErrorUi,
-                              device::kWebAuthnOpportunisticRetrieval},
-        /*disabled_features=*/{});
-  }
-
   void SetUpBrowserContextKeyedServices(
       content::BrowserContext* context) override {
     AvatarToolbarButtonBrowserTest::SetUpBrowserContextKeyedServices(context);
@@ -4032,7 +3837,8 @@ class AvatarToolbarButtonPasskeyUnlockErrorBrowserTest
   }
 
   raw_ptr<MockPasskeyUnlockManager> mock_passkey_unlock_manager_ = nullptr;
-  base::test::ScopedFeatureList scoped_feature_list_;
+  base::test::ScopedFeatureList scoped_feature_list_{
+      device::kPasskeyUnlockErrorUi};
 };
 
 IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonPasskeyUnlockErrorBrowserTest,
@@ -4130,7 +3936,7 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonGradientRingBrowserTest,
   AvatarToolbarButtonTestAccessor avatar_accessor(browser());
 
   // Assert that gradient ring is not enabled initially.
-  ASSERT_FALSE(ShouldShowAvatarGradientRing(browser()->GetProfile()));
+  ASSERT_FALSE(GetAvatarAiDecoration(browser()->GetProfile()).show_decoration);
   ASSERT_TRUE(avatar_accessor.WaitForLinearGradientRing(false));
 
   auto normal_layout = avatar_accessor.GetLayoutAttributes();
@@ -4145,7 +3951,7 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonGradientRingBrowserTest,
   waiter1->Wait();
 
   // The gradient ring should be enabled now.
-  EXPECT_TRUE(ShouldShowAvatarGradientRing(browser()->GetProfile()));
+  EXPECT_TRUE(GetAvatarAiDecoration(browser()->GetProfile()).show_decoration);
   ASSERT_TRUE(avatar_accessor.WaitForLinearGradientRing(true));
 
   auto ring_layout = avatar_accessor.GetLayoutAttributes();
@@ -4165,7 +3971,7 @@ IN_PROC_BROWSER_TEST_P(AvatarToolbarButtonGradientRingBrowserTest,
   SetAiSubscriptionTierForProfile(0);
   waiter2->Wait();
 
-  EXPECT_FALSE(ShouldShowAvatarGradientRing(browser()->GetProfile()));
+  EXPECT_FALSE(GetAvatarAiDecoration(browser()->GetProfile()).show_decoration);
   ASSERT_TRUE(avatar_accessor.WaitForLinearGradientRing(false));
 
   auto restored_layout = avatar_accessor.GetLayoutAttributes();
@@ -4222,13 +4028,9 @@ class AvatarToolbarButtonAsyncPromoRaceRegressionTest
   AvatarToolbarButtonAsyncPromoRaceRegressionTest() {
     if (GetParam()) {
       scoped_feature_list_.InitWithFeatures(
-          {syncer::kReplaceSyncPromosWithSignInPromos, features::kInitialWebUI,
-           features::kWebUIAvatarButton},
-          {});
+          {features::kInitialWebUI, features::kWebUIAvatarButton}, {});
     } else {
-      scoped_feature_list_.InitWithFeatures(
-          {syncer::kReplaceSyncPromosWithSignInPromos},
-          {features::kWebUIAvatarButton});
+      scoped_feature_list_.InitWithFeatures({}, {features::kWebUIAvatarButton});
     }
   }
 
@@ -4336,13 +4138,13 @@ INSTANTIATE_TEST_SUITE_P(All,
 INSTANTIATE_TEST_SUITE_P(All,
                          AvatarToolbarButtonAsyncPromoRaceRegressionTest,
                          testing::Bool());
+INSTANTIATE_TEST_SUITE_P(All,
+                         AvatarToolbarButtonWithSyncBrowserTest,
+                         testing::Bool());
 
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
 INSTANTIATE_TEST_SUITE_P(All, AvatarToolbarButtonBrowserTest, testing::Bool());
 INSTANTIATE_TEST_SUITE_P(All,
                          AvatarToolbarButtonEnterpriseIsolatedBrowserTest,
-                         testing::Bool());
-INSTANTIATE_TEST_SUITE_P(All,
-                         AvatarToolbarButtonWithSyncBrowserTest,
                          testing::Bool());

@@ -17,14 +17,35 @@ import {ColorChangeUpdater} from '//resources/cr_components/color_change_listene
 import {loadTimeData} from '//resources/js/load_time_data.js';
 import {getRequiredElement} from 'chrome://resources/js/util.js';
 
-import {                          //
-  ErrorPanelType,                 //
-  GlicOverlayPageCallbackRouter,  //
-  GlicOverlayPageHandlerFactory,  //
-  GlicOverlayPageHandlerRemote,   //
-  LoadingStyle,                   //
-} from './glic_overlay.mojom-webui.js';
-import type {OverlayState} from './glic_overlay.mojom-webui.js';
+import {browserProxyFactory, ErrorPanelType, LoadingStyle} from './glic_overlay.mojom-webui.js';
+import type {BrowserProxy, OverlayState} from './glic_overlay.mojom-webui.js';
+
+type RelaunchPanelType =
+    ErrorPanelType.kPendingProviderChangeGeminiToGeic|
+    ErrorPanelType.kPendingProviderChangeGeicToGemini|
+    ErrorPanelType.kPendingProviderChangeGeicToOtherGeic;
+
+// Each body entry is shown as a separate paragraph. glic_overlay.html has
+// three paragraph elements (relaunchBody1-3), so a body has at most three.
+const RELAUNCH_COPY:
+    Record<RelaunchPanelType, {header: string, body: string[]}> = {
+      [ErrorPanelType.kPendingProviderChangeGeminiToGeic]: {
+        header: 'relaunchRequiredGeminiToGeicNoticeHeader',
+        body: ['relaunchRequiredGeminiToGeicNotice'],
+      },
+      [ErrorPanelType.kPendingProviderChangeGeicToGemini]: {
+        header: 'relaunchRequiredGeicToGeminiNoticeHeader',
+        body: [
+          'relaunchRequiredGeicToGeminiNotice1',
+          'relaunchRequiredGeicToGeminiNotice2',
+          'relaunchRequiredGeicToGeminiNotice3',
+        ],
+      },
+      [ErrorPanelType.kPendingProviderChangeGeicToOtherGeic]: {
+        header: 'relaunchRequiredGeicToOtherGeicNoticeHeader',
+        body: ['relaunchRequiredGeicToOtherGeicNotice'],
+      },
+    };
 
 interface PageElementTypes {
   panelContainer: HTMLElement;
@@ -36,6 +57,11 @@ interface PageElementTypes {
   disabledByAdminPanel: HTMLElement;
   signInPanel: HTMLElement;
   locationMismatchPanel: HTMLElement;
+  relaunchRequiredPanel: HTMLElement;
+  relaunchHeadline: HTMLElement;
+  relaunchBody1: HTMLElement;
+  relaunchBody2: HTMLElement;
+  relaunchBody3: HTMLElement;
   retry: HTMLElement;
   reload: HTMLElement;
   showError: HTMLElement;
@@ -44,6 +70,7 @@ interface PageElementTypes {
   ineligibleAccountHelpButton: HTMLElement;
   locationMismatchHelpButton: HTMLElement;
   disabledByAdminCloseButton: HTMLElement;
+  relaunchButton: HTMLElement;
 }
 
 const $: PageElementTypes = new Proxy({}, {
@@ -52,51 +79,20 @@ const $: PageElementTypes = new Proxy({}, {
                               },
                             }) as unknown as PageElementTypes;
 
-export interface GlicOverlayBrowserProxy {
-  handler: GlicOverlayPageHandlerRemote;
-  router: GlicOverlayPageCallbackRouter;
-}
-
-export class GlicOverlayBrowserProxyImpl implements GlicOverlayBrowserProxy {
-  handler: GlicOverlayPageHandlerRemote = new GlicOverlayPageHandlerRemote();
-  router: GlicOverlayPageCallbackRouter = new GlicOverlayPageCallbackRouter();
-
-  constructor() {
-    const factory = GlicOverlayPageHandlerFactory.getRemote();
-    factory.createPageHandler(
-        this.router.$.bindNewPipeAndPassRemote(),
-        this.handler.$.bindNewPipeAndPassReceiver());
-  }
-
-  static getInstance(): GlicOverlayBrowserProxy {
-    return instance || (instance = new GlicOverlayBrowserProxyImpl());
-  }
-
-  static setInstance(newInstance: GlicOverlayBrowserProxy): void {
-    instance = newInstance;
-  }
-}
-
-let instance: GlicOverlayBrowserProxy|null = null;
-
 export class GlicOverlayElement extends HTMLElement {
   static get is() {
     return 'glic-overlay';
   }
 
-  private browserProxy: GlicOverlayBrowserProxy;
+  private browserProxy: BrowserProxy = browserProxyFactory.getInstance();
   private listenerId: number|null = null;
   private listenersSetUp: boolean = false;
 
-  constructor() {
-    super();
-    this.browserProxy = GlicOverlayBrowserProxyImpl.getInstance();
-  }
-
   connectedCallback() {
     if (this.listenerId === null) {
-      this.listenerId = this.browserProxy.router.setOverlayState.addListener(
-          this.setOverlayState.bind(this));
+      this.listenerId =
+          this.browserProxy.callbackRouter.setOverlayState.addListener(
+              this.setOverlayState.bind(this));
     }
     if (!this.listenersSetUp) {
       this.setupListeners();
@@ -106,7 +102,7 @@ export class GlicOverlayElement extends HTMLElement {
 
   disconnectedCallback() {
     if (this.listenerId !== null) {
-      this.browserProxy.router.removeListener(this.listenerId);
+      this.browserProxy.callbackRouter.removeListener(this.listenerId);
       this.listenerId = null;
     }
   }
@@ -123,6 +119,18 @@ export class GlicOverlayElement extends HTMLElement {
     } else if (state.error !== undefined) {
       this.showError(state.error);
     }
+  }
+
+  private showRelaunch(type: RelaunchPanelType): void {
+    const {header, body} = RELAUNCH_COPY[type];
+    $.relaunchHeadline.textContent = loadTimeData.getString(header);
+    const paragraphs = [$.relaunchBody1, $.relaunchBody2, $.relaunchBody3];
+    paragraphs.forEach((paragraph, i) => {
+      const key = body[i];
+      paragraph.textContent = key ? loadTimeData.getString(key) : '';
+      paragraph.hidden = !key;
+    });
+    $.relaunchRequiredPanel.hidden = false;
   }
 
   private showError(errorType: ErrorPanelType): void {
@@ -154,6 +162,11 @@ export class GlicOverlayElement extends HTMLElement {
         break;
       case ErrorPanelType.kLocationMismatch:
         $.locationMismatchPanel.hidden = false;
+        break;
+      case ErrorPanelType.kPendingProviderChangeGeminiToGeic:
+      case ErrorPanelType.kPendingProviderChangeGeicToGemini:
+      case ErrorPanelType.kPendingProviderChangeGeicToOtherGeic:
+        this.showRelaunch(errorType);
         break;
       default: {
         const _exhaustiveCheck: never = errorType;
@@ -216,6 +229,10 @@ export class GlicOverlayElement extends HTMLElement {
 
     $.disabledByAdminPanel.querySelector('a')?.addEventListener('click', () => {
       this.browserProxy.handler.onDisabledByAdminLinkClicked();
+    });
+
+    $.relaunchButton.addEventListener('click', () => {
+      this.browserProxy.handler.onRelaunchClicked();
     });
   }
 }

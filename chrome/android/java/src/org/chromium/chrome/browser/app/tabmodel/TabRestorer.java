@@ -12,10 +12,10 @@ import androidx.annotation.IntDef;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
-import org.chromium.build.annotations.EnsuresNonNullIf;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.actor.BackgroundTabRestorationHelper;
+import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.ScopedStorageBatch;
 import org.chromium.chrome.browser.tab.StorageLoadedData;
 import org.chromium.chrome.browser.tab.StorageLoadedData.LoadedTabState;
@@ -24,13 +24,13 @@ import org.chromium.chrome.browser.tab.TabId;
 import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab.TabState;
 import org.chromium.chrome.browser.tab.TabStateStorageFlagHelper;
+import org.chromium.chrome.browser.tab.WebContentsState;
 import org.chromium.chrome.browser.tabmodel.TabCreator;
 import org.chromium.chrome.browser.tabmodel.TabGroupVisualDataStore;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tabmodel.TabModelUtils;
 import org.chromium.chrome.browser.tabmodel.TabOrchestratorType;
-import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.url.GURL;
 import org.chromium.url.Origin;
@@ -190,11 +190,7 @@ class TabRestorer {
      */
     public void onCachedActiveTabLoaded(LoadedTabState loadedTabState) {
         TabState tabState = loadedTabState.tabState;
-        if (mState == State.CANCELLED) {
-            loadedTabState.destroy();
-            return;
-        } else if (mState >= State.LOADED) {
-            loadedTabState.destroy();
+        if (mState == State.CANCELLED || mState >= State.LOADED) {
             return;
         }
 
@@ -205,19 +201,12 @@ class TabRestorer {
         mTabIdsToIgnore.add(loadedTabState.tabId);
 
         int tabCount = mTabModelSelector.getModel(mIncognito).getCount();
-        Tab tab =
-                maybeRestoreTab(
-                        tabState,
-                        loadedTabState.tabId,
-                        tabCount,
-                        /* isActiveTab= */ true,
-                        mIsFromRecreating);
-
-        if (tab == null) {
-            loadedTabState.destroy();
-        } else {
-            loadedTabState.claim();
-        }
+        maybeRestoreTab(
+                tabState,
+                loadedTabState.tabId,
+                tabCount,
+                /* isActiveTab= */ true,
+                mIsFromRecreating);
         mCachedRestoredActiveTabId = loadedTabState.tabId;
     }
 
@@ -287,8 +276,6 @@ class TabRestorer {
             onFinished();
             return;
         }
-
-        maybeDestroyActiveTabState();
 
         // Synchronously restore the active tab if requested as there is no other tab already open
         // and doing this in a posted task would block user interaction with the app until finished.
@@ -386,8 +373,6 @@ class TabRestorer {
 
     /** Cleans up the {@link StorageLoadedData}. */
     private void cleanupStorageLoadedData() {
-        maybeDestroyActiveTabState();
-
         assumeNonNull(mData);
         if (TabStateStorageFlagHelper.isStorageAuthoritative()) {
             TabGroupVisualDataStore.removeCachedGroups(mData.getGroupsData());
@@ -395,8 +380,8 @@ class TabRestorer {
 
         if (mState != State.CANCELLED) {
             for (LoadedTabState loadedTabState : mData.getLoadedTabStates()) {
-                assert loadedTabState.isClaimedOrDestroyed()
-                        : "Not all tabs were claimed or destroyed";
+                assert mTabIdsToIgnore.contains(loadedTabState.tabId)
+                        : "Not all tabs were restored or ignored";
             }
         }
 
@@ -460,11 +445,9 @@ class TabRestorer {
      */
     private void restoreTab(LoadedTabState loadedTabState, int index, boolean isActive) {
         assert mState == State.RESTORING;
-        if (loadedTabState.isClaimedOrDestroyed()) return;
 
         @TabId int tabId = loadedTabState.tabId;
-
-        if (mTabIdsToIgnore.contains(loadedTabState.tabId)) return;
+        if (mTabIdsToIgnore.contains(tabId)) return;
 
         assert mData != null;
         mTabIdsToIgnore.add(tabId);
@@ -473,11 +456,8 @@ class TabRestorer {
         Tab tab =
                 maybeRestoreTab(loadedTabState.tabState, tabId, index, isActive, mIsFromRecreating);
         if (tab == null) {
-            loadedTabState.destroy();
             return;
         }
-
-        loadedTabState.claim();
 
         boolean isIncognito = mIncognito;
         mDelegate.onDetailsRead(
@@ -535,7 +515,6 @@ class TabRestorer {
             if (tab != null) {
                 if (tabState.contentsState != null
                         && tab.getWebContentsState() != tabState.contentsState) {
-                    tabState.contentsState.destroy();
                     tabState.contentsState = null;
                 }
                 if (isActiveTab) {
@@ -549,10 +528,7 @@ class TabRestorer {
 
         if (!isActiveTab) {
             // If activity is recreating, we restore non-active NTPs.
-            boolean isNtp = tabState.url != null && UrlUtilities.isNtpUrl(tabState.url);
-            if (isRecreating && isNtp) {
-                return createTabFromState(tabState, tabId, index);
-            } else if (shouldSkipTab(tabState)) {
+            if (!isRecreating && shouldSkipTab(tabState)) {
                 mRestoreFilteredTabCount++;
                 return null;
             }
@@ -574,10 +550,13 @@ class TabRestorer {
         GURL url = tabState.url;
         boolean hasEmptyBuffer =
                 tabState.contentsState != null && tabState.contentsState.buffer().limit() == 0;
-        if (tab == null && tabState.contentsState != null && !hasEmptyBuffer) {
-            tab = createFrozenTab(tabState, tabId, index);
-        } else if (tab == null && url != null) {
-            tab = createTabWithoutContentsState(url, index);
+        if (tab == null) {
+            maybeSynthesizeWebContentsState(tabState);
+            if (tabState.contentsState != null && !hasEmptyBuffer) {
+                tab = createFrozenTab(tabState, tabId, index);
+            } else if (url != null) {
+                tab = createTabWithoutContentsState(assumeNonNull(url), index);
+            }
         }
 
         if (isActiveTab && tab != null) {
@@ -588,21 +567,40 @@ class TabRestorer {
         return hasEmptyBuffer ? null : tab;
     }
 
-    private @Nullable Tab createTabFromState(TabState tabState, int tabId, int index) {
-        if (tabState.contentsState != null) {
-            return createFrozenTab(tabState, tabId, index);
-        } else {
-            return createTabWithoutContentsState(assumeNonNull(tabState.url), index);
+    /**
+     * Synthesizes a single-navigation {@link WebContentsState} for a tab being restored when {@link
+     * TabState#contentsState} is null.
+     */
+    private void maybeSynthesizeWebContentsState(TabState tabState) {
+        GURL url = tabState.url;
+        if (tabState.contentsState != null || url == null) return;
+
+        TabModel model = mTabModelSelector.getModel(mIncognito);
+        Profile profile = model.getProfile();
+        if (profile == null) return;
+
+        tabState.contentsState =
+                WebContentsState.createSingleNavigationWebContentsState(
+                        profile, /* title= */ "", createRestoredLoadUrlParams(url));
+        if (tabState.contentsState != null && tabState.contentsState.buffer().limit() == 0) {
+            tabState.contentsState = null;
         }
+    }
+
+    private static LoadUrlParams createRestoredLoadUrlParams(GURL url) {
+        LoadUrlParams params = new LoadUrlParams(url);
+        params.setIsRendererInitiated(true);
+        params.setInitiatorOrigin(Origin.createOpaqueOrigin());
+        return params;
     }
 
     /** Creates a Tab from the given URL when tabState.contentsState is null. */
     private @Nullable Tab createTabWithoutContentsState(GURL url, int index) {
-        LoadUrlParams params = new LoadUrlParams(url);
-        params.setIsRendererInitiated(true);
-        params.setInitiatorOrigin(Origin.createOpaqueOrigin());
         return mTabCreator.createNewTab(
-                params, TabLaunchType.FROM_RESTORE, /* parent= */ null, index);
+                createRestoredLoadUrlParams(url),
+                TabLaunchType.FROM_RESTORE,
+                /* parent= */ null,
+                index);
     }
 
     /** Creates a frozen Tab from a non-null contentsState. */
@@ -616,22 +614,6 @@ class TabRestorer {
         return mTabCreator.createFrozenTab(tabState, tabId, index);
     }
 
-    private void maybeDestroyActiveTabState() {
-        assert mData != null;
-
-        if (!wasActiveTabRestoredFromCache()) return;
-
-        LoadedTabState[] loadedTabStates = mData.getLoadedTabStates();
-        if (loadedTabStates.length == 0) return;
-
-        for (LoadedTabState loadedTabState : loadedTabStates) {
-            if (loadedTabState.tabId != mCachedRestoredActiveTabId) continue;
-            loadedTabState.destroy();
-            break;
-        }
-    }
-
-    @EnsuresNonNullIf({"mCachedRestoredActiveTabId"})
     private boolean wasActiveTabRestoredFromCache() {
         return mCachedRestoredActiveTabId != null;
     }

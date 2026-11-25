@@ -17,9 +17,7 @@
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/browser/device_orientation/ui_bundled/scoped_force_portrait_orientation.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
-#import "ios/chrome/browser/first_run/coordinator/first_run_coordinator.h"
 #import "ios/chrome/browser/first_run/coordinator/first_run_post_action_provider.h"
-#import "ios/chrome/browser/first_run/coordinator/first_run_screen_provider.h"
 #import "ios/chrome/browser/first_run/public/features.h"
 #import "ios/chrome/browser/safari_data_import/public/safari_data_import_entry_point.h"
 #import "ios/chrome/browser/safari_data_import/public/safari_data_import_ui_handler.h"
@@ -27,7 +25,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state_observer.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
@@ -39,17 +36,7 @@
 #import "ios/chrome/browser/synced_set_up/public/synced_set_up_metrics.h"
 #import "ios/chrome/browser/synced_set_up/public/synced_set_up_utils.h"
 
-// Used to create PassKey to access the UIViewController through the
-// BrowserProvider interface (crbug.com/40606165).
-class FirstRunProfileAgentPassKeyFactory {
- public:
-  static BrowserProviderPassKey CreateKey() {
-    return base::PassKey<FirstRunProfileAgentPassKeyFactory>();
-  }
-};
-
-@interface FirstRunProfileAgent () <FirstRunCoordinatorDelegate,
-                                    SafariDataImportUIHandler,
+@interface FirstRunProfileAgent () <SafariDataImportUIHandler,
                                     SceneStateObserver>
 
 @end
@@ -61,9 +48,6 @@ class FirstRunProfileAgentPassKeyFactory {
 
   // The scene that is chosen for presenting the FRE on.
   SceneState* _presentingSceneState;
-
-  // Coordinator of the First Run UI.
-  FirstRunCoordinator* _firstRunCoordinator;
 
   // Provider for actions that should be completed after the first run screens.
   // Lazy loaded after the screens complete presentation.
@@ -79,7 +63,6 @@ class FirstRunProfileAgentPassKeyFactory {
 
 - (void)dealloc {
   CHECK(!_firstRunUIBlocker, base::NotFatalUntil::M155);
-  CHECK(!_firstRunCoordinator, base::NotFatalUntil::M155);
   CHECK(!_scopedForceOrientation, base::NotFatalUntil::M155);
   CHECK(!_displayLock, base::NotFatalUntil::M155);
 }
@@ -88,9 +71,6 @@ class FirstRunProfileAgentPassKeyFactory {
 
 - (void)sceneStateDidDisableUI:(SceneState*)sceneState {
   [self releaseUILocks];
-
-  [_firstRunCoordinator stop];
-  _firstRunCoordinator = nil;
 
   [sceneState removeObserver:self];
   _presentingSceneState = nil;
@@ -111,9 +91,8 @@ class FirstRunProfileAgentPassKeyFactory {
         std::make_unique<ScopedForcePortraitOrientation>(appState);
 
     if (IsBestOfAppFREEnabled()) {
-      id<BrowserProvider> presentingInterface =
-          _presentingSceneState.browserProviderInterface.currentBrowserProvider;
-      Browser* browser = presentingInterface.browser;
+      Browser* browser =
+          _presentingSceneState.browserProviderInterface.currentBrowser;
       feature_engagement::Tracker* engagementTracker =
           feature_engagement::TrackerFactory::GetForProfile(
               browser->GetProfile()->GetOriginalProfile());
@@ -154,19 +133,6 @@ class FirstRunProfileAgentPassKeyFactory {
   [self showFirstRunUI];
 }
 
-#pragma mark - FirstRunCoordinatorDelegate
-
-- (void)didFinishFirstRun {
-  DCHECK_EQ(self.profileState.initStage, ProfileInitStage::kFirstRun);
-  __weak FirstRunProfileAgent* weakSelf = self;
-  ProceduralBlock completion = ^{
-    [weakSelf performNextPostFirstRunAction];
-  };
-  [_firstRunCoordinator stopWithCompletion:completion];
-  _firstRunCoordinator = nil;
-  [self.profileState queueTransitionToNextInitStage];
-}
-
 #pragma mark - SafariDataImportUIHandler
 
 - (void)safariDataImportDidDismiss {
@@ -177,18 +143,16 @@ class FirstRunProfileAgentPassKeyFactory {
 
 // Command dispatcher for the presenting scene state.
 - (CommandDispatcher*)commandDispatcher {
-  id<BrowserProvider> presentingInterface =
-      _presentingSceneState.browserProviderInterface.currentBrowserProvider;
-  Browser* browser = presentingInterface.browser;
+  Browser* browser =
+      _presentingSceneState.browserProviderInterface.currentBrowser;
   return browser ? browser->GetCommandDispatcher() : nil;
 }
 
 // Returns the original (i.e., not off-the-record) profile associated with the
 // current browser. May return nullptr.
 - (ProfileIOS*)originalProfile {
-  id<BrowserProvider> presentingInterface =
-      _presentingSceneState.browserProviderInterface.currentBrowserProvider;
-  Browser* browser = presentingInterface.browser;
+  Browser* browser =
+      _presentingSceneState.browserProviderInterface.currentBrowser;
   if (!browser || !browser->GetProfile()) {
     return nullptr;
   }
@@ -252,25 +216,22 @@ class FirstRunProfileAgentPassKeyFactory {
   // UI.
   DCHECK(_presentingSceneState);
 
-  ProfileIOS* profile = [self originalProfile];
-  CHECK(profile);
-
   DCHECK(!_firstRunUIBlocker);
   _firstRunUIBlocker = ScopedUIBlocker::ProfileScoped(_presentingSceneState);
 
-  FirstRunScreenProvider* provider =
-      [[FirstRunScreenProvider alloc] initForProfile:profile];
-  UIViewController* baseViewController =
-      [_presentingSceneState.browserProviderInterface.currentBrowserProvider
-          viewController:FirstRunProfileAgentPassKeyFactory::CreateKey()];
-  Browser* mainBrowser = _presentingSceneState.browserProviderInterface
-                             .mainBrowserProvider.browser;
-  _firstRunCoordinator =
-      [[FirstRunCoordinator alloc] initWithBaseViewController:baseViewController
-                                                      browser:mainBrowser
-                                               screenProvider:provider];
-  _firstRunCoordinator.delegate = self;
-  [_firstRunCoordinator start];
+  __weak __typeof(self) weakSelf = self;
+  id<SceneCommands> sceneHandler =
+      HandlerForProtocol([self commandDispatcher], SceneCommands);
+  [sceneHandler showFirstRunUIWithCompletion:^{
+    [weakSelf firstRunUIDidFinish];
+  }];
+}
+
+// Handles the completion of the First Run UI.
+- (void)firstRunUIDidFinish {
+  DCHECK_EQ(self.profileState.initStage, ProfileInitStage::kFirstRun);
+  [self.profileState queueTransitionToNextInitStage];
+  [self performNextPostFirstRunAction];
 }
 
 // Helper method that performs actions sequentially after the FRE screens are

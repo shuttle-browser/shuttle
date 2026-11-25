@@ -7,26 +7,27 @@ package org.chromium.chrome.browser.payments;
 import androidx.test.filters.MediumTest;
 
 import org.junit.AfterClass;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.RuleChain;
 import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
-import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterizedRunner;
-import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.autofill.AutofillTestHelper;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.payments.PaymentRequestTestRule.AppPresence;
 import org.chromium.chrome.browser.payments.PaymentRequestTestRule.FactorySpeed;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
+import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
 import org.chromium.components.autofill.AutofillProfile;
 import org.chromium.components.payments.Event2;
 import org.chromium.ui.test.util.NightModeTestUtils;
@@ -36,14 +37,23 @@ import java.util.concurrent.TimeoutException;
 
 /** A payment integration test for a merchant that provides free shipping regardless of address. */
 @RunWith(ParameterizedRunner.class)
+@Batch(Batch.PER_CLASS)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class PaymentRequestFreeShippingTest {
-    @Rule
-    public PaymentRequestTestRule mPaymentRequestTestRule =
-            new PaymentRequestTestRule(
-                    "payment_request_free_shipping_test.html", /* delayStartActivity= */ true);
+    // Keep FreshCtaTransitTestRule because testPayWithRender toggles NightMode before activity
+    // launch; toggling NightMode on a live reused ChromeTabbedActivity recreates it and leaks the
+    // old instance via TabImpl (crbug.com/562594074).
+    public final FreshCtaTransitTestRule mCtaTestRule =
+            ChromeTransitTestRules.freshChromeTabbedActivityRule();
 
+    public final PaymentRequestTestRule mPaymentRequestTestRule =
+            new PaymentRequestTestRule(mCtaTestRule, "payment_request_free_shipping_test.html");
+
+    @Rule
+    public final RuleChain mRuleChain =
+            RuleChain.outerRule(mCtaTestRule).around(mPaymentRequestTestRule);
+
+    private static final int RENDER_TEST_PORT = 41234;
     private static final int RENDER_TEST_REVISION = 3;
     private static final String RENDER_TEST_REVISION_DESCRIPTION =
             "Vectorize expand_more and expand_less icons";
@@ -63,19 +73,22 @@ public class PaymentRequestFreeShippingTest {
 
     @ParameterAnnotations.UseMethodParameterBefore(NightModeTestUtils.NightModeParams.class)
     public void setupNightMode(boolean nightModeEnabled) {
-        ChromeNightModeTestUtils.setUpNightModeForChromeActivity(nightModeEnabled);
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> ChromeNightModeTestUtils.setUpNightModeForChromeActivity(nightModeEnabled));
         mRenderTestRule.setNightModeEnabled(nightModeEnabled);
+        // Pin the server port for testPayWithRender so origin strings in goldens don't vary.
+        mCtaTestRule.getEmbeddedTestServerRule().setServerPort(RENDER_TEST_PORT);
     }
 
     @AfterClass
     public static void tearDownAfterActivityDestroyed() {
-        ChromeNightModeTestUtils.tearDownNightModeAfterChromeActivityDestroyed();
+        ThreadUtils.runOnUiThreadBlocking(
+                ChromeNightModeTestUtils::tearDownNightModeAfterChromeActivityDestroyed);
     }
 
     @Before
     public void setUp() throws Exception {
-        mPaymentRequestTestRule.startMainActivity();
-        mPaymentRequestTestRule.setObserversAndWaitForInitialPageLoad();
+        mPaymentRequestTestRule.startOnTestPage();
         AutofillTestHelper helper = new AutofillTestHelper();
         // The user has a shipping address on disk.
         helper.setProfile(
@@ -354,6 +367,15 @@ public class PaymentRequestFreeShippingTest {
     @MediumTest
     @Feature({"Payments"})
     public void testPaymentRequestEventsMetric() throws TimeoutException {
+        int expectedSample =
+                Event2.SHOWN
+                        | Event2.USER_ABORTED
+                        | Event2.HAD_INITIAL_FORM_OF_PAYMENT
+                        | Event2.REQUEST_SHIPPING
+                        | Event2.REQUEST_METHOD_OTHER;
+        HistogramWatcher watcher =
+                HistogramWatcher.newSingleRecordWatcher("PaymentRequest.Events2", expectedSample);
+
         // Start and abort the Payment Request.
         mPaymentRequestTestRule.runJavaScriptAndWaitForUiEvent(
                 "buyWithMethods([{supportedMethods: 'https://bobpay.test'}]);",
@@ -363,15 +385,6 @@ public class PaymentRequestFreeShippingTest {
         mPaymentRequestTestRule.expectResultContains(
                 new String[] {"User closed the Payment Request UI."});
 
-        int expectedSample =
-                Event2.SHOWN
-                        | Event2.USER_ABORTED
-                        | Event2.HAD_INITIAL_FORM_OF_PAYMENT
-                        | Event2.REQUEST_SHIPPING
-                        | Event2.REQUEST_METHOD_OTHER;
-        Assert.assertEquals(
-                1,
-                RecordHistogram.getHistogramValueCountForTesting(
-                        "PaymentRequest.Events2", expectedSample));
+        watcher.assertExpected();
     }
 }

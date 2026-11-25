@@ -52,7 +52,6 @@
 #include "services/network/public/cpp/features.h"
 #include "services/network/public/cpp/web_sandbox_flags.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom-blink.h"
-#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
 #include "third_party/blink/public/mojom/fetch/fetch_api_request.mojom-blink.h"
@@ -273,14 +272,11 @@ void FrameLoader::Init(
   navigation_params->frame_policy =
       frame_->Owner() ? frame_->Owner()->GetFramePolicy() : FramePolicy();
   navigation_params->document_ukm_source_id = document_ukm_source_id;
-  if (base::FeatureList::IsEnabled(
-          blink::features::kUseSandboxTokenForOriginDerivation)) {
-    if ((policy_container->GetPolicies().sandbox_flags &
-         network::mojom::blink::WebSandboxFlags::kOrigin) !=
-        network::mojom::blink::WebSandboxFlags::kNone) {
-      CHECK(sandbox_origin_token);
-      navigation_params->sandbox_origin_token = std::move(sandbox_origin_token);
-    }
+  if ((policy_container->GetPolicies().sandbox_flags &
+       network::mojom::blink::WebSandboxFlags::kOrigin) !=
+      network::mojom::blink::WebSandboxFlags::kNone) {
+    CHECK(sandbox_origin_token);
+    navigation_params->sandbox_origin_token = std::move(sandbox_origin_token);
   }
 
   DocumentLoader* new_document_loader = MakeGarbageCollected<DocumentLoader>(
@@ -442,6 +438,7 @@ void FrameLoader::DispatchUnloadEventAndFillOldDocumentInfoIfNeeded(
   frame_->GetDocument()->DispatchUnloadEvents(
       &old_document_info->unload_timing_info,
       will_commit_new_document_in_this_frame);
+  old_document_info->unreported_ad_task_time = frame_->UnreportedAdTaskTime();
   old_document_info->total_lifecycle_events_processing_time_on_commit =
       std::max(
           old_document_info->total_lifecycle_events_processing_time_on_commit,
@@ -600,7 +597,8 @@ void FrameLoader::ProcessScrollForSameDocumentNavigation(
   TakeObjectSnapshot();
 }
 
-bool FrameLoader::AllowRequestForThisFrame(const FrameLoadRequest& request) {
+bool FrameLoader::AllowRequestForThisFrame(const FrameLoadRequest& request,
+                                           bool is_same_document_navigation) {
   // If no origin Document* was specified, skip remaining security checks and
   // assume the caller has fully initialized the FrameLoadRequest.
   if (!request.GetOriginWindow())
@@ -619,7 +617,11 @@ bool FrameLoader::AllowRequestForThisFrame(const FrameLoadRequest& request) {
     }
   }
 
-  if (!request.CanDisplay(url)) {
+  // A fragment navigation initiated by this document does not load the URL
+  // again, even if its sandboxed origin cannot load local resources.
+  if (!request.CanDisplay(url) &&
+      !(is_same_document_navigation &&
+        request.GetOriginWindow() == frame_->DomWindow())) {
     request.GetOriginWindow()->AddConsoleMessage(
         MakeGarbageCollected<ConsoleMessage>(
             mojom::ConsoleMessageSource::kSecurity,
@@ -738,8 +740,44 @@ void FrameLoader::StartNavigation(FrameLoadRequest& request,
                url.GetString().Utf8(), "load_type",
                static_cast<int>(frame_load_type));
 
-  if (!AllowRequestForThisFrame(request))
+  // Convert navigations from the initial empty document to do replacement if
+  // needed. Note that we don't convert reloads or history navigations (so only
+  // kStandard navigations can get converted to do replacement).
+  if (frame_load_type == WebFrameLoadType::kStandard &&
+      IsOnInitialEmptyDocument()) {
+    frame_load_type = WebFrameLoadType::kReplaceCurrentItem;
+  }
+
+  bool same_document_navigation =
+      request.GetNavigationPolicy() == kNavigationPolicyCurrentTab &&
+      ShouldPerformFragmentNavigation(
+          request.Form(), resource_request.HttpMethod(), frame_load_type, url);
+
+  if (RuntimeEnabledFeatures::
+          TreatMhtmlInitialDocumentLoadsAsCrossDocumentEnabled()) {
+    if (auto* parent = DynamicTo<LocalFrame>(frame_->Tree().Parent())) {
+      // Within MHTML archives, treat the initial about:blank#fragment
+      // navigation as cross-document. Although it appears to be a same-document
+      // fragment navigation, it actually commits a new document with a new
+      // opaque origin.
+      //
+      // TODO(crbug.com/423663315): Consider refining this logic to only treat
+      // the initial about:blank#fragment navigation in MHTML as cross-document
+      // if the MHTML archive actually overrides the about:blank resource. If it
+      // doesn't, the navigation may be better treated as same-document,
+      // matching non-MHTML behavior.
+      if (parent->Loader().GetDocumentLoader()->HasBeenLoadedAsWebArchive()) {
+        if (url.HasFragmentIdentifier() &&
+            frame_->GetDocument()->IsInitialEmptyDocument()) {
+          same_document_navigation = false;
+        }
+      }
+    }
+  }
+
+  if (!AllowRequestForThisFrame(request, same_document_navigation)) {
     return;
+  }
 
   // Block renderer-initiated loads of data: and filesystem: URLs in the top
   // frame (unless they are reload requests).
@@ -775,41 +813,6 @@ void FrameLoader::StartNavigation(FrameLoadRequest& request,
   if (url.ProtocolIs("filesystem")) {
     document_loader_->CountUse(
         mojom::blink::WebFeature::kFileSystemUrlNavigation);
-  }
-
-  // Convert navigations from the initial empty document to do replacement if
-  // needed. Note that we don't convert reloads or history navigations (so only
-  // kStandard navigations can get converted to do replacement).
-  if (frame_load_type == WebFrameLoadType::kStandard &&
-      IsOnInitialEmptyDocument()) {
-    frame_load_type = WebFrameLoadType::kReplaceCurrentItem;
-  }
-
-  bool same_document_navigation =
-      request.GetNavigationPolicy() == kNavigationPolicyCurrentTab &&
-      ShouldPerformFragmentNavigation(
-          request.Form(), resource_request.HttpMethod(), frame_load_type, url);
-
-  if (RuntimeEnabledFeatures::
-          TreatMhtmlInitialDocumentLoadsAsCrossDocumentEnabled()) {
-    if (auto* parent = DynamicTo<LocalFrame>(frame_->Tree().Parent())) {
-      // Within MHTML archives, treat the initial about:blank#fragment
-      // navigation as cross-document. Although it appears to be a same-document
-      // fragment navigation, it actually commits a new document with a new
-      // opaque origin.
-      //
-      // TODO(crbug.com/423663315): Consider refining this logic to only treat
-      // the initial about:blank#fragment navigation in MHTML as cross-document
-      // if the MHTML archive actually overrides the about:blank resource. If it
-      // doesn't, the navigation may be better treated as same-document,
-      // matching non-MHTML behavior.
-      if (parent->Loader().GetDocumentLoader()->HasBeenLoadedAsWebArchive()) {
-        if (url.HasFragmentIdentifier() &&
-            frame_->GetDocument()->IsInitialEmptyDocument()) {
-          same_document_navigation = false;
-        }
-      }
-    }
   }
 
   // Perform same document navigation.
@@ -1204,8 +1207,16 @@ void FrameLoader::CommitNavigation(
   //   with regards to the last commit.
   // In this rare case, we intentionally proceed as cross-document.
 
-  if (!CancelProvisionalLoaderForNewNavigation())
-    return;
+  {
+    // CancelProvisionalLoaderForNewNavigation() calls Document::Abort(), which
+    // can synchronously fire readystatechange. Disable navigations and
+    // re-entrant commits while aborting the previous document, matching
+    // DetachDocument() below.
+    FrameNavigationDisabler navigation_disabler(*frame_);
+    if (!CancelProvisionalLoaderForNewNavigation()) {
+      return;
+    }
+  }
 
   FillStaticResponseIfNeeded(navigation_params.get(), frame_);
   AssertCanNavigate(navigation_params.get(), frame_);
@@ -1230,16 +1241,14 @@ void FrameLoader::CommitNavigation(
   // is being unloaded/swapped out.
   auto url_origin = SecurityOrigin::Create(navigation_params->url);
   auto* info = MakeGarbageCollected<OldDocumentInfoForCommit>(url_origin);
-  if (RuntimeEnabledFeatures::ResponsiveIframesEnabled()) {
-    if (frame_->IsProvisional()) {
-      if (const Frame* prev_frame = frame_->GetProvisionalOwnerFrame()) {
-        info->old_document_origin =
-            prev_frame->GetSecurityContext()->GetSecurityOrigin();
-      }
-    } else {
+  if (frame_->IsProvisional()) {
+    if (const Frame* prev_frame = frame_->GetProvisionalOwnerFrame()) {
       info->old_document_origin =
-          frame_->GetSecurityContext()->GetSecurityOrigin();
+          prev_frame->GetSecurityContext()->GetSecurityOrigin();
     }
+  } else {
+    info->old_document_origin =
+        frame_->GetSecurityContext()->GetSecurityOrigin();
   }
   ScopedOldDocumentInfoForCommitCapturer scoped_old_document_info(info);
   scoped_old_document_info.CurrentInfo()

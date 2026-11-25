@@ -17,12 +17,15 @@ import android.view.ViewGroup;
 import androidx.annotation.ColorInt;
 import androidx.annotation.Px;
 import androidx.annotation.StringRes;
+import androidx.core.graphics.Insets;
 import androidx.core.view.WindowInsetsCompat;
 
+import org.chromium.base.Callback;
 import org.chromium.base.CallbackUtils;
 import org.chromium.base.Log;
 import org.chromium.base.MathUtils;
 import org.chromium.base.ObserverList;
+import org.chromium.base.ResettersForTesting;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent.GlowSpec;
@@ -32,6 +35,8 @@ import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.Stat
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetView.SheetLayoutMode;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetView.TouchHandler;
 import org.chromium.ui.accessibility.AccessibilityState;
+import org.chromium.ui.base.LocalizationUtils;
+import org.chromium.ui.base.ViewUtils;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.util.ColorUtils;
 import org.chromium.ui.util.TokenHolder;
@@ -63,29 +68,62 @@ class BottomSheetMediator implements TouchHandler {
     static final float HALF_HEIGHT_RATIO = 0.75f;
 
     private static final GlowSpec DEFAULT_GLOW_SPEC = new GlowSpec(0, GlowSpec.ShadowSize.DEFAULT);
+    private static @Nullable Boolean sIsSmallScreenForTesting;
 
     private final PropertyModel mModel;
     private final ObserverList<BottomSheetObserver> mObservers = new ObserverList<>();
     private final TokenHolder mKeyboardTokenHolder = new TokenHolder(CallbackUtils.emptyRunnable());
+    private final float mMinHalfFullDistance;
+    private final @Px int mDesktopBottomMargin;
+    private final @Px int mLargeFormFactorWidth;
+    private final @Px int mLargeFormFactorEdgeGap;
+    private final @Px int mNarrowWidthThreshold;
+    private final @Px int mNarrowWidth;
+
+    /** The visible rect for the screen taking the keyboard into account. */
+    private final Rect mVisibleViewportRect = new Rect();
 
     private @Nullable BottomSheetContent mSheetContent;
     private @SheetState int mCurrentState = SheetState.HIDDEN;
     private @SheetState int mTargetState = SheetState.NONE;
     private @SheetState int mScrollingStartState = SheetState.NONE;
     private @SheetState int mStateBeforeKeyboardShown = SheetState.NONE;
+    private @Px int mContainerWidth;
+    private @Px int mContainerHeight;
+    private boolean mAlwaysFullWidth;
     private int mKeyboardToken = TokenHolder.INVALID_TOKEN;
     private boolean mIsSheetOpen;
     private @Nullable BottomSheetSwipeDetector mSwipeDetector;
     private boolean mIsTouchEnabled = true;
     private @Nullable Supplier<Boolean> mIsHidingSupplier;
+    private boolean mIsLargeFormFactor;
+    private @Px int mRequestedBottomMargin;
+    private @Px int mBottomMargin;
+    private @Nullable Callback<Integer> mContainerBottomMarginApplier;
+    private Supplier<Integer> mEdgeToEdgeBottomInsetSupplier = () -> 0;
+    private Supplier<Integer> mKeyboardInsetSupplier = () -> 0;
+    private final Resources mResources;
 
     /**
      * Creates a new BottomSheetMediator.
      *
      * @param model The PropertyModel for the bottom sheet.
+     * @param resources Android resources for loading layout dimensions.
      */
-    BottomSheetMediator(PropertyModel model) {
+    BottomSheetMediator(PropertyModel model, Resources resources) {
         mModel = model;
+        mResources = resources;
+        mMinHalfFullDistance =
+                resources.getDimensionPixelSize(R.dimen.bottom_sheet_min_full_half_distance);
+        mDesktopBottomMargin =
+                resources.getDimensionPixelSize(R.dimen.bottom_sheet_desktop_bottom_margin);
+        mLargeFormFactorWidth =
+                resources.getDimensionPixelSize(R.dimen.bottom_sheet_large_form_factor_width);
+        mLargeFormFactorEdgeGap =
+                resources.getDimensionPixelSize(R.dimen.bottom_sheet_large_form_factor_edge_gap);
+        mNarrowWidthThreshold =
+                resources.getDimensionPixelSize(R.dimen.bottom_sheet_narrow_width_threshold);
+        mNarrowWidth = resources.getDimensionPixelSize(R.dimen.bottom_sheet_narrow_width);
         mModel.set(BottomSheetProperties.TOUCH_HANDLER, this);
     }
 
@@ -119,8 +157,11 @@ class BottomSheetMediator implements TouchHandler {
 
     /** Clears all registered observers when destroying the mediator. */
     void destroy() {
+        mContainerBottomMarginApplier = null;
         mObservers.clear();
         mIsTouchEnabled = false;
+        mEdgeToEdgeBottomInsetSupplier = () -> 0;
+        mKeyboardInsetSupplier = () -> 0;
     }
 
     /**
@@ -246,6 +287,52 @@ class BottomSheetMediator implements TouchHandler {
      */
     void setTargetSheetState(@SheetState int targetState) {
         mTargetState = targetState;
+    }
+
+    /**
+     * Resolves the active target state if settling, or the current stationary state, falling back
+     * to {@link SheetState#FULL}.
+     */
+    @SheetState
+    int getTargetOrCurrentState() {
+        if (mTargetState != SheetState.NONE && mTargetState != SheetState.SCROLLING) {
+            return mTargetState;
+        }
+        if (mCurrentState != SheetState.NONE && mCurrentState != SheetState.SCROLLING) {
+            return mCurrentState;
+        }
+        return SheetState.FULL;
+    }
+
+    void setEdgeToEdgeBottomInsetSupplier(Supplier<Integer> edgeToEdgeBottomInsetSupplier) {
+        mEdgeToEdgeBottomInsetSupplier = edgeToEdgeBottomInsetSupplier;
+    }
+
+    void setKeyboardInsetSupplier(Supplier<Integer> keyboardInsetSupplier) {
+        mKeyboardInsetSupplier = keyboardInsetSupplier;
+    }
+
+    @Px
+    int getEdgeToEdgeBottomInset() {
+        if (mBottomMargin != 0) return 0;
+        Integer bottomInsetDp = mEdgeToEdgeBottomInsetSupplier.get();
+        assert bottomInsetDp != null;
+        @Px int bottomInset = ViewUtils.dpToPx(mResources.getDisplayMetrics(), bottomInsetDp);
+        @Px int keyboardInset = mKeyboardInsetSupplier.get();
+        return Math.max(0, bottomInset - keyboardInset);
+    }
+
+    /**
+     * Resolves the effective edge-to-edge bottom inset for the current content and target/current
+     * state. Sheets that cover the bottom controls handle the bottom safe-area inset internally
+     * when expanded (HALF/FULL), so 0 is returned there; in PEEK mode, the full edge-to-edge bottom
+     * inset is still applied.
+     */
+    @Px
+    int getEffectiveEdgeToEdgeBottomInset() {
+        return contentCoversBottomControls() && getTargetOrCurrentState() != SheetState.PEEK
+                ? 0
+                : getEdgeToEdgeBottomInset();
     }
 
     /**
@@ -416,16 +503,62 @@ class BottomSheetMediator implements TouchHandler {
         }
     }
 
-    /**
-     * Notifies observers that the container size changed.
-     *
-     * @param newWidth The new width in pixels.
-     * @param newHeight The new height in pixels.
-     */
-    void notifyContainerSizeChanged(int newWidth, int newHeight) {
+    /** Notifies observers that the container size changed. */
+    void notifyContainerSizeChanged() {
         for (BottomSheetObserver obs : mObservers) {
-            obs.onContainerSizeChanged(newWidth, newHeight);
+            obs.onContainerSizeChanged(mContainerWidth, mContainerHeight);
         }
+    }
+
+    /**
+     * Sets the requested bottom margin of the sheet container in pixels and updates the effective
+     * bottom margin.
+     *
+     * @param bottomMargin The requested bottom margin in pixels.
+     */
+    void setBottomMargin(@Px int bottomMargin) {
+        mRequestedBottomMargin = bottomMargin;
+        updateContainerBottomMargin();
+    }
+
+    /**
+     * Sets the callback invoked synchronously to apply the effective container bottom margin to the
+     * view hierarchy before observers are notified.
+     */
+    void setContainerBottomMarginApplier(Callback<Integer> containerBottomMarginApplier) {
+        mContainerBottomMarginApplier = containerBottomMarginApplier;
+    }
+
+    /**
+     * Recomputes the effective bottom margin of the sheet container, applies it via the registered
+     * container margin applier, and notifies observers if the effective margin changed.
+     *
+     * <p>Callers must invoke this after the requested margin, large-form-factor flag, or sheet
+     * content changes (e.g. via {@link #setBottomMargin} or layout mode updates).
+     */
+    void updateContainerBottomMargin() {
+        // Enforce the baseline visual requirements for large form factor devices: ensure the sheet
+        // physically floats above the logical bottom by attaching a rigid bottom margin offset.
+        @Px
+        int effectiveBottomMargin =
+                mRequestedBottomMargin + (isLargeFormFactorUiEnabled() ? mDesktopBottomMargin : 0);
+
+        // TODO(crbug.com/521433079): Should early return if this doesn't change. Leaving for now to
+        // ensure we don't introduce subtle client regressions.
+        boolean bottomMarginChanged = mBottomMargin != effectiveBottomMargin;
+        mBottomMargin = effectiveBottomMargin;
+        if (mContainerBottomMarginApplier != null) {
+            mContainerBottomMarginApplier.onResult(mBottomMargin);
+        }
+
+        if (!bottomMarginChanged) return;
+        notifyContainerBottomMarginChanged(mBottomMargin);
+    }
+
+    /** Returns the effective bottom margin of the sheet container in pixels. */
+    @Px
+    int getContainerBottomMargin() {
+        return mBottomMargin;
     }
 
     /**
@@ -471,26 +604,25 @@ class BottomSheetMediator implements TouchHandler {
     /**
      * Finds the target state for the sheet based on the current state, offset, and velocity.
      *
+     * <p>Note: {@code halfHeight} is derived internally ({@code getHalfRatio() *
+     * getMaxSheetHeight()}), whereas {@code peekHeight} and {@code fullHeight} remain passed from
+     * {@link BottomSheetCoordinator} because {@code PEEK} requires measuring toolbar and handlebar
+     * views and {@code FULL} requires {@code ensureContentDesiredHeightIsComputed()} for {@code
+     * WRAP_CONTENT}.
+     *
      * @param sheetHeight The current sheet height in flux.
      * @param yVelocity The vertical velocity of the sheet in flux.
-     * @param isHalfStateEnabled Whether the HALF state is enabled.
-     * @param isPeekStateEnabled Whether the PEEK state is enabled.
-     * @param swipeToDismissEnabled Whether swipe to dismiss is enabled.
      * @param peekHeight The height of the PEEK state in pixels.
-     * @param halfHeight The height of the HALF state in pixels.
      * @param fullHeight The height of the FULL state in pixels.
      * @return The target {@link SheetState}.
      */
     @SheetState
     int getTargetSheetState(
-            float sheetHeight,
-            float yVelocity,
-            boolean isHalfStateEnabled,
-            boolean isPeekStateEnabled,
-            boolean swipeToDismissEnabled,
-            float peekHeight,
-            float halfHeight,
-            float fullHeight) {
+            float sheetHeight, float yVelocity, float peekHeight, float fullHeight) {
+        boolean isHalfStateEnabled = isHalfStateEnabled();
+        boolean isPeekStateEnabled = isPeekStateEnabled();
+        boolean swipeToDismissEnabled = swipeToDismissEnabled();
+        float halfHeight = getHalfRatio() * getMaxSheetHeight();
         @SheetState
         int minSwipableState =
                 (swipeToDismissEnabled || !isPeekStateEnabled)
@@ -736,107 +868,120 @@ class BottomSheetMediator implements TouchHandler {
     }
 
     /**
+     * Updates the visible viewport bounds from a window visible display frame.
+     *
+     * @param displayFrame The display frame rect.
+     * @param decorBottom The bottom position of the window decor view in pixels.
+     */
+    void updateViewportFromDisplayFrame(Rect displayFrame, @Px int decorBottom) {
+        mVisibleViewportRect.set(displayFrame);
+        if (!contentCoversBottomControls()) {
+            mVisibleViewportRect.bottom =
+                    Math.min(mVisibleViewportRect.bottom, decorBottom - getEdgeToEdgeBottomInset());
+        }
+        mVisibleViewportRect.bottom = Math.max(mVisibleViewportRect.bottom, 0);
+    }
+
+    /**
+     * Updates the visible viewport bounds from window insets and decor view dimensions.
+     *
+     * @param insets The raw window insets.
+     * @param decorWidth The window decor view width in pixels.
+     * @param decorHeight The window decor view height in pixels.
+     */
+    void updateViewportFromWindowInsets(
+            WindowInsetsCompat insets, @Px int decorWidth, @Px int decorHeight) {
+        int insetTypeMask = WindowInsetsCompat.Type.ime() | WindowInsetsCompat.Type.statusBars();
+        if (!contentCoversBottomControls()) {
+            insetTypeMask |= WindowInsetsCompat.Type.systemBars();
+        }
+        Insets combinedInsets = insets.getInsets(insetTypeMask);
+        @Px int bottomInset = combinedInsets.bottom;
+        if (!contentCoversBottomControls()) {
+            bottomInset = Math.max(bottomInset, getEdgeToEdgeBottomInset());
+        }
+        bottomInset = Math.min(bottomInset, decorHeight);
+
+        mVisibleViewportRect.set(
+                combinedInsets.left,
+                combinedInsets.top,
+                decorWidth - combinedInsets.right,
+                decorHeight - bottomInset);
+    }
+
+    Rect getVisibleViewportRectForTesting() {
+        return mVisibleViewportRect;
+    }
+
+    /**
      * Calculates the height of the content container when resizing content at full height.
      *
-     * @param halfHeightPx The sheet height in pixels for the HALF state.
      * @param fullHeightPx The sheet height in pixels for the FULL state.
      * @param currentOffsetPx The current sheet offset in pixels.
-     * @param visibleViewportRect The visible viewport bounds.
      * @return The calculated content container height in pixels.
      */
     @Px
-    int calculateContentContainerHeight(
-            float halfHeightPx,
-            float fullHeightPx,
-            float currentOffsetPx,
-            Rect visibleViewportRect) {
+    int calculateContentContainerHeight(float fullHeightPx, float currentOffsetPx) {
+        float halfHeightPx = getHalfRatio() * getMaxSheetHeight();
         int newHeight = (int) MathUtils.clamp(currentOffsetPx, halfHeightPx, fullHeightPx);
-        return Math.min(visibleViewportRect.height(), newHeight);
+        return Math.min(mVisibleViewportRect.height(), newHeight);
     }
 
     /**
      * Updates the vertical layout properties of the bottom sheet content container and background
      * in the model in a single pass.
      *
-     * @param e2eBottomInset The edge-to-edge bottom inset in pixels.
-     * @param visibleViewportRect The visible viewport bounds.
      * @param decorHeight The window decor view height in pixels.
      * @param handlebarHeight The measured handlebar height in pixels.
      * @param currentOffsetPx The current vertical offset of the sheet from the bottom in pixels.
-     * @param isLargeFormFactorUiEnabled Whether large form factor popup UI is enabled.
-     * @param isFullHeightResizeContent Whether the sheet resizes content at full height.
-     * @param halfHeightPx The sheet height for the HALF state in pixels.
      * @param fullHeightPx The sheet height for the FULL state in pixels.
      * @param stateHeightPx The sheet height for the target or current state in pixels.
      */
     void updateVerticalLayout(
-            @Px int e2eBottomInset,
-            Rect visibleViewportRect,
             @Px int decorHeight,
             @Px int handlebarHeight,
             float currentOffsetPx,
-            boolean isLargeFormFactorUiEnabled,
-            boolean isFullHeightResizeContent,
-            float halfHeightPx,
             float fullHeightPx,
             @Px int stateHeightPx) {
         setContentTopMargin(handlebarHeight);
         setContainerHeight(
                 calculateTargetContainerHeight(
-                        isLargeFormFactorUiEnabled,
-                        isFullHeightResizeContent,
-                        halfHeightPx,
-                        fullHeightPx,
-                        currentOffsetPx,
-                        visibleViewportRect,
-                        stateHeightPx,
-                        handlebarHeight));
-        setContentBottomPadding(
-                calculateContentBottomPadding(
-                        isLargeFormFactorUiEnabled, isFullHeightResizeContent, e2eBottomInset));
-        setBackgroundHeight(
-                calculateTargetBackgroundHeight(isLargeFormFactorUiEnabled, fullHeightPx));
+                        fullHeightPx, currentOffsetPx, stateHeightPx, handlebarHeight));
+        setContentBottomPadding(calculateContentBottomPadding());
+        setBackgroundHeight(calculateTargetBackgroundHeight(fullHeightPx));
         setKeyboardCurtainHeight(decorHeight);
-        updateVisibleBackgroundHeight(isLargeFormFactorUiEnabled, currentOffsetPx, fullHeightPx);
+        updateVisibleBackgroundHeight(currentOffsetPx, fullHeightPx);
     }
 
     /**
      * Calculates the vertical translation of the sheet view in pixels, clamped to {@code >= 0f}.
      *
-     * @param containerHeight The height of the sheet container in pixels.
      * @param currentOffsetPx The current vertical offset of the sheet from the bottom in pixels.
      * @param browserControlsOffset The vertical offset from browser controls in pixels.
-     * @param e2eBottomInset The edge-to-edge bottom inset in pixels.
      * @return The non-negative vertical translation in pixels.
      */
-    float calculateSheetTranslationY(
-            @Px int containerHeight,
-            float currentOffsetPx,
-            float browserControlsOffset,
-            @Px int e2eBottomInset) {
+    float calculateSheetTranslationY(float currentOffsetPx, float browserControlsOffset) {
         // The browser controls offset is added here so that the sheet's toolbar behaves like the
         // browser controls do.
+        @Px int e2eBottomInset = getEffectiveEdgeToEdgeBottomInset();
         float bottomInsetAdjustment =
                 currentOffsetPx <= 0 ? 0f : Math.min(currentOffsetPx, e2eBottomInset);
         float translationY =
-                (containerHeight - currentOffsetPx) + browserControlsOffset - bottomInsetAdjustment;
+                (mContainerHeight - currentOffsetPx)
+                        + browserControlsOffset
+                        - bottomInsetAdjustment;
         return Math.max(0f, translationY);
     }
 
     int calculateTargetContainerHeight(
-            boolean isLargeFormFactorUiEnabled,
-            boolean isFullHeightResizeContent,
-            float halfHeightPx,
             float fullHeightPx,
             float currentOffsetPx,
-            Rect visibleViewportRect,
             @Px int stateHeightPx,
             @Px int handlebarHeight) {
-        if (isFullHeightResizeContent) {
-            return calculateContentContainerHeight(
-                    halfHeightPx, fullHeightPx, currentOffsetPx, visibleViewportRect);
+        if (isFullHeightResizeContent()) {
+            return calculateContentContainerHeight(fullHeightPx, currentOffsetPx);
         }
-        if (!isLargeFormFactorUiEnabled) {
+        if (!isLargeFormFactorUiEnabled()) {
             return ViewGroup.LayoutParams.MATCH_PARENT;
         }
         if (isFullHeightWrapContent()) {
@@ -846,15 +991,14 @@ class BottomSheetMediator implements TouchHandler {
     }
 
     @Px
-    int calculateContentBottomPadding(
-            boolean isLargeFormFactorUiEnabled,
-            boolean isFullHeightResizeContent,
-            @Px int e2eBottomInset) {
-        return (isFullHeightResizeContent || isLargeFormFactorUiEnabled) ? 0 : e2eBottomInset;
+    int calculateContentBottomPadding() {
+        return (isFullHeightResizeContent() || isLargeFormFactorUiEnabled())
+                ? 0
+                : getEffectiveEdgeToEdgeBottomInset();
     }
 
-    int calculateTargetBackgroundHeight(boolean isLargeFormFactorUiEnabled, float fullHeightPx) {
-        return isLargeFormFactorUiEnabled
+    int calculateTargetBackgroundHeight(float fullHeightPx) {
+        return isLargeFormFactorUiEnabled()
                 ? (int) fullHeightPx
                 : ViewGroup.LayoutParams.MATCH_PARENT;
     }
@@ -868,9 +1012,8 @@ class BottomSheetMediator implements TouchHandler {
      * rounded corners and drop shadows stay perfectly aligned with the bottom of the window instead
      * of disappearing below it.
      */
-    void updateVisibleBackgroundHeight(
-            boolean isLargeFormFactorUiEnabled, float currentOffsetPx, float fullHeightPx) {
-        if (!isLargeFormFactorUiEnabled) {
+    void updateVisibleBackgroundHeight(float currentOffsetPx, float fullHeightPx) {
+        if (!isLargeFormFactorUiEnabled()) {
             setVisibleBackgroundHeight(0);
             return;
         }
@@ -913,6 +1056,35 @@ class BottomSheetMediator implements TouchHandler {
         mModel.set(BottomSheetProperties.SHEET_LAYOUT_MODE, mode);
     }
 
+    /** Sets whether the device is on a platform that supports a large form factor. */
+    void setIsLargeFormFactor(boolean isLargeFormFactor) {
+        mIsLargeFormFactor = isLargeFormFactor;
+    }
+
+    /** Returns whether the large form factor popup UI is enabled for the current content. */
+    boolean isLargeFormFactorUiEnabled() {
+        if (mSheetContent == null) return false;
+        return mIsLargeFormFactor && mSheetContent.supportsLargeFormFactor();
+    }
+
+    /** Returns whether the large form factor fallback UI is enabled for the current content. */
+    boolean isLargeFormFactorFallbackUiEnabled() {
+        if (mSheetContent == null) return false;
+        return mIsLargeFormFactor && !mSheetContent.supportsLargeFormFactor();
+    }
+
+    /** Resolves the {@link SheetLayoutMode} for the current form factor and sheet content. */
+    @SheetLayoutMode
+    int resolveSheetLayoutMode() {
+        if (isLargeFormFactorUiEnabled()) {
+            return SheetLayoutMode.DESKTOP_POPUP;
+        }
+        if (isLargeFormFactorFallbackUiEnabled()) {
+            return SheetLayoutMode.DESKTOP_FALLBACK;
+        }
+        return SheetLayoutMode.STANDARD;
+    }
+
     /**
      * Sets the sheet width in the model.
      *
@@ -920,6 +1092,109 @@ class BottomSheetMediator implements TouchHandler {
      */
     void setSheetWidth(@Px int width) {
         mModel.set(BottomSheetProperties.SHEET_WIDTH_PX, width);
+    }
+
+    /** Updates the measured width and height of the outer sheet container. */
+    void setSheetContainerDimensions(@Px int width, @Px int height) {
+        mContainerWidth = width;
+        mContainerHeight = height;
+    }
+
+    /** Returns the width of the outer sheet container in pixels. */
+    @Px
+    int getSheetContainerWidth() {
+        return mContainerWidth;
+    }
+
+    /** Returns the height of the outer sheet container in pixels. */
+    @Px
+    int getSheetContainerHeight() {
+        return mContainerHeight;
+    }
+
+    /** Sets whether the bottom sheet always uses the full width of the container. */
+    void setAlwaysFullWidth(boolean alwaysFullWidth) {
+        mAlwaysFullWidth = alwaysFullWidth;
+    }
+
+    /** Returns whether the bottom sheet always uses the full width of the container. */
+    boolean isAlwaysFullWidth() {
+        return mAlwaysFullWidth;
+    }
+
+    /**
+     * Forces the small screen state for testing.
+     *
+     * @param isSmallScreen Whether the screen should be considered small for testing.
+     */
+    static void setSmallScreenForTesting(boolean isSmallScreen) {
+        Boolean oldValue = sIsSmallScreenForTesting;
+        sIsSmallScreenForTesting = isSmallScreen;
+        ResettersForTesting.register(() -> sIsSmallScreenForTesting = oldValue);
+    }
+
+    /** Returns whether the screen is considered small, disabling the half state. */
+    boolean isSmallScreen() {
+        if (sIsSmallScreenForTesting != null) return sIsSmallScreenForTesting;
+
+        float halfRatio = HALF_HEIGHT_RATIO;
+        if (mSheetContent != null) {
+            float customHalf = mSheetContent.getHalfHeightRatio();
+            if (customHalf > 0 && customHalf < HALF_HEIGHT_RATIO) {
+                halfRatio = customHalf;
+            }
+        }
+
+        // A small screen is defined by there being less than 140dp between half and full states.
+        float fullToHalfDiff = (1 - halfRatio) * mContainerHeight;
+        return fullToHalfDiff < mMinHalfFullDistance;
+    }
+
+    /** Returns the maximum possible height that the sheet can be in pixels. */
+    @Px
+    int getMaxSheetHeight() {
+        if (isLargeFormFactorUiEnabled()) {
+            // Clamp the height to leave an empty gap at the top of the window equal to the
+            // desktop bottom margin (24dp). The bottom margin is already accounted for in
+            // mSheetContainer's layout bounds (mContainerHeight).
+            return Math.max(0, mContainerHeight - mDesktopBottomMargin);
+        }
+        return mContainerHeight;
+    }
+
+    /** Returns the maximum width of the bottom sheet based on its current state and container. */
+    @Px
+    int getMaxSheetWidth() {
+        if (!mAlwaysFullWidth) {
+            if (isLargeFormFactorUiEnabled()) {
+                // Clamp the sheet's width to ensure a dedicated 16dp horizontal gap from the edge
+                // of the window when it becomes constrained.
+                return Math.max(
+                        0,
+                        Math.min(
+                                mLargeFormFactorWidth,
+                                mContainerWidth - 2 * mLargeFormFactorEdgeGap));
+            }
+            if (mContainerWidth > mNarrowWidthThreshold) {
+                return mNarrowWidth;
+            }
+        }
+        return mContainerWidth;
+    }
+
+    /** Returns whether the sheet covers the full width of the container. */
+    boolean isFullWidth() {
+        return getMaxSheetWidth() >= mContainerWidth;
+    }
+
+    /** Centers and sizes the sheet horizontally in its parent container. */
+    void sizeAndPositionSheetInParent() {
+        int maxSheetWidth = getMaxSheetWidth();
+        setSheetWidth(maxSheetWidth);
+        setSheetTranslationX(
+                (LocalizationUtils.isLayoutRtl() ? -1 : 1)
+                        * (mContainerWidth - maxSheetWidth)
+                        / 2f);
     }
 
     /**
@@ -1064,7 +1339,8 @@ class BottomSheetMediator implements TouchHandler {
     }
 
     /** Returns the ratio of the maximum sheet height that the peeking state is. */
-    float getPeekRatio(@Px int maxSheetHeight, @Px int peekHeight) {
+    float getPeekRatio(@Px int peekHeight) {
+        int maxSheetHeight = getMaxSheetHeight();
         if (maxSheetHeight <= 0) return 0;
         return (float) peekHeight / maxSheetHeight;
     }
@@ -1072,8 +1348,8 @@ class BottomSheetMediator implements TouchHandler {
     /**
      * @return The ratio of the height of the screen that the half expanded state is.
      */
-    float getHalfRatio(int containerHeight, boolean isSmallScreen) {
-        if (containerHeight <= 0 || !isHalfStateEnabled(isSmallScreen)) return 0;
+    float getHalfRatio() {
+        if (mContainerHeight <= 0 || !isHalfStateEnabled()) return 0;
 
         float customHalfRatio = assumeNonNull(mSheetContent).getHalfHeightRatio();
         assert customHalfRatio != HeightMode.WRAP_CONTENT
@@ -1084,12 +1360,8 @@ class BottomSheetMediator implements TouchHandler {
 
     /** Returns the resolved PEEK height in pixels for the current content. */
     @Px
-    int getPeekHeight(
-            @Px int containerHeight,
-            @Px int maxSheetHeight,
-            @Px int toolbarHeight,
-            @Px int handlebarHeight) {
-        if (containerHeight <= 0 || !isPeekStateEnabled()) return 0;
+    int getPeekHeight(@Px int toolbarHeight, @Px int handlebarHeight) {
+        if (mContainerHeight <= 0 || !isPeekStateEnabled()) return 0;
 
         // If the content has a custom peek ratio set, use that instead of computing one.
         if (mSheetContent != null) {
@@ -1107,6 +1379,7 @@ class BottomSheetMediator implements TouchHandler {
                 // where top gaps exist), we cap the peek height to the max sheet height instead of
                 // throwing an AssertionError. This gracefully allows the bottom sheet to occupy the
                 // max allowed size rather than crashing the app.
+                int maxSheetHeight = getMaxSheetHeight();
                 if (peekHeight > maxSheetHeight) {
                     Log.w(
                             TAG,
@@ -1132,12 +1405,12 @@ class BottomSheetMediator implements TouchHandler {
     }
 
     /** Return whether the half-height of the sheet is enabled. */
-    boolean isHalfStateEnabled(boolean isSmallScreen) {
+    boolean isHalfStateEnabled() {
         if (mSheetContent == null) return false;
 
         // Half state is invalid on small screens, when wrapping content at full height, and when
         // explicitly disabled.
-        return !isSmallScreen
+        return !isSmallScreen()
                 && mSheetContent.getHalfHeightRatio() != HeightMode.DISABLED
                 && mSheetContent.getFullHeightRatio() != HeightMode.WRAP_CONTENT;
     }
@@ -1146,6 +1419,13 @@ class BottomSheetMediator implements TouchHandler {
     boolean isFullHeightWrapContent() {
         return mSheetContent != null
                 && mSheetContent.getFullHeightRatio() == HeightMode.WRAP_CONTENT;
+    }
+
+    /** Return whether the height mode for the full state is RESIZE_CONTENT. */
+    boolean isFullHeightResizeContent() {
+        if (mSheetContent == null) return false;
+        return isHalfStateEnabled()
+                && mSheetContent.getFullHeightRatio() == HeightMode.RESIZE_CONTENT;
     }
 
     /**
@@ -1172,25 +1452,21 @@ class BottomSheetMediator implements TouchHandler {
      * @return The minimum opened state for the current content.
      */
     @SheetState
-    int getOpeningState(boolean isSmallScreen) {
+    int getOpeningState() {
         if (mSheetContent == null) {
             return SheetState.HIDDEN;
         } else if (isPeekStateEnabled()) {
             return SheetState.PEEK;
-        } else if (isHalfStateEnabled(isSmallScreen)) {
+        } else if (isHalfStateEnabled()) {
             return SheetState.HALF;
         }
         return SheetState.FULL;
     }
 
-    boolean shouldGestureMoveSheet(
-            float currentX,
-            float offsetFromBrowserControls,
-            boolean isHiding,
-            int containerWidth,
-            Rect visibleViewportRect) {
+    boolean shouldGestureMoveSheet(float currentX, float offsetFromBrowserControls) {
         // If the sheet is scrolling off-screen or in the process of hiding, gestures should not
         // affect it.
+        boolean isHiding = mIsHidingSupplier != null && mIsHidingSupplier.get();
         if (offsetFromBrowserControls > 0 || isHiding) return false;
 
         // If the sheet is already open, or an accessibility service that can perform gestures or
@@ -1200,8 +1476,8 @@ class BottomSheetMediator implements TouchHandler {
                 || AccessibilityState.isTouchExplorationEnabled()) {
             return true;
         }
-        float startX = visibleViewportRect.left;
-        float endX = containerWidth + startX;
+        float startX = mVisibleViewportRect.left;
+        float endX = mContainerWidth + startX;
         return currentX > startX && currentX < endX;
     }
 
@@ -1227,10 +1503,7 @@ class BottomSheetMediator implements TouchHandler {
 
     @SheetState
     int maybeRevertStateOnLayoutChange(
-            int currentDecorHeight,
-            int previousScreenHeight,
-            boolean isKeyboardShowing,
-            boolean isFullHeightResizeContent) {
+            int currentDecorHeight, int previousScreenHeight, boolean isKeyboardShowing) {
         // If the screen height has changed, reset the cached state since it may no longer be valid.
         if (previousScreenHeight != currentDecorHeight) {
             resetCachedKeyboardState();
@@ -1241,7 +1514,7 @@ class BottomSheetMediator implements TouchHandler {
         if (!isKeyboardShowing
                 && mKeyboardToken != TokenHolder.INVALID_TOKEN
                 && mStateBeforeKeyboardShown != SheetState.NONE
-                && isFullHeightResizeContent) {
+                && isFullHeightResizeContent()) {
             assert mKeyboardTokenHolder.hasTokens();
             stateToRestore = mStateBeforeKeyboardShown;
             resetCachedKeyboardState();
@@ -1263,8 +1536,7 @@ class BottomSheetMediator implements TouchHandler {
             int colorModal,
             float maxOffset,
             float minOffset,
-            float currentOffset,
-            boolean isSmallScreen) {
+            float currentOffset) {
         if (mSheetContent == null) return colorNonModal;
 
         if (mSheetContent.hasSolidBackgroundColor()) {
@@ -1275,7 +1547,7 @@ class BottomSheetMediator implements TouchHandler {
         }
 
         // Calculate the color based on the ratio between PEEK / FULL state.
-        boolean isResizableSheet = isHalfStateEnabled(isSmallScreen) || isPeekStateEnabled();
+        boolean isResizableSheet = isHalfStateEnabled() || isPeekStateEnabled();
         if (!isResizableSheet || maxOffset <= minOffset || colorModal == colorNonModal) {
             return BottomSheetUtils.isSheetNonModal(mSheetContent) ? colorNonModal : colorModal;
         }
@@ -1309,5 +1581,9 @@ class BottomSheetMediator implements TouchHandler {
     @SheetState
     int getStateBeforeKeyboardShownForTesting() {
         return mStateBeforeKeyboardShown;
+    }
+
+    private boolean contentCoversBottomControls() {
+        return mSheetContent != null && mSheetContent.coversBottomControls();
     }
 }

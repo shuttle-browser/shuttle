@@ -26,6 +26,7 @@
 #include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_text_area_element.h"
 #include "third_party/blink/renderer/core/layout/layout_theme.h"
+#include "third_party/blink/renderer/core/page/focus_controller.h"
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 
 using ui::mojom::ImeTextSpanThickness;
@@ -1730,7 +1731,7 @@ TEST_F(InputMethodControllerTest, FinishCompositionRemovedRange) {
   input_a->SetOuterHTMLWithoutTrustedTypes("");
   EXPECT_EQ(kWebTextInputTypeNone, Controller().TextInputType());
 
-  GetDocument().getElementById(AtomicString("b"))->Focus();
+  GetElementById("b")->Focus();
   EXPECT_EQ(kWebTextInputTypeTelephone, Controller().TextInputType());
 
   Controller().FinishComposingText(InputMethodController::kKeepSelection);
@@ -1885,9 +1886,9 @@ TEST_F(InputMethodControllerTest, SelectionWhenFocusChangeFinishesComposition) {
       Color::kTransparent, Color::kTransparent));
   Controller().SetComposition("foo", ime_text_spans, 3, 3);
 
-  EXPECT_TRUE(Controller().HasComposition());
-  EXPECT_EQ(0u, GetCompositionRange()->startOffset());
-  EXPECT_EQ(3u, GetCompositionRange()->endOffset());
+  ASSERT_TRUE(Controller().HasComposition());
+  EXPECT_EQ("<div contenteditable id=\"sample\">^foo|</div>",
+            GetRangeTextFromBody(GetCompositionRange()));
   EXPECT_EQ(3, SelectionAnchor().ComputeOffsetInContainerNode());
 
   // Insert 'test'.
@@ -3738,7 +3739,7 @@ TEST_F(InputMethodControllerTest, SetCompositionAfterNonEditableElement) {
       SetSelectionTextToBody("<div id='sample' contenteditable='true'>"
                              "<span contenteditable='false'>a</span>|b</div>"),
       SetSelectionOptions());
-  Element* const div = GetDocument().getElementById(AtomicString("sample"));
+  Element* const div = GetElementById("sample");
   div->Focus();
 
   // Open a composition and insert some text.
@@ -3747,13 +3748,11 @@ TEST_F(InputMethodControllerTest, SetCompositionAfterNonEditableElement) {
   // Add some more text to the composition.
   Controller().SetComposition("cd", Vector<ImeTextSpan>(), 2, 2);
 
+  ASSERT_TRUE(Controller().HasComposition());
   EXPECT_EQ(
       "<div contenteditable=\"true\" id=\"sample\">"
       "<span contenteditable=\"false\">a</span>^cd|b</div>",
-      GetSelectionTextFromBody(
-          SelectionInDomTree::Builder()
-              .SetBaseAndExtent(Controller().CompositionEphemeralRange())
-              .Build()));
+      GetRangeTextFromBody(Controller().CompositionEphemeralRange()));
 }
 
 TEST_F(InputMethodControllerTest, SetCompositionInTableCell) {
@@ -3762,12 +3761,12 @@ TEST_F(InputMethodControllerTest, SetCompositionInTableCell) {
           "<table id='sample' contenteditable><tr><td>a</td><td "
           "id='td2'>|</td></tr></table>"),
       SetSelectionOptions());
-  Element* const table = GetDocument().getElementById(AtomicString("sample"));
+  Element* const table = GetElementById("sample");
   table->Focus();
 
   Controller().SetComposition("c", Vector<ImeTextSpan>(), 1, 1);
 
-  Element* const td2 = GetDocument().getElementById(AtomicString("td2"));
+  Element* const td2 = GetElementById("td2");
   const Node* const text_node = td2->firstChild();
 
   Range* range = GetCompositionRange();
@@ -3820,7 +3819,7 @@ TEST_F(InputMethodControllerTest, SetCompositionInTibetan) {
   GetFrame().Selection().SetSelection(
       SetSelectionTextToBody("<div id='sample' contenteditable>|</div>"),
       SetSelectionOptions());
-  Element* const div = GetDocument().getElementById(AtomicString("sample"));
+  Element* const div = GetElementById("sample");
   div->Focus();
 
   Vector<ImeTextSpan> ime_text_spans;
@@ -3853,7 +3852,7 @@ TEST_F(InputMethodControllerTest, SetCompositionInDevanagari) {
   GetFrame().Selection().SetSelection(
       SetSelectionTextToBody("<div id='sample' contenteditable>\u0958|</div>"),
       SetSelectionOptions());
-  Element* const div = GetDocument().getElementById(AtomicString("sample"));
+  Element* const div = GetElementById("sample");
   div->Focus();
 
   Vector<ImeTextSpan> ime_text_spans;
@@ -3872,7 +3871,7 @@ TEST_F(InputMethodControllerTest, SetCompositionTamil) {
   GetFrame().Selection().SetSelection(
       SetSelectionTextToBody("<div id='sample' contenteditable>|</div>"),
       SetSelectionOptions());
-  Element* const div = GetDocument().getElementById(AtomicString("sample"));
+  Element* const div = GetElementById("sample");
   div->Focus();
 
   Vector<ImeTextSpan> ime_text_spans;
@@ -3990,6 +3989,40 @@ TEST_F(InputMethodControllerTest, TextareaMaxlengthFullWidthSpaceRepro) {
     EXPECT_FALSE(Controller().HasComposition());
     EXPECT_EQ("12345", textarea->Value());
   }
+}
+
+// A focused date field has no text selection, so it used to report
+// kWebTextInputTypeNone unless the selection happened to be left inside
+// another editable element. See https://crbug.com/40622827.
+TEST_F(InputMethodControllerTest, TextInputTypeForDateTimeField) {
+  // This test relies on focus moving into the date input's shadow subfields,
+  // which are not focusable by default on non-desktop Android.
+  GetDocument().GetSettings()->SetDateTimeSubfieldsFocusableForTesting(true);
+  SetBodyContent("<input id='text' value='abc'><input id='date' type='date'>");
+  GetFocusController().SetActive(true);
+  GetFocusController().SetFocused(true);
+  GetElementById("date")->Focus();
+
+  EXPECT_EQ(kWebTextInputTypeDateTimeField, Controller().TextInputType());
+  EXPECT_EQ(kWebTextInputTypeDateTimeField, Controller().TextInputInfo().type);
+
+  GetElementById("text")->Focus();
+  GetElementById("date")->Focus();
+  EXPECT_EQ(kWebTextInputTypeDateTimeField, Controller().TextInputType());
+}
+
+TEST_F(InputMethodControllerTest, TextInputTypeForDateTimeFieldKillswitch) {
+  ScopedDateTimeFieldTypeWithoutSelectionForTest disabled(false);
+  // This test relies on focus moving into the date input's shadow subfields,
+  // which are not focusable by default on non-desktop Android.
+  GetDocument().GetSettings()->SetDateTimeSubfieldsFocusableForTesting(true);
+  SetBodyContent("<input id='date' type='date'>");
+  GetFocusController().SetActive(true);
+  GetFocusController().SetFocused(true);
+  GetElementById("date")->Focus();
+  ASSERT_TRUE(GetDocument().FocusedElement()->IsDateTimeFieldElement());
+
+  EXPECT_EQ(kWebTextInputTypeNone, Controller().TextInputType());
 }
 
 }  // namespace blink

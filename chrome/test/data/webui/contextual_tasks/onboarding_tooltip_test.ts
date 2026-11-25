@@ -5,7 +5,6 @@
 import 'chrome://contextual-tasks/app.js';
 import 'chrome://contextual-tasks/onboarding_tooltip.js';
 
-import {BrowserProxyImpl} from 'chrome://contextual-tasks/contextual_tasks_browser_proxy.js';
 import type {ContextualTasksOnboardingTooltipElement} from 'chrome://contextual-tasks/onboarding_tooltip.js';
 import {PageHandlerRemote as ComposeboxPageHandlerRemote} from 'chrome://resources/cr_components/composebox/composebox.mojom-webui.js';
 import {ComposeboxProxyImpl} from 'chrome://resources/cr_components/composebox/composebox_proxy.js';
@@ -14,12 +13,12 @@ import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerRemote as SearchboxPageHandlerRemote} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import type {PageRemote as SearchboxPageRemote} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
 import {TestMock} from 'chrome://webui-test/test_mock.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
 
-import {createCtComposeboxApp} from './contextual_tasks_test_utils.js';
+import {createCtComposeboxApp, setupTestHandler} from './contextual_tasks_test_utils.js';
 import type {CtComposeboxAppParts} from './contextual_tasks_test_utils.js';
-import {TestContextualTasksBrowserProxy} from './test_contextual_tasks_browser_proxy.js';
 
 suite('OnboardingTooltipTest', () => {
   let tooltipElement: ContextualTasksOnboardingTooltipElement;
@@ -129,6 +128,7 @@ suite('ContextualTasksOnboardingTooltipForkTest', () => {
       showInCurrentTabChip: true,
       showInPreviousTabChip: false,
       isLoading: false,
+      recentTab: false,
     };
   }
 
@@ -167,8 +167,7 @@ suite('ContextualTasksOnboardingTooltipForkTest', () => {
 
     // SlimWebview (Android) only allows https/http/about:blank in
     // navigate(); the chrome://webui-test fixture url would assert.
-    const testProxy = new TestContextualTasksBrowserProxy('about:blank');
-    BrowserProxyImpl.setInstance(testProxy);
+    setupTestHandler('about:blank');
 
     mockComposeboxPageHandler = TestMock.fromClass(ComposeboxPageHandlerRemote);
     mockComposeboxPageHandler.setResultFor(
@@ -265,5 +264,69 @@ suite('ContextualTasksOnboardingTooltipForkTest', () => {
     app.updateTooltipVisibilityForTesting();
     await microtasksFinished();
     assertFalse(tooltip.shouldShow);
+  });
+
+  test('records shown and accepted metrics', async () => {
+    const metrics = fakeMetricsPrivate();
+    await mountWithAutoTab();
+    parts.app.updateTooltipVisibilityForTesting();
+    await microtasksFinished();
+    const tooltip = getTooltip();
+    assertTrue(tooltip.shouldShow);
+
+    // The impression delay is 0, so the shown metric is recorded on the next
+    // task.
+    await new Promise(resolve => setTimeout(resolve, 0));
+    // `recordAction()` records both a user action (logged as 0 by
+    // `fakeMetricsPrivate()`) and a boolean histogram (logged as true).
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Shown', 0));
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Shown', true));
+    assertEquals(
+        0, metrics.count('ContextualTasks.OnboardingTooltip.Accepted'));
+
+    const acceptButton =
+        tooltip.shadowRoot.querySelector<HTMLElement>('cr-button');
+    assertTrue(!!acceptButton);
+    acceptButton.click();
+    await microtasksFinished();
+
+    assertFalse(tooltip.shouldShow);
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Accepted', 0));
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Accepted', true));
+    // Shown was already recorded, so accepting doesn't record it again.
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Shown', 0));
+  });
+
+  test('records shown when accepted before the impression delay', async () => {
+    loadTimeData.overrideValues({
+      composeboxShowOnboardingTooltipImpressionDelay: 100000,
+    });
+    const metrics = fakeMetricsPrivate();
+    await mountWithAutoTab();
+    parts.app.updateTooltipVisibilityForTesting();
+    await microtasksFinished();
+    const tooltip = getTooltip();
+    assertTrue(tooltip.shouldShow);
+    assertEquals(0, metrics.count('ContextualTasks.OnboardingTooltip.Shown'));
+
+    const acceptButton =
+        tooltip.shadowRoot.querySelector<HTMLElement>('cr-button');
+    assertTrue(!!acceptButton);
+    acceptButton.click();
+    await microtasksFinished();
+
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Shown', 0));
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Shown', true));
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Accepted', 0));
+    assertEquals(
+        1, metrics.count('ContextualTasks.OnboardingTooltip.Accepted', true));
   });
 });

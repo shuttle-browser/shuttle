@@ -5,9 +5,11 @@
 #include <string>
 #include <variant>
 
-#include "absl/strings/ascii.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/ascii.h"         // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/framework/calculator_context.h"
 #include "mediapipe/framework/input_stream_shard.h"
 #include "mediapipe/framework/output_side_packet.h"
@@ -15,7 +17,6 @@
 #include "mediapipe/framework/packet_set.h"
 #include "mediapipe/framework/packet_type.h"
 #include "mediapipe/framework/port/advanced_proto_inc.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/tool/name_util.h"
 #include "mediapipe/framework/tool/options_field_util.h"
 #include "mediapipe/framework/tool/options_registry.h"
@@ -88,11 +89,15 @@ absl::Status CopyLiteralOptions(CalculatorGraphConfig::Node parent_node,
       FieldData parent_options;
       ASSIGN_IF_OK(parent_options,
                    GetNodeOptions(parent_data, graph_extension_type));
-      MP_ASSIGN_OR_RETURN(graph_options,
-                          MergeMessages(graph_options, parent_options));
+      ABSL_ASSIGN_OR_RETURN(graph_options,
+                            MergeMessages(graph_options, parent_options));
       FieldData node_options;
-      MP_ASSIGN_OR_RETURN(node_options,
-                          GetNodeOptions(node_data, node_extension_type));
+      ABSL_ASSIGN_OR_RETURN(
+          node_options, GetNodeOptions(node_data, node_extension_type),
+          _ << " for node (name='" << node.name() << "', calculator='"
+            << node.calculator()
+            << "'); verify that the node has options or node_options set, and "
+               "that the corresponding options_lib is linked in.");
       if (!node_options.has_message_value() ||
           !graph_options.has_message_value()) {
         continue;
@@ -100,9 +105,9 @@ absl::Status CopyLiteralOptions(CalculatorGraphConfig::Node parent_node,
       FieldPath graph_path = GetPath(graph_tag, MessageType(graph_options));
       FieldPath node_path = GetPath(node_tag, MessageType(node_options));
       std::vector<FieldData> packet_data;
-      MP_ASSIGN_OR_RETURN(packet_data,
-                          GetFieldValues(graph_options, graph_path));
-      MP_RETURN_IF_ERROR(
+      ABSL_ASSIGN_OR_RETURN(packet_data,
+                            GetFieldValues(graph_options, graph_path));
+      ABSL_RETURN_IF_ERROR(
           MergeFieldValues(node_options, node_path, packet_data));
       options_field_util::SetOptionsMessage(node_options, &node);
     }
@@ -114,7 +119,7 @@ absl::Status CopyLiteralOptions(CalculatorGraphConfig::Node parent_node,
 // Makes all configuration modifications needed for graph options.
 absl::Status DefineGraphOptions(const CalculatorGraphConfig::Node& parent_node,
                                 CalculatorGraphConfig* config) {
-  MP_RETURN_IF_ERROR(CopyLiteralOptions(parent_node, config));
+  ABSL_RETURN_IF_ERROR(CopyLiteralOptions(parent_node, config));
   return absl::OkStatus();
 }
 

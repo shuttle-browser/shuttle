@@ -8,7 +8,7 @@
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "url/gurl.h"
 
-@protocol BrowserProvider;
+class Browser;
 class ProfileIOS;
 
 // Test double for SceneState that create a regular and an incognito Browsers
@@ -20,9 +20,9 @@ class ProfileIOS;
 
 - (instancetype)init NS_UNAVAILABLE;
 
-// Updates the current BrowserProvider. Must be either -mainBrowserProvider
-// or -incognitoBrowserProvider from -browserProviderInterface.
-- (void)setCurrentBrowserProvider:(id<BrowserProvider>)browserProvider;
+// Updates the current Browser. Must be nullptr, -mainBrowser, or
+// -incognitoBrowser from -browserProviderInterface.
+- (void)setCurrentBrowser:(Browser*)browser;
 
 // Destroys and recreates the off-the-record Profile and Browser.
 - (void)destroyAndRecreateOffTheRecordProfile;

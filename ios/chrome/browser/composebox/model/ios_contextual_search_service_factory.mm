@@ -28,23 +28,13 @@
 #import "ios/public/provider/chrome/browser/lens/lens_api.h"
 #import "services/network/public/mojom/cookie_manager.mojom.h"
 
-ContextualSearchServiceFactory::ContextualSearchServiceFactory(PassKey key)
-    : TypedProfileKeyedServiceFactoryIOS(
-          std::move(key),
-          "ContextualSearchService",
-          ProfileSelection::kOwnInstanceInIncognito,
-          TestingCreation::kCreateService) {
-  DependsOn(ios::TemplateURLServiceFactory::GetInstance());
-  DependsOn(IdentityManagerFactory::GetInstance());
-  DependsOn(VariationsClientServiceFactory::GetInstance());
-}
-
 namespace {
 
 void FetchIdentityDelegationHeadersForProfile(
-    ProfileIOS* profile,
+    base::WeakPtr<ProfileIOS> weak_profile,
     std::optional<size_t> auth_user_index,
     base::OnceCallback<void(std::vector<std::string>)> callback) {
+  ProfileIOS* profile = weak_profile.get();
   if (!profile) {
     std::move(callback).Run({});
     return;
@@ -59,17 +49,28 @@ void FetchIdentityDelegationHeadersForProfile(
 
 }  // namespace
 
+ContextualSearchServiceFactory::ContextualSearchServiceFactory(PassKey key)
+    : TypedProfileKeyedServiceFactoryIOS(
+          std::move(key),
+          "ContextualSearchService",
+          ProfileSelection::kOwnInstanceInIncognito,
+          TestingCreation::kCreateService) {
+  DependsOn(ios::TemplateURLServiceFactory::GetInstance());
+  DependsOn(IdentityManagerFactory::GetInstance());
+  DependsOn(VariationsClientServiceFactory::GetInstance());
+}
+
 std::unique_ptr<KeyedService>
 ContextualSearchServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
-  if (auto service = tests_hook::CreateContextualSearchService(profile)) {
+    ProfileIOS& profile) const {
+  if (auto service = tests_hook::CreateContextualSearchService(&profile)) {
     return service;
   }
   auto* variations_client_service =
       VariationsClientServiceFactory::GetForProfile(profile);
   return std::make_unique<IOSContextualSearchService>(
       IdentityManagerFactory::GetForProfile(profile),
-      profile->GetSharedURLLoaderFactory(),
+      profile.GetSharedURLLoaderFactory(),
       ios::TemplateURLServiceFactory::GetForProfile(profile),
       static_cast<variations::VariationsClient*>(variations_client_service),
       ::GetChannel(),
@@ -78,5 +79,5 @@ ContextualSearchServiceFactory::BuildServiceInstanceFor(
                       ->GetTag()
                       .tag_string()),
       base::BindRepeating(&FetchIdentityDelegationHeadersForProfile,
-                          base::Unretained(profile)));
+                          profile.AsWeakPtr()));
 }

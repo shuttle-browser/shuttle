@@ -69,7 +69,6 @@ import org.mockito.junit.MockitoRule;
 import org.mockito.quality.Strictness;
 
 import org.chromium.base.ContextUtils;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
@@ -77,7 +76,6 @@ import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.facilitated_payments.FacilitatedPaymentsPaymentMethodsProperties.EwalletAccountLinkingPromptProperties;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
@@ -102,7 +100,6 @@ import java.util.List;
 
 /** Instrumentation tests for {@link FacilitatedPaymentsPaymentMethodsView}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @DisableFeatures({ChromeFeatureList.FACILITATED_PAYMENTS_ENABLE_A2A_PAYMENT})
 public final class FacilitatedPaymentsPaymentMethodsViewTest {
     private static final BankAccount BANK_ACCOUNT_1 =
@@ -293,6 +290,36 @@ public final class FacilitatedPaymentsPaymentMethodsViewTest {
         // Verify that the view is hidden, and the bottom sheet is closed.
         assertThat(mView.getContentView().isShown(), is(false));
         assertThat(mBottomSheetController.isSheetOpen(), is(false));
+    }
+
+    @Test
+    @MediumTest
+    public void testVerticalScrollOffsetIsZeroWhenNoScreenIsShown() {
+        // Before any screen is shown, there is no current screen.
+        runOnUiThreadBlocking(() -> assertThat(mView.getVerticalScrollOffset(), is(0)));
+
+        runOnUiThreadBlocking(
+                () -> {
+                    mModel.set(SCREEN, FOP_SELECTOR);
+                    mModel.get(SCREEN_VIEW_MODEL)
+                            .get(SCREEN_ITEMS)
+                            .add(
+                                    new ListItem(
+                                            BANK_ACCOUNT, createBankAccountModel(BANK_ACCOUNT_1)));
+                    mModel.set(VISIBLE_STATE, SHOWN);
+                });
+        BottomSheetTestSupport.waitForOpen(mBottomSheetController);
+
+        // Hiding the sheet clears the current screen while the sheet is still animating closed.
+        // The bottom sheet may still query the scroll offset during that animation, which must
+        // not throw.
+        runOnUiThreadBlocking(
+                () -> {
+                    mModel.set(VISIBLE_STATE, HIDDEN);
+                    assertThat(mBottomSheetController.getSheetState(), is(not(SheetState.HIDDEN)));
+                    assertThat(mView.getVerticalScrollOffset(), is(0));
+                });
+        BottomSheetTestSupport.waitForState(mBottomSheetController, SheetState.HIDDEN);
     }
 
     @Test

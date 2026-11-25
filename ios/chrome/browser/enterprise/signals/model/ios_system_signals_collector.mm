@@ -4,6 +4,7 @@
 
 #import "ios/chrome/browser/enterprise/signals/model/ios_system_signals_collector.h"
 
+#import <optional>
 #import <string>
 #import <utility>
 
@@ -72,6 +73,8 @@ void IOSSystemSignalsCollector::GetOsSignals(
   signal_response->screen_lock_secured = screen_lock;
   // `diskEncryption` mirrors `screenLockSecured` on iOS.
   signal_response->disk_encryption = screen_lock;
+  // iOS has no OS firewall whose state Chrome can evaluate.
+  signal_response->os_firewall = std::nullopt;
 
   // Fetch hardware info asynchronously to be safe.
   base::SysInfo::GetHardwareInfo(

@@ -14,12 +14,15 @@
 #include "base/memory/weak_ptr.h"
 #include "base/test/metrics/user_action_tester.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/unguessable_token.h"
 #include "chrome/browser/glic/android/glic_helper_android.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/host/host.h"
 #include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/public/glic_side_panel_coordinator.h"
 #include "chrome/browser/glic/service/glic_ui_embedder.h"
 #include "chrome/browser/glic/service/metrics/glic_instance_metrics.h"
+#include "chrome/browser/glic/widget/glic_inactive_side_panel_ui_android.h"
 #include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/test/base/testing_profile.h"
@@ -63,10 +66,58 @@ class FakeHost : public Host {
     std::move(done).Run();
   }
 
+  bool IsShowingNativeLoading() const override {
+    return showing_native_loading_;
+  }
+  void set_showing_native_loading(bool showing) {
+    showing_native_loading_ = showing;
+  }
+
   int stop_microphone_count() const { return stop_microphone_count_; }
 
  private:
   int stop_microphone_count_ = 0;
+  bool showing_native_loading_ = false;
+};
+
+class FakeGlicSidePanelCoordinator : public GlicSidePanelCoordinator {
+ public:
+  explicit FakeGlicSidePanelCoordinator(tabs::TabInterface* tab)
+      : GlicSidePanelCoordinator(tab) {}
+  ~FakeGlicSidePanelCoordinator() override = default;
+
+  // GlicSidePanelCoordinator:
+  void Show(const ShowOptions& options) override { state_ = State::kShown; }
+  void Close(const CloseOptions& options) override { state_ = State::kClosed; }
+  bool IsShowing() const override { return state_ == State::kShown; }
+  State state() override { return state_; }
+  bool SupportsPeek() const override { return true; }
+  base::CallbackListSubscription AddStateCallback(
+      base::RepeatingCallback<void(State state)> callback) override {
+    return state_callbacks_.Add(std::move(callback));
+  }
+  void SetWebContents(content::WebContents* web_contents) override {
+    last_web_contents_ = web_contents;
+  }
+  void SetIsLoading(bool is_loading) override {
+    is_loading_ = is_loading;
+    loading_history_.push_back(is_loading);
+  }
+  int GetPreferredWidth() override { return 400; }
+  bool IsGlicSidePanelActive() override { return state_ != State::kClosed; }
+
+  bool is_loading() const { return is_loading_; }
+  const std::vector<bool>& loading_history() const { return loading_history_; }
+  const content::WebContents* last_web_contents() const {
+    return last_web_contents_;
+  }
+
+ private:
+  State state_ = State::kShown;
+  bool is_loading_ = false;
+  std::vector<bool> loading_history_;
+  raw_ptr<const content::WebContents> last_web_contents_ = nullptr;
+  base::RepeatingCallbackList<void(State)> state_callbacks_;
 };
 
 class FakeGlicUiEmbedderDelegate : public GlicUiEmbedder::Delegate {
@@ -87,6 +138,9 @@ class FakeGlicUiEmbedderDelegate : public GlicUiEmbedder::Delegate {
   void Detach(tabs::TabInterface& tab) override {}
   void Attach(tabs::TabHandle tab) override {}
   void UpdatePanelState() override {}
+  void AcceptNativeFre() override { ++accept_count_; }
+
+  int accept_count() const { return accept_count_; }
 
   const std::vector<bool>& activation_changes() const {
     return activation_changes_;
@@ -99,6 +153,7 @@ class FakeGlicUiEmbedderDelegate : public GlicUiEmbedder::Delegate {
  private:
   raw_ref<Host> host_;
   std::vector<bool> activation_changes_;
+  int accept_count_ = 0;
 };
 
 // Records the arguments the media request was answered with.
@@ -204,6 +259,36 @@ class FakeMicPermissionUi : public MicPermissionUi {
   int snackbar_count_ = 0;
 };
 
+class FakeSidePanelCoordinator : public GlicSidePanelCoordinator {
+ public:
+  explicit FakeSidePanelCoordinator(tabs::TabInterface* tab)
+      : GlicSidePanelCoordinator(tab) {}
+  ~FakeSidePanelCoordinator() override = default;
+
+  void Show(const ShowOptions& options) override {}
+  void Close(const CloseOptions& options) override {}
+  bool IsShowing() const override { return false; }
+  State state() override { return State::kClosed; }
+  bool SupportsPeek() const override { return true; }
+  base::CallbackListSubscription AddStateCallback(
+      base::RepeatingCallback<void(State state)> callback) override {
+    return {};
+  }
+  void SetWebContents(content::WebContents* web_contents) override {}
+  int GetPreferredWidth() override { return 0; }
+  bool IsGlicSidePanelActive() override { return false; }
+
+  void SetNativeFreAcceptedCallback(
+      base::RepeatingClosure on_accepted) override {
+    on_accepted_ = std::move(on_accepted);
+  }
+
+  const base::RepeatingClosure& on_accepted() const { return on_accepted_; }
+
+ private:
+  base::RepeatingClosure on_accepted_;
+};
+
 content::MediaStreamRequest MakeAudioRequest() {
   return content::MediaStreamRequest(
       /*render_process_id=*/0, /*render_frame_id=*/0, /*page_request_id=*/0,
@@ -230,12 +315,20 @@ class GlicSidePanelUiAndroidTest : public testing::Test {
   ~GlicSidePanelUiAndroidTest() override = default;
 
   TestingProfile* profile() { return &profile_; }
+
+  void SetFreCompleted(bool completed) {
+    profile()->GetPrefs()->SetInteger(
+        prefs::kGlicCompletedFre,
+        static_cast<int>(completed ? prefs::FreStatus::kCompleted
+                                   : prefs::FreStatus::kNotStarted));
+  }
   FakeHost& host() { return host_; }
   FakeGlicUiEmbedderDelegate& delegate() { return delegate_; }
   GlicInstanceMetrics& instance_metrics() { return instance_metrics_; }
   base::WeakPtr<tabs::TabInterface> tab() {
     return tab_weak_factory_.GetWeakPtr();
   }
+  tabs::MockTabInterface& mock_tab() { return mock_tab_; }
 
  protected:
   // Makes the tab report `browser_window_` as the window it belongs to. Needed
@@ -282,6 +375,7 @@ TEST_F(GlicSidePanelUiAndroidTest, CanDragEnter) {
   feature_list.InitWithFeatures({features::kGlicDragAndDropFileUpload,
                                  features::kGlicDragAndDropFileUploadAndroid},
                                 {});
+  SetFreCompleted(true);
 
   GlicSidePanelUi side_panel_ui(profile(), base::WeakPtr<tabs::TabInterface>(),
                                 delegate(), instance_metrics());
@@ -321,6 +415,28 @@ TEST_F(GlicSidePanelUiAndroidTest, CanDragEnter) {
   EXPECT_FALSE(side_panel_ui.CanDragEnter(nullptr, drop_data, ops));
 }
 
+TEST_F(GlicSidePanelUiAndroidTest, CanDragEnter_RejectedBeforeFreCompleted) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures({features::kGlicDragAndDropFileUpload,
+                                 features::kGlicDragAndDropFileUploadAndroid},
+                                {});
+
+  GlicSidePanelUi side_panel_ui(profile(), base::WeakPtr<tabs::TabInterface>(),
+                                delegate(), instance_metrics());
+
+  content::DropData drop_data;
+  drop_data.filenames.emplace_back(
+      base::FilePath(FILE_PATH_LITERAL("test.txt")),
+      base::FilePath(FILE_PATH_LITERAL("test.txt")));
+  blink::DragOperationsMask ops = blink::kDragOperationCopy;
+
+  SetFreCompleted(false);
+  EXPECT_FALSE(side_panel_ui.CanDragEnter(nullptr, drop_data, ops));
+
+  SetFreCompleted(true);
+  EXPECT_TRUE(side_panel_ui.CanDragEnter(nullptr, drop_data, ops));
+}
+
 TEST_F(GlicSidePanelUiAndroidTest, CanDragEnter_FeatureDisabled) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndDisableFeature(features::kGlicDragAndDropFileUpload);
@@ -355,6 +471,41 @@ TEST_F(GlicSidePanelUiAndroidTest, CanDragEnter_AndroidKillSwitchDisabled) {
 
   // Should be rejected because kGlicDragAndDropFileUploadAndroid is disabled.
   EXPECT_FALSE(side_panel_ui.CanDragEnter(nullptr, drop_data, ops));
+}
+
+// A Chrome web drag (one carrying a `drag_id`) is accepted only while
+// kGlicWebDragAndDropFileUpload is enabled; OS file drags are unaffected.
+TEST_F(GlicSidePanelUiAndroidTest, CanDragEnter_WebDrag) {
+  SetFreCompleted(true);
+  for (bool web_drag_enabled : {true, false}) {
+    SCOPED_TRACE(web_drag_enabled);
+    base::test::ScopedFeatureList feature_list;
+    std::vector<base::test::FeatureRef> enabled_features = {
+        features::kGlicDragAndDropFileUpload,
+        features::kGlicDragAndDropFileUploadAndroid};
+    std::vector<base::test::FeatureRef> disabled_features;
+    (web_drag_enabled ? enabled_features : disabled_features)
+        .push_back(features::kGlicWebDragAndDropFileUpload);
+    feature_list.InitWithFeatures(enabled_features, disabled_features);
+
+    GlicSidePanelUi side_panel_ui(profile(),
+                                  base::WeakPtr<tabs::TabInterface>(),
+                                  delegate(), instance_metrics());
+
+    content::DropData drop_data;
+    drop_data.filenames.emplace_back(
+        base::FilePath(FILE_PATH_LITERAL("image.png")),
+        base::FilePath(FILE_PATH_LITERAL("image.png")));
+    blink::DragOperationsMask ops = blink::kDragOperationCopy;
+
+    // An OS file drag is accepted regardless of the web drag flag.
+    EXPECT_TRUE(side_panel_ui.CanDragEnter(nullptr, drop_data, ops));
+
+    // The same payload tagged as a Chrome web drag follows the web drag flag.
+    drop_data.drag_id = base::UnguessableToken::Create();
+    EXPECT_EQ(side_panel_ui.CanDragEnter(nullptr, drop_data, ops),
+              web_drag_enabled);
+  }
 }
 
 // Rejecting Chrome's microphone pre-prompt should fail the request without
@@ -843,6 +994,53 @@ TEST_F(GlicSidePanelUiAndroidTest, CheckMediaAccessPermissionChecksMicSetting) {
   EXPECT_TRUE(side_panel_ui.CheckMediaAccessPermission(
       web_contents->GetPrimaryMainFrame(), url::Origin::Create(kUrl),
       blink::mojom::MediaStreamType::DEVICE_AUDIO_CAPTURE));
+}
+
+TEST_F(GlicSidePanelUiAndroidTest, RoutesNativeFreAccept) {
+  AttachBrowserWindowToTab();
+  FakeSidePanelCoordinator coordinator(tab().get());
+
+  auto side_panel_ui = std::make_unique<GlicSidePanelUi>(
+      profile(), tab(), delegate(), instance_metrics());
+
+  ASSERT_TRUE(coordinator.on_accepted());
+  coordinator.on_accepted().Run();
+  EXPECT_EQ(delegate().accept_count(), 1);
+
+  side_panel_ui.reset();
+  coordinator.on_accepted().Run();
+  EXPECT_EQ(delegate().accept_count(), 1);
+}
+
+TEST_F(GlicSidePanelUiAndroidTest,
+       ForwardsNativeLoadingStateToSidePanelCoordinator) {
+  FakeGlicSidePanelCoordinator coordinator(&mock_tab());
+  host().set_showing_native_loading(true);
+
+  {
+    GlicSidePanelUi side_panel_ui(profile(), tab(), delegate(),
+                                  instance_metrics());
+    EXPECT_TRUE(coordinator.is_loading());
+    EXPECT_THAT(coordinator.loading_history(), testing::ElementsAre(true));
+
+    side_panel_ui.NativeLoadingStateChanged(false);
+    EXPECT_FALSE(coordinator.is_loading());
+
+    host().set_showing_native_loading(true);
+    side_panel_ui.ContentsCreated();
+    EXPECT_TRUE(coordinator.is_loading());
+  }
+
+  // Destroying `GlicSidePanelUi` clears loading state on the coordinator.
+  EXPECT_FALSE(coordinator.is_loading());
+
+  // Inactive side panel UI also clears loading state and detaches
+  // `WebContents`.
+  coordinator.SetIsLoading(true);
+  auto inactive_ui =
+      GlicInactiveSidePanelUi::CreateForVisibleTab(tab(), delegate());
+  EXPECT_FALSE(coordinator.is_loading());
+  EXPECT_EQ(nullptr, coordinator.last_web_contents());
 }
 
 }  // namespace glic

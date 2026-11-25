@@ -16,7 +16,6 @@ import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.Feature;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.permissions.PermissionTestRule.PermissionUpdateWaiter;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -27,12 +26,10 @@ import org.chromium.ui.base.DeviceFormFactor;
 
 /** Test suite for media permissions requests. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class MediaTest {
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
-    public PermissionTestRule mPermissionRule =
-            new PermissionTestRule(mActivityTestRule.getActivityTestRule());
+    public PermissionTestRule mPermissionRule = new PermissionTestRule(mActivityTestRule);
 
     @Rule
     public RuleChain mRuleChain = RuleChain.outerRule(mActivityTestRule).around(mPermissionRule);
@@ -44,14 +41,14 @@ public class MediaTest {
 
     @Before
     public void setUp() throws Exception {
-        mPermissionRule.setUpActivity();
+        mActivityTestRule.startOnBlankPage();
     }
 
     private void testMediaPermissionsPlumbing(
             String prefix, String script, int numUpdates, boolean withGesture) throws Exception {
-        Tab tab = mPermissionRule.getActivityTab();
+        Tab tab = mActivityTestRule.getActivityTab();
         PermissionUpdateWaiter updateWaiter =
-                new PermissionUpdateWaiter(prefix, mPermissionRule.getActivity());
+                new PermissionUpdateWaiter(prefix, mActivityTestRule.getActivity());
         ThreadUtils.runOnUiThreadBlocking(() -> tab.addObserver(updateWaiter));
         mPermissionRule.runAllowTest(updateWaiter, TEST_FILE, script, numUpdates, withGesture);
         ThreadUtils.runOnUiThreadBlocking(() -> tab.removeObserver(updateWaiter));

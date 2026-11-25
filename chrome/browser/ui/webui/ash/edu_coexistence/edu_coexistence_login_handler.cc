@@ -13,7 +13,6 @@
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "base/command_line.h"
-#include "base/feature_list.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
@@ -22,14 +21,13 @@
 #include "base/time/time.h"
 #include "base/uuid.h"
 #include "base/values.h"
+#include "base/version_info/version_info.h"
 #include "chrome/browser/ash/child_accounts/edu_coexistence_tos_store_utils.h"
 #include "chrome/browser/ash/policy/core/user_cloud_policy_manager_ash.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/webui/ash/edu_coexistence/edu_coexistence_state_tracker.h"
 #include "chrome/browser/ui/webui/signin/ash/inline_login_dialog.h"
-#include "chrome/common/channel_info.h"
-#include "chrome/common/chrome_constants.h"
+#include "chromeos/ash/components/channel/channel_info.h"
 #include "components/application_locale_storage/application_locale_storage.h"
 #include "components/policy/core/common/cloud/cloud_policy_core.h"
 #include "components/policy/proto/device_management_backend.pb.h"
@@ -40,7 +38,7 @@
 #include "components/signin/public/identity_manager/access_token_info.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
-#include "components/sync/base/features.h"
+#include "components/user_manager/user_manager.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "google_apis/gaia/gaia_constants.h"
@@ -82,9 +80,7 @@ std::string GetSourceUI() {
   return kInSession;
 }
 
-std::string GetOrCreateEduCoexistenceUserId() {
-  Profile* profile = ProfileManager::GetActiveUserProfile();
-  PrefService* pref_service = profile->GetPrefs();
+std::string GetOrCreateEduCoexistenceUserId(PrefService* pref_service) {
   std::string id = pref_service->GetString(prefs::kEduCoexistenceId);
   if (id.empty()) {
     id = base::Uuid::GenerateRandomV4().AsLowercaseString();
@@ -93,9 +89,7 @@ std::string GetOrCreateEduCoexistenceUserId() {
   return id;
 }
 
-base::Time GetSigninTime() {
-  const Profile* profile = ProfileManager::GetActiveUserProfile();
-  const PrefService* pref_service = profile->GetPrefs();
+base::Time GetSigninTime(const PrefService* pref_service) {
   base::Time signin_time = pref_service->GetTime(prefs::kOobeOnboardingTime);
   CHECK(!signin_time.is_min(), base::NotFatalUntil::M162);
   return signin_time;
@@ -106,8 +100,7 @@ base::Time GetSigninTime() {
 // timestamp to skip parental reauth for secondary edu account login during
 // onboarding. If the id is not available, then the parental reauth will be
 // required.
-std::string GetDeviceIdForActiveUserProfile() {
-  Profile* profile = ProfileManager::GetActiveUserProfile();
+std::string GetDeviceIdForProfile(Profile* profile) {
   const policy::UserCloudPolicyManagerAsh* policy_manager =
       profile->GetUserCloudPolicyManagerAsh();
   if (!policy_manager) {
@@ -143,8 +136,7 @@ EduCoexistenceLoginHandler::EduCoexistenceLoginHandler(
     : application_locale_storage_(CHECK_DEREF(application_locale_storage)),
       close_dialog_closure_(close_dialog_closure),
       identity_manager_(identity_manager) {
-  Profile* profile = ProfileManager::GetActiveUserProfile();
-  CHECK(profile->IsChild(), base::NotFatalUntil::M162);
+  CHECK(user_manager::UserManager::Get()->IsLoggedInAsChildUser());
 
   // Start observing IdentityManager.
   identity_manager->AddObserver(this);
@@ -158,10 +150,7 @@ EduCoexistenceLoginHandler::EduCoexistenceLoginHandler(
               &EduCoexistenceLoginHandler::OnOAuthAccessTokensFetched,
               base::Unretained(this)),
           signin::PrimaryAccountAccessTokenFetcher::Mode::kWaitUntilAvailable,
-          base::FeatureList::IsEnabled(
-              syncer::kReplaceSyncPromosWithSignInPromos)
-              ? signin::ConsentLevel::kSignin
-              : signin::ConsentLevel::kSync);
+          signin::ConsentLevel::kSignin);
 }
 
 EduCoexistenceLoginHandler::~EduCoexistenceLoginHandler() {
@@ -210,7 +199,7 @@ void EduCoexistenceLoginHandler::OnRefreshTokenUpdatedForAccount(
 
   AllowJavascript();
 
-  Profile* profile = ProfileManager::GetActiveUserProfile();
+  Profile* profile = Profile::FromWebUI(web_ui());
 
   edu_coexistence::UpdateAcceptedToSVersionPref(
       profile, edu_coexistence::UserConsentInfo(
@@ -272,6 +261,8 @@ void EduCoexistenceLoginHandler::InitializeEduArgs(
 void EduCoexistenceLoginHandler::SendInitializeEduArgs() {
   CHECK(oauth_access_token_.has_value(), base::NotFatalUntil::M162);
   CHECK(initialize_edu_args_callback_.has_value(), base::NotFatalUntil::M162);
+  Profile* profile = Profile::FromWebUI(web_ui());
+  PrefService* pref_service = profile->GetPrefs();
   base::DictValue params;
 
   params.Set("hl", application_locale_storage_->GetTag().tag_string());
@@ -281,17 +272,16 @@ void EduCoexistenceLoginHandler::SendInitializeEduArgs() {
   params.Set("clientId", GaiaUrls::GetInstance()->oauth2_chrome_client_id());
   params.Set("sourceUi", GetSourceUI());
 
-  params.Set("clientVersion", chrome::kChromeVersion);
+  params.Set("clientVersion", version_info::GetVersionNumber());
   params.Set("eduCoexistenceAccessToken", oauth_access_token_->token);
-  params.Set("eduCoexistenceId", GetOrCreateEduCoexistenceUserId());
+  params.Set("eduCoexistenceId", GetOrCreateEduCoexistenceUserId(pref_service));
   params.Set("platformVersion", base::SysInfo::OperatingSystemVersion());
-  // Extended stable channel is not supported on Chrome OS Ash.
-  params.Set("releaseChannel",
-             chrome::GetChannelName(chrome::WithExtendedStable(false)));
-  params.Set("deviceId", GetDeviceIdForActiveUserProfile());
+  params.Set("releaseChannel", GetChannelName());
+  params.Set("deviceId", GetDeviceIdForProfile(profile));
 
-  params.Set("signinTime",
-             GetSigninTime().InMillisecondsFSinceUnixEpochIgnoringNull());
+  params.Set(
+      "signinTime",
+      GetSigninTime(pref_service).InMillisecondsFSinceUnixEpochIgnoringNull());
 
   // If the secondary edu account is being reauthenticated, the email address
   // will be provided via the url of the webcontent. Example

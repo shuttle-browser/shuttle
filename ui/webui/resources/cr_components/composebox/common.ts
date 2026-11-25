@@ -57,11 +57,12 @@ export enum ProcessFilesError {
   NONE = 0,
   INVALID_TYPE = 1,
   FILE_TOO_LARGE = 2,
-  FILE_EMPTY = 3,
-  MAX_FILES_EXCEEDED = 4,
-  MAX_IMAGES_EXCEEDED = 5,
-  MAX_PDFS_EXCEEDED = 6,
-  FILE_UPLOAD_NOT_ALLOWED = 7,
+  IMAGE_TOO_LARGE = 3,
+  FILE_EMPTY = 4,
+  MAX_FILES_EXCEEDED = 5,
+  MAX_IMAGES_EXCEEDED = 6,
+  MAX_PDFS_EXCEEDED = 7,
+  FILE_UPLOAD_NOT_ALLOWED = 8,
 }
 
 export enum TabSuggestionsState {
@@ -136,11 +137,6 @@ export class ComposeboxFile {
   origin?: TabAttachmentSource;
   delayUpload?: boolean;
   singleTabType?: SingleTabType;
-  // True if this is a placeholder ("ghost") entry created from an upload
-  // status update for a token the frontend does not know about yet. Its
-  // metadata, including `inputType`, is not yet known and must not be relied
-  // on until the entry is replaced by a fully hydrated one.
-  isGhost?: boolean;
 
   constructor(
       uuid: UnguessableToken, name: string, type: string, inputType: InputType,
@@ -162,7 +158,6 @@ export class ComposeboxFile {
     this.origin = options?.origin;
     this.delayUpload = options?.delayUpload ?? false;
     this.singleTabType = options?.singleTabType;
-    this.isGhost = options?.isGhost ?? false;
   }
 
   static createFromFile(
@@ -207,6 +202,9 @@ export interface ComposeboxState {
   error?: DriveUploadError;
   mode: ToolMode;
   model: ModelMode;
+  // Whether to open in AI Mode (e.g. from the AI Mode button), which selects
+  // the default model. Only matters with dynamic AIM fulfillment.
+  enterAimMode?: boolean;
   suggestInventory?: SuggestInventory;
   // <if expr="not is_android">
   smartTabSharingActive: boolean;
@@ -307,6 +305,7 @@ export class ComposeboxInputModel {
                // flight. This mirrors `pendingUploads`, which gates the submit
                // button, so the skeleton and the disabled submit button agree.
                isLoading: !isContextUploadStatusTerminal(file.status),
+               recentTab: false,
              } as TabInfo));
   }
 
@@ -684,6 +683,44 @@ export function hasAllowedInputs(
 export function getLoadTimeBoolean(id: string, defaultValue: boolean): boolean {
   return loadTimeData.valueExists(id) ? loadTimeData.getBoolean(id) :
                                         defaultValue;
+}
+
+export function getLoadTimeInteger(id: string, defaultValue: number): number {
+  return loadTimeData.valueExists(id) ? loadTimeData.getInteger(id) :
+                                        defaultValue;
+}
+
+// MIME types of HEIC/HEIF images, keyed by lowercase file extension.
+const HEIF_MIME_TYPES_BY_EXTENSION = new Map<string, string>([
+  ['heic', 'image/heic'],
+  ['heif', 'image/heif'],
+]);
+
+function getLowercaseExtension(fileName?: string): string {
+  if (!fileName) {
+    return '';
+  }
+  const dotIndex = fileName.lastIndexOf('.');
+  return dotIndex === -1 ? '' : fileName.slice(dotIndex + 1).toLowerCase();
+}
+
+// Returns the MIME type of `file`. Some platforms do not report a MIME type
+// for HEIC/HEIF files (e.g. uppercase `.HEIC` on Linux, or Windows without the
+// HEIF extension installed), so infer it from the file extension in that case.
+export function getFileMimeType(file: {name?: string, type?: string}): string {
+  if (file.type) {
+    return file.type;
+  }
+  return HEIF_MIME_TYPES_BY_EXTENSION.get(getLowercaseExtension(file.name)) ??
+      '';
+}
+
+// Returns true if `file` is a HEIC/HEIF image, which Chrome cannot render in
+// an <img> element.
+export function isHeifImage(file: {name?: string, type?: string}): boolean {
+  const type = (file.type ?? '').toLowerCase();
+  return type === 'image/heic' || type === 'image/heif' ||
+      HEIF_MIME_TYPES_BY_EXTENSION.has(getLowercaseExtension(file.name));
 }
 
 export function isContextUploadStatusTerminal(status: ContextUploadStatus):

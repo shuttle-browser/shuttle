@@ -13,6 +13,8 @@
 #import "base/files/file_util.h"
 #import "base/files/scoped_temp_dir.h"
 #import "base/functional/callback_helpers.h"
+#import "base/memory/raw_ptr.h"
+#import "base/memory/raw_ref.h"
 #import "base/no_destructor.h"
 #import "base/run_loop.h"
 #import "base/strings/sys_string_conversions.h"
@@ -45,6 +47,7 @@
 #import "ios/chrome/browser/cobrowse/model/cobrowse_context.h"
 #import "ios/chrome/browser/cobrowse/shared/metrics/assistant_aim_metrics_constants.h"
 #import "ios/chrome/browser/cobrowse/shared/metrics/assistant_aim_metrics_recorder.h"
+#import "ios/chrome/browser/composebox/coordinator/composebox_input_plate_mediator+testing.h"
 #import "ios/chrome/browser/composebox/coordinator/composebox_mode_holder.h"
 #import "ios/chrome/browser/composebox/coordinator/composebox_url_loader.h"
 #import "ios/chrome/browser/composebox/debugger/composebox_debugger_event.h"
@@ -57,7 +60,10 @@
 #import "ios/chrome/browser/composebox/ui/composebox_input_item.h"
 #import "ios/chrome/browser/composebox/ui/composebox_input_plate_consumer.h"
 #import "ios/chrome/browser/composebox/ui/composebox_ui_input_state.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/fake_page_context_wrapper.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/fake_page_context_wrapper_factory.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper_factory.h"
 #import "ios/chrome/browser/lens/ui_bundled/lens_availability.h"
 #import "ios/chrome/browser/lens/ui_bundled/lens_entrypoint.h"
 #import "ios/chrome/browser/ntp/model/new_tab_page_tab_helper.h"
@@ -72,7 +78,7 @@
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_params.h"
-#import "ios/testing/scoped_block_swizzler.h"
+#import "ios/chrome/browser/voice/model/voice_search_navigations_tab_helper.h"
 #import "ios/web/public/test/fakes/fake_navigation_context.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #import "ios/web/public/test/web_task_environment.h"
@@ -82,7 +88,6 @@
 #import "services/network/test/test_url_loader_factory.h"
 #import "testing/gmock/include/gmock/gmock.h"
 #import "testing/gtest/include/gtest/gtest.h"
-#import "testing/gtest_mac.h"
 #import "testing/platform_test.h"
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
@@ -102,26 +107,6 @@
 - (void)loadURLParams:(const UrlLoadParams&)params {
   _loadedURL = params.web_params.url;
 }
-@end
-
-@interface ComposeboxInputPlateMediator (Testing)
-- (void)setState:(ComposeboxInputItemState)state
-          onItem:(ComposeboxInputItem*)item;
-- (base::UnguessableToken)createInputItemForWebState:(web::WebState*)webState
-                                              source:(ComposeboxInputItemSource)
-                                                         source;
-- (BOOL)isWebStateIDRemoved:(web::WebStateID)webStateID;
-- (void)removeDeselectedIDs:(std::set<web::WebStateID>)deselectedIDs;
-- (void)updateAutoAttachedCurrentTab;
-- (void)handleFailedAttachment:(base::UnguessableToken)identifier;
-- (void)handlePageContextResponse:
-            (std::unique_ptr<optimization_guide::proto::PageContext>)
-                page_context
-                         webState:(web::WebState*)webState
-                       identifier:(base::UnguessableToken)identifier;
-- (void)reloadSuggestions;
-- (void)sendAIMFollowup:(NSString*)text;
-- (void)didCreateSearchURL:(GURL)URL;
 @end
 
 // Mock delegate for the mediator.
@@ -372,6 +357,32 @@ class ComposeboxInputPlateMediatorTest : public PlatformTest {
     bool serverSideState;
   };
 
+  // `PageContextWrapperFactory` implementation that records weak references to
+  // created `FakePageContextWrapper` instances without retaining them, so tests
+  // can verify when the mediator releases an in-flight wrapper.
+  class RecordingFakePageContextWrapperFactory final
+      : public PageContextWrapperFactory {
+   public:
+    explicit RecordingFakePageContextWrapperFactory(
+        std::vector<__weak PageContextWrapper*>& started_wrappers)
+        : started_wrappers_(started_wrappers) {}
+
+    // PageContextWrapperFactory:
+    PageContextWrapper* Create(web::WebState* web_state,
+                               PageContextWrapperConfig config,
+                               CompletionCallback completion) final {
+      FakePageContextWrapper* wrapper = [[FakePageContextWrapper alloc]
+            initWithWebState:web_state
+                      config:std::move(config)
+          completionCallback:std::move(completion)];
+      started_wrappers_->push_back(wrapper);
+      return wrapper;
+    }
+
+   private:
+    const raw_ref<std::vector<__weak PageContextWrapper*>> started_wrappers_;
+  };
+
   TemplateURLService* template_url_service() {
     return search_engines_test_environment_.template_url_service();
   }
@@ -424,15 +435,10 @@ class ComposeboxInputPlateMediatorTest : public PlatformTest {
   // the mediator stays in flight for as long as the mediator owns it. Records
   // the wrappers weakly, in creation order, in `started_page_context_wrappers_`
   // so that tests can check whether the mediator still owns them.
-  // TODO(crbug.com/568219593): Inject page context extraction into the
-  // mediator and use a fake instead of swizzling `PageContextWrapper`.
   void StubPageContextExtraction() {
-    page_context_extraction_swizzler_ = std::make_unique<ScopedBlockSwizzler>(
-        [PageContextWrapper class],
-        @selector(populatePageContextFieldsAsyncWithTimeout:),
-        ^(PageContextWrapper* wrapper, base::TimeDelta timeout) {
-          started_page_context_wrappers_.push_back(wrapper);
-        });
+    page_context_wrapper_factory_ = &fake_page_context_wrapper_factory_;
+    [mediator_
+        setPageContextWrapperFactoryForTesting:page_context_wrapper_factory_];
   }
 
   // Makes `session` reference the context token it creates in queries until the
@@ -490,21 +496,25 @@ class ComposeboxInputPlateMediatorTest : public PlatformTest {
       id<SceneCommands> scene_handler = nil) {
     ComposeboxModeHolder* mode_holder = [[ComposeboxModeHolder alloc] init];
     mode_holder.mode = mode;
-    return [[ComposeboxInputPlateMediator alloc]
-        initWithContextualSearchSession:std::move(session)
-                           webStateList:web_state_list_.get()
-                          faviconLoader:nullptr
-                 persistTabContextAgent:nullptr
-                            isIncognito:NO
-                             modeHolder:mode_holder
-                     templateURLService:template_url_service()
-                  aimEligibilityService:aim_eligibility_service_.get()
-                            prefService:&pref_service_
-                                profile:profile_.get()
-                   cobrowseBrowserAgent:cobrowse_browser_agent
-              browserCoordinatorHandler:browser_coordinator_handler
-                           sceneHandler:scene_handler
-                             entrypoint:entrypoint];
+    ComposeboxInputPlateMediator* mediator =
+        [[ComposeboxInputPlateMediator alloc]
+            initWithContextualSearchSession:std::move(session)
+                               webStateList:web_state_list_.get()
+                              faviconLoader:nullptr
+                     persistTabContextAgent:nullptr
+                                isIncognito:NO
+                                 modeHolder:mode_holder
+                         templateURLService:template_url_service()
+                      aimEligibilityService:aim_eligibility_service_.get()
+                                prefService:&pref_service_
+                                    profile:profile_.get()
+                       cobrowseBrowserAgent:cobrowse_browser_agent
+                  browserCoordinatorHandler:browser_coordinator_handler
+                               sceneHandler:scene_handler
+                                 entrypoint:entrypoint];
+    [mediator
+        setPageContextWrapperFactoryForTesting:page_context_wrapper_factory_];
+    return mediator;
   }
 
   // Creates a `ComposeboxInputPlateMediator` without a contextual search
@@ -621,15 +631,18 @@ class ComposeboxInputPlateMediatorTest : public PlatformTest {
   std::unique_ptr<FakeWebStateListDelegate> web_state_list_delegate_;
   std::unique_ptr<WebStateList> web_state_list_;
   TestComposeboxInputPlateConsumer* consumer_;
+  // The `PageContextWrapper`s whose extraction started, in creation order.
+  // Weak, so that they only stay alive while the mediator owns them.
+  std::vector<__weak PageContextWrapper*> started_page_context_wrappers_;
+  RecordingFakePageContextWrapperFactory fake_page_context_wrapper_factory_{
+      started_page_context_wrappers_};
+  // Factory used to stub page context extraction when non-null. See
+  // `StubPageContextExtraction()`.
+  raw_ptr<PageContextWrapperFactory> page_context_wrapper_factory_ = nullptr;
   ComposeboxInputPlateMediator* mediator_;
   base::test::ScopedFeatureList scoped_feature_list_;
   omnibox::SearchboxConfig searchbox_config_;
   variations::test::ScopedVariationsIdsProvider scoped_variations_ids_provider_;
-  // Stubs page context extraction. See `StubPageContextExtraction()`.
-  std::unique_ptr<ScopedBlockSwizzler> page_context_extraction_swizzler_;
-  // The `PageContextWrapper`s whose extraction started, in creation order.
-  // Weak, so that they only stay alive while the mediator owns them.
-  std::vector<__weak PageContextWrapper*> started_page_context_wrappers_;
 };
 
 TEST_F(ComposeboxInputPlateMediatorTest, ShowsSendButtonWithAttachments) {
@@ -1168,33 +1181,6 @@ TEST_F(ComposeboxInputPlateMediatorTest, LogsOmniboxMetricOnStartSurface) {
   histogram_tester.ExpectTotalCount(kActionOnNTPHistogram, 0);
 }
 
-// Tests that processContextLibraryWebpageSignalWithURL:title: successfully adds
-// the webpage context item when the entrypoint is kCobrowse.
-TEST_F(ComposeboxInputPlateMediatorTest,
-       ProcessContextLibraryWebpageSignalSuccessfulWithCobrowse) {
-  ComposeboxInputPlateMediator* mediator = CreateMediator();
-
-  TestComposeboxInputPlateConsumer* consumer =
-      [[TestComposeboxInputPlateConsumer alloc] init];
-  mediator.consumer = consumer;
-
-  NSArray<ComposeboxInputItem*>* items = consumer.items;
-  ASSERT_EQ(items.count, 0U);
-
-  GURL url("https://example.com");
-  NSString* title = @"Example Title";
-
-  [mediator processContextLibraryWebpageSignalWithURL:url title:title];
-
-  items = consumer.items;
-  ASSERT_EQ(items.count, 1U);
-  ComposeboxInputItem* item = items.firstObject;
-  EXPECT_EQ(item.type, ComposeboxInputItemType::kComposeboxInputItemTypeTab);
-  EXPECT_NSEQ(item.title, title);
-
-  [mediator disconnect];
-}
-
 // Tests that `kOmnibox` is logged when an AIM query is submitted while on the
 // NTP from the Fakebox entrypoint.
 TEST_F(ComposeboxInputPlateMediatorTest,
@@ -1266,6 +1252,22 @@ TEST_F(ComposeboxInputPlateMediatorTest,
   histogram_tester.ExpectTotalCount(kActionOnHomeHistogram, 0);
   histogram_tester.ExpectTotalCount(kActionOnNTPHistogram, 0);
   histogram_tester.ExpectTotalCount(kActionOnStartHistogram, 0);
+}
+
+// Tests that a query sent by Voice Search marks the navigation as a Voice
+// Search result.
+TEST_F(ComposeboxInputPlateMediatorTest,
+       SendVoiceSearchQueryMarksNavigationAsVoiceSearch) {
+  web::WebState* web_state = web_state_list_->GetActiveWebState();
+  VoiceSearchNavigationTabHelper::CreateForWebState(web_state);
+  FakeComposeboxURLLoader* fake_loader = [[FakeComposeboxURLLoader alloc] init];
+  mediator_.URLLoader = fake_loader;
+
+  [mediator_ sendVoiceSearchQuery:@"voice query"];
+
+  EXPECT_TRUE(fake_loader.loadedURL.is_valid());
+  EXPECT_TRUE(VoiceSearchNavigationTabHelper::FromWebState(web_state)
+                  ->IsExpectingVoiceSearch());
 }
 
 // Tests that sending text in regular search mode with no attachments bypasses
@@ -1748,6 +1750,7 @@ TEST_F(ComposeboxInputPlateMediatorTest, ImageAttachmentUploadIndex) {
 
   UIImage* image = [[UIImage alloc] init];
   NSItemProvider* provider = [[NSItemProvider alloc] initWithObject:image];
+  provider.suggestedName = @"IMG_0001";
 
   [mediator_
       processImageItemProvider:provider
@@ -1759,6 +1762,7 @@ TEST_F(ComposeboxInputPlateMediatorTest, ImageAttachmentUploadIndex) {
                         source:ComposeboxInputItemSource::kGalleryPicker];
 
   ASSERT_EQ(consumer_.items.count, 2U);
+  EXPECT_TRUE([consumer_.items[0].title isEqualToString:@"IMG_0001"]);
   EXPECT_EQ(consumer_.items[0].uploadIndex, 0);
   EXPECT_EQ(consumer_.items[1].uploadIndex, 1);
 
@@ -3115,7 +3119,7 @@ TEST_F(ComposeboxInputPlateMediatorTest,
   OCMExpect([mock_scene_handler showAssistantWithNewSession]);
 
   GURL search_url("https://www.google.com/search?q=test&udm=50");
-  [mediator didCreateSearchURL:search_url];
+  [mediator didCreateSearchURL:search_url fromVoiceSearch:NO];
 
   EXPECT_OCMOCK_VERIFY(mock_browser_coordinator_handler);
   EXPECT_OCMOCK_VERIFY(mock_scene_handler);
@@ -3210,7 +3214,7 @@ TEST_F(ComposeboxInputPlateMediatorTest,
       });
 
   GURL search_url("https://www.google.com/search?q=test&udm=50");
-  [mediator didCreateSearchURL:search_url];
+  [mediator didCreateSearchURL:search_url fromVoiceSearch:NO];
 
   EXPECT_FALSE(composebox_hidden);
   EXPECT_FALSE(assistant_shown);

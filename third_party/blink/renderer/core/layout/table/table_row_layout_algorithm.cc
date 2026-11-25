@@ -139,9 +139,22 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
     BlockChildIterator child_iterator(Node().FirstChild(), GetBreakToken(),
                                       /* calculate_child_idx */ true);
     for (auto entry = child_iterator.NextChild();
-         BlockNode cell = To<BlockNode>(entry.block_node);
+         BlockNode child = To<BlockNode>(entry.block_node);
          entry = child_iterator.NextChild()) {
-      const auto* cell_break_token = To<BlockBreakToken>(entry.token);
+      const auto* child_break_token = To<BlockBreakToken>(entry.token);
+      if (child.IsOutOfFlowPositioned()) {
+        DCHECK(child_break_token);
+        // Resumed OOFs are found by the iterator directly under the table
+        // section, but they are obviously not rows. All we have to do here is
+        // making sure that it gets handled by OOF layout after regular in-flow
+        // layout, and carry on with our in-flow business.
+        container_builder_.AddOutOfFlowChildCandidate(
+            child, LogicalStaticPosition(), child_break_token);
+        continue;
+      }
+      DCHECK(child.IsTableCell());
+      BlockNode cell = child;
+
       const auto& cell_style = cell.Style();
       const wtf_size_t cell_index = row.start_cell_index + *entry.index;
       const TableConstraintSpaceData::Cell& cell_data =
@@ -151,10 +164,10 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
           MinBlockSizeShouldEncompassIntrinsicSize(cell, cell_data);
 
       const auto cell_space = CreateCellConstraintSpace(
-          cell, cell_break_token, cell_data, row_block_size, row_baseline,
+          cell, child_break_token, cell_data, row_block_size, row_baseline,
           min_block_size_should_encompass_intrinsic_size);
       FragmentationLayoutInput fragmentation =
-          GetFragmentationLayoutInputForChild(cell, cell_break_token);
+          GetFragmentationLayoutInputForChild(cell, child_break_token);
       const LayoutResult* cell_result = cell.Layout(cell_space, fragmentation);
       DCHECK_EQ(cell_result->Status(), LayoutResult::kSuccess);
 
@@ -162,10 +175,12 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
           table_data.column_locations[cell_data.start_column].offset -
               table_data.table_border_spacing.inline_size,
           LayoutUnit());
-      if (has_block_fragmentation || !row_baseline)
+      if (has_block_fragmentation || !row_baseline) {
         results.emplace_back(cell_result, offset);
-      else
-        container_builder_.AddResult(*cell_result, offset);
+      } else {
+        container_builder_.AddResult(*cell_result, offset,
+                                     /*margins=*/BoxStrut());
+      }
 
       if (should_propagate_child_break_values) {
         auto cell_break_before = JoinFragmentainerBreakValues(
@@ -237,8 +252,10 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
       PlaceCells(row_block_size, std::nullopt);
     }
 
-    for (auto& result : results)
-      container_builder_.AddResult(*result.result, result.offset);
+    for (auto& result : results) {
+      container_builder_.AddResult(*result.result, result.offset,
+                                   /*margins=*/BoxStrut());
+    }
   }
 
   // Since we always visit all cells in a row (cannot break halfway through;
@@ -275,7 +292,9 @@ const LayoutResult* TableRowLayoutAlgorithm::Layout() {
   container_builder_.SetBaselines(row_baseline_tabulator.ComputeBaseline(
       container_builder_.FragmentBlockSize()));
 
-  container_builder_.HandleOofsAndSpecialDescendants();
+  LayoutResult::EStatus oof_status =
+      container_builder_.HandleOofsAndSpecialDescendants();
+  DCHECK_EQ(oof_status, LayoutResult::kSuccess);
   return container_builder_.ToBoxFragment();
 }
 

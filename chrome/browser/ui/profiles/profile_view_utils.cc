@@ -34,6 +34,7 @@
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/sync/service/sync_service.h"
 #include "components/user_prefs/user_prefs.h"
@@ -41,8 +42,8 @@
 #include "ui/base/accelerators/menu_label_accelerator_util.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/text_elider.h"
@@ -71,7 +72,7 @@ void NavigateToGoogleAccountPage(Profile* profile, const std::string& email) {
   url = net::AppendQueryParameter(url, "continue", google_account.spec());
 
   NavigateParams params(profile, url, ui::PAGE_TRANSITION_LINK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
 }
 
@@ -205,21 +206,28 @@ bool IsOpenLinkOTREnabled(Profile* source_profie, const GURL& url) {
   return incognito_avail != policy::IncognitoModeAvailability::kDisabled;
 }
 
-bool ShouldShowAvatarGradientRing(Profile* profile) {
+subscription_eligibility::AiSubscriptionTierDisplayInfo
+GetAvatarAiDecorationForTier(int tier) {
   if (!base::FeatureList::IsEnabled(
           switches::kEnableAiSubscriptionAvatarRing)) {
-    return false;
+    return {};
   }
+  return subscription_eligibility::GetAiSubscriptionTierDisplayInfo(tier);
+}
+
+subscription_eligibility::AiSubscriptionTierDisplayInfo GetAvatarAiDecoration(
+    Profile* profile) {
   if (!profile) {
-    return false;
+    return {};
   }
-  // TODO(crbug.com/522296672): Specify the right way to obtain this information
-  // as `GetAiSubscriptionTier` only works for certain groups of users.
   subscription_eligibility::SubscriptionEligibilityService*
       subscription_service = subscription_eligibility::
           SubscriptionEligibilityServiceFactory::GetForProfile(profile);
-  return subscription_service &&
-         subscription_service->GetAiSubscriptionTier() > 0;
+  if (!subscription_service) {
+    return {};
+  }
+  return GetAvatarAiDecorationForTier(
+      subscription_service->GetAiSubscriptionTier());
 }
 
 gfx::ImageSkia AddLinearGradientRingToAvatar(

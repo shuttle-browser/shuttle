@@ -60,6 +60,8 @@ public final class DeviceInfo {
     private static @Nullable Boolean sIsRetailDemoModeForTesting;
     private static @Nullable Boolean sIsDesktopForTesting;
     private static @Nullable Boolean sIsFoldableForTesting;
+    // Test override for Settings.Global.DEVICE_NAME used by native and Robolectric unit tests.
+    private static @Nullable String sDeviceNameForTesting;
     private final IDeviceInfo mIDeviceInfo;
     // Test builds only: value of --force-desktop-android when this instance was created, used
     // to detect switches added after creation (see getInstance()). Always false otherwise.
@@ -322,8 +324,38 @@ public final class DeviceInfo {
 
     @CalledByNative
     public static @JniType("std::string") @Nullable String getDeviceName() {
-        return Settings.Global.getString(
-                ContextUtils.getApplicationContext().getContentResolver(), "device_name");
+        if (sDeviceNameForTesting != null) {
+            return sDeviceNameForTesting;
+        }
+        try {
+            return Settings.Global.getString(
+                    ContextUtils.getApplicationContext().getContentResolver(),
+                    Settings.Global.DEVICE_NAME);
+        } catch (Exception e) {
+            return null;
+        }
+    }
+
+    /**
+     * Overrides the value returned by {@link #getDeviceName()} in unit tests so tests can simulate
+     * custom or unset device names without modifying global system settings.
+     *
+     * @param deviceName The test device name override to return from {@link #getDeviceName()}, or
+     *     {@code null} to clear the override.
+     * @return The previous test override value, or {@code null} if none was set.
+     */
+    @CalledByNativeForTesting
+    public static @JniType("std::optional<std::string>") @Nullable String setDeviceNameForTesting(
+            @JniType("std::optional<std::string>") @Nullable String deviceName) {
+        String prev = sDeviceNameForTesting;
+        sDeviceNameForTesting = deviceName;
+        ResettersForTesting.register(() -> sDeviceNameForTesting = prev);
+        return prev;
+    }
+
+    /** Clears the test override set by {@link #setDeviceNameForTesting(String)}. */
+    public static void resetDeviceNameForTesting() {
+        sDeviceNameForTesting = null;
     }
 
     public static boolean isInitializedForTesting() {
@@ -493,8 +525,8 @@ public final class DeviceInfo {
     }
 
     /**
-     * @return CPU architecture name, see "arch:" in:
-     *     https://chromium.googlesource.com/chromium/src.git/+/master/docs/updater/protocol_3_1.md
+     * Returns CPU architecture name, see "arch:" in:
+     * https://chromium.googlesource.com/chromium/src.git/+/master/docs/updater/protocol_3_1.md
      */
     public static String getArch() {
         boolean is64Bit = Process.is64Bit();
@@ -506,9 +538,7 @@ public final class DeviceInfo {
         return "";
     }
 
-    /**
-     * @return The device's screen width in density-independent pixels (dp).
-     */
+    /** Returns the device's screen width in density-independent pixels (dp). */
     private static int getDeviceWidthInDp() {
         DisplayMetrics displayMetrics =
                 ContextUtils.getApplicationContext().getResources().getDisplayMetrics();

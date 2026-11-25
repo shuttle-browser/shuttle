@@ -36,6 +36,7 @@
 #import "testing/platform_test.h"
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #import "url/gurl.h"
 
 @interface FakeLensResultPageMediatorDelegate
@@ -112,6 +113,7 @@ class LensResultPageMediatorTest : public PlatformTest {
 
   ~LensResultPageMediatorTest() override {
     browser_web_state_delegate_.ClearLastProxyAuthenticationRequest();
+    fake_web_state_ = nullptr;
     [mediator_ disconnect];
     PlatformTest::TearDown();
   }
@@ -187,7 +189,7 @@ class LensResultPageMediatorTest : public PlatformTest {
   FakeLensResultPageMediatorDelegate* fake_delegate_;
 
   // Call `AttachFakeWebState()` to use `fake_web_state_`.
-  raw_ptr<web::FakeWebState, DanglingUntriaged> fake_web_state_;
+  raw_ptr<web::FakeWebState> fake_web_state_ = nullptr;
 };
 
 // Tests that the mediator starts a navigation when loadResultsURL is called.
@@ -323,10 +325,10 @@ TEST_F(LensResultPageMediatorTest, ShouldOpenURLInNewTabForNewForegroundTab) {
       static_cast<id<CRWWebStateDelegate>>(mediator_);
 
   EXPECT_FALSE(fake_delegate_.openInNewTabRequested);
-  web::WebState::OpenURLParams params(GURL("https://www.chromium.org"),
-                                      web::Referrer(),
-                                      WindowOpenDisposition::kNewForegroundTab,
-                                      ui::PAGE_TRANSITION_LINK, false);
+  web::WebState::OpenURLParams params(
+      GURL("https://www.chromium.org"), web::Referrer(),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui::PAGE_TRANSITION_LINK, false);
   web::WebState* new_web_state = [web_state_delegate webState:fake_web_state_
                                             openURLWithParams:params];
   EXPECT_EQ(new_web_state, nullptr);
@@ -336,8 +338,8 @@ TEST_F(LensResultPageMediatorTest, ShouldOpenURLInNewTabForNewForegroundTab) {
   fake_delegate_.openInNewTabRequested = NO;
   web::WebState::OpenURLParams non_http_params(
       GURL("chrome://policy"), web::Referrer(),
-      WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK,
-      false);
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui::PAGE_TRANSITION_LINK, false);
   new_web_state = [web_state_delegate webState:fake_web_state_
                              openURLWithParams:non_http_params];
   EXPECT_EQ(new_web_state, nullptr);

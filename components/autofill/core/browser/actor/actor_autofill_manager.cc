@@ -37,7 +37,6 @@ std::string GetAutofillFilledTypesMetadata(
 
   base::DictValue metadata_dict;
   metadata_dict.Set("filled_types", std::move(filled_types_list));
-  std::string metadata_json;
   return base::WriteJson(metadata_dict).value_or("");
 }
 
@@ -119,7 +118,7 @@ void ActorAutofillManager::MaybeLogCriticalAction(
       critical_actions::CriticalActionEntry::Builder()
           .SetActionType(critical_actions::ActionType::kFormFill)
           .SetActionSource(critical_actions::ActionSource::kAutofill)
-          .SetConversationId(std::move(active_actor_task_->conversation_id))
+          .SetConversationId(active_actor_task_->conversation_id)
           .SetActorTaskId(
               base::NumberToString(active_actor_task_->task_id.value()))
           .SetMetadata(

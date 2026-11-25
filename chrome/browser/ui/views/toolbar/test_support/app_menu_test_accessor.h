@@ -28,7 +28,6 @@ class MenuItemView;
 class AppMenuTestAccessor {
  public:
   explicit AppMenuTestAccessor(BrowserWindowInterface* browser);
-  explicit AppMenuTestAccessor(AppMenuControl* control);
   AppMenuTestAccessor(const AppMenuTestAccessor&) = default;
   AppMenuTestAccessor& operator=(const AppMenuTestAccessor&) = default;
   ~AppMenuTestAccessor();
@@ -66,10 +65,15 @@ class AppMenuTestAccessor {
   // bubble anchor).
   bool IsHighlighted() const;
 
+  // Returns true if the app menu button currently has an in-product help
+  // promo attention highlight.
+  bool HasInProductHelpPromo() const;
+
   // Returns the underlying AppMenuControl.
   AppMenuControl* GetControl() const { return control_; }
 
  private:
+  raw_ptr<BrowserWindowInterface> browser_ = nullptr;
   raw_ptr<AppMenuControl> control_ = nullptr;
 };
 

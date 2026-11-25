@@ -6,7 +6,6 @@
 
 #include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/save_to_drive/account_chooser_util.h"
 #include "chrome/browser/ui/views/save_to_drive/account_chooser_view.h"
@@ -14,8 +13,8 @@
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 
 namespace save_to_drive {
@@ -169,7 +168,7 @@ void AccountChooserController::ShowAccountChooserDialog(
   if (account_chooser_view_) {
     account_chooser_view_->UpdateView(profile_info.accounts,
                                       profile_info.primary_account_id);
-    tab_->GetTabFeatures()->tab_dialog_manager()->UpdateModalDialogBounds();
+    tabs::TabDialogManager::From(tab_)->UpdateModalDialogBounds();
     return;
   }
   std::unique_ptr<AccountChooserView> account_chooser_view =
@@ -182,7 +181,7 @@ void AccountChooserController::ShowAccountChooserDialog(
       CreateDialogDelegate(std::move(account_chooser_view));
 
   account_chooser_widget_ =
-      tab_->GetTabFeatures()->tab_dialog_manager()->CreateAndShowDialog(
+      tabs::TabDialogManager::From(tab_)->CreateAndShowDialog(
           account_chooser_dialog_delegate_.get(),
           std::make_unique<tabs::TabDialogManager::Params>());
   account_chooser_widget_->MakeCloseSynchronous(
@@ -208,7 +207,8 @@ void AccountChooserController::ShowAddAccountDialog() {
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           signin::GetAddAccountURLForDice("", GURL()),
-          WindowOpenDisposition::kNewPopup, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
+          ui::mojom::WindowOpenDisposition::kNewPopup,
+          ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
   add_account_popup_ = source_window->GetDelegate()->OpenURLFromTab(
       source_window, params, /*navigation_handle_callback=*/{});
   ResizeAndFocusAddAccountPopup();

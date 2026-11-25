@@ -4,8 +4,9 @@
 
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
 
-#include <optional>
+#include <memory>
 #include <string_view>
+#include <utility>
 
 #include "base/feature_list.h"
 #include "base/task/single_thread_task_runner.h"
@@ -16,7 +17,9 @@
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_aim_popup_webui_content.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_view_views.h"
+#include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_ui.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_preload_manager.h"
+#include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/permissions/permission_request_manager.h"
 
@@ -24,16 +27,13 @@ OmniboxPopupAimPresenter::OmniboxPopupAimPresenter(
     LocationBar* location_bar,
     OmniboxController* controller,
     OmniboxPopupPresenterDelegate& presenter_delegate)
-    : OmniboxPopupPresenterBase(location_bar, presenter_delegate, controller) {
+    : OmniboxPopupPresenterBase(location_bar,
+                                presenter_delegate,
+                                controller,
+                                OmniboxPopupContentConfig::ForAim()) {
   // If the content is not created here, it is created on demand by `Show()`
   // or by the classic popup's context menu, which needs the AIM WebContents.
-  WebUIContentCreationStrategy strategy =
-      GetWebUIContentCreationStrategy(omnibox::kOmniboxAimPopupDeferCreation);
-  if (strategy == WebUIContentCreationStrategy::kAfterWindowPresentation &&
-      !omnibox::kOmniboxAimPopupCreateOnFirstPresentation.Get()) {
-    strategy = WebUIContentCreationStrategy::kOnDemand;
-  }
-  ApplyWebUIContentCreationStrategy(strategy);
+  ApplyWebUIContentCreationStrategy(omnibox::kOmniboxAimPopupDeferCreation);
 }
 
 OmniboxPopupAimPresenter::~OmniboxPopupAimPresenter() = default;
@@ -63,10 +63,23 @@ std::string_view OmniboxPopupAimPresenter::GetPopupMetricPrefix() const {
   return OmniboxPopupPresenterBase::kAimPopupMetricPrefix;
 }
 
+OmniboxPopupState OmniboxPopupAimPresenter::GetSharedPopupKind() const {
+  return OmniboxPopupState::kAim;
+}
+
 std::unique_ptr<OmniboxPopupWebUIBaseContent>
-OmniboxPopupAimPresenter::CreateWebUIContent() {
-  return std::make_unique<OmniboxAimPopupWebUIContent>(this, location_bar(),
-                                                       controller());
+OmniboxPopupAimPresenter::CreateWebUIContent(
+    std::unique_ptr<WebUIContentsWrapperT<OmniboxPopupUI>> contents) {
+  return std::make_unique<OmniboxAimPopupWebUIContent>(
+      /*content_delegate=*/this, /*sizer=*/this, /*config=*/config(),
+      location_bar(), controller(), std::move(contents));
+}
+
+OmniboxPopupPresenterBase::WebUIContentCreationStrategy
+OmniboxPopupAimPresenter::GetDeferredWebUIContentCreationStrategy() const {
+  return omnibox::kOmniboxAimPopupCreateOnFirstPresentation.Get()
+             ? WebUIContentCreationStrategy::kAfterWindowPresentation
+             : WebUIContentCreationStrategy::kOnDemand;
 }
 
 void OmniboxPopupAimPresenter::LogResultToContentReadyMetric(
@@ -78,45 +91,10 @@ void OmniboxPopupAimPresenter::LogResultToContentReadyMetric(
   // telemetry.
 }
 
-std::optional<base::TimeDelta>
-OmniboxPopupAimPresenter::ShouldDeferUntilVisualStateReady() const {
-  if (!omnibox::ShouldDeferAimShowUntilVisualStateReady()) {
-    return std::nullopt;
-  }
-  return base::Milliseconds(
-      omnibox::kOmniboxAimDeferShowUntilVisualStateReadyTimeoutMs.Get());
-}
-
-bool OmniboxPopupAimPresenter::ShouldDebounceResize() const {
-  return base::FeatureList::IsEnabled(omnibox::kOmniboxAimDebounceResize);
-}
-
-bool OmniboxPopupAimPresenter::ShouldApplyHeightWorkarounds() const {
-  return omnibox::ShouldApplyAimHeightWorkarounds();
-}
-
-bool OmniboxPopupAimPresenter::ShouldDetachWebContentsOnHide() const {
-  return base::FeatureList::IsEnabled(
-      omnibox::kOmniboxAimDetachWebContentsOnHide);
-}
-
-bool OmniboxPopupAimPresenter::ShouldEvictOnHide() const {
-  return omnibox::ShouldAimEvictOnHide();
-}
-
 bool OmniboxPopupAimPresenter::ShouldDestroyWidgetOnHide() const {
   return base::FeatureList::IsEnabled(
              omnibox::kOmniboxAimDestroyWidgetOnHide) ||
          OmniboxPopupPresenterBase::ShouldDestroyWidgetOnHide();
-}
-
-bool OmniboxPopupAimPresenter::ShouldSizeWebViewToPreferredHeight() const {
-  return base::FeatureList::IsEnabled(
-      omnibox::kOmniboxAimSizeWebViewToPreferredHeight);
-}
-
-bool OmniboxPopupAimPresenter::ShouldDrawShadowInWebUI() const {
-  return omnibox::ShouldDrawAimShadowInWebUI();
 }
 
 void OmniboxPopupAimPresenter::OnWidgetActivationChanged(views::Widget* widget,

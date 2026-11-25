@@ -68,6 +68,7 @@
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "components/component_updater/component_updater_service.h"
+#include "components/crash/core/app/crashpad.h"
 #include "components/crash/core/common/crash_keys.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/language/core/browser/locale_util.h"
@@ -160,7 +161,6 @@
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_features.h"
 #include "base/feature_list.h"
-#include "chrome/browser/ash/arc/vmm/vmm_metrics_provider.h"
 #include "chrome/browser/ash/printing/printer_metrics_provider.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/ash/settings/device_settings_service.h"
@@ -179,8 +179,14 @@
 #include "chrome/browser/metrics/structured/ash_structured_metrics_recorder.h"
 #include "chrome/browser/metrics/update_engine_metrics_provider.h"
 #include "chrome/browser/ui/ash/shelf/chrome_shelf_metrics_provider.h"
+#include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
 #include "chrome/browser/ui/webui/ash/settings/services/metrics/os_settings_metrics_provider.h"
 #include "chromeos/ash/components/demo_mode/utils/demo_session_utils.h"
+#include "components/session_manager/core/session_manager.h"  // nogncheck
+#include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/navigation_controller.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/common/url_constants.h"
 #else
 #include "chrome/browser/metrics/family_link_user_metrics_provider.h"
 #include "chrome/browser/metrics/structured/chrome_structured_metrics_delegate.h"
@@ -693,7 +699,8 @@ void ChromeMetricsServiceClient::OnEnvironmentUpdate(std::string* environment) {
   // will not have an environment set.
   if (base::FeatureList::IsEnabled(
           metrics::features::kSharedMemorySystemProfileMinidump)) {
-    metrics::SystemProfileUserStream::Get().WritePayload(*environment);
+    metrics::WriteSystemProfileUserStream(*environment,
+                                          &crash_reporter::WriteUserStreamData);
     return;
   }
 
@@ -1008,7 +1015,8 @@ void ChromeMetricsServiceClient::RegisterMetricsServiceProviders() {
       std::make_unique<ChromeShelfMetricsProvider>());
 
   metrics_service_->RegisterMetricsProvider(
-      std::make_unique<UpdateEngineMetricsProvider>());
+      std::make_unique<UpdateEngineMetricsProvider>(
+          session_manager::SessionManager::Get()));
 
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<UserTypeByDeviceTypeMetricsProvider>());
@@ -1019,8 +1027,6 @@ void ChromeMetricsServiceClient::RegisterMetricsServiceProviders() {
       std::make_unique<ash::settings::OsSettingsMetricsProvider>());
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<WallpaperMetricsProvider>());
-  metrics_service_->RegisterMetricsProvider(
-      std::make_unique<arc::VmmMetricsProvider>());
   metrics_service_->RegisterMetricsProvider(
       std::make_unique<K12AgeClassificationMetricsProvider>());
   if (base::FeatureList::IsEnabled(
@@ -1599,6 +1605,13 @@ ChromeMetricsServiceClient::AddOnClonedInstallDetectedCallback(
 
 #if BUILDFLAG(IS_CHROMEOS)
 
+bool ChromeMetricsServiceClient::IsUkmDebugDataAllowed() const {
+  // Do not expose UKM debug data when multiple users are logged in so that
+  // cross-user UKM data cannot be observed across profiles.
+  return !user_manager::UserManager::IsInitialized() ||
+         user_manager::UserManager::Get()->GetLoggedInUsers().size() <= 1;
+}
+
 bool ChromeMetricsServiceClient::ShouldUploadMetricsForUserId(
     const uint64_t user_id) {
   // Metrics logs with user ids should be stored in a user cryptohome so this
@@ -1639,6 +1652,49 @@ void ChromeMetricsServiceClient::InitPerUserMetrics() {
           this, g_browser_process->local_state());
   per_user_choice_change_subscription_ = per_user_state_manager_->AddObserver(
       base::BindRepeating(&UpdateMetricsServicesForPerUser));
+
+  // UserManager is guaranteed to be initialized here because
+  // InitPerUserMetrics() is called from ChromeBrowserMainPartsAsh::PreProfileInit()
+  // after UserManager initialization.
+  CHECK(user_manager::UserManager::IsInitialized());
+  user_session_state_observation_.Observe(user_manager::UserManager::Get());
+}
+
+void ChromeMetricsServiceClient::ActiveUserChanged(
+    user_manager::User* active_user) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (!active_user) {
+    return;
+  }
+
+  // To avoid purging on initial login, only purge if we are switching to a
+  // DIFFERENT user.
+  if (current_user_account_id_.is_valid() &&
+      current_user_account_id_ != active_user->GetAccountId()) {
+    if (ukm_service_) {
+      // Flush and purge previously recorded UKM data from the outgoing user.
+      // Note that in a multi-user session, IsUkmDebugDataAllowed() also gates
+      // UKM debug data on chrome://ukm and chrome://metrics-internals while
+      // multiple users are logged in.
+      ukm_service_->Flush(
+          metrics::MetricsLogsEventManager::CreateReason::kFlush);
+      ukm_service_->PurgeInMemoryRecordings();
+    }
+    // Reload any open chrome://ukm tabs so their frontend JS cache is cleared
+    // and they do not continue displaying UKM data from the previous user.
+    tabs::ForEachTabInterface([](tabs::TabInterface* tab) {
+      if (content::WebContents* web_contents = tab->GetContents()) {
+        const GURL& url = web_contents->GetLastCommittedURL();
+        if (url.SchemeIs(content::kChromeUIScheme) &&
+            url.host() == content::kChromeUIUkmHost) {
+          web_contents->GetController().Reload(content::ReloadType::NORMAL,
+                                               /*check_for_repost=*/false);
+        }
+      }
+      return true;
+    });
+  }
+  current_user_account_id_ = active_user->GetAccountId();
 }
 
 std::optional<bool> ChromeMetricsServiceClient::GetCurrentUserMetricsChoice()

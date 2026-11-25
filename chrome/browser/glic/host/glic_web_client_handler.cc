@@ -59,6 +59,7 @@
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_api_metrics.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_feature.h"
 #include "chrome/browser/glic/public/glic_fre_store.h"
 #include "chrome/browser/glic/public/glic_instance_metrics_backwards_compatibility.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
@@ -89,23 +90,23 @@
 #include "components/policy/core/common/management/management_service.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/security_interstitials/core/unsafe_resource.h"
 #include "components/send_tab_to_self/send_tab_to_self_model.h"
 #include "components/send_tab_to_self/send_tab_to_self_sync_service.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/sync_device_info/device_info.h"
 #include "components/sync_device_info/remote_device_info.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_delegate.h"
-#include "media/base/media_switches.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -482,7 +483,7 @@ class GlicWebClientHandler
 
     std::unique_ptr<NavigateParams> params = std::make_unique<NavigateParams>(
         profile_, url, ui::PAGE_TRANSITION_LINK);
-    params->disposition = WindowOpenDisposition::kNewPopup;
+    params->disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
     params->opened_by_another_window = true;
     params->window_features.bounds = gfx::Rect(x, y, popup_width, popup_height);
     glic::NavigateAsync(std::move(params), base::DoNothing());
@@ -688,16 +689,13 @@ class GlicWebClientHandler
     LogApiRequest(GlicHostApiRequestId::kCreateTab);
     bool open_in_background = create_options->open_in_background;
     std::optional<int32_t> window_id = create_options->window_id;
-    if (base::FeatureList::IsEnabled(media::kMediaLinkHelpers)) {
-      if (auto* tab = GetSharingManagerInternal().GetFocusedTabData().focus()) {
-        const bool replaced =
-            GlicMediaLinkHelper(tab->GetContents()).MaybeReplaceNavigation(url);
-        metric_reporter_.RecordBoolean("MaybeReplaceNavigation.Result",
-                                       replaced);
-        if (replaced) {
-          std::move(callback).Run(nullptr);
-          return;
-        }
+    if (auto* tab = GetSharingManagerInternal().GetFocusedTabData().focus()) {
+      const bool replaced =
+          GlicMediaLinkHelper(tab->GetContents()).MaybeReplaceNavigation(url);
+      metric_reporter_.RecordBoolean("MaybeReplaceNavigation.Result", replaced);
+      if (replaced) {
+        std::move(callback).Run(nullptr);
+        return;
       }
     }
     host().instance_delegate().CreateTab(url, open_in_background, window_id,
@@ -1034,6 +1032,10 @@ class GlicWebClientHandler
   void CreateExperimentalTriggeringClient(
       mojo::PendingRemote<mojom::ExperimentalTriggeringClient> client)
       override {
+    if (!glic_service_->provider_spec().SupportsFeature(
+            GlicFeature::kExperimentalTriggering)) {
+      return;
+    }
     if (auto* manager =
             host().instance_delegate().GetExperimentalTriggeringManager()) {
       manager->Bind(std::move(client));
@@ -1069,6 +1071,11 @@ class GlicWebClientHandler
       mojo::PendingReceiver<ai_overlay_dialog::mojom::AiOverlayTools> receiver)
       override {
 #if !BUILDFLAG(IS_ANDROID)
+    if (!GetGlicProviderSpec(profile_).SupportsFeature(
+            GlicFeature::kDynamicChromeTools)) {
+      // Dropping `receiver` disconnects the client's remote.
+      return;
+    }
     ai_overlay_tools_ =
         CreateAiOverlayToolsForGlic(profile_, std::move(receiver));
 #endif
@@ -1182,9 +1189,11 @@ class GlicWebClientHandler
       // "focusable" by Glic (e.g. chrome:// pages).
       tab = focus.is_focus() ? focus.focus() : focus.unfocused_tab();
     }
-    SelectionOverlayController::CaptureRegion(tab, GetSharingManagerInternal(),
-                                              std::move(observer),
-                                              std::move(tab_context_options));
+    bool capture_region_handoff =
+        params ? params->capture_region_handoff : false;
+    SelectionOverlayController::CaptureRegion(
+        tab, GetSharingManagerInternal(), std::move(observer),
+        std::move(tab_context_options), capture_region_handoff);
 #else
     NOTIMPLEMENTED();
 #endif
@@ -1377,7 +1386,7 @@ class GlicWebClientHandler
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
     result->has_avatar_ring =
         base::FeatureList::IsEnabled(kEnableGlicAiAvatarRing) &&
-        ShouldShowAvatarGradientRing(profile_);
+        GetAvatarAiDecoration(profile_).show_decoration;
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC)
 
     // TODO(crbug.com/382794680): Determine the correct size.
@@ -1527,6 +1536,11 @@ class GlicWebClientHandler
     host().instance_metrics().OnOptinImpression();
   }
 
+  void OnInputFocused() override {
+    LogApiRequest(GlicHostApiRequestId::kOnInputFocused);
+    host().instance_metrics().OnInputFocused();
+  }
+
   void OnUserInputSubmitted(mojom::WebClientMode mode,
                             mojom::PromptType prompt_type) override {
     LogApiRequest(GlicHostApiRequestId::kOnUserInputSubmitted);
@@ -1597,6 +1611,16 @@ class GlicWebClientHandler
     host().instance_metrics().OnActionSubmitted(is_retry);
   }
 
+  void OnTooltipImpression(mojom::TooltipImpressionType impression) override {
+    LogApiRequest(GlicHostApiRequestId::kOnTooltipImpression);
+    host().instance_metrics().OnTooltipImpression(impression);
+  }
+
+  void OnTooltipHidden() override {
+    LogApiRequest(GlicHostApiRequestId::kOnTooltipHidden);
+    host().instance_metrics().OnTooltipHidden();
+  }
+
   void SetSyntheticExperimentState(const std::string& trial_name,
                                    const std::string& group_name) override {
     LogApiRequest(GlicHostApiRequestId::kSetSyntheticExperimentState);
@@ -1636,6 +1660,7 @@ class GlicWebClientHandler
 
   void SetOnboardingCompleted() override {
     LogApiRequest(GlicHostApiRequestId::kSetOnboardingCompleted);
+    host().instance_metrics().OnWebFreAccepted();
     glic_service_->provider_spec().GetFreStore().CompleteOnboarding(profile_);
   }
 
@@ -1736,13 +1761,15 @@ class GlicWebClientHandler
       std::optional<bool> is_fre,
       GetZeroStateSuggestionsForFocusedTabCallback callback) override {
     LogApiRequest(GlicHostApiRequestId::kGetZeroStateSuggestionsForFocusedTab);
-    if (!IsZeroStateSuggestionsEnabled()) {
+    // LINT.IfChange(GlicZeroStateSuggestionsEnabled)
+    if (!IsZeroStateSuggestionsEnabled(profile_)) {
       receiver_.ReportBadMessage(
           "Client should not call "
           "GetZeroStateSuggestionsForFocusedTab "
           "without the GlicZeroStateSuggestions feature enabled.");
       return;
     }
+    // LINT.ThenChange(//chrome/browser/glic/host/guest_util.cc:GlicZeroStateSuggestionsEnabled)
 
     // TODO(crbug.com/424472586): Pass supported tools to service from web
     // client.

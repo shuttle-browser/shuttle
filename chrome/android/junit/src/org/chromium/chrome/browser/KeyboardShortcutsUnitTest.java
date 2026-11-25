@@ -4,6 +4,7 @@
 
 package org.chromium.chrome.browser;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
@@ -28,6 +29,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.robolectric.annotation.Config;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
@@ -43,6 +45,7 @@ import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.components.browser_ui.widget.MenuOrKeyboardActionController;
 import org.chromium.device.gamepad.GamepadList;
+import org.chromium.ui.base.DeviceInput;
 
 /** Unit tests for {@link KeyboardShortcuts} redirection. */
 @RunWith(BaseRobolectricTestRunner.class)
@@ -54,12 +57,14 @@ public class KeyboardShortcutsUnitTest {
     @Mock private TabModel mTabModel;
     @Mock private Profile mProfile;
     @Mock private IncognitoUtils.Natives mIncognitoUtilsJniMock;
+    @Mock private KeyboardShortcuts.Natives mKeyboardShortcutsJniMock;
 
     @Before
     public void setUp() {
         when(mTabModelSelector.getCurrentModel()).thenReturn(mTabModel);
         when(mTabModel.getProfile()).thenReturn(mProfile);
         IncognitoUtilsJni.setInstanceForTesting(mIncognitoUtilsJniMock);
+        KeyboardShortcutsJni.setInstanceForTesting(mKeyboardShortcutsJniMock);
         MultiWindowUtils.setMultiInstanceApi31EnabledForTesting(true);
     }
 
@@ -192,6 +197,95 @@ public class KeyboardShortcutsUnitTest {
         verify(mController).onMenuOrKeyboardAction(eq(R.id.show_menu), eq(false));
     }
 
+    @Test
+    public void testReloadTab_F5_TriggersReload() {
+        // Setup.
+        KeyEvent event = createKeyEvent(KeyEvent.KEYCODE_F5, /* metaState= */ 0);
+
+        // Act.
+        boolean handled = onKeyDown(event);
+
+        // Verify.
+        assertTrue(handled);
+        verify(mController).onMenuOrKeyboardAction(eq(R.id.reload_menu_id), eq(false));
+    }
+
+    @Test
+    public void testReloadTab_ShiftF5_TriggersReloadBypassingCache() {
+        // Setup.
+        KeyEvent event = createKeyEvent(KeyEvent.KEYCODE_F5, KeyEvent.META_SHIFT_ON);
+
+        // Act.
+        boolean handled = onKeyDown(event);
+
+        // Verify.
+        assertTrue(handled);
+        verify(mController).onMenuOrKeyboardAction(eq(R.id.reload_ignoring_cache), eq(false));
+        verify(mController, never()).onMenuOrKeyboardAction(eq(R.id.reload_menu_id), eq(false));
+    }
+
+    @Test
+    public void testClearBrowsingData_CtrlShiftBackspace_TriggersQuickDelete() {
+        // Setup.
+        KeyEvent event =
+                createKeyEvent(
+                        KeyEvent.KEYCODE_DEL, KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON);
+
+        // Act.
+        boolean handled = onKeyDown(event);
+
+        // Verify.
+        assertTrue(handled);
+        verify(mController).onMenuOrKeyboardAction(eq(R.id.quick_delete_menu_id), eq(false));
+    }
+
+    @Test
+    public void testClearBrowsingData_CtrlShiftForwardDelete_TriggersQuickDelete() {
+        // Setup.
+        KeyEvent event =
+                createKeyEvent(
+                        KeyEvent.KEYCODE_FORWARD_DEL,
+                        KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON);
+
+        // Act.
+        boolean handled = onKeyDown(event);
+
+        // Verify.
+        assertTrue(handled);
+        verify(mController).onMenuOrKeyboardAction(eq(R.id.quick_delete_menu_id), eq(false));
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @EnableFeatures(ChromeFeatureList.ANDROID_KEYBOARD_SHORTCUT_HINTS)
+    public void testGetShortcutText_RequiresAlphabeticKeyboard() {
+        when(mKeyboardShortcutsJniMock.getShortcutTextForCommandId(ChromeCommandIds.NEW_TAB))
+                .thenReturn("Ctrl+T");
+
+        DeviceInput.setSupportsAlphabeticKeyboardForTesting(false);
+        assertNull(
+                KeyboardShortcuts.getShortcutText(
+                        ApplicationProvider.getApplicationContext(), R.id.new_tab_menu_id));
+
+        DeviceInput.setSupportsAlphabeticKeyboardForTesting(true);
+        assertEquals(
+                "Ctrl+T",
+                KeyboardShortcuts.getShortcutText(
+                        ApplicationProvider.getApplicationContext(), R.id.new_tab_menu_id));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_KEYBOARD_SHORTCUT_HINTS)
+    public void testGetShortcutText_ReturnsNullOnPhone() {
+        when(mKeyboardShortcutsJniMock.getShortcutTextForCommandId(ChromeCommandIds.NEW_TAB))
+                .thenReturn("Ctrl+T");
+        DeviceInput.setSupportsAlphabeticKeyboardForTesting(true);
+
+        assertNull(
+                KeyboardShortcuts.getShortcutText(
+                        ApplicationProvider.getApplicationContext(), R.id.new_tab_menu_id));
+    }
+
     private static KeyEvent createKeyEvent(int keyCode, int metaState) {
         return new KeyEvent(
                 SystemClock.uptimeMillis(),
@@ -216,8 +310,12 @@ public class KeyboardShortcutsUnitTest {
     }
 
     private boolean onKeyDown(int keyCode, int metaState) {
+        return onKeyDown(createKeyEvent(keyCode, metaState));
+    }
+
+    private boolean onKeyDown(KeyEvent event) {
         return KeyboardShortcuts.onKeyDown(
-                createKeyEvent(keyCode, metaState),
+                event,
                 /* isCurrentTabVisible= */ true,
                 /* tabSwitchingEnabled= */ true,
                 mTabModelSelector,

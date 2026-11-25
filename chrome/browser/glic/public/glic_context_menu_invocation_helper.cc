@@ -3,22 +3,21 @@
 // found in the LICENSE file.
 #include "chrome/browser/glic/public/glic_context_menu_invocation_helper.h"
 
-#include "base/containers/span.h"
 #include "base/strings/string_util.h"
-#include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_invoke_options.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/glic/public/glic_passkeys.h"
+#include "chrome/browser/glic/selection/selection_context.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/common/glic_enums.mojom.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/context_menu_params.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
-#include "mojo/public/cpp/base/big_buffer.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/geometry/rect.h"
 
@@ -26,6 +25,8 @@
 #include "chrome/browser/glic/glic_selection_observer.h"
 #include "chrome/browser/glic/selection/selection_overlay_controller.h"
 #include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
+#include "content/public/browser/render_widget_host_view.h"
+#include "third_party/blink/public/mojom/context_menu/context_menu.mojom-shared.h"
 #endif
 
 namespace glic {
@@ -48,10 +49,6 @@ void GlicContextMenuInvocationHelper::HandleContextualMenuClick(
   glic::GlicKeyedService* glic_service =
       glic::GlicKeyedServiceFactory::GetGlicKeyedService(browser_context);
   if (glic_service) {
-    glic::GlicInvokeOptions options(
-        glic::Target(*tab),
-        glic::mojom::InvocationSource::kWebContentsContextMenu);
-
     std::u16string_view trimmed_selection =
         base::TrimWhitespace(selection_text, base::TRIM_ALL);
     bool is_page_eligible = false;
@@ -67,22 +64,20 @@ void GlicContextMenuInvocationHelper::HandleContextualMenuClick(
 #endif
     }
 
+    // Desktop has no link-specific item, so clicks without a selection report
+    // Page, even on a link.
+    glic::GlicInvokeOptions options(
+        glic::Target(*tab),
+        trimmed_selection.empty()
+            ? mojom::InvocationSource::kWebContentsContextMenuPage
+            : mojom::InvocationSource::kWebContentsContextMenuTextSelection);
+
     if (is_page_eligible) {
-      auto context = glic::mojom::AdditionalContext::New();
-      context->source = glic::mojom::AdditionalContextSource::kTextSelection;
-      context->tab_id = tab->GetHandle().raw_value();
-
-      auto data = glic::mojom::ContextData::New();
-      data->mime_type = kMimeTypeGlicSelection;
-
-      std::string utf8_text = base::UTF16ToUTF8(trimmed_selection);
-      data->data = mojo_base::BigBuffer(base::as_byte_span(utf8_text));
-
-      auto part = glic::mojom::AdditionalContextPart::NewData(std::move(data));
-      context->parts.push_back(std::move(part));
-
       options.additional_context = glic::AdditionalTabContext(
-          std::move(context), rfh_id, glic::PolicyCheck::kClipboard);
+          CreateTextSelectionContext(tab->GetContents(),
+                                     std::u16string(trimmed_selection),
+                                     SelectionTextLength::kFull),
+          rfh_id, glic::PolicyCheck::kClipboard);
       options.fre_override =
           features::kGlicTextSelectionContextMenuMessageFirstFre.Get()
               ? glic::mojom::FreOverride::kTrustFirstInline
@@ -134,32 +129,38 @@ void GlicContextMenuInvocationHelper::HandleSmartSuggestionClick(
 #if !BUILDFLAG(IS_ANDROID)
   content::WebContents* web_contents =
       content::WebContents::FromRenderFrameHost(&frame);
+  if (web_contents) {
+    web_contents = web_contents->GetResponsibleWebContents();
+  }
   if (!web_contents ||
       !GlicEnabling::IsEnabledForProfile(
           Profile::FromBrowserContext(web_contents->GetBrowserContext()))) {
     return;
   }
-  tabs::PageContextEligibilityHelper* helper =
-      tabs::PageContextEligibilityHelper::From(
-          tabs::TabInterface::MaybeGetFromContents(web_contents));
-  if (!helper ||
-      helper->IsPageContextEligible() !=
-          optimization_guide::PageContextEligibilityStatus::kEligible) {
-    return;
-  }
+  // `ShowWithSelection()` checks page context eligibility.
   auto* controller =
       SelectionOverlayController::FromTabWebContents(web_contents);
   if (!controller) {
     return;
   }
 
-  // A text selection takes precedence over an image.
-  // Selections in editable fields are ignored.
-  // TODO(b/559202240): Pre-select the image when `params` targets an image.
+  // A text selection takes precedence over an image or element.
+  // Selections in password fields are ignored.
   gfx::Rect selection_bounds;
   auto interaction_options = selection::InteractionOptions::New();
-  if (!params.is_editable &&
-      !base::TrimWhitespace(params.selection_text, base::TRIM_ALL).empty()) {
+  ::selection::EntryPoint entry_point =
+      ::selection::EntryPoint::kContextMenuPage;
+  const bool is_password_field =
+      params.form_control_type == blink::mojom::FormControlType::kInputPassword;
+  std::u16string_view trimmed_selection =
+      base::TrimWhitespace(params.selection_text, base::TRIM_ALL);
+  if (!is_password_field && !trimmed_selection.empty()) {
+    entry_point = ::selection::EntryPoint::kContextMenuText;
+    if (auto* observer = GlicSelectionObserver::From(
+            tabs::TabInterface::MaybeGetFromContents(web_contents))) {
+      observer->UpdateSelectionStateFromSmartSuggestionContextMenu(
+          std::u16string(trimmed_selection));
+    }
     selection_bounds =
         web_contents->GetTextSelectionBounds(&frame).value_or(gfx::Rect());
     if (!selection_bounds.IsEmpty()) {
@@ -167,9 +168,30 @@ void GlicContextMenuInvocationHelper::HandleSmartSuggestionClick(
       interaction_options->disable_multi_select = true;
       interaction_options->skip_intro_animation = true;
     }
+  } else {
+    const bool is_image =
+        params.media_type == blink::mojom::ContextMenuDataMediaType::kImage;
+    if (is_image && params.has_image_contents) {
+      entry_point = ::selection::EntryPoint::kContextMenuImage;
+    }
+    const bool is_broken_image = is_image && !params.has_image_contents;
+    if (!is_broken_image && !params.node_bounds.IsEmpty()) {
+      if (content::RenderWidgetHostView* view = frame.GetView()) {
+        gfx::Rect view_bounds = view->GetViewBounds();
+        selection_bounds = params.node_bounds;
+        selection_bounds.Intersect(gfx::Rect(view_bounds.size()));
+        selection_bounds.Offset(view_bounds.OffsetFromOrigin());
+        selection_bounds.Intersect(web_contents->GetViewBounds());
+      }
+      if (!selection_bounds.IsEmpty()) {
+        interaction_options->hide_handles = false;
+        interaction_options->disable_multi_select = true;
+        interaction_options->skip_intro_animation = true;
+      }
+    }
   }
   controller->ShowWithSelection(&frame, selection_bounds,
-                                std::move(interaction_options));
+                                std::move(interaction_options), entry_point);
 #endif
 }
 

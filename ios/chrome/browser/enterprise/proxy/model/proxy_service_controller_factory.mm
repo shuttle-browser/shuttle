@@ -16,14 +16,14 @@
 
 namespace {
 
-std::unique_ptr<KeyedService> BuildProxyServiceController(ProfileIOS* profile) {
+std::unique_ptr<KeyedService> BuildProxyServiceController(ProfileIOS& profile) {
   if (!enterprise_net::IsDynamicRouteFetchingEnabled()) {
     return nullptr;
   }
   return std::make_unique<ProxyServiceController>(
       EnterpriseProxyServiceFactoryIOS::GetForProfile(profile),
       EnterpriseProxyErrorServiceFactoryIOS::GetForProfile(profile),
-      &web::ProxyConfigurationProvider::FromBrowserState(profile));
+      &web::ProxyConfigurationProvider::FromBrowserState(&profile));
 }
 
 }  // namespace
@@ -47,6 +47,6 @@ ProxyServiceControllerFactory::ProxyServiceControllerFactory(PassKey key)
 
 std::unique_ptr<KeyedService>
 ProxyServiceControllerFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildProxyServiceController(profile);
 }

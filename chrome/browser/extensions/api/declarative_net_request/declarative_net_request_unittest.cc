@@ -55,6 +55,7 @@
 #include "extensions/browser/test_extension_registry_observer.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/api/declarative_net_request/constants.h"
+#include "extensions/common/api/declarative_net_request/dnr_manifest_data.h"
 #include "extensions/common/api/declarative_net_request/test_utils.h"
 #include "extensions/common/error_utils.h"
 #include "extensions/common/extension_features.h"
@@ -421,7 +422,6 @@ class DeclarativeNetRequestUnittest : public DNRTestBase {
     ASSERT_TRUE(result);
     ASSERT_TRUE(result->is_list());
 
-    std::u16string error;
     std::vector<std::string> actual_ids;
     for (const auto& val : result->GetList()) {
       actual_ids.push_back(val.GetString());
@@ -468,9 +468,8 @@ class DeclarativeNetRequestUnittest : public DNRTestBase {
   }
 
   bool RulesetExists(const std::string& ruleset_id_string) {
-    const DNRManifestData::ManifestIDToRulesetMap& public_id_map =
-        DNRManifestData::GetManifestIDToRulesetMap(*extension());
-    return public_id_map.contains(ruleset_id_string);
+    return DNRManifestData::FindRulesetByManifestID(
+               *extension(), ruleset_id_string) != nullptr;
   }
 
   void VerifyGetDisabledRuleIdsFunction(
@@ -491,7 +490,6 @@ class DeclarativeNetRequestUnittest : public DNRTestBase {
     ASSERT_TRUE(result);
     ASSERT_TRUE(result->is_list());
 
-    std::u16string error;
     std::vector<int> actual_disabled_rule_ids;
     for (const auto& val : result->GetList()) {
       actual_disabled_rule_ids.push_back(val.GetInt());
@@ -1016,7 +1014,6 @@ TEST_P(SingleRulesetTest, InvalidJSONRules_StrongTypes) {
     std::vector<InstallWarning> install_warnings =
         GetFilteredInstallWarnings(*extension());
     ASSERT_EQ(2u, install_warnings.size());
-    std::vector<InstallWarning> expected_warnings;
 
     for (const auto& warning : install_warnings) {
       EXPECT_EQ(dnr_api::ManifestKeys::kDeclarativeNetRequest, warning.key);
@@ -1812,7 +1809,6 @@ TEST_P(SingleRulesetTest, SharedDynamicAndSessionRegexRuleLimits) {
 // specified.
 TEST_P(SingleRulesetTest, GetMatchedRulesInvalidTabID) {
   LoadAndExpectSuccess();
-  const ExtensionId extension_id = extension()->id();
 
   auto function =
       base::MakeRefCounted<DeclarativeNetRequestGetMatchedRulesFunction>();

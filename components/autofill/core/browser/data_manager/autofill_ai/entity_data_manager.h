@@ -98,12 +98,13 @@ class EntityDataManager
   // Adds an entity if it doesn't exist in the database yet; otherwise updates
   // it.
   //
-  // `legal_message_token` is an optional, transient token generated and
+  // `legal_message_token` is an optional, single-use token generated and
   // encrypted by Google Wallet, certifying that the user was shown the required
   // notice disclosures before saving a public writable pass. When provided, it
-  // is forwarded to the sync server via
-  // `AutofillValuableSpecifics::legal_message_token`. It is not persisted in
-  // the local database or stored on `entity`.
+  // is persisted in `EntityTable` until the initial Sync commit completes and
+  // forwarded to the sync server via
+  // `AutofillValuableSpecifics::legal_message_token`. It is not stored on
+  // `entity`.
   //
   // Each call fires Observer::OnEntityInstancesChanged() asynchronously.
   // So beware of calling this in a loop.
@@ -175,9 +176,18 @@ class EntityDataManager
     observers_.RemoveObserver(observer);
   }
 
+  // Minimum interval between re-querying device re-auth availability per
+  // profile across tab creations.
+  static constexpr base::TimeDelta kReauthAvailabilityCacheDuration =
+      base::Seconds(15);
+
   // Updates the re-auth availability and `EnforceEntityReauthRequirements()` if
   // the availability has changed.
   void SetReauthAvailability(bool reauth_available);
+
+  // Returns true if re-auth availability is unset or older than
+  // `kReauthAvailabilityCacheDuration`.
+  bool ShouldUpdateReauthAvailability() const;
 
   std::optional<bool> GetReauthAvailability() const {
     return reauth_availability_;
@@ -242,6 +252,11 @@ class EntityDataManager
   // Indicates whether the device support biometric or lockscreen re-auth.
   // Nullopt means that the availability of re-auth is unknown.
   std::optional<bool> reauth_availability_;
+
+  // Timestamp of the last `SetReauthAvailability()` call, used to throttle
+  // redundant OS re-auth availability queries across tab creations. Null if
+  // `SetReauthAvailability()` has not been called yet.
+  base::TimeTicks last_reauth_availability_check_;
 
   // Non-null except perhaps in TestEntityDataManager, which overrides all
   // functions that access it.

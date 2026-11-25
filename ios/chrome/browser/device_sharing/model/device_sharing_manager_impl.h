@@ -16,11 +16,12 @@
 
 class Browser;
 @class HandoffManager;
+class PrefService;
 class ProfileIOS;
 
 class DeviceSharingManagerImpl : public DeviceSharingManager {
  public:
-  explicit DeviceSharingManagerImpl(ProfileIOS* profile);
+  explicit DeviceSharingManagerImpl(PrefService* profile_prefs);
 
   // Not copyable or moveable.
   DeviceSharingManagerImpl(const DeviceSharingManagerImpl&) = delete;
@@ -33,6 +34,9 @@ class DeviceSharingManagerImpl : public DeviceSharingManager {
                          const std::u16string& title) override;
   void ClearActiveUrl(Browser* browser) override;
 
+  // KeyedService:
+  void Shutdown() override;
+
  private:
   // Allow tests to inspect the handoff manager.
   friend class DeviceSharingManagerImplTest;
@@ -43,7 +47,7 @@ class DeviceSharingManagerImpl : public DeviceSharingManager {
 
   bool IsActiveBrowser(Browser* browser);
 
-  raw_ptr<ProfileIOS> profile_ = nullptr;
+  raw_ptr<PrefService> profile_prefs_ = nullptr;
 
   // Registrar for pref change notifications to the active profile.
   PrefChangeRegistrar prefs_change_observer_;

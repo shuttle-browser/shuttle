@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "base/containers/flat_map.h"
+#include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
@@ -302,7 +303,7 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
     // in `session_pool_`. Includes all known aliases, e.g. from A, AAAA, or
     // HTTPS, not just from the address used for the connection, in no
     // particular order.
-    const std::set<std::string>& GetDnsAliasesForSessionKey(
+    const base::flat_set<std::string>& GetDnsAliasesForSessionKey(
         const QuicSessionKey& key) const;
 
     // Returns the largest payload that will fit into a single MESSAGE frame at
@@ -682,6 +683,20 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   // including cases where the stream creation failed.
   bool was_ever_used_to_create_streams() const;
 
+  // Returns true if this side closed the connection with
+  // QUIC_CONNECTION_CANCELLED or cancelled it for proactive IP pooling. Unlike
+  // error(), this is already set while the pool is notified that the session is
+  // going away.
+  bool WasClosedByLocalCancellation() const;
+
+  // Returns true if unconfirmed-handshake failure histograms should be skipped
+  // because the owning session attempt was cancelled for proactive IP pooling.
+  bool ShouldSkipUnconfirmedHandshakeMetrics() const;
+
+  void MarkClosedByProactiveIpPooling() {
+    closed_by_proactive_ip_pooling_ = true;
+  }
+
   const QuicConnectionReuseDetails& quic_connection_reuse_details() const {
     return quic_connection_reuse_details_;
   }
@@ -906,16 +921,7 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   // then, OnWriteUnblocked() will be invoked to send packet after migration.
   void WriteToNewSocket();
 
-  // Migrates session over to use |peer_address| and |network|.
-  // If |network| is handles::kInvalidNetworkHandle, default network is used. If
-  // the migration fails and |close_session_on_error| is true, session will be
-  // closed.
   using MigrationCallback = base::OnceCallback<void(MigrationResult)>;
-  void MigrateWithoutProbing(QuicMigrationAttemptCause migration_cause,
-                             handles::NetworkHandle network,
-                             IPEndPoint peer_address,
-                             bool close_session_on_error,
-                             MigrationCallback migration_callback);
   // Helper to finish session migration once a socket has been opened. Always
   // called asynchronously.
   void FinishMigrateWithoutProbing(
@@ -995,7 +1001,7 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   // in `session_pool_`. Includes all known aliases, e.g. from A, AAAA, or
   // HTTPS, not just from the address used for the connection, in no particular
   // order.
-  const std::set<std::string>& GetDnsAliasesForSessionKey(
+  const base::flat_set<std::string>& GetDnsAliasesForSessionKey(
       const QuicSessionKey& key) const;
 
   const std::set<url::SchemeHostPort>& received_origins() const {
@@ -1049,6 +1055,28 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void CancelAllRequests(int net_error);
   void NotifyRequestsOfConfirmation(int net_error);
 
+  // Performs pre-migration checks and, if eligible, initiates an immediate
+  // migration to `peer_address` and `network` via `MigrateWithoutProbing`.
+  // If `network` is handles::kInvalidNetworkHandle, default network is used. If
+  // the migration fails and `close_session_on_error` is true, session will be
+  // closed.
+  void MaybeMigrateWithoutProbing(QuicMigrationAttemptCause migration_cause,
+                                  handles::NetworkHandle network,
+                                  const quic::QuicSocketAddress& peer_address,
+                                  bool close_session_on_error,
+                                  MigrationCallback migration_callback);
+  void MigrateWithoutProbing(
+      std::unique_ptr<QuicMigrationAttemptContext> migration_context,
+      bool close_session_on_error,
+      MigrationCallback migration_callback);
+
+  // Creates a new socket, packet reader, and packet writer, and wraps them in a
+  // `QuicMigrationAttemptContext` for a new migration attempt.
+  std::unique_ptr<QuicMigrationAttemptContext> CreateMigrationAttemptContext(
+      QuicMigrationAttemptCause cause,
+      handles::NetworkHandle target_network,
+      const quic::QuicSocketAddress& target_peer_address);
+
   // Probe on <network, peer_address>.
   // If <network, peer_addres> is identical to the current path, the probe
   // is sent on a different port.
@@ -1056,6 +1084,8 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void StartProbing(QuicMigrationAttemptCause migration_cause,
                     handles::NetworkHandle network,
                     const quic::QuicSocketAddress& peer_address,
+                    ProbingCallback probing_callback);
+  void StartProbing(std::unique_ptr<QuicMigrationAttemptContext> context,
                     ProbingCallback probing_callback);
 
   // Helper to finish network probe once socket has been opened. Always called
@@ -1268,6 +1298,10 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   bool going_away_ = false;
   // Connection close source
   quic::ConnectionCloseSource source_ = quic::ConnectionCloseSource::FROM_SELF;
+  // Connection close error. Set together with `source_`, before the pool is
+  // notified, whereas quic::QuicSession::error() is set only afterwards.
+  quic::QuicErrorCode connection_close_error_ = quic::QUIC_NO_ERROR;
+  bool closed_by_proactive_ip_pooling_ = false;
   // True when the session receives a go away from server due to port migration.
   bool port_migration_detected_ = false;
   bool quic_connection_migration_attempted_ = false;
@@ -1381,6 +1415,10 @@ namespace features {
 // when there is an ongoing migration with probing.
 NET_EXPORT BASE_DECLARE_FEATURE(
     kQuicMigrationIgnoreDisconnectSignalDuringProbing);
+
+// When enabled, QuicChromiumClientSession registers and unregisters QUIC
+// connection close payloads with the Android system service.
+NET_EXPORT BASE_DECLARE_FEATURE(kQuicRegisterConnectionClosePayload);
 
 }  // namespace features
 

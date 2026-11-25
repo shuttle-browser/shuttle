@@ -2949,8 +2949,7 @@ TEST_F(AccessibilityTest, UnslottedIsInCanvasSubtreeWithoutCanvasTransform) {
   )HTML");
   UpdateAllLifecyclePhasesForTest();
 
-  auto* unslotted = GetDocument()
-                        .getElementById(AtomicString("slotHost"))
+  auto* unslotted = GetElementById("slotHost")
                         ->GetShadowRoot()
                         ->getElementById(AtomicString("unslotted"));
   AXObject* ax_unslotted =
@@ -2958,7 +2957,7 @@ TEST_F(AccessibilityTest, UnslottedIsInCanvasSubtreeWithoutCanvasTransform) {
   EXPECT_FALSE(ax_unslotted->IsInCanvasSubtreeWithoutCanvasTransform());
   ax_unslotted->Detach();
 
-  auto* slotted = GetDocument().getElementById(AtomicString("slotted"));
+  auto* slotted = GetElementById("slotted");
   AXObject* ax_slotted =
       MakeGarbageCollected<AXNodeObject>(slotted, GetAXObjectCache());
   EXPECT_TRUE(ax_slotted->IsInCanvasSubtreeWithoutCanvasTransform());
@@ -3555,6 +3554,131 @@ TEST_F(AccessibilityTest, InterestForRichHintIncrementalUpdates) {
   EXPECT_EQ(ax::mojom::blink::Role::kGroup, ax_other_popover->role);
 }
 
+TEST_F(AccessibilityTest, InterestForPlainHintRedundantDescription) {
+  using ax::mojom::blink::DescriptionFrom;
+  using ax::mojom::blink::IntListAttribute;
+  using ax::mojom::blink::NameFrom;
+  using ax::mojom::blink::StringAttribute;
+
+  SetBodyInnerHTML(R"HTML(
+      <button id="btnA" interestfor="tipA"></button>
+      <div id="tipA" popover="hint">Alpha</div>
+
+      <button id="btnB" aria-label="Bravo" interestfor="tipB"></button>
+      <div id="tipB" popover="hint">Bravo</div>
+
+      <button id="btnC" aria-labelledby="tipC" interestfor="tipC"></button>
+      <div id="tipC" popover="hint">Charlie</div>
+
+      <button id="btnC2" aria-labelledby="tipC2 extra" interestfor="tipC2"></button>
+      <div id="tipC2" popover="hint">Charlie</div>
+      <span id="extra">Two</span>
+
+      <button id="btnD" interestfor="tipD">Delta</button>
+      <div id="tipD" popover="hint">Delta</div>
+
+      <button id="btnE" interestfor="tipE"></button>
+      <div id="tipE" popover="hint" style="display:none">Echo</div>
+
+      <button id="btnF" interestfor="tipF">Edit</button>
+      <div id="tipF" popover="hint">Modify settings</div>
+      )HTML");
+
+  auto SerializeNode = [&](const char* id) {
+    ui::AXNodeData node_data;
+    AXObject* ax_object = GetAXObjectByElementId(id);
+    CHECK(ax_object) << "No AXObject for " << id;
+    ScopedFreezeAXCache freeze(GetAXObjectCache());
+    ax_object->Serialize(&node_data, ui::kAXModeComplete);
+    return node_data;
+  };
+
+  // Case A: Icon-only button with plain hint gets name from hint, no
+  // description.
+  ui::AXNodeData btn_a = SerializeNode("btnA");
+  EXPECT_EQ("Alpha", btn_a.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kInterestFor, btn_a.GetNameFrom());
+  EXPECT_FALSE(btn_a.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_a.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  // Case B: Button with aria-label matching plain hint text gets no redundant
+  // description.
+  ui::AXNodeData btn_b = SerializeNode("btnB");
+  EXPECT_EQ("Bravo", btn_b.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kAttribute, btn_b.GetNameFrom());
+  EXPECT_FALSE(btn_b.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_b.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  // Case C: Button with aria-labelledby referencing the plain hint gets no
+  // redundant description (whether single or part of multiple IDs).
+  ui::AXNodeData btn_c = SerializeNode("btnC");
+  EXPECT_EQ("Charlie", btn_c.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kRelatedElement, btn_c.GetNameFrom());
+  EXPECT_FALSE(btn_c.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_c.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  ui::AXNodeData btn_c2 = SerializeNode("btnC2");
+  EXPECT_EQ("Charlie Two", btn_c2.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kRelatedElement, btn_c2.GetNameFrom());
+  EXPECT_FALSE(btn_c2.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_c2.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  // Case D: Button whose visible text matches plain hint text gets no redundant
+  // description.
+  ui::AXNodeData btn_d = SerializeNode("btnD");
+  EXPECT_EQ("Delta", btn_d.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kContents, btn_d.GetNameFrom());
+  EXPECT_FALSE(btn_d.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_d.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  // Case E: Icon-only button with display:none plain hint still gets name from
+  // hint, no description.
+  ui::AXNodeData btn_e = SerializeNode("btnE");
+  EXPECT_EQ("Echo", btn_e.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kInterestFor, btn_e.GetNameFrom());
+  EXPECT_FALSE(btn_e.HasStringAttribute(StringAttribute::kDescription));
+
+  // Case F: Button with distinct name and plain hint text gets description from
+  // hint.
+  ui::AXNodeData btn_f = SerializeNode("btnF");
+  EXPECT_EQ("Edit", btn_f.GetStringAttribute(StringAttribute::kName));
+  EXPECT_EQ(NameFrom::kContents, btn_f.GetNameFrom());
+  EXPECT_EQ("Modify settings",
+            btn_f.GetStringAttribute(StringAttribute::kDescription));
+  EXPECT_EQ(DescriptionFrom::kInterestFor, btn_f.GetDescriptionFrom());
+  EXPECT_FALSE(btn_f.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  // Showing the popovers should still not produce redundant descriptions or
+  // describedby relations for Cases B, C, and D, while Case F gets
+  // `kDescribedbyIds` when open.
+  for (const char* id : {"tipA", "tipB", "tipC", "tipC2", "tipD", "tipF"}) {
+    To<HTMLElement>(GetElementById(id))->showPopover(ASSERT_NO_EXCEPTION);
+  }
+  GetAXObjectCache().UpdateAXForAllDocuments();
+
+  btn_b = SerializeNode("btnB");
+  EXPECT_FALSE(btn_b.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_b.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  btn_c = SerializeNode("btnC");
+  EXPECT_FALSE(btn_c.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_c.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  btn_c2 = SerializeNode("btnC2");
+  EXPECT_FALSE(btn_c2.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_c2.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  btn_d = SerializeNode("btnD");
+  EXPECT_FALSE(btn_d.HasStringAttribute(StringAttribute::kDescription));
+  EXPECT_FALSE(btn_d.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+
+  btn_f = SerializeNode("btnF");
+  EXPECT_EQ("Modify settings",
+            btn_f.GetStringAttribute(StringAttribute::kDescription));
+  EXPECT_EQ(DescriptionFrom::kInterestFor, btn_f.GetDescriptionFrom());
+  EXPECT_TRUE(btn_f.HasIntListAttribute(IntListAttribute::kDescribedbyIds));
+}
+
 TEST_F(AccessibilityTest, ClearChildrenDetachesIncludedAndUnincludedChildren) {
   SetBodyInnerHTML(R"HTML(
       <div id="parent" role="group">
@@ -3814,6 +3938,103 @@ TEST_F(AccessibilityTest, FilterableSelectControlsAndRole) {
                     ax::mojom::blink::IntListAttribute::kControlsIds),
                 testing::ElementsAre(ax_listbox3->AXObjectID()));
   }
+}
+
+TEST_F(AccessibilityTest, SerializeCachedNativeRoleAndAttributes) {
+  SetBodyInnerHTML(R"HTML(
+      <time id="time" datetime="2026-10-10">Oct 10</time>
+      <ins id="ins" datetime="2026-10-11">Inserted</ins>
+      <del id="del" datetime="2026-10-12">Deleted</del>
+      <time id="time_aria" role="note" datetime="2026-10-13">Note time</time>
+      <span id="lbl1">First label</span>
+      <span id="lbl2">Second label</span>
+      <button id="btn_labelledby" aria-labelledby="lbl1" aria-label="Fallback">
+        Button
+      </button>
+      <button id="btn_labeledby" aria-labeledby="lbl2">Button</button>
+      <ul style="list-style-type: disc;">
+        <li id="li" dir="rtl"
+            style="font-size: 20px; font-weight: 700; text-align: center; text-indent: 10mm;">
+          Item
+        </li>
+      </ul>
+      )HTML");
+
+  auto serialize = [&](const char* id) {
+    ui::AXNodeData node_data;
+    AXObject* ax_object = GetAXObjectByElementId(id);
+    if (!ax_object) {
+      ADD_FAILURE() << "No AXObject for " << id;
+      return node_data;
+    }
+    ScopedFreezeAXCache freeze(GetAXObjectCache());
+    ax_object->Serialize(&node_data, ui::kAXModeComplete);
+    return node_data;
+  };
+
+  ui::AXNodeData time_data = serialize("time");
+  EXPECT_EQ(ax::mojom::blink::Role::kTime, time_data.role);
+  EXPECT_EQ("2026-10-10", time_data.GetStringAttribute(
+                              ax::mojom::blink::StringAttribute::kDateTime));
+
+  ui::AXNodeData ins_data = serialize("ins");
+  EXPECT_EQ(ax::mojom::blink::Role::kContentInsertion, ins_data.role);
+  EXPECT_EQ("2026-10-11", ins_data.GetStringAttribute(
+                              ax::mojom::blink::StringAttribute::kDateTime));
+
+  ui::AXNodeData del_data = serialize("del");
+  EXPECT_EQ(ax::mojom::blink::Role::kContentDeletion, del_data.role);
+  EXPECT_EQ("2026-10-12", del_data.GetStringAttribute(
+                              ax::mojom::blink::StringAttribute::kDateTime));
+
+  // Even when `RoleValue()` is overridden by an explicit ARIA `role`, cached
+  // `native_role_` remains `kTime` and serializes `kDateTime`.
+  ui::AXNodeData time_aria_data = serialize("time_aria");
+  EXPECT_EQ(ax::mojom::blink::Role::kNote, time_aria_data.role);
+  EXPECT_EQ("2026-10-13", time_aria_data.GetStringAttribute(
+                              ax::mojom::blink::StringAttribute::kDateTime));
+
+  // Verify `NameSources` population for `aria-labelledby` and `aria-labeledby`.
+  const AXObject* btn_labelledby = GetAXObjectByElementId("btn_labelledby");
+  ASSERT_NE(nullptr, btn_labelledby);
+  ax::mojom::blink::NameFrom name_from;
+  AXObject::NameSources name_sources;
+  EXPECT_EQ("First label",
+            btn_labelledby->GetName(name_from, nullptr, &name_sources));
+  EXPECT_EQ(ax::mojom::blink::NameFrom::kRelatedElement, name_from);
+  ASSERT_GE(name_sources.size(), 2u);
+  EXPECT_EQ(html_names::kAriaLabelledbyAttr, name_sources[0].attribute);
+  EXPECT_EQ("First label", name_sources[0].text);
+  EXPECT_FALSE(name_sources[0].superseded);
+  EXPECT_EQ(html_names::kAriaLabelAttr, name_sources[1].attribute);
+  EXPECT_EQ("Fallback", name_sources[1].text);
+  EXPECT_TRUE(name_sources[1].superseded);
+
+  const AXObject* btn_labeledby = GetAXObjectByElementId("btn_labeledby");
+  ASSERT_NE(nullptr, btn_labeledby);
+  name_sources.clear();
+  EXPECT_EQ("Second label",
+            btn_labeledby->GetName(name_from, nullptr, &name_sources));
+  EXPECT_EQ(ax::mojom::blink::NameFrom::kRelatedElement, name_from);
+  ASSERT_GE(name_sources.size(), 1u);
+  EXPECT_EQ(html_names::kAriaLabeledbyAttr, name_sources[0].attribute);
+  EXPECT_EQ("Second label", name_sources[0].text);
+
+  // Verify style attribute serialization on `<li>`.
+  ui::AXNodeData li_data = serialize("li");
+  EXPECT_EQ(ax::mojom::blink::Role::kListItem, li_data.role);
+  EXPECT_FLOAT_EQ(20.0f, li_data.GetFloatAttribute(
+                             ax::mojom::blink::FloatAttribute::kFontSize));
+  EXPECT_FLOAT_EQ(700.0f, li_data.GetFloatAttribute(
+                              ax::mojom::blink::FloatAttribute::kFontWeight));
+  EXPECT_NEAR(
+      10.0f,
+      li_data.GetFloatAttribute(ax::mojom::blink::FloatAttribute::kTextIndent),
+      0.01f);
+  EXPECT_EQ(ax::mojom::blink::TextAlign::kCenter, li_data.GetTextAlign());
+  EXPECT_EQ(ax::mojom::blink::ListStyle::kDisc, li_data.GetListStyle());
+  EXPECT_EQ(ax::mojom::blink::WritingDirection::kRtl,
+            li_data.GetTextDirection());
 }
 
 }  // namespace test

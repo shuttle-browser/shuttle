@@ -17,7 +17,7 @@
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
-#include "chrome/browser/autofill/entity_suppression_manager_factory.h"
+#include "chrome/browser/autofill/personal_context_entity_metadata_manager_factory.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/profiles/profile.h"
@@ -26,13 +26,14 @@
 #include "chrome/browser/profiles/profile_statistics_factory.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/entity_suppression_manager.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/in_memory_entity_suppression_manager.h"
+#include "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #include "components/autofill/core/browser/data_manager/personal_data_manager_test_util.h"
 #include "components/autofill/core/browser/test_utils/autofill_test_util.h"
 #include "components/autofill/core/browser/test_utils/entity_data_test_util.h"
+#include "components/autofill/core/browser/webdata/personal_context/personal_context_entity_metadata_sync_bridge.h"
+#include "components/autofill/core/browser/webdata/personal_context/personal_context_entity_metadata_sync_bridge_test_util.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/password_manager/core/browser/password_manager_test_utils.h"
 #include "components/password_manager/core/browser/password_store/test_password_store.h"
@@ -187,19 +188,20 @@ class ProfileStatisticsBrowserTest : public InProcessBrowserTest {
                                    &password_manager::BuildPasswordStore<
                                        content::BrowserContext,
                                        password_manager::TestPasswordStore>));
-                  // The production EntitySuppressionManager requires a loaded
-                  // sync bridge that is tracking metadata to record
-                  // suppressions, which is not available in this test. Use the
-                  // in-memory implementation instead.
-                  autofill::EntitySuppressionManagerFactory::GetInstance()
-                      ->SetTestingFactory(
-                          context,
-                          base::BindRepeating([](content::BrowserContext*)
-                                                  -> std::unique_ptr<
-                                                      KeyedService> {
-                            return std::make_unique<
-                                autofill::InMemoryEntitySuppressionManager>();
-                          }));
+                  // The default PersonalContextEntityMetadataManager can't
+                  // record suppressions without Sync. The test bridge finishes
+                  // loading during browser startup, before the test body runs.
+                  auto create_manager = [](content::BrowserContext*)
+                      -> std::unique_ptr<KeyedService> {
+                    return std::make_unique<
+                        autofill::PersonalContextEntityMetadataManager>(
+                        autofill::
+                            CreateTestPersonalContextEntityMetadataSyncBridge());
+                  };
+                  autofill::PersonalContextEntityMetadataManagerFactory::
+                      GetInstance()
+                          ->SetTestingFactory(
+                              context, base::BindRepeating(create_manager));
                 }));
   }
 
@@ -249,11 +251,12 @@ IN_PROC_BROWSER_TEST_F(ProfileStatisticsBrowserTest,
       autofill::test::GetCreditCard());
   autofill::PersonalDataChangedWaiter(*personal_data_manager).Wait();
 
-  autofill::EntitySuppressionManager* entity_suppression_manager =
-      autofill::EntitySuppressionManagerFactory::GetForProfile(profile);
-  ASSERT_TRUE(entity_suppression_manager);
+  autofill::PersonalContextEntityMetadataManager* entity_metadata_manager =
+      autofill::PersonalContextEntityMetadataManagerFactory::GetForProfile(
+          profile);
+  ASSERT_TRUE(entity_metadata_manager);
   // The passport satisfies a single merge constraint, i.e. one entry.
-  ASSERT_TRUE(entity_suppression_manager->SuppressEntity(
+  ASSERT_TRUE(entity_metadata_manager->SuppressEntity(
       autofill::test::GetPassportEntityInstance()));
 
   ProfileStatistics* profile_stat =

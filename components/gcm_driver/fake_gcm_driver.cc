@@ -30,22 +30,8 @@ void FakeGCMDriver::ValidateRegistration(
       FROM_HERE, base::BindOnce(std::move(callback), true /* is_valid */));
 }
 
-void FakeGCMDriver::AddConnectionObserver(GCMConnectionObserver* observer) {
-}
-
-void FakeGCMDriver::RemoveConnectionObserver(GCMConnectionObserver* observer) {
-}
-
 GCMClient* FakeGCMDriver::GetGCMClientForTesting() const {
   return nullptr;
-}
-
-bool FakeGCMDriver::IsStarted() const {
-  return true;
-}
-
-bool FakeGCMDriver::IsConnected() const {
-  return true;
 }
 
 void FakeGCMDriver::GetGCMStatistics(GetGCMStatisticsCallback callback,
@@ -61,29 +47,19 @@ GCMClient::Result FakeGCMDriver::EnsureStarted(
 }
 
 void FakeGCMDriver::RegisterImpl(const std::string& app_id,
-                                 const std::vector<std::string>& sender_ids) {
-}
+                                 const std::vector<std::string>& sender_ids) {}
 
-void FakeGCMDriver::UnregisterImpl(const std::string& app_id) {
-}
+void FakeGCMDriver::UnregisterImpl(const std::string& app_id) {}
 
 void FakeGCMDriver::SendImpl(const std::string& app_id,
                              const std::string& receiver_id,
-                             const OutgoingMessage& message) {
-}
+                             const OutgoingMessage& message) {}
 
 void FakeGCMDriver::RecordDecryptionFailure(const std::string& app_id,
                                             fcm::FcmDecryptionResult result) {}
 
 InstanceIDHandler* FakeGCMDriver::GetInstanceIDHandlerInternal() {
   return nullptr;
-}
-
-void FakeGCMDriver::AddHeartbeatInterval(const std::string& scope,
-                                         int interval_ms) {
-}
-
-void FakeGCMDriver::RemoveHeartbeatInterval(const std::string& scope) {
 }
 
 }  // namespace gcm

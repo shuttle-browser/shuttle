@@ -28,6 +28,7 @@
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/node_traversal.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
+#include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/svg/animation/element_smil_animations.h"
 #include "third_party/blink/renderer/core/svg/animation/smil_animation_effect_parameters.h"
 #include "third_party/blink/renderer/core/svg/properties/svg_property.h"
@@ -249,8 +250,17 @@ void SVGAnimationElement::UnregisterAnimation(
     return;
   DCHECK(targetElement());
   SVGElement* target = targetElement();
-  if (ElementSMILAnimations* smil_animations = target->GetSMILAnimations())
+  if (ElementSMILAnimations* smil_animations = target->GetSMILAnimations()) {
     smil_animations->RemoveAnimation(attribute_name, this);
+    if (!smil_animations->HasAnimations()) {
+      if (LayoutObject* layout_object = target->GetLayoutObject()) {
+        // `CompositorAnimations::CanStartTransformAnimationOnCompositorForSVG`
+        // depends on `HasSMILAnimations()`, which is used for the transform
+        // paint property.
+        layout_object->SetNeedsPaintPropertyUpdate();
+      }
+    }
+  }
   registered_animation_ = false;
 }
 
@@ -261,7 +271,16 @@ void SVGAnimationElement::RegisterAnimation(
     return;
   SVGElement* target = targetElement();
   ElementSMILAnimations& smil_animations = target->EnsureSMILAnimations();
+  const bool had_animations = smil_animations.HasAnimations();
   smil_animations.AddAnimation(attribute_name, this);
+  if (!had_animations) {
+    if (LayoutObject* layout_object = target->GetLayoutObject()) {
+      // `CompositorAnimations::CanStartTransformAnimationOnCompositorForSVG`
+      // depends on `HasSMILAnimations()`, which is used for the transform paint
+      // property.
+      layout_object->SetNeedsPaintPropertyUpdate();
+    }
+  }
   registered_animation_ = true;
 }
 
@@ -322,10 +341,14 @@ AnimationMode SVGAnimationElement::CalculateAnimationMode() {
 }
 
 void SVGAnimationElement::SetCalcMode(const AtomicString& calc_mode) {
-  DEFINE_STATIC_LOCAL(const AtomicString, discrete, ("discrete"));
-  DEFINE_STATIC_LOCAL(const AtomicString, linear, ("linear"));
-  DEFINE_STATIC_LOCAL(const AtomicString, paced, ("paced"));
-  DEFINE_STATIC_LOCAL(const AtomicString, spline, ("spline"));
+  DEFINE_STATIC_LOCAL(const AtomicString, discrete,
+                      (AtomicString::FromLiteral<"discrete">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, linear,
+                      (AtomicString::FromLiteral<"linear">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, paced,
+                      (AtomicString::FromLiteral<"paced">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, spline,
+                      (AtomicString::FromLiteral<"spline">()));
   if (calc_mode == discrete) {
     UseCounter::Count(GetDocument(), WebFeature::kSVGCalcModeDiscrete);
     SetCalcMode(kCalcModeDiscrete);
@@ -361,13 +384,15 @@ String SVGAnimationElement::FromValue() const {
 }
 
 bool SVGAnimationElement::IsAdditive() const {
-  DEFINE_STATIC_LOCAL(const AtomicString, sum, ("sum"));
+  DEFINE_STATIC_LOCAL(const AtomicString, sum,
+                      (AtomicString::FromLiteral<"sum">()));
   const AtomicString& value = FastGetAttribute(svg_names::kAdditiveAttr);
   return value == sum;
 }
 
 bool SVGAnimationElement::IsAccumulated() const {
-  DEFINE_STATIC_LOCAL(const AtomicString, sum, ("sum"));
+  DEFINE_STATIC_LOCAL(const AtomicString, sum,
+                      (AtomicString::FromLiteral<"sum">()));
   const AtomicString& value = FastGetAttribute(svg_names::kAccumulateAttr);
   return value == sum;
 }

@@ -47,6 +47,7 @@
 #include <limits>
 #include <ranges>
 
+#include "base/check.h"
 #include "build/build_config.h"
 #include "cc/input/scroll_snap_data.h"
 #include "partition_alloc/partition_alloc.h"
@@ -2431,12 +2432,7 @@ void PaintLayer::StyleDidChange(StyleDifference diff,
   // See `CompositorMayHaveIncorrectDamageRect`.
   bool had_filter_that_moves_pixels = has_filter_that_moves_pixels_;
   has_filter_that_moves_pixels_ = ComputeHasFilterThatMovesPixels();
-  // To ensure proper tracking of reference filters, we must also note if one is
-  // added or all are removed for later action within `LayoutEmbeddedContent`.
-  bool had_reference_filter = has_reference_filter_;
-  has_reference_filter_ = ComputeHasReferenceFilter();
-  if (had_filter_that_moves_pixels != has_filter_that_moves_pixels_ ||
-      had_reference_filter != has_reference_filter_) {
+  if (had_filter_that_moves_pixels != has_filter_that_moves_pixels_) {
     // Force paint invalidation to update any potentially affected animations.
     GetLayoutObject().SetSubtreeShouldDoFullPaintInvalidation();
   }
@@ -2683,12 +2679,20 @@ bool PaintLayer::ComputeHasFilterThatMovesPixels() const {
   return false;
 }
 
-bool PaintLayer::ComputeHasReferenceFilter() const {
-  if (!HasFilterInducingProperty()) {
-    return false;
+void PaintLayer::SetIsExcludedForPictureInPictureCaptions(bool is_excluded) {
+  if (is_excluded) {
+    Node* node = GetLayoutObject().GetNode();
+    CHECK(node && node->IsTextTrackContainer());
+    CHECK(IsSelfPaintingLayer());
+    CHECK(GetLayoutObject().IsStackingContext());
+    CHECK(GetLayoutObject().ShouldApplyPaintContainment());
   }
-  const ComputedStyle& style = GetLayoutObject().Style();
-  return style.HasFilter() && style.Filter().HasReferenceFilter();
+  if (is_excluded_for_picture_in_picture_captions_ == is_excluded) {
+    return;
+  }
+
+  is_excluded_for_picture_in_picture_captions_ = is_excluded;
+  GetLayoutObject().SetSubtreeShouldDoFullPaintInvalidation();
 }
 
 void PaintLayer::SetNeedsRepaint() {

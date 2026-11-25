@@ -34,8 +34,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/webui/signin/history_sync_optin_service.h"
 #include "chrome/browser/ui/webui/signin/history_sync_optin_service_factory.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
 #include "chrome/browser/ui/webui/signin/signin_utils.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "components/signin/public/base/consent_level.h"
@@ -128,39 +126,6 @@ class SignInObserver : public signin::IdentityManager::Observer {
   scoped_refptr<MessageLoopRunner> message_loop_runner_;
 };
 
-// Synchronously waits for the Sync confirmation to be closed.
-class SyncConfirmationClosedObserver : public LoginUIService::Observer {
- public:
-  explicit SyncConfirmationClosedObserver(BrowserWindowInterface* browser) {
-    login_ui_service_observation_.Observe(
-        LoginUIServiceFactory::GetForProfile(browser->GetProfile()));
-  }
-
-  void WaitForConfirmationClosed() {
-    if (sync_confirmation_closed_) {
-      return;
-    }
-
-    base::RunLoop run_loop;
-    quit_closure_ = run_loop.QuitClosure();
-    run_loop.Run();
-  }
-
- private:
-  void OnSyncConfirmationUIClosed(
-      LoginUIService::SyncConfirmationUIClosedResult result) override {
-    sync_confirmation_closed_ = true;
-    if (quit_closure_) {
-      std::move(quit_closure_).Run();
-    }
-  }
-
-  bool sync_confirmation_closed_ = false;
-  base::OnceClosure quit_closure_;
-  base::ScopedObservation<LoginUIService, LoginUIService::Observer>
-      login_ui_service_observation_{this};
-};
-
 void RunLoopFor(base::TimeDelta duration) {
   base::RunLoop run_loop{base::RunLoop::Type::kNestableTasksAllowed};
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
@@ -216,22 +181,9 @@ bool ElementExistsByIdInSigninFrame(content::WebContents* web_contents,
   });
 }
 
-enum class SyncConfirmationDialogAction { kConfirm, kCancel, kSettings };
 enum class HistorySyncOptinDialogAction { kConfirm, kReject };
 
 #if !BUILDFLAG(IS_CHROMEOS)
-std::string GetButtonIdForSyncConfirmationDialogAction(
-    SyncConfirmationDialogAction action) {
-  switch (action) {
-    case SyncConfirmationDialogAction::kConfirm:
-      return "confirmButton";
-    case SyncConfirmationDialogAction::kCancel:
-      return "notNowButton";
-    case SyncConfirmationDialogAction::kSettings:
-      return "settingsButton";
-  }
-}
-
 std::string GetRadioButtonIdForSigninEmailConfirmationDialogAction(
     SigninEmailConfirmationDialog::Action action) {
   switch (action) {
@@ -284,22 +236,6 @@ bool IsElementReady(content::WebContents* web_contents,
 namespace login_ui_test_utils {
 class SigninViewControllerTestUtil {
  public:
-  static bool TryDismissSyncConfirmationDialog(
-      BrowserWindowInterface* browser,
-      SyncConfirmationDialogAction action) {
-#if BUILDFLAG(IS_CHROMEOS)
-    NOTREACHED();
-#else
-    return TryDismissModalDialog(
-        browser,
-        /*app=*/
-        base::FeatureList::IsEnabled(switches::kFirstRunDesktopRefresh)
-            ? "sync-confirmation-app-refresh"
-            : "sync-confirmation-app",
-        GetButtonIdForSyncConfirmationDialogAction(action));
-#endif
-  }
-
   static bool TryDismissHistorySyncOptinDialog(
       BrowserWindowInterface* browser,
       HistorySyncOptinDialogAction action) {
@@ -439,6 +375,25 @@ void WaitUntilUIReady(BrowserWindowInterface* browser) {
                 "});"));
 }
 
+void EnterPasswordInNewGaiaFlow(content::WebContents* web_contents,
+                                const std::string& password) {
+  // Fill the password input field once the visible challenge step is ready
+  // (ignoring hidden password inputs on intermediate pages such as
+  // `/v3/signin/proceedtochallenge`).
+  std::string password_script = kGetPasswordFieldFromDiceSigninPage;
+  ASSERT_TRUE(RunUntil([web_contents, &password_script]() -> bool {
+    return EvaluateBooleanScriptInSigninFrame(
+        web_contents, "(() => { const input = " + password_script +
+                          "; const next = "
+                          "document.getElementById('passwordNext');"
+                          " return input != null && input.checkVisibility() && "
+                          "next != null && next.checkVisibility(); })()");
+  })) << "Could not find visible Dice password field";
+  std::string js = password_script + ".value = '" + password + "';";
+  js += "document.getElementById('passwordNext').click();";
+  ASSERT_TRUE(content::ExecJs(GetSigninFrame(web_contents), js));
+}
+
 void SigninInNewGaiaFlow(content::WebContents* web_contents,
                          const std::string& email,
                          const std::string& password) {
@@ -448,16 +403,7 @@ void SigninInNewGaiaFlow(content::WebContents* web_contents,
                    "'; document.getElementById('identifierNext').click();";
   ASSERT_TRUE(content::ExecJs(GetSigninFrame(web_contents), js));
 
-  // Fill the password input field.
-  std::string password_script = kGetPasswordFieldFromDiceSigninPage;
-  // Wait until the password field exists.
-  ASSERT_TRUE(RunUntil([web_contents, &password_script]() -> bool {
-    return EvaluateBooleanScriptInSigninFrame(web_contents,
-                                              password_script + " != null");
-  })) << "Could not find Dice password field";
-  js = password_script + ".value = '" + password + "';";
-  js += "document.getElementById('passwordNext').click();";
-  ASSERT_TRUE(content::ExecJs(GetSigninFrame(web_contents), js));
+  EnterPasswordInNewGaiaFlow(web_contents, password);
 }
 
 void SigninInOldGaiaFlow(content::WebContents* web_contents,
@@ -525,24 +471,6 @@ bool TryUntilSuccessWithTimeout(base::RepeatingCallback<bool()> try_callback,
       return true;
     }
     RunLoopFor(base::Seconds(1));
-  }
-  return false;
-}
-
-bool DismissSyncConfirmationDialog(BrowserWindowInterface* browser,
-                                   base::TimeDelta timeout,
-                                   SyncConfirmationDialogAction action) {
-  SyncConfirmationClosedObserver confirmation_closed_observer(browser);
-
-  const base::Time expire_time = base::Time::Now() + timeout;
-  while (base::Time::Now() <= expire_time) {
-    if (SigninViewControllerTestUtil::TryDismissSyncConfirmationDialog(
-            browser, action)) {
-      confirmation_closed_observer.WaitForConfirmationClosed();
-      EXPECT_FALSE(SigninViewControllerTestUtil::ShowsModalDialog(browser));
-      return true;
-    }
-    RunLoopFor(base::Milliseconds(1000));
   }
   return false;
 }
@@ -640,12 +568,6 @@ bool DismissHistorySyncOptinDialog(BrowserWindowInterface* browser,
   return false;
 }
 
-bool ConfirmSyncConfirmationDialog(BrowserWindowInterface* browser,
-                                   base::TimeDelta timeout) {
-  return DismissSyncConfirmationDialog(browser, timeout,
-                                       SyncConfirmationDialogAction::kConfirm);
-}
-
 bool ConfirmHistorySyncOptinDialog(BrowserWindowInterface* browser,
                                    base::TimeDelta timeout,
                                    bool wait_for_dismiss) {
@@ -660,18 +582,6 @@ bool RejectHistorySyncOptinDialog(BrowserWindowInterface* browser,
   return DismissHistorySyncOptinDialog(browser, timeout,
                                        HistorySyncOptinDialogAction::kReject,
                                        wait_for_dismiss);
-}
-
-bool GoToSettingsSyncConfirmationDialog(BrowserWindowInterface* browser,
-                                        base::TimeDelta timeout) {
-  return DismissSyncConfirmationDialog(browser, timeout,
-                                       SyncConfirmationDialogAction::kSettings);
-}
-
-bool CancelSyncConfirmationDialog(BrowserWindowInterface* browser,
-                                  base::TimeDelta timeout) {
-  return DismissSyncConfirmationDialog(browser, timeout,
-                                       SyncConfirmationDialogAction::kCancel);
 }
 
 bool CompleteSigninEmailConfirmationDialog(

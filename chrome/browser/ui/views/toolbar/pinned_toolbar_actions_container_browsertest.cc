@@ -17,6 +17,7 @@
 #include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/translate/translate_test_utils.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/actions/chrome_actions.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -377,6 +378,13 @@ IN_PROC_BROWSER_TEST_F(PinnedToolbarActionsContainerBrowserTest,
 
 IN_PROC_BROWSER_TEST_F(PinnedToolbarActionsContainerBrowserTest,
                        QRCodeUpdatesWithPolicyPrefChanges) {
+  // The QR code action is only available on HTTP(S) pages. On the initial
+  // about:blank tab, any refresh of the tab's command state while waiting for
+  // the pin animation would disable the action, so load a real page first.
+  ASSERT_TRUE(embedded_test_server()->Start());
+  ASSERT_TRUE(content::NavigateToURL(
+      GetWebContents(), embedded_test_server()->GetURL("/title1.html")));
+
   PinnedActionTestAccessor accessor(browser(), kActionQrCodeGenerator);
   PrefService* prefs = g_browser_process->local_state();
   prefs->SetBoolean(prefs::kQRCodeGeneratorEnabled, true);
@@ -637,6 +645,39 @@ IN_PROC_BROWSER_TEST_F(PinnedToolbarActionsContainerBrowserTest,
   // Hide indicator.
   action_item->SetProperty(kActionItemUnderlineIndicatorKey, false);
   EXPECT_EQ(accessor.IsActivated(), false);
+}
+
+IN_PROC_BROWSER_TEST_F(PinnedToolbarActionsContainerWebUIDisabledBrowserTest,
+                       IconSizeDeltaShrinksButtonIcon) {
+  UpdateActionItem(kActionPrint);
+  model()->UpdatePinnedState(kActionPrint, true);
+
+  auto toolbar_buttons = GetChildToolbarButtons();
+  ASSERT_EQ(toolbar_buttons.size(), 1u);
+  PinnedActionToolbarButton* const pinned_button = toolbar_buttons[0];
+  ASSERT_EQ(pinned_button->GetActionId(), kActionPrint);
+
+  // Without a delta, the icon is rendered at the default toolbar icon size.
+  const int default_icon_size =
+      GetLayoutConstant(LayoutConstant::kToolbarButtonIconSize);
+  EXPECT_EQ(pinned_button->GetIconSize(), default_icon_size);
+  EXPECT_EQ(pinned_button->GetImage(views::Button::STATE_NORMAL).width(),
+            default_icon_size);
+
+  // Setting a negative delta on the action item shrinks the rendered icon.
+  auto* const action_item = actions::ActionManager::Get().FindAction(
+      kActionPrint, BrowserActions::From(browser())->root_action_item());
+  constexpr int kIconSizeDelta = -2;
+  action_item->SetProperty(chrome::kActionItemIconSizeDeltaKey, kIconSizeDelta);
+  EXPECT_EQ(pinned_button->GetIconSize(), default_icon_size + kIconSizeDelta);
+  EXPECT_EQ(pinned_button->GetImage(views::Button::STATE_NORMAL).width(),
+            default_icon_size + kIconSizeDelta);
+
+  // Clearing the delta restores the default icon size.
+  action_item->SetProperty(chrome::kActionItemIconSizeDeltaKey, 0);
+  EXPECT_EQ(pinned_button->GetIconSize(), default_icon_size);
+  EXPECT_EQ(pinned_button->GetImage(views::Button::STATE_NORMAL).width(),
+            default_icon_size);
 }
 
 IN_PROC_BROWSER_TEST_F(PinnedToolbarActionsContainerBrowserTest,

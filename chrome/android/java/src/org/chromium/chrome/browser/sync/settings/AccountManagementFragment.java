@@ -125,8 +125,7 @@ public class AccountManagementFragment extends ChromeBaseSettingsFragment
         }
 
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
-                        requireContext(), getIdentityManager());
+                ProfileDataCache.createWithDefaultImageSize(requireContext(), getIdentityManager());
     }
 
     @Override
@@ -446,6 +445,9 @@ public class AccountManagementFragment extends ChromeBaseSettingsFragment
             case UserActionableError.SIGN_IN_NEEDS_UPDATE:
                 AccountManagerFacadeProvider.getInstance()
                         .updateCredentials(mPrimaryAccount.getId(), getActivity(), null);
+                return;
+            case UserActionableError.DEVICE_MANAGEMENT_ERROR:
+                SyncSettingsUtils.openDeviceManagementResolution(getContext(), mSyncService);
                 return;
             case UserActionableError.NEEDS_CLIENT_UPGRADE:
                 // Opens the client in play store for update.

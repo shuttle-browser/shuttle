@@ -33,8 +33,8 @@ BASE_DECLARE_FEATURE(kSyncContextualTask);
 // Enables syncing of Gemini threads across devices.
 BASE_DECLARE_FEATURE(kSyncGeminiThread);
 
-// Enables syncing of Encrypted Tab Context Containers across devices.
-BASE_DECLARE_FEATURE(kSyncEncryptedTabContextContainer);
+// Enables syncing of Encrypted Tab Context across devices.
+BASE_DECLARE_FEATURE(kSyncEncryptedTabContext);
 
 // Enables syncing of themes across iOS devices.
 BASE_DECLARE_FEATURE(kSyncThemesIos);
@@ -62,8 +62,7 @@ BASE_DECLARE_FEATURE(kSyncAutofillEntitySuppression);
 // - Confirmation dialog when turning off “Allow Chrome sign-in”
 // - Promo for signed-in users with bookmarks toggle off
 // On desktop:
-// Adding history sync opt-in entry points, and other follow-ups to
-// `kReplaceSyncPromosWithSignInPromos`.
+// Adding history sync opt-in entry points, and other Uno phase 2 follow-ups.
 BASE_DECLARE_FEATURE(kUnoPhase2FollowUp);
 #endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_IOS)
 
@@ -79,18 +78,9 @@ bool IsContactInfoDataTypeForCustomPassphraseUsersEnabled();
 
 BASE_DECLARE_FEATURE(kSyncEnableContactInfoDataTypeForDasherUsers);
 
-// If enabled, keeps local and account search engines separate.
-BASE_DECLARE_FEATURE(kSeparateLocalAndAccountSearchEngines);
-
-// Feature flag to replace all sync-related UI with sign-in ones.
-// Do not use this flag directly in production code. Use
-// `syncer::IsReplaceSyncPromosWithSignInPromosEnabled()` instead.
-BASE_DECLARE_FEATURE(kReplaceSyncPromosWithSignInPromos);
-
 // Returns true if replacing sync promos with sign-in promos is enabled.
-// Always true on desktop platforms (Linux, Mac, Windows), and controlled by
-// `kReplaceSyncPromosWithSignInPromos` on other platforms. Prefer using this
-// function over checking the feature flag directly.
+// Always returns true on all platforms.
+// TODO(crbug.com/40067025): Remove this function and clean up callers.
 bool IsReplaceSyncPromosWithSignInPromosEnabled();
 
 // AutofillAi is launched globally on desktop, but restricted to certain
@@ -128,25 +118,9 @@ DECLARE_SYNC_AUTOFILL_AI_FEATURE(kSyncWalletVehicleRegistrations);
 // the local and account data separation behind this feature flag.
 BASE_DECLARE_FEATURE(kSpellcheckSeparateLocalAndAccountDictionaries);
 
-// Feature flag used for enabling sync (transport mode) for signed-in users that
-// haven't turned on full sync.
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-BASE_DECLARE_FEATURE(kReadingListEnableSyncTransportModeUponSignIn);
-// Returns whether reading list storage related UI can be enabled, by testing
-// `kReadingListEnableSyncTransportModeUponSignIn`.
-bool IsReadingListAccountStorageEnabled();
-#else
-constexpr bool IsReadingListAccountStorageEnabled() {
-  return true;
-}
-#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-
 // If enabled, sync-the-transport will auto-start (avoid deferring startup) if
 // sync metadata isn't available (i.e. initial sync never completed).
 BASE_DECLARE_FEATURE(kSyncAlwaysForceImmediateStartIfTransportDataMissing);
-
-// If enabled, distinguishes between local and account themes.
-BASE_DECLARE_FEATURE(kSeparateLocalAndAccountThemes);
 
 // If enabled, the local change nudge delays for single-client users are
 // increased by some factor, specified via the FeatureParam below.
@@ -199,14 +173,12 @@ BASE_DECLARE_FEATURE(kSyncMigrateLoopbackServerBookmarksToClientTagHash);
 #if !BUILDFLAG(IS_CHROMEOS)
 // If enabled, prevents registration of controllers for APPS and APP_SETTINGS
 // data types. Used as a kill switch during deprecation.
-// TODO(crbug.com/40267153): Enable `kSyncWipeAppsAndAppSettingsData` when
-// cleaning up this kill switch.
 BASE_DECLARE_FEATURE(kSyncDoNotSyncAppsAndAppSettings);
 
 // If enabled, wipes existing APPS and APP_SETTINGS data and metadata from
 // DataTypeStore on startup.
-// TODO(crbug.com/40267153): Enable by default when cleaning up
-// `kSyncDoNotSyncAppsAndAppSettings`, and remove after enough time.
+// TODO(crbug.com/40267153): Enabled by default in October 2026; remove in a
+// year (around October 2027).
 BASE_DECLARE_FEATURE(kSyncWipeAppsAndAppSettingsData);
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 

@@ -68,7 +68,10 @@ _GERRIT_CLIENT_PATH = os.path.join(
 _GN2BP_SCRIPT_PATH = os.path.join(
     REPOSITORY_ROOT, 'components/cronet/gn2bp/gen_android_bp.py'
 )
-_JAVA_HOME = os.path.join(REPOSITORY_ROOT, 'third_party', 'jdk', 'current')
+sys.path.append(os.path.join(REPOSITORY_ROOT, 'build', 'android'))
+import java_home  # noqa: E402
+
+_JAVA_HOME = java_home.JAVA_HOME
 _JAVA_PATH = os.path.join(_JAVA_HOME, 'bin', 'java')
 _GN2BP_OUT_DIR = os.path.join(gn2bp_common.OUT_DIR, 'gn2bp')
 _BREAKAGES_FILE_URL = "https://chromium.googlesource.com/chromium/src/+/refs/heads/main/components/cronet/android/breakages.json?format=TEXT"
@@ -195,28 +198,6 @@ def _write_desc_json(gn_out_dir: str, temp_file: tempfile.NamedTemporaryFile):
     cronet_utils.run(
         [cronet_utils.GN_PATH, 'desc', gn_out_dir, '--format=json', '//*'],
         stdout=temp_file,
-    )
-
-
-def _gen_extras_bp(import_channel: str, output_dir: str):
-    """Generate Android.extras.bp."""
-    extras_androidbp_template_path = os.path.join(
-        REPOSITORY_ROOT,
-        'components',
-        'cronet',
-        'gn2bp',
-        'templates',
-        'Android.extras.bp.template',
-    )
-    extras_androidbp_template_contents = cronet_utils.read_file(
-        extras_androidbp_template_path
-    )
-    extras_androidbp_path = os.path.join(output_dir, 'Android.extras.bp')
-    cronet_utils.write_file(
-        extras_androidbp_path,
-        string.Template(extras_androidbp_template_contents).substitute(
-            GN2BP_MODULE_PREFIX=f'{import_channel}_cronet_'
-        ),
     )
 
 
@@ -864,7 +845,6 @@ def main():
             output_dir=_GN2BP_OUT_DIR,
         )
         _gen_boringssl(args.channel, _GN2BP_OUT_DIR)
-        _gen_extras_bp(args.channel, _GN2BP_OUT_DIR)
         _gen_androidtest_xml(args.channel, _GN2BP_OUT_DIR)
 
         print(f"Generated files have been written to {_GN2BP_OUT_DIR}")

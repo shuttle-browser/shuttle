@@ -19,6 +19,12 @@
 #include "mojo/public/cpp/platform/platform_handle.h"
 #include "mojo/public/cpp/system/handle.h"
 
+#if defined(__OPTIMIZE_SIZE__)
+#define MOJO_NOINLINE_UNLESS_OPTIMIZE_SIZE
+#else
+#define MOJO_NOINLINE_UNLESS_OPTIMIZE_SIZE NOINLINE
+#endif
+
 namespace mojo {
 
 template <typename T>
@@ -93,7 +99,10 @@ inline const void* DecodePointer(const uint64_t* offset) {
   if (!*offset) {
     return nullptr;
   }
-  return UNSAFE_TODO(reinterpret_cast<const char*>(offset) + *offset);
+  const void* ret =
+      UNSAFE_TODO(reinterpret_cast<const char*>(offset) + *offset);
+  UNSAFE_ASSUME(ret != nullptr);
+  return ret;
 }
 
 #pragma pack(push, 1)

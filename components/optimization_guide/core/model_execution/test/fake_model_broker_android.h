@@ -5,18 +5,18 @@
 #ifndef COMPONENTS_OPTIMIZATION_GUIDE_CORE_MODEL_EXECUTION_TEST_FAKE_MODEL_BROKER_ANDROID_H_
 #define COMPONENTS_OPTIMIZATION_GUIDE_CORE_MODEL_EXECUTION_TEST_FAKE_MODEL_BROKER_ANDROID_H_
 
+#include <memory>
 #include <optional>
 
 #include "base/test/scoped_feature_list.h"
-#include "components/optimization_guide/core/delivery/model_provider_registry.h"
-#include "components/optimization_guide/core/delivery/optimization_guide_model_provider.h"
 #include "components/optimization_guide/core/model_execution/android/model_broker_android.h"
-#include "components/optimization_guide/core/model_execution/test/fake_model_assets.h"
 #include "components/optimization_guide/public/mojom/model_broker.mojom.h"
 #include "components/prefs/testing_pref_service.h"
+#include "services/on_device_model/android/model_downloader_android.h"
 #include "services/on_device_model/android/on_device_model_bridge_native_unittest_helper.h"
 
 namespace optimization_guide {
+class FakeAndroidManifestAsset;
 
 // A ScopedFeatureList initialized with defaults for testing
 // ModelBrokerAndroid related features.
@@ -32,8 +32,10 @@ class ScopedModelBrokerAndroidFeatureList {
 class FakeModelBrokerAndroid {
  public:
   struct Options {
-    proto::OnDeviceBaseModelMetadata metadata =
-        FakeBaseModelAsset::DefaultSpec();
+    on_device_model::ModelDownloaderAndroid::BaseModelSpec base_model_spec{
+        .name = "Test",
+        .version = "0.0.1",
+    };
     // If true, the Java ModelDownloader will report the base model as already
     // installed.
     bool preinstall_base_model = true;
@@ -47,24 +49,20 @@ class FakeModelBrokerAndroid {
   void InstallBaseModel();
   void UnInstallBaseModel();
 
-  void UpdateModelAdaptation(const FakeAdaptationAsset& asset);
+  void UpdateManifest(std::unique_ptr<FakeAndroidManifestAsset> asset);
 
   PrefService& local_state() { return local_state_; }
   on_device_model::OnDeviceModelBridgeNativeUnitTestHelper& java_helper() {
     return java_helper_;
   }
-  ModelProviderRegistry& model_provider() { return model_provider_; }
+  ModelBrokerAndroid& broker() { return EnsureBroker(); }
 
  private:
   ModelBrokerAndroid& EnsureBroker();
-  void UpdateTarget(proto::OptimizationTarget target,
-                    const ModelInfo& model_info);
 
   Options options_;
   ScopedModelBrokerAndroidFeatureList feature_list_;
   TestingPrefServiceSimple local_state_;
-  OptimizationGuideLogger logger_;
-  ModelProviderRegistry model_provider_{&logger_};
   on_device_model::OnDeviceModelBridgeNativeUnitTestHelper java_helper_;
   std::optional<ModelBrokerAndroid> broker_;
 };

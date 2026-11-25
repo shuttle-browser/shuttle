@@ -49,7 +49,6 @@ import org.mockito.junit.MockitoRule;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
@@ -71,7 +70,6 @@ import org.chromium.chrome.browser.bookmarks.bar.BookmarkBarUtils;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
 import org.chromium.chrome.browser.findinpage.FindToolbar;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.fullscreen.BrowserControlsManager;
 import org.chromium.chrome.browser.fullscreen.BrowserControlsManagerSupplier;
 import org.chromium.chrome.browser.homepage.HomepageManager;
@@ -89,6 +87,7 @@ import org.chromium.chrome.browser.toolbar.top.ToolbarPhone;
 import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ntp.IncognitoNewTabPageStation;
 import org.chromium.chrome.test.transit.ntp.RegularNewTabPageStation;
@@ -111,7 +110,6 @@ import org.chromium.ui.test.util.DeviceRestriction;
 
 /** Tests for toolbar manager behavior. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class ToolbarTest {
     @Rule
@@ -591,7 +589,9 @@ public class ToolbarTest {
         // 6. Exit the tab switcher.
         LayoutTestUtils.startShowingAndWaitForLayout(
                 mActivity.getLayoutManager(), LayoutType.BROWSING, false);
-        NewTabPageTestUtils.waitForNtpLoaded(incognitoNtpTab);
+        // TODO(crbug.com/428022848): Hop on with NewTabPageTestUtils once the NTP Stations handle
+        // bottom controls after exiting the Hub, where the toolbar view stays invisible.
+        ChromeTabUtils.waitForNtpLoaded(incognitoNtpTab);
 
         // 7. Verify accessibility order is restored.
         verifyBottomControlsAccessibilityOrder(toolbarPhone, incognitoNtpTab.getView());
@@ -765,9 +765,7 @@ public class ToolbarTest {
                         .build();
 
         // Close all tabs to make current tab null
-        ChromeTabUtils.closeAllTabs(
-                InstrumentationRegistry.getInstrumentation(),
-                mActivity.getTabModelSelectorSupplier());
+        ChromeTriggers.closeAllTabsProgrammatically(mPage);
 
         // Verify metric
         watcher.assertExpected();

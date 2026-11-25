@@ -43,7 +43,6 @@
 #include "gpu/command_buffer/common/shared_image_capabilities.h"
 #include "gpu/command_buffer/common/shared_image_trace_utils.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
-#include "media/base/media_switches.h"
 #include "media/base/video_util.h"
 #include "media/base/wait_and_replace_sync_token_client.h"
 #include "media/gfx/paint_canvas_video_renderer.h"
@@ -118,6 +117,7 @@ VideoFrameResourceType ExternalResourceTypeForHardware(
     case PIXEL_FORMAT_P210LE:
     case PIXEL_FORMAT_P410LE:
     case PIXEL_FORMAT_RGBAF16:
+    case PIXEL_FORMAT_Y410:
       return VideoFrameResourceType::RGB;
 
     case PIXEL_FORMAT_UYVY:
@@ -304,6 +304,7 @@ viz::SharedImageFormat VideoPixelFormatToMultiPlanarSharedImageFormat(
     case PIXEL_FORMAT_XB30:
     case PIXEL_FORMAT_BGRA:
     case PIXEL_FORMAT_RGBAF16:
+    case PIXEL_FORMAT_Y410:
     case PIXEL_FORMAT_UNKNOWN:
       NOTREACHED();
   }
@@ -372,6 +373,8 @@ void ReturnTexture(
                                  original_release_token, new_release_token);
   video_frame->UpdateReleaseSyncToken(&client);
 }
+
+BASE_FEATURE(kVRUUseSharedImageAlpha, base::FEATURE_ENABLED_BY_DEFAULT);
 
 }  // namespace
 
@@ -813,12 +816,8 @@ VideoFrameExternalResource VideoResourceUpdater::CreateForHardwareFrame(
     return VideoFrameExternalResource();
   }
 
-  const bool copy_required =
-      base::FeatureList::IsEnabled(media::kUseSharedImageUsageForVideoFrameCopy)
-          ? !video_frame->shared_image()->usage().Has(
-                gpu::SHARED_IMAGE_USAGE_DISPLAY_READ)
-          : video_frame->metadata().copy_required;
-  if (copy_required) {
+  if (!video_frame->shared_image()->usage().Has(
+          gpu::SHARED_IMAGE_USAGE_DISPLAY_READ)) {
     return CopyHardwareResource(video_frame.get());
   }
 
@@ -836,15 +835,15 @@ VideoFrameExternalResource VideoResourceUpdater::CreateForHardwareFrame(
   CopyingSyncTokenClient client;
   auto original_release_token = video_frame->UpdateReleaseSyncToken(&client);
 
-  SkAlphaType alpha_type =
-      (external_resource.type == VideoFrameResourceType::RGBA_PREMULTIPLIED)
-          ? kPremul_SkAlphaType
-          : kUnpremul_SkAlphaType;
+  viz::TransferableResource::MetadataOverride overrides;
+  if (!base::FeatureList::IsEnabled(kVRUUseSharedImageAlpha)) {
+    SkAlphaType alpha_type =
+        (external_resource.type == VideoFrameResourceType::RGBA_PREMULTIPLIED)
+            ? kPremul_SkAlphaType
+            : kUnpremul_SkAlphaType;
+    overrides.alpha_type = alpha_type;
+  }
 
-  viz::TransferableResource::MetadataOverride overrides = {
-      .color_space = video_frame->ColorSpace(),
-      .alpha_type = alpha_type,
-  };
   auto transfer_resource = viz::TransferableResource::Make(
       shared_image, viz::TransferableResource::ResourceSource::kVideo,
       video_frame->acquire_sync_token(), overrides);

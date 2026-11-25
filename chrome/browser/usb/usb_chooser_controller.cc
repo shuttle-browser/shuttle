@@ -14,7 +14,6 @@
 #include "base/strings/utf_string_conversions.h"
 #include "build/build_config.h"
 #include "chrome/browser/chooser_controller/title_util.h"
-#include "chrome/browser/net/referrer.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/usb/usb_blocklist.h"
 #include "chrome/browser/usb/usb_chooser_context_factory.h"
@@ -31,8 +30,8 @@
 #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-shared.h"
 #include "third_party/blink/public/common/features_generated.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 using content::RenderFrameHost;
@@ -105,7 +104,7 @@ UsbChooserController::UsbChooserController(
       Profile::FromBrowserContext(main_frame->GetBrowserContext());
   chooser_context_ =
       UsbChooserContextFactory::GetForProfile(profile)->AsWeakPtr();
-  DCHECK(chooser_context_);
+  CHECK(chooser_context_, base::NotFatalUntil::M163);
   chooser_context_->GetDevices(base::BindOnce(
       &UsbChooserController::GotUsbDeviceList, weak_factory_.GetWeakPtr()));
 }
@@ -135,7 +134,7 @@ size_t UsbChooserController::NumOptions() const {
 }
 
 std::u16string UsbChooserController::GetOption(size_t index) const {
-  DCHECK_LT(index, devices_.size());
+  CHECK_LT(index, devices_.size(), base::NotFatalUntil::M163);
   const std::u16string& device_name = devices_[index].second;
   const auto& it = device_name_map_.find(device_name);
   CHECK(it != device_name_map_.end());
@@ -166,9 +165,9 @@ bool UsbChooserController::IsPaired(size_t index) const {
 }
 
 void UsbChooserController::Select(const std::vector<size_t>& indices) {
-  DCHECK_EQ(1u, indices.size());
+  CHECK_EQ(1u, indices.size(), base::NotFatalUntil::M163);
   size_t index = indices[0];
-  DCHECK_LT(index, devices_.size());
+  CHECK_LT(index, devices_.size(), base::NotFatalUntil::M163);
   const std::string& guid = devices_[index].first;
 
   if (!chooser_context_) {
@@ -187,7 +186,7 @@ void UsbChooserController::Select(const std::vector<size_t>& indices) {
                                       std::move(on_device_info_refreshed));
 #else
   auto* device_info = chooser_context_->GetDeviceInfo(guid);
-  DCHECK(device_info);
+  CHECK(device_info, base::NotFatalUntil::M163);
   std::move(on_device_info_refreshed).Run(device_info->Clone());
 #endif
 }
@@ -212,7 +211,7 @@ void UsbChooserController::OpenHelpCenterUrl() const {
   WebContents::FromRenderFrameHost(render_frame_host)
       ->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
                     GURL(chrome::kChooserUsbOverviewURL),
-                    WindowOpenDisposition::kNewForegroundTab,
+                    ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                     ui::PAGE_TRANSITION_AUTO_TOPLEVEL),
                 /*navigation_handle_callback=*/{});
 }
@@ -233,7 +232,7 @@ void UsbChooserController::OnDeviceRemoved(
   for (auto it = devices_.begin(); it != devices_.end(); ++it) {
     if (it->first == device_info.guid) {
       size_t index = it - devices_.begin();
-      DCHECK_GT(device_name_map_[it->second], 0);
+      CHECK_GT(device_name_map_[it->second], 0, base::NotFatalUntil::M163);
       if (--device_name_map_[it->second] == 0)
         device_name_map_.erase(it->second);
       devices_.erase(it);
@@ -253,7 +252,7 @@ void UsbChooserController::OnBrowserContextShutdown() {
 void UsbChooserController::GotUsbDeviceList(
     std::vector<::device::mojom::UsbDeviceInfoPtr> devices) {
   for (auto& device_info : devices) {
-    DCHECK(device_info);
+    CHECK(device_info, base::NotFatalUntil::M163);
     if (DisplayDevice(*device_info)) {
       std::u16string device_name = FormatUsbDeviceName(*device_info);
       devices_.push_back(std::make_pair(device_info->guid, device_name));

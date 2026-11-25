@@ -17,6 +17,7 @@
 #import "services/metrics/public/cpp/ukm_builders.h"
 #import "services/metrics/public/cpp/ukm_recorder.h"
 #import "services/network/public/cpp/shared_url_loader_factory.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #import "ui/base/page_transition_types.h"
 
 using WellKnownChangePasswordResult =
@@ -25,8 +26,6 @@ using WellKnownChangePasswordResult =
 WellKnownChangePasswordTabHelper::WellKnownChangePasswordTabHelper(
     web::WebState* web_state)
     : web::WebStatePolicyDecider(web_state), web_state_(web_state) {
-  affiliation_service_ = IOSChromeAffiliationServiceFactory::GetForProfile(
-      ProfileIOS::FromBrowserState(web_state->GetBrowserState()));
   web_state->AddObserver(this);
 }
 
@@ -59,10 +58,11 @@ void WellKnownChangePasswordTabHelper::ShouldAllowRequest(
         web_state_->GetLastCommittedURL().is_empty() &&  // empty tab history
         password_manager::IsWellKnownChangePasswordUrl(request_url)) {
       request_url_ = request_url;
-      if (affiliation_service_->GetChangePasswordURL(request_url_).is_empty()) {
-        well_known_change_password_state_.PrefetchChangePasswordURL(
-            affiliation_service_, request_url_);
-      }
+      affiliations::AffiliationService* affiliation_service =
+          IOSChromeAffiliationServiceFactory::GetForProfile(
+              ProfileIOS::FromBrowserState(web_state_->GetBrowserState()));
+      well_known_change_password_state_.FetchChangePasswordURL(
+          affiliation_service, request_url_);
       auto url_loader_factory =
           web_state_->GetBrowserState()->GetSharedURLLoaderFactory();
       well_known_change_password_state_.FetchNonExistingResource(
@@ -122,7 +122,8 @@ void WellKnownChangePasswordTabHelper::OnProcessingFinished(bool is_supported) {
   if (!response_policy_callback_) {
     return;
   }
-  GURL redirect_url = affiliation_service_->GetChangePasswordURL(request_url_);
+  GURL redirect_url =
+      well_known_change_password_state_.change_password_url_override();
   if (is_supported || redirect_url == request_url_) {
     std::move(response_policy_callback_)
         .Run(web::WebStatePolicyDecider::PolicyDecision::Allow());
@@ -143,9 +144,9 @@ void WellKnownChangePasswordTabHelper::OnProcessingFinished(bool is_supported) {
 void WellKnownChangePasswordTabHelper::Redirect(const GURL& url) {
   // Making sure there was no other navigation started we could override.
   if (processing_state_ == kResponesReceived) {
-    web::WebState::OpenURLParams params(url, web::Referrer(),
-                                        WindowOpenDisposition::kCurrentTab,
-                                        ui::PAGE_TRANSITION_LINK, false);
+    web::WebState::OpenURLParams params(
+        url, web::Referrer(), ui::mojom::WindowOpenDisposition::kCurrentTab,
+        ui::PAGE_TRANSITION_LINK, false);
     web_state_->OpenURL(params);
   }
 }

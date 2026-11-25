@@ -11,10 +11,13 @@
 
 #include "base/barrier_closure.h"
 #include "base/check_deref.h"
+#include "base/containers/unique_ptr_adapters.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/json/values_util.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/task/sequenced_task_runner.h"
+#include "base/timer/timer.h"
 #include "base/values.h"
 #include "build/build_config.h"
 #include "components/prefs/pref_service.h"
@@ -66,7 +69,7 @@ bool IsPreferredAccountSelectionEnabled() {
           switches::kEnableAccountPreviewPreferredAccount)) {
     return true;
   }
-#if BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   return base::FeatureList::IsEnabled(
       switches::kEnableAccountPreviewPreferredAccountFRE);
 #else
@@ -79,6 +82,14 @@ void RecordNonPeriodicFetchesUntilNextPeriodicRefresh(int count) {
       "Signin.AccountPreview.NonPeriodicFetchesUntilNextPeriodicRefresh",
       count);
 }
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+void RecordAsyncPreferredAccountResult(
+    AccountPreviewDataServiceImpl::AsyncPreferredAccountResult result) {
+  base::UmaHistogramEnumeration(
+      "Signin.AccountPreview.AsyncPreferredAccountResult", result);
+}
+#endif
 
 void RecordSuccessfulFetchingMetrics(
     PrefService* pref_service,
@@ -106,7 +117,7 @@ void RecordSuccessfulFetchingMetrics(
     case AccountPreviewDataServiceImpl::FetchTriggerCause::
         kPrimaryAccountCleared:
     case AccountPreviewDataServiceImpl::FetchTriggerCause::
-        kPreferredAccountMissingForFRE: {
+        kPreferredAccountMissingForAsyncFetch: {
       int count = pref_service->GetInteger(
           prefs::kAccountPreviewNonPeriodicFetchCountPref);
       pref_service->SetInteger(prefs::kAccountPreviewNonPeriodicFetchCountPref,
@@ -223,6 +234,23 @@ void WriteAccountPreviewPreferenceToPrefs(
 
 }  // namespace
 
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+struct AccountPreviewDataServiceImpl::PendingPreferredAccountRequest {
+  explicit PendingPreferredAccountRequest(
+      base::OnceCallback<void(std::optional<AccountPreviewPreference>)>
+          callback)
+      : callback(std::move(callback)) {}
+  PendingPreferredAccountRequest(const PendingPreferredAccountRequest&) =
+      delete;
+  PendingPreferredAccountRequest& operator=(
+      const PendingPreferredAccountRequest&) = delete;
+  ~PendingPreferredAccountRequest() = default;
+
+  base::OnceCallback<void(std::optional<AccountPreviewPreference>)> callback;
+  base::OneShotTimer timeout_timer;
+};
+#endif
+
 AccountPreviewDataServiceImpl::AccountPreviewDataServiceImpl(
     SigninClient* signin_client,
     IdentityManager* identity_manager,
@@ -324,26 +352,60 @@ void AccountPreviewDataServiceImpl::GetPreviewPreferenceForAccount(
   }
 }
 
-#if BUILDFLAG(IS_IOS)
-void AccountPreviewDataServiceImpl::GetPreferredAccountForFRESignin(
-    base::OnceCallback<void(std::optional<AccountPreviewPreference>)>
-        callback) {
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+void AccountPreviewDataServiceImpl::GetPreferredAccountForSigninAsync(
+    base::OnceCallback<void(std::optional<AccountPreviewPreference>)> callback,
+    base::TimeDelta timeout) {
   if (!base::FeatureList::IsEnabled(
           switches::kEnableAccountPreviewPreferredAccountFRE) ||
       !identity_manager_ ||
       !profile_prefs_->GetBoolean(prefs::kSigninAllowed)) {
-    std::move(callback).Run(std::nullopt);
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), std::nullopt));
     return;
   }
 
   if (std::optional<AccountPreviewPreference> result =
           GetPreferredAccountForSignin()) {
-    std::move(callback).Run(std::move(result));
+    RecordAsyncPreferredAccountResult(AsyncPreferredAccountResult::kCached);
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(callback), std::move(result)));
     return;
   }
 
-  pending_preferred_account_requests_.push_back(std::move(callback));
-  EnsureAllAccountsFetched(FetchTriggerCause::kPreferredAccountMissingForFRE);
+  auto request =
+      std::make_unique<PendingPreferredAccountRequest>(std::move(callback));
+  request->timeout_timer.Start(
+      FROM_HERE, timeout,
+      base::BindOnce(&AccountPreviewDataServiceImpl::
+                         OnPendingPreferredAccountRequestTimedOut,
+                     weak_ptr_factory_.GetWeakPtr(), request.get()));
+  pending_preferred_account_requests_.push_back(std::move(request));
+  EnsureAllAccountsFetched(
+      FetchTriggerCause::kPreferredAccountMissingForAsyncFetch);
+}
+
+void AccountPreviewDataServiceImpl::OnPendingPreferredAccountRequestTimedOut(
+    PendingPreferredAccountRequest* request) {
+  auto it = std::ranges::find_if(pending_preferred_account_requests_,
+                                 base::MatchesUniquePtr(request));
+  CHECK(it != pending_preferred_account_requests_.end());
+  auto pending_request = std::move(*it);
+  pending_preferred_account_requests_.erase(it);
+  RecordAsyncPreferredAccountResult(AsyncPreferredAccountResult::kTimeout);
+  std::move(pending_request->callback).Run(std::nullopt);
+}
+
+void AccountPreviewDataServiceImpl::ResolvePendingPreferredAccountRequests(
+    std::optional<AccountPreviewPreference> preference,
+    AsyncPreferredAccountResult result) {
+  auto requests = std::exchange(pending_preferred_account_requests_, {});
+  for (auto& request : requests) {
+    request->timeout_timer.Stop();
+    RecordAsyncPreferredAccountResult(result);
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, base::BindOnce(std::move(request->callback), preference));
+  }
 }
 #endif
 
@@ -640,12 +702,12 @@ void AccountPreviewDataServiceImpl::EnsureAllAccountsFetched(
   // will directly be false for all periodic refreshes since the previous list
   // and results are cleared during periodic refreshes.
   // In case the external app account or primary account was updated, or the
-  // preferred account was missing when requested for the FRE, we want to
+  // preferred account was missing when requested asynchronously, we want to
   // trigger a new account computation, so we need to bypass this optimization.
   if (cause != FetchTriggerCause::kExternalAppAccountUpdated &&
       cause != FetchTriggerCause::kPrimaryAccountSet &&
       cause != FetchTriggerCause::kPrimaryAccountCleared &&
-      cause != FetchTriggerCause::kPreferredAccountMissingForFRE &&
+      cause != FetchTriggerCause::kPreferredAccountMissingForAsyncFetch &&
       switches::kAccountPreviewDataPersistAccounts.Get() &&
       !HaveAccountsMutatedSinceLastFetch(accounts)) {
     base::UmaHistogramEnumeration(
@@ -941,22 +1003,26 @@ void AccountPreviewDataServiceImpl::OnAllFetchesCompleted(
     ResetTimer();
   }
 
-  FinalizeAllAccountsFetch();
+  FinalizeAllAccountsFetch(/*fetch_completed=*/true);
 }
 
 void AccountPreviewDataServiceImpl::OnAllAccountsFetchCanceled() {
-  FinalizeAllAccountsFetch();
+  FinalizeAllAccountsFetch(/*fetch_completed=*/false);
 }
 
-void AccountPreviewDataServiceImpl::FinalizeAllAccountsFetch() {
-#if BUILDFLAG(IS_IOS)
+void AccountPreviewDataServiceImpl::FinalizeAllAccountsFetch(
+    bool fetch_completed) {
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   if (!pending_preferred_account_requests_.empty()) {
     std::optional<AccountPreviewPreference> preference =
         GetPreferredAccountForSignin();
-    for (auto& callback :
-         std::exchange(pending_preferred_account_requests_, {})) {
-      std::move(callback).Run(preference);
-    }
+    AsyncPreferredAccountResult result =
+        fetch_completed
+            ? (preference.has_value()
+                   ? AsyncPreferredAccountResult::kFetchedWithResult
+                   : AsyncPreferredAccountResult::kFetchedWithoutResult)
+            : AsyncPreferredAccountResult::kCancelled;
+    ResolvePendingPreferredAccountRequests(std::move(preference), result);
   }
 #endif
 
@@ -1130,11 +1196,9 @@ void AccountPreviewDataServiceImpl::ClearMemoryData() {
 #if BUILDFLAG(IS_ANDROID)
   deferred_external_app_account_update_callback_.Reset();
 #endif
-#if BUILDFLAG(IS_IOS)
-  for (auto& callback :
-       std::exchange(pending_preferred_account_requests_, {})) {
-    std::move(callback).Run(/*preference=*/std::nullopt);
-  }
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  ResolvePendingPreferredAccountRequests(
+      /*preference=*/std::nullopt, AsyncPreferredAccountResult::kCancelled);
 #endif
 }
 

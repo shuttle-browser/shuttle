@@ -19,7 +19,7 @@
 #include "chrome/browser/web_applications/web_app_registry_update.h"
 #include "chrome/browser/web_applications/web_app_sync_bridge.h"
 #include "content/public/browser/web_contents.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 
 namespace web_app {
 
@@ -256,18 +256,17 @@ TEST_F(ClearBrowsingDataCommandTest, ClearMigrationApps) {
       test::InstallDummyWebApp(profile(), "Source App", source_url);
 
   GURL target_url("https://app.com/target");
-  auto manifest = blink::mojom::Manifest::New();
-  manifest->id = target_url;
-  manifest->start_url = target_url;
-  manifest->scope = target_url;
-  manifest->name = u"Target App";
-  manifest->manifest_url = target_url;
+  blink::Manifest::MigrateFrom migrate_from;
+  migrate_from.id = source_url;
 
-  auto migrate_from = blink::mojom::ManifestMigrateFrom::New();
-  migrate_from->id = source_url;
-  manifest->migrate_from.push_back(std::move(migrate_from));
+  blink::Manifest manifest =
+      blink::Manifest::Builder(target_url, target_url, target_url)
+          .SetName(u"Target App")
+          .SetManifestUrl(target_url)
+          .SetMigrateFrom({std::move(migrate_from)})
+          .BuildChecked();
 
-  webapps::AppId target_app_id = GenerateAppIdFromManifest(*manifest);
+  webapps::AppId target_app_id = GenerateAppIdFromManifest(manifest);
 
   base::test::TestFuture<WebAppInstallFromMigrateFromFieldResult>
       install_future;

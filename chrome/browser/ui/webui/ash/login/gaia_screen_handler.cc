@@ -77,10 +77,10 @@
 #include "chrome/browser/ui/webui/ash/login/signin_fatal_error_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/user_creation_screen_handler.h"
 #include "chrome/browser/ui/webui/signin/signin_utils.h"
-#include "chrome/common/channel_info.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/installer/util/google_update_settings.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
+#include "chromeos/ash/components/channel/channel_info.h"
 #include "chromeos/ash/components/dbus/userdataauth/userdataauth_client.h"
 #include "chromeos/ash/components/install_attributes/install_attributes.h"
 #include "chromeos/ash/components/login/auth/auth_events_recorder.h"
@@ -546,9 +546,7 @@ void GaiaScreenHandler::LoadGaiaWithPartitionAndVersionAndConsent(
   if (!platform_version->empty()) {
     params.Set("platformVersion", *platform_version);
   }
-  // Extended stable channel is not supported on Chrome OS Ash.
-  params.Set("releaseChannel",
-             chrome::GetChannelName(chrome::WithExtendedStable(false)));
+  params.Set("releaseChannel", GetChannelName());
   params.Set("endpointGen", kEndpointGen);
 
   std::string email_domain;
@@ -632,7 +630,9 @@ void GaiaScreenHandler::LoadGaiaWithPartitionAndVersionAndConsent(
         login::GetAccountId(local_state_.get(), context.email,
                             context.gaia_id.ToString(), AccountType::GOOGLE);
     auto* user = user_manager::UserManager::Get()->FindUser(account_id);
-    CHECK(user, base::NotFatalUntil::M162);
+    // TODO(crbug.com/581841490): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
+    DCHECK(user);
     bool is_child_account = user && user->IsChild();
     // Enable the new endpoint for supervised account for now. We might expand
     // it to other account type in the future.
@@ -972,17 +972,6 @@ void GaiaScreenHandler::CompleteAuthentication(
     return;
   }
 
-  // In case of QuickStart, notify the controller of a successful attempt.
-  const auto* ctx = LoginDisplayHost::default_host()->GetWizardContext();
-  if (ctx->quick_start_setup_ongoing &&
-      ctx->gaia_config.gaia_path ==
-          WizardContext::GaiaPath::kQuickStartFallback) {
-    LoginDisplayHost::default_host()
-        ->GetWizardController()
-        ->quick_start_controller()
-        ->OnFallbackUrlFlowSuccess();
-  }
-
   const AccountId account_id = login::GetAccountId(
       local_state_.get(), signin_artifacts.email,
       signin_artifacts.gaia_id.ToString(), AccountType::GOOGLE);
@@ -999,6 +988,17 @@ void GaiaScreenHandler::CompleteAuthentication(
                                                            user_type)) {
     LoginDisplayHost::default_host()->ShowAllowlistCheckFailedError();
     return;
+  }
+
+  // In case of QuickStart, notify the controller of a successful attempt.
+  const auto* ctx = LoginDisplayHost::default_host()->GetWizardContext();
+  if (ctx->quick_start_setup_ongoing &&
+      ctx->gaia_config.gaia_path ==
+          WizardContext::GaiaPath::kQuickStartFallback) {
+    LoginDisplayHost::default_host()
+        ->GetWizardController()
+        ->quick_start_controller()
+        ->OnFallbackUrlFlowSuccess();
   }
 
   // ------ Set user's email on the UI

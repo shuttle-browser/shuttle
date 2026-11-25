@@ -9,7 +9,7 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/contextual_search/contextual_search_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
+#include "chrome/browser/ui/webui/new_tab_page/core/ntp_load_time_data.h"
 #include "components/contextual_search/contextual_search_service.h"
 #include "content/public/browser/browser_context.h"
 #include "extensions/browser/extension_config_map.h"
@@ -32,6 +32,10 @@ NewTabPageExtensionConfigProvider::NewTabPageExtensionConfigProvider()
 NewTabPageExtensionConfigProvider::~NewTabPageExtensionConfigProvider() =
     default;
 
+bool NewTabPageExtensionConfigProvider::ShouldReplaceI18nTemplates() const {
+  return true;
+}
+
 base::DictValue NewTabPageExtensionConfigProvider::GetLoadTimeData(
     content::BrowserContext& context) {
   Profile* profile = Profile::FromBrowserContext(&context);
@@ -41,10 +45,22 @@ base::DictValue NewTabPageExtensionConfigProvider::GetLoadTimeData(
       ContextualSearchServiceFactory::GetForProfile(profile) &&
       contextual_search::ContextualSearchService::IsContextSharingEnabled(
           profile->GetPrefs());
-  // The extension reuses chrome://new-tab-page elements, so it gets the same
-  // loadTimeData.
   base::DictValue dict =
-      NewTabPageUI::GetLoadTimeData(profile, session_allows_drag_and_drop);
+      ntp::BuildLoadTimeData(profile, session_allows_drag_and_drop);
+
+  // Gate NTP subsystems not yet supported in the component extension.
+  // TODO(crbug.com/572840536): Add support in the component extension.
+  dict.Set("oneGoogleBarEnabled", false);
+  dict.Set("shortcutsEnabled", false);
+  dict.Set("modulesEnabled", false);
+  dict.Set("microsoftModuleEnabled", false);
+  dict.Set("enableThreadsRail", false);
+  dict.Set("browserPromoType", "disabled");
+  dict.Set("showCustomizeButton", false);
+  dict.Set("wallpaperSearchButtonEnabled", false);
+  dict.Set("backgroundColor", "var(--color-new-tab-page-background)");
+  dict.Set("backgroundImageUrl", "");
+
   // Adds `fontfamily`, `fontsize`, `language`, `textdirection` etc., which
   // `content::WebUIDataSource` adds on chrome://new-tab-page.
   webui::SetLoadTimeDataDefaults(g_browser_process->GetApplicationLocale(),

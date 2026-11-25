@@ -22,6 +22,7 @@
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
+#include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/safe_invoke/safe_invoke.h"
@@ -127,6 +128,18 @@ bool ShouldShowNewTabButton(BrowserWindowInterface* browser) {
           .value_or(false);
 
   return !hide_new_tab_button;
+}
+
+int GetNewTabButtonTrailingOverlap() {
+  return TabStyle::Get()->GetBottomExtensionWidth() -
+         GetLayoutConstant(LayoutConstant::kTabStripPadding) -
+         GetLayoutConstant(LayoutConstant::kNewTabButtonLeadingMargin);
+}
+
+int GetNewTabButtonReservedWidth(const views::View* new_tab_button) {
+  return new_tab_button->GetPreferredSize().width() +
+         GetLayoutConstant(LayoutConstant::kTabStripPadding) -
+         GetNewTabButtonTrailingOverlap();
 }
 
 // Updates the border of `view` if the insets need to be updated.
@@ -746,9 +759,12 @@ HorizontalTabStripRegionViewNew::HorizontalTabStripRegionViewNew(
         TabStripControlButton::kIconSize,
         TabStripControlButton::kButtonSize.width() / 2.0f);
     new_tab_button->SetPaintTransparent(true);
+    new_tab_button_pressed_subscription_ =
+        new_tab_button->RegisterWillInvokeActionCallback(base::BindRepeating(
+            &HorizontalTabStripRegionViewNew::RecordNewTabButtonPressed,
+            base::Unretained(this)));
     new_tab_button_ = AddChildView(std::move(new_tab_button));
-    new_tab_button_->SetProperty(views::kCrossAxisAlignmentKey,
-                                 views::LayoutAlignment::kCenter);
+    new_tab_button_->SetProperty(views::kViewIgnoredByLayoutKey, true);
   }
 
   reserved_grab_handle_space_ =
@@ -787,6 +803,11 @@ bool HorizontalTabStripRegionViewNew::IsPositionInWindowCaption(
     return false;
   }
   if (combo_button_ && IsHitInView(combo_button_, point)) {
+    return false;
+  }
+  if (tab_strip_action_container_ &&
+      tab_strip_action_container_->GetVisible() &&
+      IsHitInView(tab_strip_action_container_, point)) {
     return false;
   }
   if (tab_strip_view() && IsHitInView(tab_strip_view(), point)) {
@@ -846,6 +867,18 @@ void HorizontalTabStripRegionViewNew::Layout(PassKey) {
   if (combo_button_) {
     AdjustViewBoundsRect(combo_button_, 0);
   }
+
+  if (new_tab_button_ && tab_strip_view()) {
+    const gfx::Size button_size = new_tab_button_->GetPreferredSize();
+    const int x =
+        tab_strip_view()->bounds().right() - GetNewTabButtonTrailingOverlap();
+    const int y = GetInsets().top() +
+                  (GetLayoutConstant(LayoutConstant::kTabStripHeight) -
+                   GetLayoutConstant(LayoutConstant::kTabstripToolbarOverlap) -
+                   button_size.height()) /
+                      2;
+    new_tab_button_->SetBoundsRect(gfx::Rect(gfx::Point(x, y), button_size));
+  }
 }
 
 gfx::Size HorizontalTabStripRegionViewNew::GetMinimumSize() const {
@@ -893,8 +926,8 @@ gfx::Rect HorizontalTabStripRegionViewNew::GetTabStripDraggableBounds() const {
     trailing_reserved_width +=
         tab_strip_action_container_->GetPreferredSize().width();
   }
-  if (new_tab_button_ && new_tab_button_->GetVisible()) {
-    trailing_reserved_width += new_tab_button_->GetPreferredSize().width();
+  if (new_tab_button_) {
+    trailing_reserved_width += GetNewTabButtonReservedWidth(new_tab_button_);
   }
 
   const gfx::Rect tab_strip_bounds = tab_strip_view()->GetBoundsInScreen();
@@ -1030,6 +1063,15 @@ void HorizontalTabStripRegionViewNew::UpdateTabStripMargin() {
   }
 #endif
 
+  std::optional<int> tab_strip_right_margin;
+  int trailing_overlap = 0;
+  if (new_tab_button_) {
+    trailing_overlap =
+        TabStyle::Get()->GetBottomExtensionWidth() -
+        GetLayoutConstant(LayoutConstant::kNewTabButtonLeadingMargin);
+    tab_strip_right_margin = GetNewTabButtonReservedWidth(new_tab_button_);
+  }
+
   std::optional<int> tab_strip_left_margin;
   int current_leading_width = 0;
 
@@ -1072,10 +1114,13 @@ void HorizontalTabStripRegionViewNew::UpdateTabStripMargin() {
 
   if (tab_strip_view()) {
     tab_strip_view()->SetLeadingOverlap(leading_overlap);
-    if (tab_strip_left_margin.has_value()) {
+    tab_strip_view()->SetTrailingOverlap(trailing_overlap);
+    if (tab_strip_left_margin.has_value() ||
+        tab_strip_right_margin.has_value()) {
       tab_strip_view()->SetProperty(
           views::kMarginsKey,
-          gfx::Insets::TLBR(0, tab_strip_left_margin.value_or(0), 0, 0));
+          gfx::Insets::TLBR(0, tab_strip_left_margin.value_or(0), 0,
+                            tab_strip_right_margin.value_or(0)));
     } else {
       tab_strip_view()->ClearProperty(views::kMarginsKey);
     }

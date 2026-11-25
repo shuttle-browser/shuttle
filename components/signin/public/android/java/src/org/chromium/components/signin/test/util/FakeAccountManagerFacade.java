@@ -527,6 +527,19 @@ public class FakeAccountManagerFacade implements AccountManagerFacade {
         setAccounts(Collections.emptyList());
     }
 
+    /** Resets all accounts and test-specific configurations of the fake AccountManagerFacade. */
+    @MainThread
+    public void resetForTesting() {
+        ThreadUtils.checkUiThread();
+        mDidAccountFetchingSucceed = true;
+        mGetAccessTokenError.clear();
+        mAccountToAdd = null;
+        removeAllAccounts();
+        if (mBlockedGetAccountsPromise != null) {
+            unblockGetAccounts();
+        }
+    }
+
     /** Converts an email to a fake gaia Id. */
     public static GaiaId toGaiaId(String email) {
         return new GaiaId("gaia-id-" + email.replace("@", "_at_"));
@@ -686,33 +699,6 @@ public class FakeAccountManagerFacade implements AccountManagerFacade {
         ThreadUtils.checkUiThread();
         for (AccountsChangeObserver observer : mObservers) {
             observer.onAccountsChanged();
-        }
-    }
-
-    /**
-     * Updates the previously set capabilities with the ones in accountCapabilities and notifies
-     * AccountsChangeObservers if there has been a change. New capabilities that were not already
-     * set are added and existing ones are updated with the new values.
-     */
-    @MainThread
-    public void updateAccountCapabilities(
-            CoreAccountId accountId, AccountCapabilities accountCapabilities) {
-        ThreadUtils.checkUiThread();
-        assert accountId != null;
-        boolean capabilitiesChanged;
-        if (SigninFeatureMap.sMigrateAccountManagerDelegate.isEnabled()) {
-            FakePlatformAccount account = assertNonNull(getPlatformAccount(accountId.getId()));
-            capabilitiesChanged =
-                    account.getAccountInfo()
-                            .getAccountCapabilities()
-                            .updateWith(accountCapabilities);
-        } else {
-            AccountHolder accountHolder = assertNonNull(getAccountHolder(accountId));
-            capabilitiesChanged =
-                    accountHolder.getAccountCapabilities().updateWith(accountCapabilities);
-        }
-        if (capabilitiesChanged) {
-            fireOnAccountsChangedNotification();
         }
     }
 

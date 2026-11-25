@@ -26,8 +26,8 @@ cc_library(
         ":buffer",
         "//mediapipe/framework/formats:frame_buffer",
         "//mediapipe/framework/formats:tensor",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -43,8 +43,9 @@ cc_test(
         "//mediapipe/framework/formats:frame_buffer",
         "//mediapipe/framework/formats:tensor",
         "//mediapipe/framework/port:gtest_main",
-        "//mediapipe/framework/port:status",
         "@com_google_absl//absl/log:absl_check",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
     ],
 )
 
@@ -97,6 +98,7 @@ cc_test(
 cc_test(
     name = "yuv_buffer_test",
     srcs = ["yuv_buffer_test.cc"],
+    tags = ["nohwasan"],
     deps = [
         ":buffer",
         "//mediapipe/framework/port:gtest_main",

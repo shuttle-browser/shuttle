@@ -26,6 +26,7 @@
 #include "components/autofill/content/browser/content_autofill_driver.h"
 #include "components/autofill/content/browser/test_autofill_manager_injector.h"
 #include "components/autofill/core/browser/data_model/payments/credit_card.h"
+#include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
 #include "components/autofill/core/browser/foundations/browser_autofill_manager_test_api.h"
 #include "components/autofill/core/browser/foundations/test_autofill_manager_waiter.h"
@@ -47,8 +48,8 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/switches.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 using base::ASCIIToUTF16;
 using testing::AllOf;
@@ -137,11 +138,11 @@ void FillCard(content::RenderFrameHost* rfh,
   test::SetCreditCardInfo(&card, kNameFull, kNumber, kExpMonth, kExpYear, "",
                           base::ASCIIToUTF16(std::string_view(kCvc)));
   auto& manager = TestAutofillManager::GetForRenderFrameHost(rfh);
-  manager.FillOrPreviewForm(mojom::ActionPersistence::kFill, form.global_id(),
-                            triggered_field.global_id(), &card,
-                            AutofillTriggerSource::kPopup,
-                            /*require_user_confirmation=*/false,
-                            /*blocked_fields=*/{});
+  manager.FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, form.global_id(),
+      triggered_field.global_id(), FillingProduct::kCreditCard, &card,
+      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
+      /*blocked_fields=*/{});
 }
 
 // Returns the values of all fields in the  frames of `web_contents`.
@@ -298,7 +299,7 @@ class AutofillAcrossIframesTest : public InProcessBrowserTest {
         browser(),
         embedded_https_test_server().GetURL(kMainHostname, relative_url),
         ui::PAGE_TRANSITION_LINK);
-    params.disposition = WindowOpenDisposition::kNewForegroundTab;
+    params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
     ui_test_utils::NavigateToURL(&params);
     return GetOrWaitForFormWithFocusableFields(
         /*num_fields=*/num_fields);

@@ -152,11 +152,11 @@ class VIZ_SERVICE_EXPORT DisplayScheduler
   void OnBeginFrameDeadline();
   bool DrawAndSwap(const BeginFrameArgs& begin_frame_args);
   void MaybeStartObservingBeginFrames();
-  void StartObservingBeginFrames();
+  void StartObservingBeginFrames(bool post_missed_begin_frame);
   void StopObservingBeginFrames();
   bool ShouldDraw() const;
   bool CanDrawForPreviousFrame(const BeginFrameId& begin_frame_id) const;
-  void ForceImmediateSwapForPreviousFrame();
+  void AttemptSwapForPreviousFrame();
   int GetMaxAllowedBuffers(base::TimeDelta interval) const;
   void DidFinishFrame(BeginFrameId frame_id, DisplaySchedulerDrawResult result);
   // Updates |has_pending_surfaces_| and returns whether its value changed.
@@ -176,7 +176,7 @@ class VIZ_SERVICE_EXPORT DisplayScheduler
   base::TimeTicks begin_frame_deadline_task_time_;
 
   base::CancelableOnceClosure missed_begin_frame_task_;
-  bool inside_surface_damaged_;
+  base::CancelableOnceClosure swap_for_previous_frame_task_;
 
   bool visible_;
   bool output_surface_lost_;

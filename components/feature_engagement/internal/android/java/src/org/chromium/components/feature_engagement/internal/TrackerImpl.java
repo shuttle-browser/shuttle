@@ -4,12 +4,16 @@
 
 package org.chromium.components.feature_engagement.internal;
 
+import static org.chromium.components.feature_engagement.internal.EnterprisePolicyBypassAllowlist.isAllowedToBypassEnterprisePolicy;
+
 import androidx.annotation.CheckResult;
 import androidx.annotation.VisibleForTesting;
 
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.JniType;
+import org.jni_zero.JniTypeToken;
+import org.jni_zero.JniUniquePtr;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.base.Callback;
@@ -37,43 +41,39 @@ import java.util.function.BooleanSupplier;
 @JNINamespace("feature_engagement")
 @NullMarked
 public class TrackerImpl implements Tracker {
-    /**
-     * A JNI-wrapper for the native DisplayLockHandle.
-     * The C++ counterpart is DisplayLockHandleAndroid.
-     */
+    @JniType("::feature_engagement::DisplayLockHandle")
+    interface NativeDisplayLockHandle extends JniTypeToken {}
+
+    /** A JNI-wrapper for the native DisplayLockHandle. */
     static class DisplayLockHandleAndroid implements DisplayLockHandle {
         @CalledByNative
-        private static DisplayLockHandleAndroid create(long nativePtr) {
+        static DisplayLockHandleAndroid create(JniUniquePtr<NativeDisplayLockHandle> nativePtr) {
             return new DisplayLockHandleAndroid(nativePtr);
         }
 
-        long mNativePtr;
+        private final JniUniquePtr<NativeDisplayLockHandle> mNativePtr;
 
-        private DisplayLockHandleAndroid(long nativePtr) {
+        private DisplayLockHandleAndroid(JniUniquePtr<NativeDisplayLockHandle> nativePtr) {
             mNativePtr = nativePtr;
-        }
-
-        @CalledByNative
-        private void clearNativePtr() {
-            mNativePtr = 0;
         }
 
         @Override
         public void release() {
-            assert mNativePtr != 0;
-            TrackerImplJni.get().release(mNativePtr);
-            assert mNativePtr == 0;
+            mNativePtr.destroy();
         }
     }
 
     /** The pointer to the feature_engagement::TrackerImplAndroid JNI bridge. */
     private long mNativePtr;
 
-    // Defaults to true; flag-guarded by kAndroidUserEducationFramework in TrackerFactory.
-    private BooleanSupplier mPromotionsEnabledSupplier = SupplierUtils.alwaysTrueBooleanSupplier();
+    // Whether the PromotionsEnabled enterprise policy currently blocks promotions. Defaults to
+    // false; flag-guarded by kUserEducationFramework and kUserEducationEnterprisePolicy in
+    // TrackerFactory.
+    private BooleanSupplier mEnterprisePolicyBlocksPromotionsSupplier =
+            SupplierUtils.alwaysFalseBooleanSupplier();
 
-    // Defaults to false; flag-guarded by kAndroidUserEducationFramework and
-    // kAggressivelyCooldownIphs in TrackerFactory.
+    // Defaults to false; flag-guarded by kUserEducationFramework and
+    // kUserEducationAggressivelyCooldownIphs in TrackerFactory.
     private BooleanSupplier mAggressivelyCooldownIphsSupplier =
             SupplierUtils.alwaysFalseBooleanSupplier();
 
@@ -88,8 +88,8 @@ public class TrackerImpl implements Tracker {
     }
 
     @Override
-    public void setPromotionsEnabledSupplier(BooleanSupplier supplier) {
-        mPromotionsEnabledSupplier = supplier;
+    public void setEnterprisePolicyBlocksPromotionsSupplier(BooleanSupplier supplier) {
+        mEnterprisePolicyBlocksPromotionsSupplier = supplier;
     }
 
     @Override
@@ -109,7 +109,6 @@ public class TrackerImpl implements Tracker {
         FeatureProperties properties =
                 new FeatureProperties(
                         UiFormat.UNKNOWN,
-                        /* isBlockedByEnterprisePolicy= */ true,
                         /* isBlockedByCooldownGroup= */ false,
                         /* blocksCooldownGroup= */ false);
 
@@ -136,7 +135,6 @@ public class TrackerImpl implements Tracker {
         FeatureProperties properties =
                 new FeatureProperties(
                         UiFormat.UNKNOWN,
-                        /* isBlockedByEnterprisePolicy= */ true,
                         /* isBlockedByCooldownGroup= */ false,
                         /* blocksCooldownGroup= */ false);
 
@@ -163,8 +161,7 @@ public class TrackerImpl implements Tracker {
      * triggering the feature in native FET.
      *
      * @param feature The name of the feature requesting in-product help.
-     * @param featureProperties The {@link FeatureProperties} for cooldown and enterprise policy
-     *     evaluation.
+     * @param featureProperties The {@link FeatureProperties} for cooldown group evaluation.
      * @param withSnooze Whether to query native {@code shouldTriggerHelpUiWithSnooze}.
      * @return The {@link TriggerDetails} indicating whether to show the IPH and snooze UI.
      */
@@ -183,8 +180,7 @@ public class TrackerImpl implements Tracker {
         }
 
         // 2. Enterprise policy check.
-        if (featureProperties.isBlockedByEnterprisePolicy()
-                && !mPromotionsEnabledSupplier.getAsBoolean()) {
+        if (isBlockedByEnterprisePolicy(feature)) {
             RecordUserAction.record("InProductHelp.ShouldTriggerHelpUI." + feature);
             RecordUserAction.record(
                     "InProductHelp.ShouldTriggerHelpUIResult.NotTriggered." + feature);
@@ -297,6 +293,7 @@ public class TrackerImpl implements Tracker {
         }
     }
 
+    // LINT.IfChange(UiFormatCooldownFeature)
     /**
      * Returns the FET cooldown group feature name for the given {@link UiFormat}, or {@code null}
      * if the format does not belong to a cooldown group.
@@ -324,6 +321,9 @@ public class TrackerImpl implements Tracker {
         }
     }
 
+    // LINT.ThenChange(//components/feature_engagement/public/android/java/src/org/chromium/components/feature_engagement/UiFormat.java:UiFormat)
+
+    // LINT.IfChange(UiFormatCooldownTriggerEvent)
     /**
      * Returns the FET trigger event name for the given {@link UiFormat}'s cooldown group, or {@code
      * null} if the format does not belong to a cooldown group.
@@ -351,13 +351,25 @@ public class TrackerImpl implements Tracker {
         }
     }
 
+    // LINT.ThenChange(//components/feature_engagement/public/android/java/src/org/chromium/components/feature_engagement/UiFormat.java:UiFormat)
+
     @Override
     public boolean wouldTriggerHelpUi(String feature) {
-        if (!mPromotionsEnabledSupplier.getAsBoolean()) {
+        if (isBlockedByEnterprisePolicy(feature)) {
             return false;
         }
         assert mNativePtr != 0;
         return TrackerImplJni.get().wouldTriggerHelpUi(mNativePtr, feature);
+    }
+
+    /**
+     * Returns whether {@code feature} is currently blocked by the PromotionsEnabled enterprise
+     * policy, i.e. the policy blocks promotions and the feature is not allowed to bypass it (see
+     * {@link EnterprisePolicyBypassAllowlist}).
+     */
+    private boolean isBlockedByEnterprisePolicy(String feature) {
+        return mEnterprisePolicyBlocksPromotionsSupplier.getAsBoolean()
+                && !isAllowedToBypassEnterprisePolicy(feature);
     }
 
     @Override
@@ -471,7 +483,5 @@ public class TrackerImpl implements Tracker {
         void addOnInitializedCallback(
                 long nativeTrackerImplAndroid,
                 @JniType("base::OnceCallback<void(bool)>") Callback<Boolean> callback);
-
-        void release(long nativeDisplayLockHandleAndroid);
     }
 }

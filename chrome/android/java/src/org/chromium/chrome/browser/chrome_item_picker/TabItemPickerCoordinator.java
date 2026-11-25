@@ -92,6 +92,7 @@ public class TabItemPickerCoordinator {
     private final Set<TabListEditorItemSelectionId> mInitialSelectedTabIds = new HashSet<>();
     private final int mAllowedSelectionCount;
     private final boolean mIncludePdfTabs;
+    private final boolean mShouldShowSelectTabsIph;
     private final Set<Integer> mCachedTabIdsSet = new HashSet<>();
     private @Nullable Callback<Boolean> mSuccessCallback;
     private @Nullable TabModelSelector mTabModelSelector;
@@ -99,6 +100,7 @@ public class TabItemPickerCoordinator {
     private @Nullable IncognitoTabModelObserver mIncognitoTabModelObserver;
     private @Nullable TabListEditorCoordinator mTabListEditorCoordinator;
     private @Nullable ItemPickerNavigationProvider mNavigationProvider;
+    private @Nullable TabContentManager mTabContentManager;
 
     public TabItemPickerCoordinator(
             OneshotSupplier<Profile> profileSupplier,
@@ -109,7 +111,8 @@ public class TabItemPickerCoordinator {
             ViewGroup containerView,
             ArrayList<Integer> preselectedTabIds,
             int allowedSelectionCount,
-            boolean includePdfTabs) {
+            boolean includePdfTabs,
+            boolean shouldShowSelectTabsIph) {
 
         mProfileSupplier = profileSupplier;
         mWindowId = windowId;
@@ -120,6 +123,7 @@ public class TabItemPickerCoordinator {
         mPreselectedTabIds = preselectedTabIds;
         mAllowedSelectionCount = allowedSelectionCount;
         mIncludePdfTabs = includePdfTabs;
+        mShouldShowSelectTabsIph = shouldShowSelectTabsIph;
 
         mBackPressCallback =
                 new OnBackPressedCallback(/* enabled= */ false) {
@@ -364,6 +368,9 @@ public class TabItemPickerCoordinator {
                 tabs,
                 /* tabGroupSyncIds= */ Collections.emptyList(),
                 /* recyclerViewPosition= */ position);
+        if (mShouldShowSelectTabsIph && !tabs.isEmpty()) {
+            mTabListEditorCoordinator.maybeShowSelectTabsIph();
+        }
         if (mPreselectedTabIds.isEmpty()) return;
         Set<TabListEditorItemSelectionId> selectionSet = new HashSet<>();
         for (Integer id : mPreselectedTabIds) {
@@ -721,10 +728,6 @@ public class TabItemPickerCoordinator {
             }
             mLoadingTabsToStartTimes.clear();
             mOffscreenRenderer.destroy();
-
-            if (mTabContentManager != null) {
-                mTabContentManager.destroy();
-            }
             mIsDestroyed = true;
         }
 
@@ -806,6 +809,9 @@ public class TabItemPickerCoordinator {
     /** Creates a TabContentManager instance required by the TabListEditorCoordinator. */
     private TabContentManager createTabContentManager(
             TabModelSelector selector, BrowserControlsStateProvider browserControlsStateProvider) {
+        if (mTabContentManager != null) {
+            mTabContentManager.destroy();
+        }
         TabContentManager tabContentManager =
                 new TabContentManager(
                         mActivity,
@@ -814,6 +820,7 @@ public class TabItemPickerCoordinator {
                         selector::getTabById,
                         TabWindowManagerSingleton.getInstance());
         tabContentManager.initWithNative();
+        mTabContentManager = tabContentManager;
         return tabContentManager;
     }
 
@@ -828,6 +835,10 @@ public class TabItemPickerCoordinator {
                     .getHandleBackPressChangedSupplier()
                     .removeObserver(mBackPressEnabledObserver);
             mTabListEditorCoordinator.destroy();
+        }
+        if (mTabContentManager != null) {
+            mTabContentManager.destroy();
+            mTabContentManager = null;
         }
         if (mTabModelSelector != null && mTabModelSelectorObserver != null) {
             mTabModelSelector.removeObserver(mTabModelSelectorObserver);

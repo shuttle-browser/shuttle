@@ -18,7 +18,6 @@
 #include "base/strings/escape.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
-#include "base/strings/stringprintf.h"
 #include "chrome/browser/apps/app_service/menu_item_constants.h"
 #include "chrome/browser/apps/app_service/menu_util.h"
 #include "chrome/browser/ash/bruschetta/bruschetta_util.h"
@@ -51,8 +50,8 @@
 #include "net/base/url_util.h"
 #include "storage/browser/file_system/external_mount_points.h"
 #include "storage/browser/file_system/file_system_url.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider_manager.h"
 #include "ui/color/color_provider_utils.h"
 #include "ui/native_theme/native_theme.h"
@@ -118,7 +117,7 @@ void LaunchTerminalImpl(Profile* profile,
   // LaunchSystemWebAppAsync.
 
   // Launch without a pinned home tab (settings page).
-  if (params.disposition == WindowOpenDisposition::kNewPopup) {
+  if (params.disposition == ui::mojom::WindowOpenDisposition::kNewPopup) {
     ash::LaunchSystemWebAppImpl(profile, ash::SystemWebAppType::TERMINAL, url,
                                 params);
     return;
@@ -158,34 +157,32 @@ GURL GenerateTerminalURL(Profile* profile,
                          const guest_os::GuestId& container_id,
                          const std::string& cwd,
                          const std::vector<std::string>& terminal_args) {
-  auto escape = [](std::string param) {
+  auto escape = [](std::string_view param) -> std::string {
     return base::EscapeQueryParamValue(param, /*use_plus=*/true);
   };
-  std::string settings_profile_param;
-  if (!settings_profile.empty()) {
-    settings_profile_param = base::StrCat(
-        {"&", kSettingsProfileUrlParam, "=", escape(settings_profile)});
-  }
   std::string start = base::StrCat({ash::kChromeUIUntrustedTerminalURL,
-                                    "html/terminal.html?command=vmshell",
-                                    settings_profile_param});
-  std::string vm_name_param =
-      escape(base::StringPrintf("--vm_name=%s", container_id.vm_name.c_str()));
-  std::string container_name_param = escape(base::StringPrintf(
-      "--target_container=%s", container_id.container_name.c_str()));
-  std::string owner_id_param = escape(base::StringPrintf(
-      "--owner_id=%s", crostini::CryptohomeIdForProfile(profile).c_str()));
+                                    "html/terminal.html?command=vmshell"});
+  if (!settings_profile.empty()) {
+    base::StrAppend(
+        &start, {"&", kSettingsProfileUrlParam, "=", escape(settings_profile)});
+  }
 
-  std::vector<std::string> pieces = {start, vm_name_param, container_name_param,
-                                     owner_id_param};
+  std::vector<std::string> pieces;
+  pieces.reserve(6 + terminal_args.size());
+  pieces.push_back(std::move(start));
+  pieces.push_back(escape(base::StrCat({"--vm_name=", container_id.vm_name})));
+  pieces.push_back(escape(
+      base::StrCat({"--target_container=", container_id.container_name})));
+  pieces.push_back(escape(base::StrCat(
+      {"--owner_id=", crostini::CryptohomeIdForProfile(profile)})));
   if (!cwd.empty()) {
-    pieces.push_back(escape(base::StringPrintf("--cwd=%s", cwd.c_str())));
+    pieces.push_back(escape(base::StrCat({"--cwd=", cwd})));
   }
   if (!terminal_args.empty()) {
     // Separates the command args from the args we are passing into the
     // terminal to be executed.
     pieces.push_back("--");
-    for (auto arg : terminal_args) {
+    for (const std::string& arg : terminal_args) {
       pieces.push_back(escape(arg));
     }
   }
@@ -316,7 +313,7 @@ void LaunchTerminalSettings(Profile* profile, int64_t display_id) {
   }
   std::string path = "html/terminal_settings.html";
   // Use an app pop window to host the settings page.
-  params->disposition = WindowOpenDisposition::kNewPopup;
+  params->disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
 
   // Always launch asynchronously to avoid disturbing the caller. See
   // https://crbug.com/1262890#c12 for more details.
@@ -508,10 +505,10 @@ std::string ShortcutIdFromContainerId(Profile* profile,
 
 base::flat_map<std::string, std::string> ExtrasFromShortcutId(
     const base::DictValue& shortcut) {
-  base::flat_map<std::string, std::string> extras;
+  std::vector<std::pair<std::string, std::string>> extras;
   for (const auto it : shortcut) {
     if (it.second.is_string()) {
-      extras[it.first] = it.second.GetString();
+      extras.emplace_back(it.first, it.second.GetString());
     }
   }
   return extras;

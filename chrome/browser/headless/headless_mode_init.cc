@@ -25,8 +25,9 @@
 #include "content/public/common/content_switches.h"
 
 #if BUILDFLAG(IS_LINUX)
-#include "ui/gl/gl_switches.h"               // nogncheck
-#include "ui/ozone/public/ozone_switches.h"  // nogncheck
+#include "components/headless/gpu_util/headless_gpu_util.h"  // nogncheck
+#include "ui/gl/gl_switches.h"                               // nogncheck
+#include "ui/ozone/public/ozone_switches.h"                  // nogncheck
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -108,8 +109,7 @@ class HeadlessModeHandleImpl : public HeadlessModeHandle {
     if (!command_line.HasSwitch(switches::kUseGL) &&
         !command_line.HasSwitch(switches::kUseANGLE) &&
         !command_line.HasSwitch(switches::kEnableGPU)) {
-      command_line.AppendSwitchASCII(
-          switches::kUseANGLE, gl::kANGLEImplementationSwiftShaderForWebGLName);
+      ConfigureHeadlessSwiftShaderCommandLine(command_line);
     }
 #endif  // BUILDFLAG(IS_LINUX)
 
@@ -126,10 +126,10 @@ class HeadlessModeHandleImpl : public HeadlessModeHandle {
     // if so, associate it with our code for cleanup on exit.
     if (IsTemporaryUserDataDirectoryCreatedForHeadless()) {
       wchar_t user_data_dir_buf[MAX_PATH], invalid_user_data_dir_buf[MAX_PATH];
-      if (GetUserDataDirectoryThunk(user_data_dir_buf,
-                                    std::size(user_data_dir_buf),
-                                    invalid_user_data_dir_buf,
-                                    std::size(invalid_user_data_dir_buf))) {
+      if (GetUserDataDirectoryThunk(
+              user_data_dir_buf, std::size(user_data_dir_buf),
+              invalid_user_data_dir_buf, std::size(invalid_user_data_dir_buf),
+              /*policy_set=*/nullptr)) {
         base::FilePath user_data_dir(user_data_dir_buf);
         if (!user_data_dir.empty()) {
           if (!user_data_dir_.Set(user_data_dir)) {

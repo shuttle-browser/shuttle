@@ -24,7 +24,6 @@ import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.ApplicationTestUtils;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Feature;
@@ -39,7 +38,6 @@ import org.chromium.chrome.browser.app.tabmodel.TabModelOrchestrator;
 import org.chromium.chrome.browser.app.tabwindow.TabWindowManagerSingleton;
 import org.chromium.chrome.browser.crypto.CipherFactory;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.multiwindow.MultiWindowTestHelper;
 import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -49,7 +47,6 @@ import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tab.TabState;
 import org.chromium.chrome.browser.tabmodel.TabPersistentStore.TabPersistentStoreObserver;
 import org.chromium.chrome.browser.tabpersistence.TabStateFileManager;
-import org.chromium.chrome.browser.tabwindow.TabWindowManager;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
@@ -65,12 +62,7 @@ import java.util.List;
  * Tab.
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
-// TODO(b/555414915): Update Android tests with WebUI NTP enabled on AL.
-@DisableFeatures({
-    ChromeFeatureList.CHANGE_UNFOCUSED_PRIORITY,
-    ChromeFeatureList.USE_WEB_UI_NTP_ANDROID
-})
+@DisableFeatures(ChromeFeatureList.CHANGE_UNFOCUSED_PRIORITY)
 @Batch(Batch.PER_CLASS)
 public class TabPersistentStoreIntegrationTest {
     @Rule
@@ -513,6 +505,14 @@ public class TabPersistentStoreIntegrationTest {
         File tab0StateFile = mTabPersistentStore.getTabStateFileForTesting(tab0.getId(), false);
         waitForFile(tab0StateFile, true);
 
+        // Wait for the NTP to finish loading. Its TabStateAttributes is created before its URL
+        // is set, so it starts out UNTIDY, and later UNTIDY updates return early in
+        // updateIsDirtyInternal(). When the load stops, onLoadStopped() requests DIRTY, which
+        // updateIsDirtyInternal() turns into CLEAN for an NTP without history. Until then,
+        // recreating the activity would write its TabState file again.
+        CriteriaHelper.pollUiThread(
+                () -> UrlUtilities.isNtpUrl(tab1.getUrl()) && !tab1.isLoading());
+
         // NTP (tab1) might have a state file if it was saved.
         // We want to make sure it does NOT exist to force fallback.
         File tab1StateFile = mTabPersistentStore.getTabStateFileForTesting(tab1.getId(), false);
@@ -570,21 +570,11 @@ public class TabPersistentStoreIntegrationTest {
 
         ChromeTabbedActivity activity2 = null;
         ChromeTabbedActivity recreatedActivity2 = null;
-        int windowId2 = TabWindowManager.INVALID_WINDOW_ID;
         try {
             // 1. Start second activity (Activity2).
-            if (MultiWindowUtils.isMultiInstanceApi31Enabled()) {
-                activity2 = MultiWindowTestHelper.createNewChromeTabbedActivity(activity1);
-            } else {
-                activity2 = MultiWindowTestHelper.createSecondChromeTabbedActivity(activity1, null);
-            }
+            activity2 = MultiWindowTestHelper.createNewChromeTabbedActivity(activity1);
 
             final ChromeTabbedActivity finalActivity2 = activity2;
-            CriteriaHelper.pollUiThread(
-                    () -> {
-                        return finalActivity2.areTabModelsInitialized()
-                                && finalActivity2.getTabModelSelector().isTabStateInitialized();
-                    });
 
             final TabModel model2 =
                     ThreadUtils.runOnUiThreadBlocking(
@@ -630,53 +620,53 @@ public class TabPersistentStoreIntegrationTest {
             File tab0StateFile = store2.getTabStateFileForTesting(tab0W2.getId(), false);
             waitForFile(tab0StateFile, true);
 
+            // Wait for the NTP to finish loading. Its TabStateAttributes is created before its
+            // URL is set, so it starts out UNTIDY, and later UNTIDY updates return early in
+            // updateIsDirtyInternal(). When the load stops, onLoadStopped() requests DIRTY,
+            // which updateIsDirtyInternal() turns into CLEAN for an NTP without history. Until
+            // then, relaunching Activity2 would write its TabState file again.
+            CriteriaHelper.pollUiThread(
+                    () -> UrlUtilities.isNtpUrl(tab1W2.getUrl()) && !tab1W2.isLoading());
+
             // Ensure NTP (tab1W2) does NOT have a state file.
             File tab1StateFile = store2.getTabStateFileForTesting(tab1W2.getId(), false);
             if (tab1StateFile.exists()) {
                 tab1StateFile.delete();
             }
 
-            // 4. Recreate or Relaunch Activity2!
-            if (MultiWindowUtils.isMultiInstanceApi31Enabled()) {
-                final int finalWindowId2 =
-                        ThreadUtils.runOnUiThreadBlocking(
-                                () ->
-                                        TabWindowManagerSingleton.getInstance()
-                                                .getIdForWindow(finalActivity2));
-                windowId2 = finalWindowId2;
+            // 4. Relaunch Activity2.
+            final int windowId2 =
+                    ThreadUtils.runOnUiThreadBlocking(
+                            () ->
+                                    TabWindowManagerSingleton.getInstance()
+                                            .getIdForWindow(finalActivity2));
 
-                // Finish the activity first.
-                ApplicationTestUtils.finishActivity(finalActivity2);
+            // Finish the activity first.
+            ApplicationTestUtils.finishActivity(finalActivity2);
 
-                // Relaunch it (Cold Start).
-                recreatedActivity2 =
-                        ApplicationTestUtils.waitForActivityWithClass(
-                                ChromeTabbedActivity.class,
-                                Stage.RESUMED,
-                                () -> {
-                                    ThreadUtils.runOnUiThreadBlocking(
-                                            () -> {
-                                                MultiWindowUtils.relaunchChromeTabbedActivity2(
-                                                        ContextUtils.getApplicationContext(),
-                                                        finalWindowId2,
-                                                        null);
-                                            });
-                                });
-            } else {
-                recreatedActivity2 = ApplicationTestUtils.recreateActivity(activity2);
-            }
+            // Relaunch it (Cold Start).
+            recreatedActivity2 =
+                    ApplicationTestUtils.waitForActivityWithClass(
+                            ChromeTabbedActivity.class,
+                            Stage.RESUMED,
+                            () -> {
+                                ThreadUtils.runOnUiThreadBlocking(
+                                        () -> {
+                                            MultiWindowUtils.relaunchChromeTabbedActivity2(
+                                                    ContextUtils.getApplicationContext(),
+                                                    windowId2,
+                                                    null);
+                                        });
+                            });
 
             // 5. Wait for TabState to be initialized in recreated Activity2.
             final ChromeTabbedActivity finalRecreatedActivity2 = recreatedActivity2;
-            if (MultiWindowUtils.isMultiInstanceApi31Enabled()) {
-                final int finalWindowId2 = windowId2;
-                final int newWindowId2 =
-                        ThreadUtils.runOnUiThreadBlocking(
-                                () ->
-                                        TabWindowManagerSingleton.getInstance()
-                                                .getIdForWindow(finalRecreatedActivity2));
-                assertEquals(finalWindowId2, newWindowId2);
-            }
+            final int newWindowId2 =
+                    ThreadUtils.runOnUiThreadBlocking(
+                            () ->
+                                    TabWindowManagerSingleton.getInstance()
+                                            .getIdForWindow(finalRecreatedActivity2));
+            assertEquals(windowId2, newWindowId2);
 
             final TabModelSelector newSelector2 = recreatedActivity2.getTabModelSelector();
             CriteriaHelper.pollUiThread(() -> newSelector2.isTabStateInitialized(), 10000, 100);

@@ -20,7 +20,6 @@
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/power_monitor_test.h"
-#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
@@ -40,6 +39,7 @@
 #include "components/optimization_guide/core/model_execution/on_device_features.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_access_controller.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_execution_proto_value_utils.h"
+#include "components/optimization_guide/core/model_execution/on_device_model_names.h"
 #include "components/optimization_guide/core/model_execution/on_device_prefs.h"
 #include "components/optimization_guide/core/model_execution/performance_class.h"
 #include "components/optimization_guide/core/model_execution/test/fake_model_assets.h"
@@ -47,7 +47,6 @@
 #include "components/optimization_guide/core/model_execution/test/request_builder.h"
 #include "components/optimization_guide/core/model_execution/test/response_holder.h"
 #include "components/optimization_guide/core/model_execution/usage_tracker.h"
-#include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/core/optimization_guide_logger.h"
 #include "components/optimization_guide/core/optimization_guide_proto_util.h"
@@ -128,14 +127,6 @@ std::string ConcatResponses(const std::vector<std::string>& responses) {
 class SessionImplTest : public testing::Test {
  public:
   void SetUp() override {
-    feature_list_.InitWithFeaturesAndParameters(
-        {{features::kOptimizationGuideModelExecution, {}},
-         {features::kOnDeviceModelPerformanceParams,
-          {{"compatible_on_device_performance_classes", "3,4,5,6"},
-           {"compatible_low_tier_on_device_performance_classes", "3"}}},
-         {features::kOnDeviceModelValidation,
-          {{"on_device_model_validation_delay", "0"}}}},
-        {});
     // Mark a feature used so the model is eligible to install.
     UsageTracker(&broker_.local_state())
         .RaisePriority(ToUseCaseName(mojom::OnDeviceFeature::kTest),
@@ -219,11 +210,11 @@ class SessionImplTest : public testing::Test {
   }
 
  protected:
+  ScopedModelBrokerFeatureList scoped_feature_list_;
   base::test::TaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   FakeManifestBroker broker_;
   ResponseHolder response_;
-  base::test::ScopedFeatureList feature_list_;
   OptimizationGuideLogger logger_;
 };
 
@@ -1330,6 +1321,47 @@ TEST_F(SessionImplTest, TokenCounts) {
   EXPECT_EQ(response_.output_token_count(), strlen("execute:foo max:1024") + 1);
 }
 
+TEST_F(SessionImplTest, EmptyInputContextHasZeroTokens) {
+  Initialize([]() {
+    proto::SolutionConfig config;
+    *config.mutable_feature() = SimpleComposeConfigForTesting();
+    config.mutable_feature()
+        ->mutable_input_config()
+        ->clear_input_context_substitutions();
+    return config;
+  }());
+  // The fake service reports this size for any non-empty input.
+  broker_.settings().set_size_in_tokens(100);
+  auto session = CreateSession(SessionConfigParams{});
+  ASSERT_TRUE(session);
+
+  auto request = PageUrlRequest("foo");
+  base::test::TestFuture<std::optional<InputSizeInTokens>> size;
+  session->GetInputSizeInTokens(MultimodalMessageReadView(request),
+                                size.GetCallback());
+  ASSERT_TRUE(size.Get().has_value());
+  EXPECT_EQ(size.Get()->input_context, 0u);
+  EXPECT_EQ(size.Get()->execution, 100u);
+  EXPECT_EQ(size.Get()->total(), 100u);
+}
+
+TEST_F(SessionImplTest, InputSizeInTokensCountsContextAndExecution) {
+  Initialize();
+  // The fake service reports this size for any non-empty input.
+  broker_.settings().set_size_in_tokens(100);
+  auto session = CreateSession(SessionConfigParams{});
+  ASSERT_TRUE(session);
+
+  auto request = PageUrlRequest("foo");
+  base::test::TestFuture<std::optional<InputSizeInTokens>> size;
+  session->GetInputSizeInTokens(MultimodalMessageReadView(request),
+                                size.GetCallback());
+  ASSERT_TRUE(size.Get().has_value());
+  EXPECT_EQ(size.Get()->input_context, 100u);
+  EXPECT_EQ(size.Get()->execution, 100u);
+  EXPECT_EQ(size.Get()->total(), 200u);
+}
+
 TEST_F(SessionImplTest, ResponseConstraintOnExecute) {
   Initialize();
   auto session = CreateSession(SessionConfigParams{});
@@ -1389,6 +1421,65 @@ TEST_F(SessionImplTest, ResponseConstraintConfigRegex) {
             "Hint: constrained_decoding "
             "Constraint: regex [A-Z]*"
             "execute:input max:1024");
+}
+
+TEST_F(SessionImplTest, BaseModelCompletionAndExecuteResultHistograms) {
+  Initialize([]() {
+    proto::SolutionConfig config;
+    *config.mutable_feature() = SimpleComposeConfigForTesting();
+    config.mutable_model_versions()
+        ->mutable_on_device_model_service_version()
+        ->mutable_on_device_base_model_metadata()
+        ->set_base_model_name("gemma4_component");
+    return config;
+  }());
+
+  base::HistogramTester histogram_tester;
+  auto session = CreateSession(SessionConfigParams{});
+  ASSERT_TRUE(session);
+
+  session->ExecuteModel(PageUrlRequest("foo"),
+                        response_.GetStreamingCallback());
+  ASSERT_TRUE(response_.GetFinalStatus());
+
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceModelCompleted",
+      OnDeviceBaseModel::kGemma4, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceModelCompleted.Test",
+      OnDeviceBaseModel::kGemma4, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceExecuteModelResult.Test",
+      ExecuteModelResult::kUsedOnDevice, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceExecuteModelResult.Test.Gemma4",
+      ExecuteModelResult::kUsedOnDevice, 1);
+}
+
+TEST_F(SessionImplTest, UnknownBaseModelEmitsUnknownSuffixedExecuteResult) {
+  Initialize();
+
+  base::HistogramTester histogram_tester;
+  auto session = CreateSession(SessionConfigParams{});
+  ASSERT_TRUE(session);
+
+  session->ExecuteModel(PageUrlRequest("foo"),
+                        response_.GetStreamingCallback());
+  ASSERT_TRUE(response_.GetFinalStatus());
+
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceModelCompleted",
+      OnDeviceBaseModel::kUnknown, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceModelCompleted.Test",
+      OnDeviceBaseModel::kUnknown, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceExecuteModelResult.Test",
+      ExecuteModelResult::kUsedOnDevice, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OptimizationGuide.ModelExecution.OnDeviceExecuteModelResult.Test."
+      "Unknown",
+      ExecuteModelResult::kUsedOnDevice, 1);
 }
 
 }  // namespace optimization_guide

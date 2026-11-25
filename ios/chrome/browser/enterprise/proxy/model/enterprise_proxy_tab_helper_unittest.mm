@@ -10,6 +10,7 @@
 #import "components/enterprise/net/core/enterprise_proxy_error_data.h"
 #import "components/enterprise/net/core/enterprise_proxy_error_service.h"
 #import "components/enterprise/net/core/mock_enterprise_proxy_service.h"
+#import "ios/chrome/browser/enterprise/proxy/model/fake_enterprise_proxy_tab_helper_delegate.h"
 #import "ios/web/public/test/fakes/fake_navigation_context.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #import "net/log/net_log_with_source.h"
@@ -55,6 +56,8 @@ class EnterpriseProxyTabHelperTest : public PlatformTest {
 
   testing::NiceMock<enterprise_net::MockEnterpriseProxyService> proxy_service_;
   enterprise_net::EnterpriseProxyErrorService error_service_{&proxy_service_};
+  // Outlives `web_state_`, whose tab helper points to it.
+  FakeEnterpriseProxyTabHelperDelegate delegate_;
   web::FakeWebState web_state_;
   raw_ptr<EnterpriseProxyTabHelper> tab_helper_ = nullptr;
 };
@@ -130,8 +133,8 @@ TEST_F(EnterpriseProxyTabHelperTest, IgnoresStaleNavigationEvents) {
   EXPECT_EQ(tab_helper_->pending_navigation_url(), GURL(kOtherURL));
 }
 
-// Test that finishing a navigation drops the disguised error recorded for it,
-// including a navigation that was replaced by a newer one.
+// Test that finishing a navigation drops only the disguised error recorded for
+// it, including a navigation that was replaced by a newer one.
 TEST_F(EnterpriseProxyTabHelperTest, RemovesRecordedErrorOnFinish) {
   std::unique_ptr<web::FakeNavigationContext> first_context =
       CreateNavigationContext(GURL(kStartURL));
@@ -143,11 +146,18 @@ TEST_F(EnterpriseProxyTabHelperTest, RemovesRecordedErrorOnFinish) {
   RecordDisguisedError(second_context->GetNavigationId());
 
   web_state_.OnNavigationFinished(first_context.get());
-  web_state_.OnNavigationFinished(second_context.get());
 
   EXPECT_FALSE(
       error_service_.TakeDisguisedError(first_context->GetNavigationId())
           .has_value());
+  EXPECT_TRUE(
+      error_service_.TakeDisguisedError(second_context->GetNavigationId())
+          .has_value());
+
+  // Taking the error above removed it, so it is recorded again.
+  RecordDisguisedError(second_context->GetNavigationId());
+  web_state_.OnNavigationFinished(second_context.get());
+
   EXPECT_FALSE(
       error_service_.TakeDisguisedError(second_context->GetNavigationId())
           .has_value());
@@ -169,4 +179,26 @@ TEST_F(EnterpriseProxyTabHelperTest, RemovesPendingNavigationErrorOnDestroy) {
 
   EXPECT_FALSE(
       error_service_.TakeDisguisedError(context.GetNavigationId()).has_value());
+}
+
+// Tests that the re-sign-in requests are forwarded to the delegate.
+TEST_F(EnterpriseProxyTabHelperTest, ForwardsSignInToDelegate) {
+  tab_helper_->SetDelegate(&delegate_);
+
+  tab_helper_->SignIn();
+
+  EXPECT_EQ(&delegate_, tab_helper_->delegate());
+  EXPECT_EQ(1, delegate_.sign_in_count());
+  EXPECT_EQ(&web_state_, delegate_.last_web_state());
+}
+
+// Tests that the re-sign-in requests are dropped once the delegate is reset.
+TEST_F(EnterpriseProxyTabHelperTest, IgnoresSignInWithoutDelegate) {
+  tab_helper_->SetDelegate(&delegate_);
+  tab_helper_->SetDelegate(nullptr);
+
+  tab_helper_->SignIn();
+
+  EXPECT_EQ(nullptr, tab_helper_->delegate());
+  EXPECT_EQ(0, delegate_.sign_in_count());
 }

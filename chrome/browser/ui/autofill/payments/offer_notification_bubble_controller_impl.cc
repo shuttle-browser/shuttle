@@ -15,10 +15,8 @@
 #include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
 #include "chrome/browser/ui/autofill/payments/payments_ui_constants.h"
 #include "chrome/browser/ui/browser_actions.h"
-#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -78,7 +76,7 @@ OfferNotificationBubbleControllerImpl::OfferNotificationBubbleControllerImpl(
           CHECK_DEREF(tabs::TabInterface::GetFromContents(web_contents))) {}
 
 std::u16string OfferNotificationBubbleControllerImpl::GetWindowTitle() const {
-  return base::UTF8ToUTF16(offer_.GetOfferRewardAmount());
+  return base::UTF8ToUTF16(offer_.GetOfferShortTitle());
 }
 
 AutofillBubbleBase*
@@ -261,13 +259,6 @@ void OfferNotificationBubbleControllerImpl::UpdatePageActionIcon() {
       action_id, BrowserActions::From(browser)->root_action_item());
   action->SetEnabled(ShouldShowPageAction());
 #endif  // BUILDFLAG(IS_ANDROID)
-}
-
-AutofillBubbleHandler*
-OfferNotificationBubbleControllerImpl::GetAutofillBubbleHandler() {
-  BrowserWindowInterface* browser = tab_interface_->GetBrowserWindowInterface();
-  CHECK(browser);
-  return AutofillBubbleHandler::Get(browser->GetUnownedUserDataHost());
 }
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(OfferNotificationBubbleControllerImpl);

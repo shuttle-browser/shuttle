@@ -82,7 +82,8 @@ Legend: ✅ supported · ⚠️ partial / approximated · ❌ not supported
 | `handle<data_pipe_producer>` | `jsMojoDataPipeProducerHandle` | ✅ | |
 | `handle<data_pipe_consumer>` | `jsMojoDataPipeConsumerHandle` | ✅ | |
 | `handle<shared_buffer>` | `jsMojoSharedBufferHandle` | ✅ | |
-| `handle<message_pipe>`, `handle<platform>` | – | ❌ | |
+| `handle<platform>` | `jsMojoPlatformHandle` | ✅ | Receive-only: JS cannot create one, so no generator produces it. |
+| `handle<message_pipe>` | – | ❌ | |
 
 ### User-defined types
 
@@ -165,9 +166,10 @@ Legend: ✅ supported · ⚠️ partial / approximated · ❌ not supported
     that the generated function is itself awaited.
 *   All type generators have a weight of 1. These are registered so that
     `findOrGenerateType` can use them.
-*   Most array and map generators generate a container with only one element.
-    Fuzzilli's `OperationMutator` and `VariadicInputReducer` add and remove
-    inputs, so long runs produce arbitrarily long containers.
+*   Arrays and maps used in the JS side get generators that generate the
+    container with only one element. Fuzzilli's `OperationMutator` and
+    `VariadicInputReducer` add and remove inputs, so long runs produce
+    arbitrarily long containers.
 
 ##### Issues:
 
@@ -234,8 +236,8 @@ Legend: ✅ supported · ⚠️ partial / approximated · ❌ not supported
 *   Each struct gets:
     *   an `ILType` object listing its fields,
     *   an `ObjectGroup` with the field types,
-    *   a `.constructor([...fields])` builtin registered under the struct's
-        fully qualified name.
+*   Structs that are used in the JS side also get a `.constructor([...fields])`
+    builtin registered under the struct's fully qualified name.
 *   When `generate_fuzzing` (from `enable_mojom_fuzzer`) is set, the lite
     bindings' `struct_definition.tmpl` makes constructors take the fields as
     positional arguments. Side effect: `new Foo()` now gives fields that are
@@ -248,6 +250,7 @@ Legend: ✅ supported · ⚠️ partial / approximated · ❌ not supported
     `enable_mojom_fuzzer = true` have bindings with constructors for each union
     variant that output these object literals. Fuzzilli selects a constructor
     uniformly at random when generating the union.
+*   Only unions used in the JS side get the constructor definition.
 *   Each variant is exposed as a property on the union's `ILType` and
     `ObjectGroup`, so Fuzzilli can read the value back with type information.
 #### WebIDL dictionaries

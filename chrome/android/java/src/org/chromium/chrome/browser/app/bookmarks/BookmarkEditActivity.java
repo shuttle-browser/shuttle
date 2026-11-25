@@ -7,8 +7,11 @@ package org.chromium.chrome.browser.app.bookmarks;
 import static org.chromium.build.NullUtil.assumeNonNull;
 
 import android.content.Intent;
+import android.content.res.Configuration;
 import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
+import android.os.Bundle;
+import android.text.TextUtils;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
@@ -22,6 +25,8 @@ import androidx.annotation.VisibleForTesting;
 import androidx.appcompat.widget.Toolbar;
 import androidx.core.content.ContextCompat;
 
+import org.chromium.base.CallbackController;
+import org.chromium.base.task.TaskTraits;
 import org.chromium.build.annotations.Initializer;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
@@ -44,6 +49,7 @@ import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowCoordinator;
 import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowProperties;
 import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowProperties.ImageVisibility;
 import org.chromium.chrome.browser.bookmarks.ImprovedBookmarkRowViewBinder;
+import org.chromium.chrome.browser.bookmarks.PendingRunnable;
 import org.chromium.chrome.browser.commerce.ShoppingServiceFactory;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -71,6 +77,14 @@ public class BookmarkEditActivity extends SnackbarActivity {
 
     public static final int FOLDER_PICKER_REQUEST_CODE = 101;
 
+    private static final String STATE_TITLE = "BookmarkEditActivity.Title";
+    private static final String STATE_URL = "BookmarkEditActivity.Url";
+    private static final String STATE_INITIAL_TITLE = "BookmarkEditActivity.InitialTitle";
+    private static final String STATE_INITIAL_URL = "BookmarkEditActivity.InitialUrl";
+    private static final String STATE_INITIAL_PARENT_ID = "BookmarkEditActivity.InitialParentId";
+    private static final String STATE_FOLDER_PICKER_ACTIVE =
+            "BookmarkEditActivity.FolderPickerActive";
+
     private BookmarkModel mModel;
     private Profile mProfile;
     private BookmarkManagerOpener mBookmarkManagerOpener;
@@ -92,8 +106,24 @@ public class BookmarkEditActivity extends SnackbarActivity {
     private boolean mOutcomeRecorded;
     private boolean mFolderPickerActive;
 
+    /** Whether this instance uses the desktop dialog rather than the full-screen presentation. */
+    private boolean mIsDesktopDialog;
+
+    /**
+     * Whether the display was tablet-width when this instance chose its presentation. With the
+     * desktop dialog, a fold/unfold that changes this recreates the activity to switch
+     * presentation.
+     */
+    private boolean mIsTabletDisplay;
+
     private @Nullable EdgeToEdgePadAdjuster mEdgeToEdgePadAdjuster;
     private @Nullable BookmarkUiPrefs mBookmarkUiPrefs;
+    private @Nullable BookmarkImageFetcher mBookmarkImageFetcher;
+
+    private final CallbackController mCallbackController = new CallbackController();
+    private final PendingRunnable mPendingRefresh =
+            new PendingRunnable(
+                    TaskTraits.UI_DEFAULT, mCallbackController.makeCancelable(this::refresh));
 
     private final BookmarkUiPrefs.Observer mBookmarkUiPrefsObserver =
             new BookmarkUiPrefs.Observer() {
@@ -108,11 +138,9 @@ public class BookmarkEditActivity extends SnackbarActivity {
             new BookmarkModelObserver() {
                 @Override
                 public void bookmarkModelChanged() {
-                    if (mModel.doesBookmarkExist(mBookmarkId)) {
-                        updateViewContent(true);
-                    } else {
-                        finish();
-                    }
+                    // We often see/cause multiple bookmark changes at once. Route through
+                    // mPendingRefresh to group the updates.
+                    mPendingRefresh.post();
                 }
             };
 
@@ -120,6 +148,7 @@ public class BookmarkEditActivity extends SnackbarActivity {
     @Initializer
     protected void onProfileAvailable(Profile profile) {
         super.onProfileAvailable(profile);
+        BookmarkUtils.makeTranslucentIfFloating(this);
         mProfile = profile;
         mModel = BookmarkModel.getForProfile(profile);
         mBookmarkManagerOpener = new BookmarkManagerOpenerImpl();
@@ -137,8 +166,7 @@ public class BookmarkEditActivity extends SnackbarActivity {
         mInitialParentId = item.getParentId();
         mIsFolder = item.isFolder();
 
-        boolean isDesktopDialog = BookmarkUtils.isDesktopBookmarksDialogEnabled();
-        int layoutId = isDesktopDialog ? R.layout.bookmark_edit_desktop : R.layout.bookmark_edit;
+        int layoutId = mIsDesktopDialog ? R.layout.bookmark_edit_desktop : R.layout.bookmark_edit;
         setContentView(layoutId);
         mTitleEditText = findViewById(R.id.title_text);
         mUrlEditText = findViewById(R.id.url_text);
@@ -148,7 +176,7 @@ public class BookmarkEditActivity extends SnackbarActivity {
         folderTitle.setText(isFolder ? R.string.bookmark_parent_folder : R.string.bookmark_folder);
         mUrlEditText.setVisibility(isFolder ? View.GONE : View.VISIBLE);
 
-        if (isDesktopDialog) {
+        if (mIsDesktopDialog) {
             TextView titleView = findViewById(R.id.title);
             titleView.setText(isFolder ? R.string.edit_folder : R.string.edit_bookmark);
             mCloseButton = findViewById(R.id.close_button);
@@ -184,25 +212,26 @@ public class BookmarkEditActivity extends SnackbarActivity {
         mBookmarkUiPrefs = new BookmarkUiPrefs(ChromeSharedPreferences.getInstance());
         mBookmarkUiPrefs.addObserver(mBookmarkUiPrefsObserver);
 
+        mBookmarkImageFetcher =
+                new BookmarkImageFetcher(
+                        profile,
+                        this,
+                        mModel,
+                        ImageFetcherFactory.createImageFetcher(
+                                ImageFetcherConfig.DISK_CACHE_ONLY, profile.getProfileKey()),
+                        BookmarkViewUtils.getRoundedIconGenerator(
+                                this, BookmarkRowDisplayPref.VISUAL));
         mFolderSelectRowCoordinator =
                 new ImprovedBookmarkRowCoordinator(
                         this,
-                        new BookmarkImageFetcher(
-                                profile,
-                                this,
-                                mModel,
-                                ImageFetcherFactory.createImageFetcher(
-                                        ImageFetcherConfig.DISK_CACHE_ONLY,
-                                        profile.getProfileKey()),
-                                BookmarkViewUtils.getRoundedIconGenerator(
-                                        this, BookmarkRowDisplayPref.VISUAL)),
+                        mBookmarkImageFetcher,
                         mModel,
                         mBookmarkUiPrefs,
                         ShoppingServiceFactory.getForProfile(profile));
 
         mFolderPickerRowContainer = findViewById(R.id.folder_row_container);
 
-        if (isDesktopDialog) {
+        if (mIsDesktopDialog) {
             View removeButton = findViewById(R.id.remove_button);
             removeButton.setOnClickListener(
                     (v) -> {
@@ -220,7 +249,7 @@ public class BookmarkEditActivity extends SnackbarActivity {
         }
         updateViewContent(false);
 
-        if (isDesktopDialog) {
+        if (mIsDesktopDialog) {
             setFinishOnTouchOutside(true);
             getWindow().addFlags(WindowManager.LayoutParams.FLAG_DIM_BEHIND);
             int scrimColor = ContextCompat.getColor(this, R.color.modal_dialog_scrim_color_lff);
@@ -248,15 +277,26 @@ public class BookmarkEditActivity extends SnackbarActivity {
         updateFolderPickerRow(assumeNonNull(mBookmarkUiPrefs).getBookmarkRowDisplayPref());
     }
 
+    private void refresh() {
+        // The save/delete click paths call finish() right after mutating the model, so skip the
+        // lookup and view rebuild for a dialog that is already going away.
+        if (isFinishing()) return;
+        if (mModel.doesBookmarkExist(mBookmarkId)) {
+            updateViewContent(/* modelChanged= */ true);
+        } else {
+            finish();
+        }
+    }
+
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
-        if (!BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+        if (!mIsDesktopDialog) {
             mDeleteButton =
                     menu.add(R.string.bookmark_toolbar_delete)
                             .setIcon(
                                     UiUtils.getTintedDrawable(
                                             this,
-                                            R.drawable.ic_delete_fill_24dp,
+                                            R.drawable.ic_delete_24dp,
                                             R.color.default_icon_color_tint_list))
                             .setShowAsActionFlags(MenuItem.SHOW_AS_ACTION_IF_ROOM);
             return super.onCreateOptionsMenu(menu);
@@ -281,15 +321,18 @@ public class BookmarkEditActivity extends SnackbarActivity {
     private void saveBookmark() {
         if (mModel.doesBookmarkExist(mBookmarkId)) {
             BookmarkItem bookmarkItem = assumeNonNull(mModel.getBookmarkById(mBookmarkId));
+            final String originalTitle = bookmarkItem.getTitle();
             final GURL originalUrl = bookmarkItem.getUrl();
             final String title = mTitleEditText.getTrimmedText();
             final String url = mUrlEditText.getTrimmedText();
 
-            if (!mTitleEditText.isEmpty()) {
+            if (!mTitleEditText.isEmpty() && !TextUtils.equals(title, originalTitle)) {
                 mModel.setBookmarkTitle(mBookmarkId, title);
             }
 
-            if (!mUrlEditText.isEmpty() && bookmarkItem.isUrlEditable()) {
+            if (!mUrlEditText.isEmpty()
+                    && bookmarkItem.isUrlEditable()
+                    && !TextUtils.equals(url, originalUrl.getSpec())) {
                 GURL fixedUrl = UrlFormatter.fixupUrl(url);
                 if (fixedUrl.isValid() && !fixedUrl.equals(originalUrl)) {
                     mModel.setBookmarkUrl(mBookmarkId, fixedUrl);
@@ -318,14 +361,17 @@ public class BookmarkEditActivity extends SnackbarActivity {
 
     @Override
     protected void onStop() {
-        if (!BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+        if (!mIsDesktopDialog) {
             if (isFinishing() && !mOutcomeRecorded) {
                 recordOutcome(
                         isBookmarkModified()
                                 ? BookmarkEditOutcome.SAVED
                                 : BookmarkEditOutcome.DISMISSED);
             }
-            saveBookmark();
+            // Not leaving the editor; skip while recreating (e.g. to switch presentation).
+            if (!isChangingConfigurations()) {
+                saveBookmark();
+            }
         }
 
         super.onStop();
@@ -333,19 +379,25 @@ public class BookmarkEditActivity extends SnackbarActivity {
 
     @Override
     protected void onDestroy() {
-        if (!mOutcomeRecorded) {
+        // Not a user outcome; skip while recreating (e.g. to switch presentation).
+        if (!mOutcomeRecorded && !isChangingConfigurations()) {
             recordOutcome(
-                    BookmarkUtils.isDesktopBookmarksDialogEnabled()
+                    mIsDesktopDialog
                             ? BookmarkEditOutcome.DISMISSED
                             : (isBookmarkModified()
                                     ? BookmarkEditOutcome.SAVED
                                     : BookmarkEditOutcome.DISMISSED));
         }
+        mCallbackController.destroy();
         mModel.removeObserver(mBookmarkModelObserver);
         if (mBookmarkUiPrefs != null) {
             mBookmarkUiPrefs.removeObserver(mBookmarkUiPrefsObserver);
             mBookmarkUiPrefs.destroy();
             mBookmarkUiPrefs = null;
+        }
+        if (mBookmarkImageFetcher != null) {
+            mBookmarkImageFetcher.destroy();
+            mBookmarkImageFetcher = null;
         }
         if (mEdgeToEdgePadAdjuster != null) {
             mEdgeToEdgePadAdjuster.destroy();
@@ -408,14 +460,14 @@ public class BookmarkEditActivity extends SnackbarActivity {
 
         mFolderSelectRow =
                 ImprovedBookmarkRow.buildView(this, displayPref == BookmarkRowDisplayPref.VISUAL);
-        if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
-            View container = mFolderSelectRow.findViewById(R.id.container);
-            if (container != null
-                    && container.getLayoutParams() instanceof MarginLayoutParams marginParams) {
-                marginParams.setMarginStart(0);
-                marginParams.setMarginEnd(0);
-                container.setLayoutParams(marginParams);
-            }
+        // Remove the RecyclerView horizontal margin so the row container aligns with the text
+        // input boxes.
+        View container = mFolderSelectRow.findViewById(R.id.container);
+        if (container != null
+                && container.getLayoutParams() instanceof MarginLayoutParams marginParams) {
+            marginParams.setMarginStart(0);
+            marginParams.setMarginEnd(0);
+            container.setLayoutParams(marginParams);
         }
         PropertyModelChangeProcessor.create(
                 mFolderSelectRowModel, mFolderSelectRow, ImprovedBookmarkRowViewBinder::bind);
@@ -441,7 +493,7 @@ public class BookmarkEditActivity extends SnackbarActivity {
      * RESULT_DISMISS_ALL}), the edit dialog finishes without a brief visual flash.
      */
     private void setDialogContentVisible(boolean visible) {
-        if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+        if (mIsDesktopDialog) {
             findViewById(android.R.id.content)
                     .setVisibility(visible ? View.VISIBLE : View.INVISIBLE);
             if (visible) {
@@ -459,7 +511,7 @@ public class BookmarkEditActivity extends SnackbarActivity {
             mFolderPickerActive = false;
             if (resultCode == BookmarkFolderPickerActivity.RESULT_DISMISS_ALL) {
                 finish();
-                if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+                if (mIsDesktopDialog) {
                     overridePendingTransition(0, 0);
                 }
             } else {
@@ -477,9 +529,70 @@ public class BookmarkEditActivity extends SnackbarActivity {
     }
 
     @Override
+    protected void onSaveInstanceState(Bundle outState) {
+        super.onSaveInstanceState(outState);
+        // Views aren't inflated if onProfileAvailable() exited early (e.g. missing bookmark).
+        if (mTitleEditText == null) return;
+        // Keep in-progress edits across recreation (e.g. to switch presentation). The inner
+        // EditTexts have no IDs, so their text isn't saved automatically.
+        outState.putString(
+                STATE_TITLE, assumeNonNull(mTitleEditText.getEditText()).getText().toString());
+        outState.putString(
+                STATE_URL, assumeNonNull(mUrlEditText.getEditText()).getText().toString());
+        outState.putString(STATE_INITIAL_TITLE, mInitialTitle);
+        outState.putString(STATE_INITIAL_URL, mInitialUrl);
+        if (mInitialParentId != null) {
+            outState.putString(STATE_INITIAL_PARENT_ID, mInitialParentId.toString());
+        }
+        outState.putBoolean(STATE_FOLDER_PICKER_ACTIVE, mFolderPickerActive);
+    }
+
+    @Override
+    protected void onRestoreInstanceState(Bundle savedInstanceState) {
+        super.onRestoreInstanceState(savedInstanceState);
+        String title = savedInstanceState.getString(STATE_TITLE);
+        if (title != null) {
+            assumeNonNull(mTitleEditText.getEditText()).setText(title);
+        }
+        String url = savedInstanceState.getString(STATE_URL);
+        if (url != null) {
+            assumeNonNull(mUrlEditText.getEditText()).setText(url);
+        }
+        // Keep the values from when the editor first opened; the model may already hold edits
+        // (e.g. saved when the folder picker opened over the full-screen editor).
+        if (savedInstanceState.containsKey(STATE_INITIAL_TITLE)) {
+            mInitialTitle = savedInstanceState.getString(STATE_INITIAL_TITLE);
+            mInitialUrl = savedInstanceState.getString(STATE_INITIAL_URL);
+            String parentId = savedInstanceState.getString(STATE_INITIAL_PARENT_ID);
+            mInitialParentId =
+                    parentId == null ? null : BookmarkId.getBookmarkIdFromString(parentId);
+        }
+        // If the folder picker is still on top, keep the desktop dialog's content hidden under it.
+        mFolderPickerActive = savedInstanceState.getBoolean(STATE_FOLDER_PICKER_ACTIVE);
+        if (mFolderPickerActive) {
+            setDialogContentVisible(/* visible= */ false);
+        }
+    }
+
+    @Override
+    public void onConfigurationChanged(Configuration newConfig) {
+        super.onConfigurationChanged(newConfig);
+        // Size changes don't relaunch this activity, so with the desktop dialog recreate it when a
+        // fold/unfold crosses the tablet width to switch between the dialog and full-screen
+        // presentation. Reads the live display width since smallestScreenWidthDp may be pinned.
+        if (!isFinishing()
+                && BookmarkUtils.isDesktopBookmarksDialogEnabled()
+                && mIsTabletDisplay != BookmarkUtils.isCurrentDisplayTabletWidth(this)) {
+            recreate();
+        }
+    }
+
+    @Override
     protected void applyThemeOverlays() {
         super.applyThemeOverlays();
-        if (BookmarkUtils.isDesktopBookmarksDialogEnabled()) {
+        mIsTabletDisplay = BookmarkUtils.isCurrentDisplayTabletWidth(this);
+        mIsDesktopDialog = BookmarkUtils.shouldShowDesktopBookmarkDialog(this);
+        if (mIsDesktopDialog) {
             applySingleThemeOverlay(R.style.ThemeOverlay_Chromium_DialogWhenLarge_ContentWrapping);
         }
     }

@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "base/functional/bind.h"
+#include "base/test/scoped_feature_list.h"
 #include "chrome/browser/dictation/dictation_interactive_browser_test_base.h"
 #include "chrome/browser/dictation/features.h"
 #include "chrome/browser/dictation/test_util.h"
@@ -29,15 +30,20 @@ namespace {
 
 class DictationTargetBrowserTest : public DictationInteractiveBrowserTestBase {
  public:
-  DictationTargetBrowserTest()
-      : DictationInteractiveBrowserTestBase(
-            kSessionEndsOnStreamEnd.default_value) {}
+  DictationTargetBrowserTest() = default;
   ~DictationTargetBrowserTest() override = default;
 
   std::string GetEditableExpectedText(std::string_view selector,
                                       std::string_view expected) {
     return dictation::GetEditableExpectedText(
         web_contents()->GetPrimaryMainFrame(), selector, expected);
+  }
+
+  // Performs a renderer round-trip to prevent `Target` from coalescing
+  // back-to-back composition operations while an earlier operation is still in
+  // flight.
+  StepBuilder RoundTrip(ui::ElementIdentifier web_contents_id) {
+    return ExecuteJs(web_contents_id, "() => {}");
   }
 };
 
@@ -115,6 +121,34 @@ IN_PROC_BROWSER_TEST_F(DictationTargetBrowserTest, ReplaceSelectedText) {
   EXPECT_EDITABLE_TEXT_EQ("#text_id", "Hello world");
 }
 
+IN_PROC_BROWSER_TEST_F(DictationTargetBrowserTest,
+                       PreservesTrailingPeriodWhenSelectionEndsWithPeriod) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url =
+      embedded_test_server()->GetURL("/textinput/simple_textinput.html");
+  AddOptimizationGuideEligibleHint(url);
+  const DeepQuery kInput{"#text_id"};
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    ExecuteJsAt(kWebContentsElementId, kInput,
+                "(el) => {"
+                "  el.value = 'This is a test.';"
+                "  el.select();"
+                "}"),
+    StartSessionWithTarget(kWebContentsElementId, "#text_id"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "THIS IS A TEST."),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#text_id", "THIS IS A TEST.");
+}
+
 IN_PROC_BROWSER_TEST_F(DictationTargetBrowserTest, InsertIntoIframeInput) {
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
   const GURL url = embedded_test_server()->GetURL("/iframe_blank.html");
@@ -168,6 +202,230 @@ IN_PROC_BROWSER_TEST_F(DictationTargetBrowserTest, InsertIntoContentEditable) {
 
   EXPECT_EDITABLE_TEXT_EQ("#anchor_id", "Hello world");
 }
+
+class DictationTargetShowPartialsBrowserTest
+    : public DictationTargetBrowserTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  DictationTargetShowPartialsBrowserTest() {
+    scoped_feature_list_.InitAndEnableFeatureWithParameters(
+        kDictation, {{"use_component_extension", "false"},
+                     {"auto_session_end_delay", "0ms"},
+                     {"show_partials", GetParam() ? "true" : "false"}});
+  }
+  ~DictationTargetShowPartialsBrowserTest() override = default;
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
+};
+
+// Some sites have contenteditables that interact poorly with IME composition
+// when the composition contains newlines. The test page used here intentionally
+// handles newlines in compositions poorly, and we test that the final text
+// makes it into the element correctly. Regression test for
+// https://crbug.com/537833858
+IN_PROC_BROWSER_TEST_P(DictationTargetShowPartialsBrowserTest,
+                       NewlineRejectingContentEditable) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url = embedded_test_server()->GetURL(
+      "/dictation/newline_rejecting_contenteditable.html");
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    StartSessionWithTarget(kWebContentsElementId, "#contenteditable"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "* one"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "* one\n* two"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#contenteditable", "* one\n* two");
+}
+
+IN_PROC_BROWSER_TEST_P(DictationTargetShowPartialsBrowserTest,
+                       PunctuationRejectingInput) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url = embedded_test_server()->GetURL(
+      "/dictation/punctuation_rejecting_input.html");
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    StartSessionWithTarget(kWebContentsElementId, "#input"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!3."),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "1?2!3.4"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#input", "1234");
+}
+
+IN_PROC_BROWSER_TEST_P(DictationTargetShowPartialsBrowserTest,
+                       PunctuationRejectingContentEditable) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url = embedded_test_server()->GetURL(
+      "/dictation/punctuation_rejecting_input.html");
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    StartSessionWithTarget(kWebContentsElementId, "#contenteditable"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!3."),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "1?2!3.4"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#contenteditable", "1234");
+}
+
+IN_PROC_BROWSER_TEST_P(DictationTargetShowPartialsBrowserTest,
+                       PunctuationRejectingInputInsertInMiddle) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url = embedded_test_server()->GetURL(
+      "/dictation/punctuation_rejecting_input.html");
+  const DeepQuery kInput{"#input"};
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    ExecuteJsAt(kWebContentsElementId, kInput,
+                "(el) => {"
+                "  el.value = 'Hello world';"
+                "  el.setSelectionRange(5, 5);"
+                "}"),
+    StartSessionWithTarget(kWebContentsElementId, "#input"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!3."),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "1?2!3.4"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#input", "Hello 1234 world");
+}
+
+IN_PROC_BROWSER_TEST_P(DictationTargetShowPartialsBrowserTest,
+                       PunctuationRejectingContentEditableInsertInMiddle) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url = embedded_test_server()->GetURL(
+      "/dictation/punctuation_rejecting_input.html");
+  const DeepQuery kContentEditable{"#contenteditable"};
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    // Place the caret before focusing. Focusing sends the text input state
+    // to the browser right away, but a later selection change is only sent
+    // with the next main frame, which may not happen before `Target` reads
+    // the text preceding the caret to format the insertion.
+    ExecuteJsAt(kWebContentsElementId, kContentEditable,
+                "(el) => {"
+                "  el.textContent = 'Hello world';"
+                "  window.getSelection().collapse(el.firstChild, 5);"
+                "  el.focus();"
+                "}"),
+    StartSessionWithTarget(kWebContentsElementId, "#contenteditable"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "1?2!3."),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "1?2!3.4"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#contenteditable", "Hello 1234 world");
+}
+
+IN_PROC_BROWSER_TEST_P(DictationTargetShowPartialsBrowserTest,
+                       FocusLossDuringCompositionWithRewrite) {
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
+  const GURL url =
+      embedded_test_server()->GetURL("/textinput/simple_textinput.html");
+  const DeepQuery kInput{"#text_id"};
+
+  // clang-format off
+  RunTestSequence(
+    InstrumentTab(kWebContentsElementId),
+    NavigateWebContents(kWebContentsElementId, url),
+    ExecuteJsAt(kWebContentsElementId, kInput,
+                "(el) => {"
+                "  el.value = 'Prefix ';"
+                "  el.setSelectionRange(7, 7);"
+                "}"),
+    StartSessionWithTarget(kWebContentsElementId, "#text_id"),
+    ExtensionAPISetStreamState(ExtensionStreamState::kTranscribing),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kPartial, "Hello"),
+    RoundTrip(kWebContentsElementId),
+    ExecuteJsAt(kWebContentsElementId, kInput, "(el) => { el.blur(); }"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPIUpdateTranscription(
+        ExtensionTranscriptionType::kFinal, "Hi there"),
+    RoundTrip(kWebContentsElementId),
+    ExtensionAPISetStreamState(ExtensionStreamState::kComplete)
+  );
+  // clang-format on
+
+  EXPECT_EDITABLE_TEXT_EQ("#text_id", "Prefix Hi there");
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         DictationTargetShowPartialsBrowserTest,
+                         testing::Bool());
 
 }  // namespace
 

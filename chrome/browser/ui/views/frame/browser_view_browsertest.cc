@@ -29,7 +29,7 @@
 #include "chrome/browser/policy/dm_token_utils.h"
 #include "chrome/browser/preloading/scoped_prewarm_feature_list.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/chrome_enterprise_url_lookup_service_factory.h"
+#include "chrome/browser/safe_browsing/realtime/chrome_enterprise_url_lookup_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_command_controller.h"
@@ -73,6 +73,7 @@
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/frame/top_container_view.h"
+#include "chrome/browser/ui/views/fullscreen_control/fullscreen_control_host.h"
 #include "chrome/browser/ui/views/infobars/infobar_container_view.h"
 #include "chrome/browser/ui/views/interaction/browser_elements_views.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
@@ -83,6 +84,7 @@
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/toolbar/app_menu_control.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+#include "chrome/browser/ui/views/toolbar/webui_test_utils.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
@@ -167,6 +169,10 @@
 
 #if BUILDFLAG(IS_OZONE)
 #include "ui/ozone/public/ozone_platform.h"
+#endif
+
+#if BUILDFLAG(IS_MAC)
+#include "ui/base/test/scoped_fake_nswindow_fullscreen.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -1583,6 +1589,10 @@ IN_PROC_BROWSER_TEST_F(BrowserViewDesktopWidgetDisabledTest,
     return;
   }
 #endif
+  if (features::IsWebUIAppMenuButtonEnabled()) {
+    ASSERT_TRUE(WaitForWebUIToolbarAccessibilityNode(
+        browser(), l10n_util::GetStringUTF8(IDS_ACCNAME_APP)));
+  }
 
   // There is no dialog, but the browser UI should be visible. So we expect the
   // browser's app menu button and no "OK" button from a dialog.
@@ -1644,6 +1654,10 @@ IN_PROC_BROWSER_TEST_F(BrowserViewDesktopWidgetEnabledTest,
     return;
   }
 #endif
+  if (features::IsWebUIAppMenuButtonEnabled()) {
+    ASSERT_TRUE(WaitForWebUIToolbarAccessibilityNode(
+        browser(), l10n_util::GetStringUTF8(IDS_ACCNAME_APP)));
+  }
 
   content::WebContents* contents = browser_view()->GetActiveWebContents();
   auto delegate = std::make_unique<TestTabModalConfirmDialogDelegate>(contents);
@@ -1867,6 +1881,9 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest, DragNotSupportedInFullscreen) {
     GTEST_SKIP() << "Wayland doesn't support drag and drop in fullscreen";
   }
 #endif
+#if BUILDFLAG(IS_MAC)
+  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen;
+#endif
   // Add enough tabs to create two split views.
   chrome::AddTabAt(browser(), GURL(), -1, true);
   // Add tabs to splits.
@@ -1919,7 +1936,8 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest, ScrimForTabModalInSplitView) {
   // Swapping the tab with the tab modal dialog into the inactive spot in the
   // split should show the scrim but not change the active tab.
   browser()->GetTabStripModel()->UpdateTabInSplit(
-      browser()->GetTabStripModel()->GetTabAtIndex(1), 2,
+      browser()->GetTabStripModel()->GetTabAtIndex(1)->GetHandle(),
+      browser()->GetTabStripModel()->GetTabAtIndex(2)->GetHandle(),
       TabStripModel::SplitUpdateType::kSwap);
   EXPECT_EQ(0, browser()->GetTabStripModel()->active_index());
   EXPECT_TRUE(
@@ -2068,7 +2086,25 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest,
 
 #if BUILDFLAG(IS_MAC)
 
+IN_PROC_BROWSER_TEST_F(BrowserViewTest, FullscreenControlHostLeakOnMac) {
+  // Set up the state a failed enter leaves behind without starting fullscreen.
+  browser_view()->PrepareFullscreen(true);
+
+  auto* host = FullscreenControlHost::From(browser());
+  ASSERT_TRUE(host);
+  EXPECT_TRUE(host->HasEventMonitorForTesting());
+  EXPECT_FALSE(browser_view()->IsFullscreen());
+
+  // Simulate AppKit failing to enter fullscreen, which calls
+  // BrowserView::FullscreenStateChanged() with the window still windowed.
+  browser_view()->FullscreenStateChanged();
+
+  EXPECT_FALSE(host->HasEventMonitorForTesting());
+}
+
 IN_PROC_BROWSER_TEST_F(BrowserViewTest, SplitViewFullscreenLayout) {
+  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen;
+
   // Disable always show toolbar in fullscreen
   chrome::SetAlwaysShowToolbarInFullscreenForTesting(browser(), false);
 

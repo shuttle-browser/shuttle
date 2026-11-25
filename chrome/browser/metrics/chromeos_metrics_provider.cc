@@ -10,7 +10,6 @@
 #include <vector>
 
 #include "ash/constants/ash_features.h"
-#include "ash/constants/ash_pref_names.h"
 #include "base/barrier_closure.h"
 #include "base/check_deref.h"
 #include "base/command_line.h"
@@ -35,7 +34,6 @@
 #include "chrome/browser/metrics/cached_metrics_profile.h"
 #include "chrome/browser/metrics/chromeos_system_profile_provider.h"
 #include "chrome/browser/metrics/enrollment_status.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/common/pref_names.h"
 #include "chromeos/ash/components/system/statistics_provider.h"
 #include "chromeos/ash/experiences/arc/arc_features_parser.h"
@@ -161,13 +159,6 @@ void ChromeOSMetricsProvider::ProvideSystemProfileMetrics(
       system_profile_proto);
 }
 
-void ChromeOSMetricsProvider::ProvideSuggestedContentMetrics() {
-  UMA_HISTOGRAM_BOOLEAN(
-      "Apps.AppList.SuggestedContent.Enabled",
-      ProfileManager::GetActiveUserProfile()->GetPrefs()->GetBoolean(
-          ash::prefs::kSuggestedContentEnabled));
-}
-
 void ChromeOSMetricsProvider::ProvideMetrics(
     metrics::SystemProfileProto* system_profile_proto,
     bool should_include_arc_metrics) {
@@ -211,7 +202,6 @@ void ChromeOSMetricsProvider::ProvideStabilityMetrics(
 
 void ChromeOSMetricsProvider::ProvideCurrentSessionData(
     metrics::ChromeUserMetricsExtension* uma_proto) {
-  ProvideSuggestedContentMetrics();
   ProvideMetrics(uma_proto->mutable_system_profile(),
                  /*should_include_arc_metrics=*/!emitted_);
   std::vector<SampledProfile> sampled_profiles;

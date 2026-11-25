@@ -31,8 +31,8 @@
 #include "base/time/time.h"
 #include "components/os_crypt/async/browser/key_provider.h"
 #include "components/os_crypt/async/browser/os_crypt_async.h"
+#include "components/os_crypt/async/browser/test_key_provider.h"
 #include "components/os_crypt/async/browser/test_utils.h"
-#include "components/os_crypt/async/common/algorithm.mojom.h"
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/signin/internal/identity_manager/fake_profile_oauth2_token_service_delegate.h"
 #include "components/signin/internal/identity_manager/mock_profile_oauth2_token_service_observer.h"
@@ -56,7 +56,6 @@
 #include "components/unexportable_keys/mock_unexportable_key_service.h"
 #include "components/webdata/common/web_data_service_base.h"
 #include "components/webdata/common/web_database_service.h"
-#include "crypto/kdf.h"
 #include "crypto/sign.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "google_apis/gaia/gaia_config.h"
@@ -143,30 +142,6 @@ const ExtractCredentialsTestCase kExtractCredentialsTestCases[] = {
      .account_after_move = {GaiaId("A"), GaiaConstants::kInvalidRefreshToken},
      .expected_move_decision =
          AccountMoveDecision::kCannotMoveInsertWithoutRefreshToken},
-};
-
-// A test key provider that takes a name and produces a deterministic key based
-// on that name.
-class TestKeyProvider : public os_crypt_async::KeyProvider {
- public:
-  explicit TestKeyProvider(const std::string& name, bool use_for_encryption)
-      : name_(name), use_for_encryption_(use_for_encryption) {}
-
- private:
-  void GetKey(KeyCallback callback) final {
-    std::move(callback).Run(
-        name_, os_crypt_async::Encryptor::Key(
-                   crypto::kdf::Hkdf<
-                       os_crypt_async::Encryptor::Key::kAES256GCMKeySize>(
-                       crypto::hash::kSha256, base::as_byte_span(name_),
-                       /*salt=*/{}, /*info=*/{}),
-                   os_crypt_async::mojom::Algorithm::kAES256GCM));
-  }
-
-  bool UseForEncryption() final { return use_for_encryption_; }
-
-  const std::string name_;
-  const bool use_for_encryption_;
 };
 
 }  // namespace
@@ -975,19 +950,19 @@ TEST_F(MutableProfileOAuth2TokenServiceDelegateTest,
   testing::Mock::VerifyAndClearExpectations(&observer);
 
   // This should be fired after error is set.
+  const GoogleServiceAuthError error =
+      GoogleServiceAuthError::FromInvalidGaiaCredentialsReason(
+          GoogleServiceAuthError::InvalidGaiaCredentialsReason::
+              TOKEN_BINDING_ASSERTION_REJECTED_BY_SERVER);
   EXPECT_CALL(observer,
               OnAuthErrorChanged(
-                  account_id1,
-                  GoogleServiceAuthError::FromInvalidGaiaCredentialsReason(
-                      GoogleServiceAuthError::InvalidGaiaCredentialsReason::
-                          CREDENTIALS_REJECTED_BY_SERVER),
+                  account_id1, error,
                   signin_metrics::SourceForRefreshTokenOperation::kUnknown));
 
-  oauth2_service_delegate_->InvalidateTokenForMultilogin(account_id1);
-  EXPECT_EQ(oauth2_service_delegate_->GetAuthError(account_id1).state(),
-            GoogleServiceAuthError::INVALID_GAIA_CREDENTIALS);
-  EXPECT_EQ(oauth2_service_delegate_->GetAuthError(account_id2).state(),
-            GoogleServiceAuthError::NONE);
+  oauth2_service_delegate_->InvalidateTokenForMultilogin(account_id1, error);
+  EXPECT_EQ(oauth2_service_delegate_->GetAuthError(account_id1), error);
+  EXPECT_EQ(oauth2_service_delegate_->GetAuthError(account_id2),
+            GoogleServiceAuthError::AuthErrorNone());
 
   oauth2_service_delegate_->RemoveObserver(&observer);
 }
@@ -1760,13 +1735,13 @@ TEST_F(MutableProfileOAuth2TokenServiceDelegateTest, TokenReencryption) {
     std::vector<std::pair<size_t, std::unique_ptr<os_crypt_async::KeyProvider>>>
         providers;
     providers.emplace_back(
-        /*precedence=*/5u,
-        std::make_unique<TestKeyProvider>("v1", /*use_for_encryption=*/true));
+        /*precedence=*/5u, std::make_unique<os_crypt_async::TestKeyProvider>(
+                               "v1", /*use_for_encryption=*/true));
     // If `new_encryption_enabled` is true then v2 will be used for encryption
     // and should trigger a re-encrypt of data previous encrypted to v1 key.
     providers.emplace_back(
         /*precedence=*/10u,
-        std::make_unique<TestKeyProvider>(
+        std::make_unique<os_crypt_async::TestKeyProvider>(
             "v2", /*use_for_encryption=*/new_encryption_enabled));
     const std::string expected_prefix = new_encryption_enabled ? "v2" : "v1";
 

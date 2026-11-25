@@ -4,16 +4,16 @@
 
 #include "chrome/browser/ash/customization/customization_document.h"
 
+#include <optional>
 #include <utility>
 
-#include "ash/constants/ash_features.h"
 #include "base/check_deref.h"
 #include "base/functional/bind.h"
+#include "base/i18n/language_tag.h"
 #include "base/json/json_reader.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/gtest_util.h"
-#include "base/test/scoped_feature_list.h"
 #include "base/values.h"
 #include "chrome/browser/ash/app_list/app_list_syncable_service.h"
 #include "chrome/browser/ash/app_list/app_list_syncable_service_factory.h"
@@ -140,11 +140,15 @@ std::string GetGoodServicesManifest() {
 
 namespace ash {
 
+using ::base::i18n::GetKnownLanguageTag;
+using ::testing::_;
 using ::testing::DoAll;
+using ::testing::ElementsAre;
+using ::testing::IsEmpty;
 using ::testing::NotNull;
+using ::testing::Optional;
 using ::testing::Return;
 using ::testing::SetArgPointee;
-using ::testing::_;
 
 TEST(StartupCustomizationDocumentTest, Basic) {
   system::ScopedFakeStatisticsProvider fake_statistics_provider;
@@ -187,6 +191,33 @@ TEST(StartupCustomizationDocumentTest, BadManifest) {
   StartupCustomizationDocument customization(&fake_statistics_provider,
                                              kBadManifest);
   EXPECT_FALSE(customization.IsReady());
+}
+
+TEST(StartupCustomizationDocumentTest, ConfiguredLocales) {
+  system::ScopedFakeStatisticsProvider fake_statistics_provider;
+
+  // Legacy ICU locales are converted to BCP47, deprecated language tags are
+  // replaced, and invalid locales are dropped.
+  fake_statistics_provider.SetMachineStatistic("initial_locale",
+                                               "en_US, fr-ca ,123,,iw");
+  StartupCustomizationDocument customization(&fake_statistics_provider,
+                                             kGoodStartupManifest);
+  EXPECT_EQ("en_US, fr-ca ,123,,iw", customization.initial_locale());
+  EXPECT_THAT(
+      customization.configured_locales(),
+      ElementsAre(GetKnownLanguageTag("en-US"), GetKnownLanguageTag("fr-CA"),
+                  GetKnownLanguageTag("he")));
+  EXPECT_THAT(customization.initial_locale_default(),
+              Optional(GetKnownLanguageTag("en-US")));
+}
+
+TEST(StartupCustomizationDocumentTest, NoValidConfiguredLocales) {
+  system::ScopedFakeStatisticsProvider fake_statistics_provider;
+  fake_statistics_provider.SetMachineStatistic("initial_locale", "123,");
+  StartupCustomizationDocument customization(&fake_statistics_provider,
+                                             kBadManifest);
+  EXPECT_THAT(customization.configured_locales(), IsEmpty());
+  EXPECT_EQ(customization.initial_locale_default(), std::nullopt);
 }
 
 class TestURLLoaderFactoryInterceptor {
@@ -473,15 +504,10 @@ TEST_F(ServicesCustomizationDocumentTest, CustomizationManifestNotFound) {
   EXPECT_TRUE(doc.IsReady());
 }
 
-// When `kOemAppsMustUpdateFromWebstore` is enabled (default), the bad update
-// URL in `kBadServicesManifest` causes an assertion failure. This test is
-// unlike the others (not a TEST_F) as the test suite helper objects interfere
-// with EXPECT_NOTREACHED_DEATH.
-TEST(ServicesCustomizationDocumentDeathTest, ExternalUpdateUrl_Default) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(
-      ash::features::kOemAppsMustUpdateFromWebstore);
-
+// The bad update URL in `kBadServicesManifest` causes an assertion failure.
+// This test is unlike the others (not a TEST_F) as the test suite helper
+// objects interfere with EXPECT_NOTREACHED_DEATH.
+TEST(ServicesCustomizationDocumentDeathTest, ExternalUpdateUrl) {
   // Manually parse the manifest to avoid the async reader.
   std::optional<base::Value> manifest_json =
       base::JSONReader::Read(kBadServicesManifest, base::JSON_PARSE_RFC);
@@ -503,34 +529,6 @@ TEST(ServicesCustomizationDocumentDeathTest, ExternalUpdateUrl_Default) {
 
   // Requesting the list of apps triggers an assertion failure.
   EXPECT_DEATH(doc.GetDefaultApps(), "");
-}
-
-// When `kOemAppsMustUpdateFromWebstore` is disabled (kill switch), the bad
-// update URL in `kBadServicesManifest` is permitted.
-TEST_F(ServicesCustomizationDocumentTest, ExternalUpdateUrl_Legacy) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndDisableFeature(
-      ash::features::kOemAppsMustUpdateFromWebstore);
-
-  AddCustomizationIdToVp(kDummyCustomizationID);
-  AddExpectedManifest(kDummyCustomizationID, kBadServicesManifest);
-
-  ServicesCustomizationDocument& doc = services_customization_document();
-  EXPECT_FALSE(doc.IsReady());
-
-  doc.StartFetching();
-  RunUntilIdle();
-  EXPECT_TRUE(doc.IsReady());
-
-  auto default_apps = doc.GetDefaultApps();
-  ASSERT_TRUE(default_apps);
-  const base::DictValue* app_entry =
-      default_apps->FindDict("bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb");
-  ASSERT_TRUE(app_entry);
-  const std::string* url = app_entry->FindString(
-      extensions::ExternalProviderImpl::kExternalUpdateUrl);
-  ASSERT_TRUE(url);
-  EXPECT_EQ(*url, "http://evil.com/");
 }
 
 }  // namespace ash

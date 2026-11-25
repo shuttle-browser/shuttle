@@ -46,7 +46,6 @@
 #include "chrome/browser/ash/guest_os/public/guest_os_service_factory.h"
 #include "chrome/browser/ash/login/demo_mode/demo_components.h"
 #include "chrome/browser/ash/login/demo_mode/demo_session.h"
-#include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/ash/multi_user/multi_user_util.h"
@@ -56,6 +55,7 @@
 #include "chromeos/ash/components/cryptohome/cryptohome_parameters.h"
 #include "chromeos/ash/components/dbus/dlcservice/dlcservice_client.h"
 #include "chromeos/ash/components/dbus/session_manager/session_manager_client.h"
+#include "chromeos/ash/components/dbus/vm_concierge/concierge_service.pb.h"
 #include "chromeos/ash/components/demo_mode/utils/demo_session_utils.h"
 #include "chromeos/ash/components/install_attributes/install_attributes.h"
 #include "chromeos/ash/components/memory/swap_configuration.h"
@@ -826,7 +826,7 @@ void ArcSessionManager::SetUserInfo() {
   const AccountId account(multi_user_util::GetAccountIdFromProfile(profile_));
   const cryptohome::Identification cryptohome_id(account);
   const std::string user_id_hash =
-      ash::ProfileHelper::GetUserIdHashFromProfile(profile_);
+      ash::BrowserContextHelper::GetUserIdHashFromBrowserContext(profile_);
 
   std::string serialno = GetSerialNumber();
   arc_session_runner_->SetUserInfo(cryptohome_id, user_id_hash, serialno);
@@ -851,7 +851,7 @@ std::string ArcSessionManager::GetSerialNumber() const {
 
   const AccountId account(multi_user_util::GetAccountIdFromProfile(profile_));
   const std::string user_id_hash =
-      ash::ProfileHelper::GetUserIdHashFromProfile(profile_);
+      ash::BrowserContextHelper::GetUserIdHashFromBrowserContext(profile_);
 
   std::string serialno;
   // ARC container doesn't need the serial number.
@@ -1247,7 +1247,9 @@ void ArcSessionManager::OnVmStopped(
 void ArcSessionManager::RequestEnableImpl() {
   CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M160);
   CHECK(profile_, base::NotFatalUntil::M160);
-  CHECK(enable_requested_, base::NotFatalUntil::M160);
+  // TODO(crbug.com/579330989): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(enable_requested_);
   DCHECK(state_ == State::STOPPED || state_ == State::STOPPING ||
          state_ == State::REMOVING_DATA_DIR ||
          state_ == State::CHECKING_DATA_MIGRATION_NECESSITY)
@@ -1492,7 +1494,9 @@ void ArcSessionManager::MaybeStartTermsOfServiceNegotiation() {
   // be skipped, too. See also RequestEnableImpl().
   CHECK(!IsArcOptInVerificationDisabled(), base::NotFatalUntil::M160);
 
-  CHECK_EQ(state_, State::STOPPED, base::NotFatalUntil::M160);
+  // TODO(crbug.com/576105295): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK_EQ(state_, State::STOPPED);
   state_ = State::CHECKING_REQUIREMENTS;
 
   // TODO(hidehiko): In kArcSignedIn = true case, this method should never
@@ -1656,8 +1660,9 @@ void ArcSessionManager::StartArc() {
 
   // ARC must be started only if no pending data removal request exists.
   CHECK(profile_, base::NotFatalUntil::M160);
-  CHECK(!profile_->GetPrefs()->GetBoolean(prefs::kArcDataRemoveRequested),
-        base::NotFatalUntil::M160);
+  // TODO(crbug.com/578013746): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!profile_->GetPrefs()->GetBoolean(prefs::kArcDataRemoveRequested));
 
   for (auto& observer : observer_list_) {
     observer.OnArcStarted();
@@ -1760,7 +1765,9 @@ void ArcSessionManager::StopArc() {
 
 void ArcSessionManager::MaybeStartArcDataRemoval() {
   CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M160);
-  CHECK(profile_, base::NotFatalUntil::M160);
+  // TODO(crbug.com/579329776): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(profile_);
 
   // Data removal cannot run in parallel with ARC session.
   // LoginScreen instance does not use data directory, so removing should work.

@@ -16,30 +16,15 @@
 
 namespace {
 
-// Converts a `testing_factory` into a KeyedServiceTestingFactoryIOS.
-RefcountedKeyedServiceTestingFactoryIOSByRef IntoByRef(
-    RefcountedKeyedServiceTestingFactoryIOSByPtr testing_factory) {
-  if (!testing_factory) {
-    return {};
-  }
-
-  return base::BindOnce(
-      [](RefcountedKeyedServiceTestingFactoryIOSByPtr testing_factory,
-         ProfileIOS& profile) {
-        return std::move(testing_factory).Run(&profile);
-      },
-      std::move(testing_factory));
-}
-
 // Wraps `testing_factory` as a RefcountedKeyedServiceFactory::TestingFactory.
 base::OnceCallback<scoped_refptr<RefcountedKeyedService>(void*)> WrapFactory(
-    RefcountedKeyedServiceTestingFactoryIOSByRef testing_factory) {
+    RefcountedKeyedServiceTestingFactoryIOS testing_factory) {
   if (!testing_factory) {
     return {};
   }
 
   return base::BindOnce(
-      [](RefcountedKeyedServiceTestingFactoryIOSByRef testing_factory,
+      [](RefcountedKeyedServiceTestingFactoryIOS testing_factory,
          void* context) -> scoped_refptr<RefcountedKeyedService> {
         return std::move(testing_factory)
             .Run(CHECK_DEREF(static_cast<ProfileIOS*>(context)));
@@ -53,15 +38,6 @@ void RefcountedProfileKeyedServiceFactoryIOS::SetTestingFactory(
     PassKey pass_key,
     ProfileIOS& profile,
     TestingFactory testing_factory) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  RefcountedKeyedServiceFactory::SetTestingFactory(
-      &profile, WrapFactory(IntoByRef(std::move(testing_factory))));
-}
-
-void RefcountedProfileKeyedServiceFactoryIOS::SetTestingFactory(
-    PassKey pass_key,
-    ProfileIOS& profile,
-    TestingFactoryByRef testing_factory) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   RefcountedKeyedServiceFactory::SetTestingFactory(
       &profile, WrapFactory(std::move(testing_factory)));
@@ -125,22 +101,6 @@ RefcountedProfileKeyedServiceFactoryIOS::BuildServiceInstanceFor(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return BuildServiceInstanceFor(
       CHECK_DEREF(static_cast<ProfileIOS*>(context)));
-}
-
-// TODO(crbug.com/576182342): Remove those two implementation once all
-// sub-classes have been converted to override the overload accepting
-// a ProfileIOS& instead of a ProfileIOS*.
-scoped_refptr<RefcountedKeyedService>
-RefcountedProfileKeyedServiceFactoryIOS::BuildServiceInstanceFor(
-    ProfileIOS& profile) const {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return BuildServiceInstanceFor(&profile);
-}
-
-scoped_refptr<RefcountedKeyedService>
-RefcountedProfileKeyedServiceFactoryIOS::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
-  NOTREACHED();
 }
 
 RefcountedProfileKeyedServiceFactoryIOS::

@@ -17,6 +17,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "base/values.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/password_manager/chrome_password_manager_client.h"
@@ -26,25 +27,28 @@
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/autofill/chrome_autofill_client.h"
 #include "chrome/browser/ui/passwords/remote_actor_selection_dialog_controller.h"
-#include "chrome/common/password_manager/remote_actor_credential_sharing_policy.h"
 #include "chrome/test/base/chrome_render_view_host_test_harness.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/omnibox/browser/omnibox_pref_names.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_store/password_form_converters.h"
 #include "components/password_manager/core/browser/password_store/test_password_store.h"
 #include "components/password_manager/core/browser/password_string.h"
 #include "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_service.h"
-#include "components/password_manager/core/common/password_manager_features.h"
+#include "components/password_manager/core/common/remote_actor/remote_actor_credential_sharing_policy.h"
+#include "components/password_manager/core/common/remote_actor/remote_actor_features.h"
 #include "components/policy/core/common/management/scoped_management_service_override_for_testing.h"
 #include "components/sync/test/mock_sync_service.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/test/navigation_simulator.h"
 #include "content/public/test/test_renderer_host.h"
+#include "content/public/test/web_contents_tester.h"
 #include "mojo/public/cpp/bindings/associated_remote.h"
 #include "mojo/public/cpp/system/functions.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -54,6 +58,9 @@ namespace {
 
 using testing::_;
 using testing::Return;
+
+constexpr int kAIModeAllowed = 0;
+constexpr int kAIModeDisabled = 1;
 
 class MockBadMessageHelper {
  public:
@@ -242,9 +249,9 @@ class RemoteActorCredentialSharingImplTest
   }
 
   mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing>
-  SetUpAndBindFlow() {
+  SetUpAndBindFlow(const GURL& origin = GURL("https://gemini.google.com")) {
     SignIn("user@gmail.com");
-    NavigateAndCommit(GURL("https://gemini.google.com"));
+    NavigateAndCommit(origin);
     content::RenderFrameHostTester::For(main_rfh())
         ->InitializeRenderFrameIfNeeded();
     CreateImpl();
@@ -258,6 +265,32 @@ class RemoteActorCredentialSharingImplTest
       impl->Bind(remote.BindNewEndpointAndPassDedicatedReceiver());
     }
     return remote;
+  }
+
+  void AddTestLoginAndVerifyRequestAllowed(
+      mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing>&
+          remote) {
+    PasswordForm form;
+    form.signon_realm = "https://google.com/";
+    form.url = GURL("https://google.com");
+    form.username_value = u"user";
+    form.password_value = PasswordString(u"pass");
+    form.in_store = PasswordForm::Store::kProfileStore;
+    profile_store_->AddLogin(FromPasswordForm(form));
+
+    content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
+    base::test::TestFuture<bool> result;
+    base::test::TestFuture<void> dialog_shown_future;
+    dialog_shown_quit_closure_ = dialog_shown_future.GetCallback();
+    remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
+                                       "google.com", "actor_id",
+                                       result.GetCallback());
+    dialog_shown_future.Get();
+    ASSERT_EQ(last_dialog_credentials_.size(), 1u);
+    EXPECT_CALL(*mock_sharing_service_, SharePassword)
+        .WillOnce(base::test::RunOnceCallback<1>(true));
+    SimulateDialogSelection(*last_dialog_credentials_[0]);
+    EXPECT_TRUE(result.Get());
   }
 
   std::unique_ptr<IdentityTestEnvironmentProfileAdaptor>
@@ -437,10 +470,11 @@ TEST_F(RemoteActorCredentialSharingImplTest,
                   "RemoteActorCredentialSharing: Request from subframe"));
 }
 
-// Verify that calling RequestAgentAuthentication without user activation
-// reports a bad message.
+// Verify that calling `RequestAgentAuthentication()` without user activation
+// fails precondition validation and returns false.
 TEST_F(RemoteActorCredentialSharingImplTest,
-       RequestWithoutUserGestureReportsBadMessage) {
+       RequestWithoutUserGestureReturnsFalse) {
+  base::HistogramTester histograms;
   NavigateAndCommit(GURL("https://gemini.google.com"));
   content::RenderFrameHostTester::For(main_rfh())
       ->InitializeRenderFrameIfNeeded();
@@ -453,22 +487,195 @@ TEST_F(RemoteActorCredentialSharingImplTest,
   mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote;
   impl->Bind(remote.BindNewEndpointAndPassDedicatedReceiver());
 
-  MockBadMessageHelper bad_message_helper;
-  base::test::TestFuture<std::string> bad_message_future;
-  EXPECT_CALL(bad_message_helper, OnBadMessage)
-      .WillOnce([&bad_message_future](const std::string& error) {
-        bad_message_future.SetValue(error);
-      });
-
+  base::test::TestFuture<bool> result;
   remote->RequestAgentAuthentication(/*gaia_id=*/"123456789",
                                      /*domain=*/"google.com",
-                                     /*task_id=*/"actor_id", base::DoNothing());
-  EXPECT_THAT(
-      bad_message_future.Get(),
-      testing::HasSubstr(
-          "RemoteActorCredentialSharing: Request without user gesture"));
+                                     /*task_id=*/"actor_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result", 0);
 }
 
+// Verify that a popup with a same-site opener navigated with a user gesture can
+// make a single `RequestAgentAuthentication()` call without in-popup transient
+// user activation, and that a subsequent call without transient activation is
+// rejected.
+TEST_F(RemoteActorCredentialSharingImplTest,
+       PopupWithUserInitiatedNavigationAllowsOneRequestWithoutGesture) {
+  base::HistogramTester histograms;
+  std::unique_ptr<content::WebContents> opener = CreateTestWebContents();
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      opener.get(), GURL("https://accounts.google.com"));
+  content::WebContentsTester::For(web_contents())->SetOpener(opener.get());
+  content::WebContentsTester::For(web_contents())
+      ->SetOriginalWindowOpenDisposition(
+          ::ui::mojom::WindowOpenDisposition::kNewPopup);
+
+  auto navigation = content::NavigationSimulator::CreateRendererInitiated(
+      GURL("https://gemini.google.com"), main_rfh());
+  navigation->SetHasUserGesture(true);
+  navigation->Commit();
+  main_rfh()->GetProcess()->Init();
+  content::RenderFrameHostTester::For(main_rfh())
+      ->InitializeRenderFrameIfNeeded();
+  ASSERT_FALSE(main_rfh()->HasTransientUserActivation());
+  ASSERT_TRUE(main_rfh()->IsLastCrossDocumentNavigationStartedByUser());
+
+  CreateImpl();
+  RemoteActorCredentialSharingImpl* impl =
+      RemoteActorCredentialSharingImpl::GetForCurrentDocument(main_rfh());
+  ASSERT_NE(impl, nullptr);
+
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote;
+  impl->Bind(remote.BindNewEndpointAndPassDedicatedReceiver());
+
+  // First request in the popup without transient activation passes precondition
+  // validation (and returns false because not signed in).
+  base::test::TestFuture<bool> first_result;
+  remote->RequestAgentAuthentication(/*gaia_id=*/"123456789",
+                                     /*domain=*/"google.com",
+                                     /*task_id=*/"actor_id",
+                                     first_result.GetCallback());
+  EXPECT_FALSE(first_result.Get());
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kUserIdentityOrSyncStateInvalid, 1);
+
+  // Second request in the same document without transient activation fails
+  // precondition validation because the one-time popup activation was consumed.
+  base::test::TestFuture<bool> second_result;
+  remote->RequestAgentAuthentication(/*gaia_id=*/"123456789",
+                                     /*domain=*/"google.com",
+                                     /*task_id=*/"actor_id",
+                                     second_result.GetCallback());
+  EXPECT_FALSE(second_result.Get());
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result", 1);
+}
+
+// Verify that a popup with a cross-site opener still requires transient user
+// activation even if its navigation was initiated by a user gesture.
+TEST_F(RemoteActorCredentialSharingImplTest,
+       PopupWithCrossSiteOpenerReturnsFalse) {
+  base::HistogramTester histograms;
+  std::unique_ptr<content::WebContents> opener = CreateTestWebContents();
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      opener.get(), GURL("https://example.com"));
+  content::WebContentsTester::For(web_contents())->SetOpener(opener.get());
+  content::WebContentsTester::For(web_contents())
+      ->SetOriginalWindowOpenDisposition(
+          ::ui::mojom::WindowOpenDisposition::kNewPopup);
+
+  auto navigation = content::NavigationSimulator::CreateRendererInitiated(
+      GURL("https://gemini.google.com"), main_rfh());
+  navigation->SetHasUserGesture(true);
+  navigation->Commit();
+  main_rfh()->GetProcess()->Init();
+  content::RenderFrameHostTester::For(main_rfh())
+      ->InitializeRenderFrameIfNeeded();
+  ASSERT_FALSE(main_rfh()->HasTransientUserActivation());
+  ASSERT_TRUE(main_rfh()->IsLastCrossDocumentNavigationStartedByUser());
+
+  CreateImpl();
+  RemoteActorCredentialSharingImpl* impl =
+      RemoteActorCredentialSharingImpl::GetForCurrentDocument(main_rfh());
+  ASSERT_NE(impl, nullptr);
+
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote;
+  impl->Bind(remote.BindNewEndpointAndPassDedicatedReceiver());
+
+  base::test::TestFuture<bool> result;
+  remote->RequestAgentAuthentication(/*gaia_id=*/"123456789",
+                                     /*domain=*/"google.com",
+                                     /*task_id=*/"actor_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result", 0);
+}
+
+// Verify that a non-popup tab with a same-site opener still requires transient
+// user activation even if its navigation was initiated by a user gesture.
+TEST_F(RemoteActorCredentialSharingImplTest,
+       NonPopupWithSameSiteOpenerReturnsFalse) {
+  base::HistogramTester histograms;
+  std::unique_ptr<content::WebContents> opener = CreateTestWebContents();
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      opener.get(), GURL("https://accounts.google.com"));
+  content::WebContentsTester::For(web_contents())->SetOpener(opener.get());
+  content::WebContentsTester::For(web_contents())
+      ->SetOriginalWindowOpenDisposition(
+          ::ui::mojom::WindowOpenDisposition::kNewForegroundTab);
+
+  auto navigation = content::NavigationSimulator::CreateRendererInitiated(
+      GURL("https://gemini.google.com"), main_rfh());
+  navigation->SetHasUserGesture(true);
+  navigation->Commit();
+  main_rfh()->GetProcess()->Init();
+  content::RenderFrameHostTester::For(main_rfh())
+      ->InitializeRenderFrameIfNeeded();
+  ASSERT_FALSE(main_rfh()->HasTransientUserActivation());
+  ASSERT_TRUE(main_rfh()->IsLastCrossDocumentNavigationStartedByUser());
+
+  CreateImpl();
+  RemoteActorCredentialSharingImpl* impl =
+      RemoteActorCredentialSharingImpl::GetForCurrentDocument(main_rfh());
+  ASSERT_NE(impl, nullptr);
+
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote;
+  impl->Bind(remote.BindNewEndpointAndPassDedicatedReceiver());
+
+  base::test::TestFuture<bool> result;
+  remote->RequestAgentAuthentication(/*gaia_id=*/"123456789",
+                                     /*domain=*/"google.com",
+                                     /*task_id=*/"actor_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result", 0);
+}
+
+// Verify that a popup navigated without a user gesture still requires transient
+// user activation.
+TEST_F(RemoteActorCredentialSharingImplTest,
+       PopupWithoutUserInitiatedNavigationReturnsFalse) {
+  base::HistogramTester histograms;
+  std::unique_ptr<content::WebContents> opener = CreateTestWebContents();
+  content::NavigationSimulator::NavigateAndCommitFromBrowser(
+      opener.get(), GURL("https://accounts.google.com"));
+  content::WebContentsTester::For(web_contents())->SetOpener(opener.get());
+  content::WebContentsTester::For(web_contents())
+      ->SetOriginalWindowOpenDisposition(
+          ::ui::mojom::WindowOpenDisposition::kNewPopup);
+
+  auto navigation = content::NavigationSimulator::CreateRendererInitiated(
+      GURL("https://gemini.google.com"), main_rfh());
+  navigation->SetHasUserGesture(false);
+  navigation->Commit();
+  main_rfh()->GetProcess()->Init();
+  content::RenderFrameHostTester::For(main_rfh())
+      ->InitializeRenderFrameIfNeeded();
+  ASSERT_FALSE(main_rfh()->HasTransientUserActivation());
+  ASSERT_FALSE(main_rfh()->IsLastCrossDocumentNavigationStartedByUser());
+
+  CreateImpl();
+  RemoteActorCredentialSharingImpl* impl =
+      RemoteActorCredentialSharingImpl::GetForCurrentDocument(main_rfh());
+  ASSERT_NE(impl, nullptr);
+
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote;
+  impl->Bind(remote.BindNewEndpointAndPassDedicatedReceiver());
+
+  base::test::TestFuture<bool> result;
+  remote->RequestAgentAuthentication(/*gaia_id=*/"123456789",
+                                     /*domain=*/"google.com",
+                                     /*task_id=*/"actor_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result", 0);
+}
 TEST_F(RemoteActorCredentialSharingImplTest,
        RejectDuplicateRequestWhenRequestAlreadyInProgress) {
   base::HistogramTester histograms;
@@ -517,6 +724,9 @@ TEST_F(RemoteActorCredentialSharingImplTest,
   histograms.ExpectBucketCount(
       "PasswordManager.RemoteActorCredentialSharing.Result",
       RemoteActorCredentialSharingResult::kRequestAlreadyInProgress, 1);
+  histograms.ExpectBucketCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result",
+      RemoteActorCredentialSharingResult::kRequestAlreadyInProgress, 1);
 
   // The first request should still proceed unaffected.
   EXPECT_CALL(*mock_sharing_service_, SharePassword)
@@ -526,6 +736,9 @@ TEST_F(RemoteActorCredentialSharingImplTest,
 
   histograms.ExpectBucketCount(
       "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectBucketCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result",
       RemoteActorCredentialSharingResult::kSuccess, 1);
 }
 
@@ -579,7 +792,6 @@ TEST_F(RemoteActorCredentialSharingImplTest,
 TEST_F(RemoteActorCredentialSharingImplTest, PolicyDisabled_RequestRejected) {
   mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
       SetUpAndBindFlow();
-  SetSyncActive(true);
 
   // Set the enterprise policy pref to Disabled.
   profile()->GetTestingPrefService()->SetManagedPref(
@@ -597,12 +809,14 @@ TEST_F(RemoteActorCredentialSharingImplTest, PolicyDisabled_RequestRejected) {
   histograms.ExpectBucketCount(
       "PasswordManager.RemoteActorCredentialSharing.Result",
       RemoteActorCredentialSharingResult::kBlockedByPolicy, 1);
+  histograms.ExpectBucketCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result",
+      RemoteActorCredentialSharingResult::kBlockedByPolicy, 1);
 }
 
 TEST_F(RemoteActorCredentialSharingImplTest, PolicyEnabled_RequestAllowed) {
   mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
       SetUpAndBindFlow();
-  SetSyncActive(true);
 
   // Set the enterprise policy pref to Enabled.
   profile()->GetTestingPrefService()->SetManagedPref(
@@ -610,34 +824,13 @@ TEST_F(RemoteActorCredentialSharingImplTest, PolicyEnabled_RequestAllowed) {
       base::Value(
           std::to_underlying(glic::prefs::GlicSparkPolicyState::kEnabled)));
 
-  PasswordForm form;
-  form.signon_realm = "https://google.com/";
-  form.url = GURL("https://google.com");
-  form.username_value = u"user";
-  form.password_value = PasswordString(u"pass");
-  form.in_store = PasswordForm::Store::kProfileStore;
-  profile_store_->AddLogin(FromPasswordForm(form));
-
-  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
-  base::test::TestFuture<bool> result;
-  base::test::TestFuture<void> dialog_shown_future;
-  dialog_shown_quit_closure_ = dialog_shown_future.GetCallback();
-  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
-                                     "google.com", "actor_id",
-                                     result.GetCallback());
-  dialog_shown_future.Get();
-  ASSERT_EQ(last_dialog_credentials_.size(), 1u);
-  EXPECT_CALL(*mock_sharing_service_, SharePassword)
-      .WillOnce(base::test::RunOnceCallback<1>(true));
-  SimulateDialogSelection(*last_dialog_credentials_[0]);
-  EXPECT_TRUE(result.Get());
+  AddTestLoginAndVerifyRequestAllowed(remote);
 }
 
 TEST_F(RemoteActorCredentialSharingImplTest,
        UnmanagedProfile_AllowedByDefault) {
   mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
       SetUpAndBindFlow();
-  SetSyncActive(true);
 
   // By default, the profile is unmanaged, and kGlicSparkPolicySettings defaults
   // to kDisabled. Unmanaged profiles should still be allowed to proceed.
@@ -647,34 +840,13 @@ TEST_F(RemoteActorCredentialSharingImplTest,
   ASSERT_FALSE(profile()->GetPrefs()->IsManagedPreference(
       glic::prefs::kGlicSparkPolicySettings));
 
-  PasswordForm form;
-  form.signon_realm = "https://google.com/";
-  form.url = GURL("https://google.com");
-  form.username_value = u"user";
-  form.password_value = PasswordString(u"pass");
-  form.in_store = PasswordForm::Store::kProfileStore;
-  profile_store_->AddLogin(FromPasswordForm(form));
-
-  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
-  base::test::TestFuture<bool> result;
-  base::test::TestFuture<void> dialog_shown_future;
-  dialog_shown_quit_closure_ = dialog_shown_future.GetCallback();
-  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
-                                     "google.com", "actor_id",
-                                     result.GetCallback());
-  dialog_shown_future.Get();
-  ASSERT_EQ(last_dialog_credentials_.size(), 1u);
-  EXPECT_CALL(*mock_sharing_service_, SharePassword)
-      .WillOnce(base::test::RunOnceCallback<1>(true));
-  SimulateDialogSelection(*last_dialog_credentials_[0]);
-  EXPECT_TRUE(result.Get());
+  AddTestLoginAndVerifyRequestAllowed(remote);
 }
 
 TEST_F(RemoteActorCredentialSharingImplTest,
        ManagedProfileWithoutPolicy_RequestRejected) {
   mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
       SetUpAndBindFlow();
-  SetSyncActive(true);
 
   // Mark the profile as enterprise-managed, without setting any policy pref.
   // The pref remains unmanaged at its default value (kDisabled), but because
@@ -694,6 +866,233 @@ TEST_F(RemoteActorCredentialSharingImplTest,
   histograms.ExpectBucketCount(
       "PasswordManager.RemoteActorCredentialSharing.Result",
       RemoteActorCredentialSharingResult::kBlockedByPolicy, 1);
+  histograms.ExpectBucketCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result",
+      RemoteActorCredentialSharingResult::kBlockedByPolicy, 1);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       SearchPolicyDisabled_RequestRejected) {
+  base::test::ScopedFeatureList search_feature_list{
+      features::kRemoteActorCredentialSharingSearch};
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow(GURL("https://search.google.com"));
+
+  // Even when GeminiSparkSettings is Enabled, disabling AIModeSettings must
+  // block Search Agent credential sharing.
+  profile()->GetTestingPrefService()->SetManagedPref(
+      glic::prefs::kGlicSparkPolicySettings,
+      base::Value(
+          std::to_underlying(glic::prefs::GlicSparkPolicyState::kEnabled)));
+  profile()->GetTestingPrefService()->SetManagedPref(
+      omnibox::kAIModeSettings, base::Value(kAIModeDisabled));
+
+  base::HistogramTester histograms;
+  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
+  base::test::TestFuture<bool> result;
+  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
+                                     "google.com", "search_task_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectBucketCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kBlockedByPolicy, 1);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       SearchManagedProfileWithSparkDisabled_AllowedWhenAimAllowed) {
+  base::test::ScopedFeatureList search_feature_list{
+      features::kRemoteActorCredentialSharingSearch};
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow(GURL("https://search.google.com"));
+
+  // On an enterprise-managed profile where GeminiSparkSettings is Disabled,
+  // Search Agent credential sharing must still be allowed as long as
+  // AIModeSettings is Allowed.
+  policy::ScopedManagementServiceOverrideForTesting
+      scoped_management_service_override(
+          policy::ManagementServiceFactory::GetForProfile(profile()),
+          policy::EnterpriseManagementAuthority::CLOUD);
+  profile()->GetTestingPrefService()->SetManagedPref(
+      glic::prefs::kGlicSparkPolicySettings,
+      base::Value(
+          std::to_underlying(glic::prefs::GlicSparkPolicyState::kDisabled)));
+  ASSERT_EQ(profile()->GetPrefs()->GetInteger(omnibox::kAIModeSettings),
+            kAIModeAllowed);
+
+  AddTestLoginAndVerifyRequestAllowed(remote);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       GeminiPolicyDisabledWithAimAllowed_RequestRejected) {
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow();
+
+  // Gemini credential sharing must remain gated on GeminiSparkSettings even
+  // when AIModeSettings is Allowed.
+  profile()->GetTestingPrefService()->SetManagedPref(
+      glic::prefs::kGlicSparkPolicySettings,
+      base::Value(
+          std::to_underlying(glic::prefs::GlicSparkPolicyState::kDisabled)));
+  profile()->GetTestingPrefService()->SetManagedPref(
+      omnibox::kAIModeSettings, base::Value(kAIModeAllowed));
+
+  base::HistogramTester histograms;
+  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
+  base::test::TestFuture<bool> result;
+  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
+                                     "google.com", "actor_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectBucketCount(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kBlockedByPolicy, 1);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       GeminiPolicyEnabledWithAimDisabled_RequestAllowed) {
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow();
+
+  // Gemini credential sharing must be allowed when GeminiSparkSettings is
+  // Enabled even if AIModeSettings is Disabled.
+  profile()->GetTestingPrefService()->SetManagedPref(
+      glic::prefs::kGlicSparkPolicySettings,
+      base::Value(
+          std::to_underlying(glic::prefs::GlicSparkPolicyState::kEnabled)));
+  profile()->GetTestingPrefService()->SetManagedPref(
+      omnibox::kAIModeSettings, base::Value(kAIModeDisabled));
+
+  AddTestLoginAndVerifyRequestAllowed(remote);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       GeminiOriginPlumbsGeminiBrandingAndAgentParameters) {
+  base::HistogramTester histograms;
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow();
+  SetSyncActive(true);
+
+  PasswordForm form;
+  form.signon_realm = "https://google.com/";
+  form.url = GURL("https://google.com");
+  form.username_value = u"user";
+  form.password_value = PasswordString(u"pass");
+  form.in_store = PasswordForm::Store::kProfileStore;
+  profile_store_->AddLogin(FromPasswordForm(form));
+
+  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
+  base::test::TestFuture<bool> result;
+  base::test::TestFuture<void> dialog_shown_future;
+  dialog_shown_quit_closure_ = dialog_shown_future.GetCallback();
+  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
+                                     "google.com", "actor_id",
+                                     result.GetCallback());
+  dialog_shown_future.Get();
+
+  ASSERT_NE(last_dialog_controller_, nullptr);
+  EXPECT_EQ(last_dialog_controller_->GetActorType(), RemoteActorType::kGemini);
+  EXPECT_EQ(last_dialog_controller_->GetTitle(),
+            u"Allow Gemini to sign in to google.com for you?");
+  EXPECT_EQ(last_dialog_controller_->GetLearnMoreUrl(),
+            GURL("https://support.google.com/gemini?p=lm_gpm_data"));
+  EXPECT_TRUE(last_dialog_controller_->GetActorIconUrl().is_empty());
+
+  RemoteActorCredentialSharingService::ShareParameters captured_params;
+  EXPECT_CALL(*mock_sharing_service_, SharePassword)
+      .WillOnce(testing::DoAll(testing::SaveArg<0>(&captured_params),
+                               base::test::RunOnceCallback<1>(true)));
+  SimulateDialogSelection(*last_dialog_credentials_[0]);
+  EXPECT_TRUE(result.Get());
+  EXPECT_EQ(captured_params.actor_oauth_client_id,
+            "320695880279-gnq6the97ga85scn208u5jctnk82qelk."
+            "apps.googleusercontent.com");
+  EXPECT_EQ(captured_params.task_namespace_id, 30);
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Search.Result", 0);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       SearchOriginPlumbsSearchBrandingAndAgentParameters) {
+  base::test::ScopedFeatureList search_feature_list{
+      features::kRemoteActorCredentialSharingSearch};
+  base::HistogramTester histograms;
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow(GURL("https://search.google.com"));
+  SetSyncActive(true);
+
+  PasswordForm form;
+  form.signon_realm = "https://google.com/";
+  form.url = GURL("https://google.com");
+  form.username_value = u"user";
+  form.password_value = PasswordString(u"pass");
+  form.in_store = PasswordForm::Store::kProfileStore;
+  profile_store_->AddLogin(FromPasswordForm(form));
+
+  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
+  base::test::TestFuture<bool> result;
+  base::test::TestFuture<void> dialog_shown_future;
+  dialog_shown_quit_closure_ = dialog_shown_future.GetCallback();
+  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
+                                     "google.com", "search_task_id",
+                                     result.GetCallback());
+  dialog_shown_future.Get();
+
+  ASSERT_NE(last_dialog_controller_, nullptr);
+  EXPECT_EQ(last_dialog_controller_->GetActorType(), RemoteActorType::kSearch);
+  EXPECT_EQ(last_dialog_controller_->GetTitle(),
+            u"Allow Search Agent to sign in to google.com for you?");
+  EXPECT_EQ(last_dialog_controller_->GetSubtitle(),
+            u"Search Agent can use Google Password Manager to sign in for you. "
+            u"Learn how Search Agent handles your data");
+  EXPECT_EQ(last_dialog_controller_->GetLearnMoreUrl(),
+            GURL("https://g.co/privacypolicy"));
+  EXPECT_TRUE(last_dialog_controller_->GetActorIconUrl().is_empty());
+
+  RemoteActorCredentialSharingService::ShareParameters captured_params;
+  EXPECT_CALL(*mock_sharing_service_, SharePassword)
+      .WillOnce(testing::DoAll(testing::SaveArg<0>(&captured_params),
+                               base::test::RunOnceCallback<1>(true)));
+  SimulateDialogSelection(*last_dialog_credentials_[0]);
+  EXPECT_TRUE(result.Get());
+  EXPECT_EQ(captured_params.actor_oauth_client_id,
+            "240392999166-p989rucds3hg2lidtif5huititvl4ln1."
+            "apps.googleusercontent.com");
+  EXPECT_EQ(captured_params.task_namespace_id, 41);
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Search.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result", 0);
+}
+
+TEST_F(RemoteActorCredentialSharingImplTest,
+       DisallowedOriginLogsOtherErrorAndReturnsFalse) {
+  base::HistogramTester histograms;
+  mojo::AssociatedRemote<chrome::mojom::RemoteActorCredentialSharing> remote =
+      SetUpAndBindFlow(GURL("https://example.com"));
+  content::RenderFrameHostTester::For(main_rfh())->SimulateUserActivation();
+  base::test::TestFuture<bool> result;
+  remote->RequestAgentAuthentication(account_info_.GetGaiaId().ToString(),
+                                     "google.com", "actor_id",
+                                     result.GetCallback());
+  EXPECT_FALSE(result.Get());
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kOtherError, 1);
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result", 0);
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Search.Result", 0);
 }
 
 }  // namespace password_manager

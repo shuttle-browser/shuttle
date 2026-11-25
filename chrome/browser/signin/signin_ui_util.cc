@@ -54,8 +54,8 @@
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
 #include "components/sync/service/sync_service.h"
 #include "third_party/re2/src/re2/re2.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/font_list.h"
 #include "ui/gfx/text_elider.h"
 #include "url/gurl.h"
@@ -202,7 +202,7 @@ void ShowSigninErrorLearnMorePage(Profile* profile) {
       "https://support.google.com/chrome/answer/1181420?";
   NavigateParams params(profile, GURL(kSigninErrorLearnMoreUrl),
                         ui::PAGE_TRANSITION_LINK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
 }
 
@@ -284,6 +284,7 @@ void SignInFromSingleAccountPromo(Profile* profile,
   }
 
   // If the account's refresh token are fine, sign in directly.
+  signin_metrics::RecordSigninUserActionForAccessPoint(access_point);
   signin_metrics::LogSignInStarted(
       access_point, *ProfileMetricsServiceFactory::GetForProfile(profile));
   IdentityManagerFactory::GetForProfile(profile)

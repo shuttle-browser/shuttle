@@ -8,6 +8,7 @@
 
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
@@ -20,6 +21,7 @@
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "chrome/browser/extensions/api/tab_capture/tab_capture_api.h"
+#include "chrome/browser/extensions/api/tabs/tabs_constants.h"
 #include "chrome/browser/extensions/extension_apitest.h"
 #include "chrome/browser/extensions/extension_management_test_util.h"
 #include "chrome/browser/extensions/extension_tab_util.h"
@@ -28,6 +30,8 @@
 #include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/common/content_features.h"
@@ -40,6 +44,7 @@
 #include "extensions/browser/permissions/active_tab_permission_granter.h"
 #include "extensions/browser/permissions_manager.h"
 #include "extensions/buildflags/buildflags.h"
+#include "extensions/common/extension_builder.h"
 #include "extensions/common/extension_features.h"
 #include "extensions/common/switches.h"
 #include "extensions/test/extension_test_message_listener.h"
@@ -59,6 +64,10 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "components/tabs/public/tab_alert.h"
 #endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/chromeos/policy/dlp/test/mock_dlp_content_manager.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 static_assert(BUILDFLAG(ENABLE_EXTENSIONS_CORE));
 
@@ -181,7 +190,7 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiTest, ActiveTabPermission) {
       web_contents->GetBrowserContext())->enabled_extensions().GetByID(
           kExtensionId);
   ActiveTabPermissionGranter::FromWebContents(web_contents)
-      ->GrantIfRequested(extension);
+      ->GrantIfRequested(extension, base::DoNothing());
   before_grant_permission.Reply("");
 
   // Open a new tab and make sure capture is denied.
@@ -248,7 +257,7 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiTest, GrantForChromePages) {
       web_contents->GetBrowserContext())->enabled_extensions().GetByID(
           kExtensionId);
   ActiveTabPermissionGranter::FromWebContents(web_contents)
-      ->GrantIfRequested(extension);
+      ->GrantIfRequested(extension, base::DoNothing());
   before_open_tab.Reply("");
 
   ResultCatcher catcher;
@@ -292,7 +301,7 @@ class TabCaptureGetMediaStreamIdTest : public TabCaptureApiTest {
   void GrantCapturePermission(const Extension* extension,
                               content::WebContents* web_contents) {
     ActiveTabPermissionGranter::FromWebContents(web_contents)
-        ->GrantIfRequested(extension);
+        ->GrantIfRequested(extension, base::DoNothing());
   }
 
   std::string BuildArgs(int target_tab_id, int consumer_tab_id) {
@@ -515,7 +524,7 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiTest, MultipleExtensions) {
       ActiveTabPermissionGranter::FromWebContents(web_contents);
   // It doesn't seem to work to grant permissions for both extensions at the
   // same time. We start with extension_a.
-  perm_granter->GrantIfRequested(extension_a);
+  perm_granter->GrantIfRequested(extension_a, base::DoNothing());
 
   // Set up success listeners.
   ExtensionTestMessageListener extension_a_success("success");
@@ -528,7 +537,7 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiTest, MultipleExtensions) {
   extension_a_ready.Reset();
   ASSERT_TRUE(extension_a_ready.WaitUntilSatisfied());
 
-  perm_granter->GrantIfRequested(extension_b);
+  perm_granter->GrantIfRequested(extension_b, base::DoNothing());
 
   // To reproduce crbug.com/40869705, we have extension_b spam tab capture
   // requests until one or the other extension successfully captures the tab.
@@ -675,7 +684,7 @@ class TabCaptureApiPolicyTest : public ExtensionApiTestWithManagementPolicy {
     content::WebContents* const web_contents =
         content::WebContents::FromRenderFrameHost(main_frame);
     ActiveTabPermissionGranter::FromWebContents(web_contents)
-        ->GrantIfRequested(extension());
+        ->GrantIfRequested(extension(), base::DoNothing());
     return web_contents;
   }
 
@@ -766,7 +775,7 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiPolicyTest, FileUrlWithoutFileAccess) {
   content::WebContents* const web_contents =
       content::WebContents::FromRenderFrameHost(main_frame);
   ActiveTabPermissionGranter::FromWebContents(web_contents)
-      ->GrantIfRequested(extension());
+      ->GrantIfRequested(extension(), base::DoNothing());
 
   CaptureTab();
   EXPECT_EQ(tab_capture_errors::kCannotCapturePage, GetCaptureResult());
@@ -798,7 +807,7 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiPolicyTest,
   EXPECT_TRUE(content::WaitForLoadStop(popup_contents));
 
   ActiveTabPermissionGranter::FromWebContents(popup_contents)
-      ->GrantIfRequested(extension());
+      ->GrantIfRequested(extension(), base::DoNothing());
 
   CaptureTab();
   EXPECT_EQ(tab_capture_errors::kCannotCapturePage, GetCaptureResult());
@@ -906,6 +915,73 @@ IN_PROC_BROWSER_TEST_F(TabCaptureApiUserHostRestrictionsTest,
   GetMediaStreamIdForTab(ExtensionTabUtil::GetTabId(web_contents));
   EXPECT_EQ(tab_capture_errors::kCannotCapturePage, GetCaptureResult());
 }
+
+IN_PROC_BROWSER_TEST_F(TabCaptureApiTest, ScreenshotsDisabledByPreferences) {
+  AddExtensionToCommandLineAllowlist();
+  scoped_refptr<const Extension> extension = ExtensionBuilder("TabCapture")
+                                                 .SetID(kExtensionId)
+                                                 .AddAPIPermission("tabCapture")
+                                                 .Build();
+
+  content::WebContents* web_contents = GetActiveWebContents();
+  ASSERT_TRUE(web_contents);
+
+  profile()->GetPrefs()->SetBoolean(prefs::kDisableScreenshots, true);
+
+  auto capture_function = base::MakeRefCounted<TabCaptureCaptureFunction>();
+  capture_function->set_extension(extension.get());
+  capture_function->SetRenderFrameHost(web_contents->GetPrimaryMainFrame());
+  EXPECT_EQ(tabs_constants::kScreenshotsDisabled,
+            api_test_utils::RunFunctionAndReturnError(
+                capture_function.get(), R"([{"video": true}])", profile()));
+
+  auto stream_id_function =
+      base::MakeRefCounted<TabCaptureGetMediaStreamIdFunction>();
+  stream_id_function->set_extension(extension.get());
+  stream_id_function->SetRenderFrameHost(web_contents->GetPrimaryMainFrame());
+  stream_id_function->set_source_process_id(
+      web_contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID());
+  EXPECT_EQ(tabs_constants::kScreenshotsDisabled,
+            api_test_utils::RunFunctionAndReturnError(stream_id_function.get(),
+                                                      "[{}]", profile()));
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+IN_PROC_BROWSER_TEST_F(TabCaptureApiTest, ScreenshotsRestrictedByDlp) {
+  AddExtensionToCommandLineAllowlist();
+  scoped_refptr<const Extension> extension = ExtensionBuilder("TabCapture")
+                                                 .SetID(kExtensionId)
+                                                 .AddAPIPermission("tabCapture")
+                                                 .Build();
+
+  content::WebContents* web_contents = GetActiveWebContents();
+  ASSERT_TRUE(web_contents);
+
+  policy::MockDlpContentManager mock_dlp_content_manager;
+  policy::ScopedDlpContentObserverForTesting scoped_dlp_content_observer(
+      &mock_dlp_content_manager);
+  EXPECT_CALL(mock_dlp_content_manager, IsScreenshotApiRestricted(web_contents))
+      .Times(2)
+      .WillRepeatedly(testing::Return(true));
+
+  auto capture_function = base::MakeRefCounted<TabCaptureCaptureFunction>();
+  capture_function->set_extension(extension.get());
+  capture_function->SetRenderFrameHost(web_contents->GetPrimaryMainFrame());
+  EXPECT_EQ(tabs_constants::kScreenshotsDisabledByDlp,
+            api_test_utils::RunFunctionAndReturnError(
+                capture_function.get(), R"([{"video": true}])", profile()));
+
+  auto stream_id_function =
+      base::MakeRefCounted<TabCaptureGetMediaStreamIdFunction>();
+  stream_id_function->set_extension(extension.get());
+  stream_id_function->SetRenderFrameHost(web_contents->GetPrimaryMainFrame());
+  stream_id_function->set_source_process_id(
+      web_contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID());
+  EXPECT_EQ(tabs_constants::kScreenshotsDisabledByDlp,
+            api_test_utils::RunFunctionAndReturnError(stream_id_function.get(),
+                                                      "[{}]", profile()));
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 }  // namespace
 

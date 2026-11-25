@@ -33,6 +33,7 @@
 #include "chrome/browser/glic/public/glic_invoke_options.h"
 #include "chrome/browser/glic/public/glic_window_invocation_tracker.h"
 #include "chrome/browser/glic/service/glic_instance_helper.h"
+#include "chrome/browser/glic/service/glic_offscreen_rendering_controller.h"
 #include "chrome/browser/glic/service/glic_ui_embedder.h"
 #include "chrome/browser/glic/service/glic_ui_types.h"
 #include "chrome/browser/glic/service/metrics/glic_instance_metrics.h"
@@ -59,6 +60,7 @@ class EmptyEmbedderDelegate;
 class GlicExperimentalTriggeringManager;
 class GlicGeminiEnterpriseManager;
 class GlicMetrics;
+class GlicProviderSpec;
 class GlicSkillsManagerImpl;
 class GlicUiEmbedder;
 class GlicWebContentsManager;
@@ -83,7 +85,8 @@ class GlicInstanceImpl : public GlicInstance,
                          public Host::Observer,
                          public GlicSharingManagerProvider,
                          public GlicUiEmbedder::Delegate,
-                         public GlicActorTaskManager::Delegate {
+                         public GlicActorTaskManager::Delegate,
+                         public GlicOffscreenRenderingController::Delegate {
  public:
   class InstanceCoordinatorDelegate {
    public:
@@ -138,10 +141,6 @@ class GlicInstanceImpl : public GlicInstance,
     // Called to create a new web contents for the glic instance.
     virtual std::unique_ptr<GlicWebContentsManager>
     CreateWebContentsManager() = 0;
-
-    // Called by an instance just before its WebUI container is created from a
-    // hibernated state.
-    virtual void OnInstanceWillAwaken() = 0;
   };
 
   GlicInstanceImpl(
@@ -195,9 +194,11 @@ class GlicInstanceImpl : public GlicInstance,
   bool IsActive() override;
   bool IsHibernated() const override;
 
-  bool HasActiveEmbedder() const;
+  bool HasActiveEmbedder() const override;
   bool IsDetached();
   bool IsActuating() const override;
+  bool HasLiveSurface() const override;
+  bool HasActiveExperimentalTriggeringSession() const override;
   bool IsInvoking() const override;
   bool IsLiveMode() const override;
 
@@ -264,11 +265,10 @@ class GlicInstanceImpl : public GlicInstance,
 
   // Marks whether a hidden invoke is actively warming up / initializing the
   // client. When running hidden, drives offscreen rendering on Android.
-  // TODO(b/572001459): Extract Android offscreen rendering management out of
-  // GlicInstanceImpl into a dedicated helper class owned by this instance.
   void SetHiddenInitializing(bool initializing);
 
-  // Called exactly once, right before the instance is destroyed.
+  // Called exactly once, right before the instance is destroyed or shut down
+  // (whichever comes first), and before its host WebContents are torn down.
   using DestructionCallback = base::OnceCallback<void(GlicInstance*)>;
   base::CallbackListSubscription RegisterWillBeDestroyed(
       DestructionCallback callback) override;
@@ -318,6 +318,7 @@ class GlicInstanceImpl : public GlicInstance,
   // Opens the floating UI for this instance
   void Detach(tabs::TabInterface& tab) override;
   void Attach(tabs::TabHandle tab) override;
+  void AcceptNativeFre() override;
 
   // GlicInstance:
   ObservableValueView<mojom::PanelState>& GetPanelState() const override;
@@ -327,9 +328,15 @@ class GlicInstanceImpl : public GlicInstance,
 
   // Host::Observer
   void ClientReadyToShow(const mojom::OpenPanelInfo& open_info) override;
+  void ContentsCreated() override;
   void WebUiStateChanged(mojom::WebUiState state) override;
   void ClientLoadErrorOccurred(ClientLoadErrorReason reason) override;
   void ContextAccessIndicatorChanged(bool enabled) override;
+
+  // Returns true if `url` is a tutorial or marketing URL eligible to bypass
+  // onboarding suppression and auto-peek during daisy chaining.
+  static bool IsTutorialMarketingUrl(const GURL& url,
+                                     const GlicProviderSpec& provider_spec);
 
   // Test support.
 #if !BUILDFLAG(IS_ANDROID)
@@ -338,11 +345,9 @@ class GlicInstanceImpl : public GlicInstance,
 #endif
   tabs::TabInterface* GetActiveEmbedderTabForTesting();
   std::string DescribeForTesting();
-#if BUILDFLAG(IS_ANDROID)
   bool is_offscreen_rendering_active_for_testing() const {
-    return is_offscreen_rendering_active_;
+    return offscreen_rendering_controller_.is_active();
   }
-#endif
 
   base::WeakPtr<GlicInstanceImpl> GetWeakPtr() {
     return weak_ptr_factory_.GetWeakPtr();
@@ -418,9 +423,8 @@ class GlicInstanceImpl : public GlicInstance,
   bool ShouldPinOnBind() const;
 
   // Idempotency helper: if the instance is hibernated
-  // (!host_.webui_contents()), notifies the coordinator via
-  // OnInstanceWillAwaken() and creates the WebUI container. No-op if
-  // contents already exist.
+  // (!host_.webui_contents()), creates the WebUI container. No-op if contents
+  // already exist.
   void EnsureHostAwake();
 
   void MaybeActivateForegroundEmbedder();
@@ -456,13 +460,12 @@ class GlicInstanceImpl : public GlicInstance,
   mojom::PanelState ComputePanelState();
 
   void OnActuatingChanged(bool actuating);
-  void UpdateOffscreenRenderingState();
-  void StopOffscreenRendering();
+  void OnExperimentalTriggeringSessionChanged(bool active);
   // Returns the WebContents to attach for offscreen rendering: the WebUI
   // contents in webview mode, or the guest contents in NoWebview mode.
   // TODO(b/534807813): Remove once webview is deleted; callers should use
   // host_.web_client_contents() directly.
-  content::WebContents* GetOffscreenRenderingContents() const;
+  content::WebContents* GetOffscreenRenderingContents() const override;
 
   using ConversationInfoChangedCallbackList =
       base::RepeatingCallbackList<void(const mojom::ConversationInfo&)>;
@@ -516,6 +519,7 @@ class GlicInstanceImpl : public GlicInstance,
       experimental_triggering_manager_;
   base::CallbackListSubscription pinned_tabs_change_subscription_;
   base::CallbackListSubscription actuating_changed_subscription_;
+  base::CallbackListSubscription experimental_triggering_session_subscription_;
 
   base::OneShotTimer inactivity_timer_;
   base::Time last_activation_timestamp_;
@@ -540,10 +544,7 @@ class GlicInstanceImpl : public GlicInstance,
 
   std::optional<TabGroupBinding> tab_group_binding_;
 
-  bool is_hidden_initializing_ = false;
-#if BUILDFLAG(IS_ANDROID)
-  bool is_offscreen_rendering_active_ = false;
-#endif
+  GlicOffscreenRenderingController offscreen_rendering_controller_{*this};
 
   base::WeakPtrFactory<GlicInstanceImpl> weak_ptr_factory_{this};
 };

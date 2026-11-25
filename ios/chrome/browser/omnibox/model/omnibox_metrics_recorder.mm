@@ -18,7 +18,6 @@
 #import "components/omnibox/browser/autocomplete_match_type.h"
 #import "components/omnibox/browser/autocomplete_provider.h"
 #import "components/omnibox/browser/autocomplete_provider_client.h"
-#import "components/omnibox/browser/history_fuzzy_provider.h"
 #import "components/omnibox/browser/omnibox_event_global_tracker.h"
 #import "components/omnibox/browser/omnibox_log.h"
 #import "components/omnibox/browser/omnibox_logging_utils.h"
@@ -31,6 +30,7 @@
 #import "net/cookies/cookie_util.h"
 #import "third_party/metrics_proto/omnibox_event.pb.h"
 #import "third_party/metrics_proto/omnibox_focus_type.pb.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 using bookmarks::BookmarkModel;
 using metrics::OmniboxEventProto;
@@ -85,7 +85,7 @@ constexpr base::TimeDelta kDefaultTimeDelta = base::Milliseconds(-1);
            destinationURL:(GURL)destinationURL
                 inputText:(const std::u16string&)inputText
            popupSelection:(OmniboxPopupSelection)selection
-    windowOpenDisposition:(WindowOpenDisposition)disposition
+    windowOpenDisposition:(ui::mojom::WindowOpenDisposition)disposition
                  isAction:(BOOL)isAction
              isPastedText:(BOOL)isPastedText {
   if (_numberOfLines) {
@@ -98,8 +98,6 @@ constexpr base::TimeDelta kDefaultTimeDelta = base::Milliseconds(-1);
 
   omnibox::RecordActionShownForAllActions(_autocompleteController->result(),
                                           selection);
-  HistoryFuzzyProvider::RecordOpenMatchMetrics(
-      _autocompleteController->result(), match);
 
   base::TimeDelta elapsedTimeSinceLastChangeToDefaultMatch(
       now - _autocompleteController->last_time_default_match_changed());
@@ -174,7 +172,7 @@ constexpr base::TimeDelta kDefaultTimeDelta = base::Milliseconds(-1);
   log.ukm_source_id = _omniboxClient->GetUKMSourceId();
   log.input_state = _omniboxTextModel->input.input_state();
 
-  if ((disposition == WindowOpenDisposition::kCurrentTab) &&
+  if ((disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) &&
       _omniboxClient->CurrentPageExists()) {
     // If we know the destination is being opened in the current tab,
     // we can easily get the tab ID.  (If it's being opened in a new

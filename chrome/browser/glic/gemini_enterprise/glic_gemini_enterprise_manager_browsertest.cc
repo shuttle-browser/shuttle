@@ -8,13 +8,11 @@
 
 #include "base/command_line.h"
 #include "base/test/metrics/histogram_tester.h"
-#include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "chrome/browser/glic/gemini_enterprise/geic_enabling.h"
-#include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/test_support/scoped_geic_test_features.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/common/chrome_switches.h"
 #include "chrome/test/base/platform_browser_test.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
@@ -30,14 +28,6 @@ namespace {
 
 class GlicGeminiEnterpriseManagerBrowserTest : public PlatformBrowserTest {
  public:
-  GlicGeminiEnterpriseManagerBrowserTest() {
-    feature_list_.InitWithFeaturesAndParameters(
-        {{features::kGeic,
-          {{"enabled", "true"},
-           {"geic-guest-url", "https://business.gemini.google/side-panel"}}}},
-        {});
-  }
-
   void SetUpOnMainThread() override {
     PlatformBrowserTest::SetUpOnMainThread();
     manager_ = std::make_unique<GlicGeminiEnterpriseManager>(GetProfile());
@@ -50,7 +40,7 @@ class GlicGeminiEnterpriseManagerBrowserTest : public PlatformBrowserTest {
   }
 
  protected:
-  base::test::ScopedFeatureList feature_list_;
+  ScopedGeicTestFeatures geic_features_;
   std::unique_ptr<GlicGeminiEnterpriseManager> manager_;
   mojo::Remote<mojom::GeminiEnterpriseHandler> handler_remote_;
 };
@@ -191,10 +181,8 @@ class GlicGeminiEnterpriseManagerCustomGuestUrlBrowserTest
  public:
   void SetUpCommandLine(base::CommandLine* command_line) override {
     GlicGeminiEnterpriseManagerBrowserTest::SetUpCommandLine(command_line);
-    command_line->AppendSwitchASCII(
-        geic::kGeicGuestURLSwitch,
-        "https://localhost.corp.google.com:10443/side-panel");
-    command_line->AppendSwitch(::switches::kGlicDev);
+    command_line->AppendSwitchASCII(geic::kGeicGuestURLSwitch,
+                                    "https://localhost:10443/side-panel");
   }
 };
 
@@ -203,7 +191,7 @@ IN_PROC_BROWSER_TEST_F(GlicGeminiEnterpriseManagerCustomGuestUrlBrowserTest,
   TabListInterface* tab_list = GetTabListInterface();
   ASSERT_EQ(tab_list->GetTabCount(), 1);
 
-  GURL guest_signin_url("https://localhost.corp.google.com:10443/auth/signin");
+  GURL guest_signin_url("https://localhost:10443/auth/signin");
   base::test::TestFuture<mojom::OpenSignInTabResult> open_future;
   auto options = mojom::OpenSignInTabOptions::New();
   options->signin_url = guest_signin_url;

@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_PERMISSIONS_CHIP_WEBUI_PERMISSION_CHIP_H_
 #define CHROME_BROWSER_UI_VIEWS_PERMISSIONS_CHIP_WEBUI_PERMISSION_CHIP_H_
 
+#include <optional>
 #include <string>
 
 #include "base/callback_list.h"
@@ -45,7 +46,8 @@ class WebUIPermissionChip : public PermissionChipInterface {
   void SetMessage(std::u16string message) override;
   void SetTooltipText(const std::u16string& tooltip) override;
   void SetTheme(PermissionChipTheme theme) override;
-  void SetUserDecision(permissions::PermissionAction user_decision) override;
+  void SetUserDecision(
+      std::optional<permissions::PermissionAction> user_decision) override;
   void SetBlockedIconShowing(bool should_show_blocked_icon) override;
   void SetPermissionPromptStyle(PermissionPromptStyle prompt_style) override;
   void AnimateCollapse(base::TimeDelta duration) override;
@@ -90,15 +92,21 @@ class WebUIPermissionChip : public PermissionChipInterface {
   toolbar_ui_api::mojom::PermissionChipStatePtr GetState() const;
 
   uint32_t state_token() const { return state_token_; }
-  void InvalidateStateToken() { ++state_token_; }
 
  private:
   friend class WebUIPermissionChipTest;
+  // For `InvalidateStateToken()`.
+  friend class WebUIPermissionDashboard;
 
   // How long `WaitForAnchor()` waits for the chip element to be shown before
   // timing out and running the callback anyway. `GetAnchor()` then returns a
   // fallback anchor.
   static constexpr base::TimeDelta kAnchorFallbackTimeout = base::Seconds(3);
+
+  // Bumps `state_token_` without pushing it to the WebUI. Private so that
+  // tokens are only invalidated through
+  // `WebUIPermissionDashboard::InvalidateStateTokens()`.
+  void InvalidateStateToken() { ++state_token_; }
 
   void NotifyVisibilityChanged();
   void UpdateState();
@@ -111,8 +119,8 @@ class WebUIPermissionChip : public PermissionChipInterface {
   // animation state changes (e.g. on navigations and prompt resets via
   // `ChipController`), and on tab or side panel task switches
   // (`InvalidateStateToken()`, via
-  // `WebUIPermissionDashboard::ResetTabState()`). The WebUI echoes the token it
-  // rendered the chip with in its click IPC
+  // `WebUIPermissionDashboard::InvalidateStateTokens()`). The WebUI echoes the
+  // token it rendered the chip with in its click IPC
   // (`OnLhsChipClicked()` in the main toolbar, `OnChipClicked()` in Contextual
   // Tasks), and `OnClickedIfCurrent()` drops clicks whose token doesn't match,
   // so actions don't run against an obsolete tab, task or request model.
@@ -123,8 +131,7 @@ class WebUIPermissionChip : public PermissionChipInterface {
   std::u16string message_;
   std::u16string tooltip_;
   PermissionChipTheme theme_ = PermissionChipTheme::kNormalVisibility;
-  permissions::PermissionAction user_decision_ =
-      permissions::PermissionAction::GRANTED;
+  std::optional<permissions::PermissionAction> user_decision_;
   bool should_show_blocked_icon_ = false;
   PermissionPromptStyle prompt_style_ = PermissionPromptStyle::kChip;
 

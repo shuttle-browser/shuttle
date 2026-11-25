@@ -6,6 +6,7 @@
 #include <memory>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/functional/bind.h"
 #include "base/logging.h"
@@ -188,6 +189,13 @@ class AppMenuFullscreenInteractiveTest : public InteractiveBrowserTest {
             },
             std::ref(waiter), is_fullscreen, browser()));
   }
+
+ private:
+#if BUILDFLAG(IS_MAC)
+  // Fake the macOS fullscreen transition, as real AppKit Space transitions can
+  // hang or fail on bots.
+  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen_;
+#endif
 };
 
 // Check Toggle Fullscreen
@@ -270,19 +278,24 @@ IN_PROC_BROWSER_TEST_F(AppMenuFullscreenInteractiveTest, ClosingTab) {
 }
 
 class AppMenuFullscreenButtonInteractiveTest
-    : public AppMenuFullscreenInteractiveTest {
+    : public AppMenuFullscreenInteractiveTest,
+      public testing::WithParamInterface<bool> {
  public:
   AppMenuFullscreenButtonInteractiveTest() {
-    scoped_feature_list_.InitWithFeatures(
+    std::vector<base::test::FeatureRef> enabled_features;
+    std::vector<base::test::FeatureRef> disabled_features;
+    if (GetParam()) {
+      enabled_features.push_back(features::kAppMenuGlowUp);
+    } else {
+      disabled_features.push_back(features::kAppMenuGlowUp);
+    }
 #if BUILDFLAG(IS_CHROMEOS)
-        // Rounded windows change the frame's minimum height when entering
-        // fullscreen, triggering synchronous
-        // Widget::OnSizeConstraintsChanged().
-        {chromeos::features::kFeatureManagementRoundedWindows},
-#else
-        {},
+    // Rounded windows change the frame's minimum height when entering
+    // fullscreen, triggering synchronous Widget::OnSizeConstraintsChanged().
+    enabled_features.push_back(
+        chromeos::features::kFeatureManagementRoundedWindows);
 #endif
-        {features::kAppMenuGlowUp});
+    scoped_feature_list_.InitWithFeatures(enabled_features, disabled_features);
   }
   ~AppMenuFullscreenButtonInteractiveTest() override = default;
 
@@ -290,15 +303,19 @@ class AppMenuFullscreenButtonInteractiveTest
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
+INSTANTIATE_TEST_SUITE_P(,
+                         AppMenuFullscreenButtonInteractiveTest,
+                         testing::Bool(),
+                         [](const testing::TestParamInfo<bool>& param) {
+                           return param.param ? "GlowUpEnabled"
+                                              : "GlowUpDisabled";
+                         });
+
 // Regression test for b/576555601: clicking the full screen button in the app
 // menu enters fullscreen and closes the menu while MenuController defers
 // MenuRunnerImpl destruction on the stack.
-IN_PROC_BROWSER_TEST_F(AppMenuFullscreenButtonInteractiveTest,
+IN_PROC_BROWSER_TEST_P(AppMenuFullscreenButtonInteractiveTest,
                        ToggleFullscreenFromMenuButton) {
-#if BUILDFLAG(IS_MAC)
-  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen;
-#endif
-
   static constexpr char kFullscreenButtonName[] = "FullscreenButton";
   const std::u16string fullscreen_tooltip =
       l10n_util::GetStringUTF16(IDS_ACCNAME_FULLSCREEN);

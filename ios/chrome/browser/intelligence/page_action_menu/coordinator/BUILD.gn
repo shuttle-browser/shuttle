@@ -23,7 +23,6 @@ source_set("coordinator") {
     "//ios/chrome/browser/authentication/ui_bundled:continuation",
     "//ios/chrome/browser/authentication/ui_bundled/signin",
     "//ios/chrome/browser/content_settings/model",
-    "//ios/chrome/browser/dom_distiller/model",
     "//ios/chrome/browser/infobars/model",
     "//ios/chrome/browser/infobars/model:public",
     "//ios/chrome/browser/infobars/model/overlays",
@@ -64,9 +63,11 @@ source_set("coordinator") {
     "//ios/chrome/browser/signin/model:authentication_service_factory",
     "//ios/chrome/browser/translate/model",
     "//ios/chrome/browser/web/model",
+    "//ios/chrome/browser/web_distiller/model",
     "//ios/public/provider/chrome/browser/bwg:gemini_api",
     "//ios/web/public",
     "//ios/web/public/permissions",
+    "//ui/base/mojom",
   ]
 }
 
@@ -97,6 +98,7 @@ source_set("unit_tests") {
     "//ios/chrome/browser/intelligence/bwg/model:test_support",
     "//ios/chrome/browser/intelligence/features",
     "//ios/chrome/browser/intelligence/page_action_menu/ui",
+    "//ios/chrome/browser/intelligence/page_action_menu/utils",
     "//ios/chrome/browser/optimization_guide/model",
     "//ios/chrome/browser/permissions/model:tab_helper",
     "//ios/chrome/browser/reader_mode/model",

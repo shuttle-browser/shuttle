@@ -50,6 +50,10 @@
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/frame/find_in_page.mojom.h"
 
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/path_utils.h"
+#endif
+
 #if BUILDFLAG(IS_WIN)
 #include "base/functional/callback_helpers.h"
 #include "base/test/bind.h"
@@ -172,19 +176,16 @@ struct CompareResult {
   MHTMLFileInfo file;
 };
 
-// A dummy WebContentsDelegate which tracks the results of a find operation.
-class FindTrackingDelegate : public WebContentsDelegate,
-                             public WebContentsObserver {
+// A find-in-page results tracker.
+class FindTrackingObserver : public WebContentsObserver {
  public:
-  explicit FindTrackingDelegate(const std::string& search) : search_(search) {}
+  explicit FindTrackingObserver(const std::string& search) : search_(search) {}
 
-  FindTrackingDelegate(const FindTrackingDelegate&) = delete;
-  FindTrackingDelegate& operator=(const FindTrackingDelegate&) = delete;
+  FindTrackingObserver(const FindTrackingObserver&) = delete;
+  FindTrackingObserver& operator=(const FindTrackingObserver&) = delete;
 
   // Returns number of results.
   int Wait(WebContents* web_contents) {
-    WebContentsDelegate* old_delegate = web_contents->GetDelegate();
-    web_contents->SetDelegate(this);
     Observe(web_contents);
 
     auto options = blink::mojom::FindOptions::New();
@@ -192,10 +193,9 @@ class FindTrackingDelegate : public WebContentsDelegate,
     options->match_case = false;
 
     web_contents->Find(base::UTF8ToUTF16(search_), std::move(options),
-                       /*skip_delay=*/false, [](int request_id) {});
+                       /*skip_delay=*/false,
+                       [this](int request_id) { request_id_ = request_id; });
     run_loop_.Run();
-
-    web_contents->SetDelegate(old_delegate);
 
     return matches_;
   }
@@ -205,7 +205,7 @@ class FindTrackingDelegate : public WebContentsDelegate,
                            const gfx::Rect& selection_rect,
                            int active_match_ordinal,
                            bool final_update) override {
-    if (final_update) {
+    if (request_id == request_id_ && final_update) {
       matches_ = number_of_matches;
       run_loop_.Quit();
     }
@@ -214,6 +214,7 @@ class FindTrackingDelegate : public WebContentsDelegate,
  private:
   std::string search_;
   int matches_ = -1;
+  int request_id_ = -1;
   base::RunLoop run_loop_;
 };
 
@@ -561,8 +562,8 @@ class MHTMLGenerationTest : public ContentBrowserTest,
     }
 
     for (const auto& expected_substring : expected_substrings) {
-      FindTrackingDelegate delegate(expected_substring);
-      int actual_number_of_matches = delegate.Wait(shell()->web_contents());
+      FindTrackingObserver observer(expected_substring);
+      int actual_number_of_matches = observer.Wait(shell()->web_contents());
       EXPECT_EQ(1, actual_number_of_matches)
           << "Verifying that \"" << expected_substring << "\" appears "
           << "exactly once in the text of web contents of "
@@ -570,8 +571,8 @@ class MHTMLGenerationTest : public ContentBrowserTest,
     }
 
     for (const auto& forbidden_substring : forbidden_substrings) {
-      FindTrackingDelegate delegate(forbidden_substring);
-      int actual_number_of_matches = delegate.Wait(shell()->web_contents());
+      FindTrackingObserver observer(forbidden_substring);
+      int actual_number_of_matches = observer.Wait(shell()->web_contents());
       EXPECT_EQ(0, actual_number_of_matches)
           << "Verifying that \"" << forbidden_substring << "\" doesn't "
           << "appear in the text of web contents of "
@@ -632,6 +633,43 @@ IN_PROC_BROWSER_TEST_F(MHTMLGenerationTest, GenerateMHTML) {
   EXPECT_THAT(info.content(),
               HasSubstr("Content-Transfer-Encoding: quoted-printable"));
 }
+
+#if BUILDFLAG(IS_ANDROID)
+// Save Page on Android writes to a content URI. The existing document must be
+// truncated even though the descriptor handed to the renderer is append-only.
+IN_PROC_BROWSER_TEST_F(MHTMLGenerationTest, GenerateMHTMLToContentUri) {
+  // The APK's FileProvider only exposes cache/web_bundle/; see
+  // content/shell/android/browsertests_apk/res/xml/file_paths.xml.
+  base::FilePath path;
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    base::FilePath cache_dir;
+    ASSERT_TRUE(base::android::GetCacheDirectory(&cache_dir));
+    base::FilePath dir = cache_dir.Append(FILE_PATH_LITERAL("web_bundle"));
+    ASSERT_TRUE(base::CreateDirectory(dir));
+    path = dir.Append(FILE_PATH_LITERAL("mhtml_generation_test.mht"));
+    ASSERT_TRUE(base::WriteFile(path, std::string(1 << 20, 'X')));
+  }
+  absl::Cleanup delete_file = [path] {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    base::DeleteFile(path);
+  };
+  base::FilePath content_uri(
+      "content://org.chromium.content_browsertests_apk.FileProvider/"
+      "web_bundle/mhtml_generation_test.mht");
+
+  GenerateMHTML(content_uri,
+                embedded_test_server()->GetURL("/simple_page.html"));
+
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  std::string content;
+  ASSERT_TRUE(base::ReadFileToString(path, &content));
+  EXPECT_THAT(content,
+              HasSubstr("Content-Transfer-Encoding: quoted-printable"));
+  EXPECT_THAT(content, Not(HasSubstr("XXXX")));
+  EXPECT_EQ(static_cast<int64_t>(content.size()), file_size());
+}
+#endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_WIN)
 // This Windows only test generates an MHTML file in a path that is explicitly

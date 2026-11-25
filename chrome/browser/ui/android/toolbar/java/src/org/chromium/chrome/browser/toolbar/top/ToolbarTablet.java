@@ -13,6 +13,7 @@ import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Color;
+import android.graphics.drawable.Drawable;
 import android.util.AttributeSet;
 import android.view.View;
 import android.view.ViewGroup;
@@ -32,6 +33,7 @@ import androidx.core.widget.ImageViewCompat;
 import org.chromium.base.Callback;
 import org.chromium.base.CallbackController;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.SupplierUtils;
 import org.chromium.build.annotations.Initializer;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
@@ -42,6 +44,7 @@ import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
 import org.chromium.chrome.browser.omnibox.status.StatusCoordinator;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
 import org.chromium.chrome.browser.theme.ThemeColorProvider;
 import org.chromium.chrome.browser.toolbar.R;
@@ -133,6 +136,10 @@ public class ToolbarTablet extends ToolbarLayout {
 
     private @Nullable AiOverlayMicrophoneButtonView mAiOverlayMicrophoneButton;
 
+    private @Nullable ImageButton mTtcButton;
+    private @Nullable Drawable mTtcButtonDefaultBackground;
+    private boolean mTtcButtonWanted;
+
     private final @Nullable ToolbarWidthConsumer[] mToolbarWidthConsumers =
             new ToolbarWidthConsumer[ToolbarComponentId.COUNT];
 
@@ -164,6 +171,7 @@ public class ToolbarTablet extends ToolbarLayout {
         mFixedHeightBackground = findViewById(R.id.toolbar_tablet_fixed_height_bg);
         mToolbarTabletLayout = findViewById(R.id.toolbar_tablet_layout);
         mAiOverlayMicrophoneButton = findViewById(R.id.ai_overlay_microphone_button);
+        mTtcButton = findViewById(R.id.ttc_toolbar_button);
 
         // Initialize values needed for showing/hiding toolbar buttons when the activity size
         // changes.
@@ -263,7 +271,7 @@ public class ToolbarTablet extends ToolbarLayout {
         VisibleUrlText visibleUrlText =
                 new VisibleUrlText(
                         urlBarData.displayText, mLocationBar.getOmniboxVisibleTextPrefixHint());
-        int tabCount = mTabCountSupplier == null ? 0 : mTabCountSupplier.get();
+        int tabCount = SupplierUtils.getOr(mTabCountSupplier, 0);
 
         return new TabletCaptureStateToken(
                 mHomeButton,
@@ -309,6 +317,9 @@ public class ToolbarTablet extends ToolbarLayout {
         }
         if (mAiOverlayMicrophoneButton != null) {
             mAiOverlayMicrophoneButton.setIconTint(activityFocusTint);
+        }
+        if (mTtcButton != null) {
+            ImageViewCompat.setImageTintList(mTtcButton, activityFocusTint);
         }
     }
 
@@ -423,7 +434,8 @@ public class ToolbarTablet extends ToolbarLayout {
             ThemeColorProvider themeColorProvider,
             IncognitoStateProvider incognitoStateProvider,
             @Nullable Supplier<Integer> incognitoWindowCountSupplier,
-            WindowAndroid windowAndroid) {
+            WindowAndroid windowAndroid,
+            OmniboxResourceProvider omniboxResourceProvider) {
         assert tabSwitcherButtonCoordinator != null;
         super.initialize(
                 toolbarDataProvider,
@@ -443,7 +455,8 @@ public class ToolbarTablet extends ToolbarLayout {
                 themeColorProvider,
                 incognitoStateProvider,
                 incognitoWindowCountSupplier,
-                windowAndroid);
+                windowAndroid,
+                omniboxResourceProvider);
         mReloadButtonCoordinator = assertNonNull(reloadButtonCoordinator);
         mBackButtonCoordinator = assertNonNull(backButtonCoordinator);
         mForwardButtonCoordinator = assertNonNull(forwardButtonCoordinator);
@@ -483,6 +496,9 @@ public class ToolbarTablet extends ToolbarLayout {
         if (ToolbarFeatures.isAiOverlayDialogEnabled()) {
             mToolbarWidthConsumers[ToolbarComponentId.AI_OVERLAY_MICROPHONE_BUTTON] =
                     new AiOverlayMicrophoneButtonWidthConsumer();
+        }
+        if (ToolbarFeatures.isTtcToolbarButtonSupported()) {
+            mToolbarWidthConsumers[ToolbarComponentId.TTC_BUTTON] = new TtcButtonWidthConsumer();
         }
     }
 
@@ -584,8 +600,6 @@ public class ToolbarTablet extends ToolbarLayout {
     @Override
     public void onWidthConsumerVisibilityChanged() {
         assert !mIsDestroyed;
-
-        if (!ToolbarUtils.isToolbarTabletResizeRefactorEnabled()) return;
 
         // Re-allocate width to account for a change in a width consumer's visibility.
         int unspecifiedSpec = MeasureSpec.makeMeasureSpec(0, MeasureSpec.UNSPECIFIED);
@@ -948,7 +962,6 @@ public class ToolbarTablet extends ToolbarLayout {
 
         @Override
         public int updateVisibility(int availableWidth) {
-            assert ToolbarUtils.isToolbarTabletResizeRefactorEnabled();
             int width =
                     Math.min(
                             availableWidth,
@@ -984,7 +997,6 @@ public class ToolbarTablet extends ToolbarLayout {
 
         @Override
         public int updateVisibility(int availableWidth) {
-            assert ToolbarUtils.isToolbarTabletResizeRefactorEnabled();
             if (mOptionalButtonForciblyHidden) {
                 setOptionalButtonVisibility(false);
                 mHasSpaceToShow = false;
@@ -994,6 +1006,64 @@ public class ToolbarTablet extends ToolbarLayout {
             int width = getResources().getDimensionPixelSize(R.dimen.toolbar_button_width);
             mHasSpaceToShow = availableWidth >= width;
             setOptionalButtonVisibility(mHasSpaceToShow);
+            return Math.min(availableWidth, width);
+        }
+
+        @Override
+        public int updateVisibilityWithAnimation(
+                int availableWidth, Collection<Animator> animators) {
+            return updateVisibility(availableWidth);
+        }
+    }
+
+    /**
+     * Shows or hides the TTC button, and highlights it while a TTC session is in progress. Whether
+     * it actually shows also depends on the available width.
+     *
+     * @param wanted Whether the window's TTC entry point asks for the button.
+     * @param active Whether a TTC session is in progress, which highlights the button.
+     * @param onClickListener Invoked when the button is clicked.
+     */
+    void setTtcButtonState(
+            boolean wanted, boolean active, View.@Nullable OnClickListener onClickListener) {
+        if (mTtcButton == null) return;
+        mTtcButton.setOnClickListener(onClickListener);
+        if (mTtcButtonDefaultBackground == null) {
+            mTtcButtonDefaultBackground = mTtcButton.getBackground();
+        }
+        mTtcButton.setActivated(active);
+        mTtcButton.setBackground(
+                active
+                        ? getContext().getDrawable(R.drawable.ttc_toolbar_button_active_background)
+                        : mTtcButtonDefaultBackground);
+        if (mTtcButtonWanted == wanted) return;
+        mTtcButtonWanted = wanted;
+        if (!wanted) mTtcButton.setVisibility(View.GONE);
+        onWidthConsumerVisibilityChanged();
+    }
+
+    private class TtcButtonWidthConsumer implements ToolbarWidthConsumer {
+        private boolean mHasSpaceToShow;
+
+        @Override
+        public boolean isVisible() {
+            return mTtcButton != null && mTtcButton.getVisibility() == View.VISIBLE;
+        }
+
+        @Override
+        public boolean hasSpaceToShow() {
+            return mHasSpaceToShow;
+        }
+
+        @Override
+        public int updateVisibility(int availableWidth) {
+            if (mTtcButton == null || !mTtcButtonWanted) {
+                if (mTtcButton != null) mTtcButton.setVisibility(View.GONE);
+                return 0;
+            }
+            int width = getResources().getDimensionPixelSize(R.dimen.toolbar_button_width);
+            mHasSpaceToShow = availableWidth >= width;
+            mTtcButton.setVisibility(mHasSpaceToShow ? View.VISIBLE : View.GONE);
             return Math.min(availableWidth, width);
         }
 

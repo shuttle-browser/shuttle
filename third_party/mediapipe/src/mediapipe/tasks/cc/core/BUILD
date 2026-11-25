@@ -12,13 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@org_tensorflow//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "cc_test_with_tflite")
+load("@litert//tflite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite", "cc_test_with_tflite")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
 package(default_visibility = ["//visibility:public"])
 
 licenses(["notice"])
+
+cc_library(
+    name = "tasks_logging_factory",
+    visibility = ["//mediapipe/tasks:__subpackages__"],
+    deps = ["//mediapipe/tasks/cc/core/logging/factory:logging_factory"],
+)
 
 cc_library(
     name = "base_options",
@@ -33,14 +39,24 @@ cc_library(
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
-        "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
+        "@litert//tflite/core/api:op_resolver",
+        "@litert//tflite/kernels:builtin_ops",
     ],
 )
 
 cc_library(
     name = "host_environment",
+    srcs = ["host_environment.cc"],
     hdrs = ["host_environment.h"],
+    deps = [
+        "@com_google_absl//absl/log",
+        "@com_google_absl//absl/log:absl_log",
+    ],
+)
+
+cc_library(
+    name = "running_mode",
+    hdrs = ["running_mode.h"],
 )
 
 cc_test(
@@ -65,13 +81,12 @@ cc_library(
     srcs = ["external_file_handler.cc"],
     hdrs = ["external_file_handler.h"],
     deps = [
-        "//mediapipe/framework/port:integral_types",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "//mediapipe/util:resource_util",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -83,7 +98,7 @@ cc_library_with_tflite(
     srcs = ["mediapipe_builtin_op_resolver.cc"],
     hdrs = ["mediapipe_builtin_op_resolver.h"],
     tflite_deps = [
-        "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
+        "@litert//tflite/kernels:builtin_ops",
     ],
     deps = [
         "//mediapipe/tasks/cc/text/custom_ops/ragged:ragged_tensor_to_tensor_tflite",
@@ -117,7 +132,6 @@ cc_library_with_tflite(
         "//mediapipe/framework:subgraph",
         "//mediapipe/framework/api2:builder",
         "//mediapipe/framework/api2:port",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/proto:acceleration_cc_proto",
         "//mediapipe/tasks/cc/core/proto:base_options_cc_proto",
@@ -126,6 +140,7 @@ cc_library_with_tflite(
         "//mediapipe/tasks/cc/core/proto:model_resources_calculator_cc_proto",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -139,14 +154,13 @@ cc_library_with_tflite(
     srcs = ["model_resources.cc"],
     hdrs = ["model_resources.h"],
     tflite_deps = [
-        "@org_tensorflow//tensorflow/lite:framework_stable",
-        "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
-        "@org_tensorflow//tensorflow/lite/tools:verifier",
+        "@litert//tflite:framework_stable",
+        "@litert//tflite/kernels:builtin_ops",
+        "@litert//tflite/tools:verifier",
     ],
     deps = [
         ":external_file_handler",
         "//mediapipe/framework/api2:packet",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "//mediapipe/tasks/cc/metadata:metadata_extractor",
@@ -155,10 +169,11 @@ cc_library_with_tflite(
         "//mediapipe/util/tflite:error_reporter",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite/core/api:error_reporter",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite/core/api:error_reporter",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )
 
@@ -170,9 +185,9 @@ cc_test_with_tflite(
     ],
     tflite_deps = [
         ":model_resources",
-        "@org_tensorflow//tensorflow/lite:framework_stable",
-        "@org_tensorflow//tensorflow/lite:test_util",
-        "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
+        "@litert//tflite:framework_stable",
+        "@litert//tflite:test_util",
+        "@litert//tflite/kernels:builtin_ops",
     ],
     deps = [
         ":utils",
@@ -185,9 +200,9 @@ cc_test_with_tflite(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:cord",
-        "@org_tensorflow//tensorflow/lite:mutable_op_resolver",
-        "@org_tensorflow//tensorflow/lite/c:common",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite:mutable_op_resolver",
+        "@litert//tflite/c:common",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )
 
@@ -197,7 +212,7 @@ cc_library_with_tflite(
     hdrs = ["model_resources_cache.h"],
     tflite_deps = [
         ":model_resources",
-        "@org_tensorflow//tensorflow/lite/kernels:builtin_ops",
+        "@litert//tflite/kernels:builtin_ops",
     ],
     deps = [
         ":model_asset_bundle_resources",
@@ -207,9 +222,10 @@ cc_library_with_tflite(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )
 
@@ -228,8 +244,9 @@ cc_library_with_tflite(
         "//mediapipe/tasks/cc/core/proto:model_resources_calculator_cc_proto",
         "//mediapipe/tasks/cc/metadata:metadata_extractor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite/core/api:op_resolver",
     ],
     alwayslink = 1,
 )
@@ -252,8 +269,8 @@ cc_test(
         "@com_google_absl//absl/status",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite:test_util",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite:test_util",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )
 
@@ -268,26 +285,28 @@ cc_library_with_tflite(
     ],
     deps = [
         ":host_environment",
+        ":running_mode",
+        ":tasks_logging_factory",
         "//mediapipe/framework:calculator_cc_proto",
         "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework:executor",
-        "//mediapipe/framework/port:status",
+        "//mediapipe/framework:memory_manager",
+        "//mediapipe/framework:memory_manager_service",
         "//mediapipe/framework/tool:name_util",
         "//mediapipe/gpu:gpu_shared_data_internal",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/logging:tasks_dummy_logger",
         "//mediapipe/tasks/cc/core/logging:tasks_logger",
-        "//mediapipe/tasks/cc/core/logging/factory:logging_factory",
         "//mediapipe/tasks/cc/core/logging/factory:logging_factory_hdr",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/synchronization",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )
 
@@ -301,12 +320,17 @@ cc_test_with_tflite(
         ":task_runner",
         ":model_resources",
         ":model_resources_cache",
-        "@org_tensorflow//tensorflow/lite:test_util",
+        "@litert//tflite:test_util",
     ],
     deps = [
+        ":running_mode",
         "//mediapipe/calculators/core:pass_through_calculator",
         "//mediapipe/calculators/core:side_packet_to_stream_calculator",
         "//mediapipe/framework:calculator_cc_proto",
+        "//mediapipe/framework:calculator_framework",
+        "//mediapipe/framework:graph_service",
+        "//mediapipe/framework:memory_manager",
+        "//mediapipe/framework:memory_manager_service",
         "//mediapipe/framework:packet",
         "//mediapipe/framework/port:gtest_main",
         "//mediapipe/framework/port:parse_text_proto",
@@ -337,19 +361,20 @@ cc_library_with_tflite(
         ":task_runner",
     ],
     deps = [
+        ":running_mode",
         ":utils",
         "//mediapipe/framework:calculator_cc_proto",
         "//mediapipe/framework:executor",
         "//mediapipe/framework/port:requires",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/proto:base_options_cc_proto",
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "//mediapipe/tasks/cc/core/proto:inference_subgraph_cc_proto",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
-        "@org_tensorflow//tensorflow/lite/core/api:op_resolver",
+        "@litert//tflite/core/api:op_resolver",
     ],
 )
 
@@ -379,13 +404,15 @@ cc_library(
     hdrs = ["model_asset_bundle_resources.h"],
     deps = [
         ":external_file_handler",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "//mediapipe/tasks/cc/metadata/utils:zip_utils",
+        "//mediapipe/tasks/metadata:bundle_manifest_cc_proto",
         "//mediapipe/util:resource_util",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
@@ -402,10 +429,33 @@ cc_test(
         ":model_asset_bundle_resources",
         ":model_resources",
         ":utils",
+        "//mediapipe/framework:calculator_framework",
         "//mediapipe/framework/port:gtest_main",
-        "//mediapipe/framework/port:status",
         "//mediapipe/tasks/cc:common",
         "//mediapipe/tasks/cc/core/proto:external_file_cc_proto",
         "//mediapipe/tasks/cc/metadata/utils:zip_utils",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:cord",
+    ],
+)
+
+cc_library(
+    name = "embedding_provider",
+    hdrs = ["embedding_provider.h"],
+    deps = [
+        "@com_google_absl//absl/status:statusor",
+    ],
+)
+
+cc_test(
+    name = "embedding_provider_test",
+    srcs = ["embedding_provider_test.cc"],
+    deps = [
+        ":embedding_provider",
+        "//mediapipe/framework/port:gtest_main",
+        "//mediapipe/framework/port:status_matchers",
+        "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:statusor",
     ],
 )

@@ -363,7 +363,6 @@ IN_PROC_BROWSER_TEST_F(ExtensionApiTest, ChromeRuntimeReload) {
                                                      ReplyBehavior::kWillReply);
   const Extension* extension = LoadExtension(dir.UnpackedPath());
   ASSERT_TRUE(extension);
-  const ExtensionId extension_id = extension->id();
   EXPECT_TRUE(ready_listener_reload.WaitUntilSatisfied());
 
   // This listener will respond to the ready message from the
@@ -1801,19 +1800,16 @@ INSTANTIATE_TEST_SUITE_P(DockedDevTools,
 // | Enable Disabled Extension  | (none)      | "enable"          | fired     |
 // |                            |             |  (previousVersion |           |
 // |                            |             |  = current)       |           |
-// | Enable After Update While  | "update"    | "update"          | fired (*) |
+// | Enable After Update While  | "update"    | "update"          | fired     |
 // |  Disabled                  |             |  (previousVersion |           |
 // |                            |             |  = pre-update)    |           |
-// | Enable After Install While | "install"   | "install"         | fired (*) |
+// | Enable After Install While | "install"   | "install"         | fired     |
 // |  Disabled                  |             |                   |           |
 // | Extension Reload           | (none)      | "reload"          | (none)    |
 // | Browser Startup            | (none)      | "startup"         | (none)    |
 // | Browser Update             | "chrome_    | "browser_         | (none)    |
 // |                            |  update"    |  update"          |           |
 // +----------------------------+-------------+-------------------+-----------+
-// (*) `chrome.runtime.onEnabled` is dispatched but not yet delivered in these
-// cases, because the install or update cleared the persisted listeners
-// (crbug.com/573173867).
 //
 // Browser tests for `chrome.runtime.onEnabled` and
 // `chrome.runtime.onExtensionLoaded` lifecycle events verifying the W3C
@@ -1933,12 +1929,13 @@ class RuntimeLifecycleEventsApiTest : public RuntimeApiTest {
     // `"loaded:install:"` or `"loaded:update:<version>"` message, so
     // round-trip a script through the service worker before checking that it
     // wasn't received.
-    // TODO(crbug.com/573173867): An `"enable"` event dispatched here would
-    // currently be dropped anyway, because installing or updating the
-    // extension (including an unpacked reload) cleared its persisted listeners
-    // and `"enable"` doesn't wait for the background context. Once it does,
-    // this check will also catch a regression in the `"install"` and
-    // `"update"` precedence. Until then,
+    // TODO(crbug.com/573173867): A `chrome.runtime.onExtensionLoaded` event
+    // with reason `"enable"` dispatched here would currently be dropped anyway,
+    // because installing or updating the extension (including an unpacked
+    // reload) cleared its persisted listeners, and unlike
+    // `chrome.runtime.onEnabled`, it doesn't wait for the background context.
+    // Once it does, this check will also catch a regression in the `"install"`
+    // and `"update"` precedence. Until then,
     // `RuntimeAPIOnExtensionLoadedPrecedenceTest` in
     // `extensions/browser/api/runtime/runtime_api_unittest.cc` covers how
     // `RuntimeAPI` handles the install, update and enable notifications.
@@ -2253,6 +2250,7 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
 // - `chrome.runtime.onExtensionLoaded` is fired only with reason `"update"` and
 //   `previousVersion` set to the version from before the update (not with
 //   reason `"enable"`, since `"update"` takes precedence).
+// - `chrome.runtime.onEnabled` is fired.
 // - `chrome.runtime.onInstalled` is fired with reason `"update"`.
 IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
                        OnExtensionLoadedOnEnableAfterUpdateWhileDisabled) {
@@ -2275,10 +2273,12 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
   ASSERT_TRUE(disabled_extension);
   EXPECT_EQ("2.0", disabled_extension->version().GetString());
 
-  // Enable the extension and verify that `onInstalled` (`"update"`) and
-  // `onExtensionLoaded` (`"update"` with `previousVersion` `"1.0"`) are
-  // received.
+  // Enable the extension and verify that these events are received:
+  // - `onInstalled` (`"update"`).
+  // - `onEnabled`.
+  // - `onExtensionLoaded` (`"update"` with `previousVersion` `"1.0"`).
   ExtensionTestMessageListener installed_listener("installed:update:1.0");
+  ExtensionTestMessageListener enabled_listener("enabled");
   ExtensionTestMessageListener loaded_listener("loaded:update:1.0");
   ExtensionTestMessageListener loaded_enable_failure_listener(
       "loaded:enable:2.0");
@@ -2286,6 +2286,10 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
   {
     SCOPED_TRACE("Waiting for update install event message");
     ASSERT_TRUE(installed_listener.WaitUntilSatisfied());
+  }
+  {
+    SCOPED_TRACE("Waiting for enabled event message");
+    ASSERT_TRUE(enabled_listener.WaitUntilSatisfied());
   }
   {
     SCOPED_TRACE("Waiting for update extension loaded event message");
@@ -2301,6 +2305,7 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
 // - `chrome.runtime.onExtensionLoaded` is fired only with reason `"update"` and
 //   `previousVersion` set to the version from before the update (not with
 //   reason `"enable"`, since `"update"` takes precedence).
+// - `chrome.runtime.onEnabled` is fired.
 // - `chrome.runtime.onInstalled` is fired with reason `"update"`.
 IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
                        OnExtensionLoadedOnEnableAfterPermissionIncreaseUpdate) {
@@ -2326,10 +2331,13 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
   ASSERT_TRUE(disabled_extension);
   EXPECT_EQ("2.0", disabled_extension->version().GetString());
 
-  // Grant the permissions and enable the extension, and verify that
-  // `onInstalled` (`"update"`) and `onExtensionLoaded` (`"update"` with
-  // `previousVersion` `"1.0"`) are received.
+  // Grant the permissions and enable the extension, and verify that these
+  // events are received:
+  // - `onInstalled` (`"update"`).
+  // - `onEnabled`.
+  // - `onExtensionLoaded` (`"update"` with `previousVersion` `"1.0"`).
   ExtensionTestMessageListener installed_listener("installed:update:1.0");
+  ExtensionTestMessageListener enabled_listener("enabled");
   ExtensionTestMessageListener loaded_listener("loaded:update:1.0");
   ExtensionTestMessageListener loaded_enable_failure_listener(
       "loaded:enable:2.0");
@@ -2338,6 +2346,10 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
   {
     SCOPED_TRACE("Waiting for update install event message");
     ASSERT_TRUE(installed_listener.WaitUntilSatisfied());
+  }
+  {
+    SCOPED_TRACE("Waiting for enabled event message");
+    ASSERT_TRUE(enabled_listener.WaitUntilSatisfied());
   }
   {
     SCOPED_TRACE("Waiting for update extension loaded event message");
@@ -2351,6 +2363,7 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
 // Test that when an extension is installed while disabled and then enabled:
 // - `chrome.runtime.onExtensionLoaded` is fired only with reason `"install"`
 //   (not with reason `"enable"`).
+// - `chrome.runtime.onEnabled` is fired.
 // - `chrome.runtime.onInstalled` is fired with reason `"install"`.
 IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
                        OnExtensionLoadedOnEnableAfterInstallWhileDisabled) {
@@ -2381,9 +2394,12 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
   ASSERT_TRUE(
       extension_registry()->disabled_extensions().Contains(extension_id));
 
-  // Enable the extension and verify that `onInstalled` (`"install"`) and
-  // `onExtensionLoaded` (`"install"`) are received.
+  // Enable the extension and verify that these events are received:
+  // - `onInstalled` (`"install"`).
+  // - `onEnabled`.
+  // - `onExtensionLoaded` (`"install"`).
   ExtensionTestMessageListener installed_listener("installed:install:");
+  ExtensionTestMessageListener enabled_listener("enabled");
   ExtensionTestMessageListener loaded_listener("loaded:install:");
   ExtensionTestMessageListener loaded_enable_failure_listener(
       "loaded:enable:1.0");
@@ -2391,6 +2407,10 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
   {
     SCOPED_TRACE("Waiting for install event message");
     ASSERT_TRUE(installed_listener.WaitUntilSatisfied());
+  }
+  {
+    SCOPED_TRACE("Waiting for enabled event message");
+    ASSERT_TRUE(enabled_listener.WaitUntilSatisfied());
   }
   {
     SCOPED_TRACE("Waiting for install extension loaded event message");
@@ -2407,6 +2427,7 @@ IN_PROC_BROWSER_TEST_F(RuntimeLifecycleEventsApiTest,
 //   `previousVersion` set to the extension's version (not with reason
 //   `"enable"`, since `"update"` takes precedence), because the unpacked reload
 //   goes through the install path as an update to the same version.
+// - `chrome.runtime.onEnabled` is fired.
 // - `chrome.runtime.onInstalled` is fired with reason `"update"`.
 IN_PROC_BROWSER_TEST_F(
     RuntimeLifecycleEventsApiTest,
@@ -2433,10 +2454,12 @@ IN_PROC_BROWSER_TEST_F(
   ASSERT_TRUE(
       extension_registry()->disabled_extensions().Contains(extension_id));
 
-  // Enable the extension and verify that `onInstalled` (`"update"`) and
-  // `onExtensionLoaded` (`"update"` with `previousVersion` `"1.0"`) are
-  // received.
+  // Enable the extension and verify that these events are received:
+  // - `onInstalled` (`"update"`).
+  // - `onEnabled`.
+  // - `onExtensionLoaded` (`"update"` with `previousVersion` `"1.0"`).
   ExtensionTestMessageListener installed_listener("installed:update:1.0");
+  ExtensionTestMessageListener enabled_listener("enabled");
   ExtensionTestMessageListener loaded_listener("loaded:update:1.0");
   ExtensionTestMessageListener loaded_enable_failure_listener(
       "loaded:enable:1.0");
@@ -2444,6 +2467,10 @@ IN_PROC_BROWSER_TEST_F(
   {
     SCOPED_TRACE("Waiting for update install event message");
     ASSERT_TRUE(installed_listener.WaitUntilSatisfied());
+  }
+  {
+    SCOPED_TRACE("Waiting for enabled event message");
+    ASSERT_TRUE(enabled_listener.WaitUntilSatisfied());
   }
   {
     SCOPED_TRACE("Waiting for update extension loaded event message");
@@ -2932,6 +2959,104 @@ IN_PROC_BROWSER_TEST_F(RuntimeAsyncListenerRegistrationApiTest,
   EXPECT_EQ(ListenerRegistrationPhaseMap::State::kCommitted,
             service_worker_test_utils::GetListenerRegistrationPhaseState(
                 *profile(), extension->id()));
+}
+
+class RuntimeGetDocumentIdApiTest : public RuntimeApiTest {
+ private:
+  base::test::ScopedFeatureList feature_list_{
+      extensions_features::kApiRuntimeGetDocumentId};
+};
+
+IN_PROC_BROWSER_TEST_F(RuntimeGetDocumentIdApiTest, GetDocumentId) {
+  ASSERT_TRUE(StartEmbeddedTestServer());
+
+  static constexpr char kManifest[] =
+      R"({
+           "name": "runtime.getDocumentId test",
+           "version": "1.0",
+           "manifest_version": 3,
+           "background": {
+             "service_worker": "background.js"
+           },
+           "content_scripts": [{
+             "matches": ["*://*/title1.html"],
+             "js": ["content_script.js"]
+           }]
+         })";
+
+  static constexpr char kBackgroundJs[] =
+      R"(chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
+           chrome.test.assertEq(undefined, chrome.runtime.getDocumentId);
+           sendResponse({senderDocumentId: sender.documentId});
+         });)";
+
+  static constexpr char kContentScriptJs[] =
+      R"(chrome.test.runTests([
+           async function getDocumentIdForWindowAndFrame() {
+             const mainDocId = chrome.runtime.getDocumentId(window);
+             chrome.test.assertTrue(typeof mainDocId === 'string');
+             chrome.test.assertEq(32, mainDocId.length);
+
+             const response = await chrome.runtime.sendMessage('ping');
+             chrome.test.assertEq(response.senderDocumentId, mainDocId);
+
+             const iframe = document.createElement('iframe');
+             iframe.src = '/title2.html';
+             await new Promise((resolve) => {
+               iframe.onload = resolve;
+               document.body.appendChild(iframe);
+             });
+
+             const frameDocIdFromElement =
+                 chrome.runtime.getDocumentId(iframe);
+             const frameDocIdFromWindow =
+                 chrome.runtime.getDocumentId(iframe.contentWindow);
+             chrome.test.assertEq(frameDocIdFromElement, frameDocIdFromWindow);
+             chrome.test.assertNe(mainDocId, frameDocIdFromElement);
+
+             // Detaching the frame should cause getDocumentId to throw.
+             const detachedWindow = iframe.contentWindow;
+             iframe.remove();
+             chrome.test.assertThrows(
+                 () => chrome.runtime.getDocumentId(iframe),
+                 /Invalid target/);
+             chrome.test.assertThrows(
+                 () => chrome.runtime.getDocumentId(detachedWindow),
+                 /Invalid target/);
+             chrome.test.assertThrows(
+                 () => chrome.runtime.getDocumentId(document.body),
+                 /Invalid target/);
+             chrome.test.assertThrows(
+                 () => chrome.runtime.getDocumentId({}),
+                 /Invalid target/);
+
+             chrome.test.sendMessage(mainDocId, () => {
+               chrome.test.succeed();
+             });
+           }
+         ]);)";
+
+  TestExtensionDir test_dir;
+  test_dir.WriteManifest(kManifest);
+  test_dir.WriteFile(FILE_PATH_LITERAL("background.js"), kBackgroundJs);
+  test_dir.WriteFile(FILE_PATH_LITERAL("content_script.js"), kContentScriptJs);
+
+  ResultCatcher catcher;
+  ExtensionTestMessageListener doc_id_listener(ReplyBehavior::kWillReply);
+  const Extension* extension = LoadExtension(test_dir.UnpackedPath());
+  ASSERT_TRUE(extension);
+
+  ASSERT_TRUE(NavigateToURL(GetActiveWebContents(),
+                            embedded_test_server()->GetURL("/title1.html")));
+  ASSERT_TRUE(doc_id_listener.WaitUntilSatisfied());
+
+  content::RenderFrameHost* main_frame =
+      GetActiveWebContents()->GetPrimaryMainFrame();
+  EXPECT_EQ(ExtensionApiFrameIdMap::GetDocumentId(main_frame).ToString(),
+            doc_id_listener.message());
+
+  doc_id_listener.Reply("");
+  ASSERT_TRUE(catcher.GetNextResult()) << catcher.message();
 }
 
 }  // namespace extensions

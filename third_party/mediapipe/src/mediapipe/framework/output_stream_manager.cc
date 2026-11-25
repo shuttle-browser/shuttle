@@ -16,9 +16,10 @@
 
 #include <list>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/synchronization/mutex.h"
+#include "absl/log/absl_check.h"         // from @com_google_absl
+#include "absl/log/absl_log.h"           // from @com_google_absl
+#include "absl/status/status.h"          // from @com_google_absl
+#include "absl/synchronization/mutex.h"  // from @com_google_absl
 #include "mediapipe/framework/input_stream_handler.h"
 #include "mediapipe/framework/port/status_builder.h"
 
@@ -40,7 +41,7 @@ void OutputStreamManager::PrepareForRun(
   output_stream_spec_.locked_intro_data = false;
   output_stream_spec_.header = Packet();
   {
-    absl::MutexLock lock(&stream_mutex_);
+    absl::MutexLock lock(stream_mutex_);
     next_timestamp_bound_ = Timestamp::PreStream();
     closed_ = false;
     num_packets_added_ = 0;
@@ -49,7 +50,7 @@ void OutputStreamManager::PrepareForRun(
 
 void OutputStreamManager::Close() {
   {
-    absl::MutexLock lock(&stream_mutex_);
+    absl::MutexLock lock(stream_mutex_);
     if (closed_) {
       return;
     }
@@ -64,7 +65,7 @@ void OutputStreamManager::Close() {
 }
 
 bool OutputStreamManager::IsClosed() const {
-  absl::MutexLock lock(&stream_mutex_);
+  absl::MutexLock lock(stream_mutex_);
   return closed_;
 }
 
@@ -96,7 +97,7 @@ void OutputStreamManager::SetMaxQueueSize(int max_queue_size) {
 }
 
 Timestamp OutputStreamManager::NextTimestampBound() const {
-  absl::MutexLock lock(&stream_mutex_);
+  absl::MutexLock lock(stream_mutex_);
   return next_timestamp_bound_;
 }
 
@@ -172,7 +173,7 @@ void OutputStreamManager::PropagateUpdatesToMirrors(
   std::list<Packet>* packets_to_propagate = output_stream_shard->OutputQueue();
   {
     if (next_timestamp_bound != Timestamp::Unset()) {
-      absl::MutexLock lock(&stream_mutex_);
+      absl::MutexLock lock(stream_mutex_);
       next_timestamp_bound_ = next_timestamp_bound;
       num_packets_added_ += packets_to_propagate->size();
       VLOG(3) << "Next timestamp bound for output " << output_stream_spec_.name
@@ -215,7 +216,7 @@ void OutputStreamManager::PropagateUpdatesToMirrors(
 void OutputStreamManager::ResetShard(OutputStreamShard* output_stream_shard) {
   Timestamp next_timestamp_bound;
   bool closed = false;
-  absl::MutexLock lock(&stream_mutex_);
+  absl::MutexLock lock(stream_mutex_);
   {
     next_timestamp_bound = next_timestamp_bound_;
     closed = closed_;
@@ -224,7 +225,7 @@ void OutputStreamManager::ResetShard(OutputStreamShard* output_stream_shard) {
 }
 
 int OutputStreamManager::NumPacketsAdded() const {
-  absl::MutexLock lock(&stream_mutex_);
+  absl::MutexLock lock(stream_mutex_);
   return num_packets_added_;
 }
 

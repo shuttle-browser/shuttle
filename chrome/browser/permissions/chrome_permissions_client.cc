@@ -39,6 +39,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profiles_state.h"
 #include "chrome/browser/pwc/privileged_web_contents.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/browser/search_engines/ui_thread_search_terms_data.h"
 #include "chrome/browser/serial/serial_chooser_context.h"
 #include "chrome/browser/serial/serial_chooser_context_factory.h"
@@ -83,6 +84,7 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/user_browser_context.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/url_constants.h"
 #include "extensions/buildflags/buildflags.h"
@@ -140,18 +142,6 @@ using permissions::PermissionPromptDisposition;
 using permissions::PermissionPromptDispositionReason;
 using permissions::PermissionRequest;
 using permissions::PermissionRequestGestureType;
-
-const url::Origin& GetNewTabOrigin() {
-  static const base::NoDestructor<url::Origin> origin(
-      url::Origin::Create(chrome::ChromeUINewTabURLAsGURL()));
-  return *origin;
-}
-
-const url::Origin& GetNtpOrigin() {
-  static const base::NoDestructor<url::Origin> origin(
-      url::Origin::Create(chrome::ChromeUINewTabPageURLAsGURL()));
-  return *origin;
-}
 
 const url::Origin& GetOmniboxPopupOrigin() {
   static const base::NoDestructor<url::Origin> origin(
@@ -244,7 +234,7 @@ bool ShouldShowInfobarOnPromptResolved(
     return false;
   }
   content::PermissionController* permission_controller =
-      web_contents->GetBrowserContext()->GetPermissionController();
+      content::GetUserBrowserContext(*web_contents)->GetPermissionController();
   if (!permission_controller) {
     return false;
   }
@@ -467,8 +457,8 @@ void ChromePermissionsClient::TriggerPromptHatsSurveyIfEnabled(
     ContentSetting initial_permission_status,
     base::OnceCallback<void()> hats_shown_callback,
     PromptOptions prompt_options) {
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = Profile::FromBrowserContext(
+      content::GetUserBrowserContext(*web_contents));
   std::optional<GURL> recorded_gurl =
       profile->GetPrefs()->GetBoolean(
           unified_consent::prefs::kUrlKeyedAnonymizedDataCollectionEnabled)
@@ -529,8 +519,8 @@ void ChromePermissionsClient::TriggerPromptHatsSurveyIfEnabled(
 permissions::PermissionIgnoredReason
 ChromePermissionsClient::DetermineIgnoreReason(
     content::WebContents* web_contents) {
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = Profile::FromBrowserContext(
+      content::GetUserBrowserContext(*web_contents));
   BrowserWindowInterface* const browser =
       ProfileBrowserCollection::GetForProfile(profile)->GetLastActiveBrowser();
   if (browser) {
@@ -577,8 +567,8 @@ void ChromePermissionsClient::OnPromptResolved(
   const GURL& origin = request->requesting_origin();
   PermissionRequestGestureType gesture_type = request->GetGestureType();
 
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = Profile::FromBrowserContext(
+      content::GetUserBrowserContext(*web_contents));
   PermissionActionsHistoryFactory::GetForProfile(profile)->RecordAction(
       action, request_type, prompt_disposition);
 
@@ -616,7 +606,8 @@ void ChromePermissionsClient::OnPromptResolved(
       (request->request_type() == permissions::RequestType::kNotifications ||
        request->request_type() == permissions::RequestType::kGeolocation)) {
     content::PermissionController* permission_controller =
-        web_contents->GetBrowserContext()->GetPermissionController();
+        content::GetUserBrowserContext(*web_contents)
+            ->GetPermissionController();
     if (permission_controller) {
       permissions::PermissionUmaUtil::
           RecordOnPermissionStatusChangedEventSubscribed(
@@ -743,7 +734,8 @@ bool ChromePermissionsClient::CanBypassEmbeddingOriginCheck(
   // New Tab Page:
   // Bypass embedding origin check as the `requesting_origin` will later be
   // transformed to the DSE origin in `GetCanonicalOriginOverride()`.
-  if (embedder == GetNewTabOrigin() || embedder == GetNtpOrigin()) {
+  if (search::IsNewTabOrigin(embedder) ||
+      search::IsNewTabPageOrigin(embedder)) {
     return true;
   }
 
@@ -773,8 +765,10 @@ std::optional<GURL> ChromePermissionsClient::GetCanonicalOriginOverride(
   // without the requester being the new tab page, do not override the URL.
   // Only if the embedder is the new tab AND the requester is the new tab page,
   // override the canonical origin to be 'Google.com'.
-  if (embedder == GetNewTabOrigin() || embedder == GetNtpOrigin()) {
-    if (requester == GetNtpOrigin() || requester == GetNewTabOrigin()) {
+  if (search::IsNewTabOrigin(embedder) ||
+      search::IsNewTabPageOrigin(embedder)) {
+    if (search::IsNewTabPageOrigin(requester) ||
+        search::IsNewTabOrigin(requester)) {
       return GURL(UIThreadSearchTermsData().GoogleBaseURLValue())
           .DeprecatedGetOriginAsURL();
     }
@@ -910,8 +904,8 @@ bool ChromePermissionsClient::IsFromNewTabPage(
 
   // A page is not from the new tab page if its embedder is not a new tab page
   // type.
-  if (embedding_origin != GetNtpOrigin() &&
-      embedding_origin != GetNewTabOrigin()) {
+  if (!search::IsNewTabPageOrigin(embedding_origin) &&
+      !search::IsNewTabOrigin(embedding_origin)) {
     return false;
   }
 
@@ -926,8 +920,8 @@ bool ChromePermissionsClient::IsFromNewTabPage(
   // Since the embedder is from the new tab page at this point, a page
   // is definitely from new tab page if the requester is of new tab or new tab
   // page origin.
-  return requesting_origin == GetNtpOrigin() ||
-         requesting_origin == GetNewTabOrigin();
+  return search::IsNewTabPageOrigin(requesting_origin) ||
+         search::IsNewTabOrigin(requesting_origin);
 }
 
 bool ChromePermissionsClient::IsPrivilegedInternalWebUI(
@@ -960,6 +954,17 @@ bool ChromePermissionsClient::IsPrivilegedInternalWebUIForUIRouting(
   return IsPrivilegedInternalWebUIForUIRouting(embedding_origin);
 }
 
+// When adding a new privileged WebUI surface here for embedded permission
+// prompts (PEPC), ensure that:
+// 1. The WebUI surface handles `@voice-permission-changed`
+//    from `composebox_voice_search.ts` and applies
+//    `--cr_composebox_minimum_height` and `--cr_composebox_minimum_width` in
+//    CSS so the container resizes to fit the permission prompt.
+// 2. `EmbeddedPermissionPromptContentScrimView::GetScrimBounds()` (and its
+//    rounded corner handling, if applicable) is updated if the surface's
+//    `WebContents` includes transparent padding or shadow margins around the
+//    visible card.
+// LINT.IfChange(PrivilegedPepcSurfaces)
 bool ChromePermissionsClient::
     IsPrivilegedInternalWebUIForUIRouting(  // overloaded private version
         const url::Origin& embedding_origin) {
@@ -967,6 +972,7 @@ bool ChromePermissionsClient::
          embedding_origin == GetOmniboxPopupOrigin() ||
          embedding_origin == GetOmniboxEverywhereOrigin();
 }
+// LINT.ThenChange(//chrome/browser/ui/views/permissions/embedded_permission_prompt_content_scrim_view.cc:PrivilegedPepcSurfaces)
 
 bool ChromePermissionsClient::IsOmniboxEverywhere(
     content::WebContents* web_contents) {
@@ -1088,8 +1094,8 @@ bool ChromePermissionsClient::IsPermissionBlockedByDevicePolicy(
     return true;
   }
 
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = Profile::FromBrowserContext(
+      content::GetUserBrowserContext(*web_contents));
   if (type == ContentSettingsType::MEDIASTREAM_MIC) {
     return GetDevicePolicy(profile, web_contents->GetLastCommittedURL(),
                            prefs::kAudioCaptureAllowed,
@@ -1119,8 +1125,8 @@ bool ChromePermissionsClient::IsPermissionAllowedByDevicePolicy(
     return true;
   }
 
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  Profile* profile = Profile::FromBrowserContext(
+      content::GetUserBrowserContext(*web_contents));
   if (type == ContentSettingsType::MEDIASTREAM_MIC) {
     return GetDevicePolicy(profile, web_contents->GetLastCommittedURL(),
                            prefs::kAudioCaptureAllowed,

@@ -19,7 +19,6 @@
 #import "ios/chrome/browser/default_browser/model/utils.h"
 #import "ios/chrome/browser/default_browser/model/utils_test_support.h"
 #import "ios/chrome/browser/default_browser/promo/post_default_abandonment/public/features.h"
-#import "ios/chrome/browser/dom_distiller/model/distiller_service_factory.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
 #import "ios/chrome/browser/promos_manager/model/constants.h"
 #import "ios/chrome/browser/promos_manager/model/mock_promos_manager.h"
@@ -40,6 +39,7 @@
 #import "ios/chrome/browser/signin/model/signin_util.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
+#import "ios/chrome/browser/web_distiller/model/distiller_service_factory.h"
 #import "ios/chrome/common/app_group/app_group_constants.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/chrome/test/testing_application_context.h"
@@ -254,7 +254,7 @@ class DefaultBrowserPromoSceneAgentTest : public PlatformTest {
   DefaultBrowserPromoSceneAgent* agent_ = nil;
   web::FakeWebState web_state_;
   std::unique_ptr<ReaderModeMetricsHelper> metrics_helper_;
-  raw_ptr<dom_distiller::DistilledPagePrefs> distilled_page_prefs_ = nullptr;
+  raw_ptr<web_distiller::DistilledPagePrefs> distilled_page_prefs_ = nullptr;
   static base::Time now_override_;
 };
 

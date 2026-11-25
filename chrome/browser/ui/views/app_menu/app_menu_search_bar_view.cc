@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/views/app_menu/app_menu_search_bar_view.h"
 
+#include <algorithm>
 #include <memory>
 #include <utility>
 
@@ -27,6 +28,7 @@
 #include "ui/views/controls/button/image_button_factory.h"
 #include "ui/views/controls/highlight_path_generator.h"
 #include "ui/views/controls/image_view.h"
+#include "ui/views/controls/separator.h"
 #include "ui/views/controls/textfield/textfield.h"
 #include "ui/views/controls/textfield/textfield_controller.h"
 #include "ui/views/layout/box_layout.h"
@@ -46,6 +48,10 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuSearchBarView,
                                       kSearchIconElementId);
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuSearchBarView,
                                       kBackButtonElementId);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuSearchBarView,
+                                      kClearButtonElementId);
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(AppMenuSearchBarView,
+                                      kSeparatorElementId);
 
 class AppMenuSearchBarView::SearchField : public views::Textfield,
                                           public views::TextfieldController {
@@ -63,6 +69,8 @@ class AppMenuSearchBarView::SearchField : public views::Textfield,
       base::RepeatingClosure callback);
 
   // views::Textfield:
+  gfx::Size CalculatePreferredSize(
+      const views::SizeBounds& available_size) const override;
   void Layout(PassKey) override;
 
   // views::TextfieldController:
@@ -73,10 +81,18 @@ class AppMenuSearchBarView::SearchField : public views::Textfield,
   // Notifies `back_pressed_callbacks_`, then clears the query.
   void OnBackPressed();
 
+  // Empties the query and keeps the search bar focused.
+  void ClearQuery();
+
+  // Shows the clear button only while there is a query.
+  void UpdateClearButtonVisibility();
+
   LeadingIcon leading_icon_ = LeadingIcon::kSearch;
   raw_ptr<views::ImageView> search_icon_ = nullptr;
   raw_ptr<views::ImageButton> back_button_ = nullptr;
+  raw_ptr<views::ImageButton> clear_button_ = nullptr;
   base::RepeatingClosureList back_pressed_callbacks_;
+  base::CallbackListSubscription text_changed_subscription_;
 };
 
 AppMenuSearchBarView::SearchField::SearchField() {
@@ -87,15 +103,16 @@ AppMenuSearchBarView::SearchField::SearchField() {
       provider->GetDistanceMetric(DISTANCE_ACTION_APP_MENU_DEFAULT_ICON_SIZE);
   int icon_text_spacing =
       provider->GetDistanceMetric(DISTANCE_RELATED_CONTROL_HORIZONTAL_SMALL);
-  int left_inset = kIconPadding + icon_size + icon_text_spacing;
+  // Leaves room for the leading icon and the clear button.
+  int horizontal_inset = kIconPadding + icon_size + icon_text_spacing;
 
   SetPlaceholderText(
       l10n_util::GetStringUTF16(IDS_APP_MENU_SEARCH_PLACEHOLDER));
   GetViewAccessibility().SetName(
       l10n_util::GetStringUTF16(IDS_APP_MENU_SEARCH_PLACEHOLDER));
   SetPlaceholderTextColorId(ui::kColorTextfieldForegroundPlaceholder);
-  SetBorder(views::CreateEmptyBorder(gfx::Insets::TLBR(
-      kVerticalPadding, left_inset, kVerticalPadding, kIconPadding)));
+  SetBorder(views::CreateEmptyBorder(
+      gfx::Insets::VH(kVerticalPadding, horizontal_inset)));
   SetBackgroundColor(SK_ColorTRANSPARENT);
 
   auto search_icon =
@@ -122,6 +139,24 @@ AppMenuSearchBarView::SearchField::SearchField() {
   views::InstallCircleHighlightPathGenerator(back_button.get());
   back_button_ = AddChildView(std::move(back_button));
 
+  auto clear_button = views::CreateVectorImageButtonWithNativeTheme(
+      base::BindRepeating(&SearchField::ClearQuery, base::Unretained(this)),
+      features::IsRoundedIconsEnabled()
+          ? vector_icons::kCloseIcon
+          : vector_icons::kCloseChromeRefreshOldIcon,
+      icon_size);
+  clear_button->GetViewAccessibility().SetName(
+      l10n_util::GetStringUTF16(IDS_CLEAR_SEARCH));
+  clear_button->SetTooltipText(l10n_util::GetStringUTF16(IDS_CLEAR_SEARCH));
+  clear_button->SetVisible(false);
+  clear_button->SetFocusBehavior(FocusBehavior::NEVER);
+  clear_button->SetProperty(views::kElementIdentifierKey,
+                            kClearButtonElementId);
+  views::InstallCircleHighlightPathGenerator(clear_button.get());
+  clear_button_ = AddChildView(std::move(clear_button));
+  text_changed_subscription_ = AddTextChangedCallback(base::BindRepeating(
+      &SearchField::UpdateClearButtonVisibility, base::Unretained(this)));
+
   auto* ink_drop = views::InkDrop::Get(this);
   ink_drop->SetMode(views::InkDropHost::InkDropMode::ON);
   views::InkDrop::UseInkDropForFloodFillRipple(ink_drop,
@@ -134,6 +169,16 @@ AppMenuSearchBarView::SearchField::SearchField() {
 
 AppMenuSearchBarView::SearchField::~SearchField() = default;
 
+gfx::Size AppMenuSearchBarView::SearchField::CalculatePreferredSize(
+    const views::SizeBounds& available_size) const {
+  gfx::Size size = views::Textfield::CalculatePreferredSize(available_size);
+  const int icon_size = ChromeLayoutProvider::Get()->GetDistanceMetric(
+      DISTANCE_ACTION_APP_MENU_DEFAULT_ICON_SIZE);
+  size.set_height(std::max(icon_size, GetFontList().GetHeight()) +
+                  GetInsets().height());
+  return size;
+}
+
 void AppMenuSearchBarView::SearchField::Layout(PassKey) {
   LayoutSuperclass<views::Textfield>(this);
   const int icon_size = ChromeLayoutProvider::Get()->GetDistanceMetric(
@@ -143,6 +188,9 @@ void AppMenuSearchBarView::SearchField::Layout(PassKey) {
 
   search_icon_->SetBoundsRect(leading_bounds);
   back_button_->SetBoundsRect(leading_bounds);
+  clear_button_->SetBoundsRect(gfx::Rect(width() - kIconPadding - icon_size,
+                                         leading_bounds.y(), icon_size,
+                                         icon_size));
 }
 
 void AppMenuSearchBarView::SearchField::SetLeadingIcon(LeadingIcon icon) {
@@ -162,8 +210,16 @@ AppMenuSearchBarView::SearchField::AddBackPressedCallback(
 
 void AppMenuSearchBarView::SearchField::OnBackPressed() {
   back_pressed_callbacks_.Notify();
+  ClearQuery();
+}
+
+void AppMenuSearchBarView::SearchField::ClearQuery() {
   SetText(std::u16string());
   RequestFocus();
+}
+
+void AppMenuSearchBarView::SearchField::UpdateClearButtonVisibility() {
+  clear_button_->SetVisible(!GetText().empty());
 }
 
 bool AppMenuSearchBarView::SearchField::HandleKeyEvent(
@@ -173,7 +229,7 @@ bool AppMenuSearchBarView::SearchField::HandleKeyEvent(
       key_event.key_code() == ui::VKEY_ESCAPE && !key_event.IsShiftDown() &&
       !key_event.IsControlDown() && !key_event.IsAltDown() &&
       !key_event.IsCommandDown() && !GetText().empty()) {
-    SetText(std::u16string());
+    ClearQuery();
     return true;
   }
   return false;
@@ -183,14 +239,28 @@ BEGIN_METADATA(AppMenuSearchBarView, SearchField)
 END_METADATA
 
 AppMenuSearchBarView::AppMenuSearchBarView() {
+  const auto* provider = ChromeLayoutProvider::Get();
   SetOrientation(views::BoxLayout::Orientation::kVertical);
 
   search_field_ = AddChildView(std::make_unique<SearchField>());
   search_field_->SetProperty(views::kElementIdentifierKey,
                              kSearchFieldElementId);
-  search_field_->SetProperty(views::kMarginsKey,
-                             ChromeLayoutProvider::Get()->GetInsetsMetric(
-                                 INSETS_ACTION_APP_MENU_SEARCH_BAR_MARGIN));
+  search_field_->SetProperty(
+      views::kMarginsKey,
+      provider->GetInsetsMetric(INSETS_ACTION_APP_MENU_SEARCH_BAR_MARGIN));
+
+  // The separator spans the full width of the menu.
+  auto* separator = AddChildView(std::make_unique<views::Separator>());
+  separator->SetProperty(views::kElementIdentifierKey, kSeparatorElementId);
+  separator->SetOrientation(views::Separator::Orientation::kHorizontal);
+  separator->SetColorId(ui::kColorMenuSeparator);
+  separator->SetProperty(
+      views::kMarginsKey,
+      gfx::Insets::TLBR(
+          0, 0,
+          provider->GetDistanceMetric(
+              DISTANCE_ACTION_APP_MENU_SEARCH_SEPARATOR_BOTTOM_MARGIN),
+          0));
 }
 
 AppMenuSearchBarView::~AppMenuSearchBarView() = default;

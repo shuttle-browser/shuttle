@@ -2825,8 +2825,13 @@ TEST_P(CloudPolicyClientUploadSecurityEventTest, TestWithProtoFormat) {
     EXPECT_EQ(GetOSPlatform(), request.device().os_platform());
     EXPECT_EQ(GetOSVersion(), request.device().os_version());
     EXPECT_EQ(policy::GetDeviceName(), request.device().name());
-    EXPECT_EQ(policy::GetDeviceFqdn(), request.device().device_fqdn());
-    EXPECT_EQ(policy::GetNetworkName(), request.device().network_name());
+    if (policy::features::IsEnhancedSecurityEventFieldsEnabled()) {
+      EXPECT_EQ(policy::GetDeviceFqdn(), request.device().device_fqdn());
+      EXPECT_EQ(policy::GetNetworkName(), request.device().network_name());
+    } else {
+      EXPECT_EQ(request.device().device_fqdn(), "");
+      EXPECT_EQ(request.device().network_name(), "");
+    }
   } else {
     EXPECT_EQ(request.device().dm_token(), "");
     EXPECT_EQ(request.device().client_id(), "");
@@ -3355,6 +3360,46 @@ TEST_F(CloudPolicyClientTest, PolicyReregistrationFailsWithNonMatchingDMToken) {
             client_->last_dm_status());
 }
 #endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if !BUILDFLAG(IS_CHROMEOS)
+TEST_F(CloudPolicyClientTest, PolicyFetch410WithoutErrorDetailDoesNotUnenroll) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      features::kCbcmRequireErrorDetailForUnenrollment);
+
+  RegisterClient();
+
+  EXPECT_TRUE(client_->is_registered());
+  EXPECT_CALL(job_creation_handler_, OnJobCreation)
+      .WillOnce(service_.SendJobResponseAsync(
+          net::OK, DeviceManagementService::kDeviceNotFound));
+
+  RunClientTaskAndWaitError(base::BindLambdaForTesting(
+      [this]() { client_->FetchPolicy(kPolicyFetchReason); }));
+
+  EXPECT_EQ(DM_STATUS_HTTP_STATUS_ERROR, client_->last_dm_status());
+  EXPECT_TRUE(client_->is_registered());
+}
+
+TEST_F(CloudPolicyClientTest, PolicyFetch410WithoutErrorDetailDoesNotUnenroll_FeatureDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      features::kCbcmRequireErrorDetailForUnenrollment);
+
+  RegisterClient();
+
+  EXPECT_TRUE(client_->is_registered());
+  EXPECT_CALL(job_creation_handler_, OnJobCreation)
+      .WillOnce(service_.SendJobResponseAsync(
+          net::OK, DeviceManagementService::kDeviceNotFound));
+
+  RunClientTaskAndWaitError(base::BindLambdaForTesting(
+      [this]() { client_->FetchPolicy(kPolicyFetchReason); }));
+
+  EXPECT_EQ(DM_STATUS_SERVICE_DEVICE_NOT_FOUND, client_->last_dm_status());
+  EXPECT_TRUE(client_->is_registered());
+}
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 TEST_F(CloudPolicyClientTest, ResultCopyAssignment) {
   CloudPolicyClient::Result result1 =

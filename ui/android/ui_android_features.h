@@ -24,9 +24,6 @@ UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kAndroidHDR);
 UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(
     kAndroidPreserveStatusBarInsetsWhenUnfocused);
 
-// Drops the cached bitmap in SoftwareDraw immediately after capture.
-UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kAndroidResourceMemoryOptimization);
-
 // Feature controlling how to compute work area on Android.
 // TODO(crbug.com/372385871): Cleanup flag after investigating nothing is broken
 // after changing the default behavior for
@@ -75,9 +72,6 @@ UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kClipboardOversizedPayloadProvider);
 
 // Enables debug logging for connected display and density changes.
 UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kConnectedDisplayDensityDebugLogs);
-
-// Use the old-style opening of an External Picker when uploading files.
-UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kDeprecatedExternalPickerFunction);
 
 // Whether photo picker should be disabled for video capture.
 UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kDisablePhotoPickerForVideoCapture);
@@ -133,10 +127,6 @@ UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kCheckHitEligibility);
 // Enables touchpad overscroll for history navigation.
 UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(
     kAndroidTouchpadOverscrollHistoryNavigation);
-
-// Update padding for display calculations to use view width instead of screen
-// width.
-UI_ANDROID_EXPORT BASE_DECLARE_FEATURE(kUpdatePaddingForDisplayCalculation);
 
 // Avoids allocating unique ColorProviders per Activity context in Android
 // embedders that do not supply a ColorProviderBridge.

@@ -9,6 +9,7 @@
 #include "chrome/browser/actor/tools/bookmark_management_tool_request.h"
 #include "chrome/browser/actor/tools/click_tool_request.h"
 #include "chrome/browser/actor/tools/drag_and_release_tool_request.h"
+#include "chrome/browser/actor/tools/execute_js_tool_request.h"
 #include "chrome/browser/actor/tools/file_upload_tool_request.h"
 #include "chrome/browser/actor/tools/find_and_highlight_tool_request.h"
 #include "chrome/browser/actor/tools/gemini_panel_tool_request.h"
@@ -42,9 +43,7 @@ namespace actor {
 class ToolRequestVisitorFunctor {
  public:
   virtual void Apply(const ActivateTabToolRequest&) = 0;
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
   virtual void Apply(const ActivateWindowToolRequest&) = 0;
-#endif
   virtual void Apply(const AddBookmarkToolRequest&) = 0;
   virtual void Apply(const AttemptLoginToolRequest&) = 0;
   virtual void Apply(const AttemptFormFillingToolRequest&) = 0;
@@ -53,18 +52,15 @@ class ToolRequestVisitorFunctor {
   virtual void Apply(const ClickToolRequest&) = 0;
   virtual void Apply(const CloseGeminiPanelToolRequest&) = 0;
   virtual void Apply(const CloseTabToolRequest&) = 0;
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
   virtual void Apply(const CloseWindowToolRequest&) = 0;
-#endif
   virtual void Apply(const CreateTabToolRequest&) = 0;
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
   virtual void Apply(const CreateWindowToolRequest&) = 0;
-#endif
   virtual void Apply(const DragAndReleaseToolRequest&) = 0;
   virtual void Apply(const EnterFullscreenToolRequest&) = 0;
   virtual void Apply(const ExitFullscreenToolRequest&) = 0;
   virtual void Apply(const FileUploadToolRequest&) = 0;
   virtual void Apply(const FindAndHighlightToolRequest&) = 0;
+  virtual void Apply(const ExecuteJsToolRequest&) = 0;
   virtual void Apply(const HistoryBackToolRequest&) = 0;
   virtual void Apply(const HistoryForwardToolRequest&) = 0;
 #if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)

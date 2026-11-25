@@ -4,6 +4,7 @@
 
 #include "ui/gfx/font_fallback.h"
 
+#include "base/i18n/language_tag.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -12,7 +13,8 @@
 namespace gfx {
 
 namespace {
-const char kDefaultApplicationLocale[] = "us-en";
+constexpr base::i18n::LanguageTag kDefaultApplicationLocale =
+    base::i18n::GetKnownLanguageTag("en-US");
 }  // namespace
 
 // A targeted test for GetFallbackFonts on Mac. It uses a system API that
@@ -30,7 +32,6 @@ TEST(FontFallbackMacTest, GetFallbackFonts) {
 // about font properties and availability on specific macOS versions.
 TEST(FontFallbackMacTest, GetFallbackFont) {
   Font arial("Helvetica", 12);
-  const std::u16string ascii = u"abc";
   const std::u16string hebrew = u"\x5d0\x5d1\x5d2";
   const std::u16string emoji = u"😋";
 

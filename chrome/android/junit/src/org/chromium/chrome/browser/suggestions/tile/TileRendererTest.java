@@ -16,7 +16,8 @@ import android.app.Activity;
 import android.content.res.ColorStateList;
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
-import android.view.View;
+import android.graphics.drawable.Drawable;
+import android.text.Layout;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -35,9 +36,7 @@ import org.robolectric.shadows.ShadowDrawable;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.RobolectricUtil;
-import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
 import org.chromium.chrome.browser.suggestions.ImageFetcher;
@@ -228,19 +227,41 @@ public class TileRendererTest {
 
     @Test
     public void testBuildTileView_AiMode_Icon() {
+        // Verifies that a resource drawable AI Mode icon (1P spark or 3P fallback loupe) is
+        // rendered tinted as ICON_DEFAULT.
         mTileSource = TileSource.AI_MODE;
-        doReturn(R.drawable.search_spark_white_24dp)
-                .when(mTileSetupDelegate)
-                .getAiModeTileIconDrawableId();
+        Drawable sparkDrawable = mActivity.getDrawable(R.drawable.search_spark_white_24dp);
+        doReturn(sparkDrawable).when(mTileSetupDelegate).getAiModeTileIconDrawable();
         buildTileView(TileStyle.MODERN, TITLE_LINES);
 
         verify(mTileSetupCallback, never()).run();
         RobolectricUtil.runAllBackgroundAndUi();
         verify(mTileSetupCallback).run();
 
+        Assert.assertEquals(TileVisualType.ICON_DEFAULT, mTile.getType());
+        Assert.assertNotNull(mTile.getIconTint());
+        Assert.assertNotEquals(mFakeColorStateList, mTile.getIconTint());
         ShadowDrawable shadowDrawable = shadowOf(mTile.getIcon());
         Assert.assertEquals(
                 R.drawable.search_spark_white_24dp, shadowDrawable.getCreatedFromResId());
+    }
+
+    @Test
+    public void testBuildTileView_AiMode_BitmapIcon() {
+        // Verifies that a 3P bitmap AI Mode icon is rendered untinted as ICON_REAL so it uses the
+        // 24dp favicon size rather than stretching to the 26dp monogram size.
+        mTileSource = TileSource.AI_MODE;
+        BitmapDrawable bitmapDrawable = new BitmapDrawable(mActivity.getResources(), mBitmap);
+        doReturn(bitmapDrawable).when(mTileSetupDelegate).getAiModeTileIconDrawable();
+        buildTileView(TileStyle.MODERN, TITLE_LINES);
+
+        verify(mTileSetupCallback, never()).run();
+        RobolectricUtil.runAllBackgroundAndUi();
+        verify(mTileSetupCallback).run();
+
+        Assert.assertEquals(TileVisualType.ICON_REAL, mTile.getType());
+        Assert.assertNull(mTile.getIconTint());
+        Assert.assertEquals(mBitmap, ((BitmapDrawable) mTile.getIcon()).getBitmap());
     }
 
     @Test
@@ -280,13 +301,12 @@ public class TileRendererTest {
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.NTP_AURORA,
-        ChromeFeatureList.NTP_AURORA_V2 + ":layout_type/1"
-    })
-    public void testIconBackgroundHidden_BesideMvtEnabled() {
-        SuggestionsTileView tileView = buildTileView(TileStyle.MODERN, TITLE_LINES);
-        View iconBackground = tileView.findViewById(R.id.tile_view_icon_background);
-        Assert.assertEquals(View.GONE, iconBackground.getVisibility());
+    public void testTileTitle_singleLineAiMode_wrapsToTwoLines() {
+        mTileSource = TileSource.AI_MODE;
+        SuggestionsTileView tileView = buildTileView(TileStyle.MODERN, 1);
+        Assert.assertEquals(2, tileView.getTitleView().getMaxLines());
+        Assert.assertEquals(1, tileView.getTitleView().getMinLines());
+        Assert.assertEquals(
+                Layout.BREAK_STRATEGY_SIMPLE, tileView.getTitleView().getBreakStrategy());
     }
 }

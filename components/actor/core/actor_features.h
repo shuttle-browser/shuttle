@@ -5,6 +5,8 @@
 #ifndef COMPONENTS_ACTOR_CORE_ACTOR_FEATURES_H_
 #define COMPONENTS_ACTOR_CORE_ACTOR_FEATURES_H_
 
+#include <string>
+
 #include "base/feature.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/time/time.h"
@@ -132,6 +134,19 @@ extern const base::FeatureParam<base::TimeDelta>
 // chooser request with files downloaded from model-provided URLs instead of
 // showing the native file picker.
 BASE_DECLARE_FEATURE(kGlicActorFileUploadTool);
+// Maximum size, in bytes, of a single downloaded file. Capped by
+// network::SimpleURLLoader::kMaxBoundedStringDownloadSize.
+extern const base::FeatureParam<int> kGlicActorFileUploadToolMaxFileSizeBytes;
+// How long the tool waits for the page to open a file chooser after the target
+// element is clicked before giving up and tearing down the staged files.
+extern const base::FeatureParam<base::TimeDelta>
+    kGlicActorFileUploadToolTimeout;
+// Comma-separated list of hosts whose files are downloaded with the user's
+// credentials (cookies). These hosts only serve a file to the user who uploaded
+// it, so an anonymous request is rejected. Files on any other host are
+// downloaded without credentials.
+extern const base::FeatureParam<std::string>
+    kGlicActorFileUploadToolCredentialedHosts;
 
 BASE_DECLARE_FEATURE(kGlicActorTransientTasks);
 extern const base::FeatureParam<bool> kGlicActorTransientTasksForceTransient;
@@ -143,15 +158,19 @@ extern const base::FeatureParam<base::TimeDelta>
 extern const base::FeatureParam<base::TimeDelta>
     kActorScriptToolCrossDocumentTimeout;
 
-BASE_DECLARE_FEATURE(kActorScriptToolDelayObservation);
-extern const base::FeatureParam<int> kActorScriptToolDelayObservationMillis;
-
 BASE_DECLARE_FEATURE(kActorObserveScreenshotDefault);
 BASE_DECLARE_FEATURE(kActorObservePageContentDefault);
 
 BASE_DECLARE_FEATURE(kActorScriptToolSkipScreenshot);
 BASE_DECLARE_FEATURE(kActorScriptToolSkipPageContent);
 BASE_DECLARE_FEATURE(kActorScriptToolTransientUserActivation);
+// When enabled, a script tool action is pinned to the internal ID of the tool
+// with that name in the last observed page content, so that the action fails
+// instead of running a different tool that the page registered under the same
+// name since the observation.
+BASE_DECLARE_FEATURE(kActorScriptToolIdValidation);
+
+BASE_DECLARE_FEATURE(kActorExecuteJsTool);
 
 // Guards the new Actor Task invocation source completion metrics.
 BASE_DECLARE_FEATURE(kActorRecordInvocationSourceCompletionMetrics);

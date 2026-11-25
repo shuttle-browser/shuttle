@@ -145,6 +145,8 @@ constexpr std::string_view kPaymentsUpiVpaTable = "payments_upi_vpa";
 
 constexpr std::string_view kOfferDataTable = "offer_data";
 constexpr std::string_view kOfferId = "offer_id";
+// TODO(crbug.com/546252995): Rename `offer_reward_amount` to
+// `offer_short_title`.
 constexpr std::string_view kOfferRewardAmount = "offer_reward_amount";
 constexpr std::string_view kExpiry = "expiry";
 constexpr std::string_view kOfferDetailsUrl = "offer_details_url";
@@ -286,7 +288,7 @@ void BindMaskedBankAccountToStatement(const BankAccount& bank_account,
   s->BindInt64(index++, bank_account.payment_instrument().instrument_id());
   s->BindString16(index++, bank_account.bank_name());
   s->BindString16(index++, bank_account.account_number_suffix());
-  s->BindInt(index++, static_cast<int>(bank_account.account_type()));
+  s->BindInt(index++, std::to_underlying(bank_account.account_type()));
   s->BindString16(index++, bank_account.payment_instrument().nickname());
   s->BindString(index++,
                 bank_account.payment_instrument().display_icon_url().spec());
@@ -472,7 +474,7 @@ bool InsertOffer(sql::Database& db, const AutofillOfferData& offer) {
       {kOfferId, kOfferRewardAmount, kExpiry, kOfferDetailsUrl, kPromoCode,
        kValuePropText, kSeeDetailsText, kUsageInstructionsText, kIssueTime});
   insert_offer.BindString(0, offer.GetOfferId());
-  insert_offer.BindString(1, offer.GetOfferRewardAmount());
+  insert_offer.BindString(1, offer.GetOfferShortTitle());
   insert_offer.BindTime(2, offer.GetExpiry());
   insert_offer.BindString(3, offer.GetOfferDetailsUrl().spec());
   insert_offer.BindString(4, offer.GetPromoCode());
@@ -683,8 +685,8 @@ bool PaymentsAutofillTable::GetMaskedBankAccounts(
     auto nickname = s.ColumnString16(index++);
     auto display_icon_url = s.ColumnString16(index++);
     if (account_type >
-            static_cast<int>(BankAccount::AccountType::kTransactingAccount) ||
-        account_type < static_cast<int>(BankAccount::AccountType::kUnknown)) {
+            std::to_underlying(BankAccount::AccountType::kTransactingAccount) ||
+        account_type < std::to_underlying(BankAccount::AccountType::kUnknown)) {
       continue;
     }
     bank_accounts.push_back(
@@ -1237,23 +1239,24 @@ void PaymentsAutofillTable::SetServerCardsData(
                                card.GetRawInfo(CREDIT_CARD_EXP_4_DIGIT_YEAR));
     masked_insert.BindString(index++, card.bank_name());
     masked_insert.BindString16(index++, card.nickname());
-    masked_insert.BindInt(index++, static_cast<int>(card.card_issuer()));
+    masked_insert.BindInt(index++, std::to_underlying(card.card_issuer()));
     masked_insert.BindString(index++, card.issuer_id());
     masked_insert.BindInt64(index++, card.instrument_id());
     masked_insert.BindInt(
-        index++, static_cast<int>(card.virtual_card_enrollment_state()));
+        index++, std::to_underlying(card.virtual_card_enrollment_state()));
     masked_insert.BindInt(
-        index++, static_cast<int>(card.virtual_card_enrollment_type()));
+        index++, std::to_underlying(card.virtual_card_enrollment_type()));
     masked_insert.BindString(index++, card.card_art_url().spec());
     masked_insert.BindString16(index++, card.product_description());
     masked_insert.BindString(index++, card.product_terms_url().spec());
     masked_insert.BindInt(
-        index++, static_cast<int>(card.card_info_retrieval_enrollment_state()));
+        index++,
+        std::to_underlying(card.card_info_retrieval_enrollment_state()));
     masked_insert.BindInt(
-        index++, static_cast<int>(CreditCard::GetEnumFromBenefitSourceString(
+        index++, std::to_underlying(CreditCard::GetEnumFromBenefitSourceString(
                      card.benefit_source())));
     masked_insert.BindInt(index++,
-                          static_cast<int>(card.card_creation_source()));
+                          std::to_underlying(card.card_creation_source()));
     masked_insert.Run();
     masked_insert.Reset(/*clear_bound_vars=*/true);
   }
@@ -1477,7 +1480,7 @@ bool PaymentsAutofillTable::GetAutofillOffers(
   while (s.Step()) {
     int index = 0;
     std::string offer_id = s.ColumnString(index++);
-    std::string offer_reward_amount = s.ColumnString(index++);
+    std::string offer_short_title = s.ColumnString(index++);
     base::Time expiry = s.ColumnTime(index++);
     GURL offer_details_url = GURL(s.ColumnStringView(index++));
     std::string promo_code = s.ColumnString(index++);
@@ -1502,7 +1505,7 @@ bool PaymentsAutofillTable::GetAutofillOffers(
     autofill_offer_data->emplace_back(std::make_unique<AutofillOfferData>(
         std::move(offer_id), expiry, std::move(merchant_origins),
         std::move(offer_details_url), std::move(display_strings),
-        std::move(promo_code), std::move(offer_reward_amount), issue_time));
+        std::move(promo_code), std::move(offer_short_title), issue_time));
   }
 
   return s.Succeeded();
@@ -2348,23 +2351,24 @@ void PaymentsAutofillTable::AddMaskedCreditCards(
                                card.GetRawInfo(CREDIT_CARD_EXP_4_DIGIT_YEAR));
     masked_insert.BindString(index++, card.bank_name());
     masked_insert.BindString16(index++, card.nickname());
-    masked_insert.BindInt(index++, static_cast<int>(card.card_issuer()));
+    masked_insert.BindInt(index++, std::to_underlying(card.card_issuer()));
     masked_insert.BindString(index++, card.issuer_id());
     masked_insert.BindInt64(index++, card.instrument_id());
     masked_insert.BindInt(
-        index++, static_cast<int>(card.virtual_card_enrollment_state()));
+        index++, std::to_underlying(card.virtual_card_enrollment_state()));
     masked_insert.BindInt(
-        index++, static_cast<int>(card.virtual_card_enrollment_type()));
+        index++, std::to_underlying(card.virtual_card_enrollment_type()));
     masked_insert.BindString(index++, card.card_art_url().spec());
     masked_insert.BindString16(index++, card.product_description());
     masked_insert.BindString(index++, card.product_terms_url().spec());
     masked_insert.BindInt(
-        index++, static_cast<int>(card.card_info_retrieval_enrollment_state()));
+        index++,
+        std::to_underlying(card.card_info_retrieval_enrollment_state()));
     masked_insert.BindInt(
-        index++, static_cast<int>(CreditCard::GetEnumFromBenefitSourceString(
+        index++, std::to_underlying(CreditCard::GetEnumFromBenefitSourceString(
                      card.benefit_source())));
     masked_insert.BindInt(index++,
-                          static_cast<int>(card.card_creation_source()));
+                          std::to_underlying(card.card_creation_source()));
     masked_insert.Run();
     masked_insert.Reset(/*clear_bound_vars=*/true);
 

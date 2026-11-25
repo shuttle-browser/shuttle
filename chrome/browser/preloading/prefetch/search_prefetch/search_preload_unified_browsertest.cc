@@ -69,8 +69,8 @@
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser_window.h"
@@ -622,10 +622,10 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
     ukm::SourceId ukm_source_id = activation_observer.next_page_ukm_source_id();
     auto attempt_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     auto prediction_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Prediction::kEntryName,
-        content::test::kPreloadingPredictionUkmMetrics);
+        content::test::GetPreloadingPredictionUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 2u);
     EXPECT_EQ(prediction_ukm_entries.size(), 2u);
 
@@ -686,8 +686,16 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
 
 // Tests that the SearchSuggestionService can trigger prerendering if it
 // receives prerender hints after the previous prefetch request succeeds.
+// TODO(crbug.com/578809890): Deflake and re-enable on Android.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_PrerenderHintReceivedAfterSucceed \
+  DISABLED_PrerenderHintReceivedAfterSucceed
+#else
+#define MAYBE_PrerenderHintReceivedAfterSucceed \
+  PrerenderHintReceivedAfterSucceed
+#endif
 IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
-                       PrerenderHintReceivedAfterSucceed) {
+                       MAYBE_PrerenderHintReceivedAfterSucceed) {
   base::HistogramTester histogram_tester;
   const GURL kInitialUrl = embedded_test_server()->GetURL("/empty.html");
   ASSERT_TRUE(GetActiveWebContents());
@@ -743,7 +751,7 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
     ukm::SourceId ukm_source_id = activation_observer.next_page_ukm_source_id();
     auto ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(ukm_entries.size(), 3u);
 
     // Prerender should succeed and should be used for the next navigation.
@@ -1005,7 +1013,7 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
         GetActiveWebContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
     auto ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(ukm_entries.size(), 2u);
 
     // DispatchDelayedResponseTask will dispatch
@@ -1152,7 +1160,7 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest, DoNotRefetchSameTerms) {
     // Check that we log the correct PreloadingEligibility metrics.
     auto ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(ukm_entries.size(), 4u);
 
     ukm::SourceId ukm_source_id =
@@ -1264,7 +1272,7 @@ class HoldbackSearchPreloadUnifiedBrowserTest
           activation_observer.next_page_ukm_source_id();
       auto ukm_entries = test_ukm_recorder()->GetEntries(
           Preloading_Attempt::kEntryName,
-          content::test::kPreloadingAttemptUkmMetrics);
+          content::test::GetPreloadingAttemptUkmMetrics());
       EXPECT_EQ(ukm_entries.size(), 3u);
 
       // Prerender should be under holdback and not succeed.
@@ -1637,8 +1645,17 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
 
 // Tests prerender is not cancelled after SearchPrefetchService cancels prefetch
 // requests.
+// TODO(crbug.com/584572708): Fails consistently on
+// android-14-tablet-landscape-arm64-rel.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_SuggestionChangeAfterStartPrerender \
+  DISABLED_SuggestionChangeAfterStartPrerender
+#else
+#define MAYBE_SuggestionChangeAfterStartPrerender \
+  SuggestionChangeAfterStartPrerender
+#endif
 IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
-                       SuggestionChangeAfterStartPrerender) {
+                       MAYBE_SuggestionChangeAfterStartPrerender) {
   base::HistogramTester histogram_tester;
   const GURL kInitialUrl = embedded_test_server()->GetURL("/empty.html");
   ASSERT_TRUE(GetActiveWebContents());
@@ -1686,7 +1703,7 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
     ukm::SourceId ukm_source_id = activation_observer.next_page_ukm_source_id();
     auto ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(ukm_entries.size(), 2u);
 
     // Prerender should be used for the next navigation as it won't be cancelled
@@ -2469,7 +2486,8 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
   // this case.
   content::WebContents* new_prefetch_tab = GetActiveWebContents()->OpenURL(
       content::OpenURLParams::CreateBrowserInitiated(
-          expected_prerender_url, WindowOpenDisposition::kNewBackgroundTab,
+          expected_prerender_url,
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
           ui::PageTransitionFromInt(ui::PAGE_TRANSITION_GENERATED |
                                     ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)),
       /*navigation_handle_callback=*/{});
@@ -2783,7 +2801,7 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
 
   GetActiveWebContents()->OpenURL(
       content::OpenURLParams::CreateBrowserInitiated(
-          expected_real_url, WindowOpenDisposition::kCurrentTab,
+          expected_real_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
           ui::PageTransitionFromInt(ui::PAGE_TRANSITION_GENERATED |
                                     ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)),
       std::move(navigation_handle_callback));
@@ -2905,7 +2923,7 @@ IN_PROC_BROWSER_TEST_F(
 
   GetActiveWebContents()->OpenURL(
       content::OpenURLParams::CreateBrowserInitiated(
-          expected_real_url, WindowOpenDisposition::kCurrentTab,
+          expected_real_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
           ui::PageTransitionFromInt(ui::PAGE_TRANSITION_GENERATED |
                                     ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)),
       std::move(navigation_handle_callback));
@@ -3025,7 +3043,7 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadUnifiedBrowserTest,
 
   GetActiveWebContents()->OpenURL(
       content::OpenURLParams::CreateBrowserInitiated(
-          expected_prerender_url, WindowOpenDisposition::kCurrentTab,
+          expected_prerender_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
           ui::PageTransitionFromInt(ui::PAGE_TRANSITION_GENERATED |
                                     ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)),
       std::move(navigation_handle_callback));

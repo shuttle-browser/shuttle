@@ -7,6 +7,9 @@
 
 #import <UIKit/UIKit.h>
 
+#include <string>
+#include <vector>
+
 #import "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
 #import "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
 #import "url/gurl.h"
@@ -15,6 +18,19 @@
 @class CrURL;
 
 namespace autofill {
+
+class EntityInstance;
+
+// Encapsulates the complete footer UI state for an Autofill AI entity.
+struct AutofillAiEntityFooterContent {
+  // The full footer text with link tags.
+  NSString* text = nil;
+  // All link URLs appearing in `text`, in tag order, for UI consumption.
+  NSArray<CrURL*>* urls = nil;
+  // The subset of link URLs originating from legal disclosure messages, used
+  // for funnel metrics logging.
+  std::vector<GURL> legal_message_urls;
+};
 
 // Returns the default icon for the Autofill AI entity type.
 UIImage* DefaultIconForAutofillAiEntityType(EntityTypeName entity_type_name,
@@ -43,33 +59,21 @@ NSString* GetDialogTitleForViewEntity(EntityTypeName entity_type_name);
 // Returns the title for a dialog to edit an entity.
 NSString* GetDialogTitleForEditEntity(EntityTypeName entity_type_name);
 
-// Wraps `text` in the "BEGIN_LINK"/"END_LINK" delimiters that iOS UI
-// components parse to turn a range of text into a tappable link. The
-// delimiters are consumed by `ParseStringWithLinks()`, which pairs each tagged
-// range with the URL at the same index in the owning view's `urls` array. See
-// ios/chrome/common/string_util.h.
-NSString* WrapInLinkTags(NSString* text);
-
-// Returns the text of `legal_message` with each valid link wrapped in link tags
-// by `WrapInLinkTags()`, appending the corresponding URLs to `urls`
-// in the order their tags appear in the returned string. Ranges that are
-// invalid or that overlap a previous one, as well as links with an invalid URL,
-// are emitted as plain text so that the number of tags always matches the
-// number of appended URLs.
-NSString* TextForDisclosureLegalMessageAppendingURLsTo(
-    AutofillLegalMessageLine* legal_message,
-    NSMutableArray<CrURL*>* urls);
-
-// Returns the footer text for saving an entity to Wallet, formatted with the
-// user's email.
-NSString* GetSaveEntityToWalletFooterText(NSString* user_email);
-
-// Returns the footer text for updating an entity saved in Wallet, formatted
-// with the user's email.
-NSString* GetUpdateEntitySavedInWalletFooterText(NSString* user_email);
+// Returns the complete footer content for `entity`: combines the storage notice
+// and any formatted `legal_messages` separated by a blank line, and returns
+// both the complete list of link `urls` and the subset of GURL belonging to
+// `legal_messages`.
+AutofillAiEntityFooterContent GetEntityFooterContent(
+    const EntityInstance& entity,
+    bool is_update,
+    const std::u16string& user_email,
+    NSArray<AutofillLegalMessageLine*>* legal_messages);
 
 // Returns the URL for "manage your info" link for save to wallet footer.
 GURL GetManageYourInfoURL();
+
+// Returns the URL for the Google Privacy Policy link.
+GURL GetGooglePrivacyPolicyURL();
 
 // Returns the URL for Google Wallet passes.
 GURL GetGoogleWalletPassesURL();
@@ -85,13 +89,15 @@ UIView* CreateBrandedTitleForWalletSave(NSString* title);
 
 // Returns the message ID for the subtitle shown in the save-to-wallet dialog.
 // Exposed so the Consent Auditor records the exact string shown in the UI.
-// Note: The string contains placeholders for the Google Wallet title, a
-// link, the Google Wallet title again, and the user's email.
-int GetSaveToWalletSubtitleStringId();
+int GetSaveToWalletSubtitleStringId(bool is_private_pass);
 
 // Returns the message ID for the accept button in the save entity dialog.
 // Exposed so the Consent Auditor records the exact string shown in the UI.
 int GetSaveEntityAcceptButtonStringId();
+
+// Returns whether two arrays of `CrURL` are equal by comparing their `GURL`
+// values.
+bool AreCrURLArraysEqual(NSArray<CrURL*>* array1, NSArray<CrURL*>* array2);
 
 }  // namespace autofill
 

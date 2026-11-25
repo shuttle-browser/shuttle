@@ -40,18 +40,20 @@ public final class TrackerFactory {
         Tracker tracker = TrackerFactoryJni.get().getTrackerForProfile(profile);
         // TODO(crbug.com/571067805): Move `android` from `future_on` to `supported_on` in
         // PromotionsEnabled.yaml when ready to launch.
-        tracker.setPromotionsEnabledSupplier(
+        tracker.setEnterprisePolicyBlocksPromotionsSupplier(
                 () -> {
-                    if (!ChromeFeatureList.sAndroidUserEducationFramework.isEnabled()) {
-                        return true;
+                    if (!ChromeFeatureList.sUserEducationFramework.isEnabled()
+                            || !ChromeFeatureList.sUserEducationEnterprisePolicy.isEnabled()) {
+                        return false;
                     }
                     PrefService localState = LocalStatePrefs.get();
-                    return localState == null || localState.getBoolean(Pref.PROMOTIONS_ENABLED);
+                    return localState != null && !localState.getBoolean(Pref.PROMOTIONS_ENABLED);
                 });
         tracker.setAggressivelyCooldownIphsSupplier(
                 () ->
-                        ChromeFeatureList.sAndroidUserEducationFramework.isEnabled()
-                                && ChromeFeatureList.sAggressivelyCooldownIphs.isEnabled());
+                        ChromeFeatureList.sUserEducationFramework.isEnabled()
+                                && ChromeFeatureList.sUserEducationAggressivelyCooldownIphs
+                                        .isEnabled());
         return tracker;
     }
 
@@ -59,6 +61,26 @@ public final class TrackerFactory {
             Supplier<@Nullable Profile> profileSupplier) {
         Profile p = profileSupplier.get();
         return p == null ? null : getTrackerForProfile(p);
+    }
+
+    /**
+     * Returns whether the interruptive IPH cooldown group applies, i.e. both the
+     * UserEducationFramework flag and the UserEducationInterruptiveCooldownGroup sub-flag are
+     * enabled.
+     */
+    public static boolean isInterruptiveCooldownGroupEnabled() {
+        return ChromeFeatureList.sUserEducationFramework.isEnabled()
+                && ChromeFeatureList.sUserEducationInterruptiveCooldownGroup.isEnabled();
+    }
+
+    /**
+     * Returns whether the blue bubble IPH cooldown group applies, i.e. both the
+     * UserEducationFramework flag and the UserEducationBlueBubbleCooldownGroup sub-flag are
+     * enabled.
+     */
+    public static boolean isBlueBubbleCooldownGroupEnabled() {
+        return ChromeFeatureList.sUserEducationFramework.isEnabled()
+                && ChromeFeatureList.sUserEducationBlueBubbleCooldownGroup.isEnabled();
     }
 
     /**

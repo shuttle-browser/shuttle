@@ -13,9 +13,11 @@
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/glic_provider.h"
+#include "chrome/browser/glic/public/provider_features.h"
+#include "chrome/browser/glic/test_support/scoped_glic_provider_override.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
 #include "chrome/test/base/testing_profile_manager.h"
@@ -114,6 +116,34 @@ TEST_F(SharingHandlerRegistryImplTest,
   EXPECT_TRUE(handler_registry->GetSharingHandler(
       components_sharing_message::SharingMessage::kActuatorDownstreamMessage));
 }
+
+TEST_F(SharingHandlerRegistryImplTest, Glic_NotAddedForGeminiEnterprise) {
+  glic::ScopedGlicProviderOverride scoped_geic(
+      glic::GlicProvider::kGeminiEnterprise);
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(
+      features::kGlicExperimentalTriggering);
+  glic::GlicProfileManager glic_profile_manager;
+  TestingProfileManager profile_manager(TestingBrowserProcess::GetGlobal());
+  ASSERT_TRUE(profile_manager.SetUp());
+  TestingProfile::TestingFactories testing_factories;
+  testing_factories.emplace_back(
+      glic::GlicKeyedServiceFactory::GetInstance(),
+      base::BindLambdaForTesting([&](content::BrowserContext* context)
+                                     -> std::unique_ptr<KeyedService> {
+        Profile* profile = Profile::FromBrowserContext(context);
+        return std::make_unique<glic::GlicKeyedService>(
+            profile, IdentityManagerFactory::GetForProfile(profile),
+            profile_manager.profile_manager(), &glic_profile_manager,
+            /*contextual_cueing_service=*/nullptr,
+            /*actor_keyed_service=*/nullptr);
+      }));
+  TestingProfile* profile = profile_manager.CreateTestingProfile(
+      "profile", std::move(testing_factories));
+  auto handler_registry = CreateHandlerRegistry(profile);
+  EXPECT_FALSE(handler_registry->GetSharingHandler(
+      components_sharing_message::SharingMessage::kGlicExperimentalTriggering));
+}
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 TEST_F(SharingHandlerRegistryImplTest, AddRemoveManually) {
@@ -137,8 +167,28 @@ TEST_F(SharingHandlerRegistryImplTest,
        BrowserActuatorDownstreamMessage_AddedWhenFeatureEnabled) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(browser_actuator::kBrowserActuator);
-  auto handler_registry = CreateHandlerRegistry();
+  TestingProfile profile;
+  std::unique_ptr<SharingHandlerRegistryImpl> handler_registry =
+      CreateHandlerRegistry(&profile);
   EXPECT_TRUE(handler_registry->GetSharingHandler(
+      components_sharing_message::SharingMessage::kActuatorDownstreamMessage));
+}
+
+TEST_F(SharingHandlerRegistryImplTest,
+       BrowserActuatorDownstreamMessage_NotAddedWhenProfileNullOrOffTheRecord) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(browser_actuator::kBrowserActuator);
+  std::unique_ptr<SharingHandlerRegistryImpl> null_profile_registry =
+      CreateHandlerRegistry(/*profile=*/nullptr);
+  EXPECT_FALSE(null_profile_registry->GetSharingHandler(
+      components_sharing_message::SharingMessage::kActuatorDownstreamMessage));
+
+  TestingProfile profile;
+  Profile* otr_profile =
+      profile.GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  std::unique_ptr<SharingHandlerRegistryImpl> otr_registry =
+      CreateHandlerRegistry(otr_profile);
+  EXPECT_FALSE(otr_registry->GetSharingHandler(
       components_sharing_message::SharingMessage::kActuatorDownstreamMessage));
 }
 
@@ -146,7 +196,8 @@ TEST_F(SharingHandlerRegistryImplTest,
        BrowserActuatorDownstreamMessage_NotAddedWhenFeatureDisabled) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndDisableFeature(browser_actuator::kBrowserActuator);
-  auto handler_registry = CreateHandlerRegistry();
+  std::unique_ptr<SharingHandlerRegistryImpl> handler_registry =
+      CreateHandlerRegistry();
   EXPECT_FALSE(handler_registry->GetSharingHandler(
       components_sharing_message::SharingMessage::kActuatorDownstreamMessage));
 }

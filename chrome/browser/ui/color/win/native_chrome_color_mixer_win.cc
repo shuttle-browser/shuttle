@@ -187,7 +187,17 @@ void AddNativeHighContrastColors(ui::ColorMixer& mixer) {
       kColorTabBackgroundActiveFrameActive};
   mixer[kColorTabBackgroundInactiveHoverFrameActive] = {kColorToolbarText};
   mixer[kColorTabBackgroundInactiveHoverFrameInactive] = {kColorToolbarText};
+  mixer[kColorTabBackgroundSelectedFrameActive] = {
+      kColorTabBackgroundActiveFrameActive};
+  mixer[kColorTabBackgroundSelectedFrameInactive] = {
+      kColorTabBackgroundActiveFrameInactive};
+  mixer[kColorTabBackgroundSelectedHoverFrameActive] = {
+      kColorTabBackgroundSelectedFrameActive};
+  mixer[kColorTabBackgroundSelectedHoverFrameInactive] = {
+      kColorTabBackgroundSelectedFrameInactive};
   mixer[kColorTabForegroundActiveFrameActive] = {ui::kColorNativeHighlightText};
+  mixer[kColorTabForegroundActiveFrameInactive] = {
+      kColorTabForegroundActiveFrameActive};
   mixer[kColorTabForegroundInactiveHoverFrameActive] = {
       kColorTabForegroundActiveFrameActive};
   mixer[kColorTabForegroundInactiveHoverFrameInactive] = {
@@ -207,6 +217,14 @@ void AddNativeHighContrastColors(ui::ColorMixer& mixer) {
   mixer[kColorTabSearchButtonCRForegroundFrameActive] = {
       kColorTabForegroundActiveFrameActive};
   mixer[kColorTabSearchButtonCRForegroundFrameInactive] = {
+      kColorTabForegroundActiveFrameActive};
+  mixer[kColorTabGroupEphemeralHeaderBackgroundFrameActive] = {
+      kColorTabBackgroundActiveFrameActive};
+  mixer[kColorTabGroupEphemeralHeaderBackgroundFrameInactive] = {
+      kColorTabBackgroundActiveFrameInactive};
+  mixer[kColorTabGroupEphemeralHeaderForegroundFrameActive] = {
+      kColorTabForegroundActiveFrameActive};
+  mixer[kColorTabGroupEphemeralHeaderForegroundFrameInactive] = {
       kColorTabForegroundActiveFrameActive};
   mixer[kColorNewTabButtonInkDropFrameActive] = {kColorToolbarText};
   mixer[kColorNewTabButtonInkDropFrameInactive] = {kColorToolbarText};

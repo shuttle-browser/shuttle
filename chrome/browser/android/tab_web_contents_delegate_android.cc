@@ -49,8 +49,8 @@
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
 #include "chrome/browser/preloading/preloading_prefs.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client.h"
-#include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
+#include "chrome/browser/safe_browsing/navigation_observer/safe_browsing_navigation_observer_manager_factory.h"
+#include "chrome/browser/safe_browsing/password_protection/chrome_password_reuse_detection_manager_client.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/sessions/session_tab_helper_factory.h"
 #include "chrome/browser/subresource_filter/chrome_content_subresource_filter_web_contents_helper_factory.h"
@@ -81,7 +81,7 @@
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/paint_preview/buildflags/buildflags.h"
 #include "components/pdf/common/constants.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_observer.h"
+#include "components/safe_browsing/content/browser/navigation_observer/safe_browsing_navigation_observer.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/download_manager_delegate.h"
 #include "content/public/browser/file_select_listener.h"
@@ -112,8 +112,8 @@
 #include "third_party/jni_zero/default_conversions.h"
 #include "third_party/skia/include/core/SkRect.h"
 #include "third_party/skia/include/core/SkRegion.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/android/rect_jni_conversion.h"
@@ -527,7 +527,7 @@ content::WebContents* TabWebContentsDelegateAndroid::CreateCustomWebContents(
     const GURL& opener_url,
     const std::string& frame_name,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     const content::StoragePartitionConfig& partition_config,
     content::SessionStorageNamespaceHandle* session_storage_namespace) {
@@ -599,13 +599,14 @@ WebContents* TabWebContentsDelegateAndroid::OpenURLFromTab(
                                   std::move(navigation_handle_callback));
   }
 
-  WindowOpenDisposition disposition = params.disposition;
-  if (!source || (disposition != WindowOpenDisposition::kCurrentTab &&
-                  disposition != WindowOpenDisposition::kNewForegroundTab &&
-                  disposition != WindowOpenDisposition::kNewBackgroundTab &&
-                  disposition != WindowOpenDisposition::kOffTheRecord &&
-                  disposition != WindowOpenDisposition::kNewPopup &&
-                  disposition != WindowOpenDisposition::kNewWindow)) {
+  ui::mojom::WindowOpenDisposition disposition = params.disposition;
+  if (!source ||
+      (disposition != ui::mojom::WindowOpenDisposition::kCurrentTab &&
+       disposition != ui::mojom::WindowOpenDisposition::kNewForegroundTab &&
+       disposition != ui::mojom::WindowOpenDisposition::kNewBackgroundTab &&
+       disposition != ui::mojom::WindowOpenDisposition::kOffTheRecord &&
+       disposition != ui::mojom::WindowOpenDisposition::kNewPopup &&
+       disposition != ui::mojom::WindowOpenDisposition::kNewWindow)) {
     // We can't handle this here.  Give the parent a chance.
     return WebContentsDelegateAndroid::OpenURLFromTab(
         source, params, std::move(navigation_handle_callback));
@@ -631,7 +632,7 @@ WebContents* TabWebContentsDelegateAndroid::OpenURLFromTab(
     }
   }
 
-  if (disposition == WindowOpenDisposition::kCurrentTab) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
     // Ask the parent to handle in-place opening.
     return WebContentsDelegateAndroid::OpenURLFromTab(
         source, params, std::move(navigation_handle_callback));
@@ -657,21 +658,21 @@ WebContents* TabWebContentsDelegateAndroid::AddNewContents(
     WebContents* source,
     std::unique_ptr<WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
   // No code for this yet.
-  CHECK_NE(disposition, WindowOpenDisposition::kSaveToDisk,
+  CHECK_NE(disposition, ui::mojom::WindowOpenDisposition::kSaveToDisk,
            base::NotFatalUntil::M161);
   // Can't create a new contents for the current tab - invalid case.
-  CHECK_NE(disposition, WindowOpenDisposition::kCurrentTab,
+  CHECK_NE(disposition, ui::mojom::WindowOpenDisposition::kCurrentTab,
            base::NotFatalUntil::M161);
 
-  if (disposition == WindowOpenDisposition::kNewPictureInPicture) {
-    const GURL& opener_url = source ? source->GetLastCommittedURL() : GURL();
-    if (!PictureInPictureWindowManager::IsSupportedForDocumentPictureInPicture(
-            opener_url)) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewPictureInPicture) {
+    if (!source || PictureInPictureWindowManager::IsChildWebContents(source) ||
+        !PictureInPictureWindowManager::IsSupportedForDocumentPictureInPicture(
+            source->GetLastCommittedURL())) {
       if (was_blocked) {
         *was_blocked = true;
       }
@@ -750,7 +751,7 @@ WebContents* TabWebContentsDelegateAndroid::AddNewContents(
   // When handled is |true|, ownership has been passed to java, which in turn
   // creates a new TabAndroid instance to own the WebContents.
   if (handled) {
-    if (disposition == WindowOpenDisposition::kNewPictureInPicture) {
+    if (disposition == ui::mojom::WindowOpenDisposition::kNewPictureInPicture) {
       // For Document PiP, immediately enter PiP mode on the native side so that
       // we start observing the opener for navigations immediately.
       PictureInPictureWindowManager::GetInstance()
@@ -1081,7 +1082,6 @@ static void JNI_TabWebContentsDelegateAndroidImpl_OnRendererUnresponsive(
 }
 
 static void JNI_TabWebContentsDelegateAndroidImpl_OpenFile(
-    JNIEnv* env,
     content::WebContents* web_contents) {
   if (!web_contents) {
     return;

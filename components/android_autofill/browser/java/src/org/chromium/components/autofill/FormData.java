@@ -18,6 +18,7 @@ import org.jni_zero.JNINamespace;
 import org.jni_zero.JniType;
 
 import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
 
 import java.util.List;
 
@@ -64,6 +65,7 @@ public class FormData {
                 structure.newHtmlInfoBuilder("form").addAttribute("name", mName).build());
         int index = structure.addChildCount(mFields.size());
         short fieldIndex = 0;
+        @Nullable Boolean includeSelectOptionValues = null;
         for (FormFieldData field : mFields) {
             ViewStructure child = structure.newChild(index++);
             if (focusFieldIndex == fieldIndex) {
@@ -116,9 +118,16 @@ public class FormData {
             }
             switch (field.getControlType()) {
                 case FormFieldData.ControlType.LIST:
+                    if (includeSelectOptionValues == null) {
+                        includeSelectOptionValues =
+                                AndroidAutofillFeatures
+                                        .ANDROID_AUTOFILL_INCLUDE_SELECT_OPTION_VALUES
+                                        .isEnabled();
+                    }
                     child.setAutofillType(View.AUTOFILL_TYPE_LIST);
-                    child.setAutofillOptions(field.mOptionContents);
-                    int i = findIndex(field.mOptionValues, field.getValue());
+                    child.setAutofillOptions(
+                            getSelectAutofillOptions(field.mOptions, includeSelectOptionValues));
+                    int i = findOptionIndex(field.mOptions, field.getValue());
                     if (i != -1) {
                         child.setAutofillValue(AutofillValue.forList(i));
                     }
@@ -133,7 +142,8 @@ public class FormData {
                         builder.addAttribute("maxlength", String.valueOf(field.mMaxLength));
                     }
                     if (field.getControlType() == FormFieldData.ControlType.DATALIST) {
-                        child.setAutofillOptions(field.mDatalistValues);
+                        child.setAutofillOptions(
+                                getDatalistAutofillOptions(field.mDatalistOptions));
                     }
                     break;
                 default:
@@ -147,10 +157,35 @@ public class FormData {
         return (sessionId << 16) | index;
     }
 
-    static int findIndex(String[] values, String value) {
-        if (values != null && value != null) {
-            for (int i = 0; i < values.length; i++) {
-                if (value.equals(values[i])) return i;
+    // ViewStructure.setAutofillOptions(CharSequence[]) only accepts a flat array of strings and
+    // AutofillValue.forList(int) returns an index into that array, so option texts and option
+    // values are concatenated into a single array of length 2N.
+    private static String[] getSelectAutofillOptions(
+            List<SelectOption> selectOptions, boolean includeSelectOptionValues) {
+        int numOptions = selectOptions.size();
+        String[] options = new String[includeSelectOptionValues ? numOptions * 2 : numOptions];
+        for (int i = 0; i < numOptions; i++) {
+            SelectOption option = selectOptions.get(i);
+            options[i] = option.getText();
+            if (includeSelectOptionValues) {
+                options[numOptions + i] = option.getValue();
+            }
+        }
+        return options;
+    }
+
+    private static String[] getDatalistAutofillOptions(List<SelectOption> datalistOptions) {
+        String[] options = new String[datalistOptions.size()];
+        for (int i = 0; i < datalistOptions.size(); i++) {
+            options[i] = datalistOptions.get(i).getValue();
+        }
+        return options;
+    }
+
+    static int findOptionIndex(List<SelectOption> options, @Nullable String value) {
+        if (value != null) {
+            for (int i = 0; i < options.size(); i++) {
+                if (value.equals(options.get(i).getValue())) return i;
             }
         }
         return -1;

@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "base/observer_list_types.h"
+#include "components/browser_actuator/public/transport/common.h"
 
 namespace browser_actuator::transport {
 
@@ -35,10 +36,10 @@ class TransportSessionRegistry {
   virtual void AddObserver(Observer* observer) = 0;
   virtual void RemoveObserver(Observer* observer) = 0;
 
-  // Retrieves an existing session by ID or creates a new one if it does not
-  // exist. Returns nullptr if session creation fails (e.g. max capacity
-  // reached).
-  virtual TransportSession* GetOrCreateSession(std::string_view session_id) = 0;
+  // Creates a new session by ID, returning nullptr if the session already
+  // exists or if session creation fails (e.g. max capacity reached).
+  virtual TransportSession* CreateSession(std::string_view session_id,
+                                          InitIngressSource ingress_source) = 0;
 
   // Destroys the session identified by `session_id` if it exists.
   virtual void DestroySession(std::string_view session_id) = 0;

@@ -66,6 +66,7 @@ source_set("impl") {
       "//chrome/browser/ash/policy/core",
       "//chrome/browser/ash/policy/handlers",
       "//chrome/browser/ash/profiles",
+      "//chromeos/ash/components/network",
       "//chromeos/ash/components/system",
       "//chromeos/components/kiosk",
     ]
@@ -111,7 +112,9 @@ source_set("browser_tests") {
     ":device_api",
     "//base/test:test_support",
     "//chrome/browser/ui/tabs:tab_strip",
-    "//chrome/test:test_support_ui",
+    "//chrome/test/base:in_process_browser_test",
+    "//chrome/test/base:mixin_based_in_process_browser_test",
+    "//chrome/test/base:ui_test_utils",
     "//content/test:test_support",
     "//net:test_support",
     "//testing/gtest",
@@ -122,6 +125,8 @@ source_set("browser_tests") {
     deps += [
       "//chrome/browser/ash/login/test:test_support",
       "//chrome/browser/ash/policy/core:test_support",
+      "//chromeos/ash/components/dbus/shill",
+      "//chromeos/ash/components/network",
       "//chromeos/ash/components/system",
     ]
   }

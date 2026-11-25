@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_AUTOFILL_CONTENT_RENDERER_AUTOFILL_AGENT_H_
 #define COMPONENTS_AUTOFILL_CONTENT_RENDERER_AUTOFILL_AGENT_H_
 
+#include <cstdint>
 #include <list>
 #include <memory>
 #include <optional>
@@ -54,8 +55,10 @@
 
 namespace autofill {
 
+class CustomFormControlAgentImpl;
 class PasswordAutofillAgent;
 class PasswordGenerationAgent;
+class SynchronousFormCache;
 
 // AutofillAgent deals with Autofill related communications between Blink and
 // the browser.
@@ -157,6 +160,15 @@ class AutofillAgent : public content::RenderFrameObserver,
   void BindPendingReceiver(
       mojo::PendingAssociatedReceiver<mojom::AutofillAgent> pending_receiver);
 
+  // Lets the browser run custom form control scripts in this frame, in the
+  // isolated world `world_id` (Chrome passes
+  // `ISOLATED_WORLD_ID_AUTOFILL_CUSTOM_FORM_CONTROLS`), through
+  // `mojom::CustomFormControlAgent`, which this registers in `registry`.
+  // Requires `features::kAutofillCustomFormControlScripts`. Call at most once.
+  void EnableCustomFormControlScripts(
+      int32_t world_id,
+      blink::AssociatedInterfaceRegistry& registry);
+
   blink::WebDocument GetDocument() const;
 
   // Callers must not store the returned value longer than a function scope.
@@ -185,10 +197,10 @@ class AutofillAgent : public content::RenderFrameObserver,
 
   // mojom::AutofillAgent:
   void ScrollFieldIntoView(FieldRendererId field_id) override;
-  void TriggerFormExtraction() override;
+  void TriggerFormExtraction(bool force) override;
   void TriggerFormExtractionWithResponse(
+      bool force,
       base::OnceCallback<void(bool)> callback) override;
-  void ClearFormCache() override;
   void ApplyFieldsAction(mojom::FormActionType action_type,
                          mojom::ActionPersistence action_persistence,
                          const std::vector<FormFieldData::FillData>& fields,
@@ -447,6 +459,12 @@ class AutofillAgent : public content::RenderFrameObserver,
   void ExtractFormsUnthrottled(base::OnceCallback<void(bool)> callback,
                                const CallTimerState& timer_state);
 
+  // Wrapper around `form_util::FindFormAndFieldForFormControlElement()`.
+  std::optional<form_util::FormAndField> FindFormAndFieldForFormControlElement(
+      const blink::WebFormControlElement& element,
+      CallTimerState::CallSite call_site,
+      base::optional_ref<const SynchronousFormCache> form_cache);
+
   // Hides any currently showing Autofill popup.
   void HidePopup();
 
@@ -495,6 +513,12 @@ class AutofillAgent : public content::RenderFrameObserver,
   std::unique_ptr<FormSubmissionTracker> form_tracker_;
 
   mojo::AssociatedReceiver<mojom::AutofillAgent> receiver_{this};
+
+  // Runs the custom form control script of the current document, which the
+  // browser loads through it. Only exists if custom form control scripts are
+  // enabled (see `EnableCustomFormControlScripts()`), until the frame is
+  // destroyed (see `OnDestruct()`).
+  std::unique_ptr<CustomFormControlAgentImpl> custom_form_control_agent_;
 
   mojo::AssociatedRemote<mojom::AutofillDriver> autofill_driver_;
 

@@ -158,6 +158,18 @@ const base::FeatureParam<base::TimeDelta>
 
 BASE_FEATURE(kGlicActorFileUploadTool, base::FEATURE_DISABLED_BY_DEFAULT);
 
+const base::FeatureParam<int> kGlicActorFileUploadToolMaxFileSizeBytes{
+    &kGlicActorFileUploadTool, "max_file_size_bytes", 5 * 1024 * 1024};
+
+const base::FeatureParam<base::TimeDelta> kGlicActorFileUploadToolTimeout{
+    &kGlicActorFileUploadTool, "timeout", base::Seconds(30)};
+
+// The hosts serving files uploaded to Gemini (ContribService).
+const base::FeatureParam<std::string> kGlicActorFileUploadToolCredentialedHosts{
+    &kGlicActorFileUploadTool, "credentialed_hosts",
+    "contribution.usercontent.google.com,"
+    "contribution-autopush.usercontent.corp.google.com"};
+
 BASE_FEATURE(kGlicActorTransientTasks, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<bool> kGlicActorTransientTasksForceTransient{
     &kGlicActorTransientTasks, "force_transient", false};
@@ -172,12 +184,6 @@ const base::FeatureParam<base::TimeDelta> kActorScriptToolExecutionTimeout{
 const base::FeatureParam<base::TimeDelta> kActorScriptToolCrossDocumentTimeout{
     &kGlicActorEnableScriptTools, "cross_document_timeout", base::Seconds(5)};
 
-BASE_FEATURE(kActorScriptToolDelayObservation,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-const base::FeatureParam<int> kActorScriptToolDelayObservationMillis{
-    &kActorScriptToolDelayObservation, "script_tool_delay_observation_ms", 0};
-
 BASE_FEATURE(kActorObserveScreenshotDefault, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kActorObservePageContentDefault, base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -186,6 +192,9 @@ BASE_FEATURE(kActorScriptToolSkipPageContent,
              base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kActorScriptToolTransientUserActivation,
              base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE(kActorScriptToolIdValidation, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kActorExecuteJsTool, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kActorRecordInvocationSourceCompletionMetrics,
              base::FEATURE_ENABLED_BY_DEFAULT);

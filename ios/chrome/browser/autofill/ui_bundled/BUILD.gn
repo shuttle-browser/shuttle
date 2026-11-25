@@ -41,7 +41,6 @@ source_set("coordinator") {
     "//google_apis",
     "//ios/chrome/browser/affiliations/model",
     "//ios/chrome/browser/autofill/atmemory/model",
-    "//ios/chrome/browser/autofill/atmemory/public",
     "//ios/chrome/browser/autofill/autofill_ai/error_dialog/coordinator",
     "//ios/chrome/browser/autofill/autofill_ai/error_dialog/model",
     "//ios/chrome/browser/autofill/bnpl/ui",
@@ -55,7 +54,6 @@ source_set("coordinator") {
     "//ios/chrome/browser/autofill/scan_save_and_fill/coordinator",
     "//ios/chrome/browser/autofill/ui_bundled/bottom_sheet:virtual_card_enrollment_bottom_sheet_coordinator",
     "//ios/chrome/browser/autofill/ui_bundled/cells",
-    "//ios/chrome/browser/autofill/wallet_reminder_notice/ui",
     "//ios/chrome/browser/consent_auditor/model",
     "//ios/chrome/browser/device_reauth/model",
     "//ios/chrome/browser/history/model",
@@ -176,7 +174,6 @@ source_set("eg2_tests") {
     "//ios/chrome/browser/authentication/test:eg_test_support+eg2",
     "//ios/chrome/browser/autofill/ui_bundled/address_editor:constants",
     "//ios/chrome/browser/autofill/ui_bundled/bottom_sheet:constants",
-    "//ios/chrome/browser/badges/model:features",
     "//ios/chrome/browser/badges/ui_bundled:public",
     "//ios/chrome/browser/infobars/ui_bundled:eg_test_support+eg2",
     "//ios/chrome/browser/infobars/ui_bundled/banners:public",
@@ -221,8 +218,6 @@ source_set("eg_app_support+eg2") {
     "//ios/chrome/browser/shared/model/browser",
     "//ios/chrome/browser/shared/model/profile",
     "//ios/chrome/browser/shared/public/commands",
-    "//ios/chrome/common/ui/reauthentication",
-    "//ios/chrome/common/ui/reauthentication:fake_reauthentication_module",
     "//ios/chrome/test/app:test_support",
     "//ios/public/provider/chrome/browser/risk_data:risk_data_api",
     "//ios/web/public",
@@ -238,11 +233,15 @@ source_set("eg_test_support+eg2") {
   sources = [
     "autofill_app_interface.h",
     "autofill_app_interface_stub.mm",
+    "autofill_egtest_util.h",
+    "autofill_egtest_util.mm",
   ]
   deps = [
     "//base",
-    "//ios/chrome/common/ui/reauthentication",
+    "//base/test:test_support",
+    "//ios/chrome/test/earl_grey:eg_test_support+eg2",
     "//ios/testing/earl_grey:eg_test_support+eg2",
+    "//ios/web/public/test:element_selector",
   ]
 }
 
@@ -269,7 +268,6 @@ source_set("unit_tests") {
     "//components/strings:components_strings_grit",
     "//ios/chrome/app/strings:ios_strings_grit",
     "//ios/chrome/browser/affiliations/model",
-    "//ios/chrome/browser/autofill/atmemory/public",
     "//ios/chrome/browser/autofill/autofill_ai/coordinator:unit_tests",
     "//ios/chrome/browser/autofill/autofill_ai/error_dialog/coordinator",
     "//ios/chrome/browser/autofill/autofill_ai/error_dialog/model",

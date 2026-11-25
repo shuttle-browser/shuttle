@@ -61,7 +61,7 @@ export class GroupedActionMenuElement extends GroupedActionMenuElementBase {
 
   // Initializing to random value, but this is set by the parent.
   accessor label: string = '';
-  protected accessor webuiRoundedIconsEnabled_: boolean =
+  private accessor webuiRoundedIconsEnabled_: boolean =
       loadTimeData.getBoolean('webuiRoundedIconsEnabled');
 
   open(anchor: HTMLElement, showAtConfig?: ShowAtConfigPrefs) {
@@ -111,6 +111,12 @@ export class GroupedActionMenuElement extends GroupedActionMenuElementBase {
         .from(
             {length}, (_, itemIndex) => this.getItemId_(groupIndex, itemIndex))
         .join(' ');
+  }
+
+  protected getGroupAriaLabel_(group: MenuGroup<unknown>): string {
+    return group.header.shortcut ?
+        `${group.header.title} (${group.header.shortcut})` :
+        group.header.title;
   }
 
   protected getItemRole_(item: MenuStateItem<unknown>): string {

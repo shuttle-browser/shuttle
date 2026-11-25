@@ -47,8 +47,6 @@
 #import "components/sync/service/sync_service.h"
 #import "components/translate/core/browser/translate_manager.h"
 #import "components/trusted_vault/trusted_vault_server_constants.h"
-#import "components/webauthn/ios/ios_passkey_client.h"
-#import "components/webauthn/ios/ios_passkey_client_commands.h"
 #import "ios/chrome/browser/app_bar/ui/app_bar_constants.h"
 #import "ios/chrome/browser/app_launcher/model/app_launcher_tab_helper_browser_presentation_provider.h"
 #import "ios/chrome/browser/app_store_rating/model/features.h"
@@ -139,7 +137,6 @@
 #import "ios/chrome/browser/overlays/model/public/overlay_presenter.h"
 #import "ios/chrome/browser/overscroll_actions/model/overscroll_actions_tab_helper.h"
 #import "ios/chrome/browser/overscroll_actions/ui_bundled/overscroll_actions_controller.h"
-#import "ios/chrome/browser/passwords/bottom_sheet/coordinator/credential_suggestion_bottom_sheet_coordinator.h"
 #import "ios/chrome/browser/passwords/model/password_controller_delegate.h"
 #import "ios/chrome/browser/popup_menu/coordinator/popup_menu_coordinator.h"
 #import "ios/chrome/browser/popup_menu/overflow_menu/public/features.h"
@@ -182,7 +179,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/state/browser_layout_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/state/scene_layout_state.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
@@ -205,6 +201,7 @@
 #import "ios/chrome/browser/shared/public/commands/omnibox_commands.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
 #import "ios/chrome/browser/shared/public/commands/popup_menu_commands.h"
+#import "ios/chrome/browser/shared/public/commands/primary_account_reauth_commands.h"
 #import "ios/chrome/browser/shared/public/commands/qr_generation_commands.h"
 #import "ios/chrome/browser/shared/public/commands/quick_delete_commands.h"
 #import "ios/chrome/browser/shared/public/commands/reader_mode_chip_commands.h"
@@ -220,7 +217,6 @@
 #import "ios/chrome/browser/shared/public/commands/synced_set_up_commands.h"
 #import "ios/chrome/browser/shared/public/commands/text_zoom_commands.h"
 #import "ios/chrome/browser/shared/public/commands/toolbar_commands.h"
-#import "ios/chrome/browser/shared/public/commands/welcome_back_promo_commands.h"
 #import "ios/chrome/browser/shared/public/commands/whats_new_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/ui/elements/activity_overlay_coordinator.h"
@@ -265,6 +261,7 @@
 #import "ios/chrome/browser/url_loading/model/url_loading_notifier_browser_agent.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_params.h"
 #import "ios/chrome/browser/view_source/model/view_source_browser_agent.h"
+#import "ios/chrome/browser/voice/model/voice_search_navigations_tab_helper.h"
 #import "ios/chrome/browser/voice/ui_bundled/text_to_speech_playback_controller.h"
 #import "ios/chrome/browser/voice/ui_bundled/text_to_speech_playback_controller_factory.h"
 #import "ios/chrome/browser/web/model/choose_file/choose_file_tab_helper.h"
@@ -289,6 +286,7 @@
 #import "ios/public/provider/chrome/browser/text_zoom/text_zoom_api.h"
 #import "ios/public/provider/chrome/browser/voice_search/voice_search_api.h"
 #import "ios/public/provider/chrome/browser/voice_search/voice_search_controller.h"
+#import "ios/public/provider/chrome/browser/voice_search/voice_search_coordinator_delegate.h"
 #import "ios/web/public/web_state.h"
 #import "ios/web/public/web_state_id.h"
 #import "ui/base/l10n/l10n_util.h"
@@ -322,6 +320,7 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
     OverscrollActionsControllerDelegate,
     PasswordControllerDelegate,
     PrerenderBrowserAgentDelegate,
+    PrimaryAccountReauthCommands,
     ReSigninPresenter,
     ReaderModeBrowserAgentDelegate,
     ReaderModeCommands,
@@ -337,6 +336,7 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
     TextZoomCommands,
     TrustedVaultReauthenticationCoordinatorDelegate,
     URLLoadingDelegate,
+    VoiceSearchCoordinatorDelegate,
     WebNavigationNTPDelegate,
     WebUsageEnablerBrowserAgentObserving>
 
@@ -978,6 +978,7 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
     @protocol(FindInPageCommands),
     @protocol(ReaderModeCommands),
     @protocol(NewTabPageCommands),
+    @protocol(PrimaryAccountReauthCommands),
     @protocol(SyncPresenterCommands),
     @protocol(TextZoomCommands),
   ];
@@ -1862,12 +1863,6 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
   [_viewController startVoiceSearch];
 }
 
-- (void)dismissPasswordSuggestions {
-  // TODO(crbug.com/543354673): Remove this.
-  [HandlerForProtocol(self.dispatcher, IOSPasskeyClientCommands)
-      dismissPasskeySuggestions];
-}
-
 - (void)legacyDismissCardUnmaskAuthentication {
   // TODO(crbug.com/543382844): Remove this.
   [HandlerForProtocol(self.dispatcher, AutofillCommands)
@@ -2117,10 +2112,8 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
 // Starts the Voice Search coordinator on the browser view.
 - (void)startVoiceSearchCoordinator {
   [self stopVoiceSearchCoordinator];
-  // TODO(crbug.com/571184218): Implement `VoiceSearchCoordinatorDelegate` to
-  // load recognized queries and stop the coordinator on dismissal.
   _voiceSearchCoordinator = ios::provider::CreateVoiceSearchCoordinator(
-      self.viewController, self.browser, /*delegate=*/nil);
+      self.viewController, self.browser, self);
   [_voiceSearchCoordinator start];
 }
 
@@ -2578,14 +2571,24 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
   return self.browserContentCoordinator.viewController.view;
 }
 
-#pragma mark - SyncPresenterCommands
+#pragma mark - PrimaryAccountReauthCommands
 
-- (void)showPrimaryAccountReauth {
-  [self showPrimaryAccountReauthWithDismissalCompletion:nil];
+- (void)showPrimaryAccountReauthWithAccessPoint:
+            (signin_metrics::AccessPoint)accessPoint
+                              reauthAccessPoint:
+                                  (signin_metrics::ReauthAccessPoint)
+                                      reauthAccessPoint {
+  [self showPrimaryAccountReauthWithAccessPoint:accessPoint
+                              reauthAccessPoint:reauthAccessPoint
+                            dismissalCompletion:nil];
 }
 
-- (void)showPrimaryAccountReauthWithDismissalCompletion:
-    (SyncPresenterCompletionCallback)completion {
+- (void)showPrimaryAccountReauthWithAccessPoint:
+            (signin_metrics::AccessPoint)accessPoint
+                              reauthAccessPoint:
+                                  (signin_metrics::ReauthAccessPoint)
+                                      reauthAccessPoint
+                            dismissalCompletion:(ProceduralBlock)completion {
   if (_signinCoordinator.viewWillPersist ||
       _reauthCoordinator.viewWillPersist) {
     return;
@@ -2612,8 +2615,7 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
         initWithBaseViewController:self.viewController
                            browser:regularBrowser
                            account:account
-                 reauthAccessPoint:signin_metrics::ReauthAccessPoint::
-                                       kReauthInfoBar];
+                 reauthAccessPoint:reauthAccessPoint];
     _reauthCoordinator.delegate = self;
     _reauthCoordinatorCompletion = completion;
     [_reauthCoordinator start];
@@ -2624,8 +2626,6 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
   // is launched.
   signin_metrics::PromoAction promoAction =
       signin_metrics::PromoAction::PROMO_ACTION_NO_SIGNIN_PROMO;
-  signin_metrics::AccessPoint accessPoint =
-      signin_metrics::AccessPoint::kReauthInfoBar;
   SigninContextStyle style = SigninContextStyle::kDefault;
   Browser* regularBrowser = signin::GetRegularBrowser(self.browser);
   _signinCoordinator = [SigninCoordinator
@@ -2649,6 +2649,8 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
       };
   [_signinCoordinator start];
 }
+
+#pragma mark - SyncPresenterCommands
 
 - (void)showSyncPassphraseSettings {
   [self showSyncPassphraseSettingsWithDismissalCompletion:nil];
@@ -3283,6 +3285,34 @@ constexpr CGFloat kSnackbarFloatingBottomMargin = 10.0;
     (TrustedVaultReauthenticationCoordinator*)coordinator {
   CHECK_EQ(coordinator, _trustedVaultReauthenticationCoordinator);
   [self stopTrustedVaultReauthentication];
+}
+
+#pragma mark - VoiceSearchCoordinatorDelegate
+
+- (void)voiceSearchCoordinator:(ChromeCoordinator*)coordinator
+             didRecognizeQuery:(NSString*)query {
+  CHECK_EQ(coordinator, _voiceSearchCoordinator);
+  [self stopVoiceSearchCoordinator];
+  if (web::WebState* activeWebState = self.activeWebState) {
+    VoiceSearchNavigationTabHelper::FromWebState(activeWebState)
+        ->WillLoadVoiceSearchResult();
+  }
+  _urlLoadingBrowserAgent->LoadURLForQuery(query);
+}
+
+- (void)voiceSearchCoordinator:(ChromeCoordinator*)coordinator
+        didRequestEditingQuery:(NSString*)query {
+  CHECK_EQ(coordinator, _voiceSearchCoordinator);
+  [self stopVoiceSearchCoordinator];
+  // TODO(crbug.com/571185104): Consider adding a Voice Search
+  // `ComposeboxEntrypoint` to measure the composebox sessions it starts.
+  [self showComposeboxFromEntrypoint:ComposeboxEntrypoint::kOther
+                           withQuery:query];
+}
+
+- (void)voiceSearchCoordinatorDidFinish:(ChromeCoordinator*)coordinator {
+  CHECK_EQ(coordinator, _voiceSearchCoordinator);
+  [self stopVoiceSearchCoordinator];
 }
 
 @end

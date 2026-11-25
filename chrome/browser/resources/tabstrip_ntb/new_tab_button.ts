@@ -4,6 +4,7 @@
 
 import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 
+import {assert} from '//resources/js/assert.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 
 import {BrowserProxy} from './browser_proxy.js';
@@ -23,11 +24,68 @@ export class NewTabButtonElement extends CrLitElement {
     return getHtml.bind(this)();
   }
 
+  static override get properties() {
+    return {
+      // Driven by pointer events so touch taps don't leave a sticky :hover
+      // state.
+      // TODO(crbug.com/580976841): Remove this state once blink implements
+      // better support for hovering with touch screens.
+      hovered: {
+        type: Boolean,
+        reflect: true,
+      },
+      visible: {
+        type: Boolean,
+        reflect: true,
+      },
+    };
+  }
+
+  accessor hovered: boolean = false;
+  accessor visible: boolean = true;
+
+  private setButtonVisibleListenerId_: number|null = null;
+
+  override connectedCallback() {
+    super.connectedCallback();
+    this.setButtonVisibleListenerId_ =
+        BrowserProxy.getInstance().callbackRouter.setButtonVisible.addListener(
+            (visible: boolean) => {
+              this.visible = visible;
+            });
+  }
+
+  override disconnectedCallback() {
+    super.disconnectedCallback();
+    assert(this.setButtonVisibleListenerId_ !== null);
+    BrowserProxy.getInstance().callbackRouter.removeListener(
+        this.setButtonVisibleListenerId_);
+    this.setButtonVisibleListenerId_ = null;
+  }
+
   protected onClick() {
     chrome.histograms.recordUserAction('MobileToolbarNewTab');
     // No position or URL: the tab is appended and opens the default new tab
     // page.
     BrowserProxy.getInstance().tabStripService.createTabAt(null, null);
+  }
+
+  protected onHoveredPointerenter(e: PointerEvent) {
+    this.hovered = e.pointerType === 'mouse' || e.pointerType === 'pen';
+  }
+
+  protected onHoveredPointerleave() {
+    this.hovered = false;
+  }
+
+  protected onHoveredPointercancel() {
+    this.hovered = false;
+  }
+
+  protected onHoveredPointerdown(e: PointerEvent) {
+    if (e.pointerType === 'touch') {
+      this.hovered = false;
+    }
   }
 }
 

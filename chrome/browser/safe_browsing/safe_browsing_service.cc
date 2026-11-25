@@ -24,48 +24,44 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/download/download_item_warning_data.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
-#include "chrome/browser/safe_browsing/chrome_password_protection_service_factory.h"
-#include "chrome/browser/safe_browsing/chrome_ping_manager_factory.h"
-#include "chrome/browser/safe_browsing/chrome_safe_browsing_blocking_page_factory.h"
-#include "chrome/browser/safe_browsing/chrome_sb_protocol_config_provider.h"
-#include "chrome/browser/safe_browsing/chrome_ui_manager_delegate.h"
 #include "chrome/browser/safe_browsing/chrome_user_population_helper.h"
+#include "chrome/browser/safe_browsing/db/chrome_sb_protocol_config_provider.h"
+#include "chrome/browser/safe_browsing/interstitials/chrome_safe_browsing_blocking_page_factory.h"
+#include "chrome/browser/safe_browsing/interstitials/chrome_ui_manager_delegate.h"
+#include "chrome/browser/safe_browsing/metrics_collector/safe_browsing_metrics_collector_factory.h"
+#include "chrome/browser/safe_browsing/navigation_observer/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/safe_browsing/network_context_service.h"
 #include "chrome/browser/safe_browsing/network_context_service_factory.h"
-#include "chrome/browser/safe_browsing/safe_browsing_metrics_collector_factory.h"
-#include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
-#include "chrome/browser/safe_browsing/safe_browsing_pref_change_handler.h"
+#include "chrome/browser/safe_browsing/password_protection/chrome_password_protection_service.h"
+#include "chrome/browser/safe_browsing/password_protection/chrome_password_protection_service_factory.h"
+#include "chrome/browser/safe_browsing/ping_manager/chrome_ping_manager_factory.h"
 #include "chrome/browser/safe_browsing/security_settings_bundle_pref_change_handler.h"
 #include "chrome/browser/safe_browsing/services_delegate.h"
+#include "chrome/browser/safe_browsing/settings/safe_browsing_pref_change_handler.h"
 #include "chrome/browser/site_protection/site_familiarity_utils.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
-#include "components/content_settings/core/browser/host_content_settings_map.h"
-#include "components/content_settings/core/common/features.h"
-#include "components/content_settings/core/common/pref_names.h"
 #include "components/download/public/common/download_item.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_observer_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
+#include "components/safe_browsing/content/browser/navigation_observer/safe_browsing_navigation_observer_manager.h"
 #include "components/safe_browsing/content/browser/triggers/trigger_manager.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
 #include "components/safe_browsing/content/browser/web_ui/web_ui_content_info_singleton.h"
-#include "components/safe_browsing/content/common/file_type_policies.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies.h"
 #include "components/safe_browsing/core/browser/db/database_manager.h"
-#include "components/safe_browsing/core/browser/ping_manager.h"
+#include "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
+#include "components/safe_browsing/core/browser/ping_manager/ping_manager.h"
 #include "components/safe_browsing/core/browser/realtime/policy_engine.h"
 #include "components/safe_browsing/core/browser/referrer_chain_provider.h"
-#include "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/safe_browsing_policy_handler.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
@@ -103,7 +99,7 @@
 #endif
 
 #if BUILDFLAG(FULL_SAFE_BROWSING)
-#include "chrome/browser/safe_browsing/hash_realtime_service_factory.h"
+#include "chrome/browser/safe_browsing/hashprefix_realtime/hash_realtime_service_factory.h"
 #include "chrome/browser/safe_browsing/incident_reporting/binary_integrity_analyzer.h"
 #endif
 
@@ -180,81 +176,6 @@ void TriggerSecuritySettingsBundleToastIfNeeded(
   }
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_WIN) ||
         // BUILDFLAG(IS_MAC)
-}
-
-// Helper function to determine if any Javascript Optimizer settings are
-// managed by a policy.
-// TODO(crbug.com/491533053): Find a better place to define this helper
-// function.
-bool IsJavascriptOptimizerPolicyManaged(const PrefService& prefs) {
-  return prefs.IsManagedPreference(
-             prefs::kManagedDefaultJavaScriptOptimizerSetting) ||
-         prefs.IsManagedPreference(
-             prefs::kManagedJavaScriptOptimizerAllowedForSites) ||
-         prefs.IsManagedPreference(
-             prefs::kManagedJavaScriptOptimizerBlockedForSites);
-}
-
-// Migrate enhanced-safe-browsing user to enhanced-security bundle if needed.
-void MigrateUserToEnhancedSecurityBundleIfNeeded(
-    base::WeakPtr<Profile> profile) {
-  if (!profile) {
-    return;
-  }
-
-  // Do not perform migration if the any bundled settings are managed by a
-  // policy.
-  PrefService* prefs = profile->GetPrefs();
-
-  if (IsSafeBrowsingPolicyManaged(*prefs) ||
-      IsJavascriptOptimizerPolicyManaged(*prefs)) {
-    return;
-  }
-
-  if (!base::FeatureList::IsEnabled(kMigrateEnhancedSbUserToEnhancedBundle)) {
-    return;
-  }
-
-  // If we have attempted to migrate the user previously, don't try again. This
-  // is a one-time migration. That's why this check needs to happen before
-  // attempting the checks below.
-  if (prefs->GetBoolean(
-          ::prefs::kBundledSettingsCheckedMigrateUserToEnhancedBundle)) {
-    return;
-  }
-  prefs->SetBoolean(::prefs::kBundledSettingsCheckedMigrateUserToEnhancedBundle,
-                    true);
-
-  // Don't migrate if the user is already using the enhanced bundle.
-  if (GetSecurityBundleSetting(*prefs) ==
-      SecuritySettingsBundleSetting::ENHANCED) {
-    return;
-  }
-
-  // Only migrate enhanced safe-browsing users.
-  if (GetSafeBrowsingState(*prefs) != SafeBrowsingState::ENHANCED_PROTECTION) {
-    return;
-  }
-
-  SetSecurityBundleSetting(*prefs, SecuritySettingsBundleSetting::ENHANCED);
-
-  // TODO(crbug.com/491533053): Fix the circular dependency for generated
-  // preferences.
-  if (site_protection::CanEnableBlockingJavascriptOptimizersForUnfamiliarSites(
-          profile.get()) &&
-      site_protection::ComputeDefaultJavascriptOptimizerSetting(
-          profile.get()) ==
-          content_settings::JavascriptOptimizerSetting::kAllowed) {
-    HostContentSettingsMapFactory::GetForProfile(profile.get())
-        ->SetDefaultContentSetting(ContentSettingsType::JAVASCRIPT_OPTIMIZER,
-                                   CONTENT_SETTING_ALLOW);
-    prefs->SetBoolean(prefs::kJavascriptOptimizerBlockedForUnfamiliarSites,
-                      true);
-  }
-
-  prefs->SetInteger(
-      prefs::kSecuritySettingsBundleMigrationToastState,
-      static_cast<int>(SecuritySettingsBundleToastState::kPending));
 }
 
 // Performs a one-time cleanup for the legacy,
@@ -641,18 +562,7 @@ void SafeBrowsingServiceImpl::OnProfileAdded(Profile* profile) {
 
   CreateServicesForProfile(profile);
 
-  // Post task to isolate enhanced-security-bundle migration from other code
-  // which reads settings controlled by the bundle on startup. Migration should
-  // be viewed similarly to user changing individual settings in the bundle via
-  // chrome://settings.
-  content::BrowserThread::GetTaskRunnerForThread(content::BrowserThread::UI)
-      ->PostTask(FROM_HERE,
-                 base::BindOnce(&MigrateUserToEnhancedSecurityBundleIfNeeded,
-                                profile->GetWeakPtr()));
-
   // If the user was migrated to the enhanced security bundle, show the toast.
-  // This is separate from the above task in case the browser was killed after
-  // the migration occurred.
   content::BrowserThread::GetTaskRunnerForThread(content::BrowserThread::UI)
       ->PostTask(FROM_HERE,
                  base::BindOnce(&TriggerSecuritySettingsBundleToastIfNeeded,

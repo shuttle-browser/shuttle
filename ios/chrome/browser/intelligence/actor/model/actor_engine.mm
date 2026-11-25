@@ -4,12 +4,19 @@
 
 #import "ios/chrome/browser/intelligence/actor/model/actor_engine.h"
 
+#import <optional>
+#import <string>
+#import <utility>
+
+#import "base/check_deref.h"
 #import "base/check_op.h"
 #import "base/functional/bind.h"
 #import "base/strings/stringprintf.h"
+#import "base/types/pass_key.h"
 #import "components/actor/core/safety_list_manager.h"
 #import "components/actor/public/mojom/actor_types.mojom.h"
 #import "components/origin_gating/core/decision_source.h"
+#import "components/origin_gating/core/gateable_event.h"
 #import "components/origin_gating/core/origin_gating_checker.h"
 #import "components/origin_gating/core/origin_gating_configuration.h"
 #import "components/origin_gating/core/origin_gating_registration.h"
@@ -20,10 +27,14 @@
 #import "ios/chrome/browser/intelligence/actor/tools/model/actor_tool_request.h"
 #import "ios/chrome/browser/intelligence/actor/tools/model/tool_controller.h"
 #import "ios/chrome/browser/intelligence/actor/tools/public/actor_tool_types.h"
+#import "ios/chrome/browser/intelligence/actor/tools/public/metrics.h"
 #import "ios/chrome/browser/intelligence/actor/tools/utils/actor_tool_utils.h"
 #import "ios/chrome/browser/intelligence/actor/tools/utils/logging_util.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/web/public/web_state.h"
+#import "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+#import "url/gurl.h"
+#import "url/origin.h"
 
 namespace actor {
 
@@ -125,6 +136,26 @@ web::WebStateID GetWebStateIDForAction(const ActorToolRequest* action) {
   return action->GetTargetWebStateId();
 }
 
+// Pre-approves explicit target origins (e.g. `NavigateAction` destinations) in
+// `checker` before tool execution begins. `checker` may be null if
+// `OriginGatingService` has already shut down.
+void GrantAssociatedOrigins(
+    origin_gating::OriginGatingChecker* checker,
+    const std::vector<std::unique_ptr<ActorToolRequest>>& actions) {
+  if (!checker) {
+    return;
+  }
+  for (const std::unique_ptr<ActorToolRequest>& action : actions) {
+    if (!action) {
+      continue;
+    }
+    std::optional<url::Origin> maybe_origin = action->AssociatedOriginGrant();
+    if (maybe_origin.has_value()) {
+      checker->AllowNavigationTo(*maybe_origin, /*is_user_confirmed=*/false);
+    }
+  }
+}
+
 }  // namespace
 
 PageActionGatingContext::PageActionGatingContext(
@@ -136,13 +167,15 @@ ActorEngine::ActorEngine(ExecutionUpdatesDelegate* execution_updates_delegate,
                          ActorTask* owner_task)
     : state_(State::kInit),
       execution_updates_delegate_(execution_updates_delegate),
-      owner_task_(owner_task),
-      origin_gating_delegate_(owner_task ? owner_task->policy_checker()
-                                         : nullptr),
+      owner_task_(&CHECK_DEREF(owner_task)),
+      origin_gating_delegate_(owner_task_->policy_checker()),
+      form_filling_handler_(
+          ActorTaskFormFillingHandler::Create(base::PassKey<ActorEngine>(),
+                                              owner_task_->GetJournal(),
+                                              owner_task_->task_id())),
       tool_controller_(
           std::make_unique<ToolController>(/*tool_delegate=*/this)) {
   CHECK(execution_updates_delegate_);
-  CHECK(owner_task_);
   origin_gating::OriginGatingService* origin_gating_service =
       owner_task_->GetToolFactory()
           .profile_context_resolver()
@@ -164,6 +197,10 @@ void ActorEngine::Act(std::vector<std::unique_ptr<ActorToolRequest>> actions,
   action_results_.clear();
 
   LogActStart(GetJournal(), GetTaskId(), action_sequence_);
+
+  if (!action_sequence_.empty() && IsActorOriginGatingEnabled()) {
+    GrantAssociatedOrigins(GetOriginGatingChecker(), action_sequence_);
+  }
 
   ExecuteNextAction();
 }
@@ -220,23 +257,17 @@ ActorToolFactory& ActorEngine::GetToolFactory() const {
 }
 
 ActorTaskFormFillingHandler* ActorEngine::GetActorTaskFormFillingHandler() {
-  if (!form_filling_handler_) {
-    form_filling_handler_ = ActorTaskFormFillingHandler::Create(
-        base::PassKey<ActorEngine>(), GetJournal(), GetTaskId());
-  }
   return form_filling_handler_.get();
 }
 
 void ActorEngine::InterruptFromTool() {
   CHECK(owner_task_);
-  // TODO(crbug.com/566215654): Add an explicit `ActorTaskInterruptReason` for
-  // tool interrupts.
-  owner_task_->Interrupt(ActorTaskInterruptReason::kUnknownReason);
+  owner_task_->InterruptForTool(base::PassKey<ActorEngine>());
 }
 
 void ActorEngine::UninterruptFromTool() {
   CHECK(owner_task_);
-  owner_task_->Uninterrupt(ActorTaskState::kActing);
+  owner_task_->UninterruptForTool(base::PassKey<ActorEngine>());
 }
 
 bool ActorEngine::IsWindowIdValid(int32_t window_id) {
@@ -285,9 +316,20 @@ ActorEngine::CreateOriginGatingConfig() {
                // Gate user/actor page interactions (clicks, from inputs,
                // etc.) within the loaded page.
                origin_gating::GateableEvent::kPageAction}),
+          origin_gating::PredicateConfiguration(
+              /*predicate=*/origin_gating::DecisionSource::
+                  kCacheWithUserConfirmation,
+              /*events=*/origin_gating::GateableEventSet::All()),
+          origin_gating::PredicateConfiguration(
+              /*predicate=*/origin_gating::DecisionSource::kAllowSameOrigin,
+              /*events=*/
+              {origin_gating::GateableEvent::kNavigationResponse}),
+          origin_gating::PredicateConfiguration(
+              /*predicate=*/origin_gating::DecisionSource::
+                  kCacheWithoutUserConfirmation,
+              /*events=*/
+              {origin_gating::GateableEvent::kNavigationResponse}),
       },
-      // Note that none of the predicates above consult the cache, so this
-      // parameter is ignored.
       origin_gating::OriginGatingConfiguration::CacheScope::kOrigin);
 }
 
@@ -338,7 +380,7 @@ void ActorEngine::ExecuteNextAction() {
   const ActorToolRequest* action =
       action_sequence_[InProgressActionIndex()].get();
   if (action && action->RequiresUrlCheckInCurrentTab() &&
-      base::FeatureList::IsEnabled(kActorOriginGating)) {
+      IsActorOriginGatingEnabled()) {
     base::expected<ProfileContextResolver::TabResolutionResult,
                    ToolExecutionResult>
         tab_resolution = GetToolFactory().profile_context_resolver().ResolveTab(
@@ -350,7 +392,13 @@ void ActorEngine::ExecuteNextAction() {
     }
 
     base::WeakPtr<web::WebState> web_state = tab_resolution->web_state;
-    GetOriginGatingChecker()->ComputeGatingDecision(
+    origin_gating::OriginGatingChecker* checker = GetOriginGatingChecker();
+    if (!checker) {
+      CompleteActions(ActionResult(ToolExecutionResult(
+          InternalToolErrorCode::kExecutionMissingDependencies)));
+      return;
+    }
+    checker->ComputeGatingDecision(
         std::make_unique<PageActionGatingContext>(web_state),
         origin_gating::GateableEvent(origin_gating::PageActionEvent{
             .destination = web_state->GetLastCommittedURL(),
@@ -448,6 +496,10 @@ void ActorEngine::FinishedUiPostInvoke(ActionResult result) {
 
 void ActorEngine::CompleteActions(ActionResult result) {
   bool success = result.tool_result.IsOk();
+  if (!success &&
+      (state_ == State::kPreExecutionChecks || state_ == State::kUiPreInvoke)) {
+    RecordActionResultCode(result.tool_result.code());
+  }
 
   // Successful tool results are already appended in `FinishedToolInvoke`,
   // therefore only record/overwrite the result if it is a failure.
@@ -504,4 +556,16 @@ void ActorEngine::OnPreExecutionChecksComplete() {
   // TODO(crbug.com/496195979): Add UI pre-invoke.
   UiPreInvoke();
 }
+
+void ActorEngine::AddWritableMainframeOrigins(
+    const absl::flat_hash_set<url::Origin>& added_writable_mainframe_origins) {
+  if (added_writable_mainframe_origins.empty() ||
+      !IsActorOriginGatingEnabled()) {
+    return;
+  }
+  if (origin_gating::OriginGatingChecker* checker = GetOriginGatingChecker()) {
+    checker->AllowNavigationTo(added_writable_mainframe_origins);
+  }
+}
+
 }  // namespace actor

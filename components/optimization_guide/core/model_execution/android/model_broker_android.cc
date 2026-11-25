@@ -5,16 +5,18 @@
 #include "components/optimization_guide/core/model_execution/android/model_broker_android.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/barrier_closure.h"
+#include "base/check.h"
 #include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/token.h"
 #include "build/branding_buildflags.h"
 #include "components/optimization_guide/core/model_execution/android/android_manifest.h"
 #include "components/optimization_guide/core/model_execution/on_device_features.h"
-#include "components/optimization_guide/core/model_execution/on_device_model_adaptation_loader.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_download_progress_manager.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_feature_adapter.h"
 #include "components/optimization_guide/core/model_execution/on_device_prefs.h"
@@ -78,16 +80,17 @@ bool IsModelAllowed(PrefService* local_state) {
                  GenAILocalFoundationalModelEnterprisePolicySettings::kAllowed;
 }
 
-proto::OnDeviceModelVersions GetModelVersions(const OnDeviceBaseModelSpec& spec,
-                                              int64_t adaptation_version) {
+proto::OnDeviceModelVersions GetModelVersions(const BaseModelSpec& spec) {
   proto::OnDeviceModelVersions versions;
   auto* on_device_model_version =
       versions.mutable_on_device_model_service_version();
-  on_device_model_version->set_model_adaptation_version(adaptation_version);
+  // Manifest configs do not have a downloaded adaptation version. Use 0 to
+  // preserve the existing ModelSolutionConfig version shape.
+  on_device_model_version->set_model_adaptation_version(0);
   auto* base_model_metadata =
       on_device_model_version->mutable_on_device_base_model_metadata();
-  base_model_metadata->set_base_model_name(spec.model_name);
-  base_model_metadata->set_base_model_version(spec.model_version);
+  base_model_metadata->set_base_model_name(spec.name);
+  base_model_metadata->set_base_model_version(spec.version);
   return versions;
 }
 
@@ -144,8 +147,8 @@ class SolutionImpl : public ModelBrokerImpl::Solution {
  public:
   SolutionImpl(base::WeakPtr<ModelBrokerAndroid> parent,
                scoped_refptr<const OnDeviceModelFeatureAdapter> adapter,
-               const OnDeviceBaseModelSpec& spec,
-               int64_t adaptation_version);
+               const BaseModelSpec& spec,
+               base::Token manifest_id);
   ~SolutionImpl() override;
 
  private:
@@ -161,32 +164,32 @@ class SolutionImpl : public ModelBrokerImpl::Solution {
 
   base::WeakPtr<ModelBrokerAndroid> parent_;
   scoped_refptr<const OnDeviceModelFeatureAdapter> adapter_;
-  const OnDeviceBaseModelSpec spec_;
-  const int64_t adaptation_version_;
+  const BaseModelSpec spec_;
+  const base::Token manifest_id_;
 };
 
 SolutionImpl::SolutionImpl(
     base::WeakPtr<ModelBrokerAndroid> parent,
     scoped_refptr<const OnDeviceModelFeatureAdapter> adapter,
-    const OnDeviceBaseModelSpec& spec,
-    int64_t adaptation_version)
+    const BaseModelSpec& spec,
+    base::Token manifest_id)
     : parent_(std::move(parent)),
       adapter_(std::move(adapter)),
       spec_(spec),
-      adaptation_version_(adaptation_version) {}
+      manifest_id_(manifest_id) {}
 SolutionImpl::~SolutionImpl() = default;
 
 bool SolutionImpl::IsValid() const {
+  // Solutions become stale when the broker selects a different manifest.
   // TODO: crbug.com/441578339 - Implement.
   // Ensure parent_'s model is compatible with the adapter.
-  return !!parent_;
+  return parent_ && parent_->IsManifestActive(manifest_id_);
 }
 
 mojom::ModelSolutionConfigPtr SolutionImpl::MakeConfig() const {
   auto config = mojom::ModelSolutionConfig::New();
   config->feature_config = mojo_base::ProtoWrapper(adapter_->config());
-  config->model_versions =
-      mojo_base::ProtoWrapper(GetModelVersions(spec_, adaptation_version_));
+  config->model_versions = mojo_base::ProtoWrapper(GetModelVersions(spec_));
   config->model_capabilities = AICoreModelCapabilities();
   return config;
 }
@@ -264,34 +267,17 @@ class ModelBrokerAndroid::SolutionFactory final
                                   base::OnceClosure barrier_done_callback,
                                   ModelStatus status);
 
-  // Updates the model adaptation for the feature.
-  void MaybeUpdateModelAdaptation(mojom::OnDeviceFeature feature,
-                                  MaybeAdaptationMetadata adaptation_metadata);
-
   // Constructs a solution for the feature.
   ModelBrokerImpl::MaybeSolution MakeSolution(mojom::OnDeviceFeature feature);
 
   // The broker that owns |this|.
   raw_ref<ModelBrokerAndroid> parent_;
 
-  // Fetches adaptations delivered through OptimizationGuideModelProvider.
-  // This remains the active config path for features such as Scam Detection
-  // and tests. Web AI APIs use configs from AndroidManifest instead.
-  AdaptationLoaderMap loader_map_;
-
-  // The current model adaptation assets.
-  AdaptationMetadataMap adaptation_metadata_;
-
-  // Stores the solution configs available to Android model execution.
-  // Currently populated with the built-in fallback; allow configs delivered by
-  // the component updater to replace it.
-  AndroidManifest manifest_ = AndroidManifest::CreateFromBuiltin();
-
   // Holds the model spec for each available AICore feature, or an eligibility
   // reason if the spec is not available.
   absl::flat_hash_map<
       AICoreFeature,
-      base::expected<OnDeviceBaseModelSpec, OnDeviceModelEligibilityReason>>
+      base::expected<BaseModelSpec, OnDeviceModelEligibilityReason>>
       base_model_specs_;
 
   // Map from AICore feature to the downloader for the base model. The
@@ -310,11 +296,7 @@ class ModelBrokerAndroid::SolutionFactory final
 };
 
 ModelBrokerAndroid::SolutionFactory::SolutionFactory(ModelBrokerAndroid& parent)
-    : parent_(parent),
-      loader_map_(
-          *parent.model_provider_,
-          base::BindRepeating(&SolutionFactory::MaybeUpdateModelAdaptation,
-                              base::Unretained(this))) {
+    : parent_(parent) {
   parent_->usage_tracker_.AddObserver(this);
   // Start model downloads for recently used features
   for (auto feature : OnDeviceFeatureSet::All()) {
@@ -345,8 +327,7 @@ void ModelBrokerAndroid::SolutionFactory::OnPriorityIncrease(
 void ModelBrokerAndroid::SolutionFactory::MaybeStartDownload(
     mojom::OnDeviceFeature feature) {
   if (!IsModelAllowed(&(*parent_->local_state_))) {
-    // Refresh availability without storing policy state as an adaptation result
-    // since MakeSolution evaluates policy directly.
+    // Refresh availability since MakeSolution evaluates policy directly.
     UpdateSolutionProvider(feature);
     return;
   }
@@ -384,26 +365,7 @@ void ModelBrokerAndroid::SolutionFactory::OnAICoreModelUpdated(
   if (result.has_value()) {
     parent_->model_already_downloaded_ = true;
     parent_->has_active_download_progress_ = false;
-    // Performance hint is not supported on Android.
-    OnDeviceBaseModelSpec spec{.model_name = result->name,
-                               .model_version = result->version};
-    base_model_specs_.insert_or_assign(aicore_feature, spec);
-    // Register the model download for all features that share the same
-    // AICore feature, since multiple mojom::OnDeviceFeature values may map to
-    // the same underlying model (e.g. kSummarize and kPromptApi may both map to
-    // MODEL_EXECUTION_FEATURE_PROMPT_API).
-    for (auto f : OnDeviceFeatureSet::All()) {
-      if (GetAICoreFeatureFor(f) == aicore_feature) {
-        loader_map_.MaybeRegisterModelDownload(
-            f, spec,
-            parent_->usage_tracker_.GetPriority(ToUseCaseName(f)) >=
-                UsageTracker::Priority::kBestEffort);
-        // Update solution because the returned model spec may allow
-        // MakeSolution to select a solution config and publish an available
-        // solution.
-        UpdateSolutionProvider(f);
-      }
-    }
+    base_model_specs_.insert_or_assign(aicore_feature, *result);
   } else {
     // ModelDownloaderAndroid already records the backend-specific failure
     // reason. The broker exposes a stable user-facing availability state, so
@@ -412,21 +374,15 @@ void ModelBrokerAndroid::SolutionFactory::OnAICoreModelUpdated(
     base_model_specs_.insert_or_assign(
         aicore_feature,
         base::unexpected(OnDeviceModelEligibilityReason::kModelNotEligible));
-    // Notify all features that share this AICore feature of the failure.
-    for (auto f : OnDeviceFeatureSet::All()) {
-      if (GetAICoreFeatureFor(f) == aicore_feature) {
-        UpdateSolutionProvider(f);
-      }
-    }
   }
-}
-
-void ModelBrokerAndroid::SolutionFactory::MaybeUpdateModelAdaptation(
-    mojom::OnDeviceFeature feature,
-    MaybeAdaptationMetadata adaptation_metadata) {
-  if (adaptation_metadata_.MaybeUpdate(feature,
-                                       std::move(adaptation_metadata))) {
-    UpdateSolutionProvider(feature);
+  // Update all features that share the same AICore feature, since multiple
+  // mojom::OnDeviceFeature values may map to the same underlying model (e.g.
+  // kSummarize and kPromptApi may both map to
+  // MODEL_EXECUTION_FEATURE_PROMPT_API).
+  for (auto f : OnDeviceFeatureSet::All()) {
+    if (GetAICoreFeatureFor(f) == aicore_feature) {
+      UpdateSolutionProvider(f);
+    }
   }
 }
 
@@ -451,10 +407,7 @@ ModelBrokerAndroid::SolutionFactory::MakeSolution(
   }
 
   if (!IsModelAllowed(&(*parent_->local_state_))) {
-    // Preserve the existing policy-denial mapping previously represented by
-    // AdaptationUnavailability::kNotSupported.
-    return base::unexpected(
-        OnDeviceModelEligibilityReason::kModelAdaptationNotAvailable);
+    return base::unexpected(OnDeviceModelEligibilityReason::kFeatureNotEnabled);
   }
 
   auto spec_it = base_model_specs_.find(*aicore_feature);
@@ -469,27 +422,18 @@ ModelBrokerAndroid::SolutionFactory::MakeSolution(
     return base::unexpected(spec_it->second.error());
   }
 
-  const MaybeAdaptationMetadata& metadata = adaptation_metadata_.Get(feature);
-  scoped_refptr<const OnDeviceModelFeatureAdapter> adapter;
-  // Manifest configs do not have a downloaded adaptation version. Use 0 to
-  // preserve the existing ModelSolutionConfig version shape.
-  int64_t adaptation_version = 0;
-  if (metadata.has_value()) {
-    adapter = metadata->adapter();
-    adaptation_version = metadata->version();
-  } else if (auto config = manifest_.SelectConfig(feature)) {
-    adapter = std::move(config);
-  } else {
+  // EnsureSolutionFactory initializes the manifest before constructing the
+  // factory. Add a CHECK to ensure the manifest exists.
+  CHECK(parent_->manifest_);
+  auto adapter = parent_->manifest_->SelectConfig(feature);
+  if (!adapter) {
     return base::unexpected(
-        metadata.error() == AdaptationUnavailability::kNotSupported
-            ? OnDeviceModelEligibilityReason::kModelAdaptationNotAvailable
-            : OnDeviceModelEligibilityReason::kConfigNotAvailableForFeature);
+        OnDeviceModelEligibilityReason::kConfigNotAvailableForFeature);
   }
 
-  // A base model spec is required for both adaptation and manifest solutions.
   return std::make_unique<SolutionImpl>(
       parent_->weak_ptr_factory_.GetWeakPtr(), std::move(adapter),
-      spec_it->second.value(), adaptation_version);
+      spec_it->second.value(), parent_->manifest_->id());
 }
 
 void ModelBrokerAndroid::SolutionFactory::CheckModelStatus(
@@ -576,11 +520,8 @@ void ModelBrokerAndroid::SolutionFactory::OnAICoreModelStatusChecked(
   std::move(barrier_done_callback).Run();
 }
 
-ModelBrokerAndroid::ModelBrokerAndroid(
-    PrefService& local_state,
-    OptimizationGuideModelProvider& model_provider)
+ModelBrokerAndroid::ModelBrokerAndroid(PrefService& local_state)
     : local_state_(local_state),
-      model_provider_(model_provider),
       usage_tracker_(&local_state),
       impl_(usage_tracker_,
             base::BindRepeating(&ModelBrokerAndroid::EnsureSolutionFactory,
@@ -591,6 +532,28 @@ ModelBrokerAndroid::ModelBrokerAndroid(
   impl_.SetFeatureConfigs(AndroidManifest::GetFeatureRoutingConfigs());
 }
 ModelBrokerAndroid::~ModelBrokerAndroid() = default;
+
+void ModelBrokerAndroid::OnManifestLoaded(
+    base::expected<AndroidManifest, AndroidManifest::ParseError> manifest) {
+  if (!manifest) {
+    // Ignore the manifest if it failed to parse.
+    // TODO(crbug.com/575550015): Handle manifest parse errors appropriately.
+    return;
+  }
+
+  // Activating a different snapshot invalidates solutions whose snapshot IDs
+  // no longer match. Store it even before first use, without initializing
+  // AICore.
+  manifest_ = std::move(*manifest);
+  if (solution_factory_) {
+    solution_factory_->UpdateSolutionProviders();
+  }
+}
+
+bool ModelBrokerAndroid::IsManifestActive(
+    const base::Token& manifest_id) const {
+  return manifest_ && manifest_->id() == manifest_id;
+}
 
 void ModelBrokerAndroid::BindModelBroker(
     mojo::PendingReceiver<mojom::ModelBroker> receiver) {
@@ -658,13 +621,12 @@ ModelBrokerAndroid::GetOrCreateModelRemote(AICoreFeature feature) {
 }
 
 void ModelBrokerAndroid::EnsureSolutionFactory(
-    ModelBrokerImpl::InitCallback init_callback) {
-  if (status_check_complete_) {
-    std::move(init_callback).Run(AICoreModelCapabilities());
-    return;
+    BrokerInit::TaskCallback done_callback) {
+  // Preserve a component snapshot received before first use. Initialize the
+  // fallback before the factory constructor can request solutions.
+  if (!manifest_) {
+    manifest_ = AndroidManifest::CreateFromBuiltin();
   }
-
-  pending_init_callbacks_.push_back(std::move(init_callback));
 
   if (!solution_factory_) {
     solution_factory_ = std::make_unique<SolutionFactory>(*this);
@@ -672,16 +634,11 @@ void ModelBrokerAndroid::EnsureSolutionFactory(
         base::BindOnce(&ModelBrokerAndroid::OnStatusCheckComplete,
                        weak_ptr_factory_.GetWeakPtr()));
   }
+  broker_init_.QueueTask(std::move(done_callback));
 }
 
 void ModelBrokerAndroid::OnStatusCheckComplete() {
-  status_check_complete_ = true;
-  std::vector<ModelBrokerImpl::InitCallback> callbacks =
-      std::move(pending_init_callbacks_);
-  pending_init_callbacks_.clear();
-  for (auto& callback : callbacks) {
-    std::move(callback).Run(AICoreModelCapabilities());
-  }
+  broker_init_.Complete(AICoreModelCapabilities());
 }
 
 void ModelBrokerAndroid::OnModelDisconnected(

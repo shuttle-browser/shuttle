@@ -5,6 +5,8 @@
 #ifndef CHROME_BROWSER_CONTEXT_HUB_CONTEXT_HUB_SERVICE_H_
 #define CHROME_BROWSER_CONTEXT_HUB_CONTEXT_HUB_SERVICE_H_
 
+#include <cstddef>
+#include <cstdint>
 #include <memory>
 #include <optional>
 #include <queue>
@@ -13,8 +15,11 @@
 #include <utility>
 #include <vector>
 
+#include "base/containers/flat_map.h"
 #include "base/containers/lru_cache.h"
 #include "base/containers/span.h"
+#include "base/functional/callback_forward.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
@@ -32,6 +37,7 @@
 #include "chrome/browser/ui/webui/context_hub/context_hub.mojom.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/optimization_guide/proto/features/context_hub.pb.h"
+#include "components/passage_embeddings/core/passage_embeddings_types.h"
 #include "components/personal_context/core/personal_context_types.h"
 #include "components/personal_context/proto/features/auto_todos.pb.h"
 #include "components/personal_context/proto/features/smart_search.pb.h"
@@ -57,6 +63,10 @@ namespace content {
 class Page;
 class WebContents;
 }  // namespace content
+
+namespace image_fetcher {
+class ImageFetcher;
+}  // namespace image_fetcher
 
 namespace net {
 class BackoffEntry;
@@ -85,10 +95,12 @@ namespace context_hub {
 
 class TabGroupStore;
 class ContextHubBackend;
+struct FetchedChatImage;
 
 class ContextHubService : public KeyedService,
                           public AutoTodosStore::Observer,
                           public MemoryBank::Observer,
+                          public passage_embeddings::EmbedderMetadataObserver,
                           public signin::IdentityManager::Observer,
                           public base::PowerSuspendObserver
 #if !BUILDFLAG(IS_ANDROID)
@@ -112,7 +124,16 @@ class ContextHubService : public KeyedService,
         const std::optional<std::string>& note,
         const std::optional<std::string>& collection) {}
     virtual void OnMemoryBankEntriesDeleted(const std::vector<int64_t>& ids) {}
+    // Called with the effective Auto Tab Groups preferences (the stored
+    // document, or the defaults when nothing is stored) whenever they change.
+    virtual void OnAutoTabGroupsPreferencesChanged(
+        const std::string& effective_text) {}
   };
+
+  // Hard cap, in UTF-8 bytes, on the Auto Tab Groups preferences document kept
+  // in the browser process. Deliberately a constant rather than a feature
+  // param: the server enforces the same bound.
+  static constexpr size_t kMaxAutoTabGroupsPreferencesLength = 4000;
 
   ContextHubService(
       Profile* profile,
@@ -123,6 +144,8 @@ class ContextHubService : public KeyedService,
       tab_groups::TabGroupSyncService* tab_group_sync_service,
       page_content_annotations::PageContentExtractionService*
           page_content_extraction_service,
+      passage_embeddings::Embedder* embedder,
+      passage_embeddings::EmbedderMetadataProvider* embedder_metadata_provider,
       std::unique_ptr<MemoryBank> memory_bank,
       std::unique_ptr<TabGroupStore> tab_group_store,
       std::unique_ptr<ContextHubBackend> context_hub_backend,
@@ -146,6 +169,10 @@ class ContextHubService : public KeyedService,
       const std::optional<std::string>& note,
       const std::optional<std::string>& collection) override;
   void OnMemoryBankEntriesDeleted(const std::vector<int64_t>& ids) override;
+
+  // passage_embeddings::EmbedderMetadataObserver:
+  void EmbedderMetadataUpdated(
+      passage_embeddings::EmbedderMetadata metadata) override;
 
   // signin::IdentityManager::Observer:
   void OnPrimaryAccountChanged(
@@ -262,12 +289,27 @@ class ContextHubService : public KeyedService,
   // Clears all tab group chat history turns from the LRU cache.
   void ClearTabGroupChatHistory();
 
+  // Auto Tab Groups preferences: a short markdown document, written by the
+  // user or distilled by the model, that shapes grouping decisions. The
+  // built-in defaults are never persisted: a stored document always wins over
+  // them, so changing the defaults in a later release cannot overwrite what a
+  // user (or refinement) saved.
+  //
+  // Returns the stored document, or the default preferences when nothing is
+  // stored.
+  std::string GetEffectiveAutoTabGroupsPreferences() const;
+  // Stores the trimmed `text` in the profile pref; empty text resets to the
+  // defaults. Returns false, without storing or notifying, when the text is
+  // longer than `kMaxAutoTabGroupsPreferencesLength` bytes. Observers receive
+  // the effective text.
+  bool SetAutoTabGroupsPreferences(std::string_view text);
+
   // Adds a memory bank chat history turn to the cache, along with any
   // citations associated with the turn.
   void AddMemoryBankChatHistoryTurn(
       optimization_guide::proto::ChatHistoryTurn::Role role,
       std::string_view message_content,
-      const std::vector<MemoryBankChatCitation>& citations = {});
+      std::vector<MemoryBankChatCitation> citations = {});
   // Returns all memory bank chat history turns stored in the LRU cache in
   // chronological order (oldest to newest).
   std::vector<MemoryBankChatHistoryTurn> GetMemoryBankChatHistory() const;
@@ -372,6 +414,9 @@ class ContextHubService : public KeyedService,
   void ConnectLocalTabGroup(const base::Uuid& group_guid,
                             const tab_groups::LocalTabGroupID& local_id);
 
+  void SetImageFetcherForTesting(
+      std::unique_ptr<image_fetcher::ImageFetcher> image_fetcher);
+
   base::WeakPtr<ContextHubService> GetWeakPtr() {
     return weak_factory_.GetWeakPtr();
   }
@@ -402,6 +447,34 @@ class ContextHubService : public KeyedService,
       std::optional<page_content_annotations::ExtractedPageContentResult>
           result);
 
+  // Returns true if the passage embedder, database backend, and model metadata
+  // are ready to compute and store memory bank embeddings.
+  bool CanComputeMemoryBankEmbeddings();
+
+  // Computes and stores passage embeddings for `entry` if the embedder and the
+  // database backend are available. Replaces any in-flight job for the entry.
+  void ComputeMemoryBankEmbeddings(const MemoryBankEntry& entry);
+
+  // Chain that backfills embeddings for entries that have none, triggered once
+  // the embedder metadata is available.
+  void OnMemoryBankEmbeddingsVersionSet(bool success);
+  void OnMemoryBankEntryIdsWithoutEmbeddingsFetched(std::vector<int64_t> ids);
+  void OnMemoryBankEntriesFetchedForEmbeddings(
+      std::vector<MemoryBankEntry> entries);
+
+  // Recomputes embeddings for image entries when their user annotations change.
+  void OnMemoryBankEntriesFetchedForAnnotationUpdate(
+      int64_t id,
+      std::vector<MemoryBankEntry> entries);
+
+  // Handles the async response from the embedder for `entry_id`.
+  void OnMemoryBankEmbeddingsComputed(
+      int64_t entry_id,
+      std::vector<std::string> passages,
+      std::vector<passage_embeddings::Embedding> embeddings,
+      uint64_t job_id,
+      passage_embeddings::ComputeEmbeddingsStatus status);
+
   // Callback invoked when all tab groups are fetched from the store to confirm
   // them into TabGroupSyncService.
   void OnAllTabGroupsFetchedForConfirmation(
@@ -413,6 +486,23 @@ class ContextHubService : public KeyedService,
                                   bool save_to_history,
                                   MemoryBankChatCallback callback,
                                   std::vector<MemoryBankEntry> entries);
+
+  // Attaches the fetched PNG-encoded image bytes to the image memory bank
+  // entries of `request`, then dispatches the chat request.
+  void OnMemoryBankChatImagesFetched(
+      std::vector<MemoryBankEntry> entries,
+      optimization_guide::proto::ContextHubRequest request,
+      bool save_to_history,
+      MemoryBankChatCallback callback,
+      const std::vector<FetchedChatImage>& fetched_images);
+
+  // Dispatches the prepared memory bank chat request to the remote model
+  // executor.
+  void DispatchMemoryBankChatRequest(
+      std::vector<MemoryBankEntry> entries,
+      const optimization_guide::proto::ContextHubRequest& request,
+      bool save_to_history,
+      MemoryBankChatCallback callback);
 
   // Generates tab groups based on the provided `tabs` and invokes `callback`
   // with the resulting groups and any ungrouped tabs.
@@ -483,7 +573,7 @@ class ContextHubService : public KeyedService,
 
   // Handles the result of the model execution from `ExecuteMemoryBankChat`.
   void HandleMemoryBankChatModelExecutionResult(
-      std::vector<MemoryBankEntry> entries,
+      const std::vector<MemoryBankEntry>& entries,
       const std::string& user_command,
       bool save_to_history,
       MemoryBankChatCallback callback,
@@ -502,6 +592,13 @@ class ContextHubService : public KeyedService,
   const raw_ref<tab_groups::TabGroupSyncService> tab_group_sync_service_;
   const raw_ref<page_content_annotations::PageContentExtractionService>
       page_content_extraction_service_;
+
+  // Computes passage embeddings for memory bank entries. May be null if the
+  // passage embedder is unavailable.
+  const raw_ptr<passage_embeddings::Embedder> embedder_;
+
+  // Metadata of the embeddings model. Invalid until the model is available.
+  passage_embeddings::EmbedderMetadata embedder_metadata_{0, 0};
 
   // Indicates if a First Party Auto Todos generation request is in flight.
   // Remains true while waiting for exponential backoff retries via
@@ -573,9 +670,30 @@ class ContextHubService : public KeyedService,
   base::ScopedObservation<MemoryBank, MemoryBank::Observer>
       memory_bank_observation_{this};
 
+  // In-flight embedding jobs keyed by memory bank entry ID. Destroying a job
+  // cancels it if it has not started yet. Declared after
+  // `context_hub_backend_` since completed jobs write to it.
+  base::flat_map<int64_t, passage_embeddings::Embedder::Job>
+      memory_bank_embedding_jobs_;
+
+  // Reference counts of in-flight `GetMemoryBankEntriesByIds()` lookups
+  // triggered by `OnMemoryBankEntryUpdated()`, keyed by entry ID. Erased when
+  // the lookup completes, when the entry is deleted, or when embedder metadata
+  // changes.
+  base::flat_map<int64_t, int> memory_bank_pending_annotation_update_ids_;
+
+  // Declared after `context_hub_backend_`, `memory_bank_embedding_jobs_`, and
+  // `memory_bank_pending_annotation_update_ids_` because the provider may
+  // notify synchronously when observed.
+  base::ScopedObservation<passage_embeddings::EmbedderMetadataProvider,
+                          passage_embeddings::EmbedderMetadataObserver>
+      embedder_metadata_observation_{this};
+
   std::unique_ptr<TabGroupStore> tab_group_store_;
 
   std::unique_ptr<AutoTodosStore> auto_todos_store_;
+
+  std::unique_ptr<image_fetcher::ImageFetcher> image_fetcher_;
 
   // Metadata for the most recent First Party Auto Todos generation during the
   // current browser session.

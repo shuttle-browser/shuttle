@@ -13,7 +13,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/scene_controller_testing.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
@@ -42,16 +41,10 @@ SceneState* GetSceneStateForWindowWithNumber(int windowNumber) {
   return nil;
 }
 
-id<BrowserProviderInterface> GetInterfaceProviderForWindowWithNumber(
+id<BrowserProviderInterface> GetBrowserProviderInterfaceForWindowWithNumber(
     int windowNumber) {
   return GetSceneStateForWindowWithNumber(windowNumber)
       .browserProviderInterface;
-}
-
-// Returns the browser for the current mode.
-Browser* GetCurrentBrowserForWindowWithNumber(int windowNumber) {
-  return GetInterfaceProviderForWindowWithNumber(windowNumber)
-      .currentBrowserProvider.browser;
 }
 
 // Returns the WebStateList for the current mode. Or nullptr of there is no
@@ -63,6 +56,11 @@ WebStateList* GetCurrentWebStateListForWindowWithNumber(int windowNumber) {
 
 }  // namespace
 
+Browser* GetCurrentBrowserForWindowWithNumber(int windowNumber) {
+  return GetBrowserProviderInterfaceForWindowWithNumber(windowNumber)
+      .currentBrowser;
+}
+
 web::WebState* GetCurrentWebStateForWindowWithNumber(int windowNumber) {
   WebStateList* web_state_list =
       GetCurrentWebStateListForWindowWithNumber(windowNumber);
@@ -70,14 +68,14 @@ web::WebState* GetCurrentWebStateForWindowWithNumber(int windowNumber) {
 }
 
 NSUInteger GetMainTabCountForWindowWithNumber(int windowNumber) {
-  return GetInterfaceProviderForWindowWithNumber(windowNumber)
-      .mainBrowserProvider.browser->GetWebStateList()
+  return GetBrowserProviderInterfaceForWindowWithNumber(windowNumber)
+      .mainBrowser->GetWebStateList()
       ->count();
 }
 
 NSUInteger GetIncognitoTabCountForWindowWithNumber(int windowNumber) {
-  return GetInterfaceProviderForWindowWithNumber(windowNumber)
-      .incognitoBrowserProvider.browser->GetWebStateList()
+  return GetBrowserProviderInterfaceForWindowWithNumber(windowNumber)
+      .incognitoBrowser->GetWebStateList()
       ->count();
 }
 

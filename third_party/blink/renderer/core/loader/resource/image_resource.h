@@ -92,6 +92,7 @@ class CORE_EXPORT ImageResource final
   bool CanUseCacheValidator() const override;
 
   scoped_refptr<const SharedBuffer> ResourceBuffer() const override;
+  bool HasResourceBuffer() const override;
   void NotifyStartLoad() override;
   void ResponseReceived(const ResourceResponse&) override;
   void AppendData(
@@ -144,7 +145,7 @@ class CORE_EXPORT ImageResource final
 
   bool HasClientsOrObservers() const override;
 
-  void UpdateImageAndClearBuffer();
+  void UpdateMultipartImage();
   void UpdateImage(scoped_refptr<SharedBuffer>,
                    ImageResourceContent::UpdateImageOption,
                    bool all_data_received);

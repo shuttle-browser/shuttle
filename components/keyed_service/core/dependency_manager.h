@@ -106,8 +106,9 @@ class KEYED_SERVICE_EXPORT DependencyManager {
   // Must be called before any service is created for |context|.
   void DisableContextServicesByDefault(void* context);
 
- private:
-  friend class KeyedServiceBaseFactory;
+  // Returns whether DisableContextServicesByDefault() has been called for
+  // |context|.
+  bool AreContextServicesDisabledByDefault(void* context) const;
 
   // An ordered container of pointers to KeyedServiceBaseFactory. The order
   // depends on the operation to perform (initialisation, destruction, ...).
@@ -116,6 +117,9 @@ class KEYED_SERVICE_EXPORT DependencyManager {
 
   // Returns the list of factories in the order they should be initialised.
   OrderedFactories GetConstructionOrder();
+
+ private:
+  friend class KeyedServiceBaseFactory;
 
   // Returns the list of factories in the order they should be destroyed.
   OrderedFactories GetDestructionOrder();
@@ -129,10 +133,6 @@ class KEYED_SERVICE_EXPORT DependencyManager {
   // specified by `factories`.
   static void DestroyFactoriesInOrder(void* context,
                                       const OrderedFactories& factories);
-
-  // Returns whether DisableContextServicesByDefault() has been called for
-  // |context|.
-  bool AreContextServicesDisabledByDefault(void* context) const;
 
   DependencyGraph dependency_graph_;
 

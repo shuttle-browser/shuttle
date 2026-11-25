@@ -5,7 +5,6 @@ include_rules = [
   "+chrome/browser/ash/accessibility",
   "+chrome/browser/ash/ambient",
   "+chrome/browser/ash/app_mode",
-  "+chrome/browser/ash/arc/memory_pressure",
   "+chrome/browser/ash/arc/session",
   "+chrome/browser/ash/audio",
   "+chrome/browser/ash/bluetooth",
@@ -73,9 +72,6 @@ include_rules = [
   "+chrome/browser/ui/ash/session",
   "+chrome/browser/ui/webui/ash/config",
   "+chrome/browser/ui/webui/ash/emoji",
-  "+chrome/common/chrome_constants.h",
-  "+chrome/common/logging_chrome.h",
-  "+chrome/common/pref_names.h",
 ]
 
 specific_include_rules = {

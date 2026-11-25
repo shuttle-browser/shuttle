@@ -132,6 +132,7 @@ static_library("browser") {
 
   public_deps = [
     ":features",
+    "//components/critical_actions/core/browser:types",
     "//components/sessions:session_id",
     "//components/sync/protocol",
     "//components/sync_device_info",
@@ -213,6 +214,8 @@ source_set("unit_tests") {
     ":browser",
     "//base",
     "//base/test:test_support",
+    "//components/critical_actions/core/browser",
+    "//components/critical_actions/core/browser:test_support",
     "//components/favicon/core:database",
     "//components/favicon_base",
     "//components/history/core/common",
@@ -239,5 +242,13 @@ source_set("unit_tests") {
   ]
   if (is_ios) {
     deps += [ "//components/test:history_test_bundle_data" ]
+  }
+}
+
+if (is_android) {
+  import("//build/config/android/rules.gni")
+
+  java_cpp_enum("time_period_option_id_java") {
+    sources = [ "time_period_filter_utils.h" ]
   }
 }

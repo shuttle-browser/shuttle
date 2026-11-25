@@ -294,8 +294,12 @@ AcceleratedStaticBitmapImage::~AcceleratedStaticBitmapImage() {
 scoped_refptr<StaticBitmapImage>
 AcceleratedStaticBitmapImage::MakeUnaccelerated() {
   CreateImageFromMailboxIfNeeded();
-  return UnacceleratedStaticBitmapImage::Create(
+  auto result = UnacceleratedStaticBitmapImage::Create(
       PaintImageForCurrentFrame().GetSwSkImage(), orientation_, hdr_metadata_);
+  if (result) {
+    result->SetOriginClean(OriginClean());
+  }
+  return result;
 }
 
 bool AcceleratedStaticBitmapImage::CopyToTexture(
@@ -310,11 +314,6 @@ bool AcceleratedStaticBitmapImage::CopyToTexture(
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
   if (!IsValid())
     return false;
-
-  // This method should only be used for cross-context copying, otherwise it's
-  // wasting overhead.
-  DCHECK(mailbox_ref_->is_cross_thread() ||
-         dest_gl != ContextProvider()->ContextGL());
 
   // Create a texture that |destProvider| knows about and copy from it.
   auto source_si_texture = shared_image_->CreateGLTexture(dest_gl);
@@ -366,6 +365,7 @@ PaintImage AcceleratedStaticBitmapImage::PaintImageForCurrentFrame() {
       .set_texture_backing(texture_backing_, paint_image_content_id_)
       .set_completion_state(PaintImage::CompletionState::kDone)
       .set_hdr_metadata(hdr_metadata_)
+      .set_is_read_back_disallowed(!OriginClean())
       .TakePaintImage();
 }
 
@@ -406,16 +406,10 @@ bool AcceleratedStaticBitmapImage::IsValid() const {
   return !!context_provider_wrapper_;
 }
 
-WebGraphicsContext3DProvider* AcceleratedStaticBitmapImage::ContextProvider()
-    const {
-  auto context = ContextProviderWrapper();
-  return context ? &(context->ContextProvider()) : nullptr;
-}
-
 base::WeakPtr<WebGraphicsContext3DProviderWrapper>
-AcceleratedStaticBitmapImage::ContextProviderWrapper() const {
-  return texture_backing_ ? skia_context_provider_wrapper_
-                          : context_provider_wrapper_;
+AcceleratedStaticBitmapImage::SkiaContextProviderWrapper() const {
+  CHECK(texture_backing_);
+  return skia_context_provider_wrapper_;
 }
 
 void AcceleratedStaticBitmapImage::CreateImageFromMailboxIfNeeded() {
@@ -462,9 +456,6 @@ AcceleratedStaticBitmapImage::GetSharedImage() const {
 }
 
 gpu::SyncToken AcceleratedStaticBitmapImage::GetSyncToken() const {
-  if (!IsValid()) {
-    return gpu::SyncToken();
-  }
   return mailbox_ref_->sync_token();
 }
 

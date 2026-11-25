@@ -5,6 +5,7 @@
 #include "components/autofill/core/browser/suggestions/autofill_ai/autofill_ai_suggestion_generator.h"
 
 #include <memory>
+#include <optional>
 
 #include "base/check.h"
 #include "base/containers/span.h"
@@ -107,6 +108,19 @@ Matcher<Suggestion> HasAcceptability(Suggestion::Acceptability acceptability) {
   return Field("Suggestion::acceptability", &Suggestion::acceptability,
                acceptability);
 }
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+// Matches the screen reader text of a desktop source attribution suggestion:
+// the accessible attribution text followed by the arrow key instructions.
+Matcher<Suggestion> HasSourceAttributionVoiceOver(
+    const std::u16string& a11y_text) {
+  return Field("Suggestion::voice_over", &Suggestion::voice_over,
+               std::optional<std::u16string>(
+                   a11y_text + u". " +
+                   l10n_util::GetStringUTF16(
+                       IDS_AUTOFILL_AI_SOURCE_ATTRIBUTION_A11Y_INSTRUCTIONS)));
+}
+#endif
 
 Matcher<Suggestion> SuggestionTypeHasTextAndAcceptability(
     SuggestionType type,
@@ -236,6 +250,8 @@ class AutofillAiSuggestionGeneratorTest : public testing::Test {
             /*variation_country_code=*/GeoIpCountryCode("US")));
     autofill_client_.SetUpPrefsAndIdentityForAutofillAi();
     generator_ = std::make_unique<AutofillAiSuggestionGenerator>();
+    // Wait for `EntityDataManager`'s initial database load to finish.
+    task_environment_.RunUntilIdle();
   }
 
   AutofillAiSuggestionGeneratorTest()
@@ -340,8 +356,7 @@ class AutofillAiSuggestionGeneratorTest : public testing::Test {
             features::kAutofillAiServerModel,
             features::kAutofillAiWalletPrivatePasses,
             features::kAutofillAiWalletFlightReservation,
-            features::kAutofillAiOrder,
-            features::kAutofillAmbientAutofillSourceAttribution};
+            features::kAutofillAiOrder};
   }
 
  private:
@@ -691,25 +706,29 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
       CreateAutofillAiFillingSuggestions(field(0)),
       IdentityDocSuggestionsAre(
           MaybeSuggestedByGeminiTitle(),
-          AllOf(EqualsSuggestion(SuggestionType::kFillAutofillAi,
-                                 Suggestion::AutofillAiPayload(
-                                     passport_personal_context.guid())),
-                ChildrenAre(
-                    AllOf(EqualsSuggestion(
-                              SuggestionType::kAutofillAiSourceAttribution,
-                              expected_source_label, Suggestion::Icon::kSpark,
-                              Suggestion::AutofillAiPayload(
-                                  passport_personal_context.guid(),
-                                  {Suggestion::PersonalContextSourceCitation(
-                                      GURL("https://photos.example.com"),
-                                      gfx::Range(40, 43))})),
-                          HasAcceptability(Suggestion::Acceptability::
-                                               kSelectableButUnacceptable)),
-                    EqualsSuggestion(SuggestionType::kSeparator),
-                    EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
-                                     l10n_util::GetStringUTF16(
-                                         IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
-                                     Suggestion::Icon::kSettings)))));
+          AllOf(
+              EqualsSuggestion(SuggestionType::kFillAutofillAi,
+                               Suggestion::AutofillAiPayload(
+                                   passport_personal_context.guid())),
+              ChildrenAre(
+                  AllOf(EqualsSuggestion(
+                            SuggestionType::kAutofillAiSourceAttribution,
+                            expected_source_label, Suggestion::Icon::kSpark,
+                            Suggestion::AutofillAiPayload(
+                                passport_personal_context.guid(),
+                                {Suggestion::PersonalContextSourceCitation(
+                                    GURL("https://photos.example.com"),
+                                    gfx::Range(40, 43), u"Photos source 1")})),
+                        HasAcceptability(Suggestion::Acceptability::
+                                             kSelectableButUnacceptable),
+                        HasSourceAttributionVoiceOver(
+                            u"From Gemini and connected apps · "
+                            u"Photos, Photos source 1")),
+                  EqualsSuggestion(SuggestionType::kSeparator),
+                  EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
+                                   l10n_util::GetStringUTF16(
+                                       IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
+                                   Suggestion::Icon::kSettings)))));
 }
 
 TEST_F(AutofillAiSuggestionGeneratorTest,
@@ -742,7 +761,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                             passport_personal_context.guid(),
                             {Suggestion::PersonalContextSourceCitation(
                                 GURL("https://mail.example.com"),
-                                gfx::Range(39, 42))})),
+                                gfx::Range(39, 42), u"Gmail source 1")})),
                     EqualsSuggestion(SuggestionType::kSeparator),
                     EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
                                      l10n_util::GetStringUTF16(
@@ -769,28 +788,33 @@ TEST_F(
       CreateAutofillAiFillingSuggestions(field(0)),
       IdentityDocSuggestionsAre(
           MaybeSuggestedByGeminiTitle(),
-          AllOf(EqualsSuggestion(SuggestionType::kFillAutofillAi,
-                                 Suggestion::AutofillAiPayload(
-                                     passport_personal_context.guid())),
-                ChildrenAre(
-                    EqualsSuggestion(
-                        SuggestionType::kAutofillAiSourceAttribution,
-                        u"From Gemini and connected apps · Gmail\u00A0[1] · "
-                        u"Photos\u00A0[1]",
-                        Suggestion::Icon::kSpark,
-                        Suggestion::AutofillAiPayload(
-                            passport_personal_context.guid(),
-                            {Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://mail.example.com"),
-                                 gfx::Range(39, 42)),
-                             Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://photos.example.com"),
-                                 gfx::Range(52, 55))})),
-                    EqualsSuggestion(SuggestionType::kSeparator),
-                    EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
-                                     l10n_util::GetStringUTF16(
-                                         IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
-                                     Suggestion::Icon::kSettings)))));
+          AllOf(
+              EqualsSuggestion(SuggestionType::kFillAutofillAi,
+                               Suggestion::AutofillAiPayload(
+                                   passport_personal_context.guid())),
+              ChildrenAre(
+                  AllOf(
+                      EqualsSuggestion(
+                          SuggestionType::kAutofillAiSourceAttribution,
+                          u"From Gemini and connected apps · Gmail\u00A0[1] · "
+                          u"Photos\u00A0[1]",
+                          Suggestion::Icon::kSpark,
+                          Suggestion::AutofillAiPayload(
+                              passport_personal_context.guid(),
+                              {Suggestion::PersonalContextSourceCitation(
+                                   GURL("https://mail.example.com"),
+                                   gfx::Range(39, 42), u"Gmail source 1"),
+                               Suggestion::PersonalContextSourceCitation(
+                                   GURL("https://photos.example.com"),
+                                   gfx::Range(52, 55), u"Photos source 1")})),
+                      HasSourceAttributionVoiceOver(
+                          u"From Gemini and connected apps · Gmail, Gmail "
+                          u"source 1 · Photos, Photos source 1")),
+                  EqualsSuggestion(SuggestionType::kSeparator),
+                  EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
+                                   l10n_util::GetStringUTF16(
+                                       IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
+                                   Suggestion::Icon::kSettings)))));
 }
 
 TEST_F(AutofillAiSuggestionGeneratorTest,
@@ -824,10 +848,10 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                             passport_personal_context.guid(),
                             {Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/1"),
-                                 gfx::Range(39, 42)),
+                                 gfx::Range(39, 42), u"Gmail source 1"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/2"),
-                                 gfx::Range(43, 46))})),
+                                 gfx::Range(43, 46), u"Gmail source 2")})),
                     EqualsSuggestion(SuggestionType::kSeparator),
                     EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
                                      l10n_util::GetStringUTF16(
@@ -882,35 +906,43 @@ TEST_F(
       CreateAutofillAiFillingSuggestions(field(0)),
       IdentityDocSuggestionsAre(
           MaybeSuggestedByGeminiTitle(),
-          AllOf(EqualsSuggestion(SuggestionType::kFillAutofillAi,
-                                 Suggestion::AutofillAiPayload(
-                                     passport_personal_context.guid())),
-                ChildrenAre(
-                    EqualsSuggestion(
-                        SuggestionType::kAutofillAiSourceAttribution,
-                        expected_source_label, Suggestion::Icon::kSpark,
-                        Suggestion::AutofillAiPayload(
-                            passport_personal_context.guid(),
-                            {Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://mail.example.com/newest"),
-                                 gfx::Range(39, 42)),
-                             Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://mail.example.com/second"),
-                                 gfx::Range(43, 46)),
-                             Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://mail.example.com/third"),
-                                 gfx::Range(47, 50)),
-                             Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://photos.example.com/newest"),
-                                 gfx::Range(60, 63)),
-                             Suggestion::PersonalContextSourceCitation(
-                                 GURL("https://photos.example.com/second"),
-                                 gfx::Range(64, 67))})),
-                    EqualsSuggestion(SuggestionType::kSeparator),
-                    EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
-                                     l10n_util::GetStringUTF16(
-                                         IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
-                                     Suggestion::Icon::kSettings)))));
+          AllOf(
+              EqualsSuggestion(SuggestionType::kFillAutofillAi,
+                               Suggestion::AutofillAiPayload(
+                                   passport_personal_context.guid())),
+              ChildrenAre(
+                  AllOf(EqualsSuggestion(
+                            SuggestionType::kAutofillAiSourceAttribution,
+                            expected_source_label, Suggestion::Icon::kSpark,
+                            Suggestion::AutofillAiPayload(
+                                passport_personal_context.guid(),
+                                {Suggestion::PersonalContextSourceCitation(
+                                     GURL("https://mail.example.com/newest"),
+                                     gfx::Range(39, 42), u"Gmail source 1"),
+                                 Suggestion::PersonalContextSourceCitation(
+                                     GURL("https://mail.example.com/second"),
+                                     gfx::Range(43, 46), u"Gmail source 2"),
+                                 Suggestion::PersonalContextSourceCitation(
+                                     GURL("https://mail.example.com/third"),
+                                     gfx::Range(47, 50), u"Gmail source 3"),
+                                 Suggestion::PersonalContextSourceCitation(
+                                     GURL("https://photos.example.com/newest"),
+                                     gfx::Range(60, 63), u"Photos source 1"),
+                                 Suggestion::PersonalContextSourceCitation(
+                                     GURL("https://photos.example.com/second"),
+                                     gfx::Range(64, 67), u"Photos source 2")})),
+                        // The "+ N other sources" suffix is kept in the
+                        // screen reader text.
+                        HasSourceAttributionVoiceOver(
+                            u"From Gemini and connected apps · Gmail, Gmail "
+                            u"source 1, Gmail source 2, Gmail source 3 · "
+                            u"Photos, Photos source 1, Photos source 2 + 2 "
+                            u"other sources")),
+                  EqualsSuggestion(SuggestionType::kSeparator),
+                  EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
+                                   l10n_util::GetStringUTF16(
+                                       IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
+                                   Suggestion::Icon::kSettings)))));
 }
 
 // Tests that sources without a timestamp (null timestamp) are ranked last
@@ -964,19 +996,19 @@ TEST_F(
                             passport_personal_context.guid(),
                             {Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/1"),
-                                 gfx::Range(39, 42)),
+                                 gfx::Range(39, 42), u"Gmail source 1"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/2"),
-                                 gfx::Range(43, 46)),
+                                 gfx::Range(43, 46), u"Gmail source 2"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/3"),
-                                 gfx::Range(47, 50)),
+                                 gfx::Range(47, 50), u"Gmail source 3"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/4"),
-                                 gfx::Range(51, 54)),
+                                 gfx::Range(51, 54), u"Gmail source 4"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/5"),
-                                 gfx::Range(55, 58))})),
+                                 gfx::Range(55, 58), u"Gmail source 5")})),
                     EqualsSuggestion(SuggestionType::kSeparator),
                     EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
                                      l10n_util::GetStringUTF16(
@@ -1033,19 +1065,19 @@ TEST_F(
                             passport_personal_context.guid(),
                             {Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/1"),
-                                 gfx::Range(39, 42)),
+                                 gfx::Range(39, 42), u"Gmail source 1"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/2"),
-                                 gfx::Range(43, 46)),
+                                 gfx::Range(43, 46), u"Gmail source 2"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/3"),
-                                 gfx::Range(47, 50)),
+                                 gfx::Range(47, 50), u"Gmail source 3"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/4"),
-                                 gfx::Range(51, 54)),
+                                 gfx::Range(51, 54), u"Gmail source 4"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/5"),
-                                 gfx::Range(55, 58))})),
+                                 gfx::Range(55, 58), u"Gmail source 5")})),
                     EqualsSuggestion(SuggestionType::kSeparator),
                     EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
                                      l10n_util::GetStringUTF16(
@@ -1094,13 +1126,13 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                             passport_personal_context.guid(),
                             {Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/day3"),
-                                 gfx::Range(39, 42)),
+                                 gfx::Range(39, 42), u"Gmail source 1"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/day2"),
-                                 gfx::Range(43, 46)),
+                                 gfx::Range(43, 46), u"Gmail source 2"),
                              Suggestion::PersonalContextSourceCitation(
                                  GURL("https://mail.example.com/day1"),
-                                 gfx::Range(47, 50))})),
+                                 gfx::Range(47, 50), u"Gmail source 3")})),
                     EqualsSuggestion(SuggestionType::kSeparator),
                     EqualsSuggestion(SuggestionType::kManageEnhancedAutofill,
                                      l10n_util::GetStringUTF16(
@@ -1142,7 +1174,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                             passport_personal_context.guid(),
                             {Suggestion::PersonalContextSourceCitation(
                                 GURL("https://photos.example.com"),
-                                gfx::Range(40, 43))})),
+                                gfx::Range(40, 43), u"Photos source 1")})),
                     EqualsSuggestion(SuggestionType::kSeparator),
                     EqualsSuggestion(
                         SuggestionType::kRemoveAutofillAi,
@@ -1154,32 +1186,6 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                                      l10n_util::GetStringUTF16(
                                          IDS_AUTOFILL_MANAGE_ENHANCED_AUTOFILL),
                                      Suggestion::Icon::kSettings)))));
-}
-
-TEST_F(AutofillAiSuggestionGeneratorTest,
-       GetFillingSuggestion_PersonalContext_DetailedSourceDisabled) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      {}, {features::kAutofillAmbientAutofillSourceAttribution,
-           features::kAutofillAmbientAutofillSuppression});
-
-  EntityInstance passport_personal_context =
-      GetPassportEntityInstanceWithRandomGuid(
-          {.record_type =
-               EntityInstance::PersonalContextRecordTypePayload{
-                   .sources = {Source{.url = GURL("https://photos.example.com"),
-                                      .metadata = PhotosSourceMetadata{}}}},
-           .use_count = 0});
-  SetEntities({passport_personal_context});
-  SetForm({PASSPORT_NUMBER, NAME_FULL});
-
-  EXPECT_THAT(CreateAutofillAiFillingSuggestions(field(0)),
-              IdentityDocSuggestionsAre(
-                  MaybeSuggestedByGeminiTitle(),
-                  AllOf(EqualsSuggestion(SuggestionType::kFillAutofillAi,
-                                         Suggestion::AutofillAiPayload(
-                                             passport_personal_context.guid())),
-                        ChildrenAre())));
 }
 
 TEST_F(AutofillAiSuggestionGeneratorTest,
@@ -3051,7 +3057,19 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   Suggestion::Acceptability::kSelectableAndAcceptable)))));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+class AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest
+    : public AutofillAiSuggestionGeneratorTest {
+ public:
+  AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest() {
+    // `AutofillAiSuggestionGeneratorTest` opts the user in by default, which
+    // sets `kAutofillAiPrivateInferenceNoticeShownTimestamp`. Clear it to
+    // simulate a user who has not seen the notice yet (and is thus opted out).
+    client().GetPrefs()->ClearPref(
+        prefs::kAutofillAiPrivateInferenceNoticeShownTimestamp);
+  }
+};
+
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeShownWhenambientAutofillNoticeNeverShown) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3065,7 +3083,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice)));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeShownWhenAmbientNoticeAckedLongEnoughAgo) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3086,7 +3104,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
 }
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeNotShownWhenPersonalContextNoticeIsAdded) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3110,7 +3128,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
 }
 #endif
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeNotShownWhenAmbientAutofillShownButNotAcked) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3129,7 +3147,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice))));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeNotShownWhenAmbientAutofillAckedTooRecently) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3149,7 +3167,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice))));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeNotShownWhenPrivateInferenceNoticeAcked) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3167,8 +3185,10 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice))));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeNotShownWhenFeatureDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(features::kAutofillAiUsePrivateAi);
   SetEntities({GetPassportEntityInstanceWithRandomGuid()});
   SetForm({PASSPORT_NUMBER});
 
@@ -3179,7 +3199,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice))));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeShownEvenWhenNoEntitiesExist) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3193,7 +3213,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice)));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeNotShownWhenSeenTooRecently) {
   base::test::ScopedFeatureList scoped_feature_list(
       features::kAutofillAiUsePrivateAi);
@@ -3211,7 +3231,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
                   SuggestionType::kAutofillAiPrivateInferenceNotice))));
 }
 
-TEST_F(AutofillAiSuggestionGeneratorTest,
+TEST_F(AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
        PrivateInferenceNoticeShownWhenAlwaysShowFeatureEnabled) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithFeatures(
@@ -3244,7 +3264,7 @@ TEST_F(AutofillAiSuggestionGeneratorTest,
 }
 
 TEST_F(
-    AutofillAiSuggestionGeneratorTest,
+    AutofillAiPrivateInferenceNoticeSuggestionGeneratorTest,
     PrivateInferenceNoticeNotShownWhenMainFeatureDisabledEvenWithAlwaysShow) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithFeatures(

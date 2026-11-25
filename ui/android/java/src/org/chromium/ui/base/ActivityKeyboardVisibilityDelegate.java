@@ -4,14 +4,13 @@
 
 package org.chromium.ui.base;
 
-import static org.chromium.build.NullUtil.assumeNonNull;
-
 import android.app.Activity;
 import android.view.View;
 
+import org.chromium.base.BaseFeatureList;
 import org.chromium.base.Callback;
-import org.chromium.base.supplier.LazyOneshotSupplier;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.ui.KeyboardVisibilityDelegate;
@@ -30,8 +29,8 @@ public class ActivityKeyboardVisibilityDelegate extends KeyboardVisibilityDelega
     private final Callback<Integer> mOnKeyboardInsetChanged = this::onKeyboardInsetChanged;
 
     private final WeakReference<@Nullable Activity> mActivity;
-    private @Nullable LazyOneshotSupplier<MonotonicObservableSupplier<Integer>>
-            mLazyKeyboardInsetSupplier;
+    private MonotonicObservableSupplier<Integer> mKeyboardInsetSupplier =
+            ObservableSuppliers.alwaysNull();
     private boolean mIsKeyboardShowing;
     private @Nullable View mContentViewForTesting;
 
@@ -46,14 +45,13 @@ public class ActivityKeyboardVisibilityDelegate extends KeyboardVisibilityDelega
     }
 
     /** Sets the keyboard inset supplier. */
-    void setLazyKeyboardInsetSupplier(
-            LazyOneshotSupplier<MonotonicObservableSupplier<Integer>> lazyKeyboardInsetSupplier) {
-        assert lazyKeyboardInsetSupplier != null;
-        assert mLazyKeyboardInsetSupplier == null;
-        mLazyKeyboardInsetSupplier = lazyKeyboardInsetSupplier;
+    void setKeyboardInsetSupplier(MonotonicObservableSupplier<Integer> keyboardInsetSupplier) {
         if (hasKeyboardVisibilityListeners()) {
-            assumeNonNull(lazyKeyboardInsetSupplier.get())
-                    .addSyncObserverAndPostIfNonNull(mOnKeyboardInsetChanged);
+            mKeyboardInsetSupplier.removeObserver(mOnKeyboardInsetChanged);
+        }
+        mKeyboardInsetSupplier = keyboardInsetSupplier;
+        if (hasKeyboardVisibilityListeners()) {
+            mKeyboardInsetSupplier.addSyncObserverAndPostIfNonNull(mOnKeyboardInsetChanged);
         }
     }
 
@@ -66,24 +64,20 @@ public class ActivityKeyboardVisibilityDelegate extends KeyboardVisibilityDelega
         Activity activity = getActivity();
         if (activity == null) return;
         View content = getContentView(activity);
-        mIsKeyboardShowing = isKeyboardShowing(content);
+        mIsKeyboardShowing = isKeyboardObscuring(content);
         content.addOnLayoutChangeListener(this);
 
-        if (mLazyKeyboardInsetSupplier == null) return;
-
-        assumeNonNull(mLazyKeyboardInsetSupplier.get())
-                .addSyncObserverAndPostIfNonNull(mOnKeyboardInsetChanged);
+        mKeyboardInsetSupplier.addSyncObserverAndPostIfNonNull(mOnKeyboardInsetChanged);
     }
 
     @Override
     public void unregisterKeyboardVisibilityCallbacks() {
         Activity activity = getActivity();
-        if (activity == null) return;
-        getContentView(activity).removeOnLayoutChangeListener(this);
+        if (activity != null) {
+            getContentView(activity).removeOnLayoutChangeListener(this);
+        }
 
-        if (mLazyKeyboardInsetSupplier == null) return;
-
-        assumeNonNull(mLazyKeyboardInsetSupplier.get()).removeObserver(mOnKeyboardInsetChanged);
+        mKeyboardInsetSupplier.removeObserver(mOnKeyboardInsetChanged);
     }
 
     @Override
@@ -99,11 +93,17 @@ public class ActivityKeyboardVisibilityDelegate extends KeyboardVisibilityDelega
             int oldBottom) {
         Activity activity = getActivity();
         if (activity == null) return;
-        updateKeyboardShowing(isKeyboardShowing(getContentView(activity)));
+        updateKeyboardShowing(isKeyboardObscuring(getContentView(activity)));
     }
 
     private void onKeyboardInsetChanged(int inset) {
-        updateKeyboardShowing(inset > 0);
+        if (!BaseFeatureList.sSplitScreenImeInsetVisibility.isEnabled()) {
+            updateKeyboardShowing(inset > 0);
+            return;
+        }
+        Activity activity = getActivity();
+        if (activity == null) return;
+        updateKeyboardShowing(isKeyboardObscuring(getContentView(activity)));
     }
 
     private void updateKeyboardShowing(boolean isShowing) {

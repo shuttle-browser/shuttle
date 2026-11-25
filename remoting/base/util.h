@@ -8,11 +8,22 @@
 #include <string>
 #include <string_view>
 
-#include "third_party/webrtc/modules/desktop_capture/desktop_geometry.h"
+#include "build/build_config.h"
+
+namespace webrtc {
+class DesktopRect;
+class DesktopSize;
+}  // namespace webrtc
 
 namespace remoting {
 
 int RoundToTwosMultiple(int x);
+
+// Scales `size` down proportionally, if necessary, to fit within `max_size`
+// while preserving aspect ratio. Returns an empty DesktopSize if either `size`
+// or `max_size` is empty.
+webrtc::DesktopSize ScaleSizeToFit(const webrtc::DesktopSize& size,
+                                   const webrtc::DesktopSize& max_size);
 
 // Align the sides of the rectangle to multiples of 2 (expanding outwards).
 webrtc::DesktopRect AlignRect(const webrtc::DesktopRect& rect);

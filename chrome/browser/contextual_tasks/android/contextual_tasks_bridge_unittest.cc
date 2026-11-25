@@ -14,6 +14,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_side_panel_coordinator.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_test_utils.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service.h"
@@ -62,6 +63,7 @@ std::unique_ptr<KeyedService> BuildMockContextualTasksService(
 class ContextualTasksBridgeTest : public testing::Test {
  public:
   void SetUp() override {
+    SKIP_IF_CONTEXTUAL_TASKS_UNSUPPORTED();
     TestingProfile::Builder profile_builder;
     profile_builder.AddTestingFactory(
         AimEligibilityServiceFactory::GetInstance(),
@@ -116,7 +118,7 @@ TEST_F(ContextualTasksBridgeTest, InitPopulatesUserData) {
 
   // Initially, none of the window-scoped features should be in the host.
   EXPECT_EQ(nullptr,
-            ContextualTasksSidePanelCoordinator::Get(unowned_user_data_host_));
+            ContextualTasksPanelController::Get(unowned_user_data_host_));
   EXPECT_EQ(nullptr,
             EntryPointEligibilityManager::Get(unowned_user_data_host_));
   EXPECT_EQ(nullptr, ActiveTaskContextProvider::Get(unowned_user_data_host_));
@@ -126,7 +128,7 @@ TEST_F(ContextualTasksBridgeTest, InitPopulatesUserData) {
 
   // After bridge construction, the features should be present in the host.
   EXPECT_NE(nullptr,
-            ContextualTasksSidePanelCoordinator::Get(unowned_user_data_host_));
+            ContextualTasksPanelController::Get(unowned_user_data_host_));
   EXPECT_NE(nullptr,
             EntryPointEligibilityManager::Get(unowned_user_data_host_));
   EXPECT_NE(nullptr, ActiveTaskContextProvider::Get(unowned_user_data_host_));

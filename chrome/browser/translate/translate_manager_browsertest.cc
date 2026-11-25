@@ -5,9 +5,11 @@
 #include "components/translate/core/browser/translate_manager.h"
 
 #include <memory>
+#include <vector>
 
 #include "base/functional/bind.h"
 #include "base/i18n/language_tag.h"
+#include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -27,8 +29,11 @@
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
-#include "chrome/browser/ui/read_anything/read_anything_test_utils.h"
+#include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
+#include "chrome/browser/ui/read_anything/read_anything_enums.h"
+#include "chrome/browser/ui/read_anything/read_anything_lifecycle_observer.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
@@ -64,6 +69,7 @@
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
 #include "pdf/buildflags.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/events/base_event_utils.h"
@@ -339,7 +345,7 @@ class TranslateManagerBrowserTest : public InProcessBrowserTest {
   }
 
   bool IsTranslateBubbleShown() {
-    return TranslateBubbleController::From(browser())->GetTranslateBubble() !=
+    return TranslateController::From(browser())->GetTranslateBubble() !=
            nullptr;
   }
 
@@ -1561,16 +1567,83 @@ class TranslateManagerReadingModeBrowserTest
     : public TranslateManagerBrowserTest {
  public:
   void SetUp() override {
-    ReadAnythingController::SetFreezeDistillationOnCreationForTesting(true);
+    ReadAnythingController::SetFreezeEmptyStateOnCreationForTesting(true);
     TranslateManagerBrowserTest::SetUp();
   }
 
   void TearDown() override {
-    ReadAnythingController::SetFreezeDistillationOnCreationForTesting(false);
+    ReadAnythingController::SetFreezeEmptyStateOnCreationForTesting(false);
     TranslateManagerBrowserTest::TearDown();
   }
 
  protected:
+  // Records why Reading Mode closes.
+  class CloseReasonRecorder : public ReadAnythingLifecycleObserver {
+   public:
+    explicit CloseReasonRecorder(ReadAnythingController* controller)
+        : controller_(controller) {
+      controller_->AddObserver(this);
+    }
+    ~CloseReasonRecorder() override { controller_->RemoveObserver(this); }
+
+    const std::vector<ReadAnythingCloseReason>& reasons() const {
+      return reasons_;
+    }
+
+    // ReadAnythingLifecycleObserver:
+    void OnWillClose(ReadAnythingCloseReason reason) override {
+      reasons_.push_back(reason);
+    }
+    void OnDestroyed() override {}
+
+   private:
+    raw_ptr<ReadAnythingController> controller_;
+    std::vector<ReadAnythingCloseReason> reasons_;
+  };
+
+  ReadAnythingController* GetActiveReadAnythingController() {
+    return ReadAnythingController::From(
+        browser()->tab_strip_model()->GetActiveTab());
+  }
+
+  // Waits until Reading Mode is showing in the side panel, and checks that
+  // Reading Mode agrees that it's open. Reading Mode is open as soon as its
+  // side panel content is created, but the side panel only shows that content
+  // once it's loaded, and closing Reading Mode before then does nothing. This
+  // is existing behavior that users can hit too, e.g. by pressing the Reading
+  // Mode keyboard shortcut twice while the side panel loads for the first time
+  // in a tab. So tests must call this before closing Reading Mode.
+  [[nodiscard]] bool WaitForReadingModeSidePanel() {
+    if (!base::test::RunUntil([&]() {
+          return SidePanelUI::From(browser())->IsSidePanelEntryShowing(
+              SidePanelEntryKey(SidePanelEntryId::kReadAnything));
+        })) {
+      return false;
+    }
+    // The side panel can show Reading Mode while Reading Mode is closed, e.g.
+    // if the side panel is reopened while it's closing.
+    EXPECT_TRUE(GetChromeTranslateClient()->IsReadingModeOpen());
+    return GetChromeTranslateClient()->IsReadingModeOpen();
+  }
+
+  // Waits until the side panel has finished closing. Reading Mode is closed as
+  // soon as its side panel starts closing, but if Reading Mode is reopened
+  // before the side panel finishes closing, the side panel shows again while
+  // Reading Mode stays closed. So tests must call this before reopening Reading
+  // Mode after closing its side panel.
+  [[nodiscard]] bool WaitForSidePanelClosed() {
+    return base::test::RunUntil(
+        [&]() { return !SidePanelUI::From(browser())->IsSidePanelShowing(); });
+  }
+
+  // Opens Reading Mode in the side panel.
+  void ShowReadingModeInSidePanel() {
+    read_anything::ReadAnythingEntryPointController::ShowUI(
+        browser(), ReadAnythingOpenTrigger::kAppMenu,
+        read_anything::ReadAnythingEntryPointController::Presentation::
+            kSidePanel);
+  }
+
   // Opens Reading Mode, or closes it if it's open, the same way Reading Mode's
   // keyboard shortcut does.
   void ToggleReadingMode() {
@@ -1608,11 +1681,9 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   ChromeTranslateClient* chrome_translate_client = GetChromeTranslateClient();
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
-  read_anything::test::PreferSidePanel(browser()->GetProfile());
-
-  ToggleReadingMode();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() { return chrome_translate_client->IsReadingModeOpen(); }));
+  ShowReadingModeInSidePanel();
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
+  EXPECT_TRUE(chrome_translate_client->IsReadingModeOpen());
 
   ToggleReadingMode();
   EXPECT_TRUE(base::test::RunUntil(
@@ -1646,8 +1717,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 }
 
 IN_PROC_BROWSER_TEST_F(
@@ -1657,12 +1727,37 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   chrome_translate_client->RevertPdfTranslation();
   EXPECT_TRUE(base::test::RunUntil(
       [&]() -> bool { return !chrome_translate_client->IsReadingModeOpen(); }));
+}
+
+IN_PROC_BROWSER_TEST_F(
+    TranslateManagerReadingModeBrowserTest,
+    RevertPdfTranslationClosesImmersiveOverlayIfOpenedByPdfTranslation) {
+  ChromeTranslateClient* chrome_translate_client = GetChromeTranslateClient();
+  ReadAnythingController* controller = GetActiveReadAnythingController();
+  ASSERT_TRUE(controller);
+
+  chrome_translate_client->TriggerPdfTranslation();
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
+  TogglePresentationFromSidePanel();
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return controller->GetPresentationState() ==
+           ReadAnythingController::PresentationState::kInImmersiveOverlay;
+  }));
+
+  // Reading Mode was opened for the translation, so reverting the translation
+  // closes it, even after the user switched it to the immersive overlay.
+  CloseReasonRecorder recorder(controller);
+  chrome_translate_client->RevertPdfTranslation();
+  EXPECT_TRUE(base::test::RunUntil(
+      [&]() { return !chrome_translate_client->IsReadingModeOpen(); }));
+  EXPECT_THAT(
+      recorder.reasons(),
+      ::testing::ElementsAre(ReadAnythingCloseReason::kClosedByPdfTranslation));
 }
 
 IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
@@ -1671,11 +1766,8 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
   // Open Reading Mode side panel prior to triggering PDF translation.
-  SidePanelUI* side_panel_ui = SidePanelUI::From(browser());
-  ASSERT_TRUE(side_panel_ui);
-  side_panel_ui->Show(SidePanelEntryId::kReadAnything);
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ShowReadingModeInSidePanel();
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Trigger PDF translation (should leave side panel open).
   chrome_translate_client->TriggerPdfTranslation();
@@ -1686,6 +1778,8 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   EXPECT_TRUE(chrome_translate_client->IsReadingModeOpen());
 
   // Clean up
+  SidePanelUI* side_panel_ui = SidePanelUI::From(browser());
+  ASSERT_TRUE(side_panel_ui);
   side_panel_ui->Close();
   EXPECT_TRUE(base::test::RunUntil(
       [&]() -> bool { return !chrome_translate_client->IsReadingModeOpen(); }));
@@ -1697,8 +1791,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Navigating to a new page should close the side panel that was opened for
   // PDF translation.
@@ -1714,11 +1807,8 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
   // Open Reading Mode side panel prior to triggering PDF translation.
-  SidePanelUI* side_panel_ui = SidePanelUI::From(browser());
-  ASSERT_TRUE(side_panel_ui);
-  side_panel_ui->Show(SidePanelEntryId::kReadAnything);
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ShowReadingModeInSidePanel();
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   chrome_translate_client->TriggerPdfTranslation();
   EXPECT_TRUE(chrome_translate_client->IsReadingModeOpen());
@@ -1729,6 +1819,8 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   EXPECT_TRUE(chrome_translate_client->IsReadingModeOpen());
 
   // Clean up
+  SidePanelUI* side_panel_ui = SidePanelUI::From(browser());
+  ASSERT_TRUE(side_panel_ui);
   side_panel_ui->Close();
   EXPECT_TRUE(base::test::RunUntil(
       [&]() -> bool { return !chrome_translate_client->IsReadingModeOpen(); }));
@@ -1753,8 +1845,7 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_FALSE(chrome_translate_client->IsReadingModeOpen());
 
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Actually translate the page so the renderer can handle the revert.
   TranslateManager* manager = chrome_translate_client->GetTranslateManager();
@@ -1783,8 +1874,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
 
   // 1. Trigger PDF Translation (opens side panel and sets flag).
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // 2. Actually translate the page so the renderer can handle the revert.
   TranslateManager* manager = chrome_translate_client->GetTranslateManager();
@@ -1802,11 +1892,11 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   }));
   EXPECT_TRUE(base::test::RunUntil(
       [&]() -> bool { return !chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForSidePanelClosed());
 
   // 4. Trigger PDF translation again, translate, then close the side panel.
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
   TranslateActivePageToEnglish(manager);
 
   // Closing manually should revert translation regardless of
@@ -1833,8 +1923,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
       base::i18n::GetKnownLanguageTag("fr"),
       base::i18n::GetKnownLanguageTag("en"));
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Closing the side panel before the translation started should cancel it.
   SidePanelUI* side_panel_ui = SidePanelUI::From(browser());
@@ -1864,13 +1953,11 @@ IN_PROC_BROWSER_TEST_F(
       base::i18n::GetKnownLanguageTag("fr"),
       base::i18n::GetKnownLanguageTag("en"));
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Switching tabs only hides Reading Mode, so the translation stays pending.
   SwitchTabAwayAndBack();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
   EXPECT_TRUE(language_state->translation_pending());
   EXPECT_TRUE(language_state->pending_source_language().has_value());
 
@@ -1905,13 +1992,11 @@ IN_PROC_BROWSER_TEST_F(
   ASSERT_TRUE(manager);
 
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Switching away hides Reading Mode, and switching back shows it again.
   SwitchTabAwayAndBack();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // The page can still be translated with Reading Mode open.
   TranslateActivePageToEnglish(manager);
@@ -1943,8 +2028,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
       base::i18n::GetKnownLanguageTag("fr"),
       base::i18n::GetKnownLanguageTag("en"));
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
 
   // Switching to the immersive overlay keeps Reading Mode open, so the
   // translation stays pending.
@@ -1984,8 +2068,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   ASSERT_TRUE(manager);
 
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
   TranslateActivePageToEnglish(manager);
 
   // Switching to the immersive overlay keeps Reading Mode open, so the
@@ -2009,8 +2092,7 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   // Requesting a translation again while Reading Mode is open must not add
   // the Reading Mode observer twice.
   chrome_translate_client->TriggerPdfTranslation();
-  EXPECT_TRUE(base::test::RunUntil(
-      [&]() -> bool { return chrome_translate_client->IsReadingModeOpen(); }));
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
   chrome_translate_client->TriggerPdfTranslation();
   EXPECT_TRUE(chrome_translate_client->IsReadingModeOpen());
 
@@ -2019,6 +2101,62 @@ IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
   side_panel_ui->Close();
   EXPECT_TRUE(base::test::RunUntil(
       [&]() -> bool { return !chrome_translate_client->IsReadingModeOpen(); }));
+}
+
+IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
+                       TriggerPdfTranslationRecordsShowTriggered) {
+  base::HistogramTester histogram_tester;
+  GetChromeTranslateClient()->TriggerPdfTranslation();
+  histogram_tester.ExpectUniqueSample(
+      "Accessibility.ReadAnything.ShowTriggered",
+      ReadAnythingOpenTrigger::kPdfTranslation, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
+                       TriggerPdfTranslationOpensSidePanelWhenPreferImmersive) {
+  ReadAnythingController* controller = GetActiveReadAnythingController();
+  ASSERT_TRUE(controller);
+
+  // Reading Mode opens in the immersive overlay by default, but PDF
+  // translation opens it in the side panel, next to the PDF.
+  GetChromeTranslateClient()->TriggerPdfTranslation();
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return controller->GetPresentationState() ==
+           ReadAnythingController::PresentationState::kInSidePanel;
+  }));
+}
+
+IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
+                       RevertPdfTranslationIsNotAUserClose) {
+  ChromeTranslateClient* chrome_translate_client = GetChromeTranslateClient();
+  CloseReasonRecorder recorder(GetActiveReadAnythingController());
+
+  chrome_translate_client->TriggerPdfTranslation();
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
+
+  chrome_translate_client->RevertPdfTranslation();
+  EXPECT_TRUE(base::test::RunUntil(
+      [&]() { return !chrome_translate_client->IsReadingModeOpen(); }));
+  EXPECT_THAT(
+      recorder.reasons(),
+      ::testing::ElementsAre(ReadAnythingCloseReason::kClosedByPdfTranslation));
+}
+
+IN_PROC_BROWSER_TEST_F(TranslateManagerReadingModeBrowserTest,
+                       NavigationAfterPdfTranslationIsNotAUserClose) {
+  ChromeTranslateClient* chrome_translate_client = GetChromeTranslateClient();
+  CloseReasonRecorder recorder(GetActiveReadAnythingController());
+
+  chrome_translate_client->TriggerPdfTranslation();
+  ASSERT_TRUE(WaitForReadingModeSidePanel());
+
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), embedded_test_server()->GetURL("/english_page.html")));
+  EXPECT_TRUE(base::test::RunUntil(
+      [&]() { return !chrome_translate_client->IsReadingModeOpen(); }));
+  EXPECT_THAT(
+      recorder.reasons(),
+      ::testing::ElementsAre(ReadAnythingCloseReason::kClosedByPdfTranslation));
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 

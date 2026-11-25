@@ -20,10 +20,11 @@
 #include "components/browser_actuator/internal/transport/stream_connection_delegate.h"
 #include "components/browser_actuator/internal/transport/transport_channel_impl.h"
 #include "components/browser_actuator/internal/transport/upstream_message_client/upstream_message_client.h"
-#include "components/browser_actuator/public/transport/transport_handler_factory_registry.h"
 #include "components/browser_actuator/public/transport/transport_session_registry.h"
+#include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/oauth_consumer_id.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/primary_account_change_event.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "url/gurl.h"
@@ -137,31 +138,86 @@ TransportServiceImpl::TransportServiceImpl(
   }
 
   // The channel is only created when the channel feature is on. When it is off
-  // the recorder factory is still owned here, but there is nothing to register
-  // with.
+  // the recorder factory is still owned here, but there is nothing to observe.
+  // The recorder observes the session registry so it starts recording as soon
+  // as a session exists.
   if (session_stream_recorder_factory_ && channel_) {
-    if (TransportHandlerFactoryRegistry* registry =
-            channel_->GetHandlerFactoryRegistry()) {
-      registry->RegisterFactory(session_stream_recorder_factory_.get());
+    if (TransportSessionRegistry* registry = channel_->GetSessionRegistry()) {
+      registry->AddObserver(session_stream_recorder_factory_.get());
     }
     channel_->AddObserver(session_stream_recorder_factory_.get());
+  }
+
+  if (identity_manager) {
+    identity_manager_observation_.Observe(identity_manager);
   }
 }
 
 TransportServiceImpl::~TransportServiceImpl() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  Shutdown();
+}
+
+void TransportServiceImpl::Shutdown() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  identity_manager_observation_.Reset();
+  TearDownChannel();
+  if (session_stream_recorder_factory_) {
+    session_stream_recorder_factory_->Clear();
+  }
+}
+
+void TransportServiceImpl::OnPrimaryAccountChanged(
+    const signin::PrimaryAccountChangeEvent& event_details) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  const signin::PrimaryAccountChangeEvent::Type event_type =
+      event_details.GetEventTypeFor(signin::ConsentLevel::kSignin);
+  if (event_type == signin::PrimaryAccountChangeEvent::Type::kCleared) {
+    ResetForAccountChange();
+    return;
+  }
+  // `TransportService` is not expected to be used while the user is not signed
+  // in, so signing in from a logged-out state (`previous_state` empty) has no
+  // prior session state to clear. Only reset when switching directly from one
+  // signed-in primary account to another.
+  if (event_type == signin::PrimaryAccountChangeEvent::Type::kSet &&
+      !event_details.GetPreviousState().primary_account.IsEmpty() &&
+      event_details.GetPreviousState().primary_account.account_id !=
+          event_details.GetCurrentState().primary_account.account_id) {
+    ResetForAccountChange();
+  }
+}
+
+void TransportServiceImpl::OnIdentityManagerShutdown(
+    signin::IdentityManager* identity_manager) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  Shutdown();
+}
+
+void TransportServiceImpl::ResetForAccountChange() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  if (channel_) {
+    channel_->ResetForAccountChange();
+  }
+  if (session_stream_recorder_factory_) {
+    session_stream_recorder_factory_->Clear();
+  }
+}
+
+void TransportServiceImpl::TearDownChannel() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   if (!channel_) {
     return;
   }
-  // Unregister before anything is destroyed. The registry and channel store
-  // raw pointers and do not own the factory.
+  // Stop observing before anything is destroyed. The registry and channel
+  // store raw pointers and do not own the recorder factory.
   if (session_stream_recorder_factory_) {
-    if (TransportHandlerFactoryRegistry* registry =
-            channel_->GetHandlerFactoryRegistry()) {
-      registry->UnregisterFactory(session_stream_recorder_factory_.get());
+    if (TransportSessionRegistry* registry = channel_->GetSessionRegistry()) {
+      registry->RemoveObserver(session_stream_recorder_factory_.get());
     }
     channel_->RemoveObserver(session_stream_recorder_factory_.get());
   }
+  channel_.reset();
 }
 
 TransportChannel* TransportServiceImpl::GetChannel() {
@@ -174,12 +230,14 @@ SessionStreamRecorderFactory* TransportServiceImpl::GetStreamRecorderFactory() {
   return session_stream_recorder_factory_.get();
 }
 
-TransportSession* TransportServiceImpl::GetOrCreateSession(
-    std::string_view session_id) {
+TransportSession* TransportServiceImpl::CreateSession(
+    std::string_view session_id,
+    InitIngressSource ingress_source) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   TransportChannel* channel = GetChannel();
   if (channel && channel->GetSessionRegistry()) {
-    return channel->GetSessionRegistry()->GetOrCreateSession(session_id);
+    return channel->GetSessionRegistry()->CreateSession(session_id,
+                                                        ingress_source);
   }
   return nullptr;
 }

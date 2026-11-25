@@ -1497,15 +1497,7 @@ bool PDFiumEngine::IsSelecting() const {
 
 bool PDFiumEngine::IsSynthesizedNewline(const PageCharacterIndex& index) const {
   CHECK(PageIndexInBounds(index.page_index));
-  PDFiumPage* page = pages_[index.page_index].get();
-  CHECK(page->IsCharIndexInBounds(index.char_index));
-
-  if (FPDFText_IsGenerated(page->GetTextPage(), index.char_index) != 1) {
-    return false;
-  }
-
-  uint32_t char_code = GetCharUnicode(index);
-  return char_code == '\r' || char_code == '\n';
+  return pages_[index.page_index]->IsSynthesizedNewline(index.char_index);
 }
 
 bool PDFiumEngine::PageIndexInBounds(int index) const {
@@ -1638,7 +1630,7 @@ void PDFiumEngine::SetFormHighlight(bool enable_form) {
 }
 
 bool PDFiumEngine::FindAndHighlightTextFragments(
-    base::span<const std::string> text_fragments) {
+    base::span<const std::string_view> text_fragments) {
   HighlightChangeInvalidator invalidator(this);
   PDFiumTextFragmentFinder text_fragment_finder(this);
   client_->OnNewTextFragmentsSearchStarted();
@@ -3725,6 +3717,7 @@ std::vector<gfx::Size> PDFiumEngine::LoadPageSizes(
 
   const bool doc_complete = doc_loader_->IsDocumentComplete();
   const bool is_linear = IsLinearized();
+  page_sizes.reserve(new_page_count);
   for (size_t i = 0; i < new_page_count; ++i) {
     // Get page availability. If `document_loaded_` == true and the page is not
     // new, then the page has been constructed already. Get page availability
@@ -3754,6 +3747,7 @@ std::vector<gfx::Size> PDFiumEngine::LoadPageSizes(
   // available even if `doc_complete` is true because FPDFAvail_IsPageAvail()
   // still has to be called for this page, which will be done in
   // FinishLoadingDocument().
+  pages_.reserve(new_page_count);
   for (size_t i = pages_.size(); i < new_page_count; ++i) {
     auto page = std::make_unique<PDFiumPage>(this, i);
     if (document_loaded_ &&
@@ -4153,6 +4147,7 @@ void PDFiumEngine::FinishPaint(size_t progressive_index, SkBitmap& image_data) {
 
 std::vector<gfx::Rect> PDFiumEngine::CancelPaints() {
   std::vector<gfx::Rect> canceled_rects;
+  canceled_rects.reserve(progressive_paints_.size());
   for (const auto& paint : progressive_paints_) {
     FPDF_RenderPage_Close(pages_[paint.page_index()]->GetPage());
     canceled_rects.push_back(paint.rect());
@@ -4808,6 +4803,7 @@ void PDFiumEngine::OnSelectionPositionChanged() {
   gfx::Rect left(std::numeric_limits<int32_t>::max(),
                  std::numeric_limits<int32_t>::max(), 0, 0);
   gfx::Rect right;
+  gfx::Rect bounding_box;
   for (const auto& sel : selection_) {
     const std::vector<gfx::Rect>& screen_rects = sel.GetScreenRects(
         GetVisibleRect().origin(), current_zoom_, GetCurrentOrientation());
@@ -4818,6 +4814,7 @@ void PDFiumEngine::OnSelectionPositionChanged() {
       if (IsAboveOrDirectlyLeftOf(right, rect)) {
         right = rect;
       }
+      bounding_box.Union(rect);
     }
   }
   right.set_x(right.x() + right.width());
@@ -4825,7 +4822,7 @@ void PDFiumEngine::OnSelectionPositionChanged() {
     left.set_x(0);
     left.set_y(0);
   }
-  client_->SelectionChanged(left, right);
+  client_->SelectionChanged(left, right, bounding_box);
 }
 
 gfx::Size PDFiumEngine::ApplyDocumentLayout(
@@ -5814,12 +5811,6 @@ void PDFiumEngine::UpdateTextActiveAndInvalidate(TextId id, bool active) {
   auto it = loaded_ink_text_data_.find(std::get<InkLoadedTextId>(id));
   CHECK(it != loaded_ink_text_data_.end());
   UpdateTextActiveAndInvalidateHelper(it->second, active);
-}
-
-gfx::Size PDFiumEngine::GetThumbnailSize(int page_index,
-                                         float device_pixel_ratio) {
-  CHECK(PageIndexInBounds(page_index));
-  return pages_[page_index]->GetThumbnailSize(device_pixel_ratio);
 }
 
 void PDFiumEngine::ApplyStroke(int page_index,

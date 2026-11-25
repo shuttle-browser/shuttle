@@ -7,6 +7,7 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <string_view>
 #include <vector>
 
@@ -73,6 +74,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
           anticipated_concurrent_incoming_bidirectional_streams,
       std::vector<net::HttpRequestHeaders::HeaderKeyValuePair>
           additional_headers,
+      const std::optional<base::UnguessableToken>& throttling_profile_id,
       NetworkContext* context,
       mojo::PendingRemote<mojom::WebTransportHandshakeClient> handshake_client,
       mojo::PendingRemote<mojom::URLLoaderNetworkServiceObserver>
@@ -98,9 +100,9 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
       UnidirectionalStreamAcceptanceCallback callback) override;
   void SendFin(uint32_t stream_id) override;
   void AbortStream(uint32_t stream_id,
-                   uint8_t code,
+                   uint32_t code,
                    AbortStreamCallback callback) override;
-  void StopSending(uint32_t stream_id, uint8_t code) override;
+  void StopSending(uint32_t stream_id, uint32_t code) override;
   void SetStreamPriority(
       uint32_t stream_id,
       mojom::WebTransportStreamPriorityPtr priority) override;
@@ -136,6 +138,12 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
     return final_receive_stream_stats_.Peek(stream_id) !=
            final_receive_stream_stats_.end();
   }
+
+  // Currently handles offline conditions only. Other emulated network
+  // conditions do not yet throttle an existing WebTransport connection.
+  // TODO(crbug.com/570122801): Apply the other network conditions here.
+  void NetworkConditionsUpdated(
+      const base::UnguessableToken& throttling_profile_id);
 
  private:
   friend class WebTransportTestPeer;
@@ -185,6 +193,7 @@ class COMPONENT_EXPORT(NETWORK_SERVICE) WebTransport final
   const std::unique_ptr<net::WebTransportClient> transport_;
   const GURL url_;
   const url::Origin origin_;
+  const std::optional<base::UnguessableToken> throttling_profile_id_;
   const raw_ptr<NetworkContext> context_;  // outlives |this|.
 
   bool closing_ = false;

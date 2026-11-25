@@ -91,8 +91,6 @@ import org.chromium.chrome.browser.data_sharing.DataSharingTabManager;
 import org.chromium.chrome.browser.desktop_site.DesktopSiteUtils;
 import org.chromium.chrome.browser.device_lock.DeviceLockActivityLauncherImpl;
 import org.chromium.chrome.browser.document.ChromeLauncherActivity;
-import org.chromium.chrome.browser.dom_distiller.ReaderModeBottomSheetManager;
-import org.chromium.chrome.browser.dom_distiller.ReaderModeIphController;
 import org.chromium.chrome.browser.download.DownloadMetrics.OpenWithExternalAppsSource;
 import org.chromium.chrome.browser.download.DownloadUtils;
 import org.chromium.chrome.browser.ephemeraltab.EphemeralTabCoordinator;
@@ -150,6 +148,8 @@ import org.chromium.chrome.browser.quick_delete.QuickDeleteController;
 import org.chromium.chrome.browser.quick_delete.QuickDeleteDelegateImpl;
 import org.chromium.chrome.browser.readaloud.ReadAloudController;
 import org.chromium.chrome.browser.readaloud.ReadAloudControllerSupplier;
+import org.chromium.chrome.browser.reader_mode.ReaderModeBottomSheetManager;
+import org.chromium.chrome.browser.reader_mode.ReaderModeIphController;
 import org.chromium.chrome.browser.recent_tabs.RestoreTabsFeatureHelper;
 import org.chromium.chrome.browser.searchwidget.SearchActivityUtils;
 import org.chromium.chrome.browser.share.ShareDelegate;
@@ -242,7 +242,6 @@ import org.chromium.components.browser_ui.widget.MenuOrKeyboardActionController;
 import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
 import org.chromium.components.browser_ui.widget.scrim.ScrimManager;
 import org.chromium.components.browser_ui.widget.scrim.ScrimManager.ScrimClient;
-import org.chromium.components.dom_distiller.core.DomDistillerUrlUtils;
 import org.chromium.components.embedder_support.contextmenu.ContextMenuPopulatorFactory;
 import org.chromium.components.feature_engagement.EventConstants;
 import org.chromium.components.feature_engagement.Tracker;
@@ -254,6 +253,7 @@ import org.chromium.components.messages.MessagesFactory;
 import org.chromium.components.signin.SigninFeatureMap;
 import org.chromium.components.signin.metrics.SigninAccessPoint;
 import org.chromium.components.ukm.UkmRecorder;
+import org.chromium.components.web_distiller.core.WebDistillerUrlUtils;
 import org.chromium.content_public.browser.BrowserContextHandle;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content_public.browser.NavigationHandle;
@@ -1078,6 +1078,11 @@ public class RootUiCoordinator
             modalDialogManager.removeObserver(mModalDialogManagerObserver);
         }
 
+        EphemeralTabCoordinator ephemeralTabCoordinator = mEphemeralTabCoordinatorSupplier.get();
+        if (ephemeralTabCoordinator != null) {
+            ephemeralTabCoordinator.destroy();
+        }
+
         if (mBottomSheetManager != null) mBottomSheetManager.onDestroy();
 
         ManagedBottomSheetController bottomSheetController = getBottomSheetController();
@@ -1492,7 +1497,7 @@ public class RootUiCoordinator
                         assertNonNull(getBottomSheetController()),
                         mActivityTabProvider,
                         mBrowserControlsManager,
-                        mToolbarThemeColorProvider);
+                        mTopUiThemeColorProvider);
         if (mReaderModeTabObserver != null) {
             mReaderModeTabObserver.destroy();
             mReaderModeTabObserver = null;
@@ -1501,7 +1506,7 @@ public class RootUiCoordinator
 
     private void initReaderModeBottomSheetLazyObserver() {
         Tab currentTab = mActivityTabProvider.get();
-        if (currentTab != null && DomDistillerUrlUtils.isDistilledPage(currentTab.getUrl())) {
+        if (currentTab != null && WebDistillerUrlUtils.isDistilledPage(currentTab.getUrl())) {
             initReaderModeBottomSheetManager();
             return;
         }
@@ -1515,13 +1520,13 @@ public class RootUiCoordinator
                                     Tab tab, NavigationHandle navigationHandle) {
                                 if (navigationHandle.hasCommitted()
                                         && navigationHandle.isInPrimaryMainFrame()
-                                        && DomDistillerUrlUtils.isDistilledPage(tab.getUrl())) {
+                                        && WebDistillerUrlUtils.isDistilledPage(tab.getUrl())) {
                                     initReaderModeBottomSheetManager();
                                 }
                             }
                         },
                         (@Nullable Tab tab) -> {
-                            if (tab != null && DomDistillerUrlUtils.isDistilledPage(tab.getUrl())) {
+                            if (tab != null && WebDistillerUrlUtils.isDistilledPage(tab.getUrl())) {
                                 initReaderModeBottomSheetManager();
                             }
                         });
@@ -1991,6 +1996,8 @@ public class RootUiCoordinator
             TrackerFactory.getTrackerForProfile(tab.getProfile())
                     .notifyEvent(EventConstants.PAGE_ZOOM_OPENED);
             mPageZoomBarCoordinator.show(tab.getWebContents());
+        } else if (id == R.id.fullscreen_button) {
+            mPageZoomManager.enterImmersiveMode();
         } else if (id == R.id.open_with_id) {
             Tab tab = mActivityTabProvider.get();
             assert tab != null && tab.isNativePage() && tab.getNativePage() instanceof PdfPage;
@@ -3068,6 +3075,10 @@ public class RootUiCoordinator
         return mAdaptiveToolbarUiCoordinator;
     }
 
+    public @Nullable ActionRegistry getActionRegistryForTesting() {
+        return mActionRegistry;
+    }
+
     public @Nullable DataSharingTabManager getDataSharingTabManager() {
         // TabbedRootUiCoordinator returns non-null.
         return null;
@@ -3118,5 +3129,14 @@ public class RootUiCoordinator
      */
     protected @Nullable OneshotSupplier<HubManager> getHubManagerSupplier() {
         return null;
+    }
+
+    public void setScrimManagerForTesting(ScrimManager scrimManager) {
+        mScrimManagerSupplier.set(scrimManager);
+    }
+
+    public @Nullable ReaderModeBottomSheetManager initReaderModeBottomSheetManagerForTesting() {
+        initReaderModeBottomSheetManager();
+        return mReaderModeBottomSheetManager;
     }
 }

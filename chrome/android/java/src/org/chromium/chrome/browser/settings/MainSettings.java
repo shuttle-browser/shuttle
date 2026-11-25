@@ -12,6 +12,8 @@ import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.content.res.Resources;
+import android.graphics.drawable.Drawable;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Parcelable;
@@ -20,6 +22,7 @@ import android.view.View;
 
 import androidx.lifecycle.Lifecycle;
 import androidx.preference.Preference;
+import androidx.preference.PreferenceCategory;
 import androidx.recyclerview.widget.RecyclerView.LayoutManager;
 
 import org.chromium.base.CallbackController;
@@ -56,6 +59,7 @@ import org.chromium.chrome.browser.signin.SigninAndHistorySyncActivityLauncherIm
 import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
 import org.chromium.chrome.browser.signin.services.ProfileDataCache;
 import org.chromium.chrome.browser.signin.services.SigninManager;
+import org.chromium.chrome.browser.subscription_eligibility.SubscriptionEligibilityServiceFactory;
 import org.chromium.chrome.browser.sync.SyncServiceFactory;
 import org.chromium.chrome.browser.sync.settings.ManageSyncSettings;
 import org.chromium.chrome.browser.sync.settings.SignInPreference;
@@ -73,6 +77,7 @@ import org.chromium.components.browser_ui.settings.ManagedPreferenceDelegate;
 import org.chromium.components.browser_ui.settings.SettingsCustomTabLauncher;
 import org.chromium.components.browser_ui.settings.SettingsUtils;
 import org.chromium.components.browser_ui.settings.search.SettingsIndexData;
+import org.chromium.components.browser_ui.widget.containment.SectionIdProvider;
 import org.chromium.components.search_engines.TemplateUrl;
 import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.components.signin.AccountManagerFacade;
@@ -102,8 +107,10 @@ public class MainSettings extends ChromeBaseSettingsFragment
                 SyncService.SyncStateChangedListener,
                 SigninManager.SignInStateObserver,
                 HomepageManager.HomepageStateListener,
+                SectionIdProvider,
                 SettingsCustomTabLauncher.SettingsCustomTabLauncherClient {
     private final CallbackController mCallbackController = new CallbackController();
+    public static final String PREF_SEARCH_HEADER = "settings_search_header";
     public static final String PREF_SETTINGS_PROMO_CARD = "settings_promo_card";
     public static final String PREF_ACCOUNT_AND_GOOGLE_SERVICES_SECTION =
             "account_and_google_services_section";
@@ -124,6 +131,10 @@ public class MainSettings extends ChromeBaseSettingsFragment
     public static final String PREF_DEFAULT_BROWSER = "default_browser";
     public static final String PREF_GLIC = "glic";
     public static final String PREF_ON_STARTUP = "on_startup";
+    static final String PREF_ACCESSIBILITY = "accessibility";
+    static final String PREF_CONTENT_SETTINGS = "content_settings";
+    static final String PREF_LANGUAGES = "languages";
+    static final String PREF_ABOUT_CHROME = "about_chrome";
 
     // Tag for Fragment backstack entry loading the search results into the display fragment.
     // Popping the entry means we are transitioning from result -> search state.
@@ -135,6 +146,9 @@ public class MainSettings extends ChromeBaseSettingsFragment
     }
 
     private final Map<String, Preference> mAllPreferences = new HashMap<>();
+
+    /** Section of each row once headers are removed (SettingsIaReorganization only). */
+    private final Map<String, String> mSectionIdByKey = new HashMap<>();
 
     private ManagedPreferenceDelegate mManagedPreferenceDelegate;
     private MonotonicObservableSupplier<ModalDialogManager> mModalDialogManagerSupplier;
@@ -377,12 +391,26 @@ public class MainSettings extends ChromeBaseSettingsFragment
 
         SettingsUtils.addPreferencesFromResource(this, R.xml.main_preferences);
 
+        Profile profile = getProfile();
         IdentityManager identityManager =
-                IdentityServicesProvider.get().getIdentityManager(getProfile());
+                IdentityServicesProvider.get().getIdentityManager(profile);
         assert identityManager != null;
-        ProfileDataCache profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
-                        getContext(), identityManager);
+        ProfileDataCache profileDataCache;
+        if (SigninFeatureMap.getInstance().isAiTierRingInSettingsEnabled()) {
+            Resources resources = getResources();
+            profileDataCache =
+                    ProfileDataCache.createWithAiTierRing(
+                            getContext(),
+                            identityManager,
+                            SubscriptionEligibilityServiceFactory.getForProfile(profile),
+                            SyncServiceFactory.getForProfile(profile),
+                            resources.getDimensionPixelSize(
+                                    R.dimen.user_picture_size_with_ai_tier_ring),
+                            resources.getDimensionPixelSize(R.dimen.ai_tier_ring_thickness_large));
+        } else {
+            profileDataCache =
+                    ProfileDataCache.createWithDefaultImageSize(getContext(), identityManager);
+        }
         AccountManagerFacade accountManagerFacade = AccountManagerFacadeProvider.getInstance();
 
         if (ChromeFeatureList.isEnabled(ChromeFeatureList.DEFAULT_BROWSER_PROMO_ANDROID2)) {
@@ -473,6 +501,26 @@ public class MainSettings extends ChromeBaseSettingsFragment
                                 return false;
                             });
         }
+        maybeAddSearchHeaderPreference();
+    }
+
+    protected void maybeAddSearchHeaderPreference() {
+        if (!ChromeFeatureList.sSettingsSearchCollapsibleSearchBox.isEnabled()) return;
+
+        SettingsUtils.addPreferencesFromResource(this, R.xml.settings_search_header_preference);
+    }
+
+    public void setSearchHeaderClickListener(
+            Preference.@Nullable OnPreferenceClickListener listener) {
+        Preference pref = findPreference(PREF_SEARCH_HEADER);
+        if (pref == null) return;
+
+        pref.setOnPreferenceClickListener(listener);
+        boolean visible = listener != null;
+        if (pref.isVisible() == visible) return;
+
+        pref.setVisible(visible);
+        notifyPreferencesUpdated();
     }
 
     private static boolean shouldShowSafetyHubPref() {
@@ -509,6 +557,47 @@ public class MainSettings extends ChromeBaseSettingsFragment
         for (int index = 0; index < preferenceCount; index++) {
             Preference preference = getPreferenceScreen().getPreference(index);
             mAllPreferences.put(preference.getKey(), preference);
+        }
+        if (ChromeFeatureList.isEnabled(ChromeFeatureList.SETTINGS_IA_REORGANIZATION)) {
+            groupPreferencesBySection();
+            applyRowIcons();
+        }
+    }
+
+    /**
+     * Drops the category headers and records, for every row, the header it used to sit under.
+     * Containment then splits cards on section changes instead of on the headers.
+     */
+    private void groupPreferencesBySection() {
+        List<Preference> byOrder = new ArrayList<>(mAllPreferences.values());
+        byOrder.sort((a, b) -> Integer.compare(a.getOrder(), b.getOrder()));
+        String section = null;
+        for (Preference preference : byOrder) {
+            String key = preference.getKey();
+            if (key == null) continue;
+            if (preference instanceof PreferenceCategory) {
+                section = key;
+                removePreferenceIfPresent(key);
+                continue;
+            }
+            if (section != null) mSectionIdByKey.put(key, section);
+        }
+    }
+
+    @Override
+    public @Nullable String getSectionId(Preference preference) {
+        return mSectionIdByKey.get(preference.getKey());
+    }
+
+    /**
+     * Gives each top-level row a colored, circular icon. Rows without an icon mapping in {@link
+     * SettingsIconFactory} (e.g. sign in, Google services) keep their own.
+     */
+    private void applyRowIcons() {
+        Context context = getContext();
+        for (Map.Entry<String, Preference> entry : mAllPreferences.entrySet()) {
+            Drawable icon = SettingsIconFactory.createForKey(context, entry.getKey());
+            if (icon != null) entry.getValue().setIcon(icon);
         }
     }
 

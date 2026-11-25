@@ -4,6 +4,8 @@
 
 #import "ios/chrome/browser/safari_data_import/public/utils.h"
 
-NSString* GetSafariDataEntryPointAccessibilityIdentifier() {
-  return @"SafariDataEntryPointAccessibilityIdentifier";
-}
+NSString* const kSafariDataEntryPointAccessibilityIdentifier =
+    @"SafariDataEntryPointAccessibilityIdentifier";
+
+NSString* const kSafariDataExportInstructionsViewAccessibilityIdentifier =
+    @"SafariDataExportInstructionsViewAccessibilityIdentifier";

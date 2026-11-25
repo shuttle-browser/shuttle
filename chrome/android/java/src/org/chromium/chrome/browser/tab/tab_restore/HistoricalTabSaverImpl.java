@@ -68,7 +68,9 @@ public class HistoricalTabSaverImpl implements HistoricalTabSaver {
 
     @Override
     public void addSecondaryTabModelSupplier(Supplier<@Nullable TabModel> tabModelSupplier) {
-        mSecondaryTabModelSuppliers.add(tabModelSupplier);
+        if (!mSecondaryTabModelSuppliers.contains(tabModelSupplier)) {
+            mSecondaryTabModelSuppliers.add(tabModelSupplier);
+        }
     }
 
     @Override
@@ -297,7 +299,11 @@ public class HistoricalTabSaverImpl implements HistoricalTabSaver {
     @NativeMethods
     interface Natives {
         @TabRestoreEntryId
-        int createHistoricalTab(Tab tab, int index, ByteBuffer state, int savedStateVersion);
+        int createHistoricalTab(
+                @JniType("TabAndroid*") Tab tab,
+                int index,
+                ByteBuffer state,
+                int savedStateVersion);
 
         @TabRestoreEntryId
         int createHistoricalGroup(

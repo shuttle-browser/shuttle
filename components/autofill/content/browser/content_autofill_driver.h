@@ -172,6 +172,13 @@ class ContentAutofillDriver : public AutofillDriver,
     return GetAutofillAgent();
   }
 
+  // Returns the frame's `mojom::CustomFormControlAgent`. The renderer only
+  // provides it if custom form control scripts are enabled (see
+  // `AutofillAgent::EnableCustomFormControlScripts()`); otherwise, calls are
+  // dropped.
+  const mojo::AssociatedRemote<mojom::CustomFormControlAgent>&
+  GetCustomFormControlAgent();
+
   // autofill::AutofillDriver:
   // These are the non-event functions from autofill::AutofillDriver. The events
   // are defined in the private part below.
@@ -220,9 +227,9 @@ class ContentAutofillDriver : public AutofillDriver,
   // autofill::AutofillDriver:
   void ExposeDomNodeIdsInAllFrames() override;
   void TriggerFormExtractionInAllFrames(
+      bool force,
       base::OnceCallback<void(bool success)> form_extraction_finished_callback)
       override;
-  void ClearFormCacheInAllFrames() override;
   void RendererShouldClearPreviewedForm() override;
 
   // Group (1b): browser -> renderer events, routed (see comment above).
@@ -283,7 +290,8 @@ class ContentAutofillDriver : public AutofillDriver,
   // Group (1d): browser -> renderer events, unrouted (see comment above).
   // autofill::AutofillDriver:
   void TriggerFormExtractionInDriverFrame(
-      AutofillDriverRouterAndFormForestPassKey pass_key) override;
+      AutofillDriverRouterAndFormForestPassKey pass_key,
+      bool force) override;
 
   // Group (2a): renderer -> browser events, broadcast (see comment above).
   // mojom::AutofillDriver:
@@ -368,6 +376,9 @@ class ContentAutofillDriver : public AutofillDriver,
   mojo::AssociatedReceiver<mojom::AutofillDriver> receiver_{this};
 
   mojo::AssociatedRemote<mojom::AutofillAgent> autofill_agent_;
+
+  mojo::AssociatedRemote<mojom::CustomFormControlAgent>
+      custom_form_control_agent_;
 
   std::unique_ptr<AutofillManager> autofill_manager_ = nullptr;
 };

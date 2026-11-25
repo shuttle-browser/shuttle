@@ -26,12 +26,35 @@ AISemanticEmbedder::AISemanticEmbedder(
 
 AISemanticEmbedder::~AISemanticEmbedder() = default;
 
+void AISemanticEmbedder::SetPriority(
+    on_device_model::mojom::Priority priority) {
+  const auto new_priority =
+      priority == on_device_model::mojom::Priority::kForeground
+          ? passage_embeddings::PassagePriority::kUserInitiated
+          : passage_embeddings::PassagePriority::kPassive;
+  if (priority_ == new_priority) {
+    return;
+  }
+  priority_ = new_priority;
+  for (auto& [request_id, job] : pending_jobs_) {
+    // A request cancelled by CancelEmbed() has no Job left.
+    if (job) {
+      job->Reprioritize(priority_);
+    }
+  }
+}
+
 void AISemanticEmbedder::Embed(
+    uint64_t request_id,
     const std::vector<std::string>& inputs,
     blink::mojom::AISemanticEmbedderEmbedOptionsPtr options,
     EmbedCallback callback) {
   if (inputs.empty()) {
     receiver_.ReportBadMessage("Invalid empty inputs");
+    return;
+  }
+  if (pending_jobs_.contains(request_id)) {
+    receiver_.ReportBadMessage("Duplicate embed request id");
     return;
   }
 
@@ -77,28 +100,36 @@ void AISemanticEmbedder::Embed(
     return;
   }
 
-  pending_jobs_.push_back(
+  pending_jobs_.emplace(
+      request_id,
       service_launcher->controller()->GetEmbedder()->ComputePassagesEmbeddings(
-          passage_embeddings::PassagePriority::kUserInitiated,
-          std::move(formatted_inputs),
+          priority_, std::move(formatted_inputs),
           base::BindPostTask(
               base::SequencedTaskRunner::GetCurrentDefault(),
               base::BindOnce(&AISemanticEmbedder::OnEmbedComplete,
-                             weak_ptr_factory_.GetWeakPtr(),
+                             weak_ptr_factory_.GetWeakPtr(), request_id,
                              mojo::WrapCallbackWithDefaultInvokeIfNotRun(
                                  std::move(callback), nullptr)))));
 }
 
+void AISemanticEmbedder::CancelEmbed(uint64_t request_id) {
+  // Destroying the Job cancels the request if the embedder has not started
+  // it; it then completes with kCanceled and the renderer gets null. A started
+  // request finishes, and its reply goes out as usual. Either way the id stays
+  // taken until the reply.
+  if (auto it = pending_jobs_.find(request_id); it != pending_jobs_.end()) {
+    it->second.reset();
+  }
+}
+
 void AISemanticEmbedder::OnEmbedComplete(
+    uint64_t request_id,
     EmbedCallback callback,
     std::vector<std::string> passages,
     std::vector<passage_embeddings::Embedding> embeddings,
-    uint64_t job_id,
+    uint64_t /*job_id*/,
     passage_embeddings::ComputeEmbeddingsStatus status) {
-  std::erase_if(pending_jobs_,
-                [job_id](const passage_embeddings::Embedder::Job& job) {
-                  return job.id() == job_id;
-                });
+  pending_jobs_.erase(request_id);
 
   if (status == passage_embeddings::ComputeEmbeddingsStatus::kSuccess) {
     AISemanticEmbedderServiceLauncher::Get()->RecordSuccessfulUse();

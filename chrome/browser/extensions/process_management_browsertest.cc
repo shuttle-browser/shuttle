@@ -16,6 +16,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/url_constants.h"
 #include "chrome/test/base/ui_test_utils.h"
@@ -42,7 +43,7 @@
 #include "extensions/common/switches.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 using content::NavigationController;
 using content::WebContents;
@@ -57,8 +58,19 @@ class ProcessManagementTest : public ExtensionBrowserTest {
     // TODO(crbug.com/40142347): Remove this once Extensions are
     // supported with BackForwardCache.
     disabled_feature_list_.InitWithFeatures(
-        {}, {features::kBackForwardCache,
-             features::kProcessPerSiteUpToMainFrameThreshold});
+        {}, {
+                features::kBackForwardCache,
+                features::kProcessPerSiteUpToMainFrameThreshold,
+#if !BUILDFLAG(IS_ANDROID)
+                // TODO(crbug.com/531575122): Remove this once the organizer
+                // panel is also created in TopChromeWebUIProfile. With
+                // kTopChromeWebUISharedRenderer, only the WebUI toolbar is,
+                // so the organizer panel no longer shares its renderer
+                // process, which adds a renderer process at startup that
+                // ExtensionAndWebProcessOverflow uses to set the process limit.
+                features::kTopChromeWebUISharedRenderer,
+#endif  // !BUILDFLAG(IS_ANDROID)
+            });
   }
 
  private:
@@ -363,7 +375,7 @@ IN_PROC_BROWSER_TEST_F(ProcessManagementTest, ExtensionAndWebProcessOverflow) {
   GURL web_url2(embedded_test_server()->GetURL("foo.com", "/title2.html"));
   GURL web_url3(embedded_test_server()->GetURL("foo.com", "/title3.html"));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), web_url1, WindowOpenDisposition::kCurrentTab,
+      browser(), web_url1, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   WebContents* web_contents1 =
       browser()->GetTabStripModel()->GetActiveWebContents();

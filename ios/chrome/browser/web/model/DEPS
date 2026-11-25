@@ -51,6 +51,7 @@ include_rules = [
   "+ios/chrome/browser/snapshots/model",
   "+ios/chrome/browser/ssl/model",
   "+ios/chrome/browser/supervised_user/model",
+  "+ios/chrome/browser/sync/model",
   "+ios/chrome/browser/tab_insertion/model",
   "+ios/chrome/browser/tabs/model",
   "+ios/chrome/browser/tabs/model/tabs_dependency_installer.h",
@@ -93,6 +94,7 @@ specific_include_rules = {
   "^web_state_delegate_browser_agent.mm": [
     "+ios/chrome/browser/context_menu/ui_bundled/context_menu_configuration_provider.h",
     "+ios/chrome/browser/dialogs/ui_bundled/nsurl_protection_space_util.h",
+    "+ios/chrome/browser/intelligence/actor/model/actor_tab_helper.h",
   ],
 
 }

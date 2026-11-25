@@ -6,6 +6,7 @@
 
 #import <cmath>
 #import <limits>
+#import <optional>
 
 #import "base/check.h"
 #import "base/feature_list.h"
@@ -82,18 +83,17 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
 
 }  // namespace
 
-@interface CRWWebViewContentView () {
-  UIEdgeInsets _pendingMinInset;
-  UIEdgeInsets _pendingMaxInset;
-  UIEdgeInsets _maxViewportInset;
+@implementation CRWWebViewContentView {
+  std::optional<UIEdgeInsets> _minViewportInset;
+  std::optional<UIEdgeInsets> _maxViewportInset;
   BOOL _hasPendingViewportInsets;
+  // Bounds size at the last viewport insets notification. Rotation can change
+  // the size without changing the insets (e.g. on iPad).
+  std::optional<CGSize> _lastViewportInsetsBoundsSize;
   BOOL _usesObscuredInsets;
   std::string _mimeTypeString;
   CRWViewportInsetsAnimator* _insetsAnimator;
 }
-@end
-
-@implementation CRWWebViewContentView
 @synthesize contentOffset = _contentOffset;
 @synthesize contentInset = _contentInset;
 @synthesize obscuredInsets = _obscuredInsets;
@@ -188,23 +188,50 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
   _fullscreenState = fullscreenState;
 }
 
+- (void)safeAreaInsetsDidChange {
+  [super safeAreaInsetsDidChange];
+  if (_minViewportInset && _maxViewportInset) {
+    [self setMinimumViewportInset:*_minViewportInset
+             maximumViewportInset:*_maxViewportInset];
+  }
+  if (_usesObscuredInsets) {
+    if (_insetsAnimator) {
+      [self applyContentInsetModeObscuredInsets:_insetsAnimator.currentInsets];
+    } else {
+      UIEdgeInsets obscuredInsets = _obscuredInsets;
+      [UIView performWithoutAnimation:^{
+        [self setObscuredInsets:obscuredInsets];
+      }];
+    }
+  }
+}
+
 - (void)layoutSubviews {
   [super layoutSubviews];
   switch (self.webViewResizingType) {
-    case WebViewResizingType::kContentInset:
-      if (_hasPendingViewportInsets) {
-        [self setMinimumViewportInset:_pendingMinInset
-                 maximumViewportInset:_pendingMaxInset];
+    case WebViewResizingType::kContentInset: {
+      if (!_minViewportInset || !_maxViewportInset) {
+        break;
+      }
+      BOOL boundsSizeChanged =
+          _lastViewportInsetsBoundsSize &&
+          !CGSizeEqualToSize(*_lastViewportInsetsBoundsSize, self.bounds.size);
+      if (_hasPendingViewportInsets || boundsSizeChanged) {
+        [self setMinimumViewportInset:*_minViewportInset
+                 maximumViewportInset:*_maxViewportInset];
       }
       break;
+    }
     case WebViewResizingType::kFrame:
       if (!_usesObscuredInsets) {
         break;
       }
       if (web::IsContentTypePdf(_mimeTypeString)) {
-        UIEdgeInsets maxInsets = _maxViewportInset;
-        maxInsets.bottom = 0;
-        _webView.frame = UIEdgeInsetsInsetRect(self.bounds, maxInsets);
+        if (_maxViewportInset) {
+          UIEdgeInsets maxInsets = *_maxViewportInset;
+          maxInsets.bottom = 0;
+          _webView.frame = UIEdgeInsetsInsetRect(self.bounds, maxInsets);
+        }
       } else {
         UIEdgeInsets contentInsets =
             AdjustInsetsForSafeArea(_obscuredInsets, self.safeAreaInsets);
@@ -272,18 +299,30 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
 
   BOOL appliedInsetsEqual = YES;
   switch (self.webViewResizingType) {
-    case WebViewResizingType::kContentInset:
+    case WebViewResizingType::kContentInset: {
+      // Preserve any larger bottom content inset set by external callers (such
+      // as for the virtual keyboard) so toolbar inset updates do not clobber
+      // it. Note that this must check against `_obscuredInsets.bottom` (the
+      // previous toolbar inset) rather than `obscuredInsets.bottom`, otherwise
+      // the inset would never shrink when collapsing toolbars on scroll.
+      if (_scrollView.contentInset.bottom > _obscuredInsets.bottom) {
+        contentInsets.bottom =
+            std::max(contentInsets.bottom, _scrollView.contentInset.bottom);
+      }
       appliedInsetsEqual = UIEdgeInsetsEqualToEdgeInsets(
           _scrollView.contentInset, contentInsets);
       break;
+    }
     case WebViewResizingType::kFrame:
       if (!_usesObscuredInsets) {
         break;
       }
       if (web::IsContentTypePdf(_mimeTypeString)) {
-        appliedInsetsEqual = UIEdgeInsetsEqualToEdgeInsets(
-            _scrollView.contentInset,
-            AdjustedPdfContentInsets(contentInsets, _maxViewportInset));
+        if (_maxViewportInset) {
+          appliedInsetsEqual = UIEdgeInsetsEqualToEdgeInsets(
+              _scrollView.contentInset,
+              AdjustedPdfContentInsets(contentInsets, *_maxViewportInset));
+        }
       } else {
         appliedInsetsEqual = CGRectEqualToRect(
             _webView.frame, UIEdgeInsetsInsetRect(self.bounds, contentInsets));
@@ -340,15 +379,18 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
         break;
       }
       if (web::IsContentTypePdf(_mimeTypeString)) {
-        _scrollView.contentInsetAdjustmentBehavior =
-            UIScrollViewContentInsetAdjustmentNever;
+        _obscuredInsets = obscuredInsets;
+        if (_maxViewportInset) {
+          _scrollView.contentInsetAdjustmentBehavior =
+              UIScrollViewContentInsetAdjustmentNever;
 
-        // Keep the WKWebView frame constant during scroll. Resizing the frame
-        // dynamically breaks scroll momentum in PDFs. We do not change the
-        // frame here, but rather rely on layoutSubviews and
-        // setMinimumViewportInset.
-        _scrollView.contentInset =
-            AdjustedPdfContentInsets(contentInsets, _maxViewportInset);
+          // Keep the WKWebView frame constant during scroll. Resizing the frame
+          // dynamically breaks scroll momentum in PDFs. We do not change the
+          // frame here, but rather rely on layoutSubviews and
+          // setMinimumViewportInset.
+          _scrollView.contentInset =
+              AdjustedPdfContentInsets(contentInsets, *_maxViewportInset);
+        }
         break;
       }
 
@@ -369,6 +411,9 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
 
 - (void)setMinimumViewportInset:(UIEdgeInsets)minInset
            maximumViewportInset:(UIEdgeInsets)maxInset {
+  _minViewportInset = minInset;
+  _maxViewportInset = maxInset;
+
   UIEdgeInsets effectiveMinInset =
       AdjustInsetsForSafeArea(minInset, self.safeAreaInsets);
   UIEdgeInsets effectiveMaxInset =
@@ -388,35 +433,46 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
       // Only apply the viewport insets if the web view's frame is large enough
       // to accommodate them.
       if (_webView.window && isFrameLargeEnough) {
-        if (UIEdgeInsetsEqualToEdgeInsets(_webView.minimumViewportInset,
+        _hasPendingViewportInsets = NO;
+        BOOL insetsUnchanged =
+            UIEdgeInsetsEqualToEdgeInsets(_webView.minimumViewportInset,
                                           effectiveMinInset) &&
             UIEdgeInsetsEqualToEdgeInsets(_webView.maximumViewportInset,
-                                          effectiveMaxInset)) {
-          _hasPendingViewportInsets = NO;
+                                          effectiveMaxInset);
+        CGSize boundsSize = self.bounds.size;
+        BOOL boundsSizeUnchanged =
+            _lastViewportInsetsBoundsSize &&
+            CGSizeEqualToSize(*_lastViewportInsetsBoundsSize, boundsSize);
+        if (insetsUnchanged && boundsSizeUnchanged) {
           break;
         }
-        [_webView setMinimumViewportInset:effectiveMinInset
-                     maximumViewportInset:effectiveMaxInset];
-        _hasPendingViewportInsets = NO;
+        if (!insetsUnchanged) {
+          [_webView setMinimumViewportInset:effectiveMinInset
+                       maximumViewportInset:effectiveMaxInset];
+        }
+        _lastViewportInsetsBoundsSize = boundsSize;
         [self viewportInsetsDidChangeWithMinInset:effectiveMinInset
                                          maxInset:effectiveMaxInset];
         [_webView setNeedsLayout];
       } else {
-        _pendingMinInset = minInset;
-        _pendingMaxInset = maxInset;
         _hasPendingViewportInsets = YES;
       }
       break;
     }
     case WebViewResizingType::kFrame: {
-      _maxViewportInset = maxInset;
-
       if (web::IsContentTypePdf(_mimeTypeString) && _usesObscuredInsets) {
         // Inset the frame by maxInsets to prevent covering the page indicator
         // badge underneath the top toolbar.
-        UIEdgeInsets maxInsetsForFrame = _maxViewportInset;
+        UIEdgeInsets maxInsetsForFrame = maxInset;
         maxInsetsForFrame.bottom = 0;
         _webView.frame = UIEdgeInsetsInsetRect(self.bounds, maxInsetsForFrame);
+
+        _scrollView.contentInsetAdjustmentBehavior =
+            UIScrollViewContentInsetAdjustmentNever;
+        UIEdgeInsets contentInsets =
+            AdjustInsetsForSafeArea(_obscuredInsets, self.safeAreaInsets);
+        _scrollView.contentInset =
+            AdjustedPdfContentInsets(contentInsets, maxInset);
       }
 
       // Do not pass the min/max viewport insets to the underlying web view if
@@ -455,6 +511,14 @@ const CGFloat kBackgroundRGBComponents[] = {0.75f, 0.74f, 0.76f};
       AdjustInsetsForSafeArea(obscuredInsets, self.safeAreaInsets);
 
   UIEdgeInsets oldInsets = _scrollView.contentInset;
+  // Preserve any larger bottom content inset set by external callers (such as
+  // for the virtual keyboard) so toolbar inset updates do not clobber it. Note
+  // that this must check against `_obscuredInsets.bottom` (the previous toolbar
+  // inset) rather than `obscuredInsets.bottom`, otherwise the inset would never
+  // shrink when collapsing toolbars on scroll.
+  if (oldInsets.bottom > _obscuredInsets.bottom) {
+    contentInsets.bottom = std::max(contentInsets.bottom, oldInsets.bottom);
+  }
   _scrollView.contentInset = contentInsets;
   CGFloat topDelta = contentInsets.top - oldInsets.top;
   if (!web::IsContentTypePdf(_mimeTypeString) && topDelta != 0 &&

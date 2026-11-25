@@ -32,6 +32,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/mojom/frame/viewport_intersection_state.mojom.h"
 #include "ui/base/interaction/element_events.h"
 #include "ui/base/interaction/element_highlighter.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -586,6 +587,62 @@ TEST_F(TrackedElementHandlerTest,
   EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
 }
 
+TEST_F(TrackedElementHandlerTest, SubframeOcclusionChangesElementVisibility) {
+  content::RenderFrameHostTester::For(main_rfh())
+      ->InitializeRenderFrameIfNeeded();
+
+  content::RenderFrameHost* const subframe_rfh =
+      content::RenderFrameHostTester::For(main_rfh())->AppendChild("subframe");
+  ASSERT_TRUE(subframe_rfh);
+
+  mojo::Remote<tracked_element::mojom::TrackedElementHandler> remote;
+  const ui::ElementContext context =
+      ui::ElementContext::CreateFakeContextForTesting(web_contents());
+  auto test_handler = std::make_unique<TrackedElementHandler>(
+      web_contents(), remote.BindNewPipeAndPassReceiver(), context,
+      std::vector<ui::ElementIdentifier>{kTestElementIdentifier1},
+      subframe_rfh);
+
+  remote->TrackedElementVisibilityChanged(
+      MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
+  remote.FlushForTesting();
+
+  auto* const tracker = ui::ElementTracker::GetElementTracker();
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Mark subframe as possibly occluded by a parent-frame overlay.
+  blink::mojom::ViewportIntersectionState occluded_state;
+  occluded_state.viewport_intersection = gfx::Rect(0, 0, 100, 100);
+  occluded_state.occlusion_state =
+      blink::mojom::FrameOcclusionState::kPossiblyOccluded;
+  test_handler->OnRemoteSubframeViewportIntersectionStateChanged(
+      subframe_rfh, occluded_state);
+  EXPECT_FALSE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Unocclude subframe.
+  blink::mojom::ViewportIntersectionState unoccluded_state;
+  unoccluded_state.viewport_intersection = gfx::Rect(0, 0, 100, 100);
+  unoccluded_state.occlusion_state =
+      blink::mojom::FrameOcclusionState::kGuaranteedNotOccluded;
+  test_handler->OnRemoteSubframeViewportIntersectionStateChanged(
+      subframe_rfh, unoccluded_state);
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Mark subframe as hidden for media playback.
+  blink::mojom::ViewportIntersectionState hidden_state;
+  hidden_state.viewport_intersection = gfx::Rect(0, 0, 100, 100);
+  hidden_state.occlusion_state =
+      blink::mojom::FrameOcclusionState::kGuaranteedNotOccluded;
+  hidden_state.is_hidden_for_media_playback = true;
+  test_handler->OnRemoteSubframeViewportIntersectionStateChanged(subframe_rfh,
+                                                                 hidden_state);
+  EXPECT_FALSE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+
+  // Deleted subframe should clear occlusion.
+  test_handler->RenderFrameDeleted(subframe_rfh);
+  EXPECT_TRUE(tracker->IsElementVisible(kTestElementIdentifier1, context));
+}
+
 TEST_F(TrackedElementHandlerTest, DestroyHandlerHidesElement) {
   handler_remote()->TrackedElementVisibilityChanged(
       MakeId(kTestElementIdentifier1, kTestSecondaryId1), true, kElementBounds);
@@ -1026,6 +1083,28 @@ TEST_F(TrackedElementHandlerTest, SubframeHandler) {
   const gfx::Rect bounds = webui_element->GetBoundsInWebContents();
   EXPECT_FALSE(bounds.IsEmpty());
   EXPECT_EQ(bounds.size(), gfx::ToRoundedRect(kElementBounds).size());
+
+  UNCALLED_MOCK_CALLBACK(ui::ElementTracker::Callback, bounds_changed);
+  auto subscription =
+      ui::ElementTracker::GetElementTracker()->AddCustomEventCallback(
+          kElementBoundsChangedEvent, element->context(), bounds_changed.Get());
+
+  // Viewport intersection updates for an unrelated subframe should not fire
+  // `kElementBoundsChangedEvent`.
+  content::RenderFrameHost* const other_subframe_rfh =
+      content::RenderFrameHostTester::For(main_rfh())
+          ->AppendChild("other_subframe");
+  ASSERT_TRUE(other_subframe_rfh);
+  test_handler->OnRemoteSubframeViewportIntersectionStateChanged(
+      other_subframe_rfh, blink::mojom::ViewportIntersectionState());
+
+  // Viewport intersection updates for the tracked subframe (e.g. when the
+  // outer document resizes and repositions the OOPIF) should fire
+  // `kElementBoundsChangedEvent`.
+  EXPECT_CALL_IN_SCOPE(bounds_changed, Run(element), {
+    test_handler->OnRemoteSubframeViewportIntersectionStateChanged(
+        subframe_rfh, blink::mojom::ViewportIntersectionState());
+  });
 }
 
 // TODO(crbug.com/40243115): add tests for element screen bounds. This requires

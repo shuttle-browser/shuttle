@@ -143,8 +143,10 @@ class CueTarget {
   // Evaluates whether this target can show a cue on the current page.
   //
   // Called at page navigation/load for all non-backed-off targets in
-  // parallel via base::BarrierCallback. The controller passes in the
-  // highest UI prominence tier currently allowed by global quotas:
+  // parallel via base::BarrierCallback, or for a single target through
+  // `ContextualCueingController::EvaluateCueForTarget()`. The controller
+  // passes in the highest UI prominence tier currently allowed by global
+  // quotas:
   //
   //   - eligible: true if this target has relevant content for the page at
   //               the requested prominence level.
@@ -191,6 +193,16 @@ class CueTarget {
 
   // Called when the user clicks the "edit prompt" menu item.
   virtual void OnEditPrompt(CueActionData data) = 0;
+
+  // Called when the user clicks the "dismiss" menu item, after the cue has been
+  // hidden. For targets that `DowngradesToQuietOnDismiss()`, only the anchored
+  // message is hidden, so the user can reopen it from the chip and dismiss it
+  // again; this may then be called more than once per cue.
+  virtual void OnDismissed();
+
+  // Called when the user clicks the menu item that opens the suggestions
+  // settings, after the cue has been hidden and before the settings page opens.
+  virtual void OnSuggestionsSettingsOpened();
 
   // Icon to be shown in the anchored message.
   virtual ui::ImageModel GetAnchoredMessageIcon() const = 0;

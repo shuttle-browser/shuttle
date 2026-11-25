@@ -13,6 +13,7 @@ import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -53,7 +54,6 @@ import org.mockito.Spy;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.robolectric.Robolectric;
-import org.robolectric.util.ReflectionHelpers;
 
 import org.chromium.base.CallbackUtils;
 import org.chromium.base.ContextUtils;
@@ -63,9 +63,11 @@ import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.RobolectricUtil;
 import org.chromium.base.test.util.UserActionTester;
+import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabGroupMergeNotificationType;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabUngrouper;
 import org.chromium.chrome.browser.tasks.tab_management.TabListMediator.TabListLayoutType;
@@ -91,6 +93,7 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
     private static class TestGridLayoutManager extends GridLayoutManager {
         private final SparseArray<Rect> mItemBounds = new SparseArray<>();
+        private @Nullable Runnable mOnScrollCallback;
 
         TestGridLayoutManager(Context context) {
             super(context, /* spanCount= */ 2);
@@ -110,6 +113,15 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         @Override
         public boolean supportsPredictiveItemAnimations() {
             return false;
+        }
+
+        @Override
+        public int scrollVerticallyBy(
+                int dy, RecyclerView.Recycler recycler, RecyclerView.State state) {
+            if (mOnScrollCallback != null) {
+                mOnScrollCallback.run();
+            }
+            return 0;
         }
 
         @Override
@@ -202,10 +214,6 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         doReturn(mTab3).when(mTabModel).getTabById(TAB3_ID);
         doReturn(mTab4).when(mTabModel).getTabById(TAB4_ID);
         doReturn(4).when(mTabModel).getCount();
-        doReturn(mTab1).when(mTabModel).getRepresentativeTabAt(POSITION1);
-        doReturn(mTab2).when(mTabModel).getRepresentativeTabAt(POSITION2);
-        doReturn(mTab3).when(mTabModel).getRepresentativeTabAt(POSITION3);
-        doReturn(mTab4).when(mTabModel).getRepresentativeTabAt(POSITION4);
         initAndAssertAllProperties();
 
         setupRecyclerView();
@@ -238,6 +246,19 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         mRecyclerView.layout(/* left= */ 0, /* top= */ 0, /* right= */ 9, /* bottom= */ 14);
     }
 
+    private void runDuringScroll(Runnable action) {
+        boolean[] executed = {false};
+        mGridLayoutManager.mOnScrollCallback =
+                () -> {
+                    assertTrue(mRecyclerView.isComputingLayout());
+                    action.run();
+                    executed[0] = true;
+                };
+        mRecyclerView.scrollBy(/* x= */ 0, /* y= */ 1);
+        mGridLayoutManager.mOnScrollCallback = null;
+        assertTrue(executed[0]);
+    }
+
     private void setupItemTouchHelperCallback(boolean isDialog) {
         mItemTouchHelperCallback =
                 new TabGridItemTouchHelperCallback(
@@ -245,7 +266,7 @@ public class TabGridItemTouchHelperCallbackUnitTest {
                         mTabGroupCreationDialogManager,
                         mModel,
                         mTabModelSupplier,
-                        mTabClosedListener,
+                        new TabSwipeHandler(mModel, mTabClosedListener, ""),
                         isDialog ? mUngroupBarStatusHandler : null,
                         "",
                         isDialog ? TabListLayoutType.FLAT : TabListLayoutType.GROUPED,
@@ -420,7 +441,7 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
 
-        verify(mTabModel, never()).mergeTabsToGroup(anyInt(), anyInt());
+        verify(mTabModel, never()).mergeListOfTabsToGroup(any(), any(), anyInt());
         verify(mGridLayoutManager, never()).removeView(any());
     }
 
@@ -441,7 +462,11 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
 
-        verify(mTabModel).mergeTabsToGroup(TAB1_ID, TAB2_ID);
+        verify(mTabModel)
+                .mergeListOfTabsToGroup(
+                        List.of(mTab1),
+                        mTab2,
+                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
         verify(mGridLayoutManager).removeView(mItemView1);
         verify(mTracker).notifyEvent(eq(EventConstants.TAB_DRAG_AND_DROP_TO_GROUP));
         assertThat(
@@ -468,7 +493,11 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
 
-        verify(mTabModel).mergeTabsToGroup(TAB1_ID, TAB2_ID);
+        verify(mTabModel)
+                .mergeListOfTabsToGroup(
+                        List.of(mTab1),
+                        mTab2,
+                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
         verify(mGridLayoutManager, never()).removeView(mItemView1);
         verify(mTracker).notifyEvent(eq(EventConstants.TAB_DRAG_AND_DROP_TO_GROUP));
         assertThat(
@@ -494,7 +523,11 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder2, ItemTouchHelper.ACTION_STATE_IDLE);
 
         verify(mGridLayoutManager).removeView(mItemView2);
-        verify(mTabModel).mergeTabsToGroup(TAB2_ID, TAB1_ID);
+        verify(mTabModel)
+                .mergeListOfTabsToGroup(
+                        List.of(mTab2),
+                        mTab1,
+                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
         verify(mTracker).notifyEvent(eq(EventConstants.TAB_DRAG_AND_DROP_TO_GROUP));
         assertThat(
                 mModel.get(0).model.get(CardProperties.CARD_ANIMATION_STATUS),
@@ -516,7 +549,7 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder2, ItemTouchHelper.ACTION_STATE_IDLE);
 
         verify(mGridLayoutManager, never()).removeView(mItemView2);
-        verify(mTabModel, never()).mergeTabsToGroup(TAB2_ID, TAB1_ID);
+        verify(mTabModel, never()).mergeListOfTabsToGroup(any(), any(), anyInt());
         verify(mTracker, never()).notifyEvent(eq(EventConstants.TAB_DRAG_AND_DROP_TO_GROUP));
     }
 
@@ -529,12 +562,13 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         mItemTouchHelperCallback.setHoveredTabIndexForTesting(POSITION1);
 
         // Simulate that the recyclerView is scrolling when the drop-to-merge happens.
-        ReflectionHelpers.callInstanceMethod(mRecyclerView, "onEnterLayoutOrScroll");
-
-        mItemTouchHelperCallback.onSelectedChanged(mViewHolder2, ItemTouchHelper.ACTION_STATE_IDLE);
+        runDuringScroll(
+                () ->
+                        mItemTouchHelperCallback.onSelectedChanged(
+                                mViewHolder2, ItemTouchHelper.ACTION_STATE_IDLE));
 
         verify(mGridLayoutManager, never()).removeView(mItemView2);
-        verify(mTabModel, never()).mergeTabsToGroup(TAB2_ID, TAB1_ID);
+        verify(mTabModel, never()).mergeListOfTabsToGroup(any(), any(), anyInt());
         verify(mTracker, never()).notifyEvent(eq(EventConstants.TAB_DRAG_AND_DROP_TO_GROUP));
     }
 
@@ -571,9 +605,10 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         mItemTouchHelperCallback.setUnGroupTabIndexForTesting(POSITION1);
 
         // Simulate that the recyclerView is scrolling when the drop-to-ungroup happens.
-        ReflectionHelpers.callInstanceMethod(mRecyclerView, "onEnterLayoutOrScroll");
-
-        mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
+        runDuringScroll(
+                () ->
+                        mItemTouchHelperCallback.onSelectedChanged(
+                                mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE));
 
         verify(mTabUngrouper, never())
                 .ungroupTabs(
@@ -1210,7 +1245,14 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
     @Test
     public void onTabMergeToGroup_willMergingCreateNewGroup() {
-        doReturn(true).when(mTabModel).willMergingCreateNewGroup(any());
+        Token groupId = Token.createRandom();
+        doAnswer(
+                        invocation -> {
+                            when(mTab2.getTabGroupId()).thenReturn(groupId);
+                            return null;
+                        })
+                .when(mTabModel)
+                .mergeListOfTabsToGroup(any(), eq(mTab2), anyInt());
 
         // Simulate the selection of card#1 in TabListModel.
         mItemTouchHelperCallback.setSelectedTabIndexForTesting(POSITION1);
@@ -1220,16 +1262,23 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
 
-        verify(mTabModel).mergeTabsToGroup(TAB1_ID, TAB2_ID);
-        verify(mTabGroupCreationDialogManager)
-                .showDialog(mTabModel.getTabById(TAB2_ID).getTabGroupId(), mTabModel);
+        verify(mTabModel)
+                .mergeListOfTabsToGroup(
+                        List.of(mTab1),
+                        mTab2,
+                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
+        verify(mTabGroupCreationDialogManager).showDialog(groupId, mTabModel);
         assertEquals(1, mActionTester.getActionCount("TabGroup.Created.DropToMergeV2"));
         assertEquals(0, mActionTester.getActionCount("TabGrid.Drag.DropToMergeV2"));
     }
 
     @Test
     public void onTabMergeToGroup_mergeWithExistingGroup() {
-        doReturn(false).when(mTabModel).willMergingCreateNewGroup(any());
+        Token groupId = Token.createRandom();
+        mModel.get(POSITION2).model.set(CARD_TYPE, ModelType.TAB_GROUP);
+        mModel.get(POSITION2).model.set(TabProperties.TAB_GROUP_HEADER_ID, groupId);
+        when(mTab2.getTabGroupId()).thenReturn(groupId);
+        doReturn(List.of(mTab2)).when(mTabModel).getTabsInGroup(groupId);
 
         // Simulate the selection of card#1 in TabListModel.
         mItemTouchHelperCallback.setSelectedTabIndexForTesting(POSITION1);
@@ -1239,7 +1288,35 @@ public class TabGridItemTouchHelperCallbackUnitTest {
 
         mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
 
-        verify(mTabModel).mergeTabsToGroup(TAB1_ID, TAB2_ID);
+        verify(mTabModel)
+                .mergeListOfTabsToGroup(
+                        List.of(mTab1),
+                        mTab2,
+                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
+        verify(mTabGroupCreationDialogManager, never()).showDialog(any(), any());
+        assertEquals(0, mActionTester.getActionCount("TabGroup.Created.DropToMergeV2"));
+        assertEquals(1, mActionTester.getActionCount("TabGrid.Drag.DropToMergeV2"));
+    }
+
+    @Test
+    public void onTabMergeToGroup_mergeGroupOntoStandaloneTab() {
+        Token groupId = Token.createRandom();
+        mModel.get(POSITION1).model.set(CARD_TYPE, ModelType.TAB_GROUP);
+        mModel.get(POSITION1).model.set(TabProperties.TAB_GROUP_HEADER_ID, groupId);
+        when(mTab1.getTabGroupId()).thenReturn(groupId);
+        when(mTab3.getTabGroupId()).thenReturn(groupId);
+        doReturn(List.of(mTab1, mTab3)).when(mTabModel).getTabsInGroup(groupId);
+
+        mItemTouchHelperCallback.setSelectedTabIndexForTesting(POSITION1);
+        mItemTouchHelperCallback.setHoveredTabIndexForTesting(POSITION2);
+
+        mItemTouchHelperCallback.onSelectedChanged(mViewHolder1, ItemTouchHelper.ACTION_STATE_IDLE);
+
+        verify(mTabModel)
+                .mergeListOfTabsToGroup(
+                        List.of(mTab1, mTab3),
+                        mTab2,
+                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
         verify(mTabGroupCreationDialogManager, never()).showDialog(any(), any());
         assertEquals(0, mActionTester.getActionCount("TabGroup.Created.DropToMergeV2"));
         assertEquals(1, mActionTester.getActionCount("TabGrid.Drag.DropToMergeV2"));
@@ -1687,5 +1764,20 @@ public class TabGridItemTouchHelperCallbackUnitTest {
         when(downEvent.getActionMasked()).thenReturn(MotionEvent.ACTION_DOWN);
 
         assertFalse(listener.onInterceptTouchEvent(mRecyclerView, downEvent));
+    }
+
+    @Test
+    public void getSwipeThreshold_delegatesToSwipeHandlerUsingParentWidth() {
+        setupItemTouchHelperCallback(/* isDialog= */ false);
+
+        assertEquals(
+                THRESHOLD / mRecyclerView.getWidth(),
+                mItemTouchHelperCallback.getSwipeThreshold(mViewHolder1),
+                0.001f);
+
+        RecyclerView.ViewHolder unattachedViewHolder =
+                new RecyclerView.ViewHolder(new View(ContextUtils.getApplicationContext())) {};
+        assertEquals(
+                0.5f, mItemTouchHelperCallback.getSwipeThreshold(unattachedViewHolder), 0.001f);
     }
 }

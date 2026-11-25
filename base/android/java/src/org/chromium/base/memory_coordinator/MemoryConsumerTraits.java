@@ -4,14 +4,10 @@
 
 package org.chromium.base.memory_coordinator;
 
-import org.jni_zero.CalledByNative;
-import org.jni_zero.JNINamespace;
-
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 
 /** Describes how a {@link MemoryConsumer} behaves using a set of trait enum values. */
-@JNINamespace("base::android")
 @NullMarked
 public final class MemoryConsumerTraits {
     // LINT.IfChange(MemoryConsumerTraits)
@@ -26,6 +22,7 @@ public final class MemoryConsumerTraits {
     private final @ReleaseGCReferences int mReleaseGCReferences;
     private final @GarbageCollectsV8Heap int mGarbageCollectsV8Heap;
     private final @IsStateful int mIsStateful;
+    private final @RecoveryBehavior int mRecoveryBehavior;
     private final @ReleaseMemoryCpuCost int mReleaseMemoryCpuCost;
 
     private MemoryConsumerTraits(
@@ -40,6 +37,7 @@ public final class MemoryConsumerTraits {
             @ReleaseGCReferences int releaseGCReferences,
             @GarbageCollectsV8Heap int garbageCollectsV8Heap,
             @IsStateful int isStateful,
+            @RecoveryBehavior int recoveryBehavior,
             @ReleaseMemoryCpuCost int releaseMemoryCpuCost) {
         mConsumerType = consumerType;
         mEstimatedMemoryUsage = estimatedMemoryUsage;
@@ -52,6 +50,7 @@ public final class MemoryConsumerTraits {
         mReleaseGCReferences = releaseGCReferences;
         mGarbageCollectsV8Heap = garbageCollectsV8Heap;
         mIsStateful = isStateful;
+        mRecoveryBehavior = recoveryBehavior;
         mReleaseMemoryCpuCost = releaseMemoryCpuCost;
     }
 
@@ -77,12 +76,12 @@ public final class MemoryConsumerTraits {
                 releaseGCReferences,
                 GarbageCollectsV8Heap.NO,
                 IsStateful.YES,
+                RecoveryBehavior.NA,
                 ReleaseMemoryCpuCost.NA);
     }
 
     /** Returns all traits packed into a single 32-bit integer for efficient JNI transfer. */
-    @CalledByNative
-    public int getPackedTraits() {
+    int getPackedTraits() {
         return (mConsumerType & 0x1)
                 | ((mEstimatedMemoryUsage & 0x3) << 1)
                 | ((mReleaseMemoryDataAccess & 0x3) << 3)
@@ -94,7 +93,8 @@ public final class MemoryConsumerTraits {
                 | ((mReleaseGCReferences & 0x1) << 13)
                 | ((mGarbageCollectsV8Heap & 0x1) << 14)
                 | ((mIsStateful & 0x1) << 15)
-                | ((mReleaseMemoryCpuCost & 0x3) << 16);
+                | ((mReleaseMemoryCpuCost & 0x3) << 16)
+                | ((mRecoveryBehavior & 0x3) << 18);
     }
 
     // LINT.ThenChange(//base/memory_coordinator/memory_consumer_android.cc)
@@ -143,6 +143,10 @@ public final class MemoryConsumerTraits {
         return mIsStateful;
     }
 
+    public @RecoveryBehavior int getRecoveryBehavior() {
+        return mRecoveryBehavior;
+    }
+
     public @ReleaseMemoryCpuCost int getReleaseMemoryCpuCost() {
         return mReleaseMemoryCpuCost;
     }
@@ -163,6 +167,7 @@ public final class MemoryConsumerTraits {
                 && mReleaseGCReferences == other.mReleaseGCReferences
                 && mGarbageCollectsV8Heap == other.mGarbageCollectsV8Heap
                 && mIsStateful == other.mIsStateful
+                && mRecoveryBehavior == other.mRecoveryBehavior
                 && mReleaseMemoryCpuCost == other.mReleaseMemoryCpuCost;
     }
 
@@ -196,6 +201,8 @@ public final class MemoryConsumerTraits {
                 + mGarbageCollectsV8Heap
                 + ", isStateful="
                 + mIsStateful
+                + ", recoveryBehavior="
+                + mRecoveryBehavior
                 + ", releaseMemoryCpuCost="
                 + mReleaseMemoryCpuCost
                 + '}';
@@ -214,6 +221,7 @@ public final class MemoryConsumerTraits {
         private @ReleaseGCReferences int mReleaseGCReferences = ReleaseGCReferences.NO;
         private @GarbageCollectsV8Heap int mGarbageCollectsV8Heap = GarbageCollectsV8Heap.NO;
         private @IsStateful int mIsStateful = IsStateful.YES;
+        private @RecoveryBehavior int mRecoveryBehavior = RecoveryBehavior.NONE;
         private @ReleaseMemoryCpuCost int mReleaseMemoryCpuCost = ReleaseMemoryCpuCost.CHEAP;
 
         public Builder(
@@ -257,6 +265,11 @@ public final class MemoryConsumerTraits {
             return this;
         }
 
+        public Builder setRecoveryBehavior(@RecoveryBehavior int recoveryBehavior) {
+            mRecoveryBehavior = recoveryBehavior;
+            return this;
+        }
+
         public Builder setReleaseMemoryCpuCost(@ReleaseMemoryCpuCost int releaseMemoryCpuCost) {
             mReleaseMemoryCpuCost = releaseMemoryCpuCost;
             return this;
@@ -275,6 +288,7 @@ public final class MemoryConsumerTraits {
                     mReleaseGCReferences,
                     mGarbageCollectsV8Heap,
                     mIsStateful,
+                    mRecoveryBehavior,
                     mReleaseMemoryCpuCost);
         }
     }

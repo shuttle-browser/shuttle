@@ -2,6 +2,7 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//build/config/ui.gni")
 import("//components/signin/features.gni")
 import("//ui/webui/webui_features.gni")
 
@@ -95,6 +96,7 @@ source_set("searchbox") {
       "//chrome/browser/ui:tab_ui_helper",
       "//chrome/browser/ui/bookmarks",
       "//chrome/browser/ui/search",
+      "//chrome/browser/ui/side_panel",
       "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/user_education",
       "//chrome/browser/ui/views/location_bar",
@@ -176,7 +178,6 @@ if (!is_android) {
       "//chrome/browser/ui/views/frame:browser_view_header",
       "//chrome/browser/ui/webui/cr_components/searchbox",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/contextual_search:public",
       "//components/contextual_tasks/public:feature_list",
       "//components/lens",
@@ -297,6 +298,7 @@ source_set("unit_tests") {
     if (!is_android) {
       deps += [
         "//chrome/browser/ui/lens",
+        "//chrome/browser/ui/side_panel",
         "//chrome/browser/ui/tabs:tab_strip",
         "//chrome/browser/ui/tabs:test_support",
         "//chrome/browser/ui/webui/omnibox_popup",
@@ -357,6 +359,7 @@ if (enable_webui_ntp && !is_android) {
       "//components/signin/public/identity_manager:test_support",
       "//content/public/browser",
       "//content/test:test_support",
+      "//third_party/blink/public/common:headers",
       "//ui/accessibility",
       "//ui/base",
       "//ui/base/clipboard",
@@ -364,9 +367,30 @@ if (enable_webui_ntp && !is_android) {
       "//ui/events:test_support",
       "//ui/gfx/geometry",
       "//ui/shell_dialogs",
+      "//ui/shell_dialogs:test_support",
       "//ui/strings",
       "//ui/touch_selection",
       "//ui/views",
     ]
+    if (is_chromeos) {
+      deps += [
+        "//ash",
+        "//chrome/browser/ui/views/bubble",
+      ]
+    }
+    if (enable_dice_support && !is_mac) {
+      deps += [
+        "//chrome/browser/profiles:profile",
+        "//chrome/browser/profiles:profile_test_util",
+        "//chrome/browser/ui/browser_window:create_browser_window",
+        "//chrome/browser/ui/signin",
+      ]
+    }
+    if (use_aura) {
+      deps += [
+        "//ui/aura",
+        "//ui/aura:test_support",
+      ]
+    }
   }
 }

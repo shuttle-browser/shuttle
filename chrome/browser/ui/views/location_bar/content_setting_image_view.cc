@@ -21,13 +21,14 @@
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/content_setting_bubble_contents.h"
-#include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/feature_engagement/public/feature_constants.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
+#include "ui/color/color_provider.h"
+#include "ui/color/color_variant.h"
 #include "ui/events/event_utils.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/views/accessibility/view_accessibility.h"
@@ -70,7 +71,7 @@ std::optional<ViewID> GetViewID(
     case ImageType::kSensors:
     case ImageType::kNotifications:
     case ImageType::kStorageAccess:
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
     case ImageType::kSmartCard:
 #endif
 #if BUILDFLAG(IS_WIN)
@@ -148,6 +149,9 @@ void ContentSettingImageView::Update() {
     ResetSlideAnimation(false);
     SetVisible(false);
     GetViewAccessibility().SetIsIgnored(true);
+    if (bubble_view_) {
+      bubble_view_->GetWidget()->Close();
+    }
     return;
   }
   CHECK(web_contents, base::NotFatalUntil::M162);
@@ -171,6 +175,7 @@ void ContentSettingImageView::Update() {
   const bool should_auto_open_bubble =
       content_setting_image_model_->ShouldAutoOpenBubble(web_contents);
   const bool should_run_animation =
+      can_animate_ &&
       content_setting_image_model_->ShouldRunAnimation(web_contents);
   const int string_id = content_setting_image_model_->explanatory_string_id();
   const bool should_keep_label_expanded =
@@ -195,31 +200,36 @@ void ContentSettingImageView::Update() {
   }
 
   // If the content usage or blockage should be indicated to the user, start the
-  // animation and record that the icon has been shown. `can_animate_` only
-  // suppresses transient in-out animations; labels with `keep_label_expanded_`
-  // still animate in and stay expanded until the bubble is closed.
-  if ((!can_animate_ && !keep_label_expanded_) || !should_run_animation) {
-    return;
-  }
-
-  // We just ignore this blockage if we're already showing some other string to
-  // the user.  If this becomes a problem, we could design some sort of queueing
-  // mechanism to show one after the other, but it doesn't seem important now.
-  if (string_id) {
-    if (keep_label_expanded_) {
-      // Animate the label in, but don't automatically animate it out again.
-      SetUpForAnimation(kLabelSlideInDuration);
-    } else {
-      SetUpForInOutAnimation();
+  // animation and record that the icon has been shown.
+  if (should_run_animation) {
+    // We just ignore this blockage if we're already showing some other string
+    // to the user.  If this becomes a problem, we could design some sort of
+    // queueing mechanism to show one after the other, but it doesn't seem
+    // important now.
+    if (string_id) {
+      if (keep_label_expanded_) {
+        // Animate the label in, but don't automatically animate it out again.
+        SetUpForAnimation(kLabelSlideInDuration);
+      } else {
+        SetUpForInOutAnimation();
+      }
+      // Reset the slide animation so that the label's show/hide animation runs.
+      ResetSlideAnimation(false);
+      AnimateIn(string_id);
     }
-    // Reset the slide animation so that the label's show/hide animation runs.
-    ResetSlideAnimation(false);
-    AnimateIn(string_id);
+
+    content_setting_image_model_->SetAnimationHasRun(web_contents);
+    UpdateElementIdentifier();
   }
 
-  content_setting_image_model_->SetAnimationHasRun(web_contents);
-
-  UpdateElementIdentifier();
+  // Show the promo immediately if no label animation is going to run (or if
+  // the animation was skipped or finished synchronously). When a label
+  // animation runs, `AnimationEnded()` triggers the promo once the animation
+  // completes.
+  if (!string_id || !can_animate_ ||
+      (should_run_animation && !is_animating_label())) {
+    MaybeShowPromo(web_contents);
+  }
 }
 
 void ContentSettingImageView::UpdateElementIdentifier() {
@@ -227,7 +237,8 @@ void ContentSettingImageView::UpdateElementIdentifier() {
               content_setting_image_model_->GetElementIdentifier());
 }
 
-void ContentSettingImageView::SetIconColor(std::optional<SkColor> color) {
+void ContentSettingImageView::SetIconColor(
+    std::optional<ui::ColorVariant> color) {
   if (icon_color_ == color) {
     return;
   }
@@ -238,7 +249,7 @@ void ContentSettingImageView::SetIconColor(std::optional<SkColor> color) {
   OnPropertyChanged(&icon_color_, views::PropertyEffects::kNone);
 }
 
-std::optional<SkColor> ContentSettingImageView::GetIconColor() const {
+std::optional<ui::ColorVariant> ContentSettingImageView::GetIconColor() const {
   return icon_color_;
 }
 
@@ -385,8 +396,11 @@ void ContentSettingImageView::CollapseKeptExpandedLabel(bool animate) {
 }
 
 void ContentSettingImageView::UpdateImage() {
-  gfx::Image icon = content_setting_image_model_->GetIcon(icon_color_.value_or(
-      color_utils::DeriveDefaultIconColor(GetForegroundColor())));
+  const SkColor color =
+      icon_color_ && (!icon_color_->IsLogical() || GetColorProvider())
+          ? icon_color_->ResolveToSkColor(GetColorProvider())
+          : color_utils::DeriveDefaultIconColor(GetForegroundColor());
+  gfx::Image icon = content_setting_image_model_->GetIcon(color);
   if (!icon.IsEmpty()) {
     SetImageModel(ui::ImageModel::FromImage(icon));
   }
@@ -397,22 +411,24 @@ void ContentSettingImageView::AnimationEnded(const gfx::Animation* animation) {
 
   content::WebContents* web_contents =
       delegate_->GetContentSettingWebContents();
+  if (web_contents && animation == &slide_animation_) {
+    MaybeShowPromo(web_contents);
+  }
+}
 
-  // The promo currently is only used for Notifications, and it is only shown
-  // directly after the animation is shown.
-  if (web_contents &&
-      !content_setting_image_model_->blocked_on_system_level()) {
-    const webapps::AppId* app_id =
-        web_app::WebAppTabHelper::GetAppId(web_contents);
-    if (app_id) {
-      user_education::FeaturePromoParams params(
-          feature_engagement::kIPHPwaQuietNotificationFeature, *app_id);
-      BrowserUserEducationInterface::From(browser_)->MaybeShowFeaturePromo(
-          std::move(params));
-    }
+void ContentSettingImageView::MaybeShowPromo(
+    content::WebContents* web_contents) {
+  auto* user_ed =
+      browser_ ? BrowserUserEducationInterface::From(browser_) : nullptr;
+  if (!user_ed) {
+    return;
+  }
+  if (std::optional<user_education::FeaturePromoParams> params =
+          content_setting_image_model_->TakePromoParams(web_contents)) {
+    user_ed->MaybeShowFeaturePromo(std::move(*params));
   }
 }
 
 BEGIN_METADATA(ContentSettingImageView)
-ADD_PROPERTY_METADATA(std::optional<SkColor>, IconColor)
+ADD_PROPERTY_METADATA(std::optional<ui::ColorVariant>, IconColor)
 END_METADATA

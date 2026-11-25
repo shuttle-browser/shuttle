@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
@@ -151,6 +152,8 @@ class ComposeboxQueryController
       const std::vector<base::UnguessableToken>& attached_context_tokens)
       override;
   const contextual_search::FileInfo* GetFileInfo(
+      const base::UnguessableToken& file_token) override;
+  const contextual_search::FileInfo* MarkFileSuperceded(
       const base::UnguessableToken& file_token) override;
   std::vector<raw_ptr<const contextual_search::FileInfo>> GetFileInfoList()
       override;

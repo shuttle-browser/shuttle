@@ -12,6 +12,7 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_metrics.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 #include "ui/actions/actions.h"
 
@@ -40,17 +41,29 @@ void ActionAppMenuMetrics::OnMenuOpened() {
   LogMenuActionHistogram(MENU_ACTION_MENU_OPENED);
 }
 
-void ActionAppMenuMetrics::OnWillShowSubMenu(int command_id) {
-  if (command_id == kActionSavedTabGroupsSubmenu) {
+void ActionAppMenuMetrics::OnWillShowSubMenu(actions::BaseAction* base_action) {
+  if (!base_action) {
+    return;
+  }
+
+  std::optional<actions::ActionId> action_id =
+      base_action->GetActionItem()->GetActionId();
+  if (action_id == kActionSavedTabGroupsSubmenu) {
     base::UmaHistogramMediumTimes(
         base::StrCat({kTimeToActionPrefix, "ShowSavedTabGroups"}),
         menu_opened_timer_.Elapsed());
     LogMenuActionHistogram(MENU_ACTION_SHOW_SAVED_TAB_GROUPS);
-  } else if (command_id == kActionSkillsAndExtensionsSubmenu) {
+  } else if (action_id == kActionSkillsAndExtensionsSubmenu) {
     base::UmaHistogramMediumTimes(
         base::StrCat({kTimeToActionPrefix, "ShowSkillsAndExtensions"}),
         menu_opened_timer_.Elapsed());
     LogMenuActionHistogram(MENU_ACTION_SHOW_SKILLS_AND_EXTENSIONS);
+  } else if (base_action->GetParent() &&
+             base_action->GetParent()->GetActionItem()->GetActionId() ==
+                 kActionSavedTabGroupsSubmenu) {
+    tab_groups::saved_tab_groups::metrics::RecordTabGroupContextMenuAccessed(
+        tab_groups::saved_tab_groups::metrics::
+            SavedTabGroupOpenedSubmenuDesktop::kAppMenu);
   }
 }
 
@@ -73,6 +86,10 @@ void ActionAppMenuMetrics::LogMenuAction(actions::BaseAction* base_action) {
     }
     if (parent_id == kActionRecentTabsSubmenu) {
       LogMenuActionWithId(kActionOpenRecentTab);
+      return;
+    }
+    if (parent_id == kActionOtherDeviceTabsSubmenu) {
+      LogMenuActionWithId(kActionOpenOtherDeviceTab);
       return;
     }
     if (parent_id == kActionProfileSubmenu) {
@@ -182,6 +199,9 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
       break;
     case kActionOpenRecentTab:
       RecordAction(MENU_ACTION_RECENT_TAB, "OpenRecentTab");
+      break;
+    case kActionOpenOtherDeviceTab:
+      RecordAction(MENU_ACTION_OTHER_DEVICE_TAB, "OpenOtherDeviceTab");
       break;
     case kActionRecentTabsLoginForDeviceTabs:
       RecordAction(MENU_ACTION_RECENT_TABS_LOGIN_FOR_DEVICE_TABS,
@@ -354,6 +374,13 @@ void ActionAppMenuMetrics::LogMenuActionWithId(actions::ActionId action_id) {
       break;
     case kActionUninstallWebApp:
       LogMenuActionHistogram(MENU_ACTION_UNINSTALL_APP);
+      break;
+    case kActionWebAppUpgradeDialog:
+      RecordAction(MENU_ACTION_TRIGGER_APP_UPDATE_DIALOG,
+                   "WebAppMenuReloadOrMigrate");
+      break;
+    case kActionWebAppShowExtensions:
+      RecordTimeToAction();
       break;
     case kActionViewPasswords:
       RecordAction(MENU_ACTION_PASSWORD_MANAGER, "PasswordManager");

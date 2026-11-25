@@ -4,9 +4,15 @@
 
 #include "chrome/browser/glic/public/glic_side_panel_coordinator.h"
 
+#include <memory>
+
+#include "base/android/jni_android.h"
+#include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "chrome/browser/context_sharing/tab_bottom_sheet/android/tab_bottom_sheet_bridge.h"
+#include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/widget/glic_side_panel_coordinator_android.h"
 #include "chrome/browser/glic/test_support/glic_browser_test.h"
 #include "components/tabs/public/tab_interface.h"
@@ -32,6 +38,19 @@ class GlicSidePanelCoordinatorAndroidBrowserTest : public GlicBrowserTest {
     auto* coordinator = GlicSidePanelCoordinator::GetForTab(tab);
     CHECK(coordinator);
     return static_cast<GlicSidePanelCoordinatorAndroid*>(coordinator);
+  }
+
+  void ShowNativeFre(tabs::TabInterface* tab) {
+    GlicKeyedService::Get(tab->GetProfile())
+        ->enabling()
+        .SetCompletedFre(prefs::FreStatus::kNotStarted);
+
+    GlicSidePanelCoordinator::ShowOptions fre_options;
+    fre_options.suppress_animations = true;
+    fre_options.show_native_fre = true;
+    fre_options.initial_state =
+        GlicSidePanelCoordinator::ShowOptions::InitialState::kExpanded;
+    GetSidePanelCoordinatorAndroid(tab)->Show(fre_options);
   }
 };
 
@@ -154,6 +173,205 @@ IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
   EXPECT_EQ(first_state_future.Take(), GlicSidePanelCoordinator::State::kShown);
   EXPECT_EQ(first_coordinator->state(),
             GlicSidePanelCoordinator::State::kShown);
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       BridgesLazilyCreatedOnShow) {
+  tabs::TabInterface* active_tab = GetTabListInterface()->GetActiveTab();
+  ASSERT_TRUE(active_tab);
+  EXPECT_FALSE(
+      GetSidePanelCoordinatorAndroid(active_tab)->HasBridgesForTesting());
+
+  std::unique_ptr<content::WebContents> bg_contents =
+      content::WebContents::Create(
+          content::WebContents::CreateParams(GetProfile()));
+  tabs::TabInterface* tab = GetTabListInterface()->InsertWebContentsAt(
+      /*index=*/1, std::move(bg_contents), /*should_pin=*/false,
+      /*group=*/std::nullopt);
+  ASSERT_TRUE(tab);
+  GetTabListInterface()->ActivateTab(active_tab->GetHandle());
+  ASSERT_FALSE(tab->IsActivated());
+  GlicSidePanelCoordinatorAndroid* coordinator =
+      GetSidePanelCoordinatorAndroid(tab);
+
+  EXPECT_FALSE(coordinator->HasBridgesForTesting());
+
+  std::unique_ptr<content::WebContents> guest_web_contents =
+      content::WebContents::Create(
+          content::WebContents::CreateParams(GetProfile()));
+  coordinator->SetWebContents(guest_web_contents.get());
+  EXPECT_FALSE(coordinator->HasBridgesForTesting());
+
+  // `Show()` on a background tab defers bridge creation until the tab
+  // activates.
+  coordinator->Show(GlicSidePanelCoordinator::ShowOptions());
+  EXPECT_FALSE(coordinator->HasBridgesForTesting());
+
+  GetTabListInterface()->ActivateTab(tab->GetHandle());
+  EXPECT_TRUE(coordinator->HasBridgesForTesting());
+  ASSERT_OK(WaitForSidePanelState(tab, GlicSidePanelCoordinator::State::kPeek));
+
+  CloseOptions close_options;
+  close_options.suppress_animations = true;
+  coordinator->Close(close_options);
+  ASSERT_OK(
+      WaitForSidePanelState(tab, GlicSidePanelCoordinator::State::kClosed));
+  coordinator->SetWebContents(nullptr);
+  guest_web_contents.reset();
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       GuestWebContentsDestroyedClearsJavaViews) {
+  tabs::TabInterface* tab = GetTabListInterface()->GetActiveTab();
+  ASSERT_TRUE(tab);
+  GlicSidePanelCoordinatorAndroid* coordinator =
+      GetSidePanelCoordinatorAndroid(tab);
+
+  std::unique_ptr<content::WebContents> guest_web_contents =
+      content::WebContents::Create(
+          content::WebContents::CreateParams(GetProfile()));
+  coordinator->SetWebContents(guest_web_contents.get());
+
+  GlicSidePanelCoordinator::ShowOptions show_options;
+  show_options.suppress_animations = true;
+  coordinator->Show(show_options);
+  ASSERT_OK(
+      WaitForSidePanelState(tab, GlicSidePanelCoordinator::State::kShown));
+  EXPECT_TRUE(coordinator->HasJavaWebContentsForTesting());
+
+  // Destroy `guest_web_contents` while the sheet is shown;
+  // `WebContentsDestroyed()` must notify Java to clear its `WebContents`
+  // reference cleanly.
+  guest_web_contents.reset();
+  EXPECT_FALSE(coordinator->HasJavaWebContentsForTesting());
+
+  CloseOptions close_options;
+  close_options.suppress_animations = true;
+  coordinator->Close(close_options);
+  ASSERT_OK(
+      WaitForSidePanelState(tab, GlicSidePanelCoordinator::State::kClosed));
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       NativeFreSurvivesTabSwitchAndReopen) {
+  tabs::TabInterface* first_tab = GetTabListInterface()->GetActiveTab();
+  auto* first_coordinator = GetSidePanelCoordinatorAndroid(first_tab);
+  EXPECT_EQ(first_coordinator->state(),
+            GlicSidePanelCoordinator::State::kClosed);
+
+  ShowNativeFre(first_tab);
+
+  EXPECT_TRUE(first_coordinator->IsShowingNativeFreForTesting());
+  EXPECT_EQ(first_coordinator->state(),
+            GlicSidePanelCoordinator::State::kShown);
+
+  tabs::TabInterface* second_tab = CreateAndActivateTab(GetSimpleTestUrl());
+  EXPECT_NE(first_tab, second_tab);
+  EXPECT_EQ(first_coordinator->state(),
+            GlicSidePanelCoordinator::State::kBackgrounded);
+
+  GetTabListInterface()->ActivateTab(first_tab->GetHandle());
+  EXPECT_EQ(first_coordinator->state(), GlicSidePanelCoordinator::State::kPeek);
+  EXPECT_TRUE(first_coordinator->IsShowingNativeFreForTesting());
+
+  GlicSidePanelCoordinator::ShowOptions expand_options;
+  expand_options.suppress_animations = true;
+  expand_options.show_native_fre = false;
+  expand_options.initial_state =
+      GlicSidePanelCoordinator::ShowOptions::InitialState::kExpanded;
+  first_coordinator->Show(expand_options);
+
+  EXPECT_TRUE(first_coordinator->IsShowingNativeFreForTesting());
+  EXPECT_EQ(first_coordinator->state(),
+            GlicSidePanelCoordinator::State::kShown);
+
+  GlicKeyedService::Get(first_tab->GetProfile())
+      ->enabling()
+      .SetCompletedFre(prefs::FreStatus::kCompleted);
+  first_coordinator->Show(expand_options);
+  EXPECT_FALSE(first_coordinator->IsShowingNativeFreForTesting());
+
+  // Consenting cleared the per-tab latch rather than only masking it.
+  GlicKeyedService::Get(first_tab->GetProfile())
+      ->enabling()
+      .SetCompletedFre(prefs::FreStatus::kNotStarted);
+  EXPECT_FALSE(first_coordinator->IsShowingNativeFreForTesting());
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       AcceptNativeFreKeepsSheetOpen) {
+  tabs::TabInterface* tab = GetTabListInterface()->GetActiveTab();
+  auto* coordinator = GetSidePanelCoordinatorAndroid(tab);
+
+  ShowNativeFre(tab);
+
+  EXPECT_TRUE(coordinator->IsShowingNativeFreForTesting());
+  EXPECT_EQ(coordinator->state(), GlicSidePanelCoordinator::State::kShown);
+
+  int accept_called = 0;
+  coordinator->SetNativeFreAcceptedCallback(
+      base::BindLambdaForTesting([&]() { ++accept_called; }));
+
+  coordinator->OnNativeFreAccepted(base::android::AttachCurrentThread());
+
+  EXPECT_EQ(accept_called, 1);
+  EXPECT_FALSE(coordinator->IsShowingNativeFreForTesting());
+  EXPECT_EQ(coordinator->state(), GlicSidePanelCoordinator::State::kShown);
+
+  coordinator->SetNativeFreAcceptedCallback({});
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       NativeFreTakesPrecedenceOverLoadingPlaceholder) {
+  tabs::TabInterface* tab = GetTabListInterface()->GetActiveTab();
+  auto* coordinator = GetSidePanelCoordinatorAndroid(tab);
+
+  ShowNativeFre(tab);
+  coordinator->SetIsLoading(true);
+
+  EXPECT_TRUE(coordinator->IsShowingNativeFreForTesting());
+  EXPECT_FALSE(coordinator->ShouldShowLoadingPlaceholderForTesting());
+
+  coordinator->OnNativeFreAccepted(base::android::AttachCurrentThread());
+
+  EXPECT_FALSE(coordinator->IsShowingNativeFreForTesting());
+  EXPECT_TRUE(coordinator->ShouldShowLoadingPlaceholderForTesting());
+
+  coordinator->SetIsLoading(false);
+  EXPECT_FALSE(coordinator->ShouldShowLoadingPlaceholderForTesting());
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       CloseSheetClearsNativeFre) {
+  tabs::TabInterface* tab = GetTabListInterface()->GetActiveTab();
+  auto* coordinator = GetSidePanelCoordinatorAndroid(tab);
+
+  ShowNativeFre(tab);
+
+  EXPECT_TRUE(coordinator->IsShowingNativeFreForTesting());
+  EXPECT_EQ(coordinator->state(), GlicSidePanelCoordinator::State::kShown);
+
+  CloseOptions close_options;
+  close_options.suppress_animations = true;
+  coordinator->Close(close_options);
+
+  ASSERT_OK(
+      WaitForSidePanelState(tab, GlicSidePanelCoordinator::State::kClosed));
+  EXPECT_FALSE(coordinator->IsShowingNativeFreForTesting());
+}
+
+IN_PROC_BROWSER_TEST_F(GlicSidePanelCoordinatorAndroidBrowserTest,
+                       FailedShowClearsNativeFre) {
+  tabs::TabInterface* tab = GetTabListInterface()->GetActiveTab();
+  auto* coordinator = GetSidePanelCoordinatorAndroid(tab);
+
+  coordinator->SuppressBottomSheetForTesting(true);
+  ShowNativeFre(tab);
+
+  EXPECT_EQ(coordinator->state(), GlicSidePanelCoordinator::State::kClosed);
+  EXPECT_FALSE(coordinator->IsShowingNativeFreForTesting());
+
+  coordinator->SuppressBottomSheetForTesting(false);
 }
 
 }  // namespace glic

@@ -5,6 +5,7 @@
 #include "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_controller.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
@@ -34,6 +35,7 @@
 #include "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_result.h"
 #include "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_service.h"
 #include "components/password_manager/core/browser/stub_password_manager_client.h"
+#include "components/password_manager/core/common/remote_actor/remote_actor_credential_sharing_policy.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/strings/grit/components_strings.h"
@@ -55,6 +57,7 @@ namespace {
 using testing::_;
 using testing::AllOf;
 using testing::ByMove;
+using testing::Eq;
 using testing::Field;
 using testing::IsEmpty;
 using testing::Not;
@@ -195,14 +198,18 @@ class RemoteActorCredentialSharingControllerTest : public testing::Test {
                                      : syncer::DataTypeSet()));
   }
 
+  std::unique_ptr<RemoteActorCredentialSharingController> CreateController() {
+    return std::make_unique<RemoteActorCredentialSharingController>(
+        identity_test_env_.identity_manager(), &sync_service_,
+        profile_store_.get(), account_store_.get(), &sharing_service_,
+        &mock_client_, &delegate_);
+  }
+
   std::unique_ptr<RemoteActorCredentialSharingController> StartController(
       std::string_view gaia_id,
       std::string_view domain,
       RemoteActorCredentialSharingController::ResultCallback callback) {
-    auto controller = std::make_unique<RemoteActorCredentialSharingController>(
-        identity_test_env_.identity_manager(), &sync_service_,
-        profile_store_.get(), account_store_.get(), &sharing_service_,
-        &mock_client_, &delegate_);
+    auto controller = CreateController();
     controller->Start(gaia_id, domain, kTaskId, std::move(callback));
     return controller;
   }
@@ -529,6 +536,12 @@ TEST_F(RemoteActorCredentialSharingControllerTest,
                 Field(&RemoteActorCredentialSharingService::ShareParameters::
                           task_id,
                       "actor_id"),
+                Field(&RemoteActorCredentialSharingService::ShareParameters::
+                          actor_oauth_client_id,
+                      IsEmpty()),
+                Field(&RemoteActorCredentialSharingService::ShareParameters::
+                          task_namespace_id,
+                      Eq(std::nullopt)),
                 Property(&RemoteActorCredentialSharingService::ShareParameters::
                              password_client_tag_hash,
                          Not(IsEmpty()))),
@@ -541,6 +554,57 @@ TEST_F(RemoteActorCredentialSharingControllerTest,
   histograms.ExpectUniqueSample(
       "PasswordManager.RemoteActorCredentialSharing.Result",
       RemoteActorCredentialSharingResult::kSuccess, 1);
+}
+
+TEST_F(RemoteActorCredentialSharingControllerTest,
+       SuccessFlow_ForwardsConfiguredAgentParameters) {
+  base::HistogramTester histograms;
+  SignIn("user@gmail.com");
+
+  PasswordForm form;
+  form.signon_realm = "https://google.com/";
+  form.url = GURL("https://google.com");
+  form.username_value = u"user";
+  form.password_value = PasswordString(u"pass");
+  form.in_store = PasswordForm::Store::kProfileStore;
+  profile_store_->AddLogin(FromPasswordForm(form));
+
+  base::test::TestFuture<RemoteActorCredentialSharingResult> result;
+  auto controller = CreateController();
+  controller->SetActorParameters(RemoteActorType::kSearch,
+                                 "test_agent_client_id", 41);
+  controller->Start(account_info_.GetGaiaId().ToString(), "google.com", kTaskId,
+                    result.GetCallback());
+
+  std::vector<std::unique_ptr<PasswordForm>> credentials =
+      delegate_.TakeShownCredentials();
+  ASSERT_EQ(credentials.size(), 1u);
+
+  EXPECT_CALL(
+      sharing_service_,
+      SharePassword(
+          AllOf(Field(&RemoteActorCredentialSharingService::ShareParameters::
+                          task_id,
+                      "actor_id"),
+                Field(&RemoteActorCredentialSharingService::ShareParameters::
+                          actor_oauth_client_id,
+                      "test_agent_client_id"),
+                Field(&RemoteActorCredentialSharingService::ShareParameters::
+                          task_namespace_id,
+                      Eq(41))),
+          _))
+      .WillOnce(base::test::RunOnceCallback<1>(true));
+
+  delegate_.SelectCredential(*credentials[0]);
+  EXPECT_EQ(result.Get(), RemoteActorCredentialSharingResult::kSuccess);
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectUniqueSample(
+      "PasswordManager.RemoteActorCredentialSharing.Search.Result",
+      RemoteActorCredentialSharingResult::kSuccess, 1);
+  histograms.ExpectTotalCount(
+      "PasswordManager.RemoteActorCredentialSharing.Gemini.Result", 0);
 }
 
 TEST_F(RemoteActorCredentialSharingControllerTest, FailureFlow_SharingFailed) {

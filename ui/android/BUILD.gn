@@ -207,6 +207,7 @@ java_cpp_enum("java_enums_srcjar") {
     "../events/back_gesture_event.h",
     "../gfx/android/java_bitmap.h",
     "../gfx/overlay_transform.h",
+    "accelerator_manager_android.h",
     "overscroll_refresh.h",
     "resources/resource_manager.h",
     "resources/system_ui_resource_type.h",
@@ -721,6 +722,7 @@ android_library("ui_java_test_support") {
     "javatests/src/org/chromium/ui/test/util/MockitoHelper.java",
     "javatests/src/org/chromium/ui/test/util/NightModeTestUtils.java",
     "javatests/src/org/chromium/ui/test/util/RenderTestRule.java",
+    "javatests/src/org/chromium/ui/test/util/TestHapticFeedbackView.java",
     "javatests/src/org/chromium/ui/test/util/TestViewAndroidDelegate.java",
     "javatests/src/org/chromium/ui/test/util/UiDisableIfSkipCheck.java",
     "javatests/src/org/chromium/ui/test/util/UiRestriction.java",
@@ -890,6 +892,7 @@ robolectric_library("ui_android_junit_tests") {
     ":ui_junit_test_support",
     "//base:base_java",
     "//base:base_java_test_support",
+    "//base:base_java_test_support_uncommon",
     "//base:base_junit_test_support",
     "//base:holder_java",
     "//base/test:test_support_java",
@@ -968,6 +971,7 @@ test("ui_android_unittests") {
     "//ui/gfx",
     "//ui/gfx:test_support",
     "//ui/gfx/geometry",
+    "//ui/native_theme",
     "//ui/resources:ui_test_pak",
   ]
 

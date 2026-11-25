@@ -403,6 +403,7 @@ static Color ResolveStopColor(const CSSToLengthConversionData& conversion_data,
       .theme_info = {
           .color_provider = document.GetColorProviderForPainting(color_scheme),
           .color_scheme = color_scheme,
+          .accent_color = style.ResolveMirroredAccentColor(),
           .can_expose_system_accent_color =
               document.IsInWebAppScope() && document.IsInitialProfile()}};
   const StyleColor style_stop_color = ResolveColorValue(stop_color, context);
@@ -1585,8 +1586,10 @@ static bool IsUsingCurrentColor(const CSSValue& value) {
     return identifier_value->GetValueID() == CSSValueID::kCurrentcolor;
   }
   if (const auto* mix_value = DynamicTo<CSSColorMixValue>(value)) {
-    return IsUsingCurrentColor(mix_value->Color1()) ||
-           IsUsingCurrentColor(mix_value->Color2());
+    return std::ranges::any_of(mix_value->Items(),
+                               [](const CSSColorMixItem& item) {
+                                 return IsUsingCurrentColor(*item.color);
+                               });
   }
   if (const auto* alpha_color_value = DynamicTo<CSSAlphaColorValue>(value)) {
     return IsUsingCurrentColor(alpha_color_value->OriginColor());

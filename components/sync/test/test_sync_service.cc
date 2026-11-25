@@ -190,6 +190,10 @@ void TestSyncService::SetTrustedVaultRecoverabilityDegraded(bool degraded) {
   user_settings_.SetTrustedVaultRecoverabilityDegraded(degraded);
 }
 
+bool TestSyncService::passkeys_locked() const {
+  return passkeys_locked_;
+}
+
 void TestSyncService::SetIsUsingExplicitPassphrase(bool enabled) {
   user_settings_.SetIsUsingExplicitPassphrase(enabled);
 }
@@ -282,6 +286,11 @@ SyncService::UserActionableError TestSyncService::GetUserActionableError()
                ? UserActionableError::kNeedsTrustedVaultKeyForEverything
                : UserActionableError::kNeedsTrustedVaultKeyForPasswords;
   }
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+  if (passkeys_locked_ && GetActiveDataTypes().Has(WEBAUTHN_CREDENTIAL)) {
+    return UserActionableError::kPasskeysLocked;
+  }
+#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
   if (user_settings_.IsTrustedVaultRecoverabilityDegraded()) {
     return user_settings_.IsEncryptEverythingEnabled()
                ? UserActionableError::
@@ -469,6 +478,10 @@ SyncService::DataTypeDownloadStatus TestSyncService::GetDownloadStatusFor(
 #if BUILDFLAG(IS_ANDROID)
 void TestSyncService::SetInvalidationsForSessionsEnabled(bool enabled) {}
 #endif  // BUILDFLAG(IS_ANDROID)
+
+void TestSyncService::SetPasskeysLocked(bool passkeys_locked) {
+  passkeys_locked_ = passkeys_locked;
+}
 
 void TestSyncService::SendExplicitPassphraseToPlatformClient() {
   if (send_passphrase_to_platform_client_cb_) {

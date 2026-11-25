@@ -15,15 +15,13 @@ export function getHtml(this: SettingsInlineCueMenuPageElement) {
   <div class="preview-container">
     <h2 class="preview-label">$i18n{siteSettingsInlineCueMenuPreview}</h2>
     <div class="preview-box">
-      <div class="preview-text-block"
-          .innerHTML="${this.getPreviewText_()}">
+      <div class="preview-text-block" .innerHTML="${this.getPreviewText_()}">
       </div>
     </div>
     <div class="preview-pill">
-      <div class="preview-spark-icon"></div>
-      <span class="preview-pill-text">
-        $i18n{siteSettingsInlineCueMenuPreviewPill}
-      </span>
+      <cr-icon id="previewChipIcon" icon="${this.previewChipIcon_}"
+          aria-hidden="true">
+      </cr-icon>
     </div>
     <cr-icon class="preview-cursor" icon="settings20:text-select-cursor"
         aria-hidden="true">
@@ -31,12 +29,19 @@ export function getHtml(this: SettingsInlineCueMenuPageElement) {
   </div>
   <settings-toggle-button id="mainToggle"
       pref-key="synthetic.settings.contextual_cueing.inline_cue_menu.enabled"
-      no-set-pref
-      label="$i18n{siteSettingsInlineCueMenuToggleLabel}"
+      no-set-pref label="$i18n{siteSettingsInlineCueMenuToggleLabel}"
       sub-label="$i18n{siteSettingsInlineCueMenuToggleSublabel}"
       @settings-boolean-control-change="${
           this.onMainToggleSettingsBooleanControlChange_}">
   </settings-toggle-button>
+  ${this.enableQuickAnswersSelectionSuggestions_ ? html`
+    <settings-toggle-button id="explainToggle"
+        pref-key="glic.quick_answers_fre_accepted"
+        ?disabled="${!this.explainFreAccepted_}"
+        label="$i18n{siteSettingsInlineCueMenuExplainToggle}"
+        sub-label="$i18n{siteSettingsInlineCueMenuExplainToggleSublabel}">
+    </settings-toggle-button>
+  ` : ''}
 
   <div class="cr-row exceptions-header-row">
     <h2 class="flex cr-padded-text exceptions-header">
@@ -62,8 +67,7 @@ export function getHtml(this: SettingsInlineCueMenuPageElement) {
   </div>
   ${this.showAddSiteDialog_ ? html`
     <add-site-dialog .category="${ContentSettingsTypes.INLINE_CUE_MENU}"
-        .contentSetting="${ContentSetting.BLOCK}"
-        .hasIncognito="${false}"
+        .contentSetting="${ContentSetting.BLOCK}" .hasIncognito="${false}"
         @close="${this.onAddSiteDialogClose_}">
     </add-site-dialog>
   ` : ''}

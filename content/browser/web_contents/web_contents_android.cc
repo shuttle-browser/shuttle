@@ -7,7 +7,6 @@
 #include <stdint.h>
 
 #include <string>
-#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -21,12 +20,12 @@
 #include "base/json/json_writer.h"
 #include "base/logging.h"
 #include "base/metrics/user_metrics.h"
-#include "base/no_destructor.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/threading/scoped_blocking_call.h"
 #include "cc/input/android/offset_tag_android.h"
 #include "content/browser/android/java/gin_java_bridge_dispatcher_host.h"
 #include "content/browser/media/media_web_contents_observer.h"
+#include "content/browser/navigation_transitions/back_forward_transition_animation_manager_android.h"
 #include "content/browser/renderer_host/render_view_host_impl.h"
 #include "content/browser/renderer_host/render_widget_host_view_android.h"
 #include "content/browser/renderer_host/view_transition_opt_in_state.h"
@@ -34,7 +33,6 @@
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/browser/web_contents/web_contents_view_android.h"
 #include "content/common/frame.mojom.h"
-#include "content/public/browser/back_forward_transition_animation_manager.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/message_port_provider.h"
@@ -75,14 +73,6 @@ using base::android::ToJavaIntArray;
 namespace content {
 
 namespace {
-
-// Track all WebContentsAndroid objects here so that we don't deserialize a
-// destroyed WebContents object.
-std::unordered_set<WebContentsAndroid*>& GetAllocatedWebContentsAndroids() {
-  static base::NoDestructor<std::unordered_set<WebContentsAndroid*>>
-      allocated_web_contents_androids;
-  return *allocated_web_contents_androids;
-}
 
 void JavaScriptResultCallback(const ScopedJavaGlobalRef<jobject>& callback,
                               base::Value result) {
@@ -219,39 +209,16 @@ static void JNI_WebContentsImpl_DestroyWebContents(
   delete web_contents;
 }
 
-// static
-static ScopedJavaLocalRef<jobject> JNI_WebContentsImpl_FromNativePtr(
-    JNIEnv* env,
-    int64_t web_contents_ptr) {
-  WebContentsAndroid* web_contents_android =
-      reinterpret_cast<WebContentsAndroid*>(web_contents_ptr);
-
-  if (!web_contents_android)
-    return ScopedJavaLocalRef<jobject>();
-
-  // Check to make sure this object hasn't been destroyed.
-  if (GetAllocatedWebContentsAndroids().find(web_contents_android) ==
-      GetAllocatedWebContentsAndroids().end()) {
-    return ScopedJavaLocalRef<jobject>();
-  }
-
-  return web_contents_android->GetJavaObject();
-}
-
 WebContentsAndroid::WebContentsAndroid(WebContentsImpl* web_contents)
     : web_contents_(web_contents),
       navigation_controller_(&(web_contents->GetController())) {
-  GetAllocatedWebContentsAndroids().insert(this);
   JNIEnv* env = AttachCurrentThread();
-  Java_WebContentsImpl_create(env, reinterpret_cast<intptr_t>(this),
-                              navigation_controller_.GetJavaObject());
+  java_peer_id_ = Java_WebContentsImpl_createAndGetPeerId(
+      env, reinterpret_cast<intptr_t>(this),
+      navigation_controller_.GetJavaObject());
 }
 
 WebContentsAndroid::~WebContentsAndroid() {
-  CHECK(GetAllocatedWebContentsAndroids().find(this) !=
-            GetAllocatedWebContentsAndroids().end(),
-        base::NotFatalUntil::M158);
-  GetAllocatedWebContentsAndroids().erase(this);
   offset_tag_mediator_ = nullptr;
   for (auto& observer : destruction_observers_)
     observer.WebContentsAndroidDestroyed(this);
@@ -265,8 +232,7 @@ WebContentsAndroid::~WebContentsAndroid() {
 base::android::ScopedJavaLocalRef<jobject>
 WebContentsAndroid::GetJavaObject() {
   JNIEnv* env = AttachCurrentThread();
-  return Java_WebContentsImpl_getJavaObject(env,
-                                            reinterpret_cast<intptr_t>(this));
+  return Java_WebContentsImpl_getJavaObject(env, java_peer_id_);
 }
 
 void WebContentsAndroid::CaptureContentAsBitmapForTesting(
@@ -927,10 +893,6 @@ void WebContentsAndroid::SetDisplayCutoutSafeArea(JNIEnv* env,
       gfx::Insets::TLBR(top, left, bottom, right));
 }
 
-void WebContentsAndroid::ShowInterestInElement(JNIEnv* env, int nodeID) {
-  web_contents()->ShowInterestInElement(nodeID);
-}
-
 void WebContentsAndroid::NotifyRendererPreferenceUpdate(JNIEnv* env) {
   web_contents_->OnWebPreferencesChanged();
 }
@@ -947,20 +909,13 @@ bool WebContentsAndroid::NeedToFireBeforeUnload(JNIEnv* env) {
   return web_contents_->NeedToFireBeforeUnload();
 }
 
-void WebContentsAndroid::OnContentForNavigationEntryShown(JNIEnv* env) {
-  if (auto* animation =
-          web_contents_->GetBackForwardTransitionAnimationManager()) {
-    animation->OnContentForNavigationEntryShown();
-  }
-}
-
-int32_t WebContentsAndroid::GetCurrentBackForwardTransitionStage(JNIEnv* env) {
-  auto stage = BackForwardTransitionAnimationManager::AnimationStage::kNone;
-  if (auto* animation =
-          web_contents_->GetBackForwardTransitionAnimationManager()) {
-    stage = animation->GetCurrentAnimationStage();
-  }
-  return static_cast<int32_t>(stage);
+BackForwardTransitionAnimationManagerAndroid*
+WebContentsAndroid::GetBackForwardTransitionAnimationManager() {
+  // On Android, only WebContentsViewAndroid creates a manager, which is a
+  // BackForwardTransitionAnimationManagerAndroid. WebContentsViewChildFrame
+  // returns nullptr.
+  return static_cast<BackForwardTransitionAnimationManagerAndroid*>(
+      web_contents_->GetBackForwardTransitionAnimationManager());
 }
 
 void WebContentsAndroid::SetLongPressLinkSelectText(JNIEnv* env, bool enabled) {

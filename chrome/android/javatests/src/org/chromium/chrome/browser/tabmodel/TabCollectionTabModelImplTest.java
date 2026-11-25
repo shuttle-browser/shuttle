@@ -43,11 +43,9 @@ import org.chromium.base.test.util.RequiresRestart;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.compositor.layouts.LayoutManagerChrome;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
-import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabGroupCollectionData;
 import org.chromium.chrome.browser.tab.TabLaunchType;
@@ -74,10 +72,7 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Integration test for {@link TabCollectionTabModelImpl}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-    ChromeSwitches.DISABLE_STARTUP_PROMOS
-})
+@CommandLineFlags.Add(ChromeSwitches.DISABLE_STARTUP_PROMOS)
 @DisableFeatures({TabGroupsFeatureMap.UPDATE_TAB_GROUP_COLORS})
 @Batch(Batch.PER_CLASS)
 public class TabCollectionTabModelImplTest {
@@ -1724,11 +1719,70 @@ public class TabCollectionTabModelImplTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     mCollectionModel.addTabGroupObserver(collapsedDeleteObserver);
-                    mCollectionModel.deleteTabGroupCollapsed(tabGroupId);
+                    mCollectionModel.setTabGroupCollapsed(tabGroupId, /* isCollapsed= */ false);
                     assertFalse(mCollectionModel.getTabGroupCollapsed(tabGroupId));
                     mCollectionModel.removeTabGroupObserver(collapsedDeleteObserver);
                 });
-        collapsedDeletedHelper.waitForOnly("deleteTabGroupCollapsed failed");
+        collapsedDeletedHelper.waitForOnly("setTabGroupCollapsed failed");
+    }
+
+    @Test
+    @MediumTest
+    public void testSetIndex_ExpandsCollapsedTabGroup() {
+        Tab tab0 = getTabAt(0);
+        Tab tab1 = createTab();
+        Tab tab2 = createTab();
+        assertTabsInOrderAre(List.of(tab0, tab1, tab2));
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Token tabGroupId = mCollectionModel.createTabGroup(List.of(tab1, tab2));
+                    assertNotNull(tabGroupId);
+                    mCollectionModel.setIndex(
+                            mCollectionModel.indexOf(tab0), TabSelectionType.FROM_USER);
+                    mCollectionModel.setTabGroupCollapsed(tabGroupId, /* isCollapsed= */ true);
+                    assertTrue(mCollectionModel.getTabGroupCollapsed(tabGroupId));
+
+                    mCollectionModel.setIndex(
+                            mCollectionModel.indexOf(tab2), TabSelectionType.FROM_USER);
+                    assertEquals(tab2, mCollectionModel.getCurrentTabSupplier().get());
+                    assertFalse(
+                            "Selecting a tab should expand its collapsed group.",
+                            mCollectionModel.getTabGroupCollapsed(tabGroupId));
+                });
+    }
+
+    @Test
+    @MediumTest
+    public void testCloseTab_InGroupThatWasCollapsed_SelectsTabInSameGroup() {
+        Tab tab0 = getTabAt(0);
+        Tab tab1 = createTab();
+        Tab tab2 = createTab();
+        Tab tab3 = createTab();
+        Tab tab4 = createTab();
+        assertTabsInOrderAre(List.of(tab0, tab1, tab2, tab3, tab4));
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    Token groupA = mCollectionModel.createTabGroup(List.of(tab1, tab2));
+                    Token groupB = mCollectionModel.createTabGroup(List.of(tab3, tab4));
+                    assertNotNull(groupA);
+                    assertNotNull(groupB);
+                    mCollectionModel.setIndex(
+                            mCollectionModel.indexOf(tab0), TabSelectionType.FROM_USER);
+                    mCollectionModel.setTabGroupCollapsed(groupA, /* isCollapsed= */ true);
+
+                    // Select the last tab in the collapsed group, then close it.
+                    mCollectionModel.setIndex(
+                            mCollectionModel.indexOf(tab2), TabSelectionType.FROM_USER);
+                    mCollectionModel.closeTabs(
+                            TabClosureParams.closeTab(tab2).allowUndo(false).build());
+
+                    assertEquals(
+                            "Expected the remaining tab in the same group to be selected.",
+                            tab1,
+                            mCollectionModel.getCurrentTabSupplier().get());
+                });
     }
 
     @Test
@@ -2254,43 +2308,6 @@ public class TabCollectionTabModelImplTest {
 
     @Test
     @MediumTest
-    public void testWillMergingCreateNewGroup() {
-        Tab tab0 = getTabAt(0);
-        Tab tab1 = createTab();
-        Tab tab2 = createTab();
-        Tab tab3 = createTab();
-
-        ThreadUtils.runOnUiThreadBlocking(
-                () -> {
-                    // No groups exist.
-                    assertTrue(mCollectionModel.willMergingCreateNewGroup(List.of(tab0, tab1)));
-
-                    // Create a group with tab0 and tab1.
-                    mCollectionModel.mergeListOfTabsToGroup(
-                            List.of(tab0, tab1),
-                            tab0,
-                            /* notify= */ TabGroupMergeNotificationType.DONT_NOTIFY);
-                    Token groupId = tab0.getTabGroupId();
-                    assertNotNull(groupId);
-
-                    // Merging a list that doesn't contain the full group.
-                    assertTrue(mCollectionModel.willMergingCreateNewGroup(List.of(tab0, tab2)));
-
-                    // Merging a list that contains the full group.
-                    assertFalse(
-                            mCollectionModel.willMergingCreateNewGroup(List.of(tab0, tab1, tab2)));
-
-                    // Merging just the group.
-                    assertFalse(mCollectionModel.willMergingCreateNewGroup(List.of(tab0, tab1)));
-
-                    // Merging a list that contains a different full group.
-                    mCollectionModel.createSingleTabGroup(tab2);
-                    assertFalse(mCollectionModel.willMergingCreateNewGroup(List.of(tab2, tab3)));
-                });
-    }
-
-    @Test
-    @MediumTest
     public void testGetLazyAllTabGroupIds() {
         Tab tab0 = getTabAt(0);
         Tab tab1 = createTab();
@@ -2579,14 +2596,17 @@ public class TabCollectionTabModelImplTest {
 
     @Test
     @MediumTest
-    public void testMergeTabsToGroup_SingleToSingle() {
+    public void testMergeListOfTabsToGroup_SingleToSingle() {
         Tab tab0 = getTabAt(0);
         Tab tab1 = createTab();
         assertTabsInOrderAre(List.of(tab0, tab1));
 
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    mCollectionModel.mergeTabsToGroup(tab0.getId(), tab1.getId());
+                    mCollectionModel.mergeListOfTabsToGroup(
+                            List.of(tab0),
+                            tab1,
+                            TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
 
                     assertNotNull(tab1.getTabGroupId());
                     assertEquals(tab1.getTabGroupId(), tab0.getTabGroupId());
@@ -2597,7 +2617,7 @@ public class TabCollectionTabModelImplTest {
 
     @Test
     @MediumTest
-    public void testMergeTabsToGroup_SingleToGroup() {
+    public void testMergeListOfTabsToGroup_SingleToGroup() {
         Tab tab0 = getTabAt(0);
         Tab tab1 = createTab();
         Tab tab2 = createTab();
@@ -2610,7 +2630,10 @@ public class TabCollectionTabModelImplTest {
                     Token groupId = tab1.getTabGroupId();
                     assertNotNull(groupId);
 
-                    mCollectionModel.mergeTabsToGroup(tab0.getId(), tab1.getId());
+                    mCollectionModel.mergeListOfTabsToGroup(
+                            List.of(tab0),
+                            tab1,
+                            TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
 
                     assertEquals(groupId, tab0.getTabGroupId());
                     assertEquals(3, mCollectionModel.getTabsInGroup(groupId).size());
@@ -2620,7 +2643,7 @@ public class TabCollectionTabModelImplTest {
 
     @Test
     @MediumTest
-    public void testMergeTabsToGroup_GroupToSingle() {
+    public void testMergeListOfTabsToGroup_GroupToSingle() {
         Tab tab0 = getTabAt(0);
         Tab tab1 = createTab();
         Tab tab2 = createTab();
@@ -2633,7 +2656,10 @@ public class TabCollectionTabModelImplTest {
                     Token groupId = tab0.getTabGroupId();
                     assertNotNull(groupId);
 
-                    mCollectionModel.mergeTabsToGroup(tab0.getId(), tab2.getId());
+                    mCollectionModel.mergeListOfTabsToGroup(
+                            List.of(tab0, tab1),
+                            tab2,
+                            TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
 
                     assertEquals(groupId, tab2.getTabGroupId());
                     assertEquals(3, mCollectionModel.getTabsInGroup(groupId).size());
@@ -3907,10 +3933,9 @@ public class TabCollectionTabModelImplTest {
 
         // Exit the tab switcher to fulfill AutoResetCtaTransitTestRule for future tests.
         ChromeTabbedActivity cta = mActivityTestRule.getActivity();
-        LayoutManagerChrome layoutManager = cta.getLayoutManager();
-        LayoutTestUtils.waitForLayout(layoutManager, LayoutType.HUB);
+        LayoutTestUtils.waitForHubLayout(cta);
         clickFirstCardFromTabSwitcher(cta);
-        LayoutTestUtils.waitForLayout(layoutManager, LayoutType.BROWSING);
+        LayoutTestUtils.waitForBrowsingLayout(cta);
 
         ThreadUtils.runOnUiThreadBlocking(() -> mCollectionModel.removeObserver(observer));
     }
@@ -4239,7 +4264,7 @@ public class TabCollectionTabModelImplTest {
 
         // Exit the tab switcher to fulfill AutoResetCtaTransitTestRule for future tests.
         TabUiTestHelper.clickNthCardFromTabSwitcher(mActivityTestRule.getActivity(), 0);
-        LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.BROWSING);
+        LayoutTestUtils.waitForBrowsingLayout(cta);
 
         ThreadUtils.runOnUiThreadBlocking(() -> mCollectionModel.removeObserver(observer));
     }

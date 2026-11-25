@@ -30,6 +30,7 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/features_generated.h"
 #include "third_party/omnibox_proto/ntp_composebox_config.pb.h"
 #include "ui/accessibility/platform/assistive_tech.h"
 #include "ui/accessibility/platform/ax_platform.h"
@@ -91,7 +92,7 @@ TEST_F(OmniboxNextFeaturesTest, ComposeboxConfigEnabled_DefaultConfiguration) {
   EXPECT_EQ(image_upload.image_compression_quality(), 40);
   EXPECT_THAT(image_upload.mime_types_allowed(),
               "image/avif,image/bmp,image/jpeg,image/png,image/webp,image/"
-              "heif,image/heic");
+              "heif,image/heic,.heic,.heif");
 
   auto attachment_upload = config.composebox().attachment_upload();
   // File upload size limit: 100 MiB.
@@ -248,7 +249,7 @@ TEST_F(OmniboxNextFeaturesTest, ComposeboxConfigEnabled_Valid_ClearMimeTypes) {
   // Check that both default mime type lists were cleared.
   EXPECT_THAT(config.composebox().image_upload().mime_types_allowed(),
               "image/avif,image/bmp,image/jpeg,image/png,image/webp,image/"
-              "heif,image/heic");
+              "heif,image/heic,.heic,.heif");
   EXPECT_THAT(config.composebox().attachment_upload().mime_types_allowed(),
               ".pdf,application/pdf");
 
@@ -293,6 +294,28 @@ TEST_F(OmniboxNextFullPopupScreenReaderTest, GuardEnabled) {
   ui::AXPlatform::GetInstance().NotifyAssistiveTechChanged(
       ui::AssistiveTech::kNone);
   EXPECT_FALSE(internal::IsWebUIOmniboxFullPopupEnabled());
+}
+
+// The location bar hosts the full omnibox only if the page can pop its
+// dropdown out with the Unbounded Element API.
+TEST(OmniboxNextHostUnboundedInLocationBarTest, EnabledWithUnboundedElement) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      {{internal::kWebUIOmniboxFullPopup,
+        {{"Omnibox_HostUnboundedInLocationBar", "true"}}},
+       {blink::features::kUnboundedElement, {}}},
+      {});
+  EXPECT_TRUE(ShouldHostUnboundedOmniboxInLocationBar());
+}
+
+TEST(OmniboxNextHostUnboundedInLocationBarTest,
+     DisabledWithoutUnboundedElement) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      {{internal::kWebUIOmniboxFullPopup,
+        {{"Omnibox_HostUnboundedInLocationBar", "true"}}}},
+      {blink::features::kUnboundedElement});
+  EXPECT_FALSE(ShouldHostUnboundedOmniboxInLocationBar());
 }
 
 class TestingAimEligibilityService : public ChromeAimEligibilityService {

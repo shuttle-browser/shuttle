@@ -59,6 +59,7 @@
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/common/switches.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "url/url_constants.h"
 
 namespace content {
@@ -83,7 +84,10 @@ void ExpectAttributesEq(FrameTreeNode* node,
 
 class FrameTreeBrowserTest : public ContentBrowserTest {
  public:
-  FrameTreeBrowserTest() = default;
+  FrameTreeBrowserTest() {
+    scoped_feature_list_.InitAndEnableFeature(
+        blink::features::kTrustedUserActivationTriggers);
+  }
 
   FrameTreeBrowserTest(const FrameTreeBrowserTest&) = delete;
   FrameTreeBrowserTest& operator=(const FrameTreeBrowserTest&) = delete;
@@ -93,6 +97,9 @@ class FrameTreeBrowserTest : public ContentBrowserTest {
     SetupCrossSiteRedirector(embedded_test_server());
     ASSERT_TRUE(embedded_test_server()->Start());
   }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 // Ensures FrameTree correctly reflects page structure during navigations.
@@ -1628,6 +1635,31 @@ IN_PROC_BROWSER_TEST_F(FrameTreeBrowserTest,
   EXPECT_FALSE(root->HasTransientUserActivation());
 }
 
+// Tests that the user activation bits do not get set when a notification
+// pending browser verification fails verification.
+IN_PROC_BROWSER_TEST_F(FrameTreeBrowserTest,
+                       UserActivationVerificationFailure) {
+  GURL main_url(embedded_test_server()->GetURL("/frame_tree/top.html"));
+  EXPECT_TRUE(NavigateToURL(shell(), main_url));
+
+  // It is safe to obtain the root frame tree node here, as it doesn't change.
+  FrameTreeNode* root = static_cast<WebContentsImpl*>(shell()->web_contents())
+                            ->GetPrimaryFrameTree()
+                            .root();
+
+  EXPECT_FALSE(root->HasStickyUserActivation());
+  EXPECT_FALSE(root->HasTransientUserActivation());
+
+  // Attempt to set the user activation bits without a prior input event in the
+  // browser.
+  EXPECT_FALSE(root->UpdateUserActivationState(
+      blink::mojom::UserActivationUpdateType::
+          kNotifyActivationPendingBrowserVerification,
+      blink::mojom::UserActivationNotificationType::kTest));
+  EXPECT_FALSE(root->HasStickyUserActivation());
+  EXPECT_FALSE(root->HasTransientUserActivation());
+}
+
 class CrossProcessFrameTreeBrowserTest : public ContentBrowserTest {
  public:
   CrossProcessFrameTreeBrowserTest() = default;
@@ -2219,9 +2251,9 @@ IN_PROC_BROWSER_TEST_F(PictureInPictureFrameTreeBrowserTest,
   RenderFrameHostImpl* rfh = static_cast<RenderFrameHostImpl*>(
       shell()->web_contents()->GetPrimaryMainFrame());
 
-  // Create invalid params: NEW_POPUP with pip_options.
+  // Create invalid params: `kNewPopup` with pip_options.
   mojom::CreateNewWindowParamsPtr params = mojom::CreateNewWindowParams::New();
-  params->disposition = WindowOpenDisposition::kNewPopup;
+  params->disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
   params->pip_options = blink::mojom::PictureInPictureWindowOptions::New();
 
   RenderProcessHostWatcher crash_observer(

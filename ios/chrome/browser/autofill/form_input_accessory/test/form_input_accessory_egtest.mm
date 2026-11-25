@@ -25,7 +25,6 @@
 #import "components/sync/service/sync_prefs.h"
 #import "components/webauthn/ios/features.h"
 #import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
-#import "ios/chrome/browser/autofill/atmemory/public/at_memory_constants.h"
 #import "ios/chrome/browser/autofill/manual_fill/public/manual_fill_constants.h"
 #import "ios/chrome/browser/autofill/manual_fill/test/manual_fill_matchers.h"
 #import "ios/chrome/browser/autofill/model/form_suggestion_constants.h"
@@ -939,6 +938,7 @@ TAG_SMOKE_TEST(FormInputAccessoryEGTest, testFillCreditCardFieldsOnForm);
 
   // Tap on another address field, below the first address field, and verify
   // that the keyboard pops up and offers address suggestions.
+  [ChromeEarlGrey scrollWebStateElementIntoViewWithID:"city"];
   [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
       performAction:chrome_test_util::TapWebElementWithId("city")];
   id<GREYMatcher> address_chip =
@@ -949,6 +949,7 @@ TAG_SMOKE_TEST(FormInputAccessoryEGTest, testFillCreditCardFieldsOnForm);
   // credit card fields.
 
   // Tap a credit card field to open the bottom sheet.
+  [ChromeEarlGrey scrollWebStateElementIntoViewWithID:kFormCardName];
   [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
       performAction:chrome_test_util::TapWebElementWithId(kFormCardName)];
   id<GREYMatcher> useKeyboardButton = PaymentsBottomSheetUseKeyboardButton();
@@ -996,9 +997,7 @@ TAG_SMOKE_TEST(FormInputAccessoryEGTest, testFillAddressFieldsOnForm);
 - (void)testFillAddressFieldsOnForm {
   [self loadAddressPage];
 
-  [ChromeEarlGrey
-      evaluateJavaScriptForSideEffect:@"document.getElementById('form_zip')."
-                                      @"scrollIntoView();"];
+  [ChromeEarlGrey scrollWebStateElementIntoViewWithID:kFormZip];
 
   [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
       performAction:chrome_test_util::TapWebElementWithId(kFormZip)];
@@ -1119,12 +1118,6 @@ TAG_SMOKE_TEST(FormInputAccessoryEGTest, testFillAddressFieldsOnForm);
   if (![ChromeEarlGrey areMultipleWindowsSupported]) {
     EARL_GREY_TEST_SKIPPED(
         @"Skipped for iPhone (the manual fill button has no title on iPhone)");
-  }
-  if (@available(iOS 26.0, *)) {
-    // TODO(crbug.com/427699033): Re-enable test on iOS 26.
-    // Fails because it assumes a window will be compact after creating a new
-    // window.
-    EARL_GREY_TEST_DISABLED(@"Test disabled on iOS 26.");
   }
 
   [self loadAddressPage];
@@ -1374,15 +1367,6 @@ TAG_SMOKE_TEST(FormInputAccessoryEGTest, testFillAddressFieldsOnForm);
   [[EarlGrey selectElementWithMatcher:userChip] performAction:grey_tap()];
 
   [self verifyFieldsHaveBeenFilledWithUsername:username password:password];
-}
-
-// Tests that closing a tab after focusing a form field does not crash
-// during FormInputAccessoryCoordinator teardown when AtMemory was not shown.
-- (void)testAtMemoryUnopenedTeardown {
-  [self loadLoginPage];
-  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-      performAction:chrome_test_util::TapWebElementWithId(kFormUsername)];
-  [ChromeEarlGrey closeCurrentTab];
 }
 
 // Tests navigation buttons are available for a `contenteditable` element.

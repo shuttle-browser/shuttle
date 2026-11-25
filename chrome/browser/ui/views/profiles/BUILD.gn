@@ -196,7 +196,6 @@ if (is_win || is_mac || is_linux || is_chromeos) {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/profiles:profile_util",
       "//chrome/browser/signin",
-      "//chrome/browser/sync",
       "//chrome/browser/ui:browser_tabstrip",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/browser_window",
@@ -297,6 +296,7 @@ if (toolkit_views) {
       "//components/feature_engagement/public:feature_constants",
       "//components/policy/core/common",
       "//components/prefs",
+      "//components/subscription_eligibility:tier_names",
       "//components/sync/service",
       "//components/user_education/common",
       "//google_apis",
@@ -352,7 +352,6 @@ if (toolkit_views) {
       "//chrome/browser/webauthn",
       "//chrome/common",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//chrome/test/base:profile_lifecycle_test_utils",
       "//chrome/test/base:testing_browser_process",
       "//chrome/test/user_education",
@@ -366,6 +365,7 @@ if (toolkit_views) {
       "//components/signin/public/identity_manager",
       "//components/signin/public/identity_manager:test_support",
       "//components/subscription_eligibility",
+      "//components/subscription_eligibility:tier_names",
       "//components/sync:test_support",
       "//components/sync/base:features",
       "//components/sync/service",
@@ -667,12 +667,12 @@ if (toolkit_views) {
     ]
   }
 
-  source_set("device_signals_disclaimer_test_utils") {
+  source_set("managed_user_profile_notice_test_utils") {
     testonly = true
 
     sources = [
-      "device_signals_disclaimer_test_utils.cc",
-      "device_signals_disclaimer_test_utils.h",
+      "managed_user_profile_notice_test_utils.cc",
+      "managed_user_profile_notice_test_utils.h",
     ]
 
     public_deps = [ "//testing/gtest" ]
@@ -823,9 +823,9 @@ if (is_win || is_mac || is_linux) {
     ]
     deps = [
       ":avatar_toolbar_button",
-      ":device_signals_disclaimer_test_utils",
       ":dice_web_signin_interception_bubble_view",
       ":first_run_flow_controller",
+      ":managed_user_profile_notice_test_utils",
       ":profile_management_flow_controller",
       ":profile_menu_view",
       ":profile_menu_view_base",
@@ -847,7 +847,6 @@ if (is_win || is_mac || is_linux) {
       "//chrome/browser/ui/webui/signin:signin_ui_error",
       "//chrome/browser/ui/webui/whats_new",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//chrome/test/user_education",
       "//content/test:test_support",
       "//services/audio/public/cpp",
@@ -1156,7 +1155,9 @@ if (enable_dice_support) {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/signin",
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/signin",
       "//chrome/browser/ui/webui/signin",
+      "//chrome/browser/ui/webui/signin:signin_ui_error",
       "//components/signin/public/base",
       "//components/web_modal",
       "//content/public/browser",
@@ -1308,7 +1309,6 @@ source_set("browser_tests") {
     ":profiles_pixel_test_utils",
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//content/test:test_support",
     "//testing/gmock",
     "//testing/gtest",
@@ -1344,7 +1344,7 @@ source_set("browser_tests") {
     ]
     deps += [
       ":avatar_toolbar_button",
-      ":device_signals_disclaimer_test_utils",
+      ":managed_user_profile_notice_test_utils",
       ":profile_menu_view",
       ":profile_picker_test_base",
       ":profile_picker_utils",
@@ -1382,14 +1382,8 @@ source_set("browser_tests") {
       "profile_picker_signin_ui_browsertest.cc",
       "profile_picker_ui_browsertest.cc",
       "profile_type_choice_ui_browsertest.cc",
-      "sync_confirmation_ui_browsertest.cc",
     ]
-    deps += [
-      "//chrome/browser/consent_auditor",
-      "//chrome/browser/consent_auditor:test_support",
-      "//chrome/browser/ui/views/frame:top_container_view",
-      "//components/consent_auditor",
-    ]
+    deps += [ "//chrome/browser/ui/views/frame:top_container_view" ]
   }
 
   if (enable_dice_support) {

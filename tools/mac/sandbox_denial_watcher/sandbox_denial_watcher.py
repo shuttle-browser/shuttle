@@ -39,7 +39,12 @@ import time
 from typing import Callable, Optional, Sequence, Union
 import webbrowser
 
-from bug_tracker import get_bug_url, get_denial_summary, normalize_denials
+from bug_tracker import (
+    get_bug_url,
+    get_denial_summary,
+    get_seatbelt_profile,
+    normalize_denials,
+)
 from log_events import SandboxDenial
 
 # Duration (in seconds) to suppress repeated notifications for a denial after
@@ -140,17 +145,27 @@ _INTERESTING_PROCS = (
     "MTLCompilerService",
 )
 
+# A rule can be either a target pattern string (matching any Seatbelt profile)
+# or a `(pattern, profile)` tuple restricting the rule to a specific profile.
+RuleType = Union[str, tuple[str, str]]
+
 # Known expected denials grouped by action. Rules match the target itself (not
-# subpaths) and may use `*` wildcards within a single path segment.
-_KNOWN_TARGET_DENIALS: dict[str, frozenset[str]] = {
+# subpaths) and may use `*` wildcards within a single path segment. Action keys
+# may use Seatbelt parent operations ending in `*` (e.g. `file-write*`).
+_KNOWN_TARGET_DENIALS: dict[str, frozenset[RuleType]] = {
     "sysctl-read": frozenset(
         (
+            "hw.physicalcpu",
             "kern.bootargs",
             "kern.willshutdown",
             "machdep.cpu.brand_string",
             "net.inet.ip.portrange.first",
+            ("security.mac.amfi.qa_root_certs_allowed", "gpu.sb"),
             "sysctl.proc_translated",
         )
+    ),
+    "file-issue-extension": frozenset(
+        ("target:/ extension-class:com.apple.app-sandbox.read",)
     ),
     "file-read-data": frozenset(
         (
@@ -158,17 +173,28 @@ _KNOWN_TARGET_DENIALS: dict[str, frozenset[str]] = {
             "/Library/Preferences/Logging/com.apple.diagnosticd.filter.plist",
             "/Library/Preferences/com.apple.networkd.plist",
             "/Library/Preferences/com.apple.security.plist",
+            ("/System/Library/Keychains/SystemTrustSettings.plist", "gpu.sb"),
             "/System/Library/xpc/extensions.plist",
             f"{_HOME_DIR}/Desktop",
         )
     ),
-    "file-write-create": frozenset((f"{_DARWIN_USER_DIR}/T/tmp.*",)),
+    "file-write-create": frozenset(
+        (
+            (f"{_DARWIN_USER_DIR}/T/tmp.*", "renderer.sb"),
+            (f"{_DARWIN_USER_DIR}/T/tmp.*", "speech_recognition.sb"),
+        )
+    ),
+    "iokit-open-user-client": frozenset(
+        (("IOSurfaceAcceleratorClient", "gpu.sb"),)
+    ),
     "mach-lookup": frozenset(
         (
             "com.apple.CoreServices.coreservicesd",
             "com.apple.DiskArbitration.diskarbitrationd",
+            "com.apple.UsageTrackingAgent",
             "com.apple.analyticsd",
-            "com.apple.audioanalyticsd",
+            ("com.apple.audio.SandboxHelper", "gpu.sb"),
+            ("com.apple.audioanalyticsd", "audio.sb"),
             "com.apple.backupd.sandbox.xpc",
             "com.apple.bsd.dirhelper",
             "com.apple.cmio.registerassistantservice.system-extensions",
@@ -178,6 +204,7 @@ _KNOWN_TARGET_DENIALS: dict[str, frozenset[str]] = {
             "com.apple.distributed_notifications@Uv3",
             "com.apple.lsd.mapdb",
             "com.apple.lsd.modifydb",
+            ("com.apple.security.syspolicy", "gpu.sb"),
             "com.apple.system.notification_center",
             "com.apple.system.opendirectoryd.membership",
             "com.apple.tccd",
@@ -187,7 +214,7 @@ _KNOWN_TARGET_DENIALS: dict[str, frozenset[str]] = {
     ),
     "syscall-mig": frozenset(
         (
-            "341",  # mach_voucher_debug_info, used by MTLCompiler
+            ("341", "gpu.sb"),  # mach_voucher_debug_info, used by MTLCompiler
         )
     ),
     "system-info": frozenset(
@@ -199,28 +226,42 @@ _KNOWN_TARGET_DENIALS: dict[str, frozenset[str]] = {
 }
 
 # Directory prefixes for operations that allow subpaths (e.g. file reads).
-# Rules may use `*` wildcards within a single path segment.
-_KNOWN_SUBPATH_DENIALS: dict[str, frozenset[str]] = {
+# Rules may use `*` wildcards within a single path segment. Action keys may use
+# Seatbelt parent operations ending in `*` (e.g. `file-write*`).
+_KNOWN_SUBPATH_DENIALS: dict[str, frozenset[RuleType]] = {
     "file-issue-extension": frozenset((f"target:{_CHROME_BUNDLE_DIR}/",)),
     "file-read-data": frozenset(
         (
             "/Library/Managed Preferences/",
-            "/System/Library/CoreServices/RawCamera.bundle/",
+            (
+                "/System/Library/Audio/Plug-Ins/HAL/BTAudioHALPlugin.driver/",
+                "audio.sb",
+            ),
+            ("/System/Library/CoreServices/RawCamera.bundle/", "renderer.sb"),
+            (
+                "/System/Library/CoreServices/SystemFolderLocalizations/",
+                "on_device_model_execution.sb",
+            ),
+            (
+                "/System/Library/ExtensionKit/"
+                "ExtensionPointDefinitions.sysexpt/",
+                "on_device_model_execution.sb",
+            ),
             "/System/Library/ExtensionKit/ExtensionPoints/",
             "/System/iOSSupport/System/Library/ExtensionKit/ExtensionPoints/",
             "/private/var/db/cmiodalassistants/Library/Preferences/",
-            f"{_DARWIN_USER_DIR}/C/*.helper/com.apple.metal/",
+            ("/private/var/db/mds/messages/", "gpu.sb"),
             f"{_HOME_DIR}/Library/Preferences/",
         )
     ),
-    "file-write-mode": frozenset(
-        (f"{_DARWIN_USER_DIR}/T/scoped_dir*/CRX_INSTALL/",)
-    ),
-    "file-write-times": frozenset(
+    "file-write*": frozenset(
         (
-            f"{_CHROME_APP_SUPPORT_DIR}/optimization_guide_model_store/",
+            f"{_DARWIN_USER_DIR}/T/*_chrome_Unpacker_BeginUnzipping*/",
             f"{_DARWIN_USER_DIR}/T/scoped_dir*/CRX_INSTALL/",
         )
+    ),
+    "file-write-times": frozenset(
+        (f"{_CHROME_APP_SUPPORT_DIR}/optimization_guide_model_store/",)
     ),
 }
 
@@ -282,6 +323,28 @@ def _matches_subpath_rule(target: str, prefix: str) -> bool:
     )
 
 
+def _parse_rule(rule: RuleType) -> tuple[str, Optional[str]]:
+    """Extracts `(pattern, profile)` from a rule entry.
+
+    A rule can be a string pattern (matching any Seatbelt profile) or a
+    `(pattern, profile)` tuple restricting the rule to a specific profile.
+    """
+    if isinstance(rule, tuple):
+        return rule[0], rule[1]
+    return rule, None
+
+
+def _matches_action(denial_action: str, rule_action: str) -> bool:
+    """Returns True if `denial_action` matches `rule_action`.
+
+    Supports exact action matching or Seatbelt parent operations ending in `*`
+    (such as `file-write*`).
+    """
+    if rule_action.endswith("*"):
+        return denial_action.startswith(rule_action[:-1])
+    return denial_action == rule_action
+
+
 class DenialFilter:
     """Decides which sandbox denials should be reported.
 
@@ -304,26 +367,29 @@ class DenialFilter:
         """Returns True if the denial is expected or currently suppressed."""
         action = denial_event.action
         target = _normalize_target(denial_event.target)
+        seatbelt_profile = get_seatbelt_profile(denial_event)
 
-        for rule in _KNOWN_TARGET_DENIALS.get(action, ()):
-            if _matches_target_rule(target, rule):
-                self._logger.debug(
-                    "Filtered known denial matching '%s %s': %s",
-                    action,
-                    rule,
-                    denial_event.event_message,
-                )
-                return True
-
-        for prefix in _KNOWN_SUBPATH_DENIALS.get(action, ()):
-            if _matches_subpath_rule(target, prefix):
-                self._logger.debug(
-                    "Filtered known denial matching '%s %s': %s",
-                    action,
-                    prefix,
-                    denial_event.event_message,
-                )
-                return True
+        for rules_by_action, matches_rule in (
+            (_KNOWN_TARGET_DENIALS, _matches_target_rule),
+            (_KNOWN_SUBPATH_DENIALS, _matches_subpath_rule),
+        ):
+            for rule_action, rules in rules_by_action.items():
+                if not _matches_action(action, rule_action):
+                    continue
+                for rule in rules:
+                    pattern, profile = _parse_rule(rule)
+                    if profile is not None and profile != seatbelt_profile:
+                        continue
+                    if matches_rule(target, pattern):
+                        profile_info = f" ({profile})" if profile else ""
+                        self._logger.debug(
+                            "Filtered known denial matching '%s %s%s': %s",
+                            rule_action,
+                            pattern,
+                            profile_info,
+                            denial_event.event_message,
+                        )
+                        return True
 
         key = (action, target)
         expires_at = self._suppressed.get(key)
@@ -485,6 +551,11 @@ class SandboxDenialWatcher:
         self._batch_lock = threading.Lock()
         self._active_batches: dict[tuple[str, str], list[SandboxDenial]] = {}
         self._prompted_denials: set[tuple[str, str]] = set()
+        # Caches process command lines per PID with a bounded LRU cache so
+        # rapid bursts of denials do not invoke `ps` repeatedly.
+        self._get_command_line = functools.lru_cache(maxsize=256)(
+            _get_process_command_line
+        )
 
     def _flush_batch(self, batch_key: tuple[str, str]) -> None:
         """Flushes a pending batch of denials and prompts the user."""
@@ -538,11 +609,12 @@ class SandboxDenialWatcher:
             if batch_key not in self._active_batches:
                 # Capture the process command line now (rather than when the
                 # batch flushes) in case a short-lived process exits beforehand.
-                command_line = _get_process_command_line(denial_event.pid)
-                if command_line:
-                    denial_event = replace(
-                        denial_event, command_line=command_line
-                    )
+                if not denial_event.command_line:
+                    command_line = self._get_command_line(denial_event.pid)
+                    if command_line:
+                        denial_event = replace(
+                            denial_event, command_line=command_line
+                        )
                 self._active_batches[batch_key] = [denial_event]
                 timer = threading.Timer(
                     self._batch_window_seconds,
@@ -567,6 +639,11 @@ class SandboxDenialWatcher:
                 denial_event.process_name,
             )
             return
+
+        if denial_event.command_line is None:
+            command_line = self._get_command_line(denial_event.pid)
+            if command_line:
+                denial_event = replace(denial_event, command_line=command_line)
 
         if self._denial_filter.should_ignore(denial_event):
             return

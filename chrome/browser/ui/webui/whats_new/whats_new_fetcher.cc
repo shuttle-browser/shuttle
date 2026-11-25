@@ -6,10 +6,12 @@
 
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/i18n/language_tag.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
@@ -26,10 +28,10 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/webui/whats_new/whats_new_util.h"
 #include "chrome/common/chrome_version.h"
+#include "components/language/core/browser/language_prefs.h"
 #include "components/user_education/webui/whats_new_registry.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/reduce_accept_language_controller_delegate.h"
 #include "net/base/url_util.h"
 #include "net/http/http_util.h"
 #include "services/network/public/cpp/resource_request.h"
@@ -162,12 +164,12 @@ class WhatsNewFetcher {
     // Inform the server of the top browser language via the
     // Accept-Language header.
     if (auto* profile = browser->GetProfile()) {
-      if (auto* delegate =
-              profile->GetReduceAcceptLanguageControllerDelegate()) {
-        auto languages = delegate->GetUserAcceptLanguages();
+      if (auto* prefs = profile->GetPrefs()) {
+        std::vector<base::i18n::LanguageTag> languages =
+            language::LanguagePrefs(prefs).GetAcceptLanguagesList();
         if (!languages.empty()) {
           request->headers.SetHeader(request->headers.kAcceptLanguage,
-                                     languages.front());
+                                     languages.front().tag_string());
         }
       }
     }

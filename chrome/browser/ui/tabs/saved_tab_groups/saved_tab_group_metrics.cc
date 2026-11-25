@@ -24,8 +24,6 @@ std::string_view GetMetricsSuffixForSubmenuSource(
       return "EverythingMenu";
     case SavedTabGroupOpenedSubmenuDesktop::kAppMenu:
       return "AppMenu";
-    case SavedTabGroupOpenedSubmenuDesktop::kMacSystemMenu:
-      return "MacSystemMenu";
     case SavedTabGroupOpenedSubmenuDesktop::kOrganizerPanel:
       return "OrganizerPanel";
   }
@@ -46,6 +44,12 @@ void RecordSavedTabGroupOpenedSubmenu(
     SavedTabGroupOpenedSubmenuDesktop submenu_type) {
   base::UmaHistogramEnumeration("TabGroups.SavedTabGroupOpenedSubmenu",
                                 submenu_type);
+}
+
+void RecordTabGroupContextMenuAccessed(
+    SavedTabGroupOpenedSubmenuDesktop submenu_source) {
+  base::UmaHistogramEnumeration("TabGroups.ContextMenu.Accessed",
+                                submenu_source);
 }
 
 void RecordTabGroupContextMenuAction(

@@ -1,5 +1,5 @@
 <!-- #html_wrapper_imports_start
-import {SubmitButtonIconType} from '//resources/cr_components/composebox/common.js';
+import {SubmitButtonIconType} from 'chrome://resources/cr_components/composebox/common.js';
 #html_wrapper_imports_end -->
 <div id="content">
   ${this.enableThreadsRail_ ? html`
@@ -8,6 +8,10 @@ import {SubmitButtonIconType} from '//resources/cr_components/composebox/common.
         @open-composebox="${this.onOpenComposebox_}">
     </cr-left-hand-side>` : ''}
   <div id="rhsWrapper">
+    <div id="backgroundImageContainer"
+        data-position-x="${this.theme_?.backgroundImage?.positionX || ''}">
+      <slot name="backgroundImage"></slot>
+    </div>
     <div id="rhsContent" @scroll="${this.onRhsContentScroll_}">
       ${this.lazyRender_ && this.microsoftModuleEnabled_ ? html`
         <iframe id="microsoftAuth" src="${this.microsoftAuthIframePath_}"></iframe>

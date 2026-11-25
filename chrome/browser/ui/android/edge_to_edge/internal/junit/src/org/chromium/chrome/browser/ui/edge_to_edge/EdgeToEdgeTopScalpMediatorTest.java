@@ -6,6 +6,7 @@ package org.chromium.chrome.browser.ui.edge_to_edge;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
@@ -27,6 +28,8 @@ import org.robolectric.annotation.Config;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.cc.input.OffsetTag;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsOffsetTagsInfo;
 import org.chromium.chrome.browser.browser_controls.TopControlsStacker;
 import org.chromium.chrome.browser.browser_controls.TopControlsStacker.ScrollBehavior;
 import org.chromium.chrome.browser.browser_controls.TopControlsStacker.TopControlType;
@@ -86,7 +89,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         assertTrue(mMediator.contributesToTotalHeight());
         assertEquals(ScrollBehavior.NEVER_SCROLLABLE, mMediator.getScrollBehavior());
         verify(mTopControlsStacker).addControl(mMediator);
-        verify(mTopControlsStacker, never()).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker, never()).requestLayerUpdateSync(false);
         // When the feature is disabled, EdgeToEdgeController state is short-circuited.
         verify(mEdgeToEdgeController, never()).isDrawingToTopEdge();
         verify(mEdgeToEdgeController, never()).getSystemTopInsetPx();
@@ -94,7 +97,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         // Destroying while hidden should not request a layer update.
         mMediator.destroy();
         verify(mTopControlsStacker).removeControl(mMediator);
-        verify(mTopControlsStacker, never()).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker, never()).requestLayerUpdateSync(false);
     }
 
     @Test
@@ -106,7 +109,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         assertEquals(0, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.HIDDEN, mMediator.getTopControlVisibility());
         assertFalse(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
-        verify(mTopControlsStacker, never()).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker, never()).requestLayerUpdateSync(false);
         // When only the refactor arm is enabled (enable_top_edge_to_edge=false),
         // EdgeToEdgeUtils.isTopEdgeToEdgeEnabled() is false and short-circuits before querying
         // EdgeToEdgeController.
@@ -195,7 +198,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         mMediator = createMediator();
         assertEquals(100, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.VISIBLE, mMediator.getTopControlVisibility());
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
         clearInvocations(mTopControlsStacker);
 
         // When system top inset changes to 0 (e.g. split-screen mode).
@@ -204,7 +207,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
                 /* bottomInset= */ 0, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ false);
         assertEquals(0, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.HIDDEN, mMediator.getTopControlVisibility());
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
     }
 
     @Test
@@ -215,7 +218,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         assertEquals(100, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.VISIBLE, mMediator.getTopControlVisibility());
         assertTrue(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
         clearInvocations(mTopControlsStacker);
 
         // Enter fullscreen.
@@ -224,7 +227,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         assertEquals(0, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.HIDDEN, mMediator.getTopControlVisibility());
         assertFalse(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
         clearInvocations(mTopControlsStacker);
 
         // Exit fullscreen.
@@ -233,7 +236,7 @@ public class EdgeToEdgeTopScalpMediatorTest {
         assertEquals(100, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.VISIBLE, mMediator.getTopControlVisibility());
         assertTrue(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
     }
 
     @Test
@@ -243,10 +246,13 @@ public class EdgeToEdgeTopScalpMediatorTest {
         when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(100);
         mMediator = createMediator();
         assertEquals(100, mMediator.getTopControlHeight());
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
+        clearInvocations(mTopControlsStacker);
 
         when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(80);
         mMediator.onStartedShowing(LayoutType.BROWSING);
         assertEquals(80, mMediator.getTopControlHeight());
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
     }
 
     @Test
@@ -254,20 +260,20 @@ public class EdgeToEdgeTopScalpMediatorTest {
         when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(100);
         mMediator = createMediator();
         assertEquals(100, mMediator.getTopControlHeight());
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
         clearInvocations(mTopControlsStacker);
 
         when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(90);
         mMediator.onToEdgeChange(
                 /* bottomInset= */ 50, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ false);
         assertEquals(90, mMediator.getTopControlHeight());
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
         clearInvocations(mTopControlsStacker);
 
         // Unchanged height/visibility should not request another layer update.
         mMediator.onToEdgeChange(
                 /* bottomInset= */ 50, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ false);
-        verify(mTopControlsStacker, never()).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker, never()).requestLayerUpdateSync(false);
     }
 
     @Test
@@ -281,18 +287,20 @@ public class EdgeToEdgeTopScalpMediatorTest {
         // isDrawingToTopEdge().
         assertEquals(100, mMediator.getTopControlHeight());
         assertEquals(TopControlVisibility.VISIBLE, mMediator.getTopControlVisibility());
+        assertEquals(ScrollBehavior.NEVER_SCROLLABLE, mMediator.getScrollBehavior());
         assertTrue(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
-        verify(mTopControlsStacker).requestLayerUpdatePost(false);
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
     }
 
     @Test
-    @EnableFeatures(ChromeFeatureList.EDGE_TO_EDGE_TOP_INSET)
     public void testToggleFullTopEdgeToEdge() {
         when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(100);
         when(mEdgeToEdgeController.tabShouldDrawFullTopEdgeToEdge()).thenReturn(false);
         mMediator = createMediator();
         assertEquals(TopControlVisibility.VISIBLE, mMediator.getTopControlVisibility());
         assertTrue(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
+        clearInvocations(mTopControlsStacker);
 
         // Drawing full top edge-to-edge should hide the Top Scalp.
         when(mEdgeToEdgeController.tabShouldDrawFullTopEdgeToEdge()).thenReturn(true);
@@ -300,6 +308,8 @@ public class EdgeToEdgeTopScalpMediatorTest {
                 /* bottomInset= */ 0, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ true);
         assertEquals(TopControlVisibility.HIDDEN, mMediator.getTopControlVisibility());
         assertFalse(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
+        clearInvocations(mTopControlsStacker);
 
         // Disabling full top edge-to-edge should show the Top Scalp.
         when(mEdgeToEdgeController.tabShouldDrawFullTopEdgeToEdge()).thenReturn(false);
@@ -307,5 +317,61 @@ public class EdgeToEdgeTopScalpMediatorTest {
                 /* bottomInset= */ 0, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ false);
         assertEquals(TopControlVisibility.VISIBLE, mMediator.getTopControlVisibility());
         assertTrue(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
+    }
+
+    @Test
+    public void testTopScalp_ScrollBehavior_DrawingToTopEdge() {
+        when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(100);
+        when(mEdgeToEdgeController.isDrawingToTopEdge()).thenReturn(false);
+
+        mMediator = createMediator();
+        assertEquals(ScrollBehavior.NEVER_SCROLLABLE, mMediator.getScrollBehavior());
+        clearInvocations(mTopControlsStacker);
+
+        // Transitioning to drawing to top edge makes the scalp scrollable and requests a layer
+        // update even though height and visibility are unchanged.
+        when(mEdgeToEdgeController.isDrawingToTopEdge()).thenReturn(true);
+        mMediator.onToEdgeChange(
+                /* bottomInset= */ 50, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ true);
+        assertEquals(ScrollBehavior.DEFAULT_SCROLLABLE, mMediator.getScrollBehavior());
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
+        clearInvocations(mTopControlsStacker);
+
+        // Transitioning back to not drawing to top edge makes the scalp non-scrollable again.
+        when(mEdgeToEdgeController.isDrawingToTopEdge()).thenReturn(false);
+        mMediator.onToEdgeChange(
+                /* bottomInset= */ 50, /* isDrawingToEdge= */ true, /* isPageOptInToEdge= */ false);
+        assertEquals(ScrollBehavior.NEVER_SCROLLABLE, mMediator.getScrollBehavior());
+        verify(mTopControlsStacker).requestLayerUpdateSync(false);
+    }
+
+    @Test
+    public void testTopScalp_OffsetTagAndHeightAdjustmentAnimation() {
+        when(mEdgeToEdgeController.getSystemTopInsetPx()).thenReturn(100);
+        mMediator = createMediator();
+
+        OffsetTag topOffsetTag = OffsetTag.createRandom();
+        BrowserControlsOffsetTagsInfo offsetTagsInfo =
+                new BrowserControlsOffsetTagsInfo(topOffsetTag, OffsetTag.createRandom(), null);
+
+        mMediator.updateOffsetTag(offsetTagsInfo);
+        assertEquals(topOffsetTag, mModel.get(EdgeToEdgeTopScalpProperties.OFFSET_TAG));
+
+        mMediator.prepForHeightAdjustmentAnimation(-40);
+        assertNull(mModel.get(EdgeToEdgeTopScalpProperties.OFFSET_TAG));
+        assertEquals(-40, mModel.get(EdgeToEdgeTopScalpProperties.Y_OFFSET));
+        assertTrue(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
+
+        mMediator.prepForHeightAdjustmentAnimation(-100);
+        assertNull(mModel.get(EdgeToEdgeTopScalpProperties.OFFSET_TAG));
+        assertEquals(-100, mModel.get(EdgeToEdgeTopScalpProperties.Y_OFFSET));
+        assertFalse(mModel.get(EdgeToEdgeTopScalpProperties.IS_VISIBLE));
+
+        mMediator.updateOffsetTag(offsetTagsInfo);
+        assertEquals(topOffsetTag, mModel.get(EdgeToEdgeTopScalpProperties.OFFSET_TAG));
+
+        mMediator.updateOffsetTag(null);
+        assertNull(mModel.get(EdgeToEdgeTopScalpProperties.OFFSET_TAG));
     }
 }

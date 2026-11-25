@@ -28,6 +28,7 @@ import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxLayoutMode;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
+import org.chromium.chrome.browser.omnibox.status.StatusView.IconTransitionType;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.page_info.ChromePageInfoHighlight;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -61,6 +62,7 @@ public class StatusCoordinator implements LocationBarDataProvider.Observer {
     // TODO(crbug.com/40707964): Do not store the StatusView
     private final StatusView mStatusView;
     private final StatusMediator mMediator;
+    private final FuseboxPlusButtonIphController mFuseboxPlusButtonIphController;
     private final PropertyModel mModel;
     private final boolean mIsTablet;
     private LocationBarDataProvider mLocationBarDataProvider;
@@ -110,13 +112,13 @@ public class StatusCoordinator implements LocationBarDataProvider.Observer {
 
         Activity activity =
                 assertNonNull(ContextUtils.activityFromContext(mStatusView.getContext()));
+        UserEducationHelper userEducationHelper =
+                new UserEducationHelper(
+                        activity,
+                        (Supplier<@Nullable Profile>) profileSupplier,
+                        new Handler(Looper.getMainLooper()));
         PageInfoIphController pageInfoIphController =
-                new PageInfoIphController(
-                        new UserEducationHelper(
-                                activity,
-                                (Supplier<@Nullable Profile>) profileSupplier,
-                                new Handler(Looper.getMainLooper())),
-                        getSecurityIconView());
+                new PageInfoIphController(userEducationHelper, getSecurityIconView());
 
         mMediator =
                 new StatusMediator(
@@ -133,6 +135,13 @@ public class StatusCoordinator implements LocationBarDataProvider.Observer {
                         fuseboxStateSupplier,
                         fuseboxLayoutModeSupplier,
                         onPlusButtonClicked);
+
+        mFuseboxPlusButtonIphController =
+                new FuseboxPlusButtonIphController(
+                        userEducationHelper,
+                        mStatusView,
+                        fuseboxStateSupplier,
+                        mMediator.getStatusIconTypeSupplier());
 
         Resources res = mStatusView.getResources();
         int statusIconWidth = resourceProvider.getStatusIconSize();
@@ -163,7 +172,7 @@ public class StatusCoordinator implements LocationBarDataProvider.Observer {
     /** Signals that native initialization has completed. */
     public void onNativeInitialized() {
         updateSecurityIcon();
-        mMediator.updateLocationBarIcon(StatusView.IconTransitionType.CROSSFADE);
+        mMediator.updateLocationBarIcon(IconTransitionType.CROSSFADE);
     }
 
     /**
@@ -320,6 +329,7 @@ public class StatusCoordinator implements LocationBarDataProvider.Observer {
 
     @SuppressWarnings("NullAway")
     public void destroy() {
+        mFuseboxPlusButtonIphController.destroy();
         mMediator.destroy();
         mLocationBarDataProvider.removeObserver(this);
         mLocationBarDataProvider = null;

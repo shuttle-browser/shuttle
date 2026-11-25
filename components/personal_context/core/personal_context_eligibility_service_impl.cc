@@ -7,7 +7,7 @@
 #include <string>
 #include <utility>
 
-#include "base/containers/flat_set.h"
+#include "base/containers/fixed_flat_set.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/metrics/histogram_functions.h"
@@ -176,7 +176,10 @@ SatisfiesMiscellaneousRequirements(GeoIpCountryCode country_code,
     return std::pair{false, PersonalContextNonEligibilityReason::kNotGeoIpUS};
   }
 
-  if (locale != "en-US") {
+  static constexpr auto kSupportedLocales =
+      base::MakeFixedFlatSet<std::string_view>(
+          {"en", "en-AU", "en-CA", "en-GB", "en-IN", "en-UK", "en-US"});
+  if (!kSupportedLocales.contains(locale)) {
     MaybeOutputReason(debug_message, "Unsupported locale.");
     return std::pair{false,
                      PersonalContextNonEligibilityReason::kNotLocaleEnUS};
@@ -191,12 +194,14 @@ PersonalContextEligibilityServiceImpl::PersonalContextEligibilityServiceImpl(
     signin::IdentityManager* identity_manager,
     PrefService* pref_service,
     GeoIpCountryCode country_code,
-    std::string locale)
+    std::string locale,
+    bool is_supported_glic_provider)
     : account_settings_service_(account_settings_service),
       identity_manager_(identity_manager),
       pref_service_(pref_service),
       country_code_(std::move(country_code)),
-      locale_(std::move(locale)) {
+      locale_(std::move(locale)),
+      is_supported_glic_provider_(is_supported_glic_provider) {
   if (account_settings_service_) {
     account_settings_observation_.Observe(account_settings_service_);
     UpdateContextSourcesState();
@@ -286,6 +291,17 @@ std::pair<PersonalContextEligibilityState,
           std::optional<PersonalContextNonEligibilityReason>>
 PersonalContextEligibilityServiceImpl::ComputeEligibilityState() {
   using enum PersonalContextEligibilityState;
+  // Personal Context is a consumer feature. Gemini Enterprise doesn't support
+  // it, so this is checked before everything else, including the debug
+  // overrides, and doesn't depend on which FRE the profile completed: consent
+  // given to consumer Gemini in Chrome (`kGlicCompletedFre`) doesn't carry
+  // over to Gemini Enterprise.
+  if (!is_supported_glic_provider_) {
+    return std::pair{kDisabledNotEligible,
+                     PersonalContextNonEligibilityReason::
+                         kUnsupportedGlicProvider};
+  }
+
   if (auto [satisfied, reason] =
           SatisfiesAccountRequirements(identity_manager_.get());
       !satisfied) {

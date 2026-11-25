@@ -36,6 +36,13 @@ chromium-metrics-reviews@google.com.
     <owner>qinmin@chromium.org</owner>
     <owner>src/chrome/browser/glic/OWNERS</owner>
   </variant>
+  <variant name="Probe" summary="Synthetic transport probe messages">
+    <owner>src/components/browser_actuator/OWNERS</owner>
+  </variant>
+  <variant name="TaskIngress" summary="Task ingress messages">
+    <owner>wenyufu@chromium.org</owner>
+    <owner>src/components/browser_actuator/OWNERS</owner>
+  </variant>
 </variants>
 
 <!-- LINT.ThenChange(//components/browser_actuator/public/transport/common.h:PayloadType, //components/browser_actuator/internal/transport/metrics_utils.h:PayloadTypeToMetricSuffix) -->
@@ -54,6 +61,21 @@ chromium-metrics-reviews@google.com.
     sequence number before payload processing begins. Not broken down by payload
     type, because the most important bucket is the one where the payload type
     itself is unrecognized.
+  </summary>
+</histogram>
+
+<histogram name="Browser.Actuator.Transport.InitIngressSource"
+    enum="BrowserActuatorSessionInitIngressSource" expires_after="2027-10-01">
+  <owner>bryansong@google.com</owner>
+  <owner>anushamuley@google.com</owner>
+  <owner>wenyufu@chromium.org</owner>
+  <owner>src/components/browser_actuator/OWNERS</owner>
+  <summary>
+    Records which downstream ingress channel triggered the creation of a new
+    transport session. Recorded once per newly created session in
+    TransportSessionRegistryImpl::CreateSession, on all platforms except iOS.
+    Not recorded when retrieving an already-existing session or when session
+    creation is rejected due to reaching the maximum concurrent sessions limit.
   </summary>
 </histogram>
 

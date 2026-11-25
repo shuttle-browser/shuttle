@@ -7,10 +7,12 @@
 
 #include "base/android/scoped_java_ref.h"
 #include "base/callback_list.h"
+#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "chrome/browser/context_sharing/tab_bottom_sheet/android/co_browse_container_type.h"
 #include "chrome/browser/context_sharing/tab_bottom_sheet/android/tab_bottom_sheet_client_type.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "ui/color/color_id.h"
 
 class TabAndroid;
@@ -30,7 +32,7 @@ class WindowAndroid;
 namespace context_sharing {
 
 // Bridge for managing CoBrowseViews on Android from C++.
-class CoBrowseViewsBridge {
+class CoBrowseViewsBridge : public content::WebContentsObserver {
  public:
   // Returns the Java View object from a CoBrowseViews object.
   static base::android::ScopedJavaLocalRef<jobject> GetViewFromCoBrowseViews(
@@ -43,8 +45,9 @@ class CoBrowseViewsBridge {
       const base::android::JavaRef<jobject>& bottom_sheet_content_provider,
       bool enable_pinch_to_zoom,
       ui::ColorId background_color_id,
-      ui::ColorId placeholder_elem_color_id);
-  ~CoBrowseViewsBridge();
+      ui::ColorId placeholder_elem_color_id,
+      base::RepeatingClosure close_callback = {});
+  ~CoBrowseViewsBridge() override;
 
   CoBrowseViewsBridge(const CoBrowseViewsBridge&) = delete;
   CoBrowseViewsBridge& operator=(const CoBrowseViewsBridge&) = delete;
@@ -57,8 +60,19 @@ class CoBrowseViewsBridge {
   // Sets the web contents for the view.
   void SetWebContents(content::WebContents* web_contents, bool request_focus);
 
+  // Updates whether the native loading placeholder is shown. While loading, the
+  // placeholder covers the web UI even if a `WebContents` is attached.
+  void SetIsLoading(bool is_loading);
+
   // Returns the Java CoBrowseViews object.
   base::android::ScopedJavaLocalRef<jobject> GetCoBrowseViews();
+
+  // Returns true if the Java CoBrowseViews currently holds a non-null
+  // WebContents reference.
+  bool HasJavaWebContentsForTesting() const;
+
+  // content::WebContentsObserver:
+  void WebContentsDestroyed() override;
 
  private:
   void DestroyCoBrowseViews();
@@ -71,10 +85,11 @@ class CoBrowseViewsBridge {
   const bool enable_pinch_to_zoom_;
   const ui::ColorId background_color_id_;
   const ui::ColorId placeholder_elem_color_id_;
+  base::RepeatingClosure close_callback_;
+  bool is_loading_ = false;
   base::android::ScopedJavaGlobalRef<jobject> java_co_browse_views_;
   base::android::ScopedJavaGlobalRef<jobject> bottom_sheet_content_provider_;
   raw_ptr<ui::WindowAndroid> window_android_ = nullptr;
-  raw_ptr<content::WebContents> guest_web_contents_ = nullptr;
   base::CallbackListSubscription tab_insert_subscription_;
 };
 

@@ -6,10 +6,13 @@
 
 #include <stddef.h>
 
+#include <memory>
 #include <string>
 #include <tuple>
 #include <utility>
+#include <vector>
 
+#include "base/auto_reset.h"
 #include "base/functional/bind.h"
 #include "base/json/json_reader.h"
 #include "base/memory/raw_ptr.h"
@@ -23,6 +26,7 @@
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/metrics/desktop_session_duration/desktop_session_duration_tracker.h"
 #include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
+#include "chrome/browser/ui/autofill/bubble_manager.h"
 #include "chrome/browser/ui/autofill/payments/save_card_ui.h"
 #include "chrome/browser/ui/autofill/payments/save_payment_icon_controller.h"
 #include "chrome/browser/ui/autofill/test/test_autofill_bubble_handler.h"
@@ -53,8 +57,8 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
-#include "ui/base/window_open_disposition.h"
 
 using base::Bucket;
 using testing::ElementsAre;
@@ -231,8 +235,10 @@ class SaveCardBubbleControllerImplTest
         .WillByDefault(testing::Return(tab_strip_model_.get()));
     ON_CALL(mock_browser_window_, OpenGURL(testing::_, testing::_))
         .WillByDefault(
-            [this](const GURL& url, WindowOpenDisposition disposition) {
-              if (disposition == WindowOpenDisposition::kNewForegroundTab) {
+            [this](const GURL& url,
+                   ui::mojom::WindowOpenDisposition disposition) {
+              if (disposition ==
+                  ui::mojom::WindowOpenDisposition::kNewForegroundTab) {
                 content::WebContents* new_contents = AddTab(url);
                 int new_index =
                     tab_strip_model_->GetIndexOfWebContents(new_contents);
@@ -271,6 +277,7 @@ class SaveCardBubbleControllerImplTest
     did_on_confirmation_closed_callback_run_ = false;
     personal_data_manager()->test_payments_data_manager().ClearCreditCards();
     scoped_autofill_bubble_handler_.reset();
+    bubble_managers_.clear();
     tab_strip_model_.reset();
     tab_strip_model_delegate_.SetBrowserWindowInterface(nullptr);
     ChromeRenderViewHostTestHarness::TearDown();
@@ -358,9 +365,6 @@ class SaveCardBubbleControllerImplTest
       CloseBubble(close_reason);
     }
     controller()->OnBubbleClosed(close_reason);
-    if (controller()->ShouldShowPaymentSavedLabelAnimation()) {
-      controller()->OnAnimationEnded();
-    }
   }
 
   void AddCreditCard(const CreditCard& card) {
@@ -407,6 +411,8 @@ class SaveCardBubbleControllerImplTest
         tab_activity_simulator_.AddWebContentsAndNavigate(
             tab_strip_model_.get(), url);
     new_contents->SetDelegate(web_contents_delegate_.get());
+    bubble_managers_.push_back(BubbleManager::Create(
+        tab_strip_model_->GetTabForWebContents(new_contents)));
     TestSaveCardBubbleControllerImpl::CreateForTesting(new_contents);
     return new_contents;
   }
@@ -444,6 +450,9 @@ class SaveCardBubbleControllerImplTest
     did_on_confirmation_closed_callback_run_ = true;
   }
 
+  std::vector<std::unique_ptr<BubbleManager>> bubble_managers_;
+  base::AutoReset<bool> ignore_window_activation_ =
+      SaveCardBubbleControllerImpl::IgnoreWindowActivationForTesting();
   ExposeBubbleAutofillBubbleHandler test_autofill_bubble_handler_;
   std::unique_ptr<ui::ScopedUnownedUserData<AutofillBubbleHandler>>
       scoped_autofill_bubble_handler_;
@@ -1681,8 +1690,6 @@ TEST_F(SaveCardBubbleControllerImplTest,
   ASSERT_NE(nullptr, controller()->GetPaymentBubbleView());
   EXPECT_EQ(controller()->GetWindowTitle(), u"Card saved");
   EXPECT_EQ(controller()->GetSavePaymentIconTooltipText(), u"Save card");
-  EXPECT_EQ(controller()->GetSaveSuccessAnimationStringId(),
-            IDS_AUTOFILL_CARD_SAVED);
 }
 
 TEST_F(SaveCardBubbleControllerImplTest,
@@ -1704,8 +1711,6 @@ TEST_F(SaveCardBubbleControllerImplTest,
   ASSERT_NE(nullptr, controller()->GetPaymentBubbleView());
   EXPECT_EQ(controller()->GetWindowTitle(), u"CVC saved");
   EXPECT_EQ(controller()->GetSavePaymentIconTooltipText(), u"Save CVC");
-  EXPECT_EQ(controller()->GetSaveSuccessAnimationStringId(),
-            IDS_AUTOFILL_CVC_SAVED);
 }
 
 TEST_F(SaveCardBubbleControllerImplTest,

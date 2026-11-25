@@ -151,7 +151,7 @@ enum {
   kProjectorViewerOnboardingShowCount = 100090,
   kShelfAlignment = 100091,
   kShelfAutoHideBehavior = 100092,
-  kSuggestedContentEnabled = 100093,
+  // kSuggestedContentEnabled = 100093,  // deprecated
   kSyncableWallpaperInfo = 100094,
   kTapDraggingEnabled = 100095,
   kTapToClickEnabled = 100096,
@@ -1311,11 +1311,6 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
       syncer::OS_PREFERENCES, sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
       sync_preferences::WriteBehavior::kWriteToBoth}},
-    {ash::prefs::kSuggestedContentEnabled,
-     {syncable_prefs_ids::kSuggestedContentEnabled, syncer::OS_PREFERENCES,
-      sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone,
-      sync_preferences::WriteBehavior::kWriteToBoth}},
     {ash::prefs::kSyncableWallpaperInfo,
      {syncable_prefs_ids::kSyncableWallpaperInfo, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
@@ -1436,7 +1431,7 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
       sync_preferences::WriteBehavior::kWriteToBoth}},
-    {prefs::kChromeOSReleaseNotesVersion,
+    {ash::prefs::kChromeOSReleaseNotesVersion,
      {syncable_prefs_ids::kChromeOSReleaseNotesVersion, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
@@ -1521,22 +1516,22 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
       syncer::OS_PRIORITY_PREFERENCES, sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
       sync_preferences::WriteBehavior::kWriteToBoth}},
-    {prefs::kTextToSpeechLangToVoiceName,
+    {ash::prefs::kTextToSpeechLangToVoiceName,
      {syncable_prefs_ids::kTextToSpeechLangToVoiceName, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
       sync_preferences::WriteBehavior::kWriteToBoth}},
-    {prefs::kTextToSpeechPitch,
+    {ash::prefs::kTextToSpeechPitch,
      {syncable_prefs_ids::kTextToSpeechPitch, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
       sync_preferences::WriteBehavior::kWriteToBoth}},
-    {prefs::kTextToSpeechRate,
+    {ash::prefs::kTextToSpeechRate,
      {syncable_prefs_ids::kTextToSpeechRate, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
       sync_preferences::WriteBehavior::kWriteToBoth}},
-    {prefs::kTextToSpeechVolume,
+    {ash::prefs::kTextToSpeechVolume,
      {syncable_prefs_ids::kTextToSpeechVolume, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone,
@@ -2250,7 +2245,8 @@ ChromeSyncablePrefsDatabase::GetSyncablePrefMetadata(
     std::string_view pref_name) const {
   const auto it = kChromeSyncablePrefsAllowlist.find(pref_name);
   if (it != kChromeSyncablePrefsAllowlist.end()) {
-    DCHECK(!common_syncable_prefs_database_.GetSyncablePrefMetadata(pref_name));
+    CHECK(!common_syncable_prefs_database_.GetSyncablePrefMetadata(pref_name),
+          base::NotFatalUntil::M163);
     return &it->second;
   }
   // Check in `common_syncable_prefs_database_`.

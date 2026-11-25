@@ -4,6 +4,7 @@
 
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_tab_helper.h"
 
+#import "base/check_is_test.h"
 #import "base/functional/bind.h"
 #import "base/functional/callback_helpers.h"
 #import "base/memory/weak_ptr.h"
@@ -39,8 +40,10 @@
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_feature_availability.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_prefs.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/default_page_context_wrapper_factory.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_utils.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper_factory.h"
 #import "ios/chrome/browser/intelligence/zero_state_suggestions/zero_state_suggestions_service.h"
 #import "ios/chrome/browser/location_bar/badge/model/badge_type.h"
 #import "ios/chrome/browser/location_bar/badge/model/location_bar_badge_configuration.h"
@@ -58,6 +61,7 @@
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/public/provider/chrome/browser/bwg/gemini_api.h"
+#import "ios/public/provider/chrome/browser/intelligence/proto_wrappers/page_context_wrapper_api.h"
 #import "ios/web/public/content_type_util.h"
 #import "ios/web/public/navigation/navigation_context.h"
 #import "ios/web/public/web_state.h"
@@ -111,8 +115,21 @@ NSArray<NSString*>* ConvertZeroStateSuggestionsToStrings(
 
 }  // namespace
 
-GeminiTabHelper::GeminiTabHelper(web::WebState* web_state)
-    : web_state_(web_state) {
+// TODO(crbug.com/581395525): Remove this constructor.
+GeminiTabHelper::GeminiTabHelper()
+    : page_context_wrapper_factory_(
+          DefaultPageContextWrapperFactory::GetInstance()) {
+  CHECK_IS_TEST();
+}
+
+GeminiTabHelper::GeminiTabHelper(
+    web::WebState* web_state,
+    PageContextWrapperFactory* page_context_wrapper_factory)
+    : web_state_(web_state),
+      page_context_wrapper_factory_(
+          page_context_wrapper_factory
+              ? *page_context_wrapper_factory
+              : DefaultPageContextWrapperFactory::GetInstance()) {
   ProfileIOS* profile =
       ProfileIOS::FromBrowserState(web_state->GetBrowserState());
   optimization_guide_decider_ =
@@ -130,10 +147,8 @@ GeminiTabHelper::~GeminiTabHelper() {
   for (auto& observer : observers_) {
     observer.OnGeminiTabHelperDestroyed(this);
   }
-  if (web_state_) {
-    web_state_->RemoveObserver(this);
-    web_state_ = nullptr;
-  }
+  web_state_observation_.Reset();
+  web_state_ = nullptr;
   optimization_guide_decider_ = nullptr;
 }
 
@@ -347,7 +362,7 @@ bool GeminiTabHelper::IsGeminiAvailableForWebState() {
 bool GeminiTabHelper::IsContextualEntryPointAllowed() {
   // Block context-based entry points on protected URLs.
   if (web_state_ &&
-      ios::provider::IsProtectedUrl(web_state_->GetLastCommittedURL().spec())) {
+      ios::provider::IsProtectedUrl(web_state_->GetLastCommittedURL())) {
     return false;
   }
   return true;
@@ -610,13 +625,13 @@ void GeminiTabHelper::PopulatePageContextFields() {
   PageContextWrapperConfig config =
       PageContextWrapperConfigBuilder().SetDefaultRichExtraction(true).Build();
 
+  auto completion_callback =
+      base::BindOnce(&GeminiTabHelper::OnPageContextWrapperResponse,
+                     weak_ptr_factory_.GetWeakPtr());
+
   // Create a new wrapper.
-  page_context_wrapper_ = [[PageContextWrapper alloc]
-        initWithWebState:web_state_
-                  config:config
-      completionCallback:base::BindRepeating(
-                             &GeminiTabHelper::OnPageContextWrapperResponse,
-                             weak_ptr_factory_.GetWeakPtr())];
+  page_context_wrapper_ = page_context_wrapper_factory_->Create(
+      web_state_, config, std::move(completion_callback));
   const bool is_pdf = web::IsContentTypePdf(web_state_->GetContentsMimeType());
   if (is_pdf) {
     page_context_wrapper_.shouldGetFullPagePDF = YES;

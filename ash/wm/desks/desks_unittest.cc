@@ -44,6 +44,7 @@
 #include "ash/strings/grit/ash_strings.h"
 #include "ash/style/close_button.h"
 #include "ash/style/color_util.h"
+#include "ash/style/system_decoration.h"
 #include "ash/test/ash_test_base.h"
 #include "ash/test/ash_test_helper.h"
 #include "ash/test/ash_test_util.h"
@@ -168,7 +169,7 @@
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/window/client_view.h"
-#include "ui/wm/core/shadow_controller.h"
+#include "ui/wm/core/decoration_controller.h"
 #include "ui/wm/core/window_modality_controller.h"
 #include "ui/wm/core/window_util.h"
 
@@ -1711,11 +1712,11 @@ TEST_P(DesksTest, DragWindowToDesk) {
   wm::ActivateWindow(win1.get());
   EXPECT_EQ(win1.get(), window_util::GetActiveWindow());
 
-  ui::Decoration* shadow_decoration =
-      ::wm::ShadowController::GetShadowDecorationForWindow(win1.get());
-  ASSERT_TRUE(shadow_decoration);
-  ASSERT_TRUE(shadow_decoration->layer());
-  EXPECT_TRUE(shadow_decoration->layer()->GetTargetVisibility());
+  ui::Decoration* decoration =
+      ::wm::DecorationController::GetDecorationForWindow(win1.get());
+  ASSERT_TRUE(decoration);
+  ASSERT_TRUE(decoration->layer());
+  EXPECT_TRUE(decoration->layer()->GetTargetVisibility());
 
   auto* overview_controller = OverviewController::Get();
   EnterOverview();
@@ -1724,7 +1725,7 @@ TEST_P(DesksTest, DragWindowToDesk) {
   EXPECT_EQ(2u, overview_grid->GetNumWindows());
 
   // While in overview mode, the window's shadow is hidden.
-  EXPECT_FALSE(shadow_decoration->layer()->GetTargetVisibility());
+  EXPECT_FALSE(decoration->layer()->GetTargetVisibility());
 
   auto* overview_session = overview_controller->overview_session();
   auto* overview_item = overview_session->GetOverviewItemForWindow(win1.get());
@@ -1783,7 +1784,7 @@ TEST_P(DesksTest, DragWindowToDesk) {
 
   // After the window is dropped onto another desk, its shadow should be
   // restored properly.
-  EXPECT_TRUE(shadow_decoration->layer()->GetTargetVisibility());
+  EXPECT_TRUE(decoration->layer()->GetTargetVisibility());
 }
 
 // Tests that theme change during drag to close does not trigger any crashes.
@@ -6124,7 +6125,7 @@ TEST_P(DesksTest, ScrollButtonsVisibility) {
 TEST_P(DesksTest, GradientsVisibility) {
   // Set a flat display size to make sure there are multiple pages in the desks
   // bar with maximum number of desks.
-  UpdateDisplay("800x150");
+  UpdateDisplay("800x200");
   const size_t max_desks_size = desks_util::GetMaxNumberOfDesks();
   for (size_t i = 1; i < max_desks_size; i++) {
     NewDesk();
@@ -6231,7 +6232,7 @@ TEST_P(DesksTest, ContinueScrollBar) {
           base::Milliseconds(scroll_timeout_ms));
 
   // Make a flat long window to generate multiple pages on desks bar.
-  UpdateDisplay("800x150");
+  UpdateDisplay("325x200");
   const size_t max_desks_size = desks_util::GetMaxNumberOfDesks();
   for (size_t i = 1; i < max_desks_size; i++) {
     NewDesk();
@@ -7239,7 +7240,7 @@ TEST_P(DesksTest, ScrollBarByDraggedDesk) {
           base::Milliseconds(scroll_timeout_ms));
 
   // Make a flat long window to generate multiple pages on desks bar.
-  UpdateDisplay("800x150");
+  UpdateDisplay("325x200");
   const size_t max_desks_size = desks_util::GetMaxNumberOfDesks();
   for (size_t i = 1; i < max_desks_size; i++) {
     NewDesk();
@@ -11369,6 +11370,40 @@ TEST_P(DeskButtonTest, DeskSwitchButtonContextMenu) {
       CloseDeskBar();
     }
   }
+}
+
+TEST_P(DeskButtonTest, DeskBarBackgroundDecoration) {
+  ClickDeskButton();
+  auto* desk_bar_view =
+      DesksController::Get()->desk_bar_controller()->GetDeskBarView(
+          Shell::GetPrimaryRootWindow());
+  ASSERT_TRUE(desk_bar_view);
+  views::test::RunScheduledLayout(desk_bar_view);
+
+  views::View* background_view = desk_bar_view->background_view();
+  ASSERT_TRUE(background_view);
+  ASSERT_TRUE(background_view->layer());
+  EXPECT_EQ(ui::LAYER_SOLID_COLOR, background_view->layer()->type());
+
+  SystemDecoration* decoration = desk_bar_view->decoration_for_testing();
+  ASSERT_TRUE(decoration);
+  EXPECT_FALSE(decoration->HasShadow());
+  EXPECT_TRUE(decoration->HasHighlightBorder());
+  EXPECT_TRUE(decoration->GetHighlightBorderValueForTesting().has_value());
+  EXPECT_EQ(background_view->GetLocalBounds(), decoration->GetContentBounds());
+  EXPECT_EQ(background_view->layer(), decoration->GetLayer()->parent());
+
+  // Adding a desk animates `background_view->layer()` with a scale transform;
+  // `decoration->GetLayer()` is parented under it so it inherits the transform
+  // and tracks the updated content bounds.
+  gfx::ScopedAnimationDurationScaleMode animation_scale(
+      gfx::ScopedAnimationDurationScaleMode::NON_ZERO_DURATION);
+  LeftClickOn(desk_bar_view->new_desk_button());
+  views::test::RunScheduledLayout(desk_bar_view);
+  EXPECT_FALSE(background_view->layer()->transform().IsIdentity());
+  EXPECT_EQ(background_view->layer(), decoration->GetLayer()->parent());
+  EXPECT_EQ(background_view->GetLocalBounds(), decoration->GetContentBounds());
+  background_view->layer()->GetAnimator()->StopAnimating();
 }
 
 // Tests that metrics are being recorded when a desk animation screenshot is

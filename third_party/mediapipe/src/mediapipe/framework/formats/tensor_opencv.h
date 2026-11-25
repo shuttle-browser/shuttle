@@ -18,7 +18,9 @@
 
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/opencv_core_inc.h"
 
@@ -39,7 +41,7 @@ namespace mediapipe::formats {
 //
 // Usage:
 //   Tensor tensor = ... tensor of shape [10, 20, 3] ...;
-//   MP_ASSIGN_OR_RETURN(TensorMatView view, TensorMatView::Create(tensor));
+//   ABSL_ASSIGN_OR_RETURN(TensorMatView view, TensorMatView::Create(tensor));
 //   // view.mat is a view into the data in tensor with 2 dims and 3 channels.
 //   // view.mat.data points into tensor.GetCpuReadView().buffer<T>().
 absl::StatusOr<cv::Mat> MatView(const Tensor& tensor,

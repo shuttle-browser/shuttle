@@ -78,6 +78,7 @@ import org.chromium.chrome.browser.omnibox.LocationBarCoordinator;
 import org.chromium.chrome.browser.omnibox.LocationBarCoordinatorPhone;
 import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
 import org.chromium.chrome.browser.tasks.tab_management.TabUiThemeUtil;
@@ -98,6 +99,7 @@ import org.chromium.chrome.browser.toolbar.top.CaptureReadinessResult.TopToolbar
 import org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer.ToolbarViewResourceAdapter;
 import org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer.ToolbarViewResourceAdapter.ToolbarInMotionStage;
 import org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer.ToolbarViewResourceCoordinatorLayout;
+import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.browser.ui.vertical_tabs.VerticalTabUtils;
 import org.chromium.components.browser_ui.desktop_windowing.AppHeaderState;
 import org.chromium.components.browser_ui.desktop_windowing.DesktopWindowStateManager;
@@ -178,6 +180,7 @@ public class ToolbarControlContainerTest {
     private ToolbarViewResourceAdapter mAdapter;
     private ToolbarControlContainer mControlContainer;
     private TestActivity mActivity;
+    private OmniboxResourceProvider mOmniboxResourceProvider;
 
     private void makeAdapter() {
         mAdapter =
@@ -242,7 +245,7 @@ public class ToolbarControlContainerTest {
                 mToolbarDataProvider,
                 mDesktopWindowStateManager,
                 mTopControlsStacker);
-        ToolbarControlContainer.ToolbarViewResourceCoordinatorLayout toolbarContainer =
+        ToolbarViewResourceCoordinatorLayout toolbarContainer =
                 mControlContainer.findViewById(R.id.toolbar_container);
         toolbarContainer.setVisibility(View.GONE);
     }
@@ -345,6 +348,8 @@ public class ToolbarControlContainerTest {
     public void before() {
         ResourceFactoryJni.setInstanceForTesting(mResourceFactoryJni);
         mActivity = Robolectric.buildActivity(TestActivity.class).setup().get();
+        mOmniboxResourceProvider =
+                new OmniboxResourceProvider(mActivity, BrandedColorScheme.APP_DEFAULT);
 
         mToolbarContainer = new FrameLayout(mActivity);
         mToolbarHairline = new ToolbarHairlineView(mActivity, /* attrs= */ null);
@@ -1278,7 +1283,8 @@ public class ToolbarControlContainerTest {
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ null,
-                mWindowAndroid);
+                mWindowAndroid,
+                mOmniboxResourceProvider);
 
         mToolbarView.addView(mLocationBarView);
         controlContainer.toggleLocationBarOnlyMode(true);
@@ -1329,7 +1335,7 @@ public class ToolbarControlContainerTest {
                 mToolbarDataProvider,
                 null,
                 mTopControlsStacker);
-        ToolbarControlContainer.ToolbarViewResourceCoordinatorLayout toolbarContainer =
+        ToolbarViewResourceCoordinatorLayout toolbarContainer =
                 controlContainer.findViewById(R.id.toolbar_container);
         toolbarContainer.setVisibility(View.GONE);
 
@@ -1370,7 +1376,7 @@ public class ToolbarControlContainerTest {
                 mToolbarDataProvider,
                 null,
                 mTopControlsStacker);
-        ToolbarControlContainer.ToolbarViewResourceCoordinatorLayout toolbarContainer =
+        ToolbarViewResourceCoordinatorLayout toolbarContainer =
                 controlContainer.findViewById(R.id.toolbar_container);
         toolbarContainer.setVisibility(View.VISIBLE);
         toolbarContainer.layout(0, 0, 1000, 100);

@@ -656,7 +656,7 @@ bool DesignerExample::GrabHandle::OnMouseDragged(const ui::MouseEvent& event) {
 }
 
 void DesignerExample::GrabHandle::PositionOnView() {
-  DCHECK(attached_view_);
+  CHECK(attached_view_, base::NotFatalUntil::M163);
   gfx::RectF view_bounds_f(attached_view_->GetLocalBounds());
   views::View::ConvertRectToTarget(attached_view_, parent(), &view_bounds_f);
   gfx::Rect view_bounds = gfx::ToEnclosingRect(view_bounds_f);
@@ -790,7 +790,7 @@ DesignerExample::DesignerExample() : ExampleBase("Designer") {}
 
 DesignerExample::~DesignerExample() {
   if (tracker_.view()) {
-    inspector_->SetModel(nullptr);
+    inspector_->ClearModel();
   }
 }
 
@@ -834,13 +834,14 @@ void DesignerExample::CreateExampleView(View* container) {
                                   base::Unretained(this)))
                               .SetText(u"Add"),
                           TableView::CreateScrollViewBuilderWithTable(
-                              Builder<TableView>()
+                              Builder<TableView>(
+                                  std::make_unique<TableView>(
+                                      this,
+                                      std::vector<ui::TableColumn>{
+                                          MakeColumn(0, u"Name", true),
+                                          MakeColumn(1, u"Value", false)},
+                                      views::TableType::kTextOnly, true))
                                   .CopyAddressTo(&inspector_)
-                                  .SetColumns({MakeColumn(0, u"Name", true),
-                                               MakeColumn(1, u"Value", false)})
-                                  .SetModel(this)
-                                  .SetTableType(views::TableType::kTextOnly)
-                                  .SetSingleSelection(true)
                                   .SetObserver(this))
                               .CopyAddressTo(&inspector_scroller_)
                               .SetPreferredSize(gfx::Size(250, 400)))))
@@ -993,7 +994,7 @@ void DesignerExample::HandleDesignerMouseEvent(ui::Event* event) {
     case ui::EventType::kMousePressed:
       if (mouse_event->IsOnlyLeftMouseButton()) {
         designer_panel_->RequestFocus();
-        DCHECK(!dragging_);
+        CHECK(!dragging_, base::NotFatalUntil::M163);
         View* target_view = static_cast<View*>(event->target());
         if (grab_handles_.IsGrabHandle(target_view)) {
           dragging_ = target_view;

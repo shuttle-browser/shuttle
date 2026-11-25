@@ -19,7 +19,6 @@
 #include "components/browser_sync/browser_sync_switches.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/base/signin_prefs.h"
-#include "components/sync/base/features.h"
 #include "components/sync/service/sync_service_impl.h"
 #include "components/sync/test/fake_server.h"
 #include "content/public/test/browser_test.h"
@@ -78,12 +77,7 @@ class SingleClientExtensionsSyncTest
     : public SyncTest,
       public testing::WithParamInterface<SyncTest::SetupSyncMode> {
  public:
-  SingleClientExtensionsSyncTest() : SyncTest(SINGLE_CLIENT) {
-    if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
-      scoped_feature_list_.InitAndEnableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    }
-  }
+  SingleClientExtensionsSyncTest() : SyncTest(SINGLE_CLIENT) {}
   ~SingleClientExtensionsSyncTest() override = default;
 
   SyncTest::SetupSyncMode GetSetupSyncMode() const override {
@@ -91,8 +85,6 @@ class SingleClientExtensionsSyncTest
   }
 
  private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-
   // TODO(https://crbug.com/40804030): Remove when these tests use only MV3
   // extensions.
   extensions::ScopedTestMV2Enabler mv2_enabler_;
@@ -190,15 +182,8 @@ class SingleClientExtensionsMigrateSyncingUserToSignedInSyncTest
  public:
   SingleClientExtensionsMigrateSyncingUserToSignedInSyncTest()
       : SyncTest(SINGLE_CLIENT) {
-    std::vector<base::test::FeatureRef> enabled_features = {
-        syncer::kReplaceSyncPromosWithSignInPromos};
-    std::vector<base::test::FeatureRef> disabled_features;
-    if (content::IsPreTest()) {
-      disabled_features.push_back(switches::kMigrateSyncingUserToSignedIn);
-    } else {
-      enabled_features.push_back(switches::kMigrateSyncingUserToSignedIn);
-    }
-    scoped_feature_list_.InitWithFeatures(enabled_features, disabled_features);
+    scoped_feature_list_.InitWithFeatureState(
+        switches::kMigrateSyncingUserToSignedIn, !content::IsPreTest());
   }
 
   // The value doesn't matter, since the tests use SetupSyncWithMode(..) to
@@ -332,27 +317,18 @@ IN_PROC_BROWSER_TEST_F(
           ->GetAccountExtensionType(extensions_helper::GetExtensionId(0)));
 }
 
-class SingleClientExtensionsExplicitSigninSyncTest
-    : public SyncTest,
-      public testing::WithParamInterface<bool> {
+class SingleClientExtensionsExplicitSigninSyncTest : public SyncTest {
  public:
-  SingleClientExtensionsExplicitSigninSyncTest() : SyncTest(SINGLE_CLIENT) {
-    feature_list_.InitWithFeatureState(
-        syncer::kReplaceSyncPromosWithSignInPromos,
-        !content::IsPreTest() && !GetParam());
-  }
+  SingleClientExtensionsExplicitSigninSyncTest() : SyncTest(SINGLE_CLIENT) {}
 
   // The value doesn't matter, since the tests use SetupSyncWithMode(..) to
   // explicitly pick Sync-the-feature or Sync-the-transport.
   SyncTest::SetupSyncMode GetSetupSyncMode() const override {
     return SetupSyncMode::kSyncTheFeature;
   }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
 };
 
-IN_PROC_BROWSER_TEST_P(SingleClientExtensionsExplicitSigninSyncTest,
+IN_PROC_BROWSER_TEST_F(SingleClientExtensionsExplicitSigninSyncTest,
                        PRE_ExtensionsEnabledDefaultValue) {
   ASSERT_TRUE(SignIn());
 
@@ -365,105 +341,22 @@ IN_PROC_BROWSER_TEST_P(SingleClientExtensionsExplicitSigninSyncTest,
       syncer::UserSelectableType::kExtensions));
 }
 
-IN_PROC_BROWSER_TEST_P(SingleClientExtensionsExplicitSigninSyncTest,
+IN_PROC_BROWSER_TEST_F(SingleClientExtensionsExplicitSigninSyncTest,
                        ExtensionsEnabledDefaultValue) {
   ASSERT_TRUE(SetupClients());
   ASSERT_TRUE(GetClient(0)->AwaitSyncTransportActive());
 
-  // If `kReplaceSyncPromosWithSignInPromos` is disabled (param=true), syncing
-  // extensions is turned off by default for pre-existing sessions. If
-  // `kReplaceSyncPromosWithSignInPromos` is enabled (param=false), then
-  // extensions should be on by default.
-  EXPECT_NE(GetParam(),
-            GetSyncService(0)->GetUserSettings()->GetSelectedTypes().Has(
-                syncer::UserSelectableType::kExtensions));
-}
-
-IN_PROC_BROWSER_TEST_P(SingleClientExtensionsExplicitSigninSyncTest,
-                       ExtensionsEnabledAfterSignIn) {
-  // When the user signs in after the flags were enabled, extensions should
-  // always be available. See
-  // `PrimaryAccountManager::SetExplicitBrowserSigninPrefs()`.
-  ASSERT_TRUE(SignIn());
-
-  EXPECT_TRUE(GetSyncService(0)->GetUserSettings()->GetSelectedTypes().Has(
-      syncer::UserSelectableType::kExtensions));
-}
-
-INSTANTIATE_TEST_SUITE_P(All,
-                         SingleClientExtensionsExplicitSigninSyncTest,
-                         testing::Bool());
-
-class SingleClientExtensionsExplicitSigninTransitionTest : public SyncTest {
- public:
-  SingleClientExtensionsExplicitSigninTransitionTest()
-      : SyncTest(SINGLE_CLIENT) {
-    const std::string test_name =
-        testing::UnitTest::GetInstance()->current_test_info()->name();
-
-    if (test_name.starts_with("PRE_PRE_")) {
-      // Stage 1: Main feature OFF.
-      feature_list_.InitAndDisableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    } else if (test_name.starts_with("PRE_")) {
-      // Stage 2: Main feature ON.
-      feature_list_.InitAndEnableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    } else {
-      // Stage 3: Main feature OFF again.
-      feature_list_.InitAndDisableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    }
-  }
-
-  SyncTest::SetupSyncMode GetSetupSyncMode() const override {
-    return SetupSyncMode::kSyncTransportOnly;
-  }
-
- protected:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(SingleClientExtensionsExplicitSigninTransitionTest,
-                       PRE_PRE_ExplicitSigninForExtensionsOffToOn) {
-  ASSERT_FALSE(
-      base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos));
-  ASSERT_TRUE(SignIn());
-
-  // Simulate signing in before explicit sign-in for extensions was launched.
-  const GaiaId gaia_id = GetSyncService(0)->GetSyncAccountInfoForPrefs().gaia;
-  SigninPrefs(*GetProfile(0)->GetPrefs())
-      .SetExtensionsExplicitBrowserSignin(gaia_id, false);
-
-  // If `kReplaceSyncPromosWithSignInPromos` is disabled, syncing extensions is
-  // turned off for pre-existing sessions.
+  // Syncing extensions is turned off by default for pre-existing sessions.
   EXPECT_FALSE(GetSyncService(0)->GetUserSettings()->GetSelectedTypes().Has(
       syncer::UserSelectableType::kExtensions));
 }
 
-IN_PROC_BROWSER_TEST_F(SingleClientExtensionsExplicitSigninTransitionTest,
-                       PRE_ExplicitSigninForExtensionsOffToOn) {
-  ASSERT_TRUE(
-      base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos));
-  ASSERT_TRUE(SetupClients());
-  ASSERT_TRUE(GetClient(0)->AwaitSyncTransportActive());
+IN_PROC_BROWSER_TEST_F(SingleClientExtensionsExplicitSigninSyncTest,
+                       ExtensionsEnabledAfterSignIn) {
+  // When the user signs in, extensions should always be available. See
+  // `PrimaryAccountManager::SetExplicitBrowserSigninPrefs()`.
+  ASSERT_TRUE(SignIn());
 
-  // For the user group with `kReplaceSyncPromosWithSignInPromos` enabled,
-  // extensions are enabled for pre-existing sessions and do not require new
-  // sign-in.
-  EXPECT_TRUE(GetSyncService(0)->GetUserSettings()->GetSelectedTypes().Has(
-      syncer::UserSelectableType::kExtensions));
-}
-
-IN_PROC_BROWSER_TEST_F(SingleClientExtensionsExplicitSigninTransitionTest,
-                       ExplicitSigninForExtensionsOffToOn) {
-  ASSERT_FALSE(
-      base::FeatureList::IsEnabled(syncer::kReplaceSyncPromosWithSignInPromos));
-  ASSERT_TRUE(SetupClients());
-  ASSERT_TRUE(GetClient(0)->AwaitSyncTransportActive());
-
-  // Disabling `kReplaceSyncPromosWithSignInPromos` afterwards should not impact
-  // syncing extensions.
   EXPECT_TRUE(GetSyncService(0)->GetUserSettings()->GetSelectedTypes().Has(
       syncer::UserSelectableType::kExtensions));
 }

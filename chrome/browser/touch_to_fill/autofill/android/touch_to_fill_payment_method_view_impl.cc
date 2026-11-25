@@ -43,10 +43,9 @@ namespace autofill {
 
 namespace {
 
-static base::android::ScopedJavaLocalRef<jobject>
+base::android::ScopedJavaLocalRef<jobject>
 ConvertBnplIssuerTosDetailToJavaObject(
     JNIEnv* env,
-    const jni_zero::JavaRef<jobject>& obj,
     const payments::BnplIssuerTosDetail& bnpl_issuer_tos_detail) {
   return Java_BnplIssuerTosDetail_Constructor(
       env,
@@ -59,7 +58,7 @@ ConvertBnplIssuerTosDetailToJavaObject(
 
 // TODO(crbug.com/449764859): Refactor BnplIssuerContext to use JNI type
 // converters.
-static base::android::ScopedJavaLocalRef<jobject>
+base::android::ScopedJavaLocalRef<jobject>
 CreateJavaBnplIssuerContextFromNative(
     JNIEnv* env,
     const payments::BnplIssuerContext& bnpl_issuer_context,
@@ -83,7 +82,7 @@ CreateJavaBnplIssuerContextFromNative(
 TouchToFillPaymentMethodViewImpl::TouchToFillPaymentMethodViewImpl(
     content::WebContents* web_contents)
     : web_contents_(web_contents) {
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M163);
 }
 
 TouchToFillPaymentMethodViewImpl::~TouchToFillPaymentMethodViewImpl() {
@@ -101,7 +100,7 @@ bool TouchToFillPaymentMethodViewImpl::IsReadyToShow(
     return false;  // No window attached (yet or anymore).
   }
 
-  DCHECK(controller);
+  CHECK(controller, base::NotFatalUntil::M163);
   base::android::ScopedJavaLocalRef<jobject> java_controller =
       controller->GetJavaObject();
   if (!java_controller)
@@ -131,7 +130,7 @@ bool TouchToFillPaymentMethodViewImpl::ShowPaymentMethods(
       base::ToVector(suggestions, [&](const Suggestion& suggestion) {
         CHECK_GT(suggestion.labels.size(), 0U);
         CHECK_EQ(suggestion.labels[0].size(), 1U);
-        std::u16string secondarySubLabel =
+        std::u16string secondary_sub_label =
             suggestion.labels.size() > 1 && suggestion.labels[1].size() > 0 &&
                     !suggestion.labels[1][0].value.empty()
                 ? suggestion.labels[1][0].value
@@ -151,7 +150,7 @@ bool TouchToFillPaymentMethodViewImpl::ShowPaymentMethods(
         }
         return Java_TouchToFillPaymentMethodViewBridge_createAutofillSuggestion(
             env, suggestion.main_text.value, minor_text,
-            suggestion.labels[0][0].value, secondarySubLabel,
+            suggestion.labels[0][0].value, secondary_sub_label,
             std::to_underlying(suggestion.type),
             custom_icon_url ? url::GURLAndroid::FromNativeGURL(
                                   env, custom_icon_url->value())
@@ -307,8 +306,7 @@ bool TouchToFillPaymentMethodViewImpl::ShowBnplIssuerTos(
 
   Java_TouchToFillPaymentMethodViewBridge_showBnplIssuerTos(
       env, java_object_,
-      ConvertBnplIssuerTosDetailToJavaObject(env, java_object_,
-                                             bnpl_issuer_tos_detail));
+      ConvertBnplIssuerTosDetailToJavaObject(env, bnpl_issuer_tos_detail));
 
   return true;
 }

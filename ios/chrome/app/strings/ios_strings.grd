@@ -260,6 +260,15 @@
       <message name="IDS_IOS_ACCOUNT_PICKER_SUBMIT_TAPPED_ACCESSIBILITY_LABEL" is_accessibility_with_no_ui="true" desc="Accessibility label of the Submit button after it is tapped, during which a spinner replaces the button text. This is spoken by VoiceOver. [iOS only]" meaning="Accessibility label of the Submit button after it is tapped, during which a spinner replaces the button text. This is spoken by VoiceOver. [iOS only]">
         Action in progress…
       </message>
+      <message name="IDS_IOS_ACCOUNT_SWITCHING_PROMO_SUBTITLE" desc="Subtitle of the Smart Account Switching startup promo asking the user if they want to switch to their recommended Google Account. [iOS only]">
+        Switch to <ph name="EMAIL">$1<ex>elisa2@gmail.com</ex></ph> to seamlessly share tabs between your devices and get your passwords, bookmarks, and more from your Google Account.
+      </message>
+      <message name="IDS_IOS_ACCOUNT_SWITCHING_PROMO_TITLE" desc="Title of the Smart Account Switching startup promo asking the user if they want to switch to their recommended Google Account. [iOS only]">
+        Pick up where you left off
+      </message>
+      <message name="IDS_IOS_ACCOUNT_SWITCHING_PROMO_TITLE_FOR_DEVICE_TYPE" desc="Title of the Smart Account Switching startup promo asking the user if they want to switch to their recommended Google Account when it was used on a computer. [iOS only]">
+        Pick up where you left off on your computer
+      </message>
       <message name="IDS_IOS_ACCOUNT_TABLE_ERROR_ENTER_PASSPHRASE_BUTTON" desc="Label for the button to open the passphrase dialog from the accounts table. [iOS only]">
         Enter passphrase…
       </message>
@@ -271,6 +280,12 @@
       </message>
       <message name="IDS_IOS_ACCOUNT_TABLE_ERROR_VERIFY_ITS_YOU_BUTTON" desc="Label for the button to show the trusted vault reauthentication dialog. [iOS only]">
         Verify it's you…
+      </message>
+      <message name="IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_EMAIL_GOOGLE_MEMBERSHIP" is_accessibility_with_no_ui="true" desc="The accessibility label for the account item when the user has a Google membership and the user's name is not available. [iOS only]">
+        <ph name="EMAIL">$1<ex>john.doe@example.com</ex></ph>, Google membership.
+      </message>
+      <message name="IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_NAME_AND_EMAIL_GOOGLE_MEMBERSHIP" is_accessibility_with_no_ui="true" desc="The accessibility label for the account item when the user has a Google membership. [iOS only]">
+        <ph name="NAME">$1<ex>John Doe</ex></ph>, <ph name="EMAIL">$2<ex>john.doe@example.com</ex></ph>, Google membership.
       </message>
       <message name="IDS_IOS_ACCOUNT_UNIFIED_CONSENT_ADD_ACCOUNT" desc="Title of the button to add an account [Length: 15m] [iOS only]">
         Add account
@@ -346,6 +361,12 @@
       </message>
       <message name="IDS_IOS_ACTOR_HEADER_TASK_STOPPED" desc="Title of the minimized actuation header when the user stopped the task. The task title is displayed below it. [iOS only]">
         Task stopped
+      </message>
+      <message name="IDS_IOS_ACTOR_INPUT_PLATE_PLACEHOLDER" desc="Placeholder shown in the empty text field where the user types an answer to the actor while it performs a task for them. [iOS only]">
+        Answer
+      </message>
+      <message name="IDS_IOS_ACTOR_INPUT_PLATE_SEND_ACCESSIBILITY_LABEL" desc="Accessibility label, read by VoiceOver, of the icon-only button that sends the text the user typed in reply to the actor. [iOS only]">
+        Send
       </message>
       <message name="IDS_IOS_ACTOR_WORKLOG_CHIP_CLICKING" desc="Worklog chip label indicating the actor is clicking an element on the page. [iOS only]">
         Clicking
@@ -452,6 +473,9 @@
       <message name="IDS_IOS_AGE_MISMATCH_SUBTITLE_PART2" desc="Second part of the explanatory body copy in a full-screen notice. Suggests checking the age in the Apple Account if the user is not a child. Align ‘you may want to check the age` phrasing with TC ID 2620449093380639180.">
         If you're not a child, you may want to check the age in the Apple Account on this device. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn more<ph name="END_LINK">END_LINK</ph>
       </message>
+      <message name="IDS_IOS_AIM_CLOSE_BUTTON_ACCESSIBILITY_LABEL" is_accessibility_with_no_ui="true" desc="The accessibility label for the close button in the AI Mode header. [iOS only]">
+        Close AI Mode
+      </message>
       <message name="IDS_IOS_AIM_CLOSE_SNACKBAR_TITLE" desc="Title of the AIM assistant close confirmation snackbar.">
         Thread closed
       </message>
@@ -487,6 +511,9 @@
       </message>
       <message name="IDS_IOS_AI_HUB_GEMINI_UNAVAILABLE_ENTERPRISE_LABEL" desc="The message displayed in the footer for the Gemini entry point of the AI hub whenever it is unavailable because of enterprise policies.">
         Gemini is turned off for your account. Contact your admin for more information.
+      </message>
+      <message name="IDS_IOS_AI_HUB_GEMINI_UNAVAILABLE_INCOGNITO_LABEL" desc="The message displayed in the footer for the Gemini entry point of the AI hub whenever it is unavailable because the user is in Incognito mode.">
+        Gemini is not available in Incognito mode
       </message>
       <message name="IDS_IOS_AI_HUB_HIDE_BUTTON_LABEL" desc="The button label for hiding feature entry points in the AI hub.">
         Turn off
@@ -775,9 +802,6 @@
            =1 {{count} option for address available above your keyboard.}
            other {{count} options for address available above your keyboard.}}
       </message>
-      <message name="IDS_IOS_AUTOFILL_ADD_ADDRESS_BUTTON_TEXT" desc="Button text for adding an address from Addresses and more screen of Settings [iOS only]">
-        Address
-      </message>
       <message name="IDS_IOS_AUTOFILL_ADMIN_LEVEL2" desc="Title of the field of a profile address representing the administrative area level 2. A sub-division of a state, e.g. a Municipio in Brazil or Mexico. [Length: 15em] [iOS only]">
         Municipality
       </message>
@@ -799,9 +823,6 @@
       <message name="IDS_IOS_AUTOFILL_AI_INFO_SAVED_TO_WALLET_ACCESSIBILITY_LABEL" desc="Accessible label announced by the screenreader for a checkmark shown on autofill ai entity form for when the ai entity has been saved or updated to wallet successfully.">
           Info saved to Google Wallet
      </message>
-      <message name="IDS_IOS_AUTOFILL_AI_OTHER_TITLE" desc="Title for the other section in Addresses and more page for entities that are not identity docs, nor travel docs. [iOS only]">
-        Other
-      </message>
       <message name="IDS_IOS_AUTOFILL_AI_PREVIOUSLY_FILLED_SECTION_TITLE" desc="Title for the previously filled section in the Autofill AI suggestions popup. [iOS only]">
         Previously filled
       </message>
@@ -831,9 +852,6 @@
       </message>
       <message name="IDS_IOS_AUTOFILL_AI_REMOVE_UNDO_ACTION" desc="Button text on the snackbar to undo removing an Autofill AI suggestion. [iOS only]">
         Undo
-      </message>
-      <message name="IDS_IOS_AUTOFILL_AI_SAVED_LOCALLY_FOOTER" desc="The notice text displayed in the footer when the Autofill AI entity (ex. Passport, Vehicle info etc.) is saved locally. [iOS only]">
-          Your info is saved to your device
       </message>
       <message name="IDS_IOS_AUTOFILL_AI_SAVED_TO_WALLET_FOOTER" desc="The notice text displayed in the footer when the Autofill AI entity (ex. Passport, Vehicle info etc.) are saved to Google Wallet. [iOS only]">
           Your info is saved to Google Wallet for <ph name="USER_EMAIL">$1<ex>peter.parker@gmail.com</ex></ph>. You can use it across Google products to fill forms faster.
@@ -867,12 +885,6 @@
       </message>
       <message name="IDS_IOS_AUTOFILL_AI_SAVE_VEHICLE_ENTITY_DIALOG_TITLE" desc="The title of a dialog that prompts the user to save information they just filled in on a form. For example, the user has filled in details related to their car. When they click Submit, we offer to save the data in Chrome. Depending on the form and what Chrome recognizes, there might be just one or several pieces of data saved at this moment. This is a similar moment to saving a password or credit card with Chrome.">
       Save vehicle
-      </message>
-      <message name="IDS_IOS_AUTOFILL_AI_SOURCES_FALLBACK_GMAIL_MESSAGE" desc="Fallback label for a Gmail source in the Autofill AI sources bottom sheet when the email subject is unavailable. [iOS only]">
-        Gmail message <ph name="INDEX">$1<ex>1</ex></ph>
-      </message>
-      <message name="IDS_IOS_AUTOFILL_AI_SOURCES_FALLBACK_SAVED_PHOTO" desc="Fallback label for a Google Photos source in the Autofill AI sources bottom sheet when the photo title is unavailable. [iOS only]">
-        Saved photo <ph name="INDEX">$1<ex>1</ex></ph>
       </message>
       <message name="IDS_IOS_AUTOFILL_AI_SOURCES_GMAIL_SECTION_TITLE" desc="Section title for Gmail sources in the Autofill AI sources bottom sheet. [iOS only]">
         Gmail
@@ -1716,9 +1728,6 @@
       <message name="IDS_IOS_BWG_PROMO_SECOND_BOX_TITLE" desc="Second box title text for the Gemini Promo page.">
           Summarize
       </message>
-      <message name="IDS_IOS_BWG_SETTINGS_APP_ACTIVITY_TITLE" desc="The title text of app activity row in BWG settings page.">
-        Gemini App Activity
-      </message>
       <message name="IDS_IOS_BWG_SETTINGS_EXTENSIONS_TITLE" desc="The title text of extensions row in BWG settings page.">
         Connected apps
       </message>
@@ -1905,6 +1914,9 @@
       <message name="IDS_IOS_COMPOSEBOX_ATTACHMENT_IMAGE_INDEXED_ACCESSIBILITY_LABEL" desc="The accessibility announcement read by Voice Over for a image attachment in AI Mode input plate, with its index. Example: `Attached image 1` for the first attached image. [iOS only].">
         Attached image {index}
       </message>
+      <message name="IDS_IOS_COMPOSEBOX_ATTACHMENT_IMAGE_NAMED_ACCESSIBILITY_LABEL" is_accessibility_with_no_ui="true" desc="The accessibility announcement prefix read by Voice Over for an image attachment in AI Mode input plate, with its name. [iOS only].">
+        Attached image {title}
+      </message>
       <message name="IDS_IOS_COMPOSEBOX_ATTACHMENT_TAB_ACCESSIBILITY_LABEL" desc="The accessibility announcement prefix read by Voice Over for a tab attachment in AI Mode input plate. [iOS only].">
         Attached tab {title}
       </message>
@@ -1982,6 +1994,9 @@
       </message>
       <message name="IDS_IOS_COMPOSEBOX_MENU_SUBITITLE_IMAGE_GENERATION" desc="The Composebox menu option subtitle for image generation. [iOS only].">
         Visualize and edit
+      </message>
+      <message name="IDS_IOS_COMPOSEBOX_MENU_SUBTITLE_PTM" translateable="false" desc="The Composebox menu option subtitle for the PTM tool. [iOS only].">
+        Get things done
       </message>
       <message name="IDS_IOS_COMPOSEBOX_MENU_TAB_NO_LONGER_SHARED" desc="Message shown in a snackbar after a tab is removed from the shared list. [iOS only].">
         Tab removed
@@ -2246,9 +2261,6 @@
       </message>
       <message name="IDS_IOS_CONTENT_SETTINGS_TITLE" desc="Title for content settings dialog [Length: 29em] [iOS only]">
         Content settings
-      </message>
-      <message name="IDS_IOS_CONTENT_SUGGESTIONS_ACCESSIBILITY_LABEL_SUGGESTION" desc="The accessibility label of a suggestion. Summarizes fields in the reading list entry (title, publisher informations, status and informations). Read by Text-to-Speech.">
-        <ph name="TITLE"><ex>Learn about the new Chromium projects</ex>$1</ph>, <ph name="PUBLISHER_INFORMATION"><ex>The Chromium organization</ex>$2</ph>, <ph name="PUBLICATION_DATE"><ex>January 1 2017</ex>$3</ph>
       </message>
       <message name="IDS_IOS_CONTENT_SUGGESTIONS_ADD_PINNED_SITE" desc="The title of the button to add a pinned site on the new tab page [Length: 10em]">
         Add Site
@@ -2734,6 +2746,9 @@ To continue from your computer, switch to <ph name="OTHER_EMAIL">$2<ex>john.doe@
       </message>
       <message name="IDS_IOS_DELETE_BROWSING_DATA_SUMMARY_SITE_DATA" desc="Summary of the site data to be deleted when deleting browsing data. Should be lower case since it's shown in a list of browsing data items descriptions. [iOS only]">
        site data
+      </message>
+      <message name="IDS_IOS_DELETE_BROWSING_DATA_SUMMARY_SITE_SETTINGS" desc="Summary of the site settings (per-site permissions and content settings exceptions, such as camera, microphone or pop-up access) to be deleted when deleting browsing data. Should be lower case since it's shown in a list of browsing data items descriptions. [iOS only]">
+        site settings
       </message>
       <message name="IDS_IOS_DELETE_BROWSING_DATA_SUMMARY_SUGGESTIONS" desc="Summary of the suggestions to be deleted when deleting browsing data. [iOS only]">
        {COUNT, plural,
@@ -3601,22 +3616,22 @@ To continue from your computer, switch to <ph name="OTHER_EMAIL">$2<ex>john.doe@
         Expanded
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_CONNECTED_SERVICES_BODY" desc="Connected services body text for the Gemini Consent page.">
-        To provide tailored help, Gemini shares some of your data (like parts of your chats, location, and other relevant info) with other Google services, like Maps and Flights. These services may use that info to improve, even if you later delete your Gemini Apps activity. Learn more in the <ph name="BEGIN_LINK">BEGIN_LINK</ph>Gemini Apps Privacy Hub<ph name="END_LINK">END_LINK</ph>.
+        To provide tailored help, Gemini shares some of your data (like parts of your chats, location, and other relevant info) with other Google services, like Maps and Flights. These services may use that info to improve, even if you later delete your Gemini history. Learn more in the <ph name="BEGIN_LINK">BEGIN_LINK</ph>Gemini Apps Privacy Hub<ph name="END_LINK">END_LINK</ph>.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_CONNECTED_SERVICES_TITLE" desc="Connected services title text for the Gemini Consent page.">
         Gemini works with other services
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_DATA_GORVERNANCE_MANAGED_BODY" desc="Enterprise body text for the Gemini Consent page for managed accounts.">
-          Neither your conversations with Gemini nor your <ph name="BEGIN_LINK">BEGIN_LINK</ph>Google Workspace data<ph name="END_LINK">END_LINK</ph> will be reviewed or used to improve generative AI models.
+          Neither your conversations with Gemini nor your <ph name="BEGIN_LINK">BEGIN_LINK</ph>Google Workspace data<ph name="END_LINK">END_LINK</ph> will be reviewed or used to train generative AI models.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_DATA_GORVERNANCE_MANAGED_TITLE" desc="Enterprise title text for the Gemini Consent page for managed accounts.">
           Your organization's data is private and secure
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_DATA_GORVERNANCE_NON_MANAGED_BODY" desc="Data governance body text for the Gemini Consent page for non managed accounts.">
-          Chats are reviewed and used to improve Google AI. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>manage your activity<ph name="END_LINK">END_LINK</ph>, including info about your location. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn more about your choices<ph name="END_LINK">END_LINK</ph>.
+          Chats are reviewed and used to train generative AI models. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>manage your history<ph name="END_LINK">END_LINK</ph>, including <ph name="BEGIN_LINK">BEGIN_LINK</ph>info about your location<ph name="END_LINK">END_LINK</ph>. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn more about your choices<ph name="END_LINK">END_LINK</ph>.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_DATA_GORVERNANCE_NON_MANAGED_TITLE" desc="Data governance title text for the Gemini Consent page for non managed accounts.">
-          Your activity improves Google AI
+          Your data helps train generative AI
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_FOOTNOTE_TEXT" desc="Format string for the Gemini consent footnote.">
           <ph name="BEGIN_LINK">BEGIN_LINK</ph>Google Terms<ph name="END_LINK">END_LINK</ph> and the <ph name="BEGIN_LINK">BEGIN_LINK</ph>Gemini Apps Privacy Notice<ph name="END_LINK">END_LINK</ph> apply. Gemini is AI and can make mistakes, including about people.
@@ -3625,10 +3640,10 @@ To continue from your computer, switch to <ph name="OTHER_EMAIL">$2<ex>john.doe@
           Our <ph name="BEGIN_LINK">BEGIN_LINK</ph>Terms<ph name="END_LINK">END_LINK</ph>, <ph name="BEGIN_LINK">BEGIN_LINK</ph>Korean Location Terms<ph name="END_LINK">END_LINK</ph>, and <ph name="BEGIN_LINK">BEGIN_LINK</ph>Privacy Notice<ph name="END_LINK">END_LINK</ph> apply. Gemini is AI and can make mistakes, including about people.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_FOOTNOTE_TEXT_SOUTH_KOREA_STRICT" desc="Format string for the Gemini consent footnote for accounts in South Korea for strict mode.">
-        Our <ph name="BEGIN_LINK">BEGIN_LINK</ph>Terms<ph name="END_LINK">END_LINK</ph>, <ph name="BEGIN_LINK">BEGIN_LINK</ph>Korean Location Terms<ph name="END_LINK">END_LINK</ph>, and <ph name="BEGIN_LINK">BEGIN_LINK</ph>Privacy Notice<ph name="END_LINK">END_LINK</ph> apply. Chats are reviewed and used to improve Google AI. Gemini is AI and can make mistakes, including about people. Some content may not be suitable for everyone. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>manage your activity<ph name="END_LINK">END_LINK</ph>, including info about your location. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn more about your choices<ph name="END_LINK">END_LINK</ph>
+        Our <ph name="BEGIN_LINK">BEGIN_LINK</ph>Terms<ph name="END_LINK">END_LINK</ph>, <ph name="BEGIN_LINK">BEGIN_LINK</ph>Korean Location Terms<ph name="END_LINK">END_LINK</ph>, and <ph name="BEGIN_LINK">BEGIN_LINK</ph>Privacy Notice<ph name="END_LINK">END_LINK</ph> apply. Chats are reviewed and used to train generative AI models. Gemini is AI and can make mistakes, including about people. Some content may not be suitable for everyone. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>manage your history<ph name="END_LINK">END_LINK</ph>, including <ph name="BEGIN_LINK">BEGIN_LINK</ph>info about your location<ph name="END_LINK">END_LINK</ph>. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn more about your choices<ph name="END_LINK">END_LINK</ph>
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_FOOTNOTE_TEXT_STRICT" desc="Format string for the Gemini consent footnote for strict mode.">
-        Gemini is AI and can make mistakes, including about people. Some content may not be suitable for everyone. Chats are reviewed and used to improve Google AI. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn about your choices<ph name="END_LINK">END_LINK</ph>. Our <ph name="BEGIN_LINK">BEGIN_LINK</ph>Terms<ph name="END_LINK">END_LINK</ph> and <ph name="BEGIN_LINK">BEGIN_LINK</ph>Privacy Notice<ph name="END_LINK">END_LINK</ph> apply.
+        Gemini is AI and can make mistakes, including about people. Some content may not be suitable for everyone. Chats are reviewed and used to train generative AI models. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>manage your history<ph name="END_LINK">END_LINK</ph>, including <ph name="BEGIN_LINK">BEGIN_LINK</ph>info about your location<ph name="END_LINK">END_LINK</ph>. <ph name="BEGIN_LINK">BEGIN_LINK</ph>Learn about your choices<ph name="END_LINK">END_LINK</ph>. Our <ph name="BEGIN_LINK">BEGIN_LINK</ph>Terms<ph name="END_LINK">END_LINK</ph> and <ph name="BEGIN_LINK">BEGIN_LINK</ph>Privacy Notice<ph name="END_LINK">END_LINK</ph> apply.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_FOOTNOTE_US_ONLY_ADDITION" desc="US-only footer addition message.">
           Some content may not be suitable for everyone.
@@ -3652,22 +3667,25 @@ To continue from your computer, switch to <ph name="OTHER_EMAIL">$2<ex>john.doe@
           Get more relevant answers by sharing your tabs
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_1" desc="Body of part 1 for the strict data governance row.">
-        Google collects your chats and what you share with Gemini (like files, videos, screens, and photos). It also collects your feedback, info from websites you visit with Gemini, product usage, and location info (including your device’s general location, IP address, or Home or Work addresses in your Google Account).
+        Your chats will be saved in your Gemini History. History includes your audio, Gemini Live videos &amp; screenshares, what you share with Gemini (like prompts, <ph name="BEGIN_LINK">BEGIN_LINK</ph>attachments<ph name="END_LINK">END_LINK</ph>, and <ph name="BEGIN_LINK">BEGIN_LINK</ph>screens<ph name="END_LINK">END_LINK</ph>), Gemini’s responses, tasks and tool calls, feedback, info from websites you visit with Gemini, product usage data, your device’s general location, IP address, and Home or Work addresses in your Google Account. It can also include data from apps you connect to Gemini.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_2" desc="Body of part 2 for the strict data governance row.">
-        Your <ph name="BEGIN_LINK">BEGIN_LINK</ph>Keep Activity<ph name="END_LINK">END_LINK</ph> setting is off by default. When it’s off, Google saves your chats for 3 days. It uses them to make Gemini Apps work correctly, help keep them safe, and use your feedback to fix problems. You can turn on Keep Activity to help improve Google AI for everyone.
+        Your history is automatically deleted after 18 months. You can change this time period in Settings. Chats reviewed by service providers are separated from your account and kept for up to 3 years. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>turn off<ph name="END_LINK">END_LINK</ph> your History setting anytime.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_3" desc="Body of part 3 for the strict data governance row.">
-        When it’s on, your activity is saved in Gemini Apps Activity for 18 months, which you can change to 3 or 36 months. Google uses your activity to develop and improve its services (including Gemini models) as well as to protect Google, its users, and the public with the help of human reviewers. Data reviewed by service providers is disconnected from your account and saved for 3 years.
+        Google uses your history to provide its services, protect Google, its users, and the public, and develop and improve its services with the help of human reviewers. Don’t include info you wouldn’t want reviewed or used.
+      </message>
+      <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_4" desc="Body of part 4 for the strict data governance row.">
+        If you’re 18 or over, Google also uses your history to <ph name="BEGIN_LINK">BEGIN_LINK</ph>train generative AI models<ph name="END_LINK">END_LINK</ph>. You can <ph name="BEGIN_LINK">BEGIN_LINK</ph>turn this off<ph name="END_LINK">END_LINK</ph> for future chats anytime.
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_SUBTITLE_1" desc="Title of part 1 for the strict data governance row.">
-        What activity is collected
+        What chat history is saved
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_SUBTITLE_2" desc="Title of part 2 for the strict data governance row.">
-        If you’re under 18
+        How your history is used
       </message>
       <message name="IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_TITLE" desc="Title text for the strict data governance row.">
-        Your data improves Google AI
+        Your data helps train generative AI
       </message>
       <message name="IDS_IOS_GEMINI_FIRST_ACTUATION_STEP_SUBTITLE" desc="Subtitle disclaimer shown in the initial step of the actuation worklog explaining Gemini usage responsibility. [iOS only]">
         Use Gemini carefully and take control if needed. You are responsible for Gemini's actions during tasks.
@@ -3813,11 +3831,14 @@ To continue from your computer, switch to <ph name="OTHER_EMAIL">$2<ex>john.doe@
       <message name="IDS_IOS_GEMINI_SETTINGS_EDIT_PROMPT" desc="Title for the button in the contextual cue settings sheet that opens the Gemini floaty with the contextual cue prompt pre-filled so the user can edit it.">
         Edit prompt
       </message>
+      <message name="IDS_IOS_GEMINI_SETTINGS_EDIT_PROMPT_FOOTER" desc="Footer text below the 'Edit prompt' button in the contextual cue settings sheet, showing the contextual cue prompt in quotation marks.">
+        "<ph name="PROMPT">$1<ex>Summarize this page</ex></ph>"
+      </message>
       <message name="IDS_IOS_GEMINI_SETTINGS_MANAGE_SUGGESTIONS" desc="Title for the button in the contextual cue settings sheet that opens the Gemini suggestions settings page.">
         Manage Gemini suggestions
       </message>
       <message name="IDS_IOS_GEMINI_SETTINGS_MIC_FOOTER_TEXT" desc="Footer text of the Microphone toggle in Gemini settings.">
-        Use your microphone to chat with Gemini. When you speak to Gemini, audio is stored in Gemini Apps Activity (if it's on). Your data is not used to improve generative AI models
+        Use your microphone to chat with Gemini. When you speak to Gemini, audio is stored in Gemini History (if it's on). Your data is not used to improve generative AI models
       </message>
       <message name="IDS_IOS_GEMINI_SETTINGS_MIC_TITLE" desc="Title of the Microphone toggle in Gemini settings.">
         Microphone
@@ -3871,6 +3892,9 @@ To continue from your computer, switch to <ph name="OTHER_EMAIL">$2<ex>john.doe@
       </message>
       <message name="IDS_IOS_GENERIC_PASSKIT_ERROR" desc="Generic error message on failure reading a PassKit object. [Length: 60em] [iOS only]">
         Sorry, your Pass cannot be installed to Passbook at this time.
+      </message>
+      <message name="IDS_IOS_GEOLOCATION_SYSTEM_PERMISSION_INFOBAR_BANNER_TITLE" desc="Title for the banner infobar shown when a website requests location permissions while system location access is denied. [iOS only]">
+        Allow Geolocation?
       </message>
       <message name="IDS_IOS_GOOGLE_ACCOUNTS_MANAGEMENT_FROM_ACCOUNT_SETTINGS_TITLE" desc="Title of a page that shows all accounts on the user's device and lets them add, remove and otherwise manage their accounts. Avoid long strings given the limited space between surrounding buttons.">
         Accounts on this device
@@ -5200,6 +5224,9 @@ You can restart anytime.
       <message name="IDS_IOS_MAGIC_STACK_TIP_SHOW_ME_HOW" desc="Button label to show the tutorial for a Magic Stack tip.">
         Show Me How
       </message>
+      <message name="IDS_IOS_MAGIC_STACK_TIP_TIPS_NOTIFICATION_DESCIPTION" desc="The description of the Tips Notification tip for the Magic Stack.">
+        Get notified about security updates, custom themes, and more.
+      </message>
       <message name="IDS_IOS_MAGIC_STACK_TIP_TUTORIAL_TITLE" desc="The title of the full-screen tutorial for a Magic Stack tip.">
         How do I use this feature?
       </message>
@@ -5668,6 +5695,9 @@ You can restart anytime.
       </message>
       <message name="IDS_IOS_OPEN_ANOTHER_APP_FROM_INCOGNITO" desc="Alert to let the user know that the website is trying to open another application from incognito. [iOS only]">
         This site is trying to open an application. This will take you out of Incognito.
+      </message>
+      <message name="IDS_IOS_OPEN_APP_STORE_FROM_INCOGNITO" desc="Alert to let the user know that the website is trying to open the App Store from incognito. [iOS only]">
+        This site is trying to open the App Store. This will take you out of Incognito.
       </message>
       <message name="IDS_IOS_OPEN_CHROME_SETTINGS" desc="Text of the primary button to open chrome settings page. [iOS only]">
         Open Settings
@@ -7145,6 +7175,15 @@ Handoff must also be enabled in the General section of Settings, and your device
       <message name="IDS_IOS_REMINDER_NOTIFICATIONS_TOOLS_MENU_BUBBLE_IPH" desc="Text for a bubble IPH displayed on the tools menu, informing the user that they can set a reminder for the current tab. [iOS only]">
         You can set a reminder to revisit this page later
       </message>
+      <message name="IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_BACK_BUTTON" translateable="false" desc="Button label in the remote actor credential sharing bottom sheet, shown when there is no saved password for the site, that takes the user back to the remote actor app. [iOS only]">
+        Back to <ph name="ACTOR_NAME">$1<ex>Gemini</ex></ph>
+      </message>
+      <message name="IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_SUBTITLE" translateable="false" desc="Subtitle of the remote actor credential sharing bottom sheet, shown when there is no saved password for the site. [iOS only]">
+        Google Password Manager doesn’t have a password for this site. Go back to <ph name="ACTOR_NAME">$1<ex>Gemini</ex></ph> to sign in, or add a password to Google Password Manager.
+      </message>
+      <message name="IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_TITLE" translateable="false" desc="Title of the remote actor credential sharing bottom sheet, shown when there is no saved password for the site. [iOS only]">
+        No saved passwords for <ph name="DOMAIN">$1<ex>example.com</ex></ph>
+      </message>
       <message name="IDS_IOS_REMOVE_ACCOUNT_ALERT_TITLE" desc="Title of the alert view when the remove account button is clicked.">
         Remove account <ph name="USER_EMAIL">$1<ex>janedoe@google.com</ex></ph>?
       </message>
@@ -7808,9 +7847,6 @@ Handoff must also be enabled in the General section of Settings, and your device
       </message>
       <message name="IDS_IOS_SETTINGS_AUTOFILL_DELETE_TITLE_LOCAL" desc="Title for the sheet shown to the user for confirmation to delete mixed selection of addresses and entities. Locally saved only. [iOS only]">
           This deletes selected info saved on this device
-      </message>
-      <message name="IDS_IOS_SETTINGS_AUTOFILL_DELETE_TITLE_LOCAL_AND_SERVER" desc="Title for the sheet shown to the user for confirmation to delete mixed selection of addresses and entities when addresses are saved in the user's Google Account. [iOS only]">
-          This deletes selected info saved on this device and in your Google Account <ph name="USER_EMAIL">$1<ex>janedoe@google.com</ex></ph>
       </message>
       <message name="IDS_IOS_SETTINGS_AUTOFILL_EDIT_HOME_WORK_ADDRESS_CONFIRMATION_BUTTON" desc="Edit button shown as an option in the address deletion confirmation sheet. [iOS only]">
           Edit in Google Account
@@ -9537,6 +9573,12 @@ Handoff must also be enabled in the General section of Settings, and your device
       <message name="IDS_IOS_VOICE_SEARCH_SETTINGS_DEFAULT_LOCALE" desc="The label for the default locale option in the voice search settings [iOS only]">
         Default - <ph name="DEFAULT_LOCALE">$1<ex>English (United States)</ex></ph>
       </message>
+      <message name="IDS_IOS_VOICE_SEARCH_SETTING_AUTO_SUBMIT" desc="The label for the setting switch enabling automatic submission of voice search queries when the user stops speaking [iOS only]">
+        Auto submit
+      </message>
+      <message name="IDS_IOS_VOICE_SEARCH_SETTING_AUTO_SUBMIT_SUBTITLE" desc="The subtitle explaining the setting switch that enables automatic submission of voice search queries when the user stops speaking [iOS only]">
+        Submits your search automatically when you stop speaking
+      </message>
       <message name="IDS_IOS_VOICE_SEARCH_SETTING_TITLE" desc="The title for Voice Search setting [Length: 29em] [iOS only]">
         Voice search
       </message>
@@ -9571,18 +9613,6 @@ Handoff must also be enabled in the General section of Settings, and your device
       </message>
       <message name="IDS_IOS_WEB_INSPECTOR_TITLE" desc="The title of the screen in which the user can enable Web Inspector support, to allow debugging web pages">
         Web Inspector
-      </message>
-      <message name="IDS_IOS_WELCOME_BACK_KEEP_BROWSING_BUTTON" desc="The text of the Keep browsing button on the Welcome Back promo">
-        Keep browsing
-      </message>
-      <message name="IDS_IOS_WELCOME_BACK_SUBTITLE" desc="The subtitle of the Welcome Back promo">
-        Explore helpful features that you've missed
-      </message>
-      <message name="IDS_IOS_WELCOME_BACK_TITLE_DEFAULT" desc="The title of the Welcome Back promo for users who are not signed in">
-        Welcome back
-      </message>
-      <message name="IDS_IOS_WELCOME_BACK_TITLE_SIGNED_IN" desc="The title of the Welcome Back promo for users who are signed in">
-        Welcome back, <ph name="USER_NAME">$1<ex>John</ex></ph>
       </message>
       <message name="IDS_IOS_WHATS_NEW_CALENDAR_SCREENSHOT_TEXT_ADD_TITLE" desc="Text in image displaying a placeholder for the title of the Google calendar event. [iOS only]">
         Add title

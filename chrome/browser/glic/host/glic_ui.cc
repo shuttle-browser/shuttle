@@ -32,6 +32,7 @@
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/resources/glic_resources.h"
 #include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/profiles/profile.h"
@@ -221,6 +222,12 @@ GlicUI::GlicUI(content::WebUI* web_ui)
       {"locationMismatchNoticeHeader",
        IDS_GLIC_LOCATION_MISMATCH_NOTICE_HEADER},
       {"locationMismatchNotice", IDS_GLIC_LOCATION_MISMATCH_NOTICE},
+      {"relaunchRequiredGeminiToGeicNoticeHeader",
+       IDS_GLIC_RELAUNCH_REQUIRED_GEMINI_TO_GEIC_HEADER},
+      {"relaunchRequiredGeminiToGeicNotice",
+       IDS_GLIC_RELAUNCH_REQUIRED_GEMINI_TO_GEIC_BODY},
+      {"relaunchRequiredNoticeActionButton",
+       IDS_GLIC_RELAUNCH_REQUIRED_ACTION_BUTTON},
       {"getHelp", IDS_GLIC_GET_HELP},
   };
 
@@ -242,8 +249,8 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   source->AddString("chromeVersion", version_info::GetVersionNumber());
   source->AddString("chromeChannel",
                     version_info::GetChannelString(chrome::GetChannel()));
-  source->AddBoolean("glicSsr",
-                     base::FeatureList::IsEnabled(features::kGlicSsr));
+  const bool supports_ssr = GetGlicProviderSpec(profile).SupportsSsr();
+  source->AddBoolean("glicSsr", supports_ssr);
   source->AddBoolean("onboardingCompleted",
                      GlicEnabling::HasConsentedForProfile(profile));
   if (std::optional<std::string> onboarding_arm = GetOnboardingArm(profile);
@@ -332,6 +339,8 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   source->AddBoolean("simulateNoConnection", simulate_no_connection_);
 
   source->AddResourcePath("glic_logo.svg", GetResourceID(IDR_GLIC_LOGO));
+  source->AddResourcePath("geic_spark.png",
+                          GetResourceID(IDR_GEIC_BUTTON_ICON));
 
   // Set up guest api source.
   // This comes from 'glic_api_injection' in
@@ -351,7 +360,8 @@ GlicUI::GlicUI(content::WebUI* web_ui)
 
   source->AddBoolean(
       "noLoader", base::FeatureList::IsEnabled(features::kGlicNoWebUiLoader) ||
-                      (base::FeatureList::IsEnabled(features::kGlicSsr) &&
+                      features::IsGlicNativeLoadingPlaceholderEnabled() ||
+                      (supports_ssr &&
                        !features::kGlicShowLoaderUntilMainPageOnload.Get()));
 
   source->AddBoolean("enableWebClientUnresponsiveMetrics",
@@ -377,9 +387,6 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   source->AddBoolean(
       "enableStructuredYieldMetadata",
       base::FeatureList::IsEnabled(features::kGlicStructuredYieldMetadata));
-  source->AddBoolean(
-      "glicInvokeErrorRecoveryFixes",
-      base::FeatureList::IsEnabled(features::kGlicInvokeErrorRecoveryFixes));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(GlicUI)

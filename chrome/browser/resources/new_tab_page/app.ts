@@ -7,18 +7,17 @@ import './ntp_searchbox.js';
 import './left_hand_side.js';
 import '/strings.m.js';
 
-import {SearchboxBrowserProxy} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import {ColorChangeUpdater} from 'chrome://resources/cr_components/color_change_listener/colors_css_updater.js';
 import {GlifAnimationState, VoiceSearchAction as ComposeVoiceSearchAction} from 'chrome://resources/cr_components/composebox/common.js';
 import type {ComposeboxState} from 'chrome://resources/cr_components/composebox/common.js';
 import type {ComposeboxVoiceSearchElement, VoicePermissionPromptState} from 'chrome://resources/cr_components/composebox/composebox_voice_search.js';
 import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 import type {SearchAnimatedGlowElement} from 'chrome://resources/cr_components/search/animated_glow.js';
+import {SearchboxBrowserProxy} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
 import type {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
 import type {ClickInfo} from 'chrome://resources/js/browser_command.mojom-webui.js';
-import {Command} from 'chrome://resources/js/browser_command.mojom-webui.js';
-import {BrowserCommandProxy} from 'chrome://resources/js/browser_command/browser_command_proxy.js';
+import {browserProxyFactory as browserCommandProxyFactory, Command} from 'chrome://resources/js/browser_command.mojom-webui.js';
 import {hexColorToSkColor, skColorToRgba} from 'chrome://resources/js/color_utils.js';
 import {EventTracker} from 'chrome://resources/js/event_tracker.js';
 import {FocusOutlineManager} from 'chrome://resources/js/focus_outline_manager.js';
@@ -32,7 +31,6 @@ import {ModelMode, ToolMode} from 'chrome://resources/mojo/components/omnibox/co
 import type {SkColor} from 'chrome://resources/mojo/skia/public/mojom/skcolor.mojom-webui.js';
 
 import type {ActionChipClickDetail} from './action_chips/action_chips.js';
-import {ActionChipsRetrievalState} from './action_chips/action_chips_proxy.js';
 import {getCss} from './app.css.js';
 import {getHtml} from './app.html.js';
 import {BackgroundManager} from './background_manager.js';
@@ -42,14 +40,14 @@ import {CustomizeChromeSection} from './customize_chrome.mojom-webui.js';
 import {CustomizeDialogPage} from './customize_dialog_types.js';
 import type {IframeElement} from './iframe.js';
 import type {LogoElement} from './logo.js';
-import {recordBoolean, recordDuration, recordEnumeration, recordLinearValue, recordLoadDuration, recordSparseValueWithPersistentHash, recordVoiceAction, VoiceAction} from './metrics_utils.js';
+import {recordBoolean, recordDuration, recordEnumeration, recordLinearValue, recordSparseValueWithPersistentHash, recordVoiceAction, VoiceAction} from './metrics_utils.js';
 import {ParentTrustedDocumentProxy} from './modules/microsoft_auth_frame_connector.js';
 import type {PageCallbackRouter, PageHandlerInterface, Theme} from './new_tab_page.mojom-webui.js';
 import {browserProxyFactory as newTabPageProxyFactory, NtpBackgroundImageSource} from './new_tab_page.mojom-webui.js';
 import type {NtpComposeboxElement} from './ntp_composebox.js';
 import {ShowNtpPromosResult} from './ntp_promo.mojom-webui.js';
 import type {NtpSearchboxElement} from './ntp_searchbox.js';
-import {$$} from './utils.js';
+import {$$, ActionChipsRetrievalState} from './utils.js';
 import {WindowProxy} from './window_proxy.js';
 
 enum ModuleLoadStatus {
@@ -268,8 +266,6 @@ export class AppElement extends AppElementBase {
       modulesEnabled_: {type: Boolean},
 
       browserPromoType_: {type: String},
-      browserPromoLimit_: {type: Number},
-      browserPromoCompletedLimit_: {type: Number},
       showBrowserPromo_: {type: Boolean},
       caretAnimationsEnabled_: {type: Boolean},
       usePecApi_: {type: Boolean},
@@ -411,10 +407,10 @@ export class AppElement extends AppElementBase {
   protected accessor backgroundImageAttribution2_: string = '';
   protected accessor backgroundImageAttributionUrl_: string = '';
   protected accessor colorSourceIsBaseline: boolean = false;
-  protected accessor logoColor_: SkColor|null = null;
+  private accessor logoColor_: SkColor|null = null;
   protected accessor singleColoredLogo_: boolean = false;
   protected accessor realboxShown_: boolean = false;
-  protected accessor wasComposeboxOpened_: boolean = false;
+  private accessor wasComposeboxOpened_: boolean = false;
   protected accessor showLensUploadDialog_: boolean = false;
   protected accessor showComposebox_: boolean = false;
   protected accessor caretAnimationsEnabled_: boolean =
@@ -437,10 +433,6 @@ export class AppElement extends AppElementBase {
       loadTimeData.getBoolean('modulesEnabled');
   protected accessor browserPromoType_: string =
       loadTimeData.getString('browserPromoType');
-  protected accessor browserPromoLimit_: number =
-      loadTimeData.getInteger('browserPromoLimit');
-  protected accessor browserPromoCompletedLimit_: number =
-      loadTimeData.getInteger('browserPromoCompletedLimit');
   protected accessor showBrowserPromo_: boolean = false;
   protected accessor modulesShownToUser: boolean = false;
   protected accessor microsoftModuleEnabled_: boolean =
@@ -453,7 +445,7 @@ export class AppElement extends AppElementBase {
   protected accessor scrolledToTop_: boolean = true;
   protected accessor wallpaperSearchButtonAnimationEnabled_: boolean =
       loadTimeData.getBoolean('wallpaperSearchButtonAnimationEnabled');
-  protected accessor wallpaperSearchButtonEnabled_: boolean =
+  private accessor wallpaperSearchButtonEnabled_: boolean =
       loadTimeData.getBoolean('wallpaperSearchButtonEnabled');
   protected accessor showWallpaperSearchButton_: boolean = false;
   protected accessor isActionChipsVisible_: boolean =
@@ -473,16 +465,16 @@ export class AppElement extends AppElementBase {
       loadTimeData.getInteger('maxMostVisitedTilesInExpandedState');
   protected accessor maxEnterpriseShortcuts_: number =
       loadTimeData.getInteger('maxEnterpriseShortcuts');
-  protected accessor containerFocused_: boolean = false;
+  private accessor containerFocused_: boolean = false;
   protected accessor composeboxFocused_: boolean = false;
   protected accessor pageContentHidden_: boolean = false;
   protected accessor composeboxOutsideClickEnabled_: boolean =
       loadTimeData.getBoolean('composeboxRealboxOutsideClick');
   protected accessor showScrim_: boolean = false;
-  protected realboxContextMenuAnimationAllowed_: boolean = false;
+  private realboxContextMenuAnimationAllowed_: boolean = false;
   protected accessor contextMenuGlifAnimationState_: GlifAnimationState =
       GlifAnimationState.INELIGIBLE;
-  protected accessor undoToastCallback_: (() => void)|null = null;
+  private accessor undoToastCallback_: (() => void)|null = null;
   protected accessor undoToastMessage_: string|null = null;
   protected accessor enableThreadsRail_: boolean =
       loadTimeData.getBoolean('enableThreadsRail');
@@ -494,7 +486,7 @@ export class AppElement extends AppElementBase {
       loadTimeData.getString('energyEffectVariant');
   protected accessor showCustomizeButton_: boolean =
       loadTimeData.getBoolean('showCustomizeButton');
-  protected contextMenuAnimationLimitingEnabled_: boolean =
+  private contextMenuAnimationLimitingEnabled_: boolean =
       loadTimeData.getBoolean('contextMenuAnimationLimitingEnabled');
   protected accessor searchboxCallbackRouter_: SearchboxPageCallbackRouter;
   protected accessor rhsWidth_: number|null = null;
@@ -1094,7 +1086,7 @@ export class AppElement extends AppElementBase {
           ?.focusInput();
     }
     if (!this.wasComposeboxOpened_) {
-      recordLoadDuration(
+      recordDuration(
           'NewTabPage.Composebox.FromNTPLoadToSessionStart',
           WindowProxy.getInstance().now());
       this.wasComposeboxOpened_ = true;
@@ -1132,13 +1124,7 @@ export class AppElement extends AppElementBase {
       const composebox =
           this.shadowRoot.querySelector<NtpComposeboxElement>('#composebox');
       assert(composebox);
-      const closeComposebox = new CustomEvent('closeComposebox', {
-        detail: {composeboxText: composebox.input},
-        bubbles: true,
-        cancelable: true,
-      });
-
-      this.onCloseComposebox_(closeComposebox);
+      composebox.closeComposebox();
     }
   }
 
@@ -1167,7 +1153,6 @@ export class AppElement extends AppElementBase {
         this.shadowRoot.querySelector<NtpComposeboxElement>('#composebox');
     assert(composebox);
     composebox.input = '';
-    composebox.resetModes();
     if (this.ntpRealboxNextEnabled_) {
       composebox.closeDropdown();
     }
@@ -1457,7 +1442,7 @@ export class AppElement extends AppElementBase {
   private onModulesLoadedChange_() {
     if (this.modulesLoaded_ &&
         loadTimeData.getBoolean('modulesEnabled')) {
-      recordLoadDuration(
+      recordDuration(
           'NewTabPage.Modules.ShownTime', WindowProxy.getInstance().now());
     }
   }
@@ -1523,8 +1508,9 @@ export class AppElement extends AppElementBase {
         messageData.commandId :
         Command.kUnknownCommand;
 
-    BrowserCommandProxy.getInstance().handler.canExecuteCommand(commandId).then(
-        ({canExecute}) => {
+    browserCommandProxyFactory.getInstance()
+        .handler.canExecuteCommand(commandId)
+        .then(({canExecute}) => {
           const response = {
             messageType: messageData.messageType,
             [messageData.commandId]: canExecute,
@@ -1552,7 +1538,7 @@ export class AppElement extends AppElementBase {
         commandData.commandId :
         Command.kUnknownCommand;
 
-    BrowserCommandProxy.getInstance()
+    browserCommandProxyFactory.getInstance()
         .handler.executeCommand(commandId, commandData.clickInfo)
         .then(({commandExecuted}) => {
           WindowProxy.getInstance().postMessage(

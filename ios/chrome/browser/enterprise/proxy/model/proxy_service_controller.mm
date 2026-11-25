@@ -16,6 +16,8 @@
 #import "base/sequence_checker.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/enterprise/net/core/enterprise_proxy_error_service.h"
+#import "components/enterprise/net/core/features.h"
+#import "ios/chrome/browser/enterprise/proxy/model/enterprise_proxy_error.h"
 #import "ios/chrome/browser/enterprise/proxy/model/enterprise_proxy_tab_helper.h"
 #import "ios/chrome/browser/enterprise/proxy/model/proxy_auth_challenge_util.h"
 #import "ios/web/public/proxy/proxy_configuration_provider.h"
@@ -31,6 +33,11 @@ namespace {
 // Navigation ID reported for challenges that are not attributed to a
 // navigation. `EnterpriseProxyErrorService` records no error for it.
 constexpr int64_t kUnknownNavigationId = 0;
+
+// Code of the `kEnterpriseProxyErrorDomain` error that fails a navigation. The
+// error carries no details: they are in the disguised error that
+// `EnterpriseProxyErrorService` records for the navigation.
+constexpr NSInteger kEnterpriseProxyErrorCode = 1;
 
 // Returns whether `navigation_id` is the pending main-frame navigation of
 // `web_state`.
@@ -51,14 +58,16 @@ bool IsPendingNavigation(web::WebState* web_state, int64_t navigation_id) {
 // challenged URL is the navigation's URL. Challenges for subresources and for
 // requests made after commit are left unattributed, as on desktop where only
 // main-frame requests get auth UI. The fragment is ignored because it is never
-// sent with the request.
+// sent with the request. An invalid URL, e.g. from a challenge without a
+// failure response, is never attributed.
 int64_t GetNavigationIdForChallenge(web::WebState* web_state,
                                     const GURL& destination_url) {
   EnterpriseProxyTabHelper* tab_helper =
       EnterpriseProxyTabHelper::FromWebState(web_state);
   if (!tab_helper || !tab_helper->pending_navigation_id().has_value() ||
-      destination_url.GetWithoutRef() !=
-          tab_helper->pending_navigation_url().GetWithoutRef()) {
+      !destination_url.is_valid() ||
+      !destination_url.EqualsIgnoringRef(
+          tab_helper->pending_navigation_url())) {
     return kUnknownNavigationId;
   }
   return *tab_helper->pending_navigation_id();
@@ -67,8 +76,10 @@ int64_t GetNavigationIdForChallenge(web::WebState* web_state,
 // Adapts the credentials resolved by `enterprise_proxy_error_service` into the
 // `(username, password, error)` triple that
 // `web::WebStateDelegate::ProxyAuthCallback` expects. Without credentials, the
-// error recorded for the navigation `navigation_id` of `web_state` is dropped
-// if that navigation is no longer pending.
+// navigation `navigation_id` of `web_state` is failed with the enterprise proxy
+// error if it is still pending and enterprise proxy error handling is enabled.
+// If that navigation is no longer pending, the disguised error recorded for it
+// is dropped instead.
 void RunProxyAuthCallback(
     enterprise_net::EnterpriseProxyErrorService* enterprise_proxy_error_service,
     base::WeakPtr<web::WebState> web_state,
@@ -87,20 +98,29 @@ void RunProxyAuthCallback(
     return;
   }
 
-  // If the attributed navigation is no longer pending (e.g. it finished or was
-  // replaced while the access token was fetched), nothing will take the error
-  // just recorded for it, so it is dropped.
+  // The web layer fails whichever navigation is pending when the callback
+  // runs. If the attributed navigation is gone (e.g. replaced while the access
+  // token was fetched), the error would fail an unrelated navigation, so it is
+  // dropped instead, along with the disguised error just recorded for it.
   if (!IsPendingNavigation(web_state.get(), navigation_id)) {
     enterprise_proxy_error_service->RemoveDisguisedError(navigation_id);
     std::move(callback).Run(/*username=*/nil, /*password=*/nil, /*error=*/nil);
     return;
   }
 
-  // TODO(crbug.com/543371697): Fail the navigation with a dedicated enterprise
-  // proxy error once `ChromeWebClient::PrepareErrorPage()` shows an error page
-  // for it. Until then, `EnterpriseProxyTabHelper` drops the error recorded for
-  // the navigation when the navigation finishes.
-  std::move(callback).Run(/*username=*/nil, /*password=*/nil, /*error=*/nil);
+  // Without the Secure Gateway error page, the request continues without
+  // credentials, and `EnterpriseProxyTabHelper` drops the disguised error when
+  // the navigation finishes.
+  if (!enterprise_net::IsEnterpriseProxyErrorHandlingEnabled()) {
+    std::move(callback).Run(/*username=*/nil, /*password=*/nil, /*error=*/nil);
+    return;
+  }
+
+  std::move(callback).Run(
+      /*username=*/nil, /*password=*/nil,
+      [NSError errorWithDomain:kEnterpriseProxyErrorDomain
+                          code:kEnterpriseProxyErrorCode
+                      userInfo:nil]);
 }
 
 }  // namespace
@@ -156,8 +176,10 @@ bool ProxyServiceController::MaybeHandleProxyAuthChallenge(
     return false;
   }
 
-  // `enterprise_proxy_error_service_` is the one running the callback, so it
-  // is alive whenever the callback runs.
+  // `base::Unretained()` is safe because `enterprise_proxy_error_service_` runs
+  // the callback itself, synchronously or from a continuation weakly bound to
+  // itself, and must never post it. The callback can't be weakly bound instead:
+  // it must always run, as WebKit requires its completion handler to be called.
   enterprise_proxy_error_service_->ResolveProxyAuthChallenge(
       *std::move(interception),
       base::BindOnce(&RunProxyAuthCallback,
@@ -177,6 +199,12 @@ void ProxyServiceController::OnDynamicProxyConfigsStatusChanged() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(enterprise_proxy_service_);
   CHECK(proxy_configuration_provider_);
+  // WebKit has a bug prior to iOS 18.1 where it does not deliver proxy
+  // authentication challenges, so dynamic proxy routing configurations are not
+  // applied on older OS versions.
+  if (!@available(iOS 18.1, *)) {
+    return;
+  }
   proxy_configuration_provider_->UpdateProxyConfiguration(
       web::TranslateProvisioningDomainRoutingConfig(
           enterprise_proxy_service_->GetDynamicRoutingConfig()));

@@ -96,6 +96,21 @@ chromium-metrics-reviews@google.com.
   <int value="7" label="The user turned the Chrome setting off"/>
 </enum>
 
+<!-- LINT.IfChange(AndroidAutofillMainFrameCreditCardFieldValidationResult) -->
+
+<enum name="AndroidAutofillMainFrameCreditCardFieldValidationResult">
+  <summary>
+    Outcome of checking a filled main-frame cardholder name or expiration date
+    field during a cross-origin credit card fill.
+  </summary>
+  <int value="0" label="Allowed"/>
+  <int value="1" label="Implausible value"/>
+  <int value="2" label="Implausible select option text"/>
+  <int value="3" label="Duplicate expiration part"/>
+</enum>
+
+<!-- LINT.ThenChange(//components/android_autofill/browser/card_value_validation.h:AndroidAutofillMainFrameCreditCardFieldValidationResult) -->
+
 <enum name="AndroidAutofillPrefillRequestState">
   <summary>
     Describes the state of a prefill request for a given, cacheable, form.
@@ -322,13 +337,6 @@ Called by update_autofill_enums.py.-->
       label="The server replied with the wrong response proto type."/>
   <int value="3" label="The model returned a result, but it was empty"/>
   <int value="4" label="The model returned a valid, non-empty result."/>
-</enum>
-
-<enum name="AutofillAiOptInFunnelEvents">
-  <int value="0" label="IPH was shown"/>
-  <int value="1" label="FFR was shown"/>
-  <int value="2" label="The FFR learn more button was clicked"/>
-  <int value="3" label="FFR was accepted"/>
 </enum>
 
 <!-- LINT.IfChange(AutofillAiOptInStatus) -->
@@ -740,7 +748,7 @@ Called by update_autofill_enums.py.-->
   <int value="6" label="Entity not saved"/>
 </enum>
 
-<!-- LINT.ThenChange(/components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h:AutofillAiWalletNoticeFunnelEvents) -->
+<!-- LINT.ThenChange(/components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h:AutofillAiWalletNoticeFunnelEvents, /chrome/browser/resources/settings/metrics_browser_proxy.ts:AutofillAiWalletNoticeFunnelEvents) -->
 
 <enum name="AutofillAlternativeNameFieldValueCharacterSet">
   <int value="0" label="Katakana"/>
@@ -4241,6 +4249,9 @@ Called by update_autofill_enums.py.-->
       label="Form submitted and promo code field contained a value (once).
              This can be compared with the autofilled metric to see how often
              users manually enter a promo code in the field"/>
+  <int value="8"
+      label="Manage offers footer in the promo code suggestions dropdown
+             clicked (once)"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/autofill/core/browser/metrics/payments/promo_code_metrics.h:AutofillPromoCodeFormEvent) -->
@@ -4765,7 +4776,9 @@ Called by update_autofill_enums.py.-->
   <int value="0" label="Shown successfully"/>
   <int value="1" label="Not shown: already acknowledged according to server"/>
   <int value="2" label="Not shown: already acknowledged according to pref"/>
-  <int value="3" label="Not shown: network or server error"/>
+  <int value="3"
+      label="Not shown: ineligible according to server (or network/server
+             error)"/>
   <int value="4" label="Not shown: preempted by mandatory reauth"/>
   <int value="5" label="Not shown: preempted by VCN enrollment"/>
   <int value="6" label="Not shown: preempted by card or CVC save"/>
@@ -5857,6 +5870,8 @@ Called by update_autofill_enums.py.-->
 
 <!-- LINT.ThenChange(/components/one_time_tokens/android/backend/common/java/src/org/chromium/components/one_time_tokens/backend/OneTimeTokensBackendErrorCode.java) -->
 
+<!-- LINT.IfChange(OneTimeTokensPhishGuardVerdict) -->
+
 <enum name="OneTimeTokensPhishGuardVerdict">
   <summary>
     The verdict of a PhishGuard check before offering to autofill one-time
@@ -5865,7 +5880,10 @@ Called by update_autofill_enums.py.-->
   <int value="0" label="Unknown"/>
   <int value="1" label="Phishing"/>
   <int value="2" label="Not Phishing"/>
+  <int value="3" label="Timed Out"/>
 </enum>
+
+<!-- LINT.ThenChange(//components/autofill/core/browser/integrators/one_time_tokens/otp_types.h:OneTimeTokensPhishGuardVerdict) -->
 
 <!-- LINT.IfChange(OneTimeTokensTickleArrival) -->
 
@@ -5980,6 +5998,7 @@ Called by update_autofill_enums.py.-->
   <int value="9" label="Find and Fill with Gemini settings disabled"/>
   <int value="10" label="Not G1 subscriber or Android premium device"/>
   <int value="11" label="Eligible"/>
+  <int value="12" label="Unsupported Glic provider"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/personal_context/core/personal_context_types.h:PersonalContextNonEligibilityReason) -->
@@ -6189,23 +6208,6 @@ Called by update_autofill_enums.py.-->
 
 <!-- LINT.ThenChange(/components/one_time_tokens/android/backend/sms/sms_otp_retrieval_api_error_codes.h:SmsOtpRetrievalApiErrorCode) -->
 
-<!-- LINT.IfChange(SubmissionBlockedReasonIOS) -->
-
-<enum name="SubmissionBlockedReasonIOS">
-  <summary>
-    Represents the various reasons why a form submission might be blocked or
-    ignored by Autofill on iOS.
-  </summary>
-  <int value="0" label="No user gesture"/>
-  <int value="1" label="Autofill disabled"/>
-  <int value="2" label="No frame"/>
-  <int value="3" label="No driver"/>
-  <int value="4" label="Cross-origin frame"/>
-  <int value="5" label="No delegate"/>
-</enum>
-
-<!-- LINT.ThenChange(//components/autofill/ios/browser/autofill_util.h:SubmissionBlockedReasonIOS) -->
-
 <!-- LINT.IfChange(SuggestionsFromGeminiAction) -->
 
 <enum name="SuggestionsFromGeminiAction">
@@ -6343,6 +6345,7 @@ Called by update_autofill_enums.py.-->
   <int value="101" label="Open Gmail for OTPs"/>
   <int value="102" label="Manage offers"/>
   <int value="103" label="AtMemory shortcut settings promo"/>
+  <int value="104" label="Pending state trusted vault error"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/autofill/core/browser/suggestions/suggestion_type.h:SuggestionType) -->

@@ -68,6 +68,7 @@
 #include "components/saved_tab_groups/public/features.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/account_info.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/zoom/page_zoom.h"
 #include "components/zoom/zoom_controller.h"
 #include "components/zoom/zoom_event_manager.h"
@@ -84,10 +85,10 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/mojom/menu_source_type.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/themed_vector_icon.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
@@ -122,6 +123,7 @@
 #include "ui/views/style/typography.h"
 #include "ui/views/style/typography_provider.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_tracker.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/widget.h"
 
@@ -148,6 +150,8 @@ constexpr int kRecentTabsCommandIdOffset =
     AppMenuModel::kMinRecentTabsCommandId - IDC_FIRST_UNBOUNDED_MENU;
 constexpr int kTabGroupsCommandIdOffset =
     AppMenuModel::kMinTabGroupsCommandId - IDC_FIRST_UNBOUNDED_MENU;
+constexpr int kOtherDeviceTabsCommandIdOffset =
+    AppMenuModel::kMinOtherDeviceTabsCommandId - IDC_FIRST_UNBOUNDED_MENU;
 
 #if BUILDFLAG(IS_CHROMEOS)
 // Extra horizontal space to reserve for the fullscreen button.
@@ -181,6 +185,14 @@ bool IsTabGroupsCommand(int command_id) {
          ((command_id - IDC_FIRST_UNBOUNDED_MENU) %
               AppMenuModel::kNumUnboundedMenuTypes ==
           kTabGroupsCommandIdOffset);
+}
+
+// Returns true if `command_id` identifies an other device tabs menu item.
+bool IsOtherDeviceTabsCommand(int command_id) {
+  return command_id >= IDC_FIRST_UNBOUNDED_MENU &&
+         ((command_id - IDC_FIRST_UNBOUNDED_MENU) %
+              AppMenuModel::kNumUnboundedMenuTypes ==
+          kOtherDeviceTabsCommandIdOffset);
 }
 
 // Computes the target row height for the "Other profiles" section based on
@@ -484,7 +496,7 @@ void AddSignedInChipToProfileMenuItem(
   std::u16string accessible_name =
       views::MenuItemView::GetAccessibleNameForMenuItem(
           item->title(), GetSigninStatusChipString(profile), std::nullopt);
-  if (ShouldShowAvatarGradientRing(profile)) {
+  if (GetAvatarAiDecoration(profile).show_decoration) {
     accessible_name = l10n_util::GetStringFUTF16(
         IDS_PROFILE_AVATAR_NAME_WITH_AI_MEMBERSHIP, accessible_name);
   }
@@ -595,7 +607,11 @@ class FullscreenButton : public ImageButton {
   FullscreenButton& operator=(const FullscreenButton&) = delete;
 
   void UpdateState(bool is_fullscreen, bool can_fullscreen) {
+    views::ViewTracker tracker(this);
     SetEnabled(can_fullscreen || is_fullscreen);
+    if (!tracker.view()) {
+      return;
+    }
 
     const int accname_string_id =
         is_fullscreen ? IDS_ACCNAME_EXIT_FULLSCREEN
@@ -1492,9 +1508,11 @@ void AppMenu::OnMenuClosed(views::MenuItemView* menu) {
 
 bool AppMenu::ShouldExecuteCommandWithoutClosingMenu(int command_id,
                                                      const ui::Event& event) {
-  return (IsRecentTabsCommand(command_id) && event.IsMouseEvent() &&
+  return ((IsRecentTabsCommand(command_id) ||
+           IsOtherDeviceTabsCommand(command_id)) &&
+          event.IsMouseEvent() &&
           (ui::DispositionFromEventFlags(event.flags()) ==
-           WindowOpenDisposition::kNewBackgroundTab)) ||
+           ui::mojom::WindowOpenDisposition::kNewBackgroundTab)) ||
          (IsBookmarkCommand(command_id) &&
           bookmark_menu_delegate_->ShouldExecuteCommandWithoutClosingMenu(
               command_id, event)) ||
@@ -1723,6 +1741,13 @@ void AppMenu::PopulateMenu(MenuItemView* parent, MenuModel* model) {
         CHECK(!recent_tabs_menu_model_delegate_.get(),
               base::NotFatalUntil::M162);
         recent_tabs_menu_model_delegate_ =
+            std::make_unique<RecentTabsMenuModelDelegate>(
+                this, model->GetSubmenuModelAt(i), item);
+        break;
+      case AppMenuModel::kOtherDeviceTabsMenuPlaceholder:
+        // Forwards async favicon updates and dynamic menu rebuilds to the view.
+        CHECK(!other_device_tabs_menu_model_delegate_);
+        other_device_tabs_menu_model_delegate_ =
             std::make_unique<RecentTabsMenuModelDelegate>(
                 this, model->GetSubmenuModelAt(i), item);
         break;

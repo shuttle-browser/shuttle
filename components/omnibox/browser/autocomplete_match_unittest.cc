@@ -6,9 +6,13 @@
 
 #include <stddef.h>
 
+#include <set>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "base/strings/utf_string_conversions.h"
+#include "base/test/protobuf_matchers.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "build/build_config.h"
@@ -31,7 +35,12 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "third_party/metrics_proto/omnibox_scoring_signals.pb.h"
+#include "third_party/omnibox_proto/input_source.pb.h"
+#include "third_party/omnibox_proto/model_mode.pb.h"
+#include "third_party/omnibox_proto/searchbox_tutorial.pb.h"
+#include "third_party/omnibox_proto/suggest_inventory.pb.h"
 #include "third_party/omnibox_proto/suggest_template_info.pb.h"
+#include "third_party/omnibox_proto/tool_mode.pb.h"
 #include "ui/gfx/vector_icon_types.h"
 #include "url/gurl.h"
 
@@ -612,6 +621,194 @@ TEST_F(AutocompleteMatchTest, UpgradeMatchWithPropertiesFrom) {
   EXPECT_EQ(history_match.inline_autocompletion, u"preserve");
 }
 
+// The template presentation should travel with the suggestion text bestowed by
+// a preferred duplicate, while the template's other fields stay put.
+TEST_F(AutocompleteMatchTest, UpgradeMatchWithPropertiesFromSuggestTemplate) {
+  scoped_refptr<FakeAutocompleteProvider> bookmark_provider =
+      new FakeAutocompleteProvider(AutocompleteProvider::Type::kBookmark);
+  scoped_refptr<FakeAutocompleteProvider> history_provider =
+      new FakeAutocompleteProvider(AutocompleteProvider::Type::kHistoryQuick);
+  scoped_refptr<FakeAutocompleteProvider> search_provider =
+      new FakeAutocompleteProvider(AutocompleteProvider::Type::kSearch);
+  scoped_refptr<FakeAutocompleteProvider> shortcuts_provider =
+      new FakeAutocompleteProvider(AutocompleteProvider::Type::kShortcuts);
+
+  // Every field of the server template, split into the fields that describe
+  // how the suggestion is displayed...
+  omnibox::SuggestTemplateInfo presentation;
+  presentation.set_style(omnibox::SuggestTemplateInfo::ANNOTATED);
+  presentation.set_type_icon(omnibox::SuggestTemplateInfo::TRENDING);
+  presentation.mutable_primary_text()->set_text("weather");
+  presentation.mutable_secondary_text()->set_text("Sunny");
+  presentation.mutable_image()->set_url("https://example.com/sunny.png");
+  presentation.set_secondary_text_placement(
+      omnibox::SuggestTemplateInfo::BELOW_PRIMARY_TEXT);
+  presentation.set_wrap_secondary_text(true);
+  presentation.set_wrap_primary_text(true);
+  // ...and the fields that describe what it does.
+  omnibox::SuggestTemplateInfo behavior;
+  (*behavior.mutable_default_search_parameters())["foo"] = "bar";
+  behavior.add_action_suggestions()->set_action_type(
+      omnibox::SuggestTemplateInfo::TemplateAction::DIRECTIONS);
+  behavior.mutable_fusebox_action()->set_query_action_override(
+      omnibox::SuggestTemplateInfo::FuseboxAction::QUERY_ACTION_PASTE);
+  behavior.set_entity_id("/m/weather");
+  behavior.set_website_uri("https://weather.example.com");
+  omnibox::SuggestTemplateInfo server_template = presentation;
+  server_template.MergeFrom(behavior);
+
+  auto create_server_match = [&](int relevance) {
+    AutocompleteMatch match(search_provider.get(), relevance, false,
+                            omnibox::AutocompleteMatchType::kSearchSuggest);
+    match.contents = u"weather";
+    match.description = u"Sunny";
+    match.suggest_template = server_template;
+    return match;
+  };
+  auto create_shortcut_match = [&] {
+    AutocompleteMatch match(shortcuts_provider.get(), 1000, true,
+                            omnibox::AutocompleteMatchType::kSearchHistory);
+    match.contents = u"weather";
+    return match;
+  };
+
+  // A shortcut winning over a server suggestion takes its text, along with
+  // the template presentation, but not what the template does.
+  {
+    AutocompleteMatch shortcut_match = create_shortcut_match();
+    AutocompleteMatch server_match = create_server_match(800);
+    shortcut_match.UpgradeMatchWithPropertiesFrom(server_match);
+    EXPECT_EQ(shortcut_match.description, u"Sunny");
+    ASSERT_TRUE(shortcut_match.suggest_template);
+    EXPECT_THAT(*shortcut_match.suggest_template,
+                base::test::EqualsProto(presentation));
+    EXPECT_TRUE(shortcut_match.HasCustomDescription());
+  }
+
+  // A server suggestion winning over a bookmark takes its text, so its own
+  // template presentation no longer applies. What the template does stays.
+  {
+    AutocompleteMatch server_match = create_server_match(1000);
+    AutocompleteMatch bookmark_match(
+        bookmark_provider.get(), 800, true,
+        omnibox::AutocompleteMatchType::kBookmarkTitle);
+    bookmark_match.contents = u"Weather - Google Search";
+    server_match.UpgradeMatchWithPropertiesFrom(bookmark_match);
+    EXPECT_EQ(server_match.contents, u"Weather - Google Search");
+    ASSERT_TRUE(server_match.suggest_template);
+    EXPECT_THAT(*server_match.suggest_template,
+                base::test::EqualsProto(behavior));
+
+    // Without any other fields, the template is dropped altogether.
+    server_match = create_server_match(1000);
+    server_match.suggest_template = presentation;
+    server_match.UpgradeMatchWithPropertiesFrom(bookmark_match);
+    EXPECT_FALSE(server_match.suggest_template);
+  }
+
+  // When both matches have a template, the presentation is replaced rather
+  // than merged, and the match keeps only what its own template does.
+  {
+    omnibox::SuggestTemplateInfo shortcut_behavior;
+    (*shortcut_behavior.mutable_default_search_parameters())["udm"] = "99";
+    shortcut_behavior.mutable_fusebox_action()->set_query_action_override(
+        omnibox::SuggestTemplateInfo::FuseboxAction::QUERY_ACTION_HINT);
+    AutocompleteMatch shortcut_match = create_shortcut_match();
+    shortcut_match.contents = u"weather today";
+    shortcut_match.suggest_template = shortcut_behavior;
+    shortcut_match.suggest_template->set_type_icon(
+        omnibox::SuggestTemplateInfo::HISTORY);
+    shortcut_match.suggest_template->mutable_primary_text()->set_text(
+        "weather today");
+    // The server suggestion has no fusebox action of its own.
+    AutocompleteMatch server_match = create_server_match(800);
+    server_match.suggest_template->clear_fusebox_action();
+    shortcut_match.UpgradeMatchWithPropertiesFrom(server_match);
+    omnibox::SuggestTemplateInfo expected = presentation;
+    expected.MergeFrom(shortcut_behavior);
+    ASSERT_TRUE(shortcut_match.suggest_template);
+    EXPECT_THAT(*shortcut_match.suggest_template,
+                base::test::EqualsProto(expected));
+  }
+
+  // A match without a template doesn't get one from a duplicate without one.
+  {
+    AutocompleteMatch shortcut_match = create_shortcut_match();
+    AutocompleteMatch server_match = create_server_match(800);
+    server_match.suggest_template.reset();
+    shortcut_match.UpgradeMatchWithPropertiesFrom(server_match);
+    EXPECT_EQ(shortcut_match.description, u"Sunny");
+    EXPECT_FALSE(shortcut_match.suggest_template);
+  }
+
+  // The template is unaffected by duplicates from providers that aren't
+  // preferred.
+  {
+    AutocompleteMatch server_match = create_server_match(800);
+    AutocompleteMatch history_match(
+        history_provider.get(), 1000, true,
+        omnibox::AutocompleteMatchType::kHistoryTitle);
+    server_match.UpgradeMatchWithPropertiesFrom(history_match);
+    ASSERT_TRUE(server_match.suggest_template);
+    EXPECT_THAT(*server_match.suggest_template,
+                base::test::EqualsProto(server_template));
+  }
+}
+
+// Only the template fields that change what the click does make up the
+// behavior key.
+TEST_F(AutocompleteMatchTest, GetSuggestTemplateBehaviorKey) {
+  AutocompleteMatch match;
+  EXPECT_EQ(match.GetSuggestTemplateBehaviorKey(), "");
+
+  // Fields that don't change what the click does, and defaults that are set
+  // explicitly, don't count.
+  omnibox::SuggestTemplateInfo& suggest_template =
+      match.suggest_template.emplace();
+  suggest_template.set_type_icon(omnibox::SuggestTemplateInfo::TRENDING);
+  suggest_template.mutable_primary_text()->set_text("foo");
+  (*suggest_template.mutable_default_search_parameters())["gs_ssp"] = "abc";
+  (*suggest_template.mutable_default_search_parameters())["si"] = "def";
+  (*suggest_template.mutable_default_search_parameters())["udm"] = "";
+  suggest_template.add_action_suggestions()->set_action_type(
+      omnibox::SuggestTemplateInfo::TemplateAction::DIRECTIONS);
+  suggest_template.set_entity_id("/m/foo");
+  suggest_template.set_website_uri("https://foo.com");
+  omnibox::SuggestTemplateInfo::FuseboxAction* fusebox_action =
+      suggest_template.mutable_fusebox_action();
+  fusebox_action->set_preferred_inventory(omnibox::SUGGEST_INVENTORY_TRAVEL);
+  fusebox_action->set_searchbox_tutorial(
+      omnibox::SEARCHBOX_TUTORIAL_GLOW_PLUS_BUTTON);
+  fusebox_action->set_preselected_tool(omnibox::TOOL_MODE_UNSPECIFIED);
+  fusebox_action->set_query_action_override(
+      omnibox::SuggestTemplateInfo::FuseboxAction::QUERY_ACTION_DEFAULT);
+  EXPECT_EQ(match.GetSuggestTemplateBehaviorKey(), "");
+
+  // Each field that does gives a different key.
+  std::vector<omnibox::SuggestTemplateInfo> templates(7);
+  (*templates[0].mutable_default_search_parameters())["udm"] = "50";
+  (*templates[1].mutable_default_search_parameters())["udm"] = "49";
+  templates[2].mutable_fusebox_action()->set_preselected_tool(
+      omnibox::TOOL_MODE_IMAGE_GEN);
+  templates[3].mutable_fusebox_action()->set_preselected_model(
+      omnibox::MODEL_MODE_GEMINI_REGULAR);
+  templates[4].mutable_fusebox_action()->set_preselected_input_source(
+      omnibox::INPUT_SOURCE_GALLERY);
+  templates[5].mutable_fusebox_action()->set_query_action_override(
+      omnibox::SuggestTemplateInfo::FuseboxAction::QUERY_ACTION_PASTE);
+  templates[6].mutable_fusebox_action()->set_searchbox_override(
+      omnibox::SuggestTemplateInfo::FuseboxAction::
+          SEARCHBOX_OVERRIDE_COMPOSEBOX);
+  std::set<std::string> keys;
+  for (const omnibox::SuggestTemplateInfo& behavior_template : templates) {
+    match.suggest_template = behavior_template;
+    const std::string key = match.GetSuggestTemplateBehaviorKey();
+    EXPECT_NE(key, "");
+    keys.insert(key);
+  }
+  EXPECT_EQ(keys.size(), templates.size());
+}
+
 TEST_F(AutocompleteMatchTest, MergeScoringSignals) {
   AutocompleteMatch match = CreateACMatchWithScoringSignals(
       /*typed_count*/ 3, /*visit_count*/ 10,
@@ -1109,7 +1306,7 @@ TEST_F(AutocompleteMatchTest, RearrangeActionsInSuggest) {
   }
 }
 
-#if (!BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_VR)) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_IOS)
 TEST_F(AutocompleteMatchTest, ValidateGetVectorIcons) {
   AutocompleteMatch match;
 
@@ -1260,8 +1457,8 @@ TEST_F(AutocompleteMatchTest, GetKeywordUiState) {
   {
     SCOPED_TRACE("No keyword");
     AutocompleteMatch match;
-    match.GetKeywordUiState(template_url_service, false, &keyword_state,
-                            &keyword, &keyword_placeholder);
+    match.GetKeywordUiState(template_url_service, &keyword_state, &keyword,
+                            &keyword_placeholder);
     EXPECT_TRUE(keyword.empty());
     EXPECT_EQ(keyword_state, KeywordState::kNone);
     EXPECT_TRUE(keyword_placeholder.empty());
@@ -1271,8 +1468,8 @@ TEST_F(AutocompleteMatchTest, GetKeywordUiState) {
     SCOPED_TRACE("Keyword hint");
     AutocompleteMatch match;
     match.associated_keyword = u"keyword";
-    match.GetKeywordUiState(template_url_service, false, &keyword_state,
-                            &keyword, &keyword_placeholder);
+    match.GetKeywordUiState(template_url_service, &keyword_state, &keyword,
+                            &keyword_placeholder);
     EXPECT_EQ(keyword, u"keyword");
     EXPECT_EQ(keyword_state, KeywordState::kHint);
     EXPECT_TRUE(keyword_placeholder.empty());
@@ -1283,8 +1480,8 @@ TEST_F(AutocompleteMatchTest, GetKeywordUiState) {
     AutocompleteMatch match;
     match.keyword = u"keyword";
     match.transition = ui::PAGE_TRANSITION_KEYWORD;
-    match.GetKeywordUiState(template_url_service, false, &keyword_state,
-                            &keyword, &keyword_placeholder);
+    match.GetKeywordUiState(template_url_service, &keyword_state, &keyword,
+                            &keyword_placeholder);
     EXPECT_EQ(keyword, u"keyword");
     EXPECT_EQ(keyword_state, KeywordState::kKeyword);
     EXPECT_TRUE(keyword_placeholder.empty());
@@ -1304,8 +1501,8 @@ TEST_F(AutocompleteMatchTest, GetKeywordUiState) {
     AutocompleteMatch match;
     match.keyword = u"aggregator";
     match.transition = ui::PAGE_TRANSITION_KEYWORD;
-    match.GetKeywordUiState(template_url_service, false, &keyword_state,
-                            &keyword, &keyword_placeholder);
+    match.GetKeywordUiState(template_url_service, &keyword_state, &keyword,
+                            &keyword_placeholder);
     EXPECT_EQ(keyword, u"aggregator");
     EXPECT_EQ(keyword_state, KeywordState::kKeyword);
 #if BUILDFLAG(IS_IOS)
@@ -1316,8 +1513,8 @@ TEST_F(AutocompleteMatchTest, GetKeywordUiState) {
 
     AutocompleteMatch hint_match;
     hint_match.associated_keyword = u"aggregator";
-    hint_match.GetKeywordUiState(template_url_service, false, &keyword_state,
-                                 &keyword, &keyword_placeholder);
+    hint_match.GetKeywordUiState(template_url_service, &keyword_state, &keyword,
+                                 &keyword_placeholder);
     EXPECT_EQ(keyword, u"aggregator");
     EXPECT_EQ(keyword_state, KeywordState::kHint);
 #if BUILDFLAG(IS_IOS)

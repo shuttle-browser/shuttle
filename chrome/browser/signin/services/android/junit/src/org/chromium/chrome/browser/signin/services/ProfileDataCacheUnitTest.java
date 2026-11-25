@@ -4,8 +4,10 @@
 
 package org.chromium.chrome.browser.signin.services;
 
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.times;
@@ -19,6 +21,7 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -31,6 +34,8 @@ import org.robolectric.RuntimeEnvironment;
 import org.chromium.base.FeatureOverrides;
 import org.chromium.base.test.BaseRobolectricTestRule;
 import org.chromium.base.test.RobolectricUtil;
+import org.chromium.chrome.browser.subscription_eligibility.AiSubscriptionTierNames;
+import org.chromium.chrome.browser.subscription_eligibility.AiSubscriptionTierNamesJni;
 import org.chromium.chrome.browser.subscription_eligibility.SubscriptionEligibilityService;
 import org.chromium.chrome.test.util.browser.signin.AccountManagerTestRule;
 import org.chromium.components.signin.SigninFeatures;
@@ -39,6 +44,8 @@ import org.chromium.components.signin.identitymanager.IdentityManager.RefreshTok
 import org.chromium.components.signin.test.util.FakeAccountManagerFacade;
 import org.chromium.components.signin.test.util.FakeIdentityManager;
 import org.chromium.components.signin.test.util.TestAccounts;
+import org.chromium.components.sync.SyncService;
+import org.chromium.components.sync.UserActionableError;
 import org.chromium.google_apis.gaia.CoreAccountId;
 
 import java.util.Arrays;
@@ -65,6 +72,8 @@ public class ProfileDataCacheUnitTest {
 
     private static final int RING_THICKNESS = 3;
     private static final int IMAGE_SIZE = 100;
+    private static final String TIER_SHORT_NAME = "Tier name";
+    private static final String TIER_FULL_NAME = "Full tier name";
 
     @Rule
     public final AccountManagerTestRule mAccountManagerTestRule =
@@ -72,7 +81,10 @@ public class ProfileDataCacheUnitTest {
                     spy(new FakeAccountManagerFacade()), spy(new FakeIdentityManager()));
 
     @Mock private ProfileDataCache.Observer mObserverMock;
+    @Mock private ProfileDataCache.Observer mOtherObserverMock;
     @Mock private SubscriptionEligibilityService mSubscriptionEligibilityServiceMock;
+    @Mock private SyncService mSyncServiceMock;
+    @Mock private AiSubscriptionTierNames.Natives mTierNamesJniMock;
 
     private ProfileDataCache mProfileDataCache;
 
@@ -84,8 +96,13 @@ public class ProfileDataCacheUnitTest {
         FeatureOverrides.overrideFlag(
                 SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS,
                 mIsIdentityManagerSourceOfAccounts);
+        AiSubscriptionTierNamesJni.setInstanceForTesting(mTierNamesJniMock);
+        // Like the real names, without server overrides: every subscription tier is shown.
+        lenient()
+                .when(mTierNamesJniMock.shouldShowDecoration(anyInt()))
+                .thenAnswer(invocation -> (int) invocation.getArgument(0) > 0);
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
     }
@@ -179,7 +196,7 @@ public class ProfileDataCacheUnitTest {
     public void cacheShouldBePopulatedOnInitialization() {
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         Assert.assertTrue(profileDataCache.getAccounts().isFulfilled());
@@ -236,7 +253,7 @@ public class ProfileDataCacheUnitTest {
     public void cacheShouldNotBePopulatedOnInitializationWhenGetAccountsFails() {
         mAccountManagerTestRule.blockGetAccountsUpdate();
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         Assert.assertFalse(profileDataCache.getAccounts().isFulfilled());
@@ -455,7 +472,7 @@ public class ProfileDataCacheUnitTest {
         var updateBlocker = mAccountManagerTestRule.blockGetAccountsUpdate();
         mAccountManagerTestRule.blockExtendedAccountInfoUpdate();
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         profileDataCache.addObserver(mObserverMock);
@@ -530,7 +547,7 @@ public class ProfileDataCacheUnitTest {
                 .setPrimaryAccount(TestAccounts.TEST_ACCOUNT_NO_NAME);
         // Create a new ProfileDataCache to ensure that the accounts are not ready.
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         Assert.assertFalse(profileDataCache.getAccounts().isFulfilled());
@@ -547,7 +564,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.blockGetAccountsUpdate();
         mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         profileDataCache.addObserver(mObserverMock);
@@ -570,7 +587,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.blockGetAccountsUpdate();
         mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         profileDataCache.addObserver(mObserverMock);
@@ -598,7 +615,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         // Create a new ProfileDataCache to ensure that the accounts are not ready.
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         profileDataCache.addObserver(mObserverMock);
@@ -637,7 +654,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.setAccountFetchFailed();
 
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
 
@@ -649,7 +666,7 @@ public class ProfileDataCacheUnitTest {
     public void testAccountsPromiseIsFulfilledWhenRefreshTokensLoadingFailsAfterInitialization() {
         var updateBlocker = mAccountManagerTestRule.blockGetAccountsUpdate();
         var profileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         profileDataCache.addObserver(mObserverMock);
@@ -672,7 +689,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
         // Create a new ProfileDataCache to ensure that the accounts are not ready.
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
 
@@ -702,7 +719,7 @@ public class ProfileDataCacheUnitTest {
         FeatureOverrides.overrideFlag(
                 SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS, false);
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         mProfileDataCache.addObserver(mObserverMock);
@@ -728,7 +745,7 @@ public class ProfileDataCacheUnitTest {
         FeatureOverrides.overrideFlag(
                 SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS, false);
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         mProfileDataCache.addObserver(mObserverMock);
@@ -753,7 +770,7 @@ public class ProfileDataCacheUnitTest {
         FeatureOverrides.overrideFlag(
                 SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS, false);
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager());
         mProfileDataCache.addObserver(mObserverMock);
@@ -816,13 +833,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
 
-        mProfileDataCache =
-                ProfileDataCache.createWithAiTierRing(
-                        RuntimeEnvironment.getApplication().getApplicationContext(),
-                        mAccountManagerTestRule.getIdentityManager(),
-                        mSubscriptionEligibilityServiceMock,
-                        IMAGE_SIZE,
-                        RING_THICKNESS);
+        mProfileDataCache = createWithAiTierRing();
 
         DisplayableProfileData profileData =
                 mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
@@ -836,13 +847,7 @@ public class ProfileDataCacheUnitTest {
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT2);
 
-        mProfileDataCache =
-                ProfileDataCache.createWithAiTierRing(
-                        RuntimeEnvironment.getApplication().getApplicationContext(),
-                        mAccountManagerTestRule.getIdentityManager(),
-                        mSubscriptionEligibilityServiceMock,
-                        IMAGE_SIZE,
-                        RING_THICKNESS);
+        mProfileDataCache = createWithAiTierRing();
 
         DisplayableProfileData primaryProfileData =
                 mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
@@ -855,6 +860,7 @@ public class ProfileDataCacheUnitTest {
 
     @Test
     public void testAiTierRingYieldsToBadgeConfig() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
         mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
 
@@ -863,13 +869,9 @@ public class ProfileDataCacheUnitTest {
                         .withDefaultSizeChildAccountConfig()
                         .build(RuntimeEnvironment.getApplication().getApplicationContext());
 
-        mProfileDataCache =
-                ProfileDataCache.createWithAiTierRing(
-                        RuntimeEnvironment.getApplication().getApplicationContext(),
-                        mAccountManagerTestRule.getIdentityManager(),
-                        mSubscriptionEligibilityServiceMock,
-                        IMAGE_SIZE,
-                        RING_THICKNESS);
+        mProfileDataCache = createWithAiTierRing();
+        Assert.assertTrue(mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+
         mProfileDataCache.setBadge(TestAccounts.ACCOUNT1.getId(), errorBadge);
 
         DisplayableProfileData profileData =
@@ -878,18 +880,389 @@ public class ProfileDataCacheUnitTest {
     }
 
     @Test
-    public void testPrimaryAccountChangedUpdatesCache() {
+    public void testAiTierPillNameOnlyForPrimaryAccount() {
         when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        when(mTierNamesJniMock.getShortName(1)).thenReturn(TIER_SHORT_NAME);
+        when(mTierNamesJniMock.getFullName(1)).thenReturn(TIER_FULL_NAME);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT2);
 
+        mProfileDataCache = createWithAiTierRing();
+
+        DisplayableProfileData primaryProfileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertEquals(TIER_SHORT_NAME, primaryProfileData.getAiTierPillName());
+        Assert.assertEquals(TIER_FULL_NAME, primaryProfileData.getAiTierFullName());
+        DisplayableProfileData secondaryProfileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT2.getId());
+        Assert.assertEquals("", secondaryProfileData.getAiTierPillName());
+        Assert.assertEquals("", secondaryProfileData.getAiTierFullName());
+    }
+
+    @Test
+    public void testBadgeHidesAiTierRingAndPillName() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+
+        mProfileDataCache.setBadge(
+                TestAccounts.ACCOUNT1.getId(),
+                BadgeConfig.create(R.drawable.ic_error_24dp)
+                        .withDefaultSizeChildAccountConfig()
+                        .build(RuntimeEnvironment.getApplication().getApplicationContext()));
+
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertFalse(profileData.hasAiTierRing());
+        Assert.assertEquals("", profileData.getAiTierPillName());
+        Assert.assertEquals("", profileData.getAiTierFullName());
+    }
+
+    @Test
+    public void testIdentityErrorHidesAiTierRingAndPillName() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+
+        mProfileDataCache = createWithAiTierRing();
+
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertFalse(profileData.hasAiTierRing());
+        Assert.assertEquals("", profileData.getAiTierPillName());
+        Assert.assertEquals("", profileData.getAiTierFullName());
+    }
+
+    @Test
+    public void testUnknownAiSubscriptionTierShowsRingWithoutPillName() {
+        // E.g. a tier added after this version was released.
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(4);
+        when(mTierNamesJniMock.getShortName(4)).thenReturn("");
+        when(mTierNamesJniMock.getFullName(4)).thenReturn("");
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+
+        mProfileDataCache = createWithAiTierRing();
+
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertTrue(profileData.hasAiTierRing());
+        Assert.assertEquals("", profileData.getAiTierPillName());
+        Assert.assertEquals("", profileData.getAiTierFullName());
+    }
+
+    @Test
+    public void testExcludedAiSubscriptionTierShowsNoRingOrNames() {
+        // The server can exclude a tier from being presented as an AI subscription tier.
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(3);
+        when(mTierNamesJniMock.shouldShowDecoration(3)).thenReturn(false);
+        // Names that the tier would have, to check that the exclusion hides them.
+        lenient().when(mTierNamesJniMock.getShortName(3)).thenReturn(TIER_SHORT_NAME);
+        lenient().when(mTierNamesJniMock.getFullName(3)).thenReturn(TIER_FULL_NAME);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+
+        mProfileDataCache = createWithAiTierRing();
+
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertFalse(profileData.hasAiTierRing());
+        Assert.assertEquals("", profileData.getAiTierPillName());
+        Assert.assertEquals("", profileData.getAiTierFullName());
+    }
+
+    @Test
+    public void testAiSubscriptionTierChangeUpdatesTierNames() {
+        when(mTierNamesJniMock.getShortName(1)).thenReturn(TIER_SHORT_NAME);
+        when(mTierNamesJniMock.getFullName(1)).thenReturn(TIER_FULL_NAME);
+        when(mTierNamesJniMock.getShortName(2)).thenReturn("Other tier name");
+        when(mTierNamesJniMock.getFullName(2)).thenReturn("Other full tier name");
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertEquals("", profileData.getAiTierPillName());
+        Assert.assertEquals("", profileData.getAiTierFullName());
+
+        // 0 -> 1: the account subscribes.
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mProfileDataCache.onAiSubscriptionTierChanged();
+        profileData = mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertEquals(TIER_SHORT_NAME, profileData.getAiTierPillName());
+        Assert.assertEquals(TIER_FULL_NAME, profileData.getAiTierFullName());
+
+        // 1 -> 2: the account changes tier.
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(2);
+        mProfileDataCache.onAiSubscriptionTierChanged();
+        profileData = mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertEquals("Other tier name", profileData.getAiTierPillName());
+        Assert.assertEquals("Other full tier name", profileData.getAiTierFullName());
+    }
+
+    @Test
+    public void testSyncErrorHidesAndShowsAiTierRing() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        SyncService.SyncStateChangedListener listener = captureSyncStateChangedListener();
+        assertPrimaryAccountIdentityError(/* hasError= */ false);
+        clearInvocations(mObserverMock);
+
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        listener.syncStateChanged();
+        verify(mObserverMock).onProfileDataUpdated(any());
+        assertPrimaryAccountIdentityError(/* hasError= */ true);
+
+        clearInvocations(mObserverMock);
+        when(mSyncServiceMock.getUserActionableError()).thenReturn(UserActionableError.NONE);
+        listener.syncStateChanged();
+        verify(mObserverMock).onProfileDataUpdated(any());
+        assertPrimaryAccountIdentityError(/* hasError= */ false);
+    }
+
+    @Test
+    public void testSyncStateChangeNotifiesOnlyWhenErrorStateChanges() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        SyncService.SyncStateChangedListener listener = captureSyncStateChangedListener();
+        clearInvocations(mObserverMock);
+
+        // A sync state change that doesn't change the error.
+        listener.syncStateChanged();
+        verify(mObserverMock, never()).onProfileDataUpdated(any());
+
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        listener.syncStateChanged();
+        verify(mObserverMock).onProfileDataUpdated(any());
+
+        // A change from one error to another.
+        clearInvocations(mObserverMock);
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.NEEDS_PASSPHRASE);
+        listener.syncStateChanged();
+        verify(mObserverMock, never()).onProfileDataUpdated(any());
+    }
+
+    @Test
+    public void testSyncErrorChangeRebuildsOnlyPrimaryAccount() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT2);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        SyncService.SyncStateChangedListener listener = captureSyncStateChangedListener();
+        DisplayableProfileData secondaryProfileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT2.getId());
+        clearInvocations(mObserverMock);
+
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        listener.syncStateChanged();
+
+        ArgumentCaptor<DisplayableProfileData> profileDataCaptor =
+                ArgumentCaptor.forClass(DisplayableProfileData.class);
+        verify(mObserverMock).onProfileDataUpdated(profileDataCaptor.capture());
+        Assert.assertEquals(
+                TestAccounts.ACCOUNT1.getId(), profileDataCaptor.getValue().getAccountId());
+        // The secondary account's profile data isn't rebuilt.
+        Assert.assertSame(
+                secondaryProfileData, mProfileDataCache.getById(TestAccounts.ACCOUNT2.getId()));
+    }
+
+    @Test
+    public void testSyncErrorChangeWithoutObserversIsSeenOnRead() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+        assertPrimaryAccountIdentityError(/* hasError= */ false);
+
+        // The error changes while nothing observes the cache, e.g. before its screen adds an
+        // observer, and is read before an observer is added.
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        Assert.assertTrue(mProfileDataCache.hasIdentityError());
+        Assert.assertFalse(
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+
+        // getById() re-checks too.
+        when(mSyncServiceMock.getUserActionableError()).thenReturn(UserActionableError.NONE);
+        Assert.assertTrue(mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+        Assert.assertFalse(mProfileDataCache.hasIdentityError());
+    }
+
+    @Test
+    public void testSyncErrorFixedWithoutObserversNotifiesFirstObserver() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        mProfileDataCache.removeObserver(mObserverMock);
+        Assert.assertFalse(
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+
+        // The error is fixed while nothing observes the cache, e.g. while its screen is in the
+        // back stack.
+        when(mSyncServiceMock.getUserActionableError()).thenReturn(UserActionableError.NONE);
+        clearInvocations(mObserverMock);
+        mProfileDataCache.addObserver(mObserverMock);
+
+        ArgumentCaptor<DisplayableProfileData> profileDataCaptor =
+                ArgumentCaptor.forClass(DisplayableProfileData.class);
+        verify(mObserverMock).onProfileDataUpdated(profileDataCaptor.capture());
+        Assert.assertTrue(profileDataCaptor.getValue().hasAiTierRing());
+    }
+
+    @Test
+    public void testAiTierRingWithoutSyncService() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
         mProfileDataCache =
                 ProfileDataCache.createWithAiTierRing(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager(),
                         mSubscriptionEligibilityServiceMock,
+                        /* syncService= */ null,
                         IMAGE_SIZE,
                         RING_THICKNESS);
+
+        Assert.assertFalse(mProfileDataCache.hasIdentityError());
+        Assert.assertTrue(mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+    }
+
+    @Test
+    public void testBadgeWinsOverAiTierRingDuringAndAfterSyncError() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        SyncService.SyncStateChangedListener listener = captureSyncStateChangedListener();
+        BadgeConfig errorBadge =
+                BadgeConfig.create(R.drawable.ic_error_24dp)
+                        .withDefaultSizeChildAccountConfig()
+                        .build(RuntimeEnvironment.getApplication().getApplicationContext());
+        mProfileDataCache.setBadge(TestAccounts.ACCOUNT1.getId(), errorBadge);
+
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        listener.syncStateChanged();
+        Assert.assertFalse(
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+        Assert.assertEquals(
+                errorBadge,
+                mProfileDataCache.getBadgeConfigForTesting(TestAccounts.ACCOUNT1.getId()));
+
+        // Fixing the error doesn't put the ring over the badge.
+        when(mSyncServiceMock.getUserActionableError()).thenReturn(UserActionableError.NONE);
+        listener.syncStateChanged();
+        Assert.assertFalse(
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId()).hasAiTierRing());
+        Assert.assertEquals(
+                errorBadge,
+                mProfileDataCache.getBadgeConfigForTesting(TestAccounts.ACCOUNT1.getId()));
+    }
+
+    @Test
+    public void testSyncErrorKeepsAiTierRingHiddenWhenTierChanges() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(0);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        mProfileDataCache = createWithAiTierRing();
+        Assert.assertTrue(mProfileDataCache.hasIdentityError());
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mProfileDataCache.onAiSubscriptionTierChanged();
+
+        DisplayableProfileData newProfileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertNotSame(profileData, newProfileData);
+        Assert.assertFalse(newProfileData.hasAiTierRing());
+    }
+
+    @Test
+    public void testSyncErrorKeepsAiTierRingHiddenWhenAccountInfoIsUpdated() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        mProfileDataCache = createWithAiTierRing();
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+
+        mProfileDataCache.onExtendedAccountInfoUpdated(TestAccounts.ACCOUNT1);
+
+        DisplayableProfileData newProfileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertNotSame(profileData, newProfileData);
+        Assert.assertFalse(newProfileData.hasAiTierRing());
+    }
+
+    @Test
+    public void testSyncErrorKeepsAiTierRingHiddenWhenPrimaryAccountChanges() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.SIGN_IN_NEEDS_UPDATE);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+
+        DisplayableProfileData newProfileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertNotSame(profileData, newProfileData);
+        Assert.assertFalse(newProfileData.hasAiTierRing());
+    }
+
+    @Test
+    public void testIdentityErrorChangeNotifiesObserversWithoutAiTier() {
+        mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mProfileDataCache = createWithAiTierRing();
+        mProfileDataCache.addObserver(mObserverMock);
+        SyncService.SyncStateChangedListener listener = captureSyncStateChangedListener();
+        clearInvocations(mObserverMock);
+
+        when(mSyncServiceMock.getUserActionableError())
+                .thenReturn(UserActionableError.NEEDS_CLIENT_UPGRADE);
+        listener.syncStateChanged();
+
+        Assert.assertTrue(mProfileDataCache.hasIdentityError());
+        verify(mObserverMock).onProfileDataUpdated(any());
+    }
+
+    @Test
+    public void testPrimaryAccountChangedUpdatesCache() {
+        when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
+        mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT2);
+
+        mProfileDataCache = createWithAiTierRing();
 
         // Before sign-in, neither is primary, so no ring
         DisplayableProfileData profileData1 =
@@ -929,26 +1302,46 @@ public class ProfileDataCacheUnitTest {
     }
 
     @Test
-    public void testAiTierRingRegistersAndUnregistersObserver() {
-        mProfileDataCache =
-                ProfileDataCache.createWithAiTierRing(
-                        RuntimeEnvironment.getApplication().getApplicationContext(),
-                        mAccountManagerTestRule.getIdentityManager(),
-                        mSubscriptionEligibilityServiceMock,
-                        IMAGE_SIZE,
-                        RING_THICKNESS);
+    public void testAiTierRingRegistersAndUnregistersObservers() {
+        mProfileDataCache = createWithAiTierRing();
+        verify(mSubscriptionEligibilityServiceMock, never()).addObserver(any());
+        verify(mSyncServiceMock, never()).addSyncStateChangedListener(any());
 
         mProfileDataCache.addObserver(mObserverMock);
+        mProfileDataCache.addObserver(mOtherObserverMock);
         verify(mSubscriptionEligibilityServiceMock).addObserver(mProfileDataCache);
+        verify(mSyncServiceMock).addSyncStateChangedListener(mProfileDataCache);
 
         mProfileDataCache.removeObserver(mObserverMock);
+        verify(mSubscriptionEligibilityServiceMock, never()).removeObserver(any());
+        verify(mSyncServiceMock, never()).removeSyncStateChangedListener(any());
+
+        mProfileDataCache.removeObserver(mOtherObserverMock);
         verify(mSubscriptionEligibilityServiceMock).removeObserver(mProfileDataCache);
+        verify(mSyncServiceMock).removeSyncStateChangedListener(mProfileDataCache);
+    }
+
+    @Test
+    public void testOnlyCachesWithAiTierRingKnowTheTier() {
+        Assert.assertThrows(
+                AssertionError.class,
+                () ->
+                        new ProfileDataCache(
+                                RuntimeEnvironment.getApplication().getApplicationContext(),
+                                mAccountManagerTestRule.getAccountManagerFacade(),
+                                mAccountManagerTestRule.getIdentityManager(),
+                                mSubscriptionEligibilityServiceMock,
+                                /* syncService= */ null,
+                                IMAGE_SIZE,
+                                /* ringThicknessPx= */ 0,
+                                /* aiTierRingEnabled= */ false,
+                                /* brandingDelegate= */ null));
     }
 
     @Test
     public void testPlaceholderImageMatchesImageSize() {
         mProfileDataCache =
-                ProfileDataCache.createWithoutBadge(
+                ProfileDataCache.create(
                         RuntimeEnvironment.getApplication().getApplicationContext(),
                         mAccountManagerTestRule.getIdentityManager(),
                         R.dimen.user_picture_size);
@@ -963,15 +1356,63 @@ public class ProfileDataCacheUnitTest {
 
     @Test
     public void testPlaceholderImageMatchesImageSizeWithAiTierRing() {
-        mProfileDataCache =
-                ProfileDataCache.createWithAiTierRing(
-                        RuntimeEnvironment.getApplication().getApplicationContext(),
-                        mAccountManagerTestRule.getIdentityManager(),
-                        mSubscriptionEligibilityServiceMock,
-                        IMAGE_SIZE,
-                        RING_THICKNESS);
+        mProfileDataCache = createWithAiTierRing();
 
         Assert.assertEquals(
                 IMAGE_SIZE, mProfileDataCache.getPlaceholderImage().getIntrinsicWidth());
+    }
+
+    @Test
+    public void testIsAiTierRingEnabled() {
+        Assert.assertTrue(createWithAiTierRing().isAiTierRingEnabled());
+        // Created in setUp().
+        Assert.assertFalse(mProfileDataCache.isAiTierRingEnabled());
+    }
+
+    @Test
+    public void testGetAiTierRingPadding() {
+        int ringSpacing =
+                RuntimeEnvironment.getApplication()
+                        .getResources()
+                        .getDimensionPixelSize(R.dimen.ai_tier_ring_spacing);
+        Assert.assertEquals(
+                RING_THICKNESS + ringSpacing, createWithAiTierRing().getAiTierRingPadding());
+        Assert.assertEquals(
+                0,
+                ProfileDataCache.createWithDefaultImageSize(
+                                RuntimeEnvironment.getApplication().getApplicationContext(),
+                                mAccountManagerTestRule.getIdentityManager())
+                        .getAiTierRingPadding());
+    }
+
+    private ProfileDataCache createWithAiTierRing() {
+        return ProfileDataCache.createWithAiTierRing(
+                RuntimeEnvironment.getApplication().getApplicationContext(),
+                mAccountManagerTestRule.getIdentityManager(),
+                mSubscriptionEligibilityServiceMock,
+                mSyncServiceMock,
+                IMAGE_SIZE,
+                RING_THICKNESS);
+    }
+
+    /**
+     * Checks {@link ProfileDataCache#hasIdentityError()} and the primary account's profile data:
+     * the AI tier ring is hidden while there is an error, and the image keeps its size either way.
+     */
+    private void assertPrimaryAccountIdentityError(boolean hasError) {
+        Assert.assertEquals(hasError, mProfileDataCache.hasIdentityError());
+        DisplayableProfileData profileData =
+                mProfileDataCache.getById(TestAccounts.ACCOUNT1.getId());
+        Assert.assertEquals(!hasError, profileData.hasAiTierRing());
+        Assert.assertEquals(IMAGE_SIZE, profileData.getImage().getIntrinsicWidth());
+        Assert.assertEquals(IMAGE_SIZE, profileData.getImage().getIntrinsicHeight());
+    }
+
+    /** Returns the listener that the cache registered with the SyncService. */
+    private SyncService.SyncStateChangedListener captureSyncStateChangedListener() {
+        ArgumentCaptor<SyncService.SyncStateChangedListener> listenerCaptor =
+                ArgumentCaptor.forClass(SyncService.SyncStateChangedListener.class);
+        verify(mSyncServiceMock).addSyncStateChangedListener(listenerCaptor.capture());
+        return listenerCaptor.getValue();
     }
 }

@@ -8,10 +8,12 @@
 
 #include <cstdint>
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
 #include "base/android/jni_android.h"
+#include "base/android/jni_bytebuffer.h"
 #include "base/android/jni_string.h"
 #include "base/check.h"
 #include "base/containers/span.h"
@@ -31,7 +33,6 @@
 #include "chrome/browser/tab/tab_storage_package.h"
 #include "chrome/browser/tab/tab_storage_packager.h"
 #include "chrome/browser/tab/web_contents_state.h"
-#include "components/tabs/public/android/jni_conversion.h"
 #include "components/tabs/public/tab_strip_collection.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/web_contents.h"
@@ -47,6 +48,9 @@ struct TabStorageMetadata {
   int64_t last_navigation_committed_timestamp_millis = 0;
   bool tab_has_sensitive_content = false;
   std::optional<std::string> opener_app_id;
+  bool has_pending_load_params = false;
+  std::optional<std::string> web_contents_state_bytes;
+  int32_t saved_state_version = WebContentsState::kInvalidBufferVersion;
 };
 
 static void JNI_TabStoragePackager_OnTabStorageMetadataFetched(
@@ -56,7 +60,10 @@ static void JNI_TabStoragePackager_OnTabStorageMetadataFetched(
     int32_t theme_color,
     int64_t last_navigation_committed_timestamp_millis,
     bool tab_has_sensitive_content,
-    std::optional<std::string> opener_app_id) {
+    std::optional<std::string> opener_app_id,
+    bool has_pending_load_params,
+    const base::android::JavaRef<jobject>& web_contents_state_buffer,
+    int32_t saved_state_version) {
   auto* metadata = reinterpret_cast<TabStorageMetadata*>(metadata_ptr);
   metadata->timestamp_millis = timestamp_millis;
   metadata->theme_color = theme_color;
@@ -64,6 +71,18 @@ static void JNI_TabStoragePackager_OnTabStorageMetadataFetched(
       last_navigation_committed_timestamp_millis;
   metadata->tab_has_sensitive_content = tab_has_sensitive_content;
   metadata->opener_app_id = std::move(opener_app_id);
+  metadata->has_pending_load_params = has_pending_load_params;
+  if (web_contents_state_buffer &&
+      saved_state_version != WebContentsState::kInvalidBufferVersion) {
+    base::span<const uint8_t> buffer_span =
+        base::android::JavaByteBufferToSpan(env, web_contents_state_buffer);
+    if (!buffer_span.empty()) {
+      metadata->web_contents_state_bytes =
+          std::string(reinterpret_cast<const char*>(buffer_span.data()),
+                      buffer_span.size());
+      metadata->saved_state_version = saved_state_version;
+    }
+  }
 }
 
 // A payload of data representing TabStripCollection.
@@ -133,8 +152,7 @@ MapAndConsumeUnmappedTabStripCollectionStorageData(
 TabStoragePackagerAndroid::TabStoragePackagerAndroid(Profile* profile)
     : profile_(profile) {
   JNIEnv* env = base::android::AttachCurrentThread();
-  java_obj_.Reset(
-      Java_TabStoragePackager_create(env, reinterpret_cast<intptr_t>(this)));
+  java_obj_.Reset(Java_TabStoragePackager_create(env));
 }
 
 bool TabStoragePackagerAndroid::IsOffTheRecord(
@@ -185,13 +203,33 @@ std::unique_ptr<StoragePackage> TabStoragePackagerAndroid::Package(
     tab_state.set_url(gurl.spec());
   }
 
-  if (content::WebContents* web_contents = tab_android->web_contents()) {
-    if (WebContentsState::WriteContentsState(
-            web_contents, tab_state.mutable_web_contents_state_bytes())) {
-      tab_state.set_web_contents_state_version(2);
+  TabStorageMetadata metadata;
+  JNIEnv* env = base::android::AttachCurrentThread();
+  Java_TabStoragePackager_fetchTabStorageMetadata(
+      env, tab_android, reinterpret_cast<intptr_t>(&metadata));
+
+  if (metadata.has_pending_load_params) {
+    if (metadata.web_contents_state_bytes.has_value() &&
+        !metadata.web_contents_state_bytes->empty() &&
+        metadata.saved_state_version !=
+            WebContentsState::kInvalidBufferVersion) {
+      tab_state.set_web_contents_state_bytes(
+          std::move(*metadata.web_contents_state_bytes));
+      tab_state.set_web_contents_state_version(metadata.saved_state_version);
     } else {
       tab_state.clear_web_contents_state_bytes();
-      tab_state.set_web_contents_state_version(-1);
+      tab_state.set_web_contents_state_version(
+          WebContentsState::kInvalidBufferVersion);
+    }
+  } else if (content::WebContents* web_contents = tab_android->web_contents()) {
+    if (WebContentsState::WriteContentsState(
+            web_contents, tab_state.mutable_web_contents_state_bytes())) {
+      tab_state.set_web_contents_state_version(
+          WebContentsState::kCurrentVersion);
+    } else {
+      tab_state.clear_web_contents_state_bytes();
+      tab_state.set_web_contents_state_version(
+          WebContentsState::kInvalidBufferVersion);
     }
   } else {
     std::unique_ptr<WebContentsStateByteBuffer> byte_buffer =
@@ -203,14 +241,10 @@ std::unique_ptr<StoragePackage> TabStoragePackagerAndroid::Package(
           buffer_span.size());
       tab_state.set_web_contents_state_version(byte_buffer->state_version());
     } else {
-      tab_state.set_web_contents_state_version(-1);
+      tab_state.set_web_contents_state_version(
+          WebContentsState::kInvalidBufferVersion);
     }
   }
-
-  TabStorageMetadata metadata;
-  JNIEnv* env = base::android::AttachCurrentThread();
-  Java_TabStoragePackager_fetchTabStorageMetadata(
-      env, tab_android, reinterpret_cast<intptr_t>(&metadata));
 
   tab_state.set_timestamp_millis(metadata.timestamp_millis);
   tab_state.set_theme_color(metadata.theme_color);
@@ -237,7 +271,9 @@ TabStoragePackagerAndroid::PackageTabStripCollectionData(
       mapping);
 }
 
-int64_t TabStoragePackagerAndroid::ConsolidateTabStripCollectionData(
+// The caller is responsible for managing the lifecycle of the returned
+// UnmappedTabStripCollectionStorageData.
+static int64_t JNI_TabStoragePackager_ConsolidateTabStripCollectionData(
     JNIEnv* env,
     std::string window_tag,
     int32_t j_tab_model_type,

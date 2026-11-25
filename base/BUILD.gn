@@ -315,6 +315,7 @@ component("base") {
     "containers/id_map.h",
     "containers/intrusive_heap.cc",
     "containers/intrusive_heap.h",
+    "containers/linear_find.h",
     "containers/linked_list.cc",
     "containers/linked_list.h",
     "containers/lru_cache.h",
@@ -510,6 +511,8 @@ component("base") {
     "memory_coordinator/memory_coordinator_features.h",
     "memory_coordinator/memory_limit.cc",
     "memory_coordinator/memory_limit.h",
+    "memory_coordinator/memory_pressure_source.cc",
+    "memory_coordinator/memory_pressure_source.h",
     "memory_coordinator/multi_memory_consumer.cc",
     "memory_coordinator/multi_memory_consumer.h",
     "memory_coordinator/traits.cc",
@@ -589,6 +592,8 @@ component("base") {
     "metrics/user_metrics_action.h",
     "no_destructor.h",
     "not_fatal_until.h",
+    "not_fatal_until_severity_override.cc",
+    "not_fatal_until_severity_override.h",
     "notimplemented.h",
     "notreached.h",
     "observer_list.h",
@@ -807,6 +812,13 @@ component("base") {
     "task/post_job.cc",
     "task/post_job.h",
     "task/post_task_and_reply_with_result_internal.h",
+    "task/responsiveness/calculator.cc",
+    "task/responsiveness/calculator.h",
+    "task/responsiveness/message_loop_observer.cc",
+    "task/responsiveness/message_loop_observer.h",
+    "task/responsiveness/responsiveness_calculator_delegate.h",
+    "task/responsiveness/watcher.cc",
+    "task/responsiveness/watcher.h",
     "task/scoped_set_task_priority_for_current_thread.cc",
     "task/scoped_set_task_priority_for_current_thread.h",
     "task/sequence_manager/associated_thread_id.cc",
@@ -1146,8 +1158,8 @@ component("base") {
   ]
 
   deps = [
+    ":base64_rust_shim",
     ":check_version_internal",
-    ":simdutf_shim",
     "//base/allocator:buildflags",
     "//base/third_party/cityhash",
     "//base/third_party/cityhash_v103",
@@ -1636,7 +1648,6 @@ component("base") {
       "//third_party/fuchsia-sdk/sdk/pkg/async-loop-cpp",
       "//third_party/fuchsia-sdk/sdk/pkg/async-loop-default",
       "//third_party/fuchsia-sdk/sdk/pkg/fidl",
-      "//third_party/fuchsia-sdk/sdk/pkg/inspect_component_cpp",
       "//third_party/icu",
     ]
 
@@ -2655,13 +2666,15 @@ if (enable_rust_api_from_cpp) {
   rust_api_from_cpp("base_rs_api") {
     bindings_target = ":base"
     public_headers = [ "types/id_type.h" ]
+    root_namespaces = [ "base" ]
 
     # Limiting visibility, because certain foundational libraries (`//base`,
     # `//net`, etc) can't use `rust_api_from_cpp` yet.  For more details see
     # the "Caveats" section in `//docs/rust/crubit/README.md`.
     #
     # TODO(https://crbug.com/576651451): Make publicly visible after Cronet
-    # supports both Crubit directions.
+    # supports both Crubit directions.  Expand visibility as needed for
+    # Crubit adopters outside of Cronet (e.g. `//content`).
     visibility = [ "//build/rust/tests/test_rust_api_from_cpp:*" ]
   }
 }
@@ -2716,19 +2729,13 @@ source_set("dcheck_is_on") {
   deps = [ ":debugging_buildflags" ]
 }
 
-# Separate simdutf from ":base", so simdutf cannot accidentally affect the
-# build config for ":base".
-source_set("simdutf_shim") {
+rust_static_library("base64_rust_shim") {
   visibility = [ ":base" ]
-  configs += [ "//build/config/compiler:wglobal_constructors" ]
-  if (!is_win) {
-    # Generates -Werror,-Wsign-conversion
-    configs += [ "//build/config/compiler:prevent_unsafe_narrowing" ]
-  }
-
-  public = [ "simdutf_shim.h" ]
-  sources = [ "simdutf_shim.cc" ]
-  deps = [ "//third_party/simdutf" ]
+  allow_unsafe = true  # Needed for FFI that underpins the `cxx` crate.
+  crate_root = "base64_rust_shim.rs"
+  sources = [ "base64_rust_shim.rs" ]
+  cxx_bindings = [ "base64_rust_shim.rs" ]
+  deps = [ "//third_party/rust/base64/v0_23:lib" ]
 }
 
 if (is_android) {
@@ -3354,6 +3361,9 @@ executable("containers_memory_benchmark") {
 }
 
 test("base_perftests") {
+  configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
+  configs += [ "//build/config/compiler:thinlto_optimize_max" ]
+
   sources = [
     "base64_perftest.cc",
     "byte_conversions_perftest.cc",
@@ -3421,6 +3431,9 @@ test("base_perftests") {
 }
 
 test("partition_alloc_perftests") {
+  configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
+  configs += [ "//build/config/compiler:thinlto_optimize_max" ]
+
   deps = [
     "//base/allocator/partition_allocator/src/partition_alloc:perftests",
     "//testing/gtest:gtest_main",
@@ -3719,7 +3732,6 @@ if (is_fuchsia) {
       ":testfidl_cpp",
       "//third_party/fuchsia-sdk/sdk/fidl/fuchsia.io:fuchsia.io_cpp_common",
       "//third_party/fuchsia-sdk/sdk/pkg/fidl_cpp_wire",
-      "//third_party/fuchsia-sdk/sdk/pkg/sys_cpp",
     ]
   }
 
@@ -3843,6 +3855,7 @@ test("base_unittests") {
     "containers/heap_array_unittest.cc",
     "containers/id_map_unittest.cc",
     "containers/intrusive_heap_unittest.cc",
+    "containers/linear_find_unittest.cc",
     "containers/linked_list_unittest.cc",
     "containers/lru_cache_unittest.cc",
     "containers/map_util_unittest.cc",
@@ -3944,7 +3957,9 @@ test("base_unittests") {
     "memory_coordinator/async_memory_consumer_registration_unittest.cc",
     "memory_coordinator/memory_consumer_registry_unittest.cc",
     "memory_coordinator/memory_consumer_unittest.cc",
+    "memory_coordinator/memory_coordinator_features_unittest.cc",
     "memory_coordinator/memory_limit_unittest.cc",
+    "memory_coordinator/memory_pressure_source_unittest.cc",
     "memory_coordinator/multi_memory_consumer_unittest.cc",
     "message_loop/message_pump_glib_unittest.cc",
     "message_loop/message_pump_unittest.cc",
@@ -4069,6 +4084,8 @@ test("base_unittests") {
     "task/execution_fence_unittest.cc",
     "task/lazy_thread_pool_task_runner_unittest.cc",
     "task/post_job_unittest.cc",
+    "task/responsiveness/calculator_unittest.cc",
+    "task/responsiveness/watcher_unittest.cc",
     "task/scoped_set_task_priority_for_current_thread_unittest.cc",
     "task/sequence_manager/atomic_flag_set_unittest.cc",
     "task/sequence_manager/sequence_manager_impl_unittest.cc",
@@ -4489,6 +4506,9 @@ test("base_unittests") {
     ]
     if (!is_apple) {
       sources += [
+        "process/internal_linux_unittest.cc",
+        "process/process_handle_linux_unittest.cc",
+        "process/process_iterator_linux_unittest.cc",
         "profiler/stack_base_address_posix_unittest.cc",
         "profiler/stack_copier_signal_unittest.cc",
         "profiler/thread_delegate_posix_unittest.cc",
@@ -4546,6 +4566,7 @@ test("base_unittests") {
       "android/application_status_listener_unittest.cc",
       "android/child_process_unittest.cc",
       "android/content_uri_utils_unittest.cc",
+      "android/device_info_unittest.cc",
       "android/input_hint_checker_unittest.cc",
       "android/java_handler_thread_unittest.cc",
       "android/jni_android_unittest.cc",
@@ -4961,6 +4982,7 @@ if (enable_nocompile_tests) {
       "containers/fixed_flat_map_nocompile.nc",
       "containers/fixed_flat_set_nocompile.nc",
       "containers/heap_array_nocompile.nc",
+      "containers/linear_find_nocompile.nc",
       "containers/span_nocompile.nc",
       "containers/to_array_nocompile.nc",
       "containers/to_value_list_nocompile.nc",
@@ -5517,10 +5539,7 @@ if (is_android) {
   }
 
   generate_jni("memory_coordinator_jni") {
-    sources = [
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerRegistration.java",
-      "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerTraits.java",
-    ]
+    sources = [ "android/java/src/org/chromium/base/memory_coordinator/MemoryConsumerRegistration.java" ]
   }
 
   android_library("memory_coordinator_java") {
@@ -5830,6 +5849,7 @@ if (is_android) {
     ]
     deps = [
       ":base_java",
+      ":file_error_java",
       ":log_java",
       ":stream_util_java",
       ":tasks_java",
@@ -6381,6 +6401,7 @@ if (is_android) {
     deps = [
       ":base_java",
       ":base_java_test_support",
+      ":base_shared_preferences_java",
       "//base/version_info/android:version_constants_java",
       "//testing/android/junit:junit_test_support",
       "//third_party/androidx:androidx_test_core_java",

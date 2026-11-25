@@ -16,10 +16,8 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.HistogramWatcher;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.modaldialog.ChromeTabModalPresenter;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObserver;
@@ -33,12 +31,10 @@ import org.chromium.ui.modaldialog.ModalDialogManager.ModalDialogType;
 
 /** Test suite for interaction between permissions requests and navigation. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class PermissionNavigationTest {
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
-    public PermissionTestRule mPermissionRule =
-            new PermissionTestRule(mActivityTestRule.getActivityTestRule());
+    public PermissionTestRule mPermissionRule = new PermissionTestRule(mActivityTestRule);
 
     @Rule
     public RuleChain mRuleChain = RuleChain.outerRule(mActivityTestRule).around(mPermissionRule);
@@ -52,7 +48,7 @@ public class PermissionNavigationTest {
 
     @Before
     public void setUp() throws Exception {
-        mPermissionRule.setUpActivity();
+        mActivityTestRule.startOnBlankPage();
 
         // Some bots on continuous integration may have the system-level location setting off, in
         // which case the permission request would be auto-denied as it will not have a user
@@ -69,11 +65,11 @@ public class PermissionNavigationTest {
     @Feature({"Permissions"})
     public void testNavigationDismissesModalPermissionPrompt() throws Exception {
         mPermissionRule.setUpUrl(TEST_FILE);
-        mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab(
+        mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(
                 "requestGeolocationPermission()");
         mPermissionRule.waitForDialogShownState(true);
 
-        Tab tab = mPermissionRule.getActivityTab();
+        Tab tab = mActivityTestRule.getActivityTab();
         final CallbackHelper callbackHelper = new CallbackHelper();
         TabObserver navigationWaiter =
                 new TabObserver() {
@@ -85,7 +81,7 @@ public class PermissionNavigationTest {
                 };
         ThreadUtils.runOnUiThreadBlocking(() -> tab.addObserver(navigationWaiter));
 
-        mPermissionRule.runJavaScriptCodeInCurrentTab("navigate()");
+        mActivityTestRule.runJavaScriptCodeInCurrentTab("navigate()");
 
         callbackHelper.waitForCallback(0);
         ThreadUtils.runOnUiThreadBlocking(() -> tab.removeObserver(navigationWaiter));
@@ -99,7 +95,7 @@ public class PermissionNavigationTest {
     public void testUmaMetricsForDismissalReasonsNavigateBackAndTouchOutsideTheScrim()
             throws Exception {
         mPermissionRule.setUpUrl(TEST_FILE);
-        mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab(
+        mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(
                 "requestGeolocationPermission()");
         mPermissionRule.waitForDialogShownState(true);
 
@@ -109,17 +105,17 @@ public class PermissionNavigationTest {
                         .expectIntRecord(DISMISS_TYPE_HISTOGRAM, DismissalType.NAVIGATE_BACK)
                         .build();
 
-        PermissionTestRule.waitForDialog(mPermissionRule.getActivity());
+        PermissionTestRule.waitForDialog(mActivityTestRule.getActivity());
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    mPermissionRule.getActivity().onBackPressed();
+                    mActivityTestRule.getActivity().onBackPressed();
                 });
 
         histogramExpectation.assertExpected(
                 "Should record tapping back to dismiss permission prompt in UMA");
 
         // Verify touching outside the scrim is recorded in UMA
-        mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab(
+        mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(
                 "requestGeolocationPermission()");
         mPermissionRule.waitForDialogShownState(true);
 
@@ -127,11 +123,11 @@ public class PermissionNavigationTest {
                 HistogramWatcher.newBuilder()
                         .expectIntRecord(DISMISS_TYPE_HISTOGRAM, DismissalType.TOUCH_OUTSIDE)
                         .build();
-        PermissionTestRule.waitForDialog(mPermissionRule.getActivity());
+        PermissionTestRule.waitForDialog(mActivityTestRule.getActivity());
 
         ChromeTabModalPresenter tabModalPresenter =
                 (ChromeTabModalPresenter)
-                        mPermissionRule
+                        mActivityTestRule
                                 .getActivity()
                                 .getModalDialogManager()
                                 .getPresenterForTest(ModalDialogType.TAB);

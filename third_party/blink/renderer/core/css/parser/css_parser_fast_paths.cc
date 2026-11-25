@@ -381,22 +381,6 @@ static unsigned FindLengthOfValidDouble(base::span<const LChar> chars) {
   return valid_length;
 }
 
-// If also_accept_whitespace is true: Checks whether `chars[pos]` is the given
-// character, _or_ an HTML space.
-// Otherwise: Checks whether `chars[pos]` is the given character.
-// Returns false if `pos` is out of bounds of the `chars`.
-static bool ContainsCharAtPos(base::span<const LChar> chars,
-                              int pos,
-                              char ch,
-                              bool also_accept_whitespace) {
-  DCHECK_GE(pos, 0);
-  if (pos >= base::checked_cast<int>(chars.size())) {
-    return false;
-  }
-  return chars[pos] == ch ||
-         (also_accept_whitespace && IsHTMLSpace(chars[pos]));
-}
-
 // Like ParsePositiveDouble(), but also accepts initial whitespace and negative
 // values. This is similar to CharactersToDouble(), but does not support
 // trailing periods (e.g. “100.”), cf.
@@ -799,8 +783,7 @@ ALWAYS_INLINE static bool ParseAlphaValue(base::span<const LChar>& chars,
   if (chars[0] != '0' && chars[0] != '1' && chars[0] != '.') {
     int double_length = FindLengthOfValidDouble(chars);
     if (double_length > 0 &&
-        ContainsCharAtPos(chars, double_length, terminator,
-                          /*also_accept_whitespace=*/false)) {
+        static_cast<wtf_size_t>(double_length) + 1 == length) {
       value = negative ? 0 : 255;
       chars = {};
       return true;
@@ -826,8 +809,7 @@ ALWAYS_INLINE static bool ParseAlphaValue(base::span<const LChar>& chars,
 
   double alpha = 0;
   int dbl_length = ParsePositiveDouble(chars, alpha);
-  if (dbl_length == 0 || !ContainsCharAtPos(chars, dbl_length, terminator,
-                                            /*also_accept_whitespace=*/false)) {
+  if (dbl_length == 0 || static_cast<wtf_size_t>(dbl_length) + 1 != length) {
     return false;
   }
   value = negative ? 0 : static_cast<int>(lround(std::min(alpha, 1.0) * 255.0));
@@ -1164,6 +1146,9 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
               value_id <= CSSValueID::kMathematical);
     case CSSPropertyID::kAll:
       return false;  // Only accepts css-wide keywords
+    case CSSPropertyID::kAnimationNavigationBehavior:
+      return value_id == CSSValueID::kAbrupt ||
+             value_id == CSSValueID::kContinuous;
     case CSSPropertyID::kBaselineSource:
       return value_id == CSSValueID::kAuto || value_id == CSSValueID::kFirst ||
              value_id == CSSValueID::kLast;
@@ -1352,7 +1337,11 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
              value_id == CSSValueID::kGridRows ||
              value_id == CSSValueID::kGridColumns ||
              value_id == CSSValueID::kGridOrder ||
-             value_id == CSSValueID::kSourceOrder;
+             value_id == CSSValueID::kSourceOrder ||
+             (RuntimeEnabledFeatures::CSSGridLanesLayoutEnabled() &&
+              (value_id == CSSValueID::kGridLanesFlow ||
+               value_id == CSSValueID::kGridLanesTrack ||
+               value_id == CSSValueID::kGridLanesOrder));
     case CSSPropertyID::kResize:
       return value_id == CSSValueID::kNone || value_id == CSSValueID::kBoth ||
              value_id == CSSValueID::kHorizontal ||
@@ -1750,6 +1739,7 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
 CSSBitset CSSParserFastPaths::handled_by_keyword_fast_paths_properties_{{
     CSSPropertyID::kAlignmentBaseline,
     CSSPropertyID::kAll,
+    CSSPropertyID::kAnimationNavigationBehavior,
     CSSPropertyID::kAppearance,
     CSSPropertyID::kMixBlendMode,
     CSSPropertyID::kIsolation,

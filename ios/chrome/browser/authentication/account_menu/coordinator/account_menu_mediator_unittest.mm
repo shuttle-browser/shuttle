@@ -4,15 +4,14 @@
 
 #import "ios/chrome/browser/authentication/account_menu/coordinator/account_menu_mediator.h"
 
-#import "base/containers/flat_map.h"
 #import "base/memory/raw_ptr.h"
 #import "base/test/metrics/user_action_tester.h"
 #import "base/test/scoped_feature_list.h"
 #import "base/test/task_environment.h"
 #import "components/signin/public/base/consent_level.h"
 #import "components/signin/public/base/signin_pref_names.h"
+#import "components/subscription_eligibility/ai_subscription_tier_names.h"
 #import "components/subscription_eligibility/subscription_eligibility_prefs.h"
-#import "components/subscription_eligibility/subscription_eligibility_service.h"
 #import "components/sync/test/test_sync_service.h"
 #import "components/test/ios/test_utils.h"
 #import "ios/chrome/browser/authentication/account_menu/coordinator/account_menu_mediator_delegate.h"
@@ -20,7 +19,7 @@
 #import "ios/chrome/browser/authentication/account_menu/ui/account_menu_consumer.h"
 #import "ios/chrome/browser/authentication/account_menu/ui/account_menu_view_controller.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow.h"
-#import "ios/chrome/browser/authentication/ui_bundled/cells/table_view_account_item.h"
+#import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow_delegate.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
 #import "ios/chrome/browser/settings/manage_sync/public/sync_error_settings_command_handler.h"
 #import "ios/chrome/browser/settings/model/sync/utils/account_error_ui_info.h"
@@ -35,10 +34,10 @@
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service_factory.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity_manager.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
-#import "ios/chrome/browser/signin/model/identity_test_environment_browser_state_adaptor.h"
 #import "ios/chrome/browser/subscription_eligibility/model/subscription_eligibility_service_factory.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
@@ -369,6 +368,31 @@ TEST_F(AccountMenuMediatorTest, TestPrimaryAccountAITier) {
   }
 }
 
+// Tests that primaryAccountAITier is 0 for a tier excluded by
+// `kAiSubscriptionTierOverrides`.
+TEST_F(AccountMenuMediatorTest, TestPrimaryAccountAITierExcluded) {
+  OCMStub([consumer_mock_ updatePrimaryAccount]);
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      {{kAiSubscriptionAvatarRingIOS, {}},
+       {subscription_eligibility::kAiSubscriptionTierOverrides,
+        {{subscription_eligibility::kAiTierOverrides.name,
+          R"({"excluded_tiers": [2]})"}}}},
+      {});
+  subscription_eligibility::ResetAiTierOverridesForTesting();
+
+  profile_->GetPrefs()->SetInteger(
+      subscription_eligibility::prefs::kAiSubscriptionTier, 2);
+  EXPECT_EQ([mediator_ primaryAccountAITier], 0);
+
+  profile_->GetPrefs()->SetInteger(
+      subscription_eligibility::prefs::kAiSubscriptionTier, 1);
+  EXPECT_EQ([mediator_ primaryAccountAITier], 1);
+
+  scoped_feature_list.Reset();
+  subscription_eligibility::ResetAiTierOverridesForTesting();
+}
+
 // Tests the result of TestError when there is no error.
 TEST_F(AccountMenuMediatorTest, TestNoError) {
   EXPECT_THAT([mediator_ accountErrorUIInfo], IsNull());
@@ -419,10 +443,11 @@ TEST_F(AccountMenuMediatorTest, TestAccountTapedSignoutFailed) {
         return mediator_ == value;
       }]]);
   OCMExpect([authentication_flow_mock_ startSignIn]);
-  auto gaiaId2 = kSecondaryIdentity.gaiaId;
-  [mediator_ accountTappedWithGaiaID:&gaiaId2 targetRect:target];
+  [mediator_ accountTappedWithGaiaID:kSecondaryIdentity.gaiaId
+                          targetRect:target];
   // Simulate a double tap. The second tap should be ignored.
-  [mediator_ accountTappedWithGaiaID:&gaiaId2 targetRect:target];
+  [mediator_ accountTappedWithGaiaID:kSecondaryIdentity.gaiaId
+                          targetRect:target];
   VerifyMock();
 
   OCMExpect([consumer_mock_ switchingStopped]);
@@ -465,10 +490,11 @@ TEST_F(AccountMenuMediatorTest, TestAccountTapedSignInFailed) {
       }]]);
   // Simulate account switching.
   OCMExpect([authentication_flow_mock_ startSignIn]);
-  auto gaiaId2 = kSecondaryIdentity.gaiaId;
-  [mediator_ accountTappedWithGaiaID:&gaiaId2 targetRect:target];
+  [mediator_ accountTappedWithGaiaID:kSecondaryIdentity.gaiaId
+                          targetRect:target];
   // Simulate a double tap. The second tap should be ignored.
-  [mediator_ accountTappedWithGaiaID:&gaiaId2 targetRect:target];
+  [mediator_ accountTappedWithGaiaID:kSecondaryIdentity.gaiaId
+                          targetRect:target];
 
   // Expect that the consumer unlocks the UI.
   OCMExpect([consumer_mock_ switchingStopped]);
@@ -509,10 +535,11 @@ TEST_F(AccountMenuMediatorTest, TestAccountTapedWithSuccessfulSwitch) {
         return mediator_ == value;
       }]]);
   OCMExpect([authentication_flow_mock_ startSignIn]);
-  auto gaiaId2 = kSecondaryIdentity.gaiaId;
-  [mediator_ accountTappedWithGaiaID:&gaiaId2 targetRect:target];
+  [mediator_ accountTappedWithGaiaID:kSecondaryIdentity.gaiaId
+                          targetRect:target];
   // Simulate a double tap. The second tap should be ignored.
-  [mediator_ accountTappedWithGaiaID:&gaiaId2 targetRect:target];
+  [mediator_ accountTappedWithGaiaID:kSecondaryIdentity.gaiaId
+                          targetRect:target];
   VerifyMock();
   OCMExpect([delegate_mock_
       mediatorWantsToBeDismissed:mediator_

@@ -465,6 +465,7 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::OnReceiveResponse(
 
   // A response can only arrive once any forwarded redirect has been followed.
   CHECK(!deferred_redirect_url_);
+  CHECK(!has_forwarded_response_);
   current_body_ = std::move(body);
   current_cached_metadata_ = std::move(cached_metadata);
   if (current_request_uses_header_client_) {
@@ -646,7 +647,12 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::OnLoaderCreated(
   // We need this explicit reset to avoid a DCHECK failure in mojo::Receiver.
   header_client_receiver_.reset();
 
-  header_client_receiver_.Bind(std::move(receiver));
+  // Bind `header_client_receiver_` to the secondary-receiver task runner so
+  // `TrustedHeaderClient` callbacks (`OnBeforeSendHeaders`,
+  // `OnHeadersReceived`) do not fall back to
+  // `SequencedTaskRunner::GetCurrentDefault()` (`QueueType::kDefault`).
+  header_client_receiver_.Bind(std::move(receiver),
+                               factory_->GetTaskRunnerForSecondaryReceivers());
   if (is_header_client_receiver_paused_) {
     header_client_receiver_.Pause();
   }
@@ -658,6 +664,14 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::OnLoaderCreated(
         &WebRequestProxyingURLLoaderFactory::InProgressRequest::OnNetworkError,
         weak_factory_.GetWeakPtr(),
         CreateURLLoaderCompletionStatus(net::ERR_FAILED)));
+  }
+}
+
+void WebRequestProxyingURLLoaderFactory::InProgressRequest::
+    OnLoaderFailedWithRemoteEndpoint(const net::IPEndPoint& remote_endpoint) {
+  if (info_.has_value() && info_->response_ip.empty() &&
+      !remote_endpoint.address().empty()) {
+    info_->response_ip = remote_endpoint.ToStringWithoutPort();
   }
 }
 
@@ -1305,10 +1319,19 @@ void WebRequestProxyingURLLoaderFactory::InProgressRequest::
   // debug crbug.com/463388771.
   CHECK(!has_forwarded_response_);
   has_forwarded_response_ = true;
-  auto response = current_response_.Clone();
-  response->cache_storage_side_data_writer =
-      std::move(current_response_->cache_storage_side_data_writer);
-  target_client_->OnReceiveResponse(std::move(response),
+  // Because `OnReceiveResponse()` is terminal for response headers (`info_` was
+  // already populated above), transfer ownership of `current_response_` instead
+  // of deep-cloning the entire `URLResponseHead` Mojo hierarchy.
+  network::mojom::URLResponseHeadPtr response_to_forward;
+  if (base::FeatureList::IsEnabled(
+          extensions_features::kWebRequestProxyMoveResponse)) {
+    response_to_forward = std::move(current_response_);
+  } else {
+    response_to_forward = current_response_.Clone();
+    response_to_forward->cache_storage_side_data_writer =
+        std::move(current_response_->cache_storage_side_data_writer);
+  }
+  target_client_->OnReceiveResponse(std::move(response_to_forward),
                                     std::move(current_body_),
                                     std::move(current_cached_metadata_));
 }
@@ -1696,7 +1719,8 @@ void WebRequestProxyingURLLoaderFactory::CreateLoaderAndStart(
 void WebRequestProxyingURLLoaderFactory::Clone(
     mojo::PendingReceiver<network::mojom::URLLoaderFactory> loader_receiver) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
-  proxy_receivers_.Add(this, std::move(loader_receiver));
+  proxy_receivers_.Add(this, std::move(loader_receiver),
+                       GetTaskRunnerForSecondaryReceivers());
 }
 
 void WebRequestProxyingURLLoaderFactory::OnLoaderCreated(
@@ -1732,6 +1756,17 @@ void WebRequestProxyingURLLoaderFactory::OnLoaderForCorsPreflightCreated(
 
   result.first->second->OnLoaderCreated(std::move(receiver));
   result.first->second->Restart();
+}
+
+void WebRequestProxyingURLLoaderFactory::OnLoaderFailedWithRemoteEndpoint(
+    int32_t request_id,
+    const net::IPEndPoint& remote_endpoint) {
+  auto it = network_request_id_to_web_request_id_.find(request_id);
+  if (it != network_request_id_to_web_request_id_.end()) {
+    auto request_it = requests_.find(it->second);
+    CHECK(request_it != requests_.end());
+    request_it->second->OnLoaderFailedWithRemoteEndpoint(remote_endpoint);
+  }
 }
 
 void WebRequestProxyingURLLoaderFactory::HandleAuthRequest(
@@ -1801,6 +1836,27 @@ void WebRequestProxyingURLLoaderFactory::MaybeRemoveProxy() {
 
   // Deletes |this|.
   proxies_->RemoveProxy(this);
+}
+
+scoped_refptr<base::SequencedTaskRunner>
+WebRequestProxyingURLLoaderFactory::GetTaskRunnerForSecondaryReceivers() const {
+  if (!navigation_response_task_runner_) {
+    return nullptr;
+  }
+  switch (loader_factory_type_) {
+    case content::ContentBrowserClient::URLLoaderFactoryType::
+        kDocumentSubResource:
+      return navigation_response_task_runner_;
+    case content::ContentBrowserClient::URLLoaderFactoryType::kNavigation:
+      if (base::FeatureList::IsEnabled(
+              extensions_features::
+                  kWebRequestProxyNavigationResponseTaskRunner)) {
+        return navigation_response_task_runner_;
+      }
+      return nullptr;
+    default:
+      return nullptr;
+  }
 }
 
 // static

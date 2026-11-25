@@ -12,11 +12,10 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/status/status.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/image_frame_opencv.h"
 #include "mediapipe/framework/port/opencv_imgproc_inc.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_builder.h"
 
 namespace mediapipe {
 
@@ -47,7 +46,7 @@ absl::Status OpenCvPutTextCalculator::Process(CalculatorContext* cc) {
   cv::Mat mat = cv::Mat::zeros(640, 640, CV_8UC4);
   cv::putText(mat, text_content, cv::Point(15, 70), cv::FONT_HERSHEY_PLAIN, 3,
               cv::Scalar(255, 255, 0, 255), 4);
-  std::unique_ptr<ImageFrame> output_frame = absl::make_unique<ImageFrame>(
+  std::unique_ptr<ImageFrame> output_frame = std::make_unique<ImageFrame>(
       ImageFormat::SRGBA, mat.size().width, mat.size().height);
   mat.copyTo(formats::MatView(output_frame.get()));
   cc->Outputs().Index(0).Add(output_frame.release(), cc->InputTimestamp());

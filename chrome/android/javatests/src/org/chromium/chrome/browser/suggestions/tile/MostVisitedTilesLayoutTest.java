@@ -24,7 +24,6 @@ import android.widget.FrameLayout;
 import androidx.test.filters.MediumTest;
 
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.Test;
@@ -37,17 +36,14 @@ import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterizedRunner;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
-import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.app.ChromeActivity;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.offlinepages.OfflinePageItem;
@@ -81,10 +77,7 @@ import java.util.concurrent.TimeoutException;
 /** Instrumentation tests for the {@link MostVisitedTilesLayout} on the New Tab Page. */
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add(ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE)
 @DoNotBatch(reason = "AI automated batching was unsuccessful.")
-// TODO(b/555414915): Update Android tests with WebUI NTP enabled on AL.
-@DisableFeatures(ChromeFeatureList.USE_WEB_UI_NTP_ANDROID)
 public class MostVisitedTilesLayoutTest {
 
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
@@ -125,6 +118,7 @@ public class MostVisitedTilesLayoutTest {
 
     private final CallbackHelper mLoadCompleteHelper = new CallbackHelper();
     private MostVisitedTilesCoordinator mCoordinator;
+    private TileGroup.Delegate mTileGroupDelegate;
 
     @BeforeClass
     public static void setUpBeforeActivityLaunched() {
@@ -137,27 +131,26 @@ public class MostVisitedTilesLayoutTest {
         mRenderTestRule.setNightModeEnabled(nightModeEnabled);
     }
 
-    @AfterClass
-    public static void tearDownAfterActivityDestroyed() {
-        ChromeNightModeTestUtils.tearDownNightModeAfterChromeActivityDestroyed();
-    }
-
     @After
     public void tearDown() {
         if (mCoordinator != null) {
             ThreadUtils.runOnUiThreadBlocking(() -> mCoordinator.destroy());
             mCoordinator = null;
         }
-        // Since renderTiles() calls setContentView() on the Activity, the clean up causes an
-        // exception.
-        mActivityTestRule.skipWindowAndTabStateCleanup();
+        // Mirrors NewTabPage#destroy(): the delegate outlives the coordinator and must be destroyed
+        // so it unregisters its SearchEngineService observers instead of retaining the Activity.
+        if (mTileGroupDelegate != null) {
+            ThreadUtils.runOnUiThreadBlocking(() -> mTileGroupDelegate.destroy());
+            mTileGroupDelegate = null;
+        }
     }
 
     @Test
     @MediumTest
     @Feature({"NewTabPage", "RenderTest"})
     @ParameterAnnotations.UseMethodParameter(NightModeTestUtils.NightModeParams.class)
-    @DisableIf.Device(DeviceFormFactor.DESKTOP_FREEFORM) // crbug.com/511288662
+    // Tests the Java native NTP, which is not used on desktop (it uses the WebUI NTP).
+    @Restriction(DeviceFormFactor.PHONE_OR_TABLET)
     public void testTilesLayoutAppearance(boolean nightModeEnabled) throws Exception {
         doTilesLayoutAppearanceTest("_with_add_new_button_v1");
     }
@@ -296,7 +289,14 @@ public class MostVisitedTilesLayoutTest {
         return ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     setOfflinePageBridge(offlineUrls);
-                    activity.setContentView(contentView);
+                    // Overlay the content instead of replacing it with setContentView(), which
+                    // would break the hub when the test rule closes the tabs during cleanup.
+                    ViewGroup activityContent = activity.findViewById(android.R.id.content);
+                    activityContent.addView(
+                            contentView,
+                            new FrameLayout.LayoutParams(
+                                    ViewGroup.LayoutParams.MATCH_PARENT,
+                                    ViewGroup.LayoutParams.MATCH_PARENT));
                     ViewGroup containerLayout =
                             (ViewGroup)
                                     LayoutInflater.from(contentView.getContext())
@@ -338,7 +338,7 @@ public class MostVisitedTilesLayoutTest {
         SuggestionsUiDelegate uiDelegate =
                 new SuggestionsUiDelegateImpl(null, profile, null, activity.getSnackbarManager());
 
-        TileGroup.Delegate delegate =
+        mTileGroupDelegate =
                 new TileGroupDelegateImpl(activity, profile, null, null) {
                     @Override
                     public void onLoadingComplete(List<Tile> tiles) {
@@ -355,6 +355,6 @@ public class MostVisitedTilesLayoutTest {
                         new UiConfig(containerLayout),
                         null,
                         null);
-        mCoordinator.initWithNative(profile, uiDelegate, delegate, mTouchEnabledDelegate);
+        mCoordinator.initWithNative(profile, uiDelegate, mTileGroupDelegate, mTouchEnabledDelegate);
     }
 }

@@ -16,16 +16,16 @@
 #include "base/compiler_specific.h"
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
-#include "base/strings/sys_string_conversions.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/mock_callback.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/task_environment.h"
 #include "base/test/test_future.h"
+#include "base/time/time.h"
 #include "chrome/browser/apps/app_shim/app_shim_host_bootstrap_mac.h"
 #include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
-#include "chrome/browser/apps/app_shim/code_signature_mac.h"
 #include "chrome/browser/profiles/avatar_menu.h"
 #include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
@@ -36,6 +36,7 @@
 #include "chrome/services/mac_notifications/public/mojom/mac_notifications.mojom.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
+#include "components/content_settings/core/common/content_settings.h"
 #include "components/prefs/testing_pref_service.h"
 #include "content/public/test/browser_task_environment.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
@@ -80,6 +81,10 @@ class MockDelegate : public AppShimManager::Delegate {
                std::vector<chrome::mojom::ApplicationDockMenuItemPtr>(
                    Profile*,
                    const std::string&));
+  MOCK_METHOD(std::optional<ContentSetting>,
+              GetChromeNotificationPermission,
+              (Profile*, const std::string&),
+              (override));
 
   // Conditionally mock LaunchShim. Some tests will execute |launch_callback|
   // with a particular value.
@@ -293,8 +298,12 @@ class TestAppShim : public chrome::mojom::AppShim,
       mojo::PendingAssociatedReceiver<remote_cocoa::mojom::Application>
           receiver) override {}
   void CreateCommandDispatcherForWidget(uint64_t widget_id) override {}
-  void SetBadgeLabel(const std::string& badge_label) override {
+  void SetBadgeLabel(const std::string& badge_label,
+                     SetBadgeLabelCallback callback) override {
     badge_label_ = badge_label;
+    if (badge_result_.has_value()) {
+      std::move(callback).Run(*badge_result_);
+    }
   }
   void SetUserAttention(
       chrome::mojom::AppShimAttentionType attention_type) override {}
@@ -316,6 +325,9 @@ class TestAppShim : public chrome::mojom::AppShim,
       RequestNotificationPermissionCallback callback) override {
     request_notification_permission_callback_.SetValue(std::move(callback));
   }
+  void SynchronizeNotificationPermissionStatus() override {
+    synchronize_notification_permission_count_++;
+  }
   void BindChildHistogramFetcherFactory(
       mojo::PendingReceiver<metrics::mojom::ChildHistogramFetcherFactory>
           receiver) override {}
@@ -331,10 +343,13 @@ class TestAppShim : public chrome::mojom::AppShim,
   std::vector<chrome::mojom::ProfileMenuItemPtr> profile_menu_items_;
   std::vector<chrome::mojom::ApplicationDockMenuItemPtr> dock_menu_items_;
   std::string badge_label_;
+  std::optional<chrome::mojom::AppShimBadgeResult> badge_result_ =
+      chrome::mojom::AppShimBadgeResult::kSuccess;
   mojo::Receiver<mac_notifications::mojom::MacNotificationProvider>
       notification_provider_receiver_{this};
   base::test::TestFuture<RequestNotificationPermissionCallback>
       request_notification_permission_callback_;
+  int synchronize_notification_permission_count_ = 0;
 };
 
 class TestHost : public AppShimHost {
@@ -386,9 +401,10 @@ class TestHost : public AppShimHost {
 
 class MockAppBrowserController : public web_app::AppBrowserController {
  public:
-  MockAppBrowserController(BrowserWindowInterface* browser,
+  MockAppBrowserController(MockBrowserWindowInterface* browser,
                            webapps::AppId app_id)
-      : web_app::AppBrowserController(browser, std::move(app_id)) {
+      : web_app::AppBrowserController(ConfigureAppBrowser(browser),
+                                      std::move(app_id)) {
     ON_CALL(*this, HasMinimalUiButtons).WillByDefault(testing::Return(false));
     ON_CALL(*this, GetAppShortName).WillByDefault(testing::Return(u""));
     ON_CALL(*this, GetAppStartUrl)
@@ -407,11 +423,22 @@ class MockAppBrowserController : public web_app::AppBrowserController {
   MOCK_METHOD(bool, IsUrlInAppScope, (const GURL& url), (const, override));
   MOCK_METHOD(bool, CanUserUninstall, (), (const, override));
   MOCK_METHOD(bool, IsInstalled, (), (const, override));
+
+ private:
+  static MockBrowserWindowInterface* ConfigureAppBrowser(
+      MockBrowserWindowInterface* browser) {
+    ON_CALL(*browser, GetType())
+        .WillByDefault(testing::Return(BrowserWindowInterface::TYPE_APP));
+    return browser;
+  }
 };
 
 class AppShimManagerTest : public testing::Test {
  protected:
-  AppShimManagerTest() = default;
+  explicit AppShimManagerTest(
+      base::test::TaskEnvironment::TimeSource time_source =
+          base::test::TaskEnvironment::TimeSource::DEFAULT)
+      : task_environment_(time_source) {}
   AppShimManagerTest(const AppShimManagerTest&) = delete;
   AppShimManagerTest& operator=(const AppShimManagerTest&) = delete;
   ~AppShimManagerTest() override = default;
@@ -491,6 +518,8 @@ class AppShimManagerTest : public testing::Test {
 
     EXPECT_CALL(*delegate_, AppUsesRemoteCocoa(_, _))
         .WillRepeatedly(Return(true));
+    EXPECT_CALL(*delegate_, GetChromeNotificationPermission(_, _))
+        .WillRepeatedly(Return(std::nullopt));
 
     {
       auto item_a = chrome::mojom::ProfileMenuItem::New();
@@ -716,6 +745,20 @@ TEST_F(AppShimManagerTest, LaunchProfileIsLocked) {
   NormalLaunch(bootstrap_aa_, nullptr);
   EXPECT_EQ(chrome::mojom::AppShimLaunchResult::kProfileLocked,
             *bootstrap_aa_result_);
+}
+
+TEST_F(AppShimManagerTest, LaunchInvalidAppIdRejected) {
+  std::optional<chrome::mojom::AppShimLaunchResult> launch_result;
+  base::WeakPtr<TestingAppShimHostBootstrap> bootstrap =
+      (new TestingAppShimHostBootstrap(profile_path_a_, "not_a_valid_crx_id",
+                                       /*is_from_bookmark=*/true,
+                                       &launch_result))
+          ->GetWeakPtr();
+  EXPECT_CALL(*delegate_, LaunchApp(_, _, _, _, _, _, _)).Times(0);
+  NormalLaunch(bootstrap, nullptr);
+  EXPECT_EQ(chrome::mojom::AppShimLaunchResult::kFailedValidation,
+            launch_result);
+  EXPECT_FALSE(bootstrap);
 }
 
 TEST_F(AppShimManagerTest, LaunchAppNotFound) {
@@ -1328,9 +1371,7 @@ TEST_F(AppShimManagerTest, NotificationAction) {
   };
 
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // Use SetAppCanCreateHost to simulate the case where there isn't already a
   // loaded profile.
@@ -1923,6 +1964,9 @@ TEST_F(AppShimManagerTest, FindProfileFromURL) {
 }
 
 TEST_F(AppShimManagerTest, UpdateAppBadge) {
+  scoped_feature_list_.InitWithFeatures(
+      {features::kAppShimNotificationAttribution}, {});
+
   // Set this app to be installed for profile A and B.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
                                                    profile_path_a_);
@@ -1941,11 +1985,16 @@ TEST_F(AppShimManagerTest, UpdateAppBadge) {
   EXPECT_EQ(host_aa_.get(), manager_->FindHost(&profile_b_, kTestAppIdA));
 
   // And update the badge in either profile, verifying that the combined value
-  // is reflected.
+  // is reflected and metrics are recorded when setting (but not clearing) a
+  // badge.
+  base::HistogramTester histogram_tester;
   EXPECT_EQ("", host_aa_->test_app_shim_->badge_label_);
   manager_->UpdateAppBadge(&profile_a_, kTestAppIdA,
                            badging::BadgeManager::BadgeValue(4));
   EXPECT_EQ("4", host_aa_->test_app_shim_->badge_label_);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult",
+      chrome::mojom::AppShimBadgeResult::kSuccess, 1);
   manager_->UpdateAppBadge(&profile_b_, kTestAppIdA,
                            badging::BadgeManager::BadgeValue(3));
   EXPECT_EQ("7", host_aa_->test_app_shim_->badge_label_);
@@ -1955,10 +2004,44 @@ TEST_F(AppShimManagerTest, UpdateAppBadge) {
   manager_->UpdateAppBadge(&profile_b_, kTestAppIdA,
                            badging::BadgeManager::BadgeValue());
   EXPECT_EQ("•", host_aa_->test_app_shim_->badge_label_);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult",
+      chrome::mojom::AppShimBadgeResult::kSuccess, 4);
   manager_->UpdateAppBadge(&profile_a_, kTestAppIdA, std::nullopt);
   EXPECT_EQ("•", host_aa_->test_app_shim_->badge_label_);
   manager_->UpdateAppBadge(&profile_b_, kTestAppIdA, std::nullopt);
   EXPECT_EQ("", host_aa_->test_app_shim_->badge_label_);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult",
+      chrome::mojom::AppShimBadgeResult::kSuccess, 4);
+
+  host_aa_->test_app_shim_->badge_result_ =
+      chrome::mojom::AppShimBadgeResult::kBlockedByOSPermission;
+  manager_->UpdateAppBadge(&profile_a_, kTestAppIdA,
+                           badging::BadgeManager::BadgeValue(1));
+  EXPECT_EQ("1", host_aa_->test_app_shim_->badge_label_);
+  histogram_tester.ExpectBucketCount(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult",
+      chrome::mojom::AppShimBadgeResult::kBlockedByOSPermission, 1);
+
+  host_aa_->test_app_shim_->badge_result_ =
+      chrome::mojom::AppShimBadgeResult::kNoPermissionService;
+  manager_->UpdateAppBadge(&profile_a_, kTestAppIdA,
+                           badging::BadgeManager::BadgeValue(2));
+  EXPECT_EQ("2", host_aa_->test_app_shim_->badge_label_);
+  histogram_tester.ExpectBucketCount(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult",
+      chrome::mojom::AppShimBadgeResult::kNoPermissionService, 1);
+
+  host_aa_->test_app_shim_->badge_result_ = std::nullopt;
+  manager_->UpdateAppBadge(&profile_a_, kTestAppIdA,
+                           badging::BadgeManager::BadgeValue(3));
+  EXPECT_EQ("3", host_aa_->test_app_shim_->badge_label_);
+  histogram_tester.ExpectBucketCount(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult",
+      chrome::mojom::AppShimBadgeResult::kNoResponse, 1);
+  histogram_tester.ExpectTotalCount(
+      "Notifications.Permissions.AppShim.BadgeUpdateResult", 7);
 }
 
 TEST_F(AppShimManagerTest, UpdateApplicationDockMenu) {
@@ -2063,90 +2146,9 @@ TEST_F(AppShimManagerTest, UpdateApplicationDockMenu) {
   ValidateDockMenuItems(menu_items_profile_b, kNumMenuItemsForProfileB);
 }
 
-TEST_F(AppShimManagerTest,
-       BuildAppShimRequirementStringFromFrameworkRequirementStringTest) {
-  EXPECT_TRUE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("identifier \"com.google.Chrome.framework\" and certificate "
-                "leaf = H\"c9a99324ca3fcb23dbcc36bd5fd4f9753305130a\"")));
-  EXPECT_TRUE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("identifier \"com.google.Chrome.framework\" and certificate "
-                "leaf[subject.OU] = \"42HXZ8M8AV\"")));
-
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR(
-              "cdhash H\"daa66a31aeb85125bd2459bebf548b2dff5ee83b\" or cdhash "
-              "H\"a8e5300bf9223510fc5b107b23de0d12f419acac\"")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("identifier \"com.google.Chrome.framework\"")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("identifier")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("malformed")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("\"\"\"")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("\"\"")));
-  EXPECT_FALSE(
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("\"")));
-
-  // Crafted to pass all our requirement checks but fail
-  // SecRequirementCreateWithString().
-  base::apple::ScopedCFTypeRef<CFStringRef> requirement_string =
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("identifier \"com.google.Chrome.framework\" and fail here"));
-  EXPECT_TRUE(requirement_string);
-  EXPECT_FALSE(apps::RequirementFromString(requirement_string.get()));
-  // Missing quote in the post "identifier" portion which is caught by
-  // SecRequirementCreateWithString().
-  requirement_string =
-      manager_->BuildAppShimRequirementStringFromFrameworkRequirementString(
-          CFSTR("identifier \"com.google.Chrome.framework\" and certificate "
-                "leaf = Hc9a99324ca3fcb23dbcc36bd5fd4f9753305130a\""));
-  EXPECT_TRUE(requirement_string);
-  EXPECT_FALSE(apps::RequirementFromString(requirement_string.get()));
-
-  CFStringRef framework_req_string = CFSTR(
-      "identifier \"com.google.Chrome.framework\" and anchor "
-      "apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* "
-      "exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] "
-      "/* exists */ and certificate leaf[subject.OU] = EQHXZ8M8AV");
-  base::apple::ScopedCFTypeRef<SecRequirementRef> got_req(
-      apps::RequirementFromString(
-          manager_
-              ->BuildAppShimRequirementStringFromFrameworkRequirementString(
-                  framework_req_string)
-              .get()));
-  ASSERT_TRUE(got_req);
-  base::apple::ScopedCFTypeRef<CFStringRef> got_req_string;
-  ASSERT_EQ(SecRequirementCopyString(got_req.get(), kSecCSDefaultFlags,
-                                     got_req_string.InitializeInto()),
-            errSecSuccess);
-  CFStringRef want_req_string = CFSTR(
-      "identifier \"app_mode_loader\" and anchor "
-      "apple generic and certificate 1[field.1.2.840.113635.100.6.2.6] /* "
-      "exists */ and certificate leaf[field.1.2.840.113635.100.6.1.13] "
-      "/* exists */ and certificate leaf[subject.OU] = EQHXZ8M8AV");
-  EXPECT_EQ(base::SysCFStringRefToUTF8(got_req_string.get()),
-            base::SysCFStringRefToUTF8(want_req_string));
-}
-
 TEST_F(AppShimManagerTest, LaunchNotificationProviderWithAppRunning) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2177,9 +2179,7 @@ TEST_F(AppShimManagerTest, LaunchNotificationProviderWithAppRunning) {
 
 TEST_F(AppShimManagerTest, LaunchNotificationProviderWithoutAppRunning) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2208,9 +2208,7 @@ TEST_F(AppShimManagerTest, LaunchNotificationProviderWithoutAppRunning) {
 
 TEST_F(AppShimManagerTest, LaunchNotificationProviderWithAppNotInstalled) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   EXPECT_CALL(*manager_, ProfileForBackgroundShimLaunch(kTestAppIdA))
       .WillOnce(Return(nullptr));
@@ -2244,9 +2242,7 @@ TEST_F(AppShimManagerTest, LaunchNotificationProviderWithAppNotInstalled) {
 
 TEST_F(AppShimManagerTest, LaunchNotificationProviderWhileShuttingDown) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
                                                    profile_path_a_);
@@ -2270,9 +2266,7 @@ TEST_F(AppShimManagerTest, LaunchNotificationProviderWhileShuttingDown) {
 
 TEST_F(AppShimManagerTest, RequestNotificationPermissionWithAppRunning) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2304,9 +2298,7 @@ TEST_F(AppShimManagerTest, RequestNotificationPermissionWithAppRunning) {
 
 TEST_F(AppShimManagerTest, RequestNotificationPermissionWithoutAppRunning) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2338,9 +2330,7 @@ TEST_F(AppShimManagerTest, RequestNotificationPermissionWithoutAppRunning) {
 TEST_F(AppShimManagerTest,
        RequestNotificationPermissionWithoutAppRunningAndBrowserClosing) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2385,9 +2375,7 @@ TEST_F(AppShimManagerTest,
 TEST_F(AppShimManagerTest,
        AppShimFailToConnectForNotificationPermissionAfterBrowserClosed) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2435,9 +2423,7 @@ TEST_F(AppShimManagerTest,
 TEST_F(AppShimManagerTest,
        RequestNotificationPermissionWithAppShimFailingToLaunch) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // This app is installed for profile A throughout this test.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2470,9 +2456,7 @@ TEST_F(AppShimManagerTest,
 
 TEST_F(AppShimManagerTest, RequestNotificationPermissionWithAppNotInstalled) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   EXPECT_CALL(*manager_, ProfileForBackgroundShimLaunch(kTestAppIdA))
       .WillOnce(Return(nullptr));
@@ -2490,9 +2474,7 @@ TEST_F(AppShimManagerTest, CachedNotificationPermissionStatus) {
   using PermissionStatus = mac_notifications::mojom::PermissionStatus;
   using RegistryStatus = AppShimRegistry::NotificationPermissionStatus;
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // Create and launch shim for app A in profile A.
   AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
@@ -2584,9 +2566,7 @@ TEST_F(AppShimManagerTest, CachedNotificationPermissionStatus) {
 
 TEST_F(AppShimManagerTest, OnShimFocusMultiProfileWithoutRemoteCocoa) {
   scoped_feature_list_.InitWithFeatures(
-      {features::kAppShimNotificationAttribution,
-       features::kUseAdHocSigningForWebAppShims},
-      {});
+      {features::kAppShimNotificationAttribution}, {});
 
   // Simulate a multi-profile web app that opens in a browser tab (does not use
   // RemoteCocoa).
@@ -2614,6 +2594,139 @@ TEST_F(AppShimManagerTest, OnShimFocusMultiProfileWithoutRemoteCocoa) {
   // no-op and must not call GetProfilePath() or ShowAppWindows().
   EXPECT_CALL(*delegate_, ShowAppWindows(_, _)).Times(0);
   ShimNormalFocus(host_aa_.get());
+}
+
+class AppShimManagerMockTimeTest : public AppShimManagerTest {
+ protected:
+  AppShimManagerMockTimeTest()
+      : AppShimManagerTest(base::test::TaskEnvironment::TimeSource::MOCK_TIME) {
+  }
+};
+
+TEST_F(AppShimManagerMockTimeTest, OSNotificationPermissionStatusMetrics) {
+  using PermissionStatus = mac_notifications::mojom::PermissionStatus;
+  using RegistryStatus = AppShimRegistry::NotificationPermissionStatus;
+
+  // App A is installed in profiles A (ALLOW), B (initially nullopt, then ASK),
+  // and C (initially unloaded, then BLOCK).
+  AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
+                                                   profile_path_a_);
+  AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
+                                                   profile_path_b_);
+  AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
+                                                   profile_path_c_);
+  EXPECT_CALL(*manager_, ProfileForPath(profile_path_c_))
+      .WillRepeatedly(Return(nullptr));
+  EXPECT_CALL(*delegate_,
+              GetChromeNotificationPermission(&profile_a_, kTestAppIdA))
+      .WillRepeatedly(Return(CONTENT_SETTING_ALLOW));
+  EXPECT_CALL(*delegate_,
+              GetChromeNotificationPermission(&profile_b_, kTestAppIdA))
+      .WillRepeatedly(Return(std::nullopt));
+  EXPECT_CALL(*delegate_,
+              GetChromeNotificationPermission(&profile_c_, kTestAppIdA))
+      .WillRepeatedly(Return(CONTENT_SETTING_BLOCK));
+
+  base::HistogramTester histogram_tester;
+
+  // Launch shim and report status (Denied -> ImplicitlyDenied). Only profile A
+  // records; profile B (nullopt) and profile C (unloaded) are skipped, and an
+  // immediate subsequent update does not re-record profile A.
+  manager_->SetHostForCreate(std::move(host_aa_unique_));
+  EXPECT_CALL(*delegate_, DoLaunchShim(&profile_a_, kTestAppIdA, _, _));
+  manager_->OnAppActivated(&profile_a_, kTestAppIdA);
+  host_aa_->NotificationPermissionStatusChanged(PermissionStatus::kDenied);
+  host_aa_->NotificationPermissionStatusChanged(PermissionStatus::kGranted);
+
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAllow",
+      RegistryStatus::kImplicitlyDenied, 1);
+  histogram_tester.ExpectTotalCount(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAsk", 0);
+  histogram_tester.ExpectTotalCount(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeBlock", 0);
+
+  // After 23 hours (< 1 day), profile A is still throttled, while profiles B
+  // (now returning ASK) and C (now loaded) each record once.
+  task_environment_.FastForwardBy(base::Hours(23));
+  EXPECT_CALL(*delegate_,
+              GetChromeNotificationPermission(&profile_b_, kTestAppIdA))
+      .WillRepeatedly(Return(CONTENT_SETTING_ASK));
+  EXPECT_CALL(*manager_, ProfileForPath(profile_path_c_))
+      .WillRepeatedly(Return(&profile_c_));
+  host_aa_->NotificationPermissionStatusChanged(PermissionStatus::kDenied);
+
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAllow",
+      RegistryStatus::kImplicitlyDenied, 1);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAsk",
+      RegistryStatus::kExplicitlyDenied, 1);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeBlock",
+      RegistryStatus::kExplicitlyDenied, 1);
+
+  // One hour later (24 hours since profile A recorded, 1 hour since B and C
+  // recorded), a transient kPromptPending report is ignored without consuming
+  // profile A's sample, and the subsequent kGranted report re-emits for profile
+  // A while B and C remain throttled.
+  task_environment_.FastForwardBy(base::Hours(1));
+  host_aa_->NotificationPermissionStatusChanged(
+      PermissionStatus::kPromptPending);
+  host_aa_->NotificationPermissionStatusChanged(PermissionStatus::kGranted);
+
+  histogram_tester.ExpectTotalCount(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAllow", 2);
+  histogram_tester.ExpectBucketCount(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAllow",
+      RegistryStatus::kGranted, 1);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeAsk",
+      RegistryStatus::kExplicitlyDenied, 1);
+  histogram_tester.ExpectUniqueSample(
+      "Notifications.Permissions.AppShim.OSStatus.ChromeBlock",
+      RegistryStatus::kExplicitlyDenied, 1);
+}
+
+TEST_F(AppShimManagerTest,
+       SynchronizeNotificationPermissionStatusWithAppRunning) {
+  scoped_feature_list_.InitWithFeatures(
+      {features::kAppShimNotificationAttribution}, {});
+
+  AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
+                                                   profile_path_a_);
+
+  manager_->SetHostForCreate(std::move(host_aa_unique_));
+  EXPECT_CALL(*delegate_,
+              DoLaunchShim(&profile_a_, kTestAppIdA,
+                           web_app::LaunchShimUpdateBehavior::kDoNotRecreate,
+                           web_app::ShimLaunchMode::kNormal));
+  manager_->OnAppActivated(&profile_a_, kTestAppIdA);
+
+  manager_->SynchronizeNotificationPermissionStatus(kTestAppIdA);
+  EXPECT_EQ(
+      1, host_aa_->test_app_shim_->synchronize_notification_permission_count_);
+}
+
+TEST_F(AppShimManagerTest,
+       SynchronizeNotificationPermissionStatusWithoutAppRunning) {
+  scoped_feature_list_.InitWithFeatures(
+      {features::kAppShimNotificationAttribution}, {});
+
+  AppShimRegistry::Get()->OnAppInstalledForProfile(kTestAppIdA,
+                                                   profile_path_a_);
+  EXPECT_CALL(*manager_, ProfileForBackgroundShimLaunch(kTestAppIdA))
+      .WillOnce(Return(&profile_a_));
+
+  manager_->SetHostForCreate(std::move(host_aa_unique_));
+  EXPECT_CALL(*delegate_,
+              DoLaunchShim(&profile_a_, kTestAppIdA,
+                           web_app::LaunchShimUpdateBehavior::kDoNotRecreate,
+                           web_app::ShimLaunchMode::kBackground));
+
+  manager_->SynchronizeNotificationPermissionStatus(kTestAppIdA);
+  EXPECT_EQ(
+      1, host_aa_->test_app_shim_->synchronize_notification_permission_count_);
 }
 
 }  // namespace apps

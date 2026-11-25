@@ -220,11 +220,6 @@ interface UntrustedPageHandler {
   // loaded.
   GetDependencyParserModel() => (mojo_base.mojom.File? model_file);
 
-  // Called by the renderer to get the current ReadingMode state from
-  // ReadAnythingController. The response for this call comes via
-  // UntrustedPage::OnGetPresentationState.
-  GetPresentationState();
-
   // Called by the renderer to see if a voice is installed, or being installed.
   // The response for this call comes via UntrustedPage::OnGetVoicePackInfo.
   GetVoicePackInfo(string language);
@@ -268,6 +263,11 @@ interface UntrustedPageHandler {
   // Informs the browser controller that the user requested translation
   // via the webui toolbar.
   OnTranslationRequested();
+
+  // Informs the browser controller that the user requested to send feedback
+  // via the webui toolbar, opening the Chrome feedback dialog pre-configured to
+  // route feedback to the Reading Mode component.
+  OnSendFeedback();
 
   // Informs the browser controller that the user has toggled images
   // via the webui toolbar.
@@ -400,10 +400,6 @@ interface UntrustedPage {
                              array<ax.mojom.AXTreeUpdate> updates,
                              array<ax.mojom.AXEvent> events);
 
-  // Send ReadAnything Presentation state to the WebUI. We can then adjust the
-  // UI based on received presentation state.
-  OnGetPresentationState(ReadAnythingPresentationState presentation_state);
-
   // Send a voice pack status change notification to the WebUI. The WebUI can
   // then show informational or error messages depending on the status.
   OnGetVoicePackInfo(VoicePackInfo voice_pack_info);
@@ -470,8 +466,11 @@ interface UntrustedPage {
   // because of the tab closing, OnTabWillDetach is called instead.
   // tab_active indicates whether the tab for reading mode is still the active
   // tab. If it's true, then Reading mode was closed. If false, then the tab was
-  // switched.
-  OnReadingModeHidden(bool tab_active);
+  // switched. presentation_state is the state after hiding: kInactive once the
+  // host has closed (an immersive overlay also closes on a tab switch), or
+  // kInSidePanel for a side panel tab that was switched away from.
+  OnReadingModeHidden(bool tab_active,
+                      ReadAnythingPresentationState presentation_state);
 
   // Notifies the WebUI that current tab will detach so it can clean up.
   OnTabWillDetach();
@@ -488,8 +487,8 @@ interface UntrustedPage {
   // Lets the renderer process know that the browser has sent a new pin state.
   OnPinStatusReceived(bool new_pin_state);
 
-  // Sets the distilled title and content from DOM distiller to be available in
-  // the WebUI and notifies the WebUI that DOM distiller has processed a
+  // Sets the distilled title and content from Readability to be available in
+  // the WebUI and notifies the WebUI that Readability has processed a
   // distillation request.
   UpdateContent(string title, string content);
 
@@ -501,8 +500,9 @@ interface UntrustedPage {
   OnMainFrameSameDocumentNavigation(url.mojom.Url url);
 
   // Called by the browser to trigger renderer-side actions after the webui is
-  // shown.
-  OnReadingModeShown(read_anything.mojom.ReadAnythingOpenTrigger open_trigger);
+  // shown. presentation_state is the host that shows Reading Mode.
+  OnReadingModeShown(ReadAnythingOpenTrigger open_trigger,
+                     ReadAnythingPresentationState presentation_state);
 
   // Notifies the WebUI whether the contents of the active tab are currently
   // translated (translate::LanguageState::IsPageTranslated()). Only sent when

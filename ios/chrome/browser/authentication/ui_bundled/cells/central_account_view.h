@@ -7,8 +7,6 @@
 
 #import <UIKit/UIKit.h>
 
-#import "ios/chrome/browser/shared/ui/table_view/cells/table_view_item.h"
-
 @class CentralAccountView;
 
 // Delegate protocol for CentralAccountView.
@@ -24,13 +22,14 @@
 // 1. Rounded avatarImage used for the account user picture. The value cannot be
 // nil.
 // 2. A ring may be added around the avatar to signal the user has a AI tier if
-// `displayedAITier` is positive.
+// `displayedAiTier` should be displayed, according to
+// `subscription_eligibility::GetAiSubscriptionTierDisplayInfo()`.
 // 3. Name displayed in main label. The value can be nil.
 // In case the value is nil, the main label will show the email and there will
 // be no secondary label.
 // 4. Email subtitle displayed in secondary label. The value cannot be nil.
-// 5. The name of the AI tier if `displayedAiTier` if
-// `ios::provider::GetAITierName` returns it.
+// 5. The short name of the AI tier, if `displayedAiTier` is displayed and has
+// one.
 @interface CentralAccountView : UIView
 
 // The delegate to handle interactions with the view.

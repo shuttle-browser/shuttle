@@ -13,7 +13,7 @@
 
 namespace {
 
-using DistillationState = ReadAnythingController::DistillationState;
+using DistillationState = read_anything::mojom::ReadAnythingDistillationState;
 using PresentationState = ReadAnythingController::PresentationState;
 
 // How long Reading Mode must show content before showing the AI playback IPH.
@@ -81,12 +81,11 @@ void ReadAnythingIphController::OnDistillationStateChanged(
   if (!user_ed) {
     return;
   }
-  if (features::IsReadAnythingLineFocusEnabled()) {
-    // Only show the line focus IPH if there is content because line focus
-    // does not do anything on an empty page.
-    user_ed->MaybeShowFeaturePromo(
-        feature_engagement::kIPHReadingModeLineFocusFeature);
-  }
+
+  // Only show the line focus IPH if there is content because line focus
+  // does not do anything on an empty page.
+  user_ed->MaybeShowFeaturePromo(
+      feature_engagement::kIPHReadingModeLineFocusFeature);
   MaybeStartAiPlaybackIphTimer();
 }
 

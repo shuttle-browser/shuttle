@@ -26,6 +26,70 @@ chromium-metrics-reviews@google.com.
 
 <enums>
 
+<!-- LINT.IfChange(AmbientBubbleResolution) -->
+
+<enum name="AmbientBubbleResolution">
+  <int value="0" label="User selected a credential"/>
+  <int value="1" label="User dismissed the bubble"/>
+  <int value="2" label="User ignored the bubble (no interaction)"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/webauthn/webauthn_metrics_util.h:AmbientBubbleResolution) -->
+
+<!-- LINT.IfChange(AmbientChipOnlyOutcome) -->
+
+<enum name="AmbientChipOnlyOutcome">
+  <int value="0" label="User activated the bubble from the chip"/>
+  <int value="1" label="User ignored the chip"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/webauthn/webauthn_metrics_util.h:AmbientChipOnlyOutcome) -->
+
+<!-- LINT.IfChange(AmbientCredentialSelectionMethod) -->
+
+<enum name="AmbientCredentialSelectionMethod">
+  <int value="0" label="Clicked sign in without unfolding the bubble"/>
+  <int value="1"
+      label="Unfolded the bubble and clicked the default credential"/>
+  <int value="2"
+      label="Unfolded the bubble and selected a non-default credential"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/webauthn/webauthn_metrics_util.h:AmbientCredentialSelectionMethod) -->
+
+<!-- LINT.IfChange(AmbientDisplayOutcome) -->
+
+<enum name="AmbientDisplayOutcome">
+  <int value="0" label="UI was shown"/>
+  <int value="1" label="Not shown: no credentials available"/>
+  <int value="2" label="Not shown: requesting page is not primary"/>
+  <int value="3"
+      label="Not shown: no PermissionRequestManager for WebContents"/>
+  <int value="4" label="Not shown: another ambient request is already pending"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/webauthn/webauthn_metrics_util.h:AmbientDisplayOutcome) -->
+
+<!-- LINT.IfChange(AmbientInitialUiMode) -->
+
+<enum name="AmbientInitialUiMode">
+  <int value="0" label="Bubble shown initially"/>
+  <int value="1" label="Chip-only mode requested by the site"/>
+  <int value="2" label="Chip-only mode because cooldown is active"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/webauthn/webauthn_metrics_util.h:AmbientInitialUiMode) -->
+
+<!-- LINT.IfChange(AmbientRequestedCredentialTypes) -->
+
+<enum name="AmbientRequestedCredentialTypes">
+  <int value="0" label="Passkeys only"/>
+  <int value="1" label="Passwords only"/>
+  <int value="2" label="Passkeys and passwords"/>
+</enum>
+
+<!-- LINT.ThenChange(//content/browser/webauth/authenticator_common_impl.cc:AmbientRequestedCredentialTypes) -->
+
 <enum name="ChangePinEvent">
   <int value="0" label="A PIN change request is triggered in settings."/>
   <int value="1" label="A PIN change request is triggered in PIN dialog."/>
@@ -199,10 +263,9 @@ chromium-metrics-reviews@google.com.
              in DoNextAction"/>
   <int value="48"
       label="Downloading authentication factors registration state resulted
-             in error in DoDownloadingAccountStateForICloudRecovery"/>
+             in error in StartICloudKeychainRecovery"/>
   <int value="49"
-      label="No iCloud keys in account in
-             DoDownloadingAccountStateForICloudRecovery"/>
+      label="No iCloud keys in account in StartICloudKeychainRecovery"/>
   <int value="50"
       label="No matching local iCloud key in DoRecoveringWithICloudKeychain"/>
   <int value="51" label="Decryption failed in DoRecoveringWithICloudKeychain"/>
@@ -275,6 +338,18 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/webauthn/enclave_manager_interface.h:GpmPinAvailability) -->
+
+<!-- LINT.IfChange(ICloudRecoveryAccountStateUsage) -->
+
+<enum name="ICloudRecoveryAccountStateUsage">
+  <int value="0" label="No security domain state was provided"/>
+  <int value="1" label="Provided security domain state was used"/>
+  <int value="2"
+      label="Provided security domain state was discarded because the primary
+             account changed"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/webauthn/enclave_manager.h:ICloudRecoveryAccountStateUsage) -->
 
 <!-- LINT.IfChange(ImportedPasskeyStatus) -->
 
@@ -376,6 +451,34 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//device/fido/u2f_sign_operation.cc:U2fSignOperationResult) -->
+
+<!-- LINT.IfChange(WebAuthenticationAndroidApiCallEvent) -->
+
+<enum name="WebAuthenticationAndroidApiCallEvent">
+  <int value="0" label="Started">
+    The Android platform or GMSCore API call (or PendingIntent session) was
+    initiated.
+  </int>
+  <int value="1" label="Succeeded">
+    The Android platform or GMSCore API call (or PendingIntent session)
+    completed successfully.
+  </int>
+  <int value="2" label="Cancelled">
+    The Android platform or GMSCore API call (or PendingIntent session) was
+    cancelled by the user, returned a CANCELED status, or reported a result
+    after Chrome had already cancelled the pending WebAuthn request.
+  </int>
+  <int value="3" label="TimedOut">
+    The Android platform or GMSCore API call (or PendingIntent session) timed
+    out (e.g. GMSCore CommonStatusCodes.TIMEOUT or Fido2Api.TIMEOUT_ERR).
+  </int>
+  <int value="4" label="Failed">
+    The Android platform or GMSCore API call (or PendingIntent session) failed
+    with an error other than cancellation or timeout.
+  </int>
+</enum>
+
+<!-- LINT.ThenChange(//components/webauthn/android/java/src/org/chromium/components/webauthn/AndroidApiCallMetrics.java:ApiCallEvent) -->
 
 <enum name="WebAuthenticationCableV2TunnelEvent">
   <int value="0"

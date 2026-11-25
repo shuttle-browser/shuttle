@@ -11,91 +11,21 @@ import '/shared/permission_dashboard.js';
 import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 
 import {loadTimeData} from '//resources/js/load_time_data.js';
-import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
+import {CrLitElement, nothing} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {PressHandler} from '/shared/toolbar_button.js';
 import type {OverflowMenuItem} from '/shared/toolbar_ui_api.mojom-webui.js';
-import {PageActionId, PermissionAction, PermissionChipTheme, PermissionPromptStyle, SecurityChipRole} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
-import type {LocationBarState, PermissionChipState} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
+import {PageActionId} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
+import type {LocationBarState} from '/shared/toolbar_ui_api_data_model.mojom-webui.js';
 
 import type {ToolbarAppElement} from './app.js';
-import {BrowserProxyImpl} from './browser_proxy.js';
+import {BrowserProxyImpl, createDefaultLocationBarState} from './browser_proxy.js';
 import type {BrowserProxy} from './browser_proxy.js';
 import {getCss} from './location_bar.css.js';
 import {getHtml} from './location_bar.html.js';
 import type {PageActionIconsElement} from './page_action_icons.js';
 import type {ReadonlyOmniboxElement} from './readonly_omnibox.js';
 import type {ResponsiveControl} from './responsive_control.js';
-
-function createDefaultPermissionChipState(): PermissionChipState {
-  return {
-    isVisible: false,
-    iconName: '',
-    message: '',
-    tooltip: '',
-    theme: PermissionChipTheme.kUnspecified,
-    userDecision: PermissionAction.kUnspecified,
-    shouldShowBlockedIcon: false,
-    promptStyle: PermissionPromptStyle.kUnspecified,
-    isFullyCollapsed: false,
-    accessibilityName: '',
-    stateToken: 0,
-  };
-}
-
-// Returns a new default LocationBarState, used before the first state is
-// received from the browser. Returns a fresh object on every call so callers
-// never share nested objects/arrays.
-export function createDefaultLocationBarState(): LocationBarState {
-  return {
-    omniboxViewState: {
-      browserVersion: 0,
-      uiVersion: 0,
-      formattedFullUrl: '',
-      textPieces: [],
-      placeholder: null,
-      inlineAutocompletion: '',
-      additionalText: '',
-      a11yFriendlySuggestionText: '',
-      selection: null,
-      textIsUrl: false,
-      userInputInProgress: false,
-      hasTemporaryText: false,
-    },
-    locationBarFlags: {
-      userInputInProgress: false,
-      popupOpen: false,
-      forceAimButtonFocusRing: false,
-      isVirtualKeyboardVisible: false,
-    },
-    selectedKeyword: null,
-    lhsChipsState: {
-      securityChip: {
-        icon: {handleId: 0n},
-        securityLevel: 0,
-        text: '',
-        tooltip: '',
-        accessibilityState: {
-          role: SecurityChipRole.kButton,
-          label: '',
-          description: '',
-        },
-        isClickable: false,
-        isTextDangerous: false,
-        isVisible: true,
-        isContextMenuVisible: false,
-      },
-      activityIndicators: [],
-      permissionDashboard: {
-        indicatorChip: createDefaultPermissionChipState(),
-        requestChip: createDefaultPermissionChipState(),
-        isDividerVisible: false,
-      },
-    },
-    contentSettingImageStates: [],
-    pageActionStates: [],
-  };
-}
 
 export interface LocationBarElement {
   $: {
@@ -106,19 +36,31 @@ export interface LocationBarElement {
 
 export class LocationBarElement extends CrLitElement implements
     ResponsiveControl {
-  // The smallest allowed width of the location bar.
-  //
-  // TODO(crbug.com/474060468): This is a placeholder value. We need to do a
-  // proper calculation.
-  static readonly LOCATION_BAR_MIN_WIDTH = 330;
+  // The smallest allowed width of the location bar. Going below this value
+  // would not leave enough room for basic indicators, e.g. permissions
+  // request chips. This must be below the C++ browser-side value returned by
+  // WebUILocationBar::MinimumSize() to allow all controls to be force shown
+  // after the window has been adjusted to its minimum width.
+  static readonly LOCATION_BAR_MIN_WIDTH = 120;
   // The preferred width of the location bar. It will, based on priority order,
   // try to assume this width when ResponsiveControls are all being sized. At
   // the end of that process, expandUpToPreferredWidth() will be invoked, and it
-  // will claim any extra available width.
-  //
-  // TODO(crbug.com/474060468): This is a placeholder value. We need to do a
-  // proper calculation.
-  static readonly LOCATION_BAR_PREFERRED_WIDTH = 400;
+  // will claim any extra available width. These values match the preferred
+  // width of LocationBarView on each platform, and must match
+  // WebUILocationBar::PreferredSize() in
+  // chrome/browser/ui/views/location_bar/webui_location_bar.cc.
+  // <if expr="is_win">
+  static readonly LOCATION_BAR_PREFERRED_WIDTH = 258;
+  // </if>
+  // <if expr="is_macosx">
+  static readonly LOCATION_BAR_PREFERRED_WIDTH = 292;
+  // </if>
+  // <if expr="is_linux">
+  static readonly LOCATION_BAR_PREFERRED_WIDTH = 358;
+  // </if>
+  // <if expr="is_chromeos">
+  static readonly LOCATION_BAR_PREFERRED_WIDTH = 284;
+  // </if>
 
   static get is() {
     return 'location-bar';
@@ -129,6 +71,10 @@ export class LocationBarElement extends CrLitElement implements
   }
 
   override render() {
+    if (this.waitForState && !this.contentRendered_) {
+      return nothing;
+    }
+    this.contentRendered_ = true;
     return getHtml.bind(this)();
   }
 
@@ -137,6 +83,7 @@ export class LocationBarElement extends CrLitElement implements
       locationBarState: {type: Object},
       isPopupOpen: {type: Boolean},
       touchUi: {type: Boolean},
+      waitForState: {type: Boolean},
     };
   }
 
@@ -144,13 +91,23 @@ export class LocationBarElement extends CrLitElement implements
 
   accessor isPopupOpen: boolean = false;
   accessor touchUi: boolean = false;
+  // While true and the contents have not rendered yet, render() returns
+  // nothing. toolbar-app binds this to "no ToolbarState received yet", so it is
+  // true from toolbar-app's first render until the browser's first
+  // ToolbarState arrives, and again after toolbar-app is disconnected. The
+  // contents then render once, from real state, instead of first from
+  // createDefaultLocationBarState(). Once rendered they stay, so a reconnected
+  // toolbar keeps showing the last state.
+  //
+  // This does not delay the first frame. The host element still renders, and
+  // this element's update completes synchronously, so toolbar-app reports the
+  // page as initialized at the same time as before. A frame painted before the
+  // state arrives shows the empty location bar.
+  accessor waitForState: boolean = false;
 
   private browserProxy_: BrowserProxy = BrowserProxyImpl.getInstance();
   private focusState_: boolean = false;
-
-  constructor() {
-    super();
-  }
+  private contentRendered_: boolean = false;
 
   override connectedCallback() {
     super.connectedCallback();
@@ -162,10 +119,6 @@ export class LocationBarElement extends CrLitElement implements
     this.addEventListener('blur', this.onBlur_.bind(this));
   }
 
-  override disconnectedCallback() {
-    super.disconnectedCallback();
-  }
-
   override willUpdate(changedProperties: PropertyValues<this>): void {
     super.willUpdate(changedProperties);
     if (changedProperties.has('locationBarState')) {
@@ -175,7 +128,13 @@ export class LocationBarElement extends CrLitElement implements
 
   override updated(changedProperties: PropertyValues<this>): void {
     super.updated(changedProperties);
-    if (changedProperties.has('locationBarState')) {
+    if (changedProperties.has('locationBarState') ||
+        changedProperties.has('waitForState')) {
+      // Until the contents render, locationBarState is the placeholder from
+      // createDefaultLocationBarState(), so leave the host classes alone.
+      if (!this.contentRendered_) {
+        return;
+      }
       this.classList.toggle(
           'popup-open', this.locationBarState.locationBarFlags.popupOpen);
       this.classList.toggle(

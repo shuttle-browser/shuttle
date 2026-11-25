@@ -32,6 +32,7 @@
 #include "chrome/browser/ui/extensions/extension_enable_flow_delegate.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+#include "chrome/browser/ui/waap/window_creation.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/extensions/extension_metrics.h"
 #include "chrome/common/extensions/manifest_handlers/app_launch_info.h"
@@ -56,8 +57,8 @@
 #include "extensions/common/manifest_handlers/description_info.h"
 #include "extensions/common/manifest_handlers/options_page_info.h"
 #include "extensions/common/switches.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/display/types/display_constants.h"
 #include "url/url_constants.h"
@@ -455,7 +456,7 @@ void ExtensionAppsBase::Uninstall(const std::string& app_id,
   NavigateParams params(
       profile(), extension_urls::GetWebstoreReportAbuseUrl(app_id, kReferrerId),
       ui::PAGE_TRANSITION_LINK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
 }
 
@@ -474,7 +475,9 @@ void ExtensionAppsBase::OpenNativeSettings(const std::string& app_id) {
     BrowserWindowInterface* browser =
         ProfileBrowserCollection::GetForProfile(profile_)->FindTabbedBrowser();
     if (!browser) {
-      browser = CreateBrowserWindow(BrowserWindowCreateParams(profile_, true));
+      browser = waap::CreateBrowserWindowAndRecordCreationSource(
+          BrowserWindowCreateParams(profile_, true),
+          waap::NewWindowCreationSource::kNewEmptyWindow);
     }
 
     chrome::ShowExtensions(browser, extension->id());

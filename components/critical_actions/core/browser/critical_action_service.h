@@ -6,18 +6,24 @@
 #define COMPONENTS_CRITICAL_ACTIONS_CORE_BROWSER_CRITICAL_ACTION_SERVICE_H_
 
 #include <cstdint>
+#include <functional>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <vector>
 
 #include "base/containers/lru_cache.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
+#include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/sequence_bound.h"
 #include "base/time/time.h"
+#include "components/critical_actions/core/browser/critical_action_metrics.h"
+#include "components/critical_actions/core/browser/critical_action_provider.h"
+#include "components/critical_actions/core/browser/critical_action_redirect_metrics_recorder.h"
 #include "components/critical_actions/core/browser/critical_action_types.h"
 #include "components/history/core/browser/history_service.h"
 #include "components/history/core/browser/history_service_observer.h"
@@ -25,44 +31,11 @@
 
 namespace critical_actions {
 
-// Outcome of resolving a conversation ID for critical action entries.
-// LINT.IfChange(ConversationIdResolutionOutcome)
-enum class ConversationIdResolutionOutcome {
-  kAlreadyPresent = 0,
-  kResolvedFromCache = 1,
-  kMissingTaskId = 2,
-  kDeferredCacheMiss = 3,
-  kMaxValue = kDeferredCacheMiss,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/critical_actions/enums.xml:CriticalActionConversationIdResolutionOutcome)
-
-// Outcome of deferred conversation ID resolution for critical action entries.
-// LINT.IfChange(ConversationIdDeferredResolutionOutcome)
-enum class ConversationIdDeferredResolutionOutcome {
-  kBackfilled = 0,
-  kEvictedServiceShutdown = 1,
-  kEvictedCapacityExceeded = 2,
-  kMaxValue = kEvictedCapacityExceeded,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/critical_actions/enums.xml:CriticalActionConversationIdDeferredResolutionOutcome)
-
-// Outcome of resolving a navigation ID to a History Visit ID for critical
-// action entries.
-// LINT.IfChange(VisitIdResolutionOutcome)
-enum class VisitIdResolutionOutcome {
-  kSuccess = 0,
-  kEvictedCapacityExceeded = 1,
-  kEvictedNavigatedAway = 2,
-  kDroppedNoNavigationId = 3,
-  kEvictedServiceShutdown = 4,
-  kMaxValue = kEvictedServiceShutdown,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/critical_actions/enums.xml:CriticalActionVisitIdResolutionOutcome)
-
 class CriticalActionBackend;
 
 // UI thread service for recording and retrieving critical action history.
 class CriticalActionService : public KeyedService,
+                              public CriticalActionProvider,
                               public history::HistoryServiceObserver {
  public:
   CriticalActionService(
@@ -95,6 +68,35 @@ class CriticalActionService : public KeyedService,
       const std::vector<std::string>& actor_task_ids,
       std::string_view conversation_id);
 
+  // UI thread entry point to associate an actor task with its current opaque
+  // conversation anchor ID (e.g., Glic turn ID). The anchor is stamped onto
+  // critical actions for `actor_task_id` when they are logged, so callers must
+  // set it before the actor performs the actions of that turn. Anchors set
+  // later are not applied to actions that were already logged. Conversely, the
+  // anchor is resolved when an action is logged, not when it was initiated, so
+  // an action of an earlier turn that is logged after the next turn's anchor
+  // was set (e.g. an asynchronous event) gets the newer anchor. Setting the
+  // same anchor again (e.g. for each batch of actions of one turn) does not
+  // change attribution; only a different anchor does.
+  // Passing an empty `conversation_anchor_id` clears any cached anchor for
+  // `actor_task_id`. Anchors longer than `kMaxConversationAnchorIdLength` are
+  // treated as if MarkActorTaskConversationAnchorDroppedTooLong() had been
+  // called. No-op unless features::IsActionLevelChatLinkoutsEnabled().
+  // TODO(b/583743246): Capture the anchor when an action is initiated so that
+  // asynchronously logged actions are attributed to the turn that caused them.
+  virtual void SetActorTaskConversationAnchorId(
+      std::string_view actor_task_id,
+      std::string_view conversation_anchor_id);
+
+  // UI thread entry point for callers that enforce their own, stricter anchor
+  // length limit (e.g. Glic turn IDs). Invalidates any cached anchor for
+  // `actor_task_id`. Until the next SetActorTaskConversationAnchorId() call,
+  // actions for `actor_task_id` get no anchor and record
+  // `ConversationAnchorResolutionOutcome::kDroppedTooLong` rather than
+  // `kCacheMiss`. No-op unless features::IsActionLevelChatLinkoutsEnabled().
+  virtual void MarkActorTaskConversationAnchorDroppedTooLong(
+      std::string_view actor_task_id);
+
   // UI thread entry point to log or queue a critical action linked by
   // navigation ID.
   virtual void AddCriticalActionWithNavigationId(
@@ -110,11 +112,12 @@ class CriticalActionService : public KeyedService,
       std::string_view critical_action_id,
       base::OnceCallback<void(std::optional<CriticalActionEntry>)> callback);
 
-  // UI thread entry point to retrieve critical action records matching
-  // `options`.
+  // CriticalActionProvider:
   void GetCriticalActions(
       const CriticalActionQueryOptions& options,
-      base::OnceCallback<void(std::vector<CriticalActionEntry>)> callback);
+      base::OnceCallback<void(std::vector<CriticalActionEntry>)> callback)
+      override;
+  base::WeakPtr<CriticalActionProvider> GetWeakPtr() override;
 
   // UI thread entry point to delete a critical action record by ID.
   void DeleteCriticalAction(std::string_view critical_action_id);
@@ -133,43 +136,30 @@ class CriticalActionService : public KeyedService,
     std::vector<CriticalActionEntry> pending_actions;
   };
 
-  // Type of redirect that took a visit to another visit.
-  //
-  // New values (e.g. "internal" redirects) must also be handled in the
-  // classification and histogram code linked below.
-  // LINT.IfChange(RedirectType)
-  enum class RedirectType {
-    kServer,
-    kClient,
-  };
-  // LINT.ThenChange(//components/critical_actions/core/browser/critical_action_service.cc:RedirectTypeClassification, //components/critical_actions/core/browser/critical_action_service.cc:RedirectTypeHistogramSuffix, //tools/metrics/histograms/metadata/critical_actions/histograms.xml:CriticalActionRedirectType)
-
-  // A critical action logged on a visit, cached in `visits_to_actions_cache_`.
-  struct VisitAction {
-    ActionSource action_source;
-    ActionType action_type;
+  struct CachedAnchor {
+    // Non-empty and at most `kMaxConversationAnchorIdLength` bytes when
+    // `was_dropped_too_long` is false; empty otherwise.
+    std::string anchor_id;
+    bool was_dropped_too_long = false;
   };
 
   void DropPendingActions(NavigationState& state,
                           VisitIdResolutionOutcome reason);
 
-  // Called for every new visit. If it continues a redirect chain, marks its
-  // referring visit as redirected and records the histogram for any actions
-  // waiting on the referring visit.
-  void HandleVisitForRedirectMetric(const history::VisitRow& visit_row);
+  // Resolves `entry.conversation_anchor_id` at enqueue time and records
+  // CriticalActions.ConversationAnchorResolutionOutcome. When action-level
+  // chat linkouts are disabled, only drops an oversized caller-provided anchor
+  // and records nothing.
+  void MaybeResolveConversationAnchorId(CriticalActionEntry& entry);
 
-  // Called for every critical action resolved to `visit_id`. Records the
-  // histogram if the visit is already known to be redirected, otherwise keeps
-  // the action until a redirect away from the visit is seen.
-  void HandleActionForRedirectMetric(const CriticalActionEntry& entry,
-                                     int64_t visit_id);
+  // Resolves or validates `entry.conversation_anchor_id` at enqueue time.
+  ConversationAnchorResolutionOutcome ResolveConversationAnchorId(
+      CriticalActionEntry& entry);
 
-  // Records CriticalActions.EventLoggedInRedirect.{RedirectType}.{ActionSource}
-  // for a critical action of `action_type` from `source` whose visit was
-  // redirected away by `redirect_type`.
-  static void RecordEventLoggedInRedirectHistogram(RedirectType redirect_type,
-                                                   ActionSource source,
-                                                   ActionType action_type);
+  // Resolves `conversation_id`, records persistence metrics, and forwards
+  // `entry` (whose `conversation_anchor_id` has already been resolved) to
+  // `backend_`.
+  void PersistCriticalAction(CriticalActionEntry entry);
 
   // TODO(b/561944228): Temporary solution while b/494212836 is in place; remove
   // once fixed. CriticalActionService needs conversation_id.
@@ -188,15 +178,9 @@ class CriticalActionService : public KeyedService,
   // resolutions.
   base::LRUCache<int64_t, NavigationState> navigation_cache_;
 
-  // Capacity-limited LRU cache of visits that have critical actions but are
-  // not yet known to have been redirected. Maps visit_id to the actions
-  // logged on it whose EventLoggedInRedirect recording is deferred.
-  base::LRUCache<int64_t, std::vector<VisitAction>> visits_to_actions_cache_;
-
-  // Capacity-limited LRU cache of visits known to have been redirected to
-  // another visit, regardless of whether they have critical actions yet. Maps
-  // visit_id to the redirect type (server or client).
-  base::LRUCache<int64_t, RedirectType> visit_redirect_types_;
+  // Records CriticalActions.EventLoggedInRedirect.* from visits and resolved
+  // actions reported by this service.
+  CriticalActionRedirectMetricsRecorder redirect_metrics_recorder_;
 
   // Capacity-limited LRU cache mapping actor_task_id to conversation_id. Unlike
   // `task_to_critical_action_ids_cache_`, this cache does not hold pending
@@ -217,6 +201,13 @@ class CriticalActionService : public KeyedService,
   // available when logging critical actions.
   base::LRUCache<std::string, std::vector<PendingCriticalAction>>
       task_to_critical_action_ids_cache_;
+
+  // Capacity-limited LRU cache mapping actor_task_id to its current
+  // conversation anchor state. Only populated when action-level chat linkouts
+  // are enabled. Cleared on Shutdown().
+  base::LRUCache<std::string, CachedAnchor, std::less<>> task_to_anchor_cache_;
+
+  base::WeakPtrFactory<CriticalActionService> weak_ptr_factory_{this};
 };
 
 }  // namespace critical_actions

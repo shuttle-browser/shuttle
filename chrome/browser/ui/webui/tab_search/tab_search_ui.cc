@@ -12,6 +12,7 @@
 #include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
@@ -48,7 +49,7 @@ bool TabSearchUIConfig::ShouldAutoResizeHost() {
 }
 
 bool TabSearchUIConfig::IsPreloadable() {
-  return true;
+  return !organizer_panel::IsOrganizerPanelFeatureEnabled();
 }
 
 std::optional<int> TabSearchUIConfig::GetCommandIdForTesting() {
@@ -56,8 +57,10 @@ std::optional<int> TabSearchUIConfig::GetCommandIdForTesting() {
 }
 
 TabSearchUI::TabSearchUI(content::WebUI* web_ui)
-    : TopChromeWebUIController(web_ui,
-                               true /* Needed for webui browser tests */),
+    : TopChromeWebUIController(
+          web_ui,
+          /*enable_chrome_send=*/true /* Needed for webui browser tests */,
+          /*enable_chrome_histograms=*/true),
       webui_load_timer_(web_ui->GetWebContents(),
                         "Tabs.TabSearch.WebUI.LoadDocumentTime",
                         "Tabs.TabSearch.WebUI.LoadCompletedTime") {
@@ -114,9 +117,6 @@ TabSearchUI::TabSearchUI(content::WebUI* web_ui)
   source->AddBoolean("useRipples", views::PlatformStyle::kUseRipples);
   source->AddBoolean("useTabGroupColorRefresh",
                      features::IsTabGroupColorRefreshEnabled());
-  source->AddBoolean(
-      "cjkWordBoundaryEnabled",
-      base::FeatureList::IsEnabled(tabs::kTabSearchCjkWordBoundary));
   source->AddBoolean(
       "tabSearchPerformanceImprovements",
       base::FeatureList::IsEnabled(tabs::kTabSearchPerformanceImprovements));
@@ -199,7 +199,7 @@ void TabSearchUI::CreatePageHandler(
   // per instance of the TabSearchUI.
   page_handler_ = std::make_unique<TabSearchPageHandler>(
       std::move(receiver), std::move(page), web_ui(), this,
-      service->metrics_reporter());
+      service->metrics_reporter(), /*log_metrics=*/true);
 
   if (!page_handler_creation_callback_.is_null()) {
     std::move(page_handler_creation_callback_).Run();

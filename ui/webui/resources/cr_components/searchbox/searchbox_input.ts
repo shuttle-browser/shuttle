@@ -12,9 +12,8 @@ import {MetricsReporterImpl} from '//resources/js/metrics_reporter/metrics_repor
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import {KeywordType, UrlDeemphasisMode} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
-import type {AutocompleteMatch, InputKeywordModel, PageCallbackRouter, UrlEmphasis} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import type {AutocompleteMatch, InputKeywordModel, UrlEmphasis} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 
-import {SearchboxBrowserProxy} from './searchbox_browser_proxy.js';
 import type {SearchboxIconElement} from './searchbox_icon.js';
 import {getCss} from './searchbox_input.css.js';
 import {getHtml} from './searchbox_input.html.js';
@@ -38,6 +37,16 @@ export interface Input {
 export interface InputUpdate {
   text?: string;
   inline?: string;
+  /**
+   * Text shown after `text` and `inline` (e.g. " - example.com/page" when
+   * inline autocompleting the title of that page; see
+   * `AutocompleteMatch.additionalText`). Unlike `text` and `inline`, it is
+   * cleared by any update that doesn't set it, since it only describes the
+   * default match while the input shows that match. It's only painted by the
+   * #mirror, so it's only shown if `urlEmphasisEnabled` is set (currently only
+   * by the full WebUI omnibox popup).
+   */
+  additionalText?: string;
   moveCursorToEnd?: boolean;
   isDeletingInput?: boolean;
   isMatchPreview?: boolean;
@@ -48,6 +57,7 @@ const SearchboxInputElementBase = I18nMixinLit(CrLitElement);
 export interface SearchboxInputElement {
   $: {
     icon: SearchboxIconElement,
+    mirrorContainer: HTMLElement,
     selectionAnnouncement: HTMLElement,
     selectionListbox: HTMLElement,
   };
@@ -91,6 +101,13 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
       allowFilePaste: {type: Boolean},
       urlEmphasisEnabled: {type: Boolean, reflect: true},
       urlEmphasis: {type: Object},
+      /**
+       * The kind of text the input expects, for IMEs and software keyboards.
+       * If set, it's the `inputmode` of a `type="text"` input: Windows treats
+       * `type="search"` as a search field, and `type="url"` strips whitespace.
+       * Otherwise, the input is a search field.
+       */
+      textInputType: {type: String},
     };
   }
 
@@ -110,10 +127,11 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
   accessor allowFilePaste: boolean = false;
   accessor urlEmphasisEnabled: boolean = false;
   accessor urlEmphasis: UrlEmphasis|null = null;
+  accessor textInputType: ''|'url'|'search' = '';
 
-  private callbackRouter_: PageCallbackRouter;
-  private inputTextChangedListenerId_: number|null = null;
   private lastInput_: Input = {text: '', inline: ''};
+  // See `InputUpdate.additionalText`. Rendered by the #mirror.
+  private additionalText_: string = '';
   private lastUserInput_: string = '';
   private isDeletingInput_: boolean = false;
   private pastedInInput_: boolean = false;
@@ -126,16 +144,8 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
   // notification can tell whether it has been superseded.
   private selectionA11yLabelGeneration_: number = 0;
 
-  constructor() {
-    super();
-    this.callbackRouter_ = SearchboxBrowserProxy.getInstance().callbackRouter;
-  }
-
   override connectedCallback() {
     super.connectedCallback();
-    this.inputTextChangedListenerId_ =
-        this.callbackRouter_.setInputText.addListener(
-            this.onSetInputText_.bind(this));
     document.addEventListener(
         'selectionchange', this.onDocumentSelectionChangeBound_);
     this.setupResizeObserver_();
@@ -144,8 +154,6 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
   override disconnectedCallback() {
     super.disconnectedCallback();
 
-    assert(this.inputTextChangedListenerId_);
-    this.callbackRouter_.removeListener(this.inputTextChangedListenerId_);
     document.removeEventListener(
         'selectionchange', this.onDocumentSelectionChangeBound_);
     if (this.resizeObserver_) {
@@ -244,7 +252,7 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
 
   setInputText(text: string) {
     markOnce('SearchboxInputElement::setInputText:StartupStart');
-    this.onSetInputText_(text);
+    this.updateInput_({text, inline: ''});
     if (markOnce('SearchboxInputElement::setInputText:StartupEnd')) {
       // Records a user timing mark after the initial startup input text has
       // been painted and presented to the display.
@@ -260,6 +268,19 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
 
   lastInput(): Input|null {
     return this.lastInput_;
+  }
+
+  /**
+   * Clears the additional text (see `InputUpdate.additionalText`). Called when
+   * the dropdown closes, since that can change the default match, matching
+   * the native omnibox (see `OmniboxController::OnResultChanged()`).
+   */
+  clearAdditionalText() {
+    if (!this.additionalText_) {
+      return;
+    }
+    this.additionalText_ = '';
+    this.updateMirror_();
   }
 
   /**
@@ -328,14 +349,6 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
     const caretNotAtEnd =
         inputEl ? inputEl.selectionStart !== input.length : false;
     return this.isDeletingInput_ || this.pastedInInput_ || caretNotAtEnd;
-  }
-
-  //============================================================================
-  // Callbacks
-  //============================================================================
-
-  private onSetInputText_(inputText: string) {
-    this.updateInput_({text: inputText, inline: ''});
   }
 
   //============================================================================
@@ -476,12 +489,15 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
     if (inputSelection === this.lastInput_.inline &&
         inputValue === lastInputValue &&
         this.lastInput_.inline[0]!.toLocaleLowerCase() ===
-            e.key.toLocaleLowerCase()) {
+            e.key.toLocaleLowerCase() &&
+        !e.ctrlKey && !e.altKey && !e.metaKey) {
       const text = this.lastInput_.text + e.key;
       assert(text);
       this.updateInput_({
         text: text,
         inline: this.lastInput_.inline.substr(1),
+        // The input still shows the same default match.
+        additionalText: this.additionalText_,
       });
       this.fire('searchbox-input-text-updated', {
         value: this.lastInput_.text,
@@ -615,6 +631,10 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
       this.urlEmphasis = null;
     }
     this.setLastInput_(newInput);
+    // Unlike `text` and `inline`, which `update` only overrides if it sets
+    // them, the additional text is cleared unless `update` sets it (see
+    // `InputUpdate.additionalText`).
+    this.additionalText_ = update.additionalText ?? '';
     this.updateEllipsisState_();
     this.updateMirror_();
   }
@@ -644,7 +664,7 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
     }
 
     mirror.textContent = '';
-    mirror.classList.remove('dimmed');
+    mirror.classList.remove('dimmed', 'has-additional-text');
     // Combine user-entered text with inline autocomplete.
     const fullText = this.lastInput_.text + this.lastInput_.inline;
     if (!fullText) {
@@ -672,7 +692,24 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
     mirror.dir = dir;
     this.inputElement.dir = dir;
 
-    // Helper to create and append text spans to the #mirror container.
+    // While showing additional text (e.g. the URL of a page whose title is
+    // inline autocompleted) after the text, as the native omnibox does with a
+    // separate label in the location bar (see
+    // `LocationBarView::SetOmniboxAdditionalText()`), the #mirror lays out the
+    // text and the additional text in a row, so that the additional text is
+    // elided to fit in the space left by the text (see searchbox_input.css).
+    // The text is wrapped in #mirrorText, so that it's still laid out as a
+    // whole, like the input's own text. The additional text isn't part of the
+    // input's value, so it's only painted by the #mirror.
+    let textContainer: HTMLElement = mirror;
+    if (this.additionalText_) {
+      mirror.classList.add('has-additional-text');
+      textContainer = document.createElement('div');
+      textContainer.id = 'mirrorText';
+      mirror.appendChild(textContainer);
+    }
+
+    // Helper to create and append text spans to the text container.
     // Returns the created span, or null if `content` is empty.
     const createSpan =
         (content: string, emphasize: boolean): HTMLSpanElement|null => {
@@ -684,7 +721,7 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
           if (!emphasize) {
             span.classList.add('dimmed');
           }
-          mirror.appendChild(span);
+          textContainer.appendChild(span);
           return span;
         };
 
@@ -737,9 +774,16 @@ export class SearchboxInputElement extends SearchboxInputElementBase {
     // (see searchbox_input.css) is painted in the #mirror's own color. Style it
     // like the trailing text, matching `gfx::RenderText::Elide()`. `fullText`
     // isn't empty, so there's always a trailing span.
-    const lastSpan = mirror.lastElementChild;
+    const lastSpan = textContainer.lastElementChild;
     assert(lastSpan);
     mirror.classList.toggle('dimmed', lastSpan.classList.contains('dimmed'));
+
+    if (this.additionalText_) {
+      const additionalTextSpan = document.createElement('span');
+      additionalTextSpan.id = 'additionalText';
+      additionalTextSpan.textContent = this.additionalText_;
+      mirror.appendChild(additionalTextSpan);
+    }
 
     // Synchronize horizontal scroll position between <input> and #mirror for
     // long text.

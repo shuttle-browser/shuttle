@@ -24,7 +24,6 @@
 #include "base/check_deref.h"
 #include "base/containers/span.h"
 #include "base/environment.h"
-#include "base/feature_list.h"
 #include "base/files/file.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
@@ -85,9 +84,6 @@
 #include "url/origin.h"
 
 namespace {
-
-// TODO(thomasanderson): Remove this feature flag in the future.
-BASE_FEATURE(kWebNotificationPortalFallback, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // DBus name / path.
 const char kFreedesktopNotificationsName[] = "org.freedesktop.Notifications";
@@ -734,8 +730,7 @@ class NotificationPlatformBridgeLinuxImpl : public NotificationPlatformBridge {
 
   void InitPortal(ConnectionInitializationStatusCode fallback_reason) {
     CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M161);
-    if (using_portal_ ||
-        !base::FeatureList::IsEnabled(kWebNotificationPortalFallback)) {
+    if (using_portal_) {
       OnConnectionInitializationFinished(fallback_reason);
       return;
     }
@@ -1426,12 +1421,17 @@ class NotificationPlatformBridgeLinuxImpl : public NotificationPlatformBridge {
           /*action_index=*/std::nullopt, /*by_user=*/std::nullopt,
           /*reply=*/std::nullopt, data->profile_id, data->is_incognito);
     } else if (action == kCloseButtonId) {
+      NotificationHandler::Type notification_type = data->notification_type;
+      GURL origin_url = data->origin_url;
+      std::string notification_id = data->notification_id;
+      std::string profile_id = data->profile_id;
+      bool is_incognito = data->is_incognito;
+
+      CloseImpl(profile_id, notification_id);
       ForwardNotificationOperation(
-          NotificationOperation::kClose, data->notification_type,
-          data->origin_url, data->notification_id,
-          /*action_index=*/std::nullopt, /*by_user=*/true,
-          /*reply=*/std::nullopt, data->profile_id, data->is_incognito);
-      CloseImpl(data->profile_id, data->notification_id);
+          NotificationOperation::kClose, notification_type, origin_url,
+          notification_id, /*action_index=*/std::nullopt, /*by_user=*/true,
+          /*reply=*/std::nullopt, profile_id, is_incognito);
     } else {
       size_t button_index;
       if (!base::StringToSizeT(action, &button_index)) {
@@ -1488,12 +1488,17 @@ class NotificationPlatformBridgeLinuxImpl : public NotificationPlatformBridge {
           /*action_index=*/std::nullopt, /*by_user=*/std::nullopt,
           /*reply=*/std::nullopt, data->profile_id, data->is_incognito);
     } else if (action == kCloseButtonId) {
+      NotificationHandler::Type notification_type = data->notification_type;
+      GURL origin_url = data->origin_url;
+      std::string notification_id = data->notification_id;
+      std::string profile_id = data->profile_id;
+      bool is_incognito = data->is_incognito;
+
+      CloseImpl(profile_id, notification_id);
       ForwardNotificationOperation(
-          NotificationOperation::kClose, data->notification_type,
-          data->origin_url, data->notification_id,
-          /*action_index=*/std::nullopt, /*by_user=*/true,
-          /*reply=*/std::nullopt, data->profile_id, data->is_incognito);
-      CloseImpl(data->profile_id, data->notification_id);
+          NotificationOperation::kClose, notification_type, origin_url,
+          notification_id, /*action_index=*/std::nullopt, /*by_user=*/true,
+          /*reply=*/std::nullopt, profile_id, is_incognito);
     } else {
       size_t id;
       if (!base::StringToSizeT(action, &id)) {
@@ -1544,13 +1549,19 @@ class NotificationPlatformBridgeLinuxImpl : public NotificationPlatformBridge {
       return;
     }
 
-    // TODO(peter): Can we support `by_user` appropriately here?
-    ForwardNotificationOperation(
-        NotificationOperation::kClose, data->notification_type,
-        data->origin_url, data->notification_id, std::nullopt, true,
-        std::nullopt, data->profile_id, data->is_incognito);
+    NotificationHandler::Type notification_type = data->notification_type;
+    GURL origin_url = data->origin_url;
+    std::string notification_id = data->notification_id;
+    std::string profile_id = data->profile_id;
+    bool is_incognito = data->is_incognito;
 
     notifications_.erase(data);
+
+    // TODO(peter): Can we support `by_user` appropriately here?
+    ForwardNotificationOperation(NotificationOperation::kClose,
+                                 notification_type, origin_url, notification_id,
+                                 std::nullopt, true, std::nullopt, profile_id,
+                                 is_incognito);
   }
 
   // Called once the connection has been set up (or not).

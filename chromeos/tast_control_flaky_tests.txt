@@ -8,18 +8,11 @@
 #
 # DO NOT ADD QUOTATION MARK AND TRAILING COMMA AT EACH LINE
 
-# b/537158036
-tast.flex.HWIS
-
-# b/537159924
-tast.wmp.DesksTemplatesBasic
-tast.wmp.DesksTemplatesLaunch
-
-# b/312966807
-tast.inputs.InputMethodShelfInputs
-
 # b/549299789
+tast.secagentd.FileEvents.cookies
+tast.secagentd.FileEvents.user_fs
 tast.secagentd.FileEvents.auth_factors
+tast.secagentd.FileEvents.user_credential
 tast.secagentd.NetworkEvents.relaxed_tcp
 tast.secagentd.NetworkEvents.relaxed_udp
 
@@ -29,6 +22,12 @@ tast.camera.CCAUISmoke.fake_vcd
 # b/567899351
 tast.crash.SenderNoConsent.fieldtrial_testing_config_on
 
-# b/570424424 b/570419602
-tast.shimlessrma.CancelFlow.welcome_cancel_critical
-tast.shimlessrma.CancelFlow.welcome_next_cancel_critical
+# b/580937362
+tast.hwsec.CrossVersionChromeLogin.ti50_r120
+
+# b/580727944
+tast.crostini.AppFirefoxNonalphanumericInput.bookworm_clamshell_stable
+
+# b/576091588
+tast.bruschetta.CopyPaste.x11_to_x11
+

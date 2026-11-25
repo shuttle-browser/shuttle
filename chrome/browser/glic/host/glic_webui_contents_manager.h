@@ -7,12 +7,14 @@
 
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "base/containers/flat_map.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "chrome/browser/glic/glic_enums.h"
 #include "chrome/browser/glic/host/glic_web_client_manager.h"
 #include "chrome/browser/glic/host/glic_web_contents_manager.h"
 #include "content/public/browser/visibility.h"
@@ -42,6 +44,7 @@ class GlicWebUIContentsManager : public content::WebContentsObserver,
   void AttachModalDialogManagerDelegate(
       ScopedModalDialogManagerDelegate& delegate) override;
   void SetVisibility(content::Visibility visibility) override;
+  void OnHostNativeLoadingChanged(bool is_showing) override;
   content::WebContents* active_web_contents() const override;
   content::WebContents* guest_contents() const override;
   void OnActuatingChanged(bool actuating) override;
@@ -59,7 +62,7 @@ class GlicWebUIContentsManager : public content::WebContentsObserver,
  private:
   void OnWebUiLoadComplete(GlicPageHandler* page_handler,
                            uint64_t request_id,
-                           bool failed);
+                           std::optional<ClientLoadErrorReason> error_reason);
   // content::WebContentsObserver:
   void PrimaryMainFrameRenderProcessGone(
       base::TerminationStatus status) override;
@@ -68,6 +71,7 @@ class GlicWebUIContentsManager : public content::WebContentsObserver,
   void PrimaryMainDocumentElementAvailable() override;
   void DocumentOnLoadCompletedInPrimaryMainFrame() override;
   void UpdateActuationTracker();
+  void UpdateGuestMounted();
 
   const base::TimeTicks creation_time_ = base::TimeTicks::Now();
   base::TimeTicks navigation_commit_time_;
@@ -79,6 +83,7 @@ class GlicWebUIContentsManager : public content::WebContentsObserver,
   // by GlicUI. Its lifetime is managed by GlicInstanceImpl (multi-instance),
   // which owns Host.
   raw_ptr<Host> host_ = nullptr;
+  content::Visibility last_visibility_ = content::Visibility::HIDDEN;
 
   base::ScopedClosureRunner webui_capture_runner_;
   base::ScopedClosureRunner guest_capture_runner_;

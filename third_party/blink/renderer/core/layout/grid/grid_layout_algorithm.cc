@@ -8,6 +8,7 @@
 #include "third_party/blink/renderer/core/layout/constraint_space_builder.h"
 #include "third_party/blink/renderer/core/layout/disable_layout_side_effects_scope.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
+#include "third_party/blink/renderer/core/layout/gap/grid_gap_geometry.h"
 #include "third_party/blink/renderer/core/layout/grid/grid_baseline_accumulator.h"
 #include "third_party/blink/renderer/core/layout/grid/grid_break_token_data.h"
 #include "third_party/blink/renderer/core/layout/grid/grid_gap_accumulator.h"
@@ -104,7 +105,7 @@ const LayoutResult* GridLayoutAlgorithm::LayoutInternal() {
   Vector<EBreakBetween> row_break_between;
   // Holds the gap geometry for the unfragmented grid pass before fragmentation
   // is applied, if applicable.
-  const GapGeometry* full_gap_geometry = nullptr;
+  const GridGapGeometry* full_gap_geometry = nullptr;
   Vector<wtf_size_t> track_idx_to_set_idx;
   Vector<wtf_size_t> column_gaps_segment_ranges_start_indices;
   LayoutUnit cumulative_gap_offset_adjustment = LayoutUnit();
@@ -250,7 +251,11 @@ const LayoutResult* GridLayoutAlgorithm::LayoutInternal() {
             cumulative_gap_offset_adjustment, first_unprocessed_row_gap_idx));
   }
 
-  container_builder_.HandleOofsAndSpecialDescendants();
+  LayoutResult::EStatus oof_status =
+      container_builder_.HandleOofsAndSpecialDescendants();
+  if (oof_status != LayoutResult::kSuccess) {
+    return container_builder_.Abort(oof_status);
+  }
   return container_builder_.ToBoxFragment();
 }
 
@@ -1546,7 +1551,7 @@ void GridLayoutAlgorithm::PlaceGridItems(
     const GridLayoutSubtree& layout_subtree,
     Vector<EBreakBetween>* out_row_break_between,
     Vector<GridItemPlacementData>* out_grid_items_placement_data,
-    const GapGeometry** out_unfragmented_gap_geometry,
+    const GridGapGeometry** out_unfragmented_gap_geometry,
     Vector<wtf_size_t>* out_track_idx_to_set_idx) {
   DCHECK(out_row_break_between);
 
@@ -1724,7 +1729,7 @@ void GridLayoutAlgorithm::PlaceGridItemsForFragmentation(
     const GridItems& grid_items,
     const GridLayoutSubtree& layout_subtree,
     const Vector<EBreakBetween>& row_break_between,
-    const GapGeometry* full_gap_geometry,
+    const GridGapGeometry* full_gap_geometry,
     const Vector<wtf_size_t>* track_idx_to_set_idx,
     Vector<wtf_size_t>* column_gaps_segment_ranges_start_indices,
     Vector<GridItemPlacementData>* grid_items_placement_data,
@@ -1782,6 +1787,17 @@ void GridLayoutAlgorithm::PlaceGridItemsForFragmentation(
   base::span<const Member<const BreakToken>> child_break_tokens;
   if (GetBreakToken()) {
     child_break_tokens = GetBreakToken()->ChildBreakTokens();
+
+    // Resumed OOFs are found directly under the grid container, but they are
+    // not grid items. Make sure that they get handled in the out-of-flow pass,
+    // which takes place after in-flow layout.
+    for (const BreakToken* token : child_break_tokens) {
+      const auto* child_token = To<BlockBreakToken>(token);
+      if (child_token->InputNode().IsOutOfFlowPositioned()) {
+        container_builder_.AddOutOfFlowChildCandidate(
+            child_token->InputNode(), LogicalStaticPosition(), child_token);
+      }
+    }
   }
 
   auto PlaceItems = [&]() {
@@ -1802,12 +1818,20 @@ void GridLayoutAlgorithm::PlaceGridItemsForFragmentation(
       // Grab the offsets and break-token (if present) for this child.
       auto& item_placement_data = *(placement_data_it++);
       const BlockBreakToken* break_token = nullptr;
-      if (child_break_token_it != child_break_tokens.end()) {
+      for (; child_break_token_it != child_break_tokens.end();
+           ++child_break_token_it) {
         const auto* child_break_token =
             To<BlockBreakToken>(child_break_token_it->Get());
-        if (child_break_token->InputNode() == grid_item.node) {
-          break_token = child_break_token;
-          ++child_break_token_it;
+        // Ignore resumed OOFs here. They are handled elsewhere, since item
+        // placement may be performed several times.
+        if (!child_break_token->InputNode().IsOutOfFlowPositioned()) {
+          // This is either a break token for the current item, or for a
+          // subsequent one.
+          if (child_break_token->InputNode() == grid_item.node) {
+            break_token = child_break_token;
+            ++child_break_token_it;
+          }
+          break;
         }
       }
 
@@ -2270,9 +2294,10 @@ void GridLayoutAlgorithm::PlaceGridItemsForFragmentation(
         fragment_block_end = max_item_block_end;
       }
 
-      GapGeometry* fragment_gap_geometry = MakeGarbageCollected<GapGeometry>(
-          *full_gap_geometry, std::move(fragment_main_gaps),
-          fragment_block_start, fragment_block_end);
+      GridGapGeometry* fragment_gap_geometry =
+          MakeGarbageCollected<GridGapGeometry>(
+              *full_gap_geometry, std::move(fragment_main_gaps),
+              fragment_block_start, fragment_block_end);
 
       fragment_gap_geometry->AdjustCrossGapsRangesForFragmentation(
           initial_unprocessed_row_gap_idx, *first_unprocessed_row_gap_idx,
@@ -2412,12 +2437,13 @@ void GridLayoutAlgorithm::SetReadingFlowNodes(const GridItems& grid_items) {
     return;
   }
 
-  HeapVector<Member<blink::Node>> reading_flow_nodes;
-  reading_flow_nodes.ReserveInitialCapacity(grid_items.Size());
+  auto* reading_flow_nodes =
+      MakeGarbageCollected<GCedHeapVector<Member<blink::Node>>>();
+  reading_flow_nodes->ReserveInitialCapacity(grid_items.Size());
   // Add grid item if it is a DOM node
   auto add_item_if_needed = [&](const GridItemData& grid_item) {
     if (blink::Node* node = grid_item.node.GetDOMNode()) {
-      reading_flow_nodes.push_back(node);
+      reading_flow_nodes->push_back(node);
     }
   };
 
@@ -2459,7 +2485,7 @@ void GridLayoutAlgorithm::SetReadingFlowNodes(const GridItems& grid_items) {
       add_item_if_needed(grid_item);
     }
   }
-  container_builder_.SetReadingFlowNodes(std::move(reading_flow_nodes));
+  container_builder_.SetReadingFlowNodes(reading_flow_nodes);
 }
 
 // static

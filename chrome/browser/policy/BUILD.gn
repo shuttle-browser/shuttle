@@ -242,6 +242,7 @@ source_set("test_support") {
     "//chrome/browser/lifetime:termination_notification",
     "//chrome/browser/policy:impl",
     "//chrome/browser/policy/messaging_layer/storage_selector",
+    "//chrome/browser/profiles:profile",
     "//chrome/test:test_support",
     "//chrome/test/base:chrome_test_utils",
     "//chrome/test/base:testing_browser_process",
@@ -300,7 +301,6 @@ source_set("test_support") {
 
     deps += [
       "//chrome/browser/preloading:test_support",
-      "//chrome/browser/profiles:profile",
       "//chrome/browser/ui:browser_window_header",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/location_bar",
@@ -321,7 +321,10 @@ source_set("test_support") {
       "//ui/snapshot",
     ]
   }
-  public_deps = [ "//chrome/test/base:chrome_test_utils" ]
+  public_deps = [
+    "//chrome/test/base:chrome_test_utils",
+    "//components/reporting/storage:storage_uploader_interface",
+  ]
 }
 
 # Browser tests for specific policies.
@@ -345,7 +348,6 @@ source_set("policy_specific_browser_tests") {
     "test/safe_browsing_policy_browsertest.cc",
     "test/ssl_error_overriding_allowed_policy_browsertest.cc",
     "test/standardized_browser_zoom_browsertest.cc",
-    "test/url_keyed_anonymized_data_collection_enabled_browsertest.cc",
     "test/web_rtc_udp_port_range_policy_browsertest.cc",
     "test/xslt_policy_browsertest.cc",
   ]
@@ -377,7 +379,6 @@ source_set("policy_specific_browser_tests") {
     "//components/security_interstitials/content:security_interstitial_page",
     "//components/site_isolation",
     "//components/skills/public",
-    "//components/unified_consent",
     "//content/test:test_support",
     "//media",
     "//services/cert_verifier/public/mojom",
@@ -589,7 +590,6 @@ source_set("browser_tests") {
       "test/privacy_hub_policy_browsertest.cc",
       "test/screenshot_policy_browsertest.cc",
       "test/session_length_limit_policy_browsertest.cc",
-      "test/suggested_content_policy_browsertest.cc",
       "test/system_features_policy_browsertest.cc",
       "test/unified_desktop_enabled_browsertest.cc",
       "test/user_avatar_customization_selectors_enabled_policy_browsertest.cc",
@@ -634,7 +634,6 @@ source_set("browser_tests") {
     sources += [
       "cloud/chrome_browser_cloud_management_browsertest_mac_util.h",
       "cloud/chrome_browser_cloud_management_browsertest_mac_util.mm",
-      "test/ad_hoc_code_signing_for_pwas_enabled_mac_browsertest.mm",
     ]
   }
 
@@ -868,6 +867,7 @@ source_set("unit_tests") {
     "//components/reporting/encryption:decryption",
     "//components/reporting/encryption:primitives",
     "//components/reporting/encryption:testing_primitives",
+    "//components/reporting/storage:storage_uploader_interface",
     "//components/reporting/storage:test_support",
     "//components/reporting/util:status_macros",
     "//components/reporting/util:test_callbacks_support",
@@ -880,6 +880,7 @@ source_set("unit_tests") {
 
   if (!is_chromeos) {
     sources += [
+      "browser_signin_policy_handler_unittest.cc",
       "cloud/user_policy_signin_service_unittest.cc",
       "cloud/user_policy_signin_service_util_unittest.cc",
       "file_selection_dialogs_policy_handler_unittest.cc",
@@ -1390,7 +1391,7 @@ source_set("impl") {
   }
 
   if (safe_browsing_mode != 0) {
-    deps += [ "//components/safe_browsing/content/common:file_type_policies" ]
+    deps += [ "//components/safe_browsing/content/common/file_type_policies" ]
   }
 
   if (is_android) {

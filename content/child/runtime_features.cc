@@ -200,7 +200,10 @@ void SetRuntimeFeaturesFromChromiumFeatures() {
           {wf::EnableTouchDragAndDrop, features::kTouchDragAndDrop},
           {wf::EnableTouchDragAndContextMenu,
            features::kTouchDragAndContextMenu},
-          {wf::EnableWebAuthenticationAmbient, device::kWebAuthnAmbientSignin},
+          // LINT.IfChange(WebAuthenticationAmbient)
+          {wf::EnableWebAuthenticationAmbient, device::kWebAuthnAmbientSignin,
+           kSetOnlyIfOverridden},
+          // LINT.ThenChange(//third_party/blink/renderer/platform/runtime_enabled_features.json5:WebAuthenticationAmbient)
           {wf::EnableWebAuthenticationCrossDeviceFallbackUrl,
            device::kWebAuthnCrossDeviceFallbackUrl},
           {wf::EnableWebAuthenticationRemoteClientDataJson,
@@ -288,7 +291,6 @@ void SetRuntimeFeaturesFromChromiumFeatures() {
            webnn::mojom::features::kWebMachineLearningNeuralNetwork,
            kSetOnlyIfOverridden},
           {"OriginIsolationHeader", features::kOriginIsolationHeader},
-          {"ReduceAcceptLanguage", network::features::kReduceAcceptLanguage},
           {"RelatedWebsitePartitionAPI",
            net::features::kRelatedWebsitePartitionAPI},
           {"SerialPortConnected", features::kSerialPortConnected},
@@ -433,6 +435,15 @@ void SetCustomizedRuntimeFeaturesFromCombinedArgs(
     WebRuntimeFeatures::EnableUnsafeUnboundedElementOnTheOpenWeb(false);
     WebRuntimeFeatures::EnableUnboundedElement(false);
   }
+  // The EyeDropper API on Android relies on Intent.ACTION_OPEN_EYE_DROPPER,
+  // which was introduced in Android CinnamonBun (API level 37). Disable the
+  // feature on older Android versions so that the eyedropper IDL is not
+  // registered for feature detection without actually trying to open the
+  // eyedropper.
+  if (base::android::android_info::sdk_int() <
+      base::android::android_info::SDK_VERSION_CINNAMON_BUN) {
+    WebRuntimeFeatures::EnableEyeDropperAPI(false);
+  }
 #endif
 
   // These checks are custom wrappers around base::FeatureList::IsEnabled
@@ -541,6 +552,18 @@ void ResolveInvalidConfigurations() {
   if (!base::FeatureList::IsEnabled(
           network::features::kCSPScriptSrcHashesInV1)) {
     WebRuntimeFeatures::EnableCSPHashesV1(false);
+  }
+
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kPermissionsPolicyForSharedWorkers)) {
+    LOG_IF(WARNING,
+           WebRuntimeFeatures::IsPermissionsPolicyForSharedWorkersEnabled())
+        << "PermissionsPolicyForSharedWorkers cannot be enabled in this "
+           "configuration. Use --"
+        << switches::kEnableFeatures << "="
+        << blink::features::kPermissionsPolicyForSharedWorkers.name
+        << " instead.";
+    WebRuntimeFeatures::EnablePermissionsPolicyForSharedWorkers(false);
   }
 
   // LegacyAbstractRange (containers on AbstractRange.prototype) is the

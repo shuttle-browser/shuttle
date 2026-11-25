@@ -54,11 +54,15 @@ export class ProfileCardElement extends ProfileCardElementBase {
       pattern_: {type: String},
       disabled: {type: Boolean},
       webuiRoundedIconsEnabled_: {type: Boolean},
+      profileIndex: {type: Number},
+      profilesCount: {type: Number},
     };
   }
 
   accessor profileState: ProfileState = createDummyProfileState();
   accessor disabled: boolean = false;
+  accessor profileIndex: number = -1;
+  accessor profilesCount: number = 0;
   protected accessor pattern_: string = '.*\\S.*';
   protected accessor webuiRoundedIconsEnabled_: boolean =
       loadTimeData.getBoolean('webuiRoundedIconsEnabled');
@@ -70,7 +74,7 @@ export class ProfileCardElement extends ProfileCardElementBase {
     this.addNameInputTooltipListeners_();
     this.addGaiaNameTooltipListeners_();
 
-    this.addEventListener('drag-tile-start', this.disableActiveRipple_);
+    this.addEventListener('drag-tile-start', this.onDragTileStart_);
   }
 
   private addNameInputTooltipListeners_() {
@@ -175,6 +179,18 @@ export class ProfileCardElement extends ProfileCardElementBase {
     if (this.$.nameInput.invalid) {
       this.$.nameInput.value = this.profileState.localProfileName;
     }
+  }
+
+  /**
+   * Resets active states on the profile card when the tile starts being
+   * dragged.
+   */
+  private onDragTileStart_(): void {
+    this.disableActiveRipple_();
+    // Blur the card so that the inner button focused on mouse down does not
+    // keep the tile at the initial drag index highlighted (via `:focus-within`)
+    // after the drag ends.
+    this.blur();
   }
 
   /**

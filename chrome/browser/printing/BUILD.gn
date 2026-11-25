@@ -159,6 +159,7 @@ if (enable_printing) {
       ]
       deps += [
         "//chrome/browser:primitives",
+        "//chrome/browser/pdf:pdf_pref_names",
         "//ui/views",
       ]
     }
@@ -228,6 +229,7 @@ if (enable_printing) {
           "//chrome/browser/ash/arc/print_spooler",
           "//chrome/browser/ash/printing",
           "//chrome/browser/chromeos/policy/dlp",
+          "//chromeos/ash/components/browser_context_helper",
         ]
         if (use_cups) {
           sources += [
@@ -239,10 +241,9 @@ if (enable_printing) {
           ]
           deps += [
             "//chrome/browser/ash/printing/print_management",
-            "//chrome/browser/chromeos/printing",
             "//chrome/browser/web_applications",
             "//chrome/common/printing",
-            "//chromeos/ash/components/browser_context_helper",
+            "//chromeos/printing",
             "//components/content_settings/browser",
             "//components/content_settings/core/browser",
             "//components/content_settings/core/common",
@@ -315,7 +316,6 @@ if (enable_printing) {
         "//chrome/browser/ui/dialogs:browser_dialogs",
         "//chrome/common:constants",
         "//chrome/test:test_support",
-        "//chrome/test:test_support_ui",
         "//content/public/browser",
         "//content/test:test_support",
         "//printing",
@@ -329,10 +329,10 @@ if (enable_printing) {
       if (is_chromeos && use_cups) {
         sources += [ "web_api/web_printing_browsertest.cc" ]
         deps += [
-          "//chrome/browser/chromeos/printing",
           "//chrome/browser/content_settings:content_settings_factory",
           "//chrome/browser/web_applications",
           "//chrome/browser/web_applications:web_applications_test_support",
+          "//chromeos/printing",
           "//components/content_settings/core/browser",
           "//printing/backend",
         ]
@@ -374,10 +374,14 @@ if (enable_printing) {
           ":test_support",
           "//chrome/browser/ui/webui/print_preview",
           "//chrome/browser/ui/webui/print_preview:browser_tests",
+          "//components/web_modal",
+          "//components/web_modal:test_support",
           "//printing:test_support",
         ]
 
-        if (!is_chromeos) {
+        if (is_chromeos) {
+          deps += [ "//chrome/browser/ash/profiles" ]
+        } else {
           sources += [ "system_access_process_print_browsertest.cc" ]
         }
       }

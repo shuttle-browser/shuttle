@@ -38,6 +38,7 @@
 #include "components/user_manager/user_type.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/aura/window.h"
 #include "ui/display/display_layout_builder.h"
 #include "ui/display/display_switches.h"
 #include "ui/display/manager/display_configurator.h"
@@ -51,6 +52,7 @@
 #include "ui/display/test/display_manager_test_api.h"
 #include "ui/display/util/display_util.h"
 #include "ui/events/devices/touchscreen_device.h"
+#include "ui/events/test/event_generator.h"
 #include "ui/gfx/geometry/vector3d_f.h"
 
 namespace ash {
@@ -325,12 +327,12 @@ class DisplayPrefsTestGuest : public DisplayPrefsTest {
   // DisplayPrefsTest:
   void SetUpInitParams(AshTestHelper::InitParams& init_params) override {
     DisplayPrefsTest::SetUpInitParams(init_params);
-    init_params.start_session = false;
+    init_params.users.clear();
   }
 };
 
 TEST_F(DisplayPrefsTest, ListedLayoutOverrides) {
-  UpdateDisplay("200x100,300x200");
+  UpdateDisplay("320x200,400x300");
 
   display::DisplayIdList list = display_manager()->GetConnectedDisplayIdList();
   display::DisplayIdList dummy_list = display::test::CreateDisplayIdList2(
@@ -382,7 +384,7 @@ TEST_F(DisplayPrefsTest, BasicStores) {
   // displays. So set internal display first before adding display.
   display::test::ScopedSetInternalDisplayId set_internal(display_manager(),
                                                          id1);
-  UpdateDisplay("300x200*2, 400x300#500x400|300x200*1.25");
+  UpdateDisplay("800x600*2, 600x400#800x600|500x400*1.25");
   display::test::DisplayManagerTestApi display_manager_test(display_manager());
   int64_t id2 = display_manager_test.GetSecondaryDisplay().id();
   int64_t dummy_id = display::SynthesizeDisplayIdFromSeed(id2);
@@ -498,7 +500,7 @@ TEST_F(DisplayPrefsTest, BasicStores) {
   const base::DictValue* display_zoom_dict_1 =
       property->FindDict("display_zoom_factor_map");
   std::optional<double> display_zoom_from_map_1 =
-      display_zoom_dict_1->FindDouble("300x200");
+      display_zoom_dict_1->FindDouble("800x600");
   ASSERT_TRUE(display_zoom_from_map_1);
   EXPECT_NEAR(*display_zoom_from_map_1, zoom_factor_1, 0.0001);
 
@@ -548,7 +550,7 @@ TEST_F(DisplayPrefsTest, BasicStores) {
   const base::DictValue* display_zoom_dict_2 =
       property->FindDict("display_zoom_factor_map");
   std::optional<double> display_zoom_from_map_2 =
-      display_zoom_dict_2->FindDouble("500x400");
+      display_zoom_dict_2->FindDouble("800x600");
   ASSERT_TRUE(display_zoom_from_map_2);
   EXPECT_NEAR(*display_zoom_from_map_2, zoom_factor_2, 0.0001);
 
@@ -562,7 +564,7 @@ TEST_F(DisplayPrefsTest, BasicStores) {
   EXPECT_FALSE(property->FindInt("width"));
   EXPECT_FALSE(property->FindInt("height"));
 
-  display::ManagedDisplayMode mode(gfx::Size(300, 200), 60.0f, false, false,
+  display::ManagedDisplayMode mode({500, 400}, 60.0f, false, false,
                                    1.25f /* device_scale_factor */);
   display_manager()->SetDisplayMode(id2, mode);
 
@@ -580,8 +582,8 @@ TEST_F(DisplayPrefsTest, BasicStores) {
   // it's not best.
   property = properties.FindDict(base::NumberToString(id2));
   ASSERT_TRUE(property);
-  EXPECT_EQ(property->FindInt("width"), 300);
-  EXPECT_EQ(property->FindInt("height"), 200);
+  EXPECT_EQ(property->FindInt("width"), 500);
+  EXPECT_EQ(property->FindInt("height"), 400);
   EXPECT_EQ(property->FindInt("device-scale-factor"), 1250);
 
   // The layout is swapped.
@@ -614,8 +616,8 @@ TEST_F(DisplayPrefsTest, BasicStores) {
       /*vsync_rate_min=*/std::nullopt);
 
   // Disconnect 2nd display first to generate new id for external display.
-  UpdateDisplay("300x200*2");
-  UpdateDisplay("300x200*2, 600x500#600x500|500x400");
+  UpdateDisplay("800x600*2");
+  UpdateDisplay("800x600*2, 600x500#600x500|500x400");
   EXPECT_FALSE(display_manager()->IsInMirrorMode());
 
   // Update key as the 2nd display gets new id.
@@ -650,8 +652,8 @@ TEST_F(DisplayPrefsTest, BasicStores) {
       display::VariableRefreshRateState::kVrrNotCapable,
       /*vsync_rate_min=*/std::nullopt);
   // Disconnect 2nd display first to generate new id for external display.
-  UpdateDisplay("300x200*2");
-  UpdateDisplay("300x200*2, 500x400#600x500|500x400%60.0f");
+  UpdateDisplay("800x600*2");
+  UpdateDisplay("800x600*2, 500x400#600x500|500x400%60.0f");
 
   // Update key as the 2nd display gets new id.
   id2 = display_manager_test.GetSecondaryDisplay().id();
@@ -674,7 +676,7 @@ TEST_F(DisplayPrefsTest, BasicStores) {
 
 TEST_F(DisplayPrefsTest, PreventStore) {
   LoggedInAsUser();
-  UpdateDisplay("400x300#500x400|400x300|300x200");
+  UpdateDisplay("400x300#500x400|400x300|320x200");
   int64_t id = display::Screen::Get()->GetPrimaryDisplay().id();
   // Set display's resolution in single display. It creates the notification and
   // display preferences should not stored meanwhile.
@@ -687,7 +689,7 @@ TEST_F(DisplayPrefsTest, PreventStore) {
                   ->PrepareNotificationAndSetDisplayMode(
                       id, old_mode, new_mode, DisplayConfigSource::kUser,
                       base::OnceClosure()));
-  UpdateDisplay("500x400#500x400|400x300|300x200");
+  UpdateDisplay("500x400#500x400|400x300|320x200");
 
   const base::DictValue& properties =
       local_state()->GetDict(prefs::kDisplayProperties);
@@ -703,17 +705,17 @@ TEST_F(DisplayPrefsTest, PreventStore) {
 
   // The specified resolution will be stored by SetDisplayMode.
   Shell::Get()->display_manager()->SetDisplayMode(
-      id, display::ManagedDisplayMode(gfx::Size(300, 200), 60.0f, false, true));
-  UpdateDisplay("300x200#500x400|400x300|300x200");
+      id, display::ManagedDisplayMode({320, 200}, 60.0f, false, true));
+  UpdateDisplay("320x200#500x400|400x300|320x200");
 
   property = properties.FindDict(base::NumberToString(id));
   ASSERT_TRUE(property);
-  EXPECT_EQ(300, property->FindInt("width"));
+  EXPECT_EQ(320, property->FindInt("width"));
   EXPECT_EQ(200, property->FindInt("height"));
 }
 
 TEST_F(DisplayPrefsTest, StoreForSwappedDisplay) {
-  UpdateDisplay("200x100,300x200");
+  UpdateDisplay("320x200,400x300");
   display::test::DisplayManagerTestApi display_manager_test(display_manager());
   int64_t id1 = display::Screen::Get()->GetPrimaryDisplay().id();
   int64_t id2 = display_manager_test.GetSecondaryDisplay().id();
@@ -783,7 +785,7 @@ TEST_F(DisplayPrefsTestGuest, DisplayPrefsTestGuest) {
   WindowTreeHostManager* window_tree_host_manager =
       Shell::Get()->window_tree_host_manager();
 
-  UpdateDisplay("300x200*2,300x200");
+  UpdateDisplay("800x600*2,400x300");
 
   LoggedInAsGuest();
   int64_t id1 = display::Screen::Get()->GetPrimaryDisplay().id();
@@ -821,7 +823,7 @@ TEST_F(DisplayPrefsTestGuest, DisplayPrefsTestGuest) {
   EXPECT_EQ(display::DisplayPlacement::BOTTOM, placement.position);
   EXPECT_EQ(-10, placement.offset);
   const display::Display& primary_display = screen->GetPrimaryDisplay();
-  EXPECT_EQ(gfx::Size(178, 276), primary_display.bounds().size());
+  EXPECT_EQ((gfx::Size{278, 376}), primary_display.bounds().size());
   EXPECT_EQ(display::Display::ROTATE_90, primary_display.rotation());
 
   const display::ManagedDisplayInfo& info1 =
@@ -847,7 +849,7 @@ class DisplayPrefsPublicAccountTest : public DisplayPrefsTestGuest,
   void SetUp() override {
     DisplayPrefsTestGuest::SetUp();
 
-    UpdateDisplay("300x200*2,300x200");
+    UpdateDisplay("800x600*2,400x300");
     local_state()->SetBoolean(prefs::kAllowMGSToStoreDisplayProperties,
                               IsMGSAllowedToStoreDisplayProperties());
   }
@@ -896,7 +898,7 @@ TEST_P(DisplayPrefsPublicAccountTest, StoreDisplayPrefsForPublicAccount) {
   EXPECT_EQ(display::DisplayPlacement::BOTTOM, placement.position);
   EXPECT_EQ(-10, placement.offset);
   const display::Display& primary_display = screen->GetPrimaryDisplay();
-  EXPECT_EQ(gfx::Size(178, 276), primary_display.bounds().size());
+  EXPECT_EQ((gfx::Size{278, 376}), primary_display.bounds().size());
   EXPECT_EQ(display::Display::ROTATE_90, primary_display.rotation());
 
   const display::ManagedDisplayInfo& info1 =
@@ -1156,9 +1158,9 @@ TEST_F(DisplayPrefsTest, SaveUnifiedMode) {
   LoggedInAsUser();
   display_manager()->SetUnifiedDesktopEnabled(true);
 
-  UpdateDisplay("300x200,200x100");
+  UpdateDisplay("600x400,400x200");
   display::DisplayIdList list = display_manager()->GetConnectedDisplayIdList();
-  EXPECT_EQ(gfx::Size(700, 200),
+  EXPECT_EQ((gfx::Size{1400, 400}),
             display::Screen::Get()->GetPrimaryDisplay().size());
 
   const base::DictValue& secondary_displays =
@@ -1178,8 +1180,8 @@ TEST_F(DisplayPrefsTest, SaveUnifiedMode) {
   EXPECT_FALSE(new_value);
 
   display::test::SetDisplayResolution(display_manager(), unified_id,
-                                      gfx::Size(350, 100));
-  EXPECT_EQ(gfx::Size(350, 100),
+                                      {700, 200});
+  EXPECT_EQ((gfx::Size{700, 200}),
             display::Screen::Get()->GetPrimaryDisplay().size());
   EXPECT_FALSE(displays.FindDict(base::NumberToString(unified_id)));
 
@@ -1276,7 +1278,7 @@ TEST_F(DisplayPrefsTest, RestoreUnifiedMode) {
 
 TEST_F(DisplayPrefsTest, SaveThreeDisplays) {
   LoggedInAsUser();
-  UpdateDisplay("300x200,300x200,400x300");
+  UpdateDisplay("320x200,320x200,400x300");
 
   display::DisplayIdList list = display_manager()->GetConnectedDisplayIdList();
   ASSERT_EQ(3u, list.size());
@@ -1308,7 +1310,7 @@ TEST_F(DisplayPrefsTest, RestoreThreeDisplays) {
   display_prefs()->StoreDisplayLayoutPrefForTest(list, *builder.Build());
   LoadDisplayPreferences();
 
-  UpdateDisplay("300x200,300x200,400x300");
+  UpdateDisplay("320x200,320x200,400x300");
   display::DisplayIdList new_list =
       display_manager()->GetConnectedDisplayIdList();
   ASSERT_EQ(3u, list.size());
@@ -1316,11 +1318,11 @@ TEST_F(DisplayPrefsTest, RestoreThreeDisplays) {
   ASSERT_EQ(list[1], new_list[1]);
   ASSERT_EQ(list[2], new_list[2]);
 
-  EXPECT_EQ(gfx::Rect(0, 0, 300, 200),
+  EXPECT_EQ((gfx::Rect{320, 200}),
             display_manager()->GetDisplayForId(list[0]).bounds());
-  EXPECT_EQ(gfx::Rect(-300, 0, 300, 200),
+  EXPECT_EQ((gfx::Rect{-320, 0, 320, 200}),
             display_manager()->GetDisplayForId(list[1]).bounds());
-  EXPECT_EQ(gfx::Rect(-200, 200, 400, 300),
+  EXPECT_EQ((gfx::Rect{-220, 200, 400, 300}),
             display_manager()->GetDisplayForId(list[2]).bounds());
 }
 
@@ -1414,7 +1416,7 @@ TEST_F(DisplayPrefsTest, ExternalDisplayMirrorInfo) {
 
   // There's no external display now.
   display_info_list.push_back(
-      CreateDisplayInfo(internal_display_id, gfx::Rect(0, 0, 200, 100)));
+      CreateDisplayInfo(internal_display_id, {320, 200}));
   display_manager()->OnNativeDisplaysChanged(display_info_list);
 
   // Add first display id to the external display mirror info.
@@ -1505,7 +1507,7 @@ TEST_F(DisplayPrefsTest, ExternalDisplayConnectedBeforeLoadingPrefs) {
   // Both internal and external displays connect before the prefs are loaded.
   std::vector<display::ManagedDisplayInfo> display_info_list;
   display_info_list.push_back(
-      CreateDisplayInfo(internal_display_id, gfx::Rect(0, 0, 200, 100)));
+      CreateDisplayInfo(internal_display_id, {320, 200}));
   display_info_list.push_back(external_display_info);
   display_manager()->OnNativeDisplaysChanged(display_info_list);
 
@@ -1543,7 +1545,7 @@ TEST_F(DisplayPrefsTest, DisplayMixedMirrorMode) {
   constexpr int64_t second_display_id = 220000002;
   std::vector<display::ManagedDisplayInfo> display_info_list;
   display_info_list.push_back(
-      CreateDisplayInfo(internal_display_id, gfx::Rect(0, 0, 200, 100)));
+      CreateDisplayInfo(internal_display_id, {320, 200}));
   display_info_list.push_back(
       CreateDisplayInfo(first_display_id, gfx::Rect(1, 1, 600, 500)));
   display_info_list.push_back(
@@ -1668,7 +1670,7 @@ TEST_F(DisplayPrefsTest, SaveTabletModeWithSingleDisplay) {
 }
 
 TEST_F(DisplayPrefsTest, SaveTabletModeWithMixedExternalDisplays) {
-  UpdateDisplay("480x320/r@1.25,640x480/l@1.3,320x240@1.2");
+  UpdateDisplay("480x320/r@1.25,640x480/l@1.3,480x360@1.2");
 
   display::DisplayIdList ids = display_manager()->GetConnectedDisplayIdList();
   display::test::DisplayManagerTestApi(display_manager())
@@ -1848,8 +1850,69 @@ TEST_F(DisplayPrefsTest, IsDisplayAvailableInPref) {
   EXPECT_FALSE(display_prefs()->IsDisplayAvailableInPref(id));
 
   // Display is available in prefs after adding the display.
-  UpdateDisplay("300x200");
+  UpdateDisplay("320x200");
   EXPECT_TRUE(display_prefs()->IsDisplayAvailableInPref(id));
+}
+
+TEST_F(DisplayPrefsTest, ClampOverscanFromPrefs) {
+  constexpr int64_t kDisplayId1 = 2200000101;
+  constexpr int64_t kDisplayId2 = 2200000102;
+
+  // Store oversized overscan on kDisplayId1 (reproducing b/462446075 startup
+  // crash loop) and valid overscan on kDisplayId2 before either display is
+  // connected (so bounds_in_native_ is initially empty during
+  // RegisterDisplayProperty).
+  StoreDisplayOverscan(kDisplayId1, gfx::Insets::TLBR(277, 29, 277, 29));
+  StoreDisplayOverscan(kDisplayId2, gfx::Insets::TLBR(20, 30, 20, 30));
+  LoadDisplayPreferences();
+
+  display::ManagedDisplayInfo info1 =
+      display::ManagedDisplayInfo::CreateFromSpecWithID("1920x1080*2",
+                                                        kDisplayId1);
+  info1.set_from_native_platform(true);
+  display::ManagedDisplayInfo info2 =
+      display::ManagedDisplayInfo::CreateFromSpecWithID("1280x720",
+                                                        kDisplayId2);
+  info2.set_from_native_platform(true);
+
+  display_manager()->OnNativeDisplaysChanged({info1, info2});
+
+  // kDisplayId1 overscan is clamped to 1/4 of 1920x1080 px (135 DIP / 270 px
+  // vertical), while kDisplayId2's valid overscan is preserved.
+  EXPECT_EQ(gfx::Insets::TLBR(135, 29, 135, 29),
+            display_manager()->GetOverscanInsets(kDisplayId1));
+  EXPECT_EQ(
+      gfx::Insets::TLBR(135, 29, 135, 29),
+      display_manager()->GetDisplayInfo(kDisplayId1).overscan_insets_in_dip());
+  EXPECT_EQ(gfx::Insets::TLBR(270, 58, 270, 58),
+            display_manager()
+                ->GetDisplayInfo(kDisplayId1)
+                .GetOverscanInsetsInPixel());
+  EXPECT_EQ((gfx::Rect{902, 270}),
+            display::Screen::Get()->GetPrimaryDisplay().bounds());
+  EXPECT_EQ((gfx::Rect{902, 270}), Shell::GetPrimaryRootWindow()->bounds());
+
+  EXPECT_EQ(gfx::Insets::TLBR(20, 30, 20, 30),
+            display_manager()->GetOverscanInsets(kDisplayId2));
+  const display::Display& secondary =
+      display::test::DisplayManagerTestApi(display_manager())
+          .GetSecondaryDisplay();
+  EXPECT_EQ((gfx::Size{1220, 680}), secondary.bounds().size());
+
+  // Located events on the primary root window do not crash.
+  GetEventGenerator()->MoveMouseTo({0, 0});
+  GetEventGenerator()->MoveMouseTo({901, 269});
+
+  // Opposite-sign overscan in prefs where top + bottom == 0 clamps negative
+  // edges to 0 rather than being skipped as empty.
+  StoreDisplayOverscan(kDisplayId2, gfx::Insets::TLBR(-5, 0, 15, 0));
+  constexpr int64_t kDisplayId3 = 2200000103;
+  StoreDisplayOverscan(kDisplayId3, gfx::Insets::TLBR(-10, 0, 10, 0));
+  LoadDisplayPreferences();
+  EXPECT_EQ(gfx::Insets::TLBR(0, 0, 15, 0),
+            display_manager()->GetOverscanInsets(kDisplayId2));
+  EXPECT_EQ(gfx::Insets::TLBR(0, 0, 10, 0),
+            display_manager()->GetOverscanInsets(kDisplayId3));
 }
 
 class DisplayPrefsStartupTest : public DisplayPrefsTest {

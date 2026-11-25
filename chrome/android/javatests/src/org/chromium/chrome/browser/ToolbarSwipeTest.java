@@ -23,7 +23,6 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.Feature;
@@ -32,7 +31,6 @@ import org.chromium.base.test.util.UrlUtils;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerChrome;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.animation.CompositorAnimationHandler;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -47,7 +45,6 @@ import org.chromium.ui.base.DeviceFormFactor;
 
 /** Tests swiping the toolbar to switch tabs. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class ToolbarSwipeTest {
     @Rule
@@ -83,7 +80,7 @@ public class ToolbarSwipeTest {
                         mActivityTestRule.getKeyboardDelegate().hideKeyboard(urlBar);
                     });
             CriteriaHelper.pollUiThread(
-                    () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar),
+                    () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar),
                     "Keyboard should be hidden after test teardown");
         }
     }
@@ -235,12 +232,12 @@ public class ToolbarSwipeTest {
                     urlBar.requestFocus();
                 });
         CriteriaHelper.pollUiThread(
-                () -> mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar),
+                () -> mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar),
                 "Keyboard should be shown after focusing UrlBar");
 
         ThreadUtils.runOnUiThreadBlocking(urlBar::clearFocus);
         CriteriaHelper.pollUiThread(
-                () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar),
+                () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar),
                 "Keyboard should be hidden after clearing UrlBar focus");
 
         ChromeTabUtils.newTabFromMenu(
@@ -248,7 +245,7 @@ public class ToolbarSwipeTest {
         UiUtils.settleDownUI(InstrumentationRegistry.getInstrumentation());
 
         CriteriaHelper.pollUiThread(
-                () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar),
+                () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar),
                 "Keyboard should be hidden before starting swipe");
 
         ThreadUtils.runOnUiThreadBlocking(
@@ -276,7 +273,7 @@ public class ToolbarSwipeTest {
                 () -> {
                     assertFalse(
                             "Keyboard should be hidden while swiping",
-                            mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar));
+                            mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar));
                     swipeHandler.onSwipeFinished();
                 });
 
@@ -288,7 +285,7 @@ public class ToolbarSwipeTest {
                 "Layout not requesting Tab Android view be attached");
 
         CriteriaHelper.pollUiThread(
-                () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardShowing(urlBar),
+                () -> !mActivityTestRule.getKeyboardDelegate().isKeyboardObscuring(urlBar),
                 "Keyboard should not be shown");
     }
 

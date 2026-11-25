@@ -456,25 +456,33 @@ class JniObject:
 
   def CollectClassesThatRequireAccessors(self):
     ret = set()
+
+    def add_array_element_class(java_type):
+      if java_type.java_class:
+        if upper_bound_type := java_type.java_class.upper_bound_type:
+          ret.add(upper_bound_type.java_class)
+        else:
+          ret.add(java_type.java_class)
+
     for c in self.jni_classes:
       ret.add(c.java_class)
+      for f in c.fields:
+        if (not f.final and f.java_type.is_object_array()
+            and f.java_type.converted_type):
+          add_array_element_class(f.java_type)
       # jclasses required for @JniType conversions.
       for cbn in c.called_by_natives:
         for param in cbn.params:
-          java_type = param.java_type
           # Arrays with @JniType need class accessors, but users will likely
           # need the class accessors when not using @JniType as well.
-          if java_type.is_array() and java_type.java_class:
-            if upper_bound_type := java_type.java_class.upper_bound_type:
-              ret.add(upper_bound_type.java_class)
-            else:
-              ret.add(java_type.java_class)
+          if param.java_type.is_array():
+            add_array_element_class(param.java_type)
 
     # jclasses required for @JniType conversions.
     for native in self.proxy_natives:
       return_type = native.return_type
       if return_type.is_object_array() and return_type.converted_type:
-        ret.add(return_type.java_class)
+        add_array_element_class(return_type)
     # Filter out those ones that have a global variable for.
     ret = [c for c in ret if c not in java_types.JCLASS_GLOBALS_CLASSES]
     ret.sort()
@@ -659,13 +667,23 @@ def _CreateSrcJar(srcjar_path, jni_mode, gen_jni_class, jni_objs, *,
   with common.atomic_output(srcjar_path) as f:
     with zipfile.ZipFile(f, 'w') as srcjar:
       for jni_obj in jni_objs:
-        if not jni_obj.proxy_natives or _IsKotlin(jni_obj):
+        if not jni_obj.proxy_natives:
           continue
-        content = proxy_impl_java.Generate(jni_mode,
-                                           jni_obj,
-                                           gen_jni_class=gen_jni_class,
-                                           script_name=script_name)
-        zip_path = f'{jni_obj.java_class.class_without_prefix.full_name_with_slashes}Jni.java'
+        if _IsKotlin(jni_obj):
+          content = proxy_impl_kotlin.Generate(jni_mode,
+                                               jni_obj,
+                                               gen_jni_class=gen_jni_class,
+                                               script_name=script_name)
+          ext = 'kt'
+        else:
+          content = proxy_impl_java.Generate(jni_mode,
+                                             jni_obj,
+                                             gen_jni_class=gen_jni_class,
+                                             script_name=script_name)
+          ext = 'java'
+        zip_path = (
+            f'{jni_obj.java_class.class_without_prefix.full_name_with_slashes}'
+            f'Jni.{ext}')
         common.add_to_zip_hermetic(srcjar, zip_path, data=content)
 
       if not jni_mode.is_per_file:
@@ -674,32 +692,6 @@ def _CreateSrcJar(srcjar_path, jni_mode, gen_jni_class, jni_objs, *,
                                                     script_name=script_name)
         zip_path = f'{gen_jni_class.full_name_with_slashes}.java'
         common.add_to_zip_hermetic(srcjar, zip_path, data=content)
-
-
-def _WriteKotlinProxies(output_dir, jni_mode, gen_jni_class, jni_objs, *,
-                        script_name):
-  """Writes FooJni.kt next to the headers for each Kotlin input.
-
-  Unlike FooJni.java, these cannot go in the .srcjar since build systems detect
-  Kotlin via loose .kt sources. A file is always written (a comment-only stub
-  when the class has no @NativeMethods) so that the build's declared outputs
-  exist.
-  """
-  for jni_obj in jni_objs:
-    if not _IsKotlin(jni_obj):
-      continue
-    basename = os.path.splitext(os.path.basename(jni_obj.filename))[0]
-    if jni_obj.proxy_natives:
-      content = proxy_impl_kotlin.Generate(jni_mode,
-                                           jni_obj,
-                                           gen_jni_class=gen_jni_class,
-                                           script_name=script_name)
-    else:
-      package = jni_obj.java_class.class_without_prefix.package_with_dots
-      content = f'// {basename}.kt has no @NativeMethods.\npackage {package}\n'
-    with common.atomic_output(os.path.join(output_dir, f'{basename}Jni.kt'),
-                              'w') as f:
-      f.write(content)
 
 
 def _CreatePlaceholderSrcJar(srcjar_path, jni_objs, *, script_name):
@@ -733,10 +725,11 @@ def _CreatePlaceholderSrcJar(srcjar_path, jni_objs, *, script_name):
       # write a stubbed version of the class if it's imported by another class.
       for jni_obj in jni_objs:
         for java_class in jni_obj.CollectClassesToBeImported():
-          # JniPtr is already in gendeps_java; JniUniquePtr and JniRawPtr are in
-          # jni_zero_java and still need placeholders.
+          # JniPtr and JniRawPtr are already in gendeps_java; JniUniquePtr is
+          # in jni_zero_java and still needs a placeholder.
           if (java_class.full_name_with_slashes.startswith('java/')
-              or java_class == java_types.JNI_PTR_CLASS):
+              or java_class.class_without_prefix
+              in (java_types.JNI_PTR_CLASS, java_types.JNI_RAW_PTR_CLASS)):
             continue
           # TODO(mheikal): handle more than 1 nesting layer.
           if java_class.is_nested():
@@ -902,13 +895,6 @@ def GenerateFromSource(parser, args, jni_mode):
     else:
       # Only @CalledByNatives.
       zipfile.ZipFile(args.srcjar_path, 'w').close()
-    # gen_jni_class is only used when there are proxy natives, in which case it
-    # was set to the non-short class above.
-    _WriteKotlinProxies(args.output_dir,
-                        jni_mode,
-                        gen_jni_class,
-                        jni_objs,
-                        script_name=GetScriptName())
   if args.jni_pickle:
     with common.atomic_output(args.jni_pickle, 'wb') as f:
       pickle.dump(

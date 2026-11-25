@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/accelerator_table.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -51,6 +52,8 @@ ReadAnythingUntrustedUI::ReadAnythingUntrustedUI(content::WebUI* web_ui)
       {"readAnythingTabTitle", IDS_READING_MODE_TITLE},
       {"notSelectableHeader", IDS_READING_MODE_NOT_SELECTABLE_HEADER},
       {"emptyStateHeader", IDS_READING_MODE_EMPTY_STATE_HEADER},
+      {"emptyStateTranslationHeader",
+       IDS_READING_MODE_EMPTY_STATE_TRANSLATION_HEADER},
       {"emptyStateSubheader", IDS_READING_MODE_EMPTY_STATE_SUBHEADER},
       {"readAnythingLoadingMessage", IDS_READ_ANYTHING_LOADING},
       {"lineSpacingTitle", IDS_READING_MODE_LINE_SPACING_COMBOBOX_LABEL},
@@ -276,6 +279,7 @@ ReadAnythingUntrustedUI::ReadAnythingUntrustedUI(content::WebUI* web_ui)
       "parse-html-subset polymer-html-literal "
       "polymer-template-event-attribute-policy;");
   raw_ptr<Profile> profile = Profile::FromWebUI(web_ui);
+  source->AddBoolean("canShowFeedback", chrome::CanShowFeedback(profile));
 
   // If the ThemeSource isn't added here, since Read Anything is
   // chrome-untrusted, it will be unable to load stylesheets until a new tab

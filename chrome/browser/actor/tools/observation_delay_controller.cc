@@ -36,8 +36,6 @@
 #include "components/page_load_metrics/browser/metrics_web_contents_observer.h"
 #include "components/page_load_metrics/browser/observers/core/largest_contentful_paint_handler.h"
 #include "components/page_load_metrics/browser/page_load_metrics_observer_delegate.h"
-#include "components/tabs/public/tab_handle_factory.h"
-#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -188,11 +186,6 @@ ObservationDelayController::ObservationDelayController(
 
 ObservationDelayController::~ObservationDelayController() = default;
 
-void ObservationDelayController::Wait(tabs::TabInterface& target_tab,
-                                      ReadyCallback callback) {
-  WaitOnWebContents(target_tab.GetContents(), std::move(callback));
-}
-
 void ObservationDelayController::Wait(ActorSurface& target_actor_surface,
                                       ReadyCallback callback) {
   WaitOnWebContents(target_actor_surface.GetWebContents(), std::move(callback));
@@ -305,6 +298,12 @@ void ObservationDelayController::MoveToState(State new_state) {
           "WaitForLoadCompletion", {});
       break;
     }
+    case State::kWaitForScriptTools: {
+      inner_journal_entry_ = journal_->CreatePendingAsyncEntry(
+          GURL::EmptyGURL(), task_id_, MakeBrowserTrackUUID(task_id_),
+          "WaitForScriptTools", {});
+      break;
+    }
     case State::kWaitForPdfLoadCompletion: {
       inner_journal_entry_ = journal_->CreatePendingAsyncEntry(
           GURL::EmptyGURL(), task_id_, MakeBrowserTrackUUID(task_id_),
@@ -410,6 +409,9 @@ void ObservationDelayController::WillMoveToState(
     case PageSettledMonitorState::kWaitForLoadCompletion:
       actor_state = State::kWaitForLoadCompletion;
       break;
+    case PageSettledMonitorState::kWaitForScriptTools:
+      actor_state = State::kWaitForScriptTools;
+      break;
     case PageSettledMonitorState::kWaitForPdfLoadCompletion:
       actor_state = State::kWaitForPdfLoadCompletion;
       break;
@@ -457,6 +459,11 @@ void ObservationDelayController::OnMilestoneReached(
       std::move(resume_callback_).Run();
       break;
     case page_content_annotations::PageSettledMonitor::Milestone::
+        kScriptToolsReady:
+      // Just resume the monitor.
+      std::move(resume_callback_).Run();
+      break;
+    case page_content_annotations::PageSettledMonitor::Milestone::
         kPdfLoadCompletion:
       // Just resume the monitor.
       std::move(resume_callback_).Run();
@@ -490,6 +497,11 @@ void ObservationDelayController::OnEvent(
     case page_content_annotations::PageSettledMonitor::Event::kLoadCompleted:
       if (metrics_) {
         metrics_->OnLoadCompleted();
+      }
+      break;
+    case page_content_annotations::PageSettledMonitor::Event::kScriptToolsReady:
+      if (metrics_) {
+        metrics_->OnScriptToolsReady();
       }
       break;
     case page_content_annotations::PageSettledMonitor::Event::kPdfLoadCompleted:
@@ -549,6 +561,11 @@ void ObservationDelayController::DCheckStateTransition(State old_state,
                State::kDone,
                State::kPageNavigated}},
           {State::kWaitForLoadCompletion,
+              {State::kDidTimeout,
+               State::kDone,
+               State::kPageNavigated,
+               State::kWaitForScriptTools}},
+          {State::kWaitForScriptTools,
               {State::kDidTimeout,
                State::kDone,
                State::kPageNavigated,
@@ -622,6 +639,8 @@ std::string_view ObservationDelayController::StateToString(State state) {
       return "WaitForFederatedLogin";
     case State::kWaitForLoadCompletion:
       return "WaitForLoadCompletion";
+    case State::kWaitForScriptTools:
+      return "WaitForScriptTools";
     case State::kWaitForPdfLoadCompletion:
       return "WaitForPdfLoadCompletion";
     case State::kWaitForVisualStateUpdate:

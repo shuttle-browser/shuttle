@@ -46,17 +46,19 @@ chromium-metrics-reviews@google.com.
       summary="Promotion for Glic in the context menu."/>
   <variant name="GlicKeyboardShortcutNewBadge"
       summary="Glic keyboard shortcut input on settings page."/>
+  <variant name="GlicSuggestionContextMenu"
+      summary="Glic smart suggestion item in the context menu."/>
   <variant name="IndigoContextMenu"
       summary="Shown on the Try it on context menu item."/>
   <variant name="LensOverlay"
       summary="Lens Overlay entry points in app and web context menus."/>
   <variant name="NewBadgeTestFeature"
       summary="Used for testing purposes only."/>
+  <variant name="NonGroupFocus"
+      summary="Promotion for focusing on ungrouped tab(s) in the tab context
+               menu."/>
   <variant name="PasswordManualFallbackAvailable"
       summary="For passwords manual fallback; shown in the context menu."/>
-  <variant name="ReadAnythingLineFocus"
-      summary="Shown on the Line Focus menu item in Reading Mode settings
-               menu."/>
   <variant name="SendTabToSelfEnhancedDesktopUIv2"
       summary="Promotion for Send to your device in the tab and webpage
                context menus."/>

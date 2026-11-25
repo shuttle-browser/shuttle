@@ -11,6 +11,8 @@
 #include <utility>
 
 #include "base/strings/string_number_conversions.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "base/test/metrics/user_action_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
@@ -81,6 +83,18 @@ class SearchJourneyTrackerTest : public testing::Test {
     const auto& journeys = tracker_.GetActiveJourneysForTesting();
     auto it = journeys.find(source_tab);
     return it == journeys.end() ? nullptr : &it->second;
+  }
+
+  // Starts a journey from `kSourceTab1` to `kSearchTab1` for `query`, with
+  // restore parameters labeled with `query_hints`, and returns to
+  // `kSourceTab1`, where the journey's cue is eligible.
+  void StartEligibleJourney(std::u16string_view query,
+                            AimPromoQueryHints query_hints = {}) {
+    StartJourney(kSourceTab1, kSearchTab1, query);
+    ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(
+        kSearchTab1, query, CreatePromoParams(), query_hints));
+    ASSERT_TRUE(tracker_.OnTabActivated(kSourceTab1, kNavEntryId));
+    tracker_.OnJourneyCueEligible(kSourceTab1);
   }
 
   base::test::SingleThreadTaskEnvironment task_environment_{
@@ -585,6 +599,505 @@ TEST_F(SearchJourneyTrackerTest, OnJourneyRestoredDropsJourney) {
   EXPECT_FALSE(tracker_.GetRestorableJourney(kSourceTab1, kNavEntryId));
 }
 
+TEST_F(SearchJourneyTrackerTest, OnJourneyCueShownMarksJourney) {
+  StartJourney(kSourceTab1, kSearchTab1, u"quantum computing");
+  ASSERT_TRUE(GetJourney(kSourceTab1));
+  EXPECT_FALSE(GetJourney(kSourceTab1)->cue_shown);
+
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+
+  ASSERT_TRUE(GetJourney(kSourceTab1));
+  EXPECT_TRUE(GetJourney(kSourceTab1)->cue_shown);
+}
+
+TEST_F(SearchJourneyTrackerTest, NewSearchInSearchTabResetsCueShown) {
+  StartJourney(kSourceTab1, kSearchTab1, u"first query");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+
+  tracker_.OnSearchNavigationCommitted(kSearchTab1, u"second query");
+
+  const JourneyState* journey = GetJourney(kSourceTab1);
+  ASSERT_TRUE(journey);
+  EXPECT_FALSE(journey->cue_shown);
+}
+
+TEST_F(SearchJourneyTrackerTest, OnJourneyCueShownWithoutJourneyIsIgnored) {
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+  EXPECT_TRUE(tracker_.GetActiveJourneysForTesting().empty());
+}
+
+TEST_F(SearchJourneyTrackerTest, MinWordsWithoutHintGate) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kABASearchJourneys,
+      {{"aba_search_journeys_min_words_without_hint", "5"}});
+  EXPECT_EQ(GetABASearchJourneysMinWordsWithoutHint(), 5u);
+
+  // A 4-word query without hints is blocked.
+  StartJourney(kSourceTab1, kSearchTab1, u"how do tides work");
+  ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(
+      kSearchTab1, u"how do tides work", CreatePromoParams(), {}));
+  EXPECT_FALSE(tracker_.GetRestorableJourney(kSourceTab1, kNavEntryId));
+
+  // Registering a hint allows the same 4-word query.
+  ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(
+      kSearchTab1, u"how do tides work", CreatePromoParams(),
+      {AimPromoQueryHint::kEduConceptual}));
+  EXPECT_TRUE(tracker_.GetRestorableJourney(kSourceTab1, kNavEntryId));
+
+  // A 5-word query is allowed even without hints.
+  StartJourney(kSourceTab1, kSearchTab1, u"how do ocean tides work");
+  ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(
+      kSearchTab1, u"how do ocean tides work", CreatePromoParams(), {}));
+  EXPECT_TRUE(tracker_.GetRestorableJourney(kSourceTab1, kNavEntryId));
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsFunnelAndCueSliceMetrics) {
+  base::HistogramTester histogram_tester;
+  base::UserActionTester user_action_tester;
+
+  const std::u16string kQuery = u"how do ocean tides work";
+  tracker_.OnContextMenuSearchRecorded(kSourceTab1, kNavEntryId, kQuery);
+  StartJourney(kSourceTab1, kSearchTab1, kQuery);
+  EXPECT_EQ(
+      user_action_tester.GetActionCount("ContextualTasks.SearchJourney.Armed"),
+      1);
+
+  ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(
+      kSearchTab1, kQuery, CreatePromoParams(),
+      {AimPromoQueryHint::kEduHomework, AimPromoQueryHint::kHowToWebApp}));
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.PromoParamsReceived"),
+            1);
+
+  task_environment_.AdvanceClock(base::Minutes(12));
+  tracker_.OnTabDestroyed(kSearchTab1);
+  EXPECT_TRUE(tracker_.OnTabActivated(kSourceTab1, kNavEntryId));
+  tracker_.OnJourneyCueEligible(kSourceTab1);
+  // A second OnJourneyCueEligible for the same journey does not double-count.
+  tracker_.OnJourneyCueEligible(kSourceTab1);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.ReturnedToSourceTab"),
+            1);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Eligible"),
+            1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.CopyMatch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.ContextMenuSearch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.SearchTabClosed", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.WordCount", 5, 1);
+  histogram_tester.ExpectUniqueTimeSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.SearchDwellTime",
+      base::Minutes(12), 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.Cue.Eligible.QueryHint", 2);
+
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+  // A second OnJourneyCueShown for the same journey does not double-count.
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/false);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.Shown"),
+            1);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.Shown.AnchoredMessage"),
+            1);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.Shown.Chip"),
+            0);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Shown.CopyMatch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Shown.ContextMenuSearch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Shown.SearchTabClosed", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Shown.WordCount", 5, 1);
+  histogram_tester.ExpectUniqueTimeSample(
+      "ContextualTasks.SearchJourney.Cue.Shown.SearchDwellTime",
+      base::Minutes(12), 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.Cue.Shown.QueryHint", 2);
+  histogram_tester.ExpectBucketCount(
+      "ContextualTasks.SearchJourney.Cue.Shown.QueryHint",
+      AimPromoQueryHint::kEduHomework, 1);
+  histogram_tester.ExpectBucketCount(
+      "ContextualTasks.SearchJourney.Cue.Shown.QueryHint",
+      AimPromoQueryHint::kHowToWebApp, 1);
+
+  task_environment_.AdvanceClock(base::Minutes(3));
+  tracker_.OnJourneyRestored(kSourceTab1);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.Clicked"),
+            1);
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Restored"),
+            1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Clicked.CopyMatch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Clicked.ContextMenuSearch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Clicked.SearchTabClosed", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Clicked.WordCount", 5, 1);
+  histogram_tester.ExpectUniqueTimeSample(
+      "ContextualTasks.SearchJourney.Cue.Clicked.SearchDwellTime",
+      base::Minutes(15), 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.Cue.Clicked.QueryHint", 2);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsAnchoredMessageClickedOutcome) {
+  base::HistogramTester histogram_tester;
+  const std::u16string kQuery = u"how do ocean tides work";
+  tracker_.OnContextMenuSearchRecorded(kSourceTab1, kNavEntryId, kQuery);
+  StartEligibleJourney(kQuery, {AimPromoQueryHint::kEduHomework,
+                                AimPromoQueryHint::kHowToWebApp});
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+
+  tracker_.OnJourneyRestored(kSourceTab1);
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kRestored, 1);
+  for (const char* histogram : {
+           "ContextualTasks.SearchJourney.CueOutcome",
+           "ContextualTasks.SearchJourney.CueOutcome.CopyMatch",
+           "ContextualTasks.SearchJourney.CueOutcome.ContextMenuSearch",
+           "ContextualTasks.SearchJourney.CueOutcome.EduHomework",
+           "ContextualTasks.SearchJourney.CueOutcome.HowToWebApp",
+       }) {
+    histogram_tester.ExpectUniqueSample(
+        histogram, SearchJourneyCueOutcome::kAnchoredMessageClicked, 1);
+  }
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.CueOutcome.EduConceptual", 0);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.CueOutcome.NoQueryHint", 0);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsAnchoredMessageCollapsedThenClicked) {
+  base::HistogramTester histogram_tester;
+  base::UserActionTester user_action_tester;
+  StartEligibleJourney(u"quantum computing");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+
+  tracker_.OnJourneyCueChipClicked(kSourceTab1);
+  // Clicking the chip re-shows the anchored message.
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+  tracker_.OnJourneyRestored(kSourceTab1);
+
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.ChipClicked"),
+            1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kAnchoredMessageCollapsedThenClicked, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome.NoQueryHint",
+      SearchJourneyCueOutcome::kAnchoredMessageCollapsedThenClicked, 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.CueOutcome.CopyMatch", 0);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.CueOutcome.ContextMenuSearch", 0);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsAnchoredMessageIgnoredOutcome) {
+  base::HistogramTester histogram_tester;
+  StartEligibleJourney(u"quantum computing");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+
+  tracker_.OnTabDestroyed(kSourceTab1);
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kSourceTabClosed,
+                                      1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kAnchoredMessageIgnored, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsChipClickedOutcome) {
+  base::HistogramTester histogram_tester;
+  base::UserActionTester user_action_tester;
+  const std::u16string kQuery = u"quantum computing basics";
+  tracker_.OnCopyRecorded(kSourceTab1, kNavEntryId, kQuery);
+  StartEligibleJourney(kQuery, {AimPromoQueryHint::kEduConceptual});
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/false);
+
+  tracker_.OnJourneyCueChipClicked(kSourceTab1);
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+  tracker_.OnJourneyRestored(kSourceTab1);
+
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.ChipClicked"),
+            1);
+  for (const char* histogram : {
+           "ContextualTasks.SearchJourney.CueOutcome",
+           "ContextualTasks.SearchJourney.CueOutcome.CopyMatch",
+           "ContextualTasks.SearchJourney.CueOutcome.EduConceptual",
+       }) {
+    histogram_tester.ExpectUniqueSample(
+        histogram, SearchJourneyCueOutcome::kChipClicked, 1);
+  }
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.CueOutcome.ContextMenuSearch", 0);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsChipIgnoredOutcomeOnExpiry) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kABASearchJourneys, {{"aba_search_journeys_ttl", "5m"}});
+  base::HistogramTester histogram_tester;
+  StartEligibleJourney(u"quantum computing");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/false);
+
+  task_environment_.AdvanceClock(base::Minutes(6));
+  tracker_.OnTabActivated(kSearchTab1, /*nav_entry_id=*/0);
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kExpired, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kChipIgnored, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsNoCueOutcome) {
+  base::HistogramTester histogram_tester;
+  StartEligibleJourney(u"quantum computing");
+
+  tracker_.Shutdown();
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kStateCleared, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kNoCue, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome.NoQueryHint",
+      SearchJourneyCueOutcome::kNoCue, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, ClearingStateRecordsExpiredJourneysAsExpired) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kABASearchJourneys, {{"aba_search_journeys_ttl", "5m"}});
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"quantum computing");
+
+  task_environment_.AdvanceClock(base::Minutes(6));
+  tracker_.Shutdown();
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kExpired, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, IneligibleJourneyRecordsOnlyEndReason) {
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"quantum computing");
+
+  EXPECT_FALSE(tracker_.OnTabActivated(kSourceTab1, kOtherNavEntryId));
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.EndReason",
+      SearchJourneyEndReason::kSourceTabNavigated, 1);
+  histogram_tester.ExpectTotalCount("ContextualTasks.SearchJourney.CueOutcome",
+                                    0);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsIntermediateTabEndReason) {
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"quantum computing");
+
+  tracker_.OnTabActivated(kOtherTab, kNavEntryId);
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kIntermediateTab,
+                                      1);
+}
+
+TEST_F(SearchJourneyTrackerTest, NewSearchInSearchTabRecordsReplaced) {
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"first query");
+
+  tracker_.OnSearchNavigationCommitted(kSearchTab1, u"second query");
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.EndReason",
+      SearchJourneyEndReason::kReplacedByNewSearch, 1);
+  EXPECT_TRUE(GetJourney(kSourceTab1));
+}
+
+TEST_F(SearchJourneyTrackerTest, NewJourneyForSourceTabRecordsReplaced) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kABASearchJourneys,
+      {{"aba_search_journeys_allow_intermediate_tabs", "true"}});
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"first query");
+  ASSERT_TRUE(tracker_.OnTabActivated(kSourceTab1, kNavEntryId));
+
+  StartJourney(kSourceTab1, kOtherTab, u"second query");
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.EndReason",
+      SearchJourneyEndReason::kReplacedByNewSearch, 1);
+  const JourneyState* journey = GetJourney(kSourceTab1);
+  ASSERT_TRUE(journey);
+  EXPECT_EQ(journey->search_tab_id, kOtherTab);
+}
+
+TEST_F(SearchJourneyTrackerTest, ClosingSourceTabAfterTtlRecordsExpired) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kABASearchJourneys, {{"aba_search_journeys_ttl", "5m"}});
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"quantum computing");
+
+  task_environment_.AdvanceClock(base::Minutes(6));
+  tracker_.OnTabDestroyed(kSourceTab1);
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kExpired, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, SwitchingToNonGoogleDseRecordsStateCleared) {
+  base::HistogramTester histogram_tester;
+  StartEligibleJourney(u"quantum computing");
+
+  SetNonGoogleDefaultSearchProvider(
+      search_engines_test_environment_.template_url_service());
+
+  histogram_tester.ExpectUniqueSample("ContextualTasks.SearchJourney.EndReason",
+                                      SearchJourneyEndReason::kStateCleared, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kNoCue, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, ChipClickWithoutRestoreRecordsIgnored) {
+  base::HistogramTester histogram_tester;
+  StartEligibleJourney(u"quantum computing");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+  tracker_.OnJourneyCueChipClicked(kSourceTab1);
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+
+  // The user ignores the re-shown anchored message and closes the tab.
+  tracker_.OnTabDestroyed(kSourceTab1);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kAnchoredMessageIgnored, 1);
+}
+
+TEST_F(SearchJourneyTrackerTest, ReplacingEligibleJourneyRecordsCueOutcome) {
+  base::HistogramTester histogram_tester;
+  StartEligibleJourney(u"first query");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/false);
+
+  StartJourney(kSourceTab1, kSearchTab1, u"second query");
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.EndReason",
+      SearchJourneyEndReason::kReplacedByNewSearch, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.CueOutcome",
+      SearchJourneyCueOutcome::kChipIgnored, 1);
+  ASSERT_TRUE(GetJourney(kSourceTab1));
+  EXPECT_FALSE(GetJourney(kSourceTab1)->eligible_recorded);
+}
+
+TEST_F(SearchJourneyTrackerTest, ChipClickWithoutShownCueIsIgnored) {
+  base::UserActionTester user_action_tester;
+  StartEligibleJourney(u"quantum computing");
+
+  tracker_.OnJourneyCueChipClicked(kSourceTab1);
+  tracker_.OnJourneyCueChipClicked(kSourceTab2);
+
+  EXPECT_EQ(user_action_tester.GetActionCount(
+                "ContextualTasks.SearchJourney.Cue.ChipClicked"),
+            0);
+  ASSERT_TRUE(GetJourney(kSourceTab1));
+  EXPECT_FALSE(GetJourney(kSourceTab1)->cue_chip_clicked);
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsCueDismissedMetrics) {
+  base::HistogramTester histogram_tester;
+  const std::u16string kQuery = u"how do ocean tides work";
+  tracker_.OnCopyRecorded(kSourceTab1, kNavEntryId, kQuery);
+  StartJourney(kSourceTab1, kSearchTab1, kQuery);
+  ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(
+      kSearchTab1, kQuery, CreatePromoParams(),
+      {AimPromoQueryHint::kEduConceptual}));
+
+  // A dismissal before the cue shows isn't recorded.
+  tracker_.OnJourneyCueDismissed(kSourceTab1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.Cue.Dismissed.CopyMatch", 0);
+
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/true);
+  tracker_.OnJourneyCueDismissed(kSourceTab1);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Dismissed.CopyMatch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Dismissed.ContextMenuSearch", false,
+      1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Dismissed.QueryHint",
+      AimPromoQueryHint::kEduConceptual, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Dismissed.WordCount", 5, 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.Cue.SettingsOpened.CopyMatch", 0);
+  // Dismissing the cue doesn't end the journey.
+  EXPECT_TRUE(GetJourney(kSourceTab1));
+}
+
+TEST_F(SearchJourneyTrackerTest, RecordsCueSettingsOpenedMetrics) {
+  base::HistogramTester histogram_tester;
+  StartJourney(kSourceTab1, kSearchTab1, u"quantum computing");
+  tracker_.OnJourneyCueShown(kSourceTab1, /*is_anchored_message=*/false);
+
+  tracker_.OnJourneyCueSuggestionsSettingsOpened(kSourceTab1);
+  // Settings opened for a tab without a journey isn't recorded.
+  tracker_.OnJourneyCueSuggestionsSettingsOpened(kSourceTab2);
+
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.SettingsOpened.CopyMatch", false, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.SettingsOpened.QueryHint",
+      AimPromoQueryHint::kNone, 1);
+  histogram_tester.ExpectTotalCount(
+      "ContextualTasks.SearchJourney.Cue.Dismissed.CopyMatch", 0);
+}
+
+TEST_F(SearchJourneyTrackerTest,
+       CopyMatchDistinguishesClipboardCopyFromContextMenuSearch) {
+  base::HistogramTester histogram_tester;
+  const std::u16string kQuery = u"how do ocean tides work";
+
+  // A context-menu search followed by a regular clipboard copy of the same text
+  // should use the most recent record (the regular copy).
+  tracker_.OnContextMenuSearchRecorded(kSourceTab1, kNavEntryId, kQuery);
+  tracker_.OnCopyRecorded(kSourceTab1, kNavEntryId, kQuery);
+  StartJourney(kSourceTab1, kSearchTab1, kQuery);
+  ASSERT_TRUE(tracker_.OnAimPromoParamsReceived(kSearchTab1, kQuery,
+                                                CreatePromoParams(), {}));
+
+  tracker_.OnJourneyCueEligible(kSourceTab1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.CopyMatch", true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.ContextMenuSearch", false, 1);
+  histogram_tester.ExpectUniqueSample(
+      "ContextualTasks.SearchJourney.Cue.Eligible.QueryHint",
+      AimPromoQueryHint::kNone, 1);
+}
+
 TEST_F(SearchJourneyTrackerTest, JourneyTtlExpiry) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeatureWithParameters(
@@ -657,6 +1170,7 @@ TEST_F(SearchJourneyTrackerTest, FeatureParamsZeroWhenFeatureDisabled) {
   EXPECT_EQ(GetABASearchJourneysTtl(), base::TimeDelta());
   EXPECT_EQ(GetABASearchJourneysMaxRingBufferSize(), 0u);
   EXPECT_EQ(GetABASearchJourneysMinQueryMatchLength(), 0u);
+  EXPECT_EQ(GetABASearchJourneysMinWordsWithoutHint(), 0u);
   EXPECT_FALSE(ShouldAllowABASearchJourneysIntermediateTabs());
   EXPECT_FALSE(SearchJourneyTracker::NormalizeForJourneyMatch(u"valid query")
                    .has_value());

@@ -20,7 +20,6 @@ source_set("ui") {
     "//components/strings",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/autofill/autofill_ai/public",
-    "//ios/chrome/browser/autofill/model/message",
     "//ios/chrome/browser/net/model:crurl",
     "//ios/chrome/browser/settings/autofill/autofill_ai/public",
     "//ios/chrome/browser/settings/autofill/autofill_ai/utils",
@@ -81,11 +80,8 @@ source_set("unit_tests") {
     ":ui",
     "//base/test:test_support",
     "//components/autofill/core/browser",
-    "//components/autofill/core/browser:test_support",
-    "//components/sync:test_support",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/autofill/autofill_ai/public",
-    "//ios/chrome/browser/autofill/model/message",
     "//ios/chrome/browser/net/model:crurl",
     "//ios/chrome/browser/settings/autofill/autofill_ai/utils",
     "//ios/chrome/browser/settings/autofill/ui",
@@ -93,6 +89,7 @@ source_set("unit_tests") {
     "//ios/chrome/browser/shared/ui/table_view:test_support",
     "//ios/chrome/browser/shared/ui/table_view/cells",
     "//ios/chrome/test:test_support",
+    "//testing/gtest",
     "//third_party/ocmock",
   ]
 }

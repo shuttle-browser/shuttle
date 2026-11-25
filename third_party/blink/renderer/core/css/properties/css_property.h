@@ -8,6 +8,7 @@
 #include <memory>
 
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/notreached.h"
 #include "third_party/blink/renderer/core/core_export.h"
 #include "third_party/blink/renderer/core/css/css_property_name.h"
@@ -209,8 +210,7 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
 
   static void FilterWebExposedCSSPropertiesIntoVector(
       const ExecutionContext*,
-      const CSSPropertyID*,
-      wtf_size_t length,
+      base::span<const CSSPropertyID>,
       Vector<const CSSProperty*>&);
 
   enum Flag : Flags {
@@ -299,6 +299,9 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
     kPercentagesDoNotDependOnUsedValue = 1ull << 39,
     // See independent in css_properties.json5.
     kIndependent = 1ull << 40,
+    // Properties valid for highlights with CSSCustomHighlightExtensions
+    // enabled.
+    kValidForHighlightWithExtensions = 1ull << 41,
   };
 
   constexpr CSSProperty(CSSPropertyID property_id,
@@ -323,10 +326,10 @@ class CORE_EXPORT CSSProperty : public CSSUnresolvedProperty {
   using ValueModeFlags = uint8_t;
 
  private:
-  static constexpr size_t kPropertyIdBits = 15;
+  static constexpr size_t kPropertyIdBits = 14;
   uint64_t property_id_ : kPropertyIdBits;
   uint64_t repetition_separator_ : 8;
-  uint64_t flags_ : 41;
+  uint64_t flags_ : 42;
 
   // Make sure we have room for all valid CSSPropertyIDs.
   // (Using bit fields here reduces CSSProperty size from 24 to 16

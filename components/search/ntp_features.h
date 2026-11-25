@@ -68,6 +68,7 @@ BASE_DECLARE_FEATURE(kNtpOutlookCalendarModule);
 BASE_DECLARE_FEATURE(kNtpOneGoogleBar);
 BASE_DECLARE_FEATURE(kNtpScaledActionChips);
 BASE_DECLARE_FEATURE(kNtpScaledActionChipsSmall);
+BASE_DECLARE_FEATURE(kNtpScaledActionChipsUncappedWidth);
 BASE_DECLARE_FEATURE(kNtpActionChipsSuggestTimeout);
 BASE_DECLARE_FEATURE(kNtpSharepointModule);
 enum class NtpSharepointModuleDataType {
@@ -79,7 +80,6 @@ enum class NtpSharepointModuleDataType {
 };
 BASE_DECLARE_FEATURE(kNtpShortcuts);
 BASE_DECLARE_FEATURE(kNtpMostVisitedHighDpiFavicons);
-BASE_DECLARE_FEATURE(kNtpHandleMostVisitedNavigationExplicitly);
 BASE_DECLARE_FEATURE(kNtpMostRelevantTabResumptionModule);
 BASE_DECLARE_FEATURE(kNtpMostRelevantTabResumptionAllowFaviconServerFallback);
 BASE_DECLARE_FEATURE(kNtpMostRelevantTabResumptionModuleFallbackToHost);
@@ -322,6 +322,10 @@ extern const base::FeatureParam<base::TimeDelta>
 // folded state is rendered natively by Chrome, while the expanded state is
 // rendered by GWS.
 extern const base::FeatureParam<bool> kNtpThreadsRailHybridParam;
+
+// Parameter determining the debounce duration before preloading the expanded
+// Threads Rail iframe on hover or focus, in milliseconds.
+extern const base::FeatureParam<int> kNtpThreadsRailPreloadDebounceMsParam;
 
 // Returns the timeout after which the load of a module should be aborted.
 base::TimeDelta GetModulesLoadTimeout();

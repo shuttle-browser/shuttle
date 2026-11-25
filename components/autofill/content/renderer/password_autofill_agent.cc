@@ -12,6 +12,7 @@
 #include <optional>
 #include <ranges>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <vector>
 
@@ -115,18 +116,20 @@ using mojom::SubmissionSource;
 constexpr auto kInputPassword = blink::mojom::FormControlType::kInputPassword;
 
 // The size above which we stop triggering autocomplete.
-const size_t kMaximumTextSizeForAutocomplete = 1000;
+constexpr size_t kMaximumTextSizeForAutocomplete = 1000;
 
 constexpr char kSubmissionSourceHistogram[] =
     "Autofill.SubmissionDetectionSource.PasswordAutofillAgent";
 
 // Names of HTML attributes to show form and field signatures for debugging.
-const char kDebugAttributeForFormSignature[] = "form_signature";
-const char kDebugAttributeForAlternativeFormSignature[] =
+constexpr std::string_view kDebugAttributeForFormSignature = "form_signature";
+constexpr std::string_view kDebugAttributeForAlternativeFormSignature =
     "alternative_form_signature";
-const char kDebugAttributeForFieldSignature[] = "field_signature";
-const char kDebugAttributeForParserAnnotations[] = "pm_parser_annotation";
-const char kDebugAttributeForVisibility[] = "visibility_annotation";
+constexpr std::string_view kDebugAttributeForFieldSignature = "field_signature";
+constexpr std::string_view kDebugAttributeForParserAnnotations =
+    "pm_parser_annotation";
+constexpr std::string_view kDebugAttributeForVisibility =
+    "visibility_annotation";
 // Name of HTML attribute that stores the copy of autofill tooltip for
 // debugging.
 constexpr char kDebugAttributeForAutofill[] = "autofill-information";
@@ -301,7 +304,7 @@ std::string GetAlternativeFormSignatureAsString(const FormData& form_data) {
 // blink::FrameLoader::FinishedParsing(), see crbug.com/1219852). Therefore,
 // this function should be called asynchronously via SetAttributeAsync.
 void SetAttributeInternal(WebElement target,
-                          const std::string& attribute_utf8,
+                          std::string_view attribute_utf8,
                           const std::string& value_utf8) {
   target.SetAttribute(WebString::FromUtf8(attribute_utf8),
                       WebString::FromUtf8(value_utf8));
@@ -309,7 +312,7 @@ void SetAttributeInternal(WebElement target,
 
 // Posts an async task to call SetAttributeInternal.
 void SetAttributeAsync(WebElement target,
-                       const std::string& attribute_utf8,
+                       std::string_view attribute_utf8,
                        const std::string& value_utf8) {
   if (!target) {
     return;
@@ -425,7 +428,7 @@ bool IsInCrossOriginIframeOrEmbeddedFrame(const WebInputElement& element) {
 
 void AnnotateFieldWithParsingResult(
     FieldRendererId renderer_id,
-    const std::string& password_managers_annotation) {
+    std::string_view password_managers_annotation) {
   if (renderer_id.is_null())
     return;
   auto element = GetFormControlByRendererId(renderer_id);
@@ -449,15 +452,14 @@ void AnnotateFieldWithParsingResult(
     return;
   }
 
-  std::string autofill_tooltip =
+  const std::string autofill_tooltip =
       element.GetAttribute(kDebugAttributeForAutofill).Utf8();
 
   element.SetAttribute(
       kHtmlAttributeForAutofillTooltip,
-      WebString::FromUtf8(
-          base::StrCat({element.GetAttribute(kDebugAttributeForAutofill).Utf8(),
-                        "\n", kDebugAttributeForParserAnnotations, ": ",
-                        password_managers_annotation})));
+      WebString::FromUtf8(base::StrCat({autofill_tooltip, "\n",
+                                        kDebugAttributeForParserAnnotations,
+                                        ": ", password_managers_annotation})));
 }
 
 bool HasDocumentWithValidFrame(const WebInputElement& element) {
@@ -758,13 +760,14 @@ void PasswordAutofillAgent::PasswordValueGatekeeper::OnUserGesture() {
     return;
   }
   was_user_gesture_seen_ = true;
-  for (FieldRendererId element : element_ids_) {
+  // Exchange `element_ids_` because ShowValue() triggers DOM events that may
+  // mutate `element_ids_`.
+  for (FieldRendererId element : std::exchange(element_ids_, {})) {
     if (WebInputElement input_element =
             GetFormControlByRendererId(element).DynamicTo<WebInputElement>()) {
       ShowValue(input_element);
     }
   }
-  element_ids_.clear();
 }
 
 void PasswordAutofillAgent::PasswordValueGatekeeper::Reset() {
@@ -1035,6 +1038,11 @@ void PasswordAutofillAgent::FillChangePasswordForm(
       continue;
     }
 
+    // Mark the field as a password field to trigger redaction in
+    // Annotated Page Content.
+    // This matters if the field is a plain text field, which would
+    // otherwise not be redacted.
+    input_element.MaybeSetHasBeenPasswordField();
     DoFillField(input_element, task.second,
                 FieldPropertiesFlags::kAutofilledChangePasswordFormOnPageLoad);
     last_element = input_element;
@@ -1187,10 +1195,16 @@ PasswordAutofillAgent::CreateSuggestionRequest(
   // the caller who needs it anyways for autofill requests.
   std::optional<form_util::FormAndField> form_and_field =
       form_util::FindFormAndFieldForFormControlElement(
-          user_input, field_data_manager(),
-          autofill_agent_->GetCallTimerState(
-              CallTimerState::CallSite::kShowSuggestionPopup),
-          autofill_agent_->button_titles_cache(), form_cache);
+          user_input, [&](const WebDocument& document, FormRendererId form_id) {
+            return form_cache.GetOrExtractForm(
+                form_id, [&](FormRendererId form_id) {
+                  return form_util::ExtractFormData(
+                      document, form_id, field_data_manager(),
+                      autofill_agent_->GetCallTimerState(
+                          CallTimerState::CallSite::kShowSuggestionPopup),
+                      autofill_agent_->button_titles_cache());
+                });
+          });
   if (!form_and_field) {
     return std::nullopt;
   }

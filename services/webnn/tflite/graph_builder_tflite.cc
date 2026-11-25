@@ -1337,15 +1337,19 @@ auto GraphBuilderTflite::SerializeInputTensorInfo(
     if (fuse_dequantize) {
       operand_id = dequantize_op.input_operand_id;
     }
-    // The `operand_id` should already be serialized by
-    // `SerializeDequantizeLinear` or `TrySerializeQuantizedInput`.
-    auto it = operand_to_tensor_info_map_.find(operand_id);
-    CHECK(it != operand_to_tensor_info_map_.end());
-    return it->second;
   }
   auto it = operand_to_tensor_info_map_.find(operand_id);
   TensorInfo input_tensor_info;
-  if (it == operand_to_tensor_info_map_.end()) {
+  if (dequantize_it != lazy_serialized_dequantize_operations_.end()) {
+    // The `operand_id` should already be serialized by
+    // `SerializeDequantizeLinear` or `TrySerializeQuantizedInput`. Do not
+    // return it directly: when the dequantize output is a named float16 graph
+    // output, `operand_to_tensor_info_map_` holds the FLOAT16 graph output
+    // tensor, which must go through the float16 -> float32 promotion below
+    // before being handed to an operation that does not support float16.
+    CHECK(it != operand_to_tensor_info_map_.end());
+    input_tensor_info = it->second;
+  } else if (it == operand_to_tensor_info_map_.end()) {
     ASSIGN_OR_RETURN(input_tensor_info,
                      SerializeOperand(operand_id, quantize_params));
   } else {
@@ -7813,10 +7817,15 @@ auto GraphBuilderTflite::SerializeIdentityOperation(OperandId input_operand_id,
   // Graph output tensors must be produced by an operator in the TFLite
   // flatbuffer, so use a reshape pass-through.
   if (std::ranges::contains(graph_info_->output_operands, output_operand_id)) {
+    // RESHAPE requires the input and output tensors to have the same type.
+    // Forward the input tensor type so that if the float16 input was promoted
+    // to float32, the output is a float32 temporary followed by a cast to the
+    // float16 graph output, the same as `SerializeReshape()`.
     ASSIGN_OR_RETURN(
         const TensorInfo output_tensor_info,
         SerializeOutputTensorInfo(output_operand_id, /*quantize_params=*/0,
-                                  /*operation_supports_float16=*/true));
+                                  /*operation_supports_float16=*/true,
+                                  input_tensor_info.data_type));
     return SerializeReshapeOperation(input_tensor_info.index,
                                      output_tensor_info.index,
                                      output_tensor_info.dimensions);

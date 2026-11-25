@@ -4,11 +4,14 @@
 
 #include "chrome/browser/ui/views/location_bar/omnibox_popup_file_selector.h"
 
+#include <algorithm>
+
 #include "base/base64.h"
 #include "base/containers/span.h"
 #include "base/files/file_util.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_util.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "base/unguessable_token.h"
@@ -26,6 +29,7 @@
 #include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_aim_presenter.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_host.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_delegate.h"
 #include "chrome/browser/ui/webui/cr_components/composebox/composebox_handler.h"
 #include "chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.h"
@@ -38,6 +42,7 @@
 #include "components/lens/lens_features.h"
 #include "components/lens/lens_overlay_mime_type.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
+#include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/input_state.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/omnibox/common/omnibox_metrics_utils.h"
@@ -47,6 +52,23 @@
 #include "ui/gfx/native_ui_types.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 #include "ui/shell_dialogs/selected_file_info.h"
+
+namespace {
+
+// Returns the location bar of the browser window that `web_contents` belongs
+// to, or null if there is none (such as for Omnibox Everywhere).
+LocationBar* GetLocationBar(content::WebContents* web_contents) {
+  if (!web_contents ||
+      OmniboxContextMenuController::GetOmniboxEverywhereUI(web_contents)) {
+    return nullptr;
+  }
+  auto* browser_window = webui::GetBrowserWindowInterface(web_contents);
+  return browser_window
+             ? BrowserWindow::FromBrowser(browser_window)->GetLocationBar()
+             : nullptr;
+}
+
+}  // namespace
 
 OmniboxPopupFileSelector::OmniboxPopupFileSelector(
     gfx::NativeWindow owning_window)
@@ -76,6 +98,9 @@ void OmniboxPopupFileSelector::OpenFileUploadDialog(
     OmniboxEditModel* edit_model,
     std::optional<lens::ImageEncodingOptions> image_encoding_options,
     bool was_ai_mode_open) {
+  // Close any dialog that is still open first, so that the popup that opened it
+  // is told it closed.
+  CancelFileSelection();
   web_contents_ = web_contents ? web_contents->GetWeakPtr() : nullptr;
   edit_model_ = edit_model;
   image_encoding_options_ = image_encoding_options;
@@ -84,31 +109,19 @@ void OmniboxPopupFileSelector::OpenFileUploadDialog(
   if (file_chooser_opened_callback_) {
     file_chooser_opened_callback_.Run();
   }
-  if (!OmniboxContextMenuController::GetOmniboxEverywhereUI(web_contents)) {
-    if (auto* browser_window = webui::GetBrowserWindowInterface(web_contents)) {
-      if (auto* location_bar =
-              BrowserWindow::FromBrowser(browser_window)->GetLocationBar()) {
-        if (was_ai_mode_open) {
-          if (auto* presenter_delegate = location_bar->GetPresenterDelegate()) {
-            if (auto* presenter =
-                    presenter_delegate->GetOmniboxPopupAimPresenter()) {
-              deactivation_blocker_ = presenter->CreateDeactivationBlocker();
-            }
-          }
-        } else {
-          if (auto* popup_view = location_bar->GetOmniboxPopupView()) {
-            if (auto* presenter = popup_view->presenter()) {
-              deactivation_blocker_ = presenter->CreateDeactivationBlocker();
-            }
-          }
+  if (LocationBar* location_bar = GetLocationBar(web_contents)) {
+    if (was_ai_mode_open) {
+      if (auto* delegate = location_bar->GetPresenterDelegate()) {
+        if (auto* presenter = delegate->GetOmniboxPopupAimPresenter()) {
+          deactivation_blocker_ = presenter->CreateDeactivationBlocker();
         }
       }
+    } else if (auto* popup_view = location_bar->GetOmniboxPopupView()) {
+      if (OmniboxPopupHost* popup_host = popup_view->popup_host()) {
+        popup_host->OnFileDialogOpened();
+        deactivation_blocker_ = popup_host->CreateDeactivationBlocker();
+      }
     }
-  }
-
-  if (file_dialog_) {
-    file_dialog_->ListenerDestroyed();
-    file_dialog_.reset();
   }
 
   file_dialog_ = ui::SelectFileDialog::Create(
@@ -121,6 +134,15 @@ void OmniboxPopupFileSelector::OpenFileUploadDialog(
   if (is_image) {
     std::vector<base::FilePath::StringType> extensions;
     net::GetExtensionsForMimeType("image/*", &extensions);
+    // HEIC/HEIF extensions are only known to `net` via the platform MIME
+    // database, which may not include them (e.g. Windows without the HEIF
+    // extension installed). Add them explicitly so they are not filtered out.
+    for (const auto* heif_extension :
+         {FILE_PATH_LITERAL("heic"), FILE_PATH_LITERAL("heif")}) {
+      if (!std::ranges::contains(extensions, heif_extension)) {
+        extensions.emplace_back(heif_extension);
+      }
+    }
     file_types.extensions.push_back(extensions);
   } else if (!lens::features::IsLensSendRawFileMediaTypesEnabled()) {
     file_types.extensions = {{FILE_PATH_LITERAL("pdf")}};
@@ -131,6 +153,16 @@ void OmniboxPopupFileSelector::OpenFileUploadDialog(
   file_dialog_->SelectFile(dialog_type, /*title=*/u"", base::FilePath(),
                            &file_types, 0, base::FilePath::StringType(),
                            owning_window_);
+}
+
+void OmniboxPopupFileSelector::CancelFileSelection() {
+  if (!file_dialog_) {
+    return;
+  }
+  file_dialog_->ListenerDestroyed();
+  file_dialog_.reset();
+  deactivation_blocker_.reset();
+  NotifyFileSelectionClosed(/*file_selected=*/false);
 }
 
 namespace {
@@ -148,11 +180,37 @@ size_t GetMaxAttachmentSizeBytes() {
   return max_size > 0 ? max_size : kDefaultMaxFileSizeBytes;
 }
 
+std::string GetMimeTypeForFile(const base::FilePath& path, bool is_image) {
+  std::string mime_type;
+  base::FilePath::StringType ext = path.FinalExtension();
+  if (ext.starts_with(FILE_PATH_LITERAL('.'))) {
+    net::GetMimeTypeFromExtension(ext.substr(1), &mime_type);
+  }
+  if (!mime_type.empty()) {
+    return mime_type;
+  }
+  // Some platforms do not report a MIME type for HEIC/HEIF files (e.g.
+  // uppercase `.HEIC` on Linux, or Windows without the HEIF extension
+  // installed). Infer it so these are not mislabeled as PNG and decoded.
+  if (path.MatchesExtension(FILE_PATH_LITERAL(".heic"))) {
+    return "image/heic";
+  }
+  if (path.MatchesExtension(FILE_PATH_LITERAL(".heif"))) {
+    return "image/heif";
+  }
+  return is_image ? "image/png" : "application/pdf";
+}
+
 std::unique_ptr<FileData> ReadFileData(const base::FilePath& path,
-                                       bool is_image,
-                                       size_t max_file_size) {
+                                       size_t max_attachment_size,
+                                       bool is_image) {
   auto file_data = std::make_unique<FileData>();
   file_data->path = path;
+  file_data->mime_type = GetMimeTypeForFile(path, is_image);
+  // Decide by MIME type, not `is_image`. The image picker allows all files,
+  // and `AddFileContextFromBrowser()` also uses the MIME type.
+  const uint64_t max_file_size = omnibox::GetComposeboxMaxFileSizeBytes(
+      file_data->mime_type, /*is_image=*/false, max_attachment_size);
 
   std::optional<int64_t> file_size = base::GetFileSize(path);
   if (file_size.has_value()) {
@@ -174,23 +232,7 @@ std::unique_ptr<FileData> ReadFileData(const base::FilePath& path,
     return file_data;
   }
 
-  base::FilePath::StringType ext = path.FinalExtension();
-  if (ext.starts_with(FILE_PATH_LITERAL('.'))) {
-    net::GetMimeTypeFromExtension(ext.substr(1), &file_data->mime_type);
-  }
-  if (file_data->mime_type.empty()) {
-    file_data->mime_type = is_image ? "image/png" : "application/pdf";
-  }
   return file_data;
-}
-
-bool IsImageFile(const base::FilePath& path) {
-  return path.MatchesExtension(FILE_PATH_LITERAL(".png")) ||
-         path.MatchesExtension(FILE_PATH_LITERAL(".jpg")) ||
-         path.MatchesExtension(FILE_PATH_LITERAL(".jpeg")) ||
-         path.MatchesExtension(FILE_PATH_LITERAL(".webp")) ||
-         path.MatchesExtension(FILE_PATH_LITERAL(".gif")) ||
-         path.MatchesExtension(FILE_PATH_LITERAL(".bmp"));
 }
 
 }  // namespace
@@ -235,33 +277,37 @@ void OmniboxPopupFileSelector::MultiFilesSelected(
       // pushes a direct validation error to SearchboxContextData.
       // The frontend immediately displays the global limit error toast and
       // deletes this dummy context silently, rendering no failed chip.
-      contextual_search::ContextUploadErrorType error_type =
-          contextual_search::ContextUploadErrorType::
-              kBrowserProcessingMaxFilesExceededError;
-      if (is_image_ || IsImageFile(file.path())) {
+      const std::string mime_type = GetMimeTypeForFile(file.path(), is_image_);
+      contextual_search::ContextUploadErrorType error_type = contextual_search::
+          ContextUploadErrorType::kBrowserProcessingMaxFilesExceededError;
+      if (is_image_ || base::StartsWith(mime_type, "image/",
+                                        base::CompareCase::INSENSITIVE_ASCII)) {
         error_type = contextual_search::ContextUploadErrorType::
             kBrowserProcessingMaxImagesExceededError;
-      } else if (file.path().MatchesExtension(FILE_PATH_LITERAL(".pdf"))) {
+      } else if (mime_type == "application/pdf") {
         error_type = contextual_search::ContextUploadErrorType::
             kBrowserProcessingMaxPdfsExceededError;
       }
-      UpdateSearchboxContextData(
-          lens::MimeType::kUnknown, /*image_data_url=*/"",
-          file.path().BaseName().AsUTF8Unsafe(),
-          /*mime_string=*/"application/octet-stream",
-          base::unexpected(error_type));
+      UpdateSearchboxContextData(lens::MimeType::kUnknown,
+                                 /*image_data_url=*/"",
+                                 file.path().BaseName().AsUTF8Unsafe(),
+                                 /*mime_string=*/"application/octet-stream",
+                                 base::unexpected(error_type));
       break;
     }
     valid_files_count++;
     has_posted_tasks = true;
     base::ThreadPool::PostTaskAndReplyWithResult(
         FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
-        base::BindOnce(&ReadFileData, file.path(), is_image_,
-                       GetMaxAttachmentSizeBytes()),
+        base::BindOnce(&ReadFileData, file.path(), GetMaxAttachmentSizeBytes(),
+                       is_image_),
         base::BindOnce(&OmniboxPopupFileSelector::OnFileDataReady,
                        weak_factory_.GetWeakPtr()));
   }
-  NotifyFileSelectionClosed();
+  // This opens AI Mode however many of the files are valid, to show any
+  // errors. If no file is read, it opens below. Otherwise `OnFileDataReady()`
+  // opens it, even for a file that can't be attached.
+  NotifyFileSelectionClosed(/*file_selected=*/true);
   deactivation_blocker_.reset();
   file_dialog_.reset();
 
@@ -271,7 +317,7 @@ void OmniboxPopupFileSelector::MultiFilesSelected(
 }
 
 void OmniboxPopupFileSelector::FileSelectionCanceled() {
-  NotifyFileSelectionClosed();
+  NotifyFileSelectionClosed(/*file_selected=*/false);
   deactivation_blocker_.reset();
   file_dialog_.reset();
   if (was_ai_mode_open_) {
@@ -291,7 +337,7 @@ void OmniboxPopupFileSelector::OnFileDataReady(
   if (file_data->error.has_value()) {
     UpdateSearchboxContextData(lens::MimeType::kUnknown,
                                /*image_data_url=*/"", file_name,
-                               /*mime_string=*/"application/octet-stream",
+                               file_data->mime_type,
                                base::unexpected(file_data->error.value()));
     OpenAiMode();
     return;
@@ -373,32 +419,26 @@ void OmniboxPopupFileSelector::UpdateSearchboxContextData(
                                                mime_string, result);
 }
 
-void OmniboxPopupFileSelector::NotifyFileSelectionClosed() {
+void OmniboxPopupFileSelector::NotifyFileSelectionClosed(bool file_selected) {
   if (file_chooser_closed_callback_) {
     file_chooser_closed_callback_.Run();
   }
-  if (was_ai_mode_open_ && web_contents_ &&
-      !OmniboxContextMenuController::GetOmniboxEverywhereUI(
-          web_contents_.get())) {
-    auto* browser_window =
-        webui::GetBrowserWindowInterface(web_contents_.get());
-    if (!browser_window) {
-      return;
+  LocationBar* location_bar = GetLocationBar(web_contents_.get());
+  if (!location_bar) {
+    return;
+  }
+  if (was_ai_mode_open_) {
+    if (auto* delegate = location_bar->GetPresenterDelegate()) {
+      if (auto* presenter = delegate->GetOmniboxPopupAimPresenter()) {
+        presenter->OnFileSelectionClosed();
+      }
     }
-
-    auto* location_bar =
-        BrowserWindow::FromBrowser(browser_window)->GetLocationBar();
-    if (!location_bar) {
-      return;
-    }
-
-    auto* presenter_delegate = location_bar->GetPresenterDelegate();
-    if (!presenter_delegate) {
-      return;
-    }
-
-    if (auto* presenter = presenter_delegate->GetOmniboxPopupAimPresenter()) {
-      presenter->OnFileSelectionClosed();
+  } else if (auto* popup_view = location_bar->GetOmniboxPopupView()) {
+    if (OmniboxPopupHost* popup_host = popup_view->popup_host()) {
+      // Blurs the omnibox while a dialog opened from the popup is shown, and
+      // refocuses it once the dialog closes. See
+      // `OmniboxPopupFullPresenter::OnFileDialogOpened()`.
+      popup_host->OnFileDialogClosed(file_selected);
     }
   }
 }

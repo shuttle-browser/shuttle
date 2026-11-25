@@ -38,14 +38,20 @@ class WebUIGlicControl : public glic::ToolbarGlicButtonInterface,
   // Re-evaluates whether the custom (extension) theme fallback colors should be
   // used, mirroring `glic::ToolbarGlicButton::OnThemeChanged()`.
   void OnThemeChanged();
-  bool IsVisible() const { return should_show_ && is_pinned_; }
   bool IsContextMenuShowingForTesting() const;
+
+  // Sets whether the Glic button is joined with the actor task icon as a split
+  // button. Mirrors GlicButton::SetSplitButtonCornerStyling() and
+  // ResetSplitButtonCornerStyling() in Views.
+  void SetIsSplit(bool is_split);
+  bool GetIsSplit() const { return is_split_; }
 
   // glic::ToolbarGlicButtonInterface:
   void SetIsShowingNudge(bool is_showing) override;
   bool GetIsShowingNudge() const override;
   void SetNudgeLabel(std::string label) override;
   void SetVisible(bool visible) override;
+  bool IsVisible() const override;
   void SetGlicPanelIsOpen(bool open) override;
   void UpdateStyle(bool should_match_toolbar) override;
 
@@ -72,6 +78,7 @@ class WebUIGlicControl : public glic::ToolbarGlicButtonInterface,
   bool is_showing_nudge_ = false;
   bool should_match_toolbar_style_ = false;
   bool use_custom_theme_fallback_ = false;
+  bool is_split_ = false;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TOOLBAR_WEBUI_GLIC_CONTROL_H_

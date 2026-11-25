@@ -46,6 +46,7 @@ class ASH_EXPORT SystemDecoration : public ui::ColorProviderSourceObserver {
   // Shadow types of system UI components. The shadows with different elevations
   // have different appearance.
   enum class ShadowType {
+    kNone,         // no shadow.
     kElevation4,   // corresponds to cros.sys.system-elevation1.
     kElevation12,  // corresponds to cros.sys.system-elevation3.
     kElevation24,  // corresponds to cros.sys.system-elevation5.
@@ -57,6 +58,20 @@ class ASH_EXPORT SystemDecoration : public ui::ColorProviderSourceObserver {
     kHighlightBorder,
   };
 
+  // Specifies where `CreateForView()` parents the decoration layer relative to
+  // the target `views::View`.
+  enum class LayerParent {
+    // Adds the decoration layer to the view's layer regions
+    // (`views::LayerRegion::kBelow` when borderless, `kAbove` when a highlight
+    // border is present) as a sibling of `view->layer()`.
+    kRegionLayers,
+    // Adds the decoration layer directly as a child of `view->layer()` (stacked
+    // at the bottom when borderless, or at the top when a highlight border is
+    // present) so it inherits `view->layer()`'s opacity, clip rect, and
+    // transforms.
+    kViewLayer,
+  };
+
   SystemDecoration(const SystemDecoration&) = delete;
   SystemDecoration& operator=(const SystemDecoration&) = delete;
 
@@ -66,19 +81,22 @@ class ASH_EXPORT SystemDecoration : public ui::ColorProviderSourceObserver {
   // shadow and/or highlight border. The caller is responsible for parenting
   // `GetLayer()` and updating `SetContentBounds()`.
   static std::unique_ptr<SystemDecoration> Create(
-      std::optional<ShadowType> shadow_type,
+      ShadowType shadow_type,
       HighlightBorderMode border_mode = HighlightBorderMode::kNone);
 
   // Creates a system decoration for `view` with an optional drop shadow and/or
-  // highlight border. Its layer is added to `view`'s region layers and its
-  // content bounds automatically track `view`'s layer bounds. Cannot be used
-  // when the decoration's content bounds do not equal the view bounds (e.g.,
-  // `AppListFolderView` has a clip rect whose bounds should be the content
-  // bounds; use `Create()` instead).
+  // highlight border. Depending on `layer_parent`, its layer is either added to
+  // `view`'s region layers (`LayerParent::kRegionLayers`) or parented directly
+  // under `view->layer()` (`LayerParent::kViewLayer`), and its content bounds
+  // automatically track `view`'s bounds. Cannot be used when the decoration's
+  // content bounds do not equal the view bounds (e.g., `AppListFolderView` has
+  // a clip rect whose bounds should be the content bounds; use `Create()`
+  // instead).
   static std::unique_ptr<SystemDecoration> CreateForView(
       views::View* view,
-      std::optional<ShadowType> shadow_type,
-      HighlightBorderMode border_mode = HighlightBorderMode::kNone);
+      ShadowType shadow_type,
+      HighlightBorderMode border_mode = HighlightBorderMode::kNone,
+      LayerParent layer_parent = LayerParent::kRegionLayers);
 
   // Creates a system decoration for `window` with an optional drop shadow
   // and/or highlight border. Its layer is added to `window`'s layer and its
@@ -87,20 +105,18 @@ class ASH_EXPORT SystemDecoration : public ui::ColorProviderSourceObserver {
   // `OverviewItem` for wide and tall windows; use `Create()` instead).
   static std::unique_ptr<SystemDecoration> CreateForWindow(
       aura::Window* window,
-      std::optional<ShadowType> shadow_type,
+      ShadowType shadow_type,
       HighlightBorderMode border_mode = HighlightBorderMode::kNone);
 
   // Get shadow elevation according to the given type.
   static int GetElevationFromType(ShadowType type);
 
-  // Configures or clears the drop shadow.
+  // Configures or clears (`ShadowType::kNone`) the drop shadow.
   void SetShadow(ShadowType type);
-  void ClearShadow();
   bool HasShadow() const;
 
-  // Configures or clears the highlight border.
-  void SetHighlightBorder();
-  void ClearHighlightBorder();
+  // Configures or clears (`HighlightBorderMode::kNone`) the highlight border.
+  void SetHighlightBorder(HighlightBorderMode mode);
   bool HasHighlightBorder() const;
 
   void SetContentBounds(const gfx::Rect& bounds);

@@ -10,12 +10,16 @@
 #include <algorithm>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "base/atomic_sequence_num.h"
 #include "base/auto_reset.h"
+#include "base/check.h"
+#include "base/check_op.h"
 #include "base/command_line.h"
 #include "base/containers/adapters.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
@@ -46,6 +50,7 @@
 #include "cc/layers/heads_up_display_layer_impl.h"
 #include "cc/layers/layer.h"
 #include "cc/layers/painted_scrollbar_layer.h"
+#include "cc/metrics/scroll_timing_buffer.h"
 #include "cc/metrics/ukm_dropped_frames_data.h"
 #include "cc/paint/paint_worklet_layer_painter.h"
 #include "cc/resources/ui_resource_manager.h"
@@ -255,6 +260,15 @@ void LayerTreeHost::SetUIResourceManagerForTesting(
   ui_resource_manager_ = std::move(ui_resource_manager);
 }
 
+void LayerTreeHost::InitializeScrollTimingBufferConsumer(
+    base::ReadOnlySharedMemoryRegion region) {
+  DCHECK(IsMainThread());
+  CHECK(region.IsValid());
+  CHECK(!scroll_timing_buffer_consumer_);
+  scroll_timing_buffer_consumer_ =
+      ScrollTimingBufferConsumer::Create(std::move(region));
+}
+
 void LayerTreeHost::InitializeProxy(std::unique_ptr<Proxy> proxy) {
   TRACE_EVENT0("cc", "LayerTreeHost::InitializeForReal");
   DCHECK(task_runner_provider_);
@@ -291,8 +305,9 @@ LayerTreeHost::~LayerTreeHost() {
   property_tree_delegate_->SetLayerTreeHost(nullptr);
 
   // Fail any pending image decodes.
-  for (auto& entry : pending_image_decodes_) {
-    std::move(entry.second.first).Run(false);
+  auto pending_image_decodes = std::exchange(pending_image_decodes_, {});
+  for (auto& entry : pending_image_decodes) {
+    std::move(entry.second).Run(false);
   }
 
   if (proxy_) {
@@ -605,9 +620,11 @@ void LayerTreeHost::NotifyImageDecodeFinished(int request_id,
   DCHECK(IsMainThread());
   auto it = pending_image_decodes_.find(request_id);
   CHECK(it != pending_image_decodes_.end());
-  // Issue stored callback and remove them from the pending list.
-  std::move(it->second.first).Run(decode_succeeded);
+  // Remove from the pending map before running the callback in case the
+  // callback queues additional decodes or destroys `this`.
+  base::OnceCallback<void(bool)> callback = std::move(it->second);
   pending_image_decodes_.erase(it);
+  std::move(callback).Run(decode_succeeded);
 }
 
 void LayerTreeHost::NotifyTransitionRequestsFinished(
@@ -853,6 +870,12 @@ void LayerTreeHost::SetNeedsAnimateIfNotInsideMainFrame() {
   DCHECK(IsMainThread());
   if (!inside_main_frame_)
     SetNeedsAnimate();
+}
+
+void LayerTreeHost::NotifyOutOfBandFrame() {
+  DCHECK(IsMainThread());
+  has_out_of_band_frame_for_testing_ = true;
+  proxy_->NotifyOutOfBandFrame();
 }
 
 DISABLE_CFI_PERF
@@ -1858,18 +1881,21 @@ void LayerTreeHost::RequestNewLocalSurfaceId() {
 
 void LayerTreeHost::RegisterLayer(Layer* layer) {
   DCHECK(IsMainThread());
-  DCHECK(!LayerById(layer->id()));
   DCHECK(!in_paint_layer_contents_);
-  thread_unsafe_commit_state().layer_id_map[layer->id()] = layer;
+  const bool inserted = thread_unsafe_commit_state()
+                            .layer_id_map.try_emplace(layer->id(), layer)
+                            .second;
+  DCHECK(inserted);
 }
 
 void LayerTreeHost::UnregisterLayer(Layer* layer) {
   DCHECK(IsMainThread());
-  DCHECK(LayerById(layer->id()));
   DCHECK(!in_paint_layer_contents_);
   pending_commit_state()->layer_ids_that_should_push_properties.erase(
       layer->id());
-  thread_unsafe_commit_state().layer_id_map.erase(layer->id());
+  const size_t erased =
+      thread_unsafe_commit_state().layer_id_map.erase(layer->id());
+  DCHECK_EQ(erased, 1u);
 }
 
 Layer* LayerTreeHost::LayerById(int id) {
@@ -1986,30 +2012,26 @@ const Layer* LayerTreeHost::LayerByElementId(ElementId element_id) const {
 void LayerTreeHost::RegisterElement(ElementId element_id, Layer* layer) {
   DCHECK(IsMainThread());
   DCHECK(layer);
-  const Layer* existing_layer = LayerByElementId(element_id);
-  if (existing_layer) {
-    if (existing_layer == layer) {
-      return;
-    } else {
-      UnregisterElement(element_id, existing_layer);
-    }
+  auto [it, inserted] = element_layers_map_.try_emplace(element_id, layer);
+  if (!inserted && it->second != layer) {
+    property_tree_delegate_->OnUnregisterElement(element_id);
+    it->second = layer;
   }
-  element_layers_map_[element_id] = layer;
 }
 
 void LayerTreeHost::UnregisterElement(ElementId element_id,
                                       const Layer* layer) {
   DCHECK(IsMainThread());
   DCHECK(layer);
-  const Layer* existing_layer = LayerByElementId(element_id);
-  if (existing_layer != layer) {
+  auto it = element_layers_map_.find(element_id);
+  if (it == element_layers_map_.end() || it->second != layer) {
     // Nothing to do; the element_id is already associated with another layer.
     // This can happen if a scrollbar is lost and restored in the same frame,
     // as we register the new scrollbar layer before cleaning up the old one.
     return;
   }
   property_tree_delegate_->OnUnregisterElement(element_id);
-  element_layers_map_.erase(element_id);
+  element_layers_map_.erase(it);
 }
 
 void LayerTreeHost::SetElementIdsForTesting() {
@@ -2127,8 +2149,9 @@ void LayerTreeHost::QueueImageDecode(const DrawImage& image,
     pending_commit_state()->queued_image_decodes.emplace_back(std::make_tuple(
         next_id, std::make_unique<DrawImage>(image), speculative));
   }
-  pending_image_decodes_.emplace(
-      next_id, std::make_pair(std::move(callback), speculative));
+  const bool inserted =
+      pending_image_decodes_.try_emplace(next_id, std::move(callback)).second;
+  DCHECK(inserted);
   SetNeedsCommit();
 }
 

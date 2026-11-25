@@ -12,6 +12,7 @@
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/run_loop.h"
+#include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -30,6 +31,7 @@
 #include "chrome/browser/actor/tools/wait_tool.h"
 #include "chrome/browser/actor/ui/actor_task_unload_handler.h"
 #include "chrome/browser/actor/ui/event_dispatcher.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/chrome_content_browser_client.h"
 #include "chrome/browser/download/download_test_file_activity_observer.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
@@ -37,10 +39,14 @@
 #include "chrome/browser/optimization_guide/browser_test_util.h"
 #include "chrome/browser/optimization_guide/mock_optimization_guide_keyed_service.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/profiles/profile_test_util.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/browser_commands.h"
+#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/create_browser_window.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_test_utils.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -76,6 +82,7 @@
 #include "content/public/test/download_test_observer.h"
 #include "content/public/test/hit_test_region_observer.h"
 #include "content/public/test/navigation_handle_observer.h"
+#include "content/public/test/popup_test_utils.h"
 #include "content/public/test/prerender_test_util.h"
 #include "content/public/test/test_frame_navigation_observer.h"
 #include "net/dns/mock_host_resolver.h"
@@ -84,8 +91,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
@@ -95,6 +102,10 @@
 #include "chrome/browser/safe_browsing/test_safe_browsing_service.h"
 #include "components/safe_browsing/core/browser/db/fake_database_manager.h"
 #include "components/safe_browsing/core/common/features.h"
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/constants/ash_switches.h"
 #endif
 
 using ::base::test::TestFuture;
@@ -254,6 +265,40 @@ class ExecutionEngineBrowserTest : public InProcessBrowserTest {
   base::ScopedTempDir temp_dir_;
 };
 
+class ExecutionEngineCrossProfileBrowserTest
+    : public ExecutionEngineBrowserTest {
+ public:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    ExecutionEngineBrowserTest::SetUpCommandLine(command_line);
+#if BUILDFLAG(IS_CHROMEOS)
+    command_line->AppendSwitch(
+        ash::switches::kIgnoreUserProfileMappingForTests);
+#endif
+  }
+};
+
+// A Wait action can't observe a tab in another profile: the engine resolves
+// surfaces within the task's profile, so the other profile's tab is treated as
+// absent.
+IN_PROC_BROWSER_TEST_F(ExecutionEngineCrossProfileBrowserTest,
+                       WaitCannotObserveCrossProfileTab) {
+  ProfileManager* profile_manager = g_browser_process->profile_manager();
+  Profile& profile2 = profiles::testing::CreateProfileSync(
+      profile_manager, profile_manager->GenerateNextProfileDirectoryPath());
+
+  BrowserWindowInterface* browser2 = CreateBrowserWindow(
+      BrowserWindowCreateParams(&profile2, /*from_user_gesture=*/true));
+  chrome::NewTab(browser2, NewTabTypes::kNoUserAction);
+  tabs::TabInterface* tab2 = browser2->GetActiveTabInterface();
+
+  std::unique_ptr<ToolRequest> action_request = MakeWaitRequest(tab2);
+  ActResultFuture result;
+  actor_task().Act(ToRequestList(action_request), result.GetCallback());
+  ExpectErrorResult(result, mojom::ActionResultCode::kTabWentAway);
+
+  browser2->GetWindow()->Close();
+}
+
 // The coordinator does not yet handle multi-tab cases. For now,
 // while acting on a tab, we override attempts by the page to create new
 // tabs, and instead navigate the existing tab.
@@ -324,7 +369,8 @@ IN_PROC_BROWSER_TEST_F(ExecutionEngineBrowserTest, TwoClicksInBackgroundTab) {
 
   // Create a second tab, which will be in the foreground.
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GURL("about:blank"), WindowOpenDisposition::kNewForegroundTab,
+      browser(), GURL("about:blank"),
+      ::ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // The first tab should now be in the background.
@@ -829,12 +875,8 @@ class ExecutionEngineFileSystemAccessApiBrowserTest
       public testing::WithParamInterface<bool> {
  public:
   ExecutionEngineFileSystemAccessApiBrowserTest() {
-    scoped_feature_list_.InitWithFeatureStates(
-        {{kGlicBlockFileSystemAccessApiFilePicker, should_block_file_picker()},
-         // TODO(crbug.com/452061489): Fix tests that fail when the WebUI
-         // Omnibox is enabled and then remove these two Features.
-         {omnibox::internal::kWebUIOmniboxPopup, false},
-         {omnibox::internal::kWebUIOmniboxAimPopup, false}});
+    scoped_feature_list_.InitWithFeatureState(
+        kGlicBlockFileSystemAccessApiFilePicker, should_block_file_picker());
   }
 
   bool should_block_file_picker() { return GetParam(); }
@@ -867,7 +909,6 @@ class ExecutionEngineFileSystemAccessApiBrowserTest
 IN_PROC_BROWSER_TEST_P(ExecutionEngineFileSystemAccessApiBrowserTest,
                        FilePickerForFileSystemAccessApiBlocked) {
   const base::FilePath test_file = CreateTestFile("");
-  const std::string file_contents = "file contents to write";
 
   ::ui::SelectFileDialog::SetFactory(
       std::make_unique<SelectPredeterminedFileDialogFactory>(

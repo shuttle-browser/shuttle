@@ -45,6 +45,7 @@ constexpr net::NetworkTrafficAnnotationTag kSCTAuditReportTrafficAnnotation =
             "the certificate chain, and the Signed Certificate Timestamps "
             "observed on the connection."
           destination: GOOGLE_OWNED_SERVICE
+          api_service_name: "sctauditing-pa.googleapis.com"
         }
         policy {
           cookies_allowed: NO
@@ -82,6 +83,7 @@ constexpr net::NetworkTrafficAnnotationTag kSCTHashdanceTrafficAnnotation =
             "A short prefix of the SCT leaf hash, the length of the prefix, "
             "and a short user agent string."
           destination: GOOGLE_OWNED_SERVICE
+          api_service_name: "sctauditing-pa.googleapis.com"
         }
         policy {
           cookies_allowed: NO
@@ -184,7 +186,8 @@ void SCTReportingService::OnNewSCTAuditingReportSent() {
 
   // We should not ever send more than kSCTAuditingHashdanceMaxReports full
   // reports. DCHECK to make it very clear in testing if this is not the case.
-  DCHECK_LE(report_count, kSCTAuditingHashdanceMaxReports);
+  CHECK_LE(report_count, kSCTAuditingHashdanceMaxReports,
+           base::NotFatalUntil::M163);
 
   // Note: Pref updates won't be persisted for Incognito profiles, but SCT
   // auditing is disabled entirely for Incognito profiles.
@@ -198,7 +201,7 @@ SCTReportingService::SCTReportingService(
     : safe_browsing_service_(safe_browsing_service),
       pref_service_(*profile->GetPrefs()),
       profile_(profile) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   // SCT auditing should stay disabled for Incognito/OTR profiles, so we don't
   // need to subscribe to the prefs.

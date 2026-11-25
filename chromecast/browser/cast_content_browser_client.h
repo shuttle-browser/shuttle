@@ -33,6 +33,7 @@
 #include "services/service_manager/public/mojom/interface_provider.mojom-forward.h"
 #include "services/service_manager/public/mojom/service.mojom-forward.h"
 #include "storage/browser/quota/quota_settings.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 class PrefService;
 
@@ -153,21 +154,16 @@ class CastContentBrowserClient
   // on browser startup.
   virtual bool EnableRemoteDebuggingImmediately();
 
-  // Note: These were originally part of ContentBrowserClient, but have been
-  // lifted into this class as they're now only used by Chromecast. This is a
-  // transitional step to avoid breakage in the internal downstream repository.
-  virtual void RunServiceInstance(
-      const service_manager::Identity& identity,
-      mojo::PendingReceiver<service_manager::mojom::Service>* receiver);
   virtual std::optional<service_manager::Manifest> GetServiceManifestOverlay(
       std::string_view service_name);
-  std::vector<service_manager::Manifest> GetExtraServiceManifests();
-  std::vector<std::string> GetStartupServices();
 
   // content::ContentBrowserClient implementation:
   std::unique_ptr<content::BrowserMainParts> CreateBrowserMainParts(
       bool is_integration_test) override;
   bool IsHandledURL(const GURL& url) override;
+  bool IsFileAccessAllowed(const base::FilePath& path,
+                           const base::FilePath& absolute_path,
+                           const base::FilePath& profile_path) override;
   void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
                                       int child_process_id) override;
   std::string GetAcceptLangs(content::BrowserContext* context) override;
@@ -175,7 +171,7 @@ class CastContentBrowserClient
   void OverrideWebPreferences(content::WebContents* web_contents,
                               content::SiteInstance& main_frame_site,
                               blink::web_pref::WebPreferences* prefs) override;
-  std::string GetApplicationLocale() override;
+  base::i18n::LanguageTag GetApplicationLocale() override;
   void AllowCertificateError(
       content::WebContents* web_contents,
       int cert_error,
@@ -200,7 +196,7 @@ class CastContentBrowserClient
                        const GURL& target_url,
                        const content::Referrer& referrer,
                        const std::string& frame_name,
-                       WindowOpenDisposition disposition,
+                       ui::mojom::WindowOpenDisposition disposition,
                        const blink::mojom::WindowFeatures& features,
                        bool user_gesture,
                        bool opener_suppressed,

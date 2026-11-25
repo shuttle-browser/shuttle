@@ -19,9 +19,13 @@ bool CompositorAnimationColorCurve::ValidateColorValue(
     const CSSValue* css_value,
     const TypedInterpolationValue* interpolation_value) {
   if (css_value) {
+    if (!element || !element->GetComputedStyle()) {
+      return false;
+    }
     const CSSValue* computed_value =
         StyleResolver::ComputeValue(element, property_name, *css_value);
-    return computed_value->IsColorValue();
+    return computed_value && computed_value->IsColorValue() &&
+           element->GetComputedStyle();
   } else if (interpolation_value) {
     const InterpolableValue* interpolable_value =
         interpolation_value->Value().interpolable_value.Get();
@@ -86,8 +90,9 @@ Color CompositorAnimationColorCurve::ConvertTypedInterpolationValue(
   return CSSColorInterpolationType::GetColor(*(list.Get(0)));
 }
 
-Color CompositorAnimationColorCurve::InterpolateKeyframes(wtf_size_t index,
-                                                          double progress) {
+Color CompositorAnimationColorCurve::InterpolateKeyframes(
+    wtf_size_t index,
+    double progress) const {
   auto& keyframes = GetKeyframes();
   Color first = keyframes[index].value;
   Color second = keyframes[index + 1].value;
@@ -107,6 +112,9 @@ Color CompositorAnimationColorCurve::InterpolateKeyframes(wtf_size_t index,
 void CompositorAnimationColorCurve::UpdateStyleDependencies(
     const Element& element) {
   const ComputedStyle* style = element.GetComputedStyle();
+  if (!style) {
+    return;
+  }
   color_scheme_ = style->UsedColorScheme();
   current_color_ = style->VisitedDependentColor(GetCSSPropertyColor());
   UpdateIsOpaque();

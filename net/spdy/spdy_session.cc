@@ -1056,11 +1056,12 @@ bool SpdySession::ShouldSendPriorityUpdate() const {
 }
 
 int SpdySession::ConfirmHandshake(CompletionOnceCallback callback) {
+  if (availability_state_ == STATE_DRAINING || drain_session_pending_) {
+    return ERR_CONNECTION_CLOSED;
+  }
+
   if (availability_state_ == STATE_GOING_AWAY)
     return ERR_FAILED;
-
-  if (availability_state_ == STATE_DRAINING)
-    return ERR_CONNECTION_CLOSED;
 
   int rv = ERR_IO_PENDING;
   if (!in_confirm_handshake_) {
@@ -1681,11 +1682,12 @@ int SpdySession::TryCreateStream(
     base::WeakPtr<SpdyStream>* stream) {
   DCHECK(request);
 
+  if (availability_state_ == STATE_DRAINING || drain_session_pending_) {
+    return ERR_CONNECTION_CLOSED;
+  }
+
   if (availability_state_ == STATE_GOING_AWAY)
     return ERR_FAILED;
-
-  if (availability_state_ == STATE_DRAINING)
-    return ERR_CONNECTION_CLOSED;
 
   // Fail if ChangeSocketTag() has been called.
   if (request->socket_tag_ != spdy_session_key_.socket_tag())
@@ -1715,12 +1717,8 @@ int SpdySession::CreateStream(const SpdyStreamRequest& request,
                               base::WeakPtr<SpdyStream>* stream) {
   DCHECK_GE(request.priority(), MINIMUM_PRIORITY);
   DCHECK_LE(request.priority(), MAXIMUM_PRIORITY);
-
-  if (availability_state_ == STATE_GOING_AWAY)
-    return ERR_FAILED;
-
-  if (availability_state_ == STATE_DRAINING)
-    return ERR_CONNECTION_CLOSED;
+  CHECK_EQ(availability_state_, STATE_AVAILABLE);
+  CHECK(!drain_session_pending_);
 
   DCHECK(socket_);
   UMA_HISTOGRAM_BOOLEAN("Net.SpdySession.CreateStreamWithSocketConnected",
@@ -1855,18 +1853,6 @@ void SpdySession::CloseActiveStreamIterator(ActiveStreamMap::iterator it,
   priority_dependency_state_.OnStreamDestruction(owned_stream->stream_id());
 
   DeleteStream(std::move(owned_stream), status);
-
-  if (active_streams_.empty() && created_streams_.empty() &&
-      !drain_session_pending_) {
-    // If the socket belongs to a socket pool, and there are no active streams,
-    // and the socket pool is stalled, then close the session to free up a
-    // socket slot.
-    if (stream_socket_handle_ && stream_socket_handle_->IsPoolStalled()) {
-      DoDrainSession(ERR_CONNECTION_CLOSED, "Closing idle connection.");
-    } else {
-      MaybeFinishGoingAway();
-    }
-  }
 }
 
 void SpdySession::CloseCreatedStreamIterator(CreatedStreamSet::iterator it,
@@ -2655,6 +2641,23 @@ void SpdySession::DeleteStream(std::unique_ptr<SpdyStream> stream, int status) {
     MaybeDisableBrokenConnectionDetection();
   stream->OnClose(status);
 
+  if (active_streams_.empty() && created_streams_.empty() &&
+      !drain_session_pending_) {
+    // If the socket belongs to a socket pool, and there are no active streams,
+    // and the socket pool is stalled, then close the session to free up a
+    // socket slot.
+    if (stream_socket_handle_ && stream_socket_handle_->IsPoolStalled()) {
+      DoDrainSessionAsync(ERR_CONNECTION_CLOSED, "Closing idle connection.");
+    } else {
+      MaybeFinishGoingAway();
+    }
+  }
+
+  // Neither `DoDrainSessionAsync()` nor `MaybeFinishGoingAway()` deletes `this`
+  // synchronously (`SpdySession` only deletes itself in
+  // `CheckForCompleteShutdown()` from the read/write loop tasks). Process
+  // pending stream requests after the idle-drain check above so requests are
+  // not popped when the session is about to drain.
   if (availability_state_ == STATE_AVAILABLE) {
     ProcessPendingStreamRequests();
   }
@@ -3219,6 +3222,13 @@ void SpdySession::OnAltSvc(
       stream_id != 0) {
     return;
   }
+  // Alternative services are persisted, so only accept them over connections
+  // with valid certificates, with no errors (even bypassed ones).
+  SSLInfo ssl_info;
+  if (!GetSSLInfo(&ssl_info) || !ssl_info.is_valid() ||
+      IsCertStatusError(ssl_info.cert_status)) {
+    return;
+  }
   url::SchemeHostPort scheme_host_port;
   if (stream_id == 0) {
     if (origin.empty())
@@ -3229,10 +3239,6 @@ void SpdySession::OnAltSvc(
     }
     if (!gurl.SchemeIs(url::kHttpsScheme))
       return;
-    SSLInfo ssl_info;
-    if (!GetSSLInfo(&ssl_info)) {
-      return;
-    }
     if (!CanPool(transport_security_state_, ssl_info, *ssl_config_service_,
                  host_port_pair().host(), gurl.host())) {
       return;
@@ -3247,6 +3253,8 @@ void SpdySession::OnAltSvc(
     const GURL& gurl(it->second->url());
     if (!gurl.SchemeIs(url::kHttpsScheme))
       return;
+    // No need for CanPool() here, since the stream's origin was already
+    // validated against this session when the stream was created.
     scheme_host_port = url::SchemeHostPort(gurl);
   }
 
@@ -3441,6 +3449,13 @@ void SpdySession::QueueSendStalledStream(const SpdyStream& stream) {
 }
 
 void SpdySession::ResumeSendStalledStreams() {
+  // Don't resume streams if the session is draining. Streams are still
+  // resumed in `STATE_GOING_AWAY` (when `!drain_session_pending_`) so that
+  // active streams accepted by the peer before a `GOAWAY` frame can finish.
+  if (availability_state_ == STATE_DRAINING || drain_session_pending_) {
+    return;
+  }
+
   // We don't have to worry about new streams being queued, since
   // doing so would cause IsSendStalled() to return true. But we do
   // have to worry about streams being closed, as well as ourselves

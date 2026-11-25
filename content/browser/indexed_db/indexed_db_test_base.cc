@@ -4,6 +4,7 @@
 
 #include "content/browser/indexed_db/indexed_db_test_base.h"
 
+#include <optional>
 #include <set>
 #include <utility>
 
@@ -129,9 +130,7 @@ void IndexedDBTestBase::RunPostedTasks(
 storage::BucketInfo IndexedDBTestBase::GetOrCreateBucket(
     const storage::BucketInitParams& params) {
   base::test::TestFuture<storage::QuotaErrorOr<storage::BucketInfo>> future;
-  quota_manager_proxy_->UpdateOrCreateBucket(
-      params, base::SingleThreadTaskRunner::GetCurrentDefault(),
-      future.GetCallback());
+  quota_manager_proxy_->UpdateOrCreateBucket(params, future.GetCallback());
   return future.Take().value();
 }
 
@@ -228,7 +227,7 @@ IndexedDBTestBase::CreateDatabase(
                        version,
                        transaction_remote.BindNewEndpointAndPassReceiver(),
                        transaction_id, /*priority=*/0,
-                       /*request_shared_connection=*/false);
+                       /*shared_connection_id=*/std::nullopt);
 
   transaction_remote->Commit(0);
   EXPECT_CALL(database_callbacks, Complete(transaction_id)).Times(1);
@@ -263,7 +262,7 @@ IndexedDBTestBase::OpenDatabase(
                        /*version=*/1,
                        transaction_remote.BindNewEndpointAndPassReceiver(),
                        transaction_id, /*priority=*/0,
-                       /*request_shared_connection=*/false);
+                       /*shared_connection_id=*/std::nullopt);
   run_loop.Run();
 
   return mojo::AssociatedRemote<blink::mojom::IDBDatabase>(

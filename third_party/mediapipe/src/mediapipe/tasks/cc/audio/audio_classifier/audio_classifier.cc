@@ -20,7 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
-#include "absl/status/statusor.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/formats/matrix.h"
 #include "mediapipe/tasks/cc/audio/audio_classifier/proto/audio_classifier_graph_options.pb.h"
@@ -32,7 +34,7 @@ limitations under the License.
 #include "mediapipe/tasks/cc/components/processors/proto/classifier_options.pb.h"
 #include "mediapipe/tasks/cc/core/proto/inference_subgraph.pb.h"
 #include "mediapipe/tasks/cc/core/task_runner.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/api/op_resolver.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -41,6 +43,7 @@ namespace audio_classifier {
 
 namespace {
 
+using ::mediapipe::tasks::audio::core::GetCoreRunningMode;
 using ::mediapipe::tasks::components::containers::ConvertToClassificationResult;
 using ::mediapipe::tasks::components::containers::proto::ClassificationResult;
 
@@ -139,7 +142,7 @@ absl::StatusOr<std::unique_ptr<AudioClassifier>> AudioClassifier::Create(
                                            proto::AudioClassifierGraphOptions>(
       {.config = CreateGraphConfig(std::move(options_proto)),
        .task_name = kTaskName,
-       .task_running_mode = core::GetRunningModeName(options->running_mode),
+       .task_running_mode = GetCoreRunningMode(options->running_mode),
        .op_resolver = std::move(options->base_options.op_resolver),
        .packets_callback = std::move(packets_callback),
        .host_environment = options->base_options.host_environment,
@@ -158,7 +161,8 @@ absl::StatusOr<std::vector<AudioClassifierResult>> AudioClassifier::Classify(
 absl::Status AudioClassifier::ClassifyAsync(Matrix audio_block,
                                             double audio_sample_rate,
                                             int64_t timestamp_ms) {
-  MP_RETURN_IF_ERROR(CheckOrSetSampleRate(kSampleRateName, audio_sample_rate));
+  ABSL_RETURN_IF_ERROR(
+      CheckOrSetSampleRate(kSampleRateName, audio_sample_rate));
   return SendAudioStreamData(
       {{kAudioStreamName,
         MakePacket<Matrix>(std::move(audio_block))

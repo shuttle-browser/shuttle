@@ -1105,7 +1105,12 @@ void ClipBorderSidePolygonFromCorners(GraphicsContext& context,
                          .GetSkPath(),
                      kAntiAliased);
   } else {
-    context.ClipOut(opposite_edge_bounding_box);
+    // Clip out the opposite side, all the way to its outer edge, so that this
+    // side doesn't paint over it.
+    gfx::RectF opposite_side_rect = opposite_edge_bounding_box;
+    opposite_side_rect.UnionEvenIfEmpty(
+        gfx::BoundingRect(corners[2].outer.Outer(), corners[3].outer.Outer()));
+    context.ClipOut(opposite_side_rect);
   }
 
   if (!needs_miters) {
@@ -1896,33 +1901,6 @@ void BoxBorderPainter::DrawCurvedRidgeGrooveBoxSide(
   ClipContouredRect(clip_rect);
   context_.SetFillColor(CalculateInsetOutsetColor(!darken_s1, color));
   context_.FillRect(rect, auto_dark_mode);
-}
-
-gfx::Rect BoxBorderPainter::CalculateSideRectIncludingInner(
-    BoxSide side) const {
-  gfx::Rect side_rect = gfx::ToRoundedRect(outer_.Rect());
-  int width;
-
-  switch (side) {
-    case BoxSide::kTop:
-      width = side_rect.height() - Edge(BoxSide::kBottom).Width();
-      side_rect.set_height(width);
-      break;
-    case BoxSide::kBottom:
-      width = side_rect.height() - Edge(BoxSide::kTop).Width();
-      SetToBottomSideRect(side_rect, width);
-      break;
-    case BoxSide::kLeft:
-      width = side_rect.width() - Edge(BoxSide::kRight).Width();
-      side_rect.set_width(width);
-      break;
-    case BoxSide::kRight:
-      width = side_rect.width() - Edge(BoxSide::kLeft).Width();
-      SetToRightSideRect(side_rect, width);
-      break;
-  }
-
-  return side_rect;
 }
 
 // This algorithm clips as follows:

@@ -95,6 +95,7 @@
 #include "chrome/browser/ash/login/signin/token_handle_store.h"
 #include "chrome/browser/ash/login/signin/token_handle_store_factory.h"
 #include "chrome/browser/ash/login/startup_utils.h"
+#include "chrome/browser/ash/login/wizard_context.h"
 #include "chrome/browser/ash/login/wizard_controller.h"
 #include "chrome/browser/ash/net/alwayson_vpn_pre_connect_url_allowlist_service.h"
 #include "chrome/browser/ash/net/alwayson_vpn_pre_connect_url_allowlist_service_factory.h"
@@ -112,7 +113,6 @@
 #include "chrome/browser/ash/tpm/tpm_firmware_update_notification.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/first_run/first_run.h"
-#include "chrome/browser/global_features.h"
 #include "chrome/browser/metrics/first_web_contents_profiler.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/profile.h"
@@ -123,8 +123,6 @@
 #include "chrome/browser/ui/ash/login/login_display_host.h"
 #include "chrome/browser/ui/ash/system/system_tray_client_impl.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
-#include "chrome/common/chrome_constants.h"
-#include "chrome/common/logging_chrome.h"
 #include "chromeos/ash/components/account_manager/account_manager_factory.h"
 #include "chromeos/ash/components/browser_context_helper/annotated_account_id.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_flusher.h"
@@ -163,6 +161,7 @@
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
 #include "components/policy/core/common/cloud/cloud_policy_constants.h"
+#include "components/policy/proto/chrome_device_policy.pb.h"
 #include "components/prefs/pref_member.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/pref_service.h"
@@ -658,8 +657,6 @@ bool MaybeShowManagedTermsOfService(Profile* profile) {
 signin::ConsentLevel GetExpectedConsentLevel(
     signin::IdentityManager* identity_manager) {
   if (identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSync) ||
-      !base::FeatureList::IsEnabled(
-          syncer::kReplaceSyncPromosWithSignInPromos) ||
       base::FeatureList::IsEnabled(
           ::switches::kUndoChromeOsUseConsentLevelSignin)) {
     return signin::ConsentLevel::kSync;
@@ -1986,8 +1983,16 @@ bool UserSessionManager::InitializeUserSession(Profile* profile) {
 
   if (start_session_type_ == StartSessionType::kPrimary) {
     user_manager::KnownUser known_user(&local_state_.get());
-    const AccountId account_id =
-        ProfileHelper::Get()->GetUserByProfile(profile)->GetAccountId();
+    const AccountId account_id = CHECK_DEREF(
+        ash::AnnotatedAccountId::Get(profile->GetOriginalProfile()));
+    if (auto* host = LoginDisplayHost::default_host();
+        host && host->GetWizardContext()) {
+      WizardContext& wizard_context = *host->GetWizardContext();
+      CHECK(!wizard_context.onboarding_user);
+      wizard_context.onboarding_user =
+          user_manager->FindUserAndModify(account_id);
+      CHECK(wizard_context.onboarding_user);
+    }
     std::string pending_screen =
         known_user.GetPendingOnboardingScreen(account_id);
     if (!pending_screen.empty() &&
@@ -2164,7 +2169,9 @@ void UserSessionManager::FetchTokenHandle(Profile* profile,
         login::Sha1AsHexForRefreshToken(user_context_.GetRefreshToken()));
   } else {
     VLOG(1) << "UserSessionManager::OnUserProfileLoaded: existing user";
-    // Existing user.
+    // Existing user. Online sign-in always mints a new refresh token, so mark
+    // the existing token handle stale before fetching a new one.
+    token_handle_store_->SetTokenHandleStale(user_context_.GetAccountId());
     MaybeFetchTokenHandleForExistingUser(token_handle_service);
   }
 }

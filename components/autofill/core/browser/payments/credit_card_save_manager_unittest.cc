@@ -61,6 +61,7 @@
 #include "components/autofill/core/browser/payments/test_payments_autofill_client.h"
 #include "components/autofill/core/browser/payments/test_payments_network_interface.h"
 #include "components/autofill/core/browser/payments/test_virtual_card_enrollment_manager.h"
+#include "components/autofill/core/browser/strike_databases/payments/cardholder_name_fix_flow_strike_database.h"
 #include "components/autofill/core/browser/strike_databases/payments/test_credit_card_save_strike_database.h"
 #include "components/autofill/core/browser/strike_databases/payments/test_strike_database.h"
 #include "components/autofill/core/browser/studies/autofill_experiments.h"
@@ -113,7 +114,7 @@ using SaveCardOfferUserDecision =
 using UserProvidedCardDetails =
     payments::PaymentsAutofillClient::UserProvidedCardDetails;
 
-constexpr bool is_ios = !!BUILDFLAG(IS_IOS);
+constexpr bool is_mobile_build = BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS);
 
 #if !BUILDFLAG(IS_IOS)
 base::TimeDelta kVeryLargeDelta = base::Days(365) * 75;
@@ -1045,7 +1046,7 @@ TEST_F(CreditCardSaveManagerTest,
             cvc_storage_strike_database.GetStrikes(local_card.guid()));
 
   // Verify that CVC prompt is not offered.
-#if BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardLocally).Times(0);
 #else
   payments_autofill_client().ExpectLocalSaveWithPromptShown(false);
@@ -1077,11 +1078,11 @@ TEST_F(CreditCardSaveManagerTest,
   CvcStorageStrikeDatabase cvc_storage_strike_database =
       CvcStorageStrikeDatabase(&strike_database());
   CreditCard local_card = test::GetCreditCard();
-  // On iOS, the prompt is suppressed when the delay condition is not met,
-  // resulting in 2 calls. On other platforms (like Desktop), the client is
-  // called even when suppressed, resulting in 3 calls.
+  // On mobile, the prompt is suppressed when the delay condition is not met,
+  // resulting in 2 calls. On Desktop, the client is called even when
+  // suppressed, resulting in 3 calls.
   EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardLocally)
-      .Times(is_ios ? 2 : 3)
+      .Times(is_mobile_build ? 2 : 3)
       .WillRepeatedly(
           [](const CreditCard&, SaveCreditCardOptions,
              payments::PaymentsAutofillClient::LocalSaveCardPromptCallback
@@ -1189,7 +1190,7 @@ TEST_F(CreditCardSaveManagerTest,
                 base::NumberToString(server_card.instrument_id())));
 
   // Verify that CVC prompt is not offered.
-#if BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardToCloud).Times(0);
 #else
   payments_autofill_client().ExpectCloudSaveWithPromptShown(false);
@@ -1210,7 +1211,7 @@ TEST_F(CreditCardSaveManagerTest,
       1, base::NumberToString(server_card.instrument_id()));
 
   // Verify that CVC prompt is not offered.
-#if BUILDFLAG(IS_IOS)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardToCloud).Times(0);
 #else
   payments_autofill_client().ExpectCloudSaveWithPromptShown(false);
@@ -7626,5 +7627,396 @@ TEST_P(CreditCardSaveManagerWithSaveCardUserDecisionParameterized,
       "Autofill.SaveCreditCardPromptResult.Local",
       GetExpectedSaveCardPromptResult(), 1);
 }
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+// Tests that `AttemptToOfferCardholderNameUpdate` sends a
+// `GetDetailsForUpdateCard` request with the expected details when the card is
+// below the max strike limit and the required delay since the last strike has
+// passed.
+TEST_F(CreditCardSaveManagerTest,
+       AttemptToOfferCardholderNameUpdate_SendsGetDetailsForUpdateCardRequest) {
+  personal_data().test_payments_data_manager().SetPaymentsCustomerData(
+      std::make_unique<PaymentsCustomerData>(/*customer_id=*/"123456"));
+  CreditCard server_card = test::GetMaskedServerCard();
+  CardholderNameFixFlowStrikeDatabase strike_db(&strike_database());
+  strike_db.AddStrikes(strike_db.GetMaxStrikesLimit() - 1,
+                       base::NumberToString(server_card.instrument_id()));
+  task_environment_.FastForwardBy(
+      strike_db.GetRequiredDelaySinceLastStrike().value());
+
+  EXPECT_CALL(
+      multiple_request_payments_network_interface(),
+      GetDetailsForUpdateCard(
+          AllOf(
+              Field(
+                  &payments::GetDetailsForUpdateCardRequestDetails::app_locale,
+                  "en-US"),
+              Field(&payments::GetDetailsForUpdateCardRequestDetails::
+                        billing_customer_number,
+                    123456L),
+              Field(&payments::GetDetailsForUpdateCardRequestDetails::
+                        instrument_id,
+                    server_card.instrument_id())),
+          _));
+
+  EXPECT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+}
+
+// Tests that `AttemptToOfferCardholderNameUpdate` returns false and does not
+// send `GetDetailsForUpdateCard` for a local card or for a server card without
+// an instrument ID.
+TEST_F(CreditCardSaveManagerTest,
+       AttemptToOfferCardholderNameUpdate_NotOfferedForIneligibleCards) {
+  CreditCard server_card_without_instrument_id = test::GetMaskedServerCard();
+  server_card_without_instrument_id.set_instrument_id(0);
+
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              GetDetailsForUpdateCard)
+      .Times(0);
+
+  EXPECT_FALSE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      test::GetCreditCard()));
+  EXPECT_FALSE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card_without_instrument_id));
+}
+
+// Tests that `AttemptToOfferCardholderNameUpdate` returns false and does not
+// send `GetDetailsForUpdateCard` when max strikes have been reached.
+TEST_F(CreditCardSaveManagerTest,
+       AttemptToOfferCardholderNameUpdate_NotOfferedWithMaxStrikes) {
+  CreditCard server_card = test::GetMaskedServerCard();
+  CardholderNameFixFlowStrikeDatabase strike_db(&strike_database());
+  strike_db.AddStrikes(strike_db.GetMaxStrikesLimit(),
+                       base::NumberToString(server_card.instrument_id()));
+  task_environment_.FastForwardBy(
+      strike_db.GetRequiredDelaySinceLastStrike().value());
+
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              GetDetailsForUpdateCard)
+      .Times(0);
+  EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardToCloud).Times(0);
+
+  EXPECT_FALSE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+}
+
+// Tests that `AttemptToOfferCardholderNameUpdate` returns false and does not
+// send `GetDetailsForUpdateCard` when the required strike delay has not passed.
+TEST_F(CreditCardSaveManagerTest,
+       AttemptToOfferCardholderNameUpdate_NotOfferedWithoutRequiredDelay) {
+  CreditCard server_card = test::GetMaskedServerCard();
+  CardholderNameFixFlowStrikeDatabase strike_db(&strike_database());
+  strike_db.AddStrike(base::NumberToString(server_card.instrument_id()));
+
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              GetDetailsForUpdateCard)
+      .Times(0);
+  EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardToCloud).Times(0);
+
+  EXPECT_FALSE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+}
+
+// Tests that `OnDidGetDetailsForUpdateCard` stores the context token and calls
+// `ShowSaveCreditCardToCloud` with `kCardholderNameUpdateOnly` when the
+// preflight request succeeds.
+TEST_F(CreditCardSaveManagerTest,
+       OnDidGetDetailsForUpdateCard_SuccessShowsPrompt) {
+  CreditCard server_card = test::GetMaskedServerCard();
+
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              GetDetailsForUpdateCard)
+      .WillOnce([](const payments::GetDetailsForUpdateCardRequestDetails&,
+                   base::OnceCallback<void(
+                       payments::PaymentsAutofillClient::PaymentsRpcResult,
+                       const std::string&)> callback) {
+        std::move(callback).Run(
+            payments::PaymentsAutofillClient::PaymentsRpcResult::kSuccess,
+            "test_context_token");
+        return payments::RequestId("11223344");
+      });
+  EXPECT_CALL(payments_autofill_client(),
+              ShowSaveCreditCardToCloud(
+                  server_card, testing::IsEmpty(),
+                  AllOf(Field(&SaveCreditCardOptions::show_prompt, true),
+                        Field(&SaveCreditCardOptions::card_save_type,
+                              payments::PaymentsAutofillClient::CardSaveType::
+                                  kCardholderNameUpdateOnly)),
+                  _));
+
+  EXPECT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+  EXPECT_EQ(
+      credit_card_save_manager().update_card_request_details()->context_token,
+      "test_context_token");
+}
+
+// Tests that `OnDidGetDetailsForUpdateCard` shows the prompt for the card that
+// the preflight request was sent for, even if another save flow runs while the
+// request is pending.
+TEST_F(CreditCardSaveManagerTest,
+       OnDidGetDetailsForUpdateCard_ShowsPromptForCardFromPreflight) {
+  CreditCard server_card = test::GetMaskedServerCard();
+  base::OnceCallback<void(payments::PaymentsAutofillClient::PaymentsRpcResult,
+                          const std::string&)>
+      preflight_callback;
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              GetDetailsForUpdateCard)
+      .WillOnce([&preflight_callback](
+                    const payments::GetDetailsForUpdateCardRequestDetails&,
+                    base::OnceCallback<void(
+                        payments::PaymentsAutofillClient::PaymentsRpcResult,
+                        const std::string&)> callback) {
+        preflight_callback = std::move(callback);
+        return payments::RequestId("11223344");
+      });
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+
+  // Offer local CVC save for a different card while the preflight request is
+  // pending.
+  credit_card_save_manager().AttemptToOfferCvcLocalSave(
+      test::WithCvc(test::GetCreditCard()));
+
+  EXPECT_CALL(payments_autofill_client(),
+              ShowSaveCreditCardToCloud(server_card, _, _, _));
+  std::move(preflight_callback)
+      .Run(payments::PaymentsAutofillClient::PaymentsRpcResult::kSuccess,
+           "test_context_token");
+}
+
+// Test fixture for the cardholder name update flow after the
+// GetDetailsForUpdateCard preflight request is sent.
+class CreditCardSaveManagerCardholderNameUpdateTest
+    : public CreditCardSaveManagerTest {
+ protected:
+  using PaymentsRpcResult = payments::PaymentsAutofillClient::PaymentsRpcResult;
+
+  static constexpr char kContextToken[] = "test_context_token";
+
+  // Expects the GetDetailsForUpdateCard preflight request to be sent, and
+  // completes it with `result`.
+  void ExpectPreflightResult(PaymentsRpcResult result) {
+    EXPECT_CALL(multiple_request_payments_network_interface(),
+                GetDetailsForUpdateCard)
+        .WillOnce(
+            [result](
+                const payments::GetDetailsForUpdateCardRequestDetails&,
+                base::OnceCallback<void(PaymentsRpcResult, const std::string&)>
+                    callback) {
+              std::move(callback).Run(result, kContextToken);
+              return payments::RequestId("11223344");
+            });
+  }
+
+  // Expects the UpdateCard request to be sent, and completes it with `result`.
+  void ExpectUpdateCardResult(PaymentsRpcResult result) {
+    EXPECT_CALL(multiple_request_payments_network_interface(), UpdateCard)
+        .WillOnce(
+            [result](const payments::UpdateCardRequestDetails&,
+                     base::OnceCallback<void(PaymentsRpcResult)> callback) {
+              std::move(callback).Run(result);
+              return payments::RequestId("11223344");
+            });
+  }
+
+  // Makes the offer prompt immediately report `user_decision`, with
+  // `cardholder_name` as the name entered by the user.
+  void SetPromptDecision(SaveCardOfferUserDecision user_decision,
+                         const std::u16string& cardholder_name = u"Jane Doe") {
+    UserProvidedCardDetails user_provided_card_details;
+    user_provided_card_details.cardholder_name = cardholder_name;
+    payments_autofill_client().SetCloudSaveCallbackOfferDecision(
+        user_decision, user_provided_card_details);
+  }
+
+  int GetStrikes(const CreditCard& card) {
+    return CardholderNameFixFlowStrikeDatabase(&strike_database())
+        .GetStrikes(base::NumberToString(card.instrument_id()));
+  }
+
+  int GetMaxStrikesLimit() {
+    return CardholderNameFixFlowStrikeDatabase(&strike_database())
+        .GetMaxStrikesLimit();
+  }
+};
+
+// Tests that the prompt is not shown and no strike is added for the card when
+// the preflight request fails.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest,
+       PreflightFailed_DoesNotShowPromptOrAddStrike) {
+  CreditCard server_card = test::GetMaskedServerCard();
+  ExpectPreflightResult(PaymentsRpcResult::kTryAgainFailure);
+  EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardToCloud).Times(0);
+
+  EXPECT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+  EXPECT_EQ(GetStrikes(server_card), 0);
+}
+
+// Tests that accepting the prompt after the risk data is loaded sends an
+// UpdateCard request with the expected details for the card the prompt was
+// shown for, and clears the card's strikes.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest,
+       Accepted_SendsUpdateCardRequestForCardFromPrompt) {
+  personal_data().test_payments_data_manager().SetPaymentsCustomerData(
+      std::make_unique<PaymentsCustomerData>(/*customer_id=*/"123456"));
+  CreditCard server_card = test::WithCvc(test::GetMaskedServerCard(), u"123");
+  CardholderNameFixFlowStrikeDatabase strike_db(&strike_database());
+  strike_db.AddStrikes(strike_db.GetMaxStrikesLimit() - 1,
+                       base::NumberToString(server_card.instrument_id()));
+  task_environment_.FastForwardBy(
+      strike_db.GetRequiredDelaySinceLastStrike().value());
+
+  ExpectPreflightResult(PaymentsRpcResult::kSuccess);
+  payments::PaymentsAutofillClient::UploadSaveCardPromptCallback
+      prompt_callback;
+  EXPECT_CALL(payments_autofill_client(), ShowSaveCreditCardToCloud)
+      .WillOnce(
+          [&prompt_callback](
+              const CreditCard&, const LegalMessageLines&,
+              SaveCreditCardOptions,
+              payments::PaymentsAutofillClient::UploadSaveCardPromptCallback
+                  callback) { prompt_callback = std::move(callback); });
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+
+  // Offer local CVC save for a different card while the prompt is shown.
+  credit_card_save_manager().AttemptToOfferCvcLocalSave(
+      test::WithCvc(test::GetCreditCard(), u"456"));
+
+  EXPECT_CALL(
+      multiple_request_payments_network_interface(),
+      UpdateCard(
+          AllOf(
+              Field(&payments::UpdateCardRequestDetails::app_locale, "en-US"),
+              Field(
+                  &payments::UpdateCardRequestDetails::billing_customer_number,
+                  123456L),
+              Field(&payments::UpdateCardRequestDetails::instrument_id,
+                    server_card.instrument_id()),
+              Field(&payments::UpdateCardRequestDetails::cardholder_name,
+                    u"John Smith"),
+              Field(&payments::UpdateCardRequestDetails::cvc, u"123"),
+              Field(&payments::UpdateCardRequestDetails::context_token,
+                    kContextToken),
+              Field(&payments::UpdateCardRequestDetails::risk_data,
+                    "some risk data")),
+          _));
+  UserProvidedCardDetails user_provided_card_details;
+  user_provided_card_details.cardholder_name = u"John Smith";
+  std::move(prompt_callback)
+      .Run(SaveCardOfferUserDecision::kAccepted, user_provided_card_details);
+
+  EXPECT_EQ(GetStrikes(server_card), 0);
+}
+
+// Tests that if the prompt is accepted before the risk data is loaded, the
+// UpdateCard request is sent once the risk data is loaded.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest,
+       Accepted_SendsUpdateCardRequestAfterRiskDataIsLoaded) {
+  payments_autofill_client().set_defer_load_risk_data_responses(true);
+  ExpectPreflightResult(PaymentsRpcResult::kSuccess);
+  SetPromptDecision(SaveCardOfferUserDecision::kAccepted);
+  EXPECT_CALL(multiple_request_payments_network_interface(), UpdateCard)
+      .Times(0);
+
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      test::WithCvc(test::GetMaskedServerCard())));
+  testing::Mock::VerifyAndClearExpectations(
+      &multiple_request_payments_network_interface());
+
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              UpdateCard(Field(&payments::UpdateCardRequestDetails::risk_data,
+                               "some risk data"),
+                         _));
+  ASSERT_EQ(payments_autofill_client().load_risk_data_callbacks().size(), 1u);
+  std::move(payments_autofill_client().load_risk_data_callbacks().front())
+      .Run("some risk data");
+}
+
+// Tests that declining the prompt adds the max number of strikes for the card
+// and does not send an UpdateCard request.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest, Declined_AddsMaxStrikes) {
+  CreditCard server_card = test::GetMaskedServerCard();
+  ExpectPreflightResult(PaymentsRpcResult::kSuccess);
+  SetPromptDecision(SaveCardOfferUserDecision::kDeclined);
+  EXPECT_CALL(multiple_request_payments_network_interface(), UpdateCard)
+      .Times(0);
+
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+
+  EXPECT_EQ(GetStrikes(server_card), GetMaxStrikesLimit());
+}
+
+// Tests that closing the prompt without accepting or declining adds a strike
+// for the card and does not send an UpdateCard request.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest, Ignored_AddsStrike) {
+  CreditCard server_card = test::GetMaskedServerCard();
+  ExpectPreflightResult(PaymentsRpcResult::kSuccess);
+  SetPromptDecision(SaveCardOfferUserDecision::kIgnored);
+  EXPECT_CALL(multiple_request_payments_network_interface(), UpdateCard)
+      .Times(0);
+
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+
+  EXPECT_EQ(GetStrikes(server_card), 1);
+}
+
+// Tests that a successful UpdateCard request shows the success confirmation
+// and does not add a strike.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest,
+       UpdateCardSucceeded_ShowsSuccessConfirmation) {
+  CreditCard server_card = test::WithCvc(test::GetMaskedServerCard());
+  ExpectPreflightResult(PaymentsRpcResult::kSuccess);
+  SetPromptDecision(SaveCardOfferUserDecision::kAccepted);
+  ExpectUpdateCardResult(PaymentsRpcResult::kSuccess);
+  EXPECT_CALL(payments_autofill_client(),
+              CreditCardUploadCompleted(PaymentsRpcResult::kSuccess, _));
+
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+
+  // A strike is added upon failure, but not for a success.
+  EXPECT_EQ(GetStrikes(server_card), 0);
+}
+
+// Tests that a failed UpdateCard request shows the failure confirmation and
+// adds a strike for the card.
+TEST_F(CreditCardSaveManagerCardholderNameUpdateTest,
+       UpdateCardFailed_ShowsFailureConfirmationAndAddsStrike) {
+  CreditCard server_card = test::WithCvc(test::GetMaskedServerCard());
+  ExpectPreflightResult(PaymentsRpcResult::kSuccess);
+  SetPromptDecision(SaveCardOfferUserDecision::kAccepted);
+  ExpectUpdateCardResult(PaymentsRpcResult::kPermanentFailure);
+  EXPECT_CALL(
+      payments_autofill_client(),
+      CreditCardUploadCompleted(PaymentsRpcResult::kPermanentFailure, _));
+
+  ASSERT_TRUE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      server_card));
+
+  EXPECT_EQ(GetStrikes(server_card), 1);
+}
+
+#else  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+
+// Tests that `AttemptToOfferCardholderNameUpdate` returns false and does not
+// send `GetDetailsForUpdateCard` on mobile, where the offer prompt is not
+// available.
+TEST_F(CreditCardSaveManagerTest,
+       AttemptToOfferCardholderNameUpdate_NotOfferedOnMobile) {
+  EXPECT_CALL(multiple_request_payments_network_interface(),
+              GetDetailsForUpdateCard)
+      .Times(0);
+
+  EXPECT_FALSE(credit_card_save_manager().AttemptToOfferCardholderNameUpdate(
+      test::GetMaskedServerCard()));
+}
+
+#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 }  // namespace autofill

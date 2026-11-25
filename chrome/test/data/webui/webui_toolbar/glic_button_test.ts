@@ -2,14 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {assert} from 'chrome://resources/js/assert.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+import type {GlicButtonElement} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 import {BrowserProxyImpl, ContextMenuType, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {GlicButtonElement} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 import {TestToolbarBrowserProxy} from './test_toolbar_browser_proxy.js';
 
@@ -76,6 +76,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     assertTrue(element.state.open);
@@ -97,6 +98,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -120,6 +122,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -146,6 +149,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -162,6 +166,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -206,6 +211,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: 'Summarize this page',
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -228,6 +234,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: 'Summarize this page',
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -241,6 +248,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await chip.updateComplete;
@@ -291,20 +299,6 @@ suite('GlicButtonTest', function() {
     assertFalse(chip.classList.contains('help-anchor-highlight'));
   });
 
-  test('DisabledState', async function() {
-    const chip = element.$.button;
-    assertFalse(chip.disabled);
-    assertFalse(chip.$.button.hasAttribute('disabled'));
-
-    element.enabled = false;
-    await element.updateComplete;
-    await chip.updateComplete;
-    await microtasksFinished();
-
-    assertTrue(chip.disabled);
-    assertTrue(chip.$.button.hasAttribute('disabled'));
-  });
-
   test('ContextMenuEventTriggersShowContextMenu', async function() {
     assertEquals(
         0, browserProxy.toolbarUIHandler.getCallCount('showContextMenu'));
@@ -336,6 +330,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     assertTrue(element.state.shouldShow);
@@ -348,6 +343,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     assertFalse(element.state.shouldShow);
@@ -400,6 +396,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await element.$.button.updateComplete;
@@ -425,6 +422,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: 'Summarize this page',
+      isSplit: false,
     };
     await element.updateComplete;
     await element.$.button.updateComplete;
@@ -448,6 +446,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     await element.$.button.updateComplete;
@@ -538,6 +537,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     assertEquals(1, requestLayoutCount);
@@ -550,6 +550,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null,
+      isSplit: false,
     };
     await element.updateComplete;
     assertEquals(1, requestLayoutCount);
@@ -562,6 +563,7 @@ suite('GlicButtonTest', function() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: 'Summarize',
+      isSplit: false,
     };
     await element.updateComplete;
     assertEquals(2, requestLayoutCount);

@@ -11,8 +11,8 @@
 #include "base/command_line.h"
 #include "base/containers/flat_set.h"
 #include "base/feature_list.h"
+#include "base/functional/callback_helpers.h"
 #include "base/location.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
 #include "base/rand_util.h"
@@ -34,7 +34,6 @@
 #include "chrome/browser/glic/experimental_opt_in/glic_experimental_opt_in_controller.h"
 #include "chrome/browser/glic/experimental_triggering/glic_experimental_triggering_transport_handler.h"
 #include "chrome/browser/glic/glic_enums.h"
-#include "chrome/browser/glic/glic_metrics_provider.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/glic_profile_manager.h"
 #include "chrome/browser/glic/glic_warming_checks.h"
@@ -53,9 +52,10 @@
 #include "chrome/browser/glic/host/host.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_feature.h"
 #include "chrome/browser/glic/public/glic_fre_store.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/glic/public/glic_provider_latch.h"
+#include "chrome/browser/glic/public/glic_provider_metrics.h"
 #include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/public/service/glic_activity_manager.h"
 #include "chrome/browser/glic/public/service/legacy_glic_activity_manager.h"
@@ -97,8 +97,8 @@
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/abseil-cpp/absl/strings/str_format.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/views/widget/widget.h"
 #include "url/gurl.h"
 
@@ -128,14 +128,17 @@ std::string_view GlicWarmingTriggerToString(GlicWarmingTrigger trigger) {
       return "Iph";
     case GlicWarmingTrigger::kSelectionOverlay:
       return "SelectionOverlay";
+    case GlicWarmingTrigger::kGeminiWeb:
+      return "GeminiWeb";
   }
 }
 
-void RecordPrewarmingChecksResult(GlicWarmingTrigger trigger,
+void RecordPrewarmingChecksResult(Profile* profile,
+                                  GlicWarmingTrigger trigger,
                                   GlicPrewarmingChecksResult result) {
-  base::UmaHistogramEnumeration(
-      base::StrCat({"Glic.Prewarming.ChecksResult.",
-                    GlicWarmingTriggerToString(trigger)}),
+  GlicMetricReporter(profile).RecordEnumeration(
+      base::StrCat(
+          {"Prewarming.ChecksResult.", GlicWarmingTriggerToString(trigger)}),
       result);
 }
 
@@ -187,8 +190,9 @@ GlicKeyedService::GlicKeyedService(
       metrics_(std::make_unique<GlicMetrics>(profile, enabling_.get())),
       opt_in_controller_(
           std::make_unique<GlicExperimentalOptInController>(profile)),
-      client_data_storage_(
-          std::make_unique<GlicClientDataStorage>(profile->GetPrefs())),
+      client_data_storage_(std::make_unique<GlicClientDataStorage>(
+          profile->GetPrefs(),
+          provider_spec().GetGuestUrlKey())),
       instance_coordinator_(std::make_unique<GlicInstanceCoordinatorImpl>(
           profile,
           identity_manager,
@@ -216,14 +220,12 @@ GlicKeyedService::GlicKeyedService(
               features::kGlicColdWarmingUsePerformanceManager),
           .delay = base::Milliseconds(features::kGlicWarmingDelayMs.Get()),
       }),
+      gemini_web_warming_scheduler_(GlicWarmingScheduler::Options{
+          .use_performance_manager = true,
+      }),
       tab_data_observer_(std::make_unique<GlicTabDataObserver>(profile)),
       tab_favicon_observer_(std::make_unique<GlicTabFaviconObserver>(profile)) {
   CHECK(GlicEnabling::IsProfileEligible(Profile::FromBrowserContext(profile)));
-
-  // Reconcile `prefs::kGlicPromotionSourceCohort` across loaded profiles and
-  // register the in-memory synthetic trial on startup if any profile has a
-  // persisted cohort (or mark `MultiProfileDetected` if profiles conflict).
-  GlicMetricsProvider::RegisterPromotionSourceSyntheticTrial(profile);
 
   GlicEnabling::RegisterDefaultHotkeyScopeSyntheticTrial(profile);
 
@@ -247,6 +249,10 @@ GlicKeyedService::GlicKeyedService(
     TryPreload(GlicWarmingTrigger::kStartup);
   }
 
+#if !BUILDFLAG(IS_ANDROID)
+  GlicMediaIntegration::EnsurePeerConnectionTrackerInitialized(profile_);
+#endif
+
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(&GlicKeyedService::InitializeAfterConstruction,
                                 GetWeakPtr()));
@@ -257,7 +263,8 @@ GlicKeyedService::GlicKeyedService(
               &GlicKeyedService::OnExperimentalTriggeringStateChanged,
               base::Unretained(this)));
 
-  if (base::FeatureList::IsEnabled(browser_actuator::kBrowserActuator) &&
+  if (provider_spec().SupportsFeature(GlicFeature::kExperimentalTriggering) &&
+      base::FeatureList::IsEnabled(browser_actuator::kBrowserActuator) &&
       base::FeatureList::IsEnabled(
           browser_actuator::
               kEnableBrowserActuatorForGlicExperimentalTriggering)) {
@@ -315,6 +322,7 @@ bool GlicKeyedService::IsNoWebviewEnabled() const {
 
 void GlicKeyedService::Shutdown() {
   cold_warming_scheduler_.Cancel();
+  gemini_web_warming_scheduler_.Cancel();
   if (experimental_triggering_transport_handler_factory_) {
     browser_actuator::transport::TransportService* transport_service =
         browser_actuator::transport::TransportServiceFactory::GetForProfile(
@@ -470,9 +478,9 @@ tabs::TabInterface* GlicKeyedService::CreateTab(
         profile_, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
   }
 
-  params->disposition = open_in_background
-                            ? WindowOpenDisposition::kNewBackgroundTab
-                            : WindowOpenDisposition::kNewForegroundTab;
+  params->disposition =
+      open_in_background ? ui::mojom::WindowOpenDisposition::kNewBackgroundTab
+                         : ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   // Set navigation as renderer initiated to open links in their app/PWA (if
   // installed).
   params->is_renderer_initiated = true;
@@ -545,6 +553,11 @@ void GlicKeyedService::TryPreload(GlicWarmingTrigger trigger) {
         &GlicKeyedService::TryPreloadAfterDelay, GetWeakPtr(), trigger));
     return;
   }
+  if (trigger == GlicWarmingTrigger::kGeminiWeb) {
+    gemini_web_warming_scheduler_.Schedule(base::BindOnce(
+        &GlicKeyedService::TryPreloadAfterDelay, GetWeakPtr(), trigger));
+    return;
+  }
 
   ShouldPreloadForProfile(
       profile_, trigger,
@@ -573,7 +586,7 @@ void GlicKeyedService::FinishPreload(GlicWarmingTrigger trigger,
     }
   }
 
-  RecordPrewarmingChecksResult(trigger, result);
+  RecordPrewarmingChecksResult(profile_, trigger, result);
   if (preload_callback_) {
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE, base::BindOnce(std::move(preload_callback_)));

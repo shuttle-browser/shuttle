@@ -6,10 +6,12 @@
 #define COMPONENTS_PDF_RENDERER_PDF_ACCESSIBILITY_TREE_BUILDER_H_
 
 #include <map>
+#include <optional>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
+#include "components/pdf/renderer/pdf_accessibility_table_detector.h"
 #include "components/pdf/renderer/pdf_accessibility_tree.h"
 #include "pdf/accessibility_structs.h"
 #include "pdf/page_character_index.h"
@@ -65,7 +67,8 @@ class PdfAccessibilityTreeBuilder {
   }
   ui::AXNodeData* page_node() const { return page_node_; }
   const std::vector<chrome_pdf::AccessibilityTextRunInfo>& text_runs() const {
-    return *text_runs_;
+    return split_result_.text_runs.empty() ? *text_runs_
+                                           : split_result_.text_runs;
   }
   const std::vector<chrome_pdf::AccessibilityCharInfo>& chars() const {
     return *chars_;
@@ -86,10 +89,6 @@ class PdfAccessibilityTreeBuilder {
   const std::vector<chrome_pdf::AccessibilityFormGraphicInfo>& graphics()
       const {
     return *graphics_;
-  }
-  const std::vector<chrome_pdf::AccessibilityLineSegment>& line_segments()
-      const {
-    return *line_segments_;
   }
   uint32_t page_index() const { return page_index_; }
 
@@ -132,7 +131,25 @@ class PdfAccessibilityTreeBuilder {
   void NameHeadingsFromContents();
 
   const bool mark_headings_using_heuristic_;
-  std::vector<uint32_t> text_run_start_indices_;
+
+  // Each member through `graphics_` may be initialized from the ones before it,
+  // so keep them in this order.
+  //
+  // Whether `BuildPageTree()` uses the structure tree instead of heuristics.
+  const bool use_structure_mode_;
+  // Only extracted in heuristic mode, since the structure tree refers to text
+  // runs that must not change.
+  const std::vector<RulingLine> ruling_lines_;
+  // Text runs split at vertical lines in `ruling_lines_`, such as table column
+  // dividers. `split_result_.text_runs` is used in place of `text_runs_` if not
+  // empty.
+  const SplitTextRunsResult split_result_;
+  const std::vector<uint32_t> text_run_start_indices_;
+  // Copies of the links, images, highlights, and graphics with text run indices
+  // remapped to `split_result_.text_runs`, or unset if no run was split. All
+  // other fields are left empty. `links_` through `graphics_` refer to these if
+  // set.
+  const std::optional<chrome_pdf::AccessibilityPageObjects> split_page_objects_;
   const raw_ref<const std::vector<chrome_pdf::AccessibilityTextRunInfo>>
       text_runs_;
   const raw_ref<const std::vector<chrome_pdf::AccessibilityCharInfo>> chars_;
@@ -142,8 +159,6 @@ class PdfAccessibilityTreeBuilder {
       highlights_;
   const raw_ref<const std::vector<chrome_pdf::AccessibilityFormGraphicInfo>>
       graphics_;
-  const raw_ref<const std::vector<chrome_pdf::AccessibilityLineSegment>>
-      line_segments_;
   const raw_ptr<const chrome_pdf::AccessibilityStructureElement>
       page_structure_tree_;
 

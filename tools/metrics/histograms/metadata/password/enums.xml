@@ -344,7 +344,7 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="OTP detected"/>
 </enum>
 
-<!-- LINT.ThenChange(/chrome/browser/password_manager/password_change_delegate.h) -->
+<!-- LINT.ThenChange(/chrome/browser/password_manager/password_change_delegate_impl.h:CoarseFinalPasswordChangeState) -->
 
 <!-- LINT.IfChange(CredentialManagerAndroidGetResult) -->
 
@@ -523,16 +523,6 @@ chromium-metrics-reviews@google.com.
 <enum name="GenerationDialogChoice">
   <int value="0" label="Accepted"/>
   <int value="1" label="Rejected"/>
-</enum>
-
-<enum name="GetChangePasswordUrlMetric">
-  <int value="0" label="Url override was not fetched yet"/>
-  <int value="1" label="Url override was available and used"/>
-  <int value="2" label="No url override was available"/>
-  <int value="3"
-      label="(Deprecated) Url override was available in the FacetGroup and
-             used"/>
-  <int value="4" label="Url override was available for the main domain"/>
 </enum>
 
 <enum name="HandleSubmittedFormStatus">
@@ -1537,6 +1527,9 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="Never save for this site"/>
   <int value="6" label="Key retrieval failed or canceled"/>
   <int value="7" label="Tab destroyed before resolution"/>
+  <int value="8"
+      label="Trusted vault error resolution abandoned (navigation, new
+             password submission, account change)"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/password_manager/core/browser/password_manager_metrics_util.h:SaveWithTrustedVaultErrorOutcome) -->
@@ -1585,6 +1578,9 @@ chromium-metrics-reviews@google.com.
       label="Clicked 'About password change' link in the password change
              bubble."/>
   <int value="16" label="Clicked 'Not now' in the save password bubble."/>
+  <int value="17"
+      label="Clicked 'Continue' to resolve an error blocking saving in the
+             save/update password bubble"/>
 </enum>
 
 <!-- LINT.ThenChange(/components/password_manager/core/browser/password_manager_metrics_util.h:UIDismissalReason) -->

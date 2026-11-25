@@ -17,11 +17,13 @@ import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.ApplicationState;
 import org.chromium.base.ApplicationStatus;
+import org.chromium.base.ApplicationStatus.ApplicationStateListener;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.omnibox.R;
+import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.util.BrowserUiUtils;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.base.WindowAndroid.IntentCallback;
@@ -31,13 +33,19 @@ import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
 
 /**
- * Handles the platform-specific speech recognition intent. Encapsulates permission checks, intent
- * launching, result parsing, and metrics.
+ * Handles the speech recognition intent, either the platform-specific one or the Google app Voice
+ * Plate. Encapsulates permission checks, intent launching, result parsing, and metrics.
  */
 @NullMarked
 public class VoiceRecognitionIntentHandler {
+    /** The minimum confidence value reported for a manually stopped voice recognition result. */
+    private static final float MIN_CONFIDENCE = 0.0f;
+
+    /** The maximum confidence value reported for a voice recognition result. */
+    private static final float MAX_CONFIDENCE = 1.0f;
 
     /**
      * VoiceInteractionEventSource defined in tools/metrics/histograms/enums.xml.
@@ -102,14 +110,17 @@ public class VoiceRecognitionIntentHandler {
     }
 
     private final WindowAndroid mWindowAndroid;
+    private final Supplier<@Nullable Profile> mProfileSupplier;
     private @Nullable Long mQueryStartTimeMs;
     private @Nullable Boolean mIsVoiceSearchEnabledCached;
     private boolean mRegisteredActivityStateListener;
-    private final ApplicationStatus.ApplicationStateListener mApplicationStateListener =
+    private final ApplicationStateListener mApplicationStateListener =
             this::onApplicationStateChange;
 
-    public VoiceRecognitionIntentHandler(WindowAndroid windowAndroid) {
+    public VoiceRecognitionIntentHandler(
+            WindowAndroid windowAndroid, Supplier<@Nullable Profile> profileSupplier) {
         mWindowAndroid = windowAndroid;
+        mProfileSupplier = profileSupplier;
     }
 
     public void destroy() {
@@ -130,14 +141,16 @@ public class VoiceRecognitionIntentHandler {
         if (mWindowAndroid == null) return false;
         Activity activity = mWindowAndroid.getActivity().get();
         if (activity == null) return false;
-        if (!VoiceRecognitionUtil.isVoiceSearchPermittedByPolicy(/* strictPolicyCheck= */ false)) {
+        Profile profile = mProfileSupplier.get();
+        if (!VoiceRecognitionUtil.isVoiceSearchPermittedByPolicy(
+                profile, /* strictPolicyCheck= */ false)) {
             return false;
         }
 
         if (mIsVoiceSearchEnabledCached == null) {
             mIsVoiceSearchEnabledCached =
                     !BrowserUiUtils.isAndroidAutoProjected(activity)
-                            && VoiceRecognitionUtil.isVoiceSearchEnabled(mWindowAndroid);
+                            && VoiceRecognitionUtil.isVoiceSearchEnabled(mWindowAndroid, profile);
 
             if (!mRegisteredActivityStateListener) {
                 ApplicationStatus.registerApplicationStateListener(mApplicationStateListener);
@@ -149,13 +162,31 @@ public class VoiceRecognitionIntentHandler {
     }
 
     /**
-     * Starts the speech recognition flow.
+     * Starts the speech recognition flow using the system speech recognizer.
      *
      * @param source The source of the voice search initiation, such as NTP or omnibox.
      * @param callback The callback to receive completion or cancellation events.
      */
     public void startVoiceRecognition(
             @VoiceInteractionSource int source, RecognitionCallback callback) {
+        startVoiceRecognition(source, callback, /* voicePlateIntent= */ null);
+    }
+
+    /**
+     * Starts the speech recognition flow.
+     *
+     * <p>Enterprise policy and audio permission checks apply regardless of the recognizer used.
+     *
+     * @param source The source of the voice search initiation, such as NTP or omnibox.
+     * @param callback The callback to receive completion or cancellation events.
+     * @param voicePlateIntent Optional intent delegating recognition to the Google app Voice Plate.
+     *     Results returned by the Voice Plate are treated as high confidence. When null, or when
+     *     the intent cannot be launched, the system speech recognizer is used instead.
+     */
+    public void startVoiceRecognition(
+            @VoiceInteractionSource int source,
+            RecognitionCallback callback,
+            @Nullable Intent voicePlateIntent) {
         ThreadUtils.assertOnUiThread();
         startTrackingQueryDuration();
 
@@ -170,35 +201,79 @@ public class VoiceRecognitionIntentHandler {
             return;
         }
 
-        if (!VoiceRecognitionUtil.isVoiceSearchPermittedByPolicy(/* strictPolicyCheck= */ true)) {
+        if (!VoiceRecognitionUtil.isVoiceSearchPermittedByPolicy(
+                mProfileSupplier.get(), /* strictPolicyCheck= */ true)) {
             callback.onCanceled();
             return;
         }
 
-        startSystemForVoiceSearch(activity, source, callback);
-    }
-
-    private void startSystemForVoiceSearch(
-            Activity activity, @VoiceInteractionSource int source, RecognitionCallback callback) {
         ensureAudioPermissionGranted(
                 callback,
-                () -> {
-                    Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
-                    intent.putExtra(
-                            RecognizerIntent.EXTRA_LANGUAGE_MODEL,
-                            RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
-                    intent.putExtra(
-                            RecognizerIntent.EXTRA_CALLING_PACKAGE,
-                            activity.getComponentName().flattenToString());
-                    intent.putExtra(RecognizerIntent.EXTRA_WEB_SEARCH_ONLY, /* value= */ true);
+                () -> launchRecognitionIntent(activity, source, callback, voicePlateIntent));
+    }
 
-                    if (!showSpeechRecognitionIntent(intent, source, callback)) {
-                        VoiceRecognitionUtil.isRecognitionIntentPresent(
-                                /* useCachedValue= */ false);
-                        recordVoiceSearchFailureEvent(source);
-                        callback.onAvailabilityImpacted();
-                    }
-                });
+    /**
+     * Launches the Voice Plate intent if supplied, falling back to the system speech recognizer.
+     *
+     * @param activity The activity used to identify the calling package.
+     * @param source The source of the voice search initiation, such as NTP or omnibox.
+     * @param callback The callback to receive completion or cancellation events.
+     * @param voicePlateIntent Optional intent delegating recognition to the Google app Voice Plate.
+     */
+    private void launchRecognitionIntent(
+            Activity activity,
+            @VoiceInteractionSource int source,
+            RecognitionCallback callback,
+            @Nullable Intent voicePlateIntent) {
+        recordVoiceSearchStartEvent(source);
+
+        if (voicePlateIntent != null
+                && showSpeechRecognitionIntent(
+                        voicePlateIntent,
+                        source,
+                        callback,
+                        /* ignoreRecognizerConfidence= */ true)) {
+            return;
+        }
+
+        launchSystemSpeechRecognitionIntent(activity, source, callback);
+    }
+
+    /**
+     * Launches the system speech recognizer intent, notifying the callback if no recognizer is
+     * available.
+     *
+     * @param activity The activity used to identify the calling package.
+     * @param source The source of the voice search initiation, such as NTP or omnibox.
+     * @param callback The callback to receive completion or cancellation events.
+     */
+    private void launchSystemSpeechRecognitionIntent(
+            Activity activity, @VoiceInteractionSource int source, RecognitionCallback callback) {
+        if (!showSpeechRecognitionIntent(
+                createSystemSpeechRecognitionIntent(activity),
+                source,
+                callback,
+                /* ignoreRecognizerConfidence= */ false)) {
+            VoiceRecognitionUtil.isRecognitionIntentPresent(/* useCachedValue= */ false);
+            recordVoiceSearchFailureEvent(source);
+            callback.onAvailabilityImpacted();
+        }
+    }
+
+    /**
+     * Creates the intent invoking the system speech recognizer.
+     *
+     * @param activity The activity used to identify the calling package.
+     */
+    private static Intent createSystemSpeechRecognitionIntent(Activity activity) {
+        Intent intent = new Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH);
+        intent.putExtra(
+                RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_WEB_SEARCH);
+        intent.putExtra(
+                RecognizerIntent.EXTRA_CALLING_PACKAGE,
+                activity.getComponentName().flattenToString());
+        intent.putExtra(RecognizerIntent.EXTRA_WEB_SEARCH_ONLY, /* value= */ true);
+        return intent;
     }
 
     /**
@@ -239,19 +314,34 @@ public class VoiceRecognitionIntentHandler {
     }
 
     /**
-     * Triggers the system-provided voice recognition intent.
+     * Triggers the voice recognition intent.
      *
      * @param intent The speech recognition {@link Intent}.
      * @param source Where the request to launch this {@link Intent} originated, such as NTP or
      *     omnibox.
      * @param callback The callback to receive the results.
+     * @param ignoreRecognizerConfidence Whether to ignore the confidence scores reported by the
+     *     recognizer.
      * @return True if showing the {@link Intent} was successful.
      */
     private boolean showSpeechRecognitionIntent(
-            Intent intent, @VoiceInteractionSource int source, RecognitionCallback callback) {
-        recordVoiceSearchStartEvent(source);
+            Intent intent,
+            @VoiceInteractionSource int source,
+            RecognitionCallback callback,
+            boolean ignoreRecognizerConfidence) {
         IntentCallback intentCallback =
                 (resultCode, data) -> {
+                    if (ignoreRecognizerConfidence
+                            && VoicePlateIntegration.getInstance()
+                                    .isServiceRefused(resultCode, data)) {
+                        Activity activity = mWindowAndroid.getActivity().get();
+                        if (activity == null) {
+                            callback.onCanceled();
+                            return;
+                        }
+                        launchSystemSpeechRecognitionIntent(activity, source, callback);
+                        return;
+                    }
                     if (resultCode == Activity.RESULT_CANCELED) {
                         recordVoiceSearchDismissedEvent(source);
                         callback.onCanceled();
@@ -263,7 +353,14 @@ public class VoiceRecognitionIntentHandler {
                         return;
                     }
 
-                    List<VoiceResult> results = convertBundleToVoiceResults(data.getExtras());
+                    boolean stopped =
+                            VoicePlateIntegration.getInstance().isVoiceSearchStopped(data);
+                    List<VoiceResult> results =
+                            convertBundleToVoiceResults(
+                                    data.getExtras(),
+                                    ignoreRecognizerConfidence
+                                            ? (stopped ? MIN_CONFIDENCE : MAX_CONFIDENCE)
+                                            : null);
                     if (results == null || results.isEmpty()) {
                         recordVoiceSearchResult(/* result= */ false);
                         callback.onCanceled();
@@ -278,8 +375,12 @@ public class VoiceRecognitionIntentHandler {
                     }
 
                     recordVoiceSearchResult(/* result= */ true);
-                    recordVoiceSearchConfidenceValue(topResult.getConfidence());
+                    // Forced confidence is synthetic; only record what the recognizer reported.
+                    if (!ignoreRecognizerConfidence) {
+                        recordVoiceSearchConfidenceValue(topResult.getConfidence());
+                    }
 
+                    recordVoiceSearchWordCount(topResult.getMatch());
                     recordSuccessMetrics(source);
                     callback.onCompleted(results);
                 };
@@ -292,18 +393,32 @@ public class VoiceRecognitionIntentHandler {
         return shown;
     }
 
-    /** Convert the android voice intent bundle to a list of result objects. */
+    /**
+     * Converts the speech recognition result bundle to a list of results.
+     *
+     * @param extras The result extras returned by the recognizer.
+     * @param forcedConfidence Optional synthetic confidence score to assign to every result. When
+     *     non-null, {@link RecognizerIntent#EXTRA_CONFIDENCE_SCORES} is optional and ignored.
+     * @return The results, or null if the bundle is missing or malformed.
+     */
     @VisibleForTesting
-    static @Nullable List<VoiceResult> convertBundleToVoiceResults(@Nullable Bundle extras) {
+    static @Nullable List<VoiceResult> convertBundleToVoiceResults(
+            @Nullable Bundle extras, @Nullable Float forcedConfidence) {
         if (extras == null) return null;
 
         ArrayList<String> strings = extras.getStringArrayList(RecognizerIntent.EXTRA_RESULTS);
+        if (strings == null) return null;
+
+        List<VoiceResult> results = new ArrayList<>(strings.size());
+        if (forcedConfidence != null) {
+            for (String match : strings) {
+                results.add(new VoiceResult(match, forcedConfidence));
+            }
+            return results;
+        }
+
         float[] confidences = extras.getFloatArray(RecognizerIntent.EXTRA_CONFIDENCE_SCORES);
-
-        if (strings == null || confidences == null) return null;
-        if (strings.size() != confidences.length) return null;
-
-        List<VoiceResult> results = new ArrayList<>();
+        if (confidences == null || strings.size() != confidences.length) return null;
         for (int i = 0; i < strings.size(); ++i) {
             results.add(new VoiceResult(strings.get(i), confidences[i]));
         }
@@ -396,5 +511,17 @@ public class VoiceRecognitionIntentHandler {
         int percentage = Math.round(value * 100f);
         RecordHistogram.recordPercentageHistogram(
                 "VoiceInteraction.VoiceResultConfidenceValue", percentage);
+    }
+
+    /**
+     * Records the number of whitespace-separated words in a completed voice search transcription.
+     *
+     * @param match The top transcription string returned by the recognizer.
+     */
+    @VisibleForTesting
+    void recordVoiceSearchWordCount(String match) {
+        String trimmed = match.trim();
+        int wordCount = trimmed.isEmpty() ? 0 : trimmed.split("\\s+").length;
+        RecordHistogram.recordCount100Histogram("Omnibox.VoiceSearch.WordCount", wordCount);
     }
 }

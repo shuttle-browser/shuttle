@@ -34,6 +34,7 @@
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/no_renderer_crashes_assertion.h"
 #include "content/public/test/prerender_test_util.h"
+#include "content/public/test/test_utils.h"
 #include "net/base/features.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/reporting/reporting_policy.h"
@@ -175,6 +176,21 @@ class BaseReportingBrowserTest : public CertVerifierBrowserTest,
       }
     }
     return all_reports;
+  }
+
+  const base::DictValue* FindReportByUrl(const base::ListValue& reports,
+                                         const GURL& expected_url) const {
+    for (const auto& report : reports) {
+      const base::DictValue* dict = report.GetIfDict();
+      if (!dict) {
+        continue;
+      }
+      const std::string* url = dict->FindString("url");
+      if (url && *url == expected_url.spec()) {
+        return dict;
+      }
+    }
+    return nullptr;
   }
 
  private:
@@ -763,6 +779,76 @@ IN_PROC_BROWSER_TEST_P(
 
   ASSERT_NE(reason, nullptr);
   EXPECT_EQ(*reason, "unresponsive");
+}
+
+IN_PROC_BROWSER_TEST_P(
+    CrashReportingBrowserTest,
+    DISABLED_ON_ASAN(CrashReportUnresponsiveSiblingSubframesSharingProcess)) {
+  content::WebContents* contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+
+  // Navigate the main frame to a cross-origin page with two iframes.
+  EXPECT_TRUE(NavigateToURL(
+      contents, server()->GetURL(kCrossOriginHost, "/two_iframes_blank.html")));
+
+  // Navigate both iframes to reporting-enabled URLs on `kReportingHost`.
+  // Because the parent is on `kCrossOriginHost`, each iframe is a separate
+  // local root with its own `RenderWidgetHost`, while sharing a single
+  // `RenderProcessHost`.
+  GURL iframe1_url = server()->GetURL(
+      kReportingHost,
+      base::StrCat({"/set-header?", GetAppropriateReportingHeader(), "&1"}));
+  GURL iframe2_url = server()->GetURL(
+      kReportingHost,
+      base::StrCat({"/set-header?", GetAppropriateReportingHeader(), "&2"}));
+  ASSERT_TRUE(NavigateIframeToURL(contents, "iframe1", iframe1_url));
+  ASSERT_TRUE(NavigateIframeToURL(contents, "iframe2", iframe2_url));
+
+  content::RenderFrameHost* subframe1 = ChildFrameAt(contents, 0);
+  content::RenderFrameHost* subframe2 = ChildFrameAt(contents, 1);
+  ASSERT_TRUE(subframe1);
+  ASSERT_TRUE(subframe2);
+  ASSERT_EQ(subframe1->GetProcess(), subframe2->GetProcess());
+  ASSERT_NE(subframe1->GetRenderWidgetHost(), subframe2->GetRenderWidgetHost());
+
+  content::RenderProcessHost* rph = subframe1->GetProcess();
+  content::RenderProcessHostWatcher watcher(
+      rph, content::RenderProcessHostWatcher::WATCH_FOR_PROCESS_EXIT);
+
+  // Mark only `subframe1`'s widget as unresponsive (e.g. simulating an input
+  // ack timeout routed to `subframe1`'s widget while the shared renderer
+  // process is hung). `subframe2`'s widget remains not marked unresponsive.
+  content::SimulateUnresponsiveRenderer(contents,
+                                        subframe1->GetRenderWidgetHost());
+  ASSERT_TRUE(subframe1->GetRenderWidgetHost()->IsCurrentlyUnresponsive());
+  ASSERT_FALSE(subframe2->GetRenderWidgetHost()->IsCurrentlyUnresponsive());
+
+  // Terminate the shared renderer process without `RESULT_CODE_HUNG` and
+  // without a collected JS call stack.
+  content::ScopedAllowRendererCrashes allow_renderer_crashes(rph);
+  rph->Shutdown(content::RESULT_CODE_KILLED);
+  watcher.Wait();
+
+  // Both subframes share the hung renderer process and must generate crash
+  // reports with `reason: "unresponsive"`.
+  base::ListValue reports = WaitForReportUploads(/*expected_report_count=*/2);
+  ASSERT_EQ(reports.size(), 2u);
+
+  for (size_t i = 0; i < 2; ++i) {
+    const base::DictValue& report = reports[i].GetDict();
+    const std::string* type = report.FindString("type");
+    const std::string* url = report.FindString("url");
+    const base::DictValue* body = report.FindDict("body");
+    ASSERT_NE(body, nullptr);
+    const std::string* reason = body->FindString("reason");
+
+    ASSERT_NE(type, nullptr);
+    EXPECT_EQ(*type, "crash");
+    ASSERT_NE(url, nullptr);
+    EXPECT_EQ(*url, (i == 0 ? iframe1_url : iframe2_url).spec());
+    ASSERT_NE(reason, nullptr);
+    EXPECT_EQ(*reason, "unresponsive");
+  }
 }
 
 IN_PROC_BROWSER_TEST_P(CrashReportingBrowserTest,
@@ -1978,17 +2064,14 @@ IN_PROC_BROWSER_TEST_P(
   base::ListValue reports = WaitForReportUploads(/*expected_report_count=*/2);
   ASSERT_EQ(reports.size(), 2u);
 
-  const base::DictValue& main_report = reports[0].GetDict();
+  const base::DictValue* main_report = FindReportByUrl(reports, main_url);
+  ASSERT_NE(main_report, nullptr);
 
-  const std::string* main_type = main_report.FindString("type");
+  const std::string* main_type = main_report->FindString("type");
   ASSERT_NE(main_type, nullptr);
   EXPECT_EQ(*main_type, "crash");
 
-  const std::string* main_report_url = main_report.FindString("url");
-  ASSERT_NE(main_report_url, nullptr);
-  EXPECT_EQ(*main_report_url, main_url.spec());
-
-  const base::DictValue* main_body = main_report.FindDict("body");
+  const base::DictValue* main_body = main_report->FindDict("body");
   ASSERT_NE(main_body, nullptr);
 
   const std::string* main_reason = main_body->FindString("reason");
@@ -2004,17 +2087,14 @@ IN_PROC_BROWSER_TEST_P(
   ASSERT_NE(main_frame_value, nullptr);
   EXPECT_EQ(*main_frame_value, "main");
 
-  const base::DictValue& iframe_report = reports[1].GetDict();
+  const base::DictValue* iframe_report = FindReportByUrl(reports, iframe_url);
+  ASSERT_NE(iframe_report, nullptr);
 
-  const std::string* iframe_type = iframe_report.FindString("type");
+  const std::string* iframe_type = iframe_report->FindString("type");
   ASSERT_NE(iframe_type, nullptr);
   EXPECT_EQ(*iframe_type, "crash");
 
-  const std::string* iframe_report_url = iframe_report.FindString("url");
-  ASSERT_NE(iframe_report_url, nullptr);
-  EXPECT_EQ(*iframe_report_url, iframe_url.spec());
-
-  const base::DictValue* iframe_body = iframe_report.FindDict("body");
+  const base::DictValue* iframe_body = iframe_report->FindDict("body");
   ASSERT_NE(iframe_body, nullptr);
 
   const std::string* iframe_reason = iframe_body->FindString("reason");
@@ -2029,6 +2109,76 @@ IN_PROC_BROWSER_TEST_P(
       iframe_crash_report_api->FindString("frame");
   ASSERT_NE(iframe_frame_value, nullptr);
   EXPECT_EQ(*iframe_frame_value, "subframe");
+}
+
+IN_PROC_BROWSER_TEST_P(
+    CrashReportingBrowserTest,
+    DISABLED_ON_ASAN(
+        CrashReportInnerWebContentsSharingProcessUnderProcessLimit)) {
+  content::WebContents* contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+
+  GURL main_url = server()->GetURL(
+      kReportingHost,
+      base::StrCat({"/set-header-with-file/chrome/test/data/iframe.html?",
+                    GetAppropriateReportingHeader(), "&outer"}));
+  EXPECT_TRUE(NavigateToURL(contents, main_url));
+
+  content::RenderProcessHost::SetMaxRendererProcessCount(1);
+
+  content::RenderFrameHost* main_rfh = contents->GetPrimaryMainFrame();
+  content::RenderFrameHost* subframe = ChildFrameAt(contents, 0);
+  ASSERT_TRUE(subframe);
+
+  GURL inner_url = server()->GetURL(
+      kReportingHost,
+      base::StrCat(
+          {"/set-header?", GetAppropriateReportingHeader(), "&inner"}));
+
+  content::WebContents::CreateParams create_params(
+      contents->GetBrowserContext(),
+      content::SiteInstance::CreateForURL(contents->GetBrowserContext(),
+                                          inner_url));
+  content::WebContents* inner_contents =
+      content::CreateAndAttachInnerContents(subframe, std::move(create_params));
+  ASSERT_TRUE(inner_contents);
+
+  EXPECT_TRUE(content::NavigateToURLFromRenderer(inner_contents, inner_url));
+
+  content::RenderFrameHost* inner_rfh = inner_contents->GetPrimaryMainFrame();
+  ASSERT_TRUE(inner_rfh);
+  ASSERT_EQ(inner_rfh->GetProcess(), main_rfh->GetProcess());
+  ASSERT_NE(inner_rfh->GetSiteInstance(), main_rfh->GetSiteInstance());
+  ASSERT_FALSE(inner_rfh->GetSiteInstance()->IsRelatedSiteInstance(
+      main_rfh->GetSiteInstance()));
+
+  content::ScopedAllowRendererCrashes allow_renderer_crashes(contents);
+  content::SimulateOOMPrimaryMainFrameAndWaitForExit(contents);
+
+  base::ListValue reports = WaitForReportUploads(/*expected_report_count=*/2);
+  ASSERT_EQ(reports.size(), 2u);
+
+  const base::DictValue* main_report = FindReportByUrl(reports, main_url);
+  ASSERT_NE(main_report, nullptr);
+  const std::string* main_type = main_report->FindString("type");
+  ASSERT_NE(main_type, nullptr);
+  EXPECT_EQ(*main_type, "crash");
+  const base::DictValue* main_body = main_report->FindDict("body");
+  ASSERT_NE(main_body, nullptr);
+  const std::string* main_reason = main_body->FindString("reason");
+  ASSERT_NE(main_reason, nullptr);
+  EXPECT_EQ(*main_reason, "oom");
+
+  const base::DictValue* inner_report = FindReportByUrl(reports, inner_url);
+  ASSERT_NE(inner_report, nullptr);
+  const std::string* inner_type = inner_report->FindString("type");
+  ASSERT_NE(inner_type, nullptr);
+  EXPECT_EQ(*inner_type, "crash");
+  const base::DictValue* inner_body = inner_report->FindDict("body");
+  ASSERT_NE(inner_body, nullptr);
+  const std::string* inner_reason = inner_body->FindString("reason");
+  ASSERT_NE(inner_reason, nullptr);
+  EXPECT_EQ(*inner_reason, "oom");
 }
 
 IN_PROC_BROWSER_TEST_P(ReportingBrowserTestSpecifyCrashEndpoint,
@@ -2206,17 +2356,14 @@ IN_PROC_BROWSER_TEST_P(
   ASSERT_EQ(reports.size(), 2u);
 
   // Verify the main frame report.
-  const base::DictValue& main_report = reports[0].GetDict();
+  const base::DictValue* main_report = FindReportByUrl(reports, main_url);
+  ASSERT_NE(main_report, nullptr);
 
-  const std::string* main_type = main_report.FindString("type");
+  const std::string* main_type = main_report->FindString("type");
   ASSERT_NE(main_type, nullptr);
   EXPECT_EQ(*main_type, "crash");
 
-  const std::string* main_report_url = main_report.FindString("url");
-  ASSERT_NE(main_report_url, nullptr);
-  EXPECT_EQ(*main_report_url, main_url.spec());
-
-  const base::DictValue* main_body = main_report.FindDict("body");
+  const base::DictValue* main_body = main_report->FindDict("body");
   ASSERT_NE(main_body, nullptr);
 
   const std::string* main_reason = main_body->FindString("reason");
@@ -2231,17 +2378,14 @@ IN_PROC_BROWSER_TEST_P(
   }
 
   // Verify the same-process iframe report includes the JS call stack.
-  const base::DictValue& iframe_report = reports[1].GetDict();
+  const base::DictValue* iframe_report = FindReportByUrl(reports, iframe_url);
+  ASSERT_NE(iframe_report, nullptr);
 
-  const std::string* iframe_type = iframe_report.FindString("type");
+  const std::string* iframe_type = iframe_report->FindString("type");
   ASSERT_NE(iframe_type, nullptr);
   EXPECT_EQ(*iframe_type, "crash");
 
-  const std::string* iframe_report_url = iframe_report.FindString("url");
-  ASSERT_NE(iframe_report_url, nullptr);
-  EXPECT_EQ(*iframe_report_url, iframe_url.spec());
-
-  const base::DictValue* iframe_body = iframe_report.FindDict("body");
+  const base::DictValue* iframe_body = iframe_report->FindDict("body");
   ASSERT_NE(iframe_body, nullptr);
 
   const std::string* iframe_reason = iframe_body->FindString("reason");
@@ -2287,17 +2431,14 @@ IN_PROC_BROWSER_TEST_P(
   ASSERT_EQ(reports.size(), 2u);
 
   // Verify the main frame report.
-  const base::DictValue& main_report = reports[0].GetDict();
+  const base::DictValue* main_report = FindReportByUrl(reports, main_url);
+  ASSERT_NE(main_report, nullptr);
 
-  const std::string* main_type = main_report.FindString("type");
+  const std::string* main_type = main_report->FindString("type");
   ASSERT_NE(main_type, nullptr);
   EXPECT_EQ(*main_type, "crash");
 
-  const std::string* main_report_url = main_report.FindString("url");
-  ASSERT_NE(main_report_url, nullptr);
-  EXPECT_EQ(*main_report_url, main_url.spec());
-
-  const base::DictValue* main_body = main_report.FindDict("body");
+  const base::DictValue* main_body = main_report->FindDict("body");
   ASSERT_NE(main_body, nullptr);
 
   const std::string* main_reason = main_body->FindString("reason");
@@ -2313,17 +2454,14 @@ IN_PROC_BROWSER_TEST_P(
 
   // Verify the same-process iframe report omits the JS call stack since the
   // iframe did not opt in.
-  const base::DictValue& iframe_report = reports[1].GetDict();
+  const base::DictValue* iframe_report = FindReportByUrl(reports, iframe_url);
+  ASSERT_NE(iframe_report, nullptr);
 
-  const std::string* iframe_type = iframe_report.FindString("type");
+  const std::string* iframe_type = iframe_report->FindString("type");
   ASSERT_NE(iframe_type, nullptr);
   EXPECT_EQ(*iframe_type, "crash");
 
-  const std::string* iframe_report_url = iframe_report.FindString("url");
-  ASSERT_NE(iframe_report_url, nullptr);
-  EXPECT_EQ(*iframe_report_url, iframe_url.spec());
-
-  const base::DictValue* iframe_body = iframe_report.FindDict("body");
+  const base::DictValue* iframe_body = iframe_report->FindDict("body");
   ASSERT_NE(iframe_body, nullptr);
 
   const std::string* iframe_reason = iframe_body->FindString("reason");

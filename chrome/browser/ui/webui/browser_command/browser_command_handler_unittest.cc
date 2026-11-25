@@ -10,7 +10,9 @@
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "chrome/browser/command_updater_impl.h"
+#include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/user_education/tutorial_identifiers.h"
 #include "chrome/common/webui_url_constants.h"
@@ -28,7 +30,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/interaction/element_identifier.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/webui/resources/js/browser_command/browser_command.mojom.h"
 
@@ -76,7 +78,7 @@ class TestCommandHandler : public BrowserCommandHandler {
     // in a unittest.
   }
 
-  void NavigateToURL(const GURL&, WindowOpenDisposition) override {
+  void NavigateToURL(const GURL&, ui::mojom::WindowOpenDisposition) override {
     // The functionality of opening a URL is removed, as it cannot be executed
     // in a unittest.
   }
@@ -93,11 +95,6 @@ class TestCommandHandler : public BrowserCommandHandler {
 
   void OpenAISettings() override {
     // The functionality of opening the AI settings is removed, as it
-    // cannot be executed in a unittest.
-  }
-
-  void OpenGlic() override {
-    // The functionality of opening Glic is removed, as it
     // cannot be executed in a unittest.
   }
 
@@ -216,7 +213,9 @@ class MockCommandHandler : public TestCommandHandler {
 
   MOCK_METHOD(void, NavigateToEnhancedProtectionSetting, ());
 
-  MOCK_METHOD(void, NavigateToURL, (const GURL&, WindowOpenDisposition));
+  MOCK_METHOD(void,
+              NavigateToURL,
+              (const GURL&, ui::mojom::WindowOpenDisposition));
 
   MOCK_METHOD(void, OpenFeedbackForm, ());
 
@@ -233,6 +232,17 @@ class MockCommandHandler : public TestCommandHandler {
   MOCK_METHOD(void, OpenSplitView, ());
 
   MOCK_METHOD(void, EnableVerticalTabs, ());
+};
+
+class MockNavigationCommandHandler : public TestCommandHandler {
+ public:
+  using TestCommandHandler::TestCommandHandler;
+  ~MockNavigationCommandHandler() override = default;
+
+  MOCK_METHOD(void,
+              NavigateToURL,
+              (const GURL&, ui::mojom::WindowOpenDisposition),
+              (override));
 };
 
 class MockCommandUpdater : public CommandUpdaterImpl {
@@ -263,7 +273,7 @@ void ExecuteCommandCallback(base::OnceClosure quit_closure,
 }
 
 // A shorthand for conversion between ClickInfo and WindowOpenDisposition.
-WindowOpenDisposition DispositionFromClick(const ClickInfo& info) {
+ui::mojom::WindowOpenDisposition DispositionFromClick(const ClickInfo& info) {
   return ui::DispositionFromClick(info.middle_button, info.alt_key,
                                   info.ctrl_key, info.meta_key, info.shift_key);
 }
@@ -319,22 +329,18 @@ class BrowserCommandHandlerTest : public testing::Test {
 };
 
 TEST_F(BrowserCommandHandlerTest, SupportedCommands) {
-  base::HistogramTester histogram_tester;
-
   // Mock out the command updater to test enabling and disabling commands.
   command_handler_->SetCommandUpdater(
       std::make_unique<MockCommandUpdater>(command_handler_.get()));
 
-  // Unsupported commands do not get executed and no histogram is logged.
+  // Unsupported commands do not get executed.
   EXPECT_CALL(*mock_command_updater(),
               SupportsCommand(static_cast<int>(Command::kUnknownCommand)))
       .WillOnce(testing::Return(false));
 
   EXPECT_FALSE(ExecuteCommand(Command::kUnknownCommand, ClickInfo::New()));
-  histogram_tester.ExpectTotalCount(
-      BrowserCommandHandler::kPromoBrowserCommandHistogramName, 0);
 
-  // Disabled commands do not get executed and no histogram is logged.
+  // Disabled commands do not get executed.
   EXPECT_CALL(*mock_command_updater(),
               SupportsCommand(static_cast<int>(Command::kUnknownCommand)))
       .WillOnce(testing::Return(true));
@@ -343,11 +349,8 @@ TEST_F(BrowserCommandHandlerTest, SupportedCommands) {
       .WillOnce(testing::Return(false));
 
   EXPECT_FALSE(ExecuteCommand(Command::kUnknownCommand, ClickInfo::New()));
-  histogram_tester.ExpectTotalCount(
-      BrowserCommandHandler::kPromoBrowserCommandHistogramName, 0);
 
-  // Only supported and enabled commands get executed for which a histogram is
-  // logged.
+  // Only supported and enabled commands get executed.
   EXPECT_CALL(*mock_command_updater(),
               SupportsCommand(static_cast<int>(Command::kUnknownCommand)))
       .WillOnce(testing::Return(true));
@@ -356,8 +359,6 @@ TEST_F(BrowserCommandHandlerTest, SupportedCommands) {
       .WillOnce(testing::Return(true));
 
   EXPECT_TRUE(ExecuteCommand(Command::kUnknownCommand, ClickInfo::New()));
-  histogram_tester.ExpectBucketCount(
-      BrowserCommandHandler::kPromoBrowserCommandHistogramName, 0, 1);
 }
 
 TEST_F(BrowserCommandHandlerTest, CanExecuteCommand_OpenSafetyCheck) {
@@ -693,6 +694,45 @@ TEST_F(BrowserCommandHandlerTest, OpenGlicCommand) {
   // The OpenGlic command opens glic.
   EXPECT_CALL(*command_handler_, OpenGlic());
   EXPECT_TRUE(ExecuteCommand(Command::kOpenGlic, std::move(info)));
+}
+
+TEST_F(BrowserCommandHandlerTest, OpenGlicFallbackDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(features::kGlicBrowserCommandFallback);
+
+  MockNavigationCommandHandler handler(&profile_);
+  EXPECT_CALL(handler, NavigateToURL).Times(0);
+  handler.ExecuteCommand(Command::kOpenGlic, ClickInfo::New(),
+                         base::DoNothing());
+}
+
+TEST_F(BrowserCommandHandlerTest, OpenGlicFallbackEnabledDefaultUrl) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(features::kGlicBrowserCommandFallback);
+
+  MockNavigationCommandHandler handler(&profile_);
+  EXPECT_CALL(
+      handler,
+      NavigateToURL(GURL("https://support.google.com/chrome/answer/17140089"),
+                    ui::mojom::WindowOpenDisposition::kNewForegroundTab));
+  handler.ExecuteCommand(Command::kOpenGlic, ClickInfo::New(),
+                         base::DoNothing());
+}
+
+TEST_F(BrowserCommandHandlerTest, OpenGlicFallbackEnabledCustomUrl) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      features::kGlicBrowserCommandFallback,
+      {{features::kGlicBrowserCommandFallbackUrl.name,
+        "https://example.com/fallback"}});
+
+  MockNavigationCommandHandler handler(&profile_);
+  EXPECT_CALL(
+      handler,
+      NavigateToURL(GURL("https://example.com/fallback"),
+                    ui::mojom::WindowOpenDisposition::kNewForegroundTab));
+  handler.ExecuteCommand(Command::kOpenGlic, ClickInfo::New(),
+                         base::DoNothing());
 }
 
 TEST_F(BrowserCommandHandlerTest, OpenGlicSettingsCommand) {

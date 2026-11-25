@@ -5,6 +5,7 @@
 package org.chromium.chrome.browser.sync.ui;
 
 import static org.chromium.base.ContextUtils.getApplicationContext;
+import static org.chromium.build.NullUtil.assertNonNull;
 import static org.chromium.build.NullUtil.assumeNonNull;
 
 import android.app.Activity;
@@ -72,6 +73,7 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
     private final SyncService mSyncService;
     private final MessageDispatcher mMessageDispatcher;
     private final PropertyModel mModel;
+    private final TrustedVaultClient mTrustedVaultClient;
     private static @Nullable MessageDispatcher sMessageDispatcherForTesting;
 
     private static final UnownedUserDataKey<SyncErrorMessage> SYNC_ERROR_MESSAGE_KEY =
@@ -136,6 +138,7 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
         mIdentityManager = identityManager;
         mSyncService = assumeNonNull(SyncServiceFactory.getForProfile(mProfile));
         mSyncService.addSyncStateChangedListener(this);
+        mTrustedVaultClient = TrustedVaultClient.get(SecurityDomainId.CHROME_SYNC);
 
         String errorMessage = getMessage(activity);
         String title = getTitle(activity);
@@ -196,6 +199,9 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
                 break;
             case UserActionableError.SIGN_IN_NEEDS_UPDATE:
                 startUpdateCredentialsFlow(mActivity);
+                break;
+            case UserActionableError.DEVICE_MANAGEMENT_ERROR:
+                SyncSettingsUtils.openDeviceManagementResolution(mActivity, mSyncService);
                 break;
             case UserActionableError.NEEDS_PASSPHRASE:
             case UserActionableError.NEEDS_CLIENT_UPGRADE:
@@ -266,6 +272,9 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
                 return context.getString(R.string.identity_error_card_button_client_out_of_date);
             case UserActionableError.NEEDS_TRUSTED_VAULT_KEY_FOR_PASSWORDS:
                 return context.getString(R.string.identity_error_card_button_get);
+            case UserActionableError.DEVICE_MANAGEMENT_ERROR:
+                return context.getString(
+                        R.string.identity_error_card_button_device_management_error);
             case UserActionableError.SIGN_IN_NEEDS_UPDATE:
             case UserActionableError.NEEDS_TRUSTED_VAULT_KEY_FOR_EVERYTHING:
             case UserActionableError.TRUSTED_VAULT_RECOVERABILITY_DEGRADED_FOR_EVERYTHING:
@@ -290,6 +299,9 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
                 return context.getString(R.string.identity_error_message_title_client_out_of_date);
             case UserActionableError.NEEDS_TRUSTED_VAULT_KEY_FOR_PASSWORDS:
                 return context.getString(R.string.password_sync_trusted_vault_error_title);
+            case UserActionableError.DEVICE_MANAGEMENT_ERROR:
+                return context.getString(
+                        R.string.identity_error_card_button_device_management_error);
             case UserActionableError.SIGN_IN_NEEDS_UPDATE:
             case UserActionableError.NEEDS_TRUSTED_VAULT_KEY_FOR_EVERYTHING:
             case UserActionableError.TRUSTED_VAULT_RECOVERABILITY_DEGRADED_FOR_EVERYTHING:
@@ -319,6 +331,10 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
                 return context.getString(
                         R.string
                                 .identity_error_message_body_sync_recoverability_degraded_for_passwords);
+            case UserActionableError.DEVICE_MANAGEMENT_ERROR:
+                return context.getString(
+                        R.string.identity_error_card_device_management_error,
+                        assertNonNull(mIdentityManager.getPrimaryAccountInfo()).getEmail());
             case UserActionableError.NEEDS_PASSPHRASE:
             case UserActionableError.NEEDS_CLIENT_UPGRADE:
             case UserActionableError.SIGN_IN_NEEDS_UPDATE:
@@ -345,16 +361,19 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
         if (primaryAccountInfo == null) {
             return;
         }
-        TrustedVaultClient.get(SecurityDomainId.CHROME_SYNC)
+        mTrustedVaultClient
                 .createKeyRetrievalIntent(primaryAccountInfo)
                 .then(
                         (intent) -> {
                             IntentUtils.safeStartActivity(
                                     getApplicationContext(),
-                                    SyncTrustedVaultProxyActivity.createKeyRetrievalProxyIntent(
-                                            intent,
-                                            TrustedVaultUserActionTriggerForUMA
-                                                    .NEW_TAB_PAGE_INFOBAR));
+                                    mTrustedVaultClient
+                                            .getProxyIntentFactory()
+                                            .createKeyRetrievalProxyIntent(
+                                                    intent,
+                                                    TrustedVaultUserActionTriggerForUMA
+                                                            .NEW_TAB_PAGE_INFOBAR,
+                                                    SecurityDomainId.CHROME_SYNC));
                         },
                         (exception) -> {
                             var error = exception == null ? "unknown error." : exception;
@@ -370,15 +389,16 @@ public class SyncErrorMessage implements SyncService.SyncStateChangedListener {
         if (primaryAccountInfo == null) {
             return;
         }
-        TrustedVaultClient.get(SecurityDomainId.CHROME_SYNC)
+        mTrustedVaultClient
                 .createRecoverabilityDegradedIntent(primaryAccountInfo)
                 .then(
                         (intent) -> {
                             var action = TrustedVaultUserActionTriggerForUMA.NEW_TAB_PAGE_INFOBAR;
                             var proxyIntent =
-                                    SyncTrustedVaultProxyActivity
+                                    mTrustedVaultClient
+                                            .getProxyIntentFactory()
                                             .createRecoverabilityDegradedProxyIntent(
-                                                    intent, action);
+                                                    intent, action, SecurityDomainId.CHROME_SYNC);
                             IntentUtils.safeStartActivity(getApplicationContext(), proxyIntent);
                         },
                         (exception) -> {

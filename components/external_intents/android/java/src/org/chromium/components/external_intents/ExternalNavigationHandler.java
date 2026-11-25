@@ -1908,13 +1908,19 @@ public class ExternalNavigationHandler implements ExternalNavigationHelper {
             GURL browserFallbackUrl,
             MutableBoolean canLaunchExternalFallbackResult) {
 
-        sanitizeQueryIntentActivitiesIntent(targetIntent);
-
         // Any subsequent navigations should cancel the existing dialog.
         cancelDialogs();
 
         // Don't allow external fallback URLs by default.
         canLaunchExternalFallbackResult.set(false);
+
+        if (ExternalIntentFilter.shouldBlockOrSanitize(targetIntent)) {
+            if (debug()) Log.i(TAG, "Blocked by ExternalIntentFilter.");
+            isHiddenCrossFrameRenavigation(params);
+            return OverrideUrlLoadingResult.forNoOverride();
+        }
+
+        sanitizeQueryIntentActivitiesIntent(targetIntent);
 
         if (!maybeSetSmsPackage(targetIntent)) maybeRecordPhoneIntentMetrics(targetIntent);
 
@@ -2023,9 +2029,12 @@ public class ExternalNavigationHandler implements ExternalNavigationHelper {
 
         ResolveActivitySupplier resolveActivity = new ResolveActivitySupplier(targetIntent);
         if (shouldBlockExternalNavigationForHttpProtocols(
-                mDelegate.allowExternalNavigationForHttpProtocols(params.getUrl()),
+                mDelegate.allowExternalNavigationForHttpProtocols(params.getUrl(), resolvingInfos),
                 shouldReturnAsResult,
-                resolveActivity)) {
+                resolveActivity,
+                resolvingInfos,
+                params,
+                intentTargetUrl)) {
             return OverrideUrlLoadingResult.forNoOverride();
         }
 
@@ -2163,8 +2172,15 @@ public class ExternalNavigationHandler implements ExternalNavigationHelper {
     private boolean shouldBlockExternalNavigationForHttpProtocols(
             boolean allowExternalNavigation,
             boolean shouldReturnAsResult,
-            ResolveActivitySupplier resolveActivity) {
+            ResolveActivitySupplier resolveActivity,
+            QueryIntentActivitiesSupplier resolvingInfos,
+            ExternalNavigationParams params,
+            GURL intentTargetUrl) {
         if (allowExternalNavigation || shouldReturnAsResult) {
+            return false;
+        }
+
+        if (pickWebApkIfSoleIntentHandler(params, resolvingInfos, intentTargetUrl) != null) {
             return false;
         }
 

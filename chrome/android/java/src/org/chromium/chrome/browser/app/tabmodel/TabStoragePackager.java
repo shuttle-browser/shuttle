@@ -10,6 +10,7 @@ import static org.chromium.chrome.browser.tabwindow.TabWindowManager.INVALID_TAS
 
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniPtr;
 import org.jni_zero.JniType;
 import org.jni_zero.NativeMethods;
 
@@ -20,6 +21,8 @@ import org.chromium.chrome.browser.app.tabwindow.TabWindowManagerSingleton;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabAssociatedApp;
+import org.chromium.chrome.browser.tab.TabStateExtractor;
+import org.chromium.chrome.browser.tab.WebContentsState;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
@@ -27,6 +30,7 @@ import org.chromium.chrome.browser.tabwindow.TabWindowManager;
 import org.chromium.chrome.browser.tabwindow.WindowId;
 import org.chromium.components.tabs.TabStripCollection;
 
+import java.nio.ByteBuffer;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.Map;
@@ -37,8 +41,7 @@ import java.util.function.Supplier;
 @JNINamespace("tabs")
 @NullMarked
 public class TabStoragePackager {
-    private final long mNativeTabStoragePackager;
-    private final Map<TabStripCollection, TabModelInfo> mTabModelInfoMap = new HashMap<>();
+    private final Map<JniPtr<TabStripCollection>, TabModelInfo> mTabModelInfoMap = new HashMap<>();
 
     /** A data object representing a {@link TabModel} and its associated window tag. */
     private static class TabModelInfo {
@@ -107,19 +110,29 @@ public class TabStoragePackager {
         }
     }
 
-    private TabStoragePackager(long nativeTabStoragePackager) {
-        mNativeTabStoragePackager = nativeTabStoragePackager;
-    }
+    private TabStoragePackager() {}
 
     @CalledByNative
-    private static TabStoragePackager create(long nativeTabStoragePackager) {
-        return new TabStoragePackager(nativeTabStoragePackager);
+    private static TabStoragePackager create() {
+        return new TabStoragePackager();
     }
 
     @CalledByNative
     public static void fetchTabStorageMetadata(
             @Nullable @JniType("const TabAndroid*") Tab tab, long metadataPtr) {
         if (tab == null) return;
+        ByteBuffer buffer = null;
+        int version = WebContentsState.INVALID_BUFFER_VERSION;
+        boolean hasPendingLoadParams = tab.getPendingLoadParams() != null;
+        if (hasPendingLoadParams) {
+            WebContentsState state = TabStateExtractor.getWebContentsState(tab);
+            if (state != null
+                    && state.version() != WebContentsState.INVALID_BUFFER_VERSION
+                    && state.buffer().remaining() > 0) {
+                buffer = state.buffer();
+                version = state.version();
+            }
+        }
         TabStoragePackagerJni.get()
                 .onTabStorageMetadataFetched(
                         metadataPtr,
@@ -127,24 +140,23 @@ public class TabStoragePackager {
                         tab.getThemeColor(),
                         tab.getLastNavigationCommittedTimestampMillis(),
                         tab.getTabHasSensitiveContent(),
-                        TabAssociatedApp.getAppId(tab));
+                        TabAssociatedApp.getAppId(tab),
+                        hasPendingLoadParams,
+                        buffer,
+                        version);
     }
 
-    private @Nullable TabModelInfo getTabModelInfo(Profile profile, TabStripCollection collection) {
+    private @Nullable TabModelInfo getTabModelInfo(
+            Profile profile, JniPtr<TabStripCollection> collection) {
         if (mTabModelInfoMap.containsKey(collection)) {
             return mTabModelInfoMap.get(collection);
         }
 
-        TabModelInfo info = resolveTabModelInfo(profile, collection);
-
-        if (info != null) {
-            mTabModelInfoMap.put(collection, info);
-        }
-        return info;
+        return resolveTabModelInfo(profile, collection);
     }
 
     private @Nullable TabModelInfo resolveTabModelInfo(
-            Profile profile, TabStripCollection collection) {
+            Profile profile, JniPtr<TabStripCollection> collection) {
         TabModelInfo info = getArchivedModelInfo(profile, collection);
         if (info != null) return info;
         info = getWindowScopedModelInfo(collection);
@@ -153,7 +165,7 @@ public class TabStoragePackager {
         return info;
     }
 
-    private @Nullable TabModelInfo getCustomTabModelInfo(TabStripCollection collection) {
+    private @Nullable TabModelInfo getCustomTabModelInfo(JniPtr<TabStripCollection> collection) {
         Collection<TabModelSelector> selectors =
                 TabWindowManagerSingleton.getInstance().getCustomTabsTabModelSelectors();
         TabModel tabModel = null;
@@ -167,19 +179,22 @@ public class TabStoragePackager {
         }
         if (tabModel == null || selector == null) return null;
 
-        configureRemoveFromCacheOnDestroy(tabModel, collection);
-
         int taskId = TabWindowManagerSingleton.getInstance().getTaskIdForCustomTab(selector);
         if (taskId == INVALID_TASK_ID) return null;
 
-        return TabModelInfo.createForCustomTabModel(
-                taskId,
-                tabModel.isOffTheRecord(),
-                (Supplier<@Nullable Tab>) tabModel.getCurrentTabSupplier());
+        TabModelInfo info =
+                TabModelInfo.createForCustomTabModel(
+                        taskId,
+                        tabModel.isOffTheRecord(),
+                        (Supplier<@Nullable Tab>) tabModel.getCurrentTabSupplier());
+        JniPtr<TabStripCollection> modelCollection = tabModel.getTabStripCollection();
+        assert modelCollection != null;
+        mTabModelInfoMap.put(modelCollection, info);
+        configureRemoveFromCacheOnDestroy(tabModel, modelCollection);
+        return info;
     }
 
-    @Nullable
-    private TabModelInfo getWindowScopedModelInfo(TabStripCollection collection) {
+    private @Nullable TabModelInfo getWindowScopedModelInfo(JniPtr<TabStripCollection> collection) {
         TabModel tabModel = null;
         TabModelSelector selector = null;
         Collection<TabModelSelector> selectors =
@@ -193,20 +208,24 @@ public class TabStoragePackager {
         }
         if (tabModel == null || selector == null) return null;
 
-        configureRemoveFromCacheOnDestroy(tabModel, collection);
-
         @WindowId
         int windowId = TabWindowManagerSingleton.getInstance().getWindowIdForSelector(selector);
         if (windowId == TabWindowManager.INVALID_WINDOW_ID) return null;
 
-        return TabModelInfo.createForWindowScopedModel(
-                windowId,
-                tabModel.isOffTheRecord(),
-                (Supplier<@Nullable Tab>) tabModel.getCurrentTabSupplier());
+        TabModelInfo info =
+                TabModelInfo.createForWindowScopedModel(
+                        windowId,
+                        tabModel.isOffTheRecord(),
+                        (Supplier<@Nullable Tab>) tabModel.getCurrentTabSupplier());
+        JniPtr<TabStripCollection> modelCollection = tabModel.getTabStripCollection();
+        assert modelCollection != null;
+        mTabModelInfoMap.put(modelCollection, info);
+        configureRemoveFromCacheOnDestroy(tabModel, modelCollection);
+        return info;
     }
 
-    @Nullable
-    private TabModelInfo getArchivedModelInfo(Profile profile, TabStripCollection collection) {
+    private @Nullable TabModelInfo getArchivedModelInfo(
+            Profile profile, JniPtr<TabStripCollection> collection) {
         ArchivedTabModelOrchestrator orchestrator =
                 ArchivedTabModelOrchestrator.getIfInstantiatedForProfile(profile);
         if (orchestrator == null) return null;
@@ -214,32 +233,31 @@ public class TabStoragePackager {
         TabModel tabModel = orchestrator.getTabModel();
         if (tabModel == null) return null;
 
-        TabStripCollection archivedCollection = tabModel.getTabStripCollection();
+        JniPtr<TabStripCollection> archivedCollection = tabModel.getTabStripCollection();
         if (!Objects.equals(archivedCollection, collection)) return null;
 
-        configureRemoveFromCacheOnDestroy(tabModel, collection);
-
-        return TabModelInfo.createForArchivedModel();
+        assert archivedCollection != null;
+        TabModelInfo info = TabModelInfo.createForArchivedModel();
+        mTabModelInfoMap.put(archivedCollection, info);
+        configureRemoveFromCacheOnDestroy(tabModel, archivedCollection);
+        return info;
     }
 
     @CalledByNative
     public long packageTabStripCollection(
             @JniType("Profile*") Profile profile,
-            @JniType("const TabStripCollection*") TabStripCollection collection) {
+            @JniType("const tabs::TabStripCollection*") JniPtr<TabStripCollection> collection) {
         TabModelInfo info = getTabModelInfo(profile, collection);
         assert info != null;
         return TabStoragePackagerJni.get()
                 .consolidateTabStripCollectionData(
-                        mNativeTabStoragePackager,
-                        info.windowTag,
-                        info.tabModelType,
-                        info.activeTabSupplier.get());
+                        info.windowTag, info.tabModelType, info.activeTabSupplier.get());
     }
 
     @CalledByNative
     public boolean isOffTheRecord(
             @JniType("Profile*") Profile profile,
-            @JniType("const TabStripCollection*") TabStripCollection collection) {
+            @JniType("const tabs::TabStripCollection*") JniPtr<TabStripCollection> collection) {
         TabModelInfo info = getTabModelInfo(profile, collection);
         assert info != null;
         return info.isOffTheRecord;
@@ -248,14 +266,14 @@ public class TabStoragePackager {
     @CalledByNative
     public @JniType("std::string") String getWindowTag(
             @JniType("Profile*") Profile profile,
-            @JniType("const TabStripCollection*") TabStripCollection collection) {
+            @JniType("const tabs::TabStripCollection*") JniPtr<TabStripCollection> collection) {
         TabModelInfo info = getTabModelInfo(profile, collection);
         assert info != null;
         return info.windowTag;
     }
 
     private void configureRemoveFromCacheOnDestroy(
-            TabModel tabModel, TabStripCollection collection) {
+            TabModel tabModel, JniPtr<TabStripCollection> collection) {
         tabModel.addObserver(
                 new TabModelObserver() {
                     @Override
@@ -274,10 +292,12 @@ public class TabStoragePackager {
                 int themeColor,
                 long lastNavigationCommittedTimestampMillis,
                 boolean tabHasSensitiveContent,
-                @Nullable @JniType("std::optional<std::string>") String openerAppId);
+                @Nullable @JniType("std::optional<std::string>") String openerAppId,
+                boolean hasPendingLoadParams,
+                @Nullable ByteBuffer webContentsStateBuffer,
+                int savedStateVersion);
 
         long consolidateTabStripCollectionData(
-                long nativeTabStoragePackagerAndroid,
                 @JniType("std::string") String windowTag,
                 @TabModelType int tabModelType,
                 @JniType("TabAndroid*") @Nullable Tab activeTab);

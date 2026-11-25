@@ -14,6 +14,7 @@ import android.view.View;
 
 import androidx.test.filters.MediumTest;
 
+import org.jni_zero.JniRawPtr;
 import org.junit.After;
 import org.junit.AfterClass;
 import org.junit.Before;
@@ -27,11 +28,9 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
@@ -56,7 +55,6 @@ import java.util.List;
 @DoNotBatch(reason = "The tests can't be batched because they run for different set-ups.")
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class SaveUpdateAddressProfilePromptRenderTest {
     private static final long NATIVE_SAVE_UPDATE_ADDRESS_PROFILE_PROMPT_CONTROLLER = 100L;
 
@@ -111,7 +109,8 @@ public class SaveUpdateAddressProfilePromptRenderTest {
 
         mPromptController =
                 SaveUpdateAddressProfilePromptController.create(
-                        NATIVE_SAVE_UPDATE_ADDRESS_PROFILE_PROMPT_CONTROLLER);
+                        JniRawPtr.createForTesting(
+                                NATIVE_SAVE_UPDATE_ADDRESS_PROFILE_PROMPT_CONTROLLER));
 
         SaveUpdateAddressProfilePromptControllerJni.setInstanceForTesting(mPromptControllerJni);
         AutofillProfileBridgeJni.setInstanceForTesting(mAutofillProfileBridgeJni);
@@ -128,6 +127,7 @@ public class SaveUpdateAddressProfilePromptRenderTest {
     @After
     public void tearDown() throws Exception {
         runOnUiThreadBlocking(mPrompt::dismiss);
+        mPromptController.onNativeDestroyed();
     }
 
     @AfterClass

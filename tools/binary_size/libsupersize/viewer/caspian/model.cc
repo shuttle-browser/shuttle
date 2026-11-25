@@ -10,7 +10,6 @@
 #include <list>
 #include <sstream>
 #include <tuple>
-#include <unordered_map>
 
 #include "tools/binary_size/libsupersize/viewer/caspian/file_format.h"
 #include "tools/binary_size/libsupersize/viewer/caspian/function_signature.h"
@@ -19,7 +18,18 @@ namespace caspian {
 
 namespace {
 constexpr const char kNoPath[] = "(No path)";
+constexpr size_t kNoArenaSlot = static_cast<size_t>(-1);
+constinit thread_local size_t g_thread_arena_slot = kNoArenaSlot;
 }  // namespace
+
+ScopedOwnedStringsArena::ScopedOwnedStringsArena(size_t slot)
+    : prev_slot_(g_thread_arena_slot) {
+  g_thread_arena_slot = slot;
+}
+
+ScopedOwnedStringsArena::~ScopedOwnedStringsArena() {
+  g_thread_arena_slot = prev_slot_;
+}
 
 Container::Container(const std::string& name_in) : name(name_in) {}
 Container::~Container() = default;
@@ -30,8 +40,9 @@ void Container::AssignShortNames(std::vector<Container>* containers) {
   for (size_t i = 0; i < containers->size(); ++i) {
     Container& c = (*containers)[i];
     std::ostringstream oss;
-    if (!c.name.empty())
+    if (!c.name.empty()) {
       oss << i;
+    }
     c.short_name = oss.str();
   }
 }
@@ -58,14 +69,14 @@ void Symbol::DeriveNames() const {
   } else if (IsStringLiteral()) {
     template_name_ = full_name_;
     name_ = full_name_;
-  } else if (IsDex()) {
+  } else if (IsDex() || IsNative()) {
+    std::deque<std::string>* owned_strings =
+        g_thread_arena_slot < size_info_->thread_owned_strings.size()
+            ? &size_info_->thread_owned_strings[g_thread_arena_slot]
+            : &size_info_->owned_strings;
     std::tuple<std::string_view, std::string_view, std::string_view>
-        parsed_names = ParseJava(full_name_, &size_info_->owned_strings);
-    template_name_ = std::get<1>(parsed_names);
-    name_ = std::get<2>(parsed_names);
-  } else if (IsNative()) {
-    std::tuple<std::string_view, std::string_view, std::string_view>
-        parsed_names = ParseCpp(full_name_, &size_info_->owned_strings);
+        parsed_names = IsDex() ? ParseJava(full_name_, owned_strings)
+                               : ParseCpp(full_name_, owned_strings);
     template_name_ = std::get<1>(parsed_names);
     name_ = std::get<2>(parsed_names);
   } else {
@@ -311,12 +322,9 @@ DiffStatus DeltaSymbol::GetDiffStatus() const {
 TreeNode::TreeNode(ArtifactType artifact_type_in, int32_t id_in)
     : artifact_type(artifact_type_in), id(id_in) {}
 
-TreeNode::~TreeNode() {
-  // TODO(jaspercb): Could use custom allocator to delete all nodes in one go.
-  for (TreeNode* child : children) {
-    delete child;
-  }
-}
+TreeNode::TreeNode(TreeNode&&) = default;
+
+TreeNode::~TreeNode() = default;
 
 std::ostream& operator<<(std::ostream& os, const Symbol& sym) {
   return os << "Symbol(full_name=" << sym.FullName()
@@ -331,53 +339,62 @@ BaseSizeInfo::BaseSizeInfo(const BaseSizeInfo&) = default;
 BaseSizeInfo::~BaseSizeInfo() = default;
 
 SectionId BaseSizeInfo::ShortSectionName(const char* section_name) {
-  static std::map<const char*, SectionId>* short_section_name_cache =
-      new std::map<const char*, SectionId>();
-  SectionId& ret = (*short_section_name_cache)[section_name];
-  if (ret == SectionId::kNone) {
-    if (!strcmp(section_name, ".text")) {
-      ret = SectionId::kText;
-    } else if (!strcmp(section_name, ".dex")) {
-      ret = SectionId::kDex;
-    } else if (!strcmp(section_name, ".dex.method")) {
-      ret = SectionId::kDexMethod;
-    } else if (!strcmp(section_name, ".native")) {
-      // For simplicity, merge .native into .rodata.
-      // This contains things like ** section .shstrtab.
-      ret = SectionId::kRoData;
-    } else if (!strcmp(section_name, ".other")) {
-      ret = SectionId::kOther;
-    } else if (!strcmp(section_name, ".rodata")) {
-      ret = SectionId::kRoData;
-    } else if (!strcmp(section_name, ".data")) {
-      ret = SectionId::kData;
-    } else if (!strcmp(section_name, ".tdata")) {
-      ret = SectionId::kData;
-    } else if (!strcmp(section_name, ".data.rel.ro")) {
-      ret = SectionId::kDataRelRo;
-    } else if (!strcmp(section_name, ".bss")) {
-      ret = SectionId::kBss;
-    } else if (!strcmp(section_name, ".bss.rel.ro")) {
-      ret = SectionId::kBss;
-    } else if (!strcmp(section_name, ".part.end")) {
-      ret = SectionId::kBss;
-    } else if (!strcmp(section_name, ".relro_padding")) {
-      ret = SectionId::kBss;
-    } else if (!strcmp(section_name, ".tbss")) {
-      ret = SectionId::kBss;
-    } else if (!strcmp(section_name, ".pak.nontranslated")) {
-      ret = SectionId::kPakNontranslated;
-    } else if (!strcmp(section_name, ".pak.translations")) {
-      ret = SectionId::kPakTranslations;
-    } else if (!strcmp(section_name, ".arsc")) {
-      ret = SectionId::kArsc;
-    } else {
-      std::cerr << "Attributing unrecognized section name to .other: "
-                << section_name << std::endl;
-      ret = SectionId::kOther;
-    }
+  if (!strcmp(section_name, ".text")) {
+    return SectionId::kText;
   }
-  return ret;
+  if (!strcmp(section_name, ".dex")) {
+    return SectionId::kDex;
+  }
+  if (!strcmp(section_name, ".dex.method")) {
+    return SectionId::kDexMethod;
+  }
+  if (!strcmp(section_name, ".native")) {
+    // For simplicity, merge .native into .rodata.
+    // This contains things like ** section .shstrtab.
+    return SectionId::kRoData;
+  }
+  if (!strcmp(section_name, ".other")) {
+    return SectionId::kOther;
+  }
+  if (!strcmp(section_name, ".rodata")) {
+    return SectionId::kRoData;
+  }
+  if (!strcmp(section_name, ".data")) {
+    return SectionId::kData;
+  }
+  if (!strcmp(section_name, ".tdata")) {
+    return SectionId::kData;
+  }
+  if (!strcmp(section_name, ".data.rel.ro")) {
+    return SectionId::kDataRelRo;
+  }
+  if (!strcmp(section_name, ".bss")) {
+    return SectionId::kBss;
+  }
+  if (!strcmp(section_name, ".bss.rel.ro")) {
+    return SectionId::kBss;
+  }
+  if (!strcmp(section_name, ".part.end")) {
+    return SectionId::kBss;
+  }
+  if (!strcmp(section_name, ".relro_padding")) {
+    return SectionId::kBss;
+  }
+  if (!strcmp(section_name, ".tbss")) {
+    return SectionId::kBss;
+  }
+  if (!strcmp(section_name, ".pak.nontranslated")) {
+    return SectionId::kPakNontranslated;
+  }
+  if (!strcmp(section_name, ".pak.translations")) {
+    return SectionId::kPakTranslations;
+  }
+  if (!strcmp(section_name, ".arsc")) {
+    return SectionId::kArsc;
+  }
+  std::cerr << "Attributing unrecognized section name to .other: "
+            << section_name << std::endl;
+  return SectionId::kOther;
 }
 
 SizeInfo::SizeInfo() = default;
@@ -497,33 +514,60 @@ void TreeNode::WriteIntoJson(
   }
 }
 
+namespace {
+Stat& GetOrCreateStat(
+    absl::InlinedVector<std::pair<SectionId, Stat>, 2>* child_stats,
+    SectionId section) {
+  for (auto& pair : *child_stats) {
+    if (pair.first == section) {
+      return pair.second;
+    }
+  }
+  child_stats->push_back({section, Stat{}});
+  return child_stats->back().second;
+}
+}  // namespace
+
 NodeStats::NodeStats() = default;
+NodeStats::NodeStats(const NodeStats&) = default;
+NodeStats& NodeStats::operator=(const NodeStats&) = default;
+NodeStats::NodeStats(NodeStats&&) = default;
+NodeStats& NodeStats::operator=(NodeStats&&) = default;
 NodeStats::~NodeStats() = default;
 
-NodeStats::NodeStats(const BaseSymbol& symbol) {
-  const SectionId section = symbol.Section();
-  Stat& section_stats = child_stats[section];
-  section_stats = {1, 0, 0, 0, symbol.Pss()};
+void NodeStats::AddSymbol(const BaseSymbol& symbol) {
+  Stat& section_stats = GetOrCreateStat(&child_stats, symbol.Section());
+  section_stats.count += 1;
+  section_stats.size += symbol.Pss();
   switch (symbol.GetDiffStatus()) {
     case DiffStatus::kUnchanged:
       break;
     case DiffStatus::kAdded:
-      section_stats.added = 1;
+      section_stats.added += 1;
       break;
     case DiffStatus::kRemoved:
-      section_stats.removed = 1;
+      section_stats.removed += 1;
       break;
     case DiffStatus::kChanged:
-      section_stats.changed = 1;
+      section_stats.changed += 1;
       break;
   }
+}
+
+bool NodeStats::HasSection(SectionId section) const {
+  for (const auto& pair : child_stats) {
+    if (pair.first == section) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void NodeStats::WriteIntoJson(const JsonWriteOptions& opts,
                               Json::Value* out) const {
   (*out) = Json::Value(Json::objectValue);
   bool is_diff_count = opts.diff_mode && opts.method_count_mode;
-  for (const auto kv : child_stats) {
+  for (const auto& kv : child_stats) {
     const std::string sectionId = std::string(1, static_cast<char>(kv.first));
     const Stat stats = kv.second;
     (*out)[sectionId] = Json::Value(Json::objectValue);
@@ -541,7 +585,7 @@ void NodeStats::WriteIntoJson(const JsonWriteOptions& opts,
 
 NodeStats& NodeStats::operator+=(const NodeStats& other) {
   for (const auto& it : other.child_stats) {
-    child_stats[it.first] += it.second;
+    GetOrCreateStat(&child_stats, it.first) += it.second;
   }
   return *this;
 }
@@ -549,10 +593,11 @@ NodeStats& NodeStats::operator+=(const NodeStats& other) {
 SectionId NodeStats::ComputeBiggestSection() const {
   SectionId ret = SectionId::kNone;
   float max = 0.0f;
-  for (auto& pair : child_stats) {
-    if (abs(pair.second.size) > max) {
+  for (const auto& pair : child_stats) {
+    float abs_size = abs(pair.second.size);
+    if (abs_size > max || (abs_size == max && max > 0.0f && pair.first < ret)) {
       ret = pair.first;
-      max = abs(pair.second.size);
+      max = abs_size;
     }
   }
   return ret;
@@ -596,7 +641,8 @@ TreeNodeFactory::TreeNodeFactory() = default;
 TreeNodeFactory::~TreeNodeFactory() = default;
 
 TreeNode* TreeNodeFactory::Make(ArtifactType artifact_type) {
-  return new TreeNode(artifact_type, next_id++);
+  nodes_.push_back(TreeNode(artifact_type, next_id++));
+  return &nodes_.back();
 }
 
 }  // namespace caspian

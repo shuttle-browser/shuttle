@@ -101,6 +101,7 @@ INSTANTIATE_TEST_SUITE_P(RemotingMojomTraitsTest,
 
 struct DesktopEnvironmentOptionsParams {
   bool enable_curtaining;
+  bool enable_privacy_overlay;
   bool enable_user_interface;
   bool enable_notifications;
   bool terminate_upon_input;
@@ -115,6 +116,7 @@ TEST_P(DesktopEnvironmentOptionsTest, RoundTrip) {
   const auto& params = GetParam();
   DesktopEnvironmentOptions input = DesktopEnvironmentOptions::CreateDefault();
   input.set_enable_curtaining(params.enable_curtaining);
+  input.set_enable_privacy_overlay(params.enable_privacy_overlay);
   input.set_enable_user_interface(params.enable_user_interface);
   input.set_enable_notifications(params.enable_notifications);
   input.set_terminate_upon_input(params.terminate_upon_input);
@@ -127,6 +129,7 @@ TEST_P(DesktopEnvironmentOptionsTest, RoundTrip) {
           input, output));
 
   EXPECT_EQ(input.enable_curtaining(), output.enable_curtaining());
+  EXPECT_EQ(input.enable_privacy_overlay(), output.enable_privacy_overlay());
   EXPECT_EQ(input.enable_user_interface(), output.enable_user_interface());
   EXPECT_EQ(input.enable_notifications(), output.enable_notifications());
   EXPECT_EQ(input.terminate_upon_input(), output.terminate_upon_input());
@@ -138,9 +141,9 @@ INSTANTIATE_TEST_SUITE_P(
     RemotingMojomTraitsTest,
     DesktopEnvironmentOptionsTest,
     testing::Values(DesktopEnvironmentOptionsParams{false, false, false, false,
-                                                    false, false},
+                                                    false, false, false},
                     DesktopEnvironmentOptionsParams{true, true, true, true,
-                                                    true, true}));
+                                                    true, true, true}));
 
 class DesktopCaptureResultTest
     : public testing::TestWithParam<webrtc::DesktopCapturer::Result> {};
@@ -585,6 +588,13 @@ TEST(RemotingMojomTraitsTest, TransportRoute) {
   EXPECT_EQ(input.local_address, output.local_address);
 }
 
+TEST(RemotingMojomTraitsTest, TransportRouteUndefinedTypeIsRejected) {
+  EXPECT_FALSE((mojo::EnumTraits<mojom::TransportRouteType,
+                                 protocol::TransportRoute::RouteType>::
+                    FromMojom(mojom::TransportRouteType::kUndefined))
+                   .has_value());
+}
+
 TEST(RemotingMojomTraitsTest, VideoTrackLayout) {
   protocol::VideoTrackLayout input;
   input.set_screen_id(123);
@@ -851,13 +861,31 @@ TEST(RemotingMojomTraitsTest, SessionPoliciesRoundTripAndValidation) {
   input.host_username_match_required = false;
   input.allow_remote_input = true;
   input.allow_webauthn_forwarding = false;
-  input.allow_gnubby_forwarding = true;
+  input.allow_security_key_forwarding = true;
   input.allow_terminal_mode = false;
+  input.audio_mode = SessionPolicies::AudioMode::kHostToClient;
 
   SessionPolicies output;
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::SessionPolicies>(
       input, output));
   EXPECT_EQ(input, output);
+
+  // Test all AudioMode values.
+  constexpr SessionPolicies::AudioMode kAudioModes[] = {
+      SessionPolicies::AudioMode::kUnspecified,
+      SessionPolicies::AudioMode::kNone,
+      SessionPolicies::AudioMode::kClientToHost,
+      SessionPolicies::AudioMode::kHostToClient,
+      SessionPolicies::AudioMode::kBoth,
+  };
+  for (SessionPolicies::AudioMode mode : kAudioModes) {
+    SessionPolicies mode_input;
+    mode_input.audio_mode = mode;
+    SessionPolicies mode_output;
+    ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::SessionPolicies>(
+        mode_input, mode_output));
+    EXPECT_EQ(mode_input, mode_output);
+  }
 
   // Test default/empty policies.
   SessionPolicies empty_input;
@@ -889,6 +917,7 @@ TEST(RemotingMojomTraitsTest, SessionOptionsRoundTrip) {
   input.vp9_encoder_speed = 8;
   input.av1_active_map = false;
   input.av1_encoder_speed = 6;
+  input.enable_privacy_overlay = true;
 
   SessionOptions output;
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::SessionOptions>(
@@ -916,15 +945,12 @@ TEST(RemotingMojomTraitsTest, AgentStatusRoundTrip) {
 
   for (AgentInfo::AgentState state : kStates) {
     AgentInfo input;
-    input.set_terminal_id(42);
     input.set_agent_state(state);
     input.set_conversation_title("My Terminal");
 
     AgentInfo output;
     ASSERT_TRUE(
         mojo::test::SerializeAndDeserialize<mojom::AgentStatus>(input, output));
-    EXPECT_TRUE(output.has_terminal_id());
-    EXPECT_EQ(output.terminal_id(), 42);
     EXPECT_TRUE(output.has_agent_state());
     EXPECT_EQ(output.agent_state(), state);
     EXPECT_TRUE(output.has_conversation_title());
@@ -932,24 +958,18 @@ TEST(RemotingMojomTraitsTest, AgentStatusRoundTrip) {
   }
 
   AgentInfo state_only_input;
-  state_only_input.set_terminal_id(7);
   state_only_input.set_agent_state(AgentInfo::WORKING);
   AgentInfo state_only_output;
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::AgentStatus>(
       state_only_input, state_only_output));
-  EXPECT_TRUE(state_only_output.has_terminal_id());
-  EXPECT_EQ(state_only_output.terminal_id(), 7);
   EXPECT_EQ(state_only_output.agent_state(), AgentInfo::WORKING);
   EXPECT_FALSE(state_only_output.has_conversation_title());
 
   AgentInfo title_only_input;
-  title_only_input.set_terminal_id(5);
   title_only_input.set_conversation_title("Custom Title");
   AgentInfo title_only_output;
   ASSERT_TRUE(mojo::test::SerializeAndDeserialize<mojom::AgentStatus>(
       title_only_input, title_only_output));
-  EXPECT_TRUE(title_only_output.has_terminal_id());
-  EXPECT_EQ(title_only_output.terminal_id(), 5);
   EXPECT_FALSE(title_only_output.has_agent_state());
   EXPECT_TRUE(title_only_output.has_conversation_title());
   EXPECT_EQ(title_only_output.conversation_title(), "Custom Title");

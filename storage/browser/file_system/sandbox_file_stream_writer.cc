@@ -10,11 +10,13 @@
 #include <tuple>
 #include <utility>
 
+#include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/sequenced_task_runner.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
+#include "storage/browser/blob/scoped_file.h"
 #include "storage/browser/file_system/file_observers.h"
 #include "storage/browser/file_system/file_system_context.h"
 #include "storage/browser/file_system/file_system_operation_runner.h"
@@ -126,8 +128,8 @@ void SandboxFileStreamWriter::DidCreateSnapshotFile(
     base::File::Error file_error,
     const base::File::Info& file_info,
     const base::FilePath& platform_path,
-    scoped_refptr<ShareableFileReference> file_ref) {
-  DCHECK(!file_ref.get());
+    ScopedFile temp_file) {
+  CHECK(temp_file.path().empty());
 
   if (CancelIfRequested())
     return;
@@ -171,7 +173,7 @@ void SandboxFileStreamWriter::DidCreateSnapshotFile(
 
   DCHECK(quota_manager_proxy);
   quota_manager_proxy->GetBucketSpaceRemaining(
-      bucket, base::SequencedTaskRunner::GetCurrentDefault(),
+      bucket,
       base::BindOnce(&SandboxFileStreamWriter::DidGetBucketSpaceRemaining,
                      weak_factory_.GetWeakPtr(), std::move(callback)));
 }

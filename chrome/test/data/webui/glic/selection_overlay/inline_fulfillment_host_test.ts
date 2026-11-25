@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome-untrusted://glic/inline_fulfillment_host.js';
+import 'chrome-untrusted://glic/selection_overlay.js';
 
 import {GenericAssociatedInterface, GenericAssociatedInterfaceRemote} from '//resources/mojo/mojo/public/mojom/base/generic_pending_associated_receiver.mojom-webui.js';
 import type {GenericPendingAssociatedReceiver} from '//resources/mojo/mojo/public/mojom/base/generic_pending_associated_receiver.mojom-webui.js';
-import type {InlineFulfillmentHostElement, InlineFulfillmentModule, InlineFulfillmentRemote} from 'chrome-untrusted://glic/inline_fulfillment_host.js';
+import type {InlineFulfillmentHostElement, InlineFulfillmentModule, InlineFulfillmentRemote} from 'chrome-untrusted://glic/selection_overlay.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 
 class FakeRemote implements InlineFulfillmentRemote {
@@ -143,5 +143,77 @@ suite('InlineFulfillmentHost', () => {
     assertEquals(1, host.children.length);
     assertEquals('b', host.children[0]!.id);
     assertEquals(1, remotes.length);
+  });
+
+  test('ShowReturnsWhetherCardShown', async () => {
+    assertTrue(await host.show('a.js', send));
+    assertFalse(await host.show('unknown.js', send));
+    assertFalse(await host.show('broken.js', send));
+    assertFalse(await host.show('throws.js', send));
+  });
+
+  suite('Consent', () => {
+    // Resolved by the test to answer the card's consent request.
+    let answerConsent: (accepted: boolean) => void;
+    // Resolves when the card asks for consent.
+    let consentAsked: Promise<void>;
+
+    setup(() => {
+      let markConsentAsked: () => void;
+      consentAsked = new Promise<void>(resolve => markConsentAsked = resolve);
+      host.loaders.set('consent.js', () => Promise.resolve({
+        create() {
+          const card = fakeModule('consent').create();
+          return {
+            ...card,
+            consent: () => {
+              markConsentAsked();
+              return new Promise<boolean>(resolve => answerConsent = resolve);
+            },
+          };
+        },
+      }));
+    });
+
+    test('AsksAfterSendingChannelAndBeforeShowingCard', async () => {
+      const pending = host.show('consent.js', send);
+      await consentAsked;
+      assertEquals(1, sent.length);
+      assertEquals(0, host.children.length);
+      answerConsent(true);
+      assertTrue(await pending);
+      assertEquals(1, host.children.length);
+      assertEquals('consent', host.children[0]!.id);
+    });
+
+    test('DeclinedShowsNothingAndClosesRemote', async () => {
+      const pending = host.show('consent.js', send);
+      await consentAsked;
+      answerConsent(false);
+      assertFalse(await pending);
+      assertEquals(0, host.children.length);
+      assertTrue(remotes[0]!.closed);
+    });
+
+    test('DeclinedKeepsCurrentCard', async () => {
+      await host.show('a.js', send);
+      const pending = host.show('consent.js', send);
+      await consentAsked;
+      answerConsent(false);
+      assertFalse(await pending);
+      assertEquals(1, host.children.length);
+      assertEquals('a', host.children[0]!.id);
+      assertFalse(remotes[0]!.closed);
+    });
+
+    test('ClearWhileAskingDropsCard', async () => {
+      const pending = host.show('consent.js', send);
+      await consentAsked;
+      host.clear();
+      answerConsent(true);
+      assertFalse(await pending);
+      assertEquals(0, host.children.length);
+      assertTrue(remotes[0]!.closed);
+    });
   });
 });

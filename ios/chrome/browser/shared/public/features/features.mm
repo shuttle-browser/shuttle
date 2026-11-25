@@ -404,9 +404,6 @@ bool IsIOSExpandedTipsEnabled() {
 BASE_FEATURE(kIOSOneTimeDefaultBrowserNotification,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kIOSPushNotificationMultiProfile,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 const char kFullscreenTransitionSlower[] = "SlowFullscreenTransitionSpeed";
 const char kFullscreenTransitionDefaultSpeed[] =
     "MediumFullscreenTransitionSpeed";
@@ -562,7 +559,7 @@ bool IsMiniMapUniversalLinkEnabled() {
   return !IsInExcludedCountry();
 }
 
-BASE_FEATURE(kIOSMiniMapLinkifiedAddress, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kIOSMiniMapLinkifiedAddress, base::FEATURE_ENABLED_BY_DEFAULT);
 
 bool IsNotificationCollisionManagementEnabled() {
   return base::FeatureList::IsEnabled(kNotificationCollisionManagement);
@@ -1016,12 +1013,6 @@ bool IsAssistantSidePanelEnabled() {
          IsChromeNextIaEnabled() && IsFullscreenRefactoringEnabled();
 }
 
-BASE_FEATURE(kYourSavedInfoSettingsPageIos, base::FEATURE_ENABLED_BY_DEFAULT);
-
-bool IsYourSavedInfoSettingsPageIosEnabled() {
-  return base::FeatureList::IsEnabled(kYourSavedInfoSettingsPageIos);
-}
-
 BASE_FEATURE(kBackgroundRefreshRegressionTest,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -1125,12 +1116,6 @@ bool IsIOSDarkModeDetectionEnabled() {
   return base::FeatureList::IsEnabled(kIOSDarkModeDetection);
 }
 
-BASE_FEATURE(kIdentityAwareness, base::FEATURE_ENABLED_BY_DEFAULT);
-
-bool IsIdentityAwarenessEnabled() {
-  return base::FeatureList::IsEnabled(kIdentityAwareness);
-}
-
 BASE_FEATURE(kAiSubscriptionAvatarRingIOS, base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsAiSubscriptionAvatarRingIOSEnabled() {
@@ -1184,7 +1169,6 @@ const base::FeatureParam<base::TimeDelta>
     kDiscoverFeedBackgroundRefreshMinBuffer{&kEnableDiscoverBackgroundRefresh,
                                             "discover_refresh_min_buffer",
                                             base::Minutes(15)};
-
 
 BASE_FEATURE(kDefaultBottomOmniboxOnIOS, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -1303,4 +1287,14 @@ BASE_FEATURE(kAppBarDisableLongPress, base::FEATURE_DISABLED_BY_DEFAULT);
 
 bool IsAppBarDisableLongPressEnabled() {
   return base::FeatureList::IsEnabled(kAppBarDisableLongPress);
+}
+
+BASE_FEATURE(kCleanupCorruptedAccountProfileMappings,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kEphemeralBottomSheet, base::FEATURE_DISABLED_BY_DEFAULT);
+
+bool IsEphemeralBottomSheetEnabled() {
+  return IsAimCobrowseEnabled() &&
+         base::FeatureList::IsEnabled(kEphemeralBottomSheet);
 }

@@ -11,6 +11,7 @@
 #import <memory>
 #import <string>
 
+#import "GREYElementFilter.h"
 #import "base/apple/foundation_util.h"
 #import "base/barrier_closure.h"
 #import "base/command_line.h"
@@ -19,6 +20,7 @@
 #import "base/ios/ios_util.h"
 #import "base/json/json_writer.h"
 #import "base/no_destructor.h"
+#import "base/path_service.h"
 #import "base/strings/string_number_conversions.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/ios/wait_util.h"
@@ -66,11 +68,12 @@
 #import "ios/chrome/browser/search_engines/model/template_url_service_factory.h"
 #import "ios/chrome/browser/sessions/model/session_restoration_service.h"
 #import "ios/chrome/browser/sessions/model/session_restoration_service_factory.h"
+#import "ios/chrome/browser/shared/coordinator/scene/scene_controller.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
+#import "ios/chrome/browser/shared/model/paths/paths.h"
 #import "ios/chrome/browser/shared/model/profile/profile_attributes_storage_ios.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/profile/profile_manager_ios.h"
@@ -104,6 +107,7 @@
 #import "ios/public/provider/chrome/browser/lens/lens_api.h"
 #import "ios/public/provider/chrome/browser/primes/primes_api.h"
 #import "ios/public/provider/chrome/browser/signin/choice_api.h"
+#import "ios/testing/earl_grey/earl_grey_app.h"
 #import "ios/testing/hardware_keyboard_util.h"
 #import "ios/testing/nserror_util.h"
 #import "ios/testing/open_url_context.h"
@@ -206,6 +210,11 @@ UIViewController* FindBrowserViewController(UIViewController* root) {
   return nil;
 }
 
+// Interval between polling attempts for UI element waits. UI hierarchy walks
+// and matcher evaluation are relatively expensive compared to simple state
+// boolean checks, so 50ms provides low latency with minimal CPU contention.
+constexpr base::TimeDelta kUIElementPollInterval = base::Milliseconds(50);
+
 // Manages an in-app condition wait on the main thread so the test process does
 // not need to poll across EDO on every spin iteration.
 class InAppWaiter {
@@ -218,15 +227,18 @@ class InAppWaiter {
   }
 
   // Evaluates `condition` immediately on the app's main thread. If not yet
-  // satisfied, stores `condition` for `StartWithCompletion()` and returns YES.
-  // Returns NO if `condition` is already satisfied and no wait is needed.
-  BOOL PrepareCondition(ConditionBlock condition) {
+  // satisfied, stores `condition` and `poll_interval` for
+  // `StartWithCompletion()` and returns YES. Returns NO if `condition` is
+  // already satisfied and no wait is needed.
+  BOOL PrepareCondition(ConditionBlock condition,
+                        base::TimeDelta poll_interval = kSpinDelaySeconds) {
     CHECK(!condition_);
     CHECK(!timer_);
     if (condition()) {
       return NO;
     }
     condition_ = [condition copy];
+    poll_interval_ = poll_interval;
     return YES;
   }
 
@@ -237,7 +249,7 @@ class InAppWaiter {
     CHECK(completion);
     CHECK(!timer_);
     completion_ = [completion copy];
-    timer_ = [NSTimer timerWithTimeInterval:kSpinDelaySeconds.InSecondsF()
+    timer_ = [NSTimer timerWithTimeInterval:poll_interval_.InSecondsF()
                                     repeats:YES
                                       block:^(NSTimer*) {
                                         InAppWaiter::Get().OnTimerFired();
@@ -252,6 +264,7 @@ class InAppWaiter {
     timer_ = nil;
     condition_ = nil;
     completion_ = nil;
+    poll_interval_ = kSpinDelaySeconds;
   }
 
  private:
@@ -271,7 +284,47 @@ class InAppWaiter {
   NSTimer* timer_ = nil;
   ConditionBlock condition_ = nil;
   ProceduralBlock completion_ = nil;
+  base::TimeDelta poll_interval_ = kSpinDelaySeconds;
 };
+
+// Verifies that `scene_state` exists, is not displaying the Tab Grid, and that
+// `current_web_state` is non-null. Returns `nil` on success, or an `NSError*`
+// describing why navigation cannot be performed. When `window_number` is
+// non-negative, the error description mentions the window number.
+NSError* CanStartLoadingURL(SceneState* scene_state,
+                            web::WebState* current_web_state,
+                            int window_number = -1) {
+  if (!scene_state) {
+    NSString* description =
+        window_number >= 0
+            ? [NSString stringWithFormat:@"No window with number %d exists",
+                                         window_number]
+            : @"No active scene exists";
+    return testing::NSErrorWithLocalizedDescription(description);
+  }
+
+  if (scene_state.controller.isTabGridVisible) {
+    NSString* description =
+        window_number >= 0
+            ? [NSString stringWithFormat:
+                            @"Tab Grid is visible in window %d instead of an "
+                            @"active tab",
+                            window_number]
+            : @"Tab Grid is visible instead of an active tab";
+    return testing::NSErrorWithLocalizedDescription(description);
+  }
+
+  if (!current_web_state) {
+    NSString* description =
+        window_number >= 0
+            ? [NSString stringWithFormat:@"No active tab exists in window %d",
+                                         window_number]
+            : @"No active tab exists";
+    return testing::NSErrorWithLocalizedDescription(description);
+  }
+
+  return nil;
+}
 
 }  // namespace
 
@@ -515,8 +568,20 @@ class InAppWaiter {
   [scene.delegate scene:scene continueUserActivity:fakeActivity];
 }
 
-+ (void)startLoadingURL:(NSString*)spec {
+// Initiates loading the URL `spec` in the current `WebState` without waiting
+// for the load to finish. Returns `nil` on success, or an `NSError*` describing
+// why navigation failed (e.g., if Chrome is not on an active tab, such as when
+// the Tab Grid is visible or no active tab exists).
++ (NSError*)startLoadingURL:(NSString*)spec {
+  NSError* error =
+      CanStartLoadingURL(chrome_test_util::GetForegroundActiveScene(),
+                         chrome_test_util::GetCurrentWebState());
+  if (error) {
+    return error;
+  }
+
   chrome_test_util::LoadUrl(GURL(base::SysNSStringToUTF8(spec)));
+  return nil;
 }
 
 + (bool)isLoading {
@@ -544,6 +609,40 @@ class InAppWaiter {
 
 + (void)cancelPendingWait {
   InAppWaiter::Get().Cancel();
+}
+
++ (BOOL)prepareConditionForUIElementWithMatcher:(id<GREYMatcher>)matcher
+                                    rootMatcher:(id<GREYMatcher>)rootMatcher
+                               assertionMatcher:
+                                   (id<GREYMatcher>)assertionMatcher {
+  id<GREYMatcher> effectiveMatcher = matcher;
+  if (rootMatcher) {
+    effectiveMatcher = [[GREYAllOf alloc]
+        initWithMatchers:@[ matcher, grey_ancestor(rootMatcher) ]];
+  }
+  GREYElementFinder* elementFinder =
+      [[GREYElementFinder alloc] initWithMatcher:effectiveMatcher];
+  return InAppWaiter::Get().PrepareCondition(
+      ^bool {
+        NSArray<id>* elements =
+            [elementFinder elementsMatchedInAllWindowsIncludingStatusBar:NO];
+        if (elements.count > 1) {
+          elements = [GREYElementFilter filterElements:elements];
+        }
+        if ([assertionMatcher matches:nil]) {
+          for (id element in elements) {
+            if (![assertionMatcher matches:element]) {
+              return false;
+            }
+          }
+          return true;
+        }
+        if (elements.count > 1) {
+          return false;
+        }
+        return [assertionMatcher matches:elements.firstObject];
+      },
+      kUIElementPollInterval);
 }
 
 + (BOOL)prepareConditionForPageToFinishLoading {
@@ -980,9 +1079,24 @@ class InAppWaiter {
   }
 }
 
-+ (void)startLoadingURL:(NSString*)spec inWindowWithNumber:(int)windowNumber {
+// Initiates loading the URL `spec` in the current `WebState` of the window with
+// number `windowNumber` without waiting for the load to finish. Returns `nil`
+// on success, or an `NSError*` describing why navigation failed (e.g., if the
+// window does not exist, the Tab Grid is visible, or no active tab exists in
+// that window).
++ (NSError*)startLoadingURL:(NSString*)spec
+         inWindowWithNumber:(int)windowNumber {
+  NSError* error = CanStartLoadingURL(
+      [self sceneStateWithNumber:windowNumber],
+      chrome_test_util::GetCurrentWebStateForWindowWithNumber(windowNumber),
+      windowNumber);
+  if (error) {
+    return error;
+  }
+
   chrome_test_util::LoadUrlInWindowWithNumber(
       GURL(base::SysNSStringToUTF8(spec)), windowNumber);
+  return nil;
 }
 
 + (BOOL)isLoadingInWindowWithNumber:(int)windowNumber {
@@ -1211,8 +1325,7 @@ class InAppWaiter {
   }
   WebStateList* web_state_list =
       chrome_test_util::GetForegroundActiveScene()
-          .browserProviderInterface.currentBrowserProvider.browser
-          ->GetWebStateList();
+          .browserProviderInterface.currentBrowser->GetWebStateList();
   for (int index = 0; index < web_state_list->count(); ++index) {
     web::WebState* web_state = web_state_list->GetWebStateAt(index);
     if (web_state->IsLoading()) {
@@ -1223,7 +1336,7 @@ class InAppWaiter {
 
 + (void)openSettingsInWindowWithNumber:(int)windowNumber {
   SceneState* scene = [self sceneStateWithNumber:windowNumber];
-  Browser* browser = scene.browserProviderInterface.mainBrowserProvider.browser;
+  Browser* browser = scene.browserProviderInterface.mainBrowser;
   id<SceneCommands> handler =
       HandlerForProtocol(browser->GetCommandDispatcher(), SceneCommands);
   [handler showSettingsFromViewController:nil];
@@ -1231,7 +1344,7 @@ class InAppWaiter {
 
 + (void)showTabSwitcherInWindowWithNumber:(int)windowNumber {
   SceneState* scene = [self sceneStateWithNumber:windowNumber];
-  Browser* browser = scene.browserProviderInterface.mainBrowserProvider.browser;
+  Browser* browser = scene.browserProviderInterface.mainBrowser;
   id<SceneCommands> handler =
       HandlerForProtocol(browser->GetCommandDispatcher(), SceneCommands);
   [handler displayTabGridInMode:TabGridOpeningMode::kDefault];
@@ -1748,10 +1861,6 @@ class InAppWaiter {
          search_engines::SupportsSearchImageWithLens(service);
 }
 
-+ (BOOL)isYourSavedInfoSettingsPageIosEnabled {
-  return IsYourSavedInfoSettingsPageIosEnabled();
-}
-
 + (BOOL)isCurrentLayoutBottomOmnibox {
   return IsCurrentLayoutBottomOmnibox(chrome_test_util::GetCurrentBrowser());
 }
@@ -1808,10 +1917,12 @@ class InAppWaiter {
 
 + (void)setUserDefaultsObject:(id)value forKey:(NSString*)defaultName {
   [[NSUserDefaults standardUserDefaults] setObject:value forKey:defaultName];
+  [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 + (void)removeUserDefaultsObjectForKey:(NSString*)key {
   [[NSUserDefaults standardUserDefaults] removeObjectForKey:key];
+  [[NSUserDefaults standardUserDefaults] synchronize];
 }
 
 + (id)userDefaultsObjectForKey:(NSString*)key {
@@ -2044,6 +2155,29 @@ class InAppWaiter {
 + (bool)hasFirstRunSentinel {
   base::ScopedAllowBlockingForTesting allow_blocking;
   return HasFirstRunSentinel();
+}
+
+#pragma mark - Post Restore Utilities
+
++ (void)writeDeviceRestoreSentinel {
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  base::FilePath user_data_path;
+  CHECK(base::PathService::Get(ios::DIR_USER_DATA, &user_data_path));
+  base::FilePath backed_up_path =
+      user_data_path.Append(FILE_PATH_LITERAL("BackedUpSentinel"));
+  CHECK(base::WriteFile(backed_up_path, ""));
+}
+
++ (void)removeDeviceRestoreSentinel {
+  base::ScopedAllowBlockingForTesting allow_blocking;
+  base::FilePath user_data_path;
+  CHECK(base::PathService::Get(ios::DIR_USER_DATA, &user_data_path));
+  base::FilePath backed_up_path =
+      user_data_path.Append(FILE_PATH_LITERAL("BackedUpSentinel"));
+  base::FilePath not_backed_up_path =
+      user_data_path.Append(FILE_PATH_LITERAL("NotBackedUpSentinel"));
+  base::DeleteFile(backed_up_path);
+  base::DeleteFile(not_backed_up_path);
 }
 
 #pragma mark - Notification Utilities

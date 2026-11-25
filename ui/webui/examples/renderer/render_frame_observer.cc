@@ -112,7 +112,7 @@ RenderFrameObserver::~RenderFrameObserver() = default;
 
 void RenderFrameObserver::SelfOwn(
     std::unique_ptr<RenderFrameObserver> this_instance) {
-  DCHECK_EQ(this, this_instance.get());
+  CHECK_EQ(this, this_instance.get(), base::NotFatalUntil::M163);
   this_instance_ = std::move(this_instance);
 }
 
@@ -143,9 +143,9 @@ void RenderFrameObserver::ReadyToCommitNavigation(
 
   v8::Local<v8::ObjectTemplate> webshell_template =
       gin::ObjectTemplateBuilder(isolate)
-          .SetMethod("allowWebviewElementRegistration",
-                     &AllowCustomElementNameRegistration)
-          .SetMethod("attachIframeGuest", &AttachIframeGuest)
+          .SetMethod<&AllowCustomElementNameRegistration>(
+              "allowWebviewElementRegistration")
+          .SetMethod<&AttachIframeGuest>("attachIframeGuest")
           .SetValue("surfaceEmbedEnabled", surface_embed_enabled)
           .Build();
 

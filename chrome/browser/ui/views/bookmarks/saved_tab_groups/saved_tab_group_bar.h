@@ -15,7 +15,6 @@
 #include "components/saved_tab_groups/internal/saved_tab_group_model.h"
 #include "components/saved_tab_groups/public/tab_group_sync_service.h"
 #include "components/saved_tab_groups/public/types.h"
-#include "components/user_education/common/feature_promo/feature_promo_result.h"
 #include "content/public/browser/page.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/accessible_pane_view.h"
@@ -104,6 +103,13 @@ class SavedTabGroupBar : public views::AccessiblePaneView,
   // Returns the list of SavedTabGroupButtons in their current order.
   std::vector<SavedTabGroupButton*> GetSavedTabGroupButtons() const;
 
+  // Visible tab group buttons plus the everything menu button, in visual order.
+  std::vector<views::View*> GetVisibleKeyboardNavigationButtons() const;
+
+  // If enabled, only the first visible button is a Tab stop. Arrow keys are
+  // handled by BookmarkBarView.
+  void SetAreaKeyboardNavigationEnabled(bool enabled);
+
   // When called, display a menu that shows a "Create new tab group" option and
   // all the saved tab groups (if there are any). Pressing on the saved tab
   // groups opens the group into the tab strip.
@@ -128,9 +134,6 @@ class SavedTabGroupBar : public views::AccessiblePaneView,
   // Reorders all groups in the bookmarks to match the state of
   // `saved_tab_group_model_`.
   void SavedTabGroupReordered();
-
-  // Called when the resumption rail promo is closed.
-  void OnResumptionRailPromoClosed();
 
   // Adds the button to the child views for a new tab group at a specific index.
   // This function then verifies if the added button and overflow button should
@@ -165,6 +168,9 @@ class SavedTabGroupBar : public views::AccessiblePaneView,
   // overflow button will be displayed based on `should_show_overflow`.
   void UpdateButtonVisibilities(bool should_show_overflow,
                                 int last_visible_button_index);
+
+  // Applies area focus behaviors if enabled. Call after visibilities update.
+  void UpdateButtonFocusBehaviors();
 
   // Returns true if we should show the overflow button because there is not
   // enough space to display all the buttons or if there are more buttons than
@@ -209,6 +215,9 @@ class SavedTabGroupBar : public views::AccessiblePaneView,
   // this boolean lets the SavedTabGroupButton choose whether they want to
   // animate or not.
   const bool animations_enabled_ = true;
+
+  // See SetAreaKeyboardNavigationEnabled().
+  bool area_keyboard_navigation_enabled_ = false;
 
   // The button that opens the "Everything" menu for saved tab groups.
   raw_ptr<views::MenuButton> everything_menu_button_;

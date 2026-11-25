@@ -54,8 +54,8 @@
 #include "net/base/url_util.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 namespace {
@@ -136,7 +136,7 @@ class MockOmniboxEverywhereService : public OmniboxEverywhereService {
   MOCK_METHOD(void,
               OpenUrl,
               (const GURL& url,
-               WindowOpenDisposition disposition,
+               ui::mojom::WindowOpenDisposition disposition,
                ui::PageTransition transition,
                base::OnceCallback<void(content::NavigationHandle&)>
                    navigation_handle_callback),
@@ -282,13 +282,13 @@ class OmniboxEverywhereHandlerTest
 TEST_F(OmniboxEverywhereHandlerTest,
        SubmitQueryVoiceSearchNavigatesToSearchUrlWithVoiceParam) {
   GURL captured_url;
-  WindowOpenDisposition captured_disposition;
+  ui::mojom::WindowOpenDisposition captured_disposition;
   ui::PageTransition captured_transition;
 
   EXPECT_CALL(*mock_service_,
               OpenUrl(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(
-          [&](const GURL& url, WindowOpenDisposition disposition,
+          [&](const GURL& url, ui::mojom::WindowOpenDisposition disposition,
               ui::PageTransition transition,
               base::OnceCallback<void(content::NavigationHandle&)> callback) {
             captured_url = url;
@@ -301,7 +301,8 @@ TEST_F(OmniboxEverywhereHandlerTest,
                         /*shift_key=*/false, /*is_voice_search=*/true);
 
   EXPECT_TRUE(captured_url.is_valid());
-  EXPECT_EQ(WindowOpenDisposition::kCurrentTab, captured_disposition);
+  EXPECT_EQ(ui::mojom::WindowOpenDisposition::kCurrentTab,
+            captured_disposition);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,
                                            ui::PAGE_TRANSITION_GENERATED));
 
@@ -331,13 +332,13 @@ TEST_F(OmniboxEverywhereHandlerTest,
       non_google_provider);
 
   GURL captured_url;
-  WindowOpenDisposition captured_disposition;
+  ui::mojom::WindowOpenDisposition captured_disposition;
   ui::PageTransition captured_transition;
 
   EXPECT_CALL(*mock_service_,
               OpenUrl(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(
-          [&](const GURL& url, WindowOpenDisposition disposition,
+          [&](const GURL& url, ui::mojom::WindowOpenDisposition disposition,
               ui::PageTransition transition,
               base::OnceCallback<void(content::NavigationHandle&)> callback) {
             captured_url = url;
@@ -350,7 +351,8 @@ TEST_F(OmniboxEverywhereHandlerTest,
                         /*shift_key=*/false, /*is_voice_search=*/true);
 
   EXPECT_TRUE(captured_url.is_valid());
-  EXPECT_EQ(WindowOpenDisposition::kCurrentTab, captured_disposition);
+  EXPECT_EQ(ui::mojom::WindowOpenDisposition::kCurrentTab,
+            captured_disposition);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,
                                            ui::PAGE_TRANSITION_GENERATED));
 
@@ -413,7 +415,8 @@ TEST_F(OmniboxEverywhereHandlerTest,
   GURL captured_url;
   EXPECT_CALL(*mock_service_,
               OpenUrl(testing::_, testing::_, testing::_, testing::_))
-      .WillOnce([&](const GURL& url, WindowOpenDisposition, ui::PageTransition,
+      .WillOnce([&](const GURL& url, ui::mojom::WindowOpenDisposition,
+                    ui::PageTransition,
                     base::OnceCallback<void(content::NavigationHandle&)>) {
         captured_url = url;
       });
@@ -475,17 +478,17 @@ TEST_F(OmniboxEverywhereHandlerTest, ActivateKeywordDoesNotCrash) {
 TEST_F(OmniboxEverywhereHandlerTest, OpenUrlForwardsToService) {
   GURL test_url("https://www.google.com");
   EXPECT_CALL(*mock_service_,
-              OpenUrl(test_url, WindowOpenDisposition::kCurrentTab, testing::_,
-                      testing::_))
+              OpenUrl(test_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
+                      testing::_, testing::_))
       .WillOnce(
-          [&](const GURL& url, WindowOpenDisposition disposition,
+          [&](const GURL& url, ui::mojom::WindowOpenDisposition disposition,
               ui::PageTransition transition,
               base::OnceCallback<void(content::NavigationHandle&)> callback) {
             EXPECT_TRUE(ui::PageTransitionCoreTypeIs(
                 transition, ui::PAGE_TRANSITION_GENERATED));
           });
 
-  handler_->OpenUrl(test_url, WindowOpenDisposition::kCurrentTab,
+  handler_->OpenUrl(test_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
                     base::NullCallback());
 }
 
@@ -973,12 +976,12 @@ TEST_F(OmniboxEverywhereHandlerTest,
 
   const GURL kTestUrl("https://www.google.com/search?q=aim+query&udm=50");
   GURL captured_url;
-  WindowOpenDisposition captured_disposition;
+  ui::mojom::WindowOpenDisposition captured_disposition;
   ui::PageTransition captured_transition;
   EXPECT_CALL(*factory_service,
               OpenUrl(testing::_, testing::_, testing::_, testing::_))
       .WillOnce(
-          [&](const GURL& url, WindowOpenDisposition disposition,
+          [&](const GURL& url, ui::mojom::WindowOpenDisposition disposition,
               ui::PageTransition transition,
               base::OnceCallback<void(content::NavigationHandle&)> callback) {
             captured_url = url;
@@ -986,11 +989,13 @@ TEST_F(OmniboxEverywhereHandlerTest,
             captured_transition = transition;
           });
 
-  composebox_handler.OpenUrl(kTestUrl, WindowOpenDisposition::kCurrentTab,
+  composebox_handler.OpenUrl(kTestUrl,
+                             ui::mojom::WindowOpenDisposition::kCurrentTab,
                              base::NullCallback());
 
   EXPECT_EQ(kTestUrl, captured_url);
-  EXPECT_EQ(WindowOpenDisposition::kCurrentTab, captured_disposition);
+  EXPECT_EQ(ui::mojom::WindowOpenDisposition::kCurrentTab,
+            captured_disposition);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,
                                            ui::PAGE_TRANSITION_GENERATED));
 }
@@ -1032,12 +1037,13 @@ TEST_F(OmniboxEverywhereHandlerTest,
   EXPECT_CALL(*factory_service,
               OpenUrlWithInPlaceWindow(testing::_, testing::_, testing::_))
       .Times(0);
-  EXPECT_CALL(*factory_service,
-              OpenUrl(kUploadedImageUrl, WindowOpenDisposition::kCurrentTab,
-                      testing::_, testing::_))
+  EXPECT_CALL(
+      *factory_service,
+      OpenUrl(kUploadedImageUrl, ui::mojom::WindowOpenDisposition::kCurrentTab,
+              testing::_, testing::_))
       .Times(1);
   composebox_handler.ProcessContextAndOpenUrl(
-      kUploadedImageUrl, WindowOpenDisposition::kCurrentTab);
+      kUploadedImageUrl, ui::mojom::WindowOpenDisposition::kCurrentTab);
   testing::Mock::VerifyAndClearExpectations(factory_service);
 
   // Screenshots (added via AddFileContextToPage) should open with an in-place
@@ -1066,7 +1072,7 @@ TEST_F(OmniboxEverywhereHandlerTest,
           });
 
   composebox_handler.ProcessContextAndOpenUrl(
-      kScreenshotUrl, WindowOpenDisposition::kCurrentTab);
+      kScreenshotUrl, ui::mojom::WindowOpenDisposition::kCurrentTab);
 
   EXPECT_EQ(kScreenshotUrl, captured_url);
   EXPECT_TRUE(ui::PageTransitionCoreTypeIs(captured_transition,

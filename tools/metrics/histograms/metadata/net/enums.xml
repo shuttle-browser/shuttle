@@ -810,6 +810,27 @@ historical analysis. -->
       label="DNS Config with local nameservers (including loopback)"/>
 </enum>
 
+<!-- LINT.IfChange(DnsJobKeptAliveResult) -->
+
+<enum name="DnsJobKeptAliveResult">
+  <int value="0" label="Cached">
+    The DnsTask succeeded and the results were stored in the HostCache.
+  </int>
+  <int value="1" label="Failed">The DnsTask failed. Nothing was cached.</int>
+  <int value="2" label="CapExpired">
+    The hard cap expired before the DnsTask completed. Nothing was cached.
+  </int>
+  <int value="3" label="Aborted">
+    The Job was aborted (e.g. network change, DNS config change or resolver
+    shutdown). The DnsTask results were not cached.
+  </int>
+  <int value="4" label="RequestRejoined">
+    A new request joined the Job, which then continued as a regular Job.
+  </int>
+</enum>
+
+<!-- LINT.ThenChange(//net/dns/host_resolver_manager_job.h:DnsJobKeptAliveResult) -->
+
 <enum name="DohServerAutoupgradeStatus">
   <int value="0" label="SuccessWithNoPriorFailures"/>
   <int value="1" label="SuccessWithSomePriorFailures"/>
@@ -1247,6 +1268,26 @@ historical analysis. -->
   <int value="2" label="Normalized Names"/>
   <int value="3" label="Chain contained only one certificate"/>
 </enum>
+
+<!-- LINT.IfChange(NetCertificatePrintableStringParseMode) -->
+
+<enum name="NetCertificatePrintableStringParseMode">
+  <int value="0" label="Default (valid PrintableString)"/>
+  <int value="1" label="Allow ASCII"/>
+  <int value="2" label="UTF-8 hack (non-ASCII)"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/cert/x509_certificate.h:PrintableStringParseMode) -->
+
+<!-- LINT.IfChange(NetCertificateRdnAttributeOrder) -->
+
+<enum name="NetCertificateRdnAttributeOrder">
+  <int value="0" label="All RDNs are single-valued"/>
+  <int value="1" label="Multi-valued RDNs, all sorted"/>
+  <int value="2" label="Some RDN unsorted"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/cert/x509_util.h:RdnAttributeOrder) -->
 
 <!-- LINT.IfChange(NetCertificateSerialNumberType) -->
 
@@ -3537,6 +3578,17 @@ Called by update_net_trust_anchors.py.-->
 
 <!-- LINT.ThenChange(//net/socket/udp_socket_posix.h:SetSocketOptionGroResult) -->
 
+<!-- LINT.IfChange(SharedDictionaryHeaderValidationFailureReason) -->
+
+<enum name="SharedDictionaryHeaderValidationFailureReason">
+  <int value="0" label="Empty header"/>
+  <int value="1" label="Incomplete header"/>
+  <int value="2" label="Signature mismatch"/>
+  <int value="3" label="Dictionary hash mismatch"/>
+</enum>
+
+<!-- LINT.ThenChange(//net/shared_dictionary/shared_dictionary_header_checker_source_stream.h:SharedDictionaryHeaderValidationFailureReason) -->
+
 <!-- LINT.IfChange(SharedDictionaryStorageEvictionReason) -->
 
 <enum name="SharedDictionaryStorageEvictionReason">
@@ -3885,48 +3937,6 @@ Called by update_net_trust_anchors.py.-->
   <int value="5" label="TLS 1.2"/>
   <int value="6" label="TLS 1.3"/>
   <int value="7" label="QUIC"/>
-</enum>
-
-<enum name="SSLTrustAnchorIDsResult">
-  <summary>
-    Whether a TLS connection relied on the trust anchor ID retry.
-  </summary>
-  <int value="0"
-      label="There was a DNS hint, and the connection succeeded on the
-             initial connection"/>
-  <int value="1"
-      label="There was a DNS hint, and the connection failed on the initial
-             connection, without retrying"/>
-  <int value="2"
-      label="There was a DNS hint, and the connection succeeded after
-             retrying with fresh Trust Anchor IDs"/>
-  <int value="3"
-      label="There was a DNS hint, and the connection failed after retrying
-             with fresh Trust Anchor IDs"/>
-  <int value="4"
-      label="There was no DNS hint, and the connection succeeded on the
-             initial connection"/>
-  <int value="5"
-      label="There was no DNS hint, and the connection failed on the initial
-             connection, without retrying"/>
-  <int value="6"
-      label="There was no DNS hint, and the connection succeeded after
-             retrying with fresh Trust Anchor IDs"/>
-  <int value="7"
-      label="There was no DNS hint, and the connection failed after retrying
-             with fresh Trust Anchor IDs"/>
-  <int value="8"
-      label="There was a DNS hint, and the connection succeeded after
-             retrying with the MTC fallback"/>
-  <int value="9"
-      label="There was a DNS hint, and the connection failed after retrying
-             with the MTC fallback"/>
-  <int value="10"
-      label="There was no DNS hint, and the connection succeeded after
-             retrying with the MTC fallback"/>
-  <int value="11"
-      label="There was no DNS hint, and the connection failed after retrying
-             with the MTC fallback"/>
 </enum>
 
 <!-- LINT.IfChange(StreamSocketCloseReason) -->

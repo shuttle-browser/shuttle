@@ -9,6 +9,7 @@
 #include <string>
 #include <string_view>
 
+#include "base/i18n/file_util_icu.h"
 #include "base/logging.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -41,17 +42,15 @@ constexpr size_t kMaxDocumentTitleLength = 80;
 constexpr gfx::Size kIsoA4Microns = gfx::Size(210000, 297000);
 #endif
 
-}  // namespace
-
 std::u16string SimplifyDocumentTitleWithLength(const std::u16string& title,
                                                size_t length) {
   std::u16string no_controls(title);
-  no_controls.erase(
-      std::remove_if(no_controls.begin(), no_controls.end(), &u_iscntrl),
-      no_controls.end());
+  std::erase_if(no_controls, &u_iscntrl);
+
+  base::i18n::ReplaceIllegalCharacters(&no_controls, '_');
 
   static constexpr const char* kCharsToReplace[] = {
-      "\\", "/", "<", ">", ":", "\"", "'", "|", "?", "*", "~",
+      "'", "~", "(", ")", "{", "}",
   };
   for (const char* c : kCharsToReplace) {
     base::ReplaceChars(no_controls, base::ASCIIToUTF16(c), u"_", &no_controls);
@@ -62,32 +61,16 @@ std::u16string SimplifyDocumentTitleWithLength(const std::u16string& title,
   return result;
 }
 
-std::u16string FormatDocumentTitleWithOwnerAndLength(
-    const std::u16string& owner,
-    const std::u16string& title,
-    size_t length) {
-  const std::u16string separator = u": ";
-  DCHECK_LT(separator.size(), length);
-
-  std::u16string short_title =
-      SimplifyDocumentTitleWithLength(owner, length - separator.size());
-  short_title += separator;
-  if (short_title.size() < length) {
-    short_title +=
-        SimplifyDocumentTitleWithLength(title, length - short_title.size());
-  }
-
-  return short_title;
-}
+}  // namespace
 
 std::u16string SimplifyDocumentTitle(const std::u16string& title) {
   return SimplifyDocumentTitleWithLength(title, kMaxDocumentTitleLength);
 }
 
-std::u16string FormatDocumentTitleWithOwner(const std::u16string& owner,
-                                            const std::u16string& title) {
-  return FormatDocumentTitleWithOwnerAndLength(owner, title,
-                                               kMaxDocumentTitleLength);
+std::u16string SimplifyDocumentTitleWithLengthForTesting(
+    const std::u16string& title,
+    size_t length) {
+  return SimplifyDocumentTitleWithLength(title, length);
 }
 
 #if BUILDFLAG(USE_CUPS)

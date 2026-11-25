@@ -11,15 +11,12 @@
 #include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/memory/weak_ptr.h"
-#include "base/observer_list.h"
-#include "base/sequence_checker.h"
 #include "components/signin/public/identity_manager/account_capabilities_test_mutator.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "google_apis/gaia/gaia_id.h"
 #include "ios/chrome/browser/signin/model/fake_system_identity_details.h"
 #include "ios/chrome/browser/signin/model/system_identity_interaction_manager.h"
 #include "ios/chrome/browser/signin/model/system_identity_manager.h"
-#include "ios/chrome/browser/signin/model/system_identity_manager_observer.h"
 
 @class FakeSystemIdentity;
 @class FakeSystemIdentityManagerStorage;
@@ -209,6 +206,11 @@ class FakeSystemIdentityManager final : public SystemIdentityManager {
  private:
   // Returns a weak pointer to the current instance.
   base::WeakPtr<FakeSystemIdentityManager> GetWeakPtr();
+
+  // Sets default pending capabilities for `identity` so that capability fetches
+  // during the authentication flow resolve without delay. `identity` must
+  // already be in `storage_`.
+  void SetUpDefaultCapabilities(id<SystemIdentity> identity);
 
   // Helper used to implement the asynchronous part of `ForgetIdentity`.
   void ForgetIdentityAsync(id<SystemIdentity> identity,

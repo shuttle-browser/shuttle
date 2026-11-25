@@ -4,7 +4,6 @@
 
 #import <XCTest/XCTest.h>
 
-#import "base/ios/ios_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/ios/wait_util.h"
 #import "base/test/metrics/histogram_tester.h"
@@ -280,9 +279,10 @@ NSString* CapitalizeFirstLetter(NSString* string) {
                              IDS_IOS_TOOLS_MENU_CLEAR_BROWSING_DATA))];
 
   // Wait for the summary to be loaded.
-  [ChromeEarlGrey waitForUIElementToDisappearWithMatcher:
-                      grey_text(l10n_util::GetNSString(
-                          IDS_CLEAR_BROWSING_DATA_CALCULATING))];
+  [ChromeEarlGrey
+      waitForUIElementToDisappearWithMatcher:
+          grey_text(l10n_util::GetNSString(IDS_CLEAR_BROWSING_DATA_CALCULATING))
+                                     timeout:kWaitForClearBrowsingDataTimeout];
 }
 
 // Opens Quick Delete from the three dot menu.
@@ -297,9 +297,10 @@ NSString* CapitalizeFirstLetter(NSString* string) {
       windowIndex, CGVectorMake(0.0, 0.0));
 
   // Wait for the summary to be loaded.
-  [ChromeEarlGrey waitForUIElementToDisappearWithMatcher:
-                      grey_text(l10n_util::GetNSString(
-                          IDS_CLEAR_BROWSING_DATA_CALCULATING))];
+  [ChromeEarlGrey
+      waitForUIElementToDisappearWithMatcher:
+          grey_text(l10n_util::GetNSString(IDS_CLEAR_BROWSING_DATA_CALCULATING))
+                                     timeout:kWaitForClearBrowsingDataTimeout];
 }
 
 // Triggers the deletion from Quick Delete by tapping the delete data button and
@@ -570,15 +571,7 @@ NSString* CapitalizeFirstLetter(NSString* string) {
 }
 
 // Tests that the browsing data summary is updated when the time range changes.
-// TODO(crbug.com/443704367): Test disabled on simulator.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testSummaryUpdatesWhenTimeRangeChanges \
-  DISABLED_testSummaryUpdatesWhenTimeRangeChanges
-#else
-#define MAYBE_testSummaryUpdatesWhenTimeRangeChanges \
-  testSummaryUpdatesWhenTimeRangeChanges
-#endif
-- (void)MAYBE_testSummaryUpdatesWhenTimeRangeChanges {
+- (void)testSummaryUpdatesWhenTimeRangeChanges {
   // Set pref to the last hour.
   [ChromeEarlGrey
       setIntegerValue:static_cast<int>(browsing_data::TimePeriod::LAST_HOUR)
@@ -689,8 +682,7 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 // row when browsing history is selected as a data type to be deleted and when
 // the user syncs history. It also tests that the history entries get deleted
 // when the deletion of browsing data is selected.
-// TODO(crbug.com/484951999): Unflake the test.
-- (void)FLAKY_testBrowsingHistoryForDeletionWithHistorySync {
+- (void)testBrowsingHistoryForDeletionWithHistorySync {
   // Sign in and enable history sync.
   [self signInAndEnableHistorySync];
 
@@ -713,18 +705,19 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
   [self openQuickDeleteFromThreeDotMenu];
 
   // Check that Quick Delete is presented.
-  [[EarlGrey selectElementWithMatcher:ClearBrowsingDataView()]
-      assertWithMatcher:grey_notNil()];
+  [ChromeEarlGrey
+      waitForSufficientlyVisibleElementWithMatcher:ClearBrowsingDataView()];
 
   // Check that the browsing data row and the browsing history substring are
   // presented.
-  [[EarlGrey selectElementWithMatcher:grey_text(l10n_util::GetNSString(
-                                          IDS_IOS_DELETE_BROWSING_DATA_TITLE))]
-      assertWithMatcher:grey_sufficientlyVisible()];
-  [[EarlGrey selectElementWithMatcher:
-                 ContainsPartialText(l10n_util::GetPluralNSStringF(
-                     IDS_IOS_DELETE_BROWSING_DATA_SUMMARY_SITES_SYNCED, 1))]
-      assertWithMatcher:grey_sufficientlyVisible()];
+  [ChromeEarlGrey waitForSufficientlyVisibleElementWithMatcher:
+                      grey_text(l10n_util::GetNSString(
+                          IDS_IOS_DELETE_BROWSING_DATA_TITLE))];
+  [ChromeEarlGrey
+      waitForUIElementToAppearWithMatcher:
+          ContainsPartialText(l10n_util::GetPluralNSStringF(
+              IDS_IOS_DELETE_BROWSING_DATA_SUMMARY_SITES_SYNCED, 1))
+                                  timeout:kWaitForClearBrowsingDataTimeout];
 
   // Tap the browsing data button.
   [self triggerDeletionFromQuickDelete];
@@ -773,13 +766,7 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 // Tests that tabs are shown as a possible type to be deleted on the browsing
 // data row when tabs are selected as a data type for deletion. It also tests
 // that the tabs get closed when the deletion of tabs is selected.
-// TODO(crbug.com/521777875): Test fails on iPhone simulator.
 - (void)testTabsForDeletion {
-#if TARGET_OS_SIMULATOR
-  if (![ChromeEarlGrey isIPadIdiom]) {
-    EARL_GREY_TEST_DISABLED(@"Disabled on iPhone simulator.");
-  }
-#endif
   // Set pref to close tabs.
   [ChromeEarlGrey setBoolValue:YES
                    forUserPref:browsing_data::prefs::kCloseTabs];
@@ -1003,13 +990,6 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 // also tests that the tabs in tab groups get closed when the deletion of tabs
 // is selected.
 - (void)testTabsForDeletionInTabGroup {
-  // TODO(crbug.com/446597022): Re-enable the test on iOS26 device.
-#if !TARGET_OS_SIMULATOR
-  if (base::ios::IsRunningOnIOS26OrLater()) {
-    EARL_GREY_TEST_DISABLED(@"Test disabled on iOS 26 and on device.");
-  }
-#endif
-
   // Set pref to close tabs.
   [ChromeEarlGrey setBoolValue:YES
                    forUserPref:browsing_data::prefs::kCloseTabs];
@@ -1055,8 +1035,7 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 // tabs should include tabs in all windows, not just the ones where quick delete
 // is triggered from. It also tests that the tabs in both windows get closed
 // when the deletion of tabs is selected.
-// TODO(crbug.com/358141981): Deflake the test.
-- (void)FLAKY_testTabsForDeletionInMultiwindow {
+- (void)testTabsForDeletionInMultiwindow {
   if (![ChromeEarlGrey areMultipleWindowsSupported]) {
     EARL_GREY_TEST_DISABLED(@"Multiple windows can't be opened.");
   }
@@ -1107,15 +1086,9 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 
 // Tests that the selected value for the time range updates across all open
 // Quick Delete menus.
-// TODO(crbug.com/464192351): Re-enable test for multi-window.
-- (void)DISABLED_testTimeRangeSelectionUpdatesInMultiwindow {
+- (void)testTimeRangeSelectionUpdatesInMultiwindow {
   if (![ChromeEarlGrey areMultipleWindowsSupported]) {
     EARL_GREY_TEST_DISABLED(@"Multiple windows can't be opened.");
-  }
-  if (@available(iOS 26.0, *)) {
-    // TODO(crbug.com/427699033): Re-enable test on iOS 26.
-    // Fails final histogram check.
-    EARL_GREY_TEST_DISABLED(@"Test disabled on iOS 26.");
   }
 
   // Set time range pref to the last hour.
@@ -1467,15 +1440,7 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 
 // Tests that a user in the `ConsentLevel::kSignin` state will remain signed in
 // after clearing their browsing history.
-// TODO(crbug.com/443704367): Test disabled on simulator.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testUserSignedInWhenClearingBrowsingData \
-  DISABLED_testUserSignedInWhenClearingBrowsingData
-#else
-#define MAYBE_testUserSignedInWhenClearingBrowsingData \
-  testUserSignedInWhenClearingBrowsingData
-#endif
-- (void)MAYBE_testUserSignedInWhenClearingBrowsingData {
+- (void)testUserSignedInWhenClearingBrowsingData {
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
   [SigninEarlGreyUI signinWithFakeIdentity:fakeIdentity];
 
@@ -1505,15 +1470,9 @@ TAG_SMOKE_TEST(QuickDeleteTestCase, testBrowsingHistoryForDeletion);
 
 // Tests that changing the state of one pref, updates the browsing data summary
 // across all open Quick Delete menus.
-// TODO(crbug.com/464192351): Re-enable test for multi-window.
-- (void)DISABLED_testPrefChangeUpdatesInMultiwindow {
+- (void)testPrefChangeUpdatesInMultiwindow {
   if (![ChromeEarlGrey areMultipleWindowsSupported]) {
     EARL_GREY_TEST_DISABLED(@"Multiple windows can't be opened.");
-  }
-  if (@available(iOS 26.0, *)) {
-    // TODO(crbug.com/427699033): Re-enable test on iOS 26.
-    // Fails interacting with both windows.
-    EARL_GREY_TEST_DISABLED(@"Test disabled on iOS 26.");
   }
 
   // Set the cache preference to true.

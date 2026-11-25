@@ -56,10 +56,6 @@ namespace history_clusters {
 class HistoryClustersService;
 }
 
-namespace history_embeddings {
-class HistoryEmbeddingsSearch;
-}
-
 namespace network {
 class SharedURLLoaderFactory;
 }
@@ -99,8 +95,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   virtual AutocompleteClassifier* GetAutocompleteClassifier() = 0;
   virtual history::HistoryService* GetHistoryService() = 0;
   virtual history_clusters::HistoryClustersService* GetHistoryClustersService();
-  virtual history_embeddings::HistoryEmbeddingsSearch*
-  GetHistoryEmbeddingsSearch();
   virtual scoped_refptr<history::TopSites> GetTopSites() = 0;
   virtual bookmarks::BookmarkModel* GetBookmarkModel() = 0;
   virtual history::URLDatabase* GetInMemoryDatabase() = 0;
@@ -238,12 +232,6 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   // Returns true if the sharing hub command is enabled.
   virtual bool IsSharingHubAvailable() const;
 
-  // Returns true if history embeddings is enabled and user has opted in.
-  virtual bool IsHistoryEmbeddingsEnabled() const;
-
-  // Returns true if history embeddings is enabled and user can opt in/out.
-  virtual bool IsHistoryEmbeddingsSettingVisible() const;
-
   // Returns true if the current profile is eligible for Lens. This is used to
   // control whether Lens entrypoints can be shown during this browsing session.
   // Can be changed on demand via enterprise policy.
@@ -254,6 +242,19 @@ class AutocompleteProviderClient : public OmniboxAction::Client {
   // entrypoint shouldn't be shown as it will cause nothing to happen if
   // clicked. This is per tab dependent.
   virtual bool AreLensEntrypointsVisible() const;
+
+  // Returns true if the "Ask Google about this page" contextual search action
+  // can be shown and fulfilled without Lens, e.g. on desktop Android where the
+  // action opens the Contextual Tasks (CoBrowse) side panel in zero state. When
+  // true, the action is shown even if Lens is not enabled.
+  virtual bool CanOpenCoBrowsePanelWithoutLens() const;
+
+  // Returns true if contextual zero-prefix suggestions can be requested and
+  // fulfilled without Lens, e.g. on desktop Android where clicking a
+  // contextual suggestion issues an AI Mode query with the current tab as
+  // context in the contextual tasks side panel. When true, contextual
+  // suggestions are requested and shown even if Lens is not enabled.
+  virtual bool CanFulfillContextualSuggestionsWithoutLens() const;
 
   // Returns true if the page contains the paywall hint in the HTML. Returns
   // false if the page does not contain the paywall hint. Returns std::nullopt

@@ -2,13 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import type {CrIconElement} from 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import {assertEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+import type {IconFromTableElement} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 import {IconTable, IconType} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {IconFromTableElement} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 suite('IconFromTableTest', function() {
   let iconFromTable: IconFromTableElement;
@@ -147,6 +147,18 @@ suite('IconFromTableTest', function() {
       assertTrue(!!renderer);
       const style = renderer.computedStyleMap();
       assertEquals('rgba(255, 0, 0, 0.5)', style.get('color')?.toString());
+    }
+
+    // The embedder can override the color from the icon table.
+    {
+      iconFromTable.style.setProperty(
+          '--icon-from-table-color-override', 'rgb(0, 255, 0)');
+      await microtasksFinished();
+
+      const renderer =
+          iconFromTable.shadowRoot.querySelector('#maskIconContainer');
+      assertTrue(!!renderer);
+      assertEquals('rgb(0, 255, 0)', window.getComputedStyle(renderer).color);
     }
   });
 

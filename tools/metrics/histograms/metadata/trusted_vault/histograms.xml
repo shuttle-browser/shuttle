@@ -33,21 +33,20 @@ chromium-metrics-reviews@google.com.
   <variant name=".HwProtected" summary="The security domain used for passkeys"/>
 </variants>
 
-<histogram name="TrustedVault.AccessTokenFetchSuccess{SecurityDomainId}"
-    enum="Boolean" expires_after="2027-02-07">
+<histogram name="TrustedVault.AccessTokenFetchSuccess" enum="Boolean"
+    expires_after="2027-02-07">
   <owner>mastiz@chromium.org</owner>
   <owner>src/components/trusted_vault/OWNERS</owner>
   <summary>
-    Records whether access token fetching attempt was successful upon every
-    request to Security Domains service.
+    Records whether an access token fetching attempt was successful upon every
+    request to the Security Domains service or Recovery Key Store service.
   </summary>
-  <token key="SecurityDomainId" variants="SecurityDomainId"/>
 </histogram>
 
 <histogram
     name="TrustedVault.DownloadAuthenticationFactorsRegistrationState{SecurityDomainId}"
     enum="DownloadAuthenticationFactorsRegistrationStateResult"
-    expires_after="2026-12-06">
+    expires_after="2027-11-09">
   <owner>mastiz@chromium.org</owner>
   <owner>thomasth@google.com</owner>
   <summary>
@@ -93,7 +92,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="TrustedVault.FileWriteStatus"
-    enum="TrustedVaultFileWriteStatus" expires_after="2027-02-07">
+    enum="TrustedVaultFileWriteStatus" expires_after="2027-05-02">
   <owner>mastiz@chromium.org</owner>
   <owner>thomasth@google.com</owner>
   <summary>
@@ -143,6 +142,17 @@ chromium-metrics-reviews@google.com.
     sample per invocation). Warning: this histogram was expired from 2026-07-31
     to 2026-10-20; data may be missing.
   </summary>
+</histogram>
+
+<histogram name="TrustedVault.KeyRotationStatus{SecurityDomainId}"
+    enum="TrustedVaultKeyRotationStatus" expires_after="2027-04-11">
+  <owner>thomasth@google.com</owner>
+  <owner>src/components/trusted_vault/OWNERS</owner>
+  <summary>
+    Records the outcome of a shared key rotation request for {SecurityDomainId}
+    upon request completion or failure.
+  </summary>
+  <token key="SecurityDomainId" variants="SecurityDomainId"/>
 </histogram>
 
 <histogram
@@ -316,6 +326,8 @@ chromium-metrics-reviews@google.com.
   </summary>
   <token key="SecurityDomainId" variants="SecurityDomainId">
     <variant name="" summary="Any security domain"/>
+    <variant name=".NoSecurityDomain"
+        summary="Generic requests not tied to a specific security domain"/>
   </token>
   <token key="Reason">
     <variant name="" summary="Any reason"/>
@@ -326,7 +338,10 @@ chromium-metrics-reviews@google.com.
     <variant name=".DownloadIsRecoverabilityDegraded"
         summary="Downloading of the recoverability-degraded state"/>
     <variant name=".DownloadKeys" summary="Downloading of keys"/>
+    <variant name=".DownloadRecoveryFactorsForKeyRotation"
+        summary="Downloading of recovery factors for key rotation"/>
     <variant name=".RegisterDevice" summary="Local device registration"/>
+    <variant name=".RegisterGaiaPassword" summary="Gaia password registration"/>
     <variant name=".RegisterGooglePasswordManagerPIN"
         summary="Google Password Manager PIN registration"/>
     <variant name=".RegisterICloudKeychain"

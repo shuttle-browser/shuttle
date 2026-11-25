@@ -44,7 +44,7 @@ using syncer::RemoteDeviceInfo;
 
 DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kPrimaryTabId);
 // Baseline Gerrit CL number of the most recent CL that modified the UI.
-constexpr char kScreenshotBaselineCL[] = "7819337";
+constexpr char kScreenshotBaselineCL[] = "8667798";
 
 class SendTabToSelfInteractiveUiTest : public InteractiveBrowserTest {
  public:
@@ -136,7 +136,8 @@ IN_PROC_BROWSER_TEST_F(SendTabToSelfInteractiveUiTest,
   RunTestSequence(SetUpSingleDeviceAndShowBubble(), Do([this]() {
                     SendTabToSelfBubbleController::GetOrCreateForWebContents(
                         browser()->GetTabStripModel()->GetActiveWebContents())
-                        ->OnDeviceSelected("device_1", "device_1");
+                        ->OnDeviceSelected("device_1", "device_1",
+                                           FormFactor::kDesktop);
                   }),
                   WaitForShow(toasts::ToastView::kToastViewId),
                   StopToastTimer(),
@@ -158,7 +159,7 @@ IN_PROC_BROWSER_TEST_F(SendTabToSelfDeviceSelectionInteractiveUiTest,
                        SendTabShowsBubbleAndToastDeviceSelection) {
   RunTestSequence(
       SetUpSingleDeviceAndShowBubble(),
-      // Capture a screenshot of the modernized bubble for Gold pixel
+      // Capture a screenshot of the target picker bubble for Gold pixel
       // verification.
       Screenshot(SendTabToSelfDevicePickerBubbleView::
                      kSendTabToSelfDevicePickerBubbleId,

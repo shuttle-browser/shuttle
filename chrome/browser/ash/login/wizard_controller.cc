@@ -244,7 +244,6 @@
 #include "chrome/browser/ui/webui/ash/login/user_creation_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/welcome_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/wrong_hwid_screen_handler.h"
-#include "chrome/common/chrome_constants.h"
 #include "chromeos/ash/components/audio/cras_audio_handler.h"
 #include "chromeos/ash/components/dbus/session_manager/session_manager_client.h"
 #include "chromeos/ash/components/dbus/update_engine/update_engine_client.h"
@@ -454,6 +453,9 @@ WizardController::WizardController(
     scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
     policy::DeviceRestrictionScheduleController*
         device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock,
     WizardContext* wizard_context)
     : local_state_(CHECK_DEREF(local_state)),
       metrics_service_(metrics_service),
@@ -463,6 +465,9 @@ WizardController::WizardController(
       component_manager_ash_(std::move(component_manager_ash)),
       device_restriction_schedule_controller_(
           device_restriction_schedule_controller),
+      multi_user_sign_in_policy_controller_(
+          CHECK_DEREF(multi_user_sign_in_policy_controller)),
+      system_clock_(CHECK_DEREF(system_clock)),
       quickstart_controller_(
           std::make_unique<quick_start::QuickStartController>(
               &local_state_.get())),
@@ -1754,6 +1759,7 @@ void WizardController::OnSamlConfirmPasswordScreenExit(
                SamlConfirmPasswordScreen::GetResultString(result));
   switch (result) {
     case SamlConfirmPasswordScreen::Result::kSuccess:
+    case SamlConfirmPasswordScreen::Result::kNotApplicable:
       switch (wizard_context_->knowledge_factor_setup.auth_setup_flow) {
         case WizardContext::AuthChangeFlow::kInitialSetup:
           // `user_context` is only set on the wizard context for pre-cryptohome
@@ -1791,10 +1797,6 @@ void WizardController::OnSamlConfirmPasswordScreenExit(
       ShowSignInFatalErrorScreen(
           SignInFatalErrorScreen::Error::kScrapedPasswordVerificationFailure,
           base::DictValue());
-      break;
-    case ash::SamlConfirmPasswordScreen::Result::kNotApplicable:
-      // Continue initial setup by showing other auth factors flows.
-      ShowPinSetupScreenAsMainFactor();
       break;
   }
 }
@@ -2489,7 +2491,14 @@ void WizardController::OnEnrollmentDone() {
     // Could be not managed in tests.
     CHECK_EQ(LoginDisplayHost::default_host()->GetOobeUI()->display_type(),
              OobeUI::kOobeDisplay, base::NotFatalUntil::M160);
-    SwitchWebUItoMojo();
+    CHECK(metrics_service_);
+    CHECK(device_restriction_schedule_controller_);
+    SwitchWebUItoMojo(
+        &local_state_.get(), metrics_service_.get(),
+        &application_locale_storage_.get(), shared_url_loader_factory_,
+        &browser_policy_connector_ash_.get(), component_manager_ash_,
+        device_restriction_schedule_controller_.get(),
+        &multi_user_sign_in_policy_controller_.get(), &system_clock_.get());
   } else {
     ShowLoginScreen();
   }
@@ -2539,7 +2548,14 @@ void WizardController::OnDemoSetupScreenExit(DemoSetupScreen::Result result) {
     case DemoSetupScreen::Result::kCompleted:
       PerformOOBECompletedActions(
           OobeMetricsHelper::CompletedPreLoginOobeFlowType::kDemo);
-      SwitchWebUItoMojo();
+      CHECK(metrics_service_);
+      CHECK(device_restriction_schedule_controller_);
+      SwitchWebUItoMojo(
+          &local_state_.get(), metrics_service_.get(),
+          &application_locale_storage_.get(), shared_url_loader_factory_,
+          &browser_policy_connector_ash_.get(), component_manager_ash_,
+          device_restriction_schedule_controller_.get(),
+          &multi_user_sign_in_policy_controller_.get(), &system_clock_.get());
       break;
     case DemoSetupScreen::Result::kCanceled:
       ShowWelcomeScreen();
@@ -2651,8 +2667,19 @@ void WizardController::OnPasswordSelectionScreenExit(
     // TODO(b/291808449): add an edge case for Enterprise users
     // without GAIA/SAML password.
     case PasswordSelectionScreen::Result::NOT_APPLICABLE:
-      ShowFingerprintSetupScreen();
-      return;
+      switch (wizard_context_->knowledge_factor_setup.auth_setup_flow) {
+        case WizardContext::AuthChangeFlow::kInitialSetup:
+        case WizardContext::AuthChangeFlow::kReauthentication:
+          ShowFingerprintSetupScreen();
+          return;
+        case WizardContext::AuthChangeFlow::kRecovery:
+          if (ash::features::IsRecoveryFlowReorderEnabled()) {
+            ObtainContextAndFinalizeAuth();
+            return;
+          }
+          ObtainContextAndLoginAuthenticated();
+          return;
+      }
     case PasswordSelectionScreen::Result::BACK: {
       // The back button is only shown for going back to main PIN setup.
       CHECK_EQ(wizard_context_->knowledge_factor_setup.pin_setup_mode,

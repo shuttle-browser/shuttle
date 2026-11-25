@@ -18,6 +18,14 @@ namespace read_anything {
 // Maintains and handles entry points for the ReadAnythingController.
 class ReadAnythingEntryPointController {
  public:
+  // Where ShowUI() shows Reading Mode.
+  enum class Presentation {
+    // The presentation the user last chose.
+    kPreferred,
+    // The side panel.
+    kSidePanel,
+  };
+
   ReadAnythingEntryPointController(const ReadAnythingEntryPointController&) =
       delete;
   ReadAnythingEntryPointController& operator=(
@@ -32,9 +40,16 @@ class ReadAnythingEntryPointController {
   // Immersive and Side Panel reading mode.
   static bool IsUIShowing(BrowserWindowInterface* bwi);
 
-  // Shows Reading Mode.
+  // Shows Reading Mode in the active tab, in `presentation`. If Reading Mode is
+  // already showing in a different presentation, it moves there.
   static void ShowUI(BrowserWindowInterface* bwi,
-                     ReadAnythingOpenTrigger open_trigger);
+                     ReadAnythingOpenTrigger open_trigger,
+                     Presentation presentation = Presentation::kPreferred);
+
+  // Closes Reading Mode in the active tab if it's showing. `reason` is passed
+  // to Reading Mode's lifecycle observers.
+  static void CloseUI(BrowserWindowInterface* bwi,
+                      ReadAnythingCloseReason reason);
 
   // Shows or hides the omnibox entry point. When showing, also tries to show
   // the IPH if show_promo_callback is set, then runs it with the IPH result.

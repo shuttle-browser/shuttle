@@ -539,6 +539,66 @@ TEST_F(NearbyConnectionsManagerImplTest, DiscoveryFlow) {
   discovered_run_loop_3.Run();
 }
 
+TEST_F(NearbyConnectionsManagerImplTest, ReentrantResetDoesNotDoubleFree) {
+  // Exceeds std::string SSO capacity (>22 bytes) so the map key allocates on
+  // the heap and a re-entrant connections_.clear() double-frees it.
+  const std::string long_endpoint_id =
+      "test_endpoint_id_longer_than_sso_buffer";
+
+  mojo::Remote<ConnectionLifecycleListener> connection_listener_remote;
+  testing::NiceMock<MockIncomingConnectionListener>
+      incoming_connection_listener;
+  StartAdvertising(connection_listener_remote, incoming_connection_listener);
+
+  mojo::Remote<PayloadListener> payload_listener_remote;
+  base::RunLoop accept_run_loop;
+  EXPECT_CALL(nearby_connections_, AcceptConnection)
+      .WillOnce([&](const std::string& service_id,
+                    const std::string& endpoint_id,
+                    mojo::PendingRemote<PayloadListener> listener,
+                    NearbyConnectionsMojom::AcceptConnectionCallback callback) {
+        payload_listener_remote.Bind(std::move(listener));
+        std::move(callback).Run(Status::kSuccess);
+        accept_run_loop.Quit();
+      });
+
+  const std::vector<uint8_t> remote_endpoint_info(
+      std::begin(kRemoteEndpointInfo), std::end(kRemoteEndpointInfo));
+  const std::vector<uint8_t> raw_authentication_token(
+      std::begin(kRawAuthenticationToken), std::end(kRawAuthenticationToken));
+
+  connection_listener_remote->OnConnectionInitiated(
+      long_endpoint_id,
+      ConnectionInfo::New(kAuthenticationToken, raw_authentication_token,
+                          remote_endpoint_info,
+                          /*is_incoming_connection=*/true));
+  accept_run_loop.Run();
+
+  NearbyConnection* connection = nullptr;
+  base::RunLoop accepted_run_loop;
+  EXPECT_CALL(incoming_connection_listener,
+              OnIncomingConnectionAccepted(testing::Eq(long_endpoint_id),
+                                           testing::_, testing::_))
+      .WillOnce([&](const std::string&, const std::vector<uint8_t>&,
+                    NearbyConnection* accepted_connection) {
+        connection = accepted_connection;
+        accepted_run_loop.Quit();
+      });
+
+  connection_listener_remote->OnConnectionAccepted(long_endpoint_id);
+  accepted_run_loop.Run();
+  ASSERT_NE(connection, nullptr);
+
+  // Set a disconnect listener that synchronously re-enters Reset() via
+  // Shutdown() while connections_ is being destroyed.
+  connection->SetDisconnectionListener(base::BindLambdaForTesting(
+      [&]() { nearby_connections_manager_->Shutdown(); }));
+
+  nearby_connections_manager_->Shutdown();
+  EXPECT_FALSE(
+      nearby_connections_manager_->GetRawAuthenticationToken(long_endpoint_id));
+}
+
 TEST_F(NearbyConnectionsManagerImplTest, DiscoveryProcessStopped) {
   const std::vector<uint8_t> endpoint_info(std::begin(kEndpointInfo),
                                            std::end(kEndpointInfo));
@@ -1368,7 +1428,6 @@ TEST_F(
   // but we test to ensure that no control-frame logic is exercised. Expect that
   // a status update is only sent for the first payload failure because the
   // listener does not exist afterwards.
-  base::RunLoop payload_run_loop;
   EXPECT_CALL(*payload_listener, OnStatusUpdate(testing::_, testing::_))
       .Times(1)
       .WillOnce([&](MockPayloadStatusListener::PayloadTransferUpdatePtr update,
@@ -1398,7 +1457,7 @@ TEST_F(
       kRemoteEndpointId,
       PayloadTransferUpdate::New(kPayloadId3, PayloadStatus::kSuccess,
                                  kTotalSize, /*bytes_transferred=*/0u));
-  payload_run_loop.RunUntilIdle();
+  payload_listener_remote.FlushForTesting();
 
   // Ensure that no control-frame logic was run, notably that no bytes were
   // written to the connection. Closing the connection will invoke any
@@ -1409,8 +1468,20 @@ TEST_F(
         EXPECT_FALSE(bytes);
         read_run_loop.Quit();
       }));
+  // Wait for the later disconnect request so any cancellation caused by the
+  // payload updates also reaches the mock.
+  base::RunLoop disconnect_run_loop;
+  EXPECT_CALL(nearby_connections_, DisconnectFromEndpoint)
+      .WillOnce(
+          [&disconnect_run_loop](
+              const std::string&, const std::string&,
+              NearbyConnectionsMojom::DisconnectFromEndpointCallback callback) {
+            std::move(callback).Run(Status::kSuccess);
+            disconnect_run_loop.Quit();
+          });
   connection->Close();
   read_run_loop.Run();
+  disconnect_run_loop.Run();
 }
 
 TEST_F(NearbyConnectionsManagerImplTest, IncomingRegisterPayloadPath) {

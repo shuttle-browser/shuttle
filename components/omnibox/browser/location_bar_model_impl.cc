@@ -14,15 +14,14 @@
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/contextual_tasks/public/features.h"
-#include "components/dom_distiller/core/url_constants.h"
-#include "components/dom_distiller/core/url_utils.h"
-#include "components/omnibox/browser/buildflags.h"
 #include "components/omnibox/browser/location_bar_model_delegate.h"
 #include "components/omnibox/browser/location_bar_model_util.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/search_engines/template_url_service.h"
 #include "components/security_state/core/security_state.h"
 #include "components/strings/grit/components_strings.h"
+#include "components/web_distiller/core/url_constants.h"
+#include "components/web_distiller/core/url_utils.h"
 #include "net/cert/cert_status_flags.h"
 #include "net/cert/x509_certificate.h"
 #include "net/ssl/ssl_connection_status_flags.h"
@@ -34,7 +33,7 @@
 #include "url/origin.h"
 #include "url/url_canon.h"
 
-#if (!BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_VR)) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_IOS)
 #include "components/omnibox/browser/vector_icons.h"  // nogncheck
 #endif
 
@@ -90,7 +89,7 @@ std::u16string LocationBarModelImpl::GetURLForDisplay() const {
   format_types |= url_formatter::kFormatUrlOmitFileScheme;
 #endif
 
-  if (dom_distiller::url_utils::IsDistilledPage(GetURL())) {
+  if (web_distiller::url_utils::IsDistilledPage(GetURL())) {
     // We explicitly elide the scheme here to ensure that HTTPS and HTTP will
     // be removed for display: Reader mode pages should not display a scheme,
     // and should only run on HTTP/HTTPS pages.
@@ -141,8 +140,9 @@ std::u16string LocationBarModelImpl::GetFormattedURL(
   // Reader Mode pages.
   // Note: if the URL begins with dom-distiller:// but is invalid we display it
   // as-is because it cannot be transformed into an article URL.
-  if (dom_distiller::url_utils::IsDistilledPage(url))
-    url = dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(url);
+  if (web_distiller::url_utils::IsDistilledPage(url)) {
+    url = web_distiller::url_utils::GetOriginalUrlFromDistillerUrl(url);
+  }
 
   // Note that we can't unescape spaces here, because if the user copies this
   // and pastes it into another program, that program may think the URL ends at
@@ -256,7 +256,7 @@ LocationBarModelImpl::GetOmniboxComposeboxPageClassification() const {
 }
 
 const gfx::VectorIcon& LocationBarModelImpl::GetVectorIcon() const {
-#if (!BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_VR)) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_IOS)
   auto* const icon_override = delegate_->GetVectorIconOverride();
   if (icon_override)
     return *icon_override;

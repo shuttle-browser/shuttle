@@ -23,6 +23,7 @@
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #include "components/autofill/core/browser/data_model/addresses/autofill_profile.h"
 #include "components/autofill/core/browser/data_model/payments/credit_card.h"
+#include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/filling/form_filler_test_api.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
@@ -140,11 +141,11 @@ class AutofillEventHandlerBrowserTest : public InProcessBrowserTest {
     profile.FinalizeAfterImport();
 
     TestAutofillManager* manager = autofill_manager_injector_[rfh];
-    manager->FillOrPreviewForm(mojom::ActionPersistence::kFill,
-                               form.global_id(), triggered_field.global_id(),
-                               &profile, AutofillTriggerSource::kPopup,
-                               /*require_user_confirmation=*/false,
-                               /*blocked_fields=*/{});
+    manager->FillOrPreviewForm(
+        mojom::ActionPersistence::kFill, form.global_id(),
+        triggered_field.global_id(), FillingProduct::kAddress, &profile,
+        AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
+        /*blocked_fields=*/{});
   }
 
   void NavigateAndTriggerAutofill() {
@@ -656,10 +657,11 @@ class AutofillEventMultiFrameBrowserTest : public InProcessBrowserTest {
     InProcessBrowserTest::SetUpOnMainThread();
 #endif
     // Register request handler before starting server.
-    embedded_test_server()->RegisterRequestHandler(
+    embedded_https_test_server().SetSSLConfig(net::EmbeddedTestServer::CERT_OK);
+    embedded_https_test_server().RegisterRequestHandler(
         base::BindRepeating(&AutofillEventMultiFrameBrowserTest::HandleRequest,
                             base::Unretained(this)));
-    ASSERT_TRUE(embedded_test_server()->Start());
+    ASSERT_TRUE(embedded_https_test_server().Start());
   }
 
   std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
@@ -803,11 +805,11 @@ class AutofillEventMultiFrameBrowserTest : public InProcessBrowserTest {
     test::SetCreditCardInfo(&card, kNameFull, kNumber, kExpMonth, kExpYear, "",
                             base::ASCIIToUTF16(std::string_view(kCvc)));
     TestAutofillManager* manager = autofill_manager_injector_[rfh];
-    manager->FillOrPreviewForm(mojom::ActionPersistence::kFill,
-                               form.global_id(), triggered_field.global_id(),
-                               &card, AutofillTriggerSource::kPopup,
-                               /*require_user_confirmation=*/false,
-                               /*blocked_fields=*/{});
+    manager->FillOrPreviewForm(
+        mojom::ActionPersistence::kFill, form.global_id(),
+        triggered_field.global_id(), FillingProduct::kCreditCard, &card,
+        AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
+        /*blocked_fields=*/{});
   }
 
   // Returns a form with `num_fields` fields. If no such form exists and no such
@@ -852,7 +854,7 @@ class AutofillEventMultiFrameBrowserTest : public InProcessBrowserTest {
 // for the fields in that frame.
 IN_PROC_BROWSER_TEST_F(AutofillEventMultiFrameBrowserTest,
                        CreditCardFormAcrossIframes) {
-  GURL url = embedded_test_server()->GetURL("/");
+  const GURL url = embedded_https_test_server().GetURL("/");
   ASSERT_TRUE(chrome_test_utils::NavigateToURL(web_contents(), url));
 
   // Wait for the form to be seen. The form has 4 fields:
@@ -921,7 +923,7 @@ IN_PROC_BROWSER_TEST_F(AutofillEventMultiFrameBrowserTest,
 // fields within that frame, not fields from other frames.
 IN_PROC_BROWSER_TEST_F(AutofillEventMultiFrameBrowserTest,
                        EventContainsOnlyLocalFrameFields) {
-  GURL url = embedded_test_server()->GetURL("/");
+  const GURL url = embedded_https_test_server().GetURL("/");
   ASSERT_TRUE(chrome_test_utils::NavigateToURL(web_contents(), url));
 
   constexpr size_t kExpectedFieldCount = 4;

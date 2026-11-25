@@ -4,6 +4,7 @@
 
 #import "ios/chrome/browser/authentication/trusted_vault_reauthentication/coordinator/trusted_vault_reauthentication_coordinator.h"
 
+#import "base/memory/raw_ptr.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
 #import "components/strings/grit/components_strings.h"
@@ -12,7 +13,6 @@
 #import "ios/chrome/browser/authentication/trusted_vault_reauthentication/coordinator/trusted_vault_reauthentication_coordinator_delegate.h"
 #import "ios/chrome/browser/shared/coordinator/alert/alert_coordinator.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
@@ -37,10 +37,10 @@ using l10n_util::GetNSStringF;
   base::OnceCallback<void(BOOL animated, ProceduralBlock cancel_done)>
       _dialogCancelCallback;
   trusted_vault::SecurityDomainId _securityDomainID;
-  raw_ptr<signin::IdentityManager, DanglingUntriaged> _identityManager;
+  raw_ptr<signin::IdentityManager> _identityManager;
   std::unique_ptr<signin::IdentityManagerObserverBridge>
       _identityManagerObserver;
-  raw_ptr<AuthenticationService, DanglingUntriaged> _authService;
+  raw_ptr<AuthenticationService> _authService;
   trusted_vault::TrustedVaultUserActionTriggerForUMA _userActionTrigger;
 }
 
@@ -123,6 +123,7 @@ using l10n_util::GetNSStringF;
   [super stop];
   _identityManagerObserver.reset();
   _identityManager = nullptr;
+  _authService = nullptr;
   self.identity = nil;
   self.delegate = nil;
 }

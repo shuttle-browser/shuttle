@@ -17,7 +17,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/ui/views/web_apps/protocol_handler_picker_dialog.h"
@@ -30,7 +29,7 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/models/image_model.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/views/bubble/bubble_dialog_model_host.h"
 #include "url/gurl.h"
 
@@ -135,10 +134,10 @@ void ProtocolHandlerPickerCoordinator::LaunchApp(
     const GURL& protocol_url,
     const std::string& app_id,
     std::optional<ConfirmationDialogAction> action) {
-  apps::AppLaunchParams params(app_id,
-                               apps::LaunchContainer::kLaunchContainerWindow,
-                               WindowOpenDisposition::kNewForegroundTab,
-                               apps::LaunchSource::kFromProtocolHandler);
+  apps::AppLaunchParams params(
+      app_id, apps::LaunchContainer::kLaunchContainerWindow,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      apps::LaunchSource::kFromProtocolHandler);
   params.protocol_handler_launch_url = protocol_url;
   params.confirmation_dialog_action = action;
   proxy_->LaunchAppWithParams(std::move(params));
@@ -223,7 +222,7 @@ void ProtocolHandlerPickerCoordinator::ShowPickerWithEntries(
   auto params = std::make_unique<tabs::TabDialogManager::Params>();
   params->close_on_detach = false;
 
-  dialog_ = tab_->GetTabFeatures()->tab_dialog_manager()->CreateAndShowDialog(
+  dialog_ = tabs::TabDialogManager::From(&*tab_)->CreateAndShowDialog(
       model_host, std::move(params));
 
   RecordPickerAction(ProtocolHandlerPickerAction::kDialogShown);

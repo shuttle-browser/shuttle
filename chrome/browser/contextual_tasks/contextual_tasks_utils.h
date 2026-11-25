@@ -20,7 +20,7 @@
 #include "mojo/public/cpp/bindings/remote.h"
 #include "third_party/omnibox_proto/model_mode.pb.h"
 #include "third_party/omnibox_proto/tool_mode.pb.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 class Profile;
 class BrowserWindowInterface;
@@ -200,9 +200,6 @@ void FinalizeAndSendAimQuery(
 void SendInjectedInputRemovedUpdate(AimMessagePoster* message_poster,
                                     const std::string& id);
 
-// Returns true if the side panel should be used instead of the bottom sheet.
-bool ShouldShowSidePanel();
-
 // Returns true if running on Android mobile (phone form factor).
 bool IsAndroidMobileFormFactor();
 
@@ -243,16 +240,19 @@ int GetContextualTasksPinningStringId(int default_resource_id);
 int GetContextualTasksEphemeralButtonContextMenuCloseTextId();
 #endif
 
-// Returns whether dark mode should be used for the given profile and URL.
-// If the URL contains a 'cs' parameter, that takes precedence. Otherwise,
-// returns true if ThemeService uses dark colors or if the profile is
-// off-the-record (Incognito).
-bool ShouldUseDarkMode(Profile* profile, const GURL& url);
+// Returns whether dark mode should be used for `web_contents` showing `url`,
+// checking in order of priority:
+// 1. The 'cs' parameter of `url`, if present.
+// 2. ShouldUseDarkModeForProfile() for the profile of `web_contents`.
+// 3. On Android, which has no ThemeService, the color mode of `web_contents`.
+// `web_contents` must not be null.
+bool ShouldUseDarkMode(content::WebContents* web_contents, const GURL& url);
 
 // Returns whether dark mode should be used for the given profile. Returns true
 // if ThemeService uses dark colors or if the profile is off-the-record
-// (Incognito).
-bool ShouldUseDarkMode(Profile* profile);
+// (Incognito). On Android, which has no ThemeService, returns true only for
+// off-the-record profiles.
+bool ShouldUseDarkModeForProfile(Profile* profile);
 
 // Returns the ClientToAimMessage containing the HandshakePing
 // with supported capabilities.
@@ -328,7 +328,8 @@ enum class ContextualTasksLinkOpenDisposition {
 
 // Records side panel link click metrics, including the requested window open
 // disposition.
-void RecordSidePanelLinkClickedMetrics(WindowOpenDisposition disposition);
+void RecordSidePanelLinkClickedMetrics(
+    ui::mojom::WindowOpenDisposition disposition);
 
 }  // namespace contextual_tasks
 

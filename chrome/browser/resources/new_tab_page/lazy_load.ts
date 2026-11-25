@@ -12,7 +12,6 @@
 
 // LINT.IfChange(LazyLoadedModules)
 import './action_chips/action_chips.js';
-import './action_chips/action_chips_proxy.js';
 import './doodle_share_dialog.js';
 import './iframe.js';
 import './lens_upload_dialog.js';
@@ -21,7 +20,7 @@ import './modules/modules.js';
 import './ntp_composebox.js';
 import './ntp_promo/individual_promos.js';
 import './voice_search_overlay.js';
-import 'chrome://new-tab-page/shared/customize_buttons/customize_buttons.js';
+import '/shared/customize_buttons/customize_buttons.js';
 import 'chrome://resources/cr_components/composebox/composebox_voice_search.js';
 import 'chrome://resources/cr_components/most_visited/most_visited.js';
 import 'chrome://resources/cr_components/search/animated_glow.js';
@@ -34,15 +33,14 @@ import 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 //     //chrome/test/data/webui/new_tab_page/lazy_load_test.ts:LazyLoadedModules
 // )
 
-export {CustomizeButtonsElement} from 'chrome://new-tab-page/shared/customize_buttons/customize_buttons.js';
+export {CustomizeButtonsElement} from '/shared/customize_buttons/customize_buttons.js';
 export type {ComposeboxFile, ComposeboxFuseboxActionRequest} from 'chrome://resources/cr_components/composebox/common.js';
 export {SubmitButtonIconType, VoiceSearchAction} from 'chrome://resources/cr_components/composebox/common.js';
-export {ComposeboxElement} from 'chrome://resources/cr_components/composebox/composebox.js';
 export {AimButtonMode} from 'chrome://resources/cr_components/composebox/composebox_aim_button.js';
 export {ComposeboxProxyImpl} from 'chrome://resources/cr_components/composebox/composebox_proxy.js';
 export {ComposeboxVoiceSearchElement} from 'chrome://resources/cr_components/composebox/composebox_voice_search.js';
 export type {LhsRailConfig, LhsRailItem} from 'chrome://resources/cr_components/composebox/threads_rail.js';
-export {LhsClientAction, ThreadsRailElement} from 'chrome://resources/cr_components/composebox/threads_rail.js';
+export {LhsClientAction, ThreadsRailAction, ThreadsRailElement} from 'chrome://resources/cr_components/composebox/threads_rail.js';
 export {WindowProxy as ComposeboxWindowProxy} from 'chrome://resources/cr_components/composebox/window_proxy.js';
 export {PageImageServiceBrowserProxy} from 'chrome://resources/cr_components/page_image_service/browser_proxy.js';
 export {MojoPluralStringProxy as NTPPluralStringProxyImpl} from 'chrome://resources/cr_components/search/mojo_plural_string_proxy.js';
@@ -50,7 +48,6 @@ export {CrButtonElement} from 'chrome://resources/cr_elements/cr_button/cr_butto
 export {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 export type {ActionChipClickDetail} from './action_chips/action_chips.js';
 export {ActionChipsElement} from './action_chips/action_chips.js';
-export {ActionChipsApiProxyImpl, ActionChipsRetrievalState} from './action_chips/action_chips_proxy.js';
 export {DoodleShareDialogElement} from './doodle_share_dialog.js';
 export {IframeElement} from './iframe.js';
 export {LensErrorType, LensFormElement, LensSubmitType} from './lens_form.js';
@@ -89,4 +86,5 @@ export {COLOR_NEW_TAB_PAGE_MODULE_TAB_GROUPS_DOT_PREFIX, COLOR_NEW_TAB_PAGE_MODU
 export {TabGroupsProxyImpl} from './modules/tab_groups/tab_groups_proxy.js';
 export {NtpComposeboxElement} from './ntp_composebox.js';
 export {IndividualPromosElement} from './ntp_promo/individual_promos.js';
+export {ActionChipsRetrievalState} from './utils.js';
 export {VoiceSearchOverlayElement} from './voice_search_overlay.js';

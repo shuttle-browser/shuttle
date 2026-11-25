@@ -10,6 +10,9 @@ import android.content.pm.webapp.WebAppManager;
 import android.content.pm.webapp.WebAppQueryRequest;
 import android.os.Build;
 
+import androidx.annotation.RequiresApi;
+import androidx.annotation.VisibleForTesting;
+
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.JniType;
@@ -18,8 +21,10 @@ import org.jni_zero.NativeMethods;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.Log;
 import org.chromium.base.Promise;
+import org.chromium.base.ResettersForTesting;
 import org.chromium.base.task.PostTask;
 import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
 
 /**
  * Provides functionality related to installing auto-minted TWA for its C++ counterpart,
@@ -27,8 +32,22 @@ import org.chromium.build.annotations.NullMarked;
  */
 @JNINamespace("webapps")
 @NullMarked
-class TwaInstaller {
+public class TwaInstaller {
     private static final String TAG = "TwaInstaller";
+
+    /** Delegate interface for intercepting auto-minted TWA installation in tests. */
+    public interface InstallDelegateForTesting {
+        boolean installTwa(
+                String title,
+                String manifestUrl,
+                Runnable installSucceededCallback,
+                Runnable installFailedCallback,
+                Runnable installCancelledCallback);
+    }
+
+    private static boolean sHasWebAppManagerForTesting;
+    private static @Nullable WebAppManager sWebAppManagerForTesting;
+    private static @Nullable InstallDelegateForTesting sInstallDelegateForTesting;
 
     private final long mNativeInstaller;
 
@@ -36,8 +55,34 @@ class TwaInstaller {
         mNativeInstaller = nativeInstaller;
     }
 
+    public static void setWebAppManagerForTesting(@Nullable WebAppManager webAppManager) {
+        sHasWebAppManagerForTesting = true;
+        sWebAppManagerForTesting = webAppManager;
+        ResettersForTesting.register(
+                () -> {
+                    sHasWebAppManagerForTesting = false;
+                    sWebAppManagerForTesting = null;
+                });
+    }
+
+    /** Overrides TWA installation behavior in tests. */
+    public static void setInstallDelegateForTesting(@Nullable InstallDelegateForTesting delegate) {
+        sInstallDelegateForTesting = delegate;
+        ResettersForTesting.register(() -> sInstallDelegateForTesting = null);
+    }
+
+    @RequiresApi(Build.VERSION_CODES.CINNAMON_BUN)
+    private static @Nullable WebAppManager getWebAppManager() {
+        if (sHasWebAppManagerForTesting) {
+            return sWebAppManagerForTesting;
+        }
+        Context context = ContextUtils.getApplicationContext();
+        return context.getSystemService(WebAppManager.class);
+    }
+
     @CalledByNative
-    private static boolean start(
+    @VisibleForTesting
+    static boolean start(
             long nativeInstaller,
             @JniType("std::u16string") String title,
             @JniType("std::string") String manifestUrl) {
@@ -79,11 +124,18 @@ class TwaInstaller {
             Runnable installSucceededCallback,
             Runnable installFailedCallback,
             Runnable installCancelledCallback) {
+        if (sInstallDelegateForTesting != null) {
+            return sInstallDelegateForTesting.installTwa(
+                    title,
+                    manifestUrl,
+                    installSucceededCallback,
+                    installFailedCallback,
+                    installCancelledCallback);
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.CINNAMON_BUN) {
             return false;
         }
-        Context context = ContextUtils.getApplicationContext();
-        WebAppManager webAppManager = context.getSystemService(WebAppManager.class);
+        WebAppManager webAppManager = getWebAppManager();
         if (webAppManager == null) {
             Log.e(TAG, "Failed to get WebAppManager");
             return false;
@@ -113,8 +165,7 @@ class TwaInstaller {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.CINNAMON_BUN) {
             return Promise.fulfilled(false);
         }
-        Context context = ContextUtils.getApplicationContext();
-        WebAppManager webAppManager = context.getSystemService(WebAppManager.class);
+        WebAppManager webAppManager = getWebAppManager();
         if (webAppManager == null) {
             return Promise.fulfilled(false);
         }

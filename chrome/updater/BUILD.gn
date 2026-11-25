@@ -959,8 +959,10 @@ if (is_win || is_mac || is_linux) {
       "test/integration_tests_impl.h",
       "test/request_matcher.cc",
       "test/request_matcher.h",
+      "test/request_matcher_unittest.cc",
       "test/server.cc",
       "test/server.h",
+      "test/server_unittest.cc",
       "test/unit_test_util_unittest.cc",
       "update_service_impl_impl_unittest.cc",
       "update_service_impl_inactive_unittest.cc",
@@ -1090,6 +1092,7 @@ if (is_win || is_mac || is_linux) {
       ]
 
       deps += [
+        ":generate_allowed_imports",
         "app/server/win:updater_idl",
         "app/server/win:updater_internal_idl",
         "app/server/win:updater_legacy_idl",
@@ -1105,12 +1108,14 @@ if (is_win || is_mac || is_linux) {
         "win/ui/resources",
         "//components/named_mojo_ipc_server",
         "//mojo/public/cpp/system",
+        "//ui/gfx/geometry",
       ]
 
       data_deps += [
         "//chrome/enterprise_companion:enterprise_companion_test",
         "//chrome/updater/win:updater",
         "//chrome/updater/win:updater_test",
+        "//chrome/updater/win/installer",
         "//chrome/updater/win/installer:installer_test",
         "//chrome/updater/win/test:updater_test_process",
       ]
@@ -1303,6 +1308,20 @@ if (is_win || is_mac || is_linux) {
   }
 
   if (is_win) {
+    action("generate_allowed_imports") {
+      testonly = true
+      script = "//chrome/test/delayload/generate_allowed_imports.py"
+      sources = [ "//chrome/test/delayload/supported_imports_10.0.10240.txt" ]
+      outputs = [ "$target_gen_dir/supported_imports.inc" ]
+      args = [
+        "--exports-file",
+        rebase_path("//chrome/test/delayload/supported_imports_10.0.10240.txt",
+                    root_build_dir),
+        "--out-file",
+        rebase_path("$target_gen_dir/supported_imports.inc", root_build_dir),
+      ]
+    }
+
     copy("test_service_files") {
       testonly = true
       sources = [

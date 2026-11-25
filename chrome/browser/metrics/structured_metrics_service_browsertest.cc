@@ -16,7 +16,6 @@
 #include "chrome/browser/profiles/profile_test_util.h"
 #include "chrome/browser/sync/test/integration/sync_service_impl_harness.h"
 #include "chrome/browser/sync/test/integration/sync_test.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/unified_consent/unified_consent_service_factory.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -109,14 +108,7 @@ class StructuredMetricsServiceTestBase : public MixinBasedInProcessBrowserTest {
 class TestStructuredMetricsService : public StructuredMetricsServiceTestBase {
  public:
   TestStructuredMetricsService() {
-    feature_list_.InitWithFeatures(
-        /*enabled_features=*/
-        {::features::kChromeStructuredMetrics},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove these two Features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+    feature_list_.InitAndEnableFeature(::features::kChromeStructuredMetrics);
   }
 
  private:
@@ -320,6 +312,10 @@ IN_PROC_BROWSER_TEST_F(TestStructuredMetricsService, CreateLogs) {
   structured_metrics_mixin_.UpdateRecordingState(true);
   WaitForConsentChanges();
 
+  // Keys must be ready for events to be recorded actively. Otherwise, they will
+  // be queued to be recorded and the test may fail.
+  WaitUntilKeysReady();
+
   structured::StructuredMetricsClient::Record(
       structured::events::v2::test_project_seven::TestEventEight());
 
@@ -335,10 +331,10 @@ IN_PROC_BROWSER_TEST_F(TestStructuredMetricsService, CreateLogs) {
       /*notify_scheduler=*/false);
   run_loop.Run();
 
-  EXPECT_TRUE(HasUnsentLogs());
+  ASSERT_TRUE(HasUnsentLogs());
 
   std::unique_ptr<ChromeUserMetricsExtension> uma_proto = GetStagedLog();
-  EXPECT_NE(uma_proto.get(), nullptr);
+  ASSERT_NE(uma_proto.get(), nullptr);
 
   EXPECT_EQ(uma_proto->structured_data().events_size(), 1);
 }

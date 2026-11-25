@@ -2235,7 +2235,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsRendererInitiated(true)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, result.getResultType());
         Assert.assertTrue(mUrlHandler.mStartActivityIntent != null);
@@ -2261,7 +2263,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(true)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_REPARENT_TO_BROWSER,
                 result.getResultType());
@@ -2286,7 +2290,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(true)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_REPARENT_TO_SAME_PWA,
                 result.getResultType());
@@ -2309,7 +2315,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(true)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, result.getResultType());
         Assert.assertNotNull(mUrlHandler.mStartActivityIntent);
@@ -2329,7 +2337,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(false)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(OverrideUrlLoadingResultType.NO_OVERRIDE, result.getResultType());
         Assert.assertTrue(mUrlHandler.mStartActivityIntent == null);
     }
@@ -2350,7 +2360,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(false)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(OverrideUrlLoadingResultType.NO_OVERRIDE, result.getResultType());
         Assert.assertNull(mUrlHandler.mStartActivityIntent);
     }
@@ -2371,7 +2383,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(true)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, result.getResultType());
         Assert.assertNotNull(mUrlHandler.mStartActivityIntent);
@@ -2393,7 +2407,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(false)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, result.getResultType());
         Assert.assertNotNull(mUrlHandler.mStartActivityIntent);
@@ -2415,7 +2431,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(false)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, result.getResultType());
         Assert.assertNotNull(mUrlHandler.mStartActivityIntent);
@@ -2438,7 +2456,9 @@ public class ExternalNavigationHandlerTest {
                         .setIsInitialNavigationInFrame(false)
                         .setRedirectHandler(redirectHandlerForLinkClick())
                         .build();
-        OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+        OverrideUrlLoadingResult result =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> mUrlHandler.shouldOverrideUrlLoading(params));
         Assert.assertEquals(
                 OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, result.getResultType());
         Assert.assertNotNull(mUrlHandler.mStartActivityIntent);
@@ -3884,6 +3904,29 @@ public class ExternalNavigationHandlerTest {
                         START_OTHER_ACTIVITY);
     }
 
+    @Test
+    @SmallTest
+    public void testHttpBlockBypassedByWebApk() {
+        mDelegate.setAllowExternalNavigationForHttpProtocols(false);
+
+        // 1. Resolve to a specialized app (not WebAPK). It should be blocked.
+        mDelegate.add(new IntentActivity("https://example.com", "com.example.app"));
+        checkUrl("https://example.com", redirectHandlerForLinkClick())
+                .expecting(OverrideUrlLoadingResultType.NO_OVERRIDE, IGNORE);
+
+        // 2. Resolve to an invalid WebAPK. It should be blocked.
+        mDelegate.add(
+                new IntentActivity("https://invalid.example.com", INVALID_WEBAPK_PACKAGE_NAME));
+        checkUrl("https://invalid.example.com", redirectHandlerForLinkClick())
+                .expecting(OverrideUrlLoadingResultType.NO_OVERRIDE, IGNORE);
+
+        // 3. Resolve to a valid WebAPK. It should NOT be blocked.
+        mDelegate.add(new IntentActivity(IMDB_WEBPAGE_FOR_TOM_HANKS, WEBAPK_PACKAGE_NAME));
+        checkUrl(IMDB_WEBPAGE_FOR_TOM_HANKS, redirectHandlerForLinkClick())
+                .expecting(
+                        OverrideUrlLoadingResultType.OVERRIDE_WITH_EXTERNAL_INTENT, START_WEBAPK);
+    }
+
     private static List<ResolveInfo> makeResolveInfos(ResolveInfo... infos) {
         return Arrays.asList(infos);
     }
@@ -4362,7 +4405,8 @@ public class ExternalNavigationHandlerTest {
         }
 
         @Override
-        public boolean allowExternalNavigationForHttpProtocols(GURL url) {
+        public boolean allowExternalNavigationForHttpProtocols(
+                GURL url, Supplier<List<ResolveInfo>> resolveInfoSupplier) {
             return mAllowExternalNavigationForHttpProtocols;
         }
 
@@ -4663,7 +4707,9 @@ public class ExternalNavigationHandlerTest {
                             .setNavigationId(mNavigationId)
                             .setInitiatorOrigin(mInitiatorOrigin)
                             .build();
-            OverrideUrlLoadingResult result = mUrlHandler.shouldOverrideUrlLoading(params);
+            OverrideUrlLoadingResult result =
+                    ThreadUtils.runOnUiThreadBlocking(
+                            () -> mUrlHandler.shouldOverrideUrlLoading(params));
 
             if (result.getResultType() == OverrideUrlLoadingResultType.OVERRIDE_WITH_NAVIGATE_TAB) {
                 mUrlHandler.mNewUrlAfterClobbering = result.mTargetUrl.getSpec();

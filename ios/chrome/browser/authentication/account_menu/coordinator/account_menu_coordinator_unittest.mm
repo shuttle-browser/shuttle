@@ -5,19 +5,12 @@
 #import "ios/chrome/browser/authentication/account_menu/coordinator/account_menu_coordinator.h"
 
 #import "base/memory/raw_ptr.h"
-#import "base/test/scoped_feature_list.h"
-#import "components/sync/service/sync_service_utils.h"
 #import "components/sync/test/mock_sync_service.h"
-#import "components/trusted_vault/trusted_vault_server_constants.h"
-#import "ios/chrome/browser/authentication/account_menu/coordinator/account_menu_coordinator_delegate.h"
 #import "ios/chrome/browser/authentication/account_menu/coordinator/account_menu_mediator.h"
 #import "ios/chrome/browser/authentication/account_menu/coordinator/account_menu_mediator_delegate.h"
 #import "ios/chrome/browser/authentication/account_menu/public/account_menu_constants.h"
 #import "ios/chrome/browser/authentication/account_menu/ui/account_menu_view_controller.h"
-#import "ios/chrome/browser/authentication/add_account_signin/coordinator/add_account_signin_coordinator.h"
 #import "ios/chrome/browser/authentication/signin/reauth/coordinator/signin_reauth_coordinator.h"
-#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
-#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_coordinator+protected.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signout_action_sheet/signout_action_sheet_coordinator.h"
 #import "ios/chrome/browser/settings/manage_sync/public/sync_error_settings_command_handler.h"
 #import "ios/chrome/browser/settings/ui_bundled/sync/sync_encryption_passphrase_table_view_controller.h"
@@ -25,7 +18,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/test/fake_scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_manager_ios.h"
@@ -33,23 +25,25 @@
 #import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/help_commands.h"
-#import "ios/chrome/browser/shared/public/commands/quick_delete_commands.h"
 #import "ios/chrome/browser/shared/public/commands/scene_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/commands/show_signin_command.h"
 #import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/public/snackbar/snackbar_message.h"
+#import "ios/chrome/browser/shared/public/snackbar/snackbar_message_action.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity_manager.h"
-#import "ios/chrome/browser/signin/model/system_identity_manager.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
+#import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/web/public/test/web_task_environment.h"
+#import "testing/gtest_mac.h"
 #import "testing/platform_test.h"
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
+#import "ui/base/l10n/l10n_util.h"
 
 namespace {
 
@@ -93,8 +87,7 @@ class AccountMenuCoordinatorTest : public PlatformTest {
             }));
     profile_ = profile_manager_.AddProfileWithBuilder(std::move(builder));
     scene_state_ = [[FakeSceneState alloc] initWithProfile:profile_.get()];
-    Browser* browser =
-        scene_state_.browserProviderInterface.currentBrowserProvider.browser;
+    Browser* browser = scene_state_.browserProviderInterface.currentBrowser;
 
     ON_CALL(*GetMockSyncService(), GetTypesWithUnsyncedData)
         .WillByDefault(
@@ -287,14 +280,21 @@ TEST_F(AccountMenuCoordinatorTest, testEditAccountList) {
   AssertOpenAndStop();
 }
 
-// Tests that `signOutFromTargetRect` requests the delegate to be stopped and
-// shows a snackbar and calls its completion.
+// Tests that `signOutFromTargetRect` requests the delegate to be stopped,
+// shows a snackbar with an undo action that triggers undo sign-out, and calls
+// its completion.
 TEST_F(AccountMenuCoordinatorTest, testSignOut) {
   base::RunLoop run_loop;
   base::RepeatingClosure closure = run_loop.QuitClosure();
   CGRect rect = CGRect();
+  __block SnackbarMessage* snackbar_message = nil;
   OCMExpect([mock_snackbar_commands_handler_
-      showSnackbarMessageOverBrowserToolbar:[OCMArg isNotNil]]);
+      showSnackbarMessageOverBrowserToolbar:[OCMArg
+                                                checkWithBlock:^BOOL(
+                                                    SnackbarMessage* message) {
+                                                  snackbar_message = message;
+                                                  return YES;
+                                                }]]);
   [coordinator_ signOutFromTargetRect:rect
                            completion:^(BOOL success, SceneState* scene_state) {
                              EXPECT_TRUE(success);
@@ -302,7 +302,16 @@ TEST_F(AccountMenuCoordinatorTest, testSignOut) {
                              closure.Run();
                            }];
   run_loop.Run();
+  ASSERT_NE(snackbar_message, nil);
+  ASSERT_NE(snackbar_message.action, nil);
+  EXPECT_NSEQ(snackbar_message.action.title,
+              l10n_util::GetNSString(IDS_IOS_SIGNIN_SNACKBAR_UNDO));
+  ASSERT_NE(snackbar_message.action.handler, nil);
   EXPECT_EQ(authentication_service()->GetPrimaryIdentity(), nil);
+
+  OCMExpect([mock_scene_handler_
+      showUndoSignoutFromSnackbarForIdentity:kPrimaryIdentity]);
+  snackbar_message.action.handler();
 }
 
 // Tests that `mediatorWantsToBeDismissed` requests to the delegate to stop the

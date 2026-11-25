@@ -59,6 +59,9 @@ constexpr std::string_view kCrossDeviceHistoryPageCampaign =
     "XDeviceHistoryPage";
 constexpr std::string_view kCrossDeviceSendTabToSelfCampaign =
     "XDeviceSendTabToSelf";
+// TODO(crbug.com/579407047): Update with the final campaign value.
+constexpr std::string_view kCrossDeviceForeignTabsCampaign =
+    "XDeviceForeignTabs";
 // TODO(crbug.com/571014322): Update with the final What's New campaign value.
 constexpr std::string_view kCrossDeviceWhatsNewCampaign = "XDeviceWhatsNew";
 
@@ -76,6 +79,8 @@ std::string_view GetEntryPointHistogramSuffix(
     CrossDeviceSigninPromoEntryPoint entry_point) {
   // LINT.IfChange(CrossDeviceSigninPromoEntryPointVariant)
   switch (entry_point) {
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
+      return "ForeignTabs";
     case CrossDeviceSigninPromoEntryPoint::kHistoryPage:
       return "HistoryPage";
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
@@ -130,6 +135,7 @@ CrossDeviceSigninPromoData ReadDismissiblePromoData(
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
     case CrossDeviceSigninPromoEntryPoint::kProfileMenu:
     case CrossDeviceSigninPromoEntryPoint::kSendTabToSelf:
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
       NOTREACHED() << "Entry point does not have any promo data";
   }
 }
@@ -155,6 +161,7 @@ void WriteDismissiblePromoData(Profile* profile,
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
     case CrossDeviceSigninPromoEntryPoint::kProfileMenu:
     case CrossDeviceSigninPromoEntryPoint::kSendTabToSelf:
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
       NOTREACHED() << "Entry point does not have any promo data";
   }
 }
@@ -169,6 +176,7 @@ std::optional<CrossDeviceSigninPromoData> GetPromoDataForDismissibleEntryPoint(
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
     case CrossDeviceSigninPromoEntryPoint::kProfileMenu:
     case CrossDeviceSigninPromoEntryPoint::kSendTabToSelf:
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
       return std::nullopt;
   }
 }
@@ -233,6 +241,16 @@ bool IsHistorySyncEnabled(Profile* profile) {
       syncer::UserSelectableType::kHistory);
 }
 
+bool IsTabSyncEnabled(Profile* profile) {
+  syncer::SyncService* sync_service =
+      SyncServiceFactory::GetForProfile(profile);
+  if (!sync_service) {
+    return false;
+  }
+  return sync_service->GetUserSettings()->GetSelectedTypes().Has(
+      syncer::UserSelectableType::kTabs);
+}
+
 std::string_view GetCrossDevicePromoCampaign(
     CrossDeviceSigninPromoEntryPoint entry_point) {
   switch (entry_point) {
@@ -244,6 +262,8 @@ std::string_view GetCrossDevicePromoCampaign(
       return kCrossDeviceSendTabToSelfCampaign;
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
       return kCrossDeviceWhatsNewCampaign;
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
+      return kCrossDeviceForeignTabsCampaign;
   }
 }
 
@@ -274,6 +294,7 @@ bool ShouldReplaceExistingBubble(CrossDeviceSigninPromoEntryPoint entry_point) {
     case CrossDeviceSigninPromoEntryPoint::kProfileMenu:
     case CrossDeviceSigninPromoEntryPoint::kSendTabToSelf:
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
       // Permanent entry point, which cannot observe the bubble state to disable
       // itself: reopen the bubble where the user asked for it.
       return true;
@@ -363,6 +384,11 @@ bool IsFeatureEnabledForEntryPoint(
        !switches::kCrossDeviceSigninFromDesktopWhatsNew.Get())) {
     return false;
   }
+  if (entry_point == CrossDeviceSigninPromoEntryPoint::kForeignTabs &&
+      !base::FeatureList::IsEnabled(
+          switches::kCrossDeviceSigninFromDesktopFollowup)) {
+    return false;
+  }
   return true;
 }
 
@@ -373,6 +399,11 @@ bool IsFeatureEnabledForEntryPoint(
 CrossDeviceSigninPromoShouldShowResult CheckPromoPrerequisites(
     CrossDeviceSigninPromoEntryPoint entry_point,
     Profile* profile) {
+  // Non-regular (incognito, guest, system) profiles can never see the promo.
+  // Report them separately so they don't inflate `kNotSignedIn`.
+  if (!profile->IsRegularProfile()) {
+    return CrossDeviceSigninPromoShouldShowResult::kProfileTypeNotEligible;
+  }
   // 1. General eligibility: Signed in with no errors, and (except for What's
   // New) has NO mobile device.
   if (!IsUserSignedInWithNoError(profile)) {
@@ -393,6 +424,11 @@ CrossDeviceSigninPromoShouldShowResult CheckPromoPrerequisites(
         return CrossDeviceSigninPromoShouldShowResult::kDataTypeNotEnabled;
       }
       break;
+    case CrossDeviceSigninPromoEntryPoint::kForeignTabs:
+      if (!IsTabSyncEnabled(profile)) {
+        return CrossDeviceSigninPromoShouldShowResult::kDataTypeNotEnabled;
+      }
+      break;
     case CrossDeviceSigninPromoEntryPoint::kWhatsNewPage:
     case CrossDeviceSigninPromoEntryPoint::kProfileMenu:
     case CrossDeviceSigninPromoEntryPoint::kSendTabToSelf:
@@ -408,7 +444,14 @@ CrossDeviceSigninPromoShouldShowResult CheckPromoPrerequisites(
 bool ShouldStartShowingCrossDeviceSigninPromo(
     CrossDeviceSigninPromoEntryPoint entry_point,
     Profile* profile) {
-  if (!IsFeatureEnabledForEntryPoint(entry_point)) {
+  // The result is recorded even if the entry point is disabled, so that study
+  // arms can be compared on the same trigger. Evaluating it has no side
+  // effects.
+  const bool is_entry_point_enabled =
+      IsFeatureEnabledForEntryPoint(entry_point);
+  if (!is_entry_point_enabled &&
+      !base::FeatureList::IsEnabled(
+          switches::kCrossDeviceSigninPromoEligibilityLogging)) {
     return false;
   }
 
@@ -423,7 +466,8 @@ bool ShouldStartShowingCrossDeviceSigninPromo(
   }
 
   RecordShouldShowResult(entry_point, result);
-  return result == CrossDeviceSigninPromoShouldShowResult::kCanShow;
+  return is_entry_point_enabled &&
+         result == CrossDeviceSigninPromoShouldShowResult::kCanShow;
 }
 
 bool ShouldKeepShowingCrossDeviceSigninPromo(

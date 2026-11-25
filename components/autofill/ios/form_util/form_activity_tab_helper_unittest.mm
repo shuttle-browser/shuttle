@@ -5,6 +5,7 @@
 #import "components/autofill/ios/form_util/form_activity_tab_helper.h"
 
 #import <optional>
+#import <vector>
 
 #import "base/feature_list.h"
 #import "base/strings/sys_string_conversions.h"
@@ -24,6 +25,7 @@
 #import "components/autofill/ios/browser/autofill_util.h"
 #import "components/autofill/ios/common/autofill_optimization_features.h"
 #import "components/autofill/ios/common/features.h"
+#import "components/autofill/ios/common/field_data_manager_factory_ios.h"
 #import "components/autofill/ios/common/javascript_feature_util.h"
 #import "components/autofill/ios/form_util/autofill_form_features_java_script_feature.h"
 #import "components/autofill/ios/form_util/autofill_test_with_web_state.h"
@@ -55,17 +57,55 @@ using base::test::ios::WaitUntilConditionOrTimeout;
 using test::FormDataEq;
 using test::kTrackFormMutationsDelayInMs;
 using test::WithoutUnserializedData;
+using ::testing::_;
 using ::testing::Each;
 using ::testing::ElementsAre;
 using ::testing::Field;
 using ::testing::IsEmpty;
 using ::testing::IsTrue;
 using ::testing::Not;
+using ::testing::SizeIs;
 using ::testing::StrEq;
 using ::testing::UnorderedElementsAre;
 using ::testing::VariantWith;
 using web::JavaScriptFeature;
 using web::WebFrame;
+
+// Number of short-lived objects allocated per garbage collection attempt.
+constexpr int kGarbageCollectionAttemptObjectCount = 1000000;
+
+// Maximum number of garbage collection attempts. A single attempt collects an
+// unreferenced detached element most of the time, but not always.
+constexpr int kMaxGarbageCollectionAttempts = 10;
+
+// Returns a script running `statement`, then allocating short-lived objects
+// in a new task until a garbage collection is detected. Once done,
+// `window.__gcCollected` tells whether a garbage collection was detected.
+//
+// Garbage collections are detected with sentinels: detached elements only
+// referenced by `WeakRef`s. One sentinel is needed per attempt because a
+// successful `deref()` keeps its target alive until the end of the task.
+//
+// The allocations run in a new task because creating or dereferencing a
+// `WeakRef` (e.g. when `statements` registers an element) also keeps its target
+// alive until the end of the task. That task is scheduled with a 0 ms timer, so
+// it runs before the pending mutations are processed.
+NSString* RunAndCollectGarbageScript(NSString* statement) {
+  return [NSString
+      stringWithFormat:
+          @"delete window.__gcCollected;"
+           " (async () => {"
+           " const sentinels = Array.from({length: %d},"
+           " () => new WeakRef(document.createElement('div')));"
+           " %@"
+           " await new Promise(resolve => setTimeout(resolve));"
+           " window.__gcCollected = sentinels.some(sentinel => {"
+           " let a = []; for (let i = 0; i < %d; i++) { a.push({i}); }"
+           " a = null; return !sentinel.deref(); });"
+           " })(); true;",
+          kMaxGarbageCollectionAttempts, statement,
+          kGarbageCollectionAttemptObjectCount];
+}
 
 // HTML containing one form with a text field and a submit button.
 constexpr NSString* kTestHTMLForm = @"<form name='form-name'>"
@@ -558,6 +598,18 @@ class FormMutationTest : public base::test::WithFeatureOverride,
     ASSERT_TRUE(SetUpUniqueIDs());
   }
 
+  // Runs `statement`, then returns whether a garbage collection was detected
+  // before the mutations are processed.
+  bool RunAndCollectGarbage(NSString* statement) {
+    ExecuteJavaScript(RunAndCollectGarbageScript(statement));
+    __block id collected = nil;
+    bool done = WaitUntilConditionOrTimeout(kWaitForJSCompletionTimeout, ^{
+      collected = ExecuteJavaScript(@"window.__gcCollected");
+      return collected != nil;
+    });
+    return done && [collected boolValue];
+  }
+
   /**
    * Removes the specified HTML element from the DOM and returns the
    * corresponding form removal parameters.
@@ -686,6 +738,72 @@ TEST_P(FormMutationTest, RemoveNonPasswordForm) {
   EXPECT_THAT(form_removal_params.value().removed_forms,
               ElementsAre(FormRendererId(1)));
   EXPECT_THAT(form_removal_params.value().removed_unowned_fields, IsEmpty());
+}
+
+// Tests that the removal of a form and an unowned field that the page doesn't
+// reference anymore is reported even if a garbage collection runs before the
+// mutations are processed.
+TEST_P(FormMutationTest, RemoveUnreferencedElementsWithGarbageCollection) {
+  LoadHtmlForMutationTest(@"<form id='form1'><input type='password'></form>"
+                           "<div id='div'>"
+                           "<form><input type='password'></form>"
+                           "<input type='text'>"
+                           "</div>");
+
+  // Removes the first form and waits for its removal to be processed.
+  ASSERT_TRUE(RemoveElement(/*element_id=*/@"form1"));
+
+  // Starts a new timer by removing the div, then runs the GC while the timer
+  // is pending. This tests that the tracking state was reset after the first
+  // removal.
+  if (!RunAndCollectGarbage(@"document.getElementById('div').remove();")) {
+    GTEST_SKIP() << "No garbage collection was detected.";
+  }
+
+  // The observer only keeps the last removal, so this waits for the second one.
+  TestFormActivityObserver* block_observer = observer_.get();
+  ASSERT_TRUE(WaitUntilConditionOrTimeout(kWaitForJSCompletionTimeout, ^{
+    TestFormRemovalInfo* info = block_observer->form_removal_info();
+    return info &&
+           info->form_removal_params.removed_forms.contains(FormRendererId(3));
+  }));
+  const FormRemovalParams& params =
+      observer_->form_removal_info()->form_removal_params;
+  EXPECT_THAT(params.removed_forms, ElementsAre(FormRendererId(3)));
+  EXPECT_THAT(params.removed_unowned_fields, ElementsAre(FieldRendererId(5)));
+}
+
+// Tests that the removal of a form registered while a batch of mutations is
+// pending is reported even if a garbage collection runs before the batch is
+// processed.
+TEST_P(FormMutationTest, RemoveFormRegisteredDuringDelayWithGarbageCollection) {
+  LoadHtmlForMutationTest(@"<div></div>");
+  ASSERT_FALSE(observer_->form_removal_info());
+
+  // Starts the form mutation observer timer by adding an element, then adds a
+  // form, registers it with `extractForms` and removes it once the timer is
+  // pending, so that nothing references the form anymore.
+  if (!RunAndCollectGarbage(
+          @"document.body.appendChild(document.createElement('span'));"
+           "await null;"
+           "document.body.insertAdjacentHTML('beforeend',"
+           " '<form><input></form>');"
+           "__gCrWeb.getRegisteredApi('autofill')"
+           ".getFunction('extractForms')(false);"
+           "document.querySelector('form').remove();")) {
+    GTEST_SKIP() << "No garbage collection was detected.";
+  }
+
+  // The page has no other form, so the removed one is the registered form.
+  TestFormActivityObserver* block_observer = observer_.get();
+  ASSERT_TRUE(WaitUntilConditionOrTimeout(kWaitForJSCompletionTimeout, ^{
+    return block_observer->form_removal_info() != nil;
+  }));
+  EXPECT_THAT(observer_->form_removal_info()->form_removal_params.removed_forms,
+              SizeIs(1));
+  EXPECT_THAT(observer_->form_removal_info()
+                  ->form_removal_params.removed_unowned_fields,
+              IsEmpty());
 }
 
 // Tests that removing multiple forms triggers
@@ -1237,22 +1355,32 @@ class FormSubmittedHookTest : public FormActivityTabHelperTest {
   }
 
  protected:
-  // Runs the form extraction script and returns true if the script ran
-  // successfully.
-  bool FetchForms() {
+  // Runs the form extraction script in the isolated world and returns the
+  // extracted forms.
+  std::optional<std::vector<FormData>> FetchForms() {
     WebFrame* main_frame = WaitForMainFrame();
     if (!main_frame) {
-      return false;
+      return std::nullopt;
     }
     __block bool finished = false;
+    __block NSString* forms_json = nil;
     AutofillJavaScriptFeature::GetInstance()->FetchForms(
         main_frame, base::BindOnce(^(NSString* result) {
+          forms_json = [result copy];
           finished = true;
         }));
 
-    return WaitUntilConditionOrTimeout(kWaitForJSCompletionTimeout, ^bool {
-      return finished;
-    });
+    if (!WaitUntilConditionOrTimeout(kWaitForJSCompletionTimeout, ^bool {
+          return finished;
+        })) {
+      return std::nullopt;
+    }
+    return ExtractFormsData(
+        forms_json, /*form_name_filter=*/std::nullopt,
+        web_state()->GetLastCommittedURL(), main_frame->GetSecurityOrigin(),
+        main_frame->GetUrl(),
+        *FieldDataManagerFactoryIOS::GetRetainable(main_frame),
+        main_frame->GetFrameId());
   }
 
  private:
@@ -1316,7 +1444,9 @@ TEST_F(FormSubmittedHookTest, TestFormSubmittedHookAcrossIframes) {
   // Trigger form extraction so child frame tokens are set in the isolated
   // world. Page scripts will be able to access the tokens through the fallback
   // stored in the DOM.
-  FetchForms();
+  std::optional<std::vector<FormData>> extracted_forms = FetchForms();
+  ASSERT_TRUE(extracted_forms.has_value());
+  ASSERT_THAT(*extracted_forms, ElementsAre(_));
 
   ASSERT_FALSE(observer_->submit_document_info());
 
@@ -1329,10 +1459,15 @@ TEST_F(FormSubmittedHookTest, TestFormSubmittedHookAcrossIframes) {
   ASSERT_TRUE(observer_->submit_document_info());
   const FormData& submitted_form = observer_->submit_document_info()->form_data;
   // Make sure child frames are populated.
-
+  EXPECT_THAT(submitted_form.child_frames(), SizeIs(2));
   EXPECT_THAT(submitted_form.child_frames(),
               Each(Field(&FrameTokenWithPredecessor::token,
                          VariantWith<RemoteFrameToken>(IsTrue()))));
+  // Verify that the submitted form's child frame tokens match the tokens
+  // originally generated in the isolated world (and were not overwritten by
+  // the page content world).
+  EXPECT_EQ(submitted_form.child_frames(),
+            extracted_forms->at(0).child_frames());
 }
 
 }  // namespace autofill

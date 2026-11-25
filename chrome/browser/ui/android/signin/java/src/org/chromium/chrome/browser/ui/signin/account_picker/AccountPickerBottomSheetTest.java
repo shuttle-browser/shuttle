@@ -89,7 +89,6 @@ import org.chromium.base.Callback;
 import org.chromium.base.DeviceInfo;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
@@ -98,7 +97,6 @@ import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.signin.services.AccountPreviewDataService;
@@ -138,7 +136,6 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Tests account picker bottom sheet of the web signin flow. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @EnableFeatures(SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 @Restriction(DeviceFormFactor.PHONE)
 public class AccountPickerBottomSheetTest {
@@ -808,12 +805,11 @@ public class AccountPickerBottomSheetTest {
 
     @Test
     @MediumTest
-    @DisabledTest(message = "crbug.com/565232252")
     public void testProfileDataUpdateOnExpandedSheet() {
         buildAndShowCollapsedThenExpandedBottomSheet();
         String newFullName = "New Full Name1";
 
-        mAccountManagerTestRule.addAccount(
+        mAccountManagerTestRule.updateAccount(
                 new AccountInfo.Builder(TestAccounts.ACCOUNT1).fullName(newFullName).build());
 
         onViewFullyShownInParent(
@@ -830,12 +826,11 @@ public class AccountPickerBottomSheetTest {
 
     @Test
     @MediumTest
-    @DisabledTest(message = "crbug.com/565232252")
     public void testProfileDataUpdateOnInitialExpandedSheet() {
         buildAndShowBottomSheet(AccountPickerLaunchMode.CHOOSE_ACCOUNT);
         String newFullName = "New Full Name1";
 
-        mAccountManagerTestRule.addAccount(
+        mAccountManagerTestRule.updateAccount(
                 new AccountInfo.Builder(TestAccounts.ACCOUNT1).fullName(newFullName).build());
 
         onViewFullyShownInParent(
@@ -1830,6 +1825,7 @@ public class AccountPickerBottomSheetTest {
 
     @Test
     @MediumTest
+    @DisabledTest(message = "https://crbug.com/580876710")
     public void testExpandedSheet_scrollsAccountListInsteadOfSheet() {
         // Add enough accounts so that the expanded account list doesn't fit in the bottom sheet.
         for (int i = 0; i < 20; i++) {

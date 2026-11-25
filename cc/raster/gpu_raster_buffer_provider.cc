@@ -15,10 +15,10 @@
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
 #include "base/rand_util.h"
+#include "base/timer/elapsed_timer.h"
 #include "base/trace_event/process_memory_dump.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
-#include "cc/base/histograms.h"
 #include "cc/paint/display_item_list.h"
 #include "cc/paint/paint_canvas.h"
 #include "cc/paint/paint_recorder.h"
@@ -324,8 +324,7 @@ void GpuRasterBufferProvider::RasterBufferImpl::RasterizeSource(
       raster_source->GetDisplayItemList().get(),
       playback_settings.image_provider, content_size, raster_full_rect,
       playback_rect, transform.translation(), recording_to_raster_scale,
-      raster_source->requires_clear(),
-      playback_settings.raster_inducing_scroll_offsets,
+      raster_source->requires_clear(), playback_settings.raster_inducing_values,
       const_cast<RasterSource*>(raster_source)->max_op_size_hint(),
       base::RepeatingCallback<void(SkCanvas*, uint32_t)>());
   ri->EndRasterCHROMIUM();

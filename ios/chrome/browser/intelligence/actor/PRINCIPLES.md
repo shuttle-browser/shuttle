@@ -22,21 +22,18 @@ known exceptions.
 
 ### AI-provider agnostic
 
-<!-- TODO(crbug.com/575833837): Replace the example below with better prose. -->
-
 **Statement.** The actor service is AI-provider agnostic.
 
 **Why.** The actor service is intended to be compatible with any AI provider
 that wants to actuate in the browser.
 
-**For a CL, this means.** There are no mentions of a given AI provider (e.g.
-Gemini).
+**For a CL, this means.** There are no mentions of, or specialized logic for, a
+given AI provider or client (e.g. Gemini).
 
-**Exceptions.** None.
+**Exceptions.** Caller identification for attribution or telemetry, without
+branching behavior on it.
 
 ### Decoupled UI
-
-<!-- TODO(crbug.com/575833837): Replace the example below with better prose. -->
 
 **Statement.** The actor service is decoupled from any UI.
 
@@ -45,10 +42,26 @@ Gemini).
 **For a CL, this means.** The actor service is the headless layer under
 `model/`, `tools/` and `public/`; `ui/` and `coordinator/` are the actor's own
 presentation layer, which consumes the service like any other client. The
-service should not be the source of any direct UI elements, such as text labels.
+service should not be the source of any direct UI elements, such as text labels,
+or alter its state to drive UI presentation.
 
 **Exceptions.** UI data flowing *through* the actor service, though not
 originating from it.
+
+### Single entry point
+
+**Statement.** The actor service is the sole entry point to the actor.
+
+**Why.** Routing all interactions through the actor service keeps actor task
+lifecycle, state transitions, tool engine, and execution invariants encapsulated
+in one place.
+
+**For a CL, this means.** Neither the actor task nor the actor engine is exposed
+publicly or manipulated directly outside the actor service. Clients, including
+`ui/` and `coordinator/`, interact with tasks exclusively through the actor
+service.
+
+**Exceptions.** Unit tests that test the actor task or engine in isolation.
 
 ## External context
 

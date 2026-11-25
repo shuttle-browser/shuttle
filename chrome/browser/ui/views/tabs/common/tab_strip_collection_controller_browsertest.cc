@@ -5,10 +5,19 @@
 #include "chrome/browser/ui/views/tabs/common/tab_strip_collection_controller.h"
 
 #include <numeric>
+#include <string>
+#include <string_view>
 #include <vector>
 
+#include "base/run_loop.h"
+#include "base/strings/strcat.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/metrics/user_action_tester.h"
+#include "base/test/run_until.h"
 #include "build/build_config.h"
+#include "chrome/browser/ui/animation/browser_animation_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/tab_group_data.h"
@@ -17,8 +26,10 @@
 #include "chrome/browser/ui/tabs/tab_menu_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/views/animations/focus_mode_animations.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/tabs/common/root_tab_collection_node.h"
+#include "chrome/browser/ui/views/tabs/common/tab_collection_animating_layout_manager.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_header_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_group_view.h"
@@ -42,7 +53,9 @@
 #include "content/public/test/browser_test.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/display/screen.h"
+#include "ui/gfx/animation/animation_container.h"
 #include "ui/gfx/animation/animation_test_api.h"
+#include "ui/gfx/scoped_animation_duration_scale_mode.h"
 #include "ui/menus/simple_menu_model.h"
 #include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/view_utils.h"
@@ -127,6 +140,37 @@ IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerBrowserTest,
     EXPECT_TRUE(check_menu_has_string(IDS_TAB_CXMENU_NEWTABBELOW));
     EXPECT_TRUE(check_menu_has_string(IDS_TAB_CXMENU_CLOSETABSBELOW));
   }
+}
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerBrowserTest,
+                       ShowTabContextMenuRecordsActivationAction) {
+  TabCollectionNode* first_tab_node =
+      unpinned_collection_node()->children()[0].get();
+  ASSERT_TRUE(first_tab_node);
+  ASSERT_NE(first_tab_node->view(), nullptr);
+
+  base::HistogramTester histogram_tester;
+  base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindLambdaForTesting([this]() {
+        if (TabContextMenuController* menu_controller =
+                vertical_tab_strip_controller()
+                    ->GetTabContextMenuController()) {
+          menu_controller->CloseMenu();
+        }
+      }));
+
+  vertical_tab_strip_controller()->ShowTabContextMenu(
+      first_tab_node, first_tab_node->view()->GetBoundsInScreen().CenterPoint(),
+      ui::mojom::MenuSourceType::kMouse);
+
+  if (TabContextMenuController* menu_controller =
+          vertical_tab_strip_controller()->GetTabContextMenuController()) {
+    menu_controller->CloseMenu();
+  }
+  base::RunLoop().RunUntilIdle();
+
+  histogram_tester.ExpectBucketCount("TabStrip.Tab.Views.ActivationAction",
+                                     TabActivationTypes::kContextMenu, 1);
 }
 
 IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerBrowserTest,
@@ -361,8 +405,8 @@ IN_PROC_BROWSER_TEST_P(TabGroupHoverCardTest, TabGroupHeaderHoverCardUnnamed) {
   TabGroupHeaderView* header_view = group_view->group_header();
 
   // Trigger the hover card.
-  hover_card_controller()->UpdateHoverCard(
-      header_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(header_view,
+                                           HoverCardUpdateType::kHover);
   TabHoverCardBubbleView* bubble =
       hover_card_controller()->hover_card_for_testing();
   ASSERT_TRUE(bubble);
@@ -407,8 +451,8 @@ IN_PROC_BROWSER_TEST_P(TabGroupHoverCardTest, TabGroupHeaderHoverCardNamed) {
   TabGroupHeaderView* header_view = group_view->group_header();
 
   // Trigger the hover card.
-  hover_card_controller()->UpdateHoverCard(
-      header_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(header_view,
+                                           HoverCardUpdateType::kHover);
 
   // Verify the hover card exists and has correct content.
   TabHoverCardBubbleView* bubble =
@@ -444,8 +488,8 @@ IN_PROC_BROWSER_TEST_P(TabGroupHoverCardTest,
   TabGroupHeaderView* header_view = group_view->group_header();
 
   // Trigger the hover card.
-  hover_card_controller()->UpdateHoverCard(
-      header_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(header_view,
+                                           HoverCardUpdateType::kHover);
   TabHoverCardBubbleView* bubble =
       hover_card_controller()->hover_card_for_testing();
   ASSERT_TRUE(bubble);
@@ -477,8 +521,8 @@ IN_PROC_BROWSER_TEST_P(TabGroupHoverCardTest,
   ASSERT_TRUE(tab_view);
 
   // Trigger the hover card before opening the editor bubble.
-  hover_card_controller()->UpdateHoverCard(
-      header_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(header_view,
+                                           HoverCardUpdateType::kHover);
   EXPECT_TRUE(hover_card_controller()->IsHoverCardVisible());
 
   // Opening the editor bubble should hide the hover card and prevent new hover
@@ -486,12 +530,12 @@ IN_PROC_BROWSER_TEST_P(TabGroupHoverCardTest,
   model->OpenTabGroupEditor(group_id);
   EXPECT_FALSE(hover_card_controller()->IsHoverCardVisible());
 
-  hover_card_controller()->UpdateHoverCard(
-      header_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(header_view,
+                                           HoverCardUpdateType::kHover);
   EXPECT_FALSE(hover_card_controller()->IsHoverCardVisible());
 
-  hover_card_controller()->UpdateHoverCard(
-      tab_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(tab_view,
+                                           HoverCardUpdateType::kHover);
   EXPECT_FALSE(hover_card_controller()->IsHoverCardVisible());
 
   // Closing the editor bubble should allow hover cards to be shown again.
@@ -502,8 +546,8 @@ IN_PROC_BROWSER_TEST_P(TabGroupHoverCardTest,
   ASSERT_FALSE(bubble_views.empty());
   bubble_views[0]->GetWidget()->Close();
 
-  hover_card_controller()->UpdateHoverCard(
-      header_view, TabSlotController::HoverCardUpdateType::kHover);
+  hover_card_controller()->UpdateHoverCard(header_view,
+                                           HoverCardUpdateType::kHover);
   EXPECT_TRUE(hover_card_controller()->IsHoverCardVisible());
 }
 
@@ -663,6 +707,65 @@ IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerBrowserTest,
   EXPECT_TRUE(vertical_tab_strip_controller()->IsGroupCollapsed(group_id));
 }
 
+// On macOS, accessibility announcements are dispatched directly through native
+// Cocoa VoiceOver APIs (NSAccessibilityAnnouncementRequestedNotification)
+// rather than Views' AnnounceTextView.
+#if !BUILDFLAG(IS_MAC)
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerBrowserTest,
+                       ShiftTabRelativeAnnouncesDirection) {
+  AppendTab();
+  TabStripModel* model = browser()->GetTabStripModel();
+  ASSERT_EQ(2, model->count());
+
+  tabs::TabInterface* tab0 = model->GetTabAtIndex(0);
+  tabs::TabInterface* tab1 = model->GetTabAtIndex(1);
+
+  auto* base_region = views::AsViewClass<BaseTabStripRegionView>(
+      BrowserView::GetBrowserViewForBrowser(browser())->tab_strip_view());
+  ASSERT_TRUE(base_region);
+  TabStripCollectionController* controller =
+      base_region->GetTabStripCollectionController();
+  ASSERT_TRUE(controller);
+
+  auto* root_view = static_cast<views::internal::RootView*>(
+      BrowserView::GetBrowserViewForBrowser(browser())
+          ->GetWidget()
+          ->GetRootView());
+
+  controller->ShiftTabNext(tab0);
+  EXPECT_EQ(model->GetTabAtIndex(0), tab1);
+  EXPECT_EQ(model->GetTabAtIndex(1), tab0);
+  {
+    ui::AXNodeData node_data;
+    root_view->GetAnnounceViewForTesting()
+        ->GetViewAccessibility()
+        .GetAccessibleNodeData(&node_data);
+    EXPECT_EQ(
+        l10n_util::GetStringUTF16(orientation() ==
+                                          TabStripOrientation::kHorizontal
+                                      ? IDS_TAB_AX_ANNOUNCE_MOVED_RIGHT
+                                      : IDS_TAB_AX_ANNOUNCE_MOVED_DOWN),
+        node_data.GetString16Attribute(ax::mojom::StringAttribute::kName));
+  }
+
+  controller->ShiftTabPrevious(tab0);
+  EXPECT_EQ(model->GetTabAtIndex(0), tab0);
+  EXPECT_EQ(model->GetTabAtIndex(1), tab1);
+  {
+    ui::AXNodeData node_data;
+    root_view->GetAnnounceViewForTesting()
+        ->GetViewAccessibility()
+        .GetAccessibleNodeData(&node_data);
+    EXPECT_EQ(
+        l10n_util::GetStringUTF16(orientation() ==
+                                          TabStripOrientation::kHorizontal
+                                      ? IDS_TAB_AX_ANNOUNCE_MOVED_LEFT
+                                      : IDS_TAB_AX_ANNOUNCE_MOVED_UP),
+        node_data.GetString16Attribute(ax::mojom::StringAttribute::kName));
+  }
+}
+#endif  // !BUILDFLAG(IS_MAC)
+
 class TabStripControllerFocusingVisibilityBrowserTest
     : public VerticalTabsBrowserTestMixin<InProcessBrowserTest>,
       public testing::WithParamInterface<TabStripOrientation> {
@@ -772,6 +875,578 @@ IN_PROC_BROWSER_TEST_P(TabStripControllerFocusingVisibilityBrowserTest,
 INSTANTIATE_TEST_SUITE_P(
     All,
     TabStripControllerFocusingVisibilityBrowserTest,
+    testing::Values(TabStripOrientation::kVertical,
+                    TabStripOrientation::kHorizontal),
+    [](const testing::TestParamInfo<TabStripOrientation>& info) {
+      switch (info.param) {
+        case TabStripOrientation::kVertical:
+          return "Vertical";
+        case TabStripOrientation::kHorizontal:
+          return "Horizontal";
+      }
+    });
+
+// Exercises the controller's focus transition state with rich animations
+// enabled: it starts `FocusModeAnimations::kFocusMode` on focus changes,
+// reports which group is transitioning and its live progress, disables layout
+// animations for the duration, and keeps an ephemeral group in the model
+// while its exit animates.
+class TabStripControllerFocusTransitionBrowserTest
+    : public VerticalTabsBrowserTestMixin<InProcessBrowserTest> {
+ public:
+  const std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures()
+      override {
+    auto enabled = VerticalTabsBrowserTestMixin<
+        InProcessBrowserTest>::GetEnabledFeatures();
+    enabled.push_back({features::kTabGroupsFocusing, {}});
+    enabled.push_back({features::kNonGroupFocus, {}});
+    enabled.push_back({tabs::kTabStripUnification, {}});
+    return enabled;
+  }
+
+ protected:
+  // Setup runs without rich animations so that it settles synchronously. The
+  // test under measurement enables them and drives `kFocusMode` from a
+  // container whose clock only advances through `AdvanceFocusMotion()`.
+  void EnableRichAnimations() {
+    rich_animations_disabled_.reset();
+    rich_animations_enabled_ =
+        gfx::AnimationTestApi::SetRichAnimationRenderMode(
+            gfx::Animation::RichAnimationRenderMode::FORCE_ENABLED);
+    normal_duration_mode_ =
+        std::make_unique<gfx::ScopedAnimationDurationScaleMode>(
+            gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
+    animation_container_ = base::MakeRefCounted<gfx::AnimationContainer>();
+    BrowserAnimationController::From(browser())
+        ->SetAnimationContainerForTesting(FocusModeAnimations::kFocusMode,
+                                          animation_container_.get());
+    animation_container_test_api_ =
+        std::make_unique<gfx::AnimationContainerTestApi>(
+            animation_container_.get());
+  }
+
+  const BrowserAnimationController* animation_controller() {
+    return BrowserAnimationController::From(browser());
+  }
+
+  bool IsFocusMotionAnimating() {
+    return animation_controller()->IsAnimating(FocusModeAnimations::kFocusMode);
+  }
+
+  std::optional<double> GetFocusProgress() {
+    return animation_controller()->GetCurrentValue(
+        FocusModeAnimations::kFocusMode, FocusModeAnimations::kProgress);
+  }
+
+  bool IsAnyTabLayoutAnimating() {
+    views::View* const unpinned_view = unpinned_collection_node()->view();
+    if (static_cast<TabCollectionAnimatingLayoutManager*>(
+            unpinned_view->GetLayoutManager())
+            ->is_animating()) {
+      return true;
+    }
+    for (views::View* child : unpinned_view->children()) {
+      if (auto* group_view = views::AsViewClass<TabGroupView>(child);
+          group_view && static_cast<TabCollectionAnimatingLayoutManager*>(
+                            group_view->GetLayoutManager())
+                            ->is_animating()) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void AdvanceFocusMotion(base::TimeDelta delta) {
+    animation_container_test_api_->IncrementTime(delta);
+    RunScheduledLayouts();
+  }
+
+  void FinishFocusMotion() {
+    AdvanceFocusMotion(animation_controller()->GetMotionDuration(
+        FocusModeAnimations::kFocusMode));
+    EXPECT_FALSE(IsFocusMotionAnimating());
+  }
+
+ private:
+  std::unique_ptr<base::AutoReset<gfx::Animation::RichAnimationRenderMode>>
+      rich_animations_disabled_ =
+          gfx::AnimationTestApi::SetRichAnimationRenderMode(
+              gfx::Animation::RichAnimationRenderMode::FORCE_DISABLED);
+  std::unique_ptr<base::AutoReset<gfx::Animation::RichAnimationRenderMode>>
+      rich_animations_enabled_;
+  std::unique_ptr<gfx::ScopedAnimationDurationScaleMode> normal_duration_mode_;
+  scoped_refptr<gfx::AnimationContainer> animation_container_;
+  std::unique_ptr<gfx::AnimationContainerTestApi> animation_container_test_api_;
+};
+
+// Entering and exiting focus mode starts the enter/exit motion, exposes the
+// transitioning group while it runs, and suppresses layout animations so the
+// motion is the only thing driving the strip.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       FocusChangeDrivesFocusMotion) {
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_id = model->AddToNewGroup({1});
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+  TabStripCollectionController* const controller =
+      vertical_tab_strip_controller();
+  ASSERT_FALSE(controller->GetFocusTransition().has_value());
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_id);
+  RunScheduledLayouts();
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  ASSERT_TRUE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(controller->GetFocusTransition()->target_group, group_id);
+  EXPECT_FALSE(controller->GetFocusTransition()->previous_group.has_value());
+  EXPECT_FALSE(controller->ShouldAnimateLayout());
+  EXPECT_FALSE(IsAnyTabLayoutAnimating());
+
+  AdvanceFocusMotion(base::Milliseconds(150));
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  EXPECT_TRUE(controller->GetFocusTransition().has_value());
+  const std::optional<double> enter_progress = GetFocusProgress();
+  ASSERT_TRUE(enter_progress.has_value());
+  EXPECT_GT(*enter_progress, 0.0);
+  EXPECT_LT(*enter_progress, 1.0);
+
+  FinishFocusMotion();
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(model->GetFocusedGroup(), group_id);
+  EXPECT_EQ(GetFocusProgress(), 1.0);
+
+  model->ExitFocusMode();
+  RunScheduledLayouts();
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  // On exit the model no longer reports a focused group, so the controller is
+  // the only record of which group is transitioning.
+  EXPECT_FALSE(model->GetFocusedGroup().has_value());
+  ASSERT_TRUE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(controller->GetFocusTransition()->target_group, group_id);
+  EXPECT_FALSE(controller->ShouldAnimateLayout());
+  EXPECT_FALSE(IsAnyTabLayoutAnimating());
+
+  AdvanceFocusMotion(base::Milliseconds(125));
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  const std::optional<double> exit_progress = GetFocusProgress();
+  ASSERT_TRUE(exit_progress.has_value());
+  EXPECT_GT(*exit_progress, 0.0);
+  EXPECT_LT(*exit_progress, 1.0);
+
+  FinishFocusMotion();
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(GetFocusProgress(), 0.0);
+}
+
+// Switching focus directly from one group to another reports the group losing
+// focus as the previous group for the duration of the new group's enter
+// motion.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       DirectSwitchReportsPreviousGroup) {
+  AppendTab();
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_a = model->AddToNewGroup({1});
+  const tab_groups::TabGroupId group_b = model->AddToNewGroup({2});
+  model->EnterFocusMode(group_a);
+  RunScheduledLayouts();
+  TabStripCollectionController* const controller =
+      vertical_tab_strip_controller();
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_b);
+  RunScheduledLayouts();
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  ASSERT_TRUE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(controller->GetFocusTransition()->target_group, group_b);
+  EXPECT_EQ(controller->GetFocusTransition()->previous_group, group_a);
+
+  FinishFocusMotion();
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(model->GetFocusedGroup(), group_b);
+}
+
+// Exiting while the enter motion is still running restarts the motion. The
+// cancel that `Start()` emits for the interrupted enter must not clear the
+// exit transition recorded for the same group.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       InterruptingMotionKeepsNewTransition) {
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_id = model->AddToNewGroup({1});
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+  TabStripCollectionController* const controller =
+      vertical_tab_strip_controller();
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_id);
+  AdvanceFocusMotion(base::Milliseconds(150));
+  ASSERT_TRUE(IsFocusMotionAnimating());
+
+  model->ExitFocusMode();
+  RunScheduledLayouts();
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  ASSERT_TRUE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(controller->GetFocusTransition()->target_group, group_id);
+  EXPECT_FALSE(controller->GetFocusTransition()->previous_group.has_value());
+
+  FinishFocusMotion();
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+  EXPECT_FALSE(model->GetFocusedGroup().has_value());
+}
+
+// A cancel that does not come from the controller restarting the motion (e.g.
+// the animation controller being reset) ends the transition.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       ExternalCancelClearsTransition) {
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_id = model->AddToNewGroup({1});
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+  TabStripCollectionController* const controller =
+      vertical_tab_strip_controller();
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_id);
+  RunScheduledLayouts();
+  ASSERT_TRUE(controller->GetFocusTransition().has_value());
+
+  BrowserAnimationController::From(browser())->Clear(
+      FocusModeAnimations::kFocusMode);
+  EXPECT_FALSE(IsFocusMotionAnimating());
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+}
+
+// Non-group focus creates its ephemeral group in the same turn as the focus
+// change and reports that group as the transition's target.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       EnteringNonGroupFocusReportsEphemeralGroup) {
+  AppendTab();
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+
+  EnableRichAnimations();
+  const tab_groups::TabGroupId group_id = model->EnterFocusMode({1, 2});
+  RunScheduledLayouts();
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  ASSERT_TRUE(
+      vertical_tab_strip_controller()->GetFocusTransition().has_value());
+  EXPECT_EQ(vertical_tab_strip_controller()->GetFocusTransition()->target_group,
+            group_id);
+
+  FinishFocusMotion();
+  EXPECT_FALSE(
+      vertical_tab_strip_controller()->GetFocusTransition().has_value());
+  EXPECT_EQ(model->GetFocusedGroup(), group_id);
+}
+
+// Exiting an ephemeral group holds the model's removal lock while the exit
+// motion runs, so the group stays in the model (unfocused) until the motion
+// ends, and its dissolution does not start a layout animation of its own.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       EphemeralGroupStaysInModelWhileExitAnimates) {
+  AppendTab();
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_id = model->EnterFocusMode({1, 2});
+  RunScheduledLayouts();
+  ASSERT_TRUE(model->group_model()->ContainsTabGroup(group_id));
+
+  EnableRichAnimations();
+  model->ExitFocusMode();
+  RunScheduledLayouts();
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  EXPECT_TRUE(model->group_model()->ContainsTabGroup(group_id));
+  EXPECT_FALSE(model->GetFocusedGroup().has_value());
+  ASSERT_TRUE(
+      vertical_tab_strip_controller()->GetFocusTransition().has_value());
+  EXPECT_EQ(vertical_tab_strip_controller()->GetFocusTransition()->target_group,
+            group_id);
+
+  AdvanceFocusMotion(base::Milliseconds(125));
+  EXPECT_TRUE(IsFocusMotionAnimating());
+  EXPECT_TRUE(model->group_model()->ContainsTabGroup(group_id));
+
+  FinishFocusMotion();
+  EXPECT_FALSE(model->group_model()->ContainsTabGroup(group_id));
+  EXPECT_FALSE(IsAnyTabLayoutAnimating());
+  EXPECT_FALSE(
+      vertical_tab_strip_controller()->GetFocusTransition().has_value());
+}
+
+// Without rich animations the controller snaps the motion to its resting
+// state: no transition is reported and an ephemeral group is dissolved
+// synchronously on exit.
+IN_PROC_BROWSER_TEST_F(TabStripControllerFocusTransitionBrowserTest,
+                       ReducedMotionSnapsWithoutHoldingEphemeralGroup) {
+  AppendTab();
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  TabStripCollectionController* const controller =
+      vertical_tab_strip_controller();
+
+  const tab_groups::TabGroupId group_id = model->EnterFocusMode({1, 2});
+  EXPECT_FALSE(IsFocusMotionAnimating());
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+  EXPECT_EQ(model->GetFocusedGroup(), group_id);
+
+  model->ExitFocusMode();
+  EXPECT_FALSE(IsFocusMotionAnimating());
+  EXPECT_FALSE(controller->GetFocusTransition().has_value());
+  EXPECT_FALSE(model->group_model()->ContainsTabGroup(group_id));
+}
+
+// Verifies the performance histograms emitted for the focus motion
+// (`TabGroups.Focus.{TabStripMode}.{Enter,Exit,Switch}.*`). The motion is
+// driven by a test-controlled animation container while the logger observes
+// the browser widget's real compositor, so histograms are emitted exactly when
+// a motion runs to completion.
+class TabStripControllerFocusAnimationMetricsBrowserTest
+    : public VerticalTabsBrowserTestMixin<InProcessBrowserTest>,
+      public testing::WithParamInterface<TabStripOrientation> {
+ public:
+  TabStripOrientation orientation() const { return GetParam(); }
+  bool is_horizontal() const {
+    return orientation() == TabStripOrientation::kHorizontal;
+  }
+
+  void SetUpOnMainThread() override {
+    VerticalTabsBrowserTestMixin<InProcessBrowserTest>::SetUpOnMainThread();
+    if (is_horizontal()) {
+      ExitVerticalTabsMode();
+    }
+  }
+
+  const std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures()
+      override {
+    auto enabled = VerticalTabsBrowserTestMixin<
+        InProcessBrowserTest>::GetEnabledFeatures();
+    enabled.push_back({features::kTabGroupsFocusing, {}});
+    enabled.push_back({tabs::kTabStripUnification, {}});
+    return enabled;
+  }
+
+ protected:
+  // Setup runs without rich animations so that it settles synchronously. The
+  // test under measurement enables them and drives `kFocusMode` from a
+  // container whose clock only advances through `AdvanceFocusMotion()`.
+  void EnableRichAnimations() {
+    rich_animations_disabled_.reset();
+    rich_animations_enabled_ =
+        gfx::AnimationTestApi::SetRichAnimationRenderMode(
+            gfx::Animation::RichAnimationRenderMode::FORCE_ENABLED);
+    normal_duration_mode_ =
+        std::make_unique<gfx::ScopedAnimationDurationScaleMode>(
+            gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
+    animation_container_ = base::MakeRefCounted<gfx::AnimationContainer>();
+    BrowserAnimationController::From(browser())
+        ->SetAnimationContainerForTesting(FocusModeAnimations::kFocusMode,
+                                          animation_container_.get());
+    animation_container_test_api_ =
+        std::make_unique<gfx::AnimationContainerTestApi>(
+            animation_container_.get());
+  }
+
+  const BrowserAnimationController* animation_controller() {
+    return BrowserAnimationController::From(browser());
+  }
+
+  bool IsFocusMotionAnimating() {
+    return animation_controller()->IsAnimating(FocusModeAnimations::kFocusMode);
+  }
+
+  void AdvanceFocusMotion(base::TimeDelta delta) {
+    animation_container_test_api_->IncrementTime(delta);
+    RunScheduledLayouts();
+  }
+
+  void FinishFocusMotion() {
+    AdvanceFocusMotion(animation_controller()->GetMotionDuration(
+        FocusModeAnimations::kFocusMode));
+    EXPECT_FALSE(IsFocusMotionAnimating());
+  }
+
+  // The histogram group prefix for the orientation under test, and for the
+  // other orientation (which must never receive samples).
+  std::string_view group_prefix() const {
+    return is_horizontal()
+               ? FocusModeAnimations::kHistogramGroupPrefixHorizontal
+               : FocusModeAnimations::kHistogramGroupPrefixVertical;
+  }
+  std::string_view other_group_prefix() const {
+    return is_horizontal()
+               ? FocusModeAnimations::kHistogramGroupPrefixVertical
+               : FocusModeAnimations::kHistogramGroupPrefixHorizontal;
+  }
+
+  std::string FpsHistogram(std::string_view motion) const {
+    return base::StrCat(
+        {group_prefix(), ".", motion,
+         BrowserAnimationController::kFramesPerSecondHistogramSuffix});
+  }
+  std::string LongestStepHistogram(std::string_view motion) const {
+    return base::StrCat(
+        {group_prefix(), ".", motion,
+         BrowserAnimationController::kLongestFrameHistogramSuffix});
+  }
+
+  // Expects both performance histograms for `motion` to have been recorded
+  // exactly `count` times under this orientation's prefix.
+  void ExpectMotionRecorded(std::string_view motion, int count) {
+    SCOPED_TRACE(motion);
+    histogram_tester_.ExpectTotalCount(FpsHistogram(motion), count);
+    histogram_tester_.ExpectTotalCount(LongestStepHistogram(motion), count);
+    if (count > 0) {
+      // Even when the compositor presents no frames during the test, the
+      // logger counts at least one, so FPS is always strictly positive.
+      EXPECT_GT(histogram_tester_.GetTotalSum(FpsHistogram(motion)), 0);
+    }
+  }
+
+  // Expects that no focus animation histogram has been recorded under the
+  // other orientation's prefix.
+  void ExpectNothingRecordedForOtherOrientation() {
+    EXPECT_TRUE(
+        histogram_tester_.GetTotalCountsForPrefix(other_group_prefix()).empty())
+        << "Unexpected samples under " << other_group_prefix();
+  }
+
+  base::HistogramTester histogram_tester_;
+
+ private:
+  std::unique_ptr<base::AutoReset<gfx::Animation::RichAnimationRenderMode>>
+      rich_animations_disabled_ =
+          gfx::AnimationTestApi::SetRichAnimationRenderMode(
+              gfx::Animation::RichAnimationRenderMode::FORCE_DISABLED);
+  std::unique_ptr<base::AutoReset<gfx::Animation::RichAnimationRenderMode>>
+      rich_animations_enabled_;
+  std::unique_ptr<gfx::ScopedAnimationDurationScaleMode> normal_duration_mode_;
+  scoped_refptr<gfx::AnimationContainer> animation_container_;
+  std::unique_ptr<gfx::AnimationContainerTestApi> animation_container_test_api_;
+};
+
+// Entering focus mode records the `Enter` histograms once the motion
+// completes, and exiting records the `Exit` histograms. Neither is attributed
+// to `Switch` or to the other tab strip orientation.
+IN_PROC_BROWSER_TEST_P(TabStripControllerFocusAnimationMetricsBrowserTest,
+                       EnterAndExitRecordPerformanceHistograms) {
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_id = model->AddToNewGroup({1});
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_id);
+  RunScheduledLayouts();
+  ASSERT_TRUE(IsFocusMotionAnimating());
+  // Nothing is recorded until the motion completes.
+  ExpectMotionRecorded("Enter", 0);
+
+  FinishFocusMotion();
+  ExpectMotionRecorded("Enter", 1);
+  ExpectMotionRecorded("Exit", 0);
+  ExpectMotionRecorded(FocusModeAnimations::kSwitchMotionHistogramName, 0);
+
+  model->ExitFocusMode();
+  RunScheduledLayouts();
+  ASSERT_TRUE(IsFocusMotionAnimating());
+  ExpectMotionRecorded("Exit", 0);
+
+  FinishFocusMotion();
+  ExpectMotionRecorded("Enter", 1);
+  ExpectMotionRecorded("Exit", 1);
+  ExpectMotionRecorded(FocusModeAnimations::kSwitchMotionHistogramName, 0);
+  ExpectNothingRecordedForOtherOrientation();
+}
+
+// Switching focus directly from one group to another plays the enter motion
+// but is recorded under `Switch`, not `Enter`. The synchronous exit reset that
+// precedes the switch must not record an `Exit` sample.
+IN_PROC_BROWSER_TEST_P(TabStripControllerFocusAnimationMetricsBrowserTest,
+                       DirectSwitchRecordsSwitchHistograms) {
+  AppendTab();
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_a = model->AddToNewGroup({1});
+  const tab_groups::TabGroupId group_b = model->AddToNewGroup({2});
+  model->EnterFocusMode(group_a);
+  RunScheduledLayouts();
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_b);
+  RunScheduledLayouts();
+  ASSERT_TRUE(IsFocusMotionAnimating());
+
+  FinishFocusMotion();
+  ExpectMotionRecorded(FocusModeAnimations::kSwitchMotionHistogramName, 1);
+  ExpectMotionRecorded("Enter", 0);
+  ExpectMotionRecorded("Exit", 0);
+  ExpectNothingRecordedForOtherOrientation();
+}
+
+// A motion that is interrupted by another focus change before it completes
+// is not recorded; only the motion that runs to completion is.
+IN_PROC_BROWSER_TEST_P(TabStripControllerFocusAnimationMetricsBrowserTest,
+                       InterruptedMotionIsNotRecorded) {
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_id = model->AddToNewGroup({1});
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+
+  EnableRichAnimations();
+  model->EnterFocusMode(group_id);
+  AdvanceFocusMotion(base::Milliseconds(150));
+  ASSERT_TRUE(IsFocusMotionAnimating());
+
+  // Exiting mid-motion cancels the enter motion and starts the exit motion.
+  model->ExitFocusMode();
+  RunScheduledLayouts();
+  ASSERT_TRUE(IsFocusMotionAnimating());
+  ExpectMotionRecorded("Enter", 0);
+
+  FinishFocusMotion();
+  ExpectMotionRecorded("Enter", 0);
+  ExpectMotionRecorded("Exit", 1);
+  ExpectMotionRecorded(FocusModeAnimations::kSwitchMotionHistogramName, 0);
+  ExpectNothingRecordedForOtherOrientation();
+}
+
+// Without rich animations the focus change snaps to its resting state and no
+// motion is played, so no performance histograms are recorded.
+IN_PROC_BROWSER_TEST_P(TabStripControllerFocusAnimationMetricsBrowserTest,
+                       ReducedMotionRecordsNothing) {
+  AppendTab();
+  AppendTab();
+  TabStripModel* const model = browser()->GetTabStripModel();
+  const tab_groups::TabGroupId group_a = model->AddToNewGroup({1});
+  const tab_groups::TabGroupId group_b = model->AddToNewGroup({2});
+  model->ActivateTabAt(0);
+  RunScheduledLayouts();
+
+  model->EnterFocusMode(group_a);
+  RunScheduledLayouts();
+  model->EnterFocusMode(group_b);
+  RunScheduledLayouts();
+  model->ExitFocusMode();
+  RunScheduledLayouts();
+  EXPECT_FALSE(IsFocusMotionAnimating());
+
+  ExpectMotionRecorded("Enter", 0);
+  ExpectMotionRecorded("Exit", 0);
+  ExpectMotionRecorded(FocusModeAnimations::kSwitchMotionHistogramName, 0);
+  ExpectNothingRecordedForOtherOrientation();
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    TabStripControllerFocusAnimationMetricsBrowserTest,
     testing::Values(TabStripOrientation::kVertical,
                     TabStripOrientation::kHorizontal),
     [](const testing::TestParamInfo<TabStripOrientation>& info) {
@@ -1004,6 +1679,61 @@ IN_PROC_BROWSER_TEST_P(TabStripControllerFocusFreezingBrowserTest,
 INSTANTIATE_TEST_SUITE_P(
     All,
     TabStripControllerFocusFreezingBrowserTest,
+    testing::Values(TabStripOrientation::kVertical,
+                    TabStripOrientation::kHorizontal),
+    [](const testing::TestParamInfo<TabStripOrientation>& info) {
+      switch (info.param) {
+        case TabStripOrientation::kVertical:
+          return "Vertical";
+        case TabStripOrientation::kHorizontal:
+          return "Horizontal";
+      }
+    });
+
+class TabStripCollectionControllerPixelBrowserTest
+    : public TabStripCollectionControllerBrowserTest {
+ public:
+  void SetUp() override {
+    EnablePixelOutput();
+    TabStripCollectionControllerBrowserTest::SetUp();
+  }
+};
+
+IN_PROC_BROWSER_TEST_P(TabStripCollectionControllerPixelBrowserTest,
+                       SelectTabRecordsPeakGpuMemoryUsage) {
+  AppendTab();
+  TabStripModel* model = browser()->GetTabStripModel();
+  ASSERT_EQ(2, model->count());
+  model->ActivateTabAt(0);
+  ASSERT_EQ(0, model->active_index());
+
+  base::HistogramTester histogram_tester;
+  // Selecting the already-active tab should not record peak GPU memory.
+  vertical_tab_strip_controller()->SelectTab(
+      model->GetTabAtIndex(0),
+      TabStripUserGestureDetails(
+          TabStripUserGestureDetails::GestureType::kMouse));
+  EXPECT_EQ(0, model->active_index());
+
+  vertical_tab_strip_controller()->SelectTab(
+      model->GetTabAtIndex(1),
+      TabStripUserGestureDetails(
+          TabStripUserGestureDetails::GestureType::kMouse));
+  EXPECT_EQ(1, model->active_index());
+
+  BrowserView::GetBrowserViewForBrowser(browser())->SchedulePaint();
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return !histogram_tester
+                .GetAllSamples("Memory.GPU.PeakMemoryUsage2.ChangeTab2")
+                .empty();
+  }));
+  histogram_tester.ExpectTotalCount("Memory.GPU.PeakMemoryUsage2.ChangeTab2",
+                                    1);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    TabStripCollectionControllerPixelBrowserTest,
     testing::Values(TabStripOrientation::kVertical,
                     TabStripOrientation::kHorizontal),
     [](const testing::TestParamInfo<TabStripOrientation>& info) {

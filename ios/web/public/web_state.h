@@ -6,33 +6,33 @@
 #define IOS_WEB_PUBLIC_WEB_STATE_H_
 
 #import <UIKit/UIKit.h>
-#include <stdint.h>
+#import <stdint.h>
 
-#include <map>
-#include <memory>
-#include <optional>
-#include <string>
-#include <string_view>
-#include <utility>
-#include <vector>
+#import <map>
+#import <memory>
+#import <optional>
+#import <string>
+#import <string_view>
+#import <utility>
+#import <vector>
 
-#include "base/functional/bind.h"
-#include "base/functional/callback.h"
-#include "base/memory/raw_ptr.h"
-#include "base/memory/weak_ptr.h"
-#include "base/observer_list.h"
-#include "base/supports_user_data.h"
-#include "base/time/time.h"
-#include "build/blink_buildflags.h"
-#include "components/sessions/core/session_id.h"
-#include "ios/web/public/js_messaging/content_world.h"
-#include "ios/web/public/navigation/referrer.h"
-#include "ios/web/public/web_state_id.h"
-#include "mojo/public/cpp/bindings/generic_pending_receiver.h"
-#include "mojo/public/cpp/system/message_pipe.h"
-#include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
-#include "url/gurl.h"
+#import "base/functional/bind.h"
+#import "base/functional/callback.h"
+#import "base/memory/raw_ptr.h"
+#import "base/memory/weak_ptr.h"
+#import "base/observer_list.h"
+#import "base/supports_user_data.h"
+#import "base/time/time.h"
+#import "build/blink_buildflags.h"
+#import "components/sessions/core/session_id.h"
+#import "ios/web/public/js_messaging/content_world.h"
+#import "ios/web/public/navigation/referrer.h"
+#import "ios/web/public/web_state_id.h"
+#import "mojo/public/cpp/bindings/generic_pending_receiver.h"
+#import "mojo/public/cpp/system/message_pipe.h"
+#import "ui/base/mojom/window_open_disposition.mojom-forward.h"
+#import "ui/base/page_transition_types.h"
+#import "url/gurl.h"
 
 class GURL;
 
@@ -115,12 +115,12 @@ class WebState : public base::SupportsUserData {
     OpenURLParams(const GURL& url,
                   const GURL& virtual_url,
                   const Referrer& referrer,
-                  WindowOpenDisposition disposition,
+                  ui::mojom::WindowOpenDisposition disposition,
                   ui::PageTransition transition,
                   bool is_renderer_initiated);
     OpenURLParams(const GURL& url,
                   const Referrer& referrer,
-                  WindowOpenDisposition disposition,
+                  ui::mojom::WindowOpenDisposition disposition,
                   ui::PageTransition transition,
                   bool is_renderer_initiated);
     OpenURLParams(const OpenURLParams& params);
@@ -135,7 +135,7 @@ class WebState : public base::SupportsUserData {
     Referrer referrer;
 
     // The disposition requested by the navigation source.
-    WindowOpenDisposition disposition;
+    ui::mojom::WindowOpenDisposition disposition;
 
     // The transition type of navigation.
     ui::PageTransition transition;
@@ -153,6 +153,15 @@ class WebState : public base::SupportsUserData {
     // fragment. The string should contain only the selector value (the part
     // after "text=" in a URL directive), not the "text=" prefix itself.
     std::optional<std::string> internal_scroll_to_text_fragment;
+  };
+
+  // Parameters for the `CreatePdf()` method.
+  struct CreatePdfParams {
+    // Portion of the document to render, in the document's coordinate space
+    // (CSS pixels, independent of the current scroll position and page zoom),
+    // at one PDF point per CSS pixel. When `std::nullopt`, the entire web page
+    // is rendered.
+    std::optional<CGRect> document_rect;
   };
 
   // InterfaceBinder can be instantiated by subclasses of WebState and returned
@@ -488,10 +497,12 @@ class WebState : public base::SupportsUserData {
   // callback is invoked with a nil snapshot.
   virtual void TakeSnapshot(const CGRect rect, SnapshotCallback callback) = 0;
 
-  // Creates PDF representation of the web page and invokes the `callback` with
-  // the NSData of the PDF or nil if a PDF couldn't be generated.
-  virtual void CreateFullPagePdf(
-      base::OnceCallback<void(NSData*)> callback) = 0;
+  // Creates a PDF representation of the web page according to `params` and
+  // invokes `callback` with the NSData of the PDF, or `nil` if a PDF couldn't
+  // be generated (including when `params.document_rect` is set to a null or
+  // infinite rectangle, or has a width or height under one CSS pixel).
+  virtual void CreatePdf(const CreatePdfParams& params,
+                         base::OnceCallback<void(NSData*)> callback) = 0;
 
   // Tries to dismiss the presented states of the media (fullscreen or Picture
   // in Picture).

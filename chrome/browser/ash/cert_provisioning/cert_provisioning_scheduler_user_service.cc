@@ -19,7 +19,9 @@ CertProvisioningSchedulerUserService::CertProvisioningSchedulerUserService(
     Profile* profile)
     : scheduler_(
           CertProvisioningSchedulerImpl::CreateUserCertProvisioningScheduler(
-              profile)) {}
+              profile,
+              invalidation::ProfileInvalidationProviderFactory::GetForProfile(
+                  profile))) {}
 
 CertProvisioningSchedulerUserService::~CertProvisioningSchedulerUserService() =
     default;
@@ -53,11 +55,13 @@ CertProvisioningSchedulerUserServiceFactory::GetInstance() {
 
 CertProvisioningSchedulerUserServiceFactory::
     CertProvisioningSchedulerUserServiceFactory()
-    : ProfileKeyedServiceFactory("CertProvisioningSchedulerUserService",
-                                 ProfileSelections::Builder()
-                                     .WithGuest(ProfileSelection::kOriginalOnly)
-                                     .WithAshInternals(ProfileSelection::kNone)
-                                     .Build()) {
+    : ProfileKeyedServiceFactory(
+          "CertProvisioningSchedulerUserService",
+          ProfileSelections::Builder()
+              .WithRegular(ProfileSelection::kOriginalOnly)
+              .WithGuest(ProfileSelection::kNone)
+              .WithAshInternals(ProfileSelection::kNone)
+              .Build()) {
   DependsOn(platform_keys::PlatformKeysServiceFactory::GetInstance());
   DependsOn(invalidation::ProfileInvalidationProviderFactory::GetInstance());
   DependsOn(policy::UserFmRegistrationTokenUploaderFactory::GetInstance());
@@ -72,7 +76,7 @@ std::unique_ptr<KeyedService> CertProvisioningSchedulerUserServiceFactory::
     BuildServiceInstanceForBrowserContext(
         content::BrowserContext* context) const {
   Profile* profile = Profile::FromBrowserContext(context);
-  if (!profile || !profile->GetProfilePolicyConnector()->IsManaged()) {
+  if (!profile->GetProfilePolicyConnector()->IsManaged()) {
     return nullptr;
   }
 

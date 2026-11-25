@@ -27,19 +27,18 @@
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/tabs/existing_base_sub_menu_model.h"
-#include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_menu_model.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/split_tab_mute_menu_model.h"
 #include "chrome/browser/ui/tabs/split_tab_swap_menu_model.h"
-#include "chrome/browser/ui/tabs/split_view_layout_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_menu_model_delegate.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
 #include "chrome/browser/ui/tabs/test_tab_strip_model_delegate.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_controller.h"
+#include "chrome/browser/ui/views/toolbar/pinned_action_test_accessor.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -68,6 +67,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/menu_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
@@ -77,16 +77,6 @@
 class TabMenuModelBrowserTest : public MenuModelTest,
                                 public InProcessBrowserTest {
  public:
-  TabMenuModelBrowserTest() {
-    // TODO(crbug.com/557287887): Fix SplitViewLayoutMenuModel so that it
-    // doesn't break TabMenuModelBrowserTest.Basics.
-    feature_list_.InitWithFeaturesAndParameters(
-        /*enabled_features=*/{{tabs::kSplitViewHorizontal,
-                               {{"split_view_horizontal_direct_tab_access",
-                                 "false"}}}},
-        /*disabled_features=*/{});
-  }
-
   Profile* profile() { return browser()->GetProfile(); }
 
   void ActivateSwapWithSplitSubmenuCommand(
@@ -103,8 +93,18 @@ class TabMenuModelBrowserTest : public MenuModelTest,
         submenu->GetIndexOfCommandId(static_cast<int>(command_id)).value()));
   }
 
- private:
-  base::test::ScopedFeatureList feature_list_;
+  ui::SimpleMenuModel* GetArrangeSplitSubmenu(
+      int tab_index,
+      std::unique_ptr<TabMenuModel>& out_menu_model) {
+    out_menu_model = std::make_unique<TabMenuModel>(
+        &delegate_, TabMenuModelDelegate::From(browser()),
+        browser()->tab_strip_model(), tab_index);
+    size_t arrange_submenu_index =
+        out_menu_model->GetIndexOfCommandId(TabStripModel::CommandArrangeSplit)
+            .value();
+    return static_cast<ui::SimpleMenuModel*>(
+        out_menu_model->GetSubmenuModelAt(arrange_submenu_index));
+  }
 };
 
 IN_PROC_BROWSER_TEST_F(TabMenuModelBrowserTest, Basics) {
@@ -428,7 +428,8 @@ class TabMenuModelMuteSitesBrowserTest : public TabMenuModelBrowserTest {
                                      const GURL& second_url) {
     EXPECT_TRUE(ui_test_utils::NavigateToURL(browser(), first_url));
     EXPECT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
-        browser(), second_url, WindowOpenDisposition::kNewForegroundTab,
+        browser(), second_url,
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
 
     TabStripModel* tab_strip_model = browser()->tab_strip_model();
@@ -452,7 +453,7 @@ class TabMenuModelMuteSitesBrowserTest : public TabMenuModelBrowserTest {
 
   bool IsMuted(int index) {
     TabStripModel* tab_strip_model = browser()->tab_strip_model();
-    return IsSiteMuted(*tab_strip_model, index) &&
+    return IsSiteMuted(tab_strip_model->GetTabAtIndex(index)->GetHandle()) &&
            tab_strip_model->GetWebContentsAt(index)->IsAudioMuted();
   }
 };
@@ -665,32 +666,7 @@ IN_PROC_BROWSER_TEST_F(TabMenuModelMuteSitesBrowserTest,
   EXPECT_FALSE(IsMuted(right_index));
 }
 
-class TabMenuModelSplitViewHorizontalBrowserTest
-    : public TabMenuModelBrowserTest {
- public:
-  TabMenuModelSplitViewHorizontalBrowserTest() {
-    scoped_feature_list_.InitAndEnableFeature(tabs::kSplitViewHorizontal);
-  }
-
-  ui::SimpleMenuModel* GetArrangeSplitSubmenu(
-      int tab_index,
-      std::unique_ptr<TabMenuModel>& out_menu_model) {
-    out_menu_model = std::make_unique<TabMenuModel>(
-        &delegate_, TabMenuModelDelegate::From(browser()),
-        browser()->tab_strip_model(), tab_index);
-    size_t arrange_submenu_index =
-        out_menu_model->GetIndexOfCommandId(TabStripModel::CommandArrangeSplit)
-            .value();
-    return static_cast<ui::SimpleMenuModel*>(
-        out_menu_model->GetSubmenuModelAt(arrange_submenu_index));
-  }
-
- protected:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(TabMenuModelSplitViewHorizontalBrowserTest,
-                       ToggleOrientationMenuAction) {
+IN_PROC_BROWSER_TEST_F(TabMenuModelBrowserTest, ToggleOrientationMenuAction) {
   chrome::NewTab(browser(), NewTabTypes::kNewTabCommand);
 
   TabStripModel* tab_strip_model = browser()->tab_strip_model();
@@ -737,89 +713,6 @@ IN_PROC_BROWSER_TEST_F(TabMenuModelSplitViewHorizontalBrowserTest,
       arrange_submenu_2->GetIndexOfCommandId(toggle_cmd_id).value();
   EXPECT_EQ(arrange_submenu_2->GetLabelAt(item_idx_2),
             l10n_util::GetStringUTF16(IDS_SPLIT_TAB_SHOW_SIDE_BY_SIDE));
-}
-
-class TabMenuModelSplitViewHorizontalDirectAccessBrowserTest
-    : public TabMenuModelBrowserTest {
- public:
-  TabMenuModelSplitViewHorizontalDirectAccessBrowserTest() {
-    scoped_feature_list_.InitWithFeaturesAndParameters(
-        /*enabled_features=*/GetEnabledFeaturesAndParams(),
-        /*disabled_features=*/{});
-  }
-
-  virtual std::vector<base::test::FeatureRefAndParams>
-  GetEnabledFeaturesAndParams() {
-    return {{tabs::kSplitViewHorizontal,
-             {{"split_view_horizontal_direct_access", "true"}}}};
-  }
-
-  void TestNewSplit(SplitViewLayoutMenuModel::CommandId command_id,
-                    split_tabs::SplitTabLayout expected_layout) {
-    chrome::NewTab(browser(), NewTabTypes::kNoUserAction);
-
-    TabStripModel* tab_strip_model = browser()->tab_strip_model();
-    ASSERT_EQ(tab_strip_model->count(), 2);
-    ASSERT_EQ(tab_strip_model->active_index(), 1);
-
-    TabMenuModel menu_model(&delegate_, TabMenuModelDelegate::From(browser()),
-                            tab_strip_model, 0);
-
-    size_t submenu_index =
-        menu_model.GetIndexOfCommandId(TabStripModel::CommandAddToSplit)
-            .value();
-    ui::SimpleMenuModel* submenu = static_cast<ui::SimpleMenuModel*>(
-        menu_model.GetSubmenuModelAt(submenu_index));
-    submenu->ActivatedAt(static_cast<size_t>(
-        submenu->GetIndexOfCommandId(static_cast<int>(command_id)).value()));
-
-    EXPECT_TRUE(tab_strip_model->GetActiveTab()->GetSplit().has_value());
-    EXPECT_EQ(
-        expected_layout,
-        tab_strip_model
-            ->GetSplitData(tab_strip_model->GetActiveTab()->GetSplit().value())
-            ->visual_data()
-            ->split_layout());
-  }
-
- protected:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(TabMenuModelSplitViewHorizontalDirectAccessBrowserTest,
-                       NewSideBySideSplit) {
-  TestNewSplit(SplitViewLayoutMenuModel::CommandId::kSideBySide,
-               split_tabs::SplitTabLayout::kSideBySide);
-}
-
-IN_PROC_BROWSER_TEST_F(TabMenuModelSplitViewHorizontalDirectAccessBrowserTest,
-                       NewStackedSplit) {
-  TestNewSplit(SplitViewLayoutMenuModel::CommandId::kStacked,
-               split_tabs::SplitTabLayout::kStacked);
-}
-
-class TabMenuModelSplitViewHorizontalDirectTabAccessBrowserTest
-    : public TabMenuModelSplitViewHorizontalDirectAccessBrowserTest {
- public:
-  std::vector<base::test::FeatureRefAndParams> GetEnabledFeaturesAndParams()
-      override {
-    return {{tabs::kSplitViewHorizontal,
-             {{"split_view_horizontal_direct_tab_access", "true"}}}};
-  }
-};
-
-IN_PROC_BROWSER_TEST_F(
-    TabMenuModelSplitViewHorizontalDirectTabAccessBrowserTest,
-    NewSideBySideSplit) {
-  TestNewSplit(SplitViewLayoutMenuModel::CommandId::kSideBySide,
-               split_tabs::SplitTabLayout::kSideBySide);
-}
-
-IN_PROC_BROWSER_TEST_F(
-    TabMenuModelSplitViewHorizontalDirectTabAccessBrowserTest,
-    NewStackedSplit) {
-  TestNewSplit(SplitViewLayoutMenuModel::CommandId::kStacked,
-               split_tabs::SplitTabLayout::kStacked);
 }
 
 IN_PROC_BROWSER_TEST_F(TabMenuModelBrowserTest, SwapWithActiveTab) {
@@ -1131,9 +1024,12 @@ IN_PROC_BROWSER_TEST_F(TabMenuModelSendTabToSelfSigninPromosBrowserTest,
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
   submenu->ActivatedAt(1);
-  EXPECT_TRUE(send_tab_to_self::SendTabToSelfBubbleController::
-                  GetOrCreateForWebContents(tab_strip->GetActiveWebContents())
-                      ->IsBubbleShown());
+  auto* controller = send_tab_to_self::SendTabToSelfBubbleController::
+      GetOrCreateForWebContents(tab_strip->GetActiveWebContents());
+  if (!controller->IsBubbleShown()) {
+    PinnedActionTestAccessor::WaitForAnimation(browser());
+  }
+  EXPECT_TRUE(controller->IsBubbleShown());
 #endif
 }
 

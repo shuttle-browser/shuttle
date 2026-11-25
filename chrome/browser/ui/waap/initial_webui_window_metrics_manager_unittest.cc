@@ -131,7 +131,7 @@ TEST_F(InitialWebUIWindowMetricsManagerTest, RecordsFirstPaintGapDelta) {
   // Simulate paint of WebUI reload button.
   base::TimeDelta webui_delay = base::Milliseconds(50);
   base::TimeTicks reload_button_time = browser_window_time + webui_delay;
-  manager.OnReloadButtonFirstPaint(reload_button_time);
+  manager.OnReloadButtonFirstPaint(reload_button_time, /*is_startup=*/false);
 
   // Now the gap metric should be emitted with the correct delta
   tester.ExpectUniqueTimeSample(
@@ -241,7 +241,8 @@ TEST_F(InitialWebUIWindowMetricsManagerTest,
     // presentation).
     base::TimeTicks reload_button_time1 =
         browser_window_time1 - base::Milliseconds(10);
-    startup_manager.OnReloadButtonFirstPaint(reload_button_time1);
+    startup_manager.OnReloadButtonFirstPaint(reload_button_time1,
+                                             /*is_startup=*/true);
   }
 
   // Verify the startup metric was NOT recorded because the gap is negative.
@@ -262,11 +263,49 @@ TEST_F(InitialWebUIWindowMetricsManagerTest,
 
     // Simulate a valid positive gap.
     base::TimeTicks reload_button_time2 = browser_window_time2 + webui_delay;
-    new_window_manager.OnReloadButtonFirstPaint(reload_button_time2);
+    new_window_manager.OnReloadButtonFirstPaint(reload_button_time2,
+                                                /*is_startup=*/false);
   }
 
   // The critical verification: This window must incorrectly NOT be logged as
   // Startup, but correctly as a New Window.
+  tester.ExpectTotalCount(
+      "InitialWebUI.Startup.BrowserWindowToReloadButton.FirstPaintGap", 0);
+  tester.ExpectUniqueTimeSample(
+      "InitialWebUI.NewWindow.AllSources.WithoutExistingWindow."
+      "BrowserWindowToReloadButton.FirstPaintGap2",
+      webui_delay, 1);
+}
+
+// The startup gap must pair with the startup reload button paint. If the
+// startup window paints its reload button but closes before its first
+// presentation, a later window records the new window gap instead.
+TEST_F(InitialWebUIWindowMetricsManagerTest,
+       NoStartupGapIfStartupWindowClosesBeforePresentation) {
+  base::HistogramTester tester;
+
+  {
+    // Window 1: Startup Window. Its reload button paints, but the window
+    // closes before its first presentation.
+    InitialWebUIWindowMetricsManager startup_manager(&browser_window_);
+    startup_manager.OnReloadButtonFirstPaint(base::TimeTicks::Now(),
+                                             /*is_startup=*/true);
+  }
+
+  base::TimeDelta webui_delay = base::Milliseconds(50);
+  {
+    // Window 2: New Window.
+    const base::TimeTicks start_time = base::TimeTicks::Now();
+    InitialWebUIWindowMetricsManager new_window_manager(&browser_window_);
+    new_window_manager.SetWindowCreationInfo(
+        waap::NewWindowCreationSource::kNewEmptyWindow, start_time);
+
+    base::TimeTicks browser_window_time = start_time + kTestLatency;
+    new_window_manager.OnBrowserWindowFirstPresentation(browser_window_time);
+    new_window_manager.OnReloadButtonFirstPaint(
+        browser_window_time + webui_delay, /*is_startup=*/false);
+  }
+
   tester.ExpectTotalCount(
       "InitialWebUI.Startup.BrowserWindowToReloadButton.FirstPaintGap", 0);
   tester.ExpectUniqueTimeSample(
@@ -368,7 +407,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
   base::HistogramTester tester;
 
   // Reload button paints before browser window.
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(10));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(10),
+                                   /*is_startup=*/true);
   manager.OnBrowserWindowFirstPresentation(start_time + base::Milliseconds(20));
 
   tester.ExpectUniqueSample(
@@ -402,7 +442,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
       base::StrCat({kPaintedAtBrowserFirstPaintHistogram, Suffix()}), 0);
 
   // Reload button paints 50ms later.
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(70));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(70),
+                                   /*is_startup=*/true);
 
   tester.ExpectUniqueSample(
       base::StrCat({kPaintedAtBrowserFirstPaintHistogram, Suffix()}), false, 1);
@@ -595,10 +636,11 @@ TEST_F(InitialWebUIWindowMetricsManagerTest,
   manager.OnBrowserWindowFirstPresentation(start_time + base::Milliseconds(20));
 
   // Null timestamp paint is ignored.
-  manager.OnReloadButtonFirstPaint(base::TimeTicks());
+  manager.OnReloadButtonFirstPaint(base::TimeTicks(), /*is_startup=*/false);
 
   // Subsequent valid paint records the expected unique metric values.
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(50));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(50),
+                                   /*is_startup=*/true);
 
   tester.ExpectUniqueSample(
       base::StrCat({kPaintedWithin10SecondsHistogram, ".SurfaceSyncDisabled"}),
@@ -628,7 +670,8 @@ TEST_F(InitialWebUIWindowMetricsManagerTest,
     InitialWebUIWindowMetricsManager manager(&browser_window_);
     manager.OnBrowserWindowShowRequested(base::TimeTicks::Now());
     manager.OnBrowserWindowFirstPresentation(base::TimeTicks::Now());
-    manager.OnReloadButtonFirstPaint(base::TimeTicks::Now());
+    manager.OnReloadButtonFirstPaint(base::TimeTicks::Now(),
+                                     /*is_startup=*/false);
   }
 
   tester.ExpectTotalCount(base::StrCat({kPaintedAtBrowserFirstPaintHistogram,
@@ -656,7 +699,8 @@ TEST_F(InitialWebUIWindowMetricsManagerTest,
   base::HistogramTester tester;
 
   InitialWebUIWindowMetricsManager manager(&browser_window_);
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(10));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(10),
+                                   /*is_startup=*/true);
   manager.OnBrowserWindowFirstPresentation(start_time + base::Milliseconds(20));
 
   // A later crash should not overwrite or emit crash failure metrics.
@@ -687,7 +731,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
   // Browser window presents before reload button paints for a newly created
   // window.
   manager.OnBrowserWindowFirstPresentation(start_time + base::Milliseconds(20));
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(70));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(70),
+                                   /*is_startup=*/false);
 
   tester.ExpectUniqueSample(
       base::StrCat({kPaintedAtBrowserFirstPaintHistogram, Suffix()}), false, 1);
@@ -722,7 +767,7 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
   // executed because time has not been advanced in mock time.
   const base::TimeTicks late_paint_time =
       browser_window_time + base::Seconds(11);
-  manager.OnReloadButtonFirstPaint(late_paint_time);
+  manager.OnReloadButtonFirstPaint(late_paint_time, /*is_startup=*/true);
 
   tester.ExpectUniqueSample(
       base::StrCat({kPaintedWithin10SecondsHistogram, Suffix()}), false, 1);
@@ -749,8 +794,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
   manager.OnReloadButtonRenderProcessGone();
 
   // Late paint IPC arrives out of order after crash.
-  manager.OnReloadButtonFirstPaint(browser_window_time +
-                                   base::Milliseconds(200));
+  manager.OnReloadButtonFirstPaint(
+      browser_window_time + base::Milliseconds(200), /*is_startup=*/true);
 
   if (IsSurfaceSyncEnabled()) {
     VerifySurfaceSyncMetrics(tester, waap::InitialWebUISurfaceSyncResult::
@@ -776,7 +821,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
 
   // Reload button paint IPC arrives at t=60ms, but with monotonic timestamp of
   // t=40ms (Blink painted prior to presentation feedback delivery).
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(40));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(40),
+                                   /*is_startup=*/true);
 
   tester.ExpectUniqueSample(
       base::StrCat({kPaintedAtBrowserFirstPaintHistogram, Suffix()}), true, 1);
@@ -810,7 +856,8 @@ TEST_F(InitialWebUIWindowMetricsManagerTest,
   InitialWebUIWindowMetricsManager manager(&browser_window_);
   // Browser presents before reload button paints.
   manager.OnBrowserWindowFirstPresentation(start_time + base::Milliseconds(20));
-  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(70));
+  manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(70),
+                                   /*is_startup=*/true);
 
   ExpectNoSurfaceSyncMetrics(tester);
   tester.ExpectUniqueTimeSample(
@@ -831,7 +878,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
     InitialWebUIWindowMetricsManager manager(&browser_window_);
     manager.OnBrowserWindowFirstPresentation(start_time +
                                              base::Milliseconds(20));
-    manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(50));
+    manager.OnReloadButtonFirstPaint(start_time + base::Milliseconds(50),
+                                     /*is_startup=*/true);
     // Window closes after reload button painted.
   }
 
@@ -912,7 +960,8 @@ TEST_P(InitialWebUIWindowMetricsManagerSurfaceSyncTest,
       base::StrCat({kPaintedWithin10SecondsHistogram, Suffix()}), false, 1);
 
   // Late paint arrives after timeout has already recorded failure.
-  manager.OnReloadButtonFirstPaint(browser_window_time + base::Seconds(12));
+  manager.OnReloadButtonFirstPaint(browser_window_time + base::Seconds(12),
+                                   /*is_startup=*/true);
 
   // Must not emit duplicate samples.
   tester.ExpectUniqueSample(

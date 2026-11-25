@@ -12,6 +12,7 @@
 namespace trusted_vault {
 
 enum class LocalRecoveryFactorType;
+enum class TrustedVaultKeyRotationStatus;
 
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
@@ -19,7 +20,8 @@ enum class LocalRecoveryFactorType;
 enum class TrustedVaultHintDegradedRecoverabilityChangedReasonForUMA {
   kRecoveryMethodAdded = 0,
   kPersistentAuthErrorResolved = 1,
-  kMaxValue = kPersistentAuthErrorResolved,
+  kEnrolled = 2,
+  kMaxValue = kEnrolled,
 };
 // LINT.ThenChange(/tools/metrics/histograms/metadata/trusted_vault/enums.xml:TrustedVaultHintDegradedRecoverabilityChangedReason)
 
@@ -68,7 +70,9 @@ enum class TrustedVaultURLFetchReasonForUMA {
   kDownloadAuthenticationFactorsRegistrationState,
   kRegisterGpmPin,
   kRegisterICloudKeychain,
+  kRegisterGaiaPassword,
   kDownloadGaiaPasswordPublicKey,
+  kDownloadRecoveryFactorsForKeyRotation,
   kRotateSharedKey,
 };
 
@@ -209,13 +213,16 @@ void RecordTrustedVaultRecoveryFactorRegistrationOutcome(
     TrustedVaultRecoveryFactorRegistrationOutcomeForUMA registration_outcome);
 
 // Records url fetch response status (combined http and net error code) for
-// requests to security domain service. If |http_response_code| is non-zero, it
+// requests to security domain service. If |security_domain_id| is nullopt, the
+// request is generic (not tied to a specific security domain) and is recorded
+// using the "NoSecurityDomain" variant. If |http_response_code| is non-zero, it
 // will be recorded, otherwise |net_error| will be recorded. Either
 // |http_status| or |net_error| must be non zero.
-void RecordTrustedVaultURLFetchResponse(SecurityDomainId security_domain_id,
-                                        TrustedVaultURLFetchReasonForUMA reason,
-                                        int http_response_code,
-                                        int net_error);
+void RecordTrustedVaultURLFetchResponse(
+    std::optional<SecurityDomainId> security_domain_id,
+    TrustedVaultURLFetchReasonForUMA reason,
+    int http_response_code,
+    int net_error);
 
 // Records url fetch response status (combined http and net error code) for
 // requests to vault service. If |http_response_code| is non-zero, it
@@ -240,6 +247,9 @@ void RecordTrustedVaultDownloadKeysStatus(
 // downstream) and delete this one.
 void RecordTrustedVaultDownloadKeysStatus(
     TrustedVaultDownloadKeysStatusForUMA status);
+
+void RecordTrustedVaultKeyRotationStatus(SecurityDomainId security_domain_id,
+                                         TrustedVaultKeyRotationStatus status);
 
 void RecordTrustedVaultRecoverKeysOutcome(
     SecurityDomainId security_domain_id,

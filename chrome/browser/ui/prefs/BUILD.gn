@@ -82,7 +82,9 @@ if (!is_android || enable_desktop_android_extensions) {
     sources = [ "prefs_tab_helper_browsertest.cc" ]
 
     deps = [
+      ":prefs",
       "//base",
+      "//base/test:test_support",
       "//chrome/browser/profiles:profile",
       "//chrome/common:constants",
       "//chrome/common:non_code_constants",
@@ -96,7 +98,7 @@ if (!is_android || enable_desktop_android_extensions) {
     if (enable_desktop_android_extensions) {
       deps += [ "//chrome/test:test_support_ui_android" ]
     } else {
-      deps += [ "//chrome/test:test_support_ui" ]
+      deps += [ "//chrome/test/base:platform_browser_test" ]
     }
   }
 }

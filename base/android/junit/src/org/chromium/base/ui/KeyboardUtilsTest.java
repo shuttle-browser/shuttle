@@ -5,6 +5,9 @@
 package org.chromium.base.ui;
 
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 import android.graphics.Insets;
@@ -25,6 +28,7 @@ import org.chromium.base.BaseFeatures;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
 
 /** Unit tests for {@link KeyboardUtils}. */
 @RunWith(BaseRobolectricTestRunner.class)
@@ -76,5 +80,59 @@ public class KeyboardUtilsTest {
                 .thenThrow(new NullPointerException("should not be called"));
 
         assertEquals(392, KeyboardUtils.calculateKeyboardHeightFromWindowInsets(mRootView));
+    }
+
+    @Test
+    @EnableFeatures(BaseFeatures.SPLIT_SCREEN_IME_INSET_VISIBILITY)
+    public void isAndroidSoftKeyboardObscuring_checksKeyboardHeight() {
+        when(mWindowInsets.getInsets(WindowInsets.Type.ime())).thenReturn(Insets.of(0, 0, 0, 0));
+        when(mWindowInsets.isVisible(WindowInsets.Type.ime())).thenReturn(true);
+
+        assertEquals(0, KeyboardUtils.calculateKeyboardHeightFromWindowInsets(mRootView));
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardObscuring(mRootView));
+
+        when(mWindowInsets.getInsets(WindowInsets.Type.ime())).thenReturn(Insets.of(0, 0, 0, 300));
+        when(mWindowInsets.getInsets(WindowInsets.Type.systemBars()))
+                .thenReturn(Insets.of(0, 0, 0, 0));
+        assertTrue(KeyboardUtils.isAndroidSoftKeyboardObscuring(mRootView));
+        assertTrue(KeyboardUtils.isAndroidSoftKeyboardVisible(mRootView));
+    }
+
+    @Test
+    @EnableFeatures(BaseFeatures.SPLIT_SCREEN_IME_INSET_VISIBILITY)
+    public void isAndroidSoftKeyboardVisible_splitScreenZeroInset_returnsTrue() {
+        when(mWindowInsets.getInsets(WindowInsets.Type.ime())).thenReturn(Insets.of(0, 0, 0, 0));
+        when(mWindowInsets.isVisible(WindowInsets.Type.ime())).thenReturn(true);
+
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardObscuring(mRootView));
+        assertTrue(KeyboardUtils.isAndroidSoftKeyboardVisible(mRootView));
+
+        when(mWindowInsets.isVisible(WindowInsets.Type.ime())).thenReturn(false);
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardVisible(mRootView));
+    }
+
+    @Test
+    @EnableFeatures(BaseFeatures.SPLIT_SCREEN_IME_INSET_VISIBILITY)
+    public void isAndroidSoftKeyboardVisible_nullRootWindowInsets_returnsFalse() {
+        View detachedView = new View(ContextUtils.getApplicationContext());
+        assertNull(detachedView.getRootWindowInsets());
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardObscuring(detachedView));
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardVisible(detachedView));
+    }
+
+    @Test
+    @DisableFeatures(BaseFeatures.SPLIT_SCREEN_IME_INSET_VISIBILITY)
+    public void isAndroidSoftKeyboardObscuring_featureDisabled_checksKeyboardHeight() {
+        when(mWindowInsets.getInsets(WindowInsets.Type.ime())).thenReturn(Insets.of(0, 0, 0, 0));
+        when(mWindowInsets.isVisible(WindowInsets.Type.ime())).thenReturn(true);
+
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardObscuring(mRootView));
+        assertFalse(KeyboardUtils.isAndroidSoftKeyboardVisible(mRootView));
+
+        when(mWindowInsets.getInsets(WindowInsets.Type.ime())).thenReturn(Insets.of(0, 0, 0, 300));
+        when(mWindowInsets.getInsets(WindowInsets.Type.systemBars()))
+                .thenReturn(Insets.of(0, 0, 0, 0));
+        assertTrue(KeyboardUtils.isAndroidSoftKeyboardObscuring(mRootView));
+        assertTrue(KeyboardUtils.isAndroidSoftKeyboardVisible(mRootView));
     }
 }

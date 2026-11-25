@@ -74,6 +74,16 @@ and automatically enable cloud management:
 ./out/Default/chrome --use-fake-dmserver
 ```
 
+To enroll the browser in Chrome Browser Cloud Management (CBCM) without
+configuring an OS-level `CloudManagementEnrollmentToken`, use:
+
+```bash
+./out/Default/chrome --use-fake-dmserver=always-enroll
+```
+
+This supplies a dummy enrollment token when no token is provided by the
+operating system, allowing machine-level enrollment to proceed immediately.
+
 Alternatively, or for Google Chrome builds where `--use-fake-dmserver` is not
 available, specify the parameters manually:
 
@@ -83,6 +93,8 @@ available, specify the parameters manually:
   --enable-chrome-browser-cloud-management \
   --device-management-url=http://127.0.0.1:6112/device_management
 ```
+
+Note that some features only work with `--use-fake-dmserver`.
 
 ### Step 4: Test Your Feature
 
@@ -102,7 +114,9 @@ define the actual policies to be applied.
 ### Configuration Parameters
 
 *   `machine` or `user`: (Object) A dictionary where keys are user policy names
-    and values are the policy values.
+    and values are the mandatory policy values.
+*   `recommended_machine` or `recommended_user`: (Object) A dictionary where
+    keys are user policy names and values are the recommended policy values.
 *   `machine-extension-install`, `user-extension-install`: (Object) A dictionary
     where keys are "extension_id@version" extensions and values are objects:
     * `action`: (String enum) `"allow"` or `"block"`
@@ -148,6 +162,9 @@ More complete example showcasing some of `fake_dmserver`'s features:
   "user": {
     "AllowDinosaurEasterEgg": true
   },
+  "recommended_user": {
+    "ShowHomeButton": false
+  },
   "machine": {
     "ShowHomeButton": true,
     "HomepageLocation": "https://www.google.com",
@@ -156,6 +173,9 @@ More complete example showcasing some of `fake_dmserver`'s features:
       "example.com",
       "unwanted-site.org"
     ]
+  },
+  "recommended_machine": {
+    "BookmarkBarEnabled": true
   },
   "machine-extension-install": {
     "abcdefghijklmnopabcdefghijklmnop@1.0.0": {

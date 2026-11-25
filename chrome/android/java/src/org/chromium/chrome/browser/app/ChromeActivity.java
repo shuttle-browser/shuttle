@@ -64,10 +64,12 @@ import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.base.shared_preferences.SharedPreferencesManager;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.OneshotSupplier;
 import org.chromium.base.supplier.OneshotSupplierImpl;
 import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
+import org.chromium.base.supplier.SettableNonNullObservableSupplier;
 import org.chromium.base.supplier.SettableNullableObservableSupplier;
 import org.chromium.base.supplier.SupplierUtils;
 import org.chromium.build.annotations.Initializer;
@@ -125,7 +127,6 @@ import org.chromium.chrome.browser.customtabs.CustomTabActivity;
 import org.chromium.chrome.browser.desktop_site.DesktopSiteUtils;
 import org.chromium.chrome.browser.device.DeviceClassManager;
 import org.chromium.chrome.browser.devtools.DevToolsWindowAndroid;
-import org.chromium.chrome.browser.dom_distiller.ReaderModeManager;
 import org.chromium.chrome.browser.download.DownloadManagerService;
 import org.chromium.chrome.browser.download.DownloadUtils;
 import org.chromium.chrome.browser.download.items.OfflineContentAggregatorNotificationBridgeUiFactory;
@@ -172,8 +173,6 @@ import org.chromium.chrome.browser.night_mode.WebContentsDarkModeController;
 import org.chromium.chrome.browser.night_mode.WebContentsDarkModeMessageController;
 import org.chromium.chrome.browser.ntp.NewTabPageUma;
 import org.chromium.chrome.browser.offlinepages.OfflinePageUtils;
-import org.chromium.chrome.browser.omaha.UpdateMenuItemHelper;
-import org.chromium.chrome.browser.omaha.inline.InAppUpdateController;
 import org.chromium.chrome.browser.open_in_app.OpenInAppDelegate;
 import org.chromium.chrome.browser.page_info.ChromePageInfo;
 import org.chromium.chrome.browser.page_info.ChromePageInfoHighlight;
@@ -182,7 +181,7 @@ import org.chromium.chrome.browser.pdf.PdfPage;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.price_tracking.PriceDropNotificationManagerFactory;
-import org.chromium.chrome.browser.printing.PrintHelper;
+import org.chromium.chrome.browser.printing.PrintingDelegate;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.browser.profiles.ProfileManagerUtils;
@@ -190,6 +189,7 @@ import org.chromium.chrome.browser.profiles.ProfileProvider;
 import org.chromium.chrome.browser.provider.PageContentProviderImpl;
 import org.chromium.chrome.browser.provider.PageContentProviderMetrics;
 import org.chromium.chrome.browser.readaloud.ReadAloudController;
+import org.chromium.chrome.browser.reader_mode.ReaderModeManager;
 import org.chromium.chrome.browser.screenshot_protection.ScreenshotProtectionController;
 import org.chromium.chrome.browser.selection.SelectionPopupBackPressHandler;
 import org.chromium.chrome.browser.settings.SettingsInTab;
@@ -265,7 +265,6 @@ import org.chromium.components.browser_ui.widget.gesture.BackPressHandler.Type;
 import org.chromium.components.browser_ui.widget.gesture.SwipeGestureListener.SwipeHandler;
 import org.chromium.components.browser_ui.widget.textbubble.TextBubbleBackPressHandler;
 import org.chromium.components.cached_flags.CachedFlagsSafeMode;
-import org.chromium.components.dom_distiller.core.DomDistillerUrlUtils;
 import org.chromium.components.embedder_support.util.UrlConstants;
 import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.components.feature_engagement.EventConstants;
@@ -277,6 +276,7 @@ import org.chromium.components.policy.EnterpriseInfo;
 import org.chromium.components.prefs.PrefService;
 import org.chromium.components.profile_metrics.BrowserProfileType;
 import org.chromium.components.user_prefs.UserPrefs;
+import org.chromium.components.web_distiller.core.WebDistillerUrlUtils;
 import org.chromium.components.webxr.XrDelegateProvider;
 import org.chromium.content_public.browser.ChildProcessLauncherHelper;
 import org.chromium.content_public.browser.ContentFeatureList;
@@ -317,7 +317,6 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         implements TabCreatorManager,
                 PolicyChangeListener,
                 SnackbarManageable,
-                InAppUpdateController.InAppUpdateManageable,
                 StatusBarColorController.StatusBarColorProvider,
                 AppMenuDelegate,
                 AppMenuBlocker,
@@ -430,7 +429,8 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
     private boolean mDeferredStartupQueued;
 
     /** Whether or not {@link #postDeferredStartupIfNeeded()} has already successfully run. */
-    private boolean mDeferredStartupPosted;
+    private final SettableNonNullObservableSupplier<Boolean> mDeferredStartupPostedSupplier =
+            ObservableSuppliers.createNonNull(false);
 
     private boolean mNativeInitialized;
     private boolean mRemoveWindowBackgroundDone;
@@ -506,10 +506,6 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
 
     private final OneshotSupplierImpl<ChromeAndroidTask> mChromeAndroidTaskSupplier =
             new OneshotSupplierImpl<>();
-
-    // TODO(crbug.com/574106939): Move InAppUpdateController initialization out of ChromeActivity
-    // into TabbedRootUiCoordinator.
-    private @Nullable InAppUpdateController mInAppUpdateController;
 
     protected ChromeActivity() {
         mManualFillingComponentSupplier.set(ManualFillingComponentFactory.createComponent());
@@ -1609,8 +1605,9 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         super.onPictureInPictureModeChanged(inPicture, newConfig);
         Log.i(
                 TAG,
-                "Picture in picture mode changed, inPicture: " + inPicture,
-                " custom tabs: " + wasInPictureInPictureForMinimizedCustomTabs());
+                "Picture in picture mode changed, inPicture: %b custom tabs: %b",
+                inPicture,
+                wasInPictureInPictureForMinimizedCustomTabs());
         if (wasInPictureInPictureForMinimizedCustomTabs()) return;
         if (inPicture) {
             mLastPictureInPictureModeForTesting = true;
@@ -1824,10 +1821,8 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
             //  & fixed.
             Log.i(
                     TAG,
-                    "#onStart, num async tabs: "
-                            + AsyncTabParamsManagerSingleton.getInstance()
-                                    .getAsyncTabParams()
-                                    .size());
+                    "#onStart, num async tabs: %d",
+                    AsyncTabParamsManagerSingleton.getInstance().getAsyncTabParams().size());
 
             CompositorViewHolder compositorViewHolder = mCompositorViewHolderSupplier.get();
             if (compositorViewHolder != null) {
@@ -1987,25 +1982,17 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
     @SuppressWarnings("NullAway")
     @Override
     protected final void onDestroy() {
-        // Destroy all ChromeAndroidTaskFeatures scoped to this ChromeActivity.
-        // For one ChromeAndroidTaskFeature, its native code may hold pointers
-        // to other native objects that are destroyed later in this method,
-        // such as the native TabListInterface, the native BrowserWindowInterface, etc.
-        // Therefore, ChromeAndroidTaskFeatures should be destroyed first to
-        // prevent issues like dereferencing a non-null but invalid pointer.
-        ChromeAndroidTask chromeAndroidTask = mChromeAndroidTaskSupplier.get();
-        if (chromeAndroidTask != null) {
-            var activityWindowAndroid = getWindowAndroid();
-            chromeAndroidTask.removeAllFeaturesForActivity(activityWindowAndroid);
-        }
-
-        // TODO(crbug.com/553918188): Remove logging once in-app update flow stabilizes.
-        if (mInAppUpdateController != null) {
-            Log.i(
-                    InAppUpdateController.TAG,
-                    "ChromeActivity.onDestroy: destroying InAppUpdateController");
-            mInAppUpdateController.destroy();
-            mInAppUpdateController = null;
+        // Destroy all ChromeAndroidTaskFeatures and browser windows scoped to this ChromeActivity
+        // first. Their native code may hold pointers to native objects destroyed later in this
+        // method, such as the TabListInterface, and native code must never see a
+        // BrowserWindowInterface whose TabListInterface has already been destroyed.
+        //
+        // The ActivityWindowAndroid is null if the launch was aborted in onCreate() (see
+        // AsyncInitializationActivity#onCreateInternal), in which case there is nothing to remove.
+        ActivityWindowAndroid activityWindowAndroid = getWindowAndroid();
+        if (activityWindowAndroid != null) {
+            ChromeAndroidTaskTrackerFactory.getInstance()
+                    .onActivityDestroyStarted(activityWindowAndroid);
         }
 
         SnackbarManager snackbarManager = mSnackbarManagerSupplier.get();
@@ -2159,6 +2146,7 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         mActivityTabProvider.destroy();
 
         super.onDestroy();
+        onPostDestroy();
     }
 
     /**
@@ -2175,6 +2163,13 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
             mAcceleratorManager = null;
         }
     }
+
+    /**
+     * Override this to perform destruction tasks after {@link #onDestroy()} has completed,
+     * including {@link ActivityLifecycleDispatcher} destruction observers and {@link WindowAndroid}
+     * destruction.
+     */
+    protected void onPostDestroy() {}
 
     /**
      * @return Whether the activity is being launched as a recreation from a previous instance.
@@ -2281,23 +2276,6 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         return assertNonNull(mSnackbarManagerSupplier.get());
     }
 
-    /**
-     * Returns the {@link InAppUpdateController} for this Activity, or null if the feature is
-     * disabled.
-     */
-    // TODO(crbug.com/574106939): Move InAppUpdateController and InAppUpdateManageable
-    // out of ChromeActivity into TabbedRootUiCoordinator.
-    @Override
-    public @Nullable InAppUpdateController getInAppUpdateController() {
-        if (!ChromeFeatureList.isEnabled(ChromeFeatureList.IN_APP_UPDATE_FLOW)) {
-            return null;
-        }
-        if (mInAppUpdateController == null) {
-            mInAppUpdateController = new InAppUpdateController(this, mSnackbarManagerSupplier);
-        }
-        return mInAppUpdateController;
-    }
-
     @Override
     protected ModalDialogManager createModalDialogManager() {
         var edgeToEdgeStateProvider = getEdgeToEdgeStateProvider();
@@ -2397,7 +2375,9 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         }
         mTabReparentingControllerSupplier.set(
                 new TabReparentingController(
-                        this::getTabModelSelector, AsyncTabParamsManagerSingleton.getInstance()));
+                        this::getTabModelSelector,
+                        AsyncTabParamsManagerSingleton.getInstance(),
+                        () -> mTabModelOrchestrator.destroyTabPersistentStore()));
 
         // This must be initialized after initialization of tab reparenting controller.
         var windowAndroid = getWindowAndroid();
@@ -3039,7 +3019,7 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         ReaderModeManager readerModeManager =
                 currentTab.getUserDataHost().getUserData(ReaderModeManager.class);
         if (readerModeManager == null) return;
-        if (DomDistillerUrlUtils.isDistilledPage(currentTab.getUrl())) {
+        if (WebDistillerUrlUtils.isDistilledPage(currentTab.getUrl())) {
             // Hide Reading Mode menu option is visible.
             readerModeManager.hideReaderMode();
             RecordUserAction.record("MobileMenuHideReaderMode");
@@ -3114,11 +3094,6 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
                     "Settings.OpenSettingsFromMenu.PerProfileType",
                     type,
                     BrowserProfileType.MAX_VALUE + 1);
-            return true;
-        }
-
-        if (id == R.id.update_menu_id) {
-            UpdateMenuItemHelper.getInstance(getOriginalProfile()).onMenuItemClicked(this);
             return true;
         }
 
@@ -3312,7 +3287,8 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
                             mBookmarkModelSupplier,
                             this,
                             getComponentName(),
-                            /* multiInstanceManager= */ null);
+                            /* multiInstanceManager= */ null,
+                            mActivityTabProvider);
             opener.openBookmarkInCurrentTab(bookmarkId, currentTab.isIncognito());
             RecordUserAction.record("MobileMenuOpenBookmark");
             return true;
@@ -3446,7 +3422,8 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
 
         if (id == R.id.print_id) {
             RecordUserAction.record("MobileMenuPrint");
-            return PrintHelper.printTab(mActivityTabProvider.get());
+            PrintingDelegate printingDelegate = PrintingDelegate.getInstance();
+            return printingDelegate != null && printingDelegate.print(mActivityTabProvider.get());
         }
 
         if (id == R.id.universal_install) {
@@ -3608,10 +3585,15 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         }
         mDeferredStartupQueued = false;
 
-        if (!mDeferredStartupPosted) {
-            mDeferredStartupPosted = true;
+        if (!mDeferredStartupPostedSupplier.get()) {
+            mDeferredStartupPostedSupplier.set(true);
             onDeferredStartup();
         }
+    }
+
+    /** Returns a {@link NonNullObservableSupplier} for whether deferred startup has been posted. */
+    protected NonNullObservableSupplier<Boolean> getDeferredStartupPostedSupplier() {
+        return mDeferredStartupPostedSupplier;
     }
 
     @Override
@@ -3658,30 +3640,9 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
                 "Android.DeviceSize.ScreenSizeInTensOfInches", sample, 40, 152, 58);
     }
 
-    @Override
-    public boolean onActivityResultWithNative(
-            int requestCode, int resultCode, @Nullable Intent intent) {
-        // TODO(crbug.com/574106939): Handle activity result via ActivityResultWithNativeObserver in
-        // TabbedRootUiCoordinator instead of overriding onActivityResultWithNative in
-        // ChromeActivity.
-        if (requestCode == InAppUpdateController.REQUEST_CODE_IN_APP_UPDATE) {
-            // TODO(crbug.com/553918188): Remove logging once in-app update flow stabilizes.
-            Log.i(
-                    InAppUpdateController.TAG,
-                    "ChromeActivity.onActivityResultWithNative: resultCode=%d",
-                    resultCode);
-            InAppUpdateController inAppUpdateController = getInAppUpdateController();
-            if (inAppUpdateController != null) {
-                inAppUpdateController.handleActivityResult(requestCode, resultCode);
-            }
-            return true;
-        }
-        return super.onActivityResultWithNative(requestCode, resultCode, intent);
-    }
-
     /**
-     * Called when VR mode is entered using this activity. 2D UI components that steal focus or
-     * draw over VR contents should be hidden in this call.
+     * Called when VR mode is entered using this activity. 2D UI components that steal focus or draw
+     * over VR contents should be hidden in this call.
      */
     public void onEnterVr() {}
 
@@ -3758,7 +3719,7 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
                 mConfig.smallestScreenWidthDp >= DeviceFormFactor.MINIMUM_TABLET_WIDTH_DP;
         boolean didChangeTabletMode = wasTablet != isTablet;
         if (didChangeTabletMode && Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            Log.i(TAG, "Current smallest screen width is: " + smallestWidth);
+            Log.i(TAG, "Current smallest screen width is: %d", smallestWidth);
         }
         return new TabletMode(isTablet, didChangeTabletMode);
     }
@@ -3821,7 +3782,7 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
     }
 
     public boolean deferredStartupPostedForTesting() {
-        return mDeferredStartupPosted;
+        return mDeferredStartupPostedSupplier.get();
     }
 
     public @Nullable DisplayAndroidObserver getDisplayAndroidObserverForTesting() {
@@ -3916,9 +3877,7 @@ public abstract class ChromeActivity extends AsyncInitializationActivity
         }
 
         int resourceId =
-                ChromeFeatureList.getFieldTrialParamByFeatureAsBoolean(
-                                ChromeFeatureList.ANDROID_THEME_RESOURCE_PROVIDER,
-                                ChromeFeatureList.ANDROID_THEME_RESOURCE_PROVIDER_FORCE_LIGHT)
+                ChromeFeatures.AndroidThemeResourceProviderForceLight.getValue()
                         ? R.style.ThemeOverlay_BrowserUI_ForcedLightForTesting
                         : R.style.ThemeOverlay_BrowserUI_TabbedMode_Incognito;
         mThemeResourceProvider =

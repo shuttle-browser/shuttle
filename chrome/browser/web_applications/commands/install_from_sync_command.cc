@@ -41,6 +41,7 @@
 #include "components/webapps/browser/installable/installable_metrics.h"
 #include "components/webapps/browser/web_contents/web_app_url_loader.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 
 namespace web_app {
 
@@ -240,7 +241,7 @@ void InstallFromSyncCommand::OnGetWebAppInstallInfo(
 
 void InstallFromSyncCommand::OnDidPerformInstallableCheck(
     std::unique_ptr<WebAppInstallInfo> page_info,
-    blink::mojom::ManifestPtr opt_manifest,
+    std::optional<blink::Manifest> opt_manifest,
     bool valid_manifest_for_web_app,
     webapps::InstallableStatusCode error_code) {
   if (!opt_manifest) {

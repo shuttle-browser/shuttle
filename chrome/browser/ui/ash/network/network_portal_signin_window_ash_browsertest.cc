@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "base/test/scoped_feature_list.h"
 #include "chrome/browser/ash/login/test/guest_session_mixin.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -24,24 +23,13 @@
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 namespace ash {
 
-class NetworkPortalSigninWindowAshBrowserTest : public InProcessBrowserTest {
- public:
-  NetworkPortalSigninWindowAshBrowserTest() {
-    // TODO(crbug.com/452061489): Fix the tests that fail when WebUI Omnibox is
-    // enabled and then remove this.
-    webui_omnibox_feature_list_.InitFromCommandLine(
-        "", "WebUIOmniboxPopup,WebUIOmniboxAimPopup");
-  }
-
- protected:
-  base::test::ScopedFeatureList webui_omnibox_feature_list_;
-};
+using NetworkPortalSigninWindowAshBrowserTest = InProcessBrowserTest;
 
 IN_PROC_BROWSER_TEST_F(NetworkPortalSigninWindowAshBrowserTest,
                        IsCaptivePortalWindow) {
@@ -91,7 +79,7 @@ IN_PROC_BROWSER_TEST_F(NetworkPortalSigninWindowAshBrowserTest,
   EXPECT_EQ(params.tabstrip_index, -1);
 
   // Navigate to a new tab. The contents should be opened in the same tab.
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
   EXPECT_EQ(params.browser, browser);
   EXPECT_EQ(params.tabstrip_index, -1);
@@ -99,17 +87,8 @@ IN_PROC_BROWSER_TEST_F(NetworkPortalSigninWindowAshBrowserTest,
 
 class NetworkPortalSigninWindowAshGuestBrowserTest
     : public MixinBasedInProcessBrowserTest {
- public:
-  NetworkPortalSigninWindowAshGuestBrowserTest() {
-    // TODO(crbug.com/452061489): Fix the tests that fail when WebUI Omnibox is
-    // enabled and then remove this.
-    webui_omnibox_feature_list_.InitFromCommandLine(
-        "", "WebUIOmniboxPopup,WebUIOmniboxAimPopup");
-  }
-
  protected:
   GuestSessionMixin guest_session_{&mixin_host_};
-  base::test::ScopedFeatureList webui_omnibox_feature_list_;
 };
 
 IN_PROC_BROWSER_TEST_F(NetworkPortalSigninWindowAshGuestBrowserTest,
@@ -142,7 +121,7 @@ IN_PROC_BROWSER_TEST_F(NetworkPortalSigninWindowAshGuestBrowserTest,
   // profile with the Guest browsing session.
   NavigateParams params(browser, GURL("http://www.google.com"),
                         ui::PageTransition::PAGE_TRANSITION_LINK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
   EXPECT_EQ(params.browser, browser);
   EXPECT_EQ(params.tabstrip_index, -1);
@@ -151,7 +130,8 @@ IN_PROC_BROWSER_TEST_F(NetworkPortalSigninWindowAshGuestBrowserTest,
   NavigateParams source_params(browser, GURL("http://www.google.com"),
                                ui::PageTransition::PAGE_TRANSITION_LINK);
   source_params.source_contents = web_contents;
-  source_params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  source_params.disposition =
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&source_params);
   EXPECT_EQ(source_params.browser, browser);
   EXPECT_EQ(source_params.tabstrip_index, -1);

@@ -31,14 +31,10 @@
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/gfx/geometry/point_f.h"
 #include "ui/gfx/geometry/rect.h"
-
-#if BUILDFLAG(ENABLE_PDF_INK2)
-#include "ui/gfx/geometry/size.h"
-#endif
+#include "ui/gfx/geometry/rect_f.h"
 
 namespace gfx {
 class Point;
-class RectF;
 }  // namespace gfx
 
 namespace chrome_pdf {
@@ -129,6 +125,10 @@ class PDFiumPage {
   // Get a unicode character from the page.
   uint32_t GetCharUnicode(int char_index);
 
+  // Returns whether the char at `char_index` is a line break that PDFium
+  // inserted between lines, i.e. a generated '\r' or '\n'.
+  bool IsSynthesizedNewline(int char_index);
+
   // Get the bounds of a character in page pixels.
   gfx::RectF GetCharBounds(int char_index);
 
@@ -191,6 +191,11 @@ class PDFiumPage {
   // Returns the straight line segments stroked by the page's top-level path
   // objects, such as table borders.
   std::vector<AccessibilityLineSegment> GetLineSegmentInfo();
+
+  // Returns the bounds of the axis-aligned rectangles filled by the page's
+  // top-level fill-only path objects, such as table borders drawn as thin
+  // filled rectangles, in the same pixel coordinates as text runs.
+  std::vector<gfx::RectF> GetFilledRectInfo();
 
   // Traverses the entire struct tree of the page recursively and extracts the
   // text run type or the alt text from struct tree elements corresponding to
@@ -304,10 +309,6 @@ class PDFiumPage {
 
   // Generates a page thumbnail accommodating a specific `device_pixel_ratio`.
   Thumbnail GenerateThumbnail(float device_pixel_ratio);
-
-#if BUILDFLAG(ENABLE_PDF_INK2)
-  gfx::Size GetThumbnailSize(float device_pixel_ratio);
-#endif
 
   uint32_t index() const { return index_; }
 
@@ -426,6 +427,8 @@ class PDFiumPage {
   void CalculateGraphics();
   // Returns the straight line segments on the page.
   std::vector<AccessibilityLineSegment> CalculateLineSegments();
+  // Returns the filled axis-aligned rectangles on the page.
+  std::vector<gfx::RectF> CalculateFilledRects();
   // Populate annotations like highlight and text field on the page.
   void PopulateAnnotations();
   // Populate `highlights_` with `annot`.
@@ -475,7 +478,7 @@ class PDFiumPage {
   void GenerateAndSendThumbnail(float device_pixel_ratio,
                                 SendThumbnailCallback send_callback);
 
-  raw_ptr<PDFiumEngine> engine_;
+  raw_ptr<PDFiumEngine> const engine_;
   ScopedFPDFPage page_;
   ScopedFPDFTextPage text_page_;
   uint32_t index_;
@@ -500,6 +503,8 @@ class PDFiumPage {
   std::vector<Graphic> graphics_;
   // Null until calculated, since a page may have no line segments.
   std::optional<std::vector<AccessibilityLineSegment>> line_segments_;
+  // Null until calculated, since a page may have no filled rectangles.
+  std::optional<std::vector<gfx::RectF>> filled_rects_;
   bool calculated_annotations_ = false;
   std::vector<Highlight> highlights_;
   bool calculated_page_object_text_run_breaks_ = false;
@@ -508,6 +513,7 @@ class PDFiumPage {
   std::set<int> page_object_text_run_breaks_;
   base::OnceClosure thumbnail_callback_;
   bool available_ = false;
+  bool is_unloading_ = false;
 
 #if BUILDFLAG(ENABLE_SCREEN_AI_SERVICE)
   // Indicates whether Searchify added text to this page or not. Note that if

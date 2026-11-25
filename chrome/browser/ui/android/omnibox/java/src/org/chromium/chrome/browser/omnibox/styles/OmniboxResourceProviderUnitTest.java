@@ -41,6 +41,7 @@ import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxLayoutMode;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState.IconSize;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.browser_ui.styles.IncognitoColors;
@@ -306,6 +307,30 @@ public class OmniboxResourceProviderUnitTest {
                 "Wrong suggestion url text color for DEFAULT.",
                 defaultColor,
                 mProvider.getSuggestionUrlTextColor());
+    }
+
+    @Test
+    public void getStandardSuggestionBackgroundColor() {
+        final int incognitoColor = mContext.getColor(R.color.search_suggestion_bg_color_incognito);
+        final int defaultColor = mContext.getColor(R.color.search_suggestion_bg_color);
+
+        mProvider.setBrandedColorScheme(BrandedColorScheme.INCOGNITO);
+        assertEquals(incognitoColor, mProvider.getStandardSuggestionBackgroundColor());
+
+        mProvider.setBrandedColorScheme(BrandedColorScheme.APP_DEFAULT);
+        assertEquals(defaultColor, mProvider.getStandardSuggestionBackgroundColor());
+    }
+
+    @Test
+    public void getSuggestionsDropdownBackgroundColor() {
+        final int incognitoColor = mContext.getColor(R.color.omnibox_dropdown_bg_incognito);
+        final int defaultColor = mContext.getColor(R.color.omnibox_suggestion_dropdown_bg);
+
+        mProvider.setBrandedColorScheme(BrandedColorScheme.INCOGNITO);
+        assertEquals(incognitoColor, mProvider.getSuggestionsDropdownBackgroundColor());
+
+        mProvider.setBrandedColorScheme(BrandedColorScheme.APP_DEFAULT);
+        assertEquals(defaultColor, mProvider.getSuggestionsDropdownBackgroundColor());
     }
 
     @Test
@@ -728,5 +753,65 @@ public class OmniboxResourceProviderUnitTest {
         assertEquals(
                 IncognitoColors.getHeadline2ThickPrimary(/* isIncognito= */ true),
                 incognitoProvider.getPopupAttachmentsHeaderTextRes(/* useLarge= */ true));
+    }
+
+    @Test
+    public void getScrolledOmniboxBackgroundColor() {
+        final int incognitoColor = mContext.getColor(R.color.omnibox_scrolled_bg_incognito);
+        final int defaultColor = mContext.getColor(R.color.toolbar_text_box_bg_color);
+
+        mProvider.setBrandedColorScheme(BrandedColorScheme.INCOGNITO);
+        assertEquals(incognitoColor, mProvider.getScrolledOmniboxBackgroundColor());
+
+        mProvider.setBrandedColorScheme(BrandedColorScheme.APP_DEFAULT);
+        assertEquals(defaultColor, mProvider.getScrolledOmniboxBackgroundColor());
+    }
+
+    @Test
+    public void getEdgeSize_bySizeClass_phone() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(false);
+        Resources res = mContext.getResources();
+        assertEquals(
+                res.getDimensionPixelSize(R.dimen.omnibox_suggestion_24dp_icon_size),
+                mProvider.getEdgeSize(IconSize.SMALL));
+        assertEquals(
+                res.getDimensionPixelSize(R.dimen.omnibox_suggestion_26dp_icon_size),
+                mProvider.getEdgeSize(IconSize.MEDIUM));
+        assertEquals(
+                res.getDimensionPixelSize(R.dimen.omnibox_suggestion_36dp_icon_size),
+                mProvider.getEdgeSize(IconSize.LARGE));
+    }
+
+    @Test
+    public void getEdgeSize_bySizeClass_desktop() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(true);
+        Resources res = mContext.getResources();
+        assertEquals(
+                res.getDimensionPixelSize(R.dimen.omnibox_desktop_small_decoration_icon_size),
+                mProvider.getEdgeSize(IconSize.SMALL));
+        assertEquals(
+                res.getDimensionPixelSize(R.dimen.omnibox_desktop_medium_decoration_icon_size),
+                mProvider.getEdgeSize(IconSize.MEDIUM));
+        assertEquals(
+                res.getDimensionPixelSize(R.dimen.omnibox_desktop_large_decoration_icon_size),
+                mProvider.getEdgeSize(IconSize.LARGE));
+    }
+
+    @Test
+    public void getEdgeSizeDp_bySizeClass() {
+        OmniboxCapabilities.setIsDesktopPlatformForTesting(false);
+        assertEquals(24, mProvider.getEdgeSizeDp(IconSize.SMALL));
+        assertEquals(26, mProvider.getEdgeSizeDp(IconSize.MEDIUM));
+        assertEquals(36, mProvider.getEdgeSizeDp(IconSize.LARGE));
+    }
+
+    @Test
+    public void getIconRoundingRadius_bySizeClass() {
+        Resources res = mContext.getResources();
+        int small = res.getDimensionPixelSize(R.dimen.omnibox_small_icon_rounding_radius);
+        int large = res.getDimensionPixelSize(R.dimen.omnibox_large_icon_rounding_radius);
+        assertEquals(small, mProvider.getIconRoundingRadius(IconSize.SMALL));
+        assertEquals(small, mProvider.getIconRoundingRadius(IconSize.MEDIUM));
+        assertEquals(large, mProvider.getIconRoundingRadius(IconSize.LARGE));
     }
 }

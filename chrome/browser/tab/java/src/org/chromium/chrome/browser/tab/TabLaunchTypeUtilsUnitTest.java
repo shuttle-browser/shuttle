@@ -36,13 +36,15 @@ public class TabLaunchTypeUtilsUnitTest {
                     TabLaunchType.FROM_REPARENTING_BACKGROUND,
                     TabLaunchType.FROM_HISTORY_NAVIGATION_BACKGROUND,
                     TabLaunchType.FROM_TAB_LIST_INTERFACE_BACKGROUND,
-                    TabLaunchType.FROM_OMNIBOX_BACKGROUND);
+                    TabLaunchType.FROM_OMNIBOX_BACKGROUND,
+                    TabLaunchType.FROM_UNDO_CLOSURE);
 
     private static final Set<Integer> RESTORE_TYPES =
             Set.of(
                     TabLaunchType.FROM_RESTORE,
                     TabLaunchType.FROM_BROWSER_ACTIONS,
-                    TabLaunchType.FROM_RESTORE_TABS_UI);
+                    TabLaunchType.FROM_RESTORE_TABS_UI,
+                    TabLaunchType.FROM_UNDO_CLOSURE);
 
     private static final Set<Integer> GROUPED_TYPES =
             Set.of(
@@ -74,7 +76,8 @@ public class TabLaunchTypeUtilsUnitTest {
                     TabLaunchType.FROM_LAUNCHER_SHORTCUT,
                     TabLaunchType.FROM_STARTUP,
                     TabLaunchType.FROM_APP_WIDGET,
-                    TabLaunchType.FROM_SYNC_BACKGROUND);
+                    TabLaunchType.FROM_SYNC_BACKGROUND,
+                    TabLaunchType.FROM_UNDO_CLOSURE);
 
     private static final Map<Integer, String> EXPECTED_HISTOGRAM_KEYS =
             Map.ofEntries(
@@ -130,7 +133,8 @@ public class TabLaunchTypeUtilsUnitTest {
                     Map.entry(TabLaunchType.FROM_TIPS_NOTIFICATIONS, "TipsNotifications"),
                     Map.entry(
                             TabLaunchType.FROM_TAB_LIST_INTERFACE_BACKGROUND,
-                            "TabListInterfaceBackground"));
+                            "TabListInterfaceBackground"),
+                    Map.entry(TabLaunchType.FROM_UNDO_CLOSURE, "UndoClosure"));
 
     private static final Set<Integer> OMNIBOX_TRANSITION_TYPES =
             Set.of(TabLaunchType.FROM_OMNIBOX, TabLaunchType.FROM_OMNIBOX_BACKGROUND);
@@ -139,7 +143,6 @@ public class TabLaunchTypeUtilsUnitTest {
             Set.of(
                     TabLaunchType.FROM_RESTORE,
                     TabLaunchType.FROM_LINK,
-                    TabLaunchType.FROM_LINK_CREATING_NEW_WINDOW,
                     TabLaunchType.FROM_EXTERNAL_APP,
                     TabLaunchType.FROM_BROWSER_ACTIONS);
 
@@ -161,6 +164,7 @@ public class TabLaunchTypeUtilsUnitTest {
 
     private static final Set<Integer> FOREGROUND_LINK_TRANSITION_TYPES =
             Set.of(
+                    TabLaunchType.FROM_LINK_CREATING_NEW_WINDOW,
                     TabLaunchType.FROM_LONGPRESS_FOREGROUND,
                     TabLaunchType.FROM_LONGPRESS_FOREGROUND_IN_GROUP,
                     TabLaunchType.FROM_LONGPRESS_INCOGNITO,
@@ -173,6 +177,7 @@ public class TabLaunchTypeUtilsUnitTest {
                     TabLaunchType.FROM_COLLABORATION_BACKGROUND_IN_GROUP,
                     TabLaunchType.FROM_RECENT_TABS,
                     TabLaunchType.FROM_RECENT_TABS_FOREGROUND,
+                    TabLaunchType.FROM_UNDO_CLOSURE,
                     TabLaunchType.FROM_BOOKMARK_BAR_BACKGROUND,
                     TabLaunchType.FROM_HISTORY_NAVIGATION_BACKGROUND,
                     TabLaunchType.FROM_REPARENTING_BACKGROUND,
@@ -201,6 +206,7 @@ public class TabLaunchTypeUtilsUnitTest {
                     TabLaunchType.FROM_LINK,
                     TabLaunchType.FROM_LINK_CREATING_NEW_WINDOW,
                     TabLaunchType.FROM_EXTERNAL_APP,
+                    TabLaunchType.FROM_LAUNCHER_SHORTCUT,
                     TabLaunchType.FROM_READING_LIST,
                     TabLaunchType.FROM_LONGPRESS_FOREGROUND,
                     TabLaunchType.FROM_LONGPRESS_FOREGROUND_IN_GROUP,
@@ -237,8 +243,8 @@ public class TabLaunchTypeUtilsUnitTest {
 
     @Test
     public void testEnumSizeConstant() {
-        assertEquals("TabLaunchType.SIZE is expected to be 37", 37, TabLaunchType.SIZE);
-        assertEquals("Expected 37 histogram key mappings", 37, EXPECTED_HISTOGRAM_KEYS.size());
+        assertEquals("TabLaunchType.SIZE is expected to be 38", 38, TabLaunchType.SIZE);
+        assertEquals("Expected 38 histogram key mappings", 38, EXPECTED_HISTOGRAM_KEYS.size());
     }
 
     @Test
@@ -266,24 +272,26 @@ public class TabLaunchTypeUtilsUnitTest {
                     TabLaunchTypeUtils.isReparentingLaunch(type));
             boolean expectedBgOrRestore =
                     BACKGROUND_TYPES.contains(type) || RESTORE_TYPES.contains(type);
+            boolean expectedNeverSelected =
+                    type == TabLaunchType.FROM_RESTORE || type == TabLaunchType.FROM_UNDO_CLOSURE;
             assertEquals(
                     "willAddedTabBeSelected(false, false) mismatch for type " + type,
-                    type != TabLaunchType.FROM_RESTORE && !expectedBgOrRestore,
+                    !expectedNeverSelected && !expectedBgOrRestore,
                     TabLaunchTypeUtils.willAddedTabBeSelected(
                             type, /* isTabIncognito= */ false, /* isIncognitoSelected= */ false));
             assertEquals(
                     "willAddedTabBeSelected(false, true) mismatch for type " + type,
-                    type != TabLaunchType.FROM_RESTORE && !expectedBgOrRestore,
+                    !expectedNeverSelected && !expectedBgOrRestore,
                     TabLaunchTypeUtils.willAddedTabBeSelected(
                             type, /* isTabIncognito= */ false, /* isIncognitoSelected= */ true));
             assertEquals(
                     "willAddedTabBeSelected(true, false) mismatch for type " + type,
-                    type != TabLaunchType.FROM_RESTORE,
+                    !expectedNeverSelected,
                     TabLaunchTypeUtils.willAddedTabBeSelected(
                             type, /* isTabIncognito= */ true, /* isIncognitoSelected= */ false));
             assertEquals(
                     "willAddedTabBeSelected(true, true) mismatch for type " + type,
-                    type != TabLaunchType.FROM_RESTORE && !expectedBgOrRestore,
+                    !expectedNeverSelected && !expectedBgOrRestore,
                     TabLaunchTypeUtils.willAddedTabBeSelected(
                             type, /* isTabIncognito= */ true, /* isIncognitoSelected= */ true));
             assertEquals(

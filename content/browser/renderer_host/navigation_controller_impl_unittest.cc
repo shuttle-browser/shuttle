@@ -13,7 +13,6 @@
 #include <tuple>
 #include <utility>
 
-#include "base/compiler_specific.h"
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/strings/string_util.h"
@@ -71,6 +70,7 @@
 #include "third_party/blink/public/mojom/frame/frame_owner_properties.mojom.h"
 #include "third_party/blink/public/mojom/frame/remote_frame.mojom.h"
 #include "third_party/blink/public/mojom/frame/user_activation_update_types.mojom.h"
+#include "ui/gfx/skia_util.h"
 
 using base::Time;
 
@@ -91,19 +91,7 @@ gfx::Image CreateImage(SkColor color) {
 // Returns true if images |a| and |b| have the same pixel data.
 bool DoImagesMatch(const gfx::Image& a, const gfx::Image& b) {
   // Assume that if the 1x bitmaps match, the images match.
-  SkBitmap a_bitmap = a.AsBitmap();
-  SkBitmap b_bitmap = b.AsBitmap();
-
-  if (a_bitmap.width() != b_bitmap.width() ||
-      a_bitmap.height() != b_bitmap.height()) {
-    return false;
-  }
-
-  // memcmp(nullptr, nullptr, 0) is undefined, so empty bitmaps must be
-  // special-cased.
-  return a_bitmap.computeByteSize() == 0 ||
-         UNSAFE_TODO(memcmp(a_bitmap.getPixels(), b_bitmap.getPixels(),
-                            a_bitmap.computeByteSize())) == 0;
+  return gfx::BitmapsAreEqual(a.AsBitmap(), b.AsBitmap());
 }
 
 class MockPageBroadcast : public blink::mojom::PageBroadcast {
@@ -4928,6 +4916,32 @@ TEST_F(NavigationControllerTest, NavigationApiHistoryEntries_OpaqueOrigin) {
   // looks same-origin).
   EXPECT_TRUE(arrays->back_entries.empty());
   EXPECT_TRUE(arrays->forward_entries.empty());
+}
+
+TEST_F(NavigationControllerTest,
+       NavigationApiHistoryEntries_UrlOriginMismatch) {
+  NavigationControllerImpl& controller = controller_impl();
+
+  const GURL url_a1("http://a.com/1");
+  const GURL url_a2("http://a.com/2");
+  NavigationSimulator::NavigateAndCommitFromDocument(url_a1, main_test_rfh());
+  NavigationSimulator::NavigateAndCommitFromDocument(url_a2, main_test_rfh());
+
+  // Simulate an entry whose PageState URL cannot be derived from the pending
+  // origin, even if the FrameNavigationEntry URL was same-origin.
+  NavigationEntryImpl* entry1 = controller.GetEntryAtIndex(0);
+  blink::PageState mismatched_state =
+      blink::PageState::CreateFromURL(GURL("http://b.com/mismatched"));
+  entry1->GetFrameEntry(main_test_rfh()->frame_tree_node())
+      ->SetPageState(mismatched_state);
+
+  blink::mojom::NavigationApiHistoryEntryArraysPtr arrays =
+      controller.GetNavigationApiHistoryEntryVectors(
+          main_test_rfh()->frame_tree_node(), nullptr);
+
+  // The mismatched back entry should be excluded from back_entries without
+  // crashing.
+  EXPECT_TRUE(arrays->back_entries.empty());
 }
 
 }  // namespace content

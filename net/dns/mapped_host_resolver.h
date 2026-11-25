@@ -75,11 +75,16 @@ class NET_EXPORT MappedHostResolver : public HostResolver {
       NetLogWithSource net_log,
       ResolveHostParameters parameters) override;
   std::unique_ptr<ProbeRequest> CreateDohProbeRequest() override;
+  std::unique_ptr<MdnsListener> CreateMdnsListener(
+      const HostPortPair& host,
+      DnsQueryType query_type) override;
   HostCache* GetHostCache() override;
   base::DictValue GetDnsConfigAsValue() const override;
   void SetRequestContext(URLRequestContext* request_context) override;
   bool IsHappyEyeballsV3Enabled() const override;
   HostResolverManager* GetManagerForTesting() override;
+  const URLRequestContext* GetContextForTesting() const override;
+  handles::NetworkHandle GetTargetNetworkForTesting() const override;
 
  private:
   std::unique_ptr<HostResolver> impl_;

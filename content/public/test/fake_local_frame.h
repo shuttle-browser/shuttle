@@ -93,8 +93,6 @@ class FakeLocalFrame : public blink::mojom::LocalFrame {
                            const std::optional<blink::RemoteFrameToken>&
                                source_frame_token) override;
   void AdvanceFocusForIME(blink::mojom::FocusType focus_type) override;
-  void ReportContentSecurityPolicyViolation(
-      network::mojom::CSPViolationPtr violation) override;
   void DidUpdateFramePolicy(const blink::FramePolicy& frame_policy) override;
   void PostMessageEvent(
       const std::optional<blink::RemoteFrameToken>& source_frame_token,
@@ -197,7 +195,7 @@ class FakeLocalFrame : public blink::mojom::LocalFrame {
   void GetScrollPosition(GetScrollPositionCallback callback) override;
   void InvokeScriptToolForInspector(
       const blink::ToolInvocationToken& invocation_id,
-      const std::string& tool_name,
+      blink::mojom::ScriptToolSelectorPtr tool,
       const std::string& input_arguments,
       InvokeScriptToolForInspectorCallback callback) override;
   void NotifyInspectorOfCrossDocumentScriptToolResult(

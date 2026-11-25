@@ -32,14 +32,12 @@ import org.chromium.base.test.params.ParameterProvider;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.WarmupManager.SpareTabFinalStatus;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.init.ChromeBrowserInitializer;
 import org.chromium.chrome.browser.profiles.OtrProfileId;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -75,7 +73,6 @@ import java.util.concurrent.TimeUnit;
 @RunWith(ParameterizedRunner.class)
 @Batch(Batch.PER_CLASS)
 @UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class WarmupManagerTest {
     @Rule
     public AutoResetCtaTransitTestRule mActivityTestRule =
@@ -507,6 +504,9 @@ public class WarmupManagerTest {
         // UI scaling is turned off by default in integration tests, so it needs to explicitly be
         // applied here.
         DisplayUtil.setUiScalingFactorForAutomotiveForTesting(1.34f);
+        // Tests opt in to display compatibility by default, which skips Chrome's UI scaling on
+        // CaRMA-compliant devices. Opt out so this test exercises Chrome's UI scaling.
+        DisplayUtil.setIsDisplayCompatAppForTesting(false);
 
         Context baseContext = mContext.getApplicationContext();
         int baseDensityDpi = baseContext.getResources().getDisplayMetrics().densityDpi;

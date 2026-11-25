@@ -327,9 +327,11 @@ TEST_F(TabStripModelContextMenuTest, NonGroupFocusEnabledSingleTab) {
 
   histogram_tester.ExpectUniqueSample(
       "TabGroups.Focus.EntryPoint",
-      TabGroupFocusEntryPoint::kTabContextMenuNonGroup, 1);
+      TabGroupFocusEntryPoint::kTabContextMenuSingleTab, 1);
   histogram_tester.ExpectUniqueSample("TabGroups.Focus.NonGroupTabsCount", 1,
                                       1);
+  histogram_tester.ExpectUniqueSample("TabGroups.Focus.PinnedTabCountOnEntry",
+                                      0, 1);
   EXPECT_EQ(
       user_action_tester.GetActionCount("TabContextMenu_FocusNonGroupTabs"), 1);
 
@@ -380,11 +382,11 @@ TEST_F(TabStripModelContextMenuTest, NonGroupFocusEnabledMultipleTabs) {
 
   histogram_tester.ExpectUniqueSample(
       "TabGroups.Focus.EntryPoint",
-      TabGroupFocusEntryPoint::kTabContextMenuNonGroup, 1);
+      TabGroupFocusEntryPoint::kTabContextMenuMultiTab, 1);
   histogram_tester.ExpectUniqueSample("TabGroups.Focus.NonGroupTabsCount", 2,
                                       1);
-  EXPECT_EQ(
-      user_action_tester.GetActionCount("TabContextMenu_FocusNonGroupTabs"), 1);
+  histogram_tester.ExpectUniqueSample("TabGroups.Focus.PinnedTabCountOnEntry",
+                                      0, 1);
 
   EXPECT_TRUE(tab_strip_model()->IsContextMenuCommandEnabled(
       0, TabStripModel::CommandToggleFocusGroup));
@@ -402,6 +404,49 @@ TEST_F(TabStripModelContextMenuTest, NonGroupFocusEnabledMultipleTabs) {
                                       1);
   EXPECT_EQ(user_action_tester.GetActionCount("TabContextMenu_UnfocusTabGroup"),
             1);
+}
+
+TEST_F(TabStripModelContextMenuTest,
+       NonGroupFocusEntryPointSplitsSingleAndMultipleTabs) {
+  base::HistogramTester histogram_tester;
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatures(
+      {features::kTabGroupsFocusing, features::kNonGroupFocus}, {});
+
+  tab_strip_model()->AppendWebContents(CreateTestWebContents(), true);
+  tab_strip_model()->AppendWebContents(CreateTestWebContents(), false);
+  tab_strip_model()->AppendWebContents(CreateTestWebContents(), false);
+
+  // Focus a single unselected tab via right-click on tab 2.
+  tab_strip_model()->ExecuteContextMenuCommand(
+      2, TabStripModel::CommandToggleFocusGroup);
+  histogram_tester.ExpectBucketCount(
+      "TabGroups.Focus.EntryPoint",
+      TabGroupFocusEntryPoint::kTabContextMenuSingleTab, 1);
+  histogram_tester.ExpectBucketCount(
+      "TabGroups.Focus.EntryPoint",
+      TabGroupFocusEntryPoint::kTabContextMenuMultiTab, 0);
+
+  // Unfocus tab 2.
+  tab_strip_model()->ExecuteContextMenuCommand(
+      2, TabStripModel::CommandToggleFocusGroup);
+
+  // Select 3 ungrouped tabs and focus them together.
+  ui::ListSelectionModel selection;
+  selection.SetSelectedIndex(0);
+  selection.AddIndexToSelection(1);
+  selection.AddIndexToSelection(2);
+  tab_strip_model()->SetSelectionFromModel(selection);
+
+  tab_strip_model()->ExecuteContextMenuCommand(
+      0, TabStripModel::CommandToggleFocusGroup);
+  histogram_tester.ExpectBucketCount(
+      "TabGroups.Focus.EntryPoint",
+      TabGroupFocusEntryPoint::kTabContextMenuSingleTab, 1);
+  histogram_tester.ExpectBucketCount(
+      "TabGroups.Focus.EntryPoint",
+      TabGroupFocusEntryPoint::kTabContextMenuMultiTab, 1);
+  histogram_tester.ExpectTotalCount("TabGroups.Focus.EntryPoint", 2);
 }
 
 TEST_F(TabStripModelContextMenuTest, NonGroupFocusGreyedOutWhenMixture) {
@@ -556,4 +601,55 @@ TEST_F(NonGroupFocusDissolutionTest,
       tab_strip_model()->group_model()->ContainsTabGroup(ephemeral_group));
   EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(0), std::nullopt);
   EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(1), std::nullopt);
+}
+
+TEST_F(NonGroupFocusDissolutionTest,
+       FocusingAnotherGroupDissolvesEphemeralFocusedGroup) {
+  const tab_groups::TabGroupId ephemeral_group =
+      StartNonGroupFocus(/*tab_count=*/3, /*focused_tab_count=*/2);
+  const tab_groups::TabGroupId other_group =
+      tab_strip_model()->AddToNewGroup({2});
+
+  // Directly focus the other tab group (e.g. via Bookmarks Bar "Focus group")
+  // while in non-group focus mode.
+  tab_strip_model()->EnterFocusMode(other_group);
+  EXPECT_EQ(tab_strip_model()->GetFocusedGroup(), other_group);
+  EXPECT_FALSE(
+      tab_strip_model()->group_model()->ContainsTabGroup(ephemeral_group));
+  EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(0), std::nullopt);
+  EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(1), std::nullopt);
+
+  // Unfocusing the other tab group should leave the previously focused
+  // non-group tabs ungrouped.
+  tab_strip_model()->ExitFocusMode();
+  EXPECT_EQ(tab_strip_model()->GetFocusedGroup(), std::nullopt);
+  EXPECT_FALSE(
+      tab_strip_model()->group_model()->ContainsTabGroup(ephemeral_group));
+  EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(0), std::nullopt);
+  EXPECT_EQ(tab_strip_model()->GetTabGroupForTab(1), std::nullopt);
+}
+
+TEST_F(NonGroupFocusDissolutionTest,
+       ToggleGroupedDissolvesEphemeralGroupAndCreatesPermanentGroup) {
+  const tab_groups::TabGroupId ephemeral_group =
+      StartNonGroupFocus(/*tab_count=*/2, /*focused_tab_count=*/2);
+  base::HistogramTester histogram_tester;
+
+  tabs::TabHandle tab0 = tab_strip_model()->GetTabAtIndex(0)->GetHandle();
+  EXPECT_TRUE(tab_strip_model()->WillContextMenuGroup(tab0));
+
+  tab_strip_model()->ExecuteContextMenuCommand(
+      0, TabStripModel::ContextMenuCommand::CommandToggleGrouped);
+
+  EXPECT_EQ(tab_strip_model()->GetFocusedGroup(), std::nullopt);
+  EXPECT_FALSE(
+      tab_strip_model()->group_model()->ContainsTabGroup(ephemeral_group));
+
+  std::optional<tab_groups::TabGroupId> new_group =
+      tab_strip_model()->GetTabGroupForTab(0);
+  ASSERT_TRUE(new_group.has_value());
+  EXPECT_NE(new_group.value(), ephemeral_group);
+  EXPECT_FALSE(tab_strip_model()->IsEphemeralTabGroup(new_group.value()));
+  histogram_tester.ExpectUniqueSample(
+      "TabGroups.Focus.ExitReason", TabGroupFocusExitReason::kGroupCreated, 1);
 }

@@ -4,6 +4,8 @@
 
 #include "services/on_device_model/on_device_model_service.h"
 
+#include <string>
+
 #include "base/files/scoped_temp_file.h"
 #include "base/json/json_reader.h"
 #include "base/strings/strcat.h"
@@ -855,7 +857,6 @@ TEST_F(OnDeviceModelServiceTest, AppendWithTokenLimits) {
   mojo::Remote<mojom::Session> session;
   model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
 
-  std::string input = "big cheese";
   ContextClientWaiter client1;
   auto max_input = MakeInput("big cheese");
   max_input->max_tokens = 4;
@@ -1773,6 +1774,205 @@ TEST_F(OnDeviceModelServiceTest, JSONSchemaConstraintInvalid) {
   EXPECT_TRUE(response.disconnected());
 }
 
+TEST_F(OnDeviceModelServiceTest,
+       JSONSchemaConstraintAllowsFormattedWhitespace) {
+  auto model = LoadModel();
+
+  constexpr char kOrderedSchema[] = R"({
+    "type": "object",
+    "required": ["Verdict", "Confidence"],
+    "additionalProperties": false,
+    "properties": {
+      "Verdict": { "const": "ok" },
+      "Confidence": { "const": 1 }
+    }
+  })";
+
+  // Verify non-alphabetical `properties` key order ("Verdict" before
+  // "Confidence") is preserved, and multi-line indented prefixes succeed.
+  {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint =
+        mojom::ResponseConstraint::NewJsonSchema(kOrderedSchema);
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_THAT(response.responses(),
+                ElementsAre(R"({"Verdict":"ok","Confidence":1})"));
+  }
+
+  {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+    session->Append(
+        MakeInput({"a", ml::Token::kModel, "{\n  \"Verdict\": \"ok\",\n  "}),
+        {});
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint =
+        mojom::ResponseConstraint::NewJsonSchema(kOrderedSchema);
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_FALSE(response.disconnected());
+    EXPECT_THAT(response.responses(),
+                ElementsAre("aModel: {\n  \"Verdict\": \"ok\",\n  ",
+                            "\"Confidence\":1}"));
+  }
+}
+
+TEST_F(OnDeviceModelServiceTest, JSONSchemaConstraintRejectsRunawayWhitespace) {
+  auto model = LoadModel();
+
+  constexpr char kSchema[] = R"({
+    "type": "object",
+    "required": ["Rating"],
+    "additionalProperties": false,
+    "properties": {
+      "Rating": {
+        "type": "number",
+        "minimum": 1,
+        "maximum": 5
+      }
+    }
+  })";
+
+  // Multiple newlines in a single inter-token gap should be rejected.
+  {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+    session->Append(MakeInput({"a", ml::Token::kModel, "{\"Rating\"\n  \n  "}),
+                    {});
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint = mojom::ResponseConstraint::NewJsonSchema(kSchema);
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_THAT(response.responses(), ElementsAre());
+    EXPECT_TRUE(response.disconnected());
+  }
+
+  // Excessive horizontal spaces (>16) in a single gap should be rejected.
+  {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+    session->Append(
+        MakeInput({"a", ml::Token::kModel,
+                   base::StrCat({"{", std::string(17, ' '), "\"Rating\":"})}),
+        {});
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint = mojom::ResponseConstraint::NewJsonSchema(kSchema);
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_THAT(response.responses(), ElementsAre());
+    EXPECT_TRUE(response.disconnected());
+  }
+
+  // Excessive post-newline indentation (>32 spaces) should be rejected.
+  {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+    session->Append(
+        MakeInput({"a", ml::Token::kModel,
+                   base::StrCat({"{\n", std::string(33, ' '), "\"Rating\":"})}),
+        {});
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint = mojom::ResponseConstraint::NewJsonSchema(kSchema);
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_THAT(response.responses(), ElementsAre());
+    EXPECT_TRUE(response.disconnected());
+  }
+
+  // Empty object `{}` schemas should also bound whitespace.
+  {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+    session->Append(MakeInput({"a", ml::Token::kModel, "{\n  \n  "}), {});
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint = mojom::ResponseConstraint::NewJsonSchema("{}\n");
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_THAT(response.responses(), ElementsAre());
+    EXPECT_TRUE(response.disconnected());
+  }
+}
+
+TEST_F(OnDeviceModelServiceTest, JSONSchemaConstraintRejectsDisallowedSchemas) {
+  auto model = LoadModel();
+
+  // Caller-supplied root `x-guidance`, non-object schemas, and embedded NUL
+  // bytes must be rejected.
+  for (std::string schema : {
+           std::string(R"({
+             "type": "object",
+             "required": ["Rating"],
+             "additionalProperties": false,
+             "properties": { "Rating": { "const": 1 } },
+             "x-guidance": { "whitespace_flexible": true }
+           })"),
+           std::string("true"),
+           std::string("false"),
+           std::string("[]"),
+           std::string("{\"type\":\"object\"}\0", 18),
+       }) {
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint =
+        mojom::ResponseConstraint::NewJsonSchema(std::move(schema));
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_THAT(response.responses(), ElementsAre());
+    EXPECT_TRUE(response.disconnected());
+  }
+
+  // A user property named `"x-guidance"` inside `"properties"` is still
+  // allowed.
+  {
+    constexpr char kPropNamedXGuidanceSchema[] = R"({
+      "type": "object",
+      "required": ["x-guidance"],
+      "additionalProperties": false,
+      "properties": {
+        "x-guidance": { "const": 1 }
+      }
+    })";
+
+    TestResponseHolder response;
+    mojo::Remote<mojom::Session> session;
+    model->StartSession(session.BindNewPipeAndPassReceiver(), nullptr);
+
+    auto options = mojom::GenerateOptions::New();
+    options->constraint =
+        mojom::ResponseConstraint::NewJsonSchema(kPropNamedXGuidanceSchema);
+    session->Generate(std::move(options), response.BindRemote());
+    response.WaitForCompletion();
+
+    EXPECT_FALSE(response.disconnected());
+    EXPECT_THAT(response.responses(), ElementsAre(R"({"x-guidance":1})"));
+  }
+}
+
 TEST_F(OnDeviceModelServiceTest, RegexConstraint) {
   auto model = LoadModel();
 
@@ -1898,6 +2098,220 @@ TEST_F(OnDeviceModelServiceTest, GenerateWithThinking) {
   EXPECT_THAT(response.responses(), ElementsAre("solve"));
   // 1 visible text chunk + 1 EOS token; the thought chunk is excluded.
   EXPECT_EQ(response.output_token_count(), 2u);
+}
+
+TEST_F(OnDeviceModelServiceTest, AsrStreamSpeculativeDecodingDefaultDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{},
+      /*disabled_features=*/{features::kOnDeviceModelAsrDecoderPrefill,
+                             features::kOnDeviceModelAsrSpeculativeDecoding});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_FALSE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, -1);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, -2);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamSpeculativeDecodingEnabledDefaultParams) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{features::kOnDeviceModelAsrSpeculativeDecoding},
+      /*disabled_features=*/{features::kOnDeviceModelAsrDecoderPrefill});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_TRUE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, -1);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, -2);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamSpeculativeDecodingExplicitPositiveBackoffs) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"enable_draft_verification", "true"},
+         {"decoder_prefill_backoff", "4"},
+         {"final_decoder_prefill_backoff", "8"}}}},
+      /*disabled_features=*/{features::kOnDeviceModelAsrDecoderPrefill});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_TRUE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, 4);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, 8);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamSpeculativeDecodingDraftVerificationFalseAndZeroBackoffs) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"enable_draft_verification", "false"},
+         {"decoder_prefill_backoff", "0"},
+         {"final_decoder_prefill_backoff", "0"}}}},
+      /*disabled_features=*/{features::kOnDeviceModelAsrDecoderPrefill});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_FALSE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, 0);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, 0);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamSpeculativeDecodingExplicitSentinels) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"enable_draft_verification", "true"},
+         {"decoder_prefill_backoff", "-1"},
+         {"final_decoder_prefill_backoff", "-1"}}}},
+      /*disabled_features=*/{features::kOnDeviceModelAsrDecoderPrefill});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_TRUE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, -1);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, -1);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamSpeculativeDecodingExplicitUnsetFinalPrefill) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"enable_draft_verification", "false"},
+         {"decoder_prefill_backoff", "3"},
+         {"final_decoder_prefill_backoff", "-2"}}}},
+      /*disabled_features=*/{features::kOnDeviceModelAsrDecoderPrefill});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_FALSE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, 3);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, -2);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamDecoderPrefillPreservedWhenSpeculativeDecodingOmitsBackoff) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrDecoderPrefill,
+        {{"decoder_prefill_backoff", "6"}}},
+       {features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"final_decoder_prefill_backoff", "-1"}}}},
+      /*disabled_features=*/{});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_TRUE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, 6);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, -1);
+}
+
+TEST_F(OnDeviceModelServiceTest,
+       AsrStreamSpeculativeDecodingExplicitBackoffOverridesDecoderPrefill) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrDecoderPrefill,
+        {{"decoder_prefill_backoff", "6"}}},
+       {features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"decoder_prefill_backoff", "-1"},
+         {"final_decoder_prefill_backoff", "2"}}}},
+      /*disabled_features=*/{});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_TRUE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, -1);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, 2);
+}
+
+TEST_F(
+    OnDeviceModelServiceTest,
+    AsrStreamSpeculativeDecodingExplicitPositiveBackoffOverridesDecoderPrefill) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrDecoderPrefill,
+        {{"decoder_prefill_backoff", "6"}}},
+       {features::kOnDeviceModelAsrSpeculativeDecoding,
+        {{"decoder_prefill_backoff", "3"},
+         {"final_decoder_prefill_backoff", "2"}}}},
+      /*disabled_features=*/{});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_TRUE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, 3);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, 2);
+}
+
+TEST_F(OnDeviceModelServiceTest, AsrStreamDecoderPrefillAloneEnabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      {{features::kOnDeviceModelAsrDecoderPrefill,
+        {{"decoder_prefill_backoff", "6"}}}},
+      /*disabled_features=*/{features::kOnDeviceModelAsrSpeculativeDecoding});
+
+  fake_ml::ResetLastAsrStreamOptionsForTesting();
+  auto model = LoadModel();
+  EXPECT_EQ(GetAsrTranscript(*model), fake_ml::kFakeAsrTranscript);
+
+  std::optional<fake_ml::CapturedAsrStreamOptions> options =
+      fake_ml::GetLastAsrStreamOptionsForTesting();
+  ASSERT_TRUE(options.has_value());
+  EXPECT_FALSE(options->enable_draft_verification);
+  EXPECT_EQ(options->decoder_prefill_backoff, 6);
+  EXPECT_EQ(options->final_decoder_prefill_backoff, -2);
 }
 
 }  // namespace

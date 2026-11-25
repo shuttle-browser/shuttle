@@ -12,20 +12,17 @@
 #include "base/functional/bind.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/search_journey_tracker.h"
 #include "chrome/browser/contextual_tasks/search_journey_tracker_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/contextual_tasks/public/utils.h"
-#include "components/google/core/common/google_util.h"
-#include "components/search_engines/template_url.h"
-#include "components/search_engines/template_url_service.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/session_id.h"
 #include "components/tabs/public/tab_interface.h"
@@ -97,7 +94,6 @@ SearchJourneyTabFeature::SearchJourneyTabFeature(tabs::TabInterface& tab)
     Profile* profile =
         Profile::FromBrowserContext(contents->GetBrowserContext());
     tracker_ = SearchJourneyTrackerFactory::GetForProfile(profile);
-    template_url_service_ = TemplateURLServiceFactory::GetForProfile(profile);
   }
 }
 
@@ -141,6 +137,52 @@ bool SearchJourneyTabFeature::RestoreJourneyInSidePanel() {
   return true;
 }
 
+bool SearchJourneyTabFeature::ShouldShowCue() const {
+  if (!CanRestoreJourneyInSidePanel()) {
+    return false;
+  }
+  // There's nothing to offer if the side panel is already open.
+  if (ContextualTasksPanelController* panel_controller =
+          ContextualTasksPanelController::From(
+              tab_->GetBrowserWindowInterface());
+      panel_controller && panel_controller->IsPanelOpenForContextualTask()) {
+    return false;
+  }
+  const JourneyState* journey = tracker_->GetRestorableJourney(
+      sessions::SessionTabHelper::IdForTab(web_contents()),
+      GetLastCommittedEntryId(web_contents()));
+  return journey && !journey->cue_shown;
+}
+
+void SearchJourneyTabFeature::OnCueShown(bool is_anchored_message) {
+  if (tracker_ && web_contents()) {
+    tracker_->OnJourneyCueShown(
+        sessions::SessionTabHelper::IdForTab(web_contents()),
+        is_anchored_message);
+  }
+}
+
+void SearchJourneyTabFeature::OnCueChipClicked() {
+  if (tracker_ && web_contents()) {
+    tracker_->OnJourneyCueChipClicked(
+        sessions::SessionTabHelper::IdForTab(web_contents()));
+  }
+}
+
+void SearchJourneyTabFeature::OnCueDismissed() {
+  if (tracker_ && web_contents()) {
+    tracker_->OnJourneyCueDismissed(
+        sessions::SessionTabHelper::IdForTab(web_contents()));
+  }
+}
+
+void SearchJourneyTabFeature::OnCueSuggestionsSettingsOpened() {
+  if (tracker_ && web_contents()) {
+    tracker_->OnJourneyCueSuggestionsSettingsOpened(
+        sessions::SessionTabHelper::IdForTab(web_contents()));
+  }
+}
+
 void SearchJourneyTabFeature::OnTextCopiedToClipboard(
     content::RenderFrameHost* render_frame_host,
     const std::u16string& copied_text) {
@@ -158,21 +200,14 @@ void SearchJourneyTabFeature::OnTextCopiedToClipboard(
 
 void SearchJourneyTabFeature::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
-  if (!tracker_ || !template_url_service_ ||
-      !navigation_handle->IsInPrimaryMainFrame() ||
-      !navigation_handle->HasCommitted() || navigation_handle->IsErrorPage() ||
-      !google_util::IsGoogleSearchUrl(navigation_handle->GetURL())) {
+  if (!tracker_ || !navigation_handle->IsInPrimaryMainFrame() ||
+      !navigation_handle->HasCommitted() || navigation_handle->IsErrorPage()) {
     return;
   }
 
-  const TemplateURL* default_provider =
-      template_url_service_->GetDefaultSearchProvider();
-  std::u16string search_terms;
-  if (!default_provider ||
-      !default_provider->ExtractSearchTermsFromURL(
-          navigation_handle->GetURL(),
-          template_url_service_->search_terms_data(), &search_terms) ||
-      search_terms.empty()) {
+  const std::u16string search_terms =
+      tracker_->GetSearchTerms(navigation_handle->GetURL());
+  if (search_terms.empty()) {
     return;
   }
 
@@ -184,8 +219,12 @@ void SearchJourneyTabFeature::OnTabDidActivate(tabs::TabInterface* tab) {
   if (!tracker_ || !web_contents()) {
     return;
   }
-  tracker_->OnTabActivated(sessions::SessionTabHelper::IdForTab(web_contents()),
-                           GetLastCommittedEntryId(web_contents()));
+  const SessionID tab_id = sessions::SessionTabHelper::IdForTab(web_contents());
+  if (tracker_->OnTabActivated(tab_id,
+                               GetLastCommittedEntryId(web_contents())) &&
+      ShouldShowCue()) {
+    tracker_->OnJourneyCueEligible(tab_id);
+  }
 }
 
 void SearchJourneyTabFeature::OnTabWillDeactivate(tabs::TabInterface* tab) {

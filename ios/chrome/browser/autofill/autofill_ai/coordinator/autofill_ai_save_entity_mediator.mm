@@ -4,7 +4,11 @@
 
 #import "ios/chrome/browser/autofill/autofill_ai/coordinator/autofill_ai_save_entity_mediator.h"
 
+#import <algorithm>
+
 #import "base/timer/timer.h"
+#import "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
+#import "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h"
 #import "ios/chrome/browser/autofill/autofill_ai/public/autofill_ai_ui_util.h"
 #import "ios/chrome/browser/autofill/autofill_ai/ui/autofill_ai_save_entity_consumer.h"
 #import "ios/chrome/browser/autofill/model/ios_autofill_entity_data_manager_observer_bridge.h"
@@ -36,6 +40,12 @@ static constexpr base::TimeDelta kConfirmationDismissDelayIfVoiceOverRunning =
   // confirmation is shown.
   base::OneShotTimer _autoDismissConfirmationTimer;
 
+  // URLs from the disclosure legal messages displayed in the footer.
+  std::vector<GURL> _legalMessageURLs;
+
+  // Whether `kLegalMessageShown` has already been logged for this presentation.
+  BOOL _hasLoggedLegalMessageShown;
+
   BOOL _saveInProgress;
 }
 
@@ -57,6 +67,13 @@ static constexpr base::TimeDelta kConfirmationDismissDelayIfVoiceOverRunning =
 - (void)setConsumer:(id<AutofillAISaveEntityConsumer>)consumer {
   _consumer = consumer;
   [self pushDataToConsumer];
+}
+
+- (void)didTapFooterLinkURL:(const GURL&)url {
+  if (std::ranges::contains(_legalMessageURLs, url)) {
+    autofill::LogWalletNoticeFunnelEvent(
+        autofill::AutofillAiWalletNoticeFunnelEvents::kLinkClicked);
+  }
 }
 
 - (void)disconnect {
@@ -125,20 +142,39 @@ static constexpr base::TimeDelta kConfirmationDismissDelayIfVoiceOverRunning =
     return;
   }
 
+  [_consumer
+      setShowsExplicitDeclineButton:_params->show_explicit_decline_button];
+
   [_consumer setNewEntity:_params->new_entity
                 oldEntity:_params->old_entity
-                userEmail:_params->user_email
         saveIsSynchronous:_params->save_is_synchronous];
 
-  if (!_params->public_passes_notice.empty()) {
-    [_consumer setLegalMessages:[AutofillLegalMessageLine
-                                    convertFrom:_params->public_passes_notice]];
+  NSArray<AutofillLegalMessageLine*>* legalMessages =
+      [AutofillLegalMessageLine convertFrom:_params->public_passes_notice];
+  autofill::AutofillAiEntityFooterContent footerContent =
+      autofill::GetEntityFooterContent(
+          _params->new_entity, /*is_update=*/_params->old_entity.has_value(),
+          _params->user_email, legalMessages);
+  _legalMessageURLs = std::move(footerContent.legal_message_urls);
+
+  if (!_legalMessageURLs.empty() && !_hasLoggedLegalMessageShown) {
+    _hasLoggedLegalMessageShown = YES;
+    autofill::LogWalletNoticeFunnelEvent(
+        autofill::AutofillAiWalletNoticeFunnelEvents::kLegalMessageShown);
   }
+
+  [_consumer setFooterText:footerContent.text urls:footerContent.urls];
 }
 
 - (BOOL)isSaveToWallet {
   return _params->new_entity.record_type() ==
          autofill::EntityInstance::RecordType::kServerWallet;
+}
+
+- (BOOL)isPrivateWalletPass {
+  return autofill::GetWalletPassType(_params->new_entity.type(),
+                                     _params->new_entity.record_type()) ==
+         autofill::EntityInstance::WalletPassType::kPrivate;
 }
 
 // Saves entity locally or to Google wallet.
@@ -148,7 +184,8 @@ static constexpr base::TimeDelta kConfirmationDismissDelayIfVoiceOverRunning =
     std::move(_params->callback)
         .Run(autofill::AutofillClient::AutofillAiBubbleResult::kAccepted,
              std::nullopt,
-             {autofill::GetSaveToWalletSubtitleStringId(),
+             {autofill::GetSaveToWalletSubtitleStringId(
+                  [self isPrivateWalletPass]),
               autofill::GetSaveEntityAcceptButtonStringId()});
   } else {
     std::move(_params->callback)

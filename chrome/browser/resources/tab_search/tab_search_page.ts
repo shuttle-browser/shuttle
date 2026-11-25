@@ -29,7 +29,8 @@ import type {SelectableLazyListElement} from './selectable_lazy_list.js';
 import {NO_SELECTION, selectorNavigationKeys} from './selectable_lazy_list.js';
 import {ariaLabel, getDisplayHostnameForUrl, getHostname, getTabGroupTitle, getTitle, normalizeURL, SplitViewData, TabData, TabGroupData, TabItemType, tokenEquals, tokenToString} from './tab_data.js';
 import type {ItemData} from './tab_data.js';
-import type {ProfileData, RecentlyClosedTab, Tab, TabGroup, TabsRemovedInfo, TabUpdateInfo} from './tab_search.mojom-webui.js';
+import type {BrowserProxy, ProfileData, RecentlyClosedTab, Tab, TabGroup, TabsRemovedInfo, TabUpdateInfo} from './tab_search.mojom-webui.js';
+import {browserProxyFactory} from './tab_search.mojom-webui.js';
 import type {TabSearchApiProxy} from './tab_search_api_proxy.js';
 import {TabSearchApiProxyImpl} from './tab_search_api_proxy.js';
 import type {TabSearchGroupItemElement} from './tab_search_group_item.js';
@@ -135,7 +136,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
   protected accessor listMaxHeight_: number|undefined;
   protected accessor listItemSize_: number|undefined;
   protected accessor searchQueryMaxLength_: number = SEARCH_QUERY_MAX_LENGTH;
-  protected accessor activeDescendantEnabled_: boolean = false;
+  private accessor activeDescendantEnabled_: boolean = false;
   protected accessor filteredItems_:
       Array<TitleItem|TabData|TabGroupData|SplitViewData> = [];
   private accessor searchOptions_:
@@ -167,13 +168,15 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
   private accessor recentlyClosedDefaultItemDisplayCount_: number =
       loadTimeData.getValue('recentlyClosedDefaultItemDisplayCount');
   protected accessor searchResultText_: string = '';
-  protected accessor activeSelectionId_: string|undefined;
+  private accessor activeSelectionId_: string|undefined;
   protected accessor shortcut_: string = loadTimeData.getString('shortcutText');
   protected accessor webuiRoundedIconsEnabled_: boolean =
       loadTimeData.getBoolean('webuiRoundedIconsEnabled');
   override autofocus: boolean = false;
 
-  private apiProxy_: TabSearchApiProxy = TabSearchApiProxyImpl.getInstance();
+  private apiProxy_: BrowserProxy = browserProxyFactory.getInstance();
+  private tabSearchApiProxy_: TabSearchApiProxy =
+      TabSearchApiProxyImpl.getInstance();
   private metricsReporter_: MetricsReporter|null = null;
   private listenerIds_: number[] = [];
   private tabGroupsMap_: Map<string, TabGroup> = new Map();
@@ -200,7 +203,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
         if (loadTimeData.getBoolean('tabSearchPerformanceImprovements')) {
           listenOnce(
               this.$.tabsList, 'viewport-filled',
-              () => this.apiProxy_.maybeShowUi());
+              () => this.apiProxy_.handler.maybeShowUI());
           this.updateFilteredTabs_();
         } else {
           this.updateTabs_();
@@ -233,7 +236,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
     document.addEventListener(
         'visibilitychange', this.documentVisibilityChangedListener_);
 
-    const callbackRouter = this.apiProxy_.getCallbackRouter();
+    const callbackRouter = this.apiProxy_.callbackRouter;
     this.listenerIds_.push(
         callbackRouter.tabsChanged.addListener(this.tabsChanged_.bind(this)),
         callbackRouter.tabUpdated.addListener(this.onTabUpdated_.bind(this)),
@@ -249,7 +252,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
     super.disconnectedCallback();
 
     this.listenerIds_.forEach(
-        id => this.apiProxy_.getCallbackRouter().removeListener(id));
+        id => this.apiProxy_.callbackRouter.removeListener(id));
 
     document.removeEventListener(
         'visibilitychange', this.documentVisibilityChangedListener_);
@@ -324,13 +327,13 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
   private updateTabs_() {
     const isMarkOverlap =
         this.metricsReporter.hasLocalMark('TabListDataReceived');
-    chrome.metricsPrivate.recordBoolean(
+    chrome.histograms.recordBoolean(
         'Tabs.TabSearch.WebUI.TabListDataReceived2.IsOverlap', isMarkOverlap);
     if (!isMarkOverlap) {
       this.metricsReporter.mark('TabListDataReceived');
     }
 
-    this.apiProxy_.getProfileData().then(({profileData}) => {
+    this.apiProxy_.handler.getProfileData().then(({profileData}) => {
       this.metricsReporter.measure('TabListDataReceived')
           .then(
               e => this.metricsReporter.umaReportTime(
@@ -350,7 +353,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
       // or scroll position change triggers the viewport fill logic.
       listenOnce(
           this.$.tabsList, 'viewport-filled',
-          () => this.apiProxy_.maybeShowUi());
+          () => this.apiProxy_.handler.maybeShowUI());
 
       this.tabsChanged_(profileData);
     });
@@ -526,7 +529,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
   private recordMetricsForAction(action: TabSearchAction, tabIndex: number) {
     const withSearch = !!this.searchText_;
     if (action === 'SwitchTab' || action === 'SwitchTabOtherWindow') {
-      chrome.metricsPrivate.recordEnumerationValue(
+      chrome.histograms.recordEnumerationValue(
           'Tabs.TabSearch.WebUI.TabSwitchAction',
           withSearch ? TabSwitchAction.WITH_SEARCH :
                        TabSwitchAction.WITHOUT_SEARCH,
@@ -535,7 +538,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
 
     switch (action) {
       case 'OpenRecentlyClosedEntry':
-        chrome.metricsPrivate.recordEnumerationValue(
+        chrome.histograms.recordEnumerationValue(
             'Tabs.TabSearch.WebUI.Action',
             withSearch ?
                 TabSearchUserAction.IN_FILTERED_LIST_OPEN_RECENTLY_CLOSED :
@@ -543,14 +546,14 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
             8);
         break;
       case 'SwitchTab':
-        chrome.metricsPrivate.recordEnumerationValue(
+        chrome.histograms.recordEnumerationValue(
             'Tabs.TabSearch.WebUI.Action',
             withSearch ? TabSearchUserAction.IN_FILTERED_LIST_SWITCHED_TAB :
                          TabSearchUserAction.IN_UNFILTERED_LIST_SWITCHED_TAB,
             8);
         break;
       case 'SwitchTabOtherWindow':
-        chrome.metricsPrivate.recordEnumerationValue(
+        chrome.histograms.recordEnumerationValue(
             'Tabs.TabSearch.WebUI.Action',
             withSearch ?
                 TabSearchUserAction.IN_FILTERED_LIST_SWITCHED_OTHER_WINDOW_TAB :
@@ -559,7 +562,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
             8);
         break;
       case 'CloseTab':
-        chrome.metricsPrivate.recordEnumerationValue(
+        chrome.histograms.recordEnumerationValue(
             'Tabs.TabSearch.WebUI.Action',
             withSearch ? TabSearchUserAction.IN_FILTERED_LIST_CLOSED_TAB :
                          TabSearchUserAction.IN_UNFILTERED_LIST_CLOSED_TAB,
@@ -572,7 +575,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
     if (action === 'SwitchTabOtherWindow') {
       action = 'SwitchTab';
     }
-    chrome.metricsPrivate.recordSmallCount(
+    chrome.histograms.recordSmallCount(
         withSearch ? `Tabs.TabSearch.WebUI.IndexOf${action}InFilteredList` :
                      `Tabs.TabSearch.WebUI.IndexOf${action}InUnfilteredList`,
         tabIndex);
@@ -587,7 +590,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
     switch (itemData.type) {
       case TabItemType.OPEN_TAB:
         const isMarkOverlap = this.metricsReporter.hasLocalMark('SwitchToTab');
-        chrome.metricsPrivate.recordBoolean(
+        chrome.histograms.recordBoolean(
             'Tabs.TabSearch.Mojo.SwitchToTab.IsOverlap', isMarkOverlap);
         if (!isMarkOverlap) {
           this.metricsReporter.mark('SwitchToTab');
@@ -596,14 +599,15 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
         this.recordMetricsForAction(
             itemData.inActiveWindow ? 'SwitchTab' : 'SwitchTabOtherWindow',
             tabIndex);
-        this.apiProxy_.switchToTab({tabId: (itemData as TabData).tab.tabId});
+        this.apiProxy_.handler.switchToTab(
+            {tabId: (itemData as TabData).tab.tabId});
         action = 'SwitchTab';
         break;
       case TabItemType.OPEN_SPLIT:
         this.recordMetricsForAction(
             itemData.inActiveWindow ? 'SwitchTab' : 'SwitchTabOtherWindow',
             tabIndex);
-        this.apiProxy_.switchToTab({
+        this.apiProxy_.handler.switchToTab({
           tabId: (itemData as SplitViewData).tabs![0].tabId,
         });
         action = 'SwitchTab';
@@ -611,31 +615,35 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
       case TabItemType.RECENTLY_CLOSED_TAB:
         this.recordMetricsForAction(
             'OpenRecentlyClosedEntry', tabIndex - this.filteredOpenTabsCount_);
-        this.apiProxy_.openRecentlyClosedEntry(
-            (itemData as TabData).tab.tabId, !!this.searchText_, true);
+        this.openRecentlyClosedEntry_((itemData as TabData).tab.tabId, true);
         action = 'OpenRecentlyClosedEntry';
         break;
       case TabItemType.RECENTLY_CLOSED_TAB_GROUP:
         this.recordMetricsForAction(
             'OpenRecentlyClosedEntry', tabIndex - this.filteredOpenTabsCount_);
-        this.apiProxy_.openRecentlyClosedEntry(
-            ((itemData as TabGroupData).tabGroup).sessionId, !!this.searchText_,
-            false);
+        this.openRecentlyClosedEntry_(
+            ((itemData as TabGroupData).tabGroup).sessionId, false);
         action = 'OpenRecentlyClosedEntry';
         break;
       case TabItemType.RECENTLY_CLOSED_SPLIT:
         this.recordMetricsForAction(
             'OpenRecentlyClosedEntry', tabIndex - this.filteredOpenTabsCount_);
-        this.apiProxy_.openRecentlyClosedEntry(
-            (itemData as SplitViewData).sessionId, !!this.searchText_, false);
+        this.openRecentlyClosedEntry_(
+            (itemData as SplitViewData).sessionId, false);
         action = 'OpenRecentlyClosedEntry';
         break;
       default:
         throw new Error('ItemData is of invalid type.');
     }
-    chrome.metricsPrivate.recordTime(
+    chrome.histograms.recordTime(
         `Tabs.TabSearch.WebUI.TimeTo${action}In${state}List`,
         Math.round(Date.now() - this.windowShownTimestamp_));
+  }
+
+  private openRecentlyClosedEntry_(id: number, isTab: boolean) {
+    this.tabSearchApiProxy_.recordRecentlyClosedItemOpenAction(
+        !!this.searchText_, isTab);
+    this.apiProxy_.handler.openRecentlyClosedEntry(id);
   }
 
   protected onItemClose_(e: Event) {
@@ -646,10 +654,11 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
     const tabIndex = this.itemIndexToTabIndex_(Number(target.dataset['index']));
     this.recordMetricsForAction('CloseTab', tabIndex);
     if (tabItem instanceof SplitViewData && tabItem.tabs) {
-      this.apiProxy_.closeTabs([tabItem.tabs[0].tabId, tabItem.tabs[1].tabId]);
+      this.apiProxy_.handler.closeTabs(
+          [tabItem.tabs[0].tabId, tabItem.tabs[1].tabId]);
       this.announceA11y_(loadTimeData.getString('a11ySplitViewClosed'));
     } else if (tabItem instanceof TabData) {
-      this.apiProxy_.closeTab(tabItem.tab.tabId);
+      this.apiProxy_.handler.closeTab(tabItem.tab.tabId);
       this.announceA11y_(loadTimeData.getString('a11yTabClosed'));
     }
     listenOnce(this.$.tabsList, 'rendered-items-changed', () => {
@@ -792,7 +801,7 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
       return;
     }
     titleItem.expanded = expanded;
-    this.apiProxy_.saveRecentlyClosedExpandedPref(expanded);
+    this.apiProxy_.handler.saveRecentlyClosedExpandedPref(expanded);
 
     this.$.tabsList.toggleAttribute('expanded-list', expanded);
 
@@ -933,7 +942,6 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
   }
 
   private async updateFilteredTabs_() {
-    const updateStartTime = Date.now();
     this.openTabs_.sort((a, b) => {
       const tabA = (a instanceof TabData ? a.tab : a.tabs![0]) as Tab;
       const tabB = (b instanceof TabData ? b.tab : b.tabs![0]) as Tab;
@@ -1093,10 +1101,6 @@ export class TabSearchPageElement extends TabSearchSearchFieldBase {
     }
     tabsList.setSelected(
         Math.min(Math.max(selectedIndex, 0), this.lastSelectableIndex_()));
-
-    chrome.metricsPrivate.recordTime(
-        'Tabs.TabSearch.WebUI.SearchUpdateDuration',
-        Math.round(Date.now() - updateStartTime));
   }
 
 

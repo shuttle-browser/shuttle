@@ -33,11 +33,8 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
+#include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_lifecycle_observer.h"
-#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"   // nogncheck
-#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"  // nogncheck
-#include "chrome/browser/ui/side_panel/side_panel_enums.h"      // nogncheck
-#include "chrome/browser/ui/side_panel/side_panel_ui.h"         // nogncheck
 #include "chrome/browser/ui/translate/translate_bubble_factory.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/common/content_switches.h"
@@ -127,17 +124,6 @@ bool IsAutomaticTranslationType(translate::TranslationType type) {
 
 }  // namespace
 
-SidePanelUI* ChromeTranslateClient::GetSidePanelUIFromTab(
-    tabs::TabInterface* tab) const {
-#if !BUILDFLAG(IS_ANDROID)
-  BrowserWindowInterface* browser =
-      tab ? tab->GetBrowserWindowInterface() : nullptr;
-  return browser ? SidePanelUI::From(browser) : nullptr;
-#else
-  return nullptr;
-#endif
-}
-
 #if !BUILDFLAG(IS_ANDROID)
 class ChromeTranslateClient::ReadAnythingObserver
     : public ReadAnythingLifecycleObserver {
@@ -195,12 +181,11 @@ void ChromeTranslateClient::TriggerPdfTranslation() {
       controller->AddObserver(read_anything_observer_.get());
     }
   }
-  SidePanelUI* side_panel_ui = GetSidePanelUIFromTab(tab);
-  if (side_panel_ui) {
-    side_panel_ui->Show(
-        SidePanelEntryId::kReadAnything,
-        SidePanelOpenTrigger::kPdfTranslation);
-  }
+  read_anything::ReadAnythingEntryPointController::ShowUI(
+      tab ? tab->GetBrowserWindowInterface() : nullptr,
+      ReadAnythingOpenTrigger::kPdfTranslation,
+      read_anything::ReadAnythingEntryPointController::Presentation::
+          kSidePanel);
 #endif
 }
 
@@ -210,12 +195,9 @@ void ChromeTranslateClient::RevertPdfTranslation() {
     opened_side_panel_for_pdf_translation_ = false;
     tabs::TabInterface* tab =
         tabs::TabInterface::MaybeGetFromContents(web_contents());
-    SidePanelUI* side_panel_ui = GetSidePanelUIFromTab(tab);
-    if (side_panel_ui &&
-        side_panel_ui->IsSidePanelEntryShowing(
-            SidePanelEntryKey(SidePanelEntryId::kReadAnything))) {
-      side_panel_ui->Close();
-    }
+    read_anything::ReadAnythingEntryPointController::CloseUI(
+        tab ? tab->GetBrowserWindowInterface() : nullptr,
+        ReadAnythingCloseReason::kClosedByPdfTranslation);
   }
 #endif
 }
@@ -248,21 +230,11 @@ bool ChromeTranslateClient::IsReadingModeOpen() const {
 #if !BUILDFLAG(IS_ANDROID)
   tabs::TabInterface* tab =
       tabs::TabInterface::MaybeGetFromContents(web_contents());
-  SidePanelUI* side_panel_ui = GetSidePanelUIFromTab(tab);
-  if (side_panel_ui) {
-    if (side_panel_ui->IsSidePanelEntryShowing(
-            SidePanelEntryKey(SidePanelEntryId::kReadAnything))) {
-      return true;
-    }
-  }
-  if (auto* controller = ReadAnythingController::From(tab)) {
-    if (controller->GetPresentationState() ==
-        ReadAnythingController::PresentationState::kInImmersiveOverlay) {
-      return true;
-    }
-  }
-#endif
+  return read_anything::ReadAnythingEntryPointController::IsUIShowing(
+      tab ? tab->GetBrowserWindowInterface() : nullptr);
+#else
   return false;
+#endif
 }
 
 ChromeTranslateClient::ChromeTranslateClient(content::WebContents* web_contents)
@@ -316,7 +288,7 @@ ChromeTranslateClient::CreateTranslatePrefs(PrefService* prefs) {
 
   // We need to obtain the country here, since it comes from VariationsService.
   // components/ does not have access to that.
-  DCHECK(g_browser_process);
+  CHECK(g_browser_process, base::NotFatalUntil::M163);
   variations::VariationsService* variations_service =
       g_browser_process->variations_service();
   if (variations_service) {
@@ -350,8 +322,8 @@ void ChromeTranslateClient::GetTranslateLanguages(
     std::string* source,
     std::string* target,
     bool for_display) {
-  DCHECK(source != nullptr);
-  DCHECK(target != nullptr);
+  CHECK(source != nullptr, base::NotFatalUntil::M163);
+  CHECK(target != nullptr, base::NotFatalUntil::M163);
 
   *source = translate::TranslateDownloadManager::GetLanguageCode(
       GetLanguageState().source_language());
@@ -394,7 +366,8 @@ bool ChromeTranslateClient::ShowTranslateUI(
 // Translate uses a bubble UI on desktop and the Message UI on Android (here)
 // and iOS (in ios/chrome/browser/translate/chrome_ios_translate_client.mm).
 #if BUILDFLAG(IS_ANDROID)
-  DCHECK(!TranslateService::IsTranslateBubbleEnabled());
+  CHECK(!TranslateService::IsTranslateBubbleEnabled(),
+        base::NotFatalUntil::M163);
   // Message UI.
   translate::TranslationType translate_type =
       GetLanguageState().translation_type();
@@ -425,7 +398,8 @@ bool ChromeTranslateClient::ShowTranslateUI(
   }
   translate_manager_->GetActiveTranslateMetricsLogger()->LogUIChange(true);
 #else
-  DCHECK(TranslateService::IsTranslateBubbleEnabled());
+  CHECK(TranslateService::IsTranslateBubbleEnabled(),
+        base::NotFatalUntil::M163);
   // Bubble UI.
   if (step == translate::TRANSLATE_STEP_BEFORE_TRANSLATE &&
       translate_manager_->ShouldSuppressBubbleUI(target_language)) {
@@ -449,7 +423,7 @@ translate::TranslateDriver* ChromeTranslateClient::GetTranslateDriver() {
 }
 
 PrefService* ChromeTranslateClient::GetPrefs() {
-  DCHECK(web_contents());
+  CHECK(web_contents(), base::NotFatalUntil::M163);
   Profile* profile =
       Profile::FromBrowserContext(web_contents()->GetBrowserContext());
   return profile->GetPrefs();
@@ -462,7 +436,7 @@ ChromeTranslateClient::GetTranslatePrefs() {
 
 language::AcceptLanguagesService*
 ChromeTranslateClient::GetAcceptLanguagesService() {
-  DCHECK(web_contents());
+  CHECK(web_contents(), base::NotFatalUntil::M163);
   return GetAcceptLanguagesService(web_contents()->GetBrowserContext());
 }
 
@@ -522,8 +496,8 @@ void ChromeTranslateClient::PrimaryPageChanged(content::Page& page) {
     auto_translate_snackbar_controller_->NativeDismissSnackbar();
   }
 #else
-  // If the Reading Mode side panel was opened specifically to translate the
-  // PDF, close it when navigating to a new page.
+  // If Reading Mode was opened specifically to translate the PDF, close it
+  // when navigating to a new page.
   if (!opened_side_panel_for_pdf_translation_) {
     return;
   }
@@ -540,11 +514,9 @@ void ChromeTranslateClient::PrimaryPageChanged(content::Page& page) {
     }
   }
 
-  SidePanelUI* side_panel_ui = GetSidePanelUIFromTab(tab);
-  if (side_panel_ui && side_panel_ui->IsSidePanelEntryShowing(SidePanelEntryKey(
-                           SidePanelEntryId::kReadAnything))) {
-    side_panel_ui->Close();
-  }
+  read_anything::ReadAnythingEntryPointController::CloseUI(
+      tab ? tab->GetBrowserWindowInterface() : nullptr,
+      ReadAnythingCloseReason::kClosedByPdfTranslation);
 #endif  // BUILDFLAG(IS_ANDROID)
 }
 
@@ -604,7 +576,7 @@ ShowTranslateBubbleResult ChromeTranslateClient::ShowBubble(
     const std::string& target_language,
     translate::TranslateErrors error_type,
     bool is_user_gesture) {
-  DCHECK(translate_manager_);
+  CHECK(translate_manager_, base::NotFatalUntil::M163);
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
           web_contents());
@@ -647,8 +619,7 @@ ShowTranslateBubbleResult ChromeTranslateClient::ShowBubble(
     // auto-translating this page/site in this session. Show the toast instead
     // of the bubble.
     if (step == translate::TRANSLATE_STEP_AFTER_TRANSLATE) {
-      TranslateBubbleController* controller =
-          TranslateBubbleController::From(browser);
+      TranslateController* controller = TranslateController::From(browser);
       if (controller && controller->GetTranslateBubble()) {
         return TranslateBubbleFactory::Show(
             BrowserWindow::FromBrowser(browser), web_contents(), step,

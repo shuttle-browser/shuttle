@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <deque>
+#include <iterator>
 #include <memory>
 #include <string>
 #include <string_view>
@@ -79,7 +80,12 @@ std::unique_ptr<SizeInfo> CreateSizeInfo() {
   info->raw_symbols.push_back(MakeSymbol(SectionId::kText, 50, "b"));
   info->raw_symbols.push_back(MakeSymbol(SectionId::kText, 60, ""));
 
-  for (auto sym : info->raw_symbols) {
+  for (Symbol& sym : info->raw_symbols) {
+    // Copy path literals into |owned_strings| so that |size_info1_| and
+    // |size_info2_| do not share identical const char* path pointers (matching
+    // real .size files parsed into separate buffers).
+    info->owned_strings.push_back(sym.object_path_);
+    sym.object_path_ = info->owned_strings.back().c_str();
     sym.container_ = &info->containers[0];
   }
   return info;
@@ -223,8 +229,15 @@ TEST_F(DiffTest, TestAliasesChangeGroup) {
 // These tests currently fail because _ doesn't rewrite.
 
 TEST_F(DiffTest, TestStarSymbolNormalization) {
+  // Matches in pass 2 (numbers stripped).
   SetName(&size_info1_->raw_symbols[0], "* symbol gap 1 (end of section)");
   SetName(&size_info2_->raw_symbols[0], "* symbol gap 2 (end of section)");
+  // Suffix present on only one side: matches in pass 3 (star normalization).
+  SetName(&size_info1_->raw_symbols[1], "* symbol gap 1");
+  SetName(&size_info2_->raw_symbols[1], "* symbol gap 2 (end of section)");
+  // Different parenthesized suffixes: matches in pass 3.
+  SetName(&size_info1_->raw_symbols[2], "* symbol gap 1 (foo)");
+  SetName(&size_info2_->raw_symbols[2], "* symbol gap 2 (bar)");
 
   DeltaSizeInfo diff = Diff(size_info1_.get(), size_info2_.get(),
                             &removed_sources_, &added_sources_);
@@ -259,6 +272,47 @@ TEST_F(DiffTest, TestNumberNormalization) {
   DeltaSizeInfo::Results expected_counts{10, 0, 0, 0};
   EXPECT_EQ(expected_counts, diff.CountsByDiffStatus());
   EXPECT_EQ(0, SumOfSymbolSizes(diff));
+}
+
+TEST_F(DiffTest, TestDuplicateKeysMatchInOrder) {
+  // Three "before" symbols and four "after" symbols share the same key once
+  // numbers are stripped (pass 2). They should be paired in order, and the
+  // extra "after" symbol should be reported as added.
+  const char* kBeforeNames[] = {".L__unnamed_1", ".L__unnamed_2",
+                                ".L__unnamed_3"};
+  const int32_t kBeforeSizes[] = {11, 12, 13};
+  const char* kAfterNames[] = {".L__unnamed_4", ".L__unnamed_5",
+                               ".L__unnamed_6", ".L__unnamed_7"};
+  const int32_t kAfterSizes[] = {100, 200, 300, 400};
+  for (size_t i = 0; i < std::size(kBeforeNames); ++i) {
+    size_info1_->raw_symbols.push_back(
+        MakeSymbol(SectionId::kText, kBeforeSizes[i], "c", kBeforeNames[i]));
+  }
+  for (size_t i = 0; i < std::size(kAfterNames); ++i) {
+    size_info2_->raw_symbols.push_back(
+        MakeSymbol(SectionId::kText, kAfterSizes[i], "c", kAfterNames[i]));
+  }
+
+  DeltaSizeInfo diff = Diff(size_info1_.get(), size_info2_.get(),
+                            &removed_sources_, &added_sources_);
+
+  DeltaSizeInfo::Results expected_counts{6, 3, 1, 0};
+  EXPECT_EQ(expected_counts, diff.CountsByDiffStatus());
+  int checked_pairs = 0;
+  for (const DeltaSymbol& sym : diff.delta_symbols) {
+    const BaseSymbol* before_sym = sym.Before();
+    const BaseSymbol* after_sym = sym.After();
+    if (!after_sym || after_sym->ObjectPath() != std::string_view("c")) {
+      continue;
+    }
+    if (!before_sym) {
+      EXPECT_EQ(400, after_sym->Size());
+      continue;
+    }
+    EXPECT_EQ(after_sym->Size(), (before_sym->Size() - 10) * 100);
+    checked_pairs++;
+  }
+  EXPECT_EQ(3, checked_pairs);
 }
 
 TEST_F(DiffTest, TestChangedParams) {
@@ -378,6 +432,83 @@ TEST_F(DiffTest, TestAliasesCount) {
     }
   }
   EXPECT_EQ(3, checked_symbols);
+}
+
+TEST_F(DiffTest, TestManySymbolsRehash) {
+  for (int i = 0; i < 200; ++i) {
+    SectionId section = (i % 2 == 0) ? SectionId::kText : SectionId::kRoData;
+    std::string name = "Sym_" + base::NumberToString(i);
+    Symbol s1 = MakeSymbol(section, 100 + i, "path/a.o", name);
+    s1.padding_ = 4;
+    s1.container_ = &size_info1_->containers[0];
+    size_info1_->owned_strings.push_back(name);
+    s1.full_name_ = size_info1_->owned_strings.back();
+    s1.template_name_ = s1.full_name_;
+    s1.name_ = s1.full_name_;
+    size_info1_->raw_symbols.push_back(s1);
+
+    Symbol s2 = s1;
+    s2.size_ += 8;
+    s2.padding_ = 8;
+    s2.container_ = &size_info2_->containers[0];
+    size_info2_->raw_symbols.push_back(s2);
+  }
+
+  DeltaSizeInfo diff = Diff(size_info1_.get(), size_info2_.get(),
+                            &removed_sources_, &added_sources_);
+  DeltaSizeInfo::Results expected_counts{6, 200, 2, 0};
+  EXPECT_EQ(expected_counts, diff.CountsByDiffStatus());
+  EXPECT_EQ(800, SumOfSymbolPadding(diff));
+  EXPECT_EQ(1600, SumOfSymbolSizes(diff));
+}
+
+TEST_F(DiffTest, TestManySymbolsDeriveNamesOnThreads) {
+  // Enough symbols to diff on multiple threads, with names left for
+  // Symbol::DeriveNames() so that they match only in pass 3 (Name()). Data
+  // races are only detected when run under TSan.
+  constexpr int kNumSymbols = 600;
+  auto make_size_info = [](const char* params) {
+    auto info = std::make_unique<SizeInfo>();
+    info->containers.emplace_back("");
+    for (int i = 0; i < kNumSymbols; ++i) {
+      bool is_java = i % 2 == 0;
+      std::string path = "path/" + base::NumberToString(i % 20) + ".o";
+      std::string name = (is_java ? "com.Foo#bar" : "ns::Func") +
+                         base::NumberToString(i) + params;
+      info->owned_strings.push_back(path);
+      const char* path_ptr = info->owned_strings.back().c_str();
+      info->owned_strings.push_back(name);
+      Symbol sym;
+      sym.full_name_ = info->owned_strings.back();
+      sym.section_id_ = is_java ? SectionId::kDexMethod : SectionId::kText;
+      sym.size_ = 10 + i;
+      sym.object_path_ = path_ptr;
+      sym.container_ = &info->containers[0];
+      sym.size_info_ = info.get();
+      info->raw_symbols.push_back(sym);
+    }
+    return info;
+  };
+  std::unique_ptr<SizeInfo> before = make_size_info("(int)");
+  std::unique_ptr<SizeInfo> after = make_size_info("(bool)");
+
+  DeltaSizeInfo diff =
+      Diff(before.get(), after.get(), &removed_sources_, &added_sources_);
+  DeltaSizeInfo::Results expected_counts{kNumSymbols, 0, 0, 0};
+  EXPECT_EQ(expected_counts, diff.CountsByDiffStatus());
+
+  // Derived names must be owned by the SizeInfo of their symbol.
+  auto count_strings = [](const SizeInfo& info) {
+    size_t ret = 0;
+    for (const auto& arena : info.thread_owned_strings) {
+      ret += arena.size();
+    }
+    return ret;
+  };
+  EXPECT_GT(count_strings(*before), 0u);
+  EXPECT_GT(count_strings(*after), 0u);
+  EXPECT_EQ("ns::Func1", before->raw_symbols[1].Name());
+  EXPECT_EQ("ns::Func1", after->raw_symbols[1].Name());
 }
 
 }  // namespace

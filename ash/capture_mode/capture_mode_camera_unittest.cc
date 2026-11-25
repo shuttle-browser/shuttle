@@ -4006,6 +4006,15 @@ TEST_P(CaptureModeCameraPreviewTest, CameraPreviewSpecs) {
   };
 
   for (const auto& test_case : kTestCases) {
+    // In fullscreen mode, a real display always has sufficient size
+    // (>= 320x200) to fit the camera preview, so the preview is never hidden
+    // due to the capture surface being too small. Only partial regions or
+    // windows can be resized small enough to hide the preview.
+    if (GetParam() == CaptureModeSource::kFullscreen &&
+        test_case.preview_state == CameraPreviewState::kHidden) {
+      continue;
+    }
+
     SCOPED_TRACE(test_case.scope_trace);
 
     UpdateDisplay("1366x700");
@@ -4263,7 +4272,7 @@ class CameraPreviewWithHoldingSpaceTest : public CaptureModeCameraTest {
   // CaptureModeCameraTest:
   void SetUpInitParams(AshTestHelper::InitParams& init_params) override {
     CaptureModeCameraTest::SetUpInitParams(init_params);
-    init_params.start_session = false;
+    init_params.users.clear();
   }
 
   void SetUp() override {

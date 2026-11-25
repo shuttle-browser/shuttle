@@ -3,12 +3,14 @@
 // found in the LICENSE file.
 #include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"
 
+#include <optional>
 #include <string>
 #include <tuple>
 #include <vector>
 
 #include "base/feature_list.h"
 #include "base/path_service.h"
+#include "base/scoped_observation.h"
 #include "base/strings/stringprintf.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -609,19 +611,6 @@ void ExecJsSetClientEncryptionKeysForMultipleSecurityDomains(
 // signed-in user with a Gaia-id: `kSyncGaiaId`.
 class TrustedVaultEncryptionKeysTabHelperBrowserTestWithEnclaveAuthenticator
     : public EnclaveAuthenticatorTestBase {
- public:
-  TrustedVaultEncryptionKeysTabHelperBrowserTestWithEnclaveAuthenticator() {
-    feature_list_.InitWithFeatures(
-        /*enabled_features=*/
-        {// This flag is needed for enabling the logic of storing
-         // opportunistically retrieved passkey secrets.
-         device::kWebAuthnOpportunisticRetrieval,
-         // This flag is needed for enabling the logic of storing
-         // opportunistically retrieved passkey secrets.
-         device::kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange},
-        /*disabled_features=*/{});
-  }
-
  protected:
   void SetUpCommandLine(base::CommandLine* command_line) override {
     // Override the sign-in URL so that it includes correct port from the test
@@ -645,7 +634,10 @@ class TrustedVaultEncryptionKeysTabHelperBrowserTestWithEnclaveAuthenticator
   }
 
  private:
-  base::test::ScopedFeatureList feature_list_;
+  // This flag is needed for enabling the logic of storing
+  // opportunistically retrieved passkey secrets.
+  base::test::ScopedFeatureList feature_list_{
+      device::kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange};
 };
 
 IN_PROC_BROWSER_TEST_F(
@@ -1245,9 +1237,13 @@ IN_PROC_BROWSER_TEST_F(TrustedVaultEncryptionKeysTabHelperBrowserTest,
   ASSERT_TRUE(HasEncryptionKeysApi(web_contents()->GetPrimaryMainFrame()));
 
   testing::NiceMock<MockTrustedVaultClientObserver> mock_observer;
-  TrustedVaultServiceFactory::GetForProfile(browser()->GetProfile())
-      ->GetTrustedVaultClient(trusted_vault::SecurityDomainId::kChromeSync)
-      ->AddObserver(&mock_observer);
+  base::ScopedObservation<trusted_vault::TrustedVaultClient,
+                          trusted_vault::TrustedVaultClient::Observer>
+      observation(&mock_observer);
+  observation.Observe(
+      TrustedVaultServiceFactory::GetForProfile(browser()->GetProfile())
+          ->GetTrustedVaultClient(
+              trusted_vault::SecurityDomainId::kChromeSync));
   EXPECT_CALL(
       mock_observer,
       OnTrustedVaultKeysChanged(std::make_optional(
@@ -1263,6 +1259,13 @@ IN_PROC_BROWSER_TEST_F(TrustedVaultEncryptionKeysTabHelperBrowserTest,
                                 kEncryptionKey);
   ASSERT_TRUE(console_observer.Wait());
   EXPECT_EQ(1u, console_observer.messages().size());
+  // `FetchTrustedVaultKeysForProfile()` also flushes the asynchronous
+  // `OnTrustedVaultKeysChanged()` notification posted from the backend sequence
+  // to the UI thread before `mock_observer` goes out of scope.
+  EXPECT_THAT(FetchTrustedVaultKeysForProfile(
+                  browser()->GetProfile(),
+                  trusted_vault::SecurityDomainId::kChromeSync, FakeAccount()),
+              ElementsAre(kEncryptionKey));
 }
 #endif  // BUILDFLAG(IS_ANDROID)
 

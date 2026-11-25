@@ -16,16 +16,16 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.Callback;
+import org.chromium.base.DeviceInfo;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.offlinepages.OfflinePageBridge.OfflinePageModelObserver;
 import org.chromium.chrome.browser.offlinepages.OfflinePageBridge.SavePageCallback;
 import org.chromium.chrome.browser.offlinepages.downloads.OfflinePageDownloadBridge;
@@ -41,6 +41,7 @@ import org.chromium.components.offlinepages.SavePageResult;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.content_public.browser.test.util.JavaScriptUtils;
 import org.chromium.net.NetworkChangeNotifier;
+import org.chromium.ui.modaldialog.DialogDismissalCause;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -55,7 +56,6 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Unit tests for {@link OfflinePageBridge}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class OfflinePageBridgeTest {
     @Rule
@@ -359,6 +359,7 @@ public class OfflinePageBridgeTest {
     @MediumTest
     @DisableFeatures(ChromeFeatureList.ENABLE_DOWNLOAD_SAVE_AS_CONTEXT_MENU)
     public void testDownloadPage() throws Exception {
+        DeviceInfo.setIsDesktopForTesting(false);
         final OfflinePageOrigin origin =
                 new OfflinePageOrigin("abc.xyz", new String[] {"deadbeef"});
         mActivityTestRule.loadUrl(mTestUrl);
@@ -385,13 +386,73 @@ public class OfflinePageBridgeTest {
                             });
 
                     OfflinePageDownloadBridge.startDownload(
-                            mActivityTestRule.getActivity().getActivityTab(), origin);
+                            mActivityTestRule.getActivity().getActivityTab(),
+                            origin,
+                            /* fromAppMenu= */ false);
                 });
         Assert.assertTrue(
                 "Semaphore acquire failed. Timed out.",
                 semaphore.tryAcquire(TIMEOUT_MS, TimeUnit.MILLISECONDS));
 
         List<OfflinePageItem> pages = OfflineTestUtil.getAllPages();
+        Assert.assertEquals(originString, pages.get(0).getRequestOrigin());
+    }
+
+    @Test
+    @MediumTest
+    @EnableFeatures(ChromeFeatureList.ENABLE_DOWNLOAD_SAVE_AS_CONTEXT_MENU)
+    public void testDownloadPage_SaveAsContextMenuEnabled() throws Exception {
+        DeviceInfo.setIsDesktopForTesting(false);
+        final OfflinePageOrigin origin =
+                new OfflinePageOrigin("abc.xyz", new String[] {"deadbeef"});
+        mActivityTestRule.loadUrl(mTestUrl);
+        makeTitleUnique();
+        final String originString = origin.encodeAsJsonString();
+
+        // Context menu download (fromAppMenu = false) should trigger OnSavePage() and show the
+        // download location dialog instead of saving an offline page.
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    OfflinePageDownloadBridge.startDownload(
+                            mActivityTestRule.getActivity().getActivityTab(),
+                            origin,
+                            /* fromAppMenu= */ false);
+                });
+        CriteriaHelper.pollUiThread(
+                () -> mActivityTestRule.getActivity().getModalDialogManager().isShowing());
+        Assert.assertTrue(OfflineTestUtil.getAllPages().isEmpty());
+        ThreadUtils.runOnUiThreadBlocking(
+                () ->
+                        mActivityTestRule
+                                .getActivity()
+                                .getModalDialogManager()
+                                .dismissAllDialogs(DialogDismissalCause.UNKNOWN));
+
+        // App menu download (fromAppMenu = true) should bypass OnSavePage() on non-desktop and
+        // save the page via OfflinePageBridge.
+        final Semaphore semaphore = new Semaphore(0);
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mOfflinePageBridge.addObserver(
+                            new OfflinePageModelObserver() {
+                                @Override
+                                public void offlinePageAdded(OfflinePageItem newPage) {
+                                    mOfflinePageBridge.removeObserver(this);
+                                    semaphore.release();
+                                }
+                            });
+
+                    OfflinePageDownloadBridge.startDownload(
+                            mActivityTestRule.getActivity().getActivityTab(),
+                            origin,
+                            /* fromAppMenu= */ true);
+                });
+        Assert.assertTrue(
+                "Semaphore acquire failed. Timed out.",
+                semaphore.tryAcquire(TIMEOUT_MS, TimeUnit.MILLISECONDS));
+
+        List<OfflinePageItem> pages = OfflineTestUtil.getAllPages();
+        Assert.assertEquals(1, pages.size());
         Assert.assertEquals(originString, pages.get(0).getRequestOrigin());
     }
 

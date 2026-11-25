@@ -12,6 +12,7 @@ source_set("types") {
 source_set("bookmarks") {
   public = [
     "bookmark_bar_policy_handler.h",
+    "bookmark_bar_utils.h",
     "bookmark_html_writer.h",
     "bookmark_merged_surface_ordering_storage.h",
     "bookmark_merged_surface_service.h",
@@ -21,6 +22,7 @@ source_set("bookmarks") {
     "bookmark_parent_folder.h",
     "bookmark_parent_folder_children.h",
     "chrome_bookmark_client.h",
+    "combined_bookmarks_view.h",
     "managed_bookmark_service_factory.h",
     "permanent_folder_ordering_tracker.h",
     "url_and_id.h",
@@ -44,6 +46,7 @@ source_set("bookmarks") {
 source_set("impl") {
   sources = [
     "bookmark_bar_policy_handler.cc",
+    "bookmark_bar_utils.cc",
     "bookmark_html_writer.cc",
     "bookmark_merged_surface_ordering_storage.cc",
     "bookmark_merged_surface_service.cc",
@@ -52,6 +55,7 @@ source_set("impl") {
     "bookmark_parent_folder.cc",
     "bookmark_parent_folder_children.cc",
     "chrome_bookmark_client.cc",
+    "combined_bookmarks_view.cc",
     "managed_bookmark_service_factory.cc",
     "permanent_folder_ordering_tracker.cc",
   ]
@@ -68,6 +72,7 @@ source_set("impl") {
     "//chrome/browser/undo",
     "//components/bookmarks/common",
     "//components/bookmarks/managed",
+    "//components/browser_apis/bookmarks:impl",
     "//components/commerce/core:feature_list",
     "//components/commerce/core:shopping_service",
     "//components/favicon/core",
@@ -77,10 +82,12 @@ source_set("impl") {
     "//components/policy:generated",
     "//components/pref_registry",
     "//components/prefs",
+    "//components/search",
     "//components/signin/public/base",
     "//components/sync/base",
     "//components/sync_bookmarks",
     "//components/undo",
+    "//components/user_prefs",
     "//content/public/browser",
     "//ui/gfx",
   ]
@@ -123,7 +130,10 @@ source_set("test_support") {
 source_set("unit_tests") {
   testonly = true
 
-  sources = [ "managed_bookmark_service_unittest.cc" ]
+  sources = [
+    "combined_bookmarks_view_unittest.cc",
+    "managed_bookmark_service_unittest.cc",
+  ]
 
   if (!is_android) {
     sources += [
@@ -150,6 +160,7 @@ source_set("unit_tests") {
     "//components/bookmarks/common",
     "//components/bookmarks/managed",
     "//components/bookmarks/test",
+    "//components/browser_apis/bookmarks:impl",
     "//components/prefs",
     "//components/signin/public/base",
     "//components/strings",

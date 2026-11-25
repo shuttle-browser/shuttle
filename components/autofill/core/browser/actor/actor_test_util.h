@@ -10,12 +10,14 @@
 
 #include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/types/expected.h"
 #include "components/actor/core/aggregated_journal.h"
 #include "components/autofill/core/browser/actor/actor_autofill_manager.h"
 #include "components/autofill/core/browser/actor/actor_form_filling_service_impl.h"
 #include "components/autofill/core/browser/actor/actor_key_metrics_recorder.h"
+#include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/foundations/test_autofill_client.h"
 #include "components/autofill/core/browser/foundations/test_autofill_driver.h"
 #include "components/autofill/core/browser/foundations/test_browser_autofill_manager.h"
@@ -101,6 +103,7 @@ class TestBrowserAutofillManagerWithTestCCAM
       mojom::ActionPersistence action_persistence,
       const FormGlobalId& form_id,
       const FieldGlobalId& field_id,
+      FillingProduct filling_product,
       const FillingPayload& filling_payload,
       AutofillTriggerSource trigger_source,
       bool require_user_confirmation,
@@ -164,6 +167,11 @@ class ActorTestBase : public testing::Test,
   }
   ActorFormFillingServiceImpl& service() { return *service_; }
   ::actor::AggregatedJournal& journal() { return journal_; }
+
+  // This is intended to be initialized by derived classes. It needs to be
+  // defined before the `task_environment_` to ensure a correct destruction
+  // order.
+  base::test::ScopedFeatureList feature_list_;
 
  private:
   base::test::TaskEnvironment task_environment_{

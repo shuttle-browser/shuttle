@@ -5,6 +5,7 @@ package org.chromium.chrome.browser.toolbar;
 
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.spy;
 
@@ -42,6 +43,7 @@ import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TrustedCdn;
 import org.chromium.chrome.browser.theme.ThemeUtils;
+import org.chromium.chrome.browser.toolbar.LocationBarModel.NativeLocationBarModelAndroid;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.test.util.ToolbarUnitTestUtils;
 import org.chromium.components.security_state.ConnectionMaliciousContentStatus;
@@ -93,9 +95,7 @@ public final class ToolbarSecurityIconTest {
 
     @Mock private LocationBarModel.Natives mLocationBarModelJni;
 
-    @Mock
-    private JniUniquePtr<LocationBarModel.NativeLocationBarModelAndroid>
-            mNativeLocationBarModelAndroid;
+    @Mock private JniUniquePtr<NativeLocationBarModelAndroid> mNativeLocationBarModelAndroid;
 
     @Mock private ChromeAutocompleteSchemeClassifier.Natives mChromeAutocompleteSchemeClassifierJni;
 
@@ -105,11 +105,13 @@ public final class ToolbarSecurityIconTest {
 
     @Before
     public void setUp() throws ExecutionException {
-
         NativeLibraryTestUtils.loadNativeLibraryNoBrowserProcess();
         SecurityStateModelJni.setInstanceForTesting(mSecurityStateMocks);
         ChromeAutocompleteSchemeClassifierJni.setInstanceForTesting(
                 mChromeAutocompleteSchemeClassifierJni);
+        doAnswer(invocation -> JniUniquePtr.createForTesting(1L))
+                .when(mChromeAutocompleteSchemeClassifierJni)
+                .createAutocompleteClassifier(any());
         LocationBarModelJni.setInstanceForTesting(mLocationBarModelJni);
 
         GURL exampleUrl = JUnitTestGURLs.EXAMPLE_URL;

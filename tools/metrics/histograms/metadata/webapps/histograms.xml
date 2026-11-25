@@ -234,7 +234,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Launch.WebAppDisplayMode" enum="WebAppDisplayMode"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>peter@chromium.org</owner>
   <owner>yfriedman@chromium.org</owner>
   <summary>
@@ -1417,7 +1417,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="WebApp.InstallMigrateToApp.Result"
-    enum="InstallMigrateToAppResult" expires_after="2027-02-11">
+    enum="InstallMigrateToAppResult" expires_after="2027-04-25">
   <owner>mek@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -1703,7 +1703,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="WebApp.Isolated.KeyDistributionComponent.ManagedInstallCheckInfoSource"
-    enum="KeyDistributionComponentSource" expires_after="2027-03-01">
+    enum="KeyDistributionComponentSource" expires_after="2027-05-02">
   <owner>rferens@google.com</owner>
   <owner>iwa-team@google.com</owner>
   <summary>
@@ -1752,7 +1752,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="WebApp.Isolated.KeyDistributionComponent.UpdateError"
-    enum="IwaComponentUpdateError" expires_after="2026-12-01">
+    enum="IwaComponentUpdateError" expires_after="2027-10-23">
   <owner>greengrape@google.com</owner>
   <owner>iwa-team@google.com</owner>
   <summary>
@@ -1999,7 +1999,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="WebApp.LaunchContainer" enum="AppLaunchContainer"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>phillis@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -2020,7 +2020,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="WebApp.LaunchSource" enum="LaunchSource"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>phillis@chromium.org</owner>
   <owner>pwa-team@google.com</owner>
   <summary>
@@ -2036,6 +2036,61 @@ chromium-metrics-reviews@google.com.
   <summary>Whether the given launch url is in the web app's scope.</summary>
 </histogram>
 
+<histogram name="WebApp.ManagedConfiguration.DownloadOutcome"
+    enum="ManagedConfigurationDownloadOutcome" expires_after="2027-10-26">
+  <owner>simonha@google.com</owner>
+  <owner>iwa-team@google.com</owner>
+  <owner>src/chrome/browser/device_api/OWNERS</owner>
+  <summary>
+    Records the outcome of each managed configuration download attempt started
+    from the ManagedConfigurationPerOrigin policy: whether it completed with a
+    response body, failed, was aborted and restarted due to a network change,
+    was aborted because the policy changed, or was still in flight when the
+    profile shut down. Internal SimpleURLLoader retries within a single download
+    attempt are not counted separately. Only recorded when the
+    kManagedConfigurationRecoverFromFailedFetches feature is enabled.
+  </summary>
+</histogram>
+
+<histogram name="WebApp.ManagedConfiguration.RetryCountUntilSuccess"
+    units="retries" expires_after="2027-10-26">
+  <owner>simonha@google.com</owner>
+  <owner>iwa-team@google.com</owner>
+  <owner>src/chrome/browser/device_api/OWNERS</owner>
+  <summary>
+    Records the number of retries required before an origin's managed
+    configuration from the ManagedConfigurationPerOrigin policy is successfully
+    downloaded, parsed, and committed to the LevelDB store. Emits 0 when the
+    initial attempt succeeds without needing a retry. Internal SimpleURLLoader
+    retries within a single download attempt and in-flight downloads aborted and
+    restarted due to a network change (tracked separately in
+    WebApp.ManagedConfiguration.DownloadOutcome) are not counted. Recorded once
+    per committed configuration sync (not recorded when a cached hash already
+    matches policy, or if a sync is superseded or ends before succeeding; see
+    WebApp.ManagedConfiguration.RetryReason for all scheduled retries). Only
+    recorded when the kManagedConfigurationRecoverFromFailedFetches feature is
+    enabled.
+  </summary>
+</histogram>
+
+<histogram name="WebApp.ManagedConfiguration.RetryReason"
+    enum="ManagedConfigurationRetryReason" expires_after="2027-10-26">
+  <owner>simonha@google.com</owner>
+  <owner>iwa-team@google.com</owner>
+  <owner>src/chrome/browser/device_api/OWNERS</owner>
+  <summary>
+    Records the failure reason each time ManagedConfigurationAPI schedules a
+    retry to sync an origin's managed configuration from the
+    ManagedConfigurationPerOrigin policy (download failure, invalid or
+    non-dictionary JSON payload, or LevelDB store write failure). Internal
+    SimpleURLLoader retries within a single download attempt are not counted
+    separately. Emitted immediately when the retry is scheduled, including for
+    configurations that never recover before the session ends or before the
+    policy changes. Only recorded when the
+    kManagedConfigurationRecoverFromFailedFetches feature is enabled.
+  </summary>
+</histogram>
+
 <histogram name="WebApp.Manifest.ForOpaqueOrigin" enum="Boolean"
     expires_after="2027-05-11">
   <owner>japhet@chromium.org</owner>
@@ -2044,6 +2099,26 @@ chromium-metrics-reviews@google.com.
     Records when the browser process receives a non-empty manifest from the
     renderer, but the browser believes the current document origin in the
     renderer is opaque (and therefore should never have a manifest).
+  </summary>
+</histogram>
+
+<histogram name="WebApp.Manifest.InvariantViolation"
+    enum="ManifestInvariantError" expires_after="2027-10-01">
+  <owner>dmurph@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the specific intrinsic invariant rule violated by a Web App Manifest
+    when deserialized from Mojo IPC in the browser process.
+  </summary>
+</histogram>
+
+<histogram name="WebApp.Manifest.InvariantViolation.PolicyOverride"
+    enum="ManifestInvariantError" expires_after="2027-10-01">
+  <owner>dmurph@chromium.org</owner>
+  <owner>pwa-team@google.com</owner>
+  <summary>
+    Records the specific intrinsic invariant rule violated when applying a
+    policy override to a Web App Manifest in the browser process.
   </summary>
 </histogram>
 
@@ -2330,7 +2405,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Webapp.NavigationCapturing.LaunchParamsConsumedTime.{DidNavigate}"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>dibyapal@chromium.org</owner>
   <owner>desktop-pwas-team@google.com</owner>
   <summary>
@@ -2366,7 +2441,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Webapp.NavigationCapturing.Result"
-    enum="NavigationCapturingResult" expires_after="2027-02-28">
+    enum="NavigationCapturingResult" expires_after="2027-05-02">
   <owner>dibyapal@chromium.org</owner>
   <owner>desktop-pwas-team@google.com</owner>
   <summary>
@@ -2879,6 +2954,35 @@ chromium-metrics-reviews@google.com.
     triggered during OS integration whenever an app is being uninstalled or the
     user is modifying the app preferences to not have it run on startup from the
     chrome://apps context menu or app settings page.
+  </summary>
+</histogram>
+
+<histogram name="WebApp.ShareTarget.WaitForServiceWorker.Outcome"
+    enum="WebAppShareTargetWaitForServiceWorkerOutcome"
+    expires_after="2027-06-01">
+  <owner>joelhockey@chromium.org</owner>
+  <owner>src/chrome/android/webapk/OWNERS</owner>
+  <summary>
+    Records how a POST Web Share Target delivered to a TWA or WebAPK was handled
+    when waiting for the app's service worker, which is needed to handle the
+    POST (e.g. for a preinstalled TWA that has never been launched). Records
+    whether the POST was sent (and why), or dropped. Recorded once per POST
+    share, when the ShareTargetWaitForServiceWorker feature is enabled and the
+    app's start URL is same-origin with the share target action.
+  </summary>
+</histogram>
+
+<histogram name="WebApp.ShareTarget.WaitForServiceWorker.TimeToActivation"
+    units="ms" expires_after="2027-06-01">
+  <owner>joelhockey@chromium.org</owner>
+  <owner>src/chrome/android/webapk/OWNERS</owner>
+  <summary>
+    For a POST Web Share Target delivered to a TWA or WebAPK whose origin had no
+    service worker registration, the time from starting to load the app's start
+    URL (so that it can register its service worker) until a service worker
+    whose scope includes the share target action was activated and the POST was
+    sent. Includes any time spent on other origins, e.g. signing in. Recorded
+    once per such share, only if the service worker activated.
   </summary>
 </histogram>
 

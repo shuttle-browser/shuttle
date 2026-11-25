@@ -95,10 +95,23 @@ chromium-metrics-reviews@google.com.
                of the page. This is measured as percentage of a cpu core used
                and capped at 100% for multicore systems. This is measured
                whether a frame is in the foreground or not."/>
+  <variant name=".FullPage.TotalAdsUsage"
+      summary="The total CPU usage across all ad frames and ad scripts in
+               non-ad frames on a page in its lifetime. Recorded whenever the
+               page has at least one ad frame or non-zero ad script CPU usage
+               in non-ad frames. This is measured in milliseconds. This is
+               measured whether a frame is in the foreground or not."/>
   <variant name=".FullPage.TotalUsage2"
       summary="The total load of the page across its lifetime. This is
                measured in milliseconds and capped at 10 minutes. This is
                measured whether a frame is in the foreground or not."/>
+  <variant name=".NonAdFrames.Aggregate.AdScripts.TotalUsage"
+      summary="The total CPU usage of ad scripts executing in non-ad frames
+               (including the main frame) across its lifetime. Recorded
+               whenever the page has at least one ad frame or non-zero ad
+               script CPU usage in non-ad frames. This is measured in
+               milliseconds. This is measured whether a frame is in the
+               foreground or not."/>
   <variant name=".NonAdFrames.Aggregate.PeakWindowedPercent2"
       summary="The peak load over all 30 second windows during the lifetime
                of the page of all non-ad frame activity including that of the
@@ -441,8 +454,6 @@ chromium-metrics-reviews@google.com.
   <variant name="PriceTracking"/>
   <variant name="PWAInstall"/>
   <variant name="QRCodeGenerator"/>
-  <variant name="ReadAnything"
-      summary="ReadAnything (Obsolete, Deprecated Jun 06, 2024)"/>
   <variant name="ReaderMode"/>
   <variant name="ReadingMode"/>
   <variant name="SaveAutofillAddress"/>
@@ -766,7 +777,6 @@ chromium-metrics-reviews@google.com.
 
 <variants name="PrivacySandboxAdsApi">
   <variant name="FencedFrames"/>
-  <variant name="SharedStorage"/>
   <variant name="Topics"/>
 </variants>
 
@@ -790,8 +800,6 @@ chromium-metrics-reviews@google.com.
   <variant name="report"/>
   <variant name="script"/>
   <variant name="serviceworker"/>
-  <variant name="sharedstorageworklet"
-      summary="(obsolete) Shared storage worklet"/>
   <variant name="sharedworker"/>
   <variant name="style"/>
   <variant name="track"/>
@@ -886,6 +894,7 @@ chromium-metrics-reviews@google.com.
   <variant name=".context-hub"/>
   <variant name=".contextual-cueing-internals"/>
   <variant name=".contextual-tasks"/>
+  <variant name=".craft"/>
   <variant name=".crashes"/>
   <variant name=".credits"/>
   <variant name=".crosh"/>
@@ -1030,7 +1039,6 @@ chromium-metrics-reviews@google.com.
   <variant name=".signin-email-confirmation"/>
   <variant name=".signin-error"/>
   <variant name=".signin-internals"/>
-  <variant name=".signin-qrcode-bar"/>
   <variant name=".signout-confirmation"/>
   <variant name=".site-engagement"/>
   <variant name=".skills"/>
@@ -1042,7 +1050,6 @@ chromium-metrics-reviews@google.com.
   <variant name=".subresource-filter-internals"/>
   <variant name=".suggest-internals"/>
   <variant name=".support-tool"/>
-  <variant name=".sync-confirmation"/>
   <variant name=".sync-internals"/>
   <variant name=".sys-internals"/>
   <variant name=".system"/>
@@ -1535,15 +1542,18 @@ chromium-metrics-reviews@google.com.
   <owner>jkarlin@chromium.org</owner>
   <owner>chrome-ads-histograms@google.com</owner>
   <summary>
-    Only recorded if the page has at least one identified ad frame. Recorded in
-    PageLoadMetrics when the page is destroyed. Cpu measures the wall time of
-    tasks attributable to a frame as reported by the MainThreadTaskScheduler as
-    well as time spent servicing scripted animations by each document (not
-    attributable by the MainThreadTaskScheduler). An ad frame consists of the
-    identified ad frame and all of its children (which may also be ads, but are
-    counted as part of the ancestor ad frame). Includes resources that did not
-    finish loading. Does not consider time while a page is backgrounded.
-    Includes all ad iframes. {AdsPageLoadAllCpuType}
+    Recorded if the page has at least one identified ad frame (or, for
+    .FullPage.TotalAdsUsage and .NonAdFrames.Aggregate.AdScripts.TotalUsage, if
+    the page has at least one ad frame or non-zero ad script CPU usage in non-ad
+    frames). Recorded in PageLoadMetrics when the page is destroyed. Cpu
+    measures the wall time of tasks attributable to a frame as reported by the
+    MainThreadTaskScheduler as well as time spent servicing scripted animations
+    by each document (not attributable by the MainThreadTaskScheduler), and for
+    ad script variants, the wall time spent executing ad scripts in non-ad
+    frames. An ad frame consists of the identified ad frame and all of its
+    children (which may also be ads, but are counted as part of the ancestor ad
+    frame). Includes resources that did not finish loading. Includes all ad
+    iframes. {AdsPageLoadAllCpuType}
 
     Warning: This metric expired around 04/2022 and was unexpired 07/2023. Data
     may be missing.
@@ -1890,7 +1900,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="PageLoad.Clients.DocWrite.Block.{PageLoadClientsDocWriteTimingMetric}"
-    units="ms" expires_after="2027-02-14">
+    units="ms" expires_after="2027-04-25">
   <owner>csharrison@chromium.org</owner>
   <owner>speed-metrics-dev@chromium.org</owner>
   <summary>
@@ -4644,7 +4654,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="PageLoad.Clients.Zstd.PaintTiming.NavigationToFirstContentfulPaint"
-    units="ms" expires_after="2026-06-25">
+    units="ms" expires_after="2027-10-29">
   <owner>nidhijaju@chromium.org</owner>
   <owner>blink-network-stack@google.com</owner>
   <summary>
@@ -4653,12 +4663,15 @@ chromium-metrics-reviews@google.com.
     zstd. A contentful paint includes a paint of text, image, SVG, or canvas.
     Only recorded for navigations that start in the foreground and stay in the
     foreground until the first contentful paint.
+
+    Warning: this histogram was expired from 2026-06-26 to 2026-10-29; data may
+    be missing.
   </summary>
 </histogram>
 
 <histogram
     name="PageLoad.Clients.Zstd.PaintTiming.NavigationToLargestContentfulPaint"
-    units="ms" expires_after="2026-06-25">
+    units="ms" expires_after="2027-10-29">
   <owner>nidhijaju@chromium.org</owner>
   <owner>blink-network-stack@google.com</owner>
   <summary>
@@ -4670,11 +4683,14 @@ chromium-metrics-reviews@google.com.
     content is still considered a valid candidate. Only recorded for navigations
     that happen entirely in the foreground. The metric is emitted when the
     navigation is completed or the app is backgrounded on Android.
+
+    Warning: this histogram was expired from 2026-06-26 to 2026-10-29; data may
+    be missing.
   </summary>
 </histogram>
 
 <histogram name="PageLoad.Clients.Zstd.ParseTiming.NavigationToParseStart"
-    units="ms" expires_after="2026-06-25">
+    units="ms" expires_after="2027-10-29">
   <owner>nidhijaju@chromium.org</owner>
   <owner>blink-network-stack@google.com</owner>
   <summary>
@@ -4683,8 +4699,8 @@ chromium-metrics-reviews@google.com.
     navigations that start in the foreground and stay in the foreground until
     parse start. This metric is emitted when the parser starts for a navigation.
 
-    Warning: this histogram was expired from 2025-04-07 to 2025-06-25; data may
-    be missing.
+    Warning: this histogram was expired from 2025-04-07 to 2025-06-25, and then
+    from 2026-06-26 to 2026-10-29; data may be missing.
   </summary>
 </histogram>
 
@@ -5078,7 +5094,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PageLoad.Experimental.ClickInputBurst" units="count"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>dougarnett@chromium.org</owner>
   <owner>tbansal@chromium.org</owner>
   <owner>sullivan@chromium.org</owner>
@@ -5093,7 +5109,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PageLoad.Experimental.InputTiming.InputToNavigationStart"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>spelchat@chromium.org</owner>
   <owner>chrome-brapp-loading@google.com</owner>
   <summary>
@@ -5136,7 +5152,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="PageLoad.Experimental.InputTiming.InputToNavigationStart.FromLinkClick"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>spelchat@chromium.org</owner>
   <owner>chrome-brapp-loading@google.com</owner>
   <summary>
@@ -5147,7 +5163,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="PageLoad.Experimental.InputTiming.InputToNavigationStart.FromOmnibox"
-    units="ms" expires_after="2027-02-28">
+    units="ms" expires_after="2027-05-02">
   <owner>spelchat@chromium.org</owner>
   <owner>chrome-brapp-loading@google.com</owner>
   <summary>
@@ -5281,7 +5297,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PageLoad.Experimental.PageVisitFinalStatus"
-    enum="PageVisitFinalStatus" expires_after="2027-02-28">
+    enum="PageVisitFinalStatus" expires_after="2027-05-02">
   <owner>sullivan@chromium.org</owner>
   <owner>speed-metrics-dev@chromium.org</owner>
   <summary>
@@ -5318,7 +5334,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PageLoad.Experimental.TotalForegroundDuration" units="ms"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>mmocny@chromium.org</owner>
   <owner>speed-metrics-dev@chromium.org</owner>
   <owner>chrome-prerendering@google.com</owner>
@@ -5577,7 +5593,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PageLoad.Internal.ErrorCode" enum="InternalErrorLoadEvent"
-    expires_after="2027-02-21">
+    expires_after="2027-04-25">
   <owner>csharrison@chromium.org</owner>
   <owner>bmcquade@chromium.org</owner>
   <summary>
@@ -5814,7 +5830,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="PageLoad.LayoutInstability.CumulativeShiftScoreAtFirstOnHidden"
-    units="scorex10" expires_after="2027-02-28">
+    units="scorex10" expires_after="2027-05-02">
   <owner>lanwei@chromium.org</owner>
   <owner>speed-metrics-dev@chromium.org</owner>
   <summary>

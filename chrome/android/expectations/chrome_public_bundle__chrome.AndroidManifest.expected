@@ -22,7 +22,7 @@
   <uses-permission android:name="android.permission.USE_FINGERPRINT"/>
   <uses-permission android:name="com.google.android.apps.aicore.service.BIND_SERVICE"/>
   <uses-permission android:name="com.google.android.c2dm.permission.RECEIVE"/>
-  <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="36"/>
+  <uses-sdk android:minSdkVersion="29" android:targetSdkVersion="37"/>
   <application>
     <activity  # DIFF-ANCHOR: f7a9141e
         android:name="androidx.core.pip.contentpip.ContentPipInternalActivity"
@@ -105,6 +105,7 @@
     </activity>  # DIFF-ANCHOR: 610e8ccf
     <activity  # DIFF-ANCHOR: 76686af9
         android:name="org.chromium.chrome.browser.LauncherShortcutActivity"
+        android:configChanges="orientation|keyboardHidden|keyboard|screenSize|mcc|mnc|screenLayout|smallestScreenSize|uiMode|density"
         android:excludeFromRecents="true"
         android:exported="false"
         android:launchMode="singleInstance"
@@ -430,12 +431,6 @@
         android:autoRemoveFromRecents="true"
         android:theme="@style/Theme.Chromium.Activity">
     </activity>  # DIFF-ANCHOR: 8492e3fd
-    <activity  # DIFF-ANCHOR: 45a98fa4
-        android:name="org.chromium.chrome.browser.sync.ui.SyncTrustedVaultProxyActivity"
-        android:excludeFromRecents="true"
-        android:exported="false"
-        android:theme="@style/Theme.Material3Expressive.DayNight">
-    </activity>  # DIFF-ANCHOR: 45a98fa4
     <activity  # DIFF-ANCHOR: 6e34d703
         android:name="org.chromium.chrome.browser.task_manager.ui.TaskManagerActivity"
         android:exported="false"
@@ -443,6 +438,12 @@
         android:theme="@style/Theme.Chromium.Activity">
       <layout android:defaultHeight="524dp" android:defaultWidth="720dp"/>
     </activity>  # DIFF-ANCHOR: 6e34d703
+    <activity  # DIFF-ANCHOR: 80db3eaf
+        android:name="org.chromium.chrome.browser.trusted_vault.TrustedVaultProxyActivity"
+        android:excludeFromRecents="true"
+        android:exported="false"
+        android:theme="@style/Theme.Material3Expressive.DayNight">
+    </activity>  # DIFF-ANCHOR: 80db3eaf
     <activity  # DIFF-ANCHOR: 9bb1f409
         android:name="org.chromium.chrome.browser.webapps.ActivateWebApkActivity"
         android:exported="true"

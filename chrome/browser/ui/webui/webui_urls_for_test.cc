@@ -55,6 +55,9 @@ base::span<const std::string_view> GetChromeUrlsForTest() {
       "chrome://contextual-cueing-internals",
 #endif
       "chrome://context-hub",
+#if !BUILDFLAG(IS_ANDROID)
+      "chrome://craft",
+#endif
       "chrome://crashes",
 // TODO(crbug.com/40913109): Re-enable this test
 #if !BUILDFLAG(IS_LINUX) && !BUILDFLAG(IS_CHROMEOS)
@@ -332,9 +335,6 @@ base::span<const std::string_view> GetUntestedChromeUrlsForTest() {
       "chrome://signin-dice-web-intercept.top-chrome",
       "chrome://signin-error",
       "chrome://skills",
-      // TODO(crbug.com/40137561): Navigating to chrome://sync-confirmation and
-      // quickly navigating away cause DCHECK failure.
-      "chrome://sync-confirmation",
       "chrome://tab-group-home",
       // TODO(crbug.com/40137562): Navigating to chrome://tab-strip and quickly
       // navigating away cause DCHECK failure.

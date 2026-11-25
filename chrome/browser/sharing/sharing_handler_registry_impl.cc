@@ -6,13 +6,15 @@
 
 #include "base/feature_list.h"
 #include "build/build_config.h"
+#include "chrome/browser/browser_actuator/transport/transport_service_factory.h"
+#include "chrome/browser/glic/public/glic_feature.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sharing/browser_actuator/browser_actuator_message_handler.h"
 #include "chrome/browser/sharing/glic_experimental_triggering/glic_experimental_triggering_message_handler.h"
 #include "chrome/browser/sharing/one_time_tokens/one_time_token_sharing_handler.h"
 #include "chrome/browser/sharing/optimization_guide/optimization_guide_message_handler.h"
-#include "chrome/common/chrome_features.h"
 #include "components/browser_actuator/public/features.h"
 #include "components/one_time_tokens/core/browser/gmail_otp_backend.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
@@ -98,7 +100,9 @@ SharingHandlerRegistryImpl::SharingHandlerRegistryImpl(
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-  if (base::FeatureList::IsEnabled(features::kGlicExperimentalTriggering) &&
+  // GetGlicProviderSpec() returns the consumer spec for a null `profile`.
+  if (glic::GetGlicProviderSpec(profile).SupportsFeature(
+          glic::GlicFeature::kExperimentalTriggering) &&
       glic::GlicKeyedServiceFactory::GetGlicKeyedService(profile,
                                                          /*create=*/true)) {
     AddSharingHandler(
@@ -110,9 +114,14 @@ SharingHandlerRegistryImpl::SharingHandlerRegistryImpl(
 
   std::set<components_sharing_message::SharingMessage::PayloadCase>
       browser_actuator_payloads = GetBrowserActuatorPayloads();
-  if (!browser_actuator_payloads.empty()) {
-    AddSharingHandler(std::make_unique<BrowserActuatorMessageHandler>(profile),
-                      browser_actuator_payloads);
+  if (!browser_actuator_payloads.empty() && profile) {
+    if (browser_actuator::transport::TransportService* transport_service =
+            browser_actuator::transport::TransportServiceFactory::GetForProfile(
+                profile)) {
+      AddSharingHandler(
+          std::make_unique<BrowserActuatorMessageHandler>(transport_service),
+          browser_actuator_payloads);
+    }
   }
 }
 

@@ -15,14 +15,10 @@ class GeminiServiceFactory final
  public:
   explicit GeminiServiceFactory(PassKey key);
 
-  // Returns the default factory used to build GeminiService. Can be registered
-  // with AddTestingFactory to use real instances during testing.
-  static TestingFactory GetDefaultFactory();
-
  private:
   // ProfileKeyedServiceFactoryIOS implementation.
   std::unique_ptr<KeyedService> BuildServiceInstanceFor(
-      ProfileIOS* profile) const final;
+      ProfileIOS& profile) const final;
 };
 
 #endif  // IOS_CHROME_BROWSER_INTELLIGENCE_BWG_MODEL_GEMINI_SERVICE_FACTORY_H_

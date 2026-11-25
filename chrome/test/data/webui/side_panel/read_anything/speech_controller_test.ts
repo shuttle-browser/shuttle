@@ -6,16 +6,14 @@ import type {NodeStore, Segment, SpeechController, VoiceLanguageController, Word
 import {assertDeepEquals, assertEquals, assertFalse, assertGE, assertGT, assertNotEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 import {MockTimer} from 'chrome-untrusted://webui-test/mock_timer.js';
 
-import {createSpeechErrorEvent, createSpeechSynthesisVoice, createWordBoundaryEvent, setContent, setupTestEnvironment} from './common.js';
+import {createSpeechErrorEvent, createSpeechSynthesisVoice, createWordBoundaryEvent, playWithMockTimer, setContent, setupTestEnvironment} from './common.js';
 import type {TestAudioBrowserProxy} from './test_audio_browser_proxy.js';
 import type {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
 import type {TestReadAloudModelBrowserProxy} from './test_read_aloud_browser_proxy.js';
 import type {TestSpeechBrowserProxy} from './test_speech_browser_proxy.js';
-import type {TestVisualBrowserProxy} from './test_visual_browser_proxy.js';
 
 suite('SpeechController', () => {
   let audioBrowserProxy: TestAudioBrowserProxy;
-  let visualBrowserProxy: TestVisualBrowserProxy;
   let speech: TestSpeechBrowserProxy;
   let speechController: SpeechController;
   let isSpeechActiveChanged: boolean;
@@ -63,7 +61,6 @@ suite('SpeechController', () => {
   setup(() => {
     const result = setupTestEnvironment();
     audioBrowserProxy = result.audioBrowserProxy;
-    visualBrowserProxy = result.visualBrowserProxy;
     speech = result.speech;
     metrics = result.metrics;
     readAloudModel = result.readAloudModel;
@@ -444,6 +441,39 @@ suite('SpeechController', () => {
       assertEquals(
           longSentences.length - spokenTextLength, getSpokenText().length);
     });
+
+    test('with local voice speaks full text', () => {
+      voiceLanguageController.setUserPreferredVoice(createSpeechSynthesisVoice(
+          {lang: 'en', name: 'Google Raccoon', localService: true}));
+
+      onPlayPauseToggle(longSentences);
+
+      assertEquals(longSentences, getSpokenText());
+    });
+
+    test('splits on last comma before max speech length', () => {
+      const lastComma =
+          longSentences.substring(0, MAX_SPEECH_LENGTH).lastIndexOf(', ');
+      assertGT(lastComma, 0);
+
+      onPlayPauseToggle(longSentences);
+
+      assertEquals(longSentences.substring(0, lastComma), getSpokenText());
+      assertEquals(0, readAloudModel.getCallCount('getAccessibleText'));
+    });
+
+    test('without early comma uses accessible text from model', () => {
+      const text = 'my power flurries through the air into the ground- my ' +
+          'soul is spiraling in frozen fractals all around and one thought ' +
+          'crystallizes like an icy blast I\'m never going back- the past is ' +
+          'in the past- let it go, let it go';
+      assertGT(text.indexOf(', '), MAX_SPEECH_LENGTH);
+
+      onPlayPauseToggle(text);
+
+      assertEquals(1, readAloudModel.getCallCount('getAccessibleText'));
+      assertGE(MAX_SPEECH_LENGTH, getSpokenText().length);
+    });
   });
 
   test('stops speech on language-unavailable', async () => {
@@ -803,6 +833,55 @@ suite('SpeechController', () => {
         assertTrue(highlighter.hasCurrentGranularity());
       });
 
+  test('onHighlightGranularityChange prefetches phrases when used', () => {
+    audioBrowserProxy.isPhraseHighlightingEnabledFlag = true;
+    audioBrowserProxy.baseLanguageForSpeech = 'en';
+    audioBrowserProxy.highlightGranularity =
+        audioBrowserProxy.phraseHighlighting;
+    wordBoundaries.updateBoundary(0);
+
+    speechController.onHighlightGranularityChange(
+        audioBrowserProxy.phraseHighlighting);
+
+    assertEquals(1, readAloudModel.getCallCount('prefetchPhraseBoundaries'));
+  });
+
+  test('onHighlightGranularityChange does not prefetch for words', () => {
+    audioBrowserProxy.isPhraseHighlightingEnabledFlag = true;
+    audioBrowserProxy.baseLanguageForSpeech = 'en';
+    audioBrowserProxy.highlightGranularity = audioBrowserProxy.wordHighlighting;
+    wordBoundaries.updateBoundary(0);
+
+    speechController.onHighlightGranularityChange(
+        audioBrowserProxy.wordHighlighting);
+
+    assertEquals(0, readAloudModel.getCallCount('prefetchPhraseBoundaries'));
+  });
+
+  test('playing speech prefetches phrases when used', () => {
+    audioBrowserProxy.isPhraseHighlightingEnabledFlag = true;
+    audioBrowserProxy.baseLanguageForSpeech = 'en';
+    audioBrowserProxy.highlightGranularity =
+        audioBrowserProxy.phraseHighlighting;
+    wordBoundaries.updateBoundary(0);
+
+    onPlayPauseToggle('Prefetch the phrases');
+
+    assertEquals(1, readAloudModel.getCallCount('prefetchPhraseBoundaries'));
+  });
+
+  test('playing speech does not prefetch for non-English speech', () => {
+    audioBrowserProxy.isPhraseHighlightingEnabledFlag = true;
+    audioBrowserProxy.baseLanguageForSpeech = 'fr';
+    audioBrowserProxy.highlightGranularity =
+        audioBrowserProxy.phraseHighlighting;
+    wordBoundaries.updateBoundary(0);
+
+    onPlayPauseToggle('Bonjour tout le monde');
+
+    assertEquals(0, readAloudModel.getCallCount('prefetchPhraseBoundaries'));
+  });
+
   test('onLockScreen while paused does nothing', () => {
     speechController.onLockScreen();
 
@@ -848,18 +927,14 @@ suite('SpeechController', () => {
     const voice1 = createSpeechSynthesisVoice({lang: 'pt-pt', name: 'Donkey'});
     const voice2 = createSpeechSynthesisVoice({lang: 'pt-br', name: 'Corgi'});
     voiceLanguageController.setUserPreferredVoice(voice1);
-    let sentName = '';
-    let sentLang = '';
-    audioBrowserProxy.onVoiceChange = (name, lang) => {
-      sentName = name;
-      sentLang = lang;
-    };
+    audioBrowserProxy.resetResolver('onVoiceChange');
 
     speechController.onVoiceSelected(voice2);
 
     assertEquals(voice2, voiceLanguageController.getCurrentVoice());
-    assertEquals(voice2.name, sentName);
-    assertEquals(voice2.lang, sentLang);
+    assertDeepEquals(
+        [[voice2.name, voice2.lang]],
+        audioBrowserProxy.getArgs('onVoiceChange'));
   });
 
   test('onVoiceSelected resets word boundaries on different locale', () => {
@@ -959,7 +1034,7 @@ suite('SpeechController', () => {
     assertEquals(0, metrics.getCallCount('recordSpeechStopSource'));
   });
 
-  test('playFromContentPosition logs selection metric', async () => {
+  test('playFromContentPosition logs selection metric', () => {
     const text = 'This is a selection.';
     setContent(text, readAloudModel);
     const node = nodeStore.getDomNode(2)!;  // setContent uses id 2
@@ -968,11 +1043,7 @@ suite('SpeechController', () => {
     const element = document.createElement('p');
     element.textContent = text;
 
-    // Trigger play
-    speechController.onPlayPauseToggle(element);
-
-    // Wait for the setTimeout in playFromContentPosition_
-    await new Promise(resolve => setTimeout(resolve, 500));
+    playWithMockTimer(() => speechController.onPlayPauseToggle(element));
 
     assertEquals(1, metrics.getCallCount('incrementMetricCount'));
     assertEquals(
@@ -980,14 +1051,14 @@ suite('SpeechController', () => {
         metrics.getArgs('incrementMetricCount')[0]);
   });
 
-  test('playFromContentPosition logs line focus metric', async () => {
+  test('playFromContentPosition logs line focus metric', () => {
     const text = 'Lost for kind words to say.';
     const element = document.createElement('p');
     const id = 2;
     const node = document.createTextNode(text);
     nodeStore.setDomNode(node, id);
     const segments: Segment[] =
-        [{node: ReadAloudNode.create(node)!, start: 0, length: text.length}];
+        [{node: ReadAloudNode.create(node), start: 0, length: text.length}];
     readAloudModel.setCurrentTextSegments(segments);
     readAloudModel.setCurrentTextContent(text);
     element.appendChild(node);
@@ -999,11 +1070,7 @@ suite('SpeechController', () => {
     const position = document.caretPositionFromPoint(rect.left, rect.top);
     speechController.onLineFocusChange(position);
 
-    // Trigger play
-    speechController.onPlayPauseToggle(element);
-
-    // Wait for the setTimeout in playFromContentPosition_
-    await new Promise(resolve => setTimeout(resolve, 500));
+    playWithMockTimer(() => speechController.onPlayPauseToggle(element));
 
     assertEquals(1, metrics.getCallCount('incrementMetricCount'));
     assertEquals(
@@ -1018,7 +1085,7 @@ suite('SpeechController', () => {
     const node = document.createTextNode(text);
     nodeStore.setDomNode(node, id);
     const segments: Segment[] =
-        [{node: ReadAloudNode.create(node)!, start: 0, length: text.length}];
+        [{node: ReadAloudNode.create(node), start: 0, length: text.length}];
     readAloudModel.setCurrentTextSegments(segments);
     readAloudModel.setCurrentTextContent(text);
     element.appendChild(node);
@@ -1036,6 +1103,48 @@ suite('SpeechController', () => {
     assertTrue(onPlayingFromPosition);
   });
 
+  test('collapsed selection keeps line focus position', async () => {
+    const text = 'Lost for kind words to say.';
+    const element = document.createElement('p');
+    const id = 2;
+    const node = document.createTextNode(text);
+    nodeStore.setDomNode(node, id);
+    const segments: Segment[] =
+        [{node: ReadAloudNode.create(node), start: 0, length: text.length}];
+    readAloudModel.setCurrentTextSegments(segments);
+    readAloudModel.setCurrentTextContent(text);
+    element.appendChild(node);
+    document.body.appendChild(element);
+    const range = document.createRange();
+    range.selectNode(node);
+    const rect = range.getClientRects().item(0);
+    assertTrue(!!rect);
+    speechController.onLineFocusChange(
+        document.caretPositionFromPoint(rect.left, rect.top));
+
+    speechController.onSelectionChange(null);
+    speechController.onPlayPauseToggle(element);
+    await speech.whenCalled('speak');
+
+    assertTrue(onPlayingFromPosition);
+  });
+
+  test('clearing line focus keeps selection position', async () => {
+    const text = 'Keep my selection.';
+    setContent(text, readAloudModel);
+    const node = nodeStore.getDomNode(2)!;
+    speechController.onSelectionChange(
+        {node, offset: 0, source: ContentPositionSource.SELECTION});
+    const element = document.createElement('p');
+    element.textContent = text;
+
+    speechController.onLineFocusChange(null);
+    speechController.onPlayPauseToggle(element);
+    await speech.whenCalled('speak');
+
+    assertTrue(onPlayingFromPosition);
+  });
+
   test(
       'playFromContentPosition starts from beginning when line focus off',
       async () => {
@@ -1045,7 +1154,7 @@ suite('SpeechController', () => {
         const node = document.createTextNode(text);
         nodeStore.setDomNode(node, id);
         const segments: Segment[] = [
-          {node: ReadAloudNode.create(node)!, start: 0, length: text.length},
+          {node: ReadAloudNode.create(node), start: 0, length: text.length},
         ];
         readAloudModel.setCurrentTextSegments(segments);
         readAloudModel.setCurrentTextContent(text);
@@ -1105,17 +1214,17 @@ suite('SpeechController', () => {
         nodeStore.setDomNode(node3, 3);
 
         const segment1 = {
-          node: ReadAloudNode.create(node1)!,
+          node: ReadAloudNode.create(node1),
           start: 0,
           length: text1.length,
         };
         const segment2 = {
-          node: ReadAloudNode.create(node2)!,
+          node: ReadAloudNode.create(node2),
           start: 0,
           length: text2.length,
         };
         const segment3 = {
-          node: ReadAloudNode.create(node3)!,
+          node: ReadAloudNode.create(node3),
           start: 0,
           length: text3.length,
         };
@@ -1179,76 +1288,6 @@ suite('SpeechController', () => {
       });
 
   test(
-      'playFromContentPosition without line focus adds intermediate highlights',
-      async () => {
-        visualBrowserProxy.lineFocusEnabled = false;
-        const text1 = 'First line. ';
-        const text2 = 'Second line.';
-        const node1 = document.createTextNode(text1);
-        const node2 = document.createTextNode(text2);
-        nodeStore.setDomNode(node1, 1);
-        nodeStore.setDomNode(node2, 2);
-
-        const segment1 = {
-          node: ReadAloudNode.create(node1)!,
-          start: 0,
-          length: text1.length,
-        };
-        const segment2 = {
-          node: ReadAloudNode.create(node2)!,
-          start: 0,
-          length: text2.length,
-        };
-
-        const allSegments = [[segment1], [segment2]];
-        const allContent = [text1, text2];
-        let currentSegmentIndex = 0;
-
-        readAloudModel.resetSpeechToBeginning = () => {
-          readAloudModel.methodCalled('resetSpeechToBeginning');
-          currentSegmentIndex = 0;
-          readAloudModel.setCurrentTextSegments(
-              allSegments[currentSegmentIndex]!);
-          readAloudModel.setCurrentTextContent(
-              allContent[currentSegmentIndex]!);
-        };
-
-        readAloudModel.moveSpeechForward = () => {
-          readAloudModel.methodCalled('moveSpeechForward');
-          if (currentSegmentIndex < allSegments.length - 1) {
-            currentSegmentIndex++;
-            readAloudModel.setCurrentTextSegments(
-                allSegments[currentSegmentIndex]!);
-            readAloudModel.setCurrentTextContent(
-                allContent[currentSegmentIndex]!);
-          }
-        };
-
-        readAloudModel.setCurrentTextSegments(
-            allSegments[currentSegmentIndex]!);
-        readAloudModel.setCurrentTextContent(allContent[currentSegmentIndex]!);
-
-        const element = document.createElement('p');
-        element.appendChild(node1);
-        element.appendChild(node2);
-        document.body.appendChild(element);
-
-        let nextGranularityCalls = 0;
-        highlighter.onWillMoveToNextGranularity = () => {
-          nextGranularityCalls++;
-        };
-
-        speechController.onSelectionChange(
-            {node: node2, offset: 0, source: ContentPositionSource.SELECTION});
-        speechController.onPlayPauseToggle(element);
-        await speech.whenCalled('speak');
-
-        assertEquals(1, readAloudModel.getCallCount('moveSpeechForward'));
-        assertEquals(1, nextGranularityCalls);
-        assertTrue(onPlayingFromPosition);
-      });
-
-  test(
       'playFromContentPosition with invalid node plays from next node',
       async () => {
         const text = 'This text does not have the target node.';
@@ -1271,7 +1310,7 @@ suite('SpeechController', () => {
         const id = 2;
         nodeStore.setDomNode(node, id);
         const segments: Segment[] = [
-          {node: ReadAloudNode.create(node)!, start: 0, length: text.length},
+          {node: ReadAloudNode.create(node), start: 0, length: text.length},
         ];
         readAloudModel.setCurrentTextSegments(segments);
 
@@ -1370,6 +1409,7 @@ suite('SpeechController', () => {
       'word boundary with phrase highlighting notifies listeners with words',
       () => {
         audioBrowserProxy.isPhraseHighlightingEnabledFlag = true;
+        audioBrowserProxy.baseLanguageForSpeech = 'en';
         audioBrowserProxy.highlightGranularity =
             audioBrowserProxy.phraseHighlighting;
         const {spoken} = playWithWordHighlight('Phrases are not words');

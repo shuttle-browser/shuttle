@@ -20,6 +20,7 @@
 #include "base/functional/bind.h"
 #include "base/run_loop.h"
 #include "base/strings/string_split.h"
+#include "base/strings/stringprintf.h"
 #include "base/threading/thread_restrictions.h"
 #include "build/build_config.h"
 #include "chrome/browser/ash/login/login_manager_test.h"
@@ -48,14 +49,15 @@
 #include "chrome/browser/ui/webui/ash/login/gaia_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/signin_fatal_error_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/welcome_screen_handler.h"
-#include "chrome/common/chrome_constants.h"
 #include "chrome/test/base/fake_gaia_mixin.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
 #include "chromeos/ash/components/dbus/userdataauth/fake_userdataauth_client.h"
+#include "components/account_id/account_id.h"
 #include "components/policy/proto/chrome_device_policy.pb.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #include "components/user_manager/known_user.h"
+#include "components/user_manager/user.h"
 #include "components/user_manager/user_names.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test.h"
@@ -333,8 +335,7 @@ void TestSystemTrayIsVisible() {
 // This profile should NOT be an OTR profile.
 IN_PROC_BROWSER_TEST_F(LoginUserTest, UserPassed) {
   Profile* profile = browser()->GetProfile();
-  std::string profile_base_name =
-      BrowserContextHelper::GetUserBrowserContextDirName("hash");
+  std::string profile_base_name = user_manager::User::GetDirName("hash");
   EXPECT_EQ(profile_base_name, profile->GetBaseName().value());
   EXPECT_FALSE(profile->IsOffTheRecord());
 
@@ -531,6 +532,36 @@ IN_PROC_BROWSER_TEST_F(LoginOfflineWithAutoEnrollmentCheckForcedTest,
                                      /*check_if_submittable=*/false);
   OobeScreenWaiter(SignInFatalErrorView::kScreenId).Wait();
   EXPECT_TRUE(LoginScreenTestApi::IsOobeDialogVisible());
+}
+
+class LoginWithOobeTestApiTest : public LoginManagerTest {
+ public:
+  LoginWithOobeTestApiTest() { login_manager_.AppendRegularUsers(1); }
+  ~LoginWithOobeTestApiTest() override = default;
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    LoginManagerTest::SetUpCommandLine(command_line);
+    command_line->AppendSwitch(switches::kEnableOobeTestAPI);
+  }
+
+ private:
+  LoginManagerMixin login_manager_{&mixin_host_};
+};
+
+IN_PROC_BROWSER_TEST_F(LoginWithOobeTestApiTest,
+                       PreloadedHiddenOobeDialogIsNotWebUIStarted) {
+  LoginOrLockScreenVisibleWaiter().Wait();
+  EXPECT_NE(LoginDisplayHost::default_host()->GetOobeUI(), nullptr);
+  EXPECT_FALSE(LoginScreenTestApi::IsOobeDialogVisible());
+  EXPECT_FALSE(LoginDisplayHost::default_host()->IsWebUIStarted());
+
+  LoginDisplayHost::default_host()->ShowGaiaDialog(EmptyAccountId());
+  EXPECT_TRUE(LoginScreenTestApi::IsOobeDialogVisible());
+  EXPECT_TRUE(LoginDisplayHost::default_host()->IsWebUIStarted());
+
+  LoginDisplayHost::default_host()->HideOobeDialog();
+  EXPECT_FALSE(LoginScreenTestApi::IsOobeDialogVisible());
+  EXPECT_FALSE(LoginDisplayHost::default_host()->IsWebUIStarted());
 }
 
 }  // namespace ash

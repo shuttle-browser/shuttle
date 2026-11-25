@@ -77,9 +77,27 @@ class UI_ANDROID_EXPORT EventForwarder {
                    const base::android::JavaRef<jstring>& j_html,
                    const base::android::JavaRef<jstring>& j_url,
                    const base::android::JavaRef<jstring>& j_customData,
-                   const base::android::JavaRef<jstring>& j_effectAllowed);
+                   const base::android::JavaRef<jstring>& j_effectAllowed,
+                   const base::android::JavaRef<jstring>& j_dragId,
+                   const base::android::JavaRef<jbyteArray>& j_imageBytes,
+                   const base::android::JavaRef<jstring>& j_imageExtension,
+                   const base::android::JavaRef<jstring>& j_imageFilename);
 
-  bool OnGestureEvent(JNIEnv* env, int32_t type, int64_t time_ms, float scale);
+  // Dispatches a drag event carrying `clip_data` (an
+  // `android.content.ClipData`) through the Java `EventForwarder`, as if it had
+  // been delivered by `View#onDragEvent`, so that its `ClipData` parsing and
+  // content URI filtering run. Coordinates are in physical pixels relative to
+  // this forwarder's view. Used by browser tests to replay drags captured from
+  // a `DragAndDropDelegate`.
+  void DispatchDragEventForTesting(
+      int32_t action,
+      float x,
+      float y,
+      float screen_x,
+      float screen_y,
+      const base::android::JavaRef<jobject>& clip_data);
+
+  bool OnGestureEvent(int32_t type, int64_t time_ms, float scale);
 
   bool OnGenericMotionEvent(JNIEnv* env,
                             const base::android::JavaRef<jobject>& motion_event,
@@ -97,18 +115,17 @@ class UI_ANDROID_EXPORT EventForwarder {
                          float delta_x,
                          float delta_y);
 
-  bool OnKeyUp(JNIEnv* env, const ui::KeyEventAndroid& key_event);
+  bool OnKeyUp(const ui::KeyEventAndroid& key_event);
 
-  bool DispatchKeyEvent(JNIEnv* env, const ui::KeyEventAndroid& key_event);
+  bool DispatchKeyEvent(const ui::KeyEventAndroid& key_event);
 
-  void ScrollBy(JNIEnv* env, float delta_x, float delta_y);
+  void ScrollBy(float delta_x, float delta_y);
 
-  void ScrollTo(JNIEnv* env, float x, float y);
+  void ScrollTo(float x, float y);
 
-  void DoubleTap(JNIEnv* env, int64_t time_ms, int32_t x, int32_t y);
+  void DoubleTap(int64_t time_ms, int32_t x, int32_t y);
 
-  void StartFling(JNIEnv* env,
-                  int64_t time_ms,
+  void StartFling(int64_t time_ms,
                   float x,
                   float y,
                   float raw_x,
@@ -120,8 +137,7 @@ class UI_ANDROID_EXPORT EventForwarder {
                   bool is_touchpad_event,
                   bool target_viewport);
 
-  void CancelFling(JNIEnv* env,
-                   int64_t time_ms,
+  void CancelFling(int64_t time_ms,
                    bool prevent_boosting,
                    bool is_touchpad_event);
 
@@ -130,6 +146,12 @@ class UI_ANDROID_EXPORT EventForwarder {
   void RemoveObserver(Observer* observer);
 
   gfx::PointF GetCurrentTouchSequenceOffset();
+
+  // Delivers images dragged out of this browser's own web contents to this
+  // view as DropData::file_contents, as desktop platforms do for every drop
+  // target. Off by default so that ordinary tabs continue receiving intra-app
+  // image drags as DropData::filenames.
+  void SetAllowIntraAppImageDrops(bool allow);
 
   base::ObserverList<Observer>& GetObserversForTesting() { return observers_; }
 

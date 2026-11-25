@@ -33,8 +33,8 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
-#include "third_party/jni_zero/common_apis.h"
 #include "third_party/jni_zero/default_conversions.h"
+#include "third_party/jni_zero/jni_zero.h"
 #include "ui/base/page_transition_types.h"
 
 // Must come after headers that provide symbols used by @JniType.
@@ -362,7 +362,7 @@ bool WebContentsState::ExtractNavigationEntries(
 
   // Support for versions 0 and 1 is removed in M142/M143. Metrics suggests
   // in-the-wild usage is virtually non-existent (see crbug.com/41493935).
-  if (saved_state_version < 2) {
+  if (saved_state_version < kMinSupportedVersion) {
     LOG(ERROR) << "Unsupported saved_state_version: " << saved_state_version;
     return false;
   }
@@ -401,7 +401,7 @@ bool WebContentsState::ExtractMetadata(base::span<const uint8_t> buffer,
                                        bool* is_off_the_record,
                                        std::u16string* title,
                                        std::string* virtual_url) {
-  if (saved_state_version != 2) {
+  if (saved_state_version != kCurrentVersion) {
     return false;
   }
 
@@ -636,10 +636,6 @@ static ScopedJavaLocalRef<jobject> JNI_WebContentsState_GetMetadata(
 
   return Java_WebContentsState_createMetadata(env, title, virtual_url,
                                               is_off_the_record);
-}
-
-static void JNI_WebContentsState_FreeStringPointer(int64_t string_pointer) {
-  delete reinterpret_cast<std::string*>(string_pointer);
 }
 
 DEFINE_JNI(WebContentsState)

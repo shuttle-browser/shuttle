@@ -65,6 +65,7 @@
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/i18n/android_locale.h"
+#include "base/i18n/language_tag.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
@@ -91,9 +92,8 @@
 #include "components/policy/content/safe_search_service.h"
 #include "components/policy/core/browser/browser_policy_connector_base.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/content/browser/async_check_tracker.h"
-#include "components/safe_browsing/content/browser/browser_url_loader_throttle.h"
-#include "components/safe_browsing/content/browser/mojo_safe_browsing_impl.h"
+#include "components/safe_browsing/content/browser/url_checker/async_check_tracker.h"
+#include "components/safe_browsing/content/browser/url_checker/browser_url_loader_throttle.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/hashprefix_realtime/hash_realtime_utils.h"
 #include "components/sampling_profiler/process_type.h"
@@ -154,6 +154,7 @@
 #include "third_party/blink/public/common/loader/url_loader_throttle.h"
 #include "third_party/blink/public/common/navigation/preloading_headers.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/resource/resource_bundle_android.h"
 #include "ui/display/util/display_util.h"
@@ -200,12 +201,9 @@ base::WeakPtr<AsyncCheckTracker> GetAsyncCheckTracker(
     return nullptr;
   }
 
-  // Setting should_sync_checker_check_allowlist to false since the allowlist
-  // is not available on WebView.
   return AsyncCheckTracker::GetOrCreateForWebContents(
              web_contents,
-             AwBrowserProcess::GetInstance()->GetSafeBrowsingUIManager(),
-             /*should_sync_checker_check_allowlist=*/false)
+             AwBrowserProcess::GetInstance()->GetSafeBrowsingUIManager())
       ->GetWeakPtr();
 }
 }  // anonymous namespace
@@ -507,8 +505,8 @@ void AwContentBrowserClient::AppendExtraCommandLineSwitches(
   }
 }
 
-std::string AwContentBrowserClient::GetApplicationLocale() {
-  return std::string(base::i18n::GetAndroidDefaultLocale().tag_string());
+base::i18n::LanguageTag AwContentBrowserClient::GetApplicationLocale() {
+  return base::i18n::GetAndroidDefaultLocale();
 }
 
 std::string AwContentBrowserClient::GetAcceptLangs(
@@ -624,7 +622,7 @@ bool AwContentBrowserClient::CanCreateWindow(
     const GURL& target_url,
     const content::Referrer& referrer,
     const std::string& frame_name,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& features,
     bool user_gesture,
     bool opener_suppressed,
@@ -836,7 +834,8 @@ AwContentBrowserClient::CreateURLLoaderThrottles(
       hash_real_time_selection,
       /*async_check_tracker=*/async_check_tracker,
       /*referring_app_info=*/std::nullopt,
-      /*v5_get_hash_protocol_manager=*/nullptr));
+      /*v5_get_hash_protocol_manager=*/nullptr,
+      /*profile_mode_suffix=*/"Regular"));
 
   if (browser_context &&
       base::FeatureList::IsEnabled(

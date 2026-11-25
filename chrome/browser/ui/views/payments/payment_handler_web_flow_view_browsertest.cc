@@ -62,8 +62,8 @@
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/dialog_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/views/bubble/bubble_border.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/controls/button/button.h"
@@ -400,77 +400,6 @@ IN_PROC_BROWSER_TEST_F(PaymentHandlerWebFlowViewTest,
   views::View::ConvertPointFromWidget(host_view, &tall_pos);
   EXPECT_EQ(0, tall_pos.y());
   EXPECT_EQ((host_size.width() - tall_size.width()) / 2, tall_pos.x());
-}
-
-class PaymentHandlerModalDialogHostDisabledTest
-    : public PaymentRequestBrowserTestBase {
- public:
-  PaymentHandlerModalDialogHostDisabledTest() {
-    feature_list_.InitWithFeatures(
-        {features::kPaymentRequestMandatoryPaymentAppUi},
-        {features::kPaymentHandlerModalDialogHost});
-  }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(PaymentHandlerModalDialogHostDisabledTest,
-                       WebModalDialogParentedToBrowserTabWhenFlagDisabled) {
-  NavigateTo("/payment_handler.html");
-  std::string method_name;
-  InstallPaymentApp("a.com", "/payment_handler_sw.js", &method_name);
-
-  // Trigger PaymentRequest, and wait until the PaymentHandler has loaded a
-  // web-contents that has set a title.
-  ResetEventWaiterForSequence({DialogEvent::PROCESSING_SPINNER_SHOWN,
-                               DialogEvent::PROCESSING_SPINNER_HIDDEN,
-                               DialogEvent::DIALOG_OPENED,
-                               DialogEvent::LOADING_VIEW_SHOWN,
-                               DialogEvent::PAYMENT_HANDLER_WINDOW_OPENED,
-                               DialogEvent::LOADING_VIEW_HIDDEN,
-                               DialogEvent::PAYMENT_HANDLER_TITLE_SET});
-  ASSERT_EQ(
-      "success",
-      content::EvalJs(
-          GetActiveWebContents(),
-          content::JsReplace("launchWithoutWaitForResponse($1)", method_name)));
-  ASSERT_TRUE(WaitForObservedEvent());
-
-  views::View* top_view = test_api(dialog_view()).view_stack()->top();
-  auto* sheet_controller =
-      test_api(dialog_view()).controller_map()->at(top_view).get();
-  auto* web_flow_controller =
-      static_cast<PaymentHandlerWebFlowViewController*>(sheet_controller);
-  content::WebContents* payment_handler_contents =
-      web_flow_controller->web_contents();
-  ASSERT_NE(nullptr, payment_handler_contents);
-
-  views::Widget* payment_dialog_widget = dialog_view()->GetWidget();
-  ASSERT_NE(nullptr, payment_dialog_widget);
-
-  // Show a web-modal dialog on the payment handler's WebContents.
-  auto dialog_model = ui::DialogModel::Builder()
-                          .SetTitle(u"Test Modal")
-                          .AddOkButton(base::DoNothing())
-                          .Build();
-  views::Widget* modal_widget = constrained_window::ShowWebModal(
-      std::move(dialog_model), payment_handler_contents);
-  ASSERT_NE(nullptr, modal_widget);
-
-  // When the flag is disabled, the modal dialog host's host view should match
-  // the browser window's native view rather than the payment dialog widget.
-  auto* manager = web_modal::WebContentsModalDialogManager::FromWebContents(
-      payment_handler_contents);
-  ASSERT_NE(nullptr, manager);
-  ASSERT_NE(nullptr, manager->delegate());
-  web_modal::WebContentsModalDialogHost* host =
-      manager->delegate()->GetWebContentsModalDialogHost(
-          payment_handler_contents);
-  ASSERT_NE(nullptr, host);
-  EXPECT_NE(payment_dialog_widget->GetNativeView(), host->GetHostView());
-
-  dialog_view()->CloseDialog();
 }
 
 class PaymentHandlerWebFlowViewUseInitiatorInUrlLoadEnabledTest
@@ -1366,7 +1295,8 @@ IN_PROC_BROWSER_TEST_F(
   // behavior and prevent accidental parent tab navigation.
   content::OpenURLParams current_tab_params =
       content::OpenURLParams::CreateBrowserInitiated(
-          GURL("https://example.com"), WindowOpenDisposition::kCurrentTab,
+          GURL("https://example.com"),
+          ui::mojom::WindowOpenDisposition::kCurrentTab,
           ui::PAGE_TRANSITION_LINK);
   EXPECT_EQ(nullptr, payment_handler_contents->GetDelegate()->OpenURLFromTab(
                          payment_handler_contents, current_tab_params,
@@ -1376,7 +1306,8 @@ IN_PROC_BROWSER_TEST_F(
   // parent tab's WebContents.
   content::OpenURLParams new_tab_params =
       content::OpenURLParams::CreateBrowserInitiated(
-          GURL("https://example.com"), WindowOpenDisposition::kNewForegroundTab,
+          GURL("https://example.com"),
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK);
   content::WebContents* result =
       payment_handler_contents->GetDelegate()->OpenURLFromTab(

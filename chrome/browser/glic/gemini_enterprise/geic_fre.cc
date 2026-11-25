@@ -21,7 +21,6 @@
 #include "chrome/common/chrome_switches.h"
 #include "components/prefs/pref_service.h"
 #include "components/prefs/scoped_user_pref_update.h"
-#include "url/gurl.h"
 
 namespace geic {
 
@@ -33,8 +32,9 @@ using prefs::GeicFreStatus;
 // change.
 constexpr char kStatusKey[] = "status";
 
-// Returns the `kGeicCompletedFre` key for `profile`'s GE instance: the
-// guest URL. Returns std::nullopt if the GEiC FRE doesn't apply to `profile`,
+// Returns the `kGeicCompletedFre` key for `profile`'s GE instance (see
+// `glic::GlicProviderSpec::GetGuestUrlKey()`), shared by all GE accounts in the
+// profile. Returns std::nullopt if the GEiC FRE doesn't apply to `profile`,
 // i.e. `features::kGeicFre` is disabled or `profile` isn't latched to Gemini
 // Enterprise.
 // TODO(b/574495404): Move the GEiC FRE applicability check into GLiC's
@@ -45,12 +45,7 @@ std::optional<std::string> GetFrePrefKey(Profile* profile) {
           glic::GlicProvider::kGeminiEnterprise) {
     return std::nullopt;
   }
-  const GURL guest_url =
-      glic::GetGlicProviderSpec(profile).GetGuestUrl(profile);
-  if (!guest_url.is_valid()) {
-    return std::nullopt;
-  }
-  return guest_url.spec();
+  return glic::GetGlicProviderSpec(profile).GetGuestUrlKey();
 }
 
 // Returns the status persisted for `key`, ignoring `--geic-always-skip-fre`.
@@ -95,6 +90,16 @@ void CompleteFre(Profile* profile) {
   update->Set(*key,
               base::DictValue().Set(
                   kStatusKey, std::to_underlying(GeicFreStatus::kCompleted)));
+}
+
+void ResetFre(Profile* profile) {
+  const std::optional<std::string> key = GetFrePrefKey(profile);
+  if (!key ||
+      !profile->GetPrefs()->GetDict(prefs::kGeicCompletedFre).contains(*key)) {
+    return;
+  }
+  ScopedDictPrefUpdate update(profile->GetPrefs(), prefs::kGeicCompletedFre);
+  update->Remove(*key);
 }
 
 }  // namespace geic

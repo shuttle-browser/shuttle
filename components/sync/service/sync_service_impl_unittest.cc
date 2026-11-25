@@ -526,12 +526,8 @@ TEST_F(SyncServiceImplTest, DisabledByPolicyBeforeInitThenPolicyRemoved) {
 }
 
 #if BUILDFLAG(IS_CHROMEOS)
-TEST_F(
-    SyncServiceImplTest,
-    DisabledByPolicyBeforeInit_DisablesOsTypesWhenFlagEnabledAndNoSyncConsent) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(syncer::kReplaceSyncPromosWithSignInPromos);
-
+TEST_F(SyncServiceImplTest,
+       DisabledByPolicyBeforeInit_DisablesOsTypesWithoutSyncConsent) {
   prefs()->SetManagedPref(prefs::internal::kSyncManaged, base::Value(true));
   SignInWithoutSyncConsent();
 
@@ -554,9 +550,6 @@ TEST_F(
 
 TEST_F(SyncServiceImplTest,
        DisabledByPolicyBeforeInit_DoesNotDisableOsTypesWithSyncConsent) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(syncer::kReplaceSyncPromosWithSignInPromos);
-
   prefs()->SetManagedPref(prefs::internal::kSyncManaged, base::Value(true));
   SignInWithSyncConsent();
 
@@ -803,16 +796,10 @@ TEST_F(SyncServiceImplTest,
 TEST_F(
     SyncServiceImplTest,
     AddressesSyncShouldBeDisabledForNewlySigninUsersWithAlreadyCustomPassphraseSet) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitWithFeatures(
-      /*enabled_features=*/
-      {
-          syncer::kReplaceSyncPromosWithSignInPromos,
 #if BUILDFLAG(IS_CHROMEOS)
-          syncer::kSyncEnableContactInfoDataTypeForCustomPassphraseUsers,
+  base::test::ScopedFeatureList scoped_feature_list{
+      syncer::kSyncEnableContactInfoDataTypeForCustomPassphraseUsers};
 #endif  // BUILDFLAG(IS_CHROMEOS)
-      },
-      /*disabled_features=*/{});
 
   // Sign-in.
   SignInWithoutSyncConsent();
@@ -866,9 +853,6 @@ TEST_F(
 TEST_F(
     SyncServiceImplTest,
     AddressesSyncValueShouldRemainUnchangedForCustomPassphraseUsersAfterTheirInitialSignin) {
-  base::test::ScopedFeatureList scoped_feature_list{
-      syncer::kReplaceSyncPromosWithSignInPromos};
-
   // Sign-in.
   SignInWithoutSyncConsent();
   // Registering CONTACT_INFO which includes addresses.
@@ -928,9 +912,6 @@ TEST_F(
 TEST_F(
     SyncServiceImplTest,
     AddressesSyncShouldNotBeDisabledForSignedInUsersWithNewlyCustomPassphraseSet) {
-  base::test::ScopedFeatureList scoped_feature_list{
-      syncer::kReplaceSyncPromosWithSignInPromos};
-
   // Sign-in.
   SignInWithoutSyncConsent();
 
@@ -3034,9 +3015,6 @@ TEST_F(SyncServiceImplTest, ShouldCacheTrustedVaultAutoUpgradeDebugInfo) {
 
 #if !BUILDFLAG(IS_CHROMEOS)
 TEST_F(SyncServiceImplTest, ShouldRecordHistoryOptInStateOnSignin) {
-  // Allow UserSelectableType::kHistory in transport mode.
-  base::test::ScopedFeatureList features{kReplaceSyncPromosWithSignInPromos};
-
   {
     base::HistogramTester histogram_tester;
 
@@ -3203,6 +3181,93 @@ TEST_F(SyncServiceImplTest, AvoidCachingCredentialsInEngineWhenFeatureEnabled) {
   ASSERT_FALSE(service()->GetAccessTokenForTest().empty());
   EXPECT_FALSE(engine()->last_credentials().has_value());
 }
+
+#if !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
+TEST_F(SyncServiceImplTest, ShouldReturnPasskeysLockedErrorAndRecordHistogram) {
+  base::HistogramTester histogram_tester;
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  SignInWithSyncConsent();
+  std::vector<FakeControllerInitParams> params;
+  params.emplace_back(WEBAUTHN_CREDENTIAL, /*enable_transport_mode=*/true);
+  InitializeService(std::move(params));
+  RunUntilSyncTransportState(SyncService::TransportState::ACTIVE);
+  ASSERT_TRUE(service()->GetActiveDataTypes().Has(WEBAUTHN_CREDENTIAL));
+  ASSERT_EQ(SyncService::UserActionableError::kNone,
+            service()->GetUserActionableError());
+
+  testing::NiceMock<MockSyncServiceObserver> mock_sync_service_observer;
+  service()->AddObserver(&mock_sync_service_observer);
+
+  EXPECT_CALL(mock_sync_service_observer, OnStateChanged(service())).Times(0);
+  service()->SetPasskeysLocked(false);
+
+  EXPECT_CALL(mock_sync_service_observer, OnStateChanged(service()));
+  service()->SetPasskeysLocked(true);
+
+  EXPECT_EQ(SyncService::UserActionableError::kPasskeysLocked,
+            service()->GetUserActionableError());
+  histogram_tester.ExpectUniqueSample(
+      "Sync.UserActionableError",
+      SyncService::UserActionableError::kPasskeysLocked, 1);
+
+  EXPECT_CALL(mock_sync_service_observer, OnStateChanged(service())).Times(0);
+  service()->SetPasskeysLocked(true);
+
+  EXPECT_CALL(mock_sync_service_observer, OnStateChanged(service()));
+  service()->SetPasskeysLocked(false);
+
+  EXPECT_EQ(SyncService::UserActionableError::kNone,
+            service()->GetUserActionableError());
+  service()->RemoveObserver(&mock_sync_service_observer);
+}
+
+TEST_F(SyncServiceImplTest,
+       ShouldNotReturnPasskeysLockedErrorWhenWebauthnCredentialNotActive) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  SignInWithSyncConsent();
+  InitializeService();
+  RunUntilSyncTransportState(SyncService::TransportState::ACTIVE);
+  ASSERT_FALSE(service()->GetActiveDataTypes().Has(WEBAUTHN_CREDENTIAL));
+
+  service()->SetPasskeysLocked(true);
+  EXPECT_EQ(SyncService::UserActionableError::kNone,
+            service()->GetUserActionableError());
+}
+
+TEST_F(SyncServiceImplTest, PasskeysLockedErrorPriority) {
+  PopulatePrefsForInitialSyncFeatureSetupComplete();
+  SignInWithSyncConsent();
+  std::vector<FakeControllerInitParams> params;
+  params.emplace_back(PASSWORDS, /*enable_transport_mode=*/true);
+  params.emplace_back(WEBAUTHN_CREDENTIAL, /*enable_transport_mode=*/true);
+  InitializeService(std::move(params));
+  RunUntilSyncTransportState(SyncService::TransportState::ACTIVE);
+  ASSERT_TRUE(service()->GetActiveDataTypes().Has(WEBAUTHN_CREDENTIAL));
+
+  service()->GetEncryptionObserverForTest()->OnPassphraseTypeChanged(
+      PassphraseType::kTrustedVaultPassphrase, base::Time());
+
+  // Degraded recoverability is reported when passkeys are not locked.
+  trusted_vault_client()->SetIsRecoveryMethodRequired(true);
+  ASSERT_TRUE(trusted_vault_client()->CompleteAllPendingRequests());
+  ASSERT_EQ(SyncService::UserActionableError::
+                kTrustedVaultRecoverabilityDegradedForPasswords,
+            service()->GetUserActionableError());
+
+  // `kPasskeysLocked` takes priority over degraded recoverability.
+  service()->SetPasskeysLocked(true);
+  EXPECT_EQ(SyncService::UserActionableError::kPasskeysLocked,
+            service()->GetUserActionableError());
+
+  // `kNeedsTrustedVaultKeyForPasswords` takes priority over `kPasskeysLocked`.
+  trusted_vault_client()->SetIsRecoveryMethodRequired(false);
+  ASSERT_TRUE(trusted_vault_client()->CompleteAllPendingRequests());
+  service()->GetEncryptionObserverForTest()->OnTrustedVaultKeyRequired();
+  ASSERT_TRUE(trusted_vault_client()->CompleteAllPendingRequests());
+  EXPECT_EQ(SyncService::UserActionableError::kNeedsTrustedVaultKeyForPasswords,
+            service()->GetUserActionableError());
+}
+#endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 }  // namespace syncer

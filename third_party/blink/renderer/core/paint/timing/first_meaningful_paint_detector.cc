@@ -161,10 +161,6 @@ void FirstMeaningfulPaintDetector::OnNetwork2Quiet() {
   }
 }
 
-bool FirstMeaningfulPaintDetector::SeenFirstMeaningfulPaint() const {
-  return !first_meaningful_paint_.is_null();
-}
-
 void FirstMeaningfulPaintDetector::RegisterNotifyPresentationTime(
     PaintEvent event) {
   ++outstanding_presentation_promise_count_;
@@ -184,8 +180,7 @@ void FirstMeaningfulPaintDetector::ReportPresentationTime(
 
   provisional_first_meaningful_paint_presentation_ = timestamp;
 
-  probe::PaintTiming(GetDocument(), "firstMeaningfulPaintCandidate",
-                     timestamp.since_origin().InSecondsF());
+  probe::PaintTiming(GetDocument(), "firstMeaningfulPaintCandidate", timestamp);
 
   // Ignore the first meaningful paint candidate as this generally is the first
   // contentful paint itself.
@@ -217,10 +212,7 @@ void FirstMeaningfulPaintDetector::SetFirstMeaningfulPaint(
   DCHECK(!presentation_time.is_null());
   DCHECK(network_quiet_reached_);
 
-  double presentation_time_seconds =
-      presentation_time.since_origin().InSecondsF();
-  probe::PaintTiming(GetDocument(), "firstMeaningfulPaint",
-                     presentation_time_seconds);
+  probe::PaintTiming(GetDocument(), "firstMeaningfulPaint", presentation_time);
 
   // If there's only been one contentful paint, then there won't have been
   // a meaningful paint signalled to the Scheduler, so mark one now.

@@ -6,6 +6,7 @@
 
 #include <string>
 
+#include "base/containers/linear_find.h"
 #include "base/functional/callback_helpers.h"
 #include "base/immediate_crash.h"
 #include "base/logging.h"
@@ -161,12 +162,8 @@ cast::common::StopReason::Type ToProtoType(
 const cast::common::Dictionary::Entry* FindEntry(
     const std::string& key,
     const cast::common::Dictionary& dict) {
-  auto iter = std::ranges::find(dict.entries(), key,
-                                &cast::common::Dictionary::Entry::key);
-  if (iter == dict.entries().end()) {
-    return nullptr;
-  }
-  return &*iter;
+  return base::LinearFind(dict.entries(), key,
+                          &cast::common::Dictionary::Entry::key);
 }
 
 bool GetFlagEntry(const std::string& key,
@@ -801,7 +798,6 @@ RuntimeApplicationServiceImpl::GetContentWindowControls() {
   return content_window_controls_.get();
 }
 
-#if !BUILDFLAG(IS_CAST_DESKTOP_BUILD)
 cast_receiver::StreamingConfigManager*
 RuntimeApplicationServiceImpl::GetStreamingConfigManager() {
   if (streaming_config_manager_) {
@@ -820,7 +816,6 @@ RuntimeApplicationServiceImpl::GetStreamingConfigManager() {
           weak_factory_.GetWeakPtr()));
   return streaming_config_manager_.get();
 }
-#endif  // !BUILDFLAG(IS_CAST_DESKTOP_BUILD)
 
 void RuntimeApplicationServiceImpl::OnAllBindingsReceived(
     GetAllBindingsCallback callback,

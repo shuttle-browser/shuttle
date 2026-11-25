@@ -3,7 +3,6 @@
 # found in the LICENSE file.
 
 import("//build/buildflag_header.gni")
-import("//build_overrides/ipcz.gni")
 import("//testing/libfuzzer/fuzzer_test.gni")
 import("//testing/test.gni")
 
@@ -103,12 +102,8 @@ source_set("util") {
   visibility = [ ":*" ]
 
   public = [
-    "util/log.h",
     "util/multi_mutex_lock.h",
     "util/ref_counted.h",
-    "util/strong_alias.h",
-    "util/unique_ptr_comparator.h",
-    "util/unsafe_buffers.h",
   ]
 
   sources = [ "util/ref_counted.cc" ]
@@ -227,13 +222,13 @@ source_set("ipcz_sources") {
 }
 
 config("ipcz_include_dir") {
-  include_dirs = [ "${ipcz_include_root}" ]
+  include_dirs = [ "//third_party/ipcz/include" ]
 }
 
 config("ipcz_include_src_dir") {
   include_dirs = [
-    "${ipcz_src_root}",
-    get_path_info("${ipcz_src_root}/", "gen_dir"),
+    "//third_party/ipcz/src",
+    get_path_info("//third_party/ipcz/src/", "gen_dir"),
   ]
 }
 
@@ -312,7 +307,6 @@ source_set("tests_sources") {
     "trap_test.cc",
     "util/ref_counted_test.cc",
     "util/safe_math_test.cc",
-    "util/unique_ptr_comparator_test.cc",
   ]
 
   if (enable_multiprocess_tests) {

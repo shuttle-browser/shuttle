@@ -4,29 +4,26 @@
 
 #import "ios/chrome/browser/authentication/test/signin_earl_grey_ui_test_util.h"
 
-#import "base/apple/foundation_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/ios/wait_util.h"
 #import "base/time/time.h"
-#import "ios/chrome/browser/authentication/account_menu/public/account_menu_constants.h"
 #import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
 #import "ios/chrome/browser/authentication/test/signin_matchers.h"
 #import "ios/chrome/browser/authentication/ui_bundled/cells/signin_promo_view_constants.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
-#import "ios/chrome/browser/authentication/ui_bundled/views/views_constants.h"
 #import "ios/chrome/browser/recent_tabs/public/recent_tabs_constants.h"
 #import "ios/chrome/browser/settings/google_services/public/google_services_settings_constants.h"
-#import "ios/chrome/browser/settings/manage_accounts/public/manage_accounts_table_view_controller_constants.h"
 #import "ios/chrome/browser/settings/manage_sync/public/manage_sync_settings_constants.h"
-#import "ios/chrome/browser/shared/public/snackbar/snackbar_constants.h"
 #import "ios/chrome/browser/shared/ui/table_view/table_view_navigation_controller_constants.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/browser/signin/model/test_constants.h"
+#import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
 #import "ios/chrome/test/earl_grey/chrome_matchers.h"
 #import "ios/chrome/test/earl_grey/chrome_matchers_app_interface.h"
+#import "ios/chrome/test/earl_grey/scoped_disable_timer_tracking.h"
 #import "ios/chrome/test/scoped_eg_synchronization_disabler.h"
 #import "ios/testing/earl_grey/earl_grey_test.h"
 #import "ui/base/l10n/l10n_util.h"
@@ -46,15 +43,14 @@ namespace {
 // `identifier` is an accessibility identifier. It must be visible when the view
 // is scrolled to the bottom.
 void OpenSyncSettingsSubmenu(NSString* identifier) {
-  // First scroll down so that the button is visible.
+  ScopedDisableTimerTracking disabler;
   id<GREYMatcher> scroll_view_matcher =
       grey_accessibilityID(kManageSyncTableViewAccessibilityIdentifier);
-  // Now tap the button with `identifier`.
   id<GREYMatcher> button_matcher =
       grey_allOf(grey_accessibilityID(identifier), grey_interactable(), nil);
-  [[EarlGrey selectElementWithMatcher:scroll_view_matcher]
-      performAction:grey_scrollToContentEdge(kGREYContentEdgeBottom)];
-  [[EarlGrey selectElementWithMatcher:button_matcher] performAction:grey_tap()];
+  [[[EarlGrey selectElementWithMatcher:button_matcher]
+         usingSearchAction:grey_scrollInDirection(kGREYDirectionDown, 200)
+      onElementWithMatcher:scroll_view_matcher] performAction:grey_tap()];
 }
 
 BOOL IsIdentityPossiblyManaged(id<SystemIdentity> identity) {
@@ -366,9 +362,14 @@ id<GREYMatcher> SignOutSnackbarLabelMatcher() {
 + (void)dismissSigninConfirmationSnackbarForIdentity:
             (FakeSystemIdentity*)identity
                                        assertVisible:(BOOL)assertVisible {
+  // Mirrors the title selection in `CreateIdentitySnackbarMessage()`, which
+  // falls back to a generic title for identities without a given name.
   NSString* signedInSnackbarTitle =
-      l10n_util::GetNSStringF(IDS_IOS_ACCOUNT_MENU_SWITCH_CONFIRMATION_TITLE,
-                              base::SysNSStringToUTF16(identity.userGivenName));
+      identity.userGivenName
+          ? l10n_util::GetNSStringF(
+                IDS_IOS_ACCOUNT_MENU_SWITCH_CONFIRMATION_TITLE,
+                base::SysNSStringToUTF16(identity.userGivenName))
+          : l10n_util::GetNSString(IDS_IOS_SIGNIN_ACCOUNT_NOTIFICATION_TITLE);
   [self dismissSigninConfirmationSnackbarWithTitle:signedInSnackbarTitle
                                      assertVisible:assertVisible];
 }
@@ -380,6 +381,8 @@ id<GREYMatcher> SignOutSnackbarLabelMatcher() {
                  grey_descendant(grey_accessibilityLabel(title)), nil);
 
   if (assertVisible) {
+    [ChromeEarlGrey
+        waitForSufficientlyVisibleElementWithMatcher:snackbarMatcher];
     [[EarlGrey selectElementWithMatcher:snackbarMatcher]
         assertWithMatcher:grey_interactable()];
     [[EarlGrey selectElementWithMatcher:snackbarMatcher]

@@ -10,8 +10,10 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/fullscreen/browser_window_fullscreen_controller.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
+#include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/bookmarks/saved_tab_groups/saved_tab_group_everything_menu.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/system_menu_model_builder.h"
@@ -21,6 +23,8 @@
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "chrome/test/interaction/interactive_browser_test.h"
+#include "chrome/test/user_education/interactive_feature_promo_test.h"
+#include "components/feature_engagement/public/feature_constants.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/test/browser_test.h"
 #include "ui/base/hit_test.h"
@@ -35,6 +39,12 @@ namespace {
 class VerticalTabStripTopContainerInteractiveUiTest
     : public VerticalTabsInteractiveTestMixin<InteractiveBrowserTest> {
  public:
+  const std::vector<base::test::FeatureRef> GetDisabledFeatures() override {
+    // TODO(crbug.com/579025166): Fix test failures related to missing tab
+    // search bubble.
+    return {organizer_panel::kOrganizerPanel};
+  }
+
   auto SendTabSearchAccelerator() {
 #if BUILDFLAG(IS_MAC)
     constexpr int kModifiers = ui::EF_SHIFT_DOWN | ui::EF_COMMAND_DOWN;
@@ -318,6 +328,78 @@ IN_PROC_BROWSER_TEST_F(VerticalTabStripTopContainerInteractiveUiTest,
       Screenshot(kVerticalTabStripTopContainerElementId,
                  /*screenshot_name=*/"CollapsedVerticalTabStripTopContainer",
                  /*baseline_cl=*/"7797519"));
+}
+
+class VerticalTabsTabGroupsInOrganizerIphTest
+    : public VerticalTabsInteractiveTestMixin<InteractiveFeaturePromoTest> {
+ public:
+  VerticalTabsTabGroupsInOrganizerIphTest()
+      : VerticalTabsInteractiveTestMixin<InteractiveFeaturePromoTest>(
+            UseDefaultTrackerAllowingPromos(
+                {feature_engagement::
+                     kIPH_VerticalTabsTabGroupsInOrganizerFeature})) {}
+  ~VerticalTabsTabGroupsInOrganizerIphTest() override = default;
+
+  const std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures()
+      override {
+    return {{organizer_panel::kOrganizerPanel, {}}};
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(VerticalTabsTabGroupsInOrganizerIphTest,
+                       PromoTriggersOnEnteringVerticalTabsWithPref) {
+  RunTestSequence(
+      WaitForShow(kVerticalTabStripTopContainerElementId),
+      ExitVerticalTabsMode(), Do([this]() {
+        browser()->GetProfile()->GetPrefs()->SetTime(
+            prefs::kVerticalTabsEverythingMenuLastPressed, base::Time::Now());
+      }),
+      EnterVerticalTabsMode(),
+      WaitForPromo(
+          feature_engagement::kIPH_VerticalTabsTabGroupsInOrganizerFeature),
+      PressButton(kTabSearchButtonElementId),
+      CheckPromoActive(
+          feature_engagement::kIPH_VerticalTabsTabGroupsInOrganizerFeature,
+          false));
+}
+
+IN_PROC_BROWSER_TEST_F(VerticalTabsTabGroupsInOrganizerIphTest,
+                       PromoDoesNotTriggerWithoutPref) {
+  RunTestSequence(
+      WaitForShow(kVerticalTabStripTopContainerElementId),
+      ExitVerticalTabsMode(), EnterVerticalTabsMode(),
+      CheckPromoActive(
+          feature_engagement::kIPH_VerticalTabsTabGroupsInOrganizerFeature,
+          false));
+}
+
+IN_PROC_BROWSER_TEST_F(VerticalTabsTabGroupsInOrganizerIphTest,
+                       PromoDoesNotTriggerInHorizontalTabs) {
+  RunTestSequence(
+      WaitForShow(kVerticalTabStripTopContainerElementId),
+      ExitVerticalTabsMode(), Do([this]() {
+        browser()->GetProfile()->GetPrefs()->SetTime(
+            prefs::kVerticalTabsEverythingMenuLastPressed, base::Time::Now());
+      }),
+      CheckPromoActive(
+          feature_engagement::kIPH_VerticalTabsTabGroupsInOrganizerFeature,
+          false));
+}
+
+IN_PROC_BROWSER_TEST_F(VerticalTabsTabGroupsInOrganizerIphTest,
+                       PromoDoesNotTriggerWhenTabSearchUnpinned) {
+  RunTestSequence(
+      WaitForShow(kVerticalTabStripTopContainerElementId), Do([this]() {
+        PrefService* prefs = browser()->GetProfile()->GetPrefs();
+        prefs->SetBoolean(prefs::kTabSearchPinnedToTabstrip, false);
+        prefs->SetTime(prefs::kVerticalTabsEverythingMenuLastPressed,
+                       base::Time::Now());
+      }),
+      WaitForHide(kTabSearchButtonElementId), ExitVerticalTabsMode(),
+      EnterVerticalTabsMode(),
+      CheckPromoRequested(
+          feature_engagement::kIPH_VerticalTabsTabGroupsInOrganizerFeature,
+          false));
 }
 
 }  // namespace

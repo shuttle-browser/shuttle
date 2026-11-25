@@ -6,7 +6,6 @@
 
 #import <string>
 
-#import "base/memory/raw_ptr.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/scoped_feature_list.h"
 #import "components/infobars/core/infobar.h"
@@ -22,6 +21,7 @@
 #import "ios/chrome/browser/settings/model/sync/utils/test/mock_sync_error_infobar_delegate.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/primary_account_reauth_commands.h"
 #import "ios/chrome/browser/shared/public/commands/sync_presenter_commands.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
 #import "ios/chrome/browser/sync/model/test_sync_service_utils.h"
@@ -50,13 +50,13 @@ class SyncErrorInfobarBannerOverlayMediatorTest : public PlatformTest {
 
     // Create an InfoBarIOS with a MockSyncErrorInfobarDelegate.
     presenter_ = OCMStrictProtocolMock(@protocol(SyncPresenterCommands));
+    primary_account_reauth_handler_ =
+        OCMStrictProtocolMock(@protocol(PrimaryAccountReauthCommands));
     std::unique_ptr<MockSyncErrorInfoBarDelegate> delegate =
         std::make_unique<MockSyncErrorInfoBarDelegate>(
-            profile_.get(), presenter_, kTitleText, kMessageText,
-            kButtonLabelText,
+            profile_.get(), presenter_, primary_account_reauth_handler_,
+            kTitleText, kMessageText, kButtonLabelText,
             /*use_icon_background_tint=*/true);
-    // Create an InfoBarIOS with a MockSyncErrorInfoBarDelegate.
-    delegate_ = delegate.get();
     infobar_ = std::make_unique<InfoBarIOS>(InfobarType::kInfobarTypeSyncError,
                                             std::move(delegate));
     // Package the infobar into an OverlayRequest, then create a mediator that
@@ -71,6 +71,7 @@ class SyncErrorInfobarBannerOverlayMediatorTest : public PlatformTest {
 
   ~SyncErrorInfobarBannerOverlayMediatorTest() override {
     EXPECT_OCMOCK_VERIFY((id)presenter_);
+    EXPECT_OCMOCK_VERIFY((id)primary_account_reauth_handler_);
     EXPECT_OCMOCK_VERIFY((id)consumer_mock_);
     // Force the mediator to be deallocated before the
     // request is destroyed to avoid undefined behaviour.
@@ -79,9 +80,13 @@ class SyncErrorInfobarBannerOverlayMediatorTest : public PlatformTest {
     }
   }
 
+  MockSyncErrorInfoBarDelegate& delegate() {
+    return *static_cast<MockSyncErrorInfoBarDelegate*>(infobar_->delegate());
+  }
+
  protected:
   id<SyncPresenterCommands> presenter_;
-  raw_ptr<MockSyncErrorInfoBarDelegate, DanglingUntriaged> delegate_ = nil;
+  id<PrimaryAccountReauthCommands> primary_account_reauth_handler_;
   web::WebTaskEnvironment task_environment_;
   IOSChromeScopedTestingLocalState scoped_testing_local_state_;
   std::unique_ptr<TestProfileIOS> profile_;
@@ -121,7 +126,7 @@ TEST_F(SyncErrorInfobarBannerOverlayMediatorTest, MainAction) {
   mediator_.consumer = consumer_mock_;
 
   // Verify that the 'Accept()' method is called.
-  EXPECT_CALL(*delegate_, Accept());
+  EXPECT_CALL(delegate(), Accept());
   [mediator_ bannerInfobarButtonWasPressed:nil];
 }
 

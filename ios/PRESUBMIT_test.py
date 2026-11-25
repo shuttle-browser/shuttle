@@ -3,8 +3,10 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+
 import os
 import sys
+import tempfile
 import unittest
 
 import PRESUBMIT
@@ -64,11 +66,19 @@ class CheckNullabilityAnnotationsTest(unittest.TestCase):
         bad_lines = [
             '- (nullable NSString*)foo;',
             '- (nonnull NSString*)bar;',
+            '@property(nonatomic, strong, _Nullable) UIView* view;',
+            'void Foo(NSString* _Nonnull arg);',
         ]
         mock_input = PRESUBMIT_test_mocks.MockInputApi()
         mock_input.files = [
             PRESUBMIT_test_mocks.MockFile(
                 'ios/path/foo_controller.h', bad_lines
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/web_view/public/cwv_foo.h', bad_lines
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/third_party/bar/bar.h', bad_lines
             ),
             PRESUBMIT_test_mocks.MockFile('ios/path/README.md', bad_lines),
             PRESUBMIT_test_mocks.MockFile('ios/PRESUBMIT_test.py', bad_lines),
@@ -79,14 +89,41 @@ class CheckNullabilityAnnotationsTest(unittest.TestCase):
         )
         self.assertEqual(len(results), 1)
         self.assertEqual('warning', results[0].type)
-        self.assertTrue('ios/path/foo_controller.h:1' in results[0].items)
-        self.assertTrue('ios/path/foo_controller.h:2' in results[0].items)
-        self.assertFalse(
-            any('ios/path/README.md' in item for item in results[0].items)
+        self.assertIn(
+            'Found Nullability annotations. '
+            'These should only be used when needed for Swift interop.',
+            results[0].message,
         )
-        self.assertFalse(
-            any('ios/PRESUBMIT_test.py' in item for item in results[0].items)
+        self.assertEqual(
+            [
+                f'ios/path/foo_controller.h:{i}'
+                for i in range(1, len(bad_lines) + 1)
+            ],
+            results[0].items,
         )
+
+
+class CheckNoTearDownEGTest(unittest.TestCase):
+    """Test the _CheckNoTearDownEGTest presubmit check."""
+
+    def testTearDownInEGTest(self):
+        lines = [
+            '- (void)setUp {',
+            '- (void)tearDown {',
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_egtest.mm', lines),
+            PRESUBMIT_test_mocks.MockFile('ios/path/foo_unittest.mm', lines),
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckNoTearDownEGTest(mock_input, mock_output)
+        self.assertEqual(len(errors), 1)
+        self.assertEqual('error', errors[0].type)
+        self.assertIn('addTeardownBlock:', errors[0].message)
+        self.assertIn('setTearDownHandler:', errors[0].message)
+        self.assertIn('ios/path/foo_egtest.mm:2', errors[0].message)
+        self.assertNotIn('foo_unittest.mm', errors[0].message)
 
 
 class CheckHasNoBoxedBOOLTest(unittest.TestCase):
@@ -579,6 +616,12 @@ class CheckSystemColorUsageTest(unittest.TestCase):
 
         self.assertEqual(len(errors), 1)
         self.assertEqual('warning', errors[0].type)
+        self.assertIn(
+            'Found forbidden usage of system colors. '
+            'Only white, black and clear colors are accepted. '
+            'Prefer semantic colors in ios code instead of the system ones:',
+            errors[0].message,
+        )
 
         for i in range(1, len(bad_lines)):
             self.assertTrue(f'ios/path/foo.mm:{i}' in errors[0].items)
@@ -671,6 +714,395 @@ class CheckLargeImagesetsTest(unittest.TestCase):
         self.assertEqual('error', errors[0].type)
         self.assertTrue('test1.svg' in str(errors[0].items))
         self.assertTrue('test2.pdf' in str(errors[0].items))
+
+
+class CheckEarlGreyHeaderDocstringsTest(unittest.TestCase):
+    """Test the _CheckEarlGreyHeaderDocstrings presubmit check."""
+
+    def testValidDocstrings(self):
+        lines = [
+            '@interface FooAppInterface : NSObject',
+            '// Clears the current browsing history.',
+            '+ (void)clearHistory;',
+            '// Loads `URL` in the current tab and waits `timeout` seconds.',
+            '+ (void)loadURL:(NSString*)URL timeout:(NSTimeInterval)timeout;',
+            '// Returns YES if `featureName` is enabled.',
+            '+ (BOOL)isFeatureEnabled:(NSString*)featureName;',
+            '// Returns a matcher for a button with `label`.',
+            '+ (id<GREYMatcher>)buttonWithLabel:(NSString*)label',
+            '                             error:(NSError**)error;',
+            '- (instancetype)init NS_UNAVAILABLE;',
+            '@end',
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/foo_app_interface.h', lines
+            )
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckEarlGreyHeaderDocstrings(
+            mock_input, mock_output
+        )
+        self.assertEqual(len(errors), 0)
+
+    def testDetectsMissingDocstringsArgsAndReturn(self):
+        lines = [
+            '@interface FooAppInterface : NSObject',
+            '+ (void)undocumentedMethod;',
+            '// Loads the specified URL in the current tab.',
+            '+ (void)loadURL:(NSString*)targetURL;',
+            '// Saves a test passport entity.',
+            '+ (BOOL)savePassportEntity;',
+            '@end',
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/foo_app_interface.h', lines
+            )
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckEarlGreyHeaderDocstrings(
+            mock_input, mock_output
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertEqual('error', errors[0].type)
+        items_str = '\n'.join(errors[0].items)
+        self.assertIn(
+            'undocumentedMethod: Missing docstring describing method '
+            'functionality',
+            items_str,
+        )
+        self.assertIn(
+            'loadURL:: Undocumented parameter `targetURL`',
+            items_str,
+        )
+        self.assertIn(
+            'savePassportEntity: Missing return value description for `BOOL`',
+            items_str,
+        )
+
+    def testRejectsBlockComments(self):
+        lines = [
+            '@interface FooAppInterface : NSObject',
+            '/*',
+            ' * Clears the browsing history.',
+            ' */',
+            '+ (void)clearHistory;',
+            '@end',
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/foo_app_interface.h', lines
+            )
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckEarlGreyHeaderDocstrings(
+            mock_input, mock_output
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertEqual('error', errors[0].type)
+        self.assertIn(
+            'Missing docstring describing method functionality '
+            '(use `//` comments, not `/* ... */` comment blocks)',
+            errors[0].items[0],
+        )
+
+    def testIgnoresNonEarlGreyHeaders(self):
+        lines = [
+            '@interface RegularCoordinator : NSObject',
+            '+ (BOOL)undocumentedMethod:(NSString*)arg;',
+            '@end',
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/browser/foo/regular_coordinator.h', lines
+            )
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckEarlGreyHeaderDocstrings(
+            mock_input, mock_output
+        )
+        self.assertEqual(len(errors), 0)
+
+    def testMatchesTestingAndFeatureEarlGreyHeaders(self):
+        lines = [
+            '@interface FooEarlGreyImpl : NSObject',
+            '- (void)undocumentedHelper;',
+            '@end',
+        ]
+        mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        mock_input.files = [
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/testing/earl_grey/app_launch_manager.h', lines
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/browser/bookmarks/test/bookmark_earl_grey_ui.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/chrome_actions_app_interface.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/chrome_earl_grey.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/chrome_earl_grey_app_interface.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/chrome_test_case.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/web/shell/test/earl_grey/shell_earl_grey.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/web/shell/test/earl_grey/shell_earl_grey_app_interface.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/web/shell/test/earl_grey/web_shell_test_case.h',
+                lines,
+            ),
+            PRESUBMIT_test_mocks.MockFile(
+                'ios/chrome/test/earl_grey/'
+                'earl_grey_scoped_block_swizzler_app_interface.h',
+                lines,
+            ),
+        ]
+        mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        errors = PRESUBMIT._CheckEarlGreyHeaderDocstrings(
+            mock_input, mock_output
+        )
+        self.assertEqual(len(errors), 1)
+        self.assertEqual(len(errors[0].items), 5)
+
+
+class CheckSvgHasUpdatedPngTest(unittest.TestCase):
+    """Test the _CheckSvgHasUpdatedPng presubmit check.
+
+    Each test builds a real source tree in a temporary directory, because the
+    check decides whether an SVG is a documentation diagram by looking at its
+    neighboring PNG and Markdown files on disk.
+    """
+
+    def setUp(self):
+        self.mock_input = PRESUBMIT_test_mocks.MockInputApi()
+        self.mock_output = PRESUBMIT_test_mocks.MockOutputApi()
+        temp_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(temp_dir.cleanup)
+        self.src_root = temp_dir.name
+
+    def _WriteFile(self, local_path, contents=''):
+        """Creates `local_path` under the temporary source root."""
+        abs_path = os.path.join(self.src_root, local_path)
+        os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+        with open(abs_path, 'w') as f:
+            f.write(contents)
+
+    def _ChangedFile(self, local_path, action):
+        """Returns a change entry for `local_path` in the temporary root."""
+        return PRESUBMIT_test_mocks.MockFile(
+            local_path, [], action=action, local_root=self.src_root
+        )
+
+    def testDocSvgModifiedWithoutPngReportsErrorWithFixCommand(self):
+        self._WriteFile(
+            'ios/docs/README.md',
+            '![Diagram](diagram.png)\n[SVG source](diagram.svg)\n',
+        )
+        self._WriteFile('ios/docs/diagram.svg')
+        self._WriteFile('ios/docs/diagram.png')
+        self.mock_input.files = [self._ChangedFile('ios/docs/diagram.svg', 'M')]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertEqual('error', results[0].type)
+        self.assertIn(
+            'rsvg-convert --background-color=white '
+            'ios/docs/diagram.svg | '
+            'magick - -strip -depth 8 ios/docs/diagram.png',
+            results[0].message,
+        )
+
+    def testSvgWithExistingSiblingPngModifiedWithoutPngReportsError(self):
+        self._WriteFile('ios/docs/diagram.svg')
+        self._WriteFile('ios/docs/diagram.png')
+        self.mock_input.files = [self._ChangedFile('ios/docs/diagram.svg', 'M')]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertIn('ios/docs/diagram.png', results[0].message)
+
+    def testNewSvgReferencedFromSameDirectoryMarkdownReportsError(self):
+        self._WriteFile('ios/docs/README.md', '![Diagram](new_diagram.svg)\n')
+        self._WriteFile('ios/docs/new_diagram.svg')
+        self.mock_input.files = [
+            self._ChangedFile('ios/docs/new_diagram.svg', 'A')
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertIn('ios/docs/new_diagram.png', results[0].message)
+
+    def testNewSvgReferencedFromParentDirectoryMarkdownReportsError(self):
+        self._WriteFile('ios/docs/README.md', '![Diagram](images/flow.svg)\n')
+        self._WriteFile('ios/docs/images/flow.svg')
+        self.mock_input.files = [
+            self._ChangedFile('ios/docs/images/flow.svg', 'A')
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertIn('ios/docs/images/flow.png', results[0].message)
+
+    def testDocSvgModifiedWithModifiedPngPasses(self):
+        self._WriteFile('ios/docs/diagram.svg')
+        self._WriteFile('ios/docs/diagram.png')
+        self.mock_input.files = [
+            self._ChangedFile('ios/docs/diagram.svg', 'M'),
+            self._ChangedFile('ios/docs/diagram.png', 'M'),
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
+
+    def testDocSvgAddedWithAddedPngPasses(self):
+        self._WriteFile('ios/docs/README.md', '![Diagram](diagram.png)\n')
+        self._WriteFile('ios/docs/diagram.svg')
+        self._WriteFile('ios/docs/diagram.png')
+        self.mock_input.files = [
+            self._ChangedFile('ios/docs/diagram.svg', 'A'),
+            self._ChangedFile('ios/docs/diagram.png', 'A'),
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
+
+    def testUnreferencedAssetSvgOutsideAssetCatalogPasses(self):
+        self._WriteFile(
+            'ios/chrome/browser/foo/resources/README.md',
+            'Resources for the foo feature.\n',
+        )
+        self._WriteFile('ios/chrome/browser/foo/resources/logo.svg')
+        self.mock_input.files = [
+            self._ChangedFile('ios/chrome/browser/foo/resources/logo.svg', 'M')
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
+
+    def testMarkdownMentioningLongerFileNameDoesNotMakeSvgADocSvg(self):
+        self._WriteFile('ios/docs/README.md', '![Diagram](big_logo.svg)\n')
+        self._WriteFile('ios/docs/logo.svg')
+        self.mock_input.files = [self._ChangedFile('ios/docs/logo.svg', 'M')]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
+
+    def testAssetCatalogSvgIsExemptEvenWhenReferencedFromMarkdown(self):
+        symbol_dir = (
+            'ios/chrome/browser/shared/ui/symbols/resources/'
+            'Assets.xcassets/foo.symbolset'
+        )
+        self._WriteFile(symbol_dir + '/README.md', '![Foo](foo.cr.svg)\n')
+        self._WriteFile(symbol_dir + '/foo.cr.svg')
+        self._WriteFile(symbol_dir + '/foo.cr.png')
+        self.mock_input.files = [
+            self._ChangedFile(symbol_dir + '/foo.cr.svg', 'M')
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
+
+    def testThirdPartySvgIsExemptEvenWhenReferencedFromMarkdown(self):
+        self._WriteFile(
+            'ios/third_party/some_lib/README.md', '![Logo](logo.svg)\n'
+        )
+        self._WriteFile('ios/third_party/some_lib/logo.svg')
+        self.mock_input.files = [
+            self._ChangedFile('ios/third_party/some_lib/logo.svg', 'M')
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
+
+    def testPngWithSameNameInOtherDirectoryDoesNotSatisfyCheck(self):
+        self._WriteFile('ios/docs/diagram.svg')
+        self._WriteFile('ios/docs/diagram.png')
+        self._WriteFile('ios/other/diagram.png')
+        self.mock_input.files = [
+            self._ChangedFile('ios/docs/diagram.svg', 'M'),
+            self._ChangedFile('ios/other/diagram.png', 'M'),
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(len(results), 1)
+        self.assertIn('ios/docs/diagram.png', results[0].message)
+
+    def testDeletedPngDoesNotSatisfyCheck(self):
+        self._WriteFile('ios/docs/README.md', '![Diagram](diagram.svg)\n')
+        self._WriteFile('ios/docs/diagram.svg')
+        self.mock_input.files = [
+            self._ChangedFile('ios/docs/diagram.svg', 'M'),
+            self._ChangedFile('ios/docs/diagram.png', 'D'),
+        ]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(len(results), 1)
+
+    def testDeletedSvgPasses(self):
+        self._WriteFile('ios/docs/diagram.png')
+        self.mock_input.files = [self._ChangedFile('ios/docs/diagram.svg', 'D')]
+
+        results = PRESUBMIT._CheckSvgHasUpdatedPng(
+            self.mock_input, self.mock_output
+        )
+
+        self.assertEqual(results, [])
 
 
 if __name__ == '__main__':

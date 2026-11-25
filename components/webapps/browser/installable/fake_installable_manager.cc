@@ -11,15 +11,12 @@
 #include "base/functional/callback.h"
 #include "base/task/single_thread_task_runner.h"
 #include "components/webapps/browser/installable/installable_data.h"
-#include "third_party/blink/public/common/manifest/manifest_util.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
 
 namespace webapps {
 
 FakeInstallableManager::FakeInstallableManager(
     content::WebContents* web_contents)
     : InstallableManager(web_contents),
-      manifest_(blink::mojom::Manifest::New()),
       web_page_metadata_(mojom::WebPageMetadata::New()) {}
 
 FakeInstallableManager::~FakeInstallableManager() = default;
@@ -51,12 +48,11 @@ FakeInstallableManager::CreateForWebContentsWithManifest(
     content::WebContents* web_contents,
     InstallableStatusCode installable_code,
     const GURL& manifest_url,
-    blink::mojom::ManifestPtr manifest) {
-  DCHECK(manifest);
+    std::optional<blink::Manifest> manifest) {
   FakeInstallableManager* installable_manager =
       FakeInstallableManager::CreateForWebContents(web_contents);
 
-  const bool valid_manifest = !blink::IsEmptyManifest(manifest);
+  const bool valid_manifest = manifest.has_value();
   installable_manager->manifest_url_ = manifest_url;
   installable_manager->manifest_ = std::move(manifest);
 
@@ -71,7 +67,7 @@ FakeInstallableManager::CreateForWebContentsWithManifest(
 
   auto installable_data = std::make_unique<InstallableData>(
       std::move(errors), installable_manager->manifest_url_,
-      *installable_manager->manifest_, *installable_manager->web_page_metadata_,
+      installable_manager->manifest_, *installable_manager->web_page_metadata_,
       GURL(), icon.get(), false, std::vector<Screenshot>(), valid_manifest);
 
   installable_manager->data_ = std::move(installable_data);

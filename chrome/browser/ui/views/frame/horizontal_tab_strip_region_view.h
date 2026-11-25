@@ -159,6 +159,7 @@ class HorizontalTabStripRegionViewNew : public BaseTabStripRegionView {
 
   bool HasLeadingButtons() const;
   TabStripComboButton* combo_button() { return combo_button_; }
+  views::Button* new_tab_button_for_testing() { return new_tab_button_; }
 
   // TabStripRegionView:
   gfx::Size GetMinimumSize() const override;
@@ -185,6 +186,7 @@ class HorizontalTabStripRegionViewNew : public BaseTabStripRegionView {
   std::unique_ptr<views::ActionViewController> action_view_controller_;
 
   base::CallbackListSubscription subscription_;
+  base::CallbackListSubscription new_tab_button_pressed_subscription_;
 };
 
 using HorizontalTabStripRegionView = HorizontalTabStripRegionViewOld;

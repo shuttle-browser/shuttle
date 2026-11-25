@@ -27,6 +27,8 @@ class SyncServiceFactory final
   // is not a real instance.
   static syncer::SyncServiceImpl* GetForProfileAsSyncServiceImplForTesting(
       ProfileIOS* profile);
+  static syncer::SyncServiceImpl* GetForProfileAsSyncServiceImplForTesting(
+      ProfileIOS& profile);
 
   // Iterates over all profiles that have been loaded so far and extract their
   // SyncService if present. Returned pointers are guaranteed to be not null.
@@ -39,7 +41,7 @@ class SyncServiceFactory final
  private:
   // ProfileKeyedServiceFactoryIOS implementation.
   std::unique_ptr<KeyedService> BuildServiceInstanceFor(
-      ProfileIOS* profile) const final;
+      ProfileIOS& profile) const final;
 };
 
 #endif  // IOS_CHROME_BROWSER_SYNC_MODEL_SYNC_SERVICE_FACTORY_H_

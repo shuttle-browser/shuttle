@@ -6,6 +6,7 @@
 
 #include <utility>
 
+#include "base/android/callback_android.h"
 #include "base/android/jni_array.h"
 #include "base/time/time.h"
 #include "content/browser/media/session/media_session_impl.h"
@@ -15,6 +16,9 @@
 #include "services/media_session/public/cpp/media_image.h"
 #include "services/media_session/public/cpp/media_position.h"
 #include "services/media_session/public/mojom/audio_focus.mojom.h"
+#include "third_party/jni_zero/jni_zero.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "ui/gfx/android/java_bitmap.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "content/public/android/content_jni_headers/MediaSessionImpl_jni.h"
@@ -36,8 +40,7 @@ MediaSessionAndroid::MediaSessionAndroid(MediaSessionImpl* session)
   CHECK(media_session_, base::NotFatalUntil::M160);
 
   JNIEnv* env = base::android::AttachCurrentThread();
-  j_media_session_ =
-      Java_MediaSessionImpl_create(env, reinterpret_cast<intptr_t>(this));
+  j_media_session_ = Java_MediaSessionImpl_create(env, jni_zero::MakeRaw(this));
 
   session->AddObserver(observer_receiver_.BindNewPipeAndPassRemote());
 }
@@ -96,10 +99,6 @@ void MediaSessionAndroid::MediaSessionMetadataChanged(
 
   JNIEnv* env = base::android::AttachCurrentThread();
 
-  // Avoid translating metadata through JNI if there is no Java observer.
-  if (!Java_MediaSessionImpl_hasObservers(env, j_local_session))
-    return;
-
   ScopedJavaLocalRef<jobject> j_metadata;
   if (metadata.has_value())
     j_metadata = metadata.value().CreateJavaObject(env);
@@ -134,10 +133,6 @@ void MediaSessionAndroid::MediaSessionImagesChanged(
   // Android is only interested in the artwork images.
   auto it = images.find(media_session::mojom::MediaSessionImageType::kArtwork);
   if (it == images.end())
-    return;
-
-  // Avoid translating metadata through JNI if there is no Java observer.
-  if (!Java_MediaSessionImpl_hasObservers(env, j_local_session))
     return;
 
   Java_MediaSessionImpl_mediaSessionArtworkChanged(
@@ -203,6 +198,39 @@ void MediaSessionAndroid::RequestSystemAudioFocus(JNIEnv* env) {
   CHECK(media_session_, base::NotFatalUntil::M160);
   media_session_->RequestSystemAudioFocus(
       media_session::mojom::AudioFocusType::kGain);
+}
+
+void MediaSessionAndroid::GetMediaImageBitmap(
+    JNIEnv* env,
+    const base::android::JavaRef<jobject>& j_media_image,
+    int minimum_size_px,
+    int desired_size_px,
+    const base::android::JavaRef<jobject>& j_callback) {
+  if (!j_callback) {
+    return;
+  }
+
+  if (!media_session_) {
+    base::android::RunObjectCallbackAndroid(j_callback, nullptr);
+    return;
+  }
+
+  media_session::MediaImage image =
+      media_session::MediaImage::FromJavaObject(env, j_media_image);
+
+  media_session_->GetMediaImageBitmap(
+      image, minimum_size_px, desired_size_px,
+      base::BindOnce(
+          [](const base::android::JavaRef<jobject>& j_callback,
+             const SkBitmap& bitmap) {
+            base::android::ScopedJavaLocalRef<jobject> j_bitmap;
+            if (!bitmap.drawsNothing()) {
+              j_bitmap = gfx::ConvertToJavaBitmap(
+                  bitmap, gfx::OomBehavior::kReturnNullOnOom);
+            }
+            base::android::RunObjectCallbackAndroid(j_callback, j_bitmap);
+          },
+          base::android::ScopedJavaGlobalRef<jobject>(env, j_callback)));
 }
 
 ScopedJavaLocalRef<jobject> MediaSessionAndroid::GetJavaObject() {

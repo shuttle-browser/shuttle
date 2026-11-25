@@ -8,54 +8,44 @@
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/browser/ui/views/dictation/ui_state.h"
+#include "chrome/browser/ui/views/voice/voice_plate.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/gfx/animation/linear_animation.h"
 #include "ui/gfx/animation/tween.h"
 #include "ui/views/animation/animation_delegate_views.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 
-namespace views {
-class Widget;
-}
-
 namespace dictation {
 
 // This class implements the agent toast UI for dictation.
-// TODO(b/555790343): Generalize the name and terms in this class to be more
-// voice-centric and less dictation-specific.
-// TODO(b/555790343): Make the toggle button optional.
-class DictationBubbleUi : public views::BubbleDialogDelegate {
+class DictationBubbleUi : public voice::VoicePlate {
  public:
   // If `show_reviewing_page_status` is true, the bubble initially shows a
-  // transient "Reviewing page" status in place of the toggle button.
+  // transient "Reviewing page" status in place of the done button.
   DictationBubbleUi(views::View* anchor_view,
                     base::RepeatingClosure close_callback,
-                    base::RepeatingClosure toggle_active_stream_callback,
+                    base::RepeatingClosure end_active_stream_callback,
                     bool show_reviewing_page_status);
   ~DictationBubbleUi() override;
 
-  void Show();
+  void Show() override;
   void SetState(UiState state);
-  void UpdateAudioLevel(float audio_level);
+  void UpdateAudioLevel(float audio_level) override;
   void SetReviewingPageStatusDurationForTesting(base::TimeDelta duration);
 
   // views::BubbleDialogDelegate:
-  gfx::Rect GetBubbleBounds() override;
   void Init() override;
   views::View* GetInitiallyFocusedView() override;
 
-  UiState state() const { return state_; }
-
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kViewElementIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kCloseButtonElementIdForTesting);
-  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kToggleButtonElementIdForTesting);
+  DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kDoneButtonElementIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kWaveformElementIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kSeparatorElementIdForTesting);
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(
       kReviewingPageStatusLabelElementIdForTesting);
 
  private:
-  std::unique_ptr<views::Widget> widget_;
   UiState state_ = UiState::kInactive;
   base::WeakPtrFactory<DictationBubbleUi> weak_ptr_factory_{this};
 };

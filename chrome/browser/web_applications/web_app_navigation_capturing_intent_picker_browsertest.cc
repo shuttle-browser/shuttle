@@ -35,7 +35,7 @@
 #include "content/public/test/browser_test_utils.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/mojom/manifest/manifest_launch_handler.mojom-shared.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "url/gurl.h"
 
 using blink::mojom::ManifestLaunchHandler_ClientMode;
@@ -171,11 +171,11 @@ IN_PROC_BROWSER_TEST_F(WebAppNavigationCapturingIntentPickerBrowserTest,
                        MAYBE_DoShowIconAndBubbleOnChromePasswordManagerPage) {
   GURL password_manager_url("chrome://password-manager");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), password_manager_url, WindowOpenDisposition::kCurrentTab,
+      browser(), password_manager_url,
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
-  webapps::AppId pwd_manager_app_id =
-      web_app::InstallWebAppInNewTabAndClose(browser(), password_manager_url);
+  web_app::InstallWebAppInNewTabAndClose(browser(), password_manager_url);
 
   content::RenderFrameHost* host =
       ui_test_utils::NavigateToURL(browser(), password_manager_url);

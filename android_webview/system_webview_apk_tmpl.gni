@@ -54,11 +54,6 @@ template("system_webview_apk_or_module_tmpl") {
     _version_code = invoker.version_code
   }
 
-  # Need to apply override explicitly to have it apply to library version.
-  if (android_override_version_code != "") {
-    _version_code = android_override_version_code
-  }
-
   if (defined(invoker.manifest_package)) {
     _manifest_package = invoker.manifest_package
   } else {
@@ -111,7 +106,6 @@ template("system_webview_apk_or_module_tmpl") {
                                ])
 
     _is_bundle_module = _target_type == "android_app_bundle_module"
-    _omit_dex = defined(invoker.omit_dex) && invoker.omit_dex
 
     if (defined(expected_android_manifest)) {
       if (android_64bit_target_cpu) {
@@ -120,7 +114,6 @@ template("system_webview_apk_or_module_tmpl") {
         _version_code_offset = chrome_version_code
       }
       expected_android_manifest_version_code_offset = _version_code_offset
-      expected_android_manifest_library_version_offset = _version_code_offset
     }
 
     android_manifest = _android_manifest
@@ -218,7 +211,7 @@ template("system_webview_apk_or_module_tmpl") {
       command_line_flags_file = "webview-command-line"
     }
 
-    if (!_omit_dex && !is_java_debug) {
+    if (!is_java_debug) {
       proguard_enabled = true
       if (!_is_bundle_module) {
         repackage_classes = "WV"
@@ -231,7 +224,7 @@ template("system_webview_apk_or_module_tmpl") {
           [ "//android_webview/nonembedded/java/proguard.flags" ]
     }
 
-    if (enable_silent_java_assert_reporting && !_omit_dex) {
+    if (enable_silent_java_assert_reporting) {
       custom_assertion_handler = crash_reporting_assertion_handler
     }
 

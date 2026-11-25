@@ -7,6 +7,7 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/notimplemented.h"
 #include "chrome/browser/ttc/app/public/audio_controller.h"
 #include "chrome/browser/ttc/core/session_controller.h"
@@ -23,9 +24,12 @@ ConversationImpl::ConversationImpl(
     SessionController& session_controller)
     : backend_(std::move(backend)),
       audio_controller_(std::move(audio_controller)),
-      session_controller_(session_controller) {
+      session_controller_(session_controller),
+      speaker_tracker_(base::BindRepeating(&ConversationImpl::OnSpeakerChanged,
+                                           base::Unretained(this))) {
   CHECK(backend_);
   CHECK(audio_controller_);
+  backend_->BindConversation(*this);
 }
 
 ConversationImpl::~ConversationImpl() {
@@ -63,11 +67,37 @@ void ConversationImpl::OnPageContextInvalidated() {
   NOTIMPLEMENTED();
 }
 
+void ConversationImpl::SetMicMuted(bool muted) {
+  if (muted) {
+    audio_controller_->StopCapture();
+  } else {
+    audio_controller_->StartCapture(/*device_id=*/"");
+  }
+}
+
+bool ConversationImpl::IsMicMuted() const {
+  return !audio_controller_->is_capturing();
+}
+
+SessionJournal& ConversationImpl::GetJournal() {
+  return session_controller_->GetJournal();
+}
+
 void ConversationImpl::OnCapturedAudio(base::span<const int16_t> pcm_data,
                                        const media::AudioParameters& params,
                                        float energy) {
+  audio_logger_.OnCapturedAudio(base::as_bytes(pcm_data), params,
+                                speaker_tracker_.speaker());
+
   backend_->SendAudioChunk(pcm_data);
   session_controller_->UserAudioLevelUpdate(energy);
+}
+
+void ConversationImpl::OnCaptureStopped() {
+  audio_logger_.OnCaptureStopped();
+
+  // No more audio levels arrive, so settle the UI at silence.
+  session_controller_->UserAudioLevelUpdate(0.0f);
 }
 
 void ConversationImpl::OnModelAudioEnvelopeReady(
@@ -89,9 +119,9 @@ void ConversationImpl::OnBackendInitialized() {
     return;
   }
   backend_->SendToolSetUpdate(session_controller_->GetToolDefinitions());
-  session_controller_->SetSessionLifecycle(SessionLifecycle::kLive);
+  // Capture starts first, so that the session goes live unmuted.
   audio_controller_->StartCapture(/*device_id=*/"");
-  session_controller_->OnSessionInitialized();
+  session_controller_->SetSessionLifecycle(SessionLifecycle::kLive);
 }
 
 void ConversationImpl::OnBackendClosed() {
@@ -138,6 +168,23 @@ void ConversationImpl::OnGenerationStateChanged(bool started,
   if (completed) {
     session_controller_->OnModelTurnComplete();
   }
+}
+
+void ConversationImpl::OnModelTurnStateUpdate(ModelTurnStateUpdate update,
+                                              int64_t generation_id) {
+  speaker_tracker_.OnModelTurnStateUpdate(update, generation_id);
+}
+
+void ConversationImpl::OnUserTurnStateUpdate(UserTurnStateUpdate update) {
+  speaker_tracker_.OnUserTurnStateUpdate(update);
+}
+
+void ConversationImpl::OnSpeakerChanged(Speaker old_speaker,
+                                        Speaker new_speaker) {
+  if (old_speaker == Speaker::kUser) {
+    audio_logger_.DumpToJournal(session_controller_->GetJournal());
+  }
+  session_controller_->OnSpeakerChanged(new_speaker);
 }
 
 void ConversationImpl::OnToolCall(const ToolRequest& tool_request,

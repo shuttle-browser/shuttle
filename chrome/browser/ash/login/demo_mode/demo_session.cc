@@ -44,7 +44,6 @@
 #include "chrome/browser/ash/login/demo_mode/demo_setup_controller.h"
 #include "chrome/browser/ash/policy/core/browser_policy_connector_ash.h"
 #include "chrome/browser/ash/system_web_apps/system_web_app_manager.h"
-#include "chrome/browser/metrics/chrome_metrics_service_accessor.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/system/system_tray_client_impl.h"
 #include "chrome/browser/ui/ash/system_web_apps/system_web_app_ui_utils.h"
@@ -62,6 +61,7 @@
 #include "components/services/app_service/public/cpp/app_launch_params.h"
 #include "components/services/app_service/public/cpp/app_launch_util.h"
 #include "components/services/app_service/public/cpp/app_types.h"
+#include "components/session_manager/core/session.h"
 #include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
 #include "components/variations/synthetic_trials.h"
@@ -538,13 +538,12 @@ DemoSession::~DemoSession() {
 
 // static
 
-void DemoSession::InstallDemoResources() {
+void DemoSession::InstallDemoResources(const AccountId& account_id) {
   CHECK(components_->resources_component_loaded(), base::NotFatalUntil::M160);
 
-  Profile* const profile = ProfileManager::GetActiveUserProfile();
-  CHECK(profile, base::NotFatalUntil::M160);
-  const base::FilePath downloads =
-      file_manager::util::GetDownloadsFolderForProfile(profile);
+  const user_manager::User& user =
+      CHECK_DEREF(user_manager::UserManager::Get()->FindUser(account_id));
+  const base::FilePath downloads = file_manager::util::GetDownloadsFolder(user);
   auto install_media = base::BindOnce(
       &InstallDemoMedia, components_->resources_component_path(), downloads);
 
@@ -640,8 +639,11 @@ void DemoSession::OnSessionStateChanged() {
                            weak_ptr_factory_.GetWeakPtr()));
       }
 
-      EnsureResourcesLoaded(base::BindOnce(&DemoSession::InstallDemoResources,
-                                           weak_ptr_factory_.GetWeakPtr()));
+      EnsureResourcesLoaded(base::BindOnce(
+          &DemoSession::InstallDemoResources, weak_ptr_factory_.GetWeakPtr(),
+          CHECK_DEREF(
+              session_manager::SessionManager::Get()->GetActiveSession())
+              .account_id()));
 
       // When the session successfully starts, we record the action
       // DemoMode.DemoSessionStarts.
@@ -674,7 +676,9 @@ DemoSession::GetBlockingTaskRunnerForTest() {
 }
 
 void DemoSession::OnLocalFilesCleanupCompleted() {
-  InstallDemoResources();
+  InstallDemoResources(
+      CHECK_DEREF(session_manager::SessionManager::Get()->GetActiveSession())
+          .account_id());
 }
 
 void DemoSession::OnDemoAppComponentLoaded() {

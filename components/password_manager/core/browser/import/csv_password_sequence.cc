@@ -6,27 +6,40 @@
 
 #include <stddef.h>
 
+#include <limits>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
-#include "base/check.h"
-#include "base/check_op.h"
-#include "base/containers/enum_set.h"
 #include "base/containers/fixed_flat_map.h"
 #include "base/strings/string_util.h"
+#include "base/types/expected.h"
 #include "components/password_manager/core/browser/import/csv_field_parser.h"
 #include "components/password_manager/core/browser/import/csv_password.h"
-#include "components/password_manager/core/browser/import/csv_password_iterator.h"
+#include "url/gurl.h"
 
 namespace password_manager {
 
 namespace {
 
-// Given a CSV column |name|, returns a pointer to the matching
-// CSVPassword::Label or nullptr if the column name is not recognised.
-const CSVPassword::Label* NameToLabel(std::string_view name) {
-  using Label = CSVPassword::Label;
+enum class Label {
+  kOrigin,
+  kUsername,
+  kPassword,
+};
+
+// Unescapes a CSV field |str|. |str| is assumed to exclude the outer pair of
+// quotation marks, if originally present.
+std::string UnescapeCSVField(std::string_view str) {
+  std::string str_copy(str);
+  base::ReplaceSubstringsAfterOffset(&str_copy, 0, "\"\"", "\"");
+  return str_copy;
+}
+
+// Given a CSV column |name|, returns a pointer to the matching Label or nullptr
+// if the column name is not recognised.
+const Label* NameToLabel(std::string_view name) {
   // Recognised column names for origin URL, usernames and passwords.
   static constexpr auto kLabelMap =
       base::MakeFixedFlatMap<std::string_view, Label>({
@@ -44,20 +57,15 @@ const CSVPassword::Label* NameToLabel(std::string_view name) {
 
           {"password", Label::kPassword},
           {"login_password", Label::kPassword},
-
-          {"note", Label::kNote},
-          {"notes", Label::kNote},
-          {"comment", Label::kNote},
-          {"comments", Label::kNote},
       });
 
   auto it = kLabelMap.find(name);
   return it != kLabelMap.end() ? &it->second : nullptr;
 }
 
-// Given |name| of a note column, returns its priority.
-size_t GetNoteHeaderPriority(std::string_view name) {
-  DCHECK_EQ(*NameToLabel(name), CSVPassword::Label::kNote);
+// Given |name| of a column, returns its note priority if it is a recognized
+// note column name.
+std::optional<size_t> GetNoteHeaderPriority(std::string_view name) {
   // Mapping names for note columns to their priorities.
   static constexpr auto kNoteLabelsPriority =
       base::MakeFixedFlatMap<std::string_view, size_t>({
@@ -71,74 +79,120 @@ size_t GetNoteHeaderPriority(std::string_view name) {
   // in one file and which names are used.
 
   auto it = kNoteLabelsPriority.find(name);
-  CHECK(it != kNoteLabelsPriority.end());
-  return it->second;
+  return it != kNoteLabelsPriority.end() ? std::optional(it->second)
+                                         : std::nullopt;
+}
+
+// Returns all the characters from the start of |input| until the first '\n',
+// "\r\n" (exclusive) or the end of |input|. Cuts the returned part (inclusive
+// of the line breaks) from |input|. Skips blocks of matching quotes. Examples:
+// old input -> returned value, new input
+// "ab\ncd" -> "ab", "cd"
+// "\r\n" -> "", ""
+// "abcd" -> "abcd", ""
+// "\r" -> "\r", ""
+// "a\"\n\"b" -> "a\"\n\"b", ""
+std::string_view ConsumeCSVLine(std::string_view& input) {
+  bool inside_quotes = false;
+  bool last_char_was_cr = false;
+  for (size_t current = 0; current < input.size(); ++current) {
+    char c = input[current];
+    switch (c) {
+      case '\n':
+        if (!inside_quotes) {
+          const size_t eol_start = last_char_was_cr ? current - 1 : current;
+          std::string_view ret = input.substr(0, eol_start);
+          input.remove_prefix(current + 1);
+          return ret;
+        }
+        break;
+      case '"':
+        inside_quotes = !inside_quotes;
+        break;
+      default:
+        break;
+    }
+    last_char_was_cr = (c == '\r');
+  }
+
+  // The whole |input| is one line.
+  return std::exchange(input, std::string_view());
 }
 
 }  // namespace
 
-CSVPasswordSequence::CSVPasswordSequence(std::string csv)
-    : csv_(std::move(csv)) {
-  // Sanity check.
-  if (csv_.empty()) {
-    result_ = CSVPassword::Status::kSyntaxError;
-    return;
+// static
+base::expected<CSVPasswordSequence, CSVPassword::Status>
+CSVPasswordSequence::Create(std::string_view csv) {
+  if (csv.empty()) {
+    return base::unexpected(CSVPassword::Status::kSyntaxError);
   }
-  data_rows_ = csv_;
 
-  // Construct ColumnMap.
-  std::string_view first = ConsumeCSVLine(&data_rows_);
+  std::string_view header_row = ConsumeCSVLine(csv);
 
-  constexpr size_t kMaxPriority = 101;
-  // Mapping "note column index" -> "header name priority".
-  size_t note_column_index, note_column_priority = kMaxPriority;
+  std::optional<size_t> origin;
+  std::optional<size_t> username;
+  std::optional<size_t> password;
+  std::optional<size_t> note;
+  size_t note_column_priority = std::numeric_limits<size_t>::max();
+  bool has_duplicate_label = false;
 
-  CSVFieldParser parser(first);
+  CSVFieldParser parser(header_row);
   for (size_t col_index = 0; auto raw_name = parser.NextField(); ++col_index) {
     if (!raw_name->has_value()) {
-      result_ = CSVPassword::Status::kSyntaxError;
-      return;
+      return base::unexpected(CSVPassword::Status::kSyntaxError);
     }
 
     std::string name = base::ToLowerASCII(
         base::TrimWhitespaceASCII(**raw_name, base::TRIM_ALL));
-    if (const CSVPassword::Label* label = NameToLabel(name)) {
-      // If there are multiple columns matching one of the accepted "note" field
-      // names, the one with the lowest priority should be used.
-      if (*label == CSVPassword::Label::kNote) {
-        size_t note_priority = GetNoteHeaderPriority(name);
-        if (note_column_priority > note_priority) {
-          note_column_index = col_index;
-          note_column_priority = note_priority;
-        }
-        continue;
+    if (const Label* label = NameToLabel(name)) {
+      switch (*label) {
+        case Label::kOrigin:
+          if (std::exchange(origin, col_index).has_value()) {
+            has_duplicate_label = true;
+          }
+          break;
+        case Label::kUsername:
+          if (std::exchange(username, col_index).has_value()) {
+            has_duplicate_label = true;
+          }
+          break;
+        case Label::kPassword:
+          if (std::exchange(password, col_index).has_value()) {
+            has_duplicate_label = true;
+          }
+          break;
       }
-      map_[col_index] = *label;
+    } else if (std::optional<size_t> note_priority =
+                   GetNoteHeaderPriority(name);
+               note_priority.has_value() &&
+               note_column_priority > *note_priority) {
+      // If there are multiple columns matching one of the accepted "note"
+      // field names, the one with the lowest priority should be used.
+      note = col_index;
+      note_column_priority = *note_priority;
     }
   }
 
-  if (note_column_priority != kMaxPriority) {
-    map_[note_column_index] = CSVPassword::Label::kNote;
+  // Check that each of the required labels is uniquely assigned to a column.
+  if (has_duplicate_label || !origin.has_value() || !username.has_value() ||
+      !password.has_value()) {
+    return base::unexpected(CSVPassword::Status::kSemanticError);
   }
 
-  base::EnumSet<CSVPassword::Label> all_labels;
-  for (const auto& [_, label] : map_) {
-    if (all_labels.Has(label)) {
-      // Multiple columns share the same label.
-      result_ = CSVPassword::Status::kSemanticError;
-      return;
-    }
-    all_labels.Put(label);
-  }
-
-  // Check that each of the required labels is assigned to a column.
-  if (!all_labels.HasAll({CSVPassword::Label::kOrigin,
-                          CSVPassword::Label::kUsername,
-                          CSVPassword::Label::kPassword})) {
-    result_ = CSVPassword::Status::kSemanticError;
-    return;
-  }
+  return CSVPasswordSequence(
+      ColumnMap{
+          .origin = *origin,
+          .username = *username,
+          .password = *password,
+          .note = note,
+      },
+      csv);
 }
+
+CSVPasswordSequence::CSVPasswordSequence(ColumnMap column_map,
+                                         std::string_view remaining_rows)
+    : column_map_(column_map), remaining_rows_(remaining_rows) {}
 
 CSVPasswordSequence::CSVPasswordSequence(CSVPasswordSequence&&) = default;
 CSVPasswordSequence& CSVPasswordSequence::operator=(CSVPasswordSequence&&) =
@@ -146,15 +200,46 @@ CSVPasswordSequence& CSVPasswordSequence::operator=(CSVPasswordSequence&&) =
 
 CSVPasswordSequence::~CSVPasswordSequence() = default;
 
-CSVPasswordIterator CSVPasswordSequence::begin() const {
-  if (result_ != CSVPassword::Status::kOK) {
-    return end();
-  }
-  return CSVPasswordIterator(map_, data_rows_);
-}
+std::optional<CSVPassword> CSVPasswordSequence::NextPassword() {
+  while (!remaining_rows_.empty()) {
+    std::string_view row = base::TrimString(ConsumeCSVLine(remaining_rows_),
+                                            "\r \t", base::TRIM_LEADING);
+    if (row.empty()) {
+      continue;
+    }
 
-CSVPasswordIterator CSVPasswordSequence::end() const {
-  return CSVPasswordIterator(map_, std::string_view());
+    base::expected<GURL, std::string> url = base::unexpected("");
+    std::string username;
+    std::string password;
+    std::string note;
+    CSVPassword::Status status = CSVPassword::Status::kOK;
+
+    CSVFieldParser parser(row);
+    for (size_t field_idx = 0; auto field = parser.NextField(); ++field_idx) {
+      if (!field->has_value()) {
+        status = CSVPassword::Status::kSyntaxError;
+        break;
+      }
+      if (field_idx == column_map_.origin) {
+        GURL gurl(**field);
+        if (gurl.is_valid()) {
+          url = std::move(gurl);
+        } else {
+          url = base::unexpected(UnescapeCSVField(**field));
+        }
+      } else if (field_idx == column_map_.username) {
+        username = UnescapeCSVField(**field);
+      } else if (field_idx == column_map_.password) {
+        password = UnescapeCSVField(**field);
+      } else if (field_idx == column_map_.note) {
+        note = UnescapeCSVField(**field);
+      }
+    }
+
+    return CSVPassword(std::move(url), std::move(username), std::move(password),
+                       std::move(note), status);
+  }
+  return std::nullopt;
 }
 
 }  // namespace password_manager

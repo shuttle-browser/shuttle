@@ -137,7 +137,8 @@ class MockPasswordGenerationController
 
   MOCK_METHOD(void,
               OnGenerationRequested,
-              (autofill::password_generation::PasswordGenerationType));
+              (autofill::password_generation::PasswordGenerationType),
+              (override));
 };
 
 // static
@@ -158,7 +159,7 @@ class MockPasswordGenerationFrameHelper : public PasswordGenerationFrameHelper {
   MockPasswordGenerationFrameHelper(PasswordManagerClient* client,
                                     PasswordManagerDriver* driver)
       : PasswordGenerationFrameHelper(client, driver) {}
-  MOCK_METHOD(bool, IsGenerationEnabled, (bool), (const override));
+  MOCK_METHOD(bool, IsGenerationEnabled, (bool), (const, override));
 };
 
 class MockPasswordManagerClient
@@ -209,7 +210,7 @@ class MockPasswordManagerClient
   MOCK_METHOD(const PasswordManagerInterface*,
               GetPasswordManager,
               (),
-              (const override));
+              (const, override));
 
   password_manager::PasswordStoreInterface* GetAccountPasswordStore()
       const override {
@@ -1096,6 +1097,9 @@ TEST_F(PasswordAccessoryControllerTest, NoAccessoryImpressionsIfUnblocklisted) {
 
 TEST_F(PasswordAccessoryControllerTest, SavePasswordsToggledUpdatesCache) {
   CreateSheetController();
+  controller()->RefreshSuggestionsForField(
+      FocusedFieldType::kFillablePasswordField,
+      /*is_field_eligible_for_manual_generation=*/false);
   url::Origin example_origin = url::Origin::Create(GURL(kExampleSite));
   EXPECT_CALL(*password_client(), UpdateFormManagers);
   controller()->OnToggleChanged(
@@ -1108,6 +1112,9 @@ TEST_F(PasswordAccessoryControllerTest,
           IsAccountStorageActive)
       .WillByDefault(Return(true));
   CreateSheetController();
+  controller()->RefreshSuggestionsForField(
+      FocusedFieldType::kFillablePasswordField,
+      /*is_field_eligible_for_manual_generation=*/false);
   password_manager::PasswordFormDigest form_digest(
       PasswordForm::Scheme::kHtml, kExampleSignonRealm, GURL(kExampleSite));
   EXPECT_CALL(*mock_account_password_store_, Unblocklist(form_digest, _));
@@ -1118,6 +1125,9 @@ TEST_F(PasswordAccessoryControllerTest,
 TEST_F(PasswordAccessoryControllerTest,
        SavePasswordsEnabledUpdatesProfileStore) {
   CreateSheetController();
+  controller()->RefreshSuggestionsForField(
+      FocusedFieldType::kFillablePasswordField,
+      /*is_field_eligible_for_manual_generation=*/false);
   password_manager::PasswordFormDigest form_digest(
       PasswordForm::Scheme::kHtml, kExampleSignonRealm, GURL(kExampleSite));
   EXPECT_CALL(*mock_profile_password_store_, Unblocklist(form_digest, _));
@@ -1131,6 +1141,9 @@ TEST_F(PasswordAccessoryControllerTest,
           IsAccountStorageActive)
       .WillByDefault(Return(true));
   CreateSheetController();
+  controller()->RefreshSuggestionsForField(
+      FocusedFieldType::kFillablePasswordField,
+      /*is_field_eligible_for_manual_generation=*/false);
   PasswordForm expected_form;
   expected_form.blocked_by_user = true;
   expected_form.scheme = PasswordForm::Scheme::kHtml;
@@ -1146,6 +1159,9 @@ TEST_F(PasswordAccessoryControllerTest,
 TEST_F(PasswordAccessoryControllerTest,
        SavePasswordsDisabledUpdatesProfileStore) {
   CreateSheetController();
+  controller()->RefreshSuggestionsForField(
+      FocusedFieldType::kFillablePasswordField,
+      /*is_field_eligible_for_manual_generation=*/false);
   PasswordForm expected_form;
   expected_form.blocked_by_user = true;
   expected_form.scheme = PasswordForm::Scheme::kHtml;
@@ -1154,6 +1170,26 @@ TEST_F(PasswordAccessoryControllerTest,
   expected_form.date_created = base::Time::Now();
   EXPECT_CALL(*mock_profile_password_store_,
               AddLogin(password_manager::EqStoredCredential(expected_form), _));
+  controller()->OnToggleChanged(
+      autofill::AccessoryAction::TOGGLE_SAVE_PASSWORDS, false);
+}
+
+TEST_F(PasswordAccessoryControllerTest,
+       SavePasswordsToggleIgnoredIfFocusedOriginChanged) {
+  CreateSheetController();
+  controller()->RefreshSuggestionsForField(
+      FocusedFieldType::kFillablePasswordField,
+      /*is_field_eligible_for_manual_generation=*/false);
+
+  // Simulate the focused frame's origin changing (e.g. to a cross-origin frame)
+  // without refreshing the accessory sheet suggestions.
+  NavigateAndCommit(GURL("https://random.other-site.org/"));
+
+  EXPECT_CALL(*mock_profile_password_store_, Unblocklist).Times(0);
+  EXPECT_CALL(*mock_profile_password_store_, AddLogin).Times(0);
+  EXPECT_CALL(*password_client(), UpdateFormManagers).Times(0);
+  controller()->OnToggleChanged(
+      autofill::AccessoryAction::TOGGLE_SAVE_PASSWORDS, true);
   controller()->OnToggleChanged(
       autofill::AccessoryAction::TOGGLE_SAVE_PASSWORDS, false);
 }

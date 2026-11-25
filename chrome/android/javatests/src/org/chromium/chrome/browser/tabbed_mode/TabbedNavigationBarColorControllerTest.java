@@ -27,7 +27,6 @@ import androidx.core.graphics.ColorUtils;
 import androidx.test.filters.MediumTest;
 import androidx.test.filters.SmallTest;
 
-import org.junit.Assume;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -37,12 +36,9 @@ import org.mockito.Mockito;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features;
-import org.chromium.base.test.util.Features.DisableFeatures;
-import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.MaxAndroidSdkLevel;
 import org.chromium.base.test.util.MinAndroidSdkLevel;
 import org.chromium.base.test.util.Restriction;
@@ -50,7 +46,6 @@ import org.chromium.base.test.util.TestAnimations.EnableAnimations;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
 import org.chromium.chrome.browser.fullscreen.FullscreenOptions;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
@@ -79,10 +74,8 @@ import java.util.concurrent.TimeoutException;
 
 /** Tests for {@link TabbedNavigationBarColorController}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 @Features.DisableFeatures({
-    ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE,
     ChromeFeatureList.EDGE_TO_EDGE_MONITOR_CONFIGURATIONS,
     ChromeFeatureList.ANDROID_BOTTOM_BAR
 })
@@ -126,6 +119,13 @@ public class TabbedNavigationBarColorControllerTest {
         mWindowSystemBarColorHelper = mEdgeToEdgeSystemBarColorHelper.getWindowHelperForTesting();
     }
 
+    private int getNavigationBarColor() {
+        // TODO(crbug.com/571073808): Clean up E2E check
+        return EdgeToEdgeUtils.isEdgeToEdgeEverywhereEnabled()
+                ? mEdgeToEdgeSystemBarColorHelper.getNavigationBarColor()
+                : mWindow.getNavigationBarColor();
+    }
+
     @Test
     @SmallTest
     @DisabledTest(message = "crbug.com/419391905")
@@ -135,7 +135,7 @@ public class TabbedNavigationBarColorControllerTest {
         assertEquals(
                 "Navigation bar should match the tab background before entering overview mode.",
                 mActivityTestRule.getActivityTab().getBackgroundColor(),
-                mWindow.getNavigationBarColor());
+                getNavigationBarColor());
 
         LayoutTestUtils.startShowingAndWaitForLayout(
                 mActivityTestRule.getActivity().getLayoutManager(), LayoutType.HUB, false);
@@ -143,7 +143,7 @@ public class TabbedNavigationBarColorControllerTest {
         assertEquals(
                 "Navigation bar should be colorSurface in overview mode.",
                 mRegularNavigationColor,
-                mWindow.getNavigationBarColor());
+                getNavigationBarColor());
 
         LayoutTestUtils.startShowingAndWaitForLayout(
                 mActivityTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING, false);
@@ -151,7 +151,7 @@ public class TabbedNavigationBarColorControllerTest {
         assertEquals(
                 "Navigation bar should match the tab background after exiting overview mode.",
                 mActivityTestRule.getActivityTab().getBackgroundColor(),
-                mWindow.getNavigationBarColor());
+                getNavigationBarColor());
     }
 
     @Test
@@ -202,7 +202,7 @@ public class TabbedNavigationBarColorControllerTest {
         assertEquals(
                 "Navigation bar should be colorSurface before entering fullscreen mode.",
                 mRegularNavigationColor,
-                mWindow.getNavigationBarColor());
+                getNavigationBarColor());
 
         String url =
                 mActivityTestRule
@@ -219,14 +219,14 @@ public class TabbedNavigationBarColorControllerTest {
         assertEquals(
                 "Navigation bar should be dark in fullscreen mode.",
                 mDarkNavigationColor,
-                mWindow.getNavigationBarColor());
+                getNavigationBarColor());
 
         exitFullscreen(observer, activity.getCurrentWebContents());
 
         assertEquals(
                 "Navigation bar should be colorSurface after exiting fullscreen mode.",
                 mRegularNavigationColor,
-                mWindow.getNavigationBarColor());
+                getNavigationBarColor());
     }
 
     @Test
@@ -371,28 +371,9 @@ public class TabbedNavigationBarColorControllerTest {
 
     @Test
     @MediumTest
-    @DisableFeatures(ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE)
     @EnableAnimations
     @Restriction({DeviceFormFactor.PHONE, DeviceRestriction.RESTRICTION_TYPE_NON_AUTO})
     @MinAndroidSdkLevel(Build.VERSION_CODES.R)
-    @DisabledTest(message = "https://crbug.com/576880040")
-    public void testNavBarColorAnimationsEdgeToEdgeBottomChin() throws InterruptedException {
-        initialize();
-
-        Assume.assumeTrue(
-                "E2E not applicable.",
-                EdgeToEdgeUtils.isEdgeToEdgeBottomChinSupportedByDevice(
-                        mActivityTestRule.getActivity()));
-        testNavBarColorAnimations();
-    }
-
-    @Test
-    @MediumTest
-    @EnableFeatures({ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE})
-    @EnableAnimations
-    @Restriction({DeviceFormFactor.PHONE, DeviceRestriction.RESTRICTION_TYPE_NON_AUTO})
-    @MinAndroidSdkLevel(Build.VERSION_CODES.R)
-    @DisabledTest(message = "https://crbug.com/576880040")
     public void testNavBarColorAnimationsEdgeToEdgeEverywhere() throws InterruptedException {
         initialize();
         testNavBarColorAnimations();
@@ -452,20 +433,25 @@ public class TabbedNavigationBarColorControllerTest {
     private void testNavBarColorAnimations() {
         assertThat(mTabbedNavigationBarColorController).isNotNull();
 
-        // Create spies from real instances and inject the spies back.
+        // Wait for any initial nav bar color transition animation from activity startup to finish
+        // before attaching spies.
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    ValueAnimator valueAnimator =
+                            mTabbedNavigationBarColorController
+                                    .getNavbarColorTransitionAnimationForTesting();
+
+                    return valueAnimator == null || !valueAnimator.isRunning();
+                },
+                "Initial nav bar color animations did not finish.",
+                ANIMATION_MAX_TIMEOUT_MS,
+                ANIMATION_CHECK_INTERVAL_MS);
+
+        // Create spies from real instances and inject the spies back on the UI thread.
         EdgeToEdgeSystemBarColorHelper spyEdgeToEdgeSystemBarColorHelper =
                 Mockito.spy(mEdgeToEdgeSystemBarColorHelper);
-
-        mTabbedNavigationBarColorController.setEdgeToEdgeSystemBarColorHelperForTesting(
-                spyEdgeToEdgeSystemBarColorHelper);
-
         WindowSystemBarColorHelper spyWindowSystemBarColorHelper =
                 Mockito.spy(mWindowSystemBarColorHelper);
-
-        // Inject the spy back into spyEdgeToEdgeSystemBarColorHelper.
-        spyEdgeToEdgeSystemBarColorHelper.setWindowHelperForTesting(spyWindowSystemBarColorHelper);
-
-        Mockito.clearInvocations(spyEdgeToEdgeSystemBarColorHelper);
 
         // The initial nav bar color.
         int startColor = Color.BLUE;
@@ -473,9 +459,15 @@ public class TabbedNavigationBarColorControllerTest {
         // The target nav bar color after animations.
         int endColor = Color.RED;
 
-        // Trigger the color change on the UI thread.
+        // Trigger the spy injection and initial color change on the UI thread.
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
+                    mTabbedNavigationBarColorController.setEdgeToEdgeSystemBarColorHelperForTesting(
+                            spyEdgeToEdgeSystemBarColorHelper);
+                    spyEdgeToEdgeSystemBarColorHelper.setWindowHelperForTesting(
+                            spyWindowSystemBarColorHelper);
+                    Mockito.clearInvocations(spyEdgeToEdgeSystemBarColorHelper);
+
                     // Set the initial navigation bar color to blue.
                     mTabbedNavigationBarColorController.onBottomAttachedColorChanged(
                             startColor, false, /* disableAnimation= */ true);

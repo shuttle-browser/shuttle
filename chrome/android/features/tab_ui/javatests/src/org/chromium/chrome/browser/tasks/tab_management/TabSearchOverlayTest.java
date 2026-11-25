@@ -18,20 +18,19 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.history.BrowsingHistoryBridge;
 import org.chromium.chrome.browser.history.HistoryItem;
 import org.chromium.chrome.browser.history.HistoryProvider.BrowsingHistoryObserver;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabbed_mode.TabbedRootUiCoordinator;
 import org.chromium.chrome.browser.tabmodel.TabClosureParams;
+import org.chromium.chrome.browser.tabmodel.TabGroupMergeNotificationType;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tasks.tab_management.TabSearchOverlayCoordinator.TabSearchDismissalReason;
 import org.chromium.chrome.browser.tasks.tab_management.TabSearchOverlayCoordinator.TabSearchEntryPoint;
@@ -44,7 +43,6 @@ import org.chromium.chrome.test.transit.tab_search.TabSearchOverlayFacility;
 import org.chromium.chrome.test.transit.tab_search.TabSearchOverlayFacility.TabGroupSuggestionFacility;
 import org.chromium.chrome.test.transit.tab_search.TabSearchOverlayFacility.TabSuggestionFacility;
 import org.chromium.chrome.test.util.TabRestoreServiceUtils;
-import org.chromium.chrome.test.util.VerticalTabsTestUtils;
 import org.chromium.components.omnibox.OmniboxFeatureList;
 import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.ui.base.DeviceFormFactor;
@@ -54,8 +52,7 @@ import java.util.concurrent.TimeoutException;
 
 /** Tests for the Tab Search Overlay using Public Transit. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
-@EnableFeatures({ChromeFeatureList.TAB_SEARCH_FOR_DESKTOP, ChromeFeatureList.ANDROID_VERTICAL_TABS})
+@EnableFeatures(ChromeFeatureList.TAB_SEARCH_FOR_DESKTOP)
 @Restriction({DeviceFormFactor.DESKTOP})
 @Batch(Batch.PER_CLASS)
 public class TabSearchOverlayTest {
@@ -93,26 +90,6 @@ public class TabSearchOverlayTest {
         watcher.assertExpected();
 
         tabSearchOverlay.dismissViaCloseButton();
-    }
-
-    @Test
-    @MediumTest
-    public void testEntryPoint_VerticalTabs() {
-        String url = mTestServer.getURL("/chrome/test/data/android/navigate/one.html");
-        mPage = mCtaTestRule.startOnWebPage(url);
-
-        try (var ignored =
-                VerticalTabsTestUtils.toggleTabStripForTesting(mCtaTestRule.getActivity())) {
-            HistogramWatcher watcher =
-                    HistogramWatcher.newSingleRecordWatcher(
-                            "Android.TabSearch.EntryPoint", TabSearchEntryPoint.VERTICAL_TABS);
-
-            TabSearchOverlayFacility<CtaPageStation> tabSearchOverlay =
-                    mPage.openTabSearchOverlay();
-            watcher.assertExpected();
-
-            tabSearchOverlay.dismissViaCloseButton();
-        }
     }
 
     @Test
@@ -408,7 +385,10 @@ public class TabSearchOverlayTest {
                 () -> {
                     ChromeTabbedActivity cta = mCtaTestRule.getActivity();
                     TabModel tabModel = cta.getTabModelSelector().getModel(/* incognito= */ false);
-                    tabModel.mergeTabsToGroup(tab2.getId(), tab1.getId());
+                    tabModel.mergeListOfTabsToGroup(
+                            List.of(tab2),
+                            tab1,
+                            TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
                     tabModel.setTabGroupTitle(tab1.getTabGroupId(), tabGroupTitle);
                 });
 

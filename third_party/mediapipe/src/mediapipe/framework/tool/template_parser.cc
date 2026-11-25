@@ -25,18 +25,19 @@
 #include <utility>
 #include <vector>
 
-#include "absl/container/flat_hash_set.h"
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/strings/ascii.h"
-#include "absl/strings/match.h"
-#include "absl/strings/numbers.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
-#include "absl/strings/str_split.h"
-#include "absl/strings/string_view.h"
+#include "absl/container/flat_hash_set.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"           // from @com_google_absl
+#include "absl/log/absl_log.h"             // from @com_google_absl
+#include "absl/memory/memory.h"            // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/strings/ascii.h"            // from @com_google_absl
+#include "absl/strings/match.h"            // from @com_google_absl
+#include "absl/strings/numbers.h"          // from @com_google_absl
+#include "absl/strings/str_cat.h"          // from @com_google_absl
+#include "absl/strings/str_join.h"         // from @com_google_absl
+#include "absl/strings/str_split.h"        // from @com_google_absl
+#include "absl/strings/string_view.h"      // from @com_google_absl
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/dynamic_message.h"
 #include "google/protobuf/io/coded_stream.h"
@@ -49,8 +50,6 @@
 #include "mediapipe/framework/deps/proto_descriptor.pb.h"
 #include "mediapipe/framework/port/map_util.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/tool/calculator_graph_template.pb.h"
 #include "mediapipe/framework/tool/proto_util_lite.h"
 
@@ -182,7 +181,7 @@ TemplateParser::ParseInfoTree*
 TemplateParser::ParseInfoTree::CreateNested(  // NOLINT
     const FieldDescriptor* field) {
   // Owned by us in the map.
-  auto instance = absl::make_unique<TemplateParser::ParseInfoTree>();
+  auto instance = std::make_unique<TemplateParser::ParseInfoTree>();
   std::vector<std::unique_ptr<TemplateParser::ParseInfoTree>>* trees =
       &nested_[field];
   instance->path_ =
@@ -1424,7 +1423,7 @@ void SerializeField(const Message* message, const FieldDescriptor* field,
   ABSL_CHECK(DeterministicallySerialize(*message, &message_bytes));
   ProtoUtilLite::FieldAccess access(
       field->number(), static_cast<ProtoUtilLite::FieldType>(field->type()));
-  MEDIAPIPE_CHECK_OK(access.SetMessage(message_bytes));
+  ABSL_CHECK_OK(access.SetMessage(message_bytes));
   *result = *access.mutable_field_values();
 }
 
@@ -1525,7 +1524,7 @@ void StowFieldValue(Message* message, TemplateExpression* expression,
   const Reflection* reflection = message->GetReflection();
   const Descriptor* descriptor = message->GetDescriptor();
   ProtoUtilLite::ProtoPath path;
-  MEDIAPIPE_CHECK_OK(ProtoPathSplit(expression->path(), &path));
+  ABSL_CHECK_OK(ProtoPathSplit(expression->path(), &path));
   int field_number = path[path.size() - 1].field_id;
   const FieldDescriptor* field = descriptor->FindFieldByNumber(field_number);
 
@@ -1614,16 +1613,35 @@ const Message* GetNestedMessage(const Message& message,
 // Protobuf map-entry order is intentionally not preserved.
 absl::Status KeyProtoMapEntries(Message* source, MessageMap* stowed_messages) {
   // Copy the rules from the source CalculatorGraphTemplate.
-  mediapipe::CalculatorGraphTemplate rules;
-  rules.ParsePartialFromString(source->SerializePartialAsString());
+  const google::protobuf::Reflection* source_reflection =
+      source->GetReflection();
+  const google::protobuf::Descriptor* source_descriptor =
+      source->GetDescriptor();
+  const google::protobuf::FieldDescriptor* rules_descriptor =
+      source_descriptor->FindFieldByName("rule");
+
+  const google::protobuf::FieldDescriptor* rule_path_descriptor =
+      rules_descriptor->message_type()->FindFieldByName("path");
+  const google::protobuf::FieldDescriptor* rule_key_type_descriptor =
+      rules_descriptor->message_type()->FindFieldByName("key_type");
+
+  auto rules_proto = std::unique_ptr<google::protobuf::Message>(source->New());
+  rules_proto->ParsePartialFromString(source->SerializePartialAsString());
   // Only the "source" Message knows all extension types.
-  Message* config_0 = source->GetReflection()->MutableMessage(
-      source, source->GetDescriptor()->FindFieldByName("config"), nullptr);
-  for (int i = 0; i < rules.rule().size(); ++i) {
-    TemplateExpression* rule = rules.mutable_rule()->Mutable(i);
+  Message* config_0 = source_reflection->MutableMessage(
+      source, source_descriptor->FindFieldByName("config"), nullptr);
+  const int num_rules =
+      source_reflection->FieldSize(*rules_proto, rules_descriptor);
+  for (int i = 0; i < num_rules; ++i) {
+    Message& rule = *source_reflection->MutableRepeatedMessage(
+        rules_proto.get(), rules_descriptor, i);
+    const google::protobuf::Reflection* rule_reflection = rule.GetReflection();
+
     const Message* message = config_0;
     ProtoPath path;
-    MP_RETURN_IF_ERROR(ProtoPathSplit(rule->path(), &path));
+    const std::string path_str =
+        rule_reflection->GetString(rule, rule_path_descriptor);
+    ABSL_RETURN_IF_ERROR(ProtoPathSplit(path_str, &path));
     for (int j = 0; j < path.size(); ++j) {
       int field_id = path[j].field_id;
       const FieldDescriptor* field = FindFieldByNumber(message, field_id);
@@ -1642,19 +1660,23 @@ absl::Status KeyProtoMapEntries(Message* source, MessageMap* stowed_messages) {
         path[j] = {field_id, key_id, key_type, key_value};
       }
     }
-    if (!rule->path().empty()) {
-      *rule->mutable_path() = ProtoPathJoin(path);
+    if (!path_str.empty()) {
+      rule_reflection->SetString(&rule, rule_path_descriptor,
+                                 ProtoPathJoin(path));
       for (FieldType key_type : ProtoPathKeyTypes(path)) {
-        *rule->mutable_key_type()->Add() = key_type;
+        rule_reflection->AddEnumValue(&rule, rule_key_type_descriptor,
+                                      key_type);
       }
     }
   }
   // Copy the rules back into the source CalculatorGraphTemplate.
   auto source_rules =
       source->GetReflection()->GetMutableRepeatedFieldRef<Message>(
-          source, source->GetDescriptor()->FindFieldByName("rule"));
+          source, rules_descriptor);
   source_rules.Clear();
-  for (auto& rule : rules.rule()) {
+  for (int i = 0; i < num_rules; ++i) {
+    const Message& rule = source_reflection->GetRepeatedMessage(
+        *rules_proto, rules_descriptor, i);
     source_rules.Add(rule);
   }
   return absl::OkStatus();
@@ -1715,7 +1737,7 @@ class TemplateParser::Parser::MediaPipeParserImpl
       *args = {""};
     } else {
       constexpr char kPlaceholderValue[] = "1";
-      MEDIAPIPE_CHECK_OK(
+      ABSL_CHECK_OK(
           ProtoUtilLite::Serialize({kPlaceholderValue}, field_type, args));
     }
   }
@@ -1728,9 +1750,9 @@ class TemplateParser::Parser::MediaPipeParserImpl
     ProtoUtilLite::FieldValue message_bytes;
     ABSL_CHECK(message->SerializePartialToString(&message_bytes));
     int count;
-    MEDIAPIPE_CHECK_OK(ProtoUtilLite::GetFieldCount(
+    ABSL_CHECK_OK(ProtoUtilLite::GetFieldCount(
         message_bytes, {{field->number(), 0}}, field_type, &count));
-    MEDIAPIPE_CHECK_OK(ProtoUtilLite::ReplaceFieldRange(
+    ABSL_CHECK_OK(ProtoUtilLite::ReplaceFieldRange(
         &message_bytes, {{field->number(), count}}, 0, field_type, args));
     ABSL_CHECK(message->ParsePartialFromString(message_bytes));
   }
@@ -1959,7 +1981,7 @@ bool TemplateParser::Parser::Parse(io::ZeroCopyInputStream* input,
   return MergeUsingImpl(input, output, &parser);
 }
 
-bool TemplateParser::Parser::ParseFromString(const std::string& input,
+bool TemplateParser::Parser::ParseFromString(absl::string_view input,
                                              Message* output) {
   io::ArrayInputStream input_stream(input.data(), input.size());
   return Parse(&input_stream, output);
@@ -1978,7 +2000,7 @@ bool TemplateParser::Parser::Merge(io::ZeroCopyInputStream* input,
   return MergeUsingImpl(input, output, &parser);
 }
 
-bool TemplateParser::Parser::MergeFromString(const std::string& input,
+bool TemplateParser::Parser::MergeFromString(absl::string_view input,
                                              Message* output) {
   io::ArrayInputStream input_stream(input.data(), input.size());
   return Merge(&input_stream, output);
@@ -2000,7 +2022,7 @@ bool TemplateParser::Parser::MergeUsingImpl(
 }
 
 bool TemplateParser::Parser::ParseFieldValueFromString(
-    const std::string& input, const FieldDescriptor* field, Message* output) {
+    absl::string_view input, const FieldDescriptor* field, Message* output) {
   io::ArrayInputStream input_stream(input.data(), input.size());
   int recursion_limit = std::numeric_limits<int>::max();
   bool allow_unknown_extension = false;

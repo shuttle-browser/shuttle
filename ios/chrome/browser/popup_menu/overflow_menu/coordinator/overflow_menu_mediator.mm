@@ -33,6 +33,7 @@
 #import "components/signin/public/identity_manager/identity_manager.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
 #import "components/signin/public/identity_manager/primary_account_change_event.h"
+#import "components/subscription_eligibility/ai_subscription_tier_names.h"
 #import "components/subscription_eligibility/objc/subscription_eligibility_observer_bridge.h"
 #import "components/subscription_eligibility/subscription_eligibility_service.h"
 #import "components/supervised_user/core/common/features.h"
@@ -130,6 +131,7 @@
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_observer_bridge.h"
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_capabilities.h"
 #import "ios/chrome/browser/sync/model/sync_observer_bridge.h"
 #import "ios/chrome/browser/tab_switcher/ui_bundled/tab_utils.h"
@@ -154,6 +156,7 @@
 #import "skia/ext/skia_utils_ios.h"
 #import "ui/base/l10n/l10n_util.h"
 #import "ui/base/l10n/l10n_util_mac.h"
+#import "ui/gfx/image/image.h"
 
 using base::RecordAction;
 using base::UmaHistogramEnumeration;
@@ -282,16 +285,15 @@ void GetPresetNTPBackgroundPreview(
 
   image_fetcher::ImageFetcherParams params(NO_TRAFFIC_ANNOTATION_YET,
                                            kImageFetcherUmaClient);
+  params.set_transcode_format(
+      image_fetcher::ImageFetcherParams::TranscodeFormat::kJpeg);
 
-  image_fetcher->FetchImageData(
+  image_fetcher->FetchImage(
       thumbnail_url,
       base::BindOnce(
           [](base::OnceCallback<void(UIImage*)> callback,
-             const std::string& image_data,
-             const image_fetcher::RequestMetadata&) {
-            NSData* data = [NSData dataWithBytes:image_data.data()
-                                          length:image_data.length()];
-            std::move(callback).Run([UIImage imageWithData:data]);
+             const gfx::Image& image, const image_fetcher::RequestMetadata&) {
+            std::move(callback).Run(image.IsEmpty() ? nil : image.ToUIImage());
           },
           std::move(custom_background_fetcher_callback)),
       params);
@@ -889,7 +891,7 @@ void GetPresetNTPBackgroundPreview(
 
   [self logTranslateAvailability];
 
-  if (IsIdentityAwarenessEnabled()) {
+  if (!self.incognito) {
     self.identityAction = [self newIdentityAction];
     [self updateIdentityAction];
   }
@@ -1093,7 +1095,7 @@ void GetPresetNTPBackgroundPreview(
                                                : @[]
                  footer:nil];
 
-  if (IsIdentityAwarenessEnabled()) {
+  if (!self.incognito) {
     self.identityActionsGroup =
         [[OverflowMenuActionGroup alloc] initWithGroupName:kIdentityGroupName
                                                    actions:@[]
@@ -2085,8 +2087,7 @@ void GetPresetNTPBackgroundPreview(
   NSMutableArray<OverflowMenuActionGroup*>* actionGroups =
       [[NSMutableArray alloc] init];
 
-  if (IsIdentityAwarenessEnabled() && self.authenticationService &&
-      !self.incognito) {
+  if (self.authenticationService && !self.incognito) {
     NSMutableArray<OverflowMenuAction*>* identityActions =
         [NSMutableArray array];
     if (self.authenticationService->SigninEnabled() &&
@@ -2213,11 +2214,27 @@ void GetPresetNTPBackgroundPreview(
     self.identityAction.image = self.identityAvatarProvider->GetIdentityAvatar(
         primaryIdentity, IdentityAvatarSize::Regular);
   }
-  self.identityAction.showsAITierRing =
+  BOOL showsAITierRing =
       ![self shouldIndicateIdentityError] &&
       self.subscriptionEligibilityService &&
-      self.subscriptionEligibilityService->GetAiSubscriptionTier() > 0 &&
-      IsAiSubscriptionAvatarRingFollowupIOSEnabled();
+      IsAiSubscriptionAvatarRingFollowupIOSEnabled() &&
+      subscription_eligibility::GetAiSubscriptionTierDisplayInfo(
+          self.subscriptionEligibilityService->GetAiSubscriptionTier())
+          .show_decoration;
+  self.identityAction.showsAITierRing = showsAITierRing;
+  if (showsAITierRing) {
+    self.identityAction.customAccessibilityLabel =
+        primaryIdentity.userFullName.length
+            ? l10n_util::GetNSStringF(
+                  IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_NAME_AND_EMAIL_GOOGLE_MEMBERSHIP,
+                  base::SysNSStringToUTF16(primaryIdentity.userFullName),
+                  base::SysNSStringToUTF16(primaryIdentity.userEmail))
+            : l10n_util::GetNSStringF(
+                  IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_EMAIL_GOOGLE_MEMBERSHIP,
+                  base::SysNSStringToUTF16(primaryIdentity.userEmail));
+  } else {
+    self.identityAction.customAccessibilityLabel = nil;
+  }
 }
 
 // Returns whether the page can be manually translated. If `forceMenuLogging` is

@@ -164,6 +164,33 @@ void CloseAssetsInBackground(on_device_model::AdaptationAssets assets) {
                              base::DoNothingWithBoundArgs(std::move(assets)));
 }
 
+mojo_base::ProtoWrapper MakeModelVersions(
+    const proto::SolutionConfig& solution_config,
+    const Manifest& manifest,
+    const std::string& base_model_id) {
+  proto::OnDeviceModelVersions model_versions =
+      solution_config.model_versions();
+  const std::string& base_model_asset_id = manifest.GetRecipes()
+                                               .base_models()
+                                               .at(base_model_id)
+                                               .weights_file()
+                                               .asset_id();
+  auto* base_model_metadata =
+      model_versions.mutable_on_device_model_service_version()
+          ->mutable_on_device_base_model_metadata();
+  if (base_model_metadata->base_model_name().empty()) {
+    base_model_metadata->set_base_model_name(base_model_asset_id);
+  }
+  if (base_model_metadata->base_model_version().empty()) {
+    const auto& components = manifest.GetAssets().on_demand_components();
+    if (auto it = components.find(base_model_asset_id);
+        it != components.end()) {
+      base_model_metadata->set_base_model_version(it->second.target_version());
+    }
+  }
+  return mojo_base::ProtoWrapper(model_versions);
+}
+
 }  // namespace
 
 // A Solution for backed by a ManifestSolutionFactory.
@@ -211,7 +238,8 @@ class ManifestSolutionFactory::Solution : public ModelBrokerImpl::Solution {
     auto config = mojom::ModelSolutionConfig::New();
     config->feature_config = mojo_base::ProtoWrapper(state().config_.feature());
     config->model_versions =
-        mojo_base::ProtoWrapper(state().config_.model_versions());
+        MakeModelVersions(state().config_, factory_->manifest_,
+                          factory_->GetBaseModelRecipeId(solution_id_));
     for (int c : state().config_.capabilities()) {
       switch (c) {
         case proto::OnDeviceModelCapability::
@@ -330,15 +358,13 @@ void ManifestSolutionFactory::UpdateAssetState(const std::string& asset_id,
     return;
   }
 
-  // Call UpdateSolutions after any config loads complete
+  // Call UpdateSolutions (and track initialization progress on the initial
+  // state transition) after any config loads complete.
+  const bool is_initial_state =
+      it->second == base::unexpected(AssetUnavailableReason::kUninitialized);
   base::OnceClosure on_complete =
-      base::BindOnce(&ManifestSolutionFactory::UpdateSolutions,
-                     weak_ptr_factory_.GetWeakPtr());
-
-  // If this is initializing the asset, track progress of initialization.
-  if (it->second == base::unexpected(AssetUnavailableReason::kUninitialized)) {
-    on_complete = std::move(on_complete).Then(on_asset_init_);
-  }
+      base::BindOnce(&ManifestSolutionFactory::OnAssetStateUpdated,
+                     weak_ptr_factory_.GetWeakPtr(), is_initial_state);
   it->second = new_state;
 
   if (it->second.has_value()) {
@@ -353,6 +379,13 @@ void ManifestSolutionFactory::UpdateAssetState(const std::string& asset_id,
     }
     // No asset to load things from, so we're done.
     std::move(on_complete).Run();
+  }
+}
+
+void ManifestSolutionFactory::OnAssetStateUpdated(bool is_initial_state) {
+  UpdateSolutions();
+  if (is_initial_state) {
+    on_asset_init_.Run();
   }
 }
 
@@ -657,20 +690,7 @@ ManifestSolutionFactory::CreateSolutionForUseCase(
       break;
   }
 
-  const auto& solution_recipe =
-      manifest_.GetRecipes().solutions().at(solution_id);
-  const std::string& model_recipe_id = solution_recipe.model_recipe_id();
-  std::string base_model_id = model_recipe_id;
-  if (auto it = manifest_.GetRecipes().adaptations().find(model_recipe_id);
-      it != manifest_.GetRecipes().adaptations().end()) {
-    base_model_id = it->second.base_model_recipe_id();
-  } else if (auto postprocessed_it =
-                 manifest_.GetRecipes().postprocessed_models().find(
-                     model_recipe_id);
-             postprocessed_it !=
-             manifest_.GetRecipes().postprocessed_models().end()) {
-    base_model_id = postprocessed_it->second.base_model_recipe_id();
-  }
+  const std::string& base_model_id = GetBaseModelRecipeId(solution_id);
 
   if (!base_models_.at(base_model_id).has_caches &&
       free_disk_space_.has_value() &&
@@ -683,6 +703,24 @@ ManifestSolutionFactory::CreateSolutionForUseCase(
   // Everything is available, create the solution.
   return std::make_unique<Solution>(weak_ptr_factory_.GetWeakPtr(),
                                     use_case_name, solution_id);
+}
+
+const std::string& ManifestSolutionFactory::GetBaseModelRecipeId(
+    const std::string& solution_id) const {
+  const auto& solution_recipe =
+      manifest_.GetRecipes().solutions().at(solution_id);
+  const std::string* model_recipe_id = &solution_recipe.model_recipe_id();
+  if (auto it = manifest_.GetRecipes().adaptations().find(*model_recipe_id);
+      it != manifest_.GetRecipes().adaptations().end()) {
+    model_recipe_id = &it->second.base_model_recipe_id();
+  } else if (auto postprocessed_it =
+                 manifest_.GetRecipes().postprocessed_models().find(
+                     *model_recipe_id);
+             postprocessed_it !=
+             manifest_.GetRecipes().postprocessed_models().end()) {
+    model_recipe_id = &postprocessed_it->second.base_model_recipe_id();
+  }
+  return *model_recipe_id;
 }
 
 void ManifestSolutionFactory::LogBaseModelInitialization(

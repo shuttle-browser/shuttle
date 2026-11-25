@@ -41,7 +41,6 @@
 #include "chrome/browser/feedback/public/feedback_source.h"
 #include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/history/history_service_factory.h"
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
 #include "chrome/browser/omnibox/autocomplete_controller_emitter_factory.h"
 #include "chrome/browser/page_load_metrics/chrome_navigation_initiator.h"
 #include "chrome/browser/predictors/autocomplete_action_predictor.h"
@@ -123,8 +122,8 @@
 #include "services/network/public/cpp/constants.h"
 #include "skia/ext/image_operations.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/image/canvas_image_source.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/image/image_skia_operations.h"
@@ -525,7 +524,7 @@ void ChromeOmniboxClient::ProcessExtensionMatch(
     const std::u16string& text,
     const TemplateURL* template_url,
     const AutocompleteMatch& match,
-    WindowOpenDisposition disposition) {
+    ui::mojom::WindowOpenDisposition disposition) {
   // Strip the keyword + leading space (if present) off the input.
   std::u16string remaining_input;
   AutocompleteInput::SplitKeywordFromInput(match.fill_into_edit, true,
@@ -949,7 +948,7 @@ void ChromeOmniboxClient::ShowFeedbackPage(const std::u16string& input_text,
 void ChromeOmniboxClient::OnAutocompleteAccept(
     const GURL& destination_url,
     TemplateURLRef::PostContent* post_content,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     ui::PageTransition transition,
     omnibox::AutocompleteMatchType match_type,
     base::TimeTicks match_selection_timestamp,
@@ -1060,8 +1059,9 @@ void ChromeOmniboxClient::OnPopupVisibilityChanged(bool popup_is_open) {
   }
 }
 
-void ChromeOmniboxClient::OpenUrl(GURL gurl,
-                                  WindowOpenDisposition disposition) {
+void ChromeOmniboxClient::OpenUrl(
+    GURL gurl,
+    ui::mojom::WindowOpenDisposition disposition) {
   CHECK(browser_);
   NavigateParams params(browser_, gurl, ui::PAGE_TRANSITION_GENERATED);
   params.disposition = disposition;
@@ -1070,7 +1070,7 @@ void ChromeOmniboxClient::OpenUrl(GURL gurl,
 
 void ChromeOmniboxClient::OpenUrlWithCallback(
     GURL gurl,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     base::OnceCallback<void(base::WeakPtr<content::NavigationHandle>)>
         callback) {
   CHECK(browser_);
@@ -1084,12 +1084,8 @@ void ChromeOmniboxClient::OpenIphLink(GURL gurl) {
   ui::PageTransition transition = ui::PageTransitionFromInt(
       ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR);
   NavigateParams params(profile_, gurl, transition);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
-}
-
-bool ChromeOmniboxClient::IsHistoryEmbeddingsEnabled() const {
-  return history_embeddings::IsHistoryEmbeddingsEnabledForProfile(profile_);
 }
 
 bool ChromeOmniboxClient::IsAimPopupEnabled() const {
@@ -1116,6 +1112,8 @@ void ChromeOmniboxClient::MaybePrewarmForDefaultSearchEngine(
     case PrewarmTrigger::kUserInteraction:
       CHECK(
           !base::FeatureList::IsEnabled(features::kPrewarmZeroSuggestTrigger));
+      CHECK(!base::FeatureList::IsEnabled(
+          features::kPrewarmPageLoadAndTabSwitchAfterPaintTrigger));
       if (!location_bar_->GetWebContents()) {
         // There seems to be a subtle timing where the active tab does not have
         // a valid WebContents instance on an user interaction trigger.

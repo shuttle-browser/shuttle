@@ -122,12 +122,14 @@ class WaylandSurfaceExplicitSyncTest : public WaylandTestSimple {
     connection_->buffer_manager_host()->SetDrmSyncobjWrapper(std::move(drm));
     EXPECT_TRUE(connection_->buffer_manager_host());
     auto interface_ptr = connection_->buffer_manager_host()->BindInterface();
-    buffer_manager_gpu_->Initialize(std::move(interface_ptr), {},
-                                    /*supports_dma_buf=*/false,
-                                    /*supports_viewporter=*/true,
-                                    /*supports_acquire_fence=*/false,
-                                    /*supports_overlays=*/true,
-                                    /*supports_single_pixel_buffer=*/true);
+    buffer_manager_gpu_->Initialize(
+        std::move(interface_ptr), {},
+        ozone::mojom::WaylandBufferManagerCapabilities::New(
+            /*supports_dma_buf=*/false, /*supports_viewporter=*/true,
+            /*supports_acquire_fence=*/false, /*supports_overlays=*/true,
+            /*supports_single_pixel_buffer=*/true,
+            /*compositor_tone_maps_using_clli=*/false,
+            /*compositor_tone_maps_using_mdcv=*/false));
   }
 
   void CreateDmabufBasedBuffer(uint32_t buffer_id,
@@ -137,9 +139,13 @@ class WaylandSurfaceExplicitSyncTest : public WaylandTestSimple {
                                const std::vector<uint64_t>& modifiers = {3},
                                uint32_t format = DRM_FORMAT_ABGR8888,
                                uint32_t planes_count = 1) {
+    std::vector<base::ScopedFD> fds;
+    for (uint32_t i = 0; i < planes_count; ++i) {
+      fds.push_back(GetFdFactory()->CreateFd());
+    }
     buffer_manager_gpu_->CreateDmabufBasedBuffer(
-        GetFdFactory()->CreateFd(), kDefaultSize, strides, offsets, modifiers,
-        format, planes_count, gfx::ColorSpace(), gfx::HDRMetadata(), buffer_id);
+        std::move(fds), kDefaultSize, strides, offsets, modifiers, format,
+        planes_count, gfx::ColorSpace(), gfx::HDRMetadata(), buffer_id);
 
     base::RunLoop().RunUntilIdle();
 

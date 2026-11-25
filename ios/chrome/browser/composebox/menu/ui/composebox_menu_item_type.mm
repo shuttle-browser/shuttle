@@ -14,19 +14,9 @@ ComposeboxMenuItemType MenuItemTypeForTool(ComposeboxMode mode) {
       return ComposeboxMenuItemType::kDeepSearch;
     case ComposeboxMode::kCanvas:
       return ComposeboxMenuItemType::kCanvas;
+    case ComposeboxMode::kPTM:
+      return ComposeboxMenuItemType::kPTM;
     case ComposeboxMode::kRegularSearch:
       return ComposeboxMenuItemType::kUnknown;
-  }
-}
-
-bool IsToolType(ComposeboxMenuItemType type) {
-  switch (type) {
-    case ComposeboxMenuItemType::kAIM:
-    case ComposeboxMenuItemType::kCreateImage:
-    case ComposeboxMenuItemType::kDeepSearch:
-    case ComposeboxMenuItemType::kCanvas:
-      return true;
-    default:
-      return false;
   }
 }

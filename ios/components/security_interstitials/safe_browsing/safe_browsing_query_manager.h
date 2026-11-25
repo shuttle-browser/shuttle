@@ -8,16 +8,18 @@
 #include <map>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "base/containers/flat_map.h"
 #include "base/containers/unique_ptr_adapters.h"
+#include "base/functional/callback_forward.h"
 #import "base/memory/raw_ptr.h"
 #import "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "components/safe_browsing/core/browser/db/database_manager.h"
 #include "components/safe_browsing/core/browser/db/sb_protocol_manager_util.h"
-#include "components/safe_browsing/core/browser/safe_browsing_url_checker_impl.h"
+#include "components/safe_browsing/core/browser/url_checker/safe_browsing_url_checker_impl.h"
 #include "components/security_interstitials/core/unsafe_resource.h"
 #import "ios/web/public/navigation/web_state_policy_decider.h"
 #import "ios/web/public/web_state_user_data.h"
@@ -71,6 +73,8 @@ class SafeBrowsingQueryManager
     bool show_error_page = false;
     // Checks if sync check was completed.
     bool sync_check_complete = false;
+    // Whether an async check was started for the URL.
+    bool has_async_check = false;
     // Checks if async check was completed.
     bool async_check_complete = false;
     // The UnsafeResource created for the URL check, if any.
@@ -136,13 +140,23 @@ class SafeBrowsingQueryManager
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
 
-  // Starts the URL check for `query`.
-  void StartQuery(const Query& query);
+  // Starts the URL check for `query` and returns whether an async check was
+  // started alongside the sync check.
+  bool StartQuery(const Query& query);
 
   // Stores `resource` in the result for the query that triggered the URL check.
   // No-ops if there is no active query for `resource`'s URL.
   void StoreUnsafeResource(
       const security_interstitials::UnsafeResource& resource);
+
+  // Pauses asynchronous Safe Browsing queries for this `WebState` for testing.
+  // When paused, async query completion callbacks are buffered until
+  // `ResumeAsyncQueriesForTesting()` is called.
+  void PauseAsyncQueriesForTesting();
+
+  // Resumes asynchronous Safe Browsing queries for this `WebState` and runs all
+  // buffered async query completions.
+  void ResumeAsyncQueriesForTesting();
 
  private:
   friend class web::WebStateUserData<SafeBrowsingQueryManager>;
@@ -221,6 +235,11 @@ class SafeBrowsingQueryManager
   std::unique_ptr<UrlCheckerClient> url_checker_client_;
   // The results for each active query.
   std::map<const Query, Result> results_;
+  // Whether asynchronous query completions are paused for testing.
+  bool are_async_queries_paused_for_testing_ = false;
+  // Buffered asynchronous query completions while
+  // `are_async_queries_paused_for_testing_` is true.
+  std::vector<base::OnceClosure> paused_async_queries_for_testing_;
   // The observers.
   base::ObserverList<Observer, /*check_empty=*/true> observers_;
   // The weak pointer factory.

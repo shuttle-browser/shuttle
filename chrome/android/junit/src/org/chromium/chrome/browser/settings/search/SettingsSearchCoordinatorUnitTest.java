@@ -9,11 +9,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.os.Bundle;
 import android.provider.Settings;
 import android.transition.TransitionManager;
 import android.view.Gravity;
@@ -21,6 +23,7 @@ import android.view.Menu;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
+import android.view.accessibility.AccessibilityNodeInfo;
 import android.widget.EditText;
 import android.widget.FrameLayout;
 import android.widget.TextView;
@@ -30,6 +33,10 @@ import androidx.appcompat.widget.Toolbar;
 import androidx.fragment.app.Fragment;
 import androidx.fragment.app.FragmentActivity;
 import androidx.fragment.app.FragmentManager;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceGroup.PreferencePositionCallback;
+import androidx.preference.PreferenceScreen;
+import androidx.recyclerview.widget.RecyclerView;
 import androidx.slidingpanelayout.widget.SlidingPaneLayout;
 
 import com.google.android.material.appbar.AppBarLayout;
@@ -48,20 +55,46 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.ContextUtils;
+import org.chromium.base.Promise;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.glic.GlicEnabling;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+import org.chromium.chrome.browser.settings.MainSettings;
 import org.chromium.chrome.browser.settings.MultiColumnSettings;
 import org.chromium.chrome.browser.settings.SettingsContainmentHelper;
+import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
+import org.chromium.chrome.browser.signin.services.SigninManager;
+import org.chromium.chrome.browser.sync.SyncServiceFactory;
+import org.chromium.chrome.browser.ui.default_browser_promo.DefaultBrowserPromoUtils;
+import org.chromium.components.browser_ui.settings.ChromeBasePreference;
+import org.chromium.components.browser_ui.settings.PreferenceUpdateObserver;
+import org.chromium.components.browser_ui.settings.SettingsUtils;
 import org.chromium.components.browser_ui.settings.search.PreferenceParser;
 import org.chromium.components.browser_ui.settings.search.SettingsIndexData;
+import org.chromium.components.browser_ui.widget.containment.ContainerStyle;
+import org.chromium.components.browser_ui.widget.containment.ContainmentItemController;
 import org.chromium.components.browser_ui.widget.displaystyle.UiConfig;
+import org.chromium.components.feature_engagement.Tracker;
+import org.chromium.components.prefs.PrefService;
+import org.chromium.components.search_engines.TemplateUrlService;
+import org.chromium.components.signin.AccountManagerFacade;
+import org.chromium.components.signin.AccountManagerFacadeProvider;
+import org.chromium.components.signin.SigninFeatures;
+import org.chromium.components.signin.identitymanager.IdentityManager;
+import org.chromium.components.sync.SyncService;
+import org.chromium.components.user_prefs.UserPrefs;
+import org.chromium.components.user_prefs.UserPrefsJni;
 import org.chromium.ui.accessibility.AccessibilityState;
+import org.chromium.ui.base.ActivityResultTracker;
 import org.chromium.ui.base.LocalizationUtils;
 import org.chromium.ui.modaldialog.ModalDialogManager;
 
@@ -78,6 +111,18 @@ public class SettingsSearchCoordinatorUnitTest {
     @Mock private MultiColumnSettings mMultiColumnSettings;
     @Mock private SettingsContainmentHelper mContainmentHelper;
     @Mock private Profile mProfile;
+    private @Mock IdentityServicesProvider mIdentityServicesProvider;
+    private @Mock IdentityManager mIdentityManager;
+    private @Mock SigninManager mSigninManager;
+    private @Mock AccountManagerFacade mAccountManagerFacade;
+    private @Mock TemplateUrlService mTemplateUrlService;
+    private @Mock SyncService mSyncService;
+    private @Mock Tracker mTracker;
+    private @Mock DefaultBrowserPromoUtils mDefaultBrowserPromoUtils;
+    private @Mock UserPrefs.Natives mUserPrefsJni;
+    private @Mock PrefService mPrefService;
+    private @Mock ActivityResultTracker mActivityResultTracker;
+    private boolean mActivityStarted;
     @Mock private ModalDialogManager mModalDialogManager;
 
     private SettingsSearchCoordinator mCoordinator;
@@ -161,6 +206,9 @@ public class SettingsSearchCoordinatorUnitTest {
         LocalizationUtils.setRtlForTesting(false);
         SettingsIndexData.reset();
         RecentSearchQueue.getInstance().clear();
+        if (mActivityStarted) {
+            mActivityController.pause().stop().destroy();
+        }
         // Avoid runnable pollution between tests.
         ShadowLooper.idleMainLooper();
     }
@@ -1303,7 +1351,7 @@ public class SettingsSearchCoordinatorUnitTest {
         lensButton.performClick();
         ShadowLooper.idleMainLooper();
         assertFalse(mCoordinator.isSearchOpen());
-        assertEquals(View.VISIBLE, searchBox.getVisibility());
+        assertEquals(View.GONE, searchBox.getVisibility());
         assertEquals(View.GONE, queryContainer.getVisibility());
 
         // Showing makes intended visibility true.
@@ -1652,5 +1700,841 @@ public class SettingsSearchCoordinatorUnitTest {
         mCoordinator.destroy();
 
         assertNull(SettingsIndexData.getInstance());
+    }
+
+    /**
+     * Minimal {@link MainSettings} subclass that populates 30 plain preferences and delegates to
+     * {@link MainSettings#maybeAddSearchHeaderPreference()} so tests can exercise the header
+     * preference, adapter positions, containment styling, and scroll listener wiring in
+     * Robolectric.
+     */
+    public static class HeaderTestMainSettings extends MainSettings {
+        boolean mPreferenceTreeClicked;
+
+        @Override
+        public void onCreatePreferences(
+                @Nullable Bundle savedInstanceState, @Nullable String rootKey) {
+            PreferenceScreen screen = getPreferenceManager().createPreferenceScreen(getContext());
+            setPreferenceScreen(screen);
+            for (int i = 0; i < 30; i++) {
+                Preference pref = new Preference(getContext());
+                pref.setKey("test_pref_" + i);
+                pref.setTitle("Test Preference " + i);
+                screen.addPreference(pref);
+            }
+            maybeAddSearchHeaderPreference();
+        }
+
+        @Override
+        public boolean onPreferenceTreeClick(Preference preference) {
+            mPreferenceTreeClicked = true;
+            return super.onPreferenceTreeClick(preference);
+        }
+    }
+
+    private void setUpMainSettingsDependencies() {
+        IdentityServicesProvider.setInstanceForTests(mIdentityServicesProvider);
+        when(mIdentityServicesProvider.getSigninManager(any())).thenReturn(mSigninManager);
+        TemplateUrlServiceFactory.setInstanceForTesting(mTemplateUrlService);
+        SyncServiceFactory.setInstanceForTesting(mSyncService);
+    }
+
+    private HeaderTestMainSettings attachHeaderTestMainSettings(
+            FragmentManager fm, int containerId, Profile profile) {
+        setUpMainSettingsDependencies();
+        ViewGroup rootView = mActivity.findViewById(R.id.settings_activity);
+        if (rootView.findViewById(containerId) == null) {
+            FrameLayout container = new FrameLayout(mActivity);
+            container.setId(containerId);
+            rootView.addView(container);
+        }
+        if (!mActivityStarted) {
+            mActivityStarted = true;
+            mActivityController.start().resume().visible();
+        }
+        HeaderTestMainSettings mainSettings = new HeaderTestMainSettings();
+        mainSettings.setProfile(profile);
+        mainSettings.setSkipUpdatePreferencesForTesting(true);
+        fm.beginTransaction().replace(containerId, mainSettings).commitNow();
+        layoutRootView();
+        return mainSettings;
+    }
+
+    private MainSettings attachRealMainSettings() {
+        setUpMainSettingsDependencies();
+        UserPrefsJni.setInstanceForTesting(mUserPrefsJni);
+        when(mUserPrefsJni.get(any())).thenReturn(mPrefService);
+        when(mIdentityServicesProvider.getIdentityManager(any())).thenReturn(mIdentityManager);
+        AccountManagerFacadeProvider.setInstanceForTests(mAccountManagerFacade);
+        when(mAccountManagerFacade.getAccounts()).thenReturn(new Promise<>());
+        TrackerFactory.setTrackerForTests(mTracker);
+        DefaultBrowserPromoUtils.setInstanceForTesting(mDefaultBrowserPromoUtils);
+        GlicEnabling.setEnabledForTesting(false);
+        if (!mActivityStarted) {
+            mActivityStarted = true;
+            mActivityController.start().resume().visible();
+        }
+        MainSettings mainSettings = new MainSettings();
+        mainSettings.setProfile(mProfile);
+        mainSettings.setDependencies(
+                ObservableSuppliers.createMonotonic(),
+                ObservableSuppliers.createMonotonic(),
+                mActivityResultTracker,
+                ObservableSuppliers.createMonotonic(),
+                ObservableSuppliers.createMonotonic());
+        mainSettings.setSkipUpdatePreferencesForTesting(true);
+        mActivity
+                .getSupportFragmentManager()
+                .beginTransaction()
+                .replace(R.id.preferences_header, mainSettings)
+                .commitNow();
+        layoutRootView();
+        return mainSettings;
+    }
+
+    private void layoutRootView() {
+        View rootView = mActivity.findViewById(R.id.settings_activity);
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(1000, View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY);
+        rootView.measure(widthSpec, heightSpec);
+        rootView.layout(0, 0, 1000, 600);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    @DisableFeatures({
+        ChromeFeatureList.AUTOFILL_AI_WITH_DATA_SCHEMA,
+        ChromeFeatureList.DEFAULT_BROWSER_PROMO_ANDROID2,
+        ChromeFeatureList.SETTINGS_IA_REORGANIZATION,
+        SigninFeatures.ENABLE_ACTIVITYLESS_SIGNIN_ALL_ENTRY_POINT,
+        SigninFeatures.ENABLE_AI_SUBSCRIPTION_AVATAR_RING,
+        SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS
+    })
+    public void
+            testRealMainSettingsCreatePreferences_whenFlagOn_addsHiddenHeaderUntilListenerSet() {
+        MainSettings mainSettings = attachRealMainSettings();
+
+        PreferenceScreen screen = mainSettings.getPreferenceScreen();
+        Preference header = mainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER);
+        assertTrue(header instanceof ChromeBasePreference);
+        assertEquals(header, screen.getPreference(0));
+        assertEquals(-1, header.getOrder());
+        assertFalse(header.isPersistent());
+        // With no coordinator wired up, the header preference stays hidden and inert.
+        assertFalse(header.isVisible());
+        assertNull(header.getOnPreferenceClickListener());
+
+        RecyclerView list = mainSettings.getListView();
+        PreferencePositionCallback adapter = (PreferencePositionCallback) list.getAdapter();
+        assertEquals(-1, adapter.getPreferenceAdapterPosition(MainSettings.PREF_SEARCH_HEADER));
+
+        int[] updateCount = new int[1];
+        PreferenceUpdateObserver observer = fragment -> updateCount[0]++;
+        mainSettings.setPreferenceUpdateObserver(observer);
+
+        // Same-visibility (hidden -> hidden) does not trigger notifyPreferencesUpdated().
+        mainSettings.setSearchHeaderClickListener(null);
+        assertFalse(header.isVisible());
+        assertEquals(0, updateCount[0]);
+
+        Preference.OnPreferenceClickListener listener1 = p -> true;
+        Preference.OnPreferenceClickListener listener2 = p -> false;
+        mainSettings.setSearchHeaderClickListener(listener1);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+        assertTrue(header.isVisible());
+        assertEquals(listener1, header.getOnPreferenceClickListener());
+        assertEquals(1, updateCount[0]);
+        assertEquals(0, adapter.getPreferenceAdapterPosition(MainSettings.PREF_SEARCH_HEADER));
+
+        // Same-visibility (visible -> visible) updates the listener without calling
+        // notifyPreferencesUpdated().
+        mainSettings.setSearchHeaderClickListener(listener2);
+        assertTrue(header.isVisible());
+        assertEquals(listener2, header.getOnPreferenceClickListener());
+        assertEquals(1, updateCount[0]);
+
+        mainSettings.setSearchHeaderClickListener(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+        assertFalse(header.isVisible());
+        assertNull(header.getOnPreferenceClickListener());
+        assertEquals(2, updateCount[0]);
+        assertEquals(-1, adapter.getPreferenceAdapterPosition(MainSettings.PREF_SEARCH_HEADER));
+    }
+
+    @Test
+    @DisableFeatures({
+        ChromeFeatureList.AUTOFILL_AI_WITH_DATA_SCHEMA,
+        ChromeFeatureList.DEFAULT_BROWSER_PROMO_ANDROID2,
+        ChromeFeatureList.SETTINGS_IA_REORGANIZATION,
+        ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX,
+        SigninFeatures.ENABLE_ACTIVITYLESS_SIGNIN_ALL_ENTRY_POINT,
+        SigninFeatures.ENABLE_AI_SUBSCRIPTION_AVATAR_RING,
+        SigninFeatures.MAKE_IDENTITY_MANAGER_SOURCE_OF_ACCOUNTS
+    })
+    public void testRealMainSettingsCreatePreferences_whenFlagOff_doesNotAddSearchHeader() {
+        MainSettings mainSettings = attachRealMainSettings();
+
+        assertNull(mainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSingleColumnFlagOn_showsHeaderHidesAppBarSearchBoxAndClickEntersSearch() {
+        SettingsIndexData.createInstance().resetNeedsIndexing();
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        SlidingPaneLayout.PanelSlideListener[] capturedListener =
+                new SlidingPaneLayout.PanelSlideListener[1];
+        SlidingPaneLayout slidingPane =
+                new SlidingPaneLayout(mActivity) {
+                    @Override
+                    public void addPanelSlideListener(PanelSlideListener listener) {
+                        capturedListener[0] = listener;
+                        super.addPanelSlideListener(listener);
+                    }
+                };
+        when(mMultiColumnSettings.getSlidingPaneLayoutOrNull()).thenReturn(slidingPane);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+        MainSettings.Observer selectionObserver = mock(MainSettings.Observer.class);
+        mainSettings.addObserver(selectionObserver);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View queryContainer = mActivity.findViewById(R.id.search_query_container);
+        View detailPane = mActivity.findViewById(R.id.preferences_detail);
+        RecyclerView list = mainSettings.getListView();
+        Preference headerPref = mainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER);
+
+        assertTrue(headerPref.isVisible());
+        assertNotNull(headerPref.getOnPreferenceClickListener());
+        assertEquals(View.GONE, searchBox.getVisibility());
+
+        ContainmentItemController controller = new ContainmentItemController(mActivity);
+        var styles =
+                controller.generatePreferenceStyles(
+                        SettingsUtils.getVisiblePreferences(mainSettings.getPreferenceScreen()));
+        assertEquals(ContainerStyle.EMPTY, styles.get(0));
+        assertTrue(styles.get(1).getTopRadius() > styles.get(1).getBottomRadius());
+
+        // Tap the header row at the top of the list -> enters search without triggering
+        // onPreferenceTreeClick or MainSettings.Observer#onPreferenceSelected.
+        View headerRow = list.getLayoutManager().findViewByPosition(0);
+        assertEquals(list.getPaddingTop(), headerRow.getTop());
+        headerRow.performClick();
+        ShadowLooper.idleMainLooper();
+        assertTrue(mCoordinator.isSearchOpen());
+        assertFalse(mainSettings.mPreferenceTreeClicked);
+        verify(selectionObserver, never()).onPreferenceSelected(any());
+        assertEquals(View.VISIBLE, queryContainer.getVisibility());
+        assertEquals(View.GONE, searchBox.getVisibility());
+
+        capturedListener[0].onPanelClosed(detailPane);
+        ShadowLooper.idleMainLooper();
+        assertFalse(mCoordinator.isSearchOpen());
+        assertEquals(View.GONE, searchBox.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSwitchToMultiColumnAndBack_togglesHeaderAndListenerAndAppBarSearchBox() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        Preference headerPref = mainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER);
+        assertTrue(headerPref.isVisible());
+        assertNotNull(headerPref.getOnPreferenceClickListener());
+        assertEquals(View.GONE, searchBox.getVisibility());
+
+        // Switch to multi-column: header hidden, listener removed, searchBox visible in toolbar.
+        mUseMultiColumn = true;
+        mCoordinator.onHeaderLayoutUpdated();
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        assertFalse(headerPref.isVisible());
+        assertNull(headerPref.getOnPreferenceClickListener());
+        assertEquals(View.VISIBLE, searchBox.getVisibility());
+        assertEquals(mToolbar, searchBox.getParent());
+
+        // Switch back to single-column: header visible, listener re-attached, app-bar box GONE.
+        mUseMultiColumn = false;
+        mCoordinator.onHeaderLayoutUpdated();
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        assertTrue(headerPref.isVisible());
+        assertNotNull(headerPref.getOnPreferenceClickListener());
+        assertEquals(View.GONE, searchBox.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testRecreation_ignoresDetachedGetMainSettingsAndConfiguresAttachedFragment() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+
+        // Simulate activity recreation: getMainSettings() returns a detached MainSettings
+        // instance while the restored HeaderTestMainSettings is attached in
+        // R.id.preferences_header.
+        MainSettings detachedMainSettings = mock(MainSettings.class);
+        when(mMultiColumnSettings.getMainSettings()).thenReturn(detachedMainSettings);
+
+        HeaderTestMainSettings attachedMainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        Preference headerPref =
+                attachedMainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER);
+        assertTrue(headerPref.isVisible());
+        assertNotNull(headerPref.getOnPreferenceClickListener());
+        verify(detachedMainSettings, never()).setSearchHeaderClickListener(any());
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSingleColumnFlagOff_keepsHeaderAbsentAndAppBarSearchBoxVisible() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        assertNull(mainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER));
+        assertEquals(View.VISIBLE, searchBox.getVisibility());
+        assertNull(mActivity.findViewById(R.id.search_lens_button));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testShownInTab_routesAccessibilityFocusToHeaderRowNeverGoneSearchBox() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        SlidingPaneLayout.PanelSlideListener[] capturedListener =
+                new SlidingPaneLayout.PanelSlideListener[1];
+        SlidingPaneLayout slidingPane =
+                new SlidingPaneLayout(mActivity) {
+                    @Override
+                    public void addPanelSlideListener(PanelSlideListener listener) {
+                        capturedListener[0] = listener;
+                        super.addPanelSlideListener(listener);
+                    }
+                };
+        when(mMultiColumnSettings.getSlidingPaneLayoutOrNull()).thenReturn(slidingPane);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator = createCoordinator(/* shownInTab= */ true);
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View detailPane = mActivity.findViewById(R.id.preferences_detail);
+        RecyclerView list = mainSettings.getListView();
+        View headerRow = list.getLayoutManager().findViewByPosition(0);
+
+        boolean[] searchBoxFocused = new boolean[1];
+        boolean[] headerRowFocused = new boolean[1];
+        searchBox.setAccessibilityDelegate(
+                new View.AccessibilityDelegate() {
+                    @Override
+                    public boolean performAccessibilityAction(
+                            View host, int action, @Nullable Bundle args) {
+                        if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
+                            searchBoxFocused[0] = true;
+                        }
+                        return super.performAccessibilityAction(host, action, args);
+                    }
+                });
+        headerRow.setAccessibilityDelegate(
+                new View.AccessibilityDelegate() {
+                    @Override
+                    public boolean performAccessibilityAction(
+                            View host, int action, @Nullable Bundle args) {
+                        if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
+                            headerRowFocused[0] = true;
+                        }
+                        return super.performAccessibilityAction(host, action, args);
+                    }
+                });
+
+        capturedListener[0].onPanelClosed(detailPane);
+        assertTrue(headerRowFocused[0]);
+        assertFalse(searchBoxFocused[0]);
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSetSearchBoxCollapsed_whenCollapsibleSearchBoxDisabled_isNoOp() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.VISIBLE, searchBox.getVisibility());
+        assertNull(mActivity.findViewById(R.id.search_lens_button));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSetSearchBoxCollapsed_updatesLensButtonAndResetsOnEnterSearch() {
+        SettingsIndexData.createInstance().resetNeedsIndexing();
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        View queryContainer = mActivity.findViewById(R.id.search_query_container);
+
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+
+        lensButton.performClick();
+        ShadowLooper.idleMainLooper();
+
+        assertEquals(View.GONE, lensButton.getVisibility());
+        assertEquals(View.GONE, searchBox.getVisibility());
+        assertEquals(View.VISIBLE, queryContainer.getVisibility());
+        assertTrue(mCoordinator.isSearchOpen());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSearchBoxCollapsed_onSlideStateUpdated_preservesOnMainAndResetsOnSub() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+
+        // Updating slide state while still on main settings preserves the collapsed state.
+        mCoordinator.onSlideStateUpdated(0);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+
+        // Open detail pane (sub-settings) in single-column mode -> resets collapsed state.
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(true);
+        mCoordinator.onSlideStateUpdated(0);
+        assertEquals(View.GONE, lensButton.getVisibility());
+        assertEquals(View.GONE, searchBox.getVisibility());
+
+        // Attempting to collapse while on a sub-setting (canCollapseSearchBox() == false) is a
+        // no-op.
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.GONE, lensButton.getVisibility());
+        assertEquals(View.GONE, searchBox.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSearchBoxCollapsed_panelSlideAndLayoutSwitchAndDestroy_resetsState() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        SlidingPaneLayout.PanelSlideListener[] capturedListener =
+                new SlidingPaneLayout.PanelSlideListener[1];
+        SlidingPaneLayout slidingPane =
+                new SlidingPaneLayout(mActivity) {
+                    @Override
+                    public void addPanelSlideListener(PanelSlideListener listener) {
+                        capturedListener[0] = listener;
+                        super.addPanelSlideListener(listener);
+                    }
+                };
+        when(mMultiColumnSettings.getSlidingPaneLayoutOrNull()).thenReturn(slidingPane);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+
+        SlidingPaneLayout.PanelSlideListener slideListener = capturedListener[0];
+        assertNotNull(slideListener);
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        View detailPane = mActivity.findViewById(R.id.preferences_detail);
+
+        // 1. Opening the detail pane via SlidingPaneLayout listener (showUiInSingleColumn(false))
+        // resets the collapsed state.
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+        slideListener.onPanelOpened(detailPane);
+        assertEquals(View.GONE, lensButton.getVisibility());
+        assertEquals(View.GONE, searchBox.getVisibility());
+
+        // 2. Switching to multi-column layout (switchSearchUiLayout) resets the collapsed state,
+        // and attempting to collapse in multi-column mode is a no-op.
+        slideListener.onPanelClosed(detailPane);
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+        mUseMultiColumn = true;
+        mCoordinator.onHeaderLayoutUpdated();
+        ShadowLooper.idleMainLooper();
+        assertEquals(View.GONE, lensButton.getVisibility());
+        assertEquals(View.VISIBLE, searchBox.getVisibility());
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.GONE, lensButton.getVisibility());
+        assertEquals(View.VISIBLE, searchBox.getVisibility());
+
+        // 3. Switching back to single-column, collapsing, and calling destroy() resets lens button.
+        mUseMultiColumn = false;
+        mCoordinator.onHeaderLayoutUpdated();
+        ShadowLooper.idleMainLooper();
+        mCoordinator.setSearchBoxCollapsed(/* collapsed= */ true);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+        mCoordinator.destroy();
+        assertEquals(View.GONE, lensButton.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSingleColumnFlagOn_scrollsHeaderAndTogglesLensButton() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        RecyclerView list = mainSettings.getListView();
+
+        assertTrue(mainSettings.findPreference(MainSettings.PREF_SEARCH_HEADER).isVisible());
+        assertEquals(View.GONE, searchBox.getVisibility());
+        assertEquals(View.GONE, lensButton.getVisibility());
+
+        View item = list.getLayoutManager().findViewByPosition(0);
+        View pill = item.findViewById(R.id.search_header_box);
+        int visibleTop = list.getClipToPadding() ? list.getPaddingTop() : 0;
+        int collapseThreshold = item.getTop() + pill.getBottom() - visibleTop;
+        assertTrue(collapseThreshold > 1);
+
+        // Scrolling by collapseThreshold - 1 keeps 1px of the pill visible -> lens stays hidden.
+        list.scrollBy(0, collapseThreshold - 1);
+        assertFalse(SettingsSearchCoordinator.isHeaderScrolledAway(list));
+        assertEquals(View.GONE, lensButton.getVisibility());
+
+        // Scrolling 2px more pushes the pill completely past visibleTop -> lens becomes visible.
+        list.scrollBy(0, 2);
+        assertTrue(SettingsSearchCoordinator.isHeaderScrolledAway(list));
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+
+        // Scrolling back to the top hides the lens button.
+        list.scrollBy(0, -(collapseThreshold + 100));
+        assertFalse(SettingsSearchCoordinator.isHeaderScrolledAway(list));
+        assertEquals(View.GONE, lensButton.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSearchHeaderSnapDelta_snapsPartiallyHiddenPillToNearestEdge() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        RecyclerView list = mainSettings.getListView();
+        View item = list.getLayoutManager().findViewByPosition(0);
+        View pill = item.findViewById(R.id.search_header_box);
+        int visibleTop = list.getClipToPadding() ? list.getPaddingTop() : 0;
+        int pillTop = item.getTop() + pill.getTop();
+        int pillHeight = pill.getHeight();
+        assertTrue(pillHeight > 4);
+
+        // Fully visible: no snap.
+        list.scrollBy(0, pillTop - visibleTop);
+        assertEquals(0, SettingsSearchCoordinator.getSearchHeaderSnapDelta(list));
+
+        // Less than half hidden: snap back down to fully shown.
+        int smallHide = pillHeight / 4;
+        list.scrollBy(0, smallHide);
+        assertEquals(-smallHide, SettingsSearchCoordinator.getSearchHeaderSnapDelta(list));
+
+        // More than half hidden: snap up to fully hidden.
+        int largeHide = pillHeight * 3 / 4;
+        list.scrollBy(0, largeHide - smallHide);
+        assertEquals(
+                pillHeight - largeHide, SettingsSearchCoordinator.getSearchHeaderSnapDelta(list));
+
+        // Fully hidden: no snap.
+        list.scrollBy(0, pillHeight - largeHide);
+        assertEquals(0, SettingsSearchCoordinator.getSearchHeaderSnapDelta(list));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testSingleColumnFlagOn_adapterSwap_resyncsCollapsedState() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        RecyclerView list = mainSettings.getListView();
+        list.scrollBy(0, 300);
+        assertTrue(SettingsSearchCoordinator.isHeaderScrolledAway(list));
+        assertTrue(mCoordinator.isSearchLensButtonVisibleForTesting());
+
+        // Swapping the adapter resets the RecyclerView layout to position 0 (unscrolled), which
+        // must re-sync the collapsed state to false.
+        var adapter = list.getAdapter();
+        list.setAdapter(null);
+        list.setAdapter(adapter);
+        layoutRootView();
+        ShadowLooper.idleMainLooper();
+
+        assertFalse(SettingsSearchCoordinator.isHeaderScrolledAway(list));
+        assertFalse(mCoordinator.isSearchLensButtonVisibleForTesting());
+
+        // Scrolling down after the adapter swap must collapse and show the lens button again.
+        list.scrollBy(0, 300);
+        assertTrue(SettingsSearchCoordinator.isHeaderScrolledAway(list));
+        assertTrue(mCoordinator.isSearchLensButtonVisibleForTesting());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testEnterSearchFromLens_resetsLensAndResyncsOnPanelClosed() {
+        SettingsIndexData.createInstance().resetNeedsIndexing();
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        SlidingPaneLayout.PanelSlideListener[] capturedListener =
+                new SlidingPaneLayout.PanelSlideListener[1];
+        SlidingPaneLayout slidingPane =
+                new SlidingPaneLayout(mActivity) {
+                    @Override
+                    public void addPanelSlideListener(PanelSlideListener listener) {
+                        capturedListener[0] = listener;
+                        super.addPanelSlideListener(listener);
+                    }
+                };
+        when(mMultiColumnSettings.getSlidingPaneLayoutOrNull()).thenReturn(slidingPane);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        View detailPane = mActivity.findViewById(R.id.preferences_detail);
+        RecyclerView list = mainSettings.getListView();
+
+        // Scroll down so lens shows, then tap lens -> enters search and resets lens to GONE.
+        list.scrollBy(0, 300);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+        lensButton.performClick();
+        ShadowLooper.idleMainLooper();
+        assertTrue(mCoordinator.isSearchOpen());
+        assertEquals(View.GONE, lensButton.getVisibility());
+
+        // Close detail pane -> re-syncs from scrolled list position and shows lens again.
+        capturedListener[0].onPanelClosed(detailPane);
+        ShadowLooper.idleMainLooper();
+        assertFalse(mCoordinator.isSearchOpen());
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testRecreation_observesAttachedFragmentScrollAndIgnoresDetachedListView() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+
+        MainSettings detachedMainSettings = mock(MainSettings.class);
+        when(mMultiColumnSettings.getMainSettings()).thenReturn(detachedMainSettings);
+
+        HeaderTestMainSettings attachedMainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+        attachedMainSettings.getListView().scrollBy(0, 300);
+
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+        verify(detachedMainSettings, never()).setSearchHeaderClickListener(any());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testDestroy_removesListenerHidesLensAndCancelsPostedSync() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        SlidingPaneLayout.PanelSlideListener[] capturedListener =
+                new SlidingPaneLayout.PanelSlideListener[1];
+        SlidingPaneLayout slidingPane =
+                new SlidingPaneLayout(mActivity) {
+                    @Override
+                    public void addPanelSlideListener(PanelSlideListener listener) {
+                        capturedListener[0] = listener;
+                        super.addPanelSlideListener(listener);
+                    }
+                };
+        when(mMultiColumnSettings.getSlidingPaneLayoutOrNull()).thenReturn(slidingPane);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        View detailPane = mActivity.findViewById(R.id.preferences_detail);
+        RecyclerView list = mainSettings.getListView();
+
+        list.scrollBy(0, 300);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+
+        // Queue a posted sync via onPanelClosed, then immediately destroy before looper idles.
+        capturedListener[0].onPanelClosed(detailPane);
+        mCoordinator.destroy();
+        assertEquals(View.GONE, lensButton.getVisibility());
+
+        ShadowLooper.idleMainLooper();
+        list.scrollBy(0, 200);
+        assertEquals(View.GONE, lensButton.getVisibility());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.SETTINGS_SEARCH_COLLAPSIBLE_SEARCH_BOX)
+    public void testShownInTab_whenCollapsed_routesAccessibilityFocusToLensButton() {
+        setUpMultiColumnSettings();
+        mUseMultiColumn = false;
+        when(mMultiColumnSettings.isLayoutOpen()).thenReturn(false);
+        SlidingPaneLayout.PanelSlideListener[] capturedListener =
+                new SlidingPaneLayout.PanelSlideListener[1];
+        SlidingPaneLayout slidingPane =
+                new SlidingPaneLayout(mActivity) {
+                    @Override
+                    public void addPanelSlideListener(PanelSlideListener listener) {
+                        capturedListener[0] = listener;
+                        super.addPanelSlideListener(listener);
+                    }
+                };
+        when(mMultiColumnSettings.getSlidingPaneLayoutOrNull()).thenReturn(slidingPane);
+        HeaderTestMainSettings mainSettings =
+                attachHeaderTestMainSettings(
+                        mActivity.getSupportFragmentManager(), R.id.preferences_header, mProfile);
+
+        mCoordinator = createCoordinator(/* shownInTab= */ true);
+        mCoordinator.initializeSearchUi(null);
+        ShadowLooper.idleMainLooper();
+        layoutRootView();
+
+        View searchBox = mActivity.findViewById(R.id.search_box);
+        View lensButton = mActivity.findViewById(R.id.search_lens_button);
+        View detailPane = mActivity.findViewById(R.id.preferences_detail);
+        RecyclerView list = mainSettings.getListView();
+        View headerRow = list.getLayoutManager().findViewByPosition(0);
+
+        boolean[] searchBoxFocused = new boolean[1];
+        boolean[] lensFocused = new boolean[1];
+        boolean[] headerRowFocused = new boolean[1];
+        searchBox.setAccessibilityDelegate(
+                new View.AccessibilityDelegate() {
+                    @Override
+                    public boolean performAccessibilityAction(
+                            View host, int action, @Nullable Bundle args) {
+                        if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
+                            searchBoxFocused[0] = true;
+                        }
+                        return super.performAccessibilityAction(host, action, args);
+                    }
+                });
+        lensButton.setAccessibilityDelegate(
+                new View.AccessibilityDelegate() {
+                    @Override
+                    public boolean performAccessibilityAction(
+                            View host, int action, @Nullable Bundle args) {
+                        if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
+                            lensFocused[0] = true;
+                        }
+                        return super.performAccessibilityAction(host, action, args);
+                    }
+                });
+        headerRow.setAccessibilityDelegate(
+                new View.AccessibilityDelegate() {
+                    @Override
+                    public boolean performAccessibilityAction(
+                            View host, int action, @Nullable Bundle args) {
+                        if (action == AccessibilityNodeInfo.ACTION_ACCESSIBILITY_FOCUS) {
+                            headerRowFocused[0] = true;
+                        }
+                        return super.performAccessibilityAction(host, action, args);
+                    }
+                });
+
+        list.scrollBy(0, 300);
+        assertEquals(View.VISIBLE, lensButton.getVisibility());
+        capturedListener[0].onPanelClosed(detailPane);
+        assertTrue(lensFocused[0]);
+        assertFalse(headerRowFocused[0]);
+        assertFalse(searchBoxFocused[0]);
     }
 }

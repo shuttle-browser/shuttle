@@ -2216,8 +2216,6 @@ TEST_F(HostContentSettingsMapTest, GetSettingLastModified) {
   test_clock.SetNow(base::Time::Now());
   map->SetClockForTesting(&test_clock);
 
-  ContentSettingsForOneType host_settings;
-
   GURL url("https://www.google.com/");
 
   // Last modified date for non existent settings should be base::Time().
@@ -2507,21 +2505,6 @@ TEST_F(HostContentSettingsMapTest, GetPatternsFromScopingType) {
   EXPECT_EQ(settings[0].secondary_pattern, ContentSettingsPattern::Wildcard());
 
   // Testing cases:
-  //   WebsiteSettingsInfo::REQUESTING_ORIGIN_AND_TOP_SCHEMEFUL_SITE_SCOPE,
-  host_content_settings_map->SetContentSettingDefaultScope(
-      primary_url, secondary_url, ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS,
-      CONTENT_SETTING_ALLOW);
-
-  settings = host_content_settings_map->GetSettingsForOneType(
-      ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS);
-
-  EXPECT_EQ(settings[0].primary_pattern,
-            ContentSettingsPattern::FromURLNoWildcard(primary_url));
-  EXPECT_EQ(
-      settings[0].secondary_pattern,
-      ContentSettingsPattern::FromURLToSchemefulSitePattern(secondary_url));
-
-  // Testing cases:
   //   WebsiteSettingsInfo::REQUESTING_ORIGIN_ONLY_SCOPE,
   //   WebsiteSettingsInfo::TOP_ORIGIN_ONLY_SCOPE,
   //   WebsiteSettingsInfo::GENERIC_SINGLE_ORIGIN_SCOPE.
@@ -2578,18 +2561,6 @@ TEST_F(HostContentSettingsMapTest, GetPatternsForContentSettingsType) {
   EXPECT_EQ(patterns.first,
             ContentSettingsPattern::FromURLToSchemefulSitePattern(primary_url));
   EXPECT_EQ(patterns.second, ContentSettingsPattern::Wildcard());
-
-  // Testing cases:
-  //   WebsiteSettingsInfo::REQUESTING_ORIGIN_AND_TOP_SCHEMEFUL_SITE_SCOPE,
-  patterns = HostContentSettingsMap::GetPatternsForContentSettingsType(
-      primary_url, secondary_url,
-      ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS);
-
-  EXPECT_EQ(patterns.first,
-            ContentSettingsPattern::FromURLNoWildcard(primary_url));
-  EXPECT_EQ(
-      patterns.second,
-      ContentSettingsPattern::FromURLToSchemefulSitePattern(secondary_url));
 
   // Testing cases:
   //   WebsiteSettingsInfo::TOP_ORIGIN_WITH_RESOURCE_EXCEPTIONS_SCOPE,

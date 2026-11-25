@@ -4,7 +4,10 @@
 
 package org.chromium.components.trusted_vault;
 
+import static org.chromium.build.NullUtil.assertNonNull;
+
 import android.app.PendingIntent;
+import android.content.Intent;
 
 import androidx.annotation.VisibleForTesting;
 
@@ -89,6 +92,19 @@ public class TrustedVaultClient {
         Promise<Boolean> getIsRecoverabilityDegraded(CoreAccountInfo accountInfo);
 
         /**
+         * Returns whether the security domain is empty for the given account.
+         *
+         * @param accountInfo Account representing the user.
+         * @return a promise which indicates completion and represents whether the security domain
+         *     is empty.
+         */
+        // TODO(crbug.com/540854648): Remove the default implementation once downstream
+        // GmsTrustedVaultClientBackend implements this method.
+        default Promise<Boolean> getIsSecurityDomainEmpty(CoreAccountInfo accountInfo) {
+            return Promise.rejected();
+        }
+
+        /**
          * Registers a new trusted recovery method that can be used to retrieve keys, usually for
          * the purpose of resolving a recoverability-degraded case.
          *
@@ -165,6 +181,40 @@ public class TrustedVaultClient {
         Backend createBackend(@SecurityDomainId int securityDomainId);
     }
 
+    /**
+     * Factory for creating intents that are wrapped inside an Activity to handle onActivityResult.
+     * Implementation is provided by {@link ServiceImpl}
+     */
+    public interface ProxyIntentFactory {
+        /**
+         * Creates an intent that launches an Activity for the purpose of key retrieval.
+         *
+         * @param intent Actual key retrieval intent, which will be launched by the activity.
+         * @param userActionTrigger Enum representing which UI surface triggered the intent.
+         * @param securityDomainId The security domain identifier.
+         * @return the intent for launching the activity.
+         */
+        Intent createKeyRetrievalProxyIntent(
+                PendingIntent intent,
+                @TrustedVaultUserActionTriggerForUMA int userActionTrigger,
+                @SecurityDomainId int securityDomainId);
+
+        /**
+         * Creates an intent that launches an Activity for the purpose of fixing the recoverability
+         * degraded case.
+         *
+         * @param intent Actual recoverability degraded fix intent, which will be launched by the
+         *     activity.
+         * @param userActionTrigger Enum representing which UI surface triggered the intent.
+         * @param securityDomainId The security domain identifier.
+         * @return the intent for launching the activity.
+         */
+        Intent createRecoverabilityDegradedProxyIntent(
+                PendingIntent intent,
+                @TrustedVaultUserActionTriggerForUMA int userActionTrigger,
+                @SecurityDomainId int securityDomainId);
+    }
+
     // Maps @SecurityDomainId values to their corresponding TrustedVaultClient singleton instances.
     private static final Map<Integer, TrustedVaultClient> sInstances =
             Collections.synchronizedMap(new HashMap<>());
@@ -174,6 +224,8 @@ public class TrustedVaultClient {
 
     // Registered native TrustedVaultClientAndroid instances. Usually exactly one.
     private final Set<Long> mNativeTrustedVaultClientAndroidSet = new TreeSet<>();
+
+    @Nullable private ProxyIntentFactory mProxyIntentFactory;
 
     @VisibleForTesting
     public TrustedVaultClient(Backend backend, @SecurityDomainId int securityDomainId) {
@@ -186,6 +238,17 @@ public class TrustedVaultClient {
         var oldValue = mBackend;
         mBackend = backend;
         ResettersForTesting.register(() -> mBackend = oldValue);
+    }
+
+    /**
+     * TODO(crbug.com/570807669): Make this method private after using this method in
+     * SyncSettingsUtils.
+     */
+    public ProxyIntentFactory getProxyIntentFactory() {
+        if (mProxyIntentFactory == null) {
+            mProxyIntentFactory = ServiceLoaderUtil.maybeCreate(ProxyIntentFactory.class);
+        }
+        return assertNonNull(mProxyIntentFactory);
     }
 
     /**

@@ -11,22 +11,25 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import static org.chromium.build.NullUtil.assertNonNull;
+
 import android.content.Context;
 import android.graphics.Rect;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.IBinder;
 import android.os.SystemClock;
-import android.text.TextUtils;
 import android.util.Pair;
 import android.util.SparseArray;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.WindowManager;
 import android.view.autofill.AutofillValue;
+import android.webkit.WebResourceResponse;
 
 import androidx.test.InstrumentationRegistry;
 import androidx.test.filters.SmallTest;
+import androidx.webkit.WebViewAssetLoader;
 
 import org.junit.After;
 import org.junit.Assert;
@@ -54,6 +57,7 @@ import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.RequiresRestart;
+import org.chromium.base.test.util.ScalableTimeout;
 import org.chromium.components.autofill.AutofillHintsServiceTestHelper;
 import org.chromium.components.autofill.AutofillManagerWrapper;
 import org.chromium.components.autofill.AutofillPopup;
@@ -64,7 +68,9 @@ import org.chromium.components.autofill.FieldType;
 import org.chromium.components.autofill.TestViewStructure;
 import org.chromium.components.autofill_public.ViewType;
 import org.chromium.components.embedder_support.util.WebResourceResponseInfo;
+import org.chromium.content_public.browser.ImeAdapter;
 import org.chromium.content_public.browser.test.util.DOMUtils;
+import org.chromium.content_public.browser.test.util.TestInputMethodManagerWrapper;
 import org.chromium.content_public.browser.test.util.TouchCommon;
 import org.chromium.content_public.browser.test.util.WebContentsUtils;
 import org.chromium.net.test.EmbeddedTestServer;
@@ -73,25 +79,29 @@ import org.chromium.net.test.util.TestWebServer;
 import java.io.ByteArrayInputStream;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-import java.util.Queue;
 import java.util.concurrent.Callable;
-import java.util.concurrent.ConcurrentLinkedQueue;
-import java.util.concurrent.TimeoutException;
 
 /** Tests for WebView Autofill. */
 @RunWith(Parameterized.class)
 @UseParametersRunnerFactory(AwJUnit4ClassRunnerWithParameters.Factory.class)
 @Batch(Batch.PER_CLASS)
+// Point autofill::switches::kAutofillServerURL at an unreachable local port so tests with
+// AutofillServerCommunication enabled fail queries locally instead of hitting the live server.
+@CommandLineFlags.Add({"autofill-server-url=http://127.0.0.1:1/"})
 public class AwAutofillTest extends AwParameterizedTest {
     public static final boolean DEBUG = false;
     public static final String TAG = "AutofillTest";
 
+    // How long to wait for an expected Autofill event. Generous because it only matters when an
+    // event is missing, and the event pipeline runs through the renderer and the IME thread.
+    private static final long EVENT_TIMEOUT_MS = ScalableTimeout.scaleTimeout(10000);
+
     public static final String FILE = "/login.html";
-    public static final String FILE_URL = "file:///android_asset/autofill.html";
+    public static final String ASSET_URL =
+            "https://" + WebViewAssetLoader.DEFAULT_DOMAIN + "/assets/autofill.html";
 
     public static final int AUTOFILL_VIEW_ENTERED = 0;
     public static final int AUTOFILL_VIEW_EXITED = 1;
@@ -112,11 +122,181 @@ public class AwAutofillTest extends AwParameterizedTest {
         "QUERY_DONE"
     };
 
+    private static final int NO_VIRTUAL_ID = -1;
+
     // crbug.com/776230: On Android L, declaring variables of unsupported classes causes an error.
     // Wrapped them in a class to avoid it.
     private static class TestValues {
         public TestViewStructure testViewStructure;
         public ArrayList<Pair<Integer, AutofillValue>> changedValues;
+    }
+
+    /** A call of WebView's AutofillProvider to the Android AutofillManager. */
+    private static final class AutofillEvent {
+        public final int type;
+        public final int virtualId;
+
+        public AutofillEvent(int type, int virtualId) {
+            this.type = type;
+            this.virtualId = virtualId;
+        }
+
+        @Override
+        public String toString() {
+            return virtualId == NO_VIRTUAL_ID ? EVENT[type] : EVENT[type] + "(" + virtualId + ")";
+        }
+    }
+
+    /**
+     * The AutofillManager calls of a test in the order in which they happened. Tests consume them
+     * from the start, see {@link #waitForCallbackAndVerifyTypes}.
+     */
+    private static final class AutofillEventLog {
+        private static final int MISMATCH = -2;
+        private static final int NEEDS_MORE_EVENTS = -1;
+
+        private final List<AutofillEvent> mEvents = new ArrayList<>();
+        // The index of the first event that no test step has consumed yet.
+        private int mConsumed;
+
+        public synchronized void add(AutofillEvent event) {
+            mEvents.add(event);
+            notifyAll();
+        }
+
+        public synchronized int size() {
+            return mEvents.size();
+        }
+
+        /** Marks all events so far as consumed and returns their number. */
+        public synchronized int consumeAll() {
+            mConsumed = mEvents.size();
+            return mConsumed;
+        }
+
+        public synchronized String describeFrom(int start) {
+            return mEvents.subList(Math.min(start, mEvents.size()), mEvents.size()).toString();
+        }
+
+        /**
+         * Waits until the unconsumed events at index `start` or later match `expectedTypes`,
+         * consumes them and returns the index after them. Fails as soon as the events can no longer
+         * match, if other events already follow them, or if they don't match within the timeout.
+         *
+         * <p>AutofillProvider tells the framework about new bounds of the focused field by exiting
+         * and re-entering it. Unless the test expects these events, such pairs are skipped: they
+         * depend on layout timing, not on what the test does.
+         */
+        public synchronized int waitForTypes(int start, int[] expectedTypes) {
+            start = Math.max(start, mConsumed);
+            long deadline = SystemClock.uptimeMillis() + EVENT_TIMEOUT_MS;
+            while (true) {
+                int matched = match(start, expectedTypes);
+                if (matched == MISMATCH) {
+                    throw new AssertionError(describeExpectation(start, expectedTypes));
+                }
+                if (matched != NEEDS_MORE_EVENTS) {
+                    int end = skipBoundsUpdates(start + matched);
+                    if (end == MISMATCH) {
+                        throw new AssertionError(
+                                "Unexpected events. " + describeExpectation(start, expectedTypes));
+                    }
+                    mConsumed = end;
+                    return mConsumed;
+                }
+                if (!waitForNewEvent(deadline)) {
+                    throw new AssertionError(
+                            "Timed out. " + describeExpectation(start, expectedTypes));
+                }
+            }
+        }
+
+        /**
+         * Waits until the unconsumed events contain `expectedTypes` in this order, possibly with
+         * other events in between, and consumes the events up to the last expected one. Fails if
+         * they don't occur within the timeout.
+         */
+        public synchronized void waitForSubsequence(int[] expectedTypes) {
+            long deadline = SystemClock.uptimeMillis() + EVENT_TIMEOUT_MS;
+            int next = mConsumed;
+            int found = 0;
+            while (found < expectedTypes.length) {
+                if (next < mEvents.size()) {
+                    if (mEvents.get(next).type == expectedTypes[found]) found++;
+                    next++;
+                    continue;
+                }
+                if (!waitForNewEvent(deadline)) {
+                    throw new AssertionError(
+                            "Timed out. " + describeExpectation(mConsumed, expectedTypes));
+                }
+            }
+            mConsumed = next;
+        }
+
+        // Returns how many events from `start` on make up `expectedTypes`, or MISMATCH, or
+        // NEEDS_MORE_EVENTS.
+        private int match(int start, int[] expectedTypes) {
+            int index = start;
+            for (int expected = 0; expected < expectedTypes.length; ) {
+                if (index >= mEvents.size()) return NEEDS_MORE_EVENTS;
+                AutofillEvent event = mEvents.get(index);
+                if (event.type == expectedTypes[expected]) {
+                    index++;
+                    expected++;
+                    continue;
+                }
+                if (event.type != AUTOFILL_VIEW_EXITED) return MISMATCH;
+                if (index + 1 >= mEvents.size()) return NEEDS_MORE_EVENTS;
+                if (!isBoundsUpdate(index)) return MISMATCH;
+                index += 2;
+            }
+            return index - start;
+        }
+
+        // Returns the index after the bounds updates that start at `index`, or MISMATCH if other
+        // events follow. A trailing VIEW_EXITED is not skipped since its VIEW_ENTERED may follow.
+        private int skipBoundsUpdates(int index) {
+            while (index < mEvents.size()) {
+                if (mEvents.get(index).type != AUTOFILL_VIEW_EXITED) return MISMATCH;
+                if (index + 1 == mEvents.size()) return index;
+                if (!isBoundsUpdate(index)) return MISMATCH;
+                index += 2;
+            }
+            return index;
+        }
+
+        // Whether the events at `index` and `index + 1` exit and re-enter the same field.
+        private boolean isBoundsUpdate(int index) {
+            AutofillEvent exited = mEvents.get(index);
+            AutofillEvent entered = mEvents.get(index + 1);
+            return exited.type == AUTOFILL_VIEW_EXITED
+                    && entered.type == AUTOFILL_VIEW_ENTERED
+                    && entered.virtualId == exited.virtualId;
+        }
+
+        private String describeExpectation(int start, int[] expectedTypes) {
+            List<String> expected = new ArrayList<>();
+            for (int type : expectedTypes) expected.add(EVENT[type]);
+            String actual = describeFrom(start);
+            return "Expected events " + expected + " after event #" + start + ", got " + actual;
+        }
+
+        // Waits until another event is added. Returns false if none is added before `deadline`.
+        private boolean waitForNewEvent(long deadline) {
+            int size = mEvents.size();
+            while (mEvents.size() == size) {
+                long remaining = deadline - SystemClock.uptimeMillis();
+                if (remaining <= 0) return false;
+                try {
+                    wait(remaining);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new RuntimeException(e);
+                }
+            }
+            return true;
+        }
     }
 
     private class TestAutofillManagerWrapper extends AutofillManagerWrapper {
@@ -148,15 +328,13 @@ public class AwAutofillTest extends AwParameterizedTest {
         @Override
         public void notifyVirtualViewEntered(View parent, int childId, Rect absBounds) {
             if (DEBUG) Log.i(TAG, "notifyVirtualViewEntered");
-            mEventQueue.add(AUTOFILL_VIEW_ENTERED);
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_VIEW_ENTERED, childId));
         }
 
         @Override
         public void notifyVirtualViewExited(View parent, int childId) {
             if (DEBUG) Log.i(TAG, "notifyVirtualViewExited");
-            mEventQueue.add(AUTOFILL_VIEW_EXITED);
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_VIEW_EXITED, childId));
         }
 
         @Override
@@ -166,37 +344,33 @@ public class AwAutofillTest extends AwParameterizedTest {
                 mTestValues.changedValues = new ArrayList<Pair<Integer, AutofillValue>>();
             }
             mTestValues.changedValues.add(new Pair<Integer, AutofillValue>(childId, value));
-            mEventQueue.add(AUTOFILL_VALUE_CHANGED);
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_VALUE_CHANGED, childId));
         }
 
         @Override
         public void commit(int submissionSource) {
             if (DEBUG) Log.i(TAG, "commit");
-            mEventQueue.add(AUTOFILL_COMMIT);
             mSubmissionSource = submissionSource;
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_COMMIT, NO_VIRTUAL_ID));
         }
 
         @Override
         public void cancel() {
             if (DEBUG) Log.i(TAG, "cancel");
-            mEventQueue.add(AUTOFILL_CANCEL);
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_CANCEL, NO_VIRTUAL_ID));
         }
+
         @Override
         public void notifyNewSessionStarted(boolean hasServerPrediction) {
             if (DEBUG) Log.i(TAG, "notifyNewSessionStarted");
-            mEventQueue.add(AUTOFILL_SESSION_STARTED);
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_SESSION_STARTED, NO_VIRTUAL_ID));
         }
 
         @Override
         public void onServerPredictionsAvailable() {
             mQuerySucceed = true;
             if (DEBUG) Log.i(TAG, "onServerPredictionsAvailable");
-            mEventQueue.add(AUTOFILL_PREDICTIONS_AVAILABLE);
-            mCallbackHelper.notifyCalled();
+            mEvents.add(new AutofillEvent(AUTOFILL_PREDICTIONS_AVAILABLE, NO_VIRTUAL_ID));
         }
     }
 
@@ -284,13 +458,7 @@ public class AwAutofillTest extends AwParameterizedTest {
         }
 
         public void simulateServerPrediction(int serverType) throws Throwable {
-            ThreadUtils.runOnUiThreadBlocking(
-                    () ->
-                            AutofillProviderTestHelper
-                                    .simulateMainFrameAutofillServerResponseForTesting(
-                                            mTest.mAwContents.getWebContents(),
-                                            new String[] {"text1"},
-                                            new int[] {serverType}));
+            mTest.simulateServerPrimaryTypes(new String[] {"text1"}, new int[] {serverType});
         }
 
         public void simulateUserSelectSuggestion() throws Throwable {
@@ -354,9 +522,8 @@ public class AwAutofillTest extends AwParameterizedTest {
     private EmbeddedTestServer mEmbeddedServer;
     private AwTestContainerView mTestContainerView;
     private AwAutofillTestClient mContentsClient;
-    private final CallbackHelper mCallbackHelper = new CallbackHelper();
     private AwContents mAwContents;
-    private final ConcurrentLinkedQueue<Integer> mEventQueue = new ConcurrentLinkedQueue<>();
+    private final AutofillEventLog mEvents = new AutofillEventLog();
     private final TestValues mTestValues = new TestValues();
     private int mSubmissionSource;
     private TestAutofillManagerWrapper mTestAutofillManagerWrapper;
@@ -403,6 +570,19 @@ public class AwAutofillTest extends AwParameterizedTest {
         mAwContents = mTestContainerView.getAwContents();
         AwActivityTestRule.enableJavaScriptOnUiThread(mAwContents);
         mAutofillProvider = mAwContents.getAutofillProviderForTesting();
+        // Don't let the device's IME interact with the page. Whenever a test focuses a field, the
+        // real IME restarts its input connection and calls into WebView's InputConnection on the
+        // IME thread that WebView shares between all WebViews of the process. These calls can
+        // block that thread for good while waiting for the renderer, so that the key events which
+        // the tests dispatch are never delivered, neither in this test nor in later tests of the
+        // same batch.
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    ImeAdapter imeAdapter =
+                            assertNonNull(ImeAdapter.fromWebContents(mAwContents.getWebContents()));
+                    imeAdapter.setInputMethodManagerWrapper(
+                            TestInputMethodManagerWrapper.create(imeAdapter));
+                });
 
         ThreadUtils.runOnUiThreadBlocking(() -> histograms.assertExpected());
     }
@@ -473,10 +653,7 @@ public class AwAutofillTest extends AwParameterizedTest {
 
     @Test
     @SmallTest
-    @CommandLineFlags.Add({
-        "disable-features=AutofillServerCommunication",
-        "enable-features=AutofillIgnoreCheckableElements"
-    })
+    @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
     @Feature({"AndroidWebView"})
     public void testBasicAutofill() throws Throwable {
         final String url =
@@ -611,10 +788,7 @@ public class AwAutofillTest extends AwParameterizedTest {
     @Test
     @SmallTest
     @Feature({"AndroidWebView"})
-    @CommandLineFlags.Add({
-        "disable-features=AutofillServerCommunication",
-        "enable-features=AutofillAcrossIframes"
-    })
+    @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
     @DisabledTest(message = "https://crbug.com/1401726")
     public void testCrossFrameAutofill() throws Throwable {
         loadHTML(
@@ -784,11 +958,7 @@ public class AwAutofillTest extends AwParameterizedTest {
         executeJavaScriptAndWaitForResult("document.getElementById('text1').value='c';");
         // Check no new event occurs, this is best effort checking, the event here could be leaked
         // from previous dispatchDownAndUpKeyEvents().
-        assertEquals(
-                "Events in the queue "
-                        + buildEventList(mEventQueue.toArray(new Integer[mEventQueue.size()])),
-                cnt,
-                getCallbackCount());
+        assertEquals("Unexpected events " + mEvents.describeFrom(cnt), cnt, getCallbackCount());
         dispatchDownAndUpKeyEvents(KeyEvent.KEYCODE_B);
         // Check if NotifyVirtualValueChanged() called one more time and value is 'cb', this
         // means javascript change didn't trigger the NotifyVirtualValueChanged().
@@ -918,7 +1088,6 @@ public class AwAutofillTest extends AwParameterizedTest {
     @SmallTest
     @Feature({"AndroidWebView"})
     @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
-    @RequiresRestart("crbug.com/344662605")
     @DisabledTest(message = "crbug.com/376351174")
     public void testCrossFrameCommit() throws Throwable {
         // The only reason we use a <form> inside the iframe is that this makes it easiest to
@@ -1007,9 +1176,28 @@ public class AwAutofillTest extends AwParameterizedTest {
     @SmallTest
     @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
     @Feature({"AndroidWebView"})
-    public void testLoadFileURL() throws Throwable {
+    public void testLoadAssetURL() throws Throwable {
+        final WebViewAssetLoader assetLoader =
+                new WebViewAssetLoader.Builder()
+                        .addPathHandler(
+                                "/assets/",
+                                new WebViewAssetLoader.AssetsPathHandler(mRule.getActivity()))
+                        .build();
+        mContentsClient.setShouldInterceptRequestImpl(
+                request -> {
+                    WebResourceResponse response =
+                            assetLoader.shouldInterceptRequest(Uri.parse(request.getUrl()));
+                    if (response == null) return null;
+                    return new WebResourceResponseInfo(
+                            response.getMimeType(),
+                            response.getEncoding(),
+                            response.getData(),
+                            response.getStatusCode(),
+                            response.getReasonPhrase(),
+                            response.getResponseHeaders());
+                });
         int cnt = 0;
-        loadUrlSync(FILE_URL);
+        loadUrlSync(ASSET_URL);
         executeJavaScriptAndWaitForResult("document.getElementById('text1').select();");
         dispatchDownAndUpKeyEvents(KeyEvent.KEYCODE_A);
         // Cancel called for the first query.
@@ -1491,10 +1679,7 @@ public class AwAutofillTest extends AwParameterizedTest {
 
     @Test
     @SmallTest
-    @CommandLineFlags.Add({
-        "disable-features=AutofillServerCommunication",
-        "enable-features=AutofillIgnoreCheckableElements"
-    })
+    @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
     @Feature({"AndroidWebView"})
     public void testUaAutofillHints() throws Throwable {
         loadHTML(
@@ -2353,8 +2538,8 @@ public class AwAutofillTest extends AwParameterizedTest {
         invokeAutofill(autofillValues);
         executeJavaScriptAndWaitForResult("document.getElementById('addressFormId').submit();");
 
-        // All of the metrics are recorded at the same time. Wait for one of the metrics to be
-        // recorded.
+        // All of the metrics are recorded at the same time, when the submission navigates away
+        // from the page. Wait for one of the metrics to be recorded.
         CriteriaHelper.pollUiThread(
                 () -> {
                     int numSamples =
@@ -2362,7 +2547,10 @@ public class AwAutofillTest extends AwParameterizedTest {
                                     "Autofill.WebView.Funnel.ParsedAsType2.Address",
                                     /* sample= */ 1);
                     return numSamples > 0;
-                });
+                },
+                "Autofill.WebView.Funnel metrics weren't recorded",
+                ScalableTimeout.scaleTimeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL_LONG),
+                CriteriaHelper.DEFAULT_POLLING_INTERVAL);
 
         histogramWatcher.assertExpected();
     }
@@ -2370,7 +2558,6 @@ public class AwAutofillTest extends AwParameterizedTest {
     @Test
     @SmallTest
     @Feature({"AndroidWebView"})
-    @RequiresRestart("crbug.com/344662605")
     @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
     @DisabledTest(message = "crbug.com/353502929")
     public void testPageScrollTriggerViewExitAndEnter() throws Throwable {
@@ -2534,7 +2721,6 @@ public class AwAutofillTest extends AwParameterizedTest {
     @SmallTest
     @Feature({"AndroidWebView"})
     @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
-    @RequiresRestart("crbug.com/344662605")
     public void testHideDatalistPopup() throws Throwable {
         final String url = getAbsoluteTestPageUrl("form_with_datalist.html");
         loadUrlSync(url);
@@ -2592,20 +2778,16 @@ public class AwAutofillTest extends AwParameterizedTest {
                     <input type='text' name='email' id='text2' autocomplete='email' />
                 </form>\
                 """);
-        ThreadUtils.runOnUiThreadBlocking(
-                () ->
-                        AutofillProviderTestHelper
-                                .simulateMainFramePredictionsAutofillServerResponseForTesting(
-                                        mAwContents.getWebContents(),
-                                        new String[] {"text1", "text2"},
-                                        new int[][] {
-                                            {
-                                                FieldType.USERNAME, FieldType.EMAIL_ADDRESS,
-                                            },
-                                            {
-                                                FieldType.EMAIL_ADDRESS,
-                                            }
-                                        }));
+        simulateServerPredictions(
+                new String[] {"text1", "text2"},
+                new int[][] {
+                    {
+                        FieldType.USERNAME, FieldType.EMAIL_ADDRESS,
+                    },
+                    {
+                        FieldType.EMAIL_ADDRESS,
+                    }
+                });
 
         int cnt = 0;
         executeJavaScriptAndWaitForResult("document.getElementById('text1').select();");
@@ -2663,10 +2845,7 @@ public class AwAutofillTest extends AwParameterizedTest {
     @Test
     @SmallTest
     @Feature({"AndroidWebView"})
-    @CommandLineFlags.Add({
-        "disable-features=AutofillServerCommunication",
-        "enable-features=AutofillAcrossIframes"
-    })
+    @CommandLineFlags.Add({"disable-features=AutofillServerCommunication"})
     public void testCrossFrameServerPredictionArrivesBeforeAutofillStart() throws Throwable {
         loadHTML(
                 """
@@ -2678,24 +2857,14 @@ public class AwAutofillTest extends AwParameterizedTest {
                     <iframe srcdoc='<input id=csc>'></iframe>
                 </form>\
                 """);
-        // `OnPageFinished` does not guarantee that autofill is fully initialized, therefore let's
-        // wait for a short time.
-        // TODO(b/527998144): Find a better way to wait for the autofill to be initialized.
-        // Note: Prior to https://crrev.com/c/7960537, OnPageFinished was triggered with a 500ms
-        // delay for simple pages like the above, which internally did what the following wait does.
-        Thread.sleep(500);
-        ThreadUtils.runOnUiThreadBlocking(
-                () ->
-                        AutofillProviderTestHelper
-                                .simulateMainFramePredictionsAutofillServerResponseForTesting(
-                                        mAwContents.getWebContents(),
-                                        new String[] {"name", "num", "exp", "csc"},
-                                        new int[][] {
-                                            {FieldType.CREDIT_CARD_NAME_FULL},
-                                            {FieldType.CREDIT_CARD_NUMBER},
-                                            {FieldType.CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR},
-                                            {FieldType.CREDIT_CARD_VERIFICATION_CODE}
-                                        }));
+        simulateServerPredictions(
+                new String[] {"name", "num", "exp", "csc"},
+                new int[][] {
+                    {FieldType.CREDIT_CARD_NAME_FULL},
+                    {FieldType.CREDIT_CARD_NUMBER},
+                    {FieldType.CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR},
+                    {FieldType.CREDIT_CARD_VERIFICATION_CODE}
+                });
 
         int cnt = 0;
         executeJavaScriptAndWaitForResult("document.forms[0].elements[0].select();");
@@ -2795,13 +2964,9 @@ public class AwAutofillTest extends AwParameterizedTest {
                     <input type='text' name='email' id='text2' autocomplete='email' />
                 </form>\
                 """);
-        ThreadUtils.runOnUiThreadBlocking(
-                () ->
-                        AutofillProviderTestHelper
-                                .simulateMainFrameAutofillServerResponseForTesting(
-                                        mAwContents.getWebContents(),
-                                        new String[] {"text1", "text2"},
-                                        new int[] {FieldType.USERNAME, FieldType.EMAIL_ADDRESS}));
+        simulateServerPrimaryTypes(
+                new String[] {"text1", "text2"},
+                new int[] {FieldType.USERNAME, FieldType.EMAIL_ADDRESS});
 
         int cnt = 0;
         executeJavaScriptAndWaitForResult("document.getElementById('text1').select();");
@@ -2919,16 +3084,12 @@ public class AwAutofillTest extends AwParameterizedTest {
                 new AutofillHintsServiceTestHelper();
         autofillHintsServiceTestHelper.registerViewTypeService(binder);
 
-        ThreadUtils.runOnUiThreadBlocking(
-                () ->
-                        AutofillProviderTestHelper
-                                .simulateMainFramePredictionsAutofillServerResponseForTesting(
-                                        mAwContents.getWebContents(),
-                                        new String[] {"text1", "text2"},
-                                        new int[][] {
-                                            {FieldType.USERNAME, FieldType.EMAIL_ADDRESS},
-                                            {FieldType.EMAIL_ADDRESS}
-                                        }));
+        simulateServerPredictions(
+                new String[] {"text1", "text2"},
+                new int[][] {
+                    {FieldType.USERNAME, FieldType.EMAIL_ADDRESS},
+                    {FieldType.EMAIL_ADDRESS}
+                });
 
         cnt += waitForCallbackAndVerifyTypes(cnt, new Integer[] {AUTOFILL_PREDICTIONS_AVAILABLE});
         assertTrue(mTestAutofillManagerWrapper.isQuerySucceed());
@@ -3011,13 +3172,9 @@ public class AwAutofillTest extends AwParameterizedTest {
                 new AutofillHintsServiceTestHelper();
         autofillHintsServiceTestHelper.registerViewTypeService(binder);
 
-        ThreadUtils.runOnUiThreadBlocking(
-                () ->
-                        AutofillProviderTestHelper
-                                .simulateMainFrameAutofillServerResponseForTesting(
-                                        mAwContents.getWebContents(),
-                                        new String[] {"text1", "text2"},
-                                        new int[] {FieldType.USERNAME, FieldType.EMAIL_ADDRESS}));
+        simulateServerPrimaryTypes(
+                new String[] {"text1", "text2"},
+                new int[] {FieldType.USERNAME, FieldType.EMAIL_ADDRESS});
 
         cnt += waitForCallbackAndVerifyTypes(cnt, new Integer[] {AUTOFILL_PREDICTIONS_AVAILABLE});
         assertTrue(mTestAutofillManagerWrapper.isQuerySucceed());
@@ -3092,16 +3249,12 @@ public class AwAutofillTest extends AwParameterizedTest {
                         .getHtmlInfo()
                         .getAttribute("crowdsourcing-predictions-autofill-hints"));
 
-        ThreadUtils.runOnUiThreadBlocking(
-                () ->
-                        AutofillProviderTestHelper
-                                .simulateMainFramePredictionsAutofillServerResponseForTesting(
-                                        mAwContents.getWebContents(),
-                                        new String[] {"text1", "text2"},
-                                        new int[][] {
-                                            {FieldType.USERNAME, FieldType.EMAIL_ADDRESS},
-                                            {FieldType.EMAIL_ADDRESS}
-                                        }));
+        simulateServerPredictions(
+                new String[] {"text1", "text2"},
+                new int[][] {
+                    {FieldType.USERNAME, FieldType.EMAIL_ADDRESS},
+                    {FieldType.EMAIL_ADDRESS}
+                });
 
         cnt += waitForCallbackAndVerifyTypes(cnt, new Integer[] {AUTOFILL_PREDICTIONS_AVAILABLE});
         assertTrue(mTestAutofillManagerWrapper.isQuerySucceed());
@@ -3429,6 +3582,38 @@ public class AwAutofillTest extends AwParameterizedTest {
         cnt += waitForCallbackAndVerifyTypes(cnt, new Integer[] {AUTOFILL_VALUE_CHANGED});
     }
 
+    /**
+     * Simulates an Autofill server response with the primary types `fieldTypes[i]` for the fields
+     * with id `fieldIds[i]`. Form parsing in the browser is asynchronous, so this waits until the
+     * main frame has parsed a form that contains all of `fieldIds`. For a frame-transcending form,
+     * this is only the case after the forms of all subframes have been parsed.
+     */
+    private void simulateServerPrimaryTypes(String[] fieldIds, int[] fieldTypes) {
+        CriteriaHelper.pollUiThread(
+                () ->
+                        AutofillProviderTestHelper
+                                .simulateMainFrameAutofillServerResponseForTesting(
+                                        mAwContents.getWebContents(), fieldIds, fieldTypes),
+                "The browser hasn't parsed a form with the fields " + Arrays.toString(fieldIds),
+                CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL_LONG,
+                CriteriaHelper.DEFAULT_POLLING_INTERVAL);
+    }
+
+    /**
+     * Like {@link #simulateServerPrimaryTypes}, but with all server predictions for each field. The
+     * first prediction for a field is its primary type.
+     */
+    private void simulateServerPredictions(String[] fieldIds, int[][] fieldTypes) {
+        CriteriaHelper.pollUiThread(
+                () ->
+                        AutofillProviderTestHelper
+                                .simulateMainFramePredictionsAutofillServerResponseForTesting(
+                                        mAwContents.getWebContents(), fieldIds, fieldTypes),
+                "The browser hasn't parsed a form with the fields " + Arrays.toString(fieldIds),
+                CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL_LONG,
+                CriteriaHelper.DEFAULT_POLLING_INTERVAL);
+    }
+
     private void pollJavascriptResult(String script, String expectedResult) throws Throwable {
         AwActivityTestRule.pollInstrumentationThread(
                 () -> {
@@ -3524,96 +3709,39 @@ public class AwAutofillTest extends AwParameterizedTest {
     }
 
     private int getCallbackCount() {
-        return mCallbackHelper.getCallCount();
+        return mEvents.size();
     }
 
     private int clearEventQueueAndGetCallCount() {
-        mEventQueue.clear();
-        return mCallbackHelper.getCallCount();
+        return mEvents.consumeAll();
     }
 
     /**
-     * Wait for expected callbacks to be called, and verify the types.
+     * Waits until the next events are `expectedEventArray` and consumes them.
      *
-     * @param currentCallCount The current call count to start from.
-     * @param expectedEventArray The callback types that need to be verified.
-     * @return The number of new callbacks since currentCallCount. This should be same as the length
-     *     of expectedEventArray.
+     * @param currentCallCount The number of events that the test has consumed so far. Events before
+     *     this index are ignored even if no earlier step consumed them.
+     * @param expectedEventArray The expected event types, in order.
+     * @return How many more events have been consumed since `currentCallCount`. This is the length
+     *     of `expectedEventArray` plus the number of skipped bounds updates, see {@link
+     *     AutofillEventLog#waitForTypes}.
      */
-    private int waitForCallbackAndVerifyTypes(int currentCallCount, Integer[] expectedEventArray)
-            throws TimeoutException {
-        Integer[] adjustedEventArray;
-        ArrayList<Integer> adjusted = new ArrayList<>(Arrays.asList(expectedEventArray));
-
-        adjustedEventArray = new Integer[adjusted.size()];
-        adjusted.toArray(adjustedEventArray);
-        try {
-            // Check against the call count to avoid missing out a callback in between waits, while
-            // exposing it so that the test can control where the call count starts.
-            mCallbackHelper.waitForCallback(currentCallCount, adjustedEventArray.length);
-            Object[] objectArray = mEventQueue.toArray();
-            mEventQueue.clear();
-            Integer[] resultArray = Arrays.copyOf(objectArray, objectArray.length, Integer[].class);
-            Assert.assertArrayEquals(
-                    "Expect: "
-                            + buildEventList(adjustedEventArray)
-                            + " Result: "
-                            + buildEventList(resultArray),
-                    adjustedEventArray,
-                    resultArray);
-            return adjustedEventArray.length;
-        } catch (TimeoutException e) {
-            Object[] objectArray = mEventQueue.toArray();
-            Integer[] resultArray = Arrays.copyOf(objectArray, objectArray.length, Integer[].class);
-            Assert.assertArrayEquals(
-                    "Expect:"
-                            + buildEventList(adjustedEventArray)
-                            + " Result:"
-                            + buildEventList(resultArray),
-                    adjustedEventArray,
-                    resultArray);
-            throw e;
-        }
+    private int waitForCallbackAndVerifyTypes(int currentCallCount, Integer[] expectedEventArray) {
+        int[] expectedTypes = new int[expectedEventArray.length];
+        for (int i = 0; i < expectedTypes.length; i++) expectedTypes[i] = expectedEventArray[i];
+        return mEvents.waitForTypes(currentCallCount, expectedTypes) - currentCallCount;
     }
 
     /**
-     * Consumes all observed events from {@link mEventQueue} until the {@code expectedEvents} have
-     * been observed (in proper order). Calls {@code mCallbackHelper.waitForNext();} in case the
-     * {@link mEventQueue} runs out of events. Unexpected events are just ignored.
+     * Consumes events until {@code expectedEvents} have been observed in this order. Other events
+     * are ignored. Fails if they aren't observed within the timeout.
      *
      * @param expectedEvents the events that need to happen.
-     * @return Whether the {@code expectedEvents} were observed.
      */
-    private boolean waitForEvents(Integer[] expectedEvents) throws TimeoutException {
-        // Chosen arbitrarily.
-        final int maxCallsToWaitFor = 20;
-        int numCallsToWaitFor = 0;
-
-        Queue<Integer> expectedEventsQueue = new ArrayDeque<Integer>(Arrays.asList(expectedEvents));
-
-        while (!expectedEventsQueue.isEmpty() && numCallsToWaitFor < maxCallsToWaitFor) {
-            if (mEventQueue.isEmpty()) {
-                // Wait for new events.
-                ++numCallsToWaitFor;
-                mCallbackHelper.waitForNext();
-                continue;
-            }
-
-            int nextExpectedEvent = expectedEventsQueue.peek();
-            // Actually consumes the event.
-            int nextObservedEvent = mEventQueue.poll();
-            if (nextExpectedEvent == nextObservedEvent) {
-                expectedEventsQueue.poll();
-            }
-        }
-        return expectedEventsQueue.isEmpty();
-    }
-
-    private static String buildEventList(Integer[] eventArray) {
-        Assert.assertEquals(AUTOFILL_EVENT_MAX, EVENT.length);
-        List<String> result = new ArrayList<String>(eventArray.length);
-        for (Integer event : eventArray) result.add(EVENT[event]);
-        return TextUtils.join(",", result);
+    private void waitForEvents(Integer[] expectedEvents) {
+        int[] expectedTypes = new int[expectedEvents.length];
+        for (int i = 0; i < expectedTypes.length; i++) expectedTypes[i] = expectedEvents[i];
+        mEvents.waitForSubsequence(expectedTypes);
     }
 
     private void dispatchDownAndUpKeyEvents(final int code) throws Throwable {

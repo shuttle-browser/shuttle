@@ -298,15 +298,6 @@ extern const char kDefaultBrowserPromoTriggerCriteriaConditionsMet[];
 // sample model info.
 extern const char kIOSContextualPanelSampleModelEntrypointUsed[];
 
-// The user has tapped the contextual panel entrypoint when it was branded with
-// price insights infoblock.
-extern const char kIOSContextualPanelPriceInsightsEntrypointUsed[];
-
-// The user has explicitly dismissed the Price Insights branded Contextual Panel
-// entrypoint in-product help.
-extern const char
-    kIOSContextualPanelPriceInsightsEntrypointExplicitlyDismissed[];
-
 // The user has tapped the Home customization menu's entrypoint.
 extern const char kHomeCustomizationMenuUsed[];
 
@@ -349,12 +340,6 @@ extern const char kIOSScrolledOnFeed[];
 
 // The user has taken action on the feed.
 extern const char kIOSActionOnFeed[];
-
-// The Welcome Back promo was triggered.
-extern const char kIOSWelcomeBackPromoTrigger[];
-
-// The Welcome Back promo was used.
-extern const char kIOSWelcomeBackPromoUsed[];
 
 // The BWG promo was triggered.
 extern const char kIOSBWGPromoTrigger[];

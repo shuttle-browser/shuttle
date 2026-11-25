@@ -44,7 +44,6 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/tribool.h"
 #include "components/strings/grit/components_strings.h"
-#include "components/sync/base/features.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
@@ -105,22 +104,34 @@ void AddResourcePaths(content::WebUIDataSource* source) {
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DISCLOSURE_REFRESH_JS},
       {"managed_user_profile_notice_state.css.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_STATE_CSS_JS},
+      {"managed_user_profile_notice_state_refresh.css.js",
+       IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_STATE_REFRESH_CSS_JS},
       {"managed_user_profile_notice_value_prop.css.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_VALUE_PROP_CSS_JS},
       {"managed_user_profile_notice_data_handling.css.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DATA_HANDLING_CSS_JS},
+      {"managed_user_profile_notice_data_handling_refresh.css.js",
+       IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DATA_HANDLING_REFRESH_CSS_JS},
       {"managed_user_profile_notice_data_handling.html.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DATA_HANDLING_HTML_JS},
+      {"managed_user_profile_notice_data_handling_refresh.html.js",
+       IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DATA_HANDLING_REFRESH_HTML_JS},
       {"managed_user_profile_notice_data_handling.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DATA_HANDLING_JS},
+      {"managed_user_profile_notice_data_handling_refresh.js",
+       IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_DATA_HANDLING_REFRESH_JS},
       {"managed_user_profile_notice_value_prop.html.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_VALUE_PROP_HTML_JS},
       {"managed_user_profile_notice_value_prop.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_VALUE_PROP_JS},
       {"managed_user_profile_notice_state.html.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_STATE_HTML_JS},
+      {"managed_user_profile_notice_state_refresh.html.js",
+       IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_STATE_REFRESH_HTML_JS},
       {"managed_user_profile_notice_state.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_STATE_JS},
+      {"managed_user_profile_notice_state_refresh.js",
+       IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_STATE_REFRESH_JS},
       {"managed_user_profile_notice_browser_proxy.js",
        IDR_SIGNIN_MANAGED_USER_PROFILE_NOTICE_MANAGED_USER_PROFILE_NOTICE_BROWSER_PROXY_JS},
       {"images/data_handling.svg",
@@ -313,9 +324,7 @@ ManagedUserProfileNoticeUI::ManagedUserProfileNoticeUI(content::WebUI* web_ui)
     source->AddString(
         "valuePropSubtitle",
         l10n_util::GetStringUTF16(
-            syncer::IsReplaceSyncPromosWithSignInPromosEnabled()
-                ? IDS_ENTERPRISE_VALUE_PROPOSITION_CONSUMER_SUBTITLE_WITH_BOOKMARKS
-                : IDS_ENTERPRISE_VALUE_PROPOSITION_CONSUMER_SUBTITLE));
+            IDS_ENTERPRISE_VALUE_PROPOSITION_CONSUMER_SUBTITLE_WITH_BOOKMARKS));
     source->AddString(
         "separateBrowsingDataTitle",
         l10n_util::GetStringUTF16(
@@ -476,11 +485,10 @@ GURL ManagedUserProfileNoticeUI::GetUrl(ScreenType screen_type,
           is_in_search_engine_choice_region);
       break;
     case ScreenType::kDeviceSignalsDisclaimer:
-      use_refreshed_ui = switches::IsEnterpriseSigninDialogsRefreshEnabled(
-          is_in_search_engine_choice_region);
-      break;
     case ScreenType::kEnterpriseAccountCreation:
     case ScreenType::kEnterpriseOIDC:
+      use_refreshed_ui = switches::IsEnterpriseSigninDialogsRefreshEnabled(
+          is_in_search_engine_choice_region);
       break;
   }
 

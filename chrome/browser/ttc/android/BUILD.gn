@@ -16,9 +16,13 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/ttc/TtcSessionProperties.java",
     "java/src/org/chromium/chrome/browser/ttc/TtcSessionViewBinder.java",
     "java/src/org/chromium/chrome/browser/ttc/TtcSessionWindowTracker.java",
+    "java/src/org/chromium/chrome/browser/ttc/TtcVoicePlateView.java",
+    "java/src/org/chromium/chrome/browser/ttc/TtcWaveformView.java",
   ]
   deps = [
+    ":entry_point_java",
     ":java_resources",
+    "//base:activity_state_java",
     "//base:base_java",
     "//base:supplier_java",
     "//build/android:build_java",
@@ -29,7 +33,10 @@ android_library("java") {
     "//chrome/browser/profiles/android:java",
     "//chrome/browser/ui/android/strings:ui_strings_grd",
     "//components/browser_ui/strings/android:browser_ui_strings_grd",
+    "//components/browser_ui/styles/android:java",
     "//components/browser_ui/styles/android:java_resources",
+    "//components/browser_ui/widget/android:java",
+    "//components/browser_ui/widget/android:java_resources",
     "//components/prefs/android:java",
     "//components/user_prefs/android:java",
     "//content/public/android:content_full_java",
@@ -45,10 +52,23 @@ android_library("java") {
   resources_package = "org.chromium.chrome.browser.ttc"
 }
 
+# The TTC toolbar button's state, shared with the toolbar. Its own target so
+# that the toolbar doesn't depend on the rest of the TTC session UI.
+android_library("entry_point_java") {
+  sources = [ "java/src/org/chromium/chrome/browser/ttc/TtcEntryPoint.java" ]
+  deps = [
+    "//base:base_java",
+    "//build/android:build_java",
+    "//ui/android:ui_no_recycler_view_java",
+  ]
+}
+
 android_resources("java_resources") {
   sources = [
     "java/res/drawable/ttc_session_pill_background.xml",
+    "java/res/drawable/ttc_voice_plate_pause_background.xml",
     "java/res/layout/ttc_session_pill.xml",
+    "java/res/layout/ttc_voice_plate.xml",
     "java/res/values/dimens.xml",
   ]
   deps = [
@@ -56,6 +76,7 @@ android_resources("java_resources") {
     "//chrome/browser/ui/android/strings:ui_strings_grd",
     "//components/browser_ui/strings/android:browser_ui_strings_grd",
     "//components/browser_ui/styles/android:java_resources",
+    "//components/browser_ui/widget/android:java_resources",
   ]
 }
 
@@ -63,10 +84,14 @@ robolectric_library("junit") {
   sources = [
     "java/src/org/chromium/chrome/browser/ttc/TtcSessionMediatorTest.java",
     "java/src/org/chromium/chrome/browser/ttc/TtcSessionWindowTrackerTest.java",
+    "java/src/org/chromium/chrome/browser/ttc/TtcVoicePlateViewTest.java",
+    "java/src/org/chromium/chrome/browser/ttc/TtcWaveformViewTest.java",
   ]
   deps = [
+    ":entry_point_java",
     ":java",
     ":java_resources",
+    "//base:activity_state_java",
     "//base:base_java_test_support",
     "//base:base_junit_test_support",
     "//base:supplier_java",
@@ -76,14 +101,19 @@ robolectric_library("junit") {
     "//chrome/browser/preferences:java",
     "//chrome/browser/profiles/android:java",
     "//chrome/browser/ui/android/strings:ui_strings_grd",
+    "//components/browser_ui/theme/android:java_resources",
+    "//components/browser_ui/widget/android:java",
+    "//components/browser_ui/widget/android:java_resources",
     "//components/prefs/android:java",
     "//components/user_prefs/android:java",
     "//content/public/android:content_full_java",
+    "//third_party/androidx:androidx_core_core_java",
     "//third_party/androidx:androidx_test_core_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
     "//ui/android:ui_no_recycler_view_java",
   ]
+  resources_package = "org.chromium.chrome.browser.ttc"
 }
 
 generate_jni("jni_headers") {

@@ -26,7 +26,7 @@ class AccountCapabilitiesTestMutator {
   GetSupportedAccountCapabilityNames();
 
   // Exposes setters for the supported capabilities.
-  // keep-sorted start sticky_prefixes=#if,BUILDFLAG group_prefixes=#endif
+  // keep-sorted start sticky_prefixes=#if,BUILDFLAG group_prefixes=#endif,set_
   void set_can_fetch_family_member_info(bool value);
 #if !BUILDFLAG(IS_IOS)
   void set_can_have_email_address_displayed(bool value);
@@ -76,9 +76,15 @@ class AccountCapabilitiesTestMutator {
 #if BUILDFLAG(IS_IOS)
   void set_must_fetch_apple_age_range_in_chrome(bool value);
 #endif
+  void
+  set_must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(
+      bool value);
 #if BUILDFLAG(IS_IOS)
   void set_must_skip_apple_age_range_in_chrome(bool value);
 #endif
+  void set_should_be_addressed_in_feminine_grammatical_gender(bool value);
+  void set_should_be_addressed_in_masculine_grammatical_gender(bool value);
+  void set_should_be_addressed_in_neuter_grammatical_gender(bool value);
   void set_supports_wallet_private_passes_in_autofill(bool value);
   // keep-sorted end
 

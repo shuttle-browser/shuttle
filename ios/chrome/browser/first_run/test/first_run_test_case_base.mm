@@ -13,6 +13,7 @@
 #import "components/unified_consent/pref_names.h"
 #import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
 #import "ios/chrome/browser/authentication/test/signin_matchers.h"
+#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
 #import "ios/chrome/browser/first_run/public/first_run_constants.h"
 #import "ios/chrome/browser/first_run/test/first_run_app_interface.h"
 #import "ios/chrome/browser/metrics/model/metrics_app_interface.h"
@@ -61,7 +62,6 @@
 #pragma mark - XCTestCase
 
 - (void)setUp {
-  [[self class] testForStartup];
   [super setUp];
 
   chrome_test_util::GREYAssertErrorNil(
@@ -270,8 +270,13 @@
 }
 
 - (void)acceptSyncOrHistory {
-  [[EarlGrey
-      selectElementWithMatcher:chrome_test_util::ButtonStackPrimaryButton()]
+  [ChromeEarlGrey
+      waitForSufficientlyVisibleElementWithMatcher:
+          grey_accessibilityID(kHistorySyncViewAccessibilityIdentifier)];
+  [[self elementInteractionWithGreyMatcher:chrome_test_util::
+                                               ButtonStackPrimaryButton()
+                      scrollViewIdentifier:
+                          kButtonStackScrollViewAccessibilityIdentifier]
       performAction:grey_tap()];
 }
 
@@ -330,14 +335,6 @@
           grey_accessibilityID(
               first_run::kFirstRunDefaultBrowserScreenAccessibilityIdentifier)]
       assertWithMatcher:grey_sufficientlyVisible()];
-}
-
-- (void)verifyDefaultBrowserNotDisplayed {
-  [[EarlGrey
-      selectElementWithMatcher:
-          grey_accessibilityID(
-              first_run::kFirstRunDefaultBrowserScreenAccessibilityIdentifier)]
-      assertWithMatcher:grey_notVisible()];
 }
 
 @end

@@ -41,8 +41,8 @@
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/emoji/emoji_panel_helper.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/rect.h"
@@ -55,6 +55,7 @@
 #include "ui/views/widget/widget.h"
 
 #if BUILDFLAG(IS_MAC)
+#include "chrome/browser/ui/omnibox/omnibox_everywhere/mac_window_util.h"
 #include "ui/base/cocoa/appkit_utils.h"
 #endif
 
@@ -106,9 +107,8 @@ void OmniboxEverywhereContextMenuController::Cancel() {
   if (is_open_ && context_menu_runner_) {
     context_menu_runner_->Cancel();
     is_open_ = false;
-  } else {
-    weak_factory_.InvalidateWeakPtrs();
   }
+  weak_factory_.InvalidateWeakPtrs();
 }
 
 void OmniboxEverywhereContextMenuController::Reset() {
@@ -154,21 +154,11 @@ void OmniboxEverywhereContextMenuController::ShowOverflowMenu(
 #endif  // BUILDFLAG(IS_WIN)
 
   overflow_menu_closed_callback_ = std::move(on_closed);
-  // In Views the menu is anchored below the button, aligned to its right edge
-  // (mirrored automatically in RTL). The native macOS menu ignores the anchor
-  // position: when opened by a mouse click it opens at the click location,
-  // like a right-click menu, and otherwise (e.g. keyboard activation) at the
-  // center of the anchor rect. Pass the button's bottom leading corner so the
-  // keyboard case opens below the button.
-  gfx::Rect anchor_rect = anchor_screen_rect;
-#if BUILDFLAG(IS_MAC)
-  anchor_rect =
-      gfx::Rect(base::i18n::IsRTL() ? anchor_screen_rect.bottom_right()
-                                    : anchor_screen_rect.bottom_left(),
-                gfx::Size());
-#endif  // BUILDFLAG(IS_MAC)
-  RunMenu(host_widget, anchor_rect, views::MenuAnchorPosition::kTopRight,
-          source_type);
+  // Leave out CONTEXT_MENU so macOS shows a Views menu, like the Lens menu. A
+  // native menu would open at the click location and block tasks, so the popup
+  // couldn't resize to hide the most visited tiles.
+  RunMenu(host_widget, anchor_screen_rect, views::MenuAnchorPosition::kTopLeft,
+          source_type, views::MenuRunner::HAS_MNEMONICS);
 }
 
 void OmniboxEverywhereContextMenuController::ShowContextMenu(
@@ -213,14 +203,16 @@ void OmniboxEverywhereContextMenuController::ShowContextMenu(
   views::View::ConvertPointToScreen(host_widget->GetContentsView(),
                                     &screen_point);
   RunMenu(host_widget, gfx::Rect(screen_point, gfx::Size()),
-          views::MenuAnchorPosition::kTopLeft, params.source_type);
+          views::MenuAnchorPosition::kTopLeft, params.source_type,
+          views::MenuRunner::HAS_MNEMONICS | views::MenuRunner::CONTEXT_MENU);
 }
 
 void OmniboxEverywhereContextMenuController::RunMenu(
     views::Widget* host_widget,
     const gfx::Rect& anchor_screen_rect,
     views::MenuAnchorPosition anchor_position,
-    ui::mojom::MenuSourceType source_type) {
+    ui::mojom::MenuSourceType source_type,
+    int32_t run_types) {
   is_open_ = true;
   auto on_closed_callback =
       base::BindRepeating(&OmniboxEverywhereContextMenuController::OnMenuClosed,
@@ -230,9 +222,7 @@ void OmniboxEverywhereContextMenuController::RunMenu(
         menu_runner_factory_.Run(context_menu_model_.get(), on_closed_callback);
   } else {
     context_menu_runner_ = std::make_unique<views::MenuRunner>(
-        context_menu_model_.get(),
-        views::MenuRunner::HAS_MNEMONICS | views::MenuRunner::CONTEXT_MENU,
-        on_closed_callback);
+        context_menu_model_.get(), run_types, on_closed_callback);
   }
 
   context_menu_runner_->RunMenuAt(host_widget, nullptr, anchor_screen_rect,
@@ -472,9 +462,29 @@ void OmniboxEverywhereContextMenuController::ExecuteCommand(int command_id,
   web_contents()->Focus();
   switch (command_id) {
     case kEmoji:
-      if (views::Widget* host_widget = widget()) {
-        host_widget->ShowEmojiPanel();
-      }
+      // Defer invoking the OS emoji panel until after the context menu runner
+      // finishes unwinding (`[NSMenu popUpContextMenu:...]` / `OnMenuClosed()`),
+      // and on macOS activate the host app so CharacterPalette.app attaches to
+      // the non-activating Loomnibox panel without resigning key window status.
+      base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+          FROM_HERE,
+          base::BindOnce(
+              [](base::WeakPtr<OmniboxEverywhereContextMenuController> self) {
+                if (!self || !self->web_contents()) {
+                  return;
+                }
+                views::Widget* host_widget = self->widget();
+                if (!host_widget) {
+                  return;
+                }
+#if BUILDFLAG(IS_MAC)
+                ActivatePopupForEmojiPanelOnMac(
+                    host_widget->GetNativeWindow());
+#endif
+                self->web_contents()->Focus();
+                host_widget->ShowEmojiPanel();
+              },
+              weak_factory_.GetWeakPtr()));
       break;
     case kUndo:
       web_contents()->Undo();
@@ -516,9 +526,10 @@ void OmniboxEverywhereContextMenuController::ExecuteCommand(int command_id,
                   if (auto* service =
                           OmniboxEverywhereServiceFactory::GetForProfile(
                               profile)) {
-                    service->OpenUrl(match.destination_url,
-                                     WindowOpenDisposition::kNewForegroundTab,
-                                     ui::PAGE_TRANSITION_GENERATED);
+                    service->OpenUrl(
+                        match.destination_url,
+                        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+                        ui::PAGE_TRANSITION_GENERATED);
                   }
                 }
               },
@@ -537,7 +548,7 @@ void OmniboxEverywhereContextMenuController::ExecuteCommand(int command_id,
                 current_profile)) {
           service->OpenUrl(
               chrome::GetSettingsUrl(chrome::kSearchEnginesSubPage),
-              WindowOpenDisposition::kNewForegroundTab,
+              ui::mojom::WindowOpenDisposition::kNewForegroundTab,
               ui::PAGE_TRANSITION_AUTO_BOOKMARK);
         }
       }
@@ -572,7 +583,7 @@ void OmniboxEverywhereContextMenuController::ExecuteCommand(int command_id,
         if (auto* service = OmniboxEverywhereServiceFactory::GetForProfile(
                 current_profile)) {
           service->OpenUrl(chrome::GetSettingsUrl(chrome::kSearchSubPage),
-                           WindowOpenDisposition::kNewForegroundTab,
+                           ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                            ui::PAGE_TRANSITION_AUTO_BOOKMARK);
         }
       }

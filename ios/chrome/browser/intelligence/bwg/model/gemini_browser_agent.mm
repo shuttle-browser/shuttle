@@ -6,6 +6,8 @@
 
 #import <AVFoundation/AVFoundation.h>
 
+#import <optional>
+
 #import "base/barrier_closure.h"
 #import "base/check.h"
 #import "base/containers/map_util.h"
@@ -53,7 +55,7 @@
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_service_factory.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_session_delegate.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_session_handler.h"
-#import "ios/chrome/browser/intelligence/bwg/model/gemini_shared_tabs_delegate.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_shared_tabs_manager.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_startup_configuration.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_suggestion_delegate.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_suggestion_handler.h"
@@ -85,6 +87,7 @@
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
@@ -397,9 +400,15 @@ GeminiBrowserAgent::GeminiBrowserAgent(Browser* browser)
     }
   }
 
+  CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
   link_opening_handler_ = [[GeminiLinkOpeningHandler alloc]
-      initWithURLLoader:UrlLoadingBrowserAgent::FromBrowser(browser_)
-             dispatcher:browser_->GetCommandDispatcher()];
+      initWithURLLoader:UrlLoadingBrowserAgent::FromBrowser(browser_)];
+  // Use `static_cast` instead of `HandlerForProtocol` because command handlers
+  // have not started dispatching yet when the browser agent is created.
+  link_opening_handler_.geminiHandler =
+      static_cast<id<GeminiCommands>>(dispatcher);
+  link_opening_handler_.sceneHandler =
+      static_cast<id<SceneCommands>>(dispatcher);
   ConfigureGemini();
 
   if (IsIOSGeminiBottomSheetMigrationEnabled()) {
@@ -413,7 +422,7 @@ GeminiBrowserAgent::GeminiBrowserAgent(Browser* browser)
       authenticationService:AuthenticationServiceFactory::GetForProfile(
                                 browser_->GetProfile())
                eventHandler:this
-         sharedTabsDelegate:this
+          sharedTabsManager:GetSharedTabsManager()
       sessionMetricsManager:session_metrics_manager_];
 }
 
@@ -938,8 +947,9 @@ CGFloat GeminiBrowserAgent::GetFloatyOffset() {
         [layout_guide_center referencedViewUnderName:kAppBarGuide];
     if (app_bar_view &&
         scene_state.layoutState.appBarPosition == AppBarPosition::kBottom) {
-      CGFloat portrait_height =
-          is_floaty_invoked_ ? kAppBarHeightFullscreen : AppBarHeightPortrait();
+      CGFloat portrait_height = CurrentAppBarHeightPortrait(
+          is_floaty_invoked_,
+          scene_state.layoutState.assistantContainerInvoked);
       max_bottom_inset += portrait_height;
     }
   }
@@ -982,8 +992,9 @@ CGFloat GeminiBrowserAgent::GetFullyExpandedFloatyOffset() {
         [layout_guide_center referencedViewUnderName:kAppBarGuide];
     if (app_bar_view &&
         scene_state.layoutState.appBarPosition == AppBarPosition::kBottom) {
-      CGFloat portrait_height =
-          is_floaty_invoked_ ? kAppBarHeightFullscreen : AppBarHeightPortrait();
+      CGFloat portrait_height = CurrentAppBarHeightPortrait(
+          is_floaty_invoked_,
+          scene_state.layoutState.assistantContainerInvoked);
       max_bottom_inset += portrait_height;
     }
   }
@@ -1083,46 +1094,22 @@ void GeminiBrowserAgent::UpdateForTraitCollection(
 
 void GeminiBrowserAgent::HandleDormantStatus(
     ios::provider::GeminiDormantReason dormant_reason) {
-  if (IsGeminiLiveDormantReasonsEnabled()) {
-    switch (dormant_reason) {
-      case ios::provider::GeminiDormantReason::kLowVolumeInBackground:
-      case ios::provider::GeminiDormantReason::kLowVolumeInForeground:
-      case ios::provider::GeminiDormantReason::kInterruptedByExternalAudio:
-      case ios::provider::GeminiDormantReason::kUserStop:
-      case ios::provider::GeminiDormantReason::kUserPause:
-        SwitchToChatModeOrDismiss(/*animated=*/true,
-                                  ios::provider::GeminiViewState::kExpanded);
-        break;
-      case ios::provider::GeminiDormantReason::kInactivityTimeout:
-        SwitchToChatModeOrDismiss(/*animated=*/true,
-                                  ios::provider::GeminiViewState::kCollapsed);
-        is_showing_live_session_dormant_snackbar_ = true;
-        ShowLiveSessionDormantSnackbar(
-            IDS_IOS_GEMINI_LIVE_CONTINUE_SESSION_SNACKBAR);
-        break;
-      case ios::provider::GeminiDormantReason::kLongInteractionTimeout:
-      case ios::provider::GeminiDormantReason::kServerPause:
-        SwitchToChatModeOrDismiss(/*animated=*/true,
-                                  ios::provider::GeminiViewState::kCollapsed);
-        is_showing_live_session_dormant_snackbar_ = true;
-        ShowLiveSessionDormantSnackbar(
-            IDS_IOS_GEMINI_LIVE_SERVER_PAUSE_SNACKBAR);
-        break;
-      default:
-        SwitchToChatModeOrDismiss(/*animated=*/true,
-                                  ios::provider::GeminiViewState::kCollapsed);
-        is_showing_live_session_dormant_snackbar_ = true;
-        ShowLiveSessionDormantSnackbar(
-            IDS_IOS_GEMINI_LIVE_GENERAL_DORMANT_SNACKBAR);
-        break;
-    }
-  } else {
+  std::optional<int> message_id =
+      gemini::GetLiveDormantSnackbarMessageId(dormant_reason);
+  if (!message_id.has_value()) {
+    // Mode switches to chat default to `kExpanded` when no dormant snackbar
+    // needs to be shown.
     SwitchToChatModeOrDismiss(/*animated=*/true,
-                              ios::provider::GeminiViewState::kCollapsed);
-    is_showing_live_session_dormant_snackbar_ = true;
-    ShowLiveSessionDormantSnackbar(
-        IDS_IOS_GEMINI_LIVE_GENERAL_DORMANT_SNACKBAR);
+                              ios::provider::GeminiViewState::kExpanded);
+    return;
   }
+
+  // Collapse the floaty when showing a dormant snackbar so the snackbar appears
+  // above the minimized pill without overlapping the expanded chat UI.
+  SwitchToChatModeOrDismiss(/*animated=*/true,
+                            ios::provider::GeminiViewState::kCollapsed);
+  is_showing_live_session_dormant_snackbar_ = true;
+  ShowLiveSessionDormantSnackbar(*message_id);
 }
 
 void GeminiBrowserAgent::LogLiveStatusTransition(
@@ -1241,7 +1228,9 @@ void GeminiBrowserAgent::OnProcessingStatusChanged(
     }
     case ios::provider::GeminiClientMode::kDormant:
       RecordGeminiLiveDormantReason(dormant_reason);
-      HandleDormantStatus(dormant_reason);
+      if (!IsIOSGeminiBottomSheetMigrationEnabled()) {
+        HandleDormantStatus(dormant_reason);
+      }
       LogLiveSessionMetrics();
       break;
     default:
@@ -1474,6 +1463,10 @@ void GeminiBrowserAgent::OnTabPickerSelectionChanged(
                                          GetInactiveSharedTabs());
 }
 
+GeminiSharedTabsManager* GeminiBrowserAgent::GetSharedTabsManager() {
+  return this;
+}
+
 std::set<web::WebStateID> GeminiBrowserAgent::GetSelectedTabsForTabPicker()
     const {
   std::set<web::WebStateID> eligible_tabs;
@@ -1624,16 +1617,19 @@ void GeminiBrowserAgent::ShowFloatyIfInvoked(
     return;
   }
 
-  // Web navigations should not be seen as a transition as an old WebState can
-  // be hidden quickly followed by a new WebState being shown where
-  // hiding/showing the floaty are valid invocations.
+  // Web navigations, context menu dismissals, and keyboard dismissals should
+  // not be treated as view transitions: these dismissals can occur quickly
+  // after presentation (e.g. rapid omnibox focus/defocus), and the floaty must
+  // be restored to avoid leaving it permanently hidden.
   bool is_web_navigation = source == gemini::FloatyUpdateSource::WebNavigation;
   bool is_context_menu = source == gemini::FloatyUpdateSource::ContextMenu;
+  bool is_keyboard = source == gemini::FloatyUpdateSource::Keyboard;
 
   GeminiTabHelper* gemini_tab_helper = GetActiveTabHelper();
   bool should_block =
       gemini_tab_helper && gemini_tab_helper->ShouldBlockFloatyFromShowing();
-  if ((!is_web_navigation && !is_context_menu && triggered_during_transition) ||
+  if ((!is_web_navigation && !is_context_menu && !is_keyboard &&
+       triggered_during_transition) ||
       should_block) {
     return;
   }

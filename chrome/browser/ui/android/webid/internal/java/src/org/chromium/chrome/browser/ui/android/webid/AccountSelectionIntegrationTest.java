@@ -64,7 +64,9 @@ import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.SheetState;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetControllerProvider;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetTestSupport;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetType;
 import org.chromium.components.browser_ui.bottomsheet.TestBottomSheetContent;
+import org.chromium.components.browser_ui.bottomsheet.UserCriticalFeature;
 import org.chromium.content.webid.IdentityRequestDialogDismissReason;
 
 import java.util.Arrays;
@@ -161,6 +163,18 @@ public class AccountSelectionIntegrationTest extends AccountSelectionIntegration
 
         View contentView = mBottomSheetController.getCurrentSheetContent().getContentView();
         assertNotNull(contentView);
+        if (mRpMode == RpMode.ACTIVE) {
+            // Active mode only shows the disclosure text on the request permission dialog, which
+            // the continue button opens.
+            runOnUiThreadBlocking(
+                    () -> {
+                        // Do not let test inputs be ignored.
+                        mAccountSelection.getMediator().setComponentShowTime(-1000);
+                        contentView
+                                .findViewById(R.id.account_selection_continue_btn)
+                                .performClick();
+                    });
+        }
         TextView consent = contentView.findViewById(R.id.user_data_sharing_consent);
         if (consent == null) {
             throw new NoMatchingViewException.Builder()
@@ -215,6 +229,13 @@ public class AccountSelectionIntegrationTest extends AccountSelectionIntegration
                                             BottomSheetContent.ContentPriority.HIGH,
                                             /* hasCustomLifecycle= */ false,
                                             highPriorityBottomSheetContentView);
+                            content.setSheetType(
+                                    new BottomSheetType.Builder()
+                                            .setUserInitiated(mRpMode != RpMode.PASSIVE)
+                                            .setModal(mRpMode != RpMode.PASSIVE)
+                                            .setUserCritical(
+                                                    UserCriticalFeature.FEDERATED_ACCOUNT_SELECTION)
+                                            .build());
                             mBottomSheetController.requestShowContent(content, false);
                             return content;
                         });

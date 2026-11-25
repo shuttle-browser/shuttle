@@ -185,10 +185,8 @@ class PasswordsPrivateDelegateImpl
       override;
   std::vector<api::passwords_private::PasswordUiEntryList>
   GetCredentialsWithReusedPassword() override;
-  bool MuteInsecureCredential(
-      const api::passwords_private::PasswordUiEntry& credential) override;
-  bool UnmuteInsecureCredential(
-      const api::passwords_private::PasswordUiEntry& credential) override;
+  bool MuteInsecureCredential(int id) override;
+  bool UnmuteInsecureCredential(int id) override;
   void StartPasswordCheck(StartPasswordCheckCallback callback) override;
   api::passwords_private::PasswordCheckStatus GetPasswordCheckStatus() override;
   password_manager::InsecureCredentialsManager* GetInsecureCredentialsManager()
@@ -206,7 +204,8 @@ class PasswordsPrivateDelegateImpl
       base::OnceCallback<void(bool)> pin_available_callback) override;
   void DisconnectCloudAuthenticator(
       base::OnceCallback<void(bool)> success_callback) override;
-  bool IsConnectedToCloudAuthenticator() override;
+  void IsConnectedToCloudAuthenticator(
+      base::OnceCallback<void(bool)> is_connected_callback) override;
   password_manager::ActionableError GetActionableError() override;
   void DeleteAllPasswordManagerData(
       base::OnceCallback<void(bool)> success_callback) override;

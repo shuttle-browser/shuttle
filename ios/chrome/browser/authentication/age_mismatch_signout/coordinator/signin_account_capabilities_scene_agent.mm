@@ -7,16 +7,12 @@
 #import <set>
 #import <vector>
 
-#import "base/barrier_closure.h"
 #import "base/functional/bind.h"
 #import "base/functional/callback.h"
-#import "base/functional/callback_helpers.h"
 #import "base/location.h"
 #import "base/metrics/histogram_functions.h"
 #import "base/not_fatal_until.h"
-#import "base/strings/sys_string_conversions.h"
 #import "base/time/time.h"
-#import "base/timer/timer.h"
 #import "components/prefs/pref_service.h"
 #import "components/signin/public/base/consent_level.h"
 #import "components/signin/public/base/signin_metrics.h"
@@ -24,7 +20,6 @@
 #import "components/signin/public/identity_manager/identity_manager.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
 #import "components/signin/public/identity_manager/primary_account_change_event.h"
-#import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/app/profile/profile_state_observer.h"
 #import "ios/chrome/browser/authentication/age_mismatch_signout/coordinator/age_mismatch_signout_coordinator.h"
@@ -36,7 +31,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/state/scene_ui_blocker_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
@@ -46,7 +40,6 @@
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
-#import "ios/chrome/browser/signin/model/signin_util.h"
 #import "ios/chrome/browser/signin/model/system_identity.h"
 #import "ios/chrome/browser/signin/model/system_identity_manager.h"
 
@@ -335,10 +328,10 @@ void SignOutDoneForSceneState(id<SystemIdentity> identity,
       // The completion is required by the API, this is a rare case where there
       // is no action to do once being signed in.
   }];
-  id<SceneSignInCommands> sceneSignInHandler = HandlerForProtocol(
-      self.sceneState.browserProviderInterface.mainBrowserProvider.browser
-          ->GetCommandDispatcher(),
-      SceneSignInCommands);
+  id<SceneSignInCommands> sceneSignInHandler =
+      HandlerForProtocol(self.sceneState.browserProviderInterface.mainBrowser
+                             ->GetCommandDispatcher(),
+                         SceneSignInCommands);
   [sceneSignInHandler showSignin:command
               baseViewController:[_sceneUIProvider activeViewController]];
 }
@@ -430,7 +423,7 @@ void SignOutDoneForSceneState(id<SystemIdentity> identity,
   _ageMismatchSignoutCoordinator = [[AgeMismatchSignoutCoordinator alloc]
       initWithBaseViewController:[_sceneUIProvider activeViewController]
                          browser:self.sceneState.browserProviderInterface
-                                     .mainBrowserProvider.browser
+                                     .mainBrowser
                         identity:identity
                             mode:AgeMismatchPromptMode::kStandard];
   _ageMismatchSignoutCoordinator.delegate = self;

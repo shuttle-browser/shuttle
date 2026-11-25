@@ -220,10 +220,10 @@ Espera unos minutos antes de cambiar de cuenta. Si cambias de cuenta ahora, se b
 <translation id="5998675059699164418">Tu organización requiere que accedas para usar Chrome.</translation>
 <translation id="6021312115739110405">Un feed personalizado que Google creó para ti. Incluye noticias, deportes y el clima.</translation>
 <translation id="6022659036123304283">Personaliza Chrome a tu medida</translation>
-<translation id="6132075343662013154">Chrome te ofrecerá guardar la contraseña</translation>
+<translation id="6132075343662013154">Chrome te ofrecerá guardar la contraseña.</translation>
 <translation id="6132149203299792222">Accede con tu Cuenta de Google para sincronizar tus contraseñas, favoritos y más.</translation>
 <translation id="6145223986912084844">chrome</translation>
-<translation id="6177442314419606057">Buscar en Chrome</translation>
+<translation id="6177442314419606057">Búsqueda en Chrome</translation>
 <translation id="6181652351336379338">Busca elementos visuales en Chrome.</translation>
 <translation id="6187085551300363958">Sugerencia de Chrome: Guardar contraseñas</translation>
 <translation id="6200694931081795166">Para establecer Chrome como navegador predeterminado:
@@ -316,6 +316,7 @@ Si quieres ver más parámetros de configuración que usan datos para mejorar tu
 <translation id="7747746207470479571">Accede fácilmente a tus contraseñas y llaves de acceso con Autocompletar en Chrome</translation>
 <translation id="776305366874821582">Accede a Chrome más rápido desde el Dock de la pantalla de inicio de tu iPhone.</translation>
 <translation id="7780154209050837198">Para aprovechar Chrome al máximo, accede al navegador con tu Cuenta de Google.</translation>
+<translation id="778331955594035129">Chrome necesita permiso de acceso a la ubicación para este sitio.</translation>
 <translation id="7787205077729386167">Abre la configuración de Chrome en iOS, presiona "App del navegador predeterminado" y selecciona Chrome.</translation>
 <translation id="778855399387580014">Realiza una búsqueda en una nueva pestaña de Chrome.</translation>
 <translation id="7792140019572081272">Chrome protege tus datos sensibles con Face ID.</translation>
@@ -329,6 +330,7 @@ Si quieres ver más parámetros de configuración que usan datos para mejorar tu
 <translation id="8018153653741938705">Aprovecha la seguridad de Google Chrome</translation>
 <translation id="8022947259858476807">Usa Chrome como tu navegador predeterminado para abrir vínculos, realizar búsquedas desde widgets y autocompletar contraseñas en otras apps</translation>
 <translation id="804638182476029347">Permite las notificaciones de Chrome para recibir alertas de descuentos</translation>
+<translation id="8051480003988100876">Recibe sugerencias de Chrome</translation>
 <translation id="8065292699993359127">Abrir URL en Chrome en modo Incógnito</translation>
 <translation id="8069507567842347179">Ya se realizó un seguimiento de este paquete en Chrome.</translation>
 <translation id="8136856065410661948">Se usará para crear eventos en el Calendario de Apple desde Chrome y Google Lens.</translation>
@@ -369,7 +371,7 @@ Tus datos se encriptaron con tu frase de contraseña el <ph name="TIME" />. Ingr
 <translation id="8772179140489533211">Muestra mensajes para acceder a Chrome.</translation>
 <translation id="8788269841521769222">No es necesario que recuerdes esta contraseña. Se guardará en el Administrador de contraseñas de Google de <ph name="EMAIL" /></translation>
 <translation id="8796490717897731471"><ph name="EMAIL" />. Chrome está administrado.</translation>
-<translation id="880967149107462122">Ve a la configuración de Chrome</translation>
+<translation id="880967149107462122">Ve a la configuración de Chrome.</translation>
 <translation id="8840947648682778034">Tema de Chrome para iPhone y iPad</translation>
 <translation id="8842132678697187091">Puedes abrir Google Lens aquí.</translation>
 <translation id="8850736900032787670">Para recibir contenido personalizado en función de tus intereses, accede a Chrome.</translation>

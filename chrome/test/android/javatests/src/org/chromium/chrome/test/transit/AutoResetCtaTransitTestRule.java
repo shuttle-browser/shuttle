@@ -5,23 +5,28 @@
 package org.chromium.chrome.test.transit;
 
 import static org.chromium.base.test.transit.Triggers.noopTo;
-import static org.chromium.chrome.browser.url_constants.UrlConstantResolver.getOriginalNativeNtpUrl;
+
+import android.app.Activity;
 
 import org.junit.rules.RuleChain;
-import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
 
+import org.chromium.base.ApplicationStatus;
 import org.chromium.base.Log;
+import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.transit.BatchedPublicTransitRule;
 import org.chromium.base.test.transit.Station;
 import org.chromium.base.test.transit.TrafficControl;
 import org.chromium.build.annotations.NullMarked;
+import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.test.batch.BlankCTATabInitialStateRule;
 import org.chromium.chrome.test.transit.ntp.RegularNewTabPageStation;
+import org.chromium.chrome.test.transit.page.BasePageStation;
 import org.chromium.chrome.test.transit.page.CtaPageStation;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -30,7 +35,7 @@ import java.util.List;
  * <p>Tests using this should be batched.
  */
 @NullMarked
-public class AutoResetCtaTransitTestRule extends BaseCtaTransitTestRule implements TestRule {
+public class AutoResetCtaTransitTestRule extends BaseCtaTransitTestRule {
     private static final String TAG = "Transit";
     private final BlankCTATabInitialStateRule mInitialStateRule;
     private final BatchedPublicTransitRule<CtaPageStation> mBatchedRule;
@@ -46,6 +51,7 @@ public class AutoResetCtaTransitTestRule extends BaseCtaTransitTestRule implemen
         mChain =
                 RuleChain.outerRule(mActivityTestRule)
                         .around(mInitialStateRule)
+                        .around(this::finishLeftoverActivitiesAfterTest)
                         .around(mBatchedRule);
     }
 
@@ -55,11 +61,58 @@ public class AutoResetCtaTransitTestRule extends BaseCtaTransitTestRule implemen
     }
 
     /**
+     * Finishes non-ChromeTabbedActivity Activities the test left open (e.g. after failing midway),
+     * so they don't break later tests in the batch. Runs after the test so failures are attributed
+     * to it. Already-finishing Activities are not waited on (~100ms/test).
+     */
+    private Statement finishLeftoverActivitiesAfterTest(Statement base, Description description) {
+        return new Statement() {
+            @Override
+            public void evaluate() throws Throwable {
+                Throwable failure = null;
+                try {
+                    base.evaluate();
+                } catch (Throwable t) {
+                    failure = t;
+                }
+                try {
+                    finishNonTabbedActivities();
+                } catch (Throwable t) {
+                    if (failure == null) {
+                        failure = t;
+                    } else {
+                        failure.addSuppressed(t);
+                    }
+                }
+                if (failure != null) throw failure;
+            }
+        };
+    }
+
+    private static void finishNonTabbedActivities() {
+        List<Activity> leakedActivities =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            List<Activity> result = new ArrayList<>();
+                            for (Activity activity : ApplicationStatus.getRunningActivities()) {
+                                if (activity instanceof ChromeTabbedActivity) continue;
+                                if (!activity.isFinishing()) result.add(activity);
+                            }
+                            return result;
+                        });
+        if (leakedActivities.isEmpty()) return;
+
+        Log.i(TAG, "Finishing Activities left open by the test: %s", leakedActivities);
+        finishActivitiesWithCleanup(leakedActivities);
+    }
+
+    /**
      * Start the batched test in a blank page.
      *
      * <p>From the second test onwards, tab state was reset by {@link BlankCTATabInitialStateRule}.
      * Extra windows are closed here.
      */
+    @Override
     public WebPageStation startOnBlankPage() {
         // Empty in the first test, should be size 1+ from the second test onwards.
         // When we encounter size 2+, close the extra windows left by the previous test.
@@ -89,19 +142,21 @@ public class AutoResetCtaTransitTestRule extends BaseCtaTransitTestRule implemen
      *
      * <p>From the second test onwards, state was reset by {@link BlankCTATabInitialStateRule}.
      */
+    @Override
     public RegularNewTabPageStation startOnNtp() {
         WebPageStation blankPage = startOnBlankPage();
-        return blankPage.loadPageProgrammatically(
-                getOriginalNativeNtpUrl(), RegularNewTabPageStation.newBuilder());
+        return blankPage.loadNtp();
     }
 
     /**
-     * Start the batched test in a URL.
+     * Start the batched test at |url| arriving at the Station built by |builder|.
      *
      * <p>From the second test onwards, state was reset by {@link BlankCTATabInitialStateRule}.
      */
-    public WebPageStation startOnWebPage(String url) {
+    @Override
+    public <T extends CtaPageStation> T startOnPage(
+            String url, BasePageStation.Builder<T> builder) {
         WebPageStation blankPage = startOnBlankPage();
-        return blankPage.loadWebPageProgrammatically(url);
+        return blankPage.loadPageProgrammatically(url, builder);
     }
 }

@@ -9,14 +9,15 @@
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_surface.h"
 #include "chrome/browser/actor/actor_surface_handle.h"
-#include "chrome/browser/actor/actor_surface_registry.h"
 #include "chrome/browser/actor/actor_test_util.h"
 #include "chrome/browser/actor/tools/gemini_panel_tool_request.h"
 #include "chrome/browser/actor/tools/tools_test_util.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_passkeys.h"
 #include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
 #include "chrome/browser/glic/test_support/glic_browser_test.h"
+#include "chrome/browser/glic/test_support/glic_test_util.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/test/browser_test.h"
@@ -119,8 +120,9 @@ IN_PROC_BROWSER_TEST_F(ActorGeminiPanelToolBrowserTest,
 }
 
 IN_PROC_BROWSER_TEST_F(ActorGeminiPanelToolBrowserTest, NotInTab) {
-  ActorSurface* headless_surface =
-      actor_keyed_service().GetSurfaceRegistry().CreateHeadlessWebContents();
+  ScopedHeadlessActorSurface headless =
+      actor_keyed_service().CreateHeadlessActorSurface();
+  ActorSurface* headless_surface = headless.actor_surface_handle().Get();
   ASSERT_TRUE(headless_surface);
 
   {
@@ -139,6 +141,35 @@ IN_PROC_BROWSER_TEST_F(ActorGeminiPanelToolBrowserTest, NotInTab) {
             headless_surface->GetHandle());
     actor_task().Act(ToRequestList(request), result.GetCallback());
     ExpectErrorResult(result, mojom::ActionResultCode::kGeminiPanelNotInTab);
+  }
+}
+
+IN_PROC_BROWSER_TEST_F(ActorGeminiPanelToolBrowserTest,
+                       ProfileNotEnabledForGlic) {
+  auto* glic_service = glic::GlicKeyedService::Get(GetProfile());
+  ASSERT_TRUE(glic_service);
+
+  glic::ScopedGlicCapability disable_glic(GetProfile(), false);
+  ASSERT_FALSE(glic::GlicEnabling::IsEnabledForProfile(GetProfile()));
+  EXPECT_TRUE(glic::GlicKeyedService::Get(GetProfile()));
+
+  {
+    ActResultFuture result;
+    std::unique_ptr<ToolRequest> request =
+        std::make_unique<PromptGeminiPanelToolRequest>(
+            GetPassKey(), active_surface_handle(), "Hello");
+    actor_task().Act(ToRequestList(request), result.GetCallback());
+    ExpectErrorResult(result,
+                      mojom::ActionResultCode::kGeminiPanelServiceUnavailable);
+  }
+
+  {
+    ActResultFuture result;
+    std::unique_ptr<ToolRequest> request =
+        std::make_unique<CloseGeminiPanelToolRequest>(active_surface_handle());
+    actor_task().Act(ToRequestList(request), result.GetCallback());
+    ExpectErrorResult(result,
+                      mojom::ActionResultCode::kGeminiPanelServiceUnavailable);
   }
 }
 

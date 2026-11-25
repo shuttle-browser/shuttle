@@ -62,7 +62,6 @@ import org.chromium.chrome.R;
 import org.chromium.chrome.browser.FederatedIdentityTestUtils;
 import org.chromium.chrome.browser.app.tab_activity_glue.PopupCreatorImpl;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.notifications.channels.ChromeChannelDefinitions;
 import org.chromium.chrome.browser.permissions.PermissionTestRule;
 import org.chromium.chrome.browser.permissions.PermissionTestRule.PermissionUpdateWaiter;
@@ -106,14 +105,10 @@ import java.util.concurrent.TimeoutException;
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
 @CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
     ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1",
     "ignore-certificate-errors"
 })
-@DisableFeatures({
-    ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE,
-    ChromeFeatureList.ANDROID_ANIMATED_PROGRESS_BAR_IN_BROWSER
-})
+@DisableFeatures({ChromeFeatureList.ANDROID_ANIMATED_PROGRESS_BAR_IN_BROWSER})
 public class SiteSettingsTest {
 
     private static final String[] ANTI_ABUSE_PREF_KEYS = {
@@ -207,8 +202,7 @@ public class SiteSettingsTest {
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
 
-    public PermissionTestRule mPermissionTestRule =
-            new PermissionTestRule(mActivityTestRule.getActivityTestRule(), true);
+    public PermissionTestRule mPermissionTestRule = new PermissionTestRule(mActivityTestRule, true);
 
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -236,9 +230,7 @@ public class SiteSettingsTest {
         if (mPermissionUpdateWaiter != null) {
             ThreadUtils.runOnUiThreadBlocking(
                     () -> {
-                        mPermissionTestRule
-                                .getActivityTab()
-                                .removeObserver(mPermissionUpdateWaiter);
+                        mActivityTestRule.getActivityTab().removeObserver(mPermissionUpdateWaiter);
                     });
         }
         SiteSettingsTestHelper.cleanUpContentSettingsAndExceptions(new CallbackHelper());
@@ -254,16 +246,14 @@ public class SiteSettingsTest {
         if (mPermissionUpdateWaiter != null) {
             ThreadUtils.runOnUiThreadBlocking(
                     () -> {
-                        mPermissionTestRule
-                                .getActivityTab()
-                                .removeObserver(mPermissionUpdateWaiter);
+                        mActivityTestRule.getActivityTab().removeObserver(mPermissionUpdateWaiter);
                     });
         }
-        Tab tab = mPermissionTestRule.getActivityTab();
+        Tab tab = mActivityTestRule.getActivityTab();
 
         mPermissionUpdateWaiter =
                 new PermissionUpdateWaiter(
-                        expectGranted ? "Granted" : "Denied", mPermissionTestRule.getActivity());
+                        expectGranted ? "Granted" : "Denied", mActivityTestRule.getActivity());
         ThreadUtils.runOnUiThreadBlocking(() -> tab.addObserver(mPermissionUpdateWaiter));
     }
 
@@ -271,14 +261,14 @@ public class SiteSettingsTest {
         // Ignore notification request 4 times to enter embargo. 5th one ensures that notifications
         // are blocked by actually causing a deny-by-embargo.
         for (int i = 0; i < 5; i++) {
-            mPermissionTestRule.loadUrl(url);
-            mPermissionTestRule.runJavaScriptCodeInCurrentTab("requestPermissionAndRespond()");
+            mActivityTestRule.loadUrl(url);
+            mActivityTestRule.runJavaScriptCodeInCurrentTab("requestPermissionAndRespond()");
         }
     }
 
     private int getTabCount() {
         return ThreadUtils.runOnUiThreadBlocking(
-                () -> mPermissionTestRule.getActivity().getTabModelSelector().getTotalTabCount());
+                () -> mActivityTestRule.getActivity().getTabModelSelector().getTotalTabCount());
     }
 
     private void testTwoStateToggleDisabledByPolicy(@SiteSettingsCategory.Type int type) {
@@ -318,7 +308,7 @@ public class SiteSettingsTest {
 
         // Test that the popup doesn't open.
         mPermissionTestRule.setUpUrl("/chrome/test/data/android/popup.html");
-        mPermissionTestRule.runJavaScriptCodeInCurrentTab("openPopup();");
+        mActivityTestRule.runJavaScriptCodeInCurrentTab("openPopup();");
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
 
         Assert.assertEquals(1, getTabCount());
@@ -340,7 +330,7 @@ public class SiteSettingsTest {
 
         // Test that a popup opens.
         mPermissionTestRule.setUpUrl("/chrome/test/data/android/popup.html");
-        mPermissionTestRule.runJavaScriptCodeInCurrentTab("openPopup();");
+        mActivityTestRule.runJavaScriptCodeInCurrentTab("openPopup();");
         InstrumentationRegistry.getInstrumentation().waitForIdleSync();
 
         Assert.assertEquals(2, getTabCount());

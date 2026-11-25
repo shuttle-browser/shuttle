@@ -61,6 +61,9 @@ constexpr char kTestDomain1[] = "domain1.example.com";
 constexpr char kTestDomain2[] = "domain2.example.com";
 constexpr char kTestFailDomain[] = "fail.example.com";
 
+// A user agent with characters that must be escaped in the Basic auth username.
+constexpr char kUserAgent[] = "Mozilla/5.0 (iPhone; CPU) CriOS/1.0";
+
 const char kValidPvdJson1[] = R"({
   "identifier": "domain1.example.com",
   "expires": "Wed, 21 Oct 2026 07:28:00 GMT",
@@ -214,7 +217,7 @@ class EnterpriseProxyServiceTest : public testing::Test {
         base::Unretained(&test_url_loader_factory_));
     service_ = std::make_unique<EnterpriseProxyService>(
         &pref_service_, auth_service_.get(), std::move(callback),
-        profile_id_service, net_log);
+        profile_id_service, net_log, user_agent_);
   }
 
   void SetPolicyDomains(const std::vector<std::string>& domain_ids,
@@ -238,6 +241,8 @@ class EnterpriseProxyServiceTest : public testing::Test {
   std::unique_ptr<EnterpriseNetworkAuthService> auth_service_;
   std::unique_ptr<EnterpriseProxyService> service_;
   std::unique_ptr<ScopedExtraAllowedDomainsForTesting> scoped_allowed_domains_;
+  // User agent passed to the service by `CreateService()`.
+  std::optional<std::string> user_agent_;
 };
 
 TEST_F(EnterpriseProxyServiceTest, InitializesAndRegistersPrefs) {
@@ -273,14 +278,12 @@ TEST_F(EnterpriseProxyServiceTest, MultiDomainServiceLifecycle) {
       });
 
   // Phase 2 Expectations: Policy update reducing to 1 domain immediately drops
-  // domain2's route while keeping domain1's cached route, then refreshes.
+  // domain2's route while keeping domain1's cached route and marking the
+  // refresh as in progress, then completes the refresh.
   EXPECT_CALL(observer, OnDynamicProxyConfigsStatusChanged())
       .WillOnce([&]() {
-        EXPECT_FALSE(service_->GetDynamicRoutingConfig().is_update_in_progress);
-        EXPECT_EQ(1u, service_->GetDynamicRoutingConfig().routing_rules.size());
-      })
-      .WillOnce([&]() {
         EXPECT_TRUE(service_->GetDynamicRoutingConfig().is_update_in_progress);
+        EXPECT_EQ(1u, service_->GetDynamicRoutingConfig().routing_rules.size());
       })
       .WillOnce([&]() {
         EXPECT_FALSE(service_->GetDynamicRoutingConfig().is_update_in_progress);
@@ -692,6 +695,13 @@ TEST_F(EnterpriseProxyServiceTest,
   service_.reset();
   CreateService();
 
+  // Immediately upon startup (before any posted tasks run), the service must
+  // report that a refresh is in progress so network requests wait for fresh
+  // routing rules.
+  EXPECT_TRUE(service_->IsRefreshInProgress());
+  EXPECT_TRUE(service_->GetDynamicRoutingConfig().is_update_in_progress);
+  EXPECT_EQ(1u, service_->GetDynamicRoutingConfig().routing_rules.size());
+
   // Verify active routes are immediately available from cache BEFORE
   // simulating network response.
   const auto endpoint = service_->FindMatchingProxyEndpoint(
@@ -702,6 +712,35 @@ TEST_F(EnterpriseProxyServiceTest,
   EXPECT_EQ(AuthType::kProfileBearerToken, endpoint->auth->type);
   EXPECT_EQ(AuthScope::kCloudSecureGateway, endpoint->auth->scope);
   EXPECT_EQ(2u, endpoint->extra_headers.size());
+}
+
+TEST_F(EnterpriseProxyServiceTest,
+       MarksRefreshInProgressOnStartupWithoutPriorCache) {
+  // Configure a domain in policy before creating the service, with no prior
+  // cached configuration in `kProvisioningDomainProxyConfigs`.
+  base::ListValue policy_domains;
+  policy_domains.Append(CreateDomainPolicyEntry(kTestDomain1));
+  pref_service_.SetList(kProxyProvisioningDomains, std::move(policy_domains));
+  ASSERT_TRUE(pref_service_.GetDict(kProvisioningDomainProxyConfigs).empty());
+
+  CreateService();
+
+  // Immediately upon startup (before any posted tasks run), the service must
+  // report that a refresh is in progress so network requests wait for the
+  // initial PvD fetch.
+  EXPECT_TRUE(service_->IsRefreshInProgress());
+  EXPECT_TRUE(service_->GetDynamicRoutingConfig().is_update_in_progress);
+  EXPECT_TRUE(service_->GetDynamicRoutingConfig().routing_rules.empty());
+  EXPECT_TRUE(test_url_loader_factory_.pending_requests()->empty());
+
+  // Once the posted startup task runs and the fetch completes,
+  // `IsRefreshInProgress()` becomes false and routing rules are populated.
+  ASSERT_EQ(1, test_url_loader_factory_.NumPending());
+  ASSERT_TRUE(test_url_loader_factory_.SimulateResponseForPendingRequest(
+      "https://domain1.example.com/.well-known/pvd", kValidPvdJson1));
+  EXPECT_FALSE(service_->IsRefreshInProgress());
+  EXPECT_FALSE(service_->GetDynamicRoutingConfig().is_update_in_progress);
+  EXPECT_EQ(1u, service_->GetDynamicRoutingConfig().routing_rules.size());
 }
 
 TEST_F(EnterpriseProxyServiceTest, NetworkChangeTriggersRefresh) {
@@ -1566,6 +1605,85 @@ TEST_F(EnterpriseProxyServiceAuthChallengeTest,
   EXPECT_TRUE(second_future.IsReady());
   EXPECT_EQ(Outcome::kFailure, first_future.Get<0>());
   EXPECT_EQ(Outcome::kFailure, second_future.Get<0>());
+}
+
+// Fixture for a service that embeds the browser user agent in proxy
+// credentials, as on iOS.
+class EnterpriseProxyServiceUserAgentTest
+    : public EnterpriseProxyServiceAuthChallengeTest {
+ protected:
+  EnterpriseProxyServiceUserAgentTest() { user_agent_ = kUserAgent; }
+};
+
+// Tests that the user agent is appended to the Basic auth username as
+// `x-user-agent`, URL-escaped with spaces as "+", which Secure Gateway decodes
+// back to the original value.
+TEST_F(EnterpriseProxyServiceUserAgentTest, CredentialsEmbedUserAgent) {
+  EnterpriseProxyService::ProxyAuthChallengeMatch match =
+      Classify(CreateProxyAuthChallengeInfo("proxy1.example.com"),
+               GURL("https://foo.example.com/test"));
+  ASSERT_EQ(Decision::kNeedsCredentials, match.decision);
+
+  AuthChallengeFuture future;
+  service_->FetchProxyAuthCredentials(std::move(match), future.GetCallback());
+  identity_test_env_.WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+      "access_token", base::Time::Max());
+
+  ASSERT_TRUE(future.Get<1>().has_value());
+  EXPECT_EQ(
+      u"X-Client-ID=test_client&X-Profile-ID=test_profile_id&x-user-agent="
+      u"Mozilla%2F5.0+(iPhone%3B+CPU)+CriOS%2F1.0",
+      future.Get<1>()->username());
+}
+
+// Tests that a PvD `X-User-Agent` entry is replaced by a single lowercase
+// `x-user-agent` entry carrying the browser user agent, since Secure Gateway
+// matches the key case-sensitively and reads only its first occurrence.
+TEST_F(EnterpriseProxyServiceUserAgentTest, CredentialsReplacePvdUserAgent) {
+  constexpr char kPvdUserAgentJson[] = R"({
+    "identifier": "domain2.example.com",
+    "proxies": [
+      {
+        "protocol": "https-connect",
+        "identity": "proxy2",
+        "proxy": "proxy2.example.com:443",
+        "google_chrome": {
+          "auth": {
+            "type": "profile_bearer_token",
+            "scope": "cloud_secure_gateway"
+          },
+          "extra_headers": [
+            {
+              "key": "X-User-Agent",
+              "value": "pvd_user_agent",
+              "type": "constant"
+            }
+          ]
+        }
+      }
+    ],
+    "proxy-match": [
+      {
+        "proxies": ["proxy2"],
+        "domains": ["*.example.com"]
+      }
+    ]
+  })";
+  SetUpDomainAndSimulateResponse(kTestDomain2, kPvdUserAgentJson);
+
+  EnterpriseProxyService::ProxyAuthChallengeMatch match =
+      Classify(CreateProxyAuthChallengeInfo("proxy2.example.com"),
+               GURL("https://foo.example.com/test"));
+  ASSERT_EQ(Decision::kNeedsCredentials, match.decision);
+
+  AuthChallengeFuture future;
+  service_->FetchProxyAuthCredentials(std::move(match), future.GetCallback());
+  identity_test_env_.WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+      "access_token", base::Time::Max());
+
+  ASSERT_TRUE(future.Get<1>().has_value());
+  EXPECT_EQ(u"x-user-agent=Mozilla%2F5.0+(iPhone%3B+CPU)+CriOS%2F1.0",
+            future.Get<1>()->username());
 }
 
 }  // namespace

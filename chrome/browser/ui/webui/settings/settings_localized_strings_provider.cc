@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/webui/settings/settings_localized_strings_provider.h"
 
 #include <string>
+#include <string_view>
 
 #include "base/check_deref.h"
 #include "base/command_line.h"
@@ -23,12 +24,14 @@
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/contextual_cueing/features.h"
+#include "chrome/browser/enterprise/browser_management/management_identity.h"
 #include "chrome/browser/file_system_access/chrome_file_system_access_permission_context.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/glic_settings_util.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
+#include "chrome/browser/glic/public/glic_feature.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/indigo/resources/grit/indigo_strings.h"
 #include "chrome/browser/net/system_network_context_manager.h"
 #include "chrome/browser/obsolete_system/obsolete_system.h"
@@ -62,6 +65,7 @@
 #include "chrome/browser/ui/webui/policy_indicator_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/settings/glic_handler.h"
 #include "chrome/browser/ui/webui/settings/reset_settings_handler.h"
+#include "chrome/browser/ui/webui/settings/settings_utils.h"
 #include "chrome/browser/ui/webui/settings/shared_settings_localized_strings_provider.h"
 #include "chrome/browser/ui/webui/version/version_ui.h"
 #include "chrome/common/channel_info.h"
@@ -87,7 +91,6 @@
 #include "components/autofill/core/common/autofill_prefs.h"
 #include "components/commerce/core/commerce_constants.h"
 #include "components/content_settings/core/common/features.h"
-#include "components/dom_distiller/core/dom_distiller_features.h"
 #include "components/google/core/common/google_util.h"
 #include "components/history/core/common/pref_names.h"
 #include "components/lens/lens_features.h"
@@ -119,6 +122,7 @@
 #include "components/translate/core/common/translate_features.h"
 #include "components/wallet/core/browser/walletable_permission_utils.h"
 #include "components/wallet/core/common/wallet_features.h"
+#include "components/web_distiller/core/web_distiller_features.h"
 #include "components/zoom/page_zoom_constants.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui_data_source.h"
@@ -130,6 +134,7 @@
 #include "net/net_buildflags.h"
 #include "services/device/public/cpp/device_features.h"
 #include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/accessibility/accessibility_switches.h"
 #include "ui/base/accelerators/accelerator.h"
@@ -137,7 +142,6 @@
 #include "ui/base/l10n/time_format.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/webui/webui_util.h"
 
@@ -152,7 +156,6 @@
 #include "chrome/browser/ash/ownership/owner_settings_service_ash_factory.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/common/webui_url_constants.h"
-#include "components/user_manager/user_manager.h"
 #include "ui/chromeos/devicetype_utils.h"
 #else  // !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ui/webui/settings/system_handler.h"
@@ -255,14 +258,7 @@ void AddCommonStrings(content::WebUIDataSource* html_source, Profile* profile) {
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
-  html_source->AddBoolean(
-      "isGuest",
-#if BUILDFLAG(IS_CHROMEOS)
-      user_manager::UserManager::Get()->IsLoggedInAsGuest() ||
-          user_manager::UserManager::Get()->IsLoggedInAsManagedGuestSession());
-#else
-      profile->IsGuestSession());
-#endif
+  html_source->AddBoolean("isGuest", settings_utils::IsGuest(profile));
 
   html_source->AddBoolean("isChildAccount", profile->IsChild());
 }
@@ -416,38 +412,6 @@ void AddAiStrings(content::WebUIDataSource* html_source) {
       {"aiSubpageFeatureManagedDisabledLabel",
        IDS_SETTINGS_AI_SUBPAGE_FEATURE_MANAGED_DISABLED_LABEL},
 
-      // History search strings.
-      {"historySearchSettingLabel", IDS_SETTINGS_HISTORY_SEARCH_SETTING_LABEL},
-      {"historySearchSettingSublabelV2",
-       IDS_SETTINGS_HISTORY_SEARCH_SETTING_SUBLABEL_V2},
-      {"historySearchWhenOnLogStart",
-       IDS_SETTINGS_HISTORY_SEARCH_WHEN_ON_LOG_START},
-      {"historySearchWhenOnPageContent",
-       IDS_SETTINGS_HISTORY_SEARCH_WHEN_ON_PAGE_CONTENT},
-      {"historySearchWhenOnSearchFrom",
-       IDS_SETTINGS_HISTORY_SEARCH_WHEN_ON_SEARCH_FROM},
-      {"historySearchConsiderData", IDS_SETTINGS_HISTORY_SEARCH_CONSIDER_DATA},
-      {"historySearchConsiderDataEncrypted",
-       IDS_SETTINGS_HISTORY_SEARCH_CONSIDER_DATA_ENCRYPTED},
-      {"historySearchLearnMoreA11yLabel",
-       IDS_SETTINGS_HISTORY_SEARCH_LEARN_MORE_A11Y_LABEL},
-      {"historySearchSublabelOn", IDS_SETTINGS_HISTORY_SEARCH_SUBLABEL_ON},
-      {"historySearchSublabelOff", IDS_SETTINGS_HISTORY_SEARCH_SUBLABEL_OFF},
-      {"historySearchWithAnswersSettingSublabelV2",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_SETTING_SUBLABEL_V2},
-      {"historySearchWithAnswersWhenOnPageContent",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_WHEN_ON_PAGE_CONTENT},
-      {"historySearchWithAnswersWhenOnRecallInfo",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_WHEN_ON_RECALL_INFO},
-      {"historySearchWithAnswersConsiderDataEncrypted",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_CONSIDER_DATA_ENCRYPTED},
-      {"historySearchWithAnswersConsiderOutdated",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_CONSIDER_OUTDATED},
-      {"historySearchWithAnswersSublabelOn",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_SUBLABEL_ON},
-      {"historySearchWithAnswersSublabelOff",
-       IDS_SETTINGS_HISTORY_SEARCH_WITH_ANSWERS_SUBLABEL_OFF},
-
       // Compose strings.
       {"aiComposeLabel", IDS_COMPOSE_SUGGESTION_MAIN_TEXT},
       {"aiComposeSublabelV2", IDS_SETTINGS_AI_COMPOSE_SUBLABEL_V2},
@@ -544,6 +508,9 @@ void AddAiStrings(content::WebUIDataSource* html_source) {
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
       {"onDeviceAiEnabledLabel",
        IDS_SETTINGS_SYSTEM_FEATURE_ON_DEVICE_AI_ENABLED_LABEL},
+      {"onDeviceAiRowSubLabel", IDS_SETTINGS_ON_DEVICE_AI_ROW_SUB_LABEL},
+      {"onDeviceAiCapabilitiesLabel",
+       IDS_SETTINGS_ON_DEVICE_AI_CAPABILITIES_LABEL},
 #endif
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
@@ -569,12 +536,6 @@ void AddAiStrings(content::WebUIDataSource* html_source) {
   html_source->AddString("aiPageMainManagedLearnMoreUrl",
                          chrome::kAiSettingsLearnMorePageManagedUrl);
 
-  html_source->AddString("historySearchLearnMoreUrl",
-                         chrome::kHistorySearchLearnMorePageURL);
-  html_source->AddString("historySearchLearnMoreManagedUrl",
-                         chrome::kHistorySearchLearnMorePageManagedURL);
-  html_source->AddString("historySearchDataHomeUrl",
-                         chrome::kChromeUIHistoryURL);
   html_source->AddString("composeLearnMorePageURL",
                          chrome::kComposeLearnMorePageURL);
   html_source->AddString("composeLearnMorePageManagedURL",
@@ -632,8 +593,6 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_VERTICAL_TABS_EXPAND_ON_HOVER},
       {"allowSplitViewDragAndDrop",
        IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP},
-      {"allowSplitViewDragAndDropHorizontal",
-       IDS_SETTINGS_ALLOW_SPLIT_VIEW_DRAG_AND_DROP_HORIZONTAL},
       {"showTabGroupsInBookmarksBar",
        IDS_SETTINGS_SHOW_TAB_GROUPS_IN_BOOKMARKS_BAR},
       {"autoPinNewTabGroups", IDS_SETTINGS_AUTO_PIN_NEW_TAB_GROUPS},
@@ -712,9 +671,6 @@ void AddAppearanceStrings(content::WebUIDataSource* html_source,
   html_source->AddBoolean(
       "tabStripUnificationEnabled",
       base::FeatureList::IsEnabled(tabs::kTabStripUnification));
-  html_source->AddBoolean(
-      "splitViewHorizontalEnabled",
-      base::FeatureList::IsEnabled(tabs::kSplitViewHorizontal));
 
   std::string configurable_alignments_json;
   base::JSONWriter::Write(
@@ -876,8 +832,46 @@ void AddDownloadsStrings(content::WebUIDataSource* html_source) {
 }
 
 void AddGeicStrings(content::WebUIDataSource* html_source) {
+  // Also registers the GEiC switcher strings shown on `glic_subpage` so that
+  // `GetDeviceManagerIdentity()` is only queried once.
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
       {"geicSectionTitle", IDS_SETTINGS_GEIC_SECTION_TITLE},
+      {"geicRowSublabel", IDS_SETTINGS_GEIC_ROW_SUBLABEL},
+      {"geicDevicePolicyToggle",
+       IDS_SETTINGS_GEIC_ENABLED_BY_DEVICE_POLICY_TOGGLE},
+      {"geicDevicePolicyButton",
+       IDS_SETTINGS_GEIC_ENABLED_BY_DEVICE_POLICY_BUTTON},
+      {"glicSwitchToGeicToggle", IDS_SETTINGS_GLIC_SWITCH_TO_GEIC_TOGGLE},
+  };
+  html_source->AddLocalizedStrings(kLocalizedStrings);
+
+  std::optional<std::string> device_manager = GetDeviceManagerIdentity();
+  const std::u16string manager_domain =
+      device_manager && !device_manager->empty()
+          ? base::UTF8ToUTF16(*device_manager)
+          : l10n_util::GetStringUTF16(
+                IDS_SETTINGS_GEIC_DEFAULT_MANAGEMENT_DOMAIN);
+  html_source->AddString(
+      "geicDevicePolicyToggleSublabel",
+      l10n_util::GetStringFUTF16(
+          IDS_SETTINGS_GEIC_ENABLED_BY_DEVICE_POLICY_TOGGLE_SUBLABEL,
+          manager_domain));
+  html_source->AddString(
+      "glicSwitchToGeicToggleSublabel",
+      l10n_util::GetStringFUTF16(
+          IDS_SETTINGS_GLIC_SWITCH_TO_GEIC_TOGGLE_SUBLABEL, manager_domain));
+
+  html_source->AddString(
+      "geicDefaultTabAccessToggleLearnMoreUrl",
+      google_util::AppendGoogleLocaleParam(
+          GURL(features::kGeicDefaultTabAccessToggleLearnMoreURL.Get()),
+          g_browser_process->GetApplicationLocale())
+          .spec());
+}
+
+void AddGeneralStrings(content::WebUIDataSource* html_source) {
+  static constexpr webui::LocalizedString kLocalizedStrings[] = {
+      {"generalPageTitle", IDS_SETTINGS_GENERAL},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 }
@@ -1033,18 +1027,23 @@ void AddGlicStrings(content::WebUIDataSource* html_source, Profile* profile) {
        IDS_SETTINGS_GLIC_INLINE_CUE_MENU_PREVIEW},
       {"siteSettingsInlineCueMenuPreviewText",
        IDS_SETTINGS_GLIC_INLINE_CUE_MENU_PREVIEW_TEXT},
-      {"siteSettingsInlineCueMenuPreviewPill",
-       IDS_SETTINGS_GLIC_INLINE_CUE_MENU_PREVIEW_PILL},
       {"siteSettingsInlineCueMenuToggleLabel",
        IDS_SETTINGS_GLIC_INLINE_CUE_MENU},
       {"siteSettingsInlineCueMenuToggleSublabel",
        IDS_SETTINGS_GLIC_INLINE_CUE_MENU_TOGGLE_SUBLABEL},
+      {"siteSettingsInlineCueMenuExplainToggle",
+       IDS_SETTINGS_GLIC_INLINE_CUE_MENU_EXPLAIN_TOGGLE},
+      {"siteSettingsInlineCueMenuExplainToggleSublabel",
+       IDS_SETTINGS_GLIC_INLINE_CUE_MENU_EXPLAIN_TOGGLE_SUBLABEL},
       {"glicHotkeyGlobalScopeDescription",
        IDS_SETTINGS_GLIC_HOTKEY_GLOBAL_SCOPE_DESCRIPTION},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
   html_source->AddString("glicActivityButtonUrl", chrome::kGlicActivityUrl);
+  html_source->AddBoolean(
+      "inlineCueMenuUsePromptBoxIcon",
+      base::FeatureList::IsEnabled(features::kGlicSelectionOverlayPromptBox));
 
   html_source->AddLocalizedString(
       "glicOsWidgetToggle",
@@ -1098,6 +1097,8 @@ void AddGlicStrings(content::WebUIDataSource* html_source, Profile* profile) {
                     features::kGlicExtensionsManagementUrl.Get());
   add_localized_url("glicWebActuationToggleLearnMoreUrl",
                     features::kGlicWebActuationToggleLearnMoreURL.Get());
+  const bool use_disclosure_country_variant =
+      glic::GlicEnabling::ShouldUseWebActuationDisclosureCountryVariant();
   if (base::FeatureList::IsEnabled(features::kGlicSettingsA11yContextFix)) {
     html_source->AddString(
         "glicWebActuationToggleSublabelV2",
@@ -1110,7 +1111,9 @@ void AddGlicStrings(content::WebUIDataSource* html_source, Profile* profile) {
     html_source->AddString(
         "glicWebActuationToggleConsider2V2",
         l10n_util::GetStringFUTF16(
-            IDS_SETTINGS_GLIC_PERMISSIONS_WEB_ACTUATION_TOGGLE_CONSIDER_2_V2,
+            use_disclosure_country_variant
+                ? IDS_SETTINGS_GLIC_PERMISSIONS_WEB_ACTUATION_TOGGLE_CONSIDER_2_V2_COUNTRY_VARIANT
+                : IDS_SETTINGS_GLIC_PERMISSIONS_WEB_ACTUATION_TOGGLE_CONSIDER_2_V2,
             base::EscapeForHTML(base::UTF8ToUTF16(
                 features::kGlicWebActuationToggleConsiderSafelyURL.Get())),
             base::EscapeForHTML(base::UTF8ToUTF16(
@@ -1129,7 +1132,9 @@ void AddGlicStrings(content::WebUIDataSource* html_source, Profile* profile) {
     html_source->AddString(
         "glicWebActuationToggleConsider2V2",
         l10n_util::GetStringFUTF16(
-            IDS_SETTINGS_GLIC_PERMISSIONS_WEB_ACTUATION_TOGGLE_CONSIDER_2,
+            use_disclosure_country_variant
+                ? IDS_SETTINGS_GLIC_PERMISSIONS_WEB_ACTUATION_TOGGLE_CONSIDER_2_COUNTRY_VARIANT
+                : IDS_SETTINGS_GLIC_PERMISSIONS_WEB_ACTUATION_TOGGLE_CONSIDER_2,
             base::EscapeForHTML(base::UTF8ToUTF16(
                 features::kGlicWebActuationToggleConsiderSafelyURL.Get())),
             base::EscapeForHTML(base::UTF8ToUTF16(
@@ -1213,9 +1218,9 @@ void AddGlicStrings(content::WebUIDataSource* html_source, Profile* profile) {
   html_source->AddBoolean(
       "actorLoginFederatedLoginSupportEnabled",
       base::FeatureList::IsEnabled(features::kFedCmEmbedderInitiatedLogin));
-  html_source->AddBoolean(
-      "glicSelectionFeatureEnabled",
-      base::FeatureList::IsEnabled(features::kGlicCaptureRegion));
+  html_source->AddBoolean("glicSelectionFeatureEnabled",
+                          glic::GetGlicProviderSpec(profile).SupportsFeature(
+                              glic::GlicFeature::kCaptureRegion));
   html_source->AddBoolean(
       "glicHotkeyLocalScopeEnabled",
       base::FeatureList::IsEnabled(features::kGlicHotkeyLocalScope));
@@ -1230,6 +1235,7 @@ void AddGlicStrings(content::WebUIDataSource* html_source, Profile* profile) {
 void AddResetStrings(content::WebUIDataSource* html_source, Profile* profile) {
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
       {"resetPageTitle", IDS_SETTINGS_RESET},
+      {"resetAllSettings", IDS_SETTINGS_RESET_ALL_SETTINGS},
       {"resetTrigger", IDS_SETTINGS_RESET_SETTINGS_TRIGGER},
       {"resetPageExplanationBulletPoints",
        IDS_RESET_PROFILE_SETTINGS_EXPLANATION_IN_BULLET_POINTS},
@@ -1288,7 +1294,8 @@ void AddPerformanceStrings(content::WebUIDataSource* html_source) {
   // UI no longer exists.
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
       {"performancePageTitle", IDS_SETTINGS_PERFORMANCE_PAGE_TITLE},
-      {"generalPageTitle", IDS_SETTINGS_PERFORMANCE_GENERAL_PAGE_TITLE},
+      {"performanceGeneralPageTitle",
+       IDS_SETTINGS_PERFORMANCE_GENERAL_PAGE_TITLE},
       {"memoryPageTitle", IDS_SETTINGS_PERFORMANCE_MEMORY_PAGE_TITLE},
       {"speedPageTitle", IDS_SETTINGS_PERFORMANCE_SPEED_PAGE_TITLE},
       {"memorySaverModeLabel",
@@ -1620,6 +1627,53 @@ bool AutofillSettingsEnterprisePolicyEnabled() {
       autofill::features::kAutofillEnableAutofillSettingsEnterprisePolicy);
 }
 
+// Returns the label with Google Wallet links shown on the payments settings
+// page.
+std::u16string GetManageCreditCardsLabel() {
+  const std::u16string manage_instruments_url =
+      base::UTF8ToUTF16(autofill::payments::GetManageInstrumentsUrl().spec());
+  const std::u16string manage_passes_url =
+      base::UTF8ToUTF16(autofill::payments::GetManagePassesUrl().spec());
+  // When enabled, offers and loyalty cards are managed in their own settings
+  // leaf, so the payments string should not mention them.
+  const bool offers_and_loyalty_cards_settings_enabled =
+      base::FeatureList::IsEnabled(
+          autofill::features::kAutofillEnableOffersAndLoyaltyCardsSettings);
+  const bool wallet_direct_offers_enabled = base::FeatureList::IsEnabled(
+      autofill::features::kAutofillEnableWalletDirectOffers);
+
+  if (base::FeatureList::IsEnabled(
+          autofill::features::kAutofillEnableWalletReminderNotice)) {
+    int message_id = IDS_SETTINGS_PAYMENTS_MANAGE_WALLET_DATA;
+    if (offers_and_loyalty_cards_settings_enabled) {
+      message_id = IDS_SETTINGS_PAYMENTS_MANAGE_WALLET_DATA_AND_PASSES;
+    } else if (wallet_direct_offers_enabled) {
+      message_id = IDS_SETTINGS_PAYMENTS_MANAGE_WALLET_DATA_WITH_OFFERS;
+    }
+    return l10n_util::GetStringFUTF16(
+        message_id,
+        base::UTF8ToUTF16(autofill::payments::GetManageSettingsUrl().spec()),
+        manage_instruments_url, manage_passes_url);
+  }
+
+  if (offers_and_loyalty_cards_settings_enabled) {
+    return l10n_util::GetStringFUTF16(
+        IDS_SETTINGS_PAYMENTS_MANAGE_PAYMENT_METHODS_AND_PASSES,
+        manage_instruments_url, manage_passes_url);
+  }
+
+  if (wallet_direct_offers_enabled) {
+    return l10n_util::GetStringFUTF16(
+        IDS_SETTINGS_PAYMENTS_MANAGE_LOYALTY_CARDS_AND_PAYMENT_METHODS_WITH_OFFERS,
+        manage_instruments_url, manage_passes_url);
+  }
+
+  return l10n_util::GetStringFUTF16(
+      IDS_SETTINGS_PAYMENTS_MANAGE_LOYALTY_CARDS_AND_PAYMENT_METHODS,
+      base::UTF8ToUTF16(autofill::payments::GetManageLoyaltyCardsUrl().spec()),
+      manage_instruments_url);
+}
+
 void AddAutofillStrings(content::WebUIDataSource* html_source,
                         Profile* profile,
                         content::WebContents* web_contents) {
@@ -1657,6 +1711,14 @@ void AddAutofillStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_YOUR_SAVED_INFO_AUTOFILL_SETTINGS_DESCRIPTION},
       {"yourSavedInfoRelatedServicesTitle",
        IDS_SETTINGS_RELATED_SERVICES_TITLE},
+      {"passwordManagerSublabel",
+       IDS_SETTINGS_YOUR_SAVED_INFO_PASSWORD_MANAGER_SUBLABEL},
+      {"paymentsSublabel", IDS_SETTINGS_YOUR_SAVED_INFO_PAYMENTS_SUBLABEL},
+      {"contactInfoSublabel",
+       IDS_SETTINGS_YOUR_SAVED_INFO_CONTACT_INFO_SUBLABEL},
+      {"identityDocsSublabel",
+       IDS_SETTINGS_YOUR_SAVED_INFO_IDENTITY_DOCS_SUBLABEL},
+      {"travelSublabel", IDS_SETTINGS_YOUR_SAVED_INFO_TRAVEL_SUBLABEL},
       {"identityDocsCardTitle", IDS_AUTOFILL_IDENTITY_DOCS_TITLE},
       {"identityDocsOptInToggleLabel",
        IDS_AUTOFILL_IDENTITY_DOCS_OPT_IN_TOGGLE_LABEL},
@@ -2005,41 +2067,7 @@ void AddAutofillStrings(content::WebUIDataSource* html_source,
 
   html_source->AddString("manageAddressesUrl",
                          autofill::payments::GetManageAddressesUrl().spec());
-  if (base::FeatureList::IsEnabled(
-          autofill::features::kAutofillEnableWalletReminderNotice)) {
-    html_source->AddString(
-        "manageCreditCardsLabel",
-        l10n_util::GetStringFUTF16(
-            base::FeatureList::IsEnabled(
-                autofill::features::kAutofillEnableWalletDirectOffers)
-                ? IDS_SETTINGS_PAYMENTS_MANAGE_WALLET_DATA_WITH_OFFERS
-                : IDS_SETTINGS_PAYMENTS_MANAGE_WALLET_DATA,
-            base::UTF8ToUTF16(
-                autofill::payments::GetManageSettingsUrl().spec()),
-            base::UTF8ToUTF16(
-                autofill::payments::GetManageInstrumentsUrl().spec()),
-            base::UTF8ToUTF16(
-                autofill::payments::GetManagePassesUrl().spec())));
-  } else if (base::FeatureList::IsEnabled(
-                 autofill::features::kAutofillEnableWalletDirectOffers)) {
-    html_source->AddString(
-        "manageCreditCardsLabel",
-        l10n_util::GetStringFUTF16(
-            IDS_SETTINGS_PAYMENTS_MANAGE_LOYALTY_CARDS_AND_PAYMENT_METHODS_WITH_OFFERS,
-            base::UTF8ToUTF16(
-                autofill::payments::GetManageInstrumentsUrl().spec()),
-            base::UTF8ToUTF16(
-                autofill::payments::GetManagePassesUrl().spec())));
-  } else {
-    html_source->AddString(
-        "manageCreditCardsLabel",
-        l10n_util::GetStringFUTF16(
-            IDS_SETTINGS_PAYMENTS_MANAGE_LOYALTY_CARDS_AND_PAYMENT_METHODS,
-            base::UTF8ToUTF16(
-                autofill::payments::GetManageLoyaltyCardsUrl().spec()),
-            base::UTF8ToUTF16(
-                autofill::payments::GetManageInstrumentsUrl().spec())));
-  }
+  html_source->AddString("manageCreditCardsLabel", GetManageCreditCardsLabel());
   html_source->AddString("managePaymentMethodsUrl",
                          autofill::payments::GetManageInstrumentsUrl().spec());
   html_source->AddString("managePrivatePassesUrl",
@@ -2131,9 +2159,15 @@ void AddAutofillStrings(content::WebUIDataSource* html_source,
   html_source->AddBoolean(
       "emailVerificationProtocolEnabled",
       base::FeatureList::IsEnabled(features::kEmailVerificationProtocol));
-  html_source->AddBoolean("autofillGmailOtpFillingEnabled",
-                          base::FeatureList::IsEnabled(
-                              features::kGlicActorAutofillOneTimePassword));
+  // The Gmail OTP filling opt-in is shared by Actor OTP filling and Autofill
+  // Gmail OTP suggestions. Show it when either feature is enabled so that the
+  // two features don't depend on each other for launch.
+  html_source->AddBoolean(
+      "autofillGmailOtpFillingEnabled",
+      base::FeatureList::IsEnabled(
+          features::kGlicActorAutofillOneTimePassword) ||
+          base::FeatureList::IsEnabled(
+              autofill::features::kAutofillShowGmailOtpSuggestions));
   html_source->AddString(
       "enableGmailOtpFillingDescription",
       l10n_util::GetStringFUTF16(
@@ -2214,19 +2248,7 @@ void AddAutofillStrings(content::WebUIDataSource* html_source,
 
 void AddSignOutDialogStrings(content::WebUIDataSource* html_source,
                              Profile* profile) {
-  std::string sync_dashboard_url =
-      google_util::AppendGoogleLocaleParam(
-          GURL(chrome::kSyncGoogleDashboardURL),
-          g_browser_process->GetApplicationLocale())
-          .spec();
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  html_source->AddString(
-      "syncDisconnectManagedProfileExplanation",
-      l10n_util::GetStringFUTF8(
-          IDS_SETTINGS_TURN_OFF_SYNC_MANAGED_PROFILE_EXPLANATION, u"$1",
-          base::ASCIIToUTF16(sync_dashboard_url)));
-
   if (profile->IsChild()) {
     static constexpr webui::LocalizedString kTurnOffStrings[] = {
         {"syncDisconnect", IDS_SETTINGS_PEOPLE_SYNC_TURN_OFF},
@@ -2238,8 +2260,6 @@ void AddSignOutDialogStrings(content::WebUIDataSource* html_source,
     static constexpr webui::LocalizedString kSyncDisconnectStrings[] = {
         {"syncDisconnectDeleteProfile",
          IDS_SETTINGS_TURN_OFF_SYNC_DIALOG_CHECKBOX},
-        {"syncDisconnectConfirm",
-         IDS_SETTINGS_TURN_OFF_SYNC_DIALOG_MANAGED_CONFIRM},
         {"syncDisconnectExplanation",
          IDS_SETTINGS_SYNC_DISCONNECT_AND_SIGN_OUT_EXPLANATION_SUPERVISED_PROFILE},
     };
@@ -2261,8 +2281,6 @@ void AddSignOutDialogStrings(content::WebUIDataSource* html_source,
     static constexpr webui::LocalizedString kSyncDisconnectStrings[] = {
         {"syncDisconnectDeleteProfile",
          IDS_SETTINGS_TURN_OFF_SYNC_DIALOG_CHECKBOX},
-        {"syncDisconnectConfirm",
-         IDS_SETTINGS_TURN_OFF_SYNC_DIALOG_MANAGED_CONFIRM},
         {"syncDisconnectExplanation",
          IDS_SETTINGS_SYNC_DISCONNECT_AND_SIGN_OUT_EXPLANATION},
     };
@@ -2550,8 +2568,22 @@ void AddPeopleStrings(content::WebUIDataSource* html_source, Profile* profile) {
        IDS_SETTINGS_SYNC_DISCONNECT_DELETE_PROFILE_WARNING_WITH_COUNTS_PLURAL},
       {"deleteProfileWarningWithoutCounts",
        IDS_SETTINGS_SYNC_DISCONNECT_DELETE_PROFILE_WARNING_WITHOUT_COUNTS},
+      {"deviceTabVisibilityTitle", IDS_SETTINGS_DEVICE_TAB_VISIBILITY_TITLE},
+      {"deviceTabVisibilitySublabel",
+       IDS_SETTINGS_DEVICE_TAB_VISIBILITY_SUBLABEL},
+      {"deviceTabVisibilityNoDevices",
+       IDS_SETTINGS_DEVICE_TAB_VISIBILITY_NO_DEVICES},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
+
+  html_source->AddString(
+      "deviceTabVisibilityDescription",
+      l10n_util::GetStringFUTF8(IDS_SETTINGS_DEVICE_TAB_VISIBILITY_DESCRIPTION,
+                                base::ASCIIToUTF16(std::string_view(
+                                    chrome::kGoogleAccountDeviceActivityURL))));
+  html_source->AddBoolean(
+      "enableDeviceTabVisibilitySettings",
+      base::FeatureList::IsEnabled(syncer::kDeviceTabVisibilitySettings));
 
 #if !BUILDFLAG(IS_CHROMEOS)
   html_source->AddLocalizedString(
@@ -2574,10 +2606,6 @@ void AddPeopleStrings(content::WebUIDataSource* html_source, Profile* profile) {
           ? IDS_SETTINGS_CUSTOMIZE_PROFILE
           : IDS_SETTINGS_CUSTOMIZE_YOUR_CHROME_PROFILE);
 #endif
-
-  html_source->AddBoolean(
-      "historyEmbeddingsAnswersFeatureEnabled",
-      history_embeddings::IsHistoryEmbeddingsAnswersSettingVisible(profile));
 
   // Add Google Account URL and include UTM parameter to signal the source of
   // the navigation.
@@ -3121,6 +3149,7 @@ void AddSearchStrings(content::WebUIDataSource* html_source, Profile* profile) {
       {"searchEnginesSetAsDefaultButton",
        IDS_SEARCH_ENGINE_CHOICE_BUTTON_TITLE},
       {"searchEnginesCancelButton", IDS_CANCEL},
+      {"searchEnginesBackButton", IDS_SETTINGS_SEARCH_ENGINES_BACK_BUTTON},
       {"searchEnginesConfirmationToastLabel",
        IDS_SEARCH_ENGINE_CHOICE_SETTINGS_CONFIRMATION_TOAST_LABEL},
       {"searchEnginesPickerTitle", IDS_SETTINGS_SEARCH_ENGINES_PICKER_TITLE},
@@ -3193,18 +3222,20 @@ void AddSearchStrings(content::WebUIDataSource* html_source, Profile* profile) {
   html_source->AddString("searchExplanationLearnMoreURL",
                          chrome::kOmniboxLearnMoreURL);
 
-  const bool is_eea =
+  const bool is_in_search_engine_choice_screen_region =
       CHECK_DEREF(regional_capabilities::RegionalCapabilitiesServiceFactory::
                       GetForProfile(profile))
-          .IsInEeaCountry();
+          .IsInSearchEngineChoiceScreenRegion();
   html_source->AddLocalizedString(
       "searchEnginesSettingsDialogSubtitle",
-      is_eea ? IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE
-             : IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_NON_EEA);
+      is_in_search_engine_choice_screen_region
+          ? IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_RANDOM_ORDER
+          : IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_REGIONAL_ORDER);
   html_source->AddLocalizedString(
       "searchEnginesPickerSubtitle",
-      is_eea ? IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE
-             : IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_NON_EEA);
+      is_in_search_engine_choice_screen_region
+          ? IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_RANDOM_ORDER
+          : IDS_SETTINGS_SEARCH_ENGINES_PICKER_SUBTITLE_REGIONAL_ORDER);
 }
 
 void AddSearchEnginesStrings(content::WebUIDataSource* html_source) {
@@ -3503,10 +3534,6 @@ void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
       {"siteSettingsSerialPorts", IDS_SITE_SETTINGS_TYPE_SERIAL_PORTS},
       {"siteSettingsSerialPortsMidSentence",
        IDS_SITE_SETTINGS_TYPE_SERIAL_PORTS_MID_SENTENCE},
-#if BUILDFLAG(IS_CHROMEOS)
-      {"siteSettingsSmartCardReaders",
-       IDS_SITE_SETTINGS_TYPE_SMART_CARD_READERS},
-#endif
       {"siteSettingsUsbDevices", IDS_SITE_SETTINGS_TYPE_USB_DEVICES},
       {"siteSettingsUsbDevicesMidSentence",
        IDS_SITE_SETTINGS_TYPE_USB_DEVICES_MID_SENTENCE},
@@ -4159,6 +4186,7 @@ void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
        IDS_SETTINGS_OFFER_WRITING_HELP_ENABLED_SUB_LABEL},
       {"siteSettingsOfferWritingHelpDisabledSublabel",
        IDS_SETTINGS_OFFER_WRITING_HELP_DISABLED_SUB_LABEL},
+#if BUILDFLAG(ENABLE_SMART_CARD)
       {"siteSettingsSmartCardReaders", IDS_SITE_SETTINGS_SMART_CARD_READERS},
       {"siteSettingsSmartCardReadersDescription",
        IDS_SITE_SETTINGS_SMART_CARD_READERS_DESCRIPTION},
@@ -4171,6 +4199,7 @@ void AddSiteSettingsStrings(content::WebUIDataSource* html_source,
        IDS_SITE_SETTINGS_NO_SMART_CARD_READERS_FOUND},
       {"siteSettingsResetSmartCardConfirmation",
        IDS_SITE_SETTINGS_RESET_SMART_CARD_CONFIRMATION},
+#endif
 
       {"siteSettingsLocalNetwork", IDS_SITE_SETTINGS_TYPE_LOCAL_NETWORK},
       {"siteSettingsLocalNetworkMidSentence",
@@ -4583,6 +4612,7 @@ void AddLocalizedStrings(content::WebUIDataSource* html_source,
   AddDownloadsStrings(html_source);
   AddExtensionsStrings(html_source);
   AddGeicStrings(html_source);
+  AddGeneralStrings(html_source);
   AddGlicStrings(html_source, profile);
   AddPerformanceStrings(html_source);
   AddLanguagesStrings(html_source, profile);

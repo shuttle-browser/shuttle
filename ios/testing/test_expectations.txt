@@ -30,9 +30,25 @@
 #   - Sanitizer: ASan
 #   - Platform: Catalyst
 #
-# Expectations: Failure, Pass, Skip, Crash
-# (Multiple expectations can be combined, e.g., [ Pass Failure ] denotes a flaky
-# test that sometimes passes and sometimes fails.)
+# Expectations: Failure, Pass, Crash, Skip
+#
+# - [ Failure ]: The test runs and fails 100% of the time. This is a strict
+#   expectation: if the test ever passes, the run is reported as a failure
+#   ("unmet test expectation"), which prompts the gardener to remove the entry.
+#   Because of this, scoped [ Failure ] entries are self-cleaning and preferred
+#   over [ Pass Failure ] whenever the failure is deterministic.
+# - [ Pass Failure ]: The test is flaky; it passes and fails intermittently on
+#   the SAME configuration. Do not use this for a test that fails reliably on
+#   one configuration and passes reliably on others. Always scope flaky
+#   expectations with tags to the configurations where the flakiness was
+#   actually observed (e.g. [ iPad Simulator ] ... [ Pass Failure ]) to keep
+#   the other configurations reporting.
+# - [ Crash ]: The test crashes 100% of the time (uncaught exception or app
+#   crash). Combine with Pass and/or Failure for intermittent crashes
+#   (e.g. [ Pass Crash ], [ Pass Failure Crash ]).
+# - [ Skip ]: The test is not run at all. Reserve this for tests that hang,
+#   time out, or consume excessive resources. Skip takes precedence over any
+#   other expectation on the same line.
 #
 # Examples:
 # crbug.com/123456 [ iOS26 Simulator Debug ] MyTestCase/testAppStoreSearch [ Failure ]
@@ -44,6 +60,9 @@
 # crbug.com/234567 [ iPhone16,1 ASan ] CrashingTestCase/testMethod [ Crash ]
 #     -> Expects CrashingTestCase/testMethod to crash every time on ASAN builds running on
 #        iPhone16,1 (iPhone 15 Pro) devices and simulators.
+# crbug.com/345678 [ Device ] HangingTestCase/testMethod [ Skip ]
+#     -> Never runs HangingTestCase/testMethod on physical devices (e.g. because it hangs
+#        until the test runner times out).
 #
 
 # Smoke test to verify expectations functionality. Do not remove.
@@ -54,6 +73,318 @@ crbug.com/523267238 SmokeTestCase/testFlakyCrashMethod [ Pass Crash ]
 crbug.com/523267238 SmokeTestCase/testFlakyPassingMethod [ Pass Failure ]
 crbug.com/523267238 SmokeTestCase/testFlakyCrashPassingMethod [ Pass Crash ]
 
+# Migrated from in-source test disable annotations: bookmarks, browser_view,
+# dialogs, history.
+crbug.com/40210654 BookmarksEntriesTestCase/testBookmarksSyncInMultiwindow [ Pass Failure ]
+crbug.com/40210654 [ iPad Simulator ] BookmarksEntriesTestCase/testBookmarksSyncInMultiwindow [ Failure ]
+crbug.com/362621166 BrowserViewControllerTestCase/testJavaScriptInOmnibox [ Pass Failure ]
+crbug.com/362621166 [ Simulator ] BrowserViewControllerTestCase/testJavaScriptInOmnibox [ Failure ]
+crbug.com/40182086 JavaScriptDialogTestCase/testShowJavaScriptBehindSettings [ Pass Failure ]
+crbug.com/40182086 [ Simulator ] JavaScriptDialogTestCase/testShowJavaScriptBehindSettings [ Failure ]
+crbug.com/493894843 HistorySystemTestCase/testEmptyState [ Pass Failure ]
+crbug.com/446382453 HistorySystemTestCase/testHistorySyncInMultiwindow [ Pass Failure ]
+crbug.com/446382453 [ iPad Simulator ] HistorySystemTestCase/testHistorySyncInMultiwindow [ Failure ]
+
+# Migrated from in-source test disable annotations: manage_sync.
+crbug.com/512422445 ManageSyncSettingsTestCase/testShowingUnifiedAccountSettings [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testUnsyncedDataDialogShowsInCaseOfUnsyncedPasswords [ Pass Failure ]
+# Fails on iPhone devices and simulators.
+crbug.com/41494658 [ iPhone ] ManageSyncSettingsTestCase/testUnsyncedDataDialogShowsInCaseOfUnsyncedReadingListEntry [ Skip ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testCancelSigningOutFromUnsyncedDataDialogInCaseOfUnsyncedBookmarks [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testDeleteAndSignOutFromUnsyncedDataDialogInCaseOfUnsyncedBookmarks [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testDataTypeSettingsDoNotCarryOverDifferentAccounts [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testDataTypeSettingsAreClearedOnAccountRemoval [ Pass Failure ]
+crbug.com/512421615 ManageSyncSettingsTestCase/testAccountSettingsWithSyncTypesListDisabled [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithSyncTypesListDisabledLifted [ Pass Failure ]
+crbug.com/512422367 ManageSyncSettingsTestCase/testAccountSettingsWithSyncTypesListDisabledAppliedDynamically [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithSyncDisabled [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithSyncDisabledLifted [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithSyncDisabledAppliedDynamically [ Pass Failure ]
+crbug.com/512422367 ManageSyncSettingsTestCase/testAccountSettingsWithError [ Pass Failure ]
+crbug.com/512422367 ManageSyncSettingsTestCase/testAccountSettingsWithHistoryAndTabsDisabledByPolicy [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithHistoryDisabledByPolicy [ Pass Failure ]
+crbug.com/512420798 ManageSyncSettingsTestCase/testAccountSettingsWithTabsDisabledByPolicy [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithRemoteSignout [ Pass Failure ]
+crbug.com/512424244 ManageSyncSettingsTestCase/testBulkUploadDescriptionTextForPasswords [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testBulkUploadDescriptionTextForBookmarks [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testBulkUploadDescriptionTextForReadingList [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testDeCouplingOfAddressAndPaymentToggles [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsWithErrorDismissed [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testErrorViewFromAccountSettingsDismissed [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testAccountSettingsAndEncryptionDismissed [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testRememberCustomPassphraseAfterSignout [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testPersonalizeGoogleServicesSettingsDismissedOnSignOut [ Pass Failure ]
+crbug.com/512422367 ManageSyncSettingsTestCase/testSwitchAccountFromAccountMenu [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testSignOutFromAccountFromAccountMenu [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testManageAccountsRemoveManagedAccount [ Pass Failure ]
+crbug.com/512422445 ManageSyncSettingsTestCase/testSwitchToManagedAccountFromAccountMenu [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: reader_mode.
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testUpdateReaderModeFont [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testTapReaderModeChipShowsOptionsView [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testChangeReaderModeFontSizeFromOptionsView [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testChangeReaderModeThemeFromOptionsView [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testTapCloseButtonInOptionsView [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testTapTurnOffButtonInOptionsView [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testTapOutsideOptionsViewDismissesIt [ Pass Failure ]
+crbug.com/481633359 [ Device ] ReaderModeTestCase/testSampleContextualChipVisibleInReaderMode [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: supervised_user.
+crbug.com/476358542 SupervisedUserWithParentalControlsTestCase/testSupervisedUserSignedOutOnPolicyChange [ Pass Failure ]
+crbug.com/435140688 [ Device ] SupervisedUserWithParentalControlsTestCase/testSupervisedUserInterstitialOnBackButton [ Pass Failure ]
+crbug.com/435140688 [ Device ] SupervisedUserWithParentalControlsTestCase/testSupervisedUserURLFilteringReloadsOnlyRealizedExistingWebStates [ Pass Failure ]
+crbug.com/435140688 [ Device ] SupervisedUserWithParentalControlsTestCase/testSupervisedUserWithAllowAllFilteringIsBlockedOnURLBlockListing [ Pass Failure ]
+crbug.com/435140688 [ Device ] SupervisedUserWithParentalControlsTestCase/testSupervisedUserWithOnlyAllowCertainSitesFilteringIsBlockedOnFilterChange [ Pass Failure ]
+crbug.com/435140688 [ Device ] SupervisedUserWithParentalControlsTestCase/testSupervisedUserWithAllowAllSitesFilteringIsUnblockedOnFilterChange [ Pass Failure ]
+crbug.com/435140688 [ Device ] SupervisedUserWithParentalControlsTestCase/testSupervisedUserInterstitialOnLocalApprovalRequestFromWaitingScreen [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: autofill.
+crbug.com/427699033 [ iOS26 iOS27 iPad Device ] FormInputAccessoryEGTest/testManualFillButtonTitleIsHiddenInCompactMode [ Pass Failure ]
+crbug.com/427699033 [ iOS26 iOS27 iPad Simulator ] FormInputAccessoryEGTest/testManualFillButtonTitleIsHiddenInCompactMode [ Failure ]
+# Can't be tested until HTTPS tests are possible.
+crbug.com/41428751 [ Device ] CreditCardViewControllerTestCase/testCreditCardServerNumberRequiresCVC [ Pass Failure ]
+crbug.com/41428751 [ Simulator ] CreditCardViewControllerTestCase/testCreditCardServerNumberRequiresCVC [ Failure ]
+crbug.com/40250530 CreditCardViewControllerTestCase/testTappingKeyboardDismissCreditCardControllerPopOver [ Pass Failure ]
+crbug.com/40776865 [ Simulator ] FallbackCoordinatorTestCase/testOpeningIncognitoTabsDoNotLeak [ Pass Failure ]
+crbug.com/41428686 [ iPad Device ] PasswordViewControllerTestCase/testTappingKeyboardDismissPasswordControllerPopOver [ Pass Failure ]
+crbug.com/41428686 [ iPad Simulator ] PasswordViewControllerTestCase/testTappingKeyboardDismissPasswordControllerPopOver [ Failure ]
+crbug.com/371189341 [ Device ] PasswordViewControllerTestCase/testPasswordGenerationFallbackSignedInPasswordsDisabled [ Pass Failure ]
+crbug.com/371189341 [ Device ] PasswordViewControllerTestCase/testPasswordGenerationFallbackSignedInEncryptionError [ Pass Failure ]
+crbug.com/444085918 PaymentsSuggestionBottomSheetEGTest/testOpenPaymentsBottomSheetUseCreditCard [ Pass Failure ]
+crbug.com/444085918 PaymentsSuggestionBottomSheetWithNewBlurEGTest/testOpenPaymentsBottomSheetUseCreditCard [ Pass Failure ]
+crbug.com/444033658 PaymentsSuggestionBottomSheetEGTest/testOpenPaymentsBottomSheetUseCreditCardWithNewBlur [ Pass Failure ]
+crbug.com/444033658 PaymentsSuggestionBottomSheetWithNewBlurEGTest/testOpenPaymentsBottomSheetUseCreditCardWithNewBlur [ Pass Failure ]
+crbug.com/415030578 PaymentsSuggestionBottomSheetEGTest/testAcceptedSuggestionIndexLogged [ Pass Failure ]
+crbug.com/415030578 PaymentsSuggestionBottomSheetWithNewBlurEGTest/testAcceptedSuggestionIndexLogged [ Pass Failure ]
+crbug.com/483995503 PaymentsSuggestionBottomSheetEGTest/testPaymentsBottomSheetNotShownAfterFieldTypeChanges [ Pass Failure ]
+crbug.com/483995503 PaymentsSuggestionBottomSheetWithNewBlurEGTest/testPaymentsBottomSheetNotShownAfterFieldTypeChanges [ Pass Failure ]
+crbug.com/553394296 PaymentsSuggestionBottomSheetEGTest/testPaymentsBottomSheetDismissesOnCrossDocumentNavigation [ Pass Failure ]
+crbug.com/553394296 PaymentsSuggestionBottomSheetWithNewBlurEGTest/testPaymentsBottomSheetDismissesOnCrossDocumentNavigation [ Pass Failure ]
+# Crashes the test runner: registers the default handlers a second time.
+crbug.com/477508948 SaveCardInfobarEGTest/testOfferUpstream_FullData_PaymentsAccepts_Xframe [ Skip ]
+crbug.com/477508948 SaveCardInfobarEGTest/testUserData_LocalSave_UserAccepts_Xframe [ Skip ]
+crbug.com/507579591 SaveCardInfobarEGTest/testNotOfferLocalSave_MaxStrikesReached [ Pass Failure ]
+crbug.com/440644620 SaveCardInfobarEGTest/testInfobarWithoutBadge [ Pass Failure ]
+crbug.com/428189566 SaveProfileEGTest/testSubmissionCountReporting_ScheduledTask [ Skip ]
+crbug.com/40157443 [ iPad ] AutofillAddCreditCardTestCase/testCancelButtonDismissesScreen [ Pass Failure ]
+crbug.com/40157443 [ iPad ] AutofillAddCreditCardTestCase/testAddButtonOnValidNumber [ Pass Failure ]
+crbug.com/451607065 [ Device ] AutofillCvcStorageSettingsTestCase/testDeleteActionsAreRecorded [ Pass Failure ]
+crbug.com/576277206 [ iOS26 iPad Simulator ] AutofillCvcStorageSettingsTestCase/testDeleteActionsAreRecorded [ Pass Failure ]
+crbug.com/485239638 [ Device ] AutofillCreditCardSettingsTestCase/testServerCardViewSkipsMandatoryReauth [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: tab_switcher.
+crbug.com/415929742 [ Device ] TabStripSharedGroupTestCase/testTabStripLastTabCloseInSharedGroupAlertAsMember [ Pass Failure ]
+crbug.com/415929742 [ Device ] TabStripSharedGroupTestCase/testTabStripLastTabCloseInSharedGroupAlertAsOwner [ Pass Failure ]
+crbug.com/440615724 PinnedTabsGenericConsistencyTestCase/testOneActiveTabAtATime [ Pass Failure ]
+crbug.com/441313129 PinnedTabsGenericConsistencyTestCase/testPinnedTabsScrolling [ Pass Failure ]
+crbug.com/40752508 [ iPad ] TabGridTestCase/testDragAndDropAtEdgeToCreateNewWindow [ Pass Failure ]
+crbug.com/40752508 [ iPad Simulator iOS27 ] TabGridTestCase/testDragAndDropAtEdgeToCreateNewWindow [ Failure ]
+crbug.com/427699033 [ iOS26 iOS27 ] TabGridTestCase/testIncognitoDragAndDropAtEdgeToCreateNewWindow [ Pass Failure ]
+crbug.com/427699033 [ iOS27 iPad Simulator ] TabGridTestCase/testIncognitoDragAndDropAtEdgeToCreateNewWindow [ Failure ]
+crbug.com/431223435 TabGridTestCase/testDragAndDropAllItemsToOtherWindow [ Pass Failure ]
+crbug.com/40864920 TabGridTestCase/testDragAndDropURLBetweenWindows [ Pass Failure ]
+crbug.com/40864920 [ iPad Simulator ] TabGridTestCase/testDragAndDropURLBetweenWindows [ Failure ]
+crbug.com/40868899 [ iPad ] TabGridTestCase/testDragAndDropIncognitoURLInMainWindow [ Pass Failure ]
+crbug.com/40868899 [ iPad Simulator ] TabGridTestCase/testDragAndDropIncognitoURLInMainWindow [ Failure ]
+crbug.com/40240640 TabGridTestCase/testDragAndDropMainURLInIncognitoWindow [ Pass Failure ]
+crbug.com/40240640 [ iPad Simulator ] TabGridTestCase/testDragAndDropMainURLInIncognitoWindow [ Failure ]
+crbug.com/40900596 TabGridTestCase/testTabGridBulkActionAddToReadingList [ Pass Failure ]
+crbug.com/332714545 TabGridTestCase/testSearchRegularOpenTabs [ Pass Failure ]
+crbug.com/448400563 TabGridTestCase/testOpenSearchedTabFromAnotherWindowWhenTabGridIsVisible [ Pass Failure ]
+# Crashes the app and the test runner on iPad simulators.
+crbug.com/448400563 [ iPad Simulator ] TabGridTestCase/testOpenSearchedTabFromAnotherWindowWhenTabGridIsVisible [ Skip ]
+crbug.com/515080596 [ iPhone Simulator ] SharedTabGroupsTestCase/testUserEducationInGrid [ Pass Failure ]
+crbug.com/515680760 [ iPhone Simulator ] SharedTabGroupsTestCase/testShareGroupButCancel [ Pass Failure ]
+crbug.com/468318824 SharedTabGroupsTestCase/testShareGroupAndManageGroupUsingFacePile [ Pass Failure ]
+crbug.com/411064928 SharedTabGroupsTestCase/testForegroundIPH [ Pass Failure ]
+crbug.com/489048084 SharedTabGroupsTestCase/testShareGroupAndDeleteUsingContextMenus [ Pass Failure ]
+crbug.com/489048084 SharedTabGroupsTestCase/testJoinGroupAndLeaveUsingContextMenus [ Pass Failure ]
+crbug.com/510742361 [ iPad ] SharedTabGroupsTestCase/testLastTabClosedAlerts [ Pass Failure ]
+crbug.com/460745987 SharedTabGroupsTestCase/testLastTabClosedMemberAlert [ Pass Failure ]
+crbug.com/460746048 SharedTabGroupsTestCase/testRecentActivity [ Pass Failure ]
+crbug.com/427699033 [ iOS26 iOS27 ] SharedTabGroupsTestCase/testLastTabMovedOutOfWindow [ Pass Failure ]
+crbug.com/427699033 [ iOS26 iOS27 iPad Simulator ] SharedTabGroupsTestCase/testLastTabMovedOutOfWindow [ Failure ]
+crbug.com/454567832 SharedTabGroupsTestCase/testCloseLastTabInSharedGroup [ Pass Failure ]
+crbug.com/442448866 SharedTabGroupsTestCase/testMoveLastTabInSharedGroup [ Pass Failure ]
+crbug.com/489048084 SharedTabGroupsTestCase/testLastTabCloseWithClearBrowsingData [ Pass Failure ]
+crbug.com/435327953 SharedTabGroupsTestCase/testAddNewTabFromAnotherAccount [ Pass Failure ]
+crbug.com/435327953 [ Simulator ] SharedTabGroupsTestCase/testAddNewTabFromAnotherAccount [ Failure Crash ]
+crbug.com/440612088 SharedTabGroupsTestCase/testTapRecentActivityItems [ Pass Failure ]
+crbug.com/440612088 [ iPhone Simulator ] SharedTabGroupsTestCase/testTapRecentActivityItems [ Failure ]
+crbug.com/456719999 [ iOS26 iOS27 Simulator ] SharedTabGroupsTestCase/testActivitySummary [ Pass Failure ]
+crbug.com/470347303 [ iPad Device ] SharedTabGroupsTestCase/testActivityLabel [ Failure ]
+crbug.com/449204815 [ iPad Device ] SharedTabGroupsTestCase/testTabSwitcherBadge [ Failure ]
+crbug.com/454262963 SharedTabGroupsTestCase/testActivityIndicatorsOnToolbar [ Pass Failure ]
+crbug.com/450935810 [ Simulator ] SharedTabGroupsPanelTestCase/testSharedTabGroupsPanelDeleteSharedGroup [ Pass Failure ]
+crbug.com/482348307 [ iPad Simulator ] SharedTabGroupsPanelTestCase/testSharedTabGroupsPanelLeaveSharedGroup [ Pass Failure ]
+crbug.com/451982715 SharedTabGroupsPanelTestCase/testNotificationOnSharedGroupRemoved [ Pass Failure ]
+crbug.com/485878685 SharedTabGroupsSigninTestCase/testJoinGroupNotSignedIn [ Pass Failure ]
+crbug.com/429118547 [ Device ] SharedTabGroupsVersioningTestCase/testSharingPromptsToUpdate [ Pass Failure ]
+crbug.com/449704034 TabGroupSyncTestCase/testRenameGroupInTabGrid [ Pass Failure ]
+crbug.com/520299135 TabGroupSyncSignInTestCase/testSignOutKeepsPreviousGroupDeletesNewGroup [ Pass Failure ]
+crbug.com/419246344 [ Simulator ] TabGroupSyncSignInTestCase/testStopSyncingTabsKeepsPreviousGroupDeletesNewGroup [ Pass Failure ]
+crbug.com/378900884 [ Simulator ] TabGroupsTestCase/testMovingBetweenGroupsUsingGridContextMenuInRegularGrid [ Pass Failure ]
+crbug.com/460748104 TabGroupsTestCase/testMovingBetweenGroupsUsingGridContextMenuInIncognitoGrid [ Pass Failure ]
+crbug.com/524679738 TabGroupsTestCase/testDragAndDropLastTabToOtherWindow [ Pass Failure ]
+crbug.com/427699033 [ iOS26 iOS27 ] TabGroupsTestCase/testDragAndDropLastTabToOtherWindow [ Pass Failure ]
+crbug.com/427699033 [ iOS26 iOS27 ] TabGroupsTestCase/testReopenGroupFromAnotherWindow [ Pass Failure ]
+crbug.com/429593547 [ iOS26 iOS27 ] TabGroupsTestCase/testOpenTabFromGroupView [ Pass Failure ]
+# See also crbug.com/518530903.
+crbug.com/456744844 [ Simulator ] TabGroupsTestCase/testCreateGroupFromTabInAnotherWindow [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: settings.
+crbug.com/427699033 [ iOS26 iOS27 iPad ] QuickDeleteBrowsingDataTestCase/testSelectionUpdateInMultiwindow [ Failure ]
+crbug.com/443704367 [ Simulator ] QuickDeleteTestCase/testSummaryUpdatesWhenTimeRangeChanges [ Pass Failure ]
+crbug.com/521777875 [ iPhone Simulator ] QuickDeleteTestCase/testTabsForDeletion [ Pass Failure ]
+crbug.com/446597022 [ iOS26 iOS27 Device ] QuickDeleteTestCase/testTabsForDeletionInTabGroup [ Pass Failure ]
+crbug.com/358141981 QuickDeleteTestCase/testTabsForDeletionInMultiwindow [ Pass Failure ]
+crbug.com/464192351 [ iPad iOS18 ] QuickDeleteTestCase/testTimeRangeSelectionUpdatesInMultiwindow [ Pass Failure ]
+crbug.com/464192351 [ iPad iOS26 iOS27 ] QuickDeleteTestCase/testTimeRangeSelectionUpdatesInMultiwindow [ Failure ]
+crbug.com/443704367 [ Simulator ] QuickDeleteTestCase/testUserSignedInWhenClearingBrowsingData [ Pass Failure ]
+crbug.com/464192351 [ iPad iOS18 ] QuickDeleteTestCase/testPrefChangeUpdatesInMultiwindow [ Pass Failure ]
+crbug.com/464192351 [ iPad iOS26 iOS27 ] QuickDeleteTestCase/testPrefChangeUpdatesInMultiwindow [ Failure ]
+crbug.com/511159692 PasswordCheckupTestCase/testResolveLastIssueByEditingPassword [ Pass Failure ]
+crbug.com/493968696 PasswordCheckupTestCase/testChangeCompromisedPasswordToSafePassword [ Pass Failure ]
+crbug.com/452549992 [ Simulator ] PasswordCheckupTestCase/testChangeMutedPasswordToWeakPassword [ Pass Failure ]
+crbug.com/460743577 [ iPad iOS18 ] PasswordManagerAddTestCase/testAutoScroll [ Pass Failure ]
+crbug.com/512447836 [ Device ] PasswordManagerAccountStorageTestCase/testMovePasswordToAccountStoreIfSignedIn [ Pass Failure ]
+crbug.com/444185069 [ iOS26 iOS27 Device ] PasswordManagerWidgetPromoTestCase/testOpenSearchPasswordsWidget [ Pass Failure ]
+crbug.com/444185069 [ iOS26 iOS27 Device ] PasswordManagerWidgetPromoTestCase/testGoingBackAfterOpeningInSearchMode [ Pass Failure ]
+crbug.com/444185069 [ iOS26 iOS27 Device ] PasswordManagerSearchTestCase/testSearchPasswords [ Pass Failure ]
+crbug.com/444185069 [ iOS26 iOS27 Device ] PasswordManagerSearchTestCase/testSearchAndDeleteAllPasswords [ Pass Failure ]
+crbug.com/442382530 [ Device ] PasswordManagerSearchTestCase/testManyPasswords [ Pass Failure ]
+crbug.com/444185069 [ iOS26 iOS27 Device ] PasswordManagerSearchTestCase/testCanEditPasswordsFromASearch [ Pass Failure ]
+crbug.com/444185069 [ iOS26 iOS27 Device ] PasswordManagerDetailsTestCase/testLayoutFederated [ Pass Failure ]
+crbug.com/471435549 [ Device ] PasswordManagerEditAndDeleteTestCase/testEditPasswordWithOnlyIncognitoTabOpen [ Pass Failure ]
+crbug.com/441013259 [ Device ] PasswordSharingTestCase/testTappingShareInFirstRunExperienceView [ Pass Failure ]
+crbug.com/485866589 [ iPad iOS18 ] PrivacySafeBrowsingTestCase/testPrivacySafeBrowsingMultiWindow [ Pass Failure ]
+crbug.com/485866589 [ iPad iOS26 iOS27 ] PrivacySafeBrowsingTestCase/testPrivacySafeBrowsingMultiWindow [ Failure ]
+crbug.com/386926969 SearchEngineSettingsEEATestCase/testChangeSearchEngine [ Failure ]
+crbug.com/455701421 [ iPhone Device iOS18 ] SettingsAccessibilityTestCase/testAccessibilityOnBandwidthPreloadWebpagesSettingsPage [ Pass Failure ]
+crbug.com/451929382 SettingsTestCase/testClearCookies [ Pass Failure ]
+crbug.com/509785308 InactiveTabsSettingsTestCase/testInactiveTabsPreferenceChange [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: auth, web, passwords.
+crbug.com/440027809 [ iOS26 iOS27 Device ] ForcedSigninTestCase/testSigninScreenTransferToOtherWindow [ Pass Failure ]
+crbug.com/440027809 [ iOS26 iOS27 iPad Device ] ForcedSigninTestCase/testSigninScreenTransferToOtherWindow [ Failure ]
+# Fails to background the app from `backgroundApplication`.
+crbug.com/427699033 [ iOS26 iOS27 ] ForcedSigninTestCase/testSignInScreenOnIncognitoWithMultiWindows [ Pass Failure ]
+crbug.com/384874382 ForcedSigninTestCase/testSignInScreenOnTabSwitcherWithMultiWindows [ Pass Failure ]
+crbug.com/384874382 ForcedSigninTestCase/testSignInScreenOnRegularSigninPromptMultiWindows [ Pass Failure ]
+crbug.com/384874382 [ iPad ] ForcedSigninTestCase/testSignInScreenOnRegularSigninPromptMultiWindows [ Failure ]
+crbug.com/384874382 ForcedSigninTestCase/testSignInScreenOnModalMultiWindows [ Pass Failure ]
+crbug.com/411035267 SeparateProfilesTestCase/testSwitchFromPersonalToManagedAndBack [ Pass Failure ]
+crbug.com/411035267 [ Device ] SeparateProfilesTestCase/testRefuseToSwitchToManageAccount [ Pass Failure ]
+# Fails on ASan and fieldtrial builds.
+crbug.com/411035267 [ Device ] SeparateProfilesTestCase/testProfileDeletedOnManagedAccountGone [ Pass Failure ]
+crbug.com/429403548 [ iOS18 ] SigninCoordinatorTestCase/testSignInCancelAddAccount [ Pass Failure ]
+crbug.com/453582633 SigninCoordinatorTestCase/testSignInFromNTPAndDeclineHistorySync [ Pass Failure ]
+# See also crbug.com/386196414.
+crbug.com/568719330 SigninCoordinatorTestCase/testSyncOnWhenPassphraseIntroducedAfterSignIn [ Pass Failure ]
+crbug.com/500733745 [ iOS27 ] CredentialSuggestionBottomSheetEGTest/testAutoSubmission [ Failure ]
+crbug.com/40279461 CredentialSuggestionBottomSheetEGTest/testOpenCredentialBottomSheetExpand [ Pass Failure ]
+crbug.com/40279461 CredentialSuggestionBottomSheetEGTest/testOpenCredentialBottomSheetNoUsername [ Pass Failure ]
+crbug.com/361518360 CredentialSuggestionBottomSheetEGTest/testOpenCredentialBottomSheetWithSingleSharedPassword [ Pass Failure ]
+crbug.com/361518360 CredentialSuggestionBottomSheetEGTest/testOpenCredentialBottomSheetWithSharedPasswordsAndUseKeyboard [ Pass Failure ]
+crbug.com/361518360 [ iPhone Device ] CredentialSuggestionBottomSheetEGTest/testOpenCredentialBottomSheetWithSharedPasswordsAndUseKeyboard [ Failure ]
+crbug.com/40260214 [ Simulator ] PasswordControllerEGTest/testPasswordGeneration [ Pass Failure ]
+crbug.com/371189341 [ Device ] PasswordControllerEGTest/testPasswordGenerationWhileSignedInWithPasswordsDisabled [ Pass Failure ]
+crbug.com/371189341 [ Device ] PasswordControllerEGTest/testPasswordGenerationWhileSignedInWithError [ Pass Failure ]
+crbug.com/453627553 PasswordControllerEGTest/testSaveTypedCredentialInUff [ Pass Failure ]
+crbug.com/453627553 PasswordControllerEGTest/testUpdateTypedCredentialInUff [ Pass Failure ]
+crbug.com/429140546 PasswordControllerEGTest/testPasswordBreachEventReported [ Pass Failure ]
+crbug.com/425885707 PasswordSuggestionEGTest/testFillNewPasswordWithProactiveBottomSheet [ Pass Failure ]
+crbug.com/440577394 PasswordSuggestionEGTest/testUserSignedOut [ Pass Failure ]
+# WKWebView does not open a new window as expected by this test.
+crbug.com/41299306 BrowsingTestCase/testBrowsingPreventDefaultWithLinkOpenedByJavascript [ Failure ]
+crbug.com/40234734 BrowsingTestCase/testBrowsingWindowDataLinkScriptRedirect [ Failure ]
+crbug.com/362621166 BrowsingTestCase/testBrowsingUserJavaScriptNavigation [ Pass Failure ]
+crbug.com/362621166 [ iPhone ] BrowsingTestCase/testBrowsingUserJavaScriptNavigation [ Failure ]
+crbug.com/362621166 BrowsingTestCase/testBrowsingUserJavaScriptWithoutNavigation [ Pass Failure ]
+crbug.com/362621166 [ iPhone ] BrowsingTestCase/testBrowsingUserJavaScriptWithoutNavigation [ Failure ]
+crbug.com/395066388 [ Simulator ] BrowsingPreventDefaultTestCase/testPreventDefaultOverridesTargetBlank [ Pass Failure ]
+crbug.com/395066388 [ Simulator ] BrowsingPreventDefaultTestCase/testPreventDefaultOverridesWindowOpen [ Pass Failure ]
+crbug.com/568719330 ChildWindowOpenByDOMTestCase/testWindowClosedWithoutName [ Pass Failure ]
+crbug.com/443199230 ErrorPageTestCase/testBackForwardErrorPage [ Pass Failure ]
+crbug.com/1185639 [ Simulator ] ErrorPageTestCase/testNavigateForwardToErrorPage [ Pass Failure ]
+crbug.com/495387290 [ Simulator ] FormsTestCase/testRepostFormCancellingAfterRedirect [ Pass Failure ]
+crbug.com/1147654 FormsTestCase/testPostFormEntryWithKeyboard [ Pass Failure ]
+crbug.com/405302626 LookalikeUrlTestCase/testRestoreToWarningPagePreservesHistory [ Pass Failure ]
+crbug.com/435144099 [ Device ] RestoreWithCacheTestCase/testRestoreHistory [ Pass Failure ]
+crbug.com/435144099 [ Device ] RestoreWithSynthesizedTestCase/testRestoreHistory [ Pass Failure ]
+crbug.com/361752763 WindowOpenByDOMTestCase/testLinkWithBlankTargetWithImmediateClose [ Pass Failure ]
+
+# Migrated from in-source test disable annotations: omnibox, toolbar, NTP,
+# popup menu, fullscreen, find in page, overscroll.
+# PopupMenuTestCase/testOpenAndCloseToolsMenu only fails on iPad in
+# multitasking (compact width).
+crbug.com/367287646 PriceTrackingPromoViewTestCase/testFirstOptInFlow [ Failure ]
+crbug.com/443707327 TabResumptionTestCase/testTabResumptionTileDisplayedForLocalTab [ Pass Failure ]
+crbug.com/443707327 [ Simulator ] TabResumptionTestCase/testShowMoreVisible [ Pass Failure ]
+crbug.com/522830813 NTPHomeTestCase/testMinimumHeight [ Pass Failure ]
+crbug.com/522830813 [ iPad iOS27 ] NTPHomeTestCase/testMinimumHeight [ Failure ]
+crbug.com/387934031 NTPHomeTestCase/testCollectionShortcuts [ Failure ]
+crbug.com/399854107 NTPHomeTestCase/testDefocusOmniboxTapWorks [ Pass Failure ]
+crbug.com/399854107 [ iPhone ] NTPHomeTestCase/testDefocusOmniboxTapWorks [ Failure ]
+crbug.com/370968166 [ Device ] NTPHomeTestCase/testOpenMultipleTabsandChangeOrientation [ Pass Failure ]
+crbug.com/513858033 [ iPad Simulator ] NTPHomeTestCase/testPositionRestoredWithShiftingOffset [ Pass Failure ]
+crbug.com/476358542 [ iOS26 iOS27 ] FindInPageTestCase/testFindInPageSwitchOrientation [ Pass Failure ]
+crbug.com/40283787 FindInPageTestCase/testFindInPageDismissKeyboard [ Pass Failure ]
+crbug.com/40940589 FindInPageTestCase/testFindInPageSwitchingTabs [ Pass Failure ]
+crbug.com/40922941 [ iPhone ] FindInPageTestCase/testFindInPageSwitchingTabs [ Pass Failure ]
+crbug.com/366752786 FindInPageTestCase/testFindInPageRTL [ Pass Failure ]
+crbug.com/437314322 [ iOS26 iOS27 ] FindInPageTestCase/testFindInPagePDF [ Pass Failure ]
+crbug.com/437314322 FindInPageTestCase/testWithBottomOmnibox [ Pass Failure ]
+crbug.com/437314322 [ iPhone Simulator iOS27 ] FindInPageTestCase/testWithBottomOmnibox [ Failure ]
+crbug.com/360362288 [ Simulator iOS18 ] FindInPageTestCase/testFindInPageCopyPaste [ Pass Failure ]
+crbug.com/461735565 ZZZFullscreenTestCase/testChromeToChromeURLKeepsHeaderOnScreen [ Pass Failure ]
+crbug.com/461735565 FullscreenSmoothScrollingTestCase/testChromeToChromeURLKeepsHeaderOnScreen [ Pass Failure ]
+crbug.com/461735565 FullscreenBottomOmniboxTestCase/testChromeToChromeURLKeepsHeaderOnScreen [ Pass Failure ]
+crbug.com/461735565 FullscreenNoBroadcasterTestCase/testChromeToChromeURLKeepsHeaderOnScreen [ Pass Failure ]
+crbug.com/461735565 FullscreenRefactoringTestCase/testChromeToChromeURLKeepsHeaderOnScreen [ Pass Failure ]
+crbug.com/437072563 [ Device ] ZZZFullscreenTestCase/testShowHeaderOnErrorPage [ Pass Failure ]
+crbug.com/437072563 [ Device ] FullscreenSmoothScrollingTestCase/testShowHeaderOnErrorPage [ Pass Failure ]
+crbug.com/437072563 [ Device ] FullscreenBottomOmniboxTestCase/testShowHeaderOnErrorPage [ Pass Failure ]
+crbug.com/437072563 [ Device ] FullscreenNoBroadcasterTestCase/testShowHeaderOnErrorPage [ Pass Failure ]
+crbug.com/437072563 [ Device ] FullscreenRefactoringTestCase/testShowHeaderOnErrorPage [ Pass Failure ]
+crbug.com/518881258 [ Simulator ] NewTabPageTestCase/testNewTabByNewTabButtonTapWithNTPLocation [ Pass Failure ]
+crbug.com/518881258 [ Simulator ] NewTabPageTestCase/testNewTabFromTabGridViewWithNTPLocation [ Pass Failure ]
+crbug.com/348177731 OmniboxPopupWithFakeSuggestionActionsTestCase/testTapCallButton [ Pass Failure ]
+crbug.com/348177731 [ iPhone Device ] OmniboxPopupWithFakeSuggestionActionsTestCase/testTapCallButton [ Failure ]
+crbug.com/348177731 OmniboxPopupWithFakeSuggestionActionsTestCase/testReturnKeyOnCallButton [ Pass Failure ]
+crbug.com/348177731 [ Device ] OmniboxPopupWithFakeSuggestionActionsTestCase/testReturnKeyOnCallButton [ Failure ]
+crbug.com/482376763 [ iPhone Device ] OmniboxEditTestCase/testRichInlineDefaultSuggestion [ Pass Failure ]
+crbug.com/449210011 [ iPad Device ] LocationBarSteadyStateTestCase/testCopyPaste [ Pass Failure ]
+crbug.com/460741696 LocationBarEditStateTestCase/testSelection [ Pass Failure ]
+crbug.com/455132352 LocationBarEditStateTestCase/testTapBehaviors [ Pass Failure ]
+crbug.com/40066782 [ iPad ] OmniboxPopupCarouselTestCase/testAddingMostVisitedTiles [ Pass Failure ]
+crbug.com/440575187 OmniboxPopupCarouselTestCase/testTappingAndScrollingMostVisitedTiles [ Pass Failure ]
+crbug.com/440566014 OmniboxPopupCarouselTestCase/testDeleteMostVisitedTiles [ Pass Failure ]
+crbug.com/513297149 OmniboxPopupWithFakeSuggestionTestCase/testTapAppendArrowButton [ Failure ]
+crbug.com/443702124 OverscrollActionsTestCase/testWebViewClose [ Pass Failure ]
+crbug.com/443702124 [ iPhone Device ] OverscrollActionsTestCase/testWebViewClose [ Failure ]
+crbug.com/443702124 OverscrollActionsTestCase/testWebViewAddTab [ Pass Failure ]
+crbug.com/443702124 [ iPhone Device ] OverscrollActionsTestCase/testWebViewAddTab [ Failure ]
+crbug.com/443702124 OverscrollActionsTestCase/testWebViewReload [ Pass Failure ]
+crbug.com/443702124 [ iPhone Device ] OverscrollActionsTestCase/testWebViewReload [ Failure ]
+crbug.com/40263342 OverflowMenuTestCase/testNonErrorDestinationHighlights [ Failure ]
+crbug.com/339689514 OverflowMenuTestCase/testOverflowMenuFooterFamilyLink [ Pass Failure ]
+crbug.com/40817696 [ iPad ] PopupMenuTestCase/testOpenAndCloseToolsMenu [ Pass Failure ]
+crbug.com/570598001 PopupMenuTestCase/testOverflowMenuIPHForHistoryShow2StepsWhenUserOpensMenu [ Pass Failure ]
+crbug.com/570598001 PopupMenuTestCase/testOverflowMenuIPHForHistoryShow2StepsWhen1stStepTimeout [ Pass Failure ]
+crbug.com/570598001 PopupMenuTestCase/testOverflowMenuIPHForHistoryNotShow2ndStep [ Pass Failure ]
+crbug.com/443913539 AdaptiveToolbarTestCase/testFocusOmniboxFromOtherOrientation [ Failure ]
+crbug.com/443913539 AdaptiveToolbarBottomOmniboxTestCase/testFocusOmniboxFromOtherOrientation [ Failure ]
+crbug.com/443913539 AdaptiveToolbarTestCase/testFocusOmniboxFromPortrait [ Failure ]
+crbug.com/443913539 AdaptiveToolbarBottomOmniboxTestCase/testFocusOmniboxFromPortrait [ Failure ]
+crbug.com/464193172 AdaptiveToolbarTestCase/testBottomToolbarHeightAfterClosingTab [ Pass Failure ]
+crbug.com/464193172 AdaptiveToolbarBottomOmniboxTestCase/testBottomToolbarHeightAfterClosingTab [ Pass Failure ]
+crbug.com/363988044 AdaptiveToolbarBottomOmniboxTestCase/testTapLocationBarAboveTheKeyboard [ Pass Failure ]
+crbug.com/41272886 [ iPad ] LegacyToolbarTestCase/testToolbarOmniboxHideKeyboard [ Failure ]
+crbug.com/40572353 LegacyToolbarTestCase/testCopyPasteURL [ Skip ]
+crbug.com/519981855 LegacyToolbarTestCase/testToolbarOmniboxTyping [ Pass Failure ]
+crbug.com/442817314 [ iOS26 iOS27 ] TabGroupIndicatorTestCase/testTabGroupIndicatorMenuActionsRenameGroup [ Pass Failure ]
+
 # Gardening surpression 2026-07-09
 crbug.com/533057223 [ iPad ] SigninCoordinatorTestCase/testSyncOnWhenPassphraseIntroducedAfterSignIn [ Pass Failure ]
 crbug.com/533075931 [ iOS18 iOS26 iPad Simulator ] GeminiCopresenceTestCase/testConversationPersistenceOnSignOut [ Pass Failure ]
@@ -63,7 +394,7 @@ crbug.com/536840723 [ iPad Simulator ] TabGridTestCase/testEmptyStateAfterNoResu
 
 # Gardening suppression 2026-07-30
 crbug.com/540811503 DeeplinkSigninTestCase/testCrossDeviceSigninSignedInTargetAccountNotOnDevice [Pass Failure]
-crbug.com/540829196 DeeplinkSigninTestCase/testCrossDeviceSigninSignedInTargetAccountOnDevice [Failure]
+crbug.com/540829196 DeeplinkSigninTestCase/testCrossDeviceSigninSignedInTargetAccountOnDevice [ Pass Failure ]
 crbug.com/540481922 [iOS18 iPhone] SnapshotTestCase/testSnapshotWithScrollDown [Pass Failure]
 
 # Multi-window iPad iOS 27 issues
@@ -86,10 +417,10 @@ crbug.com/545123760 [ iPad Simulator ] TabGroupsTestCase/testReopenGroupFromAnot
 crbug.com/545122908 [ iPad Simulator ] MailtoHandlerTestCase/testDefaultAppsInMultiWindow [ Pass Failure ]
 
 # Gardening suppression 2026-08-12
-crbug.com/437843552 [ Simulator ] HistorySystemTestCase/testSearchSyncedHistory [ Pass Failure ]
-crbug.com/545634498 [ iPad Device ] HistorySystemTestCase/testSearchSyncedHistory [ Pass Failure ]
 crbug.com/545633687 [ Simulator ] TabGroupsTestCase/testReopenGroupFromAnotherWindow [ Pass Failure ]
 crbug.com/545633687 [ iPad Device ] TabGroupsTestCase/testReopenGroupFromAnotherWindow [ Pass Failure ]
+# Takes down the test run on iPad simulators.
+crbug.com/427699033 [ iOS26 iOS27 iPad Simulator ] TabGroupsTestCase/testReopenGroupFromAnotherWindow [ Skip ]
 
 # Gardening suppression 2026-08-20
 crbug.com/549761710 InternalDiscoverFeedTestCase/testFeedAblationHidesFeed [ Pass Failure ]
@@ -104,16 +435,13 @@ crbug.com/552121965 [ iOS26.5 iPad ] ChildWindowOpenByDOMTestCase/testWindowClos
 # Gardening suppression 2026-08-27
 crbug.com/553554439 [ iOS26.5 iPad Simulator ] ReadingListTestCase/testMarkMixedEntriesRead [ Pass Failure ]
 
-# Gardening suppression 2026-08-28
-crbug.com/554049961 GeminiMultiTabTestCase/testActiveTabNotBlockedOnTabGridWhenSharedTabExists [ Failure ]
-
 # Gardening suppression 2026-09-04
 crbug.com/557277868 ContentSuggestionsTestCase/testMostVisitedPinnedSiteDragAndDrop [ Pass Failure ]
 crbug.com/557277111 [ Simulator ] TranslateInfobarTestCase/testTranslateManualTrigger [ Pass Failure ]
 crbug.com/557276943 [ iPhone Simulator ] SnapshotTestCase/testSnapshotWithScrollDown [ Pass Failure ]
 crbug.com/557277287 ComposeboxEligiblityTestCase/testNoTabAttachmentsInImageGeneration [ Pass Failure ]
 crbug.com/557278120 [ iPad Simulator ] InfobarTestCase/testInfobarTopMostVisible [ Pass Failure ]
-crbug.com/557278184 [ iPad Simulator ] SaveToDriveTestCase/testSaveToDriveAccountRemoved [ Pass Failure ]
+crbug.com/557278184 [ iPad ] SaveToDriveTestCase/testSaveToDriveAccountRemoved [ Pass Failure ]
 crbug.com/557277880 [ iPad Simulator ] FeatureEngagementTestCase/testRequestDesktopTip [ Pass Failure ]
 crbug.com/557278187 [ iPad Simulator ] TabStripGroupTestCase/testDragLastTabOutOfGroupCancel [ Pass Failure ]
 crbug.com/557278123 [ iPhone ] PinnedTabsDragDropTestCase/testDragRegularTabInPinnedView [ Pass Failure ]
@@ -138,12 +466,10 @@ crbug.com/493866369 [ Device ] SendTabToSelfCoordinatorTestCase/testShareTabViaD
 crbug.com/493866369 [ Device ] SendTabToSelfCoordinatorTestCase/testShareTabViaDirectTargetInShareSheetAndVerifySuccessSnackbar [ Pass Failure ]
 
 # Gardening suppression 2026-09-21
-crbug.com/564394196 GeminiContainerTestCase/testOpenAppsActivityFromToolbar [ Failure ]
+crbug.com/564394196 GeminiContainerTestCase/testOpenAppsActivityFromToolbar [ Pass Failure ]
 
 # Gardening suppression 2026-09-22
 crbug.com/564394196 GeminiCopresenceTestCase/testOpenSettingsFromToolbar [ Pass Failure ]
-crbug.com/564394196 [ iPad ] GeminiDynamicSettingsTestCase/testLoadDynamicSettings [ Failure ]
-crbug.com/564394196 [ iPhone Simulator ] GeminiDynamicSettingsTestCase/testLoadDynamicSettings [ Pass Failure ]
 
 # Picture-in-picture issues on iPad
 # Gardening suppression 2026-09-23
@@ -154,8 +480,9 @@ crbug.com/497637049 [ iPad Device ] PictureInPictureTestCase/testDefaultBrowserS
 # Gardening suppression 2026-09-24
 crbug.com/565776423 [ Device ] DownloadManagerTestCase/testDownloadWarnProceedWhenDownloadProtectionEnabled [ Pass Failure ]
 crbug.com/565777195 [ iPad ] TabGroupsTestCase/testCreateGroupFromTabInAnotherWindow [ Pass Failure ]
+# Takes down the test run on iPad simulators.
+crbug.com/456744844 [ iPad Simulator ] TabGroupsTestCase/testCreateGroupFromTabInAnotherWindow [ Skip ]
 crbug.com/565792499 PasswordControllerEGTest/testLoginEventReported [ Pass Failure Skip Crash ]
-crbug.com/565748739 [ iOS27 iPad ] GeminiFirstRunTestCase/testVisualRichFRECarouselNavigation [ Pass Failure ]
 crbug.com/565749273 GeminiAppSwitchingTestCase/testAppSwitchingAISummarizationFloatyNotInvoked [ Pass Failure ]
 crbug.com/565749273 [ iOS26 iPad Device ] GeminiCopresenceTestCase/testConversationPersistenceOnSignOut [ Pass Failure ]
 crbug.com/565749273 GeminiCopresenceTestCase/testOpenAppsActivityFromToolbar [ Pass Failure ]
@@ -176,14 +503,12 @@ crbug.com/567174858 PageInfoTestCase/testOpeningURLFromLastVisitedDismissesPageI
 
 # Gardening suppression 2026-09-29
 crbug.com/565749273 GeminiAppSwitchingTestCase/testAppSwitchingAISummarizationIncognitoToNormalMode [ Pass Failure ]
-crbug.com/565749273 [ iPad Simulator ] GeminiAppSwitchingTestCase/testAppSwitchingAISummarizationPageLoadingSnackbar [ Pass Failure ]
+crbug.com/565749273 GeminiAppSwitchingTestCase/testAppSwitchingAISummarizationPageLoadingSnackbar [ Pass Failure ]
 crbug.com/567546565 [ Device ] WindowOpenByDOMTestCase/testLinkWithBlankTargetMultipleTimes [ Pass Failure ]
 
 # Gardening suppression 2026-10-01
 crbug.com/538053103 SendTabToSelfCoordinatorAutoOpenTestCase/testTabCardLabelPersistsAcrossRelaunch [ Pass Failure ]
 crbug.com/557196796 [ Simulator ] FileUploadPanelTestCase/testDriveFilePickerFromContextMenu [ Pass Failure ]
-crbug.com/556653764 [ iPad Simulator ] HistoryUITestCase/testContextMenuRepeatedShare [ Pass Failure ]
-crbug.com/568359121 [ iPhone Simulator ] AccountMenuTestCase/testSwitch [ Pass Failure ]
 crbug.com/568359962 [ iPhone Simulator ] AdaptiveToolbarBottomOmniboxTestCase/testTapLocationBarAboveTheKeyboardForVoiceOver [ Pass Failure ]
 crbug.com/568360510 [ iPad Simulator ] ContentSuggestionsTestCase/testMagicStackCompactedSetUpListCompleteAllItems [ Pass Failure ]
 crbug.com/568360452 [ iPad Simulator ] PasswordManagerDetailsTestCase/testShowHidePassword [ Pass Failure ]
@@ -219,17 +544,11 @@ crbug.com/572663884 [ Device ] FullscreenNoBroadcasterTestCase/testShowHeaderOnR
 crbug.com/572663884 [ Device ] FullscreenNoBroadcasterTestCase/testShowHeaderWhenChildTabCloses [ Pass Failure ]
 crbug.com/572663468 [ Device ] PopupMenuTestCase/testTabHistoryMenu [ Pass Failure ]
 crbug.com/572664294 [ Simulator ] AutofillCreditCardSettingsTestCase/testDisableReauthToggle [ Pass Failure ]
-crbug.com/572663823 [ Simulator ] BubblePresenterTestCase/testSendTabToSelfOmniboxIPH [ Pass Failure ]
 
 # Gardening suppression 2026-10-13
 crbug.com/565749273 GeminiAppSwitchingTestCase/testAppSwitchingAISummarizationFloatyInvoked [ Pass Failure ]
 crbug.com/573145552 [ Simulator ] AutofillEditCreditCardCvcMetricTestCase/testMetricCvcLeftBlank [ Pass Failure ]
 crbug.com/573145112 [ Simulator ] AutofillCreditCardSettingsTestCase/testToolbarDeleteButtonWithAddPaymentMethodFeatureEnabled [ Pass Failure ]
-
-# Gardening suppression 2026-10-14
-crbug.com/573630697 GeminiFirstRunTestCase/testAcceptPromoAndConsent [ Skip ]
-crbug.com/573630697 GeminiFirstRunTestCase/testLightweightConvenienceFREAcceptConsent [ Skip ]
-crbug.com/573630697 GeminiFirstRunTestCase/testVisualRichFREAcceptConsent [ Skip ]
 
 # Gardening suppression 2026-10-15
 crbug.com/573994066 [ Device ] TracingTestCase/testStartupTracing [ Skip ]
@@ -241,10 +560,63 @@ crbug.com/573993705 AssistantAIMTestCase/testInputPlateHiddenOnPlusMenu [ Pass F
 crbug.com/575489890 AutofillProfileSettingsTestCase/testCountrySelection [ Pass Failure ]
 crbug.com/575489325 [ Device ] NewTabPageTestCase/testPremiumAvatarRingWithDynamicTierChange [ Pass Failure ]
 crbug.com/575489612 [ iPhone Simulator ] AutofillAIEGTest/testSavePassportForm [ Pass Failure ]
-crbug.com/575489509 [ Simulator ] SharedTabGroupsSigninTestCase/testJoinGroupNotSynced [ Pass Failure ]
 
 # Gardening suppression 2026-10-22
 crbug.com/575489890 AutofillProfileSettingsTestCase/testDoneButtonByRequirementsOfCountries [ Pass Failure ]
 
 # Gardening suppression 2026-10-26
-crbug.com/556601479 [ iPhone Simulator ] PolicyUIMojoEnabledTestCase/testPolicyPageManagedWithCBCM [ Pass Failure ]
+crbug.com/556601479 [ Simulator ] PolicyUIMojoEnabledTestCase/testPolicyPageManagedWithCBCM [ Pass Failure ]
+crbug.com/578110413 SaveCardInfobarEGTest/testSaveCardBottomSheetShowsLoadingAndConfirmationAfterAcceptPushed [ Pass Failure ]
+
+# Gardening suppression 2026-10-28
+crbug.com/379086672 [ Simulator ] BrowserEditMenuHandlerTestCase/testDateMenu [ Pass Failure ]
+crbug.com/578635850 [ Simulator ] ExplainWithGeminiMediatorTestCase/testExplainWithGeminiSignedOut [ Pass Failure ]
+crbug.com/578553759 [ iPad Simulator ] ExternalURLSigninTestCase/testSignInAddAccountCommand [ Pass Failure ]
+crbug.com/541234336 CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionAcceptanceButtonIsSetInitially [ Pass Failure ]
+crbug.com/541234336 CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionShowsActivityIndicatorView [ Pass Failure ]
+crbug.com/541234336 CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionAcceptanceButtonLabel [ Pass Failure ]
+crbug.com/444060942 [ iOS18 Simulator ] CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionCancel [ Pass Failure ]
+crbug.com/444060942 [ iOS26 iPhone Simulator ] CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionCancel [ Pass Failure ]
+crbug.com/444060942 [ iOS26 Simulator ASan ] CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionCancel [ Pass Failure ]
+crbug.com/444060942 [ iOS26 iPhone Device ] CardUnmaskAuthenticationSelectionEgtest/testCardUnmaskAuthenticationSelectionCancel [ Pass Failure ]
+crbug.com/571459477 [ Device ] ReadingListTestCase/testDeleteEntries [ Pass Failure ]
+
+# Gardening suppression 2026-10-30
+crbug.com/579169631 [ iPhone Simulator ] BrowserEditMenuHandlerTestCase/testURLMenu [ Pass Failure ]
+crbug.com/579112740 [ Simulator ] BrowserEditMenuHandlerTestCase/testUnitMenu [ Pass Failure ]
+crbug.com/579253465 [ Simulator ] BrowserEditMenuHandlerTestCase/testBasicMenu [ Pass Failure ]
+crbug.com/579499405 [ iPhone Simulator ] BrowserEditMenuHandlerTestCase/testPhoneMenu [ Pass Failure ]
+crbug.com/579570304 GeminiExplainWithGeminiTestCase/testExplainWithGeminiSignedOut [ Pass Failure ]
+
+# Gardening suppression 2026-11-02
+crbug.com/578500873 GeminiCopresenceTestCase/testFloatyHiddenWhenOmniboxFocused [ Pass Failure ]
+crbug.com/579456339 [ Simulator ] BrowserEditMenuHandlerTestCase/testEmailMenu [ Pass Failure ]
+
+# Gardening suppression 2026-11-03
+crbug.com/581352992 [ Device ] KeyboardCommandsTestCase/testKeyboardCommandsRegistered_MultiWindow [ Pass Failure ]
+crbug.com/581352992 [ Device ] KeyboardCommandsTestCase/testWebViewIsFirstResponderUponKeyPress [ Pass Failure ]
+crbug.com/581349540 [ Device ] PageInfoTestCase/testShowTwoAccessiblePermissionsInPageInfo [ Pass Failure ]
+crbug.com/573762988 [ Simulator ] PolicyUIMojoDisabledTestCase/testPolicyPageManagedWithCBCM [ Pass Failure ]
+
+# Gardening suppression 2026-11-04
+crbug.com/581806739 [ Simulator ] FileUploadPanelTestCase/testPhotoPickerMultipleSelection [ Pass Failure ]
+crbug.com/581840364 [ Simulator ] FormInputAccessoryEGTest/testFillCreditCardFieldsOnForm_UserEdited [ Pass Failure ]
+crbug.com/447098101 BlockPopupsTestCase/testSettingsPageWithExceptions [ Pass Failure ]
+crbug.com/572662973 [ iPad Device ] GeminiAppSwitchingTestCase/testAppSwitchingAISummarizationMismatchedAccountSnackbar [ Pass Failure ]
+
+# Gardening suppression 2026-11-05
+crbug.com/582335504 QuickDeleteOtherDataTestCase/testPasswordsAndPasskeysCellRedirection [ Pass Failure Crash ]
+
+crbug.com/441761691 [ iOS27 Simulator ] ContextMenuTestCase/testOpenLinkInNewWindow [ Skip ]
+crbug.com/441761691 [ iOS27 Simulator ] ContextMenuTestCase/testOpenIncognitoLinkInNewWindow [ Skip ]
+
+# Gardening suppression 2026-11-06
+crbug.com/582739898 [ iOS27 iPad Simulator ] RecentTabsTestCase/testContextMenuRepeatedShare [ Skip ]
+
+# Gardening suppression 2026-11-09
+# The following tests crash the app. Skip is used until the fix is merged to handle crashes gracefully.
+crbug.com/583785828 GeminiFirstRunTestCase/testAcceptPromoAndConsent [ Skip ]
+crbug.com/583785828 GeminiFirstRunTestCase/testLightweightConvenienceFREAcceptConsent [ Skip ]
+crbug.com/583785828 GeminiFirstRunTestCase/testVisualRichFREAcceptConsent [ Skip ]
+crbug.com/583813595 [ iPhone ] PolicyTestCase/testEnterpriseBubbleInEnhancedSafeBrowsingPage [ Pass Failure ]
+crbug.com/587051138 [ iOS27 iPad Simulator ] NTPHomeTestCase/testMinimumHeight [ Pass Failure ]

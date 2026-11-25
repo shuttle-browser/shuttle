@@ -14,11 +14,9 @@
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/view.h"
 
-namespace views {
-class ViewDecoration;
-}  // namespace views
-
 namespace ash {
+
+class SystemDecoration;
 
 // View that is used for displaying and animating the highlights which tell
 // users where to drag windows to enter splitview, and previews the space which
@@ -52,7 +50,13 @@ class ASH_EXPORT SplitViewHighlightView : public views::View {
       bool can_dragged_window_be_snapped);
 
   // views::View:
-  void OnThemeChanged() override;
+  void AddedToWidget() override;
+  void RemovedFromWidget() override;
+  void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
+
+  SystemDecoration* highlight_border_for_testing() {
+    return highlight_border_.get();
+  }
 
  private:
   // Determines whether this particular highlight view is located at the right
@@ -61,7 +65,7 @@ class ASH_EXPORT SplitViewHighlightView : public views::View {
   // have to be done to ensure the animation is correct.
   const bool is_right_or_bottom_;
 
-  std::unique_ptr<views::ViewDecoration> view_decoration_;
+  std::unique_ptr<SystemDecoration> highlight_border_;
 };
 
 }  // namespace ash

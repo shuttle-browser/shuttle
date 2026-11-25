@@ -50,6 +50,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
+#include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
@@ -65,9 +66,11 @@
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/omnibox/common/composebox_features.h"
 #include "components/prefs/pref_service.h"
+#include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/primary_account_change_event.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
@@ -117,7 +120,6 @@
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/permissions/chip/permission_chip_view.h"
-#include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
 #include "chrome/browser/ui/webui/theme_source.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_layout_css_helper.h"
 #include "chrome/grit/webui_toolbar_shared_resources.h"
@@ -285,8 +287,8 @@ ProfileIndicatorInfo GetProfileIndicatorInfo(Profile* profile,
     return {};
   }
   // A stale cookie jar is the list cached from a previous session, which can
-  // still show an account whose cookies have since expired. Wait for the
-  // fresh list; `CookieJarObserver` refreshes the toolbar when it arrives.
+  // still show an account whose cookies have since expired. Wait for the fresh
+  // list; `CookieJarObserver` refreshes the toolbar when it arrives.
   signin::AccountsInCookieJarInfo cookie_jar =
       identity_manager->GetAccountsInCookieJar();
   if (!cookie_jar.AreAccountsFresh()) {
@@ -426,10 +428,20 @@ class ContextualTasksUIBase::CookieJarObserver
   }
 
   // signin::IdentityManager::Observer:
+  void OnPrimaryAccountChanged(
+      const signin::PrimaryAccountChangeEvent& event_details) override {
+    owner_->UpdateProfileIndicator();
+  }
   void OnAccountsInCookieUpdated(
       const signin::AccountsInCookieJarInfo& accounts_in_cookie_jar_info,
       const GoogleServiceAuthError& error) override {
     owner_->UpdateProfileIndicator();
+  }
+  void OnExtendedAccountInfoUpdated(const AccountInfo& info) override {
+    MaybeUpdateProfileIndicatorForAccount(info);
+  }
+  void OnExtendedAccountInfoRemoved(const AccountInfo& info) override {
+    MaybeUpdateProfileIndicatorForAccount(info);
   }
   void OnIdentityManagerShutdown(
       signin::IdentityManager* identity_manager) override {
@@ -466,6 +478,21 @@ class ContextualTasksUIBase::CookieJarObserver
   }
 
  private:
+  void MaybeUpdateProfileIndicatorForAccount(const AccountInfo& info) {
+    signin::IdentityManager* identity_manager = observation_.GetSource();
+    if (!identity_manager ||
+        identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+      return;
+    }
+    signin::AccountsInCookieJarInfo cookie_jar =
+        identity_manager->GetAccountsInCookieJar();
+    if (cookie_jar.AreAccountsFresh() &&
+        std::ranges::contains(cookie_jar.GetAllAccounts(), info.GetGaiaId(),
+                              &gaia::ListedAccount::gaia_id)) {
+      owner_->UpdateProfileIndicator();
+    }
+  }
+
   void FetchOffTheRecordAccounts() {
     gaia_auth_fetcher_.reset();
     weak_ptr_factory_.InvalidateWeakPtrs();
@@ -685,10 +712,10 @@ content::WebUIDataSource* ContextualTasksUIBase::RegisterWebUIDataSource(
   source->AddResourcePaths(kContextualTasksExtensionResources);
 #endif
 
-#if !BUILDFLAG(IS_ANDROID)
-  content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
   content::URLDataSource::Add(profile,
                               std::make_unique<SanitizedImageSource>(profile));
+#if !BUILDFLAG(IS_ANDROID)
+  content::URLDataSource::Add(profile, std::make_unique<ThemeSource>(profile));
   source->AddResourcePaths(kWebuiToolbarSharedResources);
 #endif
   source->SetRequestFilter(
@@ -713,27 +740,21 @@ base::DictValue ContextualTasksUIBase::GetContextualTasksLoadTimeData(
   base::DictValue dict;
 
   static constexpr webui::LocalizedString kLocalizedStrings[] = {
-      // TODO(b/578986274): Replace with a dedicated string in M159.
-      {"accountMenuButtonAccessibleName", IDS_MANAGE_PASSWORDS_LINK},
-      // TODO(b/578986274): Replace with a dedicated string in M159.
+      {"accountMenuButtonAccessibleName",
+       IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_BUTTON_ACCESSIBLE_NAME},
       {"accountMenuManageAccount",
-       IDS_OMNIBOX_PEDAL_MANAGE_GOOGLE_ACCOUNT_HINT},
-      // TODO(b/578986274): Replace with a dedicated string in M159.
+       IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_MANAGE_ACCOUNT},
       {"accountMenuNameAndEmail",
-       IDS_ACCESSIBLE_WINDOW_TITLE_WITH_PROFILE_FORMAT},
-      // TODO(b/578986274): Replace with a dedicated string in M159.
-      {"accountMenuSignOut", IDS_SYNC_ERROR_USER_MENU_SIGNOUT_BUTTON},
+       IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_NAME_AND_EMAIL},
       {"close", IDS_CLOSE},
       {"closeTooltip", IDS_CONTEXTUAL_TASKS_SIDE_PANEL_CLOSE_TOOL_TIP},
       {"contextTooltip", IDS_CONTEXTUAL_TASKS_SIDE_PANEL_CONTEXT_TOOL_TIP},
       {"continueThread", IDS_CONTEXTUAL_TASKS_CONTINUE_THREAD_MESSAGE},
       {"feedback", IDS_LENS_SEND_FEEDBACK},
-      // TODO(crbug.com/578985445): Replace with a dedicated Contextual Tasks
-      // string. Reuses the translated password manager "Google Account" string
-      // to avoid adding a new string after the M158 string cutoff.
-      {"googleAccount", IDS_MANAGE_PASSWORDS_LINK},
+      {"googleAccount", IDS_CONTEXTUAL_TASKS_AVATAR_TOOLTIP_HEADER},
       {"help", IDS_CONTEXTUAL_TASKS_MENU_HELP},
       {"learnMore", IDS_LEARN_MORE},
+      {"logoButtonTooltip", IDS_TOOLTIP_LOCATION_ICON},
       {"moreOptionsTooltip",
        IDS_CONTEXTUAL_TASKS_SIDE_PANEL_MORE_OPTIONS_TOOL_TIP},
       {"myActivity", IDS_CONTEXTUAL_TASKS_MENU_MY_ACTIVITY},
@@ -745,6 +766,8 @@ base::DictValue ContextualTasksUIBase::GetContextualTasksLoadTimeData(
       {"protectedErrorPageTopLine",
        IDS_SIDE_PANEL_LENS_OVERLAY_PROTECTED_PAGE_ERROR_FIRST_LINE},
       {"reopenTab", IDS_CONTEXTUAL_TASKS_REOPEN_TABS_BUTTON_TEXT},
+      {"sidePanelPinned", IDS_SIDE_PANEL_PINNED},
+      {"sidePanelUnpinned", IDS_SIDE_PANEL_UNPINNED},
       {"sourcesMenuTitle", IDS_CONTEXTUAL_TASKS_SOURCES_MENU_TITLE},
       {"stsMegaplusAutomaticallyAddTabsHeader",
        IDS_STS_MEGAPLUS_AUTOMATICALLY_ADD_TABS_HEADER},
@@ -805,7 +828,7 @@ base::DictValue ContextualTasksUIBase::GetContextualTasksLoadTimeData(
       aim_eligibility_service && aim_eligibility_service->IsAimEligible();
   dict.Set("isAimEligible", is_aim_eligible);
 
-  dict.Set("darkMode", contextual_tasks::ShouldUseDarkMode(profile));
+  dict.Set("darkMode", contextual_tasks::ShouldUseDarkModeForProfile(profile));
   dict.Set("isAiPage", false);
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(profile);
@@ -833,6 +856,20 @@ base::DictValue ContextualTasksUIBase::GetContextualTasksLoadTimeData(
 #endif
   dict.Set("contextualTasksUnboundedMenuEnabled",
            contextual_tasks::IsContextualTasksUnboundedMenuEnabled());
+
+  const bool use_google_com_sign_out_label = base::FeatureList::IsEnabled(
+      contextual_tasks::kContextualTasksAccountMenuGoogleComSignOutLabel);
+  dict.Set("accountMenuSignOut",
+           l10n_util::GetStringUTF16(
+               use_google_com_sign_out_label
+                   ? IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_SIGN_OUT_OF_GOOGLE_COM
+                   : IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_SIGN_OUT));
+  dict.Set(
+      "accountMenuSignOutOfAllAccounts",
+      l10n_util::GetStringUTF16(
+          use_google_com_sign_out_label
+              ? IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_SIGN_OUT_OF_ALL_GOOGLE_COM_ACCOUNTS
+              : IDS_CONTEXTUAL_TASKS_ACCOUNT_MENU_SIGN_OUT_OF_ALL_ACCOUNTS));
 
   return dict;
 }
@@ -936,7 +973,8 @@ void ContextualTasksUIBase::OpenUrlInNewTabFromPanelUi(const GURL& url) {
   }
   if (BrowserWindowInterface* browser = GetBrowser()) {
     OpenUrlWithDisposition(GetProfile(), url,
-                           WindowOpenDisposition::kNewForegroundTab, browser);
+                           ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+                           browser);
   }
 }
 
@@ -1139,6 +1177,17 @@ void ContextualTasksUIBase::CreateNewThread() {
                  : ui_service->GetDefaultAiPageUrl();
   url = ui_service->AddRequiredSidePanelUrlChanges(url, target_contents);
 
+  // Keep the entry point attribution of the current thread, matching the
+  // legacy WebUI new thread handler.
+  const GURL& current_url = target_contents->GetLastCommittedURL();
+  for (const char* key : {"source", "aep"}) {
+    std::string value;
+    if (net::GetValueForKeyInQuery(current_url, key, &value) &&
+        !value.empty()) {
+      url = net::AppendOrReplaceQueryParameter(url, key, value);
+    }
+  }
+
   content::NavigationController::LoadURLParams params(url);
   params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
   target_contents->GetController().LoadURLWithParams(params);
@@ -1237,7 +1286,7 @@ void ContextualTasksUIBase::MaybeTriggerPinningPromo() {
     return;
   }
 
-  // Anchored to `kContextualTasksEphemeralToolbarButtonElementId`,
+  // Anchored to `kPinnedToolbarActionShowSidePanelContextualTasksElementId`,
   // so it only shows if the ephemeral button is visible.
   BrowserWindowInterface* browser_window = GetBrowser();
   if (!browser_window) {
@@ -1315,10 +1364,9 @@ ContextualTasksUIBase::GetActiveController() {
   if (!browser) {
     return nullptr;
   }
-  auto* coordinator =
-      contextual_tasks::ContextualTasksSidePanelCoordinator::Get(
-          browser->GetUnownedUserDataHost());
-  return coordinator ? coordinator->permission_controller() : nullptr;
+  auto* controller =
+      contextual_tasks::ContextualTasksPanelController::From(browser);
+  return controller ? controller->permission_controller() : nullptr;
 }
 
 ContextualTasksUIBase* ContextualTasksUIBase::FromWebContents(
@@ -1502,6 +1550,7 @@ void ContextualTasksUIBase::UpdateProfileIndicator(const GURL& url) {
     }
     toolbar_page->SetProfileAvatarUrl(info.avatar_url);
     toolbar_page->SetAccountInfo(info.full_name, info.email);
+    toolbar_page->SetSignedInAccountCount(info.signed_in_account_count);
   }
 }
 

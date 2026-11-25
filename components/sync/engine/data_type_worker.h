@@ -167,7 +167,7 @@ class DataTypeWorker : public UpdateHandler,
   // construction. Note that updates are always decrypted if possible,
   // regardless of this method.
   // b) The worker can only commit or push updates once the cryptographer has
-  // selected a default key to encrypt data (Cryptographer::CanEncrypt()). That
+  // selected a primary key to encrypt data (Cryptographer::CanEncrypt()). That
   // used key will be listed in DataTypeState.
   // This is a no-op if encryption was already enabled on construction or by
   // a previous call to this method.
@@ -200,7 +200,8 @@ class DataTypeWorker : public UpdateHandler,
 
   // CommitContributor implementation.
   std::unique_ptr<CommitContribution> GetContribution(
-      size_t max_entries) override;
+      size_t max_entries,
+      size_t max_target_specifics_bytes) override;
 
   // Public for testing.
   // Returns true if this type should stop communicating because of outstanding
@@ -260,7 +261,7 @@ class DataTypeWorker : public UpdateHandler,
   // If `encryption_enabled_` is false, sets the encryption key name in
   // `data_type_state_` to the empty string. This should usually be a no-op.
   // If `encryption_enabled_` is true *and* the cryptographer has selected a
-  // (non-empty) default key, sets the value to that default key.
+  // (non-empty) primary key, sets the value to that primary key.
   // Returns whether the `data_type_state_` key name changed.
   bool UpdateTypeEncryptionKeyName();
 
@@ -420,7 +421,7 @@ class DataTypeWorker : public UpdateHandler,
 // scoped_refptr<GetLocalChangesRequest> request =
 //     base::MakeRefCounted<GetLocalChangesRequest>(cancelation_signal_);
 // data_type_processor_->GetLocalChanges(
-//     max_entries,
+//     max_entries, max_target_specifics_bytes,
 //     base::BindOnce(&GetLocalChangesRequest::SetResponse, request));
 // request->WaitForResponseOrCancelation();
 // CommitRequestDataList response;
@@ -445,10 +446,12 @@ class GetLocalChangesRequest
   // SetResponse takes ownership of `local_changes` and unblocks
   // WaitForResponseOrCancelation call. It is called by data type through
   // callback passed to GetLocalChanges.
-  void SetResponse(CommitRequestDataList&& local_changes);
+  void SetResponse(CommitRequestDataList&& local_changes,
+                   bool has_more_local_changes);
 
   // Returns response set by SetResponse().
   CommitRequestDataList&& ExtractResponse();
+  bool has_more_local_changes() const;
 
  private:
   friend class base::RefCountedThreadSafe<GetLocalChangesRequest>;
@@ -456,6 +459,7 @@ class GetLocalChangesRequest
 
   base::WaitableEvent response_accepted_;
   CommitRequestDataList response_;
+  bool has_more_local_changes_ = false;
 };
 
 }  // namespace syncer

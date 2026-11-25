@@ -117,6 +117,9 @@ const base::FeatureParam<bool> kCSDClipboardCopyApiSuspiciousTokenFilter{
     &kClientSideDetectionClipboardCopyApi, "SuspiciousTokenFilter",
     /*default_value=*/true};
 
+BASE_FEATURE(kClientSideDetectionCopyFromSurface,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kClientSideDetectionCreditCardForm,
              base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<double> kCsdCreditCardFormHCAcceptanceRate{
@@ -155,6 +158,16 @@ const base::FeatureParam<bool> kCsdEnforceIos{&kClientSideDetectionEnabledIos,
 BASE_FEATURE(kClientSideDetectionForcedLlamaRedirectChainKillswitch,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kClientSideDetectionIframeInnerText,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+constexpr base::FeatureParam<int> kClientSideDetectionMaxIframesToExtract{
+    &kClientSideDetectionIframeInnerText, "MaxIframesToExtract",
+    /*default_value=*/10};
+constexpr base::FeatureParam<base::TimeDelta>
+    kClientSideDetectionIframeInnerTextTimeout{
+        &kClientSideDetectionIframeInnerText, "Timeout",
+        /*default_value=*/base::Milliseconds(100)};
+
 BASE_FEATURE(kClientSideDetectionImageEmbeddingMatch,
 #if BUILDFLAG(IS_ANDROID)
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -164,6 +177,9 @@ BASE_FEATURE(kClientSideDetectionImageEmbeddingMatch,
 const base::FeatureParam<bool> kCsdImageEmbeddingMatchWithIntelligentScan{
     &kClientSideDetectionImageEmbeddingMatch,
     "CsdImageEmbeddingMatchWithIntelligentScan", /*default_value=*/true};
+
+BASE_FEATURE(kClientSideDetectionIncludeTitleInInnerText,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kClientSideDetectionKeyboardLockUniformPageDelay,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -412,6 +428,12 @@ constexpr base::FeatureParam<std::string>
         "SafeBrowsingHashPrefixRealTimeLookupsKeyFetchCustomHeader",
         /*default_value=*/""};
 
+BASE_FEATURE(kHashPrefixRealTimeLookupsOhttpKeyServiceForEsb,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kHashPrefixRealTimeLookupsOnIncognitoAndGuest,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kHashPrefixRealTimeLookupsSamplePing,
              "SafeBrowsingHashPrefixRealTimeLookupsSamplePing",
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -440,9 +462,6 @@ constexpr base::FeatureParam<std::string>
                                                  "service_url_override",
                                                  /*default_value=*/""};
 #endif
-
-BASE_FEATURE(kMigrateEnhancedSbUserToEnhancedBundle,
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kMigrateToBlockV8OptimizerOnUnfamiliarSites,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -532,11 +551,6 @@ BASE_FEATURE(kSafeBrowsingRustDmgParser, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kSafeBrowsingSkipRealTimeLookupIfOffline,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-#if BUILDFLAG(IS_ANDROID)
-BASE_FEATURE(kSafeBrowsingSyncCheckerCheckAllowlist,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-#endif
-
 BASE_FEATURE(kSafeBrowsingWaitForDnsForRealTimeLookup,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -622,9 +636,12 @@ base::ListValue GetFeatureStatusList() {
       &kBundledSecuritySettings,
       &kBundledSecuritySettingsAskBeforeHttp,
       &kClientSideDetectionClipboardCopyApi,
+      &kClientSideDetectionCopyFromSurface,
       &kClientSideDetectionEnabledIos,
       &kClientSideDetectionForcedLlamaRedirectChainKillswitch,
+      &kClientSideDetectionIframeInnerText,
       &kClientSideDetectionImageEmbeddingMatch,
+      &kClientSideDetectionIncludeTitleInInnerText,
       &kClientSideDetectionKeyboardLockUniformPageDelay,
       &kClientSideDetectionKillswitch,
       &kClientSideDetectionLocalResourceCheckFix,
@@ -640,8 +657,9 @@ base::ListValue GetFeatureStatusList() {
       &kEsbAsASyncedSetting,
       &kExtensionBlocklistSkipNetworkQuery,
       &kHashPrefixRealTimeLookups,
+      &kHashPrefixRealTimeLookupsOhttpKeyServiceForEsb,
+      &kHashPrefixRealTimeLookupsOnIncognitoAndGuest,
       &kLocalListsUseSBv5,
-      &kMigrateEnhancedSbUserToEnhancedBundle,
       &kProactivePasswordProtection,
       &kReportNotificationContentDetectionData,
       &kRustPhishingModelSetter,

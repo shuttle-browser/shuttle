@@ -67,7 +67,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/desktop_browser_window_capabilities.h"
 #include "chrome/browser/ui/browser_window/public/embedder_browser_window_features.h"
-#include "chrome/browser/ui/browser_window_theme_observer.h"
+#include "chrome/browser/ui/browser_window_theme_observer/browser_window_theme_observer.h"
 #include "chrome/browser/ui/call_to_action/call_to_action_lock.h"
 #include "chrome/browser/ui/context_highlight/context_highlight_window_feature.h"
 #include "chrome/browser/ui/contextual_search/searchbox_context_data.h"
@@ -86,6 +86,7 @@
 #include "chrome/browser/ui/omnibox/ai_mode_page_action_controller.h"
 #include "chrome/browser/ui/performance_controls/memory_saver_bubble_controller.h"
 #include "chrome/browser/ui/performance_controls/memory_saver_opt_in_iph_controller.h"
+#include "chrome/browser/ui/search/instant_controller.h"
 #include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_iph_controller.h"
 #include "chrome/browser/ui/sessions/session_service_browser_helper.h"
 #include "chrome/browser/ui/sharing_hub/sharing_hub_window_controller.h"
@@ -117,9 +118,9 @@
 #include "chrome/browser/ui/toasts/toast_service.h"
 #include "chrome/browser/ui/toolbar/avatar_toolbar_iph_controller.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
-#include "chrome/browser/ui/ui_controller_factory.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/unload_controller.h"
+#include "chrome/browser/ui/views/animations/focus_mode_animations.h"
 #include "chrome/browser/ui/views/animations/organizer_panel_animations.h"
 #include "chrome/browser/ui/views/animations/side_panel_animations.h"
 #include "chrome/browser/ui/views/animations/tab_strip_animations.h"
@@ -225,6 +226,10 @@
 #include "chrome/browser/ui/views/session_restore_infobar/session_restore_infobar_controller.h"
 #endif
 
+#if BUILDFLAG(IS_MAC)
+#include "chrome/browser/ui/web_applications/web_app_notification_recovery_controller_mac.h"
+#endif
+
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/ui/views/frame/windows_taskbar_icon_updater.h"
 #endif
@@ -282,8 +287,8 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
           *browser, &web_app::MaybeCreateAppBrowserController, browser);
 
   browser_active_state_manager_ =
-      GetUserDataFactory().CreateInstance<BrowserActiveStateManager>(
-          *browser, *browser, app_browser_controller_.get());
+      GetUserDataFactory().CreateInstance<BrowserActiveStateManager>(*browser,
+                                                                     *browser);
 
   {
     auto* merged_bookmarks_service =
@@ -343,6 +348,8 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
       std::make_unique<SidePanelAnimations>());
   browser_animation_controller_->AddAnimationProvider(
       std::make_unique<TabStripAnimations>());
+  browser_animation_controller_->AddAnimationProvider(
+      std::make_unique<FocusModeAnimations>());
   browser_animation_controller_->AddAnimationProvider(
       std::make_unique<OrganizerPanelAnimations>());
 
@@ -588,7 +595,10 @@ void BrowserWindowFeatures::Init(BrowserWindowInterface* browser) {
     initial_web_ui_manager_ = std::make_unique<InitialWebUIManager>(browser);
 
     if (search::IsInstantExtendedAPIEnabled()) {
-      instant_controller_ = std::make_unique<BrowserInstantController>(
+      browser_instant_controller_ =
+          GetUserDataFactory().CreateInstance<BrowserInstantController>(
+              *browser, *browser);
+      instant_controller_ = std::make_unique<InstantController>(
           profile, browser->GetTabStripModel());
     }
 
@@ -948,14 +958,17 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
   upgrade_notification_controller_ =
       std::make_unique<UpgradeNotificationController>(browser);
 
-  ui_controller_factory_ =
-      GetUserDataFactory().CreateInstance<UIControllerFactory>(*browser,
-                                                               browser);
-
   if (browser_view) {
     user_education_->Init(browser_view);
-    avatar_toolbar_iph_controller_->MaybeShowSignInBenefitsIPH();
   }
+
+#if BUILDFLAG(IS_MAC)
+  if (browser_view) {
+    web_app_notification_recovery_controller_ =
+        web_app::WebAppNotificationRecoveryController::MaybeCreate(
+            *browser_, browser_view->GetWidget());
+  }
+#endif
 
 #if BUILDFLAG(IS_WIN)
   if (browser_view) {
@@ -1115,7 +1128,8 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
               *browser, browser);
     }
 
-    if (base::FeatureList::IsEnabled(
+    if (profile->IsRegularProfile() &&
+        base::FeatureList::IsEnabled(
             feature_engagement::kIPHSendTabToSelfTutorialFeature)) {
       send_tab_to_self_iph_controller_ =
           GetUserDataFactory()
@@ -1123,7 +1137,8 @@ void BrowserWindowFeatures::InitPostWindowConstruction(
                   *browser, browser);
     }
 
-    if (base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
+    if (browser->GetTabStripModel()->SupportsTabGroups() &&
+        base::FeatureList::IsEnabled(features::kTabGroupsFocusing)) {
       tab_group_focus_iph_controller_ =
           GetUserDataFactory().CreateInstance<TabGroupFocusIphController>(
               *browser, browser);
@@ -1189,10 +1204,12 @@ void BrowserWindowFeatures::TearDownPreBrowserWindowDestruction() {
 #if BUILDFLAG(IS_WIN)
   windows_taskbar_icon_updater_.reset();
 #endif
+#if BUILDFLAG(IS_MAC)
+  web_app_notification_recovery_controller_.reset();
+#endif
   if (user_education_) {
     user_education_->TearDown();
   }
-  ui_controller_factory_.reset();
   upgrade_notification_controller_.reset();
   toast_service_.reset();
   synced_window_delegate_.reset();

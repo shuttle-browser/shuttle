@@ -40,10 +40,12 @@
 #include "ui/gl/gl_switches.h"
 
 void AwFieldTrials::OnVariationsSetupComplete() {
-  // Persistent histograms must be enabled ASAP, but depends on Features.
+  // The MetricsService must be created only once Features are available, and
+  // persistent histograms must be enabled ASAP, but also depend on Features.
   android_webview::AwMetricsServiceClient* metrics_service_client =
       android_webview::AwMetricsServiceClient::GetInstance();
-  metrics_service_client->SetUpMetricsDir();
+  CHECK(metrics_service_client);
+  metrics_service_client->PostFeatureListSetup();
   InstantiatePersistentHistogramsWithFeaturesAndCleanup(
       metrics_service_client->GetMetricsDir());
 }
@@ -135,10 +137,6 @@ void AwFieldTrials::RegisterFeatureOverrides(base::FeatureList* feature_list) {
 
   // Disable fenced frames on WebView.
   aw_feature_overrides.DisableFeature(blink::features::kFencedFrames);
-
-  // Disable FLEDGE on WebView.
-  aw_feature_overrides.DisableFeature(blink::features::kAdInterestGroupAPI);
-  aw_feature_overrides.DisableFeature(blink::features::kFledge);
 
   // DISABLED_OTHER: Disable low latency overlay for WebView. There is
   // currently no plan to enable these optimizations in WebView though they are

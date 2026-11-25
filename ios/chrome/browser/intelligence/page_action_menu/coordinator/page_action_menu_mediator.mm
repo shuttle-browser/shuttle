@@ -52,6 +52,7 @@
 #import "ios/web/public/web_state.h"
 #import "ios/web/public/web_state_observer_bridge.h"
 #import "ui/base/l10n/l10n_util.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace {
 
@@ -197,7 +198,9 @@ IOSPermissionSetting IOSPermissionSettingForPageActionMenuPermissionSetting(
 
 - (PageActionMenuContentEntryPoint*)geminiEntryPoint {
   if (_webState && _webState->GetBrowserState()->IsOffTheRecord()) {
-    return [[PageActionMenuContentEntryPoint alloc] initWithEnabled:NO];
+    return [[PageActionMenuContentEntryPoint alloc]
+        initWithEnabled:NO
+             footerItem:[ContentEntryPointUnavailabilityItem geminiIncognito]];
   }
 
   if (!_geminiService || !_geminiTabHelper) {
@@ -539,9 +542,10 @@ IOSPermissionSetting IOSPermissionSettingForPageActionMenuPermissionSetting(
 
   // Open each blocked popup and allow future popups from this site.
   for (const auto& popup : popups) {
-    web::WebState::OpenURLParams params(popup.popup_url, popup.referrer,
-                                        WindowOpenDisposition::kNewPopup,
-                                        ui::PAGE_TRANSITION_LINK, true);
+    web::WebState::OpenURLParams params(
+        popup.popup_url, popup.referrer,
+        ui::mojom::WindowOpenDisposition::kNewPopup, ui::PAGE_TRANSITION_LINK,
+        true);
     _webState->OpenURL(params);
 
     // Set popup permission to ALLOW for the referrer site.

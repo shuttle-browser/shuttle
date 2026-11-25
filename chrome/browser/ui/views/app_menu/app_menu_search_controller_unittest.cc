@@ -33,8 +33,14 @@ namespace {
 
 class MockDelegate : public AppMenuSearchController::Delegate {
  public:
-  MOCK_METHOD(void, ShowSearchResults, (actions::ActionItem*), (override));
-  MOCK_METHOD(void, RestoreMenu, (), (override));
+  MOCK_METHOD(void,
+              ShowSearchResults,
+              (actions::ActionItem*, std::unique_ptr<actions::ActionItem>),
+              (override));
+  MOCK_METHOD(void,
+              RestoreMenu,
+              (std::unique_ptr<actions::ActionItem>),
+              (override));
 };
 
 class AppMenuSearchControllerTest
@@ -131,9 +137,14 @@ TEST_F(AppMenuSearchControllerTest, FlattenHierarchyFiltering) {
                           AppMenuActionItem::DisplayType::kSearch);
   menu_root_->AddChild(std::move(search_row));
 
+  // The footer container is not a result itself, but its actions are indexed.
   auto footer = actions::ActionItem::Builder().Build();
   footer->SetProperty(AppMenuActionItem::kDisplayTypeKey,
                       AppMenuActionItem::DisplayType::kFooter);
+  footer->AddChild(actions::ActionItem::Builder()
+                       .SetActionId(kActionOptions)
+                       .SetText(u"Settings")
+                       .Build());
   menu_root_->AddChild(std::move(footer));
 
   auto override_item = actions::ActionItem::Builder()
@@ -149,13 +160,46 @@ TEST_F(AppMenuSearchControllerTest, FlattenHierarchyFiltering) {
   controller_->InitializeSearchIndex();
 
   const auto& items = controller_->search_items_for_testing();
-  ASSERT_EQ(items.size(), 2u);
+  ASSERT_EQ(items.size(), 3u);
 
   EXPECT_EQ(items[0]->GetTitle(), u"New Tab");
   EXPECT_EQ(items[0]->GetType(), AppMenuSearchItem::Type::kAction);
 
-  EXPECT_EQ(items[1]->GetTitle(), u"Overridden Text");
+  EXPECT_EQ(items[1]->GetTitle(), u"Settings");
+  EXPECT_EQ(items[1]->GetSecondaryText(), u"");
   EXPECT_EQ(items[1]->GetType(), AppMenuSearchItem::Type::kAction);
+
+  EXPECT_EQ(items[2]->GetTitle(), u"Overridden Text");
+  EXPECT_EQ(items[2]->GetType(), AppMenuSearchItem::Type::kAction);
+}
+
+TEST_F(AppMenuSearchControllerTest, FlattenHierarchyExcludesNotifications) {
+  auto notification_section = actions::ActionItem::Builder().Build();
+  notification_section->SetProperty(AppMenuActionItem::kDisplayTypeKey,
+                                    AppMenuActionItem::DisplayType::kSection);
+  auto notification = actions::ActionItem::Builder()
+                          .SetActionId(kActionUpgradeDialog)
+                          .SetText(u"Update Chrome")
+                          .SetVisible(true)
+                          .SetEnabled(true)
+                          .Build();
+  notification->SetProperty(AppMenuActionItem::kDisplayTypeKey,
+                            AppMenuActionItem::DisplayType::kNotification);
+  notification_section->AddChild(std::move(notification));
+  menu_root_->AddChild(std::move(notification_section));
+
+  menu_root_->AddChild(actions::ActionItem::Builder()
+                           .SetActionId(kActionNewTab)
+                           .SetText(u"New Tab")
+                           .SetVisible(true)
+                           .SetEnabled(true)
+                           .Build());
+
+  controller_->InitializeSearchIndex();
+
+  const auto& items = controller_->search_items_for_testing();
+  ASSERT_EQ(items.size(), 1u);
+  EXPECT_EQ(items[0]->GetTitle(), u"New Tab");
 }
 
 TEST_F(AppMenuSearchControllerTest,
@@ -824,16 +868,21 @@ TEST_F(AppMenuSearchControllerTest, ChangingQueryReplacesResults) {
   controller_->InitializeSearchIndex();
 
   base::WeakPtr<actions::ActionItem> first_results;
-  EXPECT_CALL(delegate_, ShowSearchResults(testing::NotNull()))
-      .WillOnce([&first_results](actions::ActionItem* results) {
-        first_results = results->GetAsWeakPtr();
-      })
-      .WillOnce([&first_results](actions::ActionItem* results) {
-        // The previous results must outlive the call that replaces them, so
-        // the menu can remove the rows pointing into them first.
-        EXPECT_TRUE(first_results);
-        EXPECT_NE(results, first_results.get());
-      });
+  EXPECT_CALL(delegate_, ShowSearchResults(testing::NotNull(), testing::_))
+      .WillOnce(
+          [&first_results](actions::ActionItem* results,
+                           std::unique_ptr<actions::ActionItem> old_results) {
+            first_results = results->GetAsWeakPtr();
+          })
+      .WillOnce(
+          [&first_results](actions::ActionItem* results,
+                           std::unique_ptr<actions::ActionItem> old_results) {
+            // The previous results must outlive the call that replaces them, so
+            // the menu can remove the rows pointing into them first.
+            EXPECT_TRUE(first_results);
+            EXPECT_EQ(first_results.get(), old_results.get());
+            EXPECT_NE(results, first_results.get());
+          });
   search_bar_->SetText(u"New");
   search_bar_->SetText(u"Print");
   // The previous results are freed once the menu shows the new ones.
@@ -852,8 +901,9 @@ TEST_F(AppMenuSearchControllerTest, ShortQueryKeepsResults) {
   EXPECT_FALSE(IsBackButtonVisible());
 
   base::WeakPtr<actions::ActionItem> results;
-  EXPECT_CALL(delegate_, ShowSearchResults(testing::NotNull()))
-      .WillOnce([&results](actions::ActionItem* shown) {
+  EXPECT_CALL(delegate_, ShowSearchResults(testing::NotNull(), testing::_))
+      .WillOnce([&results](actions::ActionItem* shown,
+                           std::unique_ptr<actions::ActionItem> old_results) {
         results = shown->GetAsWeakPtr();
       });
   search_bar_->SetText(u"New");
@@ -868,7 +918,7 @@ TEST_F(AppMenuSearchControllerTest, ShortQueryKeepsResults) {
   EXPECT_TRUE(results);
   EXPECT_TRUE(IsBackButtonVisible());
 
-  EXPECT_CALL(delegate_, RestoreMenu());
+  EXPECT_CALL(delegate_, RestoreMenu(testing::_));
   views::test::ButtonTestApi(
       views::Button::AsButton(search_bar_->GetViewByElementId(
           AppMenuSearchBarView::kBackButtonElementId)))
@@ -885,8 +935,8 @@ TEST_F(AppMenuSearchControllerTest, BackPressShowsNormalMenu) {
   controller_->InitializeSearchIndex();
 
   testing::InSequence sequence;
-  EXPECT_CALL(delegate_, ShowSearchResults(testing::NotNull()));
-  EXPECT_CALL(delegate_, RestoreMenu());
+  EXPECT_CALL(delegate_, ShowSearchResults(testing::NotNull(), testing::_));
+  EXPECT_CALL(delegate_, RestoreMenu(testing::_));
   search_bar_->SetText(u"New");
   views::test::ButtonTestApi(
       views::Button::AsButton(search_bar_->GetViewByElementId(
@@ -894,6 +944,27 @@ TEST_F(AppMenuSearchControllerTest, BackPressShowsNormalMenu) {
       .NotifyDefaultMouseClick();
   EXPECT_TRUE(search_bar_->GetText().empty());
   EXPECT_FALSE(IsBackButtonVisible());
+}
+
+TEST_F(AppMenuSearchControllerTest, OtherDeviceTabsSubmenuIndexed) {
+  auto other_device_tabs_menu = actions::ActionItem::Builder()
+                                    .SetActionId(kActionOtherDeviceTabsSubmenu)
+                                    .SetText(u"Other device tabs")
+                                    .Build();
+
+  other_device_tabs_menu->AddChild(AppMenuActionItem::CreateHeader(u"Pixel 9"));
+  other_device_tabs_menu->AddChild(
+      actions::ActionItem::Builder().SetText(u"Synced Page").Build());
+
+  menu_root_->AddChild(std::move(other_device_tabs_menu));
+
+  controller_->InitializeSearchIndex();
+
+  const auto& items = controller_->search_items_for_testing();
+  ASSERT_EQ(items.size(), 1u);
+  EXPECT_EQ(items[0]->GetTitle(), u"Synced Page");
+  EXPECT_EQ(items[0]->GetType(), AppMenuSearchItem::Type::kRecentTabs);
+  EXPECT_EQ(items[0]->GetSecondaryText(), u"Other device tabs");
 }
 
 }  // namespace

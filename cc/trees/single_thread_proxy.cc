@@ -21,7 +21,7 @@
 #include "cc/base/devtools_instrumentation.h"
 #include "cc/base/features.h"
 #include "cc/benchmarks/benchmark_instrumentation.h"
-#include "cc/input/browser_controls_offset_manager.h"
+#include "cc/input/browser_controls_offset_manager_interface.h"
 #include "cc/input/browser_controls_offset_tag_modifications.h"
 #include "cc/metrics/compositor_timing_history.h"
 #include "cc/paint/paint_worklet_layer_painter.h"
@@ -197,6 +197,13 @@ void SingleThreadProxy::SetLayerTreeFrameSink(
     // RequestNewLayerTreeFrameSink, and so
     // layer_tree_frame_sink_creation_requested remains true.
     layer_tree_host_->DidFailToInitializeLayerTreeFrameSink();
+  }
+}
+
+void SingleThreadProxy::NotifyOutOfBandFrame() {
+  DCHECK(task_runner_provider_->IsMainThread());
+  if (scheduler_on_impl_thread_) {
+    scheduler_on_impl_thread_->NotifyOutOfBandFrame();
   }
 }
 

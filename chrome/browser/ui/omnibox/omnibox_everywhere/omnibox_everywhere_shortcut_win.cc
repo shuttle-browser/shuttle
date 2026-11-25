@@ -29,8 +29,6 @@ namespace omnibox_everywhere {
 
 namespace {
 
-constexpr wchar_t kAppName[] = L"app_search_with_chrome";
-
 base::FilePath GetChromeExePath() {
   base::FilePath chrome_dir;
   if (!base::PathService::Get(base::DIR_EXE, &chrome_dir)) {
@@ -109,7 +107,7 @@ std::wstring GetDisplayName() {
 
 std::wstring GetAppUserModelId() {
   return shell_integration::win::GetAppUserModelIdForApp(
-      kAppName,
+      chrome::kOmniboxEverywhereAppName,
       /*profile_path=*/base::FilePath());
 }
 
@@ -138,6 +136,8 @@ void SetWindowProperties(HWND hwnd, bool is_ephemeral, bool allow_pinning) {
                          : target_exe);
   relaunch_command.AppendSwitch(switches::kOmniboxEverywhere);
 
+  // TODO(b/579433689): Follow the default search engine like the status icon.
+  // `kOmniboxEverywhereIndex` is the compiled-in Google "G" on branded builds.
   ui::win::SetAppDetailsForWindow(
       app_id, /*app_icon_path=*/GetChromeExePath(),
       /*app_icon_index=*/icon_resources::kOmniboxEverywhereIndex,
@@ -167,6 +167,8 @@ bool OmniboxEverywhereShortcutHelperWin::CreateStartMenuShortcut() {
   shortcut_properties.set_arguments(
       base::StrCat({L"--", base::ASCIIToWide(switches::kOmniboxEverywhere)}));
   shortcut_properties.set_app_id(GetAppUserModelId());
+  // TODO(b/579433689): Follow the default search engine like the status icon.
+  // `kOmniboxEverywhereIndex` is the compiled-in Google "G" on branded builds.
   shortcut_properties.set_icon(GetChromeExePath(),
                                icon_resources::kOmniboxEverywhereIndex);
   shortcut_properties.set_description(GetDisplayName());

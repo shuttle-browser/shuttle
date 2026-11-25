@@ -42,6 +42,7 @@
 #import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 
@@ -147,8 +148,11 @@
 #pragma mark - GeminiContainerMediatorDelegate
 
 - (void)geminiContainerMediator:(GeminiContainerMediator*)mediator
-    didStartActuationTaskWithID:(actor::ActorTaskId)taskID {
-  [_actuationWorklogCoordinator startObservingTaskWithID:taskID];
+    didStartActuationTaskWithID:(actor::ActorTaskId)taskID
+                     dataSource:(id<ActorTaskDataSource>)dataSource
+                  actionHandler:(id<ActorTaskActionHandler>)actionHandler {
+  [_actuationWorklogCoordinator startObservingDataSource:dataSource
+                                           actionHandler:actionHandler];
 }
 
 - (void)geminiContainerMediator:(GeminiContainerMediator*)mediator
@@ -178,7 +182,9 @@
       authenticationService:AuthenticationServiceFactory::GetForProfile(
                                 self.browser->GetProfile())
                eventHandler:geminiBrowserAgent
-         sharedTabsDelegate:geminiBrowserAgent
+          sharedTabsManager:geminiBrowserAgent
+                                ? geminiBrowserAgent->GetSharedTabsManager()
+                                : nullptr
       sessionMetricsManager:_sessionMetricsManager];
   _mediator.delegate = self;
   _mediator.startupState = _startupState;
@@ -243,6 +249,7 @@
     _mediator.fullscreenController =
         FullscreenController::FromBrowser(self.browser);
   }
+  _mediator.snackbarHandler = HandlerForProtocol(dispatcher, SnackbarCommands);
 }
 
 // Dismisses Gemini from all other windows and executes `completion`.

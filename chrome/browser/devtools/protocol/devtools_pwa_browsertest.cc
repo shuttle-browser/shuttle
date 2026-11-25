@@ -12,6 +12,7 @@
 
 #include "base/base_paths.h"
 #include "base/check.h"
+#include "base/command_line.h"
 #include "base/functional/function_ref.h"
 #include "base/path_service.h"
 #include "base/strings/string_util.h"
@@ -20,6 +21,11 @@
 #include "chrome/browser/badging/badge_manager.h"
 #include "chrome/browser/badging/badge_manager_factory.h"
 #include "chrome/browser/devtools/protocol/devtools_protocol_test_support.h"
+#include "chrome/common/chrome_switches.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/dbus/constants/dbus_switches.h"
+#endif
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -265,6 +271,34 @@ IN_PROC_BROWSER_TEST_F(PWAProtocolTestWithoutApp, GetOsAppState_CannotFindApp) {
   AssertErrorMessageContains({"ThisIsNotAValidManifestId"});
 }
 
+IN_PROC_BROWSER_TEST_F(PWAProtocolTestWithoutApp,
+                       GetOsAppState_EnableDevToolsPwaHandlerSwitch) {
+  // Without AllowUnsafeOperations or --enable-devtools-pwa-handler, the PWA
+  // domain should not be registered on the session.
+  DetachProtocolClient();
+  SetAllowUnsafeOperations(false);
+  AttachToBrowserTarget();
+  ASSERT_FALSE(SendCommandSync(
+      "PWA.getOsAppState",
+      base::DictValue{}.Set("manifestId", "ThisIsNotAValidManifestId")));
+  AssertErrorMessageContains({"'PWA.getOsAppState' wasn't found"});
+
+  // With --enable-devtools-pwa-handler (and kSystemDevMode on ChromeOS),
+  // PWAHandler is registered even when AllowUnsafeOperations is false.
+  DetachProtocolClient();
+  base::CommandLine::ForCurrentProcess()->AppendSwitch(
+      switches::kEnableDevToolsPwaHandler);
+#if BUILDFLAG(IS_CHROMEOS)
+  base::CommandLine::ForCurrentProcess()->AppendSwitch(
+      chromeos::switches::kSystemDevMode);
+#endif
+  AttachToBrowserTarget();
+  ASSERT_FALSE(SendCommandSync(
+      "PWA.getOsAppState",
+      base::DictValue{}.Set("manifestId", "ThisIsNotAValidManifestId")));
+  AssertErrorMessageContains({"ThisIsNotAValidManifestId"});
+}
+
 IN_PROC_BROWSER_TEST_F(PWAProtocolTest, GetOsAppState) {
   InstallWebApp();
   const base::DictValue* result =
@@ -317,17 +351,16 @@ IN_PROC_BROWSER_TEST_F(PWAProtocolTest, GetOsAppState_WithBadgeOverInt) {
 }
 
 IN_PROC_BROWSER_TEST_F(PWAProtocolTest, GetOsAppState_WithFileHandler) {
-  webapps::AppId app_id =
-      InstallWebApp([this](WebAppInstallInfo& web_app_info) {
-        apps::FileHandler file_handler;
-        file_handler.action = InstallableWebAppUrl().Resolve("/file_handler");
-        apps::FileHandler::AcceptEntry entry;
-        entry.mime_type = "image/jpeg";
-        entry.file_extensions.insert(".jpg");
-        entry.file_extensions.insert(".jpeg");
-        file_handler.accept.push_back(entry);
-        web_app_info.file_handlers.push_back(file_handler);
-      });
+  InstallWebApp([this](WebAppInstallInfo& web_app_info) {
+    apps::FileHandler file_handler;
+    file_handler.action = InstallableWebAppUrl().Resolve("/file_handler");
+    apps::FileHandler::AcceptEntry entry;
+    entry.mime_type = "image/jpeg";
+    entry.file_extensions.insert(".jpg");
+    entry.file_extensions.insert(".jpeg");
+    file_handler.accept.push_back(entry);
+    web_app_info.file_handlers.push_back(file_handler);
+  });
   const base::DictValue* result =
       SendCommandSync("PWA.getOsAppState",
                       base::DictValue{}.Set(

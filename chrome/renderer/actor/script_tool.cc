@@ -61,6 +61,7 @@ mojom::ActionResultPtr OnToolExecuted(
   script_tool_response->tool->name = name;
   script_tool_response->tool->description = tool->description.Utf8();
   script_tool_response->tool->input_schema = tool->input_schema.Utf8();
+  script_tool_response->tool->output_schema = tool->output_schema.Utf8();
   if (tool->read_only.has_value() || tool->untrusted_content.has_value() ||
       tool->consequential.has_value() || tool->debugging.has_value()) {
     script_tool_response->tool->annotations =
@@ -115,11 +116,24 @@ void ScriptTool::Execute(ToolFinishedCallback callback) {
   // `this`. Copy `execution_id_` onto the stack so the reference passed into
   // Blink remains valid across re-entrancy.
   const blink::ToolInvocationToken execution_id = execution_id_.value();
-  frame_->GetWebFrame()->GetDocument().ExecuteScriptTool(
+  auto tool_result_cb =
+      base::BindOnce(&OnToolExecuted, action_->name, action_->input_arguments)
+          .Then(std::move(callback));
+  blink::WebDocument document = frame_->GetWebFrame()->GetDocument();
+  // If the browser pinned the action to the tool it observed, execute exactly
+  // that tool, so that a tool the page has since registered under the same
+  // name can't run in its place.
+  if (action_->tool_id) {
+    document.ExecuteScriptTool(
+        execution_id, *action_->tool_id,
+        blink::WebString::FromUtf8(action_->input_arguments),
+        std::move(tool_result_cb));
+    return;
+  }
+  document.ExecuteScriptToolByName(
       execution_id, blink::WebString::FromUtf8(action_->name),
       blink::WebString::FromUtf8(action_->input_arguments),
-      base::BindOnce(&OnToolExecuted, action_->name, action_->input_arguments)
-          .Then(std::move(callback)));
+      std::move(tool_result_cb));
 }
 
 void ScriptTool::Cancel() {

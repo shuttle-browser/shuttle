@@ -736,14 +736,18 @@ class MediaStreamManagerTest : public ::testing::Test {
 
   void SetVideoCaptureDevices(
       const std::vector<media::VideoCaptureDeviceInfo>& devices) {
-    ON_CALL(*video_capture_provider_, GetDeviceInfosAsync(_))
-        .WillByDefault(
+    ON_CALL(
+        *video_capture_provider_,
+        DoGetDeviceInfosAsync(media::mojom::VideoCaptureDeviceEnumerationMode::
+                                  kDevicesWithCapabilities,
+                              _))
+        .WillByDefault(testing::WithArg<1>(
             [devices](
                 VideoCaptureProvider::GetDeviceInfosCallback result_callback) {
               std::move(result_callback)
                   .Run(media::mojom::DeviceEnumerationResult::kSuccess,
                        devices);
-            });
+            }));
   }
 
   void HandleAccessRequestResponse(
@@ -949,7 +953,7 @@ TEST_F(MediaStreamManagerTest, MakeAndCancelMediaAccessRequest) {
 
 TEST_F(MediaStreamManagerTest, MakeMultipleRequests) {
   // First request.
-  std::string label1 = MakeMediaAccessRequest(0);
+  MakeMediaAccessRequest(0);
 
   // Second request.
 
@@ -960,7 +964,7 @@ TEST_F(MediaStreamManagerTest, MakeMultipleRequests) {
   blink::StreamControls controls(true, true);
   MediaStreamManager::MediaAccessRequestCallback callback = base::BindOnce(
       &MediaStreamManagerTest::ResponseCallback, base::Unretained(this), 1);
-  std::string label2 = media_stream_manager_->MakeMediaAccessRequest(
+  media_stream_manager_->MakeMediaAccessRequest(
       render_frame_host_id, requester_id, page_request_id, controls,
       security_origin, std::move(callback));
 
@@ -1027,7 +1031,7 @@ TEST_F(MediaStreamManagerTest, IsSessionAllowedOnLockScreen) {
 
 TEST_F(MediaStreamManagerTest, MakeAndCancelMultipleRequests) {
   std::string label1 = MakeMediaAccessRequest(0);
-  std::string label2 = MakeMediaAccessRequest(1);
+  MakeMediaAccessRequest(1);
 
   // Cancelled request notifies closing of all stream types.
   EXPECT_CALL(

@@ -8,6 +8,7 @@
 #include <string>
 #include <utility>
 
+#include "ash/constants/ash_pref_names.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/types/expected.h"
@@ -21,11 +22,10 @@
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/login/login_display_host.h"
-#include "chrome/common/extensions/api/login.h"
-#include "chrome/common/pref_names.h"
 #include "chromeos/ash/components/login/auth/public/cryptohome_key_constants.h"
 #include "chromeos/ash/components/login/auth/public/key.h"
 #include "chromeos/ash/components/login/auth/public/user_context.h"
+#include "chromeos/ash/experiences/extensions/common/api/login.h"
 #include "components/prefs/pref_service.h"
 #include "components/session_manager/core/session_manager.h"
 #include "components/user_manager/user.h"
@@ -209,10 +209,12 @@ ExtensionFunction::ResponseAction LoginExitCurrentSessionFunction::Run() {
   CHECK(local_state);
 
   if (parameters->data_for_next_login_attempt) {
-    local_state->SetString(prefs::kLoginExtensionApiDataForNextLoginAttempt,
-                           std::move(*parameters->data_for_next_login_attempt));
+    local_state->SetString(
+        ash::prefs::kLoginExtensionApiDataForNextLoginAttempt,
+        std::move(*parameters->data_for_next_login_attempt));
   } else {
-    local_state->ClearPref(prefs::kLoginExtensionApiDataForNextLoginAttempt);
+    local_state->ClearPref(
+        ash::prefs::kLoginExtensionApiDataForNextLoginAttempt);
   }
   chrome::AttemptUserExit();
   return RespondNow(NoArguments());
@@ -228,9 +230,9 @@ LoginFetchDataForNextLoginAttemptFunction::Run() {
   PrefService* local_state = g_browser_process->local_state();
   CHECK(local_state);
 
-  std::string data_for_next_login_attempt =
-      local_state->GetString(prefs::kLoginExtensionApiDataForNextLoginAttempt);
-  local_state->ClearPref(prefs::kLoginExtensionApiDataForNextLoginAttempt);
+  std::string data_for_next_login_attempt = local_state->GetString(
+      ash::prefs::kLoginExtensionApiDataForNextLoginAttempt);
+  local_state->ClearPref(ash::prefs::kLoginExtensionApiDataForNextLoginAttempt);
   return RespondNow(WithArguments(std::move(data_for_next_login_attempt)));
 }
 
@@ -401,7 +403,7 @@ LoginSetDataForNextLoginAttemptFunction::Run() {
 
   PrefService* local_state = g_browser_process->local_state();
   CHECK(local_state);
-  local_state->SetString(prefs::kLoginExtensionApiDataForNextLoginAttempt,
+  local_state->SetString(ash::prefs::kLoginExtensionApiDataForNextLoginAttempt,
                          parameters->data_for_next_login_attempt);
   return RespondNow(NoArguments());
 }

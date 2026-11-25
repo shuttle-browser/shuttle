@@ -22,6 +22,12 @@ public final class SigninFeatureMap extends FeatureMap {
     // Do not instantiate this class.
     private SigninFeatureMap() {}
 
+    public static final CachedFlag sFullscreenSigninMediatorStateMachine =
+            new CachedFlag(
+                    sInstance,
+                    SigninFeatures.FULLSCREEN_SIGNIN_MEDIATOR_STATE_MACHINE,
+                    /* defaultValue= */ false,
+                    /* defaultValueInTests= */ false);
     public static final CachedFlag sMigrateAccountManagerDelegate =
             new CachedFlag(
                     sInstance,
@@ -40,18 +46,12 @@ public final class SigninFeatureMap extends FeatureMap {
                     SigninFeatures.SIGNIN_LEVEL_UP_BUTTON,
                     /* defaultValue= */ true,
                     /* defaultValueInTests= */ true);
-    public static final CachedFlag sSupportForcedSigninPolicy =
-            new CachedFlag(
-                    sInstance,
-                    SigninFeatures.SUPPORT_FORCED_SIGNIN_POLICY,
-                    /* defaultValue= */ true,
-                    /* defaultValueInTests= */ true);
     public static final List<CachedFlag> sCachedFlags =
             List.of(
+                    sFullscreenSigninMediatorStateMachine,
                     sMigrateAccountManagerDelegate,
                     sProfileDiscOnAllPages,
-                    sSigninLevelUpButton,
-                    sSupportForcedSigninPolicy);
+                    sSigninLevelUpButton);
 
     /**
      * Returns whether the activityless sign-in is enabled for all entry points.
@@ -61,6 +61,18 @@ public final class SigninFeatureMap extends FeatureMap {
      */
     public boolean isActivitylessSigninAllEntryPointEnabled() {
         return isEnabledInNative(SigninFeatures.ENABLE_ACTIVITYLESS_SIGNIN_ALL_ENTRY_POINT);
+    }
+
+    /**
+     * Returns whether the AI tier ring is enabled on the settings account surfaces: the Main
+     * Settings account row and the Account page card. Their layouts and avatar sizes depend on it.
+     *
+     * <p>Needs both {@link SigninFeatures#ENABLE_AI_SUBSCRIPTION_AVATAR_RING} and {@link
+     * SigninFeatures#AI_SUBSCRIPTION_AVATAR_RING_FOLLOWUP}.
+     */
+    public boolean isAiTierRingInSettingsEnabled() {
+        return isEnabledInNative(SigninFeatures.ENABLE_AI_SUBSCRIPTION_AVATAR_RING)
+                && isEnabledInNative(SigninFeatures.AI_SUBSCRIPTION_AVATAR_RING_FOLLOWUP);
     }
 
     /**

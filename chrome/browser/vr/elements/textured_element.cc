@@ -44,7 +44,7 @@ TexturedElement::~TexturedElement() = default;
 
 void TexturedElement::Initialize() {
   TRACE_EVENT0("gpu", "TexturedElement::Initialize");
-  DCHECK(GetTexture());
+  CHECK(GetTexture(), base::NotFatalUntil::M163);
   GetTexture()->OnInitialized();
   initialized_ = true;
 }
@@ -55,13 +55,14 @@ bool TexturedElement::PrepareToDraw() {
 
   texture_size_ = MeasureTextureSize();
   if (TextureDependsOnMeasurement())
-    DCHECK(GetTexture()->measured());
+    CHECK(GetTexture()->measured(), base::NotFatalUntil::M163);
 
   return true;
 }
 
 bool TexturedElement::HasDirtyTexture() const {
-  DCHECK(IsVisible());  // We shouldn't be querying non visible elements.
+  CHECK(IsVisible(), base::NotFatalUntil::M163);  // We shouldn't be querying
+                                                  // non visible elements.
   if (!GetTexture()->dirty())
     return false;
   // Elements can be dirtied by user input.  If the texture draw depends on
@@ -86,7 +87,7 @@ void TexturedElement::UpdateTexture() {
         texture_size_, [this](SkCanvas* canvas) {
           GetTexture()->DrawTexture(canvas, texture_size_);
         });
-    DCHECK(skia_texture_);
+    CHECK(skia_texture_, base::NotFatalUntil::M163);
   } else {
     skia_texture_.reset();
     GetTexture()->DrawEmptyTexture();
@@ -103,7 +104,7 @@ void TexturedElement::SetBackgroundColor(SkColor color) {
 
 void TexturedElement::Render(UiElementRenderer* renderer,
                              const CameraModel& model) const {
-  DCHECK(initialized_);
+  CHECK(initialized_, base::NotFatalUntil::M163);
 
   // Zero-size elements, such as empty text, don't allocate textures.
   if (!skia_texture_) {

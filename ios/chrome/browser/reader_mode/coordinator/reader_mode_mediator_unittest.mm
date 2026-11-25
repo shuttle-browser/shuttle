@@ -5,14 +5,14 @@
 #import "ios/chrome/browser/reader_mode/coordinator/reader_mode_mediator.h"
 
 #import "base/test/task_environment.h"
-#import "components/dom_distiller/core/distilled_page_prefs.h"
-#import "components/dom_distiller/core/mojom/distilled_page_prefs.mojom.h"
-#import "ios/chrome/browser/dom_distiller/model/distiller_service.h"
-#import "ios/chrome/browser/dom_distiller/model/distiller_service_factory.h"
+#import "components/web_distiller/core/distilled_page_prefs.h"
+#import "components/web_distiller/core/mojom/distilled_page_prefs.mojom.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_service.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_service_factory.h"
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/web_distiller/model/distiller_service.h"
+#import "ios/chrome/browser/web_distiller/model/distiller_service_factory.h"
 #import "ios/web/public/test/web_task_environment.h"
 #import "testing/gtest/include/gtest/gtest.h"
 #import "testing/platform_test.h"
@@ -40,11 +40,11 @@ class ReaderModeMediatorTest : public PlatformTest {
 };
 
 TEST_F(ReaderModeMediatorTest, SetDefaultTheme) {
-  [mediator_ setDefaultTheme:dom_distiller::mojom::Theme::kDark];
+  [mediator_ setDefaultTheme:web_distiller::mojom::Theme::kDark];
   EXPECT_EQ(mediator_.distilledPagePrefs->GetTheme(),
-            dom_distiller::mojom::Theme::kDark);
+            web_distiller::mojom::Theme::kDark);
 
-  [mediator_ setDefaultTheme:dom_distiller::mojom::Theme::kLight];
+  [mediator_ setDefaultTheme:web_distiller::mojom::Theme::kLight];
   EXPECT_EQ(mediator_.distilledPagePrefs->GetTheme(),
-            dom_distiller::mojom::Theme::kLight);
+            web_distiller::mojom::Theme::kLight);
 }

@@ -82,10 +82,12 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
   class OverlayContentsManager : public content::WebContentsObserver,
                                  public mojom::GlicOverlayPageHandler {
    public:
-    OverlayContentsManager(Profile* profile,
-                           GlicNoWebviewContentsManager* owner,
-                           ObservableValueView<GuestState>& guest_state,
-                           ObservableValueView<bool>& guest_main_page_loaded);
+    OverlayContentsManager(
+        Profile* profile,
+        GlicNoWebviewContentsManager* owner,
+        ObservableValueView<std::optional<mojom::ErrorPanelType>>& error_type,
+        ObservableValueView<GuestState>& guest_state,
+        ObservableValueView<bool>& guest_main_page_loaded);
     ~OverlayContentsManager() override;
 
     content::WebContents* EnsureWebContents();
@@ -93,9 +95,6 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
     content::WebContents* web_contents() const;
     bool IsCrashed() const;
     GlicOverlayUI* GetOverlayUI() const;
-    std::optional<mojom::ErrorPanelType> error_type() const;
-    void SetError(mojom::ErrorPanelType error_type);
-    void ClearError();
     void ObservePanelState(ObservableValueView<mojom::PanelState>& panel_state);
     void SetVisibility(content::Visibility visibility);
     const gfx::Size& cached_size() const;
@@ -110,10 +109,13 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
     //   (returns nullptr).
     // - `panel_state_kind`: Detached panels show a floating loading skeleton;
     //   otherwise, a side-panel loading skeleton is shown.
+    // - `profile`: The loading overlay is only skipped if the profile's
+    //   provider supports SSR (see `GlicProviderSpec::SupportsSsr()`).
     static mojom::OverlayStatePtr DetermineOverlayState(
         std::optional<mojom::ErrorPanelType> error_type,
         GuestState guest_state,
         std::optional<mojom::PanelStateKind> panel_state_kind,
+        Profile* profile,
         bool guest_main_page_loaded);
 
     // Evaluates current inputs to determine the desired overlay state.
@@ -142,19 +144,17 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
     void OnDisabledByAdminLinkClicked() override;
     void OnClosePanelClicked() override;
     void OnShowErrorClicked() override;
+    void OnRelaunchClicked() override;
 
     void OpenUrlAndClosePanel(const GURL& url);
 
     raw_ptr<Profile> profile_;
     raw_ptr<GlicNoWebviewContentsManager> owner_;
     std::unique_ptr<content::WebContents> web_contents_;
-    std::optional<mojom::ErrorPanelType> error_type_;
-    const raw_ref<ObservableValueView<GuestState>> guest_state_;
-    base::CallbackListSubscription guest_state_subscription_;
-    const raw_ref<ObservableValueView<bool>> guest_main_page_loaded_;
-    base::CallbackListSubscription guest_main_page_loaded_subscription_;
-    base::CallbackListSubscription panel_state_subscription_;
-    raw_ptr<ObservableValueView<mojom::PanelState>> panel_state_ = nullptr;
+    ObservedValue<std::optional<mojom::ErrorPanelType>> error_type_;
+    ObservedValue<GuestState> guest_state_;
+    ObservedValue<bool> guest_main_page_loaded_;
+    std::optional<ObservedValue<mojom::PanelState>> panel_state_;
     gfx::Size cached_size_;
   };
 
@@ -172,6 +172,9 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
       ScopedModalDialogManagerDelegate& delegate) override;
   void SetVisibility(content::Visibility visibility) override;
   content::WebContents* active_web_contents() const override;
+  bool IsShowingNativeLoading() const override;
+  base::CallbackListSubscription RegisterNativeLoadingChangedCallback(
+      NativeLoadingChangedCallback callback) override;
   content::WebContents* guest_contents() const override;
   void OnActuatingChanged(bool actuating) override;
   void OnTaskTabsVisibilityChanged(bool has_visible_tab) override;
@@ -204,7 +207,11 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
     kWarming,
     // Attached to Host, but hidden; overlay not created.
     kAttachedHidden,
-    // Visible to user, guest not yet ready; overlay is created and showing.
+    // Visible to user, guest not yet ready; native loading placeholder is
+    // showing and WebUI overlay is not created.
+    kShowingNativeLoading,
+    // Visible to user, guest not yet ready or error active; overlay is created
+    // and showing.
     kShowingOverlay,
     // Guest connected and active; overlay is destroyed.
     kShowingGuest,
@@ -231,7 +238,7 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
   void ClearErrorState();
 
   std::optional<mojom::ErrorPanelType> error_type() const {
-    return overlay_manager_.error_type();
+    return *error_type_;
   }
 
   ObservableValueView<GuestState>& guest_state() { return guest_state_; }
@@ -304,7 +311,12 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
   // web client connection.
   bool HasClientLoadFailed() const;
 
-  // Reports `HasClientLoadFailed()` to the Host.
+  // Returns the active `ClientLoadErrorReason` when the client is stuck in a
+  // load failure state (`GuestState::kGuestError` maps to
+  // `ClientLoadErrorReason::kUnknown`), or `std::nullopt` otherwise.
+  std::optional<ClientLoadErrorReason> CurrentClientLoadErrorReason() const;
+
+  // Reports `CurrentClientLoadErrorReason()` to the Host.
   void UpdateClientLoadFailed();
 
   // The state of the web client, or `kUninitialized` if no web client has
@@ -355,6 +367,9 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
   void OnZoomLevelChange();
   void OnProfileReadyStateChanged();
   void UpdateForProfileReadyState(bool is_initial);
+  // Shows the relaunch panel if the attached host's instance was created with
+  // a pending provider change. Returns whether it did.
+  bool MaybeSetPendingProviderChangeError();
   void OnHibernationTimerExpired();
   void ResolvePendingWaitForLoadCallbacks();
 
@@ -366,12 +381,13 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
   // Lifecycle state of the guest WebContents.
   ObservableValue<GuestState> guest_state_{GuestState::kLoading};
   ObservableValue<bool> guest_main_page_loaded_{false};
-
-  // A client load error that happened before a Host was attached, i.e. while
-  // the contents were warming in the background. Reported once AttachToHost()
-  // runs so that failures during warming are not silently lost. Dropped by
-  // ClearErrorState() if the error is resolved before then.
-  std::optional<ClientLoadErrorReason> pending_client_load_error_;
+  ObservableValue<std::optional<mojom::ErrorPanelType>> error_type_;
+  // Active failure cause corresponding to `error_type_`. If set before a Host
+  // is attached (while warming in the background), `AttachToHost()` reports it
+  // to the Host so failures during warming are not silently lost. Cleared by
+  // `ClearErrorState()`.
+  std::optional<ClientLoadErrorReason> error_reason_;
+  base::CallbackListSubscription error_type_subscription_;
 
   GlicWebClientManager web_client_manager_;
   OverlayContentsManager overlay_manager_;
@@ -394,6 +410,7 @@ class GlicNoWebviewContentsManager : public GlicWebContentsManager,
 
   base::RepeatingCallbackList<void(content::WebContents*)>
       web_contents_changed_callbacks_;
+  base::RepeatingCallbackList<void(bool)> native_loading_changed_callbacks_;
 
   base::CallbackListSubscription profile_ready_subscription_;
 
@@ -414,6 +431,8 @@ inline std::ostream& operator<<(
       return os << "kWarming";
     case GlicNoWebviewContentsManager::DisplayState::kAttachedHidden:
       return os << "kAttachedHidden";
+    case GlicNoWebviewContentsManager::DisplayState::kShowingNativeLoading:
+      return os << "kShowingNativeLoading";
     case GlicNoWebviewContentsManager::DisplayState::kShowingOverlay:
       return os << "kShowingOverlay";
     case GlicNoWebviewContentsManager::DisplayState::kShowingGuest:

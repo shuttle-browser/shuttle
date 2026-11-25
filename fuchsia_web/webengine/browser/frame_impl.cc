@@ -81,6 +81,7 @@
 #include "third_party/blink/public/mojom/navigation/was_activated_option.mojom.h"
 #include "third_party/perfetto/include/perfetto/tracing/track_event_args.h"
 #include "ui/aura/window.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/compositor/compositor.h"
 #include "ui/gfx/switches.h"
 #include "ui/ozone/public/ozone_switches.h"
@@ -634,7 +635,7 @@ content::WebContents* FrameImpl::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -642,11 +643,11 @@ content::WebContents* FrameImpl::AddNewContents(
 
   // TODO(crbug.com/41476982): Add window disposition to the FIDL interface.
   switch (disposition) {
-    case WindowOpenDisposition::kNewForegroundTab:
-    case WindowOpenDisposition::kNewBackgroundTab:
-    case WindowOpenDisposition::kNewPictureInPicture:
-    case WindowOpenDisposition::kNewPopup:
-    case WindowOpenDisposition::kNewWindow: {
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewPictureInPicture:
+    case ui::mojom::WindowOpenDisposition::kNewPopup:
+    case ui::mojom::WindowOpenDisposition::kNewWindow: {
       if (url_request_rewrite_rules_manager_.GetCachedRules()) {
         // There is no support for URL request rules rewriting with popups.
         *was_blocked = true;
@@ -688,14 +689,14 @@ content::WebContents* FrameImpl::AddNewContents(
     }
 
     // These kinds of windows don't produce Frames.
-    case WindowOpenDisposition::kCurrentTab:
-    case WindowOpenDisposition::kSingletonTab:
-    case WindowOpenDisposition::kSaveToDisk:
-    case WindowOpenDisposition::kOffTheRecord:
-    case WindowOpenDisposition::kIgnoreAction:
-    case WindowOpenDisposition::kSwitchToTab:
-    case WindowOpenDisposition::kNewSplitView:
-    case WindowOpenDisposition::kUnknown:
+    case ui::mojom::WindowOpenDisposition::kCurrentTab:
+    case ui::mojom::WindowOpenDisposition::kSingletonTab:
+    case ui::mojom::WindowOpenDisposition::kSaveToDisk:
+    case ui::mojom::WindowOpenDisposition::kOffTheRecord:
+    case ui::mojom::WindowOpenDisposition::kIgnoreAction:
+    case ui::mojom::WindowOpenDisposition::kSwitchToTab:
+    case ui::mojom::WindowOpenDisposition::kNewSplitView:
+    case ui::mojom::WindowOpenDisposition::kUnknown:
       NOTIMPLEMENTED() << "Dropped new web contents (disposition: "
                        << static_cast<int>(disposition) << ")";
       return nullptr;
@@ -864,9 +865,8 @@ void FrameImpl::CreateView(fuchsia::ui::views::ViewToken view_token) {
   TRACE_EVENT(kWebEngineFidlCategory, "fuchsia.web/Frame.CreateView",
               perfetto::Flow::FromPointer(this));
 
-  auto view_ref_pair = ui::ViewRefPair::New();
-  CreateViewImpl(std::move(view_token), std::move(view_ref_pair.control_ref),
-                 std::move(view_ref_pair.view_ref));
+  LOG(WARNING) << "CreateView() is no longer supported.";
+  CloseAndDestroyFrame(ZX_ERR_NOT_SUPPORTED);
 }
 
 void FrameImpl::CreateViewWithViewRef(
@@ -876,34 +876,8 @@ void FrameImpl::CreateViewWithViewRef(
   TRACE_EVENT(kWebEngineFidlCategory, "fuchsia.web/Frame.CreateViewWithViewRef",
               perfetto::Flow::FromPointer(this));
 
-  CreateViewImpl(std::move(view_token), std::move(control_ref),
-                 std::move(view_ref));
-}
-
-void FrameImpl::CreateViewImpl(fuchsia::ui::views::ViewToken view_token,
-                               fuchsia::ui::views::ViewRefControl control_ref,
-                               fuchsia::ui::views::ViewRef view_ref) {
-  if (IsHeadless()) {
-    LOG(WARNING) << "CreateView() called on a HEADLESS Context.";
-    CloseAndDestroyFrame(ZX_ERR_INVALID_ARGS);
-    return;
-  }
-
-  if (!view_token.value.is_valid()) {
-    LOG(WARNING) << "CreateView() called with invalid view_token.";
-    CloseAndDestroyFrame(ZX_ERR_INVALID_ARGS);
-    return;
-  }
-
-  // If a View to this Frame is already active then disconnect it.
-  DestroyWindowTreeHost();
-
-  ui::ViewRefPair view_ref_pair;
-  view_ref_pair.control_ref = std::move(control_ref);
-  view_ref_pair.view_ref = std::move(view_ref);
-  SetupWindowTreeHost(std::move(view_token), std::move(view_ref_pair));
-
-  ConnectToAccessibilityBridge();
+  LOG(WARNING) << "CreateViewWithViewRef() is no longer supported.";
+  CloseAndDestroyFrame(ZX_ERR_NOT_SUPPORTED);
 }
 
 void FrameImpl::CreateView2(fuchsia::web::CreateView2Args view_args) {
@@ -1183,7 +1157,7 @@ void FrameImpl::EnableHeadlessRendering() {
   }
 
   auto view_ref_pair = ui::ViewRefPair::New();
-  SetupWindowTreeHost(fuchsia::ui::views::ViewToken(),
+  SetupWindowTreeHost(fuchsia::ui::views::ViewCreationToken(),
                       std::move(view_ref_pair));
 
   gfx::Rect bounds(kHeadlessWindowSize);
@@ -1215,18 +1189,6 @@ void FrameImpl::DisableHeadlessRendering() {
   DestroyWindowTreeHost();
 }
 
-void FrameImpl::SetupWindowTreeHost(fuchsia::ui::views::ViewToken view_token,
-                                    ui::ViewRefPair view_ref_pair) {
-  DCHECK(!window_tree_host_);
-
-  window_tree_host_ = std::make_unique<FrameWindowTreeHost>(
-      std::move(view_token), std::move(view_ref_pair), web_contents_.get(),
-      base::BindRepeating(&FrameImpl::OnPixelScaleUpdate,
-                          base::Unretained(this)));
-
-  InitWindowTreeHost();
-}
-
 void FrameImpl::SetupWindowTreeHost(
     fuchsia::ui::views::ViewCreationToken view_creation_token,
     ui::ViewRefPair view_ref_pair) {
@@ -1237,12 +1199,6 @@ void FrameImpl::SetupWindowTreeHost(
       web_contents_.get(),
       base::BindRepeating(&FrameImpl::OnPixelScaleUpdate,
                           base::Unretained(this)));
-
-  InitWindowTreeHost();
-}
-
-void FrameImpl::InitWindowTreeHost() {
-  DCHECK(window_tree_host_);
 
   window_tree_host_->InitHost();
   root_window()->AddPreTargetHandler(&event_filter_);

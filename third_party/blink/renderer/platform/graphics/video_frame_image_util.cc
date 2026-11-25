@@ -4,6 +4,7 @@
 
 #include "third_party/blink/renderer/platform/graphics/video_frame_image_util.h"
 
+#include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/memory/ptr_util.h"
 #include "build/build_config.h"
@@ -12,7 +13,10 @@
 #include "components/viz/common/gpu/raster_context_provider.h"
 #include "components/viz/common/resources/release_callback.h"
 #include "components/viz/common/resources/shared_image_format_utils.h"
+#include "gpu/GLES2/gl2extchromium.h"
 #include "gpu/command_buffer/client/raster_interface.h"
+#include "gpu/command_buffer/client/shared_image_interface.h"
+#include "gpu/command_buffer/common/capabilities.h"
 #include "gpu/command_buffer/common/shared_image_usage.h"
 #include "media/base/video_frame.h"
 #include "media/base/video_types.h"
@@ -21,8 +25,11 @@
 #include "media/gfx/paint_canvas_video_renderer.h"
 #include "skia/ext/legacy_display_globals.h"
 #include "third_party/blink/renderer/platform/graphics/accelerated_static_bitmap_image.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_non_2d_resource_provider.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_2d_resource_provider.h"
+#include "third_party/blink/renderer/platform/graphics/canvas_image_provider.h"
+#include "third_party/blink/renderer/platform/graphics/flush_for_image_listener.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
+#include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/skia/skia_utils.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/graphics/unaccelerated_static_bitmap_image.h"
@@ -136,8 +143,8 @@ scoped_refptr<StaticBitmapImage> CreateImageFromVideoFrame(
       frame->metadata().transformation.value_or(media::kNoTransformation);
 
   media::PaintCanvasVideoRenderer::PaintParams params;
-  params.dest_rect = gfx::RectF(
-      snapshot_pool ? snapshot_pool->provider()->Size() : sw_draw_info->size);
+  params.dest_rect =
+      gfx::RectF(snapshot_pool ? snapshot_pool->Size() : sw_draw_info->size);
   params.transformation =
       orientation_behavior == VideoOrientationBehavior::kTagOrientation
           ? media::kNoTransformation
@@ -149,17 +156,16 @@ scoped_refptr<StaticBitmapImage> CreateImageFromVideoFrame(
     video_renderer->Paint(frame.get(), &canvas, media_flags, params,
                           raster_context_provider.get());
   };
-  auto orientation =
-      orientation_behavior == VideoOrientationBehavior::kTagOrientation
-          ? VideoTransformationToImageOrientation(transform)
-          : ImageOrientationEnum::kDefault;
   if (sw_draw_info) {
+    auto orientation =
+        orientation_behavior == VideoOrientationBehavior::kTagOrientation
+            ? VideoTransformationToImageOrientation(transform)
+            : ImageOrientationEnum::kDefault;
     return DrawAndSnapshotToImage(sw_draw_info.value(), draw_callback,
                                   orientation);
   }
 
-  return snapshot_pool->provider()->DoExternalOverdrawAndSnapshot(draw_callback,
-                                                                  orientation);
+  return snapshot_pool->DoExternalOverdrawAndSnapshot(draw_callback);
 }
 
 }  // namespace
@@ -167,32 +173,260 @@ scoped_refptr<StaticBitmapImage> CreateImageFromVideoFrame(
 // static
 std::unique_ptr<VideoFrameAcceleratedSnapshotPool>
 VideoFrameAcceleratedSnapshotPool::Create(const CanvasSnapshotInfo& info) {
-  auto provider = CanvasNon2DResourceProvider::Create(
-      info.size, info.format, info.alpha_type, info.color_space,
-      info.hdr_metadata, SharedGpuContext::ContextProviderWrapper(),
-      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ);
-  if (!provider) {
+  // IsGpuCompositingEnabled can re-create the context if it has been lost, do
+  // this up front so that we can fail early and not expose ourselves to
+  // use after free bugs (crbug.com/1126424)
+  SharedGpuContext::IsGpuCompositingEnabled();
+
+  auto context_provider_wrapper = SharedGpuContext::ContextProviderWrapper();
+
+  // If the context is lost we don't want to re-create it here, the resulting
+  // resource provider would be invalid anyway
+  if (!context_provider_wrapper ||
+      !context_provider_wrapper->ContextProvider().RasterInterface() ||
+      context_provider_wrapper->ContextProvider().IsContextLost()) {
     return nullptr;
   }
-  return base::WrapUnique(
-      new VideoFrameAcceleratedSnapshotPool(std::move(provider)));
+
+  const auto& capabilities =
+      context_provider_wrapper->ContextProvider().GetCapabilities();
+  if ((info.size.width() < 1 || info.size.height() < 1 ||
+       info.size.width() > capabilities.max_texture_size ||
+       info.size.height() > capabilities.max_texture_size)) {
+    return nullptr;
+  }
+
+  // TODO(crbug.com/40767377): Pass in info as is for all cases.
+  // Overriding the info to use RGBA instead of N32 is needed because code
+  // elsewhere assumes RGBA. OTOH the software path seems to be assuming N32
+  // somewhere in the later pipeline but for offscreen canvas only.
+  auto format = info.format;
+  if (format != viz::SinglePlaneFormat::kRGBA_F16) {
+    format = viz::SinglePlaneFormat::kRGBA_8888;
+  }
+
+  CanvasSnapshotInfo pool_info = info;
+  pool_info.format = format;
+  auto pool = base::WrapUnique(new VideoFrameAcceleratedSnapshotPool(
+      pool_info, std::move(context_provider_wrapper)));
+  return pool->IsValid() ? std::move(pool) : nullptr;
 }
 
 VideoFrameAcceleratedSnapshotPool::VideoFrameAcceleratedSnapshotPool(
-    std::unique_ptr<CanvasNon2DResourceProvider> provider)
-    : provider_(std::move(provider)) {
-  CHECK(provider_);
+    const CanvasSnapshotInfo& info,
+    base::WeakPtr<WebGraphicsContext3DProviderWrapper> context_provider_wrapper)
+    : info_(info),
+      context_provider_wrapper_(std::move(context_provider_wrapper)) {
+  if (context_provider_wrapper_) {
+    raster_context_provider_ = base::WrapRefCounted(
+        context_provider_wrapper_->ContextProvider().RasterContextProvider());
+  }
+
+  if (raster_context_provider_) {
+    raster_context_provider_->AddObserver(this);
+  }
+
+  if (context_provider_wrapper_) {
+    if (auto* sii = context_provider_wrapper_->ContextProvider()
+                        .SharedImageInterface()) {
+      // These SharedImages are both read and written by the raster interface
+      // (both occur, for example, when copying canvas resources between
+      // canvases). Additionally, these SharedImages can be put into
+      // AcceleratedStaticBitmapImages (via Bitmap()) that are then copied into
+      // GL textures by WebGL (via
+      // AcceleratedStaticBitmapImage::CopyToTexture()).
+      gpu::SharedImageUsageSet shared_image_usage_flags =
+          gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+          gpu::SHARED_IMAGE_USAGE_RASTER_READ |
+          gpu::SHARED_IMAGE_USAGE_RASTER_WRITE |
+          gpu::SHARED_IMAGE_USAGE_GLES2_READ;
+      // Add WEBGPU_READ usage to allow importing into WebGPU without a copy.
+      if (base::FeatureList::IsEnabled(kCanvasResourceIsWebGPUCompatible)) {
+        shared_image_usage_flags |= gpu::SHARED_IMAGE_USAGE_WEBGPU_READ;
+      }
+
+      gpu::ImageInfo image_info(
+          info_.size, info_.format, shared_image_usage_flags, info_.color_space,
+          kTopLeft_GrSurfaceOrigin, info_.alpha_type,
+          /*buffer_usage=*/std::nullopt, /*is_software=*/false);
+
+      std::optional<base::TimeDelta> expiration_time =
+          (base::FeatureList::IsEnabled(kCanvas2DReclaimUnusedResources))
+              ? std::make_optional(
+                    Canvas2DResourceProvider::kUnusedResourceExpirationTime)
+              : std::nullopt;
+
+      image_pool_ = gpu::SharedImagePool<CanvasResourceSharedImage>::Create(
+          image_info, sii, "CanvasResourceRaster", kMaxRecycledCanvasResources,
+          expiration_time);
+    }
+  }
+
+  resource_ = NewOrRecycledResource();
 }
 
-VideoFrameAcceleratedSnapshotPool::~VideoFrameAcceleratedSnapshotPool() =
-    default;
+VideoFrameAcceleratedSnapshotPool::~VideoFrameAcceleratedSnapshotPool() {
+  if (raster_context_provider_) {
+    raster_context_provider_->RemoveObserver(this);
+  }
+}
+
+void VideoFrameAcceleratedSnapshotPool::OnContextLost() {
+  if (image_pool_) {
+    image_pool_->Clear();
+  }
+}
+
+// static
+void VideoFrameAcceleratedSnapshotPool::OnResourceReleased(
+    base::WeakPtr<VideoFrameAcceleratedSnapshotPool> pool,
+    scoped_refptr<CanvasResourceSharedImage> resource,
+    const gpu::SyncToken& sync_token,
+    bool is_lost) {
+  CHECK(!is_lost);
+  resource->WaitSyncToken(sync_token);
+  if (resource->HasOneRef() && pool && pool->image_pool_) {
+    pool->image_pool_->ReleaseImage(std::move(resource));
+  }
+}
+
+gpu::raster::RasterInterface*
+VideoFrameAcceleratedSnapshotPool::RasterInterface() const {
+  if (!context_provider_wrapper_) {
+    return nullptr;
+  }
+  return context_provider_wrapper_->ContextProvider().RasterInterface();
+}
 
 bool VideoFrameAcceleratedSnapshotPool::IsValid() const {
-  return provider_->IsValid();
+  auto* raster_interface = RasterInterface();
+  return raster_interface &&
+         raster_interface->GetGraphicsResetStatusKHR() == GL_NO_ERROR;
 }
 
-CanvasSnapshotInfo VideoFrameAcceleratedSnapshotPool::GetInfo() const {
-  return provider_->GetInfo();
+scoped_refptr<CanvasResourceSharedImage>
+VideoFrameAcceleratedSnapshotPool::NewOrRecycledResource() {
+  if (!image_pool_) {
+    return nullptr;
+  }
+
+  auto resource = image_pool_->GetImage();
+  if (!resource) {
+    return nullptr;
+  }
+
+  if (!resource->IsInitialized()) {
+    resource->Initialize(/*client=*/nullptr, context_provider_wrapper_,
+                         info_.hdr_metadata, /*is_accelerated=*/true);
+  }
+  DCHECK(resource->HasOneRef());
+  return resource;
+}
+
+bool VideoFrameAcceleratedSnapshotPool::ShouldReplaceTargetBuffer(
+    PaintImage::ContentId content_id) {
+  // We have the only ref to the resource which implies there are no active
+  // readers.
+  if (resource_->HasOneRef()) {
+    return false;
+  }
+
+  // Its possible to have deferred work in skia which uses this resource. Try
+  // flushing once to see if that releases the read refs. We can avoid a copy
+  // by queuing this work before writing to this resource.
+  FlushForImageListener::Get()->NotifyFlushForImage(content_id);
+
+  return !resource_->HasOneRef();
+}
+
+void VideoFrameAcceleratedSnapshotPool::EnsureResourceReadyForDraw() {
+  DCHECK(resource_);
+
+  // Determine if a new resource is needed.
+  if (ShouldReplaceTargetBuffer(cached_content_id_)) {
+    cached_content_id_ = PaintImage::kInvalidContentId;
+
+    resource_ = NewOrRecycledResource();
+
+    // As the image might have just been created, we need to ensure that it is
+    // cleared on the next BeginRasterCHROMIUM to satisfy service-side security
+    // requirements (note: as an optimization we could avoid doing this if the
+    // resource was recycled as in that case there are no security implications).
+    is_cleared_ = false;
+  }
+}
+
+void VideoFrameAcceleratedSnapshotPool::FlushRecording(
+    cc::PaintRecord last_recording) {
+  if (IsValid()) {
+    EnsureResourceReadyForDraw();
+
+    const bool needs_clear = !is_cleared_;
+    is_cleared_ = true;
+
+    // Create an ImageDecodeCache for half float images only if the canvas is
+    // using half float back storage.
+    cc::ImageDecodeCache* cache_f16 = nullptr;
+    if (info_.format == viz::SinglePlaneFormat::kRGBA_F16) {
+      cache_f16 = context_provider_wrapper_->ContextProvider().ImageDecodeCache(
+          kRGBA_F16_SkColorType);
+    }
+
+    cc::ImageDecodeCache* cache_rgba8 =
+        context_provider_wrapper_->ContextProvider().ImageDecodeCache(
+            kN32_SkColorType);
+
+    CanvasImageProvider image_provider(
+        cache_rgba8, cache_f16, info_.color_space, info_.format,
+        cc::PlaybackImageProvider::RasterMode::kGpu, context_provider_wrapper_);
+
+    gpu::SyncToken sync_token = RasterInterface()->RasterSharedImage(
+        resource_->GetSharedImage(), resource_->acquire_sync_token(),
+        std::move(last_recording), &image_provider, needs_clear);
+    resource_->SetReleaseSyncToken(sync_token);
+
+    // Images are locked for the duration of the rasterization, in case they get
+    // used multiple times. We can unlock them once the rasterization is
+    // complete.
+    image_provider.ReleaseLockedImages();
+    image_provider.UnbindTextureBackedImages();
+  }
+}
+
+scoped_refptr<StaticBitmapImage>
+VideoFrameAcceleratedSnapshotPool::DoExternalOverdrawAndSnapshot(
+    base::FunctionRef<void(cc::PaintCanvas&)> draw_callback) {
+  if (!IsValid()) {
+    return nullptr;
+  }
+
+  MemoryManagedPaintRecorder recorder(Size(), /*client=*/nullptr);
+  draw_callback(recorder.getRecordingCanvas());
+  if (recorder.HasReleasableDrawOps()) {
+    FlushRecording(recorder.ReleaseMainRecording());
+  }
+
+  if (!IsValid()) {
+    return nullptr;
+  }
+
+  auto release_callback = blink::BindOnce(
+      &VideoFrameAcceleratedSnapshotPool::OnResourceReleased,
+      weak_ptr_factory_.GetWeakPtr(), resource_);
+
+  scoped_refptr<StaticBitmapImage> snapshot =
+      AcceleratedStaticBitmapImage::CreateFromCanvasSharedImage(
+          resource_->GetSharedImage(), resource_->sync_token(),
+          info_.alpha_type, info_.hdr_metadata, context_provider_wrapper_,
+          base::PlatformThread::CurrentRef(),
+          ThreadScheduler::Current()->CleanupTaskRunner(),
+          std::move(release_callback));
+  if (snapshot) {
+    cached_content_id_ =
+        snapshot->PaintImageForCurrentFrame().GetContentIdForFrame(0u);
+  }
+  DCHECK(snapshot);
+  return snapshot;
 }
 
 scoped_refptr<StaticBitmapImage> DrawAndSnapshotToImage(

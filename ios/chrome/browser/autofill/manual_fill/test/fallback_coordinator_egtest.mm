@@ -6,6 +6,7 @@
 #import "base/test/ios/wait_util.h"
 #import "ios/chrome/browser/autofill/manual_fill/test/manual_fill_matchers.h"
 #import "ios/chrome/browser/autofill/ui_bundled/autofill_app_interface.h"
+#import "ios/chrome/browser/autofill/ui_bundled/autofill_egtest_util.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_actions.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
@@ -18,7 +19,7 @@
 #import "ui/base/l10n/l10n_util.h"
 #import "url/gurl.h"
 
-using base::test::ios::kWaitForActionTimeout;
+using autofill::FocusWebElementWithId;
 using chrome_test_util::AutofillSuggestionViewMatcher;
 
 namespace {
@@ -164,18 +165,12 @@ void OpenAddressManualFillView() {
 // Tests that the input accessory view continues working after a picker is
 // present.
 - (void)testInputAccessoryBarIsPresentAfterPickers {
-  // TODO(crbug.com/40934806): Test fails on iPhone.
-  if (![ChromeEarlGrey isIPadIdiom]) {
-    EARL_GREY_TEST_DISABLED(@"Fails on iPhone.");
-  }
-
   // Add the profile to be used.
   [AutofillAppInterface saveExampleProfile];
 
   // Bring up the keyboard by tapping the city, which is the element before the
   // picker.
-  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-      performAction:chrome_test_util::TapWebElementWithId(kFormElementCity)];
+  FocusWebElementWithId(kFormElementCity);
 
   // Open the address manual fill view and verify that the address table view
   // controller is visible.
@@ -189,35 +184,29 @@ void OpenAddressManualFillView() {
   [ChromeEarlGrey waitForNotSufficientlyVisibleElementWithMatcher:
                       manual_fill::ProfilesTableViewMatcher()];
 
-  // On iPad the picker is a table view in a popover, we need to
-  // dismiss that first.
-  if ([ChromeEarlGrey isIPadIdiom]) {
-    // Tap in the web view so the popover dismisses.
-    [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-        performAction:grey_tapAtPoint(CGPointMake(0, 0))];
+  // Tap in the web view so the picker dismisses.
+  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
+      performAction:grey_tapAtPoint(CGPointMake(0, 0))];
 
-    // Verify the table view is not visible.
+  // On iPad the picker is a table view in a popover, verify it is dismissed.
+  if ([ChromeEarlGrey isIPadIdiom]) {
     [[EarlGrey
         selectElementWithMatcher:grey_allOf(
                                      grey_kindOfClass([UITableView class]),
                                      grey_not(grey_notVisible()), nil)]
         assertWithMatcher:grey_nil()];
-
-    // Dismissing the popover by tapping on the webView, then tapping on the
-    // form element below in quick succession seems to end up dismissing the
-    // keyboard on iOS15+. This may be because the state element is still
-    // focused. Instead, wait a moment for the focus to be dismissed.
-    base::test::ios::SpinRunLoopWithMinDelay(base::Seconds(1));
   }
 
-  // Bring up the regular keyboard again.
-  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-      performAction:chrome_test_util::TapWebElementWithId(kFormElementCity)];
+  // Bring up the regular keyboard again. `FocusWebElementWithId()` retries
+  // tapping `kFormElementCity` until it acquires DOM focus, avoiding the race
+  // where a single tap immediately after dismissing the `state` picker fails to
+  // focus the field.
+  FocusWebElementWithId(kFormElementCity);
 
   // Verify the manual fill icon is visible, and therefore also the input
   // accessory bar.
-  [[EarlGrey selectElementWithMatcher:KeyboardAccessoryExpandButton()]
-      assertWithMatcher:grey_sufficientlyVisible()];
+  [ChromeEarlGrey
+      waitForUIElementToAppearWithMatcher:KeyboardAccessoryExpandButton()];
 
   // Verify the status of the icon.
   [[EarlGrey selectElementWithMatcher:KeyboardAccessoryExpandButton()]
@@ -249,15 +238,7 @@ void OpenAddressManualFillView() {
 // Tests the mediator stops observing objects when the incognito BVC is
 // destroyed. Waiting for dealloc was causing a race condition with the
 // autorelease pool, and some times a DCHECK will be hit.
-// TODO(crbug.com/40776865): Test fails on Simulator.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testOpeningIncognitoTabsDoNotLeak \
-  DISABLED_testOpeningIncognitoTabsDoNotLeak
-#else
-#define MAYBE_testOpeningIncognitoTabsDoNotLeak \
-  testOpeningIncognitoTabsDoNotLeak
-#endif  // TARGET_OS_SIMULATOR
-- (void)MAYBE_testOpeningIncognitoTabsDoNotLeak {
+- (void)testOpeningIncognitoTabsDoNotLeak {
   [AutofillAppInterface saveExampleProfile];
 
   const GURL URL = self.testServer->GetURL(kFormHTMLFile);
@@ -335,17 +316,17 @@ void OpenAddressManualFillView() {
 }
 
 // Tests that the manual fallback view is not duplicated after incognito.
-// TODO(crbug.com/40777592): Disabled due to flakiness.
-- (void)DISABLED_testReturningFromIncognitoDoesNotDuplicatesManualFallbackMenu {
+- (void)testReturningFromIncognitoDoesNotDuplicateManualFallbackMenu {
   // Add the profile to use for verification.
   [AutofillAppInterface saveExampleProfile];
 
   // Bring up the keyboard by tapping the city, which is the element before the
   // picker.
-  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-      performAction:chrome_test_util::TapWebElementWithId(kFormElementCity)];
+  FocusWebElementWithId(kFormElementCity);
 
   // Verify the profiles icon is visible.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      manual_fill::FormSuggestionViewMatcher()];
   [[EarlGrey selectElementWithMatcher:manual_fill::FormSuggestionViewMatcher()]
       performAction:grey_scrollToContentEdge(kGREYContentEdgeRight)];
   [[EarlGrey selectElementWithMatcher:KeyboardAccessoryExpandButton()]
@@ -359,8 +340,12 @@ void OpenAddressManualFillView() {
 
   // Bring up the keyboard by tapping the city, which is the element before the
   // picker.
-  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-      performAction:chrome_test_util::TapWebElementWithId(kFormElementCity)];
+  FocusWebElementWithId(kFormElementCity);
+  // Make sure the incognito keyboard accessory was actually created before
+  // switching back to a regular tab, otherwise the duplication scenario this
+  // test covers would not be exercised.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      manual_fill::FormSuggestionViewMatcher()];
 
   // Open a  regular tab.
   [ChromeEarlGrey openNewTab];
@@ -369,10 +354,11 @@ void OpenAddressManualFillView() {
 
   // Bring up the keyboard by tapping the city, which is the element before the
   // picker.
-  [[EarlGrey selectElementWithMatcher:chrome_test_util::WebViewMatcher()]
-      performAction:chrome_test_util::TapWebElementWithId(kFormElementCity)];
+  FocusWebElementWithId(kFormElementCity);
 
   // This will fail if there is more than one profiles icon in the hierarchy.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      manual_fill::FormSuggestionViewMatcher()];
   [[EarlGrey selectElementWithMatcher:manual_fill::FormSuggestionViewMatcher()]
       performAction:grey_scrollToContentEdge(kGREYContentEdgeRight)];
   [[EarlGrey selectElementWithMatcher:KeyboardAccessoryExpandButton()]

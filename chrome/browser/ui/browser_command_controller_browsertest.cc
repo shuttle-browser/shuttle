@@ -94,8 +94,8 @@
 #include "net/base/network_change_notifier.h"
 #include "ui/actions/actions.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 
@@ -109,12 +109,24 @@
 
 #if BUILDFLAG(IS_CHROMEOS)
 
+#include <memory>
+
 #include "ash/constants/ash_switches.h"
 #include "ash/wm/window_pin_util.h"
+#include "base/check_deref.h"
+#include "base/functional/bind.h"
 #include "chrome/browser/ash/boca/on_task/on_task_locked_controller.h"
 #include "chrome/browser/ash/login/test/guest_session_mixin.h"
+#include "chrome/browser/ttc/app/public/audio_controller.h"
+#include "chrome/browser/ttc/core/features.h"
+#include "chrome/browser/ttc/core/test_utils.h"
+#include "chrome/browser/ttc/core/ttc_keyed_service.h"
+#include "chrome/browser/ttc/core/ttc_keyed_service_factory.h"
 #include "chrome/browser/ui/chromeos/locked_state/locked_state_controller.h"
 #include "chrome/test/base/mixin_based_in_process_browser_test.h"
+#include "components/keyed_service/core/keyed_service.h"
+#include "content/public/browser/browser_context.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "ui/aura/window.h"
 #endif
 
@@ -741,17 +753,17 @@ class BrowserCommandControllerBrowserTestLockedFullscreen
     // management command states. This mostly involves opening a new tab and
     // ensuring that we are able to navigate back and forward for the test.
     OpenUrlWithDisposition(GURL("chrome://new-tab-page/"),
-                           WindowOpenDisposition::kNewForegroundTab);
+                           ui::mojom::WindowOpenDisposition::kNewForegroundTab);
     OpenUrlWithDisposition(GURL("chrome://version/"),
-                           WindowOpenDisposition::kCurrentTab);
+                           ui::mojom::WindowOpenDisposition::kCurrentTab);
     OpenUrlWithDisposition(GURL("about:blank"),
-                           WindowOpenDisposition::kCurrentTab);
+                           ui::mojom::WindowOpenDisposition::kCurrentTab);
 
     // Go back by one page to ensure the forward command is also available for
     // testing purposes.
     content::TestNavigationObserver navigation_observer(
         browser()->tab_strip_model()->GetActiveWebContents());
-    chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+    chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
     navigation_observer.Wait();
     ASSERT_TRUE(chrome::CanGoBack(browser()));
     ASSERT_TRUE(chrome::CanGoForward(browser()));
@@ -837,7 +849,8 @@ class BrowserCommandControllerBrowserTestLockedFullscreen
   }
 
  private:
-  void OpenUrlWithDisposition(GURL url, WindowOpenDisposition disposition) {
+  void OpenUrlWithDisposition(GURL url,
+                              ui::mojom::WindowOpenDisposition disposition) {
     ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
         browser(), url, disposition,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
@@ -1083,7 +1096,92 @@ IN_PROC_BROWSER_TEST_P(BrowserCommandControllerBrowserTestLockedFullscreen,
 INSTANTIATE_TEST_SUITE_P(All,
                          BrowserCommandControllerBrowserTestLockedFullscreen,
                          testing::Bool());
-#endif
+
+class BrowserCommandControllerBrowserTestLockedFullscreenTtc
+    : public BrowserCommandControllerBrowserTestLockedFullscreen {
+ public:
+  BrowserCommandControllerBrowserTestLockedFullscreenTtc() {
+    ttc_feature_list_.InitAndEnableFeature(ttc::kTtc);
+  }
+
+  void SetUpBrowserContextKeyedServices(
+      content::BrowserContext* context) override {
+    BrowserCommandControllerBrowserTestLockedFullscreen::
+        SetUpBrowserContextKeyedServices(context);
+    // A mock conversation keeps sessions from capturing audio or connecting to
+    // the backend.
+    ttc::TtcKeyedServiceFactory::GetInstance()->SetTestingFactory(
+        context, base::BindRepeating([](content::BrowserContext* context)
+                                         -> std::unique_ptr<KeyedService> {
+          return std::make_unique<ttc::TtcKeyedService>(
+              Profile::FromBrowserContext(context),
+              base::BindRepeating([](ttc::SessionController&,
+                                     std::unique_ptr<ttc::AudioController>)
+                                      -> std::unique_ptr<ttc::Conversation> {
+                return std::make_unique<
+                    testing::NiceMock<ttc::MockConversation>>();
+              }));
+        }));
+  }
+
+ protected:
+  ttc::TtcKeyedService& ttc_service() {
+    return CHECK_DEREF(ttc::TtcKeyedService::Get(browser()->GetProfile()));
+  }
+
+  actions::ActionItem& ttc_toolbar_action() {
+    return CHECK_DEREF(actions::ActionManager::Get().FindAction(
+        kActionTtcToolbar,
+        BrowserActions::From(browser())->root_action_item()));
+  }
+
+ private:
+  base::test::ScopedFeatureList ttc_feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_P(BrowserCommandControllerBrowserTestLockedFullscreenTtc,
+                       HidesToolbarAndEndsSessionWhileLocked) {
+  auto* const command_controller =
+      chrome::BrowserCommandController::From(browser());
+  EXPECT_TRUE(command_controller->IsCommandEnabled(IDC_SHOW_TTC_MENU));
+  ttc_service().StartSession();
+  ASSERT_TRUE(ttc_service().is_session_active());
+  EXPECT_TRUE(ttc_toolbar_action().GetVisible());
+  EXPECT_TRUE(ttc_toolbar_action().GetEnabled());
+
+  EnterLockedFullscreen();
+  EXPECT_FALSE(ttc_service().is_session_active());
+  EXPECT_FALSE(ttc_toolbar_action().GetVisible());
+  EXPECT_FALSE(ttc_toolbar_action().GetEnabled());
+  EXPECT_FALSE(command_controller->IsCommandEnabled(IDC_SHOW_TTC_MENU));
+
+  ExitLockedFullscreen();
+  EXPECT_TRUE(ttc_toolbar_action().GetVisible());
+  EXPECT_TRUE(ttc_toolbar_action().GetEnabled());
+  EXPECT_TRUE(command_controller->IsCommandEnabled(IDC_SHOW_TTC_MENU));
+}
+
+IN_PROC_BROWSER_TEST_P(BrowserCommandControllerBrowserTestLockedFullscreenTtc,
+                       ToolbarStaysHiddenOnStateChangeWhileLocked) {
+  EnterLockedFullscreen();
+  ASSERT_FALSE(ttc_toolbar_action().GetVisible());
+
+  // Each session state change runs UpdateTtcState().
+  ttc_service().StartSession();
+  EXPECT_FALSE(ttc_toolbar_action().GetVisible());
+  EXPECT_FALSE(ttc_toolbar_action().GetEnabled());
+  ttc_service().EndSession();
+  EXPECT_FALSE(ttc_toolbar_action().GetVisible());
+  EXPECT_FALSE(ttc_toolbar_action().GetEnabled());
+  EXPECT_FALSE(
+      chrome::BrowserCommandController::From(browser())->IsCommandEnabled(
+          IDC_SHOW_TTC_MENU));
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         BrowserCommandControllerBrowserTestLockedFullscreenTtc,
+                         testing::Bool());
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 IN_PROC_BROWSER_TEST_F(BrowserCommandControllerBrowserTest,
                        TestTabRestoreServiceInitialized) {
@@ -1109,7 +1207,8 @@ IN_PROC_BROWSER_TEST_F(BrowserCommandControllerBrowserTest,
 IN_PROC_BROWSER_TEST_F(BrowserCommandControllerBrowserTest,
                        PRE_TestTabRestoreCommandEnabled) {
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GURL("about:blank"), WindowOpenDisposition::kNewForegroundTab,
+      browser(), GURL("about:blank"),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   ASSERT_EQ(2, browser()->tab_strip_model()->count());
   EXPECT_EQ(1, browser()->tab_strip_model()->active_index());
@@ -1275,34 +1374,7 @@ IN_PROC_BROWSER_TEST_F(BrowserCommandControllerBrowserTestRefreshOnly,
   EXPECT_TRUE(chrome::ExecuteCommand(browser(), IDC_TURN_ON_SYNC));
 }
 
-class BrowserCommandControllerBrowserTestShowSigninWhenPaused
-    : public BrowserCommandControllerBrowserTestRefreshOnly,
-      public testing::WithParamInterface<bool> {
- public:
-  BrowserCommandControllerBrowserTestShowSigninWhenPaused() {
-    if (GetParam()) {
-      scoped_feature_list_.InitAndEnableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    } else {
-      scoped_feature_list_.InitAndDisableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    }
-  }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-INSTANTIATE_TEST_SUITE_P(
-    All,
-    BrowserCommandControllerBrowserTestShowSigninWhenPaused,
-    testing::Bool(),
-    [](const testing::TestParamInfo<bool>& info) {
-      return info.param ? "ReplaceSyncPromosEnabled"
-                        : "ReplaceSyncPromosDisabled";
-    });
-
-IN_PROC_BROWSER_TEST_P(BrowserCommandControllerBrowserTestShowSigninWhenPaused,
+IN_PROC_BROWSER_TEST_F(BrowserCommandControllerBrowserTestRefreshOnly,
                        ExecuteShowSigninWhenPaused) {
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(browser()->GetProfile());

@@ -48,6 +48,7 @@ interface OmniboxInputDelegate {
       void;
   handleDropText(
       element: ReadonlyOmniboxElement, dragText: OmniboxActionDropText): void;
+  handleDropUrl(element: ReadonlyOmniboxElement): void;
   handleDropFile(
       element: ReadonlyOmniboxElement, dragFile: OmniboxActionDropFile): void;
   handleDragStart(element: ReadonlyOmniboxElement): void;
@@ -173,6 +174,12 @@ class MojoOmniboxInputDelegate implements OmniboxInputDelegate {
       void {
     this.browserProxy_.toolbarUIHandler.onOmniboxAction({
       dropText,
+    });
+  }
+
+  handleDropUrl(_: ReadonlyOmniboxElement): void {
+    this.browserProxy_.toolbarUIHandler.onOmniboxAction({
+      dropUrl: {},
     });
   }
 
@@ -306,6 +313,7 @@ export class ReadonlyOmniboxElement extends CrLitElement {
   // immediately before. `null` if there is no focus.
   private lastFocusAcquisition_: number|null = null;
   private isDraggingFromSelf_: boolean = false;
+  private droppedOnSelf_: boolean = false;
   private onSelectionChangeBound_ = this.onSelectionChange_.bind(this);
 
   // Bitmap of mouse buttons down. This is using `event.button` as bit position,
@@ -1178,10 +1186,29 @@ export class ReadonlyOmniboxElement extends CrLitElement {
 
   private onDragEnd_(): void {
     this.isDraggingFromSelf_ = false;
+    // The drag consumed the mouse release, so no mouseup follows. Clear the
+    // pressed buttons, so that selection changes are sent to the browser.
+    this.mouseButtonDown_ = 0;
+    if (this.droppedOnSelf_) {
+      this.droppedOnSelf_ = false;
+      // Like the native omnibox, put the caret after the dropped text, rather
+      // than selecting it. This is done here since the input selects the text
+      // after dispatching the drop and input events.
+      const input = this.$.textInput.inputElement;
+      input.setSelectionRange(input.selectionEnd, input.selectionEnd);
+      // Send the caret to the browser right away, rather than on the
+      // asynchronous selectionchange event: a browser update arriving in
+      // between makes updated() store the input's selection as the synced
+      // one, so the event would see no change and never send it.
+      this.checkForSelectionChange_();
+    }
   }
 
   private onDragEnter_(e: DragEvent): void {
     if (this.isDraggingFromSelf_) {
+      // Let the input move or copy the text by default, rather than the
+      // toolbar app handling the drag.
+      e.stopPropagation();
       return;
     }
     const types = e.dataTransfer?.types;
@@ -1199,6 +1226,7 @@ export class ReadonlyOmniboxElement extends CrLitElement {
 
   private onDragOver_(e: DragEvent): void {
     if (this.isDraggingFromSelf_) {
+      e.stopPropagation();
       return;
     }
     const types = e.dataTransfer?.types;
@@ -1213,6 +1241,8 @@ export class ReadonlyOmniboxElement extends CrLitElement {
 
   private onDrop_(e: DragEvent): void {
     if (this.isDraggingFromSelf_) {
+      this.droppedOnSelf_ = true;
+      e.stopPropagation();
       return;
     }
 
@@ -1226,26 +1256,11 @@ export class ReadonlyOmniboxElement extends CrLitElement {
 
     const types = e.dataTransfer.types;
 
-    if (types.includes('text/uri-list')) {
-      let url = e.dataTransfer.getData('text/uri-list');
-      // For restricted URLs (e.g. javascript: or chrome:// links), Blink's IPC
-      // sanitization intercepts the drop and overwrites the URL with
-      // about:blank#blocked. We can recover the original string from text/plain
-      // and forward it to C++ where it will be properly sanitized
-      // (e.g. via StripJavascriptSchemas) before being set in the omnibox.
-      if (url.startsWith('about:blank#blocked') &&
-          types.includes('text/plain')) {
-        const plainText = e.dataTransfer.getData('text/plain');
-        if (plainText) {
-          url = plainText;
-        }
-      }
-
-      if (url) {
-        this.inputDelegate_.handleDropText(this, {
-          text: url.split('\n')[0]!,
-        });
-      }
+    // A type can be present with empty data, e.g. setData(type, ''). Fall
+    // through to the other types then, like the native omnibox.
+    if (types.includes('text/uri-list') &&
+        e.dataTransfer.getData('text/uri-list')) {
+      this.inputDelegate_.handleDropUrl(this);
     } else if (types.includes('Files')) {
       this.inputDelegate_.handleDropFile(this, {
         dropPosition: {x: e.clientX, y: e.clientY},
@@ -1260,7 +1275,7 @@ export class ReadonlyOmniboxElement extends CrLitElement {
     }
   }
 
-  private isAllSelected(): boolean {
+  isAllSelected(): boolean {
     const input = this.$.textInput.inputElement;
     return input.selectionStart === 0 &&
         input.selectionEnd === input.value.length;

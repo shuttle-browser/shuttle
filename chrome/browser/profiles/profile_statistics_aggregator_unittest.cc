@@ -10,13 +10,16 @@
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/run_loop.h"
+#include "base/test/run_until.h"
 #include "base/test/test_file_util.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/in_memory_entity_suppression_manager.h"
+#include "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #include "components/autofill/core/browser/data_manager/test_personal_data_manager.h"
 #include "components/autofill/core/browser/test_utils/autofill_test_util.h"
 #include "components/autofill/core/browser/test_utils/entity_data_test_util.h"
 #include "components/autofill/core/browser/webdata/autocomplete/autocomplete_table.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
+#include "components/autofill/core/browser/webdata/personal_context/personal_context_entity_metadata_sync_bridge.h"
+#include "components/autofill/core/browser/webdata/personal_context/personal_context_entity_metadata_sync_bridge_test_util.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/bookmarks/test/test_bookmark_client.h"
 #include "components/history/core/browser/history_database_params.h"
@@ -81,6 +84,12 @@ class BookmarkStatHelper {
 class ProfileStatisticsAggregatorTest : public testing::Test {
  public:
   ProfileStatisticsAggregatorTest() {
+    std::unique_ptr<autofill::PersonalContextEntityMetadataSyncBridge> bridge =
+        autofill::CreateTestPersonalContextEntityMetadataSyncBridge();
+    EXPECT_TRUE(base::test::RunUntil([&]() { return bridge->IsLoaded(); }));
+    entity_metadata_manager_ =
+        std::make_unique<autofill::PersonalContextEntityMetadataManager>(
+            std::move(bridge));
     history_service_.Init(history::HistoryDatabaseParams(
         base::CreateUniqueTempDirectoryScopedToTest(),
         /*download_interrupt_reason_none=*/0,
@@ -97,7 +106,7 @@ class ProfileStatisticsAggregatorTest : public testing::Test {
       base::OnceClosure done_callback) {
     return std::make_unique<ProfileStatisticsAggregator>(
         autofill_web_data_service_, &personal_data_manager_,
-        /*entity_data_manager=*/nullptr, &entity_suppression_manager_,
+        /*entity_data_manager=*/nullptr, entity_metadata_manager_.get(),
         &bookmark_model_, &history_service_, profile_password_store_,
         &pref_service_,
         /*platform_credential_store=*/nullptr, std::move(done_callback));
@@ -107,15 +116,16 @@ class ProfileStatisticsAggregatorTest : public testing::Test {
   autofill::TestPersonalDataManager& personal_data_manager() {
     return personal_data_manager_;
   }
-  autofill::InMemoryEntitySuppressionManager& entity_suppression_manager() {
-    return entity_suppression_manager_;
+  autofill::PersonalContextEntityMetadataManager& entity_metadata_manager() {
+    return *entity_metadata_manager_;
   }
 
  private:
   content::BrowserTaskEnvironment task_environment_;
   TestingPrefServiceSimple pref_service_;
   autofill::TestPersonalDataManager personal_data_manager_;
-  autofill::InMemoryEntitySuppressionManager entity_suppression_manager_;
+  std::unique_ptr<autofill::PersonalContextEntityMetadataManager>
+      entity_metadata_manager_;
   bookmarks::BookmarkModel bookmark_model_{
       std::make_unique<bookmarks::TestBookmarkClient>()};
   history::HistoryService history_service_;
@@ -174,7 +184,7 @@ TEST_F(ProfileStatisticsAggregatorTest, AutofillStatCountsAllAutofillData) {
   personal_data_manager().test_payments_data_manager().AddCreditCard(
       autofill::test::GetCreditCard());
   // The passport satisfies a single merge constraint, i.e. one entry.
-  ASSERT_TRUE(entity_suppression_manager().SuppressEntity(
+  ASSERT_TRUE(entity_metadata_manager().SuppressEntity(
       autofill::test::GetPassportEntityInstance()));
   bookmark_model()->LoadEmptyForTest();
 

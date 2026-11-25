@@ -4,11 +4,11 @@
 
 #include "chrome/browser/enterprise/reporting/test/test_utils.h"
 
-#include "base/android/device_info.h"
 #include "base/run_loop.h"
 #include "components/device_signals/core/browser/android/os_security_info_provider.h"
 #include "components/device_signals/core/browser/browser_utils.h"
 #include "components/device_signals/core/common/platform_utils.h"
+#include "components/enterprise/browser/reporting/report_util.h"
 #include "components/policy/core/common/cloud/cloud_policy_util.h"
 #include "components/safe_browsing/android/safe_browsing_api_handler_bridge.h"
 #include "components/safe_browsing/android/safe_browsing_api_handler_util.h"
@@ -76,8 +76,7 @@ void VerifyDeviceIdentifier(
     em::BrowserDeviceIdentifier& browser_device_identifier,
     bool can_collect_pii_signals) {
   EXPECT_EQ(browser_device_identifier.computer_name(),
-            can_collect_pii_signals ? base::android::device_info::device_name()
-                                    : std::string());
+            can_collect_pii_signals ? policy::GetDeviceName() : std::string());
 }
 
 void VerifyOsReportSignals(const em::OSReport& os_report,
@@ -93,6 +92,10 @@ void VerifyOsReportSignals(const em::OSReport& os_report,
               device_signals::OsSecurityInfoProvider().IsDeviceSecure()
                   ? em::SettingValue::ENABLED
                   : em::SettingValue::DISABLED);
+    EXPECT_EQ(
+        os_report.disk_encryption(),
+        TranslateSettingValue(
+            device_signals::OsSecurityInfoProvider().GetDiskEncryption()));
     base::RunLoop run_loop;
     VerifyIsVerifyAppsEnabled(
         std::ref(os_report),

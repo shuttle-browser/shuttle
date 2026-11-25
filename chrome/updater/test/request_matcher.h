@@ -5,72 +5,97 @@
 #ifndef CHROME_UPDATER_TEST_REQUEST_MATCHER_H_
 #define CHROME_UPDATER_TEST_REQUEST_MATCHER_H_
 
+// Predicates (`Matcher`s) that test `HttpRequest`s received by `ScopedServer`.
+
 #include <list>
 #include <string>
 #include <vector>
 
 #include "base/containers/flat_map.h"
 #include "base/functional/callback_forward.h"
-#include "base/values.h"
 #include "base/version.h"
 #include "chrome/updater/update_service.h"
-#include "chrome/updater/updater_scope.h"
 #include "chrome/updater/updater_version.h"
+#include "testing/gtest/include/gtest/gtest.h"
 
 class GURL;
+
+namespace base {
+class DictValue;
+}  // namespace base
+
+namespace updater {
+enum class UpdaterScope;
+}  // namespace updater
 
 namespace updater::test {
 
 struct HttpRequest;
 
 namespace request {
-// Defines a generic matcher to match expectations for a request.
-using Matcher = base::RepeatingCallback<bool(const HttpRequest&)>;
 
-// Defines a group of matchers which all must pass in order to match a request.
-// This allows for combining several matchers when matching a single request.
+// Tests whether an `HttpRequest` satisfies an expectation. Must handle an
+// empty `HttpRequest` and report mismatches via `testing::AssertionFailure()`
+// without recording GTest failures.
+using Matcher =
+    base::RepeatingCallback<testing::AssertionResult(const HttpRequest&)>;
+
+// Sequence of `Matcher`s that must all succeed to match a request.
 using MatcherGroup = std::list<Matcher>;
 
-// Returns a matcher which returns true if the `expected_path_regex` fully
-// matches the request path.
+// Returns a matcher that succeeds if `expected_path_regex` full-matches
+// `HttpRequest::relative_url` (path and query) case-sensitively. CHECKs that
+// `expected_path_regex` is valid.
 [[nodiscard]] Matcher GetPathMatcher(const std::string& expected_path_regex);
 
-// Returns a matcher which returns true if all the `expected_headers` are
-// found. `expected_headers` is a map of (header_name, header_content_regex).
+// Returns a matcher that succeeds if `request.headers` contains each header in
+// `expected_headers` and its value full-matches the mapped regex
+// (both case-insensitively). CHECKs that each regex is valid.
 [[nodiscard]] Matcher GetHeaderMatcher(
-    const base::flat_map<std::string, std::string> expected_headers);
+    const base::flat_map<std::string, std::string>& expected_headers);
 
-// Returns a matcher which returns true if the request has updater's user-agent.
-Matcher GetUpdaterUserAgentMatcher(
+// Returns a matcher that succeeds if the request has the updater or test
+// `User-Agent` header for `updater_version`. CHECKs that `updater_version` has
+// at least 3 components.
+[[nodiscard]] Matcher GetUpdaterUserAgentMatcher(
     const base::Version& updater_version = base::Version(kUpdaterVersion));
 
-// Returns a matcher which returns true if the request is actually intended
-// for the `target_url` (uses current server as a proxy).
-Matcher GetTargetURLMatcher(GURL target_url);
+// Returns a matcher that succeeds if the request is a proxied `POST` to
+// `target_url`, ignoring the request's query, and its `Host` header is
+// `target_url`'s host, followed by its port if not the scheme's default.
+// CHECKs that `target_url` is valid and has no query or fragment.
+[[nodiscard]] Matcher GetTargetURLMatcher(GURL target_url);
 
-// Returns a matcher which returns true if all regexes are found in the given
-// order.
+// Returns a matcher that succeeds if the regexes in
+// `expected_content_regex_sequence` partially match non-overlapping substrings
+// of `decoded_content` in order, case-insensitively. CHECKs that each regex is
+// valid.
 [[nodiscard]] Matcher GetContentMatcher(
     const std::vector<std::string>& expected_content_regex_sequence);
 
-// Returns a matcher which returns true if the request's decoded content parses
-// to a JSON object that covers the `expected_target` (using IsJSONSubset).
+// Returns a matcher that succeeds if the decoded body parses as a JSON
+// dictionary covering `expected_target` (comparing string values
+// case-insensitively; see `IsJSONSubset`).
 [[nodiscard]] Matcher GetJSONContentMatcher(
     const base::DictValue& expected_target);
 
-// Returns a matcher which returns true if request scope is same as the given
-// value.
+// Returns a matcher that succeeds if `request.ismachine` in the JSON body
+// matches `scope`.
 [[nodiscard]] Matcher GetScopeMatcher(UpdaterScope scope);
 
-// Returns a matcher which returns true if the app priority in request matches
-// the given value.
+// Returns a matcher that succeeds if `app_id` (case-insensitively) in the JSON
+// body's app list (`request.apps`, else `request.app`) has an `installsource`
+// matching `priority` (case-sensitively). Also matches `Priority::kBackground`
+// if `app_id` is absent or omits `installsource`.
 [[nodiscard]] Matcher GetAppPriorityMatcher(const std::string& app_id,
                                             UpdateService::Priority priority);
 
-// Returns a matcher which checks that update is enabled for updater itself.
+// Returns a matcher that succeeds if the JSON body's app list (`request.apps`,
+// else `request.app`) does not set `updatecheck.updatedisabled` to `true` for
+// `kUpdaterAppId` (case-insensitively).
 [[nodiscard]] Matcher GetUpdaterEnableUpdatesMatcher();
 
-// Defines the expectations of a form in a multipart content.
+// Expected form name (case-sensitive) and content regexes for a multipart part.
 struct FormExpectations {
   FormExpectations(const std::string& name, std::vector<std::string> regexes);
   FormExpectations(const FormExpectations&);
@@ -79,15 +104,18 @@ struct FormExpectations {
 
   std::string name;
 
-  // A list of regexes to partially match the form data in the given order.
+  // Regexes that must match the part in order, case-insensitively. See
+  // `GetMultipartContentMatcher()`.
   std::vector<std::string> regex_sequence;
 };
 
-// Returns a matcher, which returns true if the forms are separated by the
-// form-data boundary, each form has the expected name, and all form-regexex are
-// found in the given order.
+// Returns a matcher that succeeds if the request has a well-formed
+// `multipart/form-data` body that contains the forms in `form_expectations` in
+// order, possibly with other parts between them. Each form's `regex_sequence`
+// must match in order within the rest of that part's headers after
+// `name="<name>"`, and its data. CHECKs that each regex is valid.
 [[nodiscard]] Matcher GetMultipartContentMatcher(
-    const std::vector<FormExpectations>& form_expections);
+    const std::vector<FormExpectations>& form_expectations);
 
 }  // namespace request
 }  // namespace updater::test

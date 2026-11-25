@@ -21,6 +21,7 @@
 #include "chrome/browser/devtools/devtools_availability_checker.h"
 #include "chrome/browser/devtools/devtools_browser_context_manager.h"
 #include "chrome/browser/devtools/devtools_connection_dialog.h"
+#include "chrome/browser/devtools/devtools_desktop_media_id.h"
 #include "chrome/browser/devtools/devtools_remote_server_infobar_delegate.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/protocol/target_handler.h"
@@ -28,6 +29,10 @@
 #include "chrome/browser/infobars/browser_infobar_manager.h"
 #include "chrome/browser/infobars/infobar_features.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
+// nogncheck is only needed on ChromeOS, where //chrome/browser/media/webrtc
+// depends on //chrome/browser/devtools via camera_app.
+#include "chrome/browser/media/webrtc/capture_policy_utils.h"  // nogncheck
+#include "chrome/browser/media/webrtc/desktop_capture_devices_util.h"  // nogncheck
 #include "chrome/browser/policy/developer_tools_policy_handler.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -47,18 +52,23 @@
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/common/chrome_switches.h"
+#include "chrome/grit/branded_strings.h"
 #include "chrome/grit/browser_resources.h"
+#include "components/enterprise/buildflags/buildflags.h"
 #include "components/guest_view/browser/guest_view_base.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/browser/desktop_media_id.h"
 #include "content/public/browser/devtools_agent_host.h"
 #include "content/public/browser/devtools_agent_host_client_channel.h"
+#include "content/public/browser/media_stream_request.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/render_process_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/buildflags.h"
 #include "content/public/common/content_switches.h"
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/extension_registry.h"
@@ -66,15 +76,21 @@
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/manifest.h"
 #include "extensions/common/mojom/view_type.mojom.h"
+#include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
+#include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/switches.h"
 #include "ui/views/controls/webview/webview.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/constants/ash_switches.h"
 #include "chromeos/constants/chromeos_features.h"
+#endif
+
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+#include "chrome/browser/enterprise/connectors/reporting/cdp_actor_session_tracker.h"
 #endif
 
 static_assert(!BUILDFLAG(IS_ANDROID),
@@ -191,6 +207,11 @@ ChromeDevToolsManagerDelegate::ChromeDevToolsManagerDelegate() {
   CHECK(!g_instance, base::NotFatalUntil::M161);
   g_instance = this;
 
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+  cdp_actor_session_tracker_ =
+      enterprise_connectors::CdpActorSessionTracker::CreateIfEnabled();
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+
 #if !BUILDFLAG(IS_CHROMEOS)
   // Only create and hold keep alive for automation test for non ChromeOS.
   // ChromeOS automation test (aka tast) manages chrome instance via session
@@ -295,6 +316,11 @@ void ChromeDevToolsManagerDelegate::HandleCommand(
     content::DevToolsAgentHostClientChannel* channel,
     base::span<const uint8_t> message,
     NotHandledCallback callback) {
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+  if (cdp_actor_session_tracker_) {
+    cdp_actor_session_tracker_->OnCommandHandled(channel);
+  }
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
   auto it = sessions_.find(channel);
   if (it == sessions_.end()) {
     std::move(callback).Run(message);
@@ -432,10 +458,20 @@ void ChromeDevToolsManagerDelegate::ClientAttached(
     content::DevToolsAgentHostClientChannel* channel) {
   CHECK(sessions_.find(channel) == sessions_.end(), base::NotFatalUntil::M161);
   sessions_.emplace(channel, std::make_unique<ChromeDevToolsSession>(channel));
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+  if (cdp_actor_session_tracker_) {
+    cdp_actor_session_tracker_->OnClientAttached(channel);
+  }
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
 }
 
 void ChromeDevToolsManagerDelegate::ClientDetached(
     content::DevToolsAgentHostClientChannel* channel) {
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+  if (cdp_actor_session_tracker_) {
+    cdp_actor_session_tracker_->OnClientDetached(channel);
+  }
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
   sessions_.erase(channel);
 }
 
@@ -449,7 +485,7 @@ scoped_refptr<DevToolsAgentHost> ChromeDevToolsManagerDelegate::CreateNewTarget(
     return nullptr;
   }
   NavigateParams params(profile, url, ui::PAGE_TRANSITION_AUTO_TOPLEVEL);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   Navigate(&params);
   if (!params.navigated_or_inserted_contents)
     return nullptr;
@@ -490,6 +526,92 @@ void ChromeDevToolsManagerDelegate::DisposeBrowserContext(
 
 bool ChromeDevToolsManagerDelegate::HasBundledFrontendResources() {
   return true;
+}
+
+void ChromeDevToolsManagerDelegate::GetBrowserWindowCaptureDevice(
+    content::WebContents* web_contents,
+    BrowserWindowCaptureDeviceCallback callback) {
+#if BUILDFLAG(ENABLE_SCREEN_CAPTURE)
+  // A docked DevTools window and its inspected page are in the browser window
+  // of the inspected tab.
+  content::WebContents* tab = web_contents;
+  if (DevToolsWindow* window = DevToolsWindow::AsDevToolsWindow(web_contents)) {
+    if (!window->IsDocked()) {
+      std::move(callback).Run(base::unexpected(
+          "Recording the browser window is not supported for an undocked "
+          "DevTools window, because the inspected page is in another "
+          "window."));
+      return;
+    }
+    tab = window->GetInspectedWebContents();
+  }
+  if (!tab) {
+    std::move(callback).Run(
+        base::unexpected(kBrowserWindowRecordingNotSupportedError));
+    return;
+  }
+
+  // Respect the profile policy that restricts window capture. Pass an empty
+  // origin because a CDP client requests the recording, not the inspected page.
+  // A pattern for a specific origin never matches the empty origin, so the
+  // *AllowedByOrigins lists apply only if they contain the "*" pattern, which
+  // matches all origins. Otherwise the ScreenCaptureAllowed policy decides.
+  // DevToolsWindowRecordingTest checks this.
+  if (capture_policy::GetAllowedCaptureLevel(GURL(), tab) <
+      AllowedScreenCaptureLevel::kWindow) {
+    std::move(callback).Run(base::unexpected(
+        "Recording the browser window is not allowed by policy."));
+    return;
+  }
+
+  std::optional<content::DesktopMediaID> media_id =
+      GetDesktopMediaIDForBrowserWindow(tab->GetTopLevelNativeWindow());
+  if (!media_id) {
+    std::move(callback).Run(
+        base::unexpected(kBrowserWindowRecordingNotSupportedError));
+    return;
+  }
+
+  // Get the devices and the screen sharing UI like getDisplayMedia() does
+  // after the user picks a window. Pass capture_audio=false here because
+  // MediaRecorder captures audio from the target itself. Without audio,
+  // GetDevicesForDesktopCapture() always runs its callback synchronously.
+  // PageHandler relies on an answer: if the callback is dropped, the CDP
+  // client gets no response, and Page.startScreenRecording fails until the
+  // client calls Page.stopScreenRecording.
+  GetDevicesForDesktopCapture(
+      tab, *media_id, blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE,
+      blink::mojom::MediaStreamType::NO_SERVICE, GURL(),
+      /*capture_audio=*/false, /*disable_local_echo=*/false,
+      /*suppress_local_audio_playback=*/false, /*restrict_own_audio=*/false,
+      /*display_notification=*/true,
+      /*application_title=*/l10n_util::GetStringUTF16(IDS_PRODUCT_NAME),
+      /*captured_surface_control_active=*/false,
+      base::BindOnce(
+          [](BrowserWindowCaptureDeviceCallback callback,
+             blink::mojom::StreamDevices devices,
+             std::unique_ptr<content::MediaStreamUI> ui) {
+            if (!devices.video_device) {
+              std::move(callback).Run(base::unexpected(
+                  "Cannot get the capture device for the browser window."));
+              return;
+            }
+            BrowserWindowCaptureDevice device;
+            device.media_id =
+                content::DesktopMediaID::Parse(devices.video_device->id);
+            if (device.media_id.is_null()) {
+              std::move(callback).Run(base::unexpected(
+                  "Cannot get the capture device for the browser window."));
+              return;
+            }
+            device.ui = std::move(ui);
+            std::move(callback).Run(std::move(device));
+          },
+          std::move(callback)));
+#else
+  std::move(callback).Run(base::unexpected(
+      "Recording the browser window is not supported on this platform."));
+#endif  // BUILDFLAG(ENABLE_SCREEN_CAPTURE)
 }
 
 void ChromeDevToolsManagerDelegate::DevicesAvailable(
@@ -589,7 +711,7 @@ void ChromeDevToolsManagerDelegate::SetActiveWebSocketConnections(
   } else if (count > 0 && !infobar_) {
     auto delegate = std::make_unique<DevToolsRemoteServerInfobarDelegate>();
     delegate->AddObserver(this);
-    infobar_ = GlobalConfirmInfoBar::Show(std::move(delegate));
+    infobar_ = GlobalConfirmInfoBar::Show(std::move(delegate))->GetWeakPtr();
   }
 }
 

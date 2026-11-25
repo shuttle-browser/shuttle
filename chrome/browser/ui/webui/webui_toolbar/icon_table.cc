@@ -22,6 +22,7 @@
 #include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/ui/webui/util/image_util.h"
 #include "chrome/browser/ui/webui/webui_toolbar/adapters/icon_table_fetcher.h"
+#include "chrome/browser/ui/webui/webui_toolbar/utils/known_resource_images.h"
 #include "components/omnibox/browser/vector_icons.h"
 #include "components/vector_icons/vector_icons.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
@@ -380,6 +381,8 @@ const base::flat_map<const gfx::VectorIcon*, IconInfo>& KnownIcons() {
            {"internal-icons:google_lens_monochrome_logo", IconType::kIconSet}},
           {{&vector_icons::kPageInsightsIcon},
            {"internal-icons:page_insights", IconType::kIconSet}},
+          {{&vector_icons::kGoogleGLogoIcon},
+           {"internal-icons:google_g_logo", IconType::kIconSet}},
           {{&vector_icons::kGoogleGLogoMonochromeIcon},
            {"internal-icons:google_g_logo_monochrome", IconType::kIconSet}},
 #endif
@@ -584,6 +587,12 @@ toolbar_ui_api::IconHandle IconTable::RegisterImageModel(ui::ImageModel icon) {
     }
   }
 
+  if (std::optional<std::string_view> url = GetKnownResourceImageUrl(icon)) {
+    // Keep the image model around for reuse checks.
+    return AddRegistration(/*need_rasterize=*/false, std::string(*url),
+                           IconType::kFullColorUrl, std::move(icon));
+  }
+
   return AddRegistration(/*need_rasterize=*/true,
                          /*name_or_url=*/std::string(),
                          /* Will generate a URL to full-color PNG */
@@ -661,6 +670,12 @@ IconTable::TakePendingUpdates() {
 
   pending_updates_.clear();
   return updates;
+}
+
+bool IconTable::HasPendingUpdates() const {
+  return !pending_updates_.empty() ||
+         (!possibly_scale_dependent_.empty() &&
+          delegate_->GetScaleFactor() != scale_factor_of_last_update_);
 }
 
 void IconTable::OnThemeChanged() {

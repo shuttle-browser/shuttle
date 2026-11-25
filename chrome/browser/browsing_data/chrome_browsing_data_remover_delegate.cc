@@ -33,7 +33,7 @@
 #include "build/build_config.h"
 #include "chrome/browser/autocomplete/zero_suggest_cache_service_factory.h"
 #include "chrome/browser/autofill/autofill_entity_data_manager_factory.h"
-#include "chrome/browser/autofill/entity_suppression_manager_factory.h"
+#include "chrome/browser/autofill/personal_context_entity_metadata_manager_factory.h"
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/browser_process.h"
@@ -94,7 +94,7 @@
 #include "chrome/common/url_constants.h"
 #include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
 #include "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/entity_suppression_manager.h"
+#include "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service.h"
@@ -936,6 +936,10 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
         ContentSettingsType::INTENT_PICKER_DISPLAY, delete_begin_, delete_end_,
         website_settings_filter);
+
+    host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
+        ContentSettingsType::WEBAUTHN_AMBIENT_SIGNIN_DATA, delete_begin_,
+        delete_end_, website_settings_filter);
 #endif
 
     host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
@@ -1089,11 +1093,12 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
       }
       if (base::FeatureList::IsEnabled(
               autofill::features::kAutofillAmbientAutofillSuppression)) {
-        if (autofill::EntitySuppressionManager* entity_suppression_manager =
-                autofill::EntitySuppressionManagerFactory::GetForProfile(
-                    profile_)) {
-          entity_suppression_manager->ClearSuppressions(delete_begin_,
-                                                        delete_end_);
+        if (autofill::
+                PersonalContextEntityMetadataManager* entity_metadata_manager =
+                    autofill::PersonalContextEntityMetadataManagerFactory::
+                        GetForProfile(profile_)) {
+          entity_metadata_manager->ClearSuppressions(delete_begin_,
+                                                     delete_end_);
         }
       }
       // Clear out the Autofill StrikeDatabase in its entirety.
@@ -1525,12 +1530,11 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 #if BUILDFLAG(IS_ANDROID)
     base::RecordAction(UserMetricsAction("ClearBrowsingData_Tabs"));
 
-    for (TabModel* tab_model : TabModelList::models()) {
-      if (tab_model->GetProfile() != profile_ || tab_model->IsOffTheRecord()) {
-        continue;
-      }
-
-      tab_model->CloseTabsNavigatedInTimeWindow(delete_begin, delete_end);
+    if (!profile_->IsOffTheRecord()) {
+      TabModelList::ForEach(profile_, [&](TabModel* tab_model) {
+        tab_model->CloseTabsNavigatedInTimeWindow(delete_begin, delete_end);
+        return true;
+      });
     }
 
     TabModel* archived_tab_model = TabModelList::GetArchivedTabModel(profile_);
@@ -1547,28 +1551,20 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
   // DATA_TYPE_RELATED_WEBSITE_SETS_PERMISSIONS
   if (remove_mask & content::BrowsingDataRemover::
                         DATA_TYPE_RELATED_WEBSITE_SETS_PERMISSIONS) {
-    for (ContentSettingsType type_to_clear :
-         {ContentSettingsType::STORAGE_ACCESS,
-          ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS}) {
-      host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
-          type_to_clear, [&](const ContentSettingPatternSource& setting) {
-            return setting.metadata.decided_by_related_website_sets() &&
-                   std::ranges::any_of(
-                       filter_builder->GetOrigins(),
-                       [&](const url::Origin& origin) -> bool {
-                         // TopLevelStorageAccessPermissionContext creates
-                         // grants using (origin, site) patterns. We explicitly
-                         // use the primary pattern's site here to ensure any
-                         // permission granted to subdomains of an RWS site are
-                         // properly cleared.
-                         return net::SchemefulSite(setting.primary_pattern
-                                                       .ToRepresentativeUrl())
-                                    .IsSameSiteWith(origin) ||
-                                setting.secondary_pattern.Matches(
-                                    origin.GetURL());
-                       });
-          });
-    }
+    host_content_settings_map_->ClearSettingsForOneTypeWithPredicate(
+        ContentSettingsType::STORAGE_ACCESS,
+        [&](const ContentSettingPatternSource& setting) {
+          return setting.metadata.decided_by_related_website_sets() &&
+                 std::ranges::any_of(
+                     filter_builder->GetOrigins(),
+                     [&](const url::Origin& origin) -> bool {
+                       return net::SchemefulSite(
+                                  setting.primary_pattern.ToRepresentativeUrl())
+                                  .IsSameSiteWith(origin) ||
+                              setting.secondary_pattern.Matches(
+                                  origin.GetURL());
+                     });
+        });
   }
 
   if (remove_mask & constants::DATA_TYPE_SEARCH_ENGINE_CHOICE) {

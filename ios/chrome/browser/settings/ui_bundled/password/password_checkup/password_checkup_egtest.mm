@@ -23,8 +23,8 @@
 #import "ios/testing/earl_grey/earl_grey_test.h"
 #import "ui/base/l10n/l10n_util.h"
 
+using chrome_test_util::AutofillAndPasswordsTableViewMatcher;
 using chrome_test_util::ButtonWithAccessibilityLabel;
-using chrome_test_util::SettingsCollectionView;
 using password_manager_test_utils::DeleteCredential;
 using password_manager_test_utils::GetInteractionForPasswordIssueEntry;
 using password_manager_test_utils::kDefaultPassword;
@@ -352,13 +352,14 @@ NSString* LeakedPasswordDescription() {
 
   [ReauthenticationAppInterface mockReauthenticationModuleReturnMockedResult];
 
-  // Password Manager UI should be dismissed leaving the Settings UI Visible.
+  // Password Manager UI should be dismissed leaving the Autofill and Passwords
+  // UI visible.
   [ChromeEarlGrey
       waitForUIElementToDisappearWithMatcher:ReauthenticationController()];
   [[EarlGrey selectElementWithMatcher:PasswordCheckupTableView()]
       assertWithMatcher:grey_notVisible()];
 
-  [[EarlGrey selectElementWithMatcher:SettingsCollectionView()]
+  [[EarlGrey selectElementWithMatcher:AutofillAndPasswordsTableViewMatcher()]
       assertWithMatcher:grey_sufficientlyVisible()];
 }
 
@@ -717,8 +718,7 @@ NSString* LeakedPasswordDescription() {
 
 // Tests resolving the last reused passwords issue by editing a password through
 // Password Checkup.
-// TODO(crbug.com/511159692): Mark it as flaky and re-enable it once fixed.
-- (void)FLAKY_testResolveLastIssueByEditingPassword {
+- (void)testResolveLastIssueByEditingPassword {
   SaveReusedPasswordFormsToProfileStore();
 
   OpenPasswordCheckupHomepage(
@@ -791,8 +791,7 @@ NSString* LeakedPasswordDescription() {
 
 // Tests resolving the last compromised passwords issue by deleting a password
 // through Password Checkup.
-// TODO(crbug.com/493968696): Test is flaky.
-- (void)FLAKY_testChangeCompromisedPasswordToSafePassword {
+- (void)testChangeCompromisedPasswordToSafePassword {
   SaveCompromisedPasswordFormToProfileStore();
 
   OpenPasswordCheckupHomepage(
@@ -828,15 +827,7 @@ NSString* LeakedPasswordDescription() {
 
 // Tests changing the password of a muted compromised password to a weak
 // password.
-// TODO(crbug.com/452549992): Test is flaky on simulator.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testChangeMutedPasswordToWeakPassword \
-  FLAKY_testChangeMutedPasswordToWeakPassword
-#else
-#define MAYBE_testChangeMutedPasswordToWeakPassword \
-  testChangeMutedPasswordToWeakPassword
-#endif
-- (void)MAYBE_testChangeMutedPasswordToWeakPassword {
+- (void)testChangeMutedPasswordToWeakPassword {
   SaveMutedCompromisedPasswordFormToProfileStore();
 
   OpenPasswordCheckupHomepage(
@@ -997,14 +988,15 @@ NSString* LeakedPasswordDescription() {
 
   [ReauthenticationAppInterface mockReauthenticationModuleReturnMockedResult];
 
-  // Password Manager UI should have been dismissed leaving Settings visible.
+  // Password Manager UI should have been dismissed leaving Autofill and
+  // Passwords visible.
   [ChromeEarlGrey
       waitForUIElementToDisappearWithMatcher:ReauthenticationController()];
   [[EarlGrey
       selectElementWithMatcher:WeakPasswordIssuesPageTitle(/*issue_count=*/1)]
       assertWithMatcher:grey_notVisible()];
 
-  [[EarlGrey selectElementWithMatcher:SettingsCollectionView()]
+  [[EarlGrey selectElementWithMatcher:AutofillAndPasswordsTableViewMatcher()]
       assertWithMatcher:grey_sufficientlyVisible()];
 }
 

@@ -33,6 +33,7 @@
 #include "ui/aura/client/cursor_client.h"
 #include "ui/aura/client/focus_client.h"
 #include "ui/aura/window_event_dispatcher.h"
+#include "ui/aura/window_targeter.h"
 #include "ui/base/class_property.h"
 #include "ui/base/cursor/cursor.h"
 #include "ui/base/cursor/platform_cursor.h"
@@ -768,7 +769,7 @@ void DesktopWindowTreeHostWin::SetOpacity(float opacity) {
 void DesktopWindowTreeHostWin::SetAspectRatio(
     const gfx::SizeF& aspect_ratio,
     const gfx::Size& excluded_margin) {
-  DCHECK(!aspect_ratio.IsEmpty());
+  CHECK(!aspect_ratio.IsEmpty(), base::NotFatalUntil::M163);
   message_handler_->SetAspectRatio(aspect_ratio.width() / aspect_ratio.height(),
                                    excluded_margin);
 }
@@ -876,8 +877,8 @@ DesktopWindowTreeHostWin::GetBoundsInAcceleratedWidgetPixelCoordinates() {
     return gfx::Rect(window_bounds.size());
   }
   const gfx::Vector2d offset = client_bounds.origin() - window_bounds.origin();
-  DCHECK_GE(offset.x(), 0);
-  DCHECK_GE(offset.y(), 0);
+  CHECK_GE(offset.x(), 0, base::NotFatalUntil::M163);
+  CHECK_GE(offset.y(), 0, base::NotFatalUntil::M163);
   return gfx::Rect(gfx::Point() + offset, client_bounds.size());
 }
 
@@ -898,7 +899,7 @@ bool DesktopWindowTreeHostWin::CaptureSystemKeyEventsImpl(
   // Only one KeyboardHook should be active at a time, otherwise there will be
   // problems with event routing (i.e. which Hook takes precedence) and
   // destruction ordering.
-  DCHECK(!keyboard_hook_);
+  CHECK(!keyboard_hook_, base::NotFatalUntil::M163);
   keyboard_hook_ = ui::KeyboardHook::CreateModifierKeyboardHook(
       std::move(dom_codes), GetAcceleratedWidget(),
       base::BindRepeating(&DesktopWindowTreeHostWin::HandleKeyEvent,
@@ -912,7 +913,8 @@ void DesktopWindowTreeHostWin::ReleaseSystemKeyEventCapture() {
 }
 
 bool DesktopWindowTreeHostWin::IsKeyLocked(ui::DomCode dom_code) {
-  return keyboard_hook_ && keyboard_hook_->IsKeyLocked(dom_code);
+  return WindowTreeHost::IsKeyLocked(dom_code) ||
+         (keyboard_hook_ && keyboard_hook_->IsKeyLocked(dom_code));
 }
 
 base::flat_map<std::string, std::string>
@@ -1085,6 +1087,21 @@ int DesktopWindowTreeHostWin::GetNonClientComponent(
   }
   gfx::Point dip_position =
       display::win::GetScreenWin()->ClientToDIPPoint(GetHWND(), point);
+  // A WindowTargeter on the content window can make points over the content
+  // window transparent so they fall through to the window beneath. Points
+  // outside the content window (e.g. on a native frame) are left to the normal
+  // non-client hit-testing.
+  if (aura::Window* content = desktop_native_widget_aura_->content_window();
+      content && content->targeter() &&
+      content->bounds().Contains(dip_position)) {
+    gfx::Rect hit_test_rect_mouse;
+    gfx::Rect hit_test_rect_touch;
+    if (!content->targeter()->GetHitTestRects(content, &hit_test_rect_mouse,
+                                              &hit_test_rect_touch) ||
+        !hit_test_rect_mouse.Contains(dip_position)) {
+      return HTTRANSPARENT;
+    }
+  }
   return native_widget_delegate_->GetNonClientComponent(dip_position);
 }
 
@@ -1296,6 +1313,18 @@ bool DesktopWindowTreeHostWin::HandleInitialFocus(
 }
 
 void DesktopWindowTreeHostWin::HandleDisplayChange() {
+  // Called from HWNDMessageHandler::OnDisplayChange(), which then calls
+  // SendFrameChanged(). When kSkipRedundantSendFrameChanged and
+  // kSkipRedundantMaximizedFrameChange are disabled, that always reaches
+  // CheckForMonitorChange() via HandleClientSizeChanged(). When either is
+  // enabled, the frame change or the client size notification may be skipped,
+  // so call CheckForMonitorChange() here. It updates the compositor's display
+  // color spaces if the nearest display changed.
+  if (base::FeatureList::IsEnabled(features::kSkipRedundantSendFrameChanged) ||
+      base::FeatureList::IsEnabled(
+          features::kSkipRedundantMaximizedFrameChange)) {
+    CheckForMonitorChange();
+  }
   if (Widget* widget = GetWidget(); widget && widget->widget_delegate()) {
     widget->widget_delegate()->OnDisplayChanged();
   }

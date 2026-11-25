@@ -7,8 +7,10 @@
 #include <vector>
 
 #include "base/strings/stringprintf.h"
+#include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/download/download_item_model.h"
+#include "components/download/public/common/download_features.h"
 #include "components/download/public/common/mock_download_item.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -114,12 +116,19 @@ TEST_F(DownloadCommandsTest, Finished) {
 }
 
 TEST_F(DownloadCommandsTest, OpenWith) {
-  // "Open with..." is only offered on Windows, where it is enabled once the
-  // download is complete and can be shown in the folder.
+  // "Open with..." is only offered on Windows when
+  // `kEnableDownloadOpenWithContextMenu` is enabled, once the download is
+  // complete and can be shown in the folder.
   EXPECT_FALSE(IsCommandEnabled(DownloadCommands::OPEN_WITH));
   ON_CALL(item(), IsDone()).WillByDefault(Return(true));
 #if BUILDFLAG(IS_WIN)
   EXPECT_TRUE(IsCommandEnabled(DownloadCommands::OPEN_WITH));
+  {
+    base::test::ScopedFeatureList scoped_feature_list;
+    scoped_feature_list.InitAndDisableFeature(
+        download::features::kEnableDownloadOpenWithContextMenu);
+    EXPECT_FALSE(IsCommandEnabled(DownloadCommands::OPEN_WITH));
+  }
   ON_CALL(item(), CanShowInFolder()).WillByDefault(Return(false));
 #endif
   EXPECT_FALSE(IsCommandEnabled(DownloadCommands::OPEN_WITH));

@@ -13,10 +13,9 @@ class Profile;
 
 // Helpers for the Gemini Enterprise in Chrome (GEiC) first-run experience
 // (FRE). The FRE is hosted by the GE side-panel web app; Chrome stores its
-// completion per GE instance in `prefs::kGeicCompletedFre`.
-//
-// TODO(b/576047045): Mention the `X-Geic-Onboarding-Completed` request header
-// once it is added.
+// completion per Chrome profile for each GE instance (guest URL) in
+// `prefs::kGeicCompletedFre`, independent of the GE account signed in within
+// the side panel.
 //
 // Like geic_enabling.h, this is GLiC-internal; includes are restricted by DEPS.
 namespace geic {
@@ -34,6 +33,11 @@ std::optional<prefs::GeicFreStatus> GetFreStatus(Profile* profile);
 // Marks the GEiC FRE completed for `profile`'s GE instance. No-op if
 // `GetFreStatus()` is std::nullopt.
 void CompleteFre(Profile* profile);
+
+// Clears the GEiC FRE status for `profile`'s GE instance, so that the FRE is
+// required again. The status for other GE instances is kept. No-op if
+// `GetFreStatus()` is std::nullopt.
+void ResetFre(Profile* profile);
 
 }  // namespace geic
 

@@ -16,6 +16,8 @@ import android.text.format.DateUtils;
 import androidx.annotation.CallSuper;
 import androidx.annotation.WorkerThread;
 
+import com.google.android.material.color.DynamicColors;
+
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.BaseSwitches;
@@ -107,6 +109,8 @@ import org.chromium.chrome.browser.tab.state.PersistedTabData;
 import org.chromium.chrome.browser.tab.state.ShoppingPersistedTabData;
 import org.chromium.chrome.browser.tabmodel.TabPersistentStoreImpl;
 import org.chromium.chrome.browser.tips.TipsPromoHandlerRegistrar;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarConfigUtils;
+import org.chromium.chrome.browser.ui.bottombar.BottomBarEducationUtils;
 import org.chromium.chrome.browser.ui.cars.DrivingRestrictionsManager;
 import org.chromium.chrome.browser.ui.color.ColorProviderBridgeImpl;
 import org.chromium.chrome.browser.ui.hats.SurveyClientFactory;
@@ -129,6 +133,7 @@ import org.chromium.components.optimization_guide.proto.HintsProto.OptimizationT
 import org.chromium.components.policy.CombinedPolicyProvider;
 import org.chromium.components.policy.EnterpriseInfo;
 import org.chromium.components.safe_browsing.SafeBrowsingApiBridge;
+import org.chromium.components.supervised_user.ContentFiltersObserverBridge;
 import org.chromium.components.webapps.AppBannerManager;
 import org.chromium.components.webapps.AppDetailsDelegate;
 import org.chromium.content_public.browser.ChildProcessLauncherHelper;
@@ -143,6 +148,7 @@ import org.chromium.ui.base.SelectFileDialog;
 import org.chromium.ui.color.ColorProviderBridgeFactory;
 import org.chromium.ui.native_theme.OsSettingsProviderAndroidBridge;
 import org.chromium.url.GURL;
+import org.chromium.window.WindowApiCheck;
 
 import java.io.File;
 import java.nio.charset.StandardCharsets;
@@ -277,6 +283,11 @@ public class ProcessInitializationHandler {
         // - Pixel 2: ~10 ms
         // - Nokia 1 (Android Go): 20-200 ms
         warmUpSharedPrefs();
+        ContentFiltersObserverBridge.warmUp();
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+                && ChromeFeatureList.sClankStartupTabOptimizations.isEnabled()) {
+            PostTask.postTask(TaskTraits.USER_VISIBLE, WindowApiCheck::isAvailable);
+        }
 
         DeviceUtils.updateDeviceSpecificUserAgentSwitch(ContextUtils.getApplicationContext());
         // ChromeLifetimeController is pure Java and safe to initialize pre-native. It is
@@ -393,6 +404,9 @@ public class ProcessInitializationHandler {
     /** Performs the post native initialization. */
     @CallSuper
     protected void handlePostNativeInitialization() {
+        // Must run before cacheNativeFlags() overwrites this start's cached bottom bar params.
+        // TODO(crbug.com/582747594): Remove once AndroidBottomBar is enabled by default.
+        BottomBarConfigUtils.maybePinDefaultUserEnabled();
         // Triggered early in post native startup to allow any flags that have not be accessed to
         // use the most up to date flag state from the server
         // (see ChromeCachedFlags#cacheNativeFlags for more details).
@@ -438,8 +452,6 @@ public class ProcessInitializationHandler {
                     public void onProfileDestroyed(Profile profile) {}
                 });
 
-        AccessibilityState.registerObservers();
-
         boolean initialNightMode = GlobalNightModeStateProviderHolder.getInstance().isInNightMode();
         OsSettingsProviderAndroidBridge.setPreferredColorScheme(initialNightMode);
         GlobalNightModeStateProviderHolder.getInstance()
@@ -450,6 +462,9 @@ public class ProcessInitializationHandler {
                                             .isInNightMode();
                             OsSettingsProviderAndroidBridge.setPreferredColorScheme(isDark);
                         });
+        if (DynamicColors.isDynamicColorAvailable()) {
+            OsSettingsProviderAndroidBridge.registerSystemAccentColorObserver();
+        }
 
         if (DeviceInfo.isAutomotive()) {
             DrivingRestrictionsManager.initialize();
@@ -541,6 +556,8 @@ public class ProcessInitializationHandler {
         RecordHistogram.recordBooleanHistogram(
                 AccessibilitySettingsBridge.ACCESSIBILITY_CARET_BROWSING_ENABLED_HISTOGRAM,
                 AccessibilitySettingsBridge.isCaretBrowsingEnabled(profile));
+        // TODO(crbug.com/582747594): Remove once AndroidBottomBar is enabled by default.
+        BottomBarEducationUtils.maybeBackfillEducationSeen(profile);
     }
 
     /**

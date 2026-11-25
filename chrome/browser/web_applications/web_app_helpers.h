@@ -9,11 +9,14 @@
 #include <string>
 
 #include "components/webapps/common/web_app_id.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
 #include "url/gurl.h"
 
 class GURL;
 class Profile;
+
+namespace blink {
+class Manifest;
+}
 
 namespace web_app {
 
@@ -47,10 +50,11 @@ webapps::AppId GenerateAppId(const std::optional<std::string>& manifest_id_path,
                              const GURL& start_url);
 
 // Generates the chrome-specific `webapps::AppId` from the spec-defined
-// manifest. See the `webapps::AppId` type for more information. This will
-// CHECK-fail if the `id` field is not present on the manifest.
-webapps::AppId GenerateAppIdFromManifest(
-    const blink::mojom::Manifest& manifest);
+// manifest. See the `webapps::AppId` type for more information.
+webapps::AppId GenerateAppIdFromManifest(const blink::Manifest& manifest);
+
+webapps::ManifestId GenerateManifestIdFromManifest(
+    const blink::Manifest& manifest);
 
 // Generates the chrome-specific `webapps::AppId` from the spec-defined manifest
 // id. See the `webapps::AppId` type for more information.

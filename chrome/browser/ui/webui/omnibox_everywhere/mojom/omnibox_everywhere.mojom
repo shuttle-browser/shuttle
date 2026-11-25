@@ -33,9 +33,9 @@ struct ComposeboxInitialState {
   // selected file corresponding to `file_token`.
   searchbox.mojom.SelectedFileInfo? file_info;
 
-  // True if transitioning into composebox while an asynchronous screenshot
-  // capture (e.g. from the Lens menu) is in progress.
-  bool is_pending_screenshot = false;
+  // True if transitioning into composebox while an asynchronous context
+  // upload (e.g. screenshot capture or file picker) is in progress.
+  bool is_pending_context_upload = false;
 };
 
 // The browser-side handler factory for Omnibox Everywhere.
@@ -82,4 +82,13 @@ interface Page {
   // Notifies the WebUI that a pending screenshot capture (e.g. region or
   // window selection) was cancelled by the user or failed.
   OnScreenshotCaptureCancelled();
+
+  // Notifies the WebUI to focus the active text input whenever the browser
+  // programmatically activates the widget (e.g. hotkey, tray, shortcut, or
+  // restoring focus after a picker closes).
+  FocusInput();
+
+  // Notifies the WebUI that the widget was demoted (sent to the background in
+  // persistent mode) or minimized.
+  OnDemoted();
 };

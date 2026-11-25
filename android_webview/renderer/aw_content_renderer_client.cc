@@ -13,7 +13,6 @@
 #include "android_webview/common/mojom/frame.mojom.h"
 #include "android_webview/common/url_constants.h"
 #include "android_webview/renderer/aw_content_settings_client.h"
-#include "android_webview/renderer/aw_print_render_frame_helper_delegate.h"
 #include "android_webview/renderer/aw_render_frame_ext.h"
 #include "android_webview/renderer/aw_render_frame_observer.h"
 #include "android_webview/renderer/aw_render_view_ext.h"
@@ -28,12 +27,12 @@
 #include "components/android_system_error_page/error_page_populator.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/cdm/renderer/key_system_support_update.h"
+#include "components/heap_profiling/in_process/heap_profiler_controller.h"
 #include "components/js_injection/renderer/js_communication.h"
 #include "components/metrics/call_stacks/call_stack_profile_builder.h"
 #include "components/metrics/public/mojom/call_stack_profile_collector.mojom.h"
 #include "components/network_hints/renderer/web_prescient_networking_impl.h"
 #include "components/page_load_metrics/renderer/metrics_render_frame_observer.h"
-#include "components/printing/renderer/print_render_frame_helper.h"
 #include "components/security_interstitials/content/renderer/security_interstitial_page_controller_delegate_impl.h"
 #include "components/visitedlink/common/visitedlink_common.h"
 #include "components/visitedlink/renderer/visitedlink_reader.h"
@@ -42,6 +41,7 @@
 #include "content/public/renderer/render_frame.h"
 #include "content/public/renderer/render_thread.h"
 #include "mojo/public/cpp/bindings/binder_map.h"
+#include "printing/buildflags/buildflags.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/platform/platform.h"
 #include "third_party/blink/public/platform/web_runtime_features.h"
@@ -54,6 +54,11 @@
 #include "third_party/blink/public/web/web_security_policy.h"
 #include "url/gurl.h"
 #include "url/url_constants.h"
+
+#if BUILDFLAG(ENABLE_PRINTING)
+#include "android_webview/renderer/aw_print_render_frame_helper_delegate.h"
+#include "components/printing/renderer/print_render_frame_helper.h"
+#endif
 
 #if BUILDFLAG(ENABLE_SPELLCHECK)
 #include "components/spellcheck/renderer/spellcheck.h"
@@ -96,8 +101,10 @@ void AwContentRendererClient::RenderThreadStarted() {
 #endif
 
   // Set up the profile collector pipe that the renderer process uses to send
-  // profiles to the browser_process.
-  if (base::FeatureList::IsEnabled(features::kWebViewMemoryProfilingClient)) {
+  // profiles to the browser_process. A HeapProfilerController only exists if
+  // heap profiling is enabled for this process.
+  if (base::FeatureList::IsEnabled(features::kWebViewMemoryProfilingClient) &&
+      heap_profiling::HeapProfilerController::GetInstance()) {
     mojo::PendingRemote<metrics::mojom::CallStackProfileCollector> collector;
     thread->BindHostReceiver(collector.InitWithNewPipeAndPassReceiver());
     metrics::CallStackProfileBuilder::SetParentProfileCollectorForChildProcess(
@@ -165,8 +172,10 @@ bool AwContentRendererClient::HandleNavigation(
 void AwContentRendererClient::RenderFrameCreated(
     content::RenderFrame* render_frame) {
   new AwContentSettingsClient(render_frame);
+#if BUILDFLAG(ENABLE_PRINTING)
   new printing::PrintRenderFrameHelper(
       render_frame, std::make_unique<AwPrintRenderFrameHelperDelegate>());
+#endif  // BUILDFLAG(ENABLE_PRINTING)
   new AwRenderFrameExt(render_frame);
   new js_injection::JsCommunication(render_frame);
   new security_interstitials::SecurityInterstitialPageControllerDelegateImpl(

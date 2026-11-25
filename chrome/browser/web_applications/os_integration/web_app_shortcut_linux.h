@@ -9,7 +9,9 @@
 #include <string>
 #include <vector>
 
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
+#include "ui/gfx/image/image_family.h"
 #include "url/gurl.h"
 
 namespace base {
@@ -18,6 +20,13 @@ class Environment;
 }  // namespace base
 
 namespace web_app {
+
+BASE_DECLARE_FEATURE(kWebAppsUseDynamicLauncherPortal);
+
+// Returns whether web app launchers are installed through the XDG
+// DynamicLauncher portal. This requires kWebAppsUseDynamicLauncherPortal and
+// running in an app sandbox such as Flatpak or Snap.
+bool ShouldUseDynamicLauncherPortal();
 
 struct ShortcutInfo;
 struct ShortcutLocations;
@@ -56,9 +65,9 @@ void SetLaunchXdgUtilityForTesting(
 // |shortcut_info|), for the web page or extension in |shortcut_info|.
 // For extensions, duplicate shortcuts are avoided, so if a requested shortcut
 // already exists it is deleted first.
-bool CreateDesktopShortcut(base::Environment* env,
-                           const ShortcutInfo& shortcut_info,
-                           const ShortcutLocations& creation_locations);
+void CreateDesktopShortcut(const ShortcutInfo& shortcut_info,
+                           const ShortcutLocations& creation_locations,
+                           base::OnceCallback<void(bool)> callback);
 
 // Returns filename for .desktop file based on |profile_path| and
 // |app_id|, sanitized for security.
@@ -75,22 +84,21 @@ ShortcutLocations GetExistingShortcutLocations(
     const base::FilePath& profile_path,
     const std::string& extension_id);
 
-bool UpdateDesktopShortcuts(
-    base::Environment* env,
+void UpdateDesktopShortcuts(
     const ShortcutInfo& shortcut_info,
-    std::optional<ShortcutLocations> user_specified_locations);
+    std::optional<ShortcutLocations> user_specified_locations,
+    base::OnceCallback<void(bool)> callback);
 
 // Delete any desktop shortcuts on desktop or in the application menu that have
-// been added for the extension with |extension_id| in |profile_path|. Returns
-// true on successful deletion.
-bool DeleteDesktopShortcuts(base::Environment* env,
-                            const base::FilePath& profile_path,
-                            const std::string& extension_id);
+// been added for the extension with |extension_id| in |profile_path|.
+void DeleteDesktopShortcuts(const base::FilePath& profile_path,
+                            const std::string& extension_id,
+                            base::OnceCallback<void(bool)> callback);
 
 // Delete any desktop shortcuts on desktop or in the application menu that have
-// for the profile in |profile_path|. Returns true on successful deletion.
-bool DeleteAllDesktopShortcuts(base::Environment* env,
-                               const base::FilePath& profile_path);
+// for the profile in |profile_path|.
+void DeleteAllDesktopShortcuts(const base::FilePath& profile_path,
+                               base::OnceCallback<void(bool)> callback);
 
 // Returns the shortcuts that match profile for |profile_path| and
 // web app with id |appid|.
@@ -100,6 +108,18 @@ std::vector<base::FilePath> GetShortcutLocations(
     const base::FilePath& profile_path,
     const std::string& app_id);
 
+std::vector<uint8_t> GetShortcutIconBytes(const gfx::ImageFamily& icon_family);
+
+// Pre-flight XDG Dynamic Launcher portal installation check on the UI thread.
+// Prompts the OS dialog before DB commit. Returns std::nullopt if the user
+// cancels, or a token string on approval (or empty string if portal is
+// disabled/unavailable).
+void PreparePortalInstallOnUIThread(
+    std::string display_name,
+    std::vector<uint8_t> icon_bytes,
+    GURL target_url,
+    base::OnceCallback<void(std::optional<std::string> token)> callback);
+
 namespace internals {
 
 // Returns the shortcuts that match profile for |profile_path| and
@@ -108,6 +128,20 @@ std::vector<base::FilePath> GetShortcutLocations(
     const ShortcutLocations& locations,
     const base::FilePath& profile_path,
     const std::string& app_id);
+
+std::string StripNameAndIconFromDesktopFile(std::string_view contents);
+
+std::string GetPortalDesktopFileId(base::Environment* env,
+                                   const base::FilePath& shortcut_filename);
+
+// Completes an applications menu install after the DynamicLauncher portal's
+// Install call returned `portal_success`. On failure, records
+// CreateShortcutResult::kPortalInstallFailed and runs `legacy_install`
+// instead. Runs `callback` with the overall result.
+void FinishPortalInstall(base::FilePath applications_dir,
+                         base::OnceCallback<bool()> legacy_install,
+                         base::OnceCallback<void(bool)> callback,
+                         bool portal_success);
 
 }  // namespace internals
 

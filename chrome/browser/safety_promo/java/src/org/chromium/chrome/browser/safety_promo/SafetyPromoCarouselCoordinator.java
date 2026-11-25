@@ -6,6 +6,7 @@ package org.chromium.chrome.browser.safety_promo;
 
 import static org.chromium.build.NullUtil.assumeNonNull;
 import static org.chromium.chrome.browser.safety_promo.SafetyPromoCarouselProperties.ON_CONTINUE_CLICKED;
+import static org.chromium.chrome.browser.safety_promo.SafetyPromoCarouselProperties.ON_SHOW_ME_HOW_CLICKED;
 
 import android.content.Context;
 import android.view.LayoutInflater;
@@ -20,6 +21,8 @@ import androidx.recyclerview.widget.RecyclerView.OnScrollListener;
 import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.safety_promo.bottom_sheet.SafetyPromoBottomSheetCoordinator;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.ui.modelutil.PropertyKey;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
@@ -42,6 +45,8 @@ public class SafetyPromoCarouselCoordinator {
     private final PropertyModel mModel;
     private SafetyPromoCarouselMediator mMediator;
     private final List<SafetyPromoItem> mItems;
+    private final BottomSheetController mBottomSheetController;
+    private @Nullable SafetyPromoBottomSheetCoordinator mBottomSheetCoordinator;
     private @Nullable SafetyPromoCarouselView mPortraitView;
     private @Nullable SafetyPromoCarouselView mLandscapeView;
     private @Nullable
@@ -61,6 +66,8 @@ public class SafetyPromoCarouselCoordinator {
      *     page.
      * @param advancePage The {@link Runnable} to execute when advancing to the next page or
      *     completing the promo.
+     * @param bottomSheetController The {@link BottomSheetController} used to show the "Show me how"
+     *     bottom sheet.
      * @param items The list of {@link SafetyPromoItem}s to display in the carousel.
      */
     public SafetyPromoCarouselCoordinator(
@@ -68,15 +75,18 @@ public class SafetyPromoCarouselCoordinator {
             boolean useLandscapeLayout,
             NullableObservableSupplier<SafetyPromoItem> selectedItemSupplier,
             Runnable advancePage,
+            BottomSheetController bottomSheetController,
             List<SafetyPromoItem> items) {
         // The carousel promo should only be displayed when promo items are configured.
         assert !items.isEmpty();
 
         mContext = context;
         mItems = items;
+        mBottomSheetController = bottomSheetController;
         mModel =
                 new PropertyModel.Builder(SafetyPromoCarouselProperties.ALL_KEYS)
                         .with(ON_CONTINUE_CLICKED, _ -> advancePage.run())
+                        .with(ON_SHOW_ME_HOW_CLICKED, _ -> showBottomSheet())
                         .build();
 
         mUseLandscapeLayout = useLandscapeLayout;
@@ -84,8 +94,12 @@ public class SafetyPromoCarouselCoordinator {
         getOrCreateView();
     }
 
-    /** Stops observing the selected item and unbinds and drops the carousel views. */
+    /**
+     * Dismisses the bottom sheet, stops observing the selected item and unbinds and drops the
+     * carousel views.
+     */
     public void destroy() {
+        dismissBottomSheet();
         mMediator.destroy();
         clearCachedViews();
     }
@@ -94,13 +108,19 @@ public class SafetyPromoCarouselCoordinator {
      * Updates the carousel after a configuration change, keeping the current item. The embedder
      * should then show {@link #getView()}, which may have changed.
      *
+     * <p>The bottom sheet stays open across rotations, but is dismissed when resources change, e.g.
+     * when the font size or display size changes.
+     *
      * @param useLandscapeLayout Whether to show the landscape (dual-pane) layout.
      * @param resourcesChanged Whether the change may outdate the resources of the cached views, in
      *     which case they are dropped.
      */
     public void onConfigurationChanged(boolean useLandscapeLayout, boolean resourcesChanged) {
         if (!resourcesChanged && useLandscapeLayout == mUseLandscapeLayout) return;
-        if (resourcesChanged) clearCachedViews();
+        if (resourcesChanged) {
+            dismissBottomSheet();
+            clearCachedViews();
+        }
 
         mUseLandscapeLayout = useLandscapeLayout;
         getOrCreateView();
@@ -109,6 +129,34 @@ public class SafetyPromoCarouselCoordinator {
     /** Returns the carousel view of the current layout. */
     public SafetyPromoCarouselView getView() {
         return assumeNonNull(mUseLandscapeLayout ? mLandscapeView : mPortraitView);
+    }
+
+    /** Creates and shows a new "Show me how" bottom sheet for the active item. */
+    private void showBottomSheet() {
+        if (mBottomSheetCoordinator != null) return;
+
+        mBottomSheetCoordinator =
+                new SafetyPromoBottomSheetCoordinator(
+                        mContext,
+                        mBottomSheetController,
+                        mMediator.getActiveItem(),
+                        this::onBottomSheetDestroyed);
+        mBottomSheetCoordinator.showBottomSheet();
+    }
+
+    /**
+     * Closes the "Show me how" bottom sheet if it is open. The reference to the sheet is released
+     * in {@link #onBottomSheetDestroyed()}.
+     */
+    private void dismissBottomSheet() {
+        if (mBottomSheetCoordinator == null) return;
+
+        mBottomSheetCoordinator.dismissBottomSheet(/* animate= */ false);
+    }
+
+    /** Called when the "Show me how" bottom sheet is closed for any reason and destroyed. */
+    private void onBottomSheetDestroyed() {
+        mBottomSheetCoordinator = null;
     }
 
     /**

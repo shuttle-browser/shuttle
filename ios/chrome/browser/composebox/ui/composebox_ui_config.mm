@@ -6,6 +6,7 @@
 
 #import "base/check.h"
 #import "base/strings/sys_string_conversions.h"
+#import "ios/chrome/browser/composebox/ui/composebox_ui_util.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
 #import "ios/chrome/grit/ios_strings.h"
@@ -90,6 +91,8 @@
           IDS_IOS_COMPOSEBOX_MENU_SUBITITLE_IMAGE_GENERATION);
     case ComposeboxMode::kCanvas:
       return l10n_util::GetNSString(IDS_IOS_COMPOSEBOX_MENU_SUBITITLE_CANVAS);
+    case ComposeboxMode::kPTM:
+      return l10n_util::GetNSString(IDS_IOS_COMPOSEBOX_MENU_SUBTITLE_PTM);
     default:
       return nil;
   }
@@ -105,8 +108,6 @@
 
 - (NSString*)removeToolAccessibilityLabelForTool:(ComposeboxMode)tool {
   NSString* chipLabel = [self chipLabelForTool:tool];
-
-  DCHECK(chipLabel.length);
   if (!chipLabel.length) {
     return @"";
   }
@@ -209,6 +210,10 @@
                           IDS_IOS_COMPOSEBOX_DEEP_SEARCH_ENABLED_PLACEHOLDER)
                     : l10n_util::GetNSString(
                           IDS_IOS_COMPOSEBOX_DEEP_SEARCH_ACTION);
+    case kPTM:
+      return isHint ? l10n_util::GetNSString(
+                          IDS_IOS_COMPOSEBOX_AIM_ENABLED_PLACEHOLDER)
+                    : @"";
     case kRegularSearch:
       return nil;
     default:
@@ -230,6 +235,9 @@
     case kCanvas:
       return SymbolWithPointSize(SymbolDocumentBadgeSpark,
                                  kSymbolActionPointSize);
+    case kPTM:
+      return ImageForIconResourceId(omnibox::IconResourceIds::PTM_TOOL,
+                                    kSymbolActionPointSize);
     case kRegularSearch:
       return nil;
     default:

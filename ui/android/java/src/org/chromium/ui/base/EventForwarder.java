@@ -4,6 +4,8 @@
 
 package org.chromium.ui.base;
 
+import static org.chromium.build.NullUtil.assumeNonNull;
+
 import android.content.ClipData;
 import android.content.ClipDescription;
 import android.content.ContentResolver;
@@ -22,11 +24,13 @@ import androidx.annotation.IntDef;
 import androidx.annotation.VisibleForTesting;
 
 import org.jni_zero.CalledByNative;
+import org.jni_zero.CalledByNativeForTesting;
 import org.jni_zero.JNINamespace;
 import org.jni_zero.JniType;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.base.AconfigFlaggedApiDelegate;
+import org.chromium.base.ContentUriOwner;
 import org.chromium.base.ContentUriUtils;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.Log;
@@ -38,6 +42,7 @@ import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.components.input.InputFeatureMap;
 import org.chromium.ui.dragdrop.DropDataAndroid;
+import org.chromium.ui.dragdrop.DropDataProviderUtils;
 import org.chromium.ui.util.MotionEventUtils;
 
 import java.lang.reflect.UndeclaredThrowableException;
@@ -61,6 +66,7 @@ public class EventForwarder {
     private final boolean mIsDragDropEnabled;
     private final boolean mConvertTrackpadEventsToMouse;
     private final boolean mUseBufferedInput;
+    private boolean mAllowIntraAppImageDrops;
 
     private final MotionEvent.PointerCoords mTmpPointerCoords = new MotionEvent.PointerCoords();
 
@@ -159,6 +165,17 @@ public class EventForwarder {
 
     public int getLastToolType() {
         return mLastToolType;
+    }
+
+    /**
+     * Delivers images dragged out of this app's own web contents to this target as image bytes
+     * (DropData::file_contents), as desktop platforms do for every drop target. Opt-in on Android
+     * so that ordinary tabs continue receiving intra-app image drags as file URIs
+     * (DropData::filenames); see the ACTION_DROP handling in {@link #onDragEvent}.
+     */
+    @CalledByNative
+    void setAllowIntraAppImageDrops(boolean allow) {
+        mAllowIntraAppImageDrops = allow;
     }
 
     @CalledByNative
@@ -805,15 +822,83 @@ public class EventForwarder {
                         || event.getActionMasked() == MotionEvent.ACTION_CANCEL);
     }
 
+    private static boolean isUriSafeForDrop(Uri uri) {
+        if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())) {
+            return false;
+        }
+        @ContentUriOwner int owner = ContentUriUtils.resolveContentUriOwner(uri);
+        if (owner == ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP) {
+            // The only internal provider allowed is to drag-drop images between tabs.
+            return DropDataProviderUtils.isDropDataProviderUri(uri);
+        }
+        return owner != ContentUriOwner.EXPORTED_FROM_CURRENT_APP;
+    }
+
     /**
      * @see View#onDragEvent(DragEvent)
      * @param event {@link DragEvent} instance.
      * @param containerView A view on which the drag event is taking place.
      */
     public boolean onDragEvent(DragEvent event, View containerView) {
-        ClipDescription clipDescription = event.getClipDescription();
+        int[] locationOnScreen = new int[2];
+        containerView.getLocationOnScreen(locationOnScreen);
+
+        // All coordinates are in device pixel. Conversion to DIP happens in the native.
+        float x = event.getX() + mCurrentTouchOffsetX + mDragDispatchingOffsetX;
+        float y = event.getY() + mCurrentTouchOffsetY + mDragDispatchingOffsetY;
+        float screenX = x + locationOnScreen[0];
+        float screenY = y + locationOnScreen[1];
+
+        return forwardDragEvent(
+                event.getAction(),
+                x,
+                y,
+                screenX,
+                screenY,
+                event.getClipDescription(),
+                event.getClipData());
+    }
+
+    /**
+     * Dispatches a drag event carrying {@code clipData} as if it were delivered to {@link
+     * #onDragEvent(DragEvent, View)}, so that its {@link ClipData} parsing and content URI
+     * filtering run. Used by browser tests to replay drags captured from a {@link
+     * org.chromium.ui.dragdrop.DragAndDropDelegate}. Coordinates are in device pixels.
+     */
+    @CalledByNativeForTesting
+    void dispatchDragEventForTesting(
+            int action,
+            float x,
+            float y,
+            float screenX,
+            float screenY,
+            @Nullable ClipData clipData) {
+        // Mirror android.view.DragEvent's action-dependent data availability:
+        // - getClipDescription() is populated on all actions except ACTION_DRAG_ENDED.
+        // - getClipData() is only populated on ACTION_DROP.
+        forwardDragEvent(
+                action,
+                x,
+                y,
+                screenX,
+                screenY,
+                action != DragEvent.ACTION_DRAG_ENDED && clipData != null
+                        ? clipData.getDescription()
+                        : null,
+                action == DragEvent.ACTION_DROP ? clipData : null);
+    }
+
+    private boolean forwardDragEvent(
+            int action,
+            float x,
+            float y,
+            float screenX,
+            float screenY,
+            @Nullable ClipDescription clipDescription,
+            @Nullable ClipData clipData) {
         // Do not forward browser content events to native eventForwarder.
-        if (MimeTypeUtils.clipDescriptionHasBrowserContent(clipDescription)) {
+        if (clipDescription != null
+                && MimeTypeUtils.clipDescriptionHasBrowserContent(clipDescription)) {
             return false;
         }
         if (mNativeEventForwarder == 0) {
@@ -824,10 +909,12 @@ public class EventForwarder {
                 extras != null ? extras.getString(DropDataAndroid.EXTRA_CUSTOM_DATA) : null;
         String effectAllowed =
                 extras != null ? extras.getString(DropDataAndroid.EXTRA_EFFECT_ALLOWED) : null;
+        String dragId = extras != null ? extras.getString(DropDataAndroid.EXTRA_DRAG_ID) : null;
 
         String[] mimeTypes =
                 new String[clipDescription != null ? clipDescription.getMimeTypeCount() : 0];
         for (int i = 0; i < mimeTypes.length; i++) {
+            assumeNonNull(clipDescription);
             mimeTypes[i] = clipDescription.getMimeType(i);
         }
 
@@ -839,7 +926,7 @@ public class EventForwarder {
             }
         }
 
-        if (event.getAction() == DragEvent.ACTION_DRAG_STARTED) {
+        if (action == DragEvent.ACTION_DRAG_STARTED) {
             return mIsDragDropEnabled;
         }
 
@@ -847,22 +934,35 @@ public class EventForwarder {
         String text = null;
         String html = null;
         String url = null;
-        if (event.getAction() == DragEvent.ACTION_DROP) {
+        DropDataProviderUtils.CachedImage image = null;
+        if (action == DragEvent.ACTION_DROP && clipData != null) {
             try {
-                ClipData clipData = event.getClipData();
-                final int itemCount = clipData == null ? 0 : clipData.getItemCount();
+                final int itemCount = clipData.getItemCount();
                 for (int i = 0; i < itemCount; i++) {
                     // If there are any Uris, set them as files.
                     Uri uri = clipData.getItemAt(i).getUri();
                     if (uri != null) {
+                        // An image dragged out of this app's own web contents is served by its
+                        // DropDataProvider. Hand its bytes to an opted-in target directly, as
+                        // desktop platforms do (see WebContentsViewAura::PrepareDropData), instead
+                        // of populating `filenames` as a file drop. The provider only returns the
+                        // bytes while the drag is in progress and carries the drag ID they were
+                        // cached with; any other DropDataProvider URI (e.g. a stale or replayed
+                        // URI) is dropped rather than falling through to `filenames`.
+                        if (mAllowIntraAppImageDrops
+                                && DropDataProviderUtils.isDropDataProviderUri(uri)) {
+                            if (image == null) {
+                                image = DropDataProviderUtils.getCachedImage(uri, dragId);
+                            }
+                            continue;
+                        }
+
                         // Reject non-URIs or URIs originating from this app to prevent the browser
                         // from opening private files on behalf of an untrusted paste request.
                         if (UiAndroidFeatureMap.isEnabled(
-                                UiAndroidFeatures.CLIPBOARD_CONFUSED_DEPUTY_DEFENSE_FILES)) {
-                            if (!ContentResolver.SCHEME_CONTENT.equals(uri.getScheme())
-                                    || ContentUriUtils.isUriFromThisApp(uri)) {
-                                continue;
-                            }
+                                        UiAndroidFeatures.CLIPBOARD_CONFUSED_DEPUTY_DEFENSE_FILES)
+                                && !isUriSafeForDrop(uri)) {
+                            continue;
                         }
 
                         String uriString = uri.toString();
@@ -880,7 +980,9 @@ public class EventForwarder {
                     CharSequence temp = item.getText();
                     if (temp != null) {
                         text = temp.toString();
-                        if (clipDescription.hasMimeType(URL_MIME_TYPE)) {
+                        // clipDescription is @Nullable on forwardDragEvent (null on
+                        // ACTION_DRAG_ENDED).
+                        if (clipDescription != null && clipDescription.hasMimeType(URL_MIME_TYPE)) {
                             url = text;
                         }
                     }
@@ -896,23 +998,16 @@ public class EventForwarder {
                 // the exception signiture. See crbug.com/1406777.
                 Log.e(TAG, "Parsing clip data content failed.", e);
             }
+        }
+        if (action == DragEvent.ACTION_DROP) {
             RecordHistogram.recordCount100Histogram(
                     "Android.DragDrop.Files.Count", filenames.size());
         }
 
-        int[] locationOnScreen = new int[2];
-        containerView.getLocationOnScreen(locationOnScreen);
-
-        // All coordinates are in device pixel. Conversion to DIP happens in the native.
-        float x = event.getX() + mCurrentTouchOffsetX + mDragDispatchingOffsetX;
-        float y = event.getY() + mCurrentTouchOffsetY + mDragDispatchingOffsetY;
-        float screenX = x + locationOnScreen[0];
-        float screenY = y + locationOnScreen[1];
-
         EventForwarderJni.get()
                 .onDragEvent(
                         mNativeEventForwarder,
-                        event.getAction(),
+                        action,
                         x,
                         y,
                         screenX,
@@ -924,7 +1019,11 @@ public class EventForwarder {
                         html,
                         url,
                         customData,
-                        effectAllowed);
+                        effectAllowed,
+                        dragId,
+                        image != null ? image.bytes : null,
+                        image != null ? image.extension : null,
+                        image != null ? image.filename : null);
         return true;
     }
 
@@ -1230,7 +1329,11 @@ public class EventForwarder {
                 @Nullable String html,
                 @Nullable String url,
                 @Nullable String customData,
-                @Nullable String effectAllowed);
+                @Nullable String effectAllowed,
+                @Nullable String dragId,
+                byte @Nullable [] imageBytes,
+                @Nullable String imageExtension,
+                @Nullable String imageFilename);
 
         boolean onGestureEvent(long nativeEventForwarder, int type, long timeMs, float delta);
 

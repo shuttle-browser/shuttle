@@ -9,6 +9,9 @@
 #include "base/check_is_test.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/metrics/histogram_functions.h"
+#include "base/metrics/user_metrics.h"
+#include "base/metrics/user_metrics_action.h"
 #include "base/time/time.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
@@ -25,9 +28,13 @@
 #include "components/feature_engagement/public/tracker.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/prefs/pref_service.h"
+#include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/input/web_input_event.h"
+#include "third_party/blink/public/common/input/web_keyboard_event.h"
 #include "ui/base/interaction/element_events.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/mojom/window_open_disposition.mojom.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/native_ui_types.h"
 #include "ui/views/bubble/bubble_anchor.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
@@ -52,6 +59,50 @@ gfx::NativeView GetBrowserParentWindow(BrowserWindowInterface* browser_window) {
 
 }  // namespace
 
+ContextualTasksOnboardingTooltipController::PanelWebContentsObserver::
+    PanelWebContentsObserver(
+        ContextualTasksOnboardingTooltipController& controller)
+    : controller_(controller) {}
+
+ContextualTasksOnboardingTooltipController::PanelWebContentsObserver::
+    ~PanelWebContentsObserver() = default;
+
+void ContextualTasksOnboardingTooltipController::PanelWebContentsObserver::
+    ObserveWebContents(content::WebContents* web_contents) {
+  Observe(web_contents);
+}
+
+void ContextualTasksOnboardingTooltipController::PanelWebContentsObserver::
+    DidGetUserInteraction(const blink::WebInputEvent& event) {
+  // A mouse press or a touch dismisses the bubble, as does activating a
+  // control with Enter or Space. Scrolling, typing in a text field, and other
+  // key presses do not.
+  bool is_dismissing_event = false;
+  switch (event.GetType()) {
+    case blink::WebInputEvent::Type::kMouseDown:
+    case blink::WebInputEvent::Type::kTouchStart:
+      is_dismissing_event = true;
+      break;
+    case blink::WebInputEvent::Type::kRawKeyDown:
+    case blink::WebInputEvent::Type::kKeyDown: {
+      const int key_code =
+          static_cast<const blink::WebKeyboardEvent&>(event).windows_key_code;
+
+      // Only Enter and Space dismiss the bubble, and only if the user isn't
+      // typing in a text field.
+      is_dismissing_event =
+          (key_code == ui::VKEY_RETURN || key_code == ui::VKEY_SPACE) &&
+          !web_contents()->IsFocusedElementEditable();
+      break;
+    }
+    default:
+      break;
+  }
+  if (is_dismissing_event && controller_->IsBubbleShowing()) {
+    controller_->CloseBubble();
+  }
+}
+
 ContextualTasksOnboardingTooltipController::
     ContextualTasksOnboardingTooltipController(
         BrowserWindowInterface* browser_window,
@@ -70,6 +121,7 @@ void ContextualTasksOnboardingTooltipController::SetEntryPoint(
   }
   entry_point_ = entry_point;
   EnsureSubscribed();
+  RefreshWebContentsObservations();
   RefreshTabContextSubscription();
 
   if (ui::ElementContext context = GetElementContext()) {
@@ -83,6 +135,8 @@ void ContextualTasksOnboardingTooltipController::SetEntryPoint(
 
 void ContextualTasksOnboardingTooltipController::CloseBubble() {
   entry_point_.reset();
+  active_web_contents_observer_.ObserveWebContents(nullptr);
+  toolbar_web_contents_observer_.ObserveWebContents(nullptr);
   CloseBubbleWidget();
 }
 
@@ -143,6 +197,20 @@ void ContextualTasksOnboardingTooltipController::EnsureSubscribed() {
 }
 
 void ContextualTasksOnboardingTooltipController::
+    RefreshWebContentsObservations() {
+  if (!browser_window_) {
+    return;
+  }
+  if (auto* panel_controller =
+          ContextualTasksPanelController::From(browser_window_)) {
+    active_web_contents_observer_.ObserveWebContents(
+        panel_controller->GetActiveWebContents());
+    toolbar_web_contents_observer_.ObserveWebContents(
+        panel_controller->GetToolbarWebContents());
+  }
+}
+
+void ContextualTasksOnboardingTooltipController::
     RefreshTabContextSubscription() {
   contextual_search::ContextualSearchSessionHandle* session_handle =
       GetSessionHandle();
@@ -196,6 +264,7 @@ void ContextualTasksOnboardingTooltipController::CloseBubbleWidget() {
 
 void ContextualTasksOnboardingTooltipController::OnFaviconsElementShown(
     ui::TrackedElement* element) {
+  RefreshWebContentsObservations();
   RefreshTabContextSubscription();
   MaybeShowBubble(element);
 }
@@ -247,6 +316,7 @@ void ContextualTasksOnboardingTooltipController::MaybeShowBubble(
           GetBrowserParentWindow(browser_window_));
 
       if (bubble_widget_) {
+        RefreshWebContentsObservations();
         active_variant_ =
             ContextualTasksOnboardingBubbleView::Variant::kAskGoogle;
         ask_google_session_impression_count_++;
@@ -271,6 +341,7 @@ void ContextualTasksOnboardingTooltipController::MaybeShowBubble(
             ContextualTasksOnboardingBubbleView::Variant::kOnboarding),
         GetBrowserParentWindow(browser_window_));
     if (bubble_widget_) {
+      RefreshWebContentsObservations();
       active_variant_ =
           ContextualTasksOnboardingBubbleView::Variant::kOnboarding;
       bubble_widget_observation_.Observe(bubble_widget_.get());
@@ -367,8 +438,24 @@ bool ContextualTasksOnboardingTooltipController::ShouldShowVariant(
 
 void ContextualTasksOnboardingTooltipController::OnAcceptPressed(
     ContextualTasksOnboardingBubbleView::Variant variant) {
+  const bool impression_pending = impression_delay_timer_.IsRunning();
   impression_delay_timer_.Stop();
   active_variant_.reset();
+
+  if (variant == ContextualTasksOnboardingBubbleView::Variant::kOnboarding) {
+    // Accepting before the impression delay elapsed still counts as having
+    // seen the tooltip, so that every Accepted follows a Shown.
+    if (impression_pending) {
+      base::RecordAction(
+          base::UserMetricsAction("ContextualTasks.OnboardingTooltip.Shown"));
+      base::UmaHistogramBoolean("ContextualTasks.OnboardingTooltip.Shown",
+                                true);
+    }
+    base::RecordAction(
+        base::UserMetricsAction("ContextualTasks.OnboardingTooltip.Accepted"));
+    base::UmaHistogramBoolean("ContextualTasks.OnboardingTooltip.Accepted",
+                              true);
+  }
 
   if (profile_) {
     if (PrefService* prefs = profile_->GetPrefs()) {
@@ -414,6 +501,9 @@ void ContextualTasksOnboardingTooltipController::OnImpressionTimerFired(
     ContextualTasksOnboardingBubbleView::Variant variant) {
   if (variant == ContextualTasksOnboardingBubbleView::Variant::kOnboarding) {
     onboarding_session_impression_count_++;
+    base::RecordAction(
+        base::UserMetricsAction("ContextualTasks.OnboardingTooltip.Shown"));
+    base::UmaHistogramBoolean("ContextualTasks.OnboardingTooltip.Shown", true);
   }
 }
 

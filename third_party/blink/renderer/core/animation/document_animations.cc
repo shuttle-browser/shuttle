@@ -230,6 +230,12 @@ void DocumentAnimations::UpdateAnimationTimingIfNeeded() {
     UpdateAnimationTiming(*document_, timelines_, kTimingUpdateOnDemand);
 }
 
+void DocumentAnimations::ExecutePendingCompositorTriggerNotifications() {
+  for (AnimationTrigger* trigger : triggers_) {
+    trigger->ExecutePendingCompositorNotifications();
+  }
+}
+
 void DocumentAnimations::UpdateAnimations(
     DocumentLifecycle::LifecycleState required_lifecycle_state,
     const PaintArtifactCompositor* paint_artifact_compositor,
@@ -281,6 +287,15 @@ size_t DocumentAnimations::GetAnimationsCount() {
 void DocumentAnimations::MarkAnimationsCompositorPending() {
   for (auto& timeline : timelines_)
     timeline->MarkAnimationsCompositorPending();
+}
+
+void DocumentAnimations::CancelCompositorAnimationsAndMarkForRestart() {
+  for (auto& timeline : timelines_) {
+    for (const auto& animation : timeline->GetAnimations()) {
+      animation->RestartAnimationOnCompositor();
+      animation->CancelAnimationOnCompositor();
+    }
+  }
 }
 
 HeapVector<Member<Animation>> DocumentAnimations::getAnimations(

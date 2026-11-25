@@ -299,7 +299,10 @@ void ChromeProfileRequestGenerator::OnAggregatedSignalsReceived(
     }
 
     os_report->set_name(os_signals.operating_system);
-    os_report->set_os_firewall(TranslateSettingValue(os_signals.os_firewall));
+    if (os_signals.os_firewall) {
+      os_report->set_os_firewall(
+          TranslateSettingValue(os_signals.os_firewall.value()));
+    }
     os_report->set_screen_lock_secured(
         TranslateSettingValue(os_signals.screen_lock_secured));
     if (os_signals.system_dns_servers) {

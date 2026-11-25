@@ -11,6 +11,10 @@
     margin-top: 5px;
   }
 
+  #last-signals-upload-config {
+    margin: 4px 0 0 2ch;
+  }
+
   .hidden {
     display: none;
   }
@@ -38,13 +42,18 @@
 </div>
 <div>
   Last security signals report configuration:
-  <span id="last-signals-upload-config" class="bold"></span>
+  <pre id="last-signals-upload-config"></pre>
 </div>
 <div>
   Can all signals be collected:
   <span id="can-collect-all" class="bold"></span>
 </div>
 <div>
-   Signals:
+  Signals source:
+  <span id="signals-source" class="bold"></span>
+</div>
+<div>
+  Signals:
   <pre id="signals-json"></pre>
+  <button id="copy-signals" class="hidden">Copy Signals</button>
 </div>

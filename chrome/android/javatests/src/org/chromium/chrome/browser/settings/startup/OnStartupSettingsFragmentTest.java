@@ -35,7 +35,7 @@ import androidx.test.filters.SmallTest;
 
 import org.junit.After;
 import org.junit.Before;
-import org.junit.Rule;
+import org.junit.ClassRule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
@@ -56,6 +56,8 @@ import org.chromium.chrome.browser.multiwindow.TabbedStartupCoordinator;
 import org.chromium.chrome.browser.preferences.Pref;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileManager;
+import org.chromium.chrome.browser.settings.SettingsInTab;
+import org.chromium.chrome.browser.settings.SettingsInTabTestActivity;
 import org.chromium.chrome.browser.settings.SettingsNavigationFactory;
 import org.chromium.chrome.browser.settings.SettingsTestRule;
 import org.chromium.chrome.browser.tab.Tab;
@@ -70,6 +72,7 @@ import org.chromium.content_public.browser.test.NativeLibraryTestUtils;
 import org.chromium.ui.listmenu.ListMenuButton;
 import org.chromium.ui.modaldialog.DialogDismissalCause;
 import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.modaldialog.ModalDialogManager.ModalDialogType;
 import org.chromium.ui.modaldialog.ModalDialogProperties;
 import org.chromium.ui.modaldialog.ModalDialogProperties.ButtonType;
 import org.chromium.ui.modelutil.PropertyModel;
@@ -92,8 +95,8 @@ public class OnStartupSettingsFragmentTest {
     private static final String URL_NTP = "chrome-native://newtab/";
     private static final String URL_SETTINGS = "chrome://settings/";
 
-    @Rule
-    public final SettingsTestRule<OnStartupSettingsFragment> mSettingsTestRule =
+    @ClassRule
+    public static final SettingsTestRule<OnStartupSettingsFragment> sSettingsTestRule =
             new SettingsTestRule<>(OnStartupSettingsFragment.class);
 
     private Profile mProfile;
@@ -366,14 +369,16 @@ public class OnStartupSettingsFragmentTest {
         assertNotNull(container);
         assertEquals(1, container.getChildCount());
 
-        // Act: Open the modal dialog via "Add a new page" and enter an unnormalized domain.
+        // Act: Open the tab-modal dialog via "Add a new page" and enter an unnormalized domain.
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     pref.getAddNewPageButtonForTesting().performClick();
                     ModalDialogManager modalDialogManager =
-                            mSettingsTestRule.getActivity().getModalDialogManager();
+                            sSettingsTestRule.getActivity().getModalDialogManager();
                     PropertyModel dialogModel = modalDialogManager.getCurrentDialogForTest();
                     assertNotNull(dialogModel);
+                    assertEquals(ModalDialogType.TAB, modalDialogManager.getCurrentType());
+                    assertFalse(dialogModel.get(ModalDialogProperties.CANCEL_ON_TOUCH_OUTSIDE));
                     assertTrue(dialogModel.get(ModalDialogProperties.POSITIVE_BUTTON_DISABLED));
 
                     EditText urlEditText =
@@ -425,11 +430,11 @@ public class OnStartupSettingsFragmentTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     ModalDialogManager modalDialogManager =
-                            mSettingsTestRule.getActivity().getModalDialogManager();
+                            sSettingsTestRule.getActivity().getModalDialogManager();
                     PropertyModel dialogModel = modalDialogManager.getCurrentDialogForTest();
                     assertNotNull(dialogModel);
                     assertEquals(
-                            mSettingsTestRule
+                            sSettingsTestRule
                                     .getFragment()
                                     .getString(R.string.on_startup_edit_page),
                             dialogModel.get(ModalDialogProperties.TITLE));
@@ -440,6 +445,9 @@ public class OnStartupSettingsFragmentTest {
                                     .get(ModalDialogProperties.CUSTOM_VIEW)
                                     .findViewById(R.id.url_edit_text);
                     assertEquals(URL_ESPN, urlEditText.getText().toString());
+                    // A URL with whitespace inside the host disables Save in edit mode.
+                    urlEditText.setText("http://exam      ple.com");
+                    assertTrue(dialogModel.get(ModalDialogProperties.POSITIVE_BUTTON_DISABLED));
                     urlEditText.setText(URL_DOCS);
                     assertFalse(dialogModel.get(ModalDialogProperties.POSITIVE_BUTTON_DISABLED));
                     urlEditText.onEditorAction(EditorInfo.IME_ACTION_DONE);
@@ -471,26 +479,38 @@ public class OnStartupSettingsFragmentTest {
         assertNotNull(container);
 
         // Act & Verify: Invalid inputs keep positive button disabled and ignore the keyboard Done
-        // action; Cancel and Back/touch-outside dismissals leave stored URLs unchanged.
+        // action; Cancel and Back dismissals leave stored URLs unchanged.
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     ModalDialogManager modalDialogManager =
-                            mSettingsTestRule.getActivity().getModalDialogManager();
+                            sSettingsTestRule.getActivity().getModalDialogManager();
                     pref.getAddNewPageButtonForTesting().performClick();
                     PropertyModel dialogModel = modalDialogManager.getCurrentDialogForTest();
                     assertNotNull(dialogModel);
+                    assertEquals(ModalDialogType.TAB, modalDialogManager.getCurrentType());
                     EditText urlEditText =
                             dialogModel
                                     .get(ModalDialogProperties.CUSTOM_VIEW)
                                     .findViewById(R.id.url_edit_text);
 
                     for (String invalidInput :
-                            List.of("", "   ", "chrome://flags", "about:blank")) {
+                            List.of(
+                                    "",
+                                    "   ",
+                                    "chrome://flags",
+                                    "about:blank",
+                                    "http://exam      ple.com",
+                                    "exam ple.com",
+                                    "https://exa mple.com/path")) {
                         urlEditText.setText(invalidInput);
                         assertTrue(dialogModel.get(ModalDialogProperties.POSITIVE_BUTTON_DISABLED));
                         urlEditText.onEditorAction(EditorInfo.IME_ACTION_DONE);
                         assertNotNull(modalDialogManager.getCurrentDialogForTest());
                     }
+
+                    // Whitespace in the path stays valid because it is percent-escaped.
+                    urlEditText.setText("http://example.com/a b");
+                    assertFalse(dialogModel.get(ModalDialogProperties.POSITIVE_BUTTON_DISABLED));
 
                     urlEditText.setText(URL_WIKIPEDIA);
                     assertFalse(dialogModel.get(ModalDialogProperties.POSITIVE_BUTTON_DISABLED));
@@ -508,7 +528,7 @@ public class OnStartupSettingsFragmentTest {
                                     .findViewById(R.id.url_edit_text);
                     secondEditText.setText(URL_WIKIPEDIA);
                     modalDialogManager.dismissDialog(
-                            secondDialogModel, DialogDismissalCause.NAVIGATE_BACK_OR_TOUCH_OUTSIDE);
+                            secondDialogModel, DialogDismissalCause.NAVIGATE_BACK);
                     assertNull(modalDialogManager.getCurrentDialogForTest());
                 });
 
@@ -530,7 +550,7 @@ public class OnStartupSettingsFragmentTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () ->
                         assertNotNull(
-                                mSettingsTestRule
+                                sSettingsTestRule
                                         .getActivity()
                                         .getModalDialogManager()
                                         .getCurrentDialogForTest()));
@@ -538,10 +558,38 @@ public class OnStartupSettingsFragmentTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () ->
                         assertNull(
-                                mSettingsTestRule
+                                sSettingsTestRule
                                         .getActivity()
                                         .getModalDialogManager()
                                         .getCurrentDialogForTest()));
+    }
+
+    @Test
+    @SmallTest
+    public void testUrlDialog_inSettingsActivity_usesAppModalType() {
+        // Setup SettingsActivity hosting instead of SettingsInTab.
+        SettingsInTab.setShouldOpenSettingsInTabForTesting(false);
+        setRestoreOnStartupPref(SessionStartupPref.URLS);
+        RadioButtonGroupOnStartupPreference pref = launchAndGetRadioGroupPreference();
+
+        // Open the URL dialog via "Add a new page".
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> pref.getAddNewPageButtonForTesting().performClick());
+
+        // Verify opening the URL dialog in SettingsActivity uses ModalDialogType.APP and disables
+        // cancel-on-touch-outside.
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    ModalDialogManager modalDialogManager =
+                            sSettingsTestRule.getActivity().getModalDialogManager();
+                    PropertyModel dialogModel = modalDialogManager.getCurrentDialogForTest();
+                    assertNotNull(dialogModel);
+                    assertEquals(ModalDialogType.APP, modalDialogManager.getCurrentType());
+                    assertFalse(dialogModel.get(ModalDialogProperties.CANCEL_ON_TOUCH_OUTSIDE));
+                    modalDialogManager.dismissDialog(
+                            dialogModel, DialogDismissalCause.NAVIGATE_BACK_OR_TOUCH_OUTSIDE);
+                    assertNull(modalDialogManager.getCurrentDialogForTest());
+                });
     }
 
     @Test
@@ -621,9 +669,25 @@ public class OnStartupSettingsFragmentTest {
     }
 
     private RadioButtonGroupOnStartupPreference launchAndGetRadioGroupPreference() {
-        mSettingsTestRule.startSettingsActivity();
-        mSettingsTestRule.getActivity().getIntent().putExtra(IntentHandler.EXTRA_WINDOW_ID, 1);
-        OnStartupSettingsFragment fragment = mSettingsTestRule.getFragment();
+        if (SettingsInTab.shouldOpenSettingsInTab()) {
+            // Most tests run in SettingsInTabTestActivity. Launch it once per batch and reuse it,
+            // recreating the fragment's preferences so each test reads the current startup prefs.
+            if (sSettingsTestRule.getActivity() instanceof SettingsInTabTestActivity) {
+                OnStartupSettingsFragment fragment = sSettingsTestRule.getFragment();
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            fragment.getPreferenceScreen().removeAll();
+                            fragment.onCreatePreferences(null, null);
+                        });
+            } else {
+                startSettingsActivity();
+            }
+        } else {
+            // Only testUrlDialog_inSettingsActivity_usesAppModalType runs in SettingsActivity, so
+            // launch it fresh, replacing the reused SettingsInTabTestActivity if there is one.
+            startSettingsActivity();
+        }
+        OnStartupSettingsFragment fragment = sSettingsTestRule.getFragment();
         RadioButtonGroupOnStartupPreference pref =
                 fragment.findPreference(OnStartupSettingsFragment.PREF_RADIO_BUTTON_GROUP);
         CriteriaHelper.pollUiThread(
@@ -635,6 +699,17 @@ public class OnStartupSettingsFragmentTest {
                             && container.isAttachedToWindow();
                 });
         return pref;
+    }
+
+    /** Finishes any settings activity left over from a previous test and launches a new one. */
+    private void startSettingsActivity() {
+        // The @ClassRule does not launch anything itself, so there is no activity before the
+        // first test.
+        if (sSettingsTestRule.getActivity() != null) {
+            sSettingsTestRule.finishActivity();
+        }
+        sSettingsTestRule.startSettingsActivity();
+        sSettingsTestRule.getActivity().getIntent().putExtra(IntentHandler.EXTRA_WINDOW_ID, 1);
     }
 
     private void setRestoreOnStartupPref(@SessionStartupPref int startupType) {

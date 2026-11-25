@@ -21,6 +21,7 @@
 #include "base/supports_user_data.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
+#include "components/page_content_annotations/content/producer.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_android.h"
@@ -116,7 +117,8 @@ class PageContentCacheHandler;
 // For a detailed integration guide, comparison matrix, and usage examples,
 // see `components/page_content_annotations/content/pces_guide.md`.
 class PageContentExtractionService : public KeyedService,
-                                     public base::SupportsUserData {
+                                     public base::SupportsUserData,
+                                     public Producer<PageContent> {
  public:
   using GetExtractedPageContentAndEligibilityCallback =
       base::OnceCallback<void(std::optional<ExtractedPageContentResult>)>;
@@ -176,6 +178,10 @@ class PageContentExtractionService : public KeyedService,
 
   void AddObserver(Observer* observer);
   void RemoveObserver(Observer* observer);
+
+  // Producer<PageContent>:
+  base::CallbackListSubscription Subscribe(
+      ConsumerCallback<PageContent> callback) override;
 
   // Returns the reason why page content extraction is enabled. If
   // `is_on_demand` is true, also considers the on-demand observer-bypass
@@ -242,6 +248,12 @@ class PageContentExtractionService : public KeyedService,
   // Called when a closed tab is undone.
   void OnTabCloseUndone(int64_t tab_id);
 
+  // Migrates any cached page content from `old_tab_id` to `new_tab_id`. Both
+  // tab IDs must be positive. This should only be called when an existing tab
+  // is assigned a new tab ID (e.g., during session restore or when discarding
+  // a tab by replacing its `WebContents`).
+  void UpdateTabId(int64_t old_tab_id, int64_t new_tab_id);
+
   // Called when the visibility of a WebContents changes.
   void OnVisibilityChanged(std::optional<int64_t> tab_id,
                            content::WebContents* web_contents,
@@ -275,11 +287,14 @@ class PageContentExtractionService : public KeyedService,
       content::Page& page,
       PageContent page_content,
       const std::vector<uint8_t>& screenshot_data,
-      std::optional<int> tab_id);
+      std::optional<int64_t> tab_id);
 
  private:
   friend class AnnotatedPageContentRequest;
   friend class PageContentCacheBrowserTest;
+
+  // Producer<PageContent>:
+  void OnDemandChanged() override;
 
   AnnotatedPageContentRequest* GetAnnotatedPageContentRequestFromWebContents(
       content::WebContents* web_contents);
@@ -287,6 +302,7 @@ class PageContentExtractionService : public KeyedService,
       content::Page& page);
 
   base::ObserverList<Observer> observers_;
+  SubscriberRegistry<PageContent> subscriber_registry_{*this};
 
   const bool is_page_content_cache_enabled_;
   const std::unique_ptr<PageContentCacheHandler> page_content_cache_handler_;

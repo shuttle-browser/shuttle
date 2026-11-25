@@ -6,17 +6,17 @@
 #define CHROME_BROWSER_WEB_APPLICATIONS_VISITED_MANIFEST_MANAGER_H_
 
 #include "base/containers/lru_cache.h"
-#include "base/feature_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/time/clock.h"
 #include "base/time/default_clock.h"
 #include "base/time/time.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
 #include "url/gurl.h"
 
-namespace web_app {
+namespace blink {
+class Manifest;
+}
 
-BASE_DECLARE_FEATURE(kBlockMlPromotionInNestedPagesNoManifest);
+namespace web_app {
 
 // This class is used to track recently seen manifests. Currently this is
 // limited only to manifest scopes, which are used to detect if a given url
@@ -41,7 +41,7 @@ class VisitedManifestManager {
   // that specify a `start_url` will be saved, and the current time will be
   // recorded for use with `ClearSeenScopes`. Called when a manifest scope is
   // seen by the AppBannerManager.
-  void OnManifestSeen(const blink::mojom::Manifest& manifest);
+  void OnManifestSeen(const blink::Manifest& manifest);
 
   // Clears scopes that have been recorded in the given time, to be called from
   // the clear-browsing-data flow.

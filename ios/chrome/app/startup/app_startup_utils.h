@@ -11,6 +11,16 @@
 
 class GURL;
 
+// Query parameter of the X-Callback `/open` command holding the URL to open.
+extern const char kXCallbackOpenCommandURLParameter[];
+
+// Query parameter holding the action to trigger once the URL is opened.
+extern const char kPostOpeningActionParameter[];
+
+// `kPostOpeningActionParameter` value requesting to show the default browser
+// settings once the URL is opened.
+extern const char kPostOpeningActionDefaultBrowserSettings[];
+
 // Returns the MobileSessionCallerApp for the specified `source_app_id`,
 // `secure_source_app_id`, and `complete_url`.
 MobileSessionCallerApp GetCallerApp(NSString* source_app_id,
@@ -34,5 +44,12 @@ bool IsAppSwitcherAISummarizationTestingExternalURLEnabled();
 // Saves field trial values and capabilities for the group app in shared
 // NSUserDefaults.
 void SaveFieldTrialValuesForGroupApp();
+
+// Returns true if `path` matches the X-Callback App Group command path
+// (`/app-group-command`).
+bool IsXCallbackAppGroupCommandPath(NSString* path);
+
+// Returns true if `path` matches the X-Callback open command path (`/open`).
+bool IsXCallbackOpenCommandPath(NSString* path);
 
 #endif  // IOS_CHROME_APP_STARTUP_APP_STARTUP_UTILS_H_

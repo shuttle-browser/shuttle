@@ -29,9 +29,10 @@
 
 namespace net::features {
 
-BASE_FEATURE(kAlpsForHttp2, base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kAsyncRetryOnTooManyConnectionErrors,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kClearAuthControllersOnProxyChange,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kDeriveConnectionTypeFromCapabilities,
@@ -86,6 +87,9 @@ BASE_FEATURE(kDnsPlatformFailFastAndRetry, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<bool> kDnsPlatformCancelPreviousAttemptOnRetry{
     &kDnsPlatformFailFastAndRetry, "cancel_previous_attempt_on_retry", false};
 
+BASE_FEATURE(kDnsTaskAllowPartialAddressResults,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kUseDnsHttpsSvcb, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kUseDnsHttpsSvcbAddressHints, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -136,6 +140,13 @@ BASE_FEATURE_PARAM(bool,
                    kEnableIntermediateDnsResultsSortTransactionsIndividually,
                    &kEnableIntermediateDnsResults,
                    true);
+
+BASE_FEATURE(kKeepHostResolverJobAliveForCache,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(base::TimeDelta,
+                   kKeepHostResolverJobAliveForCacheTimeout,
+                   &kKeepHostResolverJobAliveForCache,
+                   base::Seconds(2));
 
 BASE_FEATURE(kAdjustIPv6FallbackTime, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -317,13 +328,13 @@ BASE_FEATURE(kStaticKeyPinningEnforcement, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kCookieDomainRejectNonASCII, base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kCookieRequireCompliantHost, base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Enables partitioning of third party storage (IndexedDB, CacheStorage, etc.)
 // by the top level site to reduce fingerprinting.
 BASE_FEATURE(kThirdPartyStoragePartitioning, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kAlpsParsing, base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE(kAlpsClientHintParsing, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kEnableWebsocketsOverHttp3, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -380,6 +391,10 @@ BASE_FEATURE(kAsyncDnsQuicJob, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(bool, kAsyncDnsQuicJobFastFail, &kAsyncDnsQuicJob, false);
 BASE_FEATURE_PARAM(bool,
                    kAsyncDnsQuicJobSortTransactionsIndividually,
+                   &kAsyncDnsQuicJob,
+                   true);
+BASE_FEATURE_PARAM(bool,
+                   kAsyncDnsQuicJobKeepHostResolverJobAliveForCache,
                    &kAsyncDnsQuicJob,
                    true);
 
@@ -525,7 +540,12 @@ BASE_FEATURE(kDeviceBoundSessionsFederatedRegistrationBlockRedirects,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kDeviceBoundSessionsForRestrictedSites,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
+             base::FEATURE_ENABLED_BY_DEFAULT
+#else
+             base::FEATURE_DISABLED_BY_DEFAULT
+#endif
+);
 
 BASE_FEATURE(kDeviceBoundSessionsClientCertSelection,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -568,6 +588,8 @@ BASE_FEATURE(kNoVarySearchIgnoreUnrecognizedKeys,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kEnforceOneRfc6962CtPolicy, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kCRLSetCompactSerials, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kDiskCacheBackendExperiment, base::FEATURE_DISABLED_BY_DEFAULT);
 constexpr base::FeatureParam<DiskCacheBackend>::Option
@@ -700,6 +722,8 @@ BASE_FEATURE_PARAM(bool,
 
 BASE_FEATURE(kIgnoreHSTSForLocalhost, base::FEATURE_ENABLED_BY_DEFAULT);
 
+BASE_FEATURE(kRejectNonCompliantHttpHosts, base::FEATURE_ENABLED_BY_DEFAULT);
+
 BASE_FEATURE(kSimpleCachePrioritizedCaching, base::FEATURE_ENABLED_BY_DEFAULT);
 
 const base::FeatureParam<int>
@@ -744,9 +768,6 @@ BASE_FEATURE_PARAM(bool,
                    "persistence_enabled",
                    true);
 
-BASE_FEATURE(kHttpNoVarySearchDataUseNewAreEquivalent,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kHttpCacheSkipUnusableEntry, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kReportingApiCorsOriginHeader, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -760,7 +781,7 @@ BASE_FEATURE(kSelfSignedLocalNetworkInterstitial,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 #if BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
-BASE_FEATURE(kVerifyQWACs, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kVerifyQWACs, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(CHROME_ROOT_STORE_SUPPORTED)
 
 BASE_FEATURE(kRestrictAbusePorts, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -892,6 +913,8 @@ BASE_FEATURE(kQuicLongerIdleConnectionTimeout,
 
 BASE_FEATURE(kQuicAlwaysCancelPreExistingProbingOnMigration,
              base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kQuicEnablePortMigration, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kQuicWaitForNewNetworkTimeout, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(base::TimeDelta,
@@ -1142,7 +1165,20 @@ BASE_FEATURE_ENUM_PARAM(DiskCacheBackend,
 
 BASE_FEATURE(kCookieMonsterPerKeyDelete, base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kCookieProcessBoundEncryptOnlyImportant,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(bool,
+                   kCookieProcessBoundEncryptHttpOnly,
+                   &kCookieProcessBoundEncryptOnlyImportant,
+                   false);
+
 BASE_FEATURE(kHttpChunkedDecoderInRust, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPostHandshakeIpPoolingAllEndpoints,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kProactiveIpPoolingForInFlightJobs,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace net::features
 

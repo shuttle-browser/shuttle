@@ -57,8 +57,6 @@ inline constexpr char kHatsSurveyTriggerDownloadWarningPageHeed[] =
     "download-warning-page-heed";
 inline constexpr char kHatsSurveyTriggerDownloadWarningPageIgnore[] =
     "download-warning-page-ignore";
-inline constexpr char kHatsSurveyTriggerHistoryEmbeddings[] =
-    "history-embeddings";
 inline constexpr char kHatsSurveyTriggerHistoryPageExperiment[] =
     "history-page-experiment";
 inline constexpr char kHatsSurveyTriggerHistoryPageControl[] =
@@ -216,6 +214,15 @@ inline constexpr char
 inline constexpr char
     kHatsSurveyTriggerAutofillPersonalizationAndTrustAtMemoryDismissed[] =
         "autofill-personalization-and-trust-at-memory-dismissed";
+inline constexpr char
+    kHatsSurveyTriggerAutofillPersonalizationAndTrustFedCmAccepted[] =
+        "autofill-personalization-and-trust-fedcm-accepted";
+inline constexpr char
+    kHatsSurveyTriggerAutofillPersonalizationAndTrustFedCmAutoReauthn[] =
+        "autofill-personalization-and-trust-fedcm-auto-reauthn";
+inline constexpr char
+    kHatsSurveyTriggerAutofillPersonalizationAndTrustFedCmDismissed[] =
+        "autofill-personalization-and-trust-fedcm-dismissed";
 inline constexpr char kHatsSurveyTriggerPermissionsPrompt[] =
     "permissions-prompt";
 inline constexpr char kHatsSurveyTriggerOnFocusZpsSuggestionsHappiness[] =

@@ -504,13 +504,17 @@ MTPDeviceDelegateImpl::MTPFileNode::MTPFileNode(uint32_t file_id,
       nodes_by_id_(nodes_by_id) {
   CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
   const bool ok = nodes_by_id_->try_emplace(file_id_, this).second;
-  CHECK(ok, base::NotFatalUntil::M161);
+  // TODO(crbug.com/578402457): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(ok);
 }
 
 MTPDeviceDelegateImpl::MTPFileNode::~MTPFileNode() {
   CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
   const size_t erased = nodes_by_id_->erase(file_id_);
-  CHECK_EQ(1U, erased, base::NotFatalUntil::M161);
+  // TODO(crbug.com/578382035): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK_EQ(1U, erased);
 }
 
 const MTPDeviceDelegateImpl::MTPFileNode*
@@ -1012,7 +1016,9 @@ void MTPDeviceDelegateImpl::ReadDirectoryInternal(
     ReadDirectorySuccessCallback success_callback,
     ErrorCallback error_callback) {
   CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
-  CHECK(task_in_progress_, base::NotFatalUntil::M161);
+  // TODO(crbug.com/577935716): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(task_in_progress_);
 
   std::optional<uint32_t> dir_id = CachedPathToId(root);
   if (!dir_id) {
@@ -1552,7 +1558,9 @@ void MTPDeviceDelegateImpl::OnDidGetFileInfoToReadDirectory(
     ErrorCallback error_callback,
     const base::File::Info& file_info) {
   CHECK_CURRENTLY_ON(content::BrowserThread::IO, base::NotFatalUntil::M161);
-  CHECK(task_in_progress_, base::NotFatalUntil::M161);
+  // TODO(crbug.com/577201649): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(task_in_progress_);
   if (!file_info.is_directory) {
     return HandleDeviceFileError(std::move(error_callback), dir_id,
                                  base::File::FILE_ERROR_NOT_A_DIRECTORY);

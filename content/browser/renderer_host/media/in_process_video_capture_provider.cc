@@ -18,8 +18,10 @@ InProcessVideoCaptureProvider::InProcessVideoCaptureProvider(
       device_task_runner_(std::move(device_task_runner)) {}
 
 InProcessVideoCaptureProvider::~InProcessVideoCaptureProvider() {
-  // Destruct the `native_screen_capture_picker_` on the `device_task_runner_`
-  // as all its functions are run on `device_task_runner_` as well.
+  // Destroy `native_screen_capture_picker_` on `device_task_runner_`, where
+  // all its methods run. The tasks bound with `base::Unretained()` in this
+  // file rely on this: they are posted to the same runner before this task,
+  // so they run while the picker is still alive.
   device_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce([](std::unique_ptr<NativeScreenCapturePicker>) {},
@@ -36,6 +38,7 @@ InProcessVideoCaptureProvider::CreateInstanceForScreenCapture(
 }
 
 void InProcessVideoCaptureProvider::GetDeviceInfosAsync(
+    media::mojom::VideoCaptureDeviceEnumerationMode enumeration_mode,
     GetDeviceInfosCallback result_callback) {
   NOTREACHED();
 }
@@ -44,6 +47,14 @@ std::unique_ptr<VideoCaptureDeviceLauncher>
 InProcessVideoCaptureProvider::CreateDeviceLauncher() {
   return std::make_unique<InProcessVideoCaptureDeviceLauncher>(
       device_task_runner_, native_screen_capture_picker_.get());
+}
+
+std::unique_ptr<VideoCaptureDeviceLauncher>
+InProcessVideoCaptureProvider::CreateDeviceLauncherWithSharedMemoryBuffers() {
+  auto launcher = std::make_unique<InProcessVideoCaptureDeviceLauncher>(
+      device_task_runner_, native_screen_capture_picker_.get());
+  launcher->SetPreferSharedMemoryBuffers();
+  return launcher;
 }
 
 void InProcessVideoCaptureProvider::OpenNativeScreenCapturePicker(
@@ -55,12 +66,14 @@ void InProcessVideoCaptureProvider::OpenNativeScreenCapturePicker(
     base::OnceCallback<void(DesktopMediaID::Id)> stop_audio_callback) {
   CHECK(native_screen_capture_picker_);
 
+  // `base::Unretained` is safe, see ~InProcessVideoCaptureProvider().
   device_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&NativeScreenCapturePicker::Open,
-                     native_screen_capture_picker_->GetWeakPtr(), type,
-                     std::move(created_callback), std::move(picker_callback),
-                     std::move(cancel_callback), std::move(error_callback),
+                     base::Unretained(native_screen_capture_picker_.get()),
+                     type, std::move(created_callback),
+                     std::move(picker_callback), std::move(cancel_callback),
+                     std::move(error_callback),
                      std::move(stop_audio_callback)));
 }
 
@@ -70,10 +83,12 @@ void InProcessVideoCaptureProvider::CloseNativeScreenCapturePicker(
     return;
   }
 
+  // `base::Unretained` is safe, see ~InProcessVideoCaptureProvider().
   device_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&NativeScreenCapturePicker::Close,
-                     native_screen_capture_picker_->GetWeakPtr(), device_id));
+                     base::Unretained(native_screen_capture_picker_.get()),
+                     device_id));
 }
 
 #if BUILDFLAG(IS_MAC)
@@ -87,11 +102,12 @@ void InProcessVideoCaptureProvider::GetApplicationAudioCaptureId(
     return;
   }
 
+  // `base::Unretained` is safe, see ~InProcessVideoCaptureProvider().
   device_task_runner_->PostTask(
       FROM_HERE,
       base::BindOnce(&NativeScreenCapturePicker::GetApplicationAudioCaptureId,
-                     native_screen_capture_picker_->GetWeakPtr(), session_id,
-                     std::move(callback)));
+                     base::Unretained(native_screen_capture_picker_.get()),
+                     session_id, std::move(callback)));
 }
 #endif
 

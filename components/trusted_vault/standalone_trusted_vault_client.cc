@@ -4,6 +4,7 @@
 
 #include "components/trusted_vault/standalone_trusted_vault_client.h"
 
+#include <optional>
 #include <utility>
 
 #include "base/check.h"
@@ -45,8 +46,8 @@ void StandaloneTrustedVaultClient::StoreKeys(
     const std::vector<std::vector<uint8_t>>& keys,
     int last_key_version,
     std::optional<TrustedVaultUserActionTriggerForUMA> trigger) {
-  frontend_->StoreKeys(gaia_id, security_domain_, keys, last_key_version);
-  NotifyTrustedVaultKeysChanged(trigger);
+  frontend_->StoreKeys(gaia_id, security_domain_, keys, last_key_version,
+                       trigger);
 }
 
 void StandaloneTrustedVaultClient::MarkLocalKeysAsStale(
@@ -70,6 +71,18 @@ void StandaloneTrustedVaultClient::AddTrustedRecoveryMethod(
     base::OnceCallback<void(bool)> cb) {
   frontend_->AddTrustedRecoveryMethod(gaia_id, security_domain_, public_key,
                                       method_type_hint, std::move(cb));
+}
+
+void StandaloneTrustedVaultClient::CanEnroll(
+    const CoreAccountInfo& account_info,
+    base::OnceCallback<void(bool)> cb) {
+  frontend_->CanEnroll(account_info, security_domain_, std::move(cb));
+}
+
+void StandaloneTrustedVaultClient::Enroll(
+    const CoreAccountInfo& account_info,
+    base::OnceCallback<void(const std::vector<uint8_t>&, int)> cb) {
+  frontend_->Enroll(account_info, security_domain_, std::move(cb));
 }
 
 void StandaloneTrustedVaultClient::ClearLocalDataForAccount(

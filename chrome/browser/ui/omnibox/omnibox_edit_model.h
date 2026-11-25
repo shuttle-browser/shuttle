@@ -31,7 +31,7 @@
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/gfx/native_ui_types.h"
 #include "url/gurl.h"
 
@@ -251,6 +251,13 @@ class OmniboxEditModel {
   // no user input in progress).
   void Revert();
 
+  // Reverts the edit model if the user hasn't edited the text: when no input
+  // is in progress and the text isn't the permanent text (e.g. an unelided URL)
+  // or temporary text is showing (e.g. a previewed zero-prefix suggestion), or
+  // when the edited text equals the permanent text or the full URL. Never exits
+  // keyword mode.
+  void RevertUneditedText();
+
   // Directs the popup to start autocomplete. Makes use of the `view_`
   // selection, so make sure to set that before calling `StartAutocomplete()`.
   void StartAutocomplete(bool prevent_inline_autocomplete);
@@ -284,6 +291,10 @@ class OmniboxEditModel {
   // Virtual for testing.
   virtual void OpenAiMode(AimActivation activation);
 
+  // Whether to open the compose box in AI Mode (e.g. from the AI Mode button).
+  // Set on every open; read once when the compose box is shown.
+  bool enter_aim_mode() const { return enter_aim_mode_; }
+
   // Opens the composebox for the AskG flow by setting the popup state.
   virtual void OpenComposeboxForAskG();
 
@@ -302,20 +313,20 @@ class OmniboxEditModel {
   // `snapshot`, if non-null, supplies the specific autocomplete snapshot
   // (matches and input) to use rather than using the live
   // `autocomplete_controller()->result()` and input.
-  void OpenSelection(
-      OmniboxPopupSelection selection,
-      base::TimeTicks timestamp = base::TimeTicks(),
-      WindowOpenDisposition disposition = WindowOpenDisposition::kCurrentTab,
-      bool via_keyboard = false,
-      const searchbox::AutocompleteSnapshot* snapshot = nullptr);
+  void OpenSelection(OmniboxPopupSelection selection,
+                     base::TimeTicks timestamp = base::TimeTicks(),
+                     ui::mojom::WindowOpenDisposition disposition =
+                         ui::mojom::WindowOpenDisposition::kCurrentTab,
+                     bool via_keyboard = false,
+                     const searchbox::AutocompleteSnapshot* snapshot = nullptr);
   void OpenSelection(OmniboxPopupSelection selection, bool via_keyboard);
 
   // A simplified version of `OpenSelection()` that opens the model's current
   // selection.
-  void OpenCurrentSelection(
-      base::TimeTicks timestamp = base::TimeTicks(),
-      WindowOpenDisposition disposition = WindowOpenDisposition::kCurrentTab,
-      bool via_keyboard = false);
+  void OpenCurrentSelection(base::TimeTicks timestamp = base::TimeTicks(),
+                            ui::mojom::WindowOpenDisposition disposition =
+                                ui::mojom::WindowOpenDisposition::kCurrentTab,
+                            bool via_keyboard = false);
 
   OmniboxFocusState focus_state() const { return focus_state_; }
   bool has_focus() const { return focus_state_ != OMNIBOX_FOCUS_NONE; }
@@ -663,7 +674,7 @@ class OmniboxEditModel {
   // Asks the browser to load the popup's currently selected item, using the
   // supplied disposition.  This may close the popup.
   void AcceptInput(
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       base::TimeTicks match_selection_timestamp = base::TimeTicks());
 
   // Asks the browser to load |match| or execute one of its actions
@@ -686,7 +697,7 @@ class OmniboxEditModel {
   //     preserve it past the popup closure.
   void OpenMatch(OmniboxPopupSelection selection,
                  AutocompleteMatch match,
-                 WindowOpenDisposition disposition,
+                 ui::mojom::WindowOpenDisposition disposition,
                  const GURL& alternate_nav_url,
                  const std::u16string& pasted_text,
                  base::TimeTicks match_selection_timestamp = base::TimeTicks(),
@@ -695,7 +706,7 @@ class OmniboxEditModel {
   void OnDefaultSearchExtensionDialogDone(
       OmniboxPopupSelection selection,
       AutocompleteMatch match,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const GURL& alternate_nav_url,
       const std::u16string& pasted_text,
       base::TimeTicks match_selection_timestamp,
@@ -800,7 +811,7 @@ class OmniboxEditModel {
   // Helper for `OpenAiMode()`...
   void NavigateToAiModeWithContextualizerOnContextualizationComplete(
       const std::u16string& query_text,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
           session_handle);
 
@@ -810,7 +821,7 @@ class OmniboxEditModel {
       base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
           session_handle,
       const std::u16string& query_text,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       GURL url);
 
   // Helper for `OpenAiMode()` to navigate to Google's AI mode page without
@@ -932,6 +943,9 @@ class OmniboxEditModel {
   // This is needed to properly update the SearchModel state when the user
   // presses escape.
   bool in_revert_ = false;
+
+  // See `enter_aim_mode()`.
+  bool enter_aim_mode_ = false;
 
   // Indicates if the upcoming autocomplete search is allowed to be treated as
   // an exact keyword match.  If this is true then keyword mode will be

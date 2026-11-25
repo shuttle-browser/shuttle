@@ -157,7 +157,7 @@ void ActionAppMenuTestBase::SetUp() {
   add_action(kActionExtensionsSubmenuVisitChromeWebStore,
              u"Visit Chrome Web Store");
   add_action(kActionFindExtensions, u"Find Extensions");
-  add_action(kActionSkillsAndExtensionsSubmenu, u"Extensions and Skills");
+  add_action(kActionSkillsAndExtensionsSubmenu, u"Extensions and skills");
   add_action(kActionManageSkills, u"Your skills");
   add_action(kActionClearBrowsingData, u"Clear Browsing Data");
   add_action(kActionSavedTabGroupsSubmenu, u"Tab Groups");
@@ -226,6 +226,11 @@ void ActionAppMenuTestBase::SetUp() {
   add_action(kActionOpenInChrome, u"Open in Chrome");
   add_action(kActionWebAppMenuAppInfo, u"App Info");
   add_action(kActionUninstallWebApp, u"Uninstall");
+  add_action(kActionWebAppUpgradeDialog, u"Review update");
+  add_action(kActionWebAppShowExtensions, u"Extensions");
+#if BUILDFLAG(IS_CHROMEOS)
+  add_action(kActionMoveToDesksSubmenu, u"Move window to desk");
+#endif
 
   actions::ActionManager::Get().AddAction(std::move(root));
 

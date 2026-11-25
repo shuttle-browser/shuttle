@@ -4,6 +4,8 @@
 
 package org.chromium.chrome.browser.toolbar.top;
 
+import static org.chromium.build.NullUtil.assumeNonNull;
+
 import android.content.Context;
 import android.content.res.ColorStateList;
 import android.graphics.Canvas;
@@ -38,6 +40,7 @@ import org.chromium.chrome.browser.omnibox.LocationBarCoordinator;
 import org.chromium.chrome.browser.omnibox.LocationBarEmbedder;
 import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
@@ -67,6 +70,8 @@ import org.chromium.chrome.browser.user_education.UserEducationHelper;
 import org.chromium.chrome.browser.util.BrowserUiUtils;
 import org.chromium.chrome.browser.util.BrowserUiUtils.ModuleTypeOnStartAndNtp;
 import org.chromium.components.browser_ui.styles.ChromeColors;
+import org.chromium.components.embedder_support.util.UrlConstants;
+import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.ui.AsyncViewStub;
 import org.chromium.ui.base.ViewUtils;
@@ -102,6 +107,7 @@ public abstract class ToolbarLayout extends FrameLayout
 
     protected ThemeColorProvider mThemeColorProvider;
     protected IncognitoStateProvider mIncognitoStateProvider;
+    protected OmniboxResourceProvider mOmniboxResourceProvider;
     protected MenuButtonCoordinator mMenuButtonCoordinator;
     private @Nullable AppMenuButtonHelper mAppMenuButtonHelper;
 
@@ -168,6 +174,7 @@ public abstract class ToolbarLayout extends FrameLayout
      * @param incognitoWindowCountSupplier A supplier for the number of incognito windows, used by
      *     the Incognito Indicator Menu on LFF.
      * @param windowAndroid The instance of {@link WindowAndroid}.
+     * @param omniboxResourceProvider The {@link OmniboxResourceProvider} for Omnibox resources.
      */
     @CallSuper
     @Initializer
@@ -189,16 +196,22 @@ public abstract class ToolbarLayout extends FrameLayout
             ThemeColorProvider themeColorProvider,
             IncognitoStateProvider incognitoStateProvider,
             @Nullable Supplier<Integer> incognitoWindowCountSupplier,
-            WindowAndroid windowAndroid) {
+            WindowAndroid windowAndroid,
+            OmniboxResourceProvider omniboxResourceProvider) {
         mToolbarDataProvider = toolbarDataProvider;
         mToolbarTabController = tabController;
         mMenuButtonCoordinator = menuButtonCoordinator;
         mTabSwitcherButtonCoordinator = tabSwitcherButtonCoordinator;
         mSigninButtonCoordinator = signinButtonCoordinator;
         mProgressBar = progressBar;
+        mOmniboxResourceProvider = omniboxResourceProvider;
 
         setThemeColorProvider(themeColorProvider);
         setIncognitoStateProvider(incognitoStateProvider);
+    }
+
+    OmniboxResourceProvider getOmniboxResourceProviderForTesting() {
+        return mOmniboxResourceProvider;
     }
 
     /**
@@ -956,6 +969,20 @@ public abstract class ToolbarLayout extends FrameLayout
             // Record the clicking action on the home button.
             BrowserUiUtils.recordModuleClickHistogram(ModuleTypeOnStartAndNtp.HOME_BUTTON);
         }
+    }
+
+    /**
+     * Returns whether the toolbar is showing the NTP, used to decide whether NTP-only buttons such
+     * as the signin button are shown. Subclasses may override to follow their own NTP state.
+     */
+    boolean isShowingNtp() {
+        Tab tab = getToolbarDataProvider().getTab();
+        if (tab == null) return false;
+        // UrlUtilities.isNtpUrl may be false while on the NTP, so also check the native page host.
+        return UrlUtilities.isNtpUrl(tab.getUrl())
+                || (tab.isNativePage()
+                        && UrlConstants.NTP_HOST.equals(
+                                assumeNonNull(tab.getNativePage()).getHost()));
     }
 
     /** Requests keyboard focus on the toolbar row. */

@@ -20,14 +20,14 @@
 #include "build/build_config.h"
 #include "components/enterprise/browser/reporting/common_pref_names.h"
 #include "components/enterprise/browser/reporting/report_request.h"
+#include "components/enterprise/browser/reporting/report_type.h"
 #include "components/enterprise/browser/reporting/report_util.h"
 #include "components/enterprise/buildflags/buildflags.h"
+#include "components/enterprise/device_trust/core/common_types.h"  // nogncheck
 #include "components/prefs/pref_registry_simple.h"
 #include "components/prefs/testing_pref_service.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-
-#include "components/enterprise/device_trust/core/common_types.h"  // nogncheck
 
 #if BUILDFLAG(ENTERPRISE_PROXY)
 #include "components/enterprise/net/core/mock_enterprise_proxy_service.h"
@@ -107,6 +107,15 @@ TEST_F(ConnectorsInternalsUtilsTest, CreateDeviceTrustStateWithNoKey) {
             connectors_internals::mojom::KeyManagerInitializedValue::NO_KEY);
   EXPECT_EQ(state->signals_json, signals_json);
   EXPECT_FALSE(state->consent_metadata);
+
+  auto state_with_consent = CreateDeviceTrustStateWithNoKey(
+      /*is_device_trust_enabled=*/true, levels, signals_json,
+      connectors_internals::mojom::ConsentMetadata::New(
+          /*can_collect_signals=*/true, /*consent_received=*/false));
+  ASSERT_TRUE(state_with_consent);
+  ASSERT_TRUE(state_with_consent->consent_metadata);
+  EXPECT_TRUE(state_with_consent->consent_metadata->can_collect_signals);
+  EXPECT_FALSE(state_with_consent->consent_metadata->consent_received);
 }
 
 TEST_F(ConnectorsInternalsUtilsTest, CreateSignalsReportingState_WithPrefs) {
@@ -141,13 +150,38 @@ TEST_F(ConnectorsInternalsUtilsTest, CreateSignalsReportingState_WithPrefs) {
   EXPECT_EQ(state->last_signals_upload_config, "test_config");
   EXPECT_FALSE(state->last_upload_attempt_timestamp.empty());
   EXPECT_FALSE(state->last_upload_success_timestamp.empty());
+
+  // Without a scheduler, there are no uploaded signals to show.
+  EXPECT_FALSE(state->signals);
+}
+
+TEST_F(ConnectorsInternalsUtilsTest, ProcessReportGenerationResult_Success) {
+  auto request = std::make_unique<enterprise_reporting::ReportRequest>(
+      enterprise_reporting::ReportType::kProfileReport);
+  auto* profile_info = request->GetChromeProfileReportRequest()
+                           .mutable_browser_report()
+                           ->add_chrome_user_profile_infos();
+  profile_info->mutable_profile_signals_report();
+  profile_info->add_chrome_policies()->set_name("Policy");
+
+  enterprise_reporting::ReportRequestQueue queue;
+  queue.push(std::move(request));
+  auto [error_info, signals] =
+      ProcessReportGenerationResult(base::ok(std::move(queue)));
+
+  EXPECT_FALSE(error_info.has_value());
+  ASSERT_TRUE(signals.has_value());
+  EXPECT_EQ(signals->FindInt("certificates_count"), 0);
+  const std::string* chrome_policies = signals->FindString("chrome_policies");
+  ASSERT_TRUE(chrome_policies);
+  EXPECT_EQ(*chrome_policies,
+            "[1 policy collected but omitted for readability]");
 }
 
 TEST_F(ConnectorsInternalsUtilsTest, ProcessReportGenerationResult_Error) {
   auto result = base::unexpected(
       enterprise_reporting::ReportGenerationError::kProfileEmptyReport);
-  auto [error_info, signals_json] =
-      ProcessReportGenerationResult(std::move(result));
+  auto [error_info, signals] = ProcessReportGenerationResult(std::move(result));
 
   ASSERT_TRUE(error_info.has_value());
   EXPECT_EQ(*error_info,
@@ -155,18 +189,17 @@ TEST_F(ConnectorsInternalsUtilsTest, ProcessReportGenerationResult_Error) {
                 "Report generation failed with error code: %d",
                 static_cast<int>(enterprise_reporting::ReportGenerationError::
                                      kProfileEmptyReport)));
-  EXPECT_FALSE(signals_json.has_value());
+  EXPECT_FALSE(signals.has_value());
 }
 
 TEST_F(ConnectorsInternalsUtilsTest, ProcessReportGenerationResult_EmptyQueue) {
   enterprise_reporting::ReportRequestQueue queue;
   auto result = base::ok(std::move(queue));
-  auto [error_info, signals_json] =
-      ProcessReportGenerationResult(std::move(result));
+  auto [error_info, signals] = ProcessReportGenerationResult(std::move(result));
 
   ASSERT_TRUE(error_info.has_value());
   EXPECT_EQ(*error_info, "Report generator returned an empty queue.");
-  EXPECT_FALSE(signals_json.has_value());
+  EXPECT_FALSE(signals.has_value());
 }
 
 #if BUILDFLAG(ENTERPRISE_PROXY)
@@ -212,6 +245,54 @@ TEST_F(ConnectorsInternalsUtilsTest, GetProvisioningDomainState_Success) {
   ASSERT_TRUE(
       base::Time::FromString("Wed, 21 Oct 2026 07:28:00 GMT", &expected_time));
   EXPECT_EQ(state->pvd_configs[0]->expiration_time.value(), expected_time);
+}
+
+TEST_F(ConnectorsInternalsUtilsTest,
+       GetProvisioningDomainState_IncludesLastFailure) {
+  NiceMock<enterprise_net::MockEnterpriseProxyService> mock_service;
+
+  const char kDebugInfo[] = R"({
+    "domains": [
+      {
+        "policy": {
+          "pvd_id": "domain1.example.com"
+        },
+        "fetched_config": {
+          "identifier": "domain1.example.com",
+          "state": "FailedTransient"
+        },
+        "last_failure": {
+          "failure_reason": "HttpError",
+          "http_response_code": 503
+        }
+      }
+    ]
+  })";
+
+  std::optional<base::DictValue> debug_info =
+      base::JSONReader::ReadDict(kDebugInfo, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(debug_info.has_value());
+
+  EXPECT_CALL(mock_service, GetDebugInfo())
+      .WillOnce(Return(std::move(debug_info).value()));
+
+  auto state = GetProvisioningDomainState(&mock_service);
+
+  ASSERT_EQ(state->pvd_configs.size(), 1u);
+  EXPECT_EQ(state->pvd_configs[0]->pvd_id, "domain1.example.com");
+
+  std::optional<base::DictValue> routes_dict = base::JSONReader::ReadDict(
+      state->pvd_configs[0]->routes_json, base::JSON_PARSE_RFC);
+  ASSERT_TRUE(routes_dict.has_value());
+  const std::string* state_str = routes_dict->FindString("state");
+  ASSERT_NE(nullptr, state_str);
+  EXPECT_EQ(*state_str, "FailedTransient");
+  const std::string* reason_str =
+      routes_dict->FindStringByDottedPath("last_failure.failure_reason");
+  ASSERT_NE(nullptr, reason_str);
+  EXPECT_EQ(*reason_str, "HttpError");
+  EXPECT_EQ(routes_dict->FindIntByDottedPath("last_failure.http_response_code"),
+            503);
 }
 
 TEST_F(ConnectorsInternalsUtilsTest, GetProvisioningDomainState_EdgeCases) {

@@ -25,8 +25,8 @@ namespace ios {
 
 namespace {
 
-std::unique_ptr<KeyedService> BuildWebDataService(ProfileIOS* profile) {
-  const base::FilePath& state_path = profile->GetStatePath();
+std::unique_ptr<KeyedService> BuildWebDataService(ProfileIOS& profile) {
+  const base::FilePath& state_path = profile.GetStatePath();
   // On iOS (and Android), the account storage is persisted on disk.
   return std::make_unique<WebDataServiceWrapper>(
       state_path,
@@ -45,6 +45,17 @@ scoped_refptr<autofill::AutofillWebDataService>
 WebDataServiceFactory::GetAutofillWebDataForProfile(
     ProfileIOS* profile,
     ServiceAccessType access_type) {
+  if (!profile) {
+    return nullptr;
+  }
+  return GetAutofillWebDataForProfile(*profile, access_type);
+}
+
+// static
+scoped_refptr<autofill::AutofillWebDataService>
+WebDataServiceFactory::GetAutofillWebDataForProfile(
+    ProfileIOS& profile,
+    ServiceAccessType access_type) {
   WebDataServiceWrapper* wrapper = GetForProfile(profile, access_type);
   return wrapper ? wrapper->GetProfileAutofillWebData() : nullptr;
 }
@@ -53,6 +64,17 @@ WebDataServiceFactory::GetAutofillWebDataForProfile(
 scoped_refptr<autofill::AutofillWebDataService>
 WebDataServiceFactory::GetAutofillWebDataForAccount(
     ProfileIOS* profile,
+    ServiceAccessType access_type) {
+  if (!profile) {
+    return nullptr;
+  }
+  return GetAutofillWebDataForAccount(*profile, access_type);
+}
+
+// static
+scoped_refptr<autofill::AutofillWebDataService>
+WebDataServiceFactory::GetAutofillWebDataForAccount(
+    ProfileIOS& profile,
     ServiceAccessType access_type) {
   WebDataServiceWrapper* wrapper = GetForProfile(profile, access_type);
   return wrapper ? wrapper->GetAccountAutofillWebData() : nullptr;
@@ -63,6 +85,17 @@ scoped_refptr<KeywordWebDataService>
 WebDataServiceFactory::GetKeywordWebDataForProfile(
     ProfileIOS* profile,
     ServiceAccessType access_type) {
+  if (!profile) {
+    return nullptr;
+  }
+  return GetKeywordWebDataForProfile(*profile, access_type);
+}
+
+// static
+scoped_refptr<KeywordWebDataService>
+WebDataServiceFactory::GetKeywordWebDataForProfile(
+    ProfileIOS& profile,
+    ServiceAccessType access_type) {
   WebDataServiceWrapper* wrapper = GetForProfile(profile, access_type);
   return wrapper ? wrapper->GetKeywordWebData() : nullptr;
 }
@@ -70,6 +103,16 @@ WebDataServiceFactory::GetKeywordWebDataForProfile(
 // static
 scoped_refptr<TokenWebData> WebDataServiceFactory::GetTokenWebDataForProfile(
     ProfileIOS* profile,
+    ServiceAccessType access_type) {
+  if (!profile) {
+    return nullptr;
+  }
+  return GetTokenWebDataForProfile(*profile, access_type);
+}
+
+// static
+scoped_refptr<TokenWebData> WebDataServiceFactory::GetTokenWebDataForProfile(
+    ProfileIOS& profile,
     ServiceAccessType access_type) {
   WebDataServiceWrapper* wrapper = GetForProfile(profile, access_type);
   return wrapper ? wrapper->GetTokenWebData() : nullptr;
@@ -89,7 +132,7 @@ WebDataServiceFactory::WebDataServiceFactory(PassKey key)
           TestingCreation::kNoServiceForTests) {}
 
 std::unique_ptr<KeyedService> WebDataServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildWebDataService(profile);
 }
 

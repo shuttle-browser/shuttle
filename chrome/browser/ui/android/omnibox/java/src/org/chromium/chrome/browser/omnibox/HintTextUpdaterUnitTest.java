@@ -55,10 +55,13 @@ import org.chromium.components.contextual_search.InputState;
 import org.chromium.components.contextual_search.InputStateBuilder;
 import org.chromium.components.feature_engagement.FeatureConstants;
 import org.chromium.components.feature_engagement.Tracker;
+import org.chromium.components.omnibox.AimModelsProtoIntDef.ModelMode;
 import org.chromium.components.omnibox.AutocompleteInput;
+import org.chromium.components.omnibox.AutocompleteInput.AutocompleteState;
 import org.chromium.components.omnibox.AutocompleteInput.DisplayState;
 import org.chromium.components.omnibox.AutocompleteInput.SiteSearchData;
 import org.chromium.components.omnibox.AutocompleteRequestType;
+import org.chromium.components.omnibox.ModelConfigProto.ModelConfig;
 import org.chromium.components.omnibox.ToolConfigProto.ToolConfig;
 import org.chromium.components.omnibox.ToolModeProtoIntDef.ToolMode;
 import org.chromium.components.search_engines.AiModeButtonUiConfig;
@@ -115,7 +118,7 @@ public class HintTextUpdaterUnitTest {
         mAutocompleteInput.reset();
         mAutocompleteInput.setDisplayState(DisplayState.DRAFTING);
         mAutocompleteInput.setRequestType(AutocompleteRequestType.SEARCH);
-        mAutocompleteInput.setAutocompleteState(AutocompleteInput.AutocompleteState.ENABLED);
+        mAutocompleteInput.setAutocompleteState(AutocompleteState.ENABLED);
         mAutocompleteInput.setPageUrl(GURL.emptyGURL());
         mAutocompleteInput.setPageTitle("");
         mAutocompleteInput.setUserText("");
@@ -200,6 +203,19 @@ public class HintTextUpdaterUnitTest {
         assertHintText(AIM_ACTIVATION_HINT_TEXT);
     }
 
+    private void setInputState(InputState inputState) {
+        when(mSearchEngineService.getSearchEngineName()).thenReturn(SEARCH_ENGINE_NAME);
+        when(mFuseboxSessionState.getComposeboxQueryControllerBridge())
+                .thenReturn(mComposeboxQueryControllerBridge);
+        when(mComposeboxQueryControllerBridge.getInputStateSupplier())
+                .thenReturn(mInputStateSupplier);
+        mInputStateSupplier.set(inputState);
+    }
+
+    private static ModelConfig createModelConfig(@ModelMode int modelMode, String hintText) {
+        return ModelConfig.newBuilder().setModelValue(modelMode).setHintText(hintText).build();
+    }
+
     @Test
     public void testDefaultEnabledBehavior() {
         when(mSearchEngineService.getSearchEngineName()).thenReturn("Google");
@@ -231,7 +247,8 @@ public class HintTextUpdaterUnitTest {
         when(mSearchEngineService.getSearchEngineName()).thenReturn("Google");
 
         String searchEngineHint = "Search Google or type URL";
-        String aiModeHint = "Ask anything";
+        String aiModeToolHint = "AI Mode Tool Hint";
+        String clientAiModeHint = "Ask anything";
         String imageGenHint = "Image Gen Tool Hint";
         String deepSearchHint = "Deep Search Tool Hint";
         String canvasHint = "Canvas Tool Hint";
@@ -244,7 +261,7 @@ public class HintTextUpdaterUnitTest {
         ToolConfig aiModeConfig =
                 ToolConfig.newBuilder()
                         .setToolValue(ToolMode.TOOL_MODE_UNSPECIFIED)
-                        .setHintText(aiModeHint)
+                        .setHintText(aiModeToolHint)
                         .build();
         ToolConfig imageGenConfig =
                 ToolConfig.newBuilder()
@@ -289,13 +306,13 @@ public class HintTextUpdaterUnitTest {
 
         clearInvocations(mUpdateHintTextCallback);
         mAutocompleteInput.setRequestType(AutocompleteRequestType.AI_MODE);
-        verify(mUpdateHintTextCallback).onResult(eq(aiModeHint));
+        verify(mUpdateHintTextCallback).onResult(eq(aiModeToolHint));
 
         clearInvocations(mUpdateHintTextCallback);
         mAutocompleteInput.setRequestType(AutocompleteRequestType.DEEP_SEARCH);
         when(mFuseboxSessionState.getComposeboxQueryControllerBridge()).thenReturn(null);
         mUpdater.onTitleChanged();
-        verify(mUpdateHintTextCallback).onResult(eq(searchEngineHint));
+        verify(mUpdateHintTextCallback).onResult(eq(clientAiModeHint));
         when(mFuseboxSessionState.getComposeboxQueryControllerBridge())
                 .thenReturn(mComposeboxQueryControllerBridge);
 
@@ -303,7 +320,143 @@ public class HintTextUpdaterUnitTest {
         InputState emptyHintState = new InputStateBuilder().withHintText("").build();
         mInputStateSupplier.set(emptyHintState);
         mUpdater.onTitleChanged();
-        verify(mUpdateHintTextCallback).onResult(eq(searchEngineHint));
+        verify(mUpdateHintTextCallback).onResult(eq(clientAiModeHint));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_PtmRequestType() {
+        ToolConfig ptmConfig =
+                ToolConfig.newBuilder()
+                        .setToolValue(ToolMode.TOOL_MODE_GEMINI_PRO)
+                        .setHintText("PTM Tool Hint")
+                        .build();
+        setInputState(
+                new InputStateBuilder()
+                        .withHintText("Server Default Hint")
+                        .withToolConfigs(ptmConfig)
+                        .build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.PTM);
+
+        verify(mUpdateHintTextCallback).onResult(eq("PTM Tool Hint"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_NoToolMatch_UsesInputStateHintText() {
+        ToolConfig imageGenConfig =
+                ToolConfig.newBuilder()
+                        .setToolValue(ToolMode.TOOL_MODE_IMAGE_GEN)
+                        .setHintText("Image Gen Tool Hint")
+                        .build();
+        setInputState(
+                new InputStateBuilder()
+                        .withHintText("Server Default Hint")
+                        .withToolConfigs(imageGenConfig)
+                        .build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.AI_MODE);
+        verify(mUpdateHintTextCallback).onResult(eq("Server Default Hint"));
+
+        clearInvocations(mUpdateHintTextCallback);
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.IMAGE_GENERATION);
+        verify(mUpdateHintTextCallback).onResult(eq("Image Gen Tool Hint"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_ToolMatchWithEmptyHint_UsesInputStateHintText() {
+        ToolConfig deepSearchConfig =
+                ToolConfig.newBuilder().setToolValue(ToolMode.TOOL_MODE_DEEP_SEARCH).build();
+        setInputState(
+                new InputStateBuilder()
+                        .withHintText("Server Default Hint")
+                        .withToolConfigs(deepSearchConfig)
+                        .build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.DEEP_SEARCH);
+
+        verify(mUpdateHintTextCallback).onResult(eq("Server Default Hint"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_NoToolMatchAndEmptyInputStateHint_UsesClientHint() {
+        setInputState(new InputStateBuilder().withHintText("").build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.AI_MODE);
+
+        verify(mUpdateHintTextCallback).onResult(eq("Ask anything"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_NoToolMatch_UsesActiveModelHintText() {
+        setInputState(
+                new InputStateBuilder()
+                        .withHintText("Server Default Hint")
+                        .withActiveModel(ModelMode.MODEL_MODE_GEMINI_PRO)
+                        .withModelConfigs(
+                                createModelConfig(ModelMode.MODEL_MODE_GEMINI_REGULAR, "Fast Hint"),
+                                createModelConfig(ModelMode.MODEL_MODE_GEMINI_PRO, "Pro Hint"))
+                        .build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.AI_MODE);
+
+        verify(mUpdateHintTextCallback).onResult(eq("Pro Hint"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_ToolHintTakesPrecedenceOverModelHint() {
+        ToolConfig imageGenConfig =
+                ToolConfig.newBuilder()
+                        .setToolValue(ToolMode.TOOL_MODE_IMAGE_GEN)
+                        .setHintText("Image Gen Tool Hint")
+                        .build();
+        setInputState(
+                new InputStateBuilder()
+                        .withActiveModel(ModelMode.MODEL_MODE_GEMINI_PRO)
+                        .withToolConfigs(imageGenConfig)
+                        .withModelConfigs(
+                                createModelConfig(ModelMode.MODEL_MODE_GEMINI_PRO, "Pro Hint"))
+                        .build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.IMAGE_GENERATION);
+
+        verify(mUpdateHintTextCallback).onResult(eq("Image Gen Tool Hint"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_ModelMatchWithEmptyHint_UsesInputStateHintText() {
+        setInputState(
+                new InputStateBuilder()
+                        .withHintText("Server Default Hint")
+                        .withActiveModel(ModelMode.MODEL_MODE_GEMINI_PRO)
+                        .withModelConfigs(createModelConfig(ModelMode.MODEL_MODE_GEMINI_PRO, ""))
+                        .build());
+
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.AI_MODE);
+
+        verify(mUpdateHintTextCallback).onResult(eq("Server Default Hint"));
+    }
+
+    @Test
+    public void testGetOmniboxHintText_ActiveModelChange_UpdatesHint() {
+        InputStateBuilder builder =
+                new InputStateBuilder()
+                        .withModelConfigs(
+                                createModelConfig(ModelMode.MODEL_MODE_GEMINI_REGULAR, "Fast Hint"),
+                                createModelConfig(ModelMode.MODEL_MODE_GEMINI_PRO, "Pro Hint"));
+        setInputState(builder.withActiveModel(ModelMode.MODEL_MODE_GEMINI_REGULAR).build());
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.AI_MODE);
+        // Restart the session so the updater observes the stubbed bridge.
+        mUpdater.beginInput(mAutocompleteInput);
+        clearInvocations(mUpdateHintTextCallback);
+
+        mInputStateSupplier.set(builder.withActiveModel(ModelMode.MODEL_MODE_GEMINI_PRO).build());
+        verify(mUpdateHintTextCallback).onResult(eq("Pro Hint"));
+
+        mUpdater.endInput();
+        clearInvocations(mUpdateHintTextCallback);
+        mInputStateSupplier.set(
+                builder.withActiveModel(ModelMode.MODEL_MODE_GEMINI_REGULAR).build());
+        verify(mUpdateHintTextCallback, never()).onResult(any());
     }
 
     @Test
@@ -320,7 +473,11 @@ public class HintTextUpdaterUnitTest {
 
         clearInvocations(mUpdateHintTextCallback);
         mAutocompleteInput.setRequestType(AutocompleteRequestType.IMAGE_GENERATION);
-        verify(mUpdateHintTextCallback).onResult(eq("Describe your image"));
+        verify(mUpdateHintTextCallback).onResult(eq("Ask anything"));
+
+        clearInvocations(mUpdateHintTextCallback);
+        mAutocompleteInput.setRequestType(AutocompleteRequestType.DEEP_SEARCH);
+        verify(mUpdateHintTextCallback).onResult(eq("Ask anything"));
     }
 
     @Test

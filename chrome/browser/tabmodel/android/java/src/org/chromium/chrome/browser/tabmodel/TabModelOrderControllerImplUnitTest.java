@@ -414,6 +414,76 @@ public class TabModelOrderControllerImplUnitTest {
     }
 
     @Test
+    public void testWillOpenInForeground_FromUndoClosure_NeverForeground() {
+        assertFalse(
+                TabModelOrderControllerImpl.willOpenInForeground(
+                        TabLaunchType.FROM_UNDO_CLOSURE, false, false));
+        assertFalse(
+                TabModelOrderControllerImpl.willOpenInForeground(
+                        TabLaunchType.FROM_UNDO_CLOSURE, true, true));
+        assertFalse(
+                "Undo restore with model mismatch should stay in background",
+                TabModelOrderControllerImpl.willOpenInForeground(
+                        TabLaunchType.FROM_UNDO_CLOSURE, true, false));
+        assertFalse(
+                "Undo restore with model mismatch should stay in background",
+                TabModelOrderControllerImpl.willOpenInForeground(
+                        TabLaunchType.FROM_UNDO_CLOSURE, false, true));
+
+        assertFalse(mOrderController.willOpenInForeground(TabLaunchType.FROM_UNDO_CLOSURE, false));
+        assertFalse(mOrderController.willOpenInForeground(TabLaunchType.FROM_UNDO_CLOSURE, true));
+    }
+
+    @Test
+    public void testDetermineInsertionIndex_FromUndoClosure_KeepsRequestedPosition() {
+        addTab(mTabModel, 1, /* isPinned= */ false);
+        addTab(mTabModel, 2, /* isPinned= */ false);
+        addTab(mTabModel, 3, /* isPinned= */ false);
+        mTabModel.setIndex(2, TabSelectionType.FROM_USER);
+
+        MockTab newTab = new MockTab(4, mProfile);
+
+        int position =
+                mOrderController.determineInsertionIndex(
+                        TabLaunchType.FROM_UNDO_CLOSURE, /* position= */ 1, newTab);
+        assertEquals("Should keep the requested position", 1, position);
+    }
+
+    @Test
+    public void testDetermineInsertionIndex_AdjacentLaunchType_ExplicitPositionWithoutParent() {
+        addTab(mTabModel, /* id= */ 1, /* isPinned= */ false);
+        addTab(mTabModel, /* id= */ 2, /* isPinned= */ false);
+        addTab(mTabModel, /* id= */ 3, /* isPinned= */ false);
+        mTabModel.setIndex(/* i= */ 0, TabSelectionType.FROM_USER);
+
+        MockTab newTab = new MockTab(/* id= */ 4, mProfile);
+
+        int position =
+                mOrderController.determineInsertionIndex(
+                        TabLaunchType.FROM_LONGPRESS_BACKGROUND, /* position= */ 2, newTab);
+        assertEquals("Explicit position without a parent tab should be preserved", 2, position);
+    }
+
+    @Test
+    public void testDetermineInsertionIndex_AdjacentLaunchType_ExplicitPositionWithParent() {
+        MockTab parentTab = addTab(mTabModel, /* id= */ 1, /* isPinned= */ false);
+        addTab(mTabModel, /* id= */ 2, /* isPinned= */ false);
+        addTab(mTabModel, /* id= */ 3, /* isPinned= */ false);
+        mTabModel.setIndex(/* i= */ 0, TabSelectionType.FROM_USER);
+
+        MockTab newTab = new MockTab(/* id= */ 4, mProfile);
+        newTab.setParentId(parentTab.getId());
+
+        int position =
+                mOrderController.determineInsertionIndex(
+                        TabLaunchType.FROM_LONGPRESS_BACKGROUND, /* position= */ 2, newTab);
+        assertEquals(
+                "Adjacent insertion index should override position when a parent tab is set",
+                1,
+                position);
+    }
+
+    @Test
     public void testSameModelType() {
         MockTab regularTab = new MockTab(1, mProfile);
         MockTab incognitoTab = new MockTab(2, mIncognitoProfile);

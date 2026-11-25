@@ -62,7 +62,6 @@ import org.hamcrest.Description;
 import org.hamcrest.Matcher;
 import org.hamcrest.Matchers;
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -71,7 +70,6 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.Token;
 import org.chromium.base.supplier.NonNullObservableSupplier;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
@@ -79,25 +77,24 @@ import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab_ui.TabCardThemeUtil;
 import org.chromium.chrome.browser.tab_ui.TabContentManager;
 import org.chromium.chrome.browser.tab_ui.TabThumbnailView;
+import org.chromium.chrome.browser.tab_ui.undo_tab_close_snackbar.UndoBarController;
 import org.chromium.chrome.browser.tabmodel.TabClosureParams;
 import org.chromium.chrome.browser.tabmodel.TabCreator;
 import org.chromium.chrome.browser.tabmodel.TabGroupColorUtils;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
-import org.chromium.chrome.browser.undo_tab_close_snackbar.UndoBarController;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ntp.RegularNewTabPageStation;
 import org.chromium.chrome.test.util.ActivityTestUtils;
-import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.chrome.test.util.MenuUtils;
 import org.chromium.components.tab_groups.TabGroupColorId;
 import org.chromium.components.tab_groups.TabGroupColorPickerUtils;
@@ -121,7 +118,6 @@ import java.util.concurrent.ExecutionException;
 /** Tests for the {@link TabSwitcherLayout}. */
 @SuppressWarnings("ConstantConditions")
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add(ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE)
 @Restriction(DeviceFormFactor.PHONE)
 public class TabSwitcherLayoutTest {
     @Rule
@@ -163,14 +159,6 @@ public class TabSwitcherLayoutTest {
         if (mModalDialogManagerSupplier != null) {
             dismissAllModalDialogs();
         }
-    }
-
-    @AfterClass
-    public static void tearDownAfterActivityDestroyed() {
-        // Flip the night-mode pref only after the activity is gone; otherwise the live
-        // activity recreates and strands entries in AsyncTabParamsManager.
-        ThreadUtils.runOnUiThreadBlocking(
-                ChromeNightModeTestUtils::tearDownNightModeAfterChromeActivityDestroyed);
     }
 
     /**
@@ -256,7 +244,7 @@ public class TabSwitcherLayoutTest {
     @MediumTest
     public void testRecycling_defaultAspectRatio() {
         prepareTabs(10, 0, mUrl);
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivityTestRule.getActivity(), 0);
+        ChromeTriggers.selectTabProgrammatically(mActivityTestRule.getActivity(), 0);
         enterTabSwitcher(mActivityTestRule.getActivity());
         onView(tabSwitcherViewMatcher()).perform(RecyclerViewActions.scrollToPosition(9));
     }
@@ -488,7 +476,7 @@ public class TabSwitcherLayoutTest {
         // Wait until the keyboard is showing.
         KeyboardVisibilityDelegate delegate = cta.getWindowAndroid().getKeyboardDelegate();
         CriteriaHelper.pollUiThread(
-                () -> delegate.isKeyboardShowing(cta.getCompositorViewHolderForTesting()));
+                () -> delegate.isKeyboardObscuring(cta.getCompositorViewHolderForTesting()));
 
         // Change the title.
         editGroupVisualDataDialogTitle(cta, "Test");
@@ -534,7 +522,7 @@ public class TabSwitcherLayoutTest {
         // Wait until the keyboard is showing.
         KeyboardVisibilityDelegate delegate = cta.getWindowAndroid().getKeyboardDelegate();
         CriteriaHelper.pollUiThread(
-                () -> delegate.isKeyboardShowing(cta.getCompositorViewHolderForTesting()));
+                () -> delegate.isKeyboardObscuring(cta.getCompositorViewHolderForTesting()));
 
         // Change the title.
         editGroupVisualDataDialogTitle(cta, "Test");
@@ -1288,7 +1276,7 @@ public class TabSwitcherLayoutTest {
         // Wait until the keyboard is showing.
         KeyboardVisibilityDelegate delegate = cta.getWindowAndroid().getKeyboardDelegate();
         CriteriaHelper.pollUiThread(
-                () -> delegate.isKeyboardShowing(cta.getCompositorViewHolderForTesting()));
+                () -> delegate.isKeyboardObscuring(cta.getCompositorViewHolderForTesting()));
         // Dismiss the tab group visual data dialog.
         dismissAllModalDialogs();
         // Verify that the modal dialog is now hidden.
@@ -1303,7 +1291,7 @@ public class TabSwitcherLayoutTest {
         // Wait until the keyboard is hidden to make sure the edit has taken effect.
         KeyboardVisibilityDelegate delegate = cta.getWindowAndroid().getKeyboardDelegate();
         CriteriaHelper.pollUiThread(
-                () -> !delegate.isKeyboardShowing(cta.getCompositorViewHolderForTesting()));
+                () -> !delegate.isKeyboardObscuring(cta.getCompositorViewHolderForTesting()));
     }
 
     private void verifyFirstCardTitle(String title) {

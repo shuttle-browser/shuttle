@@ -24,7 +24,6 @@
 #include "base/strings/stringprintf.h"
 #include "base/task/bind_post_task.h"
 #include "base/task/execution_fence.h"
-#include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "base/test/gmock_callback_support.h"
@@ -168,7 +167,7 @@ class FileSystemAccessFileHandleImplTestBase : public testing::Test {
     while (true) {
       auto buf = base::MakeRefCounted<net::IOBufferWithSize>(4096);
       net::TestCompletionCallback callback;
-      int rv = reader->Read(buf.get(), buf->size(), callback.callback());
+      int rv = reader->Read(buf, buf->size(), callback.callback());
       if (rv == net::ERR_IO_PENDING) {
         rv = callback.WaitForResult();
       }
@@ -221,7 +220,6 @@ class FileSystemAccessFileHandleImplTestBase : public testing::Test {
         bucket_future;
     quota_manager_proxy_->CreateBucketForTesting(
         test_src_storage_key_, "custom_bucket",
-        base::SequencedTaskRunner::GetCurrentDefault(),
         bucket_future.GetCallback());
     return bucket_future.Take().transform(
         &storage::BucketInfo::ToBucketLocator);

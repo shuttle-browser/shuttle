@@ -23,7 +23,7 @@
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/chrome_password_protection_service.h"
+#include "chrome/browser/safe_browsing/password_protection/chrome_password_protection_service.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/serial/serial_chooser_context.h"
 #include "chrome/browser/serial/serial_chooser_context_factory.h"
@@ -47,11 +47,10 @@
 #include "components/permissions/permission_manager.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
 #include "components/security_interstitials/content/stateful_ssl_host_state_delegate.h"
 #include "components/subresource_filter/content/browser/subresource_filter_content_settings_manager.h"
 #include "components/subresource_filter/content/browser/subresource_filter_profile_context.h"
-#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/permission_controller.h"
@@ -62,8 +61,9 @@
 #include "net/base/registry_controlled_domains/registry_controlled_domain.h"
 #include "services/network/public/cpp/features.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/public_buildflags.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/events/event.h"
 #include "url/origin.h"
@@ -111,6 +111,9 @@
 #include "ash/constants/ash_features.h"
 #include "chrome/browser/ash/floating_sso/floating_sso_service.h"
 #include "chrome/browser/ash/floating_sso/floating_sso_service_factory.h"
+#endif
+
+#if BUILDFLAG(ENABLE_SMART_CARD)
 #include "chrome/browser/smart_card/smart_card_permission_context.h"
 #include "chrome/browser/smart_card/smart_card_permission_context_factory.h"
 #endif
@@ -177,7 +180,7 @@ ChromePageInfoDelegate::GetChooserContext(ContentSettingsType type) {
     case ContentSettingsType::HID_CHOOSER_DATA:
       return HidChooserContextFactory::GetForProfile(GetProfile());
     case ContentSettingsType::SMART_CARD_DATA:
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
       if (base::FeatureList::IsEnabled(blink::features::kSmartCard)) {
         return &SmartCardPermissionContextFactory::GetForProfile(*GetProfile());
       }
@@ -289,15 +292,13 @@ bool ChromePageInfoDelegate::CreateInfoBarDelegate() {
           infobars::InfoBarDelegate::PAGE_INFO_INFOBAR_DELEGATE)) {
     auto* browser_infobar_manager =
         infobars::BrowserInfoBarManager::From(g_browser_process);
-    if (browser_infobar_manager) {
-      auto* tab = tabs::TabInterface::MaybeGetFromContents(web_contents_);
-      if (tab) {
-        browser_infobar_manager->Show(
-            tab, infobars::InfoBarDelegate::PAGE_INFO_INFOBAR_DELEGATE);
-        return true;
-      }
+    if (!browser_infobar_manager) {
+      return false;
     }
-    return false;
+    return browser_infobar_manager->Show(
+               web_contents_,
+               infobars::InfoBarDelegate::PAGE_INFO_INFOBAR_DELEGATE) !=
+           nullptr;
   }
 
   infobars::ContentInfoBarManager* infobar_manager =
@@ -413,7 +414,8 @@ void ChromePageInfoDelegate::OpenConnectionHelpCenterPage(
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(chrome::kPageInfoHelpCenterURL),
           ui::DispositionFromEventFlags(
-              event.flags(), WindowOpenDisposition::kNewForegroundTab),
+              event.flags(),
+              ui::mojom::WindowOpenDisposition::kNewForegroundTab),
           ui::PAGE_TRANSITION_LINK),
       /*navigation_handle_callback=*/{});
 }
@@ -462,7 +464,7 @@ void ChromePageInfoDelegate::OpenSafeBrowsingHelpCenterPage(
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(url),
           ui::DispositionFromEventFlags(
-              event_flags, WindowOpenDisposition::kNewForegroundTab),
+              event_flags, ui::mojom::WindowOpenDisposition::kNewForegroundTab),
           ui::PAGE_TRANSITION_LINK),
       /*navigation_handle_callback=*/{});
 }

@@ -2,13 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {CrLitElement, html} from '//resources/lit/v3_0/lit.rollup.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
-import {ToolbarActionMixin, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {ToolbarActionMixinInterface} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import {ToolbarActionMixin} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+import type {ToolbarActionMixinInterface} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+import {TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 interface ActionState {
   id: string|null;
@@ -157,6 +158,31 @@ suite('ToolbarActionMixinTest', function() {
     assertEquals(element, stopTrackingCalls[0]);
   });
 
+  test('ReregistersOnReattach', async function() {
+    element.state = {id: 'action-1'};
+    await microtasksFinished();
+    assertEquals(1, element.registerCalls.length);
+    assertEquals(1, startTrackingCalls.length);
+
+    element.remove();
+    assertEquals(1, stopTrackingCalls.length);
+
+    document.body.appendChild(element);
+    await microtasksFinished();
+    assertEquals(2, element.registerCalls.length);
+    assertEquals('action-1', element.registerCalls[1]![0]);
+    assertEquals(2, startTrackingCalls.length);
+    assertEquals(element, startTrackingCalls[1]![0]);
+    assertEquals('action-1', startTrackingCalls[1]![1]);
+  });
+
+  test('DoesNotRegisterOnReattachWithoutId', async function() {
+    element.remove();
+    document.body.appendChild(element);
+    await microtasksFinished();
+    assertEquals(0, element.registerCalls.length);
+  });
+
   test('WaitsForFiniteAnimationsBeforeRegistering', async function() {
     const animation =
         element.animate([{opacity: 0}, {opacity: 1}], {duration: 500});
@@ -218,6 +244,19 @@ suite('ToolbarActionMixinTest', function() {
 
     assertEquals(1, element.registerCalls.length);
     assertEquals('id-2', element.registerCalls[0]![0]);
+  });
+
+  test('FiresLayoutNowBeforeRegistering', async function() {
+    let registerCallsAtLayoutNow = -1;
+    element.addEventListener('layout-now', () => {
+      registerCallsAtLayoutNow = element.registerCalls.length;
+    });
+
+    element.state = {id: 'action-1'};
+    await microtasksFinished();
+
+    assertEquals(0, registerCallsAtLayoutNow);
+    assertEquals(1, element.registerCalls.length);
   });
 
   test('HelpBubbleCallbacksAndUpdateState', async function() {

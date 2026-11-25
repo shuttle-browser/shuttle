@@ -4,7 +4,9 @@
 
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_device_picker_bubble_view.h"
 
+#include "base/check.h"
 #include "base/strings/utf_string_conversions.h"
+#include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_controller.h"
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_device_button.h"
 #include "chrome/grit/generated_resources.h"
@@ -48,10 +50,19 @@ constexpr int kDeviceButtonGroup = 0;
 SendTabToSelfDevicePickerBubbleView::SendTabToSelfDevicePickerBubbleView(
     views::BubbleAnchor anchor,
     content::WebContents* web_contents)
-    : SendTabToSelfBubbleView(anchor, web_contents) {
+    : LocationBarBubbleDelegateView(anchor, web_contents),
+      controller_(
+          SendTabToSelfBubbleController::GetOrCreateForWebContents(web_contents)
+              ->AsWeakPtr()) {
+  CHECK(controller_);
   SetShowCloseButton(false);
+  set_fixed_width(ChromeLayoutProvider::Get()->GetDistanceMetric(
+      views::DISTANCE_BUBBLE_PREFERRED_WIDTH));
   SetProperty(views::kElementIdentifierKey, kSendTabToSelfDevicePickerBubbleId);
 }
+
+SendTabToSelfDevicePickerBubbleView::~SendTabToSelfDevicePickerBubbleView() =
+    default;
 
 // Highlights the chosen device with a checkmark.
 void SendTabToSelfDevicePickerBubbleView::SelectTargetDevice(
@@ -116,14 +127,14 @@ void SendTabToSelfDevicePickerBubbleView::Init() {
       header_container->AddChildView(std::make_unique<views::Label>(
           l10n_util::GetStringUTF16(
               IDS_SEND_TAB_TO_SELF_DEVICE_PICKER_SUBTITLE),
-          views::style::CONTEXT_LABEL, views::style::STYLE_CAPTION));
+          views::style::CONTEXT_LABEL, views::style::STYLE_BODY_5));
   subtitle->SetEnabledColor(ui::kColorLabelForegroundSecondary);
   subtitle->SetHorizontalAlignment(gfx::ALIGN_LEFT);
 
   // Manage devices link.
   auto* link = header_container->AddChildView(std::make_unique<views::Link>(
       l10n_util::GetStringUTF16(IDS_SEND_TAB_TO_SELF_MANAGE_DEVICES),
-      views::style::CONTEXT_LABEL, views::style::STYLE_CAPTION));
+      views::style::CONTEXT_LABEL, views::style::STYLE_LINK_5));
   link->SetCallback(base::BindRepeating(
       &SendTabToSelfBubbleController::OnManageDevicesClicked, controller_));
   link->SetHorizontalAlignment(gfx::ALIGN_LEFT);
@@ -158,7 +169,8 @@ void SendTabToSelfDevicePickerBubbleView::HandleSendClicked() {
   CHECK(selected_button_);
 
   controller_->OnDeviceSelected(selected_button_->device_guid(),
-                                selected_button_->device_name());
+                                selected_button_->device_name(),
+                                selected_button_->device_form_factor());
 
   GetViewAccessibility().AnnounceText(l10n_util::GetStringFUTF16(
       IDS_SEND_TAB_TO_SELF_SENDING_ANNOUNCE,

@@ -7,7 +7,6 @@
 #include <utility>
 
 #include "ash/system/diagnostics/diagnostics_log_controller.h"
-#include "ash/system/diagnostics/fake_diagnostics_browser_delegate.h"
 #include "ash/system/diagnostics/networking_log.h"
 #include "ash/test/ash_test_base.h"
 #include "ash/webui/diagnostics_ui/backend/common/histogram_util.h"
@@ -166,7 +165,7 @@ class NetworkHealthProviderTest : public AshTestBase {
 
   void SetUpInitParams(AshTestHelper::InitParams& init_params) override {
     AshTestBase::SetUpInitParams(init_params);
-    init_params.start_session = false;
+    init_params.users.clear();
   }
 
   void SetUp() override {
@@ -219,8 +218,7 @@ class NetworkHealthProviderTest : public AshTestBase {
 
     EXPECT_TRUE(temp_dir_.CreateUniqueTempDir());
     network_health_provider_ = std::make_unique<NetworkHealthProvider>();
-    DiagnosticsLogController::Initialize(
-        std::make_unique<FakeDiagnosticsBrowserDelegate>());
+    DiagnosticsLogController::Initialize();
   }
 
   void TearDown() override {

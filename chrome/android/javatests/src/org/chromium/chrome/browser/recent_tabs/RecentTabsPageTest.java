@@ -56,7 +56,6 @@ import org.chromium.base.ThreadUtils;
 import org.chromium.base.TimeUtils;
 import org.chromium.base.Token;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Feature;
@@ -66,7 +65,6 @@ import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
@@ -106,7 +104,6 @@ import java.util.concurrent.TimeUnit;
 
 /** Instrumentation tests for {@link RecentTabsPage}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class RecentTabsPageTest {
     private static final int COLOR_ID = TabGroupColorId.YELLOW;
@@ -594,10 +591,24 @@ public class RecentTabsPageTest {
         final String eventDescriptionString1 = "google.com and " + (tabCount - 1) + " other tabs";
         final String eventDescriptionString2 =
                 activeTabUrl2 + " and " + (tabCount - 1) + " other tabs";
-        waitForView(title1);
+        View view1 = waitForView(title1);
         waitForView(eventDescriptionString1);
-        waitForView(title2);
+        View view2 = waitForView(title2);
         waitForView(eventDescriptionString2);
+        assertEquals(
+                mActivity
+                        .getResources()
+                        .getString(
+                                R.string.recent_tabs_window_closure_with_title_accessibility,
+                                title1),
+                view1.getContentDescription());
+        assertEquals(
+                mActivity
+                        .getResources()
+                        .getString(
+                                R.string.recent_tabs_window_closure_with_title_accessibility,
+                                title2),
+                view2.getContentDescription());
 
         mRenderTestRule.render(mPage.getView(), "recently_closed_windows");
 
@@ -608,6 +619,52 @@ public class RecentTabsPageTest {
         // Verify that the entry for the restored window is removed.
         assertEquals(1, recentlyClosedEntriesManager.getRecentlyClosedEntries().size());
         waitForViewToDisappear(eventDescriptionString1);
+    }
+
+    @Test
+    @LargeTest
+    public void testRecentlyClosedWindow_WithoutTitle() throws Exception {
+        mPage = loadRecentTabsPage();
+        long time = getValidTimestampForEntry();
+        String activeTabTitle = "Google";
+        String activeTabUrl = "https://www.google.com";
+        int tabCount = 3;
+
+        final RecentlyClosedWindow window =
+                new RecentlyClosedWindow(
+                        time,
+                        /* instanceId= */ 0,
+                        activeTabUrl,
+                        /* title= */ null,
+                        activeTabTitle,
+                        tabCount);
+        RecentlyClosedEntriesManager recentlyClosedEntriesManager =
+                mActivity.getRecentlyClosedEntriesManagerForTesting();
+        ThreadUtils.runOnUiThreadBlocking(
+                () ->
+                        recentlyClosedEntriesManager.onWindowsClosed(
+                                Collections.singletonList(window),
+                                /* isPermanentDeletion= */ false));
+        assertEquals(1, recentlyClosedEntriesManager.getRecentlyClosedEntries().size());
+
+        final String expectedWindowTitle =
+                mActivity
+                        .getResources()
+                        .getQuantityString(
+                                R.plurals.recent_tabs_group_closure_without_title,
+                                tabCount,
+                                tabCount);
+        final String eventDescriptionString = "google.com and " + (tabCount - 1) + " other tabs";
+        View view = waitForView(expectedWindowTitle);
+        waitForView(eventDescriptionString);
+        assertEquals(
+                mActivity
+                        .getResources()
+                        .getQuantityString(
+                                R.plurals.recent_tabs_window_closure_without_title_accessibility,
+                                tabCount,
+                                tabCount),
+                view.getContentDescription());
     }
 
     @Test

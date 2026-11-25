@@ -4,17 +4,15 @@
 
 #include "chrome/browser/actor/tools/registry/tool_definition.h"
 
+#include <optional>
+#include <string>
 #include <utility>
 
-namespace actor {
+#include "base/check.h"
+#include "base/json/json_writer.h"
+#include "components/optimization_guide/proto/features/wire/tool_declaration.pb.h"
 
-ToolDefinition::ToolDefinition(ToolId id,
-                               std::string name,
-                               std::string description)
-    : ToolDefinition(id,
-                     std::move(name),
-                     std::move(description),
-                     base::DictValue()) {}
+namespace actor {
 
 ToolDefinition::ToolDefinition(ToolId id,
                                std::string name,
@@ -33,6 +31,20 @@ ToolDefinition& ToolDefinition::operator=(ToolDefinition&&) = default;
 
 ToolDefinition ToolDefinition::Clone() const {
   return ToolDefinition(id, name, description, parameters_json_schema.Clone());
+}
+
+optimization_guide::proto::ToolDeclaration ToolDefinition::ToProto() const {
+  optimization_guide::proto::ToolDeclaration proto;
+  proto.set_name(name);
+  proto.set_description(description);
+  const base::DictValue* properties =
+      parameters_json_schema.FindDict("properties");
+  if (properties && !properties->empty()) {
+    std::optional<std::string> json = base::WriteJson(parameters_json_schema);
+    CHECK(json);
+    proto.set_parameters_json_schema(std::move(*json));
+  }
+  return proto;
 }
 
 }  // namespace actor

@@ -67,7 +67,6 @@ source_set("push_notification_client") {
     "//ios/chrome/browser/push_notification/model:push_notification_util",
     "//ios/chrome/browser/shared/model/application_context",
     "//ios/chrome/browser/shared/model/browser",
-    "//ios/chrome/browser/shared/model/profile:features",
     "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/browser/shared/public/features",
     "//ios/chrome/browser/signin/model:authentication_service",
@@ -127,6 +126,7 @@ source_set("unit_tests") {
     "send_tab_to_self_tab_card_label_data_unittest.mm",
     "send_tab_to_self_tab_helper_unittest.mm",
     "send_tab_to_self_text_fragment_selector_generator_unittest.mm",
+    "send_tab_to_self_util_unittest.mm",
   ]
   deps = [
     ":model",
@@ -146,7 +146,6 @@ source_set("unit_tests") {
     "//ios/chrome/browser/shared/model/browser",
     "//ios/chrome/browser/shared/model/browser/test:test_support",
     "//ios/chrome/browser/shared/model/prefs:pref_names",
-    "//ios/chrome/browser/shared/model/profile:features",
     "//ios/chrome/browser/shared/model/profile/test",
     "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/chrome/browser/shared/model/web_state_list/test:test_support",
@@ -160,6 +159,7 @@ source_set("unit_tests") {
     "//ios/web/public/test/fakes",
     "//testing/gtest",
     "//third_party/ocmock",
+    "//ui/base/mojom",
     "//url",
   ]
 }

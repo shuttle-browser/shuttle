@@ -31,12 +31,15 @@ import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.RobolectricUtil;
+import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.omnibox.OmniboxMetrics.FocusResultedInNavigationTypes;
 import org.chromium.chrome.browser.omnibox.fusebox.ComposeboxQueryControllerBridge;
 import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteController;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.components.metrics.OmniboxEventProtosIntDef.PageClassification;
 import org.chromium.components.omnibox.AutocompleteInput;
+import org.chromium.components.omnibox.AutocompleteInput.AutocompleteState;
 import org.chromium.components.omnibox.AutocompleteRequestType;
 import org.chromium.components.omnibox.OmniboxCapabilities;
 import org.chromium.components.omnibox.ToolModeProtoIntDef.ToolMode;
@@ -348,8 +351,7 @@ public class FuseboxSessionStateUnitTest {
 
         session.deactivate();
         assertEquals(
-                AutocompleteInput.AutocompleteState.DISABLED,
-                session.getAutocompleteInput().getAutocompleteState());
+                AutocompleteState.DISABLED, session.getAutocompleteInput().getAutocompleteState());
     }
 
     @Test
@@ -376,6 +378,37 @@ public class FuseboxSessionStateUnitTest {
 
         GURL previewMatchUrl = session.getAutocompleteInput().getPreviewMatchUrl();
         assertNull(previewMatchUrl);
+    }
+
+    @Test
+    public void testSetRequestType_Ptm_SetsActiveToolGeminiPro() {
+        FuseboxSessionState session = FuseboxSessionState.from(mLocationBarDataProvider);
+        activate(session);
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        session.getAutocompleteInput().setRequestType(AutocompleteRequestType.PTM);
+
+        verify(mComposeboxQueryControllerBridge).setActiveTool(ToolMode.TOOL_MODE_GEMINI_PRO);
+    }
+
+    @Test
+    public void testRecordOmniboxFocusResultedInNavigation_Ptm() {
+        HistogramWatcher histogramWatcher =
+                HistogramWatcher.newBuilder()
+                        .expectIntRecord(
+                                "Omnibox.FocusResultedInNavigation",
+                                FocusResultedInNavigationTypes.NAV_NO_ATTACHMENT)
+                        .expectIntRecord(
+                                "Omnibox.FocusResultedInNavigation.PTM",
+                                FocusResultedInNavigationTypes.NAV_NO_ATTACHMENT)
+                        .build();
+
+        OmniboxMetrics.recordOmniboxFocusResultedInNavigation(
+                AutocompleteRequestType.PTM,
+                /* focusResultedInNavigation= */ true,
+                /* withAttachments= */ false);
+
+        histogramWatcher.assertExpected();
     }
 
     private void activate(FuseboxSessionState session) {

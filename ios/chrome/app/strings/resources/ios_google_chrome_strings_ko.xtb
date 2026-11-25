@@ -186,7 +186,7 @@
 <translation id="5190139289262548459">내가 로그인한 계정 및 Chrome이 사용되는 방식은 <ph name="DOMAIN" /> 조직에서 관리합니다</translation>
 <translation id="5209238444239954363">Chrome에서 업데이트를 확인할 수 없습니다. 나중에 다시 시도해 주세요.</translation>
 <translation id="5305440589062022504">Chrome에서 비밀번호 관리자를 엽니다.</translation>
-<translation id="5310957470610282541">Chrome 데이터 중 일부가 아직 Google 계정에 저장되지 않았습니다.
+<translation id="5310957470610282541">아직 Google 계정에 저장되지 않은 Chrome 데이터가 있습니다.
 잠시 기다렸다가 로그아웃하세요. 지금 로그아웃하면 이 데이터가 삭제됩니다.</translation>
 <translation id="5342685492141499976">데이터가 <ph name="USER_EMAIL" />의 Google 비밀번호 관리자에 저장됩니다.</translation>
 <translation id="5389212809648216794">다른 애플리케이션에서 카메라를 사용하고 있으므로 Chrome에서 카메라를 사용할 수 없습니다.</translation>
@@ -316,6 +316,7 @@ Chrome 환경을 개선하는 데 데이터를 사용하는 설정을 더 보려
 <translation id="7747746207470479571">Chrome 자동 완성으로 비밀번호 및 패스키에 쉽게 액세스하세요</translation>
 <translation id="776305366874821582">iPhone의 홈 화면 도크에서 Chrome에 더 빠르게 액세스하세요.</translation>
 <translation id="7780154209050837198">Chrome을 최대한 활용하려면 Google 계정으로 Chrome에 로그인하세요</translation>
+<translation id="778331955594035129">Chrome에서 사이트에 대한 위치 정보 액세스 권한이 필요합니다.</translation>
 <translation id="7787205077729386167">iOS에서 Chrome Settings(Chrome 설정)를 열고 'Default Browser App(기본 브라우저 앱)'을 탭한 다음 Chrome을 선택합니다</translation>
 <translation id="778855399387580014">새 Chrome 탭에서 검색을 시작합니다.</translation>
 <translation id="7792140019572081272">Chrome은 Face ID를 통해 사용자의 민감한 정보를 안전하게 보호합니다.</translation>
@@ -329,6 +330,7 @@ Chrome 환경을 개선하는 데 데이터를 사용하는 설정을 더 보려
 <translation id="8018153653741938705">Chrome으로 안전하게 보호하기</translation>
 <translation id="8022947259858476807">링크를 열고, 위젯에서 검색하고, 다른 앱에서 비밀번호를 자동 완성할 기본 브라우저로 Chrome을 사용합니다.</translation>
 <translation id="804638182476029347">Chrome에서 가격 인하 알림을 받도록 허용</translation>
+<translation id="8051480003988100876">Chrome 도움말 확인하기</translation>
 <translation id="8065292699993359127">Chrome에서 시크릿 모드로 URL 열기</translation>
 <translation id="8069507567842347179">이 택배는 이미 Chrome에서 추적되었습니다.</translation>
 <translation id="8136856065410661948">Chrome 및 Google 렌즈에서 Apple 캘린더 일정을 만들 때 사용됩니다.</translation>

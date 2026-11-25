@@ -6,6 +6,7 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 
 #include "base/functional/bind.h"
@@ -13,6 +14,7 @@
 #include "base/strings/string_util.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
 #include "chrome/browser/signin/account_reconcilor_factory.h"
@@ -20,10 +22,12 @@
 #include "chrome/browser/signin/chrome_signin_client_test_util.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/signin/core/browser/account_reconcilor.h"
 #include "components/signin/public/base/list_accounts_test_utils.h"
 #include "components/signin/public/base/signin_metrics.h"
+#include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/accounts_in_cookie_jar_info.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
@@ -40,6 +44,7 @@
 #include "services/network/test/test_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "url/gurl.h"
 
 namespace {
 
@@ -57,6 +62,25 @@ constexpr char kMultiloginSuccessResponse[] =
          ]
        }
 )";
+
+// Transient error, retried by OAuthMultiloginHelper before giving up.
+constexpr char kMultiloginRetryResponse[] =
+    R"()]}'
+       {
+         "status": "RETRY"
+       }
+)";
+
+// Persistent error.
+constexpr char kMultiloginInvalidInputResponse[] =
+    R"()]}'
+       {
+         "status": "INVALID_INPUT"
+       }
+)";
+
+using NewProfileOAuthMultiLoginResult =
+    DiceInterceptedSessionStartupHelper::NewProfileOAuthMultiLoginResult;
 
 }  // namespace
 
@@ -93,20 +117,15 @@ class DiceInterceptedSessionStartupHelperTest : public testing::Test {
             ->GetCheckConnectionInfoURLWithSource("ChromiumBrowser")
             .spec(),
         "[]");
-    test_url_loader_factory_.AddResponse(
-        GaiaUrls::GetInstance()->oauth_multilogin_url().spec(),
-        kMultiloginSuccessResponse);
-    test_url_loader_factory_.AddResponse(
-        base::StrCat({GaiaUrls::GetInstance()->oauth_multilogin_url().spec(),
-                      "?source=ChromiumBrowser"}),
-        kMultiloginSuccessResponse);
 
     test_url_loader_factory_.SetInterceptor(base::BindLambdaForTesting(
         [&](const network::ResourceRequest& request) {
           if (request.url.path() == "/oauth/multilogin") {
             last_multilogin_request_ = request;
-            test_url_loader_factory_.AddResponse(request.url.spec(),
-                                                 kMultiloginSuccessResponse);
+            if (multilogin_response_) {
+              test_url_loader_factory_.AddResponse(request.url.spec(),
+                                                   *multilogin_response_);
+            }
           } else if (request.url.path() == "/GetCheckConnectionInfo") {
             test_url_loader_factory_.AddResponse(request.url.spec(), "[]");
           }
@@ -130,7 +149,14 @@ class DiceInterceptedSessionStartupHelperTest : public testing::Test {
     return &test_url_loader_factory_;
   }
 
+  content::BrowserTaskEnvironment* task_environment() {
+    return &task_environment_;
+  }
+
  protected:
+  // Response to multilogin requests. If unset, multilogin requests are left
+  // pending.
+  std::optional<std::string> multilogin_response_ = kMultiloginSuccessResponse;
   std::optional<network::ResourceRequest> last_multilogin_request_;
 
  private:
@@ -143,7 +169,7 @@ class DiceInterceptedSessionStartupHelperTest : public testing::Test {
 };
 
 TEST_F(DiceInterceptedSessionStartupHelperTest,
-       NewProfile_SingleAccount_MultiloginSuccess_NoLatencyRecorded) {
+       NewProfile_SingleAccount_MultiloginSuccess_NoMetricsRecorded) {
   base::HistogramTester histogram_tester;
 
   AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
@@ -170,6 +196,8 @@ TEST_F(DiceInterceptedSessionStartupHelperTest,
 
   histogram_tester.ExpectTotalCount(
       kDiceLinkedAccountsLatencyNewProfileOAuthMultiLogin, 0);
+  histogram_tester.ExpectTotalCount(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, 0);
 }
 
 TEST_F(DiceInterceptedSessionStartupHelperTest,
@@ -233,7 +261,158 @@ TEST_F(DiceInterceptedSessionStartupHelperTest,
 }
 
 TEST_F(DiceInterceptedSessionStartupHelperTest,
-       ExistingProfile_StartupReconcilor_NoLatencyRecorded) {
+       NewProfile_MultiAccount_MultiloginSuccess_ResultRecorded) {
+  base::HistogramTester histogram_tester;
+
+  AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
+      "alice@example.com", signin::ConsentLevel::kSignin);
+  identity_test_env()->MakeAccountAvailable("bob@example.com");
+
+  base::test::TestFuture<void> future;
+
+  auto helper = std::make_unique<DiceInterceptedSessionStartupHelper>(
+      profile(), /*is_new_profile=*/true, initiator_info.GetAccountId(),
+      /*tab_to_move=*/nullptr);
+
+  helper->Startup(future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+
+  histogram_tester.ExpectUniqueSample(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult,
+      NewProfileOAuthMultiLoginResult::kSuccess, 1);
+  histogram_tester.ExpectUniqueSample(
+      base::StrCat(
+          {kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, ".2Accounts"}),
+      NewProfileOAuthMultiLoginResult::kSuccess, 1);
+}
+
+TEST_F(DiceInterceptedSessionStartupHelperTest,
+       NewProfile_MultiAccount_MultiloginTransientError_ResultRecorded) {
+  base::HistogramTester histogram_tester;
+  multilogin_response_ = kMultiloginRetryResponse;
+
+  AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
+      "alice@example.com", signin::ConsentLevel::kSignin);
+  identity_test_env()->MakeAccountAvailable("bob@example.com");
+
+  base::test::TestFuture<void> future;
+
+  auto helper = std::make_unique<DiceInterceptedSessionStartupHelper>(
+      profile(), /*is_new_profile=*/true, initiator_info.GetAccountId(),
+      /*tab_to_move=*/nullptr);
+
+  helper->Startup(future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+
+  histogram_tester.ExpectUniqueSample(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult,
+      NewProfileOAuthMultiLoginResult::kTransientError, 1);
+  histogram_tester.ExpectUniqueSample(
+      base::StrCat(
+          {kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, ".2Accounts"}),
+      NewProfileOAuthMultiLoginResult::kTransientError, 1);
+}
+
+TEST_F(DiceInterceptedSessionStartupHelperTest,
+       NewProfile_MultiAccount_MultiloginPersistentError_ResultRecorded) {
+  base::HistogramTester histogram_tester;
+  multilogin_response_ = kMultiloginInvalidInputResponse;
+
+  AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
+      "alice@example.com", signin::ConsentLevel::kSignin);
+  identity_test_env()->MakeAccountAvailable("bob@example.com");
+
+  base::test::TestFuture<void> future;
+
+  auto helper = std::make_unique<DiceInterceptedSessionStartupHelper>(
+      profile(), /*is_new_profile=*/true, initiator_info.GetAccountId(),
+      /*tab_to_move=*/nullptr);
+
+  helper->Startup(future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+
+  histogram_tester.ExpectUniqueSample(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult,
+      NewProfileOAuthMultiLoginResult::kPersistentError, 1);
+  histogram_tester.ExpectUniqueSample(
+      base::StrCat(
+          {kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, ".2Accounts"}),
+      NewProfileOAuthMultiLoginResult::kPersistentError, 1);
+}
+
+TEST_F(DiceInterceptedSessionStartupHelperTest,
+       NewProfile_MultiAccount_MultiloginTimeout_TimedOutRecorded) {
+  base::HistogramTester histogram_tester;
+  // Leave the multilogin request pending.
+  multilogin_response_.reset();
+
+  AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
+      "alice@example.com", signin::ConsentLevel::kSignin);
+  identity_test_env()->MakeAccountAvailable("bob@example.com");
+  identity_test_env()->MakeAccountAvailable("charlie@example.com");
+  identity_test_env()->MakeAccountAvailable("dave@example.com");
+
+  auto helper = std::make_unique<DiceInterceptedSessionStartupHelper>(
+      profile(), /*is_new_profile=*/true, initiator_info.GetAccountId(),
+      /*tab_to_move=*/nullptr);
+
+  // Like `DiceWebSigninInterceptor`, delete the helper once the tab has moved.
+  helper->Startup(base::BindLambdaForTesting([&helper]() { helper.reset(); }));
+
+  // Let the multilogin request start, without reaching the timeout.
+  task_environment()->FastForwardBy(base::Seconds(1));
+  ASSERT_TRUE(last_multilogin_request_.has_value());
+  ASSERT_TRUE(helper);
+  histogram_tester.ExpectTotalCount(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, 0);
+
+  // The timeout moves the tab without waiting for multilogin.
+  task_environment()->FastForwardBy(base::Seconds(12));
+  EXPECT_FALSE(helper);
+  histogram_tester.ExpectUniqueSample(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult,
+      NewProfileOAuthMultiLoginResult::kTimedOut, 1);
+  histogram_tester.ExpectUniqueSample(
+      base::StrCat({kDiceLinkedAccountsNewProfileOAuthMultiLoginResult,
+                    ".4PlusAccounts"}),
+      NewProfileOAuthMultiLoginResult::kTimedOut, 1);
+
+  // A late multilogin completion is not recorded.
+  EXPECT_TRUE(test_url_loader_factory()->SimulateResponseForPendingRequest(
+      last_multilogin_request_->url.spec(), kMultiloginSuccessResponse));
+  task_environment()->FastForwardBy(base::Seconds(1));
+  histogram_tester.ExpectUniqueSample(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult,
+      NewProfileOAuthMultiLoginResult::kTimedOut, 1);
+  histogram_tester.ExpectTotalCount(
+      kDiceLinkedAccountsLatencyNewProfileOAuthMultiLogin, 0);
+}
+
+TEST_F(DiceInterceptedSessionStartupHelperTest,
+       NewProfile_SingleAccount_MultiloginTimeout_NoMetricsRecorded) {
+  base::HistogramTester histogram_tester;
+  // Leave the multilogin request pending.
+  multilogin_response_.reset();
+
+  AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
+      "alice@example.com", signin::ConsentLevel::kSignin);
+
+  base::test::TestFuture<void> future;
+
+  auto helper = std::make_unique<DiceInterceptedSessionStartupHelper>(
+      profile(), /*is_new_profile=*/true, initiator_info.GetAccountId(),
+      /*tab_to_move=*/nullptr);
+
+  helper->Startup(future.GetCallback());
+  task_environment()->FastForwardBy(base::Seconds(12));
+  EXPECT_TRUE(future.IsReady());
+
+  histogram_tester.ExpectTotalCount(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, 0);
+}
+
+TEST_F(DiceInterceptedSessionStartupHelperTest,
+       ExistingProfile_StartupReconcilor_NoMetricsRecorded) {
   base::HistogramTester histogram_tester;
 
   AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
@@ -260,4 +439,174 @@ TEST_F(DiceInterceptedSessionStartupHelperTest,
 
   histogram_tester.ExpectTotalCount(
       kDiceLinkedAccountsLatencyNewProfileOAuthMultiLogin, 0);
+  histogram_tester.ExpectTotalCount(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, 0);
+}
+
+TEST_F(DiceInterceptedSessionStartupHelperTest,
+       ExistingProfile_StartupReconcilor_Timeout_NoMetricsRecorded) {
+  base::HistogramTester histogram_tester;
+
+  AccountInfo initiator_info = identity_test_env()->MakePrimaryAccountAvailable(
+      "alice@example.com", signin::ConsentLevel::kSignin);
+  identity_test_env()->MakeAccountAvailable("bob@example.com");
+
+  base::test::TestFuture<void> future;
+
+  auto helper = std::make_unique<DiceInterceptedSessionStartupHelper>(
+      profile(), /*is_new_profile=*/false, initiator_info.GetAccountId(),
+      /*tab_to_move=*/nullptr);
+
+  // The account never shows up in the cookies, so the tab is moved when the
+  // timeout fires.
+  helper->Startup(future.GetCallback());
+  task_environment()->FastForwardBy(base::Seconds(12));
+  EXPECT_TRUE(future.IsReady());
+
+  histogram_tester.ExpectTotalCount(
+      kDiceLinkedAccountsNewProfileOAuthMultiLoginResult, 0);
+}
+
+struct DestinationURLTestCase {
+  const char* test_name;
+  const char* intercepted_url;
+  const char* expected_url;
+};
+
+class DiceInterceptedSessionStartupHelperUrlTest
+    : public testing::TestWithParam<DestinationURLTestCase> {};
+
+TEST_P(DiceInterceptedSessionStartupHelperUrlTest, GetDestinationURL) {
+  const DestinationURLTestCase& test_case = GetParam();
+  GURL intercepted_url(test_case.intercepted_url);
+  GURL expected_url = (test_case.expected_url == nullptr)
+                          ? chrome::ChromeUINewTabURLAsGURL()
+                          : GURL(test_case.expected_url);
+
+  EXPECT_EQ(
+      DiceInterceptedSessionStartupHelper::GetDestinationURLForInterceptedTab(
+          intercepted_url),
+      expected_url);
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    DiceInterceptedSessionStartupHelperUrlTest,
+    testing::Values(
+        DestinationURLTestCase{
+            .test_name = "GoogleDomainContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Fmail.google.com%2Fmail",
+            .expected_url = "https://mail.google.com/mail"},
+        DestinationURLTestCase{
+            .test_name = "YoutubeDomainContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Fwww.youtube.com%2Fwatch%3Fv%"
+                "3D123",
+            .expected_url = "https://www.youtube.com/watch?v=123"},
+        DestinationURLTestCase{
+            .test_name = "UntrustedExternalContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Fevil.example.com",
+            .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "GoogleUserContentContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Fstorage.googleusercontent."
+                "com%2Ffile",
+            .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "NonStandardPortContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Fmail.google.com%3A8443%"
+                "2Fmail",
+            .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "HttpContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=http%3A%2F%2Fmail.google.com%2Fmail",
+            .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "CredentialsInContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Fuser%3Apass%40mail.google."
+                "com%2F",
+            .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "GaiaContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Faccounts.google.com%"
+                "2FServiceLogin",
+            .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "GaiaWithoutContinue",
+            .intercepted_url = "https://accounts.google.com/AddSession",
+            .expected_url = nullptr},
+        DestinationURLTestCase{.test_name = "NonGaiaHttpUrl",
+                               .intercepted_url = "https://example.com/page",
+                               .expected_url = "https://example.com/page"},
+        DestinationURLTestCase{
+            .test_name = "AccountsGoogleCountryDomainUrl",
+            .intercepted_url = "https://accounts.google.de/page",
+            .expected_url = "https://accounts.google.de/page"},
+        DestinationURLTestCase{
+            .test_name = "AccountsYoutubeContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Faccounts.youtube.com%2F",
+            .expected_url = "https://accounts.youtube.com/"},
+        DestinationURLTestCase{
+            .test_name = "AccountsGoogleCountryDomainContinue",
+            .intercepted_url =
+                "https://accounts.google.com/"
+                "AddSession?continue=https%3A%2F%2Faccounts.google.de%2F",
+            .expected_url = "https://accounts.google.de/"},
+        DestinationURLTestCase{.test_name = "NonGaiaNonHttpUrl",
+                               .intercepted_url = "chrome://settings/",
+                               .expected_url = nullptr},
+        DestinationURLTestCase{
+            .test_name = "ChromeUrlWithContinue",
+            .intercepted_url =
+                "chrome://something?continue=https://accounts.youtube.com/",
+            .expected_url = nullptr},
+        DestinationURLTestCase{.test_name = "EmptyUrl",
+                               .intercepted_url = "",
+                               .expected_url = nullptr},
+        DestinationURLTestCase{.test_name = "InvalidUrl",
+                               .intercepted_url = "http://?",
+                               .expected_url = nullptr}),
+    [](const testing::TestParamInfo<
+        DiceInterceptedSessionStartupHelperUrlTest::ParamType>& info) {
+      return info.param.test_name;
+    });
+
+TEST(DiceInterceptedSessionStartupHelperUrlTest, FeatureDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(switches::kDiceInterceptSanitizeGaiaUrl);
+
+  GURL gaia_url(
+      "https://accounts.google.com/"
+      "AddSession?continue=https%3A%2F%2Fmail.google.com%2Fmail");
+  EXPECT_EQ(
+      DiceInterceptedSessionStartupHelper::GetDestinationURLForInterceptedTab(
+          gaia_url),
+      gaia_url);
+
+  // Empty or invalid URLs still return NTP even when the feature is disabled.
+  EXPECT_EQ(
+      DiceInterceptedSessionStartupHelper::GetDestinationURLForInterceptedTab(
+          GURL()),
+      chrome::ChromeUINewTabURLAsGURL());
+  EXPECT_EQ(
+      DiceInterceptedSessionStartupHelper::GetDestinationURLForInterceptedTab(
+          GURL("http://?")),
+      chrome::ChromeUINewTabURLAsGURL());
 }

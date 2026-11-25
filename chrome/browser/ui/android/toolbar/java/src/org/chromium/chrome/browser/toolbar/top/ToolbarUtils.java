@@ -8,7 +8,6 @@ import android.animation.ObjectAnimator;
 import androidx.annotation.IntDef;
 
 import org.chromium.build.annotations.NullMarked;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.toolbar.R;
 import org.chromium.ui.interpolators.Interpolators;
 
@@ -25,10 +24,6 @@ public class ToolbarUtils {
         return isIncognito
                 ? R.drawable.default_icon_background_baseline
                 : R.drawable.default_icon_background;
-    }
-
-    public static boolean isToolbarTabletResizeRefactorEnabled() {
-        return ChromeFeatureList.sToolbarTabletResizeRefactor.isEnabled();
     }
 
     public static final @ToolbarComponentId int[] RANKED_TOOLBAR_COMPONENTS =
@@ -52,6 +47,7 @@ public class ToolbarUtils {
                 ToolbarComponentId.GLIC_ICON,
                 ToolbarComponentId.GLIC_TEXT,
                 ToolbarComponentId.AI_OVERLAY_MICROPHONE_BUTTON,
+                ToolbarComponentId.TTC_BUTTON,
                 ToolbarComponentId.OMNIBOX_BOOKMARK,
                 ToolbarComponentId.OMNIBOX_CHIP_COLLAPSED,
                 ToolbarComponentId.OMNIBOX_ZOOM,
@@ -99,6 +95,7 @@ public class ToolbarUtils {
         ToolbarComponentId.SIGNIN_BUTTON,
         ToolbarComponentId.DOWNLOAD_BUTTON,
         ToolbarComponentId.AI_OVERLAY_MICROPHONE_BUTTON,
+        ToolbarComponentId.TTC_BUTTON,
         ToolbarComponentId.COUNT
     })
     @Retention(RetentionPolicy.SOURCE)
@@ -129,7 +126,8 @@ public class ToolbarUtils {
         int GLIC_TEXT = 23;
         int AI_OVERLAY_MICROPHONE_BUTTON = 24;
         int DOWNLOAD_BUTTON = 25;
-        int COUNT = 26;
+        int TTC_BUTTON = 26;
+        int COUNT = 27;
     }
 
     // LINT.ThenChange(//chrome/browser/ui/android/toolbar/java/res/layout/toolbar_tablet.xml:toolbar_tablet_components|//chrome/browser/ui/android/omnibox/java/res/layout/url_action_container.xml:toolbar_tablet_components)

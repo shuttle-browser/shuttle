@@ -32,10 +32,10 @@ public interface Tracker {
     }
 
     /**
-     * Sets a supplier that provides whether promotions are enabled (e.g. via the PromotionsEnabled
-     * enterprise policy).
+     * Sets a supplier that provides whether the PromotionsEnabled enterprise policy currently
+     * blocks promotions. Defaults to never blocking.
      */
-    default void setPromotionsEnabledSupplier(BooleanSupplier supplier) {}
+    default void setEnterprisePolicyBlocksPromotionsSupplier(BooleanSupplier supplier) {}
 
     /**
      * Sets a supplier that provides whether legacy {@link #shouldTriggerHelpUi(String)} callers
@@ -70,8 +70,7 @@ public interface Tracker {
      * enlightenment ends.
      *
      * @param feature The name of the feature requesting in-product help.
-     * @param featureProperties The {@link FeatureProperties} for cooldown and enterprise policy
-     *     evaluation.
+     * @param featureProperties The {@link FeatureProperties} for cooldown group evaluation.
      * @return Whether feature enlightenment should be displayed.
      */
     @CheckResult
@@ -98,8 +97,7 @@ public interface Tracker {
      * #shouldTriggerHelpUi(String, FeatureProperties)} method.
      *
      * @param feature The name of the feature requesting in-product help.
-     * @param featureProperties The {@link FeatureProperties} for cooldown and enterprise policy
-     *     evaluation.
+     * @param featureProperties The {@link FeatureProperties} for cooldown group evaluation.
      * @return Whether feature enlightenment should be displayed and whether snooze button should be
      *     shown.
      */

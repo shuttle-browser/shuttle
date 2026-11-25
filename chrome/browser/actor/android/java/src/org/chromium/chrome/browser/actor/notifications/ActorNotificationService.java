@@ -31,6 +31,7 @@ import org.chromium.components.browser_ui.notifications.BaseNotificationManagerP
 import org.chromium.components.browser_ui.notifications.NotificationMetadata;
 import org.chromium.components.browser_ui.notifications.NotificationWrapper;
 
+import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
@@ -62,9 +63,13 @@ public class ActorNotificationService {
     private final Map<Integer, NotificationWrapper> mNotificationCache = new HashMap<>();
     private final Map<Integer, Integer> mTaskStates = new HashMap<>();
     private final Map<Integer, Long> mLastWorklogUpdateTimes = new HashMap<>();
+    private final Set<Integer> mTasksWithWorkingNotificationShown = new HashSet<>();
     // Insertion-ordered so that the oldest pending demotion is promoted first.
     private final Map<Integer, Runnable> mDemoteRunnables = new LinkedHashMap<>();
     private final Set<Integer> mUnpinnedTagTaskIds = new HashSet<>();
+    private final Set<Integer> mWarningTaskIds = new HashSet<>();
+    // Ordered by the most recent notification category change. The last task is the live one.
+    private final ArrayDeque<Integer> mLiveOrderTaskIds = new ArrayDeque<>();
     private final Handler mHandler = new Handler(Looper.getMainLooper());
     private final BaseNotificationManagerProxy mNotificationManager;
     private final ActorKeyedService mKeyedService;
@@ -104,6 +109,11 @@ public class ActorNotificationService {
         ActorTask task = getTask(taskId);
         Integer state = mTaskStates.get(taskId);
         if (!mNotificationCache.containsKey(taskId) || task == null || state == null) return;
+        if (isWarning) {
+            mWarningTaskIds.add(taskId);
+        } else {
+            mWarningTaskIds.remove(taskId);
+        }
         // The cached notification may be loud, and the repost under the unpinned tag is a new
         // notification to Android, so it is rebuilt silently.
         notifyTaskNotification(
@@ -112,7 +122,7 @@ public class ActorNotificationService {
                         state,
                         /* isSilent= */ true,
                         isWarning,
-                        /* isLive= */ !ActorUtils.isCompletedState(state)));
+                        /* isLive= */ taskId == getLiveTaskId()));
     }
 
     /**
@@ -140,12 +150,13 @@ public class ActorNotificationService {
     }
 
     /**
-     * Demotes a task's live notification ahead of its scheduled demotion. Used when the
-     * notification is no longer pinned to the foreground service and therefore cannot stay live.
+     * Demotes a task's live notification ahead of its scheduled demotion when another task becomes
+     * live.
      *
      * @param taskId The ID of the task to demote.
      */
-    public void demoteNow(int taskId) {
+    @VisibleForTesting
+    void demoteNow(int taskId) {
         Runnable runnable = mDemoteRunnables.get(taskId);
         if (runnable == null) return;
         mHandler.removeCallbacks(runnable);
@@ -183,9 +194,19 @@ public class ActorNotificationService {
         if (!ActorUtils.isRunningState(newState)) {
             mLastWorklogUpdateTimes.remove(taskId);
         }
+        Integer oldState = mTaskStates.get(taskId);
+        if (ActorUtils.isLiveNotificationEnabled()
+                && getTask(taskId) != null
+                && (oldState == null
+                        || ActorNotificationFactory.shouldUpdateNotification(oldState, newState))) {
+            makeLive(taskId);
+        }
         NotificationWrapper old = mNotificationCache.get(taskId);
         NotificationWrapper current =
                 getOrBuildNotificationWrapper(taskId, newState, isSilent, isWarning);
+        if (ActorUtils.isCompletedState(newState)) {
+            mTasksWithWorkingNotificationShown.remove(taskId);
+        }
         if (current == null) {
             cancelTaskNotifications(mNotificationManager, taskId);
             clearTaskData(taskId);
@@ -196,9 +217,58 @@ public class ActorNotificationService {
             notifyTaskNotification(current);
         }
 
-        if (ActorUtils.isOngoingNotification(ActorUtils.isCompletedState(newState))) {
+        if (getLiveTaskId() == taskId && ActorUtils.isCompletedState(newState)) {
             scheduleDemotion(taskId);
         }
+    }
+
+    private int getLiveTaskId() {
+        Integer liveTaskId = mLiveOrderTaskIds.peekLast();
+        return liveTaskId != null ? liveTaskId : INVALID_TASK_ID;
+    }
+
+    // The previous live task is reposted as non-live before the caller posts this task's live
+    // notification, so that two notifications are never promoted at the same time.
+    private void makeLive(int taskId) {
+        int previousLiveTaskId = getLiveTaskId();
+        mLiveOrderTaskIds.remove(taskId);
+        mLiveOrderTaskIds.add(taskId);
+        if (previousLiveTaskId == INVALID_TASK_ID || previousLiveTaskId == taskId) return;
+        if (mDemoteRunnables.containsKey(previousLiveTaskId)) {
+            demoteNow(previousLiveTaskId);
+            return;
+        }
+        ActorTask task = getTask(previousLiveTaskId);
+        Integer state = mTaskStates.get(previousLiveTaskId);
+        if (task == null || state == null || ActorUtils.isCompletedState(state)) return;
+        NotificationWrapper nonLiveWrapper =
+                ActorNotificationFactory.buildNotification(
+                        task,
+                        state,
+                        /* isSilent= */ true,
+                        /* isWarning= */ mWarningTaskIds.contains(previousLiveTaskId),
+                        /* isLive= */ false);
+        mNotificationCache.put(previousLiveTaskId, nonLiveWrapper);
+        notifyTaskNotification(nonLiveWrapper);
+    }
+
+    private void removeFromLiveOrder(int taskId) {
+        boolean wasLive = getLiveTaskId() == taskId;
+        mLiveOrderTaskIds.remove(taskId);
+        int liveTaskId = getLiveTaskId();
+        if (!wasLive || liveTaskId == INVALID_TASK_ID) return;
+        ActorTask task = getTask(liveTaskId);
+        Integer state = mTaskStates.get(liveTaskId);
+        if (!mNotificationCache.containsKey(liveTaskId) || task == null || state == null) return;
+        NotificationWrapper liveWrapper =
+                ActorNotificationFactory.buildNotification(
+                        task,
+                        state,
+                        /* isSilent= */ true,
+                        /* isWarning= */ mWarningTaskIds.contains(liveTaskId),
+                        /* isLive= */ true);
+        mNotificationCache.put(liveTaskId, liveWrapper);
+        notifyTaskNotification(liveWrapper);
     }
 
     private void scheduleDemotion(int taskId) {
@@ -226,6 +296,7 @@ public class ActorNotificationService {
         ActorTask task = getTask(taskId);
         Integer state = mTaskStates.get(taskId);
         if (task == null || state == null || !ActorUtils.isCompletedState(state)) {
+            removeFromLiveOrder(taskId);
             return;
         }
 
@@ -245,10 +316,11 @@ public class ActorNotificationService {
                         task,
                         state,
                         /* isSilent= */ true,
-                        /* isWarning= */ false,
+                        /* isWarning= */ mWarningTaskIds.contains(taskId),
                         /* isLive= */ false);
         mNotificationCache.put(taskId, nonLiveWrapper);
         notifyTaskNotification(nonLiveWrapper);
+        removeFromLiveOrder(taskId);
     }
 
     /**
@@ -271,7 +343,11 @@ public class ActorNotificationService {
         }
         NotificationWrapper current =
                 ActorNotificationFactory.buildNotification(
-                        task, state, /* isSilent= */ true, /* isWarning= */ false);
+                        task,
+                        state,
+                        /* isSilent= */ true,
+                        /* isWarning= */ false,
+                        /* isLive= */ taskId == getLiveTaskId());
         mNotificationCache.put(taskId, current);
         notifyTaskNotification(current);
 
@@ -294,11 +370,23 @@ public class ActorNotificationService {
         if (task == null || !ActorUtils.isRunningState(task.getState())) {
             return;
         }
+        @ActorTaskState int state = task.getState();
+        if (shouldForceSilent(task, state, /* isWarning= */ false)) {
+            return;
+        }
+        if (isExperimentalTriggeringSilenceEnabled(task)
+                && isWorkingNotification(state, /* isWarning= */ false)) {
+            mTasksWithWorkingNotificationShown.add(taskId);
+        }
         NotificationWrapper loudNotification =
                 ActorNotificationFactory.buildNotification(
-                        task, task.getState(), /* isSilent= */ false, /* isWarning= */ false);
+                        task,
+                        state,
+                        /* isSilent= */ false,
+                        /* isWarning= */ false,
+                        /* isLive= */ taskId == getLiveTaskId());
         mNotificationCache.put(taskId, loudNotification);
-        mTaskStates.put(taskId, task.getState());
+        mTaskStates.put(taskId, state);
         notifyTaskNotification(loudNotification);
     }
 
@@ -380,21 +468,54 @@ public class ActorNotificationService {
         @ActorTaskState int state = newState != null ? newState : getEffectiveState(taskId, task);
         Integer oldState = mTaskStates.get(taskId);
         NotificationWrapper cachedNotification = mNotificationCache.get(taskId);
+        boolean wasWarning = mWarningTaskIds.contains(taskId);
+        if (isWarning) {
+            mWarningTaskIds.add(taskId);
+        } else {
+            mWarningTaskIds.remove(taskId);
+        }
 
         boolean shouldUpdate =
                 (cachedNotification == null)
-                        || isWarning
+                        || (isWarning != wasWarning)
                         || (oldState == null)
                         || ActorNotificationFactory.shouldUpdateNotification(oldState, state);
 
         if (shouldUpdate) {
+            boolean effectiveIsSilent = isSilent || shouldForceSilent(task, state, isWarning);
+            if (!effectiveIsSilent
+                    && isExperimentalTriggeringSilenceEnabled(task)
+                    && isWorkingNotification(state, isWarning)) {
+                mTasksWithWorkingNotificationShown.add(taskId);
+            }
             cachedNotification =
-                    ActorNotificationFactory.buildNotification(task, state, isSilent, isWarning);
+                    ActorNotificationFactory.buildNotification(
+                            task, state, effectiveIsSilent, isWarning, taskId == getLiveTaskId());
             mNotificationCache.put(taskId, cachedNotification);
         }
 
         mTaskStates.put(taskId, state);
         return cachedNotification;
+    }
+
+    private static boolean isExperimentalTriggeringSilenceEnabled(ActorTask task) {
+        return ChromeFeatureList.sActorSilenceNotificationsAfterFirstWorking.isEnabled()
+                && task.isExperimentalTriggering();
+    }
+
+    private static boolean isWorkingNotification(@ActorTaskState int state, boolean isWarning) {
+        return !isWarning && (state == ActorTaskState.ACTING || state == ActorTaskState.REFLECTING);
+    }
+
+    private boolean shouldForceSilent(
+            ActorTask task, @ActorTaskState int state, boolean isWarning) {
+        if (!isExperimentalTriggeringSilenceEnabled(task)) {
+            return false;
+        }
+        // Only the first non-warning working notification may alert; all other states and
+        // subsequent working updates are forced silent.
+        return !isWorkingNotification(state, isWarning)
+                || mTasksWithWorkingNotificationShown.contains(task.getId());
     }
 
     private void notifyTaskNotification(NotificationWrapper wrapper) {
@@ -433,18 +554,24 @@ public class ActorNotificationService {
         }
         mDemoteRunnables.clear();
         mUnpinnedTagTaskIds.clear();
+        mWarningTaskIds.clear();
+        mLiveOrderTaskIds.clear();
         mNotificationCache.clear();
         mTaskStates.clear();
         mLastWorklogUpdateTimes.clear();
+        mTasksWithWorkingNotificationShown.clear();
         mTaskCache.clear();
     }
 
     public void clearTaskData(int taskId) {
         cancelDemoteRunnable(taskId);
         mUnpinnedTagTaskIds.remove(taskId);
+        mWarningTaskIds.remove(taskId);
+        removeFromLiveOrder(taskId);
         mNotificationCache.remove(taskId);
         mTaskStates.remove(taskId);
         mLastWorklogUpdateTimes.remove(taskId);
+        mTasksWithWorkingNotificationShown.remove(taskId);
         mTaskCache.remove(taskId);
     }
 

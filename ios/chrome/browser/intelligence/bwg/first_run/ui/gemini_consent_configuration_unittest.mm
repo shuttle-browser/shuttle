@@ -92,6 +92,7 @@ TEST_F(GeminiConsentConfigurationTest, StandardNonManagedAccountRows) {
       IDS_IOS_GEMINI_CONSENT_DATA_GORVERNANCE_NON_MANAGED_BODY));
   EXPECT_NSEQ(parsedText2.string, row2.body.string);
   EXPECT_TRUE(HasLinkWithAction(row2.body, kGeminiActivityLinkAction));
+  EXPECT_TRUE(HasLinkWithAction(row2.body, kGeminiLocationInfoLinkAction));
   EXPECT_TRUE(HasLinkWithAction(row2.body, kGeminiChoicesLinkAction));
 }
 
@@ -152,11 +153,14 @@ TEST_F(GeminiConsentConfigurationTest, StrictConsentFootnote) {
   GeminiConsentConfiguration* config =
       BuildStandardConfiguration(NO, YES, kUSCountryCode);
   EXPECT_TRUE(HasLinkWithAction(config.footnote, kGeminiWatchLinkAction));
+  EXPECT_TRUE(HasLinkWithAction(config.footnote, kGeminiActivityLinkAction));
+  EXPECT_TRUE(
+      HasLinkWithAction(config.footnote, kGeminiLocationInfoLinkAction));
+  EXPECT_TRUE(HasLinkWithAction(config.footnote, kGeminiChoicesLinkAction));
   EXPECT_TRUE(
       HasLinkWithAction(config.footnote, kGeminiFirstFootnoteLinkAction));
   EXPECT_TRUE(
       HasLinkWithAction(config.footnote, kGeminiSecondFootnoteLinkAction));
-  EXPECT_TRUE(HasLinkWithAction(config.footnote, kGeminiChoicesLinkAction));
   StringWithTags parsedStrictUS = ParseStringWithLinks(
       l10n_util::GetNSString(IDS_IOS_GEMINI_CONSENT_FOOTNOTE_TEXT_STRICT));
   EXPECT_TRUE([config.footnote.string containsString:parsedStrictUS.string]);
@@ -172,6 +176,8 @@ TEST_F(GeminiConsentConfigurationTest, StrictConsentFootnote) {
   EXPECT_TRUE(
       HasLinkWithAction(kr_config.footnote, kGeminiSecondFootnoteLinkAction));
   EXPECT_TRUE(HasLinkWithAction(kr_config.footnote, kGeminiActivityLinkAction));
+  EXPECT_TRUE(
+      HasLinkWithAction(kr_config.footnote, kGeminiLocationInfoLinkAction));
   EXPECT_TRUE(HasLinkWithAction(kr_config.footnote, kGeminiChoicesLinkAction));
   StringWithTags parsedStrictKR = ParseStringWithLinks(l10n_util::GetNSString(
       IDS_IOS_GEMINI_CONSENT_FOOTNOTE_TEXT_SOUTH_KOREA_STRICT));
@@ -268,23 +274,31 @@ TEST_F(GeminiConsentConfigurationTest, StrictConsentLayout) {
       containsString:
           l10n_util::GetNSString(
               IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_SUBTITLE_1)]);
-  EXPECT_TRUE([row3.body.string
-      containsString:
-          l10n_util::GetNSString(
-              IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_1)]);
-  EXPECT_TRUE([row3.body.string
-      containsString:
-          l10n_util::GetNSString(
-              IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_SUBTITLE_2)]);
+  StringWithTags parsedStrictBody1 =
+      ParseStringWithLinks(l10n_util::GetNSString(
+          IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_1));
+  EXPECT_TRUE([row3.body.string containsString:parsedStrictBody1.string]);
+  EXPECT_TRUE(HasLinkWithAction(row3.body, kGeminiUploadsLinkAction));
+  EXPECT_TRUE(HasLinkWithAction(row3.body, kGeminiScreensLinkAction));
   StringWithTags parsedStrictBody2 =
       ParseStringWithLinks(l10n_util::GetNSString(
           IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_2));
   EXPECT_TRUE([row3.body.string containsString:parsedStrictBody2.string]);
+  EXPECT_TRUE(HasLinkWithAction(row3.body, kGeminiPauseActivityLinkAction));
+  EXPECT_TRUE([row3.body.string
+      containsString:
+          l10n_util::GetNSString(
+              IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_SUBTITLE_2)]);
   EXPECT_TRUE([row3.body.string
       containsString:
           l10n_util::GetNSString(
               IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_3)]);
-  EXPECT_TRUE(HasLinkWithAction(row3.body, kGeminiActivityLinkAction));
+  StringWithTags parsedStrictBody4 =
+      ParseStringWithLinks(l10n_util::GetNSString(
+          IDS_IOS_GEMINI_CONSENT_STRICT_DATA_GOVERNANCE_BODY_4));
+  EXPECT_TRUE([row3.body.string containsString:parsedStrictBody4.string]);
+  EXPECT_TRUE(HasLinkWithAction(row3.body, kGeminiImproveSettingLinkAction));
+  EXPECT_TRUE(HasLinkWithAction(row3.body, kGeminiTrainingSettingLinkAction));
 }
 
 TEST_F(GeminiConsentConfigurationTest,

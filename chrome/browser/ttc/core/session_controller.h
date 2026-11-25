@@ -34,10 +34,18 @@ class SessionController {
     virtual void OnModelInterrupted() {}
     virtual void OnError(ErrorCode error) {}
     virtual void OnToolExecutionCompleted(const std::string& tool_name,
+                                          const base::DictValue& arguments,
                                           bool success) {}
     virtual void OnInputTranscription(const std::string& text) {}
     virtual void OnOutputTranscription(const std::string& text) {}
+    virtual void OnTranscriptionsUpdated(const std::string& user_transcript,
+                                         const std::string& model_transcript) {}
     virtual void OnModelAudioEnvelopeReady(const AudioEnvelope& envelope) {}
+    virtual void OnUserAudioLevelUpdate(float audio_level) {}
+    // The user's microphone was muted or unmuted.
+    virtual void OnMicMutedChanged(bool muted) {}
+    // The party currently speaking changed.
+    virtual void OnSpeakerChanged(Speaker speaker) {}
   };
 
   virtual ~SessionController() = default;
@@ -49,9 +57,6 @@ class SessionController {
 
   // Submits a user text query into the active session conversation.
   virtual void SendTextInput(const std::string& text) = 0;
-
-  // Called when the backend is connected and the session is interactive.
-  virtual void OnSessionInitialized() = 0;
 
   // Called when the session encounters an error.
   virtual void OnError(ErrorCode error) = 0;
@@ -87,14 +92,21 @@ class SessionController {
   // changes. `audio_level` is normalized to the [0, 1] range.
   virtual void UserAudioLevelUpdate(float audio_level) = 0;
 
-  // Called by Conversation to notify about model turn lifecycle and
+  // Called by `Conversation` to notify about model turn lifecycle and
   // transcripts.
   virtual void OnModelTurnStarted() = 0;
   virtual void OnModelTurnComplete() = 0;
   virtual void OnModelInterrupted() = 0;
+  // The backend streams each turn's transcription in increments: `text` is the
+  // next piece of the user's (input) or the model's (output) transcription,
+  // not the whole transcription so far.
   virtual void OnInputTranscription(const std::string& text) = 0;
   virtual void OnOutputTranscription(const std::string& text) = 0;
   virtual void OnModelAudioEnvelopeReady(const AudioEnvelope& envelope) = 0;
+
+  // Called by `Conversation` when the party currently speaking in the
+  // conversation changes.
+  virtual void OnSpeakerChanged(Speaker speaker) = 0;
 };
 
 }  // namespace ttc

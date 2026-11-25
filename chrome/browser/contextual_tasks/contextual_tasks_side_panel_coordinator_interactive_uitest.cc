@@ -5,12 +5,14 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_side_panel_coordinator.h"
 
 #include "base/check_deref.h"
+#include "base/command_line.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/metrics/user_action_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/contextual_tasks/active_task_context_provider.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_composebox_handler.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_composebox_handler_interface.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_interactive_test_base.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_location_bar.h"
@@ -18,6 +20,7 @@
 #include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_permission_controller.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_test_user_variation.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
@@ -25,6 +28,7 @@
 #include "chrome/browser/contextual_tasks/entry_point_eligibility_manager.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_commands.h"
@@ -40,6 +44,7 @@
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
+#include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/contextual_tasks_tab_sub_menu_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
@@ -50,6 +55,7 @@
 #include "chrome/browser/ui/views/permissions/chip/webui_permission_chip.h"
 #include "chrome/browser/ui/views/permissions/chip/webui_permission_dashboard.h"
 #include "chrome/browser/ui/views/side_panel/side_panel.h"
+#include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
@@ -68,6 +74,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/session_id.h"
+#include "components/tabs/public/tab_alert.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/navigation_controller.h"
@@ -80,6 +87,7 @@
 #include "net/dns/mock_host_resolver.h"
 #include "ui/actions/actions.h"
 #include "ui/base/interaction/element_test_util.h"
+#include "ui/base/interaction/polling_state_observer.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/dialog_model.h"
 #include "ui/base/mojom/window_open_disposition.mojom.h"
@@ -111,35 +119,24 @@ using testing::Pointee;
 namespace contextual_tasks {
 
 class MockContextualTasksComposeboxHandler
-    : public ContextualTasksComposeboxHandler {
+    : public ContextualTasksComposeboxHandlerInterface {
  public:
-  MockContextualTasksComposeboxHandler(
-      ContextualTasksUI* ui_controller,
-      Profile* profile,
-      content::WebContents* web_contents,
-      mojo::PendingReceiver<composebox::mojom::PageHandler> pending_handler,
-      mojo::PendingReceiver<searchbox::mojom::PageHandler>
-          pending_searchbox_handler,
-      mojo::PendingRemote<searchbox::mojom::Page> pending_searchbox_page,
-      GetSessionHandleCallback get_session_callback,
-      ClearSessionHandleCallback clear_session_callback,
-      TakeInputStateModelCallback get_inputstatemodel_callback)
-      : ContextualTasksComposeboxHandler(
-            ui_controller,
-            profile,
-            web_contents,
-            std::move(pending_handler),
-            std::move(pending_searchbox_handler),
-            std::move(pending_searchbox_page),
-            std::move(get_session_callback),
-            std::move(clear_session_callback),
-            std::move(get_inputstatemodel_callback)) {}
+  MockContextualTasksComposeboxHandler() = default;
   ~MockContextualTasksComposeboxHandler() override = default;
 
+  MOCK_METHOD(void, ResetInputStateModel, (), (override));
   MOCK_METHOD(void,
               UpdateSuggestedTabContext,
               (const contextual_tasks::SuggestedTabInfo* suggested_tab),
               (override));
+  MOCK_METHOD(void, OnTaskChanged, (), (override));
+  MOCK_METHOD(void, InitializeInputStateModel, (), (override));
+  MOCK_METHOD(void, UpdateStateFromUrl, (const GURL&), (override));
+  MOCK_METHOD(void,
+              SetAimThreadRestoredTabs,
+              (std::vector<searchbox::mojom::TabInfoPtr>),
+              (override));
+  MOCK_METHOD(std::vector<int32_t>, GetSelectedTabIds, (), (const, override));
 };
 
 class MockActiveTaskContextProviderObserver
@@ -162,7 +159,9 @@ class ContextualTasksSidePanelCoordinatorInteractiveUiTest
           {{"ContextualTasksEntryPoint", "toolbar-ephemeral-branded"}}}},
         // These tests expect the side panel state to be shared by the tabs in a
         // task.
-        {kContextualTasksSidePanelTabState});
+        {kContextualTasksRearchitecture,
+         kContextualTasksSidePanelRearchitecture,
+         kContextualTasksSidePanelTabState});
   }
   ~ContextualTasksSidePanelCoordinatorInteractiveUiTest() override = default;
 
@@ -340,7 +339,8 @@ class ContextualTasksSidePanelPermissionDashboardInteractiveUiTest
                               kContextualTasksForceEntryPointEligibility,
                               kContextualTasksEphemeralBrandedEntryPoint,
                               kContextualTasksSidePanelRearchitecture},
-        /*disabled_features=*/{kContextualTasksSidePanelTabState});
+        /*disabled_features=*/{kContextualTasksRearchitecture,
+                               kContextualTasksSidePanelTabState});
   }
 };
 
@@ -941,62 +941,43 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksSidePanelCoordinatorInteractiveUiTest,
       }));
 }
 
-// TODO(crbug.com/577969962): Flaky / timing out across multiple platforms.
+// This tests the following CUJ:
+//  (1) User navigates the active tab (associated with Task 1) to a valid web
+//      URL and opens the Contextual Tasks side panel.
+//  (2) The active tab context suggestion is populated in the side panel
+//      composebox for the active tab's URL.
+//  (3) User switches to another tab associated with Task 1 that is on an
+//      ineligible URL (chrome://settings), clearing the active tab context
+//      suggestion.
 IN_PROC_BROWSER_TEST_F(ContextualTasksSidePanelCoordinatorInteractiveUiTest,
-                       DISABLED_UpdateActiveTabContextStatusOnTabSwitch) {
+                       UpdateActiveTabContextStatusOnTabSwitch) {
   SetUpTasks();
   ContextualTasksSidePanelCoordinator* coordinator = GetCoordinator();
   GURL foo("https://foo.com");
 
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), foo));
-  coordinator->Show(false,
-                    omnibox::ChromeAimEntryPoint::UNKNOWN_AIM_ENTRY_POINT);
-  ContextualTasksUI* ui = GetContextualTasksUI();
-  mojo::PendingRemote<composebox::mojom::PageHandler> composebox_handler_remote;
-  mojo::PendingReceiver<composebox::mojom::PageHandler>
-      composebox_handler_receiver =
-          composebox_handler_remote.InitWithNewPipeAndPassReceiver();
-  mojo::PendingRemote<searchbox::mojom::Page> searchbox_page_remote;
-  mojo::PendingReceiver<searchbox::mojom::Page> searchbox_page_receiver =
-      searchbox_page_remote.InitWithNewPipeAndPassReceiver();
-  mojo::PendingRemote<searchbox::mojom::PageHandler> searchbox_handler_remote;
-  mojo::PendingReceiver<searchbox::mojom::PageHandler>
-      searchbox_handler_receiver =
-          searchbox_handler_remote.InitWithNewPipeAndPassReceiver();
 
-  auto mock_composebox_handler =
-      std::make_unique<testing::NiceMock<MockContextualTasksComposeboxHandler>>(
-          ui, browser()->GetProfile(),
-          TabListInterface::From(browser())->GetTab(0)->GetContents(),
-          std::move(composebox_handler_receiver),
-          std::move(searchbox_handler_receiver),
-          std::move(searchbox_page_remote),
-          base::BindRepeating(
-              &ContextualTasksUI::GetOrCreateContextualSessionHandle,
-              base::Unretained(ui)),
-          base::DoNothing(),
-          base::BindRepeating(&ContextualTasksUI::TakeInputStateModel,
-                              base::Unretained(ui)));
-  MockContextualTasksComposeboxHandler* mock_handler =
-      mock_composebox_handler.get();
-  coordinator->Close();
-  ui->SetComposeboxHandlerForTesting(std::move(mock_composebox_handler));
+  testing::NiceMock<MockContextualTasksComposeboxHandler>
+      mock_composebox_handler;
+  ContextualTasksUI* ui = nullptr;
 
   // Define expectations on the mock handler.
   using SuggestedTabInfo = contextual_tasks::SuggestedTabInfo;
 
-  base::RunLoop initial_run_loop;
-  EXPECT_CALL(*mock_handler, UpdateSuggestedTabContext(
-                                 Pointee(Field(&SuggestedTabInfo::url, foo))))
+  base::RunLoop initial_run_loop(base::RunLoop::Type::kNestableTasksAllowed);
+  EXPECT_CALL(
+      mock_composebox_handler,
+      UpdateSuggestedTabContext(Pointee(Field(&SuggestedTabInfo::url, foo))))
       .WillRepeatedly([&initial_run_loop](const SuggestedTabInfo* tab_info) {
         initial_run_loop.Quit();
       });
 
   bool switched_tabs = false;
-  base::RunLoop tab_switch_run_loop;
-  EXPECT_CALL(*mock_handler, UpdateSuggestedTabContext(testing::IsNull()))
-      .WillRepeatedly([&switched_tabs, &tab_switch_run_loop](
-                          const SuggestedTabInfo* tab_info) {
+  base::RunLoop tab_switch_run_loop(base::RunLoop::Type::kNestableTasksAllowed);
+  EXPECT_CALL(mock_composebox_handler,
+              UpdateSuggestedTabContext(testing::IsNull()))
+      .WillRepeatedly([&switched_tabs,
+                       &tab_switch_run_loop](const SuggestedTabInfo* tab_info) {
         if (switched_tabs) {
           tab_switch_run_loop.Quit();
         }
@@ -1009,8 +990,29 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksSidePanelCoordinatorInteractiveUiTest,
             false, omnibox::ChromeAimEntryPoint::UNKNOWN_AIM_ENTRY_POINT);
       }),
       WaitForShow(kContextualTasksSidePanelWebViewElementId),
-      // Trigger update on open now that panel is showing.
-      Do([&]() { ui->OnActiveTabContextStatusChanged(); }),
+      // Wait for the WebUI composebox handler to initialize before overriding
+      // it so the async Mojo `CreatePageHandler()` call neither overwrites the
+      // mock handler nor disconnects an in-flight WebUI Mojo call.
+      Do([&]() {
+        content::WebContents* side_panel_contents =
+            coordinator->GetActiveWebContents();
+        ASSERT_NE(side_panel_contents, nullptr);
+        ASSERT_TRUE(content::WaitForLoadStop(side_panel_contents));
+        ASSERT_TRUE(content::ExecJs(
+            side_panel_contents,
+            "customElements.whenDefined('contextual-tasks-app')"
+            ".then(async () => {"
+            "  const app = document.querySelector('contextual-tasks-app');"
+            "  await app.updateComplete;"
+            "  const composebox = app.shadowRoot.querySelector('#composebox');"
+            "  await composebox.updateComplete;"
+            "  await composebox.searchboxHandler_.getInputState();"
+            "})"));
+        ui = GetContextualTasksUI();
+        ASSERT_NE(ui, nullptr);
+        ui->SetComposeboxHandler(&mock_composebox_handler);
+        ui->OnActiveTabContextStatusChanged();
+      }),
       // Wait for UpdateSuggestedTabContext to be called with foo.
       Do([&]() { initial_run_loop.Run(); }),
       // Verify that active tab context suggestion is showing.
@@ -1026,7 +1028,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksSidePanelCoordinatorInteractiveUiTest,
       Do([&]() {
         tab_switch_run_loop.Run();
         EXPECT_FALSE(ui->IsActiveTabContextSuggestionShowing());
-        ui->SetComposeboxHandlerForTesting(nullptr);
+        ui->SetComposeboxHandler(nullptr);
       }));
 }
 
@@ -1339,7 +1341,8 @@ class ContextualTasksSidePanelCoordinatorFeatureDisabledInteractiveUiTest
     scoped_feature_list_.Reset();
     scoped_feature_list_.InitWithFeatures(
         /*enabled_features=*/{},
-        /*disabled_features=*/{kContextualTasks,
+        /*disabled_features=*/{kContextualTasks, kContextualTasksRearchitecture,
+                               kContextualTasksSidePanelRearchitecture,
                                kContextualTasksClobberActiveTab});
   }
 };
@@ -1351,7 +1354,8 @@ class ContextualTasksSidePanelCoordinatorFeatureDisabledClobberInteractiveUiTest
     scoped_feature_list_.Reset();
     scoped_feature_list_.InitWithFeatures(
         /*enabled_features=*/{kContextualTasksClobberActiveTab},
-        /*disabled_features=*/{kContextualTasks});
+        /*disabled_features=*/{kContextualTasks, kContextualTasksRearchitecture,
+                               kContextualTasksSidePanelRearchitecture});
   }
 };
 
@@ -1615,11 +1619,11 @@ IN_PROC_BROWSER_TEST_F(
       browser(), embedded_test_server()->GetURL("/title1.html")));
   ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
       browser(), embedded_test_server()->GetURL("/title2.html"),
-      WindowOpenDisposition::kNewBackgroundTab,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
   ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
       browser(), embedded_test_server()->GetURL("/title3.html"),
-      WindowOpenDisposition::kNewBackgroundTab,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
 
   ContextualTasksService* contextual_tasks_service =
@@ -1684,7 +1688,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksSidePanelCoordinatorInteractiveUiTest,
       browser(), embedded_test_server()->GetURL("/title1.html")));
   ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
       browser(), embedded_test_server()->GetURL("/title2.html"),
-      WindowOpenDisposition::kNewBackgroundTab,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
 
   ContextualTasksService* contextual_tasks_service =
@@ -1748,6 +1752,161 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksSidePanelCoordinatorInteractiveUiTest,
     EXPECT_EQ(submenu.GetLabelAt(2), u"Valid Thread");
   }));
 }
+
+// Runs `ContextualTasksSidePanelCoordinatorInteractiveUiTest` across all
+// `UserVariation`s with the side panel rearchitecture enabled, which gates the
+// AI Mode share submenu in the tab context menu.
+class ContextualTasksTabSubMenuInteractiveUiTest
+    : public ContextualTasksSidePanelCoordinatorInteractiveUiTest,
+      public testing::WithParamInterface<UserVariation> {
+ public:
+  ContextualTasksTabSubMenuInteractiveUiTest() {
+    rearchitecture_feature_list_.InitWithFeatures(
+        {kContextualTasksRearchitecture,
+         kContextualTasksSidePanelRearchitecture},
+        {});
+  }
+  ~ContextualTasksTabSubMenuInteractiveUiTest() override = default;
+
+  UserVariation GetUserVariation() const { return GetParam(); }
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    ContextualTasksSidePanelCoordinatorInteractiveUiTest::SetUpCommandLine(
+        command_line);
+    if (GetUserVariation() == UserVariation::kIncognito) {
+      command_line->AppendSwitch(::switches::kIncognito);
+    }
+  }
+
+  void SetUpBrowserContextKeyedServices(
+      content::BrowserContext* context) override {
+    ContextualTasksSidePanelCoordinatorInteractiveUiTest::
+        SetUpBrowserContextKeyedServices(context);
+    IdentityTestEnvironmentProfileAdaptor::
+        SetIdentityTestEnvironmentFactoriesOnBrowserContext(context);
+  }
+
+  void SetUpOnMainThread() override {
+    ContextualTasksSidePanelCoordinatorInteractiveUiTest::SetUpOnMainThread();
+    if (GetUserVariation() == UserVariation::kSignedIn) {
+      identity_test_env_adaptor_ =
+          std::make_unique<IdentityTestEnvironmentProfileAdaptor>(
+              browser()->GetProfile());
+      identity_test_env_adaptor_->identity_test_env()
+          ->MakePrimaryAccountAvailable("user@example.com",
+                                        signin::ConsentLevel::kSignin);
+    }
+  }
+
+  void TearDownOnMainThread() override {
+    identity_test_env_adaptor_.reset();
+    ContextualTasksSidePanelCoordinatorInteractiveUiTest::
+        TearDownOnMainThread();
+  }
+
+ private:
+  base::test::ScopedFeatureList rearchitecture_feature_list_;
+  std::unique_ptr<IdentityTestEnvironmentProfileAdaptor>
+      identity_test_env_adaptor_;
+};
+
+// This tests the following CUJ:
+//  (1) User has an AI Mode thread titled "Valid Thread" that was started from
+//      Tab 0.
+//  (2) User switches to Tab 1, which has no AI Mode thread.
+//  (3) User opens the tab context menu on Tab 1 and opens the AI Mode share
+//      submenu (`ContextualTasksTabSubMenuModel`).
+//  (4) User selects the "Valid Thread" recent thread item.
+//  (5) The Contextual Tasks side panel opens showing the existing thread, and
+//      Tab 1 is associated with that thread.
+//  (6) Tab 1 shows the AI Mode sharing tab alert.
+IN_PROC_BROWSER_TEST_P(ContextualTasksTabSubMenuInteractiveUiTest,
+                       TabSubMenuShareTabWithExistingThread) {
+  SkipIfIncognito("Sharing tabs with AI Mode is disabled in Incognito");
+
+  DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(ui::test::PollingStateObserver<bool>,
+                                      kSharedTabAiModeSharingAlertState);
+
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), embedded_test_server()->GetURL("/title1.html")));
+  ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
+      browser(), embedded_test_server()->GetURL("/title2.html"),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
+
+  TabListInterface* tab_list = TabListInterface::From(browser());
+  ASSERT_EQ(tab_list->GetActiveIndex(), 1);
+  tabs::TabInterface* shared_tab = tab_list->GetTab(1);
+  const SessionID shared_tab_id =
+      sessions::SessionTabHelper::IdForTab(shared_tab->GetContents());
+
+  // Start an AI Mode thread titled "Valid Thread" from Tab 0.
+  ContextualTasksService* contextual_tasks_service =
+      ContextualTasksServiceFactory::GetForProfile(browser()->GetProfile());
+  ContextualTask existing_task = contextual_tasks_service->CreateTask();
+  const base::Uuid existing_task_id = existing_task.GetTaskId();
+  contextual_tasks_service->AssociateTabWithTask(
+      existing_task_id,
+      sessions::SessionTabHelper::IdForTab(tab_list->GetTab(0)->GetContents()));
+  contextual_tasks_service->UpdateThreadForTask(existing_task_id,
+                                                ThreadType::kAiMode, "thread1",
+                                                std::nullopt, "Valid Thread");
+  CreateCachedWebContentsForTesting(existing_task_id, /*is_open=*/true);
+  content::WebContents* existing_thread_contents =
+      GetCachedWebContentsForTask(existing_task_id);
+  ASSERT_NE(existing_thread_contents, nullptr);
+  existing_thread_contents->GetController().LoadURL(
+      GURL("https://www.g.ai/search?udm=50&mtid=1"), content::Referrer(),
+      ui::PAGE_TRANSITION_AUTO_TOPLEVEL, std::string());
+  ASSERT_TRUE(content::WaitForLoadStop(existing_thread_contents));
+
+  ContextualTasksSidePanelCoordinator* coordinator = GetCoordinator();
+  ASSERT_FALSE(coordinator->IsPanelOpenForContextualTask());
+  ASSERT_FALSE(
+      contextual_tasks_service->GetContextualTaskForTab(shared_tab_id));
+
+  RunTestSequence(
+      Do([&]() {
+        // Open the AI Mode share submenu for Tab 1 and select the recent
+        // thread.
+        ContextualTasksTabSubMenuModel submenu(browser()->tab_strip_model(),
+                                               /*context_index=*/1);
+        ASSERT_EQ(submenu.GetItemCount(), 3u);
+        ASSERT_EQ(submenu.GetCommandIdAt(2),
+                  ContextualTasksTabSubMenuModel::kMinRecentThreadCommandId);
+        EXPECT_EQ(submenu.GetLabelAt(2), u"Valid Thread");
+        ASSERT_TRUE(submenu.IsCommandIdEnabled(
+            ContextualTasksTabSubMenuModel::kMinRecentThreadCommandId));
+        submenu.ExecuteCommand(
+            ContextualTasksTabSubMenuModel::kMinRecentThreadCommandId,
+            /*event_flags=*/0);
+      }),
+      WaitForShow(kContextualTasksSidePanelWebViewElementId),
+      CheckResult([&]() { return coordinator->GetActiveWebContents(); },
+                  existing_thread_contents,
+                  "Side panel shows the existing thread's WebContents"),
+      Check(
+          [&]() {
+            std::optional<ContextualTask> task =
+                contextual_tasks_service->GetContextualTaskForTab(
+                    shared_tab_id);
+            return task && task->GetTaskId() == existing_task_id;
+          },
+          "Tab 1 is associated with the existing thread"),
+      PollState(kSharedTabAiModeSharingAlertState,
+                [shared_tab]() {
+                  return tabs::TabAlertController::From(shared_tab)
+                      ->IsAlertActive(tabs::TabAlert::kAiModeSharing);
+                }),
+      WaitForState(kSharedTabAiModeSharingAlertState, true));
+}
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         ContextualTasksTabSubMenuInteractiveUiTest,
+                         testing::Values(UserVariation::kSignedIn,
+                                         UserVariation::kSignedOut,
+                                         UserVariation::kIncognito),
+                         UserVariationToString);
 
 // Regression test for crbug.com/517906613: On a buggy build, trying to show the
 // pending dialog during SetWebContents when the view's web_contents() is stale
@@ -2074,7 +2233,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksSignedOutPinnedButtonInteractiveUiTest,
   Profile* profile = browser()->GetProfile();
   EXPECT_TRUE(EntryPointEligibilityManager::IsPinningEligible(profile));
 
-  auto* coordinator = ContextualTasksSidePanelCoordinator::From(browser());
+  auto* coordinator = ContextualTasksPanelController::From(browser());
   ASSERT_NE(coordinator, nullptr);
   RunTestSequence(
       Do([&]() { coordinator->OpenInZeroState(); }),
@@ -2109,8 +2268,10 @@ class ContextualTasksExtensionsInteractiveUiTest
     enabled.push_back({kContextualTasksRearchitecture, {}});
     enabled.push_back({kContextualTasksSidePanelRearchitecture, {}});
     enabled.push_back({extensions_features::kExtensionsMenuAccessControl, {}});
-    feature_list_.InitWithFeaturesAndParameters(enabled,
-                                                GetDefaultDisabledFeatures());
+    std::vector<base::test::FeatureRef> disabled = GetDefaultDisabledFeatures();
+    std::erase(disabled, kContextualTasksRearchitecture);
+    std::erase(disabled, kContextualTasksSidePanelRearchitecture);
+    feature_list_.InitWithFeaturesAndParameters(enabled, disabled);
   }
 
   void SetUpCommandLine(base::CommandLine* command_line) override {
@@ -2177,7 +2338,6 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksExtensionsInteractiveUiTest,
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kOverlayId);
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSidePanelToolbarWebContentsId);
   DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSidePanelContentWebContentsId);
-  DEFINE_LOCAL_CUSTOM_ELEMENT_EVENT_TYPE(kSuperGButtonReadyEvent);
   DEFINE_LOCAL_CUSTOM_ELEMENT_EVENT_TYPE(kSidePanelContentLoadedEvent);
 
   constexpr char kExtensionSiteAccessToggle[] = "extension_site_access_toggle";
@@ -2196,14 +2356,6 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksExtensionsInteractiveUiTest,
       "#toolbar",
       ".top-toolbar-logo-button",
   };
-
-  StateChange super_g_button_ready;
-  super_g_button_ready.type = StateChange::Type::kExistsAndConditionTrue;
-  super_g_button_ready.where = kPathToSuperGButton;
-  super_g_button_ready.test_function =
-      "(el) => el.getBoundingClientRect().width > 0 && "
-      "el.getBoundingClientRect().height > 0";
-  super_g_button_ready.event = kSuperGButtonReadyEvent;
 
   StateChange side_panel_content_loaded;
   side_panel_content_loaded.type = StateChange::Type::kExistsAndConditionTrue;
@@ -2270,6 +2422,10 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksExtensionsInteractiveUiTest,
       // Wait for the Contextual Tasks side panel to show and instrument both
       // its toolbar and content WebViews.
       WaitForShow(kContextualTasksSidePanelWebViewElementId),
+      WithView(kContextualTasksSidePanelWebViewElementId,
+               [](views::View* view) {
+                 view->GetWidget()->LayoutRootViewIfNecessary();
+               }),
       NameViewRelative(kContextualTasksSidePanelWebViewElementId,
                        "SidePanelToolbarWebViewName",
                        [](ContextualTasksWebView* web_view) -> views::View* {
@@ -2296,7 +2452,8 @@ IN_PROC_BROWSER_TEST_P(ContextualTasksExtensionsInteractiveUiTest,
       // Click the Super G button in the side panel toolbar to open Page Info,
       // then click "Extensions" to open the side panel extensions menu.
       InAnyContext(WaitForShow(kContextualTasksSuperGButtonElementId)),
-      WaitForStateChange(kSidePanelToolbarWebContentsId, super_g_button_ready),
+      WaitForElementVisible(kSidePanelToolbarWebContentsId,
+                            kPathToSuperGButton),
       ClickElement(kSidePanelToolbarWebContentsId, kPathToSuperGButton),
       WaitForShow(PageInfoMainView::kSeeExtensionsButtonElementId),
       PressButton(PageInfoMainView::kSeeExtensionsButtonElementId),

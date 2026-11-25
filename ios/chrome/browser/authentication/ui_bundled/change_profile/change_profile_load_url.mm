@@ -7,11 +7,9 @@
 #import "base/functional/callback_helpers.h"
 #import "ios/chrome/browser/ntp/model/new_tab_page_util.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_browser_agent.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_params.h"
-#import "ios/chrome/browser/window_activities/model/window_activity_helpers.h"
 #import "url/gurl.h"
 
 namespace {
@@ -20,8 +18,7 @@ namespace {
 void ChangeProfileOpensURLContinuation(GURL url,
                                        SceneState* scene_state,
                                        base::OnceClosure closure) {
-  Browser* browser =
-      scene_state.browserProviderInterface.currentBrowserProvider.browser;
+  Browser* browser = scene_state.browserProviderInterface.currentBrowser;
   CHECK(browser);
 
   web::WebState* web_state = browser->GetWebStateList()->GetActiveWebState();

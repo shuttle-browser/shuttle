@@ -34,9 +34,11 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/client_certificate_delegate.h"
 #include "content/public/browser/dedicated_worker_service.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/shared_worker_service.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_observer.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_paths.h"
 #include "content/public/common/content_switches.h"
@@ -79,6 +81,7 @@
 #include "services/network/public/mojom/url_response_head.mojom.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/permissions/permission_utils.h"
+#include "third_party/blink/public/common/runtime_feature_state/runtime_feature_state_context.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "url/gurl.h"
 
@@ -542,10 +545,28 @@ IN_PROC_BROWSER_TEST_F(WorkerTest, DedicatedWorkerBlockedForPdfProcess) {
   // Attempting to create a dedicated worker from a PDF frame triggers the
   // renderer to request blink.mojom.DedicatedWorkerHostFactory from
   // RenderFrameHost. The browser must reject this and terminate the process.
-  RenderProcessHostBadIpcMessageWaiter kill_waiter(frame->GetProcess());
-  ExecuteScriptAsync(frame, "new Worker('/workers/worker_common.js');");
-  EXPECT_EQ(bad_message::RFH_DEDICATED_WORKER_HOST_FACTORY_PDF_PROCESS_BLOCKED,
-            kill_waiter.Wait());
+  if (base::FeatureList::IsEnabled(features::kPdfOpaqueOrigin)) {
+    // With an opaque origin, the worker script URL is cross-origin to the
+    // document, so Blink throws a SecurityError before the renderer ever asks
+    // the browser for a DedicatedWorkerHostFactory. Nothing to terminate.
+    EXPECT_EQ("SecurityError", EvalJs(frame, R"(
+      (() => {
+        try {
+          new Worker('/workers/worker_common.js');
+          return 'no error';
+        } catch (e) {
+          return e.name;
+        }
+      })()
+    )"));
+    EXPECT_TRUE(frame->IsRenderFrameLive());
+  } else {
+    RenderProcessHostBadIpcMessageWaiter kill_waiter(frame->GetProcess());
+    ExecuteScriptAsync(frame, "new Worker('/workers/worker_common.js');");
+    EXPECT_EQ(
+        bad_message::RFH_DEDICATED_WORKER_HOST_FACTORY_PDF_PROCESS_BLOCKED,
+        kill_waiter.Wait());
+  }
 
   // Control: the same page committed normally can create dedicated workers.
   EXPECT_TRUE(NavigateToURL(shell(), url));
@@ -580,8 +601,8 @@ IN_PROC_BROWSER_TEST_F(WorkerTest, PrivilegedWebContentsCannotUseSharedWorker) {
     })
   )";
 
-  // A privileged WebContents that disallows shared workers is blocked, and no
-  // shared worker host is created for it.
+  // A privileged WebContents that disallows shared workers does not expose the
+  // SharedWorker constructor in Blink.
   WebContents::CreateParams privileged_params(
       shell()->web_contents()->GetBrowserContext());
   WebContents::PrivilegedParams marker;
@@ -591,11 +612,28 @@ IN_PROC_BROWSER_TEST_F(WorkerTest, PrivilegedWebContentsCannotUseSharedWorker) {
   std::unique_ptr<WebContents> privileged(
       WebContents::Create(privileged_params));
   ASSERT_TRUE(NavigateToURL(privileged.get(), page_url));
+  EXPECT_EQ(false, EvalJs(privileged.get(), "'SharedWorker' in window"));
+
+  // Even if a renderer still has the SharedWorker interface enabled (e.g. a
+  // compromised renderer), the browser process blocks the connection and no
+  // shared worker host is created for it.
+  class ForceEnableSharedWorkerObserver : public WebContentsObserver {
+   public:
+    explicit ForceEnableSharedWorkerObserver(WebContents* web_contents)
+        : WebContentsObserver(web_contents) {}
+    void ReadyToCommitNavigation(NavigationHandle* navigation_handle) override {
+      navigation_handle->GetMutableRuntimeFeatureStateContext()
+          .SetSharedWorkerEnabled(true);
+    }
+  } force_enable_observer(privileged.get());
+  ASSERT_TRUE(NavigateToURL(privileged.get(), page_url));
   EXPECT_EQ("Worker blocked.", EvalJs(privileged.get(), kConnectSharedWorker));
   EXPECT_FALSE(GetSharedWorkerHost(worker_url));
 
-  // Control: an ordinary WebContents at the same URL connects normally.
+  // Control: an ordinary WebContents at the same URL exposes SharedWorker and
+  // connects normally.
   ASSERT_TRUE(NavigateToURL(shell(), page_url));
+  EXPECT_EQ(true, EvalJs(shell(), "'SharedWorker' in window"));
   EXPECT_EQ("Worker connected.", EvalJs(shell(), kConnectSharedWorker));
   EXPECT_TRUE(GetSharedWorkerHost(worker_url));
 }
@@ -631,15 +669,29 @@ IN_PROC_BROWSER_TEST_F(PdfWorkerTest, PdfCannotUseSharedWorker) {
       ssl_server()->GetURL("a.test", "/workers/messageport_worker.js");
   static constexpr char kConnectSharedWorker[] = R"(
     new Promise(resolve => {
-      window.worker = new SharedWorker("/workers/messageport_worker.js");
+      try {
+        window.worker = new SharedWorker("/workers/messageport_worker.js");
+      } catch (e) {
+        resolve(e.name);
+        return;
+      }
       window.worker.onerror = (e) => resolve("Worker blocked.");
       window.worker.port.onmessage = (e) => resolve(e.data);
     })
   )";
 
+  // With `features::kPdfOpaqueOrigin`, the PDF frame has an opaque origin, so
+  // Blink throws a SecurityError before the renderer ever asks the browser for
+  // a SharedWorkerConnector. Otherwise, the browser blocks the connection and
+  // the worker's error event fires.
+  const char* expected_pdf_result =
+      base::FeatureList::IsEnabled(features::kPdfOpaqueOrigin)
+          ? "SecurityError"
+          : "Worker blocked.";
+
   // 1. A PDF frame attempting to create a shared worker is blocked.
   ASSERT_TRUE(NavigateToURLWithPdf(shell()->web_contents(), page_url));
-  EXPECT_EQ("Worker blocked.",
+  EXPECT_EQ(expected_pdf_result,
             EvalJs(shell()->web_contents(), kConnectSharedWorker));
   EXPECT_FALSE(GetSharedWorkerHost(worker_url));
 
@@ -658,7 +710,7 @@ IN_PROC_BROWSER_TEST_F(PdfWorkerTest, PdfCannotUseSharedWorker) {
 
   // 3. A PDF frame is also blocked from connecting to the existing shared
   // worker, and the existing worker host remains unaffected.
-  EXPECT_EQ("Worker blocked.",
+  EXPECT_EQ(expected_pdf_result,
             EvalJs(shell()->web_contents(), kConnectSharedWorker));
   EXPECT_EQ(host, GetSharedWorkerHost(worker_url));
   EXPECT_EQ(std::vector<GlobalRenderFrameHostId>{ordinary_rfh->GetGlobalId()},
@@ -1492,6 +1544,7 @@ IN_PROC_BROWSER_TEST_F(
   )"));
   const std::string expected_cookies = base::JoinString(
       {kSameSiteNoneCookie, kCrossSitePartitionedCookie}, "; ");
+  EXPECT_EQ(expected_cookies, GetReceivedCookie("/workers/worker.js"));
   EXPECT_EQ(expected_cookies, GetReceivedCookie("/workers/empty.js"));
   EXPECT_EQ(expected_cookies, GetReceivedCookie("/workers/empty.html"));
 }
@@ -1750,8 +1803,18 @@ IN_PROC_BROWSER_TEST_P(CrossOriginWorkerScriptTest,
   EXPECT_FALSE(monitor.GetRequestInfo(worker_url));
 }
 
+// TODO(crbug.com/581125012): Flaky on Android because
+// URLLoaderMonitor::GetCompletionStatus() is queried without waiting for the
+// aborted initial redirect request's OnComplete IPC on the IO thread.
+#if BUILDFLAG(IS_ANDROID)
+#define MAYBE_CrossOriginRedirectFailsFetchWithSameOriginMode \
+  DISABLED_CrossOriginRedirectFailsFetchWithSameOriginMode
+#else
+#define MAYBE_CrossOriginRedirectFailsFetchWithSameOriginMode \
+  CrossOriginRedirectFailsFetchWithSameOriginMode
+#endif
 IN_PROC_BROWSER_TEST_P(CrossOriginWorkerScriptTest,
-                       CrossOriginRedirectFailsFetchWithSameOriginMode) {
+                       MAYBE_CrossOriginRedirectFailsFetchWithSameOriginMode) {
   const GURL page_url = ssl_server()->GetURL("a.test", "/title1.html");
   const GURL redirect_target =
       ssl_server()->GetURL("b.test", "/workers/post_ready.js");

@@ -8,10 +8,12 @@
 
 #include "base/files/file_path.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/download/download_item_model.h"
 #include "chrome/browser/download/download_stats.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/download/public/common/download_features.h"
 #include "components/download/public/common/mock_download_item.h"
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -90,7 +92,8 @@ TEST_F(DownloadUiContextMenuTest, RecordCommandsEnabled) {
   histogram_tester.ExpectTotalCount("Download.ContextMenuAction", 2);
 }
 
-// "Open with..." is only offered for finished downloads on Windows.
+// "Open with..." is only offered for finished downloads on Windows when
+// `kEnableDownloadOpenWithContextMenu` is enabled.
 TEST_F(DownloadUiContextMenuTest, OpenWith) {
   std::unique_ptr<download::MockDownloadItem> item =
       std::make_unique<NiceMock<download::MockDownloadItem>>();
@@ -107,16 +110,23 @@ TEST_F(DownloadUiContextMenuTest, OpenWith) {
   MakeContextMenu(download_ui_model.get());
   ui::SimpleMenuModel* model = menu()->GetMenuModel();
   ASSERT_NE(model, nullptr);
+#if BUILDFLAG(IS_WIN)
   const std::optional<size_t> index =
       model->GetIndexOfCommandId(DownloadCommands::OPEN_WITH);
-#if BUILDFLAG(IS_WIN)
   ASSERT_TRUE(index.has_value());
   EXPECT_EQ(model->GetLabelAt(*index),
             l10n_util::GetStringUTF16(IDS_DOWNLOAD_MENU_OPEN_WITH));
   EXPECT_TRUE(menu()->IsCommandIdEnabled(DownloadCommands::OPEN_WITH));
-#else
-  EXPECT_FALSE(index.has_value());
-  EXPECT_FALSE(menu()->IsCommandIdEnabled(DownloadCommands::OPEN_WITH));
+
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      download::features::kEnableDownloadOpenWithContextMenu);
+  MakeContextMenu(download_ui_model.get());
+  model = menu()->GetMenuModel();
+  ASSERT_NE(model, nullptr);
 #endif
+  EXPECT_FALSE(
+      model->GetIndexOfCommandId(DownloadCommands::OPEN_WITH).has_value());
+  EXPECT_FALSE(menu()->IsCommandIdEnabled(DownloadCommands::OPEN_WITH));
   EXPECT_FALSE(menu()->IsCommandIdChecked(DownloadCommands::OPEN_WITH));
 }

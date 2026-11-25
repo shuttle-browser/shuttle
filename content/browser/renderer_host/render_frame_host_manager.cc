@@ -1724,12 +1724,6 @@ void RenderFrameHostManager::DidCreateNavigationRequest(
               request->GetNavigationId(), request->IsInOutermostMainFrame()));
       if (result.has_value()) {
         CHECK(result.value());
-      } else if (result.error() ==
-                 GetFrameHostForNavigationFailed::kBlockedByPendingCommit) {
-        frame_tree_node_->render_manager()
-            ->speculative_frame_host()
-            ->RecordMetricsForBlockedGetFrameHostAttempt(
-                /* commit_attempt=*/false);
       }
     }
     base::UmaHistogramEnumeration("Navigation.DeferSpeculativeRFHAction",
@@ -2320,9 +2314,8 @@ RenderFrameHostManager::GetFrameHostForNavigation(
         request->state() >= NavigationRequest::WILL_PROCESS_RESPONSE
             ? request->GetOriginToCommit().value()
             : request->GetTentativeOriginAtRequestTime();
-    if (!policy->CanAccessOrigin(
-            navigation_rfh->GetProcess()->GetDeprecatedID(), origin_to_commit,
-            ChildProcessSecurityPolicyImpl::AccessType::kCanCommitNewOrigin)) {
+    if (!policy->CanCommitNewOrigin(navigation_rfh->GetProcess()->GetID(),
+                                    origin_to_commit)) {
       SCOPED_CRASH_KEY_STRING256("GetFrameHostForNav", "lock_url",
                                  process_lock.ToString());
       SCOPED_CRASH_KEY_STRING64(

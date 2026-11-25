@@ -336,6 +336,51 @@ TEST_F(AccountCapabilitiesTest, IsSubjectToParentalControlsViaBundle) {
             signin::Tribool::kFalse);
 }
 
+TEST_F(AccountCapabilitiesTest, ShouldBeAddressedInFeminineGrammaticalGender) {
+  AccountCapabilities capabilities;
+  EXPECT_EQ(capabilities.should_be_addressed_in_feminine_grammatical_gender(),
+            signin::Tribool::kUnknown);
+
+  AccountCapabilitiesTestMutator mutator(&capabilities);
+  mutator.set_should_be_addressed_in_feminine_grammatical_gender(true);
+  EXPECT_EQ(capabilities.should_be_addressed_in_feminine_grammatical_gender(),
+            signin::Tribool::kTrue);
+
+  mutator.set_should_be_addressed_in_feminine_grammatical_gender(false);
+  EXPECT_EQ(capabilities.should_be_addressed_in_feminine_grammatical_gender(),
+            signin::Tribool::kFalse);
+}
+
+TEST_F(AccountCapabilitiesTest, ShouldBeAddressedInMasculineGrammaticalGender) {
+  AccountCapabilities capabilities;
+  EXPECT_EQ(capabilities.should_be_addressed_in_masculine_grammatical_gender(),
+            signin::Tribool::kUnknown);
+
+  AccountCapabilitiesTestMutator mutator(&capabilities);
+  mutator.set_should_be_addressed_in_masculine_grammatical_gender(true);
+  EXPECT_EQ(capabilities.should_be_addressed_in_masculine_grammatical_gender(),
+            signin::Tribool::kTrue);
+
+  mutator.set_should_be_addressed_in_masculine_grammatical_gender(false);
+  EXPECT_EQ(capabilities.should_be_addressed_in_masculine_grammatical_gender(),
+            signin::Tribool::kFalse);
+}
+
+TEST_F(AccountCapabilitiesTest, ShouldBeAddressedInNeuterGrammaticalGender) {
+  AccountCapabilities capabilities;
+  EXPECT_EQ(capabilities.should_be_addressed_in_neuter_grammatical_gender(),
+            signin::Tribool::kUnknown);
+
+  AccountCapabilitiesTestMutator mutator(&capabilities);
+  mutator.set_should_be_addressed_in_neuter_grammatical_gender(true);
+  EXPECT_EQ(capabilities.should_be_addressed_in_neuter_grammatical_gender(),
+            signin::Tribool::kTrue);
+
+  mutator.set_should_be_addressed_in_neuter_grammatical_gender(false);
+  EXPECT_EQ(capabilities.should_be_addressed_in_neuter_grammatical_gender(),
+            signin::Tribool::kFalse);
+}
+
 TEST_F(AccountCapabilitiesTest, CanUseSpeakerLabelInRecorderApp) {
   AccountCapabilities capabilities;
   EXPECT_EQ(capabilities.can_use_speaker_label_in_recorder_app(),
@@ -415,6 +460,32 @@ TEST_F(AccountCapabilitiesTest, IsSubjectToUniversalOptOut) {
   mutator.set_is_subject_to_universal_opt_out(false);
   EXPECT_EQ(capabilities.is_subject_to_universal_opt_out(),
             signin::Tribool::kFalse);
+}
+
+TEST_F(AccountCapabilitiesTest,
+       MustShowEquallyWeightedButtonsForPrivatePassesInChromeAutofill) {
+  AccountCapabilities capabilities;
+  EXPECT_EQ(
+      capabilities
+          .must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(),
+      signin::Tribool::kUnknown);
+
+  AccountCapabilitiesTestMutator mutator(&capabilities);
+  mutator
+      .set_must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(
+          true);
+  EXPECT_EQ(
+      capabilities
+          .must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(),
+      signin::Tribool::kTrue);
+
+  mutator
+      .set_must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(
+          false);
+  EXPECT_EQ(
+      capabilities
+          .must_show_equally_weighted_buttons_for_private_passes_in_chrome_autofill(),
+      signin::Tribool::kFalse);
 }
 
 TEST_F(AccountCapabilitiesTest, SupportsWalletPrivatePassesInAutofill) {

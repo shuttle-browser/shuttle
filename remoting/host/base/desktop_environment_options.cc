@@ -64,6 +64,14 @@ void DesktopEnvironmentOptions::set_enable_curtaining(bool enabled) {
   enable_curtaining_ = enabled;
 }
 
+bool DesktopEnvironmentOptions::enable_privacy_overlay() const {
+  return enable_privacy_overlay_;
+}
+
+void DesktopEnvironmentOptions::set_enable_privacy_overlay(bool enabled) {
+  enable_privacy_overlay_ = enabled;
+}
+
 bool DesktopEnvironmentOptions::enable_user_interface() const {
   return enable_user_interface_;
 }
@@ -149,6 +157,9 @@ void DesktopEnvironmentOptions::ApplySessionOptions(
     set_capture_video_on_dedicated_thread(
         *options.capture_video_on_dedicated_thread);
   }
+  if (options.enable_privacy_overlay.has_value()) {
+    set_enable_privacy_overlay(*options.enable_privacy_overlay);
+  }
 
 #if BUILDFLAG(IS_MAC)
   if (options.enable_sck_capturer.has_value()) {
@@ -181,8 +192,12 @@ void DesktopEnvironmentOptions::ApplySessionPolicies(
       policies.allow_webauthn_forwarding.has_value()) {
     set_enable_remote_webauthn(*policies.allow_webauthn_forwarding);
   }
-  if (enable_security_key() && policies.allow_gnubby_forwarding.has_value()) {
-    set_enable_security_key(*policies.allow_gnubby_forwarding);
+  if (enable_security_key() &&
+      policies.allow_security_key_forwarding.has_value()) {
+    set_enable_security_key(*policies.allow_security_key_forwarding);
+  }
+  if (!policies.is_host_to_client_audio_allowed()) {
+    set_audio_playback_mode(AudioPlaybackMode::kLocalOnly);
   }
 }
 

@@ -151,6 +151,8 @@ class OptimizationGuideKeyedService
       const optimization_guide::StreamingModelExecutionOptions& options,
       optimization_guide::OptimizationGuideModelExecutionStreamingCallback
           callback) override;
+  void PrewarmModelExecution(
+      optimization_guide::ModelBasedCapabilityKey feature) override;
 
   // optimization_guide::OnDeviceCapability
   // implementation:
@@ -373,12 +375,6 @@ class OptimizationGuideKeyedService
           request_context_metadata = std::nullopt) override;
 
   bool ComponentUpdatesEnabledProvider() const;
-
-  // Records synthetic field trial for `feature` with trial name appended with
-  // `feature_name`.
-  void RecordModelExecutionFeatureSyntheticFieldTrial(
-      optimization_guide::UserVisibleFeatureKey feature,
-      std::string_view feature_name);
 
   raw_ptr<content::BrowserContext> browser_context_;
 

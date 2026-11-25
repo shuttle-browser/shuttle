@@ -23,7 +23,8 @@ export interface LineFocusListener {
   // Called when the line focus position has been changed due to an automatic
   // adjustment. For example, changing settings such as font size or line focus
   // type.
-  onLineFocusVisualPositionChange(newTop: number, newHeight: number): void;
+  onLineFocusVisualPositionChange(
+      newTop: number, newHeight: number, newFocalPoint: number): void;
   onNeedScrollForLineFocus(scrollDiff: number, instant?: boolean): void;
   onNeedScrollToTop(): void;
   onLineFocusModesChanged(): void;
@@ -68,15 +69,10 @@ export class LineFocusController implements MoveModeDelegate {
   }
 
   isEnabled(): boolean {
-    return this.visualBrowserProxy_.isLineFocusEnabled() &&
-        this.model_.isSessionActive();
+    return this.model_.isSessionActive();
   }
 
   onKeyDown(e: KeyboardEvent, container: HTMLElement, height: number): boolean {
-    if (!this.visualBrowserProxy_.isLineFocusEnabled()) {
-      return false;
-    }
-
     if (isLineFocusShortcut(e)) {
       this.toggle(!this.isEnabled(), container, height);
       this.logger_.logLineFocusToggled(this.isEnabled());
@@ -91,22 +87,22 @@ export class LineFocusController implements MoveModeDelegate {
     return false;
   }
 
+  onScroll() {
+    this.model_.getCurrentMoveMode().onScroll();
+  }
+
   onScrollEnd(newScrollTop: number) {
-    if (this.visualBrowserProxy_.isLineFocusEnabled()) {
-      this.model_.getCurrentMoveMode().onScrollEnd(newScrollTop);
-    }
+    this.model_.getCurrentMoveMode().onScrollEnd(newScrollTop);
   }
 
   onMouseMove(y: number) {
-    if (this.visualBrowserProxy_.isLineFocusEnabled() &&
-        !this.speechController_.isSpeechActive()) {
+    if (!this.speechController_.isSpeechActive()) {
       this.model_.getCurrentMoveMode().onMouseMove(y);
     }
   }
 
   onMouseMoveInToolbar(y: number) {
-    if (this.visualBrowserProxy_.isLineFocusEnabled() &&
-        !this.speechController_.isSpeechActive()) {
+    if (!this.speechController_.isSpeechActive()) {
       this.model_.getCurrentMoveMode().onMouseMoveInToolbar(y);
     }
   }
@@ -121,15 +117,11 @@ export class LineFocusController implements MoveModeDelegate {
   }
 
   onWordBoundary(segments: Segment[]) {
-    if (this.visualBrowserProxy_.isLineFocusEnabled()) {
-      this.model_.getCurrentMoveMode().onWordBoundary(segments);
-    }
+    this.model_.getCurrentMoveMode().onWordBoundary(segments);
   }
 
   onTextLocationsChange(container: HTMLElement, height: number) {
-    if (this.visualBrowserProxy_.isLineFocusEnabled()) {
-      this.model_.getCurrentMoveMode().onTextLocationsChange(container, height);
-    }
+    this.model_.getCurrentMoveMode().onTextLocationsChange(container, height);
   }
 
   restoreFromPrefs(
@@ -190,9 +182,6 @@ export class LineFocusController implements MoveModeDelegate {
 
   private propagateLineFocus_(
       style: LineFocusStyle, movement: LineFocusMovement, isOn: boolean) {
-    if (!this.visualBrowserProxy_.isLineFocusEnabled()) {
-      return;
-    }
     const lineFocusValue = isOn ? this.lineFocusToEnumValue_(style, movement) :
                                   this.visualBrowserProxy_.getLineFocusOff();
     const lastNonDisabledLineFocus =
@@ -214,9 +203,6 @@ export class LineFocusController implements MoveModeDelegate {
   }
 
   toggle(isOn: boolean, container: HTMLElement, height: number) {
-    if (!this.visualBrowserProxy_.isLineFocusEnabled()) {
-      return;
-    }
     if (this.isEnabled() === isOn) {
       return;
     }
@@ -247,7 +233,8 @@ export class LineFocusController implements MoveModeDelegate {
   notifyMoveWithVisualPositionChange(): void {
     this.listeners_.forEach(
         l => l.onLineFocusVisualPositionChange(
-            this.model_.getTop(), this.model_.getWindowHeight()));
+            this.model_.getTop(), this.model_.getWindowHeight(),
+            this.model_.getFocalPoint()));
   }
 
   notifyScroll(scrollDiff: number, instant?: boolean): void {

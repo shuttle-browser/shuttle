@@ -121,10 +121,6 @@
 #include "components/bookmarks/common/bookmark_bar_visibility_state.h"
 #include "components/bookmarks/common/bookmark_pref_names.h"
 #include "components/contextual_tasks/public/features.h"
-#include "components/dom_distiller/content/browser/distillable_page_utils.h"
-#include "components/dom_distiller/content/browser/uma_helper.h"
-#include "components/dom_distiller/core/dom_distiller_features.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/feature_engagement/public/event_constants.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/lens/lens_features.h"
@@ -143,10 +139,15 @@
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/skills/features.h"
 #include "components/strings/grit/components_strings.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/sync/base/features.h"
 #include "components/sync/service/sync_service.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/vector_icons/vector_icons.h"
+#include "components/web_distiller/content/browser/distillable_page_utils.h"
+#include "components/web_distiller/content/browser/uma_helper.h"
+#include "components/web_distiller/core/url_utils.h"
+#include "components/web_distiller/core/web_distiller_features.h"
 #include "components/webapps/browser/banners/app_banner_manager.h"
 #include "components/webapps/browser/banners/install_banner_config.h"
 #include "components/webapps/browser/banners/installable_web_app_check_result.h"
@@ -166,7 +167,6 @@
 #include "ui/base/models/menu_separator_types.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/color_palette.h"
@@ -396,6 +396,10 @@ SigninSectionInfo ComputeSigninSectionInfo(Profile* profile) {
           // For this specific error (as opposed to all others), there is no
           // error UI in the menu.
           return info;
+        case syncer::SyncService::UserActionableError::kPasskeysLocked:
+          // TODO(crbug.com/470338958): Show passkey unlock error UI in the app
+          // menu.
+          return info;
       }
       CHECK_NE(info.command_id, 0);
       return info;
@@ -536,10 +540,10 @@ ProfileSubMenuModel::ProfileSubMenuModel(
               ui::ImageModel::FromImageSkia(profiles::GetAvatarWithDottedRing(
                   avatar_model, avatar_icon_size, /*has_padding=*/false,
                   /*has_background=*/false, *color_provider));
-        } else if (ShouldShowAvatarGradientRing(profile)) {
-          // TODO(crbug.com/530147081): Clarify if the ring may show up for
-          // users with a placeholder icon. Signed in users should have always
-          // an account_info and thus they will never have a placeholder icon.
+        } else if (GetAvatarAiDecoration(profile).show_decoration) {
+          // The ring is only drawn around a fetched avatar image. Placeholder
+          // avatars keep the default vector icon (see above), and signed-out
+          // profiles have no AI subscription tier.
           avatar_image_model_ =
               ui::ImageModel::FromImageSkia(AddLinearGradientRingToAvatar(
                   avatar_model, *color_provider, avatar_icon_size));
@@ -580,9 +584,8 @@ ProfileSubMenuModel::ProfileSubMenuModel(
               avatar_icon_size, avatar_icon_size, profiles::SHAPE_CIRCLE));
 
       bool has_ai_ring = false;
-      if (base::FeatureList::IsEnabled(
-              switches::kEnableAiSubscriptionAvatarRing) &&
-          profile_entry->GetAiSubscriptionTier() > 0) {
+      if (GetAvatarAiDecorationForTier(profile_entry->GetAiSubscriptionTier())
+              .show_decoration) {
         has_ai_ring = true;
         avatar_model =
             ui::ImageModel::FromImageSkia(AddLinearGradientRingToAvatar(
@@ -1497,6 +1500,13 @@ void AppMenuModel::LogMenuMetrics(int command_id) {
       }
       LogMenuAction(MENU_ACTION_RECENT_TABS_SEE_DEVICE_TABS);
       break;
+    case IDC_OPEN_OTHER_DEVICE_TAB:
+      if (!uma_action_recorded_) {
+        base::UmaHistogramMediumTimes(
+            "WrenchMenu.TimeToAction.OpenOtherDeviceTab", delta);
+      }
+      LogMenuAction(MENU_ACTION_OTHER_DEVICE_TAB);
+      break;
     case IDC_FIND:
       if (!uma_action_recorded_) {
         base::UmaHistogramMediumTimes("WrenchMenu.TimeToAction.Find", delta);
@@ -2237,7 +2247,9 @@ void AppMenuModel::Build() {
         kHistoryMenuItem);
 
     if (base::FeatureList::IsEnabled(syncer::kCrossDeviceTabsInAppMenu)) {
-      sub_menus_.push_back(std::make_unique<OtherDeviceTabsSubMenuModel>());
+      sub_menus_.push_back(std::make_unique<OtherDeviceTabsSubMenuModel>(
+          browser_, base::BindRepeating(&AppMenuModel::LogMenuMetrics,
+                                        base::Unretained(this))));
       AddSubMenuWithStringIdAndVectorIcon(
           this, kOtherDeviceTabsMenuPlaceholder, IDS_OTHER_DEVICE_TABS_MENU,
           sub_menus_.back().get(),
@@ -2516,8 +2528,7 @@ void AppMenuModel::Build() {
     SetAccessibleNameAt(GetIndexOfCommandId(IDC_SHOW_MANAGEMENT_PAGE).value(),
                         GetManagedUiMenuItemTooltip(browser_->GetProfile()));
 #if BUILDFLAG(IS_LINUX)
-    if (enterprise_util::IsBrowserManaged(browser_->GetProfile()) &&
-        base::FeatureList::IsEnabled(features::kEnterpriseReleaseNotes)) {
+    if (enterprise_util::IsBrowserManaged(browser_->GetProfile())) {
       AddItemWithStringIdAndVectorIcon(
           this, IDC_CHROME_ENTERPRISE_RELEASE_NOTES,
           IDS_CHROME_ENTERPRISE_RELEASE_NOTES, omnibox::kChromeProductIcon);

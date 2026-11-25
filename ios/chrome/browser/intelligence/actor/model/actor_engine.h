@@ -17,6 +17,8 @@
 #import "ios/chrome/browser/intelligence/actor/tools/model/tool_delegate.h"
 #import "ios/web/public/navigation/navigation_manager.h"
 #import "ios/web/public/web_state_id.h"
+#import "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+#import "url/origin.h"
 
 namespace origin_gating {
 class OriginGatingChecker;
@@ -154,6 +156,11 @@ class ActorEngine : public ToolDelegate {
   // Returns the OriginGatingChecker instance for gating navigation actions.
   origin_gating::OriginGatingChecker* GetOriginGatingChecker();
 
+  // Pre-approves `added_writable_mainframe_origins` as non-user-confirmed
+  // allowed main-frame navigation destinations for the task.
+  void AddWritableMainframeOrigins(
+      const absl::flat_hash_set<url::Origin>& added_writable_mainframe_origins);
+
   void IsAcceptableNavigationDestination(
       const GURL& url,
       ToolExecutionCallback callback) override;
@@ -250,7 +257,7 @@ class ActorEngine : public ToolDelegate {
       origin_gating::GatingDecision decision);
 
   // The handler for form filling and login tasks.
-  std::unique_ptr<ActorTaskFormFillingHandler> form_filling_handler_;
+  const std::unique_ptr<ActorTaskFormFillingHandler> form_filling_handler_;
 
   // The state machine responsible for validating, creating, invoking and
   // post-invocation of the current tool. Reused for every action so that it is

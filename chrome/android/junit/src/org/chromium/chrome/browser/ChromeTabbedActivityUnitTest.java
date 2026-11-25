@@ -10,7 +10,10 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
@@ -18,16 +21,23 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import android.os.Build;
 import android.os.Bundle;
 import android.view.Window;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.robolectric.Robolectric;
+import org.robolectric.annotation.Config;
 
 import org.chromium.base.DeviceInfo;
+import org.chromium.base.UserDataHost;
+import org.chromium.base.supplier.OneshotSupplier;
+import org.chromium.base.supplier.OneshotSupplierImpl;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
@@ -38,6 +48,10 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.hub.PaneId;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.profiles.ProfileManager;
+import org.chromium.chrome.browser.profiles.ProfileManagerJni;
+import org.chromium.chrome.browser.profiles.ProfileProvider;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tabmodel.IncognitoTabHost;
 import org.chromium.chrome.browser.tabmodel.IncognitoTabHostRegistry;
@@ -55,10 +69,24 @@ public class ChromeTabbedActivityUnitTest {
     private static class TestChromeTabbedActivity extends ChromeTabbedActivity {
         private boolean mAreTabModelsInitialized;
         private boolean mIsActivityFinishingOrDestroyed;
+        private boolean mIsFinishing;
         private boolean mDidFinishNativeInitialization;
         private boolean mTerminateIncognitoSessionCalled;
         private boolean mFinishCalled;
+        private OneshotSupplier<ProfileProvider> mProfileProviderSupplier;
         private final List<Integer> mRequestedWindowFeatures = new ArrayList<>();
+        private OnBackInvokedDispatcher mMockOnBackInvokedDispatcher;
+
+        public void setMockOnBackInvokedDispatcher(OnBackInvokedDispatcher dispatcher) {
+            mMockOnBackInvokedDispatcher = dispatcher;
+        }
+
+        @Override
+        public OnBackInvokedDispatcher getOnBackInvokedDispatcher() {
+            return mMockOnBackInvokedDispatcher != null
+                    ? mMockOnBackInvokedDispatcher
+                    : super.getOnBackInvokedDispatcher();
+        }
 
         public List<Integer> getRequestedWindowFeatures() {
             return mRequestedWindowFeatures;
@@ -80,8 +108,17 @@ public class ChromeTabbedActivityUnitTest {
             mIsActivityFinishingOrDestroyed = isActivityFinishingOrDestroyed;
         }
 
+        public void setIsFinishing(boolean isFinishing) {
+            mIsFinishing = isFinishing;
+        }
+
         public void setDidFinishNativeInitialization(boolean didFinishNativeInitialization) {
             mDidFinishNativeInitialization = didFinishNativeInitialization;
+        }
+
+        public void setProfileProviderSupplierForTesting(
+                OneshotSupplier<ProfileProvider> profileProviderSupplier) {
+            mProfileProviderSupplier = profileProviderSupplier;
         }
 
         public boolean wasTerminateIncognitoSessionCalled() {
@@ -103,8 +140,20 @@ public class ChromeTabbedActivityUnitTest {
         }
 
         @Override
+        public boolean isFinishing() {
+            return mIsFinishing;
+        }
+
+        @Override
         public boolean didFinishNativeInitialization() {
             return mDidFinishNativeInitialization;
+        }
+
+        @Override
+        public OneshotSupplier<ProfileProvider> getProfileProviderSupplier() {
+            return mProfileProviderSupplier != null
+                    ? mProfileProviderSupplier
+                    : super.getProfileProviderSupplier();
         }
 
         @Override
@@ -339,6 +388,103 @@ public class ChromeTabbedActivityUnitTest {
     }
 
     @Test
+    @EnableFeatures(ChromeFeatureList.ENFORCE_INCOGNITO_ISOLATION)
+    public void testMaybeRegisterIncognitoTabHost_withIsolation() {
+        mActivity.setSupportedProfileTypeForTesting(SupportedProfileType.REGULAR);
+        mActivity.maybeRegisterIncognitoTabHost();
+        assertFalse(
+                IncognitoTabHostRegistry.getInstance()
+                        .getHosts()
+                        .contains(mActivity.getIncognitoTabHostForTesting()));
+
+        mActivity.setSupportedProfileTypeForTesting(SupportedProfileType.OFF_THE_RECORD);
+        mActivity.maybeRegisterIncognitoTabHost();
+        assertTrue(
+                IncognitoTabHostRegistry.getInstance()
+                        .getHosts()
+                        .contains(mActivity.getIncognitoTabHostForTesting()));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ENFORCE_INCOGNITO_ISOLATION)
+    public void testOnPostDestroy_offTheRecordFinishing_destroysOtrProfile() {
+        ProfileManager.Natives profileManagerJni = mock(ProfileManager.Natives.class);
+        ProfileManagerJni.setInstanceForTesting(profileManagerJni);
+
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        activity.setSupportedProfileTypeForTesting(SupportedProfileType.OFF_THE_RECORD);
+        activity.setIsFinishing(true);
+        activity.setDidFinishNativeInitialization(true);
+
+        Profile otrProfile = mock(Profile.class);
+        when(otrProfile.shutdownStarted()).thenReturn(false);
+        ProfileProvider profileProvider = mock(ProfileProvider.class);
+        when(profileProvider.getOffTheRecordProfile()).thenReturn(otrProfile);
+        OneshotSupplierImpl<ProfileProvider> profileProviderSupplier = new OneshotSupplierImpl<>();
+        profileProviderSupplier.set(profileProvider);
+        activity.setProfileProviderSupplierForTesting(profileProviderSupplier);
+
+        activity.maybeRegisterIncognitoTabHost();
+        activity.destroyTabModels();
+        activity.onPostDestroy();
+
+        verify(profileManagerJni).destroyWhenAppropriate(otrProfile);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ENFORCE_INCOGNITO_ISOLATION)
+    public void testOnPostDestroy_offTheRecordFinishing_skipsDestroyWhenOtherHostActive() {
+        ProfileManager.Natives profileManagerJni = mock(ProfileManager.Natives.class);
+        ProfileManagerJni.setInstanceForTesting(profileManagerJni);
+
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        activity.setSupportedProfileTypeForTesting(SupportedProfileType.OFF_THE_RECORD);
+        activity.setIsFinishing(true);
+        activity.setDidFinishNativeInitialization(true);
+
+        Profile otrProfile = mock(Profile.class);
+        when(otrProfile.shutdownStarted()).thenReturn(false);
+        ProfileProvider profileProvider = mock(ProfileProvider.class);
+        when(profileProvider.getOffTheRecordProfile()).thenReturn(otrProfile);
+        OneshotSupplierImpl<ProfileProvider> profileProviderSupplier = new OneshotSupplierImpl<>();
+        profileProviderSupplier.set(profileProvider);
+        activity.setProfileProviderSupplierForTesting(profileProviderSupplier);
+
+        IncognitoTabHost otherHost = mock(IncognitoTabHost.class);
+        when(otherHost.isActiveModel()).thenReturn(true);
+        IncognitoTabHostRegistry.getInstance().register(otherHost);
+
+        activity.maybeRegisterIncognitoTabHost();
+        activity.destroyTabModels();
+        activity.onPostDestroy();
+
+        verify(profileManagerJni, never()).destroyWhenAppropriate(any());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ENFORCE_INCOGNITO_ISOLATION)
+    public void testOnPostDestroy_offTheRecordNotFinishingOrNativeNotInitialized_skipsDestroy() {
+        ProfileManager.Natives profileManagerJni = mock(ProfileManager.Natives.class);
+        ProfileManagerJni.setInstanceForTesting(profileManagerJni);
+
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        activity.setSupportedProfileTypeForTesting(SupportedProfileType.OFF_THE_RECORD);
+
+        // Not finishing: should not destroy OTR profile.
+        activity.setIsFinishing(false);
+        activity.setDidFinishNativeInitialization(true);
+        activity.onPostDestroy();
+        verify(profileManagerJni, never()).destroyWhenAppropriate(any());
+
+        // Finishing, but native not initialized (e.g. early abort): should not access
+        // ProfileProviderSupplier or destroy OTR profile.
+        activity.setIsFinishing(true);
+        activity.setDidFinishNativeInitialization(false);
+        activity.onPostDestroy();
+        verify(profileManagerJni, never()).destroyWhenAppropriate(any());
+    }
+
+    @Test
     public void testOnPreCreate_requestsFeatureActionModeOverlay() {
         TestChromeTabbedActivity activity =
                 Robolectric.buildActivity(TestChromeTabbedActivity.class).get();
@@ -361,7 +507,6 @@ public class ChromeTabbedActivityUnitTest {
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.TABLET_TAB_STRIP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.KEYBOARD_SHORTCUT));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.VERTICAL_TAB_STRIP));
-        assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.OPEN_IN_APP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.UNKNOWN));
 
         // Off-the-record profile case (Verify it closes unconditionally).
@@ -374,7 +519,6 @@ public class ChromeTabbedActivityUnitTest {
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.TABLET_TAB_STRIP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.KEYBOARD_SHORTCUT));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.VERTICAL_TAB_STRIP));
-        assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.OPEN_IN_APP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.UNKNOWN));
     }
 
@@ -393,7 +537,6 @@ public class ChromeTabbedActivityUnitTest {
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.TABLET_TAB_STRIP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.KEYBOARD_SHORTCUT));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.VERTICAL_TAB_STRIP));
-        assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.OPEN_IN_APP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.UNKNOWN));
 
         // Off-the-record profile case (Verify it closes unconditionally).
@@ -406,7 +549,6 @@ public class ChromeTabbedActivityUnitTest {
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.TABLET_TAB_STRIP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.KEYBOARD_SHORTCUT));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.VERTICAL_TAB_STRIP));
-        assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.OPEN_IN_APP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.UNKNOWN));
     }
 
@@ -423,7 +565,6 @@ public class ChromeTabbedActivityUnitTest {
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.TABLET_TAB_STRIP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.KEYBOARD_SHORTCUT));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.VERTICAL_TAB_STRIP));
-        assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.OPEN_IN_APP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.UNKNOWN));
 
         // Off-the-record profile case (Verify it closes unconditionally even when GTS is enabled)
@@ -436,7 +577,6 @@ public class ChromeTabbedActivityUnitTest {
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.TABLET_TAB_STRIP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.KEYBOARD_SHORTCUT));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.VERTICAL_TAB_STRIP));
-        assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.OPEN_IN_APP));
         assertTrue(mActivity.shouldRemoveWindowWithZeroTabs(TabClosingSource.UNKNOWN));
     }
 
@@ -475,5 +615,134 @@ public class ChromeTabbedActivityUnitTest {
         when(tabModel.getCount()).thenReturn(0);
         assertTrue(activity.onMenuOrKeyboardAction(R.id.select_last_tab, /* fromMenu= */ false));
         verify(tabModel, never()).setIndex(anyInt(), anyInt());
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.BAKLAVA)
+    public void testPredictiveBackToHomeCallback_registeredOnBaklava() {
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        OnBackInvokedDispatcher dispatcher = mock(OnBackInvokedDispatcher.class);
+        activity.setMockOnBackInvokedDispatcher(dispatcher);
+
+        activity.maybeRegisterPredictiveBackToHomeCallback();
+
+        OnBackInvokedCallback callback = activity.getMoveTaskToBackCallbackForTesting();
+        assertNotNull(callback);
+        verify(dispatcher)
+                .registerOnBackInvokedCallback(
+                        eq(OnBackInvokedDispatcher.PRIORITY_DEFAULT), eq(callback));
+
+        activity.maybeUnregisterPredictiveBackToHomeCallback();
+        verify(dispatcher).unregisterOnBackInvokedCallback(eq(callback));
+        assertNull(activity.getMoveTaskToBackCallbackForTesting());
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.BAKLAVA)
+    public void testOnPreCreate_registersPredictiveBackToHomeCallbackBeforeBackPressEnabled() {
+        TestChromeTabbedActivity activity =
+                Robolectric.buildActivity(TestChromeTabbedActivity.class).get();
+        OnBackInvokedDispatcher dispatcher = mock(OnBackInvokedDispatcher.class);
+        activity.setMockOnBackInvokedDispatcher(dispatcher);
+
+        activity.onPreCreate();
+
+        OnBackInvokedCallback callback = activity.getMoveTaskToBackCallbackForTesting();
+        assertNotNull(callback);
+        assertFalse(activity.getBackPressManagerForTesting().getCallback().isEnabled());
+        verify(dispatcher)
+                .registerOnBackInvokedCallback(
+                        eq(OnBackInvokedDispatcher.PRIORITY_DEFAULT), eq(callback));
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.BAKLAVA)
+    public void testPredictiveBackToHomeCallback_desktopConventions_notRegistered() {
+        DeviceInfo.setIsDesktopForTesting(true);
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        OnBackInvokedDispatcher dispatcher = mock(OnBackInvokedDispatcher.class);
+        activity.setMockOnBackInvokedDispatcher(dispatcher);
+
+        activity.maybeRegisterPredictiveBackToHomeCallback();
+
+        assertNull(activity.getMoveTaskToBackCallbackForTesting());
+        verify(dispatcher, never()).registerOnBackInvokedCallback(anyInt(), any());
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.VANILLA_ICE_CREAM)
+    public void testPredictiveBackToHomeCallback_preBaklava_notRegistered() {
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        OnBackInvokedDispatcher dispatcher = mock(OnBackInvokedDispatcher.class);
+        activity.setMockOnBackInvokedDispatcher(dispatcher);
+
+        activity.maybeRegisterPredictiveBackToHomeCallback();
+
+        assertNull(activity.getMoveTaskToBackCallbackForTesting());
+        verify(dispatcher, never()).registerOnBackInvokedCallback(anyInt(), any());
+    }
+
+    @Test
+    public void testBackShouldCloseTab_tabFromLink() {
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        TabModelSelectorBase tabModelSelector = mock(TabModelSelectorBase.class);
+        TabModel tabModel = mock(TabModel.class);
+        when(tabModelSelector.getModel(anyBoolean())).thenReturn(tabModel);
+        activity.setTabModelSelectorForTesting(tabModelSelector);
+
+        Tab tab = mock(Tab.class);
+        when(tab.isInitialized()).thenReturn(true);
+        when(tab.isClosing()).thenReturn(false);
+        when(tab.isDestroyed()).thenReturn(false);
+        when(tab.getLaunchType()).thenReturn(TabLaunchType.FROM_LINK);
+
+        assertTrue(activity.backShouldCloseTab(tab));
+    }
+
+    @Test
+    public void testBackShouldCloseTab_tabFromChromeUiWithoutParent() {
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        TabModelSelectorBase tabModelSelector = mock(TabModelSelectorBase.class);
+        TabModel tabModel = mock(TabModel.class);
+        when(tabModelSelector.getModel(anyBoolean())).thenReturn(tabModel);
+        activity.setTabModelSelectorForTesting(tabModelSelector);
+
+        Tab tab = mock(Tab.class);
+        when(tab.isInitialized()).thenReturn(true);
+        when(tab.isClosing()).thenReturn(false);
+        when(tab.isDestroyed()).thenReturn(false);
+        when(tab.getLaunchType()).thenReturn(TabLaunchType.FROM_CHROME_UI);
+        when(tab.getParentId()).thenReturn(Tab.INVALID_TAB_ID);
+
+        assertFalse(activity.backShouldCloseTab(tab));
+        assertFalse(activity.minimizationShouldCloseTab(tab));
+    }
+
+    @Test
+    public void testMinimizationShouldCloseTab_tabFromLauncherShortcut() {
+        TestChromeTabbedActivity activity = new TestChromeTabbedActivity();
+        TabModelSelectorBase tabModelSelector = mock(TabModelSelectorBase.class);
+        TabModel tabModel = mock(TabModel.class);
+        when(tabModelSelector.getModel(anyBoolean())).thenReturn(tabModel);
+        activity.setTabModelSelectorForTesting(tabModelSelector);
+
+        Tab shortcutTab = mock(Tab.class);
+        when(shortcutTab.isInitialized()).thenReturn(true);
+        when(shortcutTab.isClosing()).thenReturn(false);
+        when(shortcutTab.isDestroyed()).thenReturn(false);
+        when(shortcutTab.getLaunchType()).thenReturn(TabLaunchType.FROM_LAUNCHER_SHORTCUT);
+
+        assertTrue(activity.backShouldCloseTab(shortcutTab));
+        assertTrue(activity.minimizationShouldCloseTab(shortcutTab));
+
+        Tab linkTab = mock(Tab.class);
+        when(linkTab.isInitialized()).thenReturn(true);
+        when(linkTab.isClosing()).thenReturn(false);
+        when(linkTab.isDestroyed()).thenReturn(false);
+        when(linkTab.getLaunchType()).thenReturn(TabLaunchType.FROM_LINK);
+        when(linkTab.getUserDataHost()).thenReturn(new UserDataHost());
+
+        assertTrue(activity.backShouldCloseTab(linkTab));
+        assertFalse(activity.minimizationShouldCloseTab(linkTab));
     }
 }

@@ -20,6 +20,7 @@
 #include "chrome/browser/web_applications/web_contents/web_app_data_retriever.h"
 #include "chrome/browser/web_applications/web_contents/web_contents_manager.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 
 namespace web_app {
 
@@ -49,11 +50,11 @@ WebAppInstallFromMigrateFromFieldResult MapJobResult(
 WebAppInstallFromMigrateFromFieldCommand::
     WebAppInstallFromMigrateFromFieldCommand(
         base::WeakPtr<content::WebContents> web_contents,
-        blink::mojom::ManifestPtr manifest,
+        blink::Manifest manifest,
         WebAppInstallFromMigrateFromFieldCallback callback)
     : WebAppCommand<AppLock, WebAppInstallFromMigrateFromFieldResult>(
           "WebAppInstallFromMigrateFromFieldCommand",
-          AppLockDescription(GenerateAppIdFromManifest(*manifest)),
+          AppLockDescription(GenerateAppIdFromManifest(manifest)),
           base::BindOnce([](WebAppInstallFromMigrateFromFieldResult result) {
             base::UmaHistogramEnumeration(
                 "WebApp.InstallFromMigrateFromField.Result", result);
@@ -81,13 +82,13 @@ void WebAppInstallFromMigrateFromFieldCommand::StartWithLock(
   }
 
   bool source_installed = false;
-  for (const auto& migrate_from : manifest_->migrate_from) {
+  for (const auto& migrate_from : manifest_.migrate_from()) {
     // Allow all installed apps, even source apps installed by policy that is
     // not allowed to migrate, to also install the destination app but keep it
     // hidden from the user, so as to populate the pending migration metadata
     // in the source app.
     std::optional<webapps::ManifestId> manifest_id =
-        webapps::ManifestId::Create(migrate_from->id);
+        webapps::ManifestId::Create(migrate_from.id);
     if (!manifest_id.has_value()) {
       continue;
     }

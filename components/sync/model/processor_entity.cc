@@ -24,9 +24,9 @@
 
 namespace syncer {
 
-namespace {
-
-void DeleteFileAsync(const base::FilePath& file_path) {
+// static
+void ProcessorEntity::DeleteAttachmentFileAsync(
+    const base::FilePath& file_path) {
   CHECK(!file_path.empty());
   // TODO(crbug.com/568634932): Implement startup garbage collection for
   // orphaned attachment files in case browser shutdown preempts this task.
@@ -34,8 +34,6 @@ void DeleteFileAsync(const base::FilePath& file_path) {
       FROM_HERE, {base::MayBlock(), base::TaskPriority::BEST_EFFORT},
       base::GetDeleteFileCallback(file_path));
 }
-
-}  // namespace
 
 std::unique_ptr<ProcessorEntity> ProcessorEntity::CreateNew(
     const std::string& storage_key,
@@ -93,7 +91,7 @@ void ProcessorEntity::SetCommitData(std::unique_ptr<EntityData> data) {
   }
   data->creation_time = ProtoTimeToTime(metadata().creation_time());
   data->modification_time = ProtoTimeToTime(metadata().modification_time());
-  if (metadata().attachment_metadata().has_attachment()) {
+  if (metadata().attachment_metadata().attachment().has_temporary_blob_id()) {
     data->attachment_metadata = AttachmentMetadata::FromProto(
         metadata().attachment_metadata().attachment());
   }
@@ -185,7 +183,7 @@ void ProcessorEntity::RecordForcedRemoteUpdate(
     sync_pb::EntitySpecifics trimmed_specifics,
     std::optional<sync_pb::UniquePosition> unique_position) {
   CHECK(IsUnsynced());
-  RecordAttachmentUploadCancelled();
+  ClearPendingAttachmentUpload();
   commit_data_.reset();
   metadata_.RecordForcedRemoteUpdate(update, std::move(trimmed_specifics),
                                      std::move(unique_position));
@@ -213,7 +211,7 @@ void ProcessorEntity::RecordLocalUpdate(
 }
 
 bool ProcessorEntity::RecordLocalDeletion(const DeletionOrigin& origin) {
-  RecordAttachmentUploadCancelled();
+  ClearPendingAttachmentUpload();
   commit_data_.reset();
   metadata_.RecordLocalDeletion(origin);
   // Return true if server might know about this entity.
@@ -232,6 +230,7 @@ bool ProcessorEntity::RecordLocalDeletion(const DeletionOrigin& origin) {
 }
 
 void ProcessorEntity::InitializeCommitRequestData(CommitRequestData* request) {
+  CHECK(!HasPendingAttachmentUpload());
   if (!metadata().is_deleted()) {
     DCHECK(HasCommitData());
     DCHECK_EQ(commit_data_->client_tag_hash.value(),
@@ -311,21 +310,43 @@ bool ProcessorEntity::HasPendingAttachmentUpload() const {
   return metadata_.HasPendingAttachmentUpload();
 }
 
+bool ProcessorEntity::HasAttachmentUploadInProgress() const {
+  return !abort_attachment_upload_callback_.is_null();
+}
+
 void ProcessorEntity::RecordAttachmentUploadQueued(
     const base::FilePath& file_path) {
-  RecordAttachmentUploadCancelled();
+  ClearPendingAttachmentUpload();
   metadata_.RecordAttachmentUploadQueued(file_path);
 }
 
-void ProcessorEntity::RecordAttachmentUploadStarted(const GURL& upload_url) {
+void ProcessorEntity::RecordAttachmentUploadStarted(
+    base::OnceClosure abort_attachment_upload_callback) {
   CHECK(HasPendingAttachmentUpload());
-  metadata_.RecordAttachmentUploadStarted(upload_url);
+  CHECK(abort_attachment_upload_callback);
+  CHECK(!abort_attachment_upload_callback_);
+  abort_attachment_upload_callback_ =
+      std::move(abort_attachment_upload_callback);
+}
+
+void ProcessorEntity::RecordAttachmentUploadFailed() {
+  CHECK(HasPendingAttachmentUpload());
+  CHECK(abort_attachment_upload_callback_);
+  abort_attachment_upload_callback_.Reset();
+  ClearPendingAttachmentUpload();
+}
+
+void ProcessorEntity::RecordAttachmentUploadResumeUrlReceived(
+    const GURL& upload_url) {
+  CHECK(HasPendingAttachmentUpload());
+  metadata_.RecordAttachmentUploadResumeUrlReceived(upload_url);
 }
 
 void ProcessorEntity::RecordAttachmentUploadCompleted(
     const std::string& temporary_blob_id) {
   CHECK(HasPendingAttachmentUpload());
-  DeleteFileAsync(base::FilePath::FromUTF8Unsafe(
+  abort_attachment_upload_callback_.Reset();
+  DeleteAttachmentFileAsync(base::FilePath::FromUTF8Unsafe(
       metadata().attachment_metadata().pending_upload().file_path()));
   metadata_.RecordAttachmentUploadCompleted(temporary_blob_id);
   if (commit_data_) {
@@ -334,16 +355,26 @@ void ProcessorEntity::RecordAttachmentUploadCompleted(
   }
 }
 
-void ProcessorEntity::RecordAttachmentUploadCancelled() {
+void ProcessorEntity::ClearPendingAttachmentUpload() {
   if (commit_data_) {
     commit_data_->attachment_metadata.reset();
   }
   if (!HasPendingAttachmentUpload()) {
+    CHECK(!abort_attachment_upload_callback_);
     return;
   }
-  DeleteFileAsync(base::FilePath::FromUTF8Unsafe(
+  DeleteAttachmentFileAsync(base::FilePath::FromUTF8Unsafe(
       metadata().attachment_metadata().pending_upload().file_path()));
-  metadata_.RecordAttachmentUploadCancelled();
+  metadata_.RecordPendingAttachmentUploadCleared();
+  if (abort_attachment_upload_callback_) {
+    std::move(abort_attachment_upload_callback_).Run();
+  }
+}
+
+void ProcessorEntity::PauseAttachmentUpload() {
+  if (abort_attachment_upload_callback_) {
+    std::move(abort_attachment_upload_callback_).Run();
+  }
 }
 
 }  // namespace syncer

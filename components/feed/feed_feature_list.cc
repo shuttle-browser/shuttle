@@ -12,10 +12,6 @@
 #include "build/build_config.h"
 #include "components/country_codes/country_codes.h"
 
-#if BUILDFLAG(IS_ANDROID)
-#include "components/sync/base/features.h"
-#endif  // BUILDFLAG(IS_ANDROID)
-
 namespace feed {
 
 // InterestFeedV2 takes precedence over InterestFeedContentSuggestions.
@@ -49,6 +45,9 @@ BASE_FEATURE(kFeedSignedOutViewDemotion, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kRefreshFeedOnRestart, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kFeedContainment, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// See b/577835384.
+BASE_FEATURE(kFeedContainmentClipFirstCard, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kFeedRecyclerBinderUnmountOnDetach,
              base::FEATURE_DISABLED_BY_DEFAULT);

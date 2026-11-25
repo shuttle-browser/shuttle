@@ -24,7 +24,7 @@
 #include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/permissions/system/platform_handle.h"
 #include "chrome/browser/profiles/profile_manager.h"
-#include "chrome/browser/safe_browsing/application_advanced_protection_status_detector.h"
+#include "chrome/browser/safe_browsing/advanced_protection/application_advanced_protection_status_detector.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/views/frame/glass_frame_service.h"
 #include "components/application_locale_storage/application_locale_storage.h"
@@ -36,12 +36,17 @@
 #include "ui/base/ui_base_features.h"
 
 #if !BUILDFLAG(IS_ANDROID)
+#include "base/command_line.h"
+#include "base/files/file_path.h"
 #include "chrome/browser/background/glic/glic_background_mode_manager.h"
 #include "chrome/browser/child_module/child_module_manager.h"
 #include "chrome/browser/child_module/features.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_drag_api/desktop_tab_drag_impl/tab_drag_session_desktop_injector.h"
+#include "components/autofill/content/browser/integrators/custom_form_controls/custom_form_control_script_index.h"
+#include "components/autofill/core/common/autofill_features.h"
+#include "components/autofill/core/common/autofill_switches.h"
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -156,11 +161,13 @@ void GlobalFeatures::PostBrowserProcessInit() {
 #endif
 
 #if BUILDFLAG(ENABLE_DEVICE_BOUND_SESSIONS)
-  if (unexportable_keys::UnexportableKeyServiceImpl::
+  // Check the feature first. On Windows, asking for the key provider loads
+  // tbs.dll on the UI thread.
+  if (base::FeatureList::IsEnabled(
+          unexportable_keys::kUnexportableKeyDeletion) &&
+      unexportable_keys::UnexportableKeyServiceImpl::
           IsStatefulUnexportableKeyProviderSupported(
-              unexportable_keys::GetDefaultConfig()) &&
-      base::FeatureList::IsEnabled(
-          unexportable_keys::kUnexportableKeyDeletion)) {
+              unexportable_keys::GetDefaultConfig())) {
     unexportable_key_obsolete_profile_garbage_collector_ = std::make_unique<
         unexportable_keys::UnexportableKeyObsoleteProfileGarbageCollector>(
         g_browser_process->profile_manager());
@@ -275,6 +282,22 @@ void GlobalFeatures::Init() {
 
 void GlobalFeatures::PreMainMessageLoopRun() {
 #if !BUILDFLAG(IS_ANDROID)
+  // Custom form control scripts are only supported on desktop. For now, they
+  // only come from a local directory given by
+  // `--autofill-custom-form-control-scripts-dir` (also settable in
+  // chrome://flags), so there is no index without one.
+  if (base::FeatureList::IsEnabled(
+          autofill::features::kAutofillCustomFormControlScripts)) {
+    const base::FilePath directory =
+        base::CommandLine::ForCurrentProcess()->GetSwitchValuePath(
+            autofill::switches::kAutofillCustomFormControlScriptsDir);
+    if (!directory.empty()) {
+      custom_form_control_script_index_ =
+          std::make_unique<autofill::CustomFormControlScriptIndex>();
+      custom_form_control_script_index_->InitializeFromDirectory(directory);
+    }
+  }
+
   if (base::FeatureList::IsEnabled(child_module::features::kDynamicPatching)) {
     child_module_manager_ = std::make_unique<child_module::ChildModuleManager>(
         *g_browser_process->local_state());
@@ -338,11 +361,16 @@ void GlobalFeatures::PostMainMessageLoopRun() {
 }
 
 void GlobalFeatures::PostDestroyThreads() {
+#if !BUILDFLAG(IS_ANDROID)
+  // BrowserInfoBarManager should be destroyed before GlobalBrowserCollection
+  // since it observes GlobalBrowserCollection.
+  browser_infobar_manager_.reset();
+#endif  // !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(IS_WIN)
   // Startup launch manager should be destroyed before GlobalBrowserCollection
   // since its infobar manager observes GlobalBrowserCollection.
   startup_launch_manager_.reset();
-#endif  // !BUILDFLAG(IS_ANDROID)
+#endif  // BUILDFLAG(IS_WIN)
 }
 
 std::unique_ptr<system_permission_settings::PlatformHandle>

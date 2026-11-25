@@ -11,6 +11,7 @@
 #import "base/containers/span.h"
 
 class AimEligibilityService;
+@class ChromeConnectionOptions;
 class ExtensionService;
 class PrefService;
 class ProfileIOS;
@@ -21,7 +22,9 @@ class SystemIdentityManager;
 class TabGroupService;
 class TrustedVaultClientBackend;
 @class UIImage;
+@class UIViewController;
 @class UIWindow;
+@protocol ChromeLensViewFinderController;
 @protocol ReauthenticationProtocol;
 
 namespace contextual_search {
@@ -278,6 +281,11 @@ void InjectFakeTabsInBrowser(Browser* browser);
 // Returns a fake reauthentication module to be used in tests.
 id<ReauthenticationProtocol> GetFakeReauthenticationModule();
 
+// Returns a fake Lens View Finder controller to be used in tests, or nil to
+// use the provider.
+UIViewController<ChromeLensViewFinderController>*
+GetOverriddenLensViewFinderController();
+
 // Returns true if application startup should pause at the background stage
 // (AppInitStage::kBrowserObjectsForBackgroundHandlers) and suppress scene
 // foregrounding to simulate a background launch.
@@ -285,6 +293,11 @@ bool ShouldPauseStartupAtBackgroundStage();
 
 // Unpauses application startup if it was paused at the background stage.
 void UnpauseStartupAtBackgroundStage();
+
+// Allows overriding the connection options handled by
+// `-scene:willConnectToSession:options:` during cold start in tests. Returns
+// `nil` if no override is specified.
+ChromeConnectionOptions* GetOverriddenConnectionOptions();
 
 }  // namespace tests_hook
 

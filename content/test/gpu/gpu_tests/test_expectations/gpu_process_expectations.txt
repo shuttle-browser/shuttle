@@ -61,7 +61,12 @@
 #         angle-swiftshader
 #         angle-vulkan ]
 # Skia Renderer
-# tags: [ renderer-skia-gl
+# tags: [ renderer-graphite-dawn-d3d11
+#         renderer-graphite-dawn-d3d12
+#         renderer-graphite-dawn-gl
+#         renderer-graphite-dawn-metal
+#         renderer-graphite-dawn-vulkan
+#         renderer-skia-gl
 #         renderer-skia-vulkan
 #         renderer-software ]
 # Driver
@@ -90,6 +95,8 @@
 #         webgpu-shared-worker ]
 # WebGPU Compat context
 # tags: [ compat-default compat-min-es31 ]
+# WebGPU default features
+# tags: [ unsafe-webgpu-disabled unsafe-webgpu-enabled ]
 # Clang coverage
 # tags: [ clang-coverage no-clang-coverage ]
 # Skia Graphite
@@ -122,9 +129,6 @@
 [ win qualcomm-0x36333630 ] GpuProcess_no_swiftshader_for_webgl_without_flags [ Skip ]
 [ win qualcomm-0x36334330 ] GpuProcess_no_swiftshader_for_webgl_without_flags [ Skip ]
 [ win qualcomm-0x36334330 ] GpuProcess_feature_status_under_swiftshader [ Skip ]
-
-# Software Compositing is not supported on ChromeOS.
-crbug.com/1084796 [ chromeos ] GpuProcess_readback_webgl_gpu_process [ Skip ]
 
 # Fails on Fuchsia cast receiver - not important to fix
 crbug.com/500083376 [ fuchsia ] GpuProcess_vulkan_vma_race [ Skip ]

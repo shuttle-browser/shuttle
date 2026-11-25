@@ -6,6 +6,7 @@
 
 #include <stddef.h>
 
+#include <memory>
 #include <optional>
 #include <utility>
 
@@ -193,6 +194,15 @@ P2PSocketManager::~P2PSocketManager() {
   // Reset the P2PSocketManager receiver before dropping pending dns requests.
   socket_manager_receiver_.reset();
 
+  // Destroying a socket or DNS request can synchronously fail its siblings
+  // (e.g. when closing the last active DoH stream on a stalled pool). Make sure
+  // none of them calls back into `this` while they are being destroyed:
+  // invalidate the weak pointers that DNS request callbacks are bound to, and
+  // clear each socket's delegate.
+  weak_factory_.InvalidateWeakPtrs();
+  for (const auto& [socket_ptr, socket] : sockets_) {
+    socket->ClearDelegate();
+  }
   sockets_.clear();
   dns_requests_.clear();
 
@@ -235,7 +245,11 @@ void P2PSocketManager::ResumeNetworkChangeNotifications() {
 void P2PSocketManager::DestroySocket(P2PSocket* socket) {
   auto iter = sockets_.find(socket);
   CHECK(iter != sockets_.end());
+  std::unique_ptr<P2PSocket> owned = std::move(iter->second);
   sockets_.erase(iter);
+  // Delete `owned` after completing .erase() on the `sockets_` container.
+  // `~P2PSocket may trigger callbacks that would re-enter `P2PSocketManager`.
+  // `sockets_` should be in consistenct state if that happens.
 }
 
 void P2PSocketManager::DumpPacket(base::span<const uint8_t> packet,
@@ -392,14 +406,19 @@ void P2PSocketManager::GetHostAddress(
     std::optional<net::AddressFamily> address_family,
     bool enable_mdns,
     mojom::P2PSocketManager::GetHostAddressCallback callback) {
+  if (dns_requests_.size() >= kMaxSimultaneousDnsRequests) {
+    LOG(WARNING) << "Too many concurrent DNS requests";
+    std::move(callback).Run(net::IPAddressList());
+    return;
+  }
   auto request = std::make_unique<DnsRequest>(
       url_request_context_->host_resolver(), enable_mdns);
   DnsRequest* request_ptr = request.get();
   dns_requests_.insert(std::move(request));
-  request_ptr->Resolve(
-      host_name, address_family, network_anonymization_key_,
-      base::BindOnce(&P2PSocketManager::OnAddressResolved,
-                     base::Unretained(this), request_ptr, std::move(callback)));
+  request_ptr->Resolve(host_name, address_family, network_anonymization_key_,
+                       base::BindOnce(&P2PSocketManager::OnAddressResolved,
+                                      weak_factory_.GetWeakPtr(), request_ptr,
+                                      std::move(callback)));
 }
 
 void P2PSocketManager::CreateSocket(
@@ -476,9 +495,12 @@ void P2PSocketManager::OnAddressResolved(
     DnsRequest* request,
     mojom::P2PSocketManager::GetHostAddressCallback callback,
     const net::IPAddressList& addresses) {
+  auto iter = dns_requests_.find(request);
+  CHECK(iter != dns_requests_.end());
+  // Unlink before running `callback` or destroying `request` in case teardown
+  // or callback execution re-enters `dns_requests_`.
+  auto owned_request = dns_requests_.extract(iter);
   std::move(callback).Run(addresses);
-
-  dns_requests_.erase(dns_requests_.find(request));
 }
 
 void P2PSocketManager::OnConnectionError() {

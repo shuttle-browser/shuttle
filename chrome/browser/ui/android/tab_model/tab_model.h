@@ -20,10 +20,6 @@
 
 struct NavigateParams;
 
-namespace browser_sync {
-class SyncedWindowDelegateAndroid;
-}
-
 namespace content {
 class WebContents;
 }
@@ -41,6 +37,7 @@ class AndroidTabStripModelAdapter;
 }
 
 class Profile;
+class SyncedWindowDelegateAndroid;
 class TabAndroid;
 class TabModelObserver;
 
@@ -65,11 +62,11 @@ class TabModel : public TabListInterface {
     // tabs will never have a WebContents unless restored to another tab model.
     kArchived,
     // Similar to a standard tab model, but used for a set of tabs that are not
-    // associated with any open window. The tabs in this model are intended to
-    // be "read-only" and cannot be navigated or have a WebContents. If the
-    // window associated with this tab model is opened the headless tab model
-    // will be destroyed and the tabs will be re-created in a standard tab
-    // model.
+    // associated with any open window. Tabs in this model are dormant (never
+    // instantiate a WebContents and cannot be navigated), and this model is
+    // intended to become strictly read-only in the future. If the window
+    // associated with this tab model is opened the headless tab model will be
+    // destroyed and the tabs will be re-created in a standard tab model.
     kHeadless,
   };
 
@@ -194,6 +191,9 @@ class TabModel : public TabListInterface {
     FROM_SESSION_STARTUP_WITH_URLS_PREF,
     // Opened to load an omnibox search query in a new tab in the background.
     FROM_OMNIBOX_BACKGROUND,
+    // Restored by undoing a tab closure: created in the background at the
+    // requested index; selection is handled by the restore logic.
+    FROM_UNDO_CLOSURE,
     // Must be last.
     SIZE
   };
@@ -224,8 +224,6 @@ class TabModel : public TabListInterface {
     KEYBOARD_SHORTCUT,
     // Tab closing is from vertical tab strip.
     VERTICAL_TAB_STRIP,
-    // Tab closing is from Open in app.
-    OPEN_IN_APP,
     // Tab closing is from Quick Delete.
     QUICK_DELETE,
     // Tab closing is from grid tab switcher.
@@ -390,8 +388,7 @@ class TabModel : public TabListInterface {
   std::unique_ptr<AndroidLiveTabContext> live_tab_context_;
 
   // The SyncedWindowDelegate associated with this TabModel.
-  std::unique_ptr<browser_sync::SyncedWindowDelegateAndroid>
-      synced_window_delegate_;
+  std::unique_ptr<SyncedWindowDelegateAndroid> synced_window_delegate_;
 
   raw_ptr<Profile, DanglingUntriaged> profile_;
 

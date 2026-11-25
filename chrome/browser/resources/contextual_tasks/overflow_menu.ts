@@ -9,12 +9,15 @@ import '//resources/cr_elements/icons.html.js';
 
 import {AnchorAlignment} from '//resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import type {CrActionMenuElement} from '//resources/cr_elements/cr_action_menu/cr_action_menu.js';
+import {getInstance as getAnnouncerInstance} from '//resources/cr_elements/cr_a11y_announcer/cr_a11y_announcer.js';
 // <if expr="not is_android">
 import {HelpBubbleMixinLit} from 'chrome://resources/cr_components/help_bubble/help_bubble_mixin_lit.js';
 // </if>
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+// <if expr="not is_android">
 import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+// </if>
 
 import type {ToolbarBrowserProxy} from './contextual_tasks_toolbar_browser_proxy.js';
 import {ToolbarBrowserProxyImpl} from './contextual_tasks_toolbar_browser_proxy.js';
@@ -118,10 +121,10 @@ export class OverflowMenuElement extends OverflowMenuElementBase {
     this.toolbarListenerIds_ = [];
   }
 
+  // <if expr="not is_android">
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
 
-    // <if expr="not is_android">
     const showPin = this.shouldShowPinButton_();
     if (showPin && !this.helpBubbleRegistered_) {
       this.registerHelpBubble(
@@ -132,8 +135,8 @@ export class OverflowMenuElement extends OverflowMenuElementBase {
           'kContextualTasksWebUIOverflowMenuPinButtonElementId');
       this.helpBubbleRegistered_ = false;
     }
-    // </if>
   }
+  // </if>
 
   async showAt(target: HTMLElement) {
     if (this.isUnboundedMenuEnabled_) {
@@ -164,6 +167,13 @@ export class OverflowMenuElement extends OverflowMenuElementBase {
   protected onPinClick_() {
     this.close();
     this.isPinned = !this.isPinned;
+    if (loadTimeData.valueExists('sidePanelPinned') &&
+        loadTimeData.valueExists('sidePanelUnpinned')) {
+      const announcement = this.isPinned ?
+          loadTimeData.getString('sidePanelPinned') :
+          loadTimeData.getString('sidePanelUnpinned');
+      getAnnouncerInstance().announce(announcement);
+    }
     if (this.isPinned) {
       recordAction('ContextualTasks.WebUI.UserAction.PinSidePanel');
       recordAction(

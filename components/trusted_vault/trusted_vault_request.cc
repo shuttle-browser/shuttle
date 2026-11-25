@@ -12,7 +12,6 @@
 #include "components/signin/public/identity_manager/access_token_info.h"
 #include "components/trusted_vault/standalone_trusted_vault_server_constants.h"
 #include "components/trusted_vault/trusted_vault_access_token_fetcher.h"
-#include "components/trusted_vault/trusted_vault_server_constants.h"
 #include "google_apis/credentials_mode.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "net/base/backoff_entry.h"
@@ -74,6 +73,7 @@ net::NetworkTrafficAnnotationTag CreateTrafficAnnotationTag() {
           "An OAuth2 access token, metadata associated with encryption keys: "
           "encrypted encryption keys, public counterpart of encryption keys."
         destination: GOOGLE_OWNED_SERVICE
+        api_service_name: "securitydomain-pa.googleapis.com"
       }
       policy {
         cookies_allowed: NO
@@ -117,7 +117,6 @@ TrustedVaultRequest::HttpStatus AccessTokenFetchingErrorToRequestHttpStatus(
 }  // namespace
 
 TrustedVaultRequest::TrustedVaultRequest(
-    const SecurityDomainId& security_domain_id,
     const CoreAccountId& account_id,
     HttpMethod http_method,
     const GURL& request_url,
@@ -126,8 +125,7 @@ TrustedVaultRequest::TrustedVaultRequest(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
     std::unique_ptr<TrustedVaultAccessTokenFetcher> access_token_fetcher,
     RecordFetchStatusCallback record_fetch_status_callback)
-    : security_domain_id_(security_domain_id),
-      account_id_(account_id),
+    : account_id_(account_id),
       http_method_(http_method),
       request_url_(request_url),
       serialized_request_proto_(serialized_request_proto),
@@ -156,10 +154,8 @@ void TrustedVaultRequest::FetchAccessTokenAndSendRequest(
 void TrustedVaultRequest::OnAccessTokenFetched(
     TrustedVaultAccessTokenFetcher::AccessTokenInfoOrError
         access_token_info_or_error) {
-  base::UmaHistogramBoolean(
-      "TrustedVault.AccessTokenFetchSuccess." +
-          GetSecurityDomainNameForUma(security_domain_id_),
-      access_token_info_or_error.has_value());
+  base::UmaHistogramBoolean("TrustedVault.AccessTokenFetchSuccess",
+                            access_token_info_or_error.has_value());
 
   if (!access_token_info_or_error.has_value()) {
     backoff_entry_.InformOfRequest(/*succeeded=*/false);

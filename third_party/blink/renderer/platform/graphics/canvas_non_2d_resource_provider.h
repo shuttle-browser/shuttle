@@ -23,11 +23,9 @@
 #include "gpu/command_buffer/common/sync_token.h"
 #include "gpu/ipc/client/client_shared_image_interface.h"
 #include "third_party/blink/public/platform/web_graphics_shared_image_interface_provider.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_2d_color_params.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource.h"
-#include "third_party/blink/renderer/platform/graphics/canvas_snapshot_info.h"
+#include "third_party/blink/renderer/platform/graphics/exported_canvas_resource.h"
 #include "third_party/blink/renderer/platform/graphics/flush_for_image_listener.h"
-#include "third_party/blink/renderer/platform/graphics/image_orientation.h"
 #include "third_party/blink/renderer/platform/graphics/memory_managed_paint_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/static_bitmap_image.h"
 #include "third_party/blink/renderer/platform/graphics/web_graphics_context_3d_provider_wrapper.h"
@@ -75,45 +73,6 @@ class PLATFORM_EXPORT CanvasNon2DResourceProvider
       base::WeakPtr<WebGraphicsContext3DProviderWrapper>,
       gpu::SharedImageUsageSet shared_image_usage_flags,
       base::OnceClosure context_lost_callback = {});
-  static std::unique_ptr<CanvasNon2DResourceProvider> Create(
-      gfx::Size size,
-      viz::SharedImageFormat format,
-      SkAlphaType alpha_type,
-      const gfx::ColorSpace& color_space,
-      base::WeakPtr<WebGraphicsContext3DProviderWrapper>
-          context_provider_wrapper,
-      gpu::SharedImageUsageSet shared_image_usage_flags,
-      base::OnceClosure context_lost_callback = {}) {
-    return Create(size, format, alpha_type, color_space, gfx::HDRMetadata(),
-                  context_provider_wrapper, shared_image_usage_flags,
-                  std::move(context_lost_callback));
-  }
-
-  static std::unique_ptr<CanvasNon2DResourceProvider> Create(
-      gfx::Size size,
-      const Canvas2DColorParams& color_params,
-      base::WeakPtr<WebGraphicsContext3DProviderWrapper>,
-      gpu::SharedImageUsageSet shared_image_usage_flags);
-
-  static std::unique_ptr<CanvasNon2DResourceProvider> CreateForWebGPU(
-      gfx::Size size,
-      viz::SharedImageFormat format,
-      SkAlphaType alpha_type,
-      const gfx::ColorSpace& color_space,
-      const gfx::HDRMetadata& hdr_metadata,
-      gpu::SharedImageUsageSet shared_image_usage_flags = {},
-      base::OnceClosure context_lost_callback = {});
-  static std::unique_ptr<CanvasNon2DResourceProvider> CreateForWebGPU(
-      gfx::Size size,
-      viz::SharedImageFormat format,
-      SkAlphaType alpha_type,
-      const gfx::ColorSpace& color_space,
-      gpu::SharedImageUsageSet shared_image_usage_flags = {},
-      base::OnceClosure context_lost_callback = {}) {
-    return CreateForWebGPU(size, format, alpha_type, color_space,
-                           gfx::HDRMetadata(), shared_image_usage_flags,
-                           std::move(context_lost_callback));
-  }
 
   static std::unique_ptr<CanvasNon2DResourceProvider>
   CreateForSoftwareCompositor(
@@ -124,61 +83,34 @@ class PLATFORM_EXPORT CanvasNon2DResourceProvider
       const gfx::HDRMetadata& hdr_metadata,
       WebGraphicsSharedImageInterfaceProvider* shared_image_interface_provider,
       base::OnceClosure context_lost_callback = {});
-  static std::unique_ptr<CanvasNon2DResourceProvider>
-  CreateForSoftwareCompositor(
-      gfx::Size size,
-      viz::SharedImageFormat format,
-      SkAlphaType alpha_type,
-      const gfx::ColorSpace& color_space,
-      WebGraphicsSharedImageInterfaceProvider* shared_image_interface_provider,
-      base::OnceClosure context_lost_callback = {}) {
-    return CreateForSoftwareCompositor(
-        size, format, alpha_type, color_space, gfx::HDRMetadata(),
-        shared_image_interface_provider, std::move(context_lost_callback));
-  }
-
-  static std::unique_ptr<CanvasNon2DResourceProvider>
-  CreateForSoftwareCompositor(
-      gfx::Size size,
-      const Canvas2DColorParams& color_params,
-      WebGraphicsSharedImageInterfaceProvider* shared_image_interface_provider);
 
   ~CanvasNon2DResourceProvider() override;
-
-  gpu::SharedImageUsageSet GetSharedImageUsageFlags() const;
-  bool IsSingleBuffered() const;
 
   bool IsSoftware() const { return is_software_; }
 
   gfx::Size Size() const { return size_; }
-  viz::SharedImageFormat GetSharedImageFormat() const { return format_; }
-  const gfx::ColorSpace& GetColorSpace() const { return color_space_; }
-  const gfx::HDRMetadata& GetHdrMetadata() const { return hdr_metadata_; }
-  SkAlphaType GetAlphaType() const { return alpha_type_; }
-  CanvasSnapshotInfo GetInfo() const {
-    return {
-        .alpha_type = GetAlphaType(),
-        .color_space = GetColorSpace(),
-        .hdr_metadata = GetHdrMetadata(),
-        .format = GetSharedImageFormat(),
-        .size = Size(),
-    };
+
+  gpu::SharedImageUsageSet GetSharedImageUsageFlagsForTesting() const;
+  viz::SharedImageFormat GetSharedImageFormatForTesting() const {
+    return format_;
   }
+  const gfx::ColorSpace& GetColorSpaceForTesting() const {
+    return color_space_;
+  }
+  SkAlphaType GetAlphaTypeForTesting() const { return alpha_type_; }
 
   base::ByteSize EstimatedSizeInBytes() const;
 
-  scoped_refptr<CanvasResource> ProduceCanvasResource();
+  scoped_refptr<ExportedCanvasResource> ProduceCanvasResource();
 
   bool IsValid() const;
-  scoped_refptr<StaticBitmapImage> Snapshot(
-      ImageOrientation = ImageOrientationEnum::kDefault);
+  scoped_refptr<StaticBitmapImage> Snapshot();
 
-  scoped_refptr<CanvasResource> DoExternalOverdrawAndProduceResource(
+  scoped_refptr<ExportedCanvasResource> DoExternalOverdrawAndProduceResource(
       base::FunctionRef<void(cc::PaintCanvas&)> draw_callback);
 
   scoped_refptr<StaticBitmapImage> DoExternalOverdrawAndSnapshot(
-      base::FunctionRef<void(cc::PaintCanvas&)> draw_callback,
-      ImageOrientation orientation);
+      base::FunctionRef<void(cc::PaintCanvas&)> draw_callback);
 
   // Returns the ClientSharedImage backing this CanvasNon2DResourceProvider, if
   // one exists, after flushing the resource and signaling that an external
@@ -193,15 +125,6 @@ class PLATFORM_EXPORT CanvasNon2DResourceProvider
   // write have completed. Ensures that the next read of this resource (whether
   // via raster or the compositor) waits on this token.
   void EndExternalWrite(const gpu::SyncToken& external_write_sync_token);
-
-  gpu::raster::RasterInterface* RasterInterface() const;
-
-  CanvasResourceSharedImage* resource() {
-    return static_cast<CanvasResourceSharedImage*>(resource_.get());
-  }
-  const CanvasResourceSharedImage* resource() const {
-    return static_cast<const CanvasResourceSharedImage*>(resource_.get());
-  }
 
  private:
   CanvasNon2DResourceProvider(
@@ -221,6 +144,7 @@ class PLATFORM_EXPORT CanvasNon2DResourceProvider
                               WebGraphicsSharedImageInterfaceProvider*,
                               base::OnceClosure context_lost_callback = {});
 
+  gpu::raster::RasterInterface* RasterInterface() const;
   CanvasImageProvider* GetOrCreateImageProvider();
   void ClearUnusedResources();
   bool IsGpuContextLost() const;
@@ -272,6 +196,9 @@ class PLATFORM_EXPORT CanvasNon2DResourceProvider
 
   void EnsureResourceReadyForDraw();
 
+  scoped_refptr<ExportedCanvasResource> CreateExportedResource(
+      scoped_refptr<CanvasResourceSharedImage> resource);
+
   const gfx::Size size_;
   const viz::SharedImageFormat format_;
   const SkAlphaType alpha_type_;
@@ -282,7 +209,7 @@ class PLATFORM_EXPORT CanvasNon2DResourceProvider
   const bool is_software_;
 
   mutable sk_sp<SkSurface> surface_;
-  uint32_t snapshot_sk_image_id_ = 0u;
+  uint64_t snapshot_sk_image_id_ = 0u;
   const cc::PaintImage::Id snapshot_paint_image_id_;
   cc::PaintImage::ContentId snapshot_paint_image_content_id_ =
       cc::PaintImage::kInvalidContentId;

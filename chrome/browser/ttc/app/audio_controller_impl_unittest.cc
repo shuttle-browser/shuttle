@@ -11,6 +11,7 @@
 
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/test/bind.h"
@@ -18,6 +19,8 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/time/time.h"
+#include "build/build_config.h"
+#include "components/ttc/app/public/debug_sink.h"
 #include "components/ttc/app/public/error_codes.h"
 #include "media/audio/audio_system_impl.h"
 #include "media/audio/mock_audio_manager.h"
@@ -48,12 +51,29 @@ class MockAudioControllerObserver : public AudioController::Observer {
                const media::AudioParameters& params,
                float energy),
               (override));
+  MOCK_METHOD(void, OnCaptureStopped, (), (override));
   MOCK_METHOD(void,
               OnModelAudioEnvelopeReady,
               (const AudioEnvelope& envelope),
               (override));
   MOCK_METHOD(void, OnPlaybackCompleted, (int64_t sequence_number), (override));
   MOCK_METHOD(void, OnAudioError, (ErrorCode error), (override));
+};
+
+// Records what's reported to the debug tools.
+class RecordingDebugSink : public DebugSink {
+ public:
+  void OnCaptureFormat(const CaptureFormat& format) override {
+    capture_formats.push_back(format);
+  }
+  void OnCaptureMuted(bool muted) override { capture_muted.push_back(muted); }
+  void OnMicLevel(float rms) override { mic_levels.push_back(rms); }
+  void OnRenderError() override { ++render_errors; }
+
+  std::vector<CaptureFormat> capture_formats;
+  std::vector<bool> capture_muted;
+  std::vector<float> mic_levels;
+  int render_errors = 0;
 };
 
 }  // namespace
@@ -345,6 +365,36 @@ TEST_F(AudioControllerImplTest, StartAndStopCaptureWithFakeBinder) {
   EXPECT_FALSE(controller.is_capturing());
 }
 
+TEST_F(AudioControllerImplTest, StopCaptureNotifiesObservers) {
+  AudioControllerImpl controller(base::DoNothing(), GetAudioSystemFactory());
+  controller.AddObserver(&observer_);
+  controller.StartCapture(/*device_id=*/"");
+
+  EXPECT_CALL(observer_, OnCaptureStopped).Times(1);
+  controller.StopCapture();
+  // Already stopped.
+  controller.StopCapture();
+}
+
+TEST_F(AudioControllerImplTest, StopCaptureDropsUndeliveredAudio) {
+  AudioControllerImpl controller;
+  controller.AddObserver(&observer_);
+
+  // A full chunk is captured and posted to the main thread, but capture stops
+  // before it's delivered.
+  auto bus = media::AudioBus::Create(1, 1600);
+  bus->Zero();
+  controller.Capture(bus.get(), base::TimeTicks::Now(), {}, 1.0);
+  controller.StopCapture();
+
+  EXPECT_CALL(observer_, OnCapturedAudio).Times(0);
+  // Runs the tasks posted so far, including the one delivering the chunk.
+  base::RunLoop run_loop;
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, run_loop.QuitClosure());
+  run_loop.Run();
+}
+
 TEST_F(AudioControllerImplTest,
        StartCaptureWithoutInputDevicesReportsError) {
   audio_manager_.SetHasInputDevices(false);
@@ -630,6 +680,47 @@ TEST_F(AudioControllerImplTest, HardwareLackingAecEngagesSoftwareAec) {
 #endif
 }
 
+#if BUILDFLAG(IS_CHROMEOS)
+TEST_F(AudioControllerImplTest, ChromeOSUsesAndReportsBoardCrasEffects) {
+  // A board with tuned AEC and NS but no AGC.
+  constexpr int kBoardEffects =
+      media::AudioParameters::ECHO_CANCELLER |
+      media::AudioParameters::NOISE_SUPPRESSION |
+      media::AudioParameters::ALLOW_DSP_ECHO_CANCELLER;
+  media::AudioParameters device_params(
+      media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
+      media::ChannelLayoutConfig::Mono(), 48000, 480);
+  device_params.set_effects(kBoardEffects);
+  audio_manager_.SetInputStreamParameters(device_params);
+
+  FakeStreamFactoryForAec fake_factory;
+  auto fake_binder = base::BindLambdaForTesting(
+      [&](mojo::PendingReceiver<media::mojom::AudioStreamFactory> receiver) {
+        fake_factory.Bind(std::move(receiver));
+      });
+  RecordingDebugSink debug_sink;
+  AudioControllerImpl controller(fake_binder, GetAudioSystemFactory(),
+                                 &debug_sink);
+
+  controller.StartCapture(/*device_id=*/"");
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return fake_factory.last_params().sample_rate() > 0; }));
+
+  EXPECT_FALSE(fake_factory.has_processing_config());
+  EXPECT_FALSE(fake_factory.last_enable_agc());
+  EXPECT_EQ(fake_factory.last_params().effects(), kBoardEffects);
+
+  ASSERT_EQ(debug_sink.capture_formats.size(), 1u);
+  const DebugSink::CaptureFormat& format = debug_sink.capture_formats[0];
+  EXPECT_EQ(format.sample_rate, 48000);
+  EXPECT_EQ(format.channels, 1);
+  ASSERT_TRUE(format.processing);
+  EXPECT_TRUE(format.processing->echo_cancellation);
+  EXPECT_TRUE(format.processing->noise_suppression);
+  EXPECT_FALSE(format.processing->automatic_gain_control);
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 TEST_F(AudioControllerImplTest,
        FifoAggregatesTen10msChunksIntoOne100msChunk) {
   AudioControllerImpl controller;
@@ -742,6 +833,131 @@ TEST_F(AudioControllerImplTest, PlayAudioExtractsAndDispatchesAudioEnvelope) {
   ASSERT_EQ(third_envelope.segments.size(), 1u);
   EXPECT_EQ(third_envelope.segments[0].start_time, base::Milliseconds(0));
   EXPECT_EQ(third_envelope.segments[0].duration, base::Milliseconds(20));
+}
+
+TEST_F(AudioControllerImplTest, ReportsCaptureFormatToDebugSink) {
+#if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(media::kChromeWideEchoCancellation);
+#endif
+  RecordingDebugSink debug_sink;
+  AudioControllerImpl controller(base::DoNothing(), GetAudioSystemFactory(),
+                                 &debug_sink);
+
+  controller.StartCapture(/*device_id=*/"");
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return !debug_sink.capture_formats.empty(); }));
+
+  // The device's format, converted by the browser.
+  ASSERT_EQ(debug_sink.capture_formats.size(), 1u);
+  EXPECT_EQ(debug_sink.capture_formats[0].sample_rate, 44100);
+  EXPECT_EQ(debug_sink.capture_formats[0].channels, 2);
+#if BUILDFLAG(IS_CHROMEOS)
+  // The fake device reports no effects. On real boards AudioManagerCras sets
+  // the AEC, NS and AGC flags it supports, and CRAS applies them.
+  ASSERT_TRUE(debug_sink.capture_formats[0].processing);
+  EXPECT_FALSE(debug_sink.capture_formats[0].processing->echo_cancellation);
+  EXPECT_FALSE(debug_sink.capture_formats[0].processing->noise_suppression);
+  EXPECT_FALSE(
+      debug_sink.capture_formats[0].processing->automatic_gain_control);
+#else
+  EXPECT_FALSE(debug_sink.capture_formats[0].processing);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+}
+
+TEST_F(AudioControllerImplTest, ReportsCaptureProcessingToDebugSink) {
+#if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeature(media::kChromeWideEchoCancellation);
+
+  // Hardware noise suppression only, so the audio service provides the rest.
+  media::AudioParameters params(media::AudioParameters::AUDIO_PCM_LOW_LATENCY,
+                                media::ChannelLayoutConfig::Mono(), 48000, 480);
+  params.set_effects(media::AudioParameters::NOISE_SUPPRESSION);
+  audio_manager_.SetInputStreamParameters(params);
+
+  FakeStreamFactoryForAec fake_factory;
+  auto fake_binder = base::BindLambdaForTesting(
+      [&](mojo::PendingReceiver<media::mojom::AudioStreamFactory> receiver) {
+        fake_factory.Bind(std::move(receiver));
+      });
+  RecordingDebugSink debug_sink;
+  AudioControllerImpl controller(fake_binder, GetAudioSystemFactory(),
+                                 &debug_sink);
+
+  controller.StartCapture(/*device_id=*/"");
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return !debug_sink.capture_formats.empty(); }));
+
+  ASSERT_EQ(debug_sink.capture_formats.size(), 1u);
+  const DebugSink::CaptureFormat& format = debug_sink.capture_formats[0];
+  EXPECT_EQ(format.sample_rate, 48000);
+  EXPECT_EQ(format.channels, 1);
+  ASSERT_TRUE(format.processing);
+  EXPECT_TRUE(format.processing->echo_cancellation);
+  EXPECT_FALSE(format.processing->noise_suppression);
+  EXPECT_TRUE(format.processing->automatic_gain_control);
+#endif
+}
+
+TEST_F(AudioControllerImplTest, ReportsMicLevelToDebugSink) {
+  RecordingDebugSink debug_sink;
+  AudioControllerImpl controller(
+      AudioControllerImpl::AudioStreamFactoryBinder(),
+      AudioControllerImpl::AudioSystemFactory(), &debug_sink);
+  controller.AddObserver(&observer_);
+
+  float observed_energy = -1.0f;
+  EXPECT_CALL(observer_, OnCapturedAudio)
+      .WillOnce([&](base::span<const int16_t> pcm_data,
+                    const media::AudioParameters& params,
+                    float energy) { observed_energy = energy; });
+
+  auto input_bus = media::AudioBus::Create(1, 1600);
+  for (int i = 0; i < input_bus->frames(); ++i) {
+    input_bus->channel(0)[i] = 0.5f;
+  }
+  controller.Capture(input_bus.get(), base::TimeTicks::Now(), {}, 1.0);
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return !debug_sink.mic_levels.empty(); }));
+
+  // The same level the observers get.
+  ASSERT_EQ(debug_sink.mic_levels.size(), 1u);
+  EXPECT_NEAR(debug_sink.mic_levels[0], 0.5f, 0.01f);
+  EXPECT_EQ(debug_sink.mic_levels[0], observed_energy);
+}
+
+TEST_F(AudioControllerImplTest, ReportsCaptureMutedAndRenderErrorsToDebugSink) {
+  RecordingDebugSink debug_sink;
+  AudioControllerImpl controller(
+      AudioControllerImpl::AudioStreamFactoryBinder(),
+      AudioControllerImpl::AudioSystemFactory(), &debug_sink);
+
+  // Mute changes arrive on the sequence that started capture, so they're
+  // reported right away.
+  controller.OnCaptureMuted(true);
+  EXPECT_THAT(debug_sink.capture_muted, testing::ElementsAre(true));
+
+  // Render errors arrive on the audio thread, so they're reported on the main
+  // sequence.
+  controller.OnRenderError();
+  EXPECT_EQ(debug_sink.render_errors, 0);
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return debug_sink.render_errors == 1; }));
+}
+
+// The debug tools are off by default, so there's no sink.
+TEST_F(AudioControllerImplTest, DebugSinkIsOptional) {
+  AudioControllerImpl controller;
+  controller.AddObserver(&observer_);
+  EXPECT_CALL(observer_, OnCapturedAudio);
+
+  auto input_bus = media::AudioBus::Create(1, 1600);
+  input_bus->Zero();
+  controller.Capture(input_bus.get(), base::TimeTicks::Now(), {}, 1.0);
+  controller.OnCaptureMuted(true);
+  controller.OnRenderError();
+  base::RunLoop().RunUntilIdle();
 }
 
 }  // namespace ttc

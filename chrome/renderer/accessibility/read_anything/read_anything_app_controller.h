@@ -44,7 +44,7 @@ class AXTree;
 }  // namespace ui
 
 namespace ukm {
-class MojoUkmRecorder;
+class UkmRecorder;
 }  // namespace ukm
 
 class AXTreeDistiller;
@@ -170,14 +170,15 @@ class ReadAnythingAppController
   void SetLanguageCode(const std::string& code) override;
   void SetDefaultLanguageCode(const std::string& code) override;
   void ScreenAIServiceReady() override;
-  void OnGetPresentationState(
-      read_anything::mojom::ReadAnythingPresentationState presentation_state)
-      override;
   void OnGetVoicePackInfo(
       read_anything::mojom::VoicePackInfoPtr voice_pack_info) override;
-  void OnReadingModeHidden(bool tab_active) override;
+  void OnReadingModeHidden(bool tab_active,
+                           read_anything::mojom::ReadAnythingPresentationState
+                               presentation_state) override;
   void OnReadingModeShown(
-      read_anything::mojom::ReadAnythingOpenTrigger open_trigger) override;
+      read_anything::mojom::ReadAnythingOpenTrigger open_trigger,
+      read_anything::mojom::ReadAnythingPresentationState presentation_state)
+      override;
   void OnTabWillDetach() override;
   void OnTabMuteStateChange(bool muted) override;
   void UpdateContent(const std::string& title,
@@ -225,6 +226,7 @@ class ReadAnythingAppController
   void OnFontSizeReset();
   void OnLinksEnabledToggled();
   void OnTranslationRequested();
+  void OnSendFeedback();
   void OnImagesEnabledToggled();
   int LetterSpacing() const;
   int LineSpacing() const;
@@ -287,12 +289,10 @@ class ReadAnythingAppController
   std::string GetDocumentUrl() const;
   std::string GetHtmlId(ui::AXNodeID ax_node_id) const;
   std::string GetAltText(ui::AXNodeID ax_node_id) const;
-  std::string GetDomDistillerTitle() const;
-  std::string GetDomDistillerContentHtml() const;
+  std::string GetReadabilityTitle() const;
+  std::string GetReadabilityContentHtml() const;
   // Serializes accessibility tree anchors into a V8 object for the frontend.
-  v8::Local<v8::Value> GetDomDistillerAnchors() const;
-  // Returns the presentation through the OnGetPresentationState callback.
-  void SendGetPresentationStateRequest() const;
+  v8::Local<v8::Value> GetReadabilityAnchors() const;
   // The results of these are sent back via UntrustedPage::OnGetVoicePackInfo.
 
   void SendPinStateRequest();
@@ -300,7 +300,6 @@ class ReadAnythingAppController
   void SendInstallVoicePackRequest(const std::string& language) const;
   void SendUninstallVoiceRequest(const std::string& language) const;
 
-  bool IsSpeechTreeInitialized();
   bool ShouldBold(ui::AXNodeID ax_node_id) const;
   bool IsOverline(ui::AXNodeID ax_node_id) const;
   bool IsSuperscript(ui::AXNodeID ax_node_id) const;
@@ -324,16 +323,15 @@ class ReadAnythingAppController
   bool IsGoogleDocs() const;
   bool IsPdf() const;
   bool IsContentTranslated() const;
-  bool IsAwaitingTranslation() const;
+  // The model's TranslationState, as an int for the WebUI.
+  int GetTranslationState() const;
   bool IsImprovedReadAloudEnabled() const;
   bool IsReadAnythingImprovedUiEnabled() const;
   bool IsReadAnythingTranslateEntryPointEnabled() const;
   bool IsReadAnythingSendFeedbackEnabled() const;
   bool IsTranslatePdfEnabled() const;
   bool IsReadAnythingReadAloudExperimentalPlaybackUiEnabled() const;
-  bool IsTsTextSegmentationEnabled() const;
   bool IsReadabilityEnabled() const;
-  bool IsLineFocusEnabled() const;
   bool IsReadabilityWithLinksEnabled() const;
   bool IsPhraseHighlightingEnabled() const;
   void OnLetterSpacingChange(int value);
@@ -380,26 +378,24 @@ class ReadAnythingAppController
       const std::string& locale,
       const std::string& display_locale) const;
 
-  // Returns a list of nodes and ranges representing the next nodes that should
-  // be spoken and highlighted with Read Aloud. The ranges are represented as a
-  // start offset and a length. Multiple nodes are returned if the segment spans
-  // over more than one node. This defaults to returning the first granularity
-  // until MovePositionTo<Next,Previous>Granularity() moves the position. If the
-  // the current processed_granularity_index_ has not been calculated yet,
-  // GetNextNodes() is called which updates the AXPosition.
-  v8::Local<v8::Value> GetCurrentTextSegments();
-
-  // Returns the actual text content representing by the nodes returned by
-  // GetCurrentTextSegments().
-  std::u16string GetCurrentTextContent();
-
-  int GetAccessibleBoundary(const std::u16string& text, int max_text_length);
-
   // Called when a new dependency parser model file has been loaded and is
   // available.
   void UpdateDependencyParserModel(base::File model_file);
 
   void OnDependencyParserModelAvailabilityChecked(bool is_available);
+
+  // Asynchronously calculates phrase boundaries for each of `sentences` using
+  // the dependency parser model. The result is sent to WebUI via
+  // chrome.readingMode.onPhraseBoundariesReady(), along with `request_id` so
+  // that WebUI can match the result to its request.
+  void RequestPhraseBoundaries(int request_id,
+                               const std::vector<std::u16string>& sentences);
+
+  // Sends the phrase boundaries calculated by RequestPhraseBoundaries() to
+  // WebUI. `boundaries` has one entry per requested sentence, each containing
+  // the start offsets of the phrases in that sentence.
+  void OnPhraseBoundariesComputed(int request_id,
+                                  std::vector<std::vector<int>> boundaries);
 
   base::SequenceBound<DependencyParserModel>&
   GetDependencyParserModelForTesting();
@@ -410,26 +406,6 @@ class ReadAnythingAppController
 
   // Called when distillation completes from the active ReadAnythingDistiller.
   void OnDistillationComplete(const DistillationResult& result);
-
-  // Inits the AXPosition with a starting node.
-  // TODO(crbug.com/40927698): We should be able to use AXPosition in a way
-  // where this isn't needed.
-  void InitAXPositionWithNode(const ui::AXNodeID& starting_node_id);
-
-  // Increments the processed_granularity_index_, updating ReadAloud's state of
-  // the current granularity to refer to the next granularity. The current
-  // behavior allows the client to increment past the end of the page's content.
-  void MovePositionToNextGranularity();
-
-  // Decrements the processed_granularity_index_,updating ReadAloud's state of
-  // the current granularity to refer to the previous granularity
-  void MovePositionToPreviousGranularity();
-
-  void ResetGranularityIndex();
-
-  // Preprocess the text on the current page for speech to be used by
-  // Read Aloud.
-  void PreprocessTextForSpeech();
 
   void Draw(bool recompute_display_nodes);
 
@@ -443,6 +419,17 @@ class ReadAnythingAppController
  private:
   friend ReadAnythingAppControllerTest;
   friend ReadAnythingAppControllerReadabilityTest;
+
+  // A selection that the side panel asked the main page to set.
+  struct SelectionRequest {
+    ui::AXNodeID anchor_node_id;
+    int anchor_offset;
+    ui::AXNodeID focus_node_id;
+    int focus_offset;
+
+    bool operator==(const SelectionRequest&) const = default;
+  };
+
   // The fallback language code if GetLanguageCodeForSpeech has an error.
   // However, this may be the same value as GetLanguageCodeForSpeech.
   const std::string& GetDefaultLanguageCodeForSpeech() const;
@@ -488,9 +475,9 @@ class ReadAnythingAppController
 
   void ExecuteJavaScript(const std::string& script);
 
-  // Updates the model's awaiting-translation state and notifies the WebUI if
-  // it changed.
-  void SetAwaitingTranslation(bool awaiting);
+  // Updates the model's translation state and notifies the WebUI if it
+  // changed.
+  void SetTranslationState(ReadAnythingAppModel::TranslationState state);
 
   // Returns true if a draw occurred.
   bool PostProcessSelection();
@@ -524,6 +511,10 @@ class ReadAnythingAppController
   // perform cleaning operations on it.
   void ReadingModeWillClose();
 
+  // Applies the presentation state that a lifecycle message carries.
+  void ApplyPresentationState(
+      read_anything::mojom::ReadAnythingPresentationState presentation_state);
+
   // Helper method for recording all reading mode per-session metrics. If
   // reading mode is hidden, this will no-op unless overridden with the
   // recently_hidden parameter.
@@ -547,23 +538,6 @@ class ReadAnythingAppController
   void RecordScreen2xDistillationStatus(bool just_hidden);
   void RecordDistillationStatus(
       read_anything::mojom::DistillationStatus status);
-
-  // Given a boundary position within the current granularity, identifies the
-  // nodes that needs to be highlighted (e.g. until the word boundary), and
-  // returns a list containing nodes and the ranges within those nodes. The
-  // ranges are represented as a start offset and a length. Multiple nodes are
-  // returned if the highlight spans over more than one node. This allows us to
-  // correctly position the highlight within the current text segment. The
-  // return value is thus a list containing node id, start, and length.
-  //
-  //  If the `phrases` argument is `true`, the text ranges for the containing
-  //  phrase are returned, otherwise the text ranges for the word are returned.
-  //
-  // Note that this is only needed for custom granularity highlighting. Sentence
-  // highlighting is able to be handled directly in WebUI because the entire
-  // speech segment is highlighted at once.
-  v8::Local<v8::Value> GetHighlightForCurrentSegmentIndex(int index,
-                                                          bool phrases);
 
   // Helpers for logging UmaHistograms based on times recorded in WebUI.
   void IncrementMetricCount(const std::string& metric);
@@ -647,8 +621,8 @@ class ReadAnythingAppController
       std::unique_ptr<base::ScopedObservation<ui::AXTree, ui::AXTreeObserver>>>
       tree_observers_;
 
-  // For metrics logging
-  std::unique_ptr<ukm::MojoUkmRecorder> ukm_recorder_;
+  // For metrics logging. A ukm::MojoUkmRecorder, except in tests.
+  std::unique_ptr<ukm::UkmRecorder> ukm_recorder_;
 
   // The time when the renderer constructor is first triggered.
   base::TimeTicks renderer_load_triggered_time_ms_;
@@ -690,18 +664,21 @@ class ReadAnythingAppController
   // is re-triggered multiple times before completion. Used for logging.
   int distillation_attempts_;
 
-  // The distilled title result of DOM distiller distillation.
-  std::string dom_distiller_title_;
-
   // Tracks whether the distillation status for the current active tree
   // navigation has already been recorded.
   bool has_logged_distillation_status_ = false;
 
-  // The distilled content result of DOM distiller distillation.
-  std::string dom_distiller_content_html_;
-
   std::optional<ReadAnythingAppModel::DistillationMethod>
       forced_distillation_method_for_testing_;
+
+  // The last selection that the side panel asked the main page to set, or
+  // nullopt if a collapse was requested since. It may still be in flight only
+  // while the model has unprocessed selections from reading mode, so it's only
+  // compared against then. The count already drops to 0 when pending requests
+  // become stale, e.g. when the active tree changes or the user selects in the
+  // main page, so this isn't reset then. If the browser drops this request
+  // while others are pending, resending it waits for the count to drop to 0.
+  std::optional<SelectionRequest> last_selection_request_;
 
   // As a subclass of RenderFrameObserver, all objects of this class are stored
   // in data structure and should not get deallocated as long as the object is

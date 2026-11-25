@@ -9,11 +9,12 @@
 #include <string>
 
 #include "base/containers/flat_map.h"
+#include "base/containers/span.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/types/expected.h"
-#include "mojo/public/cpp/base/big_buffer.h"
 #include "services/webnn/ort/graph_builder_ort.h"
+#include "services/webnn/public/cpp/execution_providers_info.h"
 #include "services/webnn/public/cpp/webnn_trace.h"
 #include "services/webnn/public/mojom/webnn_error.mojom-forward.h"
 #include "services/webnn/webnn_context_impl.h"
@@ -52,18 +53,26 @@ class GraphImplOrt final : public WebNNGraphImpl {
   GraphImplOrt(const GraphImplOrt&) = delete;
   GraphImplOrt& operator=(const GraphImplOrt&) = delete;
 
+  struct LoadCompiledGraphError {
+    mojom::ErrorPtr error;
+    // True when the error indicates the compiled graph from the Compiler
+    // process violated the contract (e.g. invalid session metadata), something
+    // that should never happen in normal operation. False for failures that can
+    // legitimately occur (e.g. a runtime/resource error).
+    bool is_contract_violation = false;
+  };
+
   // Creates an ORT session from a compiled graph received from the
   // Compiler process and constructs the WebNNGraphImpl.
-  static base::expected<scoped_refptr<WebNNGraphImpl>, mojom::ErrorPtr>
-  CreateSessionFromCompiledGraph(
-      WebNNContextImpl& context,
-      scoped_refptr<SessionOptions> session_options,
-      scoped_refptr<Environment> env,
-      mojo_base::BigBuffer compiled_model_data,
-      base::flat_map<std::string, std::string>
-          operand_input_name_to_onnx_input_name,
-      base::flat_map<std::string, std::string>
-          operand_output_name_to_onnx_output_name);
+  static base::expected<scoped_refptr<WebNNGraphImpl>, LoadCompiledGraphError>
+  CreateSessionFromCompiledGraph(WebNNContextImpl& context,
+                                 scoped_refptr<SessionOptions> session_options,
+                                 scoped_refptr<Environment> env,
+                                 base::span<const uint8_t> model_bytes,
+                                 base::flat_map<std::string, std::string>
+                                     operand_input_name_to_onnx_input_name,
+                                 base::flat_map<std::string, std::string>
+                                     operand_output_name_to_onnx_output_name);
 
  private:
   ~GraphImplOrt() override;
@@ -77,6 +86,7 @@ class GraphImplOrt final : public WebNNGraphImpl {
       scoped_refptr<SessionOptions> session_options,
       scoped_refptr<Environment> env,
       ContextProperties context_properties,
+      EpWorkarounds ep_workarounds,
       base::flat_map<OperandId, std::unique_ptr<WebNNConstantOperand>>
           constant_operands,
       ScopedTrace scoped_trace);

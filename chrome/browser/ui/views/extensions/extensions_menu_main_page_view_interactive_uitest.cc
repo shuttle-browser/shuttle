@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/views/extensions/extensions_menu_main_page_view.h"
 
 #include "base/command_line.h"
+#include "base/strings/stringprintf.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "chrome/browser/extensions/browsertest_util.h"
 #include "chrome/browser/extensions/chrome_test_extension_loader.h"
@@ -57,8 +58,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/interaction/state_observer.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/views/animation/ink_drop.h"
 #include "ui/views/controls/button/toggle_button.h"
 #include "ui/views/view_utils.h"
@@ -1307,7 +1308,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionsMenuMainPageViewInteractiveTest,
 
       // Refresh the page manually.
       Do([&]() {
-        chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+        chrome::Reload(browser(),
+                       ui::mojom::WindowOpenDisposition::kCurrentTab);
       }),
       WaitForWebContentsNavigation(kTab),
 

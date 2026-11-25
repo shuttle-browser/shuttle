@@ -10,7 +10,13 @@ enum SemanticEmbedderTaskType {
   "retrieval-document"
 };
 
-dictionary SemanticEmbedderCreateOptions {
+dictionary SemanticEmbedderCreateCoreOptions {
+  // The requested embedding space identifier, e.g. "embeddinggemma-300m".
+  // availability() and create() express support for specific embedding spaces.
+  required DOMString embeddingSpace;
+};
+
+dictionary SemanticEmbedderCreateOptions : SemanticEmbedderCreateCoreOptions {
   AbortSignal signal;
   CreateMonitorCallback monitor;
 };
@@ -20,12 +26,39 @@ dictionary SemanticEmbedderEmbedOptions {
   SemanticEmbedderTaskType taskType;
 };
 
+enum SemanticEmbedderInputType {
+  "text"
+};
+
+dictionary SemanticEmbedderInput {
+  required SemanticEmbedderInputType type;
+  required DOMString value;
+};
+
+// A bare string is shorthand for { type: "text", value: providedValue }.
+typedef (DOMString or SemanticEmbedderInput) SemanticEmbedderInputItem;
+typedef (
+  SemanticEmbedderInputItem or sequence<SemanticEmbedderInputItem>
+) SemanticEmbedderInputs;
+
 dictionary SemanticEmbedderResult {
-  sequence<ContentEmbedding> embeddings;
+  required sequence<ContentEmbedding> embeddings;
 };
 
 dictionary ContentEmbedding {
-  Float32Array values;
+  required Float32Array values;
+  // The embedding space of `values`.
+  required DOMString embeddingSpace;
+};
+
+dictionary SemanticEmbedderSpaceInfo {
+  required DOMString embeddingSpace;
+  // When support for this space ends; null if none is scheduled.
+  EpochTimeStamp? shutdownDate = null;
+};
+
+dictionary SemanticEmbedderParams {
+  required sequence<SemanticEmbedderSpaceInfo> supportedSpaces;
 };
 
 [
@@ -40,7 +73,7 @@ interface SemanticEmbedder {
     RaisesException
   ]
   static Promise<Availability> availability(
-    optional SemanticEmbedderCreateOptions options = {}
+    SemanticEmbedderCreateCoreOptions options
   );
 
   [
@@ -49,8 +82,17 @@ interface SemanticEmbedder {
     RaisesException
   ]
   static Promise<SemanticEmbedder> create(
-    optional SemanticEmbedderCreateOptions options = {}
+    SemanticEmbedderCreateOptions options
   );
+
+  // Lists the supported embedding spaces, or none if the API is turned off.
+  // Rejects with NotAllowedError if the permissions policy blocks the API.
+  [
+    MeasureAs=SemanticEmbedder_Params,
+    CallWith=ScriptState,
+    RaisesException
+  ]
+  static Promise<SemanticEmbedderParams> params();
 
   [
     MeasureAs=SemanticEmbedder_Embed,
@@ -58,9 +100,13 @@ interface SemanticEmbedder {
     RaisesException
   ]
   Promise<SemanticEmbedderResult> embed(
-    (DOMString or sequence<DOMString>) input,
+    SemanticEmbedderInputs input,
     optional SemanticEmbedderEmbedOptions options = {}
   );
+
+  // The space this embedder produces vectors in; the value passed to create().
+  [MeasureAs=SemanticEmbedder_EmbeddingSpace]
+  readonly attribute DOMString embeddingSpace;
 
   [
     MeasureAs=SemanticEmbedder_Destroy,

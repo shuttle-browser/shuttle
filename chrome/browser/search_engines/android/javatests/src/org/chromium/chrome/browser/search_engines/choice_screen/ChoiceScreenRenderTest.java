@@ -46,6 +46,7 @@ import org.chromium.chrome.test.util.ChromeRenderTestRule;
 import org.chromium.components.browser_ui.modaldialog.AppModalPresenter;
 import org.chromium.components.search_engines.FakeSearchEngineCountryDelegate;
 import org.chromium.components.search_engines.SearchEngineChoiceService;
+import org.chromium.components.search_engines.SearchEngineCountryDelegate.ChoiceScope;
 import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.ui.modaldialog.ModalDialogManager;
 import org.chromium.ui.test.util.BlankUiTestActivity;
@@ -58,7 +59,10 @@ import java.util.List;
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
 @Batch(Batch.PER_CLASS)
-@EnableFeatures({ChromeFeatureList.DISABLE_SCROLLBAR_OF_FADING_EDGE_SCROLLVIEW})
+@EnableFeatures({
+    ChromeFeatureList.DISABLE_SCROLLBAR_OF_FADING_EDGE_SCROLLVIEW,
+    ChromeFeatureList.CHROME_SEARCH_ONLY_CLAY_SCOPE
+})
 public class ChoiceScreenRenderTest {
     public @ClassParameter static List<ParameterSet> params = new NightModeParams().getParameters();
 
@@ -113,6 +117,18 @@ public class ChoiceScreenRenderTest {
     @Test
     @LargeTest
     @Feature("RenderTest")
+    public void testFirstChoiceScreenBlockingDialog_chromeSearchOnly() throws Exception {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> mFakeDelegate.setChoiceScope(ChoiceScope.CHROME_SEARCH_ONLY));
+        showDialog();
+
+        mRenderTestRule.render(
+                getDialogView(), "first_choice_screen_blocking_dialog_chrome_search_only");
+    }
+
+    @Test
+    @LargeTest
+    @Feature("RenderTest")
     @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/565382187
     public void testSecondChoiceScreenBlockingDialog() throws Exception {
         ThreadUtils.runOnUiThreadBlocking(() -> mFakeDelegate.setIsDeviceChoiceRequired(true));
@@ -124,6 +140,26 @@ public class ChoiceScreenRenderTest {
                 .inRoot(isDialog())
                 .check(matches(isDisplayed()));
         mRenderTestRule.render(getDialogView(), "second_choice_screen_dialog");
+    }
+
+    @Test
+    @LargeTest
+    @Feature("RenderTest")
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/565382187
+    public void testSecondChoiceScreenBlockingDialog_chromeSearchOnly() throws Exception {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mFakeDelegate.setIsDeviceChoiceRequired(true);
+                    mFakeDelegate.setChoiceScope(ChoiceScope.CHROME_SEARCH_ONLY);
+                });
+        showDialog();
+
+        onView(withText(R.string.next)).inRoot(isDialog()).perform(click());
+
+        onViewWaiting(withText(R.string.blocking_choice_dialog_second_title_chrome_search_only))
+                .inRoot(isDialog())
+                .check(matches(isDisplayed()));
+        mRenderTestRule.render(getDialogView(), "second_choice_screen_dialog_chrome_search_only");
     }
 
     private View getDialogView() {

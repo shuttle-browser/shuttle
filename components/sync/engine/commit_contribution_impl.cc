@@ -63,14 +63,16 @@ CommitContributionImpl::CommitContributionImpl(
                             const FailedCommitResponseDataList&)>
         on_commit_response_callback,
     base::OnceCallback<void(SyncCommitError)> on_full_commit_failure_callback,
-    PassphraseType passphrase_type)
+    PassphraseType passphrase_type,
+    bool has_more_local_changes)
     : type_(type),
       on_commit_response_callback_(std::move(on_commit_response_callback)),
       on_full_commit_failure_callback_(
           std::move(on_full_commit_failure_callback)),
       passphrase_type_(passphrase_type),
       context_(context),
-      commit_requests_(std::move(commit_requests)) {}
+      commit_requests_(std::move(commit_requests)),
+      has_more_local_changes_(has_more_local_changes) {}
 
 CommitContributionImpl::~CommitContributionImpl() = default;
 
@@ -105,6 +107,7 @@ void CommitContributionImpl::AddToCommitMessage(
     CHECK(!sync_entity->specifics()
                .incoming_password_sharing_invitation()
                .has_client_only_unencrypted_data());
+    CHECK(!sync_entity->specifics().send_tab_to_self().has_page_context());
 
     // Purposefully crash since no metadata should be uploaded if a custom
     // passphrase is set.
@@ -208,6 +211,19 @@ void CommitContributionImpl::ProcessCommitFailure(
 
 size_t CommitContributionImpl::GetNumEntries() const {
   return commit_requests_.size();
+}
+
+size_t CommitContributionImpl::GetPostEncryptionSpecificsByteSize() const {
+  size_t byte_size = 0;
+  for (const std::unique_ptr<CommitRequestData>& commit_request :
+       commit_requests_) {
+    byte_size += commit_request->entity->specifics.ByteSizeLong();
+  }
+  return byte_size;
+}
+
+bool CommitContributionImpl::HasMoreLocalChanges() const {
+  return has_more_local_changes_;
 }
 
 // static

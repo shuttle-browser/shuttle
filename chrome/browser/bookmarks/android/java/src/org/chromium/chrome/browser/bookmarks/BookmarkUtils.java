@@ -9,6 +9,7 @@ import static org.chromium.build.NullUtil.assumeNonNull;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.Configuration;
+import android.os.Build;
 import android.os.LocaleList;
 import android.view.View;
 import android.view.ViewGroup;
@@ -46,6 +47,8 @@ import org.chromium.components.commerce.core.ShoppingService;
 import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.components.feature_engagement.EventConstants;
 import org.chromium.components.signin.identitymanager.IdentityManager;
+import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.display.DisplayUtil;
 import org.chromium.url.GURL;
 
 import java.text.DateFormat;
@@ -144,7 +147,7 @@ public class BookmarkUtils {
             boolean isBookmarkBarVisible) {
         assert bookmarkModel.isBookmarkModelLoaded();
         if (existingBookmarkItem != null) {
-            if (ChromeFeatureList.isEnabled(ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_POPUP)) {
+            if (shouldUseBookmarkPopup(activity)) {
                 showSaveFlow(
                         activity,
                         bottomSheetController,
@@ -306,7 +309,7 @@ public class BookmarkUtils {
 
         ShoppingService shoppingService = ShoppingServiceFactory.getForProfile(profile);
 
-        if (ChromeFeatureList.isEnabled(ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_POPUP)) {
+        if (shouldUseBookmarkPopup(activity)) {
             View decorView =
                     activity.getWindow() != null
                             ? activity.getWindow().getDecorView()
@@ -945,6 +948,26 @@ public class BookmarkUtils {
     }
 
     /**
+     * Returns whether a bookmark activity uses the desktop dialog presentation: the desktop dialog
+     * flag is on and the activity's window floats (see {@link #isBookmarkDialog}). Otherwise it
+     * uses the full-screen presentation, e.g. on a folded foldable.
+     */
+    public static boolean shouldShowDesktopBookmarkDialog(Context context) {
+        return isDesktopBookmarksDialogEnabled() && isBookmarkDialog(context);
+    }
+
+    /**
+     * Returns whether the live display is tablet-width. Unlike {@link #isBookmarkDialog}, this is
+     * not affected by a smallestScreenWidthDp pinned for the activity's lifetime, so it detects a
+     * fold/unfold that should switch between the dialog and full-screen presentation. Mirrors
+     * {@code ChromeActivity#getTabletMode}.
+     */
+    public static boolean isCurrentDisplayTabletWidth(Context context) {
+        return DisplayUtil.getCurrentSmallestScreenWidth(context)
+                >= DeviceFormFactor.MINIMUM_TABLET_WIDTH_DP;
+    }
+
+    /**
      * @return Whether the desktop bookmarks layout is enabled.
      */
     public static boolean isDesktopBookmarksLayoutEnabled() {
@@ -952,15 +975,49 @@ public class BookmarkUtils {
     }
 
     /**
-     * Returns whether the bookmark activity should be shown as a floating dialog, i.e. the desktop
-     * dialog is enabled or its {@code Theme.Chromium.DialogWhenLarge} window floats ({@code
-     * values-large}, {@link Configuration#SCREENLAYOUT_SIZE_LARGE}) rather than filling the window.
+     * Returns whether a bookmark activity's {@code Theme.Chromium.DialogWhenLarge} window floats as
+     * a dialog ({@code values-large}, {@link Configuration#SCREENLAYOUT_SIZE_LARGE}) rather than
+     * filling the window.
      */
     public static boolean isBookmarkDialog(Context context) {
-        return isDesktopBookmarksDialogEnabled()
-                || context.getResources()
-                        .getConfiguration()
-                        .isLayoutSizeAtLeast(Configuration.SCREENLAYOUT_SIZE_LARGE);
+        return context.getResources()
+                .getConfiguration()
+                .isLayoutSizeAtLeast(Configuration.SCREENLAYOUT_SIZE_LARGE);
+    }
+
+    /**
+     * Makes a bookmark activity translucent when its {@code Theme.Chromium.DialogWhenLarge} window
+     * floats ({@code values-large}), so the activity behind it stays visible under the scrim. In
+     * split-screen multi-window, {@code smallestScreenWidthDp} can remain pinned to {@code >= 600}
+     * while {@code screenLayout} is normal and the window does not float.
+     *
+     * <p>The theme already declares {@code windowIsTranslucent} under {@code values-large}, but on
+     * foldables the system can cache the theme as resolved for the posture at the first launch
+     * after an install. If that launch was folded, the floating dialog is later treated as opaque,
+     * the activity behind it is stopped and the scrim is drawn over black. Setting translucency at
+     * runtime corrects that for every instance, including ones recreated after a fold/unfold.
+     *
+     * <p>{@link Activity#setTranslucent} requires Android R. That excludes no foldable Chrome
+     * supports: Chrome only treats a device as foldable on Android R+ as well, since that is when
+     * the hinge angle sensor was added (see {@code DeviceInfo#isFoldable}).
+     *
+     * @param activity The bookmark activity to update.
+     */
+    public static void makeTranslucentIfFloating(Activity activity) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return;
+        if (!isBookmarkDialog(activity)) return;
+        activity.setTranslucent(/* translucent= */ true);
+    }
+
+    /**
+     * Returns whether the anchored bookmark popup should be used instead of the bottom sheet save
+     * flow and the bookmark edit activity. Tablet-sized displays are the ones that host the tab
+     * strip (desktop, tablets, unfolded foldables); phone-sized displays keep the mobile
+     * experience.
+     */
+    private static boolean shouldUseBookmarkPopup(Context context) {
+        return ChromeFeatureList.isEnabled(ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_POPUP)
+                && DeviceFormFactor.isNonMultiDisplayContextOnTablet(context);
     }
 
     /**

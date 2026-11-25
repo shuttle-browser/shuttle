@@ -58,9 +58,9 @@
 #endif
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID)
-#include <locale.h>
 #include <signal.h>
 
+#include "content/app/locale_posix.h"
 #include "content/common/shared_file_util.h"
 #endif
 
@@ -255,19 +255,7 @@ NO_STACK_PROTECTOR int RunContentProcess(
 // On Android setlocale() is not supported, and we don't override the signal
 // handlers so we can get a stack trace when crashing.
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_ANDROID)
-    // Set C library locale to make sure CommandLine can parse
-    // argument values in the correct encoding and to make sure
-    // generated file names (think downloads) are in the file system's
-    // encoding.
-    setlocale(LC_ALL, "");
-    // For numbers we never want the C library's locale sensitive
-    // conversion from number to string because the only thing it
-    // changes is the decimal separator which is not good enough for
-    // the UI and can be harmful elsewhere. User interface number
-    // conversions need to go through ICU. Other conversions need to
-    // be locale insensitive so we force the number locale back to the
-    // default, "C", locale.
-    setlocale(LC_NUMERIC, "C");
+    InitializeCLibraryLocale();
 
     SetupSignalHandlers();
 #endif
@@ -321,10 +309,12 @@ NO_STACK_PROTECTOR int RunContentProcess(
       // console does not exist we should not create one.
       base::RouteStdioToConsole(/*create_console_if_not_found*/ false);
     } else if (command_line->HasSwitch(switches::kEnableLogging)) {
-      // Route stdio to parent console (if any) or create one, do not create a
-      // console in children if handles are being passed.
-      bool create_console = command_line->GetSwitchValueASCII(
-                                switches::kEnableLogging) != "handle";
+      // Route stdio to parent console (if any) or create one in the browser
+      // process; never create a new console window in subprocesses or if
+      // handles are being passed.
+      bool create_console =
+          !IsSubprocess() && command_line->GetSwitchValueASCII(
+                                 switches::kEnableLogging) != "handle";
       base::RouteStdioToConsole(create_console);
     }
 #endif

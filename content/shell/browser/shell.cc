@@ -10,13 +10,15 @@
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
+#include "base/containers/span.h"
+#include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
 #include "base/memory/raw_ptr.h"
-#include "base/no_destructor.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
@@ -52,15 +54,11 @@
 #include "third_party/blink/public/mojom/choosers/file_chooser.mojom-forward.h"
 #include "third_party/blink/public/mojom/input/pointer_lock_result.mojom.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace content {
 
 namespace {
-// Null until/unless the default main message loop is running.
-base::OnceClosure& GetMainMessageLoopQuitClosure() {
-  static base::NoDestructor<base::OnceClosure> closure;
-  return *closure;
-}
 
 constexpr int kDefaultTestWindowWidthDip = 800;
 constexpr int kDefaultTestWindowHeightDip = 600;
@@ -69,10 +67,28 @@ constexpr int kDefaultTestWindowHeightDip = 600;
 // static constructor/destructor.
 // Acquired in Shell::Init(), released in Shell::Shutdown().
 ShellPlatformDelegate* g_platform;
-}  // namespace
 
-std::vector<raw_ptr<Shell>> Shell::windows_;
-base::OnceCallback<void(Shell*)> Shell::shell_created_callback_;
+// Owning pointers, held as raw pointers so they need no exit-time destructor.
+// Null until/unless the default main message loop is running.
+base::OnceClosure* g_main_message_loop_quit_closure = nullptr;
+// Set by SetShellCreatedCallback(), consumed by the next Shell or Shutdown().
+base::OnceCallback<void(Shell*)>* g_shell_created_callback = nullptr;
+// Created with the first Shell and deleted when the last one closes. Ordered
+// so windows() reflects creation order.
+std::vector<raw_ptr<Shell>>* g_windows = nullptr;
+
+// Runs and deletes the quit closure, if any.
+void RunMainMessageLoopQuitClosure() {
+  if (!g_main_message_loop_quit_closure) {
+    return;
+  }
+  base::OnceClosure quit_closure = std::move(*g_main_message_loop_quit_closure);
+  delete g_main_message_loop_quit_closure;
+  g_main_message_loop_quit_closure = nullptr;
+  std::move(quit_closure).Run();
+}
+
+}  // namespace
 
 Shell::Shell(std::unique_ptr<WebContents> web_contents,
              bool should_set_delegate)
@@ -86,20 +102,28 @@ Shell::Shell(std::unique_ptr<WebContents> web_contents,
         web_contents_->GetMutableRendererPrefs());
   }
 
-  windows_.push_back(this);
+  if (!g_windows) {
+    g_windows = new std::vector<raw_ptr<Shell>>();
+  }
+  g_windows->push_back(this);
 
-  if (shell_created_callback_)
-    std::move(shell_created_callback_).Run(this);
+  if (g_shell_created_callback) {
+    base::OnceCallback<void(Shell*)> callback =
+        std::move(*g_shell_created_callback);
+    delete g_shell_created_callback;
+    g_shell_created_callback = nullptr;
+    std::move(callback).Run(this);
+  }
 }
 
 Shell::~Shell() {
   g_platform->CleanUp(this);
 
-  for (size_t i = 0; i < windows_.size(); ++i) {
-    if (windows_[i] == this) {
-      windows_.erase(windows_.begin() + i);
-      break;
-    }
+  CHECK(g_windows);
+  std::erase(*g_windows, this);
+  if (g_windows->empty()) {
+    delete g_windows;
+    g_windows = nullptr;
   }
 
   web_contents_->SetDelegate(nullptr);
@@ -145,22 +169,33 @@ Shell* Shell::CreateShell(std::unique_ptr<WebContents> web_contents,
 }
 
 // static
+base::span<const raw_ptr<Shell>> Shell::windows() {
+  if (!g_windows) {
+    return {};
+  }
+  return *g_windows;
+}
+
+// static
 void Shell::SetMainMessageLoopQuitClosure(base::OnceClosure quit_closure) {
-  GetMainMessageLoopQuitClosure() = std::move(quit_closure);
+  delete g_main_message_loop_quit_closure;
+  g_main_message_loop_quit_closure =
+      quit_closure ? new base::OnceClosure(std::move(quit_closure)) : nullptr;
 }
 
 // static
 void Shell::QuitMainMessageLoopForTesting() {
-  auto& quit_loop = GetMainMessageLoopQuitClosure();
-  if (quit_loop)
-    std::move(quit_loop).Run();
+  RunMainMessageLoopQuitClosure();
 }
 
 // static
 void Shell::SetShellCreatedCallback(
     base::OnceCallback<void(Shell*)> shell_created_callback) {
-  DCHECK(!shell_created_callback_);
-  shell_created_callback_ = std::move(shell_created_callback);
+  DCHECK(!g_shell_created_callback);
+  if (shell_created_callback) {
+    g_shell_created_callback =
+        new base::OnceCallback<void(Shell*)>(std::move(shell_created_callback));
+  }
 }
 
 // static
@@ -171,7 +206,7 @@ bool Shell::ShouldHideToolbar() {
 
 // static
 Shell* Shell::FromWebContents(WebContents* web_contents) {
-  for (Shell* window : windows_) {
+  for (Shell* window : windows()) {
     if (window->web_contents() && window->web_contents() == web_contents) {
       return window;
     }
@@ -199,13 +234,14 @@ void Shell::Shutdown() {
   delete g_platform;
   g_platform = nullptr;
 
+  delete g_shell_created_callback;
+  g_shell_created_callback = nullptr;
+
   for (auto it = RenderProcessHost::AllHostsIterator(); !it.IsAtEnd();
        it.Advance()) {
     it.GetCurrentValue()->DisableRefCounts();
   }
-  auto& quit_loop = GetMainMessageLoopQuitClosure();
-  if (quit_loop)
-    std::move(quit_loop).Run();
+  RunMainMessageLoopQuitClosure();
 
   // Pump the message loop to allow window teardown tasks to run. On iOS the
   // run loop is controlled differently and cannot be pumped.
@@ -311,14 +347,14 @@ WebContents* Shell::AddNewContents(
     WebContents* source,
     std::unique_ptr<WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
 #if !BUILDFLAG(IS_ANDROID)
   // If the shell is opening a document picture-in-picture window, it needs to
   // inform the DocumentPictureInPictureWindowController.
-  if (disposition == WindowOpenDisposition::kNewPictureInPicture) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewPictureInPicture) {
     DocumentPictureInPictureWindowController* controller =
         PictureInPictureWindowController::
             GetOrCreateDocumentPictureInPictureController(source);
@@ -431,22 +467,22 @@ WebContents* Shell::OpenURLFromTab(
         navigation_handle_callback) {
   WebContents* target = nullptr;
   switch (params.disposition) {
-    case WindowOpenDisposition::kCurrentTab:
+    case ui::mojom::WindowOpenDisposition::kCurrentTab:
       target = source;
       break;
 
-    // Normally, the difference between NEW_POPUP and NEW_WINDOW is that a popup
-    // should have no toolbar, no status bar, no menu bar, no scrollbars and be
-    // not resizable.  For simplicity and to enable new testing scenarios in
-    // content shell and web tests, popups don't get special treatment below
+    // Normally, the difference between `kNewPopup` and `kNewWindow` is that a
+    // popup should have no toolbar, no status bar, no menu bar, no scrollbars
+    // and be not resizable.  For simplicity and to enable new testing scenarios
+    // in content shell and web tests, popups don't get special treatment below
     // (i.e. they will have a toolbar and other things described here).
-    case WindowOpenDisposition::kNewPopup:
-    case WindowOpenDisposition::kNewWindow:
+    case ui::mojom::WindowOpenDisposition::kNewPopup:
+    case ui::mojom::WindowOpenDisposition::kNewWindow:
     // content_shell doesn't really support tabs, but some web tests use
     // middle click (which translates into kNavigationPolicyNewBackgroundTab),
-    // so we treat the cases below just like a NEW_WINDOW disposition.
-    case WindowOpenDisposition::kNewBackgroundTab:
-    case WindowOpenDisposition::kNewForegroundTab: {
+    // so we treat the cases below just like a `kNewWindow` disposition.
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab: {
       Shell* new_window =
           Shell::CreateNewWindow(source->GetBrowserContext(),
                                  GURL(),  // Don't load anything just yet.
@@ -457,16 +493,16 @@ WebContents* Shell::OpenURLFromTab(
     }
 
     // No tabs in content_shell:
-    case WindowOpenDisposition::kSingletonTab:
+    case ui::mojom::WindowOpenDisposition::kSingletonTab:
     // No incognito mode in content_shell:
-    case WindowOpenDisposition::kOffTheRecord:
+    case ui::mojom::WindowOpenDisposition::kOffTheRecord:
     // TODO(lukasza): Investigate if some web tests might need support for
-    // SAVE_TO_DISK disposition.  This would probably require that
+    // `kSaveToDisk` disposition.  This would probably require that
     // WebTestControlHost always sets up and cleans up a temporary directory
     // as the default downloads destinations for the duration of a test.
-    case WindowOpenDisposition::kSaveToDisk:
-    // Ignoring requests with disposition == IGNORE_ACTION...
-    case WindowOpenDisposition::kIgnoreAction:
+    case ui::mojom::WindowOpenDisposition::kSaveToDisk:
+    // Ignoring requests with disposition == `kIgnoreAction`...
+    case ui::mojom::WindowOpenDisposition::kIgnoreAction:
     default:
       return nullptr;
   }
@@ -562,7 +598,7 @@ void Shell::RegisterProtocolHandler(RenderFrameHost* requesting_frame,
   if (registry->SilentlyHandleRegisterHandlerRequest(handler))
     return;
 
-  if (!user_gesture && !windows_.empty()) {
+  if (!user_gesture && !windows().empty()) {
     // TODO(jfernandez): This is not strictly needed, but we need a way to
     // inform the observers in browser tests that the request has been
     // cancelled, to avoid timeouts. Chrome just holds the handler as pending in

@@ -5,6 +5,7 @@
 // cc_file_path: chrome/browser/glic/host/glic_api_browsertest.cc
 
 import {                             //
+  ActuationTarget,                   //
   CancelActionsResult,               //
   ClientCapabilities,                //
   ExperimentalTriggeringUpdateType,  //
@@ -20,6 +21,7 @@ import {                             //
   SbThreatType,                      //
   ScreenshotEncryptionScheme,        //
   ScrollToErrorReason,               //
+  TooltipImpressionType,             //
   WebClientMode,                     //
   WebUseCounter,                     //
 } from '/glic/glic_api/glic_api.js';
@@ -44,7 +46,7 @@ import type {                               //
              UserConfirmationDialogRequest, //
              UserProfileInfo,               //
 } from '/glic/glic_api/glic_api.js';
-import type {GlicBrowserHostImpl} from '/glic/glic_api_impl/client/glic_api_client.js';
+import type {GlicBrowserHostImpl} from '/glic/glic_api_impl/glic_api_client.js';
 import {Subject} from '/glic/observable.js';
 
 import {               //
@@ -1402,14 +1404,24 @@ class ApiTests extends ApiTestFixtureBase {
     assertDefined(this.host.getPanelState);
     assertDefined(this.host.detachPanel);
     assertDefined(this.host.canAttachPanel);
+    const isGeic = Boolean((this.initData as any)?.isGeic);
     const link = document.createElement('a');
     link.setAttribute('href', 'https://www.chromium.org');
     link.setAttribute('target', '_blank');
     document.body.appendChild(link);
     link.click();
-    // The opened tab should be pinned.
-    await observeSequence(this.host.getPinnedTabs())
-        .waitFor(tabs => tabs.length === 2);
+    if (isGeic) {
+      // In GEiC, the opened tab is daisy-chained (bound) but not auto-pinned.
+      await observeSequence(this.host.getFocusedTabStateV2())
+          .waitFor(
+              state => state.hasNoFocus?.tabFocusCandidateData?.url ===
+                  'https://www.chromium.org/');
+      assertEquals(1, this.host.getPinnedTabs().getCurrentValue()?.length);
+    } else {
+      // The opened tab should be pinned.
+      await observeSequence(this.host.getPinnedTabs())
+          .waitFor(tabs => tabs.length === 2);
+    }
 
     // Detach panel
     this.host.detachPanel!();
@@ -1667,14 +1679,24 @@ class ApiTests extends ApiTestFixtureBase {
   async testCreateTabByClickingOnLinkDaisyChains() {
     assertDefined(this.host.getFocusedTabStateV2);
     assertDefined(this.host.getPinnedTabs);
+    const isGeic = Boolean((this.initData as any)?.isGeic);
     const link = document.createElement('a');
     link.setAttribute('href', 'https://www.chromium.org');
     link.setAttribute('target', '_blank');
     document.body.appendChild(link);
     link.click();
-    // The opened tab should be pinned.
-    await observeSequence(this.host.getPinnedTabs())
-        .waitFor(tabs => tabs.length === 2);
+    if (isGeic) {
+      // In GEiC, the opened tab is daisy-chained (bound) but not auto-pinned.
+      await observeSequence(this.host.getFocusedTabStateV2())
+          .waitFor(
+              state => state.hasNoFocus?.tabFocusCandidateData?.url ===
+                  'https://www.chromium.org/');
+      assertEquals(1, this.host.getPinnedTabs().getCurrentValue()?.length);
+    } else {
+      // The opened tab should be pinned.
+      await observeSequence(this.host.getPinnedTabs())
+          .waitFor(tabs => tabs.length === 2);
+    }
   }
 
   async testFailureForCapturedApiTestError() {
@@ -2881,6 +2903,8 @@ class ApiTests extends ApiTestFixtureBase {
     assertDefined(metrics.onResponseStopped);
     assertDefined(metrics.onSessionTerminated);
     assertDefined(metrics.onClosedCaptionsShown);
+    assertDefined(metrics.onTooltipImpression);
+    assertDefined(metrics.onTooltipHidden);
     metrics.onResponseRated(true);
     metrics.onUserInputSubmitted(WebClientMode.TEXT);
     metrics.onContextUploadStarted();
@@ -2890,6 +2914,8 @@ class ApiTests extends ApiTestFixtureBase {
     metrics.onResponseStopped({cause: ResponseStopCause.USER});
     metrics.onSessionTerminated();
     metrics.onClosedCaptionsShown();
+    metrics.onTooltipImpression(TooltipImpressionType.TOOLTIP1);
+    metrics.onTooltipHidden();
   }
 
   async testUserInputSubmittedPromptType() {
@@ -3288,6 +3314,42 @@ class InvokeTest extends ApiTests {
     assertEquals(
         client.lastInvokeOptions!.invocationSource,
         InvocationSource.TOP_CHROME_BUTTON);
+    assertUndefined(client.lastInvokeOptions!.payload);
+  }
+
+  async testInvokeWithCaptureRegionHandoff() {
+    const client = this.getInvokeClient();
+    await runUntil(() => {
+      return client.lastInvokeOptions !== null;
+    });
+    assertEquals(
+        InvocationSource.CAPTURE_REGION_HOTKEY,
+        client.lastInvokeOptions!.invocationSource);
+    assertTrue(
+        client.lastInvokeOptions!.payload?.captureRegion
+            ?.captureRegionHandoff === true);
+  }
+
+  // Waits for the client's invoke() call and returns its options.
+  async waitForInvokeOptions(): Promise<InvokeOptions> {
+    const client = this.getInvokeClient();
+    await runUntil(() => client.lastInvokeOptions !== null);
+    assertDefined(client.lastInvokeOptions);
+    return client.lastInvokeOptions;
+  }
+
+  async testInvokeWithActuationSurface() {
+    const options = await this.waitForInvokeOptions();
+    assertEquals(options.actuationTarget, ActuationTarget.TARGET_SURFACE);
+    // `testParams` is the headless surface ID sent by the C++ side.
+    assertEquals(options.actuationTabId, this.testParams);
+  }
+
+  async testInvokeWithTargetSurfaceSendsTabSurfaceId() {
+    const options = await this.waitForInvokeOptions();
+    assertEquals(options.actuationTarget, ActuationTarget.TARGET_SURFACE);
+    // `testParams` is the invoked tab's surface ID sent by the C++ side.
+    assertEquals(options.actuationTabId, this.testParams);
   }
 }
 
@@ -3517,13 +3579,29 @@ class DesktopOnlyApiTests extends ApiTests {
 
 class ContextCapturingClient extends WebClient {
   capturedContext: AdditionalContext[] = [];
+  calls: string[] = [];
+  blockNextPanelWillOpen = false;
+  panelWillOpenStarted: PromiseWithResolvers<void>|null = null;
+  panelWillOpenGate: PromiseWithResolvers<void>|null = null;
 
   override async initialize(glicBrowserHost: GlicBrowserHost): Promise<void> {
     await super.initialize(glicBrowserHost);
     glicBrowserHost.getAdditionalContext!
         ().subscribe((context: AdditionalContext) => {
+          this.calls.push('additionalContext');
           this.capturedContext.push(context);
         });
+  }
+
+  override async notifyPanelWillOpen(
+      panelOpeningData: PanelOpeningData&PanelState): Promise<OpenPanelInfo> {
+    this.calls.push('notifyPanelWillOpen');
+    if (this.blockNextPanelWillOpen) {
+      this.blockNextPanelWillOpen = false;
+      this.panelWillOpenStarted?.resolve();
+      await this.panelWillOpenGate!.promise;
+    }
+    return super.notifyPanelWillOpen!(panelOpeningData);
   }
 }
 
@@ -3535,6 +3613,8 @@ class AdditionalContextQueuedTest extends ApiTestFixtureBase {
   async testAdditionalContextQueued() {
     const client = this.client as ContextCapturingClient;
     await runUntil(() => client.capturedContext.length > 0);
+    assertEquals(
+        'notifyPanelWillOpen,additionalContext', client.calls.join(','));
     const context = client.capturedContext[0];
     assertDefined(context);
     assertEquals(context.name, 'queued part');
@@ -3544,6 +3624,36 @@ class AdditionalContextQueuedTest extends ApiTestFixtureBase {
     assertEquals(part1.data!.type, 'text/plain');
     const data1 = new Uint8Array(await part1.data!.arrayBuffer());
     assertEquals(new TextDecoder().decode(data1), 'queued');
+  }
+
+  async testAdditionalContextClearedOnAbortedOpen() {
+    const client = this.client as ContextCapturingClient;
+    await client.waitForFirstOpen();
+
+    // Step 1: Arm the client to pause the next notifyPanelWillOpen() call.
+    client.blockNextPanelWillOpen = true;
+    client.panelWillOpenStarted = Promise.withResolvers<void>();
+    client.panelWillOpenGate = Promise.withResolvers<void>();
+    await this.advanceToNextStep();
+
+    // Step 2: Confirm the second notifyPanelWillOpen() is in flight.
+    await client.panelWillOpenStarted.promise;
+    await this.advanceToNextStep();
+
+    // Step 3: Unblock the aborted notifyPanelWillOpen() after the panel has
+    // already closed.
+    client.panelWillOpenGate.resolve();
+    await this.advanceToNextStep();
+
+    // Step 4: Verify that stale contexts from the aborted open were not
+    // delivered, and only the fresh context from the subsequent open arrived.
+    await runUntil(() => client.capturedContext.length > 0);
+    assertEquals(1, client.capturedContext.length);
+    assertEquals('fresh context', client.capturedContext[0]!.name);
+    assertEquals(
+        'notifyPanelWillOpen,notifyPanelWillOpen,notifyPanelWillOpen,' +
+            'additionalContext',
+        client.calls.join(','));
   }
 }
 

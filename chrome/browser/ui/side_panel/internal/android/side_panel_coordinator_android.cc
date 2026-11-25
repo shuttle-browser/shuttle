@@ -11,11 +11,15 @@
 #include "base/android/jni_android.h"
 #include "base/android/jni_string.h"
 #include "base/check.h"
+#include "base/containers/flat_map.h"
+#include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "base/strings/strcat.h"
+#include "base/values.h"
 #include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/profiles/profile.h"
@@ -24,16 +28,22 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/side_panel/internal/android/side_panel_tab_model_observer.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_waiter.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums_utils.h"
 #include "chrome/browser/ui/side_panel/side_panel_metrics.h"
 #include "chrome/browser/ui/side_panel/side_panel_util.h"
+#include "chrome/common/pref_names.h"
+#include "components/prefs/pref_service.h"
+#include "components/prefs/scoped_user_pref_update.h"
 #include "components/tabs/public/tab_interface.h"
+#include "third_party/jni_zero/default_conversions.h"
 #include "third_party/jni_zero/jni_zero.h"
 
 // Must come after headers that provide symbols used by @JniType.
 #include "chrome/browser/ui/side_panel/internal/android/jni_headers/SidePanelCoordinatorAndroidBridge_jni.h"
+#include "chrome/browser/ui/side_panel/internal/android/jni_headers/SidePanelResizeManager_jni.h"
 
 #define LOG_TAG "SidePanelCoordinatorAndroid"
 #define SPLOG(message)                                     \
@@ -61,18 +71,31 @@ void RecordAutoCloseOrRestoreOnSpaceChange(SidePanelEntry* entry,
       base::StrCat({kAndroidSidePanelHistogramPrefix, ".", entry_name, action}),
       true);
 }
+// `SidePanelUIBase` already registers `SidePanelUI` with `UnownedUserDataHost`,
+// so `SidePanelCoordinatorAndroid` cannot register a second `UnownedUserData`
+// entry in the same inheritance hierarchy. Production code should use
+// `SidePanelUI::From(browser)`; this map backs `From()` for Android-specific
+// browser tests.
+base::flat_map<const BrowserWindowInterface*,
+               raw_ptr<SidePanelCoordinatorAndroid>>&
+GetCoordinatorsMap() {
+  static base::NoDestructor<base::flat_map<
+      const BrowserWindowInterface*, raw_ptr<SidePanelCoordinatorAndroid>>>
+      coordinators;
+  return *coordinators;
+}
+
 }  // namespace
 
 using jni_zero::AttachCurrentThread;
 using jni_zero::JavaRef;
 using jni_zero::ScopedJavaLocalRef;
 
-DEFINE_USER_DATA(SidePanelCoordinatorAndroid);
-
 // static
 SidePanelCoordinatorAndroid* SidePanelCoordinatorAndroid::From(
     BrowserWindowInterface* browser) {
-  return browser ? Get(browser->GetUnownedUserDataHost()) : nullptr;
+  auto it = GetCoordinatorsMap().find(browser);
+  return it != GetCoordinatorsMap().end() ? it->second : nullptr;
 }
 
 SidePanelCoordinatorAndroid::SidePanelCoordinatorAndroid(
@@ -81,15 +104,18 @@ SidePanelCoordinatorAndroid::SidePanelCoordinatorAndroid(
     BrowserWindowInterface* browser)
     : SidePanelUIBase(browser),
       java_coordinator_(env, java_coordinator),
-      scoped_unowned_user_data_(browser->GetUnownedUserDataHost(), *this),
       tab_model_observer_(
           static_cast<TabModel*>(TabListInterface::From(browser)),
           this) {
   SPLOG("SidePanelCoordinatorAndroid Constructor - browser: " << browser);
+  auto [it, inserted] = GetCoordinatorsMap().emplace(browser, this);
+  CHECK(inserted);
 }
 
 SidePanelCoordinatorAndroid::~SidePanelCoordinatorAndroid() {
   SPLOG("SidePanelCoordinatorAndroid Destructor");
+  size_t erased = GetCoordinatorsMap().erase(browser());
+  CHECK_EQ(erased, 1u);
   ClearCachedEntryViews(/*include_active_entry=*/true);
   Java_SidePanelCoordinatorAndroidBridge_clearNativePtr(AttachCurrentThread(),
                                                         java_coordinator());
@@ -154,6 +180,23 @@ void SidePanelCoordinatorAndroid::OnPanelContentReplaced() {
 
   entry->OnEntryHidden();
   entry->OnEntryHiddenWithReason(hide_reason);
+}
+
+void SidePanelCoordinatorAndroid::OnPanelResized(int width_dp) {
+  SPLOG("OnPanelResized - width_dp: " << width_dp);
+
+  // Persisted widths only apply while manual resizing is enabled.
+  if (!Java_SidePanelResizeManager_isManualResizeEnabled(
+          AttachCurrentThread())) {
+    return;
+  }
+
+  std::optional<UniqueKey> key = current_key();
+  CHECK(key);
+
+  PrefService* pref_service = browser()->GetProfile()->GetPrefs();
+  ScopedDictPrefUpdate update(pref_service, prefs::kSidePanelIdToWidth);
+  update->Set(SidePanelEntryIdToString(key->key.id()), width_dp);
 }
 
 void SidePanelCoordinatorAndroid::OnActiveChanged(bool active) {
@@ -501,6 +544,14 @@ void SidePanelCoordinatorAndroid::Toggle(SidePanelEntryKey key,
   }
 }
 
+void SidePanelCoordinatorAndroid::OverrideContentsWidth(int width) {
+  // TODO(crbug.com/580036068): Implement.
+}
+
+void SidePanelCoordinatorAndroid::ResetContentsWidthOverride() {
+  // TODO(crbug.com/580036068): Implement.
+}
+
 void SidePanelCoordinatorAndroid::OnActiveTabChanged(
     content::WebContents* old_contents,
     content::WebContents* new_contents,
@@ -712,7 +763,8 @@ void SidePanelCoordinatorAndroid::StartOpeningPanel(
   JNIEnv* env = AttachCurrentThread();
   Java_SidePanelCoordinatorAndroidBridge_startOpeningPanel(
       env, java_coordinator(), browser()->GetProfile(), native_view->view(),
-      title, entry->should_show_header(), suppress_animations);
+      title, entry->should_show_header(), GetPersistedPanelWidthDp(*entry),
+      suppress_animations);
   entry->CacheView(std::move(native_view));
 }
 
@@ -860,7 +912,8 @@ void SidePanelCoordinatorAndroid::StartReplacingPanelContent(
   JNIEnv* env = AttachCurrentThread();
   Java_SidePanelCoordinatorAndroidBridge_startReplacingPanelContent(
       env, java_coordinator(), browser()->GetProfile(), native_view->view(),
-      title, new_entry->should_show_header());
+      title, new_entry->should_show_header(),
+      GetPersistedPanelWidthDp(*new_entry));
   new_entry->CacheView(std::move(native_view));
 }
 
@@ -936,6 +989,19 @@ SidePanelEntry* SidePanelCoordinatorAndroid::GetEntryForCurrentKeyNonNull()
   SidePanelEntry* entry = GetEntryForUniqueKey(GetCurrentKeyNonNull());
   CHECK(entry) << "SidePanelEntry is expected to exist.";
   return entry;
+}
+
+std::optional<int32_t> SidePanelCoordinatorAndroid::GetPersistedPanelWidthDp(
+    const SidePanelEntry& entry) const {
+  // Persisted widths only apply while manual resizing is enabled.
+  if (!Java_SidePanelResizeManager_isManualResizeEnabled(
+          AttachCurrentThread())) {
+    return std::nullopt;
+  }
+
+  const base::DictValue& widths =
+      browser()->GetProfile()->GetPrefs()->GetDict(prefs::kSidePanelIdToWidth);
+  return widths.FindInt(SidePanelEntryIdToString(entry.key().id()));
 }
 
 std::optional<SidePanelCoordinatorAndroid::ShowableKey>
@@ -1014,12 +1080,11 @@ SidePanelCoordinatorAndroid::GetKeyToShow(TabAndroid* tab) const {
 static int64_t JNI_SidePanelCoordinatorAndroidBridge_Create(
     JNIEnv* env,
     const JavaRef<jobject>& caller,
-    int64_t nativeBrowserWindowPtr) {
-  SPLOG("JNI_SidePanelCoordinatorAndroidBridge_Create - ptr: "
-        << nativeBrowserWindowPtr);
-  return reinterpret_cast<intptr_t>(new SidePanelCoordinatorAndroid(
-      env, caller,
-      reinterpret_cast<BrowserWindowInterface*>(nativeBrowserWindowPtr)));
+    BrowserWindowInterface* browser_window) {
+  SPLOG(
+      "JNI_SidePanelCoordinatorAndroidBridge_Create - ptr: " << browser_window);
+  return reinterpret_cast<intptr_t>(
+      new SidePanelCoordinatorAndroid(env, caller, browser_window));
 }
 
 DEFINE_JNI(SidePanelCoordinatorAndroidBridge)

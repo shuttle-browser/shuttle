@@ -28,6 +28,7 @@ schema_sources_ = [
   "glic_private.webidl",
   "history.json",
   "identity.webidl",
+  "image_writer_private.webidl",
   "instance_id.json",
   "notifications.webidl",
   "omnibox.json",
@@ -76,7 +77,6 @@ if (enable_extensions) {
   ]
   schema_sources_ += [
     "autofill_private.idl",
-    "autotest_private.webidl",
     "bookmark_manager_private.json",
     "braille_display_private.webidl",
     "command_line_private.json",
@@ -85,7 +85,6 @@ if (enable_extensions) {
     "enterprise_reporting_private.webidl",
     "experimental_actor.webidl",
     "experimental_ai_data.webidl",
-    "image_writer_private.webidl",
     "indigo_private.webidl",
     "language_settings_private.webidl",
     "passwords_private.webidl",
@@ -118,9 +117,6 @@ if (enable_extensions) {
       "enterprise_platform_keys.webidl",
       "enterprise_platform_keys_internal.webidl",
       "enterprise_platform_keys_private.json",
-      "login.webidl",
-      "login_screen_storage.webidl",
-      "login_state.idl",
       "platform_keys.idl",
       "platform_keys_internal.idl",
       "quick_unlock_private.idl",

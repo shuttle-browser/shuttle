@@ -45,6 +45,7 @@ if (toolkit_views) {
     ]
     deps = [
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/content_settings",
       "//ui/base",
       "//ui/compositor",
     ]
@@ -134,7 +135,6 @@ if (toolkit_views) {
       "//chrome/browser/ui/views/frame:browser_view_header",
       "//chrome/browser/ui/views/frame:toolbar_button_provider",
       "//chrome/browser/ui/views/toolbar",
-      "//chrome/browser/ui/waap:window_metrics_manager",
       "//chrome/browser/ui/web_applications",
       "//ui/base",
       "//ui/base/metadata",
@@ -218,7 +218,6 @@ if (toolkit_views) {
       "//chrome/browser/ui:view_ids",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/page_action",
-      "//chrome/browser/ui/tabs:tabs_public",
       "//chrome/browser/ui/views/extensions:extensions_toolbar_button",
       "//chrome/browser/ui/views/extensions:extensions_toolbar_coordinator",
       "//chrome/browser/ui/views/extensions:extensions_toolbar_desktop",
@@ -228,6 +227,7 @@ if (toolkit_views) {
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/web_applications",
       "//chrome/common:chrome_features",
+      "//components/tabs:public",
       "//components/vector_icons",
       "//components/webapps/browser",
       "//ui/base",
@@ -314,7 +314,6 @@ if (toolkit_views) {
       "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/browser/web_applications/isolated_web_apps:isolated_web_apps_no_pwa_core_deps",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/permissions",
       "//content/test:test_support",
       "//net:test_support",
@@ -355,7 +354,6 @@ if (toolkit_views) {
       "//chrome/browser/ui/window_feature_controller",
       "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/infobars/content",
       "//components/webapps/services/web_app_origin_association/test:test_support",
       "//content/test:test_support",
@@ -364,6 +362,7 @@ if (toolkit_views) {
       "//testing/gtest",
       "//ui/base",
       "//ui/base:ozone_buildflags",
+      "//ui/base:test_support",
       "//ui/events:test_support",
       "//ui/views",
       "//ui/views:test_support",
@@ -383,6 +382,9 @@ if (toolkit_views) {
     if (use_ozone) {
       deps += [ "//ui/ozone" ]
     }
+    if (is_mac) {
+      deps += [ "//chrome/browser/apps/app_shim" ]
+    }
   }
 
   # interactive_ui_tests doesn't build on ChromeOS devices.
@@ -401,7 +403,6 @@ if (toolkit_views) {
         "//chrome/browser/ui/views/extensions:extensions_toolbar_desktop",
         "//chrome/browser/ui/views/frame:browser_view_header",
         "//chrome/test:test_support",
-        "//chrome/test:test_support_ui",
         "//content/test:test_support",
         "//testing/gtest",
         "//ui/views",

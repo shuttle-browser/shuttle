@@ -47,7 +47,6 @@
 #include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
 #include "chrome/browser/ui/lens/lens_query_flow_router.h"
 #include "chrome/browser/ui/lens/lens_search_controller.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/webui/searchbox/searchbox_test_utils.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
@@ -308,14 +307,9 @@ class ContextualTasksComposeboxHandlerTest
   explicit ContextualTasksComposeboxHandlerTest(
       const std::map<std::string, std::string>& parameters) {
     feature_list_.InitWithFeaturesAndParameters(
-        /*enabled_features=*/
         {{contextual_tasks::kContextualTasks, parameters},
          {contextual_tasks::kContextualTasksForceEntryPointEligibility, {}}},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove these two Features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+        {});
   }
   ~ContextualTasksComposeboxHandlerTest() override = default;
 
@@ -508,6 +502,14 @@ class ContextualTasksComposeboxHandlerTest
     // Reset handler first to destroy the omnibox client which observes the
     // lens controller.
     handler_.reset();
+    if (web_contents()) {
+      if (auto* helper = ContextualSearchWebContentsHelper::FromWebContents(
+              web_contents())) {
+        helper->SetTaskSession(std::nullopt, nullptr, nullptr);
+      }
+    }
+    upload_observers_.Clear();
+    controller_weak_factory_.reset();
     mock_controller_ = nullptr;
     mock_contextual_tasks_service_ptr_ = nullptr;
     mock_tab_controller_ = nullptr;
@@ -664,22 +666,19 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
                                       kCgiParams);
 }
 
-// Fixture for verifying the toolbar-reopened session CGI param ("ctrs"). Points
-// the WebUI's browser window at a mock that hosts a mock panel controller so
-// the test can dictate whether the panel is open, whether the session was
-// reopened via a toolbar button, and which toolbar button reopened it.
-class ContextualTasksComposeboxHandlerReopenedViaToolbarTest
+// Fixture for verifying that query submissions are reported to the panel.
+// Points the WebUI's browser window at a mock that hosts a mock panel
+// controller so the test can dictate whether the panel is open and which
+// `WebContents` it shows.
+class ContextualTasksComposeboxHandlerPanelTest
     : public ContextualTasksComposeboxHandlerTest {
  public:
-  using EntrySource =
-      contextual_tasks::ContextualTasksPanelController::EntrySource;
-
   void SetUpOnMainThread() override {
     ContextualTasksComposeboxHandlerTest::SetUpOnMainThread();
     mock_browser_window_ =
         std::make_unique<testing::NiceMock<MockBrowserWindowInterface>>();
-    mock_panel_controller_ = std::make_unique<
-        testing::NiceMock<contextual_tasks::MockContextualTasksPanelController>>(
+    mock_panel_controller_ = std::make_unique<testing::NiceMock<
+        contextual_tasks::MockContextualTasksPanelController>>(
         mock_browser_window_.get());
     webui::SetBrowserWindowInterface(web_contents(),
                                      mock_browser_window_.get());
@@ -694,36 +693,23 @@ class ContextualTasksComposeboxHandlerReopenedViaToolbarTest
     ContextualTasksComposeboxHandlerTest::TearDownOnMainThread();
   }
 
-  void SetPanelState(bool is_open,
-                     bool is_reopened_via_toolbar_button,
-                     EntrySource entry_source) {
+  void SetPanelState(bool is_open, content::WebContents* active_web_contents) {
     ON_CALL(*mock_panel_controller_, IsPanelOpenForContextualTask())
         .WillByDefault(testing::Return(is_open));
-    ON_CALL(*mock_panel_controller_, IsActiveSessionReopenedViaToolbarButton())
-        .WillByDefault(testing::Return(is_reopened_via_toolbar_button));
-    ON_CALL(*mock_panel_controller_, GetActiveEntrySource())
-        .WillByDefault(testing::Return(entry_source));
+    ON_CALL(*mock_panel_controller_, GetActiveWebContents())
+        .WillByDefault(testing::Return(active_web_contents));
   }
 
-  // Submits a query and returns the CGI params the handler attached to the
-  // client-to-AIM request.
-  std::map<std::string, std::string> SubmitAndCaptureCgiParams() {
-    std::map<std::string, std::string> captured;
+  // Submits a query without a task ID, so it takes the early path that skips
+  // recontextualization.
+  void SubmitQueryWithoutTask() {
     EXPECT_CALL(*mock_ui_, GetTaskId())
         .WillRepeatedly(testing::ReturnRefOfCopy(std::optional<base::Uuid>()));
     EXPECT_CALL(*mock_controller_, CreateClientToAimRequest(testing::_))
-        .WillOnce(
-            [&captured](
-                std::unique_ptr<
-                    contextual_search::ContextualSearchContextController::
-                        CreateClientToAimRequestInfo> info) {
-              captured = info->additional_cgi_params;
-              return lens::ClientToAimMessage();
-            });
+        .WillOnce(testing::Return(lens::ClientToAimMessage()));
     EXPECT_CALL(*mock_ui_, PostAimMessage(testing::_));
-    handler_->CreateAndSendQueryMessage("reopened query",
+    handler_->CreateAndSendQueryMessage("panel query",
                                         /*is_voice_search=*/false);
-    return captured;
   }
 
  protected:
@@ -734,36 +720,26 @@ class ContextualTasksComposeboxHandlerReopenedViaToolbarTest
       mock_panel_controller_;
 };
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerReopenedViaToolbarTest,
-                       ReopenedViaPinnedToolbarButton_SetsCtrsToOne) {
-  SetPanelState(/*is_open=*/true, /*is_reopened_via_toolbar_button=*/true,
-                EntrySource::kPermanentToolbarButton);
-  const auto cgi_params = SubmitAndCaptureCgiParams();
-  ASSERT_TRUE(cgi_params.contains("ctrs"));
-  EXPECT_EQ(cgi_params.at("ctrs"), "1");
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerPanelTest,
+                       QuerySubmitted_NotifiesPanelShowingThisWebUi) {
+  SetPanelState(/*is_open=*/true, web_contents());
+  EXPECT_CALL(*mock_panel_controller_, OnQuerySubmitted()).Times(1);
+  SubmitQueryWithoutTask();
 }
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerReopenedViaToolbarTest,
-                       ReopenedViaEphemeralToolbarButton_SetsCtrsToTwo) {
-  SetPanelState(/*is_open=*/true, /*is_reopened_via_toolbar_button=*/true,
-                EntrySource::kEphemeralToolbarButton);
-  const auto cgi_params = SubmitAndCaptureCgiParams();
-  ASSERT_TRUE(cgi_params.contains("ctrs"));
-  EXPECT_EQ(cgi_params.at("ctrs"), "2");
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksComposeboxHandlerPanelTest,
+    QuerySubmitted_DoesNotNotifyPanelShowingOtherWebContents) {
+  SetPanelState(/*is_open=*/true, /*active_web_contents=*/nullptr);
+  EXPECT_CALL(*mock_panel_controller_, OnQuerySubmitted()).Times(0);
+  SubmitQueryWithoutTask();
 }
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerReopenedViaToolbarTest,
-                       NotReopenedViaToolbarButton_OmitsCtrs) {
-  SetPanelState(/*is_open=*/true, /*is_reopened_via_toolbar_button=*/false,
-                EntrySource::kPermanentToolbarButton);
-  EXPECT_FALSE(SubmitAndCaptureCgiParams().contains("ctrs"));
-}
-
-IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerReopenedViaToolbarTest,
-                       PanelClosed_OmitsCtrs) {
-  SetPanelState(/*is_open=*/false, /*is_reopened_via_toolbar_button=*/true,
-                EntrySource::kEphemeralToolbarButton);
-  EXPECT_FALSE(SubmitAndCaptureCgiParams().contains("ctrs"));
+IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerPanelTest,
+                       QuerySubmitted_DoesNotNotifyClosedPanel) {
+  SetPanelState(/*is_open=*/false, web_contents());
+  EXPECT_CALL(*mock_panel_controller_, OnQuerySubmitted()).Times(0);
+  SubmitQueryWithoutTask();
 }
 
 IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
@@ -2377,7 +2353,6 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksComposeboxHandlerTest,
                        SubmitQuery_WaitsForDelayedUpload) {
   ASSERT_NE(mock_contextual_tasks_service_ptr_, nullptr)
       << "Mock controller is null.";
-  std::string kQuery = "recontextualize query";
 
   // Setup context with uploaded tab (not expired).
   SessionID session_id = sessions::SessionTabHelper::IdForTab(web_contents());

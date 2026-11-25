@@ -22,8 +22,8 @@
 #import "ios/chrome/browser/authentication/test/signin_earl_grey_ui_test_util.h"
 #import "ios/chrome/browser/autofill/ui_bundled/address_editor/autofill_constants.h"
 #import "ios/chrome/browser/autofill/ui_bundled/autofill_app_interface.h"
+#import "ios/chrome/browser/autofill/ui_bundled/autofill_egtest_util.h"
 #import "ios/chrome/browser/autofill/ui_bundled/bottom_sheet/bottom_sheet_constants.h"
-#import "ios/chrome/browser/badges/model/features.h"
 #import "ios/chrome/browser/badges/ui_bundled/badge_constants.h"
 #import "ios/chrome/browser/infobars/ui_bundled/banners/infobar_banner_constants.h"
 #import "ios/chrome/browser/infobars/ui_bundled/infobar_earl_grey_ui_test_util.h"
@@ -63,10 +63,13 @@ constexpr char kFormElementSubmit[] = "submit_profile";
 // prefer giving extra buffer as there are probably other latencies.
 constexpr base::TimeDelta kTypingCoolDownPeriod = base::Milliseconds(50);
 
-// Overall timeout for retrying a verified web element tap. A single verified
-// tap attempt can take up to ~8 seconds when it misses, so this leaves room for
-// a few attempts.
-constexpr base::TimeDelta kWebElementTapTimeout = base::Seconds(30);
+// Timeout for the initial page load in a test. On a freshly booted simulator,
+// the first navigation away from the native New Tab Page must wait for
+// ExtensionKit to spawn WebKit's Networking, WebContent, and GPU helper
+// processes before `<CRWWebView>` is added to the view hierarchy, which can
+// take ~11-13 seconds and exceed both `kWaitForUIElementTimeout` (4s) and
+// `kWaitForPageLoadTimeout` (10s).
+constexpr base::TimeDelta kInitialPageLoadTimeout = base::Seconds(20);
 
 // Email value used by the tests.
 constexpr std::string_view kEmail = "missing_names@gmail.com";
@@ -204,22 +207,12 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
   [super tearDownHelper];
 }
 
-// TODO(crbug.com/391826905): Re-enable this test on simulator.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testEditBottomSheetAlertBySwipingDown \
-  FLAKY_testEditBottomSheetAlertBySwipingDown
-#else
-#define MAYBE_testEditBottomSheetAlertBySwipingDown \
-  testEditBottomSheetAlertBySwipingDown
-#endif
 - (AppLaunchConfiguration)appConfigurationForTestCase {
   AppLaunchConfiguration config;
 
   if ([self isRunningTest:@selector(testUserData_AccountSave)] ||
       [self
           isRunningTest:@selector(testUserData_LocalHideBottomSheetOnCancel)]) {
-    // These test cases need a badge.
-    config.features_disabled.push_back(kAutofillBadgeRemoval);
     // TODO(crbug.com/467331873): Re-enable this when the test is updated for
     // PSF.
     config.features_disabled.push_back(kProactiveSuggestionsFramework);
@@ -237,12 +230,9 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
     config.features_enabled.push_back(kAutofillFixXhrForXframe);
   }
 
-  // TODO(crbug.com/428189566): Re-enable after the test is fixed for
-  // ios-fieldtrial-rel.
-  if ([self isRunningTest:@selector
-            (DISABLED_testSubmissionCountReporting_ScheduledTask)] ||
-      [self isRunningTest:@selector
-            (DISABLED_testSubmissionCountReporting_UnloadPage)]) {
+  if ([self isRunningTest:@selector(
+                              testSubmissionCountReporting_ScheduledTask)] ||
+      [self isRunningTest:@selector(testSubmissionCountReporting_UnloadPage)]) {
     config.features_enabled.push_back(kAutofillCountFormSubmissionInRenderer);
   }
 
@@ -255,7 +245,8 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
 // the form to the save address profile infobar.
 - (void)fillPresidentProfileAndShowSaveInfobar {
   GREYAssertTrue(self.testServer->Start(), @"Server did not start.");
-  [ChromeEarlGrey loadURL:self.testServer->GetURL(kProfileForm)];
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kProfileForm)
+              withTimeout:kInitialPageLoadTimeout];
 
   // Ensure there are no saved profiles.
   GREYAssertEqual(0U, [AutofillAppInterface profilesCount],
@@ -275,7 +266,8 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
 - (void)triggerSaveInfobarViaXHRSubmission {
   // Load the xframe address form page.
   GREYAssertTrue(self.testServer->Start(), @"Server did not start.");
-  [ChromeEarlGrey loadURL:self.testServer->GetURL(kXframeFormPage)];
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kXframeFormPage)
+              withTimeout:kInitialPageLoadTimeout];
 
   // Ensure there are no saved profiles at this point - make sure we start from
   // a clean slate.
@@ -304,6 +296,9 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
   [[EarlGrey selectElementWithMatcher:BannerButtonMatcher()]
       performAction:grey_tap()];
   [InfobarEarlGreyUI waitUntilInfobarBannerVisibleOrTimeout:NO];
+
+  // Wait for the save/edit address modal to appear.
+  [ChromeEarlGrey waitForMatcher:ModalButtonMatcher()];
 }
 
 // Fills, submits the form and saves the address profile.
@@ -353,7 +348,7 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
   const GURL fullURL = baseURL.ReplaceComponents(replacements);
 
   // Load the URL and wait for its content to be loaded.
-  [ChromeEarlGrey loadURL:fullURL];
+  [ChromeEarlGrey loadURL:fullURL withTimeout:kInitialPageLoadTimeout];
   [ChromeEarlGrey waitForWebStateContainingText:"Address Form Test Page"];
   GREYAssertTrue([AutofillAppInterface waitForFormToBeCachedInMainFrame],
                  @"Forms were not parsed and cached.");
@@ -393,12 +388,12 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
   GREYAssertEqual(1U, [AutofillAppInterface profilesCount],
                   @"There should a saved local profile.");
 
-  // Tap on a field to trigger form activity. A single `TapWebElementWithId`
-  // tap can miss the field (see `-scrollToAndTapWebElementWithID:`), so use
-  // that method, which also scrolls the field into view with JavaScript (a
+  // Tap on a field to trigger form activity. A single `TapWebElementWithId()`
+  // tap can miss the field (see `autofill::FocusWebElementWithId()`), so use
+  // that helper, which also scrolls the field into view with JavaScript (a
   // no-op for the name field, at the top of the page), retries the tap, and
   // verifies that the field got the focus.
-  [self scrollToAndTapWebElementWithID:kFormElementName];
+  autofill::FocusWebElementWithId(kFormElementName);
 
   // Wait for suggestions as it may take some time because of form fetch
   // throttling or other delays. Don't wait for the keyboard: the keyboard
@@ -426,47 +421,15 @@ void TypeTextInXframeField(NSString* fieldID, NSString* text) {
   [ChromeEarlGrey waitForJavaScriptCondition:javaScriptCondition];
 
   // Settle the keyboard so the web view layout is stable before any subsequent
-  // coordinate-based tap. `TapWebElementWithId` computes its tap point when the
-  // action is created, so an in-flight keyboard transition after autofill can
-  // make the tap miss its target. Depending on the iOS version the keyboard may
-  // or may not still be up after autofill, so blur the focused element (a
+  // coordinate-based tap. `TapWebElementWithId()` computes its tap point when
+  // the action is created, so an in-flight keyboard transition after autofill
+  // can make the tap miss its target. Depending on the iOS version the keyboard
+  // may or may not still be up after autofill, so blur the focused element (a
   // no-op when nothing is focused) instead of using EarlGrey's keyboard
   // dismissal, which fails when the keyboard isn't showing.
   [ChromeEarlGrey
       evaluateJavaScriptForSideEffect:@"document.activeElement.blur();"];
   [ChromeEarlGrey waitForKeyboardToDisappear];
-}
-
-// Scrolls the web element with `elementID` into view and taps it natively,
-// which is required to give it native keyboard focus (JS `focus()` doesn't on
-// iOS 27+). The tap is retried with a freshly created action, hence a freshly
-// computed tap point, because `TapWebElementWithId` computes its point once at
-// creation and a focus zoom or viewport resize can make it land on a
-// neighboring field. Finally verifies that the element got the focus.
-- (void)scrollToAndTapWebElementWithID:(const char*)elementID {
-  NSString* scrollScript = [NSString
-      stringWithFormat:@"document.getElementById('%s').scrollIntoView({block: "
-                       @"'center'});",
-                       elementID];
-  [ChromeEarlGrey evaluateJavaScriptForSideEffect:scrollScript];
-
-  GREYCondition* tapped = [GREYCondition
-      conditionWithName:@"Tap web element"
-                  block:^BOOL {
-                    NSError* error = nil;
-                    [[EarlGrey selectElementWithMatcher:chrome_test_util::
-                                                            WebViewMatcher()]
-                        performAction:chrome_test_util::TapWebElementWithId(
-                                          elementID)
-                                error:&error];
-                    return error == nil;
-                  }];
-  GREYAssertTrue([tapped waitWithTimeout:kWebElementTapTimeout.InSecondsF()],
-                 @"Failed to tap web element with ID %s", elementID);
-
-  NSString* focusedCondition = [NSString
-      stringWithFormat:@"document.activeElement.id === '%s'", elementID];
-  [ChromeEarlGrey waitForJavaScriptCondition:focusedCondition];
 }
 
 #pragma mark - Tests
@@ -485,7 +448,7 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
   [self focusOnNameAndAutofillUntilElementIsFilled:kFormElementZip];
 
   // Tap on email field.
-  [self scrollToAndTapWebElementWithID:kFormElementEmail];
+  autofill::FocusWebElementWithId(kFormElementEmail);
 
   // Wait for the keyboard to appear.
   [ChromeEarlGrey waitForKeyboardToAppear];
@@ -540,11 +503,11 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
 
   [self fillPresidentProfileAndShowSaveModal];
 
-  // Verify that the address badge is displayed.
+  // Verify that the address badge is not displayed.
   [[EarlGrey selectElementWithMatcher:
                  grey_accessibilityID(
                      kBadgeButtonSaveAddressProfileAccessibilityIdentifier)]
-      assertWithMatcher:grey_notNil()];
+      assertWithMatcher:grey_nil()];
 
   id<GREYMatcher> footerMatcher = grey_text(
       l10n_util::GetNSStringF(IDS_IOS_AUTOFILL_SAVE_ADDRESS_IN_ACCOUNT_FOOTER,
@@ -743,23 +706,19 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
                                        UIAccessibilityTraitButton),
                                    nil)] performAction:grey_tap()];
 
-  // Open modal by selecting the badge that shouldn't be accepted.
-  [[EarlGrey selectElementWithMatcher:
-                 grey_accessibilityID(
-                     kBadgeButtonSaveAddressProfileAccessibilityIdentifier)]
-      performAction:grey_tap()];
+  // Verify that the bottom sheet is dismissed.
+  [[EarlGrey selectElementWithMatcher:grey_accessibilityID(
+                                          kEditProfileBottomSheetCancelButton)]
+      assertWithMatcher:grey_nil()];
 
-  [[EarlGrey selectElementWithMatcher:ModalButtonMatcher()]
-      assertWithMatcher:grey_sufficientlyVisible()];
-
-  // Save the profile.
-  [[EarlGrey selectElementWithMatcher:ModalButtonMatcher()]
-      performAction:grey_tap()];
+  // Verify that canceling discarded the profile without saving.
+  GREYAssertEqual(0U, [AutofillAppInterface profilesCount],
+                  @"Profiles count should be 0");
 }
 
 // Tests that the save address flow is still working correctly when the address
 // badge is removed.
-- (void)FLAKY_testSaveWithoutBadge {
+- (void)testSaveWithoutBadge {
   [SigninEarlGrey
       signinWithFakeIdentity:[FakeSystemIdentity fakeIdentityWithMissingNames]];
 
@@ -783,8 +742,12 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
       performAction:grey_tap()];
 
   // Ensure profile is saved locally.
-  GREYAssertEqual(1U, [AutofillAppInterface profilesCount],
-                  @"Profile should have been saved.");
+  GREYAssertTrue(base::test::ios::WaitUntilConditionOrTimeout(
+                     base::test::ios::kWaitForUIElementTimeout,
+                     ^{
+                       return [AutofillAppInterface profilesCount] == 1U;
+                     }),
+                 @"Profile should have been saved.");
 
   [SigninEarlGrey signOut];
 }
@@ -837,21 +800,11 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
 
 // Tests that there is an alert shown if the user tries to dismiss an alert
 // after they edited a field in the edit prompt without saving.
-// Note that this test is defined above.
-- (void)MAYBE_testEditBottomSheetAlertBySwipingDown {
+- (void)testEditBottomSheetAlertBySwipingDown {
   // TODO(crbug.com/377270834): Fix implementation on iPad.
   if ([ChromeEarlGrey isIPadIdiom]) {
     EARL_GREY_TEST_SKIPPED(@"Test fails on iPad currently.");
   }
-
-  // TODO(crbug.com/443713676): Re-enable the test.
-#if !TARGET_OS_SIMULATOR
-  if (base::ios::IsRunningOnIOS26OrLater()) {
-    if (![ChromeEarlGrey isIPadIdiom]) {
-      EARL_GREY_TEST_DISABLED(@"Test disabled on iOS 26.");
-    }
-  }
-#endif
 
   // Fill and submit the form.
   [self fillPresidentProfileAndShowSaveModal];
@@ -868,22 +821,32 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
   [[EarlGrey selectElementWithMatcher:EditProfileBottomSheet()]
       performAction:grey_swipeFastInDirection(kGREYDirectionDown)];
 
-  id<GREYMatcher> keepEditingAlert = grey_text(
-      l10n_util::GetNSString(IDS_IOS_VIEW_CONTROLLER_DISMISS_CANCEL_CHANGES));
-  // Ensure the error alert is shown.
-  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:keepEditingAlert];
+  id<GREYMatcher> saveChangesAlert = grey_text(
+      l10n_util::GetNSString(IDS_IOS_VIEW_CONTROLLER_DISMISS_SAVE_CHANGES));
+  // Ensure the confirmation alert is shown.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:saveChangesAlert];
 
-  // Keep editing.
-  [[EarlGrey selectElementWithMatcher:keepEditingAlert]
-      performAction:grey_tap()];
+  // Keep editing. On iOS 26+, `UIAlertControllerStyleActionSheet` anchored to a
+  // `barButtonItem` is presented as a popover on iPhone and hides the Cancel
+  // action ("Keep editing") in favor of tapping the `PopoverDismissRegion`.
+  if (base::ios::IsRunningOnIOS26OrLater()) {
+    [[EarlGrey
+        selectElementWithMatcher:grey_accessibilityID(@"PopoverDismissRegion")]
+        performAction:grey_tap()];
+  } else {
+    id<GREYMatcher> keepEditingAlert = grey_text(
+        l10n_util::GetNSString(IDS_IOS_VIEW_CONTROLLER_DISMISS_CANCEL_CHANGES));
+    [ChromeEarlGrey waitForUIElementToAppearWithMatcher:keepEditingAlert];
+    [[EarlGrey selectElementWithMatcher:keepEditingAlert]
+        performAction:grey_tap()];
+  }
+  [ChromeEarlGrey waitForUIElementToDisappearWithMatcher:saveChangesAlert];
 
   // Swipe down the sheet again.
   [[EarlGrey selectElementWithMatcher:EditProfileBottomSheet()]
       performAction:grey_swipeFastInDirection(kGREYDirectionDown)];
 
   // Check that the save changes button exists.
-  id<GREYMatcher> saveChangesAlert = grey_text(
-      l10n_util::GetNSString(IDS_IOS_VIEW_CONTROLLER_DISMISS_SAVE_CHANGES));
   [ChromeEarlGrey waitForUIElementToAppearWithMatcher:saveChangesAlert];
 
   [[EarlGrey selectElementWithMatcher:saveChangesAlert]
@@ -892,9 +855,7 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
 
 // Tests that the 'Save' button is only enabled when all the required fields are
 // filled.
-// TODO(crbug.com/407573862): Re-enable after the test is fixed for
-// ios-fieldtrial-rel.
-- (void)DISABLED_testSaveButtonEnabledStateDependingOnRequiredFields {
+- (void)testSaveButtonEnabledStateDependingOnRequiredFields {
   [SigninEarlGreyUI
       signinWithFakeIdentity:[FakeSystemIdentity fakeIdentityWithMissingNames]];
   [ChromeEarlGrey waitForSyncTransportStateActiveWithTimeout:base::Seconds(10)];
@@ -1002,9 +963,7 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
 
 // Tests submission count reporting with the scheduled task for the 2 types of
 // form submission, regular and programmatic.
-// TODO(crbug.com/428189566): Re-enable after the test is fixed for
-// ios-fieldtrial-rel.
-- (void)DISABLED_testSubmissionCountReporting_ScheduledTask {
+- (void)testSubmissionCountReporting_ScheduledTask {
   // Load the page without submitting the form.
   [self loadFullAddressFormWithParams:{.default_prevented = true,
                                        .multiple_submissions = true}];
@@ -1089,29 +1048,31 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
 }
 
 // Tests submission count reporting when unloading a page.
-// TODO(crbug.com/428189566): Re-enable after the test is fixed for
-// ios-fieldtrial-rel.
-- (void)DISABLED_testSubmissionCountReporting_UnloadPage {
+- (void)testSubmissionCountReporting_UnloadPage {
   // Load page without submitting the form.
   [self loadFullAddressFormWithParams:{.default_prevented = true,
                                        .multiple_submissions_skip_programmatic =
                                            true}];
 
-  // Submit the form which will trigger 4 extra submissions consisting of 3
-  // button click submissions and 1 `form.submit()` programmatic submission,
-  // for a total of 5 submissions.
+  // Submit the form which will trigger 3 extra button click submissions, for a
+  // total of 4 submissions. Wait for all 4 submissions (chained via
+  // `setTimeout`) to complete before reloading the page so the reload does not
+  // cancel pending resubmissions.
   [ChromeEarlGrey tapWebStateElementWithID:@"submit-button"];
+  [ChromeEarlGrey waitForJavaScriptCondition:@"submitCount === 4"];
 
   // Reload the page content which triggers reporting.
   [ChromeEarlGrey reload];
   [ChromeEarlGrey waitForWebStateContainingText:"Address Form Test Page"];
 
-  // Verify that that all the submissions were reported. No need for a long
-  // timeout as the report was sent when reloading the page so all the metrics
-  // should have been recorded at this point.
+  // Verify that all the submissions were reported. Although the report is
+  // triggered when unloading the page on reload, it is sent asynchronously
+  // from the renderer's isolated world via `webkit.messageHandlers` and may
+  // be processed on the browser side more than 200ms after the reloaded page
+  // finishes loading, so wait up to `kWaitForUIElementTimeout` (4 seconds).
   GREYAssertTrue(
       base::test::ios::WaitUntilConditionOrTimeout(
-          base::Milliseconds(200),
+          base::test::ios::kWaitForUIElementTimeout,
           ^{
             // Expect 4 regular submission in total.
             NSError* error = [MetricsAppInterface
@@ -1120,6 +1081,9 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
                 forHistogram:
                     @"Autofill.iOS.FormActivity."
                     @"SubmissionDetectedBeforeProcessing.PerType.FromAll"];
+            if (error != nil) {
+              return false;
+            }
             // Expect 2  regular submissions from the instant reports. Which
             // is the maximal number allowed by the quotas. Regular submissions
             // are handled in the isolated world.
@@ -1129,6 +1093,9 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
                 forHistogram:
                     @"Autofill.iOS.FormActivity."
                     @"SubmissionDetectedBeforeProcessing.PerType.FromInstant"];
+            if (error != nil) {
+              return false;
+            }
             // Expect 2 regular submissions from the report triggered by
             // unloading the page as all the quotas were used for the 2 first
             // reports.
@@ -1138,6 +1105,9 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
                 forHistogram:@"Autofill.iOS.FormActivity."
                              @"SubmissionDetectedBeforeProcessing.PerType."
                              @"FromUnloadPage"];
+            if (error != nil) {
+              return false;
+            }
             // Expect 4 batches of reports, 2 from the instant reports (1
             // report per batch) and 1 batch with the 2 reports that were
             // reported when unloading the page.
@@ -1146,6 +1116,9 @@ TAG_SMOKE_TEST(SaveProfileEGTest, testUserData_LocalUpdate);
                    forBucket:1
                 forHistogram:@"Autofill.iOS.FormActivity."
                              @"SubmissionDetectedBeforeProcessing.BatchSize"];
+            if (error != nil) {
+              return false;
+            }
             error = [MetricsAppInterface
                  expectCount:1
                    forBucket:2

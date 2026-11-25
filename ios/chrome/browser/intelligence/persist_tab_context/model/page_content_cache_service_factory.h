@@ -17,11 +17,12 @@ class PageContentCacheServiceFactory final
 
   // Returns the storage path for the PageContentCacheService for `profile`.
   static base::FilePath GetStoragePathForProfile(ProfileIOS* profile);
+  static base::FilePath GetStoragePathForProfile(ProfileIOS& profile);
 
  private:
   // ProfileKeyedServiceFactoryIOS:
   std::unique_ptr<KeyedService> BuildServiceInstanceFor(
-      ProfileIOS* profile) const final;
+      ProfileIOS& profile) const final;
 };
 
 #endif  // IOS_CHROME_BROWSER_INTELLIGENCE_PERSIST_TAB_CONTEXT_MODEL_PAGE_CONTENT_CACHE_SERVICE_FACTORY_H_

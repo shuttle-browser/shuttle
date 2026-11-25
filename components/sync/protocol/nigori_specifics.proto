@@ -13,16 +13,17 @@ option java_multiple_files = true;
 option java_package = "org.chromium.components.sync.protocol";
 
 option optimize_for = LITE_RUNTIME;
+option objc_class_prefix = "GCR";
 
 package sync_pb;
 
 import "components/sync/protocol/encryption.proto";
 
 message NigoriKey {
-  // Note that M78 and before rely on the name being populated, at least for
-  // the main encrypted keybag within NigoriSpecifics.
-  optional string deprecated_name = 1 [deprecated = true];
-  optional bytes deprecated_user_key = 2 [deprecated = true];
+  reserved 1;
+  reserved "name", "deprecated_name";
+  reserved 2;
+  reserved "user_key", "deprecated_user_key";
   optional bytes encryption_key = 3;
   optional bytes mac_key = 4;
 }

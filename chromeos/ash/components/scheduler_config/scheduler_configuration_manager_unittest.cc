@@ -24,7 +24,7 @@ class SchedulerConfigurationManagerTest
       public SchedulerConfigurationManagerBase::Observer {
  public:
   SchedulerConfigurationManagerTest() {
-    SchedulerConfigurationManager::RegisterLocalStatePrefs(
+    SchedulerConfigurationManagerBase::RegisterLocalStatePrefs(
         local_state_.registry());
   }
 

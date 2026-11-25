@@ -41,6 +41,7 @@
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
 #include "ui/accessibility/platform/fuchsia/accessibility_bridge_fuchsia_impl.h"
 #include "ui/aura/window_tree_host.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/platform_window/fuchsia/view_ref_pair.h"
 #include "ui/wm/core/focus_controller.h"
 #include "url/gurl.h"
@@ -193,19 +194,11 @@ class WEB_ENGINE_EXPORT FrameImpl : public fuchsia::web::Frame,
   bool OnAccessibilityError(zx_status_t error);
 
   // Creates and initializes WindowTreeHost for the view with the specified
-  // |view_token|. |view_token| may be uninitialized in headless mode.
-  void SetupWindowTreeHost(fuchsia::ui::views::ViewToken view_token,
-                           ui::ViewRefPair view_ref_pair);
-
-  // Creates and initializes WindowTreeHost for the view with the specified
   // |view_creation_token|. |view_creation_token| may be uninitialized in
   // headless mode.
   void SetupWindowTreeHost(
       fuchsia::ui::views::ViewCreationToken view_creation_token,
       ui::ViewRefPair view_ref_pair);
-
-  // Initializes WindowTreeHost.
-  void InitWindowTreeHost();
 
   // Destroys the WindowTreeHost along with its view or other associated
   // resources.
@@ -233,11 +226,6 @@ class WEB_ENGINE_EXPORT FrameImpl : public fuchsia::web::Frame,
   // Helper method for connecting to AccessibilityBridge on
   // |accessibility_bridge_|.
   void ConnectToAccessibilityBridge();
-
-  // Shared implementation of CreateView and CreateViewWithViewRef.
-  void CreateViewImpl(fuchsia::ui::views::ViewToken view_token,
-                      fuchsia::ui::views::ViewRefControl control_ref,
-                      fuchsia::ui::views::ViewRef view_ref);
 
   // fuchsia::web::Frame implementation.
   void CreateView(fuchsia::ui::views::ViewToken view_token) override;
@@ -326,7 +314,7 @@ class WEB_ENGINE_EXPORT FrameImpl : public fuchsia::web::Frame,
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override;

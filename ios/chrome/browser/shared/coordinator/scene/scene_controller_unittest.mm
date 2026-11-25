@@ -46,6 +46,7 @@
 #import "ios/chrome/browser/sessions/model/session_restoration_service_factory.h"
 #import "ios/chrome/browser/sessions/model/test_session_restoration_service.h"
 #import "ios/chrome/browser/shared/coordinator/layout_guide/layout_guide_scene_agent.h"
+#import "ios/chrome/browser/shared/coordinator/scene/chrome_connection_options.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_controller_testing.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/state/incognito_state.h"
@@ -169,14 +170,12 @@ class SceneControllerTest : public PlatformTest {
         tab_groups::TabGroupSyncServiceFactory::GetDefaultFactory());
     builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
                               base::BindRepeating(&CreateTestSyncService));
+    builder.SetSharedURLLoaderFactory(
+        test_loader_factory_.GetSafeWeakWrapper());
     profile_ = profile_manager_.AddProfileWithBuilder(std::move(builder));
 
     browser_ = std::make_unique<TestBrowser>(profile_.get(), scene_state_);
     UserActivityBrowserAgent::CreateForBrowser(browser_.get());
-
-    profile_->SetSharedURLLoaderFactory(
-        base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
-            &test_loader_factory_));
 
     mock_scene_handler_ = OCMProtocolMock(@protocol(SceneCommands));
     mock_settings_handler_ = OCMProtocolMock(@protocol(SettingsCommands));
@@ -503,10 +502,11 @@ TEST_F(SceneControllerTest, RecordWindowCreationMenuActionHistogram) {
                                                GURL("https://example.com"));
   AttachMenuScenarioToActivity(activity, kMenuScenarioHistogramHistoryEntry);
 
-  id mock_connection_options = OCMClassMock([UISceneConnectionOptions class]);
   NSSet<NSUserActivity*>* activities = [NSSet setWithObject:activity];
-  OCMStub([mock_connection_options userActivities]).andReturn(activities);
-  scene_state_.connectionOptions = mock_connection_options;
+  scene_state_.connectionOptions =
+      [[ChromeConnectionOptions alloc] initWithUserActivities:activities
+                                                  URLContexts:nil
+                                                 shortcutItem:nil];
 
   base::HistogramTester histogram_tester;
   [scene_controller_ sceneState:scene_state_

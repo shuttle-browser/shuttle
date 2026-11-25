@@ -66,7 +66,8 @@ PointerProperties& PointerProperties::operator=(
 void PointerProperties::SetAxesAndOrientation(float radius_x,
                                               float radius_y,
                                               float rotation_angle_degree) {
-  DCHECK(!touch_major && !touch_minor && !orientation);
+  CHECK(!touch_major && !touch_minor && !orientation,
+        base::NotFatalUntil::M163);
   float rotation_angle_rad = base::DegToRad(rotation_angle_degree);
   DCHECK_GE(radius_x, 0) << "Unexpected x-radius < 0 (" << radius_x << ")";
   DCHECK_GE(radius_y, 0) << "Unexpected y-radius < 0 (" << radius_y << ")";
@@ -132,9 +133,11 @@ MotionEvent::Action MotionEventGeneric::GetAction() const {
 }
 
 int MotionEventGeneric::GetActionIndex() const {
-  DCHECK(action_ == Action::POINTER_DOWN || action_ == Action::POINTER_UP);
-  DCHECK_GE(action_index_, 0);
-  DCHECK_LT(action_index_, static_cast<int>(pointers_.size()));
+  CHECK(action_ == Action::POINTER_DOWN || action_ == Action::POINTER_UP,
+        base::NotFatalUntil::M163);
+  CHECK_GE(action_index_, 0, base::NotFatalUntil::M163);
+  CHECK_LT(action_index_, static_cast<int>(pointers_.size()),
+           base::NotFatalUntil::M163);
   return action_index_;
 }
 
@@ -143,78 +146,78 @@ size_t MotionEventGeneric::GetPointerCount() const {
 }
 
 int MotionEventGeneric::GetPointerId(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].id;
 }
 
 float MotionEventGeneric::GetX(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].x;
 }
 
 float MotionEventGeneric::GetY(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].y;
 }
 
 float MotionEventGeneric::GetRawX(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].raw_x;
 }
 
 float MotionEventGeneric::GetRawY(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].raw_y;
 }
 
 float MotionEventGeneric::GetTouchMajor(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].touch_major;
 }
 
 float MotionEventGeneric::GetTouchMinor(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].touch_minor;
 }
 
 bool MotionEventGeneric::HasNativeTouchMajor(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].has_native_touch_major;
 }
 
 float MotionEventGeneric::GetOrientation(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].orientation;
 }
 
 float MotionEventGeneric::GetPressure(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].pressure;
 }
 
 float MotionEventGeneric::GetTiltX(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].tilt_x;
 }
 
 float MotionEventGeneric::GetTiltY(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].tilt_y;
 }
 
 float MotionEventGeneric::GetTwist(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].twist;
 }
 
 float MotionEventGeneric::GetTangentialPressure(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].tangential_pressure;
 }
 
 MotionEvent::ToolType MotionEventGeneric::GetToolType(
     size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].tool_type;
 }
 
@@ -236,39 +239,44 @@ size_t MotionEventGeneric::GetHistorySize() const {
 
 base::TimeTicks MotionEventGeneric::GetHistoricalEventTime(
     size_t historical_index) const {
-  DCHECK_LT(historical_index, historical_events_.size());
+  CHECK_LT(historical_index, historical_events_.size(),
+           base::NotFatalUntil::M163);
   return historical_events_[historical_index]->GetEventTime();
 }
 
 float MotionEventGeneric::GetHistoricalTouchMajor(
     size_t pointer_index,
     size_t historical_index) const {
-  DCHECK_LT(historical_index, historical_events_.size());
+  CHECK_LT(historical_index, historical_events_.size(),
+           base::NotFatalUntil::M163);
   return historical_events_[historical_index]->GetTouchMajor(pointer_index);
 }
 
 bool MotionEventGeneric::GetHistoricalHasNativeTouchMajor(
     size_t pointer_index,
     size_t historical_index) const {
-  DCHECK_LT(historical_index, historical_events_.size());
+  CHECK_LT(historical_index, historical_events_.size(),
+           base::NotFatalUntil::M163);
   return historical_events_[historical_index]->HasNativeTouchMajor(
       pointer_index);
 }
 
 float MotionEventGeneric::GetHistoricalX(size_t pointer_index,
                                          size_t historical_index) const {
-  DCHECK_LT(historical_index, historical_events_.size());
+  CHECK_LT(historical_index, historical_events_.size(),
+           base::NotFatalUntil::M163);
   return historical_events_[historical_index]->GetX(pointer_index);
 }
 
 float MotionEventGeneric::GetHistoricalY(size_t pointer_index,
                                          size_t historical_index) const {
-  DCHECK_LT(historical_index, historical_events_.size());
+  CHECK_LT(historical_index, historical_events_.size(),
+           base::NotFatalUntil::M163);
   return historical_events_[historical_index]->GetY(pointer_index);
 }
 
 int32_t MotionEventGeneric::GetSourceDeviceId(size_t pointer_index) const {
-  DCHECK_LT(pointer_index, pointers_.size());
+  CHECK_LT(pointer_index, pointers_.size(), base::NotFatalUntil::M163);
   return pointers_[pointer_index].source_device_id;
 }
 
@@ -296,7 +304,7 @@ std::unique_ptr<MotionEventGeneric> MotionEventGeneric::CancelEvent(
 }
 
 size_t MotionEventGeneric::PushPointer(const PointerProperties& pointer) {
-  DCHECK_EQ(0U, GetHistorySize());
+  CHECK_EQ(0U, GetHistorySize(), base::NotFatalUntil::M163);
   pointers_.push_back(pointer);
   return pointers_.size() - 1;
 }
@@ -309,11 +317,12 @@ void MotionEventGeneric::RemovePointerAt(size_t index) {
 
 void MotionEventGeneric::PushHistoricalEvent(
     std::unique_ptr<MotionEvent> event) {
-  DCHECK(event);
-  DCHECK_EQ(event->GetAction(), Action::MOVE);
-  DCHECK_EQ(event->GetPointerCount(), GetPointerCount());
-  DCHECK_EQ(event->GetAction(), GetAction());
-  DCHECK_LE(event->GetEventTime(), GetEventTime());
+  CHECK(event, base::NotFatalUntil::M163);
+  CHECK_EQ(event->GetAction(), Action::MOVE, base::NotFatalUntil::M163);
+  CHECK_EQ(event->GetPointerCount(), GetPointerCount(),
+           base::NotFatalUntil::M163);
+  CHECK_EQ(event->GetAction(), GetAction(), base::NotFatalUntil::M163);
+  CHECK_LE(event->GetEventTime(), GetEventTime(), base::NotFatalUntil::M163);
   historical_events_.push_back(std::move(event));
 }
 
@@ -373,7 +382,7 @@ MotionEventGeneric& MotionEventGeneric::operator=(
 }
 
 void MotionEventGeneric::PopPointer() {
-  DCHECK_GT(pointers_.size(), 0U);
+  CHECK_GT(pointers_.size(), 0U, base::NotFatalUntil::M163);
   pointers_.pop_back();
 }
 

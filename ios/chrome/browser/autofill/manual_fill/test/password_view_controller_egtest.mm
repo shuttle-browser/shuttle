@@ -153,6 +153,8 @@ void OpenPasswordManualFillView(bool has_suggestions) {
       has_suggestions ? manual_fill::KeyboardAccessoryManualFillButton()
                       : manual_fill::PasswordManualFillViewButton();
 
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:button_to_tap];
+
   // Tap the button that'll open the password manual fill view.
   [[EarlGrey selectElementWithMatcher:button_to_tap] performAction:grey_tap()];
 
@@ -271,6 +273,10 @@ void CheckKeyboardIsUpAndNotCovered() {
 
 - (void)setUp {
   [super setUp];
+  // Each test relaunches the app, so wait for the startup New Tab Page load to
+  // finish before starting the login page navigation; otherwise the initial
+  // navigation can stall on the New Tab Page on iPad.
+  [ChromeEarlGrey waitForPageToFinishLoading];
   _HTTPSServer = nil;
   GREYAssertTrue(self.testServer->Start(), @"Test server failed to start.");
   self.URL = self.testServer->GetURL(kFormHTMLFile);
@@ -368,6 +374,11 @@ void CheckKeyboardIsUpAndNotCovered() {
 
 // Opens the "Other Passwords" screen.
 - (void)openOtherPasswords {
+  [self openOtherPasswordsAndWaitForPresentation:YES];
+}
+
+// Opens the "Other Passwords" screen, optionally waiting for it to present.
+- (void)openOtherPasswordsAndWaitForPresentation:(BOOL)waitForPresentation {
   // Bring up the keyboard.
   [ChromeEarlGrey
       waitForUIElementToAppearWithMatcher:chrome_test_util::WebViewMatcher()];
@@ -396,6 +407,11 @@ void CheckKeyboardIsUpAndNotCovered() {
                  ActionSheetItemWithAccessibilityLabelId(
                      IDS_IOS_CONFIRM_USING_OTHER_PASSWORD_CONTINUE)]
       performAction:grey_tap()];
+
+  if (waitForPresentation) {
+    [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                        manual_fill::OtherPasswordsDismissMatcher()];
+  }
 }
 
 #pragma mark - Tests
@@ -560,17 +576,12 @@ void CheckKeyboardIsUpAndNotCovered() {
 }
 
 // Tests that the "Select Password..." action works in incognito mode.
-// TODO(crbug.com/363017975): Re-enable test
-- (void)DISABLED_testSelectPasswordActionInIncognito {
+- (void)testSelectPasswordActionInIncognito {
   // Open a tab in incognito.
   [ChromeEarlGrey openNewIncognitoTab];
   [self loadLoginPage];
 
   [self openOtherPasswords];
-
-  [[EarlGrey
-      selectElementWithMatcher:manual_fill::OtherPasswordsDismissMatcher()]
-      assertWithMatcher:grey_sufficientlyVisible()];
 }
 
 // Tests that returning from "Manage Settings..." leaves the keyboard and the
@@ -602,10 +613,6 @@ void CheckKeyboardIsUpAndNotCovered() {
 // Tests that the "Select Password..." action works.
 - (void)testSelectPasswordActionOpensOtherPasswordList {
   [self openOtherPasswords];
-
-  [[EarlGrey
-      selectElementWithMatcher:manual_fill::OtherPasswordsDismissMatcher()]
-      assertWithMatcher:grey_sufficientlyVisible()];
 }
 
 // Tests that the "Select Password..." screen won't open if canceled.
@@ -636,10 +643,6 @@ void CheckKeyboardIsUpAndNotCovered() {
 - (void)testClosingOtherPasswordListViaSwipeDown {
   [self openOtherPasswords];
 
-  [[EarlGrey
-      selectElementWithMatcher:manual_fill::OtherPasswordsDismissMatcher()]
-      assertWithMatcher:grey_sufficientlyVisible()];
-
   // Dismiss Other Passwords via swipe.
   [[EarlGrey selectElementWithMatcher:manual_fill::PasswordTableViewMatcher()]
       performAction:grey_swipeFastInDirection(kGREYDirectionDown)];
@@ -649,10 +652,6 @@ void CheckKeyboardIsUpAndNotCovered() {
 
   // Open it again to make sure the old coordinator was properly cleaned up.
   [self openOtherPasswords];
-
-  [[EarlGrey
-      selectElementWithMatcher:manual_fill::OtherPasswordsDismissMatcher()]
-      assertWithMatcher:grey_sufficientlyVisible()];
 }
 
 // Tests that the "Select Password..." action is only availbale when there are
@@ -690,7 +689,7 @@ void CheckKeyboardIsUpAndNotCovered() {
                                     ReauthenticationResult::kFailure];
   [ReauthenticationAppInterface mockReauthenticationModuleShouldSkipReAuth:NO];
 
-  [self openOtherPasswords];
+  [self openOtherPasswordsAndWaitForPresentation:NO];
 
   // Validate reauth UI is visible until auth result is delivered.
   [[EarlGrey selectElementWithMatcher:password_manager_test_utils::
@@ -719,10 +718,6 @@ void CheckKeyboardIsUpAndNotCovered() {
 // in the right state.
 - (void)testPasswordsStateAfterPresentingOtherPasswordList {
   [self openOtherPasswords];
-
-  [[EarlGrey
-      selectElementWithMatcher:manual_fill::OtherPasswordsDismissMatcher()]
-      assertWithMatcher:grey_sufficientlyVisible()];
 
   // Tap Done Button.
   [[EarlGrey selectElementWithMatcher:NavigationBarDoneButton()]
@@ -804,9 +799,7 @@ void CheckKeyboardIsUpAndNotCovered() {
 
 // Tests that the Password View Controller is dismissed when tapping the
 // keyboard.
-// TODO(crbug.com/41428686): started to be flaky and sometimes opens full list
-// when typing text.
-- (void)DISABLED_testTappingKeyboardDismissPasswordControllerPopOver {
+- (void)testTappingKeyboardDismissPasswordControllerPopOver {
   if (![ChromeEarlGrey isIPadIdiom]) {
     return;
   }
@@ -846,8 +839,7 @@ void CheckKeyboardIsUpAndNotCovered() {
 }
 
 // Tests that content is injected in iframe messaging.
-// TODO(crbug.com/517074595): Test is consitently failing on iPad Air.
-- (void)DISABLED_testPasswordControllerSupportsIFrameMessaging {
+- (void)testPasswordControllerSupportsIFrameMessaging {
   // Disable the credential bottom sheet.
   [CredentialSuggestionBottomSheetAppInterface disableBottomSheet];
 
@@ -1032,15 +1024,7 @@ void CheckKeyboardIsUpAndNotCovered() {
 
 // Tests password generation on manual fallback not showing for signed in users
 // with Passwords toggle in account settings disabled.
-// TODO(crbug.com/371189341): Test fails on device.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testPasswordGenerationFallbackSignedInPasswordsDisabled \
-  testPasswordGenerationFallbackSignedInPasswordsDisabled
-#else
-#define MAYBE_testPasswordGenerationFallbackSignedInPasswordsDisabled \
-  DISABLED_testPasswordGenerationFallbackSignedInPasswordsDisabled
-#endif
-- (void)MAYBE_testPasswordGenerationFallbackSignedInPasswordsDisabled {
+- (void)testPasswordGenerationFallbackSignedInPasswordsDisabled {
   [SigninEarlGreyUI signinWithFakeIdentity:[FakeSystemIdentity fakeIdentity1]];
   [ChromeEarlGrey waitForSyncTransportStateActiveWithTimeout:base::Seconds(10)];
 
@@ -1068,15 +1052,7 @@ void CheckKeyboardIsUpAndNotCovered() {
 
 // Tests password generation on manual fallback not showing for signed in users
 // with encryption error.
-// TODO(crbug.com/371189341): Test fails on device.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testPasswordGenerationFallbackSignedInEncryptionError \
-  testPasswordGenerationFallbackSignedInEncryptionError
-#else
-#define MAYBE_testPasswordGenerationFallbackSignedInEncryptionError \
-  DISABLED_testPasswordGenerationFallbackSignedInEncryptionError
-#endif
-- (void)MAYBE_testPasswordGenerationFallbackSignedInEncryptionError {
+- (void)testPasswordGenerationFallbackSignedInEncryptionError {
   // Encrypt synced data with a passphrase to enable passphrase encryption for
   // the signed in account.
   [ChromeEarlGrey addSyncPassphrase:kPassphrase];
@@ -1289,26 +1265,18 @@ void CheckKeyboardIsUpAndNotCovered() {
 
 // Tests that tapping the "Autofill form" button in the all password list fills
 // the password form with the right data.
-// TODO (crbug.com/515635648): Re-enable once fixed
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testAutofillFormButtonInAllPasswordListFillsForm \
-  FLAKY_testAutofillFormButtonInAllPasswordListFillsForm
-#else
-#define MAYBE_testAutofillFormButtonInAllPasswordListFillsForm \
-  DISABLED_testAutofillFormButtonInAllPasswordListFillsForm
-#endif
-- (void)MAYBE_testAutofillFormButtonInAllPasswordListFillsForm {
-  // TODO(crbug.com/426435086): Test consistently fails on ipad.
-  if ([ChromeEarlGrey isIPadIdiom]) {
-    EARL_GREY_TEST_DISABLED(@"Fails on iPad.");
-  }
-
+- (void)testAutofillFormButtonInAllPasswordListFillsForm {
   // Disable the credential bottom sheet.
   [CredentialSuggestionBottomSheetAppInterface disableBottomSheet];
 
-  [self loadLoginPage];
+  [self startHTTPSServer];
+  self.URL = _HTTPSServer->GetURL(kFormHTMLFile);
+
+  [self loadHTTPSLoginPage];
 
   [self openOtherPasswords];
+
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:AutofillFormButton()];
 
   // Tap the "Autofill form" button.
   [[EarlGrey selectElementWithMatcher:AutofillFormButton()]

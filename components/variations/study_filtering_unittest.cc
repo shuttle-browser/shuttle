@@ -237,8 +237,10 @@ TEST(VariationsStudyFilteringTest, CheckStudyPlatform) {
   constexpr auto platforms = std::to_array<Study::Platform>(
       {Study::PLATFORM_WINDOWS, Study::PLATFORM_MAC, Study::PLATFORM_LINUX,
        Study::PLATFORM_CHROMEOS, Study::PLATFORM_ANDROID, Study::PLATFORM_IOS,
-       Study::PLATFORM_FUCHSIA, Study::PLATFORM_ANDROID_WEBVIEW});
-  static_assert(platforms.size() == Study::Platform_ARRAYSIZE,
+       Study::PLATFORM_FUCHSIA, Study::PLATFORM_ANDROID_WEBVIEW,
+       Study::PLATFORM_ANDROID_DESKTOP});
+  // Study::Platform has 2 reserved enum values (8 and 9).
+  static_assert(platforms.size() == Study::Platform_ARRAYSIZE - 2,
                 "|platforms| must include all platforms.");
   std::array<bool, platforms.size()> platform_added = {false};
 
@@ -934,39 +936,6 @@ TEST(VariationsStudyFilteringTest, FilterAndValidateStudies) {
   EXPECT_EQ(kTrial1Name, processed_studies[0].study()->name());
   EXPECT_EQ(kGroup1Name, processed_studies[0].study()->experiment(0).name());
   EXPECT_EQ(kTrial3Name, processed_studies[1].study()->name());
-}
-
-TEST(VariationsStudyFilteringTest, FilterAndValidateStudiesWithCustomFilter) {
-  const std::string kMutableTrialName = "A";
-  const std::string kImmutableTrialName = "B";
-
-  VariationsSeed seed;
-  Study* study1 = seed.add_study();
-  study1->set_name(kMutableTrialName);
-  study1->set_default_experiment_name("Default");
-  study1->set_runtime_mutable(true);
-  AddExperiment("Default", 100, study1);
-
-  Study* study2 = seed.add_study();
-  study2->set_name(kImmutableTrialName);
-  study2->set_default_experiment_name("Default");
-  study2->set_runtime_mutable(false);
-  AddExperiment("Default", 100, study2);
-
-  auto client_state = CreateDummyClientFilterableState();
-  client_state->locale = "en-CA";
-  client_state->reference_date = base::Time::Now();
-  client_state->version = base::Version("20.0.0.0");
-  client_state->channel = Study::STABLE;
-  client_state->form_factor = Study::DESKTOP;
-  client_state->platform = Study::PLATFORM_ANDROID;
-
-  std::vector<ProcessedStudy> processed_studies = FilterAndValidateStudies(
-      seed, *client_state, VariationsLayers(),
-      [](const Study& study) { return study.runtime_mutable(); });
-
-  ASSERT_EQ(1U, processed_studies.size());
-  EXPECT_EQ(kMutableTrialName, processed_studies[0].study()->name());
 }
 
 TEST(VariationsStudyFilteringTest,

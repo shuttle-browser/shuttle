@@ -27,6 +27,7 @@ source_set("ai") {
     "ai_writer.h",
     "features.cc",
     "features.h",
+    "semantic_embedder_spaces.h",
   ]
   if (!is_android) {
     sources += [
@@ -69,6 +70,7 @@ source_set("impl") {
     "ai_summarizer.cc",
     "ai_utils.cc",
     "ai_writer.cc",
+    "semantic_embedder_spaces.cc",
   ]
   if (!is_android) {
     sources += [
@@ -131,7 +133,10 @@ source_set("test_support") {
     "//testing/gmock",
     "//testing/gtest",
   ]
-  deps = [ ":ai" ]
+  deps = [
+    ":ai",
+    "//components/component_updater:component_updater_paths",
+  ]
 }
 
 source_set("unit_tests") {
@@ -140,6 +145,7 @@ source_set("unit_tests") {
     "ai_manager_unittest.cc",
     "ai_summarizer_unittest.cc",
     "ai_utils_unittest.cc",
+    "semantic_embedder_spaces_unittest.cc",
   ]
   if (!is_android) {
     sources += [
@@ -149,6 +155,7 @@ source_set("unit_tests") {
       "ai_proofreader_unittest.cc",
       "ai_rewriter_unittest.cc",
       "ai_semantic_embedder_service_launcher_unittest.cc",
+      "ai_semantic_embedder_unittest.cc",
       "ai_writer_unittest.cc",
       "decision_model_prompt_builder_unittest.cc",
       "decision_model_schema_compiler_unittest.cc",
@@ -188,7 +195,6 @@ if (!is_android) {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/passage_embeddings/core:test_support",
       "//content/test:test_support",
       "//testing/gmock",
@@ -209,7 +215,6 @@ if (!is_android && !is_chromeos_device) {
       "//base",
       "//chrome/browser/ui/browser_window",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/embedder_support",
       "//content/test:test_support",
       "//testing/gmock",

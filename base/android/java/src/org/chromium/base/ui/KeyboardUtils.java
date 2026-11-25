@@ -11,6 +11,7 @@ import android.os.StrictMode;
 import android.provider.Settings;
 import android.view.KeyEvent;
 import android.view.View;
+import android.view.WindowInsets;
 import android.view.inputmethod.InputMethodManager;
 
 import androidx.core.view.WindowInsetsCompat;
@@ -19,6 +20,7 @@ import org.chromium.base.BaseFeatureList;
 import org.chromium.base.Log;
 import org.chromium.base.TraceEvent;
 import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
 
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -92,12 +94,11 @@ public final class KeyboardUtils {
 
     /**
      * Calculates the keyboard height based on the bottom margin it causes for the given rootView.
-     * It is used to determine whether the keyboard is visible.
      *
      * @param rootView A {@link View}.
      * @return The size of the bottom margin which most likely is exactly the keyboard size.
      */
-    public static int calculateKeyboardHeightFromWindowInsets(View rootView) {
+    public static int calculateKeyboardHeightFromWindowInsets(@Nullable View rootView) {
         try (TraceEvent te =
                 TraceEvent.scoped("KeyboardVisibilityDelegate.calculateKeyboardHeight")) {
             if (rootView == null || rootView.getRootWindowInsets() == null) return 0;
@@ -118,16 +119,38 @@ public final class KeyboardUtils {
     }
 
     /**
-     * Detects whether or not the keyboard is showing. This is a best guess based on the height of
-     * the keyboard as there is no standardized/foolproof way to do this. This template method
-     * simplifies mocking and the access to the soft keyboard in subclasses.
+     * Detects whether or not the keyboard is showing and obscuring the window layout.
+     *
+     * @param view A {@link View}.
+     * @return Whether or not the software keyboard is occupying space in the window.
+     */
+    public static boolean isAndroidSoftKeyboardObscuring(View view) {
+        return isAndroidSoftKeyboardVisible(view, /* includeNonObscuring= */ false);
+    }
+
+    /**
+     * Returns whether the software keyboard is visible on screen, including non-obscuring soft
+     * keyboards (such as in split-screen top pane or floating keyboard modes).
      *
      * @param view A {@link View}.
      * @return Whether or not the software keyboard is visible.
      */
-    public static boolean isAndroidSoftKeyboardShowing(View view) {
+    public static boolean isAndroidSoftKeyboardVisible(View view) {
+        return isAndroidSoftKeyboardVisible(view, /* includeNonObscuring= */ true);
+    }
+
+    private static boolean isAndroidSoftKeyboardVisible(View view, boolean includeNonObscuring) {
         View rootView = view.getRootView();
-        return rootView != null && calculateKeyboardHeightFromWindowInsets(rootView) > 0;
+        if (rootView == null) return false;
+        if (calculateKeyboardHeightFromWindowInsets(rootView) > 0) return true;
+        if (!includeNonObscuring || !BaseFeatureList.sSplitScreenImeInsetVisibility.isEnabled()) {
+            return false;
+        }
+        WindowInsets rootWindowInsets = rootView.getRootWindowInsets();
+        if (rootWindowInsets == null) return false;
+        WindowInsetsCompat windowInsetsCompat =
+                WindowInsetsCompat.toWindowInsetsCompat(rootWindowInsets, rootView);
+        return windowInsetsCompat.isVisible(WindowInsetsCompat.Type.ime());
     }
 
     /** Detects whether there is a hardware keyboard connected. */

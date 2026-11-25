@@ -4,24 +4,24 @@
 
 import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 
-import {KEYBOARD_NAV_CLASS, LINE_FOCUS_FEATURE_NAME, MENU_SHOW_DELAY_MS, SUBMENU_SHOW_DELAY_MS, userEducationProxyFactory} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {KEYBOARD_NAV_CLASS, MENU_SHOW_DELAY_MS, SUBMENU_SHOW_DELAY_MS} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import type {SettingsMenuElement} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {ReadAnythingSettingsAction, SettingsOption, ToolbarEvent} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {loadTimeData} from 'chrome-untrusted://resources/js/load_time_data.js';
-import {assertDeepEquals, assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
+import {assertEquals, assertFalse, assertNotEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 import {keyDownOn} from 'chrome-untrusted://webui-test/keyboard_mock_interactions.js';
 import {MockTimer} from 'chrome-untrusted://webui-test/mock_timer.js';
-import {TestUserEducationMixedTrustHandler} from 'chrome-untrusted://webui-test/test_user_education_mixed_trust_handler.js';
 import {eventToPromise, microtasksFinished, whenAttributeIs} from 'chrome-untrusted://webui-test/test_util.js';
 
 import {setupTestEnvironment} from './common.js';
+import type {TestContentBrowserProxy} from './test_content_browser_proxy.js';
 import type {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
 import type {TestVisualBrowserProxy} from './test_visual_browser_proxy.js';
 
 suite('SettingsMenuElement', () => {
   let settingsMenu: SettingsMenuElement;
+  let contentBrowserProxy: TestContentBrowserProxy;
   let metrics: TestMetricsBrowserProxy;
-  let userEducationHandler: TestUserEducationMixedTrustHandler;
   let visualBrowserProxy: TestVisualBrowserProxy;
 
   function queryLinksToggle(): HTMLButtonElement|null {
@@ -47,11 +47,10 @@ suite('SettingsMenuElement', () => {
   }
 
   setup(async () => {
-    const result = setupTestEnvironment({lineFocusEnabled: true});
+    const result = setupTestEnvironment();
+    contentBrowserProxy = result.contentBrowserProxy;
     metrics = result.metrics;
     visualBrowserProxy = result.visualBrowserProxy;
-    userEducationHandler = new TestUserEducationMixedTrustHandler();
-    userEducationProxyFactory.setInstance({handler: userEducationHandler});
     await createSettingsMenu();
   });
 
@@ -108,6 +107,7 @@ suite('SettingsMenuElement', () => {
       'open settings submenu event is fired when menu items are hovered',
       () => {
         const actionMenu = settingsMenu.$.lazyMenu.get();
+        actionMenu.classList.remove(KEYBOARD_NAV_CLASS);
         const menuItems =
             actionMenu.querySelectorAll<HTMLButtonElement>('.menu-row');
 
@@ -126,6 +126,27 @@ suite('SettingsMenuElement', () => {
 
         assertEquals(8, submenuEvents);
       });
+
+  test('pointerenter is ignored while in keyboard-nav mode', () => {
+    const actionMenu = settingsMenu.$.lazyMenu.get();
+    assertTrue(actionMenu.classList.contains(KEYBOARD_NAV_CLASS));
+    const menuItems =
+        actionMenu.querySelectorAll<HTMLButtonElement>('.menu-row');
+    const targetItem = menuItems[0]!;
+
+    let submenuEvents = 0;
+    settingsMenu.addEventListener(
+        ToolbarEvent.OPEN_SETTINGS_SUBMENU, () => submenuEvents++);
+
+    const timer = new MockTimer();
+    timer.install();
+    targetItem.dispatchEvent(new PointerEvent(
+        'pointerenter', {bubbles: true, cancelable: true, view: window}));
+    timer.tick(SUBMENU_SHOW_DELAY_MS + 10);
+    timer.uninstall();
+
+    assertEquals(0, submenuEvents);
+  });
 
   test('with improved ui flag enabled', async () => {
     visualBrowserProxy.readAnythingImprovedUiEnabled = true;
@@ -231,13 +252,14 @@ suite('SettingsMenuElement', () => {
     actionMenu.classList.add(KEYBOARD_NAV_CLASS);
     assertTrue(actionMenu.classList.contains(KEYBOARD_NAV_CLASS));
 
-    actionMenu.dispatchEvent(new PointerEvent(
-        'pointerenter', {bubbles: true, cancelable: true, view: window}));
-    actionMenu.classList.remove(KEYBOARD_NAV_CLASS);
+    window.dispatchEvent(new PointerEvent(
+        'pointermove', {clientX: 10, clientY: 10, bubbles: true}));
+    assertFalse(actionMenu.classList.contains(KEYBOARD_NAV_CLASS));
   });
 
   test('mouse leave clears open timer', () => {
     const actionMenu = settingsMenu.$.lazyMenu.get();
+    actionMenu.classList.remove(KEYBOARD_NAV_CLASS);
     const menuItems =
         actionMenu.querySelectorAll<HTMLButtonElement>('.menu-row');
     const targetItem = menuItems[0];
@@ -293,35 +315,70 @@ suite('SettingsMenuElement', () => {
       });
 
   test(
-      'escape or back arrow inside cr-dialog does not close submenu',
+      'pressing escape with mouse over main menu does not reopen submenu',
       async () => {
         const actionMenu = settingsMenu.$.lazyMenu.get();
+        actionMenu.classList.remove(KEYBOARD_NAV_CLASS);
         const menuItems =
             Array.from(actionMenu.querySelectorAll<HTMLElement>('.menu-row'));
-        const targetItem =
+        const fontItem =
             menuItems.find(item => item.id === SettingsOption.FONT);
-        assertTrue(!!targetItem);
-        targetItem.click();
-        await microtasksFinished();
+        const colorItem =
+            menuItems.find(item => item.id === SettingsOption.COLOR);
+        assertTrue(!!fontItem);
+        assertTrue(!!colorItem);
 
-        let closeSubmenuFired = false;
+        // Open the font submenu.
+        fontItem.click();
+
+        const timer = new MockTimer();
+        timer.install();
+
+        // Simulate the mouse hovering over a main menu item before Escape is
+        // pressed.
+        colorItem.dispatchEvent(new PointerEvent('pointerenter', {
+          clientX: 15,
+          clientY: 15,
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }));
+
+        let submenuOpenedAfterEscape = false;
         settingsMenu.addEventListener(
-            ToolbarEvent.CLOSE_SUBMENU_REQUESTED,
-            () => closeSubmenuFired = true);
+            ToolbarEvent.OPEN_SETTINGS_SUBMENU, () => {
+              submenuOpenedAfterEscape = true;
+            });
 
-        const crDialog = document.createElement('cr-dialog');
-        document.body.appendChild(crDialog);
+        const whenClosed =
+            eventToPromise(ToolbarEvent.CLOSE_SUBMENU_REQUESTED, settingsMenu);
+        keyDownOn(settingsMenu, 0, undefined, 'Escape');
+        await whenClosed;
 
-        keyDownOn(crDialog, 0, undefined, 'Escape');
-        keyDownOn(crDialog, 0, undefined, 'ArrowLeft');
-        await microtasksFinished();
+        // Simulate synthetic pointer events on the stationary cursor after the
+        // submenu closes.
+        colorItem.dispatchEvent(new PointerEvent('pointerenter', {
+          clientX: 15,
+          clientY: 15,
+          bubbles: true,
+          cancelable: true,
+          view: window,
+        }));
+        colorItem.dispatchEvent(new PointerEvent('pointermove', {
+          clientX: 15,
+          clientY: 15,
+          bubbles: true,
+        }));
 
-        assertFalse(closeSubmenuFired);
-        crDialog.remove();
+        timer.tick(SUBMENU_SHOW_DELAY_MS + 10);
+        timer.uninstall();
+
+        assertFalse(submenuOpenedAfterEscape);
       });
 
   test('closing the menu prevents open timer to be fired', () => {
     const actionMenu = settingsMenu.$.lazyMenu.get();
+    actionMenu.classList.remove(KEYBOARD_NAV_CLASS);
     const menuItems =
         Array.from(actionMenu.querySelectorAll<HTMLElement>('.menu-row'));
     const targetItem =
@@ -621,7 +678,7 @@ suite('SettingsMenuElement', () => {
   });
 
   test('send feedback action fires event when clicked', async () => {
-    visualBrowserProxy.sendFeedbackEnabled = true;
+    contentBrowserProxy.sendFeedbackEnabled = true;
     settingsMenu.remove();
     await createSettingsMenu();
 
@@ -643,7 +700,7 @@ suite('SettingsMenuElement', () => {
 
   test('clicking send feedback closes open submenu', async () => {
     visualBrowserProxy.readAnythingImprovedUiEnabled = true;
-    visualBrowserProxy.sendFeedbackEnabled = true;
+    contentBrowserProxy.sendFeedbackEnabled = true;
     settingsMenu.remove();
     await createSettingsMenu();
 
@@ -676,7 +733,7 @@ suite('SettingsMenuElement', () => {
   test(
       'send feedback action does not show when sendFeedbackEnabled is false',
       async () => {
-        visualBrowserProxy.sendFeedbackEnabled = false;
+        contentBrowserProxy.sendFeedbackEnabled = false;
         settingsMenu.remove();
         await createSettingsMenu();
 
@@ -698,50 +755,29 @@ suite('SettingsMenuElement', () => {
       });
 
   test(
-      'line focus item shows new badge when showLineFocusNewBadge is true',
+      'send feedback action does not show when canShowFeedback is false',
       async () => {
-        settingsMenu.showLineFocusNewBadge = true;
-        await microtasksFinished();
+        contentBrowserProxy.sendFeedbackEnabled = true;
+        loadTimeData.overrideValues({canShowFeedback: false});
+        settingsMenu.remove();
+        await createSettingsMenu();
 
-        const actionMenu = settingsMenu.$.lazyMenu.get();
-        const lineFocusItem = actionMenu.querySelector<HTMLButtonElement>(
-            `#${SettingsOption.LINE_FOCUS}`);
-        assertTrue(!!lineFocusItem);
+        let actionMenu = settingsMenu.$.lazyMenu.get();
+        let menuItems = Array.from(
+            actionMenu.querySelectorAll<HTMLButtonElement>('.menu-row'));
+        assertFalse(
+            menuItems.some(item => item.id === SettingsOption.SEND_FEEDBACK));
 
-        const badge = lineFocusItem.querySelector('new-badge');
-        assertTrue(!!badge);
+        visualBrowserProxy.readAnythingImprovedUiEnabled = true;
+        settingsMenu.remove();
+        await createSettingsMenu();
+
+        actionMenu = settingsMenu.$.lazyMenu.get();
+        menuItems = Array.from(
+            actionMenu.querySelectorAll<HTMLButtonElement>('.menu-row'));
+        assertFalse(
+            menuItems.some(item => item.id === SettingsOption.SEND_FEEDBACK));
+
+        loadTimeData.overrideValues({canShowFeedback: true});
       });
-
-  test(
-      'line focus item hides new badge when showLineFocusNewBadge is false',
-      async () => {
-        settingsMenu.showLineFocusNewBadge = false;
-        await microtasksFinished();
-
-        const actionMenu = settingsMenu.$.lazyMenu.get();
-        const lineFocusItem = actionMenu.querySelector<HTMLButtonElement>(
-            `#${SettingsOption.LINE_FOCUS}`);
-        assertTrue(!!lineFocusItem);
-
-        const badge = lineFocusItem.querySelector('new-badge');
-        assertFalse(!!badge);
-      });
-
-  test('requests line focus new badge on open', async () => {
-    settingsMenu.close();
-    await microtasksFinished();
-    userEducationHandler.setNewBadgeResponse(LINE_FOCUS_FEATURE_NAME, true);
-    // Since setup creates a menu, clear out the number of requests.
-    userEducationHandler.reset();
-    const anchor = document.createElement('div');
-    document.body.appendChild(anchor);
-    assertEquals(0, userEducationHandler.getCallCount('maybeShowNewBadgeFor'));
-    settingsMenu.open(anchor);
-    await microtasksFinished();
-    assertEquals(1, userEducationHandler.getCallCount('maybeShowNewBadgeFor'));
-    assertDeepEquals(
-        [LINE_FOCUS_FEATURE_NAME],
-        userEducationHandler.getArgs('maybeShowNewBadgeFor'));
-    assertTrue(settingsMenu.showLineFocusNewBadge);
-  });
 });

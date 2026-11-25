@@ -36,6 +36,8 @@ bool ContextMenuContentTypePlatformApp::SupportsGroup(int group) {
   if (!platform_app)
     return false;
 
+  // TODO(crbug.com/585705239): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(platform_app->is_platform_app());
 
   switch (group) {

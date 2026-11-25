@@ -47,8 +47,9 @@
 #include "chrome/browser/finds/core/finds_tab_helper.h"
 #include "chrome/browser/finds/finds_service_factory.h"
 #include "chrome/browser/flags/android/chrome_feature_list.h"
-#include "chrome/browser/glic/glic_marketing_page_tab_helper.h"
+#include "chrome/browser/glic/glic_gemini_web_warming_observer.h"
 #include "chrome/browser/glic/host/glic_drag_and_drop_util.h"
+#include "chrome/browser/glic/navigation_capture/glic_marketing_page_tab_helper.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/widget/glic_side_panel_coordinator_android.h"
@@ -58,8 +59,6 @@
 #include "chrome/browser/history/history_tab_helper.h"
 #include "chrome/browser/history/top_sites_factory.h"
 #include "chrome/browser/history_clusters/history_clusters_tab_helper.h"
-#include "chrome/browser/history_embeddings/history_embeddings_service_factory.h"
-#include "chrome/browser/history_embeddings/history_embeddings_tab_helper.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_observer.h"
 #include "chrome/browser/login_detection/login_detection_tab_helper.h"
 #include "chrome/browser/lookalikes/safety_tip_web_contents_observer.h"
@@ -210,17 +209,17 @@
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "chrome/browser/enterprise/connectors/referrer_cache_utils.h"
-#include "chrome/browser/safe_browsing/chrome_password_reuse_detection_manager_client.h"
 #include "chrome/browser/safe_browsing/chrome_safe_browsing_tab_observer_delegate.h"
-#include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
+#include "chrome/browser/safe_browsing/navigation_observer/safe_browsing_navigation_observer_manager_factory.h"
+#include "chrome/browser/safe_browsing/password_protection/chrome_password_reuse_detection_manager_client.h"
 #include "chrome/browser/safe_browsing/safe_browsing_service.h"
 #include "chrome/browser/safe_browsing/tailored_security/tailored_security_service_factory.h"
 #include "chrome/browser/safe_browsing/tailored_security/tailored_security_url_observer.h"
-#include "chrome/browser/safe_browsing/trigger_creator.h"
-#include "components/safe_browsing/content/browser/async_check_tracker.h"
-#include "components/safe_browsing/content/browser/safe_browsing_navigation_observer.h"
+#include "chrome/browser/safe_browsing/triggers/trigger_creator.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
+#include "components/safe_browsing/content/browser/navigation_observer/safe_browsing_navigation_observer.h"
 #include "components/safe_browsing/content/browser/safe_browsing_tab_observer.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/url_checker/async_check_tracker.h"
 #include "components/safe_browsing/core/common/features.h"
 #endif
 
@@ -318,7 +317,8 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
   }
 
   new_tab_page_preload_pipeline_manager_ =
-      std::make_unique<NewTabPagePreloadPipelineManager>(web_contents);
+      GetUserDataFactory().CreateInstance<NewTabPagePreloadPipelineManager>(
+          *tab, *tab, web_contents);
 
   if (base::FeatureList::IsEnabled(
           security_interstitials::features::kHttpsFirstDialogUi)) {
@@ -342,8 +342,9 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
   extensions::TabHelper::CreateForWebContents(web_contents);
   if (tab_scoped_side_panel_registry_) {
     extension_side_panel_manager_ =
-        std::make_unique<extensions::ExtensionSidePanelManager>(
-            profile, tab, tab_scoped_side_panel_registry_.get());
+        GetUserDataFactory()
+            .CreateInstance<extensions::ExtensionSidePanelManager>(
+                *tab, profile, tab, tab_scoped_side_panel_registry_.get());
   }
   navigation_extension_enabler_ =
       std::make_unique<extensions::NavigationExtensionEnabler>(web_contents);
@@ -389,8 +390,11 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
           *tab, tab);
 
   if (ShouldCreateDataProtectionController(profile)) {
-    data_protection_tab_controller_ = std::make_unique<
-        enterprise_data_protection::DataProtectionNavigationController>(tab);
+    data_protection_tab_controller_ =
+        GetUserDataFactory()
+            .CreateInstance<
+                enterprise_data_protection::DataProtectionNavigationController>(
+                *tab, tab);
   }
 
   enterprise_proxy_tab_helper_ =
@@ -432,9 +436,12 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
 
   contextual_cueing_helper_ = glic::ContextualCueingHelper::MaybeCreate(tab);
 
-  if (base::FeatureList::IsEnabled(features::kGlicMarketingAutoOpen)) {
-    glic_marketing_page_tab_helper_ =
-        std::make_unique<glic::GlicMarketingPageTabHelper>(web_contents);
+  glic_marketing_page_tab_helper_ =
+      glic::GlicMarketingPageTabHelper::MaybeCreate(web_contents);
+  if (glic::GlicEnabling::IsProfileEligible(profile) &&
+      base::FeatureList::IsEnabled(features::kGlicWarmOnGeminiWeb)) {
+    glic_gemini_web_warming_observer_ =
+        std::make_unique<glic::GlicGeminiWebWarmingObserver>(tab);
   }
 
 #if BUILDFLAG(ENABLE_WEBUI_NTP)
@@ -503,9 +510,7 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
       enterprise_connectors::IsReferrerChainNeededForEnterprise(profile));
   if (g_browser_process->safe_browsing_service()) {
     safe_browsing::AsyncCheckTracker::CreateForWebContents(
-        web_contents, g_browser_process->safe_browsing_service()->ui_manager(),
-        safe_browsing::AsyncCheckTracker::
-            IsPlatformEligibleForSyncCheckerCheckAllowlist());
+        web_contents, g_browser_process->safe_browsing_service()->ui_manager());
   }
   if (autofill::ContentAutofillClient::FromWebContents(web_contents)) {
     // Attach password reuse detection client when Autofill is present.
@@ -580,12 +585,6 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
 
   task_tab_helper_ = GetUserDataFactory().CreateInstance<tasks::TaskTabHelper>(
       *tab, *tab, web_contents);
-
-  if (!profile->IsOffTheRecord() &&
-      HistoryEmbeddingsServiceFactory::GetForProfile(profile)) {
-    history_embeddings_tab_helper_ =
-        std::make_unique<HistoryEmbeddingsTabHelper>(web_contents);
-  }
 
   download_navigation_observer_ =
       std::make_unique<download::DownloadNavigationObserver>(
@@ -789,10 +788,11 @@ TabFeatures::TabFeatures(content::WebContents* web_contents, Profile* profile) {
 
   if (site_engagement::SiteEngagementService::IsEnabled()) {
     site_engagement_helper_ =
-        std::make_unique<site_engagement::SiteEngagementService::Helper>(
-            web_contents,
-            prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
-                profile));
+        GetUserDataFactory()
+            .CreateInstance<site_engagement::SiteEngagementService::Helper>(
+                *tab, *tab, web_contents,
+                prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
+                    profile));
   }
 
   SafetyTipWebContentsObserver::CreateForWebContents(web_contents);

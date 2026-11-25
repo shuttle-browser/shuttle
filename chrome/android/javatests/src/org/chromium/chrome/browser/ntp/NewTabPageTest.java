@@ -68,9 +68,6 @@ import org.chromium.chrome.browser.composeplate.ComposeplateUtils;
 import org.chromium.chrome.browser.feed.FeedActionDelegate;
 import org.chromium.chrome.browser.feed.FeedReliabilityLogger;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
-import org.chromium.chrome.browser.logo.LogoBridge;
-import org.chromium.chrome.browser.logo.LogoBridgeJni;
 import org.chromium.chrome.browser.logo.LogoCoordinator;
 import org.chromium.chrome.browser.native_page.ContextMenuManager;
 import org.chromium.chrome.browser.omnibox.OmniboxStub;
@@ -116,6 +113,7 @@ import org.chromium.net.test.util.TestWebServer;
 import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.ui.base.PageTransition;
 import org.chromium.ui.mojom.WindowOpenDisposition;
+import org.chromium.ui.test.util.DeviceRestriction;
 import org.chromium.url.GURL;
 
 import java.io.IOException;
@@ -132,10 +130,7 @@ import java.util.concurrent.TimeUnit;
  * <p>TODO(crbug.com/40602800): Add new goldens and enable ExploreSites.
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-    "disable-features=IPH_FeedHeaderMenu"
-})
+@CommandLineFlags.Add("disable-features=IPH_FeedHeaderMenu")
 @EnableFeatures(
         ChromeFeatureList.HOME_BUTTON_REMOVAL
                 + ":set_default_to_false_on_homepage_on_desktop/false")
@@ -167,8 +162,6 @@ public class NewTabPageTest {
     @Mock VoiceRecognitionHandler mVoiceRecognitionHandler;
     @Mock FeedReliabilityLogger mFeedReliabilityLogger;
     @Mock FeedActionDelegate.PageLoadObserver mPageLoadObserver;
-    @Mock LogoBridge.Natives mLogoBridgeJniMock;
-    @Mock private LogoBridge mLogoBridge;
     @Mock ComposeboxQueryControllerBridge.Natives mComposeboxBridgeJni;
 
     private static final String TEST_PAGE = "/chrome/test/data/android/navigate/simple.html";
@@ -347,7 +340,10 @@ public class NewTabPageTest {
     @Test
     @SmallTest
     @Feature({"NewTabPage"})
-    @DisabledTest(message = "https://crbug.com/507770942")
+    @EnableFeatures(
+            OmniboxFeatureList.OMNIBOX_MULTIMODAL_INPUT
+                    + ":show_ntp_plus_button/true/focus_fusebox_from_ntp_plus_button/true")
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
     public void testClickPlusButtonOnFakebox() {
         View plusButton = mNtp.getView().findViewById(R.id.search_box_plus_button);
         Assert.assertNotNull(plusButton);
@@ -834,15 +830,16 @@ public class NewTabPageTest {
     @SmallTest
     @Feature({"NewTabPage"})
     public void testRecordHistogramLogoClick_Ntp() {
-        LogoBridgeJni.setInstanceForTesting(mLogoBridgeJniMock);
         NewTabPageCoordinator ntpCoordinator = mNtp.getNewTabPageCoordinator();
         LogoCoordinator logoCoordinator = ntpCoordinator.getLogoCoordinatorForTesting();
-        logoCoordinator.setLogoBridgeForTesting(mLogoBridge);
-        logoCoordinator.setOnLogoClickUrlForTesting(TEST_URL);
         HistogramWatcher histogramWatcher =
                 HistogramWatcher.newSingleRecordWatcher(
                         HISTOGRAM_NTP_MODULE_CLICK, ModuleTypeOnStartAndNtp.DOODLE);
-        ThreadUtils.runOnUiThreadBlocking(() -> logoCoordinator.onLogoClickedForTesting(true));
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    logoCoordinator.setOnLogoClickUrlForTesting(TEST_URL);
+                    logoCoordinator.onLogoClickedForTesting(true);
+                });
         histogramWatcher.assertExpected(
                 HISTOGRAM_NTP_MODULE_CLICK
                         + " is not recorded correctly when click on Logo with doodle enabled.");
@@ -923,8 +920,6 @@ public class NewTabPageTest {
     @DisableFeatures({OmniboxFeatureList.OMNIBOX_MULTIMODAL_INPUT})
     @DisableIf.Device(DeviceFormFactor.DESKTOP)
     public void testAiModeButton_auroraV2Redirect() {
-        mActivityTestRule.skipWindowAndTabStateCleanup();
-
         clickAiModeButton();
         if (OmniboxCapabilities.isFuseboxSupportedDeviceType()) {
             mOmnibox.checkFocus(true);
@@ -944,8 +939,6 @@ public class NewTabPageTest {
         if (mActivityTestRule.getActivity().isTablet()) return;
 
         OmniboxFeatures.sRedirectComposeplateButton.setForTesting(true);
-        mActivityTestRule.skipWindowAndTabStateCleanup();
-
         clickAiModeButton();
         mOmnibox.checkFocus(true);
     }
@@ -958,8 +951,6 @@ public class NewTabPageTest {
     @DisableIf.Device(DeviceFormFactor.DESKTOP)
     public void testAiModeButton_fuseboxWithoutRedirect() {
         if (mActivityTestRule.getActivity().isTablet()) return;
-
-        mActivityTestRule.skipWindowAndTabStateCleanup();
 
         clickAiModeButton();
         verifyComposeplateUrlNavigation();

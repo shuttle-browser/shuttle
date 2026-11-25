@@ -6,7 +6,6 @@
 
 #include "base/functional/bind.h"
 #include "base/task/sequenced_task_runner.h"
-#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
@@ -14,14 +13,13 @@
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
-#include "chrome/browser/web_applications/web_app_utils.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/page_navigator.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 namespace web_app {
@@ -64,30 +62,14 @@ void TabbedWebAppNavigationThrottle::MaybeCreateAndAdd(
 
   const BrowserWindowInterface* browser_window =
       tab->GetBrowserWindowInterface();
-  if (!browser_window || !AppBrowserController::IsWebApp(browser_window)) {
+  const AppBrowserController* app_controller =
+      browser_window ? AppBrowserController::From(browser_window) : nullptr;
+  if (!app_controller || !app_controller->GetPinnedHomeTab()) {
     return;
   }
 
-  Profile* profile =
-      Profile::FromBrowserContext(web_contents->GetBrowserContext());
-  if (!AreWebAppsEnabled(profile)) {
-    return;
-  }
-
-  const WebAppProvider* provider =
-      WebAppProvider::GetForWebContents(web_contents);
-  CHECK(provider);
-
-  const webapps::AppId& app_id =
-      AppBrowserController::From(browser_window)->app_id();
-
-  std::optional<GURL> home_tab_url =
-      provider->registrar_unsafe().GetAppPinnedHomeTabUrl(app_id);
-
-  // Only create the throttle for tabbed web apps that have a home tab.
-  if (WebAppTabHelper::FromWebContents(web_contents) &&
-      provider->registrar_unsafe().IsTabbedWindowModeEnabled(app_id) &&
-      home_tab_url.has_value()) {
+  // Only create the throttle for tabbed web app windows that have a home tab.
+  if (WebAppTabHelper::FromWebContents(web_contents)) {
     registry.AddThrottle(
         std::make_unique<TabbedWebAppNavigationThrottle>(registry));
   }
@@ -165,7 +147,7 @@ content::NavigationThrottle::ThrottleCheckResult
 TabbedWebAppNavigationThrottle::OpenInNewTab() {
   content::OpenURLParams params =
       content::OpenURLParams::FromNavigationHandle(navigation_handle());
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   // Clear the FrameTreeNode id, as the new navigation will be in a new tab
   // rather than the frame of the original navigation.
   params.frame_tree_node_id = content::FrameTreeNodeId();
@@ -180,7 +162,7 @@ TabbedWebAppNavigationThrottle::FocusHomeTab(
     TabStripModel& tab_strip) {
   content::OpenURLParams params =
       content::OpenURLParams::FromNavigationHandle(navigation_handle());
-  params.disposition = WindowOpenDisposition::kCurrentTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   params.frame_tree_node_id = content::FrameTreeNodeId();
 
   content::WebContents* pinned_home_tab = app_controller.GetPinnedHomeTab();

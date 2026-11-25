@@ -5,11 +5,14 @@
 #ifndef IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_MODEL_ACTOR_TAB_HELPER_H_
 #define IOS_CHROME_BROWSER_INTELLIGENCE_ACTOR_MODEL_ACTOR_TAB_HELPER_H_
 
+#import <optional>
+
 #import "base/callback_list.h"
 #import "base/memory/raw_ptr.h"
 #import "base/memory/weak_ptr.h"
 #import "base/observer_list.h"
 #import "base/scoped_observation.h"
+#import "components/actor/core/task_source_info.h"
 #import "ios/chrome/browser/intelligence/actor/public/actor_control_state.h"
 #import "ios/web/public/web_state_observer.h"
 #import "ios/web/public/web_state_user_data.h"
@@ -19,6 +22,7 @@ class WebState;
 }  // namespace web
 
 class ActorTabHelperObserver;
+class GURL;
 
 // `ActorTabHelper` is a tab helper used to track Actor-related state that is
 // tab-bound.
@@ -45,11 +49,15 @@ class ActorTabHelper : public web::WebStateObserver,
 
   ~ActorTabHelper() override;
 
-  // Sets the `ActorControlState` for the associated `WebState`,
-  // notifying registered callbacks and observers if the control state changes.
-  // The render process is kept alive while the control state is not
-  // `kInactive`.
-  void SetControlState(actor::ActorControlState control_state);
+  // Sets the `ActorControlState` for the associated `WebState`, notifying
+  // registered callbacks and observers if the control state changes. `kTtc`
+  // tasks in `task_source_info` keep the tab in `kInactive`. The render process
+  // is kept alive while the control state is not `kInactive`.
+  // TODO(crbug.com/581400371): Move `TaskSourceInfo`-specific UI configuration
+  // out of `ActorTabHelper`.
+  void SetControlState(
+      actor::ActorControlState control_state,
+      std::optional<actor::TaskSourceInfo> task_source_info = std::nullopt);
 
   // Sets whether the tab is actively undergoing actuation by an `ActorTask`.
   // TODO(crbug.com/548051839): Deprecated, remove once callers are updated.
@@ -62,6 +70,12 @@ class ActorTabHelper : public web::WebStateObserver,
   // Returns true if the tab is currently being actuated.
   // TODO(crbug.com/548051839): Deprecated, remove once callers are updated.
   bool IsActuating() const;
+
+  // Intercepts a request to open `url` in a new tab while the tab is
+  // `kActorControlled`, navigating the associated `WebState` in-place for valid
+  // HTTP(S) URLs and suppressing other schemes. Returns `true` if the request
+  // was handled, or `false` when the tab is not `kActorControlled`.
+  bool MaybeHandleNewTabRequest(const GURL& url);
 
   // Registers a callback to be invoked when the `ActorControlState`
   // changes. The returned subscription manages the lifetime of the

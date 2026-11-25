@@ -68,6 +68,15 @@ class ImageFetcherParams {
     return max_download_bytes_;
   }
 
+  // Reject requests to local and private network addresses, including after
+  // redirects. Browser-initiated fetches do not have a document's local
+  // network access policy, so callers handling untrusted URLs can opt in.
+  void set_block_local_requests(bool block_local_requests) {
+    block_local_requests_ = block_local_requests;
+  }
+
+  bool block_local_requests() const { return block_local_requests_; }
+
   void set_frame_size(gfx::Size desired_frame_size) {
     desired_frame_size_ = desired_frame_size;
   }
@@ -111,6 +120,23 @@ class ImageFetcherParams {
 
   data_decoder::DataDecoder* data_decoder() const { return data_decoder_; }
 
+  // Image encoding format used when storing transcoded images in the disk
+  // cache.
+  enum class TranscodeFormat {
+    kPng,
+    kJpeg,
+  };
+
+  // Sets the encoding format used for the transcoded image when stored in the
+  // disk cache.
+  void set_transcode_format(TranscodeFormat transcode_format) {
+    transcode_format_ = transcode_format;
+  }
+
+  // Returns the encoding format used for the transcoded image when stored in
+  // the disk cache.
+  TranscodeFormat transcode_format() const { return transcode_format_; }
+
  private:
   void set_skip_transcoding(bool skip_transcoding) {
     skip_transcoding_ = skip_transcoding;
@@ -123,6 +149,7 @@ class ImageFetcherParams {
   const net::NetworkTrafficAnnotationTag network_traffic_annotation_tag_;
 
   std::optional<int64_t> max_download_bytes_;
+  bool block_local_requests_ = false;
   // Only used in rare cases to keep the cache file on disk for certain period
   // of time. Image files will stay in cache at least for `expiration_interval_`
   // after last use.
@@ -138,6 +165,9 @@ class ImageFetcherParams {
   // True if allowing images that need transcoding to be stored with a prefix in
   // file names.
   bool allow_needs_transcoding_file_;
+  // Encoding format used for the transcoded image when stored in the disk
+  // cache.
+  TranscodeFormat transcode_format_ = TranscodeFormat::kPng;
 
   // The data decoder to use for decoding this image. If null, a new data
   // decoder will be created for each fetch.

@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <map>
+#include <ostream>
 #include <sstream>
 #include <string_view>
 
@@ -76,9 +77,6 @@
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace glic::test {
-
-extern const InteractiveBrowserTestApi::DeepQuery kPathToMockGlicCloseButton;
-extern const InteractiveBrowserTestApi::DeepQuery kPathToGuestPanel;
 
 enum class TargetWebContents {
   kGlicWebUi,
@@ -195,7 +193,7 @@ class InteractiveGlicTestMixin : public T {
 
     LOG(INFO) << "InteractiveGlicTest: done setting up";
 
-    SidePanelCoordinator::From(browser())->DisableAnimationsForTesting();
+    SidePanelUI::From(browser())->DisableAnimationsForTesting();
   }
 
   void TearDownOnMainThread() override {
@@ -351,8 +349,7 @@ class InteractiveGlicTestMixin : public T {
                   Api::WaitForWebContentsReady(kGlicContentsElementId))),
               Api::WaitForState(internal::kGlicInstanceCoordinatorState,
                                 GlicPanelState::kOpen),
-              Api::StopObservingState(internal::kGlicInstanceCoordinatorState)
-              /*, WaitForElementVisible(kPathToGuestPanel)*/);
+              Api::StopObservingState(internal::kGlicInstanceCoordinatorState));
         } else {
           // In Webview mode, GlicView hosts the WebUI (kGlicHostElementId)
           // and the guest WebContents (kGlicContentsElementId) is embedded
@@ -371,8 +368,7 @@ class InteractiveGlicTestMixin : public T {
                   Api::WaitForWebContentsReady(kGlicContentsElementId))),
               Api::WaitForState(internal::kGlicInstanceCoordinatorState,
                                 GlicPanelState::kOpen),
-              Api::StopObservingState(internal::kGlicInstanceCoordinatorState)
-              /*, WaitForElementVisible(kPathToGuestPanel)*/);
+              Api::StopObservingState(internal::kGlicInstanceCoordinatorState));
         }
         break;
       case GlicInstrumentMode::kHostOnly:
@@ -433,7 +429,6 @@ class InteractiveGlicTestMixin : public T {
     // NOTE: The use of "Api::" here is required because this is a template
     // class with weakly-specified base class; it is not necessary in derived
     // test classes.
-    const std::string kConversationId = "conversation_id_default";
     auto steps =
         Api::Steps(Api::Log("Opening glic window"), CheckGlicIsClosed(),
                    // Technically, this toggles the window, but we've

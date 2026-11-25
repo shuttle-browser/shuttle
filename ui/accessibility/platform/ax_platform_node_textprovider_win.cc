@@ -91,8 +91,10 @@ HRESULT AXPlatformNodeTextProviderWin::GetSelection(SAFEARRAY** selection) {
   AXNodePosition::AXPositionInstance end =
       focus_object->GetDelegate()->CreatePositionAt(end_offset);
 
+  // TODO(crbug.com/580103833): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(!start->IsNullPosition());
-  DCHECK(!end->IsNullPosition());
+  CHECK(!end->IsNullPosition(), base::NotFatalUntil::M163);
 
   start->SnapToMaxTextOffsetIfBeyond();
   end->SnapToMaxTextOffsetIfBeyond();
@@ -126,7 +128,7 @@ HRESULT AXPlatformNodeTextProviderWin::GetSelection(SAFEARRAY** selection) {
   LONG index = 0;
   HRESULT hr = ::SafeArrayPutElement(selections_to_return.Get(), &index,
                                      text_range_provider.Get());
-  DCHECK(SUCCEEDED(hr));
+  CHECK(SUCCEEDED(hr), base::NotFatalUntil::M163);
 
   // Since DCHECK only happens in debug builds, return immediately to ensure
   // that we're not leaking the SAFEARRAY on release builds.
@@ -164,7 +166,7 @@ HRESULT AXPlatformNodeTextProviderWin::GetVisibleRanges(
 
   const auto start = delegate->CreateTextPositionAt(0);
   const auto end = start->CreatePositionAtEndOfAnchor();
-  DCHECK(start->GetAnchor() == end->GetAnchor());
+  CHECK(start->GetAnchor() == end->GetAnchor(), base::NotFatalUntil::M163);
 
   // SAFEARRAYs are not dynamic, so fill the visible ranges in a vector
   // and then transfer to an appropriately-sized SAFEARRAY
@@ -256,13 +258,13 @@ HRESULT AXPlatformNodeTextProviderWin::RangeFromPoint(
 
   AXPlatformNodeWin* nearest_node =
       static_cast<AXPlatformNodeWin*>(owner()->NearestLeafToPoint(point));
-  DCHECK(nearest_node);
-  DCHECK(nearest_node->IsLeaf());
+  CHECK(nearest_node, base::NotFatalUntil::M163);
+  CHECK(nearest_node->IsLeaf(), base::NotFatalUntil::M163);
 
   AXNodePosition::AXPositionInstance start, end;
   start = nearest_node->GetDelegate()->CreateTextPositionAt(
       nearest_node->NearestTextIndexToPoint(point));
-  DCHECK(!start->IsNullPosition());
+  CHECK(!start->IsNullPosition(), base::NotFatalUntil::M163);
   end = start->Clone();
 
   AXPlatformNodeTextRangeProviderWin::CreateTextRangeProvider(
@@ -319,10 +321,10 @@ void AXPlatformNodeTextProviderWin::GetRangeFromChild(
     AXPlatformNodeWin* ancestor,
     AXPlatformNodeWin* descendant,
     ITextRangeProvider** range) {
-  DCHECK(ancestor);
-  DCHECK(descendant);
-  DCHECK(descendant->GetDelegate());
-  DCHECK(ancestor->IsDescendant(descendant));
+  CHECK(ancestor, base::NotFatalUntil::M163);
+  CHECK(descendant, base::NotFatalUntil::M163);
+  CHECK(descendant->GetDelegate(), base::NotFatalUntil::M163);
+  CHECK(ancestor->IsDescendant(descendant), base::NotFatalUntil::M163);
   ScopedAXEmbeddedObjectBehaviorSetter ax_embedded_object_behavior(
       AXEmbeddedObjectBehavior::kUIAExposeCharacterForTextContent);
 
@@ -365,8 +367,8 @@ void AXPlatformNodeTextProviderWin::GetRangeFromChild(
 void AXPlatformNodeTextProviderWin::CreateDegenerateRangeAtStart(
     AXPlatformNodeWin* node,
     ITextRangeProvider** text_range_provider) {
-  DCHECK(node);
-  DCHECK(node->GetDelegate());
+  CHECK(node, base::NotFatalUntil::M163);
+  CHECK(node->GetDelegate(), base::NotFatalUntil::M163);
 
   // Create a degenerate range positioned at the node's start.
   AXNodePosition::AXPositionInstance start, end;

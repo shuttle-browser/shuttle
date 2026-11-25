@@ -16,7 +16,6 @@ virtual/forced-high-contrast-colors/wpt_internal/*
 virtual/trust-tokens/wpt_internal/*
 virtual/task-tracking/wpt_internal/*
 virtual/fenced-frame-mparch-internal/wpt_internal/*
-virtual/js-shared-memory/wpt_internal/*
 virtual/text-size-adjust/wpt_internal/*
 virtual/generic-sensor-extra-classes/wpt_internal/*
 virtual/unload-allowed/wpt_internal/*
@@ -25,6 +24,9 @@ virtual/cpu-compositing/wpt_internal/*
 virtual/gpu/wpt_internal/*
 virtual/unbounded-element/wpt_internal/*
 virtual/global-privacy-control-force/wpt_internal/*
+# wpt_internal tests only run in blink_wpt_tests, which runs the tests in
+# content_shell.filter.
+virtual/composite-hover-text-decoration/wpt_internal/*
 
 # Blocklisted tests fail unexpectedly on headless shell for at least one
 # platform, so continue running them on content shell.
@@ -64,48 +66,28 @@ external/wpt/css/css-pseudo/highlight-cascade/highlight-currentcolor-painting-pr
 external/wpt/css/css-scroll-anchoring/fullscreen-crash.html
 # Known to be very flaky: https://crbug.com/375047154
 external/wpt/css/css-scrollbars/*
-external/wpt/css/css-text/boundary-shaping/boundary-shaping-010.html
 external/wpt/css/css-text/hyphens/hyphenate-limit-chars-001.html
 external/wpt/css/css-text/hyphens/hyphens-auto-003.html
 external/wpt/css/css-text/hyphens/hyphens-auto-004.html
 external/wpt/css/css-text/hyphens/hyphens-auto-005.html
 external/wpt/css/css-text/hyphens/hyphens-auto-010.html
-external/wpt/css/css-text/hyphens/hyphens-auto-control.html
 external/wpt/css/css-text/hyphens/hyphens-auto-inline-010.html
 external/wpt/css/css-text/hyphens/hyphens-auto-last-word-001.html
 external/wpt/css/css-text/hyphens/hyphens-character.html
 external/wpt/css/css-text/hyphens/hyphens-punctuation-001.html
 external/wpt/css/css-text/line-breaking/line-breaking-atomic-022.html
-external/wpt/css/css-text/tab-size/tab-size.html
-external/wpt/css/css-text/text-autospace/text-autospace-first-line-001.html
-external/wpt/css/css-text/white-space/control-chars-*
+external/wpt/css/css-text/white-space/control-chars-000.html
+external/wpt/css/css-text/white-space/control-chars-080.html
 external/wpt/css/css-text/white-space/eol-spaces-bidi-003.html
-external/wpt/css/css-text/white-space/pre-float-001.html
-external/wpt/css/css-text/white-space/seg-break-transformation-004.tentative.html
-external/wpt/css/css-text/white-space/tab-stop-threshold-001.html
-external/wpt/css/css-text/white-space/tab-stop-threshold-003.html
-external/wpt/css/css-text/white-space/tab-stop-threshold-005.html
 external/wpt/css/css-text/white-space/trailing-other-space-separators-001.html
-external/wpt/css/css-text/white-space/trailing-space-position-001.html
-external/wpt/css/css-text/white-space/white-space-collapse-002.html
-external/wpt/css/css-text/white-space/white-space-intrinsic-size-021.html
-external/wpt/css/css-text/white-space/white-space-pre-wrap-justify-004.html
 external/wpt/css/css-text/white-space/white-space-vs-joiners-002.html
-external/wpt/css/css-transitions/transition-behavior.html
-external/wpt/css/css-ui/compute-kind-widget-no-fallback-props-001.html
-external/wpt/css/css-ui/outline-020.html
 external/wpt/css/css-values/viewport-units-scrollbars*
 external/wpt/css/css-variables/variable-presentation-attribute.html
-external/wpt/css/css-will-change/will-change-fixedpos-cb-*
-external/wpt/css/css-will-change/will-change-transform-zero-size-child-overflow-visible.html
 external/wpt/css/filter-effects/drop-shadow-currentcolor-dynamic-003.html
-external/wpt/css/mediaqueries/test_media_queries.html
 external/wpt/css/selectors/focus-visible-024.html
 external/wpt/css/selectors/focus-visible-025.html
 external/wpt/css/selectors/user-invalid-form-submission-invalidation.html
-external/wpt/density-size-correction/density-corrected-image-in-canvas.html
 external/wpt/dom/events/scrolling/input-text-scroll-event-when-using-arrow-keys.html
-external/wpt/dom/events/scrolling/scrollend-event-fired-after-snap.html
 external/wpt/dom/events/scrolling/scrollend-event-fires-on-visual-viewport.html
 external/wpt/dom/events/scrolling/wheel-event-transactions-basic.html?include=scroll-over-scrollable-child
 external/wpt/dom/events/scrolling/wheel-event-transactions-basic.html?include=target-basic
@@ -116,15 +98,10 @@ external/wpt/dom/events/scrolling/wheel-event-transactions-target-move.html
 external/wpt/dom/events/scrolling/wheel-event-transactions-target-resize.html?include=passive-false
 external/wpt/dom/events/scrolling/wheel-event-transactions-target-resize.html?include=passive-true
 external/wpt/dom/events/webkit-animation-iteration-event.html
-external/wpt/dom/nodes/moveBefore/select-option-optgroup.html
 external/wpt/dom/nodes/moveBefore/selection-preserve.html
 external/wpt/editing/crashtests/contenteditable-will-be-blurred-by-focus-event-listener.html
-external/wpt/editing/crashtests/designMode-document-will-be-blurred-by-focus-event-listener.html
-external/wpt/editing/crashtests/insertorderedlist-in-focused-inline-editing-host.html
-external/wpt/editing/crashtests/textarea-will-be-blurred-by-focus-event-listener.html
 external/wpt/editing/edit-context/edit-context-execCommand.tentative.https.html
 external/wpt/editing/edit-context/edit-context-inheritability.tentative.html
-external/wpt/editing/edit-context/edit-context-input.tentative.html
 external/wpt/editing/other/delete-in-child-of-html.tentative.html?designMode=off&method=forwarddelete
 external/wpt/editing/other/delete-in-child-of-html.tentative.html?designMode=on&method=forwarddelete
 external/wpt/editing/other/editable-state-and-focus-in-shadow-dom-in-designMode.tentative.html
@@ -144,7 +121,6 @@ external/wpt/editing/other/typing-around-link-element-at-non-collapsed-selection
 external/wpt/editing/other/typing-around-link-element-at-non-collapsed-selection.tentative.html?target=DesignMode&parent=b
 external/wpt/editing/other/typing-around-link-element-at-non-collapsed-selection.tentative.html?target=DesignMode&parent=b&child=i
 external/wpt/editing/plaintext-only/paste.https.html*
-external/wpt/event-timing/keyup.html
 external/wpt/event-timing/modal-dialog-interrupt-paint.html
 external/wpt/event-timing/selection-autoscroll.html
 external/wpt/fedcm/fedcm-disconnect-errors.https.html
@@ -161,7 +137,6 @@ external/wpt/fetch/stale-while-revalidate/stale-css.html
 external/wpt/fetch/stale-while-revalidate/stale-image.html
 external/wpt/fetch/stale-while-revalidate/stale-script.html
 external/wpt/html-aam/names.html
-external/wpt/html-aam/roles.html
 external/wpt/html/browsers/browsing-the-web/back-forward-cache/eligibility/inflight-fetch-redirects.html
 external/wpt/html/browsers/browsing-the-web/history-traversal/pageswap/pageswap-push-navigation-hidden-document.html
 external/wpt/html/browsers/browsing-the-web/navigating-across-documents/cross-origin-top-navigation-with-user-activation-in-parent.window.html
@@ -184,19 +159,7 @@ external/wpt/html/canvas/offscreen/filters/2d.filter.canvasFilterObject.dropShad
 external/wpt/html/canvas/offscreen/filters/2d.filter.canvasFilterObject.dropShadow.tentative.w.html
 external/wpt/html/canvas/offscreen/filters/2d.filter.layers.dropShadow.tentative.html
 external/wpt/html/canvas/offscreen/filters/2d.filter.layers.dropShadow.tentative.w.html
-external/wpt/html/cross-origin-opener-policy/iframe-popup-same-origin-allow-popups-to-same-origin-allow-popups.https.html*
-external/wpt/html/cross-origin-opener-policy/iframe-popup-unsafe-none-to-same-origin.https.html*
 external/wpt/html/cross-origin-opener-policy/javascript-url.https.html*
-external/wpt/html/cross-origin-opener-policy/popup-unspecified-with-cross-origin.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/access-from-coop-page-to-openee_coop-ro.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/access-from-coop-page-to-opener_coop-ro_cross-origin.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/property-close.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/property-frames.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/property-opener-set.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/property-postmessage-2.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/access-reporting/property-self.https.html
-external/wpt/html/cross-origin-opener-policy/reporting/document-reporting/reporting-redirect-with-unsafe-none.https.html
-external/wpt/html/infrastructure/safe-passing-of-structured-data/shared-array-buffers/nested-sharedworker-success.https.html
 external/wpt/html/interaction/focus/focusgroup/tentative/grid-navigation/rowspan.html
 external/wpt/html/interaction/focus/the-autofocus-attribute/first-reconnected.html
 external/wpt/html/interaction/focus/the-autofocus-attribute/not-on-first-task.html
@@ -209,14 +172,23 @@ external/wpt/html/rendering/widgets/baseline-alignment-and-overflow.tentative.ht
 external/wpt/html/rendering/widgets/input-time-content-size.html
 external/wpt/html/rendering/widgets/textarea-scrollbar-sizing-*
 external/wpt/html/rendering/widgets/the-select-element/option-empty-label-to-empty-string.html
-external/wpt/html/semantics/embedded-content/media-elements/track/track-element/track-cues-*
-external/wpt/html/semantics/embedded-content/the-canvas-element/toBlob-cross-realm-callback-report-exception.html
-external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-*
+external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-iframe-loading-lazy-nav-form-submit.html
+external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-iframe-loading-lazy-nav-link-click-fragment.html
+external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-iframe-loading-lazy-nav-meta-refresh.optional.html
+external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-iframe-loading-lazy-reload-navigation-reload.html
 external/wpt/html/semantics/embedded-content/the-iframe-element/iframe_sandbox_navigation_download_allow_downloads.sub.tentative.html
 external/wpt/html/semantics/embedded-content/the-iframe-element/iframe_sandbox_window_open_download_allow_downloads.tentative.html
-external/wpt/html/semantics/embedded-content/the-img-element/*
+external/wpt/html/semantics/embedded-content/the-img-element/decode/image-decode-iframe.html
+external/wpt/html/semantics/embedded-content/the-img-element/image-compositing-change.html
+external/wpt/html/semantics/embedded-content/the-img-element/image-loading-lazy-base-url.html
+external/wpt/html/semantics/embedded-content/the-img-element/image-loading-lazy-base-url-2.html
+external/wpt/html/semantics/embedded-content/the-img-element/img-src-encoding-parse.html
+external/wpt/html/semantics/embedded-content/the-img-element/sizes/sizes-auto-many-commas-crash.html
+external/wpt/html/semantics/embedded-content/the-img-element/sizes/update-the-image-data/src-then-lazy-load.html
+external/wpt/html/semantics/embedded-content/the-img-element/srcset-natural-size-in-dynamic-iframe.html
+external/wpt/html/semantics/embedded-content/the-img-element/update-the-image-data/current-request-microtask-002.html
+external/wpt/html/semantics/embedded-content/the-img-element/update-the-image-data/src-then-lazy-load.html
 external/wpt/html/semantics/embedded-content/the-object-element/object-attributes.html
-external/wpt/html/semantics/embedded-content/the-object-element/object-image-only-for-print.html
 external/wpt/html/semantics/embedded-content/the-object-element/object-svg-only-for-print.html
 external/wpt/html/semantics/embedded-content/the-video-element/resize-during-playback.html
 external/wpt/html/semantics/forms/form-submission-0/multipart-formdata.window.html
@@ -244,15 +216,8 @@ external/wpt/html/webappapis/scripting/processing-model-2/runtime-error-in-setIn
 external/wpt/html/webappapis/scripting/processing-model-2/runtime-error-in-setTimeout.html
 external/wpt/inert/inert-iframe-hittest.html
 external/wpt/input-events/input-events-exec-command.html
-external/wpt/mathml/presentation-markup/fractions/frac-parameters-gap-*
-external/wpt/mathml/presentation-markup/operators/mo-paint-lspace-rspace.html
-external/wpt/mathml/presentation-markup/operators/operator-dictionary-arabic-*
+external/wpt/mathml/presentation-markup/operators/operator-dictionary-arabic-002.html
 external/wpt/mathml/presentation-markup/operators/stretchy-largeop-with-default-font-1.html
-external/wpt/mathml/presentation-markup/scripts/stretchy-munderover-3b.html
-external/wpt/mathml/presentation-markup/scripts/underover-stretchy-*
-external/wpt/mathml/presentation-markup/tables/table-default-styles-001.html
-external/wpt/mathml/relations/css-styling/mozilla-393760-2.xml
-external/wpt/mathml/relations/html5-tree/tabindex-002.tentative.html
 external/wpt/mediacapture-streams/BrowserCaptureMediaStreamTrack-restrictTo.https.html
 external/wpt/navigation-api/navigate-event/defaultPrevented-window-stop-after-dispatch.html
 external/wpt/navigation-api/navigate-event/signal-abort-window-stop.html
@@ -279,19 +244,9 @@ external/wpt/permissions-policy/reporting/report-to-multiple-endpoints.https.sub
 external/wpt/permissions-policy/reporting/report-to-single-endpoint.https.sub.html
 external/wpt/pointerevents/capturing_boundary_event_handler_at_ua_shadowdom.html*
 external/wpt/pointerevents/coalesced_events_attributes_under_load.https.optional.html*
-external/wpt/pointerevents/compat/pointerevent_mouse-pointer-on-scrollbar.html
-external/wpt/pointerevents/compat/pointerevent_touch_target_after_pointerdown_target_removed.tentative.html
-external/wpt/pointerevents/pointerevent_capture_mouse_and_release_and_capture_again.html
 external/wpt/pointerevents/pointerevent_contextmenu_is_a_pointerevent.html?touch
-external/wpt/pointerevents/pointerevent_pointer_boundary_events_after_removing_last_over_element.html
-external/wpt/pointerevents/pointerevent_pointercapture_in_frame.html?pen
-external/wpt/pointerevents/pointerevent_sequence_at_implicit_release_on_drag.html
-external/wpt/pointerevents/pointerevent_touch-action-modified_touch.html
 external/wpt/preload/link-header-preload-non-html.html
 external/wpt/preload/preconnect-onerror-event.html
-external/wpt/resize-observer/callback-cross-realm-report-exception.html
-external/wpt/resize-observer/scrollbars.html
-external/wpt/resize-observer/svg.html
 external/wpt/screen-wake-lock/wakelock-enabled-by-permissions-policy-attribute.https.html
 external/wpt/screen-wake-lock/wakelock-enabled-by-permissions-policy.https.html
 external/wpt/scroll-animations/css/animation-range-visual-test.html
@@ -406,7 +361,7 @@ external/wpt/pointerevents/crashtests/longpress-crash.html
 external/wpt/css/css-break/grid/grid-lanes/grid-lanes-fragmentation-003.html
 external/wpt/css/css-overflow/keyboard-scroll.html
 external/wpt/css/css-page/*
-external/wpt/css/printing/*
+external/wpt/css/printing/input-file-print.html
 virtual/fragmented-oof-in-cb/*
 
 # Print tests that don't run reliably on headless, see bugs linked from
@@ -435,13 +390,12 @@ external/wpt/css/CSS2/stacking-context/composite-change-after-scroll-preserves-s
 external/wpt/css/css-contain/content-visibility/content-visibility-096.html
 external/wpt/css/css-contain/content-visibility/content-visibility-097.html
 external/wpt/css/css-flexbox/scrollbars-auto.html
+external/wpt/css/css-flexbox/scrollbars.html
 external/wpt/css/css-grid/grid-lanes/overflow/grid-lanes-overflow-reverse-001.html
 external/wpt/css/css-grid/grid-lanes/overflow/grid-lanes-overflow-reverse-002.html
 external/wpt/css/css-grid/grid-lanes/overflow/grid-lanes-overflow-reverse-004.html
 external/wpt/css/css-grid/grid-lanes/overflow/grid-lanes-overflow-reverse-baseline-001.html
 external/wpt/css/css-grid/grid-lanes/overflow/grid-lanes-overflow-reverse-baseline-002.html
-external/wpt/css/css-writing-modes/sizing-orthog-htb-in-vrl-001.xht
-external/wpt/css/css-writing-modes/sizing-orthog-htb-in-vrl-004.xht
 
 virtual/composite-clip-path-animation/external/wpt/css/css-masking/clip-path/animations/clip-path-animation*
 virtual/composite-clip-path-animation/external/wpt/css/css-masking/clip-path/animations/clip-path-transition*
@@ -470,7 +424,6 @@ virtual/media-foundation-for-clear-dcomp/external/wpt/media-source/mediasource-c
 virtual/media-foundation-for-clear-dcomp/external/wpt/media-source/mediasource-correct-frames.html
 virtual/media-foundation-for-clear-dcomp/external/wpt/media-source/mediasource-getvideoplaybackquality.html
 virtual/media-foundation-for-clear-dcomp/external/wpt/media-source/SourceBuffer-short-frame-endOfStream.html
-virtual/no-auto-wpt-origin-isolation/external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-nav-location-replace-set-src.html
 virtual/no-auto-wpt-origin-isolation/external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-nav-form-submit.html
 virtual/no-auto-wpt-origin-isolation/external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-nav-meta-refresh.optional.html
 virtual/no-auto-wpt-origin-isolation/external/wpt/html/semantics/embedded-content/the-iframe-element/iframe-loading-lazy-reload-navigation-reload.html
@@ -484,13 +437,17 @@ virtual/produce-compile-hints/external/wpt/html/semantics/scripting-1/the-script
 virtual/produce-compile-hints/external/wpt/html/semantics/scripting-1/the-script-element/moving-between-documents/ordering/*
 virtual/produce-compile-hints/external/wpt/fetch/fetch-later/new-window.https.window.html
 virtual/produce-compile-hints/external/wpt/fetch/stale-while-revalidate/stale-*
-virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter*
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-3d-transform-perspective.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-blur-large-value.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-nested-3d-transform-perspective.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-nested-border-radius-clip-3.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-nested-border-radius-clip-4.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-nested-border-radius-clip.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-on-transformed-layer.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-over-earlier-backdrop-filter.html
+virtual/scalefactor200/external/wpt/css/filter-effects/backdrop-filter-svg-blur.html
 virtual/scalefactor200/external/wpt/css/filter-effects/css-filters-animation-opacity.html
 virtual/scalefactor200/external/wpt/css/filter-effects/drop-shadow-currentcolor-dynamic-003.html
-virtual/scalefactor200/external/wpt/css/filter-effects/filtered-html-is-not-container.html
-virtual/scalefactor200/external/wpt/css/filter-effects/clip-under-filter-*
-virtual/scalefactor200/external/wpt/css/filter-effects/effect-reference-on-span.html
-virtual/scalefactor200/external/wpt/css/filter-effects/repaint-added-backdrop-filter.html
 virtual/scalefactor200/external/wpt/css/printing/*
 
 external/wpt/speculation-rules/prerender/restriction-background-sync.https.html?target_hint=_blank

@@ -8,6 +8,7 @@
 #include "ash/test/ash_test_util.h"
 #include "ash/test/pixel/ash_pixel_differ.h"
 #include "base/notreached.h"
+#include "base/strings/stringprintf.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/display/display.h"
 #include "ui/display/display_switches.h"
@@ -86,7 +87,7 @@ TEST_P(RoundedDisplayPixelTest, AlwaysOnTopMaskTextures) {
 
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       "always_on_top_rounded_display_mask_textures",
-      /*revision_number=*/5, Shell::GetPrimaryRootWindow()));
+      /*revision_number=*/7, Shell::GetPrimaryRootWindow()));
 }
 
 INSTANTIATE_TEST_SUITE_P(

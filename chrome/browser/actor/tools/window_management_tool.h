@@ -8,17 +8,21 @@
 #include "base/callback_list.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
+#include "build/build_config.h"
+#include "chrome/browser/actor/actor_surface_handle.h"
 #include "chrome/browser/actor/tools/tool.h"
 #include "chrome/browser/actor/tools/tool_callbacks.h"
+#include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "components/actor/core/task_id.h"
-#include "components/tabs/public/tab_interface.h"
+#include "components/sessions/core/session_id.h"
 
 class BrowserWindowInterface;
+class ProfileBrowserCollection;
 
 namespace actor {
 
 // A tool to manage browser windows, e.g. create, close, activate, etc.
-class WindowManagementTool : public Tool {
+class WindowManagementTool : public Tool, public BrowserCollectionObserver {
  public:
   enum class Action {
     kCreate,
@@ -54,20 +58,32 @@ class WindowManagementTool : public Tool {
                              mojom::ActionResultPtr result,
                              ToolCallback callback) const override;
 
+  // BrowserCollectionObserver:
+  void OnBrowserActivated(BrowserWindowInterface* browser) override;
+
  private:
   BrowserWindowInterface* GetTargetBrowser() const;
 
   // Called when the browser with `window_id_` has closed.
   void OnBrowserDidClose(BrowserWindowInterface* browser);
 
-  void OnBrowserDidBecomeActive(BrowserWindowInterface* browser);
+#if BUILDFLAG(IS_ANDROID)
+  // Called once the window requested by kCreate exists, or with nullptr if it
+  // couldn't be created.
+  void OnBrowserWindowCreated(BrowserWindowInterface* browser);
+#endif
+
+  // Finishes the invocation when `browser` next becomes the active window.
+  void FinishWhenWindowActive(BrowserWindowInterface& browser);
+
   void OnInvokeFinished(mojom::ActionResultPtr result);
 
   Action action_;
   std::optional<int32_t> window_id_;
 
-  // If creating a window, this will be set to the handle of the initial tab.
-  std::optional<tabs::TabHandle> created_tab_handle_;
+  // If creating a window, this will be set to the handle of the initial
+  // surface.
+  ActorSurfaceHandle created_actor_surface_handle_;
 
   ToolCallback callback_;
 
@@ -75,7 +91,10 @@ class WindowManagementTool : public Tool {
   // corresponding to `window_id_`.
   base::CallbackListSubscription browser_did_close_subscription_;
 
-  base::CallbackListSubscription browser_did_become_active_subscription_;
+  // The window whose activation completes the invocation, if waiting for one.
+  std::optional<SessionID> awaited_active_window_id_;
+  base::ScopedObservation<ProfileBrowserCollection, BrowserCollectionObserver>
+      browser_collection_observation_{this};
 
   base::WeakPtrFactory<WindowManagementTool> weak_ptr_factory_{this};
 };

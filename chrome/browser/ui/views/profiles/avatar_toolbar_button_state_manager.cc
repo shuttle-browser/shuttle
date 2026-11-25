@@ -58,6 +58,7 @@
 #include "chrome/browser/ui/views/profiles/profile_menu_coordinator.h"
 #include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
+#include "chrome/browser/webauthn/passkey_unlock_error_strings.h"
 #include "chrome/browser/webauthn/passkey_unlock_manager.h"
 #include "chrome/browser/webauthn/passkey_unlock_manager_factory.h"
 #include "chrome/grit/branded_strings.h"
@@ -73,6 +74,7 @@
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_change_event.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "components/sync/service/sync_service.h"
 #include "components/sync/service/sync_service_observer.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
@@ -1416,8 +1418,7 @@ class PasskeyStateProvider : public StateProvider,
   }
 
   std::u16string GetAvatarTooltipText() const final {
-    return passkey_manager_observation_.GetSource()
-        ->GetPasskeyErrorProfileMenuDetails();
+    return webauthn::GetPasskeyErrorProfileMenuDetails();
   }
 
   std::pair<ChromeColorIds, ChromeColorIds> GetInkdropColors() const override {
@@ -1425,8 +1426,7 @@ class PasskeyStateProvider : public StateProvider,
   }
 
   std::u16string GetText() const override {
-    return passkey_manager_observation_.GetSource()
-        ->GetPasskeyErrorProfilePillTitle();
+    return webauthn::GetPasskeyErrorProfilePillTitle();
   }
 
  private:
@@ -2097,7 +2097,7 @@ bool StateProvider::ShouldShowGradientAvatarRing() const {
   if (!should_consider_avatar_ring_) {
     return false;
   }
-  return ShouldShowAvatarGradientRing(&profile());
+  return GetAvatarAiDecoration(&profile()).show_decoration;
 }
 
 std::u16string StateProvider::GetAvatarTooltipText() const {
@@ -2402,7 +2402,10 @@ void AvatarToolbarButtonStateManager::CreateStatesAndListeners(
   Profile* profile = browser->GetProfile();
 
   // Web app has limited toolbar space, thus always show kNormal state.
-  if (web_app::AppBrowserController::IsWebApp(browser)) {
+  // Also only create kNormal state when the avatar button cannot be shown for
+  // the profile (e.g. regular profiles on ChromeOS).
+  if (web_app::AppBrowserController::IsWebApp(browser) ||
+      !AvatarToolbarButtonInterface::CanShowForProfile(profile)) {
     // This state is always active.
     states_[ButtonState::kNormal] =
         std::make_unique<NormalStateProvider>(profile, /*state_observer=*/this);

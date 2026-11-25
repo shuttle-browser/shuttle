@@ -29,32 +29,14 @@ export function getHtml(this: ManagedUserProfileNoticeAppRefreshElement) {
         ?show-enterprise-badge="${this.profileInfo_.showEnterpriseBadge}">
     </managed-user-profile-notice-disclosure-refresh>
   ` : ''}
-  ${this.isState_(State.PROCESSING) ? html`
-    <managed-user-profile-notice-state id="processing"
-        subtitle="${this.processingSubtitle_}" icon="cr:domain">
-      <div class="spinner"></div>
-    </managed-user-profile-notice-state>
-  ` : ''}
-  ${this.isState_(State.SUCCESS) ? html`
-    <managed-user-profile-notice-state id="success" icon="cr:domain"
-        title="$i18n{successTitle}" subtitle="$i18n{successSubtitle}">
-      <img class="success-icon" alt="">
-    </managed-user-profile-notice-state>
-  ` : ''}
-  ${this.isState_(State.TIMEOUT) ? html`
-    <managed-user-profile-notice-state id="timeout" icon="cr:domain"
-        title="$i18n{timeoutTitle}" subtitle="$i18n{timeoutSubtitle}">
-      <img class="timeout-icon" alt="">
-    </managed-user-profile-notice-state>
-  ` : ''}
-  ${this.isState_(State.ERROR) ? html`
-    <managed-user-profile-notice-state id="error" icon="cr:domain"
-        title="${this.errorTitle_}" subtitle="${this.errorSubtitle_}">
-      <img class="error-icon" alt="">
-    </managed-user-profile-notice-state>
+  ${this.isAnyState_(
+      [State.PROCESSING, State.SUCCESS, State.TIMEOUT, State.ERROR]) ? html`
+    <managed-user-profile-notice-state-refresh id="state"
+        .state="${this.currentState_}">
+    </managed-user-profile-notice-state-refresh>
   ` : ''}
   ${this.isState_(State.USER_DATA_HANDLING) ? html`
-    <managed-user-profile-notice-data-handling id="user-data-handling"
+    <managed-user-profile-notice-data-handling-refresh id="user-data-handling"
         title="${this.i18n('separateBrowsingDataTitle')}"
         separate-data-choice-title="${
             this.i18n('separateBrowsingDataChoiceTitle')}"
@@ -66,7 +48,7 @@ export function getHtml(this: ManagedUserProfileNoticeAppRefreshElement) {
         .selectedDataHandling="${this.selectedDataHandling_}"
         @selected-data-handling-changed="${
             this.onSelectedDataHandlingChanged_}">
-    </managed-user-profile-notice-data-handling>
+    </managed-user-profile-notice-data-handling-refresh>
   ` : ''}
   ${this.isState_(State.SIGNALS_DISCLAIMER) ? html`
     <signals-disclaimer-refresh id="signals-disclaimer"
@@ -76,14 +58,15 @@ export function getHtml(this: ManagedUserProfileNoticeAppRefreshElement) {
 </div>
 <div class="action-container">
   <cr-button id="proceedButton" aria-label="${this.proceedLabel_}"
-      class="action-button tangible-button"
+      class="action-button"
       @click="${this.onProceedButtonClick_}"
       ?disabled="${this.shouldDisableProceedButton_()}"
       ?hidden="${this.isState_(State.PROCESSING)}">
     ${this.proceedLabel_}
   </cr-button>
   <cr-button id="cancelButton" aria-label="${this.getCancelLabel_()}"
-      class="tangible-button tonal-button" @click="${this.onCancelButtonClick_}"
+      class="tonal-button"
+      @click="${this.onCancelButtonClick_}"
       ?hidden="${!this.allowCancel_()}">
     ${this.getCancelLabel_()}
   </cr-button>

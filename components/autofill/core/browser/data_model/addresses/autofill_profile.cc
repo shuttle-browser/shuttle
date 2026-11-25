@@ -22,6 +22,7 @@
 #include "base/check_op.h"
 #include "base/containers/span.h"
 #include "base/feature_list.h"
+#include "base/i18n/language_tag.h"
 #include "base/logging.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
@@ -78,7 +79,8 @@ namespace autofill {
 
 namespace {
 
-constexpr char kAddressComponentsDefaultLocality[] = "en-US";
+constexpr base::i18n::LanguageTag kAddressComponentsDefaultLocality =
+    base::i18n::GetKnownLanguageTag("en-US");
 
 // Returns `NAME_FULL` for first, middle, and last name field types, and groups
 // phone number types similarly.
@@ -297,24 +299,17 @@ AutofillProfile& AutofillProfile::operator=(const AutofillProfile& profile) {
 }
 
 #if BUILDFLAG(IS_ANDROID)
-base::android::ScopedJavaLocalRef<jobject> AutofillProfile::CreateJavaObject(
-    std::string_view app_locale) const {
+base::android::ScopedJavaLocalRef<jobject> AutofillProfile::CreateJavaObject()
+    const {
   JNIEnv* env = base::android::AttachCurrentThread();
   base::android::ScopedJavaLocalRef<jobject> jprofile =
       Java_AutofillProfile_Constructor(
-          env, guid(), static_cast<int32_t>(record_type()), language_code());
+          env, guid(), std::to_underlying(record_type()), language_code());
 
   for (FieldType type : AutofillProfile::kDatabaseStoredTypes) {
-    auto status = static_cast<int32_t>(GetVerificationStatus(type));
-    // TODO(crbug.com/40278253): Reconcile usage of GetInfo and GetRawInfo
-    // below.
-    if (type == NAME_FULL) {
-      Java_AutofillProfile_setInfo(env, jprofile, static_cast<int32_t>(type),
-                                   GetInfo(type, app_locale), status);
-    } else {
-      Java_AutofillProfile_setInfo(env, jprofile, static_cast<int32_t>(type),
-                                   GetRawInfo(type), status);
-    }
+    auto status = std::to_underlying(GetVerificationStatus(type));
+    Java_AutofillProfile_setInfo(env, jprofile, static_cast<int32_t>(type),
+                                 GetRawInfo(type), status);
   }
   return jprofile;
 }
@@ -342,14 +337,7 @@ AutofillProfile AutofillProfile::CreateFromJavaObject(
     std::u16string value =
         Java_AutofillProfile_getInfo(env, jprofile, field_type);
 
-    // In `CreateJavaObject()`, `GetInfo()` is used only for `NAME_FULL`, while
-    // `GetRawInfo()` is used for all other stored types.
-    // TODO(crbug.com/40278253): Reconcile usage of `GetInfo()` and
-    // `GetRawInfo()` below.
-    const std::u16string current_value =
-        field_type == NAME_FULL ? profile.GetInfo(field_type, app_locale)
-                                : profile.GetRawInfo(field_type);
-    if (value != current_value ||
+    if (value != profile.GetRawInfo(field_type) ||
         status != profile.GetVerificationStatus(field_type)) {
       modified_fields.emplace_back(field_type, value, status);
     }
@@ -445,7 +433,8 @@ FieldType AutofillProfile::GetStorableTypeOf(FieldType type) const {
 }
 
 FieldTypeSet AutofillProfile::GetUserVisibleTypes() const {
-  FieldTypeSet visible_types{PHONE_HOME_WHOLE_NUMBER, EMAIL_ADDRESS};
+  FieldTypeSet visible_types{PHONE_HOME_WHOLE_NUMBER, EMAIL_ADDRESS,
+                             ADDRESS_HOME_COUNTRY};
   std::string components_language_code;
   for (const AutofillAddressUIComponent& component : GetAddressComponents(
            GetAddressCountryCode().value(), kAddressComponentsDefaultLocality,
@@ -1275,8 +1264,6 @@ AutofillProfile AutofillProfile::ConvertToLocalOrSyncableProfile() const {
 
 FieldTypeSet AutofillProfile::FindInaccessibleProfileValues() const {
   FieldTypeSet inaccessible_fields;
-  const std::string stored_country =
-      base::UTF16ToUTF8(GetRawInfo(ADDRESS_HOME_COUNTRY));
   // Consider only AddressFields which are invisible in the settings for some
   // countries.
   for (const AddressField& adress_field :

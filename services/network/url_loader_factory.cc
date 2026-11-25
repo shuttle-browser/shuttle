@@ -20,6 +20,7 @@
 #include "net/cookies/cookie_constants.h"
 #include "net/cookies/cookie_setting_override.h"
 #include "net/url_request/url_request_context.h"
+#include "net/url_request/url_request_http_transaction_factory_override.h"
 #include "services/network/cookie_manager.h"
 #include "services/network/cookie_settings.h"
 #include "services/network/cors/cors_url_loader_factory.h"
@@ -410,13 +411,6 @@ void URLLoaderFactory::CreateLoaderAndStartWithSyncClient(
   cors_url_loader_factory_->OnURLLoaderCreated(std::move(loader));
 }
 
-net::handles::NetworkHandle URLLoaderFactory::GetBoundNetworkForTesting()
-    const {
-  auto target_network =
-      params_->target_network.value_or(net::handles::kInvalidNetworkHandle);
-  return target_network;
-}
-
 mojom::DevToolsObserver* URLLoaderFactory::GetDevToolsObserver() const {
   if (devtools_observer_) {
     return devtools_observer_.get();
@@ -427,6 +421,13 @@ mojom::DevToolsObserver* URLLoaderFactory::GetDevToolsObserver() const {
 scoped_refptr<RefCountedDeviceBoundSessionAccessObserverRemote>
 URLLoaderFactory::GetDeviceBoundSessionAccessObserverSharedRemote() const {
   return device_bound_session_observer_;
+}
+
+scoped_refptr<net::HttpTransactionFactoryHandle>
+URLLoaderFactory::GetIsolatedTransactionFactory(
+    const base::UnguessableToken& throttling_profile_id,
+    const GURL& url) const {
+  return context_->GetIsolatedTransactionFactory(throttling_profile_id, url);
 }
 
 mojom::URLLoaderNetworkServiceObserver*

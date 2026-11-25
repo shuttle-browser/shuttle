@@ -36,7 +36,6 @@
 #include "ui/ozone/platform/flatland/flatland_window_manager.h"
 #include "ui/ozone/platform/flatland/mojom/scenic_gpu_service.mojom.h"
 #include "ui/ozone/platform/flatland/overlay_manager_flatland.h"
-#include "ui/ozone/platform_selection.h"
 #include "ui/ozone/public/gpu_platform_support_host.h"
 #include "ui/ozone/public/input_controller.h"
 #include "ui/ozone/public/ozone_platform.h"
@@ -181,7 +180,8 @@ class OzonePlatformFlatland : public OzonePlatform,
   }
 
   void InitializeGPU(const InitParams& params) override {
-    DCHECK(!surface_factory_ || params.single_process);
+    CHECK(!surface_factory_ || params.single_process,
+          base::NotFatalUntil::M163);
 
     if (!surface_factory_)
       surface_factory_ = std::make_unique<FlatlandSurfaceFactory>();
@@ -236,7 +236,7 @@ class OzonePlatformFlatland : public OzonePlatform,
   }
 
   void ShutdownInMainProcess() {
-    DCHECK(bound_in_main_process_);
+    CHECK(bound_in_main_process_, base::NotFatalUntil::M163);
     surface_factory_->Shutdown();
     flatland_gpu_host_->Shutdown();
     window_manager_->Shutdown();

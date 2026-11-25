@@ -5,15 +5,18 @@
 #ifndef CHROME_BROWSER_UI_BOOKMARKS_BOOKMARK_UTILS_DESKTOP_H_
 #define CHROME_BROWSER_UI_BOOKMARKS_BOOKMARK_UTILS_DESKTOP_H_
 
+#include <cstddef>
 #include <optional>
 #include <vector>
 
+#include "base/functional/callback_forward.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/bookmarks/bookmark_editor.h"
 #include "chrome/browser/ui/bookmarks/bookmark_stats.h"
 #include "components/page_load_metrics/browser/navigation_initiator.h"
 #include "components/tab_groups/tab_group_id.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/gfx/native_ui_types.h"
 
 class BrowserWindowInterface;
@@ -40,7 +43,7 @@ enum OpenAllBookmarksContext {
   kMaxValue = kInSplit,
 };
 
-// Wraps bookmark navigations to support view testing.
+// Wraps bookmark navigations and prompts to support view/unit testing.
 class BookmarkNavigationWrapper {
  public:
   virtual ~BookmarkNavigationWrapper() = default;
@@ -48,6 +51,12 @@ class BookmarkNavigationWrapper {
   // Wraps browser_navigator::Navigate.
   virtual base::WeakPtr<content::NavigationHandle> NavigateTo(
       NavigateParams* params);
+
+  // Prompts the user to confirm opening `child_count` bookmarks, invoking
+  // `callback` with true if the user confirms or false otherwise.
+  virtual void PromptForOpenAll(BrowserWindowInterface* browser,
+                                size_t child_count,
+                                base::OnceCallback<void(bool)> callback);
 
   // Provide an instance for use in testing.
   static void SetInstanceForTesting(BookmarkNavigationWrapper* instance);
@@ -72,18 +81,21 @@ extern size_t kNumBookmarkUrlsBeforePrompting;
 // `navigation_initiator` is attached to the navigations, if given.
 // `launch_action` represents the location and time of the bookmark launch
 // action for callsites that support it.
+// `on_bookmarks_opened`, if non-null, is invoked once if at least one bookmark
+// navigation is initiated (either immediately or after confirming the prompt).
 // TODO(crbug.com/40914589): This should be made non-optional once all callsites
 // have all the information needed to correctly construct the `launch_action`.
 void OpenAllIfAllowed(
     BrowserWindowInterface* browser,
     const std::vector<
         raw_ptr<const bookmarks::BookmarkNode, VectorExperimental>>& nodes,
-    WindowOpenDisposition initial_disposition,
+    ui::mojom::WindowOpenDisposition initial_disposition,
     bookmarks::OpenAllBookmarksContext context =
         bookmarks::OpenAllBookmarksContext::kNone,
     std::optional<page_load_metrics::NavigationInitiator> navigation_initiator =
         std::nullopt,
-    std::optional<BookmarkLaunchAction> launch_action = std::nullopt);
+    std::optional<BookmarkLaunchAction> launch_action = std::nullopt,
+    base::OnceClosure on_bookmarks_opened = base::NullCallback());
 
 // Returns the count of bookmarks that would be opened by OpenAll. If
 // |incognito_context| is set, the function will use it to check if the URLs

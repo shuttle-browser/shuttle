@@ -42,7 +42,7 @@
 #include "components/autofill/core/browser/autofill_type.h"
 #include "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
 #include "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/entity_suppression_manager.h"
+#include "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_manager/valuables/valuables_data_manager.h"
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
@@ -77,6 +77,7 @@
 #include "components/autofill/core/browser/payments/payments_autofill_client.h"
 #include "components/autofill/core/browser/payments/payments_util.h"
 #include "components/autofill/core/browser/payments/save_and_fill_manager.h"
+#include "components/autofill/core/browser/single_field_fillers/payments/merchant_promo_code_manager.h"
 #include "components/autofill/core/browser/studies/hats_surveys_util.h"
 #include "components/autofill/core/browser/suggestions/suggestion.h"
 #include "components/autofill/core/browser/suggestions/suggestion_hiding_reason.h"
@@ -123,10 +124,10 @@ void OnCreditCardFetched(base::WeakPtr<BrowserAutofillManager> manager,
   if (manager) {
     // TODO(crbug.com/561395976): Figure out if credit cards filled via this
     // method require additional protection.
-    manager->FillOrPreviewForm(mojom::ActionPersistence::kFill, form_id,
-                               field_id, &card, trigger_source,
-                               /*require_user_confirmation=*/false,
-                               /*blocked_fields=*/{});
+    manager->FillOrPreviewForm(
+        mojom::ActionPersistence::kFill, form_id, field_id,
+        FillingProduct::kCreditCard, &card, trigger_source,
+        /*require_user_confirmation=*/false, /*blocked_fields=*/{});
   }
 }
 
@@ -199,10 +200,10 @@ void OnEntityInstanceFetched(
   }
 
   if (result.has_value()) {
-    manager->FillOrPreviewForm(mojom::ActionPersistence::kFill, form_id,
-                               field_id, &result.value(), trigger_source,
-                               /*require_user_confirmation=*/false,
-                               /*blocked_fields=*/{});
+    manager->FillOrPreviewForm(
+        mojom::ActionPersistence::kFill, form_id, field_id,
+        FillingProduct::kAutofillAi, &result.value(), trigger_source,
+        /*require_user_confirmation=*/false, /*blocked_fields=*/{});
   } else if (result.error() ==
              AutofillAiAccessManager::FailureReason::kFetchFailed) {
     manager->client().ShowAutofillAiFetchEntityFailureNotification();
@@ -314,6 +315,7 @@ bool HasAutofillSuggestionsForA11y(SuggestionType type) {
     case SuggestionType::kPasswordEntry:
     case SuggestionType::kPasswordFieldByFieldFilling:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kPendingStateTrustedVaultError:
     case SuggestionType::kPersonalContextNotice:
     case SuggestionType::kRemoveAutofillAi:
     case SuggestionType::kScanCreditCard:
@@ -424,6 +426,7 @@ bool AutofillExternalDelegate::IsAutofillAndFirstLayerSuggestionId(
     case SuggestionType::kPasswordEntry:
     case SuggestionType::kPasswordFieldByFieldFilling:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kPendingStateTrustedVaultError:
     case SuggestionType::kPersonalContextNotice:
     case SuggestionType::kRemoveAutofillAi:
     case SuggestionType::kScanCreditCard:
@@ -821,11 +824,11 @@ void AutofillExternalDelegate::DidSelectSuggestion(
     case SuggestionType::kFillAutofillAi:
       if (base::optional_ref<const EntityInstance> entity =
               GetEntityInstance(suggestion)) {
-        manager_->FillOrPreviewForm(mojom::ActionPersistence::kPreview,
-                                    effective_form_id, effective_field_id,
-                                    entity.as_ptr(), GetTriggerSource(),
-                                    /*require_user_confirmation=*/false,
-                                    /*blocked_fields=*/{});
+        manager_->FillOrPreviewForm(
+            mojom::ActionPersistence::kPreview, effective_form_id,
+            effective_field_id, FillingProduct::kAutofillAi, entity.as_ptr(),
+            GetTriggerSource(), /*require_user_confirmation=*/false,
+            /*blocked_fields=*/{});
       }
       break;
     case SuggestionType::kAddressEntryOnTyping:
@@ -839,11 +842,11 @@ void AutofillExternalDelegate::DidSelectSuggestion(
     case SuggestionType::kIdentityCredential: {
       VerifiedProfile profile =
           suggestion.GetPayload<Suggestion::IdentityCredentialPayload>().fields;
-      manager_->FillOrPreviewForm(mojom::ActionPersistence::kPreview,
-                                  effective_form_id, effective_field_id,
-                                  &profile, GetTriggerSource(),
-                                  /*require_user_confirmation=*/false,
-                                  /*blocked_fields=*/{});
+      manager_->FillOrPreviewForm(
+          mojom::ActionPersistence::kPreview, effective_form_id,
+          effective_field_id, FillingProduct::kIdentityCredential, &profile,
+          GetTriggerSource(), /*require_user_confirmation=*/false,
+          /*blocked_fields=*/{});
       break;
     }
     case SuggestionType::kLoyaltyCardEntry:
@@ -859,6 +862,7 @@ void AutofillExternalDelegate::DidSelectSuggestion(
       break;
     case SuggestionType::kWebauthnPasskeyQrCode:
     case SuggestionType::kWebauthnSignInWithAnotherDevice:
+    case SuggestionType::kPendingStateTrustedVaultError:
       manager_->DelegateSelectToPasswordManager(suggestion, effective_field_id);
       break;
     case SuggestionType::kAllLoyaltyCardsEntry:
@@ -1143,8 +1147,8 @@ void AutofillExternalDelegate::DidAcceptSuggestion(
                   // require additional authentication for security reasons.
                   manager->FillOrPreviewForm(
                       mojom::ActionPersistence::kFill, form_id, field_id,
-                      &profile, trigger_source,
-                      /*require_user_confirmation=*/false,
+                      FillingProduct::kIdentityCredential, &profile,
+                      trigger_source, /*require_user_confirmation=*/false,
                       /*blocked_fields=*/{});
                 },
                 manager_->GetBrowserAutofillManagerWeakPtr(), suggestion,
@@ -1187,11 +1191,11 @@ void AutofillExternalDelegate::DidAcceptSuggestion(
           *form_structure, *autofill_field, suggestion.main_text.value);
       // TODO(crbug.com/561395976): Figure out if OTPs require additional
       // protection for security reasons.
-      manager_->FillOrPreviewForm(mojom::ActionPersistence::kFill,
-                                  effective_form_id, effective_field_id,
-                                  &otp_fill_data, GetTriggerSource(),
-                                  /*require_user_confirmation=*/false,
-                                  /*blocked_fields=*/{});
+      manager_->FillOrPreviewForm(
+          mojom::ActionPersistence::kFill, effective_form_id,
+          effective_field_id, FillingProduct::kOneTimePassword, &otp_fill_data,
+          GetTriggerSource(),
+          /*require_user_confirmation=*/false, /*blocked_fields=*/{});
       break;
     }
     case SuggestionType::kAtMemoryInactivityNudge:
@@ -1231,6 +1235,7 @@ void AutofillExternalDelegate::DidAcceptSuggestion(
 #endif
     case SuggestionType::kWebauthnPasskeyQrCode:
     case SuggestionType::kWebauthnSignInWithAnotherDevice:
+    case SuggestionType::kPendingStateTrustedVaultError:
       manager_->DelegateAcceptToPasswordManager(suggestion, metadata,
                                                 effective_field_id);
       break;
@@ -1429,6 +1434,7 @@ bool AutofillExternalDelegate::RemoveSuggestion(const Suggestion& suggestion) {
     case SuggestionType::kPasswordEntry:
     case SuggestionType::kPasswordFieldByFieldFilling:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kPendingStateTrustedVaultError:
     case SuggestionType::kRemoveAutofillAi:
     case SuggestionType::kSaveAndFillCreditCardEntry:
     case SuggestionType::kScanCreditCard:
@@ -1464,7 +1470,8 @@ void AutofillExternalDelegate::OnTabSelected(TabbedPaneTabType tab_type) {
                   // TODO(crbug.com/561395976): Figure out if authentication
                   // can be required here.
                   manager->FillOrPreviewForm(
-                      mojom::ActionPersistence::kFill, form_id, field_id, &card,
+                      mojom::ActionPersistence::kFill, form_id, field_id,
+                      FillingProduct::kCreditCard, &card,
                       AutofillTriggerSource::kPopup,
                       /*require_user_confirmation=*/false,
                       /*blocked_fields=*/{});
@@ -1572,10 +1579,10 @@ void AutofillExternalDelegate::AutofillForm(
             : GetProfileFromPayload(pdm.address_data_manager(),
                                     *profile_payload);
     if (profile) {
-      manager_->FillOrPreviewForm(action_persistence, form_id, field_id,
-                                  &*profile, trigger_source,
-                                  /*require_user_confirmation=*/false,
-                                  /*blocked_fields=*/{});
+      manager_->FillOrPreviewForm(
+          action_persistence, form_id, field_id, FillingProduct::kAddress,
+          &*profile, trigger_source, /*require_user_confirmation=*/false,
+          /*blocked_fields=*/{});
     }
     return;
   }
@@ -1833,6 +1840,14 @@ void AutofillExternalDelegate::LogSuggestionAcceptedMetrics(
     autofill_metrics::LogMergedEmailAcceptedSuggestionType(
         suggestion.type, shown_suggestion_types_);
   }
+  if (suggestion.type == SuggestionType::kManageOffers) {
+    if (MerchantPromoCodeManager* promo_code_manager =
+            manager_->client()
+                .GetPaymentsAutofillClient()
+                ->GetMerchantPromoCodeManager()) {
+      promo_code_manager->LogManageOffersSelectedMetrics();
+    }
+  }
 }
 
 bool AutofillExternalDelegate::ShouldShowPayNowPayLaterTabs() {
@@ -1861,7 +1876,7 @@ bool AutofillExternalDelegate::SuppressAutofillAiEntity(
       entity->record_type() != EntityInstance::RecordType::kPersonalContext) {
     return false;
   }
-  if (!manager_->client().GetEntitySuppressionManager()) {
+  if (!manager_->client().GetPersonalContextEntityMetadataManager()) {
     return false;
   }
 
@@ -1889,12 +1904,12 @@ bool AutofillExternalDelegate::SuppressAutofillAiEntity(
 bool AutofillExternalDelegate::SuppressEntityAndOfferUndo(
     EntityInstance entity,
     FieldGlobalId field_id) {
-  EntitySuppressionManager* suppression_manager =
-      manager_->client().GetEntitySuppressionManager();
-  if (!suppression_manager) {
+  PersonalContextEntityMetadataManager* entity_metadata_manager =
+      manager_->client().GetPersonalContextEntityMetadataManager();
+  if (!entity_metadata_manager) {
     return false;
   }
-  const bool newly_suppressed = suppression_manager->SuppressEntity(entity);
+  const bool newly_suppressed = entity_metadata_manager->SuppressEntity(entity);
   if (newly_suppressed) {
     LogEntitySuppressedWithSavedEntityPresent(
         entity.type(), manager_->client().GetEntityDataManager());
@@ -1904,15 +1919,15 @@ bool AutofillExternalDelegate::SuppressEntityAndOfferUndo(
                     weak_ptr_factory_.GetWeakPtr(), entity.guid(), field_id));
     return true;
   }
-  return suppression_manager->IsSuppressed(entity);
+  return entity_metadata_manager->IsSuppressed(entity);
 }
 
 void AutofillExternalDelegate::OnAutofillAiSuppressionUndone(
     EntityInstance::EntityId entity_id,
     FieldGlobalId field_id) {
-  if (EntitySuppressionManager* suppression_manager =
-          manager_->client().GetEntitySuppressionManager()) {
-    suppression_manager->UndoInSessionSuppressedEntity(entity_id);
+  if (PersonalContextEntityMetadataManager* entity_metadata_manager =
+          manager_->client().GetPersonalContextEntityMetadataManager()) {
+    entity_metadata_manager->UndoInSessionSuppressedEntity(entity_id);
   }
 #if BUILDFLAG(IS_ANDROID)
   manager_->driver().RendererShouldTriggerSuggestions(

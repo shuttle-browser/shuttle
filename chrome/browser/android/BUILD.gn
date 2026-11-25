@@ -180,9 +180,9 @@ source_set("tabs_impl") {
     "//chrome/browser/finds",
     "//chrome/browser/finds/core",
     "//chrome/browser/glic",
+    "//chrome/browser/glic/navigation_capture",
     "//chrome/browser/history",
     "//chrome/browser/history_clusters",
-    "//chrome/browser/history_embeddings",
     "//chrome/browser/loader",
     "//chrome/browser/login_detection",
     "//chrome/browser/lookalikes",
@@ -381,6 +381,16 @@ if (is_android) {
     ]
   }
 
+  source_set("settings_navigation_helper") {
+    sources = [ "preferences/autofill/settings_navigation_helper.cc" ]
+    public = [ "preferences/autofill/settings_navigation_helper.h" ]
+    public_deps = [ "//content/public/browser" ]
+    deps = [
+      "//base",
+      "//chrome/android:chrome_jni_headers",
+    ]
+  }
+
   source_set("android") {
     sources = [
       "background_sync_launcher_android.cc",
@@ -404,8 +414,6 @@ if (is_android) {
       "browsing_data/url_filter_bridge.h",
       "chrome_startup_flags.cc",
       "chrome_startup_flags.h",
-      "collection_save_forwarder_android.cc",
-      "collection_save_forwarder_android.h",
       "collection_storage_observer_factory_android.cc",
       "collection_storage_observer_factory_android.h",
       "compose_bitmaps_helper.cc",
@@ -580,8 +588,6 @@ if (is_android) {
       "preferences/about_settings_bridge.cc",
       "preferences/autofill/autofill_payment_methods_delegate.cc",
       "preferences/autofill/autofill_payment_methods_delegate.h",
-      "preferences/autofill/settings_navigation_helper.cc",
-      "preferences/autofill/settings_navigation_helper.h",
       "preferences/browser_prefs_android.cc",
       "preferences/browser_prefs_android.h",
       "preferences/clipboard_android.cc",
@@ -626,8 +632,6 @@ if (is_android) {
       "tab_favicon.cc",
       "tab_group_android.cc",
       "tab_group_android.h",
-      "tab_group_collection_data_android.cc",
-      "tab_group_collection_data_android.h",
       "tab_group_features.cc",
       "tab_group_features.h",
       "tab_state_storage_service_android.cc",
@@ -643,13 +647,11 @@ if (is_android) {
       "tabbed_startup_window_policy_delegate_bridge.cc",
       "tabbed_startup_window_policy_delegate_bridge.h",
       "trusted_cdn.cc",
-      "trusted_cdn.h",
       "usage_stats/usage_stats_bridge.cc",
       "usage_stats/usage_stats_bridge.h",
       "usage_stats/usage_stats_database.cc",
       "usage_stats/usage_stats_database.h",
       "warmup_manager.cc",
-      "web_contents_printer.cc",
       "webapk/webapk_install_service.cc",
       "webapk/webapk_install_service_factory.cc",
       "webapk/webapk_install_service_factory.h",
@@ -689,6 +691,7 @@ if (is_android) {
       ":profile_key_startup_accessor",
       ":profile_token",
       ":sensitivity_data_proto",
+      ":settings_navigation_helper",
       ":shortcut_helper",
       ":tabs_impl",
       ":tabs_public",
@@ -700,6 +703,7 @@ if (is_android) {
       "//chrome/browser:global_features",
       "//chrome/browser/accessibility/settings",
       "//chrome/browser/android/content:jni_headers",
+      "//chrome/browser/android/discards",
       "//chrome/browser/android/extensions:android",
       "//chrome/browser/android/extensions:jni_headers",
       "//chrome/browser/android/httpclient:android",
@@ -735,8 +739,6 @@ if (is_android) {
       "//chrome/browser/finds/android",
       "//chrome/browser/flags:flags_android",
       "//chrome/browser/flags:flags_android_impl",
-      "//chrome/browser/gesturenav/android:gesturenav",
-      "//chrome/browser/gesturenav/android:impl",
       "//chrome/browser/glic/android",
       "//chrome/browser/glic/android:jni_headers",
       "//chrome/browser/glic/browser_ui:impl",
@@ -1009,7 +1011,6 @@ if (is_android) {
       "//chrome/browser/contextual_tasks",
       "//chrome/browser/contextual_tasks:ui",
       "//chrome/browser/devtools",
-      "//chrome/browser/dom_distiller:impl",
       "//chrome/browser/download:impl",
       "//chrome/browser/engagement",
       "//chrome/browser/favicon",
@@ -1046,6 +1047,7 @@ if (is_android) {
       "//chrome/browser/profiles:misc",
       "//chrome/browser/profiles:profiles_extra_parts_impl",
       "//chrome/browser/push_messaging:impl",
+      "//chrome/browser/reader_mode:impl",
       "//chrome/browser/renderer_host",
       "//chrome/browser/resource_coordinator",
       "//chrome/browser/safe_browsing",
@@ -1100,6 +1102,7 @@ if (is_android) {
     ]
 
     if (enable_printing) {
+      sources += [ "web_contents_printer.cc" ]
       deps += [
         "//chrome/browser/printing",
         "//components/printing/browser",
@@ -1273,6 +1276,7 @@ source_set("unit_tests") {
     "//chrome/browser/actor",
     "//chrome/browser/actor:test_support",
     "//chrome/browser/actor/ui:test_support",
+    "//chrome/browser/android/discards:unit_tests",
     "//chrome/browser/autocomplete",
     "//chrome/browser/content_settings:content_settings_factory",
     "//chrome/browser/flags:flags_android",
@@ -1342,8 +1346,10 @@ source_set("unit_tests") {
   if (enable_webui_tabstrip_ntb) {
     sources += [ "compositor/tab_strip_ntb_webui_host_unittest.cc" ]
     deps += [
+      "//chrome/browser/flags:flags_android",
       "//chrome/browser/profiles:profile_manager",
       "//chrome/browser/ui/android/tab_model:test_support",
+      "//chrome/browser/ui/webui/tabstrip_ntb",
     ]
   }
 }
@@ -1377,6 +1383,7 @@ source_set("android_browsertests") {
     "//components/autofill/content/browser:test_support",
     "//components/autofill/core/browser",
     "//components/autofill/core/browser:test_support",
+    "//components/autofill/core/common:test_support",
     "//components/back_forward_cache",
     "//content/public/browser",
     "//content/test:test_support",

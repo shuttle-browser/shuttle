@@ -343,6 +343,13 @@ inline constexpr char
         "When enabled, form submission events will be ignored if they lack a "
         "user gesture.";
 
+inline constexpr char kAutofillReshowSavePromptOnTabReturnName[] =
+    "Autofill re-show save prompt on tab return";
+inline constexpr char kAutofillReshowSavePromptOnTabReturnDescription[] =
+    "Restores and re-shows pending Autofill save prompts (Autofill AI save "
+    "entity and save card bottom sheets) when returning to the originating "
+    "tab.";
+
 inline constexpr char kAutofillSaveCardBottomSheetStrikeLimitIosName[] =
     "Autofill Save Card Bottom Sheet Strike Limit on iOS";
 inline constexpr char kAutofillSaveCardBottomSheetStrikeLimitIosDescription[] =
@@ -866,6 +873,10 @@ inline constexpr char kEnhancedCalendarDescription[] =
     "When enabled, the enhanced calendar flow will be available to eligible "
     "users when adding a calendar event.";
 
+inline constexpr char kEphemeralBottomSheetName[] = "Ephemeral Bottom Sheet";
+inline constexpr char kEphemeralBottomSheetDescription[] =
+    "Enables the EphemeralBottomSheet feature.";
+
 inline constexpr char kExplainGeminiEditMenuName[] =
     "Enable Explain Gemini Edit Menu";
 inline constexpr char kExplainGeminiEditMenuDescription[] =
@@ -1254,10 +1265,6 @@ inline constexpr char kIOSWebContextMenuNewTitleDescription[] =
     "Enables actions in context menu title instead of customized action for "
     "web context menu.";
 
-inline constexpr char kIdentityAwarenessName[] = "Identity Awareness";
-inline constexpr char kIdentityAwarenessDescription[] =
-    "Enables the sign-in/account menu button in the overflow menu.";
-
 inline constexpr char kIdentityConfirmationSnackbarName[] =
     "Identity Confirmation Snackbar";
 inline constexpr char kIdentityConfirmationSnackbarDescription[] =
@@ -1321,6 +1328,12 @@ inline constexpr char kLensFollowupsFullHeightEnabledName[] =
     "Lens followups full height enabled";
 inline constexpr char kLensFollowupsFullHeightEnabledDescription[] =
     "Enables followups full height in the Lens overlay.";
+
+inline constexpr char kLensHideLoadingWebResultsPanelName[] =
+    "Hide Lens loading web results panel";
+inline constexpr char kLensHideLoadingWebResultsPanelDescription[] =
+    "When enabled, hides the native loading web results panel shown between "
+    "the Lens View Finder and the Lens Web results page.";
 
 inline constexpr char kLensInitialLvfZoomLevel90PercentName[] =
     "Initial Lens camera zoom 90 percent";
@@ -1519,12 +1532,6 @@ inline constexpr char kNewTabPageUICleanupDescription[] =
 inline constexpr char kNextOldDesignName[] = "NextOldDesign";
 inline constexpr char kNextOldDesignDescription[] =
     "Enables the NextOldDesign feature.";
-
-inline constexpr char kNoAccountWebSigninName[] =
-    "Enable no account web sigin bottom sheet";
-inline constexpr char kNoAccountWebSigninDescription[] =
-    "Surfaces the web sign in bottom sheet when the user attempts to sign in "
-    "to the web.";
 
 inline constexpr char kNonModalSignInPromoName[] = "Non-modal sign-in promo";
 inline constexpr char kNonModalSignInPromoDescription[] =
@@ -1889,12 +1896,6 @@ inline constexpr char kShowAutofillTypePredictionsDescription[] =
     "Annotates web forms with Autofill field type predictions as placeholder "
     "text.";
 
-inline constexpr char kSkipDefaultBrowserPromoInFirstRunName[] =
-    "Skip the FRE Default Browser Promo in EEA";
-inline constexpr char kSkipDefaultBrowserPromoInFirstRunDescription[] =
-    "When enabled, users in the EEA will not see a Default Browser Promo in "
-    "the FRE.";
-
 inline constexpr char kSmartTabGroupingName[] = "Enable Smart Tab Grouping";
 inline constexpr char kSmartTabGroupingDescription[] =
     "When enabled, users will have access to use the smart tab grouping "
@@ -1926,7 +1927,7 @@ inline constexpr char kSnapshotConcurrentAccessDescription[] =
 inline constexpr char kSnapshotDownsampleImageName[] =
     "Snapshot Downsample Image";
 inline constexpr char kSnapshotDownsampleImageDescription[] =
-    "Downsamples tab snapshots to half resolution before writing to disk, "
+    "Downsamples tab snapshots to 70% resolution before writing to disk, "
     "reducing storage and I/O while keeping full resolution in memory.";
 
 inline constexpr char kStartSurfaceUserSettingName[] =
@@ -1938,6 +1939,11 @@ inline constexpr char kSupportGoogleOneDeepLinkName[] =
     "Support Google One Deep Link";
 inline constexpr char kSupportGoogleOneDeepLinkDescription[] =
     "Enables deep linking to Google One management screen on startup.";
+
+inline constexpr char kSuspiciousSiteWarningsName[] =
+    "Suspicious Site Warnings";
+inline constexpr char kSuspiciousSiteWarningsDescription[] =
+    "Enables warnings on sites that Safe Browsing deem to be suspicious.";
 
 inline constexpr char kSyncAIThreadsName[] = "Sync AI Threads";
 inline constexpr char kSyncAIThreadsDescription[] =
@@ -1959,6 +1965,11 @@ inline constexpr char kSyncAutofillValuableDescription[] =
 inline constexpr char kSyncContextualTaskName[] = "Sync Contextual Task";
 inline constexpr char kSyncContextualTaskDescription[] =
     "Enables syncing of contextual tasks.";
+
+inline constexpr char kSyncEncryptedTabContextName[] =
+    "Sync Encrypted Tab Context";
+inline constexpr char kSyncEncryptedTabContextDescription[] =
+    "Enables syncing of Encrypted Tab Context across devices.";
 
 inline constexpr char kSyncSandboxName[] = "Use Chrome Sync sandbox";
 inline constexpr char kSyncSandboxDescription[] =
@@ -2004,10 +2015,6 @@ inline constexpr char kTabResumptionName[] = "Enable Tab Resumption";
 inline constexpr char kTabResumptionDescription[] =
     "When enabled, offer users with a quick shortcut to resume the last synced "
     "tab from another device.";
-
-inline constexpr char kTaiyakiAllSurfacesName[] = "Taiyaki (all surfaces)";
-inline constexpr char kTaiyakiAllSurfacesDescription[] =
-    "Enables Taiyaki for all surfaces (including post-FRE).";
 
 inline constexpr char kUniversalOptOutExtensionName[] =
     "Universal Opt Out Extension";
@@ -2093,15 +2100,6 @@ inline constexpr char kWebPageAlternativeTextZoomDescription[] =
 inline constexpr char kWebPageTextZoomIPadName[] = "Enable text zoom on iPad";
 inline constexpr char kWebPageTextZoomIPadDescription[] =
     "When enabled, text zoom works on iPad";
-
-inline constexpr char kWelcomeBackName[] = "Enable Welcome Back screen";
-inline constexpr char kWelcomeBackDescription[] =
-    "When enabled, returning users will see the Welcome Back screen.";
-
-inline constexpr char kYourSavedInfoSettingsPageIosName[] =
-    "Enable Autofill and passwords settings redesign on iOS";
-inline constexpr char kYourSavedInfoSettingsPageIosDescription[] =
-    "Enables the Autofill and passwords settings page redesign on iOS.";
 
 inline constexpr char kZeroStateSuggestionsCentralizationName[] =
     "Zero-State Suggestions Centralization";

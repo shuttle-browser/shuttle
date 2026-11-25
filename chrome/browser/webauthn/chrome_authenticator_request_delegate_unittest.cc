@@ -44,7 +44,6 @@
 #include "components/signin/public/base/signin_buildflags.h"
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 #include "chrome/browser/signin/dice_tab_helper.h"
-#include "chrome/browser/ui/signin/signin_qrcode_model.h"
 #include "components/signin/public/base/signin_switches.h"
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 #include "components/keyed_service/core/keyed_service.h"
@@ -978,59 +977,6 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, ImmediateMediationRateLimit) {
   }
 }
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-TEST_F(ChromeAuthenticatorRequestDelegateTest, SigninQRCodeModelPopulation) {
-  // 1. Initialize the sign-in flow on the DiceTabHelper of the WebContents.
-  // This makes `IsChromeSigninPage(main_rfh())` return `true`.
-  DiceTabHelper::CreateForWebContents(web_contents());
-  DiceTabHelper::FromWebContents(web_contents())
-      ->InitializeSigninFlow(
-          GURL(kOrigin), signin_metrics::AccessPoint::kSettings,
-          signin_metrics::Reason::kSigninPrimaryAccount,
-          signin_metrics::PromoAction::PROMO_ACTION_NO_SIGNIN_PROMO, GURL(),
-          /*record_signin_started_metrics=*/false, base::DoNothing(),
-          base::DoNothing(), base::DoNothing());
-
-  // 2. Instantiate the delegate.
-  MockCableDiscoveryFactory discovery_factory;
-  std::unique_ptr<ChromeAuthenticatorRequestDelegate> delegate =
-      std::make_unique<ChromeAuthenticatorRequestDelegate>(main_rfh());
-  delegate->SetRelyingPartyId(kRpId);
-
-  // Verify that the model is initially empty/does not exist.
-  EXPECT_FALSE(SigninQRCodeModel::FromWebContents(web_contents()));
-
-  // 3. Configure discoveries, which triggers caBLEv2 QR code generation and
-  // populates the SigninQRCodeModel.
-  delegate->ConfigureDiscoveries(url::Origin::Create(GURL(kOrigin)), kOrigin,
-                                 content::AuthenticatorRequestClientDelegate::
-                                     RequestSource::kWebAuthentication,
-                                 device::FidoRequestType::kGetAssertion,
-                                 device::ResidentKeyRequirement::kRequired,
-                                 device::UserVerificationRequirement::kRequired,
-                                 /*cmtg_key_requested=*/false,
-                                 /*user_name=*/std::nullopt,
-                                 /*is_enclave_authenticator_available=*/false,
-                                 &discovery_factory);
-
-  // 4. Verify that the model has been successfully created and populated!
-  SigninQRCodeModel* model = SigninQRCodeModel::FromWebContents(web_contents());
-  ASSERT_TRUE(model);
-  EXPECT_TRUE(model->qr_code_string().has_value());
-
-  // Verify that the QR code string in the model matches the one in the dialog
-  // model.
-  std::optional<std::string> qr_string =
-      delegate->dialog_model()->cable_qr_string;
-  ASSERT_TRUE(qr_string.has_value());
-  EXPECT_EQ(model->qr_code_string(), *qr_string);
-
-  // 5. Destroy the delegate and verify that the model's QR code is successfully
-  // reset/cleared!
-  delegate.reset();
-  EXPECT_FALSE(model->qr_code_string().has_value());
-}
-
 #if BUILDFLAG(IS_WIN)
 TEST_F(ChromeAuthenticatorRequestDelegateTest, MagiChromeForceHybridDiscovery) {
   base::test::ScopedFeatureList feature_list;
@@ -1065,16 +1011,11 @@ TEST_F(ChromeAuthenticatorRequestDelegateTest, MagiChromeForceHybridDiscovery) {
 }
 #endif  // BUILDFLAG(IS_WIN)
 
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
 class ChromeAuthenticatorRequestDelegateHybridPasskeyTestBase
     : public ChromeAuthenticatorRequestDelegateTest {
  protected:
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
   void SetUpChromeSigninPage() {
-    feature_list_.InitAndEnableFeatureWithParameters(
-        switches::kMagiChromePasskeySignIn, {{"flow_type", "autofill"}});
-
     DiceTabHelper::CreateForWebContents(web_contents());
     DiceTabHelper::FromWebContents(web_contents())
         ->InitializeSigninFlow(
@@ -1112,7 +1053,7 @@ class ChromeAuthenticatorRequestDelegateHybridPasskeyTestBase
 enum class HybridOutcomeContext {
   // A regular website.
   kWebsite,
-  // The Chrome sign-in page, with the MagiChrome passkey feature enabled.
+  // The Chrome sign-in page.
   kChromeSignin,
 };
 
@@ -1597,6 +1538,35 @@ TEST_P(ChromeAuthenticatorRequestDelegateHybridPasskeyOutcomeTest,
       kGeneralOutcome, Outcome::kFailedAfterBleAdvertReceived, 1);
   histogram_tester_.ExpectTotalCount(kSigninOutcome, 0);
 }
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+TEST_F(ChromeAuthenticatorRequestDelegateHybridPasskeyTestBase,
+       SigninOutcomeRecordedWhenMagiChromeFeatureDisabled) {
+  feature_list_.InitAndDisableFeature(switches::kMagiChromePasskeySignIn);
+  SetUpChromeSigninPage();
+
+  MockCableDiscoveryFactory discovery_factory;
+  auto delegate = CreateDelegate(&discovery_factory);
+
+  delegate->OnCableEventForTesting(device::cablev2::Event::kBLEAdvertReceived);
+  delegate->OnCableEventForTesting(device::cablev2::Event::kPhoneConnected);
+  delegate->OnCableEventForTesting(device::cablev2::Event::kReady);
+  delegate->OnTransactionSuccessful(
+      content::AuthenticatorRequestClientDelegate::RequestSource::
+          kWebAuthentication,
+      device::FidoRequestType::kGetAssertion,
+      device::AuthenticatorType::kPhone);
+
+#if BUILDFLAG(IS_WIN)
+  EXPECT_FALSE(discovery_factory.force_hybrid_discovery());
+#endif  // BUILDFLAG(IS_WIN)
+  using Outcome = ChromeAuthenticatorRequestDelegate::HybridPasskeyOutcome;
+  histogram_tester_.ExpectUniqueSample("WebAuthentication.Hybrid.Outcome",
+                                       Outcome::kSuccess, 1);
+  histogram_tester_.ExpectUniqueSample("Signin.HybridPasskey.Outcome",
+                                       Outcome::kSuccess, 1);
+}
+#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
 // The surface on which the hybrid QR code is shown.
 enum class HybridQrSurface {

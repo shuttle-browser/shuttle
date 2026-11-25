@@ -17,6 +17,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/user_metrics.h"
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/bookmarks/bookmark_bar_utils.h"
 #include "chrome/browser/bookmarks/bookmark_merged_surface_service.h"
 #include "chrome/browser/bookmarks/bookmark_merged_surface_service_factory.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
@@ -55,7 +56,7 @@
 #include "components/undo/bookmark_undo_service.h"
 #include "content/public/browser/page_navigator.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 using base::UserMetricsAction;
 using bookmarks::BookmarkNode;
@@ -386,15 +387,16 @@ void BookmarkContextMenuController::ExecuteCommand(int id, int event_flags) {
     case IDC_BOOKMARK_BAR_OPEN_ALL_NEW_TAB_GROUP:
     case IDC_BOOKMARK_BAR_OPEN_ALL_NEW_WINDOW:
     case IDC_BOOKMARK_BAR_OPEN_SPLIT_VIEW: {
-      WindowOpenDisposition initial_disposition;
+      ui::mojom::WindowOpenDisposition initial_disposition;
       if (id == IDC_BOOKMARK_BAR_OPEN_ALL ||
           id == IDC_BOOKMARK_BAR_OPEN_ALL_NEW_TAB_GROUP ||
           id == IDC_BOOKMARK_BAR_OPEN_SPLIT_VIEW) {
-        initial_disposition = WindowOpenDisposition::kNewBackgroundTab;
+        initial_disposition =
+            ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
       } else if (id == IDC_BOOKMARK_BAR_OPEN_ALL_NEW_WINDOW) {
-        initial_disposition = WindowOpenDisposition::kNewWindow;
+        initial_disposition = ui::mojom::WindowOpenDisposition::kNewWindow;
       } else {
-        initial_disposition = WindowOpenDisposition::kOffTheRecord;
+        initial_disposition = ui::mojom::WindowOpenDisposition::kOffTheRecord;
       }
       const UserMetricsAction* const action =
           GetActionForLocationAndDisposition(id, opened_from_);

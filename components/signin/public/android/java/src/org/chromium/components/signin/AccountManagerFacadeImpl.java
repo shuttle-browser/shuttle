@@ -10,19 +10,24 @@ import static org.chromium.components.signin.AccountCapabilitiesConstants.IS_SUB
 import android.accounts.Account;
 import android.accounts.AccountManager;
 import android.app.Activity;
+import android.app.admin.DevicePolicyManager;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.os.UserManager;
 import android.text.TextUtils;
 
+import androidx.annotation.IntDef;
 import androidx.annotation.MainThread;
 import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.Callback;
+import org.chromium.base.ContextUtils;
 import org.chromium.base.Log;
 import org.chromium.base.ObserverList;
 import org.chromium.base.Promise;
 import org.chromium.base.ThreadUtils;
+import org.chromium.base.TimeUtils;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.base.task.AsyncTask;
@@ -40,6 +45,8 @@ import org.chromium.google_apis.gaia.GaiaId;
 import org.chromium.google_apis.gaia.GoogleServiceAuthError;
 import org.chromium.google_apis.gaia.GoogleServiceAuthErrorState;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -52,6 +59,66 @@ import java.util.concurrent.atomic.AtomicReference;
 /** AccountManagerFacade wraps our access of AccountManager in Android. */
 @NullMarked
 public class AccountManagerFacadeImpl implements AccountManagerFacade {
+    /**
+     * Whether Android returned an add-account intent, and if not, which known blocker was active.
+     * Recorded in Signin.Android.CreateAddAccountIntentResult. The blocker is inferred from the
+     * device state when Android returns no intent, so it shows which known blocker was active, not
+     * what Android reported as the cause.
+     *
+     * <p>These values are persisted to logs. Entries should not be renumbered and numeric values
+     * should never be reused.
+     */
+    // LINT.IfChange(CreateAddAccountIntentResult)
+    @VisibleForTesting
+    @IntDef({
+        CreateAddAccountIntentResult.NO_INTENT_OTHER,
+        CreateAddAccountIntentResult.INTENT_CREATED,
+        CreateAddAccountIntentResult.NO_INTENT_RESTRICTED,
+        CreateAddAccountIntentResult.NO_INTENT_MANAGEMENT_DISABLED,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    @interface CreateAddAccountIntentResult {
+        // Android returned no intent, and none of the known blockers below is active.
+        int NO_INTENT_OTHER = 0;
+        // Android returned an add-account intent.
+        int INTENT_CREATED = 1;
+        // Android returned no intent, and the user that Chrome runs as has the
+        // DISALLOW_MODIFY_ACCOUNTS restriction.
+        int NO_INTENT_RESTRICTED = 2;
+        // Android returned no intent, and a device or profile owner disabled account management
+        // for Google accounts with DevicePolicyManager#setAccountManagementDisabled.
+        int NO_INTENT_MANAGEMENT_DISABLED = 3;
+        int NUM_ENTRIES = 4;
+    }
+
+    // LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:SigninAndroidCreateAddAccountIntentResult)
+
+    /**
+     * Whether adding accounts is blocked by the DISALLOW_MODIFY_ACCOUNTS user restriction, and
+     * whether the device has any accounts. Recorded in Signin.Android.AddAccountRestrictionState.
+     *
+     * <p>These values are persisted to logs. Entries should not be renumbered and numeric values
+     * should never be reused.
+     */
+    // LINT.IfChange(AddAccountRestrictionState)
+    @VisibleForTesting
+    @IntDef({
+        AddAccountRestrictionState.ALLOWED_NO_ACCOUNTS,
+        AddAccountRestrictionState.ALLOWED_WITH_ACCOUNTS,
+        AddAccountRestrictionState.BLOCKED_NO_ACCOUNTS,
+        AddAccountRestrictionState.BLOCKED_WITH_ACCOUNTS,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    @interface AddAccountRestrictionState {
+        int ALLOWED_NO_ACCOUNTS = 0;
+        int ALLOWED_WITH_ACCOUNTS = 1;
+        int BLOCKED_NO_ACCOUNTS = 2;
+        int BLOCKED_WITH_ACCOUNTS = 3;
+        int NUM_ENTRIES = 4;
+    }
+
+    // LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:SigninAndroidAddAccountRestrictionState)
+
     /**
      * The maximum amount of acceptable retries (for a total of MAXIMUM_RETRIES+1 attempts). *
      *
@@ -82,8 +149,6 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
             new AtomicReference<>();
     private Promise<List<AccountInfo>> mAccountsPromise = new Promise<>();
 
-    private @Nullable AsyncTask<@Nullable List<GaiaId>> mFetchGaiaIdsTask;
-
     private int mNumberOfRetries;
     private boolean mDidAccountFetchSucceed;
 
@@ -113,6 +178,7 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
                         accounts -> {
                             RecordHistogram.recordExactLinearHistogram(
                                     "Signin.AndroidNumberOfDeviceAccounts", accounts.size(), 50);
+                            recordAddAccountRestrictionState(!accounts.isEmpty());
                         });
     }
 
@@ -168,9 +234,12 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
                     new AuthTask() {
                         @Override
                         public AccessTokenData run() throws AuthException {
-                            return mDelegate.getAccessToken(
-                                    CoreAccountInfo.getAndroidAccountFrom(coreAccountInfo),
-                                    oauth2Scope);
+                            return getAccessTokenAndRecordLatency(
+                                    () ->
+                                            mDelegate.getAccessToken(
+                                                    CoreAccountInfo.getAndroidAccountFrom(
+                                                            coreAccountInfo),
+                                                    oauth2Scope));
                         }
 
                         @Override
@@ -210,7 +279,10 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
                 new AuthTask() {
                     @Override
                     public AccessTokenData run() throws AuthException {
-                        return mDelegate.getAccessTokenForPlatformAccount(platformAccount, scope);
+                        return getAccessTokenAndRecordLatency(
+                                () ->
+                                        mDelegate.getAccessTokenForPlatformAccount(
+                                                platformAccount, scope));
                     }
 
                     @Override
@@ -226,6 +298,39 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
                         pendingRequestFinished();
                     }
                 });
+    }
+
+    /** A call to the system account manager that returns an access token. */
+    private interface AccessTokenCall {
+        AccessTokenData run() throws AuthException;
+    }
+
+    /**
+     * Runs {@code call} and records its duration in
+     * Signin.Android.SystemAccountManagerAccessTokenLatency.{Success,Failure}. Each call is
+     * recorded separately, so retries done by {@link ConnectionRetry} are recorded as separate
+     * samples.
+     */
+    private static AccessTokenData getAccessTokenAndRecordLatency(AccessTokenCall call)
+            throws AuthException {
+        // uptimeMillis() to match base::TimeTicks (CLOCK_MONOTONIC, which excludes deep sleep)
+        // used by the native Signin.AccessTokenFetch.Latency histograms.
+        final long startTimeMs = TimeUtils.uptimeMillis();
+        try {
+            AccessTokenData token = call.run();
+            recordSystemAccountManagerLatency(/* success= */ true, startTimeMs);
+            return token;
+        } catch (AuthException e) {
+            recordSystemAccountManagerLatency(/* success= */ false, startTimeMs);
+            throw e;
+        }
+    }
+
+    private static void recordSystemAccountManagerLatency(boolean success, long startTimeMs) {
+        RecordHistogram.recordMediumTimesHistogram(
+                "Signin.Android.SystemAccountManagerAccessTokenLatency."
+                        + (success ? "Success" : "Failure"),
+                TimeUtils.uptimeMillis() - startTimeMs);
     }
 
     private void pendingRequestStarted() {
@@ -468,7 +573,12 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
     public void createAddAccountIntent(
             @Nullable String prefilledEmail, Callback<@Nullable Intent> callback) {
         RecordUserAction.record("Signin_AddAccountToDevice");
-        mDelegate.createAddAccountIntent(prefilledEmail, callback);
+        mDelegate.createAddAccountIntent(
+                prefilledEmail,
+                intent -> {
+                    recordCreateAddAccountIntentResult(intent != null);
+                    callback.onResult(intent);
+                });
     }
 
     @Override
@@ -551,14 +661,8 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
     private void fetchGaiaIdsAndUpdateCoreAccountInfos(@Nullable Runnable callback) {
         assert !AccountManagerDelegate.isAccountManagerDelegateMigrationEnabled();
         ThreadUtils.assertOnUiThread();
-        if (mFetchGaiaIdsTask != null) {
-            // Cancel previous fetch task as it is obsolete now.
-            mFetchGaiaIdsTask.cancel(true);
-            mFetchGaiaIdsTask = null;
-        }
-
-        mFetchGaiaIdsTask = new GetAccountAsyncTask(getFilteredAccountEmails(), callback);
-        mFetchGaiaIdsTask.executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
+        new GetAccountAsyncTask(getFilteredAccountEmails(), callback)
+                .executeOnExecutor(AsyncTask.SERIAL_EXECUTOR);
     }
 
     @VisibleForTesting
@@ -794,6 +898,84 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
         mDisallowTokenRequestsForTesting = true;
     }
 
+    /**
+     * Records Signin.Android.AddAccountRestrictionState for the first account list loaded by this
+     * instance. Does nothing if loading the accounts failed, because in that case the account list
+     * is an empty fallback and must not be counted as "no accounts".
+     *
+     * @param hasAccounts Whether the loaded account list contains at least one account.
+     */
+    private void recordAddAccountRestrictionState(boolean hasAccounts) {
+        if (!mDidAccountFetchSucceed) {
+            return;
+        }
+
+        final @AddAccountRestrictionState int state;
+        if (isAddingAccountsAllowed()) {
+            state =
+                    hasAccounts
+                            ? AddAccountRestrictionState.ALLOWED_WITH_ACCOUNTS
+                            : AddAccountRestrictionState.ALLOWED_NO_ACCOUNTS;
+        } else {
+            state =
+                    hasAccounts
+                            ? AddAccountRestrictionState.BLOCKED_WITH_ACCOUNTS
+                            : AddAccountRestrictionState.BLOCKED_NO_ACCOUNTS;
+        }
+        RecordHistogram.recordEnumeratedHistogram(
+                "Signin.Android.AddAccountRestrictionState",
+                state,
+                AddAccountRestrictionState.NUM_ENTRIES);
+    }
+
+    /**
+     * Records Signin.Android.CreateAddAccountIntentResult. If Android returned no intent, the
+     * DISALLOW_MODIFY_ACCOUNTS restriction is checked first, so NO_INTENT_RESTRICTED is recorded
+     * even if Google account management is also disabled.
+     *
+     * @param intentCreated Whether Android returned an add-account intent.
+     */
+    private static void recordCreateAddAccountIntentResult(boolean intentCreated) {
+        final @CreateAddAccountIntentResult int result;
+        if (intentCreated) {
+            result = CreateAddAccountIntentResult.INTENT_CREATED;
+        } else if (!isAddingAccountsAllowed()) {
+            result = CreateAddAccountIntentResult.NO_INTENT_RESTRICTED;
+        } else if (isGoogleAccountManagementDisabled()) {
+            result = CreateAddAccountIntentResult.NO_INTENT_MANAGEMENT_DISABLED;
+        } else {
+            result = CreateAddAccountIntentResult.NO_INTENT_OTHER;
+        }
+        RecordHistogram.recordEnumeratedHistogram(
+                "Signin.Android.CreateAddAccountIntentResult",
+                result,
+                CreateAddAccountIntentResult.NUM_ENTRIES);
+    }
+
+    /** Returns whether the current Android user profile allows adding accounts. */
+    private static boolean isAddingAccountsAllowed() {
+        final @Nullable UserManager userManager =
+                ContextUtils.getApplicationContext().getSystemService(UserManager.class);
+        return userManager == null
+                || !userManager.hasUserRestriction(UserManager.DISALLOW_MODIFY_ACCOUNTS);
+    }
+
+    /**
+     * Returns whether a device or profile owner disabled account management for Google accounts.
+     */
+    private static boolean isGoogleAccountManagementDisabled() {
+        // Null on devices without FEATURE_DEVICE_ADMIN.
+        final @Nullable DevicePolicyManager devicePolicyManager =
+                ContextUtils.getApplicationContext().getSystemService(DevicePolicyManager.class);
+        if (devicePolicyManager == null) {
+            return false;
+        }
+        final String @Nullable [] disabledAccountTypes =
+                devicePolicyManager.getAccountTypesWithManagementDisabled();
+        return disabledAccountTypes != null
+                && Arrays.asList(disabledAccountTypes).contains(AccountUtils.GOOGLE_ACCOUNT_TYPE);
+    }
+
     private class GetAccountAsyncTask extends AsyncTask<@Nullable List<GaiaId>> {
         private final List<String> mEmails;
         private final @Nullable Runnable mCallback;
@@ -809,9 +991,6 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
             final long seedingStartTime = SystemClock.elapsedRealtime();
             List<GaiaId> gaiaIds = new ArrayList<>();
             for (String email : mEmails) {
-                if (isCancelled()) {
-                    return null;
-                }
                 final GaiaId gaiaId;
                 try {
                     gaiaId = mDelegate.getAccountGaiaId(email);
@@ -834,7 +1013,6 @@ public class AccountManagerFacadeImpl implements AccountManagerFacade {
 
         @Override
         public void onPostExecute(@Nullable List<GaiaId> gaiaIds) {
-            mFetchGaiaIdsTask = null;
             if (gaiaIds == null) {
                 fetchGaiaIdsAndUpdateCoreAccountInfos(mCallback);
                 return;

@@ -50,7 +50,6 @@ import org.chromium.content_public.browser.Visibility;
 import org.chromium.content_public.browser.test.util.NavigationControllerUtil;
 import org.chromium.content_public.browser.test.util.NavigationEntrySimple;
 import org.chromium.content_public.browser.test.util.TestCallbackHelperContainer.OnPageStartedHelper;
-import org.chromium.content_public.common.ContentFeatures;
 import org.chromium.content_public.common.ContentSwitches;
 import org.chromium.net.test.ServerCertificate;
 
@@ -805,10 +804,7 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({
-        ContentFeatures.PREFETCH_PRERENDER_INTEGRATION,
-        AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
-    })
+    @Features.EnableFeatures({AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER})
     @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
     @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
     public void testCrossSiteRedirection_PrefetchAheadOfPrerenderEnabled() throws Throwable {
@@ -2108,10 +2104,7 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({
-        ContentFeatures.PREFETCH_PRERENDER_INTEGRATION,
-        AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
-    })
+    @Features.EnableFeatures({AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER})
     @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
     @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
     public void testPrefetchAndPrerenderWithNoVarySearchHeader_PrefetchAheadOfPrerenderEnabled()
@@ -2163,10 +2156,7 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({
-        ContentFeatures.PREFETCH_PRERENDER_INTEGRATION,
-        AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
-    })
+    @Features.EnableFeatures({AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER})
     @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
     @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
     @DisabledTest(message = "Flaky, see crbug.com/506930789")
@@ -2211,7 +2201,6 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({ContentFeatures.PREFETCH_PRERENDER_INTEGRATION})
     @Features.DisableFeatures({
         BlinkFeatures.PRERENDER2_MEMORY_CONTROLS,
         AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
@@ -2250,10 +2239,7 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({
-        ContentFeatures.PREFETCH_PRERENDER_INTEGRATION,
-        AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
-    })
+    @Features.EnableFeatures({AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER})
     @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
     @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
     public void
@@ -2296,10 +2282,7 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({
-        ContentFeatures.PREFETCH_PRERENDER_INTEGRATION,
-        AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
-    })
+    @Features.EnableFeatures({AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER})
     @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
     @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
     public void testHogeAdditionalHeaders_PrefetchAheadOfPrerenderEnabled() throws Throwable {
@@ -2484,10 +2467,7 @@ public class AwPrerenderTest extends AwParameterizedTest {
     @Test
     @LargeTest
     @Feature({"AndroidWebView"})
-    @Features.EnableFeatures({
-        ContentFeatures.PREFETCH_PRERENDER_INTEGRATION,
-        AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER
-    })
+    @Features.EnableFeatures({AwFeatures.WEBVIEW_PREFETCH_AHEAD_OF_PRERENDER})
     @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
     @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
     public void
@@ -2907,5 +2887,195 @@ public class AwPrerenderTest extends AwParameterizedTest {
         //   Activated    = [3]       (kActivated = 0)
 
         histogramWatcherAll.assertExpected();
+    }
+
+    // Tests that re-entering startPrerendering from within an error callback does not cause a
+    // use-after-free in PrerenderInfo::OnLifecycleStateChanged (crbug.com/574513367).
+    @Test
+    @LargeTest
+    @Feature({"AndroidWebView"})
+    @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
+    @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
+    public void testReenterStartFromErrorCallback() throws Throwable {
+        loadInitialPage();
+
+        String failingUrl = getUrl("/missing.html");
+        String fallbackUrl = mPrerenderingUrl;
+
+        var failingErrorCallbackHelper = new CallbackHelper();
+        var fallbackActivationCallbackHelper = new ActivationCallbackHelper();
+        var fallbackErrorCallbackHelper = new PrerenderErrorCallbackHelper();
+
+        startPrerendering(
+                failingUrl,
+                /* prefetchParameters= */ null,
+                /* cancellationSignal= */ null,
+                /* activationCallback= */ (Void v) -> {},
+                /* errorCallback= */ (Throwable t) -> {
+                    failingErrorCallbackHelper.notifyCalled();
+                    try {
+                        startPrerendering(
+                                fallbackUrl,
+                                /* prefetchParameters= */ null,
+                                /* cancellationSignal= */ null,
+                                fallbackActivationCallbackHelper.getCallback(),
+                                fallbackErrorCallbackHelper.getCallback());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+
+        // The error callback should fire for the failing URL and re-enter startPrerendering.
+        failingErrorCallbackHelper.waitForNext();
+
+        // The fallback prerender should proceed normally and be activatable.
+        mPrerenderLifecycleWebMessageListener.waitForOnPostMessage();
+        activatePage(fallbackUrl, ActivationBy.LOAD_URL);
+        fallbackActivationCallbackHelper.waitForNext();
+        Assert.assertEquals(0, fallbackErrorCallbackHelper.getCallCount());
+    }
+
+    // Tests that re-entering startPrerendering from within an error callback when multiple
+    // callbacks
+    // are registered does not cause use-after-free or a crash (crbug.com/574513367).
+    @Test
+    @LargeTest
+    @Feature({"AndroidWebView"})
+    @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
+    @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
+    public void testReenterStartFromErrorCallback_MultipleCallbacks() throws Throwable {
+        loadInitialPage();
+
+        String failingUrl = getUrl("/missing.html");
+        String fallbackUrl = mPrerenderingUrl;
+
+        var failingErrorCallbackHelper1 = new CallbackHelper();
+        var failingErrorCallbackHelper2 = new CallbackHelper();
+        var fallbackActivationCallbackHelper = new ActivationCallbackHelper();
+        var fallbackErrorCallbackHelper = new PrerenderErrorCallbackHelper();
+
+        // Register the first prerender request for failingUrl.
+        startPrerendering(
+                failingUrl,
+                /* prefetchParameters= */ null,
+                /* cancellationSignal= */ null,
+                /* activationCallback= */ (Void v) -> {},
+                /* errorCallback= */ (Throwable t) -> {
+                    failingErrorCallbackHelper1.notifyCalled();
+                    try {
+                        startPrerendering(
+                                fallbackUrl,
+                                /* prefetchParameters= */ null,
+                                /* cancellationSignal= */ null,
+                                fallbackActivationCallbackHelper.getCallback(),
+                                fallbackErrorCallbackHelper.getCallback());
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                });
+
+        // Register a second prerender request for the same failingUrl, adding a second error
+        // callback.
+        startPrerendering(
+                failingUrl,
+                /* prefetchParameters= */ null,
+                /* cancellationSignal= */ null,
+                /* activationCallback= */ (Void v) -> {},
+                /* errorCallback= */ (Throwable t) -> {
+                    failingErrorCallbackHelper2.notifyCalled();
+                });
+
+        // Both error callbacks should be called without crashing or UAF.
+        failingErrorCallbackHelper1.waitForNext();
+        failingErrorCallbackHelper2.waitForNext();
+
+        // The fallback prerender should succeed and be activatable.
+        mPrerenderLifecycleWebMessageListener.waitForOnPostMessage();
+        activatePage(fallbackUrl, ActivationBy.LOAD_URL);
+        fallbackActivationCallbackHelper.waitForNext();
+        Assert.assertEquals(0, fallbackErrorCallbackHelper.getCallCount());
+    }
+
+    // Tests that calling CancellationSignal.cancel() from within an error callback does not cause
+    // a use-after-free in PrerenderInfo::OnLifecycleStateChanged (crbug.com/574513367).
+    @Test
+    @LargeTest
+    @Feature({"AndroidWebView"})
+    @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
+    @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
+    public void testCancelFromErrorCallback() throws Throwable {
+        loadInitialPage();
+
+        String failingUrl = getUrl("/missing.html");
+        var cancellationSignal = new CancellationSignal();
+        var failingErrorCallbackHelper = new CallbackHelper();
+
+        startPrerendering(
+                failingUrl,
+                /* prefetchParameters= */ null,
+                cancellationSignal,
+                /* activationCallback= */ (Void v) -> {},
+                /* errorCallback= */ (Throwable t) -> {
+                    cancellationSignal.cancel();
+                    failingErrorCallbackHelper.notifyCalled();
+                });
+
+        failingErrorCallbackHelper.waitForNext();
+        Assert.assertTrue(cancellationSignal.isCanceled());
+    }
+
+    // Tests that re-entering startPrerendering from within an activation callback does not cause a
+    // use-after-free in PrerenderInfo::OnLifecycleStateChanged (crbug.com/574513367).
+    @Test
+    @LargeTest
+    @Feature({"AndroidWebView"})
+    @Features.DisableFeatures({BlinkFeatures.PRERENDER2_MEMORY_CONTROLS})
+    @CommandLineFlags.Add({ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"})
+    public void testReenterStartFromActivationCallback() throws Throwable {
+        loadInitialPage();
+
+        String fallbackUrl = getUrl("/missing.html");
+
+        var activationCallbackHelper1 = new CallbackHelper();
+        var activationCallbackHelper2 = new CallbackHelper();
+
+        // Register first activation callback.
+        startPrerendering(
+                mPrerenderingUrl,
+                /* prefetchParameters= */ null,
+                /* cancellationSignal= */ null,
+                /* activationCallback= */ (Void v) -> {
+                    activationCallbackHelper1.notifyCalled();
+                    try {
+                        startPrerendering(
+                                fallbackUrl,
+                                /* prefetchParameters= */ null,
+                                /* cancellationSignal= */ null,
+                                /* activationCallback= */ (Void v2) -> {},
+                                /* errorCallback= */ (Throwable t) -> {});
+                    } catch (Exception e) {
+                        throw new RuntimeException(e);
+                    }
+                },
+                /* errorCallback= */ (Throwable t) -> {});
+
+        // Register second activation callback on the same prerender.
+        startPrerendering(
+                mPrerenderingUrl,
+                /* prefetchParameters= */ null,
+                /* cancellationSignal= */ null,
+                /* activationCallback= */ (Void v) -> {
+                    activationCallbackHelper2.notifyCalled();
+                },
+                /* errorCallback= */ (Throwable t) -> {});
+
+        // Wait until the prerender is ready, then activate it.
+        mPrerenderLifecycleWebMessageListener.waitForOnPostMessage();
+        activatePage(mPrerenderingUrl, ActivationBy.LOAD_URL);
+
+        // Both activation callbacks should run without crashing or UAF even though the first
+        // callback re-entered startPrerendering and destroyed the dispatching PrerenderInfo.
+        activationCallbackHelper1.waitForNext();
+        activationCallbackHelper2.waitForNext();
     }
 }

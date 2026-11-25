@@ -23,6 +23,8 @@
 #include "components/optimization_guide/proto/features/contextual_cueing.pb.h"
 #include "components/page_content_annotations/core/page_content_annotations_service.h"
 #include "components/sessions/core/session_id.h"
+#include "components/sync/service/sync_service.h"
+#include "components/sync/service/sync_service_observer.h"
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
@@ -37,6 +39,11 @@ class TemplateURLService;
 namespace favicon {
 class FaviconService;
 }  // namespace favicon
+
+namespace history {
+class HistoryService;
+class QueryResults;
+}  // namespace history
 
 namespace optimization_guide {
 class ModelQualityLogEntry;
@@ -53,10 +60,6 @@ namespace signin {
 class IdentityManager;
 }  // namespace signin
 
-namespace syncer {
-class SyncService;
-}  // namespace syncer
-
 namespace tabs {
 class TabInterface;
 }  // namespace tabs
@@ -69,6 +72,7 @@ struct CueTabMetrics;
 class ContextualCueingController
     : public page_content_annotations::PageContentAnnotationsService::
           PageContentAnnotationsObserver,
+      public syncer::SyncServiceObserver,
       public TabListInterfaceObserver {
  public:
   DECLARE_USER_DATA(ContextualCueingController);
@@ -95,6 +99,10 @@ class ContextualCueingController
       const page_content_annotations::PageContentAnnotationsResult& result)
       override;
 
+  // syncer::SyncServiceObserver:
+  void OnStateChanged(syncer::SyncService* sync) override;
+  void OnSyncShutdown(syncer::SyncService* sync) override;
+
   // TabListInterfaceObserver:
   void OnTabRemoved(TabListInterface& tab_list,
                     tabs::TabInterface* tab,
@@ -106,6 +114,13 @@ class ContextualCueingController
   // (URL eligibility, quota/backoff), then fans out CheckEligibility calls to
   // all registered targets via base::BarrierCallback.
   void EvaluateCues();
+
+  // Like `EvaluateCues()`, but only considers the target registered for
+  // `type`. For a target that can become eligible without a navigation, such
+  // as when the user returns to the tab. Unlike a page load, it doesn't hide a
+  // cue that's already showing first: if an anchored message or contextual cue
+  // is already showing on the tab, the new cue is blocked.
+  void EvaluateCueForTarget(CueTargetType type);
 
   void OnUrlChanged(const GURL& url);
 
@@ -140,6 +155,13 @@ class ContextualCueingController
   // requesting only surfaces for the winning target.
   void InitiateModelExecutionRequest(CueTargetType winning_target_type);
 
+  // Callback for when the history query completes. Populates `historical_tabs`
+  // on `request` and initiates model execution.
+  void OnHistoryQueryComplete(
+      optimization_guide::proto::Tab active_tab,
+      optimization_guide::proto::ContextualCueingRequest request,
+      history::QueryResults results);
+
   // The V1 single-source evaluation path, triggered by page content
   // annotations. Performs URL eligibility checks, category classification
   // (delegated to the registered CueTarget), quota/backoff checks, and then
@@ -150,6 +172,10 @@ class ContextualCueingController
       const page_content_annotations::HistoryVisit& visit,
       const page_content_annotations::PageContentAnnotationsResult& result);
 
+  // Shared implementation of `EvaluateCues()` and `EvaluateCueForTarget()`.
+  // If `only_type` is set, only considers the target registered for it.
+  void EvaluateCuesImpl(std::optional<CueTargetType> only_type);
+
   // Result of a single target's CheckEligibility round-trip, collected by the
   // barrier and forwarded to OnAllEligibilityChecksComplete.
   struct EligibilityResult {
@@ -158,7 +184,7 @@ class ContextualCueingController
     CueTarget::ContentGenerator generator;
   };
 
-  // Called when every registered target has responded to CheckEligibility.
+  // Called when every candidate target has responded to CheckEligibility.
   // Applies UCB scoring to the eligible candidates, selects the winner, and
   // either runs its ContentGenerator or delegates to
   // InitiateModelExecutionRequest().
@@ -276,6 +302,9 @@ class ContextualCueingController
   absl::flat_hash_set<optimization_guide::proto::ContextualCueingSurface>
   GetEligibleCueSurfaces();
 
+  void UpdateCategoryClassifierObservation();
+  bool IsHistorySyncEnabled() const;
+
   // Not owned. Guaranteed to outlive `this`.
   const raw_ptr<tabs::TabInterface> tab_;
   std::vector<base::CallbackListSubscription> tab_subscriptions_;
@@ -296,6 +325,10 @@ class ContextualCueingController
   raw_ptr<TemplateURLService> template_url_service_;
   raw_ptr<signin::IdentityManager> identity_manager_;
   raw_ptr<favicon::FaviconService> favicon_service_;
+  bool is_observing_category_classifier_ = false;
+  base::ScopedObservation<syncer::SyncService, syncer::SyncServiceObserver>
+      sync_service_observation_{this};
+  raw_ptr<history::HistoryService> history_service_;
   absl::flat_hash_map<CueTargetType, std::unique_ptr<CueTarget>> cue_targets_;
   base::CallbackListSubscription side_panel_shown_subscription_;
   base::TimeTicks cue_shown_time_;

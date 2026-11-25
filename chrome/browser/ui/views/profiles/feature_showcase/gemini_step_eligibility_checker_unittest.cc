@@ -10,8 +10,13 @@
 #include "base/check_deref.h"
 #include "base/command_line.h"
 #include "base/test/scoped_command_line.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
+#include "chrome/browser/glic/public/glic_provider.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
+#include "chrome/browser/glic/public/provider_features.h"
+#include "chrome/browser/glic/test_support/scoped_glic_provider_override.h"
 #include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
@@ -92,6 +97,9 @@ class GeminiStepEligibilityCheckerTest : public testing::Test {
   }
 
  private:
+  // The checker is only created when this feature is enabled.
+  base::test::ScopedFeatureList feature_list_{
+      features::kFirstRunFeatureShowcaseGeminiStep};
   content::BrowserTaskEnvironment task_environment_;
   base::test::ScopedCommandLine scoped_command_line_;
   metrics::TestEnabledStateProvider metrics_enabled_state_provider_{false,
@@ -198,6 +206,31 @@ TEST_F(GeminiStepEligibilityCheckerTest, FailsOnIdentityManagerShutdown) {
   checker.OnIdentityManagerShutdown(identity_test_env().identity_manager());
 
   EXPECT_TRUE(future.IsReady());
+}
+
+// The Gemini step is consumer-only, so profiles latched to Gemini Enterprise
+// fail without waiting for country or account data.
+class GeminiStepEligibilityCheckerGeminiEnterpriseTest
+    : private glic::ScopedGlicProviderOverride,
+      public GeminiStepEligibilityCheckerTest {
+ public:
+  GeminiStepEligibilityCheckerGeminiEnterpriseTest()
+      : glic::ScopedGlicProviderOverride(
+            glic::GlicProvider::kGeminiEnterprise) {}
+};
+
+TEST_F(GeminiStepEligibilityCheckerGeminiEnterpriseTest,
+       FailsImmediatelyForGeminiEnterprise) {
+  ASSERT_EQ(glic::GetGlicProviderSpec(&profile()).GetSettingsSectionId(),
+            glic::kGeminiEnterpriseSettingsSectionId);
+  GeminiStepEligibilityChecker checker;
+  base::test::TestFuture<bool> future;
+
+  MakePrimaryAccountAvailable("test@example.com");
+
+  checker.CheckEligibility(profile(), future.GetCallback());
+
+  EXPECT_FALSE(future.Get());
 }
 
 TEST_F(GeminiStepEligibilityCheckerTest, FailsOnTimeout) {

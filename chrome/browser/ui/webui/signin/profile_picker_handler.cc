@@ -11,6 +11,7 @@
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "base/check_op.h"
+#include "base/containers/flat_set.h"
 #include "base/debug/dump_without_crashing.h"
 #include "base/files/file_path.h"
 #include "base/functional/bind.h"
@@ -49,8 +50,6 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/profiles/profile_management_types.h"
 #include "chrome/browser/ui/webui/profile_helper.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
 #include "chrome/browser/ui/webui/signin/signin_error_ui.h"
 #include "chrome/browser/ui/webui/signin/signin_ui_error.h"
 #include "chrome/browser/ui/webui/theme_source.h"
@@ -66,17 +65,17 @@
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/tribool.h"
 #include "components/startup_metric_utils/browser/startup_metric_utils.h"
-#include "components/sync/base/features.h"
+#include "components/subscription_eligibility/ai_subscription_tier_names.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/mojom/themes.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/color_utils.h"
@@ -167,10 +166,10 @@ std::pair<std::string, bool> GetAvatarIconUrlAndAvatarRingStatus(
     const ui::ColorProvider* color_provider,
     float scale) {
   int avatar_icon_size = avatar_icon_size_dip * scale;
-  std::string icon_url;
   bool has_gradient_ring = false;
-  if (base::FeatureList::IsEnabled(switches::kEnableAiSubscriptionAvatarRing) &&
-      entry->GetAiSubscriptionTier() > 0 && color_provider) {
+  if (GetAvatarAiDecorationForTier(entry->GetAiSubscriptionTier())
+          .show_decoration &&
+      color_provider) {
     // Note: For linear gradient ring to appear, the corresponding profile
     // needs to have been loaded at least once (with
     // kEnableAiSubscriptionAvatarRing), so that the corresponding profile
@@ -254,13 +253,13 @@ void OpenLearnMoreURL(bool is_profile_list_empty,
     return;
   }
 
-  browser->OpenURL(
-      content::OpenURLParams::CreateBrowserInitiated(
-          GURL(is_profile_list_empty
-                   ? chrome::kSigninOnDesktopLearnMoreURL
-                   : chrome::kAddNewProfileOnDesktopLearnMoreURL),
-          WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK),
-      /*navigation_handle_callback=*/{});
+  browser->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+                       GURL(is_profile_list_empty
+                                ? chrome::kSigninOnDesktopLearnMoreURL
+                                : chrome::kAddNewProfileOnDesktopLearnMoreURL),
+                       ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+                       ui::PAGE_TRANSITION_LINK),
+                   /*navigation_handle_callback=*/{});
 }
 
 }  // namespace
@@ -436,8 +435,7 @@ void ProfilePickerHandler::TryLaunchLockedProfile(
   // need to match the policy filter.
 
   // Reauth attempt.
-  if ((syncer::IsReplaceSyncPromosWithSignInPromosEnabled() &&
-       entry.GetSigninState() != SigninState::kNotSignedIn) ||
+  if (entry.GetSigninState() != SigninState::kNotSignedIn ||
       entry.CanBeManaged()) {
     // Glic version cannot run the reauth steps, show a dialog instead that
     // will redirect the user to the regular version of the picker.
@@ -732,19 +730,41 @@ void ProfilePickerHandler::HandleRemoveProfile(const base::ListValue& args) {
   // Do not use `this` after this point, it may be deleted.
 }
 
+namespace {
+
+ProfileOrderUpdateType ToProfileOrderUpdateType(
+    ProfilePickerOrderUpdateType picker_update_type) {
+  switch (picker_update_type) {
+    case ProfilePickerOrderUpdateType::kDragAndDrop:
+      return ProfileOrderUpdateType::kDragAndDrop;
+    case ProfilePickerOrderUpdateType::kContextMenuButton:
+      return ProfileOrderUpdateType::kContextMenuButton;
+  }
+}
+
+}  // namespace
+
 void ProfilePickerHandler::HandleUpdateProfileOrder(
     const base::ListValue& args) {
-  CHECK_EQ(2U, args.size());
+  CHECK_EQ(3U, args.size());
   CHECK(args[0].is_int());
   CHECK(args[1].is_int());
+  CHECK(args[2].is_int());
 
   int from_index = args[0].GetInt();
   int to_index = args[1].GetInt();
+  int update_type = args[2].GetInt();
   CHECK(from_index >= 0 && to_index >= 0);
+  CHECK_GE(update_type, 0);
+  CHECK_LE(update_type,
+           static_cast<int>(ProfilePickerOrderUpdateType::kMaxValue));
 
   g_browser_process->profile_manager()
       ->GetProfileAttributesStorage()
-      .UpdateProfilesOrderPref(from_index, to_index);
+      .UpdateProfilesOrderPref(
+          from_index, to_index,
+          ToProfileOrderUpdateType(
+              static_cast<ProfilePickerOrderUpdateType>(update_type)));
 }
 
 void ProfilePickerHandler::HandleOnLearnMoreClicked(
@@ -861,6 +881,21 @@ void ProfilePickerHandler::SetProfilesOrder(
   for (const ProfileAttributesEntry* entry : entries) {
     profiles_order_[entry->GetPath()] = index++;
   }
+  CHECK(IsProfilesOrderValid());
+}
+
+bool ProfilePickerHandler::IsProfilesOrderValid() const {
+  base::flat_set<size_t> indices_set;
+  for (const auto& [path, index] : profiles_order_) {
+    if (index >= profiles_order_.size()) {
+      return false;
+    }
+    auto [_, inserted] = indices_set.insert(index);
+    if (!inserted) {
+      return false;
+    }
+  }
+  return indices_set.size() == profiles_order_.size();
 }
 
 std::vector<ProfileAttributesEntry*>
@@ -933,6 +968,7 @@ void ProfilePickerHandler::AddProfileToListAndPushUpdates(
   // `insert()` to not corrput the map in case this happens.
   // https://crbug.com/40759222
   CHECK(it_and_whether_inserted.second, base::NotFatalUntil::M162);
+  CHECK(IsProfilesOrderValid());
 
   MaybeUpdateGuestMode();
   PushProfilesList();
@@ -957,6 +993,7 @@ void ProfilePickerHandler::RemoveProfileFromListAndPushUpdates(
       --it.second;
     }
   }
+  CHECK(IsProfilesOrderValid());
   MaybeUpdateGuestMode();
   FireWebUIListener("profile-removed", base::FilePathToValue(profile_path));
 }
@@ -1050,6 +1087,13 @@ void ProfilePickerHandler::OnProfileIsGlicEligibleChanged(
 void ProfilePickerHandler::OnProfileAiSubscriptionTierUpdated(
     const base::FilePath& profile_path,
     int tier) {
+  PushProfilesList();
+}
+
+void ProfilePickerHandler::OnProfilesOrderChanged() {
+  // Reset `profiles_order_` so that `GetProfilesAttributesForDisplay()`
+  // recomputes the order from `ProfileAttributesStorage`.
+  profiles_order_.clear();
   PushProfilesList();
 }
 

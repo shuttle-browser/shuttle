@@ -13,9 +13,6 @@
 #import "base/strings/sys_string_conversions.h"
 #import "components/contextual_search/contextual_search_metrics_recorder.h"
 #import "components/contextual_search/contextual_search_session_handle.h"
-#import "components/contextual_search/footprints/public/drive_disclaimer_controller.h"
-#import "components/contextual_search/footprints/public/fpop_service.h"
-#import "components/contextual_search/pref_names.h"
 #import "components/omnibox/browser/aim_eligibility_service.h"
 #import "components/omnibox/common/omnibox_features.h"
 #import "components/prefs/pref_service.h"
@@ -46,7 +43,6 @@
 #import "ios/chrome/common/NSString+Chromium.h"
 #import "ios/web/public/web_state.h"
 #import "ios/web/public/web_state_id.h"
-#import "services/network/public/cpp/shared_url_loader_factory.h"
 
 namespace {
 
@@ -77,6 +73,8 @@ std::optional<ComposeboxMode> ModeForToolMode(omnibox::ToolMode tool_mode) {
       return kCanvas;
     case omnibox::ToolMode::TOOL_MODE_DEEP_SEARCH:
       return kDeepSearch;
+    case omnibox::ToolMode::TOOL_MODE_GEMINI_PRO:
+      return kPTM;
     case omnibox::ToolMode::TOOL_MODE_IMAGE_GEN:
     case omnibox::ToolMode::TOOL_MODE_IMAGE_GEN_UPLOAD:
     case omnibox::ToolMode::TOOL_MODE_IMAGE_GEN_SELFIE:
@@ -96,6 +94,8 @@ omnibox::ToolMode ToolModeForComposeboxMode(ComposeboxMode mode,
       return omnibox::ToolMode::TOOL_MODE_CANVAS;
     case ComposeboxMode::kDeepSearch:
       return omnibox::ToolMode::TOOL_MODE_DEEP_SEARCH;
+    case ComposeboxMode::kPTM:
+      return omnibox::ToolMode::TOOL_MODE_GEMINI_PRO;
     case ComposeboxMode::kImageGeneration:
       return hasImage ? omnibox::ToolMode::TOOL_MODE_IMAGE_GEN_UPLOAD
                       : omnibox::ToolMode::TOOL_MODE_IMAGE_GEN;
@@ -146,23 +146,6 @@ ComposeboxUIConfig* ServerUIConfigFromInputState(
                                       toolsSectionHeader:toolsSectionHeader];
 }
 
-// Returns the DriveConsentState corresponding to the given DisclaimerStatus.
-contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
-    drive_picker::DriveDisclaimerController::DisclaimerStatus status) {
-  using DisclaimerStatus =
-      drive_picker::DriveDisclaimerController::DisclaimerStatus;
-  using DriveConsentState = contextual_search::DriveConsentState;
-
-  switch (status) {
-    case DisclaimerStatus::kAccepted:
-      return DriveConsentState::kConsent;
-    case DisclaimerStatus::kNotAccepted:
-      return DriveConsentState::kNotConsent;
-    case DisclaimerStatus::kRestricted:
-      return DriveConsentState::kRestricted;
-  }
-}
-
 }  // namespace
 
 @interface ComposeboxInputStateManager () <ComposeboxModeObserver,
@@ -201,12 +184,6 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
   base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
       _sessionHandle;
 
-  // Shared URL loader factory for network requests.
-  scoped_refptr<network::SharedURLLoaderFactory> _urlLoaderFactory;
-  // Controller for Drive privacy disclaimer verification.
-  std::unique_ptr<drive_picker::DriveDisclaimerController>
-      _driveDisclaimerController;
-
   // The underlying C++ model that manages the state.
   std::unique_ptr<contextual_search::InputStateModel> _inputStateModel;
   // The cached current input state.
@@ -236,31 +213,6 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
                 (contextual_search::ContextualSearchSessionHandle*)sessionHandle
                entrypoint:(ComposeboxEntrypoint)entrypoint
               isIncognito:(BOOL)isIncognito {
-  return [self initWithWebStateList:webStateList
-                         modeHolder:modeHolder
-                        prefService:prefService
-              aimEligibilityService:aimEligibilityService
-                    identityManager:identityManager
-                 templateURLService:templateURLService
-                      sessionHandle:sessionHandle
-                         entrypoint:entrypoint
-                        isIncognito:isIncognito
-                   urlLoaderFactory:nullptr];
-}
-
-- (instancetype)
-     initWithWebStateList:(WebStateList*)webStateList
-               modeHolder:(ComposeboxModeHolder*)modeHolder
-              prefService:(PrefService*)prefService
-    aimEligibilityService:(AimEligibilityService*)aimEligibilityService
-          identityManager:(signin::IdentityManager*)identityManager
-       templateURLService:(TemplateURLService*)templateURLService
-            sessionHandle:
-                (contextual_search::ContextualSearchSessionHandle*)sessionHandle
-               entrypoint:(ComposeboxEntrypoint)entrypoint
-              isIncognito:(BOOL)isIncognito
-         urlLoaderFactory:
-             (scoped_refptr<network::SharedURLLoaderFactory>)urlLoaderFactory {
   self = [super init];
   if (self) {
     // Initialize with local fallback config. These will be overwritten
@@ -278,7 +230,6 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
               _identityManager, self);
     }
     _templateURLService = templateURLService;
-    _urlLoaderFactory = urlLoaderFactory;
     // sessionHandle can be nil only in tests.
     if (sessionHandle) {
       _sessionHandle = sessionHandle->AsWeakPtr();
@@ -324,25 +275,6 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
   _searchEngineObserver.reset();
   _aimEligibilitySubscription = {};
   _metricsRecorder = nil;
-  _driveDisclaimerController.reset();
-  _urlLoaderFactory = nullptr;
-}
-
-- (drive_picker::DriveDisclaimerController*)driveDisclaimerController {
-  if (_driveDisclaimerController) {
-    return _driveDisclaimerController.get();
-  }
-  if (!_identityManager || !_urlLoaderFactory) {
-    return nullptr;
-  }
-  // Create FpopService (Footprints One Platform Service) to communicate
-  // with the Footprints backend for querying user privacy consent settings.
-  auto fpopService = contextual_search::FpopService::Create(_identityManager,
-                                                            _urlLoaderFactory);
-  _driveDisclaimerController =
-      std::make_unique<drive_picker::DriveDisclaimerController>(
-          std::move(fpopService));
-  return _driveDisclaimerController.get();
 }
 
 - (omnibox::ModelMode)activeModel {
@@ -670,18 +602,9 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
     (const signin::PrimaryAccountChangeEvent&)event {
   switch (event.GetEventTypeFor(signin::ConsentLevel::kSignin)) {
     case signin::PrimaryAccountChangeEvent::Type::kCleared:
-    case signin::PrimaryAccountChangeEvent::Type::kSet: {
-      // Immediately reset cached Drive consent state when switching accounts or
-      // signing out to prevent leaking the previous account's consent state
-      // while asynchronous FACS status queries are in flight.
-      if (_prefService) {
-        _prefService->SetInteger(
-            contextual_search::kDriveConsentState,
-            static_cast<int>(contextual_search::DriveConsentState::kNotReady));
-      }
+    case signin::PrimaryAccountChangeEvent::Type::kSet:
       [self updateSearchboxConfig];
       break;
-    }
     case signin::PrimaryAccountChangeEvent::Type::kNone:
       break;
   }
@@ -797,39 +720,11 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
   // the state.
   _inputStateModel->Initialize();
 
-  if (base::FeatureList::IsEnabled(
-          omnibox::kComposeboxDriveContextMenuOption)) {
-    if (base::FeatureList::IsEnabled(omnibox::kForceDriveDisclaimerAccepted)) {
-      [self onDriveDisclaimerChecked:drive_picker::DriveDisclaimerController::
-                                         DisclaimerStatus::kAccepted];
-    } else if (auto* controller = [self driveDisclaimerController]) {
-      __weak __typeof(self) weakSelf = self;
-      controller->CheckDisclaimerStatusAsync(base::BindOnce(
-          ^(drive_picker::DriveDisclaimerController::DisclaimerStatus status) {
-            [weakSelf onDriveDisclaimerChecked:status];
-          }));
-    } else {
-      [self onDriveDisclaimerChecked:drive_picker::DriveDisclaimerController::
-                                         DisclaimerStatus::kRestricted];
-    }
-  }
-
   // iOS doesn't rely on the active hint text from `_inputState`, UI config only
   // changes when `searchboxConfig` is updated.
   _cachedUIConfig =
       ServerUIConfigFromInputState(_inputStateModel->GetInputState());
 
-  [self.delegate inputStateManagerDidUpdateUIState:self];
-}
-
-- (void)onDriveDisclaimerChecked:
-    (drive_picker::DriveDisclaimerController::DisclaimerStatus)status {
-  if (!_prefService) {
-    return;
-  }
-  _prefService->SetInteger(
-      contextual_search::kDriveConsentState,
-      static_cast<int>(ConsentStateFromDisclaimerStatus(status)));
   [self.delegate inputStateManagerDidUpdateUIState:self];
 }
 
@@ -938,20 +833,13 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
     return NO;
   }
 
-  // Enforce signed-in status and restriction check for the Drive option before
-  // evaluating server-side or local rules.
+  // Enforce signed-in status for the Drive option before evaluating server-side
+  // or local rules.
   if (attachmentOption == ComposeboxAttachmentOption::kDrive) {
     BOOL hasPrimaryAccount =
         _identityManager &&
         _identityManager->HasPrimaryAccount(signin::ConsentLevel::kSignin);
     if (!hasPrimaryAccount) {
-      return NO;
-    }
-
-    if (_prefService &&
-        _prefService->GetInteger(contextual_search::kDriveConsentState) ==
-            static_cast<int>(
-                contextual_search::DriveConsentState::kRestricted)) {
       return NO;
     }
   }
@@ -1007,6 +895,7 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
       }
       break;
     case ComposeboxMode::kAIM:
+    case ComposeboxMode::kPTM:
       break;
     case ComposeboxMode::kRegularSearch:
       if (_entrypoint == ComposeboxEntrypoint::kCobrowse) {
@@ -1037,10 +926,6 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
 
 // Whether the given `model` is allowed.
 - (BOOL)isModelAllowed:(omnibox::ModelMode)model {
-  if ([ComposeboxUIInputState allToolsEnabled]) {
-    return YES;
-  }
-
   // `MODEL_MODE_UNSPECIFIED` represents having no explicit model selection
   // (e.g. when resetting on return to regular search) and is always allowed,
   // even though it is not part of `_inputState->allowed_models`.
@@ -1068,10 +953,6 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
 
 // Whether the given `model` is disabled.
 - (BOOL)isModelDisabled:(omnibox::ModelMode)model {
-  if ([ComposeboxUIInputState allToolsEnabled]) {
-    return NO;
-  }
-
   // Models are only available from server state.
   if (!ShowComposeboxAdditionalAdvancedTools() ||
       !EnableComposeboxServerSideState()) {
@@ -1230,7 +1111,9 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
   BOOL canCreateImage = [self isToolAllowed:ComposeboxMode::kImageGeneration];
   BOOL canUseCanvas = [self isToolAllowed:ComposeboxMode::kCanvas];
   BOOL canUseDeepSearch = [self isToolAllowed:ComposeboxMode::kDeepSearch];
-  return canUseCanvas || canCreateImage || canUseDeepSearch || canSearchWithAI;
+  BOOL canUsePTM = [self isToolAllowed:ComposeboxMode::kPTM];
+  return canUseCanvas || canCreateImage || canUseDeepSearch || canUsePTM ||
+         canSearchWithAI;
 }
 
 #pragma mark - Attachment Rules
@@ -1350,6 +1233,9 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
     case kDeepSearch:
       return std::ranges::contains(_inputState->allowed_tools,
                                    omnibox::ToolMode::TOOL_MODE_DEEP_SEARCH);
+    case kPTM:
+      return std::ranges::contains(_inputState->allowed_tools,
+                                   omnibox::ToolMode::TOOL_MODE_GEMINI_PRO);
     case kAIM:
       return [self isEligibleToAIM];
     case kRegularSearch:
@@ -1372,6 +1258,8 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
       return _aimEligibilityService
                  ? _aimEligibilityService->IsDeepSearchEligible()
                  : NO;
+    case kPTM:
+      return NO;
     case kAIM:
       return [self isEligibleToAIM];
     case kRegularSearch:
@@ -1398,6 +1286,9 @@ contextual_search::DriveConsentState ConsentStateFromDisclaimerStatus(
     case kDeepSearch:
       return std::ranges::contains(_inputState->disabled_tools,
                                    omnibox::ToolMode::TOOL_MODE_DEEP_SEARCH);
+    case kPTM:
+      return std::ranges::contains(_inputState->disabled_tools,
+                                   omnibox::ToolMode::TOOL_MODE_GEMINI_PRO);
     case kAIM:
     case kRegularSearch:
       return NO;

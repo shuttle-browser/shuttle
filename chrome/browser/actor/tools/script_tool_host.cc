@@ -12,6 +12,7 @@
 #include "chrome/browser/actor/actor_metrics.h"
 #include "chrome/browser/actor/actor_proto_conversion.h"
 #include "chrome/browser/actor/actor_surface.h"
+#include "chrome/browser/actor/actor_tab_data.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/aggregated_journal_render_frame_binder.h"
 #include "chrome/common/actor/action_result.h"
@@ -73,7 +74,9 @@ ScriptToolHost::ScriptToolHost(TaskId task_id,
     : Tool(task_id, tool_delegate),
       actor_surface_handle_(target_actor_surface_handle),
       target_document_id_(target_document_id),
-      action_(std::move(action)) {}
+      action_(std::move(action)) {
+  InitializePendingResult();
+}
 
 ScriptToolHost::~ScriptToolHost() {
   TearDown();
@@ -106,6 +109,20 @@ mojom::ActionResultPtr ScriptToolHost::TimeOfUseValidation(
     return MakeResult(mojom::ActionResultCode::kScriptToolInvocationFailed);
   }
 
+  if (base::FeatureList::IsEnabled(kActorScriptToolIdValidation)) {
+    // Pin the action to the tool that the target document reported under this
+    // name in the last observed page content, so that the renderer fails rather
+    // than running a different tool the page has since registered under the
+    // same name. If the last observation has no such tool (e.g., no
+    // observation was made), leave `tool_id` unset, and the renderer looks the
+    // tool up by name.
+    if (ActorTabData* tab_data = ActorTabData::From(actor_surface_handle_)) {
+      mojom::ScriptToolActionPtr& script_tool = action_->get_script_tool();
+      script_tool->tool_id = tab_data->GetLastObservedScriptToolId(
+          target_document_id_, script_tool->name);
+    }
+  }
+
   target_frame_tree_node_id_ = target_rfh->GetFrameTreeNodeId();
   target_document_ = target_rfh->GetWeakDocumentPtr();
   return MakeOkResult();
@@ -114,7 +131,7 @@ mojom::ActionResultPtr ScriptToolHost::TimeOfUseValidation(
 std::unique_ptr<ObservationDelayController>
 ScriptToolHost::GetObservationDelayer(
     ObservationDelayController::PageStabilityConfig page_stability_config) {
-  if (!base::FeatureList::IsEnabled(kActorScriptToolDelayObservation)) {
+  if (!pending_result_->requires_page_stabilization) {
     return nullptr;
   }
 
@@ -132,7 +149,6 @@ ScriptToolHost::GetObservationDelayer(
 }
 
 void ScriptToolHost::Invoke(ToolCallback callback) {
-  InitializePendingResult();
   auto* frame = target_document_.AsRenderFrameHostIfValid();
   CHECK(frame);
   CHECK(base::FeatureList::IsEnabled(blink::features::kWebMCP));
@@ -172,12 +188,6 @@ void ScriptToolHost::Invoke(ToolCallback callback) {
   ActorSurface* actor_surface = actor_surface_handle_.Get();
   CHECK(actor_surface);
   Observe(actor_surface->GetWebContents());
-  // TODO(b/567721071): Observe surface destruction instead of tab detach so
-  // headless surfaces are also handled.
-  if (tabs::TabInterface* tab = actor_surface_handle_.GetTabHandle().Get()) {
-    tab_will_detach_subscription_ = tab->RegisterWillDetach(base::BindRepeating(
-        &ScriptToolHost::OnTabWillBeRemoved, weak_ptr_factory_.GetWeakPtr()));
-  }
   timeout_timer_.Start(FROM_HERE, GetToolExecutionTimeout(),
                        base::BindOnce(&ScriptToolHost::OnToolTimeout,
                                       weak_ptr_factory_.GetWeakPtr()));
@@ -258,7 +268,7 @@ void ScriptToolHost::OnToolInvokedInOldDocument(mojom::ActionResultPtr result) {
 
   if (result && result->code == mojom::ActionResultCode::kOk) {
     result->requires_page_stabilization =
-        base::FeatureList::IsEnabled(kActorScriptToolDelayObservation);
+        pending_result_->requires_page_stabilization;
     result->screenshot_policy = pending_result_->screenshot_policy;
     result->page_content_policy = pending_result_->page_content_policy;
   }
@@ -416,13 +426,6 @@ void ScriptToolHost::DidFailLoad(content::RenderFrameHost* render_frame_host,
   }
 }
 
-void ScriptToolHost::OnTabWillBeRemoved(
-    tabs::TabInterface* tab,
-    tabs::TabInterface::DetachReason reason) {
-  PostErrorResult(std::move(tool_done_callback_),
-                  mojom::ActionResultCode::kTabWentAway, "Tab was closed");
-}
-
 void ScriptToolHost::RenderFrameDeleted(content::RenderFrameHost* rfh) {
   bool terminate_with_error = false;
   switch (lifecycle_) {
@@ -439,6 +442,11 @@ void ScriptToolHost::RenderFrameDeleted(content::RenderFrameHost* rfh) {
         terminate_with_error = true;
       }
       break;
+  }
+
+  // The page is going away, so no result will arrive.
+  if (web_contents()->IsBeingDestroyed()) {
+    terminate_with_error = true;
   }
 
   if (terminate_with_error) {
@@ -470,7 +478,6 @@ void ScriptToolHost::TearDown() {
   timeout_timer_.Stop();
   cross_document_timeout_timer_.Stop();
   Observe(nullptr);
-  tab_will_detach_subscription_ = {};
   target_document_render_frame_.reset();
   new_document_render_frame_.reset();
   weak_ptr_factory_.InvalidateWeakPtrs();
@@ -480,8 +487,6 @@ void ScriptToolHost::InitializePendingResult() {
   CHECK(!pending_result_);
   pending_result_ = mojom::ActionResult::New();
   pending_result_->code = mojom::ActionResultCode::kOk;
-  pending_result_->requires_page_stabilization =
-      base::FeatureList::IsEnabled(kActorScriptToolDelayObservation);
   pending_result_->script_tool_response = mojom::ScriptToolResponse::New();
   pending_result_->script_tool_response->input_arguments =
       action_->get_script_tool()->input_arguments;
@@ -497,6 +502,13 @@ void ScriptToolHost::InitializePendingResult() {
       base::FeatureList::IsEnabled(kActorScriptToolSkipPageContent)
           ? mojom::PageContentExtractionPolicy::kSkipped
           : mojom::PageContentExtractionPolicy::kRequired;
+  // TODO(crbug.com/555173199): Currently tools are a part of APC. We need to
+  // revisit with an option to only wait for stabilization of tools once tools
+  // are decoupled from an APC update.
+  pending_result_->requires_page_stabilization =
+      pending_result_->page_content_policy !=
+          mojom::PageContentExtractionPolicy::kSkipped ||
+      pending_result_->screenshot_policy != mojom::ScreenshotPolicy::kSkipped;
 }
 
 void ScriptToolHost::SetScriptToolOutput(const std::string& output) {

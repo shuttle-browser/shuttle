@@ -20,8 +20,10 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/values.h"
 #include "build/build_config.h"
+#include "content/browser/embedder_isolation_info.h"
 #include "content/browser/process_lock.h"
 #include "content/browser/renderer_host/debug_urls.h"
 #include "content/browser/renderer_host/frame_tree_node.h"
@@ -68,6 +70,7 @@
 #include "content/shell/browser/shell_browser_context.h"
 #include "content/shell/browser/shell_download_manager_delegate.h"
 #include "content/test/content_browser_test_utils_internal.h"
+#include "content/test/did_commit_navigation_interceptor.h"
 #include "content/test/mock_commit_deferring_condition.h"
 #include "content/test/mock_process_selection_deferring_condition_tester.h"
 #include "net/dns/mock_host_resolver.h"
@@ -4631,6 +4634,83 @@ IN_PROC_BROWSER_TEST_F(NavigationRequestBrowserTest,
   EXPECT_FALSE(origin.GetTupleOrPrecursorTupleIfOpaque().IsValid());
 }
 
+class NavigationRequestNonStandardErrorPageBrowserTest
+    : public NavigationRequestBrowserTest {
+ private:
+  base::test::ScopedFeatureList feature_list_{
+      // Enabled:
+      {
+          features::kSanitizeFailedSubframeNavigationUrls,
+          features::kSanitizeLocationHeadersDuringNavigation,
+      },
+      // Disabled:
+      {
+          features::kIsolateSubframeErrorPages,
+      }};
+};
+
+IN_PROC_BROWSER_TEST_F(NavigationRequestNonStandardErrorPageBrowserTest,
+                       SanitizeFinalURL) {
+  ASSERT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.test",
+                   "/set-header?Content-Security-Policy: frame-src "
+                   "http:")));
+  ASSERT_TRUE(ExecJs(shell(), R"(
+    const frame = document.createElement('iframe');
+    frame.src = '/title1.html';
+    document.body.appendChild(frame);
+  )"));
+  ASSERT_TRUE(WaitForLoadStop(shell()->web_contents()));
+  auto* root = contents()->GetPrimaryFrameTree().root();
+  ASSERT_EQ(1u, root->child_count());
+  const int process_id =
+      root->child_at(0)->current_frame_host()->GetProcess()->GetDeprecatedID();
+
+  class ErrorPageCommitObserver : public DidCommitNavigationInterceptor {
+   public:
+    explicit ErrorPageCommitObserver(WebContents* web_contents)
+        : DidCommitNavigationInterceptor(web_contents) {}
+
+    bool saw_commit() const { return saw_commit_; }
+
+    bool WillProcessDidCommitNavigation(
+        RenderFrameHost* render_frame_host,
+        NavigationRequest* navigation_request,
+        mojom::DidCommitProvisionalLoadParamsPtr* params,
+        mojom::DidCommitProvisionalLoadInterfaceParamsPtr* interface_params)
+        override {
+      EXPECT_FALSE(render_frame_host->IsInPrimaryMainFrame());
+      EXPECT_EQ(net::ERR_BLOCKED_BY_CSP, navigation_request->GetNetErrorCode());
+      EXPECT_EQ(1u, navigation_request->commit_params().redirect_params.size());
+      // Inspect the URL returned by the renderer, not just the outgoing IPC.
+      EXPECT_EQ(GURL(kBlockedURL), (*params)->url);
+      saw_commit_ = true;
+      return true;
+    }
+
+   private:
+    bool saw_commit_ = false;
+  } commit_observer(shell()->web_contents());
+
+  const GURL redirect_url(embedded_test_server()->GetURL(
+      "b.test", "/server-redirect?custom-scheme://host/private?secret=1"));
+  TestNavigationObserver navigation_observer(shell()->web_contents());
+  ASSERT_TRUE(ExecJs(
+      shell(),
+      JsReplace("document.querySelector('iframe').src = $1;", redirect_url)));
+  navigation_observer.Wait();
+  EXPECT_FALSE(navigation_observer.last_navigation_succeeded());
+  EXPECT_EQ(net::ERR_BLOCKED_BY_CSP, navigation_observer.last_net_error_code());
+  EXPECT_TRUE(commit_observer.saw_commit());
+
+  RenderFrameHostImpl* error_frame = root->child_at(0)->current_frame_host();
+  EXPECT_TRUE(error_frame->IsErrorDocument());
+  EXPECT_EQ(process_id, error_frame->GetProcess()->GetDeprecatedID());
+  EXPECT_EQ(kUnreachableWebDataURL, EvalJs(error_frame, "document.URL"));
+  EXPECT_EQ("null", EvalJs(error_frame, "self.origin"));
+}
+
 // Verify that when navigation 1, which starts in an initial siteless
 // SiteInstance and results in an error page, races with navigation 2, which
 // requires a dedicated process and wants to reuse an existing process,
@@ -5813,6 +5893,90 @@ IN_PROC_BROWSER_TEST_F(NavigationRequestBrowserTest,
       contents()->GetPrimaryMainFrame()->GetLastCommittedOrigin();
   EXPECT_EQ(data_tentative_origin_to_commit.value(), data_committed_origin);
   EXPECT_EQ(url_info_origin.value(), data_committed_origin);
+}
+
+// The embedder requests unique-instance isolation only for the iframe
+// document. An about:blank document gets the origin and the isolation of the
+// document that navigates to it. When the iframe document navigates, this holds
+// in the iframe, in the top frame and in a popup that keeps its opener. When
+// the embedder navigates the iframe, about:blank gets no isolation.
+IN_PROC_BROWSER_TEST_F(NavigationRequestBrowserTest,
+                       AboutBlankFromUniqueInstanceKeepsIsolation) {
+  enum class Initiator { kIsolatedFrame, kEmbedder };
+  enum class BlankTarget { kOwnFrame, kTopFrame, kPopup };
+  struct TestCase {
+    std::string_view name;
+    Initiator initiator;
+    BlankTarget target;
+    std::string_view navigation_script;
+  };
+  constexpr TestCase kTestCases[] = {
+      {.name = "own frame",
+       .initiator = Initiator::kIsolatedFrame,
+       .target = BlankTarget::kOwnFrame,
+       .navigation_script = "location = 'about:blank';"},
+      {.name = "top frame",
+       .initiator = Initiator::kIsolatedFrame,
+       .target = BlankTarget::kTopFrame,
+       .navigation_script = "top.location = 'about:blank';"},
+      {.name = "popup that keeps its opener",
+       .initiator = Initiator::kIsolatedFrame,
+       .target = BlankTarget::kPopup,
+       .navigation_script = "popup.location = 'about:blank';"},
+      {.name = "embedder navigates the iframe",
+       .initiator = Initiator::kEmbedder,
+       .target = BlankTarget::kOwnFrame,
+       .navigation_script = "frames[0].location = 'about:blank';"},
+  };
+
+  for (const TestCase& test_case : kTestCases) {
+    SCOPED_TRACE(test_case.name);
+    ASSERT_TRUE(NavigateToURL(
+        shell(), embedded_test_server()->GetURL(
+                     "a.com", "/cross_site_iframe_factory.html?a(a)")));
+    FrameTreeNode* child =
+        contents()->GetPrimaryFrameTree().root()->child_at(0);
+    NavigationController::LoadURLParams params(
+        embedded_test_server()->GetURL("b.com", "/title1.html"));
+    params.frame_tree_node_id = child->frame_tree_node_id();
+    params.requests_unique_instance_isolation = true;
+    TestNavigationObserver isolated_observer(contents());
+    contents()->GetController().LoadURLWithParams(params);
+    isolated_observer.Wait();
+    RenderFrameHost* isolated_frame = child->current_frame_host();
+    ASSERT_TRUE(HasUniqueInstanceIsolation(isolated_frame));
+
+    RenderFrameHost* initiator_frame =
+        test_case.initiator == Initiator::kEmbedder
+            ? contents()->GetPrimaryMainFrame()
+            : isolated_frame;
+    const url::Origin initiator_origin =
+        initiator_frame->GetLastCommittedOrigin();
+    const EmbedderIsolationInfo initiator_isolation =
+        static_cast<SiteInstanceImpl*>(initiator_frame->GetSiteInstance())
+            ->GetSiteInfo()
+            .embedder_isolation_info();
+
+    WebContents* blank_contents = contents();
+    if (test_case.target == BlankTarget::kPopup) {
+      ShellAddedObserver popup_observer;
+      ASSERT_TRUE(ExecJs(isolated_frame, "window.popup = window.open();"));
+      blank_contents = popup_observer.GetShell()->web_contents();
+    }
+    TestNavigationObserver blank_observer(blank_contents);
+    ASSERT_TRUE(ExecJs(initiator_frame, test_case.navigation_script));
+    blank_observer.Wait();
+
+    RenderFrameHost* blank_frame = test_case.target == BlankTarget::kOwnFrame
+                                       ? child->current_frame_host()
+                                       : blank_contents->GetPrimaryMainFrame();
+    EXPECT_EQ(GURL(url::kAboutBlankURL), blank_frame->GetLastCommittedURL());
+    EXPECT_EQ(initiator_origin, blank_frame->GetLastCommittedOrigin());
+    EXPECT_EQ(initiator_isolation,
+              static_cast<SiteInstanceImpl*>(blank_frame->GetSiteInstance())
+                  ->GetSiteInfo()
+                  .embedder_isolation_info());
+  }
 }
 
 // Tests that on reload of a POST request, the HTTP `Origin` header is set

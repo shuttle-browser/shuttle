@@ -10,7 +10,6 @@
 #include "base/compiler_specific.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/timer/timer.h"
 #include "components/fcm/engine/fcm_stats_recorder_impl.h"
 #include "components/gcm_driver/gcm_client.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -40,7 +39,8 @@ class FakeGCMClient : public GCMClient {
   static std::string GenerateGCMRegistrationID(
       const std::vector<std::string>& sender_ids);
   static std::string GenerateInstanceIDToken(
-      const std::string& authorized_entity, const std::string& scope);
+      const std::string& authorized_entity,
+      const std::string& scope);
 
   FakeGCMClient(const scoped_refptr<base::SequencedTaskRunner>& ui_thread,
                 const scoped_refptr<base::SequencedTaskRunner>& io_thread);
@@ -78,8 +78,6 @@ class FakeGCMClient : public GCMClient {
   void SetRecording(bool recording) override;
   void ClearActivityLogs() override;
   GCMStatistics GetStatistics() const override;
-  void UpdateHeartbeatTimer(
-      std::unique_ptr<base::RetainingOneShotTimer> timer) override;
   void AddInstanceIDData(const std::string& app_id,
                          const std::string& instance_id,
                          const std::string& extra_data) override;
@@ -87,8 +85,6 @@ class FakeGCMClient : public GCMClient {
   void GetInstanceIDData(const std::string& app_id,
                          std::string* instance_id,
                          std::string* extra_data) override;
-  void AddHeartbeatInterval(const std::string& scope, int interval_ms) override;
-  void RemoveHeartbeatInterval(const std::string& scope) override;
 
   // Initiate the start that has been delayed.
   // Called on UI thread.
@@ -117,8 +113,6 @@ class FakeGCMClient : public GCMClient {
   void MessagesDeleted(const std::string& app_id);
   void MessageSendError(const std::string& app_id,
                         const SendErrorDetails& send_error_details);
-  void SendAcknowledgement(const std::string& app_id,
-                           const std::string& message_id);
 
   raw_ptr<Delegate> delegate_;
   std::string product_category_for_subtypes_;

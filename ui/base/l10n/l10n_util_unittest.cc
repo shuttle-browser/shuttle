@@ -20,6 +20,7 @@
 #include "base/i18n/case_conversion.h"
 #include "base/i18n/icubridge/supported_locales.h"
 #include "base/i18n/language_tag.h"
+#include "base/i18n/language_tag_list_helper.h"
 #include "base/i18n/rtl.h"
 #include "base/i18n/tag_converters.h"
 #include "base/i18n/test/scoped_icu_locale.h"
@@ -39,6 +40,10 @@
 #include "ui/base/grit/ui_base_test_resources.h"
 #include "ui/base/l10n/l10n_util_collator.h"
 #include "ui/base/ui_base_paths.h"
+
+#if BUILDFLAG(IS_ANDROID)
+#include "ui/base/l10n/l10n_util_android.h"
+#endif
 
 #if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_APPLE)
 #include <cstdlib>
@@ -305,8 +310,6 @@ TEST_F(L10nUtilTest, GetAppLocaleBasicTest) {
 TEST_F(L10nUtilTest, GetAppLocale_NoPlatformHasDefaultLocale) {
   if (!kPlatformHasDefaultLocale) {
     SetUpLocales(kDefaultLocalesOnDisk);
-    // Keep a copy of ICU's default locale before we overwrite it.
-    const std::string original_locale = base::i18n::GetConfiguredLocale();
 
     // ChromeOS & embedded use only browser prefs in GetApplicationLocale(),
     // ignoring the environment, and default to en-US. Other platforms honor
@@ -783,20 +786,27 @@ TEST_F(L10nUtilTest, IsAcceptLanguageDisplayable) {
 
 TEST_F(L10nUtilTest, KeepAcceptedLanguages) {
   // All valid languages.
-  EXPECT_EQ(l10n_util::KeepAcceptedLanguages({"en", "es", "fr"}),
-            std::vector<std::string>({"en", "es", "fr"}));
-  // iw now matches he.
-  EXPECT_EQ(l10n_util::KeepAcceptedLanguages({"en", "es", "iw"}),
-            std::vector<std::string>({"en", "es", "iw"}));
+  EXPECT_THAT(l10n_util::KeepAcceptedLanguages(
+                  base::i18n::GetLanguageTagListFromString("en,es,fr")),
+              ElementsAre(GetKnownLanguageTag("en"), GetKnownLanguageTag("es"),
+                          GetKnownLanguageTag("fr")));
+  // iw is parsed as he.
+  EXPECT_THAT(l10n_util::KeepAcceptedLanguages(
+                  base::i18n::GetLanguageTagListFromString("en,es,iw")),
+              ElementsAre(GetKnownLanguageTag("en"), GetKnownLanguageTag("es"),
+                          GetKnownLanguageTag("he")));
   // All invalid languages except iw.
-  EXPECT_EQ(l10n_util::KeepAcceptedLanguages({"iw", "ch_ZN"}),
-            std::vector<std::string>({"iw"}));
+  EXPECT_THAT(l10n_util::KeepAcceptedLanguages(
+                  base::i18n::GetLanguageTagListFromString("iw,ch_ZN")),
+              ElementsAre(GetKnownLanguageTag("he")));
   // Empty input.
-  EXPECT_EQ(l10n_util::KeepAcceptedLanguages({}), std::vector<std::string>{});
+  EXPECT_THAT(l10n_util::KeepAcceptedLanguages({}), testing::IsEmpty());
   // Maintain languages order.
-  EXPECT_EQ(
-      l10n_util::KeepAcceptedLanguages({"en", "aa", "es", "iw", "fr", "xx"}),
-      std::vector<std::string>({"en", "es", "iw", "fr"}));
+  EXPECT_THAT(
+      l10n_util::KeepAcceptedLanguages(
+          base::i18n::GetLanguageTagListFromString("en,aa,es,iw,fr,xx")),
+      ElementsAre(GetKnownLanguageTag("en"), GetKnownLanguageTag("es"),
+                  GetKnownLanguageTag("he"), GetKnownLanguageTag("fr")));
 }
 
 TEST_F(L10nUtilTest, FormatStringComputeCorrectOffsetInRTL) {
@@ -806,8 +816,7 @@ TEST_F(L10nUtilTest, FormatStringComputeCorrectOffsetInRTL) {
   // Use a format string that contains Strong RTL Chars.
   const std::u16string kFormatString(u"كلمة مرور $1");
   std::vector<size_t> offsets;
-  std::u16string formatted_string =
-      l10n_util::FormatString(kFormatString, {u"Replacement"}, &offsets);
+  l10n_util::FormatString(kFormatString, {u"Replacement"}, &offsets);
   ASSERT_FALSE(offsets.empty());
   // On Linux, an extra base::i18n::kRightToLeftMark character is appended for
   // the text rendering engine to render the string correctly. This should be
@@ -887,6 +896,24 @@ TEST_F(L10nUtilTest, AllLegacyAcceptLanguagesWork) {
     EXPECT_TRUE(l10n_util::IsPossibleAcceptLanguage(locale)) << locale;
   }
 }
+
+#if BUILDFLAG(IS_ANDROID)
+TEST_F(L10nUtilTest, SetRtlForTestingInvalidatesIsLayoutRtlCache) {
+  const bool initial_rtl = l10n_util::IsLayoutRtl();
+
+  l10n_util::SetRtlForTesting(true);
+  EXPECT_TRUE(l10n_util::IsLayoutRtl());
+
+  l10n_util::SetRtlForTesting(false);
+  EXPECT_FALSE(l10n_util::IsLayoutRtl());
+
+  l10n_util::SetRtlForTesting(true);
+  EXPECT_TRUE(l10n_util::IsLayoutRtl());
+
+  l10n_util::SetRtlForTesting(initial_rtl);
+  EXPECT_EQ(initial_rtl, l10n_util::IsLayoutRtl());
+}
+#endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace
 }  // namespace l10n_util

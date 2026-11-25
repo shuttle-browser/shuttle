@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
 
 #include "base/barrier_closure.h"
 #include "base/base64url.h"
@@ -20,6 +21,7 @@
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/enterprise/common/proto/connectors.pb.h"
+#include "components/enterprise/common/proto/synced/browser_events.pb.h"
 #include "components/enterprise/connectors/core/reporting_utils.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/core/browser/intelligent_scan_delegate.h"
@@ -694,6 +696,11 @@ RealTimeUrlLookupServiceBase::MaybeGetLlamaForcedTriggerCapability() const {
   return capability;
 }
 
+std::optional<chrome::cros::reporting::proto::EventInitiatorInfo>
+RealTimeUrlLookupServiceBase::GetEventInitiator(SessionID tab_id) const {
+  return std::nullopt;
+}
+
 void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
     const GURL& url,
     bool is_sampled_report,
@@ -739,6 +746,14 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
   if (!content_area_account_email.empty()) {
     request->set_content_area_account_email(
         std::move(content_area_account_email));
+  }
+
+  // Left unset when no initiator is known so the server can distinguish
+  // "no actor / human" from an explicit actor. Resolved synchronously so
+  // main-frame navigations incur zero additional latency.
+  if (std::optional<chrome::cros::reporting::proto::EventInitiatorInfo>
+          initiator = GetEventInitiator(tab_id)) {
+    *request->mutable_initiator() = std::move(*initiator);
   }
 
   *request->mutable_population() = get_user_population_callback_.Run();
@@ -797,9 +812,9 @@ void RealTimeUrlLookupServiceBase::StartFillingRequestProto(
                                         : network_context_getter_.Run();
 
   bool should_resolve_dns =
-      base::FeatureList::IsEnabled(kSafeBrowsingWaitForDnsForRealTimeLookup) &&
       network_context && url.is_valid() && request->referrer_chain_size() > 0 &&
-      request->referrer_chain(0).ip_addresses_size() == 0;
+      request->referrer_chain(0).ip_addresses_size() == 0 &&
+      base::FeatureList::IsEnabled(kSafeBrowsingWaitForDnsForRealTimeLookup);
 
   int num_tasks =
       (should_fetch_local_ips ? 1 : 0) + (should_resolve_dns ? 1 : 0);

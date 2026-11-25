@@ -20,7 +20,16 @@ import java.util.List;
 @NullMarked
 public interface TabListDataObserver {
     /** Types of property updates for granular viewholder payload invalidation. */
-    @IntDef({PayloadType.PIN_STATE, PayloadType.SELECTION, PayloadType.GROUP_MEMBERSHIP})
+    @IntDef({
+        PayloadType.PIN_STATE,
+        PayloadType.SELECTION,
+        PayloadType.GROUP_MEMBERSHIP,
+        PayloadType.TITLE,
+        PayloadType.COLOR,
+        PayloadType.COLLAPSED,
+        PayloadType.TAB_GROUP_ORDER,
+        PayloadType.MULTI_SELECTION
+    })
     @Retention(RetentionPolicy.SOURCE)
     @Target(ElementType.TYPE_USE)
     @interface PayloadType {
@@ -32,6 +41,24 @@ public interface TabListDataObserver {
 
         /** Updates tab group membership or member count. */
         int GROUP_MEMBERSHIP = 2;
+
+        /** Updates the tab group title. */
+        int TITLE = 3;
+
+        /**
+         * Updates the tab group card color, color icon, accessibility descriptions, and 2x2
+         * thumbnail.
+         */
+        int COLOR = 4;
+
+        /** Updates the tab group header collapse state. */
+        int COLLAPSED = 5;
+
+        /** Updates tab order within a group (e.g. composite group thumbnail). */
+        int TAB_GROUP_ORDER = 6;
+
+        /** Updates multi-selection state. */
+        int MULTI_SELECTION = 7;
     }
 
     /**

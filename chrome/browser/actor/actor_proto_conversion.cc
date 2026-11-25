@@ -36,6 +36,7 @@
 #include "chrome/browser/actor/tools/autofill/attempt_form_filling/attempt_form_filling_tool_request.h"
 #include "chrome/browser/actor/tools/click_tool_request.h"
 #include "chrome/browser/actor/tools/drag_and_release_tool_request.h"
+#include "chrome/browser/actor/tools/execute_js_tool_request.h"
 #include "chrome/browser/actor/tools/file_upload_tool_request.h"
 #include "chrome/browser/actor/tools/gemini_panel_tool_request.h"
 #include "chrome/browser/actor/tools/history_tool_request.h"
@@ -89,7 +90,7 @@
 #include "net/base/schemeful_site.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 #if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
@@ -120,6 +121,7 @@ using apc::CloseWindowAction;
 using apc::CreateTabAction;
 using apc::CreateWindowAction;
 using apc::DragAndReleaseAction;
+using apc::ExecuteJsAction;
 using apc::HistoryBackAction;
 using apc::HistoryForwardAction;
 using apc::LoadAndExtractContentAction;
@@ -133,11 +135,13 @@ using apc::SelectAction;
 using apc::TranslatePageAction;
 using apc::TypeAction;
 using apc::WaitAction;
+using ::optimization_guide::AIPageContentExtractionStatus;
 using ::optimization_guide::DocumentIdentifierUserData;
 using ::page_content_annotations::FetchPageContextError;
 using ::page_content_annotations::FetchPageContextOptions;
 using ::page_content_annotations::FetchPageContextResult;
 using ::page_content_annotations::FetchPageContextResultCallbackArg;
+using ::page_content_annotations::ScreenshotCaptureStatus;
 using ::tabs::TabHandle;
 using ::tabs::TabInterface;
 
@@ -440,13 +444,19 @@ std::unique_ptr<ToolRequest> CreateSelectRequest(const SelectAction& action) {
 
 std::unique_ptr<ToolRequest> CreateNavigateRequest(
     const NavigateAction& action) {
-  ActorSurfaceHandle actor_surface_handle = GetActorSurfaceHandle(action);
-  if (!action.has_url() || actor_surface_handle.is_null()) {
+  if (!action.has_url()) {
     return nullptr;
   }
 
-  return std::make_unique<NavigateToolRequest>(actor_surface_handle,
-                                               GURL(action.url()));
+  ActorSurfaceHandle actor_surface_handle = GetActorSurfaceHandle(action);
+  // A navigate either names the tab to navigate, or opens a new tab (in the
+  // most recently active window).
+  if (actor_surface_handle.is_null() != action.has_new_surface()) {
+    return nullptr;
+  }
+
+  return std::make_unique<NavigateToolRequest>(
+      actor_surface_handle, GURL(action.url()), action.has_new_surface());
 }
 
 std::unique_ptr<ToolRequest> CreateCreateTabRequest(
@@ -459,10 +469,10 @@ std::unique_ptr<ToolRequest> CreateCreateTabRequest(
 
   // TODO(bokan): Is the foreground bit always set? If not, should this return
   // an error or default to what? For now we default to foreground.
-  WindowOpenDisposition disposition =
+  ::ui::mojom::WindowOpenDisposition disposition =
       !action.has_foreground() || action.foreground()
-          ? WindowOpenDisposition::kNewForegroundTab
-          : WindowOpenDisposition::kNewBackgroundTab;
+          ? ::ui::mojom::WindowOpenDisposition::kNewForegroundTab
+          : ::ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
 
   return std::make_unique<CreateTabToolRequest>(window_id, disposition);
 }
@@ -485,7 +495,6 @@ std::unique_ptr<ToolRequest> CreateCloseTabRequest(
   return std::make_unique<CloseTabToolRequest>(actor_surface_handle);
 }
 
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
 std::unique_ptr<ToolRequest> CreateCreateWindowRequest(
     const CreateWindowAction& action) {
   return std::make_unique<CreateWindowToolRequest>();
@@ -509,6 +518,7 @@ std::unique_ptr<ToolRequest> CreateActivateWindowRequest(
   return std::make_unique<ActivateWindowToolRequest>(action.window_id());
 }
 
+#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
 std::unique_ptr<ToolRequest> CreateLoadAndExtractContentRequest(
     const LoadAndExtractContentAction& action) {
   if (!base::FeatureList::IsEnabled(
@@ -831,6 +841,39 @@ std::unique_ptr<ToolRequest> CreateScriptToolRequest(
       action.input_arguments());
 }
 
+base::expected<std::unique_ptr<ToolRequest>, mojom::ActionResultCode>
+CreateExecuteJsRequest(const ExecuteJsAction& action) {
+  if (!base::FeatureList::IsEnabled(actor::kActorExecuteJsTool)) {
+    return base::unexpected(mojom::ActionResultCode::kToolUnknown);
+  }
+
+  const ActorSurfaceHandle actor_surface_handle = GetActorSurfaceHandle(action);
+  if (actor_surface_handle.is_null()) {
+    return base::unexpected(mojom::ActionResultCode::kTabWentAway);
+  }
+
+  if (action.script_code().empty()) {
+    return base::unexpected(mojom::ActionResultCode::kArgumentsInvalid);
+  }
+
+  std::optional<base::UnguessableToken> document_identifier =
+      base::UnguessableToken::DeserializeFromString(
+          action.document_identifier().serialized_token());
+  if (!document_identifier) {
+    return nullptr;
+  }
+
+  base::TimeDelta timeout = kExecuteJsDefaultTimeout;
+  if (action.timeout_ms() > 0) {
+    timeout =
+        std::min(base::Milliseconds(action.timeout_ms()), kExecuteJsMaxTimeout);
+  }
+
+  return std::make_unique<ExecuteJsToolRequest>(
+      actor_surface_handle, *document_identifier, action.script_code(),
+      base::checked_cast<uint32_t>(timeout.InMilliseconds()));
+}
+
 std::unique_ptr<ToolRequest> CreateMediaControlRequest(
     const MediaControlAction& action) {
   const ActorSurfaceHandle actor_surface_handle = GetActorSurfaceHandle(action);
@@ -994,6 +1037,10 @@ CreateToolRequest(const optimization_guide::proto::Action& action) {
       const ScriptToolAction& script_tool_action = action.script_tool();
       return CreateScriptToolRequest(script_tool_action);
     }
+    case optimization_guide::proto::Action::kExecuteJs: {
+      const ExecuteJsAction& execute_js_action = action.execute_js();
+      return CreateExecuteJsRequest(execute_js_action);
+    }
     case optimization_guide::proto::Action::kScrollTo: {
       const ScrollToAction& scroll_to_action = action.scroll_to();
       return CreateScrollToRequest(scroll_to_action);
@@ -1007,7 +1054,6 @@ CreateToolRequest(const optimization_guide::proto::Action& action) {
           action.translate_page();
       return CreateTranslatePageRequest(translate_page_action);
     }
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     case optimization_guide::proto::Action::kCreateWindow: {
       const CreateWindowAction& create_window_action = action.create_window();
       return CreateCreateWindowRequest(create_window_action);
@@ -1021,6 +1067,7 @@ CreateToolRequest(const optimization_guide::proto::Action& action) {
           action.activate_window();
       return CreateActivateWindowRequest(activate_window_action);
     }
+#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     case optimization_guide::proto::Action::kLoadAndExtractContent: {
       const LoadAndExtractContentAction& load_and_extract_content_action =
           action.load_and_extract_content();
@@ -1072,12 +1119,16 @@ constexpr absl::Overload kGetCapabilityFn{
                  apc::RuleMetadata::CAPABILITY_ATTEMPT_FORM_FILLING>,
     ToCapability<AttemptOtpFillingToolRequest,
                  apc::RuleMetadata::CAPABILITY_ATTEMPT_OTP_FILLING>,
+    ToCapability<ChangePasswordToolRequest,
+                 apc::RuleMetadata::CAPABILITY_CHANGE_PASSWORD>,
     ToCapability<ClickToolRequest, apc::RuleMetadata::CAPABILITY_CLICK>,
     ToCapability<CloseTabToolRequest, apc::RuleMetadata::CAPABILITY_CLOSE_TAB>,
     ToCapability<CreateTabToolRequest,
                  apc::RuleMetadata::CAPABILITY_CREATE_TAB>,
     ToCapability<DragAndReleaseToolRequest,
                  apc::RuleMetadata::CAPABILITY_DRAG_AND_RELEASE>,
+    ToCapability<ExecuteJsToolRequest,
+                 apc::RuleMetadata::CAPABILITY_EXECUTE_JS>,
     ToCapability<FileUploadToolRequest,
                  apc::RuleMetadata::CAPABILITY_CLICK_TO_UPLOAD>,
     ToCapability<HistoryBackToolRequest, apc::RuleMetadata::CAPABILITY_BACK>,
@@ -1100,20 +1151,19 @@ constexpr absl::Overload kGetCapabilityFn{
                  apc::RuleMetadata::CAPABILITY_TRANSLATE_PAGE>,
     ToCapability<TypeToolRequest, apc::RuleMetadata::CAPABILITY_TYPE>,
     ToCapability<WaitToolRequest, apc::RuleMetadata::CAPABILITY_WAIT>,
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     ToCapability<ActivateWindowToolRequest,
                  apc::RuleMetadata::CAPABILITY_ACTIVATE_WINDOW>,
     ToCapability<CloseWindowToolRequest,
                  apc::RuleMetadata::CAPABILITY_CLOSE_WINDOW>,
     ToCapability<CreateWindowToolRequest,
                  apc::RuleMetadata::CAPABILITY_CREATE_WINDOW>,
+#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     ToCapability<LoadAndExtractContentToolRequest,
                  apc::RuleMetadata::CAPABILITY_LOAD_AND_EXTRACT_CONTENT>,
 #endif  // !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
 
     // Tools that don't have an `ActuationCapability` in the proto yet.
     ToUnknown<AddBookmarkToolRequest>,
-    ToUnknown<ChangePasswordToolRequest>,
     ToUnknown<CloseGeminiPanelToolRequest>,
     ToUnknown<EnterFullscreenToolRequest>,
     ToUnknown<ExitFullscreenToolRequest>,
@@ -1502,7 +1552,8 @@ void FetchCallback(
               : fetch_result.annotated_page_content_result.error().status);
   tab_observation->set_annotated_page_content_result(
       has_apc ? apc::TabObservation::ANNOTATED_PAGE_CONTENT_OK
-              : apc::TabObservation::ANNOTATED_PAGE_CONTENT_ERROR);
+              : ToAnnotatedPageContentResult(
+                    fetch_result.annotated_page_content_result.error().status));
 
   bool has_screenshot = fetch_result.screenshot_result.has_value();
   bool screenshot_required =
@@ -1516,7 +1567,7 @@ void FetchCallback(
   tab_observation->set_screenshot_result(
       has_screenshot || !screenshot_required
           ? apc::TabObservation::SCREENSHOT_OK
-          : apc::TabObservation::SCREENSHOT_ERROR);
+          : ToScreenshotResult(fetch_result.screenshot_result.error().status));
 
   // Context for actor observations should always have an APC. It should also
   // have a screenshot unless it was skipped.
@@ -1578,6 +1629,48 @@ TabObservationResultOverrideCallback&
 GetTabObservationResultOverrideForTesting() {
   static base::NoDestructor<TabObservationResultOverrideCallback> callback;
   return *callback;
+}
+
+apc::TabObservation::AnnotatedPageContentResult ToAnnotatedPageContentResult(
+    AIPageContentExtractionStatus status) {
+  switch (status) {
+    case AIPageContentExtractionStatus::kSuccess:
+      return apc::TabObservation::ANNOTATED_PAGE_CONTENT_OK;
+    case AIPageContentExtractionStatus::kMainFrameTimeout:
+      return apc::TabObservation::ANNOTATED_PAGE_CONTENT_TIMEOUT;
+    case AIPageContentExtractionStatus::kUnknown:
+    case AIPageContentExtractionStatus::kMainFrameNotLive:
+    case AIPageContentExtractionStatus::
+        kMainFrameEmptyOrDisconnectedRendererResponse:
+    case AIPageContentExtractionStatus::kMainFrameRedacted:
+    case AIPageContentExtractionStatus::kMainFrameTornDown:
+    case AIPageContentExtractionStatus::kAttributeTypeMismatch:
+    case AIPageContentExtractionStatus::kMissingIframeData:
+    case AIPageContentExtractionStatus::kSubframeTornDown:
+    case AIPageContentExtractionStatus::kIframeNotChildOfCurrentFrame:
+    case AIPageContentExtractionStatus::kRemoteFrameHasChildNodes:
+    case AIPageContentExtractionStatus::kRemoteFrameHasInlineContent:
+    case AIPageContentExtractionStatus::kLocalFrameMissingContent:
+    case AIPageContentExtractionStatus::kUnexpectedIframeInPopup:
+      return apc::TabObservation::ANNOTATED_PAGE_CONTENT_ERROR;
+  }
+}
+
+apc::TabObservation::ScreenshotResult ToScreenshotResult(
+    ScreenshotCaptureStatus status) {
+  switch (status) {
+    case ScreenshotCaptureStatus::kSuccess:
+      return apc::TabObservation::SCREENSHOT_OK;
+    case ScreenshotCaptureStatus::kTimeout:
+      return apc::TabObservation::SCREENSHOT_TIMEOUT;
+    case ScreenshotCaptureStatus::kUnknown:
+    case ScreenshotCaptureStatus::kNoViewOrSurface:
+    case ScreenshotCaptureStatus::kCopyFromSurfaceError:
+    case ScreenshotCaptureStatus::kPaintPreviewError:
+    case ScreenshotCaptureStatus::kRedactionError:
+    case ScreenshotCaptureStatus::kEncodingError:
+      return apc::TabObservation::SCREENSHOT_ERROR;
+  }
 }
 
 std::optional<
@@ -1703,6 +1796,7 @@ void BuildActionsResultWithObservations(
     response->set_index_of_failed_action(*index_of_failed_action);
   }
   CopyScriptToolResults(*response, action_results);
+  CopyExecuteJsResults(*response, action_results);
 
   for (const auto& action_result : action_results) {
     if (IsOk(*action_result.result)) {

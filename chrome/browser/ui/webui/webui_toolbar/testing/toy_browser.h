@@ -11,7 +11,7 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "components/browser_apis/browser_controls/browser_controls_api_data_model.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "url/gurl.h"
 
 namespace browser_controls_api {
@@ -22,7 +22,7 @@ namespace testing {
 
 struct ToyBrowserCommand {
   int command_id;
-  WindowOpenDisposition disposition;
+  ui::mojom::WindowOpenDisposition disposition;
 };
 
 class ToyBrowserControlsAdapter;
@@ -42,11 +42,6 @@ class ToyBrowser {
     return received_commands_;
   }
 
-  const std::vector<GURL>& received_urls() const { return received_urls_; }
-  const std::vector<std::string>& received_navigate_texts() const {
-    return received_navigate_texts_;
-  }
-
   // Noop if the pin state doesn't change.
   void PinButton(toolbar_ui_api::mojom::ToolbarButtonType type);
   void UnpinButton(toolbar_ui_api::mojom::ToolbarButtonType type);
@@ -57,8 +52,6 @@ class ToyBrowser {
  private:
   friend class ToyBrowserControlsAdapter;
   std::vector<ToyBrowserCommand> received_commands_;
-  std::vector<GURL> received_urls_;
-  std::vector<std::string> received_navigate_texts_;
   // True when split tab is created. This state currently sticks, with no way
   // to unset it.
   bool is_split_tab_ = false;

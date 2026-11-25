@@ -14,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/auto_reset.h"
 #include "base/check_op.h"
 #include "base/containers/extend.h"
 #include "base/containers/span.h"
@@ -21,6 +22,7 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/functional/function_ref.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "base/numerics/angle_conversions.h"
@@ -54,6 +56,7 @@
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_f.h"
 #include "ui/gfx/geometry/size_f.h"
+#include "ui/gfx/geometry/transform.h"
 #include "ui/gfx/geometry/vector2d.h"
 #include "ui/gfx/geometry/vector2d_f.h"
 #include "ui/gfx/range/range.h"
@@ -90,6 +93,27 @@ constexpr int kMaxFormDepth = 32;
 // schematics. Generous enough for a single path that draws a full table grid.
 constexpr int kMaxSegmentsPerPath = 2000;
 constexpr int kMaxSegmentsPerPage = 10000;
+
+// Which paint operation a path object uses.
+enum class PathPaint : bool {
+  // Stroked, whether or not it is also filled.
+  kStroke,
+  // Filled but not stroked. Paths that are both stroked and filled are
+  // `kStroke`.
+  kFillOnly,
+};
+
+// A straight edge of a path object, in page coordinates.
+struct PathEdge {
+  gfx::PointF start;
+  gfx::PointF end;
+};
+
+// A subpath of a path object.
+struct Subpath {
+  std::vector<PathEdge> straight_edges;
+  bool has_curve = false;
+};
 
 gfx::SizeF GetPageSizeInPoints(FPDF_PAGE page) {
   return gfx::SizeF(FPDF_GetPageWidthF(page), FPDF_GetPageHeightF(page));
@@ -146,6 +170,44 @@ gfx::PointF FloatPagePointToPixelPoint(FPDF_PAGE page,
   }
   return gfx::PointF(ConvertUnitFloat(x, kPointsPerInch, kPixelsPerInch),
                      ConvertUnitFloat(y, kPointsPerInch, kPixelsPerInch));
+}
+
+// Returns the transform from page coordinates to the pixel coordinates of
+// FloatPagePointToPixelPoint(), without rounding to whole points. Lets callers
+// convert many points without calling into PDFium for each one.
+std::optional<gfx::Transform> GetPageToPixelTransform(FPDF_PAGE page) {
+  const int width = FPDF_GetPageWidthF(page);
+  const int height = FPDF_GetPageHeightF(page);
+  if (width <= 0 || height <= 0) {
+    return std::nullopt;
+  }
+
+  // FPDF_PageToDevice() rounds to whole points, so map the device corners back
+  // to the page instead, and invert.
+  double origin_x;
+  double origin_y;
+  double right_x;
+  double right_y;
+  double bottom_x;
+  double bottom_y;
+  if (!FPDF_DeviceToPage(page, 0, 0, width, height, /*rotate=*/0, 0, 0,
+                         &origin_x, &origin_y) ||
+      !FPDF_DeviceToPage(page, 0, 0, width, height, /*rotate=*/0, width, 0,
+                         &right_x, &right_y) ||
+      !FPDF_DeviceToPage(page, 0, 0, width, height, /*rotate=*/0, 0, height,
+                         &bottom_x, &bottom_y)) {
+    return std::nullopt;
+  }
+  const gfx::Transform device_to_page = gfx::Transform::Affine(
+      (right_x - origin_x) / width, (right_y - origin_y) / width,
+      (bottom_x - origin_x) / height, (bottom_y - origin_y) / height, origin_x,
+      origin_y);
+  gfx::Transform page_to_pixel;
+  if (!device_to_page.GetInverse(&page_to_pixel)) {
+    return std::nullopt;
+  }
+  page_to_pixel.PostScale(kPointsToPixels);
+  return page_to_pixel;
 }
 
 gfx::RectF GetFloatCharRectInPixels(FPDF_PAGE page,
@@ -530,51 +592,103 @@ void CheckFormObjectContentsForGraphics(
   }
 }
 
-// Appends the straight segments of `path` to `line_segments`, in the same pixel
-// coordinates as text runs. Skips curves and zero-length segments.
-void AppendLineSegmentsFromPath(
-    FPDF_PAGE page,
-    FPDF_PAGEOBJECT path,
-    int segment_count,
-    std::vector<AccessibilityLineSegment>& line_segments) {
+// Calls `append` for each visible top-level path object on `page` that is
+// painted with `paint` and has at least `min_segment_count` segments. To avoid
+// freezing on dense artwork, skips paths with too many segments and stops once
+// the page has too many segments in total.
+void ForEachPathObject(FPDF_PAGE page,
+                       PathPaint paint,
+                       int min_segment_count,
+                       base::FunctionRef<void(FPDF_PAGEOBJECT)> append) {
+  CHECK(::features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  const int page_object_count = FPDFPage_CountObjects(page);
+  int total_segments = 0;
+  for (int i = 0; i < page_object_count; ++i) {
+    FPDF_PAGEOBJECT page_object = FPDFPage_GetObject(page, i);
+    if (FPDFPageObj_GetType(page_object) != FPDF_PAGEOBJ_PATH) {
+      continue;
+    }
+
+    int fill_mode;
+    FPDF_BOOL stroke;
+    if (!FPDFPath_GetDrawMode(page_object, &fill_mode, &stroke)) {
+      continue;
+    }
+    const bool painted = paint == PathPaint::kStroke
+                             ? stroke
+                             : !stroke && fill_mode != FPDF_FILLMODE_NONE;
+    if (!painted) {
+      continue;
+    }
+
+    // Ignore transparent paths.
+    unsigned int r;
+    unsigned int g;
+    unsigned int b;
+    unsigned int a;
+    const bool has_color =
+        paint == PathPaint::kStroke
+            ? FPDFPageObj_GetStrokeColor(page_object, &r, &g, &b, &a)
+            : FPDFPageObj_GetFillColor(page_object, &r, &g, &b, &a);
+    if (has_color && a == 0) {
+      continue;
+    }
+
+    const int segment_count = FPDFPath_CountSegments(page_object);
+    if (segment_count < min_segment_count ||
+        segment_count > kMaxSegmentsPerPath) {
+      continue;
+    }
+
+    total_segments += segment_count;
+    if (total_segments > kMaxSegmentsPerPage) {
+      break;
+    }
+
+    append(page_object);
+  }
+}
+
+// Returns the subpaths of `path`, with edges transformed by the object's matrix
+// into page coordinates. Closed subpaths include their closing edge. Skips
+// segments PDFium can't read.
+std::vector<Subpath> GetSubpaths(FPDF_PAGEOBJECT path) {
   CHECK(::features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
   FS_MATRIX matrix;
   if (!FPDFPageObj_GetMatrix(path, &matrix)) {
-    return;
+    return {};
   }
-  auto append_segment = [&line_segments](const gfx::PointF& start,
-                                         const gfx::PointF& end) {
-    if (start != end) {
-      line_segments.push_back({.start = start, .end = end});
-    }
-  };
+  // Starts with a subpath for any edges before the first move in a malformed
+  // path. Callers skip empty subpaths.
+  std::vector<Subpath> subpaths(1);
   std::optional<gfx::PointF> current_point;
   std::optional<gfx::PointF> subpath_start;
+  const int segment_count = FPDFPath_CountSegments(path);
   for (int i = 0; i < segment_count; ++i) {
     FPDF_PATHSEGMENT segment = FPDFPath_GetPathSegment(path, i);
     if (!segment) {
       continue;
     }
-    float x = 0;
-    float y = 0;
+    float x;
+    float y;
     if (!FPDFPathSegment_GetPoint(segment, &x, &y)) {
       continue;
     }
-    // Transform by the object's matrix into page space, then into pixels.
-    const gfx::PointF page_point(matrix.a * x + matrix.c * y + matrix.e,
-                                 matrix.b * x + matrix.d * y + matrix.f);
-    const gfx::PointF point = FloatPagePointToPixelPoint(page, page_point);
+    const gfx::PointF point(matrix.a * x + matrix.c * y + matrix.e,
+                            matrix.b * x + matrix.d * y + matrix.f);
     switch (FPDFPathSegment_GetType(segment)) {
       case FPDF_SEGMENT_MOVETO:
+        subpaths.emplace_back();
         subpath_start = point;
         break;
       case FPDF_SEGMENT_LINETO:
         if (current_point) {
-          append_segment(*current_point, point);
+          subpaths.back().straight_edges.push_back(
+              {.start = *current_point, .end = point});
         }
         break;
       case FPDF_SEGMENT_BEZIERTO:
-        // Curves are not straight segments.
+        subpaths.back().has_curve = true;
         break;
       default:
         // PDFium only returns FPDF_SEGMENT_UNKNOWN for a null `segment`, which
@@ -583,11 +697,111 @@ void AppendLineSegmentsFromPath(
     }
     // Ignore a close before any move, which a malformed PDF may have.
     if (subpath_start && FPDFPathSegment_GetClose(segment)) {
-      // Close the shape with a straight line back to the subpath start.
-      append_segment(point, *subpath_start);
+      subpaths.back().straight_edges.push_back(
+          {.start = point, .end = *subpath_start});
+      // Any further segments before the next move start a new subpath from
+      // the same start point.
+      subpaths.emplace_back();
       current_point = subpath_start;
     } else {
       current_point = point;
+    }
+  }
+  return subpaths;
+}
+
+// Appends the straight edges of `path` to `line_segments`, converted to pixels
+// by `page_to_pixel`. Skips zero-length edges.
+void AppendLineSegmentsFromPath(
+    const gfx::Transform& page_to_pixel,
+    FPDF_PAGEOBJECT path,
+    std::vector<AccessibilityLineSegment>& line_segments) {
+  CHECK(::features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  for (const Subpath& subpath : GetSubpaths(path)) {
+    for (const PathEdge& edge : subpath.straight_edges) {
+      const gfx::PointF start = page_to_pixel.MapPoint(edge.start);
+      const gfx::PointF end = page_to_pixel.MapPoint(edge.end);
+      if (start != end) {
+        line_segments.push_back({.start = start, .end = end});
+      }
+    }
+  }
+}
+
+// Returns whether `point` lies strictly between `prev` and `next` on a
+// horizontal or vertical line, so dropping it does not change the path shape.
+bool IsBetweenOnAxisAlignedLine(const gfx::PointF& prev,
+                                const gfx::PointF& point,
+                                const gfx::PointF& next) {
+  if (prev.y() == point.y() && point.y() == next.y()) {
+    return (prev.x() < point.x() && point.x() < next.x()) ||
+           (prev.x() > point.x() && point.x() > next.x());
+  }
+  if (prev.x() == point.x() && point.x() == next.x()) {
+    return (prev.y() < point.y() && point.y() < next.y()) ||
+           (prev.y() > point.y() && point.y() > next.y());
+  }
+  return false;
+}
+
+// Appends the bounds of the subpaths of `path` that form non-empty axis-aligned
+// rectangles to `filled_rects`, converted to pixels by `page_to_pixel`. Skips
+// subpaths with curves.
+void AppendFilledRectsFromPath(const gfx::Transform& page_to_pixel,
+                               FPDF_PAGEOBJECT path,
+                               std::vector<gfx::RectF>& filled_rects) {
+  CHECK(::features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  for (const Subpath& subpath : GetSubpaths(path)) {
+    const std::vector<PathEdge>& edges = subpath.straight_edges;
+    if (edges.empty() || subpath.has_curve) {
+      continue;
+    }
+
+    // Drop repeated and collinear points along edges, including a final point
+    // back at the start.
+    std::vector<gfx::PointF> corners = {edges.front().start};
+    for (const PathEdge& edge : edges) {
+      if (corners.back() == edge.end) {
+        continue;
+      }
+      if (corners.size() >= 2 &&
+          IsBetweenOnAxisAlignedLine(corners[corners.size() - 2],
+                                     corners.back(), edge.end)) {
+        corners.back() = edge.end;
+      } else {
+        corners.push_back(edge.end);
+      }
+    }
+    if (corners.size() > 1 && corners.back() == corners.front()) {
+      corners.pop_back();
+    }
+    // Fills implicitly close the subpath, so also drop a final point along the
+    // closing edge.
+    if (corners.size() >= 3 &&
+        IsBetweenOnAxisAlignedLine(corners[corners.size() - 2], corners.back(),
+                                   corners.front())) {
+      corners.pop_back();
+    }
+    if (corners.size() != 4 || corners[0] == corners[2] ||
+        corners[1] == corners[3]) {
+      continue;
+    }
+    bool has_rect_corners = true;
+    for (size_t i = 0; i < corners.size(); ++i) {
+      const gfx::PointF& next = corners[(i + 1) % corners.size()];
+      if (corners[i].x() != next.x() && corners[i].y() != next.y()) {
+        has_rect_corners = false;
+        break;
+      }
+    }
+    if (!has_rect_corners) {
+      continue;
+    }
+
+    const gfx::RectF rect =
+        page_to_pixel.MapRect(gfx::BoundingRect(corners[0], corners[2]));
+    if (!rect.IsEmpty()) {
+      filled_rects.push_back(rect);
     }
   }
 }
@@ -614,6 +828,15 @@ bool PDFiumPage::Unload() {
   if (preventing_page_unload_count_ || preventing_text_page_unload_count_) {
     return false;
   }
+
+  // Also do not unload when already unloading.
+  if (is_unloading_) {
+    return false;
+  }
+
+  base::AutoReset scoped_is_unloading(&is_unloading_, true);
+  // Also mark `this` as unavailable for the duration of Unload().
+  base::AutoReset scoped_unavailable(&available_, false);
 
   text_page_.reset();
 
@@ -937,6 +1160,16 @@ uint32_t PDFiumPage::GetCharUnicode(int char_index) {
   return FPDFText_GetUnicode(GetTextPage(), char_index);
 }
 
+bool PDFiumPage::IsSynthesizedNewline(int char_index) {
+  CHECK(IsCharIndexInBounds(char_index));
+  if (FPDFText_IsGenerated(GetTextPage(), char_index) != 1) {
+    return false;
+  }
+
+  uint32_t char_code = GetCharUnicode(char_index);
+  return char_code == '\r' || char_code == '\n';
+}
+
 gfx::RectF PDFiumPage::GetCharBounds(int char_index) {
   FPDF_PAGE page = GetPage();
   FPDF_TEXTPAGE text_page = GetTextPage();
@@ -1230,6 +1463,17 @@ std::vector<AccessibilityLineSegment> PDFiumPage::GetLineSegmentInfo() {
   return *line_segments_;
 }
 
+std::vector<gfx::RectF> PDFiumPage::GetFilledRectInfo() {
+  if (!::features::IsPdfAccessibilityHeuristicEnhancementsEnabled() ||
+      !available_) {
+    return {};
+  }
+  if (!filled_rects_) {
+    filled_rects_ = CalculateFilledRects();
+  }
+  return *filled_rects_;
+}
+
 PDFiumPage::Area PDFiumPage::GetLinkTargetAtIndex(int link_index,
                                                   LinkTarget* target) {
   if (!available_ || link_index < 0)
@@ -1517,9 +1761,22 @@ AccessibilityTextRunInfo PDFiumPage::CalculateTextRunInfoAt(
   // If the first character in a text run is a space, we need to start
   // `text_run_bounds` from the space character instead of the first
   // non-space unicode character.
+  bool include_leading_whitespace = actual_start_char_index > start_char_index;
+
+  // With heuristic enhancements, skip leading whitespace that ends the previous
+  // line, such as the space after a footnote link at the end of a line.
+  // Otherwise, the bounds would span both lines.
+  //
+  // This only changes the bounds. The run still starts at `start_char_index`.
+  if (::features::IsPdfAccessibilityHeuristicEnhancementsEnabled()) {
+    for (uint32_t i = start_char_index; i < actual_start_char_index; ++i) {
+      include_leading_whitespace &= !IsSynthesizedNewline(i);
+    }
+  }
+
   FPDF_PAGE page = GetPage();
   gfx::RectF text_run_bounds =
-      actual_start_char_index > start_char_index
+      include_leading_whitespace
           ? GetFloatCharRectInPixels(page, text_page, start_char_index)
           : gfx::RectF();
 
@@ -1975,49 +2232,43 @@ void PDFiumPage::CalculateGraphics() {
 }
 
 // Extracts straight line segments from the top-level stroked path objects on
-// the page, skipping transparent strokes and capping segment counts to avoid
-// freezing on dense artwork.
+// the page.
 std::vector<AccessibilityLineSegment> PDFiumPage::CalculateLineSegments() {
   CHECK(::features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
   std::vector<AccessibilityLineSegment> line_segments;
   FPDF_PAGE page = GetPage();
-  const int page_object_count = FPDFPage_CountObjects(page);
-  int total_segments = 0;
-  for (int i = 0; i < page_object_count; ++i) {
-    FPDF_PAGEOBJECT page_object = FPDFPage_GetObject(page, i);
-    if (FPDFPageObj_GetType(page_object) != FPDF_PAGEOBJ_PATH) {
-      continue;
-    }
-
-    // Only stroked paths are handled for now.
-    int fill_mode = 0;
-    FPDF_BOOL stroke = false;
-    if (!FPDFPath_GetDrawMode(page_object, &fill_mode, &stroke) || !stroke) {
-      continue;
-    }
-
-    // Ignore transparent strokes.
-    unsigned int r;
-    unsigned int g;
-    unsigned int b;
-    unsigned int a;
-    if (FPDFPageObj_GetStrokeColor(page_object, &r, &g, &b, &a) && a == 0) {
-      continue;
-    }
-
-    const int segment_count = FPDFPath_CountSegments(page_object);
-    if (segment_count <= 1 || segment_count > kMaxSegmentsPerPath) {
-      continue;
-    }
-
-    total_segments += segment_count;
-    if (total_segments > kMaxSegmentsPerPage) {
-      break;
-    }
-
-    AppendLineSegmentsFromPath(page, page_object, segment_count, line_segments);
+  const std::optional<gfx::Transform> page_to_pixel =
+      GetPageToPixelTransform(page);
+  if (!page_to_pixel) {
+    return line_segments;
   }
+  // A line segment needs a start and an end point.
+  ForEachPathObject(page, PathPaint::kStroke, /*min_segment_count=*/2,
+                    [&](FPDF_PAGEOBJECT path) {
+                      AppendLineSegmentsFromPath(*page_to_pixel, path,
+                                                 line_segments);
+                    });
   return line_segments;
+}
+
+// Extracts the bounds of axis-aligned rectangles filled by the top-level
+// fill-only path objects on the page.
+std::vector<gfx::RectF> PDFiumPage::CalculateFilledRects() {
+  CHECK(::features::IsPdfAccessibilityHeuristicEnhancementsEnabled());
+  std::vector<gfx::RectF> filled_rects;
+  FPDF_PAGE page = GetPage();
+  const std::optional<gfx::Transform> page_to_pixel =
+      GetPageToPixelTransform(page);
+  if (!page_to_pixel) {
+    return filled_rects;
+  }
+  // A rectangle needs at least 4 corners.
+  ForEachPathObject(page, PathPaint::kFillOnly, /*min_segment_count=*/4,
+                    [&](FPDF_PAGEOBJECT path) {
+                      AppendFilledRectsFromPath(*page_to_pixel, path,
+                                                filled_rects);
+                    });
+  return filled_rects;
 }
 
 void PDFiumPage::PopulateTextRunTypeAndImageAltText() {
@@ -2326,21 +2577,16 @@ Thumbnail PDFiumPage::GenerateThumbnail(float device_pixel_ratio) {
   return thumbnail;
 }
 
-#if BUILDFLAG(ENABLE_PDF_INK2)
-gfx::Size PDFiumPage::GetThumbnailSize(float device_pixel_ratio) {
-  CHECK(available());
-  FPDF_PAGE page = GetPage();
-  return Thumbnail::CalculateImageSize(GetPageSizeInPoints(page),
-                                       device_pixel_ratio);
-}
-#endif
-
 void PDFiumPage::GenerateAndSendThumbnail(float device_pixel_ratio,
                                           SendThumbnailCallback send_callback) {
   std::move(send_callback).Run(GenerateThumbnail(device_pixel_ratio));
 }
 
 void PDFiumPage::MarkAvailable() {
+  if (is_unloading_) {
+    return;
+  }
+
   available_ = true;
 
   // Fulfill pending thumbnail request.

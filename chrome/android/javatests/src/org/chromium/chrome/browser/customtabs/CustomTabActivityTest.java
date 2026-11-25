@@ -119,7 +119,6 @@ import org.chromium.base.test.util.CriteriaNotSatisfiedException;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
-import org.chromium.base.test.util.Features;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
@@ -201,6 +200,7 @@ import org.chromium.content_public.browser.test.util.DOMUtils;
 import org.chromium.content_public.browser.test.util.JavaScriptUtils;
 import org.chromium.content_public.browser.test.util.PrefetchTestUtil;
 import org.chromium.content_public.common.ContentSwitches;
+import org.chromium.net.NetError;
 import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.net.test.util.TestWebServer;
 import org.chromium.ui.base.AcceleratorManager;
@@ -224,7 +224,6 @@ import java.util.concurrent.atomic.AtomicReference;
 /** Instrumentation tests for app menu, context menu, and toolbar of a {@link CustomTabActivity}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@Features.DisableFeatures({ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE})
 public class CustomTabActivityTest {
     private static final int TIMEOUT_PAGE_LOAD_SECONDS = 10;
     private static final String TEST_PACKAGE = "org.chromium.chrome.tests";
@@ -454,6 +453,7 @@ public class CustomTabActivityTest {
     @Test
     @SmallTest
     @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/394668480
+    @DisabledTest(message = "https://crbug.com/584456889")
     public void testContextMenuEntriesBeforeFirstRun() throws Exception {
         mCustomTabActivityTestRule.startCustomTabActivityWithIntent(createMinimalCustomTabIntent());
         // Mark the first run as not completed. This has to be done after we start the intent,
@@ -486,6 +486,7 @@ public class CustomTabActivityTest {
     @Test
     @SmallTest
     @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/394668480
+    @DisabledTest(message = "https://crbug.com/584456889")
     public void testContextMenuPreviewPage() throws Exception {
         mCustomTabActivityTestRule.startCustomTabActivityWithIntent(createMinimalCustomTabIntent());
         ContextMenuUtils.selectContextMenuItem(
@@ -511,6 +512,8 @@ public class CustomTabActivityTest {
     @DisableIf.Build(
             sdk_is_greater_than = Build.VERSION_CODES.VANILLA_ICE_CREAM,
             message = "crbug.com/428281172")
+    // TODO(crbug.com/428281172): Reads color from the window; does not work with e2e everywhere.
+    @DisableFeatures(ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE)
     public void testToolbarColor() {
         Intent intent = createMinimalCustomTabIntent();
         final int expectedColor = Color.RED;
@@ -600,7 +603,7 @@ public class CustomTabActivityTest {
     @EnableFeatures({ChromeFeatureList.CONTEXTUAL_PAGE_ACTIONS})
     public void testOptionalButton_ReaderModeContextualPageActionShown() {
         String readerModeUrl =
-                mTestServer.getURL("/chrome/test/data/dom_distiller/simple_article.html");
+                mTestServer.getURL("/chrome/test/data/reader_mode/simple_article.html");
         Intent intent =
                 CustomTabsIntentTestUtils.createMinimalCustomTabIntent(
                         ApplicationProvider.getApplicationContext(), readerModeUrl);
@@ -1328,6 +1331,7 @@ public class CustomTabActivityTest {
     /** Tests that page load metrics are sent. */
     @Test
     @MediumTest
+    @DisabledTest(message = "https://crbug.com/584456889")
     public void testPageLoadMetricsAreSent() throws Exception {
         checkPageLoadMetrics(true);
     }
@@ -1698,13 +1702,11 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
-    @DisabledTest(message = "https://crbug.com/572881868")
     public void testParallelRequest() throws Exception {
-        String url = mTestServer.getURL("/echoheader?Cookie");
         Uri requestUri = Uri.parse(mTestServer.getURL("/set-cookie?acookie"));
 
         final Context context = ApplicationProvider.getApplicationContext();
-        Intent intent = CustomTabsIntentTestUtils.createMinimalCustomTabIntent(context, url);
+        Intent intent = CustomTabsIntentTestUtils.createMinimalCustomTabIntent(context, mTestPage);
         final var token =
                 SessionHolder.of(CustomTabsSessionToken.getSessionTokenFromIntent(intent));
 
@@ -1721,16 +1723,22 @@ public class CustomTabActivityTest {
                             CustomTabsService.RELATION_USE_AS_ORIGIN);
                 });
 
+        // The detached parallel request runs concurrently with the main-frame navigation, so wait
+        // for the detached request to finish before reading the cookie jar via document.cookie.
+        HistogramWatcher finalStatusWatcher =
+                HistogramWatcher.newSingleRecordWatcher(
+                        "CustomTabs.DetachedResourceRequest.FinalStatus", NetError.OK);
         intent.putExtra(CustomTabsConnection.PARALLEL_REQUEST_URL_KEY, requestUri);
         intent.putExtra(
                 CustomTabsConnection.PARALLEL_REQUEST_REFERRER_KEY, Uri.parse(origin.toString()));
         mCustomTabActivityTestRule.startCustomTabActivityWithIntent(intent);
+        finalStatusWatcher.pollInstrumentationThreadUntilSatisfied();
 
         Tab tab = mCustomTabActivityTestRule.getActivity().getActivityTab();
-        String content =
+        String cookie =
                 JavaScriptUtils.executeJavaScriptAndWaitForResult(
-                        tab.getWebContents(), "document.body.textContent");
-        assertEquals("\"acookie\"", content);
+                        tab.getWebContents(), "document.cookie");
+        assertEquals("\"acookie\"", cookie);
     }
 
     /**
@@ -2193,6 +2201,7 @@ public class CustomTabActivityTest {
 
     @Test
     @SmallTest
+    @DisabledTest(message = "https://crbug.com/584456889")
     public void closeButton_closesActivityIfNoLandingPage() throws TimeoutException {
         Context context = getInstrumentation().getTargetContext().getApplicationContext();
         Intent intent =

@@ -8,6 +8,7 @@
 #include <cstdint>
 #include <optional>
 #include <string_view>
+#include <vector>
 
 #include "base/containers/span.h"
 
@@ -16,7 +17,7 @@ class Signer;
 class SignerSet;
 }  // namespace chrome_root_store
 
-namespace net {
+namespace net::test {
 
 // Adds a mirror signer to the `signer_set` proto and sets the specified
 // fields. Other fields will be initialized to defaults that are sufficient for
@@ -37,6 +38,11 @@ chrome_root_store::Signer* AddSignerSetIssuer(
     std::string_view operator_name,
     std::optional<int32_t> crs_root_id);
 
-}  // namespace net
+// Returns the DER-encoded SubjectPublicKeyInfo of a newly generated ML-DSA-44
+// key, for tests that need a well-formed MTC CA key but do not verify
+// signatures with it.
+std::vector<uint8_t> MakeTestMtcCaKey();
+
+}  // namespace net::test
 
 #endif  // NET_TEST_CHROME_ROOT_STORE_TEST_UTIL_H_

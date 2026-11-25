@@ -19,7 +19,6 @@
 #include "chrome/browser/headless/test/headless_browser_test_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/headless/select_file_dialog/headless_select_file_dialog.h"
 #include "components/headless/test/shared_test_util.h"
@@ -75,13 +74,6 @@ bool HeadlessModeProtocolBrowserTest::IsSharedTestScript() {
 }
 
 void HeadlessModeProtocolBrowserTest::SetUp() {
-  webui_omnibox_feature_list_.InitWithFeatures(
-      /*enabled_features=*/{},
-      /*disabled_features=*/
-      // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-      // is enabled and then remove these two Features.
-      {omnibox::internal::kWebUIOmniboxPopup,
-       omnibox::internal::kWebUIOmniboxAimPopup});
   LoadTestMetaInfo();
   HeadlessModeDevTooledBrowserTest::SetUp();
 }
@@ -90,9 +82,9 @@ void HeadlessModeProtocolBrowserTest::SetUpCommandLine(
     base::CommandLine* command_line) {
   command_line->AppendSwitchASCII(::network::switches::kHostResolverRules,
                                   "MAP *.test 127.0.0.1");
-  HeadlessModeDevTooledBrowserTest::SetUpCommandLine(command_line);
-
   feature_list_ = test_meta_info_.ProcessCommandLineSwitches(*command_line);
+
+  HeadlessModeDevTooledBrowserTest::SetUpCommandLine(command_line);
 }
 
 base::DictValue HeadlessModeProtocolBrowserTest::GetPageUrlExtraParams() {
@@ -221,6 +213,12 @@ HEADLESS_MODE_PROTOCOL_TEST(FocusBlurNotifications,
                             "shared/focus-blur-notifications.js")
 
 HEADLESS_MODE_PROTOCOL_TEST(InputClipboardOps, "shared/input-clipboard-ops.js")
+
+HEADLESS_MODE_PROTOCOL_TEST(ClipboardPasteAllowed,
+                            "shared/clipboard-paste-allowed.js")
+
+HEADLESS_MODE_PROTOCOL_TEST(DragInterceptedFileURL,
+                            "shared/drag-intercepted-file-url.js")
 
 HEADLESS_MODE_PROTOCOL_TEST(DocumentFocusOnLoad,
                             "input/document-focus-on-load.js")
@@ -370,6 +368,9 @@ HEADLESS_MODE_PROTOCOL_TEST(CreateTargetPosition,
 HEADLESS_MODE_PROTOCOL_TEST(CreateTargetWindowState,
                             "shared/create-target-window-state.js")
 
+HEADLESS_MODE_PROTOCOL_TEST(ActivateTargetFullscreen,
+                            "shared/activate-target-fullscreen.js")
+
 HEADLESS_MODE_PROTOCOL_TEST(DocumentVisibilityState,
                             "shared/document-visibility-state.js")
 
@@ -510,6 +511,21 @@ HEADLESS_MODE_PROTOCOL_TEST(RangeMouseEventAfterNodeRemoval,
 HEADLESS_MODE_PROTOCOL_TEST(GetCanvasContextWebGL,
                             "shared/get-canvas-context-webgl.js")
 
+HEADLESS_MODE_PROTOCOL_TEST(
+    WebGLAndWebGPUEnabledWithSwiftShader,
+    "shared/webgl-and-webgpu-enabled-with-swiftshader.js")
+
+// Headless Mode only disables GPU by default on Linux (where Ozone/Headless is
+// used).
+#if BUILDFLAG(IS_LINUX)
+HEADLESS_MODE_PROTOCOL_TEST(WebGLAndWebGPUDisabledByDefault,
+                            "shared/webgl-and-webgpu-disabled-by-default.js")
+
+HEADLESS_MODE_PROTOCOL_TEST(
+    WebGLAndWebGPUDisabledWithoutSwiftShader,
+    "shared/webgl-and-webgpu-disabled-without-swiftshader.js")
+#endif  // BUILDFLAG(IS_LINUX)
+
 HEADLESS_MODE_PROTOCOL_TEST(PopupWindowHasOpener,
                             "shared/popup-window-has-opener.js")
 
@@ -573,6 +589,10 @@ HEADLESS_MODE_PROTOCOL_TEST_F(
     HeadlessModeDevToolsPolicyBlocklistProtocolTest,
     OopifSameDocumentNavigationBlocklist,
     "target/oopif-same-document-navigation-blocklist.js")
+
+HEADLESS_MODE_PROTOCOL_TEST_F(HeadlessModeDevToolsPolicyBlocklistProtocolTest,
+                              NotInspectableTargetNotListed,
+                              "target/not-inspectable-target-not-listed.js")
 
 class HeadlessModeDevToolsPolicyAllowlistProtocolTest
     : public HeadlessModeProtocolBrowserTest {

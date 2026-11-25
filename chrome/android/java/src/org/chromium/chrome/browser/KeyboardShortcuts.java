@@ -39,10 +39,13 @@ import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.task_manager.TaskManager;
+import org.chromium.chrome.browser.ui.vertical_tabs.VerticalTabUtils;
 import org.chromium.components.browser_ui.widget.MenuOrKeyboardActionController;
 import org.chromium.content_public.browser.ContentFeatureMap;
 import org.chromium.device.gamepad.GamepadList;
 import org.chromium.ui.accessibility.AccessibilityState;
+import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.base.DeviceInput;
 import org.chromium.ui.util.KeyEventUtils;
 
 import java.lang.annotation.Retention;
@@ -147,6 +150,7 @@ public class KeyboardShortcuts {
         // KeyboardShortcutsSemanticMeaning.ZOOM_OUT_LEGACY,
         KeyboardShortcutsSemanticMeaning.FOCUS_APP_MENU_BUTTON,
         KeyboardShortcutsSemanticMeaning.OPEN_FILE,
+        KeyboardShortcutsSemanticMeaning.TOGGLE_VERTICAL_TABS_COLLAPSE,
         KeyboardShortcutsSemanticMeaning.MAX_VALUE
     })
     @Retention(RetentionPolicy.SOURCE)
@@ -267,8 +271,11 @@ public class KeyboardShortcuts {
         // Open file shortcut.
         int OPEN_FILE = 68;
 
+        // Toggle vertical tabs collapse state.
+        int TOGGLE_VERTICAL_TABS_COLLAPSE = 69;
+
         // Max value.
-        int MAX_VALUE = 68;
+        int MAX_VALUE = 69;
     }
 
     // LINT.ThenChange(//tools/metrics/histograms/metadata/accessibility/enums.xml:KeyboardShortcutsSemanticMeaning, //tools/metrics/histograms/metadata/accessibility/histograms.xml:KeyboardShortcutsSemanticMeaning)
@@ -471,7 +478,6 @@ public class KeyboardShortcuts {
                 R.string.keyboard_shortcut_reload_page,
                 R.string.keyboard_shortcut_tab_group_header,
                 new KeyCombo[] {
-                    new KeyCombo(KeyEvent.KEYCODE_F5, KeyEvent.META_SHIFT_ON),
                     new KeyCombo(KeyEvent.KEYCODE_F5, NO_MODIFIER),
                     new KeyCombo(KeyEvent.KEYCODE_REFRESH, NO_MODIFIER)
                 });
@@ -482,6 +488,7 @@ public class KeyboardShortcuts {
                 R.string.keyboard_shortcut_tab_group_header,
                 new KeyCombo[] {
                     new KeyCombo(KeyEvent.KEYCODE_F5, KeyEvent.META_CTRL_ON),
+                    new KeyCombo(KeyEvent.KEYCODE_F5, KeyEvent.META_SHIFT_ON),
                     new KeyCombo(KeyEvent.KEYCODE_REFRESH, KeyEvent.META_CTRL_ON),
                     new KeyCombo(KeyEvent.KEYCODE_REFRESH, KeyEvent.META_SHIFT_ON)
                 });
@@ -507,6 +514,9 @@ public class KeyboardShortcuts {
                     new KeyCombo(
                             KeyEvent.KEYCODE_A, (KeyEvent.META_ALT_ON | KeyEvent.META_SHIFT_ON)),
                 });
+        new KeyboardShortcutDefinition(
+                KeyboardShortcutsSemanticMeaning.TOGGLE_VERTICAL_TABS_COLLAPSE,
+                new KeyCombo(KeyEvent.KEYCODE_L, KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON));
 
         // Navigation shortcuts (keyboard_shortcut_tab_navigation_group_header).
         new KeyboardShortcutDefinition(
@@ -657,7 +667,12 @@ public class KeyboardShortcuts {
                 new KeyCombo(
                         KeyEvent.KEYCODE_DEL, (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON)),
                 R.string.keyboard_shortcut_clear_browsing_data,
-                R.string.keyboard_shortcut_chrome_feature_group_header);
+                R.string.keyboard_shortcut_chrome_feature_group_header,
+                new KeyCombo[] {
+                    new KeyCombo(
+                            KeyEvent.KEYCODE_FORWARD_DEL,
+                            (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON))
+                });
 
         // Top controls.
         new KeyboardShortcutDefinition(
@@ -1009,6 +1024,15 @@ public class KeyboardShortcuts {
                     KeyEvent.KEYCODE_B,
                     (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON));
         }
+        if (VerticalTabUtils.isVerticalTabsEnabled(context)) {
+            addShortcut(
+                    context,
+                    shortcutGroupsById,
+                    R.string.keyboard_shortcut_tab_group_header,
+                    R.string.keyboard_shortcut_toggle_vertical_tabs_collapse,
+                    KeyEvent.KEYCODE_L,
+                    (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON));
+        }
         if (FeedbackPolicyManager.getInstance().isUserFeedbackAllowed()) {
             addShortcut(
                     context,
@@ -1142,6 +1166,7 @@ public class KeyboardShortcuts {
                 semanticMeaning,
                 KeyboardShortcuts.KeyboardShortcutsSemanticMeaning.MAX_VALUE + 1);
 
+        // LINT.IfChange(KeyboardShortcutsOnKeyDown)
         switch (semanticMeaning) {
             case KeyboardShortcutsSemanticMeaning.OPEN_RECENTLY_CLOSED_TAB:
                 menuOrKeyboardActionController.onMenuOrKeyboardAction(
@@ -1357,22 +1382,27 @@ public class KeyboardShortcuts {
                 case KeyboardShortcutsSemanticMeaning.TOGGLE_MULTISELECT:
                     return menuOrKeyboardActionController.onMenuOrKeyboardAction(
                             R.id.toggle_tab_strip_multiselect, /* fromMenu= */ false);
+                case KeyboardShortcutsSemanticMeaning.TOGGLE_VERTICAL_TABS_COLLAPSE:
+                    return menuOrKeyboardActionController.onMenuOrKeyboardAction(
+                            R.id.toggle_vertical_tabs_collapse, /* fromMenu= */ false);
             }
         }
+        // LINT.ThenChange(//chrome/android/java/src/org/chromium/chrome/browser/shortcuts/BrowserCommandDelegate.java:BrowserCommandDelegateCommands)
 
         return false;
     }
 
     /**
      * Returns the localized keyboard shortcut text (e.g., "Ctrl+T") for the given menu item ID, or
-     * {@code null} if keyboard shortcut hints are disabled or the menu item has no associated
-     * keyboard shortcut.
+     * {@code null} if keyboard shortcut hints should not be shown or the menu item has no
+     * associated keyboard shortcut.
      *
+     * @param context The {@link Context} of the window displaying the menu.
      * @param menuItemId The {@code R.id.*} resource ID of the menu item.
      * @return The formatted shortcut text, or {@code null}.
      */
-    public static @Nullable String getShortcutText(@IdRes int menuItemId) {
-        if (!ChromeFeatureList.sAndroidKeyboardShortcutHints.isEnabled()) {
+    public static @Nullable String getShortcutText(Context context, @IdRes int menuItemId) {
+        if (!shouldShowShortcutHints(context)) {
             return null;
         }
 
@@ -1446,6 +1476,12 @@ public class KeyboardShortcuts {
 
         String shortcutText = KeyboardShortcutsJni.get().getShortcutTextForCommandId(commandId);
         return shortcutText.isEmpty() ? null : shortcutText;
+    }
+
+    private static boolean shouldShowShortcutHints(Context context) {
+        return ChromeFeatureList.sAndroidKeyboardShortcutHints.isEnabled()
+                && DeviceInput.supportsAlphabeticKeyboard()
+                && DeviceFormFactor.isNonMultiDisplayContextOnTablet(context);
     }
 
     @CalledByNative

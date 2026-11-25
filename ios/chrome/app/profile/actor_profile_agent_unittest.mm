@@ -9,9 +9,11 @@
 #import <string>
 #import <vector>
 
+#import "base/functional/callback_helpers.h"
 #import "base/strings/string_number_conversions.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/metrics/histogram_tester.h"
+#import "base/test/run_until.h"
 #import "base/test/scoped_feature_list.h"
 #import "base/time/time.h"
 #import "components/actor/core/task_source_info.h"
@@ -26,8 +28,8 @@
 #import "ios/chrome/browser/intelligence/actor/model/actor_service.h"
 #import "ios/chrome/browser/intelligence/actor/model/actor_service_factory.h"
 #import "ios/chrome/browser/intelligence/actor/model/actor_task_background_worker.h"
-#import "ios/chrome/browser/intelligence/actor/public/actor_task_intervention_delegate.h"
 #import "ios/chrome/browser/intelligence/actor/public/actor_types.h"
+#import "ios/chrome/browser/intelligence/actor/test/fake_actor_task_intervention_delegate.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
@@ -42,23 +44,6 @@
 #import "testing/platform_test.h"
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
-
-// Intervention delegate that lets a task be interrupted without resolving the
-// confirmation, so that it stays waiting on the user.
-@interface FakeActorProfileAgentInterventionDelegate
-    : NSObject <ActorTaskInterventionDelegate>
-@end
-
-@implementation FakeActorProfileAgentInterventionDelegate
-
-- (void)actorTask:(actor::ActorTaskId)taskID
-    requestUserInterventionWithTitle:(NSString*)title
-                            subtitle:(NSString*)subtitle
-                          buttonText:(NSString*)buttonText
-                   completionHandler:(void (^)(void))completionHandler {
-}
-
-@end
 
 namespace {
 
@@ -136,12 +121,17 @@ class ActorProfileAgentTest : public PlatformTest {
         /*allow_incognito_web_states=*/false);
   }
 
-  // Interrupts the task identified by `task_id` so that it waits on the user.
+  // Interrupts the task identified by `task_id` so that it waits on the user,
+  // and waits until the interrupt requested the user's confirmation.
   void InterruptTask(actor::ActorTaskId task_id) {
     service()->SetTaskInterventionDelegate(task_id, intervention_delegate_);
-    service()->InterruptTask(
-        task_id, actor::ActorTaskInterruptReason::kWaitingUserConfirmation,
-        "Please confirm");
+    actor::ConfirmationInterrupt confirmation;
+    confirmation.title = "Please confirm";
+    confirmation.button_text = "Continue";
+    service()->InterruptTask(task_id, std::move(confirmation),
+                             base::DoNothing());
+    ASSERT_TRUE(base::test::RunUntil(
+        [&]() { return intervention_delegate_.requestConfirmationCalled; }));
   }
 
   // Returns the background worker of the task identified by `task_id`, or
@@ -190,8 +180,10 @@ class ActorProfileAgentTest : public PlatformTest {
   id mock_app_agent_;
   ProfileState* profile_state_;
   ActorProfileAgent* agent_;
-  FakeActorProfileAgentInterventionDelegate* intervention_delegate_ =
-      [[FakeActorProfileAgentInterventionDelegate alloc] init];
+  // Leaves the confirmation unresolved, so an interrupted task stays waiting on
+  // the user.
+  FakeActorTaskInterventionDelegate* intervention_delegate_ =
+      [[FakeActorTaskInterventionDelegate alloc] init];
   std::vector<std::unique_ptr<web::FakeWebState>> owned_web_states_;
 };
 
@@ -260,7 +252,7 @@ TEST_F(ActorProfileAgentBackgroundingTest, OneRequestPerEligibleTask) {
   actor::ActorTaskId first_id = CreateTask("First");
   actor::ActorTaskId waiting_id = CreateTask("Waiting");
   actor::ActorTaskId second_id = CreateTask("Second");
-  InterruptTask(waiting_id);
+  ASSERT_NO_FATAL_FAILURE(InterruptTask(waiting_id));
   ASSERT_FALSE(WorkerForTask(waiting_id)->ShouldRequestBackgroundTask());
 
   NSArray<BackgroundContinuedProcessingTaskRequest*>* requests =
@@ -284,7 +276,7 @@ TEST_F(ActorProfileAgentBackgroundingTest, RecordsRequestEligibilityPerWorker) {
   actor::ActorTaskId waiting_id = CreateTask("Waiting");
   CreateTask("Second");
   WorkerForTask(holding_id)->SetContext(CreateContext());
-  InterruptTask(waiting_id);
+  ASSERT_NO_FATAL_FAILURE(InterruptTask(waiting_id));
 
   NSArray<BackgroundContinuedProcessingTaskRequest*>* requests =
       agent_.continuedProcessingTaskRequests;
@@ -337,7 +329,8 @@ TEST_F(ActorProfileAgentTest, RecordsNothingWithoutActiveTasks) {
 
   actor::ActorTaskId task_id = CreateTask("Task");
   service()->StopTask(task_id, actor::ActorTaskStoppedReason::kTaskComplete);
-  ASSERT_TRUE(service()->GetWeakTaskBackgroundWorkers().empty());
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return service()->GetWeakTaskBackgroundWorkers().empty(); }));
 
   EXPECT_EQ(0u, agent_.continuedProcessingTaskRequests.count);
 
@@ -423,7 +416,7 @@ TEST_F(ActorProfileAgentBackgroundingTest,
   EXPECT_TRUE(WorkerForTask(other_id)->ShouldRequestBackgroundTask());
 
   service()->StopTask(task_id, actor::ActorTaskStoppedReason::kTaskComplete);
-  EXPECT_TRUE(context.completed);
+  ASSERT_TRUE(base::test::RunUntil([&]() { return context.completed; }));
   EXPECT_DOUBLE_EQ(1.0, context.fractionCompleted);
 }
 
@@ -437,6 +430,7 @@ TEST_F(ActorProfileAgentBackgroundingTest,
       agent_.continuedProcessingTaskRequests;
   ASSERT_EQ(1u, requests.count);
   service()->StopTask(task_id, actor::ActorTaskStoppedReason::kStoppedByUser);
+  ASSERT_TRUE(base::test::RunUntil([&]() { return !WorkerForTask(task_id); }));
   BackgroundContinuedProcessingTaskContext* context = CreateContext();
 
   requests[0].startedHandler(context);

@@ -22,7 +22,7 @@
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/transform.h"
 #include "ui/views/widget/widget.h"
-#include "ui/wm/core/shadow_controller.h"
+#include "ui/wm/core/decoration_controller.h"
 #include "ui/wm/core/window_util.h"
 
 namespace ash {
@@ -107,6 +107,9 @@ WindowMirrorView::~WindowMirrorView() {
     DCHECK(source_->layer());
     source_->RemoveObserver(this);
   }
+  if (target_) {
+    target_->RemoveObserver(this);
+  }
 }
 
 void WindowMirrorView::RecreateMirrorLayers() {
@@ -132,9 +135,14 @@ std::unique_ptr<ui::Layer> WindowMirrorView::RecreateLayer() {
 }
 
 void WindowMirrorView::OnWindowDestroying(aura::Window* window) {
-  CHECK_EQ(source_, window);
-  source_->RemoveObserver(this);
-  source_ = nullptr;
+  if (source_ == window) {
+    source_->RemoveObserver(this);
+    source_ = nullptr;
+  }
+  if (target_ == window) {
+    target_->RemoveObserver(this);
+    target_ = nullptr;
+  }
 }
 
 gfx::Size WindowMirrorView::CalculatePreferredSize(
@@ -185,6 +193,7 @@ void WindowMirrorView::AddedToWidget() {
   // Set and insert the new target window associated with this mirror view.
   target_ = GetWidget()->GetNativeWindow();
   target_->TrackOcclusionState();
+  target_->AddObserver(this);
 
   if (source_) {
     // Force the occlusion tracker to treat the source as visible.
@@ -197,7 +206,10 @@ void WindowMirrorView::AddedToWidget() {
 }
 
 void WindowMirrorView::RemovedFromWidget() {
-  target_ = nullptr;
+  if (target_) {
+    target_->RemoveObserver(this);
+    target_ = nullptr;
+  }
 }
 
 ui::Layer* WindowMirrorView::GetMirrorLayerForTesting() {
@@ -226,11 +238,10 @@ void WindowMirrorView::InitLayerOwner() {
   }
 
   if (exclude_shadow_) {
-    ui::Decoration* shadow_decoration =
-        ::wm::ShadowController::GetShadowDecorationForWindow(source_);
-    ExcludeShadowContainer(
-        layer_owner_->root(),
-        shadow_decoration ? shadow_decoration->layer() : nullptr);
+    ui::Decoration* decoration =
+        ::wm::DecorationController::GetDecorationForWindow(source_);
+    ExcludeShadowContainer(layer_owner_->root(),
+                           decoration ? decoration->layer() : nullptr);
   }
 
   DeprecatedLayoutImmediately();

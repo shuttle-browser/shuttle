@@ -6,6 +6,7 @@ package org.chromium.chrome.browser.ttc;
 
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.base.ObserverList;
@@ -39,6 +40,15 @@ public class TtcKeyedService {
          * session is ended by the native side shortly after.
          */
         default void onError(int errorCode) {}
+
+        /**
+         * The transcripts of the current exchange changed. Each is the full text so far of the
+         * user's turn and of the model's reply; either may be empty.
+         */
+        default void onTranscriptionsUpdated(String userTranscript, String modelTranscript) {}
+
+        /** The session's microphone was muted or unmuted. */
+        default void onMicMutedChanged(boolean muted) {}
     }
 
     private long mNativePtr;
@@ -96,6 +106,26 @@ public class TtcKeyedService {
         TtcKeyedServiceJni.get().endSession(mNativePtr);
     }
 
+    /**
+     * Mutes or unmutes the microphone of the active session. While muted, no audio is captured or
+     * sent to the model. No-op unless the session is live; it goes live unmuted.
+     */
+    public void setMicMuted(boolean muted) {
+        ThreadUtils.assertOnUiThread();
+        if (mNativePtr == 0) return;
+        if (!TtcKeyedServiceJni.get().setMicMuted(mNativePtr, muted)) return;
+        for (Observer observer : mObservers) {
+            observer.onMicMutedChanged(muted);
+        }
+    }
+
+    /** Returns whether the active session's microphone is muted. */
+    public boolean isMicMuted() {
+        ThreadUtils.assertOnUiThread();
+        if (mNativePtr == 0) return false;
+        return TtcKeyedServiceJni.get().isMicMuted(mNativePtr);
+    }
+
     public void addObserver(Observer observer) {
         mObservers.addObserver(observer);
     }
@@ -145,6 +175,15 @@ public class TtcKeyedService {
         }
     }
 
+    @CalledByNative
+    private void onTranscriptionsUpdated(
+            @JniType("std::string") String userTranscript,
+            @JniType("std::string") String modelTranscript) {
+        for (Observer observer : mObservers) {
+            observer.onTranscriptionsUpdated(userTranscript, modelTranscript);
+        }
+    }
+
     @NativeMethods
     interface Natives {
         boolean isEnabled(long nativeTtcKeyedServiceAndroid);
@@ -156,5 +195,9 @@ public class TtcKeyedService {
         void startSession(long nativeTtcKeyedServiceAndroid);
 
         void endSession(long nativeTtcKeyedServiceAndroid);
+
+        boolean setMicMuted(long nativeTtcKeyedServiceAndroid, boolean muted);
+
+        boolean isMicMuted(long nativeTtcKeyedServiceAndroid);
     }
 }

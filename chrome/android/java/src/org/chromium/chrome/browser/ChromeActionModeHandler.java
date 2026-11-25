@@ -20,7 +20,6 @@ import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.Callback;
 import org.chromium.base.PackageManagerUtils;
-import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
@@ -30,6 +29,7 @@ import org.chromium.chrome.browser.browser_controls.BrowserControlsUtils;
 import org.chromium.chrome.browser.enterprise.util.DataProtectionBridge;
 import org.chromium.chrome.browser.firstrun.FirstRunStatus;
 import org.chromium.chrome.browser.locale.LocaleManager;
+import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.readaloud.ReadAloudController;
 import org.chromium.chrome.browser.selection.ChromeSelectionDropdownMenuDelegate;
 import org.chromium.chrome.browser.selection.GlicSelectionMenuTracker;
@@ -82,21 +82,25 @@ public class ChromeActionModeHandler {
             Supplier<@Nullable ReadAloudController> readAloudControllerSupplier) {
         mInitWebContentsObserver =
                 (webContents) -> {
+                    Tab tab = assertNonNull(mActiveTab);
+                    Supplier<@Nullable Profile> profileSupplier =
+                            () -> !tab.isDestroyed() ? tab.getProfile() : null;
                     SelectionPopupController spc =
                             SelectionPopupController.fromWebContents(webContents);
                     spc.setActionModeCallback(
                             new ChromeActionModeCallback(
-                                    assertNonNull(mActiveTab),
+                                    tab,
                                     webContents,
                                     searchCallback,
                                     showWebSearch,
                                     shareDelegateSupplier,
                                     controlsState,
                                     readAloudControllerSupplier,
-                                    new GlicSelectionMenuTracker()));
+                                    new GlicSelectionMenuTracker(profileSupplier)));
                     spc.setDropdownMenuDelegate(
                             new ChromeSelectionDropdownMenuDelegate(
-                                    new GlicSelectionMenuTracker()));
+                                    tab.getContext(),
+                                    new GlicSelectionMenuTracker(profileSupplier)));
                 };
 
         new ActivityTabProvider.ActivityTabTabObserver(activityTabProvider) {
@@ -146,9 +150,6 @@ public class ChromeActionModeHandler {
         private final BrowserControlsStateProvider mControlsState;
         private final GlicSelectionMenuTracker mGlicSelectionMenuTracker;
 
-        // Used for recording UMA histograms.
-        private long mContextMenuStartTime;
-
         ChromeActionModeCallback(
                 Tab tab,
                 WebContents webContents,
@@ -176,8 +177,6 @@ public class ChromeActionModeHandler {
 
         @Override
         public boolean onCreateActionMode(ActionMode mode, Menu menu) {
-            mContextMenuStartTime = System.currentTimeMillis();
-
             int allowedActionModes =
                     ActionModeCallbackHelper.MENU_ITEM_PROCESS_TEXT
                             | ActionModeCallbackHelper.MENU_ITEM_SHARE;
@@ -282,9 +281,6 @@ public class ChromeActionModeHandler {
             } else if (mShareDelegateSupplier.get() != null
                     && id == R.id.select_action_menu_share) {
                 RecordUserAction.record(SelectionPopupController.UMA_MOBILE_ACTION_MODE_SHARE);
-                RecordHistogram.deprecatedRecordMediumTimesHistogram(
-                        "ContextMenu.TimeToSelectShare",
-                        System.currentTimeMillis() - mContextMenuStartTime);
                 mHelper.dismissMenu();
                 mShareDelegateSupplier
                         .get()

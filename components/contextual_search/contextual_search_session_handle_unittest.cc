@@ -126,6 +126,57 @@ TEST_F(ContextualSearchSessionHandleTest,
 }
 
 TEST_F(ContextualSearchSessionHandleTest,
+       StartFileContextUploadFlow_InfersHeicMimeTypeFromExtension) {
+  base::UnguessableToken token = handle_->CreateContextToken();
+
+  EXPECT_CALL(*mock_controller_ptr_, StartFileUploadFlow(token, _, _))
+      .WillOnce([](const base::UnguessableToken& file_token,
+                   std::unique_ptr<lens::ContextualInputData> input_data,
+                   std::optional<lens::ImageEncodingOptions> image_options) {
+        EXPECT_EQ(input_data->primary_content_type, lens::MimeType::kImage);
+        EXPECT_EQ(input_data->mime_type_string, "image/heic");
+      });
+
+  mojo_base::BigBuffer buffer;
+  handle_->StartFileContextUploadFlow(token, "IMG_1234.HEIC", "",
+                                      std::move(buffer), std::nullopt);
+}
+
+TEST_F(ContextualSearchSessionHandleTest,
+       StartFileContextUploadFlow_InfersHeifMimeTypeFromExtension) {
+  base::UnguessableToken token = handle_->CreateContextToken();
+
+  EXPECT_CALL(*mock_controller_ptr_, StartFileUploadFlow(token, _, _))
+      .WillOnce([](const base::UnguessableToken& file_token,
+                   std::unique_ptr<lens::ContextualInputData> input_data,
+                   std::optional<lens::ImageEncodingOptions> image_options) {
+        EXPECT_EQ(input_data->primary_content_type, lens::MimeType::kImage);
+        EXPECT_EQ(input_data->mime_type_string, "image/heif");
+      });
+
+  mojo_base::BigBuffer buffer;
+  handle_->StartFileContextUploadFlow(token, "photo.heif", "",
+                                      std::move(buffer), std::nullopt);
+}
+
+TEST_F(ContextualSearchSessionHandleTest,
+       StartFileContextUploadFlow_EmptyMimeTypeUnknownExtension) {
+  base::UnguessableToken token = handle_->CreateContextToken();
+
+  EXPECT_CALL(*mock_controller_ptr_, StartFileUploadFlow(token, _, _))
+      .WillOnce([](const base::UnguessableToken& file_token,
+                   std::unique_ptr<lens::ContextualInputData> input_data,
+                   std::optional<lens::ImageEncodingOptions> image_options) {
+        EXPECT_EQ(input_data->primary_content_type, lens::MimeType::kUnknown);
+        EXPECT_EQ(input_data->mime_type_string, "");
+      });
+
+  mojo_base::BigBuffer buffer;
+  handle_->StartFileContextUploadFlow(token, "notes.xyz", "", std::move(buffer),
+                                      std::nullopt);
+}
+
+TEST_F(ContextualSearchSessionHandleTest,
        StartDriveContextUploadFlow_ValidToken) {
   base::UnguessableToken token = handle_->CreateContextToken();
   std::string test_drive_id = "test_drive_id";
@@ -2815,6 +2866,44 @@ TEST_F(ContextualSearchSessionHandleTest,
   EXPECT_EQ(implicit_token, attached[1].context_token);
   EXPECT_EQ(20, attached[1].tab_id);
   EXPECT_FALSE(attached[1].uploaded);
+}
+
+TEST_F(ContextualSearchSessionHandleTest,
+       StartTabContextUploadFlow_StartsFileUploadBeforeNotifyingSubscribers) {
+  base::MockCallback<ContextualSearchSessionHandle::TabContextSubscriber>
+      callback;
+  auto subscription = handle_->SubscribeTabContext(callback.Get());
+
+  base::UnguessableToken implicit_token = handle_->CreateContextToken();
+  {
+    testing::InSequence seq;
+    EXPECT_CALL(*mock_controller_ptr_,
+                StartFileUploadFlow(implicit_token, _, _));
+    EXPECT_CALL(callback, Run(_));
+  }
+
+  handle_->StartTabContextUploadFlow(
+      implicit_token, MakeTabInputData(20, /*is_implicit_upload=*/true),
+      std::nullopt);
+}
+
+TEST_F(ContextualSearchSessionHandleTest,
+       StartTabContextUploadFlow_HandleDestroyedDuringStartFileUploadFlow) {
+  base::MockCallback<ContextualSearchSessionHandle::TabContextSubscriber>
+      callback;
+  auto subscription = handle_->SubscribeTabContext(callback.Get());
+  EXPECT_CALL(callback, Run(_)).Times(0);
+
+  base::UnguessableToken token = handle_->CreateContextToken();
+  EXPECT_CALL(*mock_controller_ptr_, StartFileUploadFlow(token, _, _))
+      .WillOnce([&](const base::UnguessableToken&,
+                    std::unique_ptr<lens::ContextualInputData>,
+                    std::optional<lens::ImageEncodingOptions>) {
+        mock_controller_ptr_ = nullptr;
+        handle_.reset();
+      });
+
+  handle_->StartTabContextUploadFlow(token, MakeTabInputData(20), std::nullopt);
 }
 
 // Tests that `DeleteFile` removes all tokens and the attached tab entry for a

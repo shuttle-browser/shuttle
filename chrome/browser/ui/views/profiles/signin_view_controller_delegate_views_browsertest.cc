@@ -8,11 +8,10 @@
 
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/signin/signin_view_controller.h"
 #include "chrome/browser/ui/test/test_browser_dialog.h"
-#include "chrome/browser/ui/webui/signin/signin_url_utils.h"
+#include "chrome/browser/ui/webui/signin/signin_ui_error.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
@@ -39,9 +38,8 @@ class SigninViewControllerDelegateViewsBrowserTest : public DialogBrowserTest {
   // If `show_immediately` is false, call ResizeNativeView() to show the dialog.
   SigninViewControllerDelegateViews* CreateDelegate(bool show_immediately) {
     return new SigninViewControllerDelegateViews(
-        SigninViewControllerDelegateViews::CreateSyncConfirmationWebView(
-            browser(), SyncConfirmationStyle::kDefaultModal,
-            /*is_sync_promo=*/false),
+        SigninViewControllerDelegateViews::CreateSigninErrorWebView(
+            browser(), SigninUIError::NoProfile("user@gmail.com")),
         browser(), ui::mojom::ModalType::kWindow,
         /*wait_for_size=*/!show_immediately, /*should_show_close_button=*/false,
         /*animate_on_resize=*/true);
@@ -57,7 +55,7 @@ class SigninViewControllerDelegateViewsBrowserTest : public DialogBrowserTest {
 };
 
 IN_PROC_BROWSER_TEST_F(SigninViewControllerDelegateViewsBrowserTest,
-                       InvokeUi_SyncConfirmation) {
+                       InvokeUi_SigninError) {
   ShowAndVerifyUi();
 }
 
@@ -67,8 +65,8 @@ IN_PROC_BROWSER_TEST_F(SigninViewControllerDelegateViewsBrowserTest,
 IN_PROC_BROWSER_TEST_F(SigninViewControllerDelegateViewsBrowserTest,
                        CloseImmediately) {
   SigninViewController* controller = SigninViewController::From(browser());
-  controller->ShowModalSyncConfirmationDialog(
-      /*is_signin_intercept=*/false, /*is_sync_promo=*/false);
+  controller->ShowModalSigninErrorDialog(
+      SigninUIError::NoProfile("user@gmail.com"));
   content::WebContentsDestroyedWatcher watcher(
       controller->GetModalDialogWebContentsForTesting());
   // Close the dialog before it was displayed, this should not crash.

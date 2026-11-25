@@ -6,7 +6,6 @@
 
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/picture_in_picture_commands.h"
@@ -22,11 +21,8 @@
     transitionedToActivationLevel:(SceneActivationLevel)level {
   switch (level) {
     case SceneActivationLevelForegroundActive:
-      // The `mainBrowserProvider` may be nil, avoid crashing when this
-      // is the case (as `browser` is a pointer to a C++ object it is not
-      // safe to dereference if null).
-      if (Browser* browser =
-              sceneState.browserProviderInterface.mainBrowserProvider.browser) {
+      // The `mainBrowser` may be nullptr, avoid crashing when this is the case.
+      if (Browser* browser = sceneState.browserProviderInterface.mainBrowser) {
         id<PictureInPictureCommands> handler = HandlerForProtocol(
             browser->GetCommandDispatcher(), PictureInPictureCommands);
         [handler dismissPictureInPictureIfNotPipRestore];

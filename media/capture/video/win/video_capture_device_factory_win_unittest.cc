@@ -30,9 +30,11 @@
 #include "base/run_loop.h"
 #include "base/strings/sys_string_conversions.h"
 #include "base/test/bind.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "media/base/media_switches.h"
+#include "media/capture/capture_switches.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -1355,6 +1357,15 @@ class FakeVideoCaptureDeviceFactoryWin : public VideoCaptureDeviceFactoryWin {
       device_source_native_formats_;
 };
 
+// Returns the expected ID of a device that is listed in MediaFoundation but
+// only reports supported formats in DirectShow.
+std::string GetDirectShowFallbackDeviceId() {
+  return base::SysWideToUTF8(
+      switches::IsWinDeviceEnumerationWithoutActivationEnabled()
+          ? kMFDeviceId5
+          : kDirectShowDeviceId5);
+}
+
 }  // namespace
 
 class VideoCaptureDeviceFactoryWinTest : public ::testing::Test {
@@ -1392,6 +1403,7 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo) {
   const bool use_d3d11 = GetParam();
   factory_.set_use_d3d11_with_media_foundation_for_testing(use_d3d11);
 
+  base::HistogramTester histogram_tester;
   std::vector<VideoCaptureDeviceInfo> devices_info;
   base::RunLoop run_loop;
   factory_.GetDevicesInfo(base::BindLambdaForTesting(
@@ -1400,6 +1412,13 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo) {
         run_loop.Quit();
       }));
   run_loop.Run();
+
+  histogram_tester.ExpectTotalCount(
+      "Media.VideoCapture.Win.DeviceEnumeration.Duration."
+      "DevicesWithCapabilities",
+      1);
+  histogram_tester.ExpectTotalCount(
+      "Media.VideoCapture.Win.DeviceEnumeration.Duration.DevicesOnly", 0);
 
   EXPECT_EQ(devices_info.size(), 6U);
   for (auto it = devices_info.begin(); it != devices_info.end(); it++) {
@@ -1454,7 +1473,7 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo) {
   // formats in DirectShow are expected to get enumerated with
   // VideoCaptureApi::WIN_DIRECT_SHOW
   it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
-                         base::SysWideToUTF8(kDirectShowDeviceId5));
+                         GetDirectShowFallbackDeviceId());
   ASSERT_NE(it, devices_info.end());
   EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_DIRECT_SHOW);
   EXPECT_EQ(it->descriptor.display_name(),
@@ -1633,6 +1652,7 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesOnly) {
 
   factory_.set_use_d3d11_with_media_foundation_for_testing(GetParam());
 
+  base::HistogramTester histogram_tester;
   std::vector<VideoCaptureDeviceInfo> devices_info;
   base::RunLoop run_loop;
   factory_.GetDevicesInfo(
@@ -1644,6 +1664,13 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesOnly) {
             run_loop.Quit();
           }));
   run_loop.Run();
+
+  histogram_tester.ExpectTotalCount(
+      "Media.VideoCapture.Win.DeviceEnumeration.Duration.DevicesOnly", 1);
+  histogram_tester.ExpectTotalCount(
+      "Media.VideoCapture.Win.DeviceEnumeration.Duration."
+      "DevicesWithCapabilities",
+      0);
 
   // Return the complete list without creating Media Foundation device sources.
   EXPECT_EQ(devices_info.size(), 6U);
@@ -1686,6 +1713,7 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest,
 
   factory_.set_use_d3d11_with_media_foundation_for_testing(GetParam());
 
+  base::HistogramTester histogram_tester;
   std::vector<VideoCaptureDeviceInfo> devices_info;
   base::RunLoop run_loop;
   factory_.GetDevicesInfo(
@@ -1697,6 +1725,13 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest,
             run_loop.Quit();
           }));
   run_loop.Run();
+
+  histogram_tester.ExpectTotalCount(
+      "Media.VideoCapture.Win.DeviceEnumeration.Duration."
+      "DevicesWithCapabilities",
+      1);
+  histogram_tester.ExpectTotalCount(
+      "Media.VideoCapture.Win.DeviceEnumeration.Duration.DevicesOnly", 0);
 
   EXPECT_GT(factory_.create_device_source_count(), 0);
   iterator it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
@@ -1801,7 +1836,7 @@ TEST_P(VideoCaptureDeviceFactoryMFWinTest, GetDevicesInfo_IncludeIRCameras) {
   // formats in DirectShow are expected to get enumerated with
   // VideoCaptureApi::WIN_DIRECT_SHOW
   it = FindDeviceInRange(devices_info.begin(), devices_info.end(),
-                         base::SysWideToUTF8(kDirectShowDeviceId5));
+                         GetDirectShowFallbackDeviceId());
   ASSERT_NE(it, devices_info.end());
   EXPECT_EQ(it->descriptor.capture_api, VideoCaptureApi::WIN_DIRECT_SHOW);
   EXPECT_EQ(it->descriptor.display_name(),

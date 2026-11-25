@@ -120,31 +120,18 @@ void GCMDriverAndroid::AddAppHandler(const std::string& app_id,
   Java_GCMDriver_replayPersistedMessages(env, java_ref_, app_id);
 }
 
-void GCMDriverAndroid::AddConnectionObserver(GCMConnectionObserver* observer) {}
-
-void GCMDriverAndroid::RemoveConnectionObserver(
-    GCMConnectionObserver* observer) {}
-
 GCMClient* GCMDriverAndroid::GetGCMClientForTesting() const {
   NOTIMPLEMENTED();
   return NULL;
-}
-
-bool GCMDriverAndroid::IsStarted() const {
-  return true;
-}
-
-bool GCMDriverAndroid::IsConnected() const {
-  // TODO(gcm): hook up to GCM connected status
-  return true;
 }
 
 void GCMDriverAndroid::GetGCMStatistics(GetGCMStatisticsCallback callback,
                                         ClearActivityLogs clear_logs) {
   DCHECK(!callback.is_null());
 
-  if (clear_logs == CLEAR_LOGS)
+  if (clear_logs == CLEAR_LOGS) {
     recorder_.Clear();
+  }
 
   GCMClient::GCMStatistics stats;
   stats.is_recording = recorder_.is_recording();
@@ -174,11 +161,6 @@ InstanceIDHandler* GCMDriverAndroid::GetInstanceIDHandlerInternal() {
   // Not supported for Android.
   return NULL;
 }
-
-void GCMDriverAndroid::AddHeartbeatInterval(const std::string& scope,
-                                            int interval_ms) {}
-
-void GCMDriverAndroid::RemoveHeartbeatInterval(const std::string& scope) {}
 
 void GCMDriverAndroid::OnActivityRecorded() {
   DCHECK(gcm_statistics_recording_callback_);

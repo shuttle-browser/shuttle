@@ -18,6 +18,11 @@
 - (void)setSuggestions:(NSArray<ActorFormSuggestion*>*)suggestions
     forActiveWorklogItem:(ActuationWorklogItem*)worklogItem;
 
+// Replaces the active `worklogItem` of the displayed suggestions following a
+// suggestion reselection. No-op if no suggestions are displayed.
+- (void)updateActiveWorklogItemForReselectedSuggestion:
+    (ActuationWorklogItem*)worklogItem;
+
 // Clears and dismisses any active suggestions coordination.
 - (void)clearSuggestions;
 

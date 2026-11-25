@@ -10,10 +10,11 @@ import org.junit.runners.model.Statement;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
+import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.ui.KeyboardUtils;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerChrome;
 import org.chromium.chrome.browser.firstrun.FirstRunStatus;
-import org.chromium.chrome.browser.layouts.LayoutTestUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabLaunchType;
@@ -22,6 +23,8 @@ import org.chromium.chrome.browser.tabmodel.TabClosureParams;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.test.ChromeTabbedActivityTestRule;
 import org.chromium.chrome.test.util.ChromeTabUtils;
+import org.chromium.ui.modaldialog.DialogDismissalCause;
+import org.chromium.ui.modaldialog.ModalDialogManager;
 
 import java.lang.ref.WeakReference;
 import java.util.Collections;
@@ -87,11 +90,7 @@ public class BlankCTATabInitialStateRule implements TestRule {
                                         + " validated.");
                     }
                     mActivityTestRule.setActivity(cta);
-                    if (shouldPerformFastReset()) {
-                        resetTabStateFast();
-                    } else {
-                        resetTabStateThorough();
-                    }
+                    resetState();
                 }
                 try {
                     base.evaluate();
@@ -125,6 +124,14 @@ public class BlankCTATabInitialStateRule implements TestRule {
         return regularTabCount() > 0;
     }
 
+    private void resetState() {
+        if (shouldPerformFastReset()) {
+            resetTabStateFast();
+        } else {
+            resetTabStateThorough();
+        }
+    }
+
     private void closeAllButOneTab(TabModel tabModel) {
         ThreadUtils.assertOnUiThread();
 
@@ -137,11 +144,25 @@ public class BlankCTATabInitialStateRule implements TestRule {
         }
     }
 
+    private void resetDialogsAndKeyboardOnUiThread() {
+        ThreadUtils.assertOnUiThread();
+        ChromeTabbedActivity activity = getActivity();
+        if (activity == null) return;
+        if (activity.getWindow() != null && activity.getWindow().getDecorView() != null) {
+            KeyboardUtils.hideAndroidSoftKeyboard(activity.getWindow().getDecorView());
+        }
+        ModalDialogManager modalDialogManager = activity.getModalDialogManager();
+        if (modalDialogManager != null) {
+            modalDialogManager.dismissAllDialogs(DialogDismissalCause.UNKNOWN);
+        }
+    }
+
     // Avoids closing the primary tab (and killing the renderer) in order to reset tab state
     // quickly, at the cost of thoroughness. This should be adequate for most tests.
     private void resetTabStateFast() {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
+                    resetDialogsAndKeyboardOnUiThread();
                     IncognitoTabHostUtils.closeAllIncognitoTabs();
                     // Close all but the first regular tab as these tests expect to start with a
                     // single tab.
@@ -183,6 +204,7 @@ public class BlankCTATabInitialStateRule implements TestRule {
         Tab createdTab =
                 ThreadUtils.runOnUiThreadBlocking(
                         () -> {
+                            resetDialogsAndKeyboardOnUiThread();
                             // We have to avoid closing all tabs and triggering CTA's self-finish
                             // logic when all tabs are closed.
                             Tab newTab =
@@ -218,6 +240,14 @@ public class BlankCTATabInitialStateRule implements TestRule {
                             return newTab;
                         });
         ChromeTabUtils.waitForTabPageLoaded(createdTab, "about:blank");
-        LayoutTestUtils.waitForLayout(getActivity().getLayoutManager(), LayoutType.BROWSING);
+        // LayoutTestUtils is in chrome_java_transit, which this target can't depend on.
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    LayoutManagerChrome layoutManager = getActivity().getLayoutManager();
+                    return layoutManager.isLayoutVisible(LayoutType.BROWSING)
+                            && !layoutManager.isLayoutStartingToShow(LayoutType.BROWSING)
+                            && !layoutManager.isLayoutStartingToHide(LayoutType.BROWSING);
+                },
+                "BROWSING layout never finished showing");
     }
 }

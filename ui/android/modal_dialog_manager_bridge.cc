@@ -5,6 +5,7 @@
 #include "ui/android/modal_dialog_manager_bridge.h"
 
 #include "base/android/jni_android.h"
+#include "third_party/jni_zero/jni_zero.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "ui/android/ui_android_jni_headers/ModalDialogManagerBridge_jni.h"
@@ -32,7 +33,7 @@ void ModalDialogManagerBridge::ResumeModalDialog(ModalDialogType dialog_type,
 }
 
 void ModalDialogManagerBridge::ShowDialog(
-    base::android::ScopedJavaGlobalRef<jobject> j_modal_dialog_wrapper,
+    const jni_zero::JavaRef<jobject>& j_modal_dialog_wrapper,
     ModalDialogType dialog_type) {
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_ModalDialogManagerBridge_showDialog(env, j_modal_dialog_manager_bridge_,
@@ -41,7 +42,7 @@ void ModalDialogManagerBridge::ShowDialog(
 }
 
 void ModalDialogManagerBridge::DismissDialog(
-    base::android::ScopedJavaGlobalRef<jobject> j_modal_dialog_wrapper) {
+    const jni_zero::JavaRef<jobject>& j_modal_dialog_wrapper) {
   JNIEnv* env = base::android::AttachCurrentThread();
   Java_ModalDialogManagerBridge_dismissDialog(
       env, j_modal_dialog_manager_bridge_, j_modal_dialog_wrapper);
@@ -50,15 +51,9 @@ void ModalDialogManagerBridge::DismissDialog(
 // `ui/android/ui_android_jni_headers/ModalDialogManagerBridge_jni.h`
 // implementations.
 
-static int64_t JNI_ModalDialogManagerBridge_Create(
-    JNIEnv* env,
+static auto JNI_ModalDialogManagerBridge_Create(
     const jni_zero::JavaRef<jobject>& manager) {
-  return reinterpret_cast<intptr_t>(new ModalDialogManagerBridge(manager));
-}
-
-static void JNI_ModalDialogManagerBridge_Destroy(JNIEnv* env,
-                                                 int64_t mNativeBridgePtr) {
-  delete reinterpret_cast<ModalDialogManagerBridge*>(mNativeBridgePtr);
+  return jni_zero::MakeUnique<ModalDialogManagerBridge>(manager);
 }
 
 }  // namespace ui

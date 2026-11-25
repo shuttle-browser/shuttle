@@ -28,12 +28,12 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.ApplicationTestUtils;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.CriteriaHelper;
-import org.chromium.base.test.util.DisabledTest;
-import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.settings.MultiColumnSettings;
 import org.chromium.chrome.browser.settings.SettingsActivityInterface;
 import org.chromium.chrome.browser.settings.SettingsTestRule;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -42,13 +42,14 @@ import java.util.concurrent.atomic.AtomicReference;
 
 /** Tests for the Search in Settings. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@DoNotBatch(reason = "Tests cannot run batched because they launch a Settings activity.")
+@Batch(Batch.PER_CLASS)
 public class SettingsSearchCoordinatorTest {
     @Rule public SettingsTestRule<?> mSettingsTestRule = new SettingsTestRule<>(null);
 
     @After
     public void tearDown() {
-        mSettingsTestRule.getActivity().finish();
+        mSettingsTestRule.finishActivity();
+        ThreadUtils.runOnUiThreadBlocking(RecentSearchQueue::deleteDiskData);
     }
 
     private @Nullable SettingsActivityInterface getSettingsActivity() {
@@ -108,6 +109,15 @@ public class SettingsSearchCoordinatorTest {
                 });
 
         resultDisplayHelper.waitForCallback(callCount);
+
+        // In single-column mode, SlidingPaneLayout intercepts taps on the detail pane until it has
+        // fully slid open, which would swallow clicks on the search results.
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    MultiColumnSettings multiColumnSettings =
+                            (MultiColumnSettings) getSettingsActivity().getMultiColumnSettings();
+                    return multiColumnSettings.isLayoutOpen();
+                });
     }
 
     @Test
@@ -170,7 +180,6 @@ public class SettingsSearchCoordinatorTest {
 
     @Test
     @SmallTest
-    @DisabledTest(message = "https://crbug.com/572623849")
     public void testHistograms_clickedResult() throws Exception {
         mSettingsTestRule.startSettingsActivity();
         SettingsActivityInterface activity = waitForSettingsActivity();
@@ -187,7 +196,7 @@ public class SettingsSearchCoordinatorTest {
         String query = activity.getString(titleId);
         performSearch(query);
         onView(withText(titleId)).perform(click());
-        ThreadUtils.runOnUiThreadBlocking(() -> histograms.assertExpected());
+        histograms.pollInstrumentationThreadUntilSatisfied();
 
         // Invoke OS back to get back to search UI, and perform a new search. But exit search
         // without cliking the results -> emit "abandoned-results"

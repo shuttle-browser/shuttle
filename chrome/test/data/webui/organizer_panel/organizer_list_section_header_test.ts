@@ -4,16 +4,21 @@
 
 import 'chrome://organizer-panel.top-chrome/organizer_panel.js';
 
+import {OrganizerSectionMenuOption} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
 import type {OrganizerListSectionHeaderElement} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
 import {getDeepActiveElement} from 'chrome://resources/js/util.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import type {MetricsTracker} from 'chrome://webui-test/metrics_test_support.js';
+import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
 import {eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 suite('OrganizerListSectionHeaderTest', () => {
   let header: OrganizerListSectionHeaderElement;
+  let metrics: MetricsTracker;
 
   setup(async () => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    metrics = fakeMetricsPrivate();
     header = document.createElement('organizer-list-section-header');
     header.textContent = 'Open Tabs';
     header.expanded = true;
@@ -21,10 +26,28 @@ suite('OrganizerListSectionHeaderTest', () => {
     await microtasksFinished();
   });
 
-  test('has options tooltip and aria-label on menu button', () => {
+  test('has level-2 heading role and aria-label on expand button', async () => {
+    header.title = 'Open Tabs';
+    await microtasksFinished();
+    const expandButton = header.$.expandButton;
+    assertEquals('heading', expandButton.getAttribute('role'));
+    assertEquals('2', expandButton.getAttribute('aria-level'));
+    assertEquals('Open Tabs', expandButton.getAttribute('aria-label'));
+  });
+
+  test('has options tooltip and aria-label on menu button', async () => {
     const menuButton = header.$.menuButton;
     assertEquals('Options', menuButton.title);
     assertEquals('Options', menuButton.getAttribute('aria-label'));
+    assertEquals('Options', header.$.menu.$.wrapper.getAttribute('aria-label'));
+
+    header.title = 'Open Tabs';
+    await microtasksFinished();
+    assertEquals(
+        'Options for Open Tabs', menuButton.getAttribute('aria-label'));
+    assertEquals(
+        'Options for Open Tabs',
+        header.$.menu.$.wrapper.getAttribute('aria-label'));
   });
 
   test('has expand/collapse tooltip on expand button', async () => {
@@ -92,8 +115,15 @@ suite('OrganizerListSectionHeaderTest', () => {
 
   test('shows menu button only when expanded and enabled', async () => {
     const menuButton = header.$.menuButton;
+    const expandIcon = header.$.expandButton.$.icon;
 
     assertTrue(isVisible(menuButton));
+    assertTrue(
+        header.$.headerTitle.getBoundingClientRect().right <=
+        menuButton.getBoundingClientRect().left);
+    assertEquals(
+        menuButton.getBoundingClientRect().right,
+        expandIcon.getBoundingClientRect().left);
 
     header.expanded = false;
     await microtasksFinished();
@@ -292,9 +322,22 @@ suite('OrganizerListSectionHeaderTest', () => {
     await nextSectionPromise;
   });
 
-  test('focus method delegates to expand button', () => {
+  test('focus method delegates to expand button when enabled', () => {
     header.focus();
     assertEquals(header.$.expandButton.$.icon, getDeepActiveElement());
+  });
+
+  test('supports focus when disabled', async () => {
+    header.disabled = true;
+    await microtasksFinished();
+
+    assertEquals('0', header.getAttribute('tabindex'));
+    header.focus();
+    assertEquals(header, getDeepActiveElement());
+
+    header.disabled = false;
+    await microtasksFinished();
+    assertFalse(header.hasAttribute('tabindex'));
   });
 
   test('disables focus ring on expand button icon', async () => {
@@ -310,5 +353,62 @@ suite('OrganizerListSectionHeaderTest', () => {
             .trim());
     assertEquals('none', getComputedStyle(expandIcon).boxShadow);
     document.documentElement.classList.remove('focus-outline-visible');
+  });
+
+  test('records user actions and fires action events', async () => {
+    // Programmatic update does not record user actions.
+    header.expanded = false;
+    await microtasksFinished();
+    assertEquals(0, metrics.count('OrganizerPanel.CollapseSection'));
+
+    // Click and keyboard toggles record user actions and fire toggle-action.
+    let whenToggleAction = eventToPromise<CustomEvent<{expanded: boolean}>>(
+        'toggle-action', header);
+    header.$.expandButton.click();
+    let toggleEvent = await whenToggleAction;
+    await microtasksFinished();
+    assertTrue(toggleEvent.detail.expanded);
+    assertEquals(1, metrics.count('OrganizerPanel.ExpandSection'));
+
+    whenToggleAction = eventToPromise<CustomEvent<{expanded: boolean}>>(
+        'toggle-action', header);
+    header.$.expandButton.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowLeft',
+      bubbles: true,
+      composed: true,
+    }));
+    toggleEvent = await whenToggleAction;
+    await microtasksFinished();
+    assertFalse(toggleEvent.detail.expanded);
+    assertEquals(1, metrics.count('OrganizerPanel.CollapseSection'));
+
+    whenToggleAction = eventToPromise<CustomEvent<{expanded: boolean}>>(
+        'toggle-action', header);
+    header.$.expandButton.dispatchEvent(new KeyboardEvent('keydown', {
+      key: 'ArrowRight',
+      bubbles: true,
+      composed: true,
+    }));
+    toggleEvent = await whenToggleAction;
+    await microtasksFinished();
+    assertTrue(toggleEvent.detail.expanded);
+    assertEquals(2, metrics.count('OrganizerPanel.ExpandSection'));
+
+    // Menu selections fire menu-action even when re-selecting the active item.
+    for (const [button, expectedOption] of [
+             [header.$.showAllButton, OrganizerSectionMenuOption.SHOW_ALL],
+             [header.$.showAllButton, OrganizerSectionMenuOption.SHOW_ALL],
+             [header.$.showSomeButton, OrganizerSectionMenuOption.SHOW_SOME],
+    ] as const) {
+      header.$.menuButton.click();
+      await microtasksFinished();
+      const whenMenuAction =
+          eventToPromise<CustomEvent<{option: OrganizerSectionMenuOption}>>(
+              'menu-action', header);
+      button.click();
+      const event = await whenMenuAction;
+      await microtasksFinished();
+      assertEquals(expectedOption, event.detail.option);
+    }
   });
 });

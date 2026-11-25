@@ -388,15 +388,16 @@ TEST_F(PasswordChangeDelegateImplTest, PasswordChangeFormNotFound) {
       /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       PasswordChangeDelegateImpl::kCoarseFinalPasswordChangeStatusHistogram,
-      PasswordChangeDelegate::CoarseFinalPasswordChangeState::kFormNotDetected,
+      PasswordChangeDelegateImpl::CoarseFinalPasswordChangeState::
+          kFormNotDetected,
       /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       PasswordChangeDelegateImpl::kPasswordChangeTimeOverallHistogram, 1234, 1);
   ukm::TestUkmRecorder::ExpectEntryMetric(
       GetUkmEntry(test_ukm_recorder),
       UkmEntry::kCoarseFinalPasswordChangeStatusName,
-      static_cast<int>(PasswordChangeDelegate::CoarseFinalPasswordChangeState::
-                           kFormNotDetected));
+      static_cast<int>(PasswordChangeDelegateImpl::
+                           CoarseFinalPasswordChangeState::kFormNotDetected));
 }
 
 TEST_F(PasswordChangeDelegateImplTest, MetricsReportedFlowOffered) {
@@ -412,13 +413,13 @@ TEST_F(PasswordChangeDelegateImplTest, MetricsReportedFlowOffered) {
       /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       PasswordChangeDelegateImpl::kCoarseFinalPasswordChangeStatusHistogram,
-      PasswordChangeDelegate::CoarseFinalPasswordChangeState::kOffered,
+      PasswordChangeDelegateImpl::CoarseFinalPasswordChangeState::kOffered,
       /*expected_bucket_count=*/1);
   ukm::TestUkmRecorder::ExpectEntryMetric(
       GetUkmEntry(test_ukm_recorder),
       UkmEntry::kCoarseFinalPasswordChangeStatusName,
-      static_cast<int>(
-          PasswordChangeDelegate::CoarseFinalPasswordChangeState::kOffered));
+      static_cast<int>(PasswordChangeDelegateImpl::
+                           CoarseFinalPasswordChangeState::kOffered));
 }
 
 TEST_F(PasswordChangeDelegateImplTest,
@@ -435,13 +436,13 @@ TEST_F(PasswordChangeDelegateImplTest,
       /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       PasswordChangeDelegateImpl::kCoarseFinalPasswordChangeStatusHistogram,
-      PasswordChangeDelegate::CoarseFinalPasswordChangeState::kOffered,
+      PasswordChangeDelegateImpl::CoarseFinalPasswordChangeState::kOffered,
       /*expected_bucket_count=*/1);
   ukm::TestUkmRecorder::ExpectEntryMetric(
       GetUkmEntry(test_ukm_recorder),
       UkmEntry::kCoarseFinalPasswordChangeStatusName,
-      static_cast<int>(
-          PasswordChangeDelegate::CoarseFinalPasswordChangeState::kOffered));
+      static_cast<int>(PasswordChangeDelegateImpl::
+                           CoarseFinalPasswordChangeState::kOffered));
 }
 
 TEST_F(PasswordChangeDelegateImplTest,
@@ -459,13 +460,13 @@ TEST_F(PasswordChangeDelegateImplTest,
       /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       PasswordChangeDelegateImpl::kCoarseFinalPasswordChangeStatusHistogram,
-      PasswordChangeDelegate::CoarseFinalPasswordChangeState::kCanceled,
+      PasswordChangeDelegateImpl::CoarseFinalPasswordChangeState::kCanceled,
       /*expected_bucket_count=*/1);
   ukm::TestUkmRecorder::ExpectEntryMetric(
       GetUkmEntry(test_ukm_recorder),
       UkmEntry::kCoarseFinalPasswordChangeStatusName,
-      static_cast<int>(
-          PasswordChangeDelegate::CoarseFinalPasswordChangeState::kCanceled));
+      static_cast<int>(PasswordChangeDelegateImpl::
+                           CoarseFinalPasswordChangeState::kCanceled));
 }
 
 TEST_F(PasswordChangeDelegateImplTest,
@@ -514,13 +515,13 @@ TEST_F(PasswordChangeDelegateImplTest, PasswordChangeFlowCanceled) {
       PasswordChangeDelegate::State::kCanceled, /*expected_bucket_count=*/1);
   histogram_tester.ExpectUniqueSample(
       PasswordChangeDelegateImpl::kCoarseFinalPasswordChangeStatusHistogram,
-      PasswordChangeDelegate::CoarseFinalPasswordChangeState::kCanceled,
+      PasswordChangeDelegateImpl::CoarseFinalPasswordChangeState::kCanceled,
       /*expected_bucket_count=*/1);
   ukm::TestUkmRecorder::ExpectEntryMetric(
       GetUkmEntry(test_ukm_recorder),
       UkmEntry::kCoarseFinalPasswordChangeStatusName,
-      static_cast<int>(
-          PasswordChangeDelegate::CoarseFinalPasswordChangeState::kCanceled));
+      static_cast<int>(PasswordChangeDelegateImpl::
+                           CoarseFinalPasswordChangeState::kCanceled));
 }
 
 TEST_F(PasswordChangeDelegateImplTest, OnPasswordChangeDeclined) {
@@ -866,6 +867,8 @@ TEST_F(PasswordChangeDelegateImplTest, OpenPasswordChangeTab) {
 
 TEST_F(PasswordChangeDelegateImplTest, OpenPasswordDetails) {
   CreateDelegate();
+  MockPasswordChangeDelegateObserver observer;
+  delegate()->AddObserver(&observer);
   content::WebContentsTester::For(web_contents())
       ->NavigateAndCommit(GURL(kChangePasswordURL));
 
@@ -873,10 +876,12 @@ TEST_F(PasswordChangeDelegateImplTest, OpenPasswordDetails) {
   EXPECT_CALL(*actuator(), GetGeneratedPassword())
       .WillOnce(Return(
           password_manager::PasswordString(std::u16string(kNewPassword))));
+  EXPECT_CALL(observer, OnPasswordChangeStopped(delegate()));
   EXPECT_CALL(*manage_passwords_ui_controller(),
               ShowChangePasswordBubble(kTestEmail, kNewPassword));
 
   delegate()->OpenPasswordDetails();
+  delegate()->RemoveObserver(&observer);
 }
 
 TEST_F(PasswordChangeDelegateImplTest,
@@ -884,12 +889,16 @@ TEST_F(PasswordChangeDelegateImplTest,
   base::test::ScopedFeatureList scoped_features(
       password_manager::features::kShowTabWithPasswordChangeOnSuccess);
   CreateDelegate();
+  MockPasswordChangeDelegateObserver observer;
+  delegate()->AddObserver(&observer);
 
   EXPECT_CALL(*actuator(), OpenPasswordChangeTab(web_contents()));
+  EXPECT_CALL(observer, OnPasswordChangeStopped(delegate()));
   EXPECT_CALL(*manage_passwords_ui_controller(), ShowChangePasswordBubble)
       .Times(0);
 
   delegate()->OpenPasswordDetails();
+  delegate()->RemoveObserver(&observer);
 }
 
 TEST_F(PasswordChangeDelegateImplTest, LoginPasswordFormIsLogged) {

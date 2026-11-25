@@ -4,7 +4,9 @@
 
 #include "chrome/browser/ui/views/toolbar/webui_test_utils.h"
 
+#include "base/files/file_path.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/notimplemented.h"
 #include "base/run_loop.h"
 #include "base/strings/strcat.h"
@@ -12,12 +14,14 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/run_until.h"
+#include "base/test/test_future.h"
 #include "base/test/test_timeouts.h"
 #include "chrome/browser/headless/headless_command_processor.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
+#include "chrome/browser/ui/tab_contents/chrome_web_contents_view_handle_drop.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
@@ -34,16 +38,29 @@
 #include "chrome/common/pref_names.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "components/metrics/content/subprocess_metrics_provider.h"
+#include "content/public/browser/navigation_handle.h"
+#include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_widget_host.h"
+#include "content/public/browser/web_contents.h"
+#include "content/public/browser/web_contents_delegate.h"
+#include "content/public/common/drop_data.h"
 #include "content/public/test/browser_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
+#include "third_party/blink/public/common/page/drag_operation.h"
+#include "ui/base/clipboard/clipboard_url_info.h"
+#include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
+#include "ui/base/dragdrop/os_exchange_data.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/interaction/interaction_test_util_views.h"
+#include "ui/views/view.h"
 #include "ui/views/view_utils.h"
+#include "url/gurl.h"
+#include "url/origin.h"
 
 namespace {
 
@@ -104,7 +121,7 @@ constexpr char kClickExtensionButtonScript[] = R"(
     const extensionElements = extensionsContainer.shadowRoot
         .querySelectorAll('webui-toolbar-extension');
     const el = Array.from(extensionElements)
-        .find(el => el.state.id === '%s');
+        .find(el => el.getAttribute('data-key') === '%s');
     const btn = el.shadowRoot.querySelector('toolbar-chip-button');
     %s
   })();
@@ -136,6 +153,8 @@ void WaitUntilInitialWebUIPaintAndFlushMetricsForTesting(
   if (!webui_toolbar) {
     return;
   }
+
+  WaitForInitialWebUIToolbar(browser);
 
   webui_toolbar->SetDidFirstNonEmptyPaintCallbackForTesting(
       run_loop.QuitClosure());
@@ -191,6 +210,8 @@ void SetUpWebUI(const ui::ElementIdentifier& element_id,
       (*webui_toolbar_view_out)->children()[0].get());
   ASSERT_TRUE(*web_view_out);
 
+  WaitForInitialWebUIToolbar(browser);
+
   // Wait for the WebView to finish composition.
   content::WaitForCopyableViewInWebContents((*web_view_out)->GetWebContents());
 }
@@ -202,6 +223,33 @@ WebUIToolbarWebView* GetWebUIToolbarWebView(BrowserWindowInterface* browser) {
   }
   return browser_view->toolbar_button_provider()
       ->GetWebUIToolbarViewForTesting();
+}
+
+::testing::AssertionResult WaitForWebUIToolbarAccessibilityNode(
+    BrowserWindowInterface* browser,
+    std::string_view accessible_name) {
+  WebUIToolbarWebView* webui_toolbar = GetWebUIToolbarWebView(browser);
+  if (!webui_toolbar) {
+    return ::testing::AssertionFailure() << "No WebUIToolbarWebView found.";
+  }
+  views::WebView* toolbar_web_view = webui_toolbar->GetWebViewForTesting();
+  if (!toolbar_web_view) {
+    return ::testing::AssertionFailure()
+           << "No child WebView on WebUIToolbarWebView.";
+  }
+  content::WebContents* toolbar_web_contents =
+      toolbar_web_view->GetWebContents();
+  if (!toolbar_web_contents) {
+    return ::testing::AssertionFailure()
+           << "No WebContents in WebUIToolbarWebView.";
+  }
+  if (!content::WaitForLoadStop(toolbar_web_contents)) {
+    return ::testing::AssertionFailure()
+           << "WaitForLoadStop failed for WebUI toolbar WebContents.";
+  }
+  content::WaitForAccessibilityTreeToContainNodeWithName(toolbar_web_contents,
+                                                         accessible_name);
+  return ::testing::AssertionSuccess();
 }
 
 AvatarButtonUpdateWaiter::AvatarButtonUpdateWaiter(
@@ -541,8 +589,10 @@ std::u16string AvatarToolbarButtonTestAccessor::GetText() {
                     "app.shadowRoot?.querySelector('avatar-button');"
                     "  if (!btn) return '';"
                     "  await btn.updateComplete;"
-                    "  const textEl = btn.shadowRoot?.querySelector('#text');"
-                    "  return textEl?.textContent?.trim() || '';"
+                    // Use `state.text` rather than the #text element, which
+                    // may be hidden or visually elided, to match Views'
+                    // unelided GetText().
+                    "  return btn.state?.text || '';"
                     "})()")
                     .ExtractString());
           },
@@ -1050,7 +1100,9 @@ NavigationCounter::~NavigationCounter() = default;
 
 void NavigationCounter::DidStartNavigation(
     content::NavigationHandle* navigation_handle) {
-  navigation_count_++;
+  if (navigation_handle->IsInPrimaryMainFrame()) {
+    navigation_count_++;
+  }
 }
 
 void NavigationCounter::WaitForNoNavigations() {
@@ -1059,6 +1111,155 @@ void NavigationCounter::WaitForNoNavigations() {
       FROM_HERE, run_loop.QuitClosure(), TestTimeouts::tiny_timeout());
   run_loop.Run();
   EXPECT_EQ(navigation_count_, 0u);
+}
+
+WebUIToolbarDropSimulator::WebUIToolbarDropSimulator(
+    views::View* toolbar_view,
+    content::WebContents* toolbar_web_contents)
+    : toolbar_view_(toolbar_view),
+      toolbar_web_contents_(toolbar_web_contents) {}
+
+WebUIToolbarDropSimulator::~WebUIToolbarDropSimulator() = default;
+
+bool WebUIToolbarDropSimulator::PerformDrop(content::DropData drop_data,
+                                            bool drag_exited_before_drop) {
+  const gfx::PointF screen_pt(
+      drop_point_ + toolbar_view_->GetBoundsInScreen().OffsetFromOrigin());
+
+  content::RenderWidgetHost* rwh =
+      toolbar_web_contents_->GetPrimaryMainFrame()->GetRenderWidgetHost();
+  EXPECT_TRUE(rwh);
+  if (!rwh) {
+    return false;
+  }
+
+  // Filter the drop data via `RenderWidgetHost::FilterDropData` before sending
+  // `DragTargetDragEnter`, matching `WebContentsViewAura::DragEnteredCallback`.
+  content::DropData filtered_drop_data = drop_data;
+  rwh->FilterDropData(&filtered_drop_data);
+  rwh->DragTargetDragEnter(filtered_drop_data, drop_point_, screen_pt,
+                           blink::kDragOperationEvery, /*key_modifiers=*/0,
+                           base::DoNothing());
+
+  // Pass the unfiltered drop data to `PreHandleDragUpdate` before sending
+  // `DragTargetDragOver`, matching `WebContentsViewAura::DragUpdatedCallback`.
+  toolbar_web_contents_->GetDelegate()->PreHandleDragUpdate(drop_data,
+                                                            drop_point_);
+  base::test::TestFuture<ui::mojom::DragOperation, bool> drag_over_future;
+  rwh->DragTargetDragOver(drop_point_, screen_pt, blink::kDragOperationEvery,
+                          /*key_modifiers=*/0, drag_over_future.GetCallback());
+  const bool drag_over_replied = drag_over_future.Wait();
+  EXPECT_TRUE(drag_over_replied);
+  if (!drag_over_replied) {
+    return false;
+  }
+  if (drag_over_future.Get<0>() == ui::mojom::DragOperation::kNone) {
+    rwh->DragTargetDragLeave(drop_point_, screen_pt);
+    toolbar_web_contents_->GetDelegate()->PreHandleDragExit();
+    return false;
+  }
+  EXPECT_TRUE(drag_over_future.Get<1>());
+
+  if (drag_exited_before_drop) {
+    toolbar_web_contents_->GetDelegate()->PreHandleDragExit();
+  }
+
+  // Pass the filtered drop data through `HandleOnPerformingDrop` before
+  // sending `DragTargetDrop`, matching
+  // `WebContentsViewAura::PerformDropCallback`.
+  filtered_drop_data.document_is_handling_drag = drag_over_future.Get<1>();
+  base::test::TestFuture<std::optional<content::DropData>>
+      performing_drop_future;
+  HandleOnPerformingDrop(toolbar_web_contents_, std::move(filtered_drop_data),
+                         performing_drop_future.GetCallback());
+  std::optional<content::DropData> final_drop_data =
+      performing_drop_future.Take();
+  EXPECT_TRUE(final_drop_data.has_value());
+  if (!final_drop_data.has_value()) {
+    return true;
+  }
+
+  base::test::TestFuture<void> drop_future;
+  rwh->DragTargetDrop(*final_drop_data, drop_point_, screen_pt,
+                      /*key_modifiers=*/0, drop_future.GetCallback());
+  EXPECT_TRUE(drop_future.Wait());
+  return true;
+}
+
+void WebUIToolbarDropSimulator::SendDrop(content::DropData drop_data,
+                                         int key_modifiers) {
+  const gfx::PointF screen_pt(
+      drop_point_ + toolbar_view_->GetBoundsInScreen().OffsetFromOrigin());
+
+  content::RenderWidgetHost* rwh =
+      toolbar_web_contents_->GetPrimaryMainFrame()->GetRenderWidgetHost();
+  ASSERT_TRUE(rwh);
+
+  content::DropData filtered_drop_data = drop_data;
+  rwh->FilterDropData(&filtered_drop_data);
+  rwh->DragTargetDragEnter(filtered_drop_data, drop_point_, screen_pt,
+                           blink::kDragOperationEvery, key_modifiers,
+                           base::DoNothing());
+  toolbar_web_contents_->GetDelegate()->PreHandleDragUpdate(drop_data,
+                                                            drop_point_);
+  rwh->DragTargetDragOver(drop_point_, screen_pt, blink::kDragOperationEvery,
+                          key_modifiers, base::DoNothing());
+
+  base::test::TestFuture<std::optional<content::DropData>>
+      performing_drop_future;
+  HandleOnPerformingDrop(toolbar_web_contents_, std::move(filtered_drop_data),
+                         performing_drop_future.GetCallback());
+  ASSERT_TRUE(performing_drop_future.IsReady());
+  std::optional<content::DropData> final_drop_data =
+      performing_drop_future.Take();
+  ASSERT_TRUE(final_drop_data.has_value());
+
+  rwh->DragTargetDrop(*final_drop_data, drop_point_, screen_pt, key_modifiers,
+                      base::DoNothing());
+}
+
+void WebUIToolbarDropSimulator::SimulateLinkDrop(const std::string& url,
+                                                 DragOrigin origin) {
+  content::DropData drop_data;
+  drop_data.did_originate_from_renderer = origin == DragOrigin::kWebPage;
+  drop_data.url_infos.emplace_back(GURL(url), std::u16string());
+  EXPECT_TRUE(PerformDrop(drop_data));
+}
+
+bool WebUIToolbarDropSimulator::SimulateTextDrop(const std::string& text,
+                                                 DragOrigin origin) {
+  ui::OSExchangeData data;
+  if (origin == DragOrigin::kWebPage) {
+    data.MarkRendererTaintedFromOrigin(url::Origin());
+  }
+  data.SetString(base::UTF8ToUTF16(text));
+
+  content::DropData drop_data;
+  drop_data.did_originate_from_renderer = origin == DragOrigin::kWebPage;
+  drop_data.text = data.GetString();
+  drop_data.url_infos =
+      data.GetURLs(ui::FilenameToURLPolicy::DO_NOT_CONVERT_FILENAMES);
+  const bool has_synthesized_url = !drop_data.url_infos.empty();
+  EXPECT_TRUE(PerformDrop(drop_data));
+  return has_synthesized_url;
+}
+
+void WebUIToolbarDropSimulator::SimulateLinkWithTextDrop(const std::string& url,
+                                                         DragOrigin origin) {
+  content::DropData drop_data;
+  drop_data.did_originate_from_renderer = origin == DragOrigin::kWebPage;
+  drop_data.url_infos.emplace_back(GURL(url), std::u16string());
+  drop_data.text = base::UTF8ToUTF16(url);
+  EXPECT_TRUE(PerformDrop(drop_data));
+}
+
+bool WebUIToolbarDropSimulator::SimulateFileDrop(const base::FilePath& path,
+                                                 DragOrigin origin,
+                                                 bool drag_exited_before_drop) {
+  content::DropData drop_data;
+  drop_data.did_originate_from_renderer = origin == DragOrigin::kWebPage;
+  drop_data.filenames.emplace_back(path, path.BaseName());
+  return PerformDrop(drop_data, drag_exited_before_drop);
 }
 
 const char kFindDeepJS[] = R"(
@@ -1198,8 +1399,8 @@ const char kGetAllAnimationsJS[] = R"(
   // WebUI-side suppression (HighlightTracker in toolbar_button.ts). Import the
   // setter via the page's entry module (which re-exports it) rather than
   // '/shared/toolbar_button.js' directly: in optimized builds the shared module
-  // is bundled into webui_toolbar.js, so importing it by its own URL would
-  // create a second module instance that the toolbar's buttons don't use.
+  // is bundled, so importing it by its own URL would create a second module
+  // instance that the toolbar's buttons don't use.
   content::WebContents* web_contents =
       toolbar->GetWebViewForTesting()->web_contents();
   if (!web_contents) {

@@ -7,11 +7,9 @@
 #import "base/check.h"
 #import "base/functional/bind.h"
 #import "base/functional/callback.h"
-#import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
@@ -45,6 +43,9 @@ void SigninForContext(URLContext* context,
 
   // Iterate over all identities on device because the newGaia could
   // be in a different profile.
+  // TODO(crbug.com/576575308): Look up the identity via
+  // `ChromeAccountManagerService` instead of `SystemIdentityManager` so that
+  // restricted accounts are not passed to `AuthenticationService::SignIn`.
   id<SystemIdentity> new_identity = nil;
   NSMutableArray<id<SystemIdentity>>* identities =
       [[NSMutableArray alloc] init];
@@ -79,8 +80,7 @@ void ChangeProfileAuthenticationContinuation(URLContext* context,
   CHECK(!contexts || [contexts containsObject:context.context],
         base::NotFatalUntil::M157);
 
-  Browser* browser =
-      scene_state.browserProviderInterface.mainBrowserProvider.browser;
+  Browser* browser = scene_state.browserProviderInterface.mainBrowser;
   CHECK(browser);
 
   AuthenticationService* authentication_service =

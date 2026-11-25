@@ -24,6 +24,7 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
 #include "ui/gfx/geometry/rect.h"
+#include "ui/gfx/geometry/size.h"
 
 namespace content {
 class Page;
@@ -83,6 +84,12 @@ class GlicSelectionObserver
   // Notifies the observer that text selection context was sent to the Glic
   // panel from the context menu entry point.
   void UpdateSelectionStateFromContextMenu(const std::u16string& selected_text);
+
+  // Notifies the observer that the smart suggestion context menu was invoked
+  // on `selected_text`, ensuring the selection is tracked (and sent to the
+  // panel when open) even for selections in editable fields.
+  void UpdateSelectionStateFromSmartSuggestionContextMenu(
+      const std::u16string& selected_text);
 
   bool has_sent_selection_context() const {
     return has_sent_selection_context_;
@@ -166,10 +173,12 @@ class GlicSelectionObserver
       optimization_guide::PageContextEligibility* page_context_eligibility);
 
   void ResetSelectionState();
+  bool IsQuickAnswersEligible() const;
 
   raw_ptr<GlicKeyedService> glic_keyed_service_;
   base::CallbackListSubscription panel_state_subscription_;
   std::u16string last_selected_text_;
+  gfx::Size last_web_contents_size_;
 
   // The text of the last selection that was ignored due to rate limiting.
   std::optional<std::u16string> pending_selection_text_;

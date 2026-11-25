@@ -28,10 +28,12 @@
 #include "components/component_updater/component_updater_service.h"
 #include "components/optimization_guide/core/model_execution/component_download_observer.h"
 #include "components/optimization_guide/core/model_execution/manifest_broker/asset_priorities.h"
+#include "components/optimization_guide/core/model_execution/manifest_broker/disk_space_status.h"
 #include "components/optimization_guide/core/model_execution/manifest_broker/manifest.h"
 #include "components/optimization_guide/core/model_execution/manifest_broker/manifest_asset_manager_delegate.h"
 #include "components/optimization_guide/core/model_execution/manifest_broker/manifest_monitor.h"
 #include "components/optimization_guide/core/model_execution/manifest_broker/manifest_solution_factory.h"
+#include "components/optimization_guide/core/model_execution/on_device_capability.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_download_progress_manager.h"
 #include "components/optimization_guide/core/model_execution/usage_tracker.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
@@ -100,6 +102,10 @@ class ManifestAssetManager : public UsageTracker::Observer,
   // Returns a list of models for the broker state info.
   std::vector<std::pair<mojom::BrokerModelInfoPtr, base::FilePath>>
   GetBrokerModels() const;
+
+  // Returns installed base models and their install directories.
+  std::vector<std::pair<OnDeviceBaseModel, base::FilePath>>
+  GetInstalledBaseModels() const;
 
   // ManifestAssetManagerDelegate::AssetManager:
   void OnAssetReady(const std::string& public_key,
@@ -252,8 +258,9 @@ class ManifestAssetManager : public UsageTracker::Observer,
   std::optional<base::flat_set<std::string>> GetRequiredComponentIdsForUseCase(
       const std::string& use_case) const;
 
-  // Get disk space, and call `UpdateRegistration` when done.
-  void OnDiskSpaceEvaluated(std::optional<base::ByteSize> free_space);
+  // Updates free disk space on the solution factory and calls
+  // `UpdateRegistrations()`.
+  void OnDiskSpaceEvaluated();
 
   // Policy predicates governing component installation, retention, and
   // foreground updates.
@@ -301,22 +308,6 @@ class ManifestAssetManager : public UsageTracker::Observer,
   std::map<std::string, std::unique_ptr<ComponentDownloadObserver>>
       asset_download_observers_ GUARDED_BY_CONTEXT(sequence_checker_);
 
-  // Tracks the free disk space and the last time it was evaluated.
-  struct DiskSpaceStatus {
-    DiskSpaceStatus();
-    ~DiskSpaceStatus();
-
-    void Update(std::optional<base::ByteSize> free_space);
-
-    bool IsFresh() const;
-    bool IsSufficientForOnDemandInstall() const;
-    bool IsSufficientForBackgroundInstall() const;
-    std::optional<base::ByteSize> free_space() const { return free_space_; }
-
-   private:
-    std::optional<base::ByteSize> free_space_;
-    base::Time last_evaluated_;
-  };
   DiskSpaceStatus disk_space_status_ GUARDED_BY_CONTEXT(sequence_checker_);
 
   // The solution factory to provide assets to. This provides the manifest.

@@ -29,7 +29,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/test/base/chrome_test_utils.h"
 #include "chrome/test/base/platform_browser_test.h"
 #include "components/language_detection/content/common/language_detection.mojom.h"
@@ -54,7 +53,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/test/base/ui_test_utils.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #endif
 
 namespace language_detection {
@@ -177,14 +176,9 @@ class LanguageDetectionModelServiceBrowserTest : public PlatformBrowserTest {
  public:
   LanguageDetectionModelServiceBrowserTest() {
     scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/
         {optimization_guide::features::kOptimizationHints,
          blink::features::kLanguageDetectionAPI},
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove the two omnibox features below.
-        /*disabled_features=*/
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+        {});
   }
 
   void SetUp() override {
@@ -244,8 +238,6 @@ class LanguageDetectionModelServiceBrowserTest : public PlatformBrowserTest {
  private:
   std::unique_ptr<net::test_server::HttpResponse> RequestHandler(
       const net::test_server::HttpRequest& request) {
-    std::string path_value;
-
     // This script is render blocking in the HTML, but is intentionally slow.
     // This provides important time between commit and first layout for model
     // requests to make it to the renderer, reducing flakes.
@@ -271,13 +263,7 @@ class LanguageDetectionModelServiceWithoutOptimizationGuideBrowserTest
  public:
   LanguageDetectionModelServiceWithoutOptimizationGuideBrowserTest() {
     scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{},
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove the two omnibox features below.
-        /*disabled_features=*/
-        {optimization_guide::features::kOptimizationHints,
-         omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+        {}, {optimization_guide::features::kOptimizationHints});
   }
 
   ~LanguageDetectionModelServiceWithoutOptimizationGuideBrowserTest() override =
@@ -421,7 +407,8 @@ IN_PROC_BROWSER_TEST_F(LanguageDetectionModelServiceBrowserTest,
       "TranslateModelService.LanguageDetectionModel.WasLoaded", true, 1);
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), english_url(), WindowOpenDisposition::kNewForegroundTab,
+      browser(), english_url(),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   RetryForHistogramUntilCountReached(
@@ -451,7 +438,8 @@ IN_PROC_BROWSER_TEST_F(LanguageDetectionModelServiceBrowserTest,
       "TranslateModelService.LanguageDetectionModel.WasLoaded", true, 1);
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), english_url(), WindowOpenDisposition::kNewBackgroundTab,
+      browser(), english_url(),
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
 
   // Opening the browser causes the first model deferral event. The second

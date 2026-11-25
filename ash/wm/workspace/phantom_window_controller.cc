@@ -11,6 +11,7 @@
 #include "ash/strings/grit/ash_strings.h"
 #include "ash/style/ash_color_id.h"
 #include "ash/style/style_util.h"
+#include "ash/style/system_decoration.h"
 #include "ash/wm/window_util.h"
 #include "ui/aura/window.h"
 #include "ui/base/l10n/l10n_util.h"
@@ -24,16 +25,12 @@
 #include "ui/gfx/geometry/transform_util.h"
 #include "ui/views/animation/animation_builder.h"
 #include "ui/views/background.h"
-#include "ui/views/border.h"
 #include "ui/views/controls/label.h"
-#include "ui/views/highlight_border.h"
 #include "ui/views/layout/box_layout_view.h"
 #include "ui/views/metadata/view_factory.h"
 #include "ui/views/view.h"
-#include "ui/views/view_decoration.h"
 #include "ui/views/widget/widget.h"
 #include "ui/wm/core/coordinate_conversion.h"
-#include "ui/wm/core/shadow_controller.h"
 #include "ui/wm/core/shadow_types.h"
 
 namespace ash {
@@ -236,17 +233,11 @@ std::unique_ptr<views::Widget> PhantomWindowController::CreatePhantomWidget(
       kColorAshPhantomWindowBackgroundColor,
       gfx::RoundedCornersF(kPhantomWindowCornerRadius)));
   content_view->GetBackground()->SetInternalName("PhantomWindow:Background");
-  phantom_window_decoration_ =
-      std::make_unique<views::ViewDecoration>(content_view);
+  phantom_window_decoration_ = SystemDecoration::CreateForView(
+      content_view, SystemDecoration::ShadowType::kNone,
+      SystemDecoration::HighlightBorderMode::kHighlightBorder);
   phantom_window_decoration_->SetRoundedCornerRadius(
       kPhantomWindowCornerRadius);
-  phantom_window_decoration_->SetHighlightBorder(
-      views::HighlightBorder::GetHighlightColor(
-          *content_view,
-          views::HighlightBorder::Type::kHighlightBorderNoShadow),
-      views::HighlightBorder::GetBorderColor(
-          *content_view,
-          views::HighlightBorder::Type::kHighlightBorderNoShadow));
   return phantom_widget;
 }
 
@@ -260,16 +251,12 @@ std::unique_ptr<views::Widget> PhantomWindowController::CreateMaximizeCue(
       views::Widget::InitParams::TYPE_POPUP);
   params.opacity = views::Widget::InitParams::WindowOpacity::kTranslucent;
   params.name = "MaximizeCueWidget";
+  params.layer_type = ui::LAYER_NOT_DRAWN;
   params.shadow_type = views::Widget::InitParams::ShadowType::kNone;
   params.parent = root_window->GetChildById(kShellWindowId_OverlayContainer);
 
   maximize_cue_widget->set_focus_on_creation(false);
   maximize_cue_widget->Init(std::move(params));
-
-  ui::Layer* layer = maximize_cue_widget->GetLayer();
-  layer->SetBackgroundBlur(StyleUtil::kBackgroundBlurSigma);
-  layer->SetBackdropFilterQuality(StyleUtil::kBackgroundBlurQuality);
-  layer->SetRoundedCornerRadius(gfx::RoundedCornersF(kMaximizeCueHeight / 2.f));
 
   aura::Window* maximize_cue_widget_window =
       maximize_cue_widget->GetNativeWindow();
@@ -279,14 +266,11 @@ std::unique_ptr<views::Widget> PhantomWindowController::CreateMaximizeCue(
   // The cue has one view and a child label.
   views::View* maximize_cue_view = maximize_cue_widget->SetContentsView(
       views::Builder<views::BoxLayoutView>()
+          .SetPaintToLayer()
           .SetOrientation(views::BoxLayout::Orientation::kHorizontal)
           .SetInsideBorderInsets(gfx::Insets::VH(kMaximizeCueVerticalInsets,
                                                  kMaximizeCueHorizontalInsets))
-          .SetBackground(views::CreateRoundedRectBackground(
-              kColorAshShieldAndBase20, kPhantomWindowCornerRadius))
-          .SetBorder(std::make_unique<views::HighlightBorder>(
-              kPhantomWindowCornerRadius,
-              views::HighlightBorder::Type::kHighlightBorderNoShadow))
+          .SetBackground(views::CreateSolidBackground(kColorAshShieldAndBase20))
           .AddChildren(
               views::Builder<views::Label>()
                   .SetText(l10n_util::GetStringUTF16(
@@ -297,6 +281,17 @@ std::unique_ptr<views::Widget> PhantomWindowController::CreateMaximizeCue(
                       2, gfx::Font::FontStyle::NORMAL,
                       gfx::Font::Weight::NORMAL)))
           .Build());
+
+  ui::Layer* layer = maximize_cue_view->layer();
+  layer->SetFillsBoundsOpaquely(false);
+  layer->SetBackgroundBlur(StyleUtil::kBackgroundBlurSigma);
+  layer->SetBackdropFilterQuality(StyleUtil::kBackgroundBlurQuality);
+  layer->SetRoundedCornerRadius(gfx::RoundedCornersF(kMaximizeCueHeight / 2.f));
+
+  maximize_cue_decoration_ = SystemDecoration::CreateForView(
+      maximize_cue_view, SystemDecoration::ShadowType::kNone,
+      SystemDecoration::HighlightBorderMode::kHighlightBorder);
+  maximize_cue_decoration_->SetRoundedCornerRadius(kMaximizeCueHeight / 2);
 
   const display::Display& display =
       display::Screen::Get()->GetDisplayNearestWindow(root_window);

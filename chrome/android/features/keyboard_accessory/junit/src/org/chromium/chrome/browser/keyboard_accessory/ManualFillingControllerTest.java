@@ -142,6 +142,7 @@ import org.chromium.ui.display.DisplayAndroid;
 import org.chromium.ui.edge_to_edge.EdgeToEdgeStateProvider;
 import org.chromium.ui.insets.InsetObserver;
 import org.chromium.ui.modaldialog.DialogDismissalCause;
+import org.chromium.ui.modaldialog.ModalDialogManager;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.mojom.VirtualKeyboardMode;
 import org.chromium.url.GURL;
@@ -210,6 +211,7 @@ public class ManualFillingControllerTest {
     @Captor private ArgumentCaptor<KeyboardAccessoryStyle> mStyleCaptor;
 
     @Mock private ChromeWindow mMockWindow;
+    @Mock private ModalDialogManager mMockModalDialogManager;
     @Mock private Profile mMockProfile;
     @Mock private Profile.Natives mProfileJniMock;
     @Mock private TabModelSelector mMockTabModelSelector;
@@ -406,6 +408,7 @@ public class ManualFillingControllerTest {
         mContentView = ContentView.createContentView(mActivity, /* webContents= */ null);
         when(mMockWindow.getActivity()).thenReturn(new WeakReference<>(mActivity));
         when(mMockWindow.getUnownedUserDataHost()).thenReturn(mUnownedUserDataHost);
+        when(mMockWindow.getModalDialogManager()).thenReturn(mMockModalDialogManager);
         mInsetSupplier.setKeyboardInsetSupplier(mKeyboardInsetSupplier);
         mInsetSupplier.setKeyboardAccessoryInsetSupplier(mController.getBottomInsetSupplier());
         when(mMockWindow.getApplicationBottomInsetTracker()).thenReturn(mInsetSupplier);
@@ -427,7 +430,7 @@ public class ManualFillingControllerTest {
         ManualFillingComponentBridgeJni.setInstanceForTesting(mManualFillingComponentBridgeJniMock);
 
         when(mMockWindow.getKeyboardDelegate()).thenReturn(mMockKeyboardDelegate);
-        when(mMockKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mMockKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
         when(mMockWindow.getInsetObserver()).thenReturn(mInsetObserver);
         simulateLayoutSizeChange(
                 2.f, 80, 128, /* keyboardShown= */ false, VirtualKeyboardMode.RESIZES_VISUAL);
@@ -483,14 +486,14 @@ public class ManualFillingControllerTest {
 
         // 2. Open the keyboard: supplier must become true!
         when(mMockSoftKeyboardDelegate.isSoftKeyboardShowing(any())).thenReturn(true);
-        when(mMockKeyboardDelegate.isKeyboardShowing(any())).thenReturn(true);
+        when(mMockKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(true);
         simulateLayoutSizeChange(
                 2.f, 180, 128, /* keyboardShown= */ true, VirtualKeyboardMode.RESIZES_VISUAL);
         assertTrue(mController.getIsAccessoryRequestedSupplier().get());
 
         // 3. Close the keyboard: supplier must become false!
         when(mMockSoftKeyboardDelegate.isSoftKeyboardShowing(any())).thenReturn(false);
-        when(mMockKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mMockKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
         simulateLayoutSizeChange(
                 2.f, 180, 128, /* keyboardShown= */ false, VirtualKeyboardMode.RESIZES_VISUAL);
         assertFalse(mController.getIsAccessoryRequestedSupplier().get());

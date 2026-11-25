@@ -245,21 +245,20 @@ class GpuRasterPixelTest : public testing::Test,
         client_shared_image->mailbox().name);
     size_t max_op_size_limit =
         gpu::raster::RasterInterface::kDefaultMaxOpSizeHint;
-    ri->RasterCHROMIUM(
-        display_item_list.get(), &image_provider, options.content_size,
-        options.full_raster_rect, options.playback_rect, options.post_translate,
-        gfx::Vector2dF(options.post_scale, options.post_scale),
-        options.requires_clear, /*raster_inducing_scroll_offsets=*/nullptr,
-        &max_op_size_limit,
-        base::RepeatingCallback<void(SkCanvas*, uint32_t)>());
+    ri->RasterCHROMIUM(display_item_list.get(), &image_provider,
+                       options.content_size, options.full_raster_rect,
+                       options.playback_rect, options.post_translate,
+                       gfx::Vector2dF(options.post_scale, options.post_scale),
+                       options.requires_clear,
+                       /*raster_inducing_values=*/nullptr, &max_op_size_limit,
+                       base::RepeatingCallback<void(SkCanvas*, uint32_t)>());
     for (const auto& list : options.additional_lists) {
       ri->RasterCHROMIUM(list.get(), &image_provider, options.content_size,
                          options.full_raster_rect, options.playback_rect,
                          options.post_translate,
                          gfx::Vector2dF(options.post_scale, options.post_scale),
                          options.requires_clear,
-                         /*raster_inducing_scroll_offsets=*/nullptr,
-                         &max_op_size_limit,
+                         /*raster_inducing_values=*/nullptr, &max_op_size_limit,
                          base::RepeatingCallback<void(SkCanvas*, uint32_t)>());
     }
     ri->EndRasterCHROMIUM();
@@ -1270,8 +1269,8 @@ TEST_F(GpuRasterPixelTest, DrawImageWithSourceAndTargetColorSpace) {
                comparator);
 }
 
-#if BUILDFLAG(IS_FUCHSIA) && defined(ARCH_CPU_ARM64)
-// SwiftShader crashes when running this test on ARM64 on Fuchsia,
+#if BUILDFLAG(IS_FUCHSIA) && defined(ARCH_CPU_ARM64) && !defined(NDEBUG)
+// SwiftShader crashes when running this test on ARM64 debug builds on Fuchsia,
 // see b/369849405.
 #define MAYBE_DrawImageReinterpretedAsSRGB DISABLED_DrawImageReinterpretedAsSRGB
 #else

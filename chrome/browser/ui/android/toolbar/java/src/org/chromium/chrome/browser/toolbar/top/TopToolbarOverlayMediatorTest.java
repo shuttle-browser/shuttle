@@ -45,6 +45,7 @@ import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider
 import org.chromium.chrome.browser.browser_controls.BrowserControlsVisibilityManager;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.layouts.LayoutStateProvider;
+import org.chromium.chrome.browser.layouts.LayoutStateProvider.LayoutStateObserver;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObserver;
@@ -70,7 +71,7 @@ public class TopToolbarOverlayMediatorTest {
     @Captor
     private ArgumentCaptor<BrowserControlsStateProvider.Observer> mBrowserControlsObserverCaptor;
 
-    @Captor private ArgumentCaptor<LayoutStateProvider.LayoutStateObserver> mLayoutObserverCaptor;
+    @Captor private ArgumentCaptor<LayoutStateObserver> mLayoutObserverCaptor;
 
     private final SettableMonotonicObservableSupplier<Tab> mTabSupplier =
             ObservableSuppliers.createMonotonic();
@@ -547,6 +548,7 @@ public class TopToolbarOverlayMediatorTest {
         float height = 700.0f;
         mMediator.setViewportHeight(height);
         mBottomToolbarControlsOffsetSupplier.set(0);
+        doReturn(0).when(mBrowserControlsVisibilityManager).getTopControlsHairlineHeight();
         doReturn(ControlsPosition.BOTTOM)
                 .when(mBrowserControlsVisibilityManager)
                 .getControlsPosition();
@@ -556,6 +558,29 @@ public class TopToolbarOverlayMediatorTest {
                 .onControlsOffsetChanged(0, 0, false, 0, 0, false, false, false);
         assertEquals(
                 700.0f,
+                mModel.get(TopToolbarOverlayProperties.LEGACY_CONTENT_OFFSET),
+                MathUtils.EPSILON);
+    }
+
+    @Test
+    public void testContentOffset_ControlsAtBottom_compensatesForHairlineAboveToolbar() {
+        // The bottom-anchored capture has the hairline above the toolbar, but ToolbarLayer
+        // assumes it is below. The content offset must therefore be shifted up by the hairline
+        // height so the composited toolbar lines up with the Android view.
+        float height = 700.0f;
+        int hairlineHeight = 3;
+        int bottomControlsOffset = -126;
+        mMediator.setViewportHeight(height);
+        doReturn(hairlineHeight)
+                .when(mBrowserControlsVisibilityManager)
+                .getTopControlsHairlineHeight();
+        doReturn(ControlsPosition.BOTTOM)
+                .when(mBrowserControlsVisibilityManager)
+                .getControlsPosition();
+
+        mBottomToolbarControlsOffsetSupplier.set(bottomControlsOffset);
+        assertEquals(
+                height + bottomControlsOffset - hairlineHeight,
                 mModel.get(TopToolbarOverlayProperties.LEGACY_CONTENT_OFFSET),
                 MathUtils.EPSILON);
     }

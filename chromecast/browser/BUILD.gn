@@ -113,8 +113,6 @@ cast_source_set("browser") {
     "cast_content_gesture_handler.h",
     "cast_download_manager_delegate.cc",
     "cast_download_manager_delegate.h",
-    "cast_feature_update_observer.cc",
-    "cast_feature_update_observer.h",
     "cast_http_user_agent_settings.cc",
     "cast_http_user_agent_settings.h",
     "cast_media_blocker.cc",
@@ -210,15 +208,10 @@ cast_source_set("browser") {
     "//chromecast/bindings/public/mojom",
     "//chromecast/browser/webui/mojom",
     "//chromecast/common",
-    "//chromecast/common:activity_url_filter",
     "//chromecast/common:cors_exempt_headers",
     "//chromecast/common:feature_constants",
     "//chromecast/common:queryable_data",
     "//chromecast/common/media",
-    "//chromecast/external_mojo/broker_service",
-    "//chromecast/external_mojo/external_service_support:external_service",
-    "//chromecast/external_mojo/external_service_support:util",
-    "//chromecast/external_mojo/public/cpp:common",
     "//chromecast/graphics",
     "//chromecast/media",
     "//chromecast/media:libcast_media",
@@ -364,10 +357,6 @@ cast_source_set("browser") {
     deps += [ "//ui/ozone" ]
   }
 
-  if (enable_external_mojo_services) {
-    deps += [ "//chromecast/external_mojo/broker_service" ]
-  }
-
   configs += [ "//media/audio:platform_config" ]
 }
 
@@ -491,6 +480,7 @@ cast_source_set("test_support") {
   deps = [
     "//base",
     "//chromecast/base",
+    "//chromecast/base:chromecast_switches",
     "//chromecast/cast_core:cast_core_switches",
     "//components/prefs:test_support",
     "//content/public/browser",
@@ -557,6 +547,7 @@ cast_source_set("unittests") {
   sources = [
     "application_media_info_manager_unittest.cc",
     "audio_socket_broker_unittest.cc",
+    "cast_content_browser_client_unittest.cc",
     "cast_media_blocker_unittest.cc",
     "cast_permission_manager_unittest.cc",
     "cast_resource_bundle_unittest.cc",
@@ -564,20 +555,20 @@ cast_source_set("unittests") {
     "cast_web_view_default_unittest.cc",
     "devtools/cast_devtools_manager_delegate_unittest.cc",
     "lru_renderer_cache_test.cc",
-    "migration/migration_utils_test.cc",
     "webui/cast_webui_controller_factory_unittest.cc",
   ]
 
   deps = [
     ":browser",
     ":display_configurator",
+    ":feature_list",
     ":test_support",
     "//base",
     "//base/test:test_support",
     "//chromecast/app:resources",
     "//chromecast/base",
+    "//chromecast/base:chromecast_switches",
     "//chromecast/bindings/public/mojom",
-    "//chromecast/browser/migration",
     "//chromecast/net:socket_util",
     "//components/cast_receiver/browser:permissions_manager",
     "//components/input",
@@ -593,6 +584,7 @@ cast_source_set("unittests") {
     "//ui/base:test_support",
     "//ui/events/devices",
     "//ui/gl:test_support",
+    "//url",
   ]
 
   if (!is_android) {

@@ -51,7 +51,7 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/accessibility/ax_mode.h"
 #include "ui/base/clipboard/clipboard_metadata.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "ui/gfx/native_ui_types.h"
@@ -269,6 +269,10 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
   // The DOMContentLoaded handler in the frame has completed.
   virtual void DOMContentLoaded(RenderFrameHostImpl* render_frame_host) {}
 
+  // The script tool ready status for this frame has changed.
+  virtual void ScriptToolsReadyStateChanged(
+      RenderFrameHostImpl* render_frame_host) {}
+
   // The onload handler in the frame has completed. Only called for the main
   // frames.
   virtual void DocumentOnLoadCompleted(RenderFrameHostImpl* render_frame_host) {
@@ -482,7 +486,7 @@ class CONTENT_EXPORT RenderFrameHostDelegate {
   virtual WebContents* ShowCreatedWindow(
       RenderFrameHostImpl* opener,
       int main_frame_widget_route_id,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture);
 

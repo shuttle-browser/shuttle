@@ -2,22 +2,17 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {calculateTextBounds, ContentBrowserProxyImpl, getLineForRect, getMostCommonPitch, getRectIndexAtY, isRectMostlyVisible, isRectVisible, MOSTLY_VISIBLE_PERCENT, VisualBrowserProxyImpl} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {calculateTextBounds, getLineForRect, getMostCommonPitch, getRectIndexAtY, isRectMostlyVisible, isRectVisible, MOSTLY_VISIBLE_PERCENT} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {assertEquals, assertFalse, assertNull, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 
-import {setWindowSize} from './common.js';
-import {TestContentBrowserProxy} from './test_content_browser_proxy.js';
-import {TestVisualBrowserProxy} from './test_visual_browser_proxy.js';
+import {setupTestEnvironment, setWindowSize} from './common.js';
+import type {TestVisualBrowserProxy} from './test_visual_browser_proxy.js';
 
 suite('RectCalculations', () => {
   let visualBrowserProxy: TestVisualBrowserProxy;
 
   setup(() => {
-    document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    window.scrollTo(0, 0);
-    visualBrowserProxy = new TestVisualBrowserProxy();
-    VisualBrowserProxyImpl.setInstance(visualBrowserProxy);
-    ContentBrowserProxyImpl.setInstance(new TestContentBrowserProxy());
+    visualBrowserProxy = setupTestEnvironment().visualBrowserProxy;
   });
 
   suite('isRectVisible', () => {
@@ -308,8 +303,8 @@ suite('RectCalculations', () => {
   });
 
   suite('getRectIndexAtY', () => {
-    const rect1 = {bottom: 30} as DOMRect;
-    const rect2 = {bottom: 60} as DOMRect;
+    const rect1 = new DOMRect(0, 10, 100, 20);  // top: 10, bottom: 30
+    const rect2 = new DOMRect(0, 40, 100, 20);  // top: 40, bottom: 60
     const rects = [rect1, rect2];
 
     test('Y matches first rect returns 0', () => {

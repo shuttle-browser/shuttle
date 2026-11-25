@@ -4,6 +4,9 @@
 
 package org.chromium.chrome.browser.omnibox.voice;
 
+import android.content.Context;
+import android.content.Intent;
+
 import androidx.annotation.IntDef;
 import androidx.annotation.VisibleForTesting;
 
@@ -59,6 +62,7 @@ public class VoiceRecognitionHandler {
     private @Nullable PrefChangeRegistrar mPrefChangeRegistrar;
     private CallbackController mCallbackController = new CallbackController();
     private final MonotonicObservableSupplier<Profile> mProfileSupplier;
+    private final WindowAndroid mWindowAndroid;
     private final VoiceRecognitionIntentHandler mIntentHandler;
 
     /**
@@ -103,7 +107,7 @@ public class VoiceRecognitionHandler {
                 autocompleteCoordinator,
                 windowAndroid,
                 profileSupplier,
-                new VoiceRecognitionIntentHandler(windowAndroid));
+                new VoiceRecognitionIntentHandler(windowAndroid, profileSupplier));
     }
 
     VoiceRecognitionHandler(
@@ -116,6 +120,7 @@ public class VoiceRecognitionHandler {
         mOmniboxStub = omniboxStub;
         mLocationBarDataProvider = locationBarDataProvider;
         mAutocompleteCoordinator = autocompleteCoordinator;
+        mWindowAndroid = windowAndroid;
         mProfileSupplier = profileSupplier;
         mIntentHandler = intentHandler;
         mProfileSupplier.addSyncObserverAndPostIfNonNull(
@@ -216,7 +221,10 @@ public class VoiceRecognitionHandler {
                 // from
                 // the voice engine.
                 String culledString = matchText.replaceAll(" ", "");
-                AutocompleteMatch match = AutocompleteCoordinator.classify(profile, culledString);
+                AutocompleteMatch match =
+                        culledString.isEmpty()
+                                ? null
+                                : AutocompleteCoordinator.classify(profile, culledString);
 
                 String urlOrSearchQuery;
                 if (match == null || match.isSearchSuggestion()) {
@@ -278,6 +286,10 @@ public class VoiceRecognitionHandler {
     /**
      * Triggers a voice recognition intent to allow the user to specify a search query.
      *
+     * <p>Eligible requests are delegated to the Google app Voice Plate; see {@link
+     * VoicePlateIntegration}. Voice Plate transcriptions are treated as high confidence and
+     * navigate directly.
+     *
      * @param source The source of the voice recognition initiation, such as NTP or omnibox.
      * @param onCanceled The callback function to run when the voice recognition is canceled.
      */
@@ -305,7 +317,21 @@ public class VoiceRecognitionHandler {
                             onCanceled.run();
                         }
                     }
-                });
+                },
+                createVoicePlateIntent());
+    }
+
+    /**
+     * Returns the intent delegating voice recognition to the Google app Voice Plate, or null if the
+     * system speech recognizer should be used.
+     */
+    private @Nullable Intent createVoicePlateIntent() {
+        Context context = mWindowAndroid.getContext().get();
+        if (context == null) return null;
+        Profile profile = mProfileSupplier.get();
+        var integration = VoicePlateIntegration.getInstance();
+        if (!integration.isEligible(profile)) return null;
+        return integration.createIntent(context, profile);
     }
 
     /** Returns whether voice search is enabled on the current tab. */

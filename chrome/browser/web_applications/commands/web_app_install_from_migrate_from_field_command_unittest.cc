@@ -25,7 +25,7 @@
 #include "components/webapps/browser/install_result_code.h"
 #include "content/public/browser/web_contents.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 
 namespace web_app {
 namespace {
@@ -52,17 +52,16 @@ class WebAppInstallFromMigrateFromFieldCommandTest : public WebAppTest {
 
 TEST_F(WebAppInstallFromMigrateFromFieldCommandTest, NoSourceAppInstalled) {
   GURL target_url("https://app.com/target");
-  auto manifest = blink::mojom::Manifest::New();
-  manifest->id = target_url;
-  manifest->manifest_url = target_url;
-  manifest->start_url = target_url;
-  manifest->scope = target_url;
+  blink::Manifest::MigrateFrom migrate_from;
+  migrate_from.id = GURL("https://app.com/source");
 
-  auto migrate_from = blink::mojom::ManifestMigrateFrom::New();
-  migrate_from->id = GURL("https://app.com/source");
-  manifest->migrate_from.push_back(std::move(migrate_from));
+  blink::Manifest manifest =
+      blink::Manifest::Builder(target_url, target_url, target_url)
+          .SetManifestUrl(target_url)
+          .SetMigrateFrom({std::move(migrate_from)})
+          .BuildChecked();
 
-  webapps::AppId target_app_id = GenerateAppIdFromManifest(*manifest);
+  webapps::AppId target_app_id = GenerateAppIdFromManifest(manifest);
 
   base::test::TestFuture<WebAppInstallFromMigrateFromFieldResult> future;
   provider().scheduler().ScheduleWebAppInstallFromMigrateFromField(
@@ -78,18 +77,17 @@ TEST_F(WebAppInstallFromMigrateFromFieldCommandTest, SuccessInstalled) {
   test::InstallDummyWebApp(profile(), "Source App", source_url);
 
   GURL target_url("https://app.com/target");
-  auto manifest = blink::mojom::Manifest::New();
-  manifest->id = target_url;
-  manifest->manifest_url = target_url;
-  manifest->start_url = target_url;
-  manifest->scope = target_url;
-  manifest->name = u"Target App";
+  blink::Manifest::MigrateFrom migrate_from;
+  migrate_from.id = source_url;
 
-  auto migrate_from = blink::mojom::ManifestMigrateFrom::New();
-  migrate_from->id = source_url;
-  manifest->migrate_from.push_back(std::move(migrate_from));
+  blink::Manifest manifest =
+      blink::Manifest::Builder(target_url, target_url, target_url)
+          .SetManifestUrl(target_url)
+          .SetName(u"Target App")
+          .SetMigrateFrom({std::move(migrate_from)})
+          .BuildChecked();
 
-  webapps::AppId target_app_id = GenerateAppIdFromManifest(*manifest);
+  webapps::AppId target_app_id = GenerateAppIdFromManifest(manifest);
 
   base::test::TestFuture<WebAppInstallFromMigrateFromFieldResult> future;
   provider().scheduler().ScheduleWebAppInstallFromMigrateFromField(

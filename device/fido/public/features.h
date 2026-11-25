@@ -27,6 +27,10 @@ enum class PasskeyUnlockErrorUiExperimentArm {
 COMPONENT_EXPORT(FIDO_PUBLIC)
 extern const base::FeatureParam<PasskeyUnlockErrorUiExperimentArm>
     kPasskeyUnlockErrorUiExperimentArm;
+
+// Enables reporting locked passkeys as a Sync user actionable error.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kPasskeyUnlockIdentityErrorUi);
 #endif
 
 #if BUILDFLAG(IS_MAC)
@@ -76,6 +80,14 @@ BASE_DECLARE_FEATURE(kWebAuthnEnclaveAuthenticatorDelay);
 COMPONENT_EXPORT(FIDO_PUBLIC)
 BASE_DECLARE_FEATURE(kWebAuthnAmbientSignin);
 
+// Enables a magic timeout value (31415 ms) for Ambient sign-in requests that
+// launches the UI in chip-only mode for experimentation.
+// TODO(https://crbug.com/583727696): Must be disabled and removed after the
+// Origin Trial, before `WebAuthenticationAmbient` is enabled by default in
+// Blink.
+COMPONENT_EXPORT(FIDO_PUBLIC)
+BASE_DECLARE_FEATURE(kWebAuthnAmbientChipOnlyTimeout);
+
 // Enables publishing prelinking information on Android.
 #if BUILDFLAG(IS_ANDROID)
 COMPONENT_EXPORT(FIDO_PUBLIC)
@@ -109,24 +121,12 @@ BASE_DECLARE_FEATURE(kWebAuthnCrossDeviceFallbackUrl);
 COMPONENT_EXPORT(FIDO_PUBLIC)
 BASE_DECLARE_FEATURE(kWebAuthnRemoteClientDataJson);
 
-// Enables to save keys from out of context ("opportunistic") retrieval.
-COMPONENT_EXPORT(FIDO_PUBLIC)
-BASE_DECLARE_FEATURE(kWebAuthnOpportunisticRetrieval);
-
 // Enables the fix of the logic for handling identity change (the new logic
 // might decide to not terminate the running state machine in some cases,
 // whereas the previous logic was always terminating the state machine).
 COMPONENT_EXPORT(FIDO_PUBLIC)
 BASE_DECLARE_FEATURE(
     kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange);
-
-// Parameter controlling the time window (in seconds) for keeping the cached
-// opportunistically retrieved key in case its Gaia Id doesn't match to primary
-// signed-in account.
-COMPONENT_EXPORT(FIDO_PUBLIC)
-BASE_DECLARE_FEATURE_PARAM(
-    int,
-    kWebAuthnOpportunisticRetrievalTimeToKeepCachedKeySeconds);
 
 // Prompt the user to set a new PIN when user verification is required to
 // fulfill a GPM passkey operation but no system UV or GPM PIN is available.

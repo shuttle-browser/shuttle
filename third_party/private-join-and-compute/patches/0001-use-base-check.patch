@@ -1,0 +1,47 @@
+Use base CHECK macros instead of absl/log/check.h
+
+Chromium bans absl/log:check because its CHECK macros conflict with
+base's (third_party/abseil-cpp/BUILD.gn). The files include
+base/check_op.h instead.
+
+Chromium commit 85145d1e68b27.
+
+diff --git a/src/private_join_and_compute/crypto/big_num.cc b/src/private_join_and_compute/crypto/big_num.cc
+index effe22a8755c8..539c15ee108e5 100644
+--- a/src/private_join_and_compute/crypto/big_num.cc
++++ b/src/private_join_and_compute/crypto/big_num.cc
+@@ -20,7 +20,7 @@
+ #include <string>
+ #include <utility>
+ 
+-#include "absl/log/check.h"
++#include "base/check_op.h"
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"
+ #include "absl/strings/str_cat.h"
+diff --git a/src/private_join_and_compute/crypto/context.h b/src/private_join_and_compute/crypto/context.h
+index 432cd29878211..a7e239e8399cf 100644
+--- a/src/private_join_and_compute/crypto/context.h
++++ b/src/private_join_and_compute/crypto/context.h
+@@ -21,7 +21,7 @@
+ #include <memory>
+ #include <string>
+ 
+-#include "absl/log/check.h"
++#include "base/check_op.h"
+ #include "absl/strings/string_view.h"
+ #include "private_join_and_compute/crypto/big_num.h"
+ #include "private_join_and_compute/crypto/openssl.inc"
+diff --git a/src/private_join_and_compute/crypto/elgamal.cc b/src/private_join_and_compute/crypto/elgamal.cc
+index a776cf0580ad8..d38516f1197dc 100644
+--- a/src/private_join_and_compute/crypto/elgamal.cc
++++ b/src/private_join_and_compute/crypto/elgamal.cc
+@@ -20,7 +20,7 @@
+ #include <utility>
+ #include <vector>
+ 
+-#include "absl/log/check.h"
++#include "base/check_op.h"
+ #include "absl/memory/memory.h"
+ #include "absl/status/status.h"
+ #include "absl/status/statusor.h"

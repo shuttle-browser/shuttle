@@ -8,11 +8,13 @@
 
 #include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/raw_ref.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "chrome/browser/actor/actor_test_util.h"
+#include "chrome/browser/actor/enterprise_policy_checker.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ttc/app/public/conversation.h"
 #include "chrome/browser/ttc/core/features.h"
 #include "chrome/browser/ttc/core/session_controller.h"
 #include "chrome/browser/ttc/core/session_controller_impl.h"
@@ -21,6 +23,7 @@
 #include "chrome/test/base/testing_profile.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/ttc/app/public/conversation.h"
 #include "components/ttc/app/public/error_codes.h"
 #include "components/ttc/app/public/tool_types.h"
 #include "content/public/browser/browser_context.h"
@@ -33,8 +36,10 @@ namespace ttc {
 namespace {
 class FakeConversation : public Conversation {
  public:
-  explicit FakeConversation(base::RepeatingClosure on_stopped = {})
-      : on_stopped_(std::move(on_stopped)) {}
+  explicit FakeConversation(SessionController& session_controller,
+                            base::RepeatingClosure on_stopped = {})
+      : session_controller_(session_controller),
+        on_stopped_(std::move(on_stopped)) {}
   ~FakeConversation() override = default;
 
   void Start() override { is_started_ = true; }
@@ -50,10 +55,16 @@ class FakeConversation : public Conversation {
       const std::string& title,
       const optimization_guide::proto::AnnotatedPageContent& apc) override {}
   void OnPageContextInvalidated() override {}
+  void SetMicMuted(bool muted) override {}
+  bool IsMicMuted() const override { return false; }
+  SessionJournal& GetJournal() override {
+    return session_controller_->GetJournal();
+  }
 
   bool is_started() const { return is_started_; }
 
  private:
+  const raw_ref<SessionController> session_controller_;
   bool is_started_ = false;
   base::RepeatingClosure on_stopped_;
 };
@@ -84,9 +95,10 @@ class TtcKeyedServiceUnitTest : public testing::Test {
   }
 
   std::unique_ptr<Conversation> CreateFakeConversation(
-      SessionController&,
+      SessionController& session_controller,
       std::unique_ptr<AudioController>) {
     return std::make_unique<FakeConversation>(
+        session_controller,
         base::BindRepeating(&TtcKeyedServiceUnitTest::OnConversationStopped,
                             base::Unretained(this)));
   }
@@ -106,6 +118,16 @@ class TtcKeyedServiceUnitTest : public testing::Test {
 TEST_F(TtcKeyedServiceUnitTest, EndSessionDoesNotCrash) {
   ASSERT_EQ(service_->session_controller(), nullptr);
   service_->EndSession();
+}
+
+TEST_F(TtcKeyedServiceUnitTest, MicMuteNeedsLiveSession) {
+  EXPECT_FALSE(service_->SetMicMuted(true));
+  EXPECT_FALSE(service_->IsMicMuted());
+
+  // A session that isn't live yet can't be muted either.
+  service_->StartSession();
+  EXPECT_FALSE(service_->SetMicMuted(true));
+  EXPECT_FALSE(service_->IsMicMuted());
 }
 
 TEST_F(TtcKeyedServiceUnitTest, StartSession) {
@@ -190,6 +212,17 @@ TEST_F(TtcKeyedServiceUnitTest, TabToolWithoutTrackedContentsFails) {
   ASSERT_FALSE(response.Ok());
   EXPECT_EQ(response.error().code,
             actor::mojom::ActionResultCode::kTabWentAway);
+}
+
+TEST_F(TtcKeyedServiceUnitTest, EnterprisePolicyChecker) {
+  // A regular profile should have a non-null enterprise policy checker.
+  EXPECT_NE(service_->enterprise_policy_checker(), nullptr);
+
+  auto mock_checker = std::make_unique<actor::MockPolicyChecker>(
+      actor::EnterprisePolicyChecker::UrlBlockReason::kExplicitlyBlocked);
+  actor::MockPolicyChecker* raw_checker = mock_checker.get();
+  service_->SetEnterprisePolicyCheckerForTesting(std::move(mock_checker));
+  EXPECT_EQ(service_->enterprise_policy_checker(), raw_checker);
 }
 
 }  // namespace ttc

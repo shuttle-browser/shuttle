@@ -5,11 +5,13 @@
 #include "chrome/browser/ui/views/toolbar/test_support/glic_button_test_accessor.h"
 
 #include "base/check.h"
+#include "base/check_op.h"
 #include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/run_until.h"
+#include "base/values.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
@@ -18,6 +20,7 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_glic_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/webui_test_utils.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
+#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -30,20 +33,25 @@
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/test/button_test_api.h"
 #include "ui/views/view_utils.h"
+#include "ui/views/widget/widget.h"
 
 namespace {
 
-// Evaluates `body_js` inside a function where `glic` is bound to `#glic-button`
-// and `btn` is bound to its inner `#button`.
+// Evaluates `body_js` inside an async function where `app` is bound to
+// `toolbar-app`, `glic` is bound to `#glic-button`, and `btn` is bound to its
+// inner `#button`, after awaiting `updateComplete` on each element.
 content::EvalJsResult EvalOnGlicButton(content::WebContents* web_contents,
                                        std::string_view body_js) {
   return content::EvalJs(
       web_contents,
       base::StrCat(
-          {"(() => {"
-           "  const glic = document.querySelector('toolbar-app')"
-           "                   ?.shadowRoot?.querySelector('#glic-button');"
-           "  const btn = glic?.shadowRoot?.querySelector('#button');",
+          {"(async () => {"
+           "  const app = document.querySelector('toolbar-app');"
+           "  await app?.updateComplete;"
+           "  const glic = app?.shadowRoot?.querySelector('#glic-button');"
+           "  await glic?.updateComplete;"
+           "  const btn = glic?.shadowRoot?.querySelector('#button');"
+           "  await btn?.updateComplete;",
            body_js, "})()"}));
 }
 
@@ -71,12 +79,16 @@ views::LabelButton* GlicButtonTestAccessor::GetViewsButton() const {
 }
 
 bool GlicButtonTestAccessor::IsVisible() const {
+  return glic::GlicButtonInterface::IsVisible(browser_);
+}
+
+bool GlicButtonTestAccessor::IsElementTrackedVisible() const {
   return ui::ElementTracker::GetElementTracker()->IsElementVisible(
       kGlicButtonElementId, BrowserElements::From(browser_)->GetContext());
 }
 
 bool GlicButtonTestAccessor::WaitForVisible() const {
-  if (IsVisible()) {
+  if (IsElementTrackedVisible()) {
     return true;
   }
   base::RunLoop run_loop;
@@ -85,11 +97,11 @@ bool GlicButtonTestAccessor::WaitForVisible() const {
           kGlicButtonElementId, BrowserElements::From(browser_)->GetContext(),
           base::IgnoreArgs<ui::TrackedElement*>(run_loop.QuitClosure()));
   run_loop.Run();
-  return IsVisible();
+  return IsElementTrackedVisible();
 }
 
 bool GlicButtonTestAccessor::WaitForHidden() const {
-  if (!IsVisible()) {
+  if (!IsElementTrackedVisible()) {
     return true;
   }
   base::RunLoop run_loop;
@@ -98,7 +110,7 @@ bool GlicButtonTestAccessor::WaitForHidden() const {
           kGlicButtonElementId, BrowserElements::From(browser_)->GetContext(),
           base::IgnoreArgs<ui::TrackedElement*>(run_loop.QuitClosure()));
   run_loop.Run();
-  return !IsVisible();
+  return !IsElementTrackedVisible();
 }
 
 std::string GlicButtonTestAccessor::GetAriaLabel() const {
@@ -200,6 +212,77 @@ void GlicButtonTestAccessor::RightClick() const {
                              "btn.dispatchEvent(new MouseEvent('contextmenu', "
                              "    {button: 2, bubbles: true, composed: true}));"
                              "return true;"));
+}
+
+const ui::ColorProvider* GlicButtonTestAccessor::GetColorProvider() const {
+  if (views::LabelButton* button = GetViewsButton()) {
+    return button->GetColorProvider();
+  }
+  if (WebUIToolbarWebView* webui_toolbar = GetWebUIToolbarWebView(browser_)) {
+    return webui_toolbar->GetColorProvider();
+  }
+  return nullptr;
+}
+
+void GlicButtonTestAccessor::OnThemeChanged() const {
+  if (views::LabelButton* button = GetViewsButton()) {
+    if (auto* toolbar_button =
+            views::AsViewClass<glic::ToolbarGlicButton>(button)) {
+      toolbar_button->OnThemeChanged();
+      return;
+    }
+    ASSERT_TRUE(button->GetWidget());
+    button->GetWidget()->ThemeChanged();
+    return;
+  }
+  WebUIToolbarWebView* webui_toolbar = GetWebUIToolbarWebView(browser_);
+  ASSERT_TRUE(webui_toolbar);
+  ASSERT_TRUE(webui_toolbar->GetWidget());
+  ASSERT_TRUE(WaitForVisible());
+  webui_toolbar->GetWidget()->ThemeChanged();
+  const bool expected_fallback =
+      static_cast<WebUIToolbarControlDelegate*>(webui_toolbar)
+          ->GetState()
+          .glic_button_state->use_custom_theme_fallback;
+  content::WebContents* web_contents = GetWebContents();
+  ASSERT_TRUE(web_contents);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return EvalOnGlicButton(
+               web_contents,
+               content::JsReplace(
+                   "return glic?.state?.useCustomThemeFallback === $1;",
+                   expected_fallback))
+        .ExtractBool();
+  }));
+  EXPECT_EQ(
+      true,
+      EvalOnGlicButton(
+          web_contents,
+          "const {ColorChangeUpdater} = await import("
+          "    'chrome://resources/cr_components/color_change_listener/"
+          "colors_css_updater.js');"
+          "await ColorChangeUpdater.forDocument().onColorProviderChanged();"
+          "await app?.updateComplete;"
+          "await glic?.updateComplete;"
+          "await btn?.updateComplete;"
+          "return true;"));
+}
+
+SkColor GlicButtonTestAccessor::GetTextColor() const {
+  if (views::LabelButton* button = GetViewsButton()) {
+    return button->GetCurrentTextColor();
+  }
+  EXPECT_TRUE(WaitForVisible());
+  content::WebContents* web_contents = GetWebContents();
+  CHECK(web_contents);
+  content::EvalJsResult result = EvalOnGlicButton(
+      web_contents,
+      "const m = btn ? window.getComputedStyle(btn).color.match("
+      "    /^rgb\\((\\d+),\\s*(\\d+),\\s*(\\d+)\\)$/) : null;"
+      "return m ? [Number(m[1]), Number(m[2]), Number(m[3])] : [];");
+  const base::ListValue& rgb = result.ExtractList();
+  CHECK_EQ(rgb.size(), 3u);
+  return SkColorSetRGB(rgb[0].GetInt(), rgb[1].GetInt(), rgb[2].GetInt());
 }
 
 content::WebContents* GlicButtonTestAccessor::GetWebContents() const {

@@ -8,7 +8,9 @@
 #include <memory>
 #include <string>
 
+#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "content/browser/media/capture/pip_screen_capture_coordinator_proxy.h"
 #include "content/browser/renderer_host/media/video_capture_controller.h"
@@ -49,6 +51,11 @@ class InProcessVideoCaptureDeviceLauncher : public VideoCaptureDeviceLauncher {
 
   void AbortLaunch() override;
 
+  // Asks the launched screen, window, or tab capture device to deliver its
+  // frames in shared memory instead of GPU buffers. Must be called before
+  // LaunchDeviceAsync().
+  void SetPreferSharedMemoryBuffers();
+
  private:
   using ReceiveDeviceCallback = base::OnceCallback<void(
       std::unique_ptr<media::VideoCaptureDevice> device)>;
@@ -66,12 +73,12 @@ class InProcessVideoCaptureDeviceLauncher : public VideoCaptureDeviceLauncher {
       base::WeakPtr<media::VideoFrameReceiver> receiver_on_io_thread);
 
   void OnDeviceStarted(Callbacks* callbacks,
-                       base::OnceClosure done_cb,
                        std::unique_ptr<media::VideoCaptureDevice> device);
 
   static void DoStartTabCaptureOnDeviceThread(
       const std::string& device_id,
       const media::VideoCaptureParams& params,
+      bool prefer_shared_memory_buffers,
       std::unique_ptr<media::VideoFrameReceiver> receiver,
       ReceiveDeviceCallback result_callback);
 
@@ -79,6 +86,7 @@ class InProcessVideoCaptureDeviceLauncher : public VideoCaptureDeviceLauncher {
   static void DoStartVizFrameSinkWindowCaptureOnDeviceThread(
       const DesktopMediaID& device_id,
       const media::VideoCaptureParams& params,
+      bool prefer_shared_memory_buffers,
       std::unique_ptr<media::VideoFrameReceiver> receiver,
       ReceiveDeviceCallback result_callback);
 #endif  // defined(USE_AURA) || BUILDFLAG(IS_MAC)
@@ -114,6 +122,21 @@ class InProcessVideoCaptureDeviceLauncher : public VideoCaptureDeviceLauncher {
 
   const scoped_refptr<base::SingleThreadTaskRunner> device_task_runner_;
   State state_;
+  // The `done_cb` of LaunchDeviceAsync(). It keeps the caller's context alive
+  // until the launch completes, and it can own `this`. It stays on the IO
+  // thread: if the result callback from the device thread owned it and the IO
+  // thread had stopped, that callback would destroy it on the device thread.
+  //
+  // If `done_cb_` owns `this`, it makes a reference cycle that only
+  // OnDeviceStarted() breaks. So the device thread must run the result
+  // callback while the IO thread runs. The shutdown order makes sure of this:
+  // the IO thread stops before the device thread (on Mac, the device thread
+  // is the UI thread). If the result callback cannot reach the IO thread
+  // because the IO thread has stopped, `done_cb_` and the objects that it owns
+  // are leaked, instead of destroyed on the wrong thread.
+  base::OnceClosure done_cb_;
+  // See SetPreferSharedMemoryBuffers().
+  bool prefer_shared_memory_buffers_ = false;
   raw_ptr<NativeScreenCapturePicker> native_screen_capture_picker_;
   base::WeakPtrFactory<InProcessVideoCaptureDeviceLauncher> weak_factory_{this};
 };

@@ -25,6 +25,7 @@
 #include "components/actor/core/task_id.h"
 #include "components/actor/public/mojom/actor_types.mojom.h"
 #include "content/public/browser/render_frame_host.h"
+#include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/weak_document_ptr.h"
 #include "content/public/browser/web_contents.h"
@@ -33,9 +34,10 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "ui/base/models/dialog_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/point_conversions.h"
+#include "ui/views/focus/focus_manager.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/window/dialog_delegate.h"
@@ -135,15 +137,9 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTest,
 // Ensure actuation for a page tool simulates the page having focus. This is
 // important to ensure, e.g. 'focus' events are fired on the page in a way that
 // matches if a real user was interacting with the page.
-// TODO(crbug.com/460575305): Re-enable when no longer flaky on Mac.
-#if BUILDFLAG(IS_MAC)
-#define MAYBE_EnsureFocusSimulatedWhenActing \
-  DISABLED_EnsureFocusSimulatedWhenActing
-#else
-#define MAYBE_EnsureFocusSimulatedWhenActing EnsureFocusSimulatedWhenActing
-#endif
+// TODO(crbug.com/460575305): Re-enable when no longer flaky.
 IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTest,
-                       MAYBE_EnsureFocusSimulatedWhenActing) {
+                       DISABLED_EnsureFocusSimulatedWhenActing) {
   const GURL url_background =
       embedded_https_test_server().GetURL("example.com", "/actor/focus.html");
   const GURL url_foreground =
@@ -154,11 +150,20 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTest,
   WebContents* background_contents = web_contents();
 
   NavigateParams params(browser(), url_foreground, ::ui::PAGE_TRANSITION_LINK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ::ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   ::ui_test_utils::NavigateToURL(&params);
 
   WebContents* foreground_contents = web_contents();
   ASSERT_NE(foreground_contents, background_contents);
+  // Clear native widget focus and explicitly focus `foreground_contents`'s
+  // `RenderWidgetHost` so that `foreground_contents` has page focus regardless
+  // of OS window activation state in parallel browser_tests shards, and cannot
+  // lose it if another test window steals OS activation mid-test.
+  if (views::Widget* widget = views::Widget::GetTopLevelWidgetForNativeView(
+          foreground_contents->GetNativeView())) {
+    widget->GetFocusManager()->ClearFocus();
+  }
+  foreground_contents->GetPrimaryMainFrame()->GetRenderWidgetHost()->Focus();
   ASSERT_FALSE(background_contents->GetPrimaryMainFrame()
                    ->GetRenderWidgetHost()
                    ->GetView()

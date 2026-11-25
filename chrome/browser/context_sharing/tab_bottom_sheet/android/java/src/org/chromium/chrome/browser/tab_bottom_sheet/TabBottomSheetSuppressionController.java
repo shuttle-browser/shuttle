@@ -114,15 +114,18 @@ class TabBottomSheetSuppressionController {
                 } else if (layoutType == LayoutType.TOOLBAR_SWIPE) {
                     mIsSuppressedOnToolbarSwipe = true;
                     mDelegate.onSuppressionStarted();
+                } else if (layoutType == LayoutType.BROWSING && mIsSuppressedOnTabSwitcher) {
+                    // Wait for the browsing layout to show, which happens once the tab switcher
+                    // has finished hiding. The bottom chin is not drawn while the tab switcher is
+                    // the active layout, so showing the sheet earlier leaves a blank area below it.
+                    mIsSuppressedOnTabSwitcher = false;
+                    evaluateSuppressionAndNotify();
                 }
             }
 
             @Override
             public void onStartedHiding(@LayoutType int layoutType) {
-                if (layoutType == LayoutType.HUB) {
-                    mIsSuppressedOnTabSwitcher = false;
-                    maybeShowIfNextIsBrowsing();
-                } else if (layoutType == LayoutType.TOOLBAR_SWIPE) {
+                if (layoutType == LayoutType.TOOLBAR_SWIPE) {
                     mIsSuppressedOnToolbarSwipe = false;
                     maybeShowIfNextIsBrowsing();
                 }
@@ -181,8 +184,16 @@ class TabBottomSheetSuppressionController {
     }
 
     boolean isInternallySuppressed() {
-        return mIsSuppressedOnTabSwitcher
-                || mIsSuppressedOnToolbarSwipe
+        return mIsSuppressedOnTabSwitcher || isSuppressedByNonTabSwitcherReason();
+    }
+
+    /** Returns whether the tab switcher is the only reason the sheet is suppressed. */
+    boolean isSuppressedOnlyByTabSwitcher() {
+        return mIsSuppressedOnTabSwitcher && !isSuppressedByNonTabSwitcherReason();
+    }
+
+    private boolean isSuppressedByNonTabSwitcherReason() {
+        return mIsSuppressedOnToolbarSwipe
                 || mIsSuppressedByReadAloud
                 || mIsSuppressedByIncognito
                 || mIsSuppressedByAutofill

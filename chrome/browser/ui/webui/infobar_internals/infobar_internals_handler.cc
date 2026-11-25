@@ -36,7 +36,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
-#include "chrome/browser/ui/collected_cookies_infobar_delegate.h"
 #include "chrome/browser/ui/omnibox/chrome_omnibox_navigation_observer.h"
 #include "chrome/browser/ui/page_info/page_info_infobar_delegate.h"
 #include "chrome/browser/ui/select_file_policy/chrome_select_file_policy.h"
@@ -59,7 +58,6 @@
 #include "components/infobars/core/simple_alert_infobar_delegate.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/prefs/pref_service.h"
-#include "components/signin/public/base/signin_buildflags.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/desktop_media_id.h"
@@ -122,13 +120,6 @@
 #include "chrome/browser/ui/startup/startup_launch_infobar_manager_impl.h"
 #endif
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-#include "chrome/browser/signin/dice_tab_helper.h"
-#include "chrome/browser/ui/signin/signin_qrcode_infobar.h"
-#include "chrome/browser/ui/signin/signin_qrcode_infobar_delegate.h"
-#include "chrome/browser/ui/signin/signin_qrcode_model.h"
-#endif
-
 using InfoBarType = infobar_internals::mojom::InfoBarType;
 using InfoBarEntry = infobar_internals::mojom::InfoBarEntry;
 using InfoBarEntryPtr = infobar_internals::mojom::InfoBarEntryPtr;
@@ -165,9 +156,6 @@ TriggerRequirements RequirementsFor(InfoBarType type) {
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
     case InfoBarType::kPdf:
     case InfoBarType::kPinToTaskbar:
-#endif
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-    case InfoBarType::kSigninQRCode:
 #endif
       return {.web_contents = true};
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -422,13 +410,6 @@ void InfoBarInternalsHandler::GetInfoBars(GetInfoBarsCallback callback) {
             "triggered on Mac, Windows and Linux.");
 #endif
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  add_entry(InfoBarType::kSigninQRCode, "Sign-in QR Code",
-            "The Sign-in QR Code infobar is shown on the Chrome sign-in page "
-            "and offers a QR code to sign in from a phone. This trigger shows "
-            "the infobar.");
-#endif
-
 #if BUILDFLAG(IS_WIN)
   add_entry(InfoBarType::kStartupLaunch, "Startup Launch",
             "Triggers the startup launch infobar. This infobar can only be "
@@ -548,19 +529,7 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
     }
 #endif
     case InfoBarType::kCollectedCookies: {
-      if (infobars::IsInfoBarMigrated(
-              infobars::InfoBarDelegate::COLLECTED_COOKIES_INFOBAR_DELEGATE)) {
-        PageSpecificSiteDataDialogController::ShowCollectedCookiesInfoBar(
-            web_contents);
-      } else {
-        infobars::ContentInfoBarManager* infobar_manager =
-            infobars::ContentInfoBarManager::FromWebContents(web_contents);
-        if (!infobar_manager) {
-          return false;
-        }
-        CollectedCookiesInfoBarDelegate::Create(infobar_manager);
-      }
-      return true;
+      return PageSpecificSiteDataDialogController::ShowInfoBar(web_contents);
     }
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
     case InfoBarType::kDefaultBrowser: {
@@ -616,6 +585,7 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
         return false;
       }
       return infobar_manager->AddInfoBar(CreateConfirmInfoBar(
+                 ConfirmInfoBarCreationAllowlist::GetPassKeyForMigration(),
                  std::make_unique<ProcessSharingInfobarDelegate>(
                      web_contents))) != nullptr;
     }
@@ -657,6 +627,7 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
         return false;
       }
       return infobar_manager->AddInfoBar(CreateConfirmInfoBar(
+                 ConfirmInfoBarCreationAllowlist::GetPassKeyForMigration(),
                  std::make_unique<apps::EnableLinkCapturingInfoBarDelegate>(
                      *profile, app_id))) != nullptr;
     }
@@ -903,7 +874,9 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
         auto delegate =
             std::make_unique<KnownInterceptionDisclosureInfoBarDelegate>(
                 profile);
-        infobar_manager->AddInfoBar(CreateConfirmInfoBar(std::move(delegate)));
+        infobar_manager->AddInfoBar(CreateConfirmInfoBar(
+            ConfirmInfoBarCreationAllowlist::GetPassKeyForMigration(),
+            std::move(delegate)));
       }
       return true;
     }
@@ -1026,22 +999,6 @@ bool InfoBarInternalsHandler::PerformInfoBarActionInternal(
           ->ShowInfoBar(
               *profile,
               session_restore_infobar::InfobarMessageType::kTurnOffFromRestart);
-      return true;
-    }
-#endif
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-    case InfoBarType::kSigninQRCode: {
-      infobars::ContentInfoBarManager* infobar_manager =
-          infobars::ContentInfoBarManager::FromWebContents(web_contents);
-      if (!infobar_manager) {
-        return false;
-      }
-      DiceTabHelper::CreateForWebContents(web_contents);
-      SigninQRCodeModel* model =
-          SigninQRCodeModel::GetOrCreateForWebContents(web_contents);
-      model->SetQrCode("https://example.com");
-      infobar_manager->AddInfoBar(std::make_unique<SigninQRCodeInfoBar>(
-          std::make_unique<SigninQRCodeInfoBarDelegate>(web_contents), model));
       return true;
     }
 #endif

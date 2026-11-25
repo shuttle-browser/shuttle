@@ -15,8 +15,11 @@
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
+#include "chrome/browser/ttc/app/audio_logger.h"
 #include "chrome/browser/ttc/app/public/audio_controller.h"
-#include "chrome/browser/ttc/app/public/conversation.h"
+#include "chrome/browser/ttc/app/speaker_tracker.h"
+#include "chrome/browser/ttc/core/states.h"
+#include "components/ttc/app/public/conversation.h"
 #include "components/ttc/app/ttc_backend.h"
 #include "url/gurl.h"
 
@@ -59,11 +62,15 @@ class ConversationImpl : public Conversation,
       const std::string& title,
       const optimization_guide::proto::AnnotatedPageContent& apc) override;
   void OnPageContextInvalidated() override;
+  void SetMicMuted(bool muted) override;
+  bool IsMicMuted() const override;
+  SessionJournal& GetJournal() override;
 
   // AudioController::Observer implementation:
   void OnCapturedAudio(base::span<const int16_t> pcm_data,
                        const media::AudioParameters& params,
                        float energy) override;
+  void OnCaptureStopped() override;
   void OnModelAudioEnvelopeReady(const AudioEnvelope& envelope) override;
   void OnPlaybackCompleted(int64_t sequence_number) override;
   void OnAudioError(ErrorCode error) override;
@@ -79,19 +86,31 @@ class ConversationImpl : public Conversation,
   void OnGenerationStateChanged(bool started,
                                 bool completed,
                                 bool interrupted) override;
+  void OnModelTurnStateUpdate(ModelTurnStateUpdate update,
+                              int64_t generation_id) override;
+  void OnUserTurnStateUpdate(UserTurnStateUpdate update) override;
   void OnToolCall(const ToolRequest& tool_request,
                   ToolResponseCallback response_callback) override;
   void OnJournalEvent(const ServerJournalEvent& journal_event) override;
 
   AudioController* audio_controller() { return audio_controller_.get(); }
   TtcBackend* backend() { return backend_.get(); }
+  Speaker speaker() const { return speaker_tracker_.speaker(); }
 
  private:
+  void OnSpeakerChanged(Speaker old_speaker, Speaker new_speaker);
+
   std::unique_ptr<TtcBackend> backend_;
   std::unique_ptr<AudioController> audio_controller_;
 
+  // Buffers captured audio during the user's turn so it can be logged to the
+  // journal when the turn ends.
+  AudioLogger audio_logger_;
+
   // Safe because the SessionController owns this object.
   const raw_ref<SessionController> session_controller_;
+
+  SpeakerTracker speaker_tracker_;
 
   base::ScopedObservation<AudioController, AudioController::Observer>
       audio_controller_observation_{this};

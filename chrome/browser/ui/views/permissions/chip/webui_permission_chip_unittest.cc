@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/views/permissions/chip/webui_permission_chip.h"
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "base/memory/raw_ptr.h"
@@ -20,7 +21,9 @@
 #include "chrome/browser/ui/views/permissions/chip/webui_permission_dashboard.h"
 #include "chrome/browser/ui/views/toolbar/mock_webui_toolbar_control_delegate.h"
 #include "chrome/test/base/testing_profile.h"
+#include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "components/omnibox/browser/test_location_bar_model.h"
+#include "components/permissions/permission_uma_constants.h"
 #include "content/public/test/browser_task_environment.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -97,6 +100,10 @@ class WebUIPermissionChipTest : public testing::Test {
   // Init() which needs a valid Browser.
   void SetBrowser(BrowserWindowInterface* browser) {
     location_bar_->browser_ = browser;
+  }
+
+  static void InvalidateStateToken(WebUIPermissionChip& chip) {
+    chip.InvalidateStateToken();
   }
 
   content::BrowserTaskEnvironment browser_threads_{
@@ -186,6 +193,25 @@ TEST_F(WebUIPermissionChipTest, GetTextForTesting) {
   EXPECT_EQ(chip.GetTextForTesting(), message);
 }
 
+// Like Views' `LabelButton::SetText()`, `SetMessage()` resets the accessible
+// name to the message, so a name set by `SetAccessibilityName()` only lasts
+// until the next message. Otherwise the indicator chip's aria-label would go
+// stale when its text changes (e.g. camera -> camera and microphone) or when
+// the shared chip switches tabs.
+TEST_F(WebUIPermissionChipTest, SetMessageResetsAccessibilityName) {
+  WebUIPermissionChip chip(location_bar_.get(),
+                           PermissionChipView::kIndicatorChipElementId);
+  chip.SetMessage(u"Camera in use");
+  EXPECT_EQ(chip.GetState()->accessibility_name, u"Camera in use");
+
+  chip.SetAccessibilityName(u"This page is accessing your camera.");
+  EXPECT_EQ(chip.GetState()->accessibility_name,
+            u"This page is accessing your camera.");
+
+  chip.SetMessage(u"Camera & microphone in use");
+  EXPECT_EQ(chip.GetState()->accessibility_name, u"Camera & microphone in use");
+}
+
 TEST_F(WebUIPermissionChipTest, GetIsRequestForTesting) {
   WebUIPermissionChip chip(location_bar_.get(),
                            PermissionChipView::kPermissionRequestChipElementId);
@@ -204,6 +230,21 @@ TEST_F(WebUIPermissionChipTest, GetIsRequestForTesting) {
   EXPECT_FALSE(chip.GetIsRequestForTesting());
 }
 
+TEST_F(WebUIPermissionChipTest, SetUserDecision) {
+  WebUIPermissionChip chip(location_bar_.get(),
+                           PermissionChipView::kPermissionRequestChipElementId);
+  EXPECT_EQ(chip.GetState()->user_decision,
+            toolbar_ui_api::mojom::PermissionAction::kUnspecified);
+
+  chip.SetUserDecision(permissions::PermissionAction::GRANTED);
+  EXPECT_EQ(chip.GetState()->user_decision,
+            toolbar_ui_api::mojom::PermissionAction::kGranted);
+
+  chip.SetUserDecision(std::nullopt);
+  EXPECT_EQ(chip.GetState()->user_decision,
+            toolbar_ui_api::mojom::PermissionAction::kUnspecified);
+}
+
 TEST_F(WebUIPermissionChipTest, OnClickedIfCurrentDropsStaleTokens) {
   WebUIPermissionChip chip(location_bar_.get(),
                            PermissionChipView::kPermissionRequestChipElementId);
@@ -216,7 +257,7 @@ TEST_F(WebUIPermissionChipTest, OnClickedIfCurrentDropsStaleTokens) {
       }));
 
   const uint32_t stale_token = chip.state_token();
-  chip.InvalidateStateToken();
+  InvalidateStateToken(chip);
   ASSERT_NE(chip.state_token(), stale_token);
 
   EXPECT_FALSE(

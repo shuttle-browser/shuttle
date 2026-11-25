@@ -10,6 +10,7 @@ source_set("prerender") {
     "prerender_manager.h",
     "prerender_utils.h",
     "prerender_web_contents_delegate.h",
+    "prewarm_tab_helper.h",
     "search_preload_progress_service.h",
     "search_preload_progress_service_factory.h",
   ]
@@ -30,6 +31,7 @@ source_set("impl") {
     "prerender_manager.cc",
     "prerender_utils.cc",
     "prerender_web_contents_delegate.cc",
+    "prewarm_tab_helper.cc",
     "search_preload_progress_service.cc",
     "search_preload_progress_service_factory.cc",
   ]
@@ -123,7 +125,16 @@ source_set("browser_tests") {
     "//third_party/blink/public/common:preloading_headers",
   ]
 
-  data = [ "//chrome/test/data/" ]
+  data = [
+    "//chrome/test/data/empty.html",
+    "//chrome/test/data/prerender/",
+    "//chrome/test/data/prerender_with_opt_in_header.html",
+    "//chrome/test/data/prerender_with_opt_in_header.html.mock-http-headers",
+    "//chrome/test/data/simple.html",
+    "//chrome/test/data/title1.html",
+    "//chrome/test/data/title2.html",
+    "//chrome/test/data/with_delayed_css.html",
+  ]
 }
 
 source_set("unit_tests") {
@@ -173,7 +184,6 @@ if (!is_android) {
       "//chrome/browser/ui/browser_window",
       "//chrome/common",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//chrome/test/base:browser_test_waiters",
       "//components/omnibox/browser",
       "//components/performance_manager",

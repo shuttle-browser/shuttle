@@ -10,26 +10,33 @@
 #import "base/memory/weak_ptr.h"
 #import "base/scoped_observation.h"
 #import "base/values.h"
-#import "components/dom_distiller/core/distiller_page.h"
+#import "components/web_distiller/core/distiller_page.h"
 #import "ios/web/public/web_state.h"
 #import "ios/web/public/web_state_observer.h"
 #import "url/gurl.h"
 
+@class NSError;
+
 // Implementation of page distillation customized for the Reader Mode feature.
-class ReaderModeDistillerPage : public dom_distiller::DistillerPage,
+class ReaderModeDistillerPage : public web_distiller::DistillerPage,
                                 public web::WebStateObserver {
  public:
   ReaderModeDistillerPage(web::WebState* web_state);
   ~ReaderModeDistillerPage() override;
 
-  // dom_distiller::DistillerPage implementation.
+ protected:
+  // web_distiller::DistillerPage implementation.
   void DistillPageImpl(const GURL& url, const std::string& script) override;
 
  private:
   // web::WebStateObserver:
   void WebStateDestroyed(web::WebState* web_state) override;
 
-  void HandleJavaScriptResult(const GURL& url, const base::Value* result);
+  // Forwards the `ExecuteJavaScript` `result` (or an empty value when `result`
+  // is null or `error` is non-nil) to `OnDistillationDone`.
+  void HandleJavaScriptResult(const GURL& url,
+                              const base::Value* result,
+                              NSError* error);
 
   raw_ptr<web::WebState> web_state_;
   base::ScopedObservation<web::WebState, web::WebStateObserver>

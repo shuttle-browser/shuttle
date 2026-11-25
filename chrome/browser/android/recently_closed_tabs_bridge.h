@@ -73,22 +73,29 @@ class RecentlyClosedTabsBridge : public sessions::TabRestoreServiceObserver {
 
   RecentlyClosedTabsBridge(const RecentlyClosedTabsBridge&) = delete;
   RecentlyClosedTabsBridge& operator=(const RecentlyClosedTabsBridge&) = delete;
-
-  void Destroy(JNIEnv* env);
+  ~RecentlyClosedTabsBridge() override;
 
   bool GetRecentlyClosedEntries(JNIEnv* env,
                                 const base::android::JavaRef<jobject>& jentries,
                                 int32_t max_entry_count);
-  bool OpenRecentlyClosedTab(JNIEnv* env,
-                             TabModel* model,
+  bool OpenRecentlyClosedTab(TabModel* model,
                              int32_t tab_session_id,
                              int32_t j_disposition);
   bool OpenRecentlyClosedEntry(JNIEnv* env,
                                TabModel* model,
                                int32_t session_id);
+  // Restores a previously saved entry of closed tabs for an undo operation.
+  // Returns the new tab id per placement index (-1 if not restored), or an
+  // empty vector if the entry does not exist or there is no service.
+  std::vector<int32_t> RestoreForUndo(JNIEnv* env,
+                                      TabModel* model,
+                                      int32_t entry_id,
+                                      const std::vector<int32_t>& tab_ids,
+                                      const std::vector<int32_t>& indices,
+                                      const std::vector<bool>& pinned);
   bool OpenMostRecentlyClosedEntry(JNIEnv* env, TabModel* model);
-  void ClearRecentlyClosedEntries(JNIEnv* env);
-  void ClearLeastRecentlyUsedClosedEntries(JNIEnv* env, int32_t num_to_remove);
+  void ClearRecentlyClosedEntries();
+  void ClearLeastRecentlyUsedClosedEntries(int32_t num_to_remove);
 
   // Observer callback for TabRestoreServiceObserver. Notifies the Java bridge
   // that the recently closed tabs list has changed.
@@ -99,7 +106,6 @@ class RecentlyClosedTabsBridge : public sessions::TabRestoreServiceObserver {
       sessions::TabRestoreService* service) override;
 
  private:
-  ~RecentlyClosedTabsBridge() override;
 
   // Construct and initialize tab_restore_service_ if it's NULL.
   // tab_restore_service_ may still be NULL, however, in incognito mode.

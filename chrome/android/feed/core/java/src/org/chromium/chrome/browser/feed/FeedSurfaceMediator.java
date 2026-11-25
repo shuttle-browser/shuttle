@@ -34,7 +34,6 @@ import org.chromium.chrome.R;
 import org.chromium.chrome.browser.feed.FeedSurfaceProvider.RestoringState;
 import org.chromium.chrome.browser.feed.Stream.ContentChangedListener;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.gesturenav.GestureNavigationUtils;
 import org.chromium.chrome.browser.preferences.Pref;
 import org.chromium.chrome.browser.preferences.PrefServiceUtil;
 import org.chromium.chrome.browser.profiles.Profile;
@@ -50,6 +49,7 @@ import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.components.search_engines.TemplateUrlService.TemplateUrlServiceObserver;
 import org.chromium.components.signin.identitymanager.IdentityManager;
 import org.chromium.components.signin.identitymanager.PrimaryAccountChangeEvent;
+import org.chromium.content_public.browser.BackForwardTransitionAnimationManager;
 import org.chromium.ui.base.DeviceFormFactor;
 
 import java.util.ArrayList;
@@ -342,12 +342,16 @@ public class FeedSurfaceMediator
     /** Restores a previously saved state. */
     void restoreSavedInstanceState(@Nullable String json) {
         FeedScrollState state = FeedScrollState.fromJson(json);
-        if (state == null) {
+        if (state == null
+                || state.position == RecyclerView.NO_POSITION
+                || (state.position == 0 && state.offset == 0)) {
             mPositionToRestore = RecyclerView.NO_POSITION;
+            mRestoreScrollState = null;
             mGetRestoringStateSupplier.set(RestoringState.NO_STATE_TO_RESTORE);
             return;
         }
         mPositionToRestore = state.position;
+        mGetRestoringStateSupplier.set(RestoringState.WAITING_TO_RESTORE);
         if (mCurrentStream == null) {
             mRestoreScrollState = state;
         } else {
@@ -422,7 +426,11 @@ public class FeedSurfaceMediator
         assumeNonNull(mStreamContentChangedListener);
         mCurrentStream.addOnContentChangedListener(mStreamContentChangedListener);
 
-        mGetRestoringStateSupplier.set(RestoringState.WAITING_TO_RESTORE);
+        if (mRestoreScrollState != null || mPositionToRestore != RecyclerView.NO_POSITION) {
+            mGetRestoringStateSupplier.set(RestoringState.WAITING_TO_RESTORE);
+        } else {
+            mGetRestoringStateSupplier.set(RestoringState.NO_STATE_TO_RESTORE);
+        }
         FeedReliabilityLogger reliabilityLogger = mCoordinator.getReliabilityLogger();
         mCurrentStream.bind(
                 mCoordinator.getRecyclerView(),
@@ -892,7 +900,8 @@ public class FeedSurfaceMediator
                                 listener.onScrolled(dx, dy);
                             }
                             // Null if the stream has not been binded yet.
-                            if (GestureNavigationUtils.shouldAnimateBackForwardTransitions()
+                            if (BackForwardTransitionAnimationManager
+                                            .shouldAnimateBackForwardTransitions()
                                     && mCoordinator.getHybridListRenderer() != null
                                     && mCoordinator.getHybridListRenderer().getListLayoutHelper()
                                             != null

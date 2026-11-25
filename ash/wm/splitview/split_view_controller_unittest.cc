@@ -83,7 +83,7 @@
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/bubble/bubble_dialog_model_host.h"
 #include "ui/views/widget/widget.h"
-#include "ui/wm/core/shadow_controller.h"
+#include "ui/wm/core/decoration_controller.h"
 #include "ui/wm/core/window_util.h"
 
 namespace ash {
@@ -2166,7 +2166,7 @@ TEST_F(SplitViewControllerTest, CanSnapWindowWithUnresizableSnapProperty) {
 
   // Clamshell mode supports unresizable snapping.
   Shell::Get()->tablet_mode_controller()->SetEnabledForTest(false);
-  window->SetProperty(kUnresizableSnappedSizeKey, new gfx::Size(300, 0));
+  window->SetProperty(kUnresizableSnappedSizeKey, new gfx::Size{400, 0});
   EXPECT_TRUE(split_view_controller()->CanSnapWindow(
       window.get(), chromeos::kDefaultSnapRatio));
 
@@ -2178,7 +2178,7 @@ TEST_F(SplitViewControllerTest, CanSnapWindowWithUnresizableSnapProperty) {
   // If the display is too small for the unresizable snapping, it can't be
   // snapped.
   Shell::Get()->tablet_mode_controller()->SetEnabledForTest(false);
-  UpdateDisplay("200x100");
+  UpdateDisplay("320x200");
   EXPECT_FALSE(split_view_controller()->CanSnapWindow(
       window.get(), chromeos::kDefaultSnapRatio));
 }
@@ -2681,34 +2681,35 @@ TEST_F(SplitViewControllerTest, ShadowDisappearsWhenSnapped) {
   std::unique_ptr<aura::Window> window2(CreateWindow(bounds));
   std::unique_ptr<aura::Window> window3(CreateWindow(bounds));
 
-  ::wm::ShadowController* shadow_controller = Shell::Get()->shadow_controller();
-  EXPECT_TRUE(shadow_controller->IsShadowVisibleForWindow(window1.get()));
-  EXPECT_TRUE(shadow_controller->IsShadowVisibleForWindow(window2.get()));
-  EXPECT_TRUE(shadow_controller->IsShadowVisibleForWindow(window3.get()));
+  ::wm::DecorationController* decoration_controller =
+      Shell::Get()->decoration_controller();
+  EXPECT_TRUE(decoration_controller->IsShadowVisibleForWindow(window1.get()));
+  EXPECT_TRUE(decoration_controller->IsShadowVisibleForWindow(window2.get()));
+  EXPECT_TRUE(decoration_controller->IsShadowVisibleForWindow(window3.get()));
 
   // Snap |window1| to the left. Its shadow should disappear.
   split_view_controller()->SnapWindow(window1.get(), SnapPosition::kPrimary);
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window1.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window1.get()));
   auto* overview_controller = OverviewController::Get();
   EXPECT_TRUE(overview_controller->InOverviewSession());
   auto* overview_session = overview_controller->overview_session();
   EXPECT_TRUE(overview_session->IsWindowInOverview(window2.get()));
   EXPECT_TRUE(overview_session->IsWindowInOverview(window3.get()));
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window2.get()));
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window3.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window2.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window3.get()));
 
   // Snap |window2| to the right. Its shadow should also disappear.
   split_view_controller()->SnapWindow(window2.get(), SnapPosition::kSecondary);
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window1.get()));
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window2.get()));
-  EXPECT_TRUE(shadow_controller->IsShadowVisibleForWindow(window3.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window1.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window2.get()));
+  EXPECT_TRUE(decoration_controller->IsShadowVisibleForWindow(window3.get()));
 
   // Snap |window3| to the right. Its shadow should disappear and |window2|'s
   // shadow should reappear.
   split_view_controller()->SnapWindow(window3.get(), SnapPosition::kSecondary);
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window1.get()));
-  EXPECT_TRUE(shadow_controller->IsShadowVisibleForWindow(window2.get()));
-  EXPECT_FALSE(shadow_controller->IsShadowVisibleForWindow(window3.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window1.get()));
+  EXPECT_TRUE(decoration_controller->IsShadowVisibleForWindow(window2.get()));
+  EXPECT_FALSE(decoration_controller->IsShadowVisibleForWindow(window3.get()));
 }
 
 // Tests that if snapping a window causes overview to end (e.g., select two

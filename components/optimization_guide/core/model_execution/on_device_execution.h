@@ -18,6 +18,7 @@
 #include "components/optimization_guide/core/model_execution/on_device_capability.h"
 #include "components/optimization_guide/core/model_execution/on_device_context.h"
 #include "components/optimization_guide/core/model_execution/on_device_model_feature_adapter.h"
+#include "components/optimization_guide/core/model_execution/on_device_model_names.h"
 #include "components/optimization_guide/core/model_execution/on_device_telemetry_logger.h"
 #include "components/optimization_guide/core/model_execution/repetition_checker.h"
 #include "components/optimization_guide/core/model_execution/substitution.h"
@@ -53,8 +54,8 @@ class OnDeviceExecution final
     kDisconnectAndMaybeFallback = 5,
     // Received a disconnect while waiting for response and cancelled.
     kDisconnectAndCancel = 6,
-    // Response was cancelled because ExecuteModel() was called while waiting
-    // for response.
+    // Response was cancelled (e.g. because ExecuteModel() was called while
+    // waiting for response or the client cancelled the request).
     kCancelled = 7,
     // SessionImpl was destroyed while waiting for a response.
     kDestroyedWhileWaitingForResponse = 8,
@@ -88,13 +89,14 @@ class OnDeviceExecution final
   // Used to log the result of ExecuteModel.
   class ResultLogger {
    public:
-    explicit ResultLogger(mojom::OnDeviceFeature feature) : feature_(feature) {}
+    ResultLogger(mojom::OnDeviceFeature feature, OnDeviceBaseModel base_model);
     ~ResultLogger();
 
     void set_result(Result result) { result_ = result; }
 
    private:
     const mojom::OnDeviceFeature feature_;
+    const OnDeviceBaseModel base_model_;
     Result result_ = Result::kOnDeviceNotUsed;
   };
 

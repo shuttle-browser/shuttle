@@ -1,0 +1,18 @@
+Name: plasma-wayland-protocols
+URL: https://github.com/KDE/plasma-wayland-protocols
+Version: 1.23.0
+Revision: c5ac4db818f4a575a6ccfe0065b73ecfaba6e93e
+Date: 2026-09-24
+Update Mechanism: Manual
+License: LGPL-2.1
+License File: src/COPYING.LIB
+Security Critical: yes
+Shipped: yes
+
+Description:
+Wayland protocol extensions exposed by the KWin Wayland compositor, which is
+used by the KDE Plasma desktop environment. //third_party/wayland-protocols
+builds org_kde_kwin_appmenu and org_kde_kwin_idle from src/src/protocols/.
+
+src/ is a Git submodule of the upstream repository, mirrored at
+https://chromium.googlesource.com/external/github.com/KDE/plasma-wayland-protocols

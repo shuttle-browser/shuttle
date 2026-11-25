@@ -12,6 +12,10 @@ import androidx.annotation.VisibleForTesting;
 
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniPtr;
+import org.jni_zero.JniType;
+import org.jni_zero.JniTypeToken;
+import org.jni_zero.JniUniquePtr;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.build.annotations.NullMarked;
@@ -32,6 +36,9 @@ import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
 @JNINamespace("webapps")
 @NullMarked
 public class AddToHomescreenCoordinator {
+    @JniType("::webapps::AddToHomescreenCoordinator")
+    interface NativeAddToHomescreenCoordinator extends JniTypeToken {}
+
     private final Context mActivityContext;
     private final ModalDialogManager mModalDialogManager;
     private @Nullable PropertyModel mModel;
@@ -39,7 +46,8 @@ public class AddToHomescreenCoordinator {
     // May be null during tests.
     private final WebContents mWebContents;
 
-    private long mNativeCoordinator;
+    private @Nullable JniUniquePtr<NativeAddToHomescreenCoordinator> mNativeCoordinator;
+    private boolean mFlowCompleted;
 
     @VisibleForTesting
     public AddToHomescreenCoordinator(
@@ -72,8 +80,13 @@ public class AddToHomescreenCoordinator {
             return false;
         }
 
+        mFlowCompleted = false;
         mNativeCoordinator =
                 AddToHomescreenCoordinatorJni.get().startForAppMenu(this, mWebContents, type);
+        if (mFlowCompleted && mNativeCoordinator != null) {
+            mNativeCoordinator.destroy();
+            mNativeCoordinator = null;
+        }
         return true;
     }
 
@@ -86,13 +99,14 @@ public class AddToHomescreenCoordinator {
      *     used by add_to_homescreen_coordinator.cc to complete the initialization of the mediator.
      */
     @CalledByNative
-    private static long initMvcAndReturnMediator(WebContents webContents) {
+    static @Nullable JniPtr<AddToHomescreenMediator.NativeAddToHomescreenMediator>
+            initMvcAndReturnMediator(WebContents webContents) {
         WindowAndroid windowAndroid = webContents.getTopLevelNativeWindow();
-        if (windowAndroid == null) return 0;
+        if (windowAndroid == null) return null;
 
         ModalDialogManager modalDialogManager = windowAndroid.getModalDialogManager();
 
-        if (modalDialogManager == null) return 0;
+        if (modalDialogManager == null) return null;
 
         AddToHomescreenCoordinator coordinator =
                 new AddToHomescreenCoordinator(
@@ -110,7 +124,8 @@ public class AddToHomescreenCoordinator {
      * @return The instance of {@link AddToHomescreenMediator} that was constructed.
      */
     @CalledByNative
-    private long buildMediatorAndShowDialog() {
+    @Nullable JniPtr<AddToHomescreenMediator.NativeAddToHomescreenMediator>
+            buildMediatorAndShowDialog() {
         mModel = new PropertyModel.Builder(AddToHomescreenProperties.ALL_KEYS).build();
         AddToHomescreenMediator addToHomescreenMediator =
                 new AddToHomescreenMediator(
@@ -122,9 +137,10 @@ public class AddToHomescreenCoordinator {
 
     @CalledByNative
     private void onFlowCompleted() {
-        if (mNativeCoordinator != 0) {
-            AddToHomescreenCoordinatorJni.get().destroy(mNativeCoordinator);
-            mNativeCoordinator = 0;
+        mFlowCompleted = true;
+        if (mNativeCoordinator != null) {
+            mNativeCoordinator.destroy();
+            mNativeCoordinator = null;
         }
     }
 
@@ -151,9 +167,7 @@ public class AddToHomescreenCoordinator {
 
     @NativeMethods
     interface Natives {
-        long startForAppMenu(
+        JniUniquePtr<NativeAddToHomescreenCoordinator> startForAppMenu(
                 AddToHomescreenCoordinator self, WebContents webContents, int menuItemType);
-
-        void destroy(long nativeAddToHomescreenCoordinator);
     }
 }

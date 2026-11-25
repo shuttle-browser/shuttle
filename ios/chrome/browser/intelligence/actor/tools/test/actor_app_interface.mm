@@ -34,6 +34,9 @@
 #import "ios/web/public/js_messaging/web_frame.h"
 #import "ios/web/public/js_messaging/web_frames_manager.h"
 #import "ios/web/public/web_state.h"
+#import "third_party/abseil-cpp/absl/container/flat_hash_set.h"
+#import "url/gurl.h"
+#import "url/origin.h"
 
 NSString* const kActorAppInterfaceErrorDomain = @"ActorAppInterfaceErrorDomain";
 
@@ -127,7 +130,9 @@ autofill::AutofillDriverIOS* GetMainFrameAutofillDriver() {
                                     completion:completion];
       });
 
-  service->PerformActions(task_id, actions, "Executing EG Test action",
+  service->PerformActions(task_id, std::move(actions),
+                          "Executing EG Test action",
+                          /*added_writable_mainframe_origins=*/{},
                           std::move(action_performed_callback));
 }
 
@@ -181,7 +186,23 @@ autofill::AutofillDriverIOS* GetMainFrameAutofillDriver() {
                                     completion:completion];
       });
 
-  service->PerformActions(task_id, actions, "Executing EG Test actions",
+  absl::flat_hash_set<url::Origin> addedOrigins;
+  for (const std::string& originString :
+       actions_proto.task_metadata()
+           .security()
+           .added_writable_mainframe_origins()) {
+    GURL URL(originString);
+    if (!URL.is_valid()) {
+      continue;
+    }
+    url::Origin origin = url::Origin::Create(URL);
+    if (!origin.opaque()) {
+      addedOrigins.insert(std::move(origin));
+    }
+  }
+
+  service->PerformActions(task_id, std::move(actions),
+                          "Executing EG Test actions", std::move(addedOrigins),
                           std::move(action_performed_callback));
 }
 

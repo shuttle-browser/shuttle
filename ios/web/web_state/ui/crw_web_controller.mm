@@ -77,7 +77,7 @@
 #import "ios/web/web_state/web_view_pass_key.h"
 #import "net/base/apple/url_conversions.h"
 #import "services/metrics/public/cpp/ukm_builders.h"
-#import "ui/base/window_open_disposition.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #import "url/gurl.h"
 #import "url/origin.h"
 
@@ -929,9 +929,12 @@ JavaScriptCompletionBlock WrapCompletionBlock(
                   }];
 }
 
-- (void)createFullPagePDFWithCompletion:(void (^)(NSData*))completionBlock {
-  // Invoke the `completionBlock` with nil rather than a blank PDF for certain
-  // URLs or if there is a javascript dialog running.
+- (void)createPDFWithDocumentRect:(std::optional<CGRect>)documentRect
+                       completion:
+                           (void (^)(NSData* PDFDocumentData))completion {
+  CHECK(completion, base::NotFatalUntil::M160);
+  // Invoke `completion` with nil rather than a blank PDF for certain URLs or if
+  // there is a JavaScript dialog running.
   const std::string& mimeType = self.webState->GetContentsMimeType();
   const bool contentSupported =
       web::IsContentTypeHtml(mimeType) || web::IsContentTypePdf(mimeType);
@@ -940,11 +943,12 @@ JavaScriptCompletionBlock WrapCompletionBlock(
       web::GetWebClient()->IsAppSpecificURL(URL) ||
       self.webStateImpl->IsJavaScriptDialogRunning()) {
     dispatch_async(dispatch_get_main_queue(), ^{
-      completionBlock(nil);
+      completion(nil);
     });
     return;
   }
-  web::CreateFullPagePdf(self.webView, base::BindOnce(completionBlock));
+
+  web::CreatePdf(self.webView, documentRect, base::BindOnce(completion));
 }
 
 - (void)closeMediaPresentations {
@@ -1085,6 +1089,26 @@ JavaScriptCompletionBlock WrapCompletionBlock(
                                   currentURL:self.currentURL];
 }
 
+// Starts downloading `url` to `destination` using `source` to track the
+// extraction mechanism in metrics.
+- (void)startDownloadUsingURL:(const GURL&)url
+            toDestinationPath:(NSString*)destination
+             extractionSource:(web::IOSDownloadWebViewExtractionSource)source
+                     delegate:(id<CRWWebViewDownloadDelegate>)delegate
+                      handler:(void (^)(id<CRWWebViewDownload>))handler {
+  NSURLRequest* request = [NSURLRequest requestWithURL:net::NSURLWithGURL(url)];
+  CRWWebViewDownload* download =
+      [[CRWWebViewDownload alloc] initWithPath:destination
+                                       request:request
+                                       webview:self.webView
+                                      delegate:delegate
+                                        source:source];
+  [download startDownload];
+  if (handler) {
+    handler(download);
+  }
+}
+
 - (void)downloadCurrentPageToDestinationPath:(NSString*)destination
                                     delegate:
                                         (id<CRWWebViewDownloadDelegate>)delegate
@@ -1095,17 +1119,15 @@ JavaScriptCompletionBlock WrapCompletionBlock(
                  ? navigationManager->GetLastCommittedItem()->GetURL()
                  : [self currentURL];
 
-  NSURLRequest* request = [NSURLRequest requestWithURL:net::NSURLWithGURL(url)];
-
-  CRWWebViewDownload* download =
-      [[CRWWebViewDownload alloc] initWithPath:destination
-                                       request:request
-                                       webview:self.webView
-                                      delegate:delegate];
-  [download startDownload];
-  if (handler) {
-    handler(download);
-  }
+  // TODO(crbug.com/578364927): Fetch current document content using a blob URL
+  // to avoid secondary network requests, and fall back to WKDownload if
+  // extraction fails.
+  [self
+      startDownloadUsingURL:url
+          toDestinationPath:destination
+           extractionSource:web::IOSDownloadWebViewExtractionSource::kWKDownload
+                   delegate:delegate
+                    handler:handler];
 }
 
 - (BOOL)findInteractionSupported {
@@ -2081,10 +2103,9 @@ CrFullscreenState CrFullscreenStateFromWKFullscreenState(
   if (!URL.is_valid() || !URL.SchemeIsHTTPOrHTTPS()) {
     return;
   }
-  web::WebState::OpenURLParams params(URL, web::Referrer(),
-                                      WindowOpenDisposition::kNewForegroundTab,
-                                      ui::PAGE_TRANSITION_LINK,
-                                      /*is_renderer_initiated=*/false);
+  web::WebState::OpenURLParams params(
+      URL, web::Referrer(), ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+      ui::PAGE_TRANSITION_LINK, /*is_renderer_initiated=*/false);
   self.webStateImpl->OpenURL(params);
 }
 

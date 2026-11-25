@@ -34,7 +34,6 @@
 #include "chrome/browser/ui/intent_picker_tab_helper.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/url_identity.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/controls/site_icon_text_and_origin_view.h"
@@ -78,9 +77,9 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/dialog_model.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/image/image_skia_rep.h"
@@ -216,10 +215,11 @@ NewPageActionHighlight(content::WebContents& web_contents) {
     return std::nullopt;
   }
 
-  tabs::TabFeatures* tab_features = tab->GetTabFeatures();
-  CHECK(tab_features);
+  page_actions::PageActionController* page_action_controller =
+      page_actions::PageActionController::From(tab);
+  CHECK(page_action_controller);
 
-  return tab_features->page_action_controller()->AddActivity(kActionInstallPwa);
+  return page_action_controller->AddActivity(kActionInstallPwa);
 }
 
 }  // namespace
@@ -411,11 +411,11 @@ void WebAppInstallFlowDialogDelegate::OnLearnMoreButtonClicked() {
   CloseDialogAsIgnored();
 
   if (contents) {
-    contents->OpenURL(
-        content::OpenURLParams::CreateBrowserInitiated(
-            GURL(chrome::kInstallDialogFlowLearnMoreURL),
-            WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK),
-        base::DoNothing());
+    contents->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+                          GURL(chrome::kInstallDialogFlowLearnMoreURL),
+                          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+                          ui::PAGE_TRANSITION_LINK),
+                      base::DoNothing());
   }
 }
 

@@ -13,6 +13,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import androidx.annotation.Nullable;
 import androidx.test.filters.LargeTest;
 
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -22,16 +23,15 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.task.AsyncTask;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.CriteriaNotSatisfiedException;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.components.browser_ui.contacts_picker.ContactsPickerFeatureMap;
+import org.chromium.components.browser_ui.contacts_picker.PickerCategoryView;
 import org.chromium.content_public.browser.ContactsFetcher;
 import org.chromium.content_public.browser.ContactsPicker;
 import org.chromium.content_public.browser.ContactsPickerListener;
@@ -43,7 +43,6 @@ import java.util.List;
 
 /** TestSuite for Chrome's Contacts Picker implementation. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class ContactsPickerLauncherTest {
     private static final String FILE_PATH = "/chrome/test/data/android/test.html";
@@ -55,6 +54,15 @@ public class ContactsPickerLauncherTest {
     @Before
     public void setUp() {
         ContactsPickerFeatureMap.setSystemContactsPickerEnabledForTesting(false);
+    }
+
+    @After
+    public void tearDown() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    ContactsPicker.resetForTesting();
+                });
+        ContactsPickerFeatureMap.setSystemContactsPickerEnabledForTesting(null);
     }
 
     private boolean showContactsPicker(WebContents webContents) {
@@ -153,5 +161,33 @@ public class ContactsPickerLauncherTest {
                         throw new CriteriaNotSatisfiedException(e);
                     }
                 });
+    }
+
+    @Test
+    @LargeTest
+    public void testSystemPickerNotDismissedOnNavigation() throws Exception {
+        ContactsPickerFeatureMap.setSystemContactsPickerEnabledForTesting(true);
+        PickerCategoryView.setSkipSystemPickerIntentForTesting(true);
+        WebPageStation firstPage = mActivityTestRule.startOnBlankPage();
+        WebContents webContents = firstPage.webContentsElement.value();
+
+        // Wait for WebContents to be visible.
+        CriteriaHelper.pollInstrumentationThread(
+                () -> {
+                    return ThreadUtils.runOnUiThreadBlocking(
+                            () -> webContents.getVisibility() == Visibility.VISIBLE);
+                },
+                "WebContents never became visible");
+
+        // Launch the picker.
+        Assert.assertTrue(showContactsPicker(webContents));
+        Assert.assertTrue(ContactsPicker.hasPickerForTesting());
+
+        // Switch to a new page/tab. This triggers visibility/navigation changes.
+        firstPage.openFakeLinkToWebPage(mActivityTestRule.getTestServer().getURL(FILE_PATH));
+
+        // Verify the picker tracking is NOT dismissed and the observer is NOT reset.
+        Assert.assertTrue(ContactsPicker.hasPickerForTesting());
+        Assert.assertNotNull(ContactsPicker.getObserverForTesting());
     }
 }

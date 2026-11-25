@@ -18,7 +18,6 @@
 #include "ash/ambient/resources/ambient_animation_static_resources.h"
 #include "ash/ambient/ui/ambient_animation_attribution_transformer.h"
 #include "ash/ambient/ui/ambient_animation_background_color.h"
-#include "ash/ambient/ui/ambient_animation_frame_rate_controller.h"
 #include "ash/ambient/ui/ambient_animation_player.h"
 #include "ash/ambient/ui/ambient_animation_resizer.h"
 #include "ash/ambient/ui/ambient_animation_shield_controller.h"
@@ -85,15 +84,18 @@ constexpr int kTimeFontSizeDip = 32;
 constexpr SkColor kDarkModeShieldColor =
     SkColorSetA(gfx::kGoogleGrey900, SK_AlphaOPAQUE / 10);
 
-void LogCompositorThroughput(int smoothness) {
+void LogCompositorThroughput(const AmbientUiSettings& ui_settings,
+                             int smoothness) {
   // Use VLOG instead of DVLOG since this log is performance-related and
   // developers will almost certainly only care about this log on non-debug
   // builds.
   VLOG(1) << "Compositor throughput report: smoothness=" << smoothness;
+  ambient::RecordAmbientModeAnimationSmoothness(smoothness, ui_settings);
 }
 
 void OnCompositorThroughputReported(
     base::TimeTicks logging_start_time,
+    const AmbientUiSettings& ui_settings,
     const cc::FrameSequenceMetrics::CustomReportData& data) {
   base::TimeDelta duration = base::TimeTicks::Now() - logging_start_time;
   float duration_sec = duration.InSecondsF();
@@ -105,7 +107,8 @@ void OnCompositorThroughputReported(
           << " actual_fps="
           << (data.frames_expected_v3 - data.frames_dropped_v3) / duration_sec
           << " duration=" << duration;
-  metrics_util::ForSmoothnessV3(base::BindRepeating(&LogCompositorThroughput))
+  metrics_util::ForSmoothnessV3(
+      base::BindRepeating(&LogCompositorThroughput, ui_settings))
       .Run(data);
 }
 
@@ -180,12 +183,10 @@ std::unique_ptr<views::Border> CreateMediaStringBorder(
 AmbientAnimationView::AmbientAnimationView(
     AmbientViewDelegateImpl* view_delegate,
     AmbientAnimationProgressTracker* progress_tracker,
-    std::unique_ptr<const AmbientAnimationStaticResources> static_resources,
-    AmbientAnimationFrameRateController* frame_rate_controller)
+    std::unique_ptr<const AmbientAnimationStaticResources> static_resources)
     : view_delegate_(view_delegate),
       progress_tracker_(progress_tracker),
       static_resources_(std::move(static_resources)),
-      frame_rate_controller_(frame_rate_controller),
       add_glanceable_info_text_shadow_(
           static_resources_->GetUiSettings().theme() !=
           personalization_app::mojom::AmbientTheme::kFeelTheBreeze),
@@ -194,7 +195,6 @@ AmbientAnimationView::AmbientAnimationView(
       animation_jitter_calculator_(
           AmbientUiModel::Get()->GetAnimationJitterConfig()) {
   DCHECK(view_delegate_);
-  DCHECK(frame_rate_controller_);
   SetID(AmbientViewID::kAmbientAnimationView);
   Init();
 }
@@ -373,20 +373,6 @@ void AmbientAnimationView::OnViewBoundsChanged(View* observed_view) {
   }
 }
 
-void AmbientAnimationView::OnViewAddedToWidget(View* observed_view) {
-  DCHECK_EQ(observed_view, static_cast<View*>(animated_image_view_));
-  DCHECK(observed_view->GetWidget());
-  // Frame throttling requires a window with a valid FrameSinkId. Keep searching
-  // up the window tree until one is found.
-  auto* window_to_throttle = animated_image_view_->GetWidget()->GetNativeView();
-  while (!window_to_throttle->GetFrameSinkId().is_valid()) {
-    window_to_throttle = window_to_throttle->parent();
-    DCHECK(window_to_throttle) << "Search for window to throttle failed";
-  }
-  frame_rate_controller_->AddWindowToThrottle(
-      window_to_throttle, animated_image_view_->animated_image());
-}
-
 SkColor AmbientAnimationView::GetTimeTemperatureFontColor() {
   return gfx::kGoogleGrey900;
 }
@@ -427,7 +413,8 @@ void AmbientAnimationView::RestartThroughputTracking() {
   throughput_tracker_ = compositor->RequestNewCompositorMetricsTracker();
   throughput_tracker_->Start(
       base::BindOnce(&OnCompositorThroughputReported,
-                     /*logging_start_time=*/base::TimeTicks::Now()));
+                     /*logging_start_time=*/base::TimeTicks::Now(),
+                     static_resources_->GetUiSettings()));
 }
 
 void AmbientAnimationView::ApplyJitter() {

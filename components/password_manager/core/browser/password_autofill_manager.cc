@@ -84,6 +84,7 @@ bool IsSuggestionHandledInPasswordManager(SuggestionType type) {
   switch (type) {
     case SuggestionType::kWebauthnSignInWithAnotherDevice:
     case SuggestionType::kWebauthnPasskeyQrCode:
+    case SuggestionType::kPendingStateTrustedVaultError:
       return true;
     case SuggestionType::kAddressEntry:
     case SuggestionType::kAddressFieldByFieldFilling:
@@ -273,6 +274,11 @@ void PasswordAutofillManager::OnWebauthnInlineQrCodeSuggestionShown() {
   }
 }
 
+std::optional<autofill::Suggestion>
+PasswordAutofillManager::GetTrustedVaultUnlockSuggestion() const {
+  return std::nullopt;
+}
+
 void PasswordAutofillManager::OnSuggestionsShown(
     base::span<const Suggestion> suggestions,
     const SuggestionUiMetadata& metadata) {
@@ -315,7 +321,9 @@ void PasswordAutofillManager::DidSelectSuggestion(
       suggestion.type ==
           autofill::SuggestionType::kWebauthnSignInWithAnotherDevice ||
       suggestion.type == autofill::SuggestionType::kWebauthnPasskeyQrCode ||
-      suggestion.type == autofill::SuggestionType::kTroubleSigningInEntry) {
+      suggestion.type == autofill::SuggestionType::kTroubleSigningInEntry ||
+      suggestion.type ==
+          autofill::SuggestionType::kPendingStateTrustedVaultError) {
     return;
   }
   if (suggestion.type == autofill::SuggestionType::kBackupPasswordEntry) {
@@ -409,6 +417,10 @@ void PasswordAutofillManager::DidAcceptSuggestion(
     case autofill::SuggestionType::kPendingStateSignin:
       password_client_->TriggerSignIn(
           signin_metrics::AccessPoint::kAutofillDropdown);
+      break;
+    case autofill::SuggestionType::kPendingStateTrustedVaultError:
+      // Interaction logic is implemented in a follow-up CL once
+      // PasswordManagerClient::StartTrustedVaultKeyRetrieval is introduced.
       break;
     case autofill::SuggestionType::kIdentityCredential: {
       if (const autofill::IdentityCredentialDelegate*
@@ -1078,6 +1090,16 @@ bool PasswordAutofillManager::MaybeTriggerPasswordManualFallback(
     if (!manual_fallback_allowed_for_frame) {
       // Do not show manual fallback suggestions if the current frame doesn't
       // meet security criteria, see crbug.com/521502218.
+      return true;
+    }
+  }
+
+  if (base::FeatureList::IsEnabled(
+          features::kPasswordManualFallbackSkipOpaqueOrigins)) {
+    if (!password_client_->IsFillingEnabled(
+            password_manager_driver_->GetLastCommittedOrigin(),
+            password_manager_driver_->GetLastCommittedURL())) {
+      // Skip manual filling for opaque origins.
       return true;
     }
   }

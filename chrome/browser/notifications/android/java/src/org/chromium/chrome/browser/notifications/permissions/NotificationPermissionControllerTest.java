@@ -7,6 +7,8 @@ package org.chromium.chrome.browser.notifications.permissions;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -58,7 +60,7 @@ import java.lang.ref.WeakReference;
 /** Robolectric unit tests for {@link NotificationPermissionController}. */
 @RunWith(BaseRobolectricTestRunner.class)
 @Config(sdk = VERSION_CODES.TIRAMISU)
-@DisableFeatures(ChromeFeatureList.INTERRUPTIVE_IPH_COOLDOWN_GROUP)
+@DisableFeatures(ChromeFeatureList.USER_EDUCATION_INTERRUPTIVE_COOLDOWN_GROUP)
 public class NotificationPermissionControllerTest {
     @Rule public FakeTimeTestRule mFakeTimeRule = new FakeTimeTestRule();
 
@@ -1072,7 +1074,10 @@ public class NotificationPermissionControllerTest {
     }
 
     @Test
-    @EnableFeatures(ChromeFeatureList.INTERRUPTIVE_IPH_COOLDOWN_GROUP)
+    @EnableFeatures({
+        ChromeFeatureList.USER_EDUCATION_FRAMEWORK,
+        ChromeFeatureList.USER_EDUCATION_INTERRUPTIVE_COOLDOWN_GROUP
+    })
     public void testNotificationPrompt_recordsCooldownGroupWithBypassProperties() {
         Profile profile = mock(Profile.class);
         Tracker tracker = mock(Tracker.class);
@@ -1080,7 +1085,6 @@ public class NotificationPermissionControllerTest {
         FeatureProperties expectedProps =
                 new FeatureProperties(
                         UiFormat.ALERTS,
-                        /* isBlockedByEnterprisePolicy= */ false,
                         /* isBlockedByCooldownGroup= */ false,
                         /* blocksCooldownGroup= */ true);
         when(tracker.shouldTriggerHelpUi(
@@ -1118,6 +1122,48 @@ public class NotificationPermissionControllerTest {
                             invokeOSPermissionCallback(
                                     permissionDelegate, /* permissionGranted= */ true);
                             verify(tracker)
+                                    .dismissed(
+                                            FeatureConstants.NOTIFICATION_PERMISSION_PROMO_FEATURE);
+                        });
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.USER_EDUCATION_INTERRUPTIVE_COOLDOWN_GROUP)
+    @DisableFeatures(ChromeFeatureList.USER_EDUCATION_FRAMEWORK)
+    public void
+            testNotificationPrompt_recordsCooldownGroupWithBypassProperties_FrameworkDisabled() {
+        Profile profile = mock(Profile.class);
+        Tracker tracker = mock(Tracker.class);
+        TrackerFactory.setTrackerForTests(tracker);
+
+        mActivityScenarios
+                .getScenario()
+                .onActivity(
+                        activity -> {
+                            shadowOf(activity)
+                                    .denyPermissions(Manifest.permission.POST_NOTIFICATIONS);
+                            TestAndroidPermissionDelegate permissionDelegate =
+                                    new TestAndroidPermissionDelegate(
+                                            new WeakReference<>(activity));
+                            NotificationPermissionController notificationPermissionController =
+                                    new NotificationPermissionController(
+                                            permissionDelegate,
+                                            TestRationaleDelegate::new,
+                                            profile);
+
+                            assertTrue(
+                                    notificationPermissionController.requestPermissionIfNeeded(
+                                            /* contextual= */ false));
+
+                            verify(tracker, never())
+                                    .shouldTriggerHelpUi(anyString(), any(FeatureProperties.class));
+                            verify(tracker, never())
+                                    .dismissed(
+                                            FeatureConstants.NOTIFICATION_PERMISSION_PROMO_FEATURE);
+
+                            invokeOSPermissionCallback(
+                                    permissionDelegate, /* permissionGranted= */ true);
+                            verify(tracker, never())
                                     .dismissed(
                                             FeatureConstants.NOTIFICATION_PERMISSION_PROMO_FEATURE);
                         });

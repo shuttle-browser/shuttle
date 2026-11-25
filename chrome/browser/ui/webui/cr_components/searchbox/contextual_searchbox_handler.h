@@ -47,6 +47,7 @@
 #include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
 #include "third_party/omnibox_proto/model_mode.pb.h"
 #include "third_party/omnibox_proto/tool_mode.pb.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/webui/resources/cr_components/composebox/composebox.mojom.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -192,13 +193,17 @@ class ContextualSearchboxHandler
 
   // Returns recent tabs from the tab list associated with
   // `browser_window_interface` sorted by recency. If `max_tab_suggestions` is
-  // set, the result is capped to that number of tabs. Tabs whose `SessionID` is
-  // in `always_include_tab_ids` are included even if they are internal pages
-  // (e.g. an NTP tab attached via Lens Overlay).
+  // set, the result is capped to that number of tabs. If
+  // `exclude_page_context_ineligible_tabs` is true, tabs known to be
+  // page-context-ineligible (`kNotEligible`) are excluded. Tabs whose
+  // `SessionID` is in `always_include_tab_ids` are included even if they are
+  // internal or page-context-ineligible pages (e.g. an NTP tab attached via
+  // Lens Overlay).
   static std::vector<searchbox::mojom::TabInfoPtr> GetRecentTabInfos(
       BrowserWindowInterface* browser_window_interface,
       std::optional<int> max_tab_suggestions = std::nullopt,
-      const base::flat_set<SessionID>& always_include_tab_ids = {});
+      const base::flat_set<SessionID>& always_include_tab_ids = {},
+      bool exclude_page_context_ineligible_tabs = false);
 
   void GetRecentTabs(GetRecentTabsCallback callback) override;
   void GetTabPreview(int32_t tab_id, GetTabPreviewCallback callback) override;
@@ -243,6 +248,12 @@ class ContextualSearchboxHandler
   ContextualSearchboxScreenshareController*
   screenshare_controller_for_testing() {
     return screenshare_controller_.get();
+  }
+
+  // Whether the page waits for the Drive picker, which runs for the browser
+  // window that embeds the WebUI.
+  bool IsDriveUploadPending() const {
+    return !drive_upload_click_callback_.is_null();
   }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -346,6 +357,19 @@ class ContextualSearchboxHandler
 
   // Resets `input_state_model_`.
   void ResetInputStateModel();
+
+  // Drops the state tied to the browser window that embeds the WebUI: its tab
+  // observations, tab underlines and pending tab context, the Drive picker,
+  // and the input state model of its active tab. Called before the WebUI's
+  // WebContents moves to another browser window, while the old window still
+  // embeds it.
+  void DetachFromBrowserWindow();
+
+  // Observes the tabs of the browser window that now embeds the WebUI and
+  // creates the input state model for its active tab. Called after the WebUI's
+  // WebContents moved to that window.
+  void AttachToBrowserWindow();
+
   void OnAimEligibilityChanged();
   void SetActiveToolMode(omnibox::ToolMode tool, bool is_set_by_aim) override;
   void RecordToolSelectionAction(omnibox::ToolMode tool) override;
@@ -361,6 +385,18 @@ class ContextualSearchboxHandler
 
   void set_screenshare_delegate_for_testing(
       ContextualSearchboxScreenshareController::Delegate* screenshare_delegate);
+
+  // Turns on dynamic AIM fulfillment for each input state model this handler
+  // uses. Called by the NTP and Omnibox popup when their feature is enabled.
+  void OptInToDynamicAimFulfillment();
+
+  // Returns the input state model that a handler in `web_contents` uses for
+  // `session_handle`, creating it if needed. For the Omnibox popup, that's the
+  // model of the active tab.
+  static base::WeakPtr<contextual_search::InputStateModel>
+  GetOrCreateInputStateModelForSession(
+      content::WebContents* web_contents,
+      contextual_search::ContextualSearchSessionHandle& session_handle);
 
   // Map of context tokens (frontend) to tab IDs (backend);
   // used for determining which tabs to underline based on frontend changes, and
@@ -379,10 +415,10 @@ class ContextualSearchboxHandler
 
   virtual void ProcessContextAndOpenUrl(
       GURL url,
-      const WindowOpenDisposition disposition);
+      const ui::mojom::WindowOpenDisposition disposition);
 
   virtual void OpenUrl(GURL url,
-                       const WindowOpenDisposition disposition,
+                       const ui::mojom::WindowOpenDisposition disposition,
                        base::OnceCallback<void(content::NavigationHandle&)>
                            navigation_handle_callback);
 
@@ -391,14 +427,14 @@ class ContextualSearchboxHandler
 
   void ContextualizeQueryAndOpenUrl(
       const std::string& query_text,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       omnibox::ChromeAimEntryPoint aim_entry_point,
       std::map<std::string, std::string> additional_params,
       bool is_voice_search);
 
   void ComputeAndOpenQueryUrl(
       const std::string& query_text,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       omnibox::ChromeAimEntryPoint aim_entry_point,
       std::map<std::string, std::string> additional_params,
       bool is_voice_search);
@@ -509,7 +545,7 @@ class ContextualSearchboxHandler
 
   void ContextualizeQueryWithRelevantTabsAndOpenUrl(
       const std::string& query_text,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       omnibox::ChromeAimEntryPoint aim_entry_point,
       std::map<std::string, std::string> additional_params,
       std::vector<base::WeakPtr<content::WebContents>> relevant_tabs);
@@ -531,6 +567,9 @@ class ContextualSearchboxHandler
 
   class AllTabNavigationObserver;
   std::vector<std::unique_ptr<AllTabNavigationObserver>> all_tab_nav_observers_;
+  // Observes the tab list and the active tab of the browser window that
+  // embeds the WebUI, if any.
+  void ObserveEmbeddingWindowTabs();
   void UpdateAllTabNavigationObservers();
   void OnAnyTabNavigated(content::WebContents* web_contents);
 
@@ -565,6 +604,9 @@ class ContextualSearchboxHandler
 
   std::unique_ptr<ContextualSearchboxTabFaviconHelper> tab_favicon_helper_;
   base::CallbackListSubscription aim_eligibility_subscription_;
+
+  // Whether `OptInToDynamicAimFulfillment()` was called.
+  bool opted_in_to_dynamic_aim_fulfillment_ = false;
 
  protected:
   std::optional<bool> smart_tab_sharing_active_for_thread_;

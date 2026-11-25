@@ -35,6 +35,7 @@ import org.jni_zero.JNINamespace;
 import org.jni_zero.JniType;
 import org.jni_zero.NativeMethods;
 
+import org.chromium.base.ContentUriOwner;
 import org.chromium.base.ContentUriUtils;
 import org.chromium.base.IntentUtils;
 import org.chromium.base.Log;
@@ -156,7 +157,9 @@ public class WebAppLaunchHandler {
         }
 
         // Block Chrome's own Content URIs.
-        if (ContentUriUtils.isUriFromThisApp(uri)) {
+        @ContentUriOwner int owner = ContentUriUtils.resolveContentUriOwner(uri);
+        if (owner == ContentUriOwner.EXPORTED_FROM_CURRENT_APP
+                || owner == ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP) {
             return false;
         }
 
@@ -503,7 +506,7 @@ public class WebAppLaunchHandler {
         List<Uri> filteredUris = new ArrayList<>();
         for (Uri uri : fileHandlingData.uris) {
             if (!isValidLaunchUri(uri)) {
-                Log.w(TAG, "Invalid launch URI: " + uri);
+                Log.w(TAG, "Invalid launch URI: %s", uri);
                 continue;
             }
             if (!doesCallerHavePermissionForUri(
@@ -512,7 +515,7 @@ public class WebAppLaunchHandler {
                     intentDataProvider.getSession(),
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                Log.w(TAG, "Caller does not have read permission for URI: " + uri);
+                Log.w(TAG, "Caller does not have read permission for URI: %s", uri);
                 continue;
             }
             filteredUris.add(uri);
@@ -574,7 +577,7 @@ public class WebAppLaunchHandler {
                 return activity.checkUriPermission(uri, clientPid, clientUid, requestedPermission)
                         == PackageManager.PERMISSION_GRANTED;
             } catch (Exception e) {
-                Log.w(TAG, "Failed to check URI permission for UID: " + clientUid, e);
+                Log.w(TAG, "Failed to check URI permission for UID: %d", clientUid, e);
             }
         }
         return false;
@@ -656,12 +659,12 @@ public class WebAppLaunchHandler {
         List<Boolean> canWriteList = new ArrayList<>();
         for (Uri uri : fileHandlingData.uris) {
             if (!isValidLaunchUri(uri)) {
-                Log.w(TAG, "Invalid launch URI: " + uri);
+                Log.w(TAG, "Invalid launch URI: %s", uri);
                 continue;
             }
             if (!doesCallerHavePermissionForUri(
                     activity, caller, session, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                Log.w(TAG, "Caller does not have read permission for URI: " + uri);
+                Log.w(TAG, "Caller does not have read permission for URI: %s", uri);
                 continue;
             }
             verifiedUris.add(uri);
@@ -741,12 +744,12 @@ public class WebAppLaunchHandler {
         List<Uri> verifiedUris = new ArrayList<>();
         for (Uri uri : shareData.uris) {
             if (!isValidLaunchUri(uri)) {
-                Log.w(TAG, "Invalid launch URI: " + uri);
+                Log.w(TAG, "Invalid launch URI: %s", uri);
                 continue;
             }
             if (!doesCallerHavePermissionForUri(
                     activity, caller, session, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                Log.w(TAG, "Caller does not have read permission for share URI: " + uri);
+                Log.w(TAG, "Caller does not have read permission for share URI: %s", uri);
                 continue;
             }
             verifiedUris.add(uri);
@@ -803,14 +806,14 @@ public class WebAppLaunchHandler {
             try {
                 webApkUid = activity.getPackageManager().getPackageUid(webApkPackageName, 0);
             } catch (PackageManager.NameNotFoundException e) {
-                Log.w(TAG, "WebAPK package not found: " + webApkPackageName, e);
+                Log.w(TAG, "WebAPK package not found: %s", webApkPackageName, e);
             }
         }
 
         List<Uri> verifiedUris = new ArrayList<>();
         for (Uri uri : shareData.uris) {
             if (!isValidLaunchUri(uri)) {
-                Log.w(TAG, "Invalid launch URI: " + uri);
+                Log.w(TAG, "Invalid launch URI: %s", uri);
                 continue;
             }
             if (!doesCallerHavePermissionForUri(
@@ -820,7 +823,7 @@ public class WebAppLaunchHandler {
                     /* clientPid= */ 0,
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                Log.w(TAG, "Caller does not have read permission for share URI: " + uri);
+                Log.w(TAG, "Caller does not have read permission for share URI: %s", uri);
                 continue;
             }
             verifiedUris.add(uri);
@@ -903,7 +906,7 @@ public class WebAppLaunchHandler {
                 try {
                     clientUid = activity.getPackageManager().getPackageUid(webApkPackage, 0);
                 } catch (PackageManager.NameNotFoundException e) {
-                    Log.w(TAG, "WebAPK package not found: " + webApkPackage, e);
+                    Log.w(TAG, "WebAPK package not found: %s", webApkPackage, e);
                 }
             }
         }
@@ -911,7 +914,7 @@ public class WebAppLaunchHandler {
         List<Uri> filteredUris = new ArrayList<>();
         for (Uri uri : shareData.uris) {
             if (!isValidLaunchUri(uri)) {
-                Log.w(TAG, "Invalid launch URI: " + uri);
+                Log.w(TAG, "Invalid launch URI: %s", uri);
                 continue;
             }
             if (!doesCallerHavePermissionForUri(
@@ -921,7 +924,7 @@ public class WebAppLaunchHandler {
                     clientPid,
                     uri,
                     Intent.FLAG_GRANT_READ_URI_PERMISSION)) {
-                Log.w(TAG, "Caller does not have read permission for share URI: " + uri);
+                Log.w(TAG, "Caller does not have read permission for share URI: %s", uri);
                 continue;
             }
             filteredUris.add(uri);

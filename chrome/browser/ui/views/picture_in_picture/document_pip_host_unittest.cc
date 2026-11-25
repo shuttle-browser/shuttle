@@ -10,7 +10,18 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
+#include "base/test/bind.h"
+#include "base/test/run_until.h"
+#include "base/test/test_future.h"
+#include "build/build_config.h"
 #include "chrome/browser/picture_in_picture/picture_in_picture_window_manager.h"
+#include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_bubble.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
+#include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
+#include "chrome/browser/ui/recently_audible_helper.h"
+#include "chrome/browser/ui/views/exclusive_access/exclusive_access_bubble_views.h"
+#include "chrome/browser/ui/views/frame/scrim_view.h"
 #include "chrome/browser/ui/views/picture_in_picture/document_pip_contents_view.h"
 #include "chrome/browser/ui/views/picture_in_picture/document_pip_widget_delegate.h"
 #include "chrome/test/base/testing_profile.h"
@@ -33,19 +44,29 @@
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "third_party/blink/public/mojom/picture_in_picture_window_options/picture_in_picture_window_options.mojom.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
+#include "ui/events/event.h"
+#include "ui/gfx/animation/animation_test_api.h"
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/controls/webview/webview.h"
 #include "ui/views/focus/focus_manager.h"
+#include "ui/views/test/widget_test.h"
 #include "ui/views/view.h"
+#include "ui/views/view_class_properties.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_observer.h"
 #include "ui/views/window/non_client_view.h"
 #include "url/gurl.h"
 #include "url/origin.h"
+
+#if BUILDFLAG(IS_LINUX)
+#include "ui/aura/window.h"
+#include "ui/aura/window_tree_host.h"
+#include "ui/views/widget/desktop_aura/desktop_window_tree_host_linux.h"
+#endif
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "chrome/browser/extensions/chrome_extension_web_contents_observer.h"
@@ -84,13 +105,14 @@ class RecordingOpenURLDelegate : public content::WebContentsDelegate {
 
   int call_count() const { return call_count_; }
   content::WebContents* source() const { return source_; }
-  WindowOpenDisposition disposition() const { return disposition_; }
+  ui::mojom::WindowOpenDisposition disposition() const { return disposition_; }
   const GURL& url() const { return url_; }
 
  private:
   int call_count_ = 0;
   raw_ptr<content::WebContents> source_ = nullptr;
-  WindowOpenDisposition disposition_ = WindowOpenDisposition::kUnknown;
+  ui::mojom::WindowOpenDisposition disposition_ =
+      ui::mojom::WindowOpenDisposition::kUnknown;
   GURL url_;
 };
 
@@ -100,7 +122,7 @@ class RecordingAddNewContentsDelegate : public content::WebContentsDelegate {
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override {
@@ -115,12 +137,13 @@ class RecordingAddNewContentsDelegate : public content::WebContentsDelegate {
 
   int call_count() const { return call_count_; }
   content::WebContents* source() const { return source_; }
-  WindowOpenDisposition disposition() const { return disposition_; }
+  ui::mojom::WindowOpenDisposition disposition() const { return disposition_; }
 
  private:
   int call_count_ = 0;
   raw_ptr<content::WebContents> source_ = nullptr;
-  WindowOpenDisposition disposition_ = WindowOpenDisposition::kUnknown;
+  ui::mojom::WindowOpenDisposition disposition_ =
+      ui::mojom::WindowOpenDisposition::kUnknown;
   std::unique_ptr<content::WebContents> new_contents_;
 };
 
@@ -293,6 +316,19 @@ TEST_F(DocumentPipHostTest, Accessors) {
   EXPECT_TRUE(host->GetProfile());
   EXPECT_EQ(400u, host->GetPipOptions().width);
   EXPECT_EQ(300u, host->GetPipOptions().height);
+}
+
+TEST_F(DocumentPipHostTest, AttachesRecentlyAudibleHelperToChildWebContents) {
+  DocumentPipHost* host = CreateHostAndOpenPipWindow();
+  ASSERT_TRUE(host);
+
+  RecentlyAudibleHelper* audible_helper =
+      RecentlyAudibleHelper::FromWebContents(host->GetChildWebContents());
+  ASSERT_TRUE(audible_helper);
+  EXPECT_FALSE(audible_helper->WasRecentlyAudible());
+
+  audible_helper->SetRecentlyAudibleForTesting();
+  EXPECT_TRUE(audible_helper->WasRecentlyAudible());
 }
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
@@ -808,6 +844,21 @@ TEST_F(DocumentPipHostTest, OpenerDestroyed_HostClosedCleanly) {
   opener_web_contents_.reset();
 }
 
+#if BUILDFLAG(IS_LINUX)
+TEST_F(DocumentPipHostTest, LinuxFrameHintsAfterOpenerDestruction) {
+  auto* host = CreateHostAndOpenPipWindow();
+  auto* native_host = static_cast<views::DesktopWindowTreeHostLinux*>(
+      host->GetWidget()->GetNativeWindow()->GetHost());
+  auto native_host_weak = native_host->GetWeakPtr();
+
+  opener_web_contents_.reset();
+
+  // The native host closes asynchronously and can still receive X11 events.
+  ASSERT_TRUE(native_host_weak);
+  native_host->UpdateFrameHints();
+}
+#endif
+
 // After the PiP window is closed, CreateAndShowPipWindow() can be called again
 // with a
 // new child WebContents to re-open the PiP window.
@@ -892,7 +943,7 @@ TEST_F(DocumentPipHostTest, AddNewContents_BlocksWhenOpenerHasNoDelegate) {
   auto popup =
       content::WebContentsTester::CreateTestWebContents(&profile_, nullptr);
   host->AddNewContents(host->GetChildWebContents(), std::move(popup), GURL(),
-                       WindowOpenDisposition::kNewPopup,
+                       ui::mojom::WindowOpenDisposition::kNewPopup,
                        blink::mojom::WindowFeatures(), /*user_gesture=*/false,
                        &was_blocked);
   EXPECT_TRUE(was_blocked);
@@ -910,7 +961,8 @@ TEST_F(DocumentPipHostTest, OpenURLFromTab_CurrentTabClosesPipWindow) {
 
   content::OpenURLParams params =
       content::OpenURLParams::CreateRendererInitiated(
-          GURL("https://example.test/"), WindowOpenDisposition::kCurrentTab,
+          GURL("https://example.test/"),
+          ui::mojom::WindowOpenDisposition::kCurrentTab,
           ui::PAGE_TRANSITION_LINK, content::Referrer(),
           child->GetPrimaryMainFrame()->GetCurrentInitiatorNavigationState());
   EXPECT_EQ(nullptr, host->OpenURLFromTab(child, params, base::NullCallback()));
@@ -939,7 +991,7 @@ TEST_F(DocumentPipHostTest, OpenURLFromTab_NewForegroundTabRoutesToOpener) {
 
   content::OpenURLParams params =
       content::OpenURLParams::CreateRendererInitiated(
-          url, WindowOpenDisposition::kNewForegroundTab,
+          url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK, content::Referrer(),
           child->GetPrimaryMainFrame()->GetCurrentInitiatorNavigationState());
   EXPECT_EQ(opener(),
@@ -947,7 +999,7 @@ TEST_F(DocumentPipHostTest, OpenURLFromTab_NewForegroundTabRoutesToOpener) {
 
   EXPECT_EQ(1, opener_delegate.call_count());
   EXPECT_EQ(opener(), opener_delegate.source());
-  EXPECT_EQ(WindowOpenDisposition::kNewForegroundTab,
+  EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
             opener_delegate.disposition());
   EXPECT_EQ(url, opener_delegate.url());
   EXPECT_TRUE(host->GetWidget());
@@ -1172,6 +1224,237 @@ TEST_F(DocumentPipHostTest, PreHandleKeyboardEvent_ReturnsNotHandled) {
             host->PreHandleKeyboardEvent(host->GetChildWebContents(), event));
 }
 
+class DocumentPipExclusiveAccessTest : public DocumentPipHostTest {
+ public:
+  void SetUp() override {
+    DocumentPipHostTest::SetUp();
+    ExclusiveAccessBubbleViews::set_skip_presentation_delay_for_testing(true);
+  }
+
+  void TearDown() override {
+    DocumentPipHostTest::TearDown();
+    ExclusiveAccessBubbleViews::set_skip_presentation_delay_for_testing(false);
+  }
+
+  void ShowBubble(
+      DocumentPipHost* host,
+      ExclusiveAccessBubbleHideCallback callback = base::NullCallback()) {
+    host->GetExclusiveAccessManagerForTesting()
+        ->context()
+        ->UpdateExclusiveAccessBubble(
+            {.origin = url::Origin::Create(GURL("https://example.test")),
+             .type = EXCLUSIVE_ACCESS_BUBBLE_TYPE_POINTERLOCK_EXIT_INSTRUCTION},
+            std::move(callback));
+  }
+
+  views::Widget* GetBubbleWidget() {
+    for (views::Widget* widget : views::test::WidgetTest::GetAllWidgets()) {
+      if (widget->GetContentsView()->GetProperty(
+              views::kElementIdentifierKey) ==
+          kExclusiveAccessBubbleViewElementId) {
+        return widget;
+      }
+    }
+    return nullptr;
+  }
+
+ private:
+  gfx::AnimationTestApi::RenderModeResetter rich_animation_mode_ =
+      gfx::AnimationTestApi::SetRichAnimationRenderMode(
+          gfx::Animation::RichAnimationRenderMode::FORCE_ENABLED);
+};
+
+TEST_F(DocumentPipExclusiveAccessTest, ContextDoesNotAllowFullscreen) {
+  auto* host = CreateHostAndOpenPipWindow();
+  auto* context = host->GetExclusiveAccessManagerForTesting()->context();
+  EXPECT_EQ(host->GetProfile(), context->GetProfile());
+  EXPECT_EQ(host->GetChildWebContents(),
+            context->GetWebContentsForExclusiveAccess());
+  EXPECT_FALSE(context->IsFullscreen());
+  EXPECT_FALSE(context->CanUserEnterFullscreen());
+  EXPECT_FALSE(host->GetWidget()->widget_delegate()->CanFullscreen());
+  EXPECT_FALSE(context->IsExclusiveAccessBubbleDisplayed());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, FullscreenCallbacksAreNoOps) {
+  auto* host = CreateHostAndOpenPipWindow();
+  auto* context = host->GetExclusiveAccessManagerForTesting()->context();
+  const gfx::Rect initial_bounds = host->GetWidget()->GetWindowBoundsInScreen();
+
+  context->EnterFullscreen(
+      url::Origin::Create(GURL("https://example.test")),
+      EXCLUSIVE_ACCESS_BUBBLE_TYPE_FULLSCREEN_EXIT_INSTRUCTION, {});
+  EXPECT_FALSE(context->IsFullscreen());
+  EXPECT_FALSE(host->GetWidget()->IsFullscreen());
+  EXPECT_FALSE(context->IsExclusiveAccessBubbleDisplayed());
+  EXPECT_EQ(initial_bounds, host->GetWidget()->GetWindowBoundsInScreen());
+
+  context->ExitFullscreen();
+  EXPECT_FALSE(context->IsFullscreen());
+  EXPECT_FALSE(host->GetWidget()->IsFullscreen());
+  EXPECT_FALSE(context->IsExclusiveAccessBubbleDisplayed());
+  EXPECT_EQ(initial_bounds, host->GetWidget()->GetWindowBoundsInScreen());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, BubbleIsNotPositionedAsChildDialog) {
+  auto* host = CreateHostAndOpenPipWindow();
+  ShowBubble(host);
+  task_environment()->FastForwardBy(base::Milliseconds(400));
+  auto* bubble = GetBubbleWidget();
+  ASSERT_TRUE(bubble);
+  ASSERT_TRUE(bubble->IsVisible());
+  const gfx::Rect bubble_bounds = bubble->GetWindowBoundsInScreen();
+  const gfx::Rect window_bounds = host->GetWidget()->GetWindowBoundsInScreen();
+
+  auto* delegate = static_cast<PipChildDialogObserverHelper::Delegate*>(host);
+  delegate->PositionChildDialog(bubble);
+
+  EXPECT_EQ(bubble_bounds, bubble->GetWindowBoundsInScreen());
+  EXPECT_EQ(window_bounds, host->GetWidget()->GetWindowBoundsInScreen());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, BubbleFollowsWindowBounds) {
+  auto* host = CreateHostAndOpenPipWindow();
+  ShowBubble(host);
+  task_environment()->FastForwardBy(base::Milliseconds(400));
+  auto* bubble = GetBubbleWidget();
+  ASSERT_TRUE(bubble);
+  ASSERT_TRUE(bubble->IsVisible());
+  const gfx::Rect old_bubble_bounds = bubble->GetWindowBoundsInScreen();
+  const gfx::Point old_client_origin =
+      host->GetWidget()->GetClientAreaBoundsInScreen().origin();
+
+  gfx::Rect bounds = host->GetWidget()->GetWindowBoundsInScreen();
+  bounds.Offset(50, 60);
+  host->GetWidget()->SetBounds(bounds);
+
+  EXPECT_EQ(
+      host->GetWidget()->GetClientAreaBoundsInScreen().origin() -
+          old_client_origin,
+      bubble->GetWindowBoundsInScreen().origin() - old_bubble_bounds.origin());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, ReshowCancelsPendingBubbleDestruction) {
+  auto* host = CreateHostAndOpenPipWindow();
+  auto* context = host->GetExclusiveAccessManagerForTesting()->context();
+  base::test::TestFuture<ExclusiveAccessBubbleHideReason> hidden;
+  ShowBubble(host, hidden.GetCallback());
+  task_environment()->FastForwardBy(base::Milliseconds(400));
+  ASSERT_TRUE(context->IsExclusiveAccessBubbleDisplayed());
+
+  base::test::TestFuture<ExclusiveAccessBubbleHideReason> not_shown;
+  context->UpdateExclusiveAccessBubble(
+      {.type = EXCLUSIVE_ACCESS_BUBBLE_TYPE_NONE}, not_shown.GetCallback());
+  EXPECT_EQ(ExclusiveAccessBubbleHideReason::kNotShown, not_shown.Get());
+  EXPECT_EQ(ExclusiveAccessBubbleHideReason::kInterrupted, hidden.Get());
+
+  base::test::TestFuture<ExclusiveAccessBubbleHideReason> reshown_hidden;
+  ShowBubble(host, reshown_hidden.GetCallback());
+  task_environment()->FastForwardBy(base::Milliseconds(400));
+  EXPECT_TRUE(context->IsExclusiveAccessBubbleDisplayed());
+  EXPECT_FALSE(reshown_hidden.IsReady());
+  task_environment()->FastForwardBy(ExclusiveAccessBubble::kShowTime);
+  EXPECT_EQ(ExclusiveAccessBubbleHideReason::kTimeout, reshown_hidden.Get());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, NotShownCallbackCanCloseWindow) {
+  auto* host = CreateHostAndOpenPipWindow();
+  ShowBubble(host);
+  host->GetExclusiveAccessManagerForTesting()
+      ->context()
+      ->UpdateExclusiveAccessBubble(
+          {.type = EXCLUSIVE_ACCESS_BUBBLE_TYPE_NONE},
+          base::BindLambdaForTesting(
+              [host](ExclusiveAccessBubbleHideReason reason) {
+                EXPECT_EQ(ExclusiveAccessBubbleHideReason::kNotShown, reason);
+                host->Close();
+              }));
+  EXPECT_FALSE(host->GetExclusiveAccessManagerForTesting());
+  EXPECT_FALSE(host->GetWidget());
+  EXPECT_TRUE(base::test::RunUntil([this] { return !GetBubbleWidget(); }));
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, OnlyUserMouseInputReshowsBubble) {
+  auto* host = CreateHostAndOpenPipWindow();
+  auto* context = host->GetExclusiveAccessManagerForTesting()->context();
+  ShowBubble(host);
+  task_environment()->FastForwardBy(ExclusiveAccessBubble::kShowTime * 2);
+  ASSERT_FALSE(context->IsExclusiveAccessBubbleDisplayed());
+  // Advance past the snooze period after the bubble has finished hiding so any
+  // native WM_MOUSEMOVE events dispatched while showing/hiding the desktop
+  // widgets cannot push `snooze_until_` past `Now()`.
+  task_environment()->AdvanceClock(ExclusiveAccessBubble::kSnoozeTime +
+                                   base::Seconds(1));
+
+  for (auto type : {ui::EventType::kMouseEntered, ui::EventType::kMouseExited,
+                    ui::EventType::kMouseMoved}) {
+    const int flags =
+        type == ui::EventType::kMouseMoved ? ui::EF_IS_SYNTHESIZED : 0;
+    ui::MouseEvent event(type, gfx::PointF(), gfx::PointF(),
+                         base::TimeTicks::Now(), flags, 0);
+    host->ContentsMouseEvent(host->GetChildWebContents(), event);
+    EXPECT_FALSE(context->IsExclusiveAccessBubbleDisplayed());
+  }
+
+  ui::MouseEvent event(ui::EventType::kMouseMoved, gfx::PointF(), gfx::PointF(),
+                       base::TimeTicks::Now(), 0, 0);
+  host->ContentsMouseEvent(host->GetChildWebContents(), event);
+  EXPECT_TRUE(context->IsExclusiveAccessBubbleDisplayed());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, NativeBubbleCloseClearsOwner) {
+  auto* host = CreateHostAndOpenPipWindow();
+  ShowBubble(host);
+  auto* bubble = GetBubbleWidget();
+  ASSERT_TRUE(bubble);
+  bubble->CloseNow();
+  EXPECT_FALSE(host->GetExclusiveAccessManagerForTesting()
+                   ->context()
+                   ->IsExclusiveAccessBubbleDisplayed());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest,
+       CloseAndReopenWithPendingBubbleDeletion) {
+  auto* host = CreateHostAndOpenPipWindow();
+  ShowBubble(host);
+  host->GetExclusiveAccessManagerForTesting()
+      ->context()
+      ->UpdateExclusiveAccessBubble({.type = EXCLUSIVE_ACCESS_BUBBLE_TYPE_NONE},
+                                    base::NullCallback());
+  host->Close();
+  EXPECT_FALSE(host->GetExclusiveAccessManagerForTesting());
+
+  EXPECT_EQ(host, CreateHostAndOpenPipWindow());
+  ShowBubble(host);
+  task_environment()->FastForwardBy(base::Milliseconds(400));
+  EXPECT_TRUE(host->GetExclusiveAccessManagerForTesting()
+                  ->context()
+                  ->IsExclusiveAccessBubbleDisplayed());
+}
+
+TEST_F(DocumentPipExclusiveAccessTest, HideCallbackDefersBubbleDeletion) {
+  auto* host = CreateHostAndOpenPipWindow();
+  auto* context = host->GetExclusiveAccessManagerForTesting()->context();
+  base::test::TestFuture<ExclusiveAccessBubbleHideReason> hidden;
+  ShowBubble(host, base::BindLambdaForTesting(
+                       [this, context, callback = hidden.GetCallback()](
+                           ExclusiveAccessBubbleHideReason reason) mutable {
+                         context->UpdateExclusiveAccessBubble(
+                             {.type = EXCLUSIVE_ACCESS_BUBBLE_TYPE_NONE},
+                             base::NullCallback());
+                         // The bubble must survive until its callback unwinds.
+                         EXPECT_TRUE(GetBubbleWidget());
+                         std::move(callback).Run(reason);
+                       }));
+
+  task_environment()->FastForwardBy(ExclusiveAccessBubble::kShowTime +
+                                    base::Milliseconds(400));
+
+  ASSERT_TRUE(hidden.IsReady());
+  EXPECT_EQ(ExclusiveAccessBubbleHideReason::kTimeout, hidden.Get());
+  EXPECT_FALSE(context->IsExclusiveAccessBubbleDisplayed());
+}
+
 // AddNewContents forwards the popup to the opener's delegate (the success
 // path) and leaves it unblocked.
 TEST_F(DocumentPipHostTest, AddNewContents_ForwardsToOpenerDelegate) {
@@ -1184,14 +1467,16 @@ TEST_F(DocumentPipHostTest, AddNewContents_ForwardsToOpenerDelegate) {
   auto popup =
       content::WebContentsTester::CreateTestWebContents(&profile_, nullptr);
   content::WebContents* popup_ptr = popup.get();
-  content::WebContents* result = host->AddNewContents(
-      host->GetChildWebContents(), std::move(popup), GURL(),
-      WindowOpenDisposition::kNewPopup, blink::mojom::WindowFeatures(),
-      /*user_gesture=*/true, &was_blocked);
+  content::WebContents* result =
+      host->AddNewContents(host->GetChildWebContents(), std::move(popup),
+                           GURL(), ui::mojom::WindowOpenDisposition::kNewPopup,
+                           blink::mojom::WindowFeatures(),
+                           /*user_gesture=*/true, &was_blocked);
 
   EXPECT_EQ(1, opener_delegate.call_count());
   EXPECT_EQ(opener(), opener_delegate.source());
-  EXPECT_EQ(WindowOpenDisposition::kNewPopup, opener_delegate.disposition());
+  EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewPopup,
+            opener_delegate.disposition());
   EXPECT_EQ(popup_ptr, result);
   EXPECT_FALSE(was_blocked);
   opener()->SetDelegate(nullptr);
@@ -1319,6 +1604,28 @@ TEST_F(DocumentPipHostTest, SetWebContentsBlocked_InactiveWidgetDoesNotFocus) {
   }
 }
 
+TEST_F(DocumentPipHostTest, SetWebContentsBlocked_TogglesContentsScrim) {
+  DocumentPipHost* host = CreateHostAndOpenPipWindow();
+  ASSERT_TRUE(host);
+
+  content::WebContents* child = host->GetChildWebContents();
+  ASSERT_TRUE(child);
+
+  auto* delegate = static_cast<DocumentPipWidgetDelegate*>(
+      host->GetWidget()->widget_delegate());
+  ASSERT_TRUE(delegate);
+  auto* contents_view = delegate->GetDocumentPipContentsView();
+  ASSERT_TRUE(contents_view);
+  ScrimView* scrim = contents_view->dialog_scrim_for_testing();
+  ASSERT_TRUE(scrim);
+
+  EXPECT_FALSE(scrim->GetVisible());
+  host->SetWebContentsBlocked(child, true);
+  EXPECT_TRUE(scrim->GetVisible());
+  host->SetWebContentsBlocked(child, false);
+  EXPECT_FALSE(scrim->GetVisible());
+}
+
 TEST_F(DocumentPipHostTest, GetWebContentsModalDialogHost_ReturnsHost) {
   DocumentPipHost* host = CreateHostAndOpenPipWindow();
   ASSERT_TRUE(host);
@@ -1342,8 +1649,6 @@ TEST_F(DocumentPipHostTest,
   auto* contents_view = delegate->GetDocumentPipContentsView();
   ASSERT_TRUE(contents_view);
 
-  EXPECT_EQ(contents_view->size(), host->GetMaximumDialogSize());
-
   gfx::Rect contents_area =
       contents_view->ConvertRectToWidget(contents_view->GetLocalBounds());
   gfx::Size dialog_size(100, 80);
@@ -1352,14 +1657,42 @@ TEST_F(DocumentPipHostTest,
   int expected_x = middle_x - dialog_size.width() / 2;
   int max_x = contents_area.right() - dialog_size.width();
   expected_x = std::max(std::min(expected_x, max_x), contents_area.x());
-  EXPECT_EQ(gfx::Point(expected_x, contents_area.y()), pos);
+  constexpr int kConstrainedWindowOverlap = 3;
+  gfx::Size maximum_size = contents_view->size();
+  maximum_size.Enlarge(0, kConstrainedWindowOverlap);
+  EXPECT_EQ(maximum_size, host->GetMaximumDialogSize());
+  EXPECT_EQ(contents_area.bottom(),
+            host->GetDialogPosition(maximum_size).y() + maximum_size.height());
+  auto* resize_delegate =
+      static_cast<PipChildDialogObserverHelper::Delegate*>(host);
+  EXPECT_EQ(host->GetWidget()->GetWindowBoundsInScreen().size() - maximum_size,
+            resize_delegate->ComputeDialogPadding());
+  EXPECT_EQ(
+      gfx::Point(expected_x, contents_area.y() - kConstrainedWindowOverlap),
+      pos);
 
   // When the dialog is wider than the contents area, x should clamp to
   // contents_area.x().
   gfx::Size wide_dialog_size(contents_area.width() + 200, 80);
   gfx::Point wide_pos = host->GetDialogPosition(wide_dialog_size);
   EXPECT_EQ(contents_area.x(), wide_pos.x());
-  EXPECT_EQ(contents_area.y(), wide_pos.y());
+  EXPECT_EQ(contents_area.y() - kConstrainedWindowOverlap, wide_pos.y());
+}
+
+TEST_F(DocumentPipHostTest, PositionChildDialog_PreservesNonModalBounds) {
+  DocumentPipHost* host = CreateHostAndOpenPipWindow();
+  ASSERT_TRUE(host);
+
+  auto bubble = CreateTestWidget(views::Widget::InitParams::CLIENT_OWNS_WIDGET);
+  ASSERT_FALSE(bubble->IsModal());
+  bubble->SetBounds(gfx::Rect(45, 65, 100, 80));
+  const gfx::Rect original_bounds = bubble->GetWindowBoundsInScreen();
+
+  auto* resize_delegate =
+      static_cast<PipChildDialogObserverHelper::Delegate*>(host);
+  resize_delegate->PositionChildDialog(bubble.get());
+
+  EXPECT_EQ(original_bounds, bubble->GetWindowBoundsInScreen());
 }
 
 TEST_F(DocumentPipHostTest, ClosePipWindow_UnsetsDialogManagerDelegate) {

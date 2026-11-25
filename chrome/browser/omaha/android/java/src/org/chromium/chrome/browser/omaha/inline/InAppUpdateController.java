@@ -80,18 +80,12 @@ import java.util.function.Supplier;
  * Core.
  *
  * <p>See {@code crbug.com/553918188} for full design specifications and state machine details.
+ *
+ * <p>Note: This class is non-final to allow Mockito mocking in Robolectric unit tests without
+ * requiring bytecode manipulation.
  */
 @NullMarked
-public final class InAppUpdateController {
-    /** Interface for Activities that host and manage an {@link InAppUpdateController}. */
-    public interface InAppUpdateManageable {
-        /**
-         * Returns the {@link InAppUpdateController} for this Activity, or null if the feature is
-         * disabled.
-         */
-        @Nullable InAppUpdateController getInAppUpdateController();
-    }
-
+public class InAppUpdateController {
     // Unified logcat tag matching InAppUpdatePolicy for end-to-end tracing during prototype
     // rollout.
     // TODO(crbug.com/553918188): Remove logging once in-app update flow stabilizes.
@@ -99,8 +93,9 @@ public final class InAppUpdateController {
 
     /**
      * Request code passed to Play Core's {@link AppUpdateManager#startUpdateFlowForResult}. The
-     * host Activity intercepts this code in its activity result pipeline and forwards the result
-     * code to {@link #handleActivityResult(int, int)}.
+     * owning {@link TabbedRootUiCoordinator} observes this code via an {@link
+     * ActivityResultWithNativeObserver} and forwards the result code to {@link
+     * #handleActivityResult(int, int)}.
      */
     public static final int REQUEST_CODE_IN_APP_UPDATE = 9876;
 
@@ -110,6 +105,17 @@ public final class InAppUpdateController {
 
     @VisibleForTesting
     public static final String HISTOGRAM_APP_MENU_ACTION = "Android.InAppUpdate.AppMenu.Action";
+
+    @VisibleForTesting
+    static final String HISTOGRAM_DISCOVERY_STALENESS_DAYS =
+            "Android.InAppUpdate.Discovery.StalenessDays";
+
+    /**
+     * Exclusive upper bound for {@link #HISTOGRAM_DISCOVERY_STALENESS_DAYS}. Values of 0-90 days
+     * get their own bucket so that thresholds in the range being considered can be compared
+     * precisely; anything older is grouped into the overflow bucket.
+     */
+    @VisibleForTesting static final int MAX_DISCOVERY_STALENESS_DAYS = 91;
 
     @VisibleForTesting
     static final String PARAM_RESUME_COOLDOWN_MINUTES = "resume_cooldown_minutes";
@@ -163,7 +169,8 @@ public final class InAppUpdateController {
         DownloadResult.PROMPT_CANCELED,
         DownloadResult.DOWNLOAD_CANCELED,
         DownloadResult.SEND_INTENT_FAILED,
-        DownloadResult.START_EXCEPTION
+        DownloadResult.START_EXCEPTION,
+        DownloadResult.PROMPT_ACCEPTED
     })
     @Retention(RetentionPolicy.SOURCE)
     public @interface DownloadResult {
@@ -198,7 +205,14 @@ public final class InAppUpdateController {
         /** Runtime exception occurred when attempting to start the update flow. */
         int START_EXCEPTION = 8;
 
-        int COUNT = 9;
+        /**
+         * User accepted the Google Play consent dialog (RESULT_OK). Recorded separately from {@link
+         * #SUCCEEDED} because the download may finish after this Activity is gone, in which case
+         * {@link #SUCCEEDED} is never recorded.
+         */
+        int PROMPT_ACCEPTED = 9;
+
+        int COUNT = 10;
     }
 
     // LINT.ThenChange(//tools/metrics/histograms/metadata/android/enums.xml:InAppUpdateDownloadResult)
@@ -333,8 +347,10 @@ public final class InAppUpdateController {
      *       displays the restart snackbar if allowed. Notice that discovery throttle is NOT checked
      *       here; declining a download does not suppress restarting an already staged update.
      *   <li>If an update is available: Verifies that {@link AppUpdateType#FLEXIBLE} is allowed by
-     *       Play Core and that discovery is not throttled via {@link
-     *       InAppUpdatePolicy#isDiscoveryPromptAllowed}, then displays the discovery snackbar.
+     *       Play Core, that discovery is not throttled via {@link
+     *       InAppUpdatePolicy#isDiscoveryPromptAllowed}, and that the update has been available
+     *       long enough via {@link InAppUpdatePolicy#isStalenessThresholdMet}, then displays the
+     *       discovery snackbar.
      * </ul>
      */
     public void checkAndStartUpdateFlow() {
@@ -413,8 +429,12 @@ public final class InAppUpdateController {
                                         flexAllowedByPlayCore || InAppUpdatePolicy.isForceUpdate();
                                 if (isFlexAllowed) {
                                     // Check discovery throttle: suppressed if user declined a
-                                    // recent prompt or if a recent download failed.
-                                    if (InAppUpdatePolicy.isDiscoveryPromptAllowed(mActivity)) {
+                                    // recent prompt or if a recent download failed. Also skip
+                                    // updates younger than the staleness threshold, since Play
+                                    // auto-update usually installs those without a prompt.
+                                    if (InAppUpdatePolicy.isDiscoveryPromptAllowed(mActivity)
+                                            && InAppUpdatePolicy.isStalenessThresholdMet(
+                                                    appUpdateInfo.clientVersionStalenessDays())) {
                                         Log.i(
                                                 TAG,
                                                 "checkAndStartUpdateFlow: Flexible update available"
@@ -482,6 +502,24 @@ public final class InAppUpdateController {
                             // Snackbar dismissed (timeout or swipe): clear reference.
                             mDiscoverySnackbarController = null;
                         });
+        if (mDiscoverySnackbarController != null) {
+            recordDiscoveryStaleness(appUpdateInfo.clientVersionStalenessDays());
+        }
+    }
+
+    /**
+     * Records how long the update had been available when the discovery snackbar was shown, which
+     * shows how many prompts a given {@code prompt_min_staleness_days} threshold would keep.
+     *
+     * <p>Nothing is recorded when Play does not report staleness. Comparing this histogram's total
+     * with the discovery snackbar impressions gives the share of prompts with unknown staleness.
+     */
+    private static void recordDiscoveryStaleness(@Nullable Integer stalenessDays) {
+        if (stalenessDays == null) {
+            return;
+        }
+        RecordHistogram.recordExactLinearHistogram(
+                HISTOGRAM_DISCOVERY_STALENESS_DAYS, stalenessDays, MAX_DISCOVERY_STALENESS_DAYS);
     }
 
     /**
@@ -690,7 +728,8 @@ public final class InAppUpdateController {
     /**
      * Handles the outcome of the Google Play in-app update consent dialog.
      *
-     * <p>Called by the host Activity when {@code requestCode == REQUEST_CODE_IN_APP_UPDATE}.
+     * <p>Called by the owning {@link TabbedRootUiCoordinator}'s {@link
+     * ActivityResultWithNativeObserver} when {@code requestCode == REQUEST_CODE_IN_APP_UPDATE}.
      *
      * <ul>
      *   <li>{@link Activity#RESULT_CANCELED}: User dismissed the Play consent dialog without
@@ -699,8 +738,9 @@ public final class InAppUpdateController {
      *   <li>{@link ActivityResult#RESULT_IN_APP_UPDATE_FAILED}: Play Core failed to start the flow
      *       (internal error) -> records failure backoff via {@link
      *       InAppUpdatePolicy#recordDownloadFailed()} and unregisters listener.
-     *   <li>{@link Activity#RESULT_OK}: User consented to the update. Play Core has started the
-     *       background download; progress is tracked by the registered install listener.
+     *   <li>{@link Activity#RESULT_OK}: User consented to the update. Records {@link
+     *       DownloadResult#PROMPT_ACCEPTED}. Play Core has started the background download;
+     *       progress is tracked by the registered install listener.
      * </ul>
      *
      * @param requestCode The request code supplied to {@link Activity#startIntentSenderForResult}.
@@ -726,6 +766,7 @@ public final class InAppUpdateController {
                 unregisterInstallListener();
             } else if (resultCode == Activity.RESULT_OK) {
                 Log.i(TAG, "handleActivityResult: User accepted update prompt (RESULT_OK).");
+                logDownloadResult(DownloadResult.PROMPT_ACCEPTED);
                 // Ensure listener is registered in case host Activity was recreated while Play
                 // consent sheet was active.
                 registerInstallListener();

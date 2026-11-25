@@ -122,6 +122,7 @@
 #import "ios/web/public/thread/web_thread.h"
 #import "ios/web/public/web_state.h"
 #import "services/network/public/cpp/resource_request.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #import "url/gurl.h"
 
 namespace {
@@ -547,7 +548,8 @@ struct AIHubBadgeActiveWindowsData : public base::SupportsUserData::Data {
                                postContent:
                                    (TemplateURLRef::PostContent*)postContent
                                 transition:(ui::PageTransition)transition
-                               disposition:(WindowOpenDisposition)disposition
+                               disposition:
+                                   (ui::mojom::WindowOpenDisposition)disposition
     destination_url_entered_without_scheme:
         (bool)destination_url_entered_without_scheme {
   if (url.SchemeIs(url::kJavaScriptScheme)) {
@@ -1037,7 +1039,6 @@ struct AIHubBadgeActiveWindowsData : public base::SupportsUserData::Data {
   // Create button factory that wil be used by the ViewController to get
   // BadgeButtons for a BadgeType.
   BadgeButtonFactory* buttonFactory = [[BadgeButtonFactory alloc] init];
-  buttonFactory.incognito = isIncognito;
   self.badgeViewController =
       [[BadgeViewController alloc] initWithButtonFactory:buttonFactory];
   self.badgeViewController.layoutGuideCenter =
@@ -1176,7 +1177,7 @@ struct AIHubBadgeActiveWindowsData : public base::SupportsUserData::Data {
   _composeboxMenuCoordinator = [[ComposeboxMenuCoordinator alloc]
       initWithBaseViewController:self.viewController
                          browser:self.browser
-                      entrypoint:ComposeboxEntrypoint::kNTPFakebox];
+                      entrypoint:ComposeboxEntrypoint::kNTPPlusButton];
   [_composeboxMenuCoordinator start];
 }
 

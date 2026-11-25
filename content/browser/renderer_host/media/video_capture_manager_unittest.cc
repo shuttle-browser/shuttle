@@ -311,6 +311,8 @@ class VideoCaptureManagerTest : public testing::Test {
 
     base::RunLoop run_loop;
     vcm_->EnumerateDevices(
+        media::mojom::VideoCaptureDeviceEnumerationMode::
+            kDevicesWithCapabilities,
         base::BindOnce(&VideoCaptureManagerTest::HandleEnumerationResult,
                        base::Unretained(this), run_loop.QuitClosure()));
     run_loop.Run();
@@ -523,6 +525,7 @@ TEST_F(VideoCaptureManagerTest, ConnectAndDisconnectDevices) {
   video_capture_device_factory_->SetToDefaultDevicesConfig(1);
   base::RunLoop run_loop;
   vcm_->EnumerateDevices(
+      media::mojom::VideoCaptureDeviceEnumerationMode::kDevicesWithCapabilities,
       base::BindOnce(&VideoCaptureManagerTest::HandleEnumerationResult,
                      base::Unretained(this), run_loop.QuitClosure()));
   run_loop.Run();
@@ -532,6 +535,7 @@ TEST_F(VideoCaptureManagerTest, ConnectAndDisconnectDevices) {
   video_capture_device_factory_->SetToDefaultDevicesConfig(3);
   base::RunLoop run_loop2;
   vcm_->EnumerateDevices(
+      media::mojom::VideoCaptureDeviceEnumerationMode::kDevicesWithCapabilities,
       base::BindOnce(&VideoCaptureManagerTest::HandleEnumerationResult,
                      base::Unretained(this), run_loop2.QuitClosure()));
   run_loop2.Run();
@@ -1256,19 +1260,23 @@ TEST_F(VideoCaptureManagerTest, DeviceCaptureDeviceNotClosedOnScreenlock) {
 // ScreenLocked event on desktop platforms.
 TEST_F(VideoCaptureManagerTest, DesktopCaptureDeviceClosedOnScreenlock) {
   InSequence s;
-  // ScreenLocked event should stop desktop capture device.
+  // ScreenLocked event should abort and then close the desktop capture device.
   EXPECT_CALL(*listener_,
               Opened(blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE, _));
   EXPECT_CALL(*frame_observer_, OnStarted(_));
+  EXPECT_CALL(*listener_,
+              Aborted(blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE, _));
   EXPECT_CALL(*listener_,
               Closed(blink::mojom::MediaStreamType::DISPLAY_VIDEO_CAPTURE, _));
 
   // Simulate we add 1 fake display media device.
   video_capture_device_factory_->SetToDefaultDevicesConfig(1);
   base::RunLoop run_loop;
-  vcm_->EnumerateDevices(base::BindOnce(
-      &VideoCaptureManagerTest::HandleEnumerationResultAsDisplayMediaDevices,
-      base::Unretained(this), run_loop.QuitClosure()));
+  vcm_->EnumerateDevices(
+      media::mojom::VideoCaptureDeviceEnumerationMode::kDevicesWithCapabilities,
+      base::BindOnce(&VideoCaptureManagerTest::
+                         HandleEnumerationResultAsDisplayMediaDevices,
+                     base::Unretained(this), run_loop.QuitClosure()));
   run_loop.Run();
   ASSERT_EQ(devices_.size(), 1u);
 

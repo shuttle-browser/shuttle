@@ -27,6 +27,7 @@
 #include "base/test/bind.h"
 #include "base/test/mock_callback.h"
 #include "build/buildflag.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/clipboard/clipboard_buffer.h"
 #include "ui/base/clipboard/clipboard_constants.h"
@@ -400,6 +401,60 @@ TEST_P(WaylandClipboardTest, ReadFromClipboardPrioritizeUtf) {
   EXPECT_EQ("utf8_text", text);
 }
 
+// Regression test for crbug.com/483413443. Ensures UTF-8 mime types take
+// priority over legacy text types when reading text/plain, even when the
+// source offers the legacy types first.
+TEST_P(WaylandClipboardTest, ReadFromClipboardPrioritizeUtfOverOfferOrder) {
+  PostToServerAndWait([buffer = WhichBufferToUse()](
+                          wl::TestWaylandServerThread* server) {
+    auto* data_offer = GetSelectionDevice(server, buffer)->OnDataOffer();
+    data_offer->OnOffer(kMimeTypeLinuxString, ToClipboardData("latin1_text"));
+    data_offer->OnOffer(kMimeTypeLinuxText, ToClipboardData("text_text"));
+    data_offer->OnOffer(kMimeTypePlainText, ToClipboardData("ascii_text"));
+    data_offer->OnOffer(kMimeTypeLinuxUtf8String,
+                        ToClipboardData("utf8_string_text"));
+    data_offer->OnOffer(kMimeTypeUtf8PlainText, ToClipboardData("utf8_text"));
+    GetSelectionDevice(server, buffer)->OnSelection(data_offer);
+  });
+
+  std::string text;
+  base::MockCallback<PlatformClipboard::RequestDataClosure> callback;
+  EXPECT_CALL(callback, Run(_)).WillOnce([&text](PlatformClipboard::Data data) {
+    ASSERT_TRUE(data);
+    text = std::string(base::as_string_view(*data));
+  });
+
+  clipboard_->RequestClipboardData(WhichBufferToUse(), kMimeTypePlainText,
+                                   callback.Get());
+  WaitForClipboardTasks();
+  EXPECT_EQ("utf8_text", text);
+}
+
+// Ensures the charset parameter of text/plain;charset=utf-8 is matched
+// case-insensitively.
+TEST_P(WaylandClipboardTest, ReadFromClipboardUppercaseUtf8Charset) {
+  PostToServerAndWait([buffer = WhichBufferToUse()](
+                          wl::TestWaylandServerThread* server) {
+    auto* data_offer = GetSelectionDevice(server, buffer)->OnDataOffer();
+    data_offer->OnOffer(kMimeTypeLinuxString, ToClipboardData("latin1_text"));
+    data_offer->OnOffer("text/plain;charset=UTF-8",
+                        ToClipboardData("utf8_text"));
+    GetSelectionDevice(server, buffer)->OnSelection(data_offer);
+  });
+
+  std::string text;
+  base::MockCallback<PlatformClipboard::RequestDataClosure> callback;
+  EXPECT_CALL(callback, Run(_)).WillOnce([&text](PlatformClipboard::Data data) {
+    ASSERT_TRUE(data);
+    text = std::string(base::as_string_view(*data));
+  });
+
+  clipboard_->RequestClipboardData(WhichBufferToUse(), kMimeTypePlainText,
+                                   callback.Get());
+  WaitForClipboardTasks();
+  EXPECT_EQ("utf8_text", text);
+}
+
 TEST_P(WaylandClipboardTest, ReadFromClipboardWithoutOffer) {
   // When no data offer is advertised and client requests clipboard data from
   // the server, the response callback should be gracefully called with null
@@ -542,6 +597,42 @@ TEST_P(WaylandClipboardTest, ClipboardChangeNotifications) {
                   [&is_owner](bool result) { is_owner = result; }));
   WaitForClipboardTasks();
   EXPECT_TRUE(is_owner);
+  connection_->serial_tracker().ResetSerial(wl::SerialType::kMousePress);
+}
+
+TEST_P(WaylandClipboardTest, OffersAndServesPasswordManagerHint) {
+  connection_->serial_tracker().UpdateSerial(wl::SerialType::kMousePress, 1);
+
+  const ClipboardBuffer buffer = WhichBufferToUse();
+  offered_data_[kMimeTypeUtf8PlainText] = ToClipboardData("hunter2");
+  offered_data_[kMimeTypeLinuxPasswordManagerHint] = ToClipboardData("secret");
+  clipboard_->OfferClipboardData(buffer, offered_data_);
+  WaylandTestBase::SyncDisplay();
+
+  std::vector<uint8_t> delivered_hint;
+  base::MockCallback<wl::TestSelectionSource::ReadDataCallback> callback;
+
+  PostToServerAndWait([&delivered_hint, &callback,
+                       buffer](wl::TestWaylandServerThread* server) {
+    auto* source = GetSelectionSource(server, buffer);
+    ASSERT_TRUE(source);
+    EXPECT_THAT(source->mime_types(),
+                testing::Contains(kMimeTypeLinuxPasswordManagerHint));
+
+    EXPECT_CALL(callback, Run(_))
+        .WillOnce([&delivered_hint](std::vector<uint8_t>&& data) {
+          delivered_hint = std::move(data);
+        });
+    source->ReadData(kMimeTypeLinuxPasswordManagerHint, callback.Get());
+  });
+
+  WaitForClipboardTasks();
+
+  PostToServerAndWait([&delivered_hint](wl::TestWaylandServerThread* server) {
+    EXPECT_THAT(delivered_hint,
+                testing::ElementsAre('s', 'e', 'c', 'r', 'e', 't'));
+  });
+
   connection_->serial_tracker().ResetSerial(wl::SerialType::kMousePress);
 }
 

@@ -14,24 +14,30 @@
 #include "base/unguessable_token.h"
 #include "chrome/browser/actor/actor_surface_handle.h"
 #include "chrome/browser/actor/tools/click_tool_request.h"
+#include "chrome/browser/actor/tools/execute_js_tool_request.h"
 #include "chrome/browser/actor/tools/file_upload_tool_request.h"
 #include "chrome/browser/actor/tools/history_tool_request.h"
+#include "chrome/browser/actor/tools/navigate_tool_request.h"
 #include "chrome/browser/actor/tools/password_manager/change_password/change_password_tool_request.h"
 #include "chrome/browser/actor/tools/script_tool_request.h"
 #include "chrome/browser/actor/tools/tab_management_tool_request.h"
 #include "chrome/browser/actor/tools/type_tool_request.h"
 #include "chrome/browser/actor/tools/wait_tool_request.h"
+#include "chrome/common/actor/action_result.h"
 #include "components/actor/core/actor_features.h"
 #include "components/actor/core/shared_types.h"
+#include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/proto/features/actions_data.pb.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/optimization_guide/proto/features/common_quality_data_fuzzable.pb.h"
 #include "components/origin_gating/core/task_policy_config.h"
+#include "components/page_content_annotations/content/page_context_fetcher_metrics.h"
 #include "components/password_manager/core/browser/features/password_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/fuzztest/src/fuzztest/fuzztest.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/gfx/geometry/point.h"
 #include "url/gurl.h"
 #include "url/origin.h"
@@ -745,7 +751,7 @@ TEST_F(ActorProtoConversionTest, GetClientToolForRequest) {
             ClientTool(RuleMetadata::CAPABILITY_FORWARD));
 
   CreateTabToolRequest create_tab_req(
-      /*window_id=*/1, WindowOpenDisposition::kNewForegroundTab);
+      /*window_id=*/1, ::ui::mojom::WindowOpenDisposition::kNewForegroundTab);
   EXPECT_EQ(GetClientToolForRequest(create_tab_req),
             ClientTool(RuleMetadata::CAPABILITY_CREATE_TAB));
 
@@ -756,6 +762,21 @@ TEST_F(ActorProtoConversionTest, GetClientToolForRequest) {
   CloseTabToolRequest close_tab_req(ActorSurfaceHandle::FromRawValue(1));
   EXPECT_EQ(GetClientToolForRequest(close_tab_req),
             ClientTool(RuleMetadata::CAPABILITY_CLOSE_TAB));
+
+  ChangePasswordToolRequest change_password_req(
+      ActorSurfaceHandle::CreateForTesting(),
+      /*current_password_field=*/std::nullopt,
+      /*new_password_field=*/PageTarget(gfx::Point(0, 0)),
+      /*confirm_new_password_field=*/std::nullopt,
+      /*confirm_button=*/std::nullopt);
+  EXPECT_EQ(GetClientToolForRequest(change_password_req),
+            ClientTool(RuleMetadata::CAPABILITY_CHANGE_PASSWORD));
+
+  ExecuteJsToolRequest execute_js_req(ActorSurfaceHandle::CreateForTesting(),
+                                      base::UnguessableToken::Create(),
+                                      /*script_code=*/"1 + 1");
+  EXPECT_EQ(GetClientToolForRequest(execute_js_req),
+            ClientTool(RuleMetadata::CAPABILITY_EXECUTE_JS));
 }
 
 TEST_F(ActorProtoConversionTest, GetClientToolForRequest_NoCapability) {
@@ -960,6 +981,200 @@ TEST_F(
   EXPECT_THAT(BuildToolRequest(actions),
               base::test::ErrorIs(testing::Pair(
                   0u, mojom::ActionResultCode::kArgumentsInvalid)));
+}
+
+TEST_F(ActorProtoConversionTest, ToAnnotatedPageContentResult) {
+  using optimization_guide::AIPageContentExtractionStatus;
+  using optimization_guide::proto::TabObservation;
+
+  EXPECT_EQ(
+      ToAnnotatedPageContentResult(AIPageContentExtractionStatus::kSuccess),
+      TabObservation::ANNOTATED_PAGE_CONTENT_OK);
+  EXPECT_EQ(ToAnnotatedPageContentResult(
+                AIPageContentExtractionStatus::kMainFrameTimeout),
+            TabObservation::ANNOTATED_PAGE_CONTENT_TIMEOUT);
+  EXPECT_EQ(
+      ToAnnotatedPageContentResult(AIPageContentExtractionStatus::kUnknown),
+      TabObservation::ANNOTATED_PAGE_CONTENT_ERROR);
+  EXPECT_EQ(ToAnnotatedPageContentResult(
+                AIPageContentExtractionStatus::kMainFrameNotLive),
+            TabObservation::ANNOTATED_PAGE_CONTENT_ERROR);
+  EXPECT_EQ(ToAnnotatedPageContentResult(
+                AIPageContentExtractionStatus::
+                    kMainFrameEmptyOrDisconnectedRendererResponse),
+            TabObservation::ANNOTATED_PAGE_CONTENT_ERROR);
+}
+
+TEST_F(ActorProtoConversionTest, ToScreenshotResult) {
+  using optimization_guide::proto::TabObservation;
+  using page_content_annotations::ScreenshotCaptureStatus;
+
+  EXPECT_EQ(ToScreenshotResult(ScreenshotCaptureStatus::kSuccess),
+            TabObservation::SCREENSHOT_OK);
+  EXPECT_EQ(ToScreenshotResult(ScreenshotCaptureStatus::kTimeout),
+            TabObservation::SCREENSHOT_TIMEOUT);
+  EXPECT_EQ(ToScreenshotResult(ScreenshotCaptureStatus::kUnknown),
+            TabObservation::SCREENSHOT_ERROR);
+  EXPECT_EQ(ToScreenshotResult(ScreenshotCaptureStatus::kNoViewOrSurface),
+            TabObservation::SCREENSHOT_ERROR);
+  EXPECT_EQ(ToScreenshotResult(ScreenshotCaptureStatus::kCopyFromSurfaceError),
+            TabObservation::SCREENSHOT_ERROR);
+  EXPECT_EQ(ToScreenshotResult(ScreenshotCaptureStatus::kEncodingError),
+            TabObservation::SCREENSHOT_ERROR);
+}
+
+TEST_F(ActorProtoConversionTest, BuildToolRequest_Navigate_WithTabId) {
+  optimization_guide::proto::Actions actions;
+  optimization_guide::proto::NavigateAction* navigate_action =
+      actions.add_actions()->mutable_navigate();
+  navigate_action->set_tab_id(42);
+  navigate_action->set_url("https://example.com");
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<ToolRequest>> requests,
+                       BuildToolRequest(actions));
+  ASSERT_EQ(requests.size(), 1u);
+  EXPECT_EQ(NavigateToolRequest::kName, requests.front()->Name());
+  EXPECT_EQ(42, requests.front()->GetActorSurfaceHandle().raw_value());
+}
+
+TEST_F(ActorProtoConversionTest, BuildToolRequest_Navigate_NoTabFails) {
+  optimization_guide::proto::Actions zero_tab_actions;
+  optimization_guide::proto::NavigateAction* zero_tab_navigate =
+      zero_tab_actions.add_actions()->mutable_navigate();
+  zero_tab_navigate->set_tab_id(0);
+  zero_tab_navigate->set_url("https://example.com");
+
+  optimization_guide::proto::Actions unset_tab_actions;
+  unset_tab_actions.add_actions()->mutable_navigate()->set_url(
+      "https://example.com");
+
+  for (const auto* actions : {&zero_tab_actions, &unset_tab_actions}) {
+    auto result = BuildToolRequest(*actions);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().first, 0u);
+    EXPECT_EQ(result.error().second,
+              mojom::ActionResultCode::kArgumentsInvalid);
+  }
+}
+
+TEST_F(ActorProtoConversionTest, BuildToolRequest_Navigate_NewSurface) {
+  optimization_guide::proto::Actions actions;
+  optimization_guide::proto::NavigateAction* navigate_action =
+      actions.add_actions()->mutable_navigate();
+  navigate_action->set_url("https://example.com");
+  navigate_action->mutable_new_surface();
+
+  ASSERT_OK_AND_ASSIGN(std::vector<std::unique_ptr<ToolRequest>> requests,
+                       BuildToolRequest(actions));
+  ASSERT_EQ(requests.size(), 1u);
+  ASSERT_EQ(NavigateToolRequest::kName, requests.front()->Name());
+  const auto& request = static_cast<const NavigateToolRequest&>(*requests[0]);
+  EXPECT_TRUE(request.GetActorSurfaceHandle().is_null());
+  EXPECT_TRUE(request.open_in_new_tab());
+}
+
+TEST_F(ActorProtoConversionTest, BuildToolRequest_Navigate_MissingUrlFails) {
+  optimization_guide::proto::Actions tab_actions;
+  tab_actions.add_actions()->mutable_navigate()->set_tab_id(42);
+
+  optimization_guide::proto::Actions new_surface_actions;
+  new_surface_actions.add_actions()->mutable_navigate()->mutable_new_surface();
+
+  for (const auto* actions : {&tab_actions, &new_surface_actions}) {
+    auto result = BuildToolRequest(*actions);
+    ASSERT_FALSE(result.has_value());
+    EXPECT_EQ(result.error().second,
+              mojom::ActionResultCode::kArgumentsInvalid);
+  }
+}
+
+TEST_F(ActorProtoConversionTest, CopyExecuteJsResults_PopulatesProto) {
+  std::vector<ActionResultWithLatencyInfo> action_results;
+  base::TimeTicks now = base::TimeTicks::Now();
+  mojom::ActionResultPtr result = MakeOkResult();
+  result->execute_js_response =
+      mojom::ExecuteJsResponse::New("\"hello world\"", /*truncated=*/false,
+                                    /*js_error_message=*/std::nullopt);
+  action_results.emplace_back(now, now, std::move(result));
+
+  optimization_guide::proto::ActionsResult actions_result;
+  CopyExecuteJsResults(actions_result, action_results);
+
+  ASSERT_EQ(actions_result.execute_js_results_size(), 1);
+  EXPECT_EQ(actions_result.execute_js_results(0).index_of_execute_js_action(),
+            0);
+  EXPECT_EQ(actions_result.execute_js_results(0).result(), "\"hello world\"");
+  EXPECT_FALSE(actions_result.execute_js_results(0).truncated());
+  EXPECT_FALSE(actions_result.execute_js_results(0).has_js_error_message());
+}
+
+TEST_F(ActorProtoConversionTest, CopyExecuteJsResults_KeepsJsErrorMessage) {
+  std::vector<ActionResultWithLatencyInfo> action_results;
+  base::TimeTicks now = base::TimeTicks::Now();
+  mojom::ActionResultPtr result =
+      MakeResult(mojom::ActionResultCode::kExecuteJsScriptFailed,
+                 /*requires_page_stabilization=*/false, "Script failed");
+  result->execute_js_response = mojom::ExecuteJsResponse::New(
+      /*result=*/"", /*truncated=*/false, "Error: test_error");
+  action_results.emplace_back(now, now, std::move(result));
+
+  optimization_guide::proto::ActionsResult actions_result;
+  CopyExecuteJsResults(actions_result, action_results);
+
+  ASSERT_EQ(actions_result.execute_js_results_size(), 1);
+  const optimization_guide::proto::ExecuteJsResult& execute_js_result =
+      actions_result.execute_js_results(0);
+  EXPECT_EQ(execute_js_result.index_of_execute_js_action(), 0);
+  EXPECT_EQ(execute_js_result.js_error_message(), "Error: test_error");
+  EXPECT_FALSE(execute_js_result.has_result());
+  EXPECT_FALSE(execute_js_result.has_truncated());
+}
+
+// Failures without a JavaScript error from the renderer, e.g. ones the browser
+// reports, aren't ExecuteJs results, even with a partial response.
+TEST_F(ActorProtoConversionTest,
+       CopyExecuteJsResults_IgnoresFailuresWithoutJsError) {
+  std::vector<ActionResultWithLatencyInfo> action_results;
+  base::TimeTicks now = base::TimeTicks::Now();
+  mojom::ActionResultPtr result =
+      MakeResult(mojom::ActionResultCode::kExecuteJsScriptFailed,
+                 /*requires_page_stabilization=*/false, "Script failed");
+  result->execute_js_response = mojom::ExecuteJsResponse::New(
+      "partial", /*truncated=*/false, /*js_error_message=*/std::nullopt);
+  action_results.emplace_back(now, now, std::move(result));
+
+  optimization_guide::proto::ActionsResult actions_result;
+  CopyExecuteJsResults(actions_result, action_results);
+
+  EXPECT_EQ(actions_result.execute_js_results_size(), 0);
+}
+
+TEST_F(ActorProtoConversionTest, CopyExecuteJsResults_IndexesByAction) {
+  std::vector<ActionResultWithLatencyInfo> action_results;
+  base::TimeTicks now = base::TimeTicks::Now();
+  // An action that isn't ExecuteJs, followed by two ExecuteJs actions.
+  action_results.emplace_back(now, now, MakeOkResult());
+  mojom::ActionResultPtr first = MakeOkResult();
+  first->execute_js_response = mojom::ExecuteJsResponse::New(
+      "1", /*truncated=*/false, /*js_error_message=*/std::nullopt);
+  action_results.emplace_back(now, now, std::move(first));
+  mojom::ActionResultPtr second = MakeOkResult();
+  second->execute_js_response = mojom::ExecuteJsResponse::New(
+      "\"abc", /*truncated=*/true, /*js_error_message=*/std::nullopt);
+  action_results.emplace_back(now, now, std::move(second));
+
+  optimization_guide::proto::ActionsResult actions_result;
+  CopyExecuteJsResults(actions_result, action_results);
+
+  ASSERT_EQ(actions_result.execute_js_results_size(), 2);
+  EXPECT_EQ(actions_result.execute_js_results(0).index_of_execute_js_action(),
+            1);
+  EXPECT_EQ(actions_result.execute_js_results(0).result(), "1");
+  EXPECT_FALSE(actions_result.execute_js_results(0).truncated());
+  EXPECT_EQ(actions_result.execute_js_results(1).index_of_execute_js_action(),
+            2);
+  EXPECT_EQ(actions_result.execute_js_results(1).result(), "\"abc");
+  EXPECT_TRUE(actions_result.execute_js_results(1).truncated());
 }
 
 void CanConvertAnyProto(

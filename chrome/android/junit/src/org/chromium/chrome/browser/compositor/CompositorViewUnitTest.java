@@ -7,7 +7,6 @@ package org.chromium.chrome.browser.compositor;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
@@ -24,6 +23,7 @@ import android.widget.FrameLayout;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.test.core.app.ApplicationProvider;
 
+import org.jni_zero.JniUniquePtr;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
@@ -53,6 +53,7 @@ public class CompositorViewUnitTest {
     @Mock private LayoutRenderHost mLayoutRenderHost;
     @Mock private CompositorSurfaceManager mCompositorSurfaceManager;
     @Mock private CompositorView.Natives mCompositorViewJni;
+    @Mock private JniUniquePtr<CompositorView.NativeCompositorView> mNativeCompositorView;
     @Mock private WindowAndroid mWindowAndroid;
     @Mock private TabContentManager mTabContentManager;
     @Mock private KeyboardVisibilityDelegate mKeyboardDelegate;
@@ -62,7 +63,7 @@ public class CompositorViewUnitTest {
 
     @Before
     public void setUp() {
-        when(mCompositorViewJni.init(any(), any(), any())).thenReturn(1L);
+        when(mCompositorViewJni.init(any(), any(), any())).thenReturn(mNativeCompositorView);
         CompositorViewJni.setInstanceForTesting(mCompositorViewJni);
         lenient().when(mWindowAndroid.getKeyboardDelegate()).thenReturn(mKeyboardDelegate);
         lenient().when(mWindowAndroid.getActivity()).thenReturn(new WeakReference<>(null));
@@ -93,38 +94,39 @@ public class CompositorViewUnitTest {
         reset(mCompositorSurfaceManager);
 
         // Initial state is false, no call to JNI.
-        verify(mCompositorViewJni, never()).setOverlayXrFullScreenMode(anyLong(), anyBoolean());
+        verify(mCompositorViewJni, never()).setOverlayXrFullScreenMode(any(), anyBoolean());
 
         mCompositorView.setXrFullSpaceMode(true);
-        verify(mCompositorViewJni).setOverlayXrFullScreenMode(1L, true);
+        verify(mCompositorViewJni).setOverlayXrFullScreenMode(mNativeCompositorView, true);
         verify(mCompositorSurfaceManager).requestSurface(PixelFormat.TRANSLUCENT);
 
         mCompositorView.setXrFullSpaceMode(false);
-        verify(mCompositorViewJni).setOverlayXrFullScreenMode(1L, false);
+        verify(mCompositorViewJni).setOverlayXrFullScreenMode(mNativeCompositorView, false);
         verify(mCompositorSurfaceManager).requestSurface(PixelFormat.OPAQUE);
 
         // Setting the mode again should not trigger another surface request or JNI call.
         mCompositorView.setXrFullSpaceMode(false);
         verify(mCompositorSurfaceManager, times(1)).requestSurface(PixelFormat.OPAQUE);
-        verify(mCompositorViewJni, times(1)).setOverlayXrFullScreenMode(1L, false);
+        verify(mCompositorViewJni, times(1))
+                .setOverlayXrFullScreenMode(mNativeCompositorView, false);
     }
 
     @Test
     @EnableFeatures(ChromeFeatureList.COMPOSITOR_VIEW_SHRINK_WHEN_KEYBOARD_HIDDEN)
     public void testOnMeasure_shrinksWhenKeyboardHidden() {
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
 
         // Warm-up measure because mPreviousWindowTop starts at -1.
         measure(1080, 1704);
         mCompositorView.forceLayout();
 
         // The layout expands while the keyboard is showing (e.g. the bottom inset is dropped).
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(true);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(true);
         measure(1080, 1848);
         assertEquals(1848, mCompositorView.getMeasuredHeight());
 
         // Shrinks back down when requested once the keyboard is hidden.
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
         mCompositorView.forceLayout();
         measure(1080, 1704);
         assertEquals(1704, mCompositorView.getMeasuredHeight());
@@ -133,13 +135,13 @@ public class CompositorViewUnitTest {
     @Test
     @EnableFeatures(ChromeFeatureList.COMPOSITOR_VIEW_SHRINK_WHEN_KEYBOARD_HIDDEN)
     public void testOnMeasure_retainsHeightWhileKeyboardShowing() {
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
 
         // Warm-up measure.
         measure(1080, 1704);
 
         // Keyboard shows; height should be retained (legacy optimization).
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(true);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(true);
         mCompositorView.forceLayout();
         measure(1080, 1000);
         assertEquals(1704, mCompositorView.getMeasuredHeight());
@@ -151,7 +153,7 @@ public class CompositorViewUnitTest {
         assertEquals(1848, mCompositorView.getMeasuredHeight());
 
         // Keyboard hides; height shrinks back to requested size from the larger retained height.
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
         mCompositorView.forceLayout();
         measure(1080, 1704);
         assertEquals(1704, mCompositorView.getMeasuredHeight());
@@ -160,7 +162,7 @@ public class CompositorViewUnitTest {
     @Test
     @DisableFeatures(ChromeFeatureList.COMPOSITOR_VIEW_SHRINK_WHEN_KEYBOARD_HIDDEN)
     public void testOnMeasure_legacyRetainsHeightWhenFlagDisabled() {
-        when(mKeyboardDelegate.isKeyboardShowing(any())).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(any())).thenReturn(false);
 
         // Warm-up measure.
         measure(1080, 1704);

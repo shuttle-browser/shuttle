@@ -20,21 +20,21 @@ import org.chromium.base.SelectionActionMenuClientWrapper.MenuType;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.dom_distiller.ReaderModeManager;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.glic.GlicContextMenuUtils;
 import org.chromium.chrome.browser.glic.GlicKeyedService.GlicInvocationSource;
 import org.chromium.chrome.browser.glic.GlicKeyedServiceHandler;
 import org.chromium.chrome.browser.glic.GlicMetrics;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.reader_mode.ReaderModeManager;
 import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
 import org.chromium.chrome.browser.share.link_to_text.LinkToTextCoordinator;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.components.browser_ui.widget.BrowserUiListMenuUtils;
-import org.chromium.components.dom_distiller.core.DomDistillerUrlUtils;
 import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.components.search_engines.TemplateUrl;
 import org.chromium.components.search_engines.TemplateUrlService;
+import org.chromium.components.web_distiller.core.WebDistillerUrlUtils;
 import org.chromium.content_public.browser.RenderFrameHost;
 import org.chromium.content_public.browser.SelectionMenuItem;
 import org.chromium.content_public.browser.SelectionMenuItem.ItemGroupOffset;
@@ -188,7 +188,7 @@ public class TextSelectionActionMenuDelegate implements SelectionActionMenuDeleg
             GURL url = mTab.getUrl();
             boolean isNtp = url != null && UrlUtilities.isNtpUrl(url);
             GlicMetrics.recordEntryPointClick(
-                    GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU, isNtp);
+                    profile, GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU_TEXT_SELECTION, isNtp);
             if (GlicContextMenuUtils.shouldSendSelectedText()) {
                 String text = GlicContextMenuUtils.sanitizeSelectedText(mSelectedText);
                 if (!text.isEmpty()) {
@@ -196,14 +196,17 @@ public class TextSelectionActionMenuDelegate implements SelectionActionMenuDeleg
                             GlicKeyedServiceHandler.invokeWithPrompt(
                                     profile,
                                     mTab,
+                                    webContents.isDestroyed()
+                                            ? null
+                                            : webContents.getFocusedFrame(),
                                     text,
-                                    GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU);
-                    GlicMetrics.recordSendSelectedTextSucceeded(sent);
+                                    GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU_TEXT_SELECTION);
+                    GlicMetrics.recordSendSelectedTextSucceeded(profile, sent);
                     return sent;
                 }
             }
             return GlicKeyedServiceHandler.invoke(
-                    profile, mTab, GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU);
+                    profile, mTab, GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU_TEXT_SELECTION);
         }
         return false;
     }
@@ -312,7 +315,7 @@ public class TextSelectionActionMenuDelegate implements SelectionActionMenuDeleg
 
         boolean isChromeOrNativePage = UrlUtilities.isChromeScheme(pageUrl) || mTab.isNativePage();
         return !isChromeOrNativePage
-                && !DomDistillerUrlUtils.isDistilledPage(pageUrl)
+                && !WebDistillerUrlUtils.isDistilledPage(pageUrl)
                 && menuType == MenuType.DROPDOWN;
     }
 }

@@ -10,6 +10,7 @@
 #include "base/feature_list.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/json/json_writer.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/notreached.h"
@@ -89,6 +90,7 @@
 #include "device/fido/virtual_fido_device_factory.h"
 #include "extensions/browser/extension_registrar.h"
 #include "extensions/browser/install_verifier.h"
+#include "extensions/common/constants.h"
 #include "extensions/common/extension_builder.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
@@ -337,6 +339,14 @@ IN_PROC_BROWSER_TEST_F(WebAuthnBrowserTest, ChromeExtensions) {
       .SetLocation(extensions::mojom::ManifestLocation::kExternalPolicyDownload)
       .SetManifestKey("web_accessible_resources",
                       base::test::ParseJson(kWebAccessibleResources));
+  // On branded builds where extension content verification defaults to
+  // ENFORCE_STRICT, WebAuthnBrowserTest.ChromeExtensions fails because it
+  // creates an in-memory kExternalPolicyDownload extension in a temp directory
+  // without writing manifest.json to disk. Write the generated manifest to
+  // manifest.json in the extension's temp directory so content verification
+  // succeeds.
+  WriteFile(temp_dir.GetPath().Append(extensions::kManifestFilename),
+            *base::WriteJson(builder.BuildManifest()));
 
   scoped_refptr<const extensions::Extension> extension = builder.Build();
   extensions::ExtensionRegistrar::Get(browser()->GetProfile())
@@ -1275,6 +1285,7 @@ class WebAuthnAmbientUITest : public WebAuthnBrowserTest {
 
 // Tests that the ambient UI permission request is shown and can be accepted.
 IN_PROC_BROWSER_TEST_F(WebAuthnAmbientUITest, AmbientUISingleCredential) {
+  base::HistogramTester histograms;
   content::WebContents* web_contents =
       browser()->tab_strip_model()->GetActiveWebContents();
   content::DOMMessageQueue message_queue(web_contents);
@@ -1311,6 +1322,22 @@ IN_PROC_BROWSER_TEST_F(WebAuthnAmbientUITest, AmbientUISingleCredential) {
   std::string result;
   ASSERT_TRUE(message_queue.WaitForMessage(&result));
   EXPECT_EQ(result, "\"webauthn: OK\"");
+
+  histograms.ExpectUniqueSample(
+      "WebAuthentication.Ambient.RequestedCredentialTypes", 0 /*PasskeysOnly*/,
+      1);
+  histograms.ExpectUniqueSample("WebAuthentication.Ambient.DisplayOutcome",
+                                0 /*Shown*/, 1);
+  histograms.ExpectUniqueSample("WebAuthentication.Ambient.InitialUiMode",
+                                0 /*Bubble*/, 1);
+  histograms.ExpectUniqueSample(
+      "WebAuthentication.Ambient.BubbleCredentialCount", 1, 1);
+  histograms.ExpectUniqueSample(
+      "WebAuthentication.Ambient.BubbleResolution.InitiallyShown",
+      0 /*CredentialSelected*/, 1);
+  histograms.ExpectUniqueSample(
+      "WebAuthentication.Ambient.CredentialSelectionMethod",
+      0 /*SignInButtonClicked*/, 1);
 }
 
 // Tests that closing the ambient UI bubble keeps the request pending and the
@@ -1345,6 +1372,64 @@ IN_PROC_BROWSER_TEST_F(WebAuthnAmbientUITest, AmbientUIClosingBubbleKeepsChip) {
   EXPECT_TRUE(chip_controller->IsPermissionPromptChipVisible());
 
   // Clicking the chip reopens the bubble, which can still be accepted.
+  chip_controller->chip()->ExecuteForTesting();
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return chip_controller->IsBubbleShowing(); }));
+  permission_request_manager->Accept(std::monostate());
+
+  std::string result;
+  ASSERT_TRUE(message_queue.WaitForMessage(&result));
+  EXPECT_EQ(result, "\"webauthn: OK\"");
+}
+
+// Tests that passing the experimental magic timeout value (31415 ms) launches
+// the Ambient UI in chip-only mode without automatically opening the bubble.
+IN_PROC_BROWSER_TEST_F(WebAuthnAmbientUITest,
+                       AmbientUIMagicTimeoutStartsChipOnly) {
+  static constexpr char kChipOnlyGetRequest[] = R"((() => {
+    navigator.credentials.get({
+      uiMode: 'passive',
+      mediation: 'conditional',
+      publicKey: {
+        challenge: new Uint8Array([1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16]),
+        timeout: 31415,
+        userVerification: 'discouraged',
+        allowCredentials: [],
+      }}).then(c => window.domAutomationController.send('webauthn: OK'),
+               e => window.domAutomationController.send('error ' + e));
+    })())";
+
+  content::WebContents* web_contents =
+      browser()->tab_strip_model()->GetActiveWebContents();
+  content::DOMMessageQueue message_queue(web_contents);
+  permissions::PermissionRequestObserver permission_observer(web_contents);
+
+  content::ExecuteScriptAsync(web_contents, kChipOnlyGetRequest);
+  permission_observer.Wait();
+  ASSERT_TRUE(permission_observer.request_shown());
+
+  permissions::PermissionRequestManager* permission_request_manager =
+      permissions::PermissionRequestManager::FromWebContents(web_contents);
+  ASSERT_FALSE(permission_request_manager->Requests().empty());
+  auto* ambient_request =
+      static_cast<ambient_signin::AmbientLoginPermissionRequest*>(
+          permission_request_manager->Requests().front().get());
+  EXPECT_FALSE(ambient_request->ShouldBubbleStartOpen());
+
+  ChipController* chip_controller =
+      BrowserView::GetBrowserViewForBrowser(browser())
+          ->GetLocationBar()
+          ->GetChipController();
+  ASSERT_NE(chip_controller, nullptr);
+  EXPECT_TRUE(chip_controller->IsPermissionPromptChipVisible());
+  // `ChipController` opens the bubble in `OnExpandAnimationEnded()`, so wait
+  // for the expand animation to finish before verifying the bubble did not
+  // open.
+  ASSERT_TRUE(
+      base::test::RunUntil([&]() { return !chip_controller->IsAnimating(); }));
+  EXPECT_FALSE(chip_controller->IsBubbleShowing());
+
+  // Clicking the chip opens the bubble.
   chip_controller->chip()->ExecuteForTesting();
   ASSERT_TRUE(base::test::RunUntil(
       [&]() { return chip_controller->IsBubbleShowing(); }));

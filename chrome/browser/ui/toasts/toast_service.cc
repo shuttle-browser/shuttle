@@ -10,8 +10,10 @@
 #include "base/functional/bind.h"
 #include "build/branding_buildflags.h"
 #include "chrome/app/vector_icons/vector_icons.h"
-#include "chrome/browser/autofill/entity_suppression_manager_factory.h"
+#include "chrome/browser/autofill/personal_context_entity_metadata_manager_factory.h"
 #include "chrome/browser/dictation/features.h"
+#include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
+#include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/indigo/indigo_page_action_controller.h"
 #include "chrome/browser/indigo/resources/grit/indigo_strings.h"
 #include "chrome/browser/profiles/profile.h"
@@ -25,7 +27,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/commerce/commerce_ui_tab_helper.h"
-#include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_toolbar_icon_controller.h"
+#include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_receiving_ui_handler.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
@@ -42,7 +44,7 @@
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/autofill/core/browser/at_memory/at_memory_enablement_util.h"
-#include "components/autofill/core/browser/data_manager/autofill_ai/entity_suppression_manager.h"
+#include "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/commerce/core/commerce_feature_list.h"
@@ -56,8 +58,8 @@
 #include "components/translate/core/browser/translate_manager.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/menus/simple_menu_model.h"
 
 #if BUILDFLAG(ENTERPRISE_CONTENT_ANALYSIS)
@@ -183,7 +185,7 @@ void ToastService::RegisterToasts() {
                   window->OpenGURL(
                       chrome::GetSettingsUrl(
                           chrome::kSafeBrowsingEnhancedProtectionSubPage),
-                      WindowOpenDisposition::kNewForegroundTab);
+                      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
                 }))
             .AddCloseButton()
             .Build());
@@ -354,6 +356,13 @@ void ToastService::RegisterToasts() {
           .Build());
 
   toast_registry_->RegisterToast(
+      ToastId::kGlic,
+      ToastSpecification::Builder(glic::GlicVectorIconManager::GetVectorIcon(
+                                      IDR_GLIC_BUTTON_VECTOR_ICON))
+          .AddCloseButton()
+          .Build());
+
+  toast_registry_->RegisterToast(
       ToastId::kCopiedToClipboard,
       ToastSpecification::Builder(
           features::IsRoundedIconsEnabled() ? kInfoIcon : kInfoOldIcon,
@@ -374,7 +383,7 @@ void ToastService::RegisterToasts() {
               base::BindRepeating([](BrowserWindowInterface* window) {
                 window->OpenGURL(
                     chrome::GetSettingsUrl(chrome::kSecuritySubPage),
-                    WindowOpenDisposition::kNewForegroundTab);
+                    ui::mojom::WindowOpenDisposition::kNewForegroundTab);
               }))
           .AddCloseButton()
           .AddGlobalScoped()
@@ -464,11 +473,12 @@ void ToastService::RegisterToasts() {
                       if (!profile || !entity_id.is_string()) {
                         return;
                       }
-                      if (autofill::
-                              EntitySuppressionManager* suppression_manager =
-                                  autofill::EntitySuppressionManagerFactory::
-                                      GetForProfile(profile)) {
-                        suppression_manager->UndoInSessionSuppressedEntity(
+                      using autofill::
+                          PersonalContextEntityMetadataManagerFactory;
+                      if (auto* entity_metadata_manager =
+                              PersonalContextEntityMetadataManagerFactory::
+                                  GetForProfile(profile)) {
+                        entity_metadata_manager->UndoInSessionSuppressedEntity(
                             autofill::EntityInstance::EntityId(
                                 entity_id.GetString()));
                       }
@@ -552,7 +562,7 @@ void ToastService::RegisterToasts() {
                     send_tab_to_self::SendTabToSelfClientServiceFactory::
                         GetForProfile(window->GetProfile())
                             ->GetReceivingUiHandler();
-                send_tab_to_self::SendTabToSelfToolbarIconController::
+                send_tab_to_self::SendTabToSelfReceivingUiHandler::
                     FromReceivingUiHandlerInstance(handler)
                         ->SwitchToLatestTabsOpenedInBackground(window);
               }))
@@ -806,6 +816,15 @@ void ToastService::RegisterToasts() {
                                         ? vector_icons::kErrorIcon
                                         : vector_icons::kErrorOldIcon,
                                     IDS_DICTATION_NO_MIC_ERROR_TOAST)
+            .AddCloseButton()
+            .AddGlobalScoped()
+            .Build());
+    toast_registry_->RegisterToast(
+        ToastId::kTtcInactivityTimeout,
+        ToastSpecification::Builder(features::IsRoundedIconsEnabled()
+                                        ? vector_icons::kErrorIcon
+                                        : vector_icons::kErrorOldIcon,
+                                    IDS_TTC_INACTIVITY_TIMEOUT_TOAST)
             .AddCloseButton()
             .AddGlobalScoped()
             .Build());

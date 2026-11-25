@@ -37,6 +37,7 @@
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/webapps/browser/install_result_code.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "url/gurl.h"
 
 namespace web_app {
@@ -227,6 +228,45 @@ TEST_F(FileHandlingSubManagerConfigureTest, InvalidMimeTypesIgnored) {
     }
     {
       apps::FileHandler::AcceptEntry accept_entry;
+      // FreeDesktop pseudo-MIME types ("x-content/*", "x-directory/*",
+      // "x-special/*") and other "x-*" or non-IANA top-level MIME types must
+      // also be filtered out.
+      accept_entry.mime_type = "x-content/image-dcf";
+      accept_entry.file_extensions.insert(".dcf");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "x-directory/normal";
+      accept_entry.file_extensions.insert(".dir");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "X-Directory/normal";
+      accept_entry.file_extensions.insert(".dir2");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "x-special/socket";
+      accept_entry.file_extensions.insert(".sock");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "x-custom/foo";
+      accept_entry.file_extensions.insert(".custom");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "inode/directory";
+      accept_entry.file_extensions.insert(".inode");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
       accept_entry.mime_type = "application/foo";
       accept_entry.file_extensions.insert(".foo");
       file_handler.accept.push_back(accept_entry);
@@ -247,10 +287,33 @@ TEST_F(FileHandlingSubManagerConfigureTest, InvalidMimeTypesIgnored) {
   EXPECT_EQ(file_handling.file_handlers(0).accept_size(), 1);
   EXPECT_EQ(file_handling.file_handlers(0).accept(0).mimetype(),
             "application/foo");
+
+  // Also verify that GetMimeTypesFromFileHandlingProto and
+  // GetFileExtensionsFromFileHandlingProto ignore invalid MIME type entries in
+  // a raw FileHandling proto (e.g. from persisted current_state).
+  proto::os_state::FileHandling raw_proto;
+  auto* raw_handler = raw_proto.add_file_handlers();
+  raw_handler->set_action("https://app.site/open-foo");
+  raw_handler->set_display_name("Mixed opener");
+  for (const char* invalid_mime :
+       {"x-scheme-handler/mailto", "x-content/image-dcf", "x-directory/normal",
+        "x-special/socket", "x-custom/foo"}) {
+    auto* bad_accept = raw_handler->add_accept();
+    bad_accept->set_mimetype(invalid_mime);
+    bad_accept->add_file_extensions(".bad");
+  }
+  auto* good_accept = raw_handler->add_accept();
+  good_accept->set_mimetype("application/foo");
+  good_accept->add_file_extensions(".foo");
+
+  EXPECT_THAT(GetMimeTypesFromFileHandlingProto(raw_proto),
+              testing::ElementsAre("application/foo"));
+  EXPECT_THAT(GetFileExtensionsFromFileHandlingProto(raw_proto),
+              testing::ElementsAre(".foo"));
 }
 
 TEST_F(FileHandlingSubManagerConfigureTest,
-       AllSchemeHandlersFilteredResultsInNoFileHandling) {
+       AllPseudoMimeTypesFilteredResultsInNoFileHandling) {
   apps::FileHandlers file_handlers;
   {
     apps::FileHandler file_handler;
@@ -268,6 +331,24 @@ TEST_F(FileHandlingSubManagerConfigureTest,
       accept_entry.file_extensions.insert(".bad");
       file_handler.accept.push_back(accept_entry);
     }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "x-content/image-dcf";
+      accept_entry.file_extensions.insert(".dcf");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "x-directory/normal";
+      accept_entry.file_extensions.insert(".dir");
+      file_handler.accept.push_back(accept_entry);
+    }
+    {
+      apps::FileHandler::AcceptEntry accept_entry;
+      accept_entry.mime_type = "x-special/socket";
+      accept_entry.file_extensions.insert(".sock");
+      file_handler.accept.push_back(accept_entry);
+    }
     file_handlers.push_back(file_handler);
   }
 
@@ -278,9 +359,9 @@ TEST_F(FileHandlingSubManagerConfigureTest,
   const proto::os_state::WebAppOsIntegration& os_integration_state =
       state.value();
   // File handling is enabled in OS integration state, but because all accept
-  // entries were filtered out as scheme handlers, no file handler entries
-  // are retained. HasFileHandling() in FileHandlingSubManager::Execute avoids
-  // registering with the OS.
+  // entries were filtered out as invalid/pseudo-MIME types, no file handler
+  // entries are retained. HasFileHandling() in FileHandlingSubManager::Execute
+  // avoids registering with the OS.
   EXPECT_TRUE(os_integration_state.has_file_handling());
   EXPECT_EQ(os_integration_state.file_handling().file_handlers_size(), 0);
 }
@@ -334,20 +415,16 @@ TEST_F(FileHandlingSubManagerConfigureTest,
         fake_provider().GetFakeWebContentsManager()->GetOrCreatePageState(
             kInstallUrl);
 
-    auto manifest = blink::mojom::Manifest::New();
-    manifest->start_url = kStartUrl;
-    manifest->id = manifest->start_url.GetWithoutRef();
-    manifest->scope = manifest->start_url.GetWithoutFilename();
-    manifest->manifest_url = page_state.manifest_url;
-
-    auto handler = blink::mojom::ManifestFileHandler::New();
-    handler->action = kStartUrl;
-    handler->name = u"Text";
+    blink::Manifest::FileHandler handler;
+    handler.action = kStartUrl;
+    handler.name = u"Text";
     std::vector<std::u16string> extensions = {u".txt"};
-    handler->accept.emplace(u"text/plain", extensions);
-    manifest->file_handlers.push_back(std::move(handler));
+    handler.accept.emplace(u"text/plain", extensions);
 
-    page_state.manifest_before_default_processing = std::move(manifest);
+    page_state.opt_manifest = blink::Manifest::Builder(kStartUrl)
+                                  .SetManifestUrl(page_state.manifest_url)
+                                  .SetFileHandlers({std::move(handler)})
+                                  .BuildChecked();
   }
 
   // Install app with file handlers
@@ -430,20 +507,16 @@ TEST_F(FileHandlingSubManagerConfigureTest,
         fake_provider().GetFakeWebContentsManager()->GetOrCreatePageState(
             kInstallUrl);
 
-    auto manifest = blink::mojom::Manifest::New();
-    manifest->start_url = kStartUrl;
-    manifest->id = manifest->start_url.GetWithoutRef();
-    manifest->scope = manifest->start_url.GetWithoutFilename();
-    manifest->manifest_url = page_state.manifest_url;
-
-    auto handler = blink::mojom::ManifestFileHandler::New();
-    handler->action = kStartUrl;
-    handler->name = u"Text";
+    blink::Manifest::FileHandler handler;
+    handler.action = kStartUrl;
+    handler.name = u"Text";
     std::vector<std::u16string> extensions = {u".txt"};
-    handler->accept.emplace(u"text/plain", extensions);
-    manifest->file_handlers.push_back(std::move(handler));
+    handler.accept.emplace(u"text/plain", extensions);
 
-    page_state.manifest_before_default_processing = std::move(manifest);
+    page_state.opt_manifest = blink::Manifest::Builder(kStartUrl)
+                                  .SetManifestUrl(page_state.manifest_url)
+                                  .SetFileHandlers({std::move(handler)})
+                                  .BuildChecked();
   }
 
   // Install app with file handlers
@@ -521,10 +594,9 @@ TEST_F(FileHandlingSubManagerConfigureTest,
     page_state.url_load_result = {webapps::WebAppUrlLoaderResult::kUrlLoaded};
     page_state.manifest_url = kManifestUrl;
 
-    auto manifest = blink::mojom::Manifest::New();
-    manifest->start_url = kStartUrl;
-    manifest->scope = kStartUrl.GetWithoutFilename();
-    page_state.manifest_before_default_processing = std::move(manifest);
+    page_state.opt_manifest = blink::Manifest::Builder(kStartUrl)
+                                  .SetManifestUrl(page_state.manifest_url)
+                                  .BuildChecked();
 
     std::vector<ExternalInstallOptions> install_options_list;
     install_options_list.emplace_back(kInstallUrl,
@@ -549,13 +621,14 @@ TEST_F(FileHandlingSubManagerConfigureTest,
         fake_provider().GetFakeWebContentsManager()->GetOrCreatePageState(
             kInstallUrl);
 
-    auto handler = blink::mojom::ManifestFileHandler::New();
-    handler->action = kStartUrl;
-    handler->name = u"Text";
-    handler->accept.emplace(u"text/plain",
-                            std::vector<std::u16string>{u".txt"});
-    page_state.manifest_before_default_processing->file_handlers.push_back(
-        std::move(handler));
+    blink::Manifest::FileHandler handler;
+    handler.action = kStartUrl;
+    handler.name = u"Text";
+    handler.accept.emplace(u"text/plain", std::vector<std::u16string>{u".txt"});
+    CHECK(page_state.opt_manifest.has_value());
+    page_state.opt_manifest = page_state.opt_manifest->ToBuilder()
+                                  .SetFileHandlers({std::move(handler)})
+                                  .BuildChecked();
   }
 
   EXPECT_EQ(

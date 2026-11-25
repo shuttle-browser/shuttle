@@ -14,7 +14,6 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/feedback/show_feedback_page.h"
-#include "chrome/browser/net/referrer.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/tab_contents/tab_contents_iterator.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -27,8 +26,8 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/memory/oom_memory_details.h"
@@ -202,7 +201,9 @@ void SadTab::RecordFirstPaint() {
 }
 
 void SadTab::PerformAction(SadTab::Action action) {
-  CHECK(recorded_paint_, base::NotFatalUntil::M162);
+  // TODO(crbug.com/582827314): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(recorded_paint_);
   switch (action) {
     case Action::kButton:
       RecordEvent(show_feedback_button_,
@@ -227,7 +228,8 @@ void SadTab::PerformAction(SadTab::Action action) {
                   ui_metrics::SadTabEvent::HELP_LINK_CLICKED);
       content::OpenURLParams params =
           content::OpenURLParams::CreateBrowserInitiated(
-              GURL(GetHelpLinkURL()), WindowOpenDisposition::kCurrentTab,
+              GURL(GetHelpLinkURL()),
+              ui::mojom::WindowOpenDisposition::kCurrentTab,
               ui::PAGE_TRANSITION_LINK);
       web_contents_->OpenURL(params, /*navigation_handle_callback=*/{});
       break;

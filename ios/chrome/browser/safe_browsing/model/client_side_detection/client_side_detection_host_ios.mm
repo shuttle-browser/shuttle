@@ -16,6 +16,7 @@
 #import "base/metrics/histogram_functions.h"
 #import "base/rand_util.h"
 #import "base/strings/strcat.h"
+#import "base/strings/utf_string_conversions.h"
 #import "components/prefs/pref_service.h"
 #import "components/safe_browsing/core/browser/db/allowlist_checker_client.h"
 #import "components/safe_browsing/core/browser/db/database_manager.h"
@@ -25,7 +26,6 @@
 #import "components/safe_browsing/core/common/client_side_detection_enums.h"
 #import "components/safe_browsing/core/common/features.h"
 #import "components/safe_browsing/core/common/phishing_classifier/phishing_classifier.h"
-#import "components/safe_browsing/core/common/phishing_classifier/phishing_image_embedder.h"
 #import "components/safe_browsing/core/common/phishing_classifier/scorer.h"
 #import "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #import "components/safe_browsing/core/common/safebrowsing_switches.h"
@@ -35,7 +35,10 @@
 #import "components/safe_browsing/ios/browser/safe_browsing_url_allow_list.h"
 #import "components/security_interstitials/core/unsafe_resource.h"
 #import "components/signin/public/identity_manager/identity_manager.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/default_page_context_wrapper_factory.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper_config.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper_factory.h"
 #import "ios/chrome/browser/safe_browsing/model/client_side_detection/client_side_detection_service.h"
 #import "ios/chrome/browser/safe_browsing/model/user_population_helper.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
@@ -65,28 +68,6 @@ constexpr base::TimeDelta kStabilizationDelay = base::Milliseconds(750);
 // Whether local resource / localhost checks should be bypassed for testing.
 bool g_bypass_local_resource_check_for_testing = false;
 
-PhishingDetectorResult GetPhishingDetectorResult(
-    PhishingClassifier::Result result) {
-  switch (result) {
-    case PhishingClassifier::Result::kSuccess:
-      return PhishingDetectorResult::CLASSIFICATION_SUCCESS;
-    case PhishingClassifier::Result::kInvalidScore:
-      return PhishingDetectorResult::INVALID_SCORE;
-    case PhishingClassifier::Result::kInvalidURLFormatRequest:
-      return PhishingDetectorResult::INVALID_URL_FORMAT_REQUEST;
-    case PhishingClassifier::Result::kInvalidDocumentLoader:
-      return PhishingDetectorResult::INVALID_DOCUMENT_LOADER;
-    case PhishingClassifier::Result::kURLFeatureExtractionFailed:
-      return PhishingDetectorResult::URL_FEATURE_EXTRACTION_FAILED;
-    case PhishingClassifier::Result::kDOMExtractionFailed:
-      return PhishingDetectorResult::DOM_EXTRACTION_FAILED;
-    case PhishingClassifier::Result::kTermExtractionFailed:
-      return PhishingDetectorResult::TERM_EXTRACTION_FAILED;
-    case PhishingClassifier::Result::kVisualExtractionFailed:
-      return PhishingDetectorResult::VISUAL_EXTRACTION_FAILED;
-  }
-}
-
 // Returns true if the CSD allowlist check should be bypassed based on for
 // `request_type` or command-line switch state.
 bool ShouldSkipCSDAllowlist(ClientSideDetectionType request_type) {
@@ -111,7 +92,8 @@ ClientSideDetectionHostIOS::ClientSideDetectionHostIOS(
     IntelligentScanDelegate* intelligent_scan_delegate,
     PrefService* pref_service,
     signin::IdentityManager* identity_manager,
-    history::HistoryService* history_service)
+    history::HistoryService* history_service,
+    PageContextWrapperFactory* page_context_wrapper_factory)
     : ClientSideDetectionHostBase(
           service ? service->GetWeakPtr() : nullptr,
           cache_manager,
@@ -125,15 +107,14 @@ ClientSideDetectionHostIOS::ClientSideDetectionHostIOS(
           web_state ? web_state->GetBrowserState()->IsOffTheRecord() : false),
       web_state_(web_state),
       service_(service),
-      identity_manager_(identity_manager) {
+      identity_manager_(identity_manager),
+      page_context_wrapper_factory_(
+          page_context_wrapper_factory
+              ? *page_context_wrapper_factory
+              : DefaultPageContextWrapperFactory::GetInstance()) {
   CHECK(web_state_);
   web_state_->AddObserver(this);
   EnsureObservingQueryManager();
-  classifier_ = std::make_unique<safe_browsing::PhishingClassifier>();
-  image_embedder_ = std::make_unique<safe_browsing::PhishingImageEmbedder>();
-  if (service_) {
-    scorer_observation_.Observe(service_);
-  }
 }
 
 ClientSideDetectionHostIOS::~ClientSideDetectionHostIOS() {
@@ -196,6 +177,7 @@ bool ClientSideDetectionHostIOS::IsErrorDocument() {
 
 void ClientSideDetectionHostIOS::GetInnerText(HostInnerTextCallback callback) {
   intelligent_scan_tab_screenshot_.reset();
+  intelligent_scan_screenshot_capture_status_.reset();
   if (!web_state_) {
     std::move(callback).Run("");
     return;
@@ -207,39 +189,72 @@ void ClientSideDetectionHostIOS::GetInnerText(HostInnerTextCallback callback) {
   }
   pending_inner_text_callback_ = std::move(callback);
 
+  const bool should_capture_screenshot =
+      ShouldCaptureScreenshotForIntelligentScan();
+  const base::TimeTicks start_time = tick_clock()->NowTicks();
   auto completion_callback = base::BindOnce(
       [](base::WeakPtr<ClientSideDetectionHostIOS> weak_host,
+         bool should_capture_screenshot, base::TimeTicks start_time,
          PageContextWrapperCallbackResponse response) {
         if (!weak_host) {
           return;
         }
         std::string inner_text;
         std::optional<std::string> tab_screenshot;
+        std::optional<MultimodalScreenshotCaptureStatus> screenshot_status;
         if (response.has_value() && response.value()) {
           if (response.value()->has_inner_text()) {
             inner_text = std::move(*response.value()->mutable_inner_text());
           }
-          if (response.value()->has_tab_screenshot()) {
-            std::string decoded_screenshot;
-            if (base::Base64Decode(response.value()->tab_screenshot(),
-                                   &decoded_screenshot) &&
-                !decoded_screenshot.empty()) {
-              tab_screenshot = std::move(decoded_screenshot);
+          if (should_capture_screenshot) {
+            if (!response.value()->has_tab_screenshot()) {
+              screenshot_status =
+                  MultimodalScreenshotCaptureStatus::kSnapshotMissing;
+            } else {
+              std::string decoded_screenshot;
+              if (base::Base64Decode(response.value()->tab_screenshot(),
+                                     &decoded_screenshot) &&
+                  !decoded_screenshot.empty()) {
+                tab_screenshot = std::move(decoded_screenshot);
+                screenshot_status = MultimodalScreenshotCaptureStatus::kSuccess;
+              } else {
+                screenshot_status =
+                    MultimodalScreenshotCaptureStatus::kBase64DecodeFailed;
+              }
             }
           }
+        } else if (should_capture_screenshot) {
+          screenshot_status =
+              MultimodalScreenshotCaptureStatus::kPageContextFailed;
         }
-        weak_host->OnInnerTextExtracted(std::move(inner_text),
-                                        std::move(tab_screenshot));
+        weak_host->OnInnerTextExtracted(
+            should_capture_screenshot, start_time, std::move(inner_text),
+            std::move(tab_screenshot), screenshot_status);
       },
-      inner_text_weak_factory_.GetWeakPtr());
-  page_context_wrapper_ = [[PageContextWrapper alloc]
-        initWithWebState:web_state_
-      completionCallback:std::move(completion_callback)];
+      inner_text_weak_factory_.GetWeakPtr(), should_capture_screenshot,
+      start_time);
+  page_context_wrapper_ = page_context_wrapper_factory_->Create(
+      web_state_, PageContextWrapperConfigBuilder().Build(),
+      std::move(completion_callback));
   [page_context_wrapper_ setShouldGetInnerText:YES];
-  if (ShouldCaptureScreenshotForIntelligentScan()) {
+  if (should_capture_screenshot) {
     [page_context_wrapper_ setShouldGetSnapshot:YES];
   }
   [page_context_wrapper_ populatePageContextFieldsAsync];
+}
+
+std::string ClientSideDetectionHostIOS::GetPageTitle() const {
+  if (!web_state_ || !web_state_->GetNavigationManager()) {
+    return std::string();
+  }
+  // Use `NavigationItem::GetTitle()` rather than `WebState::GetTitle()` to
+  // avoid falling back to a URL-synthesized display title.
+  web::NavigationItem* item =
+      web_state_->GetNavigationManager()->GetLastCommittedItem();
+  if (!item) {
+    return std::string();
+  }
+  return base::UTF16ToUTF8(item->GetTitle());
 }
 
 void ClientSideDetectionHostIOS::MaybeCaptureScreenshotAndStartIntelligentScan(
@@ -253,7 +268,24 @@ void ClientSideDetectionHostIOS::MaybeCaptureScreenshotAndStartIntelligentScan(
   std::optional<std::string> tab_screenshot =
       std::move(intelligent_scan_tab_screenshot_);
   intelligent_scan_tab_screenshot_.reset();
-  if (!ShouldCaptureScreenshotForIntelligentScan() || !web_state_) {
+  std::optional<MultimodalScreenshotCaptureStatus> screenshot_status =
+      intelligent_scan_screenshot_capture_status_;
+  intelligent_scan_screenshot_capture_status_.reset();
+
+  if (ShouldCaptureScreenshotForIntelligentScan()) {
+    MultimodalScreenshotCaptureStatus status;
+    if (!web_state_) {
+      tab_screenshot.reset();
+      status = MultimodalScreenshotCaptureStatus::kWebStateUnavailable;
+    } else if (screenshot_status.has_value()) {
+      status = *screenshot_status;
+    } else {
+      tab_screenshot.reset();
+      status = MultimodalScreenshotCaptureStatus::kSnapshotMissing;
+    }
+    base::UmaHistogramEnumeration(
+        "SBClientPhishing.Multimodal.ScreenshotCaptureStatus", status);
+  } else {
     tab_screenshot.reset();
   }
   StartIntelligentScan(std::move(verdict), did_match_high_confidence_allowlist,
@@ -272,54 +304,9 @@ void ClientSideDetectionHostIOS::MaybeStartImageEmbedding(
     std::optional<bool> did_match_high_confidence_allowlist,
     bool is_invalid_ip,
     safe_browsing::PhishingDetectorResult result) {
-  bool should_run_image_embedding =
-      IsEnhancedProtectionEnabled() && service_ &&
-      service_->HasImageEmbeddingModel() &&
-      service_->IsModelMetadataImageEmbeddingVersionMatching() &&
-      !verdict->has_image_feature_embedding();
-
-  visual_utils::CanExtractVisualFeaturesResult
-      can_extract_visual_features_result = DetermineVisualFeaturesExtraction();
-
-  // Clear the blurred image from the visual features if we should not extract
-  // visual features.
-  if (can_extract_visual_features_result !=
-      visual_utils::CanExtractVisualFeaturesResult::kCanExtractVisualFeatures) {
-    if (verdict->has_visual_features()) {
-      verdict->mutable_visual_features()->clear_image();
-    }
-  } else {
-    base::UmaHistogramBoolean("SBClientPhishing.HasVisualFeaturesImage2",
-                              verdict->has_visual_features() &&
-                                  verdict->visual_features().has_image());
-  }
-
-  if (should_run_image_embedding && !classification_image_.IsEmpty()) {
-    bool can_extract_visual_features =
-        result ==
-            safe_browsing::PhishingDetectorResult::CLASSIFICATION_SKIPPED ||
-        can_extract_visual_features_result ==
-            visual_utils::CanExtractVisualFeaturesResult::
-                kCanExtractVisualFeatures;
-    LogClientSideDetectionEvent(ClientSideDetectionEvent::kImageEmbeddingBegin,
-                                verdict->client_side_detection_type());
-    set_image_embedding_start_time(tick_clock()->NowTicks());
-    image_embedder_->BeginImageEmbedding(
-        classification_image_, can_extract_visual_features,
-        base::BindOnce(&ClientSideDetectionHostIOS::OnImageEmbeddingDone,
-                       weak_ptr_factory_.GetWeakPtr(), std::move(verdict),
-                       did_match_high_confidence_allowlist, is_invalid_ip));
-    // Release the snapshot image to minimize memory usage now that embedder
-    // has received the frame.
-    classification_image_ = gfx::Image();
-    return;
-  }
-
-  // Image embedding has been skipped. Release the snapshot image to minimize
-  // memory usage.
-  classification_image_ = gfx::Image();
-  MaybeStartIntelligentScanForScamDetection(
-      std::move(verdict), did_match_high_confidence_allowlist, is_invalid_ip);
+  StartBrowserSideImageEmbedding(std::move(verdict),
+                                 did_match_high_confidence_allowlist,
+                                 is_invalid_ip, result);
 }
 
 void ClientSideDetectionHostIOS::MaybeRunUserReportCallback() {
@@ -382,21 +369,14 @@ void ClientSideDetectionHostIOS::MaybeStartPreClassification(
 
 void ClientSideDetectionHostIOS::CancelPendingRequests() {
   weak_ptr_factory_.InvalidateWeakPtrs();
-  // We cancel unconditionally since both cancel methods are idempotent and safe
-  // to call when nothing is pending.
-  if (classifier_) {
-    classifier_->CancelPendingClassification();
-  }
-  if (image_embedder_) {
-    image_embedder_->CancelPendingImageEmbedding();
-  }
+  CancelBrowserSideClassification();
   is_preclassifying_ = false;
   set_is_classifying(false);
   set_is_csd_running(false);
-  classification_image_ = gfx::Image();
   inner_text_weak_factory_.InvalidateWeakPtrs();
   pending_inner_text_callback_.Reset();
   intelligent_scan_tab_screenshot_.reset();
+  intelligent_scan_screenshot_capture_status_.reset();
   page_context_wrapper_ = nil;
   ClientSideDetectionHostBase::CancelPendingRequests();
 }
@@ -504,15 +484,11 @@ void ClientSideDetectionHostIOS::DidFinishNavigation(
           last_request_type(), ClientSideDetectionType_MAX + 1);
     }
     CancelPendingRequests();
-    set_is_csd_running(false);
-    set_is_classifying(false);
-    is_preclassifying_ = false;
     set_last_request_type(
         ClientSideDetectionType::CLIENT_SIDE_DETECTION_TYPE_UNSPECIFIED);
     set_should_send_as_force_request(false);
     set_trigger_model_request_sent_as_force_request(false);
     clear_clipboard_extracted_data();
-    classification_image_ = gfx::Image();
 
     MaybeRunUserReportCallback();
 
@@ -541,7 +517,6 @@ void ClientSideDetectionHostIOS::PageLoaded(
 void ClientSideDetectionHostIOS::WebStateDestroyed(web::WebState* web_state) {
   query_manager_observation_.Reset();
   metrics_helper_observation_.Reset();
-  scorer_observation_.Reset();
   CancelPendingRequests();
   stabilization_timer_.Stop();
   web_state_->RemoveObserver(this);
@@ -617,19 +592,28 @@ void ClientSideDetectionHostIOS::
   g_bypass_local_resource_check_for_testing = bypass;
 }
 
-#pragma mark - ClientSideDetectionService::Observer
+#pragma mark - ClientSideDetectionHostBase browser-side classification hooks
 
-void ClientSideDetectionHostIOS::OnScorerChanged() {
-  // The previous `Scorer` is destroyed asynchronously on a background thread,
-  // unmapping its model file. Cancel in-flight requests and clear cached raw
-  // pointers to prevent use-after-free (crbug.com/561910278).
-  CancelPendingRequests();
-  if (classifier_) {
-    classifier_->set_scorer(nullptr);
+void ClientSideDetectionHostIOS::CaptureScreenshot(
+    ScreenshotCallback callback) {
+  SnapshotTabHelper* snapshot_helper =
+      web_state_ ? SnapshotTabHelper::FromWebState(web_state_) : nullptr;
+  if (!snapshot_helper) {
+    std::move(callback).Run(gfx::Image());
+    return;
   }
-  if (image_embedder_) {
-    image_embedder_->set_scorer(nullptr);
-  }
+  snapshot_helper->GenerateSnapshotWithoutOverlaysWithCallback(
+      base::CallbackToBlock(base::BindOnce(
+          [](ScreenshotCallback callback, UIImage* ui_image) {
+            std::move(callback).Run(ui_image ? gfx::Image(ui_image)
+                                             : gfx::Image());
+          },
+          std::move(callback))));
+}
+
+void ClientSideDetectionHostIOS::OnVisualClassificationEarlyReturn(
+    VisualClassificationEarlyReturnReason reason) {
+  HandleVisualClassificationEarlyReturn(reason);
 }
 
 #pragma mark - WebPerformanceMetricsTabHelper::Observer
@@ -1072,35 +1056,11 @@ void ClientSideDetectionHostIOS::OnSnapshotReceived(const GURL& url,
     return;
   }
 
-  if (!service_->GetScorer()) {
-    HandleVisualClassificationEarlyReturn(
-        VisualClassificationEarlyReturnReason::kScorerMissingAfterSnapshot);
-    return;
-  }
-
-  gfx::Image input_image(ui_image);
-
-  classifier_->set_scorer(service_->GetScorer());
-  image_embedder_->set_scorer(service_->GetScorer());
-
-  LogClientSideDetectionEvent(
-      ClientSideDetectionEvent::kImageClassificationBegin, last_request_type());
-
-  ClientSideDetectionType request_type = last_request_type();
-  if (IsEnhancedProtectionEnabled() &&
-      request_type == ClientSideDetectionType::TRIGGER_MODELS &&
-      base::FeatureList::IsEnabled(kClientSideDetectionImageEmbeddingMatch)) {
-    request_type = ClientSideDetectionType::IMAGE_EMBEDDING_MATCH;
-  }
-
-  set_is_classifying(true);
-  classifier_->SetClientSideDetectionType(request_type);
-  base::TimeTicks classification_start_time = tick_clock()->NowTicks();
-  classifier_->BeginClassification(
-      url, input_image,
-      base::BindOnce(&ClientSideDetectionHostIOS::OnClassificationDone,
-                     weak_ptr_factory_.GetWeakPtr(), url, input_image,
-                     request_type, classification_start_time));
+  // The base class checks for a `Scorer` again (`kScorerMissingAfterSnapshot`)
+  // before starting classification.
+  StartVisualClassification(url, last_request_type(), send_sample_ping_,
+                            did_match_high_confidence_allowlist_,
+                            gfx::Image(ui_image));
 }
 
 void ClientSideDetectionHostIOS::OnClassificationDone(
@@ -1110,16 +1070,9 @@ void ClientSideDetectionHostIOS::OnClassificationDone(
     base::TimeTicks classification_start_time,
     const ClientPhishingRequest& verdict,
     PhishingClassifier::Result result) {
-  if (result == PhishingClassifier::Result::kSuccess) {
-    // Retain the snapshot image for subsequent image embedding
-    // matching and reporting.
-    classification_image_ = image;
-  }
-
-  PhishingDetectionDone(request_type, send_sample_ping_,
-                        did_match_high_confidence_allowlist_,
-                        /*is_invalid_ip=*/false, classification_start_time,
-                        GetPhishingDetectorResult(result), verdict);
+  OnVisualClassificationDone(url, image, request_type, send_sample_ping_,
+                             did_match_high_confidence_allowlist_,
+                             classification_start_time, verdict, result);
 }
 
 visual_utils::CanExtractVisualFeaturesResult
@@ -1165,57 +1118,25 @@ ClientSideDetectionHostIOS::DetermineVisualFeaturesExtraction() {
   return can_extract_visual_features_result;
 }
 
-void ClientSideDetectionHostIOS::OnImageEmbeddingDone(
-    std::unique_ptr<safe_browsing::ClientPhishingRequest> verdict,
-    std::optional<bool> did_match_high_confidence_allowlist,
-    bool is_invalid_ip,
-    safe_browsing::PhishingImageEmbedder::Result result,
-    const safe_browsing::ImageFeatureEmbedding& image_embedding,
-    const safe_browsing::VisualFeatures& visual_features) {
-  ClientSideDetectionHostBase::ImageEmbeddingResult translated_result;
-  switch (result) {
-    case safe_browsing::PhishingImageEmbedder::Result::kSuccess:
-      translated_result =
-          ClientSideDetectionHostBase::ImageEmbeddingResult::kSuccess;
-      break;
-    case safe_browsing::PhishingImageEmbedder::Result::kInvalidURLFormatRequest:
-      translated_result = ClientSideDetectionHostBase::ImageEmbeddingResult::
-          kInvalidURLFormatRequest;
-      break;
-    case safe_browsing::PhishingImageEmbedder::Result::kInvalidDocumentLoader:
-      translated_result = ClientSideDetectionHostBase::ImageEmbeddingResult::
-          kInvalidDocumentLoader;
-      break;
-    case safe_browsing::PhishingImageEmbedder::Result::kVisualExtractionFailed:
-      translated_result =
-          ClientSideDetectionHostBase::ImageEmbeddingResult::kFailed;
-      break;
-  }
-
-  std::optional<safe_browsing::ImageFeatureEmbedding> embedding;
-  std::optional<safe_browsing::VisualFeatures> visual;
-  if (result == safe_browsing::PhishingImageEmbedder::Result::kSuccess) {
-    embedding = image_embedding;
-    visual = visual_features;
-  }
-  // The snapshot image is no longer needed. Release it to minimize memory
-  // usage.
-  classification_image_ = gfx::Image();
-  PhishingImageEmbeddingDone(
-      std::move(verdict), did_match_high_confidence_allowlist, is_invalid_ip,
-      translated_result, std::move(embedding), std::move(visual));
-}
-
 void ClientSideDetectionHostIOS::OnInnerTextExtracted(
+    bool should_capture_screenshot,
+    base::TimeTicks start_time,
     std::string inner_text,
-    std::optional<std::string> tab_screenshot) {
+    std::optional<std::string> tab_screenshot,
+    std::optional<MultimodalScreenshotCaptureStatus> screenshot_status) {
   page_context_wrapper_ = nil;
   intelligent_scan_tab_screenshot_ = std::move(tab_screenshot);
+  intelligent_scan_screenshot_capture_status_ = screenshot_status;
 
   if (!pending_inner_text_callback_) {
     return;
   }
 
+  base::UmaHistogramTimes(
+      base::StrCat(
+          {"SBClientPhishing.iOS.PageContextCaptureLatency.",
+           should_capture_screenshot ? "WithScreenshot" : "WithoutScreenshot"}),
+      tick_clock()->NowTicks() - start_time);
   std::move(pending_inner_text_callback_).Run(std::move(inner_text));
 }
 }  // namespace safe_browsing

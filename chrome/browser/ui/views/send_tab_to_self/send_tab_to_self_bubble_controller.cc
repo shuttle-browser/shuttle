@@ -3,11 +3,12 @@
 // found in the LICENSE file.
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_controller.h"
 
-#include <string_view>
+#include <utility>
 #include <vector>
 
+#include "base/feature_list.h"
+#include "base/notreached.h"
 #include "base/strings/utf_string_conversions.h"
-#include "base/time/time.h"
 #include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/send_tab_to_self/send_tab_to_self_page_handler.h"
@@ -21,28 +22,32 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_util.h"
-#include "chrome/browser/ui/sharing_hub/sharing_hub_bubble_controller.h"
 #include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
-#include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_view.h"
+#include "chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.h"
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_device_picker_bubble_view.h"
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_no_target_device_bubble_view.h"
-#include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_promo_bubble_view.h"
+#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
-#include "components/prefs/pref_service.h"
 #include "components/send_tab_to_self/features.h"
 #include "components/send_tab_to_self/metrics_util.h"
 #include "components/send_tab_to_self/send_tab_to_self_model.h"
 #include "components/send_tab_to_self/send_tab_to_self_sync_service.h"
 #include "components/send_tab_to_self/target_device_list_waiter.h"
-#include "components/signin/public/base/consent_level.h"
+#include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/sync/service/sync_service.h"
 #include "components/sync_device_info/device_info.h"
 #include "components/sync_device_info/remote_device_info.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/events/event.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
+#include "ui/views/widget/widget.h"
+
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+#include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_promo_bubble_view.h"
+#endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 #include "chrome/browser/signin/cross_device_signin_promo_manager.h"
@@ -52,19 +57,31 @@
 
 namespace send_tab_to_self {
 
+namespace {
+
+bool ShouldAnchorBubbleToAvatarPill(EntryPointDisplayReason reason) {
+  if (reason != EntryPointDisplayReason::kOfferSignIn &&
+      reason != EntryPointDisplayReason::kOfferReauth) {
+    return false;
+  }
+  return base::FeatureList::IsEnabled(kSendTabToSelfAnchorPromosToProfilePill);
+}
+
+}  // namespace
+
 SendTabToSelfBubbleController::~SendTabToSelfBubbleController() {
   HideBubble();
 }
 
 void SendTabToSelfBubbleController::HideBubble() {
   target_device_list_waiter_.reset();
-  if (send_tab_to_self_bubble_view_) {
-    send_tab_to_self_bubble_view_->Hide();
+  if (send_tab_to_self_bubble_view_ &&
+      send_tab_to_self_bubble_view_->GetWidget()) {
+    send_tab_to_self_bubble_view_->GetWidget()->Close();
   }
 }
 
-void SendTabToSelfBubbleController::ShowBubble(ShareEntryPoint entry_point,
-                                               bool show_back_button) {
+void SendTabToSelfBubbleController::ShowBubble(ShareEntryPoint entry_point) {
   // Avoid re-creation if a bubble is already being shown for this controller.
   if (IsBubbleShown()) {
     return;
@@ -72,8 +89,6 @@ void SendTabToSelfBubbleController::ShowBubble(ShareEntryPoint entry_point,
 
   entry_point_ = entry_point;
   RecordEntryPointInvoked(entry_point);
-
-  show_back_button_ = show_back_button;
 
   std::optional<EntryPointDisplayReason> reason = GetEntryPointDisplayReason();
 
@@ -114,8 +129,11 @@ void SendTabToSelfBubbleController::ShowBubbleImpl(
   views::BubbleAnchor anchor;
   if (browser) {
     browser_weak_ptr = browser->GetWeakPtr();
-    if (PinnedToolbarActions* pinned_toolbar_actions =
-            BrowserWindow::FromBrowser(browser)->GetPinnedToolbarActions()) {
+    if (ShouldAnchorBubbleToAvatarPill(reason)) {
+      anchor = AvatarToolbarButtonInterface::GetBubbleAnchor(*browser);
+    } else if (PinnedToolbarActions* pinned_toolbar_actions =
+                   BrowserWindow::FromBrowser(browser)
+                       ->GetPinnedToolbarActions()) {
       // Show the toolbar action button.
       pinned_toolbar_actions->ShowActionEphemerallyInToolbar(
           kActionSendTabToSelf, true);
@@ -125,9 +143,10 @@ void SendTabToSelfBubbleController::ShowBubbleImpl(
                          weak_ptr_factory_.GetWeakPtr(), reason,
                          browser_weak_ptr));
       return;
+    } else {
+      anchor = ToolbarButtonProvider::From(browser)->GetBubbleAnchor(
+          kActionSendTabToSelf);
     }
-    anchor = ToolbarButtonProvider::From(browser)->GetBubbleAnchor(
-        kActionSendTabToSelf);
   }
 
   ShowBubbleWithAnchor(reason, browser_weak_ptr, std::move(anchor));
@@ -161,7 +180,7 @@ void SendTabToSelfBubbleController::ShowBubbleWithAnchor(
   RecordTargetDeviceCount(entry_point_.value_or(ShareEntryPoint::kShareSheet),
                           reason, device_count);
 
-  std::unique_ptr<SendTabToSelfBubbleView> bubble_view;
+  std::unique_ptr<LocationBarBubbleDelegateView> bubble_view;
   switch (reason) {
     case send_tab_to_self::EntryPointDisplayReason::kOfferFeature:
       bubble_view = std::make_unique<SendTabToSelfDevicePickerBubbleView>(
@@ -169,12 +188,14 @@ void SendTabToSelfBubbleController::ShowBubbleWithAnchor(
       break;
     case send_tab_to_self::EntryPointDisplayReason::kOfferSignIn:
     case send_tab_to_self::EntryPointDisplayReason::kOfferReauth:
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
       bubble_view = std::make_unique<SendTabToSelfSignInPromoBubbleView>(
-          std::move(anchor.value()), &GetWebContents(),
-          reason == send_tab_to_self::EntryPointDisplayReason::kOfferReauth
-              ? SendTabToSelfSignInPromoBubbleView::PromoMode::kReauth
-              : SendTabToSelfSignInPromoBubbleView::PromoMode::kSignIn);
+          std::move(anchor.value()), &GetWebContents());
       break;
+#else
+      NOTREACHED()
+          << "The promo bubble shouldn't show if dice-support is disabled";
+#endif
     case send_tab_to_self::EntryPointDisplayReason::kInformNoTargetDevice:
       bubble_view = std::make_unique<SendTabToSelfNoTargetDeviceBubbleView>(
           std::move(anchor.value()), &GetWebContents());
@@ -184,8 +205,12 @@ void SendTabToSelfBubbleController::ShowBubbleWithAnchor(
   views::Widget* widget =
       views::BubbleDialogDelegateView::CreateBubble(std::move(bubble_view));
   widget_observation_.Observe(widget);
-  send_tab_to_self_bubble_view_->SetHighlightedElement(
-      kPinnedToolbarActionSendTabToSelfElementId);
+  is_bubble_anchored_to_avatar_pill_ =
+      browser && ShouldAnchorBubbleToAvatarPill(reason);
+  if (!is_bubble_anchored_to_avatar_pill_) {
+    send_tab_to_self_bubble_view_->SetHighlightedElement(
+        kPinnedToolbarActionSendTabToSelfElementId);
+  }
   // This is always triggered due to a user gesture, c.f. method
   // documentation.
   send_tab_to_self_bubble_view_->ShowForReason(
@@ -195,8 +220,8 @@ void SendTabToSelfBubbleController::ShowBubbleWithAnchor(
     send_tab_to_self_action_item_ = actions::ActionManager::Get().FindAction(
         kActionSendTabToSelf,
         BrowserActions::From(browser.get())->root_action_item());
-    // The toolbar might not have this action button.
-    // See SendTabToSelfToolbarIconController::CanShowOnBrowser().
+    // The toolbar might not have this action button (e.g. non-normal browser
+    // windows).
     if (send_tab_to_self_action_item_) {
       send_tab_to_self_action_item_->SetIsShowingBubble(true);
     }
@@ -207,7 +232,7 @@ bool SendTabToSelfBubbleController::IsBubbleShown() const {
   return send_tab_to_self_bubble_view_ || is_qr_bubble_showing_;
 }
 
-SendTabToSelfBubbleView*
+LocationBarBubbleDelegateView*
 SendTabToSelfBubbleController::send_tab_to_self_bubble_view() const {
   return send_tab_to_self_bubble_view_;
 }
@@ -222,22 +247,8 @@ SendTabToSelfBubbleController::GetValidDevices() {
                : std::vector<syncer::RemoteDeviceInfo>();
 }
 
-AccountInfo SendTabToSelfBubbleController::GetSharingAccountInfo() {
-  signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(GetProfile());
-  return identity_manager->FindExtendedAccountInfo(
-      identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin));
-}
-
 Profile* SendTabToSelfBubbleController::GetProfile() {
   return Profile::FromBrowserContext(GetWebContents().GetBrowserContext());
-}
-
-send_tab_to_self::SendTabToSelfModel*
-SendTabToSelfBubbleController::GetModel() {
-  send_tab_to_self::SendTabToSelfSyncService* service =
-      SendTabToSelfSyncServiceFactory::GetForProfile(GetProfile());
-  return service ? service->GetSendTabToSelfModel() : nullptr;
 }
 
 std::optional<send_tab_to_self::EntryPointDisplayReason>
@@ -247,19 +258,10 @@ SendTabToSelfBubbleController::GetEntryPointDisplayReason() {
 
 void SendTabToSelfBubbleController::OnDeviceSelected(
     const std::string& target_device_guid,
-    std::string_view device_name) {
+    const std::string& device_name,
+    syncer::DeviceInfo::FormFactor form_factor) {
   SendTabToSelfPageHandler* handler =
       SendTabToSelfPageHandler::GetOrCreateForWebContents(&GetWebContents());
-
-  syncer::DeviceInfo::FormFactor form_factor =
-      syncer::DeviceInfo::FormFactor::kUnknown;
-  if (send_tab_to_self::SendTabToSelfModel* model = GetModel()) {
-    std::optional<syncer::RemoteDeviceInfo> device =
-        model->GetTargetDeviceInfo(target_device_guid);
-    if (device) {
-      form_factor = device->form_factor;
-    }
-  }
 
   const GURL url = GetWebContents().GetLastCommittedURL();
   // Note: `entry_point_` should always be populated here, since it's set in
@@ -268,7 +270,7 @@ void SendTabToSelfBubbleController::OnDeviceSelected(
   handler->SendTabToDevice(
       target_device_guid, url, base::UTF16ToUTF8(GetWebContents().GetTitle()),
       base::BindOnce(&OnSendTabToDeviceComplete, GetWebContents().GetWeakPtr(),
-                     std::string(device_name), form_factor),
+                     device_name, form_factor),
       entry_point_.value_or(ShareEntryPoint::kShareSheet));
 }
 
@@ -276,8 +278,8 @@ void SendTabToSelfBubbleController::OnManageDevicesClicked(
     const ui::Event& event) {
   OpenManageDevicesPage(
       GetProfile(),
-      ui::DispositionFromEventFlags(event.flags(),
-                                    WindowOpenDisposition::kNewForegroundTab));
+      ui::DispositionFromEventFlags(
+          event.flags(), ui::mojom::WindowOpenDisposition::kNewForegroundTab));
 }
 
 void SendTabToSelfBubbleController::PrimaryPageChanged(content::Page& page) {
@@ -288,6 +290,14 @@ void SendTabToSelfBubbleController::OnWidgetDestroying(views::Widget* widget) {
   widget_observation_.Reset();
   send_tab_to_self_bubble_view_ = nullptr;
   entry_point_ = std::nullopt;
+  if (send_tab_to_self_action_item_) {
+    send_tab_to_self_action_item_->SetIsShowingBubble(false);
+    send_tab_to_self_action_item_ = nullptr;
+  }
+  if (is_bubble_anchored_to_avatar_pill_) {
+    is_bubble_anchored_to_avatar_pill_ = false;
+    return;
+  }
   BrowserWindowInterface* browser =
       GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
           &GetWebContents());
@@ -302,9 +312,6 @@ void SendTabToSelfBubbleController::OnWidgetDestroying(views::Widget* widget) {
       pinned_toolbar_actions->ShowActionEphemerallyInToolbar(
           kActionSendTabToSelf, false);
     }
-  }
-  if (send_tab_to_self_action_item_) {
-    send_tab_to_self_action_item_->SetIsShowingBubble(false);
   }
 }
 
@@ -335,19 +342,6 @@ bool SendTabToSelfBubbleController::ShouldShowNoTargetDeviceQrBubble(
 void SendTabToSelfBubbleController::OnQrBubbleClosed() {
   is_qr_bubble_showing_ = false;
   entry_point_ = std::nullopt;
-}
-
-void SendTabToSelfBubbleController::OnBackButtonPressed() {
-  sharing_hub::SharingHubBubbleController* controller =
-      sharing_hub::SharingHubBubbleController::CreateOrGetFromWebContents(
-          &GetWebContents());
-  controller->ShowBubble(share::ShareAttempt(&GetWebContents()));
-}
-
-void SendTabToSelfBubbleController::SetSelectorGenerationTimeoutForTesting(
-    base::TimeDelta timeout) {
-  SendTabToSelfPageHandler::GetOrCreateForWebContents(&GetWebContents())
-      ->SetSelectorGenerationTimeoutForTesting(timeout);
 }
 
 void SendTabToSelfBubbleController::ShowBubbleWhenTargetDeviceListReady() {

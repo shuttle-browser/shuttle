@@ -40,6 +40,7 @@
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/bindings/remote.h"
+#include "ui/base/interaction/element_identifier.h"
 #include "ui/native_theme/native_theme.h"
 #include "ui/native_theme/native_theme_observer.h"
 
@@ -94,14 +95,19 @@ class NewTabPageHandler
                     segmentation_platform::SegmentationPlatformService*
                         segmentation_platform_service,
                     content::WebContents* web_contents,
-                    const base::Time& ntp_navigation_start_time,
-                    base::TimeTicks ntp_navigation_start_time_ticks,
                     const std::vector<ntp::ModuleIdDetail>* module_id_details);
 
   NewTabPageHandler(const NewTabPageHandler&) = delete;
   NewTabPageHandler& operator=(const NewTabPageHandler&) = delete;
 
   ~NewTabPageHandler() override;
+
+  // Returns the element identifiers that New Tab Page help bubbles can anchor
+  // to. Hosts register these with the page's TrackedElementHandler.
+  static std::vector<ui::ElementIdentifier> GetTrackedElementIds();
+
+  // Returns whether `profile`'s primary account is managed.
+  static bool IsManagedProfile(Profile* profile);
 
   // Histograms being recorded when a module is dismissed.
   static const char kModuleDismissedHistogram[];
@@ -273,7 +279,6 @@ class NewTabPageHandler
   raw_ptr<Profile> const profile_;
   raw_ptr<content::WebContents> const web_contents_;
   std::unique_ptr<NewTabPageFeaturePromoHelper> feature_promo_helper_;
-  base::Time ntp_navigation_start_time_;
   raw_ptr<const std::vector<ntp::ModuleIdDetail>> const module_id_details_;
   std::unordered_map<const network::SimpleURLLoader*,
                      std::unique_ptr<network::SimpleURLLoader>>

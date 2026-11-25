@@ -6,11 +6,10 @@
 
 #import <UIKit/UIKit.h>
 
-#import <string_view>
-
 #import "base/apple/foundation_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/autofill/ios/browser/form_suggestion.h"
+#import "components/password_manager/core/browser/remote_actor/remote_actor_config.h"
 #import "components/strings/grit/components_strings.h"
 #import "ios/chrome/browser/passwords/bottom_sheet/ui/remote_actor_credential_bottom_sheet_mutator.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
@@ -31,6 +30,7 @@
 #import "testing/platform_test.h"
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
+#import "ui/base/l10n/l10n_util.h"
 #import "ui/base/l10n/l10n_util_mac.h"
 #import "url/gurl.h"
 
@@ -40,19 +40,18 @@ constexpr char16_t kTestDomain[] = u"example.com";
 constexpr char16_t kBeginLinkTag[] = u"BEGIN_LINK";
 constexpr char16_t kEndLinkTag[] = u"END_LINK";
 
-constexpr std::string_view kExpectedLearnMoreURL =
-    "https://support.google.com/gemini?p=lm_gpm_data";
-
 // Returns the learn more URL of the Gemini remote actor.
 GURL ExpectedLearnMoreURL() {
-  return GURL(kExpectedLearnMoreURL);
+  return password_manager::GetRemoteActorConfig(
+             password_manager::RemoteActorType::kGemini)
+      .learn_more_url;
 }
 
 // Returns the expected subtitle parsed with its link range.
 StringWithTags ExpectedSubtitleWithTags() {
-  return ParseStringWithLinks(
-      l10n_util::GetNSStringF(IDS_REMOTE_ACTOR_SHARING_DIALOG_SUBTITLE,
-                              kBeginLinkTag, kEndLinkTag, u"Gemini"));
+  return ParseStringWithLinks(l10n_util::GetNSStringF(
+      IDS_REMOTE_ACTOR_SHARING_DIALOG_SUBTITLE, kBeginLinkTag, kEndLinkTag,
+      l10n_util::GetStringUTF16(IDS_REMOTE_ACTOR_GEMINI_NAME)));
 }
 
 // Returns the expected subtitle, without the link tags.
@@ -73,8 +72,9 @@ UITextView* SubtitleTextView(UIView* view) {
 
 // Returns the expected title for `domain`.
 NSString* ExpectedTitle(const char16_t* domain) {
-  return l10n_util::GetNSStringF(IDS_REMOTE_ACTOR_SHARING_DIALOG_TITLE,
-                                 u"Gemini", domain);
+  return l10n_util::GetNSStringF(
+      IDS_REMOTE_ACTOR_SHARING_DIALOG_TITLE,
+      l10n_util::GetStringUTF16(IDS_REMOTE_ACTOR_GEMINI_NAME), domain);
 }
 
 // Returns a password suggestion for `username`.
@@ -152,6 +152,51 @@ class RemoteActorCredentialBottomSheetViewControllerTest : public PlatformTest {
         CellAtRow(row).contentConfiguration);
   }
 
+  // Expects the loaded view to show the no saved passwords state for the test
+  // domain.
+  void ExpectNoSavedPasswordsUI() {
+    UIView* view = view_controller_.view;
+    UILabel* title = chrome_test_util::FindViewById<UILabel>(
+        view, kConfirmationAlertTitleAccessibilityIdentifier);
+    EXPECT_NSEQ(l10n_util::GetNSStringF(
+                    IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_TITLE, kTestDomain),
+                title.text);
+
+    UITextView* subtitle = SubtitleTextView(view);
+    ASSERT_TRUE(subtitle);
+    EXPECT_NSEQ(l10n_util::GetNSStringF(
+                    IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_SUBTITLE,
+                    l10n_util::GetStringUTF16(IDS_REMOTE_ACTOR_GEMINI_NAME)),
+                subtitle.text);
+    __block bool has_link_styling = false;
+    [subtitle.attributedText
+        enumerateAttributesInRange:NSMakeRange(0,
+                                               subtitle.attributedText.length)
+                           options:0
+                        usingBlock:^(
+                            NSDictionary<NSAttributedStringKey, id>* attributes,
+                            NSRange range, BOOL* stop) {
+                          has_link_styling |=
+                              attributes[NSLinkAttributeName] != nil ||
+                              attributes[NSUnderlineStyleAttributeName] != nil;
+                        }];
+    EXPECT_FALSE(has_link_styling);
+
+    ChromeButton* primary_button = chrome_test_util::FindViewById<ChromeButton>(
+        view, kButtonStackPrimaryActionAccessibilityIdentifier);
+    ChromeButton* secondary_button =
+        chrome_test_util::FindViewById<ChromeButton>(
+            view, kButtonStackSecondaryActionAccessibilityIdentifier);
+    ASSERT_TRUE(primary_button);
+    EXPECT_NSEQ(l10n_util::GetNSStringF(
+                    IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_BACK_BUTTON,
+                    l10n_util::GetStringUTF16(IDS_REMOTE_ACTOR_GEMINI_NAME)),
+                view_controller_.configuration.primaryActionString);
+    EXPECT_TRUE(primary_button.enabled);
+    EXPECT_EQ(ChromeButtonStylePrimary, primary_button.style);
+    EXPECT_TRUE(!secondary_button || secondary_button.hidden);
+  }
+
   id mutator_;
   id scene_handler_;
   RemoteActorCredentialBottomSheetViewController* view_controller_;
@@ -189,7 +234,7 @@ TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
   EXPECT_FALSE(view_controller_.modalInPresentation);
 
   [view_controller_ setLoading:YES];
-  EXPECT_TRUE(view_controller_.configuration.isLoading);
+  EXPECT_TRUE(view_controller_.configuration.loading);
   EXPECT_FALSE(view_controller_.modalInPresentation);
 
   [view_controller_ setLoading:NO];
@@ -235,6 +280,38 @@ TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
   EXPECT_EQ(ChromeButtonStyleTertiary, secondary_button.style);
   EXPECT_FALSE([primary_button.accessibilityLabel
       isEqualToString:loading_accessibility_label]);
+}
+
+// Tests that the confirmation state replaces the loading state's spinner with a
+// checkmark in the primary style with an accessibility label, and disables
+// both buttons.
+TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
+       TestConfirmedShowsCheckmark) {
+  LoadViewWithSuggestions(@[ PasswordSuggestion(@"user") ]);
+  ChromeButton* primary_button = chrome_test_util::FindViewById<ChromeButton>(
+      view_controller_.view, kButtonStackPrimaryActionAccessibilityIdentifier);
+  ChromeButton* secondary_button = chrome_test_util::FindViewById<ChromeButton>(
+      view_controller_.view,
+      kButtonStackSecondaryActionAccessibilityIdentifier);
+  ASSERT_TRUE(primary_button);
+  ASSERT_TRUE(secondary_button);
+
+  [view_controller_ setLoading:YES];
+  EXPECT_TRUE(view_controller_.configuration.loading);
+  EXPECT_EQ(PrimaryButtonImageSpinner, primary_button.primaryButtonImage);
+  EXPECT_NSEQ(
+      l10n_util::GetNSString(IDS_IOS_PASSWORD_SHARING_STATUS_PROGRESS_TITLE),
+      primary_button.accessibilityLabel);
+
+  [view_controller_ showConfirmationState];
+  EXPECT_FALSE(view_controller_.configuration.loading);
+  EXPECT_TRUE(view_controller_.configuration.confirmed);
+  EXPECT_EQ(PrimaryButtonImageCheckmark, primary_button.primaryButtonImage);
+  EXPECT_FALSE(primary_button.enabled);
+  EXPECT_FALSE(secondary_button.enabled);
+  EXPECT_EQ(ChromeButtonStylePrimary, primary_button.style);
+  EXPECT_NSEQ(l10n_util::GetNSString(IDS_IOS_PASSWORD_SHARING_SUCCESS_TITLE),
+              primary_button.accessibilityLabel);
 }
 
 // Tests that the view controller configures the subtitle without link tags and
@@ -381,13 +458,8 @@ TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
   UITableView* table_view = TableView();
   ASSERT_TRUE(table_view);
 
-  NSIndexPath* selected_index_path = [NSIndexPath indexPathForRow:1
-                                                        inSection:0];
-  [table_view selectRowAtIndexPath:selected_index_path
-                          animated:NO
-                    scrollPosition:UITableViewScrollPositionNone];
   [table_view.delegate tableView:table_view
-         didSelectRowAtIndexPath:selected_index_path];
+         didSelectRowAtIndexPath:[NSIndexPath indexPathForRow:1 inSection:0]];
 
   OCMExpect([mutator_ didSelectCredentialAtIndex:1]);
   [view_controller_.actionHandler confirmationAlertPrimaryAction];
@@ -425,4 +497,33 @@ TEST_F(RemoteActorCredentialBottomSheetViewControllerTest, UsesLargeDetent) {
   EXPECT_NSEQ(expected_detents, presentation_controller.detents);
   EXPECT_NSEQ(UISheetPresentationControllerDetentIdentifierLarge,
               presentation_controller.selectedDetentIdentifier);
+}
+
+// Tests that the no saved passwords state shows its title, a subtitle without
+// a link, and a single button, when set after the view loads.
+TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
+       TestNoSavedPasswordsAfterViewLoaded) {
+  [view_controller_ setDomain:base::SysUTF16ToNSString(kTestDomain)];
+  [view_controller_ loadViewIfNeeded];
+  [view_controller_ showNoSavedPasswords];
+  ExpectNoSavedPasswordsUI();
+}
+
+// Tests that the no saved passwords UI is shown when the empty state is
+// triggered before the view is loaded.
+TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
+       TestNoSavedPasswordsBeforeViewLoaded) {
+  [view_controller_ setDomain:base::SysUTF16ToNSString(kTestDomain)];
+  [view_controller_ showNoSavedPasswords];
+  [view_controller_ loadViewIfNeeded];
+  ExpectNoSavedPasswordsUI();
+}
+
+// Tests that the primary action in the no saved passwords state notifies the
+// mutator of the cancellation.
+TEST_F(RemoteActorCredentialBottomSheetViewControllerTest,
+       TestNoSavedPasswordsPrimaryActionCancels) {
+  [view_controller_ showNoSavedPasswords];
+  OCMExpect([mutator_ didCancel]);
+  [view_controller_.actionHandler confirmationAlertPrimaryAction];
 }

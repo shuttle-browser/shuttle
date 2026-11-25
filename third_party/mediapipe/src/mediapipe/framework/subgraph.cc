@@ -18,6 +18,8 @@
 #include <iostream>
 #include <sstream>
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/framework/tool/template_expander.h"
 
@@ -48,7 +50,7 @@ absl::StatusOr<CalculatorGraphConfig> TemplateSubgraph::GetConfig(
       Subgraph::GetOptions<mediapipe::TemplateSubgraphOptions>(options).dict();
   tool::TemplateExpander expander;
   CalculatorGraphConfig config;
-  MP_RETURN_IF_ERROR(expander.ExpandTemplates(arguments, templ_, &config));
+  ABSL_RETURN_IF_ERROR(expander.ExpandTemplates(arguments, templ_, &config));
   return config;
 }
 
@@ -71,7 +73,7 @@ void GraphRegistry::Register(
 void GraphRegistry::Register(const std::string& type_name,
                              const CalculatorGraphConfig& config) {
   local_factories_.Register(type_name, [config] {
-    auto result = absl::make_unique<ProtoSubgraph>(config);
+    auto result = std::make_unique<ProtoSubgraph>(config);
     return std::unique_ptr<Subgraph>(result.release());
   });
 }
@@ -80,7 +82,7 @@ void GraphRegistry::Register(const std::string& type_name,
 void GraphRegistry::Register(const std::string& type_name,
                              const CalculatorGraphTemplate& templ) {
   local_factories_.Register(type_name, [templ] {
-    auto result = absl::make_unique<TemplateSubgraph>(templ);
+    auto result = std::make_unique<TemplateSubgraph>(templ);
     return std::unique_ptr<Subgraph>(result.release());
   });
 }
@@ -98,7 +100,7 @@ absl::StatusOr<CalculatorGraphConfig> GraphRegistry::CreateByName(
       local_factories_.IsRegistered(ns, type_name)
           ? local_factories_.Invoke(ns, type_name)
           : global_factories_->Invoke(ns, type_name);
-  MP_RETURN_IF_ERROR(maker.status());
+  ABSL_RETURN_IF_ERROR(maker.status());
   if (context != nullptr) {
     return maker.value()->GetConfig(context);
   }

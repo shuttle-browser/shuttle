@@ -36,6 +36,7 @@
 #include "content/public/test/browser_test_utils.h"
 #include "net/dns/mock_host_resolver.h"
 #include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/events/test/test_event.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/controls/button/image_button.h"
@@ -44,7 +45,7 @@
 #include "ui/views/interaction/interaction_test_util_views.h"
 #include "url/origin.h"
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 #include "chrome/browser/smart_card/smart_card_permission_context.h"
 #include "chrome/browser/smart_card/smart_card_permission_context_factory.h"
 #endif
@@ -53,7 +54,7 @@ namespace {
 
 DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kWebContentsElementId);
 const char kFirstPermissionRow[] = "FirstPermissionRow";
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 const char kSecondPermissionRow[] = "SecondPermissionRow";
 #endif
 
@@ -328,7 +329,7 @@ class PageInfoBubbleViewInteractiveUiTest : public InteractiveBrowserTest {
     });
   }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   auto EnsureSmartCardReaderGrantStatus(const std::string& reader_name,
                                         bool is_granted) {
     return CheckResult(
@@ -387,7 +388,7 @@ class PageInfoBubbleViewInteractiveUiTest : public InteractiveBrowserTest {
         ContentSettingsPattern::Wildcard(), type, setting);
   }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   void GrantSmartCardReaderPermission(const std::string& reader_name) {
     SmartCardPermissionContextFactory::GetForProfile(*browser()->GetProfile())
         .GrantPersistentReaderPermission(url::Origin::Create(GetURL()),
@@ -401,7 +402,7 @@ class PageInfoBubbleViewInteractiveUiTest : public InteractiveBrowserTest {
 #endif
 
   std::unique_ptr<net::EmbeddedTestServer> https_server_;
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   base::test::ScopedFeatureList feature_list_{blink::features::kSmartCard};
 #endif
 };
@@ -617,7 +618,7 @@ IN_PROC_BROWSER_TEST_F(PageInfoBubbleViewInteractiveUiTest,
                         u""));
 }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
 IN_PROC_BROWSER_TEST_F(PageInfoBubbleViewInteractiveUiTest,
                        SmartCardGrantsShowCorrectly) {
   GrantSmartCardReaderPermission("Reader 1");
@@ -761,4 +762,60 @@ IN_PROC_BROWSER_TEST_F(PageInfoBubbleViewInteractiveUiTest,
           kFirstPermissionRow,
           &PermissionToggleRowView::GetRowSubTitleForTesting,
           l10n_util::GetStringUTF16(IDS_PAGE_INFO_STATE_TEXT_ALLOWED_ONCE)));
+}
+
+IN_PROC_BROWSER_TEST_F(PageInfoBubbleViewInteractiveUiTest,
+                       ResetPermissionsHidesSystemDisabledSubtitle) {
+  system_permission_settings::ScopedSettingsForTesting mic_denied(
+      ContentSettingsType::MEDIASTREAM_MIC, /*blocked=*/true);
+
+  SetPermission(ContentSettingsType::MEDIASTREAM_MIC, CONTENT_SETTING_ALLOW);
+
+  RunTestSequence(
+      NavigateAndOpenPageInfo(),
+      WaitForShow(PageInfoMainView::kPermissionsElementId),
+      NameChildView(PageInfoMainView::kPermissionsElementId,
+                    kFirstPermissionRow, 0u),
+      CheckViewProperty(kFirstPermissionRow,
+                        &PermissionToggleRowView::GetRowTitleForTesting,
+                        l10n_util::GetStringUTF16(IDS_SITE_SETTINGS_TYPE_MIC)),
+      CheckViewProperty(
+          kFirstPermissionRow,
+          &PermissionToggleRowView::GetToggleButtonStateForTesting, true),
+      CheckContentSettings(ContentSettingsType::MEDIASTREAM_MIC,
+                           CONTENT_SETTING_ALLOW),
+      WaitForShow(
+          PermissionToggleRowView::kPermissionDisabledAtSystemLevelElementId),
+      PressButton(PageInfoMainView::kResetPermissionsButtonElementId),
+      WaitForHide(
+          PermissionToggleRowView::kPermissionDisabledAtSystemLevelElementId),
+      CheckViewProperty(
+          kFirstPermissionRow,
+          &PermissionToggleRowView::GetToggleButtonStateForTesting, false),
+      CheckContentSettings(ContentSettingsType::MEDIASTREAM_MIC,
+                           CONTENT_SETTING_ASK));
+}
+
+IN_PROC_BROWSER_TEST_F(PageInfoBubbleViewInteractiveUiTest,
+                       ResetMultiplePermissionsHidesSystemDisabledSubtitles) {
+  system_permission_settings::ScopedSettingsForTesting mic_denied(
+      ContentSettingsType::MEDIASTREAM_MIC, /*blocked=*/true);
+  system_permission_settings::ScopedSettingsForTesting camera_denied(
+      ContentSettingsType::MEDIASTREAM_CAMERA, /*blocked=*/true);
+
+  SetPermission(ContentSettingsType::MEDIASTREAM_MIC, CONTENT_SETTING_ALLOW);
+  SetPermission(ContentSettingsType::MEDIASTREAM_CAMERA, CONTENT_SETTING_ALLOW);
+
+  RunTestSequence(
+      NavigateAndOpenPageInfo(),
+      WaitForShow(PageInfoMainView::kPermissionsElementId),
+      WaitForShow(
+          PermissionToggleRowView::kPermissionDisabledAtSystemLevelElementId),
+      PressButton(PageInfoMainView::kResetPermissionsButtonElementId),
+      WaitForHide(
+          PermissionToggleRowView::kPermissionDisabledAtSystemLevelElementId),
+      CheckContentSettings(ContentSettingsType::MEDIASTREAM_MIC,
+                           CONTENT_SETTING_ASK),
+      CheckContentSettings(ContentSettingsType::MEDIASTREAM_CAMERA,
+                           CONTENT_SETTING_ASK));
 }

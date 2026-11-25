@@ -11,7 +11,6 @@ export function getHtml(this: OrganizerListSectionItemElement) {
   return html`<!--_html_template_start_-->
 <cr-url-list-item id="crUrlListItem" .itemAriaLabel="${this.getAriaLabel_()}"
     .itemAriaDescription="${this.getAriaDescription_() || nothing}"
-    .url="${this.item.prefixIcon?.url || nothing}"
     ?always-show-suffix="${this.hasSuffix_()}"
     .size="${this.item.size || nothing}" @contextmenu="${this.onContextmenu_}"
     @keydown="${this.onItemKeydown_}">
@@ -30,23 +29,22 @@ export function getHtml(this: OrganizerListSectionItemElement) {
     <div slot="customIcon">
       ${this.item.prefixIcon.element}
     </div>
-  ` : html`
-    ${this.item.prefixIcon?.stackedFavicons ? html`
-      <stacked-favicons id="stackedFavicons" slot="customIcon"
-          .url="${this.item.prefixIcon.stackedFavicons.urls[0]}"
-          .secondaryUrl="${this.item.prefixIcon.stackedFavicons.urls[1]}"
-          ?stack-vertically="${
-              this.item.prefixIcon.stackedFavicons.stackVertically}">
-      </stacked-favicons>
-    ` : ''}
-  `}
+  ` : ''}
+  ${this.hasFavicon_() ? html`
+    <organizer-favicon id="favicon" slot="customIcon"
+        .url="${this.getPrimaryFaviconUrl_()}"
+        .secondaryUrl="${this.getSecondaryFaviconUrl_()}"
+        ?stack-vertically="${this.shouldStackFaviconsVertically_()}">
+    </organizer-favicon>
+  ` : ''}
   ${this.item.trailingIcon ? html`
     <cr-icon id="trailingIcon" slot="suffix" .icon="${this.item.trailingIcon}"
         class="${this.hasActionButton_() ? 'has-action-button' : ''}">
     </cr-icon>
   ` : ''}
   ${this.item.hoveredActionButton ? html`
-    <cr-icon-button id="actionButton" slot="suffix" tabindex="-1"
+    <cr-icon-button id="actionButton" slot="suffix"
+        tabindex="${this.tabbable ? 0 : -1}"
         iron-icon="${this.item.hoveredActionButton.icon}"
         aria-label="${this.item.hoveredActionButton.ariaLabel}"
         title="${this.item.hoveredActionButton.tooltip || nothing}"

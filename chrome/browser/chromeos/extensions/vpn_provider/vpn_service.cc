@@ -7,7 +7,9 @@
 #include <optional>
 #include <utility>
 
+#include "base/check.h"
 #include "base/check_deref.h"
+#include "base/check_op.h"
 #include "base/containers/map_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
@@ -15,7 +17,6 @@
 #include "base/task/sequenced_task_runner_helpers.h"
 #include "base/uuid.h"
 #include "base/values.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
 #include "chromeos/ash/components/dbus/shill/shill_third_party_vpn_driver_client.h"
 #include "chromeos/ash/components/dbus/shill/shill_third_party_vpn_observer.h"
@@ -26,6 +27,8 @@
 #include "chromeos/ash/components/network/network_state_handler.h"
 #include "chromeos/ash/components/network/network_type_pattern.h"
 #include "chromeos/ash/experiences/extensions/common/api/vpn_provider.h"
+#include "components/session_manager/core/session.h"
+#include "components/session_manager/core/session_manager.h"
 #include "content/public/browser/browser_context.h"
 #include "crypto/sha2.h"
 #include "extensions/browser/event_router.h"
@@ -62,6 +65,13 @@ class VpnService::VpnConfiguration : public ash::ShillThirdPartyVpnObserver {
         key_(key),
         object_path_(shill::kObjectPathBase + key),
         vpn_service_(CHECK_DEREF(std::move(vpn_service))) {}
+
+  ~VpnConfiguration() override {
+    if (service_path_) {
+      ash::ShillThirdPartyVpnDriverClient::Get()
+          ->RemoveShillThirdPartyVpnObserver(object_path_);
+    }
+  }
 
   const std::string& extension_id() const { return extension_id_; }
   const std::string& configuration_name() const { return configuration_name_; }
@@ -252,14 +262,19 @@ void VpnService::CreateConfiguration(const std::string& extension_id,
     return;
   }
 
-  // Since the API is only designed to be used with the primary profile, it's
-  // safe to get the hash of the primary profile here.
+  // VpnServiceFactory only creates VpnService for the primary user.
+  const auto* primary_session =
+      session_manager::SessionManager::Get()->GetPrimarySession();
+  CHECK(primary_session);
+  CHECK_EQ(&browser_context_.get(),
+           ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
+               primary_session->account_id()));
   const ash::NetworkProfile* profile =
       ash::NetworkHandler::Get()
           ->network_profile_handler()
           ->GetProfileForUserhash(
               ash::BrowserContextHelper::GetUserIdHashFromBrowserContext(
-                  ProfileManager::GetPrimaryUserProfile()));
+                  &browser_context_.get()));
   if (!profile) {
     std::move(failure).Run(
         /*error_name=*/"",
@@ -267,8 +282,7 @@ void VpnService::CreateConfiguration(const std::string& extension_id,
     return;
   }
 
-  VpnService::VpnConfiguration* configuration =
-      GetOrCreateConfigurationInternal(extension_id, configuration_name);
+  GetOrCreateConfigurationInternal(extension_id, configuration_name);
 
   auto properties =
       base::DictValue()
@@ -288,10 +302,10 @@ void VpnService::CreateConfiguration(const std::string& extension_id,
           std::move(properties),
           base::BindOnce(&VpnService::OnCreateConfigurationSuccess,
                          weak_factory_.GetWeakPtr(), std::move(success),
-                         configuration),
+                         extension_id, configuration_name),
           base::BindOnce(&VpnService::OnCreateConfigurationFailure,
                          weak_factory_.GetWeakPtr(), std::move(failure),
-                         configuration));
+                         extension_id, configuration_name));
 }
 
 void VpnService::NetworkListChanged() {
@@ -381,19 +395,19 @@ void VpnService::DestroyConfiguration(const std::string& extension_id,
 
 void VpnService::DestroyConfigurationInternal(
     VpnService::VpnConfiguration* configuration) {
+  auto it = key_to_configuration_map_.find(configuration->key());
+  CHECK(it != key_to_configuration_map_.end());
+
   // |owned_configuration| ensures that |configuration| stays valid until the
   // end of the scope.
-  auto owned_configuration =
-      std::move(key_to_configuration_map_[configuration->key()]);
-  key_to_configuration_map_.erase(configuration->key());
+  auto owned_configuration = std::move(it->second);
+  key_to_configuration_map_.erase(it);
   if (active_configuration_ == configuration) {
     SetActiveConfiguration(nullptr);
   }
 
   if (const std::optional<std::string>& service_path =
           configuration->service_path()) {
-    ash::ShillThirdPartyVpnDriverClient::Get()
-        ->RemoveShillThirdPartyVpnObserver(configuration->object_path());
     service_path_to_configuration_map_.erase(*service_path);
   }
 }
@@ -527,10 +541,15 @@ VpnService::VpnConfiguration* VpnService::GetOrCreateConfigurationInternal(
 
 void VpnService::OnCreateConfigurationSuccess(
     SuccessCallback callback,
-    VpnService::VpnConfiguration* configuration,
+    const std::string& extension_id,
+    const std::string& configuration_name,
     const std::string& service_path,
     const std::string& guid) {
-  RegisterConfiguration(configuration, service_path);
+  VpnService::VpnConfiguration* configuration =
+      LookupConfiguration(extension_id, configuration_name);
+  if (configuration) {
+    RegisterConfiguration(configuration, service_path);
+  }
   std::move(callback).Run();
 }
 
@@ -543,6 +562,13 @@ void VpnService::RegisterConfiguration(
     return;
   }
 
+  if (const std::optional<std::string>& old_service_path =
+          configuration->service_path()) {
+    service_path_to_configuration_map_.erase(*old_service_path);
+    ash::ShillThirdPartyVpnDriverClient::Get()
+        ->RemoveShillThirdPartyVpnObserver(configuration->object_path());
+  }
+
   configuration->set_service_path(service_path);
   auto [_, inserted] =
       service_path_to_configuration_map_.emplace(service_path, configuration);
@@ -553,9 +579,14 @@ void VpnService::RegisterConfiguration(
 
 void VpnService::OnCreateConfigurationFailure(
     FailureCallback callback,
-    VpnService::VpnConfiguration* configuration,
+    const std::string& extension_id,
+    const std::string& configuration_name,
     const std::string& error_name) {
-  DestroyConfigurationInternal(configuration);
+  VpnService::VpnConfiguration* configuration =
+      LookupConfiguration(extension_id, configuration_name);
+  if (configuration) {
+    DestroyConfigurationInternal(configuration);
+  }
   std::move(callback).Run(error_name, /*error_message=*/{});
 }
 

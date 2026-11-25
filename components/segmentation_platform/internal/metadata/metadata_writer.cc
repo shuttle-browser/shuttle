@@ -134,9 +134,8 @@ proto::SqlFeature* MetadataWriter::AddSqlFeature(const SqlFeature& feature) {
   return proto;
 }
 
-proto::SqlFeature* MetadataWriter::AddSqlFeature(
-    const SqlFeature& feature,
-    const BindValues& bind_values) {
+proto::SqlFeature* MetadataWriter::AddSqlFeature(const SqlFeature& feature,
+                                                 BindValues bind_values) {
   auto* proto = AddSqlFeature(feature);
 
   unsigned index = 0;

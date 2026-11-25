@@ -30,7 +30,6 @@
 @implementation SearchEngineChoiceTaiyakiTestCase
 
 - (void)setUp {
-  [[self class] testForStartup];
   [super setUp];
   // Make sure the search engine has been reset, to avoid any issues if it was
   // not by a previous test.
@@ -53,7 +52,6 @@
       "=jp");
   config.additional_args.push_back(
       "--" + std::string(switches::kForceSearchEngineChoiceScreen));
-  config.features_enabled.push_back(switches::kTaiyakiAllSurfaces);
   config.features_enabled.push_back(
       switches::kSearchEngineChoiceScreenSnackbar);
   // Relaunches the app at each test to re-display the choice screen.

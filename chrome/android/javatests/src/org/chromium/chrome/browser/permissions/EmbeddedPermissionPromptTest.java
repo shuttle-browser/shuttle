@@ -39,7 +39,6 @@ import org.chromium.base.test.util.Restriction;
 import org.chromium.build.BuildConfig;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.app.ChromeActivity;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.permissions.PermissionTestRule.PermissionUpdateWaiter;
 import org.chromium.chrome.browser.permissions.RuntimePermissionTestUtils.RuntimePromptResponse;
 import org.chromium.chrome.browser.permissions.RuntimePermissionTestUtils.TestAndroidPermissionDelegate;
@@ -74,10 +73,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-    ContentSwitches.USE_FAKE_DEVICE_FOR_MEDIA_STREAM
-})
+@CommandLineFlags.Add(ContentSwitches.USE_FAKE_DEVICE_FOR_MEDIA_STREAM)
 @Features.EnableFeatures({
     PermissionsAndroidFeatureList.BYPASS_PEPC_SECURITY_FOR_TESTING,
     PermissionsAndroidFeatureList.USER_MEDIA_ELEMENT,
@@ -99,8 +95,7 @@ public class EmbeddedPermissionPromptTest {
 
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
-    public PermissionTestRule mPermissionRule =
-            new PermissionTestRule(mActivityTestRule.getActivityTestRule());
+    public PermissionTestRule mPermissionRule = new PermissionTestRule(mActivityTestRule);
 
     @Rule
     public RuleChain mRuleChain = RuleChain.outerRule(mActivityTestRule).around(mPermissionRule);
@@ -112,7 +107,7 @@ public class EmbeddedPermissionPromptTest {
         SurveyClientFactory.setInstanceForTesting(mSurveyClientFactory);
         doReturn(mSurveyClient).when(mSurveyClientFactory).createClient(any(), any(), any(), any());
         mPermissionRule.getEmbeddedTestServerRule().setServerPort(12345);
-        mPermissionRule.setUpActivity();
+        mActivityTestRule.startOnBlankPage();
         RuntimePermissionTestUtils.setupGeolocationSystemMock();
         LocationSettingsTestUtil.setSystemAndAndroidLocationSettings(true, true, true);
 

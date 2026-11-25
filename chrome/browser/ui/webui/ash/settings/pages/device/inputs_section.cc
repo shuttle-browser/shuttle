@@ -16,7 +16,7 @@
 #include "chrome/browser/ash/input_method/input_method_settings.h"
 #include "chrome/browser/ui/webui/ash/settings/os_settings_features_util.h"
 #include "chrome/browser/ui/webui/ash/settings/search/search_tag_registry.h"
-#include "chrome/grit/generated_resources.h"
+#include "chromeos/ash/experiences/settings_ui/resources/grit/ash_settings_strings.h"
 #include "chromeos/components/magic_boost/public/cpp/magic_boost_state.h"
 #include "chromeos/constants/chromeos_features.h"
 #include "components/prefs/pref_service.h"
@@ -456,9 +456,6 @@ void InputsSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       "onDeviceGrammarCheckEnabled",
       base::FeatureList::IsEnabled(features::kOnDeviceGrammarCheck));
 
-  html_source->AddBoolean(
-      "languagePacksInSettingsEnabled",
-      base::FeatureList::IsEnabled(features::kLanguagePacksInSettings));
   // TODO(b/290861003): Update the settings code and remove this.
   html_source->AddBoolean("isShortcutCustomizationEnabled", true);
 

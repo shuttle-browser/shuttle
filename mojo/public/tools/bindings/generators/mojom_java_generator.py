@@ -18,6 +18,7 @@ import mojom.fileutil as fileutil
 import mojom.generate.generator as generator
 import mojom.generate.module as mojom
 import mojom.generate.pack as pack
+import generators.jni_util as jni_util
 from mojom.generate.template_expander import UseJinja
 
 # Item 0 of sys.path is the directory of the main file; item 1 is PYTHONPATH
@@ -567,6 +568,7 @@ class Generator(generator.Generator):
   def GetFilters(self):
     java_filters = {
       'array_expected_length': GetArrayExpectedLength,
+      'array_nullability_flags': GetArrayNullabilityFlags,
       'array': GetArrayKind,
       'constant_value': ConstantValue,
       'covers_continuous_range': EnumCoversContinuousRange,
@@ -587,6 +589,7 @@ class Generator(generator.Generator):
       "is_primary_nullable_value_kind_packed_field": pack.IsPrimaryNullableValueKindPackedField,
       'is_pointer_array_kind': IsPointerArrayKind,
       'is_reference_kind': mojom.IsReferenceKind,
+      'is_string_kind': mojom.IsStringKind,
       'is_struct_kind': mojom.IsStructKind,
       'is_union_array_kind': IsUnionArrayKind,
       'is_union_kind': mojom.IsUnionKind,
@@ -631,6 +634,10 @@ class Generator(generator.Generator):
   def _GenerateInterfaceInternalSource(self, interface):
     return self._GetJinjaExportsForInterface(interface)
 
+  @UseJinja('interface_bridge.java.tmpl')
+  def _GenerateInterfaceBridgeSource(self, interface):
+    return self._GetJinjaExportsForInterface(interface)
+
   @UseJinja('constants.java.tmpl')
   def _GenerateConstantsSource(self, module):
     exports = self._GetJinjaExports()
@@ -670,6 +677,13 @@ class Generator(generator.Generator):
         self._GenerateInterfaceInternalSource(interface),
         '%s_Internal.java' % GetNameForElement(interface),
       )
+      if self.generate_jni and jni_util.ShouldGenerateDirectReturnStub(
+        interface
+      ):
+        self.WriteWithComment(
+          self._GenerateInterfaceBridgeSource(interface),
+          '%sBridge.java' % GetNameForElement(interface),
+        )
 
     if self.module.constants:
       self.WriteWithComment(
@@ -686,7 +700,11 @@ class Generator(generator.Generator):
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--java_output_directory', dest='java_output_directory')
+    parser.add_argument(
+      '--java_generate_jni', dest='generate_jni', action='store_true'
+    )
     args = parser.parse_args(unparsed_args)
+    self.generate_jni = args.generate_jni
     package_path = GetPackage(self.module).replace('.', '/')
 
     # Generate the java files in a temporary directory and place a single

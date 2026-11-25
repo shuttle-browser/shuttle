@@ -7,6 +7,7 @@ package org.chromium.chrome.browser.ttc;
 import static org.chromium.build.NullUtil.assumeNonNull;
 
 import android.Manifest;
+import android.app.Activity;
 import android.content.Context;
 import android.content.pm.PackageManager;
 import android.os.Handler;
@@ -35,7 +36,7 @@ import org.chromium.ui.modelutil.PropertyModel;
  * Runs TTC sessions for one activity and keeps the session pill's {@link PropertyModel} in sync
  * with the {@link TtcKeyedService}: follows the active profile, starts and ends sessions (showing
  * the first run dialog and asking for the microphone permission first), and mirrors the service's
- * state into the model.
+ * state into the model and into the window's {@link TtcEntryPoint}.
  *
  * <p>The session belongs to the profile and is shared by every window. This mediator reports its
  * window's visibility to the profile's {@link TtcSessionWindowTracker}, which ends the session once
@@ -53,6 +54,8 @@ class TtcSessionMediator implements TtcKeyedService.Observer, StartStopWithNativ
     private final WindowAndroid mWindowAndroid;
     private final MonotonicObservableSupplier<Profile> mProfileSupplier;
     private final ActivityLifecycleDispatcher mLifecycleDispatcher;
+    // The window's toolbar entry point, kept in sync with the session.
+    private final TtcEntryPoint mEntryPoint;
     private final Callback<Profile> mProfileObserver = this::onProfileAvailable;
     private final Handler mHandler = ThreadUtils.getUiThreadHandler();
     private final Runnable mHideAfterErrorTask = this::hideAfterError;
@@ -80,16 +83,20 @@ class TtcSessionMediator implements TtcKeyedService.Observer, StartStopWithNativ
      * @param lifecycleDispatcher Used to report this window's visibility to the profile's {@link
      *     TtcSessionWindowTracker}, which ends the session once no window is visible, since
      *     microphone capture can't continue in the background.
+     * @param entryPoint The window's toolbar entry point, which this publishes the session state to
+     *     and takes clicks from. Whether the toolbar shows it is up to the toolbar.
      */
     TtcSessionMediator(
             PropertyModel model,
             WindowAndroid windowAndroid,
             MonotonicObservableSupplier<Profile> profileSupplier,
-            ActivityLifecycleDispatcher lifecycleDispatcher) {
+            ActivityLifecycleDispatcher lifecycleDispatcher,
+            TtcEntryPoint entryPoint) {
         mModel = model;
         mWindowAndroid = windowAndroid;
         mProfileSupplier = profileSupplier;
         mLifecycleDispatcher = lifecycleDispatcher;
+        mEntryPoint = entryPoint;
         // Tapping the pill ends the session. TtcKeyedService#endSession() is a no-op when no
         // session is active.
         mModel.set(
@@ -97,11 +104,15 @@ class TtcSessionMediator implements TtcKeyedService.Observer, StartStopWithNativ
                 v -> {
                     if (mService != null) mService.endSession();
                 });
+        // Before observing the profile, so that the entry point's observers hear about the button
+        // once, when the service state is known.
+        mEntryPoint.setToggleHandler(this::toggleSession);
         mLifecycleDispatcher.register(this);
         mProfileSupplier.addSyncObserverAndCallIfNonNull(mProfileObserver);
     }
 
     void destroy() {
+        mEntryPoint.setToggleHandler(null);
         mLifecycleDispatcher.unregister(this);
         mProfileSupplier.removeObserver(mProfileObserver);
         // Only ends the session if no other window is still showing it.
@@ -219,6 +230,7 @@ class TtcSessionMediator implements TtcKeyedService.Observer, StartStopWithNativ
     @Override
     public void onServiceStateChanged(@ServiceState int state) {
         boolean active = state == ServiceState.SESSION_ACTIVE;
+        updateEntryPoint(active);
         if (active) {
             clearError();
             mModel.set(TtcSessionProperties.STATUS_TEXT_RES_ID, getSessionStatusTextResId());
@@ -255,22 +267,32 @@ class TtcSessionMediator implements TtcKeyedService.Observer, StartStopWithNativ
     private void onProfileAvailable(Profile profile) {
         mProfile = profile;
         TtcKeyedService service = TtcSessionCoordinator.getServiceIfAvailable(profile);
-        if (service == mService) return;
-        // This window stops hosting the previous profile's session. That only ends the session if
-        // no other window is still showing it.
-        detachFromService();
-        mService = service;
-        if (mService == null) {
-            mModel.set(TtcSessionProperties.VISIBLE, false);
-            return;
+        if (service != mService) {
+            // This window stops hosting the previous profile's session. That only ends the session
+            // if no other window is still showing it.
+            detachFromService();
+            mService = service;
+            if (mService == null) {
+                mModel.set(TtcSessionProperties.VISIBLE, false);
+                updateEntryPoint(false);
+            } else {
+                mService.addObserver(this);
+                onServiceStateChanged(
+                        mService.isSessionActive()
+                                ? ServiceState.SESSION_ACTIVE
+                                : ServiceState.SESSION_INACTIVE);
+                // The window may have started before the profile was available.
+                if (isActivityVisible()) mService.getWindowTracker().addVisibleWindow(this);
+            }
         }
-        mService.addObserver(this);
-        onServiceStateChanged(
-                mService.isSessionActive()
-                        ? ServiceState.SESSION_ACTIVE
-                        : ServiceState.SESSION_INACTIVE);
-        // The window may have started before the profile was available.
-        if (isActivityVisible()) mService.getWindowTracker().addVisibleWindow(this);
+        // This window's native side is up, so the regular profile's session no longer needs to
+        // wait for it, whether it hosts that session (above) or is incognito and never will.
+        TtcKeyedService regularService =
+                TtcSessionCoordinator.getServiceIfAvailable(profile.getOriginalProfile());
+        Activity activity = mWindowAndroid.getActivity().get();
+        if (regularService != null && activity != null) {
+            regularService.getWindowTracker().onWindowReady(activity);
+        }
     }
 
     /**
@@ -285,6 +307,11 @@ class TtcSessionMediator implements TtcKeyedService.Observer, StartStopWithNativ
         mService.getWindowTracker().removeVisibleWindow(this);
         mService.removeObserver(this);
         mService = null;
+    }
+
+    /** Shows the toolbar button while sessions can run, and highlights it during a session. */
+    private void updateEntryPoint(boolean sessionActive) {
+        mEntryPoint.setState(mService != null, sessionActive);
     }
 
     private void startSession() {

@@ -50,7 +50,6 @@ import org.chromium.chrome.browser.theme.ThemeUtils;
 import org.chromium.chrome.browser.ui.native_page.NativePage;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.components.browser_ui.styles.ChromeColors;
-import org.chromium.components.dom_distiller.core.DomDistillerUrlUtils;
 import org.chromium.components.embedder_support.util.UrlConstants;
 import org.chromium.components.embedder_support.util.UrlUtilities;
 import org.chromium.components.metrics.OmniboxEventProtosIntDef.PageClassification;
@@ -61,6 +60,7 @@ import org.chromium.components.omnibox.SecurityStatusIcon;
 import org.chromium.components.security_state.ConnectionMaliciousContentStatus;
 import org.chromium.components.security_state.ConnectionSecurityLevel;
 import org.chromium.components.security_state.SecurityStateModel;
+import org.chromium.components.web_distiller.core.WebDistillerUrlUtils;
 import org.chromium.content_public.browser.WebContents;
 import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.url.GURL;
@@ -267,13 +267,11 @@ public class LocationBarModel implements ToolbarDataProvider, LocationBarDataPro
     }
 
     private void performProfileDependentInitializationIfRequired() {
-        if (mInitializedProfileDependentFeatures) return;
-        assert mProfile != null;
+        if (mInitializedProfileDependentFeatures || mProfile == null) return;
         mInitializedProfileDependentFeatures = true;
 
-        assumeNonNull(getProfile());
         mChromeAutocompleteSchemeClassifier =
-                new ChromeAutocompleteSchemeClassifier(getProfile().getOriginalProfile());
+                new ChromeAutocompleteSchemeClassifier(mProfile.getOriginalProfile());
         recalculateFormattedUrls();
     }
 
@@ -313,11 +311,12 @@ public class LocationBarModel implements ToolbarDataProvider, LocationBarDataPro
      *
      * @param tab The tab associated currently with the toolbar.
      * @param profile The profile associated with the currently selected model, which must match the
-     *     passed in tab if non-null.
+     *     passed in tab if non-null. May be null only when {@code tab} is null (e.g. when an
+     *     off-the-record model has no tabs).
      */
-    public void setTab(@Nullable Tab tab, Profile profile) {
+    public void setTab(@Nullable Tab tab, @Nullable Profile profile) {
+        assert tab == null || profile != null;
         assert tab == null || tab.getProfile() == profile;
-        assert profile != null;
 
         boolean isTabChanging = mTab != tab;
         Tab previousTab = mTab;
@@ -328,8 +327,13 @@ public class LocationBarModel implements ToolbarDataProvider, LocationBarDataPro
         mProfile = profile;
         performProfileDependentInitializationIfRequired();
 
-        boolean isOffTheRecord = profile.isOffTheRecord();
-        boolean isIncognitoBranded = profile.isIncognitoBranded();
+        // Only an empty Incognito TabModel has a null Profile; default to Incognito state when
+        // profile is null unless already off-the-record (preserving non-primary OTR branding).
+        boolean isOffTheRecord = profile != null ? profile.isOffTheRecord() : true;
+        boolean isIncognitoBranded =
+                profile != null
+                        ? profile.isIncognitoBranded()
+                        : (!mIsOffTheRecord || mIsIncognitoBranded);
 
         if (mIsOffTheRecord != isOffTheRecord || mIsIncognitoBranded != isIncognitoBranded) {
             mIsOffTheRecord = isOffTheRecord;
@@ -501,9 +505,9 @@ public class LocationBarModel implements ToolbarDataProvider, LocationBarDataPro
             String formattedUrl = getFormattedFullUrl();
             if (mTab.isFrozen()) return buildUrlBarData(gurl, isOfflinePage, formattedUrl);
 
-            if (DomDistillerUrlUtils.isDistilledPage(url)) {
+            if (WebDistillerUrlUtils.isDistilledPage(url)) {
                 GURL originalUrl =
-                        DomDistillerUrlUtils.getOriginalUrlFromDistillerUrl(new GURL(url));
+                        WebDistillerUrlUtils.getOriginalUrlFromDistillerUrl(new GURL(url));
                 return buildUrlBarData(originalUrl, isOfflinePage);
             }
 
@@ -846,7 +850,8 @@ public class LocationBarModel implements ToolbarDataProvider, LocationBarDataPro
             return Resources.ID_NULL;
         }
 
-        boolean skipIconForNeutralState = mNtpDelegate.isCurrentlyVisible();
+        boolean skipIconForNeutralState =
+                mNtpDelegate.isCurrentlyVisible() && UrlUtilities.isNtpUrl(getCurrentGurl());
         boolean isShowingHttpsFirstWarning =
                 ChromeFeatureList.isEnabled(ChromeFeatureList.HTTPS_FIRST_DIALOG_UI)
                         && SecurityStateModel.isHttpsOnlyModeUpgradedForWebContents(

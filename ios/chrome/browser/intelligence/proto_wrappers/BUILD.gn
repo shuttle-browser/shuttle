@@ -93,7 +93,7 @@ source_set("page_context_extractor_feature") {
     "//base",
     "//components/autofill/ios/form_util:frame_registration_feature",
     "//ios/chrome/browser/intelligence/features",
-    "//ios/public/provider/chrome/browser/bwg:gemini_api",
+    "//ios/public/provider/chrome/browser/intelligence/proto_wrappers:proto_wrappers_api",
     "//ios/web/public/js_messaging",
   ]
 }
@@ -117,12 +117,15 @@ source_set("proto_wrappers") {
   sources = [
     "annotated_page_content_extraction_utils.h",
     "annotated_page_content_extraction_utils.mm",
+    "default_page_context_wrapper_factory.h",
+    "default_page_context_wrapper_factory.mm",
     "frame_grafter.h",
     "frame_grafter.mm",
     "page_context_wrapper.h",
     "page_context_wrapper.mm",
     "page_context_wrapper_config.h",
     "page_context_wrapper_config.mm",
+    "page_context_wrapper_factory.h",
   ]
 
   deps = [
@@ -146,7 +149,7 @@ source_set("proto_wrappers") {
     "//ios/chrome/browser/intelligence/features",
     "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/chrome/browser/snapshots/model",
-    "//ios/public/provider/chrome/browser/bwg:gemini_api",
+    "//ios/public/provider/chrome/browser/intelligence/proto_wrappers:proto_wrappers_api",
     "//ios/web/find_in_page",
     "//ios/web/public",
     "//ios/web/public/js_messaging",
@@ -209,6 +212,21 @@ source_set("page_context_wrapper_test_utils") {
     "//base",
     "//net:test_support",
   ]
+}
+
+source_set("test_support") {
+  testonly = true
+  sources = [
+    "fake_page_context_wrapper.h",
+    "fake_page_context_wrapper.mm",
+    "fake_page_context_wrapper_factory.h",
+    "fake_page_context_wrapper_factory.mm",
+  ]
+  public_deps = [
+    ":proto_wrappers",
+    "//base",
+  ]
+  deps = [ "//components/optimization_guide/proto:optimization_guide_proto" ]
 }
 
 source_set("unit_tests") {

@@ -36,6 +36,7 @@ public class SafetyPromoCarouselView extends RelativeLayout {
     private TextView mTitleView;
     private TextView mSubtitleView;
     private ButtonCompat mContinueButton;
+    private ButtonCompat mShowMeHowButton;
     private SafetyPromoPageIndicatorView mPageIndicatorView;
 
     private float mInitialX;
@@ -55,6 +56,7 @@ public class SafetyPromoCarouselView extends RelativeLayout {
         mTitleView = findViewById(R.id.safety_promo_carousel_title);
         mSubtitleView = findViewById(R.id.safety_promo_carousel_subtitle);
         mContinueButton = findViewById(R.id.fre_continue_button);
+        mShowMeHowButton = findViewById(R.id.fre_show_me_how_button);
         mPageIndicatorView = findViewById(R.id.safety_promo_carousel_page_indicator);
     }
 
@@ -141,18 +143,27 @@ public class SafetyPromoCarouselView extends RelativeLayout {
         eventCopy.recycle();
     }
 
+    /** Sets the click listener of the "Continue" button. */
     public void setContinueButtonOnClickListener(OnClickListener listener) {
         mContinueButton.setOnClickListener(listener);
     }
 
+    /** Sets the click listener of the "Show me how" button. */
+    public void setShowMeHowButtonOnClickListener(OnClickListener listener) {
+        mShowMeHowButton.setOnClickListener(listener);
+    }
+
+    /** Sets the title text of the active page. */
     public void setTitleText(@StringRes int stringResId) {
         mTitleView.setText(stringResId);
     }
 
+    /** Sets the subtitle text of the active page. */
     public void setSubtitleText(@StringRes int stringResId) {
         mSubtitleView.setText(stringResId);
     }
 
+    /** Sets the number of pages shown by the page indicator. */
     public void setPageIndicatorCount(int count) {
         mPageIndicatorView.setPageCount(count);
     }

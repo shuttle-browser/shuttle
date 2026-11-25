@@ -21,7 +21,6 @@
 #include "ui/views/test/configurable_test_native_frame_view.h"
 #include "ui/views/test/widget_activation_waiter.h"
 #include "ui/views/test/widget_test.h"
-#include "ui/views/widget/desktop_aura/desktop_drag_drop_client_ozone.h"
 #include "ui/views/widget/desktop_aura/desktop_native_widget_aura.h"
 #include "ui/views/widget/desktop_aura/desktop_window_tree_host_linux.h"
 #include "ui/views/widget/desktop_aura/desktop_window_tree_host_platform.h"
@@ -181,7 +180,7 @@ class HitTestWidgetDelegate : public WidgetDelegate {
 
   // WidgetDelegate:
   std::unique_ptr<FrameView> CreateFrameView(Widget* widget) override {
-    DCHECK(!frame_view_);
+    CHECK(!frame_view_, base::NotFatalUntil::M163);
     auto frame_view =
         std::make_unique<test::ConfigurableTestNativeFrameView>(widget);
     frame_view_ = frame_view->GetWeakPtr();
@@ -263,14 +262,14 @@ class DesktopWindowTreeHostPlatformImplTest
   }
 
   void DispatchEvent(ui::Event* event) {
-    DCHECK(host_);
+    CHECK(host_, base::NotFatalUntil::M163);
     std::unique_ptr<ui::Event> owned_event(event);
     host_->DispatchEvent(owned_event.get());
   }
 
   void GenerateAndDispatchClickMouseEvent(const gfx::Point& click_location,
                                           int flags) {
-    DCHECK(host_);
+    CHECK(host_, base::NotFatalUntil::M163);
     DispatchEvent(GenerateMouseEvent(ui::EventType::kMousePressed,
                                      click_location, flags));
     DispatchEvent(GenerateMouseEvent(ui::EventType::kMouseReleased,
@@ -701,10 +700,11 @@ TEST_F(DesktopWindowTreeHostPlatformImplTest, InputMethodFocus) {
             widget->GetInputMethod()->GetTextInputType());
 }
 
-// Tests that data drags are suppressed while the user holds the left button on
-// the caption before reaching the window-drag threshold, and that the
-// suppression ends once the move is handed off to the window manager.
-TEST_F(DesktopWindowTreeHostPlatformImplTest, CaptionHoldSuppressesDataDrag) {
+// Tests that a left button hold on the caption is handed off to the window
+// manager only once the window-drag threshold is reached, and that the button
+// state is cleared at that point.
+TEST_F(DesktopWindowTreeHostPlatformImplTest,
+       CaptionHoldHandsOffMoveAfterThreshold) {
   std::unique_ptr<Widget> widget(
       BuildTopLevelDesktopWidget(gfx::Rect(0, 0, 100, 100)));
   widget->Show();
@@ -720,17 +720,12 @@ TEST_F(DesktopWindowTreeHostPlatformImplTest, CaptionHoldSuppressesDataDrag) {
   ASSERT_TRUE(frame_view);
   frame_view->set_hit_test_result(HTCAPTION);
 
-  ASSERT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
   const gfx::Point press_location(10, 10);
   DispatchEvent(GenerateMouseEvent(ui::EventType::kMousePressed, press_location,
                                    ui::EF_LEFT_MOUSE_BUTTON));
   EXPECT_TRUE(aura::Env::GetInstance()->IsMouseButtonDown());
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
 
-  // A drag below the threshold keeps the suppression active.
+  // A drag below the threshold doesn't start a move.
   gfx::Point small_drag_location(press_location);
   small_drag_location.Offset(1, 1);
   DispatchEvent(GenerateMouseEvent(ui::EventType::kMouseDragged,
@@ -738,16 +733,11 @@ TEST_F(DesktopWindowTreeHostPlatformImplTest, CaptionHoldSuppressesDataDrag) {
                                    ui::EF_LEFT_MOUSE_BUTTON));
   EXPECT_TRUE(aura::Env::GetInstance()->IsMouseButtonDown());
   EXPECT_FALSE(handler->hittest().has_value());
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
 
   // Crossing the threshold hands the move off to the window manager. The
-  // button state is cleared so that the stale "button down" state can't be
-  // used to start a data drag later. The suppression is also released here
-  // rather than held until the WM move ends: X11's _NET_WM_MOVERESIZE gives no
-  // notification when the move finishes, so holding it could leave data drags
-  // suppressed indefinitely. While the WM move is in progress, the WM owns the
-  // pointer and the cleared button state rejects renderer-initiated drags.
+  // window manager may consume the terminating button release (e.g. X11's
+  // _NET_WM_MOVERESIZE), so the button state is cleared rather than left
+  // reporting the button as held indefinitely.
   auto* linux_ui = ui::LinuxUi::instance();
   const int threshold = linux_ui ? linux_ui->GetWindowDragThresholdPx()
                                  : ui::LinuxUi::kDefaultWindowDragThreshold;
@@ -758,178 +748,6 @@ TEST_F(DesktopWindowTreeHostPlatformImplTest, CaptionHoldSuppressesDataDrag) {
   ASSERT_TRUE(handler->hittest().has_value());
   EXPECT_EQ(HTCAPTION, *handler->hittest());
   EXPECT_FALSE(aura::Env::GetInstance()->IsMouseButtonDown());
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-  handler->set_platform_window(nullptr);
-  widget->CloseNow();
-}
-
-// Tests that releasing the caption without dragging ends the suppression.
-TEST_F(DesktopWindowTreeHostPlatformImplTest,
-       CaptionClickReleaseEndsDragSuppression) {
-  std::unique_ptr<Widget> widget(
-      BuildTopLevelDesktopWidget(gfx::Rect(0, 0, 100, 100)));
-  widget->Show();
-
-  auto handler =
-      std::make_unique<FakeWmMoveResizeHandler>(host_->platform_window());
-  host_->DestroyNonClientEventFilter();
-  host_->non_client_window_event_filter_ =
-      std::make_unique<WindowEventFilterLinux>(host_, handler.get());
-
-  auto* frame_view = delegate_->frame_view();
-  ASSERT_TRUE(frame_view);
-  frame_view->set_hit_test_result(HTCAPTION);
-
-  const gfx::Point location(10, 10);
-  DispatchEvent(GenerateMouseEvent(ui::EventType::kMousePressed, location,
-                                   ui::EF_LEFT_MOUSE_BUTTON));
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-  DispatchEvent(GenerateMouseEvent(ui::EventType::kMouseReleased, location,
-                                   ui::EF_LEFT_MOUSE_BUTTON));
-  EXPECT_FALSE(handler->hittest().has_value());
-  EXPECT_FALSE(aura::Env::GetInstance()->IsMouseButtonDown());
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-  // Destroying the filter mid-hold must also end the suppression. This happens
-  // when the window is closed while the user is holding the caption, e.g. a
-  // popup closed by window.close() or a keyboard shortcut.
-  DispatchEvent(GenerateMouseEvent(ui::EventType::kMousePressed, location,
-                                   ui::EF_LEFT_MOUSE_BUTTON));
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  host_->DestroyNonClientEventFilter();
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  DispatchEvent(GenerateMouseEvent(ui::EventType::kMouseReleased, location,
-                                   ui::EF_LEFT_MOUSE_BUTTON));
-
-  handler->set_platform_window(nullptr);
-  widget->CloseNow();
-}
-
-// Tests that data drags are suppressed while the user holds a touch on the
-// caption or a resize border, including after the move or resize has been
-// handed off to the compositor, and that the suppression ends when that touch
-// is released.
-TEST_F(DesktopWindowTreeHostPlatformImplTest,
-       CaptionTouchHoldSuppressesDataDrag) {
-  std::unique_ptr<Widget> widget(
-      BuildTopLevelDesktopWidget(gfx::Rect(0, 0, 100, 100)));
-  widget->Show();
-
-  auto handler =
-      std::make_unique<FakeWmMoveResizeHandler>(host_->platform_window());
-  handler->set_bounds(widget->GetNativeWindow()->GetBoundsInScreen());
-  host_->DestroyNonClientEventFilter();
-  host_->non_client_window_event_filter_ =
-      std::make_unique<WindowEventFilterLinux>(host_, handler.get());
-
-  auto* frame_view = delegate_->frame_view();
-  ASSERT_TRUE(frame_view);
-
-  for (int hit_test : {HTCAPTION, HTBOTTOMRIGHT}) {
-    SCOPED_TRACE(hit_test);
-    frame_view->set_hit_test_result(hit_test);
-    handler->Reset();
-
-    ASSERT_FALSE(
-        DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-    const gfx::Point location(10, 10);
-    DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchPressed, location));
-    EXPECT_TRUE(
-        DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-    // Moving the touch within the slop keeps the suppression active.
-    gfx::Point moved_location(location);
-    moved_location.Offset(1, 1);
-    DispatchEvent(
-        GenerateTouchEvent(ui::EventType::kTouchMoved, moved_location));
-    EXPECT_FALSE(handler->hittest().has_value());
-    EXPECT_TRUE(
-        DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-    // The gesture hands the move or resize off to the compositor. The browser
-    // still tracks the touch as active, so the suppression must remain.
-    DispatchEvent(GenerateGestureEvent(
-        location, ui::GestureEventDetails(ui::EventType::kGestureScrollBegin)));
-    ASSERT_TRUE(handler->hittest().has_value());
-    EXPECT_EQ(hit_test, *handler->hittest());
-    EXPECT_TRUE(
-        DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-    DispatchEvent(
-        GenerateTouchEvent(ui::EventType::kTouchReleased, moved_location));
-    EXPECT_FALSE(
-        DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  }
-
-  handler->set_platform_window(nullptr);
-  widget->CloseNow();
-}
-
-// Tests the other ways a caption touch suppression can end, and that touches
-// outside the caption do not arm it.
-TEST_F(DesktopWindowTreeHostPlatformImplTest, CaptionTouchEndsDragSuppression) {
-  std::unique_ptr<Widget> widget(
-      BuildTopLevelDesktopWidget(gfx::Rect(0, 0, 100, 100)));
-  widget->Show();
-
-  auto handler =
-      std::make_unique<FakeWmMoveResizeHandler>(host_->platform_window());
-  host_->DestroyNonClientEventFilter();
-  host_->non_client_window_event_filter_ =
-      std::make_unique<WindowEventFilterLinux>(host_, handler.get());
-
-  auto* frame_view = delegate_->frame_view();
-  ASSERT_TRUE(frame_view);
-  const gfx::Point location(10, 10);
-
-  // A touch in the client area does not arm the suppression.
-  frame_view->set_hit_test_result(HTCLIENT);
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchPressed, location));
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchReleased, location));
-
-  frame_view->set_hit_test_result(HTCAPTION);
-
-  // Cancelling the caption touch ends the suppression.
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchPressed, location));
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchCancelled, location));
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-
-  // A subsequent mouse press ends the suppression, in case the compositor never
-  // delivers the touch release.
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchPressed, location));
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  frame_view->set_hit_test_result(HTCLIENT);
-  DispatchEvent(GenerateMouseEvent(ui::EventType::kMousePressed, location,
-                                   ui::EF_LEFT_MOUSE_BUTTON));
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  DispatchEvent(GenerateMouseEvent(ui::EventType::kMouseReleased, location,
-                                   ui::EF_LEFT_MOUSE_BUTTON));
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchCancelled, location));
-
-  // Destroying the filter mid-hold also ends the suppression.
-  frame_view->set_hit_test_result(HTCAPTION);
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchPressed, location));
-  EXPECT_TRUE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  host_->DestroyNonClientEventFilter();
-  EXPECT_FALSE(
-      DesktopDragDropClientOzone::IsDragInProgressOrSuppressedForTesting());
-  DispatchEvent(GenerateTouchEvent(ui::EventType::kTouchReleased, location));
 
   handler->set_platform_window(nullptr);
   widget->CloseNow();

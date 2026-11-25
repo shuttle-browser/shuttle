@@ -15,6 +15,7 @@
 #include "ui/aura/client/capture_client.h"
 #include "ui/aura/client/cursor_client.h"
 #include "ui/aura/client/drag_drop_client_observer.h"
+#include "ui/aura/env.h"
 #include "ui/aura/window.h"
 #include "ui/aura/window_tracker.h"
 #include "ui/aura/window_tree_host.h"
@@ -181,7 +182,7 @@ DragOperation DesktopDragDropClientOzone::StartDragAndDrop(
   }
   base::AutoReset<bool> drag_scoper(&g_is_dragging, true);
 
-  DCHECK(!drag_context_);
+  CHECK(!drag_context_, base::NotFatalUntil::M163);
   drag_context_ = std::make_unique<DragContext>();
 
   // This object is owned by a DesktopNativeWidgetAura that can be destroyed
@@ -239,6 +240,12 @@ DragOperation DesktopDragDropClientOzone::StartDragAndDrop(
                      weak_factory_.GetWeakPtr()),
       GetLocationDelegate());
 
+  // The platform owns the pointer during the drag and may consume the button
+  // release that ends it (e.g. the X11 drag loop), which would otherwise leave
+  // aura::Env reporting the button as held after the drag.  If the release was
+  // dispatched, this is a no-op.
+  aura::Env::GetInstance()->set_mouse_button_flags(0);
+
   if (!alive) {
     return DragOperation::kNone;
   }
@@ -262,7 +269,7 @@ DragOperation DesktopDragDropClientOzone::StartDragAndDrop(
 #if BUILDFLAG(IS_LINUX)
 void DesktopDragDropClientOzone::UpdateDragImage(const gfx::ImageSkia& image,
                                                  const gfx::Vector2d& offset) {
-  DCHECK(drag_handler_);
+  CHECK(drag_handler_, base::NotFatalUntil::M163);
   drag_handler_->UpdateDragImage(image, offset);
 }
 #endif  // BUILDFLAG(LINUX)
@@ -304,7 +311,7 @@ void DesktopDragDropClientOzone::OnDragEnter(const gfx::PointF& location,
 
 void DesktopDragDropClientOzone::OnDragDataAvailable(
     std::unique_ptr<ui::OSExchangeData> data) {
-  DCHECK(data);
+  CHECK(data, base::NotFatalUntil::M163);
   data_to_drop_ = std::move(data);
   std::unique_ptr<ui::DropTargetEvent> event = UpdateTargetAndCreateDropEvent();
   if (event) {
@@ -384,7 +391,8 @@ void DesktopDragDropClientOzone::OnDragLeave() {
 }
 
 void DesktopDragDropClientOzone::OnWindowDestroyed(aura::Window* window) {
-  DCHECK(entered_window_observation_.IsObservingSource(window));
+  CHECK(entered_window_observation_.IsObservingSource(window),
+        base::NotFatalUntil::M163);
 
   entered_window_observation_.Reset();
   delegate_ = nullptr;
@@ -408,7 +416,7 @@ void DesktopDragDropClientOzone::OnDragFinished(DragOperation operation) {
 
 std::unique_ptr<ui::DropTargetEvent>
 DesktopDragDropClientOzone::UpdateTargetAndCreateDropEvent() {
-  DCHECK(data_to_drop_);
+  CHECK(data_to_drop_, base::NotFatalUntil::M163);
 
   aura::Window* window = root_window_->GetEventHandlerForPoint(
       gfx::ToFlooredPoint(drag_location_));

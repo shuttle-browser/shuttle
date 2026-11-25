@@ -12,11 +12,15 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import android.app.Activity;
+import android.content.Context;
 import android.content.res.ColorStateList;
+import android.graphics.Rect;
 import android.graphics.drawable.Drawable;
 import android.os.SystemClock;
+import android.view.ContextThemeWrapper;
 import android.view.InputDevice;
 import android.view.MotionEvent;
+import android.view.Surface;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.accessibility.AccessibilityNodeInfo;
@@ -34,10 +38,13 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.robolectric.Robolectric;
 
+import org.chromium.base.Token;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.Features.EnableFeatures;
@@ -46,9 +53,12 @@ import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler.AppMenuItemType;
 import org.chromium.components.browser_ui.util.motion.MotionEventInfo;
 import org.chromium.components.browser_ui.util.motion.MotionEventTestUtils;
 import org.chromium.ui.base.TestActivity;
+import org.chromium.ui.hierarchicalmenu.HierarchicalMenuController;
 import org.chromium.ui.modelutil.MVCListAdapter;
 import org.chromium.ui.modelutil.ModelListAdapter;
 import org.chromium.ui.modelutil.PropertyModel;
+
+import java.util.List;
 
 /** Tests for {@link AppMenuItemViewBinder}. */
 @RunWith(BaseRobolectricTestRunner.class)
@@ -92,6 +102,10 @@ public class AppMenuItemViewBinderTest {
     static final String TITLE_8 = "Menu Item Eight";
 
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+
+    @Mock private AppMenuHandlerImpl mAppMenuHandler;
+
+    @Mock private HierarchicalMenuController<AppMenu.AppMenuPopup> mHierarchicalMenuController;
 
     private Activity mActivity;
     private MVCListAdapter.ModelList mMenuList;
@@ -619,6 +633,117 @@ public class AppMenuItemViewBinderTest {
     }
 
     @Test
+    public void testConvertView_TabGroup_RecyclingAndSeparationFromStandard() {
+        Token token1 = new Token(1L, 2L);
+        Token token2 = new Token(3L, 4L);
+
+        // 1. STANDARD item (has AppMenuItemProperties.ALL_KEYS, lacks TAB_GROUP_ID).
+        PropertyModel standardModel =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID1)
+                        .with(AppMenuItemProperties.TITLE, TITLE_1)
+                        .build();
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.STANDARD, standardModel));
+
+        // 2. TAB_GROUP item 1 (has AppMenuTabGroupItemProperties.ALL_KEYS).
+        PropertyModel tabGroupModel1 =
+                new PropertyModel.Builder(AppMenuTabGroupItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID2)
+                        .with(AppMenuItemProperties.TITLE, TITLE_2)
+                        .with(AppMenuTabGroupItemProperties.TAB_GROUP_ID, token1)
+                        .build();
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.TAB_GROUP, tabGroupModel1));
+
+        // 3. TAB_GROUP item 2 (has AppMenuTabGroupItemProperties.ALL_KEYS).
+        PropertyModel tabGroupModel2 =
+                new PropertyModel.Builder(AppMenuTabGroupItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID3)
+                        .with(AppMenuItemProperties.TITLE, TITLE_3)
+                        .with(AppMenuTabGroupItemProperties.TAB_GROUP_ID, token2)
+                        .build();
+        mMenuList.add(new MVCListAdapter.ListItem(AppMenuItemType.TAB_GROUP, tabGroupModel2));
+
+        // 4. STANDARD_NO_ICON item (has AppMenuItemProperties.ALL_KEYS).
+        PropertyModel standardNoIconModel =
+                new PropertyModel.Builder(AppMenuItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID4)
+                        .with(AppMenuItemProperties.TITLE, TITLE_4)
+                        .build();
+        mMenuList.add(
+                new MVCListAdapter.ListItem(AppMenuItemType.STANDARD_NO_ICON, standardNoIconModel));
+
+        // 5. TAB_GROUP_NO_ICON item 1 (has AppMenuTabGroupItemProperties.ALL_KEYS).
+        PropertyModel tabGroupNoIconModel1 =
+                new PropertyModel.Builder(AppMenuTabGroupItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID5)
+                        .with(AppMenuItemProperties.TITLE, TITLE_5)
+                        .with(AppMenuTabGroupItemProperties.TAB_GROUP_ID, token1)
+                        .build();
+        mMenuList.add(
+                new MVCListAdapter.ListItem(
+                        AppMenuItemType.TAB_GROUP_NO_ICON, tabGroupNoIconModel1));
+
+        // 6. TAB_GROUP_NO_ICON item 2 (has AppMenuTabGroupItemProperties.ALL_KEYS).
+        PropertyModel tabGroupNoIconModel2 =
+                new PropertyModel.Builder(AppMenuTabGroupItemProperties.ALL_KEYS)
+                        .with(AppMenuItemProperties.MENU_ITEM_ID, MENU_ID6)
+                        .with(AppMenuItemProperties.TITLE, TITLE_6)
+                        .with(AppMenuTabGroupItemProperties.TAB_GROUP_ID, token2)
+                        .build();
+        mMenuList.add(
+                new MVCListAdapter.ListItem(
+                        AppMenuItemType.TAB_GROUP_NO_ICON, tabGroupNoIconModel2));
+
+        // Verify distinct item view types prevent recycling collisions.
+        assertEquals(AppMenuItemType.STANDARD, mModelListAdapter.getItemViewType(0));
+        assertEquals(AppMenuItemType.TAB_GROUP, mModelListAdapter.getItemViewType(1));
+        assertEquals(AppMenuItemType.TAB_GROUP, mModelListAdapter.getItemViewType(2));
+        assertEquals(AppMenuItemType.STANDARD_NO_ICON, mModelListAdapter.getItemViewType(3));
+        assertEquals(AppMenuItemType.TAB_GROUP_NO_ICON, mModelListAdapter.getItemViewType(4));
+        assertEquals(AppMenuItemType.TAB_GROUP_NO_ICON, mModelListAdapter.getItemViewType(5));
+
+        ViewGroup parentView = mActivity.findViewById(android.R.id.content);
+
+        // Standard view must not be reused for TabGroup (different item type).
+        View standardView = mModelListAdapter.getView(0, null, parentView);
+        View tabGroupView1 = mModelListAdapter.getView(1, standardView, parentView);
+        assertNotEquals(
+                "Standard view should not have been re-used for TabGroup",
+                standardView,
+                tabGroupView1);
+
+        // TabGroup view can be safely reused for another TabGroup item without throwing
+        // IllegalArgumentException.
+        View tabGroupView2 = mModelListAdapter.getView(2, tabGroupView1, parentView);
+        assertEquals(
+                "TabGroup view should be re-used for another TabGroup item",
+                tabGroupView1,
+                tabGroupView2);
+        TextView titleView = tabGroupView2.findViewById(R.id.menu_item_text);
+        assertEquals("Incorrect title text after TabGroup recycling", TITLE_3, titleView.getText());
+
+        // StandardNoIcon view must not be reused for TabGroupNoIcon (different item type).
+        View standardNoIconView = mModelListAdapter.getView(3, null, parentView);
+        View tabGroupNoIconView1 = mModelListAdapter.getView(4, standardNoIconView, parentView);
+        assertNotEquals(
+                "StandardNoIcon view should not have been re-used for TabGroupNoIcon",
+                standardNoIconView,
+                tabGroupNoIconView1);
+
+        // TabGroupNoIcon view can be safely reused for another TabGroupNoIcon item.
+        View tabGroupNoIconView2 = mModelListAdapter.getView(5, tabGroupNoIconView1, parentView);
+        assertEquals(
+                "TabGroupNoIcon view should be re-used for another TabGroupNoIcon item",
+                tabGroupNoIconView1,
+                tabGroupNoIconView2);
+        TextView noIconTitleView = tabGroupNoIconView2.findViewById(R.id.menu_item_text);
+        assertEquals(
+                "Incorrect title text after TabGroupNoIcon recycling",
+                TITLE_6,
+                noIconTitleView.getText());
+    }
+
+    @Test
     public void testTitleMenuItem_Checkbox() {
         createTitleMenuItem(MENU_ID2, TITLE_2, null, MENU_ID3, TITLE_3, true, true);
 
@@ -897,5 +1022,63 @@ public class AppMenuItemViewBinderTest {
         AccessibilityNodeInfo info = AccessibilityNodeInfo.obtain();
         button.onInitializeAccessibilityNodeInfo(info);
         assertFalse("Accessibility should not show selected", info.isSelected());
+    }
+
+    @Test
+    public void testAppMenuShow_NarrowWindowHidesShortcutHints() {
+        PropertyModel model = createStandardMenuItem(MENU_ID1, "A".repeat(200));
+        model.set(AppMenuItemProperties.SHORTCUT_TEXT, "Ctrl+T");
+
+        AppMenu appMenu =
+                new AppMenu(mAppMenuHandler, mActivity.getResources(), mHierarchicalMenuController);
+        AppMenu.InitialSizingHelper sizingHelper = Mockito.mock(AppMenu.InitialSizingHelper.class);
+        Mockito.when(sizingHelper.canBeLastVisibleInitialView(Mockito.anyInt())).thenReturn(true);
+        Context themedContext = new ContextThemeWrapper(mActivity, R.style.AppMenuThemeOverlay);
+        View anchorView = mActivity.findViewById(android.R.id.content);
+
+        appMenu.updateMenu(sizingHelper, mModelListAdapter);
+        appMenu.show(
+                themedContext,
+                anchorView,
+                /* isByPermanentButton= */ false,
+                Surface.ROTATION_0,
+                new Rect(0, 0, 1000, 1000),
+                /* footer= */ null,
+                /* header= */ null,
+                /* highlightedItemId= */ null,
+                /* isMenuIconAtStart= */ false,
+                /* controlsPosition= */ 0,
+                /* addTopPaddingBeforeFirstRow= */ false,
+                /* isFromBottomBar= */ false,
+                /* reservedTopSpace= */ 0,
+                /* flyoutHandler= */ null);
+        assertFalse(appMenu.shouldHideShortcutHints());
+        assertEquals("Ctrl+T", model.get(AppMenuItemProperties.SHORTCUT_TEXT));
+
+        int minWidth = mActivity.getResources().getDimensionPixelSize(R.dimen.menu_width_min);
+        appMenu.updateMenu(sizingHelper, mModelListAdapter);
+        appMenu.show(
+                themedContext,
+                anchorView,
+                /* isByPermanentButton= */ false,
+                Surface.ROTATION_0,
+                new Rect(0, 0, minWidth, 1000),
+                /* footer= */ null,
+                /* header= */ null,
+                /* highlightedItemId= */ null,
+                /* isMenuIconAtStart= */ false,
+                /* controlsPosition= */ 0,
+                /* addTopPaddingBeforeFirstRow= */ false,
+                /* isFromBottomBar= */ false,
+                /* reservedTopSpace= */ 0,
+                /* flyoutHandler= */ null);
+        assertTrue(appMenu.shouldHideShortcutHints());
+        assertNull(model.get(AppMenuItemProperties.SHORTCUT_TEXT));
+
+        PropertyModel submenuModel = createStandardMenuItem(MENU_ID2, TITLE_2);
+        submenuModel.set(AppMenuItemProperties.SHORTCUT_TEXT, "Ctrl+H");
+        AppMenu.clearShortcutHints(
+                List.of(new MVCListAdapter.ListItem(AppMenuItemType.STANDARD, submenuModel)));
+        assertNull(submenuModel.get(AppMenuItemProperties.SHORTCUT_TEXT));
     }
 }

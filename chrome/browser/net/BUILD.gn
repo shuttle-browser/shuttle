@@ -49,7 +49,6 @@ source_set("net") {
     "proxy_config_monitor.h",
     "proxy_service_factory.h",
     "qwac_web_contents_observer.h",
-    "referrer.h",
     "secure_dns_config.h",
     "secure_dns_policy_handler.h",
     "secure_dns_util.h",
@@ -157,7 +156,6 @@ source_set("impl") {
     "proxy_config_monitor.cc",
     "proxy_service_factory.cc",
     "qwac_web_contents_observer.cc",
-    "referrer.cc",
     "secure_dns_config.cc",
     "secure_dns_policy_handler.cc",
     "secure_dns_util.cc",
@@ -551,7 +549,6 @@ if (!is_android) {
       ":test_support",
       "//base",
       "//chrome/browser",
-      "//chrome/browser:browser_process_impl",
       "//chrome/browser:browser_process_platform_part",
       "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/policy:test_support",
@@ -566,7 +563,6 @@ if (!is_android) {
       "//chrome/test/base:browser_test_waiters",
       "//chrome/test/base:test_launcher_utils",
       "//chrome/test/base:web_feature_histogram_tester",
-      "//components/component_updater/installer_policies",
       "//components/cookie_config",
       "//components/embedder_support",
       "//components/embedder_support:user_agent",
@@ -608,9 +604,6 @@ if (!is_android) {
       deps += [ "//chrome/browser/ssl:cert_verifier_test_support" ]
     }
 
-    # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-    # enable the diagnostic by removing this line.
-    configs += [ "//build/config/compiler:no_exit_time_destructors" ]
     if (is_chromeos) {
       deps += [ "//chrome/browser/ui/ash/login" ]
     }

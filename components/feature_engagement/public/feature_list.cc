@@ -43,9 +43,6 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHAndroidBottomBarAddressBar,
     &kIPHAndroidBottomBarEducation,
     &kIPHAndroidBottomBarEducationTooltips,
-    &kIPHAndroidBottomBarGlic,
-    &kIPHAndroidBottomBarNewTab,
-    &kIPHAndroidBottomBarPromoDialog,
     &kIPHAndroidTabDeclutter,
     &kIPHAndroidVerticalTabsNewLabel,
     &kIPHAndroidVerticalTabsPromoFeature,
@@ -97,6 +94,7 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHMicToolbarFeature,
     &kIPHMostVisitedTilesCustomizationPinFeature,
     &kIPHNewTabPageThemeCustomizationFeature,
+    &kIPHNewTabPageThemeCustomizationMagicStackFeature,
     &kIPHPageInfoFeature,
     &kIPHPageInfoStoreInfoFeature,
     &kIPHPageSummaryPdfMenuFeature,
@@ -174,7 +172,6 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHiOSBackendPromoFeature,
     &kIPHiOSBackgroundNewBadge,
     &kIPHiOSBottomOmniboxFeature,
-    &kIPHiOSContextualPanelPriceInsightsFeature,
     &kIPHiOSContextualPanelSampleModelFeature,
     &kIPHiOSDefaultBrowserBadgeEligibilityFeature,
     &kIPHiOSDefaultBrowserBannerPromoFeature,
@@ -246,15 +243,12 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHiOSSwipeToolbarToChangeTabFeature,
     &kIPHiOSSwitchAccountsWithNTPAccountParticleDiscFeature,
     &kIPHiOSTabGridSwipeRightForIncognito,
-    &kIPHiOSWelcomeBackFeature,
     &kIPHLongPressToolbarTipFeature,
     &kIPHPriceNotificationsWhileBrowsingFeature,
     &kIPHReadingListMessagesFeature,
     &kIPHWhatsNewFeature,
     &kIPHWhatsNewUpdatedFeature,
 // keep-sorted end
-#else
-    &kIPHResumptionRailFeature,
 #endif  // BUILDFLAG(IS_IOS)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_APPLE) || BUILDFLAG(IS_LINUX) || \
@@ -268,6 +262,7 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHExtensionsZeroStatePromoFeature,
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
     // keep-sorted start case=no
+    &kIPH_VerticalTabsTabGroupsInOrganizerFeature,
     &kIPHBackNavigationMenuFeature,
     &kIPHBatterySaverModeFeature,
     &kIPHBookmarkBarSimplifiedFeature,
@@ -298,7 +293,8 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHGMCCastStartStopFeature,
     &kIPHGMCLocalMediaCastingFeature,
     &kIPHGMCSaveVideoFrameFeature,
-    &kIPHHistorySearchFeature,
+    &kIPHIndigoContextMenuSnoozeFeature,
+    &kIPHIndigoContextMenuToastFeature,
     &kIPHLensOverlayFeature,
     &kIPHMemorySaverModeFeature,
     &kIPHMultistepFilterPromoFeature,
@@ -349,6 +345,7 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHSplitViewHorizontalIndirectAccessFeature,
     &kIPHTabAudioMutingFeature,
     &kIPHTabGroupsFocusingFeature,
+    &kIPHTabGroupsNonGroupFocusingFeature,
     &kIPHTabGroupsSaveV2CloseGroupFeature,
     &kIPHTabGroupsSaveV2IntroFeature,
     &kIPHTabGroupsSharedTabChangedFeature,
@@ -410,8 +407,6 @@ const base::Feature* const kAllFeatures[] = {
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
     // keep-sorted start case=no
-    &kIPHSignInBenefitsFeature,
-    &kIPHSignInBenefitsNewSigninFeature,
     &kIPHSupervisedUserProfileSigninFeature,
 // keep-sorted end
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)

@@ -44,12 +44,7 @@ class SidePanelCoordinator final : public SidePanelUIBase,
   SidePanelCoordinator& operator=(const SidePanelCoordinator&) = delete;
   ~SidePanelCoordinator() override;
 
-  DECLARE_USER_DATA(SidePanelCoordinator);
-
-  static SidePanelCoordinator* From(
-      BrowserWindowInterface* browser_window_interface);
-
-  void TearDownPreBrowserWindowDestruction();
+  void TearDownPreBrowserWindowDestruction() override;
 
   // SidePanelUI:
   using SidePanelUI::Close;
@@ -59,6 +54,8 @@ class SidePanelCoordinator final : public SidePanelUIBase,
               SidePanelOpenTrigger open_trigger) override;
   void ShowFrom(SidePanelEntryKey entry_key,
                 gfx::Rect starting_bounds_in_browser_coordinates) override;
+  void OverrideContentsWidth(int width) override;
+  void ResetContentsWidthOverride() override;
 
   // SidePanelUIBase:
   using SidePanelUIBase::Show;
@@ -70,8 +67,6 @@ class SidePanelCoordinator final : public SidePanelUIBase,
 
   content::WebContents* GetWebContentsForTest(SidePanelEntryId id) override;
   void DisableAnimationsForTesting() override;
-
-  SidePanelEntry* GetLoadingEntryForTesting() const;
 
  private:
   // Returns the corresponding entry for `entry_key` or a nullptr if this key is
@@ -115,8 +110,6 @@ class SidePanelCoordinator final : public SidePanelUIBase,
 
   base::ScopedObservation<views::View, views::ViewObserver>
       side_panel_observation_{this};
-
-  ui::ScopedUnownedUserData<SidePanelCoordinator> scoped_unowned_user_data_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_SIDE_PANEL_SIDE_PANEL_COORDINATOR_H_

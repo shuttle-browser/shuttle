@@ -54,9 +54,7 @@ public class ApplicationStatus {
         private boolean mHasWindowFocus;
         private final ObserverList<ActivityStateListener> mListeners = new ObserverList<>();
 
-        /**
-         * @return The current {@link ActivityState} of the activity.
-         */
+        /** Returns the current {@link ActivityState} of the activity. */
         @ActivityState
         public int getStatus() {
             return mStatus;
@@ -69,9 +67,7 @@ public class ApplicationStatus {
             mStatus = status;
         }
 
-        /**
-         * @return Whether the activity has window focus.
-         */
+        /** Returns whether the activity has window focus. */
         public boolean hasWindowFocus() {
             return mHasWindowFocus;
         }
@@ -83,9 +79,7 @@ public class ApplicationStatus {
             mHasWindowFocus = hasWindowFocus;
         }
 
-        /**
-         * @return A list of {@link ActivityStateListener}s listening to this activity.
-         */
+        /** Returns a list of {@link ActivityStateListener}s listening to this activity. */
         public ObserverList<ActivityStateListener> getListeners() {
             return mListeners;
         }
@@ -474,7 +468,7 @@ public class ApplicationStatus {
     }
 
     /**
-     * @return The most recent focused {@link Activity} tracked by this class.  Being focused means
+     * Returns the most recent focused {@link Activity} tracked by this class. Being focused means
      * out of all the activities tracked here, it has most recently gained window focus.
      */
     @MainThread
@@ -482,9 +476,7 @@ public class ApplicationStatus {
         return sActivity;
     }
 
-    /**
-     * @return A {@link List} of all non-destroyed {@link Activity}s.
-     */
+    /** Returns a {@link List} of all non-destroyed {@link Activity}s. */
     @AnyThread
     public static List<Activity> getRunningActivities() {
         assert isInitialized();
@@ -547,9 +539,7 @@ public class ApplicationStatus {
         }
     }
 
-    /**
-     * @return The state of the application (see {@link ApplicationState}).
-     */
+    /** Returns the state of the application (see {@link ApplicationState}). */
     @AnyThread
     @ApplicationState
     @CalledByNative
@@ -777,14 +767,14 @@ public class ApplicationStatus {
     }
 
     /**
-     * Determines the current application state as defined by {@link ApplicationState}.  This will
+     * Determines the current application state as defined by {@link ApplicationState}. This will
      * loop over all the activities and check their state to determine what the general application
      * state should be.
      *
      * @return HAS_RUNNING_ACTIVITIES if any activity is not paused, stopped, or destroyed.
-     * HAS_PAUSED_ACTIVITIES if none are running and one is paused.
-     * HAS_STOPPED_ACTIVITIES if none are running/paused and one is stopped.
-     * HAS_DESTROYED_ACTIVITIES if none are running/paused/stopped.
+     *     HAS_PAUSED_ACTIVITIES if none are running and one is paused. HAS_STOPPED_ACTIVITIES if
+     *     none are running/paused and one is stopped. HAS_DESTROYED_ACTIVITIES if none are
+     *     running/paused/stopped.
      */
     @ApplicationState
     @GuardedBy("sActivityInfo")

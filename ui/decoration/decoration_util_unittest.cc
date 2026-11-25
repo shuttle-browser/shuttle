@@ -26,6 +26,8 @@ constexpr SkColor kBorder = SK_ColorRED;
 
 // Tests the ShadowDetailsKey works properly for shadow details cache.
 TEST(ShadowUtilTest, ShadowDetailsKey) {
+  ShadowDetails::ClearDetailsCacheForTest();
+
   // Make a cache for the generated details such that they will not be removed
   // from the shadow details cache.
   std::vector<ShadowDetails> details;
@@ -111,14 +113,22 @@ TEST(HighlightBorderGeneratorTest, Insets) {
   EXPECT_EQ(gfx::Outsets(), HighlightBorderGenerator::GetMargins(thick));
   EXPECT_EQ(gfx::Insets(12), HighlightBorderGenerator::GetNineboxApertureInsets(
                                  thick, gfx::RoundedCornersF(8)));
+
+  const HighlightBorderValue pill(kHighlight, kBorder, /*thickness=*/1,
+                                  /*is_pill_shaped=*/true);
+  EXPECT_EQ(gfx::Outsets(), HighlightBorderGenerator::GetMargins(pill));
+  EXPECT_EQ(gfx::Insets(18), HighlightBorderGenerator::GetNineboxApertureInsets(
+                                 pill, gfx::RoundedCornersF(18)));
+  EXPECT_EQ(gfx::Insets::TLBR(18, 18, 18, 2),
+            HighlightBorderGenerator::GetNineboxApertureInsets(
+                pill, gfx::RoundedCornersF(18, 0, 0, 18)));
 }
 
 // Tests that the details cache is keyed on the corner radii and every field of
 // the HighlightBorderValue.
 TEST(HighlightBorderGeneratorTest, DetailsCacheKey) {
-  // Colors no other test uses, so that the first lookup misses and evicts any
-  // unowned entries left behind by other tests; the cache growth is then
-  // measured relative to that first insertion.
+  HighlightBorderDetails::ClearDetailsCacheForTest();
+
   constexpr SkColor kUniqueHighlight = SkColorSetRGB(0x12, 0x34, 0x56);
   constexpr SkColor kUniqueBorder = SkColorSetRGB(0x65, 0x43, 0x21);
   const gfx::RoundedCornersF radii(4);
@@ -158,6 +168,12 @@ TEST(HighlightBorderGeneratorTest, DetailsCacheKey) {
       radii,
       HighlightBorderValue(kUniqueHighlight, kUniqueBorder, /*thickness=*/2)));
   EXPECT_EQ(base_size + 4,
+            HighlightBorderDetails::GetDetailsCacheSizeForTest());
+
+  details.push_back(HighlightBorderDetails::Get(
+      radii, HighlightBorderValue(kUniqueHighlight, kUniqueBorder,
+                                  /*thickness=*/1, /*is_pill_shaped=*/true)));
+  EXPECT_EQ(base_size + 5,
             HighlightBorderDetails::GetDetailsCacheSizeForTest());
 }
 
@@ -210,6 +226,8 @@ TEST(CompositeGeneratorTest, Insets) {
 }
 
 TEST(CompositeGeneratorTest, DetailsCacheKey) {
+  TestCompositeDetails::ClearDetailsCacheForTest();
+
   constexpr SkColor kUniqueHighlight = SkColorSetRGB(0x23, 0x45, 0x67);
   constexpr SkColor kUniqueBorder = SkColorSetRGB(0x76, 0x54, 0x32);
   const gfx::RoundedCornersF radii(4);

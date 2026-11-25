@@ -149,9 +149,10 @@ class CORE_EXPORT MediaQueryExpValue {
     kContainer = 1 << 4,
     kTreeCounting = 1 << 5,
     kLineHeightRelative = 1 << 6,
+    kAttr = 1 << 7,
   };
 
-  static const int kUnitFlagsBits = 7;
+  static const int kUnitFlagsBits = 8;
 
   unsigned GetUnitFlags() const;
 
@@ -177,7 +178,7 @@ class CORE_EXPORT MediaQueryExpValue {
   //
   // std::nullopt is returned on errors.
   static std::optional<MediaQueryExpValue> Consume(
-      const String& lower_media_feature,
+      const AtomicString& lower_media_feature,
       CSSParserTokenStream&,
       const CSSParserContext&,
       bool supports_element_dependent);
@@ -330,8 +331,8 @@ class CORE_EXPORT MediaQueryExp {
   enum class Type { kMediaFeature, kCustomMedia, kStyleRange, kInvalid };
 
   MediaQueryExp() = default;
-  MediaQueryExp(const String& media_feature, const MediaQueryExpValue&);
-  MediaQueryExp(const String& media_feature,
+  MediaQueryExp(const AtomicString& media_feature, const MediaQueryExpValue&);
+  MediaQueryExp(const AtomicString& media_feature,
                 const MediaQueryExpBounds&,
                 Type type);
   MediaQueryExp(const CSSUnparsedDeclarationValue& reference_value,

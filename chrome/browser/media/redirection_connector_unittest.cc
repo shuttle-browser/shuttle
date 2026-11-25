@@ -74,7 +74,6 @@ class FakeRemoter final : public media::mojom::Remoter {
     ++start_count_;
     source_->OnStarted();
   }
-  void StartWithPermissionAlreadyGranted() override { Start(); }
   void StartDataStreams(
       mojo::ScopedDataPipeConsumerHandle audio_pipe,
       mojo::ScopedDataPipeConsumerHandle video_pipe,
@@ -193,10 +192,7 @@ class MockRemotingSource : public media::mojom::RemotingSource {
 
 class RedirectionConnectorTest : public ::testing::Test {
  public:
-  RedirectionConnectorTest()
-      : cast_connector_(&pref_service_,
-                        kRemotingTabId,
-                        std::make_unique<MediaRemotingDialogCoordinator>()) {
+  RedirectionConnectorTest() : cast_connector_(&pref_service_, kRemotingTabId) {
     cast_connector_.set_remoting_allowed_for_testing(true);
   }
 

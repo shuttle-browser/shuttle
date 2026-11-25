@@ -14,6 +14,7 @@
 #include "base/check.h"
 #include "base/feature_list.h"
 #include "base/memory/raw_ptr_exclusion.h"
+#include "base/numerics/checked_math.h"
 #include "base/trace_event/trace_event.h"
 #include "base/types/expected.h"
 #include "components/viz/common/display/renderer_settings.h"
@@ -22,6 +23,7 @@
 #include "components/viz/common/quads/debug_border_draw_quad.h"
 #include "components/viz/service/debugger/viz_debugger.h"
 #include "components/viz/service/display/display_resource_provider.h"
+#include "components/viz/service/display/full_screen_video_util.h"
 #include "components/viz/service/display/output_surface.h"
 #include "components/viz/service/display/overlay_candidate.h"
 #include "components/viz/service/display/overlay_candidate_factory.h"
@@ -127,24 +129,6 @@ OverlayCandidateFactory::OverlayContext WindowsDelegatedOverlayContext() {
   context.supports_mask_filter = true;
   context.transform_and_clip_rpdq = true;
   return context;
-}
-
-// Center and scale `rect` inside `target_size` to the largest size such that it
-// maintains its aspect ratio and is fully contained by `target_size`.
-gfx::RectF ContainedAndCenteredRect(const gfx::RectF& rect,
-                                    const gfx::SizeF& target_size) {
-  // Scale factor that makes `rect` fit inside `target_size`, touching at least
-  // two opposite sides.
-  const double rect_to_target_size_scale = std::min(
-      target_size.width() / rect.width(), target_size.height() / rect.height());
-
-  gfx::RectF scaled_and_centered_rect = gfx::RectF(rect.size());
-  scaled_and_centered_rect.Scale(rect_to_target_size_scale);
-  scaled_and_centered_rect.Offset(
-      (target_size.width() - scaled_and_centered_rect.width()) / 2.0,
-      (target_size.height() - scaled_and_centered_rect.height()) / 2.0);
-
-  return scaled_and_centered_rect;
 }
 
 }  // anonymous namespace
@@ -530,6 +514,11 @@ OverlayProcessorWin::TryDelegatedCompositing(
 
   int draw_quad_rounded_corner_count = 0;
 
+  SharedQuadStateToOverlayLayerId sqs_to_overlay_layer_id;
+  base::flat_map<gfx::OverlayLayerId::SharedQuadStateLayerId,
+                 base::CheckedNumeric<uint32_t>>
+      sqs_child_z_order;
+
   // The quad that renders underneath the current quad in the following loop.
   const DrawQuad* quad_below = nullptr;
 
@@ -548,8 +537,7 @@ OverlayProcessorWin::TryDelegatedCompositing(
             // mode as an approximation of the monitor size.
             const gfx::Rect display_rect = root_render_pass->output_rect;
             dc_layer->possible_video_fullscreen_letterboxing =
-                DCLayerOverlayProcessor::IsPossibleFullScreenLetterboxing(
-                    quad_below, display_rect);
+                IsPossibleFullScreenLetterboxing(quad_below, display_rect);
           }
         } else {
           // This quad can be intentionally skipped.
@@ -560,9 +548,12 @@ OverlayProcessorWin::TryDelegatedCompositing(
       }
     }
 
-    dc_layer->layer_id =
-        gfx::OverlayLayerId(quad->shared_quad_state->layer_namespace_id,
-                            quad->shared_quad_state->layer_id);
+    const gfx::OverlayLayerId sqs_layer_id =
+        sqs_to_overlay_layer_id.GetOrCreateUniqueOverlayId(
+            quad->shared_quad_state);
+    dc_layer->layer_id = sqs_layer_id.MakeForChildOfSharedQuadStateLayer(
+        (++sqs_child_z_order[sqs_layer_id.shared_quad_state_layer_id().value()])
+            .ValueOrDie());
 
     // Store metadata on RPDQ overlays for post-processing in
     // |UpdatePromotedRenderPassProperties| to support partially delegated
@@ -659,44 +650,6 @@ void OverlayProcessorWin::TryPromoteFullScreenVideo(
       OverlayCandidate::DisplayRectInTargetSpace(*frontmost_candidate_it);
   const gfx::Rect& root_pass_output_rect = root_render_pass.output_rect;
 
-  // The ideal rect is `target_rect` scaled to fit and centered inside the full
-  // screen render pass output rect.
-  gfx::RectF ideal_full_screen_rect = ContainedAndCenteredRect(
-      target_rect, gfx::SizeF(root_pass_output_rect.size()));
-
-  // Allow up to a pixel of wiggle room for checking the clip rect and
-  // centeredness of the video. This is in case the browser doesn't embed--or
-  // the video renderer doesn't supply--a perfectly placed video quad. We
-  // therefore assume that up to a pixel of adjustment is forgivable.
-  constexpr float kTightTolerance = 1.0f;
-
-  if (ideal_full_screen_rect.ApproximatelyEqual(
-          gfx::RectF(root_pass_output_rect), kTightTolerance,
-          kTightTolerance)) {
-    // Snap the "ideal" rect to the monitor rect if we are close enough.
-    //
-    // One of cases that `kTightTolerance` addresses is with non-integer device
-    // scale factors, which can result in a root frame size that is one rounded
-    // up to be one pixel larger than the monitor size.
-    ideal_full_screen_rect = gfx::RectF(root_pass_output_rect);
-  }
-
-  const bool candidate_is_not_clipped =
-      !frontmost_candidate_it->clip_rect ||
-      gfx::RectF(frontmost_candidate_it->clip_rect.value())
-          .ApproximatelyEqual(ideal_full_screen_rect, kTightTolerance,
-                              kTightTolerance);
-  if (!candidate_is_not_clipped) {
-    // If the video is clipped (and the clip rect is not equal to the target
-    // rect), then we cannot apply the full screen optimization since we do
-    // not currently support using the clipped region as the source rect for
-    // video frames.
-    //
-    // We conservatively don't allow clip rects that are larger than the video,
-    // but this may not be a requirement.
-    return;
-  }
-
   // `DirectCompositionLetterboxVideoOptimization` can adjust videos that
   // are almost letterboxed by a small amount to allow more videos to
   // utilize the full screen optimizations. The larger this tolerance, the
@@ -705,16 +658,25 @@ void OverlayProcessorWin::TryPromoteFullScreenVideo(
       !disable_direct_composition_letterbox_video_optimization_ &&
       base::FeatureList::IsEnabled(
           features::kDirectCompositionLetterboxVideoOptimization);
-  const float tolerance = fix_almost_full_screen ? 10.f : kTightTolerance;
+  const float tolerance =
+      fix_almost_full_screen ? 10.f : kFullScreenVideoTightTolerance;
 
-  if (!target_rect.ApproximatelyEqual(ideal_full_screen_rect, tolerance,
-                                      tolerance)) {
-    // We can possibly allow the full screen optimization for videos on frames
-    // that contain a video with only a black background behind it, but we would
-    // need better detection of the background mat to do so (i.e.
-    // `possible_video_fullscreen_letterboxing`).
+  // If the video is clipped (and the clip rect is not equal to the target
+  // rect), then we cannot apply the full screen optimization since we do not
+  // currently support using the clipped region as the source rect for video
+  // frames.
+  //
+  // We can possibly allow the full screen optimization for videos on frames
+  // that contain a video with only a black background behind it, but we would
+  // need better detection of the background mat to do so (i.e.
+  // `possible_video_fullscreen_letterboxing`).
+  const std::optional<gfx::RectF> full_screen_rect =
+      GetFullScreenVideoRect(target_rect, frontmost_candidate_it->clip_rect,
+                             root_pass_output_rect, tolerance);
+  if (!full_screen_rect) {
     return;
   }
+  const gfx::RectF& ideal_full_screen_rect = *full_screen_rect;
 
   frontmost_candidate_it->display_rect = ideal_full_screen_rect;
   frontmost_candidate_it->transform = gfx::Transform();

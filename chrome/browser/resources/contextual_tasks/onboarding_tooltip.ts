@@ -11,9 +11,10 @@ import {loadTimeData} from '//resources/js/load_time_data.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 
-import {BrowserProxyImpl} from './contextual_tasks_browser_proxy.js';
+import {browserProxyFactory} from './contextual_tasks.mojom-webui.js';
 import {getCss} from './onboarding_tooltip.css.js';
 import {getHtml} from './onboarding_tooltip.html.js';
+import {recordAction} from './utils.js';
 
 export class ContextualTasksOnboardingTooltipElement extends CrLitElement {
   static get is() {
@@ -143,6 +144,7 @@ export class ContextualTasksOnboardingTooltipElement extends CrLitElement {
         this.tooltipImpressionTimer_ = setTimeout(() => {
           this.numberOfTimesTooltipShown_++;
           this.tooltipImpressionTimer_ = null;
+          recordAction('ContextualTasks.OnboardingTooltip.Shown');
         }, this.tooltipImpressionDelay_);
       }
     }
@@ -207,7 +209,13 @@ export class ContextualTasksOnboardingTooltipElement extends CrLitElement {
 
   protected onTooltipCloseClick_(e: Event) {
     e.stopPropagation();
-    BrowserProxyImpl.getInstance().handler.onboardingTooltipDismissed();
+    // Accepting before the impression delay elapsed still counts as having
+    // seen the tooltip, so that every Accepted follows a Shown.
+    if (this.tooltipImpressionTimer_) {
+      recordAction('ContextualTasks.OnboardingTooltip.Shown');
+    }
+    browserProxyFactory.getInstance().handler.onboardingTooltipDismissed();
+    recordAction('ContextualTasks.OnboardingTooltip.Accepted');
     this.userDismissedTooltip_ = true;
     this.onboardingTooltipIsVisible_ = false;
     this.stopObservingTooltipResize_();
@@ -234,7 +242,7 @@ export class ContextualTasksOnboardingTooltipElement extends CrLitElement {
 
   protected onHelpLinkClick_(e: Event) {
     e.preventDefault();
-    BrowserProxyImpl.getInstance().handler.openOnboardingHelpUi();
+    browserProxyFactory.getInstance().handler.openOnboardingHelpUi();
   }
 }
 

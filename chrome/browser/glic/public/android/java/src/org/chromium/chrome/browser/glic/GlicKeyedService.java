@@ -40,13 +40,13 @@ public interface GlicKeyedService {
         GlicInvocationSource.NUDGE,
         GlicInvocationSource.THREE_DOTS_MENU,
         GlicInvocationSource.SHARED_IMAGE,
-        GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU,
         GlicInvocationSource.TOOLBAR_BUTTON,
         GlicInvocationSource.TAB_CONTEXT_MENU,
         GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU_LINK,
         GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU_PAGE,
         GlicInvocationSource.WEB_CONTENTS_CONTEXT_MENU_TEXT_SELECTION,
         GlicInvocationSource.ACTOR_TOOL,
+        GlicInvocationSource.ACTIVITY_LIST_BUBBLE,
         GlicInvocationSource.MAX_VALUE,
     })
     @Retention(RetentionPolicy.SOURCE)
@@ -56,15 +56,15 @@ public interface GlicKeyedService {
         int NUDGE = 6;
         int THREE_DOTS_MENU = 7;
         int SHARED_IMAGE = 13;
-        int WEB_CONTENTS_CONTEXT_MENU = 23;
         int TOOLBAR_BUTTON = 31;
         int TAB_CONTEXT_MENU = 41;
         int WEB_CONTENTS_CONTEXT_MENU_LINK = 46;
         int WEB_CONTENTS_CONTEXT_MENU_PAGE = 47;
         int WEB_CONTENTS_CONTEXT_MENU_TEXT_SELECTION = 48;
         int ACTOR_TOOL = 49;
+        int ACTIVITY_LIST_BUBBLE = 50;
         // Must match the largest mojom value, since MAX_VALUE + 1 bounds Glic.EntryPoint.Click.
-        int MAX_VALUE = 49;
+        int MAX_VALUE = 50;
     }
 
     // LINT.ThenChange(//chrome/common/glic_enums.mojom:InvocationSource)
@@ -100,11 +100,17 @@ public interface GlicKeyedService {
      * Invokes the Glic service with a prompt prepopulated in the input box.
      *
      * @param tab The {@link Tab} to target.
+     * @param frame The {@link RenderFrameHost} the prompt was taken from.
      * @param text The text prompt to populate.
      * @param invocationSource How the UI was triggered.
-     * @return true if Glic was successfully invoked with the prompt.
+     * @return true if Glic was invoked with the prompt attached. Enterprise policy checks run
+     *     afterwards and may still fail the invocation.
      */
-    boolean invokeWithPrompt(Tab tab, String text, @GlicInvocationSource int invocationSource);
+    boolean invokeWithPrompt(
+            Tab tab,
+            @Nullable RenderFrameHost frame,
+            String text,
+            @GlicInvocationSource int invocationSource);
 
     /**
      * Invokes the Glic service, opening the panel attached to the given tab without

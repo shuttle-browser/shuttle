@@ -82,7 +82,7 @@
 #include "net/test/url_request/url_request_mock_http_job.h"
 #include "services/network/public/cpp/features.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING) && !BUILDFLAG(IS_CHROMEOS)
 #include "chrome/test/base/scoped_channel_override.h"
@@ -235,9 +235,10 @@ class ErrorPageTest : public InProcessBrowserTest {
     content::TestNavigationObserver test_navigation_observer(
         browser()->tab_strip_model()->GetActiveWebContents(), 1);
     if (direction == HISTORY_NAVIGATE_BACK) {
-      chrome::GoBack(browser(), WindowOpenDisposition::kCurrentTab);
+      chrome::GoBack(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
     } else if (direction == HISTORY_NAVIGATE_FORWARD) {
-      chrome::GoForward(browser(), WindowOpenDisposition::kCurrentTab);
+      chrome::GoForward(browser(),
+                        ui::mojom::WindowOpenDisposition::kCurrentTab);
     } else {
       FAIL();
     }
@@ -531,8 +532,6 @@ IN_PROC_BROWSER_TEST_F(DNSErrorPageTest, DNSError_GoBack2Forward2) {
 IN_PROC_BROWSER_TEST_F(DNSErrorPageTest, DNSError_DoReload) {
   // The first navigation should fail, and the second one should be the error
   // page.
-  std::string url =
-      embedded_test_server()->GetURL("mock.http", "/title2.html").spec();
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), GetDnsErrorURL()));
   ExpectDisplayingErrorPage(browser(), net::ERR_NAME_NOT_RESOLVED);
 
@@ -569,8 +568,6 @@ IN_PROC_BROWSER_TEST_F(DNSErrorPageTest, DNSError_DoReload) {
 // traces indicate this may actually happen.  This test may hang on regression.
 IN_PROC_BROWSER_TEST_F(DNSErrorPageTest,
                        DNSError_DoReloadAfterSameDocumentNavigation) {
-  std::string url =
-      embedded_test_server()->GetURL("mock.http", "/title2.html").spec();
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), GetDnsErrorURL()));
   ExpectDisplayingErrorPage(browser(), net::ERR_NAME_NOT_RESOLVED);
 

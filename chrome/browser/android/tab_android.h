@@ -32,6 +32,7 @@
 #include "ui/base/unowned_user_data/unowned_user_data_host.h"
 
 class GURL;
+class SyncedTabDelegateAndroid;
 class TabAndroidDataProvider;
 class TabModelJniBridge;
 class Profile;
@@ -43,10 +44,6 @@ class Layer;
 namespace android {
 class TabWebContentsDelegateAndroid;
 }  // namespace android
-
-namespace browser_sync {
-class SyncedTabDelegateAndroid;
-}  // namespace browser_sync
 
 namespace content {
 class DevToolsAgentHost;
@@ -220,10 +217,10 @@ class TabAndroid : public tabs::TabInterface,
       JNIEnv* env,
       const base::android::JavaRef<jobject>& jweb_contents_delegate,
       const base::android::JavaRef<jobject>& jcontext_menu_populator_factory);
-  void SendDidActivateUpdate(JNIEnv* env);
-  void SendWillDeactivateUpdate(JNIEnv* env);
-  void SendWillDetachUpdate(JNIEnv* env, int32_t detach_reason);
-  void SendDidInsertUpdate(JNIEnv* env);
+  void SendDidActivateUpdate();
+  void SendWillDeactivateUpdate();
+  void SendWillDetachUpdate(int32_t detach_reason);
+  void SendDidInsertUpdate();
   tabs::TabDestroyStatus DestroyWebContents();
   void ReleaseWebContents();
   std::unique_ptr<content::WebContents> ReleaseWebContentsForTesting();
@@ -240,7 +237,6 @@ class TabAndroid : public tabs::TabInterface,
                                     int32_t height);
   void SetActiveNavigationEntryTitleForUrl(const std::string& jurl,
                                            std::u16string jtitle);
-  void LoadOriginalImage();
   void OnShow();
   void NotifyPinnedStateChanged(bool is_pinned);
   void NotifyTabGroupChanged(std::optional<base::Token> tab_group_id);
@@ -325,9 +321,7 @@ class TabAndroid : public tabs::TabInterface,
   TabAndroid(Profile* profile, int tab_id);
 
   void UpdateProperties();
-  void SetIsPinned(bool pinned);
   void SetIsDragging(bool dragging);
-  void SetTabGroupId(std::optional<tab_groups::TabGroupId> tab_group_id);
 
   base::android::ScopedJavaLocalRef<jobject> GetJavaObject(JNIEnv* env) const;
 
@@ -350,7 +344,7 @@ class TabAndroid : public tabs::TabInterface,
   std::unique_ptr<android::TabWebContentsDelegateAndroid>
       web_contents_delegate_;
   scoped_refptr<content::DevToolsAgentHost> devtools_host_;
-  std::unique_ptr<browser_sync::SyncedTabDelegateAndroid> synced_tab_delegate_;
+  std::unique_ptr<SyncedTabDelegateAndroid> synced_tab_delegate_;
 
   // The unowned user data host that can be used by `tab_features_` and other
   // tab-scoped objects. Must be declared before `tab_features_`,
@@ -358,7 +352,7 @@ class TabAndroid : public tabs::TabInterface,
   // outlives all `ScopedUnownedUserData` registrations during teardown.
   ui::UnownedUserDataHost unowned_user_data_host_;
 
-  // Holds tab-scoped state. Constructed after tab_helpers.
+  // Holds tab-scoped state.
   std::unique_ptr<tabs::TabFeatures> tab_features_;
 
   raw_ptr<tabs::TabCollection> parent_collection_ = nullptr;

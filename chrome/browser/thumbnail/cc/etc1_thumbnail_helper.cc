@@ -36,7 +36,7 @@ void WriteTask(base::FilePath file_path,
                float scale,
                const gfx::Size& content_size,
                base::OnceClosure post_write_task) {
-  DCHECK(compressed_data);
+  CHECK(compressed_data, base::NotFatalUntil::M163);
 
   base::File file(file_path,
                   base::File::FLAG_CREATE_ALWAYS | base::File::FLAG_WRITE);
@@ -61,9 +61,8 @@ void ReadTask(
   float scale = 0.f;
   sk_sp<SkPixelRef> compressed_data;
 
-  if (base::PathExists(file_path)) {
-    base::File file(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ);
-
+  base::File file(file_path, base::File::FLAG_OPEN | base::File::FLAG_READ);
+  if (file.IsValid()) {
     bool valid_contents =
         ui::Etc1::ReadFromFile(&file, &content_size, &scale, &compressed_data);
     file.Close();
@@ -114,6 +113,19 @@ void DecompressTask(
       .Run(success, std::move(raw_data_small));
 }
 
+void PostDecompressTask(
+    base::OnceCallback<void(bool, const SkBitmap&)> post_decompression_callback,
+    sk_sp<SkPixelRef> compressed_data,
+    float /*scale*/,
+    const gfx::Size& content_size) {
+  base::ThreadPool::PostTask(
+      FROM_HERE,
+      {base::TaskPriority::USER_VISIBLE,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
+      base::BindOnce(&DecompressTask, std::move(post_decompression_callback),
+                     std::move(compressed_data), content_size));
+}
+
 }  // anonymous namespace
 
 Etc1ThumbnailHelper::Etc1ThumbnailHelper(
@@ -124,7 +136,8 @@ Etc1ThumbnailHelper::Etc1ThumbnailHelper(
       file_task_runner_(file_task_runner) {}
 
 Etc1ThumbnailHelper::~Etc1ThumbnailHelper() {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
 }
 
 void Etc1ThumbnailHelper::Compress(
@@ -132,7 +145,8 @@ void Etc1ThumbnailHelper::Compress(
     bool supports_etc_non_power_of_two,
     base::OnceCallback<void(sk_sp<SkPixelRef>, const gfx::Size&)>
         post_compression_task) {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
   base::ThreadPool::PostTask(
       FROM_HERE,
       {base::TaskPriority::BEST_EFFORT,
@@ -147,7 +161,8 @@ void Etc1ThumbnailHelper::Write(TabId tab_id,
                                 float scale,
                                 const gfx::Size& content_size,
                                 base::OnceClosure post_write_task) {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
   base::FilePath file_path = GetFilePath(tab_id);
   file_task_runner_->PostTask(
       FROM_HERE,
@@ -163,7 +178,8 @@ void Etc1ThumbnailHelper::Read(
     TabId tab_id,
     base::OnceCallback<void(sk_sp<SkPixelRef>, float, const gfx::Size&)>
         post_read_task) {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
   base::FilePath file_path = GetFilePath(tab_id);
   file_task_runner_->PostTask(
       FROM_HERE,
@@ -171,14 +187,16 @@ void Etc1ThumbnailHelper::Read(
 }
 
 void Etc1ThumbnailHelper::Delete(TabId tab_id) {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
   base::FilePath file_path = GetFilePath(tab_id);
   file_task_runner_->PostTask(FROM_HERE,
                               base::BindOnce(&DeleteTask, file_path));
 }
 
 void Etc1ThumbnailHelper::DeleteAllExceptForIds(std::vector<int> tab_ids) {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
   absl::flat_hash_set<base::FilePath> file_names(tab_ids.size());
   for (int tab_id : tab_ids) {
     file_names.insert(GetFileName(tab_id));
@@ -188,20 +206,15 @@ void Etc1ThumbnailHelper::DeleteAllExceptForIds(std::vector<int> tab_ids) {
                                 std::move(file_names)));
 }
 
-void Etc1ThumbnailHelper::Decompress(
-    base::OnceCallback<void(bool, const SkBitmap&)> post_decompression_callback,
-    sk_sp<SkPixelRef> compressed_data,
-    float /*scale*/,
-    const gfx::Size& content_size) {
-  DCHECK(default_task_runner_->RunsTasksInCurrentSequence());
-  base::ThreadPool::PostTask(
-      FROM_HERE,
-      {base::TaskPriority::BEST_EFFORT,
-       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
-      base::BindOnce(&DecompressTask,
-                     base::BindPostTask(default_task_runner_,
-                                        std::move(post_decompression_callback)),
-                     compressed_data, content_size));
+void Etc1ThumbnailHelper::ReadAndDecompress(
+    TabId tab_id,
+    base::OnceCallback<void(bool, const SkBitmap&)> post_decompress_callback) {
+  CHECK(default_task_runner_->RunsTasksInCurrentSequence(),
+        base::NotFatalUntil::M163);
+  Read(tab_id,
+       base::BindOnce(&PostDecompressTask,
+                      base::BindPostTask(default_task_runner_,
+                                         std::move(post_decompress_callback))));
 }
 
 base::FilePath Etc1ThumbnailHelper::GetFilePath(TabId tab_id) {

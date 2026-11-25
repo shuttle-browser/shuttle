@@ -83,8 +83,9 @@ class AppShimRegistry {
   };
 
   // The last known system level notification permission status for an app.
-  // This enum is persisted to disk. Do not delete or re-order entries. New
-  // entries should only be added at the end.
+  // This enum is persisted to disk and to logs. Do not delete or re-order
+  // entries. New entries should only be added at the end.
+  // LINT.IfChange(NotificationPermissionStatus)
   enum class NotificationPermissionStatus {
     // A permission prompt has never been shown for this application.
     kNotDetermined = 1,
@@ -103,6 +104,7 @@ class AppShimRegistry {
     kExplicitlyDenied = 5,
     kMaxValue = kExplicitlyDenied,
   };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/notifications/enums.xml:MacAppShimNotificationPermissionStatus)
 
   AppShimRegistry(const AppShimRegistry& other) = delete;
   AppShimRegistry& operator=(const AppShimRegistry& other) = delete;
@@ -207,6 +209,17 @@ class AppShimRegistry {
   // Gets the last known system level notification permission status for the
   // given app. Returns kNotDetermined if no value has been stored.
   NotificationPermissionStatus GetNotificationPermissionStatusForApp(
+      const std::string& app_id);
+
+  // Tracks how many times the macOS system notification recovery / pre-prompt
+  // bubble has been auto-opened for `app_id`. This counter is per app (shared
+  // across all profiles where the app is installed) and is reset when
+  // `SaveNotificationPermissionStatusForApp()` is called with `kGranted` (or
+  // when the app is uninstalled from all profiles).
+  // `IncrementNotificationBubbleAutoOpenCountForApp()` is a no-op if `app_id`
+  // has no entry in the registry.
+  int GetNotificationBubbleAutoOpenCountForApp(const std::string& app_id) const;
+  void IncrementNotificationBubbleAutoOpenCountForApp(
       const std::string& app_id);
 
   // Register a callback to be called any time data associated with an app

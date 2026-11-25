@@ -7,8 +7,8 @@ import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import './icons.html.js';
 
-import {ToolMode} from '//resources/cr_components/composebox/composebox_query.mojom-webui.js';
 import type {TabUpload} from 'chrome://resources/cr_components/composebox/common.js';
+import {ToolMode} from 'chrome://resources/cr_components/composebox/composebox_query.mojom-webui.js';
 import type {CrActionMenuElement} from 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
 import {getFaviconUrl} from 'chrome://resources/js/icon.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
@@ -20,11 +20,13 @@ import {TabAttachmentSource} from 'chrome://resources/mojo/components/omnibox/br
 import {IconType} from 'chrome://resources/mojo/components/omnibox/browser/suggest_template_info.mojom-webui.js';
 
 import type {ActionChip, ActionChipsHandlerInterface, PageCallbackRouter} from '../action_chips.mojom-webui.js';
+import {browserProxyFactory} from '../action_chips.mojom-webui.js';
+import {recordDuration, recordEnumeration} from '../metrics_utils.js';
+import {ActionChipsRetrievalState} from '../utils.js';
 import {WindowProxy} from '../window_proxy.js';
 
 import {getCss} from './action_chips.css.js';
 import {getHtml} from './action_chips.html.js';
-import {ActionChipsApiProxyImpl, ActionChipsRetrievalState} from './action_chips_proxy.js';
 
 export interface ActionChipClickDetail {
   suggestion: string;
@@ -34,13 +36,13 @@ export interface ActionChipClickDetail {
 
 // Records a click metric for the given action chip icon type.
 function recordClick(iconType: IconType) {
-  chrome.metricsPrivate.recordEnumerationValue(
+  recordEnumeration(
       'NewTabPage.ActionChips.Click2', iconType, IconType.MAX_VALUE + 1);
 }
 
 // Records a latency metric.
 function recordLatency(metricName: string, latency: number) {
-  chrome.metricsPrivate.recordTime(metricName, Math.round(latency));
+  recordDuration(metricName, Math.round(latency));
 }
 
 const kActionChipsRetrievalStateChangedEvent =
@@ -85,6 +87,11 @@ export class ActionChipsElement extends CrLitElement {
         reflect: true,
         attribute: 'small-chips-enabled',
       },
+      uncappedWidthEnabled_: {
+        type: Boolean,
+        reflect: true,
+        attribute: 'uncapped-width-enabled',
+      },
     };
   }
 
@@ -97,6 +104,8 @@ export class ActionChipsElement extends CrLitElement {
       loadTimeData.getBoolean('ntpNextDisablementContextMenuEnabled');
   protected accessor smallChipsEnabled_: boolean =
       loadTimeData.getBoolean('ntpSmallActionChipsEnabled');
+  protected accessor uncappedWidthEnabled_: boolean =
+      loadTimeData.getBoolean('ntpSmallActionChipsUncappedWidthEnabled');
   private webuiRoundedIconsEnabled_: boolean =
       loadTimeData.getBoolean('webuiRoundedIconsEnabled');
 
@@ -181,9 +190,9 @@ export class ActionChipsElement extends CrLitElement {
 
   constructor() {
     super();
-    const proxy = ActionChipsApiProxyImpl.getInstance();
-    this.handler = proxy.getHandler();
-    this.callbackRouter = proxy.getCallbackRouter();
+    const {handler, callbackRouter} = browserProxyFactory.getInstance();
+    this.handler = handler;
+    this.callbackRouter = callbackRouter;
     this.initialLoadStartTime_ = WindowProxy.getInstance().now();
   }
 

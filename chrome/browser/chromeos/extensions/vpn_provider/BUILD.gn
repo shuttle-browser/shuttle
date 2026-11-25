@@ -16,18 +16,17 @@ source_set("vpn_provider") {
     "vpn_service.h",
     "vpn_service_factory.cc",
     "vpn_service_factory.h",
-    "vpn_service_interface.h",
   ]
 
   deps = [
     "//base",
     "//chrome/browser/profiles:profile",
-    "//chrome/browser/profiles:profile_manager",
     "//chromeos/ash/components/browser_context_helper",
     "//chromeos/ash/components/dbus/shill",
     "//chromeos/ash/components/network",
     "//chromeos/ash/experiences/extensions/common/api",
     "//components/keyed_service/content",
+    "//components/session_manager/core",
     "//components/user_manager",
     "//content/public/browser",
     "//extensions/browser",

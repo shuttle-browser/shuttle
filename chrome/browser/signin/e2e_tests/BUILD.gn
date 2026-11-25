@@ -26,6 +26,8 @@ if (!is_android) {
     deps = [
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/webui/signin:test_support_ui",
+      "//chrome/test/base:ui_test_utils",
+      "//net:test_support",
     ]
 
     if (enable_dice_support) {
@@ -40,7 +42,7 @@ if (!is_android) {
       "//chrome/browser:browser_process",
       "//chrome/browser/sync",
       "//chrome/browser/ui/webui/signin",
-      "//chrome/test:test_support_ui",
+      "//chrome/test/base:in_process_browser_test",
       "//components/signin/core/browser",
       "//components/signin/public/identity_manager:test_support",
       "//content/test:test_support",
@@ -75,6 +77,7 @@ if (!is_android) {
       "//content/test:test_support",
       "//google_apis",
       "//mojo/public/cpp/bindings",
+      "//net",
       "//net:test_support",
       "//services/network/public/cpp",
       "//services/network/public/mojom",
@@ -88,6 +91,7 @@ if (!is_android) {
 
     if (enable_dice_support) {
       deps += [
+        "//chrome/browser/signin:signin_promo",
         "//chrome/browser/ui/views/profiles:dice_web_signin_interception_bubble_view",
         "//chrome/browser/ui/views/profiles:profile_picker_view_test_utils",
         "//chrome/browser/ui/webui/signin:signin_impl",

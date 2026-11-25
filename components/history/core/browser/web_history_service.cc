@@ -28,7 +28,6 @@
 #include "components/signin/public/identity_manager/access_token_info.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/primary_account_access_token_fetcher.h"
-#include "components/sync/base/features.h"
 #include "components/sync/base/sync_util.h"
 #include "components/sync/protocol/history_status.pb.h"
 #include "components/sync/service/sync_service.h"
@@ -135,6 +134,7 @@ class RequestImpl : public WebHistoryService::Request {
           semantics {
             sender: "Web History"
             destination: GOOGLE_OWNED_SERVICE
+            api_service_name: "footprints-pa.googleapis.com"
           }
           policy {
             cookies_allowed: NO
@@ -171,20 +171,13 @@ class RequestImpl : public WebHistoryService::Request {
 
   // Tells the request to do its thang.
   void Start() override {
-    // TODO(crbug.com/40066882): Simplify this once
-    // kReplaceSyncPromosWithSignInPromos has rolled out on all platforms.
-    signin::ConsentLevel consent_level = signin::ConsentLevel::kSync;
-    if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
-      consent_level = signin::ConsentLevel::kSignin;
-    }
-
     access_token_fetcher_ =
         std::make_unique<signin::PrimaryAccountAccessTokenFetcher>(
             signin::OAuthConsumerId::kWebHistoryService, identity_manager_,
             base::BindOnce(&RequestImpl::OnAccessTokenFetchComplete,
                            base::Unretained(this)),
             signin::PrimaryAccountAccessTokenFetcher::Mode::kImmediate,
-            consent_level);
+            signin::ConsentLevel::kSignin);
     is_pending_ = true;
   }
 

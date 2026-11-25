@@ -27,11 +27,10 @@
 #include "net/base/address_list.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/net_errors.h"
-#include "net/base/network_anonymization_key.h"
-#include "net/base/network_isolation_key.h"
 #include "net/proxy_resolution/pac_file_data.h"
 #include "net/proxy_resolution/proxy_info.h"
 #include "third_party/jni_zero/default_conversions.h"
+#include "third_party/jni_zero/jni_zero.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "android_webview/browser_jni_headers/AwPacProcessor_jni.h"
@@ -100,8 +99,7 @@ class HostResolver : public proxy_resolver::ProxyHostResolver {
  public:
   std::unique_ptr<proxy_resolver::ProxyHostResolver::Request> CreateRequest(
       const std::string& hostname,
-      net::ProxyResolveDnsOperation operation,
-      const net::NetworkAnonymizationKey&) override {
+      net::ProxyResolveDnsOperation operation) override {
     return std::make_unique<RequestImpl>(hostname, operation, net_handle_,
                                          link_addresses_);
   }
@@ -425,8 +423,7 @@ void AwPacProcessor::MakeProxyRequestNative(
 
   if (proxy_resolver_) {
     proxy_resolver_->GetProxyForURL(
-        GURL(url), net::NetworkAnonymizationKey(), proxy_info,
-        std::move(complete), request,
+        GURL(url), proxy_info, std::move(complete), request,
         std::make_unique<Bindings>(host_resolver_.get()));
   } else {
     std::move(complete).Run(net::ERR_FAILED);
@@ -480,9 +477,9 @@ void AwPacProcessor::SetNetworkAndLinkAddresses(
                                 net_handle, std::move(link_addresses)));
 }
 
-static int64_t JNI_AwPacProcessor_CreateNativePacProcessor() {
-  AwPacProcessor* processor = new AwPacProcessor();
-  return reinterpret_cast<intptr_t>(processor);
+static jni_zero::JniUniquePtr<AwPacProcessor>
+JNI_AwPacProcessor_CreateNativePacProcessor() {
+  return jni_zero::MakeUnique<AwPacProcessor>();
 }
 
 static void JNI_AwPacProcessor_InitializeEnvironment() {
@@ -490,5 +487,12 @@ static void JNI_AwPacProcessor_InitializeEnvironment() {
 }
 
 }  // namespace android_webview
+
+namespace jni_zero {
+void TemplatedDeleter<android_webview::AwPacProcessor>::Destroy(
+    void* ptr) const {
+  static_cast<android_webview::AwPacProcessor*>(ptr)->DestroyNative();
+}
+}  // namespace jni_zero
 
 DEFINE_JNI(AwPacProcessor)

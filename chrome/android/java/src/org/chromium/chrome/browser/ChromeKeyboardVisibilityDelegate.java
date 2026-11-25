@@ -52,7 +52,7 @@ public class ChromeKeyboardVisibilityDelegate extends ActivityKeyboardVisibility
     }
 
     @Override
-    public boolean isKeyboardShowing(View view) {
+    public boolean isKeyboardObscuring(View view) {
         var manualFillingComponent = mManualFillingComponentSupplier.get();
         return isSoftKeyboardShowing(view)
                 || (manualFillingComponent != null
@@ -88,7 +88,7 @@ public class ChromeKeyboardVisibilityDelegate extends ActivityKeyboardVisibility
      */
     @Override
     public boolean isSoftKeyboardShowing(View view) {
-        return KeyboardUtils.isAndroidSoftKeyboardShowing(view);
+        return KeyboardUtils.isAndroidSoftKeyboardObscuring(view);
     }
 
     /**
@@ -107,7 +107,7 @@ public class ChromeKeyboardVisibilityDelegate extends ActivityKeyboardVisibility
      * @see ManualFillingComponent.SoftKeyboardDelegate#calculateSoftKeyboardHeight(View)
      */
     @Override
-    public @Px int calculateSoftKeyboardHeight(View rootView) {
+    public @Px int calculateSoftKeyboardHeight(@Nullable View rootView) {
         return KeyboardUtils.calculateKeyboardHeightFromWindowInsets(rootView);
     }
 }

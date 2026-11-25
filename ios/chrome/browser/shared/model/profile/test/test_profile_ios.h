@@ -14,6 +14,7 @@
 #include "base/files/file_path.h"
 #include "base/memory/raw_ptr.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/types/pass_key.h"
 #include "ios/chrome/browser/net/model/net_types.h"
 #include "ios/chrome/browser/policy/model/profile_policy_connector.h"
 #include "ios/chrome/browser/shared/model/profile/profile_ios.h"
@@ -39,18 +40,21 @@ class TestProfileIOS final : public ProfileIOS {
   // AddTestingFactories(). See example call in the method's comment.
   struct TestingFactory {
     TestingFactory(ProfileKeyedServiceFactoryIOS* service_factory,
+                   KeyedServiceTestingFactoryIOS testing_factory);
+
+    TestingFactory(RefcountedProfileKeyedServiceFactoryIOS* service_factory,
+                   RefcountedKeyedServiceTestingFactoryIOS testing_factory);
+
+    // TODO(crbug.com/576182342): remove this overload when all tests have
+    // been converted to use KeyedServiceTestingFactoryIOS instead.
+    TestingFactory(ProfileKeyedServiceFactoryIOS* service_factory,
                    KeyedServiceTestingFactoryIOSByPtr testing_factory);
 
-    TestingFactory(ProfileKeyedServiceFactoryIOS* service_factory,
-                   KeyedServiceTestingFactoryIOSByRef testing_factory);
-
+    // TODO(crbug.com/576182342): remove this overload when all tests have
+    // been converted to use RefcountedKeyedServiceTestingFactoryIOS instead.
     TestingFactory(
         RefcountedProfileKeyedServiceFactoryIOS* service_factory,
         RefcountedKeyedServiceTestingFactoryIOSByPtr testing_factory);
-
-    TestingFactory(
-        RefcountedProfileKeyedServiceFactoryIOS* service_factory,
-        RefcountedKeyedServiceTestingFactoryIOSByRef testing_factory);
 
     TestingFactory(TestingFactory&&);
     TestingFactory& operator=(TestingFactory&&);
@@ -58,13 +62,9 @@ class TestProfileIOS final : public ProfileIOS {
     ~TestingFactory();
 
     std::variant<std::pair<ProfileKeyedServiceFactoryIOS*,
-                           KeyedServiceTestingFactoryIOSByPtr>,
-                 std::pair<ProfileKeyedServiceFactoryIOS*,
-                           KeyedServiceTestingFactoryIOSByRef>,
+                           KeyedServiceTestingFactoryIOS>,
                  std::pair<RefcountedProfileKeyedServiceFactoryIOS*,
-                           RefcountedKeyedServiceTestingFactoryIOSByPtr>,
-                 std::pair<RefcountedProfileKeyedServiceFactoryIOS*,
-                           RefcountedKeyedServiceTestingFactoryIOSByRef>>
+                           RefcountedKeyedServiceTestingFactoryIOS>>
         service_factory_and_testing_factory;
   };
 
@@ -140,16 +140,12 @@ class TestProfileIOS final : public ProfileIOS {
   // method `GetOffTheRecordProfile()` is called on
   // this object.
   TestProfileIOS* CreateOffTheRecordProfileWithTestingFactories(
-      TestingFactories testing_factories = {});
+      TestingFactories testing_factories);
 
   // Returns the preferences as a TestingPrefServiceSyncable if possible or
   // null. Returns null for off-the-record TestProfileIOS and also
   // for TestProfileIOS initialized with a custom pref service.
   sync_preferences::TestingPrefServiceSyncable* GetTestingPrefService();
-
-  // Sets a SharedURLLoaderFactory for test.
-  void SetSharedURLLoaderFactory(
-      scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory);
 
   // Helper class that allows for parameterizing the building
   // of TestProfileIOS.
@@ -167,18 +163,13 @@ class TestProfileIOS final : public ProfileIOS {
 
     // Adds a testing factory to the TestProfileIOS. These testing factories
     // are installed before the Profile's KeyedServices are created.
-    Builder& AddTestingFactory(
-        ProfileKeyedServiceFactoryIOS* service_factory,
-        KeyedServiceTestingFactoryIOSByPtr testing_factory);
-    Builder& AddTestingFactory(
-        ProfileKeyedServiceFactoryIOS* service_factory,
-        KeyedServiceTestingFactoryIOSByRef testing_factory);
-    Builder& AddTestingFactory(
-        RefcountedProfileKeyedServiceFactoryIOS* service_factory,
-        RefcountedKeyedServiceTestingFactoryIOSByPtr testing_factory);
-    Builder& AddTestingFactory(
-        RefcountedProfileKeyedServiceFactoryIOS* service_factory,
-        RefcountedKeyedServiceTestingFactoryIOSByRef testing_factory);
+    template <typename ServiceFactory, typename TestingFactory>
+    Builder& AddTestingFactory(ServiceFactory* service_factory,
+                               TestingFactory testing_factory) {
+      testing_factories_.emplace_back(service_factory,
+                                      std::move(testing_factory));
+      return *this;
+    }
 
     // Adds multiple testing factories to TestProfileIOS. These testing
     // factories are installed before the Profile's KeyedServices are created.
@@ -210,6 +201,11 @@ class TestProfileIOS final : public ProfileIOS {
     // Sets the Webkit storage identifier for test.
     Builder& SetWebkitStorageId(const base::Uuid& webkit_storage_id);
 
+    // Sets a SharedURLLoaderFactory for test.
+    Builder& SetSharedURLLoaderFactory(
+        scoped_refptr<network::SharedURLLoaderFactory>
+            shared_url_loader_factory);
+
     // Creates the TestProfileIOS using previously-set settings.
     std::unique_ptr<TestProfileIOS> Build() &&;
 
@@ -231,28 +227,30 @@ class TestProfileIOS final : public ProfileIOS {
 
     std::unique_ptr<policy::UserCloudPolicyManager> user_cloud_policy_manager_;
     std::unique_ptr<ProfilePolicyConnector> policy_connector_;
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory_;
 
     TestingFactories testing_factories_;
   };
 
- private:
-  friend class Builder;
-
   // Used to create the principal TestProfileIOS.
-  TestProfileIOS(const base::FilePath& state_path,
-                 std::string_view profile_name,
-                 base::Uuid webkit_storage_id,
-                 std::unique_ptr<sync_preferences::PrefServiceSyncable> prefs,
-                 TestingFactories testing_factories,
-                 std::unique_ptr<ProfilePolicyConnector> policy_connector,
-                 std::unique_ptr<policy::UserCloudPolicyManager>
-                     user_cloud_policy_manager);
+  TestProfileIOS(
+      base::PassKey<Builder> pass_key,
+      const base::FilePath& state_path,
+      std::string_view profile_name,
+      base::Uuid webkit_storage_id,
+      std::unique_ptr<sync_preferences::PrefServiceSyncable> prefs,
+      TestingFactories testing_factories,
+      std::unique_ptr<ProfilePolicyConnector> policy_connector,
+      std::unique_ptr<policy::UserCloudPolicyManager> user_cloud_policy_manager,
+      scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory);
 
   // Used to create the incognito TestProfileIOS.
-  TestProfileIOS(const base::FilePath& state_path,
+  TestProfileIOS(base::PassKey<TestProfileIOS> pass_key,
+                 const base::FilePath& state_path,
                  TestProfileIOS* original_profile,
                  TestingFactories testing_factories);
 
+ private:
   // Initialization of the TestProfileIOS. This is a separate method
   // as it needs to be called after the bi-directional link between original
   // and off-the-record TestProfileIOS has been created.
@@ -261,8 +259,7 @@ class TestProfileIOS final : public ProfileIOS {
   // If non-null, `testing_prefs_` points to `prefs_`. It is there to avoid
   // casting as `prefs_` may not be a TestingPrefServiceSyncable.
   std::unique_ptr<sync_preferences::PrefServiceSyncable> prefs_;
-  raw_ptr<sync_preferences::TestingPrefServiceSyncable, DanglingUntriaged>
-      testing_prefs_;
+  raw_ptr<sync_preferences::TestingPrefServiceSyncable> testing_prefs_;
 
   // The WebKit storage identifier. May be invalid.
   const base::Uuid webkit_storage_id_;
@@ -271,7 +268,7 @@ class TestProfileIOS final : public ProfileIOS {
   std::unique_ptr<ProfilePolicyConnector> policy_connector_;
 
   // A SharedURLLoaderFactory for test.
-  scoped_refptr<network::SharedURLLoaderFactory>
+  const scoped_refptr<network::SharedURLLoaderFactory>
       test_shared_url_loader_factory_;
 
   // The incognito ProfileIOS instance that is associated with this

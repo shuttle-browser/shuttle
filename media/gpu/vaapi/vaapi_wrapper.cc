@@ -26,6 +26,7 @@
 
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
+#include "base/containers/fixed_flat_map.h"
 #include "base/containers/fixed_flat_set.h"
 #include "base/containers/span.h"
 #include "base/cpu.h"
@@ -141,6 +142,7 @@ std::pair<base::ScopedFD, bool> LoadDrmFD(const base::FilePath& dev_path) {
 // These values are logged to UMA. Entries should not be renumbered and numeric
 // values should never be reused. Please keep in sync with
 // "VaapiFunctions" in src/tools/metrics/histograms/metadata/media/enums.xml.
+// LINT.IfChange(VaapiFunctions)
 enum class VaapiFunctions {
   kVABeginPicture = 0,
   kVACreateBuffer = 1,
@@ -180,6 +182,7 @@ enum class VaapiFunctions {
   kVADeriveImage = 32,
   kMaxValue = kVADeriveImage,
 };
+// LINT.ThenChange(//tools/metrics/histograms/metadata/media/enums.xml:VaapiFunctions)
 
 void ReportVaapiErrorToUMA(const std::string& histogram_name,
                            VaapiFunctions value) {
@@ -836,42 +839,37 @@ std::optional<base::AutoLock> AutoLockOnlyIfNeeded(base::Lock* lock) {
   return std::nullopt;
 }
 
-// Can't statically initialize the profile map:
-// https://google.github.io/styleguide/cppguide.html#Static_and_Global_Variables
-using ProfileCodecMap = std::map<VideoCodecProfile, VAProfile>;
-const ProfileCodecMap& GetProfileCodecMap() {
-  static const base::NoDestructor<ProfileCodecMap> kMediaToVAProfileMap({
-      // VAProfileH264Baseline is deprecated in <va/va.h> since libva 2.0.0.
-      {H264PROFILE_BASELINE, VAProfileH264ConstrainedBaseline},
-          {H264PROFILE_MAIN, VAProfileH264Main},
-          // TODO(posciak): See if we can/want to support other variants of
-          // H264PROFILE_HIGH*.
-          {H264PROFILE_HIGH, VAProfileH264High},
-          {VP8PROFILE_ANY, VAProfileVP8Version0_3},
-          {VP9PROFILE_PROFILE0, VAProfileVP9Profile0},
-          // VaapiWrapper does not support VP9 Profile 1, see b/153680337.
-          // {VP9PROFILE_PROFILE1, VAProfileVP9Profile1},
-          {VP9PROFILE_PROFILE2, VAProfileVP9Profile2},
-          // VaapiWrapper does not support Profile 3.
-          //{VP9PROFILE_PROFILE3, VAProfileVP9Profile3},
-          {AV1PROFILE_PROFILE_MAIN, VAProfileAV1Profile0},
+constexpr auto kMediaToVAProfileMap =
+    base::MakeFixedFlatMap<VideoCodecProfile, VAProfile>({
+        // VAProfileH264Baseline is deprecated in <va/va.h> since libva 2.0.0.
+        {H264PROFILE_BASELINE, VAProfileH264ConstrainedBaseline},
+        {H264PROFILE_MAIN, VAProfileH264Main},
+        // TODO(posciak): See if we can/want to support other variants of
+        // H264PROFILE_HIGH*.
+        {H264PROFILE_HIGH, VAProfileH264High},
+        {VP8PROFILE_ANY, VAProfileVP8Version0_3},
+        {VP9PROFILE_PROFILE0, VAProfileVP9Profile0},
+        // VaapiWrapper does not support VP9 Profile 1, see b/153680337.
+        // {VP9PROFILE_PROFILE1, VAProfileVP9Profile1},
+        {VP9PROFILE_PROFILE2, VAProfileVP9Profile2},
+        // VaapiWrapper does not support Profile 3.
+        //{VP9PROFILE_PROFILE3, VAProfileVP9Profile3},
+        {AV1PROFILE_PROFILE_MAIN, VAProfileAV1Profile0},
         // VaapiWrapper does not support AV1 Profile 1.
         // {AV1PROFILE_PROFILE_HIGH, VAProfileAV1Profile1},
 #if BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
-          {HEVCPROFILE_MAIN, VAProfileHEVCMain},
-          {HEVCPROFILE_MAIN_STILL_PICTURE, VAProfileHEVCMain},
-          {HEVCPROFILE_MAIN10, VAProfileHEVCMain10},
+        {HEVCPROFILE_MAIN, VAProfileHEVCMain},
+        {HEVCPROFILE_MAIN_STILL_PICTURE, VAProfileHEVCMain},
+        {HEVCPROFILE_MAIN10, VAProfileHEVCMain10},
 #endif  // BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
-  });
-  return *kMediaToVAProfileMap;
-}
+    });
 
 // Maps a VideoCodecProfile |profile| to a VAProfile, or VAProfileNone.
 VAProfile ProfileToVAProfile(VideoCodecProfile profile) {
-  const auto& profiles = GetProfileCodecMap();
-  const auto& maybe_profile = profiles.find(profile);
-  if (maybe_profile == profiles.end())
+  const auto maybe_profile = kMediaToVAProfileMap.find(profile);
+  if (maybe_profile == kMediaToVAProfileMap.end()) {
     return VAProfileNone;
+  }
   return maybe_profile->second;
 }
 
@@ -897,8 +895,9 @@ bool IsVAProfileSupported(VAProfile va_profile, bool is_encoding) {
     };
     return std::ranges::contains(kSupportableEncoderProfiles, va_profile);
   }
-  return std::ranges::contains(GetProfileCodecMap(), va_profile,
-                               &ProfileCodecMap::value_type::second);
+  return std::ranges::contains(
+      kMediaToVAProfileMap, va_profile,
+      &decltype(kMediaToVAProfileMap)::value_type::second);
 }
 
 bool IsBlockedDriver(VaapiWrapper::CodecMode mode,
@@ -2000,7 +1999,7 @@ VideoEncodeAccelerator::SupportedProfiles
 VaapiWrapper::GetSupportedEncodeProfiles() {
   VideoEncodeAccelerator::SupportedProfiles profiles;
 
-  for (const auto& [media_profile, va_profile] : GetProfileCodecMap()) {
+  for (const auto& [media_profile, va_profile] : kMediaToVAProfileMap) {
     DCHECK(va_profile != VAProfileNone);
 
     const VASupportedProfiles::ProfileInfo* profile_info =
@@ -2037,7 +2036,7 @@ VideoDecodeAccelerator::SupportedProfiles
 VaapiWrapper::GetSupportedDecodeProfiles() {
   VideoDecodeAccelerator::SupportedProfiles profiles;
 
-  for (const auto& [media_profile, va_profile] : GetProfileCodecMap()) {
+  for (const auto& [media_profile, va_profile] : kMediaToVAProfileMap) {
     DCHECK(va_profile != VAProfileNone);
 
     const VASupportedProfiles::ProfileInfo* profile_info =
@@ -2562,16 +2561,16 @@ bool VaapiWrapper::CreateContext(const gfx::Size& size) {
   if (va_res != VA_STATUS_SUCCESS)
     return false;
 
-  // TODO(b/200779101): Remove low resolution i965 condition. This was
-  // added to avoid a duplicated frame specific to quality 7 at ~400kbps.
-  if (IsModeEncoding(mode_) && IsLowPowerIntelProcessor() &&
-      !(GetImplementationType() == VAImplementation::kIntelI965 &&
-        picture_size.GetArea() <= gfx::Size(320, 240).GetArea())) {
-    MaybeSetLowQualityEncoding_Locked();
-  }
+  MaybeSetLowQualityEncoding_Locked(picture_size);
 
   // If we have a protected session already, attach it to this new context.
   return MaybeAttachProtectedSession_Locked();
+}
+
+void VaapiWrapper::MaybeSetLowQualityEncoding(const gfx::Size& picture_size) {
+  VAAPI_CHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  base::AutoLockMaybe auto_lock(va_lock_.get());
+  MaybeSetLowQualityEncoding_Locked(picture_size);
 }
 
 std::unique_ptr<ScopedVASurface> VaapiWrapper::CreateVASurfaceForFrameResource(
@@ -3126,11 +3125,10 @@ uint64_t VaapiWrapper::GetEncodedChunkSize(VABufferID buffer_id,
 bool VaapiWrapper::DownloadFromVABuffer(
     VABufferID buffer_id,
     std::optional<VASurfaceID> sync_surface_id,
-    uint8_t* target_ptr,
-    size_t target_size,
+    base::span<uint8_t> target,
     size_t* coded_data_size) NO_THREAD_SAFETY_ANALYSIS {
   VAAPI_CHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(target_ptr);
+  DCHECK(target.data());
   TRACE_EVENT0("media,gpu", "VaapiWrapper::DownloadFromVABuffer");
   std::optional<base::AutoLock> auto_lock =
       AutoLockOnlyIfNeeded(va_lock_.get());
@@ -3166,16 +3164,17 @@ bool VaapiWrapper::DownloadFromVABuffer(
     while (buffer_segment) {
       DCHECK(buffer_segment->buf);
 
-      if (buffer_segment->size > target_size) {
-        LOG(ERROR) << "Insufficient output buffer size: " << target_size
+      if (buffer_segment->size > target.size()) {
+        LOG(ERROR) << "Insufficient output buffer size: " << target.size()
                    << ", the buffer segment size: " << buffer_segment->size;
         break;
       }
-      UNSAFE_TODO(
-          memcpy(target_ptr, buffer_segment->buf, buffer_segment->size));
-
-      UNSAFE_TODO(target_ptr += buffer_segment->size);
-      target_size -= buffer_segment->size;
+      // SAFETY: libva provides a buffer of `size` bytes for each coded segment.
+      // The mapping keeps these buffers valid until the copy completes.
+      const auto source = UNSAFE_BUFFERS(
+          base::span(static_cast<const uint8_t*>(buffer_segment->buf),
+                     buffer_segment->size));
+      target.take_first(source.size()).copy_from(source);
       *coded_data_size += buffer_segment->size;
       buffer_segment =
           reinterpret_cast<VACodedBufferSegment*>(buffer_segment->next);
@@ -3763,10 +3762,18 @@ bool VaapiWrapper::MapAndCopy_Locked(VABufferID va_buffer_id,
   return UNSAFE_TODO(memcpy(mapping->data(), va_buffer.data, va_buffer.size));
 }
 
-void VaapiWrapper::MaybeSetLowQualityEncoding_Locked() {
+void VaapiWrapper::MaybeSetLowQualityEncoding_Locked(
+    const gfx::Size& picture_size) {
   VAAPI_CHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK(IsModeEncoding(mode_));
   MAYBE_ASSERT_ACQUIRED(va_lock_);
+
+  // TODO(b/200779101): Remove low resolution i965 condition. This was
+  // added to avoid a duplicated frame specific to quality 7 at ~400kbps.
+  if (!IsModeEncoding(mode_) || !IsLowPowerIntelProcessor() ||
+      (GetImplementationType() == VAImplementation::kIntelI965 &&
+       picture_size.GetArea() <= gfx::Size(320, 240).GetArea())) {
+    return;
+  }
 
   // Query if encoding quality (VAConfigAttribEncQualityRange) is supported, and
   // if so, use the associated value for lowest quality and power consumption.

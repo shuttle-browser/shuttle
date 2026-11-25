@@ -4,6 +4,7 @@
 
 import {html} from '//resources/lit/v3_0/lit.rollup.js';
 
+import {RestartType} from '../relaunch_mixin_lit.js';
 import type {SettingsGeicSubpageElement} from './geic_subpage.js';
 
 export function getHtml(this: SettingsGeicSubpageElement) {
@@ -12,8 +13,7 @@ export function getHtml(this: SettingsGeicSubpageElement) {
     route-path="${this.routePath}">
   <div class="section">
     <h2 class="cr-title-text">$i18n{glicPreferencesSection}</h2>
-    <settings-toggle-button
-        id="tabstripButtonToggle"
+    <settings-toggle-button id="tabstripButtonToggle"
         pref-key="glic.pinned_to_tabstrip"
         label="$i18n{glicTabstripButtonToggle}"
         sub-label="$i18n{glicTabstripButtonToggleSublabel}">
@@ -21,17 +21,14 @@ export function getHtml(this: SettingsGeicSubpageElement) {
   </div>
   <div class="section">
     <h2 class="cr-title-text">$i18n{glicDataSection}</h2>
-    <settings-toggle-button
-        id="defaultTabAccessToggle"
+    <settings-toggle-button id="defaultTabAccessToggle"
         pref-key="glic.default_tab_context_enabled"
         label="$i18n{glicDefaultTabAccessToggle}"
         sub-label-with-link="${this.getDefaultTabAccessSubLabel_()}"
         @sub-label-link-clicked="${
             this.onDefaultTabAccessToggleSubLabelLinkClicked_}"
-        no-toggle-on-host-click
-        @click="${this.onDefaultTabAccessExpandClick_}">
-      <div id="defaultTabAccessToggleActions"
-          class="toggle-actions-container"
+        no-toggle-on-host-click @click="${this.onDefaultTabAccessExpandClick_}">
+      <div id="defaultTabAccessToggleActions" class="toggle-actions-container"
           slot="more-actions">
         <cr-expand-button id="defaultTabAccessExpandButton" no-hover
             ?expanded="${this.defaultTabAccessToggleExpanded_}"
@@ -99,6 +96,29 @@ export function getHtml(this: SettingsGeicSubpageElement) {
       </div>
     </cr-collapse>
   </div>
+  ${this.showDevicePolicyToggle_ ? html`
+    <div id="devicePolicyRow" class="cr-row">
+      <div class="flex cr-padded-text">
+        <div id="devicePolicyLabel">$i18n{geicDevicePolicyToggle}</div>
+        <div id="devicePolicySublabel" class="secondary">
+          ${this.i18n('geicDevicePolicyToggleSublabel')}
+        </div>
+      </div>
+      <cr-button id="devicePolicyButton"
+          aria-describedby="devicePolicyLabel devicePolicySublabel"
+          ?disabled="${this.devicePolicyButtonDisabled_}"
+          @click="${this.onDevicePolicyButtonClick_}">
+        $i18n{geicDevicePolicyButton}
+      </cr-button>
+    </div>
+  ` : ''}
+<if expr="not is_chromeos">
+  ${this.shouldShowRelaunchDialog ? html`
+    <relaunch-confirmation-dialog .restartType="${RestartType.RELAUNCH}"
+        @close="${this.onRelaunchDialogClose}">
+    </relaunch-confirmation-dialog>
+  ` : ''}
+</if>
 </settings-subpage>
 <!--_html_template_end_-->`;
 }

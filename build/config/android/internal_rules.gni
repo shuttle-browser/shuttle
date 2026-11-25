@@ -28,8 +28,13 @@ _robolectric_libs_dir =
     rebase_path(
         get_label_info("//:foo($robolectric_toolchain)", "root_out_dir"),
         root_build_dir)
-_nullaway_jar = "//third_party/android_build_tools/nullaway/cipd/nullaway.jar"
+_nullaway_jar =
+    "//third_party/android_build_tools/error_prone/cipd/nullaway.jar"
 _rebased_nullaway_jar = rebase_path(_nullaway_jar, root_build_dir)
+
+# A native-image of javac + Error Prone, used by errorprone.py on linux-x64.
+_error_prone_native_image =
+    "//third_party/android_build_tools/error_prone/cipd/error_prone"
 
 # The following _java_*_types variables capture all the existing target types.
 # If a new type is introduced, please add it to one of these categories,
@@ -98,11 +103,19 @@ java_target_patterns = java_library_patterns + java_resource_patterns
 _r8_path = "//third_party/r8/cipd/lib/r8.jar"
 _custom_r8_path = "//third_party/r8/custom_r8.jar"
 _custom_d8_path = "//third_party/r8/custom_d8.jar"
-_custom_d8_binary_path = "//third_party/r8/cipd/bin/custom_d8"
+_chrome_d8_binary_path = "//third_party/r8/cipd/bin/chrome_d8"
+_chrome_r8_binary_path = "//third_party/r8/cipd/bin/chrome_r8"
 _signflinger_jar_path =
     "//third_party/android_build_tools/signflinger/cipd/signflinger.jar"
 _signflinger_binary_path =
     "//third_party/android_build_tools/signflinger/cipd/signflinger"
+
+# zipbuilder.py falls back to the .jar on hosts (including some remote workers)
+# that lack the CPU features the native-image requires.
+_signflinger_inputs = java_paths_for_inputs + [
+                        _signflinger_binary_path,
+                        _signflinger_jar_path,
+                      ]
 _global_synthetics_dex_path =
     "//third_party/r8/cipd/lib/global_synthetics.dex.jar"
 _default_lint_jar_path = "//third_party/android_build_tools/lint/cipd/lint.jar"
@@ -485,6 +498,10 @@ template("write_build_config") {
         unprocessed_jar_path =
             rebase_path(invoker.unprocessed_jar_path, root_build_dir)
       }
+      if (defined(invoker.api_database_path)) {
+        api_database_path =
+            rebase_path(invoker.api_database_path, root_build_dir)
+      }
       if (defined(invoker.ijar_path)) {
         interface_jar_path = rebase_path(invoker.ijar_path, root_build_dir)
       }
@@ -740,7 +757,6 @@ template("test_runner_script") {
       output_conversion = "json"
       outputs = [ _install_artifacts_json ]
       data_keys = [ "install_artifacts" ]
-      walk_keys = [ "install_artifacts_barrier" ]
       rebase = root_build_dir
     }
   }
@@ -1178,6 +1194,7 @@ if (enable_java_templates) {
       script = "//build/android/gyp/tracereferences.py"
       inputs = java_paths_for_inputs + [
                  _r8_path,
+                 _chrome_r8_binary_path,
                  invoker.tracerefs_json,
                ]
       depfile = "$target_gen_dir/$target_name.d"
@@ -1215,6 +1232,7 @@ if (enable_java_templates) {
                 invoker.build_config,
                 _r8_path,
                 _custom_r8_path,
+                _chrome_r8_binary_path,
               ]
     if (defined(invoker.inputs)) {
       _inputs += invoker.inputs
@@ -1262,6 +1280,8 @@ if (enable_java_templates) {
       rebase_path(_keep_radius_path, root_build_dir),
       "--sdk-jars",
       "@FileArg($_rebased_build_config:sdk_jars)",
+      "--sdk-api-databases",
+      "@FileArg($_rebased_build_config:sdk_api_databases)",
       "--sdk-extension-jars",
       "@FileArg($_rebased_build_config:proguard_classpath_jars)",
       "--r8-path",
@@ -1548,7 +1568,7 @@ if (enable_java_templates) {
         "--max-heap-size=$_max_heap_size",
       ]
       data = []
-      deps = [ "//third_party/jdk:java_data" ]
+      deps = []
       if (defined(invoker.deps)) {
         deps += invoker.deps
       }
@@ -1574,7 +1594,6 @@ if (enable_java_templates) {
 
   # Variables
   #   apply_mapping: The path to the ProGuard mapping file to apply.
-  #   disable_incremental: Disable incremental dexing.
   template("dex") {
     _min_sdk_version = default_min_sdk_version
     if (defined(invoker.min_sdk_version)) {
@@ -1619,6 +1638,7 @@ if (enable_java_templates) {
     }
 
     if (_proguard_enabled) {
+      not_needed(invoker, [ "allow_chrome_r8" ])
       _proguard_target_name = target_name
 
       proguard(_proguard_target_name) {
@@ -1656,6 +1676,12 @@ if (enable_java_templates) {
       }
     } else {  # !_proguard_enabled
       _is_library = defined(invoker.is_library) && invoker.is_library
+      if (defined(invoker.allow_chrome_r8)) {
+        _allow_chrome_r8 = invoker.allow_chrome_r8
+      } else {
+        # Enable by default for dex merging.
+        _allow_chrome_r8 = !_is_library
+      }
       assert(!(defined(invoker.input_classes_filearg) && _is_library))
       assert(_is_library == defined(invoker.extra_classpath_jars))
       _input_class_jars = []
@@ -1693,13 +1719,19 @@ if (enable_java_templates) {
         deps = _deps
         depfile = "$target_gen_dir/$target_name.d"
         outputs = [ invoker.output ]
-        inputs = [
-                   _custom_d8_binary_path,
-                   _custom_d8_path,
-                   _r8_path,
-                   _signflinger_binary_path,
-                   _signflinger_jar_path,
-                 ] + java_paths_for_inputs
+        inputs = native_image_java_paths_for_inputs +
+                 [ _chrome_d8_binary_path ] + _signflinger_inputs
+        if (_allow_chrome_r8) {
+          inputs += [ _chrome_r8_binary_path ]
+        }
+        if (!use_native_image_inputs) {
+          # Local actions on other hosts run D8 on the JVM. _signflinger_inputs
+          # already includes java_paths_for_inputs.
+          inputs += [
+            _custom_d8_path,
+            _r8_path,
+          ]
+        }
         if (defined(invoker.inputs)) {
           inputs += invoker.inputs
         }
@@ -1734,16 +1766,11 @@ if (enable_java_templates) {
           args += [ "--warnings-as-errors" ]
         }
 
-        if (enable_incremental_d8 && !(defined(invoker.disable_incremental) &&
-                                       invoker.disable_incremental)) {
-          # Don't use incremental dexing for ProGuarded inputs as a precaution.
-          args += [
-            "--incremental-dir",
-            rebase_path("$target_out_dir/$target_name", root_build_dir),
-          ]
-        }
         if (_is_library) {
           args += [ "--intermediate" ]
+        }
+        if (_allow_chrome_r8) {
+          args += [ "--allow-chrome-r8" ]
         }
 
         if (defined(invoker.input_dex_filearg)) {
@@ -1789,22 +1816,15 @@ if (enable_java_templates) {
             _rebased_build_config =
                 rebase_path(invoker.build_config, root_build_dir)
             args += [
-              # Pass the full classpath to find new dependencies that are not in
-              # the .desugardeps file.
               # R8 cannot use interface classpath (crbug.com/417451320)
               "--classpath=@FileArg($_rebased_build_config:javac_full_classpath)",
             ]
           }
 
           if (_min_sdk_version < 24) {
-            _desugar_dependencies_path =
-                "$target_gen_dir/$target_name.desugardeps"
             inputs += [ android_sdk_jar ]
-            args += [
-              "--desugar-dependencies",
-              rebase_path(_desugar_dependencies_path, root_build_dir),
-              "--bootclasspath=@FileArg($_rebased_build_config:sdk_jars)",
-            ]
+            args +=
+                [ "--bootclasspath=@FileArg($_rebased_build_config:sdk_jars)" ]
           }
         }
 
@@ -2525,12 +2545,6 @@ if (enable_java_templates) {
             invoker.expected_android_manifest_version_code_offset,
           ]
         }
-        if (defined(invoker.expected_android_manifest_library_version_offset)) {
-          args += [
-            "--verification-library-version-offset",
-            invoker.expected_android_manifest_library_version_offset,
-          ]
-        }
         if (fail_on_android_expectations) {
           args += [ "--fail-on-expectations" ]
         }
@@ -2739,11 +2753,7 @@ if (enable_java_templates) {
 
     _script = "//build/android/gyp/apkbuilder.py"
 
-    _inputs = [
-      invoker.packaged_resources_path,
-      _signflinger_jar_path,
-      _signflinger_binary_path,
-    ]
+    _inputs = [ invoker.packaged_resources_path ] + _signflinger_inputs
 
     _outputs = [ invoker.output_apk_path ]
     _data = [ invoker.output_apk_path ]
@@ -2907,7 +2917,7 @@ if (enable_java_templates) {
 
     action_with_pydeps(target_name) {
       depfile = "$target_gen_dir/$target_name.d"
-      inputs = java_paths_for_inputs + _inputs
+      inputs = _inputs
       deps = _deps
       data = _data
       outputs = _outputs
@@ -3011,13 +3021,20 @@ if (enable_java_templates) {
 
       if (invoker.use_turbine) {
         script = "//build/android/gyp/turbine.py"
-        inputs = [
-          "$android_jdk_home/bin/java",
-          android_sdk_jar,
-        ]
+        inputs = [ android_sdk_jar ]
       } else if (invoker.enable_errorprone) {
         script = "//build/android/gyp/errorprone.py"
-        inputs = javac_paths_for_inputs
+        inputs = []
+
+        # errorprone.py uses the native-image only with Chromium's plugin.
+        if (build_with_chromium) {
+          inputs +=
+              native_image_java_paths_for_inputs + [ _error_prone_native_image ]
+        }
+        if (!use_native_image_inputs || !build_with_chromium) {
+          # Local actions on other hosts run Error Prone on the JVM.
+          inputs += java_paths_for_inputs
+        }
       } else {
         script = "//build/android/gyp/compile_java.py"
         inputs = javac_paths_for_inputs
@@ -3064,7 +3081,7 @@ if (enable_java_templates) {
         inputs += _java_srcjars
       }
 
-      inputs += invoker.source_files + [ _build_config ] + java_paths_for_inputs
+      inputs += invoker.source_files + [ _build_config ]
 
       if (invoker.source_files != []) {
         inputs += [ invoker.target_sources_file ]
@@ -3117,10 +3134,12 @@ if (enable_java_templates) {
                               !_has_annotation_processors
         outputs += [ invoker.generated_jar_path ]
         if (_use_turbine_binary) {
-          # Still requires java_paths_for_inputs for lib/ct.sym.
+          # The native-image needs no JRE.
+          inputs += native_image_java_paths_for_inputs
           _turbine_path = "//third_party/turbine/cipd/turbine"
           _turbine_flag = "--turbine-binary-path"
         } else {
+          inputs += java_paths_for_inputs
           _turbine_path = "//third_party/turbine/cipd/turbine.jar"
           _turbine_flag = "--turbine-jar-path"
           args += [
@@ -3134,12 +3153,18 @@ if (enable_java_templates) {
           rebase_path(_turbine_path, root_build_dir),
           "--generated-jar-path",
           rebase_path(invoker.generated_jar_path, root_build_dir),
-
-          # Turbine needs only direct deps.
-          "--classpath=@FileArg($_rebased_build_config:interface_classpath)",
         ]
+
+        # Turbine needs only direct deps.
+        if (!defined(invoker.omit_classpath) || !invoker.omit_classpath) {
+          args += [
+            "--classpath=@FileArg($_rebased_build_config:interface_classpath)",
+          ]
+        }
       } else {
-        args += [ "--classpath=@FileArg($_rebased_build_config:javac_full_interface_classpath)" ]
+        if (!defined(invoker.omit_classpath) || !invoker.omit_classpath) {
+          args += [ "--classpath=@FileArg($_rebased_build_config:javac_full_interface_classpath)" ]
+        }
         if (invoker.chromium_code) {
           args += [ "--chromium-code" ]
         }
@@ -3148,6 +3173,9 @@ if (enable_java_templates) {
         # checkout_android_prebuilts_build_tools=True in .gclient.
         if (enable_kythe_annotations && !invoker.enable_errorprone) {
           args += [ "--enable-kythe-annotations" ]
+
+          # The kythe extractor runs on the JVM.
+          inputs += java_paths_for_inputs
         }
       }
       if (treat_warnings_as_errors) {
@@ -3265,10 +3293,22 @@ if (enable_java_templates) {
       _java_srcjars += invoker.srcjars
     }
 
+    _kotlin_srcjar_deps = []
+    if (defined(invoker.kotlin_srcjar_deps)) {
+      _kotlin_srcjar_deps = invoker.kotlin_srcjar_deps
+    }
+
+    _kotlin_srcjars = []
+    foreach(dep, _kotlin_srcjar_deps) {
+      _dep_gen_dir = get_label_info(dep, "target_gen_dir")
+      _dep_name = get_label_info(dep, "name")
+      _kotlin_srcjars += [ "$_dep_gen_dir/$_dep_name.srcjar" ]
+    }
+
     action_with_pydeps(target_name) {
       script = "//build/android/gyp/compile_kt.py"
       depfile = "$target_gen_dir/$target_name.d"
-      deps = _srcjar_deps
+      deps = _srcjar_deps + _kotlin_srcjar_deps
       if (defined(invoker.deps)) {
         deps += invoker.deps
       }
@@ -3277,12 +3317,11 @@ if (enable_java_templates) {
         invoker.output_jar_path,
         invoker.output_interface_jar_path,
       ]
-      inputs = kotlinc_paths_for_inputs + java_paths_for_inputs +
-               invoker.source_files + _java_srcjars +
-               [
-                 _build_config,
-                 invoker.target_sources_file,
-               ]
+      inputs = kotlinc_paths_for_inputs + invoker.source_files + _java_srcjars +
+               _kotlin_srcjars + [ _build_config ]
+      if (defined(invoker.target_sources_file)) {
+        inputs += [ invoker.target_sources_file ]
+      }
 
       _rebased_build_config = rebase_path(_build_config, root_build_dir)
       _rebased_output_jar_path =
@@ -3290,6 +3329,7 @@ if (enable_java_templates) {
       _rebased_output_interface_jar_path =
           rebase_path(invoker.output_interface_jar_path, root_build_dir)
       _rebased_java_srcjars = rebase_path(_java_srcjars, root_build_dir)
+      _rebased_kotlin_srcjars = rebase_path(_kotlin_srcjars, root_build_dir)
       _rebased_depfile = rebase_path(depfile, root_build_dir)
       _rebased_generated_dir = rebase_path(
               "$target_gen_dir/${invoker.main_target_name}/generated_java",
@@ -3300,6 +3340,7 @@ if (enable_java_templates) {
         "--jar-path=$_rebased_output_jar_path",
         "--interface-jar-path=$_rebased_output_interface_jar_path",
         "--java-srcjars=$_rebased_java_srcjars",
+        "--kotlin-srcjars=$_rebased_kotlin_srcjars",
       ]
 
       if (defined(invoker.enable_compose) && invoker.enable_compose) {
@@ -3310,6 +3351,18 @@ if (enable_java_templates) {
           "--compiler-plugin-jar",
           rebase_path(_compose_plugin_jar, root_build_dir),
         ]
+      }
+
+      if (defined(invoker.kotlin_friend_deps)) {
+        _friend_paths = []
+        foreach(_friend_dep, invoker.kotlin_friend_deps) {
+          _friend_out_dir = get_label_info(_friend_dep, "target_out_dir")
+          _friend_name = get_label_info(_friend_dep, "name")
+          _friend_paths +=
+              [ rebase_path("$_friend_out_dir/$_friend_name.turbine.jar",
+                            root_build_dir) ]
+        }
+        args += [ "--friend-paths=$_friend_paths" ]
       }
 
       # SDK jar must be first on classpath.
@@ -3328,7 +3381,10 @@ if (enable_java_templates) {
         }
       }
 
-      args += [ "@" + rebase_path(invoker.target_sources_file, root_build_dir) ]
+      if (defined(invoker.target_sources_file)) {
+        args +=
+            [ "@" + rebase_path(invoker.target_sources_file, root_build_dir) ]
+      }
     }
   }
 
@@ -3424,6 +3480,9 @@ if (enable_java_templates) {
   #    android java target to use.
   #  annotation_processor_deps: Optional list of dependencies corresponding
   #    to annotation processors used to compile these sources.
+  #  allow_javac_sharding: Optional. Whether compile_java.py may split this
+  #    target across multiple javac processes (which requires waiting for the
+  #    target's turbine header jar). Defaults to len(_java_files) >= 100.
   #  input_jars_paths: Optional list of additional .jar file paths, which will
   #    be added to the compile-time classpath when building this target (but
   #    not to the runtime classpath).
@@ -3517,11 +3576,17 @@ if (enable_java_templates) {
     if (defined(invoker.srcjar_deps)) {
       _srcjar_deps = invoker.srcjar_deps
     }
+    _rjava_srcjar_deps = []
+    _kotlin_srcjar_deps = []
+    if (defined(invoker.kotlin_srcjar_deps)) {
+      _kotlin_srcjar_deps = invoker.kotlin_srcjar_deps
+    }
     _srcjars = []
     if (defined(invoker.srcjars)) {
       _srcjars = invoker.srcjars
     }
-    _has_sources = _source_files != [] || _srcjar_deps != [] || _srcjars != []
+    _has_sources = _source_files != [] || _srcjar_deps != [] ||
+                   _kotlin_srcjar_deps != [] || _srcjars != []
 
     if (defined(invoker.chromium_code)) {
       _chromium_code = invoker.chromium_code
@@ -3606,11 +3671,32 @@ if (enable_java_templates) {
                         _type == "java_library" || _type == "dist_jar"
       _build_device_jar = _type != "system_java_library" && _supports_android
 
+      # APK and base bundle module targets with no direct .java/.kt sources or
+      # custom srcjars only compile self-contained generated srcjars (R.java,
+      # BuildConfig.java, NativeLibraries.java, GEN_JNI.java) and do not
+      # reference library classes. Non-base bundle modules (where
+      # base_module_target is defined) have R.java inner classes that extend
+      # gen.base_module.R.* and still require their classpath.
+      _omit_apk_classpath =
+          ((_type == "android_apk" && !defined(invoker.apk_under_test)) ||
+           (_type == "android_app_bundle_module" &&
+            !defined(invoker.base_module_target))) && _source_files == [] &&
+          _srcjars == [] && _kotlin_srcjar_deps == [] &&
+          filter_exclude(_srcjar_deps,
+                         [
+                           "*__compile_resources",
+                           "*__native_libraries",
+                           "*__build_config_srcjar",
+                           "*jni_registration*",
+                           "*final_jni*",
+                         ]) == []
+
       if (_build_host_jar || _build_device_jar) {
         _enable_bytecode_checks =
             (!defined(invoker.enable_bytecode_checks) ||
              invoker.enable_bytecode_checks) && !_is_prebuilt &&
-            android_static_analysis != "off" && !_skip_header_jar
+            android_static_analysis != "off" && !_skip_header_jar &&
+            !_omit_apk_classpath
       }
 
       _jacoco_instrument =
@@ -3622,10 +3708,6 @@ if (enable_java_templates) {
       }
       if (_jacoco_instrument) {
         _invoker_deps += [ _jacoco_dep ]
-      }
-      if (_has_sources) {
-        _generated_jar_path =
-            "$target_gen_dir/$_main_target_name.generated.srcjar"
       }
 
       _filter_jar = (defined(invoker.jar_excluded_patterns) &&
@@ -3769,7 +3851,10 @@ if (enable_java_templates) {
       # __assetres deps.
       # _non_java_deps are needed for input_jars_paths that are generated.
       _header_classpath_deps =
-          _java_header_deps + _non_java_deps + [ ":$_build_config_target_name" ]
+          _non_java_deps + [ ":$_build_config_target_name" ]
+      if (!_omit_apk_classpath) {
+        _header_classpath_deps += _java_header_deps
+      }
 
       _javac_classpath_deps =
           _java_host_deps + _non_java_deps + [ ":$_build_config_target_name" ]
@@ -3795,6 +3880,7 @@ if (enable_java_templates) {
                  "_header_classpath_deps",
                  "_javac_classpath_deps",
                  "_non_java_deps",
+                 "_rjava_srcjar_deps",
                  "_supports_host",
                ])
 
@@ -3923,6 +4009,9 @@ if (enable_java_templates) {
         }
         unprocessed_jar_path = _unprocessed_jar_path
       }
+      if (defined(invoker.api_database_path)) {
+        api_database_path = invoker.api_database_path
+      }
       if (_build_host_jar || _build_device_jar) {
         processed_jar_path = _processed_jar_path
       }
@@ -3934,10 +4023,13 @@ if (enable_java_templates) {
       }
 
       bundled_srcjars = []
-      foreach(d, _srcjar_deps) {
+      foreach(d, _srcjar_deps + _kotlin_srcjar_deps) {
         _dep_gen_dir = get_label_info(d, "target_gen_dir")
         _dep_name = get_label_info(d, "name")
-        bundled_srcjars += [ "$_dep_gen_dir/$_dep_name.srcjar" ]
+        _srcjar = "$_dep_gen_dir/$_dep_name.srcjar"
+        if (filter_include(bundled_srcjars, [ _srcjar ]) == []) {
+          bundled_srcjars += [ _srcjar ]
+        }
       }
       bundled_srcjars += _srcjars
       if (defined(invoker.include_java_resources) &&
@@ -3957,9 +4049,7 @@ if (enable_java_templates) {
     }
 
     if (_build_host_jar || _build_device_jar) {
-      if ((!defined(invoker.enable_bytecode_checks) ||
-           invoker.enable_bytecode_checks) && !_is_prebuilt &&
-          android_static_analysis != "off" && !_skip_header_jar) {
+      if (_enable_bytecode_checks) {
         _validate_deps_target_name = "${target_name}__validate_deps"
       }
     }
@@ -3993,11 +4083,9 @@ if (enable_java_templates) {
                    "android_library(), or robolectric_library(). " +
                    "Target=$target_name")
 
-        # Serves double purpose: Generating R.java, as well as being the
-        #__assetres target (instead of using a separate group).
-        _fake_rjava_target = "${target_name}__assetres"
+        _rjava_target = "${target_name}__rjava"
 
-        generate_r_java(_fake_rjava_target) {
+        generate_r_java(_rjava_target) {
           deps = [ ":$_build_config_target_name" ] + _java_assetres_deps +
                  _non_java_deps
           _rtxt_build_config =
@@ -4005,11 +4093,11 @@ if (enable_java_templates) {
           rtxt_build_config = _rtxt_build_config
 
           # Filepath has to be exactly this because compile_java looks for the
-          # srcjar of srcjar_deps at this location $gen_dir/$target_name.srcjar
-          srcjar_path = "$target_gen_dir/$target_name.srcjar"
+          # srcjar of srcjar_deps at $target_gen_dir/$_rjava_target.srcjar.
+          srcjar_path = "$target_gen_dir/$_rjava_target.srcjar"
           package = invoker.resources_package
         }
-        _srcjar_deps += [ ":$_fake_rjava_target" ]
+        _rjava_srcjar_deps = [ ":$_rjava_target" ]
       }
 
       _javac_build_config = string_replace(_build_config,
@@ -4019,6 +4107,8 @@ if (enable_java_templates) {
                                              ".build_config.json",
                                              ".turbine.build_config.json")
 
+      _has_kt_files = _kt_files != [] || _kotlin_srcjar_deps != []
+
       if (_kt_files != []) {
         _abs_kt_files = get_path_info(_kt_files, "abspath")
         _kt_allowlist = [
@@ -4027,12 +4117,14 @@ if (enable_java_templates) {
           "//chrome/browser/ui/android/bricks/internal/*",
           "//android_webview/javatests/*",
           "//third_party/jni_zero/test/*",
-          "$root_gen_dir/jni_headers/*Jni.kt",  # Generated by jni_zero.
         ]
         _found_kt = filter_exclude(_abs_kt_files, _kt_allowlist)
         assert(
             _found_kt == [],
             "Only the files in the allowlist can be included for now. Feel free to remove this assert when experimenting locally. Found: $_found_kt")
+      }
+
+      if (_has_kt_files) {
         _compile_kt_target_name = "${_main_target_name}__compile_kt"
         _kotlinc_jar_path = "$target_out_dir/$_output_name.kotlinc.jar"
         _kotlin_interface_jar_path =
@@ -4046,15 +4138,21 @@ if (enable_java_templates) {
           output_interface_jar_path = _kotlin_interface_jar_path
           main_target_name = _main_target_name
           build_config = _javac_build_config
-          srcjar_deps = _srcjar_deps
+          srcjar_deps = _srcjar_deps + _rjava_srcjar_deps
+          kotlin_srcjar_deps = _kotlin_srcjar_deps
           srcjars = _srcjars
           source_files = _source_files
-          target_sources_file = _target_sources_file
+          if (_source_files != []) {
+            target_sources_file = _target_sources_file
+          }
           chromium_code = _chromium_code
           include_android_sdk = _requires_robolectric || _requires_android
 
           if (defined(invoker.enable_compose)) {
             enable_compose = invoker.enable_compose
+          }
+          if (defined(invoker.kotlin_friend_deps)) {
+            kotlin_friend_deps = invoker.kotlin_friend_deps
           }
         }
       }
@@ -4067,7 +4165,6 @@ if (enable_java_templates) {
           forward_variables_from(invoker,
                                  "*",
                                  TESTONLY_AND_VISIBILITY + [ "deps" ])
-          forward_variables_from(invoker, [ "visibility" ])
           deps = _header_classpath_deps
           if (defined(invoker.deps)) {
             deps += invoker.deps
@@ -4078,6 +4175,7 @@ if (enable_java_templates) {
           }
           enable_errorprone = _enable_errorprone
           use_turbine = defined(invoker.use_turbine) && invoker.use_turbine
+          omit_classpath = _omit_apk_classpath
 
           if (use_turbine) {
             build_config = _turbine_build_config
@@ -4086,25 +4184,23 @@ if (enable_java_templates) {
           }
 
           if (_enable_errorprone) {
-            # Sharded ErrorProne targets pass their own subset of
-            # `source_files`. Fall back to `_errorprone_source_files` for
-            # non-sharded targets.
-            if (!defined(source_files)) {
-              source_files = _errorprone_source_files
-            }
+            source_files = _errorprone_source_files
           } else {
             source_files = _source_files
             srcjar_deps = _srcjar_deps
+
+            # Standard javac compiles that are given Turbine's --header-jar
+            # resolve R.class from it, avoiding extracting and recompiling
+            # generated R.java sources.
+            if (use_turbine || !defined(invoker.header_jar_path) ||
+                _source_files == []) {
+              srcjar_deps += _rjava_srcjar_deps
+            }
             srcjars = _srcjars
           }
 
           if (source_files != []) {
-            # Sharded ErrorProne targets pass a shard-specific
-            # `target_sources_file`. Fall back to `_target_sources_file` for
-            # non-sharded targets.
-            if (!defined(target_sources_file)) {
-              target_sources_file = _target_sources_file
-            }
+            target_sources_file = _target_sources_file
           }
           if (!use_turbine) {
             chromium_code = _chromium_code
@@ -4137,20 +4233,45 @@ if (enable_java_templates) {
       }
 
       if (!_skip_header_jar) {
+        if (_omit_apk_classpath) {
+          _own_header_target_name = "${target_name}__own_header"
+        } else {
+          _own_header_target_name = _header_target_name
+        }
         _annotation_processor_deps = []
         if (defined(invoker.annotation_processor_deps)) {
           _annotation_processor_deps = invoker.annotation_processor_deps
         }
+        _has_annotation_processors = _annotation_processor_deps != []
+        _generated_jar_path =
+            "$target_gen_dir/$_main_target_name.generated.srcjar"
 
-        compile_java_helper(_header_target_name) {
+        # compile_java.py shards above 3MB of Java sources; targets with fewer
+        # than 100 direct .java files stay below that threshold.
+        _allow_javac_sharding = len(_java_files) >= 100
+        if (defined(invoker.allow_javac_sharding)) {
+          _allow_javac_sharding = invoker.allow_javac_sharding
+        }
+
+        compile_java_helper(_own_header_target_name) {
           forward_variables_from(invoker, _compile_java_forward_variables)
           use_turbine = true
-          has_annotation_processors = _annotation_processor_deps != []
+          has_annotation_processors = _has_annotation_processors
           output_jar_path = _header_jar_path
           generated_jar_path = _generated_jar_path
           deps = _annotation_processor_deps
-          if (_kt_files != []) {
+          if (_has_kt_files) {
             kotlin_jar_path = _kotlin_interface_jar_path
+          }
+        }
+        if (_omit_apk_classpath) {
+          # Downstream targets using apk_under_test or base_module_target depend
+          # on __header and inherit our transitive library interface jars via
+          # write_build_config.py. Keep __header depending on _java_header_deps
+          # while allowing this target's own __compile_java to depend only on
+          # __own_header.
+          group(_header_target_name) {
+            public_deps = [ ":$_own_header_target_name" ] + _java_header_deps
           }
         }
       }
@@ -4169,15 +4290,22 @@ if (enable_java_templates) {
                                    ])
         main_target_name = _main_target_name
         output_jar_path = _javac_jar_path
-        if (!_skip_header_jar) {
-          deps = [ ":$_header_target_name" ]
+
+        # Only targets that may shard javac or run annotation processors via
+        # Turbine need to wait for their own header jar; all others run Turbine
+        # and javac concurrently.
+        if (!_skip_header_jar &&
+            (_allow_javac_sharding || _has_annotation_processors)) {
+          deps = [ ":$_own_header_target_name" ]
           header_jar_path = _header_jar_path
-          generated_jar_path = _generated_jar_path
+          if (_has_annotation_processors) {
+            generated_jar_path = _generated_jar_path
+          }
         }
         if (defined(_filtered_classes_jar_path)) {
           filtered_classes_jar_path = _filtered_classes_jar_path
         }
-        if (_kt_files != []) {
+        if (_has_kt_files) {
           kotlin_jar_path = _kotlinc_jar_path
         }
         validations = []
@@ -4190,84 +4318,21 @@ if (enable_java_templates) {
       }
 
       if (_enable_errorprone) {
-        # Large Java targets (e.g. chrome_java with ~1,750 files) take over
-        # 150 seconds of CPU time when ErrorProne runs as a single monolithic
-        # action. To allow Ninja/Siso to schedule ErrorProne checks with fine-
-        # grained parallelism (and distribute them across remote RBE workers)
-        # while keeping enough files per shard to amortize JVM startup overhead,
-        # dynamically scale the shard count based on target size.
-        # `!_skip_header_jar` is required so each shard can resolve intra-target
-        # symbols compiled in other shards via the turbine header jar.
-        _num_ep_shards = 1
-        if (!_skip_header_jar) {
-          _num_ep_files = len(_errorprone_source_files)
-          if (_num_ep_files > 1600) {
-            _num_ep_shards = 8
-          } else if (_num_ep_files > 800) {
-            _num_ep_shards = 4
-          } else if (_num_ep_files > 200) {
-            _num_ep_shards = 2
+        compile_java_helper(_errorprone_target_name) {
+          forward_variables_from(invoker, _compile_java_forward_variables)
+          enable_errorprone = true
+          if (defined(invoker.errorprone_args)) {
+            if (!defined(xep_args)) {
+              xep_args = []
+            }
+            xep_args += invoker.errorprone_args
           }
-        }
-        _ep_use_sharding = _num_ep_shards > 1
-        if (_ep_use_sharding) {
-          # Generate independent compile_java_helper targets
-          # (__errorprone_shard0..N), each writing its own .sources file and
-          # running as a single-process javac action. Note that srcjar_deps are
-          # intentionally omitted for ErrorProne (generated types are resolved
-          # via header_jar_path/turbine, and warnings in generated code are
-          # disabled via -XepDisableWarningsInGeneratedCode), so sharding does
-          # not duplicate any srcjar extraction or compilation.
-          _ep_shards = split_list(_errorprone_source_files, _num_ep_shards)
-          _ep_shard_targets = []
-        } else {
-          _ep_shards = [ _errorprone_source_files ]
-        }
-
-        _s_idx = 0
-        foreach(_s_files, _ep_shards) {
-          if (_ep_use_sharding) {
-            _s_target = "${_errorprone_target_name}_shard${_s_idx}"
-            _ep_shard_targets += [ ":$_s_target" ]
-            _s_sources_file = "$target_gen_dir/${_s_target}.sources"
-            write_file(_s_sources_file, rebase_path(_s_files, root_build_dir))
-          } else {
-            not_needed([ "_s_files" ])
-            _s_target = _errorprone_target_name
+          if (_has_kt_files) {
+            kotlin_jar_path = _kotlinc_jar_path
           }
-
-          compile_java_helper(_s_target) {
-            forward_variables_from(invoker, _compile_java_forward_variables)
-            enable_errorprone = true
-            if (_ep_use_sharding) {
-              visibility = [ ":$_errorprone_target_name" ]
-              source_files = _s_files
-              target_sources_file = _s_sources_file
-            }
-            if (defined(invoker.errorprone_args)) {
-              if (!defined(xep_args)) {
-                xep_args = []
-              }
-              xep_args += invoker.errorprone_args
-            }
-            if (_kt_files != []) {
-              kotlin_jar_path = _kotlinc_jar_path
-            }
-            if (!_skip_header_jar) {
-              deps = [ ":$_header_target_name" ]
-              header_jar_path = _header_jar_path
-            }
-          }
-          _s_idx += 1
-        }
-
-        if (_ep_use_sharding) {
-          # Keep a group target under the original
-          # `${_main_target_name}__errorprone` name so Ninja validation edges
-          # transitively depend on all shards and external dependents continue
-          # to work.
-          group(_errorprone_target_name) {
-            deps = _ep_shard_targets
+          if (!_skip_header_jar) {
+            deps = [ ":$_own_header_target_name" ]
+            header_jar_path = _header_jar_path
           }
         }
       }
@@ -4433,9 +4498,6 @@ if (enable_java_templates) {
           enable_desugar = _enable_desugar
           ignore_desugar_missing_deps = !_enable_bytecode_checks
 
-          # There's no value in per-class dexing prebuilts since they never
-          # change just one class at a time.
-          disable_incremental = _is_prebuilt
           output = _dex_path
           deps = _processed_jar_deps + _unprocessed_jar_deps
 
@@ -4453,6 +4515,11 @@ if (enable_java_templates) {
 
           is_library = true
 
+          # For large targets (~1 MiB of .class files), it's faster to use D8
+          # with G1 GC (chrome_r8 --d8), while avoiding staging the larger
+          # binary for small targets.
+          allow_chrome_r8 = len(_source_files) >= 100
+
           # proguard_configs listed on java_library targets need to be marked as
           # inputs to at least one target so that "gn analyze" will know about
           # them. Although this target doesn't use them, it's a convenient spot
@@ -4462,7 +4529,7 @@ if (enable_java_templates) {
             inputs = invoker.proguard_configs
 
             # For the aapt-generated proguard rules.
-            deps += _non_java_deps + _srcjar_deps
+            deps += _non_java_deps + _srcjar_deps + _rjava_srcjar_deps
           }
         }
       }
@@ -4527,10 +4594,10 @@ if (enable_java_templates) {
 
     # robolectric_library can depend on java_library, so java_library must
     # define __assetres.
-    if ((_is_library || _supports_android || _requires_robolectric) &&
-        !defined(_fake_rjava_target)) {
+    if (_is_library || _supports_android || _requires_robolectric) {
       group("${target_name}__assetres") {
-        if (_supports_android || _requires_robolectric) {
+        if (_supports_android || _requires_robolectric ||
+            _bypass_platform_checks) {
           deps = _java_assetres_deps
         }
       }
@@ -4694,11 +4761,9 @@ template("create_android_app_bundle_module") {
   #       through @FileArg() references (see below) and will be listed in the
   #       generated depfile instead.
   _inputs = [
-    invoker.build_config,
-    invoker.app_bundle_build_config,
-    _signflinger_jar_path,
-    _signflinger_binary_path,
-  ]
+              invoker.build_config,
+              invoker.app_bundle_build_config,
+            ] + _signflinger_inputs
   _outputs = [ invoker.module_zip_path ]
   _args = [
     "--format=bundle-module",
@@ -4801,7 +4866,7 @@ template("create_android_app_bundle_module") {
 
   action_with_pydeps(target_name) {
     deps = _deps
-    inputs = java_paths_for_inputs + _inputs
+    inputs = _inputs
     outputs = _outputs
     script = _script
     depfile = "$target_gen_dir/$target_name.d"

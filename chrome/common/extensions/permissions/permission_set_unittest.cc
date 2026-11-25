@@ -782,7 +782,9 @@ TEST(PermissionsTest, PermissionMessages) {
   skip.insert(APIPermissionID::kGcm);
   skip.insert(APIPermissionID::kIdle);
   skip.insert(APIPermissionID::kImeWindowEnabled);
+#if BUILDFLAG(IS_CHROMEOS)
   skip.insert(APIPermissionID::kLoginState);
+#endif
   skip.insert(APIPermissionID::kOffscreen);
   skip.insert(APIPermissionID::kOverrideEscFullscreen);
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
@@ -861,7 +863,9 @@ TEST(PermissionsTest, PermissionMessages) {
 #if BUILDFLAG(ENABLE_PLATFORM_APPS)
   skip.insert(APIPermissionID::kArcAppsPrivate);
 #endif
+#if BUILDFLAG(IS_CHROMEOS)
   skip.insert(APIPermissionID::kAutoTestPrivate);
+#endif
   skip.insert(APIPermissionID::kBrailleDisplayPrivate);
   skip.insert(APIPermissionID::kCecPrivate);
   skip.insert(APIPermissionID::kChromeosInfoPrivate);
@@ -1388,6 +1392,10 @@ testing::AssertionResult ShowsAllHostsWarning(const std::string& pattern) {
 
 TEST(PermissionsTest, GetWarningMessages_TLDWildcardTreatedAsAllHosts) {
   EXPECT_TRUE(ShowsAllHostsWarning("http://*.com/*"));    // most popular.
+  EXPECT_TRUE(ShowsAllHostsWarning("http://*.com./*"));   // trailing dot.
+  EXPECT_TRUE(ShowsAllHostsWarning("http://*.com../*"));  // multiple dots.
+  // trailing unicode (。) which maps to standard ASCII dot (.).
+  EXPECT_TRUE(ShowsAllHostsWarning("http://*.com\xe3\x80\x82/*"));
   EXPECT_TRUE(ShowsAllHostsWarning("http://*.org/*"));    // sanity check.
   EXPECT_TRUE(ShowsAllHostsWarning("http://*.co.uk/*"));  // eTLD.
   EXPECT_TRUE(ShowsAllHostsWarning("http://*.de/*"));  // foreign country tld.

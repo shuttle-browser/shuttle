@@ -28,6 +28,7 @@ namespace autofill {
 namespace {
 
 using autofill_metrics::SettingsVisibleFieldTypeForMetrics;
+using ::testing::UnorderedElementsAre;
 using ::testing::UnorderedPointwise;
 
 // Test that two AutofillProfiles have the same `record_type() and `Compare()`
@@ -37,6 +38,16 @@ MATCHER(CompareWithRecordType, "") {
   const AutofillProfile& a = std::get<0>(arg);
   const AutofillProfile& b = std::get<1>(arg);
   return a.record_type() == b.record_type() && a.Compare(b) == 0;
+}
+
+// Returns a Japanese `test::StandardProfile()` whose name is replaced by the
+// observed `name_values`.
+AutofillProfile JapaneseProfileWithName(
+    const std::vector<test::ProfileTestData>& name_values) {
+  AutofillProfile profile = test::StandardProfile(AddressCountryCode("JP"));
+  profile.ClearFields(profile.GetNameInfo().GetSupportedTypes());
+  test::SetProfileObservedTestValues(&profile, name_values);
+  return profile;
 }
 
 class AutofillProfileImportProcessTest : public testing::Test {
@@ -119,8 +130,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportFirstProfile_UserAccepts) {
   std::vector<AutofillProfile> resulting_profiles =
       ApplyImportAndGetProfiles(import_data);
   ASSERT_EQ(resulting_profiles.size(), 1U);
-  EXPECT_THAT(resulting_profiles,
-              testing::UnorderedElementsAre(observed_profile));
+  EXPECT_THAT(resulting_profiles, UnorderedElementsAre(observed_profile));
   EXPECT_EQ(resulting_profiles.at(0).usage_history().modification_date(),
             base::Time::Now());
 }
@@ -145,8 +155,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportFirstProfile_ImportIsBlocked) {
   EXPECT_EQ(import_data.import_type(),
             AutofillProfileImportType::kSuppressedNewProfile);
 
-  EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre());
+  EXPECT_THAT(ApplyImportAndGetProfiles(import_data), UnorderedElementsAre());
 }
 
 // Tests the import process for the scenario, that the user accepts the import
@@ -173,7 +182,7 @@ TEST_F(AutofillProfileImportProcessTest,
   EXPECT_EQ(import_data.import_type(), AutofillProfileImportType::kNewProfile);
 
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(edited_profile));
+              UnorderedElementsAre(edited_profile));
 }
 
 // Tests the import process for the scenario, that the user declines the import
@@ -195,8 +204,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportFirstProfile_UserRejects) {
   // profile.
   EXPECT_EQ(import_data.import_type(), AutofillProfileImportType::kNewProfile);
 
-  EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre());
+  EXPECT_THAT(ApplyImportAndGetProfiles(import_data), UnorderedElementsAre());
 }
 
 // Tests the import of a profile that is an exact duplicate of the only already
@@ -222,7 +230,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportDuplicateProfile) {
   EXPECT_FALSE(import_data.ProfilesChanged());
 
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(observed_profile));
+              UnorderedElementsAre(observed_profile));
 }
 
 // Tests that an incorrectly complemented country doesn't lead to an almost-
@@ -281,8 +289,8 @@ TEST_F(AutofillProfileImportProcessTest,
   EXPECT_FALSE(import_data.ProfilesChanged());
 
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(duplicate_existing_profile,
-                                            distinct_existing_profile));
+              UnorderedElementsAre(duplicate_existing_profile,
+                                   distinct_existing_profile));
 }
 
 // Tests that importing a profile that is an exact duplicate of a kAccount
@@ -302,7 +310,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportDuplicateProfile_kAccount) {
   import_data.AcceptWithoutPrompt();
   EXPECT_FALSE(import_data.ProfilesChanged());
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(account_profile));
+              UnorderedElementsAre(account_profile));
 }
 
 // Tests that importing a profile that is a subset of a kAccount profile is
@@ -322,7 +330,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportSubsetProfile_kAccount) {
   import_data.AcceptWithoutPrompt();
   EXPECT_FALSE(import_data.ProfilesChanged());
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(account_profile));
+              UnorderedElementsAre(account_profile));
 }
 
 // Tests that importing an `ExtendedHiraganaProfile` with address fields is a
@@ -348,7 +356,7 @@ TEST_F(AutofillProfileImportProcessTest,
   test_api(expected_profile)
       .set_record_type(AutofillProfile::RecordType::kAccount);
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(expected_profile));
+              UnorderedElementsAre(expected_profile));
 }
 
 // Tests that importing a profile that is semantically equal to a kAccount
@@ -370,7 +378,7 @@ TEST_F(AutofillProfileImportProcessTest,
   import_data.AcceptWithoutPrompt();
   EXPECT_FALSE(import_data.ProfilesChanged());
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(account_profile));
+              UnorderedElementsAre(account_profile));
 }
 
 // Tests that importing a Katakana profile with a different alternative name
@@ -398,9 +406,9 @@ TEST_F(AutofillProfileImportProcessTest, ImportNewKatakanaProfile_UserAccepts) {
   std::vector<AutofillProfile> resulting_profiles =
       ApplyImportAndGetProfiles(import_data);
   ASSERT_EQ(resulting_profiles.size(), 2U);
-  EXPECT_THAT(resulting_profiles,
-              testing::UnorderedElementsAre(existing_hiragana_profile,
-                                            new_katakana_profile));
+  EXPECT_THAT(
+      resulting_profiles,
+      UnorderedElementsAre(existing_hiragana_profile, new_katakana_profile));
   EXPECT_EQ(resulting_profiles.at(1).usage_history().modification_date(),
             base::Time::Now());
 }
@@ -427,7 +435,7 @@ TEST_F(AutofillProfileImportProcessTest,
   test_api(expected_profile)
       .set_record_type(AutofillProfile::RecordType::kAccount);
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(expected_profile));
+              UnorderedElementsAre(expected_profile));
 }
 
 // Tests that an import can cause a silent update of a `kAccount` profile.
@@ -454,7 +462,7 @@ TEST_F(AutofillProfileImportProcessTest, ImportSilentUpdate_kAccount) {
       .set_record_type(AutofillProfile::RecordType::kAccount);
   expected_profile.set_guid(account_profile.guid());
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(expected_profile));
+              UnorderedElementsAre(expected_profile));
 }
 
 // Tests the accepted import of a profile that is mergeable with an already
@@ -499,7 +507,7 @@ TEST_F(AutofillProfileImportProcessTest, MergeWithExistingProfile_Accepted) {
   std::vector<AutofillProfile> resulting_profiles =
       ApplyImportAndGetProfiles(import_data);
   ASSERT_EQ(resulting_profiles.size(), 1U);
-  EXPECT_THAT(resulting_profiles, testing::UnorderedElementsAre(final_profile));
+  EXPECT_THAT(resulting_profiles, UnorderedElementsAre(final_profile));
   EXPECT_EQ(resulting_profiles.at(0).usage_history().modification_date(),
             base::Time::Now());
 }
@@ -543,8 +551,7 @@ TEST_F(AutofillProfileImportProcessTest,
   std::vector<AutofillProfile> resulting_profiles =
       ApplyImportAndGetProfiles(import_data);
   ASSERT_EQ(resulting_profiles.size(), 1U);
-  EXPECT_THAT(resulting_profiles,
-              testing::UnorderedElementsAre(edited_profile));
+  EXPECT_THAT(resulting_profiles, UnorderedElementsAre(edited_profile));
   EXPECT_EQ(resulting_profiles.at(0).usage_history().modification_date(),
             base::Time::Now());
 }
@@ -586,7 +593,7 @@ TEST_F(AutofillProfileImportProcessTest,
   test::CopyGUID(mergeable_profile, &merged_profile);
 
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(merged_profile, distinct_profile));
+              UnorderedElementsAre(merged_profile, distinct_profile));
 }
 
 // Tests the rejection of the merge of the observed profile with an already
@@ -629,8 +636,7 @@ TEST_F(AutofillProfileImportProcessTest, MergeWithExistingProfile_Rejected) {
   std::vector<AutofillProfile> resulting_profiles =
       ApplyImportAndGetProfiles(import_data);
   ASSERT_EQ(resulting_profiles.size(), 1U);
-  EXPECT_THAT(resulting_profiles,
-              testing::UnorderedElementsAre(mergeable_profile));
+  EXPECT_THAT(resulting_profiles, UnorderedElementsAre(mergeable_profile));
   EXPECT_EQ(resulting_profiles.at(0).usage_history().modification_date(),
             earlier_time);
 }
@@ -670,8 +676,89 @@ TEST_F(AutofillProfileImportProcessTest, SilentlyUpdateProfile) {
   std::vector<AutofillProfile> resulting_profiles =
       ApplyImportAndGetProfiles(import_data);
   ASSERT_EQ(resulting_profiles.size(), 1U);
-  EXPECT_THAT(resulting_profiles,
-              testing::UnorderedElementsAre(updated_profile));
+  EXPECT_THAT(resulting_profiles, UnorderedElementsAre(updated_profile));
+}
+
+// Tests that merging an observed profile with a country and contact details
+// into a country-less stored profile requires user confirmation when the
+// visible-type sets differ (e.g. empty country vs. AT). Stored profiles with a
+// country already set reject merges with conflicting countries, so differing
+// visible-type sets during import only arise when `ADDRESS_HOME_COUNTRY` is
+// empty (such as legacy country-less or `kAccountNameEmail` profiles).
+TEST_F(
+    AutofillProfileImportProcessTest,
+    MergeIntoCountrylessProfileRequiresConfirmation_DifferentVisibleTypeSets) {
+  AutofillProfile existing_profile(
+      i18n_model_definition::kLegacyHierarchyCountryCode);
+  test::SetProfileInfo(&existing_profile, test::SetProfileInfoOptionsBuilder()
+                                              .with_first_name("Max")
+                                              .with_last_name("Mustermann")
+                                              .with_address1("Hauptstrasse 5")
+                                              .with_zipcode("1010")
+                                              .with_city("Wien")
+                                              .Build());
+  address_data_manager().AddProfile(existing_profile);
+
+  AutofillProfile observed_at_profile(AddressCountryCode("AT"));
+  test::SetProfileInfo(&observed_at_profile,
+                       test::SetProfileInfoOptionsBuilder()
+                           .with_first_name("Max")
+                           .with_last_name("Mustermann")
+                           .with_address1("Hauptstrasse 5")
+                           .with_zipcode("1010")
+                           .with_city("Wien")
+                           .with_country("AT")
+                           .with_email("attacker@evil.example")
+                           .with_phone("+43 660 1234567")
+                           .with_company("Evil GmbH")
+                           .Build());
+  ASSERT_NE(existing_profile.GetUserVisibleTypes(),
+            observed_at_profile.GetUserVisibleTypes());
+
+  ProfileImportProcess at_import = CreateProfileImportProcess(
+      observed_at_profile, /*allow_only_silent_updates=*/false);
+  EXPECT_EQ(at_import.import_type(),
+            AutofillProfileImportType::kConfirmableMerge);
+  EXPECT_TRUE(at_import.requires_user_prompt());
+  EXPECT_TRUE(at_import.silently_updated_profiles().empty());
+}
+
+// Tests that merging an observed profile that only adds a country into a
+// country-less stored profile requires user confirmation even when the
+// visible-type sets match (e.g. empty country vs. GB).
+TEST_F(
+    AutofillProfileImportProcessTest,
+    MergeIntoCountrylessProfileRequiresConfirmation_MatchingVisibleTypeSets) {
+  AutofillProfile existing_profile(
+      i18n_model_definition::kLegacyHierarchyCountryCode);
+  test::SetProfileInfo(&existing_profile, test::SetProfileInfoOptionsBuilder()
+                                              .with_first_name("Max")
+                                              .with_last_name("Mustermann")
+                                              .with_address1("Hauptstrasse 5")
+                                              .with_zipcode("1010")
+                                              .with_city("Wien")
+                                              .Build());
+  address_data_manager().AddProfile(existing_profile);
+
+  AutofillProfile observed_gb_profile(AddressCountryCode("GB"));
+  test::SetProfileInfo(&observed_gb_profile,
+                       test::SetProfileInfoOptionsBuilder()
+                           .with_first_name("Max")
+                           .with_last_name("Mustermann")
+                           .with_address1("Hauptstrasse 5")
+                           .with_zipcode("1010")
+                           .with_city("Wien")
+                           .with_country("GB")
+                           .Build());
+  ASSERT_EQ(existing_profile.GetUserVisibleTypes(),
+            observed_gb_profile.GetUserVisibleTypes());
+
+  ProfileImportProcess gb_import = CreateProfileImportProcess(
+      observed_gb_profile, /*allow_only_silent_updates=*/false);
+  EXPECT_EQ(gb_import.import_type(),
+            AutofillProfileImportType::kConfirmableMerge);
+  EXPECT_TRUE(gb_import.requires_user_prompt());
+  EXPECT_TRUE(gb_import.silently_updated_profiles().empty());
 }
 
 // Tests the scenario in which an observed profile can be merged with an
@@ -703,7 +790,7 @@ TEST_F(AutofillProfileImportProcessTest, BlockedMerge) {
   EXPECT_FALSE(import_data.ProfilesChanged());
 
   EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
-              testing::UnorderedElementsAre(mergeable_profile));
+              UnorderedElementsAre(mergeable_profile));
 }
 
 // Tests the scenario in which the observed profile is not imported since the
@@ -768,9 +855,8 @@ TEST_F(AutofillProfileImportProcessTest,
   AutofillProfile updated_profile = observed_profile;
   test::CopyGUID(updateable_profile, &updated_profile);
 
-  EXPECT_THAT(
-      ApplyImportAndGetProfiles(import_data),
-      testing::UnorderedElementsAre(mergeable_profile, updated_profile));
+  EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
+              UnorderedElementsAre(mergeable_profile, updated_profile));
 }
 
 // Tests that for eligible users, new profiles are of record type kAccount.
@@ -1550,6 +1636,146 @@ TEST_F(AutofillProfileImportProcessTest,
 
   histogram_tester.ExpectTotalCount(
       "Autofill.ProfileImport.SilentUpdateFieldMergeCategoryBitmask", 0);
+}
+
+// Tests that when an observed profile differs from an existing profile only in
+// whitespace/formatting that is normalized away by `GetEnvelopeStyleAddress()`,
+// the import is classified as a silent update rather than a confirmable merge
+// (which would show an empty update prompt).
+TEST_F(AutofillProfileImportProcessTest,
+       WhitespaceOnlyAddressDifferenceIsSilentlyUpdated) {
+  AutofillProfile existing_profile = test::StandardProfile();
+  address_data_manager().AddProfile(existing_profile);
+
+  AutofillProfile observed_profile = test::StandardProfile();
+  observed_profile.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_ADDRESS, u"123  Mainstreet",
+      VerificationStatus::kObserved);
+  observed_profile.usage_history().set_use_date(base::Time::Now() +
+                                                base::Days(1));
+  observed_profile.FinalizeAfterImport();
+
+  // With the kill switch disabled, the raw string discrepancy causes a
+  // confirmable merge despite having no UI-visible differences.
+  {
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitAndDisableFeature(
+        features::kAutofillGuardEmptyUpdatePrompts);
+    ProfileImportProcess import_data = CreateProfileImportProcess(
+        observed_profile, /*allow_only_silent_updates=*/false);
+    EXPECT_EQ(import_data.import_type(),
+              AutofillProfileImportType::kConfirmableMerge);
+  }
+
+  // With `kAutofillGuardEmptyUpdatePrompts` enabled (default), the import is
+  // classified as a silent update.
+  ProfileImportProcess import_data = CreateProfileImportProcess(
+      observed_profile, /*allow_only_silent_updates=*/false);
+  EXPECT_EQ(import_data.import_type(),
+            AutofillProfileImportType::kSilentUpdate);
+  EXPECT_FALSE(import_data.merge_candidate().has_value());
+  EXPECT_EQ(import_data.silently_updated_profiles().size(), 1u);
+
+  import_data.AcceptWithoutPrompt();
+  EXPECT_TRUE(import_data.ProfilesChanged());
+
+  AutofillProfile expected_profile = observed_profile;
+  test::CopyGUID(existing_profile, &expected_profile);
+  EXPECT_THAT(ApplyImportAndGetProfiles(import_data),
+              UnorderedElementsAre(expected_profile));
+}
+
+// Tests that a whitespace-only address difference on a `kAccountHome` profile
+// is treated as a silent update in place rather than `kHomeAndWorkSuperset`
+// (which would replace and remove the `kAccountHome` profile).
+TEST_F(AutofillProfileImportProcessTest,
+       WhitespaceOnlyAddressDifferenceOnHomeProfileIsSilentlyUpdated) {
+  address_data_manager().SetIsEligibleForAddressAccountStorage(true);
+
+  AutofillProfile home_profile = test::StandardProfile();
+  test_api(home_profile)
+      .set_record_type(AutofillProfile::RecordType::kAccountHome);
+  address_data_manager().AddProfile(home_profile);
+
+  AutofillProfile observed_profile = test::StandardProfile();
+  observed_profile.SetRawInfoWithVerificationStatus(
+      ADDRESS_HOME_STREET_ADDRESS, u"123  Mainstreet",
+      VerificationStatus::kObserved);
+  observed_profile.usage_history().set_use_date(base::Time::Now() +
+                                                base::Days(1));
+  observed_profile.FinalizeAfterImport();
+
+  ProfileImportProcess import_data = CreateProfileImportProcess(
+      observed_profile, /*allow_only_silent_updates=*/false);
+  EXPECT_EQ(import_data.import_type(),
+            AutofillProfileImportType::kSilentUpdate);
+  EXPECT_FALSE(import_data.merge_candidate().has_value());
+
+  import_data.AcceptWithoutPrompt();
+  EXPECT_TRUE(import_data.ProfilesChanged());
+
+  AutofillProfile expected_profile = observed_profile;
+  test::CopyGUID(home_profile, &expected_profile);
+  test_api(expected_profile)
+      .set_record_type(AutofillProfile::RecordType::kAccountHome);
+  EXPECT_THAT(
+      ApplyImportAndGetProfiles(import_data),
+      testing::UnorderedPointwise(CompareWithRecordType(), {expected_profile}));
+}
+
+// Tests that an observed profile that adds a middle name to a stored CJK name
+// is not silently updated. Since the CJK NAME_FULL format omits NAME_MIDDLE,
+// the observed and the stored NAME_FULL used to be identical and the middle
+// name was merged into the stored profile without a prompt.
+TEST_F(AutofillProfileImportProcessTest,
+       CjkNameWithAdditionalMiddleNameIsNotSilentlyUpdated) {
+  const AutofillProfile existing_profile =
+      JapaneseProfileWithName({{NAME_FIRST, "太郎"}, {NAME_LAST, "王"}});
+  ASSERT_EQ(existing_profile.GetRawInfo(NAME_FULL), u"王太郎");
+  address_data_manager().AddProfile(existing_profile);
+
+  for (const char* middle_name : {"Middle", "仲"}) {
+    SCOPED_TRACE(middle_name);
+    const AutofillProfile observed_profile = JapaneseProfileWithName(
+        {{NAME_FIRST, "太郎"}, {NAME_MIDDLE, middle_name}, {NAME_LAST, "王"}});
+    ASSERT_NE(observed_profile.GetRawInfo(NAME_FULL), u"王太郎");
+
+    // The names are not mergeable anymore, so the user is prompted to save a
+    // new profile.
+    ProfileImportProcess import_data = CreateProfileImportProcess(
+        observed_profile, /*allow_only_silent_updates=*/false);
+    EXPECT_EQ(import_data.import_type(),
+              AutofillProfileImportType::kNewProfile);
+
+    // If only silent updates are allowed, nothing changes.
+    ProfileImportProcess silent_import_data = CreateProfileImportProcess(
+        observed_profile, /*allow_only_silent_updates=*/true);
+    silent_import_data.AcceptWithoutPrompt();
+    EXPECT_FALSE(silent_import_data.ProfilesChanged());
+    EXPECT_THAT(ApplyImportAndGetProfiles(silent_import_data),
+                UnorderedElementsAre(existing_profile));
+  }
+}
+
+// Tests that observing the first and last name of a stored CJK name separately
+// is still applied as a silent update.
+TEST_F(AutofillProfileImportProcessTest,
+       CjkNameStructureRefinementIsSilentlyUpdated) {
+  const AutofillProfile existing_profile =
+      JapaneseProfileWithName({{NAME_FULL, "王太郎"}});
+  ASSERT_EQ(existing_profile.GetVerificationStatus(NAME_FIRST),
+            VerificationStatus::kParsed);
+  address_data_manager().AddProfile(existing_profile);
+
+  ProfileImportProcess import_data = CreateProfileImportProcess(
+      JapaneseProfileWithName({{NAME_FIRST, "太郎"}, {NAME_LAST, "王"}}),
+      /*allow_only_silent_updates=*/false);
+  EXPECT_EQ(import_data.import_type(),
+            AutofillProfileImportType::kSilentUpdate);
+  ASSERT_EQ(import_data.silently_updated_profiles().size(), 1u);
+  EXPECT_EQ(import_data.silently_updated_profiles()[0].GetVerificationStatus(
+                NAME_FIRST),
+            VerificationStatus::kObserved);
 }
 
 }  // namespace

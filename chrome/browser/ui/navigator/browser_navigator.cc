@@ -13,10 +13,12 @@
 
 #include "base/feature_list.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "chrome/browser/apps/app_service/web_contents_app_id_utils.h"
@@ -40,11 +42,11 @@
 #include "chrome/browser/ui/navigator/browser_navigator_params_utils.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/status_bubble.h"
-#include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
+#include "chrome/browser/ui/waap/window_creation.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/web_applications/navigation_capturing_process.h"
 #include "chrome/browser/ui/web_applications/web_app_launch_navigation_handle_user_data.h"
@@ -80,8 +82,8 @@
 #include "third_party/blink/public/common/features_generated.h"
 #include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "url/url_constants.h"
@@ -145,6 +147,22 @@ bool WindowCanOpenTabs(const NavigateParams& params) {
          params.browser->tab_strip_model()->empty();
 }
 
+// Creates a new normal Browser window for |profile| if allowed, and records
+// its creation source as `waap::NewWindowCreationSource::kNavigation`.
+BrowserWindowInterface* CreateNormalBrowserForNavigation(
+    Profile* profile,
+    bool user_gesture,
+    bool should_trigger_session_restore) {
+  if (GetBrowserWindowCreationStatusForProfile(*profile) !=
+      BrowserWindowInterface::CreationStatus::kOk) {
+    return nullptr;
+  }
+  BrowserWindowCreateParams params(profile, user_gesture);
+  params.should_trigger_session_restore = should_trigger_session_restore;
+  return waap::CreateBrowserWindowAndRecordCreationSource(
+      std::move(params), waap::NewWindowCreationSource::kNavigation);
+}
+
 // Finds an existing Browser compatible with |profile|, making a new one if no
 // such Browser is located.
 BrowserWindowInterface* GetOrCreateBrowser(
@@ -153,14 +171,9 @@ BrowserWindowInterface* GetOrCreateBrowser(
     bool should_trigger_session_restore) {
   BrowserWindowInterface* browser =
       ProfileBrowserCollection::GetForProfile(profile)->FindTabbedBrowser();
-
-  if (!browser && GetBrowserWindowCreationStatusForProfile(*profile) ==
-                      BrowserWindowInterface::CreationStatus::kOk) {
-    BrowserWindowCreateParams params(profile, user_gesture);
-    params.should_trigger_session_restore = should_trigger_session_restore;
-    browser = CreateBrowserWindow(std::move(params));
-  }
-  return browser;
+  return browser ? browser
+                 : CreateNormalBrowserForNavigation(
+                       profile, user_gesture, should_trigger_session_restore);
 }
 
 bool IncognitoModeForced(const Profile* profile) {
@@ -213,14 +226,15 @@ bool AdjustNavigateParamsForURL(NavigateParams* params) {
   if (!params->contents_to_insert && !params->switch_to_singleton_tab &&
       !IsURLAllowedInIncognito(params->url) && !profile->IsGuestSession() &&
       (profile->IsOffTheRecord() ||
-       params->disposition == WindowOpenDisposition::kOffTheRecord)) {
+       params->disposition ==
+           ui::mojom::WindowOpenDisposition::kOffTheRecord)) {
     profile = profile->GetOriginalProfile();
 
     // If incognito is forced, we punt.
     if (IncognitoModeForced(profile)) {
       return false;
     }
-    params->disposition = WindowOpenDisposition::kSingletonTab;
+    params->disposition = ui::mojom::WindowOpenDisposition::kSingletonTab;
     params->browser = GetOrCreateBrowser(
         profile, params->user_gesture, params->should_trigger_session_restore);
     params->window_action = NavigateParams::WindowAction::kShowWindow;
@@ -237,7 +251,7 @@ bool AdjustNavigateParamsForURL(NavigateParams* params) {
             ->GetLastCommittedURL() == params->url) {
       return false;
     }
-    params->disposition = WindowOpenDisposition::kCurrentTab;
+    params->disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   }
 
   return true;
@@ -265,16 +279,8 @@ split_tabs::SplitTabVisualData GetWindowOpenSplitTabVisualData(
   CHECK(base::FeatureList::IsEnabled(blink::features::kWindowOpenSplitTab));
   CHECK(window_features.is_split);
 
-  blink::mojom::SplitTabPosition position = window_features.split_position;
-  // Top/bottom splits require stacked split support. Without it, fall back to
-  // left/right.
-  if (!base::FeatureList::IsEnabled(tabs::kSplitViewHorizontal)) {
-    if (position == blink::mojom::SplitTabPosition::kTop) {
-      position = blink::mojom::SplitTabPosition::kLeft;
-    } else if (position == blink::mojom::SplitTabPosition::kBottom) {
-      position = blink::mojom::SplitTabPosition::kRight;
-    }
-  }
+  const blink::mojom::SplitTabPosition position =
+      window_features.split_position;
   const split_tabs::SplitTabLayout layout =
       (position == blink::mojom::SplitTabPosition::kTop ||
        position == blink::mojom::SplitTabPosition::kBottom)
@@ -311,7 +317,7 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       params.should_trigger_session_restore;
 
   switch (params.disposition) {
-    case WindowOpenDisposition::kSwitchToTab: {
+    case ui::mojom::WindowOpenDisposition::kSwitchToTab: {
       std::pair<BrowserWindowInterface*, int> browser_and_index =
           GetIndexAndBrowserOfMatchingTab(profile, params);
       if (browser_and_index.first) {
@@ -319,7 +325,7 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       }
     }
       [[fallthrough]];
-    case WindowOpenDisposition::kCurrentTab:
+    case ui::mojom::WindowOpenDisposition::kCurrentTab:
       if (params.browser) {
         return {params.browser, -1};
       }
@@ -328,7 +334,7 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       return {GetOrCreateBrowser(profile, params.user_gesture,
                                  should_trigger_session_restore),
               -1};
-    case WindowOpenDisposition::kSingletonTab: {
+    case ui::mojom::WindowOpenDisposition::kSingletonTab: {
       // If we have a browser window, check it first.
       if (params.browser) {
         int index = GetIndexOfExistingTabMatchingURL(params.browser, params);
@@ -348,9 +354,9 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       }
     }
       [[fallthrough]];
-    case WindowOpenDisposition::kNewForegroundTab:
-    case WindowOpenDisposition::kNewBackgroundTab:
-    case WindowOpenDisposition::kNewSplitView:
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewSplitView:
       // See if we can open the tab in the window this navigator is bound to.
       if (WindowCanOpenTabs(params)) {
         return {params.browser, -1};
@@ -361,7 +367,7 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       return {GetOrCreateBrowser(profile, params.user_gesture,
                                  should_trigger_session_restore),
               -1};
-    case WindowOpenDisposition::kNewPictureInPicture: {
+    case ui::mojom::WindowOpenDisposition::kNewPictureInPicture: {
       // The picture in picture window should be part of the opener's web app,
       // if any.
       std::string app_name;
@@ -403,7 +409,7 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
       browser_params.omit_from_session_restore = true;
       return {CreateBrowserWindow(std::move(browser_params)), -1};
     }
-    case WindowOpenDisposition::kNewPopup: {
+    case ui::mojom::WindowOpenDisposition::kNewPopup: {
       // Make a new popup window.
       // Coerce app-style if |source| represents an app.
       std::string app_name;
@@ -459,27 +465,20 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
           should_trigger_session_restore;
       return {CreateBrowserWindow(std::move(browser_params)), -1};
     }
-    case WindowOpenDisposition::kNewWindow: {
+    case ui::mojom::WindowOpenDisposition::kNewWindow:
       // Make a new normal browser window.
-      BrowserWindowInterface* browser = nullptr;
-      if (GetBrowserWindowCreationStatusForProfile(*profile) ==
-          BrowserWindowInterface::CreationStatus::kOk) {
-        BrowserWindowCreateParams browser_params(profile, params.user_gesture);
-        browser_params.should_trigger_session_restore =
-            should_trigger_session_restore;
-        browser = CreateBrowserWindow(std::move(browser_params));
-      }
-      return {browser, -1};
-    }
-    case WindowOpenDisposition::kOffTheRecord:
+      return {CreateNormalBrowserForNavigation(profile, params.user_gesture,
+                                               should_trigger_session_restore),
+              -1};
+    case ui::mojom::WindowOpenDisposition::kOffTheRecord:
       // Make or find an incognito window.
       return {GetOrCreateBrowser(
                   profile->GetPrimaryOTRProfile(/*create_if_needed=*/true),
                   params.user_gesture, should_trigger_session_restore),
               -1};
     // The following types result in no navigation.
-    case WindowOpenDisposition::kSaveToDisk:
-    case WindowOpenDisposition::kIgnoreAction:
+    case ui::mojom::WindowOpenDisposition::kSaveToDisk:
+    case ui::mojom::WindowOpenDisposition::kIgnoreAction:
       return {nullptr, -1};
     default:
       NOTREACHED();
@@ -489,37 +488,43 @@ std::tuple<BrowserWindowInterface*, int> GetBrowserAndTabForDisposition(
 // Fix disposition and other parameter values depending on prevailing
 // conditions.
 void NormalizeDisposition(NavigateParams* params) {
-  // Calculate the WindowOpenDisposition if necessary.
-  if (params->browser->GetTabStripModel()->empty() &&
-      (params->disposition == WindowOpenDisposition::kNewBackgroundTab ||
-       params->disposition == WindowOpenDisposition::kCurrentTab ||
-       params->disposition == WindowOpenDisposition::kSingletonTab ||
-       params->disposition == WindowOpenDisposition::kNewSplitView)) {
-    params->disposition = WindowOpenDisposition::kNewForegroundTab;
+  // Calculate the `ui::mojom::WindowOpenDisposition` if necessary.
+  if (params->browser && params->browser->GetTabStripModel()->empty() &&
+      (params->disposition ==
+           ui::mojom::WindowOpenDisposition::kNewBackgroundTab ||
+       params->disposition == ui::mojom::WindowOpenDisposition::kCurrentTab ||
+       params->disposition == ui::mojom::WindowOpenDisposition::kSingletonTab ||
+       params->disposition ==
+           ui::mojom::WindowOpenDisposition::kNewSplitView)) {
+    params->disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
-  if (params->browser->GetProfile()->IsOffTheRecord() &&
-      params->disposition == WindowOpenDisposition::kOffTheRecord) {
-    params->disposition = WindowOpenDisposition::kNewForegroundTab;
+  if (params->disposition == ui::mojom::WindowOpenDisposition::kNewSplitView &&
+      (!params->user_gesture || !params->original_user_gesture)) {
+    params->disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
+  }
+  if (params->browser && params->browser->GetProfile()->IsOffTheRecord() &&
+      params->disposition == ui::mojom::WindowOpenDisposition::kOffTheRecord) {
+    params->disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
   if (!params->source_contents &&
-      params->disposition == WindowOpenDisposition::kCurrentTab) {
-    params->disposition = WindowOpenDisposition::kNewForegroundTab;
+      params->disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
+    params->disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
 
   switch (params->disposition) {
-    case WindowOpenDisposition::kNewBackgroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
       // Disposition trumps add types. ADD_ACTIVE is a default, so we need to
       // remove it if disposition implies the tab is going to open in the
       // background.
       params->tabstrip_add_types &= ~AddTabTypes::ADD_ACTIVE;
       break;
 
-    case WindowOpenDisposition::kNewPictureInPicture:
+    case ui::mojom::WindowOpenDisposition::kNewPictureInPicture:
       PictureInPictureWindowManager::SetWindowParams(*params);
       break;
 
-    case WindowOpenDisposition::kNewWindow:
-    case WindowOpenDisposition::kNewPopup: {
+    case ui::mojom::WindowOpenDisposition::kNewWindow:
+    case ui::mojom::WindowOpenDisposition::kNewPopup: {
       // Code that wants to open a new window typically expects it to be shown
       // automatically.
       if (params->window_action == NavigateParams::WindowAction::kNoAction) {
@@ -527,12 +532,12 @@ void NormalizeDisposition(NavigateParams* params) {
       }
       [[fallthrough]];
     }
-    case WindowOpenDisposition::kNewForegroundTab:
-    case WindowOpenDisposition::kSingletonTab:
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
+    case ui::mojom::WindowOpenDisposition::kSingletonTab:
       params->tabstrip_add_types |= AddTabTypes::ADD_ACTIVE;
       break;
 
-    case WindowOpenDisposition::kNewSplitView:
+    case ui::mojom::WindowOpenDisposition::kNewSplitView:
       // AddToNewSplit() pairs the new tab with the active tab, so the new
       // tab must not be active at insertion time.
       params->tabstrip_add_types &= ~AddTabTypes::ADD_ACTIVE;
@@ -589,7 +594,8 @@ std::unique_ptr<content::WebContents> CreateTargetContents(
 
   create_params.opened_by_another_window = params.opened_by_another_window;
 
-  if (params.disposition == WindowOpenDisposition::kNewBackgroundTab) {
+  if (params.disposition ==
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab) {
     create_params.initially_hidden = true;
   }
 
@@ -635,7 +641,8 @@ class ScopedBrowserShower {
     } else if (params_->window_action ==
                NavigateParams::WindowAction::kShowWindow) {
       if (additional_params_->tab_modal_popup) {
-        CHECK_EQ(params_->disposition, WindowOpenDisposition::kNewPopup);
+        CHECK_EQ(params_->disposition,
+                 ui::mojom::WindowOpenDisposition::kNewPopup);
         CHECK_NE(modal_anchor_, nullptr);
         params_->browser->SetIsTabModalPopup(
             true, base::PassKey<ScopedBrowserShower>());
@@ -646,9 +653,10 @@ class ScopedBrowserShower {
       }
       // If a user gesture opened a popup window, focus the contents.
       if (params_->user_gesture &&
-          (params_->disposition == WindowOpenDisposition::kNewPopup ||
+          (params_->disposition ==
+               ui::mojom::WindowOpenDisposition::kNewPopup ||
            params_->disposition ==
-               WindowOpenDisposition::kNewPictureInPicture) &&
+               ui::mojom::WindowOpenDisposition::kNewPictureInPicture) &&
           *contents_) {
         (*contents_)->Focus();
         window->Activate();
@@ -676,8 +684,8 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   DCHECK(params->initiating_profile);
 
 #if BUILDFLAG(IS_CHROMEOS)
-  if (params->disposition != WindowOpenDisposition::kNewPopup &&
-      params->disposition != WindowOpenDisposition::kCurrentTab &&
+  if (params->disposition != ui::mojom::WindowOpenDisposition::kNewPopup &&
+      params->disposition != ui::mojom::WindowOpenDisposition::kCurrentTab &&
       ShouldForceCaptivePortalSigninIntoCurrentTab(*params, source_browser) &&
       !IncognitoModeForced(params->initiating_profile)) {
     // Navigation outside of the current tab or the initial popup window from a
@@ -695,10 +703,10 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
       // CURRENT_TAB cannot merge an existing WebContents into
       // `source_contents`.
       if (params->contents_to_insert) {
-        return WindowOpenDisposition::kNewPopup;
+        return ui::mojom::WindowOpenDisposition::kNewPopup;
       }
       if (!params->initiator_frame_token.has_value()) {
-        return WindowOpenDisposition::kCurrentTab;
+        return ui::mojom::WindowOpenDisposition::kCurrentTab;
       }
       content::RenderFrameHost* const initiator_rfh =
           content::RenderFrameHost::FromFrameToken(
@@ -708,7 +716,7 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
       // Fall back to NEW_POPUP if the initiator frame was already destroyed
       // (`!initiator_rfh`), since its sandbox flags can no longer be checked.
       if (!initiator_rfh) {
-        return WindowOpenDisposition::kNewPopup;
+        return ui::mojom::WindowOpenDisposition::kNewPopup;
       }
       // If the navigation is initiated by a subframe that is sandboxed against
       // top-level navigation (e.g., an iframe with allow-popups but without
@@ -717,8 +725,8 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
       // window, bypassing the sandbox restriction.
       return initiator_rfh->IsSandboxed(
                  network::mojom::WebSandboxFlags::kTopNavigation)
-                 ? WindowOpenDisposition::kNewPopup
-                 : WindowOpenDisposition::kCurrentTab;
+                 ? ui::mojom::WindowOpenDisposition::kNewPopup
+                 : ui::mojom::WindowOpenDisposition::kCurrentTab;
     }();
   }
 #endif
@@ -791,7 +799,8 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   // cancel the navigation.  The source URL must also be of a type that's
   // allowed to open document PiP.  See `PictureInPictureWindowManager` for
   // details on what's allowed.
-  if (params->disposition == WindowOpenDisposition::kNewPictureInPicture) {
+  if (params->disposition ==
+      ui::mojom::WindowOpenDisposition::kNewPictureInPicture) {
     const GURL& url = params->source_contents
                           ? params->source_contents->GetLastCommittedURL()
                           : GURL();
@@ -813,7 +822,8 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   WebContents* contents_to_navigate_or_insert =
       params->contents_to_insert.get();
   if (params->switch_to_singleton_tab) {
-    DCHECK_EQ(params->disposition, WindowOpenDisposition::kSingletonTab);
+    DCHECK_EQ(params->disposition,
+              ui::mojom::WindowOpenDisposition::kSingletonTab);
     contents_to_navigate_or_insert = params->switch_to_singleton_tab;
   }
 
@@ -824,11 +834,16 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   // We do this before creating the browser window, so that the browser can talk
   // to the PictureInPictureWindowManager.  Otherwise, the manager has no idea
   // that there's a pip window.
-  if (params->disposition == WindowOpenDisposition::kNewPictureInPicture) {
+  if (params->disposition ==
+      ui::mojom::WindowOpenDisposition::kNewPictureInPicture) {
     // Picture in picture windows may not be opened by other picture in
     // picture or floating windows, or without an opener.
-    if (!params->browser || params->browser->GetType() ==
-                                BrowserWindowInterface::Type::TYPE_FLOATING) {
+    if (!params->browser ||
+        params->browser->GetType() ==
+            BrowserWindowInterface::Type::TYPE_FLOATING ||
+        !params->source_contents ||
+        PictureInPictureWindowManager::IsChildWebContents(
+            params->source_contents)) {
       params->browser = nullptr;
       return nullptr;
     }
@@ -841,6 +856,9 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
       std::optional<blink::mojom::PictureInPictureWindowOptions> pip_options =
           contents_to_navigate_or_insert->GetPictureInPictureOptions();
       if (pip_options.has_value()) {
+        // Showing the window can synchronously destroy the child.
+        base::WeakPtr<WebContents> weak_contents =
+            contents_to_navigate_or_insert->GetWeakPtr();
         const bool focus_contents =
             params->window_action ==
                 NavigateParams::WindowAction::kShowWindow &&
@@ -849,6 +867,7 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
             ->EnterStandaloneDocumentPictureInPicture(
                 params->source_contents, std::move(params->contents_to_insert),
                 std::move(*pip_options), focus_contents);
+        params->navigated_or_inserted_contents = weak_contents.get();
       }
       // If the WebContents doesn't have valid PiP options, don't enter PiP
       // mode and don't create a browser window.
@@ -856,8 +875,13 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
       return nullptr;
     }
 
-    PictureInPictureWindowManager::GetInstance()->EnterDocumentPictureInPicture(
-        params->source_contents, contents_to_navigate_or_insert);
+    auto* pip_manager = PictureInPictureWindowManager::GetInstance();
+    pip_manager->EnterDocumentPictureInPicture(params->source_contents,
+                                               contents_to_navigate_or_insert);
+    if (pip_manager->GetChildWebContents() != contents_to_navigate_or_insert) {
+      params->browser = nullptr;
+      return nullptr;
+    }
   }
 
   int singleton_index = -1;
@@ -889,22 +913,24 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   // the new tab is focused.
   if (source_browser &&
       source_browser->GetType() == BrowserWindowInterface::Type::TYPE_APP &&
-      params->disposition == WindowOpenDisposition::kNewBackgroundTab &&
+      params->disposition ==
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab &&
       !(web_app::AppBrowserController::From(source_browser) &&
         web_app::AppBrowserController::From(source_browser)->has_tab_strip())) {
-    params->disposition = WindowOpenDisposition::kNewForegroundTab;
+    params->disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
 
   if (singleton_index != -1) {
     contents_to_navigate_or_insert =
         params->browser->GetTabStripModel()->GetWebContentsAt(singleton_index);
-  } else if (params->disposition == WindowOpenDisposition::kSwitchToTab) {
+  } else if (params->disposition ==
+             ui::mojom::WindowOpenDisposition::kSwitchToTab) {
     // The user is trying to open a tab that no longer exists. If we open a new
     // tab, it could leave orphaned NTPs around, but always overwriting the
     // current tab could could clobber state that the user was trying to
     // preserve. Fallback to the behavior used for singletons: overwrite the
     // current tab if it's the NTP, otherwise open a new tab.
-    params->disposition = WindowOpenDisposition::kSingletonTab;
+    params->disposition = ui::mojom::WindowOpenDisposition::kSingletonTab;
     ShowSingletonTabOverwritingNTP(params);
     return nullptr;
   }
@@ -964,7 +990,7 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
 
   // If we create a popup window from a non user-gesture, don't activate it.
   if (params->window_action == NavigateParams::WindowAction::kShowWindow &&
-      params->disposition == WindowOpenDisposition::kNewPopup &&
+      params->disposition == ui::mojom::WindowOpenDisposition::kNewPopup &&
       params->user_gesture == false) {
     params->window_action = NavigateParams::WindowAction::kShowWindowInactive;
   }
@@ -995,31 +1021,54 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   // tab.
   if (!contents_to_navigate_or_insert) {
     DCHECK(!params->url.is_empty());
-    if (params->disposition != WindowOpenDisposition::kCurrentTab) {
-      tab_to_insert = std::make_unique<tabs::TabModel>(
-          CreateTargetContents(*params, params->url),
-          params->browser->GetTabStripModel());
-      if (params->source_contents &&
-          ((params->tabstrip_add_types & AddTabTypes::ADD_INHERIT_OPENER) ||
-           params->user_gesture)) {
-        tab_to_insert->set_opener(
-            tabs::TabInterface::MaybeGetFromContents(params->source_contents));
+    if (params->disposition ==
+            ui::mojom::WindowOpenDisposition::kNewSplitView &&
+        params->source_contents) {
+      tabs::TabInterface* const source_tab =
+          tabs::TabInterface::MaybeGetFromContents(params->source_contents);
+      if (source_tab && source_tab->IsSplit()) {
+        const split_tabs::SplitTabId split_id = source_tab->GetSplit().value();
+        if (params->browser->GetTabStripModel()->ContainsSplit(split_id)) {
+          split_tabs::SplitTabData* const split_data =
+              params->browser->GetTabStripModel()->GetSplitData(split_id);
+          for (tabs::TabInterface* tab : split_data->ListTabs()) {
+            if (tab != source_tab) {
+              contents_to_navigate_or_insert = tab->GetContents();
+              break;
+            }
+          }
+        }
       }
-      contents_to_navigate_or_insert = tab_to_insert->GetContents();
+    }
 
-      apps::SetAppIdForWebContents(params->browser->GetProfile(),
-                                   contents_to_navigate_or_insert,
-                                   params->app_id);
+    if (!contents_to_navigate_or_insert) {
+      if (params->disposition !=
+          ui::mojom::WindowOpenDisposition::kCurrentTab) {
+        tab_to_insert = std::make_unique<tabs::TabModel>(
+            CreateTargetContents(*params, params->url),
+            params->browser->GetTabStripModel());
+        if (params->source_contents &&
+            ((params->tabstrip_add_types & AddTabTypes::ADD_INHERIT_OPENER) ||
+             params->user_gesture)) {
+          tab_to_insert->set_opener(tabs::TabInterface::MaybeGetFromContents(
+              params->source_contents));
+        }
+        contents_to_navigate_or_insert = tab_to_insert->GetContents();
+
+        apps::SetAppIdForWebContents(params->browser->GetProfile(),
+                                     contents_to_navigate_or_insert,
+                                     params->app_id);
 #if BUILDFLAG(ENABLE_CAPTIVE_PORTAL_DETECTION)
-      captive_portal::CaptivePortalTabHelper::FromWebContents(
-          contents_to_navigate_or_insert)
-          ->set_window_type(params->captive_portal_window_type);
+        captive_portal::CaptivePortalTabHelper::FromWebContents(
+            contents_to_navigate_or_insert)
+            ->set_window_type(params->captive_portal_window_type);
 #endif
-    } else {
-      // ... otherwise if we're loading in the current tab, the target is the
-      // same as the source.
-      DCHECK(params->source_contents);
-      contents_to_navigate_or_insert = params->source_contents;
+      } else {
+        // ... otherwise if we're loading in the current tab, the target is the
+        // same as the source.
+        DCHECK(params->source_contents);
+        contents_to_navigate_or_insert = params->source_contents;
+      }
     }
 
     // Try to handle non-navigational URLs that popup dialogs and such, these
@@ -1045,8 +1094,9 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
   // lose focus, then make sure the focus for the source tab goes away from the
   // omnibox.
   if (params->source_contents &&
-      (params->disposition == WindowOpenDisposition::kNewForegroundTab ||
-       params->disposition == WindowOpenDisposition::kNewWindow) &&
+      (params->disposition ==
+           ui::mojom::WindowOpenDisposition::kNewForegroundTab ||
+       params->disposition == ui::mojom::WindowOpenDisposition::kNewWindow) &&
       (params->tabstrip_add_types & AddTabTypes::ADD_INHERIT_OPENER)) {
     params->source_contents->Focus();
   }
@@ -1066,96 +1116,98 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
                                      params->transition, params->window_action,
                                      user_initiated);
   } else if (singleton_index == -1) {
-    if (source_browser != params->browser) {
-      params->tabstrip_index = params->browser->GetTabStripModel()->count();
-    }
-
-    // If some non-default value is set for the index, we should tell the
-    // TabStripModel to respect it.
-    if (params->tabstrip_index != -1) {
-      params->tabstrip_add_types |= AddTabTypes::ADD_FORCE_INDEX;
-    }
-
-    // Maybe notify that an open operation has been done from a gesture.
-    // TODO(crbug.com/40719979): preferably pipe this information through the
-    // TabStripModel instead. See bug for deeper discussion.
-    if (params->user_gesture && source_browser == params->browser) {
-      BrowserWindow::FromBrowser(params->browser)
-          ->LinkOpeningFromGesture(params->disposition);
-    }
-
-    DCHECK(tab_to_insert);
-    std::optional<tab_groups::TabGroupId> group = params->group;
-    if (!(params->tabstrip_add_types & AddTabTypes::ADD_PINNED)) {
-      if (!group.has_value()) {
-        group = params->browser->GetTabStripModel()->GetFocusedGroup();
+    if (tab_to_insert) {
+      if (source_browser != params->browser) {
+        params->tabstrip_index = params->browser->GetTabStripModel()->count();
       }
-    }
-    // The navigation should insert a new tab into the target Browser.
-    params->browser->GetTabStripModel()->AddTab(
-        std::move(tab_to_insert), params->tabstrip_index, params->transition,
-        params->tabstrip_add_types, group);
 
-    // For NEW_SPLIT_VIEW, pair the new tab with the active tab. The
-    // "already split" case is handled in
-    // BrowserWebContentsDelegate::OpenURLFromTab().
-    if (params->disposition == WindowOpenDisposition::kNewSplitView &&
-        contents_to_navigate_or_insert) {
-      TabStripModel* const tab_strip_model =
-          params->browser->GetTabStripModel();
-      tabs::TabInterface* const new_tab =
-          tabs::TabInterface::MaybeGetFromContents(
-              contents_to_navigate_or_insert);
-      const int new_tab_index = tab_strip_model->GetIndexOfTab(new_tab);
-      tabs::TabInterface* const active_tab = tab_strip_model->GetActiveTab();
-      tabs::TabInterface* const source_tab =
-          params->source_contents ? tabs::TabInterface::MaybeGetFromContents(
-                                        params->source_contents)
-                                  : active_tab;
-      if (new_tab_index != TabStripModel::kNoTab && active_tab &&
-          active_tab != new_tab && !active_tab->IsSplit() &&
-          (!source_tab || !source_tab->IsSplit())) {
-        // For window.open() split tab requests, apply the position and size
-        // hints. Otherwise, use the default visual data.
-        split_tabs::SplitTabVisualData visual_data;
-        bool new_tab_first = false;
-        if (params->window_features.is_split) {
-          CHECK(base::FeatureList::IsEnabled(
-              blink::features::kWindowOpenSplitTab));
-          visual_data = GetWindowOpenSplitTabVisualData(params->window_features,
-                                                        new_tab_first);
-        }
-        const split_tabs::SplitTabId split_id = tab_strip_model->AddToNewSplit(
-            {new_tab_index}, visual_data,
-            split_tabs::SplitTabCreatedSource::kLinkClick);
-        // AddToNewSplit() orders the split by tab strip index, which normally
-        // puts the new tab second. For window.open() split tab requests,
-        // reverse the split if the new tab should be first. The ratio in
-        // `visual_data` already accounts for this order.
-        if (params->window_features.is_split &&
-            new_tab_first !=
-                (tab_strip_model->GetSplitData(split_id)->ListTabs()[0] ==
-                 new_tab)) {
-          tab_strip_model->ReverseTabsInSplit(split_id);
+      // If some non-default value is set for the index, we should tell the
+      // TabStripModel to respect it.
+      if (params->tabstrip_index != -1) {
+        params->tabstrip_add_types |= AddTabTypes::ADD_FORCE_INDEX;
+      }
+
+      // Maybe notify that an open operation has been done from a gesture.
+      // TODO(crbug.com/40719979): preferably pipe this information through the
+      // TabStripModel instead. See bug for deeper discussion.
+      if (params->user_gesture && source_browser == params->browser) {
+        BrowserWindow::FromBrowser(params->browser)
+            ->LinkOpeningFromGesture(params->disposition);
+      }
+
+      std::optional<tab_groups::TabGroupId> group = params->group;
+      if (!(params->tabstrip_add_types & AddTabTypes::ADD_PINNED)) {
+        if (!group.has_value()) {
+          group = params->browser->GetTabStripModel()->GetFocusedGroup();
         }
       }
-      if (new_tab) {
-        // AddToNewSplit() makes the split contiguous and gives the new tab the
-        // active tab's pinned state and group, moving the new tab next to the
-        // active tab if it is not already there. In particular, when the
-        // active tab is pinned, the new (unpinned) tab was inserted after the
-        // pinned tabs, so after the move `new_tab_index` refers to whichever
-        // tab was shifted into its old slot, e.g. the pinned tab to the right
-        // of the split. Activate by tab rather than by index so that tab can
-        // never be focused instead of the new split tab.
-        tab_strip_model->ActivateTab(new_tab);
+      // The navigation should insert a new tab into the target Browser.
+      params->browser->GetTabStripModel()->AddTab(
+          std::move(tab_to_insert), params->tabstrip_index, params->transition,
+          params->tabstrip_add_types, group);
+
+      // For NEW_SPLIT_VIEW, pair the new tab with the active tab. The
+      // "already split" case is handled above by navigating the partner pane.
+      if (params->disposition ==
+              ui::mojom::WindowOpenDisposition::kNewSplitView &&
+          contents_to_navigate_or_insert) {
+        TabStripModel* const tab_strip_model =
+            params->browser->GetTabStripModel();
+        tabs::TabInterface* const new_tab =
+            tabs::TabInterface::MaybeGetFromContents(
+                contents_to_navigate_or_insert);
+        const int new_tab_index = tab_strip_model->GetIndexOfTab(new_tab);
+        tabs::TabInterface* const active_tab = tab_strip_model->GetActiveTab();
+        tabs::TabInterface* const source_tab =
+            params->source_contents ? tabs::TabInterface::MaybeGetFromContents(
+                                          params->source_contents)
+                                    : active_tab;
+        if (new_tab_index != TabStripModel::kNoTab && active_tab &&
+            active_tab != new_tab && !active_tab->IsSplit() &&
+            (!source_tab || !source_tab->IsSplit())) {
+          // For window.open() split tab requests, apply the position and size
+          // hints. Otherwise, use the default visual data.
+          split_tabs::SplitTabVisualData visual_data;
+          bool new_tab_first = false;
+          if (params->window_features.is_split) {
+            CHECK(base::FeatureList::IsEnabled(
+                blink::features::kWindowOpenSplitTab));
+            visual_data = GetWindowOpenSplitTabVisualData(
+                params->window_features, new_tab_first);
+          }
+          const split_tabs::SplitTabId split_id =
+              tab_strip_model->AddToNewSplit(
+                  {new_tab_index}, visual_data,
+                  split_tabs::SplitTabCreatedSource::kLinkClick);
+          // AddToNewSplit() orders the split by tab strip index, which normally
+          // puts the new tab second. For window.open() split tab requests,
+          // reverse the split if the new tab should be first. The ratio in
+          // `visual_data` already accounts for this order.
+          if (params->window_features.is_split &&
+              new_tab_first !=
+                  (tab_strip_model->GetSplitData(split_id)->ListTabs()[0] ==
+                   new_tab)) {
+            tab_strip_model->ReverseTabsInSplit(split_id);
+          }
+        }
+        if (new_tab) {
+          // AddToNewSplit() makes the split contiguous and gives the new tab
+          // the active tab's pinned state and group, moving the new tab next to
+          // the active tab if it is not already there. In particular, when the
+          // active tab is pinned, the new (unpinned) tab was inserted after the
+          // pinned tabs, so after the move `new_tab_index` refers to whichever
+          // tab was shifted into its old slot, e.g. the pinned tab to the right
+          // of the split. Activate by tab rather than by index so that tab can
+          // never be focused instead of the new split tab.
+          tab_strip_model->ActivateTab(new_tab);
+        }
       }
     }
   }
 
   if (singleton_index >= 0) {
     // If switching browsers, make sure it is shown.
-    if (params->disposition == WindowOpenDisposition::kSwitchToTab &&
+    if (params->disposition == ui::mojom::WindowOpenDisposition::kSwitchToTab &&
         params->browser != source_browser) {
       params->window_action = NavigateParams::WindowAction::kShowWindow;
     }
@@ -1181,7 +1233,8 @@ base::WeakPtr<content::NavigationHandle> NavigateImpl(
                               ? TabStripUserGestureDetails::GestureType::kOther
                               : TabStripUserGestureDetails::GestureType::kNone;
       bool should_close_this_tab = false;
-      if (params->disposition == WindowOpenDisposition::kSwitchToTab) {
+      if (params->disposition ==
+          ui::mojom::WindowOpenDisposition::kSwitchToTab) {
         // Close orphaned NTP (and the like) with no history when the user
         // switches away from them.
         if (params->source_contents) {

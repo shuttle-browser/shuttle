@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/memory/memory.h"
-#include "absl/strings/str_cat.h"
-#include "absl/strings/str_join.h"
+#include "absl/memory/memory.h"     // from @com_google_absl
+#include "absl/strings/str_cat.h"   // from @com_google_absl
+#include "absl/strings/str_join.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/calculator_options.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
@@ -153,7 +153,7 @@ absl::Status AnnotationsToRenderDataCalculator::Open(CalculatorContext* cc) {
 }
 
 absl::Status AnnotationsToRenderDataCalculator::Process(CalculatorContext* cc) {
-  auto render_data = absl::make_unique<RenderData>();
+  auto render_data = std::make_unique<RenderData>();
   bool visualize_depth = options_.visualize_landmark_depth();
   float z_min = 0.f;
   float z_max = 0.f;

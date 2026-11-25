@@ -4,11 +4,13 @@
 
 import 'chrome://organizer-panel.top-chrome/organizer_panel.js';
 
-import {INITIAL_ITEM_COUNT, organizerPanelBrowserProxyFactory, OrganizerPanelPageHandlerRemote, SearchApiProxyImpl} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
+import {INITIAL_ITEM_COUNT, organizerPanelBrowserProxyFactory, OrganizerPanelPageHandlerRemote, OrganizerSectionMenuOption, OrganizerSectionToggleAction, SearchApiProxyImpl} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
 import type {OrganizerListSectionElement, OrganizerListSectionItem, OrganizerListSectionItemElement, OrganizerPanelPageRemote} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
 import type {CrCollapseElement} from 'chrome://resources/cr_elements/cr_collapse/cr_collapse.js';
 import {html} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import type {MetricsTracker} from 'chrome://webui-test/metrics_test_support.js';
+import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
 import {TestMock} from 'chrome://webui-test/test_mock.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
 
@@ -16,14 +18,17 @@ import {TestSearchApiProxy} from './test_search_api_proxy.js';
 import {TestSectionDelegate} from './test_section_delegate.js';
 
 suite('OrganizerListSectionTest', () => {
+  const originalMatchMedia = window.matchMedia;
   let listSection: OrganizerListSectionElement;
   let mockHandler: TestMock<OrganizerPanelPageHandlerRemote>&
       OrganizerPanelPageHandlerRemote;
   let remotePage: OrganizerPanelPageRemote;
   let testSearchProxy: TestSearchApiProxy;
+  let metrics: MetricsTracker;
 
   setup(async () => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    metrics = fakeMetricsPrivate();
     mockHandler = TestMock.fromClass(OrganizerPanelPageHandlerRemote);
     mockHandler.setPromiseResolveFor(
         'getSectionState', {state: {expanded: true, showAll: false}});
@@ -38,6 +43,11 @@ suite('OrganizerListSectionTest', () => {
     await microtasksFinished();
   });
 
+  teardown(() => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    window.matchMedia = originalMatchMedia;
+  });
+
   test('renders header and items from delegate', async () => {
     const items: Array<OrganizerListSectionItem<unknown>> = [
       {title: ['Tab 1'], description: [{text: 'tab1.com'}]},
@@ -48,7 +58,7 @@ suite('OrganizerListSectionTest', () => {
 
     const header = listSection.$.header;
     assertTrue(!!header);
-    assertEquals('Open Tabs', header.textContent.trim());
+    assertEquals('Open Tabs', header.$.expandButton.textContent.trim());
 
     const listItems =
         listSection.shadowRoot.querySelectorAll('organizer-list-section-item');
@@ -728,6 +738,37 @@ suite('OrganizerListSectionTest', () => {
     assertEquals('none', getComputedStyle(listSection).display);
   });
 
+  test('hides section when delegate is null', async () => {
+    assertTrue(listSection.hidden);
+
+    listSection.delegate = new TestSectionDelegate('Open Tabs', []);
+    await microtasksFinished();
+    assertFalse(listSection.hidden);
+
+    listSection.delegate = null;
+    await microtasksFinished();
+    assertTrue(listSection.hidden);
+  });
+
+  test('hides section based on delegate shouldHide', async () => {
+    const delegate = new TestSectionDelegate('Open Tabs', []);
+    listSection.delegate = delegate;
+    await microtasksFinished();
+    assertFalse(listSection.hidden);
+
+    const hidingDelegate = new TestSectionDelegate('Open Tabs', []);
+    hidingDelegate.shouldHide = () => true;
+    listSection.delegate = hidingDelegate;
+    await microtasksFinished();
+    assertTrue(listSection.hidden);
+
+    const showingDelegate = new TestSectionDelegate('Open Tabs', []);
+    showingDelegate.shouldHide = () => false;
+    listSection.delegate = showingDelegate;
+    await microtasksFinished();
+    assertFalse(listSection.hidden);
+  });
+
   test(
       'force-expands section and disables header toggle when searching',
       async () => {
@@ -809,7 +850,7 @@ suite('OrganizerListSectionTest', () => {
 
   test('renders zero state from delegate when there are no items', async () => {
     const zeroState = html`<div id="zeroState">Create tab group</div>`;
-    listSection.delegate = new TestSectionDelegate('Tab Groups', [], zeroState);
+    listSection.delegate = new TestSectionDelegate('Tab groups', [], zeroState);
     await microtasksFinished();
 
     const itemsContainer =
@@ -833,7 +874,7 @@ suite('OrganizerListSectionTest', () => {
           {title: ['Tab Group 1']},
         ];
         listSection.delegate =
-            new TestSectionDelegate('Tab Groups', items, zeroState);
+            new TestSectionDelegate('Tab groups', items, zeroState);
         await microtasksFinished();
 
         assertEquals(null, listSection.shadowRoot.querySelector('#zeroState'));
@@ -860,7 +901,7 @@ suite('OrganizerListSectionTest', () => {
           {title: ['Tab Group 1']},
         ];
         listSection.delegate =
-            new TestSectionDelegate('Tab Groups', items, zeroState);
+            new TestSectionDelegate('Tab groups', items, zeroState);
         await microtasksFinished();
 
         assertEquals(null, listSection.shadowRoot.querySelector('#zeroState'));
@@ -885,7 +926,7 @@ suite('OrganizerListSectionTest', () => {
           {title: ['Tab Group 4']},
         ];
         listSection.delegate = new TestSectionDelegate(
-            'Tab Groups', items, zeroState, 'tab-groups', true);
+            'Tab groups', items, zeroState, 'tab-groups', true);
         await microtasksFinished();
 
         const itemsContainer =
@@ -925,4 +966,272 @@ suite('OrganizerListSectionTest', () => {
                 .querySelectorAll('organizer-list-section-item')
                 .length);
       });
+
+  test('records ToggleAction and MenuAction histograms', async () => {
+    listSection.delegate =
+        new TestSectionDelegate('Open Tabs', [{title: ['Tab 1']}]);
+    await microtasksFinished();
+
+    const header = listSection.$.header;
+    const toggleHistogram = 'Tabs.Organizer.Section.OpenTabs.ToggleAction';
+    header.$.expandButton.click();
+    await microtasksFinished();
+    assertEquals(
+        1,
+        metrics.count(toggleHistogram, OrganizerSectionToggleAction.COLLAPSE));
+
+    header.$.expandButton.click();
+    await microtasksFinished();
+    assertEquals(
+        1, metrics.count(toggleHistogram, OrganizerSectionToggleAction.EXPAND));
+
+    const menuHistogram = 'Tabs.Organizer.Section.OpenTabs.MenuAction';
+    for (const [button, option] of [
+             [header.$.showAllButton, OrganizerSectionMenuOption.SHOW_ALL],
+             [header.$.showSomeButton, OrganizerSectionMenuOption.SHOW_SOME],
+    ] as const) {
+      header.$.menuButton.click();
+      await microtasksFinished();
+      button.click();
+      await microtasksFinished();
+      assertEquals(1, metrics.count(menuHistogram, option));
+    }
+  });
+
+  test('does not record MenuAction when selection is unchanged', async () => {
+    listSection.delegate =
+        new TestSectionDelegate('Open Tabs', [{title: ['Tab 1']}]);
+    await microtasksFinished();
+
+    const header = listSection.$.header;
+    const menuHistogram = 'Tabs.Organizer.Section.OpenTabs.MenuAction';
+
+    // Click Show All: changes state from Show Some to Show All and logs.
+    header.$.menuButton.click();
+    await microtasksFinished();
+    header.$.showAllButton.click();
+    await microtasksFinished();
+    assertEquals(
+        1, metrics.count(menuHistogram, OrganizerSectionMenuOption.SHOW_ALL));
+
+    // Click Show All a second time: no metric logged since value didn't change.
+    header.$.menuButton.click();
+    await microtasksFinished();
+    header.$.showAllButton.click();
+    await microtasksFinished();
+    assertEquals(
+        1, metrics.count(menuHistogram, OrganizerSectionMenuOption.SHOW_ALL));
+  });
+
+  test('does not record metrics on programmatic state updates', async () => {
+    mockHandler.setPromiseResolveFor(
+        'getSectionState', {state: {expanded: false, showAll: false}});
+    listSection.delegate = new TestSectionDelegate(
+        'Open Tabs', [{title: ['Tab 1']}], undefined, 'open-tabs');
+    await microtasksFinished();
+
+    remotePage.onSectionsStateChanged(
+        {'open-tabs': {expanded: true, showAll: true}});
+    await microtasksFinished();
+    remotePage.onSectionsStateChanged(
+        {'open-tabs': {expanded: false, showAll: false}});
+    await microtasksFinished();
+
+    listSection.searchQuery = 'Tab';
+    await microtasksFinished();
+    listSection.searchQuery = '';
+    await microtasksFinished();
+
+    assertEquals(
+        0, metrics.count('Tabs.Organizer.Section.OpenTabs.ToggleAction'));
+    assertEquals(
+        0, metrics.count('Tabs.Organizer.Section.OpenTabs.MenuAction'));
+    assertEquals(0, metrics.count('OrganizerPanel.ExpandSection'));
+    assertEquals(0, metrics.count('OrganizerPanel.CollapseSection'));
+  });
+
+  test(
+      'records IndexOf and TimeTo histograms on item and action button clicks',
+      async () => {
+        const items: Array<OrganizerListSectionItem<unknown>> = [
+          {
+            title: ['Google'],
+            description: [{text: 'google.com'}],
+            hoveredActionButton: {
+              icon: 'cr:close',
+              ariaLabel: 'Close tab',
+            },
+          },
+          {
+            title: ['YouTube'],
+            description: [{text: 'youtube.com'}],
+            hoveredActionButton: {
+              icon: 'cr:close',
+              ariaLabel: 'Close tab',
+            },
+          },
+          {
+            title: ['YouTube Music'],
+            description: [{text: 'music.youtube.com'}],
+            hoveredActionButton: {
+              icon: 'cr:close',
+              ariaLabel: 'Close tab',
+            },
+          },
+        ];
+        listSection.delegate = new TestSectionDelegate('Open Tabs', items);
+        await microtasksFinished();
+
+        let listItems = listSection.shadowRoot.querySelectorAll(
+            'organizer-list-section-item');
+        assertEquals(3, listItems.length);
+
+        listItems[1]!.click();
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfSwitchTabInUnfilteredList', 1));
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfSwitchTabInFilteredList'));
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToSwitchTabInUnfilteredList'));
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToSwitchTabInFilteredList'));
+
+        listItems[2]!.shadowRoot.querySelector<HTMLElement>(
+                                    '#actionButton')!.click();
+        await microtasksFinished();
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfCloseTabInUnfilteredList', 2));
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfCloseTabInFilteredList'));
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToCloseTabInUnfilteredList'));
+        assertEquals(
+            0,
+            metrics.count('Tabs.Organizer.WebUI.TimeToCloseTabInFilteredList'));
+
+        // Filter items and verify filtered index and time are recorded.
+        listSection.searchQuery = 'YouTube';
+        await microtasksFinished();
+
+        listItems = listSection.shadowRoot.querySelectorAll(
+            'organizer-list-section-item');
+        assertEquals(2, listItems.length);
+
+        listItems[1]!.click();
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfSwitchTabInFilteredList', 1));
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToSwitchTabInFilteredList'));
+
+        listItems[0]!.shadowRoot.querySelector<HTMLElement>(
+                                    '#actionButton')!.click();
+        await microtasksFinished();
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfCloseTabInFilteredList', 0));
+        assertEquals(
+            1,
+            metrics.count('Tabs.Organizer.WebUI.TimeToCloseTabInFilteredList'));
+      });
+
+  test(
+      'does not record action button histograms when action is undefined',
+      async () => {
+        const items: Array<OrganizerListSectionItem<unknown>> = [
+          {
+            title: ['Tab Group 1'],
+            hoveredActionButton: {
+              icon: 'cr:more-vert',
+              ariaLabel: 'More options',
+            },
+          },
+        ];
+        const delegate = new TestSectionDelegate('Tab groups', items);
+        delegate.getActionButtonClickAction = undefined;
+        listSection.delegate = delegate;
+        await microtasksFinished();
+
+        const listItems = listSection.shadowRoot.querySelectorAll(
+            'organizer-list-section-item');
+        assertEquals(1, listItems.length);
+
+        listItems[0]!.shadowRoot.querySelector<HTMLElement>(
+                                    '#actionButton')!.click();
+        await microtasksFinished();
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfCloseTabInUnfilteredList'));
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfSwitchTabInUnfilteredList'));
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToCloseTabInUnfilteredList'));
+        assertEquals(
+            0,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToSwitchTabInUnfilteredList'));
+
+        listItems[0]!.click();
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.IndexOfSwitchTabInUnfilteredList', 0));
+        assertEquals(
+            1,
+            metrics.count(
+                'Tabs.Organizer.WebUI.TimeToSwitchTabInUnfilteredList'));
+      });
+
+  test('sets no-animation on cr-collapse for reduced motion', async () => {
+    const reducedMotionQuery =
+        Object.assign(new EventTarget(), {matches: true});
+    window.matchMedia = (query: string) => {
+      if (query === '(prefers-reduced-motion: reduce)') {
+        return reducedMotionQuery as unknown as MediaQueryList;
+      }
+      return originalMatchMedia.call(window, query);
+    };
+
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    const section = document.createElement('organizer-list-section');
+    document.body.appendChild(section);
+    await microtasksFinished();
+
+    const itemsContainer =
+        section.shadowRoot.querySelector<CrCollapseElement>('#items')!;
+    assertTrue(itemsContainer.noAnimation);
+
+    reducedMotionQuery.matches = false;
+    reducedMotionQuery.dispatchEvent(new Event('change'));
+    await microtasksFinished();
+    assertFalse(itemsContainer.noAnimation);
+
+    reducedMotionQuery.matches = true;
+    reducedMotionQuery.dispatchEvent(new Event('change'));
+    await microtasksFinished();
+    assertTrue(itemsContainer.noAnimation);
+  });
 });

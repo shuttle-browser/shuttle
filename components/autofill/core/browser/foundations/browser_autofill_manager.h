@@ -166,6 +166,7 @@ class BrowserAutofillManager : public AutofillManager {
 
   // Fills or previews the form corresponding to `form_id` with the information
   // in `filling_payload`.
+  // `filling_product` must correspond to the type of `filling_payload`.
   // `action_persistence` denotes whether the operation is a fill or preview.
   // `trigger_source` is the reason for triggering the filling operation.
   // `require_user_confirmation` indicates if some form of user confirmation
@@ -181,6 +182,7 @@ class BrowserAutofillManager : public AutofillManager {
       mojom::ActionPersistence action_persistence,
       const FormGlobalId& form_id,
       const FieldGlobalId& trigger_field_id,
+      FillingProduct filling_product,
       const FillingPayload& filling_payload,
       AutofillTriggerSource trigger_source,
       bool require_user_confirmation,
@@ -554,18 +556,17 @@ class BrowserAutofillManager : public AutofillManager {
   bool MaybeShowPrivateInferenceNotice(
       base::span<const Suggestion> autofill_ai_suggestions);
 
-  // Creates passkey suggestions that will be used in
-  // `MergePasskeysAndExistingSuggestions`.
+  // Creates passkey suggestions that will be appended.
   // TODO(crbug.com/409962888): Remove after new suggestion generation logic is
   // launched.
   std::vector<Suggestion> CreatePasskeySuggestionsForMerge(
       const FormFieldData& field);
 
-  // Combines passkey suggestions and existing suggestions into a single list,
-  // prioritizing existing suggestions first.
-  static void MergePasskeysAndExistingSuggestions(
-      std::vector<Suggestion>& suggestions,
-      std::vector<Suggestion> passkey_suggestions);
+  // Creates Trusted Vault unlock suggestions that will be appended.
+  // TODO(crbug.com/409962888): Remove after new suggestion generation logic is
+  // launched.
+  std::vector<Suggestion> CreateTrustedVaultUnlockSuggestionsForMerge(
+      const FormFieldData& field);
 
   // Merges suggestions with `FillingProduct::kAddress` with the other
   // suggestions whose products supports merging with address suggestions (see

@@ -29,6 +29,7 @@
 #include "base/win/scoped_com_initializer.h"
 #include "base/win/security_descriptor.h"
 #include "base/win/sid.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/os_crypt/app_bound_encryption_provider_win.h"
 #include "chrome/common/chrome_paths_internal.h"
 #include "chrome/common/chrome_switches.h"
@@ -40,6 +41,8 @@
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/os_crypt/async/browser/key_provider.h"
+#include "components/os_crypt/async/browser/os_crypt_async.h"
+#include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_thread.h"
 
 namespace chrome {
@@ -88,7 +91,7 @@ void CompleteRegistryPersistence(
     IsolationState state,
     base::OnceCallback<void(base::expected<IsolationState, HRESULT>)> completed,
     std::unique_ptr<ScopedKeepAlive> keep_alive) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   auto regkey = GetIsolatedBrowserRegistryKey(KEY_READ | KEY_WRITE);
   if (!regkey.has_value()) {
     if (completed) {
@@ -153,14 +156,16 @@ std::optional<int> IsolatedBrowserProcess::WaitForExit() const {
   }
 
   // Stage 2: The main isolated browser process handle has signaled ExitProcess.
-  // Now drain process exit completion messages until all isolated processes
-  // inside the job object have completed kernel process termination.
+  // Drain process exit completion messages until the isolated browser has
+  // completed kernel job teardown.
   //
   // Note: The stub process itself is assigned to the Job Object (to guarantee
   // that if the stub process is killed or crashes,
-  // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE terminates all isolated child
-  // processes). Therefore, the stub process counts as 1 active process inside
-  // the job.
+  // `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` terminates the isolated browser
+  // process). Child processes spawned by the isolated browser break away from
+  // this job via `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK` and have their
+  // lifetimes managed by the browser's own child Job Objects where appropriate.
+  // Therefore, the stub process counts as 1 active process inside the job.
   //
   // Checking `accounting_info.ActiveProcesses == 1` guarantees that ONLY the
   // stub process remains inside the Job Object.
@@ -239,8 +244,8 @@ base::expected<IsolatedBrowserProcess, HRESULT> IsolatedBrowserProcess::Launch(
 
   // Create an I/O Completion Port and associate it with the Job Object.
   // This allows the stub process to monitor process exit events
-  // (`JOB_OBJECT_MSG_EXIT_PROCESS`) and wait until all isolated browser
-  // processes in the job tree have fully terminated.
+  // (`JOB_OBJECT_MSG_EXIT_PROCESS`) and confirm the isolated browser process
+  // in the job has fully terminated at the kernel accounting level.
   base::win::ScopedHandle iocp;
   iocp.Set(::CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 1));
   if (!iocp.is_valid()) {
@@ -256,11 +261,14 @@ base::expected<IsolatedBrowserProcess, HRESULT> IsolatedBrowserProcess::Launch(
   }
 
   // Assign the stub process to the job object BEFORE launching the isolated
-  // browser. The elevator creates Chrome with the stub as
-  // PROC_THREAD_ATTRIBUTE_PARENT_PROCESS, so Chrome inherits this job. Chrome
-  // descendants then inherit the job by default. Note: Stub's Crashpad was
-  // initialized prior to this call during early startup, so Crashpad processes
-  // remain outside this Job Object.
+  // browser, while the job still has no breakaway limits configured. The
+  // elevator creates the isolated browser with the stub specified as
+  // `PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`, so the isolated browser inherits
+  // this job at creation time. Once `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK` is
+  // configured below after `RunIsolatedChrome` succeeds, subsequent child
+  // processes spawned by the isolated browser will automatically break away
+  // from this job. Note: Stub's Crashpad was initialized prior to this call
+  // during early startup, so Crashpad processes remain outside this Job Object.
   if (!::AssignProcessToJobObject(job.get(), ::GetCurrentProcess())) {
     return base::unexpected(HRESULT_FROM_WIN32(::GetLastError()));
   }
@@ -287,16 +295,41 @@ base::expected<IsolatedBrowserProcess, HRESULT> IsolatedBrowserProcess::Launch(
   }
   base::win::ScopedHandle query_job(query_job_handle);
 
-  // Configure `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` only after
-  // `RunIsolatedChrome` and `DuplicateHandle` have succeeded. Because the stub
-  // process was already assigned to `job` via `AssignProcessToJobObject`,
-  // setting `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` prior to `RunIsolatedChrome`
-  // would cause `ScopedHandle` destruction of `job` on an early failure return
-  // to terminate the stub process itself instead of allowing it to fall back to
-  // running as the unisolated browser.
+  // Configure the job limits only after `RunIsolatedChrome` and
+  // `DuplicateHandle` have succeeded, for two critical ordering reasons:
+  // 1. Because the stub process was already assigned to `job` via
+  //    `AssignProcessToJobObject`, setting `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`
+  //    prior to `RunIsolatedChrome` would cause `ScopedHandle` destruction of
+  //    `job` on an early failure return to terminate the stub process itself
+  //    instead of allowing it to fall back to running as the unisolated
+  //    browser.
+  // 2. `RunIsolatedChrome` creates the isolated browser with the stub as its
+  //    parent (`PROC_THREAD_ATTRIBUTE_PARENT_PROCESS`) without an explicit job
+  //    list. Setting `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK` prior to
+  //    `RunIsolatedChrome` would cause the isolated browser process itself to
+  //    break away at creation time instead of inheriting `job`.
+  //
+  // Enabling `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK` now (once the isolated
+  // browser is already in `job`) ensures that all child processes subsequently
+  // spawned by the isolated browser automatically break away from the stub's
+  // Job Object:
+  // - External processes (such as downloaded files or folders opened via
+  //   `ShellExecuteExW`) do not remain inside `job` and therefore cannot keep
+  //   the stub process alive in `WaitForExit()` or block browser restarts after
+  //   the isolated browser exits.
+  // - Chrome's own internal child processes (renderers, GPU, utilities) still
+  //   terminate when the isolated browser exits because the isolated browser
+  //   places them into its own `sandbox::Job` and unsandboxed child Job Objects
+  //   configured with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`.
+  //
+  // `JOB_OBJECT_LIMIT_BREAKAWAY_OK` is also retained alongside
+  // `JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK` so callers that explicitly specify
+  // `CREATE_BREAKAWAY_FROM_JOB` (such as `upgrade_util::RelaunchChromeBrowser`
+  // when the stub spawns a new stub on restart) continue to succeed.
   JOBOBJECT_EXTENDED_LIMIT_INFORMATION limit_information = {};
   limit_information.BasicLimitInformation.LimitFlags =
-      JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK;
+      JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE | JOB_OBJECT_LIMIT_BREAKAWAY_OK |
+      JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK;
 
   if (!::SetInformationJobObject(job.get(), JobObjectExtendedLimitInformation,
                                  &limit_information,
@@ -307,9 +340,9 @@ base::expected<IsolatedBrowserProcess, HRESULT> IsolatedBrowserProcess::Launch(
   // Intentionally leak the primary job handle so that ScopedHandle destruction
   // when IsolatedBrowserProcess goes out of scope does not close the final job
   // handle while the stub/test process is executing. When the stub/test process
-  // terminates or crashes, Windows kernel automatically closes all process
-  // handles, triggering JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE to kill any
-  // surviving browser processes.
+  // terminates or crashes, the Windows kernel automatically closes all process
+  // handles, triggering `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` to terminate the
+  // isolated browser process if it is still running.
   std::ignore = job.release();
 
   return IsolatedBrowserProcess(std::move(process), std::move(query_job),
@@ -427,7 +460,7 @@ void SetIsolationState(
     PrefService* local_state,
     base::OnceCallback<void(base::expected<IsolationState, HRESULT>)>
         completed) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   // Process isolation is only supported when using the default user data
   // directory. Custom user data directories (e.g. specified via
   // --user-data-dir) run unisolated, so avoid writing isolation state to
@@ -454,46 +487,67 @@ void SetIsolationState(
                                         KeepAliveRestartOption::DISABLED);
 
   // Switching from isolated to non-isolated requires re-encrypting the
-  // app-bound key into a non-isolated state.
+  // app-bound key into a non-isolated state. Wait for the browser's
+  // OSCryptAsync instance to finish initializing first so that the normal
+  // AppBoundEncryptionProviderWin has completed any in-flight key generation or
+  // re-encryption before downgrading the stored key.
   if (IsIsolationEnabled() && state == IsolationState::kIsolationDisabled) {
-    // Force downgrade to PROTECTION_PATH_VALIDATION, which is not bound to the
-    // isolation state of the browser.
-    auto provider = std::make_unique<
-        os_crypt_async::AppBoundEncryptionProviderWin>(
-        local_state,
-        /*force_protection_level=*/ProtectionLevel::PROTECTION_PATH_VALIDATION);
+    g_browser_process->os_crypt_async()->GetInstance(base::BindOnce(
+        [](PrefService* local_state, IsolationState state,
+           base::OnceCallback<void(base::expected<IsolationState, HRESULT>)>
+               completed,
+           std::unique_ptr<ScopedKeepAlive> keep_alive,
+           scoped_refptr<os_crypt_async::Encryptor> encryptor) {
+          // Force downgrade to PROTECTION_PATH_VALIDATION, which is not bound
+          // to the isolation state of the browser.
+          auto provider =
+              std::make_unique<os_crypt_async::AppBoundEncryptionProviderWin>(
+                  local_state,
+                  /*force_protection_level=*/ProtectionLevel::
+                      PROTECTION_PATH_VALIDATION);
 
-    // Obtaining the key triggers re-encryption of the stored encrypted key. If
-    // there is no previously encrypted key, then there's nothing to do - it
-    // will be stored encrypted correctly after restart.
-    if (provider->IsKeyStored()) {
-      auto* raw_provider = provider.get();
-      // Bind `provider`, `completed`, and `keep_alive` so they remain alive
-      // during key retrieval and registry persistence. `keep_alive` stays
-      // on the stack frame of the callback or `CompleteRegistryPersistence`
-      // until after `completed` is called, ensuring keep-alive continuity.
-      raw_provider->GetKey(base::BindOnce(
-          [](std::unique_ptr<os_crypt_async::AppBoundEncryptionProviderWin>
-                 provider,
-             base::OnceCallback<void(base::expected<IsolationState, HRESULT>)>
-                 completed,
-             IsolationState state, std::unique_ptr<ScopedKeepAlive> keep_alive,
-             const std::string& tag,
-             base::expected<os_crypt_async::Encryptor::Key,
-                            os_crypt_async::KeyProvider::KeyError> result) {
-            if (!result.has_value()) {
-              if (completed) {
-                std::move(completed).Run(base::unexpected(E_FAIL));
-              }
-              return;
-            }
-            CompleteRegistryPersistence(state, std::move(completed),
-                                        std::move(keep_alive));
-          },
-          std::move(provider), std::move(completed), state,
-          std::move(keep_alive)));
-      return;
-    }
+          // Obtaining the key triggers re-encryption of the stored encrypted
+          // key. If there is no previously encrypted key, then there's nothing
+          // to do - it will be stored encrypted correctly after restart.
+          if (provider->IsKeyStored()) {
+            auto* raw_provider = provider.get();
+            // Bind `provider`, `completed`, and `keep_alive` so they remain
+            // alive during key retrieval and registry persistence. `keep_alive`
+            // stays on the stack frame of the callback or
+            // `CompleteRegistryPersistence` until after `completed` is called,
+            // ensuring keep-alive continuity.
+            raw_provider->GetKey(base::BindOnce(
+                [](std::unique_ptr<
+                       os_crypt_async::AppBoundEncryptionProviderWin> provider,
+                   base::OnceCallback<void(
+                       base::expected<IsolationState, HRESULT>)> completed,
+                   IsolationState state,
+                   std::unique_ptr<ScopedKeepAlive> keep_alive,
+                   const std::string& tag,
+                   base::expected<os_crypt_async::Encryptor::Key,
+                                  os_crypt_async::KeyProvider::KeyError>
+                       result) {
+                  if (!result.has_value()) {
+                    if (completed) {
+                      std::move(completed).Run(base::unexpected(E_FAIL));
+                    }
+                    return;
+                  }
+                  CompleteRegistryPersistence(state, std::move(completed),
+                                              std::move(keep_alive));
+                },
+                std::move(provider), std::move(completed), state,
+                std::move(keep_alive)));
+            return;
+          }
+
+          base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+              FROM_HERE,
+              base::BindOnce(&CompleteRegistryPersistence, state,
+                             std::move(completed), std::move(keep_alive)));
+        },
+        local_state, state, std::move(completed), std::move(keep_alive)));
+    return;
   }
 
   // Post persistence to the UI task runner, passing `keep_alive` so it remains

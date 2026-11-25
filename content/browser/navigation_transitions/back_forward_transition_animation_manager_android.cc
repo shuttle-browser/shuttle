@@ -4,6 +4,13 @@
 
 #include "content/browser/navigation_transitions/back_forward_transition_animation_manager_android.h"
 
+#include <stdint.h>
+
+#include <algorithm>
+
+#include "base/android/callback_android.h"
+#include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "content/browser/navigation_transitions/back_forward_transition_animator.h"
 #include "content/browser/renderer_host/navigation_controller_impl.h"
 #include "content/browser/renderer_host/navigation_transitions/navigation_entry_screenshot.h"
@@ -14,6 +21,9 @@
 #include "content/public/browser/back_forward_transition_animation_manager.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents_delegate.h"
+
+// Must come after all headers that specialize FromJniType() / ToJniType().
+#include "content/public/android/content_jni_headers/BackForwardTransitionAnimationManagerImpl_jni.h"
 
 namespace content {
 
@@ -47,6 +57,19 @@ BackForwardTransitionAnimationManagerAndroid::
     animator_->AbortAnimation(AnimationAbortReason::kAnimationManagerDestroyed);
     DestroyAnimator();
   }
+  if (!java_object_.is_null()) {
+    JNIEnv* env = base::android::AttachCurrentThread();
+    Java_BackForwardTransitionAnimationManagerImpl_destroy(env, java_object_);
+  }
+}
+
+base::android::ScopedJavaLocalRef<jobject>
+BackForwardTransitionAnimationManagerAndroid::GetJavaObject(JNIEnv* env) {
+  if (java_object_.is_null()) {
+    java_object_.Reset(Java_BackForwardTransitionAnimationManagerImpl_create(
+        env, reinterpret_cast<intptr_t>(this)));
+  }
+  return base::android::ScopedJavaLocalRef<jobject>(env, java_object_);
 }
 
 void BackForwardTransitionAnimationManagerAndroid::OnGestureStarted(
@@ -314,4 +337,55 @@ void BackForwardTransitionAnimationManagerAndroid::DestroyAnimator() {
   OnAnimationStageChanged();
 }
 
+// JNI entry points for the Java peer.
+void BackForwardTransitionAnimationManagerAndroid::OnGestureStarted(
+    JNIEnv* env,
+    float progress,
+    ui::BackGestureEventSwipeEdge edge,
+    bool forward) {
+  auto* window =
+      web_contents_view_android()->GetNativeView()->GetWindowAndroid();
+  CHECK(window);
+  CHECK(window->GetCompositor());
+  OnGestureStarted(
+      ui::BackGestureEvent(progress), edge,
+      forward ? NavigationDirection::kForward : NavigationDirection::kBackward);
+}
+
+void BackForwardTransitionAnimationManagerAndroid::OnGestureProgressed(
+    JNIEnv* env,
+    float progress) {
+  OnGestureProgressed(ui::BackGestureEvent(std::clamp(progress, 0.f, 1.f)));
+}
+
+static bool
+JNI_BackForwardTransitionAnimationManagerImpl_ShouldAnimateNavigationTransition(
+    JNIEnv* env,
+    bool forward,
+    ui::BackGestureEventSwipeEdge edge) {
+  return BackForwardTransitionAnimationManager::
+      ShouldAnimateNavigationTransition(forward
+                                            ? NavigationDirection::kForward
+                                            : NavigationDirection::kBackward,
+                                        edge);
+}
+
+static bool
+JNI_BackForwardTransitionAnimationManagerImpl_ShouldAnimateBackForwardTransitions(
+    JNIEnv* env) {
+  return BackForwardTransitionAnimationManager::
+      ShouldAnimateBackForwardTransitions();
+}
+
+static base::OnceClosure
+JNI_BackForwardTransitionAnimationManagerImpl_SetMinRequiredPhysicalRamMbForTesting(
+    int32_t mb) {
+  return base::DoNothingWithBoundArgs(
+      NavigationTransitionConfig::
+          SetMinRequiredPhysicalRamMbForTesting(  // IN-TEST
+              mb));
+}
+
 }  // namespace content
+
+DEFINE_JNI(BackForwardTransitionAnimationManagerImpl)

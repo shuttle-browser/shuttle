@@ -15,6 +15,7 @@
 #include "base/timer/timer.h"
 #include "chrome/browser/ash/app_list/arc/arc_app_list_prefs.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/prefs/pref_change_registrar.h"
 
 class ArcAppLauncher;
 class Profile;
@@ -37,6 +38,21 @@ class ArcAutoLaunchService : public KeyedService,
   // before giving up, so that it does not show up unexpectedly late in the
   // session.
   static constexpr base::TimeDelta kLaunchTimeout = base::Minutes(5);
+
+  // The outcome of auto-launching the configured app, recorded to
+  // Arc.AutoLaunch.Result. These values are persisted to logs. Entries should
+  // not be renumbered and numeric values should never be reused.
+  // LINT.IfChange(ArcAutoLaunchResult)
+  enum class Result {
+    kLaunched = 0,
+    kArcDisabled = 1,
+    kNotInstalled = 2,
+    kNoLaunchableActivity = 3,
+    kNotReady = 4,
+    kSessionEndedBeforeTimeout = 5,
+    kMaxValue = kSessionEndedBeforeTimeout,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/arc/enums.xml:ArcAutoLaunchResult)
 
   static ArcAutoLaunchService* GetForBrowserContext(
       content::BrowserContext* context);
@@ -76,10 +92,14 @@ class ArcAutoLaunchService : public KeyedService,
   void StopLaunch();
   // Returns true if the app has been launched.
   bool HasLaunchedApp() const;
-  // Gives up launching the app if it has not been launched yet.
+  // Records the result of the launch attempt, and gives up launching the app if
+  // it has not been launched yet.
   void OnTimeout();
+  // Applies changes to the AutoLaunchAndroidApps policy.
+  void OnPolicyChanged();
 
   const raw_ptr<Profile> profile_;
+  PrefChangeRegistrar pref_change_registrar_;
 
   // The package to launch. Empty if there is none.
   std::string package_name_;

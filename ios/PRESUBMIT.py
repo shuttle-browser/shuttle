@@ -8,6 +8,7 @@ for more details about the presubmit API built into depot_tools.
 """
 
 import os
+import re
 import subprocess
 import xml.etree.ElementTree as ElementTree
 
@@ -75,7 +76,7 @@ def _CheckNullabilityAnnotations(input_api, output_api):
     plural_suffix = '' if len(errors) == 1 else 's'
     warning_message = (
         'Found Nullability annotation%(plural)s. '
-        'Prefer DCHECKs in ios code to check for nullness:'
+        'These should only be used when needed for Swift interop.'
         % {'plural': plural_suffix}
     )
 
@@ -324,9 +325,10 @@ def _CheckNoTearDownEGTest(input_api, output_api):
     warning_message = (
         '\n'.join(
             [
-                'To support hermetic EarlGrey test cases, tearDown has been renamed '
-                'to tearDownHelper, and will soon be removed. If tearDown is really '
-                'necessary for this test, please use addTeardownBlock'
+                'Do not override `- (void)tearDown` in EarlGrey tests. '
+                'Host app state is wiped automatically between tests; for '
+                'non-sandbox cleanup, register a block with '
+                '`addTeardownBlock:` or `setTearDownHandler:` instead:'
             ]
             + errors
         )
@@ -685,9 +687,11 @@ def _CheckUsageOfSystemColors(input_api, output_api):
     if not errors:
         return []
 
-    warning_message = 'Found forbidden usage of system colors. '
-    'Only white, black and clear colors are accepted.'
-    'Prefer semantic colors in ios code instead of the system ones:'
+    warning_message = (
+        'Found forbidden usage of system colors. '
+        'Only white, black and clear colors are accepted. '
+        'Prefer semantic colors in ios code instead of the system ones:'
+    )
 
     return [output_api.PresubmitPromptWarning(warning_message, items=errors)]
 
@@ -798,6 +802,268 @@ def _CheckLargeImagesets(input_api, output_api):
     return [output_api.PresubmitError(warning_message, items=errors)]
 
 
+def _IsDocumentationSvg(svg_abs_path):
+    """Returns whether the SVG at `svg_abs_path` is a documentation diagram.
+
+    An SVG is treated as a documentation diagram only if there is positive
+    evidence that docs use it: either a PNG render with the same name already
+    exists next to it, or a Markdown file in its directory or the parent
+    directory references it by file name. SVGs that are app assets have
+    neither, so they are never flagged.
+    """
+    if os.path.isfile(svg_abs_path[: -len('.svg')] + '.png'):
+        return True
+
+    svg_dir = os.path.dirname(svg_abs_path)
+    reference_regex = re.compile(
+        r'(?<![\w.-])' + re.escape(os.path.basename(svg_abs_path)) + r'\b'
+    )
+    for doc_dir in (svg_dir, os.path.dirname(svg_dir)):
+        try:
+            names = os.listdir(doc_dir)
+        except OSError:
+            continue
+        for name in names:
+            if not name.lower().endswith('.md'):
+                continue
+            try:
+                with open(
+                    os.path.join(doc_dir, name),
+                    encoding='utf-8',
+                    errors='ignore',
+                ) as md_file:
+                    if reference_regex.search(md_file.read()):
+                        return True
+            except OSError:
+                continue
+    return False
+
+
+def _CheckSvgHasUpdatedPng(input_api, output_api):
+    """Checks that changed documentation SVGs have their PNG render updated.
+
+    Gitiles only renders PNG, JPEG, and GIF images inline in Markdown, so
+    diagrams in docs are committed as an editable SVG source plus a PNG render
+    with the same name in the same directory. This check catches a
+    documentation SVG that is added or modified without its PNG render also
+    being added or modified.
+
+    Only SVGs identified by `_IsDocumentationSvg` are checked. SVGs inside
+    Apple asset catalogs (`.xcassets`) and `ios/third_party/` are always
+    exempt, so app assets are never affected.
+    """
+    changed_files = {
+        f.LocalPath().replace('\\', '/'): f
+        for f in input_api.AffectedFiles(include_deletes=False)
+    }
+
+    stale_svgs = []
+    for svg_path in sorted(changed_files):
+        if not svg_path.lower().endswith('.svg'):
+            continue
+        if '.xcassets/' in svg_path or svg_path.startswith('ios/third_party/'):
+            continue
+        png_path = svg_path[: -len('.svg')] + '.png'
+        if png_path in changed_files:
+            continue
+        if not _IsDocumentationSvg(changed_files[svg_path].AbsoluteLocalPath()):
+            continue
+        stale_svgs.append((svg_path, png_path))
+
+    if not stale_svgs:
+        return []
+
+    commands = [
+        '  rsvg-convert --background-color=white %s | '
+        'magick - -strip -depth 8 %s' % (svg_path, png_path)
+        for svg_path, png_path in stale_svgs
+    ]
+    error_message = (
+        '\n'.join(
+            [
+                'SVG file(s) changed without a matching change to the PNG of '
+                'the same name in the same directory. Gitiles cannot render '
+                'SVGs in Markdown, so docs reference the PNG render and link '
+                'to the SVG as its source. Regenerate the PNG(s) by running '
+                'these commands from the src/ directory:',
+                '',
+            ]
+            + commands
+            + [
+                '',
+                'rsvg-convert is required because ImageMagick\'s built-in SVG '
+                'renderer drops arrowheads and dash patterns. Install it with '
+                '`sudo apt install librsvg2-bin` (Linux) or '
+                '`brew install librsvg` (macOS). The PNG is rendered at the '
+                'SVG\'s native size because Gitiles has no image sizing '
+                'syntax. Reference it from Markdown as '
+                '`![Alt text](diagram.png)` followed by '
+                '`[SVG source](diagram.svg)`.',
+            ]
+        )
+        + '\n'
+    )
+    return [output_api.PresubmitError(error_message)]
+
+
+def _ImportEarlGreyHeaderUtil(input_api):
+    """Imports the shared `earl_grey_header_util` module."""
+    try:
+        import earl_grey_header_util
+
+        return earl_grey_header_util
+    except ImportError:
+        pass
+
+    import sys
+
+    candidates = []
+    if hasattr(input_api, 'PresubmitLocalPath'):
+        candidates.append(
+            input_api.os_path.join(
+                input_api.PresubmitLocalPath(),
+                'testing',
+                'earl_grey_mcp',
+                'scripts',
+            )
+        )
+    if hasattr(input_api, 'change') and hasattr(
+        input_api.change, 'RepositoryRoot'
+    ):
+        candidates.append(
+            input_api.os_path.join(
+                input_api.change.RepositoryRoot(),
+                'ios',
+                'testing',
+                'earl_grey_mcp',
+                'scripts',
+            )
+        )
+
+    for candidate in candidates:
+        if input_api.os_path.isdir(candidate) and candidate not in sys.path:
+            sys.path.append(candidate)
+
+    import earl_grey_header_util
+
+    return earl_grey_header_util
+
+
+def _CheckEarlGreyHeaderDocstrings(input_api, output_api):
+    """Checks that modified EarlGrey header methods have complete docstrings.
+
+    Verifies that newly added or modified Objective-C methods in EarlGrey
+    headers document their functionality, arguments (enclosed in backticks),
+    and return values (for non-void methods).
+    """
+    eg_util = _ImportEarlGreyHeaderUtil(input_api)
+    from pathlib import Path
+
+    mcp_domains_path = Path(
+        input_api.os_path.join(
+            input_api.PresubmitLocalPath(),
+            'testing',
+            'earl_grey_mcp',
+            'mcp_domains.yaml',
+        )
+    )
+    if (
+        not mcp_domains_path.is_file()
+        and hasattr(input_api, 'change')
+        and hasattr(input_api.change, 'RepositoryRoot')
+    ):
+        mcp_domains_path = (
+            Path(input_api.change.RepositoryRoot())
+            / 'ios'
+            / 'testing'
+            / 'earl_grey_mcp'
+            / 'mcp_domains.yaml'
+        )
+    domain_rules = eg_util.load_domain_rules(mcp_domains_path)
+
+    errors = []
+    for filename in input_api.AffectedFiles(include_deletes=False):
+        local_path = filename.LocalPath()
+        if not eg_util.is_earlgrey_header(local_path, rules=domain_rules):
+            continue
+
+        changed_lines = {line_num for line_num, _ in filename.ChangedContents()}
+        if not changed_lines:
+            continue
+
+        lines = filename.NewContents()
+        in_interface = False
+        line_idx = -1
+
+        while line_idx + 1 < len(lines):
+            line_idx += 1
+            line = lines[line_idx]
+            stripped = line.strip()
+            if stripped.startswith('@interface '):
+                in_interface = True
+                continue
+            if stripped.startswith('@end'):
+                in_interface = False
+                continue
+
+            if not in_interface:
+                continue
+
+            if not eg_util.METHOD_START_RE.match(line):
+                continue
+
+            start_line_idx = line_idx
+            full_decl, line_idx = eg_util.extract_method_declaration(
+                lines, start_line_idx
+            )
+            end_line_idx = line_idx
+
+            if 'NS_UNAVAILABLE' in full_decl:
+                continue
+
+            comment_lines, comment_start_line_idx = (
+                eg_util.extract_preceding_comments(lines, start_line_idx)
+            )
+
+            if not any(
+                line_no in changed_lines
+                for line_no in range(
+                    comment_start_line_idx + 1, end_line_idx + 2
+                )
+            ):
+                continue
+
+            doc_text = eg_util.clean_comment_text(comment_lines)
+            try:
+                method_info = eg_util.parse_method_declaration(full_decl)
+                validation_errors = eg_util.validate_method_docstrings(
+                    method_info, doc_text
+                )
+                selector_name = method_info.selector
+            except ValueError:
+                selector_name = full_decl
+                validation_errors = ['Malformed method declaration']
+
+            if validation_errors:
+                errors_str = '; '.join(validation_errors)
+                errors.append(
+                    f'{local_path}:{start_line_idx + 1} '
+                    f'({selector_name}: {errors_str})'
+                )
+
+    if not errors:
+        return []
+
+    error_message = (
+        'EarlGrey header methods must have complete docstrings documenting '
+        'their functionality, arguments (in backticks, e.g. `paramName`), and '
+        'return values so that MCP tool schemas have complete metadata.\n'
+        'See docs/ios/testing.md#accessing-app-internals for header '
+        'documentation requirements and examples.'
+    )
+    return [output_api.PresubmitError(error_message, items=errors)]
+
+
 def CheckChange(input_api, output_api):
     results = []
     results.extend(_CheckBugInToDo(input_api, output_api))
@@ -820,6 +1086,8 @@ def CheckChange(input_api, output_api):
     results.extend(_CheckNoFlakyUnitTest(input_api, output_api))
     results.extend(_CheckUsageOfSystemColors(input_api, output_api))
     results.extend(_CheckLargeImagesets(input_api, output_api))
+    results.extend(_CheckSvgHasUpdatedPng(input_api, output_api))
+    results.extend(_CheckEarlGreyHeaderDocstrings(input_api, output_api))
     results.extend(input_api.canned_checks.RunRuff(input_api, output_api))
     results.extend(
         input_api.canned_checks.CheckPatchFormatted(

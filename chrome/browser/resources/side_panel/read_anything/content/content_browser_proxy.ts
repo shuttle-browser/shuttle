@@ -71,9 +71,13 @@ export interface ContentBrowserProxy {
   getDistillationTypeScreen2x(): number;
 
   hasValidSelection(): boolean;
+  hasTransientUserActivation(): boolean;
+  hasFocus(): boolean;
   isReadabilityEnabled(): boolean;
   isContentTranslated(): boolean;
+  getTranslationState(): number;
   isTranslatePdfEnabled(): boolean;
+  isReadAnythingSendFeedbackEnabled(): boolean;
   isGoogleDocs(): boolean;
   isLeafNode(nodeId: number): boolean;
   isOverline(nodeId: number): boolean;
@@ -94,6 +98,7 @@ export interface ContentBrowserProxy {
       anchorNodeId: number, anchorOffset: number, focusNodeId: number,
       focusOffset: number): void;
   onScroll(scrollingOnSelection: boolean): void;
+  onSendFeedback(): void;
 }
 
 export class ContentBrowserProxyImpl implements ContentBrowserProxy {
@@ -181,6 +186,14 @@ export class ContentBrowserProxyImpl implements ContentBrowserProxy {
     return chrome.readingMode.hasValidSelection;
   }
 
+  hasTransientUserActivation(): boolean {
+    return navigator.userActivation.isActive;
+  }
+
+  hasFocus(): boolean {
+    return document.hasFocus();
+  }
+
   isReadabilityEnabled(): boolean {
     return chrome.readingMode.isReadabilityEnabled;
   }
@@ -189,8 +202,16 @@ export class ContentBrowserProxyImpl implements ContentBrowserProxy {
     return chrome.readingMode.isContentTranslated;
   }
 
+  getTranslationState(): number {
+    return chrome.readingMode.translationState;
+  }
+
   isTranslatePdfEnabled(): boolean {
     return chrome.readingMode.isTranslatePdfEnabled;
+  }
+
+  isReadAnythingSendFeedbackEnabled(): boolean {
+    return chrome.readingMode.isReadAnythingSendFeedbackEnabled;
   }
 
   isGoogleDocs(): boolean {
@@ -342,6 +363,10 @@ export class ContentBrowserProxyImpl implements ContentBrowserProxy {
 
   onDistilled(wordCount: number): void {
     chrome.readingMode.onDistilled(wordCount);
+  }
+
+  onSendFeedback(): void {
+    chrome.readingMode.onSendFeedback();
   }
 
   static getInstance(): ContentBrowserProxy {

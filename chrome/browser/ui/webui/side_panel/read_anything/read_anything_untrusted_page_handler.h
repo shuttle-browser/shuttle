@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "base/containers/flat_set.h"
 #include "base/functional/callback_helpers.h"
@@ -25,8 +26,8 @@
 #include "chrome/browser/ui/webui/side_panel/read_anything/read_anything_translate_observer.h"
 #include "chrome/common/read_anything/distillation_evaluator.mojom.h"
 #include "chrome/common/read_anything/read_anything.mojom.h"
-#include "components/dom_distiller/core/task_tracker.h"
 #include "components/translate/core/browser/translate_client.h"
+#include "components/web_distiller/core/task_tracker.h"
 #include "content/public/browser/tts_controller.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -185,11 +186,11 @@ class ReadAnythingUntrustedPageHandler :
       const ReadAnythingUntrustedPageHandler&) = delete;
   ~ReadAnythingUntrustedPageHandler() override;
 
-  const std::optional<std::string>& dom_distiller_title() const {
-    return dom_distiller_title_;
+  const std::optional<std::string>& readability_title() const {
+    return readability_title_;
   }
-  const std::optional<std::string>& dom_distiller_content() const {
-    return dom_distiller_content_;
+  const std::optional<std::string>& readability_content() const {
+    return readability_content_;
   }
 
   base::TimeTicks readability_distillation_tree_change_start_time() const {
@@ -224,7 +225,6 @@ class ReadAnythingUntrustedPageHandler :
   bool CheckForPdfContentFrame();
 
   // read_anything::mojom::UntrustedPageHandler:
-  void GetPresentationState() override;
   void OnVoiceChange(const std::string& voice,
                      const std::string& lang) override;
   void OnLanguagePrefChange(const std::string& lang, bool enabled) override;
@@ -241,6 +241,7 @@ class ReadAnythingUntrustedPageHandler :
   void OnFontSizeChange(double font_size) override;
   void OnLinksEnabledChanged(bool enabled) override;
   void OnTranslationRequested() override;
+  void OnSendFeedback() override;
   void OnImagesEnabledChanged(bool enabled) override;
   void OnColorChange(read_anything::mojom::Colors color) override;
   void OnHighlightGranularityChanged(
@@ -279,7 +280,6 @@ class ReadAnythingUntrustedPageHandler :
       bool active,
       ReadAnythingOpenTrigger open_trigger,
       std::optional<base::TimeDelta> completed_session_duration) override;
-  void OnReadingModePresenterChanged() override;
 
   void OnTabWillDetach(tabs::TabInterface* tab,
                        tabs::TabInterface::DetachReason reason);
@@ -352,6 +352,15 @@ class ReadAnythingUntrustedPageHandler :
   // if the page is HTTP/HTTPS or a PDF.
   bool AreActionsAllowedInTree(const ui::AXTreeID& tree_id) const;
 
+  // Returns whether a renderer request (e.g. a link click or image download)
+  // targeting `tree_id` may be acted on, i.e. the tree is observed and actions
+  // are allowed in it. Records the result to `histogram_name`. `request_name`
+  // describes the request in logs.
+  bool CheckAndRecordRendererRequestAllowed(
+      const ui::AXTreeID& tree_id,
+      std::string_view histogram_name,
+      std::string_view request_name) const;
+
   // ui::AXActionHandlerObserver:
   void TreeRemoved(ui::AXTreeID ax_tree_id) override;
 
@@ -396,7 +405,6 @@ class ReadAnythingUntrustedPageHandler :
   void SetUpPdfObserver();
   void CheckIfActiveAXTreeChangedToPdf();
 
-  void OnGetPresentationState();
   ReadAnythingController* GetReadAnythingController();
 
   // Called when reading_mode_hidden_ack_timer_ times out without hearing back
@@ -438,13 +446,13 @@ class ReadAnythingUntrustedPageHandler :
       bool is_available);
 
   // Called if IsReadAnythingWithReadabilityEnabled is enabled. Triggers
-  // DomDistiller Distillation for the current page. Returns true if
+  // Readability distillation for the current page if eligible. Returns true if
   // distillation was successfully started.
-  bool RequestDomDistillerDistillation(content::WebContents* contents);
+  bool MaybeStartReadabilityDistillation(content::WebContents* contents);
 
   // Resets the state of the current readability distillation: resolves an
   // outstanding RequestReadabilityDistillation callback with kCancelled and
-  // empty strings, cancels the in-flight DomDistiller distillation, if any, and
+  // empty strings, cancels the in-flight Readability distillation, if any, and
   // clears the cached article and its timing state.
   void ResetReadabilityState();
 
@@ -452,10 +460,15 @@ class ReadAnythingUntrustedPageHandler :
   // the current url scheme in ReadAnything.DistillationScheme.
   void RecordDistillationSchemeHistogram(const GURL& url) const;
 
-  // Called by the DomDistillerDelegate with the result of a DomDistiller
-  // distillation.
+  // Called by the ReadabilityDistillerDelegate with the result of a
+  // Readability distillation.
   void ProcessDistilledArticle(
-      const dom_distiller::DistilledArticleProto* article_proto);
+      const web_distiller::DistilledArticleProto* article_proto);
+
+  // Tells the page that Readability distillation produced no content, so it
+  // can update from showing loading to showing no content. No-op when
+  // IsReadAnythingDistillerRefactorEnabled is enabled.
+  void MaybeSendEmptyReadabilityContent();
 
   void EvaluateDistillationQuality(const std::string& distilled_html);
   void OnQualityMetricsEvaluated(
@@ -486,13 +499,21 @@ class ReadAnythingUntrustedPageHandler :
   // contained.
   std::unique_ptr<ReadAnythingWebContentsObserver> pdf_observer_;
 
-  // Private implementation for dom_distiller::ViewRequestDelegate, not part of
+  // Private implementation for web_distiller::ViewRequestDelegate, not part of
   // the public API.
-  class DomDistillerDelegate;
-  std::unique_ptr<DomDistillerDelegate> distiller_delegate_;
+  class ReadabilityDistillerDelegate;
+  std::unique_ptr<ReadabilityDistillerDelegate> distiller_delegate_;
 
-  const mojo::Receiver<read_anything::mojom::UntrustedPageHandler> receiver_;
+  mojo::Receiver<read_anything::mojom::UntrustedPageHandler> receiver_;
   const mojo::Remote<read_anything::mojom::UntrustedPage> page_;
+
+  // The trigger used the last time Reading Mode was shown. Intentionally not
+  // reset when Reading Mode is hidden, so that a distillation result arriving
+  // after the UI is closed is still attributed to the right entry point.
+  // OnDistillationStatus() resets it to kUnknown after logging the omnibox
+  // distillation metrics, so they are only recorded once per omnibox open.
+  ReadAnythingOpenTrigger last_open_trigger_ =
+      ReadAnythingOpenTrigger::kUnknown;
 
   // Whether the tab is going to detach soon.
   bool tab_will_detach_ = false;
@@ -564,9 +585,9 @@ class ReadAnythingUntrustedPageHandler :
   ListenToThisPagePlaybackMetricState listen_to_this_page_playback_state_ =
       ListenToThisPagePlaybackMetricState::kInactive;
 
-  // Hold DOM distiller distillation results.
-  std::optional<std::string> dom_distiller_title_;
-  std::optional<std::string> dom_distiller_content_;
+  // Holds Readability distillation results.
+  std::optional<std::string> readability_title_;
+  std::optional<std::string> readability_content_;
 
   // Tracks the start time of a readability distillation triggered by an active
   // accessibility tree ID change. This is used to measure readability

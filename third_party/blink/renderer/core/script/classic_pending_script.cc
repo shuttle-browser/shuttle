@@ -102,7 +102,7 @@ ClassicPendingScript* ClassicPendingScript::Fetch(
   ExecutionContext* context = element_document.GetExecutionContext();
   FetchParameters params(options.CreateFetchParameters(
       url, context->GetSecurityOrigin(), context->GetCurrentWorld(),
-      cross_origin, encoding, defer, context));
+      cross_origin, encoding, defer));
 
   ClassicPendingScript* pending_script =
       MakeGarbageCollected<ClassicPendingScript>(
@@ -533,8 +533,12 @@ void ClassicPendingScript::NotifyFinished(Resource* resource) {
                                 CachedMetadataHandler::kCrashIfUnchecked)) {
     AdvanceReadyState(kWaitingForCacheConsumer);
     // TODO(leszeks): Decide whether kNetworking is the right task type here.
+    v8::Isolate* isolate = execution_context->GetIsolate();
+    v8::HandleScope handle_scope(isolate);
     classic_script_->CacheConsumer()->NotifyClientWaiting(
-        this, classic_script_,
+        this, classic_script_->CacheHandler(),
+        V8String(isolate, classic_script_->SourceText()),
+        classic_script_->CreateScriptOrigin(isolate),
         execution_context->GetTaskRunner(TaskType::kNetworking));
   } else {
     // Either there was never a cache consume, or it was dropped. Either way, we

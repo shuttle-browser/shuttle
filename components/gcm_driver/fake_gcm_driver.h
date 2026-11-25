@@ -12,7 +12,7 @@
 namespace base {
 class FilePath;
 class SequencedTaskRunner;
-}
+}  // namespace base
 
 namespace gcm {
 
@@ -33,23 +33,16 @@ class FakeGCMDriver : public GCMDriver {
                             const std::vector<std::string>& sender_ids,
                             const std::string& registration_id,
                             ValidateRegistrationCallback callback) override;
-  void AddConnectionObserver(GCMConnectionObserver* observer) override;
-  void RemoveConnectionObserver(GCMConnectionObserver* observer) override;
   GCMClient* GetGCMClientForTesting() const override;
-  bool IsStarted() const override;
-  bool IsConnected() const override;
   void GetGCMStatistics(GetGCMStatisticsCallback callback,
                         ClearActivityLogs clear_logs) override;
   void SetGCMRecording(const GCMStatisticsRecordingCallback& callback,
                        bool recording) override;
   InstanceIDHandler* GetInstanceIDHandlerInternal() override;
-  void AddHeartbeatInterval(const std::string& scope, int interval_ms) override;
-  void RemoveHeartbeatInterval(const std::string& scope) override;
 
  protected:
   // GCMDriver implementation:
-  GCMClient::Result EnsureStarted(
-      GCMClient::StartMode start_mode) override;
+  GCMClient::Result EnsureStarted(GCMClient::StartMode start_mode) override;
   void RegisterImpl(const std::string& app_id,
                     const std::vector<std::string>& sender_ids) override;
   void UnregisterImpl(const std::string& app_id) override;

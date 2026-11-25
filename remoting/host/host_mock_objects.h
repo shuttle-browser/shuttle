@@ -39,14 +39,14 @@
 #include "remoting/host/input_injector.h"
 #include "remoting/host/keyboard_layout_monitor.h"
 #include "remoting/host/mojom/chromoting_host_services.mojom.h"
-#include "remoting/host/mojom/remote_url_opener.mojom.h"
-#include "remoting/host/mojom/webauthn_proxy.mojom.h"
+#include "remoting/host/mojom/remote_url_opener.mojom-forward.h"
+#include "remoting/host/mojom/webauthn_proxy.mojom-forward.h"
 #include "remoting/host/peer_session.h"
 #include "remoting/host/remote_open_url/url_forwarder_configurator.h"
 #include "remoting/host/security_key/security_key_auth_handler.h"
 #include "remoting/host/webauthn/remote_webauthn_state_change_notifier.h"
-#include "remoting/proto/control.pb.h"
 #include "remoting/proto/event.pb.h"
+#include "remoting/proto/terminal.pb.h"
 #include "remoting/protocol/clipboard_stub.h"
 #include "remoting/protocol/mouse_cursor_monitor.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -56,6 +56,10 @@
 namespace base {
 class TimeDelta;
 }  // namespace base
+
+namespace remoting::protocol {
+class MicrophoneControl;
+}  // namespace remoting::protocol
 
 namespace remoting {
 
@@ -407,7 +411,8 @@ class MockChromotingSessionServices : public mojom::ChromotingSessionServices {
 #endif
   MOCK_METHOD(void,
               SetAgentStatus,
-              (const protocol::TerminalControl::AgentInfo& agent_status,
+              (int32_t terminal_id,
+               const protocol::TerminalControl::AgentInfo& agent_status,
                SetAgentStatusCallback callback),
               (override));
 };

@@ -47,6 +47,7 @@ source_set("impl") {
   deps = [
     "//base",
     "//chrome/browser/android:resource_mapper",
+    "//chrome/browser/android:settings_navigation_helper",
     "//chrome/browser/autofill",
     "//chrome/browser/password_manager",
     "//chrome/browser/password_manager/android/grouped_affiliations:public",
@@ -56,6 +57,7 @@ source_set("impl") {
     "//chrome/browser/vr",
     "//chrome/browser/webauthn:webauthn_request_delegate_android",
     "//components/autofill/core/browser",
+    "//components/autofill/core/common",
     "//components/password_manager/core/browser",
     "//components/resources:android_resources",
     "//components/webauthn/android",
@@ -84,6 +86,7 @@ source_set("unit_tests") {
     "//chrome/test/base:chrome_render_view_host_test_harness",
     "//components/autofill/content/browser:test_support",
     "//components/autofill/core/browser",
+    "//components/autofill/core/common",
     "//components/autofill/core/common:credit_card_number_validation",
     "//components/device_reauth",
     "//components/password_manager/content/browser",

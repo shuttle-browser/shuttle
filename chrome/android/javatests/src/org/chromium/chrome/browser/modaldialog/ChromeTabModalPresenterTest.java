@@ -43,7 +43,6 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Feature;
@@ -55,7 +54,6 @@ import org.chromium.cc.input.BrowserControlsState;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.omnibox.UrlBar;
 import org.chromium.chrome.browser.omnibox.UrlFocusChangeListener;
 import org.chromium.chrome.browser.tab.Tab;
@@ -81,7 +79,6 @@ import org.chromium.ui.modelutil.PropertyModel;
 /** Tests for {@link ChromeTabModalPresenter}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 // TODO(http://crbug.com/495529795): Enable side panel and fix this test.
 @DisableFeatures({ChromeFeatureList.ENABLE_ANDROID_SIDE_PANEL})
 public class ChromeTabModalPresenterTest {
@@ -410,8 +407,10 @@ public class ChromeTabModalPresenterTest {
         PropertyModel dialog2 = createDialog(mActivity, mManager, "2", null);
 
         // Open a new tab and make sure that the current tab is at index 0.
-        mActivityTestRule.loadUrlInNewTab("about:blank");
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivity, 0);
+        Tab firstTab = mPage.getTab();
+        WebPageStation blankPage = mPage.openNewTabFast().loadAboutBlank();
+        Tab newTab = blankPage.getTab();
+        WebPageStation page = blankPage.selectTabFast(firstTab, WebPageStation::newBuilder);
 
         // Initially there are no dialogs in the pending list. Browser controls are not restricted.
         checkPendingSize(mManager, ModalDialogType.TAB, 0);
@@ -428,7 +427,7 @@ public class ChromeTabModalPresenterTest {
         checkCurrentPresenter(mManager, ModalDialogType.TAB);
 
         // Dialog should be dismissed after switching to a different tab.
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivity, 1);
+        page.selectTabFast(newTab, WebPageStation::newBuilder);
         checkPendingSize(mManager, ModalDialogType.TAB, 0);
         ChromeModalDialogTestUtils.checkBrowserControls(mActivity, false);
         checkCurrentPresenter(mManager, null);
@@ -545,12 +544,14 @@ public class ChromeTabModalPresenterTest {
         int callCount = mTestObserver.onDialogDismissedCallback.getCallCount();
 
         // Open a new tab and make sure that the current tab is at index 0.
-        mActivityTestRule.loadUrlInNewTab("about:blank");
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivity, 0);
+        Tab firstTab = mPage.getTab();
+        WebPageStation blankPage = mPage.openNewTabFast().loadAboutBlank();
+        Tab newTab = blankPage.getTab();
+        WebPageStation page = blankPage.selectTabFast(firstTab, WebPageStation::newBuilder);
 
         // Show a tab modal dialog and then switch tab.
         showDialog(mManager, dialog1, ModalDialogType.TAB);
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivity, 1);
+        page.selectTabFast(newTab, WebPageStation::newBuilder);
         mTestObserver.onDialogDismissedCallback.waitForCallback(callCount);
 
         mExpectedDismissalCause = null;

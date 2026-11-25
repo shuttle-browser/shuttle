@@ -117,9 +117,6 @@ class CORE_EXPORT ScriptPromiseResolverBase
   void RejectWithTypeError(const String& message);
   void RejectWithRangeError(const String& message);
 
-  // Reject with WebAssembly Error object.
-  void RejectWithWasmCompileError(const String& message);
-
   ScriptState* GetScriptState() const { return script_state_.Get(); }
 
   template <typename IDLResolvedType>
@@ -166,7 +163,6 @@ class CORE_EXPORT ScriptPromiseResolverBase
   size_t runtime_type_id_ = 0;
 #endif
 
-  class ExceptionStateScope;
   enum ResolutionState {
     kPending,
     kResolving,

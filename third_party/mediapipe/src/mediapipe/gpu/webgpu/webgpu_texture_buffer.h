@@ -5,10 +5,10 @@
 #include <memory>
 #include <utility>
 
-#include "absl/base/nullability.h"
-#include "absl/functional/any_invocable.h"
-#include "absl/log/absl_check.h"
-#include "absl/status/statusor.h"
+#include "absl/base/nullability.h"          // from @com_google_absl
+#include "absl/functional/any_invocable.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"            // from @com_google_absl
+#include "absl/status/statusor.h"           // from @com_google_absl
 #include "mediapipe/gpu/gpu_buffer_format.h"
 #include "mediapipe/gpu/gpu_buffer_storage.h"
 #include "mediapipe/gpu/multi_pool.h"
@@ -133,10 +133,10 @@ class WebGpuTextureBufferMultiPool
   const wgpu::Device device_;
 };
 
-inline const WebGpuDeviceAttachment<WebGpuTextureBufferMultiPool>
-    kWebGpuTexturePool{[](wgpu::Device& device) {
-      return WebGpuDeviceAttachment<WebGpuTextureBufferMultiPool>::MakePtr(
-          device);
+inline const WebGpuContextAttachment<WebGpuTextureBufferMultiPool>
+    kWebGpuTexturePool{[](WebGpuContext& ctx) {
+      return WebGpuContextAttachment<WebGpuTextureBufferMultiPool>::MakePtr(
+          ctx.device);
     }};
 
 }  // namespace mediapipe

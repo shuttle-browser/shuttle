@@ -111,8 +111,6 @@
 #include "chrome/browser/ui/views/tabs/dragging/tab_drag_controller.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/web_modal/browser_window_modal_dialog_delegate.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
 #include "chrome/browser/ui/window_feature_controller/window_feature_controller.h"
 #include "chrome/browser/ui/window_sizer/window_sizer.h"
 #include "chrome/common/chrome_constants.h"
@@ -167,9 +165,9 @@
 #include "third_party/blink/public/mojom/frame/blocked_navigation_types.mojom.h"
 #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/font_list.h"
 #include "ui/gfx/text_elider.h"
 #include "ui/gfx/text_utils.h"
@@ -407,7 +405,8 @@ bool Browser::IsDeleteScheduled() const {
   return UnloadController::From(this)->is_delete_scheduled();
 }
 
-void Browser::OpenGURL(const GURL& gurl, WindowOpenDisposition disposition) {
+void Browser::OpenGURL(const GURL& gurl,
+                       ui::mojom::WindowOpenDisposition disposition) {
   OpenURL(content::OpenURLParams::CreateBrowserInitiated(
               gurl, disposition, ui::PAGE_TRANSITION_LINK),
           /*navigation_handle_callback=*/{});
@@ -630,16 +629,12 @@ void Browser::TabStripEmpty() {
 void Browser::OnTabGroupFocusChanged(
     std::optional<tab_groups::TabGroupId> new_focused_group,
     std::optional<tab_groups::TabGroupId> old_focused_group) {
-  if (!base::FeatureList::IsEnabled(features::kTabGroupsFocusing) ||
-      tab_strip_model_->closing_all() || IsDeleteScheduled()) {
-    return;
-  }
-  SessionService* service = SessionServiceFactory::GetForProfile(profile_);
-  if (service) {
-    service->AddWindowExtraData(
-        session_id_, tabs::TabStripModelSelectionState::kFocusedTabGroupIdKey,
-        new_focused_group.has_value() ? new_focused_group->ToString()
-                                      : std::string());
+  PersistFocusedTabGroup();
+}
+
+void Browser::OnTabGroupPromoted(const tab_groups::TabGroupId& group_id) {
+  if (tab_strip_model_->GetFocusedGroup() == group_id) {
+    PersistFocusedTabGroup();
   }
 }
 
@@ -883,6 +878,21 @@ void Browser::OnTabReplacedAt(WebContents* old_contents,
     int entry_count = new_contents->GetController().GetEntryCount();
     new_contents->GetController().NotifyEntryChanged(
         new_contents->GetController().GetEntryAtIndex(entry_count - 1));
+  }
+}
+
+void Browser::PersistFocusedTabGroup() {
+  if (!base::FeatureList::IsEnabled(features::kTabGroupsFocusing) ||
+      tab_strip_model_->closing_all() || IsDeleteScheduled()) {
+    return;
+  }
+  SessionService* service = SessionServiceFactory::GetForProfile(profile_);
+  if (service) {
+    std::optional<tab_groups::TabGroupId> focused_group =
+        tab_strip_model_->GetPersistableFocusedGroup();
+    service->AddWindowExtraData(
+        session_id_, tabs::TabStripModelSelectionState::kFocusedTabGroupIdKey,
+        focused_group.has_value() ? focused_group->ToString() : std::string());
   }
 }
 

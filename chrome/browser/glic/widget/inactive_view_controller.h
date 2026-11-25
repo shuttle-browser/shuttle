@@ -43,14 +43,18 @@ class InactiveViewController : public views::ViewObserver,
 
   void CaptureScreenshot(content::WebContents* glic_webui_contents);
 
-  // Sets the screenshot to be displayed. This will trigger the initial blur and
-  // display of the image.
+  // Sets the screenshot to be displayed and starts the scrim fade-in.
   void OnScreenshotCaptured(gfx::Image screenshot);
 
   base::WeakPtr<InactiveViewController> GetWeakPtr();
 
   // views::ViewObserver:
   void OnViewBoundsChanged(views::View* observed_view) override;
+  void OnViewVisibilityChanged(views::View* observed_view,
+                               views::View* starting_view,
+                               bool visible) override;
+  void OnViewAddedToWidget(views::View* observed_view) override;
+  void OnViewRemovedFromWidget(views::View* observed_view) override;
   void OnViewIsDeleting(views::View* observed_view) override;
   void OnViewThemeChanged(views::View* observed_view) override;
 
@@ -67,8 +71,14 @@ class InactiveViewController : public views::ViewObserver,
   // Updates the scrim opacity based on the animation value.
   void UpdateScrimOpacity(double animation_value);
 
-  // Checks if the aspect ratio difference requires blurring the image.
-  void CheckForImageDistortion();
+  // Returns true if the aspect ratio difference requires blurring the image.
+  bool IsImageDistorted() const;
+
+  bool IsViewDrawn() const;
+  void OnViewDrawnStateChanged();
+
+  void StartScrimAnimation();
+  void SnapScrimToFullOpacity();
 
   // Creates and returns the card view.
   std::unique_ptr<views::View> CreateCardView();
@@ -78,7 +88,9 @@ class InactiveViewController : public views::ViewObserver,
   raw_ptr<views::ImageView> image_view_ = nullptr;
   views::ViewTracker scrim_view_tracker_;
   gfx::ImageSkia screenshot_;
-  bool is_image_distorted_ = false;
+  // Tracks whether a newly captured `screenshot_` needs to be resized and
+  // applied to `image_view_`.
+  bool is_image_dirty_ = false;
 
   std::unique_ptr<gfx::SlideAnimation> animation_;
   views::ViewTracker card_view_tracker_;

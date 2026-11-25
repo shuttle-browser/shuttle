@@ -4,13 +4,8 @@
 
 package org.chromium.chrome.browser.webapps;
 
-import static androidx.test.espresso.Espresso.onView;
-import static androidx.test.espresso.action.ViewActions.click;
-import static androidx.test.espresso.matcher.ViewMatchers.withId;
-
 import static org.junit.Assert.assertEquals;
 
-import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
@@ -18,7 +13,9 @@ import android.content.res.Resources;
 import android.net.Uri;
 import android.os.Build;
 import android.os.IBinder;
-import android.view.View;
+import android.provider.Browser;
+import android.text.TextUtils;
+import android.util.Pair;
 
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.filters.LargeTest;
@@ -33,6 +30,9 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ApplicationStatus;
 import org.chromium.base.CommandLine;
+import org.chromium.base.IntentUtils;
+import org.chromium.base.ThreadUtils;
+import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.CommandLineFlags;
@@ -42,27 +42,65 @@ import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
+import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.MinAndroidSdkLevel;
-import org.chromium.chrome.R;
+import org.chromium.chrome.browser.ChromeTabbedActivity;
+import org.chromium.chrome.browser.banners.AppMenuVerbiage;
 import org.chromium.chrome.browser.document.ChromeLauncherActivity;
 import org.chromium.chrome.browser.flags.ActivityType;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
-import org.chromium.chrome.browser.open_in_app.OpenInAppUtils;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.test.MockCertVerifierRuleAndroid;
 import org.chromium.chrome.test.ChromeActivityTestRule;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.components.webapk.lib.client.WebApkValidator;
+import org.chromium.components.webapk.proto.WebApkProto;
+import org.chromium.components.webapps.AddToHomescreenCoordinator;
+import org.chromium.components.webapps.AddToHomescreenDialogView;
+import org.chromium.components.webapps.AddToHomescreenProperties;
+import org.chromium.components.webapps.AddToHomescreenViewDelegate;
+import org.chromium.components.webapps.AppType;
+import org.chromium.content_public.browser.WebContents;
 import org.chromium.content_public.browser.test.util.JavaScriptUtils;
 import org.chromium.content_public.common.ContentSwitches;
+import org.chromium.net.test.util.TestWebServer;
 import org.chromium.ui.base.DeviceFormFactor;
+import org.chromium.ui.base.WindowAndroid;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.webapk.lib.client.WebApkNavigationClient;
 import org.chromium.webapk.lib.client.WebApkServiceConnectionManager;
 import org.chromium.webapk.lib.runtime_library.IWebApkApi;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.TimeoutException;
 
-/** Integration tests for WebAPK feature. */
+/**
+ * Integration tests for the WebAPK feature.
+ *
+ * <p><b>Harness setup:</b> {@code chrome_public_test_apk} bundles and pre-installs the standalone
+ * {@code JavatestsWebApk.apk} ({@code //chrome/android/webapk/shell_apk:javatests_webapk}, package
+ * {@code org.chromium.webapk.test}) in a separate Android package and UID with {@code
+ * https://pwa-directory.appspot.com/} statically compiled into its manifest {@code <intent-filter>}
+ * and {@code scope_url} metadata ({@code manifest/javatest_manifest_config_delta.json}). {@link
+ * #setUp()} maps that host to the local HTTPS {@code EmbeddedTestServer} via {@code
+ * --host-resolver-rules} and {@link MockCertVerifierRuleAndroid}, and calls {@link
+ * WebApkValidator#setDisableValidationForTesting} because the test APK is signed with the local
+ * build key rather than the production minting key.
+ *
+ * <p><b>Real vs. stubbed boundaries:</b> Launching via {@code org.chromium.webapk.test} exercises
+ * the real cross-UID shell APK trampoline ({@code H2OTransparentLauncherActivity -> SplashActivity
+ * -> WebappLauncherActivity -> SameTaskWebApkActivity}), real {@code PackageManager} metadata and
+ * intent-filter lookup, and cross-UID {@code WebApkService} binding. In {@link
+ * #testInstallAndLaunchWebApk}, a local {@link TestWebServer} ({@code --webapk-server-url}) stubs
+ * the minting server response with {@code org.chromium.webapk.test}, causing {@code
+ * WebApkInstaller} to complete immediately because the package is already installed (skipping
+ * server APK generation and Google Play or {@code PackageInstaller} installation).
+ *
+ * <p>Prefer {@link WebApkActivityTestRule} when testing post-install {@link WebappActivity} UI and
+ * lifecycle without needing installation or the cross-UID shell APK trampoline.
+ */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @DoNotBatch(reason = "Tests activity start behavior")
@@ -83,9 +121,14 @@ public class WebApkIntegrationTest {
         mActivityTestRule.getEmbeddedTestServerRule().setServerUsesHttps(true);
         Uri mapToUri =
                 Uri.parse(mActivityTestRule.getEmbeddedTestServerRule().getServer().getURL("/"));
+        // Route requests for the test WebAPK's compiled-in pwa-directory.appspot.com scope to the
+        // local EmbeddedTestServer (see class Javadoc).
         CommandLine.getInstance()
                 .appendSwitchWithValue(
-                        ContentSwitches.HOST_RESOLVER_RULES, "MAP * " + mapToUri.getAuthority());
+                        ContentSwitches.HOST_RESOLVER_RULES,
+                        "MAP * "
+                                + mapToUri.getAuthority()
+                                + ", EXCLUDE 127.0.0.1, EXCLUDE localhost");
         WebApkValidator.setDisableValidationForTesting(true);
     }
 
@@ -134,23 +177,6 @@ public class WebApkIntegrationTest {
         intent.setComponent(new ComponentName(targetContext, ChromeLauncherActivity.class));
 
         targetContext.startActivity(intent);
-
-        if (OpenInAppUtils.isOpenInAppAvailable()) {
-            CriteriaHelper.pollUiThread(
-                    () -> {
-                        Activity activity = ApplicationStatus.getLastTrackedFocusedActivity();
-                        Criteria.checkThat("No active activity", activity, Matchers.notNullValue());
-                        View view = activity.findViewById(R.id.omnibox_chip_full);
-                        Criteria.checkThat("Omnibox chip not found", view, Matchers.notNullValue());
-                        Criteria.checkThat(
-                                "Omnibox chip not visible",
-                                view.getVisibility(),
-                                Matchers.is(View.VISIBLE));
-                    },
-                    STARTUP_TIMEOUT,
-                    CriteriaHelper.DEFAULT_POLLING_INTERVAL);
-            onView(withId(R.id.omnibox_chip_full)).perform(click());
-        }
 
         // Check we end up in the WebAPK.
         ChromeActivityTestRule.waitFor(WebappActivity.class, STARTUP_TIMEOUT);
@@ -239,5 +265,183 @@ public class WebApkIntegrationTest {
                 });
 
         callbackHelper.waitForNext();
+    }
+
+    /**
+     * Test {@link AddToHomescreenCoordinator} subclass that automatically submits the install
+     * dialog once manifest and icon data have been fetched and validated.
+     */
+    private static class TestAddToHomescreenCoordinator extends AddToHomescreenCoordinator {
+        private String mTitle;
+        private final @AppType int mExpectedDialogType;
+
+        TestAddToHomescreenCoordinator(
+                WebContents webContents,
+                Context context,
+                WindowAndroid windowAndroid,
+                ModalDialogManager modalDialogManager,
+                String title,
+                @AppType int expectedDialogType) {
+            super(webContents, context, windowAndroid, modalDialogManager);
+            mTitle = title;
+            mExpectedDialogType = expectedDialogType;
+        }
+
+        @Override
+        protected AddToHomescreenDialogView initView(AddToHomescreenViewDelegate delegate) {
+            return new AddToHomescreenDialogView(
+                    getContextForTests(), getModalDialogManagerForTests(), delegate) {
+                private boolean mSubmitted;
+
+                @Override
+                protected void setTitle(String title) {
+                    super.setTitle(title);
+                    if (TextUtils.isEmpty(mTitle)) {
+                        mTitle = title;
+                    }
+                }
+
+                @Override
+                protected void setCanSubmit(boolean canSubmit) {
+                    super.setCanSubmit(canSubmit);
+                    if (!canSubmit || mSubmitted) {
+                        return;
+                    }
+                    mSubmitted = true;
+                    if (getPropertyModelForTesting() != null) {
+                        Assert.assertEquals(
+                                mExpectedDialogType,
+                                (int)
+                                        getPropertyModelForTesting()
+                                                .get(AddToHomescreenProperties.TYPE));
+                    }
+                    PostTask.postTask(
+                            TaskTraits.UI_DEFAULT, () -> mDelegate.onAddToHomescreen(mTitle));
+                }
+            };
+        }
+    }
+
+    /**
+     * End-to-end integration test verifying that a WebAPK can be installed from a browser tab and
+     * launched into a standalone {@link WebappActivity}, entering standalone display mode without
+     * leaving the originating browser window with zero tabs.
+     */
+    @Test
+    @LargeTest
+    @Feature({"Webapps"})
+    public void testInstallAndLaunchWebApk() throws Exception {
+        TestWebServer webServer = TestWebServer.start();
+        try {
+            byte[] responseProto =
+                    WebApkProto.WebApkResponse.newBuilder()
+                            .setPackageName("org.chromium.webapk.test")
+                            .setVersion("1")
+                            .setToken("token")
+                            .build()
+                            .toByteArray();
+            List<Pair<String, String>> responseHeaders = new ArrayList<>();
+            responseHeaders.add(Pair.create("Content-Type", "application/x-protobuf"));
+            String serverUrl =
+                    webServer.setResponse("/webapkserver", responseProto, responseHeaders);
+            CommandLine.getInstance().appendSwitchWithValue("webapk-server-url", serverUrl);
+
+            // Matches the scope statically compiled into JavatestsWebApk.apk (see class Javadoc).
+            String pageUrl =
+                    "https://pwa-directory.appspot.com/chrome/test/data/banners/manifest_test_page.html";
+
+            ChromeTabbedActivity.interceptMoveTaskToBackForTesting();
+
+            Context context = ApplicationProvider.getApplicationContext();
+            Intent browserIntent = new Intent(Intent.ACTION_VIEW, Uri.parse("about:blank"));
+            browserIntent.setComponent(new ComponentName(context, ChromeTabbedActivity.class));
+            browserIntent.putExtra(Browser.EXTRA_APPLICATION_ID, context.getPackageName());
+            browserIntent.setFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            IntentUtils.addTrustedIntentExtras(browserIntent);
+            context.startActivity(browserIntent);
+
+            ChromeTabbedActivity tabbedActivity =
+                    ChromeActivityTestRule.waitFor(ChromeTabbedActivity.class, STARTUP_TIMEOUT);
+            ChromeActivityTestRule.waitForActivityCompletelyLoaded(tabbedActivity);
+            Tab tab = ThreadUtils.runOnUiThreadBlocking(() -> tabbedActivity.getActivityTab());
+            ChromeTabUtils.loadUrlOnUiThread(tab, pageUrl);
+            ChromeTabUtils.waitForTabPageLoaded(tab, pageUrl);
+
+            HistogramWatcher installWatcher =
+                    HistogramWatcher.newSingleRecordWatcher("WebApk.Install.InstallEvent", 3);
+
+            ThreadUtils.runOnUiThreadBlocking(
+                    () -> {
+                        boolean started =
+                                new TestAddToHomescreenCoordinator(
+                                                tab.getWebContents(),
+                                                tabbedActivity,
+                                                tabbedActivity.getWindowAndroid(),
+                                                tabbedActivity.getModalDialogManager(),
+                                                "",
+                                                AppType.WEBAPK)
+                                        .showForAppMenu(AppMenuVerbiage.APP_MENU_OPTION_INSTALL);
+                        Assert.assertTrue("AddToHomescreenCoordinator failed to start", started);
+                    });
+
+            installWatcher.pollInstrumentationThreadUntilSatisfied();
+
+            // If WebApkInstallService did not already auto-launch the installed WebAPK into a
+            // WebappActivity, simulate the user launching the installed app.
+            if (!(ApplicationStatus.getLastTrackedFocusedActivity() instanceof WebappActivity)) {
+                Intent launchIntent =
+                        WebApkNavigationClient.createLaunchWebApkIntent(
+                                "org.chromium.webapk.test", pageUrl, false);
+                context.startActivity(launchIntent);
+            }
+
+            WebappActivity webappActivity =
+                    ChromeActivityTestRule.waitFor(WebappActivity.class, STARTUP_TIMEOUT);
+            Assert.assertEquals(ActivityType.WEB_APK, webappActivity.getActivityType());
+
+            CriteriaHelper.pollUiThread(
+                    () -> {
+                        Tab candidateTab = webappActivity.getActivityTab();
+                        Criteria.checkThat(candidateTab, Matchers.notNullValue());
+                        Criteria.checkThat(candidateTab.getWebContents(), Matchers.notNullValue());
+                    },
+                    STARTUP_TIMEOUT,
+                    CriteriaHelper.DEFAULT_POLLING_INTERVAL);
+            Tab webappTab =
+                    ThreadUtils.runOnUiThreadBlocking(() -> webappActivity.getActivityTab());
+            ChromeTabUtils.waitForTabPageLoaded(webappTab, pageUrl);
+            WebappActivityTestRule.waitUntilSplashHides(webappActivity);
+
+            CriteriaHelper.pollInstrumentationThread(
+                    () -> {
+                        try {
+                            String result =
+                                    JavaScriptUtils.executeJavaScriptAndWaitForResult(
+                                            webappTab.getWebContents(),
+                                            "window.matchMedia('(display-mode:"
+                                                    + " standalone)').matches");
+                            Criteria.checkThat(result, Matchers.is("true"));
+                        } catch (TimeoutException e) {
+                            Criteria.checkThat("JS evaluation timed out", false, Matchers.is(true));
+                        }
+                    },
+                    STARTUP_TIMEOUT,
+                    CriteriaHelper.DEFAULT_POLLING_INTERVAL);
+
+            String displayModeMatches =
+                    JavaScriptUtils.executeJavaScriptAndWaitForResult(
+                            webappTab.getWebContents(),
+                            "window.matchMedia('(display-mode: standalone)').matches");
+            Assert.assertEquals("true", displayModeMatches);
+
+            int remainingTabCount =
+                    ThreadUtils.runOnUiThreadBlocking(
+                            () -> tabbedActivity.getTabModelSelector().getTotalTabCount());
+            Assert.assertTrue(
+                    "Originating browser window should not remain with zero tabs",
+                    remainingTabCount > 0);
+        } finally {
+            webServer.shutdown();
+        }
     }
 }

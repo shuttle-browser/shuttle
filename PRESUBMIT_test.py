@@ -27,10 +27,10 @@ try:
 finally:
     sys.path.pop(0)
 
-import PRESUBMIT
+import PRESUBMIT  # noqa: E402
 
-from PRESUBMIT_test_mocks import MockFile, MockAffectedFile
-from PRESUBMIT_test_mocks import MockInputApi, MockOutputApi, MockChange
+from PRESUBMIT_test_mocks import MockFile, MockAffectedFile  # noqa: E402
+from PRESUBMIT_test_mocks import MockInputApi, MockOutputApi, MockChange  # noqa: E402, F401
 
 _TEST_DATA_DIR = 'base/test/data/presubmit'
 
@@ -3478,22 +3478,34 @@ class BannedTypeCheckTest(unittest.TestCase):
         input_api = MockInputApi()
         input_api.files = [
             MockFile('some/cpp/problematic/file.cc', ['using namespace std;']),
-            MockFile('third_party/blink/problematic/file.cc',
-                     ['GetInterfaceProvider()']),
+            MockFile(
+                'third_party/blink/problematic/file.cc',
+                ['GetInterfaceProvider()'],
+            ),
             MockFile('some/cpp/ok/file.cc', ['using std::string;']),
-            MockFile('some/cpp/nocheck/file.cc',
-                     ['using namespace std;  // nocheck']),
-            MockFile('some/cpp/comment/file.cc',
-                     ['  // A comment about `using namespace std;`']),
-            MockFile('some/cpp/problematic/file2.cc', [
-                'params.ownership = Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET'
-            ]),
-            MockFile('some/cpp/problematic/file3.cc', [
-                'params.ownership = Widget::InitParams::NATIVE_WIDGET_OWNS_WIDGET'
-            ]),
-            MockFile('some/cpp/problematic/file4.cc', [
-                'Browser* browser = chrome::FindBrowserWithTab(web_contents)'
-            ]),
+            MockFile(
+                'some/cpp/nocheck/file.cc', ['using namespace std;  // nocheck']
+            ),
+            MockFile(
+                'some/cpp/comment/file.cc',
+                ['  // A comment about `using namespace std;`'],
+            ),
+            MockFile(
+                'some/cpp/problematic/file2.cc',
+                [
+                    'params.ownership = Widget::InitParams::WIDGET_OWNS_NATIVE_WIDGET'
+                ],
+            ),
+            MockFile(
+                'some/cpp/problematic/file3.cc',
+                [
+                    'params.ownership = Widget::InitParams::NATIVE_WIDGET_OWNS_WIDGET'
+                ],
+            ),
+            MockFile(
+                'some/cpp/problematic/file4.cc',
+                ['Browser* browser = chrome::FindBrowserWithTab(web_contents)'],
+            ),
             MockFile(
                 'allowed_ranges_usage.cc',
                 [
@@ -3508,14 +3520,17 @@ class BannedTypeCheckTest(unittest.TestCase):
                     'std::ranges::views::reverse(vec);',
                     'std::ranges::views::zip(vec1, vec2);',
                     'std::ranges::views::as_rvalue(vec);',
-                ]),
+                    'std::ranges::swap(a, b);',
+                ],
+            ),
             MockFile(
                 'allowed_views_usage.cc',
                 [
                     'std::views::reverse(vec);',
                     'std::views::zip(vec1, vec2);',
                     'std::views::as_rvalue(vec);',
-                ]),
+                ],
+            ),
             MockFile(
                 'banned_ranges_usage.cc',
                 [
@@ -3525,7 +3540,8 @@ class BannedTypeCheckTest(unittest.TestCase):
                     'std::ranges::views::take(first, count);',
                     'std::ranges::views::transform(vec, fn);',
                     'std::ranges::transform_view tv;',
-                ]),
+                ],
+            ),
             MockFile(
                 'views_usage.cc',
                 [
@@ -3533,27 +3549,41 @@ class BannedTypeCheckTest(unittest.TestCase):
                     'std::views::filter(vec, fn);',
                     'namespace views = std::views;',
                     'using std::views::all;',
-                ]),
-            MockFile('content/desktop_android.cc', [
-                '// some first line',
-                '#if BUILDFLAG(IS_DESKTOP_ANDROID)',
-                '// some third line',
-            ]),
-            MockFile('content/desktop_android_test.cc', [
-                '// some first line',
-                '#if BUILDFLAG(IS_DESKTOP_ANDROID)',
-                '// some third line',
-            ]),
+                ],
+            ),
+            MockFile(
+                'content/desktop_android.cc',
+                [
+                    '// some first line',
+                    '#if BUILDFLAG(IS_DESKTOP_ANDROID)',
+                    '// some third line',
+                ],
+            ),
+            MockFile(
+                'content/desktop_android_test.cc',
+                [
+                    '// some first line',
+                    '#if BUILDFLAG(IS_DESKTOP_ANDROID)',
+                    '// some third line',
+                ],
+            ),
             # New test cases for nlohmann::json::parse
-            MockFile('some/cpp/problematic/json_parse.cc',
-                     ['nlohmann::json::parse(json_string);']),
-            MockFile('some/cpp/problematic/json_parse_no_namespace.cc',
-                     ['json::parse(json_string);']),
-            MockFile('third_party/json/ok/json_parse.cc',
-                     ['nlohmann::json::parse(json_string);']),
+            MockFile(
+                'some/cpp/problematic/json_parse.cc',
+                ['nlohmann::json::parse(json_string);'],
+            ),
+            MockFile(
+                'some/cpp/problematic/json_parse_no_namespace.cc',
+                ['json::parse(json_string);'],
+            ),
+            MockFile(
+                'third_party/json/ok/json_parse.cc',
+                ['nlohmann::json::parse(json_string);'],
+            ),
             MockFile('v8/ok/v8_parse.cc', ['JSON::Parse(json_string);']),
-            MockFile('v8/ok/v8_json_parse.cc',
-                     ['v8::JSON::Parse(json_string);']),
+            MockFile(
+                'v8/ok/v8_json_parse.cc', ['v8::JSON::Parse(json_string);']
+            ),
         ]
 
         results = PRESUBMIT.CheckNoBannedPatterns(input_api, MockOutputApi())
@@ -4894,7 +4924,7 @@ class TranslationExpectationsTest(unittest.TestCase):
 
     # Tests that the list of files passed to the presubmit does not
     # contain duplicate basenames.
-    def testExpectationsSuccess(self):
+    def testExpectationsSuccess(self):  # noqa: F811
         # Mock input file list needs a grd or grdp file in order to run the
         # presubmit. The file itself doesn't matter.
         input_api = MockInputApi()
@@ -5325,6 +5355,118 @@ class SetNoParentTest(unittest.TestCase):
         mock_output_api = MockOutputApi()
         errors = PRESUBMIT.CheckSetNoParent(mock_input_api, mock_output_api)
         self.assertEqual([], errors)
+
+
+class SafeBrowsingOwnersTest(unittest.TestCase):
+
+    def assertOwnersCheckResult(self, affected_files, repo_owners,
+                                expected_errors):
+        mock_input_api = MockInputApi()
+        mock_input_api.InitFiles(affected_files)
+        repo_root = mock_input_api.change.RepositoryRoot()
+        abs_repo_owners = {
+            mock_input_api.os_path.join(repo_root, os.path.normpath(k)):
+            '\n'.join(v)
+            for k, v in repo_owners.items()
+        }
+        orig_isfile = mock_input_api.os_path.isfile
+        mock_input_api.os_path.isfile = lambda p: (
+            p in abs_repo_owners if p.endswith('OWNERS') else orig_isfile(p))
+        orig_read_file = mock_input_api.ReadFile
+        mock_input_api.ReadFile = lambda p: (
+            abs_repo_owners[p] if p in abs_repo_owners else orig_read_file(p))
+
+        results = PRESUBMIT.CheckSafeBrowsingOwners(mock_input_api,
+                                                    MockOutputApi())
+        if not expected_errors:
+            self.assertEqual([], results)
+            return
+        self.assertEqual(1, len(results))
+        self.assertEqual('error', results[0].type)
+        self.assertEqual(expected_errors, results[0].items)
+
+    def testValidPerFileRules(self):
+        self.assertOwnersCheckResult(
+            affected_files=[
+                MockAffectedFile('components/safe_browsing/fake/OWNERS', [
+                    'owner@chromium.org',
+                    'per-file foo.cc,sub/baz.proto=user@chromium.org',
+                    'per-file bar_*=file://components/safe_browsing/OWNERS # c',
+                ]),
+                MockAffectedFile('components/safe_browsing/fake/foo.cc', []),
+                MockAffectedFile(
+                    'components/safe_browsing/fake/bar_unittest.cc', []),
+                MockAffectedFile('components/safe_browsing/fake/sub/baz.proto',
+                                 []),
+            ],
+            repo_owners={},
+            expected_errors=[])
+
+    def testMissingPerFileTarget(self):
+        owners_path = os.path.normpath('components/safe_browsing/fake/OWNERS')
+        self.assertOwnersCheckResult(
+            affected_files=[
+                MockAffectedFile('components/safe_browsing/fake/OWNERS', [
+                    'per-file missing.cc=user1@chromium.org',
+                    'per-file missing.cc=user2@chromium.org',
+                    'per-file missing_glob*=user@chromium.org',
+                ]),
+            ],
+            repo_owners={},
+            expected_errors=[
+                f'{owners_path}: per-file pattern "missing.cc" '
+                'does not match any existing file.',
+                f'{owners_path}: per-file pattern "missing_glob*" '
+                'does not match any existing file.',
+            ])
+
+    def testDeletedPerFileTargetInUnmodifiedOwnersFails(self):
+        owners_path = os.path.normpath('components/safe_browsing/fake/OWNERS')
+        self.assertOwnersCheckResult(
+            affected_files=[
+                MockAffectedFile('components/safe_browsing/fake/sub/foo.cc',
+                                 [],
+                                 action='D'),
+            ],
+            repo_owners={
+                'components/safe_browsing/fake/OWNERS': [
+                    'per-file sub/foo.cc=user@chromium.org',
+                ],
+            },
+            expected_errors=[
+                f'{owners_path}: per-file pattern "sub/foo.cc" '
+                'does not match any existing file.',
+            ])
+
+    def testDeletedPerFileTargetWithUpdatedOwnersSucceeds(self):
+        self.assertOwnersCheckResult(
+            affected_files=[
+                MockAffectedFile('components/safe_browsing/fake/OWNERS', [
+                    'owner@chromium.org',
+                ]),
+                MockAffectedFile('components/safe_browsing/fake/foo.cc', [],
+                                 action='D'),
+            ],
+            repo_owners={
+                'components/safe_browsing/fake/OWNERS': [
+                    'per-file foo.cc=user@chromium.org',
+                ],
+            },
+            expected_errors=[])
+
+    def testUnrelatedChangesDoNotScanUnmodifiedOwners(self):
+        self.assertOwnersCheckResult(
+            affected_files=[
+                MockAffectedFile('components/safe_browsing/fake/foo.cc', []),
+                MockAffectedFile('chrome/browser/unrelated/bar.cc', [],
+                                 action='D'),
+            ],
+            repo_owners={
+                'components/safe_browsing/fake/OWNERS': [
+                    'per-file missing.cc=user@chromium.org',
+                ],
+            },
+            expected_errors=[])
 
 
 class MojomStabilityCheckTest(unittest.TestCase):
@@ -6209,8 +6351,7 @@ class CheckDanglingUntriagedTest(unittest.TestCase):
         )
 
 
-class CheckDanglingUntriagedTest(unittest.TestCase):
-
+class CheckDanglingUntriagedTest(unittest.TestCase):  # noqa: F811
     def testError(self):
         """Test patch adding dangling pointers are reported"""
         mock_input_api = MockInputApi()
@@ -6580,7 +6721,7 @@ class CheckDeprecatedSyncConsentFunctionsTest(unittest.TestCase):
     class TestCase:
         path: str
         content: str
-        expected_result: Result
+        expected_result: Result  # noqa: F821
 
     """Test the presubmit for deprecated ConsentLevel::kSync functions."""
 
@@ -6675,9 +6816,20 @@ class CheckBaseFeatureMacroTest(unittest.TestCase):
                 'BASE_FEATURE(kMyMultilineToggle,',
                 '    base::FEATURE_ENABLED_BY_DEFAULT);'
             ]),
-            MockAffectedFile(
-                'valid_complex_arg.cc',
-                ['BASE_FEATURE(kMyToggle, GetDefaultState(vector<int>(1)));']),
+            MockAffectedFile('valid_complex_arg.cc', [
+                '#if BUILDFLAG(IS_ANDROID)',
+                'BASE_FEATURE(kMyToggle, '
+                'base::FEATURE_ENABLED_BY_DEFAULT);',
+                '#else',
+                'BASE_FEATURE(kMyToggle, '
+                'base::FEATURE_DISABLED_BY_DEFAULT);',
+                '#endif',
+                'BASE_FEATURE(kMyConditionalToggle,',
+                '    BUILDFLAG(IS_ANDROID) ? '
+                'base::FEATURE_ENABLED_BY_DEFAULT',
+                '                          : '
+                'base::FEATURE_DISABLED_BY_DEFAULT);',
+            ]),
             MockAffectedFile('valid_comment.cc', [
                 '// BASE_FEATURE(invalidToggle, '
                 'base::FEATURE_ENABLED_BY_DEFAULT);'
@@ -6695,8 +6847,13 @@ class CheckBaseFeatureMacroTest(unittest.TestCase):
                 '    base::FEATURE_ENABLED_BY_DEFAULT);'
             ]),
             MockAffectedFile('valid_complex_arg_runtime_mutable.cc', [
+                '#if BUILDFLAG(IS_ANDROID)',
                 'BASE_RUNTIME_MUTABLE_FEATURE(kMyToggle,'
-                ' GetDefaultState(vector<int>(1)));'
+                ' base::FEATURE_ENABLED_BY_DEFAULT);',
+                '#else',
+                'BASE_RUNTIME_MUTABLE_FEATURE(kMyToggle,'
+                ' base::FEATURE_DISABLED_BY_DEFAULT);',
+                '#endif',
             ]),
             MockAffectedFile('valid_comment_runtime_mutable.cc', [
                 '// BASE_RUNTIME_MUTABLE_FEATURE(invalidToggle, '
@@ -6835,6 +6992,85 @@ class CheckBaseFeatureMacroTest(unittest.TestCase):
 
         self.assertEqual(len(expected_warnings), len(warnings))
         self.assertCountEqual(expected_warnings, warnings)
+
+    def testBaseFeatureMacroInvalidState(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('invalid_ternary.cc', [
+                'BASE_FEATURE(kMyToggle,',
+                '    BUILDFLAG(IS_UNSUPPORTED_PLATFORM) ? '
+                'base::FEATURE_DISABLED_BY_DEFAULT',
+                '                                       : '
+                'base::FEATURE_ENABLED_BY_DEFAULT);',
+            ]),
+            MockAffectedFile(
+                'invalid_function.cc',
+                ['BASE_FEATURE(kMyToggle, GetDefaultState(vector<int>(1)));']),
+        ]
+        results = PRESUBMIT.CheckBaseFeatureMacro(mock_input_api,
+                                                  MockOutputApi())
+
+        self.assertEqual(1, len(results))
+        self.assertEqual('error', results[0].type)
+        self.assertEqual('BASE_FEATURE() default state:', results[0].message)
+        errors = results[0].items
+
+        expected_errors = [
+            '    invalid_ternary.cc:1: Unable to parse default state for '
+            'feature "MyToggle". Default state must be a literal constant '
+            '(e.g. base::FEATURE_ENABLED_BY_DEFAULT or '
+            'base::FEATURE_DISABLED_BY_DEFAULT); use #if/#else preprocessor '
+            'blocks instead of ternary or helper expressions.',
+            '    invalid_function.cc:1: Unable to parse default state for '
+            'feature "MyToggle". Default state must be a literal constant '
+            '(e.g. base::FEATURE_ENABLED_BY_DEFAULT or '
+            'base::FEATURE_DISABLED_BY_DEFAULT); use #if/#else preprocessor '
+            'blocks instead of ternary or helper expressions.',
+        ]
+        self.assertEqual(expected_errors, errors)
+
+    def testBaseFeatureMacroInvalidStateExistingFeature(self):
+        # Editing an existing feature that the parser can't read only warns,
+        # while adding a new one in the same file is an error.
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockFile(
+                'existing.cc',
+                [
+                    'BASE_FEATURE(kOldToggle, GetDefaultState(2));',
+                    'BASE_FEATURE(kNewToggle, GetDefaultState(1));',
+                ],
+                old_contents=['BASE_FEATURE(kOldToggle, GetDefaultState(1));'],
+            ),
+        ]
+        results = PRESUBMIT.CheckBaseFeatureMacro(mock_input_api,
+                                                  MockOutputApi())
+
+        self.assertEqual(2, len(results))
+        self.assertEqual('error', results[0].type)
+        self.assertEqual('BASE_FEATURE() default state:', results[0].message)
+        self.assertEqual(1, len(results[0].items))
+        self.assertIn('existing.cc:2:', results[0].items[0])
+        self.assertIn('"NewToggle"', results[0].items[0])
+        self.assertEqual('warning', results[1].type)
+        self.assertEqual('BASE_FEATURE() default state:', results[1].message)
+        self.assertEqual(1, len(results[1].items))
+        self.assertIn('existing.cc:1:', results[1].items[0])
+        self.assertIn('"OldToggle"', results[1].items[0])
+
+    def testBaseFeatureMacroInvalidStateInTestFileSkipped(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile(
+                'base/feature_list_unittest.cc',
+                ['BASE_FEATURE(kMyToggle, GetDefaultState(vector<int>(1)));']),
+            MockAffectedFile(
+                'chrome/browser/foo/test/fake_features.cc',
+                ['BASE_FEATURE(kMyToggle, kTestDefaultState);']),
+        ]
+        results = PRESUBMIT.CheckBaseFeatureMacro(mock_input_api,
+                                                  MockOutputApi())
+        self.assertEqual([], results)
 
     def testNoBaseFeatureInContents(self):
         mock_input_api = MockInputApi()

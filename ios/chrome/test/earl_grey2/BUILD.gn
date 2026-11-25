@@ -48,7 +48,7 @@ _bookmarks_eg2tests_deps = [
 ]
 
 _integration_eg2tests_deps = [
-  "//ios/chrome/browser/autofill/atmemory/test:eg2_tests",
+  "//ios/chrome/browser/autofill/ambient_autofill/test:eg2_tests",
   "//ios/chrome/browser/autofill/branding/test:eg2_tests",
   "//ios/chrome/browser/autofill/manual_fill/test:eg2_tests",
   "//ios/chrome/browser/autofill/ui_bundled:eg2_tests",
@@ -93,6 +93,7 @@ _settings_eg2tests_deps = [
   "//ios/chrome/browser/settings/clear_browsing_data/quick_delete_other_data/test:eg2_tests",
   "//ios/chrome/browser/settings/clear_browsing_data/test:eg2_tests",
   "//ios/chrome/browser/settings/google_services/test:eg2_tests",
+  "//ios/chrome/browser/settings/manage_accounts/test:eg2_tests",
   "//ios/chrome/browser/settings/manage_sync/test:eg2_tests",
   "//ios/chrome/browser/settings/ui_bundled:eg2_tests",
   "//ios/chrome/browser/settings/ui_bundled/autofill:eg2_tests",
@@ -160,6 +161,7 @@ _ui_eg2tests_deps = [
   "//ios/chrome/browser/drive_file_picker/test:eg2_tests",
   "//ios/chrome/browser/enterprise/connectors/device_trust/test:eg2_tests",
   "//ios/chrome/browser/enterprise/data_controls/test:eg2_tests",
+  "//ios/chrome/browser/enterprise/data_protection/test:eg2_tests",
   "//ios/chrome/browser/enterprise/signals/test:eg2_tests",
   "//ios/chrome/browser/file_upload_panel/test:eg2_tests",
   "//ios/chrome/browser/first_run/animated_lens/test:eg2_tests",
@@ -382,6 +384,7 @@ source_set("eg2_tests") {
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/bookmarks/test:eg_test_support+eg2",
     "//ios/chrome/browser/device_reauth/test:eg_test_support+eg2",
+    "//ios/chrome/browser/settings/ui_bundled:constants",
     "//ios/chrome/browser/settings/ui_bundled:settings_root_constants",
     "//ios/chrome/browser/settings/ui_bundled/password:password_constants",
     "//ios/chrome/browser/settings/ui_bundled/password/password_settings:password_settings_constants",

@@ -15,11 +15,11 @@
 #include <cmath>
 #include <memory>
 
-#include "absl/strings/str_cat.h"
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/landmark.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/graphs/iris_tracking/calculators/iris_to_render_data_calculator.pb.h"
 #include "mediapipe/util/color.pb.h"
 #include "mediapipe/util/render_data.pb.h"
@@ -172,9 +172,9 @@ absl::Status IrisToRenderDataCalculator::Process(CalculatorContext* cc) {
   RET_CHECK(!cc->Inputs().Tag(kImageSizeTag).IsEmpty());
   image_size = cc->Inputs().Tag(kImageSizeTag).Get<std::pair<int, int>>();
 
-  auto render_data = absl::make_unique<RenderData>();
-  auto left_iris = absl::make_unique<NormalizedLandmarkList>();
-  auto right_iris = absl::make_unique<NormalizedLandmarkList>();
+  auto render_data = std::make_unique<RenderData>();
+  auto left_iris = std::make_unique<NormalizedLandmarkList>();
+  auto right_iris = std::make_unique<NormalizedLandmarkList>();
   GetLeftIris(iris_landmarks, left_iris.get());
   GetRightIris(iris_landmarks, right_iris.get());
 

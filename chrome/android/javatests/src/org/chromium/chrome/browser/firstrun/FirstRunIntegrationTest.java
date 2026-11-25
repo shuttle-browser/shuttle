@@ -98,7 +98,7 @@ import org.chromium.chrome.browser.search_engines.SearchEnginePromoType;
 import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
 import org.chromium.chrome.browser.signin.SigninFirstRunFragment;
 import org.chromium.chrome.browser.ui.signin.DialogWhenLargeContentLayout;
-import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninMediator;
+import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninCoordinator;
 import org.chromium.chrome.test.ChromeActivityTestRule;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
 import org.chromium.chrome.test.util.browser.signin.SigninTestRule;
@@ -109,6 +109,8 @@ import org.chromium.components.policy.EnterpriseInfo;
 import org.chromium.components.policy.test.FakeEnterpriseInfo;
 import org.chromium.components.policy.test.annotations.Policies;
 import org.chromium.components.search_engines.TemplateUrl;
+import org.chromium.components.signin.AccountManagerFacadeImpl;
+import org.chromium.components.signin.AccountManagerFacadeProvider;
 import org.chromium.components.signin.SigninFeatures;
 import org.chromium.components.signin.base.AccountInfo;
 import org.chromium.components.signin.metrics.SigninAccessPoint;
@@ -208,7 +210,7 @@ public class FirstRunIntegrationTest {
         }
 
         // Disable animations by default.
-        FullscreenSigninMediator.disableAnimationsForTesting();
+        FullscreenSigninCoordinator.disableAnimationsForTesting();
     }
 
     @After
@@ -693,6 +695,9 @@ public class FirstRunIntegrationTest {
                         .expectIntRecord(
                                 "Signin.SigninFunnel.StartPage",
                                 SigninFunnelEvent.PROMO_SHOWN_NO_ACCOUNT)
+                        .expectIntRecord(
+                                "Signin.SigninFunnel.StartPage",
+                                SigninFunnelEvent.SIGNIN_DECLINED_BUTTON_CLICKED)
                         .build();
 
         initializePreferences(new FirstRunPagesTestCase().setShouldShowHistorySyncPromo(true));
@@ -744,6 +749,9 @@ public class FirstRunIntegrationTest {
                 HistogramWatcher.newBuilder()
                         // Signin.SignIn.Started is recorded only once for the whole FRE.
                         .expectIntRecord("Signin.SignIn.Started", SigninAccessPoint.START_PAGE)
+                        .expectIntRecord(
+                                "Signin.SigninFunnel.StartPage",
+                                SigninFunnelEvent.SIGNIN_BUTTON_CLICKED)
                         // The promo shown event is recorded every time the promo is shown.
                         .expectIntRecordTimes(
                                 "Signin.SigninFunnel.StartPage",
@@ -1015,6 +1023,24 @@ public class FirstRunIntegrationTest {
         // a crash.
         Intent intent = CustomTabsIntentTestUtils.createMinimalCustomTabIntent(mContext, TEST_URL);
         mContext.startActivity(intent);
+    }
+
+    @Test
+    @MediumTest
+    @Features.DisableFeatures({SigninFeatures.MIGRATE_ACCOUNT_MANAGER_DELEGATE})
+    public void testDestroyWithPendingAccountsPromise() {
+        AccountManagerFacadeProvider.setInstanceForTests(null);
+        CriteriaHelper.pollUiThread(
+                () -> AccountManagerFacadeProvider.getInstance().getAccounts().isFulfilled());
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    ((AccountManagerFacadeImpl) AccountManagerFacadeProvider.getInstance())
+                            .resetAccountsForTesting();
+                    Assert.assertFalse(
+                            AccountManagerFacadeProvider.getInstance().getAccounts().isFulfilled());
+                });
+        FirstRunActivity firstRunActivity = launchFirstRunActivity();
+        ApplicationTestUtils.finishActivity(firstRunActivity);
     }
 
     @Test

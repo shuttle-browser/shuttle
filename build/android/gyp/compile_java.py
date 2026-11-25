@@ -5,6 +5,7 @@
 # found in the LICENSE file.
 
 import collections
+import concurrent.futures
 import functools
 import itertools
 import logging
@@ -15,13 +16,13 @@ import platform
 import re
 import shlex
 import shutil
+import subprocess
 import sys
 import time
 import zipfile
 
 import javac_output_processor
 from util import build_utils
-from util import md5_check
 from util import jar_info_utils
 from util import server_utils
 import action_helpers  # build_utils adds //build to sys.path.
@@ -41,6 +42,35 @@ _JAVAC_EXTRACTOR = os.path.join(
 _JAVAC_GRAALVM_PATH = os.path.join(
     build_utils.JAVA_HOME, 'bin', 'javac-graalvm'
 )
+
+# GraalVM native-images (e.g. javac-graalvm) exist only for linux-x64 hosts.
+IS_LINUX_X64 = sys.platform == 'linux' and platform.machine() == 'x86_64'
+
+# Large compiles are split across multiple javac processes. Each process has
+# a fixed cost (mostly loading the classpath), so this is a balance between
+# wall time and CPU time. More than 8 shards is only slightly faster on an idle
+# machine, and no faster during full builds.
+_JAVAC_SHARD_TARGET_SIZE = 2 * 1024 * 1024
+_MAX_JAVAC_SHARDS = 8
+# Targets with fewer files than this are not sharded (by javac or Error Prone),
+# which avoids stat()ing files of small targets. It is the number of files
+# needed to reach the smallest total size that round()s to 2 javac shards,
+# assuming an average file size of at most 256KB (the largest averages are from
+# generated protos, which Error Prone does not check).
+_MIN_FILES_TO_SHARD = (_JAVAC_SHARD_TARGET_SIZE * 3 // 2) // (256 * 1024)
+
+# Error Prone uses about 4x as much CPU per byte as javac, so its shards can be
+# smaller. The set of diagnostics it reports does not depend on how files are
+# sharded (other than through javac's limit of 100 errors and 100 warnings per
+# process), so the number of shards can depend on the machine:
+# * At most one shard per 1MB of source, which keeps most actions at 1-2
+#   processes.
+# * At most half of the usable CPUs, which bounds oversubscription on machines
+#   (and remote workers) with few CPUs.
+# * At most 16. On an idle machine, 16 shards of chrome_java finish about 1.7x
+#   faster than 8 processes, for 13% more CPU time.
+_ERRORPRONE_MIN_SHARD_SIZE = 1024 * 1024
+_MAX_ERRORPRONE_SHARDS = 16
 
 # These warnings cannot be suppressed even for third party code. Deprecation
 # warnings especially do not help since we must support older android version.
@@ -69,6 +99,145 @@ def ProcessJavacOutput(output, target_name):
         output = re.sub(r'\d+ warnings?\n', '', output)
 
     return javac_output_processor.Process(target_name, output)
+
+
+@functools.cache
+def _GetFileSize(path):
+    return os.path.getsize(path)
+
+
+def _GetUsableCpuCount():
+    """Returns the number of CPUs this process may use (e.g. with taskset)."""
+    try:
+        return len(os.sched_getaffinity(0))
+    except (AttributeError, OSError):  # Not available on macOS, or sandboxed.
+        return os.cpu_count() or 1
+
+
+def _ComputeNumShards(java_files, use_errorprone):
+    """Returns how many processes to split |java_files| across.
+
+    For javac, this must depend only on the inputs (and not on e.g. the number
+    of CPUs), since the shard boundaries affect the output (javac adds bridge
+    methods when a superclass comes from a header jar rather than from source).
+
+    For Error Prone, the number also depends on the number of CPUs (see
+    _MAX_ERRORPRONE_SHARDS).
+    """
+    if len(java_files) < _MIN_FILES_TO_SHARD:
+        return 1
+    total_size = sum(_GetFileSize(p) for p in java_files)
+    if use_errorprone:
+        num_shards = min(
+            _MAX_ERRORPRONE_SHARDS,
+            total_size // _ERRORPRONE_MIN_SHARD_SIZE,
+            _GetUsableCpuCount() // 2,
+        )
+    else:
+        num_shards = min(
+            _MAX_JAVAC_SHARDS, round(total_size / _JAVAC_SHARD_TARGET_SIZE)
+        )
+    return max(1, num_shards)
+
+
+def _ShardJavaFiles(java_files, num_shards):
+    """Splits |java_files| into |num_shards| lists of similar total size.
+
+    Files are kept in sorted order so that files within the same package
+    (which are most likely to reference one another) end up in the same shard.
+    """
+    sizes = [(p, _GetFileSize(p)) for p in sorted(java_files)]
+    total_size = sum(s for _, s in sizes) or 1
+    shards = [[] for _ in range(num_shards)]
+    cumulative_size = 0
+    for path, size in sizes:
+        # Assign each file to the shard that contains its midpoint.
+        idx = (cumulative_size + size // 2) * num_shards // total_size
+        shards[min(idx, num_shards - 1)].append(path)
+        cumulative_size += size
+    return [s for s in shards if s]
+
+
+def _AllowSharding(options, javac_cmd, use_errorprone):
+    """Returns whether the compile can be split across multiple processes.
+
+    Each process finds classes from the other shards via the target's header
+    jar, so it must be on the classpath.
+    """
+    if options.header_jar not in options.classpath:
+        return False
+    # Error Prone uses about 4x as much CPU as javac, so sharding pays off even
+    # with the JVM. Its processorpath holds only Error Prone plugins.
+    if use_errorprone:
+        return True
+    # Sharding with the JVM javac is not worthwhile since each process needs to
+    # warm up its JIT. Annotation processors might need to see all sources.
+    return javac_cmd[0] == _JAVAC_GRAALVM_PATH and not options.processorpath
+
+
+def _RunShardedJavac(
+    cmd,
+    java_files,
+    num_shards,
+    java_files_rsp_path,
+    options,
+    output_filter,
+    before_join_callback,
+):
+    """Runs |cmd| as multiple concurrent javac processes.
+
+    Each process compiles a subset of |java_files|, and finds classes from the
+    other subsets via the target's header jar (which is on the classpath). All
+    processes write to the same output directory.
+    """
+    assert cmd[-1] == '@' + java_files_rsp_path
+    shard_cmds = []
+    for i, shard in enumerate(_ShardJavaFiles(java_files, num_shards)):
+        shard_rsp_path = f'{java_files_rsp_path}.shard{i}'
+        with open(shard_rsp_path, 'w', encoding='utf-8') as f:
+            f.write(' '.join(shard))
+        shard_cmds.append(cmd[:-1] + ['@' + shard_rsp_path])
+
+    # Concurrency does not affect the output, so can depend on the machine.
+    max_workers = min(len(shard_cmds), os.cpu_count() or 1)
+    logging.info(
+        'Running javac as %d shards (%d at a time)',
+        len(shard_cmds),
+        max_workers,
+    )
+
+    def run_shard(shard_cmd):
+        return subprocess.run(
+            shard_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            encoding='utf-8',
+            check=False,
+        )
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers) as executor:
+        futures = [executor.submit(run_shard, c) for c in shard_cmds]
+        if before_join_callback:
+            before_join_callback()
+        results = [f.result() for f in futures]
+
+    # Combine output in shard order so that it is deterministic. Filter it all
+    # at once so that hints (e.g. for missing deps) are not repeated per shard.
+    stdout = output_filter(''.join(r.stdout for r in results))
+    stderr = output_filter(''.join(r.stderr for r in results))
+    for shard_cmd, result in zip(shard_cmds, results):
+        if result.returncode:
+            raise build_utils.CalledProcessError(
+                os.getcwd(), shard_cmd, stdout + stderr
+            )
+
+    build_utils.HandleCommandOutput(
+        cmd,
+        stdout,
+        stderr,
+        print_stdout=options.chromium_code,
+        fail_on_output=options.warnings_as_errors,
+    )
 
 
 def CreateJarFile(
@@ -207,6 +376,19 @@ def _CreateGlobFilter(exclude_globs, include_globs):
     return func
 
 
+# .compliment.jar is only used as a D8 desugaring classpath input, which does
+# not need dummy library R classes. Excluding them keeps .compliment.jar
+# identical when javac skips _rjava_srcjar_deps (resolving R.class from
+# Turbine's header jar instead).
+_R_CLASS_GLOBS = ('*/R.class', '*/R$*.class')
+
+
+def _CreateFilteredJarFilter(filter_func):
+    return lambda p: (
+        not filter_func(p) and not build_utils.MatchesGlob(p, _R_CLASS_GLOBS)
+    )
+
+
 class _MetadataParser:
     def __init__(self, chromium_code, filter_func):
         self._chromium_code = chromium_code
@@ -286,8 +468,7 @@ class _MetadataParser:
         logging.info('Completed info file: %s', output_path)
 
 
-def _OnStaleMd5(
-    changes,
+def _Compile(
     options,
     javac_cmd,
     javac_args,
@@ -295,7 +476,7 @@ def _OnStaleMd5(
     kt_files,
     use_errorprone=False,
 ):
-    logging.info('Starting _OnStaleMd5')
+    logging.info('Starting _Compile')
 
     if options.enable_kythe_annotations:
         # Kythe requires those env variables to be set and compile_java.py does the
@@ -320,15 +501,11 @@ def _OnStaleMd5(
             _JAVAC_EXTRACTOR,
         ]
         try:
-            # _RunCompiler()'s partial javac implementation does not support
-            # generating outputs in $KYTHE_OUTPUT_DIRECTORY.
             _RunCompiler(
-                changes,
                 options,
                 javac_extractor_cmd + javac_args,
                 java_files,
                 options.jar_path + '.javac_extractor',
-                enable_partial_javac=False,
             )
         except build_utils.CalledProcessError as e:
             # Having no index for particular target is better than failing entire
@@ -347,11 +524,12 @@ def _OnStaleMd5(
         # when running Error Prone.
         jar_info_path = options.jar_path + '.info'
 
+    allow_sharding = _AllowSharding(options, javac_cmd, use_errorprone)
+
     # Compiles with Error Prone take twice as long to run as pure javac. Thus GN
     # rules run both in parallel, with Error Prone only used for checks.
     try:
         _RunCompiler(
-            changes,
             options,
             javac_cmd + javac_args,
             java_files,
@@ -360,7 +538,7 @@ def _OnStaleMd5(
             kt_files=kt_files,
             jar_info_path=jar_info_path,
             intermediates_out_dir=intermediates_out_dir,
-            enable_partial_javac=True,
+            allow_sharding=allow_sharding,
         )
     except build_utils.CalledProcessError as e:
         # Do not output stacktrace as it takes up space on gerrit UI, forcing
@@ -369,11 +547,10 @@ def _OnStaleMd5(
         sys.stderr.write(e.output)
         sys.exit(1)
 
-    logging.info('Completed all steps in _OnStaleMd5')
+    logging.info('Completed all steps in _Compile')
 
 
 def _RunCompiler(
-    changes,
     options,
     javac_cmd,
     java_files,
@@ -382,12 +559,11 @@ def _RunCompiler(
     kt_files=None,
     jar_info_path=None,
     intermediates_out_dir=None,
-    enable_partial_javac=False,
+    allow_sharding=False,
 ):
     """Runs java compiler.
 
     Args:
-      changes: md5_check.Changes object.
       options: Object with command line flags.
       javac_cmd: Command to execute.
       java_files: List of java files passed from command line.
@@ -397,16 +573,12 @@ def _RunCompiler(
           If None, .info file will not be generated.
       intermediates_out_dir: Directory for saving intermediate outputs.
           If None a temporary directory is used.
-      enable_partial_javac: Enables compiling only Java files which have changed
-          in the special case that no method signatures have changed. This is
-          useful for large GN targets.
-          Not supported if compiling generates outputs other than |jar_path| and
-          |jar_info_path|.
+      allow_sharding: Allows splitting large compiles across multiple javac
+          processes. Requires the target's header jar to be on the classpath.
     """
     logging.info('Starting _RunCompiler')
 
     java_files = java_files.copy()
-    java_srcjars = options.java_srcjars
     parse_java_files = jar_info_path is not None
 
     # Use jar_path's directory to ensure paths are relative (needed for rbe).
@@ -423,55 +595,12 @@ def _RunCompiler(
         if java_files:
             os.makedirs(classes_dir)
 
-            if enable_partial_javac and changes:
-                all_changed_paths_are_java = all(
-                    p.endswith(".java") for p in changes.IterChangedPaths()
-                )
-                if (
-                    all_changed_paths_are_java
-                    and not changes.HasStringChanges()
-                    and os.path.exists(jar_path)
-                    and (jar_info_path is None or os.path.exists(jar_info_path))
-                    and (
-                        not options.filtered_jar
-                        or os.path.exists(options.filtered_jar)
-                    )
-                ):
-                    # Log message is used by tests to determine whether partial javac
-                    # optimization was used.
-                    logging.info(
-                        'Using partial javac optimization for %s compile',
-                        jar_path,
-                    )
-
-                    # Header jar corresponding to |java_files| did not change.
-                    # As a build speed optimization (crbug.com/1170778), re-compile only
-                    # java files which have changed. Re-use old jar .info file.
-                    java_files = list(changes.IterChangedPaths())
-
-                    # Disable srcjar extraction, since we know the srcjar didn't show as
-                    # changed (only .java files).
-                    java_srcjars = None
-
-                    # @ServiceImpl has class retention, so will alter header jars when
-                    # modified (and hence not reach this block).
-                    # Likewise, nothing in .info files can change if header jar did not
-                    # change.
-                    parse_java_files = False
-
-                    # Extracts .class as well as META-INF/services.
-                    build_utils.ExtractAll(jar_path, classes_dir)
-                    if options.filtered_jar:
-                        build_utils.ExtractAll(
-                            options.filtered_jar, classes_dir
-                        )
-
         if intermediates_out_dir is None:
             intermediates_out_dir = temp_dir
 
         input_srcjars_dir = os.path.join(intermediates_out_dir, 'input_srcjars')
 
-        if java_srcjars:
+        if options.java_srcjars:
             logging.info('Extracting srcjars to %s', input_srcjars_dir)
             build_utils.MakeDirectory(input_srcjars_dir)
             for srcjar in options.java_srcjars:
@@ -489,8 +618,6 @@ def _RunCompiler(
             logging.info('Done extracting srcjars')
 
         if java_files:
-            # Don't include the output directory in the initial set of args since it
-            # being in a temp dir makes it unstable (breaks md5 stamping).
             cmd = list(javac_cmd)
             cmd += ['-d', classes_dir]
 
@@ -522,14 +649,28 @@ def _RunCompiler(
                 print(shlex.join(cmd))
                 return
 
-            build_utils.CheckOutput(
-                cmd,
-                print_stdout=options.chromium_code,
-                stdout_filter=process_javac_output_partial,
-                stderr_filter=process_javac_output_partial,
-                fail_on_output=options.warnings_as_errors,
-                before_join_callback=before_join_callback,
-            )
+            num_shards = 1
+            if allow_sharding:
+                num_shards = _ComputeNumShards(java_files, use_errorprone)
+            if num_shards > 1:
+                _RunShardedJavac(
+                    cmd,
+                    java_files,
+                    num_shards,
+                    java_files_rsp_path,
+                    options,
+                    process_javac_output_partial,
+                    before_join_callback,
+                )
+            else:
+                build_utils.CheckOutput(
+                    cmd,
+                    print_stdout=options.chromium_code,
+                    stdout_filter=process_javac_output_partial,
+                    stderr_filter=process_javac_output_partial,
+                    fail_on_output=options.warnings_as_errors,
+                    before_join_callback=before_join_callback,
+                )
             end = time.time() - start
             logging.info('Java compilation took %ss', end)
         elif parse_java_files:
@@ -558,7 +699,8 @@ def _RunCompiler(
                 CreateJarFile(
                     options.filtered_jar,
                     classes_dir,
-                    filter_func=lambda p: not filter_func(p),
+                    extra_classes_jar=options.kotlin_jar_path,
+                    filter_func=_CreateFilteredJarFilter(filter_func),
                 )
 
         # Remove input srcjars that confuse Android Studio:
@@ -708,28 +850,32 @@ def _ParseOptions(argv):
 
 
 def main(
-    argv, extra_javac_args=None, use_errorprone=False, write_depfile_only=False
+    argv,
+    extra_javac_args=None,
+    use_errorprone=False,
+    write_depfile_only=False,
+    javac_cmd=None,
 ):
     build_utils.InitLogging('JAVAC_DEBUG')
     argv = build_utils.ExpandFileArgs(argv)
     options, java_files, kt_files = _ParseOptions(argv)
 
-    # The native-image javac does not support plugins (Error Prone), and
-    # --print-javac-command-line is used by tools that expect a JVM javac.
-    use_javac_graalvm = (
-        sys.platform == 'linux'
-        and platform.machine() == 'x86_64'
-        and not use_errorprone
-        and not options.print_javac_command_line
-    )
-    if use_javac_graalvm:
-        javac_cmd = [_JAVAC_GRAALVM_PATH]
-    else:
-        javac_cmd = [
-            build_utils.JAVAC_PATH,
-            # https://crbug.com/1441023
-            '-J-XX:+PerfDisableSharedMem',
-        ]
+    # errorprone.py may provide javac_cmd.
+    if not javac_cmd:
+        # The native-image javac does not support plugins (Error Prone), and
+        # --print-javac-command-line is used by tools that expect a JVM javac.
+        if (
+            IS_LINUX_X64
+            and not use_errorprone
+            and not options.print_javac_command_line
+        ):
+            javac_cmd = [_JAVAC_GRAALVM_PATH]
+        else:
+            javac_cmd = [
+                build_utils.JAVAC_PATH,
+                # https://crbug.com/1441023
+                '-J-XX:+PerfDisableSharedMem',
+            ]
 
     javac_args = [
         '-g',
@@ -744,7 +890,7 @@ def main(
         # LINT.ThenChange(
         #     //build/android/gyp/compile_kt.py,
         #     //build/android/gyp/turbine.py,
-        #     //components/cronet/gn2bp/templates/Android.extras.bp.template
+        #     //components/cronet/gn2bp/gen_android_bp.py
         # )
         # Chromium only allows UTF8 source files.  Being explicit avoids
         # javac pulling a default encoding from the user's environment.
@@ -780,8 +926,7 @@ def main(
 
     javac_args.extend(options.javac_arg)
 
-    do_it = lambda changes: _OnStaleMd5(  # noqa: E731
-        changes,
+    do_it = lambda: _Compile(  # noqa: E731
         options,
         javac_cmd,
         javac_args,
@@ -795,7 +940,7 @@ def main(
             raise Exception(
                 '--print-javac-command-line does not work with --java-srcjars'
             )
-        do_it(None)
+        do_it()
         return 0
 
     classpath_jars = options.classpath + options.processorpath
@@ -808,59 +953,11 @@ def main(
         sys.stderr.write('\n'.join(missing_jars) + '\n')
         sys.exit(1)
 
-    output_paths = [options.jar_path]
-    if not use_errorprone:
-        jar_info_path = options.jar_path + '.info'
-        output_paths.append(jar_info_path)
-    if options.filtered_jar:
-        output_paths.append(options.filtered_jar)
-
-    # Incremental build optimization doesn't work for ErrorProne. Skip md5 check.
-    if write_depfile_only:
-        action_helpers.write_depfile(
-            options.depfile, output_paths[0], classpath_jars
-        )
-    elif use_errorprone:
-        do_it(None)
-        action_helpers.write_depfile(
-            options.depfile, output_paths[0], classpath_jars
-        )
-    else:
-        # Files that are already inputs in GN should go in input_paths.
-        input_paths = (
-            [javac_cmd[0]]
-            + classpath_jars
-            + options.java_srcjars
-            + java_files
-            + kt_files
-        )
-        if options.header_jar:
-            input_paths.append(options.header_jar)
-        input_paths += [x[0] for x in options.additional_jar_files]
-
-        input_strings = (
-            javac_cmd
-            + javac_args
-            + options.classpath
-            + java_files
-            + kt_files
-            + [
-                options.warnings_as_errors,
-                options.jar_exclude_globs,
-                options.jar_include_globs,
-            ]
-        )
-
-        # Use md5_check for |pass_changes| feature.
-        md5_check.CallAndWriteDepfileIfStale(
-            do_it,
-            options,
-            depfile_deps=classpath_jars,
-            input_paths=input_paths,
-            input_strings=input_strings,
-            output_paths=output_paths,
-            pass_changes=True,
-        )
+    if not write_depfile_only:
+        do_it()
+    action_helpers.write_depfile(
+        options.depfile, options.jar_path, classpath_jars
+    )
     return 0
 
 

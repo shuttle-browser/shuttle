@@ -10,6 +10,7 @@ import static org.chromium.base.ThreadUtils.runOnUiThreadBlocking;
 import static org.chromium.base.test.transit.Triggers.noopTo;
 import static org.chromium.chrome.test.util.ChromeTabUtils.getTabCountOnUiThread;
 
+import android.content.Intent;
 import android.util.Pair;
 
 import org.chromium.base.Log;
@@ -18,9 +19,11 @@ import org.chromium.base.test.transit.TravelException;
 import org.chromium.base.test.transit.TripBuilder;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
+import org.chromium.chrome.browser.IntentHandler;
 import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabLaunchType;
+import org.chromium.chrome.browser.tabmodel.TabGroupMergeNotificationType;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tabmodel.TabModelUtils;
@@ -32,12 +35,14 @@ import org.chromium.chrome.test.transit.hub.TabSwitcherStation;
 import org.chromium.chrome.test.transit.page.BasePageStation;
 import org.chromium.chrome.test.transit.page.CtaPageStation;
 import org.chromium.chrome.test.transit.page.WebPageStation;
+import org.chromium.chrome.test.transit.tabmodel.TabGroupExistsCondition;
 import org.chromium.chrome.test.transit.tabmodel.TabThumbnailCondition;
 import org.chromium.chrome.test.util.TabBinningUtil;
 import org.chromium.chrome.test.util.tabmodel.TabBinList;
 import org.chromium.chrome.test.util.tabmodel.TabBinList.TabBinPosition;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
@@ -48,7 +53,9 @@ public class Journeys {
 
     /**
      * Make Chrome have {@code numRegularTabs} of regular Tabs and {@code numIncognitoTabs} of
-     * incognito tabs with {@code url} loaded. Incognito tabs are opened in the same window.
+     * incognito tabs with {@code url}. Intermediate tabs are created lazily without renderer
+     * initialization (except the first tab on a cross-model switch), and the final tab of each
+     * model is loaded in the foreground. Incognito tabs are opened in the same window.
      *
      * @param <T> specific type of {@link CtaPageStation} for all opened tabs.
      * @param startingStation The current active station.
@@ -101,8 +108,8 @@ public class Journeys {
     }
 
     /**
-     * Same as {@link #prepareTabs(CtaPageStation, int, int, String, Supplier)}, but ensures tab
-     * thumbnails are captured to disk.
+     * Same as {@link #prepareTabs(CtaPageStation, int, int, String, Supplier)}, but loads all tabs
+     * and ensures tab thumbnails are captured to disk.
      */
     public static <T extends CtaPageStation> T prepareTabsWithThumbnails(
             CtaPageStation startingStation,
@@ -224,7 +231,9 @@ public class Journeys {
 
     /**
      * Create multiple tabs fast by executing all {@link TabCreator#launchUrl} calls in a single UI
-     * thread block, completing in one single Public Transit trip.
+     * thread block, completing in one single Public Transit trip. Intermediate tabs are created
+     * lazily in the background without renderer initialization (except the first tab on a
+     * cross-model switch), and the final tab is opened and loaded in the foreground.
      *
      * @param <T> specific type of {@link CtaPageStation} for all opened tabs.
      * @param startingPage The current active station.
@@ -254,16 +263,36 @@ public class Journeys {
                 .runOnUiThreadTo(
                         () -> {
                             var tabCreator = startingPage.getActivity().getTabCreator(isIncognito);
-                            for (String url : urls) {
-                                tabCreator.launchUrl(url, TabLaunchType.FROM_LINK);
+                            boolean isCrossModel = isIncognito != startingPage.isIncognito();
+                            Intent noRendererIntent = new Intent();
+                            noRendererIntent.putExtra(
+                                    IntentHandler.EXTRA_DISABLE_INITIALIZE_RENDERER, true);
+                            // Use FROM_CHROME_UI without EXTRA_DISABLE_INITIALIZE_RENDERER on a
+                            // cross-model first tab (where willOpenInForeground is true, so a
+                            // frozen lazy-load tab would have initiallyHidden=false and skip
+                            // loadIfNeeded() in TabImpl.show()) and on the final tab (so
+                            // !shouldOpenAdjacent appends at the end rather than currentIndex + 1).
+                            for (int i = 0; i < numTabsToOpen - 1; i++) {
+                                if (i == 0 && isCrossModel) {
+                                    tabCreator.launchUrl(urls.get(0), TabLaunchType.FROM_CHROME_UI);
+                                } else {
+                                    tabCreator.launchUrl(
+                                            urls.get(i),
+                                            TabLaunchType.FROM_BOOKMARK_BAR_BACKGROUND,
+                                            noRendererIntent,
+                                            /* intentTimestamp= */ 0);
+                                }
                             }
+                            tabCreator.launchUrl(lastUrl, TabLaunchType.FROM_CHROME_UI);
                         })
                 .arriveAt(builder.build());
     }
 
     /**
      * Make Chrome have {@code numRegularTabs} of regular Tabs and {@code numIncognitoTabs} of
-     * incognito tabs with {@code url} loaded fast in a minimal number of Public Transit trips.
+     * incognito tabs with {@code url} fast in a minimal number of Public Transit trips.
+     * Intermediate tabs are created lazily without renderer initialization (except the first tab on
+     * a cross-model switch), and the final tab of each model is loaded in the foreground.
      *
      * @param <T> specific type of {@link CtaPageStation} for all opened tabs.
      * @param startingStation The current active station.
@@ -492,6 +521,48 @@ public class Journeys {
 
         verifyTabGroupMergeSuccessful(tabs, currentModel);
         return groupCard;
+    }
+
+    /**
+     * Merges {@code sourceTab} (or its whole tab group) into {@code destinationTab}'s tab group
+     * programmatically, without going through the UI, and waits for the merged group to exist.
+     *
+     * <p>Use this for tests where grouping tabs is only setup. Use {@link
+     * #mergeTabsToNewGroup(TabSwitcherStation, List)} to group tabs through the tab switcher UI.
+     *
+     * @param page The current active station.
+     * @param sourceTab Source tab (or group) to merge.
+     * @param destinationTab Destination tab (or group) to merge into.
+     */
+    public static void mergeTabsToGroupProgrammatically(
+            CtaPageStation page, Tab sourceTab, Tab destinationTab) {
+        assert sourceTab.isIncognitoBranded() == destinationTab.isIncognitoBranded();
+        TabModel tabModel = page.getTabModel();
+        List<Tab> tabsToMerge =
+                runOnUiThreadBlocking(() -> getTabsInGroupOrSelf(tabModel, sourceTab));
+        List<Tab> destinationTabs =
+                runOnUiThreadBlocking(() -> getTabsInGroupOrSelf(tabModel, destinationTab));
+        List<Integer> expectedTabIds = new ArrayList<>();
+        for (Tab tab : tabsToMerge) {
+            expectedTabIds.add(tab.getId());
+        }
+        for (Tab tab : destinationTabs) {
+            expectedTabIds.add(tab.getId());
+        }
+        Collections.sort(expectedTabIds);
+
+        page.runOnUiThreadTo(
+                        () ->
+                                tabModel.mergeListOfTabsToGroup(
+                                        tabsToMerge,
+                                        destinationTab,
+                                        TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP))
+                .waitFor(new TabGroupExistsCondition(page.tabModelElement, expectedTabIds));
+    }
+
+    private static List<Tab> getTabsInGroupOrSelf(TabModel tabModel, Tab tab) {
+        Token tabGroupId = tab.getTabGroupId();
+        return tabGroupId != null ? tabModel.getTabsInGroup(tabGroupId) : List.of(tab);
     }
 
     /**

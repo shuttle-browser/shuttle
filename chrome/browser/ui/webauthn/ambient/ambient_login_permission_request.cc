@@ -22,19 +22,16 @@ namespace ambient_signin {
 
 AmbientLoginPermissionRequest::AmbientLoginPermissionRequest(
     const GURL& requesting_origin,
-    const GURL& embedding_origin,
     std::vector<PasskeyOrPasswordCredential> credentials,
     PasskeyOrPasswordSelectedCallback credential_selected_callback,
     std::vector<FederatedCredential> federated_credentials,
     FederatedCredentialSelectedCallback federated_selected_callback,
-    PermissionDecidedCallback permission_decided_callback,
-    bool bubble_starts_open)
+    Options options)
     : permissions::PermissionRequest(
           std::make_unique<permissions::PermissionRequestData>(
               permissions::RequestType::kAmbientLogin,
               /*user_gesture=*/false,
-              requesting_origin,
-              embedding_origin),
+              requesting_origin),
           base::BindRepeating(
               &AmbientLoginPermissionRequest::OnPermissionDecided,
               base::Unretained(this)),
@@ -47,29 +44,31 @@ AmbientLoginPermissionRequest::AmbientLoginPermissionRequest(
       federated_credentials_(std::move(federated_credentials)),
       federated_selected_callback_(std::move(federated_selected_callback)),
       caller_permission_decided_callback_(
-          std::move(permission_decided_callback)),
-      bubble_starts_open_(bubble_starts_open) {}
+          std::move(options.permission_decided_callback)),
+      bubble_shown_callback_(std::move(options.bubble_shown_callback)),
+      bubble_dismissed_callback_(std::move(options.bubble_dismissed_callback)),
+      bubble_starts_open_(options.bubble_starts_open) {}
 
 AmbientLoginPermissionRequest::AmbientLoginPermissionRequest(
     const GURL& requesting_origin,
-    const GURL& embedding_origin,
     std::vector<PasskeyOrPasswordCredential> credentials,
     PasskeyOrPasswordSelectedCallback credential_selected_callback,
-    PermissionDecidedCallback permission_decided_callback)
+    Options options)
     : AmbientLoginPermissionRequest(
           requesting_origin,
-          embedding_origin,
           std::move(credentials),
           std::move(credential_selected_callback),
           /*federated_credentials=*/{},
           /*federated_selected_callback=*/base::NullCallback(),
-          std::move(permission_decided_callback)) {}
+          std::move(options)) {}
 
 AmbientLoginPermissionRequest::~AmbientLoginPermissionRequest() = default;
 
-void AmbientLoginPermissionRequest::SelectCredential(size_t index) {
+void AmbientLoginPermissionRequest::SelectCredential(size_t index,
+                                                     bool from_expanded_list) {
   CHECK_LT(index, credentials_.size());
   selected_credential_index_ = index;
+  selected_from_expanded_list_ = from_expanded_list;
   selected_federated_index_.reset();
 }
 
@@ -77,6 +76,19 @@ void AmbientLoginPermissionRequest::SelectFederatedCredential(size_t index) {
   CHECK_LT(index, federated_credentials_.size());
   selected_federated_index_ = index;
   selected_credential_index_.reset();
+  selected_from_expanded_list_ = false;
+}
+
+void AmbientLoginPermissionRequest::OnBubbleShown() {
+  if (bubble_shown_callback_) {
+    std::move(bubble_shown_callback_).Run();
+  }
+}
+
+void AmbientLoginPermissionRequest::OnBubbleDismissed() {
+  if (bubble_dismissed_callback_) {
+    std::move(bubble_dismissed_callback_).Run();
+  }
 }
 
 void AmbientLoginPermissionRequest::OnPermissionDecided(
@@ -91,9 +103,10 @@ void AmbientLoginPermissionRequest::OnPermissionDecided(
       }
     } else if (!credentials_.empty()) {
       federated_selected_callback_.Reset();
+      const size_t index = selected_credential_index_.value_or(0);
       if (credential_selected_callback_) {
         std::move(credential_selected_callback_)
-            .Run(selected_credential_index_.value_or(0));
+            .Run(index, selected_from_expanded_list_);
       }
     } else if (!federated_credentials_.empty()) {
       credential_selected_callback_.Reset();

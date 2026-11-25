@@ -200,17 +200,17 @@ static void FontKerningValue(FontBuilder& b) {
 }
 
 static void FontOpticalSizingBase(FontDescription& d) {
-  d.SetFontOpticalSizing(kAutoOpticalSizing);
+  d.SetFontOpticalSizing(OpticalSizing::kAuto);
 }
 static void FontOpticalSizingValue(FontBuilder& b) {
-  b.SetFontOpticalSizing(kNoneOpticalSizing);
+  b.SetFontOpticalSizing(OpticalSizing::kNone);
 }
 
 static void FontFontSmoothingBase(FontDescription& d) {
-  d.SetFontSmoothing(kAntialiased);
+  d.SetFontSmoothing(FontSmoothingMode::kAntialiased);
 }
 static void FontFontSmoothingValue(FontBuilder& b) {
-  b.SetFontSmoothing(kSubpixelAntialiased);
+  b.SetFontSmoothing(FontSmoothingMode::kSubpixelAntialiased);
 }
 
 static void FontSizeBase(FontDescription& d) {

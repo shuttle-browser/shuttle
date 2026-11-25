@@ -18,8 +18,10 @@
 #include <memory>
 #include <vector>
 
-#include "absl/log/absl_check.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/absl_check.h"        // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_cat.h"       // from @com_google_absl
 #include "mediapipe/framework/calculator_contract.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/legacy_calculator_support.h"
@@ -28,11 +30,10 @@
 #include "mediapipe/framework/packet_type.h"
 #include "mediapipe/framework/port/map_util.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/framework/tool/status_util.h"
 
 #if !defined(MEDIAPIPE_MOBILE) && !defined(MEDIAPIPE_LITE)
-#include "absl/synchronization/blocking_counter.h"
+#include "absl/synchronization/blocking_counter.h"  // from @com_google_absl
 #include "mediapipe/framework/port/threadpool.h"
 #include "mediapipe/util/cpu_util.h"
 #endif  // !MEDIAPIPE_MOBILE && !MEDIAPIPE_LITE
@@ -46,7 +47,7 @@ absl::Status RunGeneratorFillExpectations(
   // side packet.
   PacketGeneratorConfig config = input_config;
 
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto static_access,
       internal::StaticAccessToGeneratorRegistry::CreateByNameInNamespace(
           package, config.packet_generator()),
@@ -54,13 +55,13 @@ absl::Status RunGeneratorFillExpectations(
         << " is not a registered packet generator.");
 
   CalculatorContract contract;
-  MP_RETURN_IF_ERROR(contract.Initialize(config, ""));
+  ABSL_RETURN_IF_ERROR(contract.Initialize(config, ""));
 
   {
     LegacyCalculatorSupport::Scoped<CalculatorContract> s(&contract);
-    MP_RETURN_IF_ERROR(static_access->FillExpectations(
-                           config.options(), &contract.InputSidePackets(),
-                           &contract.OutputSidePackets()))
+    ABSL_RETURN_IF_ERROR(static_access->FillExpectations(
+                             config.options(), &contract.InputSidePackets(),
+                             &contract.OutputSidePackets()))
             .SetPrepend()
         << config.packet_generator() << "::FillExpectations failed: ";
   }
@@ -81,7 +82,7 @@ absl::Status RunGenerateAndValidateTypes(
     const std::string& package) {
   ABSL_CHECK(output_side_packets);
   // Get static access to functions.
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto static_access,
       internal::StaticAccessToGeneratorRegistry::CreateByNameInNamespace(
           package, packet_generator_name),
@@ -91,30 +92,30 @@ absl::Status RunGenerateAndValidateTypes(
   PacketTypeSet output_side_packet_types(output_side_packets->TagMap());
 
   // Fill the PacketTypeSets with type information.
-  MP_RETURN_IF_ERROR(static_access->FillExpectations(extendable_options,
-                                                     &input_side_packet_types,
-                                                     &output_side_packet_types))
+  ABSL_RETURN_IF_ERROR(static_access->FillExpectations(
+                           extendable_options, &input_side_packet_types,
+                           &output_side_packet_types))
           .SetPrepend()
       << packet_generator_name << "::FillExpectations failed: ";
   // Check that the types were filled well.
   std::vector<absl::Status> statuses;
   statuses.push_back(ValidatePacketTypeSet(input_side_packet_types));
   statuses.push_back(ValidatePacketTypeSet(output_side_packet_types));
-  MP_RETURN_IF_ERROR(tool::CombinedStatus(
+  ABSL_RETURN_IF_ERROR(tool::CombinedStatus(
       absl::StrCat(packet_generator_name, "::FillExpectations failed: "),
       statuses));
 
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ValidatePacketSet(input_side_packet_types, input_side_packets))
           .SetPrepend()
       << packet_generator_name
       << "::FillExpectations expected different input type than those given: ";
-  MP_RETURN_IF_ERROR(static_access->Generate(extendable_options,
-                                             input_side_packets,
-                                             output_side_packets))
+  ABSL_RETURN_IF_ERROR(static_access->Generate(extendable_options,
+                                               input_side_packets,
+                                               output_side_packets))
           .SetPrepend()
       << packet_generator_name << "::Generate failed: ";
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       ValidatePacketSet(output_side_packet_types, *output_side_packets))
           .SetPrepend()
       << packet_generator_name

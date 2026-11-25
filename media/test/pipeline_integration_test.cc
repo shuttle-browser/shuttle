@@ -1873,6 +1873,22 @@ TEST_F(PipelineIntegrationTest, BasicPlaybackHashed_FlacInMp4) {
   EXPECT_AUDIO_HASH(kSfxLosslessHash);
 }
 
+// Makes sure an MP4 audio track can be played to the end a second time. FFmpeg
+// keeps some end-of-stream state from the first time it reads the last sample,
+// see mov_finalize_packet().
+TEST_F(PipelineIntegrationTest, PlayToEndTwice_FlacInMp4) {
+  ASSERT_EQ(PIPELINE_OK, Start("sfx-flac.mp4"));
+  Play();
+  ASSERT_TRUE(WaitUntilOnEnded());
+
+  // Pause first, so the second playback happens below rather than inside
+  // Seek(), which runs until idle.
+  Pause();
+  ASSERT_TRUE(Seek(base::TimeDelta()));
+  Play();
+  ASSERT_TRUE(WaitUntilOnEnded());
+}
+
 #if BUILDFLAG(ENABLE_AV1_DECODER)
 TEST_F(PipelineIntegrationTest, BasicPlayback_VideoOnly_AV1_Mp4) {
   ASSERT_EQ(PIPELINE_OK, Start("bear-av1.mp4"));
@@ -3021,10 +3037,9 @@ TEST_F(OpusPipelineIntegrationTest, BasicPlayback_Opus441kHz) {
 // Tests that we signal ended even when audio runs longer than video track.
 TEST_F(PipelineIntegrationTest, BasicPlaybackAudioLongerThanVideo) {
   ASSERT_EQ(PIPELINE_OK, Start("bear_audio_longer_than_video_vp8.ogv"));
-  // Video track is 1001ms. Audio track payload is 2000ms, but has a container
-  // duration of 2002ms due to the -2.67ms Vorbis priming offset. Duration
-  // should be the higher of the two.
-  EXPECT_EQ(2002, pipeline_->GetMediaDuration().InMilliseconds());
+  // Audio track is 2000ms. Video track is 1001ms. Duration should be higher
+  // of the two.
+  EXPECT_EQ(2000, pipeline_->GetMediaDuration().InMilliseconds());
   Play();
   ASSERT_TRUE(WaitUntilOnEnded());
 }
@@ -3032,10 +3047,9 @@ TEST_F(PipelineIntegrationTest, BasicPlaybackAudioLongerThanVideo) {
 // Tests that we signal ended even when audio runs shorter than video track.
 TEST_F(PipelineIntegrationTest, BasicPlaybackAudioShorterThanVideo) {
   ASSERT_EQ(PIPELINE_OK, Start("bear_audio_shorter_than_video_vp8.ogv"));
-  // Audio track is 500ms. Video track is 1001ms. Container duration is 1003ms
-  // because it spans from the audio stream's -2.67ms Vorbis priming offset
-  // to the video track's 1001ms end timestamp.
-  EXPECT_EQ(1003, pipeline_->GetMediaDuration().InMilliseconds());
+  // Audio track is 500ms. Video track is 1001ms. Duration should be higher of
+  // the two.
+  EXPECT_EQ(1001, pipeline_->GetMediaDuration().InMilliseconds());
   Play();
   ASSERT_TRUE(WaitUntilOnEnded());
 }

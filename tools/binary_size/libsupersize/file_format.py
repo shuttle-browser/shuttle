@@ -14,8 +14,11 @@ import itertools
 import json
 import logging
 import os
+import queue
 import sys
+import threading
 
+import file_format_v2
 import models
 import parallel
 
@@ -648,6 +651,56 @@ def _OpenGzipForWrite(path, file_obj=None):
         yield fz
 
 
+class _BackgroundWriter:
+  """Buffers writes and forwards them in large chunks to a background thread.
+
+  Allows serialization to happen in parallel with compression (zlib releases
+  the GIL).
+  """
+
+  _CHUNK_SIZE = 1 << 20
+
+  def __init__(self, file_obj):
+    self._file_obj = file_obj
+    self._buf = io.BytesIO()
+    self._pos = 0
+    self._exception = None
+    self._queue = queue.Queue(maxsize=16)
+    self._thread = threading.Thread(target=self._ThreadMain, daemon=True)
+    self._thread.start()
+
+  def _ThreadMain(self):
+    while (chunk := self._queue.get()) is not None:
+      if self._exception is None:
+        try:
+          self._file_obj.write(chunk)
+        except Exception as e:  # pylint: disable=broad-except
+          self._exception = e
+
+  def _SendBuffer(self):
+    self._queue.put(self._buf.getvalue())
+    self._buf = io.BytesIO()
+
+  def write(self, b):
+    self._buf.write(b)
+    self._pos += len(b)
+    if self._buf.tell() >= self._CHUNK_SIZE:
+      self._SendBuffer()
+
+  def flush(self):
+    pass
+
+  def tell(self):
+    return self._pos
+
+  def close(self):
+    self._SendBuffer()
+    self._queue.put(None)
+    self._thread.join()
+    if self._exception is not None:
+      raise self._exception
+
+
 def _SaveCompressedStringList(string_list, file_obj):
   with _OpenGzipForWrite('', file_obj=file_obj) as f:
     w = _Writer(f)
@@ -666,45 +719,70 @@ def _LoadCompressedStringList(file_obj, size):
     return toks[1:]
 
 
-def SaveSizeInfo(size_info, path, file_obj=None):
+def SaveSizeInfo(size_info, path, file_obj=None, use_v2=False):
   """Saves |size_info| to |path|."""
+  if use_v2:
+    if file_obj is None:
+      with open(path, 'wb') as f:
+        return file_format_v2.SaveSizeInfo(size_info, f)
+    return file_format_v2.SaveSizeInfo(size_info, file_obj)
+
   if os.environ.get('SUPERSIZE_MEASURE_GZIP') == '1':
     # Doing serialization and Gzip together.
     with _OpenGzipForWrite(path, file_obj=file_obj) as f:
       _SaveSizeInfoToFile(size_info, f)
   else:
-    # Doing serizliation and Gzip separately.
-    # This turns out to be faster. On Python 3: 40s -> 14s.
-    bytesio = io.BytesIO()
-    _SaveSizeInfoToFile(size_info, bytesio)
-
-    logging.debug('Serialization complete. Gzipping...')
+    # Serialize on this thread while gzipping (in large chunks) on a background
+    # thread. Gzipping in large chunks is faster. On Python 3: 40s -> 14s.
     with _OpenGzipForWrite(path, file_obj=file_obj) as f:
-      f.write(bytesio.getvalue())
+      writer = _BackgroundWriter(f)
+      try:
+        _SaveSizeInfoToFile(size_info, writer)
+      finally:
+        writer.close()
 
 
 def LoadSizeInfo(filename, file_obj=None, is_sparse=False):
   """Returns a SizeInfo loaded from |filename|."""
+  if file_obj is None:
+    with open(filename, 'rb') as f:
+      return LoadSizeInfo(filename, file_obj=f, is_sparse=is_sparse)
+
+  magic = file_obj.read(len(file_format_v2.V2_HEADER_PREFIX))
+  if magic == file_format_v2.V2_HEADER_PREFIX:
+    return file_format_v2.LoadSizeInfo(file_obj, filename, is_sparse=is_sparse)
+  file_obj.seek(-len(magic), os.SEEK_CUR)
+
   with gzip.GzipFile(filename=filename, fileobj=file_obj) as f:
     return _LoadSizeInfoFromFile(f, filename, is_sparse)
 
 
-def SaveDeltaSizeInfo(delta_size_info, path, file_obj=None, make_sparse=True):
+def SaveDeltaSizeInfo(
+  delta_size_info, path, file_obj=None, make_sparse=True, use_v2=False
+):
   """Saves |delta_size_info| to |path|."""
   if make_sparse and not delta_size_info.is_sparse:
     delta_size_info.MakeSparse()
 
   if not file_obj:
     with open(path, 'wb') as f:
-      return SaveDeltaSizeInfo(delta_size_info, path, f)
+      return SaveDeltaSizeInfo(
+        delta_size_info, path, f, make_sparse=make_sparse, use_v2=use_v2
+      )
 
   before_size_file = io.BytesIO()
   after_size_file = io.BytesIO()
 
   after_promise = parallel.CallOnThread(
-    SaveSizeInfo, delta_size_info.after, '', file_obj=after_size_file
+    SaveSizeInfo,
+    delta_size_info.after,
+    '',
+    file_obj=after_size_file,
+    use_v2=use_v2,
   )
-  SaveSizeInfo(delta_size_info.before, '', file_obj=before_size_file)
+  SaveSizeInfo(
+    delta_size_info.before, '', file_obj=before_size_file, use_v2=use_v2
+  )
 
   removed_sources_file = None
   if delta_size_info.removed_sources:

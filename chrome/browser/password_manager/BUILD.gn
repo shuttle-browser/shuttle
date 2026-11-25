@@ -160,6 +160,7 @@ source_set("impl") {
     "//chrome/browser/profiles:profile",
     "//chrome/browser/safe_browsing",
     "//chrome/browser/safe_browsing:advanced_protection",
+    "//chrome/browser/search",
     "//chrome/browser/signin",
     "//chrome/browser/sync",
     "//chrome/browser/sync:factories",
@@ -269,7 +270,10 @@ source_set("impl") {
     sources += [ "multi_profile_credentials_filter.cc" ]
   }
   if (!is_android) {
-    deps += [ "//chrome/browser/ui:browser_window_header" ]
+    deps += [
+      "//chrome/browser/ui:browser_window_header",
+      "//components/trusted_vault",
+    ]
   }
 }
 
@@ -365,7 +369,7 @@ if (!is_android) {
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/passwords",
       "//chrome/browser/ui/tabs:tab_enums",
-      "//chrome/test:test_support_ui",
+      "//chrome/test/base:ui_test_utils",
       "//components/autofill/core/browser:test_support",
       "//components/password_manager/core/browser:password_form",
       "//components/password_manager/core/browser:test_support",
@@ -520,6 +524,7 @@ source_set("unit_tests") {
       "//components/safe_browsing/core/common:safe_browsing_prefs",
       "//components/signin/public/identity_manager:test_support",
       "//components/tabs:test_support",
+      "//components/trusted_vault",
       "//components/ukm:test_support",
       "//services/metrics/public/cpp:metrics_cpp",
       "//services/network:test_support",
@@ -589,7 +594,6 @@ if (!is_android) {
       "//chrome/common",
       "//chrome/common:constants",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/affiliations/core/browser:test_support",
       "//components/autofill/content/browser",
       "//components/autofill/content/browser:test_support",
@@ -614,6 +618,7 @@ if (!is_android) {
       "//components/signin/public/identity_manager:test_support",
       "//components/sync:test_support",
       "//components/tabs:public",
+      "//components/trusted_vault",
       "//content/public/browser",
       "//content/public/common",
       "//content/test:browsertest_support",
@@ -665,7 +670,6 @@ if (!is_android) {
         "//chrome/browser/ui/passwords:impl",
         "//chrome/common:constants",
         "//chrome/test:test_support",
-        "//chrome/test:test_support_ui",
         "//chrome/test/user_education:impl",
         "//components/autofill/content/browser",
         "//components/autofill/core/browser:test_support",

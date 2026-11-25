@@ -19,6 +19,7 @@ import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.inOrder;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -48,6 +49,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.invocation.InvocationOnMock;
 import org.mockito.junit.MockitoJUnit;
@@ -56,6 +58,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.ActivityState;
+import org.chromium.base.Callback;
 import org.chromium.base.CallbackUtils;
 import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.base.supplier.SupplierUtils;
@@ -161,6 +164,7 @@ public class TabBottomSheetCoordinatorUnitTest {
                 new WebViewResizingHelper(
                         mView,
                         mWindowAndroid,
+                        /* bottomSheetController= */ null,
                         Color.WHITE,
                         Color.LTGRAY,
                         false,
@@ -177,8 +181,10 @@ public class TabBottomSheetCoordinatorUnitTest {
                                 CoBrowseContainerType.BOTTOM_SHEET,
                                 mMockWebUi,
                                 0,
+                                /* placeholderElemColor= */ 0,
                                 mMockContentProvider,
-                                SupplierUtils.ofNull()));
+                                SupplierUtils.ofNull(),
+                                CallbackUtils.emptyRunnable()));
         assertNotNull(
                 "peek_view_container should be found in CoBrowseViews",
                 mView.findViewById(R.id.peek_view_container));
@@ -347,7 +353,7 @@ public class TabBottomSheetCoordinatorUnitTest {
 
     @Test
     public void testCorrectFullHeightRatio_WithoutKeyboard() {
-        when(mKeyboardDelegate.isKeyboardShowing(eq(mView))).thenReturn(false);
+        when(mKeyboardDelegate.isKeyboardObscuring(eq(mView))).thenReturn(false);
         simulateShowSuccessAndGetObserver();
         verify(mMockBottomSheetController)
                 .requestShowContent(mBottomSheetContentArgumentCaptor.capture(), eq(true));
@@ -382,7 +388,7 @@ public class TabBottomSheetCoordinatorUnitTest {
 
     @Test
     public void testCorrectFullHeightRatio_WithKeyboard() {
-        when(mKeyboardDelegate.isKeyboardShowing(eq(mView))).thenReturn(true);
+        when(mKeyboardDelegate.isKeyboardObscuring(eq(mView))).thenReturn(true);
         simulateShowSuccessAndGetObserver();
         verify(mMockBottomSheetController)
                 .requestShowContent(mBottomSheetContentArgumentCaptor.capture(), eq(true));
@@ -1053,7 +1059,7 @@ public class TabBottomSheetCoordinatorUnitTest {
         // Ensure focus is not in the bottom sheet.
         mView.clearFocus();
 
-        listener.keyboardVisibilityChanged(true);
+        listener.keyboardObscuringChanged(true);
 
         verify(mMockBottomSheetController).collapseSheet(true);
     }
@@ -1071,7 +1077,7 @@ public class TabBottomSheetCoordinatorUnitTest {
         // Request focus inside the bottom sheet.
         mView.requestFocus();
 
-        listener.keyboardVisibilityChanged(true);
+        listener.keyboardObscuringChanged(true);
 
         verify(mMockBottomSheetController, never()).collapseSheet(true);
     }
@@ -1086,7 +1092,7 @@ public class TabBottomSheetCoordinatorUnitTest {
                 mKeyboardVisibilityListenerCaptor.getValue();
         assertNotNull(listener);
 
-        listener.keyboardVisibilityChanged(false);
+        listener.keyboardObscuringChanged(false);
 
         verify(mMockBottomSheetController, never()).collapseSheet(anyBoolean());
     }
@@ -1101,10 +1107,10 @@ public class TabBottomSheetCoordinatorUnitTest {
                 mKeyboardVisibilityListenerCaptor.getValue();
         assertNotNull(listener);
 
-        listener.keyboardVisibilityChanged(true);
+        listener.keyboardObscuringChanged(true);
         verify(mMockWebUi).setIgnoreClearFocus(true);
 
-        listener.keyboardVisibilityChanged(false);
+        listener.keyboardObscuringChanged(false);
         verify(mMockWebUi).setIgnoreClearFocus(false);
     }
 
@@ -1506,8 +1512,10 @@ public class TabBottomSheetCoordinatorUnitTest {
                         CoBrowseContainerType.BOTTOM_SHEET,
                         mMockWebUi,
                         0,
+                        /* placeholderElemColor= */ 0,
                         mMockContentProvider,
-                        SupplierUtils.ofNull());
+                        SupplierUtils.ofNull(),
+                        CallbackUtils.emptyRunnable());
         mCoordinator =
                 new TabBottomSheetCoordinator(
                         mContext,
@@ -1579,5 +1587,95 @@ public class TabBottomSheetCoordinatorUnitTest {
 
         // Verify onBottomSheetOpened(false) was called because height was insufficient.
         verify(mMockSheetEventsCallback).onBottomSheetOpened(false);
+    }
+
+    @Test
+    public void testSecondTryToShowBottomSheet_destroysPriorSheetContent() {
+        TabBottomSheetContent content1 = mock(TabBottomSheetContent.class);
+        TabBottomSheetContent content2 = mock(TabBottomSheetContent.class);
+        doReturn(content1, content2)
+                .when(mMockContentProvider)
+                .createContent(
+                        any(View.class),
+                        anyFloat(),
+                        anyFloat(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any(Runnable.class));
+
+        BottomSheetObserver observer = simulateShowSuccessAndGetObserver();
+        verify(content1, never()).destroy();
+
+        observer.onSheetContentChanged(null);
+
+        // Showing a second time destroys the prior sheet content.
+        mCoordinator.tryToShowBottomSheet(/* animate= */ true, /* startsExpanded= */ true);
+        verify(content1).destroy();
+        verify(content2, never()).destroy();
+    }
+
+    @Test
+    public void testOnContainerBottomMarginChanged_forwardsToSheetContent() {
+        TabBottomSheetContent content = mock(TabBottomSheetContent.class);
+        doReturn(content)
+                .when(mMockContentProvider)
+                .createContent(
+                        any(View.class),
+                        anyFloat(),
+                        anyFloat(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any(Runnable.class));
+        when(mMockBottomSheetController.getContainerBottomMargin()).thenReturn(56);
+        when(mMockBottomSheetController.requestShowContent(any(BottomSheetContent.class), eq(true)))
+                .thenAnswer(
+                        invocation -> {
+                            when(mMockBottomSheetController.getContainerBottomMargin())
+                                    .thenReturn(0);
+                            return true;
+                        });
+
+        mCoordinator.tryToShowBottomSheet(/* animate= */ true, /* startsExpanded= */ true);
+        verify(content).onBottomMarginChanged(0);
+        verify(content, never()).onBottomMarginChanged(56);
+
+        verify(mMockBottomSheetController)
+                .addObserver(mBottomSheetObserverArgumentCaptor.capture());
+        BottomSheetObserver observer = mBottomSheetObserverArgumentCaptor.getValue();
+        observer.onContainerBottomMarginChanged(88);
+        verify(content).onBottomMarginChanged(88);
+    }
+
+    @Test
+    public void testBottomSafeAreaInsetObserverForwardsToContentAndClearsOnDestroy() {
+        WebViewResizingHelper helper = mock(WebViewResizingHelper.class);
+        when(mMockWebUi.getWebViewResizingHelper()).thenReturn(helper);
+        TabBottomSheetContent content = mock(TabBottomSheetContent.class);
+        doReturn(content)
+                .when(mMockContentProvider)
+                .createContent(
+                        any(View.class),
+                        anyFloat(),
+                        anyFloat(),
+                        anyInt(),
+                        anyInt(),
+                        anyInt(),
+                        any(Runnable.class));
+        when(mMockBottomSheetController.requestShowContent(any(BottomSheetContent.class), eq(true)))
+                .thenReturn(true);
+
+        mCoordinator.tryToShowBottomSheet(/* animate= */ true, /* startsExpanded= */ true);
+
+        ArgumentCaptor<Callback<Integer>> captor = captor();
+        verify(helper).setBottomSafeAreaInsetObserver(captor.capture());
+        captor.getValue().onResult(48);
+        verify(content).onBottomSafeAreaInsetChanged(48);
+
+        mCoordinator.destroy();
+        InOrder inOrder = inOrder(helper, content);
+        inOrder.verify(helper).setBottomSafeAreaInsetObserver(null);
+        inOrder.verify(content).destroy();
     }
 }

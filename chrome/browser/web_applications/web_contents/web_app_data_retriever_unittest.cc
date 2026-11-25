@@ -38,7 +38,7 @@
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/mojom/manifest/manifest_manager.mojom.h"
 
 namespace web_app {
@@ -318,7 +318,7 @@ TEST_F(WebAppDataRetrieverTest,
   {
     webapps::FakeInstallableManager::CreateForWebContentsWithManifest(
         web_contents(), webapps::InstallableStatusCode::NO_MANIFEST, GURL(),
-        blink::mojom::Manifest::New());
+        /*manifest=*/std::nullopt);
   }
 
   base::RunLoop run_loop;
@@ -326,10 +326,10 @@ TEST_F(WebAppDataRetrieverTest,
   retriever.CheckInstallabilityAndRetrieveManifest(
       web_contents(),
       base::BindLambdaForTesting(
-          [&](blink::mojom::ManifestPtr opt_manifest,
+          [&](std::optional<blink::Manifest> opt_manifest,
               bool valid_manifest_for_web_app,
               webapps::InstallableStatusCode error_code) {
-            EXPECT_FALSE(opt_manifest);
+            EXPECT_FALSE(opt_manifest.has_value());
             EXPECT_FALSE(valid_manifest_for_web_app);
             EXPECT_EQ(error_code,
                       webapps::InstallableStatusCode::RENDERER_CANCELLED);
@@ -402,15 +402,16 @@ TEST_F(WebAppDataRetrieverTest, CheckInstallabilityAndRetrieveManifest) {
   const SkColor manifest_theme_color = 0xAABBCCDD;
 
   {
-    auto manifest = blink::mojom::Manifest::New();
-    manifest->manifest_url = GURL("https://example.com/manifest");
-    manifest->short_name = manifest_short_name;
-    manifest->name = manifest_name;
-    manifest->start_url = manifest_start_url;
-    manifest->id =
-        GenerateManifestIdFromStartUrlOnly(manifest_start_url).value();
-    manifest->scope = manifest_scope;
-    manifest->theme_color = manifest_theme_color;
+    blink::Manifest manifest =
+        blink::Manifest::Builder(
+            manifest_start_url,
+            GenerateManifestIdFromStartUrlOnly(manifest_start_url).value(),
+            manifest_scope)
+            .SetManifestUrl(GURL("https://example.com/manifest"))
+            .SetShortName(manifest_short_name)
+            .SetName(manifest_name)
+            .SetThemeColor(manifest_theme_color)
+            .BuildChecked();
 
     webapps::FakeInstallableManager::CreateForWebContentsWithManifest(
         web_contents(), webapps::InstallableStatusCode::NO_ERROR_DETECTED,
@@ -425,19 +426,20 @@ TEST_F(WebAppDataRetrieverTest, CheckInstallabilityAndRetrieveManifest) {
   retriever.CheckInstallabilityAndRetrieveManifest(
       web_contents(),
       base::BindLambdaForTesting(
-          [&](blink::mojom::ManifestPtr opt_manifest,
+          [&](std::optional<blink::Manifest> opt_manifest,
               bool valid_manifest_for_web_app,
               webapps::InstallableStatusCode error_code) {
             EXPECT_EQ(error_code,
                       webapps::InstallableStatusCode::NO_ERROR_DETECTED);
 
-            EXPECT_EQ(manifest_short_name, opt_manifest->short_name);
-            EXPECT_EQ(manifest_name, opt_manifest->name);
-            EXPECT_EQ(manifest_start_url, opt_manifest->start_url);
-            EXPECT_EQ(manifest_scope, opt_manifest->scope);
-            EXPECT_EQ(manifest_theme_color, opt_manifest->theme_color);
+            ASSERT_TRUE(opt_manifest.has_value());
+            EXPECT_EQ(manifest_short_name, opt_manifest->short_name());
+            EXPECT_EQ(manifest_name, opt_manifest->name());
+            EXPECT_EQ(manifest_start_url, opt_manifest->start_url());
+            EXPECT_EQ(manifest_scope, opt_manifest->scope());
+            EXPECT_EQ(manifest_theme_color, opt_manifest->theme_color());
             EXPECT_EQ(GURL("https://example.com/manifest"),
-                      opt_manifest->manifest_url);
+                      opt_manifest->manifest_url());
 
             callback_called = true;
             run_loop.Quit();
@@ -453,7 +455,7 @@ TEST_F(WebAppDataRetrieverTest, CheckInstallabilityFails) {
   {
     webapps::FakeInstallableManager::CreateForWebContentsWithManifest(
         web_contents(), webapps::InstallableStatusCode::NO_MANIFEST, GURL(),
-        blink::mojom::Manifest::New());
+        /*manifest=*/std::nullopt);
   }
 
   base::RunLoop run_loop;
@@ -464,7 +466,7 @@ TEST_F(WebAppDataRetrieverTest, CheckInstallabilityFails) {
   retriever.CheckInstallabilityAndRetrieveManifest(
       web_contents(),
       base::BindLambdaForTesting(
-          [&](blink::mojom::ManifestPtr opt_manifest,
+          [&](std::optional<blink::Manifest> opt_manifest,
               bool valid_manifest_for_web_app,
               webapps::InstallableStatusCode error_code) {
             EXPECT_EQ(error_code, webapps::InstallableStatusCode::NO_MANIFEST);
@@ -478,30 +480,30 @@ TEST_F(WebAppDataRetrieverTest, CheckInstallabilityFails) {
 }
 
 // This is required as the CallbackList uses const ref, and TestFuture requires
-// copying or move support. This manually clones from the const ref so the
+// copying or move support. This manually copies from the const ref so the
 // result can be moved into the TestFuture.
-base::expected<blink::mojom::ManifestPtr, blink::mojom::RequestManifestErrorPtr>
-CopyMojoExpectedConstRef(
-    const base::expected<blink::mojom::ManifestPtr,
+base::expected<blink::Manifest, blink::mojom::RequestManifestErrorPtr>
+CopyManifestExpectedConstRef(
+    const base::expected<blink::Manifest,
                          blink::mojom::RequestManifestErrorPtr>&
         const_ref_result) {
   if (const_ref_result.has_value()) {
-    return base::ok(const_ref_result->Clone());
+    return base::ok(const_ref_result.value());
   } else {
     return base::unexpected(const_ref_result.error()->Clone());
   }
 }
 
 TEST_F(WebAppDataRetrieverTest, CheckTimeoutTriggers) {
-  base::test::TestFuture<base::expected<blink::mojom::ManifestPtr,
-                                        blink::mojom::RequestManifestErrorPtr>>
+  base::test::TestFuture<
+      base::expected<blink::Manifest, blink::mojom::RequestManifestErrorPtr>>
       primary_manifest_future;
 
   WebAppDataRetriever retriever;
   base::AutoReset<int> manifest_wait_timeout =
       WebAppDataRetriever::SetManifestWaitTimeoutForTesting(0);
   retriever.GetPrimaryPageFirstSpecifiedManifest(
-      *web_contents(), base::BindOnce(&CopyMojoExpectedConstRef)
+      *web_contents(), base::BindOnce(&CopyManifestExpectedConstRef)
                            .Then(primary_manifest_future.GetCallback()));
 
   ASSERT_TRUE(primary_manifest_future.Wait());

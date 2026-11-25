@@ -100,6 +100,7 @@
 #include "net/url_request/url_request.h"
 #include "net/url_request/url_request_context.h"
 #include "net/url_request/url_request_error_job.h"
+#include "net/url_request/url_request_http_transaction_factory_override.h"
 #include "net/url_request/url_request_job_factory.h"
 #include "net/url_request/url_request_redirect_job.h"
 #include "net/url_request/websocket_handshake_userdata_key.h"
@@ -349,6 +350,16 @@ std::unique_ptr<URLRequestJob> URLRequestHttpJob::Create(URLRequest* request) {
   // URLRequestContext must have been initialized.
   DCHECK(request->context()->http_transaction_factory());
   DCHECK(url.SchemeIsHTTPOrHTTPS() || url.SchemeIsWSOrWSS());
+
+  // GURL accepts hostnames that IsCanonicalizedHostCompliant() rejects (e.g.,
+  // "a!b.test", or ones with labels over 63 characters). TransportSecurityState
+  // can't canonicalize such hosts, so HSTS entries for parent domains with
+  // includeSubdomains don't apply to them. HostResolverManager rejects them,
+  // but they could still be sent to a proxy, so reject them here.
+  if (!IsCanonicalizedHostCompliant(url.host()) && !url.HostIsIPAddress() &&
+      base::FeatureList::IsEnabled(features::kRejectNonCompliantHttpHosts)) {
+    return std::make_unique<URLRequestErrorJob>(request, ERR_INVALID_URL);
+  }
 
   SSLUpgradeDecision upgrade_decision = SSLUpgradeDecision::kNoUpgrade;
   if (TransportSecurityState* hsts =
@@ -671,10 +682,14 @@ void URLRequestHttpJob::StartTransactionInternal() {
 
   int rv = OK;
 
-  // Notify NetworkQualityEstimator.
+  // Notify NetworkQualityEstimator, except for requests running under
+  // simulated network conditions: their observations would contaminate the
+  // global network-quality estimate.
   NetworkQualityEstimator* network_quality_estimator =
       request()->context()->network_quality_estimator();
-  if (network_quality_estimator) {
+  if (network_quality_estimator &&
+      !HttpTransactionFactoryOverride::DisablesNetworkQualityEstimation(
+          request_)) {
     network_quality_estimator->NotifyStartTransaction(*request_);
   }
 
@@ -684,10 +699,15 @@ void URLRequestHttpJob::StartTransactionInternal() {
                                           base::Unretained(this)));
     auth_credentials_ = AuthCredentials();
   } else {
-    DCHECK(request_->context()->http_transaction_factory());
-    transaction_ =
-        request_->context()->http_transaction_factory()->CreateTransaction(
-            priority_);
+    // Use an override factory if one is attached to the request (e.g., for
+    // per-tab socket pool isolation). Otherwise, use the context's default.
+    HttpTransactionFactory* factory =
+        HttpTransactionFactoryOverride::Get(request_);
+    if (!factory) {
+      factory = request_->context()->http_transaction_factory();
+    }
+    DCHECK(factory);
+    transaction_ = factory->CreateTransaction(priority_);
     CHECK(transaction_);
 
     if (request_info_.url.SchemeIsWSOrWSS()) {
@@ -2074,10 +2094,13 @@ void URLRequestHttpJob::DoneWithRequest(CompletionCause reason) {
   }
   done_ = true;
 
-  // Notify NetworkQualityEstimator.
+  // Notify NetworkQualityEstimator, except for requests running under
+  // simulated network conditions (see NotifyStartTransaction above).
   NetworkQualityEstimator* network_quality_estimator =
       request()->context()->network_quality_estimator();
-  if (network_quality_estimator) {
+  if (network_quality_estimator &&
+      !HttpTransactionFactoryOverride::DisablesNetworkQualityEstimation(
+          request())) {
     network_quality_estimator->NotifyRequestCompleted(*request());
   }
 
@@ -2103,10 +2126,14 @@ HttpResponseHeaders* URLRequestHttpJob::GetResponseHeaders() const {
 void URLRequestHttpJob::NotifyURLRequestDestroyed() {
   awaiting_callback_ = false;
 
-  // Notify NetworkQualityEstimator.
+  // Notify NetworkQualityEstimator, except for requests running under
+  // simulated network conditions (never registered; see
+  // NotifyStartTransaction above).
   NetworkQualityEstimator* network_quality_estimator =
       request()->context()->network_quality_estimator();
-  if (network_quality_estimator) {
+  if (network_quality_estimator &&
+      !HttpTransactionFactoryOverride::DisablesNetworkQualityEstimation(
+          request())) {
     network_quality_estimator->NotifyURLRequestDestroyed(*request());
   }
 }

@@ -108,7 +108,7 @@ bool OpenFolderViaShell(const base::FilePath& full_path) {
 }
 
 bool PreventWindowFromPinning(HWND hwnd) {
-  DCHECK(hwnd);
+  CHECK(hwnd, base::NotFatalUntil::M163);
 
   Microsoft::WRL::ComPtr<IPropertyStore> pps;
   if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&pps))))
@@ -126,7 +126,7 @@ void SetAppDetailsForWindow(const std::wstring& app_id,
                             const std::wstring& relaunch_command,
                             const std::wstring& relaunch_display_name,
                             HWND hwnd) {
-  DCHECK(hwnd);
+  CHECK(hwnd, base::NotFatalUntil::M163);
 
   Microsoft::WRL::ComPtr<IPropertyStore> pps;
   if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&pps))))
@@ -173,7 +173,7 @@ void SetRelaunchDetailsForWindow(const std::wstring& relaunch_command,
 }
 
 void ClearWindowPropertyStore(HWND hwnd) {
-  DCHECK(hwnd);
+  CHECK(hwnd, base::NotFatalUntil::M163);
 
   Microsoft::WRL::ComPtr<IPropertyStore> pps;
   if (FAILED(SHGetPropertyStoreForWindow(hwnd, IID_PPV_ARGS(&pps))))
@@ -195,6 +195,8 @@ void ClearWindowPropertyStore(HWND hwnd) {
     return;
 
   // Verify none of the keys are leaking.
+  // TODO(crbug.com/582506161): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(FAILED(pps->GetCount(&property_count)) || property_count == 0);
 }
 

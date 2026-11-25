@@ -17,7 +17,7 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/view_ids.h"
-#include "chrome/browser/ui/waap/initial_webui_window_metrics_manager.h"
+#include "chrome/browser/ui/waap/initial_webui_metrics_dispatcher.h"
 #include "chrome/browser/ui/waap/waap_ui_metrics_recorder.h"
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/generated_resources.h"
@@ -25,10 +25,10 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/mojom/menu_source_type.mojom-forward.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/pointer/touch_ui_controller.h"
 #include "ui/base/theme_provider.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/compositor/compositor.h"
 #include "ui/gfx/color_palette.h"
@@ -55,10 +55,9 @@ static constexpr gfx::Tween::Type kIconAnimationTween =
 
 // ReloadButton ---------------------------------------------------------------
 
-ReloadButton::ReloadButton(
-    Profile* profile,
-    CommandUpdater* command_updater,
-    InitialWebUIWindowMetricsManager* window_metrics_manager)
+ReloadButton::ReloadButton(Profile* profile,
+                           CommandUpdater* command_updater,
+                           InitialWebUIMetricsDispatcher* metrics_dispatcher)
     : ToolbarButton(base::BindRepeating(&ReloadButton::ButtonPressed,
                                         base::Unretained(this)),
                     CreateMenuModel(),
@@ -80,9 +79,9 @@ ReloadButton::ReloadButton(
                            : kNavigateStopTouchOldIcon),
       double_click_timer_delay_(views::GetDoubleClickInterval()),
       mode_switch_timer_delay_(base::Milliseconds(1350)),
-      window_metrics_manager_(window_metrics_manager) {
-  if (window_metrics_manager_) {
-    window_metrics_manager_->OnReloadButtonCreated();
+      metrics_dispatcher_(metrics_dispatcher) {
+  if (metrics_dispatcher_) {
+    metrics_dispatcher_->OnCreated();
   }
   SetVisibleMode(Mode::kReload);
   SetTriggerableEventFlags(ui::EF_LEFT_MOUSE_BUTTON |
@@ -318,7 +317,7 @@ void ReloadButton::ButtonPressed(const ui::Event& event) {
   if (visible_mode_ == Mode::kStop) {
     if (command_updater_) {
       command_updater_->ExecuteCommandWithDisposition(
-          IDC_STOP, WindowOpenDisposition::kCurrentTab);
+          IDC_STOP, ui::mojom::WindowOpenDisposition::kCurrentTab);
     }
     // The user has clicked, so we can feel free to update the button, even if
     // the mouse is still hovering.
@@ -386,10 +385,10 @@ void ReloadButton::UpdateAccessibleHasPopup() {
 
 void ReloadButton::OnNextPresentation(
     const viz::FrameTimingDetails& frame_timing_details) {
-  if (window_metrics_manager_) {
-    window_metrics_manager_->OnReloadButtonFirstPaint(
+  if (metrics_dispatcher_) {
+    metrics_dispatcher_->OnFirstPaint(
         frame_timing_details.presentation_feedback.timestamp);
-    window_metrics_manager_->OnReloadButtonFirstContentfulPaint(
+    metrics_dispatcher_->OnFirstContentfulPaint(
         frame_timing_details.presentation_feedback.timestamp);
   }
 }

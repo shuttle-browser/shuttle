@@ -62,9 +62,9 @@
 #include "ui/base/accelerators/accelerator.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
@@ -344,8 +344,8 @@ void RecentTabsSubMenuModel::ExecuteCommand(int command_id, int event_flags) {
   sessions::LiveTabContext* context = BrowserLiveTabContext::From(browser_);
   CHECK(context);
 
-  WindowOpenDisposition disposition = ui::DispositionFromEventFlags(
-      event_flags, WindowOpenDisposition::kNewForegroundTab);
+  ui::mojom::WindowOpenDisposition disposition = ui::DispositionFromEventFlags(
+      event_flags, ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 
   if (IsCommandType(CommandType::Tab, command_id)) {
     const TabItems& tab_items = *GetTabVectorForCommandId(command_id);
@@ -612,7 +612,7 @@ void RecentTabsSubMenuModel::BuildLocalTabItem(
   // visual_data should only be populated if the tab was part of a tab group
   // when closed. We shouldn't set the minor icon for the item most recently
   // closed, as this creates visual clutter alongside the shortcut text.
-  if (tab.group_visual_data.has_value() && !tab.is_group_ephemeral &&
+  if (tab.group_visual_data.has_value() &&
       curr_model_index > recent_tabs_title_index_.value() + 1) {
     const ui::ColorProvider* color_provider =
         BrowserWindow::FromBrowser(browser_)->GetColorProvider();

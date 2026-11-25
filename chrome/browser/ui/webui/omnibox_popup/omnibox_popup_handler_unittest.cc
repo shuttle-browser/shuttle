@@ -6,10 +6,14 @@
 
 #include <memory>
 
+#include "base/functional/bind.h"
 #include "base/memory/raw_ptr.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/test_future.h"
+#include "build/branding_buildflags.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/omnibox/test_omnibox_view.h"
@@ -20,6 +24,9 @@
 #include "components/omnibox/browser/omnibox_prefs.h"
 #include "components/omnibox/browser/test_omnibox_client.h"
 #include "components/prefs/testing_pref_service.h"
+#include "components/search_engines/template_url.h"
+#include "components/search_engines/template_url_data.h"
+#include "components/search_engines/template_url_service.h"
 #include "components/security_state/core/security_state.h"
 #include "components/variations/scoped_variations_ids_provider.h"
 #include "content/public/test/test_web_ui.h"
@@ -29,6 +36,7 @@
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/clipboard/test/test_clipboard.h"
 #include "ui/base/models/menu_model.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/point.h"
 
 namespace {
@@ -143,6 +151,7 @@ TEST_F(OmniboxPopupHandlerTest, SetInputState) {
         EXPECT_TRUE(state->is_tab_switch);
         EXPECT_TRUE(state->url_emphasis);
         EXPECT_TRUE(state->unelided_url_emphasis);
+        EXPECT_TRUE(state->prefers_url_input);
       });
   handler_->SetInputState(test_text, test_selection,
                           /*user_input_in_progress=*/true, full_url,
@@ -154,13 +163,98 @@ TEST_F(OmniboxPopupHandlerTest, SetInputState) {
 }
 
 TEST_F(OmniboxPopupHandlerTest, SyncsDefaultSearchProvider) {
-  EXPECT_CALL(page_, SetDefaultSearchProvider(testing::_));
+  EXPECT_CALL(page_,
+              SetDefaultSearchProvider(testing::_, testing::_, testing::_));
   handler_->OnTemplateURLServiceChanged();
   page_.FlushForTesting();
 
-  EXPECT_CALL(page_, SetDefaultSearchProvider(testing::_));
+  EXPECT_CALL(page_,
+              SetDefaultSearchProvider(testing::_, testing::_, testing::_));
   handler_->RequestInputState();
   page_.FlushForTesting();
+
+  EXPECT_CALL(page_,
+              SetDefaultSearchProvider(testing::_, testing::_, testing::_));
+  handler_->NotifyDefaultSearchProviderChanged();
+  page_.FlushForTesting();
+}
+
+// The handler is constructed without an `OmniboxController` in this fixture,
+// so it observes no `TemplateURLService` and there is no DSE placeholder.
+TEST_F(OmniboxPopupHandlerTest,
+       SyncsNoPlaceholderWithoutDefaultSearchProvider) {
+  EXPECT_CALL(
+      page_, SetDefaultSearchProvider(
+                 testing::_, omnibox_popup::mojom::PlaceholderType::kNone, ""));
+  handler_->NotifyDefaultSearchProviderChanged();
+  page_.FlushForTesting();
+}
+
+TEST_F(OmniboxPopupHandlerTest, SyncsDefaultSearchProviderPlaceholder) {
+  auto omnibox_controller = std::make_unique<OmniboxController>(
+      std::make_unique<TestOmniboxClient>());
+  const TemplateURL* default_provider = omnibox_controller->client()
+                                            ->GetTemplateURLService()
+                                            ->GetDefaultSearchProvider();
+  ASSERT_TRUE(default_provider);
+
+  // The handler syncs the DSE placeholder type and search engine name on
+  // construction. The AIM popup isn't enabled for the test profile, so it's
+  // the "Search <search engine> or type a URL" placeholder.
+  testing::NiceMock<MockOmniboxPopupPage> local_page;
+  EXPECT_CALL(
+      local_page,
+      SetDefaultSearchProvider(
+          testing::_, omnibox_popup::mojom::PlaceholderType::kSearchOrTypeUrl,
+          base::UTF16ToUTF8(default_provider->short_name())));
+  handler_ = std::make_unique<OmniboxPopupHandler>(
+      mojo::PendingReceiver<omnibox_popup::mojom::PageHandler>(),
+      local_page.BindAndGetRemote(), web_contents(), omnibox_controller.get());
+  local_page.FlushForTesting();
+
+  // Reset the handler to avoid dangling raw_ptr to the local
+  // omnibox_controller.
+  handler_.reset();
+}
+
+TEST_F(OmniboxPopupHandlerTest, GetDefaultSearchProviderIcon) {
+  const std::string search_loupe =
+      features::IsRoundedIconsEnabled()
+          ? "//resources/cr_components/searchbox/icons/search_cr23.svg"
+          : "//resources/cr_components/searchbox/icons/search_cr23_old.svg";
+  EXPECT_EQ(GetDefaultSearchProviderIcon(nullptr, /*is_dark_mode=*/false),
+            search_loupe);
+  EXPECT_EQ(GetDefaultSearchProviderIcon(nullptr, /*is_dark_mode=*/true),
+            search_loupe);
+
+  // `TemplateURLServiceFactory` returns null in unit tests unless a testing
+  // factory is set, so build a real service with Google as the DSE.
+  TemplateURLServiceFactory::GetInstance()->SetTestingFactoryAndUse(
+      profile(),
+      base::BindRepeating(&TemplateURLServiceFactory::BuildInstanceFor));
+  auto* turl_service = TemplateURLServiceFactory::GetForProfile(profile());
+  ASSERT_TRUE(turl_service);
+  turl_service->Load();
+  TemplateURLData data;
+  data.SetShortName(u"Google");
+  data.SetKeyword(u"google.com");
+  data.SetURL("https://www.google.com/search?q={searchTerms}");
+  turl_service->SetUserSelectedDefaultSearchProvider(
+      turl_service->Add(std::make_unique<TemplateURL>(data)));
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+  EXPECT_EQ(GetDefaultSearchProviderIcon(turl_service, /*is_dark_mode=*/false),
+            "//resources/cr_components/searchbox/icons/google_g_gradient.svg");
+  EXPECT_EQ(GetDefaultSearchProviderIcon(turl_service, /*is_dark_mode=*/true),
+            "//resources/cr_components/searchbox/icons/google_g_cr23.svg");
+#else
+  // Non-branded builds don't use the Google G icons, and this DSE has no
+  // favicon, so the search loupe is used.
+  EXPECT_EQ(GetDefaultSearchProviderIcon(turl_service, /*is_dark_mode=*/false),
+            search_loupe);
+  EXPECT_EQ(GetDefaultSearchProviderIcon(turl_service, /*is_dark_mode=*/true),
+            search_loupe);
+#endif
 }
 
 TEST_F(OmniboxPopupHandlerTest, OnSelectionChanged) {

@@ -4,14 +4,12 @@
 
 /* #css_wrapper_metadata_start
  * #type=style-lit
- * #scheme=relative
  * #css_wrapper_metadata_end */
 
 :host {
   display: block;
   height: 100%;
   overflow: hidden;
-  transition: width 300ms cubic-bezier(0.2, 0.0, 0, 1.0);
   /* The element sets this in both modes: in hybrid mode it switches between
    * the folded rail's width and the expanded width, in full-iframe mode it
    * mirrors the width the embedded page reports through frame-sizing (see
@@ -21,19 +19,9 @@
   width: var(--cr-left-hand-side-width, fit-content);
 }
 
-:host([is-expanded_]) {
-  transition: width 450ms cubic-bezier(0.2, 0.0, 0, 1.0);
-}
-
-@container style(--cr-animations-disabled: 1) {
-  :host,
-  :host([is-expanded_]) {
-    transition: none;
-  }
-}
-
 #expanded,
-#folded {
+#folded,
+#ghostLoader {
   height: 100%;
 }
 
@@ -51,4 +39,96 @@
 
 #expanded.ready {
   width: auto;
+}
+
+/* Stack #folded and #expanded in a single grid cell (without setting
+ * position: relative on :host, which would clip cr-tooltip's absolute
+ * positioning inside #folded) so they can cross-fade over the rail background
+ * while :host animates its width. */
+:host([enable-threads-rail-hybrid_]) {
+  background-color: var(--color-new-tab-page-threads-rail-background);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+}
+
+/* Stack the views in one grid cell and hide each unless it is active. Uses CSS
+ * rather than the hidden attribute so the views can cross-fade. */
+:host([enable-threads-rail-hybrid_]) #expanded,
+:host([enable-threads-rail-hybrid_]) #folded,
+:host([enable-threads-rail-hybrid_]) #ghostLoader {
+  grid-area: 1 / 1;
+  justify-self: start;
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+/* Show the active view. Keep opacity: 1 at rest so #folded does not create a
+ * stacking context that traps its cr-tooltip. */
+:host([enable-threads-rail-hybrid_][view_=folded]) #folded,
+:host([enable-threads-rail-hybrid_][view_=expanded]) #expanded {
+  opacity: 1;
+  pointer-events: auto;
+  visibility: visible;
+}
+
+:host([enable-threads-rail-hybrid_][view_=ghostLoader]) #ghostLoader {
+  opacity: 1;
+  visibility: visible;
+}
+
+@starting-style {
+  :host([enable-threads-rail-hybrid_][view_=expanded]) #expanded {
+    opacity: 0;
+  }
+}
+
+/* cr_shared_vars.css only defines --cr-animations-disabled: 1 under
+ * prefers-reduced-motion: reduce (leaving it unset otherwise), so enable
+ * transitions whenever it is not 1 instead of maintaining a separate reset
+ * block. */
+@container not style(--cr-animations-disabled: 1) {
+  :host {
+    transition: width 300ms cubic-bezier(0.2, 0.0, 0, 1.0);
+  }
+
+  :host([is-expanded_]) {
+    transition: width 450ms cubic-bezier(0.2, 0.0, 0, 1.0);
+  }
+
+  :host([enable-threads-rail-hybrid_]) #folded {
+    /* Fade out over the first 100ms of the 450ms expand transition before
+     * #expanded begins fading in at 225ms. */
+    transition: opacity 100ms ease, visibility 0s 100ms;
+  }
+
+  :host([enable-threads-rail-hybrid_][view_=folded]) #folded {
+    /* Delay fade-in by 150ms on collapse so #expanded fades out first, then
+     * fade #folded in over the remaining 150ms. */
+    transition: opacity 150ms ease 150ms, visibility 0s 0s;
+  }
+
+  :host([enable-threads-rail-hybrid_]) #expanded {
+    /* Fade out over 240ms (80% of the 300ms collapse transition). */
+    transition: opacity 240ms ease, visibility 0s 240ms;
+  }
+
+  :host([enable-threads-rail-hybrid_][view_=expanded]) #expanded {
+    /* Delay fade-in by 225ms (50% of the 450ms expand transition) and fade in
+     * over the remaining 225ms. */
+    transition: opacity 225ms ease 225ms, visibility 0s 0s;
+  }
+
+  :host([enable-threads-rail-hybrid_]) #ghostLoader {
+    /* Fade out in sync with #expanded fading in (see above), so that the two
+     * cross-fade. */
+    transition: opacity 225ms ease 225ms, visibility 0s 450ms;
+  }
+
+  :host([enable-threads-rail-hybrid_][view_=ghostLoader]) #ghostLoader {
+    /* Show immediately on expand, since #folded is hidden immediately too.
+     * Without this, the fade-out transition above would also apply here and
+     * delay the ghost loader by 450ms. */
+    transition: none;
+  }
 }

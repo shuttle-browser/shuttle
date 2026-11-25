@@ -109,6 +109,10 @@ class EnclaveManager : public EnclaveManagerInterface {
       MAC_TEAM_IDENTIFIER_STRING "." MAC_BUNDLE_IDENTIFIER_STRING
                                  ".webauthn-uvk";
 #endif  // BUILDFLAG(IS_MAC)
+  // The timeout for keeping cached opportunistically retrieved keys.
+  static constexpr base::TimeDelta kOpportunisticRetrievalKeyTTL =
+      base::Minutes(5);
+
   struct StoreKeysArgs;
 
   struct UVKeyOptions {
@@ -199,9 +203,8 @@ class EnclaveManager : public EnclaveManagerInterface {
     // `ConsiderSecurityDomainState`.
     kConsiderSecurityDomainStateNotStartedWrappedPinParsingError = 46,
     kDoNextActionFailedICloudKeychainKeyAlreadyReady = 47,
-    kDoDownloadingAccountStateForICloudRecoveryFailedTrustedVaultErrorResponse =
-        48,
-    kDoDownloadingAccountStateForICloudRecoveryFailedNoICloudKeysInAccount = 49,
+    kStartICloudKeychainRecoveryFailedTrustedVaultErrorResponse = 48,
+    kStartICloudKeychainRecoveryFailedNoICloudKeysInAccount = 49,
     kDoRecoveringWithICloudKeychainFailedNoMatchingLocalICloudKey = 50,
     kDoRecoveringWithICloudKeychainFailedDecryptionFailed = 51,
     kMaxValue = kDoRecoveringWithICloudKeychainFailedDecryptionFailed,
@@ -224,6 +227,23 @@ class EnclaveManager : public EnclaveManagerInterface {
     kConsiderSecurityDomainState,
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/webauthn/histograms.xml:EnclaveManagerActionForUMA)
+
+#if BUILDFLAG(IS_MAC)
+  // Whether the security domain state passed to `RecoverWithICloudKeychain()`
+  // was used or discarded by the state machine because the primary account
+  // changed.
+  //
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  // LINT.IfChange(ICloudRecoveryAccountStateUsage)
+  enum class ICloudRecoveryAccountStateUsage {
+    kNotProvided = 0,
+    kProvidedAndUsed = 1,
+    kProvidedAndDiscarded = 2,
+    kMaxValue = kProvidedAndDiscarded,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/webauthn/enums.xml:ICloudRecoveryAccountStateUsage)
+#endif  // BUILDFLAG(IS_MAC)
 
   class UvKeyCreationLock {
    public:
@@ -436,7 +456,12 @@ class EnclaveManager : public EnclaveManagerInterface {
   CheckGpmPinAvailability(GpmPinAvailabilityCallback callback) override;
 
 #if BUILDFLAG(IS_MAC)
-  void RecoverWithICloudKeychain(Callback callback) override;
+  void RecoverWithICloudKeychain(
+      std::optional<
+          trusted_vault::DownloadAuthenticationFactorsRegistrationStateResult>
+          account_state,
+      std::optional<GaiaId> account_state_gaia_id,
+      Callback callback) override;
 #endif  // BUILDFLAG(IS_MAC)
 
   // Checks whether UserVerifyingKeyCreationCallback() is available to be
@@ -570,6 +595,7 @@ class EnclaveManager : public EnclaveManagerInterface {
   // reset, and can be initiated from scratch.
   void ClearRegistration();
 
+  void DoUnenroll(Callback callback, bool is_registered);
   void UnregisterComplete(Callback callback, bool success);
 
   // Store the secret that `TakeSecret` will make available.

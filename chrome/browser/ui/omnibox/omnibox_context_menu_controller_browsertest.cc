@@ -48,6 +48,7 @@
 #include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_metrics_utils.h"
 #include "components/prefs/testing_pref_service.h"
+#include "components/strings/grit/components_strings.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
@@ -58,9 +59,9 @@
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "third_party/omnibox_proto/tool_mode.pb.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/native_ui_types.h"
 #include "ui/menus/simple_menu_model.h"
 #include "ui/views/controls/menu/menu_item_view.h"
@@ -300,7 +301,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxContextMenuControllerBrowserTest,
   browser()->GetTabStripModel()->ActivateTabAt(1);
   GURL url3(embedded_test_server()->GetURL("/title3.html"));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url3, WindowOpenDisposition::kNewBackgroundTab,
+      browser(), url3, ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   OmniboxContextMenuController controller(omnibox_popup_file_selector.get(),
@@ -1736,6 +1737,10 @@ IN_PROC_BROWSER_TEST_F(OmniboxContextMenuControllerSingleTabItemBrowserTest,
       snap.minor_text = menu->GetMinorTextAt(*snap.single_tab_index);
       EXPECT_EQ(menu->GetElementIdentifierAt(*snap.single_tab_index),
                 OmniboxContextMenuController::kSingleTabMenuItemIdForTesting);
+      EXPECT_EQ(*snap.single_tab_index, 1u);
+      EXPECT_EQ(menu->GetTypeAt(0), ui::MenuModel::TYPE_TITLE);
+      EXPECT_EQ(menu->GetLabelAt(0),
+                l10n_util::GetStringUTF16(IDS_OMNIBOX_NAVATTACH_TABS));
     }
     return snap;
   };
@@ -1856,6 +1861,55 @@ IN_PROC_BROWSER_TEST_F(OmniboxContextMenuControllerPecBrowserTest,
       menu_model->GetIconAt(submenu_index.value()),
       ui::ImageModel::FromVectorIcon(kTabOldIcon, ui::kColorMenuIcon,
                                      ui::SimpleMenuModel::kDefaultIconSize));
+}
+
+IN_PROC_BROWSER_TEST_F(OmniboxContextMenuControllerPecBrowserTest,
+                       PendingTabContextCountsTowardInputLimit) {
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL(chrome::kChromeUIOmniboxPopupAimURL)));
+
+  auto* web_contents = GetWebContents();
+  auto owning_window = gfx::NativeWindow();
+  TestOmniboxPopupFileSelector file_selector(owning_window);
+
+  auto* web_ui = web_contents->GetWebUI();
+  ASSERT_TRUE(web_ui);
+  auto* popup_ui = web_ui->GetController()->GetAs<OmniboxPopupUI>();
+  ASSERT_TRUE(popup_ui);
+  auto* handler = popup_ui->composebox_handler();
+  ASSERT_TRUE(handler);
+
+  omnibox::InputState test_state;
+  test_state.allowed_models.emplace_back(
+      omnibox::ModelMode::MODEL_MODE_GEMINI_PRO);
+  test_state.allowed_input_types.emplace_back(
+      omnibox::InputType::INPUT_TYPE_BROWSER_TAB);
+  test_state.max_total_inputs = 1;
+  handler->input_state_model()->set_state_for_testing(test_state);
+
+  GURL url1(embedded_test_server()->GetURL("/title1.html"));
+  ASSERT_TRUE(AddTabAtIndex(1, url1, ui::PAGE_TRANSITION_TYPED));
+  GURL url2(embedded_test_server()->GetURL("/title2.html"));
+  ASSERT_TRUE(AddTabAtIndex(2, url2, ui::PAGE_TRANSITION_TYPED));
+
+  // Mirrors `ContinueAddTabContext()` before the page context arrives: the tab
+  // is checked and has a token, but no `FileInfo` yet.
+  auto* session_handle = popup_ui->GetOrCreateContextualSessionHandle();
+  ASSERT_TRUE(session_handle);
+  auto token = base::UnguessableToken::Create();
+  session_handle->GetUploadedContextTokensForTesting().push_back(token);
+  int32_t tab1_id =
+      browser()->GetTabStripModel()->GetTabAtIndex(1)->GetHandle().raw_value();
+  handler->selected_tabs[token] = tab1_id;
+  ASSERT_TRUE(session_handle->GetUploadedContextFileInfos().empty());
+
+  OmniboxContextMenuController controller(&file_selector, web_contents);
+
+  // The pending tab fills the limit, so only the checked tab stays enabled.
+  EXPECT_TRUE(
+      controller.IsCommandIdEnabled(kMinOmniboxContextMenuRecentTabsCommandId));
+  EXPECT_FALSE(controller.IsCommandIdEnabled(
+      kMinOmniboxContextMenuRecentTabsCommandId + 1));
 }
 
 IN_PROC_BROWSER_TEST_F(OmniboxContextMenuControllerBrowserTest,

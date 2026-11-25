@@ -10,6 +10,7 @@
 #import "base/values.h"
 #import "components/optimization_guide/proto/features/actions_data.pb.h"
 #import "components/optimization_guide/proto/features/common_quality_data.pb.h"
+#import "ios/chrome/browser/infobars/ui_bundled/banners/infobar_banner_constants.h"
 #import "ios/chrome/browser/intelligence/actor/tools/test/actor_app_interface.h"
 #import "ios/chrome/browser/intelligence/actor/tools/test/actor_tools_base_test_case.h"
 #import "ios/chrome/test/earl_grey/chrome_actions.h"
@@ -280,6 +281,63 @@
   [self executeActions:actions];
 }
 
+// Tests that clicking an HTTP `<a target="_blank">` link via `ClickTool`
+// navigates the controlled tab in-place instead of opening a second tab or
+// presenting a blocked-popup infobar banner.
+- (void)testClickTool_redirectsTargetBlankHTTPLinkToSameTab {
+  const GURL destinationURL = self.testServer->GetURL("/destination.html");
+  const std::string linkHTML =
+      base::StringPrintf("<a id='deal' href='%s' target='_blank'>View Deal</a>",
+                         destinationURL.spec().c_str());
+  [ChromeEarlGrey loadURL:[self URLForHTML:linkHTML]];
+  [ChromeEarlGrey waitForWebStateContainingText:"View Deal"];
+
+  optimization_guide::proto::Action action;
+  optimization_guide::proto::ClickAction* clickAction = action.mutable_click();
+  clickAction->set_tab_id([ChromeEarlGrey currentTabID].intValue);
+  clickAction->set_click_type(optimization_guide::proto::ClickAction::LEFT);
+  clickAction->set_click_count(optimization_guide::proto::ClickAction::SINGLE);
+  [self setCoordinatesOnTarget:clickAction->mutable_target()
+                  withSelector:"#deal"];
+
+  GREYAssertNil([self executeAction:action], @"Action execution failed.");
+
+  [ChromeEarlGrey waitForWebStateContainingText:"You've arrived"];
+  [ChromeEarlGrey waitForMainTabCount:1];
+  GREYAssertEqual(destinationURL, [ChromeEarlGrey webStateLastCommittedURL],
+                  @"Expected target=_blank link to navigate in the same tab.");
+  [[EarlGrey selectElementWithMatcher:grey_accessibilityID(
+                                          kInfobarBannerViewIdentifier)]
+      assertWithMatcher:grey_nil()];
+}
+
+// Tests that clicking an `about:blank` `<a target="_blank">` link on
+// `/window_open.html` via `ClickTool` suppresses the popup without overwriting
+// the opener document, opening a second tab, or showing a blocked-popup
+// infobar banner.
+- (void)testClickTool_suppressesTargetBlankAboutBlankLink {
+  const GURL windowOpenURL = self.testServer->GetURL("/window_open.html");
+  [ChromeEarlGrey loadURL:windowOpenURL];
+  [ChromeEarlGrey waitForWebStateContainingText:"Expected result"];
+
+  optimization_guide::proto::Action action;
+  optimization_guide::proto::ClickAction* clickAction = action.mutable_click();
+  clickAction->set_tab_id([ChromeEarlGrey currentTabID].intValue);
+  clickAction->set_click_type(optimization_guide::proto::ClickAction::LEFT);
+  clickAction->set_click_count(optimization_guide::proto::ClickAction::SINGLE);
+  [self setCoordinatesOnTarget:clickAction->mutable_target()
+                  withSelector:"#webScenarioWindowOpenRegularLink"];
+
+  GREYAssertNil([self executeAction:action], @"Action execution failed.");
+
+  [ChromeEarlGrey waitForMainTabCount:1];
+  GREYAssertEqual(windowOpenURL, [ChromeEarlGrey webStateLastCommittedURL],
+                  @"Expected opener URL to remain unchanged.");
+  [[EarlGrey selectElementWithMatcher:grey_accessibilityID(
+                                          kInfobarBannerViewIdentifier)]
+      assertWithMatcher:grey_nil()];
+}
+
 #pragma mark - TypeTool Tests
 
 // Tests that the TypeTool can successfully type in an <input> given its
@@ -358,6 +416,39 @@
           @"window.frames[0].document.querySelector('input').value"];
   GREYAssertEqualObjects(base::SysUTF8ToNSString(value.GetString()),
                          @"Hello World", @"Input value did not match");
+}
+
+// Tests that the `TypeTool` with `follow_by_enter = true` submits the enclosing
+// form.
+- (void)testTypeTool_followByEnterSubmitsForm {
+  const std::string formHTML = R"(
+    <form onsubmit="event.preventDefault(); window.formSubmitted = true;">
+      <input type="text">
+    </form>
+  )";
+  [ChromeEarlGrey loadURL:[self URLForHTML:formHTML]];
+  [ChromeEarlGrey
+      waitForWebStateContainingElement:[ElementSelector
+                                           selectorWithCSSSelector:"input"]];
+
+  optimization_guide::proto::Action action;
+  optimization_guide::proto::TypeAction* typeAction = action.mutable_type();
+  typeAction->set_tab_id([ChromeEarlGrey currentTabID].intValue);
+  typeAction->set_text("Hello World");
+  typeAction->set_mode(optimization_guide::proto::TypeAction::APPEND);
+  typeAction->set_follow_by_enter(true);
+
+  [self setCoordinatesOnTarget:typeAction->mutable_target()
+                  withSelector:"input"];
+
+  GREYAssertNil([self executeAction:action], @"Action execution failed.");
+
+  base::Value value = [ChromeEarlGrey
+      evaluateJavaScript:@"document.querySelector('input').value"];
+  GREYAssertEqualObjects(base::SysUTF8ToNSString(value.GetString()),
+                         @"Hello World", @"Input value did not match");
+
+  [ChromeEarlGrey waitForJavaScriptCondition:@"window.formSubmitted === true"];
 }
 
 #pragma mark - ScrollTool Tests

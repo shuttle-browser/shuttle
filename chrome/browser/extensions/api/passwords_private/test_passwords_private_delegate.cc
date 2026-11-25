@@ -350,16 +350,14 @@ TestPasswordsPrivateDelegate::GetCredentialsWithReusedPassword() {
 
 // Fake implementation of MuteInsecureCredential. This succeeds if the
 // delegate knows of a insecure credential with the same id.
-bool TestPasswordsPrivateDelegate::MuteInsecureCredential(
-    const api::passwords_private::PasswordUiEntry& credential) {
-  return IsCredentialPresentInInsecureCredentialsList(credential);
+bool TestPasswordsPrivateDelegate::MuteInsecureCredential(int id) {
+  return IsCredentialPresentInInsecureCredentialsList(id);
 }
 
 // Fake implementation of UnmuteInsecureCredential. This succeeds if the
 // delegate knows of a insecure credential with the same id.
-bool TestPasswordsPrivateDelegate::UnmuteInsecureCredential(
-    const api::passwords_private::PasswordUiEntry& credential) {
-  return IsCredentialPresentInInsecureCredentialsList(credential);
+bool TestPasswordsPrivateDelegate::UnmuteInsecureCredential(int id) {
+  return IsCredentialPresentInInsecureCredentialsList(id);
 }
 
 void TestPasswordsPrivateDelegate::StartPasswordCheck(
@@ -418,8 +416,8 @@ void TestPasswordsPrivateDelegate::SendPasswordExceptionsList() {
 }
 
 bool TestPasswordsPrivateDelegate::IsCredentialPresentInInsecureCredentialsList(
-    const api::passwords_private::PasswordUiEntry& credential) {
-  return std::ranges::contains(insecure_credentials_, credential.id,
+    int id) {
+  return std::ranges::contains(insecure_credentials_, id,
                                &api::passwords_private::PasswordUiEntry::id);
 }
 
@@ -469,8 +467,9 @@ void TestPasswordsPrivateDelegate::DisconnectCloudAuthenticator(
   std::move(success_callback).Run(false);
 }
 
-bool TestPasswordsPrivateDelegate::IsConnectedToCloudAuthenticator() {
-  return false;
+void TestPasswordsPrivateDelegate::IsConnectedToCloudAuthenticator(
+    base::OnceCallback<void(bool)> is_connected_callback) {
+  std::move(is_connected_callback).Run(false);
 }
 
 password_manager::ActionableError

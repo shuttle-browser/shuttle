@@ -19,15 +19,15 @@
 #include <fstream>
 #include <string>
 
-#include "absl/flags/flag.h"
-#include "absl/flags/parse.h"
-#include "absl/log/absl_log.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/flags/parse.h"           // from @com_google_absl
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator.pb.h"
 #include "mediapipe/framework/port/advanced_proto_inc.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/logging.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 
 ABSL_FLAG(std::string, proto_source, "",
           "The template source file containing CalculatorGraphConfig "
@@ -73,7 +73,7 @@ absl::Status ReadFile(const std::string& proto_source, bool read_text,
                       proto_ns::Message* result) {
   std::ifstream ifs(proto_source);
   proto_ns::io::IstreamInputStream in(&ifs);
-  MP_RETURN_IF_ERROR(ReadProto(&in, read_text, proto_source, result));
+  ABSL_RETURN_IF_ERROR(ReadProto(&in, read_text, proto_source, result));
   return absl::OkStatus();
 }
 
@@ -86,7 +86,7 @@ absl::Status WriteFile(const std::string& proto_output, bool write_text,
   }
   std::ofstream ofs(proto_output, mode);
   proto_ns::io::OstreamOutputStream out(&ofs);
-  MP_RETURN_IF_ERROR(WriteProto(message, write_text, proto_output, &out));
+  ABSL_RETURN_IF_ERROR(WriteProto(message, write_text, proto_output, &out));
   return absl::OkStatus();
 }
 

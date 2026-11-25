@@ -192,10 +192,11 @@ TEST_P(WellKnownChangePasswordStateTest, NoSupport_Redirect) {
 
 TEST_P(WellKnownChangePasswordStateTest,
        NoAwaitForPrefetchResultIfWellKnownChangePasswordSupported) {
-  affiliations::MockAffiliationService mock_affiliation_service;
+  testing::NiceMock<affiliations::MockAffiliationService>
+      mock_affiliation_service;
   EXPECT_CALL(mock_affiliation_service, FetchChangePasswordURL);
-  state()->PrefetchChangePasswordURL(&mock_affiliation_service,
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(&mock_affiliation_service,
+                                  GURL("https://example.com"));
 
   EXPECT_CALL(*delegate(), OnProcessingFinished(true));
 
@@ -210,10 +211,11 @@ TEST_P(WellKnownChangePasswordStateTest,
 }
 
 TEST_P(WellKnownChangePasswordStateTest, TimeoutTriggersOnProcessingFinished) {
-  affiliations::MockAffiliationService mock_affiliation_service;
+  testing::NiceMock<affiliations::MockAffiliationService>
+      mock_affiliation_service;
   EXPECT_CALL(mock_affiliation_service, FetchChangePasswordURL);
-  state()->PrefetchChangePasswordURL(&mock_affiliation_service,
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(&mock_affiliation_service,
+                                  GURL("https://example.com"));
 
   ResponseDelayParams params = GetParam();
   RespondeToChangePasswordRequest(net::HTTP_NOT_FOUND,
@@ -224,7 +226,8 @@ TEST_P(WellKnownChangePasswordStateTest, TimeoutTriggersOnProcessingFinished) {
   FastForwardBy(base::Milliseconds(ms_to_forward));
 
   EXPECT_CALL(*delegate(), OnProcessingFinished(false));
-  FastForwardBy(WellKnownChangePasswordState::kPrefetchTimeout);
+  FastForwardBy(WellKnownChangePasswordState::kFetchTimeout);
+  EXPECT_TRUE(state()->change_password_url_override().is_empty());
 }
 
 TEST_P(WellKnownChangePasswordStateTest,
@@ -252,8 +255,8 @@ TEST_P(WellKnownChangePasswordStateTest,
   affiliation_service->Init(network_connection_tracker, database_path);
   affiliation_service->SetFetcherFactoryForTesting(
       std::move(mock_fetcher_factory));
-  state()->PrefetchChangePasswordURL(affiliation_service.get(),
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(affiliation_service.get(),
+                                  GURL("https://example.com"));
 
   ResponseDelayParams params = GetParam();
   RespondeToChangePasswordRequest(net::HTTP_NOT_FOUND,
@@ -276,10 +279,11 @@ TEST_P(WellKnownChangePasswordStateTest,
 
 TEST_P(WellKnownChangePasswordStateTest,
        NoDoubleNotifyIfWellKnownChangePasswordSupported) {
-  affiliations::MockAffiliationService mock_affiliation_service;
+  testing::NiceMock<affiliations::MockAffiliationService>
+      mock_affiliation_service;
   EXPECT_CALL(mock_affiliation_service, FetchChangePasswordURL);
-  state()->PrefetchChangePasswordURL(&mock_affiliation_service,
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(&mock_affiliation_service,
+                                  GURL("https://example.com"));
 
   EXPECT_CALL(*delegate(), OnProcessingFinished(true)).Times(1);
 
@@ -293,18 +297,19 @@ TEST_P(WellKnownChangePasswordStateTest,
 
 TEST_P(WellKnownChangePasswordStateTest,
        PrefetchCallbackFirst_ThenHttpResponses_NoSupport) {
-  affiliations::MockAffiliationService mock_affiliation_service;
+  testing::NiceMock<affiliations::MockAffiliationService>
+      mock_affiliation_service;
   base::OnceCallback<void(GURL)> prefetch_callback;
   EXPECT_CALL(mock_affiliation_service, FetchChangePasswordURL)
       .WillOnce([&](const GURL& url, base::OnceCallback<void(GURL)> callback) {
         prefetch_callback = std::move(callback);
       });
-  state()->PrefetchChangePasswordURL(&mock_affiliation_service,
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(&mock_affiliation_service,
+                                  GURL("https://example.com"));
 
   // 1. Prefetch callback runs first.
   // We do NOT expect OnProcessingFinished yet.
-  std::move(prefetch_callback).Run(GURL());
+  std::move(prefetch_callback).Run(GURL("https://example.com/change-password"));
   FastForwardBy(base::Milliseconds(0));
 
   // 2. Now HTTP requests finish (not supported).
@@ -314,18 +319,21 @@ TEST_P(WellKnownChangePasswordStateTest,
                                   params.change_password_delay);
   RespondeToNonExistingRequest(net::HTTP_NOT_FOUND, params.not_exist_delay);
   FastForwardPostTasks();
+  EXPECT_EQ(GURL("https://example.com/change-password"),
+            state()->change_password_url_override());
 }
 
 TEST_P(WellKnownChangePasswordStateTest,
        TimeoutFirst_ThenHttpResponses_NoSupport) {
-  affiliations::MockAffiliationService mock_affiliation_service;
+  testing::NiceMock<affiliations::MockAffiliationService>
+      mock_affiliation_service;
   EXPECT_CALL(mock_affiliation_service, FetchChangePasswordURL);
-  state()->PrefetchChangePasswordURL(&mock_affiliation_service,
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(&mock_affiliation_service,
+                                  GURL("https://example.com"));
 
   // 1. Timeout happens first.
   // We do NOT expect OnProcessingFinished yet.
-  FastForwardBy(WellKnownChangePasswordState::kPrefetchTimeout);
+  FastForwardBy(WellKnownChangePasswordState::kFetchTimeout);
 
   // 2. Now HTTP requests finish (not supported).
   EXPECT_CALL(*delegate(), OnProcessingFinished(false));
@@ -338,14 +346,15 @@ TEST_P(WellKnownChangePasswordStateTest,
 
 TEST_P(WellKnownChangePasswordStateTest,
        PrefetchCallbackArrivesLate_AfterWellKnownSupported) {
-  affiliations::MockAffiliationService mock_affiliation_service;
+  testing::NiceMock<affiliations::MockAffiliationService>
+      mock_affiliation_service;
   base::OnceCallback<void(GURL)> prefetch_callback;
   EXPECT_CALL(mock_affiliation_service, FetchChangePasswordURL)
       .WillOnce([&](const GURL& url, base::OnceCallback<void(GURL)> callback) {
         prefetch_callback = std::move(callback);
       });
-  state()->PrefetchChangePasswordURL(&mock_affiliation_service,
-                                     GURL("https://example.com"));
+  state()->FetchChangePasswordURL(&mock_affiliation_service,
+                                  GURL("https://example.com"));
 
   // 1. HTTP requests finish first and indicate support.
   EXPECT_CALL(*delegate(), OnProcessingFinished(true)).Times(1);
@@ -356,8 +365,71 @@ TEST_P(WellKnownChangePasswordStateTest,
 
   // 2. Late prefetch callback arrives.
   // We do NOT expect another OnProcessingFinished call.
-  std::move(prefetch_callback).Run(GURL());
+  std::move(prefetch_callback).Run(GURL("https://example.com/change-password"));
   FastForwardPostTasks();
+  EXPECT_TRUE(state()->change_password_url_override().is_empty());
+}
+
+TEST_P(WellKnownChangePasswordStateTest,
+       FetchCallbackStoresPatternedChangePasswordUrlOverride) {
+  auto mock_fetcher = std::make_unique<affiliations::MockAffiliationFetcher>();
+  auto mock_fetcher_factory =
+      std::make_unique<affiliations::MockAffiliationFetcherFactory>();
+  base::OnceCallback<void(
+      affiliations::AffiliationFetcherInterface::FetchResult)>
+      fetch_result_callback;
+  EXPECT_CALL(*mock_fetcher, StartRequest)
+      .WillOnce(testing::SaveArgByMove<2>(&fetch_result_callback));
+  EXPECT_CALL(*mock_fetcher_factory, CreateInstance)
+      .WillOnce(testing::Return(testing::ByMove(std::move(mock_fetcher))));
+  auto background_task_runner =
+      base::MakeRefCounted<base::TestMockTimeTaskRunner>();
+  auto affiliation_service =
+      std::make_unique<affiliations::AffiliationServiceImpl>(
+          test_shared_loader_factory(), background_task_runner);
+
+  network::TestNetworkConnectionTracker* network_connection_tracker =
+      network::TestNetworkConnectionTracker::GetInstance();
+  base::FilePath database_path;
+  ASSERT_TRUE(CreateTemporaryFile(&database_path));
+  affiliation_service->Init(network_connection_tracker, database_path);
+  affiliation_service->SetFetcherFactoryForTesting(
+      std::move(mock_fetcher_factory));
+  state()->FetchChangePasswordURL(
+      affiliation_service.get(),
+      GURL("https://example.com/.well-known/change-password"));
+
+  ResponseDelayParams params = GetParam();
+  RespondeToChangePasswordRequest(net::HTTP_NOT_FOUND,
+                                  params.change_password_delay);
+  RespondeToNonExistingRequest(net::HTTP_NOT_FOUND, params.not_exist_delay);
+  const int64_t ms_to_forward =
+      std::max(params.change_password_delay, params.not_exist_delay) + 1;
+  FastForwardBy(base::Milliseconds(ms_to_forward));
+
+  affiliations::GroupedFacets group;
+  group.facets = {
+      affiliations::Facet(affiliations::FacetURI::FromPotentiallyInvalidSpec(
+          "https://example.com"))};
+  affiliations::ChangePasswordPattern pattern;
+  pattern.url_pattern_re2 = "^https://example\\.com/.*";
+  pattern.change_password_url = GURL("https://example.com/settings/password");
+  group.facets.back().change_password_patterns.push_back(pattern);
+
+  affiliations::AffiliationFetcherInterface::ParsedFetchResponse parsed_result;
+  parsed_result.groupings.push_back(std::move(group));
+  affiliations::AffiliationFetcherInterface::FetchResult fetch_result;
+  fetch_result.data = std::move(parsed_result);
+  fetch_result.http_status_code = net::HTTP_OK;
+
+  EXPECT_CALL(*delegate(), OnProcessingFinished(false));
+  std::move(fetch_result_callback).Run(std::move(fetch_result));
+  FastForwardBy(base::Milliseconds(0));
+  EXPECT_EQ(GURL("https://example.com/settings/password"),
+            state()->change_password_url_override());
+
+  affiliation_service->Shutdown();
+  background_task_runner->FastForwardUntilNoTasksRemain();
 }
 
 constexpr ResponseDelayParams kDelayParams[] = {{0, 1}, {1, 0}};

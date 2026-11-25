@@ -8,8 +8,8 @@ import type {AudioBrowserProxy} from './audio_browser_proxy.js';
 import {AudioBrowserProxyImpl} from './audio_browser_proxy.js';
 import {MovementGranularity, PhraseHighlight, SentenceHighlight, WordHighlight} from './movement.js';
 import type {Highlight} from './movement.js';
-import {getReadAloudModel} from './read_aloud_model_browser_proxy.js';
-import type {ReadAloudModelBrowserProxy} from './read_aloud_model_browser_proxy.js';
+import {getReadAloudModel} from './read_aloud_model.js';
+import type {ReadAloudModel} from './read_aloud_model.js';
 import type {Segment} from './read_aloud_types.js';
 import {getCurrentSpeechRate} from './speech_presentation_rules.js';
 import {VoiceLanguageController} from './voice_language_controller.js';
@@ -23,7 +23,7 @@ export class ReadAloudHighlighter {
   private wordBoundaries_: WordBoundaries = WordBoundaries.getInstance();
   private allowAutoScroll_ = true;
   private voiceLanguageController_ = VoiceLanguageController.getInstance();
-  private readAloudModel_: ReadAloudModelBrowserProxy = getReadAloudModel();
+  private readAloudModel_: ReadAloudModel = getReadAloudModel();
   private audioBrowserProxy_: AudioBrowserProxy =
       AudioBrowserProxyImpl.getInstance();
 
@@ -121,6 +121,14 @@ export class ReadAloudHighlighter {
     this.previousGranularities_ = [];
   }
 
+  // Returns whether phrases will be highlighted, after accounting for the
+  // selected granularity, whether phrase highlighting is enabled, and the
+  // speech rate, voice, and language.
+  willHighlightPhrases(): boolean {
+    return this.getEffectiveHighlightingGranularity_() ===
+        this.audioBrowserProxy_.getPhraseHighlighting();
+  }
+
   private getEffectiveHighlightingGranularity_(): number {
     // Parse all of the conditions that control highlighting and return the
     // effective highlighting granularity.
@@ -138,25 +146,21 @@ export class ReadAloudHighlighter {
       return this.audioBrowserProxy_.getSentenceHighlighting();
     }
 
-    // Until ts_model_impl supports phrase highlighting, always fallback to
-    // sentence highlighting.
-
     const currentSpeechRate: number = getCurrentSpeechRate();
 
-    if (!this.audioBrowserProxy_.isPhraseHighlightingEnabled()) {
+    if (!this.audioBrowserProxy_.isPhraseHighlightingEnabled() ||
+        !this.isPhraseHighlightingSupportedForLanguage_()) {
       // Choose sentence highlighting for fast voices.
       if (currentSpeechRate > 1.2 &&
           highlight === this.audioBrowserProxy_.getAutoHighlighting()) {
         return this.audioBrowserProxy_.getSentenceHighlighting();
       }
 
-      // In other cases where phrase highilghting is off, choose word
-      // highlighting.
+      // In other cases where phrase highlighting is off or unsupported for the
+      // speech language, choose word highlighting.
       return this.audioBrowserProxy_.getWordHighlighting();
     }
 
-    // TODO: crbug.com/364327601 - Check that the language of the page should
-    // be English for phrase highlighting.
     if (highlight === this.audioBrowserProxy_.getAutoHighlighting()) {
       if (currentSpeechRate <= 0.8) {
         return this.audioBrowserProxy_.getWordHighlighting();
@@ -169,6 +173,12 @@ export class ReadAloudHighlighter {
 
     // In other cases, return what the user selected (i.e. word/phrase).
     return highlight;
+  }
+
+  // The phrase segmentation model is only trained on English text.
+  private isPhraseHighlightingSupportedForLanguage_(): boolean {
+    return this.audioBrowserProxy_.getBaseLanguageForSpeech().toLowerCase() ===
+        'en';
   }
 
   private highlightCurrentWordOrPhrase_(highlightPhrases: boolean): Segment[] {

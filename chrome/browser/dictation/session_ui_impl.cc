@@ -10,8 +10,8 @@
 #include "base/memory/ptr_util.h"
 #include "base/notimplemented.h"
 #include "base/task/single_thread_task_runner.h"
-#include "chrome/browser/dictation/features.h"
 #include "chrome/browser/dictation/session_ui_delegate.h"
+#include "chrome/browser/dictation/stream_provider.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -19,7 +19,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/toasts/api/toast_id.h"
 #include "chrome/browser/ui/toasts/toast_controller.h"
 #include "chrome/browser/ui/views/dictation/dictation_bubble_ui.h"
@@ -82,7 +81,7 @@ void SessionUiImpl::CreateBubbleUi(bool show_reviewing_page_status) {
       anchor_view,
       base::BindRepeating(&SessionUiImpl::OnDictationBubbleCloseClicked,
                           base::Unretained(this)),
-      base::BindRepeating(&SessionUiImpl::OnToggleActiveStreamClicked,
+      base::BindRepeating(&SessionUiImpl::OnEndActiveStreamClicked,
                           base::Unretained(this)),
       show_reviewing_page_status);
   bubble_ui_->SetState(ToUiState(controller_->GetState()));
@@ -100,8 +99,8 @@ void SessionUiImpl::CreateBubbleUi(bool show_reviewing_page_status) {
   params->get_dialog_bounds = base::BindRepeating(
       &DictationBubbleUi::GetBubbleBounds, base::Unretained(bubble_ui_.get()));
 
-  tab_->GetTabFeatures()->tab_dialog_manager()->ShowDialog(
-      bubble_ui_->GetWidget(), std::move(params));
+  tabs::TabDialogManager::From(&*tab_)->ShowDialog(bubble_ui_->GetWidget(),
+                                                   std::move(params));
 }
 
 SessionUiImpl::SessionUiImpl(tabs::TabInterface& tab,
@@ -139,7 +138,7 @@ void SessionUiImpl::OnError(StreamType stream_type, StreamErrorReason reason) {
   if (stream_type == StreamType::kAttached) {
     // If the attached stream failed, we still want to let any finalizing
     // streams finish before ending the session.
-    controller_->FinalizeAndShutdown();
+    controller_->FinalizeAndShutdown(DictationStreamEndTrigger::kShutdown);
   }
 }
 
@@ -174,7 +173,7 @@ void SessionUiImpl::OnStartedStream(content::GlobalDOMNodeId target_id) {
         web_contents->GetTopLevelNativeWindow());
     overlay_view_ = std::make_unique<DictationOverlayView>(
         parent_view,
-        base::BindRepeating(&SessionUiImpl::OnToggleActiveStreamClicked,
+        base::BindRepeating(&SessionUiImpl::OnEndActiveStreamClicked,
                             base::Unretained(this)));
     overlay_view_->SetState(ToUiState(controller_->GetState()));
   }
@@ -198,29 +197,8 @@ void SessionUiImpl::OnDictationBubbleCloseClicked() {
   controller_->UiRequestEndSession();
 }
 
-void SessionUiImpl::OnToggleActiveStreamClicked() {
-  if (kSessionEndsOnStreamEnd.Get()) {
-    // This configuration does not start new streams within a session. We just
-    // end the session.
-    controller_->FinalizeAndShutdown();
-    return;
-  }
-
-  switch (controller_->GetState()) {
-    case SessionState::kStreamInitializing:
-    case SessionState::kTranscribing:
-      controller_->UiRequestEndActiveStream();
-      break;
-    case SessionState::kInactive:
-      controller_->UiRequestStartStream();
-      break;
-    case SessionState::kFinalizing:
-      // The toggle button should be disabled while finalizing.
-      NOTREACHED();
-    case SessionState::kEnded:
-      // The UI is destroyed with the session.
-      NOTREACHED();
-  }
+void SessionUiImpl::OnEndActiveStreamClicked() {
+  controller_->FinalizeAndShutdown(DictationStreamEndTrigger::kDoneButton);
 }
 
 void SessionUiImpl::OnTabWillDetach(tabs::TabInterface* tab,
@@ -232,7 +210,7 @@ void SessionUiImpl::OnTabWillDetach(tabs::TabInterface* tab,
   }
 
   // Close the UI elements (toast and overlay) without ending the session.
-  tab->GetTabFeatures()->tab_dialog_manager()->CloseDialog();
+  tabs::TabDialogManager::From(tab)->CloseDialog();
   bubble_ui_.reset();
   overlay_view_.reset();
 }
@@ -258,9 +236,10 @@ void SessionUiImpl::OnTabWillDeactivate(tabs::TabInterface* tab) {
               const bool was_actively_listening =
                   state == SessionState::kTranscribing ||
                   state == SessionState::kStreamInitializing;
-              tab_weak->GetTabFeatures()->tab_dialog_manager()->CloseDialog();
+              tabs::TabDialogManager::From(tab_weak.get())->CloseDialog();
               self->overlay_view_.reset();
-              self->controller_->FinalizeAndShutdown();
+              self->controller_->FinalizeAndShutdown(
+                  DictationStreamEndTrigger::kShutdown);
               if (was_actively_listening) {
                 BrowserWindowInterface* const window =
                     tab_weak->GetBrowserWindowInterface();

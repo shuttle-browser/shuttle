@@ -105,7 +105,6 @@ class MockMediaRemoter final : public media::mojom::Remoter {
 
   // media::mojom::Remoter implementation.
   MOCK_METHOD0(RequestStart, void());
-  MOCK_METHOD0(StartWithPermissionAlreadyGranted, void());
   MOCK_METHOD1(Stop, void(RemotingStopReason));
   MOCK_METHOD1(SendMessageToSink, void(const std::vector<uint8_t>&));
   void Start() override {
@@ -164,9 +163,7 @@ class CastRemotingConnectorTest : public ::testing::Test {
 
   void CreateConnector(bool remoting_allowed) {
     connector_.reset();  // Call dtor first if there is one created.
-    connector_.reset(new CastRemotingConnector(
-        &pref_service_, kRemotingTabId,
-        std::make_unique<MediaRemotingDialogCoordinator>()));
+    connector_.reset(new CastRemotingConnector(&pref_service_, kRemotingTabId));
     connector_->set_remoting_allowed_for_testing(remoting_allowed);
   }
 
@@ -294,6 +291,9 @@ TEST_F(CastRemotingConnectorTest, NoPermissionToStart) {
   mojo::Remote<media::mojom::Remoter> remoter(CreateRemoter(&source));
   std::unique_ptr<MockMediaRemoter> media_remoter =
       std::make_unique<MockMediaRemoter>(GetConnector());
+  EXPECT_CALL(source, OnSinkAvailable(_)).Times(0);
+  media_remoter->OnSinkAvailable();
+  RunUntilIdle();
 
   EXPECT_CALL(source,
               OnStartFailed(RemotingStartFailReason::REMOTING_NOT_PERMITTED))
@@ -301,8 +301,42 @@ TEST_F(CastRemotingConnectorTest, NoPermissionToStart) {
   remoter->Start();
   RunUntilIdle();
 
+  // Granting permission for Remote Playback in the browser allows starting and
+  // re-notifies existing registered bridges that the sink is available.
+  EXPECT_CALL(source, OnSinkAvailable(_)).Times(1);
+  GetConnector()->GrantPermissionForRemotePlayback();
+
+  // A new client created while sink metadata is present and permission is
+  // already granted immediately receives OnSinkAvailable in OnClientActivated.
+  MockRemotingSource source2;
+  EXPECT_CALL(source2, OnSinkAvailable(_)).Times(1);
+  mojo::Remote<media::mojom::Remoter> remoter2(CreateRemoter(&source2));
+  RunUntilIdle();
+
   EXPECT_CALL(source, OnStarted()).Times(1);
-  remoter->StartWithPermissionAlreadyGranted();
+  EXPECT_CALL(source2, OnSinkGone()).Times(1);
+  remoter->Start();
+  RunUntilIdle();
+}
+
+TEST_F(CastRemotingConnectorTest, RemotePlaybackPermissionClearedOnReset) {
+  CreateConnector(false);
+  pref_service_.registry()->RegisterBooleanPref(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, false);
+  pref_service_.SetBoolean(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, false);
+  MockRemotingSource source;
+  mojo::Remote<media::mojom::Remoter> remoter(CreateRemoter(&source));
+  std::unique_ptr<MockMediaRemoter> media_remoter =
+      std::make_unique<MockMediaRemoter>(GetConnector());
+
+  GetConnector()->GrantPermissionForRemotePlayback();
+  GetConnector()->ResetRemotingPermission();
+
+  EXPECT_CALL(source,
+              OnStartFailed(RemotingStartFailReason::REMOTING_NOT_PERMITTED))
+      .Times(1);
+  remoter->Start();
   RunUntilIdle();
 }
 
@@ -310,11 +344,9 @@ TEST_F(CastRemotingConnectorTest, PrefPersistsAcrossReset) {
   CreateConnector(false);
   pref_service_.registry()->RegisterBooleanPref(
       media_router::prefs::kMediaRouterMediaRemotingEnabled, true);
-  pref_service_.SetBoolean(
-      media_router::prefs::kMediaRouterMediaRemotingEnabled, true);
 
-  // This resets the per-session remoting allowed/disallowed state, but the
-  // pref set above should not be affected.
+  // Even when the preference is at its default value (true), resetting
+  // permission should allow remoting without prompting.
   GetConnector()->ResetRemotingPermission();
 
   MockRemotingSource source;
@@ -326,6 +358,72 @@ TEST_F(CastRemotingConnectorTest, PrefPersistsAcrossReset) {
   remoter->Start();
   RunUntilIdle();
 }
+
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(CastRemotingConnectorTest, EnableRemotingMidSession) {
+  pref_service_.registry()->RegisterBooleanPref(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, false);
+  CreateConnector(false);
+
+  MockRemotingSource source;
+  mojo::Remote<media::mojom::Remoter> remoter(CreateRemoter(&source));
+  std::unique_ptr<MockMediaRemoter> media_remoter =
+      std::make_unique<MockMediaRemoter>(GetConnector());
+
+  // While remoting is disabled by the user preference, OnSinkAvailable() should
+  // not notify the source.
+  EXPECT_CALL(source, OnSinkAvailable(_)).Times(0);
+  media_remoter->OnSinkAvailable();
+  RunUntilIdle();
+
+  // Re-enabling remoting mid-session should notify the source that the sink is
+  // available.
+  EXPECT_CALL(source, OnSinkAvailable(_)).Times(1);
+  pref_service_.SetBoolean(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, true);
+  RunUntilIdle();
+
+  // The source should now be permitted to start remoting.
+  EXPECT_CALL(source, OnStarted()).Times(1);
+  remoter->Start();
+  RunUntilIdle();
+}
+
+TEST_F(CastRemotingConnectorTest, DisableAndReEnableRemotingMidSession) {
+  pref_service_.registry()->RegisterBooleanPref(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, true);
+  CreateConnector(true);
+
+  MockRemotingSource source;
+  mojo::Remote<media::mojom::Remoter> remoter(CreateRemoter(&source));
+  std::unique_ptr<MockMediaRemoter> media_remoter =
+      std::make_unique<MockMediaRemoter>(GetConnector());
+
+  // Initially available.
+  EXPECT_CALL(source, OnSinkAvailable(_)).Times(1);
+  media_remoter->OnSinkAvailable();
+  RunUntilIdle();
+
+  // Disabling the preference mid-session notifies the source that the sink is
+  // gone.
+  EXPECT_CALL(source, OnSinkGone()).Times(AtLeast(1));
+  pref_service_.SetBoolean(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, false);
+  RunUntilIdle();
+
+  // Re-enabling the preference mid-session restores sink availability without
+  // requiring the mirroring service to re-announce the sink.
+  EXPECT_CALL(source, OnSinkAvailable(_)).Times(1);
+  pref_service_.SetBoolean(
+      media_router::prefs::kMediaRouterMediaRemotingEnabled, true);
+  RunUntilIdle();
+
+  // The source can now start remoting.
+  EXPECT_CALL(source, OnStarted()).Times(1);
+  remoter->Start();
+  RunUntilIdle();
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 namespace {
 

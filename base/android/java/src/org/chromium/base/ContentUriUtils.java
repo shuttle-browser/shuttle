@@ -32,6 +32,7 @@ import org.jni_zero.NativeMethods;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
@@ -49,6 +50,28 @@ public abstract class ContentUriUtils {
     private static final String PATH_CREATE_CHILD_DOCUMENT = "create-child-document";
     private static final String PATH_MIME_TYPE = "mime-type";
     private static final String PATH_DISPLAY_NAME = "display-name";
+
+    static class OpenResult {
+        public final @FileError int status;
+        public final @Nullable ParcelFileDescriptor parcelFileDescriptor;
+
+        OpenResult(@FileError int status, @Nullable ParcelFileDescriptor parcelFileDescriptor) {
+            this.status = status;
+            this.parcelFileDescriptor = parcelFileDescriptor;
+        }
+
+        @CalledByNative
+        @JniType("base::File::Error")
+        @FileError
+        int getStatus() {
+            return this.status;
+        }
+
+        @CalledByNative
+        @Nullable ParcelFileDescriptor getParcelFileDescriptor() {
+            return this.parcelFileDescriptor;
+        }
+    }
 
     // Prevent instantiation.
     private ContentUriUtils() {}
@@ -68,6 +91,31 @@ public abstract class ContentUriUtils {
             @JniType("std::string") String uriString, @JniType("std::string") String mode) {
         AssetFileDescriptor afd = getAssetFileDescriptor(uriString, mode);
         return afd != null ? afd.getParcelFileDescriptor() : null;
+    }
+
+    /**
+     * Same as {@link #openContentUri} but reports why the open failed. Modes other than "r" on
+     * MIME-converted virtual documents fail with FILE_ERROR_INVALID_OPERATION rather than silently
+     * returning a read-only descriptor.
+     */
+    @CalledByNative
+    static OpenResult openContentUriWithStatus(
+            @JniType("std::string") String uriString, @JniType("std::string") String mode) {
+        try {
+            AssetFileDescriptor afd = openAssetFileDescriptor(Uri.parse(uriString), mode);
+            if (afd == null) {
+                return new OpenResult(FileError.FILE_ERROR_FAILED, null);
+            }
+            return new OpenResult(FileError.FILE_OK, afd.getParcelFileDescriptor());
+        } catch (SecurityException e) {
+            return new OpenResult(FileError.FILE_ERROR_ACCESS_DENIED, null);
+        } catch (UnsupportedOperationException | IllegalArgumentException e) {
+            return new OpenResult(FileError.FILE_ERROR_INVALID_OPERATION, null);
+        } catch (FileNotFoundException e) {
+            return new OpenResult(FileError.FILE_ERROR_NOT_FOUND, null);
+        } catch (Exception e) {
+            return new OpenResult(FileError.FILE_ERROR_FAILED, null);
+        }
     }
 
     @CalledByNative
@@ -283,29 +331,39 @@ public abstract class ContentUriUtils {
             Log.e(TAG, "Cannot open files with mode 'w'");
             return null;
         }
-
-        ContentResolver resolver = ContextUtils.getApplicationContext().getContentResolver();
-        Uri uri = Uri.parse(uriString);
-
         try {
-            AssetFileDescriptor afd = null;
-            if (isVirtualDocument(uri)) {
-                String[] streamTypes = resolver.getStreamTypes(uri, "*/*");
-                if (streamTypes != null && streamTypes.length > 0) {
-                    afd = resolver.openTypedAssetFileDescriptor(uri, streamTypes[0], null);
-                }
-            } else {
-                afd = resolver.openAssetFileDescriptor(uri, mode);
-            }
-            if (afd != null && afd.getStartOffset() != 0) {
-                StreamUtil.closeQuietly(afd);
-                throw new SecurityException("Cannot open files with non-zero offset type.");
-            }
-            return afd;
+            return openAssetFileDescriptor(Uri.parse(uriString), mode);
         } catch (Exception e) {
             Log.w(TAG, "Cannot open content uri: %s", uriString, e);
         }
         return null;
+    }
+
+    /**
+     * Opens {@code uri} and throws on failure so callers can tell failure causes apart. Returns
+     * null only when the provider returns no descriptor.
+     */
+    private static @Nullable AssetFileDescriptor openAssetFileDescriptor(Uri uri, String mode)
+            throws FileNotFoundException {
+        ContentResolver resolver = ContextUtils.getApplicationContext().getContentResolver();
+        AssetFileDescriptor afd = null;
+        if (isVirtualDocument(uri)) {
+            // openTypedAssetFileDescriptor() ignores the mode and always returns a read handle.
+            if (!"r".equals(mode)) {
+                throw new UnsupportedOperationException("Virtual documents are read-only");
+            }
+            String[] streamTypes = resolver.getStreamTypes(uri, "*/*");
+            if (streamTypes != null && streamTypes.length > 0) {
+                afd = resolver.openTypedAssetFileDescriptor(uri, streamTypes[0], null);
+            }
+        } else {
+            afd = resolver.openAssetFileDescriptor(uri, mode);
+        }
+        if (afd != null && afd.getStartOffset() != 0) {
+            StreamUtil.closeQuietly(afd);
+            throw new SecurityException("Cannot open files with non-zero offset type.");
+        }
+        return afd;
     }
 
     /**
@@ -314,7 +372,7 @@ public abstract class ContentUriUtils {
      * @param uri the content URI to be resolved.
      * @param context {@link Context} in interest.
      * @param columnField the column field to query.
-     * @return the display name of the @code uri if present in the database or an empty string
+     * @return the display name of the {@code uri} if present in the database or an empty string
      *     otherwise.
      */
     @SuppressWarnings("NullAway") // Using broad try/catch to catch NullPointerException
@@ -433,9 +491,7 @@ public abstract class ContentUriUtils {
                 && (cursor.getLong(index) & DocumentsContract.Document.FLAG_VIRTUAL_DOCUMENT) != 0;
     }
 
-    /**
-     * @return whether a Uri has content scheme.
-     */
+    /** Returns whether a Uri has content scheme. */
     public static boolean isContentUri(@Nullable String uri) {
         if (uri == null) return false;
         Uri parsedUri = Uri.parse(uri);
@@ -445,6 +501,7 @@ public abstract class ContentUriUtils {
     /**
      * Deletes a content uri from the system.
      *
+     * @param uriString The content URI to delete.
      * @return True if the uri was deleted.
      */
     @CalledByNative
@@ -715,32 +772,6 @@ public abstract class ContentUriUtils {
         }
     }
 
-    public static boolean isUriFromThisApp(Uri uri) {
-        return isUriFromThisApp(uri, ContextUtils.getApplicationContext());
-    }
-
-    @CalledByNative
-    public static boolean isUriFromThisApp(@JniType("std::string") String uriString) {
-        if (TextUtils.isEmpty(uriString)) return false;
-        try {
-            return isUriFromThisApp(Uri.parse(uriString));
-        } catch (Exception e) {
-            return false;
-        }
-    }
-
-    /**
-     * Returns whether the content URI is served by a ContentProvider with the same Android UID as
-     * the current process.
-     *
-     * @param uri The URI to check.
-     * @param context The context used to resolve the provider info.
-     * @return Whether the URI's provider has the same Android UID as the current process.
-     */
-    public static boolean isUriFromThisApp(Uri uri, Context context) {
-        return isProviderFromThisApp(resolveProvider(uri, context));
-    }
-
     /**
      * Resolves the owner of the ContentProvider that serves the content URI.
      *
@@ -748,44 +779,54 @@ public abstract class ContentUriUtils {
      * @return The {@link ContentUriOwner} of the URI's provider.
      */
     @CalledByNative
-    public static @ContentUriOwner int resolveContentUriOwner(
+    private static @ContentUriOwner int resolveContentUriOwner(
             @JniType("std::string") String uriString) {
         if (TextUtils.isEmpty(uriString)) return ContentUriOwner.UNRESOLVED;
         try {
-            ProviderInfo info =
-                    resolveProvider(Uri.parse(uriString), ContextUtils.getApplicationContext());
+            return resolveContentUriOwner(Uri.parse(uriString));
+        } catch (Exception e) {
+            return ContentUriOwner.UNRESOLVED;
+        }
+    }
+
+    /**
+     * Resolves the owner of the ContentProvider that serves the content URI.
+     *
+     * @param uri The content URI to resolve.
+     * @return The {@link ContentUriOwner} of the URI's provider.
+     */
+    public static @ContentUriOwner int resolveContentUriOwner(Uri uri) {
+        try {
+            String authority = uri.getAuthority();
+            String reparsedAuthority = Uri.parse(uri.toString()).getAuthority();
+            if (TextUtils.isEmpty(authority) && TextUtils.isEmpty(reparsedAuthority)) {
+                return ContentUriOwner.UNRESOLVED;
+            }
+            // Callers may check the Uri object but then use only its string form. On Android Q, a
+            // Uri unparcelled from another app can have independent encoded and decoded
+            // authorities, and an OpaqueUri reports a null authority even when its string form
+            // includes one. Treat any mismatch as an attack and return the most restrictive owner.
+            if (TextUtils.isEmpty(authority) || !authority.equals(reparsedAuthority)) {
+                return ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP;
+            }
+
+            // Preserve existing behavior for user-qualified authorities: discard the user prefix
+            // and resolve the bare authority for the context's user. This does not identify the
+            // provider in the user named by the URI.
+            authority = authority.substring(authority.lastIndexOf('@') + 1);
+
+            PackageManager pm = ContextUtils.getApplicationContext().getPackageManager();
+            ProviderInfo info = pm.resolveContentProvider(authority, 0);
             if (info == null) return ContentUriOwner.UNRESOLVED;
-            if (!isProviderFromThisApp(info)) return ContentUriOwner.OTHER_APP;
+            if (info.applicationInfo == null || info.applicationInfo.uid != Process.myUid()) {
+                return ContentUriOwner.OTHER_APP;
+            }
             return info.exported
                     ? ContentUriOwner.EXPORTED_FROM_CURRENT_APP
                     : ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP;
         } catch (Exception e) {
             return ContentUriOwner.UNRESOLVED;
         }
-    }
-
-    private static @Nullable ProviderInfo resolveProvider(Uri uri, Context context) {
-        String authority = uri.getAuthority();
-        // OpaqueUri returns a null authority even when its string form includes one, so the URI
-        // needs to be reparsed to be sure that the authority does not exist.
-        if (TextUtils.isEmpty(authority)) {
-            authority = Uri.parse(uri.toString()).getAuthority();
-            if (TextUtils.isEmpty(authority)) return null;
-        }
-
-        // Preserve existing behavior for user-qualified authorities: discard the user prefix and
-        // resolve the bare authority for the context's user. This does not identify the provider in
-        // the user named by the URI.
-        authority = authority.substring(authority.lastIndexOf('@') + 1);
-
-        PackageManager pm = context.getPackageManager();
-        return pm.resolveContentProvider(authority, 0);
-    }
-
-    private static boolean isProviderFromThisApp(@Nullable ProviderInfo info) {
-        return info != null
-                && info.applicationInfo != null
-                && info.applicationInfo.uid == Process.myUid();
     }
 
     @NativeMethods

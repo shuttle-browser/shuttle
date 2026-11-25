@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-load("@org_tensorflow//tensorflow/lite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
+load("@litert//tflite/core/shims:cc_library_with_tflite.bzl", "cc_library_with_tflite")
 load("@rules_cc//cc:cc_library.bzl", "cc_library")
 load("@rules_cc//cc:cc_test.bzl", "cc_test")
 
@@ -58,10 +58,11 @@ cc_library(
         "//mediapipe/util:label_map_util",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
     ],
     alwayslink = 1,
 )
@@ -94,9 +95,10 @@ cc_library(
         "//mediapipe/tasks/cc/core:model_resources",
         "//mediapipe/tasks/cc/metadata:metadata_extractor",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings:str_format",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
     ],
     alwayslink = 1,
 )
@@ -129,8 +131,9 @@ cc_library_with_tflite(
         "//mediapipe/tasks/cc/core/proto:acceleration_cc_proto",
         "//mediapipe/tasks/cc/core/proto:base_options_cc_proto",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
     ],
     alwayslink = 1,
 )
@@ -146,6 +149,8 @@ cc_library(
         "//mediapipe/calculators/tensor:bert_preprocessor_calculator_cc_proto",
         "//mediapipe/calculators/tensor:regex_preprocessor_calculator",
         "//mediapipe/calculators/tensor:regex_preprocessor_calculator_cc_proto",
+        "//mediapipe/calculators/tensor:sentencepiece_preprocessor_calculator",
+        "//mediapipe/calculators/tensor:sentencepiece_preprocessor_calculator_cc_proto",
         "//mediapipe/calculators/tensor:text_to_tensor_calculator",
         "//mediapipe/calculators/tensor:universal_sentence_encoder_preprocessor_calculator",
         "//mediapipe/framework:subgraph",
@@ -159,6 +164,7 @@ cc_library(
         "//mediapipe/tasks/cc/metadata:metadata_extractor",
         "//mediapipe/tasks/cc/text/utils:text_model_utils",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
     ],
@@ -205,11 +211,12 @@ cc_library(
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/log:absl_log",
         "@com_google_absl//absl/status",
+        "@com_google_absl//absl/status:status_macros",
         "@com_google_absl//absl/status:statusor",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/strings:str_format",
         "@flatbuffers//:runtime_cc",
-        "@org_tensorflow//tensorflow/lite/schema:schema_fbs",
+        "@litert//tflite/schema:schema_fbs",
     ],
     alwayslink = 1,
 )

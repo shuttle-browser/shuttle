@@ -2,21 +2,19 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {TestSearchboxBrowserProxy} from 'chrome://webui-test/cr_components/searchbox/test_searchbox_browser_proxy.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
-import {OmniboxTextColor, SearchboxBrowserProxy, SecurityChipRole} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {LocationBarElement, LocationBarState} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import type {LocationBarElement} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+import {OmniboxTextColor, SecurityChipRole} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import type {LocationBarState} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 suite('LocationBar', function() {
   let locationBar: LocationBarElement;
   let initialState: LocationBarState;
 
   setup(() => {
-    SearchboxBrowserProxy.setInstance(new TestSearchboxBrowserProxy());
-
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
     // Make first element something else focusable so we don't end up with
     // focus.
@@ -347,5 +345,33 @@ suite('LocationBar', function() {
     };
     await microtasksFinished();
     assertFalse(permissionDashboard.hasAttribute('visible'));
+  });
+
+  test('WaitForStateDefersContents', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    locationBar = document.createElement('location-bar');
+    locationBar.waitForState = true;
+    locationBar.locationBarState = {
+      ...locationBar.locationBarState,
+      locationBarFlags: {
+        ...locationBar.locationBarState.locationBarFlags,
+        popupOpen: true,
+      },
+    };
+    document.body.appendChild(locationBar);
+    await microtasksFinished();
+    assertFalse(!!locationBar.shadowRoot.querySelector('readonly-omnibox'));
+    // The host classes also wait for the contents.
+    assertFalse(locationBar.classList.contains('popup-open'));
+
+    locationBar.waitForState = false;
+    await microtasksFinished();
+    assertTrue(!!locationBar.shadowRoot.querySelector('readonly-omnibox'));
+    assertTrue(locationBar.classList.contains('popup-open'));
+
+    // Once rendered, the contents stay.
+    locationBar.waitForState = true;
+    await microtasksFinished();
+    assertTrue(!!locationBar.shadowRoot.querySelector('readonly-omnibox'));
   });
 });

@@ -54,7 +54,6 @@
 #include "components/bookmarks/browser/bookmark_utils.h"
 #include "components/critical_actions/core/browser/critical_action_service.h"
 #include "components/critical_actions/core/browser/critical_action_types.h"
-#include "components/critical_actions/core/browser/features.h"
 #include "components/favicon/core/fallback_url_util.h"
 #include "components/favicon/core/large_icon_service.h"
 #include "components/favicon_base/favicon_url_parser.h"
@@ -63,7 +62,6 @@
 #include "components/history_clusters/core/config.h"
 #include "components/history_clusters/core/features.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/keyed_service/core/service_access_type.h"
 #include "components/prefs/pref_service.h"
 #include "components/query_parser/snippet.h"
@@ -81,7 +79,6 @@
 #include "components/sync_device_info/device_info_tracker.h"
 #include "content/public/browser/url_data_source.h"
 #include "content/public/browser/web_ui.h"
-#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/l10n/time_format.h"
 #include "ui/webui/resources/cr_components/history/history.mojom.h"
@@ -103,7 +100,7 @@
 #include "ui/android/window_android.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
-#include "chrome/browser/quick_delete/jni_headers/QuickDeleteControllerProvider_jni.h"
+#include "chrome/browser/settings/jni_headers/SettingsNavigationFactory_jni.h"
 #endif
 
 using bookmarks::BookmarkModel;
@@ -384,69 +381,21 @@ history::mojom::HistoryEntryPtr HistoryEntryToMojom(
     result_mojom->debug = std::move(debug_mojom);
   }
 
-  // Initialize critical_actions array.
-  result_mojom->critical_actions =
-      std::vector<history::mojom::CriticalActionPtr>();
+  result_mojom->critical_actions.reserve(entry.critical_actions.size());
+  for (const critical_actions::CriticalActionEntry& action :
+       entry.critical_actions) {
+    auto action_mojom = history::mojom::CriticalAction::New();
+    action_mojom->id = action.critical_action_id;
+    action_mojom->linkout_url = critical_actions::GetCriticalActionLinkoutUrl(
+        action.action_type, entry.url);
+    action_mojom->label = action.GetLabel();
+    action_mojom->tooltip = action.GetTooltip();
+    action_mojom->action_type =
+        static_cast<history::mojom::CriticalActionType>(action.action_type);
+    result_mojom->critical_actions.push_back(std::move(action_mojom));
+  }
 
   return result_mojom;
-}
-
-history::mojom::CriticalActionPtr CriticalActionToMojom(
-    const critical_actions::CriticalActionEntry& action,
-    const GURL& page_url) {
-  auto action_mojom = history::mojom::CriticalAction::New();
-  action_mojom->id = action.critical_action_id;
-  action_mojom->linkout_url =
-      critical_actions::GetCriticalActionLinkoutUrl(action.action_type,
-                                                    page_url);
-  action_mojom->label = action.GetLabel();
-  action_mojom->tooltip = action.GetTooltip();
-  action_mojom->action_type =
-      static_cast<history::mojom::CriticalActionType>(action.action_type);
-  return action_mojom;
-}
-
-struct ActionGroupKey {
-  std::string_view conversation_id;
-  std::string_view actor_task_id;
-  int64_t visit_id;
-  critical_actions::ActionType action_type;
-  auto operator<=>(const ActionGroupKey&) const = default;
-};
-
-std::vector<critical_actions::CriticalActionEntry> DeduplicateCriticalActions(
-    const std::vector<critical_actions::CriticalActionEntry>& raw_actions,
-    base::TimeDelta time_tolerance) {
-  if (raw_actions.empty()) {
-    return {};
-  }
-
-  base::flat_map<ActionGroupKey, base::Time> group_latest_times;
-  std::vector<critical_actions::CriticalActionEntry> deduped_results;
-  deduped_results.reserve(raw_actions.size());
-
-  for (const auto& action : raw_actions) {
-    ActionGroupKey key{.conversation_id = action.conversation_id,
-                       .actor_task_id = action.actor_task_id,
-                       .visit_id = action.visit_id,
-                       .action_type = action.action_type};
-
-    auto it = group_latest_times.find(key);
-
-    // The database returns actions sorted by timestamp DESC (latest first).
-    // A subsequent action falls into the tolerance window of the previous
-    // action if its timestamp is greater than or equal to the
-    // (last_accepted_timestamp - time_tolerance).
-    if (it != group_latest_times.end() &&
-        action.timestamp >= (it->second - time_tolerance)) {
-      continue;  // It's a duplicate, skip it.
-    }
-
-    group_latest_times[key] = action.timestamp;
-    deduped_results.push_back(action);
-  }
-
-  return deduped_results;
 }
 
 }  // namespace
@@ -473,10 +422,16 @@ BrowsingHistoryHandler::BrowsingHistoryHandler(
   browsing_history_service_ = std::make_unique<BrowsingHistoryService>(
       this, local_history, web_history, sync_service,
       device_info_service ? device_info_service->GetDeviceInfoTracker()
-                          : nullptr);
+                          : nullptr,
+      critical_actions::CriticalActionFactory::GetForProfile(profile_));
 }
 
-BrowsingHistoryHandler::~BrowsingHistoryHandler() = default;
+BrowsingHistoryHandler::~BrowsingHistoryHandler() {
+  // Close the receiver before `query_history_callback_` and
+  // `remove_visits_callbacks_` are destroyed. Destroying a pending Mojo
+  // responder while its receiver is still bound DCHECKs.
+  page_handler_.reset();
+}
 
 #if !BUILDFLAG(IS_ANDROID)
 void BrowsingHistoryHandler::SetSidePanelUIEmbedder(
@@ -545,7 +500,8 @@ void BrowsingHistoryHandler::ShowSidePanelUI() {
 void BrowsingHistoryHandler::QueryHistory(
     const std::string& query,
     int max_count,
-    std::optional<double> begin_timestamp,
+    std::optional<base::Time> begin_time,
+    std::optional<base::Time> end_time,
     bool include_user_visits,
     bool include_actor_visits,
     const std::vector<std::string>& client_ids,
@@ -562,14 +518,15 @@ void BrowsingHistoryHandler::QueryHistory(
 
   query_history_callback_ = std::move(callback);
 
-  SendHistoryQuery(max_count, query, begin_timestamp, include_user_visits,
+  SendHistoryQuery(max_count, query, begin_time, end_time, include_user_visits,
                    include_actor_visits, client_ids);
 }
 
 void BrowsingHistoryHandler::SendHistoryQuery(
     int max_count,
     const std::string& query,
-    std::optional<double> begin_timestamp,
+    std::optional<base::Time> begin_time,
+    std::optional<base::Time> end_time,
     bool include_user_visits,
     bool include_actor_visits,
     const std::vector<std::string>& client_ids) {
@@ -577,7 +534,10 @@ void BrowsingHistoryHandler::SendHistoryQuery(
   history::QueryOptions options;
   options.max_count = max_count;
   options.policy_for_404_visits = history::VisitQuery404sPolicy::kExclude404s;
-  options.duplicate_policy = history::QueryOptions::REMOVE_DUPLICATES_PER_DAY;
+  // `BrowsingHistoryService` has more elaborate deduplication logic. Using the
+  // DB-level deduplication would also drop some data, like the visit IDs of
+  // the merged visits.
+  options.duplicate_policy = history::QueryOptions::KEEP_ALL_DUPLICATES;
   options.include_actor_visits = include_actor_visits;
   options.include_user_visits = include_user_visits;
   std::string text_query;
@@ -610,9 +570,11 @@ void BrowsingHistoryHandler::SendHistoryQuery(
 
   query_hostname_suffix_ = options.hostname_suffix;
 
-  if (begin_timestamp.has_value()) {
-    options.begin_time =
-        base::Time::FromMillisecondsSinceUnixEpoch(begin_timestamp.value());
+  if (begin_time.has_value()) {
+    options.begin_time = begin_time.value();
+  }
+  if (end_time.has_value()) {
+    options.end_time = end_time.value();
   }
 
   options.client_ids = client_ids;
@@ -669,7 +631,7 @@ void BrowsingHistoryHandler::OpenClearBrowsingDataDialog() {
   ui::WindowAndroid* window =
       web_contents_ ? web_contents_->GetTopLevelNativeWindow() : nullptr;
   if (window) {
-    Java_QuickDeleteControllerProvider_showDialog(
+    Java_SettingsNavigationFactory_showClearBrowsingData(
         base::android::AttachCurrentThread(), window->GetJavaObject());
   } else {
     DLOG(WARNING)
@@ -882,53 +844,8 @@ void BrowsingHistoryHandler::OnQueryComplete(
   query_history_continuation_ = std::move(continuation_closure);
   CHECK(profile_);
 
-  if (base::FeatureList::IsEnabled(
-          critical_actions::features::kCriticalActionHistory)) {
-    std::vector<int64_t> visit_ids;
-    for (const auto& entry : results) {
-      visit_ids.insert(visit_ids.end(), entry.all_visit_ids.begin(),
-                       entry.all_visit_ids.end());
-    }
-
-    if (!visit_ids.empty()) {
-      critical_actions::CriticalActionService* critical_action_service =
-          critical_actions::CriticalActionFactory::GetForProfile(profile_);
-      if (critical_action_service) {
-        critical_actions::CriticalActionQueryOptions options;
-        options.visit_ids = std::move(visit_ids);
-        critical_action_service->GetCriticalActions(
-            options,
-            base::BindOnce(&BrowsingHistoryHandler::CriticalActionsFetched,
-                           weak_factory_.GetWeakPtr(), results,
-                           query_results_info, base::ElapsedTimer()));
-        return;
-      }
-    }
-  }
-
-  HandleQueryResults(results, query_results_info, {});
-}
-
-void BrowsingHistoryHandler::CriticalActionsFetched(
-    const std::vector<BrowsingHistoryService::HistoryEntry>& results,
-    const BrowsingHistoryService::QueryResultsInfo& query_results_info,
-    base::ElapsedTimer critical_actions_timer,
-    std::vector<critical_actions::CriticalActionEntry> critical_actions) {
-  base::UmaHistogramTimes("HistoryPage.CriticalActionsQueryTime",
-                          critical_actions_timer.Elapsed());
-  HandleQueryResults(results, query_results_info, std::move(critical_actions));
-}
-
-void BrowsingHistoryHandler::HandleQueryResults(
-    const std::vector<BrowsingHistoryService::HistoryEntry>& results,
-    const BrowsingHistoryService::QueryResultsInfo& query_results_info,
-    std::vector<critical_actions::CriticalActionEntry> critical_actions) {
   if (query_timer_.has_value()) {
-    const bool queried_critical_actions =
-        !results.empty() &&
-        base::FeatureList::IsEnabled(
-            critical_actions::features::kCriticalActionHistory);
-    if (queried_critical_actions) {
+    if (query_results_info.queried_critical_actions) {
       base::UmaHistogramTimes(
           "HistoryPage.QueryHistoryTotalTime.WithCriticalActions",
           query_timer_->Elapsed());
@@ -949,52 +866,11 @@ void BrowsingHistoryHandler::HandleQueryResults(
 
   CHECK(tracker, base::NotFatalUntil::M162);
 
-  // Deduplicate actions belonging to the same task and visit.
-  // 5 seconds is chosen as a safe heuristic upper bound to accommodate
-  // potential latency delays between the Actor and Chrome side logs
-  // of the same event, while being small enough to avoid merging separate
-  // events.
-  // `processed_actions` owns the entries; `actions_by_visit_id` below borrows
-  // them so that conversion can happen in the per-entry loop, where the
-  // visit's URL is available to resolve the linkout destination.
-  std::vector<critical_actions::CriticalActionEntry> processed_actions =
-      DeduplicateCriticalActions(critical_actions, base::Seconds(5));
-
-  absl::flat_hash_map<history::VisitID,
-                      std::vector<const critical_actions::CriticalActionEntry*>>
-      actions_by_visit_id;
-
-  for (const auto& action : processed_actions) {
-    if (action.action_type != critical_actions::ActionType::kUnknown) {
-      actions_by_visit_id[action.visit_id].push_back(&action);
-    }
-  }
-
   std::vector<history::mojom::HistoryEntryPtr> results_mojom;
+  results_mojom.reserve(results.size());
   for (const BrowsingHistoryService::HistoryEntry& entry : results) {
-    history::mojom::HistoryEntryPtr entry_mojom =
-        HistoryEntryToMojom(entry, bookmark_model, *profile_, tracker, clock_);
-
-    if (!actions_by_visit_id.empty()) {
-      CHECK(base::FeatureList::IsEnabled(
-          critical_actions::features::kCriticalActionHistory));
-      for (history::VisitID visit_id : entry.all_visit_ids) {
-        auto it = actions_by_visit_id.find(visit_id);
-        if (it != actions_by_visit_id.end()) {
-          for (const critical_actions::CriticalActionEntry* action :
-               it->second) {
-            entry_mojom->critical_actions.push_back(
-                CriticalActionToMojom(*action, entry.url));
-          }
-        }
-      }
-      if (!entry_mojom->critical_actions.empty()) {
-        base::UmaHistogramCounts100("HistoryPage.CriticalActionsPerVisitCount",
-                                    entry_mojom->critical_actions.size());
-      }
-    }
-
-    results_mojom.push_back(std::move(entry_mojom));
+    results_mojom.push_back(
+        HistoryEntryToMojom(entry, bookmark_model, *profile_, tracker, clock_));
   }
 
   auto results_info = history::mojom::HistoryQuery::New();
@@ -1136,11 +1012,10 @@ void BrowsingHistoryHandler::GetTimePeriodOptions(
         static_cast<history::mojom::TimePeriodOptionId>(option.id);
     option_mojom->label = base::UTF16ToUTF8(option.label);
     if (!option.begin_time.is_null()) {
-      option_mojom->begin_time =
-          option.begin_time.InMillisecondsFSinceUnixEpoch();
+      option_mojom->begin_time = option.begin_time;
     }
     if (!option.end_time.is_null()) {
-      option_mojom->end_time = option.end_time.InMillisecondsFSinceUnixEpoch();
+      option_mojom->end_time = option.end_time;
     }
     options_mojom.push_back(std::move(option_mojom));
   }

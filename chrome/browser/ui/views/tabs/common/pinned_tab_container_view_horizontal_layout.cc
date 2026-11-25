@@ -9,10 +9,14 @@
 #include "chrome/browser/ui/tabs/tab_style.h"
 #include "chrome/browser/ui/views/tabs/common/pinned_tab_container_view.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
+#include "chrome/browser/ui/views/tabs/common/tab_drag_handler.h"
+#include "chrome/browser/ui/views/tabs/common/tab_strip_view.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
+#include "ui/views/controls/scroll_view.h"
 #include "ui/views/layout/proposed_layout.h"
 #include "ui/views/view.h"
+#include "ui/views/view_utils.h"
 
 PinnedTabContainerViewHorizontalLayout::
     PinnedTabContainerViewHorizontalLayout() = default;
@@ -59,7 +63,12 @@ PinnedTabContainerViewHorizontalLayout::CalculateProposedLayout(
           : TabCollectionNode::ChildViews();
 
   const int tab_overlap = TabStyle::Get()->GetTabOverlap();
-  int x = 0;
+  const gfx::Range detached_range = GetDetachedDragRange();
+  int x = detached_range.start();
+  if (size_bounds.width().is_bounded() && !detached_range.is_empty()) {
+    x = std::min(x, std::max(0, size_bounds.width().value() -
+                                    static_cast<int>(detached_range.length())));
+  }
   const int container_height = TabStyle::Get()->GetStandardHeight();
   size_t visible_count = 0;
 
@@ -90,7 +99,29 @@ PinnedTabContainerViewHorizontalLayout::CalculateProposedLayout(
     layouts.child_layouts.emplace_back(child, true, bounds);
   }
 
-  const int host_width = visible_count > 0 ? (x + tab_overlap) : 0;
+  int host_width = visible_count > 0 ? (x + tab_overlap) : 0;
+  if (size_bounds.width().is_bounded() &&
+      host_width > size_bounds.width().value()) {
+    const views::ScrollView* scroll_view =
+        PinnedTabContainerView().GetScrollViewForContainer();
+    const auto* tab_strip_view =
+        scroll_view ? views::AsViewClass<TabStripView>(scroll_view->parent())
+                    : nullptr;
+    if (tab_strip_view && tab_strip_view->unpinned_tabs_scroll_view() &&
+        tab_strip_view->unpinned_tabs_scroll_view()
+                ->GetPreferredSize({})
+                .width() > 0) {
+      host_width += tab_overlap / 2;
+    }
+  }
   layouts.host_size = gfx::Size(host_width, container_height);
   return layouts;
+}
+
+gfx::Range PinnedTabContainerViewHorizontalLayout::GetDetachedDragRange()
+    const {
+  if (!PinnedTabContainerView().collection_node_) {
+    return gfx::Range();
+  }
+  return PinnedTabContainerView().GetDragHandler().detached_drag_range();
 }

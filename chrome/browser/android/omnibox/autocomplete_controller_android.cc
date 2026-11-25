@@ -50,7 +50,6 @@
 #include "components/omnibox/browser/autocomplete_controller_config.h"
 #include "components/omnibox/browser/autocomplete_controller_emitter.h"
 #include "components/omnibox/browser/autocomplete_enums.h"
-#include "components/omnibox/browser/autocomplete_grouper_sections.h"
 #include "components/omnibox/browser/autocomplete_input.h"
 #include "components/omnibox/browser/autocomplete_match.h"
 #include "components/omnibox/browser/autocomplete_match_type.h"
@@ -58,7 +57,6 @@
 #include "components/omnibox/browser/autocomplete_provider_client.h"
 #include "components/omnibox/browser/autocomplete_result.h"
 #include "components/omnibox/browser/geolocation_header_service.h"
-#include "components/omnibox/browser/history_fuzzy_provider.h"
 #include "components/omnibox/browser/keyword_provider.h"
 #include "components/omnibox/browser/lens_suggest_inputs_utils.h"
 #include "components/omnibox/browser/omnibox_event_global_tracker.h"
@@ -84,8 +82,8 @@
 #include "net/cookies/cookie_util.h"
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "third_party/metrics_proto/omnibox_focus_type.pb.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/android/gurl_android.h"
 #include "url/gurl.h"
 
@@ -188,11 +186,11 @@ void AutocompleteControllerAndroid::Start(
   input_.set_in_keyword_mode(in_keyword_mode);
   input_.set_allow_exact_keyword_match(allow_exact_keyword_match);
   input_.set_omit_asynchronous_matches(!want_asynchronous_matches);
+  input_.set_num_visible_matches(num_visible_matches_);
 
   auto* bridge = composebox_query_controller_bridge_.get();
   if (bridge) {
-    AndroidComposeboxNonZPSSection::num_attachments_ =
-        bridge->GetAttachmentCount();
+    input_.set_num_contextual_attachments(bridge->GetAttachmentCount());
 
     std::unique_ptr<lens::proto::LensOverlaySuggestInputs> inputs =
         bridge->CreateLensOverlaySuggestInputs();
@@ -300,13 +298,12 @@ void AutocompleteControllerAndroid::OnOmniboxFocused(
   input_.set_current_url(current_url);
   input_.set_current_title(current_title);
   input_.set_focus_type(OFT::INTERACTION_FOCUS);
+  input_.set_num_visible_matches(num_visible_matches_);
 
   // Apply any AI Modes and Tools.
   auto* bridge = composebox_query_controller_bridge_.get();
   if (bridge) {
-    AndroidComposeboxZpsSection::num_attachments_ =
-        bridge->GetAttachmentCount();
-    AndroidComposeboxNonZPSSection::tool_mode_ = tool_mode;
+    input_.set_num_contextual_attachments(bridge->GetAttachmentCount());
 
     std::unique_ptr<lens::proto::LensOverlaySuggestInputs> inputs =
         bridge->CreateLensOverlaySuggestInputs();
@@ -389,8 +386,6 @@ void AutocompleteControllerAndroid::OnSuggestionSelected(
     TRACE_EVENT("omnibox", "OnSuggestionSelected.RecordClipboardMetrics");
     RecordClipboardMetrics(match.type);
   }
-  HistoryFuzzyProvider::RecordOpenMatchMetrics(
-      autocomplete_controller_->result(), match);
 
   // The following histogram should be recorded for both TYPED and pasted
   // URLs, but should still exclude reloads.
@@ -411,8 +406,9 @@ void AutocompleteControllerAndroid::OnSuggestionSelected(
       false,                /* don't know */
       input_.type(), false, /* not keyword mode */
       OmniboxEventProto::INVALID, true, OmniboxPopupSelection(suggestion_line),
-      static_cast<WindowOpenDisposition>(j_window_open_disposition), false,
-      sessions::SessionTabHelper::IdForTab(web_contents), page_classification,
+      static_cast<ui::mojom::WindowOpenDisposition>(j_window_open_disposition),
+      false, sessions::SessionTabHelper::IdForTab(web_contents),
+      page_classification,
       base::Milliseconds(elapsed_time_since_first_modified), completed_length,
       now - autocomplete_controller_->last_time_default_match_changed(),
       autocomplete_controller_->result(), match.destination_url,
@@ -566,7 +562,7 @@ void AutocompleteControllerAndroid::OnSuggestionDropdownHeightChanged(
     return;
   }
 
-  AndroidNonZPSSection::set_num_visible_matches(num_visible_matches);
+  num_visible_matches_ = num_visible_matches;
 }
 
 void AutocompleteControllerAndroid::CreateNavigationObserver(

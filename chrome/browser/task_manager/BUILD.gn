@@ -53,6 +53,7 @@ source_set("task_manager") {
     "sampling/task_group.h",
     "sampling/task_group_sampler.h",
     "sampling/task_manager_impl.h",
+    "sampling/vm_memory_sampler.h",
     "task_manager_interface.h",
     "task_manager_metrics_recorder.h",
     "task_manager_observer.h",
@@ -107,6 +108,7 @@ source_set("task_manager") {
       "providers/web_contents/guest_tag.h",
       "providers/web_contents/guest_task.h",
       "providers/web_contents/guest_task_mparch.h",
+      "task_manager_prefs.h",
     ]
     public_deps += [
       "//extensions/browser",
@@ -242,6 +244,7 @@ source_set("impl") {
     sources += [
       "providers/web_contents/background_contents_tag.cc",
       "providers/web_contents/background_contents_task.cc",
+      "task_manager_prefs.cc",
     ]
   }
   if (enable_guest_view) {
@@ -394,7 +397,6 @@ source_set("browser_tests") {
       "//chrome/browser/web_applications/extensions",
       "//chrome/common",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/embedder_support",
       "//components/favicon/content",
       "//components/infobars/content",

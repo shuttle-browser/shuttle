@@ -66,6 +66,10 @@ inline constexpr char kGlicHotkeyGlobalScopeMigratedV2[] =
 // selection hotkey for Glic.
 inline constexpr char kGlicSelectionHotkey[] = "glic.selection_hotkey";
 
+// Boolean pref set once the user accepts the Quick Answers FRE.
+inline constexpr char kGlicQuickAnswersFreAccepted[] =
+    "glic.quick_answers_fre_accepted";
+
 // String pref that keeps track of the non-localized version of the registered
 // hotkey for toggling focus between Glic and the browser window.
 inline constexpr char kGlicFocusToggleHotkey[] = "glic.focus_toggle_hotkey";
@@ -87,6 +91,19 @@ inline constexpr char kGlicWebContinuityOriginatingHostUrlPreset[] =
 
 // ************* PROFILE PREFS ***************
 // Prefs below are tied to a user profile.
+
+// Per-profile assistant selection preference. Evaluated once at profile
+// initialization by `geic::ShouldLatchToGeminiEnterprise()` (via
+// `GlicProviderLatchFactory`); changing it requires a browser restart.
+// LINT.IfChange(AssistantSelection)
+enum class AssistantSelection {
+  kAuto = 0,
+  kConsumer = 1,
+  kEnterprise = 2,
+  kMaxValue = kEnterprise,
+};
+// LINT.ThenChange(//chrome/browser/resources/settings/ai_page/constants.ts:GlicAssistantSelection)
+inline constexpr char kGlicAssistantSelection[] = "glic.assistant_selection";
 
 // Values for the "glic.actuation_on_web" pref.
 enum class GlicActuationOnWebPolicyState {
@@ -215,6 +232,9 @@ inline constexpr char kGlicLocalStorageCopiedToPrefs[] =
     "glic.local_storage_copied_to_prefs";
 
 // Dict pref that stores key-value pairs for the Glic web client's storage.
+// Each provider's items are a nested dict at its guest URL key
+// (`GlicProviderSpec::GetGuestUrlKey()`). `glic::kClientDataStorageVersionKey`
+// holds the layout version.
 inline constexpr char kGlicClientDataStorage[] = "glic.client_data_storage";
 
 // Boolean pref that tracks if the Glic profile was previously ineligible.
@@ -225,11 +245,6 @@ inline constexpr char kGlicPreviouslyNotAllowed[] =
 // auto-opened.
 inline constexpr char kGlicMarketingAutoOpenCount[] =
     "glic.marketing_auto_open_count";
-
-// String pref that records whether a Glic promotion page visit originated from
-// zss or a non-zss source.
-inline constexpr char kGlicPromotionSourceCohort[] =
-    "glic.promotion_source_cohort";
 
 #if BUILDFLAG(IS_MAC)
 inline constexpr char kGlicUseAltOSIcon[] = "glic.use_alt_os_icon";

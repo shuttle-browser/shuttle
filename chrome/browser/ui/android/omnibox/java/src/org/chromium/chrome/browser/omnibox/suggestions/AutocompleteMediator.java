@@ -15,6 +15,7 @@ import android.os.Build;
 import android.os.Handler;
 import android.os.SystemClock;
 import android.text.TextUtils;
+import android.view.Choreographer;
 import android.view.KeyEvent;
 import android.view.View;
 
@@ -23,7 +24,7 @@ import androidx.annotation.StringRes;
 import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.Callback;
-import org.chromium.base.TimeUtils;
+import org.chromium.base.TimeUtils.UptimeMillisTimer;
 import org.chromium.base.TraceEvent;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.base.supplier.NonNullObservableSupplier;
@@ -42,6 +43,7 @@ import org.chromium.chrome.browser.omnibox.FuseboxSessionState;
 import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.LocationBarEmbedderUiOverrides;
 import org.chromium.chrome.browser.omnibox.OmniboxMetrics;
+import org.chromium.chrome.browser.omnibox.OmniboxUrlUtils;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.UrlBarEditingTextStateProvider;
 import org.chromium.chrome.browser.omnibox.fusebox.ComposeboxQueryControllerBridge;
@@ -102,6 +104,7 @@ import org.chromium.ui.base.PageTransition;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.modaldialog.DialogDismissalCause;
 import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.modaldialog.ModalDialogManager.ModalDialogType;
 import org.chromium.ui.modaldialog.ModalDialogProperties;
 import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
 import org.chromium.ui.modelutil.PropertyModel;
@@ -140,7 +143,8 @@ class AutocompleteMediator
                 SideUiObserver {
 
     // Delay triggering the omnibox results upon key press to allow the location bar to repaint
-    // with the new characters.
+    // with the new characters. Only used when OmniboxFeatures.isPostFrameAutocompleteStartEnabled()
+    // is false; otherwise the request is scheduled right after the next frame instead.
     private static final long OMNIBOX_SUGGESTION_START_DELAY_MS = 30;
 
     @VisibleForTesting
@@ -189,6 +193,18 @@ class AutocompleteMediator
     private @Nullable AutocompleteController mAutocomplete;
     private @Nullable AutocompleteResult mAutocompleteResult;
     private @Nullable Runnable mCurrentAutocompleteRequest;
+    // Posts mCurrentAutocompleteRequest once the frame containing the new text has been produced.
+    // Only queued while a request is pending; cancelAutocompleteRequests() removes it before
+    // clearing the request, so the null check is defensive.
+    private final Choreographer.FrameCallback mPostAutocompleteRequestAfterFrame =
+            new Choreographer.FrameCallback() {
+                @Override
+                public void doFrame(long frameTimeNanos) {
+                    if (mCurrentAutocompleteRequest != null) {
+                        mHandler.post(mCurrentAutocompleteRequest);
+                    }
+                }
+            };
     private @Nullable PropertyModel mDeleteDialogModel;
 
     // When set, specifies the system time of the most recent suggestion list request.
@@ -813,8 +829,11 @@ class AutocompleteMediator
             return;
         }
 
-        boolean openInNewTab = (modifiers & (KeyEvent.META_ALT_ON | KeyEvent.META_CTRL_ON)) != 0;
-        boolean openInNewWindow = !openInNewTab && (modifiers & KeyEvent.META_SHIFT_ON) != 0;
+        boolean isShiftPressed = (modifiers & KeyEvent.META_SHIFT_ON) != 0;
+        boolean openInNewTab =
+                (modifiers & (KeyEvent.META_ALT_ON | KeyEvent.META_CTRL_ON)) != 0
+                        || (!isShiftPressed && shouldOpenAimRequestInNewTab());
+        boolean openInNewWindow = !openInNewTab && isShiftPressed;
 
         loadUrlForOmniboxMatch(
                 matchIndex,
@@ -844,7 +863,7 @@ class AutocompleteMediator
         mNumTouchDownEventForwardedInOmniboxSession++;
 
         OmniboxMetrics.recordSuggestionTouchDownDelay(
-                new TimeUtils.UptimeMillisTimer(eventTime).getElapsedMillis());
+                new UptimeMillisTimer(eventTime).getElapsedMillis());
 
         boolean wasPrefetchStarted =
                 mAutocomplete.onSuggestionTouchDown(
@@ -1049,7 +1068,7 @@ class AutocompleteMediator
                         .with(ModalDialogProperties.CANCEL_ON_TOUCH_OUTSIDE, true)
                         .build();
 
-        manager.showDialog(mDeleteDialogModel, ModalDialogManager.ModalDialogType.APP);
+        manager.showDialog(mDeleteDialogModel, ModalDialogType.APP);
     }
 
     /**
@@ -1225,8 +1244,7 @@ class AutocompleteMediator
                                     cursorPosition,
                                     preventAutocomplete);
                         }
-                    },
-                    OMNIBOX_SUGGESTION_START_DELAY_MS);
+                    });
         }
     }
 
@@ -1542,14 +1560,17 @@ class AutocompleteMediator
      * @param eventTime The timestamp when the navigation was triggered (e.g., uptimeMillis).
      * @param target The target destination for the navigation (current tab, new tab, new window).
      */
-    void loadTypedOmniboxText(
-            long eventTime, @AutocompleteCoordinator.NavigationTarget int target) {
+    void loadTypedOmniboxText(long eventTime, @NavigationTarget int target) {
         // TODO(crbug.com/478783240): investigate what flows lead to <enter> key triggering
         // navigation while the Omnibox input session is not active.
         try (TraceEvent e = TraceEvent.scoped("AutocompleteMediator.loadTypedOmniboxText")) {
             if (!isInInputSession()) return;
             boolean openInBackground = target == NavigationTarget.NEW_BACKGROUND_TAB;
-            boolean openInNewTab = target == NavigationTarget.NEW_TAB || openInBackground;
+            boolean openInNewTab =
+                    target == NavigationTarget.NEW_TAB
+                            || openInBackground
+                            || (target == NavigationTarget.CURRENT_TAB
+                                    && shouldOpenAimRequestInNewTab());
             boolean openInNewWindow = target == NavigationTarget.NEW_WINDOW;
 
             final String urlText = mUrlBarEditingTextProvider.getTextWithAutocomplete();
@@ -1579,15 +1600,16 @@ class AutocompleteMediator
      * @param eventTime The timestamp when the navigation was triggered (e.g., uptimeMillis).
      * @param target The target destination for the navigation (current tab, new tab, new window).
      */
-    void loadPastedText(
-            String text, long eventTime, @AutocompleteCoordinator.NavigationTarget int target) {
+    void loadPastedText(String text, long eventTime, @NavigationTarget int target) {
         try (TraceEvent e = TraceEvent.scoped("AutocompleteMediator.loadPastedText")) {
             if (!isInInputSession() || TextUtils.isEmpty(text)) return;
             boolean openInBackground = target == NavigationTarget.NEW_BACKGROUND_TAB;
             boolean openInNewTab =
-                    target == AutocompleteCoordinator.NavigationTarget.NEW_TAB
-                            || target == NavigationTarget.NEW_BACKGROUND_TAB;
-            boolean openInNewWindow = target == AutocompleteCoordinator.NavigationTarget.NEW_WINDOW;
+                    target == NavigationTarget.NEW_TAB
+                            || target == NavigationTarget.NEW_BACKGROUND_TAB
+                            || (target == NavigationTarget.CURRENT_TAB
+                                    && shouldOpenAimRequestInNewTab());
+            boolean openInNewWindow = target == NavigationTarget.NEW_WINDOW;
 
             cancelAutocompleteRequests();
 
@@ -1879,14 +1901,26 @@ class AutocompleteMediator
             url = match.getUrl();
         }
 
-        adjustGurlForRequestType(url, this::finishLoadUrlFromVoice);
+        boolean openInNewTab = shouldOpenAimRequestInNewTab();
+        adjustGurlForRequestType(url, finalUrl -> finishLoadUrlFromVoice(finalUrl, openInNewTab));
     }
 
-    private void finishLoadUrlFromVoice(GURL url) {
+    private void finishLoadUrlFromVoice(GURL url, boolean openInNewTab) {
         mDelegate.loadUrl(
                 new OmniboxLoadUrlParams.Builder(url.getSpec(), PageTransition.TYPED)
-                        .setOpenInNewTab(false)
+                        .setOpenInNewTab(openInNewTab)
                         .build());
+    }
+
+    private boolean shouldOpenAimRequestInNewTab() {
+        if (!OmniboxFeatures.isAimOpenInNewTabEnabled()
+                || OmniboxCapabilities.isDesktopPlatform()
+                || !isInInputSession()) {
+            return false;
+        }
+        boolean isAimRequest = ToolModeUtils.isAimRequest(mAutocompleteInput.getRequestType());
+        boolean isNtp = OmniboxUrlUtils.isNtpUrl(mDataProvider.getCurrentGurl());
+        return isAimRequest && !isNtp;
     }
 
     /**
@@ -2158,18 +2192,27 @@ class AutocompleteMediator
     }
 
     /**
-     * Schedule Autocomplete action for execution. Each Autocomplete action posted here will cancel
-     * any previously posted Autocomplete action, ensuring that the actions don't compete against
-     * each other. Any action scheduled for execution before Native libraries are ready will be
-     * deferred.
+     * Schedule Autocomplete action for execution once the location bar has had a chance to repaint
+     * with the newly typed characters. Each Autocomplete action posted here will cancel any
+     * previously posted Autocomplete action, ensuring that the actions don't compete against each
+     * other and that multiple edits arriving within the deferral window are coalesced into a single
+     * request.
+     *
+     * <p>With {@link OmniboxFeatures#isPostFrameAutocompleteStartEnabled()} false, the action is
+     * deferred by a fixed {@link #OMNIBOX_SUGGESTION_START_DELAY_MS}. Otherwise the action runs
+     * right after the next frame has been produced: Choreographer frame callbacks run in the
+     * animation phase of a frame, i.e. before that frame's layout and draw traversal, so posting
+     * the request to the Handler from within the callback places it behind the traversal in the
+     * message queue. Running the action directly inside the frame callback would instead execute it
+     * before the new text is drawn and put the autocomplete work on the frame's critical path. This
+     * is equivalent to {@code View.postOnAnimation(() -> view.post(request))} without requiring a
+     * View reference.
      *
      * <p>This call should only be used for regular suggest flows. Do not post arbitrary tasks here.
      *
      * @param action Autocomplete action to execute.
-     * @param delayMillis The number of milliseconds by which the action should be delayed. Use
-     *     SCHEDULE_FOR_IMMEDIATE_EXECUTION to post action at front of the message queue.
      */
-    private void postAutocompleteRequest(Runnable action, long delayMillis) {
+    private void postAutocompleteRequest(Runnable action) {
         if (!isInInputSession()) return;
 
         // TODO(crbug.com/475620206) carefully reenable and chase down any cases where the
@@ -2181,22 +2224,36 @@ class AutocompleteMediator
         // assert !mIsExecutingAutocompleteAction : "Don't schedule recurring autocomplete action";
 
         cancelAutocompleteRequests();
-        mCurrentAutocompleteRequest =
-                () -> {
-                    // TODO(crbug.com/475620206) carefully reenable.
-                    // mIsExecutingAutocompleteAction = true;
-                    action.run();
-                    // mIsExecutingAutocompleteAction = false;
-                    // Release completed Runnable.
-                    mCurrentAutocompleteRequest = null;
+        Runnable request =
+                new Runnable() {
+                    @Override
+                    public void run() {
+                        // TODO(crbug.com/475620206) carefully reenable.
+                        // mIsExecutingAutocompleteAction = true;
+                        action.run();
+                        // mIsExecutingAutocompleteAction = false;
+                        // Release completed Runnable, unless the action itself scheduled a new
+                        // request (re-entrantly), in which case that request now owns the slot.
+                        if (mCurrentAutocompleteRequest == this) {
+                            mCurrentAutocompleteRequest = null;
+                        }
+                    }
                 };
+        mCurrentAutocompleteRequest = request;
 
-        mHandler.postDelayed(mCurrentAutocompleteRequest, delayMillis);
+        if (OmniboxFeatures.isPostFrameAutocompleteStartEnabled()) {
+            Choreographer.getInstance().postFrameCallback(mPostAutocompleteRequestAfterFrame);
+        } else {
+            mHandler.postDelayed(request, OMNIBOX_SUGGESTION_START_DELAY_MS);
+        }
     }
 
     /** Cancel any pending autocomplete actions. */
     private void cancelAutocompleteRequests() {
         stopMeasuringSuggestionRequestToUiModelTime();
+        if (OmniboxFeatures.isPostFrameAutocompleteStartEnabled()) {
+            Choreographer.getInstance().removeFrameCallback(mPostAutocompleteRequestAfterFrame);
+        }
         if (mCurrentAutocompleteRequest != null) {
             mHandler.removeCallbacks(mCurrentAutocompleteRequest);
         }

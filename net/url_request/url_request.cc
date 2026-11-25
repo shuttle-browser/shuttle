@@ -599,14 +599,28 @@ void URLRequest::set_disallow_credentials() {
 void URLRequest::Start() {
   DCHECK(delegate_);
 
-  // We do not support credentials with a non-general
-  // NetworkIsolationPartition.
-  CHECK(isolation_info_.GetNetworkIsolationPartition() ==
-            NetworkIsolationPartition::kGeneral ||
-        !allow_credentials());
+  switch (isolation_info_.GetNetworkIsolationPartition()) {
+    case NetworkIsolationPartition::kGeneral:
+      break;
+    case NetworkIsolationPartition::kSharedWorkerSameSiteCookiesNone:
+      // This partition is only used for SharedWorkers with SameSite=None cookie
+      // restrictions, so SiteForCookies must be null when credentials are
+      // allowed.
+      CHECK(!allow_credentials() ||
+            (isolation_info_.site_for_cookies().IsNull() &&
+             site_for_cookies_.IsNull()));
+      break;
+    case NetworkIsolationPartition::kFedCmUncredentialedRequests:
+    case NetworkIsolationPartition::kDnsOverHttps:
+      // Credentials are not supported with these non-general
+      // NetworkIsolationPartitions.
+      CHECK(!allow_credentials());
+      break;
+  }
 
-  if (status_ != OK)
+  if (status_ != OK) {
     return;
+  }
 
   if (context_->require_network_anonymization_key()) {
     DCHECK(!isolation_info_.IsEmpty() ||
@@ -1376,31 +1390,7 @@ void URLRequest::RecordReferrerGranularityMetrics(
 
 IsolationInfo URLRequest::CreateIsolationInfoFromNetworkAnonymizationKey(
     const NetworkAnonymizationKey& network_anonymization_key) {
-  if (network_anonymization_key.IsEmpty()) {
-    return IsolationInfo();
-  }
-
-  url::Origin top_frame_origin =
-      network_anonymization_key.GetTopFrameSite()->site_as_origin_;
-
-  std::optional<url::Origin> frame_origin;
-  if (network_anonymization_key.IsCrossSite()) {
-    // If we know that the origin is cross site to the top level site, create an
-    // empty origin to use as the frame origin for the isolation info. This
-    // should be cross site with the top level origin.
-    frame_origin = url::Origin();
-  } else {
-    // If we don't know that it's cross site to the top level site, use the top
-    // frame site to set the frame origin.
-    frame_origin = top_frame_origin;
-  }
-
-  auto isolation_info = IsolationInfo::Create(
-      IsolationInfo::RequestType::kOther, top_frame_origin,
-      frame_origin.value(), SiteForCookies(),
-      network_anonymization_key.GetNonce());
-  // TODO(crbug.com/40852603): DCHECK isolation info is fully populated.
-  return isolation_info;
+  return IsolationInfo::DoNotUseCreatePartialFromNak(network_anonymization_key);
 }
 
 ConnectionAttempts URLRequest::GetConnectionAttempts() const {

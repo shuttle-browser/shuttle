@@ -39,13 +39,14 @@ import org.chromium.base.ApplicationStatus;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.IntentUtils;
 import org.chromium.base.ThreadUtils;
+import org.chromium.base.Token;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
-import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.MinAndroidSdkLevel;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.build.annotations.NullMarked;
@@ -62,11 +63,16 @@ import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.init.AsyncInitializationActivity;
 import org.chromium.chrome.browser.lifecycle.DestroyObserver;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tabmodel.TabClosureParams;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelSelectorImpl;
 import org.chromium.chrome.browser.util.AndroidTaskUtils;
 import org.chromium.chrome.browser.webapps.WebappActivityTestRule;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
+import org.chromium.chrome.test.transit.ntp.IncognitoNewTabPageStation;
 import org.chromium.chrome.test.transit.ntp.RegularNewTabPageStation;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.chrome.test.util.FullscreenTestUtils;
@@ -1050,6 +1056,10 @@ public class ChromeAndroidTaskIntegrationTest {
      * ActivityLifecycleDispatcher}. Since they often pass {@link ChromeAndroidTask} to JNI bridges
      * on initialization (as BrowserWindowInterface), the lifetime of {@link ChromeAndroidTask} must
      * be longer than that of those objects.
+     *
+     * <p>By then, the {@link ChromeAndroidTask} must no longer expose the {@code Activity}'s
+     * browser windows, as their TabModels (and the native {@code TabListInterface}s) are already
+     * destroyed (b/578132340).
      */
     @Test
     @MediumTest
@@ -1067,13 +1077,81 @@ public class ChromeAndroidTaskIntegrationTest {
                                         @Override
                                         public void onDestroy() {
                                             // Assert.
-                                            assertNotNull(getChromeAndroidTask(taskId));
+                                            var chromeAndroidTask = getChromeAndroidTask(taskId);
+                                            assertNotNull(chromeAndroidTask);
+                                            assertEquals(
+                                                    Collections.emptyList(),
+                                                    chromeAndroidTask
+                                                            .getAllNativeBrowserWindowPtrs());
                                         }
                                     });
                 });
 
         // Act.
         mFreshCtaTransitTestRule.finishActivity();
+    }
+
+    /**
+     * Regression test for b/578132340.
+     *
+     * <p>When the last tab in a dedicated incognito window closes, its {@link
+     * org.chromium.chrome.browser.tabmodel.IncognitoTabModel} synchronously destroys the native
+     * {@code TabListInterface}, while the Activity is finished asynchronously and destroyed in a
+     * later UI thread task. If another incognito window keeps the incognito Profile alive, nothing
+     * else removes the browser window. By then, the {@link ChromeAndroidTask} must no longer expose
+     * the incognito browser window.
+     */
+    @Test
+    @MediumTest
+    @EnableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
+    public void closeLastIncognitoTab_otherIncognitoWindowOpen_destroysBrowserWindow() {
+        // Arrange: open two incognito windows. The second one keeps the incognito Profile alive
+        // after the first one's last tab closes.
+        IncognitoNewTabPageStation incognitoStation =
+                mFreshCtaTransitTestRule.startOnBlankPage().openNewIncognitoWindowFast();
+        ChromeTabbedActivity activity = incognitoStation.getActivity();
+        ChromeTabbedActivity secondIncognitoActivity =
+                incognitoStation.openNewIncognitoWindowFast().getActivity();
+        assertTrue(activity.isIncognitoWindow());
+        assertTrue(secondIncognitoActivity.isIncognitoWindow());
+        assertNotEquals(activity.getTaskId(), secondIncognitoActivity.getTaskId());
+        var activityWindowAndroid = activity.getWindowAndroid();
+        assertNotNull(activityWindowAndroid);
+        var chromeAndroidTask = getChromeAndroidTask(activity.getTaskId());
+        assertNotNull(chromeAndroidTask);
+        TabModel incognitoTabModel = activity.getTabModelSelector().getModel(/* incognito= */ true);
+
+        List<Long> browserWindowPtrsAfterClose =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            // Precondition: this is a dedicated incognito window with one tab.
+                            List<Profile> profiles =
+                                    chromeAndroidTask.getValidProfilesForActivity(
+                                            activityWindowAndroid);
+                            assertEquals(1, profiles.size());
+                            assertTrue(profiles.get(0).isOffTheRecord());
+                            assertEquals(
+                                    1, chromeAndroidTask.getAllNativeBrowserWindowPtrs().size());
+                            assertEquals(1, incognitoTabModel.getCount());
+
+                            // Act: close the last incognito tab.
+                            Tab tab = assumeNonNull(incognitoTabModel.getTabAt(0));
+                            incognitoTabModel
+                                    .getTabRemover()
+                                    .forceCloseTabs(
+                                            TabClosureParams.closeTab(tab)
+                                                    .allowUndo(false)
+                                                    .build());
+
+                            // Record the state in the same UI task.
+                            return chromeAndroidTask.getAllNativeBrowserWindowPtrs();
+                        });
+
+        // Assert: the incognito browser window is gone along with its TabModel.
+        assertEquals(Collections.emptyList(), browserWindowPtrsAfterClose);
+
+        secondIncognitoActivity.finish();
+        activity.finish();
     }
 
     @Test
@@ -1087,6 +1165,96 @@ public class ChromeAndroidTaskIntegrationTest {
 
         // Assert.
         assertFalse(ThreadUtils.runOnUiThreadBlocking(chromeAndroidTask::isFullscreen));
+    }
+
+    /**
+     * Regression test for b/578132340.
+     *
+     * <p>An incognito-only window whose last tab is moved out the way {@code tabs.move} does it
+     * must close, rather than stay alive with no tabs and no browser window features.
+     */
+    @Test
+    @MediumTest
+    @EnableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
+    @CommandLineFlags.Add(ChromeSwitches.OPEN_INCOGNITO_AS_WINDOW)
+    public void moveLastTabToWindow_incognitoWindow_closesSourceWindow() {
+        // Arrange.
+        WebPageStation incognitoStation = mFreshCtaTransitTestRule.startOnIncognitoBlankPage();
+        ChromeTabbedActivity sourceActivity = incognitoStation.getActivity();
+        ChromeTabbedActivity destActivity =
+                incognitoStation.openNewIncognitoWindowFast().getActivity();
+        assertTrue(sourceActivity.isIncognitoWindow());
+
+        // Act.
+        int tabId = moveOnlyTabToWindow(sourceActivity, /* incognito= */ true, destActivity);
+
+        // Assert.
+        CriteriaHelper.pollUiThread(sourceActivity::isFinishing);
+        TabModel destModel = destActivity.getTabModelSelector().getModel(/* incognito= */ true);
+        CriteriaHelper.pollUiThread(() -> destModel.getTabById(tabId) != null);
+        destActivity.finish();
+    }
+
+    /** Verifies that a regular window whose last tab is moved out is not closed. */
+    @Test
+    @MediumTest
+    public void moveLastTabToWindow_regularWindow_keepsSourceWindow() {
+        // Arrange.
+        WebPageStation webPageStation = mFreshCtaTransitTestRule.startOnBlankPage();
+        ChromeTabbedActivity sourceActivity = webPageStation.getActivity();
+        ChromeTabbedActivity destActivity = webPageStation.openNewWindowFast().getActivity();
+
+        // Act.
+        moveOnlyTabToWindow(sourceActivity, /* incognito= */ false, destActivity);
+
+        // Assert.
+        assertFalse(ThreadUtils.runOnUiThreadBlocking(sourceActivity::isFinishing));
+        destActivity.finish();
+    }
+
+    /**
+     * Verifies that an incognito-only window whose only tab group is moved out via {@link
+     * TabModelSelectorImpl#moveTabGroupToWindow} (used by {@code tabGroups.move}) closes.
+     */
+    @Test
+    @MediumTest
+    @EnableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
+    @CommandLineFlags.Add(ChromeSwitches.OPEN_INCOGNITO_AS_WINDOW)
+    public void moveLastTabGroupToWindow_incognitoWindow_closesSourceWindow() {
+        // Arrange.
+        WebPageStation incognitoStation = mFreshCtaTransitTestRule.startOnIncognitoBlankPage();
+        ChromeTabbedActivity sourceActivity = incognitoStation.getActivity();
+        ChromeTabbedActivity destActivity =
+                incognitoStation.openNewIncognitoWindowFast().getActivity();
+        assertTrue(sourceActivity.isIncognitoWindow());
+
+        // Act.
+        TabModel sourceModel = sourceActivity.getTabModelSelector().getModel(/* incognito= */ true);
+        Tab tab = ThreadUtils.runOnUiThreadBlocking(() -> assumeNonNull(sourceModel.getTabAt(0)));
+        int tabId = tab.getId();
+        Token tabGroupId =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            assertEquals(1, sourceModel.getCount());
+                            sourceModel.createSingleTabGroup(tab);
+                            Token groupId = assumeNonNull(tab.getTabGroupId());
+                            assertTrue(
+                                    ((TabModelSelectorImpl) sourceActivity.getTabModelSelector())
+                                            .moveTabGroupToWindow(
+                                                    groupId,
+                                                    destActivity,
+                                                    /* newIndex= */ 0,
+                                                    /* isIncognito= */ true));
+                            return groupId;
+                        });
+        CriteriaHelper.pollUiThread(() -> sourceModel.getCount() == 0);
+
+        // Assert.
+        CriteriaHelper.pollUiThread(sourceActivity::isFinishing);
+        TabModel destModel = destActivity.getTabModelSelector().getModel(/* incognito= */ true);
+        CriteriaHelper.pollUiThread(() -> destModel.getTabById(tabId) != null);
+        CriteriaHelper.pollUiThread(() -> destModel.containsTabGroup(tabGroupId));
+        destActivity.finish();
     }
 
     @Test
@@ -1534,7 +1702,6 @@ public class ChromeAndroidTaskIntegrationTest {
     @MinAndroidSdkLevel(Build.VERSION_CODES.CINNAMON_BUN)
     @RequiresApi(Build.VERSION_CODES.CINNAMON_BUN)
     @Restriction(DeviceFormFactor.DESKTOP_FREEFORM)
-    @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/574600173
     public void createPendingTask_withInitialShowStateAsMaximized_createsTaskWithMaximizedBounds() {
         assumeBrowserRole();
         // Arrange.
@@ -1763,6 +1930,29 @@ public class ChromeAndroidTaskIntegrationTest {
                     var chromeAndroidTaskTracker = ChromeAndroidTaskTrackerFactory.getInstance();
                     return (ChromeAndroidTaskImpl) chromeAndroidTaskTracker.get(taskId);
                 });
+    }
+
+    /**
+     * Moves the only tab of {@code sourceActivity} to {@code destActivity} through {@link
+     * TabModelSelectorImpl#moveTabToWindow}, which {@code tabs.move} uses, and returns the moved
+     * tab's ID.
+     */
+    private static int moveOnlyTabToWindow(
+            ChromeTabbedActivity sourceActivity,
+            boolean incognito,
+            ChromeTabbedActivity destActivity) {
+        TabModel sourceModel = sourceActivity.getTabModelSelector().getModel(incognito);
+        int tabId =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            assertEquals(1, sourceModel.getCount());
+                            Tab tab = assumeNonNull(sourceModel.getTabAt(0));
+                            ((TabModelSelectorImpl) sourceActivity.getTabModelSelector())
+                                    .moveTabToWindow(tab, destActivity, /* newIndex= */ 0);
+                            return tab.getId();
+                        });
+        CriteriaHelper.pollUiThread(() -> sourceModel.getCount() == 0);
+        return tabId;
     }
 
     private static final class TestChromeAndroidTaskFeature implements ChromeAndroidTaskFeature {

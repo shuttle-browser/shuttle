@@ -14,6 +14,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_controller.h"
+#include "third_party/blink/public/mojom/frame/viewport_intersection_state.mojom.h"
 #include "ui/base/interaction/element_highlighter.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/interaction/element_tracker.h"
@@ -116,13 +117,49 @@ void TrackedElementHandler::OnVisibilityChanged(
   UpdateAllEffectiveVisibilities();
 }
 
-void TrackedElementHandler::UpdateAllEffectiveVisibilities() {
+void TrackedElementHandler::RenderFrameDeleted(content::RenderFrameHost* rfh) {
+  if (rfh && occluded_subframes_.erase(rfh->GetGlobalId()) > 0) {
+    UpdateAllEffectiveVisibilities(
+        /*bounds_changed=*/is_subframe_unoccluded());
+  }
+}
+
+void TrackedElementHandler::OnRemoteSubframeViewportIntersectionStateChanged(
+    content::RenderFrameHost* rfh,
+    const blink::mojom::ViewportIntersectionState&
+        viewport_intersection_state) {
+  if (!rfh) {
+    return;
+  }
+  for (content::RenderFrameHost* frame = render_frame_host(); frame;
+       frame = frame->GetParentOrOuterDocument()) {
+    if (frame == rfh) {
+      const bool is_frame_unoccluded =
+          !viewport_intersection_state.is_hidden_for_media_playback &&
+          viewport_intersection_state.occlusion_state !=
+              blink::mojom::FrameOcclusionState::kPossiblyOccluded &&
+          (viewport_intersection_state.occlusion_state ==
+               blink::mojom::FrameOcclusionState::kUnknown ||
+           !viewport_intersection_state.viewport_intersection.IsEmpty());
+      if (is_frame_unoccluded) {
+        occluded_subframes_.erase(rfh->GetGlobalId());
+      } else {
+        occluded_subframes_.insert(rfh->GetGlobalId());
+      }
+      UpdateAllEffectiveVisibilities(/*bounds_changed=*/is_frame_unoccluded);
+      return;
+    }
+  }
+}
+
+void TrackedElementHandler::UpdateAllEffectiveVisibilities(
+    bool bounds_changed) {
   // This is complicated because it is possible that UpdateEffectiveVisibility
   // could invoke this class's destructor.
   auto weak_ptr = weak_ptr_factory_.GetWeakPtr();
   for (auto& [_, elements] : elements_) {
     for (auto& [_, element] : elements) {
-      element->UpdateEffectiveVisibility();
+      element->UpdateEffectiveVisibility(bounds_changed);
       if (!weak_ptr) {
         return;
       }

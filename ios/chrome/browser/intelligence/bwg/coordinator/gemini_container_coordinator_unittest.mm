@@ -27,6 +27,7 @@
 #import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/browser/signin/model/signin_test_util.h"
@@ -66,6 +67,7 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
     mock_fullscreen_handler_ = OCMProtocolMock(@protocol(FullscreenCommands));
     mock_gemini_handler_ = OCMProtocolMock(@protocol(GeminiCommands));
     mock_settings_handler_ = OCMProtocolMock(@protocol(SettingsCommands));
+    mock_snackbar_handler_ = OCMProtocolMock(@protocol(SnackbarCommands));
     CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
     [dispatcher startDispatchingToTarget:mock_fullscreen_handler_
                              forProtocol:@protocol(FullscreenCommands)];
@@ -73,6 +75,8 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
                              forProtocol:@protocol(GeminiCommands)];
     [dispatcher startDispatchingToTarget:mock_settings_handler_
                              forProtocol:@protocol(SettingsCommands)];
+    [dispatcher startDispatchingToTarget:mock_snackbar_handler_
+                             forProtocol:@protocol(SnackbarCommands)];
 
     base_view_controller_ = [[UIViewController alloc] init];
     [scoped_key_window_.Get() setRootViewController:base_view_controller_];
@@ -90,6 +94,7 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
     [dispatcher stopDispatchingForProtocol:@protocol(FullscreenCommands)];
     [dispatcher stopDispatchingForProtocol:@protocol(GeminiCommands)];
     [dispatcher stopDispatchingForProtocol:@protocol(SettingsCommands)];
+    [dispatcher stopDispatchingForProtocol:@protocol(SnackbarCommands)];
     BrowserList* browser_list =
         BrowserListFactory::GetForProfile(personal_profile_);
     browser_list->RemoveBrowser(browser_.get());
@@ -115,6 +120,7 @@ class GeminiContainerCoordinatorTest : public PlatformTest {
   id mock_gemini_handler_;
   id mock_settings_handler_;
   ScopedKeyWindow scoped_key_window_;
+  id mock_snackbar_handler_;
   UIViewController* base_view_controller_;
   GeminiStartupState* startup_state_;
   GeminiContainerCoordinator* coordinator_;
@@ -311,6 +317,7 @@ TEST_F(GeminiContainerCoordinatorTest,
   [coordinator_ stop];
   [dispatcher stopDispatchingForProtocol:@protocol(AssistantContainerCommands)];
 }
+
 // Tests that calling `showWebModalForURL:` while a web modal is already shown
 // keeps the existing modal instead of presenting a second one.
 TEST_F(GeminiContainerCoordinatorTest,

@@ -32,7 +32,6 @@ import org.chromium.components.omnibox.ToolModeProtoIntDef.ToolMode;
 import org.chromium.content_public.browser.WebContents;
 import org.chromium.url.GURL;
 
-import java.nio.ByteBuffer;
 import java.util.List;
 import java.util.Optional;
 
@@ -47,7 +46,6 @@ public class ComposeboxQueryControllerBridge {
     public interface NativeComposeboxQueryControllerBridge extends JniTypeToken {}
 
     /** Instance to be used for testing - null value permitted to signify no controller. */
-    @SuppressWarnings("NullableOptional")
     private static @Nullable Optional<ComposeboxQueryControllerBridge> sInstanceForTesting;
 
     /** Observer for context upload status changes. */
@@ -148,10 +146,8 @@ public class ComposeboxQueryControllerBridge {
      * @return unique token representig the file, used to manipulate added files.
      */
     @Nullable String addFile(String fileName, String fileType, byte[] fileData) {
-        ByteBuffer byteBuffer = ByteBuffer.allocateDirect(fileData.length);
-        byteBuffer.put(fileData);
         return ComposeboxQueryControllerBridgeJni.get()
-                .addFile(assumeNonNull(mNativeInstance), fileName, fileType, byteBuffer);
+                .addFile(assumeNonNull(mNativeInstance), fileName, fileType, fileData);
     }
 
     /**
@@ -291,7 +287,7 @@ public class ComposeboxQueryControllerBridge {
                 JniPtr<NativeComposeboxQueryControllerBridge> self,
                 @JniType("std::string") String fileName,
                 @JniType("std::string") String fileType,
-                ByteBuffer fileData);
+                byte[] fileData);
 
         @JniType("std::string")
         @Nullable String addDriveFile(

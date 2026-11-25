@@ -113,7 +113,8 @@ message ExternalProcessInfo {
   repeated ExternalProcess external_processes = 1;
 }
 
-// First-party built-in browser feature or surface that initiated the event.
+// First-party built-in browser feature or surface that was attached to the
+// target tab at event time (or detached within the 30s grace window).
 message BrowserFeatureInfo {
   enum FeatureType {
     FEATURE_TYPE_UNSPECIFIED = 0;
@@ -123,20 +124,63 @@ message BrowserFeatureInfo {
   FeatureType feature_type = 1;
 }
 
-// Represents the entity that initiated the event.
+// In-browser AI agent (e.g., Gemini in Chrome) that was controlling the
+// target tab at event time.
+message BrowserAgentInfo {
+  enum AgentType {
+    AGENT_TYPE_UNSPECIFIED = 0;
+    // Gemini in Chrome (Glic) only. Gemini Enterprise in Chrome (GEiC) will
+    // get its own value once it can act on tabs.
+    AGENT_TYPE_GEMINI_IN_CHROME = 1;
+  }
+
+  AgentType agent_type = 1;
+
+  // ID of the agent task that was controlling the tab. Use it to group events
+  // from the same task; it is not unique across browser restarts.
+  string task_id = 2
+      // copybara:datapol_begin
+      // [
+      //   (datapol.semantic_type) = ST_SESSION_ID
+      // ]
+      // copybara:datapol_end
+      ;
+
+  // ID of the agent conversation that started the task, if the agent has one.
+  string conversation_id = 3
+      // copybara:datapol_begin
+      // [
+      //   (datapol.semantic_type) = ST_SESSION_ID
+      // ]
+      // copybara:datapol_end
+      ;
+}
+
+// Represents the entity or browser surface that initiated the event or was
+// active/attached on the target tab at event time.
 message EventInitiatorInfo {
   oneof initiator {
     // Populated when the event was driven by a Chrome extension.
     safe_browsing.ExtensionTelemetryReportRequest.ExtensionInfo
         chrome_extension = 1;
 
-    // Populated when one or more CDP actors are attached (wraps repeated
-    // ExternalProcesses):
+    // Populated when one or more external CDP actors have issued commands to
+    // the target tab (currently attached at event time or detached within the
+    // 30s grace window; passive attachments that never issue commands are not
+    // recorded). Precedence: external_process_info takes priority over
+    // browser_feature_info if both conditions are met on the tab.
     ExternalProcessInfo external_process_info = 2;
 
-    // Populated when the event involves a built-in browser feature (e.g.,
-    // native F12 DevTools UI).
+    // Populated when a built-in browser feature (e.g., native F12 DevTools UI)
+    // was attached to the target tab at event time (or detached within the 30s
+    // grace window). Precedence: external_process_info takes priority over
+    // browser_feature_info if both conditions are met on the tab.
     BrowserFeatureInfo browser_feature_info = 3;
+
+    // Populated when an in-browser AI agent (e.g., Gemini in Chrome) was
+    // controlling the target tab at event time. Precedence: lowest; set only
+    // when none of the other initiators apply.
+    BrowserAgentInfo browser_agent_info = 4;
   }
 }
 
@@ -438,6 +482,39 @@ message UrlInfo {
 
   // The http(s) method via which the URL is requested. e.g. GET, POST, etc.
   string request_http_method = 8;
+}
+
+// Metadata about a Google Drive classification label applied to a file.
+// Next ID: 3.
+message GoogleLabel {
+  // The unique identifier (GUID) of the Google Drive label.
+  string id = 1
+      // copybara:datapol_begin
+      // [
+      //   (datapol.semantic_type) = ST_IDENTIFYING_ID
+      // ]
+      // copybara:datapol_end
+      ;
+
+  message Attributes {
+    // Selected field or choice IDs for a label attribute.
+    repeated string attribute_selections = 1
+        // copybara:datapol_begin
+        // [
+        //   (datapol.semantic_type) = ST_STRUCTURED_ADMIN_SETTING
+        // ]
+        // copybara:datapol_end
+        ;
+  }
+
+  // Map from label field ID to its attributes.
+  map<string, Attributes> attributes = 2
+      // copybara:datapol_begin
+      // [
+      //   (datapol.semantic_type) = ST_STRUCTURED_ADMIN_SETTING
+      // ]
+      // copybara:datapol_end
+      ;
 }
 
 // A message for reporting password reuse events.
@@ -767,7 +844,7 @@ message SafeBrowsingInterstitialEvent {
 }
 
 // A DLP (Data Loss Prevention) event where sensitive data may have leaked.
-// Next ID: 40.
+// Next ID: 42.
 message DlpSensitiveDataEvent {
   reserved 6, 9, 10, 11, 12, 13, 15, 25;
 
@@ -919,6 +996,16 @@ message DlpSensitiveDataEvent {
       // ]
       // copybara:datapol_end
       ;
+
+  // The Google Drive classification labels for the file associated with the
+  // URL in the request. Only present when the URL refers to a Google Drive
+  // file.
+  repeated GoogleLabel google_labels = 40;
+
+  // The Google Drive classification labels for the file associated with the
+  // URL of the copied text in the request for paste event only. Only present
+  // when the URL of the copied text refers to a Google Drive file.
+  repeated GoogleLabel source_google_labels = 41;
 }
 
 // Event where a large file could not be scanned for analysis e.g. malware or
@@ -1364,7 +1451,7 @@ message BrowserCrashEvent {
   repeated SecurityAgent security_agents = 7;
 }
 
-// Next ID: 16.
+// Next ID: 17.
 message UrlFilteringInterstitialEvent {
   // Top level URL that triggers this interstitial.
   string url = 1;
@@ -1442,6 +1529,11 @@ message UrlFilteringInterstitialEvent {
       // [(datapol.semantic_type) = ST_USER_CONTENT]
       // copybara:datapol_end
       ;
+
+  // The Google Drive classification labels for the file associated with the
+  // URL that triggered the event. Only present when the URL refers to a Google
+  // Drive file.
+  repeated GoogleLabel google_labels = 16;
 }
 
 // Next ID: 5

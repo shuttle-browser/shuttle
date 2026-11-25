@@ -138,6 +138,10 @@ class ManifestSolutionFactory {
  private:
   class Solution;
 
+  // Finishes handling an asset state update and notifies `on_asset_init_` if
+  // this was the asset's initial state transition.
+  void OnAssetStateUpdated(bool is_initial_state);
+
   // Unloads models and resets state associated with the given asset.
   void UnloadAsset(const std::string& asset_id);
 
@@ -158,6 +162,10 @@ class ManifestSolutionFactory {
   // Creates a solution for the given use case, if possible.
   ModelBrokerImpl::MaybeSolution CreateSolutionForUseCase(
       const std::string& use_case_name);
+
+  // Resolves the base model recipe ID for a given solution recipe ID,
+  // unwrapping adaptations and postprocessed models.
+  const std::string& GetBaseModelRecipeId(const std::string& solution_id) const;
 
   // Logs the model's version, backend and cache configuration to the
   // optimization guide internals page.

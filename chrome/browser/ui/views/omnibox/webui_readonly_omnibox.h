@@ -213,8 +213,11 @@ class WebUIReadOnlyOmnibox
       const toolbar_ui_api::mojom::OmniboxActionPointer& pointer);
   base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnDropText(
       const toolbar_ui_api::mojom::OmniboxActionDropText& drop_text);
+  base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnDropUrl();
   base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnDropFile(
       const toolbar_ui_api::mojom::OmniboxActionDropFile& drop_file);
+  // Focuses the omnibox after a drop, if it isn't focused already.
+  void FocusForDrop();
   base::expected<std::monostate, mojo_base::mojom::ErrorPtr> OnDragStart();
 
   void OnContextMenuReady(views::Widget* widget,
@@ -273,6 +276,7 @@ class WebUIReadOnlyOmnibox
   // State of the world at the time of last call to `OnBeforePossibleChange()`;
   // used in `OnAfterPossibleChange()` to figure out what changed.
   State state_before_change_;
+  bool had_inline_autocompletion_before_change_ = false;
 
   bool has_focus_ = false;
   bool aim_hint_currently_shown_ = false;

@@ -127,10 +127,8 @@ BASE_DECLARE_FEATURE(kIOSProactivePasswordGenerationBottomSheet);
 // leak dialog.
 BASE_DECLARE_FEATURE(kMarkAllCredentialsAsLeaked);
 
-#if BUILDFLAG(IS_ANDROID)
 // Enables OTP phishing checks.
 BASE_DECLARE_FEATURE(kOtpPhishGuard);
-#endif  // BUILDFLAG(IS_ANDROID)
 
 // PasswordManagerClient::IsFillingEnabled returns `false` for opaque origins.
 // Intended as a kill-switch.
@@ -177,9 +175,18 @@ BASE_DECLARE_FEATURE(kPasswordManagerOnDeviceEncryptionMetricsReporter);
 // the "Select password" entry to the context menu.
 BASE_DECLARE_FEATURE(kPasswordManualFallbackSecurityChecks);
 
+// Doesn't trigger the password manual fallback flow for opaque origins.
+// TODO(crbug.com/562276485): Clean up when launched.
+BASE_DECLARE_FEATURE(kPasswordManualFallbackSkipOpaqueOrigins);
+
 // When enabled, the user can resolve actionable errors in context during a
 // password save flow.
 BASE_DECLARE_FEATURE(kPasswordSaveInContextErrorResolution);
+#if BUILDFLAG(IS_ANDROID)
+inline constexpr int kMinGmsVersionForInFlowZuulRecovery = 263600000;
+extern const base::FeatureParam<int>
+    kPasswordSaveInContextErrorResolutionMinGmsVersion;
+#endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)

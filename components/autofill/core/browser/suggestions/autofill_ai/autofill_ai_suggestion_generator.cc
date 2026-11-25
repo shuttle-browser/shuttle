@@ -23,6 +23,7 @@
 #include "base/containers/extend.h"
 #include "base/containers/flat_map.h"
 #include "base/containers/flat_set.h"
+#include "base/containers/linear_find.h"
 #include "base/containers/map_util.h"
 #include "base/containers/span.h"
 #include "base/containers/to_vector.h"
@@ -41,7 +42,6 @@
 #include "base/types/optional_ref.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
-#include "components/affiliations/core/browser/affiliation_utils.h"
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
 #include "components/autofill/core/browser/data_model/addresses/autofill_normalization_util.h"
@@ -77,7 +77,6 @@
 #include "ui/gfx/range/range.h"
 #include "url/gurl.h"
 #include "url/origin.h"
-#include "url/url_constants.h"
 
 namespace autofill {
 namespace {
@@ -157,11 +156,10 @@ class AttributeTypeAssignment {
 base::optional_ref<const AutofillFieldWithAttributeType> FindField(
     base::span<const AutofillFieldWithAttributeType> haystack LIFETIME_BOUND,
     const FieldGlobalId& needle) {
-  auto it = std::ranges::find(haystack, needle,
-                              [](const AutofillFieldWithAttributeType& f) {
-                                return f.field->global_id();
-                              });
-  return it != haystack.end() ? &*it : nullptr;
+  return base::LinearFind(haystack, needle,
+                          [](const AutofillFieldWithAttributeType& f) {
+                            return f.field->global_id();
+                          });
 }
 
 DenseSet<AttributeType> FindAttributesForField(
@@ -602,6 +600,17 @@ gfx::Range AppendSourceAttributionSuggestionBadge(size_t source_index,
 
 struct AttributionData {
   std::u16string full_text;
+  // Same structure as `full_text` (app separator and "+ N other sources"
+  // suffix included), but each "\u00A0[N]" badge is replaced by ", " followed
+  // by the citation's accessible name so that screen readers pause between
+  // sources. Example:
+  //   `full_text`:
+  //     "From Gemini and connected apps · Gmail\u00A0[1]\u00A0[2] · "
+  //     "Photos\u00A0[1] + 2 other sources"
+  //   `a11y_text`:
+  //     "From Gemini and connected apps · Gmail, Gmail source 1, "
+  //     "Gmail source 2 · Photos, Photos source 1 + 2 other sources"
+  std::u16string a11y_text;
   std::vector<Suggestion::PersonalContextSourceCitation> citations;
 };
 
@@ -627,48 +636,57 @@ std::optional<AttributionData> BuildAttributionData(
   const size_t base_offset = offsets[0];
 
   std::u16string sources_text;
+  std::u16string a11y_sources_text;
   std::vector<Suggestion::PersonalContextSourceCitation> citations;
   bool needs_separator = false;
   for (const auto& [app_type, urls] : grouped_sources) {
     if (needs_separator) {
       sources_text.append(kLabelSeparator);
+      a11y_sources_text.append(kLabelSeparator);
     }
-    sources_text.append(PayloadSourceToAppName(app_type));
+    const std::u16string app_name = PayloadSourceToAppName(app_type);
+    sources_text.append(app_name);
+    a11y_sources_text.append(app_name);
 
     for (size_t i = 0; i < urls.size(); ++i) {
       const gfx::Range badge_range =
           AppendSourceAttributionSuggestionBadge(i, sources_text);
+      std::u16string accessible_name = l10n_util::GetStringFUTF16(
+          IDS_AUTOFILL_AI_SOURCE_ATTRIBUTION_LINK_A11Y_LABEL, app_name,
+          base::NumberToString16(i + 1));
+      base::StrAppend(&a11y_sources_text, {u", ", accessible_name});
       citations.emplace_back(urls[i],
                              gfx::Range(base_offset + badge_range.start(),
-                                        base_offset + badge_range.end()));
+                                        base_offset + badge_range.end()),
+                             std::move(accessible_name));
     }
     needs_separator = true;
   }
 
   if (payload_sources.size() > citations.size()) {
-    // `PopupRowFactoryUtils` relies on the leading space here to isolate the
-    // suffix into its own `views::StyledLabel` range for RTL layout.
-    base::StrAppend(
-        &sources_text,
+    const std::u16string suffix = base::StrCat(
         {u" ", l10n_util::GetPluralStringFUTF16(
                    IDS_AUTOFILL_AI_SUGGESTED_BY_GEMINI_MORE_SOURCES_SUFFIX,
                    base::saturated_cast<int>(payload_sources.size() -
                                              citations.size()))});
+    // `PopupRowFactoryUtils` relies on the leading space here to isolate the
+    // suffix into its own `views::StyledLabel` range for RTL layout.
+    sources_text.append(suffix);
+    a11y_sources_text.append(suffix);
   }
 
   std::u16string full_text = l10n_util::GetStringFUTF16(
       IDS_AUTOFILL_AI_SUGGESTED_BY_GEMINI_WITH_SOURCES, {sources_text});
+  std::u16string a11y_text = l10n_util::GetStringFUTF16(
+      IDS_AUTOFILL_AI_SUGGESTED_BY_GEMINI_WITH_SOURCES, {a11y_sources_text});
 
-  return AttributionData{std::move(full_text), std::move(citations)};
+  return AttributionData{std::move(full_text), std::move(a11y_text),
+                         std::move(citations)};
 }
 
 std::optional<Suggestion> CreatePersonalContextSourceAttributionSuggestion(
     const EntityInstance& entity) {
   CHECK_EQ(entity.record_type(), EntityInstance::RecordType::kPersonalContext);
-  if (!base::FeatureList::IsEnabled(
-          features::kAutofillAmbientAutofillSourceAttribution)) {
-    return std::nullopt;
-  }
 
   std::optional<AttributionData> attribution_data = BuildAttributionData(
       std::get<EntityPayload>(entity.record_type_data()).sources);
@@ -681,6 +699,12 @@ std::optional<Suggestion> CreatePersonalContextSourceAttributionSuggestion(
   source_info.icon = Suggestion::Icon::kSpark;
   source_info.acceptability =
       Suggestion::Acceptability::kSelectableButUnacceptable;
+  // On desktop, the citation badges are links that keyboard users step through
+  // with the arrow keys. Tell screen reader users how to reach them.
+  source_info.voice_over =
+      base::StrCat({attribution_data->a11y_text, u". ",
+                    l10n_util::GetStringUTF16(
+                        IDS_AUTOFILL_AI_SOURCE_ATTRIBUTION_A11Y_INSTRUCTIONS)});
   source_info.payload = Suggestion::AutofillAiPayload(
       entity.guid(), std::move(attribution_data->citations));
   return source_info;
@@ -891,38 +915,6 @@ std::vector<const EntityInstance*> OrderedEntitiesForSuggestion(
   return entities;
 }
 
-// Returns a valid GURL parsed from a domain string. If no scheme is present in
-// `domain`, prepends "https://" to allow GURL to parse it and retrieve a host.
-GURL GetGURLFromDomain(std::u16string_view domain) {
-  const std::string domain_str = base::UTF16ToUTF8(domain);
-  if (!domain_str.contains("://")) {
-    return GURL(base::StrCat(
-        {url::kHttpsScheme, url::kStandardSchemeSeparator, domain_str}));
-  }
-  return GURL(domain_str);
-}
-
-// Returns the domain-specific AttributeType for domain-constrained entity types
-// (e.g., kOrder, kShipment), or std::nullopt if the entity type is not
-// domain-constrained.
-std::optional<AttributeType> GetDomainFilterAttributeType(
-    const EntityType& type) {
-  switch (type.name()) {
-    case EntityTypeName::kOrder:
-      return AttributeType(AttributeTypeName::kOrderMerchantDomain);
-    case EntityTypeName::kShipment:
-      return AttributeType(AttributeTypeName::kShipmentCarrierDomain);
-    case EntityTypeName::kPassport:
-    case EntityTypeName::kDriversLicense:
-    case EntityTypeName::kVehicle:
-    case EntityTypeName::kNationalIdCard:
-    case EntityTypeName::kKnownTravelerNumber:
-    case EntityTypeName::kRedressNumber:
-    case EntityTypeName::kFlightReservation:
-      return std::nullopt;
-  }
-}
-
 // Returns whether the `entity` is allowed to be suggested as a primary
 // suggestion for `trigger_field_origin` on `client`.
 // For domain-constrained entity types (such as `kOrder` or `kShipment`), this
@@ -932,26 +924,14 @@ std::optional<AttributeType> GetDomainFilterAttributeType(
 bool IsAllowedForPageUrl(const EntityInstance& entity,
                          const AutofillClient& client,
                          const url::Origin& trigger_field_origin) {
-  std::optional<AttributeType> domain_attr_type =
-      GetDomainFilterAttributeType(entity.type());
-  if (!domain_attr_type) {
+  if (!DoesEntityTypeSupportAffiliations(entity.type())) {
     return true;
   }
   if (client.GetLastCommittedPrimaryMainFrameOrigin() != trigger_field_origin) {
     return false;
   }
-  base::optional_ref<const AttributeInstance> domain_attr =
-      entity.attribute(*domain_attr_type);
-  if (!domain_attr) {
-    return false;
-  }
-  const std::u16string domain_val = domain_attr->GetCompleteRawInfo();
-  if (domain_val.empty()) {
-    return false;
-  }
-  return affiliations::IsExtendedPublicSuffixDomainMatch(
-      GetGURLFromDomain(domain_val),
-      client.GetLastCommittedPrimaryMainFrameURL(), {});
+  return entity.IsAffiliatedWithUrl(
+      client.GetLastCommittedPrimaryMainFrameURL());
 }
 
 std::vector<const EntityInstance*> GetEntitiesForSuggestion(

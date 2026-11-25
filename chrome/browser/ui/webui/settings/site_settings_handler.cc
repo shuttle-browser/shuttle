@@ -98,7 +98,7 @@
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
-#include "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
+#include "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
 #include "components/services/app_service/public/cpp/app_registry_cache.h"
 #include "components/services/app_service/public/cpp/app_types.h"
 #include "components/services/app_service/public/cpp/app_update.h"
@@ -125,6 +125,7 @@
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/text/bytes_formatting.h"
 #include "url/gurl.h"
@@ -138,9 +139,12 @@
         // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_CHROMEOS)
+#include "components/user_manager/user_manager.h"
+#endif
+
+#if BUILDFLAG(ENABLE_SMART_CARD)
 #include "chrome/browser/smart_card/smart_card_permission_context.h"
 #include "chrome/browser/smart_card/smart_card_permission_context_factory.h"
-#include "components/user_manager/user_manager.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -185,14 +189,6 @@ constexpr ContentSettingsType kChooserDataContentSettingsTypes[] = {
     ContentSettingsType::HID_CHOOSER_DATA,
     ContentSettingsType::SERIAL_CHOOSER_DATA,
     ContentSettingsType::USB_CHOOSER_DATA,
-};
-
-// Content types related to the double-patterned storage access settings.
-// Entries in this array will be included in the results from HandleGetAllSites
-// in addition to all the single-patterned settings.
-constexpr ContentSettingsType kStorageAccessSettingsTypes[] = {
-    ContentSettingsType::STORAGE_ACCESS,
-    ContentSettingsType::TOP_LEVEL_STORAGE_ACCESS,
 };
 
 // These values are persisted to logs. Entries should not be renumbered and
@@ -1265,15 +1261,13 @@ void SiteSettingsHandler::HandleGetAllSites(const base::ListValue& args) {
 
   // Include any storage access permissions; list the primary (embedded) site
   // using a representative URL.
-  for (auto content_type : kStorageAccessSettingsTypes) {
-    auto exceptions = map->GetSettingsForOneType(content_type);
-    for (const auto& e : exceptions) {
-      if (e.primary_pattern != ContentSettingsPattern::Wildcard()) {
-        auto origin =
-            url::Origin::Create(e.primary_pattern.ToRepresentativeUrl());
-        InsertOriginIntoGroup(&all_sites_map_, origin);
-        origin_permission_set_.insert(origin);
-      }
+  for (const auto& e :
+       map->GetSettingsForOneType(ContentSettingsType::STORAGE_ACCESS)) {
+    if (e.primary_pattern != ContentSettingsPattern::Wildcard()) {
+      auto origin =
+          url::Origin::Create(e.primary_pattern.ToRepresentativeUrl());
+      InsertOriginIntoGroup(&all_sites_map_, origin);
+      origin_permission_set_.insert(origin);
     }
   }
 
@@ -1750,10 +1744,8 @@ void SiteSettingsHandler::HandleSetOriginPermissions(
     // TODO(crbug.com/356170740) Refactor to eliminate the need for listing
     // content settings in here.
     if (setting == CONTENT_SETTING_DEFAULT &&
-        (scoping_type == content_settings::WebsiteSettingsInfo::
-                             REQUESTING_AND_TOP_SCHEMEFUL_SITE_SCOPE ||
-         scoping_type == content_settings::WebsiteSettingsInfo::
-                             REQUESTING_ORIGIN_AND_TOP_SCHEMEFUL_SITE_SCOPE)) {
+        scoping_type == content_settings::WebsiteSettingsInfo::
+                            REQUESTING_AND_TOP_SCHEMEFUL_SITE_SCOPE) {
       // In order to correctly set the reload infobanner on pages that have
       // embedded content from the origin being reset, we need to keep track of
       // any associated secondary patterns before we change anything.
@@ -2368,7 +2360,7 @@ void SiteSettingsHandler::ObserveSourcesForProfile(Profile* profile) {
     }
   }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   if (base::FeatureList::IsEnabled(blink::features::kSmartCard)) {
     auto& smart_card_context =
         SmartCardPermissionContextFactory::GetForProfile(*profile);
@@ -2421,7 +2413,7 @@ void SiteSettingsHandler::StopObservingSourcesForProfile(Profile* profile) {
     }
   }
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   if (base::FeatureList::IsEnabled(blink::features::kSmartCard)) {
     auto& smart_card_context =
         SmartCardPermissionContextFactory::GetForProfile(*profile);

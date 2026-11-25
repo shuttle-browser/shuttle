@@ -4,8 +4,10 @@
 
 package org.chromium.chrome.browser.tabmodel;
 
+import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -13,17 +15,20 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.reset;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.content.Context;
 
+import org.jni_zero.JniUniquePtr;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -36,8 +41,13 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.Token;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.flags.ActivityType;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.CustomTabProfileType;
+import org.chromium.chrome.browser.media.MediaCaptureDevicesDispatcherAndroid;
+import org.chromium.chrome.browser.media.MediaCaptureDevicesDispatcherAndroidJni;
 import org.chromium.chrome.browser.price_tracking.PriceTrackingFeatures;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.MockTab;
@@ -46,25 +56,35 @@ import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabCreationState;
 import org.chromium.chrome.browser.tab.TabId;
 import org.chromium.chrome.browser.tab.TabLaunchType;
+import org.chromium.chrome.browser.tab.TabRestoreEntryId;
+import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncFeatures;
 import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncFeaturesJni;
 import org.chromium.chrome.browser.tab_ui.TabContentManager;
 import org.chromium.chrome.browser.tabmodel.NextTabPolicy.NextTabPolicySupplier;
+import org.chromium.chrome.browser.tabmodel.undo.UndoClosureSnapshot;
+import org.chromium.chrome.browser.tabmodel.undo.UndoClosureSnapshot.ClosedTab;
+import org.chromium.components.tab_groups.TabGroupsFeatureMap;
 import org.chromium.components.visited_url_ranking.url_grouping.TabSelectionCause;
 import org.chromium.content_public.browser.WebContents;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * Unit tests for {@link TabCollectionTabModelImpl}. More substantive tests are in {@link
  * TabCollectionTabModelImplTest}.
  */
 @RunWith(BaseRobolectricTestRunner.class)
+@DisableFeatures(TabGroupsFeatureMap.UPDATE_TAB_GROUP_COLORS)
 public class TabCollectionTabModelImplUnitTest {
     private static final long TAB_MODEL_JNI_BRIDGE_PTR = 875943L;
     private static final long TAB_COLLECTION_TAB_MODEL_IMPL_PTR = 378492L;
+    private static final @TabRestoreEntryId int ENTRY_ID = 42;
 
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -81,7 +101,7 @@ public class TabCollectionTabModelImplUnitTest {
     @Mock private NextTabPolicySupplier mNextTabPolicySupplier;
     @Mock private AsyncTabParamsManager mAsyncTabParamsManager;
     @Mock private TabRemover mTabRemover;
-    @Mock private TabUngrouperFactory mTabUngrouperFactory;
+    @Mock private TabUngrouper mTabUngrouper;
     @Mock private ScopedStorageBatch mScopedStorageBatch;
     @Mock private TabModelObserver mTabModelObserver;
     @Mock private PendingTabClosureManager mPendingTabClosureManager;
@@ -89,6 +109,7 @@ public class TabCollectionTabModelImplUnitTest {
     private TabCollectionTabModelImpl mTabModel;
     private List<Tab> mTabs;
     private boolean mExpectNoJniCalls;
+    private int mBatchGetCount;
 
     @Before
     public void setUp() {
@@ -96,6 +117,9 @@ public class TabCollectionTabModelImplUnitTest {
         PriceTrackingFeatures.setIsSignedInAndSyncEnabledForTesting(false);
         PriceTrackingFeatures.setPriceAnnotationsEnabledForTesting(false);
         TabGroupSyncFeaturesJni.setInstanceForTesting(mTabGroupSyncFeaturesJni);
+        // Pending closures pause media, which queries media capture state.
+        MediaCaptureDevicesDispatcherAndroidJni.setInstanceForTesting(
+                mock(MediaCaptureDevicesDispatcherAndroid.Natives.class));
 
         when(mProfile.isOffTheRecord()).thenReturn(false);
         when(mProfile.isIncognitoBranded()).thenReturn(false);
@@ -109,7 +133,7 @@ public class TabCollectionTabModelImplUnitTest {
                         eq(ActivityType.TABBED),
                         eq(null),
                         eq(TabModelType.STANDARD)))
-                .thenReturn(TAB_MODEL_JNI_BRIDGE_PTR);
+                .thenAnswer(inv -> JniUniquePtr.createForTesting(TAB_MODEL_JNI_BRIDGE_PTR));
 
         TabCollectionTabModelImplJni.setInstanceForTesting(mTabCollectionTabModelImplJni);
         when(mTabCollectionTabModelImplJni.init(eq(mProfile)))
@@ -230,9 +254,11 @@ public class TabCollectionTabModelImplUnitTest {
                         mTabModelDelegate,
                         mAsyncTabParamsManager,
                         mTabRemover,
-                        /* isIncognitoBranded= */ false,
-                        mTabUngrouperFactory,
-                        () -> mScopedStorageBatch,
+                        mTabUngrouper,
+                        () -> {
+                            mBatchGetCount++;
+                            return mScopedStorageBatch;
+                        },
                         /* supportUndo= */ false);
         mTabModel.addObserver(mTabModelObserver);
 
@@ -241,8 +267,8 @@ public class TabCollectionTabModelImplUnitTest {
 
     @After
     public void tearDown() {
+        MediaCaptureDevicesDispatcherAndroidJni.setInstanceForTesting(null);
         mTabModel.destroy();
-        verify(mTabModelJniBridgeJni).destroy(eq(TAB_MODEL_JNI_BRIDGE_PTR));
         verify(mTabCollectionTabModelImplJni).destroy(eq(TAB_COLLECTION_TAB_MODEL_IMPL_PTR));
     }
 
@@ -265,7 +291,7 @@ public class TabCollectionTabModelImplUnitTest {
 
         mTabModel.broadcastSessionRestoreComplete();
 
-        verify(mTabModelJniBridgeJni).broadcastSessionRestoreComplete(eq(TAB_MODEL_JNI_BRIDGE_PTR));
+        verify(mTabModelJniBridgeJni).broadcastSessionRestoreComplete(any());
     }
 
     @Test
@@ -454,33 +480,6 @@ public class TabCollectionTabModelImplUnitTest {
     }
 
     @Test
-    public void testWillMergingCreateNewGroup() {
-        MockTab tab1 = createMockTab(123, mProfile);
-        MockTab tab2 = createMockTab(123, mProfile);
-        tab1.setIsInitialized(true);
-        tab2.setIsInitialized(true);
-
-        assertTrue(mTabModel.willMergingCreateNewGroup(List.of(tab1)));
-        assertTrue(mTabModel.willMergingCreateNewGroup(List.of(tab1, tab2)));
-        assertTrue(mTabModel.willMergingCreateNewGroup(List.of(tab2)));
-
-        tab1.setTabGroupId(new Token(1L, 2L));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab1)));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab1, tab2)));
-        assertTrue(mTabModel.willMergingCreateNewGroup(List.of(tab2)));
-
-        tab2.setTabGroupId(new Token(3L, 4L));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab1)));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab1, tab2)));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab2)));
-
-        tab1.setTabGroupId(null);
-        assertTrue(mTabModel.willMergingCreateNewGroup(List.of(tab1)));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab1, tab2)));
-        assertFalse(mTabModel.willMergingCreateNewGroup(List.of(tab2)));
-    }
-
-    @Test
     public void testGetRelatedTabList_Basic() {
         int tabId = 123;
         MockTab tab1 = createMockTab(tabId, mProfile);
@@ -609,8 +608,7 @@ public class TabCollectionTabModelImplUnitTest {
                         mTabModelDelegate,
                         mAsyncTabParamsManager,
                         mTabRemover,
-                        /* isIncognitoBranded= */ false,
-                        mTabUngrouperFactory,
+                        mTabUngrouper,
                         () -> mScopedStorageBatch,
                         /* supportUndo= */ true);
 
@@ -638,8 +636,7 @@ public class TabCollectionTabModelImplUnitTest {
                         mTabModelDelegate,
                         mAsyncTabParamsManager,
                         mTabRemover,
-                        /* isIncognitoBranded= */ true,
-                        mTabUngrouperFactory,
+                        mTabUngrouper,
                         () -> mScopedStorageBatch,
                         /* supportUndo= */ false);
 
@@ -680,8 +677,7 @@ public class TabCollectionTabModelImplUnitTest {
                         mTabModelDelegate,
                         mAsyncTabParamsManager,
                         mTabRemover,
-                        /* isIncognitoBranded= */ false,
-                        mTabUngrouperFactory,
+                        mTabUngrouper,
                         () -> mScopedStorageBatch,
                         false);
 
@@ -738,8 +734,7 @@ public class TabCollectionTabModelImplUnitTest {
                         mTabModelDelegate,
                         mAsyncTabParamsManager,
                         mTabRemover,
-                        /* isIncognitoBranded= */ false,
-                        mTabUngrouperFactory,
+                        mTabUngrouper,
                         () -> mScopedStorageBatch,
                         false);
 
@@ -779,6 +774,225 @@ public class TabCollectionTabModelImplUnitTest {
     }
 
     @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCloseTabs_undoableClosureRework_finalizesInModelOrder() {
+        when(mTabModelDelegate.getModel(false)).thenReturn(mTabModel);
+        setMockPendingTabClosureManager(mTabModel);
+        // The mocked order controller inserts at index 0, so the model order is tab3, tab2, tab1.
+        MockTab tab1 = addTabAtFront(1);
+        MockTab tab2 = addTabAtFront(2);
+        MockTab tab3 = addTabAtFront(3);
+        assertEquals(List.of(tab3, tab2, tab1), mTabs);
+
+        mTabModel.closeTabs(
+                TabClosureParams.closeTabs(List.of(tab1, tab3)).allowUndo(true).build());
+
+        verify(mTabModelObserver)
+                .onFinishingMultipleTabClosure(
+                        eq(List.of(tab3, tab1)),
+                        eq(true),
+                        eq(TabClosingSource.UNKNOWN),
+                        isNull(),
+                        eq(false),
+                        eq(true));
+        verify(mPendingTabClosureManager, never()).addTabClosureEvent(any(), any(), anyInt());
+        assertEquals(List.of(tab2), mTabs);
+        assertTrue(tab1.isDestroyed());
+        assertTrue(tab3.isDestroyed());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCloseTabs_noUndo_finalizesInRequestOrder() {
+        when(mTabModelDelegate.getModel(false)).thenReturn(mTabModel);
+        setMockPendingTabClosureManager(mTabModel);
+        // The mocked order controller inserts at index 0, so the model order is tab3, tab2, tab1.
+        MockTab tab1 = addTabAtFront(1);
+        MockTab tab2 = addTabAtFront(2);
+        MockTab tab3 = addTabAtFront(3);
+        assertEquals(List.of(tab3, tab2, tab1), mTabs);
+
+        mTabModel.closeTabs(
+                TabClosureParams.closeTabs(List.of(tab1, tab3)).allowUndo(false).build());
+
+        verify(mTabModelObserver)
+                .onFinishingMultipleTabClosure(
+                        eq(List.of(tab1, tab3)),
+                        eq(true),
+                        eq(TabClosingSource.UNKNOWN),
+                        isNull(),
+                        eq(false),
+                        eq(false));
+        verify(mPendingTabClosureManager, never()).addTabClosureEvent(any(), any(), anyInt());
+        assertEquals(List.of(tab2), mTabs);
+        assertTrue(tab1.isDestroyed());
+        assertTrue(tab3.isDestroyed());
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCloseTabs_undoableClosureReworkDisabled_pendsInRequestOrder() {
+        when(mTabModelDelegate.getModel(false)).thenReturn(mTabModel);
+        setMockPendingTabClosureManager(mTabModel);
+        MockTab tab1 = addTabAtFront(1);
+        addTabAtFront(2);
+        MockTab tab3 = addTabAtFront(3);
+
+        mTabModel.closeTabs(
+                TabClosureParams.closeTabs(List.of(tab1, tab3)).allowUndo(true).build());
+
+        verify(mPendingTabClosureManager)
+                .addTabClosureEvent(
+                        eq(List.of(tab1, tab3)), isNull(), eq(TabClosingSource.UNKNOWN));
+        verify(mTabModelObserver, never())
+                .onFinishingMultipleTabClosure(
+                        any(), anyBoolean(), anyInt(), any(), anyBoolean(), anyBoolean());
+        verify(mTabModelObserver, never()).onFinishingMultipleTabClosure(any(), anyBoolean());
+        assertFalse(tab1.isDestroyed());
+        assertFalse(tab3.isDestroyed());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCloseTabs_undoableClosureRework_archivedModelStillPends() {
+        TabCollectionTabModelImpl archivedModel = createArchivedModel();
+        when(mTabModelDelegate.getModel(false)).thenReturn(archivedModel);
+        archivedModel.addObserver(mTabModelObserver);
+        setMockPendingTabClosureManager(archivedModel);
+        MockTab tab1 = createArchivedMockTab(1);
+        MockTab tab2 = createArchivedMockTab(2);
+        archivedModel.addTab(
+                tab1, 0, TabLaunchType.FROM_RESTORE, TabCreationState.FROZEN_ON_RESTORE);
+        archivedModel.addTab(
+                tab2, 0, TabLaunchType.FROM_RESTORE, TabCreationState.FROZEN_ON_RESTORE);
+
+        archivedModel.closeTabs(TabClosureParams.closeTab(tab1).allowUndo(true).build());
+
+        verify(mPendingTabClosureManager)
+                .addTabClosureEvent(eq(List.of(tab1)), isNull(), eq(TabClosingSource.UNKNOWN));
+        verify(mTabModelObserver)
+                .onTabClosePending(eq(List.of(tab1)), eq(false), eq(TabClosingSource.UNKNOWN));
+        verify(mTabModelObserver, never())
+                .onFinishingMultipleTabClosure(
+                        any(), anyBoolean(), anyInt(), any(), anyBoolean(), anyBoolean());
+        verify(mTabModelObserver, never()).onFinishingMultipleTabClosure(any(), anyBoolean());
+        assertFalse(tab1.isDestroyed());
+        archivedModel.destroy();
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCommitAllTabClosures_undoableClosureRework_nothingPendingNotifies() {
+        mTabModel.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+
+        mTabModel.commitAllTabClosures();
+
+        verify(mPendingTabClosureManager, never()).commitAllTabClosures();
+        verify(mTabModelObserver).allTabsClosureCommitted(/* isIncognito= */ false);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCommitAllTabClosures_undoableClosureRework_pendingCommitsAndNotifiesOnce() {
+        mTabModel.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+        when(mPendingTabClosureManager.hasPendingClosures()).thenReturn(true, false);
+
+        mTabModel.commitAllTabClosures();
+
+        verify(mPendingTabClosureManager).commitAllTabClosures();
+        verify(mTabModelObserver).allTabsClosureCommitted(/* isIncognito= */ false);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCommitAllTabClosures_undoableClosureRework_noPendingSupportDoesNotNotify() {
+        assertFalse(mTabModel.supportsPendingClosures());
+
+        mTabModel.commitAllTabClosures();
+
+        verify(mTabModelObserver, never()).allTabsClosureCommitted(anyBoolean());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testCommitAllTabClosures_undoableClosureRework_archivedModelDoesNotNotify() {
+        TabCollectionTabModelImpl archivedModel = createArchivedModel();
+        archivedModel.addObserver(mTabModelObserver);
+        archivedModel.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+
+        archivedModel.commitAllTabClosures();
+
+        verify(mPendingTabClosureManager, never()).commitAllTabClosures();
+        verify(mTabModelObserver, never()).allTabsClosureCommitted(anyBoolean());
+        archivedModel.destroy();
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void
+            testCommitAllTabClosures_undoableClosureReworkDisabled_nothingPendingDoesNotNotify() {
+        mTabModel.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+
+        mTabModel.commitAllTabClosures();
+
+        verify(mPendingTabClosureManager, never()).commitAllTabClosures();
+        verify(mTabModelObserver, never()).allTabsClosureCommitted(anyBoolean());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testInternalCommit_undoableClosureRework_nothingPendingDoesNotNotify() {
+        when(mTabModelDelegate.getModel(false)).thenReturn(mTabModel);
+        mTabModel.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+        MockTab tab1 = createMockTab(/* tabId= */ 1, mProfile);
+        MockTab tab2 = createMockTab(/* tabId= */ 2, mProfile);
+
+        mTabModel.addTab(
+                tab1,
+                /* index= */ 0,
+                TabLaunchType.FROM_CHROME_UI,
+                TabCreationState.LIVE_IN_BACKGROUND);
+        mTabModel.addTab(
+                tab2,
+                /* index= */ 1,
+                TabLaunchType.FROM_CHROME_UI,
+                TabCreationState.LIVE_IN_BACKGROUND);
+        mTabModel.moveTab(tab2.getId(), /* newIndex= */ 1);
+        mTabModel.closeTabs(TabClosureParams.closeTab(tab1).allowUndo(false).build());
+        mTabModel.removeTab(tab2);
+        mTabModel.destroy();
+
+        verify(mPendingTabClosureManager, never()).commitAllTabClosures();
+        verify(mTabModelObserver, never()).allTabsClosureCommitted(anyBoolean());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.UNDOABLE_TAB_CLOSURE_REWORK)
+    public void testInternalCommit_undoableClosureRework_pendingCommitsAndNotifiesOnce() {
+        when(mTabModelDelegate.getModel(false)).thenReturn(mTabModel);
+        mTabModel.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+        when(mPendingTabClosureManager.hasPendingClosures()).thenReturn(true, false);
+        MockTab tab = createMockTab(/* tabId= */ 1, mProfile);
+
+        mTabModel.addTab(
+                tab,
+                /* index= */ 0,
+                TabLaunchType.FROM_CHROME_UI,
+                TabCreationState.LIVE_IN_BACKGROUND);
+
+        verify(mPendingTabClosureManager).commitAllTabClosures();
+        verify(mTabModelObserver).allTabsClosureCommitted(/* isIncognito= */ false);
+
+        reset(mPendingTabClosureManager, mTabModelObserver);
+        when(mPendingTabClosureManager.hasPendingClosures()).thenReturn(true, false);
+
+        mTabModel.closeTabs(TabClosureParams.closeTab(tab).allowUndo(false).build());
+
+        verify(mPendingTabClosureManager).commitAllTabClosures();
+        verify(mTabModelObserver).allTabsClosureCommitted(/* isIncognito= */ false);
+    }
+
+    @Test
     public void testIsClosingAllTabs() {
         when(mTabModelDelegate.getModel(false)).thenReturn(mTabModel);
 
@@ -807,15 +1021,478 @@ public class TabCollectionTabModelImplUnitTest {
         assertTrue(mTabModel.isClosingAllTabs());
     }
 
+    @Test
+    public void testDetachTabForReparenting_BeforeDestroyPreservesTab() {
+        when(mTabModelDelegate.isReparentingInProgress()).thenReturn(true);
+
+        long newCollectionPtr = TAB_COLLECTION_TAB_MODEL_IMPL_PTR + 1;
+        List<Tab> newTabs = new ArrayList<>();
+        when(mTabCollectionTabModelImplJni.init(eq(mProfile))).thenReturn(newCollectionPtr);
+        when(mTabCollectionTabModelImplJni.getAllTabs(eq(newCollectionPtr))).thenReturn(newTabs);
+        when(mTabCollectionTabModelImplJni.addTabRecursive(
+                        eq(newCollectionPtr),
+                        any(Tab.class),
+                        anyInt(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean()))
+                .thenAnswer(
+                        invocation -> {
+                            Tab addedTab = invocation.getArgument(1);
+                            int index = invocation.getArgument(2);
+                            newTabs.add(index, addedTab);
+                            return index;
+                        });
+        TabCollectionTabModelImpl newTabModel =
+                getModel(mProfile, mTabModelDelegate, mScopedStorageBatch);
+
+        MockTab tab = createMockTab(1, mProfile);
+        mTabModel.addTab(tab, 0, TabLaunchType.FROM_CHROME_UI, TabCreationState.LIVE_IN_FOREGROUND);
+        verifyBatchedAndReset();
+        mTabModel.setTabsMultiSelected(Collections.singleton(1), /* isSelected= */ true);
+
+        mTabModel.addObserver(mTabModelObserver);
+        mTabModel.detachTabForReparenting(tab);
+
+        assertEquals(0, mTabModel.getCount());
+        assertNull(mTabModel.getTabById(1));
+        assertNull(mTabModel.getCurrentTabSupplier().get());
+        assertFalse(mTabModel.isTabMultiSelected(1));
+        verify(mTabCollectionTabModelImplJni)
+                .removeTabRecursive(TAB_COLLECTION_TAB_MODEL_IMPL_PTR, tab);
+        verify(mTabModelObserver, never()).tabRemoved(any());
+        verify(mTabModelObserver, never()).willCloseTab(any(), anyBoolean());
+
+        // Restore the tab into the recreated Activity's model, remove its AsyncTabParams, and run
+        // OldActivity.onDestroy(). The tab in newTabModel must remain live (not destroyed).
+        newTabModel.addTab(tab, 0, TabLaunchType.FROM_RESTORE, TabCreationState.FROZEN_ON_RESTORE);
+        when(mAsyncTabParamsManager.hasParamsForTabId(1)).thenReturn(false);
+        mTabModel.destroy();
+        assertEquals(1, newTabModel.getCount());
+        assertEquals(tab, newTabModel.getTabAt(0));
+        assertFalse(newTabModel.getTabAt(0).isDestroyed());
+
+        newTabModel.destroy();
+    }
+
+    @Test
+    public void testSetTabsMultiSelected_Add() {
+        addTabsAndResetObserver(/* count= */ 4);
+
+        Set<Integer> tabsToAdd = new HashSet<>(Arrays.asList(1, 2, 3));
+        mTabModel.setTabsMultiSelected(tabsToAdd, /* isSelected= */ true);
+
+        for (int tabId : tabsToAdd) {
+            assertTrue(mTabModel.isTabMultiSelected(tabId));
+        }
+        assertFalse(mTabModel.isTabMultiSelected(4));
+        verify(mTabModelObserver, times(1)).onTabsSelectionChanged();
+    }
+
+    @Test
+    public void testSetTabsMultiSelected_Remove() {
+        addTabsAndResetObserver(/* count= */ 4);
+        mTabModel.setTabsMultiSelected(
+                new HashSet<>(Arrays.asList(1, 2, 3, 4)), /* isSelected= */ true);
+        reset(mTabModelObserver);
+
+        mTabModel.setTabsMultiSelected(new HashSet<>(Arrays.asList(2, 4)), /* isSelected= */ false);
+
+        assertFalse(mTabModel.isTabMultiSelected(2));
+        assertFalse(mTabModel.isTabMultiSelected(4));
+        assertTrue(mTabModel.isTabMultiSelected(1));
+        assertTrue(mTabModel.isTabMultiSelected(3));
+        verify(mTabModelObserver, times(1)).onTabsSelectionChanged();
+    }
+
+    @Test
+    public void testClearMultiSelection_WithNotification() {
+        addTabsAndResetObserver(/* count= */ 4);
+        mTabModel.setTabsMultiSelected(
+                new HashSet<>(Arrays.asList(1, 2, 3)), /* isSelected= */ true);
+        reset(mTabModelObserver);
+
+        mTabModel.clearMultiSelection(/* notifyObservers= */ true);
+
+        assertFalse(mTabModel.isTabMultiSelected(2));
+        assertFalse(mTabModel.isTabMultiSelected(3));
+        verify(mTabModelObserver, times(1)).onTabsSelectionChanged();
+    }
+
+    @Test
+    public void testClearMultiSelection_WithoutNotification() {
+        addTabsAndResetObserver(/* count= */ 4);
+        mTabModel.setTabsMultiSelected(
+                new HashSet<>(Arrays.asList(1, 2, 3)), /* isSelected= */ true);
+        reset(mTabModelObserver);
+
+        mTabModel.clearMultiSelection(/* notifyObservers= */ false);
+
+        assertFalse(mTabModel.isTabMultiSelected(2));
+        assertFalse(mTabModel.isTabMultiSelected(3));
+        verify(mTabModelObserver, never()).onTabsSelectionChanged();
+    }
+
+    @Test
+    public void testIsTabMultiSelected() {
+        // The first tab added becomes the active tab.
+        addTabsAndResetObserver(/* count= */ 3);
+        int currentTabId = mTabModel.getCurrentTabSupplier().get().getId();
+        int otherSelectedTabId = 2;
+        int unselectedTabId = 3;
+        assertTrue(
+                "The active tab should always be considered selected.",
+                mTabModel.isTabMultiSelected(currentTabId));
+        mTabModel.setTabsMultiSelected(
+                new HashSet<>(Arrays.asList(currentTabId, otherSelectedTabId)),
+                /* isSelected= */ true);
+
+        assertTrue(
+                "Tab explicitly added to the set should be selected.",
+                mTabModel.isTabMultiSelected(otherSelectedTabId));
+        assertTrue(
+                "The active tab should always be considered selected.",
+                mTabModel.isTabMultiSelected(currentTabId));
+        assertFalse(
+                "A tab not in the set and not active should not be selected.",
+                mTabModel.isTabMultiSelected(unselectedTabId));
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_unrestorableStateNotRestored() {
+        UndoClosureSnapshot savedGroupsSnapshot =
+                UndoClosureSnapshot.forSavedGroups(
+                        List.of(createClosedTab(/* id= */ 5, /* wasSelected= */ false)),
+                        List.of("sync_id"),
+                        /* savedGroupTitle= */ null,
+                        /* savedGroupTabCount= */ 0);
+        assertArrayEquals(
+                new int[] {Tab.INVALID_TAB_ID},
+                mTabModel.restoreClosedTabsForUndo(savedGroupsSnapshot, /* reselect= */ true));
+
+        UndoClosureSnapshot invalidEntryIdSnapshot =
+                createSnapshot(
+                        TabRestoreEntryId.INVALID_TAB_RESTORE_ENTRY_ID,
+                        createClosedTab(/* id= */ 5, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 6, /* wasSelected= */ true));
+        assertArrayEquals(
+                new int[] {Tab.INVALID_TAB_ID, Tab.INVALID_TAB_ID},
+                mTabModel.restoreClosedTabsForUndo(invalidEntryIdSnapshot, /* reselect= */ true));
+
+        UndoClosureSnapshot validSnapshot =
+                createSnapshot(ENTRY_ID, createClosedTab(/* id= */ 5, /* wasSelected= */ true));
+        mTabModel.destroy();
+        mExpectNoJniCalls = true;
+        assertArrayEquals(
+                new int[] {Tab.INVALID_TAB_ID},
+                mTabModel.restoreClosedTabsForUndo(validSnapshot, /* reselect= */ true));
+
+        verify(mTabModelDelegate, never()).restoreForUndo(any(), anyInt(), any());
+        verify(mScopedStorageBatch, never()).close();
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_restoresTabsInStorageBatchAndNoReselect() {
+        mTabModel.setActive(/* active= */ true);
+        MockTab selectedTab = addSelectedTab(/* tabId= */ 1);
+        UndoClosureSnapshot snapshot =
+                createSnapshot(
+                        ENTRY_ID,
+                        createClosedTab(/* id= */ 5, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 6, /* wasSelected= */ true));
+        MockTab restoredTab1 = createMockTab(/* tabId= */ 105, mProfile);
+        MockTab restoredTab2 = createMockTab(/* tabId= */ 106, mProfile);
+        int batchGetCountBeforeRestore = mBatchGetCount;
+        when(mTabModelDelegate.restoreForUndo(mTabModel, ENTRY_ID, snapshot.tabs))
+                .thenAnswer(
+                        invocation -> {
+                            // The outer restore batch is open while the delegate restores tabs.
+                            assertEquals(batchGetCountBeforeRestore + 1, mBatchGetCount);
+                            verify(mScopedStorageBatch, never()).close();
+                            addRestoredTab(restoredTab1);
+                            addRestoredTab(restoredTab2);
+                            // Drop the nested addTab batches so only the outer restore batch's
+                            // close() is verified.
+                            reset(mScopedStorageBatch);
+                            return new int[] {105, 106};
+                        });
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ false);
+
+        assertArrayEquals(new int[] {105, 106}, restoredIds);
+        assertEquals(restoredTab1, mTabModel.getTabById(105));
+        assertEquals(restoredTab2, mTabModel.getTabById(106));
+        assertEquals(selectedTab, mTabModel.getCurrentTabSupplier().get());
+        verify(mTabModelObserver, never())
+                .didSelectTab(any(), eq(TabSelectionType.FROM_UNDO), anyInt());
+        verify(mTabModelDelegate).restoreForUndo(mTabModel, ENTRY_ID, snapshot.tabs);
+        verifyBatchedAndReset();
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_reselectsPreviouslySelectedTab() {
+        mTabModel.setActive(/* active= */ true);
+        addSelectedTab(/* tabId= */ 1);
+        UndoClosureSnapshot snapshot =
+                createSnapshot(
+                        ENTRY_ID,
+                        createClosedTab(/* id= */ 5, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 6, /* wasSelected= */ true));
+        MockTab restoredTab1 = createMockTab(/* tabId= */ 105, mProfile);
+        MockTab restoredTab2 = createMockTab(/* tabId= */ 106, mProfile);
+        stubRestoreForUndo(snapshot, restoredTab1, restoredTab2);
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ true);
+
+        assertArrayEquals(new int[] {105, 106}, restoredIds);
+        assertEquals(restoredTab2, mTabModel.getCurrentTabSupplier().get());
+        assertEquals(mTabModel.indexOf(restoredTab2), mTabModel.index());
+        verify(mTabModelObserver)
+                .didSelectTab(restoredTab2, TabSelectionType.FROM_UNDO, /* lastId= */ 1);
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_selectedTabNotRestoredKeepsSelection() {
+        mTabModel.setActive(/* active= */ true);
+        MockTab selectedTab = addSelectedTab(/* tabId= */ 1);
+        UndoClosureSnapshot snapshot =
+                createSnapshot(
+                        ENTRY_ID,
+                        createClosedTab(/* id= */ 5, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 6, /* wasSelected= */ true));
+        stubRestoreForUndo(snapshot, createMockTab(/* tabId= */ 105, mProfile), null);
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ true);
+
+        assertArrayEquals(new int[] {105, Tab.INVALID_TAB_ID}, restoredIds);
+        assertEquals(selectedTab, mTabModel.getCurrentTabSupplier().get());
+        verify(mTabModelObserver, never())
+                .didSelectTab(any(), eq(TabSelectionType.FROM_UNDO), anyInt());
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_noSelectedTabSelectsFirstRestoredTab() {
+        mTabModel.setActive(/* active= */ true);
+        UndoClosureSnapshot snapshot =
+                createSnapshot(
+                        ENTRY_ID,
+                        createClosedTab(/* id= */ 5, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 6, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 7, /* wasSelected= */ false));
+        MockTab restoredTab2 = createMockTab(/* tabId= */ 106, mProfile);
+        stubRestoreForUndo(snapshot, null, restoredTab2, createMockTab(/* tabId= */ 107, mProfile));
+        assertEquals(TabList.INVALID_TAB_INDEX, mTabModel.index());
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ true);
+
+        assertArrayEquals(new int[] {Tab.INVALID_TAB_ID, 106, 107}, restoredIds);
+        assertEquals(restoredTab2, mTabModel.getCurrentTabSupplier().get());
+        verify(mTabModelObserver)
+                .didSelectTab(
+                        restoredTab2, TabSelectionType.FROM_UNDO, /* lastId= */ Tab.INVALID_TAB_ID);
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_inactiveModelDoesNotFallbackSelect() {
+        mTabModel.setActive(/* active= */ false);
+        UndoClosureSnapshot snapshot =
+                createSnapshot(ENTRY_ID, createClosedTab(/* id= */ 5, /* wasSelected= */ false));
+        MockTab restoredTab = createMockTab(/* tabId= */ 105, mProfile);
+        stubRestoreForUndo(snapshot, restoredTab);
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ true);
+
+        assertArrayEquals(new int[] {105}, restoredIds);
+        assertEquals(restoredTab, mTabModel.getCurrentTabSupplier().get());
+        verify(mTabModelDelegate, never()).selectModel(anyBoolean());
+        verify(mTabModelObserver, never())
+                .didSelectTab(any(), eq(TabSelectionType.FROM_UNDO), anyInt());
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_wrongLengthDelegateResultReturnsInvalidIds() {
+        UndoClosureSnapshot snapshot =
+                createSnapshot(
+                        ENTRY_ID,
+                        createClosedTab(/* id= */ 5, /* wasSelected= */ false),
+                        createClosedTab(/* id= */ 6, /* wasSelected= */ true));
+        when(mTabModelDelegate.restoreForUndo(mTabModel, ENTRY_ID, snapshot.tabs))
+                .thenReturn(new int[] {105});
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ true);
+
+        assertArrayEquals(new int[] {Tab.INVALID_TAB_ID, Tab.INVALID_TAB_ID}, restoredIds);
+        verify(mTabModelObserver, never())
+                .didSelectTab(any(), eq(TabSelectionType.FROM_UNDO), anyInt());
+        verifyBatchedAndReset();
+    }
+
+    @Test
+    public void testRestoreClosedTabsForUndo_restoresTabGroupBeforeSelection() {
+        mTabModel.setActive(/* active= */ true);
+        Token groupId = new Token(1L, 2L);
+        ClosedTab closedTab =
+                new ClosedTab(
+                        /* id= */ 5,
+                        /* title= */ "Tab 5",
+                        groupId,
+                        /* indexInGroup= */ 0,
+                        /* modelIndex= */ 0,
+                        /* pinned= */ false,
+                        /* wasSelected= */ true);
+        UndoClosureSnapshot snapshot = createSnapshot(ENTRY_ID, closedTab);
+        MockTab restoredTab = createMockTab(/* tabId= */ 105, mProfile);
+        stubRestoreForUndo(snapshot, restoredTab);
+        doAnswer(
+                        invocation -> {
+                            assertEquals(groupId, restoredTab.getTabGroupId());
+                            return null;
+                        })
+                .when(mTabModelObserver)
+                .didSelectTab(
+                        restoredTab, TabSelectionType.FROM_UNDO, /* lastId= */ Tab.INVALID_TAB_ID);
+
+        int[] restoredIds = mTabModel.restoreClosedTabsForUndo(snapshot, /* reselect= */ true);
+
+        assertArrayEquals(new int[] {105}, restoredIds);
+        assertEquals(groupId, restoredTab.getTabGroupId());
+        assertEquals(restoredTab, mTabModel.getCurrentTabSupplier().get());
+        verify(mTabCollectionTabModelImplJni)
+                .createTabGroup(
+                        eq(TAB_COLLECTION_TAB_MODEL_IMPL_PTR),
+                        eq(groupId),
+                        any(),
+                        anyInt(),
+                        anyBoolean());
+        verify(mTabModelObserver)
+                .didSelectTab(
+                        restoredTab, TabSelectionType.FROM_UNDO, /* lastId= */ Tab.INVALID_TAB_ID);
+        verify(mScopedStorageBatch, atLeastOnce()).close();
+    }
+
+    private void addTabsAndResetObserver(int count) {
+        for (int i = 1; i <= count; i++) {
+            MockTab tab = createMockTab(i, mProfile);
+            tab.setIsInitialized(/* isInitialized= */ true);
+            mTabModel.addTab(
+                    tab,
+                    /* index= */ i - 1,
+                    TabLaunchType.FROM_CHROME_UI,
+                    TabCreationState.LIVE_IN_FOREGROUND);
+            verifyBatchedAndReset();
+        }
+        reset(mTabModelObserver);
+    }
+
     private void verifyBatchedAndReset() {
         verify(mScopedStorageBatch).close();
         reset(mScopedStorageBatch);
     }
 
-    private MockTab createMockTab(int tabId, Profile profile) {
+    private MockTab createMockTab(@TabId int tabId, Profile profile) {
         MockTab tab = MockTab.createAndInitialize(tabId, profile);
         tab.setWebContentsOverrideForTesting(mock(WebContents.class));
         return tab;
+    }
+
+    private void setMockPendingTabClosureManager(TabCollectionTabModelImpl model) {
+        when(mPendingTabClosureManager.getRewoundList()).thenReturn(model);
+        model.setPendingTabClosureManagerForTesting(mPendingTabClosureManager);
+    }
+
+    /** Creates a tab without WebContents that reports the archived tab model type. */
+    private MockTab createArchivedMockTab(@TabId int tabId) {
+        MockTab tab =
+                new MockTab(tabId, mProfile) {
+                    @Override
+                    public @TabModelType int getTabModelType() {
+                        return TabModelType.ARCHIVED;
+                    }
+                };
+        tab.initialize(
+                /* parent= */ null,
+                /* creationState= */ null,
+                /* loadUrlParams= */ null,
+                /* title= */ null,
+                /* webContents= */ null,
+                /* delegateFactory= */ null,
+                /* initiallyHidden= */ false,
+                /* tabState= */ null,
+                /* initializeRenderer= */ false,
+                /* isPinned= */ false);
+        return tab;
+    }
+
+    private MockTab addTabAtFront(@TabId int tabId) {
+        MockTab tab = createMockTab(tabId, mProfile);
+        mTabModel.addTab(
+                tab,
+                /* index= */ 0,
+                TabLaunchType.FROM_CHROME_UI,
+                TabCreationState.LIVE_IN_BACKGROUND);
+        return tab;
+    }
+
+    /**
+     * Replaces {@link #mTabModel} with an archived model backed by {@link #mTabs} and a distinct
+     * native collection pointer so {@link #tearDown()} still verifies a single destroy of {@link
+     * #TAB_COLLECTION_TAB_MODEL_IMPL_PTR}.
+     */
+    private TabCollectionTabModelImpl createArchivedModel() {
+        mTabModel.removeObserver(mTabModelObserver);
+        mTabModel.destroy();
+
+        long archivedCollectionPtr = TAB_COLLECTION_TAB_MODEL_IMPL_PTR + 1;
+        when(mTabCollectionTabModelImplJni.init(eq(mProfile))).thenReturn(archivedCollectionPtr);
+        when(mTabCollectionTabModelImplJni.getAllTabs(eq(archivedCollectionPtr))).thenReturn(mTabs);
+        when(mTabCollectionTabModelImplJni.addTabRecursive(
+                        eq(archivedCollectionPtr),
+                        any(Tab.class),
+                        anyInt(),
+                        any(),
+                        anyBoolean(),
+                        anyBoolean()))
+                .thenAnswer(
+                        invocation -> {
+                            Tab tab = invocation.getArgument(1);
+                            int index = invocation.getArgument(2);
+                            mTabs.add(index, tab);
+                            return index;
+                        });
+        doAnswer(
+                        invocation -> {
+                            Tab tab = invocation.getArgument(1);
+                            mTabs.remove(tab);
+                            return null;
+                        })
+                .when(mTabCollectionTabModelImplJni)
+                .removeTabRecursive(eq(archivedCollectionPtr), any(Tab.class));
+
+        when(mTabModelJniBridgeJni.init(
+                        any(TabModelJniBridge.class),
+                        eq(mProfile),
+                        eq(ActivityType.TABBED),
+                        eq(null),
+                        eq(TabModelType.ARCHIVED)))
+                .thenAnswer(inv -> JniUniquePtr.createForTesting(TAB_MODEL_JNI_BRIDGE_PTR));
+        mTabModel =
+                new TabCollectionTabModelImpl(
+                        mProfile,
+                        ActivityType.TABBED,
+                        /* customTabProfileType= */ null,
+                        TabModelType.ARCHIVED,
+                        mRegularTabCreator,
+                        mIncognitoTabCreator,
+                        mOrderController,
+                        mTabContentManager,
+                        mNextTabPolicySupplier,
+                        mTabModelDelegate,
+                        mAsyncTabParamsManager,
+                        mTabRemover,
+                        mTabUngrouper,
+                        () -> mScopedStorageBatch,
+                        /* supportUndo= */ false);
+        return mTabModel;
     }
 
     private TabCollectionTabModelImpl getModel(
@@ -827,15 +1504,85 @@ public class TabCollectionTabModelImplUnitTest {
                 TabModelType.STANDARD,
                 null,
                 null,
-                null,
+                mOrderController,
                 null,
                 null,
                 tabModelDelegate,
+                mAsyncTabParamsManager,
                 null,
-                null,
-                /* isIncognitoBranded= */ false,
-                mTabUngrouperFactory,
+                mTabUngrouper,
                 () -> batch,
                 false);
+    }
+
+    private MockTab addSelectedTab(@TabId int tabId) {
+        MockTab tab = createMockTab(tabId, mProfile);
+        mTabModel.addTab(
+                tab,
+                /* index= */ 0,
+                TabLaunchType.FROM_CHROME_UI,
+                TabCreationState.LIVE_IN_FOREGROUND);
+        verifyBatchedAndReset();
+        mTabModel.setIndex(mTabModel.indexOf(tab), TabSelectionType.FROM_USER);
+        verifyBatchedAndReset();
+        assertEquals(tab, mTabModel.getCurrentTabSupplier().get());
+        return tab;
+    }
+
+    /**
+     * Stubs the delegate to add {@code restoredTabs} to the model, using the same indexing as
+     * {@code snapshot.tabs}. A null entry means the tab at that placement index is not restored.
+     */
+    private void stubRestoreForUndo(UndoClosureSnapshot snapshot, MockTab... restoredTabs) {
+        when(mTabModelDelegate.restoreForUndo(mTabModel, snapshot.entryId, snapshot.tabs))
+                .thenAnswer(
+                        invocation -> {
+                            int[] restoredIds = new int[restoredTabs.length];
+                            for (int i = 0; i < restoredTabs.length; i++) {
+                                MockTab tab = restoredTabs[i];
+                                if (tab == null) {
+                                    restoredIds[i] = Tab.INVALID_TAB_ID;
+                                    continue;
+                                }
+                                addRestoredTab(tab);
+                                restoredIds[i] = tab.getId();
+                            }
+                            // Drop the nested addTab batches so only the outer restore batch's
+                            // close() is verified.
+                            reset(mScopedStorageBatch);
+                            return restoredIds;
+                        });
+    }
+
+    private void addRestoredTab(MockTab tab) {
+        // The mocked order controller inserts at index 0 regardless of the requested index.
+        mTabModel.addTab(
+                tab,
+                /* index= */ 0,
+                TabLaunchType.FROM_UNDO_CLOSURE,
+                TabCreationState.LIVE_IN_BACKGROUND);
+    }
+
+    private static UndoClosureSnapshot createSnapshot(
+            @TabRestoreEntryId int entryId, ClosedTab... tabs) {
+        return UndoClosureSnapshot.forTabModel(
+                List.of(tabs),
+                /* groups= */ Collections.emptyMap(),
+                /* isTabGroupSyncEnabled= */ false,
+                /* isAllTabs= */ false,
+                entryId,
+                TabClosingSource.UNKNOWN,
+                /* undoRunnable= */ null);
+    }
+
+    private static ClosedTab createClosedTab(@TabId int id, boolean wasSelected) {
+        return new ClosedTab(
+                id,
+                /* title= */ "Tab " + id,
+                /* groupId= */ null,
+                /* indexInGroup= */ TabList.INVALID_TAB_INDEX,
+                /* modelIndex= */ id,
+                /* pinned= */ false,
+                wasSelected);
     }
 }

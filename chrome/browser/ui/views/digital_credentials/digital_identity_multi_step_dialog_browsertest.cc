@@ -15,6 +15,7 @@
 #include "content/public/test/browser_test.h"
 #include "device/fido/cable/v2_constants.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
+#include "ui/color/color_provider_key.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/controls/label.h"
 #include "ui/views/controls/scroll_view.h"
@@ -403,4 +404,94 @@ IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
   if (weak_widget) {
     views::test::WidgetDestroyedWaiter(weak_widget.get()).Wait();
   }
+}
+
+// Verify that theme changes occurring after the provider is destroyed (while
+// the widget is awaiting deferred close) safely update theme-tracking
+// illustrations across all dialog steps.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       ThemeChangedAfterProviderDestroyed) {
+  auto run_step_and_destroy_provider =
+      [this](base::OnceCallback<void(TestDigitalIdentityProviderDesktop*)>
+                 show_step) {
+        auto provider = std::make_unique<TestDigitalIdentityProviderDesktop>();
+        provider->set_web_contents_for_testing(
+            GetActiveWebContents()->GetWeakPtr());
+        provider->set_rp_origin_for_testing(
+            url::Origin::Create(GURL("https://rp.example")));
+        provider->set_callback_for_testing(base::DoNothing());
+
+        std::move(show_step).Run(provider.get());
+
+        views::Widget* widget = nullptr;
+        {
+          DigitalIdentityMultiStepDialog* dialog = provider->GetDialog();
+          ASSERT_TRUE(dialog);
+          DigitalIdentityMultiStepDialog::TestApi dialog_test_api(dialog);
+          widget = dialog_test_api.GetWidget();
+        }
+        ASSERT_TRUE(widget);
+        base::WeakPtr<views::Widget> weak_widget = widget->GetWeakPtr();
+
+        // Destroy the provider while the widget close is still pending.
+        provider.reset();
+
+        ASSERT_TRUE(weak_widget);
+        weak_widget->SetColorModeOverride(
+            ui::ColorProviderKey::ColorMode::kDark);
+        weak_widget->ThemeChanged();
+        views::test::WidgetDestroyedWaiter(weak_widget.get()).Wait();
+      };
+
+  run_step_and_destroy_provider(
+      base::BindOnce([](TestDigitalIdentityProviderDesktop* provider) {
+        provider->ShowBluetoothManualTurnOnDialog();
+      }));
+
+  run_step_and_destroy_provider(
+      base::BindOnce([](TestDigitalIdentityProviderDesktop* provider) {
+        provider->ShowConnectingToPhoneDialog();
+      }));
+
+  run_step_and_destroy_provider(
+      base::BindOnce([](TestDigitalIdentityProviderDesktop* provider) {
+        provider->ShowContinueStepsOnThePhoneDialog();
+      }));
+}
+
+// Verify that theme changes while the provider and dialog are active update
+// the theme-tracking illustrations and preserve dialog state across steps.
+IN_PROC_BROWSER_TEST_F(DigitalIdentityMultiStepDialogBrowserTest,
+                       ThemeChangedWhileProviderAlive) {
+  auto provider = std::make_unique<TestDigitalIdentityProviderDesktop>();
+  provider->set_web_contents_for_testing(GetActiveWebContents()->GetWeakPtr());
+  provider->set_rp_origin_for_testing(
+      url::Origin::Create(GURL("https://rp.example")));
+  provider->set_callback_for_testing(base::DoNothing());
+
+  provider->ShowBluetoothManualTurnOnDialog();
+
+  DigitalIdentityMultiStepDialog* dialog = provider->GetDialog();
+  ASSERT_TRUE(dialog);
+  DigitalIdentityMultiStepDialog::TestApi dialog_test_api(dialog);
+  views::Widget* widget = dialog_test_api.GetWidget();
+  views::BubbleDialogDelegate* widget_delegate =
+      dialog_test_api.GetWidgetDelegate();
+  ASSERT_TRUE(widget);
+  ASSERT_TRUE(widget_delegate);
+
+  EXPECT_EQ(widget_delegate->background_color(), dialog->GetBackgroundColor());
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kDark);
+  widget->ThemeChanged();
+  EXPECT_TRUE(widget->IsVisible());
+
+  provider->ShowConnectingToPhoneDialog();
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kLight);
+  widget->ThemeChanged();
+  EXPECT_TRUE(widget->IsVisible());
+
+  provider->ShowContinueStepsOnThePhoneDialog();
+  widget->SetColorModeOverride(ui::ColorProviderKey::ColorMode::kDark);
+  widget->ThemeChanged();
+  EXPECT_TRUE(widget->IsVisible());
 }

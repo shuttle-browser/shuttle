@@ -23,7 +23,7 @@
 #import "base/strings/utf_string_conversions.h"
 #import "base/task/sequenced_task_runner.h"
 #import "base/time/time.h"
-#import "components/autofill/core/browser/data_manager/autofill_ai/entity_suppression_manager.h"
+#import "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #import "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #import "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
 #import "components/autofill/core/browser/integrators/autofill_ai/metrics/personal_context_metrics.h"
@@ -39,9 +39,6 @@
 #import "components/password_manager/core/common/password_manager_features.h"
 #import "components/password_manager/ios/password_generation_provider.h"
 #import "components/strings/grit/components_strings.h"
-#import "ios/chrome/browser/autofill/atmemory/coordinator/at_memory_coordinator.h"
-#import "ios/chrome/browser/autofill/atmemory/public/at_memory_commands.h"
-#import "ios/chrome/browser/autofill/atmemory/utils/atmemory_ui_util.h"
 #import "ios/chrome/browser/autofill/autofill_ai/ui/autofill_ai_source_item.h"
 #import "ios/chrome/browser/autofill/autofill_ai/ui/autofill_ai_sources_util.h"
 #import "ios/chrome/browser/autofill/autofill_ai/ui/autofill_ai_sources_view_controller.h"
@@ -65,7 +62,7 @@
 #import "ios/chrome/browser/autofill/model/bottom_sheet/autofill_bottom_sheet_tab_helper.h"
 #import "ios/chrome/browser/autofill/model/features.h"
 #import "ios/chrome/browser/autofill/model/ios_autofill_entity_data_manager_factory.h"
-#import "ios/chrome/browser/autofill/model/ios_autofill_entity_suppression_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_personal_context_entity_metadata_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
 #import "ios/chrome/browser/autofill/ui_bundled/util/autofill_credit_card_util.h"
 #import "ios/chrome/browser/bubble/ui_bundled/bubble_constants.h"
@@ -93,20 +90,17 @@
 #import "ios/chrome/browser/shared/public/commands/security_alert_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/public/snackbar/snackbar_message.h"
 #import "ios/chrome/browser/shared/public/snackbar/snackbar_message_action.h"
 #import "ios/chrome/browser/shared/ui/util/layout_guide_names.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/shared/ui/util/util_swift.h"
-#import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
+#import "ios/chrome/common/ui/reauthentication/reauthentication_protocol.h"
 #import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/web/public/web_state.h"
 #import "ui/base/l10n/l10n_util_mac.h"
 #import "url/gurl.h"
-
-using autofill::FieldGlobalId;
 
 namespace {
 // Delay between the time the view is shown, and the time the suggestion label
@@ -120,10 +114,6 @@ constexpr base::TimeDelta kAutofillSuggestionTipDelay = base::Seconds(0.5);
 // Additional vertical offset for the IPH, so that it doesn't appear below the
 // Autofill strip at the top of the keyboard.
 const CGFloat kIPHVerticalOffset = -5;
-
-// The histogram recording why the AtMemory UI failed to open on button tap.
-constexpr std::string_view kAtMemoryFailedToOpenReasonHistogram =
-    "Autofill.AtMemory.IOS.FailedToOpenReason";
 
 // Return the feature corresponding to the `feature_for_iph` enum.
 const base::Feature* FetchIPHFeatureFromEnum(
@@ -157,10 +147,6 @@ AutofillSettingsPage SuggestionToAutofillSettingsPage(
     case autofill::SuggestionType::kAddressEntry:
       return AutofillSettingsPage::kAddresses;
     case autofill::SuggestionType::kFillAutofillAi: {
-      if (!IsYourSavedInfoSettingsPageIosEnabled()) {
-        // If "Your Saved Info" is not enabled, go to "Addresses and More"
-        return AutofillSettingsPage::kAddresses;
-      }
       CHECK(profile);
       base::optional_ref<const autofill::EntityInstance> entity =
           autofill::GetEntityInstance(profile, suggestion.payload);
@@ -172,12 +158,12 @@ AutofillSettingsPage SuggestionToAutofillSettingsPage(
   }
 }
 
-// Returns the EntitySuppressionManager for `profile`, or nullptr if
+// Returns the PersonalContextEntityMetadataManager for `profile`, or nullptr if
 // unavailable.
-autofill::EntitySuppressionManager* GetEntitySuppressionManager(
-    ProfileIOS* profile) {
-  return profile ? IOSAutofillEntitySuppressionManagerFactory::GetForProfile(
-                       profile)
+autofill::PersonalContextEntityMetadataManager*
+GetPersonalContextEntityMetadataManager(ProfileIOS* profile) {
+  return profile ? IOSAutofillPersonalContextEntityMetadataManagerFactory::
+                       GetForProfile(profile)
                  : nullptr;
 }
 
@@ -185,10 +171,10 @@ autofill::EntitySuppressionManager* GetEntitySuppressionManager(
 void UndoInSessionSuppressedEntity(
     base::WeakPtr<ProfileIOS> profile,
     const autofill::EntityInstance::EntityId& entity_id) {
-  autofill::EntitySuppressionManager* suppressionManager =
-      GetEntitySuppressionManager(profile.get());
-  if (suppressionManager) {
-    suppressionManager->UndoInSessionSuppressedEntity(entity_id);
+  autofill::PersonalContextEntityMetadataManager* entityMetadataManager =
+      GetPersonalContextEntityMetadataManager(profile.get());
+  if (entityMetadataManager) {
+    entityMetadataManager->UndoInSessionSuppressedEntity(entity_id);
   }
 }
 
@@ -196,7 +182,6 @@ void UndoInSessionSuppressedEntity(
 
 @interface FormInputAccessoryCoordinator () <
     AddressCoordinatorDelegate,
-    AtMemoryCommands,
     AutofillAiSourcesViewControllerDelegate,
     AutofillSuggestionContextMenuHandler,
     CardCoordinatorDelegate,
@@ -245,9 +230,6 @@ void UndoInSessionSuppressedEntity(
   // Modal alert.
   AlertCoordinator* _alertCoordinator;
 
-  // The coordinator for the AtMemory Autofill feature.
-  AtMemoryCoordinator* _atMemoryCoordinator;
-
   // The navigation controller presenting the Autofill AI sources bottom sheet.
   UINavigationController* _sourcesNavigationController;
 }
@@ -259,8 +241,6 @@ void UndoInSessionSuppressedEntity(
     CommandDispatcher* dispatcher = browser->GetCommandDispatcher();
     [dispatcher startDispatchingToTarget:self
                              forProtocol:@protocol(SecurityAlertCommands)];
-    [dispatcher startDispatchingToTarget:self
-                             forProtocol:@protocol(AtMemoryCommands)];
     [dispatcher startDispatchingToTarget:self
                              forProtocol:@protocol(FormInputAccessoryCommands)];
 
@@ -382,12 +362,10 @@ void UndoInSessionSuppressedEntity(
   [self stopManualFillAllPasswordCoordinator];
 
   [self dismissAlertCoordinator];
-  [self stopAtMemoryCoordinator];
   [self dismissSourcesSheetAnimated:NO];
 }
 
 - (void)stopChildren {
-  [self stopAtMemoryCoordinator];
   _formInputAccessoryMediator.formInputInteractionDelegate = nil;
   for (ChromeCoordinator* coordinator in self.childCoordinators) {
     [coordinator stop];
@@ -395,45 +373,25 @@ void UndoInSessionSuppressedEntity(
   [self.childCoordinators removeAllObjects];
 }
 
-// Returns the reason why the AtMemory UI can't be opened for `fieldId`, or
-// `AtMemoryFailedToOpenReason::kNone` if it can be opened.
-- (AtMemoryFailedToOpenReason)atMemoryFailedToOpenReasonForField:
-    (FieldGlobalId)fieldId {
-  if (!fieldId.renderer_id) {
-    return AtMemoryFailedToOpenReason::kNoFocusedField;
-  }
-  if (_atMemoryCoordinator) {
-    return AtMemoryFailedToOpenReason::kAlreadyOpen;
-  }
-  return GetAtMemoryFailedToOpenReason(self.browser);
-}
-
 // Starts the expanded manual fill coordinator and displays its view controller.
 - (void)startManualFillFromButton:(UIButton*)button
                       forDataType:(manual_fill::ManualFillDataType)dataType
          invokedOnObfuscatedField:(BOOL)invokedOnObfuscatedField {
+  // `ManualFillDataType::kAtMemory` is unused while AtMemory is being removed
+  // and is not supported by `ExpandedManualFillCoordinator`.
   if (dataType == manual_fill::ManualFillDataType::kAtMemory) {
-    std::optional<FieldGlobalId> fieldId =
-        [_formInputAccessoryMediator lastFocusedFieldGlobalId];
-    // `showAtMemoryForField:` records the outcome for all entry points,
-    // including the `kNoFocusedField` reason for a default empty field.
-    [self showAtMemoryForField:fieldId.value_or(FieldGlobalId{})];
     return;
   }
 
   manual_fill::ManualFillDataType focusedFieldDataType = [ManualFillUtil
       manualFillDataTypeFromFillingProduct:
           [_formInputAccessoryMediator currentProviderMainFillingProduct]];
-  id<ReauthenticationProtocol> reauthModule =
-      ReauthenticationServiceFactory::GetForProfile(self.profile)
-          ->GetReauthModule();
   ExpandedManualFillCoordinator* expandedManualFillCoordinator =
       [[ExpandedManualFillCoordinator alloc]
           initWithBaseViewController:self.baseViewController
                              browser:self.browser
                          forDataType:dataType
-                focusedFieldDataType:focusedFieldDataType
-              reauthenticationModule:reauthModule];
+                focusedFieldDataType:focusedFieldDataType];
 
   expandedManualFillCoordinator.injectionHandler = self.injectionHandler;
   expandedManualFillCoordinator.invokedOnObfuscatedField =
@@ -721,10 +679,6 @@ void UndoInSessionSuppressedEntity(
   if (!activeWebState) {
     return NO;
   }
-  if (!base::FeatureList::IsEnabled(
-          autofill::features::kAutofillAmbientAutofillSourceAttribution)) {
-    return NO;
-  }
 
   base::optional_ref<const autofill::EntityInstance> entity =
       autofill::GetEntityInstance(
@@ -945,43 +899,6 @@ void UndoInSessionSuppressedEntity(
   [self reset];
 }
 
-#pragma mark - AtMemoryCommands
-
-- (void)showAtMemoryForField:(FieldGlobalId)fieldId {
-  AtMemoryFailedToOpenReason reason =
-      [self atMemoryFailedToOpenReasonForField:fieldId];
-  base::UmaHistogramEnumeration(kAtMemoryFailedToOpenReasonHistogram, reason);
-  if (reason != AtMemoryFailedToOpenReason::kNone) {
-    return;
-  }
-  _atMemoryCoordinator = [[AtMemoryCoordinator alloc]
-      initWithBaseViewController:self.baseViewController
-                         browser:self.browser
-                         fieldId:fieldId];
-
-  [self.childCoordinators addObject:_atMemoryCoordinator];
-
-  [_atMemoryCoordinator start];
-}
-
-- (void)dismissAtMemory {
-  if (_atMemoryCoordinator.settingsPresented) {
-    return;
-  }
-  [self stopAtMemoryCoordinator];
-}
-
-// Stops and removes `_atMemoryCoordinator`.
-- (void)stopAtMemoryCoordinator {
-  if (!_atMemoryCoordinator) {
-    return;
-  }
-  AtMemoryCoordinator* coordinator = _atMemoryCoordinator;
-  _atMemoryCoordinator = nil;
-  [coordinator stop];
-  [self.childCoordinators removeObject:coordinator];
-}
-
 #pragma mark - SecurityAlertCommands
 
 - (void)presentSecurityWarningAlertWithText:(NSString*)body {
@@ -1124,9 +1041,9 @@ void UndoInSessionSuppressedEntity(
 
 // Suppresses the entity for `suggestion` and refreshes keyboard suggestions.
 - (void)suppressEntityForSuggestion:(FormSuggestion*)suggestion {
-  autofill::EntitySuppressionManager* suppressionManager =
-      GetEntitySuppressionManager(self.profile);
-  if (!suppressionManager) {
+  autofill::PersonalContextEntityMetadataManager* entityMetadataManager =
+      GetPersonalContextEntityMetadataManager(self.profile);
+  if (!entityMetadataManager) {
     return;
   }
   base::optional_ref<const autofill::EntityInstance> entity =
@@ -1137,7 +1054,7 @@ void UndoInSessionSuppressedEntity(
   // Copy the entity because suppressing it evicts it from the
   // `EntityDataManager`, which owns `*entity`.
   const autofill::EntityInstance entityCopy = *entity;
-  const bool suppressed = suppressionManager->SuppressEntity(entityCopy);
+  const bool suppressed = entityMetadataManager->SuppressEntity(entityCopy);
   [self resetSuggestions];
   // Only offer an undo if this call suppressed the entity, like on the other
   // platforms.

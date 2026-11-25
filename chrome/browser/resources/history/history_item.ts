@@ -78,6 +78,16 @@ export class HistoryItemElement extends HistoryItemElementBase {
         reflect: true,
       },
 
+      isCardCollapsed: {
+        type: Boolean,
+        reflect: true,
+      },
+
+      isCollapsibleDayCardsEnabled_: {
+        type: Boolean,
+        reflect: true,
+      },
+
       selectionNotAllowed_: {type: Boolean},
 
       hasTimeGap: {type: Boolean},
@@ -104,6 +114,9 @@ export class HistoryItemElement extends HistoryItemElementBase {
   private isShiftKeyDown_: boolean = false;
   protected accessor selectionNotAllowed_: boolean =
       !loadTimeData.getBoolean('allowDeletingHistory');
+  protected accessor isCollapsibleDayCardsEnabled_: boolean =
+      loadTimeData.valueExists('isBrowsingHistoryCollapsibleDayCardsEnabled') &&
+      loadTimeData.getBoolean('isBrowsingHistoryCollapsibleDayCardsEnabled');
   protected accessor isCriticalActionsEnabled_: boolean =
       loadTimeData.getBoolean('isCriticalActionsEnabled');
   private eventTracker_: EventTracker = new EventTracker();
@@ -113,6 +126,7 @@ export class HistoryItemElement extends HistoryItemElementBase {
   accessor searchTerm: string = '';
   accessor isCardStart: boolean = false;
   accessor isCardEnd: boolean = false;
+  accessor isCardCollapsed: boolean = false;
   accessor numberOfItems: number = 0;
   accessor selected: boolean = false;
   accessor isExpanded_: boolean = false;
@@ -267,6 +281,27 @@ export class HistoryItemElement extends HistoryItemElementBase {
       return false;
     }
     return !!this.item?.isActorVisit;
+  }
+
+  protected onCardHeadingClick_(e: Event) {
+    if (!this.isCollapsibleDayCardsEnabled_) {
+      return;
+    }
+    e.stopPropagation();
+    this.fire('toggle-card-collapse', {
+      index: this.index,
+    });
+  }
+
+  protected getCardCollapseIcon_(): string {
+    return this.isCardCollapsed ? 'cr:keyboard-arrow-down' :
+                                  'cr:keyboard-arrow-up';
+  }
+
+  protected getCardCollapseTitle_(): string {
+    return loadTimeData.getString(
+        this.isCardCollapsed ? 'expandSessionButton' :
+                               'collapseSessionButton');
   }
 
   protected isExpandable_(): boolean {

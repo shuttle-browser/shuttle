@@ -5,12 +5,10 @@
 import {ModuleDescriptor, ModuleRegistry} from 'chrome://new-tab-page/lazy_load.js';
 import {newTabPageProxyFactory, PageHandlerRemote, WindowProxy} from 'chrome://new-tab-page/new_tab_page.js';
 import type {ModuleIdName, PageRemote} from 'chrome://new-tab-page/new_tab_page.js';
-import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {PromiseResolver} from 'chrome://resources/js/promise_resolver.js';
 import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import type {MetricsTracker} from 'chrome://webui-test/metrics_test_support.js';
 import {fakeMetricsPrivate} from 'chrome://webui-test/metrics_test_support.js';
-import {flushTasks} from 'chrome://webui-test/polymer_test_util.js';
 import type {TestMock} from 'chrome://webui-test/test_mock.js';
 
 import {createElement, initNullModule, installMock} from '../test_support.js';
@@ -22,7 +20,6 @@ suite('NewTabPageModulesModuleRegistryTest', () => {
   let metrics: MetricsTracker;
 
   setup(() => {
-    loadTimeData.overrideValues({navigationStartTime: 0.0});
     metrics = fakeMetricsPrivate();
     windowProxy = installMock(WindowProxy);
     handler = installMock(PageHandlerRemote, (mock: PageHandlerRemote) => {
@@ -84,8 +81,9 @@ suite('NewTabPageModulesModuleRegistryTest', () => {
     const moduleRegistry = new ModuleRegistry(descriptors);
     const modulesPromise = moduleRegistry.initializeModules(0);
     callbackRouterRemote.setDisabledModules(false, ['buz']);
-    // Wait for first batch of modules.
-    await flushTasks();
+    // Deliver setDisabledModules so foo finishes loading at t=5 before
+    // moving time forward.
+    await callbackRouterRemote.$.flushForTesting();
     // Move time forward to test metrics.
     windowProxy.setResultFor('now', 123.0);
     // Delayed promise resolution to test async module instantiation.
@@ -221,8 +219,6 @@ suite('NewTabPageModulesModuleRegistryTest', () => {
           const moduleRegistry = new ModuleRegistry(descriptors);
           const modulesPromise = moduleRegistry.initializeModules(0);
           callbackRouterRemote.setDisabledModules(false, []);
-          // Wait for first batch of modules.
-          await flushTasks();
           const modules = await modulesPromise;
 
           // Assert.
@@ -260,8 +256,6 @@ suite('NewTabPageModulesModuleRegistryTest', () => {
       const moduleRegistry = new ModuleRegistry(descriptors);
       let modulesPromise = moduleRegistry.initializeModules(0);
       callbackRouterRemote.setDisabledModules(false, ['foo', 'baz', 'buz']);
-      // Wait for first batch of modules with disabled modules.
-      await flushTasks();
       let modules = await modulesPromise;
 
       // Assert.
@@ -274,8 +268,6 @@ suite('NewTabPageModulesModuleRegistryTest', () => {
       // Act.
       modulesPromise = moduleRegistry.initializeModules(0);
       callbackRouterRemote.setDisabledModules(false, []);
-      // Wait for second batch of modules with re-enabled modules.
-      await flushTasks();
       modules = await modulesPromise;
 
       // Assert.

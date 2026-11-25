@@ -6,10 +6,12 @@
 
 #include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/test_simple_task_runner.h"
 #include "build/build_config.h"
 #include "ui/aura/client/capture_client_observer.h"
 #include "ui/aura/client/default_capture_client.h"
 #include "ui/aura/native_window_occlusion_tracker.h"
+#include "ui/aura/scoped_keyboard_hook.h"
 #include "ui/aura/test/aura_test_base.h"
 #include "ui/aura/test/aura_test_utils.h"
 #include "ui/aura/test/test_screen.h"
@@ -21,6 +23,7 @@
 #include "ui/compositor/compositor.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor/test/draw_waiter_for_test.h"
+#include "ui/compositor/test/in_process_context_factory.h"
 #include "ui/events/event_rewriter.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/events/test/test_event_rewriter.h"
@@ -806,6 +809,43 @@ TEST_F(WindowTreeHostDeathTest, DeleteHostDuringUnlockMouse) {
   EXPECT_DEATH(host->UnlockMouse(child.get()), "");
 
   capture_client->RemoveObserver(&observer);
+}
+
+TEST_F(WindowTreeHostTest, IsKeyLockedWithSimpleKeyboardHook) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(features::kSystemKeyboardLock);
+
+  EXPECT_FALSE(host()->IsKeyLocked(ui::DomCode::US_A));
+
+  // Lock a specific key.
+  std::unique_ptr<ScopedKeyboardHook> keyboard_hook =
+      host()->CaptureSystemKeyEvents(
+          base::flat_set<ui::DomCode>{ui::DomCode::US_A});
+  ASSERT_TRUE(keyboard_hook);
+  EXPECT_TRUE(host()->IsKeyLocked(ui::DomCode::US_A));
+  EXPECT_FALSE(host()->IsKeyLocked(ui::DomCode::US_B));
+  EXPECT_FALSE(host()->IsKeyLocked(ui::DomCode::NONE));
+
+  // Releasing the hook unlocks the key.
+  keyboard_hook.reset();
+  EXPECT_FALSE(host()->IsKeyLocked(ui::DomCode::US_A));
+
+  // Lock all keys.
+  keyboard_hook = host()->CaptureSystemKeyEvents(std::nullopt);
+  ASSERT_TRUE(keyboard_hook);
+  EXPECT_TRUE(host()->IsKeyLocked(ui::DomCode::US_A));
+  EXPECT_TRUE(host()->IsKeyLocked(ui::DomCode::US_B));
+  EXPECT_FALSE(host()->IsKeyLocked(ui::DomCode::NONE));
+}
+
+TEST_F(WindowTreeHostTest, CreateCompositorUsesContextFactoryTaskRunner) {
+  auto custom_task_runner = base::MakeRefCounted<base::TestSimpleTaskRunner>();
+  auto* context_factory = static_cast<ui::InProcessContextFactory*>(
+      Env::GetInstance()->context_factory());
+  context_factory->set_compositor_task_runner(custom_task_runner);
+
+  TestWindowTreeHost custom_host;
+  EXPECT_EQ(custom_task_runner, custom_host.compositor()->task_runner());
 }
 
 }  // namespace aura

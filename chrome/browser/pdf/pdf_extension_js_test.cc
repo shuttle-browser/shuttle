@@ -40,14 +40,15 @@
 #include "content/public/test/file_system_chooser_test_helpers.h"
 #include "content/public/test/scoped_time_zone.h"
 #include "extensions/common/constants.h"
+#include "extensions/common/switches.h"
 #include "extensions/test/result_catcher.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "pdf/buildflags.h"
 #include "pdf/pdf_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/resource/resource_bundle.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/shell_dialogs/select_file_dialog.h"
 #include "url/gurl.h"
 
@@ -57,6 +58,12 @@
 
 class PDFExtensionJSTestBase : public PDFExtensionTestBase {
  protected:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    PDFExtensionTestBase::SetUpCommandLine(command_line);
+    command_line->AppendSwitch(
+        extensions::switches::kAllowWebUITestInComponentExtensions);
+  }
+
   void SetUpOnMainThread() override {
     PDFExtensionTestBase::SetUpOnMainThread();
 
@@ -161,6 +168,12 @@ class PDFExtensionJSMochaTest : public WebUIMochaBrowserTest {
  protected:
   PDFExtensionJSMochaTest() {
     set_test_loader_host(extension_misc::kPdfExtensionId);
+  }
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    WebUIMochaBrowserTest::SetUpCommandLine(command_line);
+    command_line->AppendSwitch(
+        extensions::switches::kAllowWebUITestInComponentExtensions);
   }
 
   void SetUpOnMainThread() override {
@@ -415,7 +428,7 @@ class PDFExtensionContentSettingJSTest : public PDFExtensionJSTest {
   bool LoadPdfAndWait(const GURL& url, bool new_tab) override {
     if (new_tab) {
       EXPECT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
-          browser(), url, WindowOpenDisposition::kNewForegroundTab,
+          browser(), url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
     } else {
       EXPECT_TRUE(ui_test_utils::NavigateToURL(browser(), url));

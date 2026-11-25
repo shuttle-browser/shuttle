@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "base/check_deref.h"
+#include "base/strings/stringprintf.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
@@ -34,7 +35,7 @@
 #include "content/public/test/test_navigation_observer.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/blink/public/common/input/web_mouse_event.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/events/base_event_utils.h"
 
 namespace {
@@ -101,8 +102,12 @@ std::unique_ptr<KeyedService> BuildMockUiServiceForAuth(
 class LensSearchControllerUnificationBrowserTest : public InProcessBrowserTest {
  public:
   void SetUp() override {
-    feature_list_.InitAndDisableFeature(
-        contextual_tasks::kContextualTasksClobberActiveTab);
+    feature_list_.InitWithFeatures(
+        /*enabled_features=*/{},
+        /*disabled_features=*/{
+            contextual_tasks::kContextualTasksClobberActiveTab,
+            contextual_tasks::kContextualTasksRearchitecture,
+            contextual_tasks::kContextualTasksSidePanelRearchitecture});
     InProcessBrowserTest::SetUp();
   }
 
@@ -383,8 +388,12 @@ class LensSearchControllerUnificationClobberActiveTabBrowserTest
     : public LensSearchControllerUnificationBrowserTest {
  public:
   void SetUp() override {
-    feature_list_.InitAndEnableFeature(
-        contextual_tasks::kContextualTasksClobberActiveTab);
+    feature_list_.InitWithFeatures(
+        /*enabled_features=*/{contextual_tasks::
+                                  kContextualTasksClobberActiveTab},
+        /*disabled_features=*/{
+            contextual_tasks::kContextualTasksRearchitecture,
+            contextual_tasks::kContextualTasksSidePanelRearchitecture});
     InProcessBrowserTest::SetUp();
   }
 };
@@ -440,9 +449,9 @@ IN_PROC_BROWSER_TEST_F(LensSearchControllerUnificationBrowserTest,
   GURL popup_target = embedded_test_server()->GetURL("/title2.html");
   constexpr int kSpam = 3;
   for (int i = 0; i < kSpam; ++i) {
-    WindowOpenDisposition d = (i < kSpam - 1)
-                                  ? WindowOpenDisposition::kNewBackgroundTab
-                                  : WindowOpenDisposition::kNewForegroundTab;
+    ui::mojom::WindowOpenDisposition d =
+        (i < kSpam - 1) ? ui::mojom::WindowOpenDisposition::kNewBackgroundTab
+                        : ui::mojom::WindowOpenDisposition::kNewForegroundTab;
     content::PwnOpenURLWithDisposition(panel_rfh, popup_target, d,
                                        /*user_gesture=*/true);
   }
@@ -493,9 +502,9 @@ IN_PROC_BROWSER_TEST_F(LensSearchControllerUnificationBrowserTest,
 
   const int tabs_before = browser()->GetTabStripModel()->count();
   GURL target_url = embedded_test_server()->GetURL("/title2.html");
-  content::PwnOpenURLWithDisposition(panel_rfh, target_url,
-                                     WindowOpenDisposition::kCurrentTab,
-                                     /*user_gesture=*/true);
+  content::PwnOpenURLWithDisposition(
+      panel_rfh, target_url, ui::mojom::WindowOpenDisposition::kCurrentTab,
+      /*user_gesture=*/true);
 
   EXPECT_EQ(tabs_before, browser()->GetTabStripModel()->count());
   EXPECT_FALSE(active_tab->GetController().GetPendingEntry());

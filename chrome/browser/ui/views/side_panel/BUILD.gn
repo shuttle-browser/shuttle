@@ -88,7 +88,6 @@ source_set("side_panel") {
     # part of //chrome/browser/ui:ui, but we can't depend on that
     # because that depends on this.
     "//ui/webui/resources/cr_components/history:mojo_bindings",
-    "//ui/webui/resources/cr_components/history_embeddings:mojo_bindings",
     "//url",
   ]
   deps = [
@@ -216,7 +215,6 @@ source_set("browser_tests") {
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/frame:browser_view_layout",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//components/contextual_tasks/public:feature_list",
     "//testing/gtest",
   ]
@@ -239,7 +237,6 @@ source_set("interactive_ui_tests") {
     "//chrome/browser/ui/side_panel:side_panel_views_dependent",
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//chrome/test/user_education",
     "//testing/gtest",
   ]

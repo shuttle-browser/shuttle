@@ -613,8 +613,7 @@ public class TipsUtils {
 
                             Tracker tracker = null;
                             if (!shouldAlwaysShowOptInPromo()
-                                    && ChromeFeatureList.sInterruptiveIphCooldownGroup
-                                            .isEnabled()) {
+                                    && TrackerFactory.isInterruptiveCooldownGroupEnabled()) {
                                 if (profile == null) {
                                     return;
                                 }
@@ -622,7 +621,6 @@ public class TipsUtils {
                                 FeatureProperties featureProperties =
                                         new FeatureProperties(
                                                 UiFormat.BOTTOM_SHEET,
-                                                /* isBlockedByEnterprisePolicy= */ true,
                                                 /* isBlockedByCooldownGroup= */ true,
                                                 /* blocksCooldownGroup= */ true);
                                 if (!tracker.shouldTriggerHelpUi(
@@ -669,7 +667,7 @@ public class TipsUtils {
 
         // When the interruptive IPH cooldown group is enabled, frequency and cooldown limits are
         // enforced by Feature Engagement instead of SharedPreferences.
-        if (ChromeFeatureList.sInterruptiveIphCooldownGroup.isEnabled()) {
+        if (TrackerFactory.isInterruptiveCooldownGroupEnabled()) {
             return true;
         }
 

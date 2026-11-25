@@ -66,8 +66,10 @@ import org.chromium.chrome.test.util.browser.contextmenu.ContextMenuUtils;
 import org.chromium.chrome.test.util.browser.webapps.WebappTestPage;
 import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.permissions.PermissionDialogController;
+import org.chromium.content_public.browser.WebContents;
 import org.chromium.content_public.browser.test.NativeLibraryTestUtils;
 import org.chromium.content_public.browser.test.util.DOMUtils;
+import org.chromium.content_public.browser.test.util.WebContentsUtils;
 import org.chromium.content_public.common.ContentSwitches;
 import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.ui.base.DeviceFormFactor;
@@ -281,8 +283,8 @@ public class WebappNavigationTest {
     @Feature({"Webapps"})
     @Restriction(DeviceFormFactor.PHONE)
     @MinAndroidSdkLevel(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-    @EnableFeatures({SHORT_EDGES_CUTOUT_MODE_STANDALONE, ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE})
-    public void testRegularLinkOffOriginShortEdgesCutoutMode_EdgeToEdgeEverywhere()
+    @EnableFeatures({SHORT_EDGES_CUTOUT_MODE_STANDALONE})
+    public void testRegularLinkOffOriginShortEdgesCutoutMode()
             throws Exception {
         WebappActivity activity = runWebappActivityAndWaitForIdle(mActivityTestRule.createIntent());
         assertEquals(
@@ -438,14 +440,17 @@ public class WebappNavigationTest {
     @Test
     @SmallTest
     @Feature({"Webapps"})
-    // TODO(crbug.com/571163249): Re-enable this test.
-    @DisabledTest(message = "https://crbug.com/571163249")
     public void testOpenInChromeFromContextMenuTabbedChrome() throws Exception {
         // Needed to get full context menu.
         FirstRunStatus.setFirstRunFlowComplete(true);
-        runWebappActivityAndWaitForIdle(mActivityTestRule.createIntent());
+        WebappActivity activity = runWebappActivityAndWaitForIdle(mActivityTestRule.createIntent());
+        CriteriaHelper.pollUiThread(
+                () -> !activity.getCompositorViewHolderForTesting().controlsResizeView());
 
         addAnchor("myTestAnchorId", offOriginUrl(), "_self");
+        WebContents webContents = mActivityTestRule.getWebContents();
+        DOMUtils.waitForNonZeroNodeBounds(webContents, "myTestAnchorId");
+        WebContentsUtils.waitForCopyableViewInWebContents(webContents);
 
         IntentFilter filter = new IntentFilter(Intent.ACTION_VIEW);
         filter.addDataScheme("https");

@@ -6,6 +6,7 @@
 
 #include <vector>
 
+#include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
@@ -21,6 +22,7 @@
 #include "chrome/browser/ui/views/app_menu/app_menu_action_item.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_block_view.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_chip_view.h"
+#include "chrome/browser/ui/views/app_menu/app_menu_focus_controller.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_footer_view.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_item_view.h"
 #include "chrome/browser/ui/views/app_menu/app_menu_minor_text_view.h"
@@ -29,6 +31,7 @@
 #include "chrome/browser/ui/views/app_menu/app_menu_zoom_view.h"
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "ui/actions/actions.h"
+#include "ui/base/class_property.h"
 #include "ui/base/dragdrop/mojom/drag_drop_types.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
@@ -44,7 +47,6 @@
 #include "ui/views/accessibility/view_accessibility.h"
 #include "ui/views/border.h"
 #include "ui/views/controls/button/menu_button_controller.h"
-#include "ui/views/controls/menu/menu_controller.h"
 #include "ui/views/controls/menu/menu_item_view.h"
 #include "ui/views/controls/menu/menu_runner.h"
 #include "ui/views/controls/menu/menu_scroll_view_container.h"
@@ -54,8 +56,13 @@
 #include "ui/views/style/typography.h"
 #include "ui/views/style/typography_provider.h"
 #include "ui/views/view_class_properties.h"
+#include "ui/views/view_utils.h"
+#include "ui/views/widget/widget.h"
 
 namespace {
+
+// If non-zero, overrides the maximum width of a menu item's submenu.
+DEFINE_UI_CLASS_PROPERTY_KEY(int, kSubmenuMaxWidthKey, 0)
 
 bool ShouldRoundBottomCorners(size_t index,
                               const actions::ActionListVector& items) {
@@ -195,6 +202,18 @@ actions::ActionInvocationContext BuildActionInvocationContext(
 
 }  // namespace
 
+ActionAppMenu::ScopedCloseGuard::ScopedCloseGuard(ActionAppMenu* menu)
+    : menu_(menu) {
+  ++menu_->close_guard_depth_;
+}
+
+ActionAppMenu::ScopedCloseGuard::~ScopedCloseGuard() {
+  if (--menu_->close_guard_depth_ == 0 &&
+      std::exchange(menu_->close_deferred_, false)) {
+    menu_->OnMenuClosed(/*menu=*/nullptr);
+  }
+}
+
 ActionAppMenu::ActionAppMenu(BrowserWindowInterface* browser_window_interface,
                              base::RepeatingClosure on_menu_closed_callback)
     : browser_window_interface_(browser_window_interface),
@@ -206,9 +225,15 @@ ActionAppMenu::ActionAppMenu(BrowserWindowInterface* browser_window_interface,
 }
 
 ActionAppMenu::~ActionAppMenu() {
+  if (focus_controller_) {
+    focus_controller_->RestoreOwnerFocus(
+        /*should_restore=*/!action_to_execute_on_close_.has_value());
+    focus_controller_.reset();
+  }
   search_bar_ = nullptr;
   command_to_action_map_.clear();
   search_controller_.reset();
+  old_search_results_.reset();
   menu_manager_.reset();
 }
 
@@ -244,16 +269,6 @@ void ActionAppMenu::RunMenu(views::Widget* parent,
   PopulateMenu(root_, menu_manager_->GetAppMenuRoot());
   root_->GetSubmenu()->set_use_scroll_bar(true);
 
-  // Temporary code to test search functionality while the key event routing
-  // design is aligned on. Prefills the search bar with the query from the
-  // `kChroMenuSearchQuery` feature param.
-  if (search_bar_) {
-    const std::string query = features::kChroMenuSearchQuery.Get();
-    if (!query.empty()) {
-      search_bar_->SetText(base::UTF8ToUTF16(query));
-    }
-  }
-
   int32_t types = views::MenuRunner::HAS_MNEMONICS;
   // Forward the keyboard-related flags, so that whenever the menu is opened
   // with a key press it shows mnemonic underlines. This also selects the first
@@ -263,6 +278,12 @@ void ActionAppMenu::RunMenu(views::Widget* parent,
   menu_runner_ = std::make_unique<views::MenuRunner>(std::move(root), types);
 
   metrics_.OnMenuOpened();
+
+  views::Widget* const owner_widget =
+      parent ? parent : (host ? host->button()->GetWidget() : nullptr);
+  focus_controller_ = search_bar_ ? std::make_unique<AppMenuFocusController>(
+                                        owner_widget, search_bar_)
+                                  : nullptr;
 
   menu_runner_->RunMenuAt(parent, host, anchor_screen_bounds,
                           views::MenuAnchorPosition::kTopRight, source_type,
@@ -288,6 +309,17 @@ void ActionAppMenu::RunMenu(views::Widget* parent,
     }
     metrics_.RecordMenuHeightPercentage(menu_height, screen_height);
   }
+
+  // Temporary code to test search functionality while the key event routing
+  // design is aligned on. Prefills the search bar with the query from the
+  // `kChroMenuSearchQuery` feature param. Done once the menu is shown so the
+  // results go through the same path as a typed query.
+  if (search_bar_ && IsShowing()) {
+    const std::string query = features::kChroMenuSearchQuery.Get();
+    if (!query.empty()) {
+      search_bar_->SetText(base::UTF8ToUTF16(query));
+    }
+  }
 }
 
 void ActionAppMenu::UpdateMenuItem(actions::BaseAction* action,
@@ -298,6 +330,7 @@ void ActionAppMenu::UpdateMenuItem(actions::BaseAction* action,
   actions::BaseAction* old_parent_action = action->GetParent();
   CHECK(old_parent_action);
 
+  ScopedCloseGuard close_guard(this);
   views::MenuItemView* moved_item = GetMenuItemForAction(action);
   std::unique_ptr<actions::BaseAction> owned_action =
       old_parent_action->RemoveChild(action);
@@ -374,6 +407,30 @@ void ActionAppMenu::UpdateMenuItem(actions::BaseAction* action,
   new_parent_menu->ChildrenChanged();
 }
 
+void ActionAppMenu::RebuildSubmenu(actions::ActionId submenu_id) {
+  auto it = command_to_action_map_.find(submenu_id);
+  if (it == command_to_action_map_.end()) {
+    return;
+  }
+  actions::BaseAction* const submenu_action = it->second;
+  CHECK(submenu_action->HasPopulateChildActionsCallback());
+  views::MenuItemView* const menu_item = root_->GetMenuItemByID(submenu_id);
+  CHECK(menu_item && menu_item->HasSubmenu());
+
+  ScopedCloseGuard close_guard(this);
+  views::SubmenuView* const submenu = menu_item->GetSubmenu();
+  // Rows not built yet; WillShowMenu() builds them from the new actions.
+  if (submenu->GetMenuItems().empty() && !submenu->IsShowing()) {
+    submenu_action->PopulateChildItems();
+  } else {
+    RemoveSubmenuActionsFromMap(menu_item);
+    menu_item->RemoveAllMenuItems();
+    submenu_action->PopulateChildItems();
+    PopulateMenu(menu_item, submenu_action);
+    menu_item->ChildrenChanged();
+  }
+}
+
 void ActionAppMenu::CloseMenu() {
   if (menu_runner_) {
     menu_runner_->Cancel();
@@ -419,6 +476,11 @@ bool ActionAppMenu::ShouldExecuteCommandWithoutClosingMenu(int id,
 }
 
 void ActionAppMenu::OnMenuClosed(views::MenuItemView* menu) {
+  if (close_guard_depth_ > 0) {
+    close_deferred_ = true;
+    return;
+  }
+
   actions::ActionItem* action_to_execute = nullptr;
   actions::ActionInvocationContext action_context;
   if (action_to_execute_on_close_) {
@@ -429,8 +491,16 @@ void ActionAppMenu::OnMenuClosed(views::MenuItemView* menu) {
     action_context = std::move(action_to_execute_on_close_->context);
   }
 
+  if (focus_controller_) {
+    focus_controller_->RestoreOwnerFocus(
+        /*should_restore=*/!action_to_execute_on_close_.has_value());
+    focus_controller_.reset();
+  }
+
   search_bar_ = nullptr;
+  menu_width_lock_.RunAndReset();
   has_notification_header_ = false;
+  showing_search_results_ = false;
   action_to_execute_on_close_.reset();
   command_to_action_map_.clear();
   section_header_count_ = 0;
@@ -446,6 +516,7 @@ void ActionAppMenu::OnMenuClosed(views::MenuItemView* menu) {
     action_to_execute->InvokeAction(std::move(action_context));
   }
   search_controller_.reset();
+  old_search_results_.reset();
 
   menu_manager_->OnMenuClosed();
 }
@@ -455,16 +526,16 @@ void ActionAppMenu::WillShowMenu(views::MenuItemView* menu) {
     return;
   }
 
-  metrics_.OnWillShowSubMenu(menu->GetCommand());
+  actions::BaseAction* base_action = GetActionForMenuItem(menu);
+  metrics_.OnWillShowSubMenu(base_action);
 
   if (!menu->GetSubmenu()->GetMenuItems().empty()) {
     return;
   }
 
-  auto action_iterator = command_to_action_map_.find(menu->GetCommand());
-  if (action_iterator != command_to_action_map_.end() &&
-      action_iterator->second->HasPopulateChildActionsCallback()) {
-    PopulateMenu(menu, action_iterator->second);
+  if (base_action && base_action->HasPopulateChildActionsCallback()) {
+    ScopedCloseGuard close_guard(this);
+    PopulateMenu(menu, base_action);
   }
 }
 
@@ -525,6 +596,12 @@ std::optional<SkColor> ActionAppMenu::GetLabelColor(int id) const {
 }
 
 int ActionAppMenu::GetMaxWidthForMenu(views::MenuItemView* menu) {
+  if (menu == root_ && menu_width_lock_) {
+    return menu->GetSubmenu()->GetScrollViewContainer()->width();
+  }
+  if (const int submenu_max_width = menu->GetProperty(kSubmenuMaxWidthKey)) {
+    return submenu_max_width;
+  }
   return ChromeLayoutProvider::Get()->GetDistanceMetric(
       DISTANCE_ACTION_APP_MENU_MAX_WIDTH);
 }
@@ -607,16 +684,37 @@ bool ActionAppMenu::ShouldCloseOnDragDropCompleted() {
   return false;
 }
 
-void ActionAppMenu::ShowSearchResults(actions::ActionItem* results) {
+void ActionAppMenu::ShowSearchResults(
+    actions::ActionItem* results,
+    std::unique_ptr<actions::ActionItem> old_results) {
+  ScopedCloseGuard close_guard(this);
+  old_search_results_ = std::move(old_results);
+  if (!menu_width_lock_) {
+    menu_width_lock_ = LockMenuWidth();
+  }
+  base::ScopedClosureRunner preserve_focus =
+      focus_controller_ ? focus_controller_->PreserveSearchBarFocus()
+                        : base::ScopedClosureRunner();
   ClearItemsBelowSearchBar();
+  showing_search_results_ = true;
   PopulateMenu(root_, results);
   root_->ChildrenChanged();
+  old_search_results_.reset();
 }
 
-void ActionAppMenu::RestoreMenu() {
+void ActionAppMenu::RestoreMenu(
+    std::unique_ptr<actions::ActionItem> old_results) {
+  ScopedCloseGuard close_guard(this);
+  old_search_results_ = std::move(old_results);
+  base::ScopedClosureRunner preserve_focus =
+      focus_controller_ ? focus_controller_->PreserveSearchBarFocus()
+                        : base::ScopedClosureRunner();
   ClearItemsBelowSearchBar();
+  showing_search_results_ = false;
   PopulateItemsBelowSearchBar();
+  menu_width_lock_.RunAndReset();
   root_->ChildrenChanged();
+  old_search_results_.reset();
 }
 
 bool ActionAppMenu::ShouldDragActivateChildButtons() const {
@@ -686,6 +784,21 @@ void ActionAppMenu::CancelAndEvaluate(actions::ActionId action_id,
                                        base_action, mouse_event_flags)};
     CloseMenu();
   }
+}
+
+base::ScopedClosureRunner ActionAppMenu::LockMenuWidth() {
+  views::SubmenuView* const submenu = root_->GetSubmenu();
+  if (!submenu || submenu->width() <= 0) {
+    return base::ScopedClosureRunner();
+  }
+  // This floor keeps short rows from shrinking the menu. SubmenuView has no
+  // maximum width, so the ceiling that keeps long rows from widening it is
+  // GetMaxWidthForMenu(), which caps the root menu at its current width while
+  // `menu_width_lock_` is held.
+  submenu->set_minimum_preferred_width(submenu->width());
+  return base::ScopedClosureRunner(
+      base::BindOnce(&views::SubmenuView::set_minimum_preferred_width,
+                     base::Unretained(submenu), 0));
 }
 
 void ActionAppMenu::ClearItemsBelowSearchBar() {
@@ -781,8 +894,8 @@ void ActionAppMenu::PopulateItemsBelowSearchBar() {
   actions::ActionItem* const app_menu_root = menu_manager_->GetAppMenuRoot();
   const auto& children = app_menu_root->GetChildren().children();
   for (size_t i = 0; i < children.size(); ++i) {
-    const auto display_type = children[i]->GetProperty(
-        AppMenuActionItem::kDisplayTypeKey);
+    const auto display_type =
+        children[i]->GetProperty(AppMenuActionItem::kDisplayTypeKey);
     if (display_type == AppMenuActionItem::DisplayType::kSearch) {
       PopulateMenu(root_, app_menu_root, i + 1);
       return;
@@ -822,7 +935,6 @@ views::MenuItemView* ActionAppMenu::AppendMenuItem(
                   : (is_checkable ? views::MenuItemView::Type::kCheckbox
                                   : views::MenuItemView::Type::kNormal);
 
-
   views::MenuItemView* menu_item = parent_menu_item->AddMenuItemView(
       std::make_unique<AppMenuItemView>(parent_menu_item, command_id,
                                         menu_item_type, base_action_item,
@@ -834,6 +946,20 @@ views::MenuItemView* ActionAppMenu::AppendMenuItem(
   if (display_type == AppMenuActionItem::DisplayType::kNotification) {
     has_notification_header_ = true;
     menu_item->SetIsPinned(true);
+  }
+
+  // Dynamic submenus and their nested submenus list user/web content (e.g.
+  // page titles), so cap their width to elide long titles instead of widening
+  // the submenus. Top-level dynamic submenus also have static rows (e.g. "Show
+  // bookmarks in side panel"), so they get a wider cap than nested submenus.
+  if (has_submenu && (base_action_item->HasPopulateChildActionsCallback() ||
+                      parent_menu_item->GetProperty(kSubmenuMaxWidthKey))) {
+    menu_item->SetProperty(
+        kSubmenuMaxWidthKey,
+        ChromeLayoutProvider::Get()->GetDistanceMetric(
+            parent_menu_item == root_
+                ? DISTANCE_ACTION_APP_MENU_DYNAMIC_SUBMENU_MAX_WIDTH
+                : DISTANCE_ACTION_APP_MENU_NESTED_DYNAMIC_SUBMENU_MAX_WIDTH));
   }
 
   action_view_controller_.CreateActionViewRelationship(
@@ -868,8 +994,14 @@ void ActionAppMenu::ConfigureMenuItem(views::MenuItemView* menu_item,
     AppMenuChipView::AttachTo(menu_item, *chip_text);
   }
 
+  const AppMenuActionItem::ItemHeight item_height =
+      showing_search_results_
+          ? (menu_item->secondary_title().empty()
+                 ? AppMenuActionItem::ItemHeight::kMedium
+                 : AppMenuActionItem::ItemHeight::kExpanded)
+          : child_base->GetProperty(AppMenuActionItem::kItemHeightKey);
   int target_item_height = 0;
-  switch (child_base->GetProperty(AppMenuActionItem::kItemHeightKey)) {
+  switch (item_height) {
     case AppMenuActionItem::ItemHeight::kCompact:
       target_item_height = provider->GetDistanceMetric(
           DISTANCE_ACTION_APP_MENU_FULL_ITEM_HEIGHT);
@@ -888,8 +1020,15 @@ void ActionAppMenu::ConfigureMenuItem(views::MenuItemView* menu_item,
       break;
   }
 
-  const int content_height =
+  int content_height =
       std::max(default_icon_size, menu_item->GetIconPreferredSize().height());
+  if (!menu_item->secondary_title().empty()) {
+    // Two-line rows stack the title and secondary title in the label font.
+    if (const gfx::FontList* font_list =
+            GetLabelFontList(menu_item->GetCommand())) {
+      content_height = std::max(content_height, font_list->GetHeight() * 2);
+    }
+  }
 
   const int vertical_padding = (target_item_height - content_height) / 2;
 
@@ -900,15 +1039,22 @@ void ActionAppMenu::ConfigureMenuItem(views::MenuItemView* menu_item,
     const ui::ColorId container_color =
         child_base->GetProperty(AppMenuActionItem::kContainerColorKey);
 
-    views::MenuItemView::MenuItemBackground background(
-        container_color, top_radius, bottom_radius,
-        /*horizontal_margin=*/
-        provider->GetDistanceMetric(DISTANCE_ACTION_APP_MENU_CONTAINER_MARGIN));
-    const int padding = provider->GetDistanceMetric(
-        DISTANCE_ACTION_APP_MENU_CONTAINER_VERTICAL_PADDING);
-    background.top_padding = add_top_padding ? padding : 0;
-    background.bottom_padding = add_bottom_padding ? padding : 0;
-    menu_item->SetMenuItemBackground(background);
+    if (showing_search_results_) {
+      menu_item->SetMenuItemBackground(views::MenuItemView::MenuItemBackground(
+          container_color, /*top_radius=*/0, /*bottom_radius=*/0,
+          /*horizontal_margin=*/0));
+    } else {
+      views::MenuItemView::MenuItemBackground background(
+          container_color, top_radius, bottom_radius,
+          /*horizontal_margin=*/
+          provider->GetDistanceMetric(
+              DISTANCE_ACTION_APP_MENU_CONTAINER_MARGIN));
+      const int padding = provider->GetDistanceMetric(
+          DISTANCE_ACTION_APP_MENU_CONTAINER_VERTICAL_PADDING);
+      background.top_padding = add_top_padding ? padding : 0;
+      background.bottom_padding = add_bottom_padding ? padding : 0;
+      menu_item->SetMenuItemBackground(background);
+    }
 
     // Apply darker hover selection states matching section theme.
     menu_item->SetSelectedColorId(ui::kColorAppMenuRowBackgroundHovered);
@@ -993,7 +1139,9 @@ void ActionAppMenu::PopulateHeader(views::MenuItemView* view_parent,
     header_menu_item->SetBorder(
         views::CreateEmptyBorder(ChromeLayoutProvider::Get()->GetInsetsMetric(
             INSETS_ACTION_APP_MENU_HEADER)));
-    if (section_header_count_++ > 0) {
+    // Card headers after the first get extra space above them to separate
+    // the card groups; search result headers keep the default margin.
+    if (!showing_search_results_ && section_header_count_++ > 0) {
       header_menu_item->set_top_margin(default_margin * 2);
     }
   }
@@ -1010,7 +1158,13 @@ void ActionAppMenu::PopulateBlockSection(
   const auto* provider = ChromeLayoutProvider::Get();
   gfx::Insets margins =
       provider->GetInsetsMetric(INSETS_ACTION_APP_MENU_BLOCK_MARGIN);
-  if (has_notification_header_ && !search_bar_) {
+  if (search_bar_) {
+    // The separator's bottom margin is also the gap above search results,
+    // which the spec puts closer to the separator than the block buttons.
+    margins.set_top(margins.top() +
+                    provider->GetDistanceMetric(
+                        DISTANCE_ACTION_APP_MENU_SEARCH_BLOCK_MARGIN));
+  } else if (has_notification_header_) {
     margins.set_top(margins.top() +
                     provider->GetDistanceMetric(
                         DISTANCE_ACTION_APP_MENU_NOTIFICATION_MARGIN));
@@ -1031,7 +1185,9 @@ void ActionAppMenu::PopulateCustomRow(views::MenuItemView* view_parent,
     case kActionZoomSubmenu:
       view_parent->AddChildView(std::make_unique<AppMenuZoomView>(
           browser_window_interface_, &action_view_controller_,
-          command_to_action_map_, custom_action_item, metrics_));
+          command_to_action_map_, custom_action_item,
+          base::BindRepeating(&ActionAppMenu::ExecuteCommand,
+                              weak_ptr_factory_.GetWeakPtr())));
       break;
 
     default:

@@ -9,17 +9,21 @@
 
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "apps/app_lifetime_monitor.h"
 #include "base/apple/scoped_cftyperef.h"
+#include "base/files/file_path.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_multi_source_observation.h"
 #include "base/scoped_observation.h"
+#include "base/time/time.h"
 #include "chrome/browser/apps/app_shim/app_shim_host_bootstrap_mac.h"
 #include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
 #include "chrome/browser/badging/badge_manager.h"
@@ -31,16 +35,13 @@
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/common/mac/app_shim.mojom.h"
 #include "chrome/services/mac_notifications/public/mojom/mac_notifications.mojom.h"
+#include "components/content_settings/core/common/content_settings.h"
 #include "components/webapps/common/web_app_id.h"
 
 class Profile;
 class ProfileManager;
 class BrowserWindowInterface;
 class GlobalBrowserCollection;
-
-namespace base {
-class FilePath;
-}  // namespace base
 
 namespace content {
 class BrowserContext;
@@ -138,6 +139,13 @@ class AppShimManager
     virtual std::vector<chrome::mojom::ApplicationDockMenuItemPtr>
     GetAppShortcutsMenuItemInfos(Profile* profile,
                                  const webapps::AppId& app_id) = 0;
+
+    // Return the Chrome notification content setting for `app_id` in
+    // `profile`, or `std::nullopt` if `app_id` is not a web app installed in
+    // `profile`.
+    virtual std::optional<ContentSetting> GetChromeNotificationPermission(
+        Profile* profile,
+        const webapps::AppId& app_id);
   };
 
   // Helper function to get the instance on the browser process. This will be
@@ -152,6 +160,12 @@ class AppShimManager
   // Get the host corresponding to a profile and app id, or null if there is
   // none.
   AppShimHost* FindHost(Profile* profile, const webapps::AppId& app_id);
+
+  // Similar to `FindHost()`, except that if no host exists yet, a new
+  // (unlaunched) `AppShimHost` is created and returned. Returns null if app
+  // shim creation is disabled for tests.
+  AppShimHost* FindOrCreateHostForTesting(Profile* profile,
+                                          const webapps::AppId& app_id);
 
   // If the specified |browser| should be using RemoteCocoa (because it is a
   // bookmark app), then get or create an AppShimHost for it, and return
@@ -213,6 +227,11 @@ class AppShimManager
   void ShowNotificationPermissionRequest(
       const webapps::AppId& app_id,
       RequestNotificationPermissionCallback callback);
+
+  // Asks the app shim corresponding to `app_id` to re-query macOS for its
+  // current notification permission status and asynchronously report any change
+  // via `AppShimRegistry`, launching the app shim in the background if needed.
+  void SynchronizeNotificationPermissionStatus(const webapps::AppId& app_id);
 
   // Causes ShowNotificationPermissionRequest() to immediately invoke `handler`
   // rather than trying to request permission from the app shim.
@@ -297,9 +316,6 @@ class AppShimManager
 
   // AvatarMenuObserver:
   void OnAvatarMenuChanged(AvatarMenu* menu) override;
-
-  static base::apple::ScopedCFTypeRef<CFStringRef>
-      BuildAppShimRequirementStringFromFrameworkRequirementString(CFStringRef);
 
   class AppShimObserver {
    public:
@@ -487,18 +503,22 @@ class AppShimManager
   // Updates the badge for the specified host.
   void UpdateApplicationBadge(ProfileState* profile_state);
 
+  // Records metrics when `AppShim::SetBadgeLabel` completes for a non-empty
+  // profile badge update.
+  void OnBadgeUpdated(chrome::mojom::AppShimBadgeResult result);
+
   // Retrieve the ProfileState for a given (Profile, AppId) pair. If one
   // does not exist, create one.
   ProfileState* GetOrCreateProfileState(Profile* profile,
                                         const webapps::AppId& app_id);
 
-  // Launches a shim for `app_id` in background mode (i.e. without being shown
-  // in the Dock and other UI surfaces). Can call `callback` with nullptr if the
-  // `app_id` is invalid (for example not installed locally in any profile). If
-  // the launch itself fails, this will still call `callback` with a valid
-  // AppShimHost, but a mojo connection to the app shim will never be
-  // established (and any calls that were made to the remote app shim will be
-  // dropped).
+  // Finds an existing shim for `app_id`, or launches a new one in background
+  // mode (i.e. without being shown in the Dock and other UI surfaces). Can call
+  // `callback` with nullptr if the `app_id` is invalid (for example not
+  // installed locally in any profile). If the launch itself fails, this will
+  // still call `callback` with a valid AppShimHost, but a mojo connection to
+  // the app shim will never be established (and any calls that were made to the
+  // remote app shim will be dropped).
   void LaunchShimInBackgroundMode(
       const webapps::AppId& app_id,
       base::OnceCallback<void(AppShimHost*)> callback);
@@ -560,6 +580,12 @@ class AppShimManager
   // Set in some tests to short-circuit ShowNotificationPermissionRequest.
   NotificationPermissionRequestHandlerForTesting
       notification_permission_request_handler_for_testing_;
+
+  // Tracks the last time the OS notification permission status histogram was
+  // recorded for each `(profile_path, app_id)` pair in this browser session,
+  // so it is emitted at most once per day.
+  using ProfileAndAppId = std::pair<base::FilePath, webapps::AppId>;
+  std::map<ProfileAndAppId, base::Time> last_recorded_os_notification_status_;
 
   raw_ptr<AppShimObserver> app_shim_observer_ = nullptr;
 

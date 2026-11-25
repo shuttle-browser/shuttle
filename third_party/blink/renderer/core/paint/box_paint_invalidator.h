@@ -23,8 +23,6 @@ class CORE_EXPORT BoxPaintInvalidator {
                       const PaintInvalidatorContext& context)
       : box_(box), context_(context) {}
 
-  static void BoxWillBeDestroyed(const LayoutBox&);
-
   void InvalidatePaint();
 
  private:
@@ -46,10 +44,6 @@ class CORE_EXPORT BoxPaintInvalidator {
 
   PaintInvalidationReason ComputePaintInvalidationReason();
 
-  bool NeedsToSavePreviousContentBoxRect();
-  bool NeedsToSavePreviousOverflowData();
-
-  bool NeedsToSavePreviousGapGeometries();
   bool ShouldInvalidateGapDecorations() const;
 
   void SavePreviousBoxGeometriesIfNeeded();

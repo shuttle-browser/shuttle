@@ -7,7 +7,7 @@
 // clang-format off
 import type {SettingsMenuElement, SettingsRoutes} from 'chrome://settings/settings.js';
 import {AutofillSettingsReferrer, resetRouterForTesting, loadTimeData, MetricsBrowserProxyImpl, resetPageVisibilityForTesting, Router} from 'chrome://settings/settings.js';
-import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 import {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
@@ -49,10 +49,13 @@ suite('SettingsMenu', function() {
     const selector = settingsMenu.$.menu;
     const whenIronSelect = eventToPromise<CustomEvent<{item: HTMLElement}>>(
         'iron-select', selector);
-    settingsMenu.$.people.click();
+    const people =
+        settingsMenu.shadowRoot.querySelector<HTMLElement>('#people');
+    assertTrue(!!people);
+    people.click();
     const event = await whenIronSelect;
 
-    assertEquals(settingsMenu.$.people, event.detail.item);
+    assertEquals(people, event.detail.item);
     assertEquals('', Router.getInstance().getQueryParameters().toString());
   });
 
@@ -74,8 +77,11 @@ suite('SettingsMenu', function() {
     Router.getInstance().navigateTo(routes.PEOPLE);
     const event = await whenIronSelect;
 
+    const people =
+        settingsMenu.shadowRoot.querySelector<HTMLElement>('#people');
+    assertTrue(!!people);
     assertTrue(!!selector.selected);
-    assertEquals(settingsMenu.$.people, event.detail.item);
+    assertEquals(people, event.detail.item);
     assertEquals('/people', selector.selected);
   });
 
@@ -352,5 +358,85 @@ suite('SettingsMenuAutofill', () => {
         'a[href=\'/autofill\']');
     assertTrue(!!newAutofillEntry);
     assertFalse(isVisible(newAutofillEntry));
+  });
+});
+
+suite('SettingsMenuRefresh2026', () => {
+  let settingsMenu: SettingsMenuElement;
+  let testMetricsBrowserProxy: TestMetricsBrowserProxy;
+
+  setup(() => {
+    testMetricsBrowserProxy = new TestMetricsBrowserProxy();
+    MetricsBrowserProxyImpl.setInstance(testMetricsBrowserProxy);
+
+    loadTimeData.overrideValues({
+      isGuest: false,
+      settingsRefresh2026: 'settings-refresh-2026',
+      showAiPage: true,
+    });
+    resetPageVisibilityForTesting();
+    resetRouterForTesting();
+
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    settingsMenu = document.createElement('settings-menu');
+    document.body.appendChild(settingsMenu);
+    return microtasksFinished();
+  });
+
+  test('menuItemsOrderAndNavigation', async () => {
+    const links =
+        Array.from(settingsMenu.shadowRoot.querySelectorAll<HTMLAnchorElement>(
+            'cr-menu-selector a[role=menuitem]'));
+    const hrefs = links.map(link => link.getAttribute('href'));
+    assertDeepEquals(
+        [
+          '/',
+          '/autofill',
+          '/privacy',
+          '/performance',
+          '/ai',
+          '/appearance',
+          '/languages',
+          '/accessibility',
+          '/search',
+          '/general',
+          'chrome://extensions',
+          '/help',
+        ],
+        hrefs);
+
+    const selector = settingsMenu.$.menu;
+    assertEquals('/', selector.selected);
+
+    let whenIronSelect = eventToPromise<CustomEvent<{item: HTMLElement}>>(
+        'iron-select', selector);
+    const general =
+        settingsMenu.shadowRoot.querySelector<HTMLElement>('#general');
+    assertTrue(!!general);
+    general.click();
+    await whenIronSelect;
+    assertEquals('/general', selector.selected);
+    assertEquals(
+        Router.getInstance().getRoutes().GENERAL,
+        Router.getInstance().getCurrentRoute());
+    assertEquals(
+        'SettingsMenu_GeneralClicked',
+        await testMetricsBrowserProxy.whenCalled('recordAction'));
+
+    testMetricsBrowserProxy.resetResolver('recordAction');
+    whenIronSelect = eventToPromise<CustomEvent<{item: HTMLElement}>>(
+        'iron-select', selector);
+    const home = settingsMenu.shadowRoot.querySelector<HTMLElement>('#home');
+    assertTrue(!!home);
+    home.click();
+    await whenIronSelect;
+    assertEquals('/', selector.selected);
+    assertEquals(
+        Router.getInstance().getRoutes().BASIC,
+        Router.getInstance().getCurrentRoute());
+    assertEquals('/', window.location.pathname);
+    assertEquals(
+        'SettingsMenu_HomeClicked',
+        await testMetricsBrowserProxy.whenCalled('recordAction'));
   });
 });

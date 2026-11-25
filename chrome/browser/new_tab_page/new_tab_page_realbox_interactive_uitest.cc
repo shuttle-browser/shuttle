@@ -12,6 +12,7 @@
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
+#include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
@@ -319,7 +320,8 @@ class NtpRealboxUiTestBase
 
  protected:
   static std::vector<base::test::FeatureRef> GetDisabledFeatures() {
-    return {contextual_tasks::kContextualTasks};
+    return {contextual_tasks::kContextualTasks,
+            omnibox::kComposeboxPersistentAimButtonRealbox};
   }
 
   static std::vector<base::test::FeatureRefAndParams> GetEnabledFeatures(

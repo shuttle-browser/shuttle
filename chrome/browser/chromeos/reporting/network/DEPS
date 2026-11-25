@@ -16,7 +16,6 @@ include_rules = [
   "+chrome/browser/ash/policy/core",
   "+chrome/browser/chromeos/reporting",
   "+chrome/browser/profiles/profile.h",
-  "+chrome/common",
   "+chrome/test",
 ]
 

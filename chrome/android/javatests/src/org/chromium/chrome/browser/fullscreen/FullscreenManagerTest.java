@@ -14,7 +14,6 @@ import androidx.test.filters.LargeTest;
 import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -24,8 +23,8 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
+import org.chromium.base.test.transit.Triggers;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DisabledTest;
@@ -38,19 +37,22 @@ import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.back_press.BackPressManager;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsUtils;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutManager;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.omnibox.UrlBar;
 import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tab.TabStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.tab.TabTestUtils;
 import org.chromium.chrome.browser.tab.TabWebContentsDelegateAndroid;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelUtils;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
 import org.chromium.chrome.test.transit.page.WebPageStation;
+import org.chromium.chrome.test.transit.tabmodel.TabSelectedCondition;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.chrome.test.util.FullscreenTestUtils;
 import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
@@ -67,9 +69,6 @@ import java.util.concurrent.TimeoutException;
 
 /** Test suite for verifying the behavior of various fullscreen actions. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-})
 @Batch(Batch.PER_CLASS)
 @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/481445076
 public class FullscreenManagerTest {
@@ -157,13 +156,6 @@ public class FullscreenManagerTest {
     public void setUp() {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> TabStateBrowserControlsVisibilityDelegate.disablePageLoadDelayForTests());
-    }
-
-    @After
-    public void tearDown() {
-        // TODO(crbug.com/483420501): Fix NPE: Attempt to invoke virtual method 'getClass()' on a
-        // null object reference.
-        mActivityTestRule.skipWindowAndTabStateCleanup();
     }
 
     @Test
@@ -268,8 +260,7 @@ public class FullscreenManagerTest {
         Assert.assertFalse(getPersistentFullscreenMode());
 
         // Put the tab foreground and assert the fullscreen was entered.
-        ChromeTabUtils.switchTabInCurrentTabModel(activity, tab.getId());
-        Assert.assertEquals(tab, mActivityTestRule.getActivityTab());
+        selectTab(activity, tab);
         Assert.assertTrue(getPersistentFullscreenMode());
     }
 
@@ -298,9 +289,25 @@ public class FullscreenManagerTest {
         Assert.assertFalse(getPersistentFullscreenMode());
 
         // Put the tab foreground and assert the fullscreen was entered.
-        ChromeTabUtils.switchTabInCurrentTabModel(activity, tab.getId());
-        Assert.assertEquals(tab, mActivityTestRule.getActivityTab());
+        selectTab(activity, tab);
         Assert.assertTrue(getPersistentFullscreenMode());
+    }
+
+    /**
+     * Selects |tab| and waits for the selection. Doesn't arrive at a page Station, since browser
+     * controls hide when the tab enters fullscreen.
+     */
+    private void selectTab(ChromeTabbedActivity activity, Tab tab) {
+        TabModel tabModel = ThreadUtils.runOnUiThreadBlocking(activity::getCurrentTabModel);
+        Triggers.runOnUiThreadTo(
+                        () ->
+                                TabModelUtils.selectTabById(
+                                        activity.getTabModelSelector(),
+                                        tab.getId(),
+                                        TabSelectionType.FROM_USER))
+                .waitFor(new TabSelectedCondition(/* numTabsBeingSelected= */ 1, () -> tabModel));
+        // TabSelectedCondition is fulfilled by any selected tab.
+        Assert.assertEquals(tab, mActivityTestRule.getActivityTab());
     }
 
     private boolean getPersistentFullscreenMode() {
@@ -1334,16 +1341,11 @@ public class FullscreenManagerTest {
         ChromeFeatureList.FULLSCREEN_INSETS_API_MIGRATION,
         ChromeFeatureList.FULLSCREEN_INSETS_API_MIGRATION_ON_AUTOMOTIVE
     })
-    @DisableIf.Device(DeviceFormFactor.AUTOMOTIVE) // crbug.com/572787748
     public void testFullscreenPageHeightLegacy() throws Throwable {
         launchOnFullscreenMode(LONG_HTML_TEST_PAGE, false);
         Assert.assertTrue(getPersistentFullscreenMode());
         float pixelDensity =
-                InstrumentationRegistry.getInstrumentation()
-                        .getContext()
-                        .getResources()
-                        .getDisplayMetrics()
-                        .density;
+                mActivityTestRule.getActivity().getResources().getDisplayMetrics().density;
         View tabView = mActivityTestRule.getActivityTab().getContentView();
         Assert.assertEquals(tabView.getHeight() / pixelDensity, getPageHeight(), 1);
     }
@@ -1355,16 +1357,11 @@ public class FullscreenManagerTest {
         ChromeFeatureList.FULLSCREEN_INSETS_API_MIGRATION,
         ChromeFeatureList.FULLSCREEN_INSETS_API_MIGRATION_ON_AUTOMOTIVE
     })
-    @DisableIf.Device(DeviceFormFactor.AUTOMOTIVE) // crbug.com/572787748
     public void testFullscreenPageHeight() throws Throwable {
         launchOnFullscreenMode(LONG_HTML_TEST_PAGE, true);
         Assert.assertTrue(getPersistentFullscreenMode());
         float pixelDensity =
-                InstrumentationRegistry.getInstrumentation()
-                        .getContext()
-                        .getResources()
-                        .getDisplayMetrics()
-                        .density;
+                mActivityTestRule.getActivity().getResources().getDisplayMetrics().density;
         View tabView = mActivityTestRule.getActivityTab().getContentView();
         Assert.assertEquals(tabView.getHeight() / pixelDensity, getPageHeight(), 1);
     }

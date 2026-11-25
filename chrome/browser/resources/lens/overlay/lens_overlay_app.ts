@@ -14,7 +14,6 @@ import '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import '//resources/cr_elements/cr_toast/cr_toast.js';
 import '//resources/cr_elements/icons.html.js';
 
-import {HelpBubbleMixin} from '//resources/cr_components/help_bubble/help_bubble_mixin.js';
 import type {CrIconButtonElement} from '//resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import type {CrToastElement} from '//resources/cr_elements/cr_toast/cr_toast.js';
 import {I18nMixin} from '//resources/cr_elements/i18n_mixin.js';
@@ -26,10 +25,11 @@ import type {LensSearchboxElement} from '/lens/shared/searchbox/lens_searchbox.j
 import type {SearchboxGhostLoaderElement} from '/lens/shared/searchbox_ghost_loader.js';
 
 import {BrowserProxyImpl} from './browser_proxy.js';
-import type {BrowserProxy} from './browser_proxy.js';
 import type {CursorTooltipData, CursorTooltipElement} from './cursor_tooltip.js';
 import {CursorTooltipType} from './cursor_tooltip.js';
+import {HelpBubbleMixin} from './help_bubble_mixin.js';
 import type {InitialGradientElement} from './initial_gradient.js';
+import type {BrowserProxy} from './lens.mojom-webui.js';
 import {UserAction} from './lens.mojom-webui.js';
 import {getTemplate} from './lens_overlay_app.html.js';
 import {recordLensOverlayInteraction, recordTimeToWebUIReady} from './metrics_utils.js';
@@ -848,8 +848,7 @@ export class LensOverlayAppElement extends LensOverlayAppElementBase {
     }
 
     this.updateCursorPositionRequestId = requestAnimationFrame(() => {
-      this.$.cursorTooltip.style.transform =
-          `translate3d(${event.clientX}px, ${event.clientY}px, 0)`;
+      this.$.cursorTooltip.updatePosition(event.clientX, event.clientY);
       this.updateCursorPositionRequestId = undefined;
     });
   }

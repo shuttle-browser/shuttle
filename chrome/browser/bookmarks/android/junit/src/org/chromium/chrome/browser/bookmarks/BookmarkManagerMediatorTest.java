@@ -97,6 +97,7 @@ import org.chromium.chrome.browser.incognito.IncognitoUtilsJni;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.price_tracking.PriceDropNotificationManager;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.browser.profiles.ProfileResolver;
 import org.chromium.chrome.browser.profiles.ProfileResolverJni;
 import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
@@ -232,6 +233,7 @@ public class BookmarkManagerMediatorTest {
     @Mock private SelectionDelegate<BookmarkId> mSelectionDelegate;
     @Mock private BookmarkUiObserver mBookmarkUiObserver;
     @Mock private Profile mProfile;
+    @Mock private Profile mOriginalProfile;
     @Mock private ProfileResolver.Natives mProfileResolverNatives;
     @Mock private SyncService mSyncService;
     @Mock private IdentityServicesProvider mIdentityServicesProvider;
@@ -486,7 +488,7 @@ public class BookmarkManagerMediatorTest {
         CommerceFeatureUtilsJni.setInstanceForTesting(mCommerceFeatureUtilsJniMock);
 
         // Setup Profile
-        doReturn(mProfile).when(mProfile).getOriginalProfile();
+        doReturn(mOriginalProfile).when(mProfile).getOriginalProfile();
         ProfileResolverJni.setInstanceForTesting(mProfileResolverNatives);
 
         // Setup ShoppingServiceFactory
@@ -1153,7 +1155,8 @@ public class BookmarkManagerMediatorTest {
         mMediator.openFolder(mFolderId1);
         assertEquals(4, mModelList.size());
         assertEquals(
-                Location.MIDDLE, mModelList.get(2).model.get(BookmarkManagerProperties.LOCATION));
+                Location.MIDDLE,
+                mModelList.get(2).model.get(BookmarkManagerProperties.REORDER_LOCATION));
 
         verify(mBookmarkModel).addObserver(mBookmarkModelObserverArgumentCaptor.capture());
         mBookmarkModelObserverArgumentCaptor
@@ -1161,7 +1164,9 @@ public class BookmarkManagerMediatorTest {
                 .bookmarkNodeRemoved(
                         mFolderItem1, 0, mFolderItem2, /* isDoingExtensiveChanges= */ false);
         assertEquals(3, mModelList.size());
-        assertEquals(Location.TOP, mModelList.get(1).model.get(BookmarkManagerProperties.LOCATION));
+        assertEquals(
+                Location.TOP,
+                mModelList.get(1).model.get(BookmarkManagerProperties.REORDER_LOCATION));
     }
 
     @Test
@@ -1677,7 +1682,7 @@ public class BookmarkManagerMediatorTest {
         ModelList menuModelList =
                 mMediator.createListMenuModelList(
                         model.get(BookmarkManagerProperties.BOOKMARK_LIST_ENTRY),
-                        model.get(BookmarkManagerProperties.LOCATION));
+                        model.get(BookmarkManagerProperties.REORDER_LOCATION));
         // Open in incognito tab should not be shown if we're already incognito.
         verifyMenuListItemTitles(
                 menuModelList,
@@ -1709,6 +1714,58 @@ public class BookmarkManagerMediatorTest {
     }
 
     @Test
+    public void testCreateListMenuForBookmark_incognitoProfileDestroyed() {
+        doReturn(true).when(mProfile).isOffTheRecord();
+        doReturn(true).when(mIncognitoUtilsNatives).getIncognitoModeEnabled(mOriginalProfile);
+        doReturn(true).when(mBookmarkOpener).isOpenInNewWindowSupported();
+        finishLoading();
+        mMediator.openFolder(mFolderId2);
+
+        ProfileManager.onProfileDestroyed(mProfile);
+
+        PropertyModel model = mModelList.get(1).model;
+        ModelList menuModelList =
+                mMediator.createListMenuModelList(
+                        model.get(BookmarkManagerProperties.BOOKMARK_LIST_ENTRY),
+                        model.get(BookmarkManagerProperties.REORDER_LOCATION));
+        // After the OTR profile is destroyed, the mediator falls back to the original regular
+        // profile, so "Open in Incognito tab" is shown again.
+        verifyMenuListItemTitles(
+                menuModelList,
+                R.string.bookmark_item_select,
+                R.string.bookmark_item_edit,
+                R.string.bookmark_item_copy_link,
+                R.string.bookmark_item_move,
+                R.string.bookmark_item_delete,
+                R.string.contextmenu_open_in_new_tab,
+                R.string.contextmenu_open_in_incognito_tab,
+                R.string.contextmenu_open_in_new_window);
+
+        BasicListMenu menu = (BasicListMenu) mMediator.createListMenuForBookmark(model);
+        assertNotNull(menu);
+
+        // Open in new tab.
+        clickChildAt(menu, /* i= */ 5);
+        verify(mBookmarkOpener)
+                .openBookmarksInNewTabs(
+                        eq(Collections.singletonList(mBookmarkId21)),
+                        /* incognito= */ eq(false),
+                        /* tabLaunchType= */ eq(null),
+                        any(Bundle.class));
+
+        // Open in other window.
+        clickChildAt(menu, /* i= */ 7);
+        verify(mBookmarkOpener)
+                .openBookmarksInNewWindow(
+                        eq(Collections.singletonList(mBookmarkId21)),
+                        /* incognito= */ eq(false),
+                        any(Bundle.class));
+
+        mMediator.openBookmark(mBookmarkId21);
+        verify(mBookmarkOpener).openBookmarkInCurrentTab(mBookmarkId21, /* incognito= */ false);
+    }
+
+    @Test
     public void testCreateListMenuForBookmark_priceTracking() {
         finishLoading();
 
@@ -1733,7 +1790,7 @@ public class BookmarkManagerMediatorTest {
         ModelList menuModelList =
                 mMediator.createListMenuModelList(
                         model.get(BookmarkManagerProperties.BOOKMARK_LIST_ENTRY),
-                        model.get(BookmarkManagerProperties.LOCATION));
+                        model.get(BookmarkManagerProperties.REORDER_LOCATION));
         verifyMenuListItemTitles(
                 menuModelList,
                 R.string.bookmark_item_select,
@@ -3358,5 +3415,95 @@ public class BookmarkManagerMediatorTest {
         RobolectricUtil.runAllBackgroundAndUi();
 
         assertTrue(searchBoxRowPropertyModel.get(SearchBoxProperties.HAS_FOCUS));
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    public void testUpdateForUrl_withSearchQuery_tablet() {
+        when(mBookmarkModel.searchBookmarks(eq("abc"), anyInt()))
+                .thenReturn(Collections.singletonList(mFolderId3));
+        mMediator.setBasicNativePage(mNativePage);
+        doReturn("chrome://bookmarks/?q=abc").when(mNativePage).getUrl();
+
+        mMediator.updateForUrl("chrome://bookmarks/?q=abc");
+        finishLoading();
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        String defaultFolderUrl = "chrome-native://bookmarks/folder/" + mRootFolderId.getId();
+        verify(mNativePage).onStateChange(defaultFolderUrl, /* replaceLastUrl= */ true);
+
+        // Simulate the NativePage URL update triggered by onStateChange.
+        doReturn(defaultFolderUrl).when(mNativePage).getUrl();
+        mMediator.updateForUrl(defaultFolderUrl);
+
+        assertEquals(BookmarkUiMode.FOLDER, mMediator.getCurrentUiMode());
+        assertEquals(
+                "abc",
+                mMediator.getOrCreateSearchBoxPropertyModel().get(SearchBoxProperties.SEARCH_TEXT));
+        verifyCurrentBookmarkIds(null, mFolderId3);
+    }
+
+    @Test
+    public void testUpdateForUrl_withSearchQuery_phone() {
+        when(mBookmarkModel.searchBookmarks(eq("abc"), anyInt()))
+                .thenReturn(Collections.singletonList(mFolderId3));
+        mMediator.setBasicNativePage(mNativePage);
+        doReturn("chrome://bookmarks/?q=abc").when(mNativePage).getUrl();
+
+        mMediator.updateForUrl("chrome://bookmarks/?q=abc");
+        finishLoading();
+        RobolectricUtil.runAllBackgroundAndUi();
+
+        String defaultFolderUrl = "chrome-native://bookmarks/folder/" + mRootFolderId.getId();
+        verify(mNativePage).onStateChange(defaultFolderUrl, /* replaceLastUrl= */ true);
+
+        // Simulate the NativePage URL update triggered by onStateChange.
+        doReturn(defaultFolderUrl).when(mNativePage).getUrl();
+        mMediator.updateForUrl(defaultFolderUrl);
+
+        assertEquals(BookmarkUiMode.SEARCHING, mMediator.getCurrentUiMode());
+        assertEquals(
+                "abc",
+                mMediator.getOrCreateSearchBoxPropertyModel().get(SearchBoxProperties.SEARCH_TEXT));
+        verifyCurrentBookmarkIds(null, mFolderId3);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_DESKTOP_BOOKMARK_LAYOUT)
+    public void testVisualLocation_desktopLayout() {
+        finishLoading();
+
+        doReturn(Arrays.asList(mPriceTrackedBookmarkId, mFolderId1, mPartnerBookmarkFolderId))
+                .when(mBookmarkModel)
+                .getChildIds(mMobileFolderId);
+        mMediator.openFolder(mMobileFolderId);
+
+        assertEquals(3, mModelList.size());
+        assertEquals(
+                Location.TOP,
+                mModelList.get(0).model.get(ImprovedBookmarkRowProperties.VISUAL_LOCATION));
+        assertEquals(
+                Location.TOP,
+                mModelList.get(0).model.get(BookmarkManagerProperties.REORDER_LOCATION));
+
+        // mFolderId1 is visually in the middle of the 3 rows, but is the last movable row above the
+        // non-movable partner folder.
+        assertEquals(
+                Location.MIDDLE,
+                mModelList.get(1).model.get(ImprovedBookmarkRowProperties.VISUAL_LOCATION));
+        assertEquals(
+                Location.BOTTOM,
+                mModelList.get(1).model.get(BookmarkManagerProperties.REORDER_LOCATION));
+
+        assertEquals(
+                Location.BOTTOM,
+                mModelList.get(2).model.get(ImprovedBookmarkRowProperties.VISUAL_LOCATION));
+
+        // Single-item folder should set VISUAL_LOCATION to SOLO.
+        mMediator.openFolder(mFolderId2);
+        assertEquals(1, mModelList.size());
+        assertEquals(
+                Location.SOLO,
+                mModelList.get(0).model.get(ImprovedBookmarkRowProperties.VISUAL_LOCATION));
     }
 }

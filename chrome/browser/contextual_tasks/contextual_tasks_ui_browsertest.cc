@@ -706,7 +706,8 @@ class ContextualTasksNoMockBrowserTest : public InProcessBrowserTest {
     feature_list_.InitWithFeatures(
         {contextual_tasks::kContextualTasks,
          contextual_tasks::kContextualTasksForceEntryPointEligibility},
-        {});
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture});
   }
 
  private:
@@ -935,11 +936,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
       web_contents->GetWebUI()->GetController());
   ASSERT_TRUE(side_panel_ui);
 
-  auto* coordinator =
-      contextual_tasks::ContextualTasksSidePanelCoordinator::Get(
-          browser()->GetUnownedUserDataHost());
-  ASSERT_TRUE(coordinator);
-  auto* permission_controller = coordinator->permission_controller();
+  auto* permission_controller = panel_controller->permission_controller();
   ASSERT_TRUE(permission_controller);
 
   mojo::Remote<contextual_tasks_toolbar::mojom::ContextualTasksToolbarUIService>
@@ -1024,11 +1021,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   EXPECT_TRUE(base::test::RunUntil(
       [&]() { return panel_controller->IsPanelOpenForContextualTask(); }));
 
-  auto* coordinator =
-      contextual_tasks::ContextualTasksSidePanelCoordinator::Get(
-          browser()->GetUnownedUserDataHost());
-  ASSERT_TRUE(coordinator);
-  auto* permission_controller = coordinator->permission_controller();
+  auto* permission_controller = panel_controller->permission_controller();
   ASSERT_TRUE(permission_controller);
   auto* location_bar = permission_controller->GetLocationBarForTesting();
   ASSERT_TRUE(location_bar);
@@ -1083,17 +1076,14 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest,
   EXPECT_TRUE(base::test::RunUntil(
       [&]() { return panel_controller->IsPanelOpenForContextualTask(); }));
 
-  auto* coordinator =
-      contextual_tasks::ContextualTasksSidePanelCoordinator::Get(
-          browser()->GetUnownedUserDataHost());
-  ASSERT_TRUE(coordinator);
-  content::WebContents* panel_contents = coordinator->GetActiveWebContents();
+  content::WebContents* panel_contents =
+      panel_controller->GetActiveWebContents();
   ASSERT_TRUE(panel_contents);
   EXPECT_TRUE(content::WaitForLoadStop(panel_contents));
   EXPECT_TRUE(content_settings::PageSpecificContentSettings::GetForFrame(
       panel_contents->GetPrimaryMainFrame()));
 
-  auto* permission_controller = coordinator->permission_controller();
+  auto* permission_controller = panel_controller->permission_controller();
   ASSERT_TRUE(permission_controller);
   auto* location_bar = permission_controller->GetLocationBarForTesting();
   ASSERT_TRUE(location_bar);

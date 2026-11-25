@@ -10,8 +10,6 @@ import static org.chromium.ui.base.DeviceFormFactor.PHONE;
 
 import androidx.test.filters.MediumTest;
 
-import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -19,10 +17,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
-import org.chromium.base.test.ActivityFinisher;
 import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterizedRunner;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
@@ -30,7 +26,6 @@ import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
@@ -63,7 +58,6 @@ import java.util.concurrent.ExecutionException;
 /** Tests for search in the tab switcher. */
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @DisableFeatures({
     ChromeFeatureList.ANDROID_THEME_MODULE,
     ChromeFeatureList.HISTORY_PANE_ANDROID,
@@ -98,21 +92,11 @@ public class TabSwitcherSearchRenderTest {
         mRenderTestRule.setNightModeEnabled(nightModeEnabled);
     }
 
-    @AfterClass
-    public static void tearDownAfterActivityDestroyed() {
-        ChromeNightModeTestUtils.tearDownNightModeAfterChromeActivityDestroyed();
-    }
-
     @Before
     public void setUp() throws ExecutionException {
         mTestServer =
                 mCtaTestRule.getEmbeddedTestServerRule().setServerPort(SERVER_PORT).getServer();
         mInitialPage = mCtaTestRule.startOnBlankPage();
-    }
-
-    @After
-    public void tearDown() {
-        ActivityFinisher.finishAll();
     }
 
     @Test

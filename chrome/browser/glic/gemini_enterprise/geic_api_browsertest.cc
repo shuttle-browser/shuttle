@@ -5,19 +5,24 @@
 #include <utility>
 
 #include "base/command_line.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/metrics/user_action_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/glic/gemini_enterprise/geic_enabling.h"
 #include "chrome/browser/glic/gemini_enterprise/geic_fre.h"
 #include "chrome/browser/glic/gemini_enterprise/geic_pref_names.h"
+#include "chrome/browser/glic/glic_metrics.h"
 #include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/host/host.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/service/glic_instance_impl.h"
 #include "chrome/browser/glic/test_support/glic_api_test.h"
 #include "chrome/browser/glic/test_support/glic_browser_test.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/common/chrome_switches.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
 #include "components/prefs/pref_service.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "content/public/test/browser_test.h"
 
 namespace glic {
@@ -34,7 +39,6 @@ class GlicGeicApiBrowserTest : public GlicApiBrowserTest {
     GlicApiBrowserTest::SetUpCommandLine(command_line);
     command_line->AppendSwitchASCII(geic::kGeicGuestURLSwitch,
                                     GetGuestURL().spec());
-    command_line->AppendSwitch(::switches::kGlicDev);
   }
 
  private:
@@ -49,6 +53,24 @@ IN_PROC_BROWSER_TEST_F(GlicGeicApiBrowserTest, testGeicSignInTab) {
 IN_PROC_BROWSER_TEST_F(GlicGeicApiBrowserTest, testGeicAuthTab) {
   ASSERT_OK(OpenGlicForActiveTab());
   ExecuteJsTest();
+}
+
+// GEiC doesn't use the Chrome primary account: the GE web app handles sign-in,
+// and there is no AuthController. Pausing Chrome sign-in leaves the GE guest
+// showing, and the web client can still call the host API.
+IN_PROC_BROWSER_TEST_F(GlicGeicApiBrowserTest, testSignInPauseStateGeic) {
+  ASSERT_OK_AND_ASSIGN(GlicInstanceImpl * instance, OpenGlicForActiveTab());
+  ExecuteJsTest();
+
+  // Pause the sign-in.
+  signin::SetInvalidRefreshTokenForPrimaryAccount(
+      IdentityManagerFactory::GetForProfile(GetProfile()));
+
+  // The web client calls the host API again after the pause.
+  ContinueJsTest();
+  ASSERT_OK(WaitUntilGuestIsShowing());
+  EXPECT_TRUE(instance->host().IsWebClientConnected());
+  EXPECT_TRUE(FindGlicGuestMainFrame());
 }
 
 class GlicGeicFreApiBrowserTest : public GlicGeicApiBrowserTest {
@@ -66,7 +88,7 @@ class GlicGeicFreApiBrowserTest : public GlicGeicApiBrowserTest {
 };
 
 // The onboarding API completes the GEiC FRE and skips the consumer-only
-// onboarding steps.
+// onboarding steps, but records provider-split onboarding metrics.
 IN_PROC_BROWSER_TEST_F(GlicGeicFreApiBrowserTest,
                        testGeicSetOnboardingCompleted) {
   ASSERT_OK(OpenGlicForActiveTab());
@@ -74,17 +96,30 @@ IN_PROC_BROWSER_TEST_F(GlicGeicFreApiBrowserTest,
 
   ASSERT_FALSE(GlicEnabling::HasConsentedForProfile(GetProfile()));
   base::UserActionTester user_action_tester;
+  base::HistogramTester histogram_tester;
 
   ContinueJsTest();
 
   EXPECT_TRUE(GlicEnabling::HasConsentedForProfile(GetProfile()));
   EXPECT_EQ(geic::GetFreStatus(GetProfile()),
             geic::prefs::GeicFreStatus::kCompleted);
-  // The consumer FRE and onboarding metrics are untouched.
+  // The consumer FRE is untouched.
   EXPECT_EQ(GetProfile()->GetPrefs()->GetInteger(prefs::kGlicCompletedFre),
             std::to_underlying(prefs::FreStatus::kNotStarted));
-  EXPECT_EQ(0,
+  EXPECT_EQ(1,
             user_action_tester.GetActionCount("Glic.Onboarding.OptInAccept"));
+  histogram_tester.ExpectUniqueSample("Glic.Fre.Accept.FlowSource",
+                                      OptInFlow::kGlicFre, 1);
+
+  // `OpenGlicForActiveTab()` opens the panel from the top Chrome button.
+  histogram_tester.ExpectUniqueSample(
+      "Glic.Enterprise.Fre.Accept.InvocationSource",
+      mojom::InvocationSource::kTopChromeButton, 1);
+  histogram_tester.ExpectTotalCount("Glic.Consumer.Fre.Accept.InvocationSource",
+                                    0);
+  histogram_tester.ExpectUniqueSample("Glic.Fre.Accept.InvocationSource",
+                                      mojom::InvocationSource::kTopChromeButton,
+                                      1);
 }
 
 }  // namespace

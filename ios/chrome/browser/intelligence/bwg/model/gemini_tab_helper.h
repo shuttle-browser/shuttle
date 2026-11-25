@@ -11,6 +11,8 @@
 #import <string>
 #import <vector>
 
+#import "base/functional/callback.h"
+#import "base/memory/raw_ref.h"
 #import "base/observer_list.h"
 #import "base/scoped_observation.h"
 #import "base/timer/timer.h"
@@ -20,6 +22,7 @@
 #import "components/optimization_guide/proto/contextual_cueing_metadata.pb.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_tab_helper_observer.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper.h"
+#import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper_factory.h"
 #import "ios/web/public/favicon/favicon_url.h"
 #import "ios/web/public/web_state_observer.h"
 #import "ios/web/public/web_state_user_data.h"
@@ -39,8 +42,6 @@ enum class FloatyUpdateSource;
 namespace ai {
 class ZeroStateSuggestionsService;
 }
-
-class GeminiSuggestionHandlerTest;
 
 // Tab helper controlling Gemini and its current state for a given tab.
 class GeminiTabHelper : public web::WebStateObserver,
@@ -83,7 +84,7 @@ class GeminiTabHelper : public web::WebStateObserver,
           callback);
 
   // Fetches zero-state suggestions for the current WebState returning strings.
-  void FetchZeroStateSuggestionsAsStrings(
+  virtual void FetchZeroStateSuggestionsAsStrings(
       base::OnceCallback<void(NSArray<NSString*>* suggestions)> callback);
 
   // Deactivates the Gemini associated to this WebState.
@@ -182,18 +183,20 @@ class GeminiTabHelper : public web::WebStateObserver,
       const std::vector<web::FaviconURL>& candidates) override;
   void WebStateDestroyed(web::WebState* web_state) override;
 
- private:
-  explicit GeminiTabHelper(web::WebState* web_state);
+ protected:
+  // Default constructor for testing fakes.
+  // TODO(crbug.com/581395525): Remove this constructor.
+  GeminiTabHelper();
 
+ private:
+  explicit GeminiTabHelper(
+      web::WebState* web_state,
+      PageContextWrapperFactory* page_context_wrapper_factory = nullptr);
   friend class web::WebStateUserData<GeminiTabHelper>;
 
   // Adding GeminiTabHelperTest as a friend to facilitate validation of behavior
   // in tests.
   friend class GeminiTabHelperTest;
-
-  // TODO(crbug.com/502249229): Refactor GeminiSuggestionHandler to use a
-  // protocol or delegate to avoid needing to be a friend of GeminiTabHelper.
-  friend class GeminiSuggestionHandlerTest;
 
   // The PageContext wrapper used to provide context about a page.
   __strong PageContextWrapper* page_context_wrapper_ = nil;
@@ -272,6 +275,9 @@ class GeminiTabHelper : public web::WebStateObserver,
 
   // WebState this tab helper is attached to.
   raw_ptr<web::WebState> web_state_ = nullptr;
+
+  // Factory used to create `PageContextWrapper` instances.
+  const raw_ref<PageContextWrapperFactory> page_context_wrapper_factory_;
 
   // Commands handler for Gemini commands.
   __weak id<GeminiCommands> gemini_handler_ = nullptr;

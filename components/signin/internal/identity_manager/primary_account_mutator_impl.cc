@@ -8,7 +8,6 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
-#include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "components/prefs/pref_service.h"
@@ -19,7 +18,6 @@
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/sync/base/features.h"
 #include "google_apis/gaia/core_account_id.h"
 
 namespace signin {
@@ -47,6 +45,7 @@ PrimaryAccountMutatorImpl::SetPrimaryAccount(
     ConsentLevel consent_level,
     signin_metrics::AccessPoint access_point,
     base::OnceClosure prefs_committed_callback) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   DCHECK(!account_id.empty());
   AccountInfo account_info = account_tracker_->GetAccountInfo(account_id);
   if (account_info.IsEmpty()) {
@@ -77,18 +76,12 @@ PrimaryAccountMutatorImpl::SetPrimaryAccount(
       break;
     case ConsentLevel::kSignin:
 #if BUILDFLAG(IS_CHROMEOS)
-      // On Chrome OS the UPA can only be set once and never removed or changed.
-      if (base::FeatureList::IsEnabled(
-              syncer::kReplaceSyncPromosWithSignInPromos)) {
-        if (primary_account_manager_->HasPrimaryAccount(
-                ConsentLevel::kSignin)) {
-          CHECK_EQ(account_info.GetCoreAccountInfo(),
-                   primary_account_manager_->GetPrimaryAccountInfo(
-                       ConsentLevel::kSignin));
-        }
-      } else {
-        DCHECK(!primary_account_manager_->HasPrimaryAccount(
-            ConsentLevel::kSignin));
+      // On Chrome OS the primary account can only be set once and never removed
+      // or changed.
+      if (primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSignin)) {
+        CHECK_EQ(account_info.GetCoreAccountInfo(),
+                 primary_account_manager_->GetPrimaryAccountInfo(
+                     ConsentLevel::kSignin));
       }
 #endif
       // TODO(crbug.com/40067058): Delete this when ConsentLevel::kSync is
@@ -119,6 +112,7 @@ PrimaryAccountMutatorImpl::SetPrimaryAccount(
 // assume that an account will always be available at sync consent level in Ash.
 void PrimaryAccountMutatorImpl::RevokeSyncConsent(
     signin_metrics::ProfileSignout source_metric) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   // TODO(crbug.com/40066949): `RevokeSyncConsent` shouldn't be available on iOS
   //     when kSync is no longer used. See ConsentLevel::kSync documentation for
   //     details.
@@ -128,6 +122,7 @@ void PrimaryAccountMutatorImpl::RevokeSyncConsent(
 
 bool PrimaryAccountMutatorImpl::ClearPrimaryAccount(
     signin_metrics::ProfileSignout source_metric) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   if (!primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSignin)) {
     return false;
   }
@@ -138,6 +133,7 @@ bool PrimaryAccountMutatorImpl::ClearPrimaryAccount(
 
 bool PrimaryAccountMutatorImpl::RemovePrimaryAccountButKeepTokens(
     signin_metrics::ProfileSignout source_metric) {
+  CHECK(!primary_account_manager_->IsCallingPrimaryAccountObservers());
   if (!primary_account_manager_->HasPrimaryAccount(ConsentLevel::kSignin)) {
     return false;
   }

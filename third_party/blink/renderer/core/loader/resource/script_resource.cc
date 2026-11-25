@@ -28,7 +28,6 @@
 
 #include <utility>
 
-#include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/types/expected.h"
@@ -188,9 +187,6 @@ ScriptResource::ScriptResource(
 
   if (!consume_code_cache_off_thread_enabled) {
     DisableOffThreadConsumeCache();
-  } else if (initial_request_script_type == mojom::blink::ScriptType::kModule) {
-    // TODO(leszeks): Enable off-thread cache consumption for modules.
-    DisableOffThreadConsumeCache();
   } else if (!isolate_if_main_thread_) {
     // If we have a null isolate disable off thread cache consumption.
     DisableOffThreadConsumeCache();
@@ -228,7 +224,6 @@ const ParkableString& ScriptResource::GetSourceText() {
   CHECK(IsLoaded());
 
   if (source_text_.IsNull() && Data()) {
-    SCOPED_UMA_HISTOGRAM_TIMER_MICROS("Blink.Script.SourceTextTime");
     String source_text = DecodedText();
     if (!(base::FeatureList::IsEnabled(
               blink::features::kJavaScriptSourcePhaseImports) &&
@@ -327,7 +322,8 @@ void ScriptResource::SetSerializedCachedMetadata(mojo_base::BigBuffer data) {
     }
 
     // If `cached_metadata_handler_` has a valid code cache, use the code cache.
-    // Note that ClassicPendingScript::NotifyFinished runs
+    // Note that ClassicPendingScript::NotifyFinished and
+    // ModuleScriptLoader::NotifyFetchFinishedSuccess run
     // CachedMetadataHandler::Check() before calling
     // ScriptCacheConsumer::NotifyClientWaiting(), ensuring that
     // SourceTextAvailable() and MergeWithExistingScript() only run after the
@@ -360,6 +356,7 @@ void ScriptResource::DestroyDecodedDataForFailedRevalidation() {
   source_text_ = ParkableString();
   // Make sure there's no streaming.
   DCHECK(!streamer_);
+  DCHECK(!background_streamer_);
   DCHECK_EQ(streaming_state_, StreamingState::kStreamingDisabled);
   SetDecodedSize(0);
   DCHECK(!cache_consumer_);
@@ -374,6 +371,7 @@ void ScriptResource::SetRevalidatingRequest(
     CHECK(streamer_->IsFinished());
     streamer_ = nullptr;
   }
+  background_streamer_ = nullptr;
   // Revalidation requests don't actually load the current Resource, so disable
   // streaming.
   DisableStreaming(ScriptStreamer::NotStreamingReason::kRevalidate);

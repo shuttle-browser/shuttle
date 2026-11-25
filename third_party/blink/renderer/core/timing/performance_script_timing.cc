@@ -155,7 +155,8 @@ DOMHighResTimeStamp PerformanceScriptTiming::pauseDuration() const {
 }
 
 LocalDOMWindow* PerformanceScriptTiming::window() const {
-  return info_->Window();
+  LocalDOMWindow* script_window = info_->Window();
+  return script_window && script_window->GetFrame() ? script_window : nullptr;
 }
 
 V8ScriptWindowAttribution PerformanceScriptTiming::windowAttribution() const {

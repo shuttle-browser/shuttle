@@ -27,11 +27,12 @@ class ExtensionCleanupHandler : public CleanupHandler {
   ~ExtensionCleanupHandler() override;
 
   // CleanupHandler:
-  void Cleanup(CleanupHandlerCallback callback) override;
+  void Cleanup(const AccountId& account_id,
+               CleanupHandlerCallback callback) override;
 
  private:
   // Uninstalls all installed extensions except the ones added to
-  // prefs::kRestrictedManagedGuestSessionExtensionCleanupExemptList.
+  // ash::prefs::kRestrictedManagedGuestSessionExtensionCleanupExemptList.
   void UninstallExtensions();
 
   // Callback for each uninstalled extension.

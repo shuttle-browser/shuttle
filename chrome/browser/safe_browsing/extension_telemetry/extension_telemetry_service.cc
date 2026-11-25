@@ -470,15 +470,19 @@ ExtensionTelemetryService::ExtensionTelemetryService(
       current_reporting_interval_(kUploadIntervalSeconds),
       url_loader_factory_(url_loader_factory),
       num_checks_per_upload_interval_(kNumChecksPerUploadInterval) {
-  // Register for SB preference change notifications.
   pref_service_ = profile_->GetPrefs();
   pref_change_registrar_.Init(pref_service_);
-  pref_change_registrar_.Add(
-      prefs::kSafeBrowsingEnhanced,
-      base::BindRepeating(&ExtensionTelemetryService::OnESBPrefChanged,
-                          base::Unretained(this)));
-  // Set initial enable/disable state for ESB.
-  SetEnabledForESB(IsEnhancedProtectionEnabled(*pref_service_));
+  // Register for SB preference change notifications. Off-The-Record profiles
+  // never enter the ESB state (see `SetEnabledForESB()`), so they don't
+  // observe the ESB pref, which they inherit from the parent profile.
+  if (!profile_->IsOffTheRecord()) {
+    pref_change_registrar_.Add(
+        prefs::kSafeBrowsingEnhanced,
+        base::BindRepeating(&ExtensionTelemetryService::OnESBPrefChanged,
+                            base::Unretained(this)));
+    // Set initial enable/disable state for ESB.
+    SetEnabledForESB(IsEnhancedProtectionEnabled(*pref_service_));
+  }
 
 #if BUILDFLAG(ENTERPRISE_CLOUD_CONTENT_ANALYSIS)
     // Register for enterprise policy changes.
@@ -487,7 +491,7 @@ ExtensionTelemetryService::ExtensionTelemetryService(
             profile);
     connector_service->ObserveTelemetryReporting(base::BindRepeating(
         &ExtensionTelemetryService::OnEnterprisePolicyChanged,
-        base::Unretained(this)));
+        weak_factory_.GetWeakPtr()));
 
     // Set initial enable/disable state for enterprise.
     SetEnabledForEnterprise(
@@ -534,6 +538,14 @@ void ExtensionTelemetryService::OnEnterprisePolicyChanged() {
 // - Telemetry Configuration
 // - Persister
 void ExtensionTelemetryService::SetEnabledForESB(bool enable) {
+  // Off-The-Record profiles, e.g. Enterprise Isolated Mode profiles, inherit
+  // the ESB pref from the parent profile and share its path. Their service
+  // must never enter the ESB state: it would upload to Safe Browsing, and
+  // leaving the state would delete the parent profile's persisted ESB reports.
+  if (profile_->IsOffTheRecord()) {
+    enable = false;
+  }
+
   // Make call idempotent.
   if (esb_enabled_ == enable) {
     return;
@@ -1688,6 +1700,12 @@ bool ExtensionTelemetryService::OffstoreExtensionFileDataContext::operator<(
 }
 
 void ExtensionTelemetryService::SetUpOffstoreFileDataCollection() {
+  // Off-The-Record profiles reuse the off-store file data collected by the
+  // parent profile, read from its `kExtensionTelemetryFileData` pref.
+  if (profile_->IsOffTheRecord()) {
+    return;
+  }
+
   // If both is enabled, set up has already been done.
   if (esb_enabled_ && enterprise_enabled_) {
     return;
@@ -1711,6 +1729,7 @@ void ExtensionTelemetryService::StartOffstoreFileDataCollection() {
   offstore_file_data_collection_start_time_ = base::TimeTicks::Now();
   offstore_extension_dirs_.clear();
   offstore_extension_file_data_contexts_.clear();
+  offstore_file_data_collection_weak_factory_.InvalidateWeakPtrs();
   GetOffstoreExtensionDirs();
   RemoveStaleExtensionsFileDataFromPref();
 
@@ -1815,16 +1834,16 @@ void ExtensionTelemetryService::CollectOffstoreFileData() {
   }
 
   auto context = offstore_extension_file_data_contexts_.begin();
-  auto process_extension_callback =
-      base::BindOnce(&ExtensionTelemetryService::OnOffstoreFileDataCollected,
-                     weak_factory_.GetWeakPtr(), context);
+  auto process_extension_callback = base::BindOnce(
+      &ExtensionTelemetryService::OnOffstoreFileDataCollected,
+      offstore_file_data_collection_weak_factory_.GetWeakPtr(), *context);
   file_processor_.AsyncCall(&ExtensionTelemetryFileProcessor::ProcessExtension)
       .WithArgs(context->root_dir)
       .Then(std::move(process_extension_callback));
 }
 
 void ExtensionTelemetryService::OnOffstoreFileDataCollected(
-    base::flat_set<OffstoreExtensionFileDataContext>::iterator context,
+    const OffstoreExtensionFileDataContext& context,
     base::DictValue file_data) {
   // Save to Prefs
   base::DictValue extension_dict;
@@ -1834,7 +1853,7 @@ void ExtensionTelemetryService::OnOffstoreFileDataCollected(
 
   ScopedDictPrefUpdate pref_update(pref_service_,
                                    prefs::kExtensionTelemetryFileData);
-  pref_update->Set(context->extension_id, std::move(extension_dict));
+  pref_update->Set(context.extension_id, std::move(extension_dict));
 
   // Remove context and repeat.
   offstore_extension_file_data_contexts_.erase(context);
@@ -1890,6 +1909,7 @@ void ExtensionTelemetryService::StopOffstoreFileDataCollection() {
   offstore_file_data_collection_timer_.Stop();
   offstore_extension_dirs_.clear();
   offstore_extension_file_data_contexts_.clear();
+  offstore_file_data_collection_weak_factory_.InvalidateWeakPtrs();
   commandline_extensions_.Clear();
   collected_commandline_extension_info_ = false;
 }

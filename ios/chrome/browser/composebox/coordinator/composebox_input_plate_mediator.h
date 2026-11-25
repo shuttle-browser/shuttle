@@ -133,6 +133,11 @@ class ContextualSearchSessionHandle;
 // Removes the image item associated with the given `assetID`.
 - (void)removeImageWithAssetID:(NSString*)assetID;
 
+// Sends `query`, recognized by Voice Search, like text entered in the
+// composebox. The resulting navigation, if any, is marked as a Voice Search
+// result.
+- (void)sendVoiceSearchQuery:(NSString*)query;
+
 // Records that the plus menu opened with the given visible attachment buttons,
 // and maps dynamically injected Tools and Models to metrics.
 - (void)recordPlusMenuOpenedWithVisibleInternalButtons:
@@ -176,11 +181,6 @@ class ContextualSearchSessionHandle;
 
 // Attaches the tabs from the given `selection`.
 - (void)attachTabSelection:(const ComposeboxTabSelection&)selection;
-
-// Processes a webpage context from a context library signal. Called on the
-// cobrowse context only.
-- (void)processContextLibraryWebpageSignalWithURL:(const GURL&)url
-                                            title:(NSString*)title;
 
 @end
 

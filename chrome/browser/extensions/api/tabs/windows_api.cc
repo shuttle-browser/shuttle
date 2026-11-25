@@ -15,6 +15,7 @@
 
 #include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "base/types/optional_util.h"
 #include "chrome/browser/devtools/devtools_window.h"
@@ -41,9 +42,9 @@
 #include "extensions/common/mojom/api_permission_id.mojom-shared.h"
 #include "extensions/common/permissions/permissions_data.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/rect.h"
 
@@ -52,6 +53,7 @@
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_init_state.h"
+#include "chrome/browser/ui/waap/window_creation.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/window_sizer/window_sizer.h"
 #include "chrome/browser/web_applications/web_app_filter.h"
@@ -701,7 +703,8 @@ ExtensionFunction::ResponseAction WindowsCreateFunction::Run() {
 
 #if !BUILDFLAG(IS_ANDROID)
   BrowserWindowInterface* new_window =
-      CreateBrowserWindow(std::move(create_params));
+      waap::CreateBrowserWindowAndRecordCreationSource(
+          std::move(create_params), waap::NewWindowCreationSource::kExtension);
   ExtensionFunction::ResponseValue response =
       OnBrowserWindowCreated(new_window);
   return RespondNow(std::move(response));
@@ -740,14 +743,16 @@ ExtensionFunction::ResponseValue WindowsCreateFunction::OnBrowserWindowCreated(
   auto create_nav_params = [&](const GURL& url, bool is_first_nav) {
     NavigateParams navigate_params(new_window, url, ui::PAGE_TRANSITION_LINK);
 
-    navigate_params.disposition = WindowOpenDisposition::kNewForegroundTab;
+    navigate_params.disposition =
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab;
 
 #if BUILDFLAG(IS_ANDROID)
     // On Android, new windows are created with a single empty tab. As such,
     // when navigating, we need to navigate that first tab, instead of adding
     // new ones. Otherwise, we'd end up with one extra tab in the new window.
     if (is_first_nav) {
-      navigate_params.disposition = WindowOpenDisposition::kCurrentTab;
+      navigate_params.disposition =
+          ui::mojom::WindowOpenDisposition::kCurrentTab;
     }
 #endif
     // Ensure that these navigations will not get 'captured' into PWA windows,

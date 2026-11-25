@@ -7,26 +7,26 @@
 
 #import <Foundation/Foundation.h>
 
+#import "third_party/omnibox_proto/tool_mode.pb.h"
+
 // App interface to interact with the Composebox.
 @interface ComposeboxAppInterface : NSObject
 
 // Sets the return value of
-// `MockIOSChromeAimEligibilityService::IsFuseboxEligible`.
+// `MockIOSChromeAimEligibilityService::IsFuseboxEligible` to `eligible`.
 + (void)setFuseboxEligible:(BOOL)eligible;
 
-// Sets the return value of
-// `MockIOSChromeAimEligibilityService::IsCreateImagesEligible`.
-+ (void)setCreateImagesEligible:(BOOL)eligible;
+// Enables or disables `toolMode` in `MockIOSChromeAimEligibilityService` based
+// on `enabled`.
++ (void)setToolEnabled:(BOOL)enabled forToolMode:(omnibox::ToolMode)toolMode;
 
-// Sets whether tab upload should auto-succeed in
+// Restores the default set of server tools in
+// `MockIOSChromeAimEligibilityService`.
++ (void)resetDefaultTools;
+
+// Sets `autoSucceed` for whether tab upload should auto-succeed in
 // `MockIOSContextualSearchService`.
 + (void)setTabUploadAutoSucceed:(BOOL)autoSucceed;
-
-// Enables all tools, making UI input state accessible.
-+ (void)enableAllTools;
-
-// Resets testing overrides for all tools accessible.
-+ (void)setAllToolsEnabled:(BOOL)enabled;
 
 // Returns whether the composebox server side state is enabled.
 + (BOOL)isServerSideStateEnabled;

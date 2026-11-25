@@ -25,7 +25,6 @@
 #include "components/tab_groups/tab_group_id.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/views/controls/menu/menu_model_adapter.h"
 
 namespace tab_groups {
@@ -58,8 +57,10 @@ STGTabsMenuModel::~STGTabsMenuModel() = default;
 
 void STGTabsMenuModel::Build(
     const SavedTabGroup& saved_group,
-    base::RepeatingCallback<int()> get_next_command_id) {
+    base::RepeatingCallback<int()> get_next_command_id,
+    OnExecuteCommandCallback on_execute_command_callback) {
   command_id_to_action_.clear();
+  on_execute_command_callback_ = std::move(on_execute_command_callback);
   should_enable_move_menu_item_ = true;
   sync_id_ = saved_group.saved_guid();
 
@@ -274,11 +275,17 @@ void STGTabsMenuModel::ExecuteCommand(int command_id, int event_flags) {
   CHECK(it != command_id_to_action_.end());
 
   TabGroupMenuAction action = it->second;
+  // Copied locally since performing the action may destroy `this`.
+  OnExecuteCommandCallback on_execute_command_callback =
+      on_execute_command_callback_;
   TabGroupSyncService* tab_group_service =
       tab_groups::TabGroupSyncServiceFactory::GetForProfile(
           browser_->GetProfile());
   SavedTabGroupUtils::PerformTabGroupMenuAction(action, context_, browser_,
                                                 tab_group_service);
+  if (on_execute_command_callback) {
+    on_execute_command_callback.Run(action);
+  }
 }
 
 void STGTabsMenuModel::OnFaviconDataAvailable(

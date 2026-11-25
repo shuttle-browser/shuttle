@@ -24,6 +24,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/ref_counted.h"
+#include "base/numerics/safe_conversions.h"
 #include "base/run_loop.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
@@ -2561,6 +2562,87 @@ TEST_F(HistoryBackendTest, QueryHistoryWithTextQueryIncludesActorSource) {
                       testing::Property(&URLResult::has_actor_source, true))));
 }
 
+// Tests that a text search returns each visit's own content annotations.
+TEST_F(HistoryBackendTest,
+       QueryHistoryWithTextQueryIncludesContentAnnotations) {
+  ASSERT_TRUE(backend_.get());
+
+  const GURL url("http://www.example.com/page");
+  const base::Time now = base::Time::Now();
+  constexpr size_t kNumVisits = 5;
+  for (size_t i = 0; i < kNumVisits; ++i) {
+    HistoryAddPageArgs request(
+        url, now - base::Minutes(kNumVisits - i), /*context_id=*/1,
+        /*nav_entry_id=*/base::checked_cast<int>(i + 1),
+        /*local_navigation_id=*/std::nullopt, GURL(), RedirectList(),
+        ui::PAGE_TRANSITION_TYPED, false, SOURCE_BROWSED,
+        VisitResponseCodeCategory::kNot404, false, true);
+    backend_->AddPage(request);
+  }
+
+  URLRow row;
+  URLID url_id = backend_->db()->GetRowForURL(url, &row);
+  VisitVector visits;
+  ASSERT_TRUE(backend_->db()->GetVisitsForURL(url_id, &visits));
+  ASSERT_EQ(kNumVisits, visits.size());
+  for (const VisitRow& visit : visits) {
+    VisitContentAnnotations annotations;
+    annotations.alternative_title = base::NumberToString(visit.visit_id);
+    backend_->db()->AddContentAnnotationsForVisit(visit.visit_id, annotations);
+  }
+
+  QueryOptions options;
+  options.duplicate_policy = QueryOptions::KEEP_ALL_DUPLICATES;
+  options.max_count = 2;
+  QueryResults results = backend_->QueryHistory(u"example", options);
+
+  // Only the two newest visits are returned, and each keeps its annotations.
+  ASSERT_EQ(2u, results.size());
+  EXPECT_EQ(now - base::Minutes(1), results[0].visit_time());
+  EXPECT_EQ(now - base::Minutes(2), results[1].visit_time());
+  for (const URLResult& result : results) {
+    EXPECT_EQ(base::NumberToString(result.visit_id()),
+              result.content_annotations().alternative_title);
+  }
+}
+
+// Tests that a text search reports more results when the per-URL visit query
+// is truncated by `max_count`, even though the merged results don't exceed
+// `max_count`.
+TEST_F(HistoryBackendTest,
+       QueryHistoryTextHasMoreResultsWhenPerUrlVisitsTruncated) {
+  ASSERT_TRUE(backend_.get());
+
+  const GURL url("http://www.example.com/page");
+  const base::Time now = base::Time::Now();
+  constexpr size_t kNumVisits = 3;
+  for (size_t i = 0; i < kNumVisits; ++i) {
+    HistoryAddPageArgs request(
+        url, now - base::Minutes(kNumVisits - i), /*context_id=*/1,
+        /*nav_entry_id=*/base::checked_cast<int>(i + 1),
+        /*local_navigation_id=*/std::nullopt, GURL(), RedirectList(),
+        ui::PAGE_TRANSITION_TYPED, false, SOURCE_BROWSED,
+        VisitResponseCodeCategory::kNot404, false, true);
+    backend_->AddPage(request);
+  }
+
+  QueryOptions options;
+  options.duplicate_policy = QueryOptions::KEEP_ALL_DUPLICATES;
+
+  // The only matching URL has more visits than `max_count`, so older visits
+  // remain beyond the returned results.
+  options.max_count = base::checked_cast<int>(kNumVisits - 1);
+  QueryResults results = backend_->QueryHistory(u"example", options);
+  EXPECT_EQ(kNumVisits - 1, results.size());
+  EXPECT_TRUE(results.has_more_results());
+
+  // All visits fit within `max_count`, so there are no more results.
+  options.max_count = base::checked_cast<int>(kNumVisits);
+  results = backend_->QueryHistory(u"example", options);
+  EXPECT_EQ(kNumVisits, results.size());
+  EXPECT_FALSE(results.has_more_results());
+}
+
 TEST_F(HistoryBackendTest, SetHasUrlKeyedImage) {
   ASSERT_TRUE(backend_.get());
 
@@ -3151,10 +3233,9 @@ TEST_F(HistoryBackendTest, FaviconChangedNotificationIconMappingChanged) {
 
     // Map `page_url3` to `icon_url1` so that the test does not delete the
     // favicon at `icon_url1`.
-    std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results =
-        backend_->UpdateFaviconMappingsAndFetch({page_url3}, icon_url1,
-                                                IconType::kFavicon,
-                                                GetEdgeSizesSmallAndLarge());
+    backend_->UpdateFaviconMappingsAndFetch({page_url3}, icon_url1,
+                                            IconType::kFavicon,
+                                            GetEdgeSizesSmallAndLarge());
     ClearBroadcastedNotifications();
   }
 
@@ -3176,10 +3257,9 @@ TEST_F(HistoryBackendTest, FaviconChangedNotificationIconMappingChanged) {
 
   // UpdateFaviconMappingsAndFetch()
   {
-    std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results =
-        backend_->UpdateFaviconMappingsAndFetch({page_url1}, icon_url2,
-                                                IconType::kFavicon,
-                                                GetEdgeSizesSmallAndLarge());
+    backend_->UpdateFaviconMappingsAndFetch({page_url1}, icon_url2,
+                                            IconType::kFavicon,
+                                            GetEdgeSizesSmallAndLarge());
     EXPECT_THAT(favicon_changed_notifications_page_urls(),
                 ElementsAre(page_url1));
     EXPECT_EQ(0u, favicon_changed_notifications_icon_urls().size());
@@ -3206,10 +3286,9 @@ TEST_F(HistoryBackendTest,
 
   // UpdateFaviconMappingsAndFetch() for two page URLs.
   {
-    std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results =
-        backend_->UpdateFaviconMappingsAndFetch({page_url1, page_url2},
-                                                icon_url, IconType::kFavicon,
-                                                GetEdgeSizesSmallAndLarge());
+    backend_->UpdateFaviconMappingsAndFetch({page_url1, page_url2}, icon_url,
+                                            IconType::kFavicon,
+                                            GetEdgeSizesSmallAndLarge());
     EXPECT_THAT(favicon_changed_notifications_page_urls(),
                 ElementsAre(page_url1, page_url2));
     ClearBroadcastedNotifications();
@@ -3218,10 +3297,9 @@ TEST_F(HistoryBackendTest,
   // UpdateFaviconMappingsAndFetch() for two page URLs, but only one needs an
   // update.
   {
-    std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results =
-        backend_->UpdateFaviconMappingsAndFetch({page_url3, page_url4},
-                                                icon_url, IconType::kFavicon,
-                                                GetEdgeSizesSmallAndLarge());
+    backend_->UpdateFaviconMappingsAndFetch({page_url3, page_url4}, icon_url,
+                                            IconType::kFavicon,
+                                            GetEdgeSizesSmallAndLarge());
     EXPECT_THAT(favicon_changed_notifications_page_urls(),
                 ElementsAre(page_url3));
   }
@@ -3249,10 +3327,9 @@ TEST_F(HistoryBackendTest,
 
     // Map `page_url3` to `icon_url1` so that the test does not delete the
     // favicon at `icon_url1`.
-    std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results =
-        backend_->UpdateFaviconMappingsAndFetch({page_url3}, icon_url1,
-                                                IconType::kFavicon,
-                                                GetEdgeSizesSmallAndLarge());
+    backend_->UpdateFaviconMappingsAndFetch({page_url3}, icon_url1,
+                                            IconType::kFavicon,
+                                            GetEdgeSizesSmallAndLarge());
     ClearBroadcastedNotifications();
   }
 
@@ -3346,10 +3423,8 @@ TEST_F(HistoryBackendTest, NoFaviconChangedNotifications) {
 
   // UpdateFaviconMappingsAndFetch()
   {
-    std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results =
-        backend_->UpdateFaviconMappingsAndFetch({page_url}, icon_url,
-                                                IconType::kFavicon,
-                                                GetEdgeSizesSmallAndLarge());
+    backend_->UpdateFaviconMappingsAndFetch(
+        {page_url}, icon_url, IconType::kFavicon, GetEdgeSizesSmallAndLarge());
   }
 
   EXPECT_EQ(0u, favicon_changed_notifications_page_urls().size());
@@ -3368,7 +3443,6 @@ TEST_F(HistoryBackendTest, CloneFaviconMappingsForPages) {
   // Setup
   {
     // A mapping exists for `landing_page_url1`.
-    std::vector<favicon_base::FaviconRawBitmapData> favicon_bitmap_data;
     backend_->SetFavicons(
         {landing_page_url1}, IconType::kFavicon, icon_url,
         {gfx::test::CreateBitmap(kSmallEdgeSize, SK_ColorBLUE)});
@@ -3383,7 +3457,6 @@ TEST_F(HistoryBackendTest, CloneFaviconMappingsForPages) {
     ClearBroadcastedNotifications();
   }
 
-  std::vector<favicon_base::FaviconRawBitmapResult> bitmap_results_out;
   backend_->CloneFaviconMappingsForPages(
       landing_page_url1, {IconType::kFavicon},
       {landing_page_url1, landing_page_url2});
@@ -3621,7 +3694,6 @@ TEST_F(HistoryBackendTest, ExpireHistoryForTimes) {
     args[i].context_annotations = {.response_code = (i == 5 ? 404 : 200)};
     backend_->AddPage(args[i]);
   }
-  EXPECT_EQ(base::Time(), backend_->GetFirstRecordedTimeForTest());
 
   URLRow row;
   for (auto& arg : args) {
@@ -3634,8 +3706,6 @@ TEST_F(HistoryBackendTest, ExpireHistoryForTimes) {
   times.insert(base::Time() + base::Microseconds(10));
   backend_->ExpireHistoryForTimes(times, base::Time() + base::Microseconds(2),
                                   base::Time() + base::Microseconds(8));
-
-  EXPECT_EQ(base::Time(), backend_->GetFirstRecordedTimeForTest());
 
   // Visits to http://example.com are untouched.
   VisitVector visit_vector;
@@ -3658,8 +3728,6 @@ TEST_F(HistoryBackendTest, ExpireHistoryForTimes) {
   ASSERT_EQ(2u, visit_vector.size());
   EXPECT_EQ(base::Time() + base::Microseconds(9), visit_vector[0].visit_time);
   EXPECT_EQ(base::Time() + base::Microseconds(1), visit_vector[1].visit_time);
-
-  EXPECT_EQ(base::Time(), backend_->GetFirstRecordedTimeForTest());
 }
 
 TEST_F(HistoryBackendTest, ExpireHistory) {
@@ -3711,9 +3779,6 @@ TEST_F(HistoryBackendTest, ExpireHistory) {
   EXPECT_EQ(visits[0].url_id, url_rows[1].id());
   EXPECT_EQ(visits[1].url_id, url_rows[2].id());
   EXPECT_EQ(visits[2].url_id, url_rows[3].id());
-
-  // The first recorded time should also get updated.
-  EXPECT_EQ(backend_->GetFirstRecordedTimeForTest(), args[1].time);
 
   // Now delete the rest of the visits in one call.
   for (unsigned int i = 1; i < std::size(args); ++i) {

@@ -58,7 +58,7 @@ class ToolbarUIServiceConnectionManager {
       const ToolbarUIServiceConnectionManager&) = delete;
 
   void RegisterObserver() {
-    service_remote_->Bind(base::BindOnce(
+    service_remote_->GetInitialState(base::BindOnce(
         [](ToolbarUIServiceConnectionManager* self,
            base::expected<toolbar_ui_api::mojom::InitialStatePtr,
                           mojo_base::mojom::ErrorPtr> result) {
@@ -216,13 +216,16 @@ class MockToolbarUIDelegate
               (toolbar_ui_api::mojom::LhsChipIdentifier,
                ui::mojom::DragEventSource),
               (override));
-  MOCK_METHOD(void, OnHomeButtonDropUrl, (const GURL&), (override));
+  MOCK_METHOD(void, OnHomeButtonDropUrl, (), (override));
   MOCK_METHOD(void, OnHomeButtonDropFile, (const gfx::PointF&), (override));
   MOCK_METHOD(void, OnHomeButtonDropText, (const std::string&), (override));
+  MOCK_METHOD(void, OnToolbarDropUrl, (), (override));
+  MOCK_METHOD(void, OnToolbarDropText, (const std::string&), (override));
   MOCK_METHOD(void, OnToolbarDropFile, (const gfx::PointF&), (override));
   MOCK_METHOD(void, OnPerformanceInterventionButtonClicked, (), (override));
   MOCK_METHOD(void, OnMediaButtonClicked, (), (override));
   MOCK_METHOD(void, OnGlicButtonClicked, (), (override));
+  MOCK_METHOD(void, OnGlicActorTaskIconClicked, (), (override));
   MOCK_METHOD((base::expected<std::monostate, mojo_base::mojom::ErrorPtr>),
               OnOmniboxAction,
               (toolbar_ui_api::mojom::OmniboxActionPtr action_ptr),
@@ -234,11 +237,11 @@ class MockToolbarUIDelegate
   MOCK_METHOD(void, OnAppMenuFocusChanged, (bool), (override));
   MOCK_METHOD(void,
               ExecuteExtensionAction,
-              (const std::string& extension_id),
+              (extensions_bar::mojom::ExtensionActionIdPtr id),
               (override));
   MOCK_METHOD(void,
               ShowExtensionContextMenu,
-              (const std::string& extension_id,
+              (extensions_bar::mojom::ExtensionActionIdPtr id,
                ui::mojom::MenuSourceType source),
               (override));
   MOCK_METHOD(
@@ -444,6 +447,58 @@ IN_PROC_BROWSER_TEST_F(WebUIToolbarUIBrowserTest, OnMediaButtonClicked) {
   service_remote.FlushForTesting();
 }
 #endif
+
+IN_PROC_BROWSER_TEST_F(WebUIToolbarUIBrowserTest, SetGlicActorTaskIconState) {
+  ToolbarUIServiceConnectionManager connection(ui());
+
+  auto state = CreateValidToolbarState();
+  state->glic_button_state->is_split = true;
+  state->glic_actor_task_icon_state->should_show = true;
+  state->glic_actor_task_icon_state->nudge_label = "Check task";
+  state->glic_actor_task_icon_state->tooltip = "Check task";
+  state->glic_actor_task_icon_state->is_pressed = true;
+  connection.RegisterObserver();
+
+  EXPECT_CALL(
+      connection.mock_observer(),
+      OnToolbarStateChanged(
+          testing::_,
+          testing::Pointee(testing::AllOf(
+              testing::Field(
+                  &toolbar_ui_api::mojom::ToolbarState::glic_button_state,
+                  testing::Pointee(testing::Field(
+                      &toolbar_ui_api::mojom::GlicButtonState::is_split,
+                      true))),
+              testing::Field(
+                  &toolbar_ui_api::mojom::ToolbarState::
+                      glic_actor_task_icon_state,
+                  testing::Pointee(testing::AllOf(
+                      testing::Field(&toolbar_ui_api::mojom::
+                                         GlicActorTaskIconState::should_show,
+                                     true),
+                      testing::Field(&toolbar_ui_api::mojom::
+                                         GlicActorTaskIconState::nudge_label,
+                                     std::optional<std::string>("Check task")),
+                      testing::Field(&toolbar_ui_api::mojom::
+                                         GlicActorTaskIconState::tooltip,
+                                     "Check task"),
+                      testing::Field(&toolbar_ui_api::mojom::
+                                         GlicActorTaskIconState::is_pressed,
+                                     true))))))))
+      .Times(1);
+  ui()->OnToolbarStateChanged(*state);
+  connection.mock_observer().FlushForTesting();
+}
+
+IN_PROC_BROWSER_TEST_F(WebUIToolbarUIBrowserTest, OnGlicActorTaskIconClicked) {
+  mojo::Remote<toolbar_ui_api::mojom::ToolbarUIService> service_remote;
+  ui()->BindInterface(service_remote.BindNewPipeAndPassReceiver());
+
+  EXPECT_CALL(toolbar_ui_delegate(), OnGlicActorTaskIconClicked()).Times(1);
+
+  service_remote->OnGlicActorTaskIconClicked();
+  service_remote.FlushForTesting();
+}
 
 // Tests that the BindInterface method for BrowserControlsService works
 // correctly.

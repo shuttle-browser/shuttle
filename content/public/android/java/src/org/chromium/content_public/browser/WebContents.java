@@ -14,7 +14,6 @@ import org.chromium.base.UserData;
 import org.chromium.blink_public.input.SelectionGranularity;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
-import org.chromium.content_public.browser.back_forward_transition.AnimationStage;
 import org.chromium.ui.BrowserControlsOffsetTagDefinitions;
 import org.chromium.ui.OverscrollRefreshHandler;
 import org.chromium.ui.base.EventForwarder;
@@ -575,14 +574,6 @@ public interface WebContents extends Parcelable {
      */
     void setDisplayCutoutSafeArea(Rect insets);
 
-    /**
-     * Instructs the web contents to "show interest" in the Element corresponding to the provided
-     * nodeID.
-     *
-     * @param nodeID The DOMNodeID of the element that should receive interest.
-     */
-    void showInterestInElement(int nodeID);
-
     /** Notify that web preferences needs update for various properties. */
     void notifyRendererPreferenceUpdate();
 
@@ -619,20 +610,10 @@ public interface WebContents extends Parcelable {
     boolean needToFireBeforeUnload();
 
     /**
-     * For cases where the content for a navigation entry is being drawn by the embedder (instead of
-     * the web page), this notifies when the embedder has rendered the UI at its final state. This
-     * is only called if the WebContents is showing an invoke animation for back forward
-     * transitions, see {@link
-     * org.chromium.components.embedder_support.delegate.WebContentsDelegateAndroid#didBackForwardTransitionAnimationChange},
-     * when the navigation entry showing embedder provided UI commits.
+     * Returns the transition animation manager, creating it if needed. Returns null if transitions
+     * are unsupported for this WebContents.
      */
-    void onContentForNavigationEntryShown();
-
-    /**
-     * @return {@link AnimationStage} the current stage of back forward transition.
-     */
-    @AnimationStage
-    int getCurrentBackForwardTransitionStage();
+    @Nullable BackForwardTransitionAnimationManager getBackForwardTransitionAnimationManager();
 
     /**
      * Let long press on links select the link text instead of triggering context menu. Disabled by

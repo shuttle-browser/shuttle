@@ -59,7 +59,6 @@
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
-#include "chrome/common/webui_url_constants.h"
 #include "components/blocked_content/popup_blocker.h"
 #include "components/blocked_content/popup_tracker.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
@@ -107,8 +106,8 @@
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
 #include "third_party/blink/public/mojom/window_features/window_features.mojom.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/origin.h"
 
 #if defined(USE_AURA)
@@ -196,14 +195,14 @@ bool ShouldCreateBackgroundContents(Profile* profile,
 // opening the new contents in a new split alongside `source`.
 bool CanOpenWindowOpenSplitTab(BrowserWindowInterface& browser,
                                content::WebContents* source,
-                               WindowOpenDisposition disposition) {
+                               ui::mojom::WindowOpenDisposition disposition) {
   CHECK(base::FeatureList::IsEnabled(blink::features::kWindowOpenSplitTab));
   // The renderer's fallback disposition for a split request is NEW_POPUP if
   // "popup" was also specified, or NEW_FOREGROUND_TAB otherwise. The renderer
   // drops the request if the user's click modifiers chose the disposition, so
   // any other disposition is unexpected, and is left alone.
-  if (disposition != WindowOpenDisposition::kNewForegroundTab &&
-      disposition != WindowOpenDisposition::kNewPopup) {
+  if (disposition != ui::mojom::WindowOpenDisposition::kNewForegroundTab &&
+      disposition != ui::mojom::WindowOpenDisposition::kNewPopup) {
     return false;
   }
   if (!source || browser.GetType() != BrowserWindowInterface::TYPE_NORMAL) {
@@ -301,6 +300,41 @@ BackgroundContents* CreateBackgroundContents(
   contents->web_contents()->GetController().LoadURLWithParams(params);
 
   return contents;
+}
+
+std::unique_ptr<ChromePopupNavigationDelegate> MaybeBlockPopupOrGetDelegate(
+    BrowserWindowInterface* browser,
+    content::WebContents* source,
+    const content::OpenURLParams& params) {
+  NavigateParams nav_params(browser, params.url, params.transition);
+  nav_params.FillNavigateParamsFromOpenURLParams(params);
+  nav_params.source_contents = source;
+  nav_params.tabstrip_add_types = AddTabTypes::ADD_NONE;
+  if (params.user_gesture) {
+    nav_params.window_action = NavigateParams::WindowAction::kShowWindow;
+  }
+  if (nav_params.disposition ==
+          ui::mojom::WindowOpenDisposition::kNewSplitView &&
+      !params.user_gesture) {
+    nav_params.disposition =
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab;
+  }
+
+  auto popup_delegate =
+      std::make_unique<ChromePopupNavigationDelegate>(std::move(nav_params));
+
+  if (source && blocked_content::ConsiderForPopupBlocking(
+                    popup_delegate->nav_params()->disposition)) {
+    popup_delegate.reset(static_cast<ChromePopupNavigationDelegate*>(
+        blocked_content::MaybeBlockPopup(
+            source, nullptr, std::move(popup_delegate), &params,
+            blink::mojom::WindowFeatures(),
+            HostContentSettingsMapFactory::GetForProfile(
+                source->GetBrowserContext()))
+            .release()));
+  }
+
+  return popup_delegate;
 }
 
 }  // namespace
@@ -581,49 +615,21 @@ content::WebContents* BrowserWebContentsDelegate::OpenURLFromTab(
                                   std::move(navigation_handle_callback));
   }
 
-  // If the source is already split, navigate the other pane instead of
-  // creating a new tab. Return |source| so that WebContentsImpl::OpenURL()
-  // sees new_contents == this and skips the DidOpenRequestedURL notification,
-  // which is only meant for newly created WebContents.
-  if (params.disposition == WindowOpenDisposition::kNewSplitView && source) {
-    tabs::TabInterface* const source_tab =
-        tabs::TabInterface::MaybeGetFromContents(source);
-    if (source_tab && source_tab->IsSplit()) {
-      const split_tabs::SplitTabId split_id = source_tab->GetSplit().value();
-      for (tabs::TabInterface* tab :
-           browser_->GetTabStripModel()->GetSplitData(split_id)->ListTabs()) {
-        if (tab != source_tab) {
-          content::NavigationController::LoadURLParams load_params(params);
-          tab->GetContents()->GetController().LoadURLWithParams(load_params);
-          return source;
-        }
-      }
-    }
+  tabs::TabInterface* const source_tab =
+      source ? tabs::TabInterface::MaybeGetFromContents(source) : nullptr;
+  const bool is_already_split =
+      params.disposition == ui::mojom::WindowOpenDisposition::kNewSplitView &&
+      source_tab && source_tab->IsSplit();
+
+  auto popup_delegate =
+      MaybeBlockPopupOrGetDelegate(&browser_.get(), source, params);
+  if (!popup_delegate) {
+    return nullptr;
   }
 
-  NavigateParams nav_params(&*browser_, params.url, params.transition);
-  nav_params.FillNavigateParamsFromOpenURLParams(params);
-  nav_params.source_contents = source;
-  nav_params.tabstrip_add_types = AddTabTypes::ADD_NONE;
-  if (params.user_gesture) {
-    nav_params.window_action = NavigateParams::WindowAction::kShowWindow;
-  }
-  bool is_popup =
-      source && blocked_content::ConsiderForPopupBlocking(params.disposition);
-  auto popup_delegate =
-      std::make_unique<ChromePopupNavigationDelegate>(std::move(nav_params));
-  if (is_popup) {
-    popup_delegate.reset(static_cast<ChromePopupNavigationDelegate*>(
-        blocked_content::MaybeBlockPopup(
-            source, nullptr, std::move(popup_delegate), &params,
-            blink::mojom::WindowFeatures(),
-            HostContentSettingsMapFactory::GetForProfile(
-                source->GetBrowserContext()))
-            .release()));
-    if (!popup_delegate) {
-      return nullptr;
-    }
-  }
+  const bool is_popup =
+      source && blocked_content::ConsiderForPopupBlocking(
+                    popup_delegate->nav_params()->disposition);
 
   chrome::ConfigureTabGroupForNavigation(popup_delegate->nav_params());
 
@@ -636,17 +642,29 @@ content::WebContents* BrowserWebContentsDelegate::OpenURLFromTab(
 
   content::WebContents* navigated_or_inserted_contents =
       popup_delegate->nav_params()->navigated_or_inserted_contents;
-  if (is_popup && navigated_or_inserted_contents) {
-    auto* tracker = blocked_content::PopupTracker::CreateForWebContents(
-        navigated_or_inserted_contents, source, params.disposition);
-    tracker->set_is_trusted(
-        params.triggering_event_info !=
-        blink::mojom::TriggeringEventInfo::kFromUntrustedEvent);
-  }
 
   TRACE_EVENT_INSTANT(
       "navigation", "BrowserWebContentsDelegate::OpenURLFromTab_Result",
       "navigated_or_inserted_contents", navigated_or_inserted_contents);
+
+  if (is_already_split && popup_delegate->nav_params()->disposition ==
+                              ui::mojom::WindowOpenDisposition::kNewSplitView) {
+    // If the source was already split and the disposition was not normalized,
+    // the partner pane was navigated instead of creating a new tab. Return
+    // |source| so that WebContentsImpl::OpenURL() sees new_contents == this and
+    // skips the DidOpenRequestedURL notification, which is only meant for newly
+    // created WebContents.
+    return source;
+  }
+
+  if (is_popup && navigated_or_inserted_contents) {
+    auto* tracker = blocked_content::PopupTracker::CreateForWebContents(
+        navigated_or_inserted_contents, source,
+        popup_delegate->nav_params()->disposition);
+    tracker->set_is_trusted(
+        params.triggering_event_info !=
+        blink::mojom::TriggeringEventInfo::kFromUntrustedEvent);
+  }
 
   return navigated_or_inserted_contents;
 }
@@ -701,7 +719,7 @@ content::WebContents* BrowserWebContentsDelegate::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -717,7 +735,7 @@ content::WebContents* BrowserWebContentsDelegate::AddNewContents(
     // default features.
     CHECK(base::FeatureList::IsEnabled(blink::features::kWindowOpenSplitTab));
     if (CanOpenWindowOpenSplitTab(*browser_, source, disposition)) {
-      disposition = WindowOpenDisposition::kNewSplitView;
+      disposition = ui::mojom::WindowOpenDisposition::kNewSplitView;
     }
   }
 
@@ -736,12 +754,17 @@ content::WebContents* BrowserWebContentsDelegate::AddNewContents(
       screen->GetDisplayNearestView(source->GetContentNativeView()) !=
           screen->GetDisplayMatching(window_features.bounds);
   if (!app_browser_controller_ &&
-      disposition == WindowOpenDisposition::kNewPopup &&
+      disposition == ui::mojom::WindowOpenDisposition::kNewPopup &&
       fullscreen_controller->IsFullscreenForBrowser() &&
       !targeting_different_display) {
-    disposition = WindowOpenDisposition::kNewForegroundTab;
+    disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   }
 #endif
+
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewSplitView &&
+      !user_gesture) {
+    disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
+  }
 
   // At this point the |new_contents| is beyond the popup blocker, but we use
   // the same logic for determining if the popup tracker needs to be attached.
@@ -757,7 +780,7 @@ content::WebContents* BrowserWebContentsDelegate::AddNewContents(
   // Allow fullscreen-within-tab openers to open popups normally.
   NavigateParams::WindowAction window_action =
       NavigateParams::WindowAction::kShowWindow;
-  if (disposition == WindowOpenDisposition::kNewPopup &&
+  if (disposition == ui::mojom::WindowOpenDisposition::kNewPopup &&
       fullscreen_controller->GetFullscreenState(source).target_mode ==
           content::FullscreenMode::kContent) {
     window_action = NavigateParams::WindowAction::kShowWindowInactive;
@@ -778,10 +801,11 @@ content::WebContents* BrowserWebContentsDelegate::AddNewContents(
   // If a backgrounded actor task triggered a new tab/popup, don't interrupt the
   // user.
   if (source && actor::IsRunningBackgroundActorTask(*source)) {
-    if (disposition == WindowOpenDisposition::kNewPopup) {
+    if (disposition == ui::mojom::WindowOpenDisposition::kNewPopup) {
       window_action = NavigateParams::WindowAction::kShowWindowInactive;
-    } else if (disposition == WindowOpenDisposition::kNewForegroundTab) {
-      disposition = WindowOpenDisposition::kNewBackgroundTab;
+    } else if (disposition ==
+               ui::mojom::WindowOpenDisposition::kNewForegroundTab) {
+      disposition = ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
     }
   }
 
@@ -945,14 +969,11 @@ bool BrowserWebContentsDelegate::ShouldFocusLocationBarByDefault(
       return false;
     }
 
-    if ((url.SchemeIs(content::kChromeUIScheme) &&
-         url.host() == chrome::kChromeUINewTabHost) ||
-        (virtual_url.SchemeIs(content::kChromeUIScheme) &&
-         virtual_url.host() == chrome::kChromeUINewTabHost)) {
+    if (search::IsNewTabOrigin(url) || search::IsNewTabOrigin(virtual_url)) {
       return true;
     }
 
-    if (url.spec() == chrome::kChromeUISplitViewNewTabPageURL) {
+    if (search::IsSplitViewNewTabPage(url)) {
       return true;
     }
   }
@@ -1078,7 +1099,7 @@ content::WebContents* BrowserWebContentsDelegate::CreateCustomWebContents(
     const GURL& opener_url,
     const std::string& frame_name,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     const content::StoragePartitionConfig& partition_config,
     content::SessionStorageNamespaceHandle* session_storage_namespace) {
@@ -1384,7 +1405,23 @@ void BrowserWebContentsDelegate::RegisterProtocolHandler(
 
   custom_handlers::ProtocolHandlerRegistry* registry =
       ProtocolHandlerRegistryFactory::GetForBrowserContext(context);
-  if (registry->SilentlyHandleRegisterHandlerRequest(handler)) {
+  if (registry->IsNoOpRegisterHandlerRequest(handler)) {
+    return;
+  }
+
+  const bool auto_accept = registry->registration_mode() ==
+                           custom_handlers::RphRegistrationMode::kAutoAccept;
+  // A request without a user gesture must not change the registry, unless
+  // automation accepts it for the user.
+  const bool handler_replaced =
+      (user_gesture || auto_accept) && registry->AttemptReplace(handler);
+
+  // Automation in auto-accept mode decides for the user without any UI, so the
+  // gesture doesn't matter there.
+  if (auto_accept) {
+    if (!handler_replaced) {
+      registry->OnAcceptRegisterProtocolHandler(handler);
+    }
     return;
   }
 
@@ -1393,6 +1430,8 @@ void BrowserWebContentsDelegate::RegisterProtocolHandler(
   auto* page_content_settings_delegate =
       PageSpecificContentSettingsDelegate::FromWebContents(web_contents);
   if (!user_gesture) {
+    // A request without a user gesture must not change the registry, not even
+    // to replace a handler of the same origin: the user decides in the bubble.
     page_content_settings_delegate->set_pending_protocol_handler(handler);
     page_content_settings_delegate->set_previous_protocol_handler(
         registry->GetHandlerFor(handler.protocol()));
@@ -1405,9 +1444,7 @@ void BrowserWebContentsDelegate::RegisterProtocolHandler(
   page_content_settings_delegate->ClearPendingProtocolHandler();
   window_->GetLocationBar()->UpdateContentSettingsIcons();
 
-  if (registry->registration_mode() ==
-      custom_handlers::RphRegistrationMode::kAutoAccept) {
-    registry->OnAcceptRegisterProtocolHandler(handler);
+  if (handler_replaced) {
     return;
   }
 

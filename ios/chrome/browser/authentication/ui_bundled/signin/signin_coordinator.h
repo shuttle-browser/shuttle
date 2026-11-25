@@ -15,7 +15,6 @@
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_context_style.h"
 #import "ios/chrome/browser/shared/coordinator/chrome_coordinator/animated_coordinator.h"
-#import "ios/chrome/browser/shared/coordinator/chrome_coordinator/chrome_coordinator.h"
 
 enum class AccountMenuAccessPoint;
 class Browser;
@@ -38,6 +37,10 @@ class PrefRegistrySyncable;
 // `SystemIdentityInteractionManager` may be removed by UIKit without the
 // signoutCompletion being called. Use `viewWillPersist` to
 // check whether it currently is possible. See crbug.com/395959814.
+// All `SystemIdentity` parameters and completion results in this class
+// correspond to accounts on the device that match
+// `prefs::kRestrictAccountsToPatterns`, whereas `prefilledEmail` and
+// `selectedAccountEmail` do not need to correspond to an account on the device.
 @interface SigninCoordinator
     : AnimatedCoordinator <BuggyAuthenticationViewOwner>
 
@@ -177,11 +180,10 @@ class PrefRegistrySyncable;
                                         (const ChangeProfileContinuationProvider&)
                                             continuationProvider;
 
-// Returns a coordinator to display the account consistency promo with a list
-// of accounts available on the device for sign-in.
+// Returns a coordinator to display the account consistency promo, which offers
+// to sign in with an account available on the device, or to add an account if
+// none are available.
 // `viewController` presents the promo.
-// This method can return nil if sign-in is not authorized or if there is no
-// account on the device.
 // The owner must be aware that the authentication view may have disappeared
 // silently if `viewWillPersist` is NO.
 + (SigninCoordinator*)

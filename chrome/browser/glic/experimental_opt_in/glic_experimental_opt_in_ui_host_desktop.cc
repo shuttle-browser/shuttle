@@ -24,12 +24,11 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/common/chrome_features.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/base_window.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/views/widget/widget.h"
 #include "url/gurl.h"
 
@@ -66,9 +65,7 @@ bool DoesURLMatchTarget(const GURL& url,
 class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
  public:
   GlicExperimentalOptInUIHostDesktop(Profile* profile, Delegate* delegate)
-      : profile_(profile),
-        delegate_(delegate),
-        tick_clock_(base::DefaultTickClock::GetInstance()) {}
+      : profile_(profile), delegate_(delegate) {}
 
   ~GlicExperimentalOptInUIHostDesktop() override {
     delegate_ = nullptr;
@@ -82,12 +79,11 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
       // the tab is in the foreground and the window is not minimized. Calling
       // Widget::Activate() directly would bypass that and can steal focus into
       // a background window.
-      if (base::FeatureList::IsEnabled(features::kGlicOptInDialogA11yFix) &&
-          tab_interface_ && tab_interface_->GetTabFeatures() &&
-          tab_interface_->GetTabFeatures()->tab_dialog_manager()) {
-        tab_interface_->GetTabFeatures()
-            ->tab_dialog_manager()
-            ->MaybeActivateDialog();
+      if (base::FeatureList::IsEnabled(features::kGlicOptInDialogA11yFix)) {
+        if (auto* tab_dialog_manager =
+                tabs::TabDialogManager::From(tab_interface_.get())) {
+          tab_dialog_manager->MaybeActivateDialog();
+        }
       }
       return;
     }
@@ -111,8 +107,9 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
       window->GetWindow()->Activate();
     }
 
-    tabs::TabFeatures* tab_features = tab_interface->GetTabFeatures();
-    if (!tab_features || !tab_features->tab_dialog_manager()) {
+    tabs::TabDialogManager* tab_dialog_manager =
+        tabs::TabDialogManager::From(tab_interface);
+    if (!tab_dialog_manager) {
       if (delegate_) {
         delegate_->OnUIClosed(/*accepted=*/false);
       }
@@ -126,13 +123,13 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
 
     auto params = std::make_unique<tabs::TabDialogManager::Params>();
     params->close_on_navigate = false;
-    dialog_widget_ = tab_features->tab_dialog_manager()->CreateAndShowDialog(
-        dialog_view_.get(), std::move(params));
+    dialog_widget_ = tab_dialog_manager->CreateAndShowDialog(dialog_view_.get(),
+                                                             std::move(params));
     if (base::FeatureList::IsEnabled(features::kGlicOptInDialogA11yFix)) {
-      tab_features->tab_dialog_manager()->MaybeActivateDialog();
+      tab_dialog_manager->MaybeActivateDialog();
     }
 
-    dialog_open_time_ = tick_clock_->NowTicks();
+    OnDialogOpened();
     if (tab_interface->IsVisible()) {
       visibility_start_time_ = dialog_open_time_;
     }
@@ -161,7 +158,8 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
       return;
     }
     if (auto* browser_window = tab_interface_->GetBrowserWindowInterface()) {
-      browser_window->OpenGURL(url, WindowOpenDisposition::kNewForegroundTab);
+      browser_window->OpenGURL(
+          url, ui::mojom::WindowOpenDisposition::kNewForegroundTab);
     }
   }
 
@@ -241,10 +239,6 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
     return target_tab ? target_tab->GetContents() : nullptr;
   }
 
-  void SetTickClockForTesting(const base::TickClock* clock) override {
-    tick_clock_ = clock;
-  }
-
   views::Widget* GetWidgetForTesting() override { return dialog_widget_.get(); }
 
   GlicExperimentalOptInDialogView* GetDialogViewForTesting() override {
@@ -256,12 +250,7 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
     tab_subscriptions_.clear();
 
     if (dialog_widget_) {
-      if (!dialog_open_time_.is_null()) {
-        base::UmaHistogramMediumTimes(
-            "Glic.ExperimentalTriggering.OptInDialog.ShowDuration",
-            tick_clock_->NowTicks() - dialog_open_time_);
-        dialog_open_time_ = base::TimeTicks();
-      }
+      RecordShowDurationOnClose();
 
       if (!visibility_start_time_.is_null()) {
         visible_duration_ += tick_clock_->NowTicks() - visibility_start_time_;
@@ -301,13 +290,11 @@ class GlicExperimentalOptInUIHostDesktop : public GlicExperimentalOptInUIHost {
 
   raw_ptr<Profile> profile_;
   raw_ptr<Delegate> delegate_;
-  raw_ptr<const base::TickClock> tick_clock_;
   base::WeakPtr<tabs::TabInterface> tab_interface_;
   std::unique_ptr<GlicExperimentalOptInDialogView> dialog_view_;
   std::unique_ptr<views::Widget> dialog_widget_;
 
   std::vector<base::CallbackListSubscription> tab_subscriptions_;
-  base::TimeTicks dialog_open_time_;
   base::TimeTicks visibility_start_time_;
   base::TimeDelta visible_duration_;
 

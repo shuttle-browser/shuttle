@@ -209,6 +209,39 @@ public class AccountCapabilities {
     }
 
     /**
+     * @return mustShowEquallyWeightedButtonsForPrivatePassesInChromeAutofill capability value.
+     */
+    public @Tribool int mustShowEquallyWeightedButtonsForPrivatePassesInChromeAutofill() {
+        return getCapabilityByName(
+                AccountCapabilitiesConstants
+                        .MUST_SHOW_EQUALLY_WEIGHTED_BUTTONS_FOR_PRIVATE_PASSES_IN_CHROME_AUTOFILL_CAPABILITY_NAME);
+    }
+
+    /**
+     * @return shouldBeAddressedInFeminineGrammaticalGender capability value.
+     */
+    public @Tribool int shouldBeAddressedInFeminineGrammaticalGender() {
+        return getCapabilityByName(
+                AccountCapabilitiesConstants.SHOULD_BE_ADDRESSED_IN_FEMININE_GRAMMATICAL_GENDER);
+    }
+
+    /**
+     * @return shouldBeAddressedInMasculineGrammaticalGender capability value.
+     */
+    public @Tribool int shouldBeAddressedInMasculineGrammaticalGender() {
+        return getCapabilityByName(
+                AccountCapabilitiesConstants.SHOULD_BE_ADDRESSED_IN_MASCULINE_GRAMMATICAL_GENDER);
+    }
+
+    /**
+     * @return shouldBeAddressedInNeuterGrammaticalGender capability value.
+     */
+    public @Tribool int shouldBeAddressedInNeuterGrammaticalGender() {
+        return getCapabilityByName(
+                AccountCapabilitiesConstants.SHOULD_BE_ADDRESSED_IN_NEUTER_GRAMMATICAL_GENDER);
+    }
+
+    /**
      * @return supportsWalletPrivatePassesInAutofill capability value.
      */
     public @Tribool int supportsWalletPrivatePassesInAutofill() {
@@ -217,31 +250,6 @@ public class AccountCapabilities {
     }
 
     /** keep-sorted end */
-
-    /**
-     * Merges capabilities from another {@link AccountCapabilities} object into this one.
-     *
-     * <p>New capabilities that were not already set are added and existing ones are updated with
-     * the new values.
-     *
-     * @param other The {@link AccountCapabilities} object to merge values from.
-     * @return true if this object's capabilities were changed as a result of the update and false
-     *     otherwise.
-     */
-    public boolean updateWith(AccountCapabilities other) {
-        boolean modified = false;
-        for (Map.Entry<String, Boolean> otherCapability : other.mAccountCapabilities.entrySet()) {
-            String name = otherCapability.getKey();
-            Boolean value = otherCapability.getValue();
-            if (mAccountCapabilities.containsKey(name)
-                    && mAccountCapabilities.get(name).equals(value)) {
-                continue;
-            }
-            mAccountCapabilities.put(name, value);
-            modified = true;
-        }
-        return modified;
-    }
 
     /**
      * @param capabilityName the name of the capability to lookup.

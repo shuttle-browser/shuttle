@@ -10,6 +10,7 @@ source_set("video") {
   # is a roll-up target which is part of the //media component. Most other DEPs
   # should be using //media and not directly DEP this roll-up target.
   visibility = [
+    ":openh264rs_video_encoder",
     "//media",
     "//media/filters",
     "//media/formats",
@@ -82,6 +83,28 @@ source_set("video") {
   }
 }
 
+if (proprietary_codecs && media_use_rust_openh264) {
+  source_set("openh264rs_video_encoder") {
+    visibility = [ "//media" ]
+    sources = [
+      "openh264_video_encoder.cc",
+      "openh264_video_encoder.h",
+    ]
+    defines = [ "RUST_OPENH264_BUILD" ]
+    configs += [ "//media:subcomponent_config" ]
+    deps = [
+      ":video",
+      "//base",
+      "//media:media_buildflags",
+      "//media/base",
+      "//media/formats",
+      "//media/parsers",
+      "//third_party/openh264rs",
+      "//ui/gfx",
+    ]
+  }
+}
+
 # Note: This is a roll-up only target; do not expand the visibility. DEPS should
 # depend on the //media:test_support target instead.
 static_library("test_support") {
@@ -137,5 +160,11 @@ source_set("unit_tests") {
   if (use_libgav1_parser) {
     sources += [ "libgav1_decoder_unittest.cc" ]
     deps += [ "//third_party/libgav1:libgav1_decoder" ]
+  }
+
+  # TODO(crbug.com/581458350): Enable on Windows and Android once decoder stack
+  # usage and APK test-data lookup are fixed.
+  if (proprietary_codecs && media_use_rust_openh264 && (is_linux || is_mac)) {
+    deps += [ "//third_party/openh264rs:openh264rs_unittests" ]
   }
 }

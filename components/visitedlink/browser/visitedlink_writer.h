@@ -12,7 +12,7 @@
 #include <set>
 #include <vector>
 
-#include "base/compiler_specific.h"
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/files/scoped_file.h"
 #include "base/functional/callback.h"
@@ -255,8 +255,7 @@ class VisitedLinkWriter : public VisitedLinkCommon {
   // the write to a background thread.
   void WriteToFile(base::ScopedFILE* file,
                    off_t offset,
-                   void* data,
-                   int32_t data_size);
+                   base::span<const uint8_t> data);
 
   // Helper function to schedule and asynchronous write of the used count to
   // disk (this is a common operation).
@@ -270,10 +269,7 @@ class VisitedLinkWriter : public VisitedLinkCommon {
   // Synchronous read from the file. Assumes that it is the first asynchronous
   // I/O operation in the background thread. Returns true if the entire buffer
   // was successfully filled.
-  static bool ReadFromFile(FILE* hfile,
-                           off_t offset,
-                           void* data,
-                           size_t data_size);
+  static bool ReadFromFile(FILE* hfile, off_t offset, base::span<uint8_t> data);
 
   // General table handling
   // ----------------------
@@ -335,7 +331,7 @@ class VisitedLinkWriter : public VisitedLinkCommon {
   // Computes the table load as fraction. For example, if 1/4 of the entries are
   // full, this value will be 0.25
   float ComputeTableLoad() const {
-    return static_cast<float>(used_items_) / static_cast<float>(table_length_);
+    return static_cast<float>(used_items_) / static_cast<float>(table_length());
   }
 
   // Initializes a rebuild of the visited link database based on the browser
@@ -357,14 +353,18 @@ class VisitedLinkWriter : public VisitedLinkCommon {
   // Increases or decreases the given hash value by one, wrapping around as
   // necessary. Used for probing.
   inline Hash IncrementHash(Hash hash) {
-    if (hash >= table_length_ - 1)
+    if (hash >= table_length() - 1) {
       return 0;  // Wrap around.
+    }
     return hash + 1;
   }
 
-  // Returns a pointer to the start of the hash table, given the mapping
-  // containing the hash table.
-  static Fingerprint* GetHashTableFromMapping(
+  // Returns a span of the current hash table.
+  base::span<Fingerprint> GetHashTable();
+
+  // Returns a span of the hash table, given the mapping containing the hash
+  // table.
+  static base::span<Fingerprint> GetHashTableFromMapping(
       base::WritableSharedMemoryMapping& hash_table_mapping);
 
   // Reference to the browser context that this object belongs to
@@ -457,8 +457,8 @@ class VisitedLinkWriter : public VisitedLinkCommon {
 #if defined(UNIT_TEST) || defined(PERF_TEST) || !defined(NDEBUG)
 inline void VisitedLinkWriter::DebugValidate() {
   int32_t used_count = 0;
-  for (int32_t i = 0; i < table_length_; i++) {
-    if (UNSAFE_TODO(hash_table_[i])) {
+  for (Fingerprint fingerprint : GetHashTable()) {
+    if (fingerprint) {
       used_count++;
     }
   }

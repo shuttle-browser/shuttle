@@ -261,6 +261,8 @@ class ContextualTasksUI
   // ContextualTasksUIInterface overrides:
   bool is_history_thread_loading() const override;
   void set_is_history_thread_loading(bool loading) override;
+  base::WeakPtr<contextual_tasks::ContextualTasksUIInterface> GetWeakPtr()
+      override;
 
   // Returns true if two URLs are equal. Unlike GURL::operator==, this method
   // ignores the order of query parameters.
@@ -375,6 +377,9 @@ class ContextualTasksUI
 
   std::unique_ptr<contextual_tasks::ContextualTasksComposeboxHandlerInterface>
       owned_composebox_handler_;
+
+  std::unique_ptr<contextual_tasks::ContextualTasksComposeboxHandlerInterface>
+      composebox_handler_for_testing_;
 
   mojo::Receiver<composebox::mojom::PageHandlerFactory>
       composebox_page_handler_factory_receiver_{this};

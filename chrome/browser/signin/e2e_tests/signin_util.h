@@ -6,9 +6,11 @@
 #define CHROME_BROWSER_SIGNIN_E2E_TESTS_SIGNIN_UTIL_H_
 
 #include <cstddef>
+#include <string>
 
 #include "base/functional/callback.h"
 #include "base/time/time.h"
+#include "chrome/browser/signin/e2e_tests/sign_in_test_observer.h"
 #include "components/signin/core/browser/account_reconcilor.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/test_accounts.h"
@@ -36,11 +38,8 @@ AccountReconcilor* account_reconcilor(BrowserWindowInterface* browser);
 
 class SignInFunctions {
  public:
-  // Depending on the feature `syncer::kReplaceSyncPromosWithSignInPromos`,
-  // at sign-in, the user is presented with the choice to sync all the optional
-  // data types. When the feature is enabled the only optional data types are
-  // history and tabs, while then the feature is disabled all user configurable
-  // data types are available. This class represents either accepting or
+  // At sign-in, the user is presented with the choice to sync all the optional
+  // data types (history and tabs). This class represents either accepting or
   // rejecting syncing of all available data types.
   enum class SyncChoice : int {
     kAcceptAllOptionalDataTypesSync = 0,
@@ -57,6 +56,8 @@ class SignInFunctions {
   void SignInFromWeb(const TestAccountSigninCredentials& test_account,
                      int previously_signed_in_accounts);
 
+  // If `complete_signin_operation` is true, signs into Gaia as well and waits
+  // for the primary account to be set.
   void SignInFromSettings(const TestAccountSigninCredentials& test_account,
                           int previously_signed_in_accounts,
                           bool complete_signin_operation = true);
@@ -66,9 +67,19 @@ class SignInFunctions {
       int previously_signed_in_accounts,
       SyncChoice sync_choice);
 
-  void SignInFromCurrentPage(content::WebContents* web_contents,
-                             const TestAccountSigninCredentials& test_account,
-                             int previously_signed_in_accounts);
+  void SignInFromCurrentPage(
+      content::WebContents* web_contents,
+      const TestAccountSigninCredentials& test_account,
+      int previously_signed_in_accounts,
+      PrimaryAccountWait primary_account_wait = PrimaryAccountWait::kNotWait);
+
+  // Completes sign-in/re-auth when Gaia lands directly on the password
+  // challenge page (skipping the identifier page).
+  void SignInFromPasswordChallengePage(
+      content::WebContents* web_contents,
+      const std::string& password,
+      int previously_signed_in_accounts,
+      PrimaryAccountWait primary_account_wait = PrimaryAccountWait::kNotWait);
 
   void SignOutFromWeb();
 

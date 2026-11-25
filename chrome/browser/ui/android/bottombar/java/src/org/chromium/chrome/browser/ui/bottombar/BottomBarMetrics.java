@@ -19,19 +19,6 @@ import java.lang.annotation.RetentionPolicy;
 /** Utility class for recording Android Bottom Bar metrics. */
 @NullMarked
 public class BottomBarMetrics {
-    // LINT.IfChange(AndroidBottomBarPromoEvent)
-    /** Events associated with the display of the bottom bar promo dialog. */
-    @IntDef({PromoEvent.SHOWN, PromoEvent.ACCEPTED, PromoEvent.DISMISSED})
-    @Retention(RetentionPolicy.SOURCE)
-    public @interface PromoEvent {
-        int SHOWN = 0;
-        int ACCEPTED = 1;
-        int DISMISSED = 2;
-        int COUNT = 3;
-    }
-
-    // LINT.ThenChange(//tools/metrics/histograms/metadata/android/enums.xml:AndroidBottomBarPromoEvent)
-
     // LINT.IfChange(AndroidBottomBarEducationOnboardingEvent)
     /** Events associated with the bottom bar education bubble and opt-in dialog. */
     @IntDef({
@@ -168,6 +155,18 @@ public class BottomBarMetrics {
 
     // LINT.ThenChange(//tools/metrics/histograms/metadata/android/enums.xml:AndroidBottomBarGlicIneligibilityReason)
 
+    // LINT.IfChange(AndroidBottomBarLongPressMenuEvent)
+    /** Events of the menu shown when long-pressing empty space on the bottom bar. */
+    @IntDef({LongPressMenuEvent.SHOWN, LongPressMenuEvent.CUSTOMIZE_APPEARANCE_CLICKED})
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface LongPressMenuEvent {
+        int SHOWN = 0;
+        int CUSTOMIZE_APPEARANCE_CLICKED = 1;
+        int COUNT = 2;
+    }
+
+    // LINT.ThenChange(//tools/metrics/histograms/metadata/android/enums.xml:AndroidBottomBarLongPressMenuEvent)
+
     /**
      * Records whether the bottom bar is enabled on an eligible device when bottom controls are
      * initialized.
@@ -221,16 +220,6 @@ public class BottomBarMetrics {
         int convoResult = isPanelOpen ? GlicConvoResult.CLOSED_SHEET : GlicConvoResult.OPENED_SHEET;
         RecordHistogram.recordEnumeratedHistogram(
                 "Android.BottomBar.Glic.ConvoResult", convoResult, GlicConvoResult.COUNT);
-    }
-
-    /**
-     * Records introductory promo dialog events.
-     *
-     * @param event The promo event (Shown, Accepted, or Dismissed).
-     */
-    public static void recordPromoEvent(@PromoEvent int event) {
-        RecordHistogram.recordEnumeratedHistogram(
-                "Android.BottomBar.Promo.Event", event, PromoEvent.COUNT);
     }
 
     /**
@@ -303,5 +292,15 @@ public class BottomBarMetrics {
                 "Android.BottomBar.Glic.IneligibilityReason",
                 reason,
                 GlicIneligibilityReason.COUNT);
+    }
+
+    /**
+     * Records an event of the bottom bar long-press menu.
+     *
+     * @param event The event.
+     */
+    public static void recordLongPressMenuEvent(@LongPressMenuEvent int event) {
+        RecordHistogram.recordEnumeratedHistogram(
+                "Android.BottomBar.LongPressMenu.Event", event, LongPressMenuEvent.COUNT);
     }
 }

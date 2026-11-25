@@ -812,8 +812,9 @@ Environment::InitializeForCompilerProcess(const base::FilePath& ep_library_path,
   }
   // Ensure that the target device is registered in the environment.
   if (!env_result.value()->FindRegisteredEpDevice(target_device)) {
-    return base::unexpected(base::StrCat(
-        {"Target device not registered: ", target_device.ToSwitchValue()}));
+    return base::unexpected(
+        base::StrCat({"Target device not registered: [",
+                      target_device.ToSwitchValue(), "]."}));
   }
   // Warm up the target device for the compiler process to ensure that the
   // libraries required for offline compilation are preloaded.
@@ -1107,8 +1108,9 @@ std::optional<EpDeviceInfo> Environment::SelectEpDeviceForCompiler(
     }
   }
 
-  VLOG(1) << "[WebNN] Selected EP device for compiler: "
-          << selected_device_info.ToSwitchValue();
+  VLOG(1) << "[WebNN] Selected [" << selected_device_info.ToSwitchValue()
+          << "] for the Compiler process (requested: "
+          << DeviceTypeToString(OrtToWebnnDeviceType(device_type)) << ").";
 
   return selected_device_info;
 }
@@ -1208,6 +1210,14 @@ Environment::GetSelectedEpDetails(OrtHardwareDeviceType device_type) const {
   if (!ep_list.empty()) {
     ep_list.front()->first_selected = true;
   }
+  return ep_list;
+}
+
+std::vector<mojom::WebNNExecutionProviderDetailsPtr>
+Environment::GetEpDetailsForDevice(const OrtEpDevice* ep_device) const {
+  CHECK(ep_device);
+  auto ep_list = ConvertEpListForIntrospection(base::span_from_ref(ep_device));
+  ep_list.front()->first_selected = true;
   return ep_list;
 }
 

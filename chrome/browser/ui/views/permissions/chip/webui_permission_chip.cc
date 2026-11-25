@@ -55,8 +55,11 @@ toolbar_ui_api::mojom::PermissionPromptStyle GetMojoPromptStyle(
 }
 
 toolbar_ui_api::mojom::PermissionAction GetMojoPermissionAction(
-    permissions::PermissionAction action) {
-  switch (action) {
+    std::optional<permissions::PermissionAction> action) {
+  if (!action.has_value()) {
+    return toolbar_ui_api::mojom::PermissionAction::kUnspecified;
+  }
+  switch (*action) {
     case permissions::PermissionAction::GRANTED:
       return toolbar_ui_api::mojom::PermissionAction::kGranted;
     case permissions::PermissionAction::DENIED:
@@ -69,8 +72,6 @@ toolbar_ui_api::mojom::PermissionAction GetMojoPermissionAction(
       return toolbar_ui_api::mojom::PermissionAction::kRevoked;
     case permissions::PermissionAction::GRANTED_ONCE:
       return toolbar_ui_api::mojom::PermissionAction::kGrantedOnce;
-    case permissions::PermissionAction::NUM:
-      return toolbar_ui_api::mojom::PermissionAction::kUnspecified;
   }
   NOTREACHED();
 }
@@ -120,6 +121,11 @@ void WebUIPermissionChip::SetChipIcon(const gfx::VectorIcon* icon) {
 
 void WebUIPermissionChip::SetMessage(std::u16string message) {
   message_ = message;
+  // Mirror Views' `LabelButton::SetTextInternal()`, which resets the accessible
+  // name to the new text. A name set by `SetAccessibilityName()` only lasts
+  // until the next message, so it can't go stale when the message changes or
+  // the chip switches tabs.
+  accessibility_name_ = message_;
   UpdateState();
 }
 
@@ -134,7 +140,7 @@ void WebUIPermissionChip::SetTheme(PermissionChipTheme theme) {
 }
 
 void WebUIPermissionChip::SetUserDecision(
-    permissions::PermissionAction user_decision) {
+    std::optional<permissions::PermissionAction> user_decision) {
   user_decision_ = user_decision;
   UpdateState();
 }

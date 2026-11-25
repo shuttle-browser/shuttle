@@ -25,6 +25,7 @@
 #include "base/metrics/user_metrics.h"
 #include "chromeos/ui/base/chromeos_ui_constants.h"
 #include "ui/aura/window_targeter.h"
+#include "ui/compositor/layer_type.h"
 #include "ui/compositor/scoped_layer_animation_settings.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/insets.h"
@@ -46,7 +47,8 @@ constexpr float kOpacityForTransientDuringResize = 0.5f;
 
 // Returns the allowed range of `divider_position` within `windows`,
 // accounting for the windows' minimum sizes.
-gfx::Range GetDividerPositionAllowedRange(const aura::Window::Windows windows) {
+gfx::Range GetDividerPositionAllowedRange(
+    const aura::Window::Windows& windows) {
   CHECK(!windows.empty());
 
   aura::Window* root_window = windows.at(0)->GetRootWindow();
@@ -101,6 +103,7 @@ views::Widget::InitParams CreateWidgetInitParams(
       views::Widget::InitParams::TYPE_POPUP);
   params.opacity = views::Widget::InitParams::WindowOpacity::kOpaque;
   params.activatable = views::Widget::InitParams::Activatable::kNo;
+  params.layer_type = ui::LAYER_NOT_DRAWN;
   params.parent = parent_window;
   params.delegate = delegate;
   params.bounds = bounds;

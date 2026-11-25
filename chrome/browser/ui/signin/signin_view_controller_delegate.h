@@ -16,7 +16,7 @@
 #include "components/signin/public/base/signin_buildflags.h"
 
 class BrowserWindowInterface;
-enum class SyncConfirmationStyle;
+class SigninUIError;
 
 namespace content {
 class WebContents;
@@ -42,14 +42,6 @@ class SigninViewControllerDelegate {
   SigninViewControllerDelegate& operator=(const SigninViewControllerDelegate&) =
       delete;
 
-  // Returns a platform-specific SigninViewControllerDelegate instance that
-  // displays the sync confirmation dialog. The returned object should delete
-  // itself when the window it's managing is closed.
-  static SigninViewControllerDelegate* CreateSyncConfirmationDelegate(
-      BrowserWindowInterface* browser,
-      SyncConfirmationStyle style,
-      bool is_sync_promo);
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   // Returns a platform-specific SigninViewControllerDelegate instance that
   // displays the modal history sync opt in dialog. The returned object should
@@ -61,11 +53,14 @@ class SigninViewControllerDelegate {
       HistorySyncOptinHelper::FlowCompletedCallback callback);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
+#if !BUILDFLAG(IS_CHROMEOS)
   // Returns a platform-specific SigninViewControllerDelegate instance that
   // displays the modal sign in error dialog. The returned object should delete
   // itself when the window it's managing is closed.
   static SigninViewControllerDelegate* CreateSigninErrorDelegate(
-      BrowserWindowInterface* browser);
+      BrowserWindowInterface* browser,
+      const SigninUIError& error);
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
   // Returns a platform-specific SigninViewControllerDelegate instance that

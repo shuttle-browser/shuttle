@@ -16,6 +16,8 @@
 #include "ash/webui/personalization_app/personalization_app_ui.h"
 #include "base/base64.h"
 #include "base/containers/fixed_flat_set.h"
+#include "base/i18n/language_tag.h"
+#include "base/i18n/tag_converters.h"
 #include "base/logging.h"
 #include "base/strings/strcat.h"
 #include "chrome/browser/ash/login/demo_mode/demo_session.h"
@@ -33,7 +35,6 @@
 #include "chromeos/ash/components/demo_mode/utils/demo_session_utils.h"
 #include "chromeos/ash/components/manta/manta_service_provider.h"
 #include "components/account_id/account_id.h"
-#include "components/language/core/common/locale_util.h"
 #include "components/manta/manta_service.h"
 #include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
@@ -76,6 +77,7 @@ std::optional<std::string> GetCountryCode() {
 }  // namespace
 
 std::unique_ptr<content::WebUIController> CreatePersonalizationAppUI(
+    PrefService* local_state,
     const ApplicationLocaleStorage* application_locale_storage,
     scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
     content::WebUI* web_ui,
@@ -91,10 +93,9 @@ std::unique_ptr<content::WebUIController> CreatePersonalizationAppUI(
       ash::personalization_app::PersonalizationAppThemeProviderImpl>(web_ui);
   auto user_provider = std::make_unique<
       ash::personalization_app::PersonalizationAppUserProviderImpl>(web_ui);
-  // TODO(crbug.com/404133902): Avoid using g_browser_process.
   auto wallpaper_provider = std::make_unique<
       ash::personalization_app::PersonalizationAppWallpaperProviderImpl>(
-      g_browser_process->local_state(), web_ui,
+      local_state, web_ui,
       std::make_unique<wallpaper_handlers::WallpaperFetcherDelegateImpl>(
           application_locale_storage, shared_url_loader_factory));
   auto sea_pen_provider = std::make_unique<
@@ -143,9 +144,9 @@ bool CanSeeWallpaperOrPersonalizationApp(Profile* profile) {
   }
 }
 
-bool IsSystemInSupportedLanguage(std::string_view application_locale) {
-  const std::string_view language =
-      language::ExtractBaseLanguage(application_locale);
+bool IsSystemInSupportedLanguage(
+    const base::i18n::LanguageTag& application_locale) {
+  const std::string_view language = application_locale.language_subtag();
   if (ash::features::IsSeaPenTextInputTranslationEnabled()) {
     return kSeaPenTextInputSupportedLanguages.contains(language);
   }
@@ -257,7 +258,10 @@ bool IsEligibleForSeaPenTextInput(Profile* profile,
     DVLOG(1) << __func__ << " SeaPenTextInput disabled";
     return false;
   }
-  if (!IsSystemInSupportedLanguage(application_locale)) {
+  const std::optional<base::i18n::LanguageTag> application_locale_tag =
+      base::i18n::GetLanguageTagFromString(application_locale);
+  if (!application_locale_tag ||
+      !IsSystemInSupportedLanguage(*application_locale_tag)) {
     // The feature only supports a limited number of languages.
     DVLOG(1) << __func__ << " system not in supported language";
     return false;

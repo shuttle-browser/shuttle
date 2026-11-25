@@ -6,7 +6,14 @@ import {CustomElement} from 'chrome://resources/js/custom_element.js';
 
 import {BrowserProxy} from './browser_proxy.js';
 import type {PageHandlerInterface, SignalsReportingState} from './connectors_internals.mojom-webui.js';
+import {SignalsSource} from './connectors_internals.mojom-webui.js';
+import {mojoDictionaryToJsonString} from './connectors_utils.js';
 import {getTemplate} from './signals_reporting.html.js';
+
+const SignalsSourceStringMap: Record<SignalsSource, string> = {
+  [SignalsSource.kLastUploadedReport]: 'Last successful upload',
+  [SignalsSource.kCollectedOnDemand]: 'Collected on demand',
+};
 
 export class SignalsReportingElement extends CustomElement {
   static get is() {
@@ -45,8 +52,22 @@ export class SignalsReportingElement extends CustomElement {
     this.setValueToElement('#can-collect-all', canCollectAllFields);
   }
 
+  set signalsSourceString(source: string) {
+    this.setValueToElement('#signals-source', source);
+  }
+
+  private signalsJsonString_: string = '';
   set signalsJsonString(jsonString: string) {
+    this.signalsJsonString_ = jsonString;
     this.setValueToElement('#signals-json', jsonString);
+  }
+
+  get signalsJsonString(): string {
+    return this.signalsJsonString_;
+  }
+
+  get copyButton(): HTMLButtonElement|null {
+    return this.$<HTMLButtonElement>('#copy-signals');
   }
 
   private get pageHandler(): PageHandlerInterface {
@@ -55,6 +76,11 @@ export class SignalsReportingElement extends CustomElement {
 
   constructor() {
     super();
+
+    const copyButton = this.copyButton;
+    if (copyButton) {
+      copyButton.addEventListener('click', () => this.copySignals(copyButton));
+    }
 
     this.fetchSignalsReportingState();
   }
@@ -79,7 +105,16 @@ export class SignalsReportingElement extends CustomElement {
     this.lastUploadSuccessTimestamp = state.lastUploadSuccessTimestamp;
     this.lastSignalsUploadConfigString = state.lastSignalsUploadConfig;
     this.canCollectAllFieldsString = `${state.canCollectAllFields}`;
-    this.signalsJsonString = state.signalsJson || '{}';
+    if (state.signals) {
+      this.signalsSourceString =
+          SignalsSourceStringMap[state.signals.source] || 'None';
+      this.signalsJsonString = mojoDictionaryToJsonString(state.signals.values);
+      this.showCopyButton();
+    } else {
+      this.signalsSourceString = 'None';
+      this.signalsJsonString = '{}';
+      this.hideCopyButton();
+    }
   }
 
   private fetchSignalsReportingState() {
@@ -88,6 +123,20 @@ export class SignalsReportingElement extends CustomElement {
             this.updateState(response?.state),
         err => console.error(
             `fetchSignalsReportingState failed: ${JSON.stringify(err)}`));
+  }
+
+  private copySignals(copyButton: HTMLButtonElement) {
+    copyButton.disabled = true;
+    navigator.clipboard.writeText(this.signalsJsonString)
+        .finally(() => copyButton.disabled = false);
+  }
+
+  private showCopyButton() {
+    this.copyButton?.classList.remove('hidden');
+  }
+
+  private hideCopyButton() {
+    this.copyButton?.classList.add('hidden');
   }
 
   private showErrorElement() {

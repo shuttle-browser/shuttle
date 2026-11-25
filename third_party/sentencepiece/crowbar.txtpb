@@ -1,0 +1,27 @@
+upstream {
+  version: "v0.2.2"
+  artifacts {
+    git {
+      repository: "https://github.com/google/sentencepiece"
+      commit: "e0cce7d37b065b5140349dbe12c6bcf6192fdd78"
+    }
+  }
+}
+stages {
+  input {
+    patch { copybara {} }
+  }
+  publish { git {} }
+}
+latest {
+  generic {
+    format: "v${n0}.${n1}.${n2}"
+    regex_groups { key: "n0" value: "[0-9]+" }
+    regex_groups { key: "n1" value: "[0-9]+" }
+    regex_groups { key: "n2" value: "[0-9]+" }
+  }
+  git {
+    repository: "https://github.com/google/sentencepiece"
+    tags {}
+  }
+}

@@ -20,6 +20,7 @@
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_provider_spec.h"
+#include "chrome/browser/glic/public/provider_features.h"
 #include "chrome/browser/prefs/browser_prefs.h"
 #include "chrome/browser/signin/chrome_signin_client_factory.h"
 #include "chrome/browser/signin/chrome_signin_client_test_util.h"
@@ -356,8 +357,7 @@ TEST_F(GuestUtilTest, GeicDisabledKeepsConsumerGuestURL) {
           "https://gemini.google.com/custom-panel"}}}},
       {});
 
-  const GURL expected_guest_url(
-      "https://gemini.google.com/custom-panel?hl=en");
+  const GURL expected_guest_url("https://gemini.google.com/custom-panel?hl=en");
   EXPECT_EQ(expected_guest_url, GetGuestURL(&profile_));
   EXPECT_EQ(expected_guest_url,
             GetGlicProviderSpec(&profile_).GetGuestUrl(&profile_));
@@ -761,6 +761,40 @@ TEST_F(GuestUtilTest, PopulateGlobalClientInitialState_OnboardingArm2) {
   PopulateGlobalClientInitialState(state_completed.get(), &profile_);
   EXPECT_THAT(state_completed->host_capabilities,
               Not(Contains(mojom::HostCapability::kTrustFirstOnboardingArm2)));
+}
+
+TEST_F(GuestUtilMultiInstanceTest,
+       PopulateGlobalClientInitialState_ConsumerOnlyCapabilitiesForGemini) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {features::kGlicCaptureRegion, features::kGlicDynamicChromeTools}, {});
+
+  auto state = mojom::WebClientInitialState::New();
+  PopulateGlobalClientInitialState(state.get(), CreateTestingProfile());
+
+  EXPECT_TRUE(state->enable_capture_region);
+  EXPECT_THAT(state->host_capabilities,
+              Contains(mojom::HostCapability::kChromeTools));
+}
+
+// The capture region (selection overlay) and Chrome tools are consumer-only.
+TEST_F(GuestUtilMultiInstanceTest,
+       PopulateGlobalClientInitialState_NoConsumerOnlyCapabilitiesForGeic) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures({features::kGeic, features::kGlicCaptureRegion,
+                                 features::kGlicDynamicChromeTools},
+                                {});
+  TestingProfile* profile = CreateTestingProfileWithGeicPolicyUrl(
+      "https://business.gemini.google/home/cid/abc123");
+  ASSERT_EQ(GetGlicProviderSpec(profile).GetSettingsSectionId(),
+            kGeminiEnterpriseSettingsSectionId);
+
+  auto state = mojom::WebClientInitialState::New();
+  PopulateGlobalClientInitialState(state.get(), profile);
+
+  EXPECT_FALSE(state->enable_capture_region);
+  EXPECT_THAT(state->host_capabilities,
+              Not(Contains(mojom::HostCapability::kChromeTools)));
 }
 
 }  // namespace

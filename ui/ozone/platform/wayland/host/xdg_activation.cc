@@ -177,7 +177,7 @@ void XdgActivation::TokenRequest::InitiateRequest() {
 
 wl_surface* XdgActivation::TokenRequest::DetermineSurface(
     const std::optional<wl::Serial>& serial) const {
-  WaylandWindow const* window = nullptr;
+  WaylandWindow* window = nullptr;
   auto* const window_manager = connection_->window_manager();
 
   // The spec isn't clear about what types of surfaces should be used as
@@ -201,11 +201,16 @@ wl_surface* XdgActivation::TokenRequest::DetermineSurface(
         break;
     }
   }
+  // Compositors don't accept a subsurface (WaylandBubble) as the requestor;
+  // use its xdg-role ancestor.
+  if (window && window->AsWaylandBubble()) {
+    window = window->GetXdgParentWindow();
+  }
   return window ? window->root_surface()->surface() : nullptr;
 }
 
 void XdgActivation::TokenRequest::OnTimeout() {
-  DCHECK(!callback_.is_null());
+  CHECK(!callback_.is_null(), base::NotFatalUntil::M163);
   DVLOG(1) << "token request timed out";
   // Run callback with an empty token if we did not receive a token from the
   // server yet.
@@ -230,8 +235,8 @@ void XdgActivation::TokenRequest::OnTokenReceived(
   DVLOG(1) << "new token received from server: " << token;
   auto* const self = static_cast<XdgActivation::TokenRequest*>(data);
   CHECK(self);
-  DCHECK(!self->callback_.is_null());
-  DCHECK(self->timer_.IsRunning());
+  CHECK(!self->callback_.is_null(), base::NotFatalUntil::M163);
+  CHECK(self->timer_.IsRunning(), base::NotFatalUntil::M163);
   self->OnDone(token);
 }
 

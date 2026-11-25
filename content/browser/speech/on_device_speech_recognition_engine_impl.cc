@@ -38,12 +38,34 @@ constexpr char kWebSpeechGeminiNanoDuration[] =
 
 std::string AsrFlagSnapshot() {
   namespace f = on_device_model::features;
-  if (!base::FeatureList::IsEnabled(f::kOnDeviceModelAsrDecoderPrefill)) {
-    return "asr_decoder_prefill=disabled";
+  std::string snapshot =
+      base::FeatureList::IsEnabled(f::kOnDeviceModelAsrDecoderPrefill)
+          ? base::StringPrintf(
+                "asr_decoder_prefill=enabled, "
+                "asr_decoder_prefill_backoff=%d",
+                f::kOnDeviceModelAsrDecoderPrefillBackoff.Get())
+          : "asr_decoder_prefill=disabled";
+  snapshot +=
+      base::FeatureList::IsEnabled(f::kOnDeviceModelAsrTokenStability)
+          ? base::StringPrintf(
+                ", asr_token_stability=enabled, interim_token_holdback=%d, "
+                "interim_release_silence_ms=%d, interim_stability_steps=%d",
+                f::kOnDeviceModelAsrInterimTokenHoldback.Get(),
+                f::kOnDeviceModelAsrInterimReleaseSilenceMs.Get(),
+                f::kOnDeviceModelAsrInterimStabilitySteps.Get())
+          : ", asr_token_stability=disabled";
+  if (!base::FeatureList::IsEnabled(f::kOnDeviceModelAsrSpeculativeDecoding)) {
+    return snapshot + ", asr_speculative_decoding=disabled";
   }
-  return base::StringPrintf(
-      "asr_decoder_prefill=enabled, asr_decoder_prefill_backoff=%d",
-      f::kOnDeviceModelAsrDecoderPrefillBackoff.Get());
+  return snapshot +
+         base::StringPrintf(
+             ", asr_speculative_decoding=enabled, "
+             "enable_draft_verification=%s, decoder_prefill_backoff=%d, "
+             "final_decoder_prefill_backoff=%d",
+             f::kOnDeviceModelAsrEnableDraftVerification.Get() ? "true"
+                                                               : "false",
+             f::kOnDeviceModelAsrInterimDecoderPrefillBackoff.Get(),
+             f::kOnDeviceModelAsrFinalDecoderPrefillBackoff.Get());
 }
 
 }  // namespace

@@ -14,6 +14,7 @@ import org.chromium.base.Log;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.components.omnibox.AimModelsProtoIntDef.ModelMode;
+import org.chromium.components.omnibox.InputSourceProtoIntDef.InputSource;
 import org.chromium.components.omnibox.InputTypeConfigProto.InputTypeConfig;
 import org.chromium.components.omnibox.ModelConfigProto.ModelConfig;
 import org.chromium.components.omnibox.SectionConfigProto.SectionConfig;
@@ -116,12 +117,32 @@ public class InputState {
         return mLazyInputTypeConfigs;
     }
 
+    /** Returns the {@link InputTypeConfig} matching {@code inputSource}, or null if absent. */
+    public @Nullable InputTypeConfig getInputTypeConfig(@InputSource int inputSource) {
+        for (InputTypeConfig config : getInputTypeConfigs()) {
+            if (config.getInputSourceValue() == inputSource) {
+                return config;
+            }
+        }
+        return null;
+    }
+
     public List<ToolConfig> getToolConfigs() {
         if (mLazyToolConfigs == null) {
             mLazyToolConfigs = parseToolConfigs(mRawToolConfigs);
             mRawToolConfigs = null;
         }
         return mLazyToolConfigs;
+    }
+
+    /** Returns the {@link ToolConfig} matching {@code toolMode}, or null if absent. */
+    public @Nullable ToolConfig getToolConfig(@ToolMode int toolMode) {
+        for (ToolConfig config : getToolConfigs()) {
+            if (config.getToolValue() == toolMode) {
+                return config;
+            }
+        }
+        return null;
     }
 
     public SectionConfig getToolsSectionConfig() {
@@ -138,6 +159,16 @@ public class InputState {
             mRawModelConfigs = null;
         }
         return mLazyModelConfigs;
+    }
+
+    /** Returns the {@link ModelConfig} matching {@code modelMode}, or null if absent. */
+    public @Nullable ModelConfig getModelConfig(@ModelMode int modelMode) {
+        for (ModelConfig config : getModelConfigs()) {
+            if (config.getModelValue() == modelMode) {
+                return config;
+            }
+        }
+        return null;
     }
 
     public SectionConfig getModelSectionConfig() {

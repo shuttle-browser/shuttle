@@ -112,9 +112,6 @@ const net::NetworkTrafficAnnotationTag kTrafficAnnotation =
       _backgroundCustomizationServiceObserverBridge;
 }
 
-// Redefine public property as readwrite
-@property(nonatomic, readwrite, assign) BOOL themeHasChanged;
-
 @end
 
 @implementation HomeCustomizationBackgroundConfigurationMediator
@@ -313,23 +310,23 @@ const net::NetworkTrafficAnnotationTag kTrafficAnnotation =
 }
 
 - (void)saveCurrentTheme {
-  if (!self.themeHasChanged) {
+  if (!_themeHasChanged) {
     return;
   }
 
   _backgroundCustomizationService->StoreCurrentTheme();
-  self.themeHasChanged = NO;
+  _themeHasChanged = NO;
   self.backgroundSelectionOutcome = BackgroundSelectionOutcome::kApplied;
 }
 
 - (void)cancelThemeSelection {
-  if (!self.themeHasChanged) {
+  if (!_themeHasChanged) {
     self.backgroundSelectionOutcome = BackgroundSelectionOutcome::kCanceled;
     return;
   }
 
   _backgroundCustomizationService->RestoreCurrentTheme();
-  self.themeHasChanged = NO;
+  _themeHasChanged = NO;
   self.backgroundSelectionOutcome =
       BackgroundSelectionOutcome::kCanceledAfterSelected;
 }
@@ -357,11 +354,15 @@ const net::NetworkTrafficAnnotationTag kTrafficAnnotation =
   CHECK(!thumbnailURL.is_empty());
   CHECK(thumbnailURL.is_valid());
 
-  _imageFetcher->FetchImageData(
+  image_fetcher::ImageFetcherParams params(kTrafficAnnotation,
+                                           kImageFetcherUmaClient);
+  params.set_transcode_format(
+      image_fetcher::ImageFetcherParams::TranscodeFormat::kJpeg);
+  _imageFetcher->FetchImage(
       thumbnailURL,
-      base::BindOnce(^(const std::string& image_data,
+      base::BindOnce(^(const gfx::Image& image,
                        const image_fetcher::RequestMetadata& metadata) {
-        if (image_data.empty()) {
+        if (image.IsEmpty()) {
           // Image fetch failed or returned empty.
           NSDictionary<NSErrorUserInfoKey, id>* userInfo = @{
             NSURLErrorFailingURLErrorKey : net::NSURLWithGURL(thumbnailURL)
@@ -379,9 +380,7 @@ const net::NetworkTrafficAnnotationTag kTrafficAnnotation =
           return;
         }
 
-        UIImage* uiImage =
-            [UIImage imageWithData:[NSData dataWithBytes:image_data.data()
-                                                  length:image_data.length()]];
+        UIImage* uiImage = image.ToUIImage();
         base::UmaHistogramBoolean("IOS.HomeCustomization.Background.Gallery."
                                   "ImageDownloadSuccessful",
                                   true);
@@ -389,8 +388,7 @@ const net::NetworkTrafficAnnotationTag kTrafficAnnotation =
           completion(uiImage, nil);
         }
       }),
-      image_fetcher::ImageFetcherParams(kTrafficAnnotation,
-                                        kImageFetcherUmaClient));
+      params);
 }
 
 - (void)fetchBackgroundCustomizationUserUploadedImage:(NSString*)imagePath
@@ -475,7 +473,7 @@ const net::NetworkTrafficAnnotationTag kTrafficAnnotation =
 
 - (void)homeBackgroundCustomizationServiceDidChangeBackground:
     (HomeBackgroundCustomizationService*)service {
-  self.themeHasChanged = YES;
+  _themeHasChanged = YES;
 
   id<BackgroundCustomizationConfiguration> currentConfiguration;
 

@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/matrix.h"
 #include "mediapipe/framework/port/logging.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/util/audio_decoder.h"
 #include "mediapipe/util/audio_decoder.pb.h"
 
@@ -76,10 +77,10 @@ absl::Status AudioDecoderCalculator::Open(CalculatorContext* cc) {
   const auto& decoder_options =
       tool::RetrieveOptions(cc->Options<mediapipe::AudioDecoderOptions>(),
                             cc->InputSidePackets(), "OPTIONS");
-  decoder_ = absl::make_unique<AudioDecoder>();
-  MP_RETURN_IF_ERROR(decoder_->Initialize(input_file_path, decoder_options));
+  decoder_ = std::make_unique<AudioDecoder>();
+  ABSL_RETURN_IF_ERROR(decoder_->Initialize(input_file_path, decoder_options));
   std::unique_ptr<mediapipe::TimeSeriesHeader> header =
-      absl::make_unique<mediapipe::TimeSeriesHeader>();
+      std::make_unique<mediapipe::TimeSeriesHeader>();
   if (decoder_->FillAudioHeader(decoder_options.audio_stream(0), header.get())
           .ok()) {
     // Only pass on a header if the decoder could actually produce one.

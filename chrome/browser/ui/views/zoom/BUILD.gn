@@ -7,7 +7,10 @@ assert(!is_android, "Zoom Page actions are for desktop platforms only")
 source_set("zoom") {
   sources = [ "zoom_view_controller.h" ]
 
-  public_deps = [ "//components/tabs:public" ]
+  public_deps = [
+    "//components/tabs:public",
+    "//ui/base/unowned_user_data",
+  ]
 }
 
 source_set("impl") {
@@ -41,10 +44,12 @@ source_set("interactive_ui_tests") {
     "//chrome/browser/ui/views/frame:toolbar_button_provider",
     "//chrome/browser/ui/views/location_bar",
     "//chrome/browser/ui/views/page_action",
+    "//chrome/browser/ui/views/page_action:page_action_test_support",
     "//chrome/browser/ui/views/toolbar",
-    "//chrome/test:test_support_ui",
+    "//chrome/test/interaction",
     "//components/zoom",
     "//content/test:test_support",
     "//ui/base:test_support",
+    "//ui/base/interaction:test_support",
   ]
 }

@@ -24,6 +24,7 @@ import {                            //
   browserProxyFactory,              //
   FreCompletionWaitMode,            //
   GlicExperimentalTriggeringState,  //
+  GlicProviderType,                 //
 } from '../glic_internals.mojom-webui.js';
 import type {                                   //
              BrowserProxy,                      //
@@ -82,6 +83,7 @@ export class GlicInternalsAppElement extends CrLitElement {
       invokeZssAdditionalContent_: {type: String},
       invokeOpenInForeground_: {type: Boolean},
       invokeActuationTarget_: {type: Number},
+      invokeHeadlessActuation_: {type: Boolean},
       actuationTargetEnumValues_: {type: Array},
       invokeShowPanel_: {type: Boolean},
       invokePayloadUniversalCartMetadata_: {type: String},
@@ -127,6 +129,7 @@ export class GlicInternalsAppElement extends CrLitElement {
   protected accessor invokeOpenInForeground_: boolean = true;
   protected accessor invokeActuationTarget_: ActuationTarget =
       ActuationTarget.kAgentDecides;
+  protected accessor invokeHeadlessActuation_: boolean = false;
   protected accessor invokeShowPanel_: boolean = true;
   protected accessor invokePayloadUniversalCartMetadata_: string = '';
   protected accessor invokeFreCompletionWaitMode_: FreCompletionWaitMode =
@@ -532,11 +535,15 @@ export class GlicInternalsAppElement extends CrLitElement {
         GlicExperimentalTriggeringState.kReady;
   }
 
-  protected getTableData_(): Array<{label: string, value: boolean}> {
+  protected getTableData_():
+      Array<{label: string, value: boolean, skipped?: boolean}> {
     if (!this.data_ || !this.data_.enablement) {
       return [];
     }
 
+    // The Gemini account eligibility checks are skipped for some providers
+    // (e.g. Gemini Enterprise), and then read as passed.
+    const skipped = !this.data_.enablement.geminiAccountEligibilityChecked;
     return [
       {
         label: 'Enabled by Chrome Flags',
@@ -549,27 +556,33 @@ export class GlicInternalsAppElement extends CrLitElement {
       {
         label: 'Pref or flag based rollout (flag or pref) applies',
         value: this.data_.enablement.isRolledOut,
+        skipped,
       },
       {
         label: 'Account exists and has the Gemini in Chrome capability',
         value: this.data_.enablement.primaryAccountIsCapable,
+        skipped,
       },
       {
         label: 'Account exists and is fully signed-in',
         value: this.data_.enablement.primaryAccountIsFullySignedIn,
+        skipped,
       },
       {
         label:
             'Chrome Enterprise policy allows this feature (or doesn\'t apply)',
         value: this.data_.enablement.allowedByChromePolicy,
+        skipped,
       },
       {
         label: 'Server side admin allows this feature',
         value: this.data_.enablement.allowedByRemoteAdmin,
+        skipped,
       },
       {
         label: 'Server side allows this feature (Not admin policy)',
         value: this.data_.enablement.allowedByRemoteOther,
+        skipped,
       },
       {
         label: 'User did pass the FRE',
@@ -715,6 +728,14 @@ export class GlicInternalsAppElement extends CrLitElement {
     this.invokeActuationTarget_ = Number((e.target as HTMLSelectElement).value);
   }
 
+  protected isTargetSurfaceSelected_(): boolean {
+    return this.invokeActuationTarget_ === ActuationTarget.kTargetSurface;
+  }
+
+  protected onInvokeHeadlessActuationChange_(e: Event) {
+    this.invokeHeadlessActuation_ = (e.target as HTMLInputElement).checked;
+  }
+
   protected onInvokeShowPanelChange_(e: Event) {
     this.invokeShowPanel_ = (e.target as HTMLInputElement).checked;
   }
@@ -734,7 +755,7 @@ export class GlicInternalsAppElement extends CrLitElement {
   protected onInvokeAuthSecretInput_(e: Event) {
     this.invokeAuthSecret_ = (e.target as HTMLInputElement).value;
   }
-  protected onTriggerInvokeClick_() {
+  protected async onTriggerInvokeClick_() {
     let surface: TriggerInvokeFromInternalsOptions['surface'];
     if (this.invokeSurfaceType_ === 'newTab') {
       surface = {newTab: {openInForeground: this.invokeOpenInForeground_}};
@@ -798,6 +819,8 @@ export class GlicInternalsAppElement extends CrLitElement {
       payload: payload,
       takeScreenshot: this.invokeTakeScreenshot_,
       supersedeIfInProgress: this.invokeSupersedeIfInProgress_,
+      headlessActuation: this.isTargetSurfaceSelected_() &&
+          this.invokeAutoSubmit_ && this.invokeHeadlessActuation_,
       keyConfig: (this.invokePublicKey_ || this.invokeAuthSecret_) ? {
         publicKey: this.invokePublicKey_,
         authSecret: this.invokeAuthSecret_,
@@ -880,14 +903,14 @@ export class GlicInternalsAppElement extends CrLitElement {
     ];
     console.info(this.invokeLogs_[0]);
 
-    this.browserProxy_.handler.triggerInvokeFromInternalsAction(options).then(
-        ({success, errorMessage}: {success: boolean, errorMessage: string}) => {
-          const timestamp = new Date().toLocaleTimeString();
-          const logEntry = `[${timestamp}] ${
-              success ? 'SUCCESS' : 'ERROR: ' + errorMessage}`;
-          this.invokeLogs_ = [...this.invokeLogs_, logEntry];
-          console.info(logEntry);
-        });
+    const {success, errorMessage} =
+        await this.browserProxy_.handler.triggerInvokeFromInternalsAction(
+            options);
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry =
+        `[${timestamp}] ${success ? 'SUCCESS' : 'ERROR: ' + errorMessage}`;
+    this.invokeLogs_ = [...this.invokeLogs_, logEntry];
+    console.info(logEntry);
   }
 
   protected getPlatformString_(platform: Platform): string {
@@ -918,6 +941,14 @@ export class GlicInternalsAppElement extends CrLitElement {
       default:
         return 'Unknown';
     }
+  }
+
+  protected isGeminiEnterprise_(): boolean {
+    return this.data_?.provider === GlicProviderType.kGeminiEnterprise;
+  }
+
+  protected getProviderName_(): string {
+    return this.isGeminiEnterprise_() ? 'Gemini Enterprise' : 'Gemini';
   }
 
   protected getDebugSettingsData_():

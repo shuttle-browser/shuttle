@@ -9,17 +9,25 @@
 #include "base/memory/raw_ptr.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
+#include "build/branding_buildflags.h"
+#include "build/build_config.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/contextual_tasks/aim_message_poster.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
 #include "chrome/browser/contextual_tasks/mock_contextual_tasks_ui_service.h"
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/themes/theme_service.h"
+#include "chrome/browser/themes/theme_service_factory.h"
+#endif
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/actions/chrome_actions.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/test/mock_browser_window_interface.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
+#include "chrome/common/chrome_features.h"
 #include "chrome/grit/branded_strings.h"
+#include "chrome/grit/theme_resources.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/contextual_search/contextual_search_service.h"
 #include "components/contextual_search/contextual_search_session_handle.h"
@@ -33,8 +41,11 @@
 #include "components/omnibox/common/composebox_features.h"
 #include "components/strings/grit/components_strings.h"
 #include "content/public/browser/navigation_controller.h"
+#include "content/public/common/content_features.h"
 #include "content/public/test/browser_task_environment.h"
 #include "content/public/test/mock_navigation_handle.h"
+#include "content/public/test/test_renderer_host.h"
+#include "content/public/test/web_contents_tester.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -42,6 +53,12 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/lens_server_proto/search_communication.pb.h"
 #include "ui/actions/actions.h"
+#include "ui/base/models/image_model.h"
+#include "ui/base/resource/resource_bundle.h"
+#include "ui/gfx/geometry/size.h"
+#include "ui/gfx/image/image.h"
+#include "ui/gfx/image/image_skia.h"
+#include "ui/gfx/image/image_skia_operations.h"
 
 namespace contextual_tasks {
 
@@ -75,6 +92,7 @@ class ContextualTasksUtilsTest : public testing::Test {
 
  protected:
   content::BrowserTaskEnvironment task_environment_;
+  content::RenderViewHostTestEnabler rvh_test_enabler_;
   std::unique_ptr<TestingProfile> profile_;
   std::unique_ptr<testing::NiceMock<MockBrowserWindowInterface>> browser_window_;
   std::unique_ptr<BrowserActions> browser_actions_;
@@ -270,6 +288,61 @@ TEST_F(ContextualTasksUtilsTest, UpdatePinButtonVisibilityState_Ineligible_Pinne
   EXPECT_TRUE(action_item->GetVisible());
   EXPECT_TRUE(model->Contains(kActionSidePanelShowContextualTasks));
 }
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+TEST_F(
+    ContextualTasksUtilsTest,
+    UpdatePinButtonVisibilityState_WebUIPinnedToolbarActionsUsesRawSuperGImage) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeaturesAndParameters(
+      /*enabled_features=*/
+      {{features::kInitialWebUI, {}},
+       {features::kWebUIPinnedToolbarActions, {}},
+       {contextual_tasks::kContextualTasksUnifyPinButtonLogos,
+        {{"ContextualTasksUnifyPinButtonLogo", "super-g"}}}},
+      /*disabled_features=*/{
+          contextual_tasks::kContextualTasksEphemeralPinButtonRefactor});
+
+  const gfx::ImageSkia* raw_super_g =
+      ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+          IDR_GOOGLE_G_GRADIENT_20);
+  ASSERT_NE(raw_super_g, nullptr);
+  const gfx::ImageSkia resized_super_g =
+      gfx::ImageSkiaOperations::CreateResizedImage(
+          *raw_super_g, skia::ImageOperations::RESIZE_BEST, gfx::Size(18, 18));
+  ASSERT_FALSE(resized_super_g.BackedBySameObjectAs(*raw_super_g));
+
+  root_action_ = actions::ActionItem::Builder().Build();
+  actions::ActionItem* action_item = root_action_->AddChild(
+      actions::ActionItem::Builder()
+          .SetActionId(kActionSidePanelShowContextualTasks)
+          .SetImage(ui::ImageModel::FromImageSkia(resized_super_g))
+          .SetVisible(true)
+          .SetEnabled(true)
+          .Build());
+
+  browser_actions_->set_root_action_item_for_testing(root_action_.get());
+
+  int action_changed_count = 0;
+  base::CallbackListSubscription subscription =
+      action_item->AddActionChangedCallback(base::BindRepeating(
+          [](int* count) { ++(*count); }, &action_changed_count));
+
+  UpdatePinButtonVisibilityState(browser_window_.get());
+
+  ASSERT_TRUE(action_item->GetImage().IsImage());
+  EXPECT_TRUE(action_item->GetImage()
+                  .GetImage()
+                  .AsImageSkia()
+                  .BackedBySameObjectAs(*raw_super_g));
+  EXPECT_EQ(action_changed_count, 1);
+
+  // Calling again when the raw Super G image is already set should not
+  // redundantly update the image.
+  UpdatePinButtonVisibilityState(browser_window_.get());
+  EXPECT_EQ(action_changed_count, 1);
+}
+#endif
 
 TEST_F(ContextualTasksUtilsTest, IsTabSharingEligible_NullProfile) {
   EXPECT_FALSE(IsTabSharingEligible(nullptr));
@@ -561,28 +634,59 @@ TEST_F(ContextualTasksUtilsTest, RemoveTabUnderline_ClosedTabDoesNotCrash) {
 }
 #endif
 
-TEST_F(ContextualTasksUtilsTest, ShouldUseDarkMode_NullProfile) {
-  EXPECT_FALSE(ShouldUseDarkMode(nullptr));
-  EXPECT_FALSE(ShouldUseDarkMode(nullptr, GURL()));
+TEST_F(ContextualTasksUtilsTest, ShouldUseDarkModeForProfile_NullProfile) {
+  EXPECT_FALSE(ShouldUseDarkModeForProfile(nullptr));
 }
 
 TEST_F(ContextualTasksUtilsTest, ShouldUseDarkMode_UrlParamOverridesProfile) {
   GURL dark_url("https://example.com/search?cs=1");
   GURL light_url("https://example.com/search?cs=0");
 
-  EXPECT_TRUE(ShouldUseDarkMode(profile_.get(), dark_url));
-  EXPECT_FALSE(ShouldUseDarkMode(profile_.get(), light_url));
+  std::unique_ptr<content::WebContents> web_contents =
+      content::WebContentsTester::CreateTestWebContents(profile_.get(),
+                                                        nullptr);
+  EXPECT_TRUE(ShouldUseDarkMode(web_contents.get(), dark_url));
+  EXPECT_FALSE(ShouldUseDarkMode(web_contents.get(), light_url));
 
   Profile* otr_profile = profile_->GetPrimaryOTRProfile(true);
-  EXPECT_TRUE(ShouldUseDarkMode(otr_profile, dark_url));
-  EXPECT_FALSE(ShouldUseDarkMode(otr_profile, light_url));
+  std::unique_ptr<content::WebContents> otr_web_contents =
+      content::WebContentsTester::CreateTestWebContents(otr_profile, nullptr);
+  EXPECT_TRUE(ShouldUseDarkMode(otr_web_contents.get(), dark_url));
+  EXPECT_FALSE(ShouldUseDarkMode(otr_web_contents.get(), light_url));
 }
 
 TEST_F(ContextualTasksUtilsTest, ShouldUseDarkMode_IncognitoProfile) {
   Profile* otr_profile = profile_->GetPrimaryOTRProfile(true);
-  EXPECT_TRUE(ShouldUseDarkMode(otr_profile));
-  EXPECT_TRUE(ShouldUseDarkMode(otr_profile, GURL("https://example.com")));
+  EXPECT_TRUE(ShouldUseDarkModeForProfile(otr_profile));
+
+  std::unique_ptr<content::WebContents> otr_web_contents =
+      content::WebContentsTester::CreateTestWebContents(otr_profile, nullptr);
+  EXPECT_TRUE(
+      ShouldUseDarkMode(otr_web_contents.get(), GURL("https://example.com")));
 }
+
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(ContextualTasksUtilsTest,
+       ShouldUseDarkMode_GuestProfileFollowsThemeService) {
+  TestingProfile::Builder guest_builder;
+  guest_builder.SetGuestSession();
+  std::unique_ptr<TestingProfile> guest_profile = guest_builder.Build();
+  Profile* guest_otr_profile =
+      guest_profile->GetPrimaryOTRProfile(/*create_if_needed=*/true);
+  ASSERT_TRUE(guest_otr_profile->IsGuestSession());
+  ASSERT_FALSE(guest_otr_profile->IsIncognitoProfile());
+
+  ThemeService* theme_service =
+      ThemeServiceFactory::GetForProfile(guest_otr_profile);
+  ASSERT_NE(theme_service, nullptr);
+  theme_service->SetBrowserColorScheme(
+      ThemeService::BrowserColorScheme::kLight);
+  EXPECT_FALSE(ShouldUseDarkModeForProfile(guest_otr_profile));
+
+  theme_service->SetBrowserColorScheme(ThemeService::BrowserColorScheme::kDark);
+  EXPECT_TRUE(ShouldUseDarkModeForProfile(guest_otr_profile));
+}
+#endif
 
 class MockAimMessagePoster : public AimMessagePoster {
  public:

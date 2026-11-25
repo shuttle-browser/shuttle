@@ -38,6 +38,7 @@ from blinkpy.common.host import Host
 from blinkpy.web_tests import command_line
 from blinkpy.web_tests.controllers.manager import Manager
 from blinkpy.web_tests.models import test_run_results
+from blinkpy.web_tests.servers import server_base
 from blinkpy.web_tests.views import printing
 
 _log = logging.getLogger(__name__)
@@ -235,10 +236,22 @@ def _set_up_derived_options(port, options, args):
 
 def run(port, options, args, printer):
     _set_up_derived_options(port, options, args)
-    manager = Manager(port, options, printer)
-    printer.print_config(port)
-    run_details = manager.run(args)
-    _log.debug('')
-    _log.debug('Testing completed. Exit status: %d', run_details.exit_code)
-    printer.flush()
-    return run_details
+    try:
+        with server_base.acquire_run_lock(
+            port, use_namespace=options.namespace
+        ):
+            manager = Manager(port, options, printer)
+            printer.print_config(port)
+            run_details = manager.run(args)
+            _log.debug('')
+            _log.debug(
+                'Testing completed. Exit status: %d', run_details.exit_code
+            )
+            printer.flush()
+            return run_details
+    except server_base.RunLockError as error:
+        _log.error('%s', error)
+        printer.flush()
+        return test_run_results.RunDetails(
+            exit_code=exit_codes.UNEXPECTED_ERROR_EXIT_STATUS
+        )

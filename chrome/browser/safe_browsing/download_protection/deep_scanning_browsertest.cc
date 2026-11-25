@@ -37,7 +37,6 @@
 #include "chrome/browser/safe_browsing/download_protection/download_protection_service.h"
 #include "chrome/browser/safe_browsing/test_safe_browsing_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/file_system_access/file_system_access_test_utils.h"
 #include "chrome/common/chrome_paths.h"
@@ -56,7 +55,7 @@
 #include "components/policy/core/common/cloud/mock_cloud_policy_client.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
-#include "components/safe_browsing/content/common/file_type_policies_test_util.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies_test_util.h"
 #include "components/safe_browsing/core/browser/db/test_database_manager.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/proto/csd.pb.h"
@@ -74,7 +73,7 @@
 #include "services/network/public/cpp/data_element.h"
 #include "services/network/public/mojom/data_pipe_getter.mojom.h"
 #include "services/network/test/test_utils.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 namespace safe_browsing {
 
@@ -163,10 +162,6 @@ class DownloadDeepScanningBrowserTestBase
                          enterprise_obfuscation::kEnterpriseFileObfuscation)
                    : disabled_features_.push_back(
                          enterprise_obfuscation::kEnterpriseFileObfuscation);
-    // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox is
-    // is enabled and then remove these two Features.
-    disabled_features_.push_back(omnibox::internal::kWebUIOmniboxPopup);
-    disabled_features_.push_back(omnibox::internal::kWebUIOmniboxAimPopup);
   }
 
   void OnDownloadCreated(content::DownloadManager* manager,
@@ -606,7 +601,7 @@ IN_PROC_BROWSER_TEST_F(ConsumerDeepScanningBrowserTest, ErrorIndicatesFailure) {
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   ExpectContentAnalysisUploadFailure(net::HTTP_INTERNAL_SERVER_ERROR, {});
@@ -668,7 +663,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WaitForDeepScanRequest();
@@ -714,7 +709,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest, DataURLDownloadIsTruncat
   GURL url(data_url_string);
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WaitForDeepScanRequest();
@@ -775,7 +770,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest, FailedScanFailsOpen) {
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WaitForDeepScanRequest();
@@ -826,7 +821,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WaitForDeepScanRequest();
@@ -877,7 +872,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WaitForDeepScanRequest();
@@ -918,7 +913,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/encrypted_txt.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   WaitForDownloadToFinish();
@@ -946,7 +941,7 @@ IN_PROC_BROWSER_TEST_P(DownloadDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // The DLP scan finishes synchronously and find a violation. Malware scanning
@@ -1099,7 +1094,7 @@ IN_PROC_BROWSER_TEST_P(DownloadRestrictionsDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
 
   base::FilePath main_file = DownloadPrefs(browser()->GetProfile())
@@ -1217,7 +1212,7 @@ IN_PROC_BROWSER_TEST_P(AllowlistedUrlDeepScanningBrowserTest,
   GURL url = embedded_test_server()->GetURL(
       "/safe_browsing/download_protection/zipfile_two_archives.zip");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
 
   WaitForDeepScanRequest();
@@ -1387,7 +1382,6 @@ IN_PROC_BROWSER_TEST_F(SavePackageDeepScanningBrowserTest, Blocked) {
   base::RunLoop validator_run_loop;
   enterprise_connectors::test::EventReportValidator validator(client());
   validator.SetDoneClosure(validator_run_loop.QuitClosure());
-  std::set<std::string> mimetypes = {"text/plain"};
 
   chrome::cros::reporting::proto::DlpSensitiveDataEvent expected_event;
   expected_event.set_url(url.spec());
@@ -1475,7 +1469,6 @@ IN_PROC_BROWSER_TEST_F(SavePackageDeepScanningBrowserTest, KeepAfterWarning) {
   base::RunLoop validator_run_loop;
   enterprise_connectors::test::EventReportValidator validator(client());
   validator.SetDoneClosure(validator_run_loop.QuitClosure());
-  std::set<std::string> mimetypes = {"text/plain"};
 
   chrome::cros::reporting::proto::DlpSensitiveDataEvent expected_event;
   expected_event.set_url(url.spec());
@@ -1622,7 +1615,6 @@ IN_PROC_BROWSER_TEST_F(SavePackageDeepScanningBrowserTest,
   base::RunLoop validator_run_loop;
   enterprise_connectors::test::EventReportValidator validator(client());
   validator.SetDoneClosure(validator_run_loop.QuitClosure());
-  std::set<std::string> mimetypes = {"text/plain"};
 
   chrome::cros::reporting::proto::DlpSensitiveDataEvent expected_event;
   expected_event.set_url(url.spec());
@@ -1704,7 +1696,6 @@ IN_PROC_BROWSER_TEST_F(SavePackageDeepScanningBrowserTest, OpenNow) {
   base::RunLoop validator_run_loop;
   enterprise_connectors::test::EventReportValidator validator(client());
   validator.SetDoneClosure(validator_run_loop.QuitClosure());
-  std::set<std::string> mimetypes = {"text/plain"};
 
   ExpectContentAnalysisResumableMetadataResponse({"dlp"});
   ExpectContentAnalysisResumableContentResponse(response);
@@ -1872,7 +1863,6 @@ IN_PROC_BROWSER_TEST_F(FileSystemAccessDeepScanningBrowserTest, BlockedWrite) {
   WaitForDeepScanRequest();
 
   GURL url = embedded_test_server()->GetURL("/title1.html");
-  std::set<std::string> mimetypes = {"text/plain"};
 
   chrome::cros::reporting::proto::DlpSensitiveDataEvent expected_event;
   expected_event.set_url(url.spec());
@@ -2011,7 +2001,6 @@ IN_PROC_BROWSER_TEST_F(FileSystemAccessDeepScanningBrowserTest, WarnedWrite) {
   WaitForDeepScanRequest();
 
   GURL url = embedded_test_server()->GetURL("/title1.html");
-  std::set<std::string> mimetypes = {"text/plain"};
 
   chrome::cros::reporting::proto::DlpSensitiveDataEvent expected_event;
   expected_event.set_url(url.spec());

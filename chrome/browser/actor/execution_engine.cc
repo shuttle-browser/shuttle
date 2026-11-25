@@ -5,7 +5,6 @@
 #include "chrome/browser/actor/execution_engine.h"
 
 #include <algorithm>
-#include <array>
 #include <cstddef>
 #include <memory>
 #include <optional>
@@ -44,6 +43,7 @@
 #include "chrome/browser/actor/actor_metrics.h"
 #include "chrome/browser/actor/actor_proto_conversion.h"
 #include "chrome/browser/actor/actor_surface.h"
+#include "chrome/browser/actor/actor_surface_registry.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/enterprise_policy_checker.h"
 #include "chrome/browser/actor/site_policy.h"
@@ -60,10 +60,10 @@
 #include "chrome/browser/origin_gating/origin_gating_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_io_data.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/common/actor.mojom.h"
 #include "chrome/common/actor/action_result.h"
 #include "chrome/common/chrome_features.h"
-#include "chrome/common/webui_url_constants.h"
 #include "components/actor/core/actor_features.h"
 #include "components/actor/core/actor_metrics.h"
 #include "components/actor/core/actor_switches.h"
@@ -99,7 +99,6 @@
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
-#include "content/public/common/url_constants.h"
 #include "net/base/schemeful_site.h"
 #include "net/http/http_response_headers.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
@@ -113,7 +112,7 @@
 #include "url/origin.h"
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "chrome/browser/safe_browsing/user_interaction_observer.h"
+#include "chrome/browser/safe_browsing/interstitials/user_interaction_observer.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #endif
 
@@ -293,11 +292,7 @@ origin_gating::Decision BlockTabErrorDocument(
   return origin_gating::Decision::kNoDecision;
 }
 
-constexpr auto kNewTabPageHosts = std::to_array<std::string_view>(
-    {chrome::kChromeUINewTabHost, chrome::kChromeUINewTabPageHost,
-     chrome::kChromeUINewTabPageThirdPartyHost});
-
-// Allow HTTP/HTTPS schemes, as well as NTP hosts under the chrome:// scheme.
+// Allow HTTP/HTTPS schemes, as well as NTP origins.
 origin_gating::Decision RequireHttpsOrHttpOrNtp(
     origin_gating::GatingDecisionContext* context,
     const GateableEvent& event) {
@@ -305,8 +300,7 @@ origin_gating::Decision RequireHttpsOrHttpOrNtp(
   if (destination.SchemeIsHTTPOrHTTPS()) {
     return origin_gating::Decision::kNoDecision;
   }
-  if (destination.SchemeIs(content::kChromeUIScheme) &&
-      std::ranges::contains(kNewTabPageHosts, destination.host())) {
+  if (search::IsWebUINewTabPageOrigin(destination)) {
     return origin_gating::Decision::kNoDecision;
   }
   return origin_gating::Decision::kBlocked;
@@ -555,6 +549,34 @@ void PostTaskForActCallback(
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), std::move(action_results),
                                 std::move(observation_strategy)));
+}
+
+// Merges a follow-up or subsequent stage `ActionResult` into the existing
+// result for the top-level action, preserving parent message and metadata not
+// set by the follow-up.
+void MergeActionResult(mojom::ActionResult& target,
+                       mojom::ActionResultPtr followup) {
+  target.code = followup->code;
+  target.requires_page_stabilization = target.requires_page_stabilization ||
+                                       followup->requires_page_stabilization;
+  // TODO(crbug.com/581884304): if both parent and follow-up have messages,
+  // avoid overwriting.
+  if (!IsOk(*followup) || !followup->message.empty()) {
+    target.message = std::move(followup->message);
+  }
+  if (followup->script_tool_response) {
+    target.script_tool_response = std::move(followup->script_tool_response);
+  }
+  if (followup->execution_end_time) {
+    target.execution_end_time = followup->execution_end_time;
+  }
+  target.screenshot_policy =
+      std::max(target.screenshot_policy, followup->screenshot_policy);
+  target.page_content_policy =
+      std::max(target.page_content_policy, followup->page_content_policy);
+  if (followup->attempt_login_status.has_value()) {
+    target.attempt_login_status = followup->attempt_login_status;
+  }
 }
 
 // When operating on an opaque site, we choose to use the precursor's origin
@@ -1500,8 +1522,7 @@ void ExecutionEngine::KickOffNextAction() {
 
   // TODO(b/467984847): ActorTask::AddTab isn't the best way to track a crashed
   // tab here. We should refactor this to be more explicit.
-  if (ActorSurface* actor_surface =
-          GetNextAction().GetActorSurfaceForValidation().Get();
+  if (ActorSurface* actor_surface = GetSurfaceForValidation(GetNextAction());
       actor_surface &&
       base::FeatureList::IsEnabled(kActorReloadCrashedTabBeforeAct)) {
     content::WebContents* contents = actor_surface->GetWebContents();
@@ -1534,8 +1555,7 @@ void ExecutionEngine::KickOffNextAction() {
 
 void ExecutionEngine::SafetyChecksForNextAction() {
   TRACE_EVENT0("actor", "ExecutionEngine::SafetyChecksForNextAction");
-  ActorSurface* actor_surface =
-      GetNextAction().GetActorSurfaceForValidation().Get();
+  ActorSurface* actor_surface = GetSurfaceForValidation(GetNextAction());
 
   if (!actor_surface) {
     journal_->Log(GURL::EmptyGURL(), task_->id(), "Act Failed",
@@ -1580,8 +1600,7 @@ void ExecutionEngine::DidFinishAsyncSafetyChecks(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK(!action_sequence_.empty());
 
-  ActorSurface* actor_surface =
-      GetNextAction().GetActorSurfaceForValidation().Get();
+  ActorSurface* actor_surface = GetSurfaceForValidation(GetNextAction());
   if (!actor_surface) {
     journal_->Log(GURL::EmptyGURL(), task_->id(), "Act Failed",
                   JournalDetailsBuilder()
@@ -1677,8 +1696,7 @@ void ExecutionEngine::FinishedUiPreInvoke(mojom::ActionResultPtr result) {
   // critical action under the correct pre-navigation page context.
   pre_invoke_navigation_id_ = 0;
   const ToolRequest& current_action = GetInProgressAction();
-  ActorSurface* actor_surface =
-      current_action.GetActorSurfaceForValidation().Get();
+  ActorSurface* actor_surface = GetSurfaceForValidation(current_action);
   content::WebContents* contents =
       actor_surface ? actor_surface->GetWebContents() : nullptr;
   if (contents && contents->GetPrimaryMainFrame()) {
@@ -1755,10 +1773,10 @@ void ExecutionEngine::FinishedToolInvoke(mojom::ActionResultPtr result) {
         static_cast<PageContentExtractionPolicy>(result->page_content_policy));
   }
 
-  if (GetInProgressAction().IsFollowup()) {
+  if (current_action.IsFollowup()) {
     CHECK(!action_results_.empty());
     ActionResultWithLatencyInfo& action_result = action_results_.back();
-    action_result.result = std::move(result);
+    MergeActionResult(*action_result.result, std::move(result));
     action_result.end_time = end_time;
   } else {
     action_results_.emplace_back(action_start_time_, end_time,
@@ -1808,12 +1826,12 @@ void ExecutionEngine::CompleteActions(mojom::ActionResultPtr result,
                (!IsOk(*result) ||
                 action_sequence_[*action_index]->IsFollowup())) {
       // If we already have a result for this action, and the new result is an
-      // error, overwrite it. This can happen if a tool invocation succeeds
+      // error, merge it. This can happen if a tool invocation succeeds
       // but a subsequent UI post-invoke stage fails, or for follow up tools
       // that fail.
       ActionResultWithLatencyInfo& action_result =
           action_results_[result_index];
-      action_result.result = result->Clone();
+      MergeActionResult(*action_result.result, result->Clone());
       action_result.end_time = base::TimeTicks::Now();
     }
   } else if (!IsOk(*result)) {
@@ -2053,6 +2071,10 @@ void ExecutionEngine::UninterruptFromTool() {
 void ExecutionEngine::EnqueueFollowupAction(
     std::unique_ptr<ToolRequest> action) {
   action->SetAsFollowup(base::PassKey<ExecutionEngine>());
+  // Follow-ups act on behalf of the in-progress action, so they inherit its
+  // observation delay behavior.
+  action->SetSkipObservationDelay(
+      GetInProgressAction().ShouldSkipObservationDelay());
   action_sequence_.insert(action_sequence_.begin() + next_action_index_,
                           std::move(action));
 }
@@ -2215,6 +2237,12 @@ size_t ExecutionEngine::InProgressActionIndex() const {
 
 const ToolRequest& ExecutionEngine::GetInProgressAction() const {
   return *action_sequence_.at(InProgressActionIndex()).get();
+}
+
+ActorSurface* ExecutionEngine::GetSurfaceForValidation(
+    const ToolRequest& request) {
+  return task_->actor_keyed_service().GetSurfaceRegistry().Get(
+      request.GetActorSurfaceForValidation());
 }
 
 size_t ExecutionEngine::GetResultIndexForAction(size_t action_index) const {

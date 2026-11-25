@@ -332,9 +332,18 @@ void ContextualTasksExtensionHandler::HandleLensButtonClick() {
 
   base::RecordAction(base::UserMetricsAction(
       "ContextualTasks.Composebox.UserAction.LensButtonClicked"));
+  base::UmaHistogramBoolean(
+      "ContextualTasks.Composebox.UserAction.LensButtonClicked", true);
+
+  auto* user_data = GetOrCreateWebContentsUserData();
+  if (user_data) {
+    base::UmaHistogramEnumeration(
+        "ContextualTasks.Composebox.UserAction.LensButtonClicked.PageState",
+        user_data->GetPageState());
+  }
 
   if (auto* controller = GetLensSearchController()) {
-    if (auto* user_data = GetOrCreateWebContentsUserData()) {
+    if (user_data) {
       controller->SetThumbnailCreatedCallback(base::BindRepeating(
           &contextual_tasks::ContextualTasksWebContentsUserData::
               OnLensThumbnailCreated,
@@ -437,6 +446,10 @@ void ContextualTasksExtensionHandler::SetPopupSelection(
 void ContextualTasksExtensionHandler::OpenPopupSelection(
     uint32_t result_sequence_id,
     searchbox::mojom::OmniboxPopupSelectionPtr selection,
+    searchbox::mojom::ActionModifiersPtr modifiers) {}
+void ContextualTasksExtensionHandler::OpenPopupSelectionWithDisposition(
+    uint32_t result_sequence_id,
+    searchbox::mojom::OmniboxPopupSelectionPtr selection,
     ui::mojom::WindowOpenDisposition disposition) {}
 void ContextualTasksExtensionHandler::OnNavigationLikely(
     uint8_t line,
@@ -473,7 +486,8 @@ void ContextualTasksExtensionHandler::GetRecentTabs(
   }
   std::move(callback).Run(ContextualSearchboxHandler::GetRecentTabInfos(
       GetBrowserWindowInterface(), /*max_tab_suggestions=*/std::nullopt,
-      always_include_tab_ids));
+      always_include_tab_ids,
+      /*exclude_page_context_ineligible_tabs=*/true));
 }
 void ContextualTasksExtensionHandler::GetTabPreview(
     int32_t tab_id,

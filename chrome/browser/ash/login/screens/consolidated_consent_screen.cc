@@ -40,7 +40,6 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/login/login_display_host.h"
-#include "chrome/common/url_constants.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
 #include "chromeos/ash/components/consent_auditor/consent_auditor_provider.h"
 #include "chromeos/ash/components/install_attributes/install_attributes.h"
@@ -53,6 +52,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/session_manager/core/session.h"
 #include "components/session_manager/core/session_manager.h"
+#include "components/user_manager/user.h"
 #include "components/user_manager/user_manager.h"
 #include "crypto/obsolete/sha1.h"
 
@@ -92,7 +92,7 @@ static constexpr auto kTermsTypeToUrlAndSwitch =
           {ash::external_urls::kArcTosOnlineURLPath,
            switches::kArcTosHostForTests}},
          {ToS::PRIVACY_POLICY,
-          {chrome::kPrivacyPolicyOnlineURLPath,
+          {ash::external_urls::kPrivacyPolicyOnlineURLPath,
            switches::kPrivacyPolicyHostForTests}}});
 
 std::string GetTosHost(const std::string& application_locale, ToS terms_type) {
@@ -203,8 +203,11 @@ bool ConsolidatedConsentScreen::MaybeSkip(WizardContext& context) {
   }
 
   // Do not skip the screen, if the system location toggle can be configured by
-  // the active user. Returns false when the Privacy Hub Location is disabled.
-  if (ash::privacy_hub_util::IsCrosLocationOobeNegotiationNeeded()) {
+  // the user being onboarded. Returns false when the Privacy Hub Location is
+  // disabled.
+  CHECK(context.onboarding_user);
+  if (ash::privacy_hub_util::IsCrosLocationOobeNegotiationNeeded(
+          context.onboarding_user->GetAccountId())) {
     return false;
   }
 

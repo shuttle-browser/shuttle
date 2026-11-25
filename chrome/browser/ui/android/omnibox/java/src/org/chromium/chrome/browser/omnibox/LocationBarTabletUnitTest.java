@@ -852,29 +852,22 @@ public class LocationBarTabletUnitTest {
                 (GradientDrawable) background.findDrawableByLayerId(R.id.focused_popup_inner_bg);
 
         @ColorInt
-        int expectedIncognitoOuterColor =
-                OmniboxResourceProvider.getSuggestionsDropdownBackgroundColor(
-                        mActivity, BrandedColorScheme.INCOGNITO);
+        int expectedIncognitoOuterColor = mResourceProvider.getSuggestionsDropdownBackgroundColor();
         assertEquals(expectedIncognitoOuterColor, outerRect.getColor().getDefaultColor());
 
         @ColorInt
-        int expectedIncognitoInnerColor =
-                OmniboxResourceProvider.getStandardSuggestionBackgroundColor(
-                        mActivity, BrandedColorScheme.INCOGNITO);
+        int expectedIncognitoInnerColor = mResourceProvider.getStandardSuggestionBackgroundColor();
         assertEquals(expectedIncognitoInnerColor, innerRect.getColor().getDefaultColor());
 
         updateVisualsForState(BrandedColorScheme.APP_DEFAULT);
 
         @ColorInt
         int expectedAppDefaultOuterColor =
-                OmniboxResourceProvider.getSuggestionsDropdownBackgroundColor(
-                        mActivity, BrandedColorScheme.APP_DEFAULT);
+                mResourceProvider.getSuggestionsDropdownBackgroundColor();
         assertEquals(expectedAppDefaultOuterColor, outerRect.getColor().getDefaultColor());
 
         @ColorInt
-        int expectedAppDefaultInnerColor =
-                OmniboxResourceProvider.getStandardSuggestionBackgroundColor(
-                        mActivity, BrandedColorScheme.APP_DEFAULT);
+        int expectedAppDefaultInnerColor = mResourceProvider.getStandardSuggestionBackgroundColor();
         assertEquals(expectedAppDefaultInnerColor, innerRect.getColor().getDefaultColor());
     }
 

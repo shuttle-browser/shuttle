@@ -12,8 +12,10 @@
 #include "base/memory/raw_ptr.h"
 #include "base/strings/strcat.h"
 #include "base/time/time.h"
+#include "chrome/browser/ui/views/tabs/common/tab_strip_utils.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/compositor/layer.h"
 #include "ui/gfx/animation/animation.h"
 #include "ui/gfx/animation/animation_test_api.h"
 #include "ui/gfx/geometry/rect.h"
@@ -35,6 +37,10 @@ class MockAnimatingLayoutManagerDelegate
     ON_CALL(*this, ShouldAnimateLayout).WillByDefault(testing::Return(true));
   }
   MOCK_METHOD(bool, IsViewDragging, (const views::View&), (const, override));
+  MOCK_METHOD(bool,
+              ShouldAnimateOpacityForAddAndRemove,
+              (const views::View&),
+              (const, override));
   MOCK_METHOD(void, OnAnimationEnded, (), (override));
   MOCK_METHOD(bool, ShouldAnimateLayout, (), (override));
 };
@@ -1014,6 +1020,197 @@ TEST_P(TabCollectionAnimatingLayoutManagerTest,
   widget()->SetBounds(gfx::Rect(0, 0, 150, 100));
   widget()->LayoutRootViewIfNecessary();
   EXPECT_GT(test_layout->calculate_proposed_layout_count(), count_after_start);
+}
+
+// Layers are shared with other holders (e.g. tab dragging) through
+// AcquireViewLayer(). Finishing a layout animation releases only the layout
+// manager's reference, so the layer survives while another holder remains.
+TEST_P(TabCollectionAnimatingLayoutManagerTest,
+       AnimationEndKeepsLayerHeldByAnotherHolder) {
+  // Opt children into add/remove opacity animations so the layout manager
+  // layers them, as the production containers do.
+  ON_CALL(*layout_manager_delegate(), ShouldAnimateOpacityForAddAndRemove)
+      .WillByDefault(testing::Return(true));
+  widget()->SetBounds(gfx::Rect(0, 0, 100, 100));
+  widget()->LayoutRootViewIfNecessary();
+
+  const auto finish_animation = [&]() {
+    task_environment()->FastForwardBy(base::Seconds(1));
+    widget()->LayoutRootViewIfNecessary();
+    ASSERT_FALSE(layout_manager()->is_animating());
+  };
+
+  // Adding a child starts an opacity animation, which layers the child.
+  auto* const child1 =
+      host_view()->AddChildView(std::make_unique<views::View>());
+  ASSERT_NE(child1->layer(), nullptr);
+  host_view()->InvalidateLayout();
+  widget()->LayoutRootViewIfNecessary();
+
+  // Another holder takes a reference mid-animation.
+  AcquireViewLayer(child1);
+  finish_animation();
+  EXPECT_NE(child1->layer(), nullptr);
+  ReleaseViewLayer(child1);
+  EXPECT_EQ(child1->layer(), nullptr);
+
+  // A child that is already held by another holder when added keeps its layer
+  // after the add animation completes.
+  auto child2_owned = std::make_unique<views::View>();
+  AcquireViewLayer(child2_owned.get());
+  auto* const child2 = host_view()->AddChildView(std::move(child2_owned));
+  host_view()->InvalidateLayout();
+  widget()->LayoutRootViewIfNecessary();
+  finish_animation();
+  EXPECT_NE(child2->layer(), nullptr);
+  ReleaseViewLayer(child2);
+  EXPECT_EQ(child2->layer(), nullptr);
+
+  // Without another holder, the layer is released when the animation ends.
+  auto* const child3 =
+      host_view()->AddChildView(std::make_unique<views::View>());
+  host_view()->InvalidateLayout();
+  widget()->LayoutRootViewIfNecessary();
+  finish_animation();
+  EXPECT_EQ(child3->layer(), nullptr);
+}
+
+// Layout animations only drive the opacity of layers they acquired. A layer
+// held by another holder (e.g. a focus transition fade) keeps the opacity that
+// holder set, both across a non-animating retarget and while the layout manager
+// animates the child's bounds.
+TEST_P(TabCollectionAnimatingLayoutManagerTest,
+       DoesNotDriveOpacityOfLayerHeldByAnotherHolder) {
+  gfx::ScopedAnimationDurationScaleMode normal_duration_mode(
+      gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
+  widget()->SetBounds(gfx::Rect(0, 0, 100, 100));
+  auto* const child =
+      host_view()->AddChildView(std::make_unique<views::View>());
+  child->SetPreferredSize(gfx::Size(20, 20));
+  host_view()->InvalidateLayout();
+  widget()->LayoutRootViewIfNecessary();
+  task_environment()->FastForwardBy(base::Seconds(1));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_FALSE(layout_manager()->is_animating());
+  ASSERT_EQ(child->layer(), nullptr);
+
+  AcquireViewLayer(child);
+  child->layer()->SetOpacity(0.5f);
+
+  // Non-animating retarget (e.g. while a focus transition drives the layout):
+  // `RecalculateTarget()` snaps via `InterpolateLayout(1.0)` and must not snap
+  // the externally held layer back to opaque.
+  ON_CALL(*layout_manager_delegate(), ShouldAnimateLayout)
+      .WillByDefault(testing::Return(false));
+  child->SetPreferredSize(gfx::Size(40, 40));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_FALSE(layout_manager()->is_animating());
+  EXPECT_EQ(child->layer()->opacity(), 0.5f);
+  ON_CALL(*layout_manager_delegate(), ShouldAnimateLayout)
+      .WillByDefault(testing::Return(true));
+
+  // Animating: the child is a "moved" view for the duration of a bounds
+  // animation, which must not snap it to opaque either.
+  child->SetPreferredSize(gfx::Size(60, 60));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_TRUE(layout_manager()->is_animating());
+  EXPECT_EQ(child->layer()->opacity(), 0.5f);
+  task_environment()->FastForwardBy(base::Milliseconds(50));
+  widget()->LayoutRootViewIfNecessary();
+  EXPECT_EQ(child->layer()->opacity(), 0.5f);
+
+  // Negative control: once the layer is handed to the layout animation, it is
+  // treated as layout-animation-held and snapped to opaque.
+  TabCollectionAnimatingLayoutManager::HoldLayerWhileParentAnimates(child);
+  task_environment()->FastForwardBy(base::Milliseconds(50));
+  widget()->LayoutRootViewIfNecessary();
+  EXPECT_EQ(child->layer()->opacity(), 1.0f);
+
+  task_environment()->FastForwardBy(base::Seconds(1));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_FALSE(layout_manager()->is_animating());
+
+  ReleaseViewLayer(child);
+  EXPECT_EQ(child->layer(), nullptr);
+}
+
+// A holder releasing its reference while the parent is mid-animation (e.g. a
+// drag ending as the dropped view slides into place) can hand the layer to the
+// layout animation so it survives until that animation ends.
+TEST_P(TabCollectionAnimatingLayoutManagerTest,
+       HoldLayerWhileParentAnimatesKeepsLayerUntilAnimationEnds) {
+  gfx::ScopedAnimationDurationScaleMode normal_duration_mode(
+      gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
+
+  widget()->SetBounds(gfx::Rect(0, 0, 100, 100));
+  auto* const child =
+      host_view()->AddChildView(std::make_unique<views::View>());
+  child->SetPreferredSize(gfx::Size(20, 20));
+  host_view()->InvalidateLayout();
+  widget()->LayoutRootViewIfNecessary();
+  task_environment()->FastForwardBy(base::Seconds(1));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_FALSE(layout_manager()->is_animating());
+  ASSERT_EQ(child->layer(), nullptr);
+
+  // With no animation in flight, the hand-off is a no-op and releasing the
+  // only reference destroys the layer immediately.
+  AcquireViewLayer(child);
+  TabCollectionAnimatingLayoutManager::HoldLayerWhileParentAnimates(child);
+  ReleaseViewLayer(child);
+  EXPECT_EQ(child->layer(), nullptr);
+
+  // Start a bounds animation. The layout manager takes no layer reference for
+  // a resized child, so the holder's reference is the only one.
+  AcquireViewLayer(child);
+  child->SetPreferredSize(gfx::Size(60, 60));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_TRUE(layout_manager()->is_animating());
+
+  TabCollectionAnimatingLayoutManager::HoldLayerWhileParentAnimates(child);
+  ReleaseViewLayer(child);
+  EXPECT_NE(child->layer(), nullptr);
+
+  task_environment()->FastForwardBy(base::Seconds(1));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_FALSE(layout_manager()->is_animating());
+  EXPECT_EQ(child->layer(), nullptr);
+}
+
+// A child that is added and then removed before its add animation completes is
+// prepared for two animations, but the layout manager holds only one layer
+// reference for it.
+TEST_P(TabCollectionAnimatingLayoutManagerTest,
+       AddThenRemoveMidAnimationHoldsSingleLayerReference) {
+  ON_CALL(*layout_manager_delegate(), ShouldAnimateOpacityForAddAndRemove)
+      .WillByDefault(testing::Return(true));
+  gfx::ScopedAnimationDurationScaleMode normal_duration_mode(
+      gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
+
+  widget()->SetBounds(gfx::Rect(0, 0, 100, 100));
+  auto* const child =
+      host_view()->AddChildView(std::make_unique<views::View>());
+  host_view()->InvalidateLayout();
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_TRUE(layout_manager()->is_animating());
+  ASSERT_NE(child->layer(), nullptr);
+
+  layout_manager()->AnimateAndDestroyChildView(child);
+  ASSERT_NE(child->layer(), nullptr);
+
+  // Removing the child releases the layout manager's single reference, which
+  // must bring the count to zero and destroy the layer.
+  std::unique_ptr<views::View> removed = host_view()->RemoveChildViewT(child);
+  EXPECT_EQ(removed->layer(), nullptr);
+
+  // Recalculate the target layout now that the child is gone, as production
+  // callers do after reparenting, so no later layout pass applies a target
+  // that still references `removed`. Then let the in-flight animation finish
+  // before `removed` is destroyed.
+  host_view()->InvalidateLayout();
+  task_environment()->FastForwardBy(base::Seconds(1));
+  widget()->LayoutRootViewIfNecessary();
+  ASSERT_FALSE(layout_manager()->is_animating());
 }
 
 INSTANTIATE_TEST_SUITE_P(

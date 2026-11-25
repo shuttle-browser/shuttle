@@ -1977,10 +1977,6 @@ MainThreadSchedulerImpl::GetSchedulerHelperForTesting() {
   return &helper_;
 }
 
-IdleTimeEstimator* MainThreadSchedulerImpl::GetIdleTimeEstimatorForTesting() {
-  return &main_thread_only().idle_time_estimator;
-}
-
 base::SequencedTaskRunner* MainThreadSchedulerImpl::GetVirtualTimeTaskRunner() {
   return virtual_time_control_task_queue_->GetTaskRunnerWithDefaultTaskType()
       .get();
@@ -2997,19 +2993,6 @@ const char* MainThreadSchedulerImpl::RAILModeToString(RAILMode rail_mode) {
       return "load";
   }
   NOTREACHED();
-}
-
-// static
-const char* MainThreadSchedulerImpl::TimeDomainTypeToString(
-    TimeDomainType domain_type) {
-  switch (domain_type) {
-    case TimeDomainType::kReal:
-      return "real";
-    case TimeDomainType::kVirtual:
-      return "virtual";
-    default:
-      NOTREACHED();
-  }
 }
 
 Vector<base::OnceClosure>&

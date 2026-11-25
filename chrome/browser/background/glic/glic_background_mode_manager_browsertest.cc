@@ -9,7 +9,11 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/glic_profile_manager.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_provider.h"
+#include "chrome/browser/glic/public/glic_provider_latch.h"
 #include "chrome/browser/glic/test_support/glic_browser_test.h"
+#include "chrome/browser/glic/test_support/scoped_glic_provider_override.h"
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/profile_manager.h"
@@ -19,6 +23,17 @@
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/test/browser_test.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/wm/window_pin_util.h"
+#include "base/test/metrics/histogram_tester.h"
+#include "chrome/browser/glic/common/local_hotkey_manager.h"
+#include "chrome/browser/platform_util.h"
+#include "chrome/common/chrome_switches.h"
+#include "ui/aura/window.h"
+#include "ui/base/accelerators/command.h"
+#include "ui/views/widget/widget.h"
+#endif
 
 namespace glic {
 
@@ -110,4 +125,94 @@ IN_PROC_BROWSER_TEST_F(GlicBackgroundModeManagerBrowserTest,
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 
+// Latches every profile to Gemini Enterprise, which doesn't support the OS
+// launcher or the global hotkey.
+class GlicBackgroundModeManagerGeminiEnterpriseBrowserTest
+    : public GlicBackgroundModeManagerBrowserTest {
+ private:
+  ScopedGlicProviderOverride provider_override_{
+      GlicProvider::kGeminiEnterprise};
+};
+
+IN_PROC_BROWSER_TEST_F(GlicBackgroundModeManagerGeminiEnterpriseBrowserTest,
+                       DoesNotEnterBackgroundMode) {
+  auto* keep_alive_registry = KeepAliveRegistry::GetInstance();
+  auto* profile_manager = g_browser_process->profile_manager();
+  Profile* profile = GetProfile();
+  ASSERT_EQ(GlicProviderLatch::GetProvider(*profile),
+            GlicProvider::kGeminiEnterprise);
+  ASSERT_TRUE(GlicEnabling::IsEnabledAndConsentForProfile(profile));
+
+  // Neither the launcher pref nor the global hotkey scope enables the OS
+  // launcher or the global hotkey.
+  g_browser_process->local_state()->SetBoolean(
+      prefs::kGlicHotkeyGlobalScopeEnabled, true);
+  g_browser_process->local_state()->SetBoolean(prefs::kGlicLauncherEnabled,
+                                               true);
+
+  EXPECT_FALSE(
+      keep_alive_registry->IsOriginRegistered(KeepAliveOrigin::GLIC_LAUNCHER));
+  EXPECT_FALSE(profile_manager->HasKeepAliveForTesting(
+      profile, ProfileKeepAliveOrigin::kGlicView));
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+class GlicBackgroundModeManagerLockedFullscreenBrowserTest
+    : public GlicBackgroundModeManagerBrowserTest {
+ public:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    GlicBackgroundModeManagerBrowserTest::SetUpCommandLine(command_line);
+    command_line->AppendSwitch(switches::kGlicDev);
+  }
+
+  void TearDownOnMainThread() override {
+    g_browser_process->local_state()->SetBoolean(
+        prefs::kGlicHotkeyGlobalScopeEnabled, false);
+    g_browser_process->local_state()->SetBoolean(prefs::kGlicLauncherEnabled,
+                                                 false);
+    GlicBackgroundModeManagerBrowserTest::TearDownOnMainThread();
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(GlicBackgroundModeManagerLockedFullscreenBrowserTest,
+                       HandleHotkeyIgnoredWhenLockedFullscreen) {
+  base::HistogramTester histogram_tester;
+
+  g_browser_process->local_state()->SetBoolean(
+      prefs::kGlicHotkeyGlobalScopeEnabled, true);
+  g_browser_process->local_state()->SetBoolean(prefs::kGlicLauncherEnabled,
+                                               true);
+
+  aura::Window* browser_window = GetBrowser()->GetWindow()->GetNativeWindow();
+  views::Widget* browser_widget =
+      views::Widget::GetWidgetForNativeWindow(browser_window);
+  ASSERT_TRUE(browser_widget);
+
+  ui::Accelerator default_hotkey = LocalHotkeyManager::GetDefaultAccelerator(
+      LocalHotkeyManager::Command::kPanelToggle);
+
+  // Enter trusted-pinned locked fullscreen (what lockWindowFullscreenPrivate /
+  // Boca-OnTask do).
+  ash::PinWindow(browser_window, /*trusted=*/true);
+  ASSERT_TRUE(platform_util::IsBrowserLockedFullscreen(GetBrowser()));
+  ASSERT_FALSE(coordinator().IsAnyPanelShowing());
+
+  GlicBackgroundModeManager* const manager =
+      g_browser_process->GetFeatures()->glic_background_mode_manager();
+  ASSERT_TRUE(manager);
+
+  // Trigger global hotkey while locked fullscreen.
+  manager->HandleHotkey(default_hotkey);
+  WaitForDuration(base::Milliseconds(300));
+
+  EXPECT_FALSE(coordinator().IsAnyPanelShowing());
+  EXPECT_TRUE(platform_util::IsBrowserLockedFullscreen(GetBrowser()));
+  EXPECT_TRUE(browser_widget->IsActive());
+  histogram_tester.ExpectTotalCount("Glic.Usage.Hotkey", 0);
+
+  // Unpin the window for clean teardown.
+  ash::UnpinWindow(browser_window);
+  EXPECT_FALSE(platform_util::IsBrowserLockedFullscreen(GetBrowser()));
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }  // namespace glic

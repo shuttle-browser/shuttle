@@ -875,11 +875,53 @@ IN_PROC_BROWSER_TEST_P(PolicyUITest, ReportButtonOTRProfile) {
       content::EvalJs(otr_contents, kJavaScript).ExtractString();
   EXPECT_EQ("none", visibility);
 
-  // Verify that calling uploadReport does not crash and completes safely.
-  EXPECT_TRUE(content::ExecJs(otr_contents,
-                              "chrome.send('uploadReport', ['test_id']);"));
+  // Verify that uploading a report does not crash and completes, i.e. the
+  // upload button is re-enabled, even though no report scheduler is available.
+  // The (hidden) button is clicked directly so that the request goes through
+  // the same transport as a user-initiated upload.
+  static constexpr char kUploadReport[] = R"JS(
+    new Promise((resolve, reject) => {
+      const button = document.querySelector('policy-app')
+          .shadowRoot.querySelector('#upload-report');
+      if (!button) {
+        reject(new Error('Upload report button not found'));
+        return;
+      }
+      let sawDisabled = false;
+      const observer = new MutationObserver(() => {
+        if (button.disabled) {
+          sawDisabled = true;
+        } else if (sawDisabled) {
+          observer.disconnect();
+          resolve();
+        }
+      });
+      observer.observe(button, {attributes: true, attributeFilter: ['disabled']});
+      button.click();
+    });
+  )JS";
+  EXPECT_TRUE(content::ExecJs(otr_contents, kUploadReport));
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_ANDROID)
+
+IN_PROC_BROWSER_TEST_P(PolicyUITest, ReloadPolicies) {
+  ASSERT_TRUE(
+      content::NavigateToURL(web_contents(), GURL(chrome::kChromeUIPolicyURL)));
+
+  // Clicking "Reload policies" must trigger a user-requested policy refresh.
+  // Serve the same policies again so that the refresh completes and the
+  // updated policies are sent back to the page.
+  EXPECT_CALL(provider_,
+              RefreshPolicies(policy::PolicyFetchReason::kUserRequest))
+      .Times(testing::AtLeast(1))
+      .WillRepeatedly(testing::Invoke(
+          &provider_,
+          &policy::MockConfigurationPolicyProvider::RefreshWithSamePolicies));
+
+  // `reloadPolicies()` resolves once the reload button has been re-enabled,
+  // which only happens after the page has received the refreshed policies.
+  EXPECT_TRUE(content::ExecJs(web_contents(), "reloadPolicies()"));
+}
 
 IN_PROC_BROWSER_TEST_P(PolicyUITest, StatusUpdated) {
   static constexpr char kInitialUsername[] = "user@example.com";

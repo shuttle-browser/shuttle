@@ -5,6 +5,7 @@
 #include "components/one_time_tokens/core/browser/gmail_otp_retriever.h"
 
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "base/containers/adapters.h"
@@ -17,8 +18,13 @@
 #include "components/affiliations/core/browser/domain_matching/domain_relation_checker.h"
 #include "components/affiliations/core/browser/fake_affiliation_service.h"
 #include "components/one_time_tokens/core/browser/fake_gmail_otp_backend.h"
+#include "components/one_time_tokens/core/browser/gmail_otp_flow.h"
 #include "components/one_time_tokens/core/browser/one_time_token.h"
 #include "components/one_time_tokens/core/browser/one_time_token_retrieval_error.h"
+#include "components/ukm/test_ukm_recorder.h"
+#include "services/metrics/public/cpp/ukm_builders.h"
+#include "services/metrics/public/cpp/ukm_recorder.h"
+#include "services/metrics/public/cpp/ukm_source_id.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "url/gurl.h"
@@ -50,9 +56,26 @@ class GmailOtpRetrieverTest : public testing::Test {
         affiliation_service_);
   }
   base::test::TaskEnvironment& task_environment() { return task_environment_; }
+  ukm::TestAutoSetUkmRecorder& test_ukm_recorder() {
+    return test_ukm_recorder_;
+  }
+
+  // Starts a retriever on the fixture's backend and affiliation service. UKM
+  // is only recorded when `ukm_source_id` is valid.
+  std::unique_ptr<GmailOtpRetriever> CreateAndStartRetriever(
+      const url::Origin& otp_frame_origin,
+      bool allow_psl_matching,
+      GmailOtpRetriever::ResultCallback callback,
+      ukm::SourceId ukm_source_id = ukm::kInvalidSourceId,
+      GmailOtpFlow flow = GmailOtpFlow::kAutofill) {
+    return GmailOtpRetriever::CreateAndStart(
+        gmail_otp_backend(), domain_relation_checker(), otp_frame_origin, flow,
+        ukm_source_id, allow_psl_matching, std::move(callback));
+  }
 
  private:
   base::test::TaskEnvironment task_environment_;
+  ukm::TestAutoSetUkmRecorder test_ukm_recorder_;
   affiliations::FakeAffiliationService affiliation_service_;
   FakeGmailOtpBackend gmail_otp_backend_;
 };
@@ -67,30 +90,29 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_SuccessFromCache) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
   EXPECT_EQ(future.Get()->source, GmailOtpRetriever::Source::kCache);
 
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.Cached",
-      0);
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Cached", 0);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Received",
       0);
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kExact, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
+  // Nothing is recorded to UKM without a valid source.
+  EXPECT_TRUE(test_ukm_recorder()
+                  .GetEntriesByName(ukm::builders::OneTimeTokens::kEntryName)
+                  .empty());
 }
 
 TEST_F(GmailOtpRetrieverTest, RetrieveOtp_SuccessFromSubscription) {
@@ -100,10 +122,9 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_SuccessFromSubscription) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   gmail_otp_backend().ProcessCallbacks(
       OneTimeToken(OneTimeTokenType::kGmail, kOtp, base::TimeTicks::Now(),
@@ -114,20 +135,47 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_SuccessFromSubscription) {
   EXPECT_EQ(future.Get()->source, GmailOtpRetriever::Source::kReceived);
 
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.Cached",
-      0);
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Cached", 0);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Received",
       0);
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       GmailOtpSenderDomainMatchType::kExact, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
+}
+
+// The actor flow records to the GmailActor histograms instead of the
+// GmailAutofill ones.
+TEST_F(GmailOtpRetrieverTest, RetrieveOtp_ActorFlow_RecordsActorHistograms) {
+  base::HistogramTester histogram_tester;
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "123456", base::TimeTicks::Now(),
+                   "sender@nomatch.com"));
+
+  base::test::TestFuture<
+      base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
+      future;
+  auto retriever = CreateAndStartRetriever(
+      url::Origin::Create(GURL("https://example.com")),
+      /*allow_psl_matching=*/false, future.GetCallback(), ukm::kInvalidSourceId,
+      GmailOtpFlow::kActor);
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "654321", base::TimeTicks::Now(),
+                   "sender@example.com"));
+
+  ASSERT_TRUE(future.Get().has_value());
+  histogram_tester.ExpectUniqueSample(
+      "OneTimeTokens.GmailActor.SenderDomainMatchRejectionReason.Cached",
+      GmailOtpSenderDomainMatchType::kNoMatch, 1);
+  histogram_tester.ExpectUniqueSample(
+      "OneTimeTokens.GmailActor.SenderDomainMatchAcceptedMatchType.Received",
+      GmailOtpSenderDomainMatchType::kExact, 1);
+  EXPECT_TRUE(
+      histogram_tester.GetTotalCountsForPrefix("OneTimeTokens.GmailAutofill.")
+          .empty());
 }
 
 TEST_F(GmailOtpRetrieverTest, RetrieveOtp_Superseded) {
@@ -138,19 +186,17 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_Superseded) {
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future2;
 
-  auto retriever1 = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever1 = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future1.GetCallback());
+      /*allow_psl_matching=*/false, future1.GetCallback());
 
   // Destroying retriever1 cancels the first request.
   retriever1.reset();
   EXPECT_FALSE(future1.IsReady());
 
-  auto retriever2 = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever2 = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future2.GetCallback());
+      /*allow_psl_matching=*/false, future2.GetCallback());
 
   gmail_otp_backend().ProcessCallbacks(
       OneTimeToken(OneTimeTokenType::kGmail, "123456", base::TimeTicks::Now(),
@@ -165,10 +211,9 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_Timeout) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
   task_environment().FastForwardBy(base::Minutes(1) + base::Seconds(1));
   ASSERT_FALSE(future.Get().has_value());
   EXPECT_EQ(future.Get().error(),
@@ -186,26 +231,23 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_CachedToken_WwwExactMatch) {
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
   // Frame origin has www., sender domain does not.
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://www.example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kFrameIsWwwPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
 TEST_F(GmailOtpRetrieverTest,
-       RetrieveOtp_CachedToken_WwwSender_AllowedForLoginFlow) {
+       RetrieveOtp_CachedToken_WwwSender_AllowedWhenPslMatchingEnabled) {
   base::HistogramTester histogram_tester;
   const std::string kOtp = "123456";
   gmail_otp_backend().ProcessCallbacks(
@@ -216,27 +258,25 @@ TEST_F(GmailOtpRetrieverTest,
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
   // Frame origin does not have www., sender domain does. This is a PSL match,
-  // allowed for login flow.
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  // allowed when PSL matching is enabled.
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/true, future.GetCallback());
+      /*allow_psl_matching=*/true, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
-TEST_F(GmailOtpRetrieverTest,
-       RetrieveOtp_CachedToken_WwwSenderWwwFrame_AllowedForNonLoginFlow) {
+TEST_F(
+    GmailOtpRetrieverTest,
+    RetrieveOtp_CachedToken_WwwSenderWwwFrame_AllowedWhenPslMatchingDisabled) {
   base::HistogramTester histogram_tester;
   const std::string kOtp = "123456";
   gmail_otp_backend().ProcessCallbacks(
@@ -247,28 +287,25 @@ TEST_F(GmailOtpRetrieverTest,
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
   // Both frame origin and sender domain have www. They match as is and are
-  // allowed for non-login flows.
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  // allowed when PSL matching is disabled.
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://www.example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kExact, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
 TEST_F(
     GmailOtpRetrieverTest,
-    RetrieveOtp_CachedToken_WwwSubdomainSenderSubdomain_AllowedForNonLoginFlow) {
+    RetrieveOtp_CachedToken_WwwSubdomainSenderSubdomain_AllowedWhenPslMatchingDisabled) {
   base::HistogramTester histogram_tester;
   const std::string kOtp = "123456";
   gmail_otp_backend().ProcessCallbacks(
@@ -280,37 +317,33 @@ TEST_F(
       future;
   // Frame origin has www.sub.example.com, sender has sub.example.com.
   // Match as is is PSL, but stripping www yields sub.example.com (same origin).
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://www.sub.example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kFrameIsWwwPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
 TEST_F(
     GmailOtpRetrieverTest,
-    RetrieveOtp_SubscriptionToken_WwwFrameSenderRoot_AllowedForNonLoginFlow) {
+    RetrieveOtp_SubscriptionToken_WwwFrameSenderRoot_AllowedWhenPslMatchingDisabled) {
   base::HistogramTester histogram_tester;
   const std::string kOtp = "654321";
 
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://www.example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_FALSE(future.IsReady());
 
@@ -323,12 +356,10 @@ TEST_F(
   EXPECT_EQ(future.Get()->source, GmailOtpRetriever::Source::kReceived);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       GmailOtpSenderDomainMatchType::kFrameIsWwwPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
 }
 
@@ -346,26 +377,23 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_CachedToken_AffiliatedMatch) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kAffiliated, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
 TEST_F(GmailOtpRetrieverTest,
-       RetrieveOtp_CachedToken_PslMatch_AllowedForLoginFlow) {
+       RetrieveOtp_CachedToken_PslMatch_AllowedWhenPslMatchingEnabled) {
   base::HistogramTester histogram_tester;
   const std::string kOtp = "555444";
   gmail_otp_backend().ProcessCallbacks(
@@ -375,36 +403,32 @@ TEST_F(GmailOtpRetrieverTest,
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/true, future.GetCallback());
+      /*allow_psl_matching=*/true, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kOtp);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       GmailOtpSenderDomainMatchType::kPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
 TEST_F(GmailOtpRetrieverTest,
-       RetrieveOtp_SubscriptionToken_PslMatch_AllowedForLoginFlow) {
+       RetrieveOtp_SubscriptionToken_PslMatch_AllowedWhenPslMatchingEnabled) {
   base::HistogramTester histogram_tester;
   const std::string kPslOtp = "654321";
 
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/true, future.GetCallback());
+      /*allow_psl_matching=*/true, future.GetCallback());
 
   ASSERT_FALSE(future.IsReady());
 
@@ -418,17 +442,15 @@ TEST_F(GmailOtpRetrieverTest,
   EXPECT_EQ(future.Get()->source, GmailOtpRetriever::Source::kReceived);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       GmailOtpSenderDomainMatchType::kPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
 }
 
 TEST_F(GmailOtpRetrieverTest,
-       RetrieveOtp_CachedToken_PslMatch_RejectedForNonLoginFlow) {
+       RetrieveOtp_CachedToken_PslMatch_RejectedWhenPslMatchingDisabled) {
   base::HistogramTester histogram_tester;
   affiliation_service().AddAffiliationGroup(AffiliatedFacets{
       {Facet{FacetURI::FromCanonicalSpec("https://example.com")}}});
@@ -440,10 +462,9 @@ TEST_F(GmailOtpRetrieverTest,
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   EXPECT_FALSE(future.IsReady());
 
@@ -462,19 +483,16 @@ TEST_F(GmailOtpRetrieverTest,
   EXPECT_EQ(future.Get()->token.value(), "111222");
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Cached",
       GmailOtpSenderDomainMatchType::kPsl, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Received",
       0);
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       GmailOtpSenderDomainMatchType::kExact, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
 }
 
@@ -499,10 +517,9 @@ TEST_F(GmailOtpRetrieverTest,
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   ASSERT_TRUE(future.Get().has_value());
   EXPECT_EQ(future.Get()->token.value(), kRecentGmailOtp);
@@ -514,10 +531,9 @@ TEST_F(GmailOtpRetrieverTest,
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   gmail_otp_backend().ProcessCallbacks(
       OneTimeToken(OneTimeTokenType::kGmail, "111111", base::TimeTicks::Now(),
@@ -529,7 +545,7 @@ TEST_F(GmailOtpRetrieverTest,
 
   ASSERT_FALSE(future.Get().has_value());
   EXPECT_EQ(future.Get().error(),
-            OneTimeTokenRetrievalError::kSubscriptionExpired);
+            OneTimeTokenRetrievalError::kGmailOtpSenderDomainMismatch);
 }
 
 TEST_F(
@@ -549,10 +565,9 @@ TEST_F(
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   task_environment().FastForwardBy(base::Minutes(1) + base::Seconds(1));
 
@@ -574,10 +589,9 @@ TEST_F(GmailOtpRetrieverTest,
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   gmail_otp_backend().ProcessCallbacks(
       OneTimeToken(OneTimeTokenType::kGmail, "111111", base::TimeTicks::Now(),
@@ -596,9 +610,8 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_OpaqueOrigin_ReturnsError) {
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(), url::Origin(),
-      /*is_login_flow=*/false, future.GetCallback());
+  auto retriever = CreateAndStartRetriever(
+      url::Origin(), /*allow_psl_matching=*/false, future.GetCallback());
 
   EXPECT_NE(retriever, nullptr);
   ASSERT_FALSE(future.Get().has_value());
@@ -609,10 +622,9 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_SubscriptionError_ReturnsError) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   gmail_otp_backend().ProcessCallbacks(
       base::unexpected(OneTimeTokenRetrievalError::kGmailOtpBackendAuthError));
@@ -639,10 +651,9 @@ TEST_F(
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Simulate subscription returning an error.
   gmail_otp_backend().ProcessCallbacks(
@@ -666,10 +677,9 @@ TEST_F(
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Simulate subscription returning an error.
   gmail_otp_backend().ProcessCallbacks(
@@ -690,29 +700,28 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_CachedToken_NoMatch_LogsRejection) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Fast forward to trigger timeout. This resolves the future.
   task_environment().FastForwardBy(base::Minutes(1) + base::Seconds(1));
   ASSERT_FALSE(future.Get().has_value());
+  // Rejected cached tokens don't count as a sender-domain mismatch.
+  EXPECT_EQ(future.Get().error(),
+            OneTimeTokenRetrievalError::kSubscriptionExpired);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Cached",
       GmailOtpSenderDomainMatchType::kNoMatch, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Received",
       0);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
@@ -733,25 +742,22 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_CachedToken_Grouped_LogsRejection) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Fast forward to trigger timeout. This resolves the future.
   task_environment().FastForwardBy(base::Minutes(1) + base::Seconds(1));
   ASSERT_FALSE(future.Get().has_value());
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Cached",
       GmailOtpSenderDomainMatchType::kGrouped, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
 }
 
@@ -761,10 +767,9 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_ReceivedToken_RejectionsLogged) {
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Notify with a non-matching token.
   gmail_otp_backend().ProcessCallbacks(
@@ -774,22 +779,121 @@ TEST_F(GmailOtpRetrieverTest, RetrieveOtp_ReceivedToken_RejectionsLogged) {
   // Fast forward to trigger timeout. This resolves the future.
   task_environment().FastForwardBy(base::Minutes(1) + base::Seconds(1));
   ASSERT_FALSE(future.Get().has_value());
+  EXPECT_EQ(future.Get().error(),
+            OneTimeTokenRetrievalError::kGmailOtpSenderDomainMismatch);
 
   histogram_tester.ExpectUniqueSample(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason."
-      "Received",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Received",
       GmailOtpSenderDomainMatchType::kNoMatch, 1);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchRejectionReason.Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchRejectionReason.Cached", 0);
+  histogram_tester.ExpectTotalCount(
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Cached",
       0);
   histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Cached",
+      "OneTimeTokens.GmailAutofill.SenderDomainMatchAcceptedMatchType.Received",
       0);
-  histogram_tester.ExpectTotalCount(
-      "OneTimeTokens.GmailOtpRetriever.SenderDomainMatchAcceptedMatchType."
-      "Received",
-      0);
+}
+
+// Tests that a cached token rejected by the sender domain check and a received
+// token accepted by it are recorded to the matching UKM metrics against the
+// given source.
+TEST_F(GmailOtpRetrieverTest,
+       RetrieveOtp_RecordsCachedRejectionAndReceivedAcceptanceUkm) {
+  using UkmEntry = ukm::builders::OneTimeTokens;
+  const ukm::SourceId source_id = ukm::UkmRecorder::GetNewSourceID();
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "111111", base::TimeTicks::Now(),
+                   "sender@nomatch.com"));
+
+  base::test::TestFuture<
+      base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
+      future;
+  auto retriever = CreateAndStartRetriever(
+      url::Origin::Create(GURL("https://example.com")),
+      /*allow_psl_matching=*/false, future.GetCallback(), source_id);
+  task_environment().RunUntilIdle();
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "222222", base::TimeTicks::Now(),
+                   "sender@example.com"));
+  ASSERT_TRUE(future.Get().has_value());
+
+  auto entries = test_ukm_recorder().GetEntriesByName(UkmEntry::kEntryName);
+  ASSERT_EQ(entries.size(), 2u);
+  EXPECT_EQ(entries[0]->source_id, source_id);
+  EXPECT_EQ(entries[0]->metrics.size(), 1u);
+  test_ukm_recorder().ExpectEntryMetric(
+      entries[0], UkmEntry::kGmail_SenderDomainMatchRejectionReason_CachedName,
+      static_cast<int64_t>(GmailOtpSenderDomainMatchType::kNoMatch));
+  EXPECT_EQ(entries[1]->source_id, source_id);
+  EXPECT_EQ(entries[1]->metrics.size(), 1u);
+  test_ukm_recorder().ExpectEntryMetric(
+      entries[1],
+      UkmEntry::kGmail_SenderDomainMatchAcceptedMatchType_ReceivedName,
+      static_cast<int64_t>(GmailOtpSenderDomainMatchType::kExact));
+}
+
+// Tests that a received token rejected by the sender domain check and a cached
+// token accepted by it are recorded to the matching UKM metrics.
+TEST_F(GmailOtpRetrieverTest,
+       RetrieveOtp_RecordsReceivedRejectionAndCachedAcceptanceUkm) {
+  using UkmEntry = ukm::builders::OneTimeTokens;
+  const ukm::SourceId source_id = ukm::UkmRecorder::GetNewSourceID();
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "111111", base::TimeTicks::Now(),
+                   "sender@example.com"));
+  gmail_otp_backend().SetHasPendingRequests(true);
+
+  base::test::TestFuture<
+      base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
+      future;
+  auto retriever = CreateAndStartRetriever(
+      url::Origin::Create(GURL("https://example.com")),
+      /*allow_psl_matching=*/false, future.GetCallback(), source_id);
+  task_environment().RunUntilIdle();
+  gmail_otp_backend().SetHasPendingRequests(false);
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "222222", base::TimeTicks::Now(),
+                   "sender@nomatch.com"));
+  ASSERT_TRUE(future.Get().has_value());
+
+  auto entries = test_ukm_recorder().GetEntriesByName(UkmEntry::kEntryName);
+  ASSERT_EQ(entries.size(), 2u);
+  EXPECT_EQ(entries[0]->source_id, source_id);
+  EXPECT_EQ(entries[0]->metrics.size(), 1u);
+  test_ukm_recorder().ExpectEntryMetric(
+      entries[0],
+      UkmEntry::kGmail_SenderDomainMatchAcceptedMatchType_CachedName,
+      static_cast<int64_t>(GmailOtpSenderDomainMatchType::kExact));
+  EXPECT_EQ(entries[1]->source_id, source_id);
+  EXPECT_EQ(entries[1]->metrics.size(), 1u);
+  test_ukm_recorder().ExpectEntryMetric(
+      entries[1],
+      UkmEntry::kGmail_SenderDomainMatchRejectionReason_ReceivedName,
+      static_cast<int64_t>(GmailOtpSenderDomainMatchType::kNoMatch));
+}
+
+TEST_F(GmailOtpRetrieverTest,
+       RetrieveOtp_ReceivedTokenRejected_BackendErrorTakesPriority) {
+  base::test::TestFuture<
+      base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
+      future;
+  auto retriever = CreateAndStartRetriever(
+      url::Origin::Create(GURL("https://example.com")),
+      /*allow_psl_matching=*/false, future.GetCallback());
+
+  gmail_otp_backend().ProcessCallbacks(
+      OneTimeToken(OneTimeTokenType::kGmail, "111111", base::TimeTicks::Now(),
+                   "sender@nomatch.com"));
+  task_environment().RunUntilIdle();
+  ASSERT_FALSE(future.IsReady());
+
+  gmail_otp_backend().ProcessCallbacks(
+      base::unexpected(OneTimeTokenRetrievalError::kGmailOtpBackendAuthError));
+
+  ASSERT_FALSE(future.Get().has_value());
+  EXPECT_EQ(future.Get().error(),
+            OneTimeTokenRetrievalError::kGmailOtpBackendAuthError);
 }
 
 TEST_F(
@@ -808,10 +912,9 @@ TEST_F(
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Cached match is found, but retriever should wait because backend has
   // pending requests.
@@ -843,10 +946,9 @@ TEST_F(
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   EXPECT_FALSE(future.IsReady());
 
@@ -874,10 +976,9 @@ TEST_F(
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   EXPECT_FALSE(future.IsReady());
 
@@ -906,10 +1007,9 @@ TEST_F(
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   EXPECT_FALSE(future.IsReady());
 
@@ -934,10 +1034,9 @@ TEST_F(GmailOtpRetrieverTest,
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Notify with first (older email) matching token while still having pending
   // requests.
@@ -972,10 +1071,9 @@ TEST_F(
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Token with newer email timestamp arrived first (with older arrival ticks).
   gmail_otp_backend().ProcessCallbacks(OneTimeToken(
@@ -1002,10 +1100,9 @@ TEST_F(GmailOtpRetrieverTest,
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   EXPECT_FALSE(future.IsReady());
 
@@ -1033,10 +1130,9 @@ TEST_F(
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Token arrives before timeout.
   gmail_otp_backend().ProcessCallbacks(
@@ -1056,18 +1152,18 @@ TEST_F(
   EXPECT_EQ(future.Get()->source, GmailOtpRetriever::Source::kReceived);
 }
 
-TEST_F(GmailOtpRetrieverTest,
-       RetrieveOtp_TimeoutWhileCheckPending_NotAMatch_ResolvesTimeoutOnError) {
+TEST_F(
+    GmailOtpRetrieverTest,
+    RetrieveOtp_TimeoutWhileCheckPending_NotAMatch_ResolvesGmailOtpSenderDomainMismatch) {
   gmail_otp_backend().SetHasPendingRequests(true);
 
   base::test::TestFuture<
       base::expected<GmailOtpRetriever::Result, OneTimeTokenRetrievalError>>
       future;
 
-  auto retriever = GmailOtpRetriever::CreateAndStart(
-      gmail_otp_backend(), domain_relation_checker(),
+  auto retriever = CreateAndStartRetriever(
       url::Origin::Create(GURL("https://example.com")),
-      /*is_login_flow=*/false, future.GetCallback());
+      /*allow_psl_matching=*/false, future.GetCallback());
 
   // Token arrives before timeout with non-matching sender.
   gmail_otp_backend().ProcessCallbacks(
@@ -1079,12 +1175,12 @@ TEST_F(GmailOtpRetrieverTest,
   task_environment().FastForwardBy(base::Minutes(1) + base::Seconds(1));
 
   // Domain check finishes and does not match. Because subscription timed out,
-  // it should complete with timeout error without waiting on pending backend
-  // requests.
+  // it should complete with a sender-domain mismatch error without waiting on
+  // pending backend requests.
   ASSERT_TRUE(future.IsReady());
   ASSERT_FALSE(future.Get().has_value());
   EXPECT_EQ(future.Get().error(),
-            OneTimeTokenRetrievalError::kSubscriptionExpired);
+            OneTimeTokenRetrievalError::kGmailOtpSenderDomainMismatch);
 }
 
 }  // namespace

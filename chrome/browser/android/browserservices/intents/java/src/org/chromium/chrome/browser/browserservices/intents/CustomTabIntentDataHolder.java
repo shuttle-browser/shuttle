@@ -7,17 +7,23 @@ package org.chromium.chrome.browser.browserservices.intents;
 import android.app.PendingIntent;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.Network;
 import android.os.Bundle;
 import android.os.Parcel;
 import android.os.Parcelable;
 import android.widget.RemoteViews;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.Px;
+import androidx.browser.auth.AuthTabColorSchemeParams;
+import androidx.browser.customtabs.CustomTabColorSchemeParams;
+import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsIntent.ActivitySideSheetDecorationType;
 import androidx.browser.customtabs.CustomTabsIntent.ActivitySideSheetRoundedCornersPosition;
 import androidx.browser.customtabs.CustomTabsIntent.OpenInBrowserState;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode;
+import androidx.core.os.ParcelCompat;
 
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
@@ -62,12 +68,12 @@ public class CustomTabIntentDataHolder implements Parcelable {
     public final boolean mIsCloseButtonEnabled;
     // Stored as a Bitmap rather than a Drawable because Drawable is not Parcelable.
     public final @Nullable Bitmap mCloseButtonIcon;
-    public final @Nullable RemoteViews mRemoteViews;
+    public @Nullable RemoteViews mRemoteViews;
     public final @ActivitySideSheetDecorationType int mSideSheetDecorationType;
     public final @ActivitySideSheetRoundedCornersPosition int mSideSheetRoundedCornersPosition;
-    public final int @Nullable [] mClickableViewIds;
-    public final @Nullable PendingIntent mRemoteViewsPendingIntent;
-    public final @Nullable PendingIntent mSecondaryToolbarSwipeUpPendingIntent;
+    public int @Nullable [] mClickableViewIds;
+    public @Nullable PendingIntent mRemoteViewsPendingIntent;
+    public @Nullable PendingIntent mSecondaryToolbarSwipeUpPendingIntent;
     public final @OpenInBrowserState int mOpenInBrowserState;
     public final @Nullable String mTranslateLanguage;
     public final @Nullable String mAutoTranslateLanguage;
@@ -76,11 +82,17 @@ public class CustomTabIntentDataHolder implements Parcelable {
     public final boolean mIsPartialCustomTabFixedHeight;
     public final boolean mContentScrollMayResizeTab;
     public final boolean mInteractWithBackground;
-    public final boolean mCctTabSwitcherEnabledForChromeExperiment;
-    public final boolean mCctTabSwitcherEnabledForEmbedderExperiment;
+    public final boolean mTabbedCctAllowedByEmbedder;
+    public final boolean mTabbedCctEnabledByEmbedder;
     public final @Nullable String mAuthRedirectScheme;
     public final @Nullable String mAuthRedirectHost;
     public final @Nullable String mAuthRedirectPath;
+    public final CustomTabColorSchemeParams mLightColorSchemeParams;
+    public final CustomTabColorSchemeParams mDarkColorSchemeParams;
+    public final AuthTabColorSchemeParams mLightAuthTabColorSchemeParams;
+    public final AuthTabColorSchemeParams mDarkAuthTabColorSchemeParams;
+    public final @ColorInt int mInitialBackgroundColor;
+    public final List<CustomButtonParams> mCustomButtonParams;
 
     private CustomTabIntentDataHolder(Builder builder) {
         mSessionHolder = builder.mSessionHolder;
@@ -123,13 +135,17 @@ public class CustomTabIntentDataHolder implements Parcelable {
         mIsPartialCustomTabFixedHeight = builder.mIsPartialCustomTabFixedHeight;
         mContentScrollMayResizeTab = builder.mContentScrollMayResizeTab;
         mInteractWithBackground = builder.mInteractWithBackground;
-        mCctTabSwitcherEnabledForChromeExperiment =
-                builder.mCctTabSwitcherEnabledForChromeExperiment;
-        mCctTabSwitcherEnabledForEmbedderExperiment =
-                builder.mCctTabSwitcherEnabledForEmbedderExperiment;
+        mTabbedCctAllowedByEmbedder = builder.mTabbedCctAllowedByEmbedder;
+        mTabbedCctEnabledByEmbedder = builder.mTabbedCctEnabledByEmbedder;
         mAuthRedirectScheme = builder.mAuthRedirectScheme;
         mAuthRedirectHost = builder.mAuthRedirectHost;
         mAuthRedirectPath = builder.mAuthRedirectPath;
+        mLightColorSchemeParams = builder.mLightColorSchemeParams;
+        mDarkColorSchemeParams = builder.mDarkColorSchemeParams;
+        mLightAuthTabColorSchemeParams = builder.mLightAuthTabColorSchemeParams;
+        mDarkAuthTabColorSchemeParams = builder.mDarkAuthTabColorSchemeParams;
+        mInitialBackgroundColor = builder.mInitialBackgroundColor;
+        mCustomButtonParams = builder.mCustomButtonParams;
     }
 
     private CustomTabIntentDataHolder(Parcel in) {
@@ -174,11 +190,19 @@ public class CustomTabIntentDataHolder implements Parcelable {
         mIsPartialCustomTabFixedHeight = in.readBoolean();
         mContentScrollMayResizeTab = in.readBoolean();
         mInteractWithBackground = in.readBoolean();
-        mCctTabSwitcherEnabledForChromeExperiment = in.readBoolean();
-        mCctTabSwitcherEnabledForEmbedderExperiment = in.readBoolean();
+        mTabbedCctAllowedByEmbedder = in.readBoolean();
+        mTabbedCctEnabledByEmbedder = in.readBoolean();
         mAuthRedirectScheme = in.readString();
         mAuthRedirectHost = in.readString();
         mAuthRedirectPath = in.readString();
+        mLightColorSchemeParams = readColorSchemeParams(in, classLoader);
+        mDarkColorSchemeParams = readColorSchemeParams(in, classLoader);
+        mLightAuthTabColorSchemeParams = readAuthTabColorSchemeParams(in, classLoader);
+        mDarkAuthTabColorSchemeParams = readAuthTabColorSchemeParams(in, classLoader);
+        mInitialBackgroundColor = in.readInt();
+        mCustomButtonParams =
+                ParcelCompat.readParcelableList(
+                        in, new ArrayList<>(), classLoader, CustomButtonParams.class);
     }
 
     @Override
@@ -227,11 +251,17 @@ public class CustomTabIntentDataHolder implements Parcelable {
         dest.writeBoolean(mIsPartialCustomTabFixedHeight);
         dest.writeBoolean(mContentScrollMayResizeTab);
         dest.writeBoolean(mInteractWithBackground);
-        dest.writeBoolean(mCctTabSwitcherEnabledForChromeExperiment);
-        dest.writeBoolean(mCctTabSwitcherEnabledForEmbedderExperiment);
+        dest.writeBoolean(mTabbedCctAllowedByEmbedder);
+        dest.writeBoolean(mTabbedCctEnabledByEmbedder);
         dest.writeString(mAuthRedirectScheme);
         dest.writeString(mAuthRedirectHost);
         dest.writeString(mAuthRedirectPath);
+        writeColorSchemeParams(dest, mLightColorSchemeParams);
+        writeColorSchemeParams(dest, mDarkColorSchemeParams);
+        writeAuthTabColorSchemeParams(dest, mLightAuthTabColorSchemeParams);
+        writeAuthTabColorSchemeParams(dest, mDarkAuthTabColorSchemeParams);
+        dest.writeInt(mInitialBackgroundColor);
+        dest.writeParcelableList(mCustomButtonParams, flags);
     }
 
     @Override
@@ -251,6 +281,59 @@ public class CustomTabIntentDataHolder implements Parcelable {
                     return new CustomTabIntentDataHolder[size];
                 }
             };
+
+    /**
+     * Returns the {@link CustomTabColorSchemeParams} for the given {@code colorScheme} (which must
+     * be resolved to {@link CustomTabsIntent#COLOR_SCHEME_LIGHT} or {@link
+     * CustomTabsIntent#COLOR_SCHEME_DARK}).
+     */
+    public CustomTabColorSchemeParams getColorSchemeParams(
+            @CustomTabsIntent.ColorScheme int colorScheme) {
+        if (colorScheme == CustomTabsIntent.COLOR_SCHEME_SYSTEM) {
+            assert false
+                    : "Color scheme passed to IntentDataProvider should not be "
+                            + "COLOR_SCHEME_SYSTEM";
+            colorScheme = CustomTabsIntent.COLOR_SCHEME_LIGHT;
+        }
+        return colorScheme == CustomTabsIntent.COLOR_SCHEME_DARK
+                ? mDarkColorSchemeParams
+                : mLightColorSchemeParams;
+    }
+
+    /**
+     * Returns the {@link AuthTabColorSchemeParams} for the given {@code colorScheme} (which must be
+     * resolved to {@link CustomTabsIntent#COLOR_SCHEME_LIGHT} or {@link
+     * CustomTabsIntent#COLOR_SCHEME_DARK}).
+     */
+    public AuthTabColorSchemeParams getAuthTabColorSchemeParams(
+            @CustomTabsIntent.ColorScheme int colorScheme) {
+        if (colorScheme == CustomTabsIntent.COLOR_SCHEME_SYSTEM) {
+            assert false
+                    : "Color scheme passed to IntentDataProvider should not be "
+                            + "COLOR_SCHEME_SYSTEM";
+            colorScheme = CustomTabsIntent.COLOR_SCHEME_LIGHT;
+        }
+        return colorScheme == CustomTabsIntent.COLOR_SCHEME_DARK
+                ? mDarkAuthTabColorSchemeParams
+                : mLightAuthTabColorSchemeParams;
+    }
+
+    /** Updates the bottom bar {@link RemoteViews} and its associated click handling parameters. */
+    public void updateRemoteViews(
+            @Nullable RemoteViews remoteViews,
+            int @Nullable [] clickableViewIds,
+            @Nullable PendingIntent pendingIntent) {
+        mRemoteViews = remoteViews;
+        mClickableViewIds = clickableViewIds;
+        mRemoteViewsPendingIntent = pendingIntent;
+    }
+
+    /**
+     * Updates the {@link PendingIntent} sent when the user swipes up from the secondary toolbar.
+     */
+    public void setSecondaryToolbarSwipeUpPendingIntent(@Nullable PendingIntent pendingIntent) {
+        mSecondaryToolbarSwipeUpPendingIntent = pendingIntent;
+    }
 
     private static @Nullable TrustedWebActivityDisplayMode readTwaDisplayMode(
             Parcel in, @Nullable ClassLoader classLoader) {
@@ -275,6 +358,50 @@ public class CustomTabIntentDataHolder implements Parcelable {
             }
         }
         return modes;
+    }
+
+    private static void writeColorSchemeParams(Parcel dest, CustomTabColorSchemeParams params) {
+        dest.writeValue(params.toolbarColor);
+        dest.writeValue(params.secondaryToolbarColor);
+        dest.writeValue(params.navigationBarColor);
+        dest.writeValue(params.navigationBarDividerColor);
+    }
+
+    private static CustomTabColorSchemeParams readColorSchemeParams(
+            Parcel in, @Nullable ClassLoader classLoader) {
+        CustomTabColorSchemeParams.Builder builder = new CustomTabColorSchemeParams.Builder();
+        Integer toolbarColor = (Integer) in.readValue(classLoader);
+        if (toolbarColor != null) builder.setToolbarColor(toolbarColor);
+        Integer secondaryToolbarColor = (Integer) in.readValue(classLoader);
+        if (secondaryToolbarColor != null) builder.setSecondaryToolbarColor(secondaryToolbarColor);
+        Integer navigationBarColor = (Integer) in.readValue(classLoader);
+        if (navigationBarColor != null) builder.setNavigationBarColor(navigationBarColor);
+        Integer navigationBarDividerColor = (Integer) in.readValue(classLoader);
+        if (navigationBarDividerColor != null) {
+            builder.setNavigationBarDividerColor(navigationBarDividerColor);
+        }
+        return builder.build();
+    }
+
+    private static void writeAuthTabColorSchemeParams(
+            Parcel dest, AuthTabColorSchemeParams params) {
+        dest.writeValue(params.getToolbarColor());
+        dest.writeValue(params.getNavigationBarColor());
+        dest.writeValue(params.getNavigationBarDividerColor());
+    }
+
+    private static AuthTabColorSchemeParams readAuthTabColorSchemeParams(
+            Parcel in, @Nullable ClassLoader classLoader) {
+        AuthTabColorSchemeParams.Builder builder = new AuthTabColorSchemeParams.Builder();
+        Integer toolbarColor = (Integer) in.readValue(classLoader);
+        if (toolbarColor != null) builder.setToolbarColor(toolbarColor);
+        Integer navigationBarColor = (Integer) in.readValue(classLoader);
+        if (navigationBarColor != null) builder.setNavigationBarColor(navigationBarColor);
+        Integer navigationBarDividerColor = (Integer) in.readValue(classLoader);
+        if (navigationBarDividerColor != null) {
+            builder.setNavigationBarDividerColor(navigationBarDividerColor);
+        }
+        return builder.build();
     }
 
     public static final class Builder {
@@ -318,11 +445,21 @@ public class CustomTabIntentDataHolder implements Parcelable {
         private boolean mIsPartialCustomTabFixedHeight;
         private boolean mContentScrollMayResizeTab;
         private boolean mInteractWithBackground;
-        private boolean mCctTabSwitcherEnabledForChromeExperiment;
-        private boolean mCctTabSwitcherEnabledForEmbedderExperiment;
+        private boolean mTabbedCctAllowedByEmbedder;
+        private boolean mTabbedCctEnabledByEmbedder;
         private @Nullable String mAuthRedirectScheme;
         private @Nullable String mAuthRedirectHost;
         private @Nullable String mAuthRedirectPath;
+        private CustomTabColorSchemeParams mLightColorSchemeParams =
+                new CustomTabColorSchemeParams.Builder().build();
+        private CustomTabColorSchemeParams mDarkColorSchemeParams =
+                new CustomTabColorSchemeParams.Builder().build();
+        private AuthTabColorSchemeParams mLightAuthTabColorSchemeParams =
+                new AuthTabColorSchemeParams.Builder().build();
+        private AuthTabColorSchemeParams mDarkAuthTabColorSchemeParams =
+                new AuthTabColorSchemeParams.Builder().build();
+        private @ColorInt int mInitialBackgroundColor = Color.TRANSPARENT;
+        private List<CustomButtonParams> mCustomButtonParams = List.of();
 
         public Builder setSessionHolder(@Nullable SessionHolder sessionHolder) {
             mSessionHolder = sessionHolder;
@@ -529,16 +666,13 @@ public class CustomTabIntentDataHolder implements Parcelable {
             return this;
         }
 
-        public Builder setCctTabSwitcherEnabledForChromeExperiment(
-                boolean cctTabSwitcherEnabledForChromeExperiment) {
-            mCctTabSwitcherEnabledForChromeExperiment = cctTabSwitcherEnabledForChromeExperiment;
+        public Builder setTabbedCctAllowedByEmbedder(boolean tabbedCctAllowedByEmbedder) {
+            mTabbedCctAllowedByEmbedder = tabbedCctAllowedByEmbedder;
             return this;
         }
 
-        public Builder setCctTabSwitcherEnabledForEmbedderExperiment(
-                boolean cctTabSwitcherEnabledForEmbedderExperiment) {
-            mCctTabSwitcherEnabledForEmbedderExperiment =
-                    cctTabSwitcherEnabledForEmbedderExperiment;
+        public Builder setTabbedCctEnabledByEmbedder(boolean tabbedCctEnabledByEmbedder) {
+            mTabbedCctEnabledByEmbedder = tabbedCctEnabledByEmbedder;
             return this;
         }
 
@@ -554,6 +688,39 @@ public class CustomTabIntentDataHolder implements Parcelable {
 
         public Builder setAuthRedirectPath(@Nullable String authRedirectPath) {
             mAuthRedirectPath = authRedirectPath;
+            return this;
+        }
+
+        public Builder setLightColorSchemeParams(
+                CustomTabColorSchemeParams lightColorSchemeParams) {
+            mLightColorSchemeParams = lightColorSchemeParams;
+            return this;
+        }
+
+        public Builder setDarkColorSchemeParams(CustomTabColorSchemeParams darkColorSchemeParams) {
+            mDarkColorSchemeParams = darkColorSchemeParams;
+            return this;
+        }
+
+        public Builder setLightAuthTabColorSchemeParams(
+                AuthTabColorSchemeParams lightAuthTabColorSchemeParams) {
+            mLightAuthTabColorSchemeParams = lightAuthTabColorSchemeParams;
+            return this;
+        }
+
+        public Builder setDarkAuthTabColorSchemeParams(
+                AuthTabColorSchemeParams darkAuthTabColorSchemeParams) {
+            mDarkAuthTabColorSchemeParams = darkAuthTabColorSchemeParams;
+            return this;
+        }
+
+        public Builder setInitialBackgroundColor(@ColorInt int initialBackgroundColor) {
+            mInitialBackgroundColor = initialBackgroundColor;
+            return this;
+        }
+
+        public Builder setCustomButtonParams(List<CustomButtonParams> customButtonParams) {
+            mCustomButtonParams = customButtonParams;
             return this;
         }
 

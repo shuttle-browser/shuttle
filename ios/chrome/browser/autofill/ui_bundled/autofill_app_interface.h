@@ -26,23 +26,18 @@ enum CreditCardSaveManagerObserverEvent : int {
 // the app binary and can be called from either app or test code.
 @interface AutofillAppInterface : NSObject
 
+#pragma mark - Personal Data Manager and Autofill Profiles
+
 // Removes all credentials stored in the profile store.
 + (void)clearProfilePasswordStore;
 
 // Saves an example form in the profile store.
 + (void)saveExamplePasswordFormToProfileStore;
 
-// Saves an example form in the store for the passed URL spec.
-+ (void)savePasswordFormForURLSpec:(NSString*)URLSpec;
-
-// Saves an example form with a backup password in the store for the passed URL
-// spec.
-+ (void)savePasswordFormWithBackupForURLSpec:(NSString*)URLSpec;
-
 // Returns the number of profiles (addresses) in the data manager.
 + (NSInteger)profilesCount;
 
-// Returns true if the profile is saved to account.
+// Returns YES if the profile at `index` is saved to the account.
 + (BOOL)isAccountProfileAtIndex:(NSInteger)index;
 
 // Clears the profiles (addresses) in the data manager.
@@ -75,6 +70,19 @@ enum CreditCardSaveManagerObserverEvent : int {
 
 // Returns the zip code of the sample profile.
 + (NSString*)exampleProfileZip;
+
+// Waits until all expected events are triggered. Returns YES if all expected
+// events were triggered before the timeout.
++ (BOOL)waitForEvents [[nodiscard]];
+
+#pragma mark - Credit Cards, Reauthentication, and Fake Server
+
+// Saves an example form in the store for the passed `URLSpec`.
++ (void)savePasswordFormForURLSpec:(NSString*)URLSpec;
+
+// Saves an example form with a backup password in the store for the passed
+// `URLSpec`.
++ (void)savePasswordFormWithBackupForURLSpec:(NSString*)URLSpec;
 
 // Removes the locally stored credit cards.
 + (void)clearCreditCardStore;
@@ -117,7 +125,6 @@ enum CreditCardSaveManagerObserverEvent : int {
 // observing autofill events in the app process.
 // FakeCreditCardServer is an object instantiated in the app process that
 // will observe the needed events.
-
 // Creates a FakeCreditCardServer object and call SetUp on it.
 // This will register event observer and test URL loader and histogram tester.
 + (void)setUpFakeCreditCardServer;
@@ -128,14 +135,13 @@ enum CreditCardSaveManagerObserverEvent : int {
 // Clears the virtual card enrollment strike data.
 + (void)clearVirtualCardEnrollmentStrikes;
 
-// Sets the Autofill events that are expected to be triggered.
+// Sets the Autofill `events` that are expected to be triggered within
+// `timeout`.
 + (void)resetEventWaiterForEvents:(NSArray*)events
                           timeout:(base::TimeDelta)timeout;
 
-// Wait until all expected events are triggered.
-+ (BOOL)waitForEvents [[nodiscard]];
-
-// Sets the next response of the payments server for `request`.
+// Sets the next `response` of the payments server for `request` with HTTP
+// error code `error`.
 + (void)setPaymentsResponse:(NSString*)response
                  forRequest:(NSString*)request
               withErrorCode:(int)error;
@@ -146,13 +152,13 @@ enum CreditCardSaveManagerObserverEvent : int {
 // Sets a fake access token to bypass the token fetch request.
 + (void)setAccessToken;
 
-// Sets the number of times the user refused to save a card.
+// Sets the `max` number of times the user refused to save `card`.
 + (void)setFormFillMaxStrikes:(int)max forCard:(NSString*)card;
 
-// Gets the risk data for payments.
+// Returns the risk data for payments.
 + (NSString*)paymentsRiskData;
 
-// Sets the risk data for payments.
+// Sets the `riskData` for payments.
 + (void)setPaymentsRiskData:(NSString*)riskData;
 
 // Make it that we consider the credit card form to be a secure in the current
@@ -160,39 +166,69 @@ enum CreditCardSaveManagerObserverEvent : int {
 // want to use this for tests.
 + (void)considerCreditCardFormSecureForTesting;
 
-// Configs the mandatory reauth preference.
+// Configures whether the mandatory reauth preference is `enabled`.
 + (void)setMandatoryReauthEnabled:(BOOL)enabled;
 
-// Sets the CVC storage preference.
+// Sets whether the CVC storage preference is `enabled`.
 + (void)setPaymentCvcStorageEnabled:(BOOL)enabled;
+
+// Waits until a form is cached in the AutofillManager. Returns YES if a form is
+// cached before the timeout.
++ (BOOL)waitForFormToBeCachedInMainFrame;
+
+// Waits until a form is cached in the main frame's `AutofillManager` and server
+// predictions (including `kAutofillOverridePredictions`) have been applied to
+// all cached forms. Use this instead of `+waitForFormToBeCachedInMainFrame`
+// when field types depend on asynchronous `OnLoadedServerPredictions` rather
+// than local heuristics. Returns `YES` if server predictions are received
+// before the timeout.
++ (BOOL)waitForServerPredictionsInMainFrame;
+
+// Sets the network connection type to `offline` (CONNECTION_NONE) or resets it.
++ (void)setNetworkConnectionOffline:(BOOL)offline;
+
+#pragma mark - Autofill AI Entities
 
 // Triggers the Autofill AI save entity bubble.
 + (void)showAutofillAiSaveEntityBubble;
 
-
-// Saves a Redress Number entity with the given name and number. Returns the
+// Saves a Redress Number entity with the given `name` and `number`. Returns the
 // UUID of the created entity. Because entities are saved asynchronously, it is
 // not immediately available to be retrieved from the EntityDataManager.
 + (NSString*)saveRedressNumberEntityWithName:(NSString*)name
                                       number:(NSString*)number;
 
-// Removes the entity with the given UUID.
+// Removes the entity with the given `uuid`.
 + (void)removeEntityWithUUID:(NSString*)uuid;
 
-// Saves a Passport entity with test data.
+// Deletes all entities modified since the given `time`.
++ (void)removeEntityModifiedSince:(NSDate*)time;
+
+// Saves a Passport entity with test data. Returns YES if the entity was saved.
 + (BOOL)savePassportEntity;
 
-// Saves a Passport entity with type kServerWallet.
+// Saves a Passport entity with type kServerWallet and returns its GUID.
 + (NSString*)saveServerWalletPassportEntity;
 
-// Saves a Vehicle entity with test data.
+// Marks the Personal Context passport prefetch as pending with a presence
+// signal so that focusing a passport field displays the loading suggestion.
++ (void)startPersonalContextPassportPrefetch;
+
+// Saves a masked Passport entity with type `kPersonalContext` (Sian), caches
+// its unmasked counterpart for filling, and completes any pending prefetch.
+// Returns `YES` if the entity was saved successfully, or `NO` otherwise.
++ (BOOL)savePersonalContextPassportEntity;
+
+// Clears any Personal Context passport entity and resets its prefetch state.
++ (void)clearPersonalContextPassportEntity;
+
+// Returns the obfuscated representation of `value` with `visibleSuffixLength`
+// trailing characters visible.
++ (NSString*)obfuscatedValue:(NSString*)value
+         visibleSuffixLength:(NSUInteger)visibleSuffixLength;
+
+// Saves a Vehicle entity with test data. Returns YES if the entity was saved.
 + (BOOL)saveVehicleEntity;
-
-// Wait until a form is cached in the AutofillManager.
-+ (BOOL)waitForFormToBeCachedInMainFrame;
-
-// Sets the network connection type to offline (CONNECTION_NONE) or resets it.
-+ (void)setNetworkConnectionOffline:(BOOL)offline;
 
 @end
 

@@ -18,6 +18,8 @@ import android.content.pm.ProviderInfo;
 import android.content.res.AssetFileDescriptor;
 import android.database.Cursor;
 import android.net.Uri;
+import android.os.Build;
+import android.os.Parcel;
 import android.os.Process;
 import android.provider.OpenableColumns;
 
@@ -27,6 +29,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.robolectric.annotation.Config;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
 
@@ -132,75 +135,139 @@ public class ContentUriUtilsUnitTest {
     }
 
     @Test
-    public void testIsUriFromThisApp_UsesProcessUidNotContextApplicationUid() {
+    public void testResolveContentUriOwner_UsesProcessUidNotContextApplicationUid() {
         ApplicationInfo contextApplication = new ApplicationInfo();
         contextApplication.uid = Process.myUid() + 1;
         when(mMockContext.getApplicationInfo()).thenReturn(contextApplication);
         mockProvider("shared.uid", "org.chromium.other_package", Process.myUid());
 
-        assertTrue(
-                ContentUriUtils.isUriFromThisApp(
-                        Uri.parse("content://shared.uid/path"), mMockContext));
+        assertEquals(
+                ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://shared.uid/path")));
     }
 
     @Test
-    public void testIsUriFromThisApp_RejectsSamePackageWithDifferentUid() {
+    public void testResolveContentUriOwner_RejectsSamePackageWithDifferentUid() {
         mockProvider("different.uid", "org.chromium.test", Process.myUid() + 1);
 
-        assertFalse(
-                ContentUriUtils.isUriFromThisApp(
-                        Uri.parse("content://different.uid/path"), mMockContext));
+        assertEquals(
+                ContentUriOwner.OTHER_APP,
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://different.uid/path")));
     }
 
     @Test
-    public void testIsUriFromThisApp_ReturnsFalseWithoutProviderApplicationInfo() {
+    public void testResolveContentUriOwner_WithoutProviderApplicationInfo() {
         ProviderInfo provider = new ProviderInfo();
         provider.packageName = "org.chromium.test";
         when(mMockPackageManager.resolveContentProvider("missing.info", 0)).thenReturn(provider);
 
-        assertFalse(
-                ContentUriUtils.isUriFromThisApp(
-                        Uri.parse("content://missing.info/path"), mMockContext));
-        assertFalse(
-                ContentUriUtils.isUriFromThisApp(
-                        Uri.parse("content://unresolved/path"), mMockContext));
+        assertEquals(
+                ContentUriOwner.OTHER_APP,
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://missing.info/path")));
+        assertEquals(
+                ContentUriOwner.UNRESOLVED,
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://unresolved/path")));
     }
 
     @Test
-    public void testIsUriFromThisApp_UserQualifiedAuthorityUsesBareAuthority() {
+    public void testResolveContentUriOwner_OpaqueUriWithAuthorityInStringForm() {
         mockProvider("shared.uid", "org.chromium.other_package", Process.myUid());
+        mockProvider("other.provider", "org.chromium.other_package", Process.myUid() + 1);
 
-        assertTrue(
-                ContentUriUtils.isUriFromThisApp(
-                        Uri.parse("content://10@shared.uid/path"), mMockContext));
-        assertTrue(
-                ContentUriUtils.isUriFromThisApp(
-                        Uri.parse("content://10@work@shared.uid/path"), mMockContext));
-    }
-
-    @Test
-    public void testIsUriFromThisApp_OpaqueUriWithAuthorityInStringForm() {
-        mockProvider("shared.uid", "org.chromium.other_package", Process.myUid());
-
-        // An OpaqueUri reports a null authority even though its string form encodes one. The check
-        // must recover the authority from the string form; otherwise a caller could smuggle one of
-        // this app's own content URIs past it.
+        // An OpaqueUri reports a null authority even though its string form encodes one. A caller
+        // could use this to smuggle one of this app's own content URIs past the check, so any such
+        // Uri is treated as the most restrictive owner, whichever provider its string form names.
         Uri opaque =
                 new Uri.Builder().scheme("content").encodedOpaquePart("//shared.uid/path").build();
         assertNull(opaque.getAuthority());
         assertEquals("content://shared.uid/path", opaque.toString());
+        assertEquals(
+                ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
+                ContentUriUtils.resolveContentUriOwner(opaque));
 
-        assertTrue(ContentUriUtils.isUriFromThisApp(opaque, mMockContext));
+        Uri otherApp =
+                new Uri.Builder()
+                        .scheme("content")
+                        .encodedOpaquePart("//other.provider/path")
+                        .build();
+        assertNull(otherApp.getAuthority());
+        assertEquals(
+                ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
+                ContentUriUtils.resolveContentUriOwner(otherApp));
     }
 
     @Test
-    public void testIsUriFromThisApp_OpaqueUriWithoutAuthorityReturnsFalse() {
-        // An OpaqueUri whose string form has no authority (e.g. "content:foo") must return false
-        // without recursing.
+    public void testResolveContentUriOwner_OpaqueUriWithoutAuthority() {
+        // An OpaqueUri whose string form has no authority (e.g. "content:foo") must resolve to
+        // UNRESOLVED without recursing.
         Uri opaque = new Uri.Builder().scheme("content").encodedOpaquePart("foo").build();
         assertNull(opaque.getAuthority());
 
-        assertFalse(ContentUriUtils.isUriFromThisApp(opaque, mMockContext));
+        assertEquals(ContentUriOwner.UNRESOLVED, ContentUriUtils.resolveContentUriOwner(opaque));
+    }
+
+    /**
+     * Creates a HierarchicalUri through {@code Uri.CREATOR} whose authority part has independent
+     * encoded (used by {@code toString()}) and decoded (used by {@code getAuthority()}) strings.
+     * Android Q accepts this parcel from another app; Android R+ throws when reading it.
+     */
+    private static Uri createSplitAuthorityUri(String encodedAuthority, String decodedAuthority) {
+        final int hierarchicalUriTypeId = 3;
+        final int representationBoth = 0;
+        final int representationEncoded = 1;
+        Parcel parcel = Parcel.obtain();
+        try {
+            parcel.writeInt(hierarchicalUriTypeId);
+            parcel.writeString("content");
+            parcel.writeInt(representationBoth);
+            parcel.writeString(encodedAuthority);
+            parcel.writeString(decodedAuthority);
+            parcel.writeInt(representationEncoded);
+            parcel.writeString("/path");
+            parcel.writeInt(representationEncoded);
+            parcel.writeString("");
+            parcel.writeInt(representationEncoded);
+            parcel.writeString("");
+            parcel.setDataPosition(0);
+            return Uri.CREATOR.createFromParcel(parcel);
+        } finally {
+            parcel.recycle();
+        }
+    }
+
+    @Test
+    @Config(sdk = Build.VERSION_CODES.Q)
+    public void testResolveContentUriOwner_SplitAuthorityUri() {
+        mockProvider("own.provider", "org.chromium.test", Process.myUid());
+        mockProvider("own.exported", "org.chromium.test", Process.myUid()).exported = true;
+        mockProvider("other.provider", "org.chromium.other_package", Process.myUid() + 1);
+        mockProvider("another.provider", "org.chromium.another_package", Process.myUid() + 2);
+
+        // The string form, which native passes back to Java to open, names this app's provider
+        // while the object's authority names another app's provider.
+        Uri split = createSplitAuthorityUri("own.provider", "other.provider");
+        assertEquals("other.provider", split.getAuthority());
+        assertEquals("content://own.provider/path", split.toString());
+        assertEquals(
+                ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
+                ContentUriUtils.resolveContentUriOwner(split));
+
+        // Any split authority is treated as the most sensitive kind of content URI.
+        String[][] authorities = {
+            {"other.provider", "own.provider"},
+            {"own.exported", "other.provider"},
+            {"other.provider", "own.exported"},
+            {"own.exported", "own.provider"},
+            {"own.provider", "own.exported"},
+            {"other.provider", "another.provider"},
+        };
+        for (String[] pair : authorities) {
+            assertEquals(
+                    pair[0] + " / " + pair[1],
+                    ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
+                    ContentUriUtils.resolveContentUriOwner(
+                            createSplitAuthorityUri(pair[0], pair[1])));
+        }
     }
 
     @Test
@@ -209,7 +276,7 @@ public class ContentUriUtilsUnitTest {
 
         assertEquals(
                 ContentUriOwner.EXPORTED_FROM_CURRENT_APP,
-                ContentUriUtils.resolveContentUriOwner("content://exported/path"));
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://exported/path")));
     }
 
     @Test
@@ -218,7 +285,7 @@ public class ContentUriUtilsUnitTest {
 
         assertEquals(
                 ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
-                ContentUriUtils.resolveContentUriOwner("content://unexported/path"));
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://unexported/path")));
     }
 
     @Test
@@ -227,14 +294,14 @@ public class ContentUriUtilsUnitTest {
 
         assertEquals(
                 ContentUriOwner.OTHER_APP,
-                ContentUriUtils.resolveContentUriOwner("content://different.uid/path"));
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://different.uid/path")));
     }
 
     @Test
     public void testResolveContentUriOwner_Unresolved() {
         assertEquals(
                 ContentUriOwner.UNRESOLVED,
-                ContentUriUtils.resolveContentUriOwner("content://unresolved/path"));
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://unresolved/path")));
     }
 
     @Test
@@ -244,6 +311,10 @@ public class ContentUriUtilsUnitTest {
 
         assertEquals(
                 ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
-                ContentUriUtils.resolveContentUriOwner("content://10@exported@unexported/path"));
+                ContentUriUtils.resolveContentUriOwner(Uri.parse("content://10@unexported/path")));
+        assertEquals(
+                ContentUriOwner.NON_EXPORTED_FROM_CURRENT_APP,
+                ContentUriUtils.resolveContentUriOwner(
+                        Uri.parse("content://10@exported@unexported/path")));
     }
 }

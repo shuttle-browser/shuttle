@@ -4,6 +4,7 @@
 
 package org.chromium.chrome.browser.customtabs;
 
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.never;
@@ -57,6 +58,9 @@ public class CustomTabNavigationBarControllerTest {
         mContext = activity;
         CustomTabsConnection.setInstanceForTesting(mConnection);
         when(mCustomTabIntentDataProvider.getColorProvider()).thenReturn(mColorProvider);
+        // While fitted the helper tracks the activity's navigation bar color (the theme default
+        // from startup); only the edge-to-edge branch makes it transparent.
+        when(mSystemBarColorHelper.getNavigationBarColor()).thenReturn(Color.WHITE);
     }
 
     @Test
@@ -70,6 +74,21 @@ public class CustomTabNavigationBarControllerTest {
                 mSystemBarColorHelper);
 
         verify(mWindow, never()).setNavigationBarColor(Mockito.anyInt());
+        verify(mSystemBarColorHelper, never()).setNavigationBarColor(Mockito.anyInt());
+    }
+
+    @Test
+    public void setsExplicitDividerWithoutBarColor() {
+        when(mColorProvider.getNavigationBarColor()).thenReturn(null);
+        when(mColorProvider.getNavigationBarDividerColor()).thenReturn(Color.RED);
+        CustomTabNavigationBarController.update(
+                mWindow,
+                mCustomTabIntentDataProvider,
+                mContext,
+                /* isEdgeToEdge= */ false,
+                mSystemBarColorHelper);
+
+        verify(mSystemBarColorHelper).setNavigationBarDividerColor(Color.RED);
         verify(mSystemBarColorHelper, never()).setNavigationBarColor(Mockito.anyInt());
     }
 
@@ -219,6 +238,85 @@ public class CustomTabNavigationBarControllerTest {
         assertTrue(
                 "Buttons over a white page must be dark to stay visible.",
                 hasLightNavigationBarAppearance());
+        colorHelper.destroy();
+    }
+
+    @Test
+    public void edgeToEdgeTransitionFromFittedLightBarKeepsDarkButtons() {
+        mWindow.setNavigationBarColor(Color.WHITE);
+        EdgeToEdgeSystemBarColorHelper colorHelper =
+                new EdgeToEdgeSystemBarColorHelper(
+                        mWindow,
+                        ObservableSuppliers.createNonNull(false),
+                        new OneshotSupplierImpl<SystemBarColorHelper>(),
+                        /* canColorStatusBarColor= */ true);
+        // Fitted state with a light manifest navigation bar: applies the implicit
+        // black_alpha_12 divider, which the edge-to-edge transition must clear without
+        // clobbering the icon color afterwards.
+        when(mColorProvider.getNavigationBarColor()).thenReturn(Color.WHITE);
+        when(mColorProvider.getNavigationBarDividerColor()).thenReturn(null);
+        CustomTabNavigationBarController.update(
+                mWindow,
+                mCustomTabIntentDataProvider,
+                mContext,
+                /* isEdgeToEdge= */ false,
+                colorHelper);
+        assertEquals(
+                "A light manifest bar gets the implicit divider while fitted.",
+                mContext.getColor(R.color.black_alpha_12),
+                colorHelper.getNavigationBarDividerColor());
+
+        CustomTabNavigationBarController.update(
+                mWindow,
+                mCustomTabIntentDataProvider,
+                mContext,
+                /* isEdgeToEdge= */ true,
+                colorHelper,
+                /* edgeToEdgeContentColor= */ Color.WHITE);
+
+        assertTrue(
+                "Buttons over a white page must stay dark after the fitted -> edge-to-edge"
+                        + " transition.",
+                hasLightNavigationBarAppearance());
+        assertEquals(
+                "The fitted divider must not survive into edge-to-edge.",
+                Color.TRANSPARENT,
+                colorHelper.getNavigationBarDividerColor());
+        colorHelper.destroy();
+    }
+
+    @Test
+    public void edgeToEdgeToFittedRestoresDefaultWhenIntentHasNoNavigationBarColor() {
+        // No EXTRA_NAVIGATION_BAR_COLOR / manifest theme color.
+        when(mColorProvider.getNavigationBarColor()).thenReturn(null);
+        EdgeToEdgeSystemBarColorHelper colorHelper =
+                new EdgeToEdgeSystemBarColorHelper(
+                        mWindow,
+                        ObservableSuppliers.createNonNull(false),
+                        new OneshotSupplierImpl<SystemBarColorHelper>(),
+                        /* canColorStatusBarColor= */ true);
+        int defaultColor = CustomTabNavigationBarController.defaultNavigationBarColor(mContext);
+        colorHelper.setNavigationBarColor(defaultColor);
+
+        CustomTabNavigationBarController.update(
+                mWindow,
+                mCustomTabIntentDataProvider,
+                mContext,
+                /* isEdgeToEdge= */ true,
+                colorHelper,
+                /* edgeToEdgeContentColor= */ Color.BLACK);
+        assertEquals(Color.TRANSPARENT, colorHelper.getNavigationBarColor());
+
+        // Token released: without the fallback the bar would stay transparent with the
+        // edge-to-edge era button colors, because there is no intent color to apply.
+        CustomTabNavigationBarController.update(
+                mWindow,
+                mCustomTabIntentDataProvider,
+                mContext,
+                /* isEdgeToEdge= */ false,
+                colorHelper);
+
+        assertEquals(defaultColor, colorHelper.getNavigationBarColor());
         colorHelper.destroy();
     }
 

@@ -350,7 +350,10 @@ void ClearContextMenu() {
 
 // Taps on `context_menu_item_button` context menu item.
 void TapOnContextMenuButton(id<GREYMatcher> context_menu_item_button) {
-  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:context_menu_item_button];
+  // Waits for the item to be visible, so the menu has finished animating in
+  // before the tap is issued.
+  [ChromeEarlGrey
+      waitForSufficientlyVisibleElementWithMatcher:context_menu_item_button];
   [[EarlGrey selectElementWithMatcher:context_menu_item_button]
       performAction:grey_tap()];
 }
@@ -982,10 +985,9 @@ TAG_SMOKE_TEST(ContextMenuTestCase, testCopyLink);
 
 // Checks that "open in new window" shows up on a long press of a url link
 // and that it actually opens in a new window.
-// TODO(crbug.com/441761691): Re-enable the test.
-- (void)DISABLED_testOpenLinkInNewWindow {
+- (void)testOpenLinkInNewWindow {
   if (![ChromeEarlGrey areMultipleWindowsSupported]) {
-    EARL_GREY_TEST_DISABLED(@"Multiple windows can't be opened.");
+    EARL_GREY_TEST_SKIPPED(@"Multiple windows can't be opened.");
   }
 
   // Loads url in first window.
@@ -1014,17 +1016,9 @@ TAG_SMOKE_TEST(ContextMenuTestCase, testCopyLink);
 // Checks that "open in new window" shows up on a long press of a url link
 // and that it actually opens in a new window, and that when the link is in an
 // incognito webstate, the newly opened webstate is also incognito.
-// TODO(crbug.com/441761691): Test is flaky on iPad simulator.
-#if TARGET_OS_SIMULATOR
-#define MAYBE_testOpenIncognitoLinkInNewWindow \
-  FLAKY_testOpenIncognitoLinkInNewWindow
-#else
-#define MAYBE_testOpenIncognitoLinkInNewWindow \
-  testOpenIncognitoLinkInNewWindow
-#endif
-- (void)MAYBE_testOpenIncognitoLinkInNewWindow {
+- (void)testOpenIncognitoLinkInNewWindow {
   if (![ChromeEarlGrey areMultipleWindowsSupported]) {
-    EARL_GREY_TEST_DISABLED(@"Multiple windows can't be opened.");
+    EARL_GREY_TEST_SKIPPED(@"Multiple windows can't be opened.");
   }
 
   [ChromeEarlGrey openNewIncognitoTab];

@@ -165,15 +165,7 @@ public class SigninTestRule implements TestRule {
         if (mIsSignedIn || (ProfileManager.isInitialized() && getPrimaryAccount() != null)) {
             forceSignOut();
         }
-        ThreadUtils.runOnUiThreadBlocking(
-                () -> {
-                    mFakeAccountManagerFacade.removeAllAccounts();
-                    mFakeAccountManagerFacade.setAddAccountFlowResult(null);
-                    // TODO(crbug.com/40743432): Also reset mDidAccountFetchingSucceed,
-                    // mBlockedGetAccountsPromise, and mGetAccessTokenError in
-                    // FakeAccountManagerFacade.
-                    // See crrev.com/c/8493752/comments/3bd13a48_85275c53
-                });
+        ThreadUtils.runOnUiThreadBlocking(mFakeAccountManagerFacade::resetForTesting);
         mIsSignedIn = false;
     }
 
@@ -254,15 +246,6 @@ public class SigninTestRule implements TestRule {
                 });
     }
 
-    /**
-     * Resolves the minor mode of {@code accountInfo} to restricted, so that the UI will be safe to
-     * show to minors.
-     */
-    public void resolveMinorModeToRestricted(CoreAccountId accountId) {
-        mFakeAccountManagerFacade.updateAccountCapabilities(
-                accountId, TestAccounts.MINOR_MODE_REQUIRED);
-    }
-
     /** Adds and signs in with the provided account. */
     public void addAccountThenSignin(AccountInfo accountInfo) {
         addAccount(accountInfo);
@@ -335,7 +318,7 @@ public class SigninTestRule implements TestRule {
     /**
      * @return The primary account.
      */
-    public CoreAccountInfo getPrimaryAccount() {
+    public AccountInfo getPrimaryAccount() {
         return SigninTestUtil.getPrimaryAccount();
     }
 

@@ -29,6 +29,7 @@ class WebContents;
 
 namespace contextual_tasks {
 class ContextualTask;
+class ContextualTasksPermissionController;
 
 class ContextualTasksPanelController {
  public:
@@ -62,7 +63,8 @@ class ContextualTasksPanelController {
     kAskGoogle = 4,
     kEphemeralToolbarButton = 5,
     kPermanentToolbarButton = 6,
-    kMaxValue = kPermanentToolbarButton,
+    kAbaOnRamp = 7,
+    kMaxValue = kAbaOnRamp,
   };
 
   // Whether clicking the permanently pinned toolbar button to open the side
@@ -150,14 +152,6 @@ class ContextualTasksPanelController {
   // Returns the entry source of the currently active panel.
   virtual EntrySource GetActiveEntrySource() const = 0;
 
-  // Returns true if the currently active panel's open session reopened a
-  // previously collapsed panel for an existing thread via the permanently
-  // pinned or ephemeral toolbar button (rather than opening fresh from an
-  // entry point or switching threads via thread history). Used to tag queries
-  // submitted after reopening the panel from the toolbar so they can be
-  // distinguished server-side.
-  virtual bool IsActiveSessionReopenedViaToolbarButton() const = 0;
-
   // Returns true if the onboarding or Ask Google tooltip bubble is visible.
   virtual bool IsOnboardingTooltipVisible() const;
 
@@ -180,6 +174,8 @@ class ContextualTasksPanelController {
   // Called when a user clicks a link inside the panel. Also counts as an AI
   // interaction.
   virtual void OnLinkClicked() = 0;
+  // Called when the user submits a query from the panel's composebox.
+  virtual void OnQuerySubmitted() = 0;
 
   // Sets a task to be used once the side panel opens. Used to open a specific
   // task without associating a web contents (which would inherently get added
@@ -234,6 +230,7 @@ class ContextualTasksPanelController {
   // Shows the native PageInfo bubble.
   virtual void ShowPageInfoBubble(bool is_pointer_interaction) = 0;
   virtual void OnLogoPointerDown() = 0;
+  virtual ContextualTasksPermissionController* permission_controller() = 0;
 
   // Records the time to handshake complete metric for the given WebContents.
   virtual void RecordTimeToHandshakeComplete(

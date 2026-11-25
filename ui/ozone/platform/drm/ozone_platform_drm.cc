@@ -68,7 +68,10 @@ namespace {
 
 class OzonePlatformDrm : public OzonePlatform {
  public:
-  OzonePlatformDrm() = default;
+  OzonePlatformDrm() {
+    platform_properties_.wait_for_root_compositor_frame_sink_destruction =
+        false;
+  }
   ~OzonePlatformDrm() override = default;
 
   // OzonePlatform:
@@ -273,8 +276,13 @@ class OzonePlatformDrm : public OzonePlatform {
         std::move(user_input_task_runner));
   }
 
+  const PlatformProperties& GetPlatformProperties() override {
+    return platform_properties_;
+  }
+
   const PlatformRuntimeProperties& GetPlatformRuntimeProperties() override {
-    DCHECK(has_initialized_ui() || has_initialized_gpu());
+    CHECK(has_initialized_ui() || has_initialized_gpu(),
+          base::NotFatalUntil::M163);
     return host_properties_;
   }
 
@@ -282,7 +290,7 @@ class OzonePlatformDrm : public OzonePlatform {
   // sandbox to start. This entry point in the Ozone API gives platforms
   // flexibility in handing this requirement.
   void AfterSandboxEntry() override {
-    DCHECK(!single_process());
+    CHECK(!single_process(), base::NotFatalUntil::M163);
     CHECK(has_initialized_gpu()) << "AfterSandboxEntry before InitializeForGPU "
                                     "is invalid startup order.";
 
@@ -358,6 +366,7 @@ class OzonePlatformDrm : public OzonePlatform {
   std::unique_ptr<DrmCursor> cursor_;
   std::unique_ptr<EventFactoryEvdev> event_factory_ozone_;
   std::unique_ptr<DrmDisplayHostManager> display_manager_;
+  PlatformProperties platform_properties_;
   PlatformRuntimeProperties host_properties_;
 
   base::WeakPtrFactory<OzonePlatformDrm> weak_factory_{this};

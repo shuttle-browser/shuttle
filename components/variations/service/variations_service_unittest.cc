@@ -77,6 +77,10 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#if BUILDFLAG(IS_ANDROID)
+#include "base/android/device_info.h"
+#endif
+
 // A fake version of RuntimeMutableFeaturesHandlerBase, to generate PassKeys for
 // testing purposes.  The real RuntimeMutableFeaturesHandlerBase class is not
 // defined in `components/`. We're creating a surrogate of it here so that we
@@ -670,6 +674,30 @@ TEST_F(VariationsServiceTest, RespectsFakePlatformSwitch) {
   EXPECT_EQ(osname, "ios");
 }
 
+#if BUILDFLAG(IS_ANDROID)
+TEST_F(VariationsServiceTest, VariationsURLOsNameRespectsAndroidDeviceInfo) {
+  TestVariationsService service(
+      std::make_unique<web_resource::TestRequestAllowedNotifier>(
+          &prefs_, network_tracker_),
+      &prefs_, GetMetricsStateManager(), /*use_secure_url=*/true);
+
+  base::android::device_info::set_is_desktop_for_testing(true);
+  GURL desktop_url =
+      service.GetVariationsServerURL(TestVariationsService::USE_HTTPS);
+  std::string osname;
+  EXPECT_TRUE(net::GetValueForKeyInQuery(desktop_url, "osname", &osname));
+  EXPECT_EQ(osname, "android_desktop");
+
+  base::android::device_info::set_is_desktop_for_testing(false);
+  GURL mobile_url =
+      service.GetVariationsServerURL(TestVariationsService::USE_HTTPS);
+  EXPECT_TRUE(net::GetValueForKeyInQuery(mobile_url, "osname", &osname));
+  EXPECT_EQ(osname, "android");
+
+  base::android::device_info::reset_is_desktop_for_testing();
+}
+#endif  // BUILDFLAG(IS_ANDROID)
+
 TEST_F(VariationsServiceTest, RequestsInitiallyNotAllowed) {
   std::unique_ptr<net::test::MockNetworkChangeNotifier>
       network_change_notifier = net::test::MockNetworkChangeNotifier::Create();
@@ -915,6 +943,7 @@ TEST_F(VariationsServiceTest, CountryHeader) {
 }
 
 TEST_F(VariationsServiceTest, CountryHeaderNotTrustedOverHTTP) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   std::string serialized_seed = SerializeSeed(CreateTestSeed());
   VariationsService::EnableFetchForTesting();
 
@@ -1355,6 +1384,7 @@ TEST_F(VariationsServiceTest,
 }
 
 TEST_F(VariationsServiceTest, NotModifiedOverHttpRetryDoesNotUpdateState) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   // Set a fixed past reference date (2024-01-01 00:00:00 UTC).
   base::Time initial_time;
   ASSERT_TRUE(
@@ -1409,6 +1439,7 @@ TEST_F(VariationsServiceTest, NotModifiedOverHttpRetryDoesNotUpdateState) {
 }
 
 TEST_F(VariationsServiceTest, SeedDateIgnoredOverHttpRetry) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   base::test::ScopedCommandLine scoped_command_line;
   scoped_command_line.GetProcessCommandLine()->AppendSwitch(
       switches::kAcceptEmptySeedSignatureForTesting);
@@ -1473,7 +1504,20 @@ TEST_F(VariationsServiceTest, FieldTrialCreatorInitializedCorrectly) {
   service.GetClientFilterableStateForVersion();
 }
 
+TEST_F(VariationsServiceTest, DoNotRetryOverHTTPByDefault) {
+  TestVariationsService service(
+      std::make_unique<web_resource::TestRequestAllowedNotifier>(
+          &prefs_, network_tracker_),
+      &prefs_, GetMetricsStateManager(), true);
+  service.set_intercepts_fetch(true);
+  service.set_last_request_was_retry(false);
+  service.set_insecure_url(GURL("http://example.test"));
+  EXPECT_FALSE(service.CallMaybeRetryOverHTTP());
+  EXPECT_FALSE(service.fetch_attempted());
+}
+
 TEST_F(VariationsServiceTest, RetryOverHTTPIfURLisSet) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   TestVariationsService service(
       std::make_unique<web_resource::TestRequestAllowedNotifier>(
           &prefs_, network_tracker_),
@@ -1486,6 +1530,7 @@ TEST_F(VariationsServiceTest, RetryOverHTTPIfURLisSet) {
 }
 
 TEST_F(VariationsServiceTest, RetryOverHTTPWithBackgroundEncryption) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   TestVariationsService service(
       std::make_unique<web_resource::TestRequestAllowedNotifier>(
           &prefs_, network_tracker_),
@@ -1514,6 +1559,7 @@ TEST_F(VariationsServiceTest, RetryOverHTTPWithBackgroundEncryption) {
 }
 
 TEST_F(VariationsServiceTest, DoNotRetryAfterARetry) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   TestVariationsService service(
       std::make_unique<web_resource::TestRequestAllowedNotifier>(
           &prefs_, network_tracker_),
@@ -1526,6 +1572,7 @@ TEST_F(VariationsServiceTest, DoNotRetryAfterARetry) {
 }
 
 TEST_F(VariationsServiceTest, DoNotRetryIfInsecureURLIsHTTPS) {
+  base::test::ScopedFeatureList scoped_feature_list(kVariationsHttpFallback);
   TestVariationsService service(
       std::make_unique<web_resource::TestRequestAllowedNotifier>(
           &prefs_, network_tracker_),
@@ -4793,6 +4840,38 @@ TEST_F(VariationsServiceTest,
         &prefs_, GetMetricsStateManager(), true);
     EXPECT_EQ(service.client()->take_seed_from_native_call_count(), 0);
   }
+}
+
+TEST_F(VariationsServiceTest,
+       RequestSeedKeyIdsHeaderRespectsLegacyKeyDistrust) {
+  VariationsService::EnableFetchForTesting();
+
+  TestVariationsService service(
+      std::make_unique<web_resource::TestRequestAllowedNotifier>(
+          &prefs_, network_tracker_),
+      &prefs_, GetMetricsStateManager(), true);
+  service.set_intercepts_fetch(false);
+
+  net::HttpRequestHeaders intercepted_headers;
+  service.test_url_loader_factory()->AddResponse(
+      service.interception_url().spec(), "");
+  service.test_url_loader_factory()->SetInterceptor(
+      base::BindLambdaForTesting([&](const network::ResourceRequest& request) {
+        intercepted_headers = request.headers;
+      }));
+
+  // While the legacy key is trusted, legacy Key ID 0 is advertised alongside
+  // pinned IDs 1,2,3.
+  ASSERT_FALSE(prefs_.GetBoolean(prefs::kVariationsLegacySeedKeyDistrusted));
+  service.DoActualFetch();
+  EXPECT_THAT(intercepted_headers.GetHeader("X-Seed-Key-Ids"),
+              ::testing::Optional(std::string("1,2,3,0")));
+
+  // Once the legacy key is distrusted, legacy Key ID 0 is omitted.
+  prefs_.SetBoolean(prefs::kVariationsLegacySeedKeyDistrusted, true);
+  service.DoActualFetch();
+  EXPECT_THAT(intercepted_headers.GetHeader("X-Seed-Key-Ids"),
+              ::testing::Optional(std::string("1,2,3")));
 }
 
 }  // namespace variations

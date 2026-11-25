@@ -6,6 +6,9 @@ package org.chromium.base.memory_coordinator;
 
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniType;
+import org.jni_zero.JniTypeToken;
+import org.jni_zero.JniUniquePtr;
 import org.jni_zero.NativeMethods;
 
 import org.chromium.base.ThreadUtils;
@@ -29,6 +32,8 @@ import java.util.List;
 @JNINamespace("base::android")
 @NullMarked
 public final class MemoryConsumerRegistration implements AutoCloseable {
+    @JniType("::base::android::MemoryConsumerAndroid")
+    interface NativeMemoryConsumerAndroid extends JniTypeToken {}
 
     // -------------------------------------------------------------------------
     // Core Registration Handle
@@ -36,8 +41,8 @@ public final class MemoryConsumerRegistration implements AutoCloseable {
 
     private final @Nullable LifetimeAssert mLifetimeAssert = LifetimeAssert.create(this);
 
-    /** Pointer to the native MemoryConsumerAndroid peer instance (0 if pending or closed). */
-    private long mNativeMemoryConsumerAndroid;
+    /** Pointer to the native MemoryConsumerAndroid peer instance (null if pending or closed). */
+    private @Nullable JniUniquePtr<NativeMemoryConsumerAndroid> mNativeMemoryConsumerAndroid;
 
     /** Tracks whether this registration has been closed to ensure idempotent teardown. */
     private boolean mClosed;
@@ -76,11 +81,19 @@ public final class MemoryConsumerRegistration implements AutoCloseable {
     /** Performs registration with the native C++ registry if not already registered. */
     private void registerInternal(
             String consumerName, MemoryConsumerTraits traits, MemoryConsumer consumer) {
-        if (mNativeMemoryConsumerAndroid == 0 && !mClosed) {
-            mNativeMemoryConsumerAndroid =
-                    MemoryConsumerRegistrationJni.get().register(consumerName, traits, consumer);
-            MemoryConsumerRegistrationJni.get()
-                    .notifyInitialLimitIfNonDefault(mNativeMemoryConsumerAndroid);
+        if (mNativeMemoryConsumerAndroid == null && !mClosed) {
+            JniUniquePtr<NativeMemoryConsumerAndroid> nativePtr =
+                    MemoryConsumerRegistrationJni.get()
+                            .register(consumerName, traits.getPackedTraits(), consumer);
+            // register() synchronously invokes consumer.onUpdateMemoryLimit() when the
+            // initial limit is non-default. For deferred registrations flushed via
+            // flushPendingRegistrations(), the caller already holds this handle and its
+            // callback may re-entrantly call close() before register() returns.
+            if (mClosed) {
+                nativePtr.destroy();
+            } else {
+                mNativeMemoryConsumerAndroid = nativePtr;
+            }
         }
     }
 
@@ -91,9 +104,9 @@ public final class MemoryConsumerRegistration implements AutoCloseable {
         mClosed = true;
         LifetimeAssert.setSafeToGc(mLifetimeAssert, true);
         sPendingRegistrations.removeIf(pending -> pending.mRegistration == this);
-        if (mNativeMemoryConsumerAndroid != 0) {
-            MemoryConsumerRegistrationJni.get().destroy(mNativeMemoryConsumerAndroid);
-            mNativeMemoryConsumerAndroid = 0;
+        if (mNativeMemoryConsumerAndroid != null) {
+            mNativeMemoryConsumerAndroid.destroy();
+            mNativeMemoryConsumerAndroid = null;
         }
     }
 
@@ -186,11 +199,10 @@ public final class MemoryConsumerRegistration implements AutoCloseable {
     // -------------------------------------------------------------------------
 
     @NativeMethods
-    public interface Natives {
-        long register(String consumerName, MemoryConsumerTraits traits, MemoryConsumer consumer);
-
-        void destroy(long nativeMemoryConsumerAndroid);
-
-        void notifyInitialLimitIfNonDefault(long nativeMemoryConsumerAndroid);
+    interface Natives {
+        JniUniquePtr<NativeMemoryConsumerAndroid> register(
+                @JniType("std::string") String consumerName,
+                int packedTraits,
+                MemoryConsumer consumer);
     }
 }

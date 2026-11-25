@@ -162,7 +162,8 @@ void PermissionPromptBaseView::AnchorToPageInfoOrChip() {
     }
   }
   if (configuration.anchor.IsNull()) {
-    SetAnchorRect(bubble_anchor_util::GetPageInfoAnchorRect(GetBrowser()));
+    SetAnchorRect(bubble_anchor_util::GetPermissionPromptBubbleAnchorRect(
+        web_contents()));
   }
   SetArrow(configuration.bubble_arrow);
 }
@@ -183,7 +184,9 @@ void PermissionPromptBaseView::OnOcclusionStateChanged(bool occluded) {
   occluded_by_picture_in_picture_ = occluded;
 }
 
-bool PermissionPromptBaseView::MaybeAddMediaPreview(size_t index) {
+bool PermissionPromptBaseView::MaybeAddMediaPreview(
+    size_t index,
+    bool allow_empty_device_ids) {
 #if !BUILDFLAG(IS_CHROMEOS)
   if (media_previews_.has_value()) {
     return false;
@@ -199,6 +202,8 @@ bool PermissionPromptBaseView::MaybeAddMediaPreview(size_t index) {
     return false;
   }
 
+  bool has_camera_request = false;
+  bool has_mic_request = false;
   std::vector<std::string> requested_audio_capture_device_ids;
   std::vector<std::string> requested_video_capture_device_ids;
   const auto& requests = permission_prompt_delegate_->Requests();
@@ -212,21 +217,33 @@ bool PermissionPromptBaseView::MaybeAddMediaPreview(size_t index) {
          !has_ptz)) {
       requested_video_capture_device_ids =
           request->GetRequestedVideoCaptureDeviceIds();
+      has_camera_request =
+          allow_empty_device_ids || !requested_video_capture_device_ids.empty();
     } else if (request->request_type() ==
                permissions::RequestType::kMicStream) {
       requested_audio_capture_device_ids =
           request->GetRequestedAudioCaptureDeviceIds();
+      has_mic_request =
+          allow_empty_device_ids || !requested_audio_capture_device_ids.empty();
     }
   }
 
-  if (requested_audio_capture_device_ids.empty() &&
-      requested_video_capture_device_ids.empty()) {
+  if (!has_camera_request && !has_mic_request) {
     return false;
+  }
+
+  MediaCoordinator::ViewType view_type;
+  if (has_camera_request && has_mic_request) {
+    view_type = MediaCoordinator::ViewType::kBoth;
+  } else if (has_camera_request) {
+    view_type = MediaCoordinator::ViewType::kCameraOnly;
+  } else {
+    view_type = MediaCoordinator::ViewType::kMicOnly;
   }
 
   media_previews_.emplace(
       Profile::FromBrowserContext(web_contents()->GetBrowserContext()), this,
-      index, std::move(requested_audio_capture_device_ids),
+      index, view_type, std::move(requested_audio_capture_device_ids),
       std::move(requested_video_capture_device_ids));
   return true;
 #else
@@ -239,6 +256,12 @@ void PermissionPromptBaseView::UpdateMediaDevicePreferenceRanking() {
   if (media_previews_.has_value()) {
     media_previews_->UpdateDevicePreferenceRanking();
   }
+#endif
+}
+
+void PermissionPromptBaseView::ResetMediaPreview() {
+#if !BUILDFLAG(IS_CHROMEOS)
+  media_previews_.reset();
 #endif
 }
 

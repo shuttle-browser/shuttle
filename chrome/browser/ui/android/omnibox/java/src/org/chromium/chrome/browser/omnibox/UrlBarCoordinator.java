@@ -27,6 +27,7 @@ import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.components.omnibox.OmniboxFeatures;
 import org.chromium.components.omnibox.TextSelection;
 import org.chromium.ui.KeyboardVisibilityDelegate;
+import org.chromium.ui.KeyboardVisibilityDelegate.KeyboardVisibilityListener;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.modelutil.PropertyModelChangeProcessor;
 import org.chromium.ui.widget.ViewRectProvider;
@@ -41,7 +42,7 @@ import java.lang.annotation.Target;
 public class UrlBarCoordinator
         implements UrlBarEditingTextStateProvider,
                 UrlFocusChangeListener,
-                KeyboardVisibilityDelegate.KeyboardVisibilityListener {
+                KeyboardVisibilityListener {
 
     @IntDef({
         KeyboardState.HIDDEN,
@@ -302,9 +303,9 @@ public class UrlBarCoordinator
     @Override
     public void onUrlFocusChange(boolean hasFocus) {}
 
-    // KeyboardVisibilityDelegate.KeyboardVisibilityListener implementation.
+    // KeyboardVisibilityListener implementation.
     @Override
-    public void keyboardVisibilityChanged(boolean isKeyboardShowing) {
+    public void keyboardObscuringChanged(boolean isObscuring) {
         if (OmniboxFeatures.isDebounceKeyboardVisibilityEnabled()) {
             // When the OS notifies us that the keyboard visibility has changed (e.g. user
             // dismissed via back gesture or IME completed showing), any pending debounce
@@ -312,12 +313,12 @@ public class UrlBarCoordinator
             // state. Do not cancel a pending transition in the opposite direction (e.g. when a
             // late OS show callback arrives after a hide transition has already been queued).
             boolean isOppositeTransitionPending =
-                    (isKeyboardShowing && mKeyboardState == KeyboardState.HIDING)
-                            || (!isKeyboardShowing && mKeyboardState == KeyboardState.SHOWING);
+                    (isObscuring && mKeyboardState == KeyboardState.HIDING)
+                            || (!isObscuring && mKeyboardState == KeyboardState.SHOWING);
             if (!isOppositeTransitionPending) {
                 mUrlBar.removeCallbacks(mKeyboardTransitionRunnable);
-                mKeyboardState = isKeyboardShowing ? KeyboardState.SHOWN : KeyboardState.HIDDEN;
-            } else if (isKeyboardShowing
+                mKeyboardState = isObscuring ? KeyboardState.SHOWN : KeyboardState.HIDDEN;
+            } else if (isObscuring
                     && mUrlBar.getHandler() != null
                     && !mUrlBar.getHandler().hasCallbacks(mKeyboardTransitionRunnable)) {
                 mUrlBar.postDelayed(mKeyboardTransitionRunnable, KEYBOARD_DEBOUNCE_DELAY_MS);
@@ -325,7 +326,7 @@ public class UrlBarCoordinator
         }
         // The cursor visibility should follow soft keyboard visibility and should be hidden
         // when keyboard is dismissed for any reason (including scroll).
-        mUrlBar.setCursorVisible(isKeyboardShowing);
+        mUrlBar.setCursorVisible(isObscuring);
     }
 
     /* package */ boolean hasFocus() {

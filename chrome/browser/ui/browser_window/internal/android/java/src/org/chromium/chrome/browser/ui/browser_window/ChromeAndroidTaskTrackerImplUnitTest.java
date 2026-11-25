@@ -27,6 +27,7 @@ import android.app.ActivityManager;
 import android.app.ActivityOptions;
 import android.content.Context;
 import android.graphics.Rect;
+import android.os.Build;
 import android.os.Bundle;
 
 import androidx.test.core.app.ApplicationProvider;
@@ -39,6 +40,7 @@ import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.robolectric.annotation.Config;
 
 import org.chromium.base.ContextUtils;
 import org.chromium.base.FakeTimeTestRule;
@@ -308,6 +310,35 @@ public class ChromeAndroidTaskTrackerImplUnitTest {
     }
 
     @Test
+    @Config(sdk = Build.VERSION_CODES.CINNAMON_BUN)
+    public void createPendingTask_initialShowStateMaximized_setsMaxBoundsAsLaunchBounds() {
+        // Arrange: Initial bounds should be ignored for a maximized window.
+        var mockParams =
+                ChromeAndroidTaskUnitTestSupport.createMockAndroidBrowserWindowCreateParams(
+                        BrowserWindowType.NORMAL,
+                        new Rect(10, 20, 300, 400),
+                        WindowShowState.MAXIMIZED);
+
+        // Act.
+        createPendingTaskWithExistingTask(mockParams);
+
+        // Assert: The launch bounds are the source Activity's maximized bounds.
+        var bundleCaptor = ArgumentCaptor.forClass(Bundle.class);
+        verify(mMultiInstanceOrchestrator)
+                .createNewWindow(
+                        any(),
+                        eq(false),
+                        any(),
+                        bundleCaptor.capture(),
+                        eq(NewWindowAppSource.BROWSER_WINDOW_CREATOR));
+        Rect capturedBounds =
+                bundleCaptor.getValue().getParcelable(ActivityOptions.KEY_LAUNCH_BOUNDS);
+        assertEquals(
+                ChromeAndroidTaskUnitTestSupport.DEFAULT_MAXIMIZED_WINDOW_BOUNDS_IN_PX,
+                capturedBounds);
+    }
+
+    @Test
     public void obtainTask_withPendingId_adoptsPendingTask() {
         // No tasks yet.
         assertEquals(0, mChromeAndroidTaskTracker.getAllNativeBrowserWindowPtrs().length);
@@ -568,6 +599,8 @@ public class ChromeAndroidTaskTrackerImplUnitTest {
                 chromeAndroidTask.getTopActivityWindowAndroid());
 
         // Act.
+        mChromeAndroidTaskTracker.onActivityDestroyStarted(
+                activityScopedObjects2.mActivityWindowAndroid);
         mChromeAndroidTaskTracker.onActivityWindowAndroidDestroy(
                 activityScopedObjects2.mActivityWindowAndroid);
 
@@ -591,6 +624,8 @@ public class ChromeAndroidTaskTrackerImplUnitTest {
                         BrowserWindowType.NORMAL, activityScopedObjects, /* pendingId= */ null);
 
         // Act.
+        mChromeAndroidTaskTracker.onActivityDestroyStarted(
+                activityScopedObjects.mActivityWindowAndroid);
         mChromeAndroidTaskTracker.onActivityWindowAndroidDestroy(
                 activityScopedObjects.mActivityWindowAndroid);
 

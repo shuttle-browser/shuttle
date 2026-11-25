@@ -28,10 +28,9 @@
 #include "chrome/browser/dictation/features.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_fre_store.h"
+#include "chrome/browser/glic/public/glic_feature.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_provider_spec.h"
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
 #include "chrome/browser/metrics/variations/google_groups_manager_factory.h"
 #include "chrome/browser/password_manager/chrome_password_change_service.h"
 #include "chrome/browser/password_manager/password_change_service_factory.h"
@@ -85,6 +84,9 @@
 #include "chrome/browser/ui/webui/settings/safety_hub_handler.h"
 #include "chrome/browser/ui/webui/settings/saved_info_handler.h"
 #include "chrome/browser/ui/webui/settings/search/settings_search_handler.h"
+#include "chrome/browser/ui/webui/settings/search/settings_search_registry.h"
+#include "chrome/browser/ui/webui/settings/search/settings_section.h"
+#include "chrome/browser/ui/webui/settings/search/settings_sections.h"
 #include "chrome/browser/ui/webui/settings/search_engines_handler.h"
 #include "chrome/browser/ui/webui/settings/security_settings_provider.h"
 #include "chrome/browser/ui/webui/settings/settings_clear_browsing_data_handler.h"
@@ -142,7 +144,6 @@
 #include "components/search_engines/template_url_service.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/skills/features.h"
 #include "components/strings/grit/components_strings.h"
 #include "components/subscription_eligibility/subscription_eligibility_service.h"
 #include "components/sync/base/features.h"
@@ -161,6 +162,7 @@
 #include "services/device/public/cpp/device_features.h"
 #include "services/network/public/cpp/features.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/webui/tracked_element/tracked_element_handler_document_singleton.h"
@@ -226,27 +228,22 @@
 
 namespace settings {
 
-using optimization_guide::UserVisibleFeatureKey;
-
 namespace {
 
-// Returns true if the Gemini Enterprise settings section should be shown. With
-// `features::kGeicFre`, the section stays hidden until the GEiC FRE is
-// completed.
-// TODO(crbug.com/571928442): Remove when AI settings page visibility is
-// derived in one place. `ShouldShowSettingsPage()` already requires FRE consent
-// from the active provider's store, so this helper can go away then.
-bool ShouldShowGeicSettings(glic::GlicKeyedService* glic_service) {
-  return glic_service &&
-         glic_service->provider_spec().GetSettingsSection() ==
-             glic::GlicSettingsSection::kGeminiEnterprise &&
-         (!glic_service->provider_spec()
-               .GetFreStore()
-               .HidesSettingsUntilCompleted() ||
-          glic_service->enabling().HasConsented());
+std::string_view GetAiSettingsSection(
+    Profile* profile,
+    const glic::GlicEnabling::ProfileEnablement& enablement) {
+  // Profiles without a GlicKeyedService (shown via
+  // kAiSettingsPageForceAvailable) get the Gemini section from
+  // GetGlicProviderSpec()'s fallback.
+  return enablement.ShouldShowSettingsPage()
+             ? glic::GetGlicProviderSpec(profile).GetSettingsSectionId()
+             : "";
 }
 
 }  // namespace
+
+using optimization_guide::UserVisibleFeatureKey;
 
 // static
 void SettingsUI::RegisterProfilePrefs(
@@ -256,7 +253,6 @@ void SettingsUI::RegisterProfilePrefs(
   registry->RegisterBooleanPref(prefs::kImportDialogHistory, true);
   registry->RegisterBooleanPref(prefs::kImportDialogSavedPasswords, true);
   registry->RegisterBooleanPref(prefs::kImportDialogSearchEngine, true);
-  registry->RegisterDictionaryPref(prefs::kDeviceTabVisibilityHiddenSessions);
 }
 
 SettingsUI::SettingsUI(content::WebUI* web_ui)
@@ -343,6 +339,13 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
 #if BUILDFLAG(IS_MAC)
   AddSettingsPageUIHandler(std::make_unique<MacSystemSettingsHandler>());
 #endif
+
+  if (features::IsSettingsSearch2026Enabled()) {
+    settings_search_registry_ =
+        std::make_unique<settings_search::SettingsSearchRegistry>();
+    settings_sections_ = settings_search::CreateSettingsSections(
+        settings_search_registry_.get(), profile);
+  }
 
   html_source->AddBoolean("signinAllowed", !profile->IsGuestSession() &&
                                                profile->GetPrefs()->GetBoolean(
@@ -483,9 +486,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       "safetyHubUnusedSitePermissionsPrimaryLabel",
       IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_PRIMARY_LABEL);
   plural_string_handler->AddLocalizedString(
-      "safetyHubUnusedSitePermissionsSecondaryLabel",
-      IDS_SETTINGS_SAFETY_CHECK_UNUSED_SITE_PERMISSIONS_SECONDARY_LABEL);
-  plural_string_handler->AddLocalizedString(
       "safetyHubRevokedPermissionsSecondaryLabel",
       IDS_SETTINGS_SAFETY_HUB_REVOKED_PERMISSIONS_SECONDARY_LABEL);
   plural_string_handler->AddLocalizedString(
@@ -529,11 +529,14 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       "enableCapturedSurfaceControl",
       base::FeatureList::IsEnabled(blink::features::kCapturedSurfaceControl));
 
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   html_source->AddBoolean(
       "enableSmartCardReadersContentSetting",
       base::FeatureList::IsEnabled(blink::features::kSmartCard) &&
           content::AreIsolatedWebAppsEnabled(profile));
+#endif
+
+#if BUILDFLAG(IS_CHROMEOS)
   html_source->AddBoolean("enableWebPrintingContentSetting",
                           content::AreIsolatedWebAppsEnabled(profile));
 #endif
@@ -584,43 +587,38 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       base::FeatureList::IsEnabled(
           autofill::features::kAutofillEnableWalletDisclosureNoticePublicPass));
 
-  html_source->AddBoolean(
-      "enableInlineCueMenuContentSetting",
-      base::FeatureList::IsEnabled(features::kGlicSelectionPrompt));
+  html_source->AddBoolean("enableInlineCueMenuContentSetting",
+                          glic::GetGlicProviderSpec(profile).SupportsFeature(
+                              glic::GlicFeature::kSelectionInlineCue));
+  html_source->AddBoolean("enableQuickAnswersSelectionSuggestions",
+                          base::FeatureList::IsEnabled(
+                              features::kQuickAnswersSelectionSuggestions));
 
   // AI
-  auto* glic_service = glic::GlicKeyedService::Get(profile);
-  const bool show_geic_section = ShouldShowGeicSettings(glic_service);
-  bool show_glic_section = false;
-  bool glic_disallowed_by_admin = false;
-
   auto glic_enablement = glic::GlicEnabling::EnablementForProfile(profile);
-  // No service means an ineligible profile shown via
-  // kAiSettingsPageForceAvailable; keep showing the Gemini page there.
-  // TODO(crbug.com/571928442): Derive AI settings page visibility in one place
-  // instead of checking the settings section per provider.
-  show_glic_section =
-      glic_enablement.ShouldShowSettingsPage() &&
-      (!glic_service || glic_service->provider_spec().GetSettingsSection() ==
-                            glic::GlicSettingsSection::kGemini);
-  glic_disallowed_by_admin = glic_enablement.DisallowedByAdmin();
+  std::string_view ai_settings_section =
+      GetAiSettingsSection(profile, glic_enablement);
+  bool glic_disallowed_by_admin = glic_enablement.DisallowedByAdmin();
 
   if (glic_enablement.IsProfileEligible()) {
     AddSettingsPageUIHandler(std::make_unique<GlicHandler>());
 
+    auto* glic_service = glic::GlicKeyedService::Get(profile);
     CHECK(glic_service);
 
     // `this` unretained because the subscription is owned by this and will
     // unregister the callback on destruction.
     glic_settings_state_subscription_ =
         glic_service->enabling().RegisterOnShowSettingsPageChanged(
-            base::BindRepeating(&SettingsUI::UpdateShowGlicState,
+            base::BindRepeating(&SettingsUI::UpdateAiSettingsSection,
                                 base::Unretained(this)));
   }
 
-  html_source->AddBoolean("showGlicSettings", show_glic_section);
-  html_source->AddBoolean("showGeicSettings", show_geic_section);
+  html_source->AddString("aiSettingsSection", ai_settings_section);
   html_source->AddBoolean("glicDisallowedByAdmin", glic_disallowed_by_admin);
+  html_source->AddBoolean(
+      "showGeicDevicePolicyToggle",
+      glic::GetGlicProviderSpec(profile).CanSwitchBetweenGeminiProviders());
 
   const auto& autofill_client =
       *autofill::ContentAutofillClient::FromWebContents(
@@ -637,8 +635,6 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
 
   std::pair<const std::string_view, bool> optimization_guide_features[] = {
       {"showComposeControl", compose_visible},
-      {"showHistorySearchControl",
-       history_embeddings::IsHistoryEmbeddingsSettingVisible(profile)},
       {"showPasswordChangeControl",
        PasswordChangeServiceFactory::GetForProfile(profile) &&
            PasswordChangeServiceFactory::GetForProfile(profile)
@@ -646,10 +642,12 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
       {"showAiSuggestionsControl",
        base::FeatureList::IsEnabled(contextual_cueing::kContextualCueingV2)},
       {"showInlineCueMenuControl",
-       base::FeatureList::IsEnabled(features::kGlicSelectionPrompt) &&
+       glic::GetGlicProviderSpec(profile).SupportsFeature(
+           glic::GlicFeature::kSelectionInlineCue) &&
            glic_enablement.ShouldShowSettingsPage()},
       {"showSkillsSettingPage",
-       base::FeatureList::IsEnabled(features::kSkillsEnabled)},
+       glic::GetGlicProviderSpec(profile).SupportsFeature(
+           glic::GlicFeature::kSkills)},
       {"showIndigoControl", base::FeatureList::IsEnabled(features::kIndigo)},
       {"showGoogleSearchAiModeWorkspaceControl",
        base::FeatureList::IsEnabled(features::kGoogleSearchAiModeWorkspace)},
@@ -682,15 +680,18 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   // The On Device AI setting is always shown on branded builds.
   // TODO(crbug.com/466442880): Grey out toggle based on device capability and
   // enterprise policy.
+  html_source->AddBoolean(
+      "showOnDeviceAiAdvancedSettings",
+      base::FeatureList::IsEnabled(features::kOnDeviceModelAdvancedSettings));
   show_ai_features_section = true;
 #endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 
   // Within the AI subpage are separate sections for Glic, for GEIC, and for all
   // other AI features. The visibility of these is separately controlled, but
   // we want to show the subpage if any of them are enabled.
-  html_source->AddBoolean("showAiPage",
-                          show_glic_section || show_ai_features_section ||
-                              enable_ai_mode_search || show_geic_section);
+  html_source->AddBoolean("showAiPage", !ai_settings_section.empty() ||
+                                            show_ai_features_section ||
+                                            enable_ai_mode_search);
   html_source->AddBoolean("showAiPageAiFeatureSection",
                           show_ai_features_section);
 
@@ -712,6 +713,8 @@ SettingsUI::SettingsUI(content::WebUI* web_ui)
   html_source->AddString(
       "settingsRefresh2026",
       features::IsSettingsRefresh2026Enabled() ? "settings-refresh-2026" : "");
+  html_source->AddBoolean("enableSettingsSearch2026",
+                          features::IsSettingsSearch2026Enabled());
 
   personal_context::PersonalContextEligibilityService* eligibility_service =
       PersonalContextEligibilityServiceFactory::GetForProfile(profile);
@@ -945,6 +948,9 @@ void SettingsUI::BindInterface(
   if (!features::IsSettingsSearch2026Enabled()) {
     return;
   }
+  // Reset only the handler on reconnect; `settings_search_registry_` and
+  // `settings_sections_` are kept so sections are registered once per
+  // SettingsUI.
   settings_search_handler_.reset();
   settings_search_handler_factory_receiver_.reset();
   settings_search_handler_factory_receiver_.Bind(std::move(pending_receiver));
@@ -961,37 +967,25 @@ void SettingsUI::CreateSettingsSearchHandler(
         "CreateSettingsSearchHandler called more than once.");
     return;
   }
-  // TODO(b/571663356): Populate from the SettingsSearchRegistry once it
-  // exists. Until then the handler is bound but has nothing to search.
   settings_search_handler_ =
       std::make_unique<settings_search::SettingsSearchHandler>(
-          std::move(handler),
-          std::vector<std::unique_ptr<settings_search::SettingsSearchItem>>());
+          std::move(handler), settings_search_registry_.get());
 }
 
-void SettingsUI::UpdateShowGlicState() {
-  // The visibility of the Glic page can change based on the user accepting the
-  // FRE. Propagate this state to the WebUI value used to display the settings
-  // page.
+void SettingsUI::UpdateAiSettingsSection() {
+  // The visibility of the AI settings page section can change based on the user
+  // accepting the FRE. Propagate this state to the WebUI value used to display
+  // the settings page.
   Profile* profile = Profile::FromWebUI(web_ui());
   auto enablement = glic::GlicEnabling::EnablementForProfile(profile);
-  auto* glic_service = glic::GlicKeyedService::Get(profile);
-  // TODO(crbug.com/571928442): Derive AI settings page visibility in one place
-  // instead of checking the settings section per provider.
-  const bool show_glic =
-      enablement.ShouldShowSettingsPage() &&
-      (!glic_service || glic_service->provider_spec().GetSettingsSection() ==
-                            glic::GlicSettingsSection::kGemini);
-  // Like `show_glic`, only takes effect on the next page load (e.g. a
-  // refresh, which reuses this controller), since `loadTimeData` is read once
-  // at startup.
-  const bool show_geic = ShouldShowGeicSettings(glic_service);
+
+  std::string_view ai_settings_section =
+      GetAiSettingsSection(profile, enablement);
 
   base::DictValue update;
-  update.Set("showGlicSettings", show_glic);
-  update.Set("showGeicSettings", show_geic);
+  update.Set("aiSettingsSection", ai_settings_section);
   update.Set("glicDisallowedByAdmin", enablement.DisallowedByAdmin());
-  if (show_glic || show_geic) {
+  if (!ai_settings_section.empty()) {
     update.Set("showAiPage", true);
   }
 

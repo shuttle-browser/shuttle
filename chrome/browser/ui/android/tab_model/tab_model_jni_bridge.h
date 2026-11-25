@@ -43,7 +43,6 @@ class TabModelJniBridge : public TabModel {
                     std::optional<chrome::android::CustomTabProfileType>
                         custom_tab_profile_type,
                     TabModelType tab_model_type);
-  void Destroy();
 
   TabModelJniBridge(const TabModelJniBridge&) = delete;
   TabModelJniBridge& operator=(const TabModelJniBridge&) = delete;
@@ -53,7 +52,7 @@ class TabModelJniBridge : public TabModel {
   void AssociateWithBrowserWindow(int64_t native_android_browser_window);
   void DissociateWithBrowserWindow();
   void TabAddedToModel(TabAndroid* tab);
-  TabAndroid* DuplicateTab(JNIEnv* env, TabAndroid* tab);
+  TabAndroid* DuplicateTab(TabAndroid* tab);
   void MoveTabToWindowForTesting(TabAndroid* tab,
                                  BrowserWindowInterface* browser_window,
                                  int new_index);
@@ -187,8 +186,6 @@ class TabModelJniBridge : public TabModel {
   static TabModel* FromJavaObject(const jni_zero::JavaRef<jobject>& obj);
 
  private:
-  tabs::TabInterface* DuplicateTab(TabAndroid* tab);
-
   JavaObjectWeakGlobalRef java_object_;
 
   // The observer bridge. This exists as long as there are registered observers.
@@ -200,6 +197,11 @@ class TabModelJniBridge : public TabModel {
   // the constructor.
   std::unique_ptr<ui::ScopedUnownedUserData<TabListInterface>>
       scoped_unowned_user_data_;
+
+  // Whether restored background tabs have already been scheduled with
+  // BackgroundTabLoadingPolicy. Duplicate calls to
+  // BroadcastSessionRestoreComplete() can only happen in tests.
+  bool has_scheduled_restored_tabs_ = false;
 };
 
 namespace jni_zero {

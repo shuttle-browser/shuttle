@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <limits>
 #include <ostream>
 #include <set>
@@ -144,6 +145,12 @@ constexpr std::string_view kRuntimeMutabilityResult =
 constexpr std::string_view kRuntimeMutabilityErrorFeatureName =
     "Variations.RuntimeMutability.Error.FeatureName";
 
+template <FeatureState default_state>
+const Feature& GetFeatureFromTemplate() {
+  static BASE_FEATURE(kFeatureFromTemplate, default_state);
+  return kFeatureFromTemplate;
+}
+
 std::string SortFeatureListString(const std::string& feature_list) {
   std::vector<std::string_view> features =
       FeatureList::SplitFeatureListString(feature_list);
@@ -172,31 +179,30 @@ class FeatureListTest : public testing::Test {
 
   static base::PassKey<FeatureListTest> pass_key() { return {}; }
 
-  // Verify that the `kRuntimeMutabilityMask` set in the `Feature` struct is the
-  // same as the one used by the `FeatureList` helpers. `Feature` has it's own
-  // copy to minimize dependencies and exposed implementation details (the
-  // constexpr constructor needs the value).
-  static_assert(static_cast<uint32_t>(Feature::kRuntimeMutabilityMask) ==
-                static_cast<uint32_t>(internal::kRuntimeMutabilityMask));
-
   // If any of these static asserts fail, that means the layout of the
   // `base::Feature` struct has been modified, and thus the Rust equivalent in
   // `base/feature.rs` (the `base::Feature` struct) must be updated to match.
   // LINT.IfChange(FeatureStruct)
-  static_assert(sizeof(Feature) == (sizeof(void*) == 8 ? 16 : 12));
+  static_assert(sizeof(Feature) == 2 * sizeof(void*));
   static_assert(alignof(Feature) == alignof(void*));
   static_assert(offsetof(Feature, name) == 0);
-  static_assert(offsetof(Feature, default_state) == sizeof(void*));
-  static_assert(offsetof(Feature, cached_value) == sizeof(void*) + 4);
+  static_assert(offsetof(Feature, tagged_state) == sizeof(void*));
   // LINT.ThenChange(feature.rs:FeatureStruct)
 
-  void SetFeatureStateForTesting(const Feature& feature,
-                                 Feature::FeatureStateCache value) {
-    feature.cached_value.store(value, std::memory_order_relaxed);
-  }
+  // Rust's `AtomicU32` in base/feature.rs relies on this layout, since C++
+  // accesses it as an `internal::FeatureStateStorage`.
+  static_assert(sizeof(internal::FeatureStateStorage) == sizeof(uint32_t));
+  static_assert(alignof(internal::FeatureStateStorage) == alignof(uint32_t));
 
   Feature::FeatureStateCache GetFeatureStateForTesting(const Feature& feature) {
-    return feature.cached_value.load(std::memory_order_relaxed);
+    return internal::GetFeatureStateCache(feature.tagged_state)
+        .load(std::memory_order_relaxed);
+  }
+
+  // Only for comparing addresses. Use `GetFeatureStateForTesting()` to read the
+  // state.
+  const void* GetFeatureStateStorageForTesting(const Feature& feature) {
+    return internal::GetFeatureStateWord(feature.tagged_state);
   }
 
  private:
@@ -206,6 +212,94 @@ class FeatureListTest : public testing::Test {
 TEST_F(FeatureListTest, DefaultStates) {
   EXPECT_TRUE(FeatureList::IsEnabled(kFeatureOnByDefault));
   EXPECT_FALSE(FeatureList::IsEnabled(kFeatureOffByDefault));
+  EXPECT_EQ(FEATURE_ENABLED_BY_DEFAULT, kFeatureOnByDefault.GetDefaultState());
+  EXPECT_EQ(FEATURE_DISABLED_BY_DEFAULT,
+            kFeatureOffByDefault.GetDefaultState());
+}
+
+TEST_F(FeatureListTest, DefaultStatesFromConstants) {
+  constexpr FeatureState kDefaultState = FEATURE_ENABLED_BY_DEFAULT;
+  static BASE_FEATURE(kFeatureFromConstant, kDefaultState);
+  static BASE_RUNTIME_MUTABLE_FEATURE(kMutableFeatureFromConstant,
+                                      kDefaultState);
+  EXPECT_EQ(kDefaultState, kFeatureFromConstant.GetDefaultState());
+  EXPECT_EQ(kDefaultState, kMutableFeatureFromConstant.GetDefaultState());
+
+  constexpr FeatureState kCountryDefaultState = FEATURE_ENABLED_FOR_COUNTRIES;
+  static BASE_FEATURE_WITH_COUNTRY_RESTRICTIONS(kCountryFeatureFromConstant,
+                                                kCountryDefaultState, "de");
+  EXPECT_EQ(kCountryDefaultState,
+            kCountryFeatureFromConstant.GetDefaultState());
+}
+
+TEST_F(FeatureListTest, FeaturesHaveDistinctStateStorage) {
+  // Features with the same default state and mutability have the same initial
+  // state, but each must still get its own storage.
+  EXPECT_NE(GetFeatureStateStorageForTesting(kFeatureOffByDefault),
+            GetFeatureStateStorageForTesting(kFeature2ArgsOff));
+
+  static BASE_FEATURE(kLocalFeatureA, FEATURE_DISABLED_BY_DEFAULT);
+  static BASE_FEATURE(kLocalFeatureB, FEATURE_DISABLED_BY_DEFAULT);
+  EXPECT_NE(GetFeatureStateStorageForTesting(kLocalFeatureA),
+            GetFeatureStateStorageForTesting(kLocalFeatureB));
+  EXPECT_NE(GetFeatureStateStorageForTesting(kLocalFeatureA),
+            GetFeatureStateStorageForTesting(kFeatureOffByDefault));
+}
+
+TEST_F(FeatureListTest, FeatureStateIsZeroInitialized) {
+  // The default state lives in the pointer to the state storage, so that the
+  // storage of features that are not runtime mutable starts out as zero (and
+  // can be placed in .bss).
+  static BASE_FEATURE(kLocalFeatureOn, FEATURE_ENABLED_BY_DEFAULT);
+  static BASE_FEATURE(kLocalFeatureOff, FEATURE_DISABLED_BY_DEFAULT);
+  static BASE_FEATURE_WITH_COUNTRY_RESTRICTIONS(
+      kLocalCountryFeature, FEATURE_DISABLED_FOR_COUNTRIES, "de");
+  static BASE_RUNTIME_MUTABLE_FEATURE(kLocalMutableFeature,
+                                      FEATURE_ENABLED_BY_DEFAULT);
+  EXPECT_EQ(0u, GetFeatureStateForTesting(kLocalFeatureOn));
+  EXPECT_EQ(0u, GetFeatureStateForTesting(kLocalFeatureOff));
+  EXPECT_EQ(0u, GetFeatureStateForTesting(kLocalCountryFeature));
+  EXPECT_EQ(
+      static_cast<Feature::FeatureStateCache>(internal::kRuntimeMutabilityMask),
+      GetFeatureStateForTesting(kLocalMutableFeature));
+
+  EXPECT_EQ(FEATURE_ENABLED_BY_DEFAULT, kLocalFeatureOn.GetDefaultState());
+  EXPECT_EQ(FEATURE_DISABLED_BY_DEFAULT, kLocalFeatureOff.GetDefaultState());
+  EXPECT_EQ(FEATURE_DISABLED_FOR_COUNTRIES,
+            kLocalCountryFeature.GetDefaultState());
+  EXPECT_EQ(FEATURE_ENABLED_BY_DEFAULT, kLocalMutableFeature.GetDefaultState());
+
+  // Masking off the tag must yield an aligned pointer to the storage.
+  EXPECT_EQ(0u, reinterpret_cast<uintptr_t>(
+                    GetFeatureStateStorageForTesting(kLocalCountryFeature)) %
+                    alignof(uint32_t));
+}
+
+TEST_F(FeatureListTest, DefaultStatesFromTemplates) {
+  EXPECT_EQ(
+      FEATURE_ENABLED_BY_DEFAULT,
+      GetFeatureFromTemplate<FEATURE_ENABLED_BY_DEFAULT>().GetDefaultState());
+  EXPECT_EQ(
+      FEATURE_DISABLED_BY_DEFAULT,
+      GetFeatureFromTemplate<FEATURE_DISABLED_BY_DEFAULT>().GetDefaultState());
+}
+
+TEST_F(FeatureListTest, ClearCachedValuePreservesFeatureMetadata) {
+  // The cache word also holds the runtime-mutability flag. Check that cache
+  // resets leave it, and the default state, untouched.
+  EXPECT_TRUE(FeatureList::IsEnabled(kFeatureOnByDefault));
+  FeatureList::ClearFeatureCachedValueForTesting(kFeatureOnByDefault);
+  EXPECT_EQ(FEATURE_ENABLED_BY_DEFAULT, kFeatureOnByDefault.GetDefaultState());
+  EXPECT_FALSE(kFeatureOnByDefault.IsRuntimeMutable());
+
+  FeatureList::ClearFeatureCachedValueForTesting(kCountryEnabledEuropeFeature);
+  EXPECT_EQ(FEATURE_ENABLED_FOR_COUNTRIES,
+            kCountryEnabledEuropeFeature.GetDefaultState());
+
+  FeatureList::ClearFeatureCachedValueForTesting(kRuntimeMutableFeature);
+  EXPECT_TRUE(kRuntimeMutableFeature.IsRuntimeMutable());
+  EXPECT_EQ(FEATURE_ENABLED_BY_DEFAULT,
+            kRuntimeMutableFeature.GetDefaultState());
 }
 
 TEST_F(FeatureListTest, CacheStoresResolvedAndExplicitState) {
@@ -239,6 +333,8 @@ TEST_F(FeatureListTest, CacheStoresResolvedAndExplicitState) {
       FeatureList::GetStateIfOverridden(kFeatureOffByDefault);
   ASSERT_TRUE(off_by_default_state.has_value());
   EXPECT_TRUE(*off_by_default_state);
+  EXPECT_EQ(FEATURE_DISABLED_BY_DEFAULT,
+            kFeatureOffByDefault.GetDefaultState());
 
   EXPECT_FALSE(FeatureList::IsEnabled(kFeatureOnByDefault));
   cached_value = GetFeatureStateForTesting(kFeatureOnByDefault);
@@ -248,6 +344,7 @@ TEST_F(FeatureListTest, CacheStoresResolvedAndExplicitState) {
       FeatureList::GetStateIfOverridden(kFeatureOnByDefault);
   ASSERT_TRUE(on_by_default_state.has_value());
   EXPECT_FALSE(*on_by_default_state);
+  EXPECT_EQ(FEATURE_ENABLED_BY_DEFAULT, kFeatureOnByDefault.GetDefaultState());
 }
 
 TEST(FeatureListCachingContextTest, SkipsZeroOnWraparound) {
@@ -271,16 +368,16 @@ TEST_F(FeatureListTest, TwoArgMacro) {
 
 TEST_F(FeatureListTest, CountryRestrictedFeatures) {
   EXPECT_EQ(FEATURE_ENABLED_FOR_COUNTRIES,
-            kCountryEnabledEuropeFeature.default_state);
+            kCountryEnabledEuropeFeature.GetDefaultState());
   EXPECT_THAT(kCountryEnabledEuropeFeature.countries, ElementsAre("de", "gb"));
 
   EXPECT_EQ(FEATURE_DISABLED_FOR_COUNTRIES,
-            kCountryDisabledNorthAmericaFeature.default_state);
+            kCountryDisabledNorthAmericaFeature.GetDefaultState());
   EXPECT_THAT(kCountryDisabledNorthAmericaFeature.countries,
               ElementsAre("us", "ca", "mx"));
 
   EXPECT_EQ(FEATURE_ENABLED_FOR_COUNTRIES,
-            kCountryEnabledAsiaFeature.default_state);
+            kCountryEnabledAsiaFeature.GetDefaultState());
   EXPECT_THAT(kCountryEnabledAsiaFeature.countries,
               ElementsAre("jp", "kr", "cn", "in"));
 }
@@ -1081,11 +1178,13 @@ using FeatureListDeathTest = FeatureListTest;
 TEST_F(FeatureListDeathTest, DiesWithBadFeatureName) {
   // TODO(dcheng): Add a nocompile version of this test. In general, people
   // should not be constructing features at runtime anyway but just in case...
+  internal::FeatureStateStorage state{
+      internal::MakeFeatureStateCacheInitialValue(
+          /*is_runtime_mutable=*/false)};
   EXPECT_DEATH(
       Feature(
           StrCat({BUILDFLAG(BANNED_BASE_FEATURE_PREFIX), "MyFeature"}).c_str(),
-          FEATURE_DISABLED_BY_DEFAULT,
-          /*is_runtime_mutable=*/false,
+          internal::TagFeatureStateStorage<FEATURE_DISABLED_BY_DEFAULT>(state),
           internal::FeatureMacroHandshake::kSecret),
       StrCat({"Invalid feature name ", BUILDFLAG(BANNED_BASE_FEATURE_PREFIX),
               "MyFeature"}));
@@ -1094,11 +1193,12 @@ TEST_F(FeatureListDeathTest, DiesWithBadFeatureName) {
 TEST_F(FeatureListDeathTest, DiesWithBadMutableFeatureName) {
   // TODO(dcheng): Add a nocompile version of this test. In general, people
   // should not be constructing features at runtime anyway but just in case...
+  internal::FeatureStateStorage state{
+      internal::MakeFeatureStateCacheInitialValue(/*is_runtime_mutable=*/true)};
   EXPECT_DEATH(
       Feature(
           StrCat({BUILDFLAG(BANNED_BASE_FEATURE_PREFIX), "MyFeature"}).c_str(),
-          FEATURE_DISABLED_BY_DEFAULT,
-          /*is_runtime_mutable=*/true,
+          internal::TagFeatureStateStorage<FEATURE_DISABLED_BY_DEFAULT>(state),
           internal::FeatureMacroHandshake::kSecret),
       StrCat({"Invalid feature name ", BUILDFLAG(BANNED_BASE_FEATURE_PREFIX),
               "MyFeature"}));
@@ -1832,9 +1932,7 @@ TEST_F(FeatureListTest,
   ASSERT_FALSE(feature_list->IsRuntimeMutabilityEnabledForTesting(
       kRuntimeMutableFeature));
 
-  // Attempting to enable runtime mutability once it has been disabled will
-  // create the override entry (so that we can CHECK that it isn't registered
-  // twice), but otherwise has no effect.
+  // Enable runtime mutability for the feature.
   feature_list->EnableRuntimeMutability(kRuntimeMutableFeature,
                                         /*pre_mutation_callback=*/{},
                                         /*post_mutation_callback=*/{});
@@ -1850,44 +1948,109 @@ TEST_F(FeatureListTest,
 }
 #endif  // defined(GTEST_HAS_DEATH_TEST)
 
-#if defined(GTEST_HAS_DEATH_TEST)
 TEST_F(FeatureListTest, RuntimeMutability_EarlyAccess) {
   test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitWithNullFeatureAndFieldTrialLists();
 
   ASSERT_TRUE(kRuntimeMutableFeature.IsRuntimeMutable());
-  ASSERT_FALSE(kRuntimeMutableFeature.WasAccessedEarly());
+  ASSERT_FALSE(kRuntimeMutableFeature.WasAccessedEarlyForTesting());
 
-  // Access the feature before enabling runtime mutability.
-  EXPECT_DEATH(FeatureList::IsEnabled(kRuntimeMutableFeature),
-               "");  // CHECK messages are stripped from release builds.
+  // Accessing the feature before a FeatureList is initialized returns its
+  // default state and records early access without crashing.
+  EXPECT_TRUE(FeatureList::IsEnabled(kRuntimeMutableFeature));
+  EXPECT_TRUE(kRuntimeMutableFeature.WasAccessedEarlyForTesting());
+  EXPECT_EQ(&kRuntimeMutableFeature,
+            FeatureList::GetEarlyAccessedFeatureForTesting());
 }
-#endif  // defined(GTEST_HAS_DEATH_TEST)
+
+TEST_F(FeatureListTest, RuntimeMutability_DisallowedByEarlyAccessInstance) {
+  test::ScopedFeatureList clear_feature_list;
+  clear_feature_list.InitWithNullFeatureAndFieldTrialLists();
+
+  ASSERT_TRUE(kRuntimeMutableFeature.IsRuntimeMutable());
+  ASSERT_FALSE(kRuntimeMutableFeature.WasAccessedEarlyForTesting());
+
+  auto early_access_feature_list = std::make_unique<FeatureList>();
+  early_access_feature_list->InitFromCommandLine("OnByDefault",
+                                                 kRuntimeMutableFeature.name);
+  FeatureList::SetEarlyAccessInstance(std::move(early_access_feature_list),
+                                      {"DcheckIsFatal", "OnByDefault"});
+
+  // Accessing a runtime-mutable feature not on the early-access allowlist
+  // returns its default state and default param value, and records early access
+  // without crashing.
+  EXPECT_TRUE(FeatureList::IsEnabled(kRuntimeMutableFeature));
+  EXPECT_TRUE(kRuntimeMutableFeature.WasAccessedEarlyForTesting());
+  EXPECT_EQ(&kRuntimeMutableFeature,
+            FeatureList::GetEarlyAccessedFeatureForTesting());
+  EXPECT_EQ(12345, kRuntimeMutableFeatureParam.Get());
+
+  FeatureList::ResetEarlyFeatureAccessTrackerForTesting();
+}
+
+TEST_F(FeatureListTest,
+       RuntimeMutability_EnableRuntimeMutability_AfterEarlyAccess) {
+  std::unique_ptr<base::RuntimeFieldTrialInfo> override_info;
+  test::ScopedFeatureList scoped_feature_list;
+  {
+    test::ScopedFeatureList null_feature_list;
+    null_feature_list.InitWithNullFeatureAndFieldTrialLists();
+
+    ASSERT_TRUE(kRuntimeMutableFeature.IsRuntimeMutable());
+    ASSERT_FALSE(kRuntimeMutableFeature.WasAccessedEarlyForTesting());
+
+    // Query the feature early before a FeatureList is registered.
+    EXPECT_TRUE(FeatureList::IsEnabled(kRuntimeMutableFeature));
+    EXPECT_TRUE(kRuntimeMutableFeature.WasAccessedEarlyForTesting());
+  }
+
+  auto feature_list = std::make_unique<FeatureList>();
+  ASSERT_FALSE(feature_list->IsRuntimeMutabilityEnabledForTesting(
+      kRuntimeMutableFeature));
+
+  // Enabling runtime mutability after an early access succeeds.
+  feature_list->EnableRuntimeMutability(kRuntimeMutableFeature,
+                                        /*pre_mutation_callback=*/{},
+                                        /*post_mutation_callback=*/{});
+  EXPECT_TRUE(feature_list->IsRuntimeMutabilityEnabledForTesting(
+      kRuntimeMutableFeature));
+
+  // Note: `ScopedFeatureList::InitWithFeatureList()` resets
+  // `EarlyFeatureAccessTracker` via `ClearInstanceForTesting()` before calling
+  // `SetInstance()`.
+  scoped_feature_list.InitWithFeatureList(std::move(feature_list));
+  EXPECT_TRUE(FeatureList::IsEnabled(kRuntimeMutableFeature));
+
+  // Subsequent runtime state updates take effect as expected.
+  override_info = std::make_unique<base::RuntimeFieldTrialInfo>(
+      "TrialA", "GroupA", base::FieldTrialParams(), nullptr);
+  auto update =
+      FeatureList::GetInstance()
+          ->PrepareRuntimeMutableFeatureStateUpdateForTesting(
+              pass_key(), override_info.get(), kRuntimeMutableFeature.name,
+              FeatureList::OVERRIDE_DISABLE_FEATURE);
+  ASSERT_TRUE(update.has_value());
+  update->RunPreMutationCallback();
+  update->UpdateState();
+  update->RunPostMutationCallback();
+  EXPECT_FALSE(FeatureList::IsEnabled(kRuntimeMutableFeature));
+}
 
 #if defined(GTEST_HAS_DEATH_TEST)
 TEST_F(FeatureListTest,
-       RuntimeMutability_EnableRuntimeMutability_AfterEarlyAccess) {
+       RuntimeMutability_IsEnabledWithoutEnableRuntimeMutability) {
   auto feature_list = std::make_unique<FeatureList>();
   ASSERT_TRUE(kRuntimeMutableFeature.IsRuntimeMutable());
   ASSERT_FALSE(feature_list->IsRuntimeMutabilityEnabledForTesting(
       kRuntimeMutableFeature));
-  ASSERT_FALSE(kRuntimeMutableFeature.WasAccessedEarly());
 
-  // Mark the feature as early-accessed and having runtime mutability enabled.
-  // This should never happen in practice, as FeatureList::IsEnabled() will
-  // CHECK if the feature is runtime-mutable and accessed early.
-  SetFeatureStateForTesting(
-      kRuntimeMutableFeature,
-      internal::kCachedLogEarlyMask | internal::kRuntimeMutabilityMask);
-  ASSERT_TRUE(kRuntimeMutableFeature.WasAccessedEarly());
+  test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitWithFeatureList(std::move(feature_list));
 
-  // Attempting to enable runtime mutability for an early-accessed feature will
-  // disable runtime mutability and log an error.
-  EXPECT_DEATH(
-      feature_list->EnableRuntimeMutability(kRuntimeMutableFeature,
-                                            /*pre_mutation_callback=*/{},
-                                            /*post_mutation_callback=*/{}),
-      "");  // CHECK messages are stripped from release builds.
+  // Querying a runtime-mutable feature after FeatureList initialization
+  // without having called EnableRuntimeMutability() fails with a CHECK.
+  EXPECT_DEATH(FeatureList::IsEnabled(kRuntimeMutableFeature),
+               "");  // CHECK messages are stripped from release builds.
 }
 #endif  // defined(GTEST_HAS_DEATH_TEST)
 

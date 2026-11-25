@@ -36,10 +36,10 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/test_navigation_observer.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ozone_buildflags.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/ozone/public/ozone_platform.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/bubble/bubble_dialog_model_host.h"
@@ -49,9 +49,15 @@
 #include "ui/views/test/widget_activation_waiter.h"
 
 #if BUILDFLAG(IS_MAC)
+#include "base/test/run_until.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_commands_mac.h"
+#include "chrome/browser/ui/omnibox/omnibox_view.h"
+#include "chrome/browser/ui/view_ids.h"
 #include "chrome/test/base/interactive_test_utils.h"
+#include "ui/base/clipboard/clipboard_buffer.h"
+#include "ui/base/clipboard/scoped_clipboard_writer.h"
+#include "ui/base/test/scoped_fake_nswindow_fullscreen.h"
 #endif
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -123,6 +129,9 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest, FullscreenClearsFocus) {
 // MacOS at this point in time.
 #if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC)
 IN_PROC_BROWSER_TEST_F(BrowserViewTest, ImmersiveFullscreenViewTreeOrder) {
+#if BUILDFLAG(IS_MAC)
+  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen;
+#endif
   auto* const immersive_mode_controller =
       ImmersiveModeController::From(browser());
   ASSERT_TRUE(immersive_mode_controller);
@@ -213,6 +222,46 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest,
   run_loop.Run();
 
   EXPECT_TRUE(browser_view()->IsFullscreen());
+}
+
+// Test that a paste command executed for a browser window that is not active is
+// not delivered to another, active browser window.
+IN_PROC_BROWSER_TEST_F(BrowserViewTest, PasteInInactiveWindowIsDropped) {
+  if (features::IsWebUILocationBarEnabled()) {
+    GTEST_SKIP() << "Not applicable when WebUILocationBar is enabled.";
+  }
+  BrowserWindowInterface* inactive_browser = browser();
+  BrowserWindowInterface* active_browser =
+      CreateBrowser(browser()->GetProfile());
+  ASSERT_TRUE(ui_test_utils::BringBrowserWindowToFront(active_browser));
+  ASSERT_FALSE(
+      BrowserView::GetBrowserViewForBrowser(inactive_browser)->IsActive());
+
+  chrome::FocusLocationBar(active_browser);
+  ASSERT_TRUE(ui_test_utils::IsViewFocused(active_browser, VIEW_ID_OMNIBOX));
+  OmniboxView* omnibox = BrowserView::GetBrowserViewForBrowser(active_browser)
+                             ->GetLocationBar()
+                             ->GetOmniboxView();
+  const std::u16string original_text = omnibox->GetText();
+
+  constexpr char16_t kClipboardText[] = u"pasted";
+  {
+    ui::ScopedClipboardWriter writer(ui::ClipboardBuffer::kCopyPaste);
+    writer.WriteText(kClipboardText);
+  }
+
+  // Paste for the inactive window first. This must be dropped rather than
+  // forwarded to the omnibox of the active window.
+  chrome::ExecuteCommand(inactive_browser, IDC_PASTE);
+  // Paste for the active window, which should be delivered to its omnibox.
+  EXPECT_TRUE(chrome::ExecuteCommand(active_browser, IDC_PASTE));
+
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return omnibox->GetText() != original_text; }));
+
+  // If the first paste had been forwarded, the text would have been pasted
+  // twice.
+  EXPECT_EQ(kClipboardText, omnibox->GetText());
 }
 #endif  // BUILDFLAG(IS_MAC)
 
@@ -467,7 +516,8 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTest, WindowActivatedAccessibleEvent) {
 
   // Create a new browser window and wait for event again.
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GURL(url::kAboutBlankURL), WindowOpenDisposition::kNewWindow,
+      browser(), GURL(url::kAboutBlankURL),
+      ui::mojom::WindowOpenDisposition::kNewWindow,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_BROWSER);
   if (ax_observer_.GetCount(ax::mojom::Event::kWindowActivated) == 1) {
     ax_observer_.WaitForEvent(ax::mojom::Event::kWindowActivated);

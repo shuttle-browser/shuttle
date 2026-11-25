@@ -233,12 +233,6 @@ void PushMessagingServiceImpl::OnSendError(
   NOTREACHED() << "The Push API shouldn't have sent messages upstream";
 }
 
-void PushMessagingServiceImpl::OnSendAcknowledged(
-    const std::string& app_id,
-    const std::string& message_id) {
-  NOTREACHED() << "The Push API shouldn't have sent messages upstream";
-}
-
 bool PushMessagingServiceImpl::CanHandle(const std::string& app_id) const {
   return base::StartsWith(app_id, push_messaging::kAppIdentifierPrefix,
                           base::CompareCase::INSENSITIVE_ASCII);
@@ -255,7 +249,7 @@ gcm::GCMDriver& PushMessagingServiceImpl::GetGCMDriver() {
              base::TaskShutdownBehavior::SKIP_ON_SHUTDOWN}));
 
     gcm_driver_ = gcm::CreateGCMDriverDesktop(
-        std::make_unique<gcm::GCMClientFactory>(), /*prefs=*/nullptr,
+        std::make_unique<gcm::GCMClientFactory>(),
         parent_context_.IsOffTheRecord()
             ? base::FilePath("/tmp")
             : parent_context_.GetPath().Append(gcm_driver::kGCMStoreDirname),

@@ -13,6 +13,7 @@
 #include "base/types/expected.h"
 #include "chrome/browser/ui/webui/webui_toolbar/adapters/icon_table_fetcher.h"
 #include "chrome/browser/ui/webui/webui_toolbar/adapters/toolbar_state_fetcher.h"
+#include "components/browser_apis/ui_controllers/toolbar/extensions_bar_data_model.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api.mojom.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
@@ -89,9 +90,11 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
     virtual void OnLhsChipDrag(
         toolbar_ui_api::mojom::LhsChipIdentifier identifier,
         ui::mojom::DragEventSource source) = 0;
-    virtual void OnHomeButtonDropUrl(const GURL& url) = 0;
+    virtual void OnHomeButtonDropUrl() = 0;
     virtual void OnHomeButtonDropFile(const gfx::PointF& drop_position) = 0;
     virtual void OnHomeButtonDropText(const std::string& text) = 0;
+    virtual void OnToolbarDropUrl() = 0;
+    virtual void OnToolbarDropText(const std::string& text) = 0;
     virtual void OnToolbarDropFile(const gfx::PointF& drop_position) = 0;
     virtual base::expected<std::monostate, mojo_base::mojom::ErrorPtr>
     OnOmniboxAction(toolbar_ui_api::mojom::OmniboxActionPtr action) = 0;
@@ -100,9 +103,11 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
     virtual void SetAvatarButtonFocused(bool focused) = 0;
     virtual void SetAvatarButtonIPHPromoShowing(bool showing) = 0;
     virtual void OnAppMenuFocusChanged(bool focused) = 0;
-    virtual void ExecuteExtensionAction(const std::string& extension_id) = 0;
-    virtual void ShowExtensionContextMenu(const std::string& extension_id,
-                                          ui::mojom::MenuSourceType source) = 0;
+    virtual void ExecuteExtensionAction(
+        extensions_bar::mojom::ExtensionActionIdPtr id) = 0;
+    virtual void ShowExtensionContextMenu(
+        extensions_bar::mojom::ExtensionActionIdPtr id,
+        ui::mojom::MenuSourceType source) = 0;
     virtual base::expected<
         toolbar_ui_api::mojom::AdjustOmniboxTextForCopyResultPtr,
         mojo_base::mojom::ErrorPtr>
@@ -111,6 +116,7 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
     virtual void OnPerformanceInterventionButtonClicked() = 0;
     virtual void OnMediaButtonClicked() = 0;
     virtual void OnGlicButtonClicked() = 0;
+    virtual void OnGlicActorTaskIconClicked() = 0;
   };
 
   ToolbarUIService(
@@ -136,7 +142,7 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
   void FlushObserversForTesting();
 
   // toolbar_ui_api::mojom::ToolbarUIService:
-  void Bind(BindCallback callback) override;
+  void GetInitialState(GetInitialStateCallback callback) override;
   void ShowContextMenu(toolbar_ui_api::mojom::ContextMenuType menu_type,
                        const gfx::RectF& bounds_in_css_pixels,
                        ui::mojom::MenuSourceType source,
@@ -191,9 +197,11 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
       toolbar_ui_api::mojom::LhsChipIdentifier identifier) override;
   void OnLhsChipDrag(toolbar_ui_api::mojom::LhsChipIdentifier identifier,
                      ui::mojom::DragEventSource source) override;
-  void OnHomeButtonDropUrl(const GURL& url) override;
+  void OnHomeButtonDropUrl() override;
   void OnHomeButtonDropFile(const gfx::PointF& drop_position) override;
   void OnHomeButtonDropText(const std::string& text) override;
+  void OnToolbarDropUrl() override;
+  void OnToolbarDropText(const std::string& text) override;
   void OnToolbarDropFile(const gfx::PointF& drop_position) override;
   void ShowAvatarMenu(ShowAvatarMenuCallback callback) override;
   void SetAvatarButtonHovered(bool hovered,
@@ -204,8 +212,9 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
       bool showing,
       SetAvatarButtonIphPromoShowingCallback callback) override;
   void OnAppMenuFocusChanged(bool focused) override;
-  void ExecuteExtensionAction(const std::string& extension_id) override;
-  void ShowExtensionContextMenu(const std::string& extension_id,
+  void ExecuteExtensionAction(
+      extensions_bar::mojom::ExtensionActionIdPtr id) override;
+  void ShowExtensionContextMenu(extensions_bar::mojom::ExtensionActionIdPtr id,
                                 ui::mojom::MenuSourceType source) override;
   void AdjustOmniboxTextForCopy(
       const std::u16string& text,
@@ -216,6 +225,9 @@ class ToolbarUIService : public toolbar_ui_api::mojom::ToolbarUIService {
   // Handles click events from the WebUI Glic button by forwarding them to the
   // delegate.
   void OnGlicButtonClicked() override;
+  // Handles click events from the WebUI Glic actor task icon by forwarding
+  // them to the delegate.
+  void OnGlicActorTaskIconClicked() override;
 
  private:
   mojo::Receiver<toolbar_ui_api::mojom::ToolbarUIService> service_;

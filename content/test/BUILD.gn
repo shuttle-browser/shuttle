@@ -292,6 +292,8 @@ static_library("test_support") {
     "../public/test/permissions_test_utils.h",
     "../public/test/policy_container_utils.cc",
     "../public/test/policy_container_utils.h",
+    "../public/test/popup_test_utils.cc",
+    "../public/test/popup_test_utils.h",
     "../public/test/preconnect_test_util.cc",
     "../public/test/preconnect_test_util.h",
     "../public/test/prefetch_test_util.cc",
@@ -841,7 +843,7 @@ static_library("test_support") {
     ]
   }
 
-  if (is_chromeos) {
+  if (enable_smart_card) {
     sources += [
       "../browser/smart_card/mock_smart_card_context_factory.cc",
       "../browser/smart_card/mock_smart_card_context_factory.h",
@@ -855,10 +857,6 @@ static_library("test_support") {
   if (use_dbus) {
     deps += [ "//components/dbus" ]
   }
-
-  # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and
-  # enable the diagnostic by removing this line.
-  configs += [ "//build/config/compiler:no_exit_time_destructors" ]
 }
 
 # Fuchsia performance tests on smart displays use web_engine and a browser
@@ -1507,6 +1505,7 @@ test("content_browsertests") {
     "../browser/code_cache/inline_script_code_cache_browsertest.cc",
     "../browser/content_index/content_index_browsertest.cc",
     "../browser/content_security_policy_browsertest.cc",
+    "../browser/cross_origin_storage/cross_origin_storage_browsertest.cc",
     "../browser/cross_site_transfer_browsertest.cc",
     "../browser/data_decoder_browsertest.cc",
     "../browser/declarative_performance_observer/declarative_performance_observer_browsertest.cc",
@@ -1518,6 +1517,7 @@ test("content_browsertests") {
     "../browser/devtools/protocol/devtools_protocol_browsertest.cc",
     "../browser/devtools/protocol/devtools_protocol_test_support.cc",
     "../browser/devtools/protocol/devtools_protocol_test_support.h",
+    "../browser/devtools/protocol/media_recorder_browsertest.cc",
     "../browser/devtools/render_frame_devtools_agent_host_browsertest.cc",
     "../browser/devtools/site_per_process_devtools_browsertest.cc",
     "../browser/direct_sockets/direct_sockets_test_utils.cc",
@@ -1679,6 +1679,7 @@ test("content_browsertests") {
     "../browser/renderer_host/isolated_web_app_throttle_browsertest.cc",
     "../browser/renderer_host/jit_policy_browsertest.cc",
     "../browser/renderer_host/media/video_capture_browsertest.cc",
+    "../browser/renderer_host/model_context_user_data_browsertest.cc",
     "../browser/renderer_host/navigation_controller_history_intervention_browsertest.cc",
     "../browser/renderer_host/navigation_controller_impl_browsertest.cc",
     "../browser/renderer_host/navigation_handle_user_data_browsertest.cc",
@@ -1715,6 +1716,7 @@ test("content_browsertests") {
     "../browser/security/coop/cross_origin_opener_policy_browsertest.cc",
     "../browser/security/cpsp/child_process_security_policy_browsertest.cc",
     "../browser/security/dip/document_isolation_policy_browsertest.cc",
+    "../browser/security/dip/document_isolation_policy_reporting_browsertest.cc",
     "../browser/security/local_network_access/local_network_access_browsertest.cc",
     "../browser/security_exploit_browsertest.cc",
     "../browser/serial/serial_browsertest.cc",
@@ -1818,6 +1820,7 @@ test("content_browsertests") {
     "../renderer/accessibility/render_accessibility_impl_browsertest.cc",
     "../renderer/blink_platform_audio_hardware_browsertest.cc",
     "../renderer/gin_browsertest.cc",
+    "../renderer/media/media_permission_dispatcher_browsertest.cc",
     "../renderer/media/renderer_web_media_player_delegate_browsertest.cc",
     "../renderer/media/too_many_web_media_players_intervention_browsertest.cc",
     "../renderer/render_frame_impl_browsertest.cc",
@@ -2043,6 +2046,7 @@ test("content_browsertests") {
     "//ui/base/ime",
     "//ui/base/ime/init",
     "//ui/base/ime/mojom",
+    "//ui/base/mojom",
     "//ui/base/mojom:ui_base_types",
     "//ui/color:mixers",
     "//ui/compositor",
@@ -2349,10 +2353,7 @@ test("content_browsertests") {
   }
 
   if (is_chromeos) {
-    sources += [
-      "../browser/direct_sockets/firewall_hole_browsertest.cc",
-      "../browser/smart_card/smart_card_browsertest.cc",
-    ]
+    sources += [ "../browser/direct_sockets/firewall_hole_browsertest.cc" ]
 
     deps += [
       "//chromeos/components/firewall_hole",
@@ -2365,6 +2366,10 @@ test("content_browsertests") {
         "//content/browser/direct_sockets/firewall_hole_delegate.h",
       ]
     }
+  }
+
+  if (enable_smart_card) {
+    sources += [ "../browser/smart_card/smart_card_browsertest.cc" ]
   }
 
   # HID support is not available without udev.
@@ -2393,7 +2398,10 @@ test("content_browsertests") {
       "../browser/site_per_process_mac_browsertest.mm",
       "../renderer/render_view_browsertest_mac.mm",
     ]
-    deps += [ "//third_party/ocmock" ]
+    deps += [
+      "//components/remote_cocoa/app_shim",
+      "//third_party/ocmock",
+    ]
     data_deps += [ "//content/shell:content_shell" ]
     data += [ "$root_out_dir/Content Shell.app/" ]
     frameworks = [ "ScreenCaptureKit.framework" ]
@@ -2658,6 +2666,7 @@ test("content_unittests") {
     "../browser/cookie_store/cookie_store_manager_unittest.cc",
     "../browser/cpu_performance/cpu_performance_unittest.cc",
     "../browser/cross_origin_storage/cross_origin_storage_registry_unittest.cc",
+    "../browser/cross_origin_storage/cross_origin_storage_unittest.cc",
     "../browser/declarative_performance_observer/declarative_performance_observer_store_unittest.cc",
     "../browser/declarative_performance_observer/declarative_performance_observer_unittest.cc",
     "../browser/device_posture/device_posture_provider_impl_unittest.cc",
@@ -2670,6 +2679,7 @@ test("content_unittests") {
     "../browser/devtools/devtools_video_consumer_unittest.cc",
     "../browser/devtools/protocol/devtools_download_manager_delegate_unittest.cc",
     "../browser/devtools/protocol/digital_credentials_handler_unittest.cc",
+    "../browser/devtools/protocol/display_capture_launcher_unittest.cc",
     "../browser/devtools/protocol/media_recorder_unittest.cc",
     "../browser/devtools/protocol/tracing_handler_unittest.cc",
     "../browser/devtools/protocol_unittest.cc",
@@ -2684,7 +2694,6 @@ test("content_unittests") {
     "../browser/download/save_package_unittest.cc",
     "../browser/embedder_isolation_info_unittest.cc",
     "../browser/eye_dropper_chooser_impl_unittest.cc",
-    "../browser/fenced_frame/fenced_frame_reporter_unittest.cc",
     "../browser/fenced_frame/fenced_frame_url_mapping_unittest.cc",
     "../browser/fenced_frame/redacted_fenced_frame_config_mojom_traits_unittest.cc",
     "../browser/field_trial_synchronizer_unittest.cc",
@@ -2747,7 +2756,6 @@ test("content_unittests") {
     "../browser/media/session/media_session_uma_helper_unittest.cc",
     "../browser/media/system_media_controls/system_media_controls_notifier_unittest.cc",
     "../browser/media/webaudio/audio_context_manager_impl_unittest.cc",
-    "../browser/memory/swap_metrics_driver_impl_unittest.cc",
     "../browser/memory_coordinator/browser_memory_coordinator_impl_unittest.cc",
     "../browser/memory_coordinator/child_memory_consumer_registry_host_unittest.cc",
     "../browser/memory_coordinator/zero_limit_policy_unittest.cc",
@@ -2818,7 +2826,6 @@ test("content_unittests") {
     "../browser/preloading/speculation_rules/speculation_rules_tags_unittest.cc",
     "../browser/presentation/presentation_service_impl_unittest.cc",
     "../browser/push_messaging/push_messaging_manager_unittest.cc",
-    "../browser/reduce_accept_language/reduce_accept_language_utils_unittest.cc",
     "../browser/renderer_host/ancestor_throttle_unittest.cc",
     "../browser/renderer_host/back_forward_cache_disabling_feature_handle_unittest.cc",
     "../browser/renderer_host/browsing_context_group_swap_unittest.cc",
@@ -2910,10 +2917,8 @@ test("content_unittests") {
     "../browser/scheduler/browser_task_executor_unittest.cc",
     "../browser/scheduler/browser_task_queues_unittest.cc",
     "../browser/scheduler/browser_ui_thread_scheduler_unittest.cc",
-    "../browser/scheduler/responsiveness/calculator_unittest.cc",
     "../browser/scheduler/responsiveness/jank_monitor_impl_unittest.cc",
     "../browser/scheduler/responsiveness/metric_source_unittest.cc",
-    "../browser/scheduler/responsiveness/watcher_unittest.cc",
     "../browser/screen_orientation/screen_orientation_provider_unittest.cc",
     "../browser/screenlock_monitor/screenlock_monitor_unittest.cc",
     "../browser/security/coop/cross_origin_opener_policy_reporter_unittest.cc",
@@ -3113,6 +3118,7 @@ test("content_unittests") {
     "../renderer/media/renderer_webaudiodevice_impl_unittest.cc",
     "../renderer/memory_coordinator/last_resort_gc_policy_unittest.cc",
     "../renderer/render_thread_impl_unittest.cc",
+    "../renderer/service_worker/service_worker_context_client_unittest.cc",
     "../renderer/service_worker/service_worker_provider_context_unittest.cc",
     "../renderer/service_worker/service_worker_subresource_loader_unittest.cc",
     "../renderer/skia_benchmarking_extension_unittest.cc",
@@ -3241,6 +3247,7 @@ test("content_unittests") {
 
   if (is_linux || is_chromeos) {
     sources += [
+      "../app/locale_posix_unittest.cc",
       "../browser/child_thread_type_switcher_linux_unittest.cc",
       "../child/sandboxed_process_thread_type_handler_unittest.cc",
     ]
@@ -3514,6 +3521,7 @@ test("content_unittests") {
   if (is_linux || is_chromeos) {
     deps += [
       "//components/crash/content/browser/error_reporting",
+      "//content/app:locale",
       "//sandbox/linux:sandbox_services",
       "//sandbox/linux:sandbox_services_headers",
     ]
@@ -3738,6 +3746,7 @@ test("content_unittests") {
         "../browser/speech/speech_recognition_manager_impl_unittest.cc",
       ]
       deps += [
+        "//components/optimization_guide/core:core_util",
         "//components/optimization_guide/core:ondevice",
         "//components/soda:constants",
         "//components/soda:utils",

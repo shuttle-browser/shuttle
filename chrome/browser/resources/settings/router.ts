@@ -37,13 +37,16 @@ export interface SettingsRoutes {
   GEMINI: Route;
   GEMINI_LOGIN: Route;
   GEMINI_ENTERPRISE: Route;
+  GENERAL: Route;
   GLIC_SECTION: Route;
-  HISTORY_SEARCH: Route;
   IDENTITY_DOCS: Route;
   INLINE_CUE_MENU: Route;
   LANGUAGES: Route;
   MANAGE_PROFILE: Route;
   OFFER_WRITING_HELP: Route;
+  // <if expr="_google_chrome">
+  ON_DEVICE_AI: Route;
+  // </if>
   ON_STARTUP: Route;
   PASSKEYS: Route;
   PAYMENTS: Route;
@@ -192,6 +195,15 @@ export class Route {
    * Returns true if this route matches or is an ancestor of the parameter.
    */
   contains(route: Route): boolean {
+    if (loadTimeData.getString('settingsRefresh2026') !== '' &&
+        this.path === '/') {
+      // With settingsRefresh2026, r.BASIC ('/') hosts the Home section while
+      // remaining the parent of all other Basic sections. Match by non-empty
+      // section instead of walking |route.parent| so sibling sections (e.g.
+      // Appearance, Privacy) and empty-section routes (e.g. Advanced, or Basic
+      // in Guest mode) are not treated as descendants of Home.
+      return this.section !== '' && this.section === route.section;
+    }
     for (let r: Route|null = route; r != null; r = r.parent) {
       if (this === r) {
         return true;

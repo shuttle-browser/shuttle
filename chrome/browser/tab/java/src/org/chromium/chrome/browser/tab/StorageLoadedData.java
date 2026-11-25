@@ -4,10 +4,14 @@
 
 package org.chromium.chrome.browser.tab;
 
+import androidx.annotation.VisibleForTesting;
+
 import org.jni_zero.CalledByNative;
 import org.jni_zero.JNINamespace;
+import org.jni_zero.JniPtr;
 import org.jni_zero.JniType;
-import org.jni_zero.NativeMethods;
+import org.jni_zero.JniTypeToken;
+import org.jni_zero.JniUniquePtr;
 
 import org.chromium.base.Token;
 import org.chromium.base.lifetime.Destroyable;
@@ -24,11 +28,13 @@ import java.nio.ByteBuffer;
 @NullMarked
 @JNINamespace("tabs")
 public class StorageLoadedData implements Destroyable {
-    /** Simple data container for a TabState and its corresponding creation callback. */
+    @JniType("::tabs::StorageLoadedDataAndroid")
+    interface NativeStorageLoadedDataAndroid extends JniTypeToken {}
+
+    /** Simple data container for a TabState and its corresponding tab ID. */
     public static class LoadedTabState {
         public final @TabId int tabId;
         public final TabState tabState;
-        private boolean mClaimedOrDestroyed;
 
         /**
          * Constructor for {@link LoadedTabState}.
@@ -39,38 +45,6 @@ public class StorageLoadedData implements Destroyable {
         public LoadedTabState(@TabId int tabId, TabState tabState) {
             this.tabId = tabId;
             this.tabState = tabState;
-        }
-
-        /**
-         * Returns whether this loaded tab state has been claimed or destroyed.
-         *
-         * @return True if claimed or destroyed, false otherwise.
-         */
-        public boolean isClaimedOrDestroyed() {
-            return mClaimedOrDestroyed;
-        }
-
-        /**
-         * Claims the {@link TabState} for restoration. Can only be claimed once.
-         *
-         * @return The {@link TabState} if not previously claimed or destroyed, or null otherwise.
-         */
-        public @Nullable TabState claim() {
-            if (mClaimedOrDestroyed) return null;
-            mClaimedOrDestroyed = true;
-            return tabState;
-        }
-
-        /**
-         * Destroys the {@link WebContentsState} of this tab state if it has not been claimed. Safe
-         * to call multiple times.
-         */
-        public void destroy() {
-            if (!mClaimedOrDestroyed && tabState.contentsState != null) {
-                tabState.contentsState.destroy();
-                tabState.contentsState = null;
-            }
-            mClaimedOrDestroyed = true;
         }
     }
 
@@ -85,14 +59,14 @@ public class StorageLoadedData implements Destroyable {
         }
     }
 
-    private long mNativePtr;
+    private @Nullable JniUniquePtr<NativeStorageLoadedDataAndroid> mNativePtr;
     private final LoadedTabState[] mLoadedTabStates;
     private final TabGroupCollectionData[] mGroupsData;
     private final int mActiveTabIndex;
     private final StorageLoadWarning[] mWarnings;
 
     private StorageLoadedData(
-            long nativePtr,
+            JniUniquePtr<NativeStorageLoadedDataAndroid> nativePtr,
             LoadedTabState[] loadedTabStates,
             TabGroupCollectionData[] groupsData,
             int activeTabIndex,
@@ -104,31 +78,24 @@ public class StorageLoadedData implements Destroyable {
         mWarnings = warnings;
     }
 
+    @CalledByNative
     @Override
     public void destroy() {
-        for (TabGroupCollectionData groupData : getGroupsData()) {
-            groupData.destroy();
-        }
-
-        for (LoadedTabState loadedTabState : mLoadedTabStates) {
-            loadedTabState.destroy();
-        }
-
-        assert mNativePtr != 0;
-        StorageLoadedDataJni.get().destroy(mNativePtr);
-        mNativePtr = 0;
+        assert mNativePtr != null;
+        mNativePtr.destroy();
+        mNativePtr = null;
     }
 
     @CalledByNative
-    public long getNativePtr() {
+    @Nullable JniPtr<NativeStorageLoadedDataAndroid> getNativePtr() {
         return mNativePtr;
     }
 
     @CalledByNative
-    public static StorageLoadedData createData(
-            long nativePtr,
+    static StorageLoadedData createData(
+            JniUniquePtr<NativeStorageLoadedDataAndroid> nativePtr,
             @JniType("std::vector<tabs_pb::TabState>") LoadedTabState[] loadedTabStates,
-            @JniType("std::vector<tabs::TabGroupCollectionDataAndroid*>")
+            @JniType("std::vector<std::unique_ptr<tabs::TabGroupCollectionData>>")
                     TabGroupCollectionData[] groups,
             int activeTabIndex,
             @JniType("std::vector<tabs::StorageLoadingContext::Warning>")
@@ -147,13 +114,15 @@ public class StorageLoadedData implements Destroyable {
         return new StorageLoadWarning(code, message);
     }
 
+    // Invoked via JNI on the background DB sequence; must not call UI-thread-restricted
+    // WebContentsState methods.
     @CalledByNative
-    private static TabState createTabState(
+    @VisibleForTesting
+    static TabState createTabState(
             @TabId int parentTabId,
             long timestampMillis,
             @Nullable ByteBuffer webContentsStateBuffer,
             int webContentsStateVersion,
-            long webContentsStateStringPointer,
             @Nullable @JniType("std::string") String openerAppId,
             int themeColor,
             @TabLaunchType int launchTypeAtCreation,
@@ -167,12 +136,8 @@ public class StorageLoadedData implements Destroyable {
         tabState.parentId = parentTabId;
         tabState.timestampMillis = timestampMillis;
         if (webContentsStateBuffer != null) {
-            assert webContentsStateStringPointer != 0;
             tabState.contentsState =
-                    new WebContentsState(
-                            webContentsStateBuffer,
-                            webContentsStateVersion,
-                            webContentsStateStringPointer);
+                    new WebContentsState(webContentsStateBuffer, webContentsStateVersion);
         }
         tabState.openerAppId = openerAppId;
         tabState.themeColor = themeColor;
@@ -209,10 +174,5 @@ public class StorageLoadedData implements Destroyable {
     /** Returns the warnings which occurred during the load process. */
     public StorageLoadWarning[] getWarnings() {
         return mWarnings;
-    }
-
-    @NativeMethods
-    interface Natives {
-        void destroy(long nativeStorageLoadedDataAndroid);
     }
 }

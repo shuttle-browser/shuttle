@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import type {ComposeboxElement} from 'chrome://new-tab-page/lazy_load.js';
-import {AimButtonMode, NtpComposeboxElement, SubmitButtonIconType} from 'chrome://new-tab-page/lazy_load.js';
+import type {NtpComposeboxElement} from 'chrome://new-tab-page/lazy_load.js';
+import {AimButtonMode, SubmitButtonIconType} from 'chrome://new-tab-page/lazy_load.js';
 import {$$, InputSource, QueryActionOverride, SearchboxTutorial} from 'chrome://new-tab-page/new_tab_page.js';
 import {GlifAnimationState} from 'chrome://resources/cr_components/composebox/common.js';
 import type {ComposeboxAimButtonElement} from 'chrome://resources/cr_components/composebox/composebox_aim_button.js';
@@ -66,6 +66,45 @@ suite('NewTabPageComposeboxTest', () => {
         assertFalse(testProxy.element.hasAttribute('will-fulfill-in-aim'));
         assertEquals(GlowMode.NONE, animatedGlow.glowMode);
         assertTrue(composeboxInput.disableCaretColorAnimation);
+      });
+
+  test(
+      'updates input placeholder to Ask Google when willFulfillInAim is false',
+      async () => {
+        loadTimeData.overrideValues({dynamicAimFulfillmentEnabled: true});
+        try {
+          testProxy.searchboxHandler.setPromiseResolveFor('getInputState', {
+            state: new MockInputState({
+              toolConfigs: [],
+              toolsSectionConfig: {header: ''},
+              modelSectionConfig: {header: ''},
+              hintText: 'Ask anything',
+              willFulfillInAim: false,
+            }),
+          });
+          createComposeboxElement(testProxy);
+          await microtasksFinished();
+
+          const srpHint =
+              loadTimeData.getString('searchboxSrpComposePlaceholder');
+          assertTrue(srpHint.length > 0);
+          assertNotEquals(srpHint, 'Ask anything');
+
+          const input =
+              testProxy.element.getInputElement()
+                  .shadowRoot.querySelector<HTMLTextAreaElement>('#input')!;
+          assertEquals(srpHint, input.placeholder);
+
+          testProxy.element.willFulfillInAim = true;
+          await microtasksFinished();
+          assertEquals('Ask anything', input.placeholder);
+
+          testProxy.element.willFulfillInAim = false;
+          await microtasksFinished();
+          assertEquals(srpHint, input.placeholder);
+        } finally {
+          loadTimeData.overrideValues({dynamicAimFulfillmentEnabled: false});
+        }
       });
 
   test('ntp composebox uses configured forward submit icon', async () => {
@@ -199,6 +238,7 @@ suite('NewTabPageComposeboxTest', () => {
           showInPreviousTabChip: false,
           lastActive: {internalValue: 0n},
           isLoading: false,
+          recentTab: false,
         }]);
         await testProxy.searchboxCallbackRouterRemote.$.flushForTesting();
         await microtasksFinished();
@@ -242,6 +282,7 @@ suite('NewTabPageComposeboxTest', () => {
           showInPreviousTabChip: false,
           lastActive: {internalValue: 0n},
           isLoading: false,
+          recentTab: false,
         };
         testProxy.searchboxCallbackRouterRemote.setAimThreadRestoredTabs(
             [restoredTab]);
@@ -300,9 +341,20 @@ suite('NewTabPageComposeboxTest', () => {
         const suggestionActivity =
             testProxy.element.shadowRoot.querySelector('#suggestionActivity');
         assertTrue(!!suggestionActivity);
+        assertEquals(
+            suggestionActivity,
+            testProxy.element.$.composebox.lastElementChild);
         const localizedLink =
             suggestionActivity.querySelector('localized-link');
         assertTrue(!!localizedLink);
+        const enterEvent = new KeyboardEvent('keydown', {
+          key: 'Enter',
+          bubbles: true,
+          cancelable: true,
+          composed: true,
+        });
+        localizedLink.dispatchEvent(enterEvent);
+        assertFalse(enterEvent.defaultPrevented);
 
         const testUrl = 'about:blank?activity';
         const anchor = document.createElement('a');
@@ -1117,7 +1169,7 @@ suite('NewTabPageComposeboxTest', () => {
   });
 
   test('handleFuseboxAction applies and resets action state', async () => {
-    const composebox = new NtpComposeboxElement();
+    const composebox = document.createElement('ntp-composebox');
     assertTrue(composebox.shouldHandleSuggestionFuseboxActions());
     const inputStateRequested =
         testProxy.searchboxHandler.whenCalled('getInputState');
@@ -1175,7 +1227,7 @@ suite('NewTabPageComposeboxTest', () => {
   test(
       'handleFuseboxAction triggers imageInput click for kInputSourceGallery',
       async () => {
-        const composebox = new NtpComposeboxElement();
+        const composebox = document.createElement('ntp-composebox');
         document.body.appendChild(composebox);
         await microtasksFinished();
 
@@ -1203,7 +1255,7 @@ suite('NewTabPageComposeboxTest', () => {
   test(
       'handleFuseboxAction triggers fileInput click for kInputSourceFilePicker',
       async () => {
-        const composebox = new NtpComposeboxElement();
+        const composebox = document.createElement('ntp-composebox');
         document.body.appendChild(composebox);
         await microtasksFinished();
 
@@ -1231,7 +1283,7 @@ suite('NewTabPageComposeboxTest', () => {
   test(
       'getFileInputsElement returns element or null when disabled',
       async () => {
-        const composebox = new NtpComposeboxElement();
+        const composebox = document.createElement('ntp-composebox');
         composebox.contextMenuEnabled = true;
         document.body.appendChild(composebox);
         await microtasksFinished();
@@ -1245,7 +1297,7 @@ suite('NewTabPageComposeboxTest', () => {
   test(
       'handleFuseboxAction opens tab picker for kInputSourceTabPicker',
       async () => {
-        const composebox = new NtpComposeboxElement();
+        const composebox = document.createElement('ntp-composebox');
         composebox.contextMenuEnabled = true;
         document.body.appendChild(composebox);
         await microtasksFinished();
@@ -1265,7 +1317,7 @@ suite('NewTabPageComposeboxTest', () => {
   test(
       'handleFuseboxAction triggers voice search for kInputSourceVoice',
       async () => {
-        const composebox = new NtpComposeboxElement();
+        const composebox = document.createElement('ntp-composebox');
         document.body.appendChild(composebox);
         await microtasksFinished();
 
@@ -1289,7 +1341,7 @@ suite('NewTabPageComposeboxTest', () => {
   test(
       'hint action sets the placeholder and survives input state updates',
       async () => {
-        const composebox = new NtpComposeboxElement();
+        const composebox = document.createElement('ntp-composebox');
         document.body.appendChild(composebox);
         await microtasksFinished();
         await composebox.updateComplete;
@@ -1331,7 +1383,7 @@ suite('NewTabPageComposeboxTest', () => {
                   searchboxTutorial}, energyEnabled=${
                   energyEffectAnimationEnabled}`,
               async () => {
-                const composebox = new NtpComposeboxElement();
+                const composebox = document.createElement('ntp-composebox');
                 composebox.energyEffectAnimationEnabled =
                     energyEffectAnimationEnabled;
                 document.body.appendChild(composebox);
@@ -1374,7 +1426,7 @@ suite('NewTabPageComposeboxTest', () => {
     });
 
     async function createComposebox(): Promise<NtpComposeboxElement> {
-      const composebox = new NtpComposeboxElement();
+      const composebox = document.createElement('ntp-composebox');
       document.body.appendChild(composebox);
       await testProxy.searchboxHandler.whenCalled('getInputState');
       await microtasksFinished();
@@ -1468,7 +1520,7 @@ suite('NewTabPageComposeboxTest', () => {
     // overridden before createComposeboxElement().
     async function createWithAimButton(
         enabled: boolean, withX: boolean,
-        properties: Partial<ComposeboxElement> = {}) {
+        properties: Partial<NtpComposeboxElement> = {}) {
       loadTimeData.overrideValues({
         'composeboxPersistentAimButton': enabled,
         'composeboxPersistentAimButtonWithX': withX,

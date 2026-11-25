@@ -30,7 +30,7 @@ import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
 import org.chromium.chrome.browser.signin.services.SigninManager;
 import org.chromium.chrome.browser.signin.services.SigninMetricsUtils;
 import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninCoordinator;
-import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninMediator;
+import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninLoadPoint;
 import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninView;
 import org.chromium.chrome.browser.ui.signin.history_sync.HistorySyncConfig;
 import org.chromium.chrome.browser.ui.signin.history_sync.HistorySyncCoordinator;
@@ -150,16 +150,7 @@ public final class FullscreenSigninAndHistorySyncCoordinator extends SigninAndHi
             advanceToNextPage();
             mDidShowSignin = false;
         } else {
-            mSigninCoordinator =
-                    new FullscreenSigninCoordinator(
-                            mActivity,
-                            mModalDialogManager,
-                            this,
-                            mPrivacyPreferencesManager,
-                            mConfig.signinConfig,
-                            mSigninAccessPoint);
-            mViewHolder.addView(getCurrentChildView());
-            mSigninCoordinator.setView((FullscreenSigninView) getCurrentChildView());
+            showChildView(ChildView.SIGNIN);
             // TODO(crbug.com/347657449): Record other AccountConsistencyPromoActions.
             SigninMetricsUtils.logAccountConsistencyPromoAction(
                     AccountConsistencyPromoAction.SHOWN, mSigninAccessPoint);
@@ -282,8 +273,11 @@ public final class FullscreenSigninAndHistorySyncCoordinator extends SigninAndHi
                 /* requireDeviceLockReauthentication= */ true,
                 mWindowAndroid,
                 (resultCode, data) -> {
-                    if (resultCode == Activity.RESULT_OK && mSigninCoordinator != null) {
+                    if (mSigninCoordinator == null) return;
+                    if (resultCode == Activity.RESULT_OK) {
                         mSigninCoordinator.continueSignIn();
+                    } else {
+                        mSigninCoordinator.onDeviceLockCanceled();
                     }
                 },
                 DeviceLockActivityLauncher.Source.FULLSCREEN_SIGNIN);
@@ -301,8 +295,7 @@ public final class FullscreenSigninAndHistorySyncCoordinator extends SigninAndHi
     }
 
     @Override
-    public void recordLoadCompletedHistograms(
-            @FullscreenSigninMediator.LoadPoint int slowestLoadPoint) {
+    public void recordLoadCompletedHistograms(@FullscreenSigninLoadPoint int slowestLoadPoint) {
         RecordHistogram.recordTimesHistogram(
                 "Signin.Timestamps.Android.Fullscreen.LoadCompleted",
                 SystemClock.elapsedRealtime() - mActivityStartTime);
@@ -424,21 +417,8 @@ public final class FullscreenSigninAndHistorySyncCoordinator extends SigninAndHi
         mViewHolder.addView(getCurrentChildView());
         switch (child) {
             case ChildView.SIGNIN:
-                // Destroy any pre-existing sign-in coordinator (e.g. after a configuration
-                // change while already on the sign-in view) so its mediator can unregister its
-                // AccountManagerFacade observer and release the Activity context.
-                if (mSigninCoordinator != null) {
-                    mSigninCoordinator.destroy();
-                    mSigninCoordinator = null;
-                }
-                mSigninCoordinator =
-                        new FullscreenSigninCoordinator(
-                                mActivity,
-                                mModalDialogManager,
-                                this,
-                                mPrivacyPreferencesManager,
-                                mConfig.signinConfig,
-                                mSigninAccessPoint);
+                maybeCreateSigninCoordinator();
+                assumeNonNull(mSigninCoordinator);
                 mSigninCoordinator.setView((FullscreenSigninView) getCurrentChildView());
                 if (mHistorySyncCoordinator != null) {
                     mHistorySyncCoordinator.destroy();
@@ -466,6 +446,21 @@ public final class FullscreenSigninAndHistorySyncCoordinator extends SigninAndHi
             case ChildView.HISTORY_SYNC -> mHistorySyncView;
             default -> throw new IllegalStateException(mCurrentView + " view index doesn't exist");
         };
+    }
+
+    private void maybeCreateSigninCoordinator() {
+        if (mSigninCoordinator != null) {
+            return;
+        }
+
+        mSigninCoordinator =
+                new FullscreenSigninCoordinator(
+                        mActivity,
+                        mModalDialogManager,
+                        this,
+                        mPrivacyPreferencesManager,
+                        mConfig.signinConfig,
+                        mSigninAccessPoint);
     }
 
     private void maybeCreateHistorySyncCoordinator() {

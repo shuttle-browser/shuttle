@@ -41,6 +41,7 @@
 #import "components/metrics/metrics_service.h"
 #import "components/password_manager/core/common/password_manager_features.h"
 #import "components/password_manager/core/common/passwords_directory_util_ios.h"
+#import "components/password_manager/core/common/remote_actor/remote_actor_features.h"
 #import "components/policy/core/common/management/management_service.h"
 #import "components/prefs/ios/pref_observer_bridge.h"
 #import "components/prefs/pref_change_registrar.h"
@@ -121,13 +122,13 @@
 #import "ios/chrome/browser/sessions/model/session_restoration_service_factory.h"
 #import "ios/chrome/browser/sessions/model/session_util.h"
 #import "ios/chrome/browser/share_extension/model/share_extension_controller.h"
+#import "ios/chrome/browser/shared/coordinator/scene/chrome_connection_options.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_delegate.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/browser/browser_list.h"
 #import "ios/chrome/browser/shared/model/browser/browser_list_factory.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/paths/paths.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_attributes_ios.h"
@@ -327,7 +328,7 @@ std::string GetProfileNameFromTask(SceneState* scene_state,
 std::string GetProfileNameForChoice(ProfileChoice choice,
                                     std::string_view scene_state_id,
                                     SceneState* scene_state,
-                                    UISceneConnectionOptions* options,
+                                    ChromeConnectionOptions* options,
                                     TaskOrchestrator* orchestrator,
                                     ProfileManagerIOS* manager,
                                     ProfileAttributesStorageIOS* storage,
@@ -1587,7 +1588,8 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
 }
 
 - (void)scheduleRemoteActorAppAgent {
-  if (!password_manager::features::RemoteActorCredentialSharingEnabled()) {
+  if (!password_manager::features::
+          RemoteActorCredentialSharingGeminiEnabled()) {
     return;
   }
   __weak __typeof(self) weakSelf = self;
@@ -1750,13 +1752,13 @@ std::string GetProfileNameForChoice(ProfileChoice choice,
 
     // Pretend the scene has been disconnected, then reconnect it.
     const SceneActivationLevel savedLevel = sceneState.activationLevel;
-    UISceneConnectionOptions* savedOptions = sceneState.connectionOptions;
+    ChromeConnectionOptions* savedOptions = sceneState.connectionOptions;
 
     // Destroy the old SceneState and recreate it.
     [sceneDelegate sceneDidDisconnect:scene];
     [sceneDelegate scene:scene
         willConnectToSession:scene.session
-                     options:savedOptions];
+               chromeOptions:savedOptions];
 
     sceneState = sceneDelegate.sceneState;
     DCHECK(sceneState);

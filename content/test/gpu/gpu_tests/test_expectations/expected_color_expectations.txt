@@ -61,7 +61,12 @@
 #         angle-swiftshader
 #         angle-vulkan ]
 # Skia Renderer
-# tags: [ renderer-skia-gl
+# tags: [ renderer-graphite-dawn-d3d11
+#         renderer-graphite-dawn-d3d12
+#         renderer-graphite-dawn-gl
+#         renderer-graphite-dawn-metal
+#         renderer-graphite-dawn-vulkan
+#         renderer-skia-gl
 #         renderer-skia-vulkan
 #         renderer-software ]
 # Driver
@@ -90,6 +95,8 @@
 #         webgpu-shared-worker ]
 # WebGPU Compat context
 # tags: [ compat-default compat-min-es31 ]
+# WebGPU default features
+# tags: [ unsafe-webgpu-disabled unsafe-webgpu-enabled ]
 # Clang coverage
 # tags: [ clang-coverage no-clang-coverage ]
 # Skia Graphite
@@ -116,17 +123,15 @@ crbug.com/1417006 [ fuchsia web-engine-shell ] ExpectedColor_MediaRecorderFromVi
 # point. This is for things like tests that fail in a way that negatively and
 # significantly impacts other tests, e.g. killing the test device.
 
-# Too slow on low performant smart display and won't work with default 10s timeout.
-# https://crsrc.org/c/third_party/catapult/telemetry/telemetry/internal/backends/chrome_inspector/devtools_client_backend.py;drc=99f2d536fbf0a4b520f6e45de76d5295ea1c8cba;l=195
-crbug.com/425745937 [ fuchsia web-engine-shell fuchsia-board-astro ] ExpectedColor_maps [ Skip ]
-
 ###############################
 # Permanent Slow Expectations #
 ###############################
 
 # Slow on DCHECK builds being used on fuchsia builders.
+crbug.com/425745937 [ fuchsia web-engine-shell fuchsia-board-astro ] ExpectedColor_maps [ Slow ]
 crbug.com/425745937 [ fuchsia web-engine-shell fuchsia-board-sherlock ] ExpectedColor_maps [ Slow ]
 crbug.com/425745937 [ fuchsia web-engine-shell fuchsia-board-nelson ] ExpectedColor_maps [ Slow ]
+crbug.com/425745937 [ fuchsia web-engine-shell fuchsia-board-qemu-x64 ] ExpectedColor_maps [ Slow ]
 
 ###################
 # Failures/Flakes #
@@ -135,14 +140,8 @@ crbug.com/425745937 [ fuchsia web-engine-shell fuchsia-board-nelson ] ExpectedCo
 
 
 # Flakes on Android and Windows DEMUXER_ERROR_COULD_NOT_OPEN
-crbug.com/426594100 [ arch-x86_64 graphite-enabled nvidia-0x2184 nvidia_lt_32.0.15.8180 release-x64 target-cpu-64 win10 ] ExpectedColor_MediaRecorderFromVideoElement [ RetryOnFailure ]
-crbug.com/509789253 [ mac intel ] ExpectedColor_MediaRecorderFromVideoElement [ RetryOnFailure ]
 crbug.com/568530108 [ android android-pixel-6 ] ExpectedColor_MediaRecorderFromVideoElement [ RetryOnFailure ]
-crbug.com/568530108 [ android android-sm-a236b ] ExpectedColor_MediaRecorderFromVideoElement [ RetryOnFailure ]
 
-# Flakily timeout even when marked as slow.
-crbug.com/535697669 [ apple-angle-metal-renderer:-apple-m2 asan macos26 no-clang-coverage ] ExpectedColor_MediaRecorderFrom2DCanvas [ Failure ]
-crbug.com/535697669 [ apple-angle-metal-renderer:-apple-m2 asan macos26 no-clang-coverage ] ExpectedColor_MediaRecorderFromVideoElement [ Failure ]
 
 crbug.com/544806578 [ mac apple-angle-metal-renderer:-apple-m2 asan ] ExpectedColor_maps [ Failure ]
 

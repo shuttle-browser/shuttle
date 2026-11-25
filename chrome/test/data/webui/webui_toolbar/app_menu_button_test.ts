@@ -2,15 +2,16 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {MenuSourceType} from 'chrome://resources/mojo/ui/base/mojom/menu_source_type.mojom-webui.js';
 import {assertArrayEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {TestBrowserProxy} from 'chrome://webui-test/test_browser_proxy.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+import type {AppMenuButtonElement} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 import {AppMenuIconType, AppMenuSeverity, BrowserProxyImpl, ContextMenuType, FocusRequestTarget} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {AppMenuButtonElement, BrowserProxy, FocusRequestListener} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import type {BrowserProxy, FocusRequestListener} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 import {TestToolbarUiHandler} from './test_toolbar_browser_proxy.js';
 
@@ -132,6 +133,44 @@ suite('AppMenuButtonTest', function() {
     const args = toolbarUiHandler.getArgs('showContextMenu')[0];
     assertEquals(ContextMenuType.kAppMenu, args[0]);
     assertEquals(MenuSourceType.kKeyboard, args[2]);
+  });
+
+  test('ArrowDown and ArrowUp Keys Trigger Menu', function() {
+    const button = appMenuButton.$.button;
+
+    const downEvent =
+        new KeyboardEvent('keydown', {key: 'ArrowDown', cancelable: true});
+    button.dispatchEvent(downEvent);
+    assertTrue(downEvent.defaultPrevented);
+    assertEquals(1, toolbarUiHandler.getCallCount('showContextMenu'));
+    assertEquals(
+        ContextMenuType.kAppMenu,
+        toolbarUiHandler.getArgs('showContextMenu')[0][0]);
+    assertEquals(
+        MenuSourceType.kKeyboard,
+        toolbarUiHandler.getArgs('showContextMenu')[0][2]);
+
+    const upEvent =
+        new KeyboardEvent('keydown', {key: 'ArrowUp', cancelable: true});
+    button.dispatchEvent(upEvent);
+    assertTrue(upEvent.defaultPrevented);
+    assertEquals(2, toolbarUiHandler.getCallCount('showContextMenu'));
+    assertEquals(
+        ContextMenuType.kAppMenu,
+        toolbarUiHandler.getArgs('showContextMenu')[1][0]);
+    assertEquals(
+        MenuSourceType.kKeyboard,
+        toolbarUiHandler.getArgs('showContextMenu')[1][2]);
+
+    // Other keys (especially Enter and Space, which rely on native <button>
+    // click synthesis) should not trigger the menu in keydown.
+    for (const key of ['ArrowLeft', 'Enter', ' ']) {
+      const ignoredEvent =
+          new KeyboardEvent('keydown', {key, cancelable: true});
+      button.dispatchEvent(ignoredEvent);
+      assertFalse(ignoredEvent.defaultPrevented);
+      assertEquals(2, toolbarUiHandler.getCallCount('showContextMenu'));
+    }
   });
 
   test('Mouse Click Ignored (Handled on Down)', function() {

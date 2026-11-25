@@ -17,7 +17,6 @@ import '/lens/shared/searchbox/lens_searchbox.js';
 
 import {ColorChangeUpdater} from '//resources/cr_components/color_change_listener/colors_css_updater.js';
 import type {ComposeboxElement} from '//resources/cr_components/composebox/composebox.js';
-import {HelpBubbleMixin} from '//resources/cr_components/help_bubble/help_bubble_mixin.js';
 import {GlowAnimationState} from '//resources/cr_components/search/constants.js';
 import type {CrButtonElement} from '//resources/cr_elements/cr_button/cr_button.js';
 import type {CrToastElement} from '//resources/cr_elements/cr_toast/cr_toast.js';
@@ -30,16 +29,15 @@ import {PolymerElement} from '//resources/polymer/v3_0/polymer/polymer_bundled.m
 import type {LensSearchboxElement} from '/lens/shared/searchbox/lens_searchbox.js';
 import type {SearchboxGhostLoaderElement} from '/lens/shared/searchbox_ghost_loader.js';
 
-import {SidePanelResultStatus} from '../lens_side_panel.mojom-webui.js';
-import type {LensSidePanelPageHandlerInterface} from '../lens_side_panel.mojom-webui.js';
+import {HelpBubbleMixin} from '../help_bubble_mixin.js';
+import {browserProxyFactory, SidePanelResultStatus} from '../lens_side_panel.mojom-webui.js';
+import type {BrowserProxy as SidePanelBrowserProxy, LensSidePanelPageHandlerInterface} from '../lens_side_panel.mojom-webui.js';
 import {PageContentType} from '../page_content_type.mojom-webui.js';
 import {handleEscapeSearchbox} from '../searchbox_utils.js';
 
 import type {FeedbackToastElement} from './feedback_toast.js';
 import {PostMessageReceiver} from './post_message_communication.js';
 import {getTemplate} from './side_panel_app.html.js';
-import {SidePanelBrowserProxyImpl} from './side_panel_browser_proxy.js';
-import type {SidePanelBrowserProxy} from './side_panel_browser_proxy.js';
 import type {SidePanelErrorPageElement} from './side_panel_error_page.js';
 import type {SidePanelGhostLoaderElement} from './side_panel_ghost_loader.js';
 
@@ -317,7 +315,7 @@ export class LensSidePanelAppElement extends LensSidePanelAppElementBase {
   private feedbackToastShowAfterDelayTimeoutId = -1;
 
   private browserProxy: SidePanelBrowserProxy =
-      SidePanelBrowserProxyImpl.getInstance();
+      browserProxyFactory.getInstance();
   declare private darkMode: boolean;
   private listenerIds: number[];
   private pageHandler: LensSidePanelPageHandlerInterface;
@@ -348,7 +346,7 @@ export class LensSidePanelAppElement extends LensSidePanelAppElementBase {
         ({isContextualSearchbox}) => {
           this.isContextualSearchbox = isContextualSearchbox;
         });
-    this.pageHandler = SidePanelBrowserProxyImpl.getInstance().handler;
+    this.pageHandler = browserProxyFactory.getInstance().handler;
     ColorChangeUpdater.forDocument().start();
   }
 
@@ -418,7 +416,7 @@ export class LensSidePanelAppElement extends LensSidePanelAppElementBase {
 
     // Start listening to postMessages on the window.
     this.postMessageReceiver = new PostMessageReceiver(
-        SidePanelBrowserProxyImpl.getInstance(), this.$.results);
+        browserProxyFactory.getInstance(), this.$.results);
 
     // If the composebox is enabled, start listening to resize events to update
     // the composebox height.

@@ -50,6 +50,7 @@
 #include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+#include "chrome/browser/ui/tabs/page_context_eligibility_helper.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_tab_favicon_helper.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_utils.h"
 #include "chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.h"
@@ -78,6 +79,7 @@
 #include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/omnibox/composebox/contextual_search_mojom_traits.h"
+#include "components/optimization_guide/content/browser/page_context_eligibility_observer.h"
 #include "components/prefs/pref_service.h"
 #include "components/search_engines/util.h"
 #include "components/sessions/content/session_tab_helper.h"
@@ -94,9 +96,9 @@
 #include "third_party/omnibox_proto/searchbox_config.pb.h"
 #include "ui/base/base_window.h"
 #include "ui/base/mojom/ui_base_types.mojom-shared.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/gfx/geometry/size.h"
 
@@ -215,6 +217,13 @@ content::WebContents* GetActiveTabWebContents(
       }
     }
   }
+  // The WebUI omnibox popup in TopChromeWebUIProfile, which is shared by the
+  // windows of all profiles, has no services or prefs of a user, so it can't
+  // hold the state of a tab.
+  if (Profile::FromBrowserContext(web_contents->GetBrowserContext())
+          ->IsTopChromeWebUIProfile()) {
+    return nullptr;
+  }
   return web_contents;
 }
 
@@ -296,7 +305,8 @@ std::vector<searchbox::mojom::TabInfoPtr>
 ContextualSearchboxHandler::GetRecentTabInfos(
     BrowserWindowInterface* browser_window_interface,
     std::optional<int> max_tab_suggestions,
-    const base::flat_set<SessionID>& always_include_tab_ids) {
+    const base::flat_set<SessionID>& always_include_tab_ids,
+    bool exclude_page_context_ineligible_tabs) {
   if (!browser_window_interface) {
     return {};
   }
@@ -320,20 +330,34 @@ ContextualSearchboxHandler::GetRecentTabInfos(
         IsAimZeroStateURL(url)) {
       continue;
     }
-    bool is_internal_page = url.SchemeIs(content::kChromeUIScheme) ||
-                            url.SchemeIs(content::kChromeUIUntrustedScheme) ||
-                            url.SchemeIs("chrome-extension");
     const bool is_always_included =
         !always_include_tab_ids.empty() && tab->GetContents() &&
         always_include_tab_ids.contains(
             sessions::SessionTabHelper::IdForTab(tab->GetContents()));
-
-    if (!is_internal_page || is_always_included) {
-      tab_times.push_back({
-          .tab = tab,
-          .time = GetTabLastActiveTimeTicks(tab),
-      });
+    if (!is_always_included) {
+      const bool is_internal_page =
+          url.SchemeIs(content::kChromeUIScheme) ||
+          url.SchemeIs(content::kChromeUIUntrustedScheme) ||
+          url.SchemeIs("chrome-extension");
+      if (is_internal_page) {
+        continue;
+      }
+      if (exclude_page_context_ineligible_tabs) {
+        auto* eligibility_helper =
+            tabs::PageContextEligibilityHelper::From(tab);
+        if (eligibility_helper &&
+            eligibility_helper->IsPageContextEligible() ==
+                optimization_guide::PageContextEligibilityStatus::
+                    kNotEligible) {
+          continue;
+        }
+      }
     }
+
+    tab_times.push_back({
+        .tab = tab,
+        .time = GetTabLastActiveTimeTicks(tab),
+    });
   }
 
   // Sort the tabs by last active time, prioritizing the active tab.
@@ -389,6 +413,7 @@ ContextualSearchboxHandler::GetRecentTabInfos(
         !show_in_current_tab_chip;
     tab_data->last_active = tab_time.time;
     tab_data->is_loading = IsTabShowingLoadingIndicator(web_contents);
+    tab_data->recent_tab = tabs.empty();
     tabs.push_back(std::move(tab_data));
   }
 
@@ -631,22 +656,7 @@ ContextualSearchboxHandler::ContextualSearchboxHandler(
   active_tab_nav_observer_ = std::make_unique<ActiveTabNavigationObserver>(
       base::BindRepeating(&ContextualSearchboxHandler::OnActiveTabNavigated,
                           base::Unretained(this)));
-
-  auto* browser_window_interface =
-      webui::GetBrowserWindowInterface(web_contents_);
-  if (browser_window_interface) {
-    if (auto* tab_list = TabListInterface::From(browser_window_interface)) {
-      // TODO(crbug.com/449196853): We should be using the `tab_strip_api` on
-      // the typescript side, but it's not visible to `cr_components`, so we're
-      // using `TabListInterfaceObserver` for now until `tab_strip_api` gets
-      // moved out of
-      // //chrome. The current implementation is likely brittle, as it's not a
-      // supported API for external users.
-      tab_list_observation_.Observe(tab_list);
-      active_tab_nav_observer_->ObserveTab(tab_list->GetActiveTab());
-      UpdateAllTabNavigationObservers();
-    }
-  }
+  ObserveEmbeddingWindowTabs();
 
   contextual_tasks_context_service_ =
       contextual_tasks::ContextualTasksContextServiceFactory::GetForProfile(
@@ -708,9 +718,15 @@ void ContextualSearchboxHandler::OnActiveTabChanged(TabListInterface& tab_list,
 #if !BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_DICE_SUPPORT)
   composebox_drive_signin_promo_controller_.reset();
 #endif  // !BUILDFLAG(IS_ANDROID) && BUILDFLAG(ENABLE_DICE_SUPPORT)
-  contextual_tasks::ContextualTasksWebContentsUserData::
-      UpdateInputStateModelIdentity(GetActiveTabWebContents(web_contents_),
-                                    input_state_model_.get());
+  // The model may not exist yet if there was no active tab before, e.g. for
+  // the WebUI omnibox popup in TopChromeWebUIProfile.
+  if (!input_state_model_) {
+    InitializeInputStateModel();
+  } else {
+    contextual_tasks::ContextualTasksWebContentsUserData::
+        UpdateInputStateModelIdentity(GetActiveTabWebContents(web_contents_),
+                                      input_state_model_.get());
+  }
   page_->OnTabStripChanged();
 }
 
@@ -800,6 +816,25 @@ void ContextualSearchboxHandler::set_screenshare_delegate_for_testing(
   }
 }
 
+void ContextualSearchboxHandler::ObserveEmbeddingWindowTabs() {
+  auto* browser_window_interface =
+      webui::GetBrowserWindowInterface(web_contents_);
+  if (!browser_window_interface) {
+    return;
+  }
+  if (auto* tab_list = TabListInterface::From(browser_window_interface)) {
+    // TODO(crbug.com/449196853): We should be using the `tab_strip_api` on
+    // the typescript side, but it's not visible to `cr_components`, so we're
+    // using `TabListInterfaceObserver` for now until `tab_strip_api` gets
+    // moved out of
+    // //chrome. The current implementation is likely brittle, as it's not a
+    // supported API for external users.
+    tab_list_observation_.Observe(tab_list);
+    active_tab_nav_observer_->ObserveTab(tab_list->GetActiveTab());
+    UpdateAllTabNavigationObservers();
+  }
+}
+
 void ContextualSearchboxHandler::UpdateAllTabNavigationObservers() {
   all_tab_nav_observers_.clear();
   if (!omnibox::IsTabDeselectionInComposeboxEnabled()) {
@@ -861,6 +896,40 @@ void ContextualSearchboxHandler::ResetInputStateModel() {
   input_state_model_.reset();
   smart_tab_sharing_active_for_thread_.reset();
   last_sent_smart_tab_sharing_active_.reset();
+}
+
+void ContextualSearchboxHandler::DetachFromBrowserWindow() {
+  CancelAllTabContextFetches();
+  tab_context_snapshot_.reset();
+  context_input_data_ = std::nullopt;
+  if (base::FeatureList::IsEnabled(omnibox::kContextManagementInComposebox)) {
+    if (auto* active_task_context_provider = GetActiveTaskContextProvider()) {
+      for (const auto& [token, handle] : selected_tabs) {
+        active_task_context_provider->RemoveLocalTabUnderline(
+            tabs::TabHandle(handle));
+      }
+    }
+  }
+  selected_tabs.clear();
+
+  tab_list_observation_.Reset();
+  active_tab_nav_observer_->ObserveTab(nullptr);
+  all_tab_nav_observers_.clear();
+  tab_load_stop_observers_.clear();
+#if !BUILDFLAG(IS_ANDROID)
+  // The Drive picker and sign-in promo are tied to the old window.
+  OnCancel();
+#endif  // !BUILDFLAG(IS_ANDROID)
+
+  // The model belongs to the active tab of the window being left.
+  ResetInputStateModel();
+  input_state_subscription_ = {};
+}
+
+void ContextualSearchboxHandler::AttachToBrowserWindow() {
+  ObserveEmbeddingWindowTabs();
+  InitializeInputStateModel();
+  page_->OnTabStripChanged();
 }
 
 void ContextualSearchboxHandler::OnAimEligibilityChanged() {
@@ -1179,8 +1248,9 @@ void ContextualSearchboxHandler::AddFileContextFromBrowser(
   }
 
   uint64_t file_size = file_bytes.size();
-  uint64_t max_file_size =
-      composebox_config.attachment_upload().max_size_bytes();
+  uint64_t max_file_size = omnibox::GetComposeboxMaxFileSizeBytes(
+      mime_type, input_type == omnibox::INPUT_TYPE_LENS_IMAGE,
+      composebox_config.attachment_upload().max_size_bytes());
   if (file_size == 0 || file_size > max_file_size) {
     auto error_type = file_size == 0
                           ? contextual_search::ContextUploadErrorType::
@@ -1605,9 +1675,8 @@ void ContextualSearchboxHandler::OnDriveUploadClicked(
   // Binds the controller's close callback to OnCancel to ensure that if the
   // user closes the widget (e.g. by pressing Escape), the entire session
   // is cleanly reset and all C++ and WebUI state is torn down.
-  drive_picker_controller_->set_on_close_callback(
-      base::BindOnce(&ContextualSearchboxHandler::OnCancel,
-                     weak_ptr_factory_.GetWeakPtr()));
+  drive_picker_controller_->set_on_close_callback(base::BindOnce(
+      &ContextualSearchboxHandler::OnCancel, weak_ptr_factory_.GetWeakPtr()));
 
   if (base::FeatureList::IsEnabled(omnibox::kForceDriveDisclaimerAccepted)) {
     ShowDrivePicker(
@@ -1732,16 +1801,26 @@ ContextualSearchboxHandler::GetOrCreateInputStateModel() {
   if (!session_handle) {
     return nullptr;
   }
+  return GetOrCreateInputStateModelForSession(web_contents_, *session_handle);
+}
 
-  // In the case of the Omnibox popup, `web_contents_` refers to the popup's own
+// static
+base::WeakPtr<contextual_search::InputStateModel>
+ContextualSearchboxHandler::GetOrCreateInputStateModelForSession(
+    content::WebContents* web_contents,
+    contextual_search::ContextualSearchSessionHandle& session_handle) {
+  // In the case of the Omnibox popup, `web_contents` refers to the popup's own
   // WebContents, which is shared across multiple tabs. To achieve true per-tab
   // persistence, we must associate the `InputStateModel` with the active tab's
   // `WebContents` instead. For other embedders of `ComposeboxHandler` (e.g.,
-  // the Side Panel), `web_contents_` already points to the tab's WebContents,
+  // the Side Panel), `web_contents` already points to the tab's WebContents,
   // so this fallback ensures correct behavior across different embedding
   // contexts.
   content::WebContents* target_web_contents =
-      GetActiveTabWebContents(web_contents_);
+      GetActiveTabWebContents(web_contents);
+  if (!target_web_contents) {
+    return nullptr;
+  }
   auto* user_data =
       contextual_tasks::ContextualTasksWebContentsUserData::FromWebContents(
           target_web_contents);
@@ -1753,7 +1832,14 @@ ContextualSearchboxHandler::GetOrCreateInputStateModel() {
             target_web_contents);
   }
 
-  return user_data->GetOrCreateInputStateModel(*session_handle);
+  return user_data->GetOrCreateInputStateModel(session_handle);
+}
+
+void ContextualSearchboxHandler::OptInToDynamicAimFulfillment() {
+  opted_in_to_dynamic_aim_fulfillment_ = true;
+  if (input_state_model_) {
+    input_state_model_->EnableDynamicAimFulfillment();
+  }
 }
 
 void ContextualSearchboxHandler::InitializeInputStateModel() {
@@ -1761,6 +1847,10 @@ void ContextualSearchboxHandler::InitializeInputStateModel() {
   input_state_model_ = GetOrCreateInputStateModel();
   if (!input_state_model_) {
     return;
+  }
+  // The model can be created or replaced here, so apply the opt-in to it.
+  if (opted_in_to_dynamic_aim_fulfillment_) {
+    input_state_model_->EnableDynamicAimFulfillment();
   }
   input_state_model_->SetSmartTabSharingActive(IsSmartTabSharingActive());
   input_state_model_->TogglePermanentlyDisabledInputType(
@@ -1913,8 +2003,7 @@ void ContextualSearchboxHandler::ClearFiles(
   if (auto* contextual_session_handle = GetContextualSessionHandle()) {
     // Clears files if `query_submitted`=true, and if
     // `omnibox::kContextManagementInComposebox` is enabled.
-    contextual_session_handle->ClearFiles(
-        query_submitted);
+    contextual_session_handle->ClearFiles(query_submitted);
     for (const auto& token :
          contextual_session_handle->GetActiveSubmittedContextTokens()) {
       submitted_tokens.insert(token);
@@ -2157,7 +2246,7 @@ void ContextualSearchboxHandler::SubmitQuery(const std::string& query_text,
                                              bool meta_key,
                                              bool shift_key,
                                              bool is_voice_search) {
-  const WindowOpenDisposition disposition = ui::DispositionFromClick(
+  const ui::mojom::WindowOpenDisposition disposition = ui::DispositionFromClick(
       /*middle_button=*/mouse_button == 1, alt_key, ctrl_key, meta_key,
       shift_key);
   // TODO(crbug.com/465427521): This implementation may be able to be removed
@@ -2172,7 +2261,7 @@ void ContextualSearchboxHandler::SubmitQuery(const std::string& query_text,
 
 void ContextualSearchboxHandler::ContextualizeQueryAndOpenUrl(
     const std::string& query_text,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     omnibox::ChromeAimEntryPoint aim_entry_point,
     std::map<std::string, std::string> additional_params,
     bool is_voice_search) {
@@ -2193,7 +2282,7 @@ void ContextualSearchboxHandler::ContextualizeQueryAndOpenUrl(
     params.on_processed_callback = base::DoNothing();
     auto on_contextualized_callback = base::BindOnce(
         [](base::WeakPtr<ContextualSearchboxHandler> self,
-           const std::string& query, WindowOpenDisposition disp,
+           const std::string& query, ui::mojom::WindowOpenDisposition disp,
            omnibox::ChromeAimEntryPoint entry_point,
            std::map<std::string, std::string> params, bool voice,
            base::WeakPtr<contextual_search::ContextualSearchSessionHandle>
@@ -2231,7 +2320,7 @@ void ContextualSearchboxHandler::ContextualizeQueryAndOpenUrl(
 
 void ContextualSearchboxHandler::ComputeAndOpenQueryUrl(
     const std::string& query_text,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     omnibox::ChromeAimEntryPoint aim_entry_point,
     std::map<std::string, std::string> additional_params,
     bool is_voice_search) {
@@ -2260,14 +2349,15 @@ void ContextualSearchboxHandler::ComputeAndOpenQueryUrl(
     search_url_request_info->aim_entry_point = aim_entry_point;
     search_url_request_info->is_voice_search = is_voice_search;
 
-    // Do not keep tabs in composebox's 'future context to use' since this searchbox handler
-    // will be destroyed when this query is submitted and AIM/cobrowsing opens via
-    // `CreateSearchUrl`. Tabs are passed to cobrowse composebox through web contents instead.
+    // Do not keep tabs in composebox's 'future context to use' since this
+    // searchbox handler will be destroyed when this query is submitted and
+    // AIM/cobrowsing opens via `CreateSearchUrl`. Tabs are passed to cobrowse
+    // composebox through web contents instead.
     contextual_session_handle->CreateSearchUrl(
         std::move(search_url_request_info),
         base::BindOnce(
             [](base::WeakPtr<ContextualSearchboxHandler> self,
-               WindowOpenDisposition disposition, GURL url) {
+               ui::mojom::WindowOpenDisposition disposition, GURL url) {
               if (self) {
                 self->ProcessContextAndOpenUrl(url, disposition);
               }
@@ -2439,7 +2529,7 @@ void ContextualSearchboxHandler::UploadTabContext(
 
 void ContextualSearchboxHandler::ProcessContextAndOpenUrl(
     GURL url,
-    const WindowOpenDisposition disposition) {
+    const ui::mojom::WindowOpenDisposition disposition) {
   if (!url.is_valid()) {
     return;
   }
@@ -2472,7 +2562,7 @@ void ContextualSearchboxHandler::ProcessContextAndOpenUrl(
 
 #if !BUILDFLAG(IS_ANDROID)
   if (OmniboxPopupWebContentsHelper::FromWebContents(web_contents_.get()) &&
-      disposition == WindowOpenDisposition::kCurrentTab) {
+      disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
     auto* browser_window_interface =
         webui::GetBrowserWindowInterface(web_contents_);
     auto* tab_list = TabListInterface::From(browser_window_interface);
@@ -2527,7 +2617,7 @@ void ContextualSearchboxHandler::ProcessContextAndOpenUrl(
   }
 
 #if !BUILDFLAG(IS_ANDROID)
-  if (disposition == WindowOpenDisposition::kCurrentTab) {
+  if (disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
     content::WebContents* target_web_contents = web_contents_.get();
     if (OmniboxPopupWebContentsHelper::FromWebContents(web_contents_.get())) {
       if (auto* browser_window_interface =
@@ -2579,7 +2669,7 @@ void ContextualSearchboxHandler::ProcessContextAndOpenUrl(
 
 void ContextualSearchboxHandler::OpenUrl(
     GURL url,
-    const WindowOpenDisposition disposition,
+    const ui::mojom::WindowOpenDisposition disposition,
     base::OnceCallback<void(content::NavigationHandle&)>
         navigation_handle_callback) {
   // TODO(crbug.com/469137247): Consider moving this logic to the specific
@@ -2625,7 +2715,7 @@ void ContextualSearchboxHandler::OpenUrl(
     // the focus is re-captured by the Omnibox after query submission (see:
     // http://crbug.com/469458346).
     if (target_web_contents &&
-        disposition != WindowOpenDisposition::kNewBackgroundTab) {
+        disposition != ui::mojom::WindowOpenDisposition::kNewBackgroundTab) {
       target_web_contents->Focus();
     }
   }

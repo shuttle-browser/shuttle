@@ -54,6 +54,12 @@ class GlicActivityManager {
     return activities_;
   }
 
+  // Returns tracked activities visible for the given active tab context, sorted
+  // in canonical display priority order.
+  std::vector<const GlicActivityItem*> GetSortedActivities(
+      const std::optional<std::string>& active_tab_conv_id = std::nullopt,
+      bool is_active_tab_showing = false) const;
+
   // Called by UI controllers (e.g., GlicActivityListBubbleController)
   // immediately before rendering the activity list bubble so tab-dependent
   // fields (`has_tab`, `is_enabled`, and tab-closed subtitles) reflect whether
@@ -121,7 +127,7 @@ class GlicActivityManager {
   static bool ShouldSuppressNotification(glic::mojom::FeatureMode feature_mode,
                                          actor::ActorTask::State state);
 
-  void UpdateTaskNudge();
+  void UpdateTaskNudge(bool show_bubble = false);
   raw_ptr<Profile> profile_;
 
   std::vector<base::CallbackListSubscription> actor_subscriptions_;
@@ -137,7 +143,6 @@ class GlicActivityManager {
       activity_alert_callback_list_;
 
   GlicActivityNudgeState current_activity_nudge_state_;
-  bool last_notified_show_bubble_ = false;
   size_t last_notified_activity_count_ = 0;
   absl::flat_hash_set<actor::TaskId> tasks_notified_of_start_;
   absl::flat_hash_map<actor::TaskId, actor::ActorTask::State>

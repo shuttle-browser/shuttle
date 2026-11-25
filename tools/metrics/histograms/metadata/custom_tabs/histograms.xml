@@ -22,16 +22,6 @@ chromium-metrics-reviews@google.com.
 
 <histograms>
 
-<variants name="DetachedResourceRequestFinalStatus">
-  <variant name="Failure" summary="Failed detached request"/>
-  <variant name="Success" summary="Successful detached request"/>
-</variants>
-
-<variants name="DetachedResourceRequestSource">
-  <variant name="" summary=""/>
-  <variant name=".FromAga" summary="Requests originating from AGA"/>
-</variants>
-
 <variants name="IntentToFirstCommitZoom">
   <variant name=".ZoomedIn"
       summary="Zoomed in view: shorter range, more buckets.">
@@ -208,7 +198,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.CloseCause" enum="CustomTabsCloseCause"
-    expires_after="2026-11-29">
+    expires_after="2027-11-29">
   <owner>jinsukkim@chromium.org</owner>
   <owner>twellington@chromium.org</owner>
   <owner>cct-team@google.com</owner>
@@ -244,7 +234,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.DetachedResourceRequest.FinalStatus"
-    enum="NetErrorCodes" expires_after="2027-02-21">
+    enum="NetErrorCodes" expires_after="2027-04-25">
   <owner>lizeb@chromium.org</owner>
   <owner>cct-team@google.com</owner>
   <summary>
@@ -252,19 +242,6 @@ chromium-metrics-reviews@google.com.
     Recorded once per detached resource request. Android only. Starting with M84
     this is is also recorded for webapps/WebAPKs. Filter the platform for just
     CCT/TWA data.
-  </summary>
-</histogram>
-
-<histogram
-    name="CustomTabs.DetachedResourceRequest.RedirectsCount.{DetachedResourceRequestFinalStatus}{DetachedResourceRequestSource}"
-    units="redirects" expires_after="2024-03-17">
-  <owner>lizeb@chromium.org</owner>
-  <owner>cct-team@google.com</owner>
-  <summary>
-    Number of redirects followed by a detached resource request until success or
-    failure. Android only. Starting with M84 this is is also recorded for
-    webapps/WebAPKs. Filter the platform for just CCT/TWA data.
-    {DetachedResourceRequestFinalStatus} {DetachedResourceRequestSource}
   </summary>
 </histogram>
 
@@ -378,7 +355,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.IncognitoCctCallerId" enum="IncognitoCCTCallerId"
-    expires_after="2026-12-05">
+    expires_after="2027-06-05">
   <owner>yawfrempong@google.com</owner>
   <owner>chrome-incognito@google.com</owner>
   <owner>cct-team@google.com</owner>
@@ -428,17 +405,6 @@ chromium-metrics-reviews@google.com.
     Emitted when the the user clicks the minimize button and we request to be
     put in picture-in-picture from the framework. Records true if it was
     successful; false if there was an exception thrown. Android only.
-  </summary>
-</histogram>
-
-<histogram name="CustomTabs.MinimizedFeatureAvailability"
-    enum="CustomTabsMinimizedFeatureAvailability" expires_after="2025-08-24">
-  <owner>sinansahin@google.com</owner>
-  <owner>chrome-connective-tissue@google.com</owner>
-  <summary>
-    Minimized Custom Tab feature availability. Recorded during startup in
-    #onFinishNativeInitialization() when the availability is first checked to
-    initialize the feature. Android only.
   </summary>
 </histogram>
 
@@ -632,7 +598,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="CustomTabs.ResetTimeout.Outcome"
-    enum="CustomTabsResetTimeoutOutcome" expires_after="2027-02-28">
+    enum="CustomTabsResetTimeoutOutcome" expires_after="2027-05-02">
   <owner>tivi@google.com</owner>
   <owner>chrome-connective-tissue@google.com</owner>
   <summary>

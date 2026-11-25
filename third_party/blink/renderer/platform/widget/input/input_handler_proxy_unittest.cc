@@ -144,12 +144,12 @@ class TestInputHandlerProxy : public InputHandlerProxy {
     RecordScrollBegin(device, {}, repaint_reasons);
   }
 
-  EventDisposition HitTestTouchEventForTest(
+  using InputHandlerProxy::HitTestTouchEventResult;
+
+  HitTestTouchEventResult HitTestTouchEventForTest(
       const WebTouchEvent& touch_event,
-      bool* is_touching_scrolling_layer,
-      cc::TouchAction* allowed_touch_action) {
-    return HitTestTouchEvent(touch_event, is_touching_scrolling_layer,
-                             allowed_touch_action);
+      bool* is_touching_scrolling_layer) {
+    return HitTestTouchEvent(touch_event, is_touching_scrolling_layer);
   }
 
   EventDisposition HandleMouseWheelForTest(
@@ -1334,12 +1334,12 @@ TEST_P(InputHandlerProxyTest, HitTestTouchEventNonNullTouchAction) {
       CreateWebTouchPoint(WebTouchPoint::State::kStatePressed, -10, 10);
 
   bool is_touching_scrolling_layer;
-  cc::TouchAction allowed_touch_action = cc::TouchAction::kAuto;
-  EXPECT_EQ(expected_disposition_,
-            input_handler_->HitTestTouchEventForTest(
-                touch, &is_touching_scrolling_layer, &allowed_touch_action));
+  TestInputHandlerProxy::HitTestTouchEventResult result =
+      input_handler_->HitTestTouchEventForTest(touch,
+                                               &is_touching_scrolling_layer);
+  EXPECT_EQ(expected_disposition_, result.disposition);
   EXPECT_TRUE(is_touching_scrolling_layer);
-  EXPECT_EQ(allowed_touch_action, cc::TouchAction::kPanUp);
+  EXPECT_EQ(result.allowed_touch_action, cc::TouchAction::kPanUp);
   VERIFY_AND_RESET_MOCKS();
 }
 
@@ -1845,12 +1845,12 @@ TEST_P(InputHandlerProxyTest, HitTestTouchEventNullTouchAction) {
       CreateWebTouchPoint(WebTouchPoint::State::kStatePressed, -10, 10);
 
   bool is_touching_scrolling_layer;
-  cc::TouchAction* allowed_touch_action = nullptr;
-  EXPECT_EQ(expected_disposition_,
-            input_handler_->HitTestTouchEventForTest(
-                touch, &is_touching_scrolling_layer, allowed_touch_action));
+  TestInputHandlerProxy::HitTestTouchEventResult result =
+      input_handler_->HitTestTouchEventForTest(touch,
+                                               &is_touching_scrolling_layer);
+  EXPECT_EQ(expected_disposition_, result.disposition);
   EXPECT_TRUE(is_touching_scrolling_layer);
-  EXPECT_TRUE(!allowed_touch_action);
+  EXPECT_FALSE(result.allowed_touch_action.has_value());
   VERIFY_AND_RESET_MOCKS();
 }
 
@@ -4318,7 +4318,8 @@ class InputHandlerProxyEventMetricsTest : public testing::Test {
  public:
   InputHandlerProxyEventMetricsTest()
       : input_handler_proxy_(mock_input_handler_, &mock_client_) {
-    tick_clock_.SetNowTicks(base::TimeTicks::Now());
+    tick_clock_.SetNowTicks(WebInputEvent::GetStaticTimeStampForTests() +
+                            base::Seconds(1));
     input_handler_proxy_.SetTickClockForTesting(&tick_clock_);
   }
 
@@ -4406,7 +4407,7 @@ TEST_P(InputHandlerProxyScrollEventMetricsTest, SavesScrollEndMetrics) {
 
   cc::EventMetrics::List saved_metrics =
       mock_input_handler_.events_metrics_manager.TakeSavedEventsMetrics();
-  EXPECT_THAT(saved_metrics, SizeIs(1u));
+  ASSERT_THAT(saved_metrics, SizeIs(1u));
   EXPECT_EQ(saved_metrics[0]->type(), param.expected_event_type);
   EXPECT_EQ(
       saved_metrics[0]->AsScroll()->begin_frame_args().frame_id.sequence_number,
@@ -4513,7 +4514,7 @@ TEST_P(InputHandlerProxyScrollUpdateEventMetricsTest,
 
   cc::EventMetrics::List saved_metrics =
       mock_input_handler_.events_metrics_manager.TakeSavedEventsMetrics();
-  EXPECT_THAT(saved_metrics, SizeIs(1u));
+  ASSERT_THAT(saved_metrics, SizeIs(1u));
   EXPECT_EQ(saved_metrics[0]->type(), param.expected_event_type);
   EXPECT_EQ(
       saved_metrics[0]->AsScroll()->begin_frame_args().frame_id.sequence_number,
@@ -4608,7 +4609,7 @@ TEST_F(InputHandlerProxyEventMetricsTest, ScrollEndRequiresMainThreadRepaint) {
 
   cc::EventMetrics::List saved_metrics =
       mock_input_handler_.events_metrics_manager.TakeSavedEventsMetrics();
-  EXPECT_THAT(saved_metrics, SizeIs(1u));
+  ASSERT_THAT(saved_metrics, SizeIs(1u));
   EXPECT_EQ(saved_metrics[0]->type(),
             cc::EventMetrics::EventType::kGestureScrollEnd);
   EXPECT_TRUE(saved_metrics[0]->requires_main_thread_update());

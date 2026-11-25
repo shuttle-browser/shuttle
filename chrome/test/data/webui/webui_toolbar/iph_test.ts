@@ -2,6 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+
 import {assertEquals, assertNotEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
 import {AppMenuIconType, AppMenuSeverity, IconTable, IconType} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
@@ -189,8 +192,7 @@ suite('IPH', function() {
 
   test('PinnedToolbarAction', async () => {
     // Register an icon with an explicit color, so that the pinned toolbar
-    // action sets the icon color inline (see
-    // PinnedToolbarActionElement.getIconStyle_()).
+    // action sets the icon color inline.
     IconTable.getInstance().applyUpdates([{
       handleId: 1n,
       iconUrlOrName: 'cr:schedule',

@@ -20,7 +20,7 @@
 #include "chrome/browser/contextual_search/contextual_search_web_contents_helper.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_cookie_synchronizer.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_eligibility_manager.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_ghost_loader_view.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_scrim_view.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_base.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
@@ -163,7 +163,7 @@ TEST_F(ContextualTasksWebViewTest, InitializationWithRearchitecture) {
 
   EXPECT_NE(web_view_->toolbar_web_view(), nullptr);
   EXPECT_NE(web_view_->content_web_view(), nullptr);
-  EXPECT_NE(web_view_->ghost_loader_view(), nullptr);
+  EXPECT_NE(web_view_->scrim_view(), nullptr);
   EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
 }
 
@@ -491,7 +491,7 @@ TEST_F(ContextualTasksWebViewTest, TransitionFromSrpToAiPageClosesLens) {
   EXPECT_CALL(
       mock_lens_controller,
       CloseLensAsync(
-          lens::LensOverlayDismissalSource::kContextualTasksQuerySubmitted))
+          lens::LensOverlayDismissalSource::kContextualTasksSrpToAimTransition))
       .Times(1);
   content::NavigationSimulator::NavigateAndCommitFromBrowser(
       web_contents.get(), GURL("https://ai.google.com/search?q=test"));
@@ -517,7 +517,7 @@ TEST_F(ContextualTasksWebViewTest,
   EXPECT_CALL(
       mock_lens_controller,
       CloseLensAsync(
-          lens::LensOverlayDismissalSource::kContextualTasksQuerySubmitted))
+          lens::LensOverlayDismissalSource::kContextualTasksSrpToAimTransition))
       .Times(1);
   auto sim = content::NavigationSimulator::CreateRendererInitiated(
       GURL("https://www.google.com/search?q=test&udm=50"),
@@ -1101,7 +1101,7 @@ TEST_F(ContextualTasksWebViewTest,
                 ->GetOrCreateWebPreferences()
                 .preferred_color_scheme,
             blink::mojom::PreferredColorScheme::kLight);
-  EXPECT_EQ(web_view_->ghost_loader_view()
+  EXPECT_EQ(web_view_->scrim_view()
                 ->GetWebContents()
                 ->GetOrCreateWebPreferences()
                 .preferred_color_scheme,
@@ -1122,7 +1122,7 @@ TEST_F(ContextualTasksWebViewTest,
                 ->GetOrCreateWebPreferences()
                 .preferred_color_scheme,
             blink::mojom::PreferredColorScheme::kDark);
-  EXPECT_EQ(web_view_->ghost_loader_view()
+  EXPECT_EQ(web_view_->scrim_view()
                 ->GetWebContents()
                 ->GetOrCreateWebPreferences()
                 .preferred_color_scheme,
@@ -1144,7 +1144,7 @@ TEST_F(ContextualTasksWebViewTest,
                 ->GetOrCreateWebPreferences()
                 .preferred_color_scheme,
             blink::mojom::PreferredColorScheme::kLight);
-  EXPECT_EQ(web_view_->ghost_loader_view()
+  EXPECT_EQ(web_view_->scrim_view()
                 ->GetWebContents()
                 ->GetOrCreateWebPreferences()
                 .preferred_color_scheme,
@@ -1167,11 +1167,10 @@ TEST_F(ContextualTasksWebViewTest,
   web_view_->SetErrorPageVisible(true);
   EXPECT_TRUE(web_view_->IsErrorPageVisible());
   EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
-  EXPECT_TRUE(web_view_->ghost_loader_view()->GetVisible());
-  EXPECT_TRUE(web_view_->ghost_loader_view()->is_showing_error_page());
-  EXPECT_EQ(
-      web_view_->ghost_loader_view()->GetWebContents()->GetVisibleURL().ref(),
-      "error");
+  EXPECT_TRUE(web_view_->scrim_view()->GetVisible());
+  EXPECT_TRUE(web_view_->scrim_view()->is_showing_error_page());
+  EXPECT_EQ(web_view_->scrim_view()->GetWebContents()->GetVisibleURL().ref(),
+            "error");
 
   // Background content navigations and paint/load completion events must not
   // dismiss the error page scrim.
@@ -1193,11 +1192,10 @@ TEST_F(ContextualTasksWebViewTest,
   web_view_->SetErrorPageVisible(false);
   EXPECT_FALSE(web_view_->IsErrorPageVisible());
   EXPECT_FALSE(web_view_->IsGhostLoaderVisible());
-  EXPECT_FALSE(web_view_->ghost_loader_view()->GetVisible());
-  EXPECT_FALSE(web_view_->ghost_loader_view()->is_showing_error_page());
-  EXPECT_EQ(
-      web_view_->ghost_loader_view()->GetWebContents()->GetVisibleURL().ref(),
-      "ghost-loader");
+  EXPECT_FALSE(web_view_->scrim_view()->GetVisible());
+  EXPECT_FALSE(web_view_->scrim_view()->is_showing_error_page());
+  EXPECT_EQ(web_view_->scrim_view()->GetWebContents()->GetVisibleURL().ref(),
+            "ghost-loader");
 }
 
 TEST_F(ContextualTasksWebViewTest,

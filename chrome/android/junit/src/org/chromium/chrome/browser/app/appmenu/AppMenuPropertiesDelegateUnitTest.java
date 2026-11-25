@@ -42,6 +42,8 @@ import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.base.supplier.SettableNullableObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.RobolectricUtil;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ActivityTabProvider;
 import org.chromium.chrome.browser.app.appmenu.AppMenuPropertiesDelegateImpl.MenuGroup;
@@ -51,6 +53,7 @@ import org.chromium.chrome.browser.commerce.ShoppingServiceFactory;
 import org.chromium.chrome.browser.commerce.ShoppingServiceFactoryJni;
 import org.chromium.chrome.browser.enterprise.util.ManagedBrowserUtils;
 import org.chromium.chrome.browser.enterprise.util.ManagedBrowserUtilsJni;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.incognito.IncognitoUtilsJni;
 import org.chromium.chrome.browser.layouts.LayoutStateProvider;
@@ -66,6 +69,7 @@ import org.chromium.chrome.browser.toolbar.ToolbarManager;
 import org.chromium.chrome.browser.toolbar.menu_button.MenuUiState;
 import org.chromium.chrome.browser.translate.TranslateBridge;
 import org.chromium.chrome.browser.translate.TranslateBridgeJni;
+import org.chromium.chrome.browser.ui.appmenu.AppMenuHandler.AppMenuItemType;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuItemProperties;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuTabGroupItemProperties;
 import org.chromium.chrome.browser.ui.native_page.NativePage;
@@ -79,7 +83,6 @@ import org.chromium.components.browser_ui.site_settings.WebsitePreferenceBridgeJ
 import org.chromium.components.commerce.core.CommerceFeatureUtils;
 import org.chromium.components.commerce.core.CommerceFeatureUtilsJni;
 import org.chromium.components.commerce.core.ShoppingService;
-import org.chromium.components.dom_distiller.core.DomDistillerUrlUtilsJni;
 import org.chromium.components.embedder_support.util.UrlConstants;
 import org.chromium.components.power_bookmarks.PowerBookmarkMeta;
 import org.chromium.components.power_bookmarks.PowerBookmarkType;
@@ -87,6 +90,7 @@ import org.chromium.components.power_bookmarks.ShoppingSpecifics;
 import org.chromium.components.prefs.PrefService;
 import org.chromium.components.user_prefs.UserPrefs;
 import org.chromium.components.user_prefs.UserPrefsJni;
+import org.chromium.components.web_distiller.core.WebDistillerUrlUtilsJni;
 import org.chromium.components.webapps.AppBannerManager;
 import org.chromium.components.webapps.AppBannerManagerJni;
 import org.chromium.content_public.browser.NavigationController;
@@ -128,7 +132,7 @@ public class AppMenuPropertiesDelegateUnitTest {
     @Mock private AppBannerManager.Natives mAppBannerManagerJniMock;
     @Mock private ReadAloudController mReadAloudController;
     @Mock private TranslateBridge.Natives mTranslateBridgeJniMock;
-    @Mock private DomDistillerUrlUtilsJni mDomDistillerUrlUtilsJni;
+    @Mock private WebDistillerUrlUtilsJni mWebDistillerUrlUtilsJni;
     private final View mDecorView = new View(ContextUtils.getApplicationContext());
     private final ActivityTabProvider mActivityTabProvider = new ActivityTabProvider();
     private final OneshotSupplierImpl<LayoutStateProvider> mLayoutStateProviderSupplier =
@@ -217,7 +221,7 @@ public class AppMenuPropertiesDelegateUnitTest {
         ShoppingServiceFactoryJni.setInstanceForTesting(mShoppingServiceFactoryJniMock);
         doReturn(mShoppingService).when(mShoppingServiceFactoryJniMock).getForProfile(any());
 
-        DomDistillerUrlUtilsJni.setInstanceForTesting(mDomDistillerUrlUtilsJni);
+        WebDistillerUrlUtilsJni.setInstanceForTesting(mWebDistillerUrlUtilsJni);
         RobolectricUtil.runAllBackgroundAndUi();
     }
 
@@ -452,10 +456,10 @@ public class AppMenuPropertiesDelegateUnitTest {
     public void isReaderModeShowing() {
         when(mTab.getUrl()).thenReturn(JUnitTestGURLs.CHROME_DISTILLER_EXAMPLE_URL);
 
-        when(mDomDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(true);
+        when(mWebDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(true);
         assertTrue(mAppMenuPropertiesDelegate.isReaderModeShowing(mTab));
 
-        when(mDomDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(false);
+        when(mWebDistillerUrlUtilsJni.isDistilledPage(any())).thenReturn(false);
         assertFalse(mAppMenuPropertiesDelegate.isReaderModeShowing(mTab));
     }
 
@@ -493,6 +497,40 @@ public class AppMenuPropertiesDelegateUnitTest {
 
         // Verify the zoom item IS shown
         assertTrue(mAppMenuPropertiesDelegate.shouldShowPageZoomItem(mTab));
+    }
+
+    @Test
+    @Config(qualifiers = "sw320dp")
+    @EnableFeatures(ChromeFeatureList.ANDROID_ZOOM_IMMERSIVE)
+    public void testBuildPageZoomItem_Phone_WithImmersiveModeEnabled() {
+        doReturn(true).when(mAppMenuPropertiesDelegate).shouldShowPageZoomItem(mTab);
+        doReturn(false).when(mAppMenuPropertiesDelegate).shouldShowLffPageZoomItem();
+
+        MVCListAdapter.ListItem item = mAppMenuPropertiesDelegate.buildPageZoomItem(mTab);
+
+        assertEquals(AppMenuItemType.TITLE_BUTTON, item.type);
+        assertEquals(R.id.page_zoom_id, item.model.get(AppMenuItemProperties.MENU_ITEM_ID));
+        MVCListAdapter.ModelList additionalIcons =
+                item.model.get(AppMenuItemProperties.ADDITIONAL_ICONS);
+        assertNotNull(additionalIcons);
+        assertEquals(1, additionalIcons.size());
+        assertEquals(
+                R.id.fullscreen_button,
+                additionalIcons.get(0).model.get(AppMenuItemProperties.MENU_ITEM_ID));
+    }
+
+    @Test
+    @Config(qualifiers = "sw320dp")
+    @DisableFeatures(ChromeFeatureList.ANDROID_ZOOM_IMMERSIVE)
+    public void testBuildPageZoomItem_Phone_WithImmersiveModeDisabled() {
+        doReturn(true).when(mAppMenuPropertiesDelegate).shouldShowPageZoomItem(mTab);
+        doReturn(false).when(mAppMenuPropertiesDelegate).shouldShowLffPageZoomItem();
+
+        MVCListAdapter.ListItem item = mAppMenuPropertiesDelegate.buildPageZoomItem(mTab);
+
+        assertEquals(AppMenuItemType.STANDARD, item.type);
+        assertEquals(R.id.page_zoom_id, item.model.get(AppMenuItemProperties.MENU_ITEM_ID));
+        assertNull(item.model.get(AppMenuItemProperties.ADDITIONAL_ICONS));
     }
 
     private void setUpMocksForPageMenu() {

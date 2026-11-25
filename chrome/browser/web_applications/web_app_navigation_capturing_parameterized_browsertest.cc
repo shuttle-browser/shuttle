@@ -17,6 +17,7 @@
 #include "base/json/json_file_value_serializer.h"
 #include "base/json/json_reader.h"
 #include "base/strings/strcat.h"
+#include "base/strings/stringprintf.h"
 #include "base/strings/to_string.h"
 
 #if BUILDFLAG(IS_MAC)
@@ -92,7 +93,6 @@
 #include "third_party/blink/public/mojom/safe_url_pattern.mojom.h"
 #include "third_party/liburlpattern/pattern.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -1843,6 +1843,12 @@ class NavCaptureParameterizedBrowserTest
       content::DOMMessageQueue message_queue;
       // True if a navigation is expected, which will trigger a dom reply.
       bool expect_navigation = true;
+
+      if (GetNavigationElement() != NavigationElement::kElementIntentPicker) {
+        // Page load completion does not guarantee that the renderer is ready
+        // for synthetic mouse input.
+        content::ReadyForInputObserver(contents_a).Wait();
+      }
 
       if (GetNavigationElement() == NavigationElement::kElementIntentPicker) {
         ASSERT_NO_FATAL_FAILURE(ClickIntentPickerChip(browser_a));

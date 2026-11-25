@@ -50,6 +50,7 @@
 #include "chrome/common/webui_url_utils.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
+#include "components/content_settings/core/common/features.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/embedder_support/switches.h"
 #include "components/no_state_prefetch/browser/no_state_prefetch_handle.h"
@@ -101,7 +102,7 @@
 #include "third_party/blink/public/common/chrome_debug_urls.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/navigation/preloading_headers.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 
 namespace {
 
@@ -578,7 +579,7 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest, PrefetchSimple) {
         GetActiveWebContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
     auto attempt_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 1u);
 
     // NoStatePrefetch should be successful with status kReady.
@@ -1409,7 +1410,7 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest, PrefetchSimultaneous) {
         GetActiveWebContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
     auto attempt_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 1u);
 
     // NoStatePrefetch status for first attempt should be equal to kRunning as,
@@ -1578,7 +1579,7 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest, SSLError) {
         GetActiveWebContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
     auto attempt_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 1u);
 
     // NoStatePrefetch should fail with SSLError.
@@ -1820,7 +1821,7 @@ void NoStatePrefetchBrowserTest::RunServiceWorkerInterceptTest(
   // Open a new tab to replace the one closed with all the RenderProcessHosts.
   ui_test_utils::NavigateToURLWithDisposition(
       current_browser(), GURL(url::kAboutBlankURL),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // The SW intercepts kPrefetchPage and replaces it with a body that contains
@@ -1840,8 +1841,11 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest,
                        MAYBE_ServiceWorkerIntercept) {
   bool expect_two_hosts = false;
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-  expect_two_hosts = base::FeatureList::IsEnabled(
-      safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSites);
+  expect_two_hosts =
+      base::FeatureList::IsEnabled(
+          safe_browsing::kMigrateToBlockV8OptimizerOnUnfamiliarSites) &&
+      base::FeatureList::IsEnabled(
+          content_settings::features::kBlockV8OptimizerOnUnfamiliarSites);
 #endif
   RunServiceWorkerInterceptTest(expect_two_hosts);
 }
@@ -1850,8 +1854,12 @@ class NoStatePrefetchBrowserTestWithEsbBlockV8
     : public NoStatePrefetchBrowserTest {
  public:
   NoStatePrefetchBrowserTestWithEsbBlockV8() {
-    feature_list_.InitAndEnableFeature(
-        safe_browsing::kEnableBlockV8OptimizerOnUnfamiliarSitesForEsbClients);
+    // TODO(crbug.com/570186404): Remove once
+    // kBlockV8OptimizerOnUnfamiliarSites is removed.
+    feature_list_.InitWithFeatures(
+        {safe_browsing::kEnableBlockV8OptimizerOnUnfamiliarSitesForEsbClients,
+         content_settings::features::kBlockV8OptimizerOnUnfamiliarSites},
+        {});
   }
 
   void SetUpOnMainThread() override {
@@ -1923,7 +1931,7 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest, CancelAll) {
         GetActiveWebContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
     auto attempt_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 1u);
 
     // NoStatePrefetch should fail with canceled reason.
@@ -2028,7 +2036,7 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest, PrerenderExcessiveMemory) {
         GetActiveWebContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
     auto attempt_ukm_entries = test_ukm_recorder()->GetEntries(
         Preloading_Attempt::kEntryName,
-        content::test::kPreloadingAttemptUkmMetrics);
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 1u);
 
     // NoStatePrefetch should fail with memory limit exceeded.
@@ -2068,7 +2076,7 @@ IN_PROC_BROWSER_TEST_F(NoStatePrefetchBrowserTest, OpenTaskManager) {
   // Open a new tab to replace the one closed with all the RenderProcessHosts.
   ui_test_utils::NavigateToURLWithDisposition(
       current_browser(), src_server()->GetURL(kPrefetchPage),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   ASSERT_NO_FATAL_FAILURE(WaitForTaskManagerRows(1, prefetch_page));
 }

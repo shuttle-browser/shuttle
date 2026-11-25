@@ -5,7 +5,7 @@
 import("//chromecast/starboard/starboard.gni")
 
 if (!remove_starboard_headers) {
-  shared_library("cast_starboard_api") {
+  source_set("cast_starboard_api_dummy") {
     sources = [ "cast_starboard_api_dummy.cc" ]
     configs += [ "//chromecast/starboard/third_party/starboard/sabi" ]
     defines = [
@@ -18,5 +18,13 @@ if (!remove_starboard_headers) {
       "//chromecast/starboard/chromecast/starboard_cast_api",
     ]
     public_deps = [ "//chromecast/starboard/third_party/starboard/public" ]
+  }
+
+  # Kept out of $root_out_dir so that it cannot shadow the partner library
+  # for executables whose RPATH includes $ORIGIN.
+  shared_library("cast_starboard_api") {
+    testonly = true
+    output_dir = "$root_out_dir/starboard_cast_dummy"
+    public_deps = [ ":cast_starboard_api_dummy" ]
   }
 }

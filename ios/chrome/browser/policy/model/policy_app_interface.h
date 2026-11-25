@@ -14,17 +14,17 @@
 // namespace.
 + (NSString*)valueForPlatformPolicy:(NSString*)policyKey;
 
-// Sets the json policy corresponding to `policy_key` to the given json
-// value, and removes previous policies.
+// Sets the json policy corresponding to `policyKey` to the given `jsonValue`,
+// and removes previous policies.
 + (void)setPolicyValue:(NSString*)jsonValue forKey:(NSString*)policyKey;
 
 // Merges the json policy corresponding to `policyKey` to the existing
-// policies with its value sets to `jsonValue`. The policy is installed as a
+// policies with its value set to `jsonValue`. The policy is installed as a
 // mandatory machine platform policy.
 + (void)mergePolicyValue:(NSString*)jsonValue forKey:(NSString*)policyKey;
 
-// Same as `mergePolicyValue:forKey:`, but the policy is installed with the
-// user scope and the cloud source. Policies guarded by
+// Same as `mergePolicyValue:forKey:`, but installs `jsonValue` for `policyKey`
+// with the user scope and the cloud source. Policies guarded by
 // `policy::CloudUserOnlyPolicyChecker` (e.g. CloudProfileReportingEnabled and
 // UserSecuritySignalsReporting) are silently dropped unless they are set this
 // way.
@@ -42,19 +42,19 @@
 + (BOOL)isURLBlocked:(NSString*)URL;
 
 // Returns YES if the given `URL` is blocked by the URLBlocklist and
-// URLAllowlist policies in the given mode.
+// URLAllowlist policies in `incognito` mode.
 + (BOOL)isURLBlocked:(NSString*)URL inIncognito:(BOOL)incognito;
 
-// Sets the browser cloud policy data with a domain.
+// Sets the browser cloud policy data with `domain`.
 + (void)setBrowserCloudPolicyDataWithDomain:(NSString*)domain;
 
-// Sets the user cloud policy data with a domain, or clears it if `domain` is
+// Sets the user cloud policy data with `domain`, or clears it if `domain` is
 // nil.
 + (void)setUserCloudPolicyDataWithDomain:(NSString*)domain;
 
 // Removes the whole directory where the device management token file is stored.
-//  Returns YES if succeeded. It is waiting for the disk operation to be
-//  finished before returning the value.
+// Returns YES if succeeded. It is waiting for the disk operation to be
+// finished before returning the value.
 + (BOOL)clearDMTokenDirectory [[nodiscard]];
 
 // Returns YES if the cloud policy client is registered.
@@ -73,7 +73,21 @@
 + (BOOL)hasUserPolicyInCurrentProfile:(NSString*)policyName
                      withIntegerValue:(int)expectedValue;
 
-// Logs a message using LOG_POLICY with ERROR severity from C++.
+// Triggers a fetch of the user policy of the current Profile. Returns YES if
+// the fetch was triggered, or NO, without fetching, if the user policy client
+// isn't registered.
++ (BOOL)refreshUserPolicyInCurrentProfile [[nodiscard]];
+
+// Returns the `policy::CloudPolicyStore::Status` of the user policy store of
+// the current Profile.
++ (NSInteger)userPolicyStoreStatusInCurrentProfile [[nodiscard]];
+
+// Returns the `policy::CloudPolicyValidatorBase::Status` of the last policy
+// validated by the user policy store of the current Profile, or
+// `VALIDATION_OK` if none was validated yet.
++ (NSInteger)userPolicyValidationStatusInCurrentProfile [[nodiscard]];
+
+// Logs `message` using LOG_POLICY with ERROR severity from C++.
 + (void)logErrorPolicy:(NSString*)message;
 
 // Clears all policy logs in the PolicyLogger singleton.

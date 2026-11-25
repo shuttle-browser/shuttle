@@ -17,9 +17,12 @@ import threading
 from devil import base_error
 from devil.android import crash_handler
 from devil.android import device_errors
+from devil.android import device_utils
+from devil.android.sdk import adb_wrapper
 from devil.android.sdk import version_codes
 from devil.android.tools import device_recovery
 from devil.utils import signal_handler
+from devil.utils import timeout_retry
 from pylib.base import base_test_result
 from pylib.base import test_collection
 from pylib.base import test_exception
@@ -49,12 +52,38 @@ class TestsTerminated(Exception):
 ESTIMATED_RUNTIME_PER_CLASS_DEFAULT = 8.0
 ESTIMATED_RUNTIME_PER_TEST_DEFAULT = 1.0
 
-# 0.05-0.10 best in offline sweep; eps=0.20 regressed.
-BOUNDED_LOAD_EPSILON = 0.05
+# Replaying android_browsertests (25 shards) over real durations: a lower cap
+# tightens the slowest shard for every weight estimator tried, with the
+# fraction of groups keeping their shard across test-list changes dropping
+# only from 99% (0.05) to 98% (0.02). 0.20 regressed in the original sweep.
+BOUNDED_LOAD_EPSILON = 0.02
 
 SHARDING_STRATEGY_HASH = 'hash'
 SHARDING_STRATEGY_BOUNDED_LOAD = 'bounded-load'
 SHARDING_STRATEGIES = (SHARDING_STRATEGY_HASH, SHARDING_STRATEGY_BOUNDED_LOAD)
+
+
+def _IsEmulator(dev):
+    """Returns whether |dev| is an emulator.
+
+    Checks AdbWrapper.is_emulator before DeviceUtils.is_emulator despite
+    AdbWrapper.is_emulator's deprecation note: AdbWrapper.is_emulator matches
+    emulator-* serials on the host with zero adb I/O even when the emulator is
+    already offline and DeviceUtils._cache is cold or cleared, while
+    dev.is_emulator covers TCP-connected Cuttlefish (vsoc_*) instances via
+    cached ro.product.device.
+    """
+    if (
+        isinstance(getattr(dev, 'adb', None), adb_wrapper.AdbWrapper)
+        and dev.adb.is_emulator
+    ):
+        return True
+    if isinstance(dev, device_utils.DeviceUtils):
+        try:
+            return bool(dev.is_emulator)
+        except base_error.BaseError:
+            return False
+    return False
 
 
 class LocalDeviceTestRun(test_run.TestRun):
@@ -64,13 +93,17 @@ class LocalDeviceTestRun(test_run.TestRun):
         self._installed_packages = []
         env.SetPreferredAbis(test_instance.GetPreferredAbis())
 
+    def _RetryOnSystemCrash(self, fn, dev):
+        return crash_handler.RetryOnSystemCrash(
+            fn, device=dev, retries=0 if _IsEmulator(dev) else 3
+        )
+
     @local_device_environment.handle_shard_failures
-    def _RunTestsOnDevice(self, dev, tests, results, exit_now, num_tests=0):
+    def _RunTestsOnDevice(self, dev, tests, results, exit_now):
         # This is performed here instead of during setup because restarting the
         # device clears app compatibility flags, which will happen if a device
         # needs to be recovered.
         SetAppCompatibilityFlagsIfNecessary(self._installed_packages, dev)
-        CompilePackages(self._installed_packages, dev, num_tests)
         consecutive_device_errors = 0
         for test in tests:
             if not test:
@@ -83,8 +116,8 @@ class LocalDeviceTestRun(test_run.TestRun):
             result = None
             rerun = None
             try:
-                result, rerun = crash_handler.RetryOnSystemCrash(
-                    lambda d, t=test: self._RunTest(d, t), device=dev
+                result, rerun = self._RetryOnSystemCrash(
+                    lambda d, t=test: self._RunTest(d, t), dev
                 )
                 consecutive_device_errors = 0
                 if isinstance(result, base_test_result.BaseTestResult):
@@ -95,7 +128,24 @@ class LocalDeviceTestRun(test_run.TestRun):
                     raise Exception(
                         'Unexpected result type: %s' % type(result).__name__
                     )
+            except _DeviceReadyTimeoutError as e:
+                exception_recorder.register(e)
+                raise
             except device_errors.CommandTimeoutError as e:
+                try:
+                    is_online = dev.IsOnline(timeout=10, retries=0)
+                except device_errors.CommandTimeoutError:
+                    is_online = False
+                if not is_online:
+                    try:
+                        raise device_errors.DeviceUnreachableError(
+                            str(dev)
+                        ) from e
+                    except (
+                        device_errors.DeviceUnreachableError
+                    ) as unreachable_e:
+                        exception_recorder.register(unreachable_e)
+                        raise
                 exception_recorder.register(e)
                 # Test timeouts don't count as device errors for the purpose
                 # of bad device detection.
@@ -130,6 +180,15 @@ class LocalDeviceTestRun(test_run.TestRun):
                             base_test_result.ResultType.TIMEOUT,
                         )
                     )
+                try:
+                    WaitUntilDeviceReady(
+                        dev,
+                        force_main_user=self._env.force_main_user,
+                        packages=self._installed_packages,
+                    )
+                except base_error.BaseError as wait_err:
+                    exception_recorder.register(wait_err)
+                    raise
             except device_errors.DeviceUnreachableError as e:
                 exception_recorder.register(e)
                 # If the device is no longer reachable then terminate this
@@ -157,6 +216,15 @@ class LocalDeviceTestRun(test_run.TestRun):
                     str(dev),
                     consecutive_device_errors,
                 )
+                try:
+                    WaitUntilDeviceReady(
+                        dev,
+                        force_main_user=self._env.force_main_user,
+                        packages=self._installed_packages,
+                    )
+                except base_error.BaseError as wait_err:
+                    exception_recorder.register(wait_err)
+                    raise
 
             finally:
                 if isinstance(tests, test_collection.TestCollection):
@@ -242,7 +310,6 @@ class LocalDeviceTestRun(test_run.TestRun):
                                 tc,
                                 try_results,
                                 exit_now,
-                                len(flatten_tests),
                             ).pGet(None)
                         else:
                             self._env.parallel_devices.pMap(
@@ -250,7 +317,6 @@ class LocalDeviceTestRun(test_run.TestRun):
                                 tests,
                                 try_results,
                                 exit_now,
-                                len(flatten_tests),
                             ).pGet(None)
                     except TestsTerminated:
                         for unknown_result in try_results.GetUnknown():
@@ -499,6 +565,96 @@ def FlattenTestList(values):
     return ret
 
 
+_DEVICE_READY_MAX_TRIES = 60
+_DEVICE_READY_WAIT_PERIOD = 1
+_DEVICE_READY_SHELL_TIMEOUT = 5
+
+
+class _DeviceReadyTimeoutError(device_errors.CommandTimeoutError):
+    """Raised when WaitUntilDeviceReady times out waiting for unlock/storage."""
+
+
+def WaitUntilDeviceReady(device, force_main_user=False, packages=None):
+    """Waits for a device to be fully booted, unlocked, and storage-mounted.
+
+    During a userspace soft-reboot (e.g. when surfaceflinger or system_server
+    crashes and restarts zygote), adbd stays alive and sys.boot_completed
+    remains '1', so WaitUntilFullyBooted() alone can return while system_server
+    is still in an early boot phase with the target user locked and /sdcard
+    FUSE unmounted (via `vdc volume abort_fuse`). Starting instrumentation in
+    that window causes ActivityManagerService.startInstrumentation() to fail
+    internally and force-stop the package without notifying the
+    InstrumentationWatcher, hanging `am instrument -w` until the shard timeout
+    expires.
+    """
+    device.ClearCache()
+    device.WaitUntilFullyBooted()
+
+    main_user_ensured = not force_main_user
+    last_state = {'user_id': 0, 'storage_path': None}
+
+    def is_user_unlocked_and_storage_ready():
+        nonlocal main_user_ensured
+        try:
+            if not main_user_ensured:
+                device.EnsureMainUser()
+                if not isinstance(getattr(device, 'target_user', None), int):
+                    return False
+                main_user_ensured = True
+
+            user_id = (
+                device.target_user
+                if isinstance(getattr(device, 'target_user', None), int)
+                else 0
+            )
+            # On HSUM (force_main_user with non-zero user), ResolveSpecialPath()
+            # maps /sdcard to the lower /data/media/<user> directory, which
+            # remains present even while FUSE is unmounted. Probe the user's
+            # actual FUSE mount namespace instead.
+            storage_path = (
+                f'/mnt/user/{user_id}/emulated/{user_id}/Download'
+                if force_main_user and user_id != 0
+                else device.GetAppWritablePath()
+            )
+            last_state['user_id'] = user_id
+            last_state['storage_path'] = storage_path
+
+            output = device.RunShellCommand(
+                ['am', 'get-started-user-state', str(user_id)],
+                check_return=False,
+                timeout=_DEVICE_READY_SHELL_TIMEOUT,
+                retries=0,
+            )
+            if not any('RUNNING_UNLOCKED' in line for line in output):
+                return False
+            device.RunShellCommand(
+                ['test', '-d', storage_path],
+                check_return=True,
+                as_root=force_main_user,
+                timeout=_DEVICE_READY_SHELL_TIMEOUT,
+                retries=0,
+            )
+            return True
+        except (
+            device_errors.CommandFailedError,
+            device_errors.CommandTimeoutError,
+        ):
+            return False
+
+    if not timeout_retry.WaitFor(
+        is_user_unlocked_and_storage_ready,
+        wait_period=_DEVICE_READY_WAIT_PERIOD,
+        max_tries=_DEVICE_READY_MAX_TRIES,
+    ):
+        raise _DeviceReadyTimeoutError(
+            f'Timed out waiting for device {device} user '
+            f'{last_state["user_id"]} unlock and external storage '
+            f'({last_state["storage_path"]}).'
+        )
+    if packages:
+        SetAppCompatibilityFlagsIfNecessary(packages, device)
+
+
 def SetAppCompatibilityFlagsIfNecessary(packages, device):
     """Sets app compatibility flags on the given packages and device.
 
@@ -519,19 +675,6 @@ def SetAppCompatibilityFlagsIfNecessary(packages, device):
         # See crbug.com/1173699 for more information.
         set_flag_for_packages('DEFAULT_SCOPED_STORAGE', False)
         set_flag_for_packages('FORCE_ENABLE_SCOPED_STORAGE', False)
-
-
-def CompilePackages(packages, device, num_tests):
-    """Ahead-of-time compiles test APKs with ART when worthwhile."""
-    if num_tests <= 20:
-        return
-    for p in dict.fromkeys(packages):
-        device.RunShellCommand(
-            ['cmd', 'package', 'compile', '-m', 'speed', p],
-            check_return=False,
-            timeout=180,
-            retries=0,
-        )
 
 
 class NoTestsError(Exception):

@@ -240,7 +240,7 @@
 #include "ash/wm/window_restore/window_restore_controller.h"
 #include "ash/wm/window_state.h"
 #include "ash/wm/window_util.h"
-#include "ash/wm/wm_shadow_controller_delegate.h"
+#include "ash/wm/wm_decoration_controller_delegate.h"
 #include "ash/wm/workspace_controller.h"
 #include "base/check.h"
 #include "base/check_is_test.h"
@@ -309,8 +309,8 @@
 #include "ui/wm/core/accelerator_filter.h"
 #include "ui/wm/core/capture_controller.h"
 #include "ui/wm/core/compound_event_filter.h"
+#include "ui/wm/core/decoration_controller.h"
 #include "ui/wm/core/focus_controller.h"
-#include "ui/wm/core/shadow_controller.h"
 #include "ui/wm/core/visibility_controller.h"
 #include "ui/wm/core/window_modality_controller.h"
 
@@ -364,11 +364,7 @@ Shell* Shell::instance_ = nullptr;
 Shell* Shell::CreateInstance(ShellInitParams init_params) {
   CHECK(!instance_);
   instance_ = new Shell(std::move(init_params.delegate));
-  instance_->Init(init_params.context_factory, init_params.local_state,
-                  std::move(init_params.keyboard_ui_factory),
-                  std::move(init_params.quick_pair_mediator_factory),
-                  init_params.dbus_bus,
-                  std::move(init_params.native_display_delegate));
+  instance_->Init(std::move(init_params));
   return instance_;
 }
 
@@ -986,7 +982,7 @@ Shell::~Shell() {
   video_detector_.reset();
   color_enhancement_controller_.reset();
 
-  shadow_controller_.reset();
+  decoration_controller_.reset();
   resize_shadow_controller_.reset();
 
   // Has to happen before ~MruWindowTracker.
@@ -1284,15 +1280,15 @@ Shell::~Shell() {
   instance_ = nullptr;
 }
 
-void Shell::Init(
-    ui::ContextFactory* context_factory,
-    PrefService* local_state,
-    std::unique_ptr<keyboard::KeyboardUIFactory> keyboard_ui_factory,
-    std::unique_ptr<ash::quick_pair::Mediator::Factory>
-        quick_pair_mediator_factory,
-    scoped_refptr<dbus::Bus> dbus_bus,
-    std::unique_ptr<display::NativeDisplayDelegate> native_display_delegate) {
-  native_display_delegate_ = std::move(native_display_delegate);
+void Shell::Init(ShellInitParams init_params) {
+  ui::ContextFactory* context_factory = init_params.context_factory;
+  PrefService* local_state = init_params.local_state;
+  std::unique_ptr<keyboard::KeyboardUIFactory> keyboard_ui_factory =
+      std::move(init_params.keyboard_ui_factory);
+  std::unique_ptr<quick_pair::Mediator::Factory> quick_pair_mediator_factory =
+      std::move(init_params.quick_pair_mediator_factory);
+  scoped_refptr<dbus::Bus> dbus_bus = std::move(init_params.dbus_bus);
+  native_display_delegate_ = std::move(init_params.native_display_delegate);
   login_unlock_throughput_recorder_ =
       std::make_unique<LoginUnlockThroughputRecorder>();
   unlock_throughput_recorder_ = std::make_unique<UnlockThroughputRecorder>();
@@ -1723,9 +1719,9 @@ void Shell::Init(
   event_client_ = std::make_unique<EventClientImpl>();
 
   resize_shadow_controller_ = std::make_unique<ResizeShadowController>();
-  shadow_controller_ = std::make_unique<::wm::ShadowController>(
-      focus_controller_.get(), std::make_unique<WmShadowControllerDelegate>(),
-      env);
+  decoration_controller_ = std::make_unique<::wm::DecorationController>(
+      focus_controller_.get(),
+      std::make_unique<WmDecorationControllerDelegate>(), env);
 
   tasks_controller_ = std::make_unique<api::TasksController>(
       shell_delegate_->CreateTasksDelegate());

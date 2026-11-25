@@ -62,7 +62,47 @@ const char
 constexpr char kLiveCaptionLanguageCountHistogramName[] =
     "Accessibility.LiveCaption.LanguageCount";
 
+constexpr char kSodaTfLiteDelegateStatusHistogramName[] =
+    "Accessibility.LiveCaption.SodaTfLiteDelegateStatus";
+
 namespace {
+
+// Whether the ASR pipeline's TFLite sessions run on a TFLite delegate.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(SodaTfLiteDelegateStatus)
+enum class SodaTfLiteDelegateStatus {
+  // No delegate was requested in the SODA config.
+  kNotDelegated = 0,
+  // The delegate was requested and every TFLite session runs on it.
+  kDelegateSuccess = 1,
+  // The delegate was requested but at least one TFLite session runs TFLite's
+  // built-in kernels.
+  kDelegateFallback = 2,
+  kMaxValue = kDelegateFallback,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/accessibility/enums.xml:SodaTfLiteDelegateStatus)
+
+// Records whether the ASR pipeline's TFLite sessions run on a TFLite delegate.
+void RecordTfLiteDelegateInfo(
+    const soda::chrome::SodaTfLiteDelegateInfo& info) {
+  const int total = info.tflite_session_count();
+  if (total <= 0) {
+    return;
+  }
+  SodaTfLiteDelegateStatus status;
+  // XNNPACK is the only delegate Chrome requests today. ResetSoda() sets
+  // enable_xnnpack_delegate in the SODA config if and only if this feature is
+  // enabled.
+  if (!base::FeatureList::IsEnabled(media::kSodaXnnpackDelegate)) {
+    status = SodaTfLiteDelegateStatus::kNotDelegated;
+  } else if (info.delegated_session_count() >= total) {
+    status = SodaTfLiteDelegateStatus::kDelegateSuccess;
+  } else {
+    status = SodaTfLiteDelegateStatus::kDelegateFallback;
+  }
+  base::UmaHistogramEnumeration(kSodaTfLiteDelegateStatusHistogramName, status);
+}
 
 struct SodaCallbacks {
   SpeechRecognitionRecognizerImpl::OnRecognitionEventCallback recognition;
@@ -187,6 +227,11 @@ void OnSodaResponse(const char* serialized_proto,
 
   if (response.soda_type() == soda::chrome::SodaResponse::STOP) {
     callbacks.stop.Run();
+  }
+
+  if (response.soda_type() ==
+      soda::chrome::SodaResponse::TFLITE_DELEGATE_INFO) {
+    RecordTfLiteDelegateInfo(response.tflite_delegate_info());
   }
 }
 
@@ -494,9 +539,7 @@ void SpeechRecognitionRecognizerImpl::SendAudioToSpeechRecognitionService(
       // No nonzero data for several seconds. Don't send this buffer of zeroes,
       // and release the SODA instance to free memory until non-empty audio
       // resumes.
-      if (soda_client_) {
-        soda_client_->Destroy();
-      }
+      ReleaseSodaForSilence();
 
       // Forward `media_start_pts` since we can seek into the middle of long
       // stretches of silence.
@@ -524,6 +567,15 @@ void SpeechRecognitionRecognizerImpl::OnSpeechRecognitionError() {
 }
 
 void SpeechRecognitionRecognizerImpl::MarkDone() {
+  const bool already_marked_done = std::exchange(marked_done_, true);
+  if (soda_released_for_silence_) {
+    // SODA is already released, so notify the client directly.
+    if (!already_marked_done) {
+      speech_recognition_stopped_callback_.Run();
+    }
+    return;
+  }
+
   soda_client_->MarkDone();
 }
 
@@ -570,6 +622,9 @@ void SpeechRecognitionRecognizerImpl::
   if (!base::CheckMul(buffer->data.size(), sizeof(buffer->data[0]))
            .AssignIfValid(&buffer_size)) {
     mojo::ReportBadMessage(kInvalidAudioDataError);
+    return;
+  }
+  if (marked_done_) {
     return;
   }
 
@@ -664,7 +719,7 @@ void SpeechRecognitionRecognizerImpl::RecordDuration() {
 }
 
 void SpeechRecognitionRecognizerImpl::ResetSoda() {
-  if (!is_client_requesting_speech_recognition_) {
+  if (!is_client_requesting_speech_recognition_ || marked_done_) {
     return;
   }
 
@@ -736,8 +791,25 @@ void SpeechRecognitionRecognizerImpl::ResetSoda() {
       reinterpret_cast<void*>(static_cast<uintptr_t>(soda_client_id_));
   CHECK(soda_client_);
   soda_client_->Reset(config, sample_rate_, channel_count_);
+  if (soda_client_->IsInitialized()) {
+    soda_released_for_silence_ = false;
+  }
 
   timestamp_estimator_ = std::make_unique<SpeechTimestampEstimator>();
+}
+
+void SpeechRecognitionRecognizerImpl::ReleaseSodaForSilence() {
+  if (!soda_client_ || marked_done_) {
+    return;
+  }
+
+  if (soda_client_->IsInitialized()) {
+    // Unregister first to drop the STOP event emitted during Destroy().
+    SodaClientRegistry::GetInstance()->Unregister(soda_client_id_);
+    soda_client_->Destroy();
+    soda_client_id_ = SodaClientRegistry::GetInstance()->Register(this);
+  }
+  soda_released_for_silence_ = true;
 }
 
 soda::chrome::ExtendedSodaConfigMsg*

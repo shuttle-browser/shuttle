@@ -197,6 +197,7 @@ Selle seade muutmiseks <ph name="BEGIN_LINK" />kustutage oma kontol Chromiumi an
 <translation id="5124429847818367226">Nüüd saate kasutada Chromiumi iga kord, kui sirvite või puudutate linke sõnumites, dokumentides ja muudes rakendustes.</translation>
 <translation id="5131565040785979529">Teie organisatsioon <ph name="DOMAIN" /> haldab kontot, millele olete sisse logitud, ja Chromiumi kasutamist.</translation>
 <translation id="5134464247000681876">Avage Gmaili, Mapsi, YouTube'i ja muude rakenduste lingid Chromiumis</translation>
+<translation id="5190583032791290546">Chromiumi nõuanded</translation>
 <translation id="5203244847421322551">Salvestage paroolid ja täitke need automaatselt Chromiumis</translation>
 <translation id="5224391634244552924">Salvestatud paroole ei ole. Chromium saab teie paroole kontrollida, kui olete need salvestanud.</translation>
 <translation id="5259423875997548710">Otsige Chromiumis visuaale.</translation>
@@ -339,6 +340,7 @@ Teie krüpteeritud andmeid saab lugeda ainult isik, kes teab teie parooli. Paroo
 <translation id="8013573822802650211">Selleks et näha vahelehti kõikjalt, kus Chromiumi kasutate, logige kõigisse oma seadmetesse sisse</translation>
 <translation id="8014091604604659473">Te pole Chromiumis sisse logitud</translation>
 <translation id="8104697640054703121">Hankige Chromiumi tugevaim kaitse ohtlike veebisaitide vastu</translation>
+<translation id="8105840573057009683">Chromium vajab selle saidi puhul asukohale juurdepääsu luba</translation>
 <translation id="8119542592987737574">Chromiumi saab kiiremini avada iPhone'i avakuva dokist.</translation>
 <translation id="8119553494985516751">Kui määrate Chromiumi vaikebrauseriks, avanevad lingid kiiremini</translation>
 <translation id="8164086860209325020">Chromiumi seadete avamine</translation>

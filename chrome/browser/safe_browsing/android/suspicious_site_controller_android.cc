@@ -24,7 +24,7 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
 #include "components/safe_browsing/core/browser/suspicious_site_warning_allowlist.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
@@ -36,8 +36,8 @@
 #include "content/public/common/referrer.h"
 #include "ui/android/window_android.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -465,15 +465,15 @@ void SuspiciousSiteControllerAndroid::MaybeTriggerHatsSurvey(
   if (survey_state_.has_triggered_survey) {
     return;
   }
-  if (!base::FeatureList::IsEnabled(
-          safe_browsing::kSuspiciousSiteWarningSurvey)) {
-    return;
-  }
   Profile* profile =
       Profile::FromBrowserContext(web_contents()->GetBrowserContext());
   HatsService* hats_service =
       HatsServiceFactory::GetForProfile(profile, /*create_if_necessary=*/true);
   if (!hats_service) {
+    return;
+  }
+  if (!base::FeatureList::IsEnabled(
+          safe_browsing::kSuspiciousSiteWarningSurvey)) {
     return;
   }
 
@@ -546,7 +546,8 @@ void SuspiciousSiteControllerAndroid::OnHelpCenterLinkClicked() {
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
           GURL(chrome::kUnsafeSiteWarningHelpCenterURL),
-          WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK);
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+          ui::PAGE_TRANSITION_LINK);
 
   contents->OpenURL(params, /*navigation_handle_callback=*/{});
 }

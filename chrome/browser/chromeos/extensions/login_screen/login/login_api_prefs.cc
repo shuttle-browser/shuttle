@@ -13,13 +13,13 @@
 namespace extensions::login_api {
 
 void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
-  registry->RegisterStringPref(prefs::kLoginExtensionApiDataForNextLoginAttempt,
-                               "");
+  registry->RegisterStringPref(
+      ash::prefs::kLoginExtensionApiDataForNextLoginAttempt, "");
 }
 
 void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {
   registry->RegisterListPref(
-      prefs::kRestrictedManagedGuestSessionExtensionCleanupExemptList);
+      ash::prefs::kRestrictedManagedGuestSessionExtensionCleanupExemptList);
 
   // This pref is a per-session pref and must not be synced.
   registry->RegisterBooleanPref(

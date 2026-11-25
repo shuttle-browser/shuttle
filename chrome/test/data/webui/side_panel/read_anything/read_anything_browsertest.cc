@@ -7,6 +7,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
+#include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
@@ -28,8 +29,11 @@ class ReadAnythingMochaBrowserTest : public WebUIMochaBrowserTest {
   }
 
   void RunSidePanelTest(const std::string& file, const std::string& trigger) {
+    read_anything::ReadAnythingEntryPointController::ShowUI(
+        browser(), ReadAnythingOpenTrigger::kAppMenu,
+        read_anything::ReadAnythingEntryPointController::Presentation::
+            kSidePanel);
     auto* side_panel_ui = SidePanelUI::From(browser());
-    side_panel_ui->Show(SidePanelEntryId::kReadAnything);
     auto* web_contents =
         side_panel_ui->GetWebContentsForTest(SidePanelEntryId::kReadAnything);
     ASSERT_TRUE(web_contents);
@@ -129,6 +133,12 @@ IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, VoiceLanguageModel) {
 IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, SelectionController) {
   RunSidePanelTest("side_panel/read_anything/selection_controller_test.js",
                    "mocha.run()");
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, TranslatedSelectionController) {
+  RunSidePanelTest(
+      "side_panel/read_anything/translated_selection_controller_test.js",
+      "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, SpeechController) {
@@ -292,12 +302,6 @@ IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, RateMenu) {
   RunSidePanelTest("side_panel/read_anything/rate_menu_test.js", "mocha.run()");
 }
 
-IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, SpeechUsesMaxTextLength) {
-  RunSidePanelTest(
-      "side_panel/read_anything/speech_uses_max_text_length_test.js",
-      "mocha.run()");
-}
-
 IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, LineFocusController) {
   RunSidePanelTest("side_panel/read_anything/line_focus_controller_test.js",
                    "mocha.run()");
@@ -323,8 +327,8 @@ IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, ReadAloudNodeStore) {
                    "mocha.run()");
 }
 
-IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, DomReadAloudNode) {
-  RunSidePanelTest("side_panel/read_anything/dom_read_aloud_node_test.js",
+IN_PROC_BROWSER_TEST_F(ReadAnythingMochaTest, ReadAloudNode) {
+  RunSidePanelTest("side_panel/read_anything/read_aloud_node_test.js",
                    "mocha.run()");
 }
 

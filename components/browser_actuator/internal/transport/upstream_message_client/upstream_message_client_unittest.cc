@@ -12,14 +12,18 @@
 #include "base/test/bind.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
+#include "components/browser_actuator/internal/transport/features.h"
+#include "components/browser_actuator/internal/transport/proto/task_ingress.pb.h"
 #include "components/browser_actuator/internal/transport/proto/transport_messages.pb.h"
 #include "components/browser_actuator/public/transport/common.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
+#include "services/network/public/mojom/fetch_api.mojom-shared.h"
 #include "services/network/test/test_url_loader_factory.h"
 #include "services/network/test/test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -79,6 +83,7 @@ TEST_F(BrowserActuatorUpstreamMessageClientTest, SendMessageSuccess) {
   const auto& request = requests_[0];
   EXPECT_EQ(kEndpoint, request.url.spec());
   EXPECT_EQ("POST", request.method);
+  EXPECT_EQ(network::mojom::RedirectMode::kError, request.redirect_mode);
 
   SendSessionMessageRequest request_proto;
   ASSERT_TRUE(request_proto.ParseFromString(network::GetUploadData(request)));
@@ -135,6 +140,94 @@ TEST_F(BrowserActuatorUpstreamMessageClientTest,
       "Browser.Actuator.Transport.Upstream.UploadLatency."
       "ExperimentalTriggering",
       1);
+  histogram_tester.ExpectUniqueSample(
+      "Browser.Actuator.Transport.Upstream.HttpStatus", net::HTTP_OK, 1);
+}
+
+TEST_F(BrowserActuatorUpstreamMessageClientTest, SendMessageProbeSuccess) {
+  base::HistogramTester histogram_tester;
+  UpstreamMessageClient client(test_shared_loader_factory_,
+                               identity_test_env_.identity_manager(),
+                               GURL(kEndpoint), TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  test_url_loader_factory_.AddResponse(kEndpoint, "OK", net::HTTP_OK);
+
+  TransportProbe probe;
+  probe.mutable_response()->set_probe_id("probe_1");
+
+  base::test::TestFuture<bool, int> future;
+  client.SendUpstreamMessage("session_1", /*client_sequence_number=*/1,
+                             /*responding_to_sequence_number=*/std::nullopt,
+                             PayloadType::kProbe, probe, future.GetCallback());
+
+  EXPECT_TRUE(future.Get<0>());
+  EXPECT_EQ(net::HTTP_OK, future.Get<1>());
+
+  ASSERT_EQ(1u, requests_.size());
+  SendSessionMessageRequest request_proto;
+  ASSERT_TRUE(
+      request_proto.ParseFromString(network::GetUploadData(requests_[0])));
+
+  const auto& upstream = request_proto.actuator_upstream_message();
+  ASSERT_EQ(1, upstream.typed_payloads_size());
+  const auto& typed_payload = upstream.typed_payloads(0);
+  EXPECT_EQ(ACTUATOR_UPSTREAM_PAYLOAD_TYPE_PROBE, typed_payload.payload_type());
+  EXPECT_EQ("type.googleapis.com/browser_actuator.TransportProbe",
+            typed_payload.proto_payload().type_url());
+  EXPECT_EQ(probe.SerializeAsString(), typed_payload.proto_payload().value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Browser.Actuator.Transport.Upstream.PayloadSize.Probe",
+      probe.ByteSizeLong(), 1);
+  histogram_tester.ExpectTotalCount(
+      "Browser.Actuator.Transport.Upstream.UploadLatency.Probe", 1);
+  histogram_tester.ExpectUniqueSample(
+      "Browser.Actuator.Transport.Upstream.HttpStatus", net::HTTP_OK, 1);
+}
+
+TEST_F(BrowserActuatorUpstreamMessageClientTest,
+       SendMessageTaskIngressSuccess) {
+  base::HistogramTester histogram_tester;
+  UpstreamMessageClient client(test_shared_loader_factory_,
+                               identity_test_env_.identity_manager(),
+                               GURL(kEndpoint), TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  test_url_loader_factory_.AddResponse(kEndpoint, "OK", net::HTTP_OK);
+
+  browser_actuator::TaskIngressUpstreamPayload payload;
+  payload.mutable_start_task()->set_use_case(
+      browser_actuator::TASK_USE_CASE_AUTO_PASSWORD_CHANGE);
+
+  base::test::TestFuture<bool, int> future;
+  client.SendUpstreamMessage("session_1", /*client_sequence_number=*/1,
+                             /*responding_to_sequence_number=*/std::nullopt,
+                             PayloadType::kTaskIngress, payload,
+                             future.GetCallback());
+
+  EXPECT_TRUE(future.Get<0>());
+  EXPECT_EQ(net::HTTP_OK, future.Get<1>());
+
+  ASSERT_EQ(1u, requests_.size());
+  SendSessionMessageRequest request_proto;
+  ASSERT_TRUE(
+      request_proto.ParseFromString(network::GetUploadData(requests_[0])));
+
+  const ActuatorUpstreamMessage& upstream =
+      request_proto.actuator_upstream_message();
+  ASSERT_EQ(1, upstream.typed_payloads_size());
+  const ActuatorUpstreamTypedPayload& typed_payload =
+      upstream.typed_payloads(0);
+  EXPECT_EQ(ACTUATOR_UPSTREAM_PAYLOAD_TYPE_TASK_INGRESS,
+            typed_payload.payload_type());
+  EXPECT_EQ("type.googleapis.com/browser_actuator.TaskIngressUpstreamPayload",
+            typed_payload.proto_payload().type_url());
+  EXPECT_EQ(payload.SerializeAsString(), typed_payload.proto_payload().value());
+
+  histogram_tester.ExpectUniqueSample(
+      "Browser.Actuator.Transport.Upstream.PayloadSize.TaskIngress",
+      payload.ByteSizeLong(), 1);
+  histogram_tester.ExpectTotalCount(
+      "Browser.Actuator.Transport.Upstream.UploadLatency.TaskIngress", 1);
   histogram_tester.ExpectUniqueSample(
       "Browser.Actuator.Transport.Upstream.HttpStatus", net::HTTP_OK, 1);
 }
@@ -248,6 +341,109 @@ TEST_F(BrowserActuatorUpstreamMessageClientTest,
       "Browser.Actuator.Transport.Upstream.UploadLatency.Control", 0);
   histogram_tester.ExpectTotalCount(
       "Browser.Actuator.Transport.Upstream.HttpStatus", 0);
+}
+
+TEST_F(BrowserActuatorUpstreamMessageClientTest,
+       CancelPendingRequestsClearsInFlightRequestsWithoutRunningCallbacks) {
+  base::HistogramTester histogram_tester;
+  UpstreamMessageClient client(test_shared_loader_factory_,
+                               identity_test_env_.identity_manager(),
+                               GURL(kEndpoint), TRAFFIC_ANNOTATION_FOR_TESTS);
+  EXPECT_EQ(0u, client.GetPendingRequestsCountForTesting());
+
+  ControlCommand command;
+  command.mutable_close_channel();
+
+  base::test::TestFuture<bool, int> first_future;
+  client.SendUpstreamMessage("session_1", /*client_sequence_number=*/1,
+                             /*responding_to_sequence_number=*/std::nullopt,
+                             PayloadType::kControl, command,
+                             first_future.GetCallback());
+  base::test::TestFuture<bool, int> second_future;
+  client.SendUpstreamMessage("session_2", /*client_sequence_number=*/1,
+                             /*responding_to_sequence_number=*/std::nullopt,
+                             PayloadType::kControl, command,
+                             second_future.GetCallback());
+
+  EXPECT_EQ(2u, client.GetPendingRequestsCountForTesting());
+  EXPECT_TRUE(
+      base::test::RunUntil([this]() { return requests_.size() == 2u; }));
+
+  client.CancelPendingRequests();
+
+  EXPECT_EQ(0u, client.GetPendingRequestsCountForTesting());
+  EXPECT_FALSE(first_future.IsReady());
+  EXPECT_FALSE(second_future.IsReady());
+
+  // Latency and HttpStatus should not be logged for cancelled requests.
+  histogram_tester.ExpectTotalCount(
+      "Browser.Actuator.Transport.Upstream.UploadLatency.Control", 0);
+  histogram_tester.ExpectTotalCount(
+      "Browser.Actuator.Transport.Upstream.HttpStatus", 0);
+}
+
+TEST_F(BrowserActuatorUpstreamMessageClientTest,
+       RejectsUntrustworthyCleartextEndpoint) {
+  UpstreamMessageClient client(
+      test_shared_loader_factory_, identity_test_env_.identity_manager(),
+      GURL("http://example.com/v1/send"), TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  ControlCommand command;
+  command.mutable_close_channel();
+
+  base::test::TestFuture<bool, int> future;
+  client.SendUpstreamMessage("session_1", /*client_sequence_number=*/1,
+                             /*responding_to_sequence_number=*/std::nullopt,
+                             PayloadType::kControl, command,
+                             future.GetCallback());
+
+  EXPECT_FALSE(future.Get<0>());
+  EXPECT_EQ(-1, future.Get<1>());
+  EXPECT_TRUE(requests_.empty());
+}
+
+TEST_F(BrowserActuatorUpstreamMessageClientTest,
+       EnforcesMaxPendingUpstreamRequests) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      kBrowserActuatorProtoStreamTransport,
+      {{kMaxPendingUpstreamRequests.name, "2"}});
+
+  UpstreamMessageClient client(test_shared_loader_factory_,
+                               identity_test_env_.identity_manager(),
+                               GURL(kEndpoint), TRAFFIC_ANNOTATION_FOR_TESTS);
+
+  ControlCommand command;
+  command.mutable_close_channel();
+
+  base::test::TestFuture<bool, int> f1;
+  base::test::TestFuture<bool, int> f2;
+  base::test::TestFuture<bool, int> f3;
+
+  client.SendUpstreamMessage("session_1", 1, std::nullopt,
+                             PayloadType::kControl, command, f1.GetCallback());
+  client.SendUpstreamMessage("session_1", 2, std::nullopt,
+                             PayloadType::kControl, command, f2.GetCallback());
+  client.SendUpstreamMessage("session_1", 3, std::nullopt,
+                             PayloadType::kControl, command, f3.GetCallback());
+
+  EXPECT_FALSE(f3.Get<0>());
+  EXPECT_EQ(-1, f3.Get<1>());
+  EXPECT_TRUE(
+      base::test::RunUntil([this]() { return requests_.size() == 2u; }));
+  EXPECT_EQ(2u, requests_.size());
+
+  // Completing one in-flight request frees capacity for a subsequent send.
+  test_url_loader_factory_.SimulateResponseForPendingRequest(kEndpoint, "",
+                                                             net::HTTP_OK);
+  EXPECT_TRUE(f1.Get<0>());
+  EXPECT_EQ(net::HTTP_OK, f1.Get<1>());
+
+  base::test::TestFuture<bool, int> f4;
+  client.SendUpstreamMessage("session_1", 4, std::nullopt,
+                             PayloadType::kControl, command, f4.GetCallback());
+  EXPECT_TRUE(
+      base::test::RunUntil([this]() { return requests_.size() == 3u; }));
 }
 
 }  // namespace

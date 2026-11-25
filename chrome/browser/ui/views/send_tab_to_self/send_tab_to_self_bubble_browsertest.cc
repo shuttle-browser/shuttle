@@ -2,10 +2,14 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <tuple>
+
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
+#include "base/test/scoped_feature_list.h"
 #include "base/time/time.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/sync/send_tab_to_self_sync_service_factory.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_actions.h"
@@ -15,20 +19,24 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/test/test_browser_dialog.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
+#include "chrome/browser/ui/views/location_bar/location_bar_bubble_delegate_view.h"
 #include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_controller.h"
-#include "chrome/browser/ui/views/send_tab_to_self/send_tab_to_self_bubble_view.h"
+#include "chrome/browser/ui/views/toolbar/avatar_toolbar_button_interface.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_test_accessor.h"
 #include "chrome/browser/ui/views/toolbar/pinned_toolbar_actions.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/send_tab_to_self/features.h"
 #include "components/send_tab_to_self/metrics_util.h"
 #include "components/send_tab_to_self/stub_send_tab_to_self_sync_service.h"
+#include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/signin_buildflags.h"
 #include "components/signin/public/identity_manager/account_info.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/sync_device_info/remote_device_info.h"
 #include "content/public/test/browser_test.h"
-#include "google_apis/gaia/gaia_id.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/gfx/image/image_unittest_util.h"
 #include "ui/views/layout/animating_layout_manager_test_util.h"
@@ -46,6 +54,8 @@ using OsType = syncer::DeviceInfo::OsType;
 // `*SendTabToSelfBubbleTest.*` in `pixel_tests.filter`.
 using SendTabToSelfBubbleDialogTest = SendTabToSelfBubbleTest;
 using syncer::RemoteDeviceInfo;
+using ::testing::Bool;
+using ::testing::Combine;
 using ::testing::Values;
 using ::testing::WithParamInterface;
 
@@ -63,6 +73,27 @@ class StubSendTabToSelfBubbleController : public SendTabToSelfBubbleController {
   void SetEntryPointDisplayReason(
       std::optional<send_tab_to_self::EntryPointDisplayReason> reason) {
     reason_ = reason;
+    signin::IdentityManager* identity_manager =
+        IdentityManagerFactory::GetForProfile(
+            Profile::FromBrowserContext(GetWebContents().GetBrowserContext()));
+    if (reason_ ==
+        send_tab_to_self::EntryPointDisplayReason::kInformNoTargetDevice) {
+      if (!identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+        AccountInfo account_info = signin::MakePrimaryAccountAvailable(
+            identity_manager, "user@host.com", signin::ConsentLevel::kSignin);
+        signin::SimulateAccountImageFetch(
+            identity_manager, account_info.GetAccountId(),
+            "https://avatar.com/avatar.png",
+            gfx::Image(gfx::test::CreateImageSkia(96, 96)));
+      }
+    } else if (reason_ ==
+               send_tab_to_self::EntryPointDisplayReason::kOfferReauth) {
+      if (!identity_manager->HasPrimaryAccount(signin::ConsentLevel::kSignin)) {
+        signin::MakePrimaryAccountAvailable(identity_manager, "user@host.com",
+                                            signin::ConsentLevel::kSignin);
+      }
+      signin::SetInvalidRefreshTokenForPrimaryAccount(identity_manager);
+    }
   }
 
   std::vector<RemoteDeviceInfo> GetValidDevices() override {
@@ -79,12 +110,6 @@ class StubSendTabToSelfBubbleController : public SendTabToSelfBubbleController {
              now - base::Days(5), /*has_high_precision_timestamp=*/false},
             {"Device_6", "device_guid_6", FormFactor::kPhone, OsType::kAndroid,
              now - base::Days(5), /*has_high_precision_timestamp=*/false}};
-  }
-
-  AccountInfo GetSharingAccountInfo() override {
-    return AccountInfo::Builder(GaiaId("test_gaia"), "user@host.com")
-        .SetAvatarImage(gfx::Image(gfx::test::CreateImageSkia(96, 96)))
-        .Build();
   }
 
  private:
@@ -196,25 +221,44 @@ IN_PROC_BROWSER_TEST_F(SendTabToSelfBubbleDialogTest,
 
 class SendTabToSelfBubbleParameterizedTest
     : public SendTabToSelfBubbleTest,
-      public WithParamInterface<EntryPointDisplayReason> {
+      public WithParamInterface<std::tuple<EntryPointDisplayReason, bool>> {
  public:
-  SendTabToSelfBubbleParameterizedTest() = default;
+  SendTabToSelfBubbleParameterizedTest() {
+    scoped_feature_list_.InitWithFeatureState(
+        kSendTabToSelfAnchorPromosToProfilePill, AnchorPromosToAvatarPill());
+  }
 
   void SetUpOnMainThread() override {
     SendTabToSelfBubbleTest::SetUpOnMainThread();
-    controller_->SetEntryPointDisplayReason(GetParam());
+    controller_->SetEntryPointDisplayReason(DisplayReason());
   }
+
+  EntryPointDisplayReason DisplayReason() const {
+    return std::get<0>(GetParam());
+  }
+
+  bool AnchorPromosToAvatarPill() const { return std::get<1>(GetParam()); }
+
+  bool ShouldAnchorToAvatarPill() const {
+    return AnchorPromosToAvatarPill() &&
+           (DisplayReason() == EntryPointDisplayReason::kOfferSignIn ||
+            DisplayReason() == EntryPointDisplayReason::kOfferReauth);
+  }
+
+ private:
+  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 INSTANTIATE_TEST_SUITE_P(
     ,
     SendTabToSelfBubbleParameterizedTest,
-    Values(EntryPointDisplayReason::kOfferFeature,
+    Combine(Values(EntryPointDisplayReason::kOfferFeature,
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
-           EntryPointDisplayReason::kOfferSignIn,
-           EntryPointDisplayReason::kOfferReauth,
+                   EntryPointDisplayReason::kOfferSignIn,
+                   EntryPointDisplayReason::kOfferReauth,
 #endif
-           EntryPointDisplayReason::kInformNoTargetDevice));
+                   EntryPointDisplayReason::kInformNoTargetDevice),
+            Bool()));
 
 IN_PROC_BROWSER_TEST_P(SendTabToSelfBubbleParameterizedTest,
                        BubbleTriggersCorrectlyWhenPinned) {
@@ -243,7 +287,16 @@ IN_PROC_BROWSER_TEST_P(SendTabToSelfBubbleParameterizedTest,
   EXPECT_EQ(action_item->GetInvokeCount(), 0);
   accessor.Click();
   ASSERT_TRUE(controller_->IsBubbleShown());
-  controller_->send_tab_to_self_bubble_view()->set_close_on_deactivate(false);
+  LocationBarBubbleDelegateView* bubble_delegate =
+      controller_->send_tab_to_self_bubble_view();
+  ASSERT_TRUE(bubble_delegate);
+  bubble_delegate->set_close_on_deactivate(false);
+  if (ShouldAnchorToAvatarPill()) {
+    EXPECT_TRUE(bubble_delegate->IsSameAnchor(
+        AvatarToolbarButtonInterface::GetBubbleAnchor(*browser())));
+  } else {
+    EXPECT_TRUE(bubble_delegate->IsSameAnchor(accessor.GetBubbleAnchor()));
+  }
   EXPECT_TRUE(action_item->GetIsShowingBubble());
   EXPECT_EQ(action_item->GetInvokeCount(), 1);
 
@@ -265,15 +318,21 @@ IN_PROC_BROWSER_TEST_P(SendTabToSelfBubbleParameterizedTest,
   ShowToolbarBubble();
   EXPECT_TRUE(controller_->IsBubbleShown());
 
-  // Confirm it is now popped out.
-  EXPECT_TRUE(accessor.IsPoppedOut());
-  EXPECT_TRUE(accessor.GetVisible());
-
-  // Confirm the bubble is anchored to the button.
-  auto* bubble_delegate = controller_->send_tab_to_self_bubble_view();
+  LocationBarBubbleDelegateView* bubble_delegate =
+      controller_->send_tab_to_self_bubble_view();
   ASSERT_TRUE(bubble_delegate);
-  EXPECT_FALSE(accessor.GetBubbleAnchor().IsNull());
-  EXPECT_TRUE(bubble_delegate->IsSameAnchor(accessor.GetBubbleAnchor()));
+  if (ShouldAnchorToAvatarPill()) {
+    EXPECT_FALSE(accessor.IsPoppedOut());
+    EXPECT_FALSE(accessor.GetVisible());
+    EXPECT_TRUE(bubble_delegate->IsSameAnchor(
+        AvatarToolbarButtonInterface::GetBubbleAnchor(*browser())));
+  } else {
+    // Confirm it is now popped out and anchored to the button.
+    EXPECT_TRUE(accessor.IsPoppedOut());
+    EXPECT_TRUE(accessor.GetVisible());
+    EXPECT_FALSE(accessor.GetBubbleAnchor().IsNull());
+    EXPECT_TRUE(bubble_delegate->IsSameAnchor(accessor.GetBubbleAnchor()));
+  }
 
   // Close the bubble.
   bubble_delegate->GetWidget()->CloseNow();
@@ -283,11 +342,13 @@ IN_PROC_BROWSER_TEST_P(SendTabToSelfBubbleParameterizedTest,
   EXPECT_FALSE(accessor.IsPoppedOut());
 }
 
+// Verifies that calling `ShowBubble` while a bubble is already open returns
+// early without recreating the bubble view.
 IN_PROC_BROWSER_TEST_P(SendTabToSelfBubbleParameterizedTest,
                        ShowBubbleMultipleTimes) {
   // Call ShowBubble multiple times. The early return prevents re-creation.
   ShowToolbarBubble();
-  SendTabToSelfBubbleView* first_view =
+  LocationBarBubbleDelegateView* first_view =
       controller_->send_tab_to_self_bubble_view();
   EXPECT_TRUE(first_view);
 

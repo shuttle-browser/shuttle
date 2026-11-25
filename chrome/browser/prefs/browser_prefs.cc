@@ -12,7 +12,9 @@
 #include "ash/constants/ash_login_pref_names.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/json/values_util.h"
+#include "base/task/thread_pool.h"
 #include "base/time/time.h"
 #include "base/trace_event/trace_event.h"
 #include "build/android_buildflags.h"
@@ -93,6 +95,7 @@
 #include "chrome/browser/ui/performance_controls/performance_controls_metrics.h"
 #include "chrome/browser/ui/prefs/prefs_tab_helper.h"
 #include "chrome/browser/ui/safety_hub/safety_hub_prefs.h"
+#include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/tabs/organizer/organizer_prefs.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_prefs.h"
@@ -122,7 +125,6 @@
 #include "components/contextual_tasks/public/prefs.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/device_signals/core/browser/pref_names.h"  // nogncheck due to crbug.com/40147906
-#include "components/dom_distiller/core/distilled_page_prefs.h"
 #include "components/domain_reliability/domain_reliability_prefs.h"
 #include "components/embedder_support/origin_trials/origin_trial_prefs.h"
 #include "components/enterprise/browser/groups/groups_prefs.h"
@@ -224,6 +226,7 @@
 #include "components/variations/service/variations_service.h"
 #include "components/visited_url_ranking/internal/url_grouping/group_suggestions_service_impl.h"
 #include "components/wallet/core/common/wallet_prefs.h"
+#include "components/web_distiller/core/distilled_page_prefs.h"
 #include "components/webui/chrome_urls/pref_names.h"
 #include "components/webui/flags/pref_service_flags_storage.h"
 #include "content/public/browser/render_process_host.h"
@@ -282,7 +285,7 @@
 #include "chrome/browser/ui/webui/management/management_ui.h"
 
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/accessibility/accessibility_prefs/android/accessibility_prefs_controller.h"
+#include "chrome/browser/accessibility/accessibility_prefs/accessibility_prefs_controller.h"
 #include "chrome/browser/android/ntp/recent_tabs_page_prefs.h"
 #include "chrome/browser/android/oom_intervention/oom_intervention_decider.h"
 #include "chrome/browser/android/preferences/browser_prefs_android.h"
@@ -322,12 +325,11 @@
 #include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
 #include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/speech/speech_recognition_small_expert_model_installer.h"
-#include "chrome/browser/task_manager/task_manager_interface.h"
+#include "chrome/browser/task_manager/task_manager_prefs.h"
 #include "chrome/browser/ui/commerce/commerce_ui_tab_helper.h"
 #include "chrome/browser/ui/hats/hats_service_desktop.h"
 #include "chrome/browser/ui/omnibox/omnibox_everywhere/omnibox_everywhere_prefs.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
-#include "chrome/browser/ui/side_panel/side_panel_prefs.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/tabs/pinned_tab_codec.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_pref_names.h"
@@ -492,8 +494,8 @@
 #include "chromeos/ash/components/policy/system_features_disable_list/system_features_disable_list_policy_utils.h"
 #include "chromeos/ash/components/quickoffice/quickoffice_prefs.h"
 #include "chromeos/ash/components/report/report_controller.h"
-#include "chromeos/ash/components/scheduler_config/scheduler_configuration_manager.h"
 #include "chromeos/ash/components/settings/device_settings_cache.h"
+#include "chromeos/ash/components/system/scheduler_configuration_manager_base.h"
 #include "chromeos/ash/components/timezone/timezone_resolver.h"
 #include "chromeos/ash/experiences/arc/arc_prefs.h"
 #include "chromeos/ash/services/auth_factor_config/auth_factor_config.h"
@@ -577,7 +579,7 @@
 #endif
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "components/safe_browsing/content/common/file_type_policies_prefs.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies_prefs.h"
 #endif
 
 #if BUILDFLAG(CHROME_FOR_TESTING)
@@ -1137,6 +1139,20 @@ inline constexpr char kDriveFsMirrorSyncMachineRootId[] =
 inline constexpr char kLegacyTokenHandleMap[] = "ash.token_handle_map";
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+#if BUILDFLAG(IS_CHROMEOS)
+// Deprecated 10/2026.
+inline constexpr char kMinimumAllowedChromeVersion[] = "minimum_req.version";
+inline constexpr char kLabsMediaplayerEnabled[] = "settings.labs.mediaplayer";
+inline constexpr char kAppReinstallRecommendationEnabled[] =
+    "zero_state_app_install_recommendation.enabled";
+inline constexpr char kPinUnlockFeatureNotificationShown[] =
+    "pin_unlock_feature_notification_shown";
+inline constexpr char kFingerprintUnlockFeatureNotificationShown[] =
+    "fingerprint_unlock_feature_notification_shown";
+inline constexpr char kShowArcSettingsOnSessionStart[] =
+    "start_arc_settings_on_session_start";
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 // Deprecated 10/2026.
 inline constexpr char kDismissedHistoryEmbeddingsScopePromo[] =
     "omnibox.dismissed_history_embeddings_scope_promo";
@@ -1146,6 +1162,8 @@ inline constexpr char kShownCountHistoryEmbeddingsScopePromo[] =
     "omnibox.shown_count_history_embeddings_scope_promo";
 inline constexpr char kShownCountHistoryEmbeddingsSettingsPromo[] =
     "omnibox.shown_count_history_embeddings_settings_promo";
+inline constexpr char kHistorySearchSettingState[] =
+    "optimization_guide.history_search_setting_state";
 
 // Deprecated 10/2026.
 constexpr char kSupervisedUserSafeSites[] = "profile.managed.safe_sites";
@@ -1188,6 +1206,24 @@ inline constexpr char kDeprecatedGrayscaleThemeEnabledDoNotUse[] =
     "browser.theme.is_grayscale";
 inline constexpr char kDeprecatedNtpCustomBackgroundDictDoNotUse[] =
     "ntp.custom_background_dict";
+
+// Deprecated 10/2026.
+inline constexpr char kTabsFromOtherDevicesAutoPinnedMigration[] =
+    "toolbar.tabs_from_other_devices_auto_pinned_migration";
+
+// Deprecated 11/2026.
+inline constexpr char kBundledSettingsCheckedMigrateUserToEnhancedBundle[] =
+    "safebrowsing.bundled_settings.checked_migrate_user_to_enhanced_bundle";
+
+// Deprecated 11/2026.
+inline constexpr char kGlicPromotionSourceCohort[] =
+    "glic.promotion_source_cohort";
+
+#if BUILDFLAG(IS_CHROMEOS)
+// Deprecated 11/2026.
+inline constexpr char kSuggestedContentEnabled[] =
+    "settings.suggested_content_enabled";
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 // Register local state used only for migration (clearing or moving to a new
 // key).
@@ -1281,6 +1317,11 @@ void RegisterLocalStatePrefsForMigration(PrefRegistrySimple* registry) {
   // Deprecated 10/2026.
   registry->RegisterListPref(kAcknowledgmentSetPrefPath);
 #endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Deprecated 10/2026.
+  registry->RegisterStringPref(kMinimumAllowedChromeVersion, std::string());
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 // Register prefs used only for migration (clearing or moving to a new key).
@@ -1700,6 +1741,31 @@ void RegisterProfilePrefsForMigration(
   registry->RegisterBooleanPref(kDeprecatedGrayscaleThemeEnabledDoNotUse,
                                 false);
   registry->RegisterDictionaryPref(kDeprecatedNtpCustomBackgroundDictDoNotUse);
+  // Deprecated 10/2026.
+  registry->RegisterBooleanPref(kTabsFromOtherDevicesAutoPinnedMigration,
+                                false);
+
+  // Deprecated 10/2026.
+  registry->RegisterIntegerPref(kHistorySearchSettingState, 0);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Deprecated 10/2026.
+  registry->RegisterBooleanPref(kLabsMediaplayerEnabled, false);
+  registry->RegisterBooleanPref(kAppReinstallRecommendationEnabled, false);
+  registry->RegisterBooleanPref(kPinUnlockFeatureNotificationShown, false);
+  registry->RegisterBooleanPref(kFingerprintUnlockFeatureNotificationShown,
+                                false);
+  registry->RegisterBooleanPref(kShowArcSettingsOnSessionStart, false);
+  // Deprecated 11/2026.
+  registry->RegisterBooleanPref(kSuggestedContentEnabled, true);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  // Deprecated 11/2026.
+  registry->RegisterBooleanPref(
+      kBundledSettingsCheckedMigrateUserToEnhancedBundle, false);
+
+  // Deprecated 11/2026.
+  registry->RegisterStringPref(kGlicPromotionSourceCohort, std::string());
 }
 
 }  // namespace
@@ -1835,7 +1901,7 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   speech::SpeechRecognitionSmallExpertModelInstaller::RegisterLocalStatePrefs(
       registry);
   StartupBrowserCreator::RegisterLocalStatePrefs(registry);
-  task_manager::TaskManagerInterface::RegisterPrefs(registry);
+  task_manager::RegisterPrefs(registry);
   UpgradeDetector::RegisterPrefs(registry);
   registry->RegisterIntegerPref(prefs::kLastWhatsNewVersion, 0);
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -1899,7 +1965,7 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
       registry);
   ash::Preferences::RegisterPrefs(registry);
   ash::ResetScreen::RegisterPrefs(registry);
-  ash::SchedulerConfigurationManager::RegisterLocalStatePrefs(registry);
+  ash::SchedulerConfigurationManagerBase::RegisterLocalStatePrefs(registry);
   ash::SecureDnsManager::RegisterLocalStatePrefs(registry);
   ash::ServicesCustomizationDocument::RegisterPrefs(registry);
   ash::StartupUtils::RegisterPrefs(registry);
@@ -1944,10 +2010,6 @@ void RegisterLocalState(PrefRegistrySimple* registry) {
   AppShimRegistry::Get()->RegisterLocalPrefs(registry);
   GlassFrameService::RegisterLocalStatePrefs(registry);
 
-  // The default value is not signicant as this preference is only consulted if
-  // it is explicitly set by an enterprise policy.
-  registry->RegisterBooleanPref(prefs::kWebAppsUseAdHocCodeSigningForAppShims,
-                                false);
   registry->RegisterBooleanPref(prefs::kUpdateOnZeroWindowEnabled, true);
 #endif
 
@@ -2087,7 +2149,7 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 #endif
   enterprise_promotion::RegisterProfilePrefs(registry);
   enterprise_reporting::RegisterProfilePrefs(registry);
-  dom_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
+  web_distiller::DistilledPagePrefs::RegisterProfilePrefs(registry);
   DownloadPrefs::RegisterProfilePrefs(registry);
   geic::prefs::RegisterProfilePrefs(registry);
   glic::prefs::RegisterProfilePrefs(registry);
@@ -2345,10 +2407,11 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
   policy::NetworkAnnotationBlocklistHandler::RegisterPrefs(registry);
   quickoffice::RegisterProfilePrefs(registry);
   registry->RegisterBooleanPref(chromeos::prefs::kAutoSignOutEnabled, false);
-  registry->RegisterBooleanPref(prefs::kDeskAPIThirdPartyAccessEnabled, false);
+  registry->RegisterBooleanPref(ash::prefs::kDeskAPIThirdPartyAccessEnabled,
+                                false);
   registry->RegisterBooleanPref(prefs::kDeskAPIDeskSaveAndShareEnabled, false);
-  registry->RegisterListPref(prefs::kDeskAPIThirdPartyAllowlist);
-  registry->RegisterBooleanPref(prefs::kInsightsExtensionEnabled, false);
+  registry->RegisterListPref(ash::prefs::kDeskAPIThirdPartyAllowlist);
+  registry->RegisterBooleanPref(ash::prefs::kInsightsExtensionEnabled, false);
   registry->RegisterBooleanPref(
       ash::prefs::kAdminInstalledChromeAppsForceAllowed, false);
   registry->RegisterBooleanPref(ash::prefs::kEssentialSearchEnabled, false);
@@ -2503,14 +2566,14 @@ void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry,
 
   enterprise_custom_headers::RegisterProfilePrefs(registry);
 
+  side_panel_prefs::RegisterProfilePrefs(registry);
+
 #if !BUILDFLAG(IS_ANDROID)
   registry->RegisterBooleanPref(
       webauthn::pref_names::kRemoteProxiedRequestsAllowed, false);
 
   registry->RegisterIntegerPref(
       webauthn::pref_names::kEnclaveFailedPINAttemptsCount, 0);
-
-  side_panel_prefs::RegisterProfilePrefs(registry);
 
   tabs::RegisterProfilePrefs(registry);
 
@@ -2747,6 +2810,11 @@ void MigrateObsoleteLocalStatePrefs(PrefService* local_state) {
   local_state->ClearPref(kAcknowledgmentSetPrefPath);
 #endif  // BUILDFLAG(IS_ANDROID)
 
+#if BUILDFLAG(IS_CHROMEOS)
+  // Added 10/2026.
+  local_state->ClearPref(kMinimumAllowedChromeVersion);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
   // Please don't delete the following line. It is used by PRESUBMIT.py.
   // END_MIGRATE_OBSOLETE_LOCAL_STATE_PREFS
 
@@ -2797,13 +2865,25 @@ void MigrateObsoleteProfilePrefs(PrefService* profile_prefs,
   profile_prefs->ClearPref(kObsoletePasswordsUseUPMLocalAndSeparateStores);
   profile_prefs->ClearPref(kObsoleteEmptyProfileStoreLoginDatabase);
   profile_prefs->ClearPref(kObsoleteUpmAutoExportCsvNeedsDeletion);
-  base::DeleteFile(profile_path.Append(FILE_PATH_LITERAL("Login Data")));
-  base::DeleteFile(
-      profile_path.Append(FILE_PATH_LITERAL("Login Data For Account")));
-  base::DeleteFile(
-      profile_path.Append(FILE_PATH_LITERAL("Login Data-journal")));
-  base::DeleteFile(
-      profile_path.Append(FILE_PATH_LITERAL("Login Data For Account-journal")));
+  // Blocking is disallowed on the UI thread after browser startup, and a
+  // profile can be loaded after that (e.g. a second profile), so delete the
+  // obsolete files in the background.
+  base::ThreadPool::PostTask(
+      FROM_HERE,
+      {base::MayBlock(), base::TaskPriority::BEST_EFFORT,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
+      base::BindOnce(
+          [](const base::FilePath& profile_path) {
+            base::DeleteFile(
+                profile_path.Append(FILE_PATH_LITERAL("Login Data")));
+            base::DeleteFile(profile_path.Append(
+                FILE_PATH_LITERAL("Login Data For Account")));
+            base::DeleteFile(
+                profile_path.Append(FILE_PATH_LITERAL("Login Data-journal")));
+            base::DeleteFile(profile_path.Append(
+                FILE_PATH_LITERAL("Login Data For Account-journal")));
+          },
+          profile_path));
 #endif  // BUILDFLAG(IS_ANDROID)
 
   // Added 09/2025.
@@ -3158,6 +3238,29 @@ void MigrateObsoleteProfilePrefs(PrefService* profile_prefs,
   profile_prefs->ClearPref(kDeprecatedBrowserColorVariantDoNotUse);
   profile_prefs->ClearPref(kDeprecatedGrayscaleThemeEnabledDoNotUse);
   profile_prefs->ClearPref(kDeprecatedNtpCustomBackgroundDictDoNotUse);
+
+  // Added 10/2026.
+  profile_prefs->ClearPref(kTabsFromOtherDevicesAutoPinnedMigration);
+
+  // Added 10/2026.
+  profile_prefs->ClearPref(kHistorySearchSettingState);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // Added 10/2026.
+  profile_prefs->ClearPref(kLabsMediaplayerEnabled);
+  profile_prefs->ClearPref(kAppReinstallRecommendationEnabled);
+  profile_prefs->ClearPref(kPinUnlockFeatureNotificationShown);
+  profile_prefs->ClearPref(kFingerprintUnlockFeatureNotificationShown);
+  profile_prefs->ClearPref(kShowArcSettingsOnSessionStart);
+  // Added 11/2026.
+  profile_prefs->ClearPref(kSuggestedContentEnabled);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+  // Added 11/2026.
+  profile_prefs->ClearPref(kBundledSettingsCheckedMigrateUserToEnhancedBundle);
+
+  // Added 11/2026.
+  profile_prefs->ClearPref(kGlicPromotionSourceCohort);
 
   // Please don't delete the following line. It is used by PRESUBMIT.py.
   // END_MIGRATE_OBSOLETE_PROFILE_PREFS

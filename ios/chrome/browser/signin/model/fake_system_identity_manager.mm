@@ -12,6 +12,7 @@
 #import "base/functional/callback_helpers.h"
 #import "base/i18n/time_formatting.h"
 #import "base/run_loop.h"
+#import "base/sequence_checker.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/task/sequenced_task_runner.h"
 #import "base/time/time.h"
@@ -59,15 +60,7 @@ FakeSystemIdentityManager::FakeSystemIdentityManager(
 
   for (FakeSystemIdentity* fake_identity in fake_identities) {
     [storage_ addFakeIdentity:fake_identity];
-    // Set up capabilities to remove fetch delays during the authentication
-    // flow.
-    // TODO(b/327221052): verify if this should be replaced by a handler for
-    // default capabilities.
-    AccountCapabilitiesTestMutator* mutator =
-        GetPendingCapabilitiesMutator(fake_identity);
-    mutator->set_can_show_history_sync_opt_ins_without_minor_mode_restrictions(
-        true);
-    mutator->set_can_sign_in_to_chrome(true);
+    SetUpDefaultCapabilities(fake_identity);
   }
 }
 
@@ -92,16 +85,8 @@ void FakeSystemIdentityManager::AddIdentity(id<SystemIdentity> identity) {
   FakeSystemIdentity* fake_identity =
       base::apple::ObjCCast<FakeSystemIdentity>(identity);
   [storage_ addFakeIdentity:fake_identity];
+  SetUpDefaultCapabilities(identity);
   FireIdentityListChanged();
-
-  // Set up capabilities to remove fetch delays during the authentication flow.
-  // TODO(b/327221052): verify if this should be replaced by a handler for
-  // default capabilities.
-  AccountCapabilitiesTestMutator* mutator =
-      GetPendingCapabilitiesMutator(identity);
-  mutator->set_can_show_history_sync_opt_ins_without_minor_mode_restrictions(
-      true);
-  mutator->set_can_sign_in_to_chrome(true);
 }
 
 void FakeSystemIdentityManager::AddIdentityWithUnknownCapabilities(
@@ -621,6 +606,16 @@ base::WeakPtr<FakeSystemIdentityManager>
 FakeSystemIdentityManager::GetWeakPtr() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   return weak_ptr_factory_.GetWeakPtr();
+}
+
+void FakeSystemIdentityManager::SetUpDefaultCapabilities(
+    id<SystemIdentity> identity) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  AccountCapabilitiesTestMutator* mutator =
+      GetPendingCapabilitiesMutator(identity);
+  mutator->set_can_show_history_sync_opt_ins_without_minor_mode_restrictions(
+      true);
+  mutator->set_can_sign_in_to_chrome(true);
 }
 
 void FakeSystemIdentityManager::ForgetIdentityAsync(

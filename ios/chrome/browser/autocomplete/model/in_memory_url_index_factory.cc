@@ -19,7 +19,7 @@ namespace ios {
 
 namespace {
 
-std::unique_ptr<KeyedService> BuildInMemoryURLIndex(ProfileIOS* profile) {
+std::unique_ptr<KeyedService> BuildInMemoryURLIndex(ProfileIOS& profile) {
   SchemeSet allowed_schemes;
   allowed_schemes.insert(kChromeUIScheme);
 
@@ -27,7 +27,7 @@ std::unique_ptr<KeyedService> BuildInMemoryURLIndex(ProfileIOS* profile) {
       ios::BookmarkModelFactory::GetForProfile(profile),
       ios::HistoryServiceFactory::GetForProfile(profile),
       ios::TemplateURLServiceFactory::GetForProfile(profile),
-      profile->GetStatePath(), allowed_schemes));
+      profile.GetStatePath(), allowed_schemes));
   in_memory_url_index->Init();
   return in_memory_url_index;
 }
@@ -52,7 +52,7 @@ InMemoryURLIndexFactory::GetDefaultFactory() {
 }
 
 std::unique_ptr<KeyedService> InMemoryURLIndexFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildInMemoryURLIndex(profile);
 }
 

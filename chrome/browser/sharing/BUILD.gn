@@ -39,6 +39,7 @@ source_set("impl") {
   deps = [
     ":sharing",
     "//chrome/browser/autofill",
+    "//chrome/browser/browser_actuator/transport",
     "//chrome/browser/gcm",
     "//chrome/browser/glic",
     "//chrome/browser/optimization_guide",
@@ -95,7 +96,9 @@ source_set("unit_tests") {
     "//base",
     "//base/test:test_support",
     "//chrome/browser/glic",
+    "//chrome/browser/glic/test_support",
     "//chrome/browser/sharing/browser_actuator:unit_tests",
+    "//chrome/browser/sharing/glic_experimental_triggering:unit_tests",
     "//chrome/browser/signin",
     "//chrome/common:chrome_features",
     "//chrome/test/base:testing_browser_process",

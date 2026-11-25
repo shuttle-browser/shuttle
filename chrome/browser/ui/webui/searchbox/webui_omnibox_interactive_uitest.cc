@@ -167,10 +167,10 @@ class OmniboxWebUiInteractiveTestBase
       }
       auto* popup_view = static_cast<OmniboxPopupViewWebUI*>(
           browser_view->GetLocationBar()->GetOmniboxPopupView());
-      if (!popup_view || !popup_view->presenter()) {
+      if (!popup_view || !popup_view->popup_host()) {
         return nullptr;
       }
-      return popup_view->presenter()->GetWebUIContent();
+      return popup_view->popup_host()->GetWebUIContent();
     });
   }
 
@@ -602,7 +602,8 @@ class OmniboxAimWebUiInteractiveTest
                                   base::FieldTrialParams());
     feature_list_.InitWithFeaturesAndParameters(
         enabled_features, {omnibox::kAimServerEligibilityEnabled,
-                           omnibox::kAimFuseboxEligibilityCheckEnabled});
+                           omnibox::kAimFuseboxEligibilityCheckEnabled,
+                           omnibox::kComposeboxPersistentAimButtonOmnibox});
   }
 
   std::unique_ptr<content::ScopedAccessibilityMode> scoped_accessibility_mode_;
@@ -816,7 +817,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxAimWebUiEagerPopupInteractiveTest,
                                        submit_visible_and_layout_settled)),
       PrepareWebUiForPixelTest(kAimPopupWebView),
       InAnyContext(Screenshot(kAimPopupWebView, "AimPopupQueryWithTabContext",
-                              "8616998")),
+                              "8802716")),
       ClickAimSubmit(kAimPopupWebView),
 
       // Verify navigation to Google Search with the query.
@@ -877,7 +878,8 @@ class OmniboxAimSearchFulfillmentTest
     feature_list_.InitWithFeaturesAndParameters(
         GetEnabledFeatures(/*force_enable_aim=*/true),
         {omnibox::kAimServerEligibilityEnabled,
-         omnibox::kAimFuseboxEligibilityCheckEnabled});
+         omnibox::kAimFuseboxEligibilityCheckEnabled,
+         omnibox::kComposeboxPersistentAimButtonOmnibox});
   }
 
  private:
@@ -940,7 +942,8 @@ class OmniboxAimUploadInteractiveTest
                                   base::FieldTrialParams());
     feature_list_.InitWithFeaturesAndParameters(
         enabled_features, {omnibox::kAimServerEligibilityEnabled,
-                           omnibox::kAimFuseboxEligibilityCheckEnabled});
+                           omnibox::kAimFuseboxEligibilityCheckEnabled,
+                           omnibox::kComposeboxPersistentAimButtonOmnibox});
   }
 
   void SetUpOnMainThread() override {

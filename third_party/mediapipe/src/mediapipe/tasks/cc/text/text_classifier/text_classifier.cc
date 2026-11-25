@@ -20,17 +20,20 @@ limitations under the License.
 #include <string>
 #include <utility>
 
-#include "absl/status/statusor.h"
-#include "absl/strings/string_view.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/string_view.h"   // from @com_google_absl
 #include "mediapipe/framework/api2/builder.h"
 #include "mediapipe/framework/packet.h"
 #include "mediapipe/tasks/cc/components/containers/classification_result.h"
 #include "mediapipe/tasks/cc/components/containers/proto/classifications.pb.h"
 #include "mediapipe/tasks/cc/components/processors/proto/classifier_options.pb.h"
+#include "mediapipe/tasks/cc/core/running_mode.h"
 #include "mediapipe/tasks/cc/core/task_api_factory.h"
 #include "mediapipe/tasks/cc/core/task_runner.h"
 #include "mediapipe/tasks/cc/text/text_classifier/proto/text_classifier_graph_options.pb.h"
-#include "tensorflow/lite/core/api/op_resolver.h"
+#include "tensorflow/lite/core/api/op_resolver.h"  // from @litert
 
 namespace mediapipe {
 namespace tasks {
@@ -90,7 +93,7 @@ absl::StatusOr<std::unique_ptr<TextClassifier>> TextClassifier::Create(
       core::TaskRunnerOptions{
           .config = CreateGraphConfig(std::move(options_proto)),
           .task_name = kTaskName,
-          .task_running_mode = core::TaskApiFactory::kUnknownRunningMode,
+          .task_running_mode = core::RunningMode::kUnspecified,
           .op_resolver = std::move(options->base_options.op_resolver),
           .host_environment = options->base_options.host_environment,
           .host_system = options->base_options.host_system,
@@ -100,7 +103,7 @@ absl::StatusOr<std::unique_ptr<TextClassifier>> TextClassifier::Create(
 
 absl::StatusOr<TextClassifierResult> TextClassifier::Classify(
     absl::string_view text) {
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       auto output_packets,
       runner_->Process(
           {{kTextStreamName, MakePacket<std::string>(std::string(text))}}));

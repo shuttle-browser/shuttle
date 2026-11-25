@@ -2,21 +2,173 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <memory>
+
+#include "base/strings/strcat.h"
+#include "base/values.h"
+#include "build/build_config.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/searchbox_handler.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/web_ui_mocha_browser_test.h"
-#include "components/contextual_tasks/public/features.h"
-#include "components/lens/lens_features.h"
+#include "chrome/test/base/web_ui_test_data_source.h"
+#include "content/public/browser/web_ui_data_source.h"
+#include "content/public/browser/webui_config.h"
+#include "content/public/common/url_constants.h"
 #include "content/public/test/browser_test.h"
-#include "content/public/test/file_system_chooser_test_helpers.h"
-#include "ui/shell_dialogs/select_file_dialog.h"
+#include "content/public/test/scoped_web_ui_controller_factory_registration.h"
+#include "services/network/public/mojom/content_security_policy.mojom.h"
+#include "ui/webui/mojo_web_ui_controller.h"
+#include "ui/webui/webui_util.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "ash/webui/common/trusted_types_util.h"
+#endif
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "base/command_line.h"
 #include "chrome/browser/browser_features.h"
 #include "components/history_clusters/core/features.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "ui/compositor/compositor_switches.h"
+#include "ui/webui/buildflags.h"
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+#include "chrome/browser/ui/webui/cr_components/most_visited/most_visited_handler.h"
 #endif
+#endif
+
+namespace {
+
+// Base WebUIController for chrome://webui-test that enables Mojo JS bindings
+// and chrome.histograms without depending on a feature-specific WebUI host.
+class TestMojoWebUIController : public ui::MojoWebUIController {
+ public:
+  explicit TestMojoWebUIController(content::WebUI* web_ui)
+      : ui::MojoWebUIController(web_ui,
+                                /*enable_chrome_send=*/false,
+                                /*enable_chrome_histograms=*/true) {}
+
+ protected:
+  content::WebUIDataSource* CreateWebUITestDataSource() {
+    content::WebUIDataSource* source =
+        webui::CreateAndAddWebUITestDataSource(Profile::FromWebUI(web_ui()));
+    source->UseStringsJs();
+    return source;
+  }
+};
+
+class TestComposeboxWebUIController : public TestMojoWebUIController {
+ public:
+  explicit TestComposeboxWebUIController(content::WebUI* web_ui)
+      : TestMojoWebUIController(web_ui) {
+    content::WebUIDataSource* source = CreateWebUITestDataSource();
+#if BUILDFLAG(IS_CHROMEOS)
+    source->OverrideContentSecurityPolicy(
+        network::mojom::CSPDirectiveName::TrustedTypes,
+        base::StrCat({ash::kDefaultTrustedTypesPolicies,
+                      " lit-html-desktop composebox-input;"}));
+#else
+    source->OverrideContentSecurityPolicy(
+        network::mojom::CSPDirectiveName::TrustedTypes,
+        base::StrCat(
+            {webui::kDefaultTrustedTypesPolicies, " composebox-input;"}));
+#endif
+    source->AddLocalizedStrings(SearchboxHandler::GetWebUIDataSourceDict(
+        Profile::FromWebUI(web_ui), {.enable_voice_search = true}));
+
+    // Composebox embedder-configured flags and params not set in
+    // SearchboxHandler::GetWebUIDataSourceDict().
+    source->AddString("composeboxImageFileTypes",
+                      "image/jpeg,image/png,image/heic,image/heif,.heic,.heif");
+    source->AddString("composeboxAttachmentFileTypes",
+                      "text/plain,application/pdf");
+    source->AddInteger("composeboxFileMaxSize", 100 * 1024 * 1024);
+    source->AddBoolean("composeboxShowTypedSuggest", false);
+    source->AddBoolean("composeboxShowZps", true);
+    source->AddBoolean("composeboxShowImageSuggest", true);
+    source->AddBoolean("composeboxShowContextMenu", true);
+    source->AddBoolean("composeboxShowContextMenuDescription", false);
+    source->AddBoolean("composeboxShowContextMenuTabPreviews", false);
+    source->AddBoolean("composeboxContextMenuEnableMultiTabSelection", true);
+    source->AddBoolean("composeboxContextMenuEnableTabDeselection", false);
+    source->AddBoolean("composeboxContextMenuTooltipsEnabled", false);
+    source->AddBoolean("contextMenuAnimationLimitingEnabled", true);
+    source->AddBoolean("composeboxSkillsEnabled", false);
+    source->AddBoolean("composeboxSmartComposeEnabled", true);
+    source->AddBoolean("composeboxSmartTabSharingSupported",
+                       !BUILDFLAG(IS_ANDROID));
+    source->AddBoolean("supportsLensButtonInComposebox",
+                       !BUILDFLAG(IS_ANDROID));
+    source->AddBoolean("isSystemVoiceSearchEnabled", false);
+    source->AddBoolean("androidSpeechRecognition", false);
+    source->AddBoolean("clearAllInputsWhenSubmittingQuery", false);
+    source->AddBoolean("lensSendRawFileMediaTypesEnabled", false);
+    source->AddBoolean("isLensSearchbox", true);
+    source->AddBoolean("contextManagementInComposeboxEnabled", false);
+    source->AddBoolean("tabFaviconChipsToCoinsEnabled", true);
+    source->AddBoolean("webUIOmniboxAskGAboutThisPageEnabled", false);
+    source->AddBoolean("contextualTasksUpdatedEntryPointsEnabled", false);
+    source->AddString("composeboxSource", "ContextualTasks");
+    source->AddString("aimThreadsGoogleSearchLabel", "Google Search");
+    source->AddString("composeboxHintTextLensOverlay",
+                      "Select anything on the page");
+  }
+
+  WEB_UI_CONTROLLER_TYPE_DECL();
+};
+
+WEB_UI_CONTROLLER_TYPE_IMPL(TestComposeboxWebUIController)
+
+content::ScopedWebUIConfigRegistration RegisterComposeboxTestConfig() {
+  return content::ScopedWebUIConfigRegistration(
+      std::make_unique<
+          content::DefaultWebUIConfig<TestComposeboxWebUIController>>(
+          content::kChromeUIScheme, chrome::kChromeUIWebUITestHost));
+}
+
+#if !BUILDFLAG(IS_ANDROID)
+class TestSearchboxWebUIController : public TestMojoWebUIController {
+ public:
+  explicit TestSearchboxWebUIController(content::WebUI* web_ui)
+      : TestMojoWebUIController(web_ui) {
+    content::WebUIDataSource* source = CreateWebUITestDataSource();
+    source->AddLocalizedStrings(SearchboxHandler::GetWebUIDataSourceDict(
+        Profile::FromWebUI(web_ui), {.enable_voice_search = true}));
+
+    // Searchbox embedder-configured flags not set in
+    // SearchboxHandler::GetWebUIDataSourceDict().
+    source->AddBoolean("isFuseboxEnabled", false);
+    source->AddBoolean("energyEffectAnimationEnabled", false);
+  }
+
+  WEB_UI_CONTROLLER_TYPE_DECL();
+};
+
+WEB_UI_CONTROLLER_TYPE_IMPL(TestSearchboxWebUIController)
+
+content::ScopedWebUIConfigRegistration RegisterSearchboxTestConfig() {
+  return content::ScopedWebUIConfigRegistration(
+      std::make_unique<
+          content::DefaultWebUIConfig<TestSearchboxWebUIController>>(
+          content::kChromeUIScheme, chrome::kChromeUIWebUITestHost));
+}
+
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
+class TestMostVisitedWebUIController : public TestMojoWebUIController {
+ public:
+  explicit TestMostVisitedWebUIController(content::WebUI* web_ui)
+      : TestMojoWebUIController(web_ui) {
+    content::WebUIDataSource* source = CreateWebUITestDataSource();
+    source->AddLocalizedStrings(MostVisitedHandler::GetWebUIDataSourceDict());
+  }
+
+  WEB_UI_CONTROLLER_TYPE_DECL();
+};
+
+WEB_UI_CONTROLLER_TYPE_IMPL(TestMostVisitedWebUIController)
+#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
+#endif
+
+}  // namespace
 
 typedef WebUIMochaBrowserTest CrComponentsTest;
 
@@ -51,35 +203,6 @@ IN_PROC_BROWSER_TEST_F(CrComponentsTest, AudioLevelsProcessorTest) {
           "mocha.run()");
 }
 
-class CrComponentsHistoryEmbeddingsTest : public WebUIMochaBrowserTest {
- protected:
-  CrComponentsHistoryEmbeddingsTest() {
-    scoped_feature_list_.InitAndEnableFeature(
-        history_embeddings::kHistoryEmbeddings);
-    set_test_loader_host(chrome::kChromeUIHistoryHost);
-  }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(CrComponentsHistoryEmbeddingsTest, HistoryEmbeddings) {
-  RunTest("cr_components/history_embeddings/history_embeddings_test.js",
-          "mocha.run()");
-}
-
-IN_PROC_BROWSER_TEST_F(CrComponentsHistoryEmbeddingsTest,
-                       HistoryEmbeddingsFilterChips) {
-  RunTest("cr_components/history_embeddings/filter_chips_test.js",
-          "mocha.run()");
-}
-
-IN_PROC_BROWSER_TEST_F(CrComponentsHistoryEmbeddingsTest,
-                       HistoryEmbeddingsResultImage) {
-  RunTest("cr_components/history_embeddings/result_image_test.js",
-          "mocha.run()");
-}
-
 IN_PROC_BROWSER_TEST_F(CrComponentsTest, ManagedDialog) {
   RunTest("cr_components/managed_dialog_test.js", "mocha.run()");
 }
@@ -96,25 +219,26 @@ IN_PROC_BROWSER_TEST_F(CrComponentsTest, LocalizedLink) {
 }
 
 #if !BUILDFLAG(IS_ANDROID)
-typedef WebUIMochaBrowserTest CrComponentsSearchboxTest;
+using CrComponentsSearchboxTest = WebUIMochaBrowserTest;
+
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, RealboxMatchTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/searchbox_match_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, SearchboxInputTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/searchbox_input_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, RealboxPlaceholderTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/placeholder_text_cycler_test.js",
           "runMochaSuite('PlaceholderTextCyclerTest');");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, SearchboxDropdownTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/searchbox_dropdown_test.js", "mocha.run()");
 }
 
@@ -124,23 +248,23 @@ IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, SearchboxSelectionMixin) {
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, KeywordModeManagerTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/keyword_mode_manager_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, SearchboxIconTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/searchbox_icon_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, SearchboxMixinTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/searchbox_mixin_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, SearchboxUtilsTest) {
-  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  auto config = RegisterSearchboxTestConfig();
   RunTest("cr_components/searchbox/searchbox_utils_test.js", "mocha.run()");
 }
 
@@ -175,11 +299,13 @@ IN_PROC_BROWSER_TEST_F(CrComponentsHistoryClustersTest, UrlVisit) {
   RunTest("cr_components/history_clusters/url_visit_test.js", "mocha.run()");
 }
 
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
 class CrComponentsMostVisitedTest : public WebUIMochaBrowserTest {
- protected:
-  CrComponentsMostVisitedTest() {
-    set_test_loader_host(chrome::kChromeUINewTabPageHost);
-  }
+ private:
+  content::ScopedWebUIConfigRegistration config_{std::make_unique<
+      content::DefaultWebUIConfig<TestMostVisitedWebUIController>>(
+      content::kChromeUIScheme,
+      chrome::kChromeUIWebUITestHost)};
 };
 
 IN_PROC_BROWSER_TEST_F(CrComponentsMostVisitedTest, General) {
@@ -261,6 +387,8 @@ IN_PROC_BROWSER_TEST_F(CrComponentsMostVisitedTest, NonEditable) {
           "runMochaSuite('NonEditable');");
 }
 
+#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
+
 typedef WebUIMochaBrowserTest CrComponentsThemeColorPickerTest;
 IN_PROC_BROWSER_TEST_F(CrComponentsThemeColorPickerTest, ThemeColor) {
   set_test_loader_host(chrome::kChromeUICustomizeChromeSidePanelHost);
@@ -286,6 +414,7 @@ IN_PROC_BROWSER_TEST_F(CrComponentsThemeColorPickerTest, ThemeHueSliderDialog) {
           "mocha.run()");
 }
 
+#if BUILDFLAG(ENABLE_WEBUI_NTP)
 class CrComponentsPreloadingTest : public CrComponentsMostVisitedTest {
  protected:
   CrComponentsPreloadingTest() {
@@ -306,29 +435,20 @@ class CrComponentsPreloadingTest : public CrComponentsMostVisitedTest {
 IN_PROC_BROWSER_TEST_F(CrComponentsPreloadingTest, Preloading) {
   RunTest("cr_components/most_visited_test.js", "runMochaSuite('Preloading');");
 }
+#endif  // BUILDFLAG(ENABLE_WEBUI_NTP)
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-class CrComponentsComposeboxTest : public WebUIMochaBrowserTest {
- protected:
-  CrComponentsComposeboxTest() {
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{contextual_tasks::kContextualTasks},
-        /*disabled_features=*/{lens::features::kLensSendRawFileMediaTypes});
-
-    set_test_loader_host(chrome::kChromeUIContextualTasksHost);
-  }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
+using CrComponentsComposeboxTest = WebUIMochaBrowserTest;
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ContextualEntrypointButton) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/contextual_entrypoint_button_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest,
                        ContextualEntrypointAndMenu) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/contextual_entrypoint_and_menu_test.js",
           "mocha.run()");
 }
@@ -341,6 +461,7 @@ IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxFaviconGroup) {
 // TODO(crbug.com/513266451): Enable for Android.
 #if !BUILDFLAG(IS_ANDROID)
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ContextualActionMenu) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/contextual_action_menu_test.js",
           "mocha.run()");
 }
@@ -366,100 +487,101 @@ IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, LensSearch) {
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, CurrentTabChip) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/current_tab_chip_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxToolChip) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_tool_chip_test.js",
           "mocha.run()");
 }
 #endif
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxVoiceSearch) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_voice_search_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest,
                        ComposeboxVoiceSearchMetrics) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_voice_search_metrics_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest,
                        ComposeboxVoiceSearchRecognition) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest(
       "cr_components/composebox/composebox_voice_search_recognition_test.js",
       "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxVoiceSearchFlags) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_voice_search_flags_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxDragAndDrop) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_drag_drop_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxErrorScrim) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/error_scrim_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxFileCarousel) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/file_carousel_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxFileThumbnail) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/file_thumbnail_test.js", "mocha.run()");
 }
 
-class CrComponentsComposeboxFileInputsTest : public CrComponentsComposeboxTest {
- public:
-  void SetUpOnMainThread() override {
-    CrComponentsComposeboxTest::SetUpOnMainThread();
-    ui::SelectFileDialog::SetFactory(
-        std::make_unique<content::FakeSelectFileDialogFactory>(
-            std::vector<base::FilePath>{}));
-  }
-
-  void TearDownOnMainThread() override {
-    ui::SelectFileDialog::SetFactory(nullptr);
-    CrComponentsComposeboxTest::TearDownOnMainThread();
-  }
-};
-
-IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxFileInputsTest,
-                       ComposeboxFileInputs) {
+IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxFileInputs) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_file_inputs_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxInput) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_input_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxInputPlaceholder) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_input_placeholder_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxAutocomplete) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_autocomplete_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxDropdown) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_dropdown_test.js",
           "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxMatch) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_match_test.js", "mocha.run()");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxMixin) {
+  auto config = RegisterComposeboxTestConfig();
   RunTest("cr_components/composebox/composebox_mixin_test.js", "mocha.run()");
 }
 

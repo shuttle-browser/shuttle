@@ -842,6 +842,7 @@ ServiceWorkerExternalRequestResult ServiceWorkerVersion::StartExternalRequest(
   // Idle timer will be scheduled when request finishes, if there is no other
   // requests and events.
   ++latest_external_keepalive_sequence_number_;
+  has_external_keepalive_ = true;
   endpoint()->AddKeepAlive(latest_external_keepalive_sequence_number_);
 
   return ServiceWorkerExternalRequestResult::kOk;
@@ -970,21 +971,6 @@ ServiceWorkerExternalRequestResult ServiceWorkerVersion::FinishExternalRequest(
     int request_id = iter->second;
     external_request_uuid_to_request_id_.erase(iter);
     bool ok = FinishRequest(request_id, /*was_handled=*/true);
-
-    // If an request is finished and there is no other requests, we ask event
-    // queue to check if idle timeout should be scheduled. Event queue may
-    // schedule idle timeout if there is no events at the time.
-    // Also checks running status. Idle timeout is not meaningful if the worker
-    // is stopping or stopped.
-    if (ok && !HasWorkInBrowser() &&
-        running_status() == blink::EmbeddedWorkerStatus::kRunning) {
-      // If SW event queue request termination at this very moment, then SW can
-      // be terminated before waiting for the next idle timeout. Details are
-      // described in crbug/1399324.
-      // TODO(richardzh): Complete crbug/1399324 which would resolve this issue.
-      endpoint()->ClearKeepAlive();
-    }
-
     return ok ? ServiceWorkerExternalRequestResult::kOk
               : ServiceWorkerExternalRequestResult::kBadRequestId;
   }
@@ -3054,11 +3040,11 @@ void ServiceWorkerVersion::OnTimeoutTimer() {
     return;
   }
 
-  // If an request is expired and there is no other requests, we ask event
-  // queue to check if idle timeout should be scheduled. Event queue may
-  // schedule idle timeout if there is no events at the time.
+  // If a CONTINUE_ON_TIMEOUT request expired and no other browser requests
+  // remain, run no-work handling (including clearing any external keepalive so
+  // the renderer can schedule its idle timer).
   if (has_continue_on_timeout && !HasWorkInBrowser()) {
-    endpoint()->ClearKeepAlive();
+    OnNoWorkInBrowser();
   }
 
   // Check ping status.
@@ -3272,10 +3258,11 @@ void ServiceWorkerVersion::OnStoppedInternal(
     protect = this;
   }
 
-  // |start_callbacks_| can be non-empty if a start worker request arrived while
-  // the worker was stopping. The worker must be restarted to fulfill the
-  // request.
+  // |start_callbacks_| can be non-empty if the worker was stopped while
+  // starting, or if a start worker request arrived while the worker was
+  // stopping. The worker must be restarted to fulfill the request.
   bool should_restart = !start_callbacks_.empty();
+  bool is_restart_disallowed = false;
   if (is_redundant() || in_dtor_) {
     // This worker will be destroyed soon.
     should_restart = false;
@@ -3291,6 +3278,11 @@ void ServiceWorkerVersion::OnStoppedInternal(
     // This worker is stopped while warmed-up or warming-up. Such workers don't
     // need to restart.
     should_restart = false;
+  } else if (should_restart && context_ && !IsStartWorkerAllowed()) {
+    // Starting may have been disallowed since it was requested, e.g. because
+    // the worker's extension was disabled (crbug.com/531900625).
+    should_restart = false;
+    is_restart_disallowed = true;
   }
 
   if (!stop_time_.is_null()) {
@@ -3313,8 +3305,11 @@ void ServiceWorkerVersion::OnStoppedInternal(
 
   if (!should_restart) {
     // Let all start callbacks fail.
-    FinishStartWorker(DeduceStartWorkerFailureReason(
-        blink::ServiceWorkerStatusCode::kErrorStartWorkerFailed));
+    FinishStartWorker(
+        is_restart_disallowed
+            ? blink::ServiceWorkerStatusCode::kErrorDisallowed
+            : DeduceStartWorkerFailureReason(
+                  blink::ServiceWorkerStatusCode::kErrorStartWorkerFailed));
   }
 
   // TODO(crbug.com/40864997): remove the following DCHECK when the cause
@@ -3345,6 +3340,7 @@ void ServiceWorkerVersion::OnStoppedInternal(
   request_timeouts_.clear();
   external_request_uuid_to_request_id_.clear();
   latest_external_keepalive_sequence_number_ = 0;
+  has_external_keepalive_ = false;
   for (auto& callback : error_callbacks) {
     std::move(callback).Run(blink::ServiceWorkerStatusCode::kErrorFailed);
   }
@@ -3401,6 +3397,15 @@ void ServiceWorkerVersion::CleanUpExternalRequest(
 
 void ServiceWorkerVersion::OnNoWorkInBrowser() {
   DCHECK(!HasWorkInBrowser());
+  // StartExternalRequest() calls AddKeepAlive(), which cancels the renderer's
+  // idle timer. Once all browser requests finish, notify the renderer once to
+  // reschedule its idle timer for the external keepalive.
+  if (has_external_keepalive_) {
+    has_external_keepalive_ = false;
+    if (running_status() == blink::EmbeddedWorkerStatus::kRunning) {
+      endpoint()->ClearKeepAlive();
+    }
+  }
   if (context_ && worker_is_idle_on_renderer_) {
     scoped_refptr<ServiceWorkerRegistration> registration =
         context_->GetLiveRegistration(registration_id());

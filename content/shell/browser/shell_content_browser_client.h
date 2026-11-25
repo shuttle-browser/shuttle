@@ -6,10 +6,13 @@
 #define CONTENT_SHELL_BROWSER_SHELL_CONTENT_BROWSER_CLIENT_H_
 
 #include <memory>
+#include <optional>
 #include <string>
 
+#include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
+#include "base/i18n/language_tag.h"
 #include "base/memory/raw_ptr.h"
 #include "build/build_config.h"
 #include "content/public/browser/content_browser_client.h"
@@ -18,6 +21,7 @@
 #include "services/network/public/cpp/permissions_policy/permissions_policy_declaration.h"
 #include "services/network/public/mojom/network_context.mojom-forward.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom.h"
+#include "url/origin.h"
 
 class PrefService;
 
@@ -63,7 +67,7 @@ class ShellContentBrowserClient : public ContentBrowserClient {
   void AppendExtraCommandLineSwitches(base::CommandLine* command_line,
                                       int child_process_id) override;
 #if BUILDFLAG(IS_IOS)
-  std::string GetApplicationLocale() override;
+  base::i18n::LanguageTag GetApplicationLocale() override;
 #endif
   std::string GetAcceptLangs(BrowserContext* context) override;
   std::string GetDefaultDownloadName() override;
@@ -241,6 +245,8 @@ class ShellContentBrowserClient : public ContentBrowserClient {
       url_loader_factory_params_callback_;
   base::RepeatingCallback<void(NavigationThrottleRegistry&)>
       create_throttles_for_navigation_callback_;
+  // Parsed from switches::kIsolatedContextOrigins on first use.
+  std::optional<base::flat_set<url::Origin>> isolated_context_origins_;
 #if BUILDFLAG(IS_IOS)
   std::unique_ptr<ApplicationLocaleStorage> application_locale_storage_;
   std::unique_ptr<permissions::BluetoothDelegateImpl> bluetooth_delegate_;

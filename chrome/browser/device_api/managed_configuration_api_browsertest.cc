@@ -8,6 +8,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "base/check.h"
 #include "base/files/file_path.h"
@@ -22,12 +23,15 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/test/gtest_tags.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
+#include "base/timer/timer.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "chrome/browser/device_api/managed_configuration_api_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -42,10 +46,26 @@
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "net/test/embedded_test_server/http_request.h"
 #include "net/test/embedded_test_server/http_response.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/login/test/guest_session_mixin.h"
+#include "chromeos/ash/components/dbus/shill/shill_service_client.h"
+#include "chromeos/ash/components/network/network_handler.h"
+#include "chromeos/ash/components/network/network_state.h"
+#include "chromeos/ash/components/network/network_state_handler.h"
+#include "chromeos/ash/components/network/network_type_pattern.h"
+#include "third_party/cros_system_api/dbus/shill/dbus-constants.h"
+#else
+#include "base/scoped_observation.h"
+#include "content/public/browser/network_service_instance.h"
+#include "content/public/browser/network_service_util.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "net/base/network_change_notifier.h"
+#include "services/network/public/cpp/network_connection_tracker.h"
+#include "services/network/public/mojom/network_service.mojom.h"
+#include "services/network/public/mojom/network_service_test.mojom.h"
 #endif
 
 using testing::Eq;
@@ -178,6 +198,146 @@ void RunFor(base::TimeDelta delay) {
   base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
       FROM_HERE, run_loop.QuitClosure(), delay);
   run_loop.Run();
+}
+
+#if BUILDFLAG(IS_CHROMEOS)
+// Disconnects all networks but the default one, so that the default network
+// stays the default while its state is manipulated. Otherwise another online
+// network (e.g. the fake Wi-Fi network) would take over.
+void DisconnectNonDefaultNetworks() {
+  ash::NetworkStateHandler* handler =
+      ash::NetworkHandler::Get()->network_state_handler();
+  const ash::NetworkState* default_network = handler->DefaultNetwork();
+  ASSERT_TRUE(default_network);
+  const std::string default_path = default_network->path();
+  auto connected_non_default_paths = [&] {
+    ash::NetworkStateHandler::NetworkStateList networks;
+    handler->GetNetworkListByType(ash::NetworkTypePattern::Default(),
+                                  /*configured_only=*/false,
+                                  /*visible_only=*/false, /*limit=*/0,
+                                  &networks);
+    std::vector<std::string> paths;
+    for (const ash::NetworkState* network : networks) {
+      if (network->path() != default_path && network->IsConnectedState()) {
+        paths.push_back(network->path());
+      }
+    }
+    return paths;
+  };
+  for (const std::string& path : connected_non_default_paths()) {
+    ash::ShillServiceClient::Get()->GetTestInterface()->SetServiceProperty(
+        path, shill::kStateProperty, base::Value(shill::kStateIdle));
+  }
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return connected_non_default_paths().empty(); }));
+  ASSERT_TRUE(handler->DefaultNetwork());
+  ASSERT_EQ(handler->DefaultNetwork()->path(), default_path);
+}
+
+// Sets the shill connection state of the default network, e.g.
+// `shill::kStateReady` or `shill::kStateOnline`, and waits until
+// `ash::NetworkStateHandler` reflects it.
+void SetDefaultNetworkState(const std::string& state) {
+  ash::NetworkStateHandler* handler =
+      ash::NetworkHandler::Get()->network_state_handler();
+  const ash::NetworkState* default_network = handler->DefaultNetwork();
+  ASSERT_TRUE(default_network);
+  const std::string path = default_network->path();
+  ash::ShillServiceClient::Get()->GetTestInterface()->SetServiceProperty(
+      path, shill::kStateProperty, base::Value(state));
+  ASSERT_TRUE(base::test::RunUntil([&] {
+    const ash::NetworkState* network = handler->DefaultNetwork();
+    return network && network->path() == path &&
+           network->connection_state() == state;
+  }));
+}
+#else
+class ConnectionChangeWaiter
+    : public network::NetworkConnectionTracker::NetworkConnectionObserver {
+ public:
+  ConnectionChangeWaiter(
+      network::NetworkConnectionTracker* tracker,
+      net::NetworkChangeNotifier::ConnectionType expected_type)
+      : expected_type_(expected_type) {
+    observation_.Observe(tracker);
+  }
+
+  void OnConnectionChanged(
+      net::NetworkChangeNotifier::ConnectionType type) override {
+    if (type == expected_type_) {
+      run_loop_.Quit();
+    }
+  }
+
+  void Wait() { run_loop_.Run(); }
+
+ private:
+  const net::NetworkChangeNotifier::ConnectionType expected_type_;
+  base::RunLoop run_loop_{base::RunLoop::Type::kNestableTasksAllowed};
+  base::ScopedObservation<
+      network::NetworkConnectionTracker,
+      network::NetworkConnectionTracker::NetworkConnectionObserver>
+      observation_{this};
+};
+
+// Sets `NetworkConnectionTracker` to `type` with a single simulated network
+// change (unlike `content::NetworkConnectionChangeSimulator`, which sends
+// duplicate `SimulateNetworkChange` RPCs that can arrive asynchronously after
+// `SetConnectionType` returns).
+void SetNetworkConnectionType(net::NetworkChangeNotifier::ConnectionType type) {
+  network::NetworkConnectionTracker* tracker =
+      content::GetNetworkConnectionTracker();
+  ASSERT_TRUE(tracker);
+
+  net::NetworkChangeNotifier::ConnectionType initial_type =
+      net::NetworkChangeNotifier::CONNECTION_UNKNOWN;
+  base::test::TestFuture<net::NetworkChangeNotifier::ConnectionType>
+      init_future;
+  if (!tracker->GetConnectionType(&initial_type, init_future.GetCallback())) {
+    ASSERT_TRUE(init_future.Wait());
+  }
+
+  ConnectionChangeWaiter waiter(tracker, type);
+  if (content::IsOutOfProcessNetworkService()) {
+    mojo::Remote<network::mojom::NetworkServiceTest> network_service_test;
+    content::GetNetworkService()->BindTestInterfaceForTesting(
+        network_service_test.BindNewPipeAndPassReceiver());
+    base::RunLoop sync_loop(base::RunLoop::Type::kNestableTasksAllowed);
+    network_service_test->SimulateNetworkChange(type, sync_loop.QuitClosure());
+    sync_loop.Run();
+  } else {
+    net::NetworkChangeNotifier::NotifyObserversOfNetworkChangeForTests(type);
+  }
+  waiter.Wait();
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+// Simulates network loss and reconnection through the platform's real network
+// observer wiring (`NetworkStateHandler` on ChromeOS,
+// `NetworkConnectionTracker` elsewhere).
+void SimulateNetworkReconnect() {
+#if BUILDFLAG(IS_CHROMEOS)
+  ASSERT_NO_FATAL_FAILURE(DisconnectNonDefaultNetworks());
+  ash::NetworkStateHandler* handler =
+      ash::NetworkHandler::Get()->network_state_handler();
+  ASSERT_TRUE(handler->DefaultNetwork());
+  const std::string service_path = handler->DefaultNetwork()->path();
+  ash::ShillServiceClient::Get()->GetTestInterface()->SetServiceProperty(
+      service_path, shill::kStateProperty, base::Value(shill::kStateIdle));
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return handler->DefaultNetwork() == nullptr; }));
+  ash::ShillServiceClient::Get()->GetTestInterface()->SetServiceProperty(
+      service_path, shill::kStateProperty, base::Value(shill::kStateOnline));
+  ASSERT_TRUE(base::test::RunUntil([&] {
+    const ash::NetworkState* network = handler->DefaultNetwork();
+    return network && network->path() == service_path && network->IsOnline();
+  }));
+#else
+  ASSERT_NO_FATAL_FAILURE(
+      SetNetworkConnectionType(net::NetworkChangeNotifier::CONNECTION_NONE));
+  ASSERT_NO_FATAL_FAILURE(
+      SetNetworkConnectionType(net::NetworkChangeNotifier::CONNECTION_WIFI));
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 class ManagedConfigurationAPITestBase : public MixinBasedInProcessBrowserTest {
@@ -407,6 +567,7 @@ IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest, DataUpdates) {
 
 IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
                        PolicyUpdateWhileDownloadingDifferentHash) {
+  base::HistogramTester histogram_tester;
   EnableTestServer(
       {{kConfigurationUrl1, {kConfigurationData1, true /* post_task */}},
        {kConfigurationUrl2, {kConfigurationData2}}});
@@ -418,6 +579,50 @@ IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
   WaitForUpdate();
   ASSERT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
                               {{kKey1, kValue12}, {kKey2, kValue22}}));
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          ManagedConfigurationAPI::kDownloadOutcomeHistogram),
+      base::BucketsAre(
+          base::Bucket(
+              ManagedConfigurationAPI::DownloadOutcome::kAbortedByPolicyUpdate,
+              1),
+          base::Bucket(ManagedConfigurationAPI::DownloadOutcome::kSucceeded,
+                       1)));
+}
+
+// Verifies that removing an origin from policy while its download is hung
+// cancels the download and records it as aborted by a policy update.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       PolicyRemovalCancelsHungDownload) {
+  base::HistogramTester histogram_tester;
+  base::RunLoop first_request_loop;
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](base::RepeatingClosure on_request,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url != kConfigurationUrl1) {
+          return nullptr;
+        }
+        on_request.Run();
+        return std::make_unique<net::test_server::HungResponse>();
+      },
+      first_request_loop.QuitClosure()));
+  EnableTestServer({});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  first_request_loop.Run();
+  ASSERT_TRUE(api()->IsFetchInProgressForTesting(origin()));
+
+  ClearConfiguration();
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return !api()->IsFetchInProgressForTesting(origin()); }));
+
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          ManagedConfigurationAPI::kDownloadOutcomeHistogram),
+      base::BucketsAre(base::Bucket(
+          ManagedConfigurationAPI::DownloadOutcome::kAbortedByPolicyUpdate,
+          1)));
 }
 
 IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
@@ -568,15 +773,144 @@ IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
   EXPECT_FALSE(api()->IsFetchInProgressForTesting(origin()));
   EXPECT_EQ(request_count.load(), requests_after_initial_failure);
 
-  // Simulating network reconnection resets backoff and immediately fetches.
+  // Simulating network reconnection stops the active backoff timer and
+  // immediately fetches.
   fail_requests.store(false);
-  static_cast<network::NetworkConnectionTracker::NetworkConnectionObserver*>(
-      api())
-      ->OnConnectionChanged(net::NetworkChangeNotifier::CONNECTION_WIFI);
+  ASSERT_NO_FATAL_FAILURE(SimulateNetworkReconnect());
   WaitForUpdate();
 
   ASSERT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
                               {{kKey1, kValue1}, {kKey2, kValue2}}));
+}
+
+// Verifies that failed fetches both retry automatically via standard
+// exponential backoff and retry immediately when network connectivity is
+// restored, without resetting exponential backoff if the reconnection retry
+// also fails.
+IN_PROC_BROWSER_TEST_F(
+    ManagedConfigurationAPITest,
+    NetworkReconnectionRetriesImmediatelyWhilePreservingExponentialBackoff) {
+  base::HistogramTester histogram_tester;
+  // Failure 1 schedules a 40-50ms timer; Failure 2 schedules a 40-50s timer;
+  // Failure 3 hits the 5-minute cap unless backoff was erroneously reset to
+  // 40-50ms.
+  api()->SetRetryBackoffForTesting(base::Milliseconds(50), 1000.0);
+  auto request_count =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<int>>>(
+          std::in_place, 0);
+  auto fail_requests =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<int>>> request_count,
+         scoped_refptr<base::RefCountedData<std::atomic<bool>>> fail_requests,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1) {
+          request_count->data.fetch_add(1);
+          if (fail_requests->data.load()) {
+            auto response =
+                std::make_unique<net::test_server::BasicHttpResponse>();
+            response->set_code(net::HTTP_NOT_FOUND);
+            return response;
+          }
+        }
+        return nullptr;
+      },
+      request_count, fail_requests));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  // Initial fetch (attempt 1) fails -> standard backoff timer (40-50ms) fires
+  // attempt 2 -> attempt 2 fails and enters the 40-50s backoff window.
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  ASSERT_TRUE(base::test::RunUntil([&] {
+    return request_count->data.load() == 2 &&
+           !api()->IsFetchInProgressForTesting(origin());
+  }));
+
+  // Network restoration triggers an immediate retry (attempt 3) without
+  // waiting for the 40-50s backoff timer.
+  ASSERT_NO_FATAL_FAILURE(SimulateNetworkReconnect());
+  ASSERT_TRUE(base::test::RunUntil([&] {
+    return request_count->data.load() == 3 &&
+           !api()->IsFetchInProgressForTesting(origin());
+  }));
+
+  // Because attempt 3 also failed, exponential backoff must continue growing
+  // (capped at 5 minutes) rather than resetting back to the 40-50ms initial
+  // delay.
+  base::OneShotTimer wait_timer;
+  base::RunLoop wait_loop;
+  wait_timer.Start(FROM_HERE, base::Milliseconds(200), wait_loop.QuitClosure());
+  wait_loop.Run();
+  EXPECT_EQ(request_count->data.load(), 3);
+  EXPECT_FALSE(api()->IsFetchInProgressForTesting(origin()));
+
+  // Once the server recovers, a subsequent network restoration immediately
+  // fetches and commits the configuration.
+  fail_requests->data.store(false);
+  ASSERT_NO_FATAL_FAILURE(SimulateNetworkReconnect());
+  WaitForUpdate();
+
+  EXPECT_EQ(GetCommittedHash(), kConfigurationHash1);
+  EXPECT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
+                              {{kKey1, kValue1}, {kKey2, kValue2}}));
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kDownloadFailed, 3);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 3, 1);
+}
+
+// Verifies that when a configuration download is hung on a stalled connection,
+// network reconnection cancels the in-flight download and retries immediately
+// instead of waiting for `kDownloadAttemptTimeout` (60s).
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       NetworkReconnectionCancelsStalledDownload) {
+  base::HistogramTester histogram_tester;
+  base::RunLoop first_request_loop;
+  auto hang_requests =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<bool>>> hang_requests,
+         base::RepeatingClosure on_first_request,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            hang_requests->data.load()) {
+          on_first_request.Run();
+          return std::make_unique<net::test_server::HungResponse>();
+        }
+        return nullptr;
+      },
+      hang_requests, first_request_loop.QuitClosure()));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  first_request_loop.Run();
+  ASSERT_TRUE(api()->IsFetchInProgressForTesting(origin()));
+
+  hang_requests->data.store(false);
+  ASSERT_NO_FATAL_FAILURE(SimulateNetworkReconnect());
+  WaitForUpdate();
+
+  EXPECT_EQ(GetCommittedHash(), kConfigurationHash1);
+  EXPECT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
+                              {{kKey1, kValue1}, {kKey2, kValue2}}));
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          ManagedConfigurationAPI::kDownloadOutcomeHistogram),
+      base::BucketsAre(
+          base::Bucket(
+              ManagedConfigurationAPI::DownloadOutcome::kAbortedOnNetworkChange,
+              1),
+          base::Bucket(ManagedConfigurationAPI::DownloadOutcome::kSucceeded,
+                       1)));
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryReasonHistogram, 0);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0, 1);
 }
 
 // Verifies that if an initial configuration download (url1, hash1) fails and
@@ -952,6 +1286,271 @@ IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
                               {{kKey1, kValue12}, {kKey2, kValue22}}));
 }
 
+// Verifies that a configuration sync succeeding on the first attempt records 0
+// retries and no retry reasons, and that subsequent reads when the committed
+// hash already matches policy do not emit additional samples.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       MetricsRecordedOnImmediateSuccessWithoutDuplicateReads) {
+  base::HistogramTester histogram_tester;
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  WaitForUpdate();
+  ASSERT_EQ(GetCommittedHash(), kConfigurationHash1);
+
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryReasonHistogram, 0);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0, 1);
+
+  // Subsequent reads and no-op policy refreshes with the same committed hash
+  // must not record extra samples.
+  ASSERT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
+                              {{kKey1, kValue1}, {kKey2, kValue2}}));
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryReasonHistogram, 0);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0, 1);
+}
+
+// Verifies that each failed download attempt records `kDownloadFailed` as it is
+// scheduled, and that `RetryCountUntilSuccess` records the exact retry count
+// once a retry succeeds.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       MetricsRecordedForMultipleDownloadRetries) {
+  base::HistogramTester histogram_tester;
+  api()->SetRetryBackoffForTesting(base::Milliseconds(10), 1.0);
+  auto remaining_failures =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<int>>>(
+          std::in_place, 2);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<int>>>
+             remaining_failures,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            remaining_failures->data.fetch_sub(1) > 0) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->set_code(net::HTTP_NOT_FOUND);
+          return response;
+        }
+        return nullptr;
+      },
+      remaining_failures));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  WaitForUpdate();
+  ASSERT_EQ(GetCommittedHash(), kConfigurationHash1);
+
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          ManagedConfigurationAPI::kDownloadOutcomeHistogram),
+      base::BucketsAre(
+          base::Bucket(ManagedConfigurationAPI::DownloadOutcome::kFailed, 2),
+          base::Bucket(ManagedConfigurationAPI::DownloadOutcome::kSucceeded,
+                       1)));
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kDownloadFailed, 2);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 2, 1);
+}
+
+// Verifies that recovering via network reconnection (which stops
+// `retry_timer_` to retry immediately) preserves the retry count for the
+// active sync rather than reporting 0 retries.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       MetricsPreservedAcrossNetworkReconnectionRecovery) {
+  base::HistogramTester histogram_tester;
+  api()->SetRetryBackoffForTesting(base::Hours(1), 2.0);
+  auto fail_requests =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<bool>>> fail_requests,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            fail_requests->data.load()) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->set_code(net::HTTP_NOT_FOUND);
+          return response;
+        }
+        return nullptr;
+      },
+      fail_requests));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return !api()->IsFetchInProgressForTesting(origin()); }));
+
+  // `RetryReason` is emitted immediately when the retry is scheduled, before
+  // recovery succeeds.
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kDownloadFailed, 1);
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0);
+
+  fail_requests->data.store(false);
+  ASSERT_NO_FATAL_FAILURE(SimulateNetworkReconnect());
+  WaitForUpdate();
+  ASSERT_EQ(GetCommittedHash(), kConfigurationHash1);
+
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kDownloadFailed, 1);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 1, 1);
+}
+
+// Verifies that an invalid or non-dictionary JSON payload records
+// `kInvalidJson` without prematurely emitting `RetryCountUntilSuccess` when
+// clearing the store, and emits the retry count once valid JSON is committed.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       MetricsRecordedForInvalidJsonRetry) {
+  base::HistogramTester histogram_tester;
+  api()->SetRetryBackoffForTesting(base::Milliseconds(10), 1.0);
+  auto remaining_invalid =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<int>>>(
+          std::in_place, 1);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<int>>>
+             remaining_invalid,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            remaining_invalid->data.fetch_sub(1) > 0) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->set_code(net::HTTP_OK);
+          response->set_content(kConfigurationData3);
+          response->set_content_type("text/plain");
+          return response;
+        }
+        return nullptr;
+      },
+      remaining_invalid));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return GetCommittedHash() == kConfigurationHash1; }));
+
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kInvalidJson, 1);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 1, 1);
+}
+
+// Verifies that a LevelDB write failure records `kStoreWriteFailed` without
+// emitting `RetryCountUntilSuccess`, and emits the retry count once a
+// subsequent write succeeds.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       MetricsRecordedForStoreWriteRetry) {
+  base::HistogramTester histogram_tester;
+  scoped_refptr<base::SequencedTaskRunner> store_task_runner =
+      base::ThreadPool::CreateSequencedTaskRunner({base::MayBlock()});
+  api()->SetStoreTaskRunnerForTesting(store_task_runner);
+  api()->SetRetryBackoffForTesting(base::Hours(1), 2.0);
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  const base::FilePath origin_store_path =
+      profile()
+          ->GetPath()
+          .AppendASCII("Managed Configuration")
+          .AppendASCII(base::HexEncode(origin().Serialize()));
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    ASSERT_TRUE(base::CreateDirectory(origin_store_path.DirName()));
+    ASSERT_TRUE(base::WriteFile(origin_store_path, "x"));
+  }
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return !api()->IsFetchInProgressForTesting(origin()); }));
+  // Wait until the queued write completed and its reply ran on the UI thread.
+  base::RunLoop store_flush_loop;
+  store_task_runner->PostTaskAndReply(FROM_HERE, base::DoNothing(),
+                                      store_flush_loop.QuitClosure());
+  store_flush_loop.Run();
+
+  EXPECT_FALSE(GetCommittedHash());
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kStoreWriteFailed, 1);
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0);
+
+  {
+    base::ScopedAllowBlockingForTesting allow_blocking;
+    ASSERT_TRUE(base::DeleteFile(origin_store_path));
+  }
+  ASSERT_NO_FATAL_FAILURE(SimulateNetworkReconnect());
+  WaitForUpdate();
+  ASSERT_EQ(GetCommittedHash(), kConfigurationHash1);
+
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kStoreWriteFailed, 1);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 1, 1);
+}
+
+// Verifies that when a failing configuration sync is superseded by a new policy
+// before recovering, the scheduled retry for the abandoned configuration is
+// still recorded in `RetryReason`, while the new configuration starts with a
+// fresh retry count of 0.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       MetricsResetRetryCountWhenPolicyChangesAfterFailure) {
+  base::HistogramTester histogram_tester;
+  api()->SetRetryBackoffForTesting(base::Hours(1), 2.0);
+  auto fail_url1 =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<bool>>> fail_url1,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            fail_url1->data.load()) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->set_code(net::HTTP_NOT_FOUND);
+          return response;
+        }
+        return nullptr;
+      },
+      fail_url1));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}},
+                    {kConfigurationUrl2, {kConfigurationData2}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return !api()->IsFetchInProgressForTesting(origin()); }));
+
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kDownloadFailed, 1);
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0);
+
+  SetConfiguration(kConfigurationUrl2, kConfigurationHash2);
+  WaitForUpdate();
+  ASSERT_EQ(GetCommittedHash(), kConfigurationHash2);
+
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryReasonHistogram,
+      ManagedConfigurationAPI::RetryReason::kDownloadFailed, 1);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0, 1);
+}
+
 class ManagedConfigurationAPIRecoveryDisabledTest
     : public ManagedConfigurationAPITest {
  public:
@@ -969,6 +1568,7 @@ class ManagedConfigurationAPIRecoveryDisabledTest
 // updates still work, while failed fetches are not automatically retried).
 IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPIRecoveryDisabledTest,
                        FallbackToLegacyBehaviorWhenFlagDisabled) {
+  base::HistogramTester histogram_tester;
   base::RunLoop url1_request_loop;
   std::atomic<bool> fail_url1{true};
   embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
@@ -1005,9 +1605,162 @@ IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPIRecoveryDisabledTest,
   WaitForUpdate();
   ASSERT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
                               {{kKey1, kValue12}, {kKey2, kValue22}}));
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kDownloadOutcomeHistogram, 0);
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryReasonHistogram, 0);
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0);
 }
 
 #if BUILDFLAG(IS_CHROMEOS)
+
+// Verifies that when the default network moves from `shill::kStateReady`
+// (connected, but not yet online) to
+// `shill::kStateOnline` (`IsOnline()`), a failed sync is retried right away
+// instead of waiting for the backoff timer.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       RecoverWhenDefaultNetworkTransitionsFromReadyToOnline) {
+  ASSERT_NO_FATAL_FAILURE(DisconnectNonDefaultNetworks());
+  ASSERT_NO_FATAL_FAILURE(SetDefaultNetworkState(shill::kStateReady));
+
+  api()->SetRetryBackoffForTesting(base::Hours(1), 2.0);
+  auto fail_requests =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<bool>>> fail_requests,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            fail_requests->data.load()) {
+          auto response =
+              std::make_unique<net::test_server::BasicHttpResponse>();
+          response->set_code(net::HTTP_NOT_FOUND);
+          return response;
+        }
+        return nullptr;
+      },
+      fail_requests));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  // The initial download fails and enters a 1-hour backoff.
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return !api()->IsFetchInProgressForTesting(origin()); }));
+  ASSERT_FALSE(GetCommittedHash());
+
+  // The same default network becoming online triggers the retry.
+  fail_requests->data.store(false);
+  ASSERT_NO_FATAL_FAILURE(SetDefaultNetworkState(shill::kStateOnline));
+  WaitForUpdate();
+
+  EXPECT_EQ(GetCommittedHash(), kConfigurationHash1);
+  EXPECT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
+                              {{kKey1, kValue1}, {kKey2, kValue2}}));
+}
+
+// Verifies that when a download started in `shill::kStateReady` hangs (e.g.
+// before routing or captive-portal checks settle), transitioning that same
+// default network to `shill::kStateOnline` cancels the stalled download and
+// retries immediately without waiting for the 60s download timeout.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       ReadyToOnlineCancelsStalledDownload) {
+  base::HistogramTester histogram_tester;
+  ASSERT_NO_FATAL_FAILURE(DisconnectNonDefaultNetworks());
+  ASSERT_NO_FATAL_FAILURE(SetDefaultNetworkState(shill::kStateReady));
+
+  base::RunLoop first_request_loop;
+  auto hang_requests =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<bool>>> hang_requests,
+         base::RepeatingClosure on_first_request,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            hang_requests->data.load()) {
+          on_first_request.Run();
+          return std::make_unique<net::test_server::HungResponse>();
+        }
+        return nullptr;
+      },
+      hang_requests, first_request_loop.QuitClosure()));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  first_request_loop.Run();
+  ASSERT_TRUE(api()->IsFetchInProgressForTesting(origin()));
+
+  hang_requests->data.store(false);
+  ASSERT_NO_FATAL_FAILURE(SetDefaultNetworkState(shill::kStateOnline));
+  WaitForUpdate();
+
+  EXPECT_EQ(GetCommittedHash(), kConfigurationHash1);
+  EXPECT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
+                              {{kKey1, kValue1}, {kKey2, kValue2}}));
+  EXPECT_THAT(
+      histogram_tester.GetAllSamples(
+          ManagedConfigurationAPI::kDownloadOutcomeHistogram),
+      base::BucketsAre(
+          base::Bucket(
+              ManagedConfigurationAPI::DownloadOutcome::kAbortedOnNetworkChange,
+              1),
+          base::Bucket(ManagedConfigurationAPI::DownloadOutcome::kSucceeded,
+                       1)));
+  histogram_tester.ExpectTotalCount(
+      ManagedConfigurationAPI::kRetryReasonHistogram, 0);
+  histogram_tester.ExpectUniqueSample(
+      ManagedConfigurationAPI::kRetryCountUntilSuccessHistogram, 0, 1);
+}
+
+// Verifies that when a download is hung and the default network disconnects and
+// reconnects, the stalled download is canceled and retried immediately.
+IN_PROC_BROWSER_TEST_F(ManagedConfigurationAPITest,
+                       DefaultNetworkReconnectCancelsStalledDownload) {
+  ASSERT_NO_FATAL_FAILURE(DisconnectNonDefaultNetworks());
+  ash::NetworkStateHandler* handler =
+      ash::NetworkHandler::Get()->network_state_handler();
+  ASSERT_TRUE(handler->DefaultNetwork());
+  const std::string service_path = handler->DefaultNetwork()->path();
+
+  base::RunLoop first_request_loop;
+  auto hang_requests =
+      base::MakeRefCounted<base::RefCountedData<std::atomic<bool>>>(
+          std::in_place, true);
+  embedded_test_server()->RegisterRequestHandler(base::BindRepeating(
+      [](scoped_refptr<base::RefCountedData<std::atomic<bool>>> hang_requests,
+         base::RepeatingClosure on_first_request,
+         const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        if (request.relative_url == kConfigurationUrl1 &&
+            hang_requests->data.load()) {
+          on_first_request.Run();
+          return std::make_unique<net::test_server::HungResponse>();
+        }
+        return nullptr;
+      },
+      hang_requests, first_request_loop.QuitClosure()));
+  EnableTestServer({{kConfigurationUrl1, {kConfigurationData1}}});
+
+  SetConfiguration(kConfigurationUrl1, kConfigurationHash1);
+  first_request_loop.Run();
+  ASSERT_TRUE(api()->IsFetchInProgressForTesting(origin()));
+
+  hang_requests->data.store(false);
+  ash::ShillServiceClient::Get()->GetTestInterface()->SetServiceProperty(
+      service_path, shill::kStateProperty, base::Value(shill::kStateIdle));
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return handler->DefaultNetwork() == nullptr; }));
+  ash::ShillServiceClient::Get()->GetTestInterface()->SetServiceProperty(
+      service_path, shill::kStateProperty, base::Value(shill::kStateOnline));
+  WaitForUpdate();
+
+  EXPECT_EQ(GetCommittedHash(), kConfigurationHash1);
+  EXPECT_TRUE(DictValueEquals(GetValues({kKey1, kKey2}),
+                              {{kKey1, kValue1}, {kKey2, kValue2}}));
+}
 
 // Test the API behavior in the Guest Session.
 class ManagedConfigurationAPIGuestTest

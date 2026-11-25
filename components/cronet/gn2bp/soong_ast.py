@@ -9,9 +9,6 @@ import os  # noqa: F401
 import re
 from typing import List, Dict, Set, Union  # noqa: F401
 
-import gn_utils
-import targets as gn2bp_targets
-
 NEWLINE = ' " +\n         "'
 
 
@@ -213,6 +210,7 @@ class CcTarget(Target):
 
 class RustTarget(Target):
     SUPPORTED_FIELDS = {
+        'aliases',
         'edition',
         'features',
         'cfgs',
@@ -227,6 +225,7 @@ class RustTarget(Target):
 
     def __init__(self, name, parent=None):
         super().__init__(name, parent)
+        self.aliases = set()
         self.edition = ""
         self.features = set()
         self.cfgs = set()
@@ -273,6 +272,7 @@ SKIP_IF_FALSY = {
     'whole_program_vtables',
     'afdo',
     'rtti',
+    'no_linked_cc_support',
 }
 
 SKIP_IF_TRUTHY = {
@@ -445,18 +445,6 @@ class Module:
                     f"Module '{self.name}' of type '{self.type}' does not support shared_libs"
                 )
 
-    def is_test(self):
-        if gn_utils.TESTING_SUFFIX in self.name:
-            name_without_prefix = self.name[
-                : self.name.find(gn_utils.TESTING_SUFFIX)
-            ]
-            return any(
-                name_without_prefix
-                == label_to_module_name(target, self.context)
-                for target in gn2bp_targets.DEFAULT_TESTS
-            )
-        return False
-
     def _output_field(
         self, output, name, sort=True, list_to_multiline_string=False
     ):
@@ -586,6 +574,9 @@ class JavaModule(Module):
         'libs',
         'static_libs',
         'min_sdk_version',
+        'java_version',
+        'lint',
+        'manifest',
     }
 
     def __init__(
@@ -602,6 +593,9 @@ class JavaModule(Module):
         self.libs = set()
         self.static_libs = set()
         self.min_sdk_version = None
+        self.java_version = None
+        self.lint = dict()
+        self.manifest = None
 
     def add_java_dependency(self, dep_module):
         if self.java_unfiltered_module and dep_module.java_unfiltered_module:
@@ -630,6 +624,7 @@ class JavaModule(Module):
 
 class RustModule(Module):
     SUPPORTED_FIELDS = {
+        'aliases',
         'srcs',
         'min_sdk_version',
         'crate_name',
@@ -649,6 +644,7 @@ class RustModule(Module):
         self, mod_type, name, gn_target, context, is_test=False, role=None
     ):
         super().__init__(mod_type, name, gn_target, context, is_test, role)
+        self.aliases = set()
         self.min_sdk_version = None
         self.shared_libs = set()
         self.static_libs = set()
@@ -708,6 +704,7 @@ class CrubitModule(Module):
     bindings for a Rust library (`rust_library`)."""
 
     SUPPORTED_FIELDS = {
+        'aliases',
         'rust_library',
         'crate_name',
         'namespace',
@@ -715,6 +712,8 @@ class CrubitModule(Module):
         'source_stem',
         'source_subdir',
         'rustlibs',
+        'static_libs',
+        'no_linked_cc_support',
         'min_sdk_version',
     }
 
@@ -722,6 +721,7 @@ class CrubitModule(Module):
         self, mod_type, name, gn_target, context, is_test=False, role=None
     ):
         super().__init__(mod_type, name, gn_target, context, is_test, role)
+        self.aliases = set()
         self.rust_library = None
         self.crate_name = None
         self.namespace = None
@@ -729,6 +729,10 @@ class CrubitModule(Module):
         self.source_stem = None
         self.source_subdir = None
         self.rustlibs = set()
+        self.static_libs = set()
+        # Whether to opt out of Android's prebuilt `libcrubit_support_cc`, see
+        # `gn_utils.CRUBIT_CPP_SUPPORT_TARGET`.
+        self.no_linked_cc_support = False
         self.min_sdk_version = None
         self._initialize_targets(RustTarget)
 
@@ -801,7 +805,12 @@ def create_module(mod_type, name, gn_target, context, is_test=False, role=None):
         'cc_preprocess_no_configuration',
     ):
         return CcModule(mod_type, name, gn_target, context, is_test, role)
-    if mod_type in ('java_library', 'java_import', 'java_defaults'):
+    if mod_type in (
+        'java_library',
+        'java_import',
+        'java_defaults',
+        'android_library',
+    ):
         return JavaModule(mod_type, name, gn_target, context, is_test, role)
     if mod_type in ('rust_ffi_static', 'rust_binary', 'rust_proc_macro'):
         return RustModule(mod_type, name, gn_target, context, is_test, role)

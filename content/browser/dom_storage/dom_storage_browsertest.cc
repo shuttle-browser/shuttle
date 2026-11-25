@@ -55,6 +55,7 @@
 #include "third_party/blink/public/common/dom_storage/session_storage_namespace_id.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/dom_storage/storage_area.mojom.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "url/origin.h"
 
 namespace content {
@@ -423,19 +424,8 @@ IN_PROC_BROWSER_TEST_P(DOMStorageBrowserTest, MAYBE_SanityCheckIncognito) {
 IN_PROC_BROWSER_TEST_P(DOMStorageBrowserTest, PRE_DataPersists) {
   SimpleTest(GetTestUrl("dom_storage", "store_data.html"), kNotIncognito);
 
-  // Browser shutdown can always race with async work on non-shutdown-blocking
-  // task runners. This includes the local storage implementation. If opening
-  // the database takes too long, by the time it finishes the IO thread may be
-  // shut down and the Local Storage implementation may be unable to commit its
-  // pending operations.
-  //
-  // Since the point of this test is to verify that committed data is actually
-  // retrievable by a subsequent browser session, wait for the database to be
-  // ready.
-  base::RunLoop loop;
-  context_wrapper()->GetLocalStorageUsage(base::BindLambdaForTesting(
-      [&](const std::vector<StorageUsageInfo>&) { loop.Quit(); }));
-  loop.Run();
+  // Wait for the write to commit before shutdown.
+  CommitLocalStorage();
 }
 
 IN_PROC_BROWSER_TEST_P(DOMStorageBrowserTest, MAYBE_DataPersists) {
@@ -560,7 +550,7 @@ class NoWindowsContentBrowserClient
                        const GURL& target_url,
                        const Referrer& referrer,
                        const std::string& frame_name,
-                       WindowOpenDisposition disposition,
+                       ui::mojom::WindowOpenDisposition disposition,
                        const blink::mojom::WindowFeatures& features,
                        bool user_gesture,
                        bool opener_suppressed,

@@ -748,56 +748,6 @@ std::optional<FeatureConfig> GetClientSideFeatureConfig(
 
 #if BUILDFLAG(IS_ANDROID)
   // CONFIGURATION_ANDROID_START
-  if (kIPHAndroidBottomBarGlic.name == feature->name) {
-    FeatureConfig config;
-    config.valid = true;
-
-    // IPH is always available at start-up.
-    config.availability = kAlwaysAvailable;
-
-    // IPH only shows if no other IPH has shown this session.
-    config.session_rate = Comparator(EQUAL, 0);
-
-    // IPH only shows once per 360 days.
-    config.trigger =
-        EventConfig("android_bottom_bar_glic_trigger", Comparator(EQUAL, 0),
-                    /*window=*/360, /*storage=*/360);
-
-    // IPH will not show if the user has interacted with the GLIC button.
-    config.used =
-        EventConfig("android_bottom_bar_glic_used", Comparator(EQUAL, 0),
-                    /*window=*/360, /*storage=*/360);
-
-    // Require that the promo dialog IPH has been shown at least once.
-    config.event_configs.insert(EventConfig(
-        "android_bottom_bar_promo_dialog_trigger",
-        Comparator(GREATER_THAN_OR_EQUAL, 1), /*window=*/360, /*storage=*/360));
-    return config;
-  }
-
-  if (kIPHAndroidBottomBarNewTab.name == feature->name) {
-    FeatureConfig config;
-    config.valid = true;
-
-    // IPH is always available at start-up.
-    config.availability = kAlwaysAvailable;
-
-    // IPH can show even if other IPHs have shown this session.
-    config.session_rate = kNoRestrictions;
-
-    // IPH only shows once per 360 days.
-    config.trigger =
-        EventConfig("android_bottom_bar_new_tab_trigger", Comparator(EQUAL, 0),
-                    /*window=*/360, /*storage=*/360);
-
-    // IPH will not show if the user has interacted with the New Tab button.
-    config.used =
-        EventConfig("android_bottom_bar_new_tab_used", Comparator(EQUAL, 0),
-                    /*window=*/360, /*storage=*/360);
-
-    return config;
-  }
-
   if (kIPHAndroidBottomBarAddressBar.name == feature->name) {
     FeatureConfig config;
     config.valid = true;
@@ -896,24 +846,6 @@ std::optional<FeatureConfig> GetClientSideFeatureConfig(
                     Comparator(GREATER_THAN_OR_EQUAL, 1), /*window=*/360,
                     /*storage=*/360));
 
-    return config;
-  }
-
-  if (kIPHAndroidBottomBarPromoDialog.name == feature->name) {
-    FeatureConfig config;
-    config.valid = true;
-    config.availability = kAlwaysAvailable;
-    config.session_rate = Comparator(EQUAL, 0);
-    config.session_rate_impact.type = SessionRateImpact::Type::NONE;
-    // IPH only shows once per 360 days.
-    config.trigger =
-        EventConfig("android_bottom_bar_promo_dialog_trigger",
-                    Comparator(EQUAL, 0), /*window=*/360, /*storage=*/360);
-
-    // IPH will not show if the user has interacted with the Promo Dialog.
-    config.used =
-        EventConfig("android_bottom_bar_promo_dialog_used",
-                    Comparator(EQUAL, 0), /*window=*/360, /*storage=*/360);
     return config;
   }
 
@@ -1620,6 +1552,45 @@ std::optional<FeatureConfig> GetClientSideFeatureConfig(
         segmentation_platform::features::
             kNewTabPageCustomizationV2IphDisplayIntervalDays.Get(),
         /*storage=*/k10YearsInDays));
+    // Enrolled in `kClankNewTabPageThemeCustomizationPromosGroup` so that
+    // showing either this 3-dot menu IPH or the NTP theme customization promo
+    // Magic Stack card enforces a shared 7-day cooldown across both surfaces.
+    config.groups.push_back(kClankNewTabPageThemeCustomizationPromosGroup.name);
+    return config;
+  }
+  if (kIPHNewTabPageThemeCustomizationMagicStackFeature.name == feature->name) {
+    // A config that allows the NTP theme customization promo Magic Stack card
+    // to be shown:
+    // * Up to 10 times over the user's lifetime (matching the Segmentation
+    //   Platform's kSingleEphemeralCardMaxImpressions limit for this card).
+    // * Without per-session IPH rate or blocking restrictions, as card ranking
+    //   and session frequency are managed by the Magic Stack and Segmentation
+    //   Platform.
+    // * Only when neither this Magic Stack card nor the 3-dot menu NTP theme
+    //   customization IPH has been triggered in the last 7 days (enforced via
+    //   `kClankNewTabPageThemeCustomizationPromosGroup`).
+    FeatureConfig config;
+    config.valid = true;
+    config.availability = kAlwaysAvailable;
+    config.session_rate = kNoRestrictions;
+    config.session_rate_impact.type = SessionRateImpact::Type::NONE;
+    config.blocked_by.type = BlockedBy::Type::NONE;
+    config.blocking.type = Blocking::Type::NONE;
+    config.trigger =
+        EventConfig("ntp_theme_customization_magic_stack_triggered",
+                    Comparator(LESS_THAN, 10),
+                    /*window=*/k10YearsInDays,
+                    /*storage=*/k10YearsInDays);
+    // Whether the user has already customized their NTP theme
+    // (`has_customized_ntp_background`) or interacted with the promo card
+    // (`kNtpThemePromoInteractedPref`) is tracked and enforced directly by the
+    // Segmentation Platform in `NtpThemePromo::ComputeCardResult`, so the FET
+    // `used` precondition is always satisfied (`kAlwaysTrue` with window 0).
+    config.used =
+        EventConfig("ntp_theme_customization_magic_stack_used", kAlwaysTrue,
+                    /*window=*/0, /*storage=*/k10YearsInDays);
+    config.groups.push_back(kClankNewTabPageThemeCustomizationPromosGroup.name);
+
     return config;
   }
   if (kIPHPageSummaryWebMenuFeature.name == feature->name) {
@@ -2805,56 +2776,6 @@ std::optional<FeatureConfig> GetClientSideFeatureConfig(
 
     return config;
   }
-  if (kIPHiOSContextualPanelPriceInsightsFeature.name == feature->name) {
-    // The contextual panel's price insights entrypoint IPH config to control
-    // the impressions of the IPH for this infoblock. Shows the IPH 3 times
-    // every 6 months (max 1 per day), for a maximum of 6 times lifetime. Stops
-    // showing the IPH if the entrypoint was used, or explicitly dismissed
-    // twice.
-    FeatureConfig config;
-    config.valid = true;
-    config.availability = kAlwaysAvailable;
-    config.session_rate = kNoRestrictions;
-    config.used =
-        EventConfig(events::kIOSContextualPanelPriceInsightsEntrypointUsed,
-                    Comparator(LESS_THAN, 1), /*window=*/kMaxWindowPeriod,
-                    /*storage=*/kMaxStoragePeriod);
-    config.used = EventConfig(
-        events::kIOSContextualPanelPriceInsightsEntrypointExplicitlyDismissed,
-        Comparator(LESS_THAN, 2), /*window=*/kMaxWindowPeriod,
-        /*storage=*/kMaxStoragePeriod);
-    config.trigger = EventConfig(
-        "ios_contextual_panel_price_insights_entrypoint_iph_trigger",
-        Comparator(LESS_THAN, 3), /*window=*/182,
-        /*storage=*/kMaxStoragePeriod);
-    config.event_configs.insert(EventConfig(
-        "ios_contextual_panel_price_insights_entrypoint_iph_trigger",
-        Comparator(LESS_THAN, 1), /*window=*/1, /*storage=*/kMaxStoragePeriod));
-    config.event_configs.insert(EventConfig(
-        "ios_contextual_panel_price_insights_entrypoint_iph_trigger",
-        Comparator(LESS_THAN, 6), /*window=*/kMaxWindowPeriod,
-        /*storage=*/kMaxStoragePeriod));
-
-    // This IPH is blocked by the overflow menu's price tracking IPH
-    // (kIPHPriceNotificationsWhileBrowsingFeature) if shown in the same
-    // session (approximated by checking for an event with a 1 day lookback
-    // window). Done through an event config since session rate is ignored.
-    config.event_configs.insert(EventConfig("price_notifications_trigger",
-                                            Comparator(LESS_THAN, 1),
-                                            /*window=*/1, /*storage=*/1));
-
-    // This IPH blocks the overflow menu's price tracking IPH
-    // (kIPHPriceNotificationsWhileBrowsingFeature) if shown in the same
-    // session.
-    SessionRateImpact session_rate_impact;
-    session_rate_impact.type = SessionRateImpact::Type::EXPLICIT;
-    std::vector<std::string> affected_features;
-    affected_features.push_back("IPH_PriceNotificationsWhileBrowsing");
-    session_rate_impact.affected_features = affected_features;
-    config.session_rate_impact = session_rate_impact;
-
-    return config;
-  }
 
   if (kIPHiOSReaderModeOptionsFeature.name == feature->name) {
     // A config that shows the IPH on the Reading mode entrypoint in the
@@ -2948,10 +2869,6 @@ std::optional<FeatureConfig> GetClientSideFeatureConfig(
     // trackable product once per session for up to three sessions or until the
     // user has clicked on the Price Tracking entry point. There will be a
     // window of one week between impressions.
-
-    // This IPH is blocked by the Contextual Panel's price insights entrypoint
-    // IPH (kIPHiOSContextualPanelPriceInsightsFeature) via explicit session
-    // rate blocking.
     FeatureConfig config;
     config.valid = true;
     config.availability = kAlwaysAvailable;

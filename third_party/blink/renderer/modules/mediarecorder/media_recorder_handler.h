@@ -76,7 +76,8 @@ class MODULES_EXPORT MediaRecorderHandler final
 
   MediaRecorderHandler(
       scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner,
-      KeyFrameRequestProcessor::Configuration key_frame_config);
+      KeyFrameRequestProcessor::Configuration key_frame_config,
+      bool cross_origin_isolated_capability);
   MediaRecorderHandler(const MediaRecorderHandler&) = delete;
   MediaRecorderHandler& operator=(const MediaRecorderHandler&) = delete;
 
@@ -187,6 +188,11 @@ class MODULES_EXPORT MediaRecorderHandler final
       base::TimeTicks timestamp);
   void WriteData(base::span<const uint8_t> data);
 
+  // Coarsens `timestamp` to the resolution of `performance.now()` in the
+  // recorder's execution context. All timestamps reaching the muxer must pass
+  // through this, since the muxed bytes are exposed to the page.
+  base::TimeTicks CoarsenTimestamp(base::TimeTicks timestamp) const;
+
   // Updates recorded tracks live and enabled.
   void UpdateTracksLiveAndEnabled();
 
@@ -204,6 +210,9 @@ class MODULES_EXPORT MediaRecorderHandler final
 
   // Variant holding configured keyframe intervals.
   const KeyFrameRequestProcessor::Configuration key_frame_config_;
+
+  // Selects the resolution keyframe request timestamps are coarsened to.
+  const bool cross_origin_isolated_capability_;
 
   const scoped_refptr<base::SingleThreadTaskRunner> main_thread_task_runner_;
 

@@ -5,9 +5,11 @@
 #include "services/webnn/ort/graph_impl_ort.h"
 
 #include <optional>
+#include <string>
 #include <vector>
 
 #include "base/command_line.h"
+#include "base/containers/span.h"
 #include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notimplemented.h"
@@ -35,6 +37,18 @@
 namespace webnn::ort {
 
 namespace {
+
+// Returns true if `error_code` indicates the Compiler process produced a
+// compiled model that violates the expected contract.
+bool IsContractViolation(OrtErrorCode error_code) {
+  switch (error_code) {
+    case ORT_INVALID_PROTOBUF:
+    case ORT_MODEL_REQUIRES_COMPILATION:
+      return true;
+    default:
+      return false;
+  }
+}
 
 // Builds operand descriptors by querying the session's actual I/O metadata.
 // Returns nullopt if the session metadata is invalid or doesn't match the
@@ -277,7 +291,8 @@ void GraphImplOrt::CreateAndBuild(
       base::BindOnce(&GraphImplOrt::CreateAndBuildOnBackgroundThread,
                      std::move(graph_info), context.session_options(),
                      context.env(), context.properties(),
-                     std::move(constant_operands), std::move(scoped_trace)),
+                     context.ep_workarounds(), std::move(constant_operands),
+                     std::move(scoped_trace)),
       base::BindOnce(&GraphImplOrt::DidCreateAndBuild, std::ref(context),
                      std::move(compute_resource_info), std::move(callback)));
 }
@@ -289,16 +304,18 @@ GraphImplOrt::CreateAndBuildOnBackgroundThread(
     scoped_refptr<SessionOptions> session_options,
     scoped_refptr<Environment> env,
     ContextProperties context_properties,
+    EpWorkarounds ep_workarounds,
     base::flat_map<OperandId, std::unique_ptr<WebNNConstantOperand>>
         constant_operands,
     ScopedTrace scoped_trace) {
   SCOPED_UMA_HISTOGRAM_TIMER("WebNN.ORT.TimingMs.Compilation");
 
   scoped_trace.AddStep("Create model info");
-  std::unique_ptr<ModelEditor::ModelInfo> model_info =
-      GraphBuilderOrt::CreateAndBuild(*graph_info,
-                                      std::move(context_properties),
-                                      std::move(constant_operands));
+  ASSIGN_OR_RETURN(
+      std::unique_ptr<ModelEditor::ModelInfo> model_info,
+      GraphBuilderOrt::CreateAndBuild(
+          *graph_info, std::move(context_properties), std::move(ep_workarounds),
+          std::move(constant_operands)));
 
   scoped_trace.AddStep("Create session from model");
   ScopedOrtSession session;
@@ -338,24 +355,27 @@ void GraphImplOrt::DidCreateAndBuild(
 }
 
 // static
-base::expected<scoped_refptr<WebNNGraphImpl>, mojom::ErrorPtr>
+base::expected<scoped_refptr<WebNNGraphImpl>,
+               GraphImplOrt::LoadCompiledGraphError>
 GraphImplOrt::CreateSessionFromCompiledGraph(
     WebNNContextImpl& context,
     scoped_refptr<SessionOptions> session_options,
     scoped_refptr<Environment> env,
-    mojo_base::BigBuffer compiled_model_data,
+    base::span<const uint8_t> model_bytes,
     base::flat_map<std::string, std::string>
         operand_input_name_to_onnx_input_name,
     base::flat_map<std::string, std::string>
         operand_output_name_to_onnx_output_name) {
   ScopedOrtSession session;
   const OrtApi* ort_api = PlatformFunctions::GetInstance()->ort_api();
-  if (ORT_CALL_FAILED(ort_api->CreateSessionFromArray(
-          env->get(), compiled_model_data.data(), compiled_model_data.size(),
-          session_options->get(), ScopedOrtSession::Receiver(session).get()))) {
-    return base::unexpected(
+  ScopedOrtStatus status = CALL_ORT_FUNC(ort_api->CreateSessionFromArray(
+      env->get(), model_bytes.data(), model_bytes.size(),
+      session_options->get(), ScopedOrtSession::Receiver(session).get()));
+  if (status.is_valid()) {
+    return base::unexpected(LoadCompiledGraphError{
         mojom::Error::New(mojom::Error::Code::kUnknownError,
-                          "Failed to create session from compiled model."));
+                          "Failed to create session from compiled model."),
+        IsContractViolation(ort_api->GetErrorCode(status.get()))});
   }
 
   // Build operand descriptors from the session's I/O metadata.
@@ -367,8 +387,10 @@ GraphImplOrt::CreateSessionFromCompiledGraph(
       context.properties(), /*is_input=*/false);
   if (!input_descriptors.has_value() || !output_descriptors.has_value()) {
     LOG(ERROR) << "Failed to build operand descriptors from session metadata.";
-    return base::unexpected(mojom::Error::New(mojom::Error::Code::kUnknownError,
-                                              "Failed to build graph."));
+    return base::unexpected(LoadCompiledGraphError{
+        mojom::Error::New(mojom::Error::Code::kUnknownError,
+                          "Failed to build graph."),
+        /*is_contract_violation=*/true});
   }
 
   ComputeResourceInfo compute_resource_info(std::move(*input_descriptors),

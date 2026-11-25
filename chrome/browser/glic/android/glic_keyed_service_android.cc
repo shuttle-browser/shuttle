@@ -10,7 +10,6 @@
 #include "base/android/scoped_java_ref.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
-#include "base/metrics/histogram_functions.h"
 #include "base/time/time.h"
 #include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/glic/host/glic.mojom.h"
@@ -20,6 +19,7 @@
 #include "chrome/browser/glic/public/glic_invoke_options.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_passkeys.h"
+#include "chrome/browser/glic/public/glic_provider_metrics.h"
 #include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
@@ -138,15 +138,21 @@ bool GlicKeyedServiceAndroid::InvokeWithAutoSubmit(JNIEnv* env,
 
 bool GlicKeyedServiceAndroid::InvokeWithPrompt(JNIEnv* env,
                                                TabAndroid* tab,
+                                               content::RenderFrameHost* frame,
                                                std::string text,
                                                int32_t source) {
-  if (!tab) {
+  // The prompt is page data, so it must pass the same enterprise clipboard
+  // policy checks as a copy/paste into Glic. Those require the source frame
+  // and non-empty text.
+  if (!tab || !frame || text.empty()) {
     return false;
   }
 
   GlicInvokeOptions options(Target(*tab),
                             static_cast<mojom::InvocationSource>(source));
   options.prompts.push_back(std::move(text));
+  options.prompt_policy =
+      PromptPolicy{frame->GetGlobalId(), PolicyCheck::kClipboard};
   // Invoke() returns a null WeakPtr if the Glic instance could not be created,
   // which means the prompt was never delivered.
   return !!service_->Invoke(std::move(options));
@@ -252,13 +258,13 @@ void GlicKeyedServiceAndroid::ShareTabs(JNIEnv* env,
     }
   }
 
+  GlicMetricReporter metric_reporter(service_->profile());
   if (new_conversation) {
-    base::UmaHistogramCounts100(
-        "Glic.TabContextMenu.PinnedTabsToNewConversation", tab_handles.size());
+    metric_reporter.RecordCounts100(
+        "TabContextMenu.PinnedTabsToNewConversation", tab_handles.size());
   } else {
-    base::UmaHistogramCounts100(
-        "Glic.TabContextMenu.PinnedTabsToExistingConversation",
-        tab_handles.size());
+    metric_reporter.RecordCounts100(
+        "TabContextMenu.PinnedTabsToExistingConversation", tab_handles.size());
   }
 
   options.tab_sharing =

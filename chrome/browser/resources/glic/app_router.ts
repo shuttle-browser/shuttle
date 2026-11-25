@@ -8,6 +8,7 @@ import {getRequiredElement} from 'chrome://resources/js/util.js';
 import {BrowserProxyImpl} from './browser_proxy.js';
 import {GlicAppController} from './glic_app_controller.js';
 import {PanelStateKind} from './glic_enums.mojom-webui.js';
+import {ClientLoadErrorReason} from './glic_webui.mojom-webui.js';
 import type {ProfileReadyState, ZoomAction} from './glic_webui.mojom-webui.js';
 
 export enum AppView {
@@ -55,7 +56,14 @@ export class AppRouter {
     this.browserProxy.pageCallbackRouter.clientReadyStateChanged.addListener(
         this.clientReadyStateChanged_.bind(this),
     );
+    this.browserProxy.pageCallbackRouter.showPendingProviderChange.addListener(
+        this.showPendingProviderChange_.bind(this),
+    );
     this.switchToView(AppView.GLIC);
+  }
+
+  private showPendingProviderChange_() {
+    this.glicController?.showPendingProviderChange();
   }
 
   private clientReadyStateChanged_(ready: boolean) {
@@ -88,9 +96,9 @@ export class AppRouter {
     this.glicController?.intentToShow();
   }
 
-  private waitForLoad_(): Promise<{failed: boolean}> {
+  private waitForLoad_(): Promise<{errorReason: ClientLoadErrorReason | null}> {
     if (!this.glicController) {
-      return Promise.resolve({failed: true});
+      return Promise.resolve({errorReason: ClientLoadErrorReason.kUnknown});
     }
     return this.glicController.waitForLoad();
   }

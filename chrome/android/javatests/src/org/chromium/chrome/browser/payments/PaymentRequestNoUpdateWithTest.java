@@ -10,16 +10,18 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.RuleChain;
 import org.junit.runner.RunWith;
 
-import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.Feature;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.autofill.AutofillTestHelper;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.payments.PaymentRequestTestRule.AppPresence;
 import org.chromium.chrome.browser.payments.PaymentRequestTestRule.FactorySpeed;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
+import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.components.autofill.AutofillProfile;
 
 import java.util.concurrent.TimeoutException;
@@ -30,14 +32,19 @@ import java.util.concurrent.TimeoutException;
  * timeouts.
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
+@Batch(Batch.PER_CLASS)
 public class PaymentRequestNoUpdateWithTest {
-    @Rule
-    public PaymentRequestTestRule mRule =
-            new PaymentRequestTestRule("payment_request_no_update_with_test.html");
+    public final AutoResetCtaTransitTestRule mCtaTestRule =
+            ChromeTransitTestRules.fastAutoResetCtaActivityRule();
+
+    public final PaymentRequestTestRule mRule =
+            new PaymentRequestTestRule(mCtaTestRule, "payment_request_no_update_with_test.html");
+
+    @Rule public final RuleChain mRuleChain = RuleChain.outerRule(mCtaTestRule).around(mRule);
 
     @Before
-    public void setUp() throws TimeoutException {
+    public void setUp() throws TimeoutException, InterruptedException {
+        mRule.startOnTestPage();
         AutofillTestHelper helper = new AutofillTestHelper();
         helper.setProfile(
                 AutofillProfile.builder()

@@ -37,31 +37,21 @@ const base::FeatureParam<int> kGlicOSIconVariantParam{&kGlicOSIconVariant,
 
 BASE_FEATURE(kGlicOrphanedReattachment, base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGlicSelectionPrompt, base::FEATURE_DISABLED_BY_DEFAULT);
-
-const base::FeatureParam<bool> kGlicSelectionShowCopyButtons{
-    &kGlicSelectionPrompt, "show_copy_buttons", false};
-const base::FeatureParam<bool> kGlicSelectionAutoSendPrompt{
-    &kGlicSelectionPrompt, "auto_send_prompt", true};
-const base::FeatureParam<std::string> kGlicSelectionPromptCta{
-    &kGlicSelectionPrompt, "cta", kGlicSelectionPromptCtaExplain};
-const base::FeatureParam<std::string> kGlicSelectionDefaultBlockedSites{
-    &kGlicSelectionPrompt, "GlicSelectionDefaultBlockedSites", ""};
-
-base::flat_set<std::string> GetGlicSelectionDefaultBlockedSites() {
-  std::string sites_str = kGlicSelectionDefaultBlockedSites.Get();
-  std::vector<std::string> sites = base::SplitString(
-      sites_str, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  return base::flat_set<std::string>(std::move(sites));
-}
-
 BASE_FEATURE(kGlicSelectionOverlayPrompt, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kGlicSelectionOverlayPromptBox, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGlicSelectionOverlayDogfoodFeedback,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(std::string,
+                   kGlicSelectionOverlayDogfoodFeedbackUrl,
+                   &kGlicSelectionOverlayDogfoodFeedback,
+                   "");
 BASE_FEATURE(kGlicSelectionSuggestions, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(std::string,
                    kGlicSelectionSuggestionsCapabilities,
                    &kGlicSelectionSuggestions,
                    "no_override");
+BASE_FEATURE(kQuickAnswersSelectionSuggestions,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicSelectionSmallChip, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<bool> kGlicSelectionSmallChipOnTop{
@@ -71,18 +61,6 @@ BASE_FEATURE(kGlicSuggestionContextMenu, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicClearTurnIdOnPanelWillOpen,
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kAutoOpenGlicForPdf, base::FEATURE_DISABLED_BY_DEFAULT);
-const base::FeatureParam<bool> kAutoOpenGlicForPdfWithOnboarding({
-    &kAutoOpenGlicForPdf,
-    "AutoOpenGlicForPdfWithOnboarding",
-    true,
-});
-const base::FeatureParam<base::TimeDelta> kAutoOpenGlicCooldown({
-    &kAutoOpenGlicForPdf,
-    "AutoOpenGlicCooldown",
-    base::Hours(1),
-});
 
 BASE_FEATURE(kGlicInvoke, base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -106,8 +84,6 @@ const base::FeatureParam<bool> kGlicContextMenuWithOnboarding{
     &kGlicContextMenu, "WithOnboarding", false};
 
 BASE_FEATURE(kGlicContextMenuBelowSearch, base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kGlicDynamicChromeTools, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicTextSelectionContextMenu,
              FEATURE_ENABLED_BY_DEFAULT_NON_ANDROID);
@@ -264,17 +240,27 @@ BASE_FEATURE(kGlicShowForSignedOut,
 BASE_FEATURE(kGlicProcessCounterAbuseVerdict,
              base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kGlicNoWebUiLoader, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGlicNativeLoadingPlaceholder, base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGeic, base::FEATURE_DISABLED_BY_DEFAULT);
+bool IsGlicNativeLoadingPlaceholderEnabled() {
+  return base::FeatureList::IsEnabled(kGlicNativeLoadingPlaceholder) &&
+         !base::FeatureList::IsEnabled(kGlicNoWebUiLoader);
+}
+
+BASE_FEATURE(kGeic, FEATURE_ENABLED_BY_DEFAULT_NON_ANDROID);
 
 const base::FeatureParam<bool> kGeicEnabledParam{&kGeic, "enabled", true};
 
 BASE_FEATURE(kGeicActuation, base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kGeicSsr, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGeicProviderChangePrompt, FEATURE_ENABLED_BY_DEFAULT_NON_ANDROID);
+
 const base::FeatureParam<std::string> kGeicGuestURL{&kGeic, "geic-guest-url",
                                                     ""};
 
-BASE_FEATURE(kGeicFre, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGeicFre, FEATURE_ENABLED_BY_DEFAULT_ALL_PLATFORMS);
 
 BASE_FEATURE(kGlicHotkeyLocalScope,
 #if BUILDFLAG(IS_ANDROID)
@@ -316,27 +302,23 @@ BASE_FEATURE(kGlicAndroidTablet, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicVoice, base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kGlicWebActuationDisclosureCountryVariant,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kGlicExperimentalOptInDialogNonScrollable,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGlicMarketingAutoOpen, base::FEATURE_ENABLED_BY_DEFAULT);
-const base::FeatureParam<std::string> kGlicMarketingUrlAllowlist{
-    &kGlicMarketingAutoOpen, "allowlisted_urls",
 #if BUILDFLAG(IS_ANDROID)
-    "https://www.google.com/chrome/ai-innovations/gemini-in-chrome/,"
-    "https://www.google.com/chrome/campaigns/gic-on-android/"
-#else
-    ""
-#endif
-};
-const base::FeatureParam<int> kGlicMarketingAutoOpenMaxCount{
-    &kGlicMarketingAutoOpen, "max_impressions", 1};
+BASE_FEATURE(kGlicNativeFreAndroid, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif  // BUILDFLAG(IS_ANDROID)
 
 BASE_FEATURE(kGlicActionFirstFRE, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicWarmOnNudge, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicWarmOnIph, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGlicWarmOnGeminiWeb, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicBackfillWarmingUsePerformanceManager,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -356,8 +338,39 @@ const base::FeatureParam<int> kGlicShowNotTellTutorialsArm{
 
 BASE_FEATURE(kGlicActivityHub, base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGlicWhatsNewLuminous, base::FEATURE_DISABLED_BY_DEFAULT);
+// TODO(b/55358603): Remove, together with the legacy
+// IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_* strings, once launched.
+BASE_FEATURE(kGlicExperimentalTriggeringOsNotificationUpdatedStrings,
+             FEATURE_ENABLED_BY_DEFAULT_NON_ANDROID);
 
-BASE_FEATURE(kGlicInvokeErrorRecoveryFixes,
-             FEATURE_ENABLED_BY_DEFAULT_ALL_PLATFORMS);
+BASE_FEATURE(kGlicRecordPeriodicInstanceCountMetrics,
+             // Enabled on all platforms including BUILDFLAG(IS_ANDROID);
+             // cpp_feature_parser requires a literal FeatureState constant.
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGlicWhatsNewLuminous, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGlicBrowserCommandFallback, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(std::string,
+                   kGlicBrowserCommandFallbackUrl,
+                   &kGlicBrowserCommandFallback,
+                   "https://support.google.com/chrome/answer/17140089");
+
+BASE_FEATURE(kGlicForceFcmExperimentalTriggerFailure,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGlicExperimentalTriggeringNavigationReconnectGrace,
+             // Enabled on all platforms including BUILDFLAG(IS_ANDROID);
+             // cpp_feature_parser requires a literal FeatureState constant.
+             base::FEATURE_ENABLED_BY_DEFAULT);
+const base::FeatureParam<base::TimeDelta>
+    kGlicExperimentalTriggeringNavigationReconnectGracePeriod{
+        &kGlicExperimentalTriggeringNavigationReconnectGrace, "grace_period",
+        base::Seconds(10)};
+
+BASE_FEATURE(kGlicAskGeminiWayfinding, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGlicExperimentalTriggeringKeepInstanceOnUnbind,
+             // Enabled on all platforms including BUILDFLAG(IS_ANDROID);
+             // cpp_feature_parser requires a literal FeatureState constant.
+             base::FEATURE_ENABLED_BY_DEFAULT);
 }  // namespace features

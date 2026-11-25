@@ -24,11 +24,11 @@ import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Restriction;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.chrome.test.util.browser.LocationSettingsTestUtil;
 import org.chromium.components.browser_ui.site_settings.WebsitePreferenceBridgeJni;
@@ -58,18 +58,14 @@ import java.util.concurrent.TimeoutException;
 
 /** Tests for the permission update message. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-    ContentSwitches.USE_FAKE_DEVICE_FOR_MEDIA_STREAM
-})
+@CommandLineFlags.Add(ContentSwitches.USE_FAKE_DEVICE_FOR_MEDIA_STREAM)
 public class PermissionUpdateMessageTest {
     private static final String GEOLOCATION_PAGE = "/chrome/test/data/geolocation/geolocation.html";
     private static final String MEDIASTREAM_PAGE = "/content/test/data/media/getusermedia.html";
 
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
-    public PermissionTestRule mPermissionRule =
-            new PermissionTestRule(mActivityTestRule.getActivityTestRule());
+    public PermissionTestRule mPermissionRule = new PermissionTestRule(mActivityTestRule);
 
     @Rule
     public RuleChain mRuleChain = RuleChain.outerRule(mActivityTestRule).around(mPermissionRule);
@@ -128,7 +124,7 @@ public class PermissionUpdateMessageTest {
 
     @Before
     public void setUp() throws Exception {
-        mPermissionRule.setUpActivity();
+        mActivityTestRule.startOnBlankPage();
     }
 
     /**
@@ -230,10 +226,10 @@ public class PermissionUpdateMessageTest {
         final String url = mPermissionRule.getURL(testPage);
         try {
             setNativeContentSetting(contentSettingsType, url, ContentSetting.ALLOW);
-            mPermissionRule.loadUrl(mPermissionRule.getURL(testPage));
+            mActivityTestRule.loadUrl(mPermissionRule.getURL(testPage));
 
             if (javascriptToExecute != null && !javascriptToExecute.isEmpty()) {
-                mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab(javascriptToExecute);
+                mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(javascriptToExecute);
             }
 
             expectMessagesCount(windowAndroid, 1);
@@ -259,7 +255,7 @@ public class PermissionUpdateMessageTest {
                         mActivityTestRule.getActivity(),
                         "about:blank",
                         /* incognito= */ false);
-                ChromeTabUtils.switchTabInCurrentTabModel(mActivityTestRule.getActivity(), 1);
+                ChromeTriggers.selectTabProgrammatically(mActivityTestRule.getActivity(), 1);
                 expectMessagesCount(windowAndroid, 1);
             }
 
@@ -367,8 +363,9 @@ public class PermissionUpdateMessageTest {
 
         try {
             setNativeContentSetting(getGeolocationType(), locationUrl, ContentSetting.ALLOW);
-            mPermissionRule.loadUrl(mPermissionRule.getURL(GEOLOCATION_PAGE));
-            mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab("initiate_geolocation()");
+            mActivityTestRule.loadUrl(mPermissionRule.getURL(GEOLOCATION_PAGE));
+            mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(
+                    "initiate_geolocation()");
             CriteriaHelper.pollUiThread(
                     () -> {
                         Criteria.checkThat(

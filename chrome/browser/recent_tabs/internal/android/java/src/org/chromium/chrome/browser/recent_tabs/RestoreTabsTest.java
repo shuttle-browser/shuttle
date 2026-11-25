@@ -16,7 +16,6 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
@@ -42,13 +41,11 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 
 import org.chromium.base.DeviceInfo;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.recent_tabs.ForeignSessionHelper.ForeignSession;
 import org.chromium.chrome.browser.recent_tabs.ForeignSessionHelper.ForeignSessionTab;
 import org.chromium.chrome.browser.recent_tabs.ForeignSessionHelper.ForeignSessionWindow;
@@ -72,7 +69,6 @@ import java.util.function.Supplier;
 
 /** Integration tests for the RestoreTabs feature. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Restriction(DeviceFormFactor.PHONE)
 @DoNotBatch(reason = "Tests startup behaviors that trigger per-session")
 public class RestoreTabsTest {
@@ -101,7 +97,7 @@ public class RestoreTabsTest {
         mForeignSessionHelperJniSpy = Mockito.spy(ForeignSessionHelperJni.get());
         org.chromium.chrome.browser.recent_tabs.ForeignSessionHelperJni.setInstanceForTesting(
                 mForeignSessionHelperJniSpy);
-        doReturn(true).when(mForeignSessionHelperJniSpy).isTabSyncEnabled(anyLong());
+        doReturn(true).when(mForeignSessionHelperJniSpy).isTabSyncEnabled(any());
 
         mBottomSheetController =
                 mActivityTestRule
@@ -188,7 +184,7 @@ public class RestoreTabsTest {
                             return true;
                         })
                 .when(mForeignSessionHelperJniSpy)
-                .getMobileAndTabletForeignSessions(anyLong(), anyList());
+                .getMobileAndTabletForeignSessions(any(), anyList());
 
         TabUiTestHelper.enterTabSwitcher(mActivityTestRule.getActivity());
     }
@@ -483,6 +479,6 @@ public class RestoreTabsTest {
                             return true;
                         })
                 .when(mForeignSessionHelperJniSpy)
-                .getMobileAndTabletForeignSessions(anyLong(), anyList());
+                .getMobileAndTabletForeignSessions(any(), anyList());
     }
 }

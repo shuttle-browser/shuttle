@@ -9,6 +9,8 @@
 #include "base/metrics/histogram_macros.h"
 #include "base/task/sequenced_task_runner.h"
 #include "build/build_config.h"
+#include "chrome/browser/notifications/metrics/notification_metrics_logger.h"
+#include "chrome/browser/notifications/metrics/notification_metrics_logger_factory.h"
 #include "chrome/browser/notifications/notification_common.h"
 #include "chrome/browser/notifications/notification_permission_context.h"
 #include "chrome/browser/permissions/notifications_engagement_service_factory.h"
@@ -19,7 +21,7 @@
 #include "components/permissions/permission_util.h"
 #include "content/public/browser/notification_event_dispatcher.h"
 #include "services/metrics/public/cpp/ukm_recorder.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/message_center/message_center_stats_collector.h"
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -36,6 +38,8 @@ NonPersistentNotificationHandler::~NonPersistentNotificationHandler() = default;
 void NonPersistentNotificationHandler::OnShow(
     Profile* profile,
     const std::string& notification_id) {
+  NotificationMetricsLoggerFactory::GetForBrowserContext(profile)
+      ->LogNonPersistentNotificationShown();
   content::NotificationEventDispatcher::GetInstance()
       ->DispatchNonPersistentShowEvent(notification_id);
 }
@@ -46,6 +50,13 @@ void NonPersistentNotificationHandler::OnClose(
     const std::string& notification_id,
     bool by_user,
     base::OnceClosure completed_closure) {
+  if (by_user) {
+    NotificationMetricsLoggerFactory::GetForBrowserContext(profile)
+        ->LogNonPersistentNotificationClosedByUser();
+  } else {
+    NotificationMetricsLoggerFactory::GetForBrowserContext(profile)
+        ->LogNonPersistentNotificationClosedProgrammatically();
+  }
   content::NotificationEventDispatcher::GetInstance()
       ->DispatchNonPersistentCloseEvent(notification_id,
                                         std::move(completed_closure));
@@ -58,6 +69,8 @@ void NonPersistentNotificationHandler::OnClick(
     const std::optional<int>& action_index,
     const std::optional<std::u16string>& reply,
     base::OnceClosure completed_closure) {
+  NotificationMetricsLoggerFactory::GetForBrowserContext(profile)
+      ->LogNonPersistentNotificationClick();
   // Non persistent notifications don't allow buttons or replies.
   // https://notifications.spec.whatwg.org/#create-a-notification
   CHECK(!action_index.has_value(), base::NotFatalUntil::M161);
@@ -104,7 +117,7 @@ void NonPersistentNotificationHandler::DidDispatchClickEvent(
   if (!success) {
     NavigateParams params(profile, origin, ui::PAGE_TRANSITION_LINK);
 
-    params.disposition = WindowOpenDisposition::kNewForegroundTab;
+    params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
     params.window_action = NavigateParams::WindowAction::kShowWindow;
     Navigate(&params);
 

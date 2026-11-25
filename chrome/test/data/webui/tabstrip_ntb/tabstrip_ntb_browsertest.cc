@@ -82,7 +82,8 @@ IN_PROC_BROWSER_TEST_F(TabStripNtbBrowserTest, ServiceSetBeforeConstruction) {
 IN_PROC_BROWSER_TEST_F(TabStripNtbBrowserTest,
                        CallsBeforeServiceIsSetAreDelivered) {
   base::UserActionTester user_action_tester;
-  RunTest("tabstrip_ntb/new_tab_button_test.js", "mocha.run()");
+  RunTest("tabstrip_ntb/new_tab_button_test.js",
+          "runMochaTest('NewTabButtonTest', 'ClicksNewTabButton')");
 
   TabStripNtbUI::SetTabStripServiceForWebContents(
       chrome_test_utils::GetActiveWebContents(this), tab_strip_service_.get());
@@ -90,6 +91,38 @@ IN_PROC_BROWSER_TEST_F(TabStripNtbBrowserTest,
   ASSERT_TRUE(base::test::RunUntil(
       [&]() { return tab_strip_.GetTabs().size() == 1u; }));
   EXPECT_EQ(1, user_action_tester.GetActionCount("MobileToolbarNewTab"));
+}
+
+IN_PROC_BROWSER_TEST_F(TabStripNtbBrowserTest, SetButtonVisible) {
+  content::WebContents* web_contents =
+      chrome_test_utils::GetActiveWebContents(this);
+  ASSERT_TRUE(content::NavigateToURL(web_contents,
+                                     GURL(chrome::kChromeUITabStripNtbURL)));
+
+  constexpr char kIsButtonVisibleJs[] =
+      "Boolean(document.querySelector('tabstrip-ntb-app')"
+      "?.shadowRoot?.querySelector('new-tab-button')"
+      "?.hasAttribute('visible'))";
+  constexpr char kButtonPointerEventsJs[] =
+      "getComputedStyle(document.querySelector('tabstrip-ntb-app')"
+      ".shadowRoot.querySelector('new-tab-button')).pointerEvents";
+
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return content::EvalJs(web_contents, kIsButtonVisibleJs).ExtractBool();
+  }));
+  EXPECT_EQ("auto", content::EvalJs(web_contents, kButtonPointerEventsJs));
+
+  TabStripNtbUI::SetButtonVisibleForWebContents(web_contents, false);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return !content::EvalJs(web_contents, kIsButtonVisibleJs).ExtractBool();
+  }));
+  EXPECT_EQ("none", content::EvalJs(web_contents, kButtonPointerEventsJs));
+
+  TabStripNtbUI::SetButtonVisibleForWebContents(web_contents, true);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return content::EvalJs(web_contents, kIsButtonVisibleJs).ExtractBool();
+  }));
+  EXPECT_EQ("auto", content::EvalJs(web_contents, kButtonPointerEventsJs));
 }
 
 }  // namespace

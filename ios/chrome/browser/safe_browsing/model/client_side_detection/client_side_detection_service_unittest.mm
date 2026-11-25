@@ -4,23 +4,25 @@
 
 #import "ios/chrome/browser/safe_browsing/model/client_side_detection/client_side_detection_service.h"
 
+#import <utility>
 #import <vector>
 
+#import "base/callback_list.h"
 #import "base/files/file_path.h"
 #import "base/functional/bind.h"
 #import "base/observer_list.h"
 #import "base/path_service.h"
-#import "base/scoped_observation.h"
 #import "base/strings/strcat.h"
 #import "base/task/thread_pool/thread_pool_instance.h"
 #import "base/test/bind.h"
+#import "base/test/mock_callback.h"
 #import "base/test/scoped_feature_list.h"
 #import "base/test/test_future.h"
 #import "base/threading/thread_restrictions.h"
 #import "components/optimization_guide/core/delivery/model_info.h"
 #import "components/optimization_guide/core/delivery/optimization_guide_model_provider.h"
 #import "components/prefs/pref_service.h"
-#import "components/safe_browsing/core/browser/client_side_phishing_model.h"
+#import "components/safe_browsing/core/browser/client_side_detection/client_side_phishing_model.h"
 #import "components/safe_browsing/core/common/features.h"
 #import "components/safe_browsing/core/common/phishing_classifier/phishing_classifier.h"
 #import "components/safe_browsing/core/common/phishing_classifier/phishing_image_embedder.h"
@@ -123,30 +125,19 @@ class ClientSidePhishingModelObserverTracker
       model_observers_;
 };
 
-class ScorerWaiter : public ClientSideDetectionService::Observer {
+class ScorerWaiter {
  public:
   explicit ScorerWaiter(ClientSideDetectionService* service) {
-    scoped_observation_.Observe(service);
+    subscription_ = service->RegisterCallbackForScorerUpdates(
+        future_.GetRepeatingCallback());
   }
-  ~ScorerWaiter() override = default;
+  ~ScorerWaiter() = default;
 
   void Wait() { ASSERT_TRUE(future_.Wait()); }
 
-  // ClientSideDetectionService::Observer:
-  void OnScorerChanged() override { future_.GetCallback().Run(); }
-
  private:
   base::test::TestFuture<void> future_;
-  base::ScopedObservation<ClientSideDetectionService,
-                          ClientSideDetectionService::Observer>
-      scoped_observation_{this};
-};
-
-// Mock observer to verify when the ClientSideDetectionService notifies its
-// observers about changes to the active Scorer instance.
-class MockObserver : public ClientSideDetectionService::Observer {
- public:
-  MOCK_METHOD(void, OnScorerChanged, (), (override));
+  base::CallbackListSubscription subscription_;
 };
 
 class ClientSideDetectionServiceTest : public PlatformTest {
@@ -228,7 +219,7 @@ class ClientSideDetectionServiceTest : public PlatformTest {
   }
 
   void TriggerModelUpdatedForTesting(ClientSideDetectionService* service) {
-    service->OnModelUpdated();
+    service->OnModelUpdatedInternal();
   }
 
   int GetCurrentModelGeneration(ClientSideDetectionService* service) {
@@ -498,21 +489,19 @@ TEST_F(ClientSideDetectionServiceTest, StaleTasksAreDiscarded) {
 
   int current_gen = GetCurrentModelGeneration(csd_service_.get());
 
-  MockObserver observer;
-  base::ScopedObservation<ClientSideDetectionService,
-                          ClientSideDetectionService::Observer>
-      scoped_observation(&observer);
-  scoped_observation.Observe(csd_service_.get());
+  base::MockRepeatingClosure scorer_changed;
+  base::CallbackListSubscription subscription =
+      csd_service_->RegisterCallbackForScorerUpdates(scorer_changed.Get());
 
   // 2. Call with stale ID. Should be discarded.
-  EXPECT_CALL(observer, OnScorerChanged()).Times(0);
+  EXPECT_CALL(scorer_changed, Run()).Times(0);
   OnScorerCreatedWithIdForTesting(csd_service_.get(), current_gen - 1, nullptr);
 
   // Scorer should NOT have changed (still non-null).
   EXPECT_THAT(csd_service_->GetScorer(), testing::NotNull());
 
   // 3. Call with current ID. Should be accepted.
-  EXPECT_CALL(observer, OnScorerChanged()).Times(1);
+  EXPECT_CALL(scorer_changed, Run()).Times(1);
   OnScorerCreatedWithIdForTesting(csd_service_.get(), current_gen, nullptr);
 
   // Scorer should have changed (now null because we passed nullptr).
@@ -633,12 +622,12 @@ TEST_F(ClientSideDetectionServiceTest, NoImageEmbeddingMatch) {
 
   // Setup TargetEmbeddings.
   constexpr float threshold = 0.95f;
-  tflite::task::vision::FeatureVector target_fv;
+  std::vector<float> target_embedding;
   for (int i = 0; i < 64; ++i) {
-    target_fv.add_value_float(i / 100.0);
+    target_embedding.push_back(i / 100.0);
   }
   std::vector<TargetEmbedding> test_targets;
-  test_targets.push_back(TargetEmbedding(target_fv, threshold));
+  test_targets.emplace_back(std::move(target_embedding), threshold);
   csd_service_->SetTargetImageEmbeddingsForTesting(std::move(test_targets));
 
   // ClientPhishingRequest's image embedding doesn't meet threshold.
@@ -669,12 +658,9 @@ TEST_F(ClientSideDetectionServiceTest, ImageEmbeddingMatch) {
 
   // Setup TargetEmbeddings.
   constexpr float threshold = 0.95f;
-  tflite::task::vision::FeatureVector target_fv;
-  for (int i = 0; i < 64; ++i) {
-    target_fv.add_value_float(0.1);
-  }
+  std::vector<float> target_embedding(64, 0.1f);
   std::vector<TargetEmbedding> test_targets;
-  test_targets.push_back(TargetEmbedding(target_fv, threshold));
+  test_targets.emplace_back(std::move(target_embedding), threshold);
   csd_service_->SetTargetImageEmbeddingsForTesting(std::move(test_targets));
 
   // Add an image_feature_embedding that will match.
@@ -701,12 +687,12 @@ TEST_F(ClientSideDetectionServiceTest, ImageEmbeddingSkipped_AlreadyPhishing) {
 
   // Setup TargetEmbeddings.
   constexpr float threshold = 0.95f;
-  tflite::task::vision::FeatureVector target_fv;
+  std::vector<float> target_embedding;
   for (int i = 0; i < 64; ++i) {
-    target_fv.add_value_float(i / 100.0);
+    target_embedding.push_back(i / 100.0);
   }
   std::vector<TargetEmbedding> test_targets;
-  test_targets.push_back(TargetEmbedding(target_fv, threshold));
+  test_targets.emplace_back(std::move(target_embedding), threshold);
   csd_service_->SetTargetImageEmbeddingsForTesting(std::move(test_targets));
 
   ClientPhishingRequest request;
@@ -784,19 +770,17 @@ TEST_F(ClientSideDetectionServiceTest,
   // Scorer should be cleared by the pref change.
   ASSERT_THAT(csd_service_->GetScorer(), testing::IsNull());
 
-  // Set up a mock observer to listen for scorer changes.
-  MockObserver observer;
-  base::ScopedObservation<ClientSideDetectionService,
-                          ClientSideDetectionService::Observer>
-      scoped_observation(&observer);
-  scoped_observation.Observe(csd_service_.get());
+  // Set up a mock callback to listen for scorer changes.
+  base::MockRepeatingClosure scorer_changed;
+  base::CallbackListSubscription subscription =
+      csd_service_->RegisterCallbackForScorerUpdates(scorer_changed.Get());
 
-  // Expect OnScorerChanged to NOT be called.
-  EXPECT_CALL(observer, OnScorerChanged()).Times(0);
+  // Expect the callback to NOT be called.
+  EXPECT_CALL(scorer_changed, Run()).Times(0);
 
   // 3. Trigger a null model update.
   // If still subscribed, this would trigger OnModelUpdated which notifies
-  // observers. If unsubscribed, observers should NOT be notified.
+  // subscribers. If unsubscribed, subscribers should NOT be notified.
   model_observer_tracker_->NotifyModelFileUpdateNull();
 
   // Flush to process any async callbacks if they were triggered (they shouldn't

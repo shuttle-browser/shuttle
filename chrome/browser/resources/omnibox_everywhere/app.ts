@@ -16,7 +16,7 @@ import '//resources/cr_elements/icons.html.js';
 import {ColorChangeUpdater} from '//resources/cr_components/color_change_listener/colors_css_updater.js';
 import type {ComposeboxState} from '//resources/cr_components/composebox/common.js';
 import type {ComposeboxVoiceSearchElement, VoicePermissionPromptState} from '//resources/cr_components/composebox/composebox_voice_search.js';
-import {browserProxyFactory} from '//resources/cr_components/most_visited/most_visited.mojom-webui.js';
+import {browserProxyFactory as mostVisitedProxyFactory} from '//resources/cr_components/most_visited/most_visited.mojom-webui.js';
 import type {MostVisitedInfo} from '//resources/cr_components/most_visited/most_visited.mojom-webui.js';
 import type {SearchAnimatedGlowElement} from '//resources/cr_components/search/animated_glow.js';
 import {SearchboxBrowserProxy} from '//resources/cr_components/searchbox/searchbox_browser_proxy.js';
@@ -32,11 +32,11 @@ import {ModelMode, ToolMode} from '//resources/mojo/components/omnibox/composebo
 
 import {getCss} from './app.css.js';
 import {getHtml} from './app.html.js';
-import {OmniboxEverywhereBrowserProxyImpl} from './browser_proxy.js';
 import type {OmniboxEverywhereComposeboxElement} from './composebox.js';
 import {FreChinMode} from './fre_chin.js';
 import type {ShowHotkeyDropdownDetail} from './fre_chin.js';
 import type {OmniboxEverywhereOmniboxElement} from './omnibox.js';
+import {browserProxyFactory} from './omnibox_everywhere.mojom-webui.js';
 import type {ComposeboxInitialState} from './omnibox_everywhere.mojom-webui.js';
 
 const PERMISSION_PROMPT_CSS_CLASS = 'permission-prompt-showing';
@@ -90,8 +90,6 @@ export class OmniboxEverywhereAppElement extends
     return {
       isComposeboxMode_: {type: Boolean},
       searchboxLayoutMode_: {type: String},
-      caretAnimationsEnabled_: {type: Boolean},
-      disableComposeboxAnimation_: {type: Boolean},
       usePecApi_: {type: Boolean},
       isOblongShape_: {type: Boolean},
       contextManagementInComposeboxEnabled_: {type: Boolean},
@@ -137,20 +135,18 @@ export class OmniboxEverywhereAppElement extends
         reflect: true,
         attribute: 'is-active',
       },
-      isPendingScreenshot_: {type: Boolean},
+      isExpanded_: {type: Boolean},
+      isPendingContextUpload_: {type: Boolean},
     };
   }
 
   protected accessor isHotkeyDropdownOpen_: boolean = false;
   protected accessor isActive_: boolean = true;
+  private accessor isExpanded_: boolean = true;
   protected accessor isComposeboxMode_: boolean = false;
-  protected accessor isPendingScreenshot_: boolean = false;
+  protected accessor isPendingContextUpload_: boolean = false;
   protected accessor searchboxLayoutMode_: string =
       loadTimeData.getString('searchboxLayoutMode');
-  protected accessor caretAnimationsEnabled_: boolean =
-      loadTimeData.getBoolean('caretAnimationEnabled');
-  protected accessor disableComposeboxAnimation_: boolean =
-      loadTimeData.getBoolean('composeboxAnimationDisabled');
   protected accessor usePecApi_: boolean =
       loadTimeData.getBoolean('contextualMenuUsePecApi');
   protected accessor isOblongShape_: boolean =
@@ -177,8 +173,8 @@ export class OmniboxEverywhereAppElement extends
   protected accessor smallFont_: boolean = loadTimeData.getBoolean('smallFont');
   protected accessor hideTitle_: boolean =
       loadTimeData.getBoolean('omniboxEverywhereMostVisitedHideTitle');
-  protected accessor hasMostVisitedTiles_: boolean = false;
-  protected accessor freStage_: FreStage =
+  private accessor hasMostVisitedTiles_: boolean = false;
+  private accessor freStage_: FreStage =
       (loadTimeData.valueExists('initialFreStage') ?
            loadTimeData.getInteger('initialFreStage') :
            FreStage.kNone) as FreStage;
@@ -189,7 +185,13 @@ export class OmniboxEverywhereAppElement extends
 
   private isPersistentMode_: boolean =
       loadTimeData.getBoolean('isPersistentMode');
-  private screenshotOriginWasSearchbox_: boolean = false;
+  // Tracks whether the current pending context upload (screenshot capture or
+  // native file chooser) was initiated while the user was in the Searchbox
+  // (`!isComposeboxMode_`) rather than already inside the Composebox. If the
+  // user cancels the picker, this flag tells `onScreenshotCaptureCancelled` to
+  // return the view back to the Searchbox instead of leaving an empty
+  // Composebox open.
+  private contextUploadOriginWasSearchbox_: boolean = false;
   private eventTracker_ = new EventTracker();
   private mostVisitedListenerId_: number|null = null;
   private searchboxListenerIds_: number[] = [];
@@ -210,6 +212,10 @@ export class OmniboxEverywhereAppElement extends
     this.eventTracker_.add(window, 'focus', this.onWindowFocus_.bind(this));
     this.eventTracker_.add(window, 'blur', this.onWindowBlur_.bind(this));
     this.eventTracker_.add(window, 'click', this.onAppClick_.bind(this));
+    this.eventTracker_.add(window, 'mousedown', this.onMousedown_.bind(this));
+    this.eventTracker_.add(this, 'text-input-focused', () => {
+      this.isExpanded_ = true;
+    });
     this.eventTracker_.add(
         document, 'visibilitychange', this.onVisibilitychange_.bind(this));
     this.eventTracker_.add(
@@ -228,10 +234,11 @@ export class OmniboxEverywhereAppElement extends
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
     if (this.dynamicSizing_) {
-      // In persistent mode, rest in the small 480px state (4 MVT tiles) when
-      // inactive, and expand both the searchbox and MVT row (5 tiles) when
-      // focused.
-      this.smallLoomnibox_ = this.isPersistentMode_ && !this.isActive_;
+      // In persistent mode, rest in the small 480px state (4 MVT tiles) until
+      // the text input is focused; then stay expanded (5 tiles) until the
+      // browser demotes the widget (`onDemoted_`). Transient window blurs
+      // (e.g. native menus) intentionally do not shrink it.
+      this.smallLoomnibox_ = this.isResting_();
     }
   }
 
@@ -243,7 +250,7 @@ export class OmniboxEverywhereAppElement extends
   private setupListeners_() {
     const onOpenComposebox = (initialState: ComposeboxInitialState|null) => {
       const state: Partial<ComposeboxState> = {};
-      let isPendingScreenshot = false;
+      let isPendingContextUpload = false;
       if (initialState) {
         if (initialState.tab) {
           state.files = [{
@@ -266,22 +273,39 @@ export class OmniboxEverywhereAppElement extends
             initialState.model !== ModelMode.kUnspecified) {
           state.model = initialState.model;
         }
-        if (initialState.isPendingScreenshot) {
-          isPendingScreenshot = true;
+        if (initialState.isPendingContextUpload) {
+          isPendingContextUpload = true;
         }
       }
-      this.openComposebox(state, isPendingScreenshot);
+      this.openComposebox(state, isPendingContextUpload);
     };
 
     const onContextMenuClosed = () => {
       this.composebox?.onContextMenuClosed();
       this.searchbox?.onContextMenuClosed();
+      // The composebox restores input focus after its context menu closes,
+      // except at the 480px resting size, where focusing would expand it.
+      if (this.isComposeboxMode_ && !this.isResting_()) {
+        this.focusActiveInput_();
+      }
     };
 
+    // Invoked when a pending screenshot capture or native file chooser is
+    // cancelled. If the upload flow started from the Searchbox (which
+    // pre-transitioned into the collapsed Composebox pill so the widget could
+    // shrink before presenting the native UI), restore the Searchbox view and
+    // focus its input; otherwise keep the existing Composebox open and restore
+    // its suggestions.
+    // TODO(b/581982262): Rename `onScreenshotCaptureCancelled` (and its mojom
+    // method) to `onContextUploadCancelled` now that it is shared with the
+    // native file chooser.
     const onScreenshotCaptureCancelled = async () => {
-      this.isPendingScreenshot_ = false;
-      if (this.screenshotOriginWasSearchbox_) {
-        this.screenshotOriginWasSearchbox_ = false;
+      this.isPendingContextUpload_ = false;
+      if (this.contextUploadOriginWasSearchbox_) {
+        this.contextUploadOriginWasSearchbox_ = false;
+        // TODO(b/585172152): Preserve any query text typed in the searchbox
+        // when reverting a cancelled screenshot or file upload back to the
+        // searchbox.
         this.setIsComposebox_(false);
         await this.updateComplete;
         this.searchbox?.focusInput?.();
@@ -313,7 +337,7 @@ export class OmniboxEverywhereAppElement extends
 
     if (this.mostVisitedEnabled_) {
       this.mostVisitedListenerId_ =
-          browserProxyFactory.getInstance()
+          mostVisitedProxyFactory.getInstance()
               .callbackRouter.setMostVisitedInfo.addListener(
                   (info: MostVisitedInfo) => {
                     this.hasMostVisitedTiles_ =
@@ -322,7 +346,7 @@ export class OmniboxEverywhereAppElement extends
     }
 
     const omniboxEverywhereCallbackRouter =
-        OmniboxEverywhereBrowserProxyImpl.getInstance().callbackRouter;
+        browserProxyFactory.getInstance().callbackRouter;
     this.omniboxEverywhereListenerIds_.push(
         omniboxEverywhereCallbackRouter.openComposebox.addListener(
             onOpenComposebox),
@@ -332,12 +356,21 @@ export class OmniboxEverywhereAppElement extends
             () => this.searchbox?.onOverflowMenuClosed()),
         omniboxEverywhereCallbackRouter.onScreenshotCaptureCancelled
             .addListener(onScreenshotCaptureCancelled),
+        omniboxEverywhereCallbackRouter.focusInput.addListener(() => {
+          // Expand even if the input can't take focus (e.g. under the FRE
+          // intro modal).
+          this.isExpanded_ = true;
+          this.focusActiveInput_();
+        }),
+        omniboxEverywhereCallbackRouter.onDemoted.addListener(() => {
+          this.onDemoted_();
+        }),
     );
   }
 
   private removeListeners_() {
     if (this.mostVisitedListenerId_ !== null) {
-      browserProxyFactory.getInstance().callbackRouter.removeListener(
+      mostVisitedProxyFactory.getInstance().callbackRouter.removeListener(
           this.mostVisitedListenerId_);
       this.mostVisitedListenerId_ = null;
     }
@@ -346,7 +379,7 @@ export class OmniboxEverywhereAppElement extends
     }
     this.searchboxListenerIds_ = [];
     const omniboxEverywhereCallbackRouter =
-        OmniboxEverywhereBrowserProxyImpl.getInstance().callbackRouter;
+        browserProxyFactory.getInstance().callbackRouter;
     for (const id of this.omniboxEverywhereListenerIds_) {
       omniboxEverywhereCallbackRouter.removeListener(id);
     }
@@ -362,30 +395,37 @@ export class OmniboxEverywhereAppElement extends
    * 2. WebUI internal action handlers and DOM custom events.
    */
   async openComposebox(
-      state?: Partial<ComposeboxState>, isPendingScreenshot: boolean = false) {
+      state?: Partial<ComposeboxState>,
+      isPendingContextUpload: boolean = false) {
     if (this.isComposeboxMode_) {
-      this.isPendingScreenshot_ = isPendingScreenshot;
-      this.screenshotOriginWasSearchbox_ = false;
-      if (this.composebox) {
-        this.composebox.isPendingScreenshot = isPendingScreenshot;
-      }
-      if (!this.composebox || !state) {
-        return;
-      }
-      for (const file of state.files ?? []) {
-        if ('tabId' in file) {
-          this.composebox.addTabContextHandleCallback(file);
-        } else if ('token' in file && 'fileInfo' in file) {
-          this.composebox.addFileContextFromBrowser(file.token, file.fileInfo);
+      this.isPendingContextUpload_ = isPendingContextUpload;
+      this.contextUploadOriginWasSearchbox_ = false;
+      if (this.composebox && state) {
+        for (const file of state.files ?? []) {
+          if ('tabId' in file) {
+            this.composebox.addTabContextHandleCallback(file);
+          } else if ('token' in file && 'fileInfo' in file) {
+            this.composebox.addFileContextFromBrowser(
+                file.token, file.fileInfo);
+          }
+        }
+        if (state.mode !== undefined && state.mode !== ToolMode.kUnspecified) {
+          this.composebox.getSearchboxHandler().setActiveToolMode(
+              state.mode, false);
+        }
+        if (state.model !== undefined &&
+            state.model !== ModelMode.kUnspecified) {
+          this.composebox.getSearchboxHandler().setActiveModelMode(
+              state.model, false);
         }
       }
-      if (state.mode !== undefined && state.mode !== ToolMode.kUnspecified) {
-        this.composebox.getSearchboxHandler().setActiveToolMode(
-            state.mode, false);
-      }
-      if (state.model !== undefined && state.model !== ModelMode.kUnspecified) {
-        this.composebox.getSearchboxHandler().setActiveModelMode(
-            state.model, false);
+      if (this.composebox) {
+        this.composebox.isPendingContextUpload = isPendingContextUpload;
+        // Focus the input after a + menu action (e.g. picking a model), as
+        // entering composebox mode does below.
+        if (!isPendingContextUpload && state) {
+          this.composebox.focusInput();
+        }
       }
       return;
     }
@@ -412,11 +452,11 @@ export class OmniboxEverywhereAppElement extends
       SearchboxBrowserProxy.getInstance().handler.setActiveToolMode(
           initialMode, false);
     }
-    // Set isPendingScreenshot_ for this transition into Composebox mode so that
-    // the newly mounted composebox element receives the property binding and
-    // suppresses suggestions / glow animation until capture completes.
-    this.isPendingScreenshot_ = isPendingScreenshot;
-    this.screenshotOriginWasSearchbox_ = isPendingScreenshot;
+    // Set isPendingContextUpload_ for this transition into Composebox mode so
+    // that the newly mounted composebox element receives the property binding
+    // and suppresses suggestions / glow animation until capture completes.
+    this.isPendingContextUpload_ = isPendingContextUpload;
+    this.contextUploadOriginWasSearchbox_ = isPendingContextUpload;
     // Clear any active autocomplete suggestion matches on the omnibox searchbox
     // so stale dropdown results do not linger or flash when switching modes or
     // if the user subsequently exits Composebox back to Omnibox.
@@ -426,7 +466,7 @@ export class OmniboxEverywhereAppElement extends
     if (this.composebox) {
       this.composebox.state = composeboxState;
       this.composebox.focusInput();
-      if (!isPendingScreenshot) {
+      if (!isPendingContextUpload) {
         this.composebox.playGlowAnimation();
         this.composebox.queryAutocomplete(/*clearMatches=*/ true);
       }
@@ -491,8 +531,7 @@ export class OmniboxEverywhereAppElement extends
 
   protected onMostVisitedCloseClick_() {
     this.hasMostVisitedTiles_ = false;
-    OmniboxEverywhereBrowserProxyImpl.getInstance()
-        .handler.onDismissMostVisited();
+    browserProxyFactory.getInstance().handler.onDismissMostVisited();
   }
 
   private setIsComposebox_(isComposebox: boolean) {
@@ -500,8 +539,7 @@ export class OmniboxEverywhereAppElement extends
       return;
     }
     this.isComposeboxMode_ = isComposebox;
-    OmniboxEverywhereBrowserProxyImpl.getInstance().handler.setIsComposebox(
-        isComposebox);
+    browserProxyFactory.getInstance().handler.setIsComposebox(isComposebox);
   }
 
   protected onFreClose_() {
@@ -567,7 +605,7 @@ export class OmniboxEverywhereAppElement extends
     SearchboxBrowserProxy.getInstance().handler.openHotkeySettings();
   }
   protected async onOpenComposebox_(e: CustomEvent<ComposeboxState>) {
-    this.screenshotOriginWasSearchbox_ = false;
+    this.contextUploadOriginWasSearchbox_ = false;
     this.setIsComposebox_(true);
     await this.updateComplete;
     const composebox =
@@ -581,11 +619,13 @@ export class OmniboxEverywhereAppElement extends
   }
 
   protected async onCloseComposebox_() {
-    this.isPendingScreenshot_ = false;
-    this.screenshotOriginWasSearchbox_ = false;
+    this.isPendingContextUpload_ = false;
+    this.contextUploadOriginWasSearchbox_ = false;
     this.setIsComposebox_(false);
     await this.updateComplete;
-    this.focusActiveInput_();
+    if (!this.isResting_()) {
+      this.focusActiveInput_();
+    }
   }
 
   private onKeyDown_(e: KeyboardEvent) {
@@ -624,10 +664,19 @@ export class OmniboxEverywhereAppElement extends
 
   protected async onComposeboxSubmit_() {
     this.isComposeboxMode_ = false;
-    this.isPendingScreenshot_ = false;
-    this.screenshotOriginWasSearchbox_ = false;
+    this.isPendingContextUpload_ = false;
+    this.contextUploadOriginWasSearchbox_ = false;
     await this.updateComplete;
-    this.focusActiveInput_();
+    if (!this.isResting_()) {
+      this.focusActiveInput_();
+    }
+  }
+
+  // Whether the window is in its 480px resting state (persistent dynamic sizing
+  // mode, not yet expanded by the text input). Focusing the input expands it,
+  // so automatic refocusing is skipped while resting.
+  private isResting_(): boolean {
+    return this.dynamicSizing_ && this.isPersistentMode_ && !this.isExpanded_;
   }
 
   private shouldAutoFocusInput_(): boolean {
@@ -650,12 +699,31 @@ export class OmniboxEverywhereAppElement extends
     } else {
       this.searchbox?.focusInput();
     }
+    this.isExpanded_ = true;
+  }
+
+  private onDemoted_() {
+    this.isExpanded_ = false;
+    // Clear active element focus on demotion so Blink's `FocusController`
+    // does not auto-restore `<input>` focus when `web_contents()->Focus()`
+    // runs on `WM_ACTIVATE(WA_CLICKACTIVE)` before `WM_LBUTTONDOWN`.
+    const activeEl = getDeepActiveElement();
+    if (activeEl instanceof HTMLElement && activeEl !== document.body) {
+      activeEl.blur();
+    }
+    this.clearActivationTimeout_();
   }
 
   private onWindowFocus_() {
     this.isActive_ = true;
-    this.focusActiveInput_();
     this.maybeRecordFreImpression_();
+    // In persistent dynamic sizing mode, only the text input expands the
+    // window. Activation (e.g. a click on a button, a drag, or closing a menu)
+    // only restores input focus if the window is already expanded.
+    if (this.isResting_()) {
+      return;
+    }
+    this.focusActiveInput_();
     this.wasJustActivated_ = true;
     if (this.activationTimeoutId_ !== null) {
       clearTimeout(this.activationTimeoutId_);
@@ -667,7 +735,23 @@ export class OmniboxEverywhereAppElement extends
   }
 
   private onWindowBlur_() {
-    if (this.isHotkeyDropdownOpen_) {
+    // Ignore transient `window` blur events while a native modal UI (the hotkey
+    // dropdown, screenshot picker, or native file chooser sheet) temporarily
+    // takes OS window focus away from the Omnibox Everywhere WebContents.
+    // Otherwise, in persistent mode, `this.isActive_ = false` would shrink the
+    // widget width (`smallLoomnibox_ = true`) while the native sheet/picker is
+    // anchored to it.
+    //
+    // Once `<omnibox-everywhere-composebox>` is mounted, read its live
+    // `composebox.isPendingContextUpload` property rather than `app.ts`'s
+    // initial `this.isPendingContextUpload_` field: when a file upload
+    // completes (`addFileContextFromBrowser`) or the user types in the input
+    // (`onInputInput`), `composebox.ts` clears its own `isPendingContextUpload`
+    // flag directly without notifying `app.ts`, so consulting `this.composebox`
+    // ensures subsequent real window blurs deactivate the app normally.
+    if (this.isHotkeyDropdownOpen_ ||
+        (this.composebox ? this.composebox.isPendingContextUpload :
+                           this.isPendingContextUpload_)) {
       return;
     }
     if (this.isPersistentMode_) {
@@ -688,6 +772,21 @@ export class OmniboxEverywhereAppElement extends
     }
   }
 
+  // When the browser implements window dragging itself (Aura today), a press
+  // on a window drag region (`app-region: drag`) still reaches the page. Its
+  // default action would move focus out of the input (closing the dropdown and
+  // shrinking the window under the cursor right before the drag starts) and
+  // start a text or image selection. `app-region` is inherited, so the pressed
+  // element's computed value approximates the browser's draggable region. The
+  // browser subtracts all no-drag boxes, so don't nest `drag` in `no-drag`.
+  private onMousedown_(e: MouseEvent) {
+    const target = e.composedPath()[0];
+    if (e.button === 0 && target instanceof Element &&
+        getComputedStyle(target).getPropertyValue('app-region') === 'drag') {
+      e.preventDefault();
+    }
+  }
+
   private clearActivationTimeout_() {
     this.wasJustActivated_ = false;
     if (this.activationTimeoutId_ !== null) {
@@ -703,13 +802,17 @@ export class OmniboxEverywhereAppElement extends
     }
 
     await this.updateComplete;
-    this.focusActiveInput_();
     this.maybeRecordFreImpression_();
+    if (this.isResting_()) {
+      return;
+    }
+    this.focusActiveInput_();
   }
 
   // TODO(b/540973063): Extract common voice search lifecycle handling into
   // SearchboxMixin.
   protected async onOpenVoiceSearch_() {
+    this.isExpanded_ = true;
     this.showVoiceSearchOverlay_ = true;
     this.voiceSearchListening_ = true;
     this.voiceSearchReceivedSpeech_ = false;

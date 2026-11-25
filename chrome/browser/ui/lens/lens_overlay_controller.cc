@@ -69,7 +69,6 @@
 #include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
@@ -116,9 +115,9 @@
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
 #include "ui/base/interaction/element_tracker.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/compositor/compositor.h"
 #include "ui/compositor/layer.h"
@@ -176,13 +175,6 @@ std::vector<std::string> JSONArrayToVector(const std::string& json_array) {
   return result;
 }
 
-LensOverlayController* GetLensOverlayControllerFromTabInterface(
-    tabs::TabInterface* tab_interface) {
-  return tab_interface
-             ? tab_interface->GetTabFeatures()->lens_overlay_controller()
-             : nullptr;
-}
-
 bool IsVisualSelectionType(lens::LensOverlaySelectionType selection_type) {
   return selection_type == lens::REGION_SEARCH ||
          selection_type == lens::TAP_ON_EMPTY ||
@@ -209,18 +201,23 @@ LensOverlayController::~LensOverlayController() = default;
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(LensOverlayController,
                                       kOverlaySidePanelWebViewId);
 
+// static
+LensOverlayController* LensOverlayController::From(tabs::TabInterface* tab) {
+  LensSearchController* search_controller = LensSearchController::From(tab);
+  return search_controller ? search_controller->lens_overlay_controller()
+                           : nullptr;
+}
+
 // static.
 LensOverlayController* LensOverlayController::FromWebUIWebContents(
     content::WebContents* webui_web_contents) {
-  return GetLensOverlayControllerFromTabInterface(
-      webui::GetTabInterface(webui_web_contents));
+  return From(webui::GetTabInterface(webui_web_contents));
 }
 
 // static.
 LensOverlayController* LensOverlayController::FromTabWebContents(
     content::WebContents* tab_web_contents) {
-  return GetLensOverlayControllerFromTabInterface(
-      tabs::TabInterface::GetFromContents(tab_web_contents));
+  return From(tabs::TabInterface::GetFromContents(tab_web_contents));
 }
 
 void LensOverlayController::CloseUI() {
@@ -1611,7 +1608,7 @@ void LensOverlayController::ActivityRequestedByOverlay(
           click_modifiers->middle_button, click_modifiers->alt_key,
           click_modifiers->ctrl_key, click_modifiers->meta_key,
           click_modifiers->shift_key,
-          WindowOpenDisposition::kNewForegroundTab));
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab));
 }
 
 void LensOverlayController::AddBackgroundBlur() {
@@ -1665,7 +1662,7 @@ void LensOverlayController::InfoRequestedByOverlay(
           click_modifiers->middle_button, click_modifiers->alt_key,
           click_modifiers->ctrl_key, click_modifiers->meta_key,
           click_modifiers->shift_key,
-          WindowOpenDisposition::kNewForegroundTab));
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab));
 }
 
 void LensOverlayController::IssueLensRegionRequest(

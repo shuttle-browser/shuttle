@@ -3,7 +3,7 @@ id: 2026-09-18-manifest-validating-type
 title: 'Plan: Validating Web App Manifest Mojo Type'
 project: components/webapps
 author: dmurph@chromium.org, AI Assistant
-status: in-progress
+status: completed
 date: '2026-09-18'
 design_doc: ../designs/2026-09-18-manifest-validating-type-design.md
 bug: crbug.com/485890278
@@ -65,34 +65,47 @@ To keep each CL small and independently reviewable:
 - [x] **Milestone 1: Enforce Precondition `C0` in
   `ManifestManagerHost::ParseManifestFromString`**
 - [x] **Milestone 2: Make `Manifest?` Nullable in `ManifestManager` Mojo IPCs**
-- [ ] **Milestone 3: Implement `blink::Manifest` Class, `Builder`, Nested Struct
+- [x] **Milestone 3: Implement `blink::Manifest` Class, `Builder`, Nested Struct
   Traits, and Bridges**
-- [ ] **Milestone 4: Switch `ManifestManagerHost` Internals to `blink::Manifest`
+- [x] **Milestone 4: Switch `ManifestManagerHost` Internals to `blink::Manifest`
   and Contextual Checks `C1`–`C5`**
-- [ ] **Milestone 5: Migrate `ContentBrowserClient::MaybeOverrideManifest` and
+- [x] **Milestone 5: Migrate `ContentBrowserClient::MaybeOverrideManifest` and
   Embedder Overrides**
-- [ ] **Milestone 6: Migrate `RequestManifestDebugInfo` and DevTools
+- [x] **Milestone 6: Migrate `RequestManifestDebugInfo` and DevTools
   `PageHandler`**
-- [ ] **Milestone 7: Migrate `content::Page::GetManifest` and
+- [x] **Milestone 7: Migrate `content::Page::GetManifest` and
   `ContentFaviconDriver`**
-- [ ] **Milestone 8: Migrate `//components/webapps/browser/installable/`**
-- [ ] **Milestone 9: Migrate `//components/webapps/browser/banners/`,
+- [x] **Milestone 8: Migrate `//components/webapps/browser/installable/`**
+- [x] **Milestone 9: Migrate `//components/webapps/browser/banners/`,
   `WebappsClient`, and Android `ShortcutInfo` / `WebAPK`**
-- [ ] **Milestone 10: Migrate `content::PageManifestManager`,
+- [x] **Milestone 10: Migrate `content::PageManifestManager`,
   `ParseManifestFromStringJob`, and `//chrome/browser/web_applications/jobs/`**
-- [ ] **Milestone 11: Migrate `WebAppDataRetriever`, `PrepareInstallInfoJob`,
+- [x] **Milestone 11: Migrate `WebAppDataRetriever`, `PrepareInstallInfoJob`,
   `WebAppCommandScheduler`, UI, and Commands**
-- [ ] **Milestone 12: Migrate `FakeWebContentsManager`, `IsolatedWebAppBuilder`,
+- [x] **Milestone 12: Migrate `FakeWebContentsManager`, `IsolatedWebAppBuilder`,
   and WebApp Unit/Browser Tests**
-- [ ] **Milestone 13: Activate `blink.mojom.Manifest` Mojo Typemap, Remove
+- [x] **Milestone 13: Activate `blink.mojom.Manifest` Mojo Typemap, Remove
   Bridges, and Run Harness Freshness Audit**
 
 ______________________________________________________________________
 
 ## 4. Surprises & Discoveries
 
-_(Document unexpected behaviors, optimizations, or bugs discovered during
-implementation)_
+- **Typemapped Mojom Structs:** In `manifest.mojom`, several types
+  (`DisplayOverrideItem`, `ManifestImageResource`, `ManifestShortcutItem`,
+  `ManifestShareTarget`, `ManifestRelatedApplication`, `ManifestLaunchHandler`,
+  `ManifestTranslationItem`, and `ManifestTabStrip`) are already mapped to
+  `blink::Manifest` nested types in `third_party/blink/public/mojom/BUILD.gn`.
+  Only the 8 new nested structs (`Screenshot`, `FileHandler`, `ProtocolHandler`,
+  `ScopeExtension`, `LockScreen`, `NoteTaking`, `MigrateFrom`, `MigrateTo`)
+  required new `StructTraits` and conversion in temporary bridges.
+- **Default Display Mode:** In `ManifestParser` and Mojo's `Manifest::New()`,
+  `display` defaults to `kUndefined`, which is accurately mirrored by
+  `Manifest::CreateDefault` and `Builder`.
+- **Manifest Constructor:** Kept `Manifest()` default constructor private with
+  `friend class Builder;` to construct `Manifest` inside `Builder::Build()`
+  safely without exposing default construction to arbitrary callers or violating
+  `mojo::DefaultConstruct::Tag` privacy.
 
 ______________________________________________________________________
 
@@ -257,10 +270,10 @@ ______________________________________________________________________
 
 ### Milestone 6: Migrate `RequestManifestDebugInfo` and DevTools `PageHandler`
 
-**Goal:** Migrate `ManifestManagerHost::ReportManifestDebugInfoCallback` and
+**Goal:** Migrate `ManifestManagerHost::RequestManifestDebugInfoCallback` and
 `GotManifest` in
 [`/content/browser/devtools/protocol/page_handler.cc`](/content/browser/devtools/protocol/page_handler.cc)
-to `const std::optional<blink::Manifest>&`.
+to `base::optional_ref<const blink::Manifest>`.
 
 - **Scope & Boundaries:**
   - Removes the `ManifestToMojom` bridge on `OnRequestManifestDebugInfoResponse`
@@ -475,4 +488,23 @@ ______________________________________________________________________
 
 ## 8. Outcomes & Retrospective
 
-_(To be filled upon completion of the final milestone)_
+- **Milestone 13 Completion:**
+  - Registered all 9 typemaps in `//third_party/blink/public/mojom/BUILD.gn`
+    (`blink.mojom.Manifest` and its 8 nested structs).
+  - Implemented
+    `StructTraits<blink::mojom::ManifestDataView, ::blink::Manifest>` in
+    `manifest_mojom_traits.h/.cc` with 40 field getters and `Read()` returning
+    `base::expected<void, mojo::DeserializationError>` verifying intrinsic
+    invariants `I1`–`I13` and recording `WebApp.Manifest.InvariantViolation`.
+  - Removed conversion bridges `ManifestFromMojom` and `ManifestToMojom`, as
+    well as `blink::IsEmptyManifest` and legacy `mojom::Manifest` overloads of
+    `IsDefaultManifest`.
+  - Migrated `ManifestManagerHost` and `manifest_browsertest.cc` to work
+    natively with `blink::Manifest` and `std::optional<blink::Manifest>`,
+    retaining only contextual checks (`C1`–`C5`) in the browser host and
+    deleting obsolete browser-level tests of intrinsic invariants.
+  - Added comprehensive round-trip and invalid-deserialization tests in
+    `manifest_mojom_traits_unittest.cc` and fixed dangling string view in
+    `ConvertAndTruncateOptionalString`.
+  - Verified harness and documentation freshness across `components/webapps` and
+    `content/browser/manifest`.

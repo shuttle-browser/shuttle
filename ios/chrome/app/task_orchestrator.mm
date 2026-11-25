@@ -27,6 +27,7 @@
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/app/task_scheduling_outcome.h"
 #import "ios/chrome/browser/authentication/ui_bundled/change_profile/change_profile_authentication_continuation.h"
+#import "ios/chrome/browser/google_one/shared/google_one_deep_link_util.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_delegate.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/url_context.h"
@@ -39,8 +40,9 @@
 #import "ios/chrome/browser/signin/model/account_profile_mapper.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/common/app_group/app_group_constants.h"
-#import "ios/chrome/common/app_group/app_group_utils.h"
+#import "net/base/apple/url_conversions.h"
 #import "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#import "url/gurl.h"
 
 namespace {
 struct SceneInfo {
@@ -158,6 +160,20 @@ SceneState* GetSceneStateForScene(UIScene* scene) {
   return nil;
 }
 
+- (void)clearTasksForScene:(SceneState*)sceneState {
+  auto it = _tasksPerScene.find(GetSceneIdentifier(sceneState.scene));
+  if (it == _tasksPerScene.end()) {
+    return;
+  }
+  // The profile or account switch recreates the SceneState by disconnecting and
+  // reconnecting the scene; keep the tasks waiting for that switch.
+  if (it->second.is_switching) {
+    return;
+  }
+  _tasksPerScene.erase(it);
+  sceneState.hasPendingIntent = NO;
+}
+
 #pragma mark - Private
 
 // Returns whether the task should be dropped.
@@ -192,11 +208,9 @@ SceneState* GetSceneStateForScene(UIScene* scene) {
     return;
   }
 
-  // Initiate any required profile or account switch as early as
-  // `TaskExecutionProfileLoaded` (before `TaskExecutionUIReady` and before
-  // task execution).
-  if (sceneInfo.current_stage >=
-          TaskExecutionStage::TaskExecutionProfileLoaded &&
+  // Initiate any required profile or account switch once the scene is UI-ready
+  // (in the foreground) and before executing UI-ready tasks.
+  if (sceneInfo.current_stage >= TaskExecutionStage::TaskExecutionUIReady &&
       [self switchProfileOrAccountIfNeededForScene:sceneKey]) {
     return;
   }
@@ -282,10 +296,15 @@ SceneState* GetSceneStateForScene(UIScene* scene) {
     return NO;
   }
 
-  ChangeProfileReason reason =
-      app_group::IsShareExtensionCommandURL(gaiaTask.URL)
-          ? ChangeProfileReason::kSwitchAccountsFromShareExtension
-          : ChangeProfileReason::kSwitchAccountsFromWidget;
+  ChangeProfileReason reason;
+  if (IsGoogleOneDeepLinkEnabled() &&
+      IsGoogleOneDeepLinkURL(net::GURLWithNSURL(gaiaTask.URL), nullptr)) {
+    reason = ChangeProfileReason::kForGoogleOneSettings;
+  } else if (gaiaTask.isFromShareExtension) {
+    reason = ChangeProfileReason::kSwitchAccountsFromShareExtension;
+  } else {
+    reason = ChangeProfileReason::kSwitchAccountsFromWidget;
+  }
 
   AccountSwitchType switchType =
       shouldSignOut ? AccountSwitchType::kSignOut : AccountSwitchType::kSignIn;

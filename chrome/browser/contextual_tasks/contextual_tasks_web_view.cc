@@ -12,8 +12,8 @@
 #include "base/logging.h"
 #include "base/time/time.h"
 #include "chrome/browser/contextual_search/contextual_search_web_contents_helper.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_ghost_loader_view.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_scrim_view.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_base.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui_service_factory.h"
@@ -26,10 +26,12 @@
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/lens/lens_search_controller.h"
+#include "chrome/browser/ui/views/infobars/infobar_container_view.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/contextual_tasks/public/contextual_task.h"
 #include "components/contextual_tasks/public/features.h"
+#include "components/infobars/content/content_infobar_manager.h"
 #include "components/lens/lens_overlay_dismissal_source.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/web_modal/web_contents_modal_dialog_manager.h"
@@ -98,7 +100,8 @@ void ContextualTasksWebView::ConfigureWebContentsBackground(
   views::WebContentsSetBackgroundColor::CreateForWebContentsWithColor(
       wc, SK_ColorTRANSPARENT);
   wc->SetPageBaseBackgroundColor(SK_ColorTRANSPARENT);
-  const bool is_dark_mode = contextual_tasks::ShouldUseDarkMode(profile);
+  const bool is_dark_mode =
+      contextual_tasks::ShouldUseDarkModeForProfile(profile);
   blink::web_pref::WebPreferences prefs = wc->GetOrCreateWebPreferences();
   prefs.preferred_color_scheme =
       is_dark_mode ? blink::mojom::PreferredColorScheme::kDark
@@ -109,18 +112,18 @@ void ContextualTasksWebView::ConfigureWebContentsBackground(
 ContextualTasksWebView::ContextualTasksWebView(
     BrowserWindowInterface* browser_window,
     content::WebContents* toolbar_web_contents,
-    content::WebContents* ghost_loader_web_contents)
+    content::WebContents* scrim_web_contents)
     : browser_window_(browser_window),
       owns_toolbar_web_contents_(toolbar_web_contents == nullptr),
-      owns_ghost_loader_web_contents_(ghost_loader_web_contents == nullptr) {
+      owns_scrim_web_contents_(scrim_web_contents == nullptr) {
   SetProperty(views::kElementIdentifierKey,
               kContextualTasksSidePanelWebViewElementId);
 
   SetAcceleratorHandling(views::WebContentsAcceleratorHandling::kEnabled);
 
   if (IsContextualTasksSidePanelRearchitectureEnabled()) {
-    const bool is_dark_mode =
-        contextual_tasks::ShouldUseDarkMode(browser_window->GetProfile());
+    const bool is_dark_mode = contextual_tasks::ShouldUseDarkModeForProfile(
+        browser_window->GetProfile());
     const SkColor background_color =
         is_dark_mode ? kDarkModeBackgroundColor : SK_ColorWHITE;
     SetBackground(views::CreateSolidBackground(background_color));
@@ -148,6 +151,9 @@ ContextualTasksWebView::ContextualTasksWebView(
           GURL(chrome::kChromeUIContextualTasksToolbarURL));
     }
 
+    infobar_container_ =
+        AddChildView(std::make_unique<InfoBarContainerView>(this));
+
     auto content_container = std::make_unique<views::View>();
     content_container->SetLayoutManager(std::make_unique<views::FillLayout>());
     content_container->SetBackground(
@@ -156,18 +162,22 @@ ContextualTasksWebView::ContextualTasksWebView(
     content_web_view_ = content_container->AddChildView(
         std::make_unique<views::WebView>(browser_window->GetProfile()));
 
-    if (ghost_loader_web_contents) {
-      ConfigureWebContentsBackground(ghost_loader_web_contents,
+    scrim_view_ = content_container->AddChildView(
+        std::make_unique<ContextualTasksScrimView>(
+            browser_window->GetProfile()));
+    if (scrim_web_contents) {
+      ConfigureWebContentsBackground(scrim_web_contents,
+                                     browser_window->GetProfile());
+      scrim_view_->SetWebContents(scrim_web_contents);
+    } else {
+      scrim_view_->LoadInitialURL(
+          GURL(chrome::kChromeUIContextualTasksGhostLoaderURL));
+      ConfigureWebContentsBackground(scrim_view_->GetWebContents(),
                                      browser_window->GetProfile());
     }
-    ghost_loader_view_ = content_container->AddChildView(
-        std::make_unique<ContextualTasksGhostLoaderView>(
-            browser_window->GetProfile(), ghost_loader_web_contents));
-    ConfigureWebContentsBackground(ghost_loader_view_->GetWebContents(),
-                                   browser_window->GetProfile());
-    is_error_page_visible_ = ghost_loader_view_->is_showing_error_page();
+    is_error_page_visible_ = scrim_view_->is_showing_error_page();
     UpdateScrimVisibility();
-    webui::SetBrowserWindowInterface(ghost_loader_view_->GetWebContents(),
+    webui::SetBrowserWindowInterface(scrim_view_->GetWebContents(),
                                      browser_window);
 
     content_container_ = AddChildView(std::move(content_container));
@@ -189,13 +199,15 @@ ContextualTasksWebView::~ContextualTasksWebView() {
       toolbar_web_view_->SetWebContents(nullptr);
     }
   }
-  if (ghost_loader_view_ && ghost_loader_view_->web_contents()) {
-    if (owns_ghost_loader_web_contents_) {
-      webui::SetBrowserWindowInterface(ghost_loader_view_->GetWebContents(),
-                                       nullptr);
+  if (scrim_view_ && scrim_view_->web_contents()) {
+    if (owns_scrim_web_contents_) {
+      webui::SetBrowserWindowInterface(scrim_view_->GetWebContents(), nullptr);
     } else {
-      ghost_loader_view_->SetWebContents(nullptr);
+      scrim_view_->SetWebContents(nullptr);
     }
+  }
+  if (infobar_container_) {
+    infobar_container_->ChangeInfoBarManager(nullptr);
   }
   SetWebContents(nullptr);
 }
@@ -225,6 +237,13 @@ void ContextualTasksWebView::SetWebContents(content::WebContents* wc) {
   content_web_view_->SetWebContents(wc);
 
   if (IsContextualTasksSidePanelRearchitectureEnabled()) {
+    if (wc) {
+      infobars::ContentInfoBarManager::CreateForWebContents(wc);
+    }
+    if (infobar_container_) {
+      infobar_container_->ChangeInfoBarManager(
+          wc ? infobars::ContentInfoBarManager::FromWebContents(wc) : nullptr);
+    }
     ignore_next_stop_loading_for_about_blank_ = false;
     Observe(wc);
     UpdateToolbarStateFromWebContents(wc);
@@ -272,7 +291,7 @@ void ContextualTasksWebView::RequestContentViewFocus() {
 }
 
 void ContextualTasksWebView::SetGhostLoaderVisible(bool visible) {
-  if (!ghost_loader_view_) {
+  if (!scrim_view_) {
     return;
   }
   if (visible && !GetIsGhostLoaderEnabled()) {
@@ -283,12 +302,12 @@ void ContextualTasksWebView::SetGhostLoaderVisible(bool visible) {
 }
 
 bool ContextualTasksWebView::IsGhostLoaderVisible() const {
-  return ghost_loader_view_ && ghost_loader_view_->GetVisible() &&
-         !ghost_loader_view_->is_showing_error_page();
+  return scrim_view_ && scrim_view_->GetVisible() &&
+         !scrim_view_->is_showing_error_page();
 }
 
 void ContextualTasksWebView::SetErrorPageVisible(bool visible) {
-  if (!ghost_loader_view_) {
+  if (!scrim_view_) {
     return;
   }
   if (visible && !GetIsProtectedPageErrorEnabled()) {
@@ -299,8 +318,8 @@ void ContextualTasksWebView::SetErrorPageVisible(bool visible) {
 }
 
 bool ContextualTasksWebView::IsErrorPageVisible() const {
-  return ghost_loader_view_ && ghost_loader_view_->GetVisible() &&
-         ghost_loader_view_->is_showing_error_page();
+  return scrim_view_ && scrim_view_->GetVisible() &&
+         scrim_view_->is_showing_error_page();
 }
 
 void ContextualTasksWebView::AddedToWidget() {
@@ -317,9 +336,10 @@ void ContextualTasksWebView::OnThemeChanged() {
   }
 
   Profile* profile = browser_window_->GetProfile();
-  const SkColor background_color = contextual_tasks::ShouldUseDarkMode(profile)
-                                       ? kDarkModeBackgroundColor
-                                       : SK_ColorWHITE;
+  const SkColor background_color =
+      contextual_tasks::ShouldUseDarkModeForProfile(profile)
+          ? kDarkModeBackgroundColor
+          : SK_ColorWHITE;
   SetBackground(views::CreateSolidBackground(background_color));
   if (content_container_) {
     content_container_->SetBackground(
@@ -329,8 +349,8 @@ void ContextualTasksWebView::OnThemeChanged() {
   if (toolbar_web_view_) {
     ConfigureWebContentsBackground(toolbar_web_view_->web_contents(), profile);
   }
-  if (ghost_loader_view_) {
-    ConfigureWebContentsBackground(ghost_loader_view_->web_contents(), profile);
+  if (scrim_view_) {
+    ConfigureWebContentsBackground(scrim_view_->web_contents(), profile);
   }
   if (web_contents()) {
     ConfigureWebContentsBackground(web_contents(), profile);
@@ -462,10 +482,8 @@ void ContextualTasksWebView::DidFinishNavigation(
     if (was_on_srp && ui_service->IsAiUrl(navigation_handle->GetURL())) {
       if (auto* tab = browser_window_->GetActiveTabInterface()) {
         if (auto* controller = LensSearchController::From(tab)) {
-          // TODO(crbug.com/566315172): Update to a dedicated dismissal source
-          // for SRP to AIM transitions.
-          controller->CloseLensAsync(
-              lens::LensOverlayDismissalSource::kContextualTasksQuerySubmitted);
+          controller->CloseLensAsync(lens::LensOverlayDismissalSource::
+                                         kContextualTasksSrpToAimTransition);
         }
       }
     }
@@ -677,6 +695,13 @@ ContextualTasksWebView::GetWebContentsModalDialogHost(
   return browser->GetWebContentsModalDialogHostForWindow();
 }
 
+void ContextualTasksWebView::InfoBarContainerStateChanged(bool is_animating) {
+  if (infobar_container_) {
+    infobar_container_->SetVisible(!infobar_container_->IsEmpty());
+  }
+  InvalidateLayout();
+}
+
 void ContextualTasksWebView::AttachWebContentsModalDialogManager(
     content::WebContents* web_contents) {
   if (!web_contents) {
@@ -742,16 +767,16 @@ void ContextualTasksWebView::UpdateToolbarStateFromWebContents(
 }
 
 void ContextualTasksWebView::UpdateScrimVisibility() {
-  if (!ghost_loader_view_) {
+  if (!scrim_view_) {
     return;
   }
   if (is_error_page_visible_) {
-    ghost_loader_view_->SetShowErrorPage(true);
-    ghost_loader_view_->SetVisible(true);
+    scrim_view_->SetShowErrorPage(true);
+    scrim_view_->SetVisible(true);
     return;
   }
-  ghost_loader_view_->SetShowErrorPage(false);
-  ghost_loader_view_->SetVisible(is_ghost_loader_visible_);
+  scrim_view_->SetShowErrorPage(false);
+  scrim_view_->SetVisible(is_ghost_loader_visible_);
 }
 
 bool ContextualTasksWebView::ConsumeUserActivation(

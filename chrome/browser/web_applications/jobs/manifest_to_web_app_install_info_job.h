@@ -16,10 +16,9 @@
 #include "chrome/browser/web_applications/web_app_constants.h"
 #include "chrome/browser/web_applications/web_app_icon_operations.h"
 #include "chrome/browser/web_applications/web_app_install_info.h"
-#include "chrome/browser/web_applications/web_app_install_utils.h"
 #include "chrome/browser/web_applications/web_app_logging.h"
 #include "chrome/browser/web_applications/web_contents/web_app_data_retriever.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 
 namespace base {
 class DictValue;
@@ -38,7 +37,7 @@ using WebAppInstallInfoCreationCallback =
 class WebAppDataRetriever;
 
 // Contains a list of options that are applied while constructing the
-// `WebAppInstallInfo` from a `blink::mojom::Manifest`. Default populated with
+// `WebAppInstallInfo` from a `blink::Manifest`. Default populated with
 // the values that perform the default behavior for most manifest triggered
 // installs.
 // TODO(dibyapal): Ensure data correctness can be verified.
@@ -84,7 +83,7 @@ struct WebAppInstallInfoConstructOptions {
   bool use_manifest_icons_as_trusted = false;
 };
 
-// The role of this job is to take a `blink::mojom::Manifest`, parse it,
+// The role of this job is to take a `blink::Manifest`, parse it,
 // populate a `WebAppInstallInfo` and return it. If a `fallback_info` exists,
 // it is used to populate `title`, `description`, and `icons` if those aren't
 // supplied by the manifest, as well as `mobile_capable`.
@@ -99,7 +98,7 @@ class ManifestToWebAppInstallInfoJob {
   // `FetchIcons` is called later (via `defer_icon_fetching` being specified
   // above in the options).
   static std::unique_ptr<ManifestToWebAppInstallInfoJob> CreateAndStart(
-      const blink::mojom::Manifest& manifest,
+      const blink::Manifest& manifest,
       WebAppDataRetriever& data_retriever,
       bool background_installation,
       webapps::WebappInstallSource install_source,
@@ -136,7 +135,7 @@ class ManifestToWebAppInstallInfoJob {
 
  private:
   ManifestToWebAppInstallInfoJob(
-      const blink::mojom::Manifest& manifest,
+      const blink::Manifest& manifest,
       WebAppDataRetriever& data_retriever,
       bool background_installation,
       webapps::WebappInstallSource install_source,
@@ -166,7 +165,7 @@ class ManifestToWebAppInstallInfoJob {
 
   std::unique_ptr<WebAppInstallInfo> install_info_;
   raw_ptr<WebAppInstallInfo> install_info_for_icon_fetch_ = nullptr;
-  blink::mojom::ManifestPtr manifest_;
+  blink::Manifest manifest_;
   raw_ref<WebAppDataRetriever> data_retriever_;
   WebAppInstallInfoCreationCallback creation_callback_;
   WebAppInstallInfoConstructOptions options_;

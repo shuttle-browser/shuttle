@@ -51,6 +51,9 @@ import org.chromium.chrome.browser.ui.native_page.NativePage;
 import org.chromium.chrome.browser.util.ChromeFileProvider;
 import org.chromium.content_public.browser.LoadUrlParams;
 import org.chromium.ui.base.MimeTypeUtils;
+import org.chromium.url.GURL;
+import org.chromium.url.JUnitTestOrigins;
+import org.chromium.url.Origin;
 
 import java.io.File;
 import java.io.IOException;
@@ -94,6 +97,7 @@ public class PdfUtilsUnitTest {
 
     @Before
     public void setUp() {
+        ContextUtils.initApplicationContextForTests(mContext);
         PdfUtils.setShouldOpenPdfInlineForTesting(true);
         ChromeFileProvider.setGeneratedUriForTesting(Uri.parse(CONTENT_URL));
         mPdfPageUrl = PdfUtils.encodePdfPageUrl(PDF_LINK);
@@ -327,6 +331,30 @@ public class PdfUtilsUnitTest {
     }
 
     @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_HANDLE_PDF_IN_IFRAME)
+    public void testGetPdfReDownloadUrlForNavigation() {
+        Assert.assertEquals(
+                PDF_LINK,
+                PdfUtils.getPdfReDownloadUrlForNavigation(new GURL(PDF_LINK), /* isPdf= */ true));
+        Assert.assertNull(
+                PdfUtils.getPdfReDownloadUrlForNavigation(new GURL(PDF_LINK), /* isPdf= */ false));
+        Assert.assertEquals(
+                PDF_LINK,
+                PdfUtils.getPdfReDownloadUrlForNavigation(
+                        new GURL(PDF_LINK_ENCODED), /* isPdf= */ false));
+        Assert.assertEquals(
+                PDF_BLOB_URL,
+                PdfUtils.getPdfReDownloadUrlForNavigation(
+                        new GURL(mPdfPageBlobUrl), /* isPdf= */ false));
+        Assert.assertNull(
+                PdfUtils.getPdfReDownloadUrlForNavigation(
+                        new GURL(mPdfPageBlobUrl), /* isPdf= */ true));
+        Assert.assertNull(
+                PdfUtils.getPdfReDownloadUrlForNavigation(
+                        new GURL(PDF_LINK_ENCODED_INVALID), /* isPdf= */ false));
+    }
+
+    @Test
     public void testEncodeDecodeUrlWithSpecialCharacter() {
         String encodedUrl = PdfUtils.encodePdfPageUrl(CONTENT_URL_SPECIAL_CHARACTER);
         String decodedUrl = PdfUtils.decodePdfPageUrl(encodedUrl);
@@ -542,6 +570,85 @@ public class PdfUtilsUnitTest {
                 .thenReturn(providerInfo);
 
         Assert.assertFalse(PdfUtils.isUriSafeForSharing(contentUri, mContext));
+    }
+
+    @Test
+    public void testIsUriSafeForSharing_EncodedOrUserInfoAuthority_Blocked() {
+        ProviderInfo fileProviderInfo = createProviderInfo("org.chromium.chrome", Process.myUid());
+        when(mContext.getPackageManager()).thenReturn(mPackageManager);
+        when(mPackageManager.resolveContentProvider("org.chromium.chrome.FileProvider", 0))
+                .thenReturn(fileProviderInfo);
+        when(mPackageManager.resolveContentProvider("org.chromium.chrome.DownloadFileProvider", 0))
+                .thenReturn(fileProviderInfo);
+
+        Uri encodedFileProviderUri =
+                Uri.parse("content://org%2Echromium%2Echrome.FileProvider/downloads/statement.pdf");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(encodedFileProviderUri, mContext));
+
+        Uri encodedPdfsUri =
+                Uri.parse("content://org%2Echromium%2Echrome.FileProvider/pdfs/tax-return.pdf");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(encodedPdfsUri, mContext));
+
+        Uri encodedDownloadProviderUri =
+                Uri.parse(
+                        "content://org%2Echromium%2Echrome.DownloadFileProvider/download?file=report.pdf");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(encodedDownloadProviderUri, mContext));
+
+        Uri userInfoUri =
+                Uri.parse("content://user@org.chromium.chrome.FileProvider/downloads/sample.pdf");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(userInfoUri, mContext));
+    }
+
+    @Test
+    public void testIsUriSafeForSharing_InternalFileProvider_InvalidSegmentsBlocked() {
+        ProviderInfo providerInfo = createProviderInfo("org.chromium.chrome", Process.myUid());
+        when(mContext.getPackageManager()).thenReturn(mPackageManager);
+        when(mPackageManager.resolveContentProvider("org.chromium.chrome.FileProvider", 0))
+                .thenReturn(providerInfo);
+
+        Uri rootOnlyUri = Uri.parse("content://org.chromium.chrome.FileProvider/downloads");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(rootOnlyUri, mContext));
+
+        Uri traversalUri =
+                Uri.parse(
+                        "content://org.chromium.chrome.FileProvider/downloads/../passwords/ChromePass.csv");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(traversalUri, mContext));
+
+        Uri encodedTraversalUri =
+                Uri.parse(
+                        "content://org.chromium.chrome.FileProvider/downloads/%2e%2e/passwords/ChromePass.csv");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(encodedTraversalUri, mContext));
+    }
+
+    @Test
+    public void testIsUriSafeForSharing_DownloadFileProvider_InvalidQueryOrSegmentsBlocked() {
+        ProviderInfo providerInfo = createProviderInfo("org.chromium.chrome", Process.myUid());
+        when(mContext.getPackageManager()).thenReturn(mPackageManager);
+        when(mPackageManager.resolveContentProvider("org.chromium.chrome.DownloadFileProvider", 0))
+                .thenReturn(providerInfo);
+
+        Uri missingFileParamUri =
+                Uri.parse("content://org.chromium.chrome.DownloadFileProvider/download");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(missingFileParamUri, mContext));
+
+        Uri emptyFileParamUri =
+                Uri.parse("content://org.chromium.chrome.DownloadFileProvider/download?file=");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(emptyFileParamUri, mContext));
+
+        Uri traversalFileParamUri =
+                Uri.parse(
+                        "content://org.chromium.chrome.DownloadFileProvider/download?file=../secret.pdf");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(traversalFileParamUri, mContext));
+
+        Uri extraPathSegmentUri =
+                Uri.parse(
+                        "content://org.chromium.chrome.DownloadFileProvider/download/extra?file=sample.pdf");
+        Assert.assertFalse(PdfUtils.isUriSafeForSharing(extraPathSegmentUri, mContext));
+
+        Uri doubleDotFilenameUri =
+                Uri.parse(
+                        "content://org.chromium.chrome.DownloadFileProvider/download?file=report..draft.pdf");
+        Assert.assertTrue(PdfUtils.isUriSafeForSharing(doubleDotFilenameUri, mContext));
     }
 
     private static ProviderInfo createProviderInfo(String packageName, int uid) {
@@ -902,5 +1009,22 @@ public class PdfUtilsUnitTest {
                 "Non-numeric page should return 0.",
                 0,
                 PdfUtils.getPageNumberFromUrl(PDF_LINK + "#page=abc"));
+    }
+
+    @Test
+    public void testGetPdfInfo_PreservesInitiatorOrigin() {
+        Origin initiatorOrigin = JUnitTestOrigins.createTuple("https", "initiator.example", 443);
+        doReturn(true).when(mNativePage).isPdf();
+        doReturn(FILE_NAME).when(mNativePage).getTitle();
+        doReturn(FILE_PATH).when(mNativePage).getCanonicalFilepath();
+        doReturn(true).when(mNativePage).isDownloadSafe();
+        doReturn(initiatorOrigin).when(mNativePage).getInitiatorOrigin();
+
+        PdfInfo pdfInfo = PdfUtils.getPdfInfo(mNativePage);
+        Assert.assertNotNull(pdfInfo);
+        Assert.assertEquals(FILE_NAME, pdfInfo.filename);
+        Assert.assertEquals(FILE_PATH, pdfInfo.filepath);
+        Assert.assertTrue(pdfInfo.isDownloadSafe);
+        Assert.assertEquals(initiatorOrigin, pdfInfo.initiatorOrigin);
     }
 }

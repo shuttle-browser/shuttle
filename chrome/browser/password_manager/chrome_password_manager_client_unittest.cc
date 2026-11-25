@@ -37,8 +37,8 @@
 #include "chrome/browser/password_manager/factories/profile_password_store_factory.h"
 #include "chrome/browser/password_manager/password_change_delegate_mock.h"
 #include "chrome/browser/password_manager/password_change_service_factory.h"
+#include "chrome/browser/safe_browsing/interstitials/user_interaction_observer.h"
 #include "chrome/browser/safe_browsing/test_safe_browsing_service.h"
-#include "chrome/browser/safe_browsing/user_interaction_observer.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "chrome/browser/ui/autofill/chrome_autofill_client.h"
 #include "chrome/browser/ui/passwords/password_cross_domain_confirmation_popup_controller_impl.h"
@@ -136,6 +136,7 @@
 #include "chrome/browser/ui/hats/hats_service_factory.h"
 #include "chrome/browser/ui/hats/mock_hats_service.h"
 #include "chrome/browser/ui/passwords/password_cross_domain_confirmation_popup_view.h"
+#include "components/trusted_vault/trusted_vault_client.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 using ::autofill::CalculateFormSignature;
@@ -216,7 +217,7 @@ class MockChromePasswordManagerClient : public ChromePasswordManagerClient {
     return client;
   }
 
-  MOCK_METHOD(net::CertStatus, GetMainFrameCertStatus, (), (const override));
+  MOCK_METHOD(net::CertStatus, GetMainFrameCertStatus, (), (const, override));
 
   MockChromePasswordManagerClient(const MockChromePasswordManagerClient&) =
       delete;
@@ -1825,6 +1826,38 @@ TEST_F(ChromePasswordManagerClientTest, GetActionableError) {
             GetClient()->GetActionableError());
 }
 
+#if !BUILDFLAG(IS_ANDROID)
+TEST_F(ChromePasswordManagerClientTest,
+       StartTrustedVaultKeyRetrievalWithoutBrowserDoesNotCrash) {
+  base::HistogramTester histogram_tester;
+  GetClient()->StartTrustedVaultKeyRetrieval(
+      trusted_vault::TrustedVaultUserActionTriggerForUMA::
+          kPasswordManagerSettings);
+  histogram_tester.ExpectTotalCount("Sync.TrustedVaultKeyRetrievalTrigger", 0);
+}
+
+TEST_F(ChromePasswordManagerClientTest,
+       StartTrustedVaultKeyRetrievalInIncognitoDoesNotRetrieve) {
+  std::unique_ptr<content::WebContents> incognito_web_contents(
+      content::WebContentsTester::CreateTestWebContents(
+          profile()->GetPrimaryOTRProfile(/*create_if_needed=*/true), nullptr));
+  autofill::ChromeAutofillClient::CreateForWebContents(
+      incognito_web_contents.get());
+  ChromePasswordManagerClient::CreateForWebContents(
+      incognito_web_contents.get());
+  ChromePasswordManagerClient* client =
+      ChromePasswordManagerClient::FromWebContents(
+          incognito_web_contents.get());
+  ASSERT_NE(nullptr, client);
+
+  base::HistogramTester histogram_tester;
+  client->StartTrustedVaultKeyRetrieval(
+      trusted_vault::TrustedVaultUserActionTriggerForUMA::
+          kPasswordManagerSettings);
+  histogram_tester.ExpectTotalCount("Sync.TrustedVaultKeyRetrievalTrigger", 0);
+}
+#endif  // !BUILDFLAG(IS_ANDROID)
+
 #if BUILDFLAG(IS_ANDROID)
 class ChromePasswordManagerClientAndroidTest
     : public ChromePasswordManagerClientTest {
@@ -2028,6 +2061,10 @@ TEST_F(ChromePasswordManagerClientAndroidTest, FocusedInputChangedWrongFrame) {
   client->FocusedInputChanged(driver.get(), FieldRendererId(123),
                               FocusedFieldType::kFillablePasswordField);
 
+  EXPECT_EQ(ManualFillingControllerImpl::FromWebContents(web_contents())
+                ->GetLastFocusedFieldId(),
+            autofill::FieldGlobalId());
+
   PasswordGenerationController* pwd_generation_controller =
       PasswordGenerationController::GetIfExisting(web_contents());
 
@@ -2045,6 +2082,12 @@ TEST_F(ChromePasswordManagerClientAndroidTest, FocusedInputChangedGoodFrame) {
   FocusWebContentsOnMainFrame();
   client->FocusedInputChanged(driver.get(), FieldRendererId(123),
                               FocusedFieldType::kFillablePasswordField);
+
+  EXPECT_EQ(ManualFillingControllerImpl::FromWebContents(web_contents())
+                ->GetLastFocusedFieldId(),
+            autofill::FieldGlobalId(
+                autofill::LocalFrameToken(main_rfh()->GetFrameToken().value()),
+                FieldRendererId(123)));
 
   PasswordGenerationController* pwd_generation_controller =
       PasswordGenerationController::GetIfExisting(web_contents());
@@ -2163,6 +2206,7 @@ TEST_F(ChromePasswordManagerClientAndroidTest,
 
 TEST_F(ChromePasswordManagerClientAndroidTest,
        FocusedInputChangeUpdatesCredManReentryUi) {
+  FocusWebContentsOnMainFrame();
   std::unique_ptr<password_manager::ContentPasswordManagerDriver> driver =
       CreateContentPasswordManagerDriver(main_rfh());
   MockPasswordAccessoryControllerImpl* weak_mock_pwd_controller =
@@ -2696,6 +2740,7 @@ TEST_F(ChromePasswordManagerClientAndroidTest,
 
   constexpr char kUrl[] = "https://www.foo.com/login.html";
   NavigateAndCommit(GURL(kUrl));
+  FocusWebContentsOnMainFrame();
   ContentAutofillDriver* autofill_driver =
       ContentAutofillDriver::GetForRenderFrameHost(main_rfh());
   ASSERT_TRUE(autofill_driver);
@@ -2715,6 +2760,7 @@ TEST_F(ChromePasswordManagerClientAndroidTest,
 
   auto* driver =
       ContentPasswordManagerDriver::GetForRenderFrameHost(main_rfh());
+  SetUpMockPwdAccessoryForClientUse(driver);
   GetClient()->ShowKeyboardReplacingSurface(
       driver, GetFocusedFieldSuggestionRequest(form));
 
@@ -2723,6 +2769,66 @@ TEST_F(ChromePasswordManagerClientAndroidTest,
 
   // Simulate a timeout. The timer should be cancelled so TTF methods should not
   // be called.
+  AdvanceClock(base::Seconds(5));
+  base::RunLoop().RunUntilIdle();
+}
+
+// Regression test for the passkeys timer when the focus moves to another frame
+// before the original frame's blur event arrives: the late blur comes from a
+// frame that is no longer focused, but it must still cancel the pending
+// Touch-To-Fill sheet for the field that started the timer.
+TEST_F(ChromePasswordManagerClientAndroidTest,
+       DelaySuggestionsSheetPasskeysTimerCancelledByBlurFromUnfocusedFrame) {
+  webauthn::WebAuthnCredManDelegate::override_cred_man_support_for_testing(
+      webauthn::CredManSupport::DISABLED);
+  base::test::ScopedFeatureList features(
+      password_manager::features::
+          kDelaySuggestionsOnAutofocusWaitingForPasskeys);
+  CreateManualFillingController(web_contents());
+
+  auto* ttf_controller = MakeMockTouchToFillPasswordManagerController();
+  EXPECT_CALL(*ttf_controller, InitData).Times(0);
+  EXPECT_CALL(*ttf_controller, Show).Times(0);
+
+  constexpr char kUrl[] = "https://www.foo.com/login.html";
+  NavigateAndCommit(GURL(kUrl));
+  FocusWebContentsOnMainFrame();
+  ContentAutofillDriver* autofill_driver =
+      ContentAutofillDriver::GetForRenderFrameHost(main_rfh());
+  ASSERT_TRUE(autofill_driver);
+
+  std::vector<FormFieldData> fields = {CreateTestFormField(
+      "Username:", "username", "", FormControlType::kInputText, "webauthn")};
+  FormData form =
+      CreateFormDataForRenderFrameHost(*main_rfh(), std::move(fields));
+  {
+    autofill::TestAutofillManagerWaiter waiter(
+        autofill_driver->GetAutofillManager(),
+        {autofill::AutofillManagerEvent::kFormsSeen});
+    autofill_driver->renderer_events().FormsSeen(/*updated_forms=*/{form},
+                                                 /*removed_forms=*/{});
+    ASSERT_TRUE(waiter.Wait(/*num_expected_relevant_events=*/1));
+  }
+
+  // Frame A (main frame): autofocused field starts the passkeys timer.
+  auto* main_driver =
+      ContentPasswordManagerDriver::GetForRenderFrameHost(main_rfh());
+  SetUpMockPwdAccessoryForClientUse(main_driver);
+  GetClient()->ShowKeyboardReplacingSurface(
+      main_driver, GetFocusedFieldSuggestionRequest(form));
+
+  // Frame B takes browser-side focus (e.g. the user tapped non-editable
+  // content in it), so it never sends a FocusedInputChanged of its own.
+  content::RenderFrameHost* subframe =
+      content::RenderFrameHostTester::For(main_rfh())->AppendChild("subframe");
+  FocusWebContentsOnFrame(subframe);
+
+  // Frame A's blur arrives late, from a frame that is no longer focused.
+  GetClient()->FocusedInputChanged(main_driver, FieldRendererId(123),
+                                   FocusedFieldType::kUnknown);
+
+  // Simulate a timeout. The timer must have been cancelled, so TTF methods
+  // must not be called.
   AdvanceClock(base::Seconds(5));
   base::RunLoop().RunUntilIdle();
 }

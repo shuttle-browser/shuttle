@@ -226,7 +226,7 @@ bool LayoutInline::ComputeInitialShouldCreateBoxFragment() const {
     return true;
   }
 
-  const ComputedStyle& first_line_style = FirstLineStyleRef();
+  const ComputedStyle& first_line_style = FirstLineStyle();
   if (&style != &first_line_style &&
       ComputeInitialShouldCreateBoxFragment(first_line_style)) [[unlikely]] {
     return true;
@@ -375,7 +375,7 @@ LayoutBlockFlow* LayoutInline::CreateAnonymousContainerForBlockChildren()
   // children we will want to special-case them here too. Writing-mode would be
   // one if it didn't create a formatting context of its own, removing the need
   // for continuations.
-  new_style_builder.SetDirection(ContainingBlock()->Style().Direction());
+  new_style_builder.SetDirection(ContainingBox()->Style().Direction());
 
   return LayoutBlockFlow::CreateAnonymous(GetDocument(),
                                           *new_style_builder.TakeStyle());
@@ -585,7 +585,7 @@ PhysicalBoxStrut LayoutInline::MarginOutsets() const {
     }
     if (margin.IsPercent() || margin.IsCalculated()) {
       return MinimumValueForLength(margin,
-                                   ContainingBlock()->ContentLogicalWidth());
+                                   ContainingBox()->ContentLogicalWidth());
     }
     return LayoutUnit();
   };
@@ -784,6 +784,20 @@ PhysicalRect LayoutInline::VisualOverflowRect() const {
   return overflow_rect;
 }
 
+void LayoutInline::RecalcVisualOverflow() {
+  NOT_DESTROYED();
+  // |PaintLayer| calls this function when |HasSelfPaintingLayer|.
+  DCHECK(IsInLayoutNGInlineFormattingContext());
+  DCHECK(HasSelfPaintingLayer());
+  InlineCursor cursor;
+  InlinePaintContext inline_context;
+  for (cursor.MoveTo(*this); cursor; cursor.MoveToNextForSameLayoutObject()) {
+    InlinePaintContext::ScopedInlineBoxAncestors scoped_items(cursor,
+                                                              &inline_context);
+    cursor.Current().RecalcInkOverflow(cursor, &inline_context);
+  }
+}
+
 bool LayoutInline::MapToVisualRectInAncestorSpaceInternal(
     const LayoutBoxModelObject* ancestor,
     TransformState& transform_state,
@@ -953,7 +967,7 @@ void LayoutInline::AddDraggableRegions(Vector<DraggableRegionValue>& regions) {
   region.bounds = PhysicalLinesBoundingBox();
   // TODO(crbug.com/966048): We probably want to also cover continuations.
 
-  LayoutObject* container = ContainingBlock();
+  LayoutObject* container = ContainingBox();
   if (!container)
     container = this;
 

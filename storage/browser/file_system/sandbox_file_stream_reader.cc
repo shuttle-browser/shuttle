@@ -8,12 +8,14 @@
 
 #include <utility>
 
+#include "base/check.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/weak_ptr.h"
 #include "base/task/single_thread_task_runner.h"
 #include "net/base/file_stream.h"
 #include "net/base/io_buffer.h"
 #include "net/base/net_errors.h"
+#include "storage/browser/blob/scoped_file.h"
 #include "storage/browser/file_system/file_system_context.h"
 #include "storage/browser/file_system/file_system_operation_runner.h"
 #include "storage/browser/file_system/memory_file_stream_reader.h"
@@ -37,16 +39,16 @@ SandboxFileStreamReader::SandboxFileStreamReader(
 
 SandboxFileStreamReader::~SandboxFileStreamReader() = default;
 
-int SandboxFileStreamReader::Read(net::IOBuffer* buf,
+int SandboxFileStreamReader::Read(scoped_refptr<net::IOBuffer> buf,
                                   int buf_len,
                                   net::CompletionOnceCallback callback) {
   DCHECK(buf);
   if (file_reader_)
-    return file_reader_->Read(buf, buf_len, std::move(callback));
+    return file_reader_->Read(std::move(buf), buf_len, std::move(callback));
 
   return CreateSnapshot(
       base::BindOnce(&SandboxFileStreamReader::DidCreateSnapshotForRead,
-                     weak_factory_.GetWeakPtr(), base::Unretained(buf), buf_len,
+                     weak_factory_.GetWeakPtr(), std::move(buf), buf_len,
                      std::move(callback)));
 }
 
@@ -68,13 +70,14 @@ int SandboxFileStreamReader::CreateSnapshot(SnapshotCallback callback) {
 }
 
 void SandboxFileStreamReader::DidCreateSnapshotForRead(
-    net::IOBuffer* read_buf,
+    scoped_refptr<net::IOBuffer> read_buf,
     int read_len,
     net::CompletionOnceCallback callback,
     base::File::Error file_error,
     const base::File::Info& file_info,
     const base::FilePath& platform_path,
-    scoped_refptr<ShareableFileReference> file_ref) {
+    ScopedFile temp_file) {
+  CHECK(temp_file.path().empty());
   DCHECK(has_pending_create_snapshot_);
   DCHECK(!file_reader_.get());
   has_pending_create_snapshot_ = false;
@@ -84,15 +87,12 @@ void SandboxFileStreamReader::DidCreateSnapshotForRead(
     return;
   }
 
-  // Keep the reference (if it's non-null) so that the file won't go away.
-  snapshot_ref_ = std::move(file_ref);
-
   CreateFileReader(platform_path);
 
   auto callback_pair = base::SplitOnceCallback(std::move(callback));
 
   DCHECK(read_buf);
-  int rv = Read(read_buf, read_len,
+  int rv = Read(std::move(read_buf), read_len,
                 base::BindOnce(&SandboxFileStreamReader::OnRead,
                                weak_factory_.GetWeakPtr(),
                                std::move(callback_pair.first)));
@@ -106,7 +106,8 @@ void SandboxFileStreamReader::DidCreateSnapshotForGetLength(
     base::File::Error file_error,
     const base::File::Info& file_info,
     const base::FilePath& platform_path,
-    scoped_refptr<ShareableFileReference> file_ref) {
+    ScopedFile temp_file) {
+  CHECK(temp_file.path().empty());
   DCHECK(has_pending_create_snapshot_);
   DCHECK(!file_reader_.get());
   has_pending_create_snapshot_ = false;
@@ -116,9 +117,6 @@ void SandboxFileStreamReader::DidCreateSnapshotForGetLength(
         base::unexpected(net::FileErrorToNetError(file_error)));
     return;
   }
-
-  // Keep the reference (if it's non-null) so that the file won't go away.
-  snapshot_ref_ = std::move(file_ref);
 
   CreateFileReader(platform_path);
 

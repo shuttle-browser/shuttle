@@ -69,6 +69,7 @@ class GlicSidePanelCoordinator {
   // Show the Glic side panel.
   struct ShowOptions {
     bool suppress_animations = false;
+    bool show_native_fre = false;
     enum class InitialState { kExpanded, kPeeked };
     InitialState initial_state = InitialState::kExpanded;
     SidePanelOpenTrigger open_trigger = SidePanelOpenTrigger::kGlicOpened;
@@ -99,6 +100,13 @@ class GlicSidePanelCoordinator {
 #else
   // Sets the web contents for the Glic side panel.
   virtual void SetWebContents(content::WebContents* web_contents) = 0;
+
+  // Sets the callback run when the user accepts the native FRE.
+  virtual void SetNativeFreAcceptedCallback(base::RepeatingClosure callback) {}
+
+  // Updates whether the native loading placeholder should cover the panel
+  // contents while the Glic web client loads.
+  virtual void SetIsLoading(bool is_loading) {}
 #endif
 
   // Returns preferred side panel width. Not guaranteed to be used if user

@@ -22,6 +22,8 @@
 #include "base/strings/utf_string_conversions.h"
 #include "base/types/expected.h"
 #include "base/values.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_surface_handle.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/glic/actor/glic_actor_policy_checker.h"
 #include "chrome/browser/glic/common/local_hotkey_manager.h"
@@ -35,11 +37,16 @@
 #include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_feature.h"
+#include "chrome/browser/glic/public/glic_fre_store.h"
 #include "chrome/browser/glic/public/glic_instance.h"
 #include "chrome/browser/glic/public/glic_invoke_options.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/glic/public/glic_passkeys.h"
+#include "chrome/browser/glic/public/glic_provider.h"
+#include "chrome/browser/glic/public/glic_provider_latch.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/service/glic_instance_coordinator_impl.h"
 #include "chrome/browser/glic/suggestions/contextual_cueing_features.h"
 #include "chrome/browser/metrics/chrome_feature_list_creator.h"
@@ -92,6 +99,8 @@ mojom::ProfileEnablementPtr BuildProfileEnablement(
   auto result = mojom::ProfileEnablement::New();
   result->feature_enabled = enablement.feature_enabled;
   result->is_regular_profile = enablement.is_regular_profile;
+  result->gemini_account_eligibility_checked =
+      GetGlicProviderSpec(profile).RequiresGeminiAccountEligibility();
   result->is_rolled_out = enablement.is_rolled_out;
   result->primary_account_is_capable = enablement.primary_account_is_capable;
   result->primary_account_is_fully_signed_in =
@@ -284,6 +293,8 @@ std::string InvocationSourceToString(glic::mojom::InvocationSource source) {
       return "kWebContentsContextMenuTextSelection";
     case glic::mojom::InvocationSource::kActorTool:
       return "kActorTool";
+    case glic::mojom::InvocationSource::kActivityListBubble:
+      return "kActivityListBubble";
   }
   LOG(ERROR) << "Unexpected value for InvocationSource: "
              << static_cast<int>(source);
@@ -324,6 +335,8 @@ std::string FreOverrideToString(glic::mojom::FreOverride fre_override) {
       return "kTrustFirstClick";
     case glic::mojom::FreOverride::kTrustFirstInline:
       return "kTrustFirstInline";
+    case glic::mojom::FreOverride::kNativeFre:
+      return "kNativeFre";
   }
   LOG(ERROR) << "Unexpected value for FreOverride: "
              << static_cast<int>(fre_override);
@@ -368,6 +381,12 @@ void LogGlicInvokeOptions(const GlicInvokeOptions& options,
               ss << "ExperimentalTriggeringPayload { payment_metadata size: "
                  << payload->get_experimental_triggering()
                         ->payment_metadata.size()
+                 << " }";
+            } else if (payload->is_capture_region()) {
+              ss << "CaptureRegionPayload { capture_region_handoff: "
+                 << (payload->get_capture_region()->capture_region_handoff
+                         ? "true"
+                         : "false")
                  << " }";
             } else {
               ss << "Unknown Payload";
@@ -483,12 +502,22 @@ void LogGlicInvokeOptions(const GlicInvokeOptions& options,
           }},
       options.target.conversation);
 
-  if (options.target.actuation_target !=
-      glic::mojom::ActuationTarget::kAgentDecides) {
-    target_pieces.push_back(base::StrCat(
-        {"    actuation_target: ",
-         ActuationTargetToString(options.target.actuation_target)}));
-  }
+  std::visit(
+      absl::Overload{
+          [&target_pieces](glic::mojom::ActuationTarget actuation_target) {
+            if (actuation_target !=
+                glic::mojom::ActuationTarget::kAgentDecides) {
+              target_pieces.push_back(
+                  base::StrCat({"    actuation_target: ",
+                                ActuationTargetToString(actuation_target)}));
+            }
+          },
+          [&target_pieces](const actor::ActorSurfaceHandle& surface) {
+            target_pieces.push_back(base::StrCat(
+                {"    actuation_target: ActorSurfaceHandle { id: ",
+                 base::NumberToString(surface.raw_value()), " }"}));
+          }},
+      options.target.actuation_target);
 
   if (!target_pieces.empty()) {
     ss << "  target: Target {\n"
@@ -509,6 +538,13 @@ void LogGlicInvokeOptions(const GlicInvokeOptions& options,
   }
 
   LOG(WARNING) << "GlicInvokeOptions {\n" << ss.str() << "}";
+}
+
+mojom::GlicProviderType GetProviderType(Profile& profile) {
+  return GlicProviderLatch::GetProvider(profile) ==
+                 GlicProvider::kGeminiEnterprise
+             ? mojom::GlicProviderType::kGeminiEnterprise
+             : mojom::GlicProviderType::kGemini;
 }
 
 }  // namespace
@@ -557,7 +593,8 @@ void GlicInternalsPageHandler::GetInternalsDataPayload(
                                     ->GetBoolean(prefs::kGlicShowErrorAllowed);
 
   payload->experimental_triggering_enabled =
-      base::FeatureList::IsEnabled(features::kGlicExperimentalTriggering);
+      GetGlicProviderSpec(Profile::FromBrowserContext(browser_context_))
+          .SupportsFeature(GlicFeature::kExperimentalTriggering);
 
   if (g_browser_process->local_state()) {
     payload->hotkey_global_scope_migrated_v2 =
@@ -746,6 +783,8 @@ void GlicInternalsPageHandler::GetInternalsDataPayload(
 
   payload->tiered_rollout_info = std::move(tiered_rollout_info);
 
+  payload->provider = GetProviderType(*profile);
+
   std::move(callback).Run(std::move(payload));
 }
 
@@ -844,6 +883,18 @@ void GlicInternalsPageHandler::TriggerInvokeFromInternalsAction(
       break;
   }
   options.target.actuation_target = mojo_options->actuation_target;
+
+  if (mojo_options->headless_actuation &&
+      mojo_options->actuation_target ==
+          glic::mojom::ActuationTarget::kTargetSurface) {
+    auto* actor_service = actor::ActorKeyedService::Get(browser_context_);
+    if (!actor_service) {
+      std::move(callback).Run(false, "No ActorKeyedService available.");
+      return;
+    }
+    headless_surface_.emplace(actor_service->CreateHeadlessActorSurface());
+    options.target.actuation_target = headless_surface_->actor_surface_handle();
+  }
 
   auto split_callback = base::SplitOnceCallback(std::move(callback));
 
@@ -1001,17 +1052,10 @@ void GlicInternalsPageHandler::RevokeExperimentalTriggeringConsent() {
 }
 
 void GlicInternalsPageHandler::RevokeGlicConsent() {
-  if (auto* service = GetGlicService()) {
-    service->enabling().SetCompletedFre(glic::prefs::FreStatus::kNotStarted);
-    if (PrefService* local_state = g_browser_process->local_state()) {
-      local_state->ClearPref(prefs::kGlicLauncherEnabled);
-      local_state->ClearPref(prefs::kGlicLauncherHotkey);
-      local_state->ClearPref(prefs::kGlicHotkeyGlobalScopeEnabled);
-      local_state->SetInteger(
-          prefs::kGlicDefaultHotkeyScope,
-          std::to_underlying(prefs::DefaultHotkeyScope::kNotMigrated));
-    }
-  }
+  // Resets the FRE of the provider the profile is latched to (e.g. the GEiC FRE
+  // for the current GE instance), including that FRE's side effects.
+  Profile* profile = Profile::FromBrowserContext(browser_context_);
+  GetGlicProviderSpec(profile).GetFreStore().ResetForDebugging(profile);
 }
 
 void GlicInternalsPageHandler::RevokeActuationConsent() {

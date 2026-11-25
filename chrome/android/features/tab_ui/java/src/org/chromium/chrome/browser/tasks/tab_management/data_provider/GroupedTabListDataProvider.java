@@ -10,7 +10,9 @@ import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabCreationState;
+import org.chromium.chrome.browser.tab.TabId;
 import org.chromium.chrome.browser.tab.TabLaunchType;
+import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tabmodel.TabGroupObserver;
 import org.chromium.chrome.browser.tabmodel.TabGroupObserver.DidRemoveTabGroupReason;
 import org.chromium.chrome.browser.tabmodel.TabList;
@@ -18,8 +20,11 @@ import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelUtils;
 import org.chromium.chrome.browser.tasks.tab_management.data_provider.TabListDataObserver.PayloadType;
+import org.chromium.components.tab_groups.TabGroupColorId;
 
+import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Set;
 
 /**
@@ -30,22 +35,23 @@ import java.util.Set;
 @NullMarked
 public class GroupedTabListDataProvider extends TabListDataProvider {
     private final boolean mSupportsGroupExpansion;
-    private final Set<Token> mRemovingTabGroupIds = new HashSet<>();
+    private final Set<Token> mRemovingTabGroupIds;
 
     /**
      * Constructs a new {@link GroupedTabListDataProvider}.
      *
-     * @param tabModelSupplier Supplier of the active {@link TabModel}.
+     * @param tabModelSupplier Supplier of the current {@link TabModel}.
      * @param supportsGroupExpansion Whether tab groups can expand to show child {@link TabItem}s
      *     (true for Vertical Tabs, false for Grid Tab Switcher).
      */
     public GroupedTabListDataProvider(
             NullableObservableSupplier<TabModel> tabModelSupplier, boolean supportsGroupExpansion) {
+        super(tabModelSupplier);
         // TODO(crbug.com/562590772): Wire TabSwitcherPaneCoordinator (supportsGroupExpansion=false)
         // and VerticalTabListCoordinator (supportsGroupExpansion=true) to pass this provider to
         // TabListCoordinator.
-        super(tabModelSupplier);
         mSupportsGroupExpansion = supportsGroupExpansion;
+        mRemovingTabGroupIds = new HashSet<>();
 
         TabModelObserver tabModelObserver =
                 new TabModelObserver() {
@@ -65,6 +71,15 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
                             return;
                         }
                         syncTabOrGroup(tab);
+                    }
+
+                    @Override
+                    public void didMoveTab(Tab tab, int newIndex, int curIndex) {
+                        // Grouped tab moves and intra-group reorders are handled by
+                        // TabGroupObserver; moveTabItem reorders standalone tabs to their updated
+                        // TabModel position.
+                        if (curIndex == newIndex || tab.getTabGroupId() != null) return;
+                        moveTabItem(tab);
                     }
 
                     @Override
@@ -92,10 +107,24 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
                     public void restoreCompleted() {
                         requestDataReset();
                     }
+
+                    @Override
+                    public void didSelectTab(
+                            Tab tab, @TabSelectionType int type, @TabId int lastId) {
+                        selectTab(tab, /* prevSelectedTabId= */ lastId);
+                    }
+
+                    @Override
+                    public void didChangePinState(Tab tab) {
+                        updatePinState(tab);
+                    }
+
+                    @Override
+                    public void onTabsSelectionChanged() {
+                        updateMultiSelection();
+                    }
                 };
 
-        // TODO(crbug.com/562590772): Wire incremental TabModelObserver and TabGroupObserver
-        // callbacks for tab/group additions, removals, merges, moves, collapse, and selection.
         TabGroupObserver tabGroupObserver =
                 new TabGroupObserver() {
                     @Override
@@ -103,6 +132,21 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
                         TabItem existingItem = syncTabItem(movedTab);
                         updateTabItem(existingItem, PayloadType.GROUP_MEMBERSHIP);
                         syncGroupItem(movedTab.getTabGroupId());
+                    }
+
+                    @Override
+                    public void onTabGroupMoved(
+                            Token tabGroupId, int tabModelOldIndex, int tabModelNewIndex) {
+                        if (tabModelNewIndex == tabModelOldIndex) return;
+                        moveGroupItem(tabGroupId);
+                    }
+
+                    @Override
+                    public void didMoveWithinGroup(
+                            Tab movedTab, int tabModelOldIndex, int tabModelNewIndex) {
+                        if (tabModelNewIndex == tabModelOldIndex) return;
+                        moveTabItem(movedTab);
+                        updateGroupItem(movedTab.getTabGroupId(), PayloadType.TAB_GROUP_ORDER);
                     }
 
                     @Override
@@ -114,6 +158,24 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
                             updateTabItem(existingItem, PayloadType.GROUP_MEMBERSHIP);
                         }
                         updateGroupItem(oldTabGroupId, PayloadType.GROUP_MEMBERSHIP);
+                    }
+
+                    @Override
+                    public void didChangeTabGroupTitle(Token tabGroupId, String newTitle) {
+                        updateGroupItem(tabGroupId, PayloadType.TITLE);
+                    }
+
+                    @Override
+                    public void didChangeTabGroupColor(
+                            Token tabGroupId, @TabGroupColorId int newColor) {
+                        updateGroupItem(tabGroupId, PayloadType.COLOR);
+                    }
+
+                    @Override
+                    public void didChangeTabGroupCollapsed(
+                            Token tabGroupId, boolean isCollapsed, boolean animate) {
+                        if (!mSupportsGroupExpansion) return;
+                        updateGroupCollapsed(tabGroupId, isCollapsed);
                     }
 
                     @Override
@@ -172,61 +234,23 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
         return tabGroupId == null || !isGroupCollapsed(model, tabGroupId);
     }
 
-    /**
-     * Syncs a newly added or restored {@code tab}. Inserting/updating the group header first lets
-     * {@link #addTabItem} place the first child of an expanded group directly after its {@link
-     * TabGroupItem} header.
-     */
-    private void syncTabOrGroup(Tab tab) {
-        syncGroupItem(tab.getTabGroupId());
-        addTabItem(tab);
+    @Override
+    protected boolean isGroupRemoving(Token tabGroupId) {
+        return getTabModelIfGroupExists(tabGroupId) == null;
     }
 
-    private void removeTabAndUpdateGroup(Tab tab) {
-        // Unconditionally remove the tab item (no-op when collapsed, removes the child row when
-        // expanded) and refresh the parent group header if grouped.
-        removeTabItem(tab.getId());
-        updateGroupItem(tab.getTabGroupId(), PayloadType.GROUP_MEMBERSHIP);
-    }
+    @Override
+    protected int indexOfItemForTab(TabModel model, @TabId int tabId) {
+        int index = super.indexOfItemForTab(model, tabId);
+        if (index != TabList.INVALID_TAB_INDEX) return index;
 
-    /** Inserts the {@link TabGroupItem} if absent, or updates it if already present. */
-    private void syncGroupItem(@Nullable Token tabGroupId) {
-        if (tabGroupId == null) return;
-
-        int index = indexOfTabGroupId(tabGroupId);
-        if (index != TabList.INVALID_TAB_INDEX) {
-            updateGroupItemAt(index, tabGroupId, PayloadType.GROUP_MEMBERSHIP);
-            return;
+        // In collapsed-only surfaces (GTS), group tabs map to their parent TabGroupItem.
+        if (!mSupportsGroupExpansion) {
+            Tab tab = model.getTabById(tabId);
+            Token groupId = tab != null ? tab.getTabGroupId() : null;
+            return groupId != null ? indexOfTabGroupId(groupId) : TabList.INVALID_TAB_INDEX;
         }
-
-        TabModel model = getTabModelIfTabStateInitialized();
-        if (model == null) return;
-        insertItem(model, createGroupItem(model, TabModelUtils.getCurrentTab(model), tabGroupId));
-    }
-
-    /** Updates the existing {@link TabGroupItem} in {@link #mItems} and notifies observers. */
-    private void updateGroupItem(@Nullable Token tabGroupId, @PayloadType int payload) {
-        if (tabGroupId == null) return;
-        int index = indexOfTabGroupId(tabGroupId);
-        if (index == TabList.INVALID_TAB_INDEX) return;
-        updateGroupItemAt(index, tabGroupId, payload);
-    }
-
-    private void updateGroupItemAt(int index, Token tabGroupId, @PayloadType int payload) {
-        TabModel model = getTabModelIfTabStateInitialized();
-        // Skip updating if the group is being removed or no longer exists in TabModel
-        // (didRemoveTabGroup will remove the group card next).
-        if (model == null
-                || !model.containsTabGroup(tabGroupId)
-                || mRemovingTabGroupIds.contains(tabGroupId)) {
-            return;
-        }
-
-        TabGroupItem oldItem = (TabGroupItem) mItems.get(index);
-        TabGroupItem updatedItem =
-                oldItem.withSelected(
-                        isGroupSelected(TabModelUtils.getCurrentTab(model), tabGroupId));
-        updateItemAt(index, updatedItem, payload);
+        return TabList.INVALID_TAB_INDEX;
     }
 
     private TabGroupItem createGroupItem(
@@ -238,16 +262,110 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
     }
 
     /**
+     * Syncs a newly added or restored {@code tab}. Inserting/updating the group header first lets
+     * {@link #addTabItem} place the first child of an expanded group directly after its {@link
+     * TabGroupItem} header.
+     */
+    private void syncTabOrGroup(Tab tab) {
+        syncGroupItem(tab.getTabGroupId());
+        addTabItem(tab);
+    }
+
+    /** Inserts the {@link TabGroupItem} if absent, or updates it if already present. */
+    private void syncGroupItem(@Nullable Token tabGroupId) {
+        if (tabGroupId == null) return;
+
+        int index = indexOfTabGroupId(tabGroupId);
+        if (index != TabList.INVALID_TAB_INDEX) {
+            updateGroupItemAt(index, PayloadType.GROUP_MEMBERSHIP);
+            return;
+        }
+
+        TabModel model = getTabModelIfTabStateInitialized();
+        if (model == null) return;
+        insertItem(model, createGroupItem(model, TabModelUtils.getCurrentTab(model), tabGroupId));
+    }
+
+    private void removeTabAndUpdateGroup(Tab tab) {
+        // Unconditionally remove the tab item (no-op when collapsed, removes the child row when
+        // expanded) and refresh the parent group header if grouped.
+        removeTabItem(tab.getId());
+        updateGroupItem(tab.getTabGroupId(), PayloadType.GROUP_MEMBERSHIP);
+    }
+
+    /**
      * Removes the {@link TabGroupItem} for {@code tabGroupId} from {@link #mItems} and notifies
      * observers via {@link TabListDataObserver#onItemsRemoved}.
      *
      * @param tabGroupId The ID of the tab group to remove.
      */
     private void removeGroupItem(Token tabGroupId) {
+        removeItemsAt(indexOfTabGroupId(tabGroupId), /* count= */ 1);
+    }
+
+    /**
+     * Moves the {@link TabGroupItem} (and all child {@link TabItem}s if expanded) for {@code
+     * tabGroupId} to its updated {@link TabModel} position and notifies observers via {@link
+     * TabListDataObserver#onItemsMoved}.
+     *
+     * @param tabGroupId The ID of the tab group to move.
+     */
+    private void moveGroupItem(Token tabGroupId) {
         int index = indexOfTabGroupId(tabGroupId);
         if (index == TabList.INVALID_TAB_INDEX) return;
 
-        removeItemAt(index);
+        TabModel model = getTabModelIfGroupExists(tabGroupId);
+        if (model == null) return;
+
+        int count =
+                isGroupCollapsed(model, tabGroupId) ? 1 : 1 + model.getTabCountForGroup(tabGroupId);
+        moveItemsAt(index, count);
+    }
+
+    /** Updates the existing {@link TabGroupItem} in {@link #mItems} and notifies observers. */
+    private void updateGroupItem(@Nullable Token tabGroupId, @PayloadType int payload) {
+        if (tabGroupId == null) return;
+        int index = indexOfTabGroupId(tabGroupId);
+        if (index == TabList.INVALID_TAB_INDEX) return;
+        updateGroupItemAt(index, payload);
+    }
+
+    private void updateGroupItemAt(int index, @PayloadType int payload) {
+        TabGroupItem oldItem = (TabGroupItem) mItems.get(index);
+        Token tabGroupId = oldItem.getTabGroupId();
+        TabModel model = getTabModelIfGroupExists(tabGroupId);
+        if (model == null) return;
+
+        TabGroupItem updatedItem =
+                oldItem.withSelected(
+                        isGroupSelected(TabModelUtils.getCurrentTab(model), tabGroupId));
+        updateItemAt(index, updatedItem, payload);
+    }
+
+    private void updateGroupCollapsed(Token tabGroupId, boolean isCollapsed) {
+        int headerIndex = indexOfTabGroupId(tabGroupId);
+        if (headerIndex == TabList.INVALID_TAB_INDEX) return;
+
+        TabGroupItem groupItem = (TabGroupItem) mItems.get(headerIndex);
+        if (groupItem.isCollapsed() == isCollapsed) return;
+
+        TabModel model = getTabModelIfGroupExists(tabGroupId);
+        if (model == null) return;
+
+        TabGroupItem updatedGroupItem = groupItem.withCollapsed(isCollapsed);
+        updateItemAt(headerIndex, updatedGroupItem, PayloadType.COLLAPSED);
+
+        if (isCollapsed) {
+            removeItemsAt(headerIndex + 1, model.getTabCountForGroup(tabGroupId));
+        } else {
+            List<Tab> children = model.getTabsInGroup(tabGroupId);
+            Tab selectedTab = TabModelUtils.getCurrentTab(model);
+            List<TabItem> childItems = new ArrayList<>(children.size());
+            for (Tab childTab : children) {
+                childItems.add(createTabItem(selectedTab, childTab));
+            }
+            insertItemsAt(headerIndex + 1, childItems);
+        }
     }
 
     private boolean isGroupCollapsed(TabModel model, Token tabGroupId) {
@@ -262,10 +380,20 @@ public class GroupedTabListDataProvider extends TabListDataProvider {
                 && tabGroupId.equals(selectedTab.getTabGroupId());
     }
 
-    private int indexOfTabGroupId(Token tabGroupId) {
-        for (int i = 0; i < mItems.size(); i++) {
-            if (matchesTabGroupId(mItems.get(i), tabGroupId)) return i;
+    /**
+     * Returns the active {@link TabModel} if {@code tabGroupId} still exists in it and is not being
+     * removed, or null otherwise. A removed group's card is removed next by didRemoveTabGroup, so
+     * callers skip updating it.
+     *
+     * @param tabGroupId The ID of the tab group to check.
+     */
+    private @Nullable TabModel getTabModelIfGroupExists(Token tabGroupId) {
+        TabModel model = getTabModelIfTabStateInitialized();
+        if (model == null
+                || !model.containsTabGroup(tabGroupId)
+                || mRemovingTabGroupIds.contains(tabGroupId)) {
+            return null;
         }
-        return TabList.INVALID_TAB_INDEX;
+        return model;
     }
 }

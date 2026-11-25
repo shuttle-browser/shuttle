@@ -30,6 +30,7 @@ import static org.mockito.Mockito.when;
 import android.animation.ObjectAnimator;
 import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.ColorStateList;
 import android.content.res.Configuration;
 import android.content.res.Resources;
@@ -69,6 +70,8 @@ import org.robolectric.config.ConfigurationRegistry;
 import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.Callback;
+import org.chromium.base.IntentUtils;
+import org.chromium.base.UnownedUserDataHost;
 import org.chromium.base.UserDataHost;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.OneshotSupplierImpl;
@@ -91,6 +94,7 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.layouts.toolbar.ToolbarWidthConsumer;
 import org.chromium.chrome.browser.lens.LensController;
 import org.chromium.chrome.browser.omnibox.LocationBarDataProvider.AppInstallState;
+import org.chromium.chrome.browser.omnibox.OmniboxPrerender.NativeOmniboxPrerender;
 import org.chromium.chrome.browser.omnibox.OmniboxPrerender.Natives;
 import org.chromium.chrome.browser.omnibox.SearchEngineService.SearchEngineNameObserver;
 import org.chromium.chrome.browser.omnibox.UrlBar.ScrollType;
@@ -128,7 +132,7 @@ import org.chromium.chrome.test.util.browser.signin.AccountManagerTestRule;
 import org.chromium.components.browser_ui.accessibility.PageZoomIndicatorCoordinator;
 import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.browser_ui.widget.chips.ChipView;
-import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandler.BackPressResult;
 import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.components.metrics.OmniboxEventProtosIntDef.PageClassification;
 import org.chromium.components.omnibox.AutocompleteInput;
@@ -194,7 +198,7 @@ public class LocationBarMediatorUnitTest {
 
     private static final String TEST_URL = "http://www.example.org";
     private static final String TEST_USER_TEXT = "user query";
-    private static final String TEST_INITIAL_USER_TEXT = "inital text";
+    private static final String TEST_INITIAL_USER_TEXT = "initial text";
 
     private static int sGeoHeaderPrimeCount;
     private static int sGeoHeaderStopCount;
@@ -217,7 +221,7 @@ public class LocationBarMediatorUnitTest {
     @Mock private UrlBarCoordinator mUrlCoordinator;
     @Mock private StatusCoordinator mStatusCoordinator;
     @Mock private Natives mPrerenderJni;
-    @Mock private JniUniquePtr<OmniboxPrerender.NativeOmniboxPrerender> mNativeOmniboxPrerender;
+    @Mock private JniUniquePtr<NativeOmniboxPrerender> mNativeOmniboxPrerender;
     @Mock private TextView mView;
     @Mock private View mTabView;
     @Mock private KeyEvent mKeyEvent;
@@ -261,7 +265,6 @@ public class LocationBarMediatorUnitTest {
 
     @Captor private ArgumentCaptor<OmniboxLoadUrlParams> mOmniboxLoadUrlParamsCaptor;
     @Captor private ArgumentCaptor<Callback<Boolean>> mOnInteractionCompletedCallbackCaptor;
-    @Captor private ArgumentCaptor<Runnable> mOnPickerInteractionSucceededCallbackCaptor;
     @Captor private ArgumentCaptor<UrlBarData> mUrlBarDataCaptor;
     @Captor private ArgumentCaptor<FuseboxSessionState> mFuseboxSessionStateCaptor;
     @Captor private ArgumentCaptor<Boolean> mBooleanCaptor;
@@ -896,6 +899,9 @@ public class LocationBarMediatorUnitTest {
 
         mMediator.beginInput(input);
         verify(mUrlCoordinator, never()).requestFocus();
+        assertEquals(DisplayState.DRAFTING_NO_FOCUS, input.getDisplayState());
+        verify(mLocationBarLayout, never()).setShowFocusRing(true);
+        verify(mLocationBarLayout, atLeastOnce()).setShowFocusRing(false);
     }
 
     @Test
@@ -917,6 +923,18 @@ public class LocationBarMediatorUnitTest {
     }
 
     @Test
+    public void testBeginInput_StandbyNoFocus_focusGainedShowsFocusRing() {
+        var input = mSessionState.getAutocompleteInput();
+        input.setAutocompleteState(AutocompleteState.STANDBY_NO_FOCUS);
+        mMediator.beginInput(input);
+        clearInvocations(mLocationBarLayout);
+
+        mMediator.onUrlFocusChange(true);
+        assertEquals(DisplayState.DRAFTING, input.getDisplayState());
+        verify(mLocationBarLayout, atLeastOnce()).setShowFocusRing(true);
+    }
+
+    @Test
     public void testOnFuseboxPopupDismissed_StandbyNoFocus() {
         var input = mSessionState.getAutocompleteInput();
         input.setAutocompleteState(AutocompleteState.STANDBY_NO_FOCUS);
@@ -926,26 +944,6 @@ public class LocationBarMediatorUnitTest {
         mOnInteractionCompletedCallback.onResult(false);
 
         assertFalse(mSessionState.isSessionActive());
-    }
-
-    @Test
-    public void testOnPickerInteractionSucceeded_StandbyNoFocus_focusesOmnibox() {
-        verify(mFuseboxCoordinator, atLeastOnce())
-                .setOnPickerInteractionSucceededCallback(
-                        mOnPickerInteractionSucceededCallbackCaptor.capture());
-
-        var input = mSessionState.getAutocompleteInput();
-        input.setFocusReason(OmniboxFocusReason.NTP_GALLERY_CHIP_CLICKED);
-        input.setAutocompleteState(AutocompleteState.STANDBY_NO_FOCUS);
-        mMediator.beginInput(input);
-        clearInvocations(mUrlCoordinator);
-
-        // The first captured callback belongs to mMediator; setUp() also creates a tablet mediator.
-        mOnPickerInteractionSucceededCallbackCaptor.getAllValues().get(0).run();
-
-        assertAutocompleteState(AutocompleteState.ENABLED);
-        assertEquals(OmniboxFocusReason.FAKE_BOX_TAP, input.getFocusReason());
-        verify(mUrlCoordinator).requestFocus();
     }
 
     @Test
@@ -5430,6 +5428,9 @@ public class LocationBarMediatorUnitTest {
         mMediator.onUrlFocusChange(/* hasFocus= */ false);
 
         assertDraftingNoFocusProperties();
+        verify(mUrlCoordinator)
+                .setUrlBarData(
+                        any(), eq(ScrollType.SCROLL_TO_BEGINNING), eq(TextSelection.SELECT_END));
     }
 
     @Test
@@ -6349,6 +6350,8 @@ public class LocationBarMediatorUnitTest {
 
         verify(mLocationBarLayout, atLeastOnce()).setLensButtonVisibility(false);
         verify(mUrlCoordinator).setIncognitoColorsEnabled(true);
+        assertEquals(
+                BrandedColorScheme.INCOGNITO, mOmniboxResourceProvider.getBrandedColorScheme());
         clearInvocations(mLocationBarLayout, mUrlCoordinator);
 
         doReturn(true).when(mLensController).isLensEnabled(any());
@@ -6357,6 +6360,8 @@ public class LocationBarMediatorUnitTest {
 
         verify(mLocationBarLayout, atLeastOnce()).setLensButtonVisibility(true);
         verify(mUrlCoordinator).setIncognitoColorsEnabled(false);
+        assertEquals(
+                BrandedColorScheme.APP_DEFAULT, mOmniboxResourceProvider.getBrandedColorScheme());
     }
 
     @Test
@@ -6376,11 +6381,11 @@ public class LocationBarMediatorUnitTest {
     @Test
     public void testHandleBackPress_reflectedByBackPressChangedSupplier() {
         assertFalse(mMediator.getHandleBackPressChangedSupplier().get());
-        assertEquals(BackPressHandler.BackPressResult.FAILURE, mMediator.handleBackPress());
+        assertEquals(BackPressResult.FAILURE, mMediator.handleBackPress());
 
         mMediator.onUrlFocusChange(/* hasFocus= */ true);
         assertTrue(mMediator.getHandleBackPressChangedSupplier().get());
-        assertEquals(BackPressHandler.BackPressResult.SUCCESS, mMediator.handleBackPress());
+        assertEquals(BackPressResult.SUCCESS, mMediator.handleBackPress());
 
         mMediator.onUrlFocusChange(/* hasFocus= */ false);
         assertFalse(mMediator.getHandleBackPressChangedSupplier().get());
@@ -6394,5 +6399,33 @@ public class LocationBarMediatorUnitTest {
         doReturn("").when(mUrlCoordinator).getTextWithAutocomplete();
         mMediator.onUrlFocusChange(/* hasFocus= */ true);
         clearInvocations(mLocationBarLayout, mUrlCoordinator);
+    }
+
+    @Test
+    public void testShareText_plainTextPopulatesExtraText() {
+        Intent sendIntent = shareTextAndCaptureSendIntent("search query");
+
+        assertEquals(Intent.ACTION_SEND, sendIntent.getAction());
+        assertEquals("search query", sendIntent.getStringExtra(Intent.EXTRA_TEXT));
+    }
+
+    @Test
+    public void testShareText_urlTextIsForwardedVerbatim() {
+        Intent sendIntent = shareTextAndCaptureSendIntent("https://www.example.com/path");
+
+        assertEquals("https://www.example.com/path", sendIntent.getStringExtra(Intent.EXTRA_TEXT));
+    }
+
+    /** Invokes {@link LocationBarMediator#shareText} and returns the ACTION_SEND intent. */
+    private Intent shareTextAndCaptureSendIntent(String text) {
+        when(mWindowAndroid.getUnownedUserDataHost()).thenReturn(new UnownedUserDataHost());
+        mMediator.shareText(text);
+
+        ArgumentCaptor<Intent> chooserCaptor = ArgumentCaptor.forClass(Intent.class);
+        verify(mWindowAndroid).showIntent(chooserCaptor.capture(), any(), any());
+        Intent sendIntent =
+                IntentUtils.safeGetParcelableExtra(chooserCaptor.getValue(), Intent.EXTRA_INTENT);
+        assertNotNull(sendIntent);
+        return sendIntent;
     }
 }

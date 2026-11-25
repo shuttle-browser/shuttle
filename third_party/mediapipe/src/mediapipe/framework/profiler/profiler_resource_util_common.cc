@@ -12,11 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "absl/flags/flag.h"
+#include "absl/flags/flag.h"            // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/framework/deps/file_path.h"
 #include "mediapipe/framework/port/file_helpers.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
 #include "mediapipe/framework/profiler/profiler_resource_util.h"
 
 ABSL_FLAG(std::string, log_root_dir, "",
@@ -33,9 +34,9 @@ absl::StatusOr<std::string> GetLogDirectory() {
 }
 
 absl::StatusOr<std::string> PathToLogFile(const std::string& path) {
-  MP_ASSIGN_OR_RETURN(std::string log_dir, GetLogDirectory());
+  ABSL_ASSIGN_OR_RETURN(std::string log_dir, GetLogDirectory());
   std::string result = file::JoinPath(log_dir, path);
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       mediapipe::file::RecursivelyCreateDir(file::Dirname(result)));
   return result;
 }

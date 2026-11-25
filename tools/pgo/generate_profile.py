@@ -69,7 +69,10 @@ _ANDROID_PGO_CACHE_SUFFIX = 'cache/pgo_profiles'
 # third_party/catapult/devil/devil/android/sdk/bundletool.py. Use Chromium's
 # hermetic JDK, brought into the isolate by //third_party/jdk:java_data (a
 # data_dep of //tools/pgo's script tests).
-_JDK_BIN_DIR = f'{_ROOT_DIR}/third_party/jdk/current/bin'
+sys.path.append(f'{_ROOT_DIR}/build/android')
+import java_home
+
+_JDK_BIN_DIR = f'{java_home.JAVA_HOME}/bin'
 
 # Enabled by testing/variations/fieldtrial_testing_config.json, so every
 # benchmark run has to turn them off explicitly. Stops the hang watcher from
@@ -644,6 +647,14 @@ def run_benchmark(benchmark: Benchmark, args: OptionsNamespace):
             disabled_features.append('SessionRestoreInfobar')
 
     browser_args = benchmark.ProduceBrowserArgs(disabled_features)
+    if (
+        not args.android_browser
+        and sys.platform == 'win32'
+        and args.target_arch == 'x86'
+    ):
+        # TODO(crbug.com/555762263): Sandboxed 32-bit renderers crash at
+        # startup in PGO-instrumented builds. Remove once root-caused.
+        browser_args.append('--no-sandbox')
     if is_crossbench:
         if args.android_browser:
             browser_args = get_crossbench_variations_browser_args(browser_args)
@@ -1195,23 +1206,16 @@ def main():
         ),
     ]
 
-    # JetStream is disabled on 32-bit Windows due to failures, see
-    # https://crbug.com/327040688.
-    if not (
-        not args.android_browser
-        and sys.platform == 'win32'
-        and args.target_arch == 'x86'
-    ):
-        jetstream_args = ['jetstream3']
-        if args.target_arch in ('arm', 'x86'):
-            # Skip memory-hungry stories on 32-bit platforms to avoid OOM and
-            # timeouts, see https://crbug.com/487336000 and
-            # https://crbug.com/565414952.
-            jetstream_args.append(
-                '--stories=default,-babylonjs-scene-es6,'
-                '-transformersjs-bert-wasm'
-            )
-        benchmarks.append(Benchmark('jetstream3.crossbench', jetstream_args))
+    jetstream_args = ['jetstream3']
+    if args.target_arch in ('arm', 'x86'):
+        # Skip memory-hungry stories on 32-bit platforms to avoid OOM and
+        # timeouts, see https://crbug.com/487336000 and
+        # https://crbug.com/565414952.
+        jetstream_args.append(
+            '--stories=default,-babylonjs-scene-es6,'
+            '-transformersjs-bert-wasm'
+        )
+    benchmarks.append(Benchmark('jetstream3.crossbench', jetstream_args))
 
     # These benchmarks require special access permissions:
     # https://www.chromium.org/developers/telemetry/upload_to_cloud_storage/#request-access-for-google-partners

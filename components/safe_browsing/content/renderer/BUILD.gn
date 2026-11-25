@@ -8,8 +8,8 @@ import("//extensions/buildflags/buildflags.gni")
 source_set("renderer") {
   if (safe_browsing_mode != 0) {
     sources = [
-      "threat_dom_details.cc",
-      "threat_dom_details.h",
+      "threat_details/threat_dom_details.cc",
+      "threat_details/threat_dom_details.h",
     ]
 
     deps = [
@@ -52,7 +52,10 @@ source_set("throttles") {
     ]
 
     if (enable_extensions) {
-      deps += [ "//extensions/common:common_constants" ]
+      deps += [
+        "//components/safe_browsing/core/common/proto:csd_proto",
+        "//extensions/common:common_constants",
+      ]
     }
   }
 }
@@ -79,7 +82,10 @@ source_set("throttles_unittest") {
     ]
 
     if (enable_extensions) {
-      deps += [ "//third_party/blink/public:blink" ]
+      deps += [
+        "//components/safe_browsing/core/common/proto:csd_proto",
+        "//third_party/blink/public:blink",
+      ]
     }
   }
 }

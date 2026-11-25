@@ -8,27 +8,35 @@
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 
+namespace content {
+class BrowserContext;
+}  // namespace content
+
 namespace glic {
 
 BASE_DECLARE_FEATURE(kContextualCueing);
 BASE_DECLARE_FEATURE(kGlicZeroStateSuggestions);
+BASE_DECLARE_FEATURE(kGlicZeroStateSuggestionsPreconnectWithoutCredentials);
 BASE_DECLARE_FEATURE(kEnableAutoOpenGlicSidePanel);
+BASE_DECLARE_FEATURE(kGlicBrowsingHistoryZeroStateSuggestions);
 
-// Whether contextual cueing is enabled.
+// Whether contextual cueing is enabled for `context`.
 //
 // It is expected for downstream to use this function rather than calling
 // `base::FeatureList::IsEnabled` directly. Note that this function explicitly
 // ignores country/locale if the feature is overridden by Finch or command-line
-// override.
-bool IsContextualCueingEnabled();
+// override. Returns false if the Glic provider of `context` doesn't support
+// contextual cueing (see `GlicProviderSpec::SupportsFeature()`).
+bool IsContextualCueingEnabled(content::BrowserContext* context);
 
-// Whether zero state suggestions are enabled.
+// Whether zero state suggestions are enabled for `context`.
 //
 // It is expected for downstream to use this function rather than calling
 // `base::FeatureList::IsEnabled` directly. Note that this function explicitly
 // ignores country/locale if the feature is overridden by Finch or command-line
-// override.
-bool IsZeroStateSuggestionsEnabled();
+// override. Returns false if the Glic provider of `context` doesn't support
+// zero state suggestions (see `GlicProviderSpec::SupportsFeature()`).
+bool IsZeroStateSuggestionsEnabled(content::BrowserContext* context);
 
 // The amount of time to wait when a nudge is dismissed following the
 // exponential back off rule. The amount of the time to back off each time can
@@ -101,6 +109,28 @@ extern const base::FeatureParam<int> kMaxPinnedPagesForTriggeringSuggestions;
 
 // Timeout before giving up on getting context from a page.
 extern const base::FeatureParam<base::TimeDelta> kZSSPageContextTimeout;
+
+// Params for `kGlicBrowsingHistoryZeroStateSuggestions`
+// (browsing-history-based ZSS).
+
+// The maximum number of recent pages to send to the model for
+// browsing-history-based ZSS.
+extern const base::FeatureParam<int> kMaxRecentPages;
+
+// The maximum lookback window for considering a page as recent for
+// browsing-history-based ZSS.
+extern const base::FeatureParam<base::TimeDelta> kMaxRecentDuration;
+
+// Source for gathering recent pages to ground zero state suggestions.
+enum class RecentPagesSource {
+  // Queries the user's local navigation history (including closed tabs and
+  // earlier navigations within open tabs) within the configured time window.
+  kAllRecentVisits,
+  // Only gathers URLs from tabs currently open in the profile's browser
+  // windows.
+  kOpenTabsOnly,
+};
+extern const base::FeatureParam<RecentPagesSource> kRecentPagesSource;
 
 }  // namespace glic
 

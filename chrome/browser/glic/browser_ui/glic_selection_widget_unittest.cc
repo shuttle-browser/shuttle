@@ -9,12 +9,18 @@
 #include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/grit/generated_resources.h"
 #include "chrome/test/views/chrome_views_test_base.h"
 #include "components/strings/grit/components_strings.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/color/color_id.h"
+#include "ui/color/color_provider.h"
 #include "ui/events/base_event_utils.h"
 #include "ui/gfx/animation/animation_test_api.h"
+#include "ui/gfx/geometry/rounded_corners_f.h"
+#include "ui/views/animation/ink_drop.h"
+#include "ui/views/animation/ink_drop_host.h"
 #include "ui/views/controls/button/image_button.h"
 #include "ui/views/controls/button/md_text_button.h"
 #include "ui/views/test/button_test_api.h"
@@ -70,6 +76,7 @@ class TestWidgetActionDelegate
     : public GlicSelectionWidgetDelegate::ActionDelegate {
  public:
   void OnAskGemini() override { ask_gemini_called = true; }
+  void OnHovered() override {}
   gfx::Rect GetContainerBounds() override { return container_bounds; }
   void OnCopy() override { copy_called = true; }
   void OnHide() override { hide_called = true; }
@@ -90,7 +97,8 @@ TEST_F(GlicSelectionWidgetTest, CopyButtonsHiddenByDefault) {
 
   auto test_delegate = std::make_unique<TestWidgetActionDelegate>();
   auto widget_delegate = std::make_unique<GlicSelectionWidgetDelegate>(
-      *test_delegate, anchor_rect, selected_text);
+      *test_delegate, anchor_rect, selected_text,
+      GlicSelectionInlineCueFeatureParams{});
 
   views::View* contents_view = widget_delegate->GetContentsView();
   ASSERT_TRUE(contents_view);
@@ -115,17 +123,14 @@ TEST_F(GlicSelectionWidgetTest, CopyButtonsHiddenByDefault) {
 }
 
 TEST_F(GlicSelectionWidgetTest, ButtonsTriggerCallbacks) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeatureWithParameters(
-      features::kGlicSelectionPrompt,
-      {{features::kGlicSelectionShowCopyButtons.name, "true"}});
-
   gfx::Rect anchor_rect(10, 10, 100, 100);
   std::u16string selected_text = u"selected text";
 
+  GlicSelectionInlineCueFeatureParams feature_params;
+  feature_params.show_copy_buttons = true;
   auto test_delegate = std::make_unique<TestWidgetActionDelegate>();
   auto widget_delegate = std::make_unique<GlicSelectionWidgetDelegate>(
-      *test_delegate, anchor_rect, selected_text);
+      *test_delegate, anchor_rect, selected_text, feature_params);
 
   views::View* contents_view = widget_delegate->GetContentsView();
   ASSERT_TRUE(contents_view);
@@ -180,7 +185,8 @@ TEST_F(GlicSelectionWidgetTest, ShowAndCloseWidget) {
 
   auto test_delegate = std::make_unique<TestWidgetActionDelegate>();
   auto widget_delegate = std::make_unique<GlicSelectionWidgetDelegate>(
-      *test_delegate, anchor_rect, selected_text);
+      *test_delegate, anchor_rect, selected_text,
+      GlicSelectionInlineCueFeatureParams{});
 
   EXPECT_FALSE(widget_delegate->GetWidget());
 
@@ -214,7 +220,8 @@ TEST_F(GlicSelectionWidgetTest, SmallChip) {
 
   auto test_delegate = std::make_unique<TestWidgetActionDelegate>();
   auto widget_delegate = std::make_unique<GlicSelectionWidgetDelegate>(
-      *test_delegate, anchor_rect, selected_text);
+      *test_delegate, anchor_rect, selected_text,
+      GlicSelectionInlineCueFeatureParams{});
 
   EXPECT_EQ(widget_delegate->arrow(), views::BubbleBorder::BOTTOM_LEFT);
 
@@ -230,11 +237,28 @@ TEST_F(GlicSelectionWidgetTest, SmallChip) {
   ASSERT_TRUE(ask_gemini_btn);
   EXPECT_TRUE(ask_gemini_btn->GetText().empty());
   EXPECT_EQ(ask_gemini_btn->GetPreferredSize(), gfx::Size(30, 30));
+  EXPECT_EQ(ask_gemini_btn->GetCornerRadii(),
+            gfx::RoundedCornersF(15, 15, 15, 0));
+  EXPECT_EQ(views::InkDrop::Get(ask_gemini_btn)->GetMode(),
+            views::InkDropHost::InkDropMode::ON);
+  EXPECT_TRUE(ask_gemini_btn->GetHasInkDropActionOnClick());
+  EXPECT_TRUE(ask_gemini_btn->GetShowInkDropWhenHotTracked());
   EXPECT_TRUE(ask_gemini_btn->HasImage(views::Button::STATE_NORMAL));
   EXPECT_FALSE(
       ask_gemini_btn->GetImageModel(views::Button::STATE_HOVERED).has_value());
   EXPECT_FALSE(
       ask_gemini_btn->GetImageModel(views::Button::STATE_PRESSED).has_value());
+
+  std::unique_ptr<views::Widget> anchor_widget =
+      CreateTestWidget(views::Widget::InitParams::CLIENT_OWNS_WIDGET);
+  anchor_widget->Show();
+  widget_delegate->set_parent_window(anchor_widget->GetNativeView());
+  widget_delegate->ShowWidget();
+  views::Widget* widget = widget_delegate->GetWidget();
+  ASSERT_TRUE(widget);
+  EXPECT_EQ(
+      views::InkDrop::Get(ask_gemini_btn)->GetBaseColor(),
+      widget->GetColorProvider()->GetColor(ui::kColorSysStateHoverOnSubtle));
 
   views::test::ButtonTestApi(ask_gemini_btn)
       .NotifyClick(ui::MouseEvent(ui::EventType::kMousePressed, gfx::Point(),
@@ -242,6 +266,12 @@ TEST_F(GlicSelectionWidgetTest, SmallChip) {
                                   ui::EF_LEFT_MOUSE_BUTTON,
                                   ui::EF_LEFT_MOUSE_BUTTON));
   EXPECT_TRUE(test_delegate->ask_gemini_called);
+
+  TestWidgetObserver observer(widget);
+  base::RunLoop run_loop;
+  observer.quit_closure = run_loop.QuitClosure();
+  widget_delegate->CloseWidget();
+  run_loop.Run();
 }
 
 TEST_F(GlicSelectionWidgetTest, SmallChipBottom) {
@@ -254,9 +284,23 @@ TEST_F(GlicSelectionWidgetTest, SmallChipBottom) {
 
   auto test_delegate = std::make_unique<TestWidgetActionDelegate>();
   auto widget_delegate = std::make_unique<GlicSelectionWidgetDelegate>(
-      *test_delegate, anchor_rect, selected_text);
+      *test_delegate, anchor_rect, selected_text,
+      GlicSelectionInlineCueFeatureParams{});
 
   EXPECT_EQ(widget_delegate->arrow(), views::BubbleBorder::TOP_LEFT);
+
+  views::View* contents_view = widget_delegate->GetContentsView();
+  ASSERT_TRUE(contents_view);
+  ASSERT_EQ(contents_view->children().size(), 1u);
+  auto pill_children = contents_view->children()[0]->children();
+  ASSERT_EQ(pill_children.size(), 1u);
+  auto* ask_gemini_btn =
+      views::AsViewClass<views::MdTextButton>(pill_children[0]);
+  ASSERT_TRUE(ask_gemini_btn);
+  EXPECT_EQ(ask_gemini_btn->GetCornerRadii(),
+            gfx::RoundedCornersF(0, 15, 15, 15));
+  EXPECT_EQ(views::InkDrop::Get(ask_gemini_btn)->GetMode(),
+            views::InkDropHost::InkDropMode::ON);
 }
 
 class GlicSelectionWidgetBoundsTest : public GlicSelectionWidgetTest {
@@ -267,7 +311,8 @@ class GlicSelectionWidgetBoundsTest : public GlicSelectionWidgetTest {
       const gfx::Rect& selection) {
     test_delegate_.container_bounds = kContainerBounds;
     return std::make_unique<GlicSelectionWidgetDelegate>(
-        test_delegate_, selection, u"selected text");
+        test_delegate_, selection, u"selected text",
+        GlicSelectionInlineCueFeatureParams{});
   }
 
   TestWidgetActionDelegate test_delegate_;

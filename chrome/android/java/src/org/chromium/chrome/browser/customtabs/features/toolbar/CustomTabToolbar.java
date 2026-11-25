@@ -77,6 +77,8 @@ import org.chromium.chrome.browser.omnibox.LocationBar;
 import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.OmniboxStub;
 import org.chromium.chrome.browser.omnibox.UrlBar;
+import org.chromium.chrome.browser.omnibox.UrlBar.ScrollType;
+import org.chromium.chrome.browser.omnibox.UrlBar.UrlBarDelegate;
 import org.chromium.chrome.browser.omnibox.UrlBarCoordinator;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.status.PageInfoIphController;
@@ -382,7 +384,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
         boolean show =
                 buttonVariant == AdaptiveToolbarButtonVariant.PRICE_TRACKING
                         || buttonVariant == AdaptiveToolbarButtonVariant.PRICE_INSIGHTS;
-        Log.i(TAG, "fallback-ui-variant: " + buttonVariant + " show: " + show);
+        Log.i(TAG, "fallback-ui-variant: %d show: %s", buttonVariant, show);
         if (!show) {
             resetOptionalButtonState();
             return;
@@ -703,13 +705,20 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
         return mBrandedColorScheme;
     }
 
+    private void setBrandedColorScheme(@BrandedColorScheme int brandedColorScheme) {
+        mBrandedColorScheme = brandedColorScheme;
+        if (mOmniboxResourceProvider != null) {
+            mOmniboxResourceProvider.setBrandedColorScheme(brandedColorScheme);
+        }
+    }
+
     @Override
     public void onTintChanged(
             @Nullable ColorStateList tint,
             @Nullable ColorStateList activityFocusTint,
             @BrandedColorScheme int brandedColorScheme) {
         if (tint == null) return;
-        mBrandedColorScheme = brandedColorScheme;
+        setBrandedColorScheme(brandedColorScheme);
         mTint = activityFocusTint != null ? activityFocusTint : tint;
         mLocationBar.updateColors();
         notifyColorSchemeChanged();
@@ -780,7 +789,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
                         ? mThemeColorProvider.getBrandedColorScheme()
                         : OmniboxResourceProvider.getBrandedColorScheme(
                                 getContext(), isIncognitoBranded(), background);
-        mBrandedColorScheme = brandedColorScheme;
+        setBrandedColorScheme(brandedColorScheme);
         mTint =
                 mThemeColorProvider != null && mThemeColorProvider.getTint() != null
                         ? mThemeColorProvider.getTint()
@@ -931,7 +940,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
     @VisibleForTesting
     public class CustomTabLocationBar
             implements LocationBar,
-                    UrlBar.UrlBarDelegate,
+                    UrlBarDelegate,
                     LocationBarDataProvider.Observer,
                     View.OnLongClickListener,
                     ToolbarBrandingDelegate,
@@ -1364,7 +1373,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
             mUrlCoordinator.setUrlBarData(
                     UrlBarData.forNonUrlText(
                             getContext().getString(R.string.twa_running_in_chrome)),
-                    UrlBar.ScrollType.NO_SCROLL,
+                    ScrollType.NO_SCROLL,
                     TextSelection.SELECT_ALL);
         }
 
@@ -1488,7 +1497,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
             Tab tab = getCurrentTab();
             if (tab == null) {
                 mUrlCoordinator.setUrlBarData(
-                        UrlBarData.EMPTY, UrlBar.ScrollType.NO_SCROLL, TextSelection.SELECT_ALL);
+                        UrlBarData.EMPTY, ScrollType.NO_SCROLL, TextSelection.SELECT_ALL);
                 return;
             }
 
@@ -1538,7 +1547,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
 
             mUrlCoordinator.setUrlBarData(
                     UrlBarData.create(url, displayText, originStart, originEnd, url.getSpec()),
-                    UrlBar.ScrollType.SCROLL_TO_TLD,
+                    ScrollType.SCROLL_TO_TLD,
                     TextSelection.SELECT_ALL);
 
             WebContents webContents = tab.getWebContents();

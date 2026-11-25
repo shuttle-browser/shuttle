@@ -9,11 +9,13 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.spy;
@@ -25,6 +27,7 @@ import android.app.Notification;
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
+import android.os.Build.VERSION_CODES;
 
 import org.junit.After;
 import org.junit.Before;
@@ -40,6 +43,7 @@ import org.robolectric.annotation.Config;
 import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowSystemClock;
 
+import org.chromium.base.FeatureOverrides;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
@@ -65,13 +69,17 @@ import org.chromium.components.browser_ui.notifications.MockNotificationManagerP
 import org.chromium.components.browser_ui.notifications.MockNotificationManagerProxy.NotificationEntry;
 import org.chromium.components.browser_ui.notifications.NotificationWrapper;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /** Unit tests for {@link ActorNotificationService}. */
 @RunWith(BaseRobolectricTestRunner.class)
-@Config(shadows = {ShadowSystemClock.class})
+@Config(
+        sdk = VERSION_CODES.BAKLAVA,
+        shadows = {ShadowSystemClock.class})
 @EnableFeatures(ChromeFeatureList.ACTOR_LIVE_NOTIFICATION)
 public class ActorNotificationServiceTest {
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
@@ -1004,7 +1012,7 @@ public class ActorNotificationServiceTest {
                 taskId2, ActorTaskState.FAILED, /* isSilent= */ false, /* isWarning= */ false);
 
         assertTrue(mNotificationService.hasPendingDemotions());
-        assertTrue(mNotificationService.hasPendingDemotionForTesting(taskId1));
+        assertFalse(mNotificationService.hasPendingDemotionForTesting(taskId1));
         assertTrue(mNotificationService.hasPendingDemotionForTesting(taskId2));
 
         // Advance by 10s (now t=30s from task 1, 10s from task 2).
@@ -1691,7 +1699,12 @@ public class ActorNotificationServiceTest {
 
         ActorTask realTask =
                 new ActorTask(
-                        nativeTaskPtr, taskId, "Test Task", mock(Profile.class), "conv-id-50");
+                        nativeTaskPtr,
+                        taskId,
+                        "Test Task",
+                        mock(Profile.class),
+                        "conv-id-50",
+                        /* isExperimentalTriggering= */ false);
         when(mKeyedService.getTask(taskId)).thenReturn(realTask);
         when(mServiceController.createTrustedBringTabToFrontIntent(any()))
                 .thenAnswer(
@@ -1757,7 +1770,12 @@ public class ActorNotificationServiceTest {
 
         ActorTask realTask =
                 new ActorTask(
-                        nativeTaskPtr, taskId, "Test Task", mock(Profile.class), "conv-id-51");
+                        nativeTaskPtr,
+                        taskId,
+                        "Test Task",
+                        mock(Profile.class),
+                        "conv-id-51",
+                        /* isExperimentalTriggering= */ false);
         when(mKeyedService.getTask(taskId)).thenReturn(realTask);
         when(mServiceController.createTrustedBringTabToFrontIntent(any()))
                 .thenAnswer(
@@ -1809,5 +1827,454 @@ public class ActorNotificationServiceTest {
                 ActorTaskState.FINISHED,
                 demotedIntent.getIntExtra(
                         NotificationConstants.EXTRA_ACTOR_TASK_STATE, ActorTaskState.CREATED));
+    }
+
+    @Test
+    public void testMultiTask_NewTaskTakesLiveSlot() {
+        setUpTask(1);
+        setUpTask(2);
+
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testMultiTask_PauseOnOlderTaskTakesLiveSlot() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        updateTask(1, ActorTaskState.PAUSED_BY_USER);
+
+        assertEquals(List.of(1), getPromotedTaskIds());
+        assertNotNull(findNotification(/* tag= */ null, 2));
+    }
+
+    @Test
+    public void testMultiTask_SameCategoryUpdate_DoesNotTakeLiveSlot() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        updateTask(1, ActorTaskState.REFLECTING);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testLiveHandoff_FromCompletedTask_DemotesItNow() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(2, ActorTaskState.ACTING);
+        updateTask(1, ActorTaskState.FINISHED);
+        assertTrue(mNotificationService.hasPendingDemotionForTesting(1));
+
+        updateTask(2, ActorTaskState.PAUSED_BY_USER);
+
+        assertFalse(mNotificationService.hasPendingDemotionForTesting(1));
+        assertEquals(List.of(2), getPromotedTaskIds());
+        assertEquals(
+                0, findNotification(/* tag= */ null, 1).flags & Notification.FLAG_ONGOING_EVENT);
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ACTOR_STEP_PROGRESS_NOTIFICATION)
+    public void testMultiTask_StepProgress_DoesNotStealLiveStatus() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        mNotificationService.updateNotificationForStepProgress(1);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testResendWorkingNotificationLoudly_MultipleRunningTasks_PreservesSingleLiveTask() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        mNotificationService.resendWorkingNotificationLoudly(1);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testClearTaskData_LiveTask_PromotesNextTask() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        mNotificationService.clearTaskData(2);
+        mMockNotificationManager.cancel(2);
+
+        assertEquals(List.of(1), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testRepostNotification_NonLiveTask_RepostsAsNonLive() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        mNotificationService.onNotificationUnpinned(1);
+        mNotificationService.repostNotification(1, /* isWarning= */ false);
+        mMockNotificationManager.cancel(1);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testRepostNotification_UnpinnedFinishedLiveTask_StaysLiveUntilDemotion() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(2, ActorTaskState.ACTING);
+        updateTask(1, ActorTaskState.FINISHED);
+
+        mNotificationService.onNotificationPinned(2);
+        mNotificationService.onNotificationUnpinned(1);
+        mNotificationService.repostNotification(1, /* isWarning= */ false);
+        mMockNotificationManager.cancel(1);
+
+        assertEquals(List.of(1), getPromotedTaskIds());
+        assertTrue(mNotificationService.hasPendingDemotionForTesting(1));
+
+        ShadowLooper.idleMainLooper(
+                ActorNotificationService.getDemotionDelayMs(), TimeUnit.MILLISECONDS);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+        assertNotNull(findNotification(ActorNotificationService.UNPINNED_NOTIFICATION_TAG, 1));
+    }
+
+    @Test
+    public void testLiveWindowExpiry_PromotesNextTask() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.FINISHED);
+
+        ShadowLooper.idleMainLooper(
+                ActorNotificationService.getDemotionDelayMs(), TimeUnit.MILLISECONDS);
+
+        assertEquals(List.of(1), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testDemotedCompletedTask_NotPromotedAgain() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(2, ActorTaskState.ACTING);
+        updateTask(1, ActorTaskState.FINISHED);
+        updateTask(2, ActorTaskState.PAUSED_BY_USER);
+
+        mNotificationService.clearTaskData(2);
+        mMockNotificationManager.cancel(2);
+
+        assertEquals(List.of(), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testRepeatedFinishedUpdate_NonLiveTask_DoesNotScheduleDemotion() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(2, ActorTaskState.ACTING);
+        updateTask(1, ActorTaskState.FINISHED);
+        updateTask(2, ActorTaskState.PAUSED_BY_USER);
+
+        updateTask(1, ActorTaskState.FINISHED);
+
+        assertFalse(mNotificationService.hasPendingDemotionForTesting(1));
+    }
+
+    @Test
+    public void testWarningRefresh_NonLiveTaskStaysNonLive() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+
+        mNotificationService.updateNotificationForTask(
+                1, ActorTaskState.ACTING, /* isSilent= */ false, /* isWarning= */ true);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+    }
+
+    @Test
+    public void testMakeLive_PreemptedWarningTask_PreservesWarningState() {
+        setUpTask(1);
+        setUpTask(2);
+        mNotificationService.updateNotificationForTask(
+                1, ActorTaskState.ACTING, /* isSilent= */ false, /* isWarning= */ true);
+
+        updateTask(2, ActorTaskState.ACTING);
+
+        assertEquals(List.of(2), getPromotedTaskIds());
+        Notification task1Notification = findNotification(/* tag= */ null, 1);
+        assertNotNull(task1Notification);
+        assertEquals(
+                mContext.getString(R.string.actor_notification_title_will_stop_task),
+                task1Notification.extras.getString(Notification.EXTRA_TITLE));
+    }
+
+    @Test
+    public void testRemoveFromLiveOrder_PromotedWarningTask_PreservesWarningState() {
+        setUpTask(1);
+        setUpTask(2);
+        mNotificationService.updateNotificationForTask(
+                1, ActorTaskState.ACTING, /* isSilent= */ false, /* isWarning= */ true);
+        updateTask(2, ActorTaskState.ACTING);
+
+        mNotificationService.clearTaskData(2);
+        mMockNotificationManager.cancel(2);
+
+        assertEquals(List.of(1), getPromotedTaskIds());
+        Notification task1Notification = findNotification(/* tag= */ null, 1);
+        assertNotNull(task1Notification);
+        assertEquals(
+                mContext.getString(R.string.actor_notification_title_will_stop_task),
+                task1Notification.extras.getString(Notification.EXTRA_TITLE));
+    }
+
+    @Test
+    @DisableFeatures(ChromeFeatureList.ACTOR_LIVE_NOTIFICATION)
+    public void testLiveNotificationDisabled_CategoryChangeDoesNotRepostOtherTask() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+        Notification task2Notification = findNotification(/* tag= */ null, 2);
+
+        updateTask(1, ActorTaskState.PAUSED_BY_USER);
+
+        assertSame(task2Notification, findNotification(/* tag= */ null, 2));
+        assertTrue(getPromotedTaskIds().isEmpty());
+    }
+
+    @Test
+    @Config(
+            sdk = VERSION_CODES.VANILLA_ICE_CREAM,
+            shadows = {ShadowSystemClock.class})
+    public void testPreAndroid16_CompletedTaskNotOngoingAndNoDemotionScheduled() {
+        setUpTask(1);
+        setUpTask(2);
+        updateTask(1, ActorTaskState.ACTING);
+        updateTask(2, ActorTaskState.ACTING);
+        Notification task2Notification = findNotification(/* tag= */ null, 2);
+
+        updateTask(1, ActorTaskState.PAUSED_BY_USER);
+        assertSame(task2Notification, findNotification(/* tag= */ null, 2));
+        assertTrue(getPromotedTaskIds().isEmpty());
+
+        updateTask(1, ActorTaskState.FINISHED);
+        assertFalse(mNotificationService.hasPendingDemotionForTesting(1));
+        assertFalse(mNotificationService.hasPendingDemotions());
+        Notification completedNotification = findNotification(/* tag= */ null, 1);
+        assertNotNull(completedNotification);
+        assertEquals(0, completedNotification.flags & Notification.FLAG_ONGOING_EVENT);
+        assertFalse(
+                completedNotification.extras.getBoolean(
+                        ActorNotificationFactory.EXTRA_REQUEST_PROMOTED_ONGOING));
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ACTOR_SILENCE_NOTIFICATIONS_AFTER_FIRST_WORKING)
+    public void
+            testSilenceNotificationsAfterFirstWorking_ExperimentalTriggering_OnlyFirstWorkingIsLoud() {
+        int taskId = 60;
+        setUpTask(taskId, "Experimental Triggering Task", /* isExperimentalTriggering= */ true);
+
+        updateTask(taskId, ActorTaskState.CREATED);
+        assertEquals(1, mMockNotificationManager.getMutationCountAndDecrement());
+        assertTrue(
+                "Initial CREATED notification should be silenced",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertEquals(1, mMockNotificationManager.getMutationCountAndDecrement());
+        assertFalse(
+                "First ACTING notification should be loud",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        mNotificationService.resendWorkingNotificationLoudly(taskId);
+        assertEquals(0, mMockNotificationManager.getMutationCountAndDecrement());
+
+        updateTask(taskId, ActorTaskState.PAUSED_BY_ACTOR);
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertTrue(
+                "Subsequent ACTING notification should be silenced",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.WAITING_ON_USER);
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        mNotificationService.updateNotificationForTask(
+                taskId,
+                ActorTaskState.WAITING_ON_USER,
+                /* isSilent= */ false,
+                /* isWarning= */ true);
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.FINISHED);
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        int reflectingTaskId = 65;
+        setUpTask(
+                reflectingTaskId,
+                "Reflecting Experimental Task",
+                /* isExperimentalTriggering= */ true);
+        updateTask(reflectingTaskId, ActorTaskState.REFLECTING);
+        assertFalse(
+                "First REFLECTING notification should be loud",
+                mNotificationService
+                        .getCachedNotificationWrapperForTesting(reflectingTaskId)
+                        .isSilent());
+        updateTask(reflectingTaskId, ActorTaskState.PAUSED_BY_ACTOR);
+        updateTask(reflectingTaskId, ActorTaskState.ACTING);
+        assertTrue(
+                "Subsequent ACTING notification after initial REFLECTING should be silenced",
+                mNotificationService
+                        .getCachedNotificationWrapperForTesting(reflectingTaskId)
+                        .isSilent());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ACTOR_SILENCE_NOTIFICATIONS_AFTER_FIRST_WORKING)
+    public void
+            testSilenceNotificationsAfterFirstWorking_ExperimentalTriggering_InitiallySilentWorkingResendsLoudlyOnce() {
+        int taskId = 67;
+        setUpTask(taskId, "Experimental Triggering Task", /* isExperimentalTriggering= */ true);
+
+        mNotificationService.updateNotificationForTask(
+                taskId, ActorTaskState.ACTING, /* isSilent= */ true, /* isWarning= */ false);
+        assertEquals(1, mMockNotificationManager.getMutationCountAndDecrement());
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        mNotificationService.resendWorkingNotificationLoudly(taskId);
+        assertEquals(1, mMockNotificationManager.getMutationCountAndDecrement());
+        assertFalse(
+                "First loud working notification triggered via resendWorkingNotificationLoudly"
+                        + " should be loud",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        mNotificationService.resendWorkingNotificationLoudly(taskId);
+        assertEquals(0, mMockNotificationManager.getMutationCountAndDecrement());
+
+        updateTask(taskId, ActorTaskState.PAUSED_BY_ACTOR);
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertTrue(
+                "Subsequent ACTING notification after loud resend should be silenced",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ACTOR_SILENCE_NOTIFICATIONS_AFTER_FIRST_WORKING)
+    public void
+            testSilenceNotificationsAfterFirstWorking_NotSilencedWhenNonExperimentalOrFlagDisabled() {
+        int nonExperimentalTaskId = 62;
+        setUpTask(nonExperimentalTaskId, "Standard Task", /* isExperimentalTriggering= */ false);
+        for (int state :
+                new int[] {
+                    ActorTaskState.CREATED,
+                    ActorTaskState.ACTING,
+                    ActorTaskState.PAUSED_BY_ACTOR,
+                    ActorTaskState.ACTING,
+                    ActorTaskState.FINISHED
+                }) {
+            updateTask(nonExperimentalTaskId, state);
+            assertFalse(
+                    mNotificationService
+                            .getCachedNotificationWrapperForTesting(nonExperimentalTaskId)
+                            .isSilent());
+        }
+
+        FeatureOverrides.disable(ChromeFeatureList.ACTOR_SILENCE_NOTIFICATIONS_AFTER_FIRST_WORKING);
+        int flagDisabledTaskId = 63;
+        setUpTask(
+                flagDisabledTaskId,
+                "Experimental Triggering Task",
+                /* isExperimentalTriggering= */ true);
+        for (int state :
+                new int[] {
+                    ActorTaskState.CREATED,
+                    ActorTaskState.ACTING,
+                    ActorTaskState.PAUSED_BY_ACTOR,
+                    ActorTaskState.ACTING,
+                    ActorTaskState.FINISHED
+                }) {
+            updateTask(flagDisabledTaskId, state);
+            assertFalse(
+                    mNotificationService
+                            .getCachedNotificationWrapperForTesting(flagDisabledTaskId)
+                            .isSilent());
+        }
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ACTOR_SILENCE_NOTIFICATIONS_AFTER_FIRST_WORKING)
+    public void
+            testSilenceNotificationsAfterFirstWorking_TaskCompletionAndClearAll_ResetTracking() {
+        int taskId = 64;
+        setUpTask(taskId, "Experimental Triggering Task", /* isExperimentalTriggering= */ true);
+
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertFalse(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.FINISHED);
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertFalse(
+                "First ACTING notification after task completion should be loud",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        updateTask(taskId, ActorTaskState.PAUSED_BY_USER);
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertTrue(mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+
+        mNotificationService.clearAll();
+        updateTask(taskId, ActorTaskState.ACTING);
+        assertFalse(
+                "First ACTING notification after clearAll() should be loud",
+                mNotificationService.getCachedNotificationWrapperForTesting(taskId).isSilent());
+    }
+
+    private void setUpTask(int taskId) {
+        setUpTask(taskId, "Task " + taskId, /* isExperimentalTriggering= */ false);
+    }
+
+    private void setUpTask(int taskId, String title, boolean isExperimentalTriggering) {
+        ActorTask task = mock(ActorTask.class);
+        when(task.getId()).thenReturn(taskId);
+        when(task.getTitle()).thenReturn(title);
+        lenient().when(task.isExperimentalTriggering()).thenReturn(isExperimentalTriggering);
+        lenient().when(task.getState()).thenReturn(ActorTaskState.ACTING);
+        when(mKeyedService.getTask(taskId)).thenReturn(task);
+    }
+
+    private void updateTask(int taskId, @ActorTaskState int state) {
+        mNotificationService.updateNotificationForTask(
+                taskId, state, /* isSilent= */ false, /* isWarning= */ false);
+    }
+
+    private List<Integer> getPromotedTaskIds() {
+        List<Integer> promotedTaskIds = new ArrayList<>();
+        for (NotificationEntry entry : mMockNotificationManager.getNotifications()) {
+            if (entry.notification.extras.getBoolean(
+                    ActorNotificationFactory.EXTRA_REQUEST_PROMOTED_ONGOING)) {
+                promotedTaskIds.add(entry.id);
+            }
+        }
+        return promotedTaskIds;
     }
 }

@@ -14,7 +14,7 @@
 #include "base/android/callback_android.h"
 #include "base/android/jni_android.h"
 #include "base/android/jni_string.h"
-#include "base/android/token_android.h"
+#include "base/android/token_android.h"  // IWYU pragma: keep
 #include "base/check_is_test.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
@@ -83,10 +83,8 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "content/public/browser/web_contents_user_data.h"
-#include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/renderer_preferences/renderer_preferences.h"
 #include "ui/android/view_android.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/android/gurl_android.h"
 #include "url/gurl.h"
 
@@ -217,9 +215,9 @@ TabAndroid::GetWebContentsByteBuffer() const {
 
   int version = Java_TabImpl_getWebContentsStateSavedStateVersion(env, tab);
 
-  // If the web contents is null (denoted by saved_state_version being -1),
-  // return a nullptr.
-  if (version == -1) {
+  // If the web contents is null (denoted by saved_state_version being
+  // WebContentsState::kInvalidBufferVersion), return a nullptr.
+  if (version == WebContentsState::kInvalidBufferVersion) {
     return nullptr;
   }
 
@@ -303,8 +301,7 @@ bool TabAndroid::IsOffscreenRendering() const {
 
 sync_sessions::SyncedTabDelegate* TabAndroid::GetSyncedTabDelegate() {
   if (!synced_tab_delegate_) {
-    synced_tab_delegate_ =
-        std::make_unique<browser_sync::SyncedTabDelegateAndroid>(this);
+    synced_tab_delegate_ = std::make_unique<SyncedTabDelegateAndroid>(this);
     if (web_contents_) {
       synced_tab_delegate_->SetWebContents(
           web_contents_.get(),
@@ -584,23 +581,23 @@ void TabAndroid::UpdateDelegates(
   web_contents()->SetDelegate(web_contents_delegate_.get());
 }
 
-void TabAndroid::SendDidActivateUpdate(JNIEnv* env) {
+void TabAndroid::SendDidActivateUpdate() {
   // On Android, visibility and activation are currently synonymous.
   did_become_visible_callback_list_.Notify(this);
   did_activate_callback_list_.Notify(this);
 }
 
-void TabAndroid::SendWillDeactivateUpdate(JNIEnv* env) {
+void TabAndroid::SendWillDeactivateUpdate() {
   // On Android, visibility and activation are currently synonymous.
   will_become_hidden_callback_list_.Notify(this);
   will_deactivate_callback_list_.Notify(this);
 }
 
-void TabAndroid::SendDidInsertUpdate(JNIEnv* env) {
+void TabAndroid::SendDidInsertUpdate() {
   did_insert_callback_list_.Notify(this);
 }
 
-void TabAndroid::SendWillDetachUpdate(JNIEnv* env, int32_t detach_reason) {
+void TabAndroid::SendWillDetachUpdate(int32_t detach_reason) {
   will_detach_callback_list_.Notify(
       this, static_cast<tabs::TabInterface::DetachReason>(detach_reason));
 }
@@ -649,7 +646,8 @@ tabs::TabDestroyStatus TabAndroid::DestroyWebContents() {
   bool fast_shutdown_succeeded =
       process && process->FastShutdownIfPossible(1, false);
 
-  if (!fast_shutdown_succeeded && enable_graceful_shutdown && web_contents()) {
+  if (!fast_shutdown_succeeded && enable_graceful_shutdown && web_contents() &&
+      !web_contents()->GetBrowserContext()->ShutdownStarted()) {
     return DestroyWebContentsSlowShutdown();
   }
 
@@ -754,14 +752,6 @@ void TabAndroid::SetActiveNavigationEntryTitleForUrl(const std::string& url,
       (url == entry->GetVirtualURL().spec() || url == entry->GetURL().spec())) {
     entry->SetTitle(std::move(title));
   }
-}
-
-void TabAndroid::LoadOriginalImage() {
-  content::RenderFrameHost* render_frame_host =
-      web_contents()->GetFocusedFrame();
-  mojo::AssociatedRemote<chrome::mojom::ChromeRenderFrame> renderer;
-  render_frame_host->GetRemoteAssociatedInterfaces()->GetInterface(&renderer);
-  renderer->RequestReloadImageForContextNode();
 }
 
 void TabAndroid::OnShow() {
@@ -1084,24 +1074,11 @@ void TabAndroid::UpdateProperties() {
     ancestor = ancestor->GetParentCollection();
   }
 
-  SetIsPinned(pinned);
-  SetTabGroupId(tab_group_id);
-}
-
-void TabAndroid::SetIsPinned(bool is_pinned) {
   JNIEnv* env = AttachCurrentThread();
-  Java_TabImpl_setIsPinned(env, GetJavaObject(env), is_pinned);
-}
-
-void TabAndroid::SetTabGroupId(
-    std::optional<tab_groups::TabGroupId> tab_group_id) {
-  JNIEnv* env = AttachCurrentThread();
-  ScopedJavaLocalRef<jobject> java_token;
-  if (tab_group_id) {
-    java_token =
-        base::android::TokenAndroid::Create(env, tab_group_id->token());
-  }
-  Java_TabImpl_setTabGroupId(env, GetJavaObject(env), java_token);
+  std::optional<base::Token> tab_group_token =
+      tab_groups::TabGroupId::ToOptionalToken(tab_group_id);
+  Java_TabImpl_updateParentCollectionProperties(env, GetJavaObject(env), pinned,
+                                                tab_group_token);
 }
 
 ScopedJavaLocalRef<jobject> TabAndroid::GetJavaObject(JNIEnv* env) const {

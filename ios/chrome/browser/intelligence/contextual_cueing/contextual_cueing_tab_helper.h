@@ -18,6 +18,7 @@
 #import "base/observer_list.h"
 #import "base/observer_list_types.h"
 #import "base/scoped_observation.h"
+#import "base/task/cancelable_task_tracker.h"
 #import "components/optimization_guide/proto/features/contextual_cueing.pb.h"
 #import "components/page_content_annotations/core/page_content_annotation_type.h"
 #import "components/prefs/pref_change_registrar.h"
@@ -37,6 +38,10 @@ namespace feature_engagement {
 class Tracker;
 }  // namespace feature_engagement
 
+namespace history {
+class QueryResults;
+}  // namespace history
+
 namespace optimization_guide {
 class ModelQualityLogEntry;
 struct OptimizationGuideModelExecutionResult;
@@ -45,6 +50,7 @@ struct OptimizationGuideModelExecutionResult;
 namespace contextual_cueing {
 
 class ContextualCueingCapTrackerService;
+struct ContextualCueSnapshot;
 
 // Tab helper that orchestrates contextual cueing classification for a WebState.
 // It requests page classification from OnDevicePageClassificationService and
@@ -221,6 +227,14 @@ class ContextualCueingTabHelper
   // Initiates a request to the Model Execution Service for contextual cues.
   void InitiateModelExecutionRequest(const GURL& expected_url);
 
+  // Callback invoked when the `HistoryService` query completes. Populates
+  // `background_tabs` and `historical_tabs` on `request` and initiates model
+  // execution.
+  void OnHistoryQueryComplete(
+      const GURL& expected_url,
+      optimization_guide::proto::ContextualCueingRequest request,
+      history::QueryResults results);
+
   // Callback invoked when the Model Execution Service returns a response.
   void OnModelExecutionResponseReceived(
       const GURL& expected_url,
@@ -273,6 +287,15 @@ class ContextualCueingTabHelper
   // `fet_dismiss_runner_`. No-op if the promo is not active.
   void DismissFeatureEngagementPromo();
 
+  // Snapshots `cue_` into `shown_cue_snapshot_` and logs it to Private Insights
+  // as SHOWN. No-op without a cue or a service to log to.
+  void LogCueShownToPrivateInsights();
+
+  // Logs the presentation in `shown_cue_snapshot_` to Private Insights as
+  // CLICKED and ends it, so that it logs at most one CLICKED. No-op without a
+  // presentation or a service to log to.
+  void LogCueClickedToPrivateInsights();
+
   raw_ptr<web::WebState> web_state_ = nullptr;
   raw_ptr<Delegate> delegate_ = nullptr;
   GURL current_url_;
@@ -303,6 +326,21 @@ class ContextualCueingTabHelper
   std::optional<optimization_guide::proto::ContextualCue> cue_;
   // The UI surface (`kMessage` or `kOmniboxChip`) selected for `cue_`.
   std::optional<ContextualCueUiType> cue_ui_type_;
+  // Background tabs sent with the latest `ContextualCueingRequest`, which
+  // `RecordCueShown()` logs to Private Insights as the `recent_pages` of the
+  // cue that request produced. Only kept while there is a service to log to,
+  // and cleared once the request yields no cue or its cue is invalidated.
+  std::vector<optimization_guide::proto::Tab> cue_request_background_tabs_;
+  // Snapshot of the current cue presentation, taken by `RecordCueShown()` when
+  // there is a Private Insights service to log to. CLICKED is built from it
+  // rather than from `cue_`, so it carries the `cue_id` and page context of
+  // SHOWN. It deliberately survives `InvalidateCue()` and `WasHidden()`: a chip
+  // tap starts Gemini before recording the click, and starting Gemini
+  // invalidates the cue (in a posted task) and could hide the tab. Cleared when
+  // the presentation ends: on click, on dismissal, on the next
+  // `RecordCueShown()`, on navigation to a new page, or when the user is no
+  // longer eligible for suggestions.
+  std::unique_ptr<ContextualCueSnapshot> shown_cue_snapshot_;
   // Whether `cue_` has already been presented on a UI surface.
   bool has_presented_cue_ = false;
   bool is_model_execution_in_flight_ = false;
@@ -321,6 +359,10 @@ class ContextualCueingTabHelper
   id<LocationBarBadgeCommands> location_bar_badge_handler_ = nil;
   // Handler for dispatching Gemini commands.
   id<GeminiCommands> gemini_handler_ = nil;
+
+  // Tracks asynchronous `HistoryService` query tasks and cancels them upon
+  // navigation or web state destruction.
+  base::CancelableTaskTracker cancelable_task_tracker_;
 
   base::WeakPtrFactory<ContextualCueingTabHelper> weak_ptr_factory_{this};
 };

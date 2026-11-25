@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ash/arc/fileapi/arc_file_system_bridge.h"
 
+#include <errno.h>
+
 #include <utility>
 #include <vector>
 
@@ -11,10 +13,13 @@
 #include "base/files/file.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/bind.h"
+#include "base/test/mock_log.h"
+#include "base/test/scoped_chromeos_version_info.h"
 #include "base/test/test_future.h"
 #include "base/time/time.h"
 #include "chrome/browser/ash/arc/fileapi/chrome_content_provider_url_util.h"
@@ -33,6 +38,7 @@
 #include "chrome/browser/ash/guest_os/guest_os_share_path_factory.h"
 #include "chrome/browser/ash/guest_os/public/types.h"
 #include "chrome/browser/ash/login/users/scoped_account_id_annotator.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile_manager.h"
 #include "chromeos/ash/components/dbus/concierge/concierge_client.h"
@@ -64,6 +70,22 @@ constexpr int64_t kTestFileSize = 55;
 constexpr char kTestFileLastModified[] = "Fri, 25 Apr 2014 01:47:53";
 constexpr char kExtensionId[] = "abc";
 constexpr char kFileSystemId[] = "test-filesystem";
+
+constexpr char kLsbReleaseTestImage[] =
+    "CHROMEOS_RELEASE_TRACK=testimage-channel\n";
+constexpr char kLsbReleaseNonTestImage[] =
+    "CHROMEOS_RELEASE_TRACK=stable-channel\n";
+constexpr int kUnknownTaskId = 9999;
+constexpr char kUnknownTaskIdLogMessage[] =
+    "Can't find a SelectFileDialog for task ID : ";
+
+mojom::FileSelectorEventPtr CreateFileSelectorEvent(int task_id) {
+  auto event = mojom::FileSelectorEvent::New();
+  event->type = mojom::FileSelectorEventType::CLICK_OK;
+  event->creator_task_id = task_id;
+  event->click_target = mojom::FileSelectorElement::New();
+  return event;
+}
 
 }  // namespace
 
@@ -143,6 +165,54 @@ class ArcFileSystemBridgeTest : public testing::Test {
     base::test::TestFuture<bool> future;
     arc_file_system_bridge_->DestroyMoniker(moniker, future.GetCallback());
     return future.Get();
+  }
+
+  // Enables ARCVM and registers a running ARCVM instance.
+  void StartArcVm() {
+    base::CommandLine::ForCurrentProcess()->InitFromArgv(
+        {"", "--enable-arcvm"});
+    ASSERT_TRUE(IsArcVmEnabled());
+
+    const guest_os::GuestId arcvm_id = guest_os::GuestId(
+        guest_os::VmType::ARCVM, kArcVmName, /*container_name=*/"");
+    guest_os::GuestOsSessionTrackerFactory::GetForProfile(profile_)
+        ->AddGuestForTesting(
+            arcvm_id, guest_os::GuestInfo{arcvm_id, /*cid=*/32, /*username=*/"",
+                                          /*homedir=*/base::FilePath(),
+                                          /*ipv4_address=*/"",
+                                          /*sftp_vsock_port=*/0});
+  }
+
+  // Calls `CreateMoniker()` for the `ChromeContentProvider` URL wrapping `url`.
+  std::optional<fusebox::Moniker> CreateMonikerForUrl(const GURL& url,
+                                                      bool read_only) {
+    base::test::TestFuture<const std::optional<fusebox::Moniker>&> future;
+    arc_file_system_bridge_->CreateMoniker(
+        EncodeToChromeContentProviderUrl(url), read_only, future.GetCallback());
+    return future.Get();
+  }
+
+  // Returns the description that `server` has for `moniker`, which ends with
+  // " (read-only)" or " (read-write)", or an empty string if `server` does not
+  // know `moniker`.
+  static std::string GetMonikerDebugString(fusebox::Server& server,
+                                           const fusebox::Moniker& moniker) {
+    std::string result;
+    server.GetDebugJSONForKey(
+        "fusebox",
+        base::BindLambdaForTesting(
+            [&](ash::FilesInternalsDebugJSONProvider::JSONKeyValuePair kv) {
+              const base::DictValue* monikers =
+                  kv.second.GetDict().FindDict("monikers");
+              if (!monikers) {
+                return;
+              }
+              if (const std::string* entry =
+                      monikers->FindString(moniker.ToString())) {
+                result = *entry;
+              }
+            }));
+    return result;
   }
 
   base::ScopedTempDir temp_dir_;
@@ -346,6 +416,115 @@ TEST_F(ArcFileSystemBridgeTest, CreateAndDestroyMoniker) {
           kArcVmName,
           base::FilePath(fusebox::MonikerMap::GetFilename(moniker))));
   EXPECT_TRUE(DestroyMoniker(moniker));
+}
+
+// ARC must not be able to obtain a writable Moniker just by asking for one,
+// since the browser has no record of having granted ARC write access to the
+// requested file.
+TEST_F(ArcFileSystemBridgeTest, CreateMonikerIgnoresRequestForWriteAccess) {
+  StartArcVm();
+  fusebox::Server fusebox_server(/*delegate=*/nullptr);
+
+  // Even when `read_only=false` is requested, a read-only Moniker is created
+  // and shared.
+  const std::optional<fusebox::Moniker> moniker =
+      CreateMonikerForUrl(test_url_, /*read_only=*/false);
+  ASSERT_TRUE(moniker.has_value());
+  EXPECT_TRUE(
+      guest_os::GuestOsSharePathFactory::GetForProfile(profile_)->IsPathShared(
+          kArcVmName,
+          base::FilePath(fusebox::MonikerMap::GetFilename(*moniker))));
+  EXPECT_THAT(GetMonikerDebugString(fusebox_server, *moniker),
+              testing::EndsWith(" (read-only)"));
+
+  // Requesting a read-only Moniker keeps working as before.
+  const std::optional<fusebox::Moniker> read_only_moniker =
+      CreateMonikerForUrl(test_url_, /*read_only=*/true);
+  ASSERT_TRUE(read_only_moniker.has_value());
+  EXPECT_THAT(GetMonikerDebugString(fusebox_server, *read_only_moniker),
+              testing::EndsWith(" (read-only)"));
+
+  EXPECT_TRUE(DestroyMoniker(*moniker));
+  EXPECT_TRUE(DestroyMoniker(*read_only_moniker));
+}
+
+// Replays the Fusebox requests that the guest's `open(O_RDWR)`, `write()`,
+// `truncate()`, and `unlink()` on a Moniker path turn into, and checks that
+// none of them modifies the host file even though ARC asked for a writable
+// Moniker. The file lives on a local (non-VFS) mount point, like the files
+// under `/media/removable` or under Guest OS SFTP mounts, for which
+// `IsUrlAllowed()` performs no sharing check on ARCVM.
+TEST_F(ArcFileSystemBridgeTest, WritableMonikerRequestCannotModifyHostFile) {
+  StartArcVm();
+  // `fusebox::Server` resolves the `FileSystemContext` from the active profile.
+  ASSERT_EQ(profile_.get(), ProfileManager::GetActiveUserProfile());
+
+  constexpr char kMountName[] = "arc-file-system-bridge-test-local";
+  constexpr char kFileName[] = "target.txt";
+  constexpr char kOriginalContents[] = "original contents";
+  storage::ExternalMountPoints* const mount_points =
+      storage::ExternalMountPoints::GetSystemInstance();
+  ASSERT_TRUE(mount_points->RegisterFileSystem(
+      kMountName, storage::kFileSystemTypeLocal,
+      storage::FileSystemMountOption(), temp_dir_.GetPath()));
+  base::ScopedClosureRunner revoke_mount(base::BindLambdaForTesting(
+      [&] { mount_points->RevokeFileSystem(kMountName); }));
+  const base::FilePath file_path = temp_dir_.GetPath().Append(kFileName);
+  ASSERT_TRUE(base::WriteFile(file_path, kOriginalContents));
+  const GURL url = ash::VirtualPathToExternalFileURL(
+      base::FilePath(kMountName).Append(kFileName));
+
+  fusebox::Server fusebox_server(/*delegate=*/nullptr);
+  const std::optional<fusebox::Moniker> moniker =
+      CreateMonikerForUrl(url, /*read_only=*/false);
+  ASSERT_TRUE(moniker.has_value());
+  // The FileSystemURL that the Fusebox daemon uses for the Moniker's path.
+  const std::string moniker_fs_url = "moniker/" + moniker->ToString();
+
+  // open(O_RDWR) succeeds, but write() is rejected.
+  fusebox::Open2RequestProto open_request;
+  open_request.set_file_system_url(moniker_fs_url);
+  open_request.set_access_mode(fusebox::AccessMode::READ_WRITE);
+  base::test::TestFuture<const fusebox::Open2ResponseProto&> open_future;
+  fusebox_server.Open2(open_request, open_future.GetCallback());
+  ASSERT_EQ(0, open_future.Get().posix_error_code());
+  const uint64_t fuse_handle = open_future.Get().fuse_handle();
+
+  fusebox::Write2RequestProto write_request;
+  write_request.set_fuse_handle(fuse_handle);
+  write_request.set_offset(0);
+  write_request.set_data("data written by ARC");
+  base::test::TestFuture<const fusebox::Write2ResponseProto&> write_future;
+  fusebox_server.Write2(write_request, write_future.GetCallback());
+  EXPECT_EQ(EACCES, write_future.Get().posix_error_code());
+
+  fusebox::Close2RequestProto close_request;
+  close_request.set_fuse_handle(fuse_handle);
+  base::test::TestFuture<const fusebox::Close2ResponseProto&> close_future;
+  fusebox_server.Close2(close_request, close_future.GetCallback());
+  EXPECT_EQ(0, close_future.Get().posix_error_code());
+
+  // truncate() is rejected.
+  fusebox::TruncateRequestProto truncate_request;
+  truncate_request.set_file_system_url(moniker_fs_url);
+  truncate_request.set_length(0);
+  base::test::TestFuture<const fusebox::TruncateResponseProto&> truncate_future;
+  fusebox_server.Truncate(truncate_request, truncate_future.GetCallback());
+  EXPECT_EQ(EACCES, truncate_future.Get().posix_error_code());
+
+  // unlink() is rejected.
+  fusebox::UnlinkRequestProto unlink_request;
+  unlink_request.set_file_system_url(moniker_fs_url);
+  base::test::TestFuture<const fusebox::UnlinkResponseProto&> unlink_future;
+  fusebox_server.Unlink(unlink_request, unlink_future.GetCallback());
+  EXPECT_EQ(EACCES, unlink_future.Get().posix_error_code());
+
+  content::RunAllTasksUntilIdle();
+  std::string contents;
+  ASSERT_TRUE(base::ReadFileToString(file_path, &contents));
+  EXPECT_EQ(kOriginalContents, contents);
+
+  EXPECT_TRUE(DestroyMoniker(*moniker));
 }
 
 TEST_F(ArcFileSystemBridgeTest, MaxNumberOfSharedMonikers) {
@@ -610,6 +789,113 @@ TEST_F(ArcFileSystemBridgeTest, OpenFileToReadOnArcVmRequiresSharedPath) {
   }
 
   system_mount_points->RevokeFileSystem(kSmbFsTestMountName);
+}
+
+TEST_F(ArcFileSystemBridgeTest, OnFileSelectorEventRejectedOnNonTestImage) {
+  base::test::ScopedChromeOSVersionInfo version(kLsbReleaseNonTestImage,
+                                                base::Time());
+  base::test::MockLog log;
+  EXPECT_CALL(log, Log(::logging::LOGGING_ERROR, testing::_, testing::_,
+                       testing::_, testing::_))
+      .WillRepeatedly(testing::Return(false));
+  EXPECT_CALL(
+      log,
+      Log(::logging::LOGGING_ERROR, testing::_, testing::_, testing::_,
+          testing::HasSubstr(
+              "OnFileSelectorEvent is only allowed under test conditions")))
+      .WillOnce(testing::Return(false));
+  EXPECT_CALL(log,
+              Log(::logging::LOGGING_ERROR, testing::_, testing::_, testing::_,
+                  testing::HasSubstr(kUnknownTaskIdLogMessage)))
+      .Times(0);
+
+  log.StartCapturingLogs();
+  base::test::TestFuture<void> future;
+  arc_file_system_bridge_->OnFileSelectorEvent(
+      CreateFileSelectorEvent(kUnknownTaskId), future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+  log.StopCapturingLogs();
+}
+
+TEST_F(ArcFileSystemBridgeTest, OnFileSelectorEventForwardedOnTestImage) {
+  base::test::ScopedChromeOSVersionInfo version(kLsbReleaseTestImage,
+                                                base::Time());
+  base::test::MockLog log;
+  EXPECT_CALL(log, Log(::logging::LOGGING_ERROR, testing::_, testing::_,
+                       testing::_, testing::_))
+      .WillRepeatedly(testing::Return(false));
+  // Forwarding reaches ArcSelectFilesHandlersManager, which logs an error for
+  // the unknown task ID and still invokes the callback.
+  EXPECT_CALL(log,
+              Log(::logging::LOGGING_ERROR, testing::_, testing::_, testing::_,
+                  testing::HasSubstr(kUnknownTaskIdLogMessage)))
+      .WillOnce(testing::Return(false));
+
+  log.StartCapturingLogs();
+  base::test::TestFuture<void> future;
+  arc_file_system_bridge_->OnFileSelectorEvent(
+      CreateFileSelectorEvent(kUnknownTaskId), future.GetCallback());
+  EXPECT_TRUE(future.Wait());
+  log.StopCapturingLogs();
+}
+
+TEST_F(ArcFileSystemBridgeTest, GetFileSelectorElementsRejectedOnNonTestImage) {
+  base::test::ScopedChromeOSVersionInfo version(kLsbReleaseNonTestImage,
+                                                base::Time());
+  base::test::MockLog log;
+  EXPECT_CALL(log, Log(::logging::LOGGING_ERROR, testing::_, testing::_,
+                       testing::_, testing::_))
+      .WillRepeatedly(testing::Return(false));
+  EXPECT_CALL(
+      log,
+      Log(::logging::LOGGING_ERROR, testing::_, testing::_, testing::_,
+          testing::HasSubstr(
+              "GetFileSelectorElements is only allowed under test conditions")))
+      .WillOnce(testing::Return(false));
+  EXPECT_CALL(log,
+              Log(::logging::LOGGING_ERROR, testing::_, testing::_, testing::_,
+                  testing::HasSubstr(kUnknownTaskIdLogMessage)))
+      .Times(0);
+
+  auto request = mojom::GetFileSelectorElementsRequest::New();
+  request->creator_task_id = kUnknownTaskId;
+
+  log.StartCapturingLogs();
+  base::test::TestFuture<mojom::FileSelectorElementsPtr> future;
+  arc_file_system_bridge_->GetFileSelectorElements(std::move(request),
+                                                   future.GetCallback());
+  mojom::FileSelectorElementsPtr elements = future.Take();
+  log.StopCapturingLogs();
+
+  ASSERT_TRUE(elements);
+  EXPECT_TRUE(elements->directory_elements.empty());
+  EXPECT_TRUE(elements->file_elements.empty());
+  EXPECT_FALSE(elements->search_query.has_value());
+}
+
+TEST_F(ArcFileSystemBridgeTest, GetFileSelectorElementsForwardedOnTestImage) {
+  base::test::ScopedChromeOSVersionInfo version(kLsbReleaseTestImage,
+                                                base::Time());
+  base::test::MockLog log;
+  EXPECT_CALL(log, Log(::logging::LOGGING_ERROR, testing::_, testing::_,
+                       testing::_, testing::_))
+      .WillRepeatedly(testing::Return(false));
+  EXPECT_CALL(log,
+              Log(::logging::LOGGING_ERROR, testing::_, testing::_, testing::_,
+                  testing::HasSubstr(kUnknownTaskIdLogMessage)))
+      .WillOnce(testing::Return(false));
+
+  auto request = mojom::GetFileSelectorElementsRequest::New();
+  request->creator_task_id = kUnknownTaskId;
+
+  log.StartCapturingLogs();
+  base::test::TestFuture<mojom::FileSelectorElementsPtr> future;
+  arc_file_system_bridge_->GetFileSelectorElements(std::move(request),
+                                                   future.GetCallback());
+  mojom::FileSelectorElementsPtr elements = future.Take();
+  log.StopCapturingLogs();
+
+  ASSERT_TRUE(elements);
 }
 
 }  // namespace arc

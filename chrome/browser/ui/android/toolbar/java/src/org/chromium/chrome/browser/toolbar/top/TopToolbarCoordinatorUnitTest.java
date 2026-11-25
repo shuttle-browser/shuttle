@@ -27,6 +27,7 @@ import org.mockito.junit.MockitoRule;
 import org.robolectric.Robolectric;
 import org.robolectric.Shadows;
 
+import org.chromium.base.UnownedUserDataHost;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.NullableObservableSupplier;
@@ -34,18 +35,22 @@ import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.OneshotSupplier;
 import org.chromium.base.supplier.SettableNonNullObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.cc.input.BrowserControlsState;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsVisibilityManager;
 import org.chromium.chrome.browser.browser_controls.BrowserStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.browser_controls.TopControlsStacker;
+import org.chromium.chrome.browser.browser_controls.TopControlsStacker.TopControlVisibility;
 import org.chromium.chrome.browser.download.DownloadToolbarButtonState;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.fullscreen.FullscreenManager;
 import org.chromium.chrome.browser.layouts.LayoutStateProvider;
 import org.chromium.chrome.browser.omnibox.LocationBarCoordinator;
 import org.chromium.chrome.browser.omnibox.OmniboxStub;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObscuringHandler;
@@ -69,6 +74,7 @@ import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoord
 import org.chromium.chrome.browser.ui.appmenu.AppMenuButtonHelper;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.browser.ui.signin.SigninAndHistorySyncActivityLauncher;
+import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.browser.user_education.UserEducationHelper;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.desktop_windowing.DesktopWindowStateManager;
@@ -76,6 +82,7 @@ import org.chromium.components.browser_ui.device_lock.DeviceLockActivityLauncher
 import org.chromium.ui.base.ActivityResultTracker;
 import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.resources.ResourceManager;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -97,7 +104,7 @@ public class TopToolbarCoordinatorUnitTest {
     @Mock private TabModelSelector mTabModelSelector;
     @Mock private MenuButtonCoordinator mBrowsingModeMenuButtonCoordinator;
     @Mock private ToggleTabStackButtonCoordinator mTabSwitcherButtonCoordinator;
-    @Mock private Supplier<org.chromium.ui.resources.ResourceManager> mResourceManagerSupplier;
+    @Mock private Supplier<ResourceManager> mResourceManagerSupplier;
     @Mock private HistoryDelegate mHistoryDelegate;
     @Mock private FullscreenManager mFullscreenManager;
     @Mock private TabObscuringHandler mTabObscuringHandler;
@@ -148,6 +155,7 @@ public class TopToolbarCoordinatorUnitTest {
             ObservableSuppliers.createMonotonic();
 
     private Activity mActivity;
+    private OmniboxResourceProvider mOmniboxResourceProvider;
     private ToolbarControlContainer mControlContainer;
     private ToolbarTablet mToolbarLayout;
     private ToolbarProgressBar mProgressBar;
@@ -156,7 +164,11 @@ public class TopToolbarCoordinatorUnitTest {
     @Before
     public void setUp() {
         mActivity = Robolectric.buildActivity(Activity.class).setup().get();
+        // Where the toolbar finds the window's TTC entry point, when TTC is enabled.
+        when(mWindowAndroid.getUnownedUserDataHost()).thenReturn(new UnownedUserDataHost());
         mActivity.setTheme(R.style.Theme_BrowserUI_DayNight);
+        mOmniboxResourceProvider =
+                new OmniboxResourceProvider(mActivity, BrandedColorScheme.APP_DEFAULT);
         ResourceFactoryJni.setInstanceForTesting(mResourceFactoryJni);
 
         mControlContainer =
@@ -224,7 +236,8 @@ public class TopToolbarCoordinatorUnitTest {
                         mOnSigninTapped,
                         mDownloadButtonStateSupplier,
                         mOnDownloadButtonClicked,
-                        /* suppressTabStripAtStart= */ false);
+                        /* suppressTabStripAtStart= */ false,
+                        mOmniboxResourceProvider);
     }
 
     private boolean isGlicActionChipVisible() {
@@ -511,15 +524,24 @@ public class TopToolbarCoordinatorUnitTest {
     public void testGetTopControlVisibility() {
         when(mBrowserControlsVisibilityManager.getControlsPosition())
                 .thenReturn(ControlsPosition.TOP);
-        assertEquals(
-                TopControlsStacker.TopControlVisibility.VISIBLE,
-                mCoordinator.getTopControlVisibility());
+        assertEquals(TopControlVisibility.VISIBLE, mCoordinator.getTopControlVisibility());
 
         when(mBrowserControlsVisibilityManager.getControlsPosition())
                 .thenReturn(ControlsPosition.BOTTOM);
-        assertEquals(
-                TopControlsStacker.TopControlVisibility.HIDDEN,
-                mCoordinator.getTopControlVisibility());
+        assertEquals(TopControlVisibility.HIDDEN, mCoordinator.getTopControlVisibility());
+    }
+
+    @Test
+    public void testTtcButtonNotConnectedWhenTtcDisabled() {
+        View ttcButton = mToolbarLayout.findViewById(R.id.ttc_toolbar_button);
+        assertNull(Shadows.shadowOf(ttcButton).getOnClickListener());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.TTC)
+    public void testTtcButtonConnectedToEntryPoint() {
+        View ttcButton = mToolbarLayout.findViewById(R.id.ttc_toolbar_button);
+        assertNotNull(Shadows.shadowOf(ttcButton).getOnClickListener());
     }
 
     @Test
@@ -581,7 +603,8 @@ public class TopToolbarCoordinatorUnitTest {
                 mOnSigninTapped,
                 mDownloadButtonStateSupplier,
                 mOnDownloadButtonClicked,
-                /* suppressTabStripAtStart= */ false);
+                /* suppressTabStripAtStart= */ false,
+                mOmniboxResourceProvider);
         assertEquals(mOnLongClickListener, Shadows.shadowOf(toolbarPhone).getOnLongClickListener());
     }
 

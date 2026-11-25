@@ -66,7 +66,6 @@
 #include "components/autofill/core/browser/ui/payments/card_unmask_prompt_view.h"
 #include "components/autofill/core/browser/ui/payments/payments_churned_users_ui_delegate.h"
 #include "components/autofill/core/browser/ui/payments/save_and_fill_dialog_controller_impl.h"
-#include "components/autofill/core/browser/ui/payments/wallet_reminder_notice_ui_delegate.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/autofill/core/common/autofill_prefs.h"
@@ -90,17 +89,16 @@
 #include "chrome/browser/touch_to_fill/autofill/android/touch_to_fill_payment_method_controller_impl.h"
 #include "chrome/browser/touch_to_fill/autofill/android/touch_to_fill_payment_method_view_impl.h"
 #include "chrome/browser/ui/android/autofill/autofill_cvc_save_message_delegate.h"
+#include "chrome/browser/ui/android/autofill/autofill_message_controller_impl.h"
+#include "chrome/browser/ui/android/autofill/autofill_message_model.h"
 #include "chrome/browser/ui/android/autofill/autofill_save_card_bottom_sheet_bridge.h"
 #include "chrome/browser/ui/android/autofill/autofill_save_card_delegate_android.h"
 #include "chrome/browser/ui/android/autofill/autofill_save_iban_bottom_sheet_bridge.h"
 #include "chrome/browser/ui/android/autofill/autofill_save_iban_delegate.h"
+#include "chrome/browser/ui/android/autofill/autofill_snackbar_controller_impl.h"
 #include "chrome/browser/ui/android/autofill/card_expiration_date_fix_flow_view_android.h"
 #include "chrome/browser/ui/android/autofill/card_name_fix_flow_view_android.h"
-#include "chrome/browser/ui/android/autofill/wallet_reminder_notice_ui_delegate_android.h"
 #include "chrome/browser/ui/android/tab_model/tab_model_list.h"
-#include "chrome/browser/ui/autofill/autofill_message_controller_impl.h"
-#include "chrome/browser/ui/autofill/autofill_message_model.h"
-#include "chrome/browser/ui/autofill/autofill_snackbar_controller_impl.h"
 #include "chrome/browser/ui/autofill/payments/android_bnpl_ui_delegate.h"
 #include "chrome/browser/ui/autofill/payments/android_payments_window_manager.h"
 #include "chrome/browser/ui/autofill/payments/offer_notification_controller_android.h"
@@ -118,7 +116,6 @@
 #include "chrome/browser/ui/autofill/payments/omnibox_autofill_page_action_controller.h"
 #include "chrome/browser/ui/autofill/payments/payments_churned_users_ui_delegate_desktop.h"
 #include "chrome/browser/ui/autofill/payments/save_card_bubble_controller_impl.h"
-#include "chrome/browser/ui/autofill/payments/wallet_reminder_notice_ui_delegate_desktop.h"
 #include "chrome/browser/ui/autofill/payments/webauthn_dialog_controller_impl.h"
 #include "chrome/browser/ui/autofill/payments/webauthn_dialog_state.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"  // nogncheck
@@ -312,7 +309,9 @@ void ChromePaymentsAutofillClient::ShowSaveCreditCardLocally(
     SaveCreditCardOptions options,
     LocalSaveCardPromptCallback callback) {
 #if BUILDFLAG(IS_ANDROID)
-  CHECK(options.show_prompt, base::NotFatalUntil::M162);
+  // TODO(crbug.com/579239755): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(options.show_prompt);
   AutofillSaveCardUiInfo ui_info =
       AutofillSaveCardUiInfo::CreateForLocalSave(options, card);
   auto save_card_delegate = std::make_unique<AutofillSaveCardDelegateAndroid>(
@@ -345,9 +344,7 @@ void ChromePaymentsAutofillClient::ShowSaveCreditCardToCloud(
     SaveCreditCardOptions options,
     UploadSaveCardPromptCallback callback) {
 #if BUILDFLAG(IS_ANDROID)
-  // TODO(crbug.com/575133530): CHECK-exclusion: Convert to a CHECK once we are
-  // confident it won't be triggered.
-  DCHECK(options.show_prompt);
+  CHECK(options.show_prompt);
   signin::IdentityManager* identity_manager = client_->GetIdentityManager();
   if (!identity_manager) {
     return;
@@ -859,7 +856,7 @@ void ChromePaymentsAutofillClient::ShowMandatoryReauthOptInConfirmation() {
       AutofillSnackbarType::kMandatoryReauth,
       base::BindOnce(
           [](base::WeakPtr<content::WebContents> contents) {
-            if (contents) {
+            if (!contents) {
               return;
             }
             // For mandatory reauth snackbar, we will show Android credit card
@@ -1273,20 +1270,6 @@ BnplUiDelegate* ChromePaymentsAutofillClient::GetBnplUiDelegate() {
 #endif  // BUILDFLAG(IS_ANDROID)
   }
   return bnpl_ui_delegate_.get();
-}
-
-WalletReminderNoticeUiDelegate*
-ChromePaymentsAutofillClient::GetWalletReminderNoticeUiDelegate() {
-  if (!wallet_reminder_notice_ui_delegate_) {
-#if BUILDFLAG(IS_ANDROID)
-    wallet_reminder_notice_ui_delegate_ =
-        std::make_unique<WalletReminderNoticeUiDelegateAndroid>(&client_.get());
-#else
-    wallet_reminder_notice_ui_delegate_ =
-        std::make_unique<WalletReminderNoticeUiDelegateDesktop>(&client_.get());
-#endif
-  }
-  return wallet_reminder_notice_ui_delegate_.get();
 }
 
 WalletReminderNoticeManager*

@@ -119,6 +119,7 @@
 #include "content/public/test/hit_test_region_observer.h"
 #include "content/public/test/navigation_handle_observer.h"
 #include "content/public/test/policy_container_utils.h"
+#include "content/public/test/popup_test_utils.h"
 #include "content/public/test/render_frame_host_test_support.h"
 #include "content/public/test/test_devtools_protocol_client.h"
 #include "content/public/test/test_frame_navigation_observer.h"
@@ -5252,14 +5253,11 @@ IN_PROC_BROWSER_TEST_P(
   EXPECT_TRUE(popup_origin.opaque());
   EXPECT_EQ(url::SchemeHostPort(main_url),
             popup_origin.GetTupleOrPrecursorTupleIfOpaque());
-  if (base::FeatureList::IsEnabled(
-          blink::features::kUseSandboxTokenForOriginDerivation)) {
-    const std::optional<base::UnguessableToken> token =
-        foo_root->current_frame_host()->last_sandbox_origin_token_for_testing();
-    ASSERT_TRUE(token.has_value());
-    ASSERT_TRUE(popup_origin.GetNonceForTesting());
-    EXPECT_EQ(*token, *popup_origin.GetNonceForTesting());
-  }
+  const std::optional<base::UnguessableToken> token =
+      foo_root->current_frame_host()->last_sandbox_origin_token_for_testing();
+  ASSERT_TRUE(token.has_value());
+  ASSERT_TRUE(popup_origin.GetNonceForTesting());
+  EXPECT_EQ(*token, *popup_origin.GetNonceForTesting());
 }
 
 // Test that subresources with certificate errors get reported to the
@@ -8123,8 +8121,6 @@ IN_PROC_BROWSER_TEST_P(SitePerProcessBrowserTest,
   RenderFrameProxyHost* root_proxy =
       iframe_node->render_manager()->GetProxyToParent();
   EXPECT_TRUE(root_proxy->IsInertForTesting());
-
-  std::string focused_element;
 
   // Attempt to change focus in the inert subframe. This should work.
   // The setTimeout ensures that the inert bit can propagate before the

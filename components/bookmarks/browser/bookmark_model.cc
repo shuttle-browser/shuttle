@@ -573,7 +573,7 @@ void BookmarkModel::Move(const BookmarkNode* node,
   DCHECK(IsValidIndex(new_parent, index, true));
   DCHECK(!is_root_node(new_parent));
   DCHECK(!is_permanent_node(node));
-  DCHECK(!new_parent->HasAncestor(node));
+  CHECK(!new_parent->HasAncestor(node));
 
   SCOPED_CRASH_KEY_NUMBER("BookmarkModelMove", "newParentType",
                           new_parent->type());
@@ -1527,6 +1527,9 @@ void BookmarkModel::RemoveAccountPermanentFoldersImpl(bool notify_observers) {
                   FROM_HERE, /*source=*/std::nullopt, /*is_undoable=*/false,
                   notify_observers);
   }
+  // On flat hash containers, doing `rehash(0)` releases the allocated memory
+  // for an empty container faster than other methods.
+  uuid_index_[NodeTypeForUuidLookup::kAccountNodes].rehash(0);
 }
 
 void BookmarkModel::RemoveNodeFromIndicesRecursive(
@@ -1563,13 +1566,14 @@ void BookmarkModel::UpdateUuidIndexUponNodeMoveRecursive(
 
   uuid_index_[old_type_for_uuid_lookup].erase(node);
 
-  bool success = uuid_index_[new_type_for_uuid_lookup].insert(node).second;
+  UuidIndex& new_index = uuid_index_[new_type_for_uuid_lookup];
+  bool success = new_index.insert(node).second;
 
   if (!success) {
     // It is possible that the UUID exists in the new index. In this case, to
     // avoid the collision, it is necessary to assign a new UUID.
     AsMutable(node)->SetNewRandomUuid();
-    CHECK(uuid_index_[new_type_for_uuid_lookup].insert(node).second);
+    CHECK(new_index.insert(node).second);
   }
 
   // Recursively do the same for all descendants.

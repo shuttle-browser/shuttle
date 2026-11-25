@@ -98,6 +98,16 @@ TEST(MimeUtilTest, ExtensionTest) {
            "application/x-x509-ca-cert",
            "application/pkix-cert",  // System override for ChromeOS.
        }},
+      {FILE_PATH_LITERAL("p12"),
+       {
+           "application/x-pkcs12",
+           "application/pkcs12",  // System override for ChromeOS.
+       }},
+      {FILE_PATH_LITERAL("pfx"),
+       {
+           "application/x-pkcs12",
+           "application/pkcs12",  // System override for ChromeOS.
+       }},
       {FILE_PATH_LITERAL("zip"), {"application/zip"}},
       {FILE_PATH_LITERAL("ics"), {"text/calendar"}},
 #endif
@@ -557,10 +567,18 @@ TEST(MimeUtilTest, TestIsValidTopLevelMimeType) {
 
   EXPECT_TRUE(IsValidTopLevelMimeType("x-video"));
   EXPECT_TRUE(IsValidTopLevelMimeType("X-video"));
+  EXPECT_TRUE(IsValidTopLevelMimeType("x-custom"));
+  EXPECT_TRUE(IsValidTopLevelMimeType("X-Custom"));
 
   EXPECT_FALSE(IsValidTopLevelMimeType("x-"));
   EXPECT_FALSE(IsValidTopLevelMimeType("x-scheme-handler"));
   EXPECT_FALSE(IsValidTopLevelMimeType("X-Scheme-Handler"));
+  EXPECT_FALSE(IsValidTopLevelMimeType("x-content"));
+  EXPECT_FALSE(IsValidTopLevelMimeType("X-Content"));
+  EXPECT_FALSE(IsValidTopLevelMimeType("x-directory"));
+  EXPECT_FALSE(IsValidTopLevelMimeType("X-Directory"));
+  EXPECT_FALSE(IsValidTopLevelMimeType("x-special"));
+  EXPECT_FALSE(IsValidTopLevelMimeType("X-Special"));
 }
 
 TEST(MimeUtilTest, TestGetExtensionsForMimeType) {

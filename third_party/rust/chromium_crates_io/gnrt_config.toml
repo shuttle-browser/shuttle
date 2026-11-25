@@ -169,7 +169,7 @@ allow_first_party_usage = false
 extra_kv = { allow_unsafe = true }
 
 [crate.base64.extra_kv]
-allow_unsafe = false
+allow_unsafe = true
 
 [crate.better_any]
 extra_kv = { allow_unsafe = true }
@@ -455,8 +455,7 @@ extra_kv = { allow_unsafe = true }
 allow_unsafe = true
 
 [crate.icu_calendar_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_capi]
 group = 'safe'
@@ -476,8 +475,7 @@ visibility = [
 allow_unsafe = true
 
 [crate.icu_casemap_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_collections.extra_kv]
 allow_unsafe = true
@@ -486,26 +484,19 @@ allow_unsafe = true
 allow_unsafe = false
 
 [crate.icu_decimal_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_experimental.extra_kv]
 allow_unsafe = true
 
 [crate.icu_experimental_data]
-extra_input_roots = ['../data']
-
-[crate.icu_experimental_data.extra_kv]
-allow_unsafe = false
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_list.extra_kv]
 allow_unsafe = true
 
 [crate.icu_list_data]
-extra_input_roots = ['../data']
-
-[crate.icu_list_data.extra_kv]
-allow_unsafe = false
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_locale]
 group = 'safe'
@@ -520,16 +511,14 @@ group = 'safe'
 allow_unsafe = true
 
 [crate.icu_locale_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_locale_fallback]
 group = 'safe'
 extra_kv = { allow_unsafe = true }
 
 [crate.icu_locale_fallback_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_normalizer]
 group = 'safe'
@@ -538,8 +527,7 @@ group = 'safe'
 allow_unsafe = true
 
 [crate.icu_normalizer_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_pattern.extra_kv]
 allow_unsafe = true
@@ -548,15 +536,13 @@ allow_unsafe = true
 allow_unsafe = true
 
 [crate.icu_plurals_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_properties.extra_kv]
 allow_unsafe = false
 
 [crate.icu_properties_data]
-extra_input_roots = ['../data']
-extra_kv = { allow_unsafe = false }
+replace_with = "//third_party/rust/icu4x_data:lib"
 
 [crate.icu_provider]
 group = 'safe'
@@ -599,6 +585,9 @@ allow_unsafe = true
 # JXL decoding requires optimizations even in Debug builds for reasonable performance.
 configs_to_remove = ['//build/config/compiler:default_optimization']
 configs_to_add = ['//build/config/compiler:optimize']
+
+[crate.jxl-gainmap]
+extra_kv = { allow_unsafe = false }
 
 [crate.jxl_macros]
 extra_kv = { allow_unsafe = false }

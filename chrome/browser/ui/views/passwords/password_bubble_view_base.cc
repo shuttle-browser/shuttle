@@ -58,9 +58,10 @@ void PasswordBubbleViewBase::ShowBubble(content::WebContents* web_contents,
   if (!browser) {
     return;
   }
-  CHECK(!g_manage_passwords_bubble_ ||
-            !g_manage_passwords_bubble_->GetWidget()->IsVisible(),
-        base::NotFatalUntil::M162);
+  // TODO(crbug.com/581964653): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!g_manage_passwords_bubble_ ||
+         !g_manage_passwords_bubble_->GetWidget()->IsVisible());
 
   auto* button_provider = ToolbarButtonProvider::From(browser);
   if (!button_provider) {
@@ -265,9 +266,7 @@ void PasswordBubbleViewBase::SetBubbleHeader(int light_image_id,
   ui::ResourceBundle& bundle = ui::ResourceBundle::GetSharedInstance();
   auto image_view = std::make_unique<ThemeTrackingNonAccessibleImageView>(
       *bundle.GetImageSkiaNamed(light_image_id),
-      *bundle.GetImageSkiaNamed(dark_image_id),
-      base::BindRepeating(&views::BubbleDialogDelegate::background_color,
-                          base::Unretained(this)));
+      *bundle.GetImageSkiaNamed(dark_image_id), background_color());
 
   gfx::Size preferred_size = image_view->GetPreferredSize();
   if (preferred_size.width()) {

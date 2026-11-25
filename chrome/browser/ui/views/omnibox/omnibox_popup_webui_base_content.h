@@ -5,12 +5,14 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_BASE_CONTENT_H_
 #define CHROME_BROWSER_UI_VIEWS_OMNIBOX_OMNIBOX_POPUP_WEBUI_BASE_CONTENT_H_
 
+#include <memory>
 #include <string_view>
 #include <utility>
 
 #include "base/memory/raw_ptr.h"
 #include "base/timer/timer.h"
 #include "chrome/browser/ui/location_bar/location_bar.h"
+#include "chrome/browser/ui/views/omnibox/omnibox_popup_content_config.h"
 #include "chrome/browser/ui/webui/top_chrome/webui_contents_wrapper.h"
 #include "extensions/browser/view_type_utils.h"
 #include "ui/base/metadata/metadata_header_macros.h"
@@ -24,8 +26,10 @@
 
 class OmniboxContextMenu;
 class OmniboxController;
-class OmniboxPopupPresenterBase;
+class OmniboxPopupContentDelegate;
+class OmniboxPopupContentSizer;
 class OmniboxPopupDeactivationBlocker;
+class OmniboxPopupPresenterDelegate;
 class OmniboxPopupTabSelectionListener;
 class OmniboxPopupUI;
 
@@ -44,11 +48,31 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
   METADATA_HEADER(OmniboxPopupWebUIBaseContent, views::WebView)
 
  public:
+  using ContentsWrapper = WebUIContentsWrapperT<OmniboxPopupUI>;
+
   OmniboxPopupWebUIBaseContent() = delete;
-  OmniboxPopupWebUIBaseContent(OmniboxPopupPresenterBase* presenter,
+  // Equivalent to a null sizer and a default config. Used by tests that have
+  // no presenter.
+  OmniboxPopupWebUIBaseContent(OmniboxPopupContentDelegate* content_delegate,
                                LocationBar* location_bar,
                                OmniboxController* controller,
                                bool top_rounded_corners);
+  OmniboxPopupWebUIBaseContent(OmniboxPopupContentDelegate* content_delegate,
+                               OmniboxPopupContentSizer* sizer,
+                               OmniboxPopupContentConfig config,
+                               LocationBar* location_bar,
+                               OmniboxController* controller,
+                               bool top_rounded_corners);
+  // `contents` is a loaded popup WebContents that another window's content
+  // released with `ReleaseContentsWrapper()`, or null. The content adopts it
+  // instead of loading a new one.
+  OmniboxPopupWebUIBaseContent(OmniboxPopupContentDelegate* content_delegate,
+                               OmniboxPopupContentSizer* sizer,
+                               OmniboxPopupContentConfig config,
+                               LocationBar* location_bar,
+                               OmniboxController* controller,
+                               bool top_rounded_corners,
+                               std::unique_ptr<ContentsWrapper> contents);
   OmniboxPopupWebUIBaseContent(const OmniboxPopupWebUIBaseContent&) = delete;
   OmniboxPopupWebUIBaseContent& operator=(const OmniboxPopupWebUIBaseContent&) =
       delete;
@@ -61,6 +85,17 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
   const WebUIContentsWrapperT<OmniboxPopupUI>* contents_wrapper() const {
     return contents_wrapper_.get();
   }
+
+  // Detaches the popup's WebContents from this window and returns it, so that
+  // a content in another browser window of the same profile can adopt it.
+  // Leaves this content without a WebContents; the caller destroys it.
+  std::unique_ptr<ContentsWrapper> ReleaseContentsWrapper();
+
+  // Returns whether `ReleaseContentsWrapper()` may move the WebContents to
+  // another browser window now. Errs toward false: the page must be loaded,
+  // and no file dialog, context menu, permission request or other work for
+  // this window may be pending.
+  virtual bool CanReleaseContentsWrapper();
 
   // views::View:
   void AddedToWidget() override;
@@ -89,6 +124,17 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
 
   // Notifies the page the widget was hidden and performs cleanup.
   virtual void Clear() = 0;
+
+  // The counterpart of `ShowUI()` for a host that hides this content: marks
+  // the WebContents hidden (with `omnibox::kOmniboxWebUIPopupMarkAsHidden`) so
+  // that the compositor can evict its frame, then calls `Clear()`, which
+  // detaches the WebContents once the page has cleared.
+  void HideUI();
+
+  // Returns whether the page has completed its first visually non-empty paint.
+  // The popup keeps its page across shows, so this stays true once the page
+  // first paints.
+  bool CompletedFirstVisuallyNonEmptyPaint();
 
   // Returns the WebContents from within the wrapper. Don't use
   // GetWebContents() since that may be nullptr if the popup isn't visible.
@@ -128,7 +174,8 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
 
   virtual void OnContextMenuClosed() = 0;
 
-  // Set up the WebUI content page and hook up the Omnibox handlers.
+  // Set up the WebUI content page and hook up the Omnibox handlers. Adopts the
+  // WebContents passed to the constructor, if any, instead of loading `url`.
   void SetContentURL(std::string_view url);
 
   virtual std::string_view GetMetricPrefix() const = 0;
@@ -143,13 +190,16 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
   }
   const LocationBar* location_bar() const { return location_bar_.get(); }
 
-  // Returns the presenter associated with this popup content.
-  OmniboxPopupPresenterBase* popup_presenter() {
-    return const_cast<OmniboxPopupPresenterBase*>(
-        std::as_const(*this).popup_presenter());
+  // Returns the delegate associated with this popup content.
+  OmniboxPopupContentDelegate* content_delegate() { return content_delegate_; }
+  const OmniboxPopupContentDelegate* content_delegate() const {
+    return content_delegate_;
   }
-  const OmniboxPopupPresenterBase* popup_presenter() const {
-    return popup_presenter_;
+
+  // Returns the location bar's presenter delegate. Null when the location bar
+  // is null or doesn't provide one.
+  OmniboxPopupPresenterDelegate* presenter_delegate() {
+    return presenter_delegate_;
   }
 
   // Detaches the WebContents and cleans up.
@@ -161,12 +211,30 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
   // the renderer.
   void LoadContent();
 
+  // Points the WebContents released by another window's content at this
+  // window, and rebinds its WebUI handlers to this window's omnibox.
+  void AdoptContents();
+
+  // Connects the WebContents in `contents_wrapper_` to this content and to this
+  // browser window.
+  void BindContentsToWindow();
+
 #if BUILDFLAG(IS_MAC)
   void UpdateAutoFill();
 #endif
 
-  raw_ptr<OmniboxPopupPresenterBase> popup_presenter_ = nullptr;
+  // The content delegate and sizer own (directly or through their container
+  // view) this content view, so they outlive it. The debounce timer that binds
+  // `sizer_` with Unretained is a member of this view, so it is destroyed
+  // first. The location bar host removes the content in its destructor.
+  raw_ptr<OmniboxPopupContentDelegate> content_delegate_ = nullptr;
+  raw_ptr<OmniboxPopupContentSizer> sizer_ = nullptr;
+  const OmniboxPopupContentConfig config_;
   raw_ptr<LocationBar> location_bar_ = nullptr;
+  // `location_bar_->GetPresenterDelegate()`, read once at construction. The
+  // location bar owns the popup view, which owns the presenter, which owns
+  // this content, so the delegate outlives this view.
+  raw_ptr<OmniboxPopupPresenterDelegate> presenter_delegate_ = nullptr;
   // The controller for the Omnibox.
   raw_ptr<OmniboxController> controller_ = nullptr;
 
@@ -212,6 +280,11 @@ class OmniboxPopupWebUIBaseContent : public views::WebView,
 
   std::unique_ptr<OmniboxPopupDeactivationBlocker>
       file_chooser_deactivation_blocker_;
+
+  // Whether a file dialog opened by the page is open. Unlike
+  // `file_chooser_deactivation_blocker_`, set even when
+  // `omnibox::kOmniboxKeepOpenOnFileSelection` is disabled.
+  bool file_chooser_open_ = false;
 
   base::WeakPtrFactory<OmniboxPopupWebUIBaseContent> weak_factory_{this};
 };

@@ -59,6 +59,7 @@ import org.chromium.base.TimeUtils;
 import org.chromium.base.TraceEvent;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.SupplierUtils;
 import org.chromium.build.annotations.Initializer;
 import org.chromium.build.annotations.MonotonicNonNull;
 import org.chromium.build.annotations.NullMarked;
@@ -78,6 +79,7 @@ import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.status.StatusCoordinator;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.omnibox.suggestions.OmniboxSuggestionsDropdownScrollListener;
+import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
 import org.chromium.chrome.browser.theme.ThemeColorProvider;
 import org.chromium.chrome.browser.theme.ThemeUtils;
@@ -426,7 +428,8 @@ public class ToolbarPhone extends ToolbarLayout
             ThemeColorProvider themeColorProvider,
             IncognitoStateProvider incognitoStateProvider,
             @Nullable Supplier<Integer> incognitoWindowCountSupplier,
-            WindowAndroid windowAndroid) {
+            WindowAndroid windowAndroid,
+            OmniboxResourceProvider omniboxResourceProvider) {
         assert tabSwitcherButtonCoordinator != null;
         super.initialize(
                 toolbarDataProvider,
@@ -446,7 +449,8 @@ public class ToolbarPhone extends ToolbarLayout
                 themeColorProvider,
                 incognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ null,
-                windowAndroid);
+                windowAndroid,
+                omniboxResourceProvider);
         mUserEducationHelper = userEducationHelper;
         mTrackerSupplier = trackerSupplier;
         mBackButtonCoordinator = backButtonCoordinator;
@@ -632,13 +636,9 @@ public class ToolbarPhone extends ToolbarLayout
      */
     private @ColorInt int getToolbarDefaultColor(boolean shouldUseFocusColor) {
         if (urlHasFocus() || shouldUseFocusColor) {
-            if (mDropdownListScrolled) {
-                return isIncognitoBranded()
-                        ? getContext().getColor(R.color.omnibox_scrolled_bg_incognito)
-                        : ContextCompat.getColor(getContext(), R.color.toolbar_text_box_bg_color);
-            }
-            return OmniboxResourceProvider.getSuggestionsDropdownBackgroundColor(
-                    getContext(), mThemeColorProvider.getBrandedColorScheme());
+            return mDropdownListScrolled
+                    ? mOmniboxResourceProvider.getScrolledOmniboxBackgroundColor()
+                    : mOmniboxResourceProvider.getSuggestionsDropdownBackgroundColor();
         }
         return ChromeColors.getDefaultThemeColor(getContext(), isIncognitoBranded());
     }
@@ -657,8 +657,7 @@ public class ToolbarPhone extends ToolbarLayout
         if (urlHasFocus() || shouldUseFocusColor) {
 
             // Omnibox has same background as the Omnibox suggestion.
-            return OmniboxResourceProvider.getStandardSuggestionBackgroundColor(
-                    getContext(), mThemeColorProvider.getBrandedColorScheme());
+            return mOmniboxResourceProvider.getStandardSuggestionBackgroundColor();
         }
         return getLocationBarColorForToolbarColor(toolbarColor);
     }
@@ -2052,7 +2051,7 @@ public class ToolbarPhone extends ToolbarLayout
         return new PhoneCaptureStateToken(
                 getButtonTintList().getDefaultColor(),
                 mToolbarBackground.getColor(),
-                mTabCountSupplier == null ? 0 : mTabCountSupplier.get(),
+                SupplierUtils.getOr(mTabCountSupplier, 0),
                 mButtonData,
                 mVisualState,
                 visibleUrlText,
@@ -3171,6 +3170,15 @@ public class ToolbarPhone extends ToolbarLayout
         return mTopPaddingForEdgeToEdgeNtp;
     }
 
+    /**
+     * Uses the toolbar's visual state, rather than the tab URL, so the signin button and the
+     * optional button change visibility together when navigating to or from the NTP.
+     */
+    @Override
+    boolean isShowingNtp() {
+        return isNtpVisualState(mVisualState);
+    }
+
     /** Checks if the given visual state represents a New Tab Page. */
     private static boolean isNtpVisualState(@VisualState int visualState) {
         return visualState == VisualState.NEW_TAB_NORMAL
@@ -3178,14 +3186,28 @@ public class ToolbarPhone extends ToolbarLayout
     }
 
     private boolean hideHairlineForIncognitoNtp() {
+        // The hairline is hidden on the incognito NTP so that a top-anchored toolbar blends
+        // seamlessly into the page content directly below it. When the toolbar is bottom-anchored
+        // the hairline separates the page content from the omnibox instead, so it should remain
+        // visible, consistent with every other page.
         return isIncognitoBranded()
+                && !isToolbarBottomAnchored()
                 && UrlUtilities.isNtpUrl(getToolbarDataProvider().getCurrentGurl());
     }
 
     private boolean hideHairlineForInterstitial() {
-        return getToolbarDataProvider() != null
-                && getToolbarDataProvider().getTab() != null
-                && getToolbarDataProvider().getTab().isShowingErrorPage();
+        Tab tab = getToolbarDataProvider() != null ? getToolbarDataProvider().getTab() : null;
+        if (tab == null || !tab.isShowingErrorPage()) return false;
+        // Native pages (e.g. chrome://history, chrome://bookmarks) are drawn by an Android View
+        // overlaid on the WebContents. On Android these chrome:// URLs have no WebUI, so the
+        // underlying navigation commits as an error page that is never visible to the user. Only
+        // treat the error page as an interstitial when it is actually what's being shown.
+        return !tab.isNativePage();
+    }
+
+    private boolean isToolbarBottomAnchored() {
+        return mBrowserControlsStateProvider != null
+                && mBrowserControlsStateProvider.getControlsPosition() == ControlsPosition.BOTTOM;
     }
 
     private @VisualState int computeVisualState() {
@@ -3375,6 +3397,11 @@ public class ToolbarPhone extends ToolbarLayout
         mLocationBar.updateVisualsForState();
 
         updateMenuButtonVisibility();
+        if (mSigninButtonCoordinator != null) {
+            // Update the signin button before the optional button so both swap in the same
+            // layout pass.
+            mSigninButtonCoordinator.updateButtonVisibility();
+        }
         updateOptionalButton(mButtonData);
         TraceEvent.end("ToolbarPhone.updateVisualsForLocationBarState");
     }

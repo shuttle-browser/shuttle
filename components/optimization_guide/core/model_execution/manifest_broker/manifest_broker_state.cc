@@ -6,6 +6,8 @@
 
 #include <cstddef>
 #include <memory>
+#include <utility>
+#include <vector>
 
 #include "base/barrier_closure.h"
 #include "base/containers/extend.h"
@@ -195,16 +197,11 @@ void ManifestBrokerState::GetOnDeviceModelEligibilityAsync(
 }
 
 void ManifestBrokerState::EnsureInitialization(
-    ModelBrokerImpl::InitCallback callback) {
+    BrokerInit::TaskCallback callback) {
   // Hurry the performance classifier and manifest loading.
   performance_classifier_.EnsurePerformanceClassAvailable(base::DoNothing());
   manifest_monitor_.RaiseLoadPriority();
-  if (manifest_monitor_.manifest().has_value()) {
-    // Initialization is already complete.
-    std::move(callback).Run(GetPossibleOnDeviceCapabilities());
-    return;
-  }
-  init_callbacks_.push_back(std::move(callback));
+  broker_init_.QueueTask(std::move(callback));
 }
 
 void ManifestBrokerState::OnManifestUpdated() {
@@ -219,7 +216,7 @@ void ManifestBrokerState::OnManifestUpdated() {
   auto factory = std::make_unique<ManifestSolutionFactory>(
       *manifest_monitor_.manifest(), model_broker_impl_, usage_tracker_,
       service_client_, access_controller_, performance_classifier_,
-      base::BindOnce(&ManifestBrokerState::OnInitComplete,
+      base::BindOnce(&ManifestBrokerState::OnSolutionFactoryInit,
                      weak_ptr_factory_.GetWeakPtr()),
       base::BindRepeating(
           &ManifestBrokerState::NotifyObserversOfBrokerStateChange,
@@ -234,13 +231,10 @@ void ManifestBrokerState::OnManifestUpdated() {
   NotifyObserversOfBrokerStateChange();
 }
 
-void ManifestBrokerState::OnInitComplete() {
-  TRACE_EVENT("optimization_guide", "ManifestBrokerState::OnInitComplete");
-  auto callbacks_to_run = std::move(init_callbacks_);
-  init_callbacks_.clear();
-  for (auto& callback : callbacks_to_run) {
-    std::move(callback).Run(GetPossibleOnDeviceCapabilities());
-  }
+void ManifestBrokerState::OnSolutionFactoryInit() {
+  TRACE_EVENT("optimization_guide",
+              "ManifestBrokerState::OnSolutionFactoryInit");
+  broker_init_.Complete(GetPossibleOnDeviceCapabilities());
 
   if (manifest_monitor_.manifest().has_value()) {
     const auto& manifest = *manifest_monitor_.manifest();
@@ -372,6 +366,42 @@ void ManifestBrokerState::UninstallCapability(
         }
       },
       weak_ptr_factory_.GetWeakPtr(), model_asset_id));
+}
+
+void ManifestBrokerState::GetInstalledModels(InstalledModelsCallback callback) {
+  EnsureInitialization(base::BindOnce(
+      [](base::WeakPtr<ManifestBrokerState> self,
+         InstalledModelsCallback callback,
+         const on_device_model::Capabilities&) {
+        std::vector<std::pair<OnDeviceBaseModel, base::FilePath>>
+            models_with_paths;
+        if (self && self->asset_manager_) {
+          models_with_paths = self->asset_manager_->GetInstalledBaseModels();
+        }
+        base::ThreadPool::PostTaskAndReplyWithResult(
+            FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
+            base::BindOnce(
+                [](std::vector<std::pair<OnDeviceBaseModel, base::FilePath>>
+                       models_with_paths) {
+                  std::vector<InstalledModel> result;
+                  result.reserve(models_with_paths.size());
+                  for (const auto& [base_model, path] : models_with_paths) {
+                    uint64_t size_bytes =
+                        path.empty()
+                            ? 0
+                            : static_cast<uint64_t>(
+                                  base::ComputeDirectorySize(path));
+                    result.push_back(InstalledModel{
+                        .base_model = base_model,
+                        .size_bytes = size_bytes,
+                    });
+                  }
+                  return result;
+                },
+                std::move(models_with_paths)),
+            std::move(callback));
+      },
+      weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
 }
 
 void ManifestBrokerState::ResetModelCrashCount() {

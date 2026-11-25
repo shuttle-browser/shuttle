@@ -4,7 +4,7 @@
 
 import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 
-import {ContentController, ContentType, HIGHLIGHTED_LINK_CLASS, LOG_EMPTY_DELAY_MS, MIN_MS_TO_READ, previousReadHighlightClass, ReadAloudNode} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {ContentController, ContentType, HIGHLIGHTED_LINK_CLASS, LOG_EMPTY_DELAY_MS, MIN_MS_TO_READ, previousReadHighlightClass, ReadAloudNode, TranslationState} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import type {ContentListener, NodeStore, SpeechController} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {assertArrayEquals, assertDeepEquals, assertEquals, assertFalse, assertNotEquals, assertStringContains, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 import {MockTimer} from 'chrome-untrusted://webui-test/mock_timer.js';
@@ -60,12 +60,13 @@ suite('ContentController', () => {
   });
 
   suite('awaiting translation', () => {
-    function setAwaiting(awaiting: boolean) {
-      visualBrowserProxy.onAwaitingTranslationChanged.callListeners(awaiting);
+    function setTranslationState(state: TranslationState) {
+      contentBrowserProxy.translationState = state;
+      contentBrowserProxy.onTranslationStateChanged.callListeners();
     }
 
     test('content drawn while awaiting stays loading', () => {
-      setAwaiting(true);
+      setTranslationState(TranslationState.AWAITING);
       contentController.setState(ContentType.LOADING);
       receivedContentStateChange = false;
 
@@ -80,11 +81,11 @@ suite('ContentController', () => {
     });
 
     test('shows hidden content once no longer awaiting', () => {
-      setAwaiting(true);
+      setTranslationState(TranslationState.AWAITING);
       contentController.setState(ContentType.HAS_CONTENT);
       receivedContentStateChange = false;
 
-      setAwaiting(false);
+      setTranslationState(TranslationState.NONE);
 
       assertEquals(ContentType.HAS_CONTENT, contentController.getState().type);
       assertFalse(contentController.isHidingContentForTranslation());
@@ -96,7 +97,7 @@ suite('ContentController', () => {
       contentController.setState(ContentType.HAS_CONTENT);
       receivedContentStateChange = false;
 
-      setAwaiting(true);
+      setTranslationState(TranslationState.AWAITING);
 
       assertEquals(ContentType.LOADING, contentController.getState().type);
       assertTrue(contentController.isHidingContentForTranslation());
@@ -104,7 +105,7 @@ suite('ContentController', () => {
     });
 
     test('empty state while awaiting drops hidden content', () => {
-      setAwaiting(true);
+      setTranslationState(TranslationState.AWAITING);
       contentController.setState(ContentType.HAS_CONTENT);
 
       contentController.setEmpty();
@@ -113,17 +114,17 @@ suite('ContentController', () => {
 
       // Nothing to show once the translation finishes.
       receivedContentStateChange = false;
-      setAwaiting(false);
+      setTranslationState(TranslationState.NONE);
       assertTrue(contentController.isEmpty());
       assertFalse(receivedContentStateChange);
     });
 
     test('no longer awaiting without hidden content does nothing', () => {
-      setAwaiting(true);
+      setTranslationState(TranslationState.AWAITING);
       contentController.setState(ContentType.LOADING);
       receivedContentStateChange = false;
 
-      setAwaiting(false);
+      setTranslationState(TranslationState.NONE);
 
       assertEquals(ContentType.LOADING, contentController.getState().type);
       assertFalse(receivedContentStateChange);
@@ -136,8 +137,131 @@ suite('ContentController', () => {
       assertFalse(contentController.isHidingContentForTranslation());
     });
 
+    test('translation failure while awaiting shows empty state', () => {
+      setTranslationState(TranslationState.AWAITING);
+      contentController.setState(ContentType.HAS_CONTENT);
+      receivedContentStateChange = false;
+
+      // The failure replaces awaiting, so the hidden content is never shown.
+      setTranslationState(TranslationState.FAILED);
+
+      assertEquals(
+          ContentType.NO_CONTENT_TRANSLATION,
+          contentController.getState().type);
+      assertTrue(contentController.isEmpty());
+      assertFalse(contentController.hasContent());
+      // The content stays drawn but hidden, so it can still be translated.
+      assertTrue(contentController.isHidingContentForTranslation());
+      assertTrue(receivedContentStateChange);
+    });
+
+    test('new translation after failure hides content behind loading', () => {
+      setTranslationState(TranslationState.FAILED);
+      contentController.setState(ContentType.HAS_CONTENT);
+      receivedContentStateChange = false;
+
+      setTranslationState(TranslationState.AWAITING);
+
+      // The content goes straight from the empty state to the loading screen,
+      // without being shown in between.
+      assertEquals(ContentType.LOADING, contentController.getState().type);
+      assertTrue(contentController.isHidingContentForTranslation());
+      assertTrue(receivedContentStateChange);
+    });
+
+    test('content drawn after translation failure stays hidden', () => {
+      setTranslationState(TranslationState.FAILED);
+      contentController.setState(ContentType.LOADING);
+
+      // E.g. the PDF is redistilled and content is found.
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      assertEquals(
+          ContentType.NO_CONTENT_TRANSLATION,
+          contentController.getState().type);
+      assertFalse(contentController.hasContent());
+      assertTrue(contentController.isHidingContentForTranslation());
+    });
+
+    test('content is shown once translation failure is cleared', () => {
+      setTranslationState(TranslationState.FAILED);
+      contentController.setState(ContentType.HAS_CONTENT);
+      receivedContentStateChange = false;
+
+      // The content is translated, or the user made a selection.
+      setTranslationState(TranslationState.NONE);
+
+      assertEquals(ContentType.HAS_CONTENT, contentController.getState().type);
+      assertFalse(contentController.isHidingContentForTranslation());
+      assertTrue(receivedContentStateChange);
+    });
+
+    test('empty state after translation failure uses translation state', () => {
+      setTranslationState(TranslationState.FAILED);
+
+      contentController.setEmpty();
+
+      assertEquals(
+          ContentType.NO_CONTENT_TRANSLATION,
+          contentController.getState().type);
+    });
+
+    test('reads initial translation failure state on construction', () => {
+      contentBrowserProxy.translationState = TranslationState.FAILED;
+      const controller = new ContentController();
+
+      controller.setState(ContentType.HAS_CONTENT);
+
+      assertEquals(
+          ContentType.NO_CONTENT_TRANSLATION, controller.getState().type);
+      assertTrue(controller.isHidingContentForTranslation());
+    });
+
+    test('no content after awaiting stops uses regular empty state', () => {
+      setTranslationState(TranslationState.AWAITING);
+      setTranslationState(TranslationState.NONE);
+
+      contentController.setEmpty();
+
+      assertEquals(ContentType.NO_CONTENT, contentController.getState().type);
+    });
+
+    test('no content on a translated PDF uses translation state', () => {
+      visualBrowserProxy.pdf = true;
+      contentBrowserProxy.contentTranslated = true;
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      contentController.setEmpty();
+
+      assertEquals(
+          ContentType.NO_CONTENT_TRANSLATION,
+          contentController.getState().type);
+    });
+
+    test('no content on a translated non-PDF uses regular empty state', () => {
+      visualBrowserProxy.pdf = false;
+      contentBrowserProxy.contentTranslated = true;
+
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      contentController.setEmpty();
+
+      assertEquals(ContentType.NO_CONTENT, contentController.getState().type);
+    });
+
+    test('no content on an untranslated PDF uses regular empty state', () => {
+      visualBrowserProxy.pdf = true;
+      contentBrowserProxy.contentTranslated = false;
+
+      contentController.setState(ContentType.HAS_CONTENT);
+
+      contentController.setEmpty();
+
+      assertEquals(ContentType.NO_CONTENT, contentController.getState().type);
+    });
+
     test('reads initial awaiting state on construction', () => {
-      visualBrowserProxy.awaitingTranslation = true;
+      contentBrowserProxy.translationState = TranslationState.AWAITING;
       const controller = new ContentController();
 
       controller.setState(ContentType.HAS_CONTENT);
@@ -232,6 +356,45 @@ suite('ContentController', () => {
     assertNotEquals(docsHeading, regularHeading);
   });
 
+  test('setEmpty uses translation state when awaiting translation', () => {
+    contentBrowserProxy.translationState = TranslationState.AWAITING;
+    contentBrowserProxy.onTranslationStateChanged.callListeners();
+    contentController.setEmpty();
+
+    const state = contentController.getState();
+    assertEquals(ContentType.NO_CONTENT_TRANSLATION, state.type);
+    assertTrue(contentController.isEmpty());
+    assertStringContains(state.imagePath, 'empty_state.svg');
+    assertStringContains(state.darkImagePath, 'empty_state.svg');
+  });
+
+  test('setEmpty translation state differs only in heading', () => {
+    contentBrowserProxy.translationState = TranslationState.AWAITING;
+    contentBrowserProxy.onTranslationStateChanged.callListeners();
+    contentController.setEmpty();
+    const translationState = contentController.getState();
+
+    contentBrowserProxy.translationState = TranslationState.NONE;
+    contentBrowserProxy.onTranslationStateChanged.callListeners();
+    contentController.setEmpty();
+    const regularState = contentController.getState();
+
+    assertEquals(ContentType.NO_CONTENT, regularState.type);
+    assertNotEquals(translationState.heading, regularState.heading);
+    assertEquals(translationState.subheading, regularState.subheading);
+    assertEquals(translationState.imagePath, regularState.imagePath);
+  });
+
+  test('setEmpty prefers google docs state over translation state', () => {
+    contentBrowserProxy.googleDocs = true;
+    contentBrowserProxy.translationState = TranslationState.AWAITING;
+    contentBrowserProxy.onTranslationStateChanged.callListeners();
+    contentController.setEmpty();
+
+    assertEquals(
+        ContentType.NO_SELECTABLE_CONTENT, contentController.getState().type);
+  });
+
   test('hasContent', () => {
     assertFalse(contentController.hasContent());
 
@@ -324,7 +487,7 @@ suite('ContentController', () => {
       node.textContent = text;
       nodeStore.setDomNode(node, rootId);
       const segments = [
-        {node: ReadAloudNode.create(node)!, start: 0, length: text.length},
+        {node: ReadAloudNode.create(node), start: 0, length: text.length},
       ];
       readAloudModel.setCurrentTextSegments(segments);
       readAloudModel.setCurrentTextContent(text);
@@ -443,8 +606,8 @@ suite('ContentController', () => {
           const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
-          const contentDiv = (root as DocumentFragment).querySelector('div');
+          assertTrue(root instanceof DocumentFragment);
+          const contentDiv = root.querySelector('div');
           assertTrue(!!contentDiv);
           assertEquals(
               'I see my present partner\n\nin the imperfect tense',
@@ -462,8 +625,8 @@ suite('ContentController', () => {
           const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
-          const contentDiv = (root as DocumentFragment).querySelector('div');
+          assertTrue(root instanceof DocumentFragment);
+          const contentDiv = root.querySelector('div');
           assertTrue(!!contentDiv);
           assertEquals(
               'I see my present\npartner\n\nin the imperfect tense',
@@ -923,11 +1086,11 @@ suite('ContentController', () => {
 
       const root = contentController.updateContent();
       await microtasksFinished();
-      assertTrue(!!root);
+      assertTrue(root instanceof DocumentFragment);
       const container = document.createElement('div');
       document.body.appendChild(container);
       const shadowRoot = container.attachShadow({mode: 'open'});
-      const contentDiv = (root as DocumentFragment).querySelector('div');
+      const contentDiv = root.querySelector('div');
       assertTrue(!!contentDiv);
       shadowRoot.append(...contentDiv.childNodes);
 
@@ -1070,9 +1233,9 @@ suite('ContentController', () => {
           const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
-          assertFalse(!!(root as DocumentFragment).querySelector('button'));
-          const newDiv = (root as DocumentFragment).querySelector('div > div');
+          assertTrue(root instanceof DocumentFragment);
+          assertFalse(!!root.querySelector('button'));
+          const newDiv = root.querySelector('div > div');
           assertTrue(!!newDiv);
           assertEquals(buttonText, newDiv.textContent);
         });
@@ -1089,9 +1252,9 @@ suite('ContentController', () => {
           const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
-          assertFalse(!!(root as DocumentFragment).querySelector('mark'));
-          const newSpan = (root as DocumentFragment).querySelector('div > div');
+          assertTrue(root instanceof DocumentFragment);
+          assertFalse(!!root.querySelector('mark'));
+          const newSpan = root.querySelector('div > div');
           assertTrue(!!newSpan);
           assertEquals(markText, newSpan.textContent);
         });
@@ -1319,11 +1482,11 @@ suite('ContentController', () => {
           const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
+          assertTrue(root instanceof DocumentFragment);
           const container = document.createElement('div');
           document.body.appendChild(container);
           const shadowRoot = container.attachShadow({mode: 'open'});
-          const contentDiv = (root as DocumentFragment).querySelector('div');
+          const contentDiv = root.querySelector('div');
           assertTrue(!!contentDiv);
           shadowRoot.append(...contentDiv.childNodes);
 
@@ -1349,11 +1512,11 @@ suite('ContentController', () => {
           const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
+          assertTrue(root instanceof DocumentFragment);
           const container = document.createElement('div');
           document.body.appendChild(container);
           const shadowRoot = container.attachShadow({mode: 'open'});
-          const contentDiv = (root as DocumentFragment).querySelector('div');
+          const contentDiv = root.querySelector('div');
           assertTrue(!!contentDiv);
           shadowRoot.append(...contentDiv.childNodes);
 
@@ -1616,6 +1779,13 @@ suite('ContentController', () => {
           '"><span class="parent-of-highlight"><span class="' +
           'current-read-highlight">Try</span> to keep it hidden</span></a>';
 
+      // Re-queried each time, since updateLinks() swaps <a> and <span>.
+      function getContentElement(): HTMLElement {
+        const element = shadowRoot.firstElementChild;
+        assertTrue(element instanceof HTMLElement);
+        return element;
+      }
+
       setup(() => {
         setupBasicSpeech(speech);
         contentBrowserProxy.rootId = linkId;
@@ -1635,7 +1805,7 @@ suite('ContentController', () => {
           calls++;
           if (calls === 1) {
             return [{
-              node: ReadAloudNode.create(nodeStore.getDomNode(textId)!)!,
+              node: ReadAloudNode.create(nodeStore.getDomNode(textId)!),
               start: 0,
               length: 3,
             }];
@@ -1646,19 +1816,16 @@ suite('ContentController', () => {
       });
 
       test('hides links when speech active', () => {
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
         assertEquals(noLinksHtml, shadowRoot.innerHTML);
       });
 
       test('shows links when speech paused', () => {
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
 
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
 
         assertEquals(linksHtml, shadowRoot.innerHTML);
@@ -1668,8 +1835,7 @@ suite('ContentController', () => {
         const expectedHTML = '<a href="' + linkUrl +
             '"><span class="parent-of-highlight"><span class="">' +
             'Try</span> to keep it hidden</span></a>';
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
 
         const spoken = await speech.whenCalled('speak');
@@ -1683,8 +1849,7 @@ suite('ContentController', () => {
         visualBrowserProxy.linksEnabled = false;
         contentController.updateLinks(shadowRoot);
 
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
         assertEquals(noLinksHtml, shadowRoot.innerHTML);
       });
@@ -1692,12 +1857,10 @@ suite('ContentController', () => {
       test('hides links when speech paused and links disabled', () => {
         visualBrowserProxy.linksEnabled = false;
         contentController.updateLinks(shadowRoot);
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
 
-        speechController.onPlayPauseToggle(
-            shadowRoot.firstElementChild as HTMLElement);
+        speechController.onPlayPauseToggle(getContentElement());
         contentController.updateLinks(shadowRoot);
 
         assertEquals(noLinksHtml, shadowRoot.innerHTML);
@@ -2628,10 +2791,10 @@ suite('ContentController', () => {
               '<iframe data-video="//www.youtube.com/embed/test" ' +
               'srcdoc="<script>evil()</script>"></iframe>';
 
-          const root = contentController.updateContent() as DocumentFragment;
+          const root = contentController.updateContent();
           await microtasksFinished();
 
-          assertTrue(!!root);
+          assertTrue(root instanceof DocumentFragment);
           assertEquals(null, root.querySelector('iframe'));
           assertEquals(null, root.querySelector('script'));
           assertStringContains(root.textContent || '', 'Normal text');
@@ -2656,10 +2819,10 @@ suite('ContentController', () => {
           '<a href="javascript:void(0)">Link</a>' +
           '</div>';
 
-      const content = contentController.updateContent() as DocumentFragment;
+      const content = contentController.updateContent();
       await microtasksFinished();
 
-      assertTrue(!!content);
+      assertTrue(content instanceof DocumentFragment);
       assertEquals(null, content.querySelector('style'));
       assertEquals(null, content.querySelector('link'));
       assertEquals(null, content.querySelector('dialog'));

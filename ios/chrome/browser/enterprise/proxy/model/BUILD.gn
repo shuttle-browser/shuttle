@@ -8,6 +8,10 @@ source_set("model") {
     "enterprise_network_auth_service_factory_ios.mm",
     "enterprise_proxy_blocking_page.h",
     "enterprise_proxy_blocking_page.mm",
+    "enterprise_proxy_browser_agent.h",
+    "enterprise_proxy_browser_agent.mm",
+    "enterprise_proxy_error.h",
+    "enterprise_proxy_error.mm",
     "enterprise_proxy_error_service_factory_ios.h",
     "enterprise_proxy_error_service_factory_ios.mm",
     "enterprise_proxy_service_factory_ios.h",
@@ -27,14 +31,21 @@ source_set("model") {
     "//components/keyed_service/core",
     "//components/resources",
     "//components/security_interstitials/core",
+    "//components/signin/public/base",
     "//ios/chrome/browser/enterprise/identifiers:profile_id_service_factory",
     "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser",
     "//ios/chrome/browser/shared/model/profile",
     "//ios/chrome/browser/shared/model/profile:profile_keyed_service_factory",
+    "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
+    "//ios/chrome/browser/tabs/model:dependency_installer",
     "//ios/chrome/common",
     "//ios/components/security_interstitials",
     "//ios/components/ui_util",
+    "//ios/web/common:user_agent",
     "//ios/web/public",
     "//ios/web/public/proxy",
     "//net",
@@ -57,10 +68,25 @@ source_set("proxy_auth_challenge_util") {
   public_deps = [ "//net" ]
 }
 
+source_set("test_support") {
+  testonly = true
+  sources = [
+    "fake_enterprise_proxy_tab_helper_delegate.h",
+    "fake_enterprise_proxy_tab_helper_delegate.mm",
+  ]
+  public_deps = [
+    ":model",
+    "//base",
+  ]
+  deps = [ "//ios/web/public" ]
+}
+
 source_set("unit_tests") {
   testonly = true
   sources = [
     "enterprise_proxy_blocking_page_unittest.mm",
+    "enterprise_proxy_browser_agent_unittest.mm",
+    "enterprise_proxy_service_ios_unittest.mm",
     "enterprise_proxy_tab_helper_unittest.mm",
     "proxy_auth_challenge_util_unittest.mm",
     "proxy_service_controller_unittest.mm",
@@ -68,24 +94,46 @@ source_set("unit_tests") {
   deps = [
     ":model",
     ":proxy_auth_challenge_util",
+    ":test_support",
     "//base",
     "//base/test:test_support",
+    "//components/enterprise:test_support",
     "//components/enterprise/net/core",
     "//components/enterprise/net/core:test_support",
     "//components/keyed_service/core",
+    "//components/prefs",
     "//components/security_interstitials/core",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
+    "//components/signin/public/identity_manager:test_support",
+    "//ios/chrome/browser/shared/model/application_context",
+    "//ios/chrome/browser/shared/model/browser/test:test_support",
     "//ios/chrome/browser/shared/model/profile",
     "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/shared/model/web_state_list",
+    "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:authentication_service",
+    "//ios/chrome/browser/signin/model:authentication_service_factory",
     "//ios/chrome/browser/signin/model:fake_system_identity",
+    "//ios/chrome/browser/signin/model:fake_system_identity_manager",
     "//ios/chrome/browser/signin/model:test_support",
+    "//ios/chrome/browser/sync/model",
+    "//ios/chrome/browser/sync/model:test_support",
+    "//ios/chrome/browser/tabs/model:dependency_installer",
     "//ios/chrome/test:test_support",
+    "//ios/components/security_interstitials",
+    "//ios/web/common:user_agent",
     "//ios/web/public",
     "//ios/web/public/proxy",
     "//ios/web/public/test",
     "//ios/web/public/test/fakes",
     "//net",
+    "//services/network:test_support",
+    "//services/network/public/cpp",
     "//testing/gmock",
     "//testing/gtest",
+    "//third_party/ocmock",
     "//ui/base",
     "//url",
   ]

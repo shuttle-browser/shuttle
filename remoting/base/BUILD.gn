@@ -70,7 +70,56 @@ if (is_posix) {
   }
 }
 
-source_set("base") {
+static_library("os_utils") {
+  sources = [
+    "branding.cc",
+    "branding.h",
+    "username.cc",
+    "username.h",
+  ]
+  public_deps = [
+    ":loggable",
+    "//base",
+  ]
+  deps = [ "//build:branding_buildflags" ]
+
+  if (is_posix) {
+    sources += [
+      "passwd_utils.cc",
+      "passwd_utils.h",
+    ]
+  }
+
+  if (is_linux || is_chromeos) {
+    sources += [
+      "file_path_util_linux.cc",
+      "file_path_util_linux.h",
+    ]
+  }
+}
+
+static_library("codec_utils") {
+  sources = [
+    "constants.cc",
+    "constants.h",
+    "cpu_utils.cc",
+    "cpu_utils.h",
+    "util.cc",
+    "util.h",
+    "weighted_samples.cc",
+    "weighted_samples.h",
+  ]
+
+  configs += [
+    "//build/config/compiler:wexit_time_destructors",
+    "//remoting/build/config:version",
+  ]
+
+  public_deps = [ "//base" ]
+  deps = [ "//third_party/webrtc_overrides:webrtc_component" ]
+}
+
+static_library("base") {
   sources = [
     "async_file_util.cc",
     "async_file_util.h",
@@ -78,8 +127,6 @@ source_set("base") {
     "auto_thread.h",
     "auto_thread_task_runner.cc",
     "auto_thread_task_runner.h",
-    "branding.cc",
-    "branding.h",
     "capabilities.cc",
     "capabilities.h",
     "certificate_helpers.cc",
@@ -92,8 +139,6 @@ source_set("base") {
     "compound_buffer.h",
     "compute_engine_service_client.cc",
     "compute_engine_service_client.h",
-    "constants.cc",
-    "constants.h",
     "corp_auth_util.cc",
     "corp_auth_util.h",
     "corp_logging_service_client.cc",
@@ -104,8 +149,6 @@ source_set("base") {
     "corp_session_authz_service_client.h",
     "corp_session_authz_service_client_factory.cc",
     "corp_session_authz_service_client_factory.h",
-    "cpu_utils.cc",
-    "cpu_utils.h",
     "directory_service_client.cc",
     "directory_service_client.h",
     "ecdh_key_exchange.cc",
@@ -173,14 +216,8 @@ source_set("base") {
     "url_loader_network_service_observer.h",
     "url_request_context_getter.cc",
     "url_request_context_getter.h",
-    "username.cc",
-    "username.h",
-    "util.cc",
-    "util.h",
     "vlog_net_log.cc",
     "vlog_net_log.h",
-    "weighted_samples.cc",
-    "weighted_samples.h",
   ]
 
   configs += [ "//remoting/build/config:version" ]
@@ -188,8 +225,10 @@ source_set("base") {
   public_deps = [
     ":authentication_method",
     ":buildflags",
+    ":codec_utils",
     ":http_status",
     ":loggable",
+    ":os_utils",
     "//base",
     "//net",
     "//remoting/proto",
@@ -233,13 +272,6 @@ source_set("base") {
     ]
   }
 
-  if (is_posix) {
-    sources += [
-      "passwd_utils.cc",
-      "passwd_utils.h",
-    ]
-  }
-
   if (is_win) {
     sources += [
       "registry_util_win.cc",
@@ -247,11 +279,6 @@ source_set("base") {
       "scoped_sc_handle_win.h",
     ]
     libs = [ "crypt32.lib" ]  # For CryptoAPI functions in certificate_helpers
-  } else if (is_linux || is_chromeos) {
-    sources += [
-      "file_path_util_linux.cc",
-      "file_path_util_linux.h",
-    ]
   }
 }
 
@@ -280,7 +307,7 @@ source_set("loggable") {
   deps = [ "//base" ]
 }
 
-source_set("session_policies") {
+static_library("session_policies") {
   public = [
     "port_range.h",
     "session_policies.h",
@@ -293,7 +320,7 @@ source_set("session_policies") {
   deps = [ "//base" ]
 }
 
-source_set("authorization") {
+static_library("authorization") {
   sources = [
     "gaia_oauth_client.cc",
     "gaia_oauth_client.h",
@@ -324,7 +351,7 @@ source_set("authorization") {
   ]
 }
 
-source_set("logging") {
+static_library("logging") {
   public = [ "logging.h" ]
 
   sources = [
@@ -351,7 +378,7 @@ source_set("logging") {
   deps = [ "//base" ]
 }
 
-source_set("settings") {
+static_library("settings") {
   sources = [
     "host_settings.cc",
     "host_settings.h",

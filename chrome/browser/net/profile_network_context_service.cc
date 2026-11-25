@@ -33,7 +33,6 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
-#include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/content_settings/cookie_settings_factory.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
@@ -79,9 +78,9 @@
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/network_service_instance.h"
-#include "content/public/browser/reduce_accept_language_utils.h"
 #include "content/public/browser/shared_cors_origin_access_list.h"
 #include "content/public/browser/storage_partition.h"
+#include "content/public/common/content_features.h"
 #include "content/public/common/url_constants.h"
 #include "crypto/crypto_buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -711,11 +710,10 @@ void ProfileNetworkContextService::OnThirdPartyCookieBlockingChanged(
 }
 
 std::string ProfileNetworkContextService::ComputeAcceptLanguage() const {
-  return ComputeAcceptLanguageFromPref(
-      content::ReduceAcceptLanguageUtils::GetLanguagesWithMaxCount(
-          profile_->IsOffTheRecord() ? language::GetIncognitoLanguageList(
-                                           pref_accept_language_.GetValue())
-                                     : pref_accept_language_.GetValue()));
+  return ComputeAcceptLanguageFromPref(language::GetLanguagesWithMaxCount(
+      profile_->IsOffTheRecord()
+          ? language::GetIncognitoLanguageList(pref_accept_language_.GetValue())
+          : pref_accept_language_.GetValue()));
 }
 
 void ProfileNetworkContextService::UpdateReferrersEnabled() {
@@ -746,7 +744,6 @@ void ProfileNetworkContextService::UpdateCTPolicy() {
   // TODO(crbug.com/41392053): CT policy needs to be sent to both network
   // service and cert verifier service. Finish refactoring so that it is only
   // sent to cert verifier service.
-  std::vector<network::mojom::NetworkContext*> contexts;
   profile_->ForEachLoadedStoragePartition(
       [&](content::StoragePartition* storage_partition) {
         storage_partition->GetNetworkContext()->SetCTPolicy(GetCTPolicy());

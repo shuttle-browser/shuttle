@@ -22,11 +22,16 @@
 #include "base/time/time.h"
 #include "chrome/browser/private_verification_tokens/private_verification_tokens_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/test/base/chrome_test_utils.h"
 #include "chrome/test/base/platform_browser_test.h"
+#include "chrome/test/base/search_test_utils.h"
 #include "components/private_verification_tokens/common/athm_ffi/athm_ffi.h"
 #include "components/private_verification_tokens/common/private_verification_tokens_issuer_config.h"
 #include "components/private_verification_tokens/common/private_verification_tokens_test_util.h"
+#include "components/search_engines/template_url.h"
+#include "components/search_engines/template_url_data.h"
+#include "components/search_engines/template_url_service.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "net/base/features.h"
@@ -163,6 +168,22 @@ class PrivateVerificationTokensEndToEndBrowserTest
         &PrivateVerificationTokensEndToEndBrowserTest::HandleRequest,
         base::Unretained(this)));
     ASSERT_TRUE(https_server_.Start());
+
+    // Configure default search engine to match the test issuer origin.
+    TemplateURLService* template_url_service =
+        TemplateURLServiceFactory::GetForProfile(GetProfile());
+    search_test_utils::WaitForTemplateURLServiceToLoad(template_url_service);
+
+    TemplateURLData data;
+    data.SetShortName(u"Test DSE");
+    data.SetKeyword(u"testdse");
+    data.SetURL(https_server()
+                    .GetURL("issuer.a.test", "/search?q={searchTerms}")
+                    .spec());
+    TemplateURL* template_url =
+        template_url_service->Add(std::make_unique<TemplateURL>(data));
+    ASSERT_TRUE(template_url);
+    template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
   }
 
   Profile* GetProfile() { return chrome_test_utils::GetProfile(this); }
@@ -179,7 +200,7 @@ class PrivateVerificationTokensEndToEndBrowserTest
       if (decoded.has_value()) {
         redemption_count_++;
         auto metadata = test_issuer_->verify_wire_token(
-            rs_std::SliceRef<const uint8_t>(*decoded));
+            rs::SliceRef<const uint8_t>(*decoded));
         last_recovered_metadata_ =
             metadata.has_value() ? std::make_optional(*metadata) : std::nullopt;
       }
@@ -208,7 +229,7 @@ class PrivateVerificationTokensEndToEndBrowserTest
         last_issuance_request_accept_ = accept_it->second;
       }
       auto batch_response = test_issuer_->issue_batch_from_bytes(
-          rs_std::SliceRef<const uint8_t>(base::as_byte_span(request.content)),
+          rs::SliceRef<const uint8_t>(base::as_byte_span(request.content)),
           /*hidden_metadata=*/0);
       auto response = std::make_unique<net::test_server::BasicHttpResponse>();
       response->set_code(net::HTTP_OK);

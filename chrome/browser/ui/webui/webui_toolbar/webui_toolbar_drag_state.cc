@@ -4,6 +4,8 @@
 
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_drag_state.h"
 
+#include <utility>
+
 namespace webui_toolbar {
 
 // static
@@ -26,27 +28,25 @@ bool WebUIToolbarDragState::TakeDragOriginatedFromRenderer(
 
   // Clear the drag state immediately after reading to ensure that the
   // "renderer-tainted" drag state does not persist and pollute subsequent
-  // generic non-drag navigations (e.g. if the WebUI triggers
-  // Navigate/NavigateText outside a drag transaction).
+  // generic non-drag navigations (e.g. if the WebUI reports a drop outside a
+  // drag transaction).
   bool val = drag_state->drag_originated_from_renderer();
   drag_state->set_drag_originated_from_renderer(false);
   return val;
 }
 
 // static
-bool WebUIToolbarDragState::TakeDragHasJavaScriptUrl(
+std::optional<GURL> WebUIToolbarDragState::TakeDragUrl(
     content::WebContents* contents) {
   if (!contents) {
-    return false;
+    return std::nullopt;
   }
   WebUIToolbarDragState* drag_state = FromWebContents(contents);
   if (!drag_state) {
-    return false;
+    return std::nullopt;
   }
 
-  bool val = drag_state->drag_has_javascript_url();
-  drag_state->set_drag_has_javascript_url(false);
-  return val;
+  return std::exchange(drag_state->drag_url_, std::nullopt);
 }
 
 WebUIToolbarDragState::WebUIToolbarDragState(content::WebContents* contents)

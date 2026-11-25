@@ -11,6 +11,9 @@
 #include "build/build_config.h"
 #include "chrome/browser/enterprise/test/test_constants.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
+#include "components/policy/core/common/management/management_service.h"
+#include "components/policy/core/common/management/platform_management_service.h"
+#include "components/policy/core/common/management/scoped_management_service_override_for_testing.h"
 #include "components/policy/core/common/policy_map.h"
 #include "components/policy/core/common/policy_namespace.h"
 #include "components/policy/core/common/policy_types.h"
@@ -49,6 +52,12 @@ ManagementContextMixin::ManagementContextMixin(
       /*is_first_policy_load_complete_return=*/true);
   policy::BrowserPolicyConnector::SetPolicyProviderForTesting(
       &user_policy_provider_);
+  scoped_management_service_override_ =
+      std::make_unique<policy::ScopedManagementServiceOverrideForTesting>(
+          policy::PlatformManagementService::GetInstance(),
+          management_context_.is_platform_managed
+              ? policy::EnterpriseManagementAuthority::CLOUD
+              : policy::EnterpriseManagementAuthority::NONE);
 }
 
 ManagementContextMixin::~ManagementContextMixin() = default;
@@ -80,6 +89,11 @@ void ManagementContextMixin::SetCloudUserPolicies(
   MergeNewChromePolicies(policy_map);
 }
 
+void ManagementContextMixin::SetAffiliation(bool affiliated) {
+  management_context_.affiliated = affiliated;
+  SetCloudUserPolicies({});
+}
+
 std::unique_ptr<enterprise_management::PolicyData>
 ManagementContextMixin::GetBaseUserPolicyData() const {
   const auto* user_customer_id =
@@ -98,8 +112,15 @@ ManagementContextMixin::GetBaseUserPolicyData() const {
 void ManagementContextMixin::MergeNewChromePolicies(
     policy::PolicyMap& new_policy_map) {
   // Merge the existing Chrome policies into the new map.
-  new_policy_map.MergeFrom(user_policy_provider_.policies().Get(
-      policy::PolicyNamespace(policy::POLICY_DOMAIN_CHROME, std::string())));
+  policy::PolicyMap existing_policy_map =
+      user_policy_provider_.policies()
+          .Get(policy::PolicyNamespace(policy::POLICY_DOMAIN_CHROME,
+                                       std::string()))
+          .Clone();
+  if (!new_policy_map.GetUserAffiliationIds().empty()) {
+    existing_policy_map.SetUserAffiliationIds({});
+  }
+  new_policy_map.MergeFrom(std::move(existing_policy_map));
 
   EXPECT_NO_FATAL_FAILURE(
       user_policy_provider_.UpdateChromePolicy(new_policy_map));

@@ -418,6 +418,10 @@ Instead, tear down deterministically:
 - Mediators reset C++ observer bridges and clear unowned C++ pointers in
   `-disconnect` (see
   [Teardown and `-disconnect`](architecture/mediators.md#teardown-and-disconnect)).
+- Classes that own timers stop them in their teardown method: call `-invalidate`
+  on every `NSTimer` (a scheduled `NSTimer` retains its target until
+  invalidated, so it keeps the object alive and keeps firing) and `Stop()` on
+  `base::OneShotTimer` and `base::RepeatingTimer` members.
 
 ### Blocks
 
@@ -438,10 +442,21 @@ use-after-free bugs:
   bugs, prevents accidental ivar capture, and produces clear stack traces.
 - **Never reference `self` (or ivars) directly inside a block:** Referencing
   `self` or `_ivar` inside a block strongly retains `self`. Always capture
-  `__weak __typeof(self) weakSelf = self;`.
+  `__weak __typeof(self) weakSelf = self;` (except in transient synchronous
+  blocks; see below).
 - **Never capture raw C++ objects or `this` in a block:** Blocks do not manage
   C++ lifetimes, and calling a C++ member function in a block implicitly
   captures raw `this`.
+- **Exception — transient synchronous blocks:** Some APIs take blocks that are
+  executed synchronously before the method returns and are not retained
+  afterwards (often annotated with `NS_NOESCAPE` in system headers, such as
+  `-[NSArray enumerateObjectsUsingBlock:]` or
+  `+[UIView performWithoutAnimation:]`). Because these blocks are transient and
+  their lifetime is strictly bound to the current call stack, they cannot create
+  retain cycles or extend object lifetimes beyond the method execution.
+  Transient synchronous blocks do not need as much scrutiny: they can safely
+  capture `self` directly (without `weakSelf`) and do not need to be factored
+  into a single helper method call as long as they remain readable.
 - **Do not use blocks in C++ classes:** In a C++ class, bind a
   `base::OnceCallback` / `base::RepeatingCallback` (using `base::WeakPtr<T>`)
   and convert it with `base::CallbackToBlock(...)` when calling an API that
@@ -799,6 +814,22 @@ ______________________________________________________________________
   - Support Dynamic Type by using `[UIFont preferredFontForTextStyle:...]` (or
     `UIFontMetrics`) and setting `adjustsFontForContentSizeCategory = YES` on
     labels, buttons, and text views.
+- **Localize every user-visible string:** Load user-visible text (labels,
+  buttons, alerts, and accessibility labels) from string resources with
+  `l10n_util::GetNSString(IDS_...)` or `l10n_util::GetNSStringF(...)` from
+  [`//ui/base/l10n/l10n_util_mac.h`](/ui/base/l10n/l10n_util_mac.h); never
+  hardcode user-visible `NSString` literals. Strings for internal debug-only UI
+  are exempt.
+- **Expose state through accessibility traits:** Make sure every interactive
+  element has an `accessibilityLabel`; set it explicitly only where UIKit cannot
+  derive it from visible text (icon-only buttons and custom controls). Express
+  state with system traits (for example `UIAccessibilityTraitSelected`,
+  `UIAccessibilityTraitNotEnabled`, or `UIAccessibilityTraitButton`) instead of
+  encoding it in `accessibilityLabel` or `accessibilityValue` strings such as
+  "selected", so VoiceOver announces it in the user's language and consistently
+  with system controls. Standard `UIControl` subclasses already update these
+  traits from their `selected` and `enabled` properties; update
+  `accessibilityTraits` manually only in custom views.
 
 ______________________________________________________________________
 
@@ -814,10 +845,23 @@ ______________________________________________________________________
     [Unit Testing Mediators](architecture/mediators.md#unit-testing-mediators)).
   - **EarlGrey tests (`*_egtest.mm`):** Use for end-to-end integration and user
     journeys across UI and model layers.
+- **Start bug fixes with a regression test:** When fixing a bug in a mediator or
+  model class, first write a unit test that reproduces the bug and fails, then
+  write the fix that makes it pass. Land the test in the same CL as the fix so
+  the bug cannot silently come back.
 - **Use Objective-C GTest macros in unit tests:** Prefer `EXPECT_NSEQ(a, b)` and
   `EXPECT_NSNE(a, b)` over `EXPECT_TRUE([a isEqualToString:b])` so test failures
   print both actual and expected Objective-C objects. (Enforced by
   [`PRESUBMIT.py`](PRESUBMIT.py).)
+- **Use shared view lookup helpers in unit tests:** To find views in a
+  hierarchy, use the `chrome_test_util` helpers in
+  [`//ios/chrome/test/app/uikit_test_util.h`](/ios/chrome/test/app/uikit_test_util.h)
+  (`FindViewById()`, `FindViewByClass()`, `FindViewsByClass()`,
+  `FindLabelWithText()`, `FindViewWithPredicate()`) instead of writing local
+  recursive subview searches. Add missing generic `UIView` helpers to that
+  header rather than defining them in a test file. (This applies to
+  `//ios/chrome` tests; `//ios/web`, `//ios/components`, and `//ios/web_view`
+  cannot depend on that header.)
 - **Suppressing failing or flaky tests:**
   - **XCTest and EarlGrey tests (`*_egtest.mm`):** Do **not** use `DISABLED_` or
     `FLAKY_` method prefixes or hard-coded runtime/compile-time skips in test
@@ -845,3 +889,9 @@ ______________________________________________________________________
   - To verify page navigation in EarlGrey tests, use
     `[ChromeEarlGrey waitForWebStateVisibleURL:...]` rather than asserting on
     `OmniboxText`. (Enforced by [`PRESUBMIT.py`](PRESUBMIT.py).)
+  - **EarlGrey helper and AppInterface headers:** Header discovery and
+    categorization of exposed EarlGrey test interfaces is dictated by
+    `//ios/testing/earl_grey_mcp/mcp_domains.yaml`. Headers matching those rules
+    must follow the documentation and categorization requirements described in
+    [Accessing app internals](/docs/ios/testing.md#accessing-app-internals).
+    (Enforced by [`PRESUBMIT.py`](PRESUBMIT.py).)

@@ -6,6 +6,8 @@
 
 #include <android/input.h>
 
+#include <optional>
+
 #include "base/android/jni_android.h"
 #include "base/android/scoped_java_ref.h"
 #include "third_party/jni_zero/jni_zero.h"
@@ -21,7 +23,6 @@
 namespace ui {
 
 using base::android::AttachCurrentThread;
-using base::android::ScopedJavaLocalRef;
 
 AcceleratorManagerAndroid* AcceleratorManagerAndroid::FromWindow(
     WindowAndroid* window) {
@@ -31,6 +32,20 @@ AcceleratorManagerAndroid* AcceleratorManagerAndroid::FromWindow(
   JNIEnv* env = AttachCurrentThread();
   return Java_AcceleratorManager_getNativePointerFromWindow(
       env, window->GetJavaObject());
+}
+
+// static
+std::optional<Accelerator> AcceleratorManagerAndroid::AcceleratorFromKeyEvent(
+    const base::android::JavaRef<jobject>& j_key_event) {
+  KeyEventAndroid key_event_android(j_key_event);
+  // ui::KeyEvent will CHECK fail if the type is not one of these.
+  if (key_event_android.Action() != AKEY_EVENT_ACTION_DOWN &&
+      key_event_android.Action() != AKEY_EVENT_ACTION_UP) {
+    return std::nullopt;
+  }
+  ui::PlatformEvent native_event(key_event_android);
+  ui::KeyEvent key_event(native_event);
+  return ui::Accelerator(key_event);
 }
 
 AcceleratorManagerAndroid::AcceleratorManagerAndroid(
@@ -61,26 +76,30 @@ void AcceleratorManagerAndroid::UnregisterAccelerator(
   }
 }
 
-bool AcceleratorManagerAndroid::ProcessKeyEvent(
-    JNIEnv* env,
-    const base::android::JavaRef<jobject>& j_key_event) {
-  KeyEventAndroid key_event_android(j_key_event);
-  // ui::KeyEvent will CHECK fail if the type is not one of these.
-  if (key_event_android.Action() != AKEY_EVENT_ACTION_DOWN &&
-      key_event_android.Action() != AKEY_EVENT_ACTION_UP) {
-    return false;
-  }
-  ui::PlatformEvent native_event(key_event_android);
-  ui::KeyEvent key_event(native_event);
-  ui::Accelerator accelerator(key_event);
+bool AcceleratorManagerAndroid::HasPriorityHandler(
+    const Accelerator& accelerator) const {
+  return accelerator_manager_.HasPriorityHandler(accelerator);
+}
+
+bool AcceleratorManagerAndroid::ProcessAccelerator(
+    const Accelerator& accelerator) {
   return accelerator_manager_.Process(accelerator);
 }
 
-jni_zero::JniUniquePtr<AcceleratorManagerAndroid> JNI_AcceleratorManager_Init(
+bool AcceleratorManagerAndroid::ProcessKeyEvent(
     JNIEnv* env,
-    const base::android::JavaRef<jobject>& obj) {
+    const base::android::JavaRef<jobject>& j_key_event) {
+  std::optional<Accelerator> accelerator = AcceleratorFromKeyEvent(j_key_event);
+  if (!accelerator.has_value()) {
+    return false;
+  }
+  return ProcessAccelerator(*accelerator);
+}
+
+static jni_zero::JniUniquePtr<AcceleratorManagerAndroid>
+JNI_AcceleratorManager_Init(const base::android::JavaRef<jobject>& obj) {
   return jni_zero::MakeUnique<AcceleratorManagerAndroid>(
-      base::android::ScopedJavaGlobalRef<jobject>(env, obj));
+      base::android::ScopedJavaGlobalRef<jobject>(obj));
 }
 
 }  // namespace ui

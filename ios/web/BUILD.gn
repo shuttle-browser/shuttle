@@ -419,6 +419,7 @@ source_set("ios_web_web_state_unittests") {
     "//testing/gtest",
     "//third_party/ocmock",
     "//ui/base:test_support",
+    "//ui/base/mojom",
     "//ui/gfx:test_support",
   ]
 
@@ -582,7 +583,6 @@ test("ios_web_inttests") {
     "//ios/web/web_state",
     "//ios/web/web_state:test_util",
     "//ios/web/web_state:web_state_impl_header",
-    "//ios/web/web_state:web_view_internal_creation_util",
     "//ios/web/web_state/ui",
     "//ios/web/web_state/ui:crw_context_menu_controller",
     "//ios/web/web_state/ui:web_controller_header",
@@ -601,6 +601,7 @@ test("ios_web_inttests") {
     "navigation/crw_wk_navigation_handler_inttest.mm",
     "navigation/history_state_operations_inttest.mm",
     "navigation/meta_tag_inttest.mm",
+    "navigation/navigation_item_referrer_inttest.mm",
     "navigation/navigation_manager_impl_inttest.mm",
     "navigation/window_location_inttest.mm",
     "test/run_all_unittests.cc",
@@ -652,4 +653,5 @@ grit("resources") {
     "//mojo/public/js:bindings",
     "//ui/webui/resources/mojo:build_ts",
   ]
+  public_deps = [ "//ui/base:webui_resource_path" ]
 }

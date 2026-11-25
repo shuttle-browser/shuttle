@@ -15,6 +15,7 @@
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
@@ -28,6 +29,8 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/buildflags.h"
 #include "chrome/browser/profiles/nuke_profile_directory_utils.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/common/pref_names.h"
 #include "components/crash/core/common/crash_key.h"
@@ -37,10 +40,12 @@
 #include "components/tracing/common/tracing_switches.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/storage_partition.h"
 #include "content/public/browser/tracing_controller.h"
 #include "content/public/common/content_switches.h"
 #include "printing/buildflags/buildflags.h"
 #include "rlz/buildflags/buildflags.h"
+#include "services/network/public/mojom/cookie_manager.mojom.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/first_run/upgrade_util_win.h"
@@ -180,10 +185,11 @@ const char* ToShutdownTriggerCrashKeyString(ShutdownTrigger trigger) {
 void CheckAccessedOnCorrectThread() {
   // Some APIs below are accessed after UI thread has been torn down, so cater
   // for both situations here.
-  CHECK(content::BrowserThread::CurrentlyOn(content::BrowserThread::UI) ||
-            !content::BrowserThread::IsThreadInitialized(
-                content::BrowserThread::UI),
-        base::NotFatalUntil::M161);
+  // TODO(crbug.com/584626681): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(
+      content::BrowserThread::CurrentlyOn(content::BrowserThread::UI) ||
+      !content::BrowserThread::IsThreadInitialized(content::BrowserThread::UI));
 }
 
 }  // namespace
@@ -214,6 +220,21 @@ void OnShutdownStarting(ShutdownType type) {
   // delays to shutdown time.
   CHECK(!g_shutdown_started, base::NotFatalUntil::M161);
   g_shutdown_started = new base::Time(base::Time::Now());
+
+  // Start flushing cookies and storage partitions asynchronously so network
+  // and DOMStorage persistence runs in parallel with browser and profile
+  // teardown instead of blocking BrowserProcessIOThread::ProcessHostCleanUp().
+  if (g_browser_process && g_browser_process->profile_manager()) {
+    for (Profile* profile :
+         g_browser_process->profile_manager()->GetLoadedProfiles()) {
+      profile->ForEachLoadedStoragePartition(
+          [](content::StoragePartition* partition) {
+            partition->GetCookieManagerForBrowserProcess()->FlushCookieStore(
+                base::NullCallback());
+            partition->Flush();
+          });
+    }
+  }
 
   // TODO(crbug.com/469788783):  Coverage builds appear to work without this. Check
   // if this is still needed for PGO.
@@ -248,6 +269,7 @@ void OnShutdownStarting(ShutdownType type) {
     base::UmaHistogramCounts1000("Shutdown.ChromeOS.TabsAtShutdown", tab_count);
     int renderer_count = 0;
 #endif  // BUILDFLAG(IS_CHROMEOS)
+    const bool fast_shutdown = ShouldFastShutdownRenderers();
     for (content::RenderProcessHost::iterator i(
              content::RenderProcessHost::AllHostsIterator());
          !i.IsAtEnd(); i.Advance()) {
@@ -257,7 +279,12 @@ void OnShutdownStarting(ShutdownType type) {
         ++renderer_count;
       }
 #endif  // BUILDFLAG(IS_CHROMEOS)
-      rph->FastShutdownIfPossible();
+      rph->FastShutdownIfPossible(
+          /*page_count=*/0,
+          /*skip_unload_handlers=*/fast_shutdown,
+          /*ignore_workers=*/fast_shutdown,
+          /*ignore_keep_alive=*/fast_shutdown,
+          /*ignore_pending_reuse=*/fast_shutdown);
     }
 #if BUILDFLAG(IS_CHROMEOS)
     base::UmaHistogramCounts100("Shutdown.ChromeOS.RenderersAtShutdown",
@@ -275,6 +302,16 @@ bool ShouldIgnoreUnloadHandlers() {
   CheckAccessedOnCorrectThread();
   return g_shutdown_type == ShutdownType::kEndSession ||
          g_shutdown_type == ShutdownType::kSilentExit;
+}
+
+bool ShouldFastShutdownRenderers() {
+  CheckAccessedOnCorrectThread();
+#if BUILDFLAG(IS_CHROMEOS)
+  return ShouldIgnoreUnloadHandlers() ||
+         g_shutdown_type == ShutdownType::kBrowserExit;
+#else
+  return false;
+#endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
 ShutdownType GetShutdownType() {

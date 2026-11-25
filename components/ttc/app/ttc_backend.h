@@ -7,6 +7,7 @@
 
 #include <stdint.h>
 
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -15,6 +16,7 @@
 #include "base/values.h"
 #include "components/ttc/app/public/error_codes.h"
 #include "components/ttc/app/public/tool_types.h"
+#include "components/ttc/app/public/turn_state_update.h"
 #include "url/gurl.h"
 
 namespace optimization_guide::proto {
@@ -23,6 +25,7 @@ class AnnotatedPageContent;
 
 namespace ttc {
 
+class Conversation;
 struct ServerJournalEvent;
 
 // Generic interface for communicating with a TTC model backend.
@@ -54,12 +57,18 @@ class TtcBackend {
     virtual void OnGenerationStateChanged(bool started,
                                           bool completed,
                                           bool interrupted) = 0;
+    virtual void OnModelTurnStateUpdate(ModelTurnStateUpdate update,
+                                        int64_t generation_id) = 0;
+    virtual void OnUserTurnStateUpdate(UserTurnStateUpdate update) = 0;
     virtual void OnToolCall(const ToolRequest& tool_request,
                             ToolResponseCallback response_callback) = 0;
     virtual void OnJournalEvent(const ServerJournalEvent& journal_event) = 0;
   };
 
   virtual ~TtcBackend() = default;
+
+  // Binds the owning `conversation` to this backend after construction.
+  virtual void BindConversation(Conversation& conversation) {}
 
   // Starts the streaming session with the backend. `observer` must be non-null
   // and must outlive the connection.
@@ -74,7 +83,8 @@ class TtcBackend {
   // Submits a user text query to the backend server.
   virtual void SendTextInput(const std::string& text) = 0;
 
-  // Sends active tab context update to the backend server.
+  // Sends active tab context update to the backend server. `apc` is empty if
+  // the page's content is unavailable.
   virtual void SendContextUpdate(
       const GURL& url,
       const std::string& title,
@@ -87,6 +97,10 @@ class TtcBackend {
   virtual void Close() = 0;
 
   virtual bool is_transport_connected() const = 0;
+
+  // Returns the backend-assigned session ID, or std::nullopt if a session
+  // hasn't been connected yet.
+  virtual std::optional<std::string> GetSessionId() const;
 };
 
 }  // namespace ttc

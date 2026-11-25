@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/functional/callback.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "components/signin/core/browser/account_preview_data.h"
@@ -103,28 +104,29 @@ class AccountPreviewDataService : public KeyedService {
       base::OnceCallback<void(std::optional<AccountPreviewPreference>)>
           callback) = 0;
 
-#if BUILDFLAG(IS_IOS)
-  // Asynchronous version of `GetPreferredAccountForSignin()` for the First Run
-  // Experience (FRE), which returns the stored preferred account immediately if
-  // available, or triggers a fetch and waits for the preferred account
-  // computation to complete.
-  // Note: This method is currently FRE-specific (for metrics and feature flag
-  // gating), but is ready to be easily reused for other callers if needed.
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  // Asynchronous version of `GetPreferredAccountForSignin()`, which returns the
+  // stored preferred account if available, or triggers a fetch and waits for
+  // the preferred account computation to complete.
   //
-  // `callback` is run once, with the value of `GetPreferredAccountForSignin()`
-  // at the time it runs:
-  // - immediately (synchronously), if `GetPreferredAccountForSignin()` already
-  //   has a value (or if the triggered fetch is immediately canceled, e.g. when
-  //   rate-limited or no accounts exist),
-  // - asynchronously, once the triggered preferred account fetch and
-  //   computation complete (or are canceled).
+  // Note: This method is currently FRE-specific (for feature flag gating), but
+  // is ready to be easily reused for other callers if needed.
+  //
+  // `callback` is always run asynchronously once, with the value of
+  // `GetPreferredAccountForSignin()` at the time it is resolved:
+  // - without triggering a fetch, if `GetPreferredAccountForSignin()` already
+  //   has a value,
+  // - once the triggered preferred account fetch and computation complete (or
+  //   are canceled, e.g. when rate-limited or no accounts exist).
   //
   // `callback` is run with `std::nullopt` if
   // `kEnableAccountPreviewPreferredAccountFRE` is disabled, if sign-in is
-  // disallowed, or when the service shuts down.
-  virtual void GetPreferredAccountForFRESignin(
+  // disallowed, if the computation does not complete within `timeout`, or when
+  // the service shuts down.
+  virtual void GetPreferredAccountForSigninAsync(
       base::OnceCallback<void(std::optional<AccountPreviewPreference>)>
-          callback) = 0;
+          callback,
+      base::TimeDelta timeout) = 0;
 #endif
 
 #if BUILDFLAG(IS_ANDROID)

@@ -207,6 +207,22 @@ BASE_EXPORT void IsDeviceSlateWithKeyboard(
 // Returns true if the machine is enrolled to a domain.
 BASE_EXPORT bool IsEnrolledToDomain();
 
+// Azure Active Directory (Entra ID) join type of the device, mirroring
+// `DSREG_JOIN_TYPE`.
+enum class AzureADJoinType {
+  // `DSREG_UNKNOWN_JOIN`.
+  kUnknown,
+  // `DSREG_DEVICE_JOIN`: the device itself is joined to Azure AD.
+  kDevice,
+  // `DSREG_WORKPLACE_JOIN`: only a work account was added on the device.
+  kWorkplace,
+};
+
+// Returns the Azure AD join type of the device, or `std::nullopt` if the device
+// is not joined or the join information could not be queried. Uses the same
+// cached state as `IsJoinedToAzureAD()`.
+BASE_EXPORT std::optional<AzureADJoinType> GetAzureADJoinType();
+
 // Returns true if either the device is joined to Azure Active Directory (AD) or
 // one or more Azure AD work accounts have been added on the device. This call
 // triggers some I/O when loading netapi32.dll to determine the management
@@ -225,17 +241,33 @@ BASE_EXPORT bool IsDeviceRegisteredWithManagement();
 // Returns true if the current process can make USER32 or GDI32 calls such as
 // CreateWindow and CreateDC. Windows 8 and above allow the kernel component
 // of these calls to be disabled (also known as win32k lockdown) which can
-// cause undefined behaviour such as crashes. This function can be used to
-// guard areas of code using these calls and provide a fallback path if
-// necessary.
+// cause undefined behaviour such as crashes. Process environments such as Low
+// Privilege AppContainer (LPAC) on a window station or desktop lacking LPAC
+// access can also prevent USER32 or GDI32 from initializing. This function can
+// be used to guard areas of code using these calls and provide a fallback path
+// if necessary.
 // Because they are not always needed (and not needed at all in processes that
 // have the win32k lockdown), USER32 and GDI32 are delayloaded. Attempts to
-// load them in those processes will cause a crash. Any code which uses USER32
-// or GDI32 and may run in a locked-down process MUST be guarded using this
-// method. Before the dlls were delayloaded, method calls into USER32 and GDI32
-// did not work, so adding calls to this method to guard them simply avoids
-// unnecessary method calls.
+// delayload them when unavailable will cause a crash. Any code which uses
+// USER32 or GDI32 and may run where they are unavailable MUST be guarded using
+// this method. When win32k syscalls are allowed, calling this method loads and
+// pins user32.dll (and its static import gdi32.dll) to verify initialization.
 BASE_EXPORT bool IsUser32AndGdi32Available();
+
+// Initializes the PinUser32AndGdi32InAvailabilityCheck synthetic field trial
+// state for the current process based on the machine GUID. Must be called
+// before IsUser32AndGdi32Available().
+BASE_EXPORT void InitPinUser32AndGdi32Trial();
+
+// Returns the group name ("Enabled" or "Control") for the
+// PinUser32AndGdi32InAvailabilityCheck synthetic field trial if the current
+// process is enrolled in the trial, or an empty string_view otherwise.
+BASE_EXPORT std::string_view GetPinUser32AndGdi32TrialGroup();
+
+// Forces IsUser32AndGdi32Available() to load and pin user32.dll (and its
+// static import gdi32.dll) in tests. Must be called before
+// IsUser32AndGdi32Available().
+BASE_EXPORT void EnablePinUser32AndGdi32ForTesting();
 
 // Takes a snapshot of the modules loaded in the |process|. The returned
 // HMODULEs are not add-ref'd, so they should not be closed and may be
@@ -430,11 +462,9 @@ class BASE_EXPORT ScopedDeviceRegisteredWithManagementForTesting {
 // object. The original state is restored upon destruction.
 class BASE_EXPORT ScopedAzureADJoinStateForTesting {
  public:
-  enum class AzureADJoinType {
-    kUnknown,
-    kDevice,
-    kWorkplace,
-  };
+  // Retained as an alias to `base::win::AzureADJoinType` for backward
+  // compatibility in tests.
+  using AzureADJoinType = base::win::AzureADJoinType;
 
   explicit ScopedAzureADJoinStateForTesting(
       std::optional<AzureADJoinType> state);

@@ -13,7 +13,6 @@
 #include "base/feature_list.h"
 #include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
-#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
 #include "components/autofill/content/renderer/autofill_agent_test_api.h"
@@ -780,16 +779,11 @@ TEST_P(FormSubmissionTrackerTest,
   run_loop.Run();
 }
 
-#if BUILDFLAG(IS_MAC)
-#define MAYBE_NoLongerVisibleBothNoActions DISABLED_NoLongerVisibleBothNoActions
-#else
-#define MAYBE_NoLongerVisibleBothNoActions NoLongerVisibleBothNoActions
-#endif
 // Tests that completing an Ajax request and having the form with no action
 // specified disappear will trigger submission from Autofill's point of view,
 // even if there is still another form with no action in the page. It will
 // compare field data within the forms.
-TEST_P(FormSubmissionTrackerTest, MAYBE_NoLongerVisibleBothNoActions) {
+TEST_P(FormSubmissionTrackerTest, NoLongerVisibleBothNoActions) {
   LoadHTML(R"(
       <html>
         <form id='myForm'>
@@ -1034,7 +1028,7 @@ TEST_P(FormSubmissionTrackerTest, DynamicAutoCompleteOffFormSubmit) {
   ExecuteJavaScriptForTests(
       "document.getElementById('myForm')."
       "setAttribute('autocomplete', 'off');");
-  ASSERT_TRUE(base::test::RunUntil([&]() { return !form.AutoComplete(); }));
+  ASSERT_FALSE(form.AutoComplete());
 
   base::RunLoop run_loop;
   EXPECT_CALL(

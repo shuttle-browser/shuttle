@@ -9,6 +9,8 @@
 
 #import <Foundation/Foundation.h>
 
+#import <string_view>
+
 #import "base/command_line.h"
 #import "base/feature_list.h"
 #import "base/metrics/field_trial.h"
@@ -18,15 +20,19 @@
 #import "components/password_manager/core/common/password_manager_features.h"
 #import "components/segmentation_platform/public/constants.h"
 #import "components/variations/variations_associated_data.h"
+#import "components/version_info/channel.h"
 #import "ios/chrome/browser/flags/chrome_switches.h"
 #import "ios/chrome/browser/memory/model/features.h"
 #import "ios/chrome/browser/safety_check/model/ios_chrome_safety_check_manager_constants.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/common/channel_info.h"
 
 namespace {
 
 NSString* const kAlternateDiscoverFeedServerURL =
     @"AlternateDiscoverFeedServerURL";
+NSString* const kBypassGeolocationPromptRestriction =
+    @"BypassGeolocationPromptRestriction";
 NSString* const kEnableStartupCrash = @"EnableStartupCrash";
 NSString* const kFirstRunForceEnabled = @"FirstRunForceEnabled";
 NSString* const kFirstRunForceDisabled = @"FirstRunForceDisabled";
@@ -39,6 +45,13 @@ NSString* const kFirstRunRecency = @"FirstRunRecency";
 NSString* const kIgnoreDeviceLocaleConditions = @"IgnoreDeviceLocaleConditions";
 NSString* const kForceExperienceForDeviceSwitcherExperimentalSettings =
     @"ForceExperienceForDeviceSwitcher";
+// Matches `segmentation_platform::DeviceSwitcherModel::kAndroidPhoneLabel`
+// without depending on
+// `//components/segmentation_platform/embedder/default_model` from
+// `:system_flags`, which is linked into EarlGrey 2 test runner modules where
+// transitive `//ios/web` dependencies are disallowed.
+constexpr std::string_view kForcedDeviceSwitcherAndroidPhoneSegment =
+    "AndroidPhone";
 NSString* const kForceExperienceForShopperExperimentalSettings =
     @"ForceExperienceForShopper";
 NSString* const kSafetyCheckUpdateChromeStateOverride =
@@ -62,6 +75,7 @@ BASE_FEATURE(kEnableThirdPartyKeyboardWorkaround,
              base::FEATURE_ENABLED_BY_DEFAULT);
 NSString* const kTipsMagicStackLensShopWithImage =
     @"TipsMagicStackLensShopWithImage";
+NSString* const kResetMagicStackTipsState = @"ResetMagicStackTipsState";
 NSString* const kUniversalOptOutEligibilityOverride =
     @"UniversalOptOutEligibilityOverride";
 NSString* const kInactiveTabsDemoMode = @"InactiveTabsDemoMode";
@@ -290,6 +304,14 @@ std::string GetSegmentForForcedDeviceSwitcherExperience() {
   return segment;
 }
 
+std::optional<bool> IsForcedDeviceSwitcherAndroidPhone() {
+  std::string forced_segment = GetSegmentForForcedDeviceSwitcherExperience();
+  if (forced_segment.empty()) {
+    return std::nullopt;
+  }
+  return forced_segment == kForcedDeviceSwitcherAndroidPhoneSegment;
+}
+
 std::string GetSegmentForForcedShopperExperience() {
   // Checks iOS Experimental Settings.
   std::string segment =
@@ -332,6 +354,16 @@ std::optional<int> GetForcedInactivityThresholdForSafetyCheckNotifications() {
 bool ShouldDisplayLensShopTipWithImage() {
   return [[NSUserDefaults standardUserDefaults]
       boolForKey:kTipsMagicStackLensShopWithImage];
+}
+
+bool ShouldResetMagicStackTipsState() {
+  NSUserDefaults* standardDefaults = [NSUserDefaults standardUserDefaults];
+  bool value = [standardDefaults boolForKey:kResetMagicStackTipsState];
+  if (value) {
+    [standardDefaults setBool:NO forKey:kResetMagicStackTipsState];
+    [standardDefaults synchronize];
+  }
+  return value;
 }
 
 bool ShouldUseInactiveTabsDemoThreshold() {
@@ -484,6 +516,19 @@ bool IsAppSwitcherAISummarizationTestingExternalURLEnabled() {
              boolForKey:kEnableAppSwitcherAISummarizationTestingExternalURL] ||
          command_line->HasSwitch(
              switches::kEnableAppSwitcherAISummarizationTestingExternalURL);
+}
+
+bool ShouldBypassGeolocationPromptRestriction() {
+  int value = [[NSUserDefaults standardUserDefaults]
+      integerForKey:kBypassGeolocationPromptRestriction];
+  switch (value) {
+    case 1:
+      return true;
+    case 2:
+      return false;
+    default:
+      return GetChannel() == version_info::Channel::CANARY;
+  }
 }
 
 }  // namespace experimental_flags

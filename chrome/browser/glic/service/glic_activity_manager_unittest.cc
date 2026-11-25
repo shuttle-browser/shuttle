@@ -29,6 +29,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/message_center/public/cpp/notification.h"
 
 namespace glic {
 using actor::ActorKeyedServiceFake;
@@ -533,9 +534,105 @@ class GlicActivityManagerOsNotificationTest : public GlicActivityManagerTest {
         features::kGlicExperimentalTriggeringOsNotification);
   }
 
+ protected:
+  // Moves `task_id` to the acting state, notifies the manager and returns the
+  // resulting OS notification, if any.
+  std::optional<message_center::Notification> StartTaskAndGetNotification(
+      TaskId task_id) {
+    actor_service()->GetTask(task_id)->SetState(
+        actor::ActorTask::State::kActing);
+    actor::ui::ActorUiStateManager::Get(profile_.get())
+        ->OnUiEvent(actor::ui::TaskStateChanged(
+            task_id, actor::ActorTask::State::kActing));
+    OnActorTaskStateUpdate(task_id);
+    return display_service_tester()->GetNotification(
+        "actor_task_start_" + base::NumberToString(task_id.value()));
+  }
+
  private:
   base::test::ScopedFeatureList scoped_feature_list_;
 };
+
+// Verifies the updated notification copy for a task without a title: the
+// generic title is shown with a "Started" body.
+TEST_F(GlicActivityManagerOsNotificationTest,
+       UpdatedStrings_NoTaskTitle_ShowsGenericTitleAndStarted) {
+  auto notification = StartTaskAndGetNotification(
+      actor_service()->CreateExperimentalTriggeringTaskWithTitleForTesting(""));
+  ASSERT_TRUE(notification.has_value());
+  EXPECT_EQ(notification->title(),
+            l10n_util::GetStringUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE_V2));
+  EXPECT_EQ(
+      notification->message(),
+      l10n_util::GetStringUTF16(
+          IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_STARTED_V2));
+}
+
+// Verifies that the updated notification copy includes a custom task title in
+// the body when present.
+TEST_F(GlicActivityManagerOsNotificationTest,
+       UpdatedStrings_WithTaskTitle_ShowsTitleInBody) {
+  auto notification = StartTaskAndGetNotification(
+      actor_service()->CreateExperimentalTriggeringTaskWithTitleForTesting(
+          "Book a table"));
+  ASSERT_TRUE(notification.has_value());
+  EXPECT_EQ(notification->title(),
+            l10n_util::GetStringUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE_V2));
+  EXPECT_EQ(
+      notification->message(),
+      l10n_util::GetStringFUTF16(
+          IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_STARTED_WITH_TITLE_V2,
+          u"Book a table"));
+}
+
+// Verifies that the updated notification copy ignores the default server
+// placeholder task title and shows the "Started" body instead.
+TEST_F(GlicActivityManagerOsNotificationTest,
+       UpdatedStrings_PlaceholderTaskTitle_ShowsStartedOnly) {
+  auto notification = StartTaskAndGetNotification(
+      actor_service()->CreateExperimentalTriggeringTaskWithTitleForTesting(
+          "Running task in Chrome"));
+  ASSERT_TRUE(notification.has_value());
+  EXPECT_EQ(notification->title(),
+            l10n_util::GetStringUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE_V2));
+  EXPECT_EQ(
+      notification->message(),
+      l10n_util::GetStringUTF16(
+          IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_STARTED_V2));
+}
+
+// Verifies that the legacy copy is shown when the updated strings are disabled.
+TEST_F(GlicActivityManagerOsNotificationTest,
+       UpdatedStringsDisabled_UsesLegacyStrings) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      features::kGlicExperimentalTriggeringOsNotificationUpdatedStrings);
+
+  auto notification = StartTaskAndGetNotification(
+      actor_service()->CreateExperimentalTriggeringTaskWithTitleForTesting(
+          "Book a table"));
+  ASSERT_TRUE(notification.has_value());
+  EXPECT_EQ(notification->title(),
+            l10n_util::GetStringUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE));
+  EXPECT_EQ(notification->message(),
+            l10n_util::GetStringFUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY,
+                u"Book a table"));
+
+  notification = StartTaskAndGetNotification(
+      actor_service()->CreateExperimentalTriggeringTaskWithTitleForTesting(""));
+  ASSERT_TRUE(notification.has_value());
+  EXPECT_EQ(notification->title(),
+            l10n_util::GetStringUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE));
+  EXPECT_EQ(notification->message(),
+            l10n_util::GetStringUTF16(
+                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_FALLBACK));
+}
 
 // Verifies that an OS notification is displayed when an experimental triggering
 // task starts and no browser window is active.
@@ -998,14 +1095,15 @@ TEST_F(GlicUnifiedActivityManagerTest,
   EXPECT_EQ(manager()->GetNumUnseenActivities(), 1u);
 
   // Add a completed ConversationResponse -> ActorTask (kCompleteTasks) remains
-  // prioritized over non-actuation conversations with combined unseen count 2.
+  // prioritized over non-actuation conversations, with state.count reflecting
+  // the 1 completed ActorTask while GetNumUnseenActivities() tracks all 2.
   manager()->OnConversationActivityStateChanged(
       "conv_1", {.state = GlicActivityState::kCompleted,
                  .title = "Conversation 1",
                  .preview_snippet = "Response ready"});
   EXPECT_EQ(manager()->GetCurrentActivityNudgeState().text,
             GlicActivityNudgeState::Text::kCompleteTasks);
-  EXPECT_EQ(manager()->GetCurrentActivityNudgeState().count, 2u);
+  EXPECT_EQ(manager()->GetCurrentActivityNudgeState().count, 1u);
   EXPECT_EQ(manager()->GetNumUnseenActivities(), 2u);
 
   // Marking the ActorTask seen leaves the unseen ConversationResponse
@@ -1014,6 +1112,32 @@ TEST_F(GlicUnifiedActivityManagerTest,
   EXPECT_EQ(manager()->GetCurrentActivityNudgeState().text,
             GlicActivityNudgeState::Text::kResponseReady);
   EXPECT_EQ(manager()->GetCurrentActivityNudgeState().count, 1u);
+}
+
+TEST_F(GlicUnifiedActivityManagerTest,
+       UnrelatedConversationDoesNotRetriggerShowBubble) {
+  TaskId task_id = actor_service()->CreateTaskForTesting();
+  EXPECT_CALL(
+      mock_nudge_subscriber_,
+      OnStateChanged(/*show_bubble=*/true,
+                     Field(&GlicActivityNudgeState::text,
+                           GlicActivityNudgeState::Text::kNeedsAttention)))
+      .Times(1);
+  actor_service()->PauseTaskForTesting(task_id, /*from_actor=*/true);
+  OnActorTaskStateUpdate(task_id);
+
+  // Starting an unrelated background conversation changes activities_.size()
+  // while the paused ActorTask is still unseen, which must not re-emit
+  // show_bubble=true.
+  EXPECT_CALL(
+      mock_nudge_subscriber_,
+      OnStateChanged(/*show_bubble=*/false,
+                     Field(&GlicActivityNudgeState::text,
+                           GlicActivityNudgeState::Text::kNeedsAttention)))
+      .Times(1);
+  manager()->OnConversationActivityStateChanged(
+      "conv_1",
+      {.state = GlicActivityState::kInProgress, .title = "Conversation 1"});
 }
 
 TEST_F(GlicUnifiedActivityManagerTest, ConversationTitleUpdated_UpdatesTitle) {

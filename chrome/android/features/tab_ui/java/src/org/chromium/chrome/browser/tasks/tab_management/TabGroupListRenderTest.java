@@ -8,6 +8,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.withText;
 
 import static org.chromium.base.test.transit.TransitAsserts.assertFinalDestination;
 import static org.chromium.base.test.transit.ViewFinder.waitForView;
+import static org.chromium.components.browser_ui.widget.RecyclerViewTestUtils.waitForStableRecyclerView;
 
 import androidx.recyclerview.widget.RecyclerView;
 import androidx.test.filters.LargeTest;
@@ -18,11 +19,9 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tabmodel.TabModel;
@@ -43,7 +42,6 @@ import org.chromium.ui.test.util.RenderTestRule.Component;
 /** Render tests for {@link TabGroupListView}. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @DisableFeatures({TabGroupsFeatureMap.UPDATE_TAB_GROUP_COLORS})
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class TabGroupListRenderTest {
     @Rule
@@ -63,18 +61,26 @@ public class TabGroupListRenderTest {
     public void testGroupPane() throws Exception {
         WebPageStation firstPage = mCtaTestRule.startOnBlankPage();
 
-        createGroupProgrammatic("Group 1", /* wait= */ false);
+        createGroupProgrammatic("Group 1");
 
         RegularTabSwitcherStation tabSwitcher = firstPage.openRegularTabSwitcher();
         TabGroupPaneStation tabGroupPane = tabSwitcher.selectTabGroupsPane();
 
         RecyclerView recyclerView = tabGroupPane.recyclerViewElement.value();
+        // Disable item animations to prevent DefaultItemAnimator from setting row alpha to 0
+        // and delaying fade-in during model repopulation, which causes blank render captures.
+        ThreadUtils.runOnUiThreadBlocking(() -> recyclerView.setItemAnimator(null));
+        waitForStableRecyclerView(recyclerView);
         mRenderTestRule.render(recyclerView, "1_group");
 
-        createGroupProgrammatic("Group 2", /* wait= */ true);
+        createGroupProgrammatic("Group 2");
+        waitForView(withText("Group 2"));
+        waitForStableRecyclerView(recyclerView);
         mRenderTestRule.render(recyclerView, "2_groups");
 
-        createGroupProgrammatic("Group 3", /* wait= */ true);
+        createGroupProgrammatic("Group 3");
+        waitForView(withText("Group 3"));
+        waitForStableRecyclerView(recyclerView);
         mRenderTestRule.render(recyclerView, "3_groups");
 
         tabSwitcher = tabGroupPane.selectRegularTabsPane();
@@ -85,7 +91,7 @@ public class TabGroupListRenderTest {
         assertFinalDestination(newTab);
     }
 
-    private void createGroupProgrammatic(String title, boolean wait) throws Exception {
+    private void createGroupProgrammatic(String title) {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     ChromeTabbedActivity cta = mCtaTestRule.getActivity();
@@ -100,11 +106,5 @@ public class TabGroupListRenderTest {
                     model.createSingleTabGroup(tab);
                     model.setTabGroupTitle(tab.getTabGroupId(), title);
                 });
-        if (wait) {
-            waitForView(withText(title));
-            // Despite waiting on the view to be visible for some reason only a blank render is
-            // captured. Sleep a bit to let drawing finish.
-            Thread.sleep(300);
-        }
     }
 }

@@ -87,7 +87,6 @@
 #include "ui/base/models/menu_model.h"
 #include "ui/base/resource/resource_bundle.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/image/image.h"
 
 namespace {
@@ -492,6 +491,9 @@ void OmniboxContextMenuController::AddRecentTabItems() {
     // "Add tabs" row, so it can be toggled without opening the flyout.
     if (omnibox::IsSingleTabMenuItemInComposeboxEnabled() &&
         single_tab_index.has_value()) {
+      if (omnibox::kShowContextMenuHeaders.Get()) {
+        AddTitleWithStringId(IDS_OMNIBOX_NAVATTACH_TABS);
+      }
       AddSingleTabItem(tabs[*single_tab_index],
                        next_command_id_ + static_cast<int>(*single_tab_index));
     }
@@ -2027,11 +2029,13 @@ bool OmniboxContextMenuController::IsCommandIdEnabled(int command_id) const {
         int max_num_files = input_state_.allowed_models.empty()
                                 ? kDefaultMaxNumFiles
                                 : input_state_.max_total_inputs;
-        std::vector<contextual_search::FileInfo> file_infos;
+        // Count tokens rather than `FileInfo`s, since a tab whose page context
+        // is still being fetched has a token but no `FileInfo` yet.
+        size_t num_inputs = 0;
         if (auto* session_handle = GetOrCreateContextualSessionHandle()) {
-          file_infos = session_handle->GetUploadedContextFileInfos();
+          num_inputs = session_handle->GetUploadedContextTokens().size();
         }
-        if (static_cast<int>(file_infos.size()) >= max_num_files) {
+        if (static_cast<int>(num_inputs) >= max_num_files) {
           return false;
         }
 

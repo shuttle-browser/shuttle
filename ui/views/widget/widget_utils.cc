@@ -36,16 +36,16 @@ WidgetOpenTimer::WidgetOpenTimer(Callback callback)
 WidgetOpenTimer::~WidgetOpenTimer() = default;
 
 void WidgetOpenTimer::OnWidgetDestroying(Widget* widget) {
-  DCHECK(open_timer_.has_value());
-  DCHECK(observed_widget_.IsObservingSource(widget));
+  CHECK(open_timer_.has_value(), base::NotFatalUntil::M163);
+  CHECK(observed_widget_.IsObservingSource(widget), base::NotFatalUntil::M163);
   callback_.Run(open_timer_->Elapsed());
   open_timer_.reset();
   observed_widget_.Reset();
 }
 
 void WidgetOpenTimer::Reset(Widget* widget) {
-  DCHECK(!open_timer_.has_value());
-  DCHECK(!observed_widget_.IsObservingSource(widget));
+  CHECK(!open_timer_.has_value(), base::NotFatalUntil::M163);
+  CHECK(!observed_widget_.IsObservingSource(widget), base::NotFatalUntil::M163);
   observed_widget_.Observe(widget);
   open_timer_ = base::ElapsedTimer();
 }

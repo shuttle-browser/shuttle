@@ -370,7 +370,15 @@ IN_PROC_BROWSER_TEST_F(AppMenuModelGlicTest, GlicItem) {
 
 class AppMenuModelTtcTest : public AppMenuModelTest {
  protected:
-  AppMenuModelTtcTest() { feature_list_.InitAndEnableFeature(ttc::kTtc); }
+  AppMenuModelTtcTest() {
+    feature_list_.InitAndEnableFeature(ttc::kTtc);
+    // ChromeOS creates `TtcKeyedService` only where Glic's system requirements
+    // are met.
+    glic::GlicEnabling::SetSystemRequirementMetForTesting(true);
+  }
+  ~AppMenuModelTtcTest() override {
+    glic::GlicEnabling::SetSystemRequirementMetForTesting(std::nullopt);
+  }
 };
 
 IN_PROC_BROWSER_TEST_F(AppMenuModelTtcTest, TtcItem) {
@@ -1170,10 +1178,7 @@ IN_PROC_BROWSER_TEST_F(
 class AppMenuModelBookmarkLimitExceededSignedInNonSyncingTest
     : public AppMenuModelTest {
  public:
-  AppMenuModelBookmarkLimitExceededSignedInNonSyncingTest() {
-    feature_list_.InitAndEnableFeature(
-        syncer::kReplaceSyncPromosWithSignInPromos);
-  }
+  AppMenuModelBookmarkLimitExceededSignedInNonSyncingTest() = default;
 
   void SetUpBrowserContextKeyedServices(
       content::BrowserContext* context) override {
@@ -1411,16 +1416,7 @@ IN_PROC_BROWSER_TEST_P(AppMenuModelBookmarkBarTest, BookmarkBarSubmenu) {
 
 INSTANTIATE_TEST_SUITE_P(All, AppMenuModelBookmarkBarTest, testing::Bool());
 
-class AppMenuModelEnterpriseReleaseNotesTest
-    : public base::test::WithFeatureOverride,
-      public AppMenuModelTest {
- public:
-  AppMenuModelEnterpriseReleaseNotesTest()
-      : WithFeatureOverride(features::kEnterpriseReleaseNotes) {}
-  ~AppMenuModelEnterpriseReleaseNotesTest() override = default;
-};
-
-IN_PROC_BROWSER_TEST_P(AppMenuModelEnterpriseReleaseNotesTest, MenuVisibility) {
+IN_PROC_BROWSER_TEST_F(AppMenuModelTest, EnterpriseReleaseNotesMenuVisibility) {
   {
     AppMenuModel model(this, browser());
     model.Init();
@@ -1436,17 +1432,14 @@ IN_PROC_BROWSER_TEST_P(AppMenuModelEnterpriseReleaseNotesTest, MenuVisibility) {
     AppMenuModel model(this, browser());
     model.Init();
 #if BUILDFLAG(IS_LINUX)
-    EXPECT_EQ(IsParamFeatureEnabled(),
-              model.GetIndexOfCommandId(IDC_CHROME_ENTERPRISE_RELEASE_NOTES)
-                  .has_value());
+    EXPECT_TRUE(model.GetIndexOfCommandId(IDC_CHROME_ENTERPRISE_RELEASE_NOTES)
+                    .has_value());
 #else
     EXPECT_FALSE(model.GetIndexOfCommandId(IDC_CHROME_ENTERPRISE_RELEASE_NOTES)
                      .has_value());
 #endif
   }
 }
-
-INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(AppMenuModelEnterpriseReleaseNotesTest);
 
 namespace {
 

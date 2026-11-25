@@ -8,21 +8,19 @@
 #include "chrome/browser/ui/autofill/autofill_bubble_base.h"
 #include "chrome/browser/ui/autofill/autofill_bubble_controller_base.h"
 #include "chrome/browser/ui/autofill/autofill_bubble_handler.h"
-#include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "components/autofill/core/browser/metrics/payments/virtual_card_enrollment_metrics.h"
 #include "components/autofill/core/browser/payments/virtual_card_enroll_metrics_logger.h"
 #include "components/autofill/core/browser/payments/virtual_card_enrollment_flow.h"
 #include "components/autofill/core/common/autofill_payments_features.h"
 #include "components/strings/grit/components_strings.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/android/autofill/autofill_vcn_enroll_bottom_sheet_bridge.h"
 #include "components/autofill/core/browser/payments/autofill_virtual_card_enrollment_bottom_sheet_delegate_mobile.h"
 #include "components/infobars/core/infobar.h"  // nogncheck
 #else
-#include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -202,10 +200,11 @@ void VirtualCardEnrollBubbleControllerImpl::OnLinkClicked(
   VirtualCardEnrollMetricsLogger::OnLinkClicked(
       link_type, ui_model_->enrollment_fields().virtual_card_enrollment_source);
 
-  web_contents()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
-                              url, WindowOpenDisposition::kNewForegroundTab,
-                              ui::PAGE_TRANSITION_LINK),
-                          /*navigation_handle_callback=*/{});
+  web_contents()->OpenURL(
+      content::OpenURLParams::CreateBrowserInitiated(
+          url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+          ui::PAGE_TRANSITION_LINK),
+      /*navigation_handle_callback=*/{});
 }
 
 void VirtualCardEnrollBubbleControllerImpl::OnBubbleDiscarded() {
@@ -350,23 +349,17 @@ void VirtualCardEnrollBubbleControllerImpl::DoShowBubble() {
     return;
   }
 
-  BrowserWindowInterface* browser =
-      GlobalBrowserCollection::GetInstance()->FindBrowserWithTab(
-          web_contents());
-
+  AutofillBubbleHandler* autofill_bubble_handler = GetAutofillBubbleHandler();
   if (enrollment_status_ == EnrollmentStatus::kCompleted) {
     SetBubbleView(
-        *BrowserWindow::FromBrowser(browser)
-             ->GetAutofillBubbleHandler()
-             ->ShowVirtualCardEnrollConfirmationBubble(web_contents(), this));
+        *autofill_bubble_handler->ShowVirtualCardEnrollConfirmationBubble(
+            web_contents(), this));
   } else {
     // For reprompts after link clicks, `is_user_gesture` is set to false.
     bool user_gesture_reprompt = reprompt_required_ ? false : is_user_gesture_;
 
-    SetBubbleView(*BrowserWindow::FromBrowser(browser)
-                       ->GetAutofillBubbleHandler()
-                       ->ShowVirtualCardEnrollBubble(web_contents(), this,
-                                                     user_gesture_reprompt));
+    SetBubbleView(*autofill_bubble_handler->ShowVirtualCardEnrollBubble(
+        web_contents(), this, user_gesture_reprompt));
   }
   CHECK(bubble_view(), base::NotFatalUntil::M162);
 

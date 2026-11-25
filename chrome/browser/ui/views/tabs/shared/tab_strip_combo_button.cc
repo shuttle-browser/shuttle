@@ -188,22 +188,35 @@ void TabStripComboButton::ChildVisibilityChanged(views::View* child) {
 }
 
 void TabStripComboButton::ShowEverythingMenu() {
+  const bool is_vertical = BrowserView::GetBrowserViewForBrowser(browser_)
+                               ->ShouldDrawVerticalTabStrip();
   base::RecordAction(base::UserMetricsAction(
-      BrowserView::GetBrowserViewForBrowser(browser_)
-              ->ShouldDrawVerticalTabStrip()
+      is_vertical
           ? "TabGroups_SavedTabGroups_EverythingButtonPressed_Vertical"
           : "TabGroups_SavedTabGroups_EverythingButtonPressed_Horizontal"));
-  browser_->GetProfile()->GetPrefs()->SetTime(
-      prefs::kVerticalTabsEverythingMenuLastPressed, base::Time::Now());
+  if (is_vertical) {
+    browser_->GetProfile()->GetPrefs()->SetTime(
+        prefs::kVerticalTabsEverythingMenuLastPressed, base::Time::Now());
+  }
   if (everything_menu_ && everything_menu_->IsShowing()) {
     return;
   }
 
+  // NOTE: While this menu is showing, a click elsewhere (e.g. on the adjacent
+  // tab search button) only dismisses the menu on Mac and Linux; a second click
+  // is needed to activate the clicked control. This is intended and matches
+  // every other views::MenuRunner menu: MenuController consumes the dismissing
+  // click, and only Windows re-posts it to the view underneath (see
+  // MenuController::RepostEventAndCancel).
   everything_menu_ = std::make_unique<tab_groups::STGEverythingMenu>(
       everything_menu_controller_, browser_,
-      tab_groups::STGEverythingMenu::MenuContext::kVerticalTabStrip);
+      is_vertical
+          ? tab_groups::STGEverythingMenu::MenuContext::kVerticalTabStrip
+          : tab_groups::STGEverythingMenu::MenuContext::kSavedTabGroupBar);
 
-  everything_menu_->RunMenu();
+  if (everything_menu_controller_) {
+    everything_menu_->RunMenu();
+  }
 }
 
 std::unique_ptr<TabStripFlatEdgeButton>
@@ -334,6 +347,11 @@ void TabStripComboButton::ShowContextMenuForViewImpl(
 
 void TabStripComboButton::ExecuteCommand(int command_id, int event_flags) {
   if (command_id == IDC_TAB_SEARCH_TOGGLE_PIN) {
+    PrefService* prefs = browser_->GetProfile()->GetPrefs();
+    const bool is_pinned = prefs->GetBoolean(prefs::kTabSearchPinnedToTabstrip);
+    base::RecordAction(base::UserMetricsAction(
+        is_pinned ? "TabStripComboButton.TabSearch.Unpinned"
+                  : "TabStripComboButton.TabSearch.Pinned"));
     show_tab_search_ephemerally_ = IsOrganizerPanelEmbeddedInVerticalTabStrip();
     hide_tab_search_timer_.Stop();
     chrome::ExecuteCommand(browser_, command_id);

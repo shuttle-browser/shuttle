@@ -15,14 +15,13 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.UrlUtils;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.content_public.browser.test.util.JavaScriptUtils;
 
@@ -30,7 +29,6 @@ import java.util.concurrent.TimeoutException;
 
 /** Tests for evaluation of JavaScript. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class JavaScriptEvalChromeTest {
     @Rule
@@ -64,7 +62,7 @@ public class JavaScriptEvalChromeTest {
                 InstrumentationRegistry.getInstrumentation(), mActivityTestRule.getActivity());
         Tab tab2 = mActivityTestRule.getActivityTab();
         mActivityTestRule.getActivityTestRule().loadUrl(JSTEST_URL);
-        ChromeTabUtils.switchTabInCurrentTabModel(mActivityTestRule.getActivity(), tab1.getId());
+        ChromeTriggers.selectTabProgrammatically(mActivityTestRule.getActivity(), 0);
 
         Assert.assertFalse("Tab didn't open", tab1 == tab2);
 

@@ -160,8 +160,8 @@
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/service_worker/service_worker_status_code.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/webui/buildflags.h"
 #include "ui/webui/untrusted_web_ui_browsertest_util.h"  // nogncheck
 #include "url/origin.h"
@@ -1191,7 +1191,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionDevToolsProtocolTest,
   const GURL url(
       embedded_test_server()->GetURL("/set-cookie?cookieName=cookieValue"));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
 
   // Check that `Network.responseReceived` contains the response header added
@@ -1259,7 +1259,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionDevToolsProtocolTest,
   const GURL url(
       embedded_test_server()->GetURL("/set-cookie?cookieName=cookieValue"));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
   base::DictValue request_paused_result =
       WaitForNotification("Fetch.requestPaused", true);
@@ -2344,7 +2344,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionWebRequestApiTestWithContextType,
   const std::string kHost = "a.com";
   GURL url = embedded_test_server()->GetURL(kHost, "/iframe_cross_site.html");
   NavigateParams params(browser(), url, ui::PAGE_TRANSITION_LINK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   ui_test_utils::NavigateToURL(&params);
 
   content::WebContents* web_contents = GetActiveWebContents();
@@ -3806,9 +3806,6 @@ IN_PROC_BROWSER_TEST_P(WebRequestApiTestWithManagementPolicy,
       LoadExtension(test_data_dir_.AppendASCII("webrequest/policy_blocked"));
   ASSERT_TRUE(extension) << message_;
   EXPECT_TRUE(listener.WaitUntilSatisfied());
-
-  // Extension communicates back using this listener name.
-  const std::string listener_message = "protected_origin";
 
   // The number of requests initiated by a protected origin is tracked in
   // the extension's background page under this variable name.
@@ -7167,7 +7164,8 @@ IN_PROC_BROWSER_TEST_P(ManifestV3WebRequestApiDispatchModeTest,
   ExtensionTestMessageListener listener("received event");
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), embedded_test_server()->GetURL("test.example", "/simple.html"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   EXPECT_TRUE(listener.WaitUntilSatisfied());
 
   EXPECT_TRUE(web_contents->IsLoading());
@@ -9326,7 +9324,7 @@ IN_PROC_BROWSER_TEST_P(ManifestV3WebRequestApiDispatchModeTest,
   nav_observer.StartWatchingNewWebContents();
   ExtensionTestMessageListener test_listener("received");
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kNewForegroundTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_TAB);
   content::WebContents* web_contents = GetActiveWebContents();
   EXPECT_TRUE(test_listener.WaitUntilSatisfied());
@@ -10329,6 +10327,58 @@ IN_PROC_BROWSER_TEST_F(ExtensionWebRequestFileUrlRedirectApiTest,
       content::ChildFrameAt(GetActiveWebContents()->GetPrimaryMainFrame(), 0);
   ASSERT_TRUE(child_frame);
   EXPECT_EQ(ext1_redirect_url, child_frame->GetLastCommittedURL());
+}
+
+// Tests that `details.ip` is populated in `webRequest.onErrorOccurred` when a
+// request connects to a remote endpoint and then fails before HTTP response
+// headers are received (https://crbug.com/41070013).
+IN_PROC_BROWSER_TEST_F(ExtensionWebRequestApiTest,
+                       OnErrorOccurred_IncludesResolvedIp) {
+  ASSERT_TRUE(StartEmbeddedTestServer());
+
+  const GURL close_socket_url =
+      embedded_test_server()->GetURL("example.com", "/close-socket");
+
+  static constexpr char kManifest[] =
+      R"({
+           "name": "WebRequest onErrorOccurred IP Test",
+           "version": "0.1",
+           "manifest_version": 3,
+           "permissions": ["webRequest"],
+           "host_permissions": ["<all_urls>"],
+           "background": {"service_worker": "background.js"}
+         })";
+  static constexpr char kBackgroundJs[] =
+      R"(chrome.webRequest.onErrorOccurred.addListener(
+             (details) => {
+               if (details.url === $1) {
+                 chrome.test.sendMessage(
+                     details.error + ':' + (details.ip || ''));
+               }
+             },
+             {urls: [$1]});
+         chrome.test.sendMessage('ready');)";
+
+  TestExtensionDir test_dir;
+  test_dir.WriteManifest(kManifest);
+  test_dir.WriteFile(FILE_PATH_LITERAL("background.js"),
+                     content::JsReplace(kBackgroundJs, close_socket_url));
+
+  ExtensionTestMessageListener ready_listener("ready");
+  const Extension* extension = LoadExtension(test_dir.UnpackedPath());
+  ASSERT_TRUE(extension);
+  ASSERT_TRUE(ready_listener.WaitUntilSatisfied());
+
+  ExtensionTestMessageListener error_listener;
+  ASSERT_TRUE(NavigateToURL(
+      GetActiveWebContents(),
+      embedded_test_server()->GetURL("example.com", "/simple.html")));
+  EXPECT_TRUE(content::ExecJs(
+      GetActiveWebContents(),
+      content::JsReplace("fetch($1).catch(() => {});", close_socket_url)));
+
+  ASSERT_TRUE(error_listener.WaitUntilSatisfied());
+  EXPECT_EQ("net::ERR_EMPTY_RESPONSE:127.0.0.1", error_listener.message());
 }
 
 }  // namespace extensions

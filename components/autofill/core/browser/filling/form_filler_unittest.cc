@@ -65,6 +65,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
 
 namespace autofill {
 namespace {
@@ -121,6 +122,29 @@ class MockAutofillDriver : public TestAutofillDriver {
                const FieldGlobalId& field_id,
                const std::u16string& value),
               (override));
+
+  using IsSafeToFillCallback =
+      base::RepeatingCallback<bool(const FormFieldData&,
+                                   FieldType,
+                                   const url::Origin&,
+                                   const url::Origin&)>;
+  void set_is_safe_to_fill_callback(IsSafeToFillCallback callback) {
+    is_safe_to_fill_callback_ = std::move(callback);
+  }
+  bool IsSafeToFill(const FormFieldData& field,
+                    FieldType filled_type,
+                    const url::Origin& main_origin,
+                    const url::Origin& trigger_origin) const override {
+    if (is_safe_to_fill_callback_) {
+      return is_safe_to_fill_callback_.Run(field, filled_type, main_origin,
+                                           trigger_origin);
+    }
+    return TestAutofillDriver::IsSafeToFill(field, filled_type, main_origin,
+                                            trigger_origin);
+  }
+
+ private:
+  IsSafeToFillCallback is_safe_to_fill_callback_;
 };
 
 // Takes a FormFieldData argument.
@@ -257,9 +281,21 @@ class FormFillerTest
       const FormFieldData& trigger_field,
       FillingPayload filling_payload,
       AutofillTriggerSource trigger_source = AutofillTriggerSource::kPopup) {
+    FillingProduct filling_product = std::visit(
+        absl::Overload{
+            [](const AutofillProfile*) { return FillingProduct::kAddress; },
+            [](const CreditCard*) { return FillingProduct::kCreditCard; },
+            [](const EntityInstance*) { return FillingProduct::kAutofillAi; },
+            [](const VerifiedProfile*) {
+              return FillingProduct::kIdentityCredential;
+            },
+            [](const OtpFillData*) {
+              return FillingProduct::kOneTimePassword;
+            }},
+        filling_payload);
     return ApplyFormAction(std::move(form), [&](const FormData& form) {
       form_filler().FillOrPreviewForm(
-          mojom::ActionPersistence::kFill, filling_payload,
+          mojom::ActionPersistence::kFill, filling_product, filling_payload,
           *GetFormStructure(form),
           *GetAutofillField(form.global_id(), trigger_field.global_id()),
           trigger_source, /*blocked_fields=*/{}, FillId::Create(),
@@ -314,8 +350,8 @@ class FormFillerTest
           return base::ToVector(data, &FormFieldData::global_id);
         });
     form_filler().FillOrPreviewForm(
-        mojom::ActionPersistence::kPreview, &virtual_card,
-        *GetFormStructure(form),
+        mojom::ActionPersistence::kPreview, FillingProduct::kCreditCard,
+        &virtual_card, *GetFormStructure(form),
         *GetAutofillField(form.global_id(), field.global_id()),
         AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
         /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
@@ -456,7 +492,7 @@ TEST_F(FormFillerTest, UndoSavesFormFillingDataForAutofillAi) {
   EntityInstance passport = test::GetPassportEntityInstance();
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &passport,
+      form.fields().front().global_id(), FillingProduct::kAutofillAi, &passport,
       AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
       /*blocked_fields=*/{});
   autofill_manager().UndoAutofill(mojom::ActionPersistence::kFill,
@@ -513,6 +549,136 @@ TEST_F(FormFillerTest, UndoSavesFieldByFieldFillingData) {
   autofill_manager().UndoAutofill(mojom::ActionPersistence::kFill,
                                   form.global_id(),
                                   form.fields().front().global_id());
+}
+
+// Tests that single-field filling and previewing for credit cards and IBANs are
+// blocked on an insecure context, while non-sensitive fields can still fill.
+TEST_F(FormFillerTest,
+       FillOrPreviewField_BlocksCreditCardAndIbanOnInsecureContext) {
+  const FormData form =
+      test::GetFormData({.fields = {{.role = CREDIT_CARD_NUMBER,
+                                     .autocomplete_attribute = "cc-number"}}});
+  FormsSeen({form});
+  AutofillField* const field =
+      GetAutofillField(form.global_id(), form.fields().front().global_id());
+  ASSERT_NE(field, nullptr);
+
+  autofill_client().set_last_committed_primary_main_frame_url(
+      GURL("http://insecure.test"));
+  ASSERT_FALSE(autofill_client().IsContextSecure());
+
+  EXPECT_CALL(autofill_driver(), ApplyFieldAction).Times(0);
+  form_filler().FillOrPreviewField(
+      mojom::ActionPersistence::kFill, mojom::FieldActionType::kReplaceAll,
+      field->global_id(), field, u"4111111111111111",
+      FillingProduct::kCreditCard, CREDIT_CARD_NUMBER);
+  form_filler().FillOrPreviewField(
+      mojom::ActionPersistence::kPreview, mojom::FieldActionType::kReplaceAll,
+      field->global_id(), field, u"4111111111111111",
+      FillingProduct::kCreditCard, CREDIT_CARD_NUMBER);
+  form_filler().FillOrPreviewField(
+      mojom::ActionPersistence::kFill, mojom::FieldActionType::kReplaceAll,
+      field->global_id(), field, u"CH93 0076 2011 6238 5295 7",
+      FillingProduct::kIban, IBAN_VALUE);
+  form_filler().FillOrPreviewField(
+      mojom::ActionPersistence::kPreview, mojom::FieldActionType::kReplaceAll,
+      field->global_id(), field, u"CH93 0076 2011 6238 5295 7",
+      FillingProduct::kIban, IBAN_VALUE);
+
+  // Non-sensitive address fields can still be filled on an insecure context.
+  EXPECT_CALL(autofill_driver(), ApplyFieldAction);
+  form_filler().FillOrPreviewField(mojom::ActionPersistence::kFill,
+                                   mojom::FieldActionType::kReplaceAll,
+                                   field->global_id(), field, u"John Doe",
+                                   FillingProduct::kAddress, NAME_FULL);
+}
+
+// Tests that credit card form filling and previewing are blocked on an
+// insecure context unless triggered via DevTools, while non-sensitive forms
+// such as addresses can still fill.
+TEST_F(FormFillerTest, FillOrPreviewForm_BlocksCreditCardOnInsecureContext) {
+  const CreditCard credit_card = test::GetCreditCard();
+  const AutofillProfile profile = test::GetFullProfile();
+  const FormData form = test::GetFormData(
+      {.fields = {
+           {.role = CREDIT_CARD_NAME_FULL, .autocomplete_attribute = "cc-name"},
+           {.role = CREDIT_CARD_NUMBER, .autocomplete_attribute = "cc-number"},
+           {.role = CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR,
+            .autocomplete_attribute = "cc-exp"}}});
+  FormsSeen({form});
+  FormStructure* const form_structure = GetFormStructure(form);
+  AutofillField* const trigger_field =
+      GetAutofillField(form.global_id(), form.fields().front().global_id());
+  ASSERT_NE(form_structure, nullptr);
+  ASSERT_NE(trigger_field, nullptr);
+
+  autofill_client().set_last_committed_primary_main_frame_url(
+      GURL("http://insecure.test"));
+  ASSERT_FALSE(autofill_client().IsContextSecure());
+
+  EXPECT_CALL(autofill_driver(), ApplyFormAction).Times(0);
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *form_structure, *trigger_field,
+      AutofillTriggerSource::kPopup,
+      /*blocked_fields=*/{}, FillId::Create(), /*forced_fill_values=*/{},
+      FormFiller::RefillOptions::NotRefill());
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kPreview, FillingProduct::kCreditCard,
+      &credit_card, *form_structure, *trigger_field,
+      AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
+      /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
+
+  // DevTools and non-sensitive address fills are still allowed.
+  EXPECT_CALL(autofill_driver(), ApplyFormAction).Times(2);
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *form_structure, *trigger_field,
+      AutofillTriggerSource::kDevtools,
+      /*blocked_fields=*/{}, FillId::Create(), /*forced_fill_values=*/{},
+      FormFiller::RefillOptions::NotRefill());
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, FillingProduct::kAddress, &profile,
+      *form_structure, *trigger_field, AutofillTriggerSource::kPopup,
+      /*blocked_fields=*/{}, FillId::Create(), /*forced_fill_values=*/{},
+      FormFiller::RefillOptions::NotRefill());
+}
+
+// Tests that dynamic form refills for credit card forms are blocked if the
+// context becomes insecure after the initial fill.
+TEST_F(FormFillerTest, Refill_BlocksCreditCardOnInsecureContext) {
+  const CreditCard credit_card = test::GetCreditCard();
+  FormData form = test::GetFormData(
+      {.fields = {
+           {.role = CREDIT_CARD_NAME_FULL, .autocomplete_attribute = "cc-name"},
+           {.role = CREDIT_CARD_NUMBER, .autocomplete_attribute = "cc-number"},
+           {.role = CREDIT_CARD_EXP_DATE_2_DIGIT_YEAR,
+            .autocomplete_attribute = "cc-exp"}}});
+
+  FormFieldData cvc_field = form.fields().back();
+  test_api(form).fields().pop_back();
+  FormsSeen({form});
+
+  // Initial fill on a secure context succeeds.
+  EXPECT_CALL(autofill_driver(), ApplyFormAction)
+      .WillOnce(Return(std::vector<FieldGlobalId>{}));
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form),
+      *GetAutofillField(form.global_id(), form.fields().front().global_id()),
+      AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
+      /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
+
+  // Simulate the context becoming insecure before the dynamic form refill.
+  autofill_client().set_last_committed_primary_main_frame_url(
+      GURL("http://insecure.test"));
+  ASSERT_FALSE(autofill_client().IsContextSecure());
+
+  // Refill should be blocked, so ApplyFormAction is not called again.
+  EXPECT_CALL(autofill_driver(), ApplyFormAction).Times(0);
+  test_api(form).fields().push_back(std::move(cvc_field));
+  FormsSeen({form});
+  task_environment_.FastForwardBy(base::Milliseconds(300));
 }
 
 // Tests that for autocomplete=unrecognized fields are not filled by default,
@@ -1989,11 +2155,11 @@ TEST_F(FormFillerTest, FillOrPreviewForm_WithBlockedFields) {
       .WillOnce(Return(std::vector<FieldGlobalId>{
           form.fields()[0].global_id(), form.fields()[1].global_id()}));
 
-  form_filler().FillOrPreviewForm(mojom::ActionPersistence::kFill, &profile,
-                                  *form_structure, *form_structure->field(0),
-                                  AutofillTriggerSource::kPopup, blocked_fields,
-                                  FillId::Create(), /*forced_fill_values=*/{},
-                                  FormFiller::RefillOptions::NotRefill());
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, FillingProduct::kAddress, &profile,
+      *form_structure, *form_structure->field(0), AutofillTriggerSource::kPopup,
+      blocked_fields, FillId::Create(), /*forced_fill_values=*/{},
+      FormFiller::RefillOptions::NotRefill());
 
   // Verify that the skip reasons explicitly included being blocked.
   base::flat_map<FieldGlobalId, DenseSet<FieldFillingSkipReason>> skip_reasons =
@@ -2026,11 +2192,11 @@ TEST_F(FormFillerTest, Refill_UsesBlockedFields) {
   EXPECT_CALL(autofill_driver(), ApplyFormAction)
       .WillOnce(
           Return(std::vector<FieldGlobalId>{form.fields()[0].global_id()}));
-  form_filler().FillOrPreviewForm(mojom::ActionPersistence::kFill, &profile,
-                                  *form_structure, *form_structure->field(0),
-                                  AutofillTriggerSource::kPopup, blocked_fields,
-                                  FillId::Create(), /*forced_fill_values=*/{},
-                                  FormFiller::RefillOptions::NotRefill());
+  form_filler().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, FillingProduct::kAddress, &profile,
+      *form_structure, *form_structure->field(0), AutofillTriggerSource::kPopup,
+      blocked_fields, FillId::Create(), /*forced_fill_values=*/{},
+      FormFiller::RefillOptions::NotRefill());
 
   // Append a new field to the form, which will trigger a refill when the form
   // is re-parsed.
@@ -2044,7 +2210,6 @@ TEST_F(FormFillerTest, Refill_UsesBlockedFields) {
   // TODO(crbug.com/489280538): Currently the refill will always fill the new
   // field, even if it "shouldn't" (i.e., if the caller that originally set the
   // blocked fields list would also have blocked the new field).
-  std::vector<FormFieldData> refilled_fields;
   EXPECT_CALL(
       autofill_driver(),
       ApplyFormAction(_, _,
@@ -2109,12 +2274,14 @@ TEST_F(FormFillerTest, InitialFillsHaveDistinctIds) {
   FormsSeen({form1, form2});
 
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &credit_card, *GetFormStructure(form1),
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form1),
       *GetAutofillField(form1.global_id(), form1.fields().front().global_id()),
       AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
       /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &credit_card, *GetFormStructure(form2),
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form2),
       *GetAutofillField(form2.global_id(), form2.fields().front().global_id()),
       AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
       /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
@@ -2156,7 +2323,8 @@ TEST_F(FormFillerTest, FillAndRefillHaveSameFillId) {
   FormsSeen({form});
 
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &credit_card, *GetFormStructure(form),
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form),
       *GetAutofillField(form.global_id(), form.fields().front().global_id()),
       AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
       /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
@@ -2243,7 +2411,8 @@ TEST_F(FormFillerTest, ProgrammaticRefillBeforeTimeout) {
 
   // The original fill.
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &credit_card, *GetFormStructure(form),
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form),
       *GetAutofillField(form.global_id(), form.fields().front().global_id()),
       AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
       /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
@@ -2293,7 +2462,8 @@ TEST_F(FormFillerTest, NoProgrammaticRefillAfterTimeout) {
 
   // The original fill.
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &credit_card, *GetFormStructure(form),
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form),
       *GetAutofillField(form.global_id(), form.fields().front().global_id()),
       AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
       /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
@@ -2419,7 +2589,8 @@ TEST_P(RefillTest_SuppressAutomaticRefills, SuppressAutomaticRefills) {
   FormsSeen({form});
 
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &credit_card, *GetFormStructure(form),
+      mojom::ActionPersistence::kFill, FillingProduct::kCreditCard,
+      &credit_card, *GetFormStructure(form),
       *GetAutofillField(form.global_id(), form.fields().front().global_id()),
       AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
       /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
@@ -2911,10 +3082,10 @@ TEST_F(FormFillerTest, PreviewOtp_SingleField) {
       });
 
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kPreview, &otp_fill_data, *form_structure,
-      *form_structure->field(0), AutofillTriggerSource::kPopup,
-      /*blocked_fields=*/{}, FillId::Create(), /*forced_fill_values=*/{},
-      FormFiller::RefillOptions::NotRefill());
+      mojom::ActionPersistence::kPreview, FillingProduct::kOneTimePassword,
+      &otp_fill_data, *form_structure, *form_structure->field(0),
+      AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
+      /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
 
   ASSERT_EQ(previewed_fields.size(), 1u);
   EXPECT_THAT(previewed_fields[0], AutofilledWith(u"123456"));
@@ -2958,10 +3129,10 @@ TEST_F(FormFillerTest, PreviewOtp_MultiField) {
       });
 
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kPreview, &otp_fill_data, *form_structure,
-      *form_structure->field(0), AutofillTriggerSource::kPopup,
-      /*blocked_fields=*/{}, FillId::Create(), /*forced_fill_values=*/{},
-      FormFiller::RefillOptions::NotRefill());
+      mojom::ActionPersistence::kPreview, FillingProduct::kOneTimePassword,
+      &otp_fill_data, *form_structure, *form_structure->field(0),
+      AutofillTriggerSource::kPopup, /*blocked_fields=*/{}, FillId::Create(),
+      /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
 
   EXPECT_THAT(previewed_fields,
               ElementsAre(AutofilledWith(u"4"), AutofilledWith(u"3"),
@@ -3071,10 +3242,10 @@ TEST_F(FormFillerTest, FillOtp_SkipReasonsAppliedDuringFill) {
       });
 
   form_filler().FillOrPreviewForm(
-      mojom::ActionPersistence::kFill, &otp_fill_data, *form_structure,
-      *form_structure->field(0), AutofillTriggerSource::kPopup, blocked_fields,
-      FillId::Create(), /*forced_fill_values=*/{},
-      FormFiller::RefillOptions::NotRefill());
+      mojom::ActionPersistence::kFill, FillingProduct::kOneTimePassword,
+      &otp_fill_data, *form_structure, *form_structure->field(0),
+      AutofillTriggerSource::kPopup, blocked_fields, FillId::Create(),
+      /*forced_fill_values=*/{}, FormFiller::RefillOptions::NotRefill());
 
   // Only field 0 should be sent to the renderer to be filled.
   ASSERT_EQ(filled_fields.size(), 1u);
@@ -3426,6 +3597,146 @@ TEST_F(FormFillerTest,
                                     CREDIT_CARD_NAME_LAST, kAppLocale)));
   EXPECT_EQ(form_structure->field(1)->filling_product(),
             FillingProduct::kCreditCard);
+}
+
+// Tests payments field swapping on a checkout page where `cc-name` is in the
+// main frame and the other card fields are in a cross-origin payment iframe.
+// Filling a card from `cc-name` only fills `cc-name` because the iframe's
+// fields cannot be filled from the main frame. When the user then selects a
+// card from the still-empty `cc-number` field in the iframe, the iframe can
+// fill the non-sensitive `cc-name` in the main frame, so `cc-name` is swapped
+// to the newly selected card.
+TEST_F(FormFillerTest, PaymentsSwappingFromEmptyFieldInCrossOriginIframe) {
+  base::test::ScopedFeatureList scoped_feature_list{
+      features::kAutofillPaymentsFieldSwapping};
+
+  const url::Origin main_origin =
+      autofill_client().GetLastCommittedPrimaryMainFrameOrigin();
+  const url::Origin iframe_origin =
+      url::Origin::Create(GURL("https://payments.example"));
+  ASSERT_NE(main_origin, iframe_origin);
+
+  // Mirrors `AutofillDriverRouter::IsSafeToFill()` for a cross-origin payment
+  // iframe without `allow="autofill"`: fields can always be filled from their
+  // own origin, and the iframe may additionally fill the non-sensitive
+  // cardholder name in the main frame.
+  autofill_driver().set_is_safe_to_fill_callback(base::BindRepeating(
+      [](const FormFieldData& field, FieldType filled_type,
+         const url::Origin& main_origin, const url::Origin& trigger_origin) {
+        return field.origin() == trigger_origin ||
+               (field.origin() == main_origin &&
+                filled_type == CREDIT_CARD_NAME_FULL);
+      }));
+
+  // Returns a form whose first field (`cc-name`) is in the main frame and whose
+  // other fields are in the iframe. `cc-name` is typed as both a name and a
+  // cardholder name, so it can be filled from an address or a card.
+  auto create_checkout_form = [&] {
+    FormData form = test::CreateTestCreditCardFormData(
+        /*is_https=*/true, /*use_month_type=*/false);
+    form.set_main_frame_origin(main_origin);
+    test_api(form).field(0).set_origin(main_origin);
+    for (size_t i = 1; i < form.fields().size(); ++i) {
+      test_api(form).field(i).set_origin(iframe_origin);
+    }
+    FormsSeen({form});
+    CHECK_DEREF(GetFormStructure(form))
+        .field(0)
+        ->SetTypeTo(
+            AutofillType(FieldTypeSet{NAME_FULL, CREDIT_CARD_NAME_FULL}),
+            AutofillPredictionSource::kHeuristics);
+    return form;
+  };
+
+  CreditCard card_with_name_1;
+  test::SetCreditCardInfo(&card_with_name_1, "Elvis Presley",
+                          "4234 5678 9012 3456", "04", "2999", "1");
+  CreditCard card_with_name_2;
+  test::SetCreditCardInfo(&card_with_name_2, "Jane Smith",
+                          "5412 7512 3412 3456", "06", "2998", "1");
+  CreditCard nameless_card;
+  test::SetCreditCardInfo(&nameless_card, "", "3782 822463 10005", "08", "2997",
+                          "1");
+
+  // Filling from `cc-name` only fills `cc-name`.
+  {
+    FormData form = create_checkout_form();
+    form = AutofillForm(form, form.fields()[0], &card_with_name_1);
+    EXPECT_THAT(form.fields()[0], AutofilledWith(u"Elvis Presley"));
+    EXPECT_EQ(form.fields()[1].value(), u"");
+  }
+
+  // Selecting a card with a name from the empty `cc-number` overwrites the
+  // name of the first card.
+  {
+    FormData form = create_checkout_form();
+    form = AutofillForm(form, form.fields()[0], &card_with_name_1);
+    form = AutofillForm(form, form.fields()[1], &card_with_name_2);
+    EXPECT_THAT(form.fields()[0], AutofilledWith(u"Jane Smith"));
+    EXPECT_THAT(form.fields()[1], AutofilledWith(u"5412751234123456"));
+    EXPECT_THAT(form.fields()[2], AutofilledWith(u"06"));
+    EXPECT_THAT(form.fields()[3], AutofilledWith(u"2998"));
+  }
+
+  // Selecting a card without a name from the empty `cc-number` clears the name
+  // of the first card.
+  {
+    FormData form = create_checkout_form();
+    form = AutofillForm(form, form.fields()[0], &card_with_name_1);
+    form = AutofillForm(form, form.fields()[1], &nameless_card);
+    EXPECT_EQ(form.fields()[0].value(), u"");
+    EXPECT_FALSE(form.fields()[0].is_autofilled_according_to_renderer());
+    EXPECT_THAT(form.fields()[1], AutofilledWith(u"378282246310005"));
+    EXPECT_THAT(form.fields()[2], AutofilledWith(u"08"));
+    EXPECT_THAT(form.fields()[3], AutofilledWith(u"2997"));
+  }
+
+  // A name that was filled from an address is never swapped.
+  {
+    FormData form = create_checkout_form();
+    AutofillProfile profile = test::GetFullProfile();
+    form = AutofillForm(form, form.fields()[0], &profile);
+    form = AutofillForm(form, form.fields()[1], &card_with_name_2);
+    EXPECT_THAT(form.fields()[0],
+                AutofilledWith(profile.GetInfo(NAME_FULL, kAppLocale)));
+    EXPECT_THAT(form.fields()[1], AutofilledWith(u"5412751234123456"));
+  }
+}
+
+// Tests that selecting a card from a field that does not hold an autofilled
+// card value still swaps the previously filled card completely: values that
+// the new card lacks (here: the expiration date) are cleared rather than left
+// next to the new card's number.
+TEST_F(FormFillerTest, PaymentsSwappingFromEmptyFieldClearsMissingCardValues) {
+  base::test::ScopedFeatureList scoped_feature_list{
+      features::kAutofillPaymentsFieldSwapping};
+
+  CreditCard nameless_card;
+  test::SetCreditCardInfo(&nameless_card, "", "3782 822463 10005", "08", "2997",
+                          "1");
+  CreditCard card_without_expiration;
+  test::SetCreditCardInfo(&card_without_expiration, "Elvis Presley",
+                          "4234 5678 9012 3456", "", "", "1");
+
+  FormData form = test::CreateTestCreditCardFormData(/*is_https=*/true,
+                                                     /*use_month_type=*/false);
+  FormsSeen({form});
+
+  // The nameless card leaves `cc-name` empty.
+  form = AutofillForm(form, form.fields()[1], &nameless_card);
+  ASSERT_EQ(form.fields()[0].value(), u"");
+  ASSERT_THAT(form.fields()[1], AutofilledWith(u"378282246310005"));
+  ASSERT_THAT(form.fields()[2], AutofilledWith(u"08"));
+  ASSERT_THAT(form.fields()[3], AutofilledWith(u"2997"));
+
+  // Select the card without expiration date from the empty `cc-name`.
+  form = AutofillForm(form, form.fields()[0], &card_without_expiration);
+  EXPECT_THAT(form.fields()[0], AutofilledWith(u"Elvis Presley"));
+  EXPECT_THAT(form.fields()[1], AutofilledWith(u"4234567890123456"));
+  EXPECT_EQ(form.fields()[2].value(), u"");
+  EXPECT_FALSE(form.fields()[2].is_autofilled_according_to_renderer());
+  EXPECT_EQ(form.fields()[3].value(), u"");
+  EXPECT_FALSE(form.fields()[3].is_autofilled_according_to_renderer());
 }
 
 }  // namespace autofill

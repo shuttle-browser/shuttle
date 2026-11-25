@@ -103,6 +103,7 @@
 #include "third_party/blink/renderer/platform/scheduler/public/frame_scheduler.h"
 #include "third_party/blink/renderer/platform/web_test_support.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/ui_base_features.h"
 #include "ui/color/color_provider.h"
 #include "ui/color/color_provider_utils.h"
 #include "ui/gfx/geometry/insets_conversions.h"
@@ -161,6 +162,14 @@ void SetSafeAreaMaxEnvVariables(
   vars.SetVariable(
       UADefinedVariable::kSafeAreaMaxInsetRight,
       StyleEnvironmentVariables::FormatFloatPx(safe_area_max.right()));
+}
+
+float ComputeDynamicSafeAreaInset(float max_inset,
+                                  float controls_height,
+                                  float shown_ratio) {
+  // As `shown_ratio` decreases, the safe area inset is added to the web page to
+  // keep the element out of the display cutout area.
+  return std::max(0.f, max_inset - shown_ratio * controls_height);
 }
 
 }  // namespace
@@ -947,19 +956,18 @@ void Page::UpdateSafeAreaInsetWithBrowserControls(
   gfx::InsetsF new_scaled_safe_area(scaled_max_safe_area_insets_);
 
   // The calculation is done in the unit of physical pixel.
+  // Adjusting left / right is not needed, since they are set when display
+  // insets were received at `SetSafeArea()`.
+  if (scaled_max_safe_area_insets_.top() > 0) {
+    new_scaled_safe_area.set_top(ComputeDynamicSafeAreaInset(
+        scaled_max_safe_area_insets_.top(), browser_controls.TopHeight(),
+        browser_controls.TopShownRatio()));
+  }
+
   if (scaled_max_safe_area_insets_.bottom() > 0) {
-    // Adjust the top / left / right is not needed, since they are set when
-    // display insets was received at |SetSafeArea()|.
-    float inset_bottom = scaled_max_safe_area_insets_.bottom();
-    int bottom_controls_full_height = browser_controls.BottomHeight();
-    float control_ratio = browser_controls.BottomShownRatio();
-
-    // As control_ratio decrease, safe_area_inset_bottom will be added to the
-    // web page to keep the bottom element out from the display cutout area.
-    float safe_area_inset_bottom = std::max(
-        0.f, inset_bottom - control_ratio * bottom_controls_full_height);
-
-    new_scaled_safe_area.set_bottom(safe_area_inset_bottom);
+    new_scaled_safe_area.set_bottom(ComputeDynamicSafeAreaInset(
+        scaled_max_safe_area_insets_.bottom(), browser_controls.BottomHeight(),
+        browser_controls.BottomShownRatio()));
   }
 
   if (new_scaled_safe_area != applied_safe_area_insets_ || force_update) {
@@ -1230,11 +1238,11 @@ void Page::InvalidatePlatformColors() {
   for (Frame* frame = MainFrame(); frame;
        frame = frame->Tree().TraverseNext()) {
     if (auto* local_frame = DynamicTo<LocalFrame>(frame)) {
-      if (Document* document = local_frame->GetDocument()) {
-        document->PlatformColorsChanged();
-      }
-      if (LayoutView* view = local_frame->ContentLayoutObject()) {
-        view->InvalidatePaintForViewAndDescendants();
+      local_frame->GetDocument()->PlatformColorsChanged();
+      if (!::features::IsThemeChangeOptimizationV2Enabled()) {
+        if (LayoutView* view = local_frame->ContentLayoutObject()) {
+          view->InvalidatePaintForViewAndDescendants();
+        }
       }
     }
   }

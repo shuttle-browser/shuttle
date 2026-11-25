@@ -57,7 +57,6 @@ import org.chromium.ui.modaldialog.DialogDismissalCause;
 import org.chromium.ui.modaldialog.ModalDialogManager;
 
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -310,9 +309,9 @@ public class WebApkUpdateManager implements WebApkUpdateDataFetcher.Observer, De
             // Add to the front of the list to designate it as the primary reason.
             mUpdateReasons.add(0, WebApkUpdateReason.MANUALLY_TRIGGERED);
         }
-        Log.i(TAG, "Got Manifest: " + gotManifest);
-        Log.i(TAG, "WebAPK upgrade needed: " + needsUpgrade);
-        Log.i(TAG, "Upgrade reasons: " + Arrays.toString(mUpdateReasons.toArray()));
+        Log.i(TAG, "Got Manifest: %s", gotManifest);
+        Log.i(TAG, "WebAPK upgrade needed: %s", needsUpgrade);
+        Log.i(TAG, "Upgrade reasons: %s", mUpdateReasons);
 
         // If the Web Manifest was not found and an upgrade is requested, stop fetching Web
         // Manifests as the user navigates to avoid sending multiple WebAPK update requests. In
@@ -328,12 +327,6 @@ public class WebApkUpdateManager implements WebApkUpdateDataFetcher.Observer, De
         // point to a Web Manifest because start_url redirects to the WebAPK's main page.
         if (gotManifest || needsUpgrade) {
             destroyFetcher();
-        }
-
-        assert mInfo != null;
-        if (TextUtils.isEmpty(mInfo.manifestId())) {
-            RecordHistogram.recordBooleanHistogram(
-                    "WebApk.Update.UpdateEmptyUniqueId.NeedsUpgrade", needsUpgrade);
         }
 
         if (!needsUpgrade) {
@@ -606,8 +599,6 @@ public class WebApkUpdateManager implements WebApkUpdateDataFetcher.Observer, De
                     callback.run();
                 };
 
-        WebApkUmaRecorder.recordUpdateRequestSent(
-                WebApkUmaRecorder.UpdateRequestSent.WHILE_WEBAPK_CLOSED);
         WebApkUpdateManagerJni.get()
                 .updateWebApkFromFile(storage.getPendingUpdateRequestPath(), callbackRunner);
     }

@@ -14,6 +14,7 @@
 #include "base/logging.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
+#include "base/strings/string_split.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/trace_event/named_trigger.h"
@@ -44,8 +45,10 @@
 #include "chrome/browser/glic/public/context/glic_sharing_manager.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_fre_store.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/public/glic_side_panel_coordinator.h"
 #include "chrome/browser/glic/service/glic_instance_helper.h"
 #include "chrome/browser/glic/service/glic_tab_group_utils.h"
@@ -76,13 +79,14 @@
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/user_education/common/user_education_features.h"
 #include "content/public/browser/browser_thread.h"
-#include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/visibility.h"
 #include "content/public/browser/web_contents_delegate.h"
 #include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
+#include "net/base/url_util.h"
 #include "third_party/abseil-cpp/absl/functional/overload.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "url/url_constants.h"
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
@@ -90,7 +94,6 @@
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/actor/android/background_tabs/offscreen_rendering_manager_android.h"
 #include "chrome/browser/glic/host/context/glic_empty_pinned_tab_manager.h"
 #include "chrome/browser/glic/widget/conversions.h"
 #include "chrome/browser/glic/widget/glic_floating_ui_android.h"
@@ -159,7 +162,54 @@ GetSaasUsageReportingController(Profile* profile) {
   return nullptr;
 #endif
 }
+
+constexpr char kPromotionPagePath[] = "/chrome/ai-innovations/gemini-in-chrome";
+constexpr char kSourceParam[] = "source";
+constexpr char kZssSource[] = "zss";
 }  // namespace
+
+// static
+bool GlicInstanceImpl::IsTutorialMarketingUrl(
+    const GURL& url,
+    const GlicProviderSpec& provider_spec) {
+  if (!provider_spec.RequiresGeminiAccountEligibility() || !url.is_valid() ||
+      !url.SchemeIsHTTPOrHTTPS()) {
+    return false;
+  }
+  std::string source;
+  if (!net::GetValueForKeyInQuery(url, kSourceParam, &source) ||
+      source != kZssSource) {
+    return false;
+  }
+  std::string_view path = url.path();
+  if (path.ends_with('/')) {
+    path.remove_suffix(1);
+  }
+  if (url.SchemeIs(url::kHttpsScheme) && url.host() == "www.google.com" &&
+      path == kPromotionPagePath) {
+    return true;
+  }
+  std::string allowlist_str =
+      provider_spec.GetMarketingAutoOpenFeatureParams().allowlisted_urls;
+  for (std::string_view piece :
+       base::SplitStringPiece(allowlist_str, ",", base::TRIM_WHITESPACE,
+                              base::SPLIT_WANT_NONEMPTY)) {
+    GURL allowed(piece);
+    if (!allowed.is_valid() || !allowed.SchemeIsHTTPOrHTTPS()) {
+      continue;
+    }
+    std::string_view allowed_path = allowed.path();
+    if (allowed_path.ends_with('/')) {
+      allowed_path.remove_suffix(1);
+    }
+    if (url.scheme() == allowed.scheme() && url.host() == allowed.host() &&
+        url.EffectiveIntPort() == allowed.EffectiveIntPort() &&
+        path == allowed_path) {
+      return true;
+    }
+  }
+  return false;
+}
 
 void GlicInstanceImpl::MaybeDaisyChainToTab(tabs::TabInterface* source_tab,
                                             tabs::TabInterface* target_tab,
@@ -185,6 +235,8 @@ void GlicInstanceImpl::MaybeDaisyChainToTab(tabs::TabInterface* source_tab,
     side_panel_options.suppress_opening_animation = true;
     side_panel_options.pin_trigger = GlicPinTrigger::kDaisyChain;
     side_panel_options.prefer_peek = true;
+    side_panel_options.pin_on_bind =
+        service_->provider_spec().PinOnBindEnabled();
 
     auto show_options = ShowOptions{side_panel_options};
     switch (source) {
@@ -313,6 +365,11 @@ GlicInstanceImpl::GlicInstanceImpl(
   experimental_triggering_manager_ =
       std::make_unique<GlicExperimentalTriggeringManager>(
           this, &GetSharingManagerInternal());
+  experimental_triggering_session_subscription_ =
+      experimental_triggering_manager_
+          ->AddActiveActuationSessionChangedCallback(base::BindRepeating(
+              &GlicInstanceImpl::OnExperimentalTriggeringSessionChanged,
+              weak_ptr_factory_.GetWeakPtr()));
 
   browser_collection_observation_.Observe(
       GlobalBrowserCollection::GetInstance());
@@ -333,7 +390,7 @@ GlicInstanceImpl::~GlicInstanceImpl() {
   // the coordinator while this instance is being destroyed.
   coordinator_delegate_ = nullptr;
   tab_group_binding_.reset();
-  StopOffscreenRendering();
+  offscreen_rendering_controller_.Stop();
   // Destroying the web contents may result in calls back here, so do it first.
   host_.Hibernate();
 
@@ -433,22 +490,31 @@ bool GlicInstanceImpl::IsActuating() const {
   return actor_task_manager_ && actor_task_manager_->IsActuating();
 }
 
+bool GlicInstanceImpl::HasLiveSurface() const {
+  return GetLastActiveSurface().has_value();
+}
+
+bool GlicInstanceImpl::HasActiveExperimentalTriggeringSession() const {
+  return experimental_triggering_manager_ &&
+         experimental_triggering_manager_->HasActiveActuationSession();
+}
+
 bool GlicInstanceImpl::IsLiveMode() const {
   return interaction_mode_ == mojom::WebClientMode::kAudio;
 }
 
 bool GlicInstanceImpl::ShouldShowInactiveSidePanel(
     const SidePanelShowOptions& options) const {
+  EmbedderKey key = SidePanelEmbedderKey(options.tab);
+  if (IsActiveEmbedder(key)) {
+    return false;
+  }
+
   if (!options.tab->IsActivated()) {
     return true;
   }
 
   if (!options.prefer_peek) {
-    return false;
-  }
-
-  EmbedderKey key = SidePanelEmbedderKey(options.tab);
-  if (IsActiveEmbedder(key)) {
     return false;
   }
 
@@ -485,25 +551,26 @@ void GlicInstanceImpl::Show(ShowOptions options) {
 
   EmbedderKey new_key = GetEmbedderKey(options);
 
-  if (IsActiveEmbedder(new_key)) {
-    if (!options.reinitialize_if_already_active) {
-      // The panel is already up, so there is nothing to re-show. Unless this
-      // is an automatic reshow (such as OnBrowserActivated() when focusing a
-      // window whose panel is already open), the page still gets told: a show
-      // is also what makes it retry a client that failed to load, and someone
-      // invoking Glic again at a failed panel should get that retry rather than
-      // the stale failure. This is a no-op for a page whose client is up.
-      if (options.invocation_source !=
-          mojom::InvocationSource::kReshowInactive) {
-        host_.NotifyWindowIntentToShow();
-      }
-      return;
+  if (IsActiveEmbedder(new_key) && !options.reinitialize_if_already_active) {
+    // The panel is already up, so there is nothing to re-show. Unless this
+    // is an automatic reshow (such as OnBrowserActivated() when focusing a
+    // window whose panel is already open), the page still gets told: a show
+    // is also what makes it retry a client that failed to load, and someone
+    // invoking Glic again at a failed panel should get that retry rather than
+    // the stale failure. This is a no-op for a page whose client is up.
+    if (options.invocation_source != mojom::InvocationSource::kReshowInactive) {
+      host_.NotifyWindowIntentToShow();
     }
-  } else {
+    return;
+  }
+
+  instance_metrics().OnWillShow(options, conversation_id().has_value());
+
+  if (!IsActiveEmbedder(new_key)) {
     DeactivateCurrentEmbedder();
     // Ensure that there is a WebContents for the embedder to use.
     EnsureHostAwake();
-    StopOffscreenRendering();
+    offscreen_rendering_controller_.Stop();
     GlicUiEmbedder* embedder = CreateActiveEmbedder(options);
     CHECK(embedder);
     host_.SetDelegate(embedder->GetHostEmbedderDelegate());
@@ -596,6 +663,11 @@ void GlicInstanceImpl::Attach(tabs::TabHandle tab) {
   Show(show_options);
 }
 
+void GlicInstanceImpl::AcceptNativeFre() {
+  instance_metrics_.OnNativeFreAccepted();
+  service_->provider_spec().GetFreStore().CompleteOnboarding(profile_);
+}
+
 void GlicInstanceImpl::Close(EmbedderKey key, const CloseOptions& options) {
   TRACE_EVENT("glic", "GlicInstanceImpl::Close");
   VLOG(1) << "Glic [InstanceImpl] Close, id=" << id_.value();
@@ -664,6 +736,9 @@ GlicPinCandidateProvider& GlicInstanceImpl::pin_candidate_provider() {
 
 void GlicInstanceImpl::CloseInstanceAndShutdown() {
   VLOG(1) << "Glic [InstanceImpl] CloseInstanceAndShutdown, id=" << id_.value();
+  // Subscribers may end an experimental triggering session synchronously;
+  // nothing about this instance's removal should be re-evaluated mid-teardown.
+  experimental_triggering_session_subscription_ = {};
   will_be_destroyed_callbacks_.Notify(this);
 
   if (actor_task_manager_) {
@@ -713,7 +788,10 @@ void GlicInstanceImpl::CreateTab(
     source_tab = GetTabFromEmbedderKey(active_embedder_key_.value());
   }
 
-  bool is_onboarding = !GlicEnabling::HasConsentedForProfile(profile_);
+  const bool is_tutorial_marketing_url =
+      IsTutorialMarketingUrl(url, service_->provider_spec());
+  const bool is_onboarding = !GlicEnabling::HasConsentedForProfile(profile_) &&
+                             !is_tutorial_marketing_url;
 
   base::AutoReset<bool> auto_reset(&is_creating_tab_from_glic_panel_link_click_,
                                    true);
@@ -734,22 +812,25 @@ void GlicInstanceImpl::CreateTab(
     return;
   }
 
+  const bool pin_on_bind = service_->provider_spec().PinOnBindEnabled();
+
   // If showing the side panel is not requested, we only bind the tab.
   if (!show_side_panel) {
-    BindTab(created_tab, GlicPinTrigger::kDaisyChain, /*pin_on_bind=*/true);
+    BindTab(created_tab, GlicPinTrigger::kDaisyChain, pin_on_bind);
   } else if (base::FeatureList::IsEnabled(
                  kGlicBindOnlyForDaisyChainingFromFloatingUi) &&
              IsDetached()) {
     // If the floating UI is active and the feature flag is enabled, bind the
     // tab and keep focus on the floating UI.
-    BindTab(created_tab, GlicPinTrigger::kDaisyChain, /*pin_on_bind=*/true);
+    BindTab(created_tab, GlicPinTrigger::kDaisyChain, pin_on_bind);
     if (embedder_has_focus) {
       GetActiveEmbedder()->Focus();
     }
   } else {
     SidePanelShowOptions side_panel_options{*created_tab};
     side_panel_options.suppress_opening_animation = true;
-    side_panel_options.prefer_peek = true;
+    side_panel_options.prefer_peek = !is_tutorial_marketing_url;
+    side_panel_options.pin_on_bind = pin_on_bind;
     auto show_options = ShowOptions{side_panel_options};
     show_options.invocation_source =
         mojom::InvocationSource::kDaisyChainOnFollowLink;
@@ -825,10 +906,16 @@ void GlicInstanceImpl::UnbindEmbedder(EmbedderKey key,
     std::optional<GlicPinnedTabUsage> usage =
         GetSharingManagerInternal().GetPinnedTabUsage(tab_handle);
     // If the conversation hasn't had a turn since the tab was pinned and the
-    // tab was not manually pinned, then we will unpin the tab.
+    // tab was not manually pinned, then we will unpin the tab. While an
+    // experimental triggering session is active the unpin is deferred to the
+    // end of the session instead, so unbinding the panel neither drops the
+    // actuation target tab nor lets the instance be removed mid-session.
     if (base::FeatureList::IsEnabled(kGlicUnpinOnUnbindIfUnused) && usage &&
         usage->pin_event.trigger != GlicPinTrigger::kRestore &&
-        usage->Unused() && !usage->IsExplicitlyPinnedByUser()) {
+        usage->Unused() && !usage->IsExplicitlyPinnedByUser() &&
+        !(experimental_triggering_manager_ &&
+          experimental_triggering_manager_->DeferUnusedTabUnpinOnUnbind(
+              tab_handle))) {
       GetSharingManagerInternal().UnpinTabs({tab_handle});
     }
 
@@ -884,11 +971,9 @@ void GlicInstanceImpl::FocusIfActive() {
   if (!IsActive()) {
     return;
   }
-  content::WebContents* web_contents = host_.webui_contents();
-  if (!web_contents) {
-    return;
+  if (auto* embedder = GetActiveEmbedder()) {
+    embedder->Focus();
   }
-  web_contents->Focus();
 }
 
 void GlicInstanceImpl::NotifyActorTaskListRowClicked(int32_t task_id) {
@@ -951,48 +1036,24 @@ void GlicInstanceImpl::UpdateSkillPreviews(
   skills_manager().UpdateSkillPreviews(updated_tab);
 }
 
-// TODO(b/572001459): Extract Android offscreen rendering management out of
-// GlicInstanceImpl into a dedicated helper class owned by this instance.
 void GlicInstanceImpl::SetHiddenInitializing(bool initializing) {
-  if (is_hidden_initializing_ == initializing) {
-    return;
-  }
-  is_hidden_initializing_ = initializing;
-  UpdateOffscreenRenderingState();
+  offscreen_rendering_controller_.SetHiddenInitializing(initializing);
 }
 
 void GlicInstanceImpl::OnActuatingChanged(bool actuating) {
   host_.OnActuatingChanged(actuating);
-  UpdateOffscreenRenderingState();
+  offscreen_rendering_controller_.UpdateState();
 }
 
-void GlicInstanceImpl::UpdateOffscreenRenderingState() {
-#if BUILDFLAG(IS_ANDROID)
-  if (!base::FeatureList::IsEnabled(features::kGlicAndroidOffscreenRendering)) {
-    return;
+void GlicInstanceImpl::OnExperimentalTriggeringSessionChanged(bool active) {
+  offscreen_rendering_controller_.UpdateState();
+  // A blank instance whose side panel was closed during the session was kept
+  // alive by MaybeRemoveBlankInstanceOnClose(); re-evaluate it now. Tabs whose
+  // unpin was deferred by UnbindEmbedder() are unpinned by the manager, which
+  // reaches MaybeRemoveInstance() through OnTabPinningStatusEvent().
+  if (!active && !HasActiveEmbedder()) {
+    MaybeRemoveBlankInstanceOnClose();
   }
-
-  const bool should_render_offscreen =
-      !HasActiveEmbedder() &&
-      (is_hidden_initializing_ ||
-       (actor_task_manager_ && actor_task_manager_->IsActuating()));
-
-  if (should_render_offscreen == is_offscreen_rendering_active_) {
-    return;
-  }
-
-  if (should_render_offscreen) {
-    EnsureHostAwake();
-    // TODO(b/572001459): Re-attach offscreen rendering when the host contents
-    // are recreated (e.g. Host::Reload()) while offscreen rendering is active.
-    if (content::WebContents* contents = GetOffscreenRenderingContents()) {
-      actor::StartOffscreenRenderingForWebContents(contents);
-      is_offscreen_rendering_active_ = true;
-    }
-  } else {
-    StopOffscreenRendering();
-  }
-#endif
 }
 
 // Returns the WebContents to render offscreen: the WebUI contents in webview
@@ -1002,17 +1063,6 @@ void GlicInstanceImpl::UpdateOffscreenRenderingState() {
 content::WebContents* GlicInstanceImpl::GetOffscreenRenderingContents() const {
   return service_->IsNoWebviewEnabled() ? host_.web_client_contents()
                                         : host_.webui_contents();
-}
-
-void GlicInstanceImpl::StopOffscreenRendering() {
-#if BUILDFLAG(IS_ANDROID)
-  if (is_offscreen_rendering_active_) {
-    if (content::WebContents* contents = GetOffscreenRenderingContents()) {
-      actor::StopOffscreenRenderingForWebContents(contents);
-    }
-    is_offscreen_rendering_active_ = false;
-  }
-#endif
 }
 
 void GlicInstanceImpl::FetchZeroStateSuggestions(
@@ -1100,6 +1150,16 @@ std::vector<raw_ptr<tabs::TabInterface>> GlicInstanceImpl::GetBoundTabs()
 
 std::optional<Target::Surface> GlicInstanceImpl::GetLastActiveSurface() const {
   if (embedders_.empty()) {
+    // A side panel closed and unbound during an experimental triggering
+    // session leaves its tab pinned (DeferUnusedTabUnpinOnUnbind). That tab is
+    // still the conversation's surface: later turns continue on it rather than
+    // opening a new tab.
+    if (experimental_triggering_manager_) {
+      if (tabs::TabInterface* tab =
+              experimental_triggering_manager_->GetLastDeferredUnpinTab()) {
+        return Target::Surface(tab->GetHandle());
+      }
+    }
     return std::nullopt;
   }
 
@@ -1367,8 +1427,8 @@ void GlicInstanceImpl::MaybeShowHostUi(
 }
 
 void GlicInstanceImpl::OnBoundTabDestroyed(tabs::TabInterface* tab) {
-  instance_metrics_.OnBoundTabDestroyed();
   EmbedderKey key = GetEmbedderKeyForTab(tab);
+  instance_metrics_.OnBoundTabDestroyed(tab, IsActiveEmbedder(key));
   OnEmbedderClosed(key);
   if (active_embedder_key_ == key) {
     host_.SetDelegate(&empty_embedder_delegate_);
@@ -1467,7 +1527,7 @@ void GlicInstanceImpl::MaybeWarmZeroStateSuggestions(
     mojom::InvocationSource invocation_source) {
   if (conversation_id() ||
       !GlicEnabling::IsEnabledAndConsentForProfile(profile_) ||
-      !IsZeroStateSuggestionsEnabled()) {
+      !IsZeroStateSuggestionsEnabled(profile_)) {
     return;
   }
 
@@ -1659,10 +1719,7 @@ void GlicInstanceImpl::DidCloseFor(EmbedderKey key,
     // not take the UI away. Invocations that will send something to a
     // consented client keep running, as the client may still act on them (and
     // keep the instance alive, see MaybeRemoveBlankInstanceOnClose()).
-    if (IsActiveEmbedder(key) && coordinator_delegate_ &&
-        (base::FeatureList::IsEnabled(
-             features::kGlicInvokeErrorRecoveryFixes) ||
-         host_.client_load_state() != ClientLoadState::kReady)) {
+    if (IsActiveEmbedder(key) && coordinator_delegate_) {
       coordinator_delegate_->CancelInvokesOnPanelClose(
           this, GlicInvokeError::kPanelClosed);
     }
@@ -1679,6 +1736,11 @@ void GlicInstanceImpl::ClientReadyToShow(
   TRACE_EVENT("glic", "GlicInstanceImpl::ClientReadyToShow",
               perfetto::Flow::FromPointer(this));
   instance_metrics_.OnClientReady();
+}
+
+void GlicInstanceImpl::ContentsCreated() {
+  // Offscreen rendering must follow the new contents, e.g. after a reload.
+  offscreen_rendering_controller_.UpdateState();
 }
 
 void GlicInstanceImpl::WebUiStateChanged(mojom::WebUiState state) {
@@ -1758,7 +1820,7 @@ void GlicInstanceImpl::OnAllEmbeddersInactive() {
 
   NotifyInstanceActivationChanged(false);
   host_.SetDebouncedVisibility(false);
-  UpdateOffscreenRenderingState();
+  offscreen_rendering_controller_.UpdateState();
   if (actor_task_manager_) {
     // Attempt to show toast on UI deactivated (and not replaced by anything
     // else).
@@ -1777,8 +1839,9 @@ void GlicInstanceImpl::MaybeRemoveBlankInstanceOnClose() {
   if (conversation_id().has_value()) {
     return;
   }
-  // If an invocation is active, do not remove the instance.
-  if (IsInvoking()) {
+  // If an invocation or experimental triggering session is active, do not
+  // remove the instance.
+  if (IsInvoking() || HasActiveExperimentalTriggeringSession()) {
     return;
   }
   // If the user has submitted input, the instance is not blank.
@@ -1869,21 +1932,22 @@ bool GlicInstanceImpl::IsHibernated() const {
 }
 
 void GlicInstanceImpl::EnsureHostAwake() {
-  if (IsHibernated()) {
-    if (coordinator_delegate_) {
-      coordinator_delegate_->OnInstanceWillAwaken();
-    }
-    host_.Awaken();
-  }
+  host_.Awaken();
 }
 
 void GlicInstanceImpl::Hibernate() {
   VLOG(1) << "Glic [InstanceImpl] Hibernate, id=" << id_.value();
   DeactivateCurrentEmbedder();
   host_.Hibernate();
+  instance_metrics_.OnWebClientCleared();
 }
 
 void GlicInstanceImpl::Shutdown() {
+  // `will_be_destroyed_callbacks_` is a OnceCallbackList, so subscribers fire
+  // at most once across Shutdown() and CloseInstanceAndShutdown(), and always
+  // before the host WebContents are torn down.
+  experimental_triggering_session_subscription_ = {};
+  will_be_destroyed_callbacks_.Notify(this);
   host_.Hibernate();
 }
 
@@ -1955,6 +2019,7 @@ void GlicInstanceImpl::NotifyPanelWillOpen(
 }
 
 void GlicInstanceImpl::OnWebClientCleared() {
+  instance_metrics_.OnWebClientCleared();
   NotifyPanelWillOpen(mojom::InvocationSource::kDefaultValue, std::nullopt);
 }
 
@@ -2039,12 +2104,8 @@ void GlicInstanceImpl::OnTaskIdChanged(std::optional<int> task_id) {
 }
 
 bool GlicInstanceImpl::HasFocus() {
-  if (auto* web_contents = host().webui_contents()) {
-    content::RenderWidgetHostView* rwhv =
-        web_contents->GetRenderWidgetHostView();
-    return rwhv->HasFocus();
-  }
-  return false;
+  auto* embedder = GetActiveEmbedder();
+  return embedder && embedder->HasFocus();
 }
 
 tabs::TabInterface* GlicInstanceImpl::GetActiveEmbedderTabForTesting() {

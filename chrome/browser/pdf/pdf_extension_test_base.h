@@ -12,6 +12,7 @@
 
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/extensions/extension_apitest.h"
+#include "chrome/browser/pdf/pdf_extension_test_util.h"
 #include "chrome/browser/pdf/test_mime_handler_stream_manager.h"
 #include "components/guest_view/browser/test_guest_view_manager.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -27,6 +28,36 @@ class WebContents;
 
 namespace gfx {
 class Point;
+}
+
+// Test configurations for PDF extension tests that test GuestView vs. OOPIF and
+// XFA support. GuestView with XFA is unsupported and omitted.
+enum class PDFExtensionTestState {
+  kGuestViewNoXfa,
+  kOopifPdfNoXfa,
+  kOopifPdfXfa,
+};
+
+inline bool PDFTestStateUseOopif(PDFExtensionTestState state) {
+  switch (state) {
+    case PDFExtensionTestState::kGuestViewNoXfa:
+      return false;
+    case PDFExtensionTestState::kOopifPdfNoXfa:
+    case PDFExtensionTestState::kOopifPdfXfa:
+      return true;
+  }
+  NOTREACHED();
+}
+
+inline bool PDFTestStateEnableXfa(PDFExtensionTestState state) {
+  switch (state) {
+    case PDFExtensionTestState::kGuestViewNoXfa:
+    case PDFExtensionTestState::kOopifPdfNoXfa:
+      return false;
+    case PDFExtensionTestState::kOopifPdfXfa:
+      return true;
+  }
+  NOTREACHED();
 }
 
 class PDFExtensionTestBase : public extensions::ExtensionApiTest {
@@ -56,8 +87,11 @@ class PDFExtensionTestBase : public extensions::ExtensionApiTest {
   // Same as `LoadPdf()` but loads URLs where the first child of the primary
   // main frame should be the embedder. This is a common case where an HTML page
   // only embeds a single PDF. For GuestView PDF viewer, the embedder must be an
-  // embed element.
-  testing::AssertionResult LoadPdfInFirstChild(const GURL& url);
+  // embed element. `options` customizes how to check whether the PDF has
+  // loaded.
+  testing::AssertionResult LoadPdfInFirstChild(
+      const GURL& url,
+      const pdf_extension_test_util::EnsurePDFHasLoadedOptions& options = {});
 
   // Same as `LoadPdf()` but allows the PDF embedder host to have multiple
   // subframes. There are special cases where this can occur, such as
@@ -118,7 +152,8 @@ class PDFExtensionTestBase : public extensions::ExtensionApiTest {
   // Check if the PDF loaded in the first child frame of `contents`. The test
   // will fail if it does not meet the requirements of `ValidateFrameTree()`.
   testing::AssertionResult EnsurePDFHasLoadedInFirstChildWithValidFrameTree(
-      content::WebContents* contents);
+      content::WebContents* contents,
+      const pdf_extension_test_util::EnsurePDFHasLoadedOptions& options = {});
 
   void SimulateMouseClickAt(content::RenderFrameHost* extension_host,
                             content::WebContents* contents,

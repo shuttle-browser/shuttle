@@ -10,23 +10,27 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/time/time.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_restore.h"
+#include "chrome/browser/signin/cross_device_signin_promo_manager.h"
 #include "chrome/browser/sync/session_sync_service_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sessions/core/session_types.h"
+#include "components/signin/public/base/signin_buildflags.h"
+#include "components/signin/public/base/signin_switches.h"
 #include "components/sync_sessions/open_tabs_ui_delegate.h"
 #include "components/sync_sessions/session_sync_service.h"
 #include "components/sync_sessions/synced_session.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/l10n/time_format.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "url/gurl.h"
 
 namespace {
@@ -97,7 +101,7 @@ void ForeignTabsPageHandler::OpenTab(const std::string& session_tag,
   }
   SessionRestore::RestoreForeignSessionTab(
       source_web_contents, *session_tab,
-      WindowOpenDisposition::kNewForegroundTab);
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 }
 
 void ForeignTabsPageHandler::GetForeignTabs(GetForeignTabsCallback callback) {
@@ -172,4 +176,21 @@ void ForeignTabsPageHandler::GetForeignTabs(GetForeignTabsCallback callback) {
   }
 
   std::move(callback).Run(std::move(result));
+}
+
+void ForeignTabsPageHandler::ShowCrossDeviceSignInPromo() {
+#if BUILDFLAG(ENABLE_DICE_SUPPORT)
+  if (!base::FeatureList::IsEnabled(
+          switches::kCrossDeviceSigninFromDesktopFollowup)) {
+    return;
+  }
+  BrowserWindowInterface* browser =
+      webui::GetBrowserWindowInterface(web_contents_);
+  if (!browser) {
+    return;
+  }
+  OpenSigninToPhoneQrCodeBubble(browser,
+                                CrossDeviceSigninPromoEntryPoint::kForeignTabs,
+                                base::DoNothing());
+#endif
 }

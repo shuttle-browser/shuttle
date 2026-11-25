@@ -12,7 +12,6 @@ import static org.junit.Assert.assertTrue;
 import static org.chromium.chrome.browser.url_constants.UrlConstantResolver.getOriginalNativeNtpUrl;
 import static org.chromium.ui.test.util.ViewUtils.onViewWaiting;
 
-import android.app.Activity;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.os.Build;
@@ -32,7 +31,6 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
@@ -45,7 +43,6 @@ import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.app.ChromeActivity;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.logo.LogoUtils;
@@ -54,6 +51,7 @@ import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tasks.tab_management.TabUiThemeUtil;
 import org.chromium.chrome.browser.toolbar.top.ToolbarLayout;
 import org.chromium.chrome.browser.toolbar.top.ToolbarPhone;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeUtils;
 import org.chromium.chrome.browser.ui.theme.ChromeSemanticColorUtils;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
@@ -76,11 +74,7 @@ import java.util.function.Supplier;
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
-@Features.DisableFeatures({
-    ChromeFeatureList.EDGE_TO_EDGE_EVERYWHERE,
-    ChromeFeatureList.ANDROID_THEME_MODULE
-})
+@Features.DisableFeatures({ChromeFeatureList.ANDROID_THEME_MODULE})
 // TODO(crbug.com/428281352): Do not read color from system window bars on B+.
 @DisableIf.Build(
         sdk_is_greater_than = Build.VERSION_CODES.VANILLA_ICE_CREAM,
@@ -192,7 +186,7 @@ public class StatusBarColorControllerTest {
                         .getActivity()
                         .getRootUiCoordinatorForTesting()
                         .getStatusBarColorController();
-        final Supplier<Integer> statusBarColor = () -> activity.getWindow().getStatusBarColor();
+        final Supplier<Integer> statusBarColor = () -> getStatusBarColor(activity);
         final @ColorInt int initialColor = statusBarColor.get();
 
         // Initially, StatusBarColorController#getStatusBarColorWithoutStatusIndicator should return
@@ -352,7 +346,7 @@ public class StatusBarColorControllerTest {
                         .getActivity()
                         .getRootUiCoordinatorForTesting()
                         .getStatusBarColorController();
-        final Supplier<Integer> statusBarColor = () -> activity.getWindow().getStatusBarColor();
+        final Supplier<Integer> statusBarColor = () -> getStatusBarColor(activity);
         final @ColorInt int initialColor = statusBarColor.get();
 
         // Initially, StatusBarColorController#getStatusBarColorWithoutStatusIndicator should return
@@ -415,7 +409,7 @@ public class StatusBarColorControllerTest {
         assertEquals(
                 "Wrong value returned for Tab Strip Redesign Folio.",
                 TabUiThemeUtil.getTabStripBackgroundColor(activity, false),
-                activity.getWindow().getStatusBarColor());
+                getStatusBarColor(activity));
     }
 
     @Test
@@ -447,7 +441,7 @@ public class StatusBarColorControllerTest {
                 "Status bar color on tablet should match the toolbar background when the tab strip"
                         + " is hidden.",
                 toolbarColor,
-                activity.getWindow().getStatusBarColor());
+                getStatusBarColor(activity));
 
         // Simulate an in-progress hide->show transition, where a scrim will be added on the status
         // bar.
@@ -464,7 +458,7 @@ public class StatusBarColorControllerTest {
                         TabUiThemeUtil.getTabStripBackgroundColor(activity, false),
                         toolbarColor,
                         0.5f),
-                activity.getWindow().getStatusBarColor());
+                getStatusBarColor(activity));
 
         // Simulate transition completion by resetting the transition overlay state in
         // StatusBarColorController.
@@ -474,7 +468,7 @@ public class StatusBarColorControllerTest {
                 "Status bar color on tablet should match the default tab strip background when the"
                         + " tab strip is visible.",
                 TabUiThemeUtil.getTabStripBackgroundColor(activity, false),
-                activity.getWindow().getStatusBarColor());
+                getStatusBarColor(activity));
     }
 
     /** Test status bar is always black in Automotive devices. */
@@ -487,24 +481,23 @@ public class StatusBarColorControllerTest {
         assertEquals(
                 "Status bar should always be black in automotive devices.",
                 Color.BLACK,
-                activity.getWindow().getStatusBarColor());
+                getStatusBarColor(activity));
     }
 
     private int calculateScrimmedColor(@ColorInt int color, float fraction) {
         return ColorUtils.overlayColor(color, mScrimColor, fraction);
     }
 
-    private void waitForStatusBarColor(Activity activity, int expectedColor) {
+    private void waitForStatusBarColor(ChromeActivity activity, int expectedColor) {
         CriteriaHelper.pollUiThread(
                 () -> {
-                    Criteria.checkThat(
-                            activity.getWindow().getStatusBarColor(), Matchers.is(expectedColor));
+                    Criteria.checkThat(getStatusBarColor(activity), Matchers.is(expectedColor));
                 },
                 CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL,
                 CriteriaHelper.DEFAULT_POLLING_INTERVAL);
     }
 
-    private void waitForStatusBarColorToMatchToolbarColor(Activity activity) {
+    private void waitForStatusBarColorToMatchToolbarColor(ChromeActivity activity) {
         ToolbarLayout toolbar = activity.findViewById(R.id.toolbar);
         assertTrue(
                 "ToolbarLayout should be of type ToolbarPhone to get and check toolbar background.",
@@ -514,14 +507,13 @@ public class StatusBarColorControllerTest {
                 ((ToolbarPhone) toolbar).getBackgroundDrawable().getColor();
         CriteriaHelper.pollUiThread(
                 () -> {
-                    Criteria.checkThat(
-                            activity.getWindow().getStatusBarColor(), Matchers.is(toolbarColor));
+                    Criteria.checkThat(getStatusBarColor(activity), Matchers.is(toolbarColor));
                 },
                 CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL,
                 CriteriaHelper.DEFAULT_POLLING_INTERVAL);
     }
 
-    private void scrollUpToolbarUntilPinnedAtTop(Activity activity) {
+    private void scrollUpToolbarUntilPinnedAtTop(ChromeActivity activity) {
         Resources resources = activity.getResources();
         // Drag the Feed header title to scroll the toolbar to the top.
         View logoView = activity.findViewById(R.id.search_provider_logo);
@@ -566,5 +558,15 @@ public class StatusBarColorControllerTest {
         @ColorInt int compositeScrimColor = ColorUtils.applyAlphaFloat(mScrimColor, fraction);
         ThreadUtils.runOnUiThreadBlocking(
                 () -> statusBarColorController.onScrimColorChanged(compositeScrimColor));
+    }
+
+    private int getStatusBarColor(ChromeActivity activity) {
+        // TODO(crbug.com/571073808): Clean up E2E check.
+        if (EdgeToEdgeUtils.isEdgeToEdgeEverywhereEnabled()) {
+            return activity.getEdgeToEdgeManager()
+                    .getEdgeToEdgeSystemBarColorHelper()
+                    .getStatusBarColor();
+        }
+        return activity.getWindow().getStatusBarColor();
     }
 }

@@ -15,6 +15,7 @@
 #include <string>
 #include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
@@ -237,7 +238,7 @@ class NET_EXPORT SpdySessionPool
   base::WeakPtr<SpdySession> FindMatchingIpSessionForServiceEndpoint(
       const SpdySessionKey& key,
       const ServiceEndpoint& service_endpoint,
-      const std::set<std::string>& dns_aliases);
+      const base::flat_set<std::string>& dns_aliases);
 
   // Returns true if there is an available session for `key`. Otherwise, if
   // there is a session to pool to based on IP address, returns true if
@@ -291,14 +292,14 @@ class NET_EXPORT SpdySessionPool
       const SpdySessionKey& key,
       bool is_websocket,
       base::span<const HostResolverEndpointResult> endpoint_results,
-      const std::set<std::string>& aliases);
+      const base::flat_set<std::string>& aliases);
 
   // Overload of above function that takes a ServiceEndpoint.
   OnHostResolutionCallbackResult OnHostResolutionComplete(
       const SpdySessionKey& key,
       bool is_websocket,
       base::span<const ServiceEndpoint> endpoint_results,
-      const std::set<std::string>& aliases);
+      const base::flat_set<std::string>& aliases);
 
   // Remove all mappings and aliases for the given session, which must
   // still be available. Except for in tests, this must be called by
@@ -366,7 +367,7 @@ class NET_EXPORT SpdySessionPool
   }
 
   // Returns the stored DNS aliases for the session key.
-  std::set<std::string> GetDnsAliasesForSessionKey(
+  const base::flat_set<std::string>& GetDnsAliasesForSessionKey(
       const SpdySessionKey& key) const;
 
   // Adds the connection management config to
@@ -381,7 +382,7 @@ class NET_EXPORT SpdySessionPool
   using WeakSessionList = std::vector<base::WeakPtr<SpdySession>>;
   using AliasMap = std::multimap<IPEndPoint, SpdySessionKey>;
   using DnsAliasesBySessionKeyMap =
-      std::map<SpdySessionKey, std::set<std::string>>;
+      std::map<SpdySessionKey, base::flat_set<std::string>>;
   using RequestSet = std::set<raw_ptr<SpdySessionRequest>>;
 
   struct RequestInfoForKey {
@@ -396,6 +397,13 @@ class NET_EXPORT SpdySessionPool
 
     // Set of callbacks watching for the blocking request to be destroyed.
     std::list<base::RepeatingClosure> deferred_callbacks;
+
+    // HTTP/2-eligible IP endpoints and DNS aliases from the most recent host
+    // resolution for this key, used for proactive and post-handshake IP pooling
+    // when a concurrent session to another resolved IP is established while
+    // this key's connection attempt is in flight.
+    std::vector<IPEndPoint> ip_endpoints;
+    base::flat_set<std::string> dns_aliases;
   };
 
   using SpdySessionRequestMap = std::map<SpdySessionKey, RequestInfoForKey>;
@@ -412,7 +420,7 @@ class NET_EXPORT SpdySessionPool
   // given key, replaces them.
   void MapKeyToAvailableSession(const SpdySessionKey& key,
                                 const base::WeakPtr<SpdySession>& session,
-                                std::set<std::string> dns_aliases);
+                                base::flat_set<std::string> dns_aliases);
 
   // Returns an iterator into |available_sessions_| for the given key,
   // which may be equal to |available_sessions_.end()|.
@@ -452,7 +460,7 @@ class NET_EXPORT SpdySessionPool
       const SpdySessionKey& key,
       std::unique_ptr<SpdySession> new_session,
       const NetLogWithSource& source_net_log,
-      std::set<std::string> dns_aliases,
+      base::flat_set<std::string> dns_aliases,
       bool perform_post_insertion_checks);
 
   // If a session with the specified |key| exists, invokes
@@ -477,7 +485,7 @@ class NET_EXPORT SpdySessionPool
   base::WeakPtr<SpdySession> FindMatchingIpSession(
       const SpdySessionKey& key,
       const std::vector<IPEndPoint>& ip_endpoints,
-      const std::set<std::string>& dns_aliases);
+      const base::flat_set<std::string>& dns_aliases);
 
   // Methods to notify the ConnectionChangeObserver about connection changing
   // events. `NotifyOnNetworkEvent` will notify all of the notifiers on network
@@ -488,19 +496,30 @@ class NET_EXPORT SpdySessionPool
                              bool was_ever_used_to_create_streams);
   void NotifyOnConnectionFailure(const SpdySessionKey& session_key);
 
-  // Shared logic for the two OnHostResolutionComplete() overloads. Checks if
-  // any of the passed in endpoints can be used to set up an aliased session for
-  // `key`. Returns true if it set up an alias, and the caller should thus
-  // return kMayBeDeletedAsync.
-  //
-  // TODO(crbug.com/484073410): Once TcpConnectJob ships and TransportConnectJob
-  // is removed, merge this back into OnHostResolutionComplete().
-  bool OnHostResolutionCompleteShared(
+  // Proactively aliases eligible in-flight session requests in
+  // `spdy_session_request_map_` whose resolved HTTP/2 endpoints contain
+  // `peer_address` onto `available_session`, posting `UpdatePendingRequests()`
+  // for each matched pending key.
+  void PoolPendingRequestsToSession(
+      const SpdySessionKey& key,
+      const IPEndPoint& peer_address,
+      const base::WeakPtr<SpdySession>& available_session);
+
+  // Checks if any of `ip_endpoints` (with `metadata`) matches an existing
+  // available session that can serve `key`, and if so, maps `key` to that
+  // session (retagging an idle session's SocketTag first only when
+  // `allow_socket_tag_change` is true) and posts `UpdatePendingRequests(key)`.
+  // Called both during host resolution (`OnHostResolutionComplete()`) and
+  // post-handshake (`FindAvailableSession()`). Returns true if a matching
+  // session was mapped for `key`.
+  bool TryPoolToExistingIpSession(
       const SpdySessionKey& key,
       bool is_websocket,
       const ConnectionEndpointMetadata& metadata,
       base::span<const IPEndPoint> ip_endpoints,
-      const std::set<std::string>& aliases);
+      const base::flat_set<std::string>& dns_aliases,
+      bool log_domain_match_failure = true,
+      bool allow_socket_tag_change = true);
 
   raw_ptr<HttpServerProperties> http_server_properties_;
 

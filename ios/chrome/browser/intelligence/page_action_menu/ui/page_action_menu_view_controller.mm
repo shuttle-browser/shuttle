@@ -4,8 +4,6 @@
 
 #import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_view_controller.h"
 
-#import <vector>
-
 #import "base/notreached.h"
 #import "base/strings/sys_string_conversions.h"
 #import "build/branding_buildflags.h"
@@ -249,22 +247,22 @@ int PermissionDisclaimerMessageID(PageActionMenuFeatureType feature_type,
 
 #pragma mark - ReaderModeOptionsConsumer
 
-- (void)setSelectedFontFamily:(dom_distiller::mojom::FontFamily)fontFamily {
+- (void)setSelectedFontFamily:(web_distiller::mojom::FontFamily)fontFamily {
   std::u16string fontFamilyString;
   switch (fontFamily) {
-    case dom_distiller::mojom::FontFamily::kSansSerif:
+    case web_distiller::mojom::FontFamily::kSansSerif:
       fontFamilyString = l10n_util::GetStringUTF16(
           IDS_IOS_READER_MODE_OPTIONS_FONT_FAMILY_SANS_SERIF_LABEL);
       break;
-    case dom_distiller::mojom::FontFamily::kSerif:
+    case web_distiller::mojom::FontFamily::kSerif:
       fontFamilyString = l10n_util::GetStringUTF16(
           IDS_IOS_READER_MODE_OPTIONS_FONT_FAMILY_SERIF_LABEL);
       break;
-    case dom_distiller::mojom::FontFamily::kMonospace:
+    case web_distiller::mojom::FontFamily::kMonospace:
       fontFamilyString = l10n_util::GetStringUTF16(
           IDS_IOS_READER_MODE_OPTIONS_FONT_FAMILY_MONOSPACE_LABEL);
       break;
-    case dom_distiller::mojom::FontFamily::kLexend:
+    case web_distiller::mojom::FontFamily::kLexend:
       fontFamilyString = l10n_util::GetStringUTF16(
           IDS_IOS_READER_MODE_OPTIONS_FONT_FAMILY_LEXEND_LABEL);
       break;
@@ -273,8 +271,8 @@ int PermissionDisclaimerMessageID(PageActionMenuFeatureType feature_type,
       IDS_IOS_AI_HUB_READER_MODE_OPTIONS_FONT_LABEL, fontFamilyString);
 }
 
-- (void)setSelectedTheme:(dom_distiller::mojom::Theme)theme
-              fromSource:(dom_distiller::ThemeSettingsUpdateSource)source {
+- (void)setSelectedTheme:(web_distiller::mojom::Theme)theme
+              fromSource:(web_distiller::ThemeSettingsUpdateSource)source {
   // Nothing to do.
 }
 
@@ -1308,23 +1306,21 @@ int PermissionDisclaimerMessageID(PageActionMenuFeatureType feature_type,
 }
 
 // Creates the menu listing the permission settings available for `featureType`,
-// with `selectedSetting` checked. "Allowed once" is only offered when it is the
-// current setting.
+// with `selectedSetting` checked. "Allowed once" is always offered so that
+// users can clear a persisted decision.
 - (UIMenu*)permissionMenuForFeature:(PageActionMenuFeatureType)featureType
                     selectedSetting:
                         (PageActionMenuPermissionSetting)selectedSetting {
   __weak PageActionMenuViewController* weakSelf = self;
 
   NSMutableArray<UIAction*>* actions = [NSMutableArray array];
-  std::vector<PageActionMenuPermissionSetting> settings = {
+  static constexpr PageActionMenuPermissionSetting kSettings[] = {
       PageActionMenuPermissionSetting::kAlwaysAllow,
+      PageActionMenuPermissionSetting::kAllowOnce,
+      PageActionMenuPermissionSetting::kNeverAllow,
   };
-  if (selectedSetting == PageActionMenuPermissionSetting::kAllowOnce) {
-    settings.push_back(PageActionMenuPermissionSetting::kAllowOnce);
-  }
-  settings.push_back(PageActionMenuPermissionSetting::kNeverAllow);
 
-  for (PageActionMenuPermissionSetting setting : settings) {
+  for (PageActionMenuPermissionSetting setting : kSettings) {
     UIAction* action =
         [UIAction actionWithTitle:PermissionSettingTitle(setting)
                             image:nil

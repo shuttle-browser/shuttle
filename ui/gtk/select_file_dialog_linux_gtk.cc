@@ -534,6 +534,7 @@ void SelectFileDialogLinuxGtk::SelectFileImpl(
   GtkWidget* preview = nullptr;
   if (!GtkCheckVersion(4)) {
     preview = gtk_image_new();
+    gtk_widget_show(preview);
     connect("update-preview", &SelectFileDialogLinuxGtk::OnUpdatePreview);
     gtk_file_chooser_set_preview_widget(GTK_FILE_CHOOSER(dialog), preview);
   }
@@ -547,8 +548,8 @@ void SelectFileDialogLinuxGtk::SelectFileImpl(
   state.show_time = base::TimeTicks::Now();
   dialogs_[dialog] = std::move(state);
 
-  if (!GtkCheckVersion(4))
-    gtk_widget_show_all(dialog);
+  // Don't show `dialog` here: ShowGtkWindow() maps it once its transient
+  // parent is in effect, which is asynchronous on Wayland.
   platform_->ShowGtkWindow(GTK_WINDOW(dialog));
 }
 
@@ -891,7 +892,7 @@ void SelectFileDialogLinuxGtk::OnFileChooserDestroy(GtkWidget* dialog) {
 }
 
 void SelectFileDialogLinuxGtk::OnUpdatePreview(GtkWidget* chooser) {
-  DCHECK(!GtkCheckVersion(4));
+  CHECK(!GtkCheckVersion(4), base::NotFatalUntil::M163);
   auto it = dialogs_.find(chooser);
   if (it == dialogs_.end()) {
     return;

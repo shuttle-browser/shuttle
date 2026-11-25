@@ -375,6 +375,25 @@ TEST_F(ResolvedFrameDataTest, ReusePreviousRootPassId) {
   EXPECT_EQ(resolved_frame.GetRootRenderPassData().remapped_id(),
             prev_root_pass_id);
   resolved_frame.ResetAfterAggregation();
+
+  // Taking the root render pass ID returns `prev_root_pass_id` and clears the
+  // root pass ID on `resolved_frame` so a new ID is generated on the next
+  // aggregation.
+  EXPECT_EQ(resolved_frame.TakeRootRenderPassId(), prev_root_pass_id);
+  EXPECT_TRUE(resolved_frame.GetRootRenderPassData().remapped_id().is_null());
+
+  resolved_frame.UpdateForAggregation(render_pass_id_generator_);
+  AggregatedRenderPassId new_root_pass_id =
+      resolved_frame.GetRootRenderPassData().remapped_id();
+  EXPECT_FALSE(new_root_pass_id.is_null());
+  EXPECT_NE(new_root_pass_id, prev_root_pass_id);
+  resolved_frame.ResetAfterAggregation();
+
+  SubmitCompositorFrame(MakeSimpleFrame());
+  resolved_frame.UpdateForAggregation(render_pass_id_generator_);
+  EXPECT_NE(resolved_frame.GetRootRenderPassData().remapped_id(),
+            prev_root_pass_id);
+  resolved_frame.ResetAfterAggregation();
 }
 
 // Verify OffsetTag creating a modified copy of original CompositorRenderPasses.
@@ -582,10 +601,20 @@ TEST_F(ResolvedFrameDataTest, OffsetTagWithCopyRequest) {
   EXPECT_THAT(resolved_frame.GetResolvedPasses()[0].render_pass().copy_requests,
               testing::IsEmpty());
 
-  // Confirm that taking requests from surface still works.
-  Surface::CopyRequestsMap copy_request_map;
-  surface->TakeCopyOutputRequests(&copy_request_map);
-  EXPECT_THAT(copy_request_map, testing::SizeIs(1));
+  // Confirm that taking requests from ResolvedPassData works and
+  // `has_copy_request` stays true for the aggregation.
+  EXPECT_FALSE(resolved_frame.HasCopyOutputRequests());
+  EXPECT_TRUE(resolved_frame.GetResolvedPasses()[0].CheckCopyOutputRequests());
+  EXPECT_TRUE(resolved_frame.HasCopyOutputRequests());
+  EXPECT_TRUE(
+      resolved_frame.GetResolvedPasses()[0].aggregation().has_copy_request);
+  EXPECT_THAT(resolved_frame.GetResolvedPasses()[0].TakeCopyOutputRequests(),
+              testing::SizeIs(1));
+  EXPECT_TRUE(resolved_frame.HasCopyOutputRequests());
+  EXPECT_TRUE(
+      resolved_frame.GetResolvedPasses()[0].aggregation().has_copy_request);
+  EXPECT_THAT(surface->GetActiveFrame().render_pass_list[0]->copy_requests,
+              testing::IsEmpty());
 
   resolved_frame.ResetAfterAggregation();
 }

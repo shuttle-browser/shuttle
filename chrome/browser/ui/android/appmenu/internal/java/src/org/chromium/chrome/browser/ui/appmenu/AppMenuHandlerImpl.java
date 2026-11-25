@@ -357,11 +357,7 @@ class AppMenuHandlerImpl
                 /* headerModelList= */ null, mModelList, CallbackUtils.emptyRunnable());
 
         if (mAppMenu == null) {
-            mAppMenu =
-                    new AppMenu(
-                            this,
-                            mContext.getResources(),
-                            mHierarchicalMenuController);
+            mAppMenu = new AppMenu(this, mContext.getResources(), mHierarchicalMenuController);
             mAppMenuDragHelper = new AppMenuDragHelper(mContext, mAppMenu, itemRowHeight);
         }
 
@@ -409,7 +405,13 @@ class AppMenuHandlerImpl
                 mWindowAndroid.getKeyboardDelegate();
 
         // If keyboard is showing, wait until keyboard disappears to set appRect
-        if (keyboardVisibilityDelegate.isKeyboardShowing(anchorView)) {
+        if (keyboardVisibilityDelegate.isKeyboardObscuring(anchorView)) {
+            // A show may already be waiting on the keyboard. Replace it, or the listener
+            // below would remove the new one instead of itself and never be removed.
+            if (mKeyboardVisibilityListener != null) {
+                keyboardVisibilityDelegate.removeKeyboardVisibilityListener(
+                        mKeyboardVisibilityListener);
+            }
             View finalAnchorView = anchorView;
             boolean finalIsByPermanentButton = isByPermanentButton;
             mKeyboardVisibilityListener =
@@ -665,6 +667,14 @@ class AppMenuHandlerImpl
                 AppMenuItemType.HEADER,
                 new LayoutViewBuilder<>(R.layout.menu_header),
                 AppMenuItemViewBinder::bindHeaderItem);
+        adapter.registerType(
+                AppMenuItemType.TAB_GROUP,
+                new LayoutViewBuilder<>(standardItemResId),
+                AppMenuItemViewBinder::bindStandardItem);
+        adapter.registerType(
+                AppMenuItemType.TAB_GROUP_NO_ICON,
+                new LayoutViewBuilder<>(R.layout.menu_item_no_icon),
+                AppMenuItemViewBinder::bindStandardItem);
     }
 
     private void registerViewBinders(
@@ -872,6 +882,12 @@ class AppMenuHandlerImpl
 
     @Override
     public void onSubmenuLoaded(List<ListItem> items) {
+        // Submenu items are instantiated lazily via SUBMENU_PROVIDER when a submenu is opened
+        // (not present in mAdapter during AppMenu#show). Clear their hints before they are
+        // measured or displayed if the root menu hid shortcuts.
+        if (mAppMenu != null && mAppMenu.shouldHideShortcutHints()) {
+            AppMenu.clearShortcutHints(items);
+        }
         updateModelForHighlightAndClick(
                 items, mHighlightMenuId, this, /* startIndex= */ 0, /* withAssertions= */ false);
     }

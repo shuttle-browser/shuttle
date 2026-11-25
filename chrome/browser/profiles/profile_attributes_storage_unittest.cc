@@ -171,6 +171,7 @@ class ProfileAttributesTestObserver
                void(const base::FilePath& profile_path));
   MOCK_METHOD2(OnProfileAiSubscriptionTierUpdated,
                void(const base::FilePath& profile_path, int tier));
+  MOCK_METHOD0(OnProfilesOrderChanged, void());
 };
 
 size_t GetDefaultAvatarIconResourceIDAtIndex(int index) {
@@ -232,6 +233,7 @@ class ProfileAttributesStorageTest : public testing::Test {
         .Times(0);
     EXPECT_CALL(observer_, OnProfileManagementIdChanged(_)).Times(0);
     EXPECT_CALL(observer_, OnProfileIsGlicEligibleChanged(_)).Times(0);
+    EXPECT_CALL(observer_, OnProfilesOrderChanged()).Times(0);
   }
 
   void EnableObserver() { scoped_observation_.Observe(storage()); }
@@ -2232,6 +2234,7 @@ TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPref) {
   AddSimpleTestingProfileWithName(u"C");
   AddSimpleTestingProfileWithName(u"D");
 
+  EnableObserver();
   base::HistogramTester histogram_tester;
 
   {
@@ -2239,28 +2242,37 @@ TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPref) {
     ASSERT_EQ(
         EntriesToKeys(storage()->GetAllProfilesAttributesSortedForDisplay()),
         expected_keys);
-    histogram_tester.ExpectUniqueSample("Profile.ProfilesOrderChanged", true,
-                                        0u);
+    histogram_tester.ExpectTotalCount("Profile.ProfilesOrderChanged", 0u);
   }
 
   {
-    storage()->UpdateProfilesOrderPref(0, 1);
+    EXPECT_CALL(observer(), OnProfilesOrderChanged()).Times(1);
+    storage()->UpdateProfilesOrderPref(0, 1,
+                                       ProfileOrderUpdateType::kDragAndDrop);
+    VerifyAndResetCallExpectations();
     std::vector<std::string> expected_keys{"B", "A", "C", "D"};
     EXPECT_EQ(
         EntriesToKeys(storage()->GetAllProfilesAttributesSortedForDisplay()),
         expected_keys);
-    histogram_tester.ExpectUniqueSample("Profile.ProfilesOrderChanged", true,
-                                        1u);
+    histogram_tester.ExpectBucketCount("Profile.ProfilesOrderChanged",
+                                       ProfileOrderUpdateType::kDragAndDrop,
+                                       1u);
+    histogram_tester.ExpectTotalCount("Profile.ProfilesOrderChanged", 1u);
   }
 
   {
-    storage()->UpdateProfilesOrderPref(3, 0);
+    EXPECT_CALL(observer(), OnProfilesOrderChanged()).Times(1);
+    storage()->UpdateProfilesOrderPref(
+        3, 0, ProfileOrderUpdateType::kContextMenuButton);
+    VerifyAndResetCallExpectations();
     std::vector<std::string> expected_keys{"D", "B", "A", "C"};
     EXPECT_EQ(
         EntriesToKeys(storage()->GetAllProfilesAttributesSortedForDisplay()),
         expected_keys);
-    histogram_tester.ExpectUniqueSample("Profile.ProfilesOrderChanged", true,
-                                        2u);
+    histogram_tester.ExpectBucketCount(
+        "Profile.ProfilesOrderChanged",
+        ProfileOrderUpdateType::kContextMenuButton, 1u);
+    histogram_tester.ExpectTotalCount("Profile.ProfilesOrderChanged", 2u);
   }
 }
 
@@ -2286,7 +2298,8 @@ TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPrefIsSymetric) {
   int to_index = 3;
   {
     // Initial shift.
-    storage()->UpdateProfilesOrderPref(from_index, to_index);
+    storage()->UpdateProfilesOrderPref(from_index, to_index,
+                                       ProfileOrderUpdateType::kDragAndDrop);
     std::vector<std::string> expected_keys{"A", "C", "D", "B"};
     EXPECT_EQ(
         EntriesToKeys(storage()->GetAllProfilesAttributesSortedForDisplay()),
@@ -2294,12 +2307,14 @@ TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPrefIsSymetric) {
   }
 
   // Perform the reverse of the initial shift by inverting the inputs.
-  storage()->UpdateProfilesOrderPref(to_index, from_index);
+  storage()->UpdateProfilesOrderPref(to_index, from_index,
+                                     ProfileOrderUpdateType::kDragAndDrop);
   EXPECT_EQ(
       EntriesToKeys(storage()->GetAllProfilesAttributesSortedForDisplay()),
       initial_keys_order);
 
-  histogram_tester.ExpectUniqueSample("Profile.ProfilesOrderChanged", true, 2u);
+  histogram_tester.ExpectUniqueSample("Profile.ProfilesOrderChanged",
+                                      ProfileOrderUpdateType::kDragAndDrop, 2u);
 }
 
 TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPrefSameIndex) {
@@ -2309,6 +2324,7 @@ TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPrefSameIndex) {
   AddSimpleTestingProfileWithName(u"B");
   AddSimpleTestingProfileWithName(u"C");
 
+  EnableObserver();
   base::HistogramTester histogram_tester;
 
   std::vector<std::string> initial_keys_order{"A", "B", "C"};
@@ -2318,13 +2334,14 @@ TEST_F(ProfileAttributesStorageTest, UpdateProfilesOrderPrefSameIndex) {
 
   int index = 2;
   // Use the same index as from and to.
-  storage()->UpdateProfilesOrderPref(index, index);
+  storage()->UpdateProfilesOrderPref(index, index,
+                                     ProfileOrderUpdateType::kDragAndDrop);
 
   // No changes expected with the initial value.
   EXPECT_EQ(
       EntriesToKeys(storage()->GetAllProfilesAttributesSortedForDisplay()),
       initial_keys_order);
-  histogram_tester.ExpectUniqueSample("Profile.ProfilesOrderChanged", true, 0u);
+  histogram_tester.ExpectTotalCount("Profile.ProfilesOrderChanged", 0u);
 }
 
 class ProfileAttributesStorageTestWithProfileReorderingParam

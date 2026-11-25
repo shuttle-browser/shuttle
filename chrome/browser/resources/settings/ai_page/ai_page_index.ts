@@ -18,11 +18,11 @@ import '../glic_page/glic_subpage.js';
 import './inline_cue_menu_page.js';
 
 import type {CrViewManagerElement} from 'chrome://resources/cr_elements/cr_view_manager/cr_view_manager.js';
-import {assert} from 'chrome://resources/js/assert.js';
+import {assert, assertNotReachedCase} from 'chrome://resources/js/assert.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {loadTimeData} from '../i18n_setup.js';
-import {routes} from '../route.js';
+import {AiSettingsSection, routes} from '../route.js';
 import {RouteObserverMixinLit} from '../router.js';
 import type {Route, SettingsRoutes} from '../router.js';
 import type {SettingsPlugin} from '../settings_main/settings_plugin.js';
@@ -58,34 +58,31 @@ export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
   static override get properties() {
     return {
       routes_: {type: Object},
-      showGlicSettings_: {type: Boolean},
-      showGeicSettings_: {type: Boolean},
+      aiSettingsSection_: {type: String},
       showAiPageAiFeatureSection_: {type: Boolean},
       showComposeControl_: {type: Boolean},
-      showHistorySearchControl_: {type: Boolean},
       enableAiModeSearchSetting_: {type: Boolean},
       actorLoginFederatedLoginSupportEnabled_: {type: Boolean},
       showAiSuggestionsControl_: {type: Boolean},
       showInlineCueMenuControl_: {type: Boolean},
       showSkillsSettingPage_: {type: Boolean},
       showDictationControl_: {type: Boolean},
+      // <if expr="_google_chrome">
+      showOnDeviceAiAdvancedSettings_: {type: Boolean},
+      // </if>
     };
   }
 
   protected accessor routes_: SettingsRoutes = routes;
-  protected accessor showGlicSettings_: boolean =
-      loadTimeData.getBoolean('showGlicSettings');
-  protected accessor showGeicSettings_: boolean =
-      loadTimeData.getBoolean('showGeicSettings');
+  protected accessor aiSettingsSection_: AiSettingsSection =
+      loadTimeData.getString('aiSettingsSection') as AiSettingsSection;
   protected accessor showAiPageAiFeatureSection_: boolean =
       loadTimeData.getBoolean('showAiPageAiFeatureSection');
   protected accessor showComposeControl_: boolean =
       loadTimeData.getBoolean('showComposeControl');
-  protected accessor showHistorySearchControl_: boolean =
-      loadTimeData.getBoolean('showHistorySearchControl');
   protected accessor enableAiModeSearchSetting_: boolean =
       loadTimeData.getBoolean('enableAiModeSearchSetting');
-  protected accessor actorLoginFederatedLoginSupportEnabled_: boolean =
+  private accessor actorLoginFederatedLoginSupportEnabled_: boolean =
       loadTimeData.getBoolean('actorLoginFederatedLoginSupportEnabled');
   protected accessor showAiSuggestionsControl_: boolean =
       loadTimeData.getBoolean('showAiSuggestionsControl');
@@ -95,6 +92,10 @@ export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
       loadTimeData.getBoolean('showSkillsSettingPage');
   protected accessor showDictationControl_: boolean =
       loadTimeData.getBoolean('showDictationControl');
+  // <if expr="_google_chrome">
+  protected accessor showOnDeviceAiAdvancedSettings_: boolean =
+      loadTimeData.getBoolean('showOnDeviceAiAdvancedSettings');
+  // </if>
 
   private showDefaultViews_() {
     const defaultViews: string[] = ['aiInfoCard'];
@@ -107,12 +108,17 @@ export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
       defaultViews.push('aiModeSearch');
     }
 
-    if (this.showGlicSettings_) {
-      defaultViews.push('glic');
-    }
-
-    if (this.showGeicSettings_) {
-      defaultViews.push('geic');
+    switch (this.aiSettingsSection_) {
+      case AiSettingsSection.NONE:
+        break;
+      case AiSettingsSection.GEMINI:
+        defaultViews.push('glic');
+        break;
+      case AiSettingsSection.GEMINI_ENTERPRISE:
+        defaultViews.push('geic');
+        break;
+      default:
+        assertNotReachedCase(this.aiSettingsSection_);
     }
 
     this.$.viewManager.switchViews(
@@ -120,7 +126,7 @@ export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
   }
 
   protected shouldShowPermissionsPage_(): boolean {
-    return this.showGlicSettings_ &&
+    return this.aiSettingsSection_ === AiSettingsSection.GEMINI &&
         this.actorLoginFederatedLoginSupportEnabled_;
   }
 
@@ -139,29 +145,25 @@ export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
           // results.
           this.showDefaultViews_();
           break;
-        case routes.HISTORY_SEARCH:
-          assert(this.showHistorySearchControl_);
-          this.$.viewManager.switchView(
-              'historySearch', 'no-animation', 'no-animation');
-          break;
         case routes.OFFER_WRITING_HELP:
           assert(this.showComposeControl_);
           this.$.viewManager.switchView(
               'compose', 'no-animation', 'no-animation');
           break;
         case routes.GEMINI:
-          assert(this.showGlicSettings_);
+          assert(this.aiSettingsSection_ === AiSettingsSection.GEMINI);
           this.$.viewManager.switchView(
               'gemini', 'no-animation', 'no-animation');
           break;
         case routes.GEMINI_LOGIN:
-          assert(this.showGlicSettings_);
+          assert(this.aiSettingsSection_ === AiSettingsSection.GEMINI);
           assert(this.actorLoginFederatedLoginSupportEnabled_);
           this.$.viewManager.switchView(
               'geminiLoginPermissions', 'no-animation', 'no-animation');
           break;
         case routes.GEMINI_ENTERPRISE:
-          assert(this.showGeicSettings_);
+          assert(
+              this.aiSettingsSection_ === AiSettingsSection.GEMINI_ENTERPRISE);
           this.$.viewManager.switchView(
               'geminiEnterprise', 'no-animation', 'no-animation');
           break;
@@ -185,6 +187,13 @@ export class SettingsAiPageIndexElement extends SettingsAiPageIndexElementBase
           this.$.viewManager.switchView(
               'dictation', 'no-animation', 'no-animation');
           break;
+        // <if expr="_google_chrome">
+        case routes.ON_DEVICE_AI:
+          assert(this.showOnDeviceAiAdvancedSettings_);
+          this.$.viewManager.switchView(
+              'onDeviceAi', 'no-animation', 'no-animation');
+          break;
+        // </if>
         default:
           // Nothing to do. Other parent elements are responsible for updating
           // the displayed contents.

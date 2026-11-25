@@ -8,11 +8,16 @@
 #include <memory>
 
 #include "base/callback_list.h"
+#include "base/memory/raw_ref.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/metadata/metadata_header_macros.h"
 #include "ui/views/view.h"
 
 class BrowserWindowInterface;
+
+namespace content {
+class WebContents;
+}
 
 namespace gfx {
 class Point;
@@ -35,16 +40,25 @@ class OrganizerPanelView : public views::View {
 
   ~OrganizerPanelView() override;
 
-  virtual bool IsInExtensionModeForTesting() const;
-
   // Returns true if `point` is in an area that should be treated as window
   // caption (for dragging the window).
   virtual bool IsPositionInWindowCaption(const gfx::Point& point) const;
 
+  // Attaches the WebContents to be displayed in the panel.
+  virtual void AttachWebContents(content::WebContents* web_contents);
+
+  // views::View:
+  bool AcceleratorPressed(const ui::Accelerator& accelerator) override;
+  bool CanHandleAccelerators() const override;
+
  protected:
   explicit OrganizerPanelView(BrowserWindowInterface& browser);
 
+  BrowserWindowInterface& browser() const { return *browser_; }
+
  private:
+  const raw_ref<BrowserWindowInterface> browser_;
+
   // Invalidates the view hierarchy when the panel animates.
   const base::CallbackListSubscription animation_subscription_;
 };

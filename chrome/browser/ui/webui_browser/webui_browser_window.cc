@@ -10,7 +10,7 @@
 #include "chrome/browser/app_mode/app_mode_utils.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "content/public/browser/navigation_controller.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/global_keyboard_shortcuts_mac.h"
 #endif
@@ -26,13 +26,12 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window_state.h"
-#include "chrome/browser/ui/browser_window_theme_observer.h"
+#include "chrome/browser/ui/browser_window_theme_observer/browser_window_theme_observer.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/find_bar/find_bar.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui_base.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/views/find_bar_host.h"
 #include "chrome/browser/ui/views/find_bar_owner.h"
@@ -912,7 +911,7 @@ void WebUIBrowserWindow::TabDraggingStatusChanged(bool is_dragging) {
 }
 
 void WebUIBrowserWindow::LinkOpeningFromGesture(
-    WindowOpenDisposition disposition) {
+    ui::mojom::WindowOpenDisposition disposition) {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 
@@ -1007,7 +1006,7 @@ void WebUIBrowserWindow::ZoomChangedForActiveTab(bool can_show_bubble) {
     return;
   }
 
-  auto* zoom_view_controller = tab->GetTabFeatures()->zoom_view_controller();
+  auto* zoom_view_controller = zoom::ZoomViewController::From(tab);
   if (!zoom_view_controller) {
     return;
   }

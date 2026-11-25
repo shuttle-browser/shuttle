@@ -40,19 +40,20 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import org.chromium.base.FeatureOverrides;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.ApplicationTestUtils;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
-import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.DisableFeatures;
-import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.about_settings.AboutChromeSettings;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeUtils;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.util.ActivityTestUtils;
 import org.chromium.components.browser_ui.settings.SettingsFragment;
@@ -66,7 +67,7 @@ import java.util.Locale;
 
 /** Tests for the Settings menu. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@DoNotBatch(reason = "Tests cannot run batched because they launch a Settings activity.")
+@Batch(Batch.PER_CLASS)
 @DisableFeatures({
     ChromeFeatureList.SETTINGS_IN_TAB, // crbug.com/521895796
     ChromeFeatureList.SETTINGS_IN_TAB_DESKTOP // crbug.com/556881398
@@ -81,19 +82,38 @@ public class SettingsActivityTest {
         LocalizationUtils.setRtlForTesting(false);
         if (mSettingsActivityTestRule.getActivity() != null) {
             ActivityTestUtils.clearActivityOrientation(mSettingsActivityTestRule.getActivity());
-            mSettingsActivityTestRule.getActivity().finish();
+            mSettingsActivityTestRule.finishActivity();
         }
     }
 
-    /** Test status bar is always black in Automotive devices. */
     @Test
     @SmallTest
     @Feature({"StatusBar, Automotive Toolbar"})
     @Restriction(DeviceRestriction.RESTRICTION_TYPE_AUTO)
-    public void testStatusBarBlackInAutomotive() {
+    public void testStatusBarInAutomotive() {
+        EdgeToEdgeUtils.setEdgeToEdgeAutomotiveEnabledForTesting(true);
+        SettingsActivity activity = mSettingsActivityTestRule.startSettingsActivity();
+
+        assertEquals(
+                "Window status bar should be transparent when drawing edge-to-edge.",
+                Color.TRANSPARENT,
+                activity.getWindow().getStatusBarColor());
+        assertEquals(
+                "Edge-to-edge layout should draw the status bar with the settings background"
+                        + " color.",
+                SemanticColorUtils.getSettingsBackgroundColor(activity),
+                activity.ensureEdgeToEdgeLayoutCoordinator().getStatusBarColor());
+    }
+
+    @Test
+    @SmallTest
+    @Feature({"StatusBar, Automotive Toolbar"})
+    @Restriction(DeviceRestriction.RESTRICTION_TYPE_AUTO)
+    @DisableFeatures(ChromeFeatureList.EDGE_TO_EDGE_AUTOMOTIVE)
+    public void testStatusBarBlackInAutomotive_EdgeToEdgeDisabled() {
         mSettingsActivityTestRule.startSettingsActivity();
         assertEquals(
-                "Status bar should always be black in automotive devices.",
+                "Status bar should be black in automotive devices without edge-to-edge.",
                 Color.BLACK,
                 mSettingsActivityTestRule.getActivity().getWindow().getStatusBarColor());
     }
@@ -139,15 +159,23 @@ public class SettingsActivityTest {
         // Open a standalone fragment. This will create a new activity.
         final Intent intent2 =
                 SettingsIntentUtil.createIntent(activity, TestFragment.class.getName(), null);
-        ApplicationTestUtils.waitForActivityWithClass(
-                SettingsActivity.class, Stage.CREATED, () -> activity.startActivity(intent2));
+        SettingsActivity activity2 =
+                ApplicationTestUtils.waitForActivityWithClass(
+                        SettingsActivity.class,
+                        Stage.CREATED,
+                        () -> activity.startActivity(intent2));
 
         // Open an embeddable fragment. This starts a new activity as the last fragment is
         // standalone.
         final Intent intent3 =
                 SettingsIntentUtil.createIntent(activity, MainSettings.class.getName(), null);
-        ApplicationTestUtils.waitForActivityWithClass(
-                SettingsActivity.class, Stage.CREATED, () -> activity.startActivity(intent3));
+        SettingsActivity activity3 =
+                ApplicationTestUtils.waitForActivityWithClass(
+                        SettingsActivity.class,
+                        Stage.CREATED,
+                        () -> activity.startActivity(intent3));
+        ApplicationTestUtils.finishActivity(activity3);
+        ApplicationTestUtils.finishActivity(activity2);
     }
 
     /** Regression test for crash. https://crbug.com/535398041 */
@@ -283,8 +311,8 @@ public class SettingsActivityTest {
      */
     @Test
     @SmallTest
-    @EnableFeatures(ChromeFeatureList.SETTINGS_IN_TAB)
     public void testUnfoldKeepsSettingsActivity() {
+        FeatureOverrides.enable(ChromeFeatureList.SETTINGS_IN_TAB);
         SettingsActivity activity = mSettingsActivityTestRule.startSettingsActivity();
         assertNull(
                 "SettingsActivity should not have SettingsHostFragment",
@@ -307,7 +335,8 @@ public class SettingsActivityTest {
                                         config, activity.getResources().getDisplayMetrics());
                     });
 
-            SettingsActivity recreated = ApplicationTestUtils.recreateActivity(activity);
+            mSettingsActivityTestRule.recreateActivity();
+            SettingsActivity recreated = mSettingsActivityTestRule.getActivity();
             assertNotNull("SettingsActivity should be recreated", recreated);
             assertNull(
                     "Recreated activity should not have SettingsHostFragment",

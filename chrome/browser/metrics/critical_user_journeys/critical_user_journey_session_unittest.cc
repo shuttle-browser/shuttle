@@ -31,6 +31,7 @@ namespace {
 BASE_FEATURE(kTestJourney, base::FEATURE_ENABLED_BY_DEFAULT);
 DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTestElementId1);
 DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTestElementId2);
+DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kTestElementId3);
 constexpr ui::ElementContext kTestContext =
     ui::ElementContext::CreateFakeContextForTesting(1);
 }  // namespace
@@ -269,6 +270,8 @@ TEST_F(CriticalUserJourneySessionTest, ExitBranchBelowDwellThreshold) {
   histogram_tester.ExpectUniqueSample(
       "CriticalUserJourney.TestJourney.Result",
       CriticalUserJourneySession::JourneyResult::kAbandonedBelowDwell, 1);
+  histogram_tester.ExpectUniqueSample(
+      "CriticalUserJourney.TestJourney.StepAborted", 3, 1);
   histogram_tester.ExpectBucketCount(
       "CriticalUserJourney.TestJourney.StepReached", 3, 0);
 }
@@ -356,8 +359,14 @@ TEST_F(CriticalUserJourneySessionTest,
         final_result = result;
       }));
 
+  // In production, `CriticalUserJourneyService` subscribes to `el1`'s
+  // activation via `ElementTracker` and calls `session->Start()` from that
+  // callback (covered end-to-end in `CriticalUserJourneyServiceTest`). Here we
+  // invoke `session->Start()` directly to unit-test `CriticalUserJourneySession`
+  // after the trigger activation has fired.
   ui::test::TestElement el1(kTestElementId1, kTestContext);
   el1.Show();
+  el1.Activate();
   session->Start(/*first_step_metric_id=*/1, &el1);
 
   // Hiding the activated trigger (e.g. an omnibox page action icon hiding as
@@ -375,7 +384,11 @@ TEST_F(CriticalUserJourneySessionTest,
       "CriticalUserJourney.TestJourney.Result",
       CriticalUserJourneySession::JourneyResult::kCompleted, 1);
   histogram_tester.ExpectBucketCount(
+      "CriticalUserJourney.TestJourney.StepReached", 1, 1);
+  histogram_tester.ExpectBucketCount(
       "CriticalUserJourney.TestJourney.StepReached", 2, 1);
+  histogram_tester.ExpectTotalCount(
+      "CriticalUserJourney.TestJourney.Step1ToStep2Duration", 1);
 }
 
 TEST_F(CriticalUserJourneySessionTest,
@@ -401,6 +414,7 @@ TEST_F(CriticalUserJourneySessionTest,
 
   ui::test::TestElement el1(kTestElementId1, kTestContext);
   el1.Show();
+  el1.Activate();
   session->Start(/*first_step_metric_id=*/std::nullopt, &el1);
 
   // Show step 2 in a separate WebUI ElementContext.
@@ -415,6 +429,250 @@ TEST_F(CriticalUserJourneySessionTest,
       CriticalUserJourneySession::JourneyResult::kCompleted, 1);
   histogram_tester.ExpectBucketCount(
       "CriticalUserJourney.TestJourney.StepReached", 2, 1);
+}
+
+TEST_F(CriticalUserJourneySessionTest,
+       SimultaneousCompletionAndExitBranchFavorsCompletion) {
+  base::HistogramTester histogram_tester;
+  auto journey =
+      CriticalUserJourney::Builder(&kTestJourney)
+          .AddStep(kTestElementId1, ui::InteractionSequence::StepType::kShown,
+                   1)
+          .AddAnyOf({
+              Branch(kTestElementId2, ui::InteractionSequence::StepType::kShown,
+                     2),
+              Branch(kTestElementId3, ui::InteractionSequence::StepType::kHidden,
+                     3)
+                  .SetExitBranch(),
+          })
+          .Build();
+
+  std::optional<CriticalUserJourneySession::JourneyResult> final_result;
+  auto session = std::make_unique<CriticalUserJourneySession>(journey.get());
+  session->set_on_done_callback(base::BindLambdaForTesting(
+      [&](CriticalUserJourneySession::JourneyResult result) {
+        final_result = result;
+      }));
+
+  ui::test::TestElement el1(kTestElementId1, kTestContext);
+  ui::test::TestElement el3(kTestElementId3, kTestContext);
+  el1.Show();
+  el3.Show();
+
+  session->Start(/*first_step_metric_id=*/std::nullopt, &el1);
+
+  task_environment_.FastForwardBy(base::Milliseconds(50));
+
+  // Both completion branch (el2 shown) and exit branch (el3 hidden) occur in
+  // the same turn.
+  ui::test::TestElement el2(kTestElementId2, kTestContext);
+  el2.Show();
+  el3.Hide();
+
+  EXPECT_TRUE(base::test::RunUntil([&]() { return final_result.has_value(); }));
+  EXPECT_EQ(*final_result,
+            CriticalUserJourneySession::JourneyResult::kCompleted);
+  EXPECT_EQ(session->first_reached_metric_id(), 1);
+  EXPECT_EQ(session->last_reached_metric_id(), 2);
+  histogram_tester.ExpectUniqueSample(
+      "CriticalUserJourney.TestJourney.Result",
+      CriticalUserJourneySession::JourneyResult::kCompleted, 1);
+  histogram_tester.ExpectBucketCount(
+      "CriticalUserJourney.TestJourney.StepReached", 2, 1);
+  histogram_tester.ExpectBucketCount(
+      "CriticalUserJourney.TestJourney.StepReached", 3, 0);
+}
+
+TEST_F(CriticalUserJourneySessionTest,
+       ExitBranchAboveMaxDwellReportsAboveDwellGuardrail) {
+  base::HistogramTester histogram_tester;
+  auto journey =
+      CriticalUserJourney::Builder(&kTestJourney)
+          .AddStep(kTestElementId1, ui::InteractionSequence::StepType::kShown,
+                   1)
+          .AddAnyOf({
+              Branch(kTestElementId3,
+                     ui::InteractionSequence::StepType::kActivated, 2),
+              Branch(kTestElementId2,
+                     ui::InteractionSequence::StepType::kHidden, 3)
+                  .SetExitBranch(base::Seconds(2), base::Seconds(15)),
+          })
+          .Build();
+
+  std::optional<CriticalUserJourneySession::JourneyResult> final_result;
+  auto session = std::make_unique<CriticalUserJourneySession>(journey.get());
+  session->set_on_done_callback(base::BindLambdaForTesting(
+      [&](CriticalUserJourneySession::JourneyResult result) {
+        final_result = result;
+      }));
+
+  ui::test::TestElement el1(kTestElementId1, kTestContext);
+  ui::test::TestElement el2(kTestElementId2, kTestContext);
+  el1.Show();
+  el2.Show();
+
+  session->Start(/*first_step_metric_id=*/std::nullopt, &el1);
+
+  // Fast forward by 20s, exceeding the 15s max dwell duration ceiling.
+  task_environment_.FastForwardBy(base::Seconds(20));
+  el2.Hide();
+
+  EXPECT_TRUE(base::test::RunUntil([&]() { return final_result.has_value(); }));
+  EXPECT_EQ(*final_result,
+            CriticalUserJourneySession::JourneyResult::kAbandonedAboveDwell);
+  histogram_tester.ExpectUniqueSample(
+      "CriticalUserJourney.TestJourney.Result",
+      CriticalUserJourneySession::JourneyResult::kAbandonedAboveDwell, 1);
+  histogram_tester.ExpectUniqueSample(
+      "CriticalUserJourney.TestJourney.StepAborted", 3, 1);
+  histogram_tester.ExpectBucketCount(
+      "CriticalUserJourney.TestJourney.StepReached", 3, 0);
+}
+
+TEST_F(CriticalUserJourneySessionTest,
+       BranchWithContextModeAnyMatchesSeparateElementContext) {
+  base::HistogramTester histogram_tester;
+  constexpr ui::ElementContext kWebUIContext =
+      ui::ElementContext::CreateFakeContextForTesting(2);
+
+  auto journey =
+      CriticalUserJourney::Builder(&kTestJourney)
+          .AddStep(kTestElementId1, ui::InteractionSequence::StepType::kShown,
+                   1)
+          .AddAnyOf({
+              Branch(kTestElementId2, ui::InteractionSequence::StepType::kShown,
+                     2)
+                  .SetContextMode(ui::InteractionSequence::ContextMode::kAny),
+          })
+          .Build();
+
+  std::optional<CriticalUserJourneySession::JourneyResult> final_result;
+  auto session = std::make_unique<CriticalUserJourneySession>(journey.get());
+  session->set_on_done_callback(base::BindLambdaForTesting(
+      [&](CriticalUserJourneySession::JourneyResult result) {
+        final_result = result;
+      }));
+
+  ui::test::TestElement el1(kTestElementId1, kTestContext);
+  el1.Show();
+  session->Start(/*first_step_metric_id=*/std::nullopt, &el1);
+
+  ui::test::TestElement el2(kTestElementId2, kWebUIContext);
+  el2.Show();
+
+  EXPECT_TRUE(base::test::RunUntil([&]() { return final_result.has_value(); }));
+  EXPECT_EQ(*final_result,
+            CriticalUserJourneySession::JourneyResult::kCompleted);
+  histogram_tester.ExpectUniqueSample(
+      "CriticalUserJourney.TestJourney.Result",
+      CriticalUserJourneySession::JourneyResult::kCompleted, 1);
+  histogram_tester.ExpectBucketCount(
+      "CriticalUserJourney.TestJourney.StepReached", 2, 1);
+}
+
+TEST_F(CriticalUserJourneySessionTest, GetCujDurationBucketBoundaries) {
+  EXPECT_EQ(GetCujDurationBucket(base::Milliseconds(0)), "<2s");
+  EXPECT_EQ(GetCujDurationBucket(base::Milliseconds(1999)), "<2s");
+  EXPECT_EQ(GetCujDurationBucket(base::Seconds(2)), "2s-5s");
+  EXPECT_EQ(GetCujDurationBucket(base::Milliseconds(4999)), "2s-5s");
+  EXPECT_EQ(GetCujDurationBucket(base::Seconds(5)), "5s-15s");
+  EXPECT_EQ(GetCujDurationBucket(base::Milliseconds(14999)), "5s-15s");
+  EXPECT_EQ(GetCujDurationBucket(base::Seconds(15)), "15s-60s");
+  EXPECT_EQ(GetCujDurationBucket(base::Milliseconds(59999)), "15s-60s");
+  EXPECT_EQ(GetCujDurationBucket(base::Seconds(60)), ">60s");
+  EXPECT_EQ(GetCujDurationBucket(base::Seconds(120)), ">60s");
+}
+
+TEST_F(CriticalUserJourneySessionTest, SetStepTimeoutExtendsWaitForNextStep) {
+  auto journey = CriticalUserJourney::Builder(&kTestJourney)
+                     .AddStep(kTestElementId1,
+                              ui::InteractionSequence::StepType::kShown, 1)
+                     .SetStepTimeout(base::Minutes(5))
+                     .AddStep(kTestElementId2,
+                              ui::InteractionSequence::StepType::kShown, 2)
+                     .Build();
+
+  std::optional<CriticalUserJourneySession::JourneyResult> final_result;
+  auto session = std::make_unique<CriticalUserJourneySession>(journey.get());
+  session->set_on_done_callback(base::BindLambdaForTesting(
+      [&](CriticalUserJourneySession::JourneyResult result) {
+        final_result = result;
+      }));
+
+  ui::test::TestElement el1(kTestElementId1, kTestContext);
+  el1.Show();
+  session->Start(/*first_step_metric_id=*/std::nullopt, &el1);
+
+  // Past the default 2 minute timeout, but within the 5 minute override.
+  task_environment_.FastForwardBy(base::Minutes(3));
+  EXPECT_FALSE(final_result.has_value());
+
+  ui::test::TestElement el2(kTestElementId2, kTestContext);
+  el2.Show();
+
+  EXPECT_TRUE(base::test::RunUntil([&]() { return final_result.has_value(); }));
+  EXPECT_EQ(*final_result,
+            CriticalUserJourneySession::JourneyResult::kCompleted);
+}
+
+TEST_F(CriticalUserJourneySessionTest, SetStepTimeoutOnAnyOfAppliesToBranches) {
+  auto journey =
+      CriticalUserJourney::Builder(&kTestJourney)
+          .AddAnyOf({Branch(kTestElementId1,
+                            ui::InteractionSequence::StepType::kShown, 1),
+                     Branch(kTestElementId3,
+                            ui::InteractionSequence::StepType::kShown, 2)})
+          .SetStepTimeout(base::Minutes(5))
+          .AddStep(kTestElementId2, ui::InteractionSequence::StepType::kShown,
+                   3)
+          .Build();
+
+  for (const auto& branch : journey->steps()[0]->branches) {
+    EXPECT_EQ(branch->steps()[0]->time_out_duration, base::Minutes(5));
+  }
+  EXPECT_EQ(journey->steps()[1]->time_out_duration, kDefaultCujStepTimeout);
+}
+
+TEST_F(CriticalUserJourneySessionTest,
+       HatsEntryPointReportsMatchedTriggerLabel) {
+  auto journey =
+      CriticalUserJourney::Builder(&kTestJourney)
+          .AddAnyOf({Branch(kTestElementId1,
+                            ui::InteractionSequence::StepType::kShown, 1)
+                         .SetHatsEntryPoint("toolbar_button"),
+                     Branch(kTestElementId3,
+                            ui::InteractionSequence::StepType::kShown, 2)
+                         .SetHatsEntryPoint("app_menu")})
+          .AddStep(kTestElementId2, ui::InteractionSequence::StepType::kShown,
+                   3)
+          .Build();
+
+  auto session = std::make_unique<CriticalUserJourneySession>(journey.get());
+  ui::test::TestElement el3(kTestElementId3, kTestContext);
+  el3.Show();
+  session->Start(/*first_step_metric_id=*/2, &el3);
+  task_environment_.RunUntilIdle();
+
+  EXPECT_EQ(session->hats_entry_point(), "app_menu");
+  EXPECT_EQ(session->first_reached_metric_id(), 2);
+}
+
+TEST_F(CriticalUserJourneySessionTest, HatsEntryPointDefaultsWithoutLabel) {
+  auto journey = CriticalUserJourney::Builder(&kTestJourney)
+                     .AddStep(kTestElementId1,
+                              ui::InteractionSequence::StepType::kShown, 1)
+                     .AddStep(kTestElementId2,
+                              ui::InteractionSequence::StepType::kShown, 2)
+                     .Build();
+
+  auto session = std::make_unique<CriticalUserJourneySession>(journey.get());
+  ui::test::TestElement el1(kTestElementId1, kTestContext);
+  el1.Show();
+  session->Start(/*first_step_metric_id=*/std::nullopt, &el1);
+  task_environment_.RunUntilIdle();
+
+  EXPECT_EQ(session->hats_entry_point(), kCujDefaultEntryStep);
+  EXPECT_EQ(session->first_reached_metric_id(), 1);
 }
 
 using CriticalUserJourneySessionDeathTest = CriticalUserJourneySessionTest;
@@ -447,6 +705,26 @@ TEST_F(CriticalUserJourneySessionDeathTest, ExitBranchInFirstStepCrashes) {
                   .SetExitBranch(),
           })
           .Build());
+}
+
+TEST_F(CriticalUserJourneySessionDeathTest,
+       ExitBranchMaxDwellBelowMinDwellCrashes) {
+  EXPECT_CHECK_DEATH(
+      Branch(kTestElementId2, ui::InteractionSequence::StepType::kHidden, 3)
+          .SetExitBranch(base::Seconds(10), base::Seconds(2)));
+  EXPECT_CHECK_DEATH(
+      Branch(kTestElementId2, ui::InteractionSequence::StepType::kHidden, 3)
+          .SetExitBranch(base::Seconds(2), base::Seconds(2)));
+}
+
+TEST_F(CriticalUserJourneySessionDeathTest, NonPositiveStepTimeoutCrashes) {
+  EXPECT_CHECK_DEATH(CriticalUserJourney::Builder(&kTestJourney)
+                         .AddStep(kTestElementId1,
+                                  ui::InteractionSequence::StepType::kShown, 1)
+                         .SetStepTimeout(base::TimeDelta()));
+  EXPECT_CHECK_DEATH(
+      Branch(kTestElementId1, ui::InteractionSequence::StepType::kShown, 1)
+          .SetTimeout(base::TimeDelta()));
 }
 
 }  // namespace metrics

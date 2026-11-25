@@ -58,12 +58,11 @@ public class FlatTabListDataProvider extends TabListDataProvider {
 
                     @Override
                     public void didMoveTab(Tab tab, int newIndex, int curIndex) {
-                        // Grouped tab moves and intra-group reorders are handled by
-                        // mTabGroupObserver; moveTabItem reorders standalone tabs when matching the
+                        // Intra-group reorders and group merges/ungroups are handled by
+                        // TabGroupObserver; moveTabItem reorders standalone tabs when matching the
                         // active filter.
-                        if (tab.getTabGroupId() == null) {
-                            moveTabItem(tab);
-                        }
+                        if (curIndex == newIndex || tab.getTabGroupId() != null) return;
+                        moveTabItem(tab);
                     }
 
                     @Override
@@ -105,8 +104,16 @@ public class FlatTabListDataProvider extends TabListDataProvider {
                     public void didChangePinState(Tab tab) {
                         updatePinState(tab);
                     }
+
+                    @Override
+                    public void onTabsSelectionChanged() {
+                        updateMultiSelection();
+                    }
                 };
 
+        // Note: onTabGroupMoved is intentionally not overridden. It may be needed in the future if
+        // a multi-group filter (e.g. TabListEditor)
+        // requires reordering on whole-group moves.
         TabGroupObserver tabGroupObserver =
                 new TabGroupObserver() {
                     @Override
@@ -117,6 +124,7 @@ public class FlatTabListDataProvider extends TabListDataProvider {
                     @Override
                     public void didMoveWithinGroup(
                             Tab movedTab, int tabModelOldIndex, int tabModelNewIndex) {
+                        if (tabModelNewIndex == tabModelOldIndex) return;
                         moveTabItem(movedTab);
                     }
 

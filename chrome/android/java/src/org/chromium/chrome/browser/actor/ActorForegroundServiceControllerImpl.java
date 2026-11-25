@@ -225,6 +225,16 @@ public class ActorForegroundServiceControllerImpl implements ActorForegroundServ
     }
 
     @Override
+    public Intent createTrustedPendingActorTaskNewTabIntent() {
+        Context context = ContextUtils.getApplicationContext();
+        Intent intent =
+                IntentHandler.createTrustedOpenNewTabIntent(context, /* incognito= */ false);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.putExtra(GlicIntentConstants.EXTRA_GLIC_PENDING_ACTOR_TASK, true);
+        return intent;
+    }
+
+    @Override
     public boolean isActivityVisibleForTabs(Set<Integer> tabIds) {
         ThreadUtils.assertOnUiThread();
         Activity activity = ApplicationStatus.getLastTrackedFocusedActivity();
@@ -234,8 +244,7 @@ public class ActorForegroundServiceControllerImpl implements ActorForegroundServ
         // TabModelSelector to determine relevance: the activity must host at least one of the
         // task's tabs. If the task is generic (has no tabs), it is considered not visible.
         if (!(activity instanceof AsyncInitializationActivity asyncInitActivity)) return false;
-        if (asyncInitActivity.isInPictureInPictureMode()) return false;
-        if (asyncInitActivity.isFinishing() || asyncInitActivity.isDestroyed()) return false;
+        if (!isActivityVisible(asyncInitActivity)) return false;
 
         TabModelSelector selector =
                 TabModelSelectorSupplier.getValueOrNullFrom(asyncInitActivity.getWindowAndroid());
@@ -267,13 +276,17 @@ public class ActorForegroundServiceControllerImpl implements ActorForegroundServ
         Activity activity = MultiWindowUtils.getActivityById(windowId);
         if (activity == null) return false;
 
-        // Safe to cast as getInstanceIdForViewIntent() only returns ChromeTabbedActivity IDs.
-        AsyncInitializationActivity asyncActivity = (AsyncInitializationActivity) activity;
-        if (asyncActivity.isInPictureInPictureMode()) return false;
-        if (asyncActivity.isFinishing() || asyncActivity.isDestroyed()) return false;
+        return isActivityVisible(activity);
+    }
 
-        int state = ApplicationStatus.getStateForActivity(asyncActivity);
-        return state == ActivityState.STARTED || state == ActivityState.RESUMED;
+    private static boolean isActivityVisible(Activity activity) {
+        if (activity.isInPictureInPictureMode()) return false;
+        if (activity.isFinishing() || activity.isDestroyed()) return false;
+
+        int state = ApplicationStatus.getStateForActivity(activity);
+        return state == ActivityState.STARTED
+                || state == ActivityState.RESUMED
+                || state == ActivityState.PAUSED;
     }
 
     private static @Nullable Tab generateForegroundTabForTask() {

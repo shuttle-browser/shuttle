@@ -15,7 +15,6 @@
 #include "build/buildflag.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/history_embeddings/history_embeddings_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/signin/account_preview_data_service_factory.h"
@@ -30,7 +29,6 @@
 #include "chrome/common/url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/history_clusters/core/history_clusters_prefs.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/sessions/core/session_types.h"
@@ -42,7 +40,7 @@
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/webui/resources/cr_components/history/foreign_sessions.mojom.h"
 #include "ui/webui/webui_util.h"
 
@@ -150,14 +148,6 @@ void PopulatePlatformDataSource(content::WebUIDataSource* source,
   }
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
-  bool enable_history_embeddings =
-      history_embeddings::IsHistoryEmbeddingsEnabledForProfile(profile);
-  source->AddBoolean(kEnableHistoryEmbeddingsKey, enable_history_embeddings);
-  source->AddBoolean(
-      kMaybeShowEmbeddingsIphKey,
-      history_embeddings::IsHistoryEmbeddingsSettingVisible(profile) &&
-          !enable_history_embeddings);
-
   // History clusters
   HistoryClustersUtil::PopulateSource(source, profile, /*in_side_panel=*/false);
 }
@@ -201,7 +191,7 @@ CreateForeignSessionPageHandler(
       web_ui->GetWebContents(),
       base::BindRepeating([](content::WebContents* source_web_contents,
                              const ::sessions::SessionTab& tab,
-                             WindowOpenDisposition disposition) {
+                             ui::mojom::WindowOpenDisposition disposition) {
         SessionRestore::RestoreForeignSessionTab(source_web_contents, tab,
                                                  disposition);
       }),

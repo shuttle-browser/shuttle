@@ -4,10 +4,17 @@
 
 #import "ios/chrome/browser/bubble/model/tab_based_iph_browser_agent.h"
 
+#import <memory>
+
+#import "base/functional/bind.h"
+#import "components/feature_engagement/public/feature_constants.h"
+#import "components/feature_engagement/test/mock_tracker.h"
+#import "components/send_tab_to_self/entry_point_display_reason.h"
 #import "components/send_tab_to_self/stub_send_tab_to_self_sync_service.h"
 #import "ios/chrome/browser/browser_view/model/browser_view_visibility_notifier_browser_agent.h"
 #import "ios/chrome/browser/browser_view/public/browser_view_visibility_state.h"
 #import "ios/chrome/browser/bubble/public/in_product_help_type.h"
+#import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
@@ -16,8 +23,10 @@
 #import "ios/chrome/browser/shared/public/commands/help_commands.h"
 #import "ios/chrome/browser/sync/model/send_tab_to_self_sync_service_factory.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_notifier_browser_agent.h"
+#import "ios/web/public/test/fakes/fake_navigation_context.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #import "ios/web/public/test/web_task_environment.h"
+#import "testing/gmock/include/gmock/gmock.h"
 #import "testing/gtest/include/gtest/gtest.h"
 #import "testing/platform_test.h"
 
@@ -53,6 +62,13 @@ class TabBasedIPHBrowserAgentTest : public PlatformTest {
   TabBasedIPHBrowserAgentTest() {
     TestProfileIOS::Builder builder;
     builder.AddTestingFactory(
+        feature_engagement::TrackerFactory::GetInstance(),
+        base::BindRepeating(
+            [](ProfileIOS* profile) -> std::unique_ptr<KeyedService> {
+              return std::make_unique<
+                  testing::NiceMock<feature_engagement::test::MockTracker>>();
+            }));
+    builder.AddTestingFactory(
         SendTabToSelfSyncServiceFactory::GetInstance(),
         base::BindRepeating(
             [](ProfileIOS* profile) -> std::unique_ptr<KeyedService> {
@@ -60,6 +76,9 @@ class TabBasedIPHBrowserAgentTest : public PlatformTest {
                   send_tab_to_self::StubSendTabToSelfSyncService>();
             }));
     profile_ = std::move(builder).Build();
+    ON_CALL(*mock_tracker(), WouldTriggerHelpUI(testing::Ref(
+                                 feature_engagement::kIPHSendTabToSelfOmnibox)))
+        .WillByDefault(testing::Return(true));
 
     browser_ = std::make_unique<TestBrowser>(profile_.get());
     help_handler_ = [[FakeHelpCommandsHandler alloc] init];
@@ -72,9 +91,21 @@ class TabBasedIPHBrowserAgentTest : public PlatformTest {
     TabBasedIPHBrowserAgent::CreateForBrowser(browser_.get());
   }
 
+  feature_engagement::test::MockTracker* mock_tracker() {
+    return static_cast<feature_engagement::test::MockTracker*>(
+        feature_engagement::TrackerFactory::GetForProfile(profile_.get()));
+  }
+
   BrowserViewVisibilityNotifierBrowserAgent* visibility_notifier() {
     return BrowserViewVisibilityNotifierBrowserAgent::FromBrowser(
         browser_.get());
+  }
+
+  // Simulates the browser view becoming visible.
+  void MakeBrowserViewVisible() {
+    visibility_notifier()->GetNotificationCallback().Run(
+        BrowserViewVisibilityState::kVisible,
+        BrowserViewVisibilityState::kAppearing);
   }
 
   // Returns the `UrlLoadingNotifierBrowserAgent` for `browser_`.
@@ -88,73 +119,10 @@ class TabBasedIPHBrowserAgentTest : public PlatformTest {
   FakeHelpCommandsHandler* help_handler_;
 };
 
-// Test that Send Tab to Self omnibox IPH is presented when eligible.
+// Tests that the Send Tab to Self omnibox IPH is not presented on the startup
+// tab.
 TEST_F(TabBasedIPHBrowserAgentTest,
-       SendTabToSelfOmniboxIPHPresentedWhenEligible) {
-  auto web_state = std::make_unique<web::FakeWebState>();
-  web_state->SetCurrentURL(GURL("https://www.example.com"));
-  browser_->GetWebStateList()->InsertWebState(
-      std::move(web_state),
-      WebStateList::InsertionParams::AtIndex(0).Activate());
-
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-
-  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
-}
-
-// Test that Send Tab to Self omnibox IPH is presented even if the page is
-// loading.
-TEST_F(TabBasedIPHBrowserAgentTest,
-       SendTabToSelfOmniboxIPHPresentedWhenLoading) {
-  auto web_state = std::make_unique<web::FakeWebState>();
-  web_state->SetCurrentURL(GURL("https://www.example.com"));
-  web_state->SetLoading(true);
-  browser_->GetWebStateList()->InsertWebState(
-      std::move(web_state),
-      WebStateList::InsertionParams::AtIndex(0).Activate());
-
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-
-  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
-}
-
-// Test that Send Tab to Self omnibox IPH is not presented when not eligible.
-TEST_F(TabBasedIPHBrowserAgentTest,
-       SendTabToSelfOmniboxIPHNotPresentedWhenNotEligible) {
-  auto* service = static_cast<send_tab_to_self::StubSendTabToSelfSyncService*>(
-      SendTabToSelfSyncServiceFactory::GetForProfile(profile_.get()));
-  service->SetEntryPointDisplayReason(std::nullopt);
-
-  auto web_state = std::make_unique<web::FakeWebState>();
-  web_state->SetCurrentURL(GURL("https://www.example.com"));
-  browser_->GetWebStateList()->InsertWebState(
-      std::move(web_state),
-      WebStateList::InsertionParams::AtIndex(0).Activate());
-
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-
-  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
-}
-
-// Test that Send Tab to Self omnibox IPH is not presented when there is no
-// active web state.
-TEST_F(TabBasedIPHBrowserAgentTest,
-       SendTabToSelfOmniboxIPHNotPresentedWhenNoActiveWebState) {
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-
-  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
-}
-
-// Test that Send Tab to Self omnibox IPH is only triggered once upon startup.
-TEST_F(TabBasedIPHBrowserAgentTest, SendTabToSelfOmniboxIPHOnlyTriggeredOnce) {
+       SendTabToSelfOmniboxIPHNotPresentedOnStartup) {
   auto web_state = std::make_unique<web::FakeWebState>();
   web_state->SetCurrentURL(GURL("https://www.example.com"));
   web::FakeWebState* raw_web_state = web_state.get();
@@ -162,55 +130,406 @@ TEST_F(TabBasedIPHBrowserAgentTest, SendTabToSelfOmniboxIPHOnlyTriggeredOnce) {
       std::move(web_state),
       WebStateList::InsertionParams::AtIndex(0).Activate());
 
-  // First visibility change on startup should trigger IPH.
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-
-  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
-
-  // Subsequent visibility changes should not trigger IPH again.
-  help_handler_.presentSendTabToSelfOmniboxCalled = NO;
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-
-  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
-
-  // Subsequent page loads should not trigger IPH.
+  MakeBrowserViewVisible();
+  raw_web_state->WasShown();
   raw_web_state->OnPageLoaded(web::PageLoadCompletionStatus::SUCCESS);
 
   EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
 }
 
-// Test that if ineligible upon startup, subsequent visibility changes do not
-// re-trigger the IPH even if eligibility changes later.
+// Tests that the Send Tab to Self omnibox IPH is presented after a tab switch.
 TEST_F(TabBasedIPHBrowserAgentTest,
-       SendTabToSelfOmniboxIPHNotRetriggeredAfterIneligibleStartup) {
-  auto* service = static_cast<send_tab_to_self::StubSendTabToSelfSyncService*>(
-      SendTabToSelfSyncServiceFactory::GetForProfile(profile_.get()));
-  service->SetEntryPointDisplayReason(std::nullopt);
-
+       SendTabToSelfOmniboxIPHPresentedOnTabSwitch) {
+  WebStateList* web_state_list = browser_->GetWebStateList();
+  web_state_list->InsertWebState(
+      std::make_unique<web::FakeWebState>(),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
   auto web_state = std::make_unique<web::FakeWebState>();
   web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  web_state_list->InsertWebState(std::move(web_state),
+                                 WebStateList::InsertionParams::AtIndex(1));
+  MakeBrowserViewVisible();
+
+  web_state_list->ActivateWebStateAt(1);
+  raw_web_state->WasShown();
+
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that replacing the active `WebState` does not trigger the Send Tab to
+// Self omnibox IPH.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHNotPresentedOnReplace) {
+  WebStateList* web_state_list = browser_->GetWebStateList();
+  web_state_list->InsertWebState(
+      std::make_unique<web::FakeWebState>(),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  auto replacement_web_state = std::make_unique<web::FakeWebState>();
+  replacement_web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_replacement_web_state = replacement_web_state.get();
+  web_state_list->ReplaceWebStateAt(0, std::move(replacement_web_state));
+  raw_replacement_web_state->WasShown();
+
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is presented after a user
+// navigation.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHPresentedOnUserNavigation) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->OnNavigationFinished(&context);
+
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is not presented after an
+// uncommitted navigation.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHNotPresentedOnUncommittedNavigation) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(false);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->OnNavigationFinished(&context);
+
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is only presented after a
+// renderer-initiated navigation if it has a user gesture.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHOnRendererInitiatedNavigation) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasCommitted(true);
+  context.SetIsRendererInitiated(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  context.SetUrl(GURL("https://www.example.org/second"));
+  context.SetHasUserGesture(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is deferred while the BVC is
+// covered.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHDeferredWhileCovered) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+  visibility_notifier()->GetNotificationCallback().Run(
+      BrowserViewVisibilityState::kCoveredByModal,
+      BrowserViewVisibilityState::kVisible);
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  visibility_notifier()->GetNotificationCallback().Run(
+      BrowserViewVisibilityState::kVisible,
+      BrowserViewVisibilityState::kCoveredByModal);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is deferred after a tab switch
+// while the BVC is covered.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHDeferredOnTabSwitchWhileCovered) {
+  WebStateList* web_state_list = browser_->GetWebStateList();
+  web_state_list->InsertWebState(
+      std::make_unique<web::FakeWebState>(),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  web_state_list->InsertWebState(std::move(web_state),
+                                 WebStateList::InsertionParams::AtIndex(1));
+  MakeBrowserViewVisible();
+  visibility_notifier()->GetNotificationCallback().Run(
+      BrowserViewVisibilityState::kCoveredByModal,
+      BrowserViewVisibilityState::kVisible);
+
+  web_state_list->ActivateWebStateAt(1);
+  raw_web_state->WasShown();
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  visibility_notifier()->GetNotificationCallback().Run(
+      BrowserViewVisibilityState::kVisible,
+      BrowserViewVisibilityState::kCoveredByModal);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is not presented when the feature
+// engagement tracker would not trigger it, and is presented on a later trigger
+// once the tracker allows it.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHNotPresentedWhenTrackerWouldNotTrigger) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  EXPECT_CALL(*mock_tracker(),
+              WouldTriggerHelpUI(
+                  testing::Ref(feature_engagement::kIPHSendTabToSelfOmnibox)))
+      .WillOnce(testing::Return(false))
+      .WillOnce(testing::Return(true));
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  // The blocked attempt is cleared, so re-showing the same tab does not retry.
+  raw_web_state->WasShown();
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  context.SetUrl(GURL("https://www.example.org/second"));
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is retried on a later user
+// navigation or tab switch while the tracker allows it, and stops once the
+// tracker blocks it.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHRetriedOnLaterTriggers) {
+  WebStateList* web_state_list = browser_->GetWebStateList();
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  web_state_list->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  auto other_web_state = std::make_unique<web::FakeWebState>();
+  other_web_state->SetCurrentURL(GURL("https://www.example.org"));
+  web::FakeWebState* raw_other_web_state = other_web_state.get();
+  web_state_list->InsertWebState(std::move(other_web_state),
+                                 WebStateList::InsertionParams::AtIndex(1));
+  MakeBrowserViewVisible();
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  help_handler_.presentSendTabToSelfOmniboxCalled = NO;
+  context.SetUrl(GURL("https://www.example.org/second"));
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  help_handler_.presentSendTabToSelfOmniboxCalled = NO;
+  web_state_list->ActivateWebStateAt(1);
+  raw_other_web_state->WasShown();
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  help_handler_.presentSendTabToSelfOmniboxCalled = NO;
+  EXPECT_CALL(*mock_tracker(),
+              WouldTriggerHelpUI(
+                  testing::Ref(feature_engagement::kIPHSendTabToSelfOmnibox)))
+      .WillOnce(testing::Return(false));
+  web_state_list->ActivateWebStateAt(0);
+  raw_web_state->WasShown();
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is not presented on an ineligible
+// navigation and is presented on a later eligible navigation.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHPresentedAfterIneligibleTrigger) {
+  auto* sync_service =
+      static_cast<send_tab_to_self::StubSendTabToSelfSyncService*>(
+          SendTabToSelfSyncServiceFactory::GetForProfile(profile_.get()));
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+
+  sync_service->SetEntryPointDisplayReason(
+      send_tab_to_self::EntryPointDisplayReason::kOfferSignIn);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  sync_service->SetEntryPointDisplayReason(
+      send_tab_to_self::EntryPointDisplayReason::kOfferFeature);
+  context.SetUrl(GURL("https://www.example.org/second"));
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->SetCurrentURL(context.GetUrl());
+  raw_web_state->OnNavigationFinished(&context);
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is not presented when switching
+// to an ineligible tab and is presented when switching to an eligible tab.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHPresentedAfterIneligibleTabSwitch) {
+  auto* sync_service =
+      static_cast<send_tab_to_self::StubSendTabToSelfSyncService*>(
+          SendTabToSelfSyncServiceFactory::GetForProfile(profile_.get()));
+  WebStateList* web_state_list = browser_->GetWebStateList();
+  auto first_web_state = std::make_unique<web::FakeWebState>();
+  first_web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_first_web_state = first_web_state.get();
+  web_state_list->InsertWebState(
+      std::move(first_web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  auto second_web_state = std::make_unique<web::FakeWebState>();
+  web::FakeWebState* raw_second_web_state = second_web_state.get();
+  web_state_list->InsertWebState(std::move(second_web_state),
+                                 WebStateList::InsertionParams::AtIndex(1));
+  MakeBrowserViewVisible();
+
+  sync_service->SetEntryPointDisplayReason(std::nullopt);
+  web_state_list->ActivateWebStateAt(1);
+  raw_second_web_state->WasShown();
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+
+  sync_service->SetEntryPointDisplayReason(
+      send_tab_to_self::EntryPointDisplayReason::kOfferFeature);
+  web_state_list->ActivateWebStateAt(0);
+  raw_first_web_state->WasShown();
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is not presented when a
+// navigation commits the same URL.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHNotPresentedOnSameURLNavigation) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  GURL url("https://www.example.com");
+  web_state->SetCurrentURL(url);
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  web::FakeNavigationContext context;
+  context.SetUrl(url);
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->OnNavigationFinished(&context);
+
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is not presented after a
+// same-document navigation.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHNotPresentedOnSameDocumentNavigation) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
+
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.com/#frag"));
+  context.SetIsRendererInitiated(true);
+  context.SetHasUserGesture(true);
+  context.SetIsSameDocument(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->OnNavigationFinished(&context);
+
+  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+}
+
+// Tests that the Send Tab to Self omnibox IPH is deferred until the browser
+// view first becomes visible.
+TEST_F(TabBasedIPHBrowserAgentTest,
+       SendTabToSelfOmniboxIPHDeferredUntilBrowserViewFirstVisible) {
+  auto web_state = std::make_unique<web::FakeWebState>();
+  web_state->SetCurrentURL(GURL("https://www.example.com"));
+  web::FakeWebState* raw_web_state = web_state.get();
   browser_->GetWebStateList()->InsertWebState(
       std::move(web_state),
       WebStateList::InsertionParams::AtIndex(0).Activate());
 
-  // Startup visibility change while ineligible.
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
+  web::FakeNavigationContext context;
+  context.SetUrl(GURL("https://www.example.org/next"));
+  context.SetHasUserGesture(true);
+  context.SetHasCommitted(true);
+  raw_web_state->OnNavigationStarted(&context);
+  raw_web_state->OnNavigationFinished(&context);
   EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
 
-  // Becoming eligible later (e.g. navigation or sync update) followed by
-  // another visibility change should not trigger the one-time startup IPH.
-  service->SetEntryPointDisplayReason(
-      send_tab_to_self::EntryPointDisplayReason::kOfferFeature);
-  visibility_notifier()->GetNotificationCallback().Run(
-      BrowserViewVisibilityState::kVisible,
-      BrowserViewVisibilityState::kAppearing);
-  EXPECT_FALSE(help_handler_.presentSendTabToSelfOmniboxCalled);
+  MakeBrowserViewVisible();
+  EXPECT_TRUE(help_handler_.presentSendTabToSelfOmniboxCalled);
 }
 
 // Tests that the bottom omnibox IPH is presented when navigating using the
@@ -223,6 +542,7 @@ TEST_F(TabBasedIPHBrowserAgentTest,
   browser_->GetWebStateList()->InsertWebState(
       std::move(web_state),
       WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
 
   GURL destination_url("https://www.example.com");
   url_loading_notifier()->TabDidLoadUrl(
@@ -247,6 +567,7 @@ TEST_F(TabBasedIPHBrowserAgentTest,
   browser_->GetWebStateList()->InsertWebState(
       std::move(web_state),
       WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
 
   url_loading_notifier()->TabDidLoadUrl(
       ntp_url,
@@ -269,6 +590,7 @@ TEST_F(TabBasedIPHBrowserAgentTest,
   browser_->GetWebStateList()->InsertWebState(
       std::move(web_state),
       WebStateList::InsertionParams::AtIndex(0).Activate());
+  MakeBrowserViewVisible();
 
   url_loading_notifier()->TabDidLoadUrl(
       destination_url, ui::PAGE_TRANSITION_LINK, raw_web_state->GetWeakPtr());

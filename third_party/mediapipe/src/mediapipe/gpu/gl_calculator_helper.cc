@@ -14,23 +14,22 @@
 
 #include "mediapipe/gpu/gl_calculator_helper.h"
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/status/statusor.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/log/absl_log.h"     // from @com_google_absl
+#include "absl/status/status.h"    // from @com_google_absl
+#include "absl/status/statusor.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image.h"
 #include "mediapipe/framework/formats/image_frame.h"
 #include "mediapipe/framework/legacy_calculator_support.h"
-#include "mediapipe/framework/port/canonical_errors.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status.h"
 #include "mediapipe/gpu/gpu_buffer.h"
 #include "mediapipe/gpu/gpu_service.h"
 
 namespace mediapipe {
 
-GlCalculatorHelper::GlCalculatorHelper() {}
+GlCalculatorHelper::GlCalculatorHelper() = default;
 
-GlCalculatorHelper::~GlCalculatorHelper() {}
+GlCalculatorHelper::~GlCalculatorHelper() = default;
 
 void GlCalculatorHelper::InitializeInternal(CalculatorContext* cc,
                                             GpuResources* gpu_resources) {
@@ -242,7 +241,7 @@ std::unique_ptr<ImageFrame> GlTexture::GetFrame<ImageFrame>() const {
   view_->DoneWriting();
   std::shared_ptr<const ImageFrame> view =
       gpu_buffer_.GetReadView<ImageFrame>();
-  auto copy = absl::make_unique<ImageFrame>();
+  auto copy = std::make_unique<ImageFrame>();
   copy->CopyFrom(*view, ImageFrame::kDefaultAlignmentBoundary);
   return copy;
 }
@@ -250,14 +249,14 @@ std::unique_ptr<ImageFrame> GlTexture::GetFrame<ImageFrame>() const {
 template <>
 std::unique_ptr<GpuBuffer> GlTexture::GetFrame<GpuBuffer>() const {
   view_->DoneWriting();
-  return absl::make_unique<GpuBuffer>(gpu_buffer_);
+  return std::make_unique<GpuBuffer>(gpu_buffer_);
 }
 
 template <>
 std::unique_ptr<mediapipe::Image> GlTexture::GetFrame<mediapipe::Image>()
     const {
   std::unique_ptr<GpuBuffer> buf = GetFrame<GpuBuffer>();
-  auto output = absl::make_unique<mediapipe::Image>(*buf);
+  auto output = std::make_unique<mediapipe::Image>(*buf);
   return output;
 }
 

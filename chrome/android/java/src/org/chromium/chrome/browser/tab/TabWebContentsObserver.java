@@ -32,6 +32,7 @@ import org.chromium.chrome.browser.app.usb.UsbNotificationService;
 import org.chromium.chrome.browser.bluetooth.BluetoothNotificationManager;
 import org.chromium.chrome.browser.display_cutout.DisplayCutoutTabHelper;
 import org.chromium.chrome.browser.feedback.HelpAndFeedbackLauncherImpl;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.media.MediaCaptureNotificationServiceImpl;
 import org.chromium.chrome.browser.pdf.PdfUtils;
 import org.chromium.chrome.browser.policy.PolicyAuditor;
@@ -85,10 +86,12 @@ public class TabWebContentsObserver extends TabWebContentsUserData {
     }
 
     /**
-     * Adds an observer triggered when |initWebContents| is invoked.
-     * <p>A newly created tab adding this observer misses the event because
-     * |TabObserver.onContentChanged| -&gt; |TabWebContentsObserver.initWebContents|
-     * occurs before the observer is added. Manually trigger it here.
+     * Adds an observer triggered when {@code initWebContents} is invoked.
+     *
+     * <p>A newly created tab adding this observer misses the event because {@code
+     * TabObserver.onContentChanged} -&gt; {@code TabWebContentsObserver.initWebContents} occurs
+     * before the observer is added. Manually trigger it here.
+     *
      * @param observer Observer to add.
      */
     public void addInitWebContentsObserver(Callback<WebContents> observer) {
@@ -350,9 +353,11 @@ public class TabWebContentsObserver extends TabWebContentsUserData {
 
             // TODO(crbug.com/40264745) remove this call. onUrlUpdated should have been called
             // by NotifyNavigationStateChanged, which is always called before didFinishNavigation
-            observers.rewind();
-            while (observers.hasNext()) {
-                observers.next().onUrlUpdated(mTab);
+            if (!ChromeFeatureList.sSkipDuplicateOnUrlUpdated.isEnabled()) {
+                observers.rewind();
+                while (observers.hasNext()) {
+                    observers.next().onUrlUpdated(mTab);
+                }
             }
 
             // Stop swipe-to-refresh animation.

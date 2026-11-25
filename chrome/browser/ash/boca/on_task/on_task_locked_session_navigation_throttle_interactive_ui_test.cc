@@ -58,8 +58,8 @@
 #include "services/network/public/cpp/resource_request_body.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 using ::testing::NotNull;
@@ -1064,7 +1064,8 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
   NavigateParams navigate_params(
       popup_browser, embedded_test_server()->GetURL(kTabUrl1Host, "/"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  navigate_params.disposition =
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   ui_test_utils::NavigateToURL(&navigate_params);
   popup_closed_observer.Wait();
   EXPECT_EQ(GlobalBrowserCollection::GetInstance()->GetSize(),
@@ -1227,7 +1228,7 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
           kTabUrlRedirectHost,
           "/authenticate?client_id=123&response_type=code"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kNewPopup;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
   navigate_params.window_action = NavigateParams::WindowAction::kShowWindow;
   ui_test_utils::NavigateToURL(&navigate_params);
   BrowserWindowInterface* const popup_browser = navigate_params.browser;
@@ -1249,7 +1250,8 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
       popup_browser,
       embedded_test_server()->GetURL(kTabUrlRedirectHost,
                                      "/redirect?code=secret"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   popup_closed_observer.Wait();
   EXPECT_TRUE(window_tracker->CanOpenNewPopup());
 }
@@ -1301,7 +1303,7 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
       boca_app_browser,
       embedded_test_server()->GetURL(kTabUrl1Host, "/title2.html"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kNewPopup;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
   navigate_params.window_action = NavigateParams::WindowAction::kShowWindow;
   ui_test_utils::NavigateToURL(&navigate_params);
   BrowserWindowInterface* const popup_browser = navigate_params.browser;
@@ -1357,7 +1359,7 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
       boca_app_browser,
       embedded_test_server()->GetURL(kTabUrl1Host, "/title2.html"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kCurrentTab;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   ui_test_utils::NavigateToURL(&navigate_params);
 
   // While we do not explicitly track this oauth request, we can verify that the
@@ -1428,7 +1430,7 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
           kTabUrlRedirectHost,
           "/authenticate?client_id=123&response_type=code"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kNewPopup;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
   navigate_params.window_action = NavigateParams::WindowAction::kShowWindow;
   ui_test_utils::NavigateToURL(&navigate_params);
   BrowserWindowInterface* const popup_browser = navigate_params.browser;
@@ -1445,7 +1447,8 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
   NavigateParams unauthorized_nav_params(
       boca_app_browser, embedded_test_server()->GetURL(kTabUrl2Host, "/"),
       ui::PAGE_TRANSITION_LINK);
-  unauthorized_nav_params.disposition = WindowOpenDisposition::kNewPopup;
+  unauthorized_nav_params.disposition =
+      ui::mojom::WindowOpenDisposition::kNewPopup;
   unauthorized_nav_params.window_action =
       NavigateParams::WindowAction::kShowWindow;
   ui_test_utils::NavigateToURL(&unauthorized_nav_params);
@@ -1508,7 +1511,7 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
           kTabUrlRedirectHost,
           "/authenticate?client_id=123&response_type=code"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kNewPopup;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
   navigate_params.window_action = NavigateParams::WindowAction::kShowWindow;
   ui_test_utils::NavigateToURL(&navigate_params);
   BrowserWindowInterface* const popup_browser = navigate_params.browser;
@@ -1548,7 +1551,8 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
       popup_browser,
       embedded_test_server()->GetURL(kTabUrlRedirectHost,
                                      "/redirect?code=secret"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   popup_closed_observer.Wait();
   EXPECT_TRUE(window_tracker->CanOpenNewPopup());
 }
@@ -1614,7 +1618,7 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
           kTabUrlRedirectHost,
           "/authenticate?client_id=123&response_type=code"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kNewPopup;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kNewPopup;
   navigate_params.window_action = NavigateParams::WindowAction::kShowWindow;
   ui_test_utils::NavigateToURL(&navigate_params);
   BrowserWindowInterface* const popup_browser = navigate_params.browser;
@@ -1635,7 +1639,8 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
       popup_browser,
       embedded_test_server()->GetURL(kTabUrlRedirectHost,
                                      "/redirect?code=secret"),
-      WindowOpenDisposition::kCurrentTab, ui_test_utils::BROWSER_TEST_NO_WAIT);
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
+      ui_test_utils::BROWSER_TEST_NO_WAIT);
   popup_closed_observer.Wait();
   EXPECT_TRUE(window_tracker->CanOpenNewPopup());
 }
@@ -1809,7 +1814,8 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
   // Reload navigation.
   ASSERT_TRUE(chrome::CanReload(boca_app_browser));
   content::TestNavigationObserver navigation_observer(active_web_contents);
-  chrome::Reload(boca_app_browser, WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(boca_app_browser,
+                 ui::mojom::WindowOpenDisposition::kCurrentTab);
   navigation_observer.WaitForNavigationFinished();
   EXPECT_EQ(active_web_contents->GetLastCommittedURL(), url_1_front_subdomain);
 }
@@ -1868,7 +1874,8 @@ IN_PROC_BROWSER_TEST_P(
   // Reload navigation.
   ASSERT_TRUE(chrome::CanReload(boca_app_browser));
   content::TestNavigationObserver navigation_observer(active_web_contents);
-  chrome::Reload(boca_app_browser, WindowOpenDisposition::kCurrentTab);
+  chrome::Reload(boca_app_browser,
+                 ui::mojom::WindowOpenDisposition::kCurrentTab);
   navigation_observer.WaitForNavigationFinished();
   EXPECT_EQ(active_web_contents->GetLastCommittedURL(), url_1_front_subdomain);
 }
@@ -1905,13 +1912,73 @@ IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
       boca_app_browser,
       embedded_test_server()->GetURL(kTabUrl1Host, "/echotitle"),
       ui::PAGE_TRANSITION_LINK);
-  navigate_params.disposition = WindowOpenDisposition::kCurrentTab;
+  navigate_params.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   navigate_params.post_data =
       network::ResourceRequestBody::CreateFromCopyOfBytes(
           base::as_byte_span("TestContent"));
   ui_test_utils::NavigateToURL(&navigate_params);
   EXPECT_EQ(tab_strip_model->GetActiveWebContents()->GetLastCommittedURL(),
             url_1);
+}
+
+IN_PROC_BROWSER_TEST_P(OnTaskLockedSessionNavigationThrottleInteractiveUITest,
+                       BlockExtensionSpawnedNewTabAndOAuthUrl) {
+  // Launch OnTask SWA.
+  base::test::TestFuture<bool> launch_future;
+  system_web_app_manager()->LaunchSystemWebAppAsync(
+      launch_future.GetCallback());
+  ASSERT_TRUE(launch_future.Get());
+  BrowserWindowInterface* const boca_app_browser =
+      FindBocaSystemWebAppBrowser();
+  ASSERT_THAT(boca_app_browser, NotNull());
+  ASSERT_TRUE(IsLockedForOnTask(boca_app_browser));
+
+  // Set up window tracker to track the app window.
+  const SessionID window_id = boca_app_browser->GetSessionID();
+  ASSERT_TRUE(window_id.is_valid());
+  system_web_app_manager()->SetWindowTrackerForSystemWebAppWindow(
+      window_id, /*observers=*/{});
+
+  // Spawn a restricted tab.
+  const GURL url_1 = embedded_test_server()->GetURL(kTabUrl1Host, "/");
+  CreateBackgroundTabAndWait(
+      window_id, url_1, ::boca::LockedNavigationOptions::DOMAIN_NAVIGATION);
+  auto* const tab_strip_model = boca_app_browser->GetTabStripModel();
+  ASSERT_EQ(tab_strip_model->count(), 2);
+  tab_strip_model->ActivateTabAt(1);
+  WaitForUrlBlocklistUpdate();
+
+  // Simulate an extension or context menu ("Search Google for...") opening a
+  // new foreground tab without an opener to a different domain.
+  const GURL different_domain_url =
+      embedded_test_server()->GetURL(kTabUrl2Host, "/");
+  NavigateParams new_tab_params(boca_app_browser, different_domain_url,
+                                ui::PAGE_TRANSITION_LINK);
+  new_tab_params.disposition =
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab;
+  ui_test_utils::NavigateToURL(&new_tab_params);
+  content::RunAllTasksUntilIdle();
+  EXPECT_EQ(tab_strip_model->count(), 2);
+  EXPECT_EQ(tab_strip_model->GetActiveWebContents()->GetLastCommittedURL(),
+            url_1);
+
+  // Simulate an extension opening a new tab with an OAuth login URL on a
+  // disallowed domain. Verify the navigation is blocked, the new tab is closed,
+  // and `oauth_in_progress` is not poisoned.
+  auto* const window_tracker =
+      LockedSessionWindowTrackerFactory::GetInstance()->GetForBrowserContext(
+          profile());
+  ASSERT_FALSE(window_tracker->oauth_in_progress());
+  const GURL oauth_url = embedded_test_server()->GetURL(
+      kTabUrlRedirectHost, "/authenticate?client_id=123&response_type=code");
+  NavigateParams oauth_nav_params(boca_app_browser, oauth_url,
+                                  ui::PAGE_TRANSITION_LINK);
+  oauth_nav_params.disposition =
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab;
+  ui_test_utils::NavigateToURL(&oauth_nav_params);
+  content::RunAllTasksUntilIdle();
+  EXPECT_EQ(tab_strip_model->count(), 2);
+  EXPECT_FALSE(window_tracker->oauth_in_progress());
 }
 
 class OnTaskLockedSessionNavigationThrottleWorkspaceNavigationInteractiveUITest

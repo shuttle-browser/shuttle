@@ -651,7 +651,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
         groupTitleEditText.setText(newTitle);
         KeyboardVisibilityDelegate.KeyboardVisibilityListener keyboardVisibilityListener =
                 mTabGroupContextMenuCoordinator.getKeyboardVisibilityListenerForTesting();
-        keyboardVisibilityListener.keyboardVisibilityChanged(false);
+        keyboardVisibilityListener.keyboardObscuringChanged(false);
 
         // Verify the group title is updated.
         verify(mTabModel).setTabGroupTitle(eq(TAB_GROUP_ID), eq(newTitle));
@@ -659,7 +659,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
         // Remove the custom title set by the user by clearing the edit box.
         newTitle = "";
         groupTitleEditText.setText(newTitle);
-        keyboardVisibilityListener.keyboardVisibilityChanged(false);
+        keyboardVisibilityListener.keyboardObscuringChanged(false);
 
         // Verify the previous title is deleted and is default to "N tabs"
         verify(mTabModel).deleteTabGroupTitle(TAB_GROUP_ID);
@@ -746,12 +746,12 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                 ShadowLooper.getShadowMainLooper().isIdle());
 
         // Simulate the keyboard surfacing (isShowing = true).
-        listener.keyboardVisibilityChanged(true);
+        listener.keyboardObscuringChanged(true);
 
         // Check if a layout task was successfully scheduled on the looper.
         assertFalse(
                 "The keyboard visibility change must schedule a layout task, making the looper"
-                    + " non-idle",
+                        + " non-idle",
                 ShadowLooper.getShadowMainLooper().isIdle());
 
         // Execute the posted layout task cleanly to finish the test cycle.
@@ -762,13 +762,53 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                 mTabGroupContextMenuCoordinator.isMenuShowing());
 
         // Simulate the keyboard dismissing (isShowing = false).
-        listener.keyboardVisibilityChanged(false);
+        listener.keyboardObscuringChanged(false);
 
         // For vertical tabs, dismissing the keyboard should NOT schedule a layout task to
         // avoid jarring flip-flop jumping.
         assertTrue(
                 "The keyboard dismissal on vertical strip must not schedule a layout task",
                 ShadowLooper.getShadowMainLooper().isIdle());
+    }
+
+    @Test
+    @EnableFeatures(ChromeFeatureList.ANDROID_VERTICAL_TABS)
+    @Config(qualifiers = "sw600dp")
+    @Feature("Vertical Tabs Tab Group Context Menu")
+    public void testShowMenu_VerticalTabs_FocusesScrollViewInsteadOfListView() {
+        initializeCoordinatorForTesting(TabStripLayoutType.VERTICAL);
+        mTabGroupContextMenuCoordinator.setGroupDataForTesting(TAB_GROUP_ID);
+
+        mTabGroupContextMenuCoordinator.showMenu(new RectProvider(), TAB_GROUP_ID);
+
+        ViewGroup contentView =
+                (ViewGroup) mTabGroupContextMenuCoordinator.getContentViewForTesting();
+        assertNotNull(contentView);
+        assertTrue(contentView.isFocusable());
+        assertTrue(contentView.isFocusableInTouchMode());
+        assertEquals(ViewGroup.FOCUS_BEFORE_DESCENDANTS, contentView.getDescendantFocusability());
+        assertTrue(
+                "ScrollView container itself should hold initial focus in vertical tabs",
+                contentView.isFocused());
+        assertFalse(
+                "Title EditText should not be auto-focused on menu open",
+                contentView.findViewById(R.id.tab_group_title).isFocused());
+        assertFalse(
+                "Action menu ListView should not be focused on menu open to prevent auto-scrolling",
+                contentView.findViewById(R.id.tab_group_action_menu_list).isFocused());
+    }
+
+    @Test
+    @Config(qualifiers = "sw600dp")
+    @Feature("Tab Strip Group Context Menu")
+    public void testShowMenu_HorizontalStrip_FocusesListView() {
+        mTabGroupContextMenuCoordinator.showMenu(new RectProvider(), TAB_GROUP_ID);
+
+        ViewGroup contentView =
+                (ViewGroup) mTabGroupContextMenuCoordinator.getContentViewForTesting();
+        assertNotNull(contentView);
+        assertFalse(contentView.isFocusableInTouchMode());
+        assertTrue(contentView.findViewById(R.id.tab_group_action_menu_list).isFocused());
     }
 
     @Test
@@ -798,7 +838,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                 ShadowLooper.getShadowMainLooper().isIdle());
 
         // Simulate the keyboard surfacing (isShowing = true).
-        listener.keyboardVisibilityChanged(true);
+        listener.keyboardObscuringChanged(true);
 
         // Check if a layout task was successfully scheduled on the looper.
         assertFalse(
@@ -814,7 +854,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                 mTabGroupContextMenuCoordinator.isMenuShowing());
 
         // Simulate the keyboard dismissing (isShowing = false) while menu remains open.
-        listener.keyboardVisibilityChanged(false);
+        listener.keyboardObscuringChanged(false);
 
         // For horizontal tabs, dismissing the keyboard must schedule a layout task to restore
         // menu height.

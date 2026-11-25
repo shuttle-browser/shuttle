@@ -18,12 +18,16 @@ import static org.chromium.chrome.browser.tasks.tab_management.TabProperties.TAB
 import static org.chromium.chrome.browser.tasks.tab_management.TabSwitcherMessageManager.MessageType.ARCHIVED_TABS_MESSAGE;
 
 import androidx.annotation.IntDef;
+import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.Token;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tasks.tab_management.data_provider.TabGroupItem;
+import org.chromium.chrome.browser.tasks.tab_management.data_provider.TabItem;
+import org.chromium.chrome.browser.tasks.tab_management.data_provider.TabListItem;
 import org.chromium.ui.modelutil.MVCListAdapter;
 import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
 import org.chromium.ui.modelutil.PropertyListModel;
@@ -33,6 +37,7 @@ import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
 import java.lang.annotation.Target;
+import java.util.List;
 
 /** A {@link PropertyListModel} implementation to keep information about a list of {@link Tab}s. */
 @NullMarked
@@ -116,22 +121,6 @@ public class TabListModel extends ModelList {
             if (model.get(CARD_TYPE) == TAB && model.get(TAB_ID) == tabId) return i;
         }
         return TabModel.INVALID_TAB_INDEX;
-    }
-
-    /**
-     * Lookup a {@link PropertyModel} for the tab by its ID.
-     *
-     * @param tabId The tab ID to search for.
-     * @return The property model in the model list or null.
-     */
-    public @Nullable PropertyModel getModelFromTabId(int tabId) {
-        for (int i = 0; i < size(); i++) {
-            PropertyModel model = get(i).model;
-            // This intentionally skips TAB_GROUP cards because this method is meant
-            // to find the model of a specific tab, not a group header.
-            if (model.get(CARD_TYPE) == TAB && model.get(TAB_ID) == tabId) return model;
-        }
-        return null;
     }
 
     /** Returns the property model of the first tab card or null if one does not exist. */
@@ -245,6 +234,93 @@ public class TabListModel extends ModelList {
         return lastTabIndex + 1;
     }
 
+    // TabListDataProvider item lookup methods.
+
+    /**
+     * Returns the index of the first TAB or TAB_GROUP card in the {@link TabListModel}, i.e. where
+     * the tab region begins after any leading non-tab items (e.g. message cards).
+     *
+     * @return The index of the first tab or tab group card, or {@link #size()} if there are none.
+     */
+    public int tabRegionStart() {
+        for (int i = 0; i < size(); i++) {
+            if (TabProperties.isTabOrTabGroup(get(i).model)) return i;
+        }
+        return size();
+    }
+
+    /**
+     * Returns whether the given card model represents the given {@link TabListItem}.
+     *
+     * @param model The card model to check.
+     * @param item The data provider item to compare against.
+     */
+    @VisibleForTesting
+    static boolean matchesItem(PropertyModel model, TabListItem item) {
+        if (item instanceof TabItem tabItem) {
+            return TabProperties.isTabOrTabGroup(model)
+                    && !TabProperties.isTabGroupHeader(model)
+                    && TabProperties.getTabId(model) == tabItem.getTabId();
+        } else if (item instanceof TabGroupItem groupItem) {
+            return TabProperties.isTabGroupHeader(model)
+                    && groupItem.getTabGroupId().equals(model.get(TAB_GROUP_HEADER_ID));
+        }
+        assert false : "Unsupported TabListItem: " + item;
+        return false;
+    }
+
+    /**
+     * Returns whether the tab and tab group cards match {@code items} one-to-one, in order,
+     * ignoring non-tab cards such as message cards.
+     */
+    public boolean matchesItems(List<? extends TabListItem> items) {
+        int itemsIndex = 0;
+        for (int i = 0; i < size(); i++) {
+            PropertyModel model = get(i).model;
+            if (!TabProperties.isTabOrTabGroup(model)) continue;
+            if (itemsIndex >= items.size() || !matchesItem(model, items.get(itemsIndex))) {
+                return false;
+            }
+            itemsIndex++;
+        }
+        return itemsIndex == items.size();
+    }
+
+    /**
+     * Returns the {@link TabListModel} index of the card representing the given item.
+     *
+     * @param item The data provider item to find.
+     * @return The index of the card, or {@link TabModel#INVALID_TAB_INDEX} if there is none. Items
+     *     with a null tab or an empty group never got a card, so this is not asserted.
+     */
+    public int indexFromItem(TabListItem item) {
+        for (int i = 0; i < size(); i++) {
+            if (matchesItem(get(i).model, item)) {
+                return i;
+            }
+        }
+        return TabModel.INVALID_TAB_INDEX;
+    }
+
+    /**
+     * Resolves the {@link TabListModel} index at which items should be inserted after, or {@link
+     * #tabRegionStart()} when {@code after} is null.
+     *
+     * @param after The item immediately preceding the insertion, or null to insert at the start of
+     *     the tab region.
+     * @return The insertion index in {@link TabListModel}, or {@link TabModel#INVALID_TAB_INDEX} if
+     *     {@code after} is non-null and not found in the model.
+     */
+    public int resolveInsertionIndex(@Nullable TabListItem after) {
+        if (after == null) return tabRegionStart();
+        int index = indexFromItem(after);
+        assert index != TabModel.INVALID_TAB_INDEX
+                : "Anchor item not found in TabListModel: " + after;
+        return index == TabModel.INVALID_TAB_INDEX ? index : index + 1;
+    }
+
+    // End TabListDataProvider item lookup methods.
+
     /**
      * Returns the tab group ID of the tab group card at the given index, or null if the index is
      * out of bounds or the card is not a tab group header.
@@ -282,19 +358,6 @@ public class TabListModel extends ModelList {
      */
     public int getTabIndexBefore(int index) {
         for (int i = index - 1; i >= 0; i--) {
-            if (TabProperties.isTabOrTabGroup(get(i).model)) return i;
-        }
-        return TabModel.INVALID_TAB_INDEX;
-    }
-
-    /**
-     * Get the index of the first tab after the given index in TabListModel.
-     *
-     * @param index The given index in TabListModel.
-     * @return The index of the tab after the given index in TabListModel.
-     */
-    public int getTabIndexAfter(int index) {
-        for (int i = index + 1; i < size(); i++) {
             if (TabProperties.isTabOrTabGroup(get(i).model)) return i;
         }
         return TabModel.INVALID_TAB_INDEX;

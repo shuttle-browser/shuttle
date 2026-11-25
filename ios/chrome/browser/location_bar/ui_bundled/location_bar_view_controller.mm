@@ -516,9 +516,9 @@ const CGFloat kGeminiLiveCircleSize = 20.0;
   self.locationBarSteadyView.trailingButton.alpha = alphaValue;
   self.locationBarSteadyView.badgesContainerView.placeholderView.alpha =
       alphaValue;
-  if (IsProactiveSuggestionsFrameworkEnabled() &&
-      (!self.incognito || IsChromeNextIaEnabled())) {
-    self.locationBarSteadyView.badgesContainerView.alpha = alphaValue;
+  if (IsProactiveSuggestionsFrameworkEnabled()) {
+    [self.locationBarSteadyView.badgesContainerView
+        updateForFullscreenAlpha:alphaValue];
   }
   BOOL badgeViewShouldCollapse = progress <= kFullscreenProgressThreshold;
   [self.locationBarSteadyView
@@ -616,8 +616,6 @@ const CGFloat kGeminiLiveCircleSize = 20.0;
 }
 
 - (BOOL)canShowLargeContextualPanelEntrypoint {
-  // TODO(crbug.com/445786272): Add actual checks when implementing badge view
-  // loud moment blocking (check might need to be in the actual view).
   return !self.locationBarSteadyView.hidden;
 }
 

@@ -4,13 +4,13 @@
 
 #import "ios/chrome/browser/passwords/bottom_sheet/ui/remote_actor_credential_bottom_sheet_view_controller.h"
 
-#import <string_view>
-
 #import "base/apple/foundation_util.h"
+#import "base/check.h"
 #import "base/check_op.h"
 #import "base/strings/string_number_conversions.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/autofill/ios/browser/form_suggestion.h"
+#import "components/password_manager/core/browser/remote_actor/remote_actor_config.h"
 #import "components/strings/grit/components_strings.h"
 #import "ios/chrome/browser/intelligence/bwg/ui/gemini_ui_utils.h"
 #import "ios/chrome/browser/passwords/bottom_sheet/ui/remote_actor_credential_bottom_sheet_mutator.h"
@@ -28,14 +28,11 @@
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "net/base/apple/url_conversions.h"
+#import "ui/base/l10n/l10n_util.h"
 #import "ui/base/l10n/l10n_util_mac.h"
 #import "url/gurl.h"
 
 namespace {
-
-// Help URL explaining how Gemini handles the user's data.
-constexpr std::string_view kGeminiLearnMoreURL =
-    "https://support.google.com/gemini?p=lm_gpm_data";
 
 // Link delimiters expected by `ParseStringWithLinks()`.
 constexpr char16_t kBeginLinkTag[] = u"BEGIN_LINK";
@@ -44,9 +41,11 @@ constexpr char16_t kEndLinkTag[] = u"END_LINK";
 // Point size of the icons displayed in the header badges.
 constexpr CGFloat kHeaderIconPointSize = 30.0;
 
+// Side length of the header badges.
+constexpr CGFloat kHeaderBadgeSize = 60.0;
+
 // Creates a rounded square badge view containing `image`.
 UIView* CreateIconBadgeView(UIImage* image) {
-  static constexpr CGFloat kHeaderBadgeSize = 60.0;
   static constexpr CGFloat kHeaderBadgeCornerRadius = 15.0;
   static constexpr CGFloat kHeaderBadgeShadowRadius = 6.0;
   static constexpr CGFloat kHeaderBadgeShadowOffsetY = 2.0;
@@ -80,8 +79,15 @@ UIView* CreateIconBadgeView(UIImage* image) {
 // Creates the header illustration above the title showing the Gemini badge and
 // the Google Password Manager key badge.
 UIView* CreateAboveTitleView() {
-  static constexpr CGFloat kHeaderBadgeContainerWidth = 105.0;
-  static constexpr CGFloat kHeaderBadgeContainerHeight = 95.0;
+  // Offset of the password manager badge from the Gemini badge on both axes,
+  // making it overlap the Gemini badge's bottom trailing corner.
+  static constexpr CGFloat kHeaderBadgeOffset = 40.0;
+  // Extra space between the badges and the title.
+  static constexpr CGFloat kHeaderBottomPadding = 12.0;
+  static constexpr CGFloat kHeaderBadgeContainerWidth =
+      kHeaderBadgeSize + kHeaderBadgeOffset;
+  static constexpr CGFloat kHeaderBadgeContainerHeight =
+      kHeaderBadgeSize + kHeaderBadgeOffset + kHeaderBottomPadding;
 
   UIView* container_view = [[UIView alloc] init];
   container_view.translatesAutoresizingMaskIntoConstraints = NO;
@@ -101,8 +107,11 @@ UIView* CreateAboveTitleView() {
                                                 kHeaderBadgeContainerHeight));
   AddSameConstraintsToSides(gemini_badge, container_view,
                             LayoutSides::kTop | LayoutSides::kLeading);
-  AddSameConstraintsToSides(password_manager_badge, container_view,
-                            LayoutSides::kBottom | LayoutSides::kTrailing);
+  AddSameConstraintsToSidesWithInsets(
+      password_manager_badge, gemini_badge,
+      LayoutSides::kTop | LayoutSides::kLeading,
+      NSDirectionalEdgeInsetsMake(kHeaderBadgeOffset, kHeaderBadgeOffset, 0,
+                                  0));
 
   return container_view;
 }
@@ -120,6 +129,11 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
   // Disabled until there are suggestions to share.
   configuration.primaryActionEnabled = NO;
   return configuration;
+}
+
+// Returns the display name of the remote actor.
+std::u16string GetActorName() {
+  return l10n_util::GetStringUTF16(IDS_REMOTE_ACTOR_GEMINI_NAME);
 }
 
 }  // namespace
@@ -145,12 +159,23 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
 
   // URL opened when the link in the subtitle is tapped.
   GURL _learnMoreURL;
+
+  // Domain requesting the credentials.
+  NSString* _domain;
+
+  // Whether the sheet shows that there are no saved passwords for `_domain`.
+  BOOL _noPasswordsFound;
+
+  // Subtitle text view, kept to update the subtitle after the view has loaded.
+  __weak UITextView* _subtitleTextView;
 }
 
 - (instancetype)init {
   self = [super initWithConfiguration:SetUpButtonConfiguration()];
   if (self) {
-    _learnMoreURL = GURL(kGeminiLearnMoreURL);
+    _learnMoreURL = password_manager::GetRemoteActorConfig(
+                        password_manager::RemoteActorType::kGemini)
+                        .learn_more_url;
     self.actionHandler = self;
   }
   return self;
@@ -159,6 +184,11 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
 #pragma mark - ConfirmationAlertActionHandler
 
 - (void)confirmationAlertPrimaryAction {
+  // There is nothing to share, so going back to the remote actor ends the flow.
+  if (_noPasswordsFound) {
+    [self.mutator didCancel];
+    return;
+  }
   [self.mutator didSelectCredentialAtIndex:[self selectedRow]];
 }
 
@@ -183,13 +213,25 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
   self.titleTextStyle = UIFontTextStyleLargeTitle;
   self.subtitleTextStyle = UIFontTextStyleSubheadline;
 
-  StringWithTags subtitle = ParseStringWithLinks(
-      l10n_util::GetNSStringF(IDS_REMOTE_ACTOR_SHARING_DIALOG_SUBTITLE,
-                              kBeginLinkTag, kEndLinkTag, u"Gemini"));
-  self.subtitleString = subtitle.string;
-  _subtitleLinkRange = subtitle.ranges[0];
+  if (_noPasswordsFound) {
+    // Set the subtitle string if the empty state was triggered before load.
+    self.subtitleString = l10n_util::GetNSStringF(
+        IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_SUBTITLE, GetActorName());
+  } else {
+    StringWithTags subtitle = ParseStringWithLinks(
+        l10n_util::GetNSStringF(IDS_REMOTE_ACTOR_SHARING_DIALOG_SUBTITLE,
+                                kBeginLinkTag, kEndLinkTag, GetActorName()));
+    self.subtitleString = subtitle.string;
+    _subtitleLinkRange = subtitle.ranges[0];
+  }
 
   [super viewDidLoad];
+
+  // Styles the no saved passwords subtitle the same way as when the empty
+  // state is shown after the view loaded.
+  if (_noPasswordsFound) {
+    [self replaceLoadedSubtitleText];
+  }
 
   [self adjustTransactionsButtonHorizontalConstraints];
 }
@@ -197,9 +239,8 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
 #pragma mark - RemoteActorCredentialBottomSheetConsumer
 
 - (void)setDomain:(NSString*)domain {
-  self.titleString =
-      l10n_util::GetNSStringF(IDS_REMOTE_ACTOR_SHARING_DIALOG_TITLE, u"Gemini",
-                              base::SysNSStringToUTF16(domain));
+  _domain = [domain copy];
+  [self updateTitle];
 }
 
 - (void)setSuggestions:(NSArray<FormSuggestion*>*)suggestions {
@@ -210,7 +251,7 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
   }
 
   // The suggestions may arrive after the view has loaded.
-  if (self.isViewLoaded) {
+  if (self.viewLoaded) {
     [self reloadTableViewData];
   }
 }
@@ -229,9 +270,49 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
   }
 }
 
+- (void)showConfirmationState {
+  CHECK(!_noPasswordsFound);
+  self.configuration.primaryButtonStyle = ChromeButtonStylePrimary;
+  [self setConfirmed:YES];
+  [self reloadConfiguration];
+
+  // The checkmark replaces the button title, so VoiceOver needs a label.
+  NSString* sharedLabel =
+      l10n_util::GetNSString(IDS_IOS_PASSWORD_SHARING_SUCCESS_TITLE);
+  self.primaryActionButton.accessibilityLabel = sharedLabel;
+  UIAccessibilityPostNotification(UIAccessibilityAnnouncementNotification,
+                                  sharedLabel);
+}
+
+- (void)showNoSavedPasswords {
+  _noPasswordsFound = YES;
+  [self updateTitle];
+
+  self.subtitleString = l10n_util::GetNSStringF(
+      IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_SUBTITLE, GetActorName());
+  [self replaceLoadedSubtitleText];
+
+  ButtonStackConfiguration* configuration = self.configuration;
+  configuration.primaryButtonStyle = ChromeButtonStylePrimary;
+  configuration.primaryActionString = l10n_util::GetNSStringF(
+      IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_BACK_BUTTON, GetActorName());
+  configuration.primaryActionEnabled = YES;
+  configuration.secondaryActionString = nil;
+  [self reloadConfiguration];
+
+  // VoiceOver would otherwise keep reading the previous content.
+  if (self.viewLoaded) {
+    UIAccessibilityPostNotification(UIAccessibilityScreenChangedNotification,
+                                    self.titleLabel);
+  }
+}
+
 #pragma mark - ButtonStackConsumer
 
 - (void)setLoading:(BOOL)loading {
+  // Nothing can be shared without saved passwords, so there is no loading
+  // state.
+  CHECK(!_noPasswordsFound);
   self.configuration.primaryButtonStyle =
       loading ? ChromeButtonStylePrimary : ChromeButtonStyleTertiary;
   [super setLoading:loading];
@@ -247,7 +328,8 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
 - (void)reloadConfiguration {
   [super reloadConfiguration];
   // Keep the cancel button enabled while the selected credential is shared.
-  self.secondaryActionButton.enabled = YES;
+  // Once shared, there is nothing left to cancel.
+  self.secondaryActionButton.enabled = !self.configuration.confirmed;
 }
 
 #pragma mark - UITableViewDataSource
@@ -297,6 +379,15 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
 
 - (void)customizeSubtitle:(UITextView*)subtitle {
   [super customizeSubtitle:subtitle];
+  _subtitleTextView = subtitle;
+  // Removes the default top inset to keep the subtitle close to the title.
+  UIEdgeInsets insets = subtitle.textContainerInset;
+  insets.top = 0;
+  subtitle.textContainerInset = insets;
+  // The no saved passwords subtitle has no link.
+  if (_noPasswordsFound) {
+    return;
+  }
   subtitle.delegate = self;
   subtitle.selectable = YES;
   NSMutableAttributedString* newSubtitle = [[NSMutableAttributedString alloc]
@@ -328,6 +419,42 @@ ButtonStackConfiguration* SetUpButtonConfiguration() {
 }
 
 #pragma mark - Private
+
+// Sets the title for `_domain` matching the current state, updating the title
+// label if the view has already loaded.
+- (void)updateTitle {
+  std::u16string domain = base::SysNSStringToUTF16(_domain);
+  self.titleString =
+      _noPasswordsFound
+          ? l10n_util::GetNSStringF(
+                IDS_IOS_REMOTE_ACTOR_NO_PASSWORD_DIALOG_TITLE, domain)
+          : l10n_util::GetNSStringF(IDS_REMOTE_ACTOR_SHARING_DIALOG_TITLE,
+                                    GetActorName(), domain);
+  self.titleLabel.text = self.titleString;
+}
+
+// Replaces the loaded subtitle with `subtitleString`. The text is rebuilt with
+// explicit attributes so none of the link styling carries over.
+- (void)replaceLoadedSubtitleText {
+  if (!_subtitleTextView) {
+    return;
+  }
+  NSMutableParagraphStyle* paragraphStyle =
+      [[NSMutableParagraphStyle alloc] init];
+  paragraphStyle.alignment = _subtitleTextView.textAlignment;
+  NSDictionary* attributes = @{
+    NSFontAttributeName : _subtitleTextView.font
+        ?: [UIFont preferredFontForTextStyle:self.subtitleTextStyle],
+    NSForegroundColorAttributeName : _subtitleTextView.textColor
+        ?: [UIColor colorNamed:kTextSecondaryColor],
+    NSParagraphStyleAttributeName : paragraphStyle,
+  };
+  _subtitleTextView.attributedText =
+      [[NSAttributedString alloc] initWithString:self.subtitleString
+                                      attributes:attributes];
+  _subtitleTextView.selectable = NO;
+  _subtitleTextView.delegate = nil;
+}
 
 // Opens `_learnMoreURL` in a new tab, closing the presented views first.
 - (void)openLearnMoreURL {

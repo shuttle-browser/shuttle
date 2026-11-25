@@ -4,6 +4,8 @@
 
 #include "components/discardable_memory/client/client_discardable_shared_memory_manager.h"
 
+#include <limits>
+
 #include "base/memory/discardable_memory.h"
 #include "base/memory/discardable_shared_memory.h"
 #include "base/memory/page_size.h"
@@ -84,16 +86,10 @@ class ClientDiscardableSharedMemoryManagerTest : public testing::Test {
       : task_env_(base::test::TaskEnvironment::MainThreadType::UI,
                   base::test::TaskEnvironment::TimeSource::MOCK_TIME) {}
 
-  void NotifyUpdateMemoryLimitAndRun(base::MemoryLimit memory_limit) {
+  void NotifyUpdateMemoryLimitAndReleaseAndRun(base::MemoryLimit memory_limit) {
     base::RunLoop run_loop;
-    test_registry_.NotifyUpdateMemoryLimitAsync(memory_limit,
-                                                run_loop.QuitClosure());
-    run_loop.Run();
-  }
-
-  void NotifyReleaseMemoryAndRun() {
-    base::RunLoop run_loop;
-    test_registry_.NotifyReleaseMemoryAsync(run_loop.QuitClosure());
+    test_registry_.NotifyUpdateMemoryLimitAndReleaseAsync(
+        memory_limit, run_loop.QuitClosure());
     run_loop.Run();
   }
 
@@ -485,14 +481,28 @@ TEST_F(ClientDiscardableSharedMemoryManagerTest, OnReleaseMemory) {
   EXPECT_GT(expected_freelist_size, 0u);
 
   // At moderate pressure, memory should NOT be released.
-  NotifyUpdateMemoryLimitAndRun(base::MemoryLimit::ModeratePressureThreshold());
-  NotifyReleaseMemoryAndRun();
+  NotifyUpdateMemoryLimitAndReleaseAndRun(
+      base::MemoryLimit::ModeratePressureThreshold());
   EXPECT_EQ(client->GetFreelistSize(), expected_freelist_size);
 
   // At critical pressure, memory SHOULD be released.
-  NotifyUpdateMemoryLimitAndRun(base::MemoryLimit::CriticalPressureThreshold());
-  NotifyReleaseMemoryAndRun();
+  NotifyUpdateMemoryLimitAndReleaseAndRun(
+      base::MemoryLimit::CriticalPressureThreshold());
   EXPECT_EQ(client->GetFreelistSize(), 0u);
+}
+
+// Verifies that sizes near SIZE_MAX do not wrap around when rounded up to a
+// page multiple, which would result in an undersized allocation.
+TEST_F(ClientDiscardableSharedMemoryManagerTest, HugeAllocationFails) {
+  auto client =
+      base::MakeRefCounted<TestClientDiscardableSharedMemoryManager>();
+
+  constexpr size_t kMax = std::numeric_limits<size_t>::max();
+  for (size_t size : {kMax, kMax - page_size_ + 2}) {
+    auto mem = client->AllocateLockedDiscardableMemory(size);
+    EXPECT_FALSE(mem);
+    EXPECT_EQ(client->GetBytesAllocated(), 0u);
+  }
 }
 
 }  // namespace

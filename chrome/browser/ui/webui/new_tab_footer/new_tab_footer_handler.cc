@@ -16,6 +16,7 @@
 #include "chrome/browser/new_tab_page/feature_promo_helper/new_tab_page_feature_promo_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search/background/ntp_custom_background_service_factory.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/browser/themes/theme_service.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
@@ -23,7 +24,6 @@
 #include "chrome/browser/ui/webui/new_tab_footer/footer_context_menu.h"
 #include "chrome/browser/ui/webui/new_tab_footer/new_tab_footer.mojom.h"
 #include "chrome/browser/ui/webui/new_tab_footer/new_tab_footer_helper.h"
-#include "chrome/browser/ui/webui/new_tab_page/new_tab_page_ui.h"
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
 #include "chrome/browser/ui/webui/util/webui_util_desktop.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
@@ -39,9 +39,9 @@
 #include "net/base/url_util.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/image/image_skia_rep_default.h"
 #include "ui/gfx/paint_vector_icon.h"
@@ -183,7 +183,8 @@ void NewTabFooterHandler::OpenUrlInCurrentTabInternal(const GURL& url) {
 
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          url, WindowOpenDisposition::kCurrentTab, ui::PAGE_TRANSITION_LINK);
+          url, ui::mojom::WindowOpenDisposition::kCurrentTab,
+          ui::PAGE_TRANSITION_LINK);
   web_contents_->OpenURL(params, /*navigation_handle_callback=*/{});
 }
 
@@ -242,7 +243,7 @@ void NewTabFooterHandler::AttachedTabStateUpdated(const GURL& url) {
   last_source_url_ = url;
   new_tab_footer::mojom::NewTabPageType ntp_type =
       new_tab_footer::mojom::NewTabPageType::kOther;
-  if (NewTabPageUI::IsNewTabPageOrigin(url)) {
+  if (search::IsNewTabPageOrigin(url)) {
     ntp_type = new_tab_footer::mojom::NewTabPageType::kFirstPartyWebUI;
   } else if (ntp_footer::IsExtensionNtp(url, profile_)) {
     ntp_type = new_tab_footer::mojom::NewTabPageType::kExtension;

@@ -79,7 +79,7 @@ void ToolbarUIService::OnToolbarStateChanged(const mojom::ToolbarState& state) {
   }
 }
 
-void ToolbarUIService::Bind(BindCallback callback) {
+void ToolbarUIService::GetInitialState(GetInitialStateCallback callback) {
   auto result = toolbar_ui_api::mojom::InitialState::New();
   result->state = state_fetcher_->GetToolbarState();
   result->icons = icon_table_fetcher_->GetFullState();
@@ -304,9 +304,9 @@ void ToolbarUIService::OnLhsChipDrag(
   }
 }
 
-void ToolbarUIService::OnHomeButtonDropUrl(const GURL& url) {
+void ToolbarUIService::OnHomeButtonDropUrl() {
   if (delegate_) {
-    delegate_->OnHomeButtonDropUrl(url);
+    delegate_->OnHomeButtonDropUrl();
   }
 }
 
@@ -319,6 +319,18 @@ void ToolbarUIService::OnHomeButtonDropFile(const gfx::PointF& drop_position) {
 void ToolbarUIService::OnHomeButtonDropText(const std::string& text) {
   if (delegate_) {
     delegate_->OnHomeButtonDropText(text);
+  }
+}
+
+void ToolbarUIService::OnToolbarDropUrl() {
+  if (delegate_) {
+    delegate_->OnToolbarDropUrl();
+  }
+}
+
+void ToolbarUIService::OnToolbarDropText(const std::string& text) {
+  if (delegate_) {
+    delegate_->OnToolbarDropText(text);
   }
 }
 
@@ -385,17 +397,18 @@ void ToolbarUIService::OnAppMenuFocusChanged(bool focused) {
   }
 }
 
-void ToolbarUIService::ExecuteExtensionAction(const std::string& extension_id) {
+void ToolbarUIService::ExecuteExtensionAction(
+    extensions_bar::mojom::ExtensionActionIdPtr id) {
   if (delegate_) {
-    delegate_->ExecuteExtensionAction(extension_id);
+    delegate_->ExecuteExtensionAction(std::move(id));
   }
 }
 
 void ToolbarUIService::ShowExtensionContextMenu(
-    const std::string& extension_id,
+    extensions_bar::mojom::ExtensionActionIdPtr id,
     ui::mojom::MenuSourceType source) {
   if (delegate_) {
-    delegate_->ShowExtensionContextMenu(extension_id, source);
+    delegate_->ShowExtensionContextMenu(std::move(id), source);
   }
 }
 
@@ -428,6 +441,12 @@ void ToolbarUIService::OnMediaButtonClicked() {
 void ToolbarUIService::OnGlicButtonClicked() {
   if (delegate_) {
     delegate_->OnGlicButtonClicked();
+  }
+}
+
+void ToolbarUIService::OnGlicActorTaskIconClicked() {
+  if (delegate_) {
+    delegate_->OnGlicActorTaskIconClicked();
   }
 }
 }  // namespace toolbar_ui_api

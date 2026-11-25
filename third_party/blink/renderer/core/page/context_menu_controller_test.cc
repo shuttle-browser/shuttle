@@ -1311,6 +1311,7 @@ TEST_F(ContextMenuControllerTest,
   EXPECT_EQ("http://test.png/", context_menu_data.src_url.spec());
   EXPECT_EQ(mojom::blink::ContextMenuDataMediaType::kImage,
             context_menu_data.media_type);
+  EXPECT_EQ(gfx::Rect(0, 0, 100, 100), context_menu_data.node_bounds);
 
   histograms.ExpectBucketCount(
       "Blink.ContextMenu.ImageSelection.Outcome",
@@ -1329,6 +1330,43 @@ TEST_F(ContextMenuControllerTest,
       "Blink.ContextMenu.ImageSelection.Outcome",
       ContextMenuController::ImageSelectionOutcome::kBlockedByCrossFrameNode,
       0);
+}
+
+TEST_F(ContextMenuControllerTest, ContextMenuImageHitTestClippedImageBounds) {
+  RegisterMockedImageURLLoad("http://test.png");
+  ContextMenuAllowedScope context_menu_allowed_scope;
+
+  GetDocument()->documentElement()->SetInnerHTMLWithoutTrustedTypes(R"HTML(
+    <body>
+      <style>
+        #clip {
+          top: 10px;
+          left: 20px;
+          position: absolute;
+          width: 40px;
+          height: 30px;
+          overflow: hidden;
+        }
+        #target {
+          width: 100px;
+          height: 100px;
+        }
+      </style>
+      <div id="clip">
+        <img id="target" src="http://test.png">
+      </div>
+    </body>
+  )HTML");
+
+  PhysicalOffset location(LayoutUnit(25), LayoutUnit(15));
+  EXPECT_TRUE(
+      ShowContextMenu(location, ui::mojom::blink::MenuSourceType::kLongPress));
+
+  ContextMenuData context_menu_data = GetWebFrameClient().GetContextMenuData();
+  EXPECT_EQ("http://test.png/", context_menu_data.src_url.spec());
+  EXPECT_EQ(mojom::blink::ContextMenuDataMediaType::kImage,
+            context_menu_data.media_type);
+  EXPECT_EQ(gfx::Rect(20, 10, 40, 30), context_menu_data.node_bounds);
 }
 
 // Test that image selection can penetrate through a fully transparent div
@@ -1373,6 +1411,7 @@ TEST_F(ContextMenuControllerTest, ContextMenuImageHitTestSucceededPenetrating) {
   EXPECT_EQ("http://test.png/", context_menu_data.src_url.spec());
   EXPECT_EQ(mojom::blink::ContextMenuDataMediaType::kImage,
             context_menu_data.media_type);
+  EXPECT_EQ(gfx::Rect(0, 0, 100, 100), context_menu_data.node_bounds);
 
   histograms.ExpectBucketCount(
       "Blink.ContextMenu.ImageSelection.Outcome",
@@ -2607,7 +2646,38 @@ TEST_F(InterestForTouchscreenTest, LinkWithInterestFor) {
   // Simulate choosing the "Show details" context menu item
   document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
   EXPECT_EQ(link->GetInterestState(), Element::InterestState::kNoInterest);
-  link->ShowInterestNow();
+  document->GetFrame()->ShowInterestInElement(
+      context_menu_data.interest_for_node_id);
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  EXPECT_EQ(link->GetInterestState(),
+            Element::InterestState::kExplicitInterest);
+}
+
+TEST_F(InterestForTouchscreenTest, ShowInterestInElementWrongDocument) {
+  GetDocument()->documentElement()->SetInnerHTMLWithoutTrustedTypes(R"(
+    <a href="foo.html" interestfor=target id=link>Link</a>
+    <div id=target popover>Target</div>
+    <iframe id=iframe></iframe>
+    )");
+  Document* document = GetDocument();
+  Element* link = document->getElementById(AtomicString("link"));
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  ASSERT_TRUE(link);
+  EXPECT_EQ(link->GetInterestState(), Element::InterestState::kNoInterest);
+
+  LocalFrame* main_frame = document->GetFrame();
+  ASSERT_TRUE(main_frame);
+  LocalFrame* child_frame = To<LocalFrame>(main_frame->Tree().FirstChild());
+  ASSERT_TRUE(child_frame);
+
+  // Calling ShowInterestInElement on a different frame than the element's
+  // document should be a no-op.
+  child_frame->ShowInterestInElement(link->GetDomNodeId());
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+  EXPECT_EQ(link->GetInterestState(), Element::InterestState::kNoInterest);
+
+  // Calling ShowInterestInElement on the element's own frame succeeds.
+  main_frame->ShowInterestInElement(link->GetDomNodeId());
   document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
   EXPECT_EQ(link->GetInterestState(),
             Element::InterestState::kExplicitInterest);
@@ -2680,6 +2750,59 @@ TEST_F(ContextMenuControllerTest, ImageReplacement) {
   EXPECT_TRUE(context_menu_data.image_replacement_frame_token.has_value());
   EXPECT_EQ(context_menu_data.image_replacement_frame_token,
             image_element->ReplacementFrameToken());
+}
+
+TEST_F(ContextMenuControllerTest, NodeBoundsForLinkAndEditableElements) {
+  frame_test_helpers::LoadHTMLString(
+      LocalMainFrame(), R"HTML(
+        <style>
+          body { margin: 0; }
+          #link {
+            position: fixed;
+            left: 10px;
+            top: 20px;
+            width: 80px;
+            height: 40px;
+            display: block;
+          }
+          #svg-child {
+            width: 80px;
+            height: 40px;
+          }
+          #input {
+            position: fixed;
+            left: 15px;
+            top: 70px;
+            width: 120px;
+            height: 30px;
+            box-sizing: border-box;
+          }
+        </style>
+        <a id="link" href="https://example.com">
+          <svg id="svg-child"><rect width="80" height="40"/></svg>
+        </a>
+        <input id="input" type="text" value="hello">
+      )HTML",
+      url_test_helpers::ToKURL("https://example.com/"));
+
+  Document* document = GetDocument();
+  document->UpdateStyleAndLayout(DocumentUpdateReason::kTest);
+
+  Element* svg_child = document->getElementById(AtomicString("svg-child"));
+  ASSERT_TRUE(svg_child);
+  ASSERT_TRUE(ShowContextMenuForElement(
+      svg_child, ui::mojom::blink::MenuSourceType::kMouse));
+  ContextMenuData link_data = GetWebFrameClient().GetContextMenuData();
+  EXPECT_EQ(link_data.link_url, GURL("https://example.com/"));
+  EXPECT_EQ(link_data.node_bounds, gfx::Rect(10, 20, 80, 40));
+
+  Element* input = document->getElementById(AtomicString("input"));
+  ASSERT_TRUE(input);
+  ASSERT_TRUE(ShowContextMenuForElement(
+      input, ui::mojom::blink::MenuSourceType::kMouse));
+  ContextMenuData input_data = GetWebFrameClient().GetContextMenuData();
+  EXPECT_TRUE(input_data.is_editable);
+  EXPECT_EQ(input_data.node_bounds, gfx::Rect(15, 70, 120, 30));
 }
 
 }  // namespace blink

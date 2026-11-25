@@ -10,7 +10,6 @@ import androidx.test.filters.MediumTest;
 import androidx.test.runner.lifecycle.Stage;
 
 import org.hamcrest.Matchers;
-import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -20,13 +19,11 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.ApplicationTestUtils;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.lifecycle.DestroyObserver;
 import org.chromium.chrome.browser.lifecycle.RecreateObserver;
@@ -44,7 +41,6 @@ import java.util.concurrent.TimeoutException;
 
 /** Test tablet / phone layout change. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @DoNotBatch(reason = "This class tests activity restart behavior and thus cannot be batched.")
 public class TabletPhoneLayoutChangeTest {
     private static final long TIMEOUT_MS = 10000;
@@ -57,13 +53,6 @@ public class TabletPhoneLayoutChangeTest {
     public void setUp() {
         mActivityTestRule.startOnBlankPage();
         mActivityTestRule.waitForActivityCompletelyLoaded();
-    }
-
-    @After
-    public void tearDown() {
-        // TODO(crbug.com/483420501): Fix AssertionError: LayoutType is 2, expected BROWSING type on
-        // activity start.
-        mActivityTestRule.skipWindowAndTabStateCleanup();
     }
 
     @Test

@@ -258,11 +258,16 @@ class AndroidAutofillProvider : public AutofillProvider,
   // TODO(crbug.com/40284788): Remove once a fix is landed on the renderer side.
   void SetBottomSheetShownOff();
 
+  // Clears the completion callback on the `WebAuthnCredManDelegate` of
+  // `credman_sheet_rfh_id_` and resets `credman_sheet_rfh_id_`.
+  void ClearCredManCompletionCallback();
+
   // Stops the keyboard suppression. Called when the CredMan UI was closed. If
   // the UI was dismissed without selecting a passkey, `success` will be false.
   // If a `field_to_focus` is given and CredMan wasn't able to sign the
   // user in, attempt to continue an earlier attempt to focus a field.
   void OnCredManUiClosed(
+      content::GlobalRenderFrameHostId rfh_id,
       FormGlobalId form_id,
       std::optional<AndroidAutofillProviderBridge::FieldInfo> field_to_focus,
       webauthn::WebAuthnCredManDelegate::State has_passkeys,
@@ -279,10 +284,11 @@ class AndroidAutofillProvider : public AutofillProvider,
   bool ShouldShowCredManForField(const FormFieldData& field,
                                  content::RenderFrameHost* rfh);
 
-  // Triggers a prefetched passkey request which opens a bottom sheet. The given
-  // `field_to_focus` is used to continue any interrupted focus event once
-  // CredMan closes. Returns true if the sheet was opened and false if that
-  // wasn't possible.
+  // Triggers a prefetched passkey request which opens a bottom sheet. If
+  // `field_to_focus` is given, it is used to continue an interrupted focus
+  // event once CredMan closes. Must not be called while `credman_sheet_status_`
+  // is `kIsShowing`. Returns true if the sheet was triggered and false if the
+  // delegate is unavailable or not ready.
   bool ShowCredManSheet(
       content::RenderFrameHost* rfh,
       FormGlobalId form_id,
@@ -291,7 +297,7 @@ class AndroidAutofillProvider : public AutofillProvider,
   enum class CredManBottomSheetLifecycle {
     kNotShown,   // The sheet hasn't been shown. Does not indicate it will be.
     kIsShowing,  // The sheet was triggered. Does not guarantee it's visible.
-    kClosed,     // The sheet was dismissed and shouldn't be shown again.
+    kClosed,     // The sheet was dismissed and shouldn't be auto-shown again.
   };
 
   // Groups all state that is specific to the current autofill session.
@@ -341,7 +347,8 @@ class AndroidAutofillProvider : public AutofillProvider,
       CredManBottomSheetLifecycle::kNotShown;
 
   // The RenderFrameHost ID of the frame that is currently showing the CredMan
-  // sheet. Used to reset the delegate callback on the correct frame.
+  // sheet. Used to reset the delegate callback on the correct frame and to
+  // ignore completion callbacks from frames that no longer own the sheet.
   content::GlobalRenderFrameHostId credman_sheet_rfh_id_;
 
   // This is used by the keyboard suppressor. We update it with the result of

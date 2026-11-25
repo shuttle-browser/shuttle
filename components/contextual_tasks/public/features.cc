@@ -15,6 +15,7 @@
 #include "base/rand_util.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
+#include "build/build_config.h"
 #include "build/buildflag.h"
 #include "ui/base/device_form_factor.h"
 
@@ -81,10 +82,9 @@ BASE_FEATURE(kEnableContextualTasksPinButtonOnSrp,
 BASE_FEATURE(kContextualTasksPinningV2, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Routes the unpinned Contextual Tasks ephemeral toolbar button through
-// PinnedToolbarActions::ShowActionEphemerallyInToolbar in Pinning V2 instead of
-// the separate ContextualTasksButton view.
+// PinnedToolbarActions::ShowActionEphemerallyInToolbar in Pinning V2.
 BASE_FEATURE(kContextualTasksEphemeralPinButtonRefactor,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Shows an active indicator (blue icon and underline pill) on the permanent
 // pinned contextual tasks toolbar button when the active tab has an ongoing
@@ -302,9 +302,6 @@ BASE_FEATURE(kEnableNotifyZeroStateRenderedCapability,
 BASE_FEATURE(kContextualTasksSendFullVersionListEnabled,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-BASE_FEATURE(kContextualTasksSendContextualInputUploadType,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 BASE_FEATURE(kContextualTasksUrlRedirectToAimUrl,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -328,6 +325,9 @@ BASE_FEATURE(kContextualTasksHideMenuOnAiPage,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kContextualTasksUnboundedMenu, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kContextualTasksAccountMenuGoogleComSignOutLabel,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kContextualTasksSingleTabMenuItem,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -357,10 +357,6 @@ BASE_FEATURE(kContextualTasksCloseTabExpandsSidePanel,
 // Enables the use of APC comparison for webpages in the recontextualization
 // flow.
 BASE_FEATURE(kContextualTasksWebpageApcComparison,
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Enables overriding side panel to show Bottom Sheet on demand.
-BASE_FEATURE(kContextualTasksOverrideShowBottomSheetOnLargeScreen,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables prefetching of cookies for contextual tasks.
@@ -397,6 +393,11 @@ const base::FeatureParam<bool> kABASearchJourneysAllowIntermediateTabs(
     "aba_search_journeys_allow_intermediate_tabs",
     false);
 
+const base::FeatureParam<size_t> kABASearchJourneysMinWordsWithoutHint(
+    &kABASearchJourneys,
+    "aba_search_journeys_min_words_without_hint",
+    0);
+
 bool IsABASearchJourneysEnabled() {
   return base::FeatureList::IsEnabled(kABASearchJourneys);
 }
@@ -425,6 +426,13 @@ size_t GetABASearchJourneysMinQueryMatchLength() {
 bool ShouldAllowABASearchJourneysIntermediateTabs() {
   return IsABASearchJourneysEnabled() &&
          kABASearchJourneysAllowIntermediateTabs.Get();
+}
+
+size_t GetABASearchJourneysMinWordsWithoutHint() {
+  if (!IsABASearchJourneysEnabled()) {
+    return 0;
+  }
+  return kABASearchJourneysMinWordsWithoutHint.Get();
 }
 
 BASE_FEATURE(kContextualTasksEnableSpatialModelToolbarLayout,
@@ -717,13 +725,6 @@ const base::FeatureParam<double> kContextualTasksContextLoggingSampleRate{
 const base::FeatureParam<int> kMinQueryWords{
     &kContextualTasksContext, "ContextualTasksContextMinQueryWords", 3};
 
-const base::FeatureParam<bool> kSendContextualInputUploadTypeInSearchUrl{
-    &kContextualTasksSendContextualInputUploadType, "send_in_search_url", true};
-
-const base::FeatureParam<bool> kSendContextualInputUploadTypeInAimRequest{
-    &kContextualTasksSendContextualInputUploadType, "send_in_aim_request",
-    true};
-
 // Enables tab auto-chip for contextual tasks.
 const base::FeatureParam<bool> kContextualTasksTabAutoSuggestionChipEnabled(
     &kContextualTasks,
@@ -988,6 +989,17 @@ bool IsContextualTasksEphemeralPinButtonRefactorEnabled() {
              kContextualTasksEphemeralPinButtonRefactor);
 }
 
+bool IsEphemeralPinningVisibleWhenPermanentlyPinnedEnabled() {
+  return base::FeatureList::IsEnabled(
+             kEphemeralPinningVisibleWhenPermanentlyPinned) &&
+         !IsContextualTasksEphemeralPinButtonRefactorEnabled();
+}
+
+bool IsContextualTasksEphemeralEntryPointEnabled() {
+  return kShowEntryPoint.Get() == EntryPointOption::kToolbarEphemeralBranded ||
+         IsContextualTasksEphemeralPinButtonRefactorEnabled();
+}
+
 bool IsContextualTasksPinnedButtonActiveIndicatorEnabled() {
   return base::FeatureList::IsEnabled(
       kContextualTasksPinnedButtonActiveIndicator);
@@ -1091,7 +1103,10 @@ bool GetIsContextualTasksNextboxContextMenuEnabled() {
 
 const base::FeatureParam<std::string> kContextualTasksNextboxImageFileTypes{
     &kContextualTasksContextMenu, "ContextualTasksNextboxImageFileTypes",
-    "image/jpeg,image/png"};
+    // The `.heic` and `.heif` extensions are listed explicitly because the
+    // file picker cannot map the HEIC/HEIF MIME types to extensions on all
+    // platforms (e.g. Windows without the HEIF extension installed).
+    "image/jpeg,image/png,image/heic,image/heif,.heic,.heif"};
 
 const base::FeatureParam<std::string>
     kContextualTasksNextboxAttachmentFileTypes{
@@ -1255,7 +1270,20 @@ bool IsContextualTasksSingleTabMenuItemEnabled() {
   return base::FeatureList::IsEnabled(kContextualTasksSingleTabMenuItem);
 }
 
+bool IsContextualTasksFormFactorSupported() {
+#if BUILDFLAG(IS_ANDROID)
+  // Supported on desktop Android only; not supported on phones and tablets.
+  return ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_DESKTOP;
+#else
+  // Supported on all desktop platforms (Windows, Mac, Linux, ChromeOS).
+  return true;
+#endif
+}
+
 bool IsContextualTasksUIEnabled() {
+  if (!IsContextualTasksFormFactorSupported()) {
+    return false;
+  }
   return base::FeatureList::IsEnabled(kContextualTasksSidePanel) ||
          base::FeatureList::IsEnabled(kContextualTasks) ||
          base::FeatureList::IsEnabled(kContextualTasksRearchitecture) ||
@@ -1317,12 +1345,6 @@ const char kContextualTasksCloseTabExpandsSidePanelName[] =
     "Contextual Tasks Close Tab Expands Side Panel";
 const char kContextualTasksCloseTabExpandsSidePanelDescription[] =
     "Enables expanding the contextual tasks side panel on close tab actions.";
-
-const char kContextualTasksOverrideShowBottomSheetOnLargeScreenName[] =
-    "Override Show Bottom Sheet On Large Screen for Contextual Tasks";
-const char kContextualTasksOverrideShowBottomSheetOnLargeScreenDescription[] =
-    "Enables overriding side panel to show Bottom Sheet on large screens for "
-    "contextual tasks.";
 
 const char kContextualTasksCookiePrefetchName[] =
     "Contextual Tasks Cookie Prefetch";

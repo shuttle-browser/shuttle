@@ -3,12 +3,10 @@
 // found in the LICENSE file.
 
 #import "base/functional/bind.h"
-#import "base/ios/ios_util.h"
 #import "base/strings/stringprintf.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/feature_engagement/public/feature_constants.h"
 #import "ios/chrome/browser/bubble/ui_bundled/bubble_constants.h"
-#import "ios/chrome/browser/popup_menu/public/popup_menu_constants.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
@@ -26,7 +24,6 @@
 #import "url/gurl.h"
 
 namespace {
-const char kPDFPath[] = "/testpage.pdf";
 
 // Handles responses for the test server.
 std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
@@ -177,11 +174,6 @@ std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
 // Tests that the menu is opened and closed correctly, whatever the current
 // device type is.
 - (void)testOpenAndCloseToolsMenu {
-  // TODO(crbug.com/40817696): This test only fails on ipad bots with
-  // multitasking enabled (e.g. compact width).
-  if ([ChromeEarlGrey isIPadIdiom] && [ChromeEarlGrey isCompactWidth]) {
-    EARL_GREY_TEST_DISABLED(@"Disabled for iPad multitasking.");
-  }
   [ChromeEarlGreyUI openToolsMenu];
 
   // If using the new overflow menu, swipe up to expand the menu to the full
@@ -211,30 +203,6 @@ std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
   [ChromeEarlGrey waitForForegroundWindowCount:2];
 }
 
-// Navigates to a pdf page and verifies that the "Find in Page..." tool
-// is not enabled
-- (void)testNoSearchForPDF {
-  // Disabled for iOS 16.1.1+ since Native Find in Page supports PDFs.
-  if (base::ios::IsRunningOnOrLater(16, 1, 1)) {
-    return;
-  }
-  const GURL URL = self.testServer->GetURL(kPDFPath);
-
-  // Navigate to a mock pdf and verify that the find button is disabled.
-  [ChromeEarlGrey loadURL:URL];
-  [ChromeEarlGreyUI openToolsMenu];
-  id<GREYMatcher> tableViewMatcher =
-      grey_accessibilityID(kPopupMenuToolsMenuActionListId);
-  [[[EarlGrey
-      selectElementWithMatcher:grey_allOf(
-                                   grey_accessibilityID(kToolsMenuFindInPageId),
-                                   grey_sufficientlyVisible(), nil)]
-         usingSearchAction:grey_scrollInDirection(kGREYDirectionDown, 200)
-      onElementWithMatcher:tableViewMatcher]
-      assertWithMatcher:grey_accessibilityTrait(
-                            UIAccessibilityTraitNotEnabled)];
-}
-
 // Open tools menu and verify elements are accessible.
 - (void)testAccessibilityOnToolsMenu {
   [ChromeEarlGreyUI openToolsMenu];
@@ -245,12 +213,7 @@ std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
 
 // Tests that both the 2 steps of the history on overflow menu IPH is displayed,
 // when the user opens the menu while the 1st step is displayed.
-// TODO(crbug.com/570598001): Flaky on ios-simulator-noncq.
-- (void)DISABLED_testOverflowMenuIPHForHistoryShow2StepsWhenUserOpensMenu {
-  // The IPH appears immediately on startup, so don't open a new tab when the
-  // app starts up.
-  [[self class] testForStartup];
-
+- (void)testOverflowMenuIPHForHistoryShow2StepsWhenUserOpensMenu {
   // Scope for the synchronization disabled.
   {
     ScopedSynchronizationDisabler syncDisabler;
@@ -275,12 +238,7 @@ std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
 
 // Tests that both the 2 steps of the history on overflow menu IPH is displayed,
 // when the user lets the first step times out.
-// TODO(crbug.com/570598001): Flaky on ios-simulator-noncq.
-- (void)DISABLED_testOverflowMenuIPHForHistoryShow2StepsWhen1stStepTimeout {
-  // The IPH appears immediately on startup, so don't open a new tab when the
-  // app starts up.
-  [[self class] testForStartup];
-
+- (void)testOverflowMenuIPHForHistoryShow2StepsWhen1stStepTimeout {
   // Scope for the synchronization disabled.
   {
     ScopedSynchronizationDisabler syncDisabler;
@@ -315,12 +273,7 @@ std::unique_ptr<net::test_server::HttpResponse> HandleRequest(
 
 // Tests that the 2nd step of history on overflow menu IPH is not displayed, if
 // the 1st step IPH is dismissed by the user by tapping outside.
-// TODO(crbug.com/570598001): Flaky on ios-simulator-noncq.
-- (void)DISABLED_testOverflowMenuIPHForHistoryNotShow2ndStep {
-  // The IPH appears immediately on startup, so don't open a new tab when the
-  // app starts up.
-  [[self class] testForStartup];
-
+- (void)testOverflowMenuIPHForHistoryNotShow2ndStep {
   // Scope for the synchronization disabled.
   {
     ScopedSynchronizationDisabler syncDisabler;

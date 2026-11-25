@@ -43,6 +43,17 @@ enum class ProfilePickerAction {
 
 void RecordProfilePickerAction(ProfilePickerAction action);
 
+// Sub-enum of `ProfileOrderUpdateType`. This enum is not directly recorded in
+// metrics; its values are mapped to `ProfileOrderUpdateType` before recording.
+//
+// LINT.IfChange(ProfilePickerOrderUpdateType)
+enum class ProfilePickerOrderUpdateType {
+  kDragAndDrop = 0,
+  kContextMenuButton = 1,
+  kMaxValue = kContextMenuButton,
+};
+// LINT.ThenChange(//chrome/browser/resources/signin/profile_picker/manage_profiles_browser_proxy.ts:ProfilePickerOrderUpdateType)
+
 // The handler for Javascript messages related to the profile picker main view.
 class ProfilePickerHandler : public content::WebUIMessageHandler,
                              public content::WebContentsObserver,
@@ -159,6 +170,7 @@ class ProfilePickerHandler : public content::WebUIMessageHandler,
       const base::FilePath& profile_path) override;
   void OnProfileAiSubscriptionTierUpdated(const base::FilePath& profile_path,
                                           int tier) override;
+  void OnProfilesOrderChanged() override;
 
   // content::WebContentsObserver:
   void DidFirstVisuallyNonEmptyPaint() override;
@@ -167,6 +179,9 @@ class ProfilePickerHandler : public content::WebUIMessageHandler,
   // Sets 'profiles_order_' that is used to freeze the order of the profiles on
   // the picker when it was first shown.
   void SetProfilesOrder(const std::vector<ProfileAttributesEntry*>& entries);
+  // Returns whether `profiles_order_` contains unique and valid indices in
+  // `[0, profiles_order_.size())`.
+  bool IsProfilesOrderValid() const;
 
   // Checks the state of `entry` to determine how to handle the locked state.
   // Either shows an error dialog with the appropriate information, or attempts

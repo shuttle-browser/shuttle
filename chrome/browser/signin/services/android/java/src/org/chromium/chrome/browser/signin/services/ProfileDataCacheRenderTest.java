@@ -42,6 +42,8 @@ import org.chromium.base.test.params.ParameterizedRunner;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.Feature;
+import org.chromium.chrome.browser.subscription_eligibility.AiSubscriptionTierNames;
+import org.chromium.chrome.browser.subscription_eligibility.AiSubscriptionTierNamesJni;
 import org.chromium.chrome.browser.subscription_eligibility.SubscriptionEligibilityService;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
 import org.chromium.chrome.test.util.ChromeRenderTestRule;
@@ -110,6 +112,7 @@ public class ProfileDataCacheRenderTest {
     private ImageView mImageView;
     @Mock private ProfileDataCache.Observer mObserver;
     @Mock private SubscriptionEligibilityService mSubscriptionEligibilityServiceMock;
+    @Mock private AiSubscriptionTierNames.Natives mTierNamesJniMock;
     private ProfileDataCache mProfileDataCache;
 
     @BeforeClass
@@ -136,6 +139,7 @@ public class ProfileDataCacheRenderTest {
                                     mAccountManagerTestRule.getAccountManagerFacade(),
                                     mAccountManagerTestRule.getIdentityManager(),
                                     /* subscriptionEligibilityService= */ null,
+                                    /* syncService= */ null,
                                     mImageSize,
                                     /* ringThicknessPx= */ 0,
                                     /* aiTierRingEnabled= */ false,
@@ -179,6 +183,7 @@ public class ProfileDataCacheRenderTest {
                                     mAccountManagerTestRule.getAccountManagerFacade(),
                                     mAccountManagerTestRule.getIdentityManager(),
                                     /* subscriptionEligibilityService= */ null,
+                                    /* syncService= */ null,
                                     mImageSize,
                                     /* ringThicknessPx= */ 0,
                                     /* aiTierRingEnabled= */ false,
@@ -227,6 +232,8 @@ public class ProfileDataCacheRenderTest {
     @Feature("RenderTest")
     public void testAiTierRingIsScaled() throws IOException {
         when(mSubscriptionEligibilityServiceMock.getAiSubscriptionTier()).thenReturn(1);
+        AiSubscriptionTierNamesJni.setInstanceForTesting(mTierNamesJniMock);
+        when(mTierNamesJniMock.shouldShowDecoration(1)).thenReturn(true);
         mAccountManagerTestRule.getIdentityManager().setPrimaryAccount(TestAccounts.ACCOUNT1);
         mAccountManagerTestRule.addAccount(TestAccounts.ACCOUNT1);
 
@@ -252,6 +259,7 @@ public class ProfileDataCacheRenderTest {
                                     mAccountManagerTestRule.getAccountManagerFacade(),
                                     mAccountManagerTestRule.getIdentityManager(),
                                     mSubscriptionEligibilityServiceMock,
+                                    /* syncService= */ null,
                                     mImageSize,
                                     RING_THICKNESS,
                                     /* aiTierRingEnabled= */ true,

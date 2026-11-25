@@ -15,6 +15,7 @@
 #include "base/time/time.h"
 #include "components/browser_actuator/internal/transport/features.h"
 #include "components/browser_actuator/internal/transport/stream_connection_delegate.h"
+#include "net/base/is_potentially_trustworthy.h"
 #include "net/base/net_errors.h"
 #include "net/http/http_response_headers.h"
 #include "services/network/public/cpp/resource_request.h"
@@ -22,6 +23,18 @@
 #include "services/network/public/mojom/url_response_head.mojom.h"
 
 namespace browser_actuator::transport {
+namespace {
+
+// Upper bound on `consecutive_failed_attempts_` and the `std::pow(2.0, ...)`
+// exponent in `ScheduleReconnect()`, preventing signed integer overflow on
+// long-lived failure loops.
+constexpr int kMaxBackoffFailureCount = 31;
+
+int IncrementFailureCount(int current) {
+  return std::min(current + 1, kMaxBackoffFailureCount);
+}
+
+}  // namespace
 
 ProtoStreamClient::ProtoStreamClient(
     scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
@@ -45,10 +58,12 @@ ProtoStreamClient::~ProtoStreamClient() {
 void ProtoStreamClient::Connect() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(!calling_delegate_);
-  if (teardown_deferred_) {
-    // Disconnect() followed by Connect() from the same notification: a
-    // restart. The deferred teardown still runs at the notification
+  if (teardown_deferred_ || (notifying_observers_ && !connected_)) {
+    // `Disconnect()` followed by `Connect()` from the same notification, or
+    // `Connect()` from inside a disconnect state-change notification: a
+    // restart. The deferred teardown finishes at the notification
     // boundary; a fresh connection starts right after it.
+    teardown_deferred_ = true;
     connect_after_teardown_ = true;
     return;
   }
@@ -56,7 +71,6 @@ void ProtoStreamClient::Connect() {
     return;
   }
   consecutive_failed_attempts_ = 0;
-  status_received_ = false;
   StartRequest();
 }
 
@@ -96,6 +110,11 @@ void ProtoStreamClient::StartRequest() {
   CHECK(!loader_);
   CHECK(!connected_);
 
+  if (!endpoint_.is_valid() || !net::IsUrlPotentiallyTrustworthy(endpoint_)) {
+    TearDown();
+    return;
+  }
+
   auto request = std::make_unique<network::ResourceRequest>();
   request->url = endpoint_;
   request->method = "GET";
@@ -104,6 +123,7 @@ void ProtoStreamClient::StartRequest() {
   request->headers.SetHeader("Accept", "application/x-protobuf");
   request->headers.SetHeader("Cache-Control", "no-cache");
   request->credentials_mode = network::mojom::CredentialsMode::kOmit;
+  request->redirect_mode = network::mojom::RedirectMode::kError;
 
   // The delegate may prepare the request asynchronously (e.g. minting an
   // OAuth token); the weak pointer cancels the attempt if the client is
@@ -123,8 +143,14 @@ void ProtoStreamClient::OnRequestPrepared(
   if (!request) {
     // The delegate aborted the attempt (e.g. no token available). Treat it
     // like a failed connection: retry with backoff.
-    ++consecutive_failed_attempts_;
+    consecutive_failed_attempts_ =
+        IncrementFailureCount(consecutive_failed_attempts_);
     ScheduleReconnect();
+    return;
+  }
+  if (!request->url.is_valid() ||
+      !net::IsUrlPotentiallyTrustworthy(request->url)) {
+    TearDown();
     return;
   }
 
@@ -153,6 +179,10 @@ void ProtoStreamClient::OnResponseStarted(
     const network::mojom::URLResponseHead& response_head) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
+  if (!final_url.is_valid() || !net::IsUrlPotentiallyTrustworthy(final_url)) {
+    TearDown();
+    return;
+  }
   const int response_code =
       response_head.headers ? response_head.headers->response_code() : 0;
   if (response_code != 200 ||
@@ -161,7 +191,6 @@ void ProtoStreamClient::OnResponseStarted(
     return;
   }
 
-  consecutive_failed_attempts_ = 0;
   framer_ = framer_factory_.Run();
   {
     base::AutoReset<bool> calling(&calling_delegate_, true);
@@ -188,7 +217,8 @@ void ProtoStreamClient::HandleHttpRejection(int response_code) {
     stall_timer_.Stop();
     loader_.reset();
     framer_.reset();
-    ++consecutive_failed_attempts_;
+    consecutive_failed_attempts_ =
+        IncrementFailureCount(consecutive_failed_attempts_);
     ScheduleReconnect();
     return;
   }
@@ -209,6 +239,17 @@ void ProtoStreamClient::OnDataReceived(std::string_view chunk,
 
   // Hand the untrusted bytes to the framer; C++ never interprets them.
   StreamFramer::FeedResult result = framer_->Feed(chunk);
+
+  if (result.failed) {
+    // The framer rejected the stream: it is malformed or hostile. Fail
+    // permanently before dispatching any messages from the corrupted chunk.
+    TearDown();
+    return;
+  }
+
+  if (!result.messages.empty() || result.status.has_value()) {
+    consecutive_failed_attempts_ = 0;
+  }
 
   for (const std::string& message : result.messages) {
     {
@@ -231,9 +272,9 @@ void ProtoStreamClient::OnDataReceived(std::string_view chunk,
   }
 
   if (result.status.has_value()) {
-    // The RPC completed; the server will close the connection. Deliver the
-    // status and make sure the close does not trigger a reconnect.
-    status_received_ = true;
+    // The RPC completed; deliver the terminal status and tear down the
+    // stream immediately so trailing bytes on a half-open connection are
+    // ignored and no automatic reconnect is scheduled.
     {
       base::AutoReset<bool> notifying(&notifying_observers_, true);
       for (Observer& observer : observers_) {
@@ -243,11 +284,6 @@ void ProtoStreamClient::OnDataReceived(std::string_view chunk,
     if (RunDeferredTeardown()) {
       return;
     }
-  }
-
-  if (result.failed) {
-    // The framer rejected the stream: it is malformed or hostile. Fail
-    // permanently rather than keep talking to a broken server.
     TearDown();
     return;
   }
@@ -259,12 +295,6 @@ void ProtoStreamClient::OnComplete(bool success) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   stall_timer_.Stop();
-
-  if (status_received_) {
-    // Clean RPC completion; not something to retry automatically.
-    TearDown();
-    return;
-  }
 
   const bool had_stream = connected_;
   if (!had_stream) {
@@ -283,8 +313,9 @@ void ProtoStreamClient::OnComplete(bool success) {
       HandleHttpRejection(response_code);
       return;
     }
-    ++consecutive_failed_attempts_;
   }
+  consecutive_failed_attempts_ =
+      IncrementFailureCount(consecutive_failed_attempts_);
 
   loader_.reset();
   framer_.reset();
@@ -309,9 +340,14 @@ void ProtoStreamClient::OnStallTimeout() {
   // No bytes — not even noop keep-alives — for kStallTimeout. The
   // connection is likely half-open (e.g. a NAT timeout); it would never
   // report an error on its own, so tear it down and resume.
+  consecutive_failed_attempts_ =
+      IncrementFailureCount(consecutive_failed_attempts_);
   loader_.reset();
   framer_.reset();
   SetConnected(false);
+  if (RunDeferredTeardown()) {
+    return;
+  }
   ScheduleReconnect();
 }
 
@@ -319,10 +355,11 @@ void ProtoStreamClient::ScheduleReconnect() {
   // The first reconnect waits the base reconnection time, and each
   // further consecutive failure doubles the wait, up to the max.
   // TimeDelta math saturates, so the max param is the only cap needed.
-  const base::TimeDelta delay =
-      std::min(kProtoStreamBaseReconnectionTime.Get() *
-                   std::pow(2.0, std::max(consecutive_failed_attempts_ - 1, 0)),
-               kProtoStreamMaxReconnectionTime.Get());
+  const int backoff_exponent = std::clamp(consecutive_failed_attempts_ - 1, 0,
+                                          kMaxBackoffFailureCount - 1);
+  const base::TimeDelta delay = std::min(
+      kProtoStreamBaseReconnectionTime.Get() * std::pow(2.0, backoff_exponent),
+      kProtoStreamMaxReconnectionTime.Get());
   // base::Unretained is safe: `this` owns `reconnect_timer_`.
   reconnect_timer_.Start(
       FROM_HERE, delay,
@@ -338,11 +375,14 @@ void ProtoStreamClient::TearDown() {
   loader_.reset();
   framer_.reset();
   SetConnected(false);
-  // A Disconnect() arriving during the state-change notification above
+  // A `Disconnect()` arriving during the state-change notification above
   // has nothing further to tear down, and a full stop cancels any queued
-  // restart.
+  // restart. A `Connect()` arriving during that notification starts now
+  // that teardown is complete.
   teardown_deferred_ = false;
-  connect_after_teardown_ = false;
+  if (std::exchange(connect_after_teardown_, false)) {
+    Connect();
+  }
 }
 
 bool ProtoStreamClient::RunDeferredTeardown() {
@@ -350,13 +390,7 @@ bool ProtoStreamClient::RunDeferredTeardown() {
   if (!teardown_deferred_) {
     return false;
   }
-  const bool restart = connect_after_teardown_;
-  TearDown();  // Clears both deferral flags.
-  if (restart) {
-    // Connect() rather than StartRequest(): a restart gets the same
-    // fresh-start state a regular Connect() gets.
-    Connect();
-  }
+  TearDown();
   return true;
 }
 

@@ -724,6 +724,10 @@ const LayoutResult* TableLayoutAlgorithm::Layout() {
     return RelayoutAndBreakEarlier<TableLayoutAlgorithm>(
         *result->GetEarlyBreak());
   }
+  if (result->Status() == LayoutResult::kDisableFragmentation) {
+    DCHECK(GetConstraintSpace().HasBlockFragmentation());
+    return RelayoutWithoutFragmentation<TableLayoutAlgorithm>();
+  }
 
   return result;
 }
@@ -1199,6 +1203,17 @@ const LayoutResult* TableLayoutAlgorithm::GenerateFragment(
   // regenerate them (block fragmentation).
   for (auto entry = child_iterator.NextChild();
        BlockNode child = entry.GetNode(); entry = child_iterator.NextChild()) {
+    const BlockBreakToken* child_break_token = entry.GetBreakToken();
+    if (child.IsOutOfFlowPositioned()) {
+      DCHECK(child_break_token);
+      // Resumed OOFs are found by the iterator, but they are not direct table
+      // children. All we have to do now is making sure that it gets handled by
+      // OOF layout after regular in-flow layout, and carry on with our in-flow
+      // business.
+      container_builder_.AddOutOfFlowChildCandidate(
+          child, LogicalStaticPosition(), child_break_token);
+      continue;
+    }
     DCHECK(child.IsTableCaption() || child.IsTableSection());
 
     if (early_break_ &&
@@ -1213,7 +1228,6 @@ const LayoutResult* TableLayoutAlgorithm::GenerateFragment(
       break;
     }
 
-    const BlockBreakToken* child_break_token = entry.GetBreakToken();
     FragmentationLayoutInput fragmentation =
         GetFragmentationLayoutInputForChild(child, child_break_token);
     const LayoutResult* child_result;
@@ -1724,7 +1738,11 @@ const LayoutResult* TableLayoutAlgorithm::GenerateFragment(
                                    table_borders, table_grid_rect,
                                    column_block_size);
 
-  container_builder_.HandleOofsAndSpecialDescendants();
+  LayoutResult::EStatus oof_status =
+      container_builder_.HandleOofsAndSpecialDescendants();
+  if (oof_status != LayoutResult::kSuccess) {
+    return container_builder_.Abort(oof_status);
+  }
 
   if ((has_repeated_header ||
        container_builder_.ShouldCloneBoxEndDecorations()) &&

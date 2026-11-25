@@ -16,6 +16,7 @@
 #include "base/functional/callback.h"
 #include "base/json/json_reader.h"
 #include "base/json/json_string_value_serializer.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/sequence_bound.h"
@@ -23,6 +24,7 @@
 #include "base/timer/timer.h"
 #include "base/types/expected.h"
 #include "base/values.h"
+#include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/device_api/managed_configuration_store.h"
 #include "chrome/browser/net/system_network_context_manager.h"
@@ -37,6 +39,13 @@
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "url/origin.h"
+
+#if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/ash/components/network/network_handler.h"
+#include "chromeos/ash/components/network/network_state.h"
+#include "chromeos/ash/components/network/network_state_handler.h"
+#include "chromeos/ash/components/network/network_state_handler_observer.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace features {
 BASE_FEATURE(kManagedConfigurationRecoverFromFailedFetches,
@@ -108,7 +117,11 @@ class ManagedConfigurationDownloader {
  public:
   explicit ManagedConfigurationDownloader(const std::string& data_hash)
       : data_hash_(data_hash) {}
-  ~ManagedConfigurationDownloader() = default;
+  ~ManagedConfigurationDownloader() {
+    // Completions and intentional cancellations record their outcome first, so
+    // reaching here without one means the owner is being destroyed.
+    RecordOutcome(ManagedConfigurationAPI::DownloadOutcome::kAbortedOnShutdown);
+  }
   ManagedConfigurationDownloader(const ManagedConfigurationDownloader&) =
       delete;
   ManagedConfigurationDownloader& operator=(
@@ -138,15 +151,44 @@ class ManagedConfigurationDownloader {
     network::mojom::URLLoaderFactory* loader_factory =
         system_network_context_manager->GetURLLoaderFactory();
 
-    simple_loader_->DownloadToString(loader_factory, std::move(callback),
-                                     kMaxConfigurationFileSize);
+    simple_loader_->DownloadToString(
+        loader_factory,
+        base::BindOnce(&ManagedConfigurationDownloader::OnDownloadCompleted,
+                       weak_ptr_factory_.GetWeakPtr(), std::move(callback)),
+        kMaxConfigurationFileSize);
+  }
+
+  // Records `reason` as the outcome of the in-flight download. The caller is
+  // expected to destroy the downloader right after.
+  void Cancel(ManagedConfigurationAPI::DownloadOutcome reason) {
+    RecordOutcome(reason);
   }
 
   const std::string& hash() const { return data_hash_; }
 
  private:
+  void OnDownloadCompleted(
+      base::OnceCallback<void(std::optional<std::string>)> callback,
+      std::optional<std::string> data) {
+    RecordOutcome(data.has_value()
+                      ? ManagedConfigurationAPI::DownloadOutcome::kSucceeded
+                      : ManagedConfigurationAPI::DownloadOutcome::kFailed);
+    std::move(callback).Run(std::move(data));
+  }
+
+  void RecordOutcome(ManagedConfigurationAPI::DownloadOutcome outcome) {
+    if (outcome_recorded_ || !IsRecoveryEnabled()) {
+      return;
+    }
+    outcome_recorded_ = true;
+    base::UmaHistogramEnumeration(
+        ManagedConfigurationAPI::kDownloadOutcomeHistogram, outcome);
+  }
+
   std::unique_ptr<network::SimpleURLLoader> simple_loader_;
   const std::string data_hash_;
+  bool outcome_recorded_ = false;
+  base::WeakPtrFactory<ManagedConfigurationDownloader> weak_ptr_factory_{this};
 };
 
 }  // namespace
@@ -227,7 +269,7 @@ class ManagedConfigurationAPI::OriginConfiguration {
 
   void ClearConfiguration() {
     desired_.reset();
-    downloader_.reset();
+    CancelDownload(DownloadOutcome::kAbortedByPolicyUpdate);
     retry_timer_.Stop();
     retry_backoff_.Reset();
     ScopedDictPrefUpdate update(api_->profile_->GetPrefs(),
@@ -251,8 +293,12 @@ class ManagedConfigurationAPI::OriginConfiguration {
     if (!IsRecoveryEnabled()) {
       return;
     }
+    // Cancel any in-flight download (which may be stalled on a dead or
+    // pre-online socket) and stop any active backoff timer so `EnsureSynced()`
+    // retries immediately, while keeping `retry_backoff_` intact so exponential
+    // backoff continues growing if this retry also fails.
+    CancelDownload(DownloadOutcome::kAbortedOnNetworkChange);
     retry_timer_.Stop();
-    retry_backoff_.Reset();
     EnsureSynced();
   }
 
@@ -279,14 +325,23 @@ class ManagedConfigurationAPI::OriginConfiguration {
     return policy;
   }
 
-  void ScheduleRetry() {
+  void ScheduleRetry(RetryReason reason) {
     if (!IsRecoveryEnabled()) {
       return;
     }
+    base::UmaHistogramEnumeration(kRetryReasonHistogram, reason);
     retry_backoff_.InformOfRequest(false);
     retry_timer_.Start(FROM_HERE, retry_backoff_.GetTimeUntilRelease(),
                        base::BindOnce(&OriginConfiguration::EnsureSynced,
                                       weak_ptr_factory_.GetWeakPtr()));
+  }
+
+  // Cancels the in-flight download, if any, recording `reason` as its outcome.
+  void CancelDownload(DownloadOutcome reason) {
+    if (downloader_) {
+      downloader_->Cancel(reason);
+      downloader_.reset();
+    }
   }
 
   void EnsureStoreCreated() {
@@ -320,7 +375,7 @@ class ManagedConfigurationAPI::OriginConfiguration {
     // Nothing to be stored here, the hash value is the same.
     if (last_hash_value && *last_hash_value == desired_->hash) {
       if (IsRecoveryEnabled()) {
-        downloader_.reset();
+        CancelDownload(DownloadOutcome::kAbortedByPolicyUpdate);
         retry_timer_.Stop();
         retry_backoff_.Reset();
       }
@@ -339,7 +394,7 @@ class ManagedConfigurationAPI::OriginConfiguration {
         return;
       }
       // Cancel it otherwise.
-      downloader_.reset();
+      CancelDownload(DownloadOutcome::kAbortedByPolicyUpdate);
     }
 
     // A queued write will commit exactly the desired hash (or schedule a retry
@@ -366,7 +421,7 @@ class ManagedConfigurationAPI::OriginConfiguration {
                   std::optional<std::string> data) {
     downloader_.reset();
     if (!data) {
-      ScheduleRetry();
+      ScheduleRetry(RetryReason::kDownloadFailed);
       return;
     }
 
@@ -377,7 +432,7 @@ class ManagedConfigurationAPI::OriginConfiguration {
               << origin_.Serialize();
       PostStoreConfiguration(/*hash_to_commit=*/std::nullopt,
                              base::DictValue());
-      ScheduleRetry();
+      ScheduleRetry(RetryReason::kInvalidJson);
       return;
     }
     retry_timer_.Stop();
@@ -452,7 +507,7 @@ class ManagedConfigurationAPI::OriginConfiguration {
                                   hash_to_commit == desired_->hash;
     if (!changed.has_value()) {
       if (is_desired_write) {
-        ScheduleRetry();
+        ScheduleRetry(RetryReason::kStoreWriteFailed);
       }
       return;
     }
@@ -461,6 +516,8 @@ class ManagedConfigurationAPI::OriginConfiguration {
           api_->profile_->GetPrefs(),
           prefs::kLastManagedConfigurationHashForOrigin);
       update->Set(GetOriginEncoded(origin_), *hash_to_commit);
+      base::UmaHistogramCounts1000(kRetryCountUntilSuccessHistogram,
+                                   retry_backoff_.failure_count());
       // Only a durably committed configuration counts as success; resetting
       // earlier would keep the backoff from growing while writes keep failing.
       retry_backoff_.Reset();
@@ -488,6 +545,61 @@ class ManagedConfigurationAPI::OriginConfiguration {
   base::WeakPtrFactory<OriginConfiguration> weak_ptr_factory_{this};
 };
 
+#if BUILDFLAG(IS_CHROMEOS)
+// On ChromeOS, `NetworkConnectionTracker` fires once when Shill enters a
+// connected state (often before DHCP or captive portal checks finish) and does
+// not fire again when the network reaches `online`. Observe
+// `ash::NetworkStateHandler` directly instead.
+class ManagedConfigurationAPI::NetworkStateObserver
+    : public ash::NetworkStateHandlerObserver {
+ public:
+  explicit NetworkStateObserver(ManagedConfigurationAPI* api) : api_(api) {
+    if (!ash::NetworkHandler::IsInitialized()) {
+      return;
+    }
+    ash::NetworkStateHandler* handler =
+        ash::NetworkHandler::Get()->network_state_handler();
+    if (const ash::NetworkState* default_network = handler->DefaultNetwork();
+        default_network && default_network->IsConnectedState()) {
+      default_service_path_ = default_network->path();
+      was_online_ = default_network->IsOnline();
+    }
+    observation_.Observe(handler);
+  }
+
+  NetworkStateObserver(const NetworkStateObserver&) = delete;
+  NetworkStateObserver& operator=(const NetworkStateObserver&) = delete;
+  ~NetworkStateObserver() override = default;
+
+  // ash::NetworkStateHandlerObserver:
+  void DefaultNetworkChanged(
+      const ash::NetworkState* default_network) override {
+    if (!default_network || !default_network->IsConnectedState()) {
+      default_service_path_.clear();
+      was_online_ = false;
+      return;
+    }
+    const bool network_changed =
+        default_network->path() != default_service_path_;
+    const bool became_online = !was_online_ && default_network->IsOnline();
+    default_service_path_ = default_network->path();
+    was_online_ = default_network->IsOnline();
+
+    if (network_changed || became_online) {
+      api_->OnNetworkAvailable();
+    }
+  }
+
+  void OnShuttingDown() override { observation_.Reset(); }
+
+ private:
+  const raw_ptr<ManagedConfigurationAPI> api_;
+  std::string default_service_path_;
+  bool was_online_ = false;
+  ash::NetworkStateHandlerScopedObservation observation_{this};
+};
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 ManagedConfigurationAPI::ManagedConfigurationAPI(Profile* profile)
     : profile_(profile),
       stores_path_(
@@ -500,8 +612,17 @@ ManagedConfigurationAPI::ManagedConfigurationAPI(Profile* profile)
           &ManagedConfigurationAPI::OnConfigurationPolicyChanged,
           weak_ptr_factory_.GetWeakPtr()));
   if (IsRecoveryEnabled()) {
-    if (auto* tracker = content::GetNetworkConnectionTracker()) {
-      network_connection_observation_.Observe(tracker);
+    bool observing_ash_network_state = false;
+#if BUILDFLAG(IS_CHROMEOS)
+    if (ash::NetworkHandler::IsInitialized()) {
+      network_state_observer_ = std::make_unique<NetworkStateObserver>(this);
+      observing_ash_network_state = true;
+    }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+    if (!observing_ash_network_state) {
+      if (auto* tracker = content::GetNetworkConnectionTracker()) {
+        network_connection_observation_.Observe(tracker);
+      }
     }
   }
   OnConfigurationPolicyChanged();
@@ -613,6 +734,13 @@ void ManagedConfigurationAPI::OnConnectionChanged(
       type == net::NetworkChangeNotifier::CONNECTION_NONE) {
     return;
   }
+  OnNetworkAvailable();
+}
+
+void ManagedConfigurationAPI::OnNetworkAvailable() {
+  if (!IsRecoveryEnabled()) {
+    return;
+  }
   for (const auto& origin : managed_origins_) {
     GetOrCreateOriginConfiguration(origin).OnNetworkConnected();
   }
@@ -669,15 +797,9 @@ void ManagedConfigurationAPI::OnConfigurationPolicyChanged() {
     // across browser sessions (and therefore are not in `origins_`).
     ScopedDictPrefUpdate update(profile_->GetPrefs(),
                                 prefs::kLastManagedConfigurationHashForOrigin);
-    std::vector<std::string> stale_keys;
-    for (auto [encoded_origin, _] : *update) {
-      if (!current_encoded_origins.contains(encoded_origin)) {
-        stale_keys.push_back(encoded_origin);
-      }
-    }
-    for (const std::string& key : stale_keys) {
-      update->Remove(key);
-    }
+    update->EraseIf([&](const auto& entry) {
+      return !current_encoded_origins.contains(entry.first);
+    });
   }
 
   managed_origins_.swap(current_origins);

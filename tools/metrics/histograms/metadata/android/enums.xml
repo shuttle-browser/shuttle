@@ -99,6 +99,60 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/ui/android/bottombar/java/src/org/chromium/chrome/browser/ui/bottombar/BottomBarMetrics.java:AndroidBottomBarCandidateAction) -->
 
+<!-- LINT.IfChange(AndroidBottomBarDefaultPinState) -->
+
+<enum name="AndroidBottomBarDefaultPinState">
+  <int value="0" label="None">No saved default yet, or pinning off</int>
+  <int value="1" label="PendingOff">
+    Saved default off, waiting for the Feature Engagement check
+  </int>
+  <int value="2" label="PendingOn">
+    Saved default on, waiting for the Feature Engagement check
+  </int>
+  <int value="3" label="KeptOff">User saw onboarding with the bar off</int>
+  <int value="4" label="KeptOn">User saw onboarding with the bar on</int>
+  <int value="5" label="Released">
+    Never saw onboarding, follows default_user_enabled
+  </int>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/android/bottombar/java/src/org/chromium/chrome/browser/ui/bottombar/BottomBarConfigUtils.java:AndroidBottomBarDefaultPinState) -->
+
+<!-- LINT.IfChange(AndroidBottomBarDefaultPinTransition) -->
+
+<enum name="AndroidBottomBarDefaultPinTransition">
+  <int value="0" label="PinnedOff">
+    First start with pinning: the bar-off default was saved
+  </int>
+  <int value="1" label="PinnedOn">
+    First start with pinning: the bar-on default was saved
+  </int>
+  <int value="2" label="KeptOffOnEducation">
+    Onboarding showed with the bar off, so off is kept
+  </int>
+  <int value="3" label="KeptOnOnEducation">
+    Onboarding showed with the bar on, so on is kept
+  </int>
+  <int value="4" label="KeptOffOnBackfill">
+    Feature Engagement said onboarding was already seen, so the saved off
+    default is kept
+  </int>
+  <int value="5" label="KeptOnOnBackfill">
+    Feature Engagement said onboarding was already seen, so the saved on default
+    is kept
+  </int>
+  <int value="6" label="Released">
+    Never saw onboarding and education can show, so the saved default is dropped
+    and the user follows default_user_enabled
+  </int>
+  <int value="7" label="ReleasedAndHeld">
+    Released, but the new default differs, so the bar kept its state for this
+    run and changes on the next start
+  </int>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/ui/android/bottombar/java/src/org/chromium/chrome/browser/ui/bottombar/BottomBarConfigUtils.java:AndroidBottomBarDefaultPinTransition) -->
+
 <!-- LINT.IfChange(AndroidBottomBarEducationOnboardingEvent) -->
 
 <enum name="AndroidBottomBarEducationOnboardingEvent">
@@ -159,15 +213,14 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/ui/android/bottombar/java/src/org/chromium/chrome/browser/ui/bottombar/BottomBarMetrics.java:AndroidBottomBarIphEvent) -->
 
-<!-- LINT.IfChange(AndroidBottomBarPromoEvent) -->
+<!-- LINT.IfChange(AndroidBottomBarLongPressMenuEvent) -->
 
-<enum name="AndroidBottomBarPromoEvent">
+<enum name="AndroidBottomBarLongPressMenuEvent">
   <int value="0" label="Shown"/>
-  <int value="1" label="Accepted"/>
-  <int value="2" label="Dismissed"/>
+  <int value="1" label="CustomizeAppearanceClicked"/>
 </enum>
 
-<!-- LINT.ThenChange(//chrome/browser/ui/android/bottombar/java/src/org/chromium/chrome/browser/ui/bottombar/BottomBarMetrics.java:PromoEvent) -->
+<!-- LINT.ThenChange(//chrome/browser/ui/android/bottombar/java/src/org/chromium/chrome/browser/ui/bottombar/BottomBarMetrics.java:AndroidBottomBarLongPressMenuEvent) -->
 
 <enum name="AndroidChildProcessConnectionEvents">
   <int value="0" label="SCHEDULE_TIMEOUT_SANDBOXED"/>
@@ -240,12 +293,16 @@ chromium-metrics-reviews@google.com.
   <int value="16" label="NEW_DOWNLOAD_TAB_OPEN_BUTTON"/>
 </enum>
 
+<!-- LINT.IfChange(AndroidDownloadOpenTarget) -->
+
 <enum name="AndroidDownloadOpenTarget">
   <int value="0" label="CHROME_DEFAULT"/>
   <int value="1" label="CHROME_FALLBACK"/>
   <int value="2" label="OTHER_APP_DEFAULT"/>
   <int value="3" label="OS_CHOOSER"/>
 </enum>
+
+<!-- LINT.ThenChange(//chrome/android/java/src/org/chromium/chrome/browser/download/DownloadMetrics.java:DownloadOpenTarget) -->
 
 <!-- LINT.IfChange(AndroidDragTargetType) -->
 
@@ -531,6 +588,8 @@ chromium-metrics-reviews@google.com.
   <int value="3" label="Disable: App Menu"/>
   <int value="4" label="Disable: Tab Context Menu"/>
   <int value="5" label="Disable: Tab Strip Context Menu"/>
+  <int value="6" label="Enable: Settings"/>
+  <int value="7" label="Disable: Settings"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/ui/vertical_tabs/android/java/src/org/chromium/chrome/browser/ui/vertical_tabs/VerticalTabUtils.java:AndroidVerticalTabsLayoutToggleSourceAndDirection)-->
@@ -753,6 +812,26 @@ chromium-metrics-reviews@google.com.
   <int value="4" label="TIMEOUT"/>
   <int value="5" label="UNKNOWN_ERROR"/>
 </enum>
+
+<!-- LINT.IfChange(AndroidXWebApiCall) -->
+
+<enum name="AndroidXWebApiCall">
+  <int value="0" label="WebProviderFactory.buildWebContent"/>
+  <int value="1" label="WebContent.executeViewFactory"/>
+  <int value="2" label="WebContent.destroy"/>
+</enum>
+
+<!-- LINT.ThenChange(/android_webview/support_library/java/src/org/chromium/support_lib_glue/WebApiCallLogger.java:WebApiCall) -->
+
+<!-- LINT.IfChange(AndroidXWebComposeApiCall) -->
+
+<enum name="AndroidXWebComposeApiCall">
+  <int value="0" label="WebProviderFactory.createWebSurface"/>
+  <int value="1" label="WebSurface.setWebContent"/>
+  <int value="2" label="WebSurface.destroy"/>
+</enum>
+
+<!-- LINT.ThenChange(/android_webview/support_library/java/src/org/chromium/support_lib_glue/WebApiCallLogger.java:WebComposeApiCall) -->
 
 <enum name="AndroidXWebkitApiCall">
 <!-- LINT.IfChange(AndroidXWebkitApiCall) -->
@@ -1001,11 +1080,11 @@ chromium-metrics-reviews@google.com.
   <int value="204" label="Profile.setCrossOriginIsolatedAllowList"/>
   <int value="205" label="Profile.getCrossOriginIsolatedAllowList"/>
   <int value="206" label="Navigation.getResponseHeaders"/>
-  <int value="207" label="WebViewProviderFactory.buildWebContent"/>
+  <int value="207" label="(Obsolete) WebViewProviderFactory.buildWebContent"/>
   <int value="208" label="Navigation.getNavigationStartUptimeMillis"/>
   <int value="209" label="WebViewCompat.createSharedArrayBuffer"/>
   <int value="210" label="WebMessagePayload.getAsSharedArrayBuffer"/>
-  <int value="211" label="WebViewProviderFactory.createWebSurface"/>
+  <int value="211" label="(Obsolete) WebViewProviderFactory.createWebSurface"/>
   <int value="212" label="NavigationRedirectParameters.getResponseHeaders"/>
   <int value="213" label="NavigationRedirectParameters.getStatusCode"/>
   <int value="214" label="NavigationState.getUrl"/>
@@ -1570,6 +1649,7 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Download Canceled"/>
   <int value="7" label="Send Intent Failed"/>
   <int value="8" label="Start Exception"/>
+  <int value="9" label="Prompt Accepted"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/omaha/android/java/src/org/chromium/chrome/browser/omaha/inline/InAppUpdateController.java:InAppUpdateDownloadResult) -->
@@ -2108,6 +2188,7 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="SETTINGS_ACTIVITY"/>
   <int value="7" label="BOOKMARK_ACTIVITY"/>
   <int value="8" label="FUSEBOX_POPUP"/>
+  <int value="9" label="FIRST_RUN_ACTIVITY"/>
 </enum>
 
 <!-- LINT.ThenChange(//components/browser_ui/widget/android/java/src/org/chromium/components/browser_ui/widget/scrim/ScrimManager.java:ScrimClient) -->

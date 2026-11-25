@@ -552,6 +552,8 @@ if (is_win) {
 
     sources = [ "app/chrome_exe_main_mac.c" ]
 
+    configs -= [ "//build/config/sanitizers:alloc_token" ]
+
     deps = [
       "//base:compiler_specific",
       "//build:branding_buildflags",
@@ -1340,6 +1342,7 @@ if (is_win) {
     deps = [
       ":dependencies",
       "//build:chromeos_buildflags",
+      "//chrome/app:chrome_crash_user_streams",
       "//chrome/app:command_ids",
       "//chrome/browser:chrome_browser_application_mac",
       "//chrome/browser:chrome_content_browser_client",
@@ -1409,7 +1412,6 @@ if (is_win) {
       ":widevine_cdm_library",
       "//chrome/browser/resources/media/mei_preload:component_bundle",
       "//chrome/browser/web_applications/isolated_web_apps/key_distribution/preload:component_bundle",
-      "//components/privacy_sandbox/privacy_sandbox_attestations/preload:component_bundle",
     ]
 
     if (is_chrome_branded) {
@@ -2136,6 +2138,9 @@ if (enable_separate_renderer_binary) {
 
       defines = [ "BUILDING_CHROME_RENDERER" ]
       deps = _chrome_renderer_deps + [ "//chrome/child" ]
+      if (is_mac) {
+        deps += [ "//chrome/app:chrome_crash_user_streams" ]
+      }
       if (is_win) {
         deps += [
           ":chrome_renderer_dll_version",
@@ -2158,6 +2163,7 @@ if (enable_separate_renderer_binary) {
                 ]
       defines = [ "BUILDING_CHROME_RENDERER" ]
       deps = _chrome_renderer_deps + [
+               "//chrome/app:chrome_crash_user_streams",
                "//chrome/child",
                "//sandbox/linux:sandbox_services",
              ]

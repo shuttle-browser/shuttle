@@ -32,6 +32,13 @@ void TestMemoryConsumerRegistry::OnMemoryConsumerAdded(
   CHECK(!memory_consumers_.HasObserver(consumer));
   memory_consumers_.AddObserver(consumer);
   size_++;
+
+  // The consumer's callbacks are suppressed during registration, so this only
+  // initializes its `memory_limit()`.
+  if (current_memory_limit_ != MemoryLimit::Default()) {
+    MemoryConsumerRegistry::NotifyUpdateMemoryLimit(consumer,
+                                                    current_memory_limit_);
+  }
 }
 
 void TestMemoryConsumerRegistry::OnMemoryConsumerRemoved(
@@ -44,6 +51,7 @@ void TestMemoryConsumerRegistry::OnMemoryConsumerRemoved(
 
 void TestMemoryConsumerRegistry::NotifyUpdateMemoryLimit(
     MemoryLimit memory_limit) {
+  current_memory_limit_ = memory_limit;
   for (MemoryConsumer& consumer : memory_consumers_) {
     MemoryConsumerRegistry::NotifyUpdateMemoryLimit(&consumer, memory_limit);
   }
@@ -53,6 +61,12 @@ void TestMemoryConsumerRegistry::NotifyReleaseMemory() {
   for (MemoryConsumer& consumer : memory_consumers_) {
     MemoryConsumerRegistry::NotifyReleaseMemory(&consumer);
   }
+}
+
+void TestMemoryConsumerRegistry::NotifyUpdateMemoryLimitAndRelease(
+    MemoryLimit memory_limit) {
+  NotifyUpdateMemoryLimit(memory_limit);
+  NotifyReleaseMemory();
 }
 
 void TestMemoryConsumerRegistry::NotifyUpdateMemoryLimitAsync(
@@ -71,6 +85,16 @@ void TestMemoryConsumerRegistry::NotifyReleaseMemoryAsync(
       FROM_HERE,
       BindOnce(&TestMemoryConsumerRegistry::NotifyReleaseMemory,
                weak_ptr_factory_.GetWeakPtr()),
+      std::move(on_notification_sent_callback));
+}
+
+void TestMemoryConsumerRegistry::NotifyUpdateMemoryLimitAndReleaseAsync(
+    MemoryLimit memory_limit,
+    OnceClosure on_notification_sent_callback) {
+  SingleThreadTaskRunner::GetMainThreadDefault()->PostTaskAndReply(
+      FROM_HERE,
+      BindOnce(&TestMemoryConsumerRegistry::NotifyUpdateMemoryLimitAndRelease,
+               weak_ptr_factory_.GetWeakPtr(), memory_limit),
       std::move(on_notification_sent_callback));
 }
 

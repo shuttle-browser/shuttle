@@ -118,6 +118,17 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/glic/actor/glic_actor_metrics.h:GlicActorTaskIdMismatchReason) -->
 
+<!-- LINT.IfChange(GlicActorTaskNotificationEvent) -->
+
+<enum name="GlicActorTaskNotificationEvent">
+  <int value="0" label="Shown"/>
+  <int value="1" label="Skipped (browser active)"/>
+  <int value="2" label="Clicked"/>
+  <int value="3" label="Closed"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/notifications/glic_actor_task_notification_handler.h:GlicActorTaskNotificationEvent) -->
+
 <!-- LINT.IfChange(GlicAnchoredDespiteEligibilityReason) -->
 
 <enum name="GlicAnchoredDespiteEligibilityReason">
@@ -174,6 +185,7 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="Iph"/>
   <int value="6" label="MemoryPressureRecovery"/>
   <int value="7" label="SelectionOverlay"/>
+  <int value="8" label="GeminiWeb"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/host/glic_web_contents_warming_pool.h:GlicContainerCreationReason) -->
@@ -214,7 +226,9 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Unknown Cancel"/>
   <int value="2" label="Abandoned (User closed UI before load)"/>
   <int value="3" label="Failed"/>
-  <int value="4" label="Failed Latency"/>
+  <int value="4"
+      label="(Obsolete) Failed Latency. Removed in 2026/11 (M159): a slow
+             success is Success, a timeout is Failed."/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/public/glic_cui_tracker.h:GlicCuiOutcome) -->
@@ -270,6 +284,7 @@ chromium-metrics-reviews@google.com.
   <int value="10" label="Page context ineligible"/>
   <int value="11" label="Unknown drag source"/>
   <int value="12" label="Source frame destroyed"/>
+  <int value="13" label="FRE not completed"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/service/metrics/metrics_types.h:GlicDragAndDropValidationResult) -->
@@ -524,6 +539,9 @@ chromium-metrics-reviews@google.com.
   <int value="106" label="SetClientStorageItem"/>
   <int value="107" label="ClearClientStorage"/>
   <int value="108" label="GetSendTabToSelfDevices"/>
+  <int value="109" label="OnInputFocused"/>
+  <int value="110" label="OnTooltipImpression"/>
+  <int value="111" label="OnTooltipHidden"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/public/glic_api_metrics.h:GlicHostApiRequestId) -->
@@ -634,6 +652,8 @@ chromium-metrics-reviews@google.com.
   <int value="57" label="Response Stopped Other"/>
   <int value="58" label="Response Stopped Success"/>
   <int value="59" label="WebUI State Guest Loaded"/>
+  <int value="60" label="Input Focused"/>
+  <int value="61" label="WebUI State Pending Provider Change Gemini To GEiC"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/service/metrics/metrics_types.h:GlicInstanceEvent) -->
@@ -681,7 +701,9 @@ chromium-metrics-reviews@google.com.
   <int value="20" label="From capture region hotkey"/>
   <int value="21" label="In-product help"/>
   <int value="22" label="User clicked an anchored contextual cue chip"/>
-  <int value="23" label="Context menu (Deprecated M157)"/>
+  <int value="23" label="(Obsolete) Context menu. Split in M158.">
+    Split into Context menu link (46), page (47) and text selection (48).
+  </int>
   <int value="24" label="Text selection nudge"/>
   <int value="25" label="Text selection widget"/>
   <int value="26" label="(Obsolete) Zero-state Auto-summarize"/>
@@ -708,6 +730,7 @@ chromium-metrics-reviews@google.com.
   <int value="47" label="Context menu page"/>
   <int value="48" label="Context menu text selection"/>
   <int value="49" label="From a actor GeminiPanelTool"/>
+  <int value="50" label="From the activity list bubble"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/common/glic_enums.mojom:InvocationSource) -->
@@ -773,6 +796,15 @@ chromium-metrics-reviews@google.com.
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/service/glic_invoke_task.h:GlicTaskType) -->
+
+<!-- LINT.IfChange(GlicMemoryPressureRecoveryStatus) -->
+
+<enum name="GlicMemoryPressureRecoveryStatus">
+  <int value="0" label="Recovered"/>
+  <int value="1" label="Not recovered: Limit reached"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/glic/host/glic_web_contents_warming_pool.h:GlicMemoryPressureRecoveryStatus) -->
 
 <!-- LINT.IfChange(GlicMultiInstanceSessionEndReason) -->
 
@@ -955,7 +987,7 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Ineligible Account"/>
 </enum>
 
-<!-- LINT.ThenChange(//chrome/browser/glic/host/glic.mojom:ProfileReadyState) -->
+<!-- LINT.ThenChange(//chrome/browser/glic/host/glic_webui.mojom:ProfileReadyState) -->
 
 <!-- LINT.IfChange(GlicProfilesAllSomeNone) -->
 
@@ -1120,10 +1152,14 @@ chromium-metrics-reviews@google.com.
   <int value="90" label="Anchored contextual cue, attached, audio mode."/>
   <int value="91" label="Anchored contextual cue, detached, text mode."/>
   <int value="92" label="Anchored contextual cue, detached, audio mode."/>
-  <int value="93" label="Context menu, attached, text mode."/>
-  <int value="94" label="Context menu, attached, audio mode."/>
-  <int value="95" label="Context menu, detached, text mode."/>
-  <int value="96" label="Context menu, detached, audio mode."/>
+  <int value="93"
+      label="(Obsolete) Context menu, attached, text mode. Split in M158."/>
+  <int value="94"
+      label="(Obsolete) Context menu, attached, audio mode. Split in M158."/>
+  <int value="95"
+      label="(Obsolete) Context menu, detached, text mode. Split in M158."/>
+  <int value="96"
+      label="(Obsolete) Context menu, detached, audio mode. Split in M158."/>
   <int value="97" label="Text selection nudge, attached, text mode."/>
   <int value="98" label="Text selection nudge, attached, audio mode."/>
   <int value="99" label="Text selection nudge, detached, text mode."/>
@@ -1232,6 +1268,10 @@ chromium-metrics-reviews@google.com.
   <int value="198" label="From actor GeminiPanelTool, attached, audio mode."/>
   <int value="199" label="From actor GeminiPanelTool, detached, text mode."/>
   <int value="200" label="From actor GeminiPanelTool, detached, audio mode."/>
+  <int value="201" label="From activity list bubble, attached, text mode."/>
+  <int value="202" label="From activity list bubble, attached, audio mode."/>
+  <int value="203" label="From activity list bubble, detached, text mode."/>
+  <int value="204" label="From activity list bubble, detached, audio mode."/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/service/metrics/metrics_types.h:ResponseSegmentation) -->
@@ -1298,6 +1338,37 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//chrome/browser/glic/glic_metrics.h:GlicTabPinnedForSharingResult) -->
 
+<!-- LINT.IfChange(GlicTooltipMultiTabImpression) -->
+
+<enum name="GlicTooltipMultiTabImpression">
+  <int value="0" label="Unknown"/>
+  <int value="1" label="Tooltip 1"/>
+  <int value="2" label="Tooltip 2a"/>
+  <int value="3" label="Tooltip 2b"/>
+  <int value="4" label="Tooltip 3"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/glic/host/glic.mojom:TooltipImpressionType) -->
+
+<!-- LINT.IfChange(GlicTurnShowingOutcome) -->
+
+<enum name="GlicTurnShowingOutcome">
+  <int value="0"
+      label="Showing and active (panel open in focused window/widget)"/>
+  <int value="1"
+      label="Showing but inactive (panel open in unfocused window/widget;
+             occlusion unknown), became active later"/>
+  <int value="2"
+      label="Showing but inactive (panel open in unfocused window/widget;
+             occlusion unknown), never became active"/>
+  <int value="3"
+      label="Hidden (panel closed or on background tab), shown later"/>
+  <int value="4"
+      label="Hidden (panel closed or on background tab), never shown"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/glic/service/metrics/metrics_types.h:GlicTurnShowingOutcome) -->
+
 <!-- LINT.IfChange(GlicTurnSource) -->
 
 <enum name="GlicTurnSource">
@@ -1360,6 +1431,10 @@ chromium-metrics-reviews@google.com.
   <int value="6"
       label="Load Error: Container was pre-warmed but failed to load or timed
              out before use."/>
+  <int value="7"
+      label="Memory Pressure Recovery Limit Reached: Container was not
+             pre-warmed because the pool reached the memory pressure recovery
+             limit."/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/host/glic_web_contents_warming_pool.h:GlicWarmingPoolStatus) -->
@@ -1660,6 +1735,9 @@ chromium-metrics-reviews@google.com.
   <int value="15" label="Glic is unavailable due to account capabilities"/>
   <int value="16"
       label="Web view is displayed while waiting for web client or timeout"/>
+  <int value="17"
+      label="A pending Gemini to GEiC provider change needs a browser
+             relaunch"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/glic/host/glic_webui.mojom:WebUiState) -->

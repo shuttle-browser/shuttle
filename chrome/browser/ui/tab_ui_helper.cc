@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/tab_ui_helper.h"
 
 #include <optional>
+#include <utility>
 
 #include "base/byte_size.h"
 #include "base/callback_list.h"
@@ -12,17 +13,20 @@
 #include "base/feature_list.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_forward.h"
+#include "base/functional/callback_helpers.h"
 #include "base/process/kill.h"
+#include "base/task/cancelable_task_tracker.h"
 #include "build/build_config.h"
+#include "chrome/browser/favicon/favicon_service_factory.h"
 #include "chrome/browser/favicon/favicon_utils.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/resource_coordinator/lifecycle_unit_state.mojom.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/browser/sessions/session_restore.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/performance_controls/memory_saver_utils.h"
 #include "chrome/browser/ui/tabs/features.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
-#include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_web_contents_listener.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
@@ -30,6 +34,8 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/favicon/content/content_favicon_util.h"
+#include "components/favicon/core/favicon_service.h"
+#include "components/favicon_base/favicon_types.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/tabs/public/tab_network_state.h"
@@ -65,10 +71,9 @@ ui::ColorId GetDefaultFaviconBackgroundColorId(
 }
 
 bool IsNTP(const GURL& url) {
-  return url.SchemeIs(content::kChromeUIScheme) &&
-         (url.host() == chrome::kChromeUINewTabHost ||
-          url.host() == chrome::kChromeUITabSearchHost ||
-          url.host() == chrome::kChromeUINewTabPageHost);
+  return search::IsNewTabPageOrigin(url) || search::IsNewTabOrigin(url) ||
+         (url.SchemeIs(content::kChromeUIScheme) &&
+          url.host() == chrome::kChromeUITabSearchHost);
 }
 
 web_app::WebAppBrowserController* GetWebAppBrowserController(
@@ -98,6 +103,13 @@ bool ShouldShowAppIcon(web_app::WebAppBrowserController* app_controller,
 
 DEFINE_USER_DATA(TabUIHelper);
 
+TabUIHelper::PendingNavigationState::PendingNavigationState(
+    std::u16string title)
+    : title(std::move(title)),
+      favicon_tracker(std::make_unique<base::CancelableTaskTracker>()) {}
+
+TabUIHelper::PendingNavigationState::~PendingNavigationState() = default;
+
 TabUIHelper::TabUIHelper(tabs::TabInterface& tab_interface)
     : ContentsObservingTabFeature(tab_interface),
       scoped_unowned_user_data_(tab_interface.GetUnownedUserDataHost(), *this) {
@@ -105,6 +117,16 @@ TabUIHelper::TabUIHelper(tabs::TabInterface& tab_interface)
   // favicon should show or not.
   pin_tab_subscription_ = tab().RegisterPinnedStateChanged(base::BindRepeating(
       &TabUIHelper::OnTabPinnedStatusChange, base::Unretained(this)));
+
+  if (!base::FeatureList::IsEnabled(
+          tabs::kSessionRestoreShowThrobberOnVisible)) {
+    tab_did_activate_subscription_ = tab().RegisterDidActivate(
+        base::IgnoreArgs<tabs::TabInterface*>(base::BindRepeating(
+            &TabUIHelper::SetWasActiveAtLeastOnce, base::Unretained(this))));
+    if (tab().IsActivated()) {
+      SetWasActiveAtLeastOnce();
+    }
+  }
 }
 
 TabUIHelper::~TabUIHelper() = default;
@@ -125,15 +147,8 @@ base::CallbackListSubscription TabUIHelper::AddTabUIChangeCallback(
 }
 
 std::u16string TabUIHelper::GetTitle() const {
-  if (auto* tab_features = tab().GetTabFeatures()) {
-    const tab_groups::SavedTabGroupWebContentsListener* wc_listener =
-        tab_features->saved_tab_group_web_contents_listener();
-    if (wc_listener) {
-      if (const std::optional<tab_groups::DeferredTabState>&
-              deferred_tab_state = wc_listener->deferred_tab_state()) {
-        return deferred_tab_state.value().title();
-      }
-    }
+  if (pending_navigation_state_.has_value()) {
+    return pending_navigation_state_->title;
   }
 
   const std::u16string& contents_title = web_contents()->GetTitle();
@@ -197,13 +212,8 @@ bool TabUIHelper::IsMonochromeFavicon() {
 }
 
 ui::ImageModel TabUIHelper::GetFavicon() {
-  const tab_groups::SavedTabGroupWebContentsListener* wc_listener =
-      tab().GetTabFeatures()->saved_tab_group_web_contents_listener();
-  if (wc_listener) {
-    if (const std::optional<tab_groups::DeferredTabState>& deferred_tab_state =
-            wc_listener->deferred_tab_state()) {
-      return deferred_tab_state.value().favicon();
-    }
+  if (pending_navigation_state_.has_value()) {
+    return pending_navigation_state_->favicon;
   }
 
   web_app::WebAppBrowserController* const web_app_browser_controller =
@@ -303,6 +313,32 @@ GURL TabUIHelper::GetVisibleURL() {
 
 GURL TabUIHelper::GetLastCommittedURL() {
   return tab().GetContents()->GetLastCommittedURL();
+}
+
+void TabUIHelper::SetPendingNavigationState(const GURL& url,
+                                            const std::u16string& title) {
+  pending_navigation_state_.emplace(title);
+  tab_ui_change_callbacks_.Notify();
+
+  if (favicon::FaviconService* const favicon_service =
+          FaviconServiceFactory::GetForProfile(
+              Profile::FromBrowserContext(web_contents()->GetBrowserContext()),
+              ServiceAccessType::EXPLICIT_ACCESS)) {
+    favicon_service->GetFaviconImageForPageURL(
+        url,
+        base::BindOnce(&TabUIHelper::OnGetPendingNavigationFaviconImageResult,
+                       base::Unretained(this)),
+        pending_navigation_state_->favicon_tracker.get());
+  }
+}
+
+void TabUIHelper::ClearPendingNavigationState() {
+  if (!pending_navigation_state_.has_value()) {
+    return;
+  }
+
+  pending_navigation_state_.reset();
+  tab_ui_change_callbacks_.Notify();
 }
 
 void TabUIHelper::TitleWasSet(content::NavigationEntry* entry) {
@@ -415,6 +451,16 @@ void TabUIHelper::NotifyTabUIChanged(
 
 tabs::TabNetworkState TabUIHelper::GetTabNetworkState() {
   return tabs::TabNetworkStateForWebContents(tab().GetContents());
+}
+
+void TabUIHelper::OnGetPendingNavigationFaviconImageResult(
+    const favicon_base::FaviconImageResult& result) {
+  if (!pending_navigation_state_.has_value() || result.image.IsEmpty()) {
+    return;
+  }
+
+  pending_navigation_state_->favicon = ui::ImageModel::FromImage(result.image);
+  tab_ui_change_callbacks_.Notify();
 }
 
 void TabUIHelper::OnTabPinnedStatusChange(tabs::TabInterface* tab_interface,

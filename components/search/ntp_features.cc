@@ -134,14 +134,14 @@ BASE_FEATURE(kNtpDriveModuleHistorySyncRequirement,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, the NTP Drive Module will link to the Drive page.
-BASE_FEATURE(kNtpDriveModuleLink, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kNtpDriveModuleLink, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, segmentation data will be collected to decide whether or not to
 // show the Drive module.
 BASE_FEATURE(kNtpDriveModuleSegmentation, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, branded NTPs use the 2026 version of the Google logo.
-BASE_FEATURE(kNtpGoogleLogo26, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kNtpGoogleLogo26, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, logo will be shown.
 // This is a kill switch. Keep indefinitely.
@@ -197,6 +197,10 @@ BASE_FEATURE(kNtpScaledActionChips, base::FEATURE_DISABLED_BY_DEFAULT);
 // If enabled, scaled merchandising action chips will be in a smaller format.
 BASE_FEATURE(kNtpScaledActionChipsSmall, base::FEATURE_DISABLED_BY_DEFAULT);
 
+// If enabled, small scaled merchandising action chips have no max width.
+BASE_FEATURE(kNtpScaledActionChipsUncappedWidth,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // If enabled, sets a custom timeout for action chips suggestions requests.
 // This is a kill switch. Keep indefinitely.
 BASE_FEATURE(kNtpActionChipsSuggestTimeout, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -214,7 +218,7 @@ BASE_FEATURE(kNtpSharepointModule,
 BASE_FEATURE(kNtpShortcuts, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, high-DPI favicons are fetched for Most Visited tiles.
-BASE_FEATURE(kNtpMostVisitedHighDpiFavicons, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kNtpMostVisitedHighDpiFavicons, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, the Tab Resumption module will be shown.
 BASE_FEATURE(kNtpMostRelevantTabResumptionModule,
@@ -588,6 +592,9 @@ const base::FeatureParam<base::TimeDelta> kBookmarkBarMinStalenessTimeInterval(
 
 const base::FeatureParam<bool> kNtpThreadsRailHybridParam{
     &ntp_features::kNtpThreadsRail, "NtpThreadsRailHybridParam", false};
+
+const base::FeatureParam<int> kNtpThreadsRailPreloadDebounceMsParam{
+    &ntp_features::kNtpThreadsRail, "NtpThreadsRailPreloadDebounceMs", 100};
 
 base::TimeDelta GetModulesLoadTimeout() {
   std::string param_value = base::GetFieldTrialParamValueByFeature(

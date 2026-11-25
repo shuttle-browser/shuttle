@@ -9,6 +9,7 @@
 
 #include "base/command_line.h"
 #include "base/memory/raw_ptr.h"
+#include "chrome/browser/search/search.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/lens/lens_overlay_controller.h"
@@ -16,7 +17,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_controller.h"
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/permission_bubble/permission_prompt.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/location_bar/location_bar_view.h"
 #include "chrome/browser/ui/views/permissions/embedded_permission_prompt.h"
@@ -102,7 +102,7 @@ bool ShouldIgnorePermissionRequest(
   if (tabs::TabInterface* active_tab =
           browser ? browser->GetTabStripModel()->GetActiveTab() : nullptr) {
     LensOverlayController* lens_overlay_controller =
-        active_tab->GetTabFeatures()->lens_overlay_controller();
+        LensOverlayController::From(active_tab);
     // Don't show prompt while the Lens Overlay is showing, except for
     // secondary UI surfaces with their own location bar (such as the
     // Contextual Tasks side panel) that are not covered by the overlay.
@@ -297,9 +297,8 @@ bool ShouldShowPermissionPromptEvenIfOmniboxEditedOrEmpty(
   // permissions.
   const url::Origin committed_origin =
       web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
-  if (committed_origin.IsSameOriginWith(chrome::ChromeUINewTabURLAsGURL()) ||
-      committed_origin.IsSameOriginWith(
-          chrome::ChromeUINewTabPageURLAsGURL()) ||
+  if (search::IsNewTabOrigin(committed_origin) ||
+      search::IsNewTabPageOrigin(committed_origin) ||
       committed_origin.IsSameOriginWith(
           GURL(chrome::kChromeUIOmniboxPopupURL)) ||
       committed_origin.IsSameOriginWith(

@@ -69,10 +69,8 @@ class CanvasResourceDispatcherTest
       public ::testing::WithParamInterface<TestParams> {
  public:
   void DispatchOneFrame() {
-    scoped_refptr<CanvasResource> canvas_resource =
+    scoped_refptr<ExportedCanvasResource> exported_resource =
         resource_provider_->ProduceCanvasResource();
-    auto exported_resource = base::MakeRefCounted<ExportedCanvasResource>(
-        std::move(canvas_resource));
     dispatcher_->DispatchFrame(std::move(exported_resource), gfx::Rect(),
                                /*is_opaque=*/false);
   }
@@ -239,15 +237,14 @@ TEST_P(CanvasResourceDispatcherTest, DispatchFrame) {
               CreateCompositorFrameSink_(viz::FrameSinkId(kClientId, kSinkId)));
   platform->RunUntilIdle();
 
-  auto canvas_resource = CanvasResourceSharedImage::CreateForTesting(
+  auto resource = CanvasResourceSharedImage::CreateForTesting(
       GetSize(), viz::SinglePlaneFormat::kBGRA_8888, kPremul_SkAlphaType,
       gfx::ColorSpace::CreateSRGB(), gpu::SHARED_IMAGE_USAGE_CPU_WRITE_ONLY,
       /*is_software=*/true,
       /*is_accelerated=*/false, /*provider=*/nullptr,
       /*context_provider_wrapper=*/nullptr, shared_image_interface_provider());
 
-  EXPECT_TRUE(!!canvas_resource);
-  EXPECT_EQ(canvas_resource->Size(), GetSize());
+  EXPECT_TRUE(!!resource);
 
   const bool context_alpha = GetParam().context_alpha;
 
@@ -294,8 +291,10 @@ TEST_P(CanvasResourceDispatcherTest, DispatchFrame) {
           }));
 
   const gfx::Rect damage_rect(kDamageWidth, kDamageHeight);
-  auto exported_resource =
-      base::MakeRefCounted<ExportedCanvasResource>(std::move(canvas_resource));
+  auto exported_resource = base::MakeRefCounted<ExportedCanvasResource>(
+      resource, resource->GetSharedImage(), resource->sync_token(),
+      viz::TransferableResource::ResourceSource::kCanvas, gfx::HDRMetadata(),
+      nullptr, false);
   dispatcher()->DispatchFrame(std::move(exported_resource), damage_rect,
                               !context_alpha /* is_opaque */);
   platform->RunUntilIdle();

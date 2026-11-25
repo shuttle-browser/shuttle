@@ -10,6 +10,7 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "chrome/browser/ui/views/tabs/common/tab_collection_node.h"
+#include "ui/views/layout/proposed_layout.h"
 
 namespace views {
 class View;
@@ -36,6 +37,7 @@ struct TabStripCollectionLayoutInfo {
   int total_min_width = 0;
   int overlap_total = 0;
   int leading_padding = 0;
+  int trailing_padding = 0;
 };
 
 using ChildVisibilityCallback =
@@ -76,11 +78,23 @@ int GetChildOverlap(const views::View* prev_child,
 // a tab strip container.
 int GetLeadingChildPadding(const views::View* child);
 
+// Returns the trailing padding for `child` when it is the last visible child in
+// a tab strip container.
+int GetTrailingChildPadding(const views::View* child);
+
 // Measures preferred, crossover, and minimum widths and accumulates total
 // layout info for all visible, non-hidden children matching `is_child_visible`.
 TabStripCollectionLayoutInfo CollectVisibleChildLayoutInfo(
     TabCollectionNode::ChildViews children,
     int container_height,
     ChildVisibilityCallback is_child_visible);
+
+// Linearly interpolates `from` towards `to` by `progress` in [0, 1]. Unlike
+// `views::ProposedLayoutBetween()`, a child stays visible while either endpoint
+// shows it and it still has an extent, so children leaving the layout shrink
+// away rather than disappearing on the first frame.
+views::ProposedLayout BlendProposedLayouts(float progress,
+                                           const views::ProposedLayout& from,
+                                           const views::ProposedLayout& to);
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_COMMON_TAB_STRIP_LAYOUT_UTILS_H_

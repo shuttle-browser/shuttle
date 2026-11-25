@@ -117,7 +117,6 @@ class GpuProcessIntegrationTest(gpu_integration_test.GpuIntegrationTest):
         'GpuProcess_driver_bug_workarounds_in_gpu_process',
         'chrome:gpu?skip-dawn-info',
       ),
-      ('GpuProcess_readback_webgl_gpu_process', 'chrome:gpu?skip-dawn-info'),
       (
         'GpuProcess_feature_status_under_swiftshader',
         'chrome:gpu?skip-dawn-info',
@@ -339,36 +338,12 @@ class GpuProcessIntegrationTest(gpu_integration_test.GpuIntegrationTest):
       'use_gpu_driver_workaround_for_testing', None
     )
 
-  def _GpuProcess_readback_webgl_gpu_process(self, test_path: str) -> None:
-    # Hit test group 1 with entry 152 from kSoftwareRenderingListEntries.
-    self.RestartBrowserIfNecessaryWithArgs(
-      [
-        '--gpu-blocklist-test-group=1',
-        cba.DISABLE_GPU_COMPOSITING,
-      ]
-    )
-    self._Navigate(test_path)
-    feature_status_list = _GetBrowserBridgeProperty(
-      self.tab, 'gpuInfo.featureStatus.featureStatus'
-    )
-    result = True
-    for name, status in feature_status_list.items():
-      if name == 'webgl':
-        result = result and status == 'enabled_readback'
-      elif name == 'webgl2':
-        result = result and status == 'unavailable_off'
-      else:
-        pass
-    if not result:
-      self.fail(f'WebGL readback setup failed: {feature_status_list}')
-
   def _GpuProcess_feature_status_under_swiftshader(
     self, test_path: str
   ) -> None:
-    # Hit test group 2 with entry 153 from kSoftwareRenderingListEntries.
     self.RestartBrowserIfNecessaryWithArgs(
       [
-        '--gpu-blocklist-test-group=2',
+        cba.DISABLE_GPU,
         '--enable-unsafe-swiftshader',
         '--disable-features=AllowD3D11WarpFallback',
       ]
@@ -382,27 +357,6 @@ class GpuProcessIntegrationTest(gpu_integration_test.GpuIntegrationTest):
         self.fail(f'WebGL status for SwiftShader failed: {status}')
       elif name == '2d_canvas' and status != 'unavailable_software':
         self.fail(f'2D Canvas status for SwiftShader failed: {status}')
-
-    # On Linux we relaunch GPU process to fallback to SwiftShader, therefore
-    # featureStatusForHardwareGpu isn't available. So finish early if we're on
-    # Linux.
-    if host_information.IsLinux():
-      return
-
-    # On Mac, featureStatusForHardwareGpu is not populated when running on
-    # SwiftShader. The previous checks are enough to confirm that WebGL is
-    # blocklisted.
-    if host_information.IsMac():
-      return
-
-    feature_status_for_hardware_gpu_list = _GetBrowserBridgeProperty(
-      self.tab, 'gpuInfo.featureStatusForHardwareGpu.featureStatus'
-    )
-    for name, status in feature_status_for_hardware_gpu_list.items():
-      if name == 'webgl' and status != 'unavailable_off':
-        self.fail(f'WebGL status for hardware GPU failed: {status}')
-      elif name == '2d_canvas' and status != 'enabled':
-        self.fail(f'2D Canvas status for hardware GPU failed: {status}')
 
   def _GpuProcess_feature_status_under_warp(self, test_path: str) -> None:
     if not host_information.IsWindows():
@@ -603,12 +557,6 @@ class GpuProcessIntegrationTest(gpu_integration_test.GpuIntegrationTest):
     # This test loads functional_webgl.html so that there is a deliberate
     # attempt to use an API which would start the GPU process.
     args_list = (
-      # Triggering test_group 2 where WebGL is blocklisted.
-      [
-        '--gpu-blocklist-test-group=2',
-        '--enable-unsafe-swiftshader',
-        '--disable-features=AllowD3D11WarpFallback',
-      ],
       # Explicitly disable GPU access.
       [
         cba.DISABLE_GPU,
@@ -736,8 +684,6 @@ class GpuProcessIntegrationTest(gpu_integration_test.GpuIntegrationTest):
     # Make sure to force disable WARP fallback which takes precedence over
     # SwiftShader fallback when both are enabled.
     disable_hardware_webgl_args_list = [
-      # Triggering test_group 2 where WebGL is blocklisted.
-      ['--gpu-blocklist-test-group=2'],
       # Explicitly disable GPU access.
       [cba.DISABLE_GPU],
     ]

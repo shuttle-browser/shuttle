@@ -29,7 +29,6 @@ import org.chromium.chrome.browser.theme.ThemeColorProvider;
 import org.chromium.chrome.browser.toolbar.R;
 import org.chromium.chrome.browser.toolbar.top.ToolbarChild;
 import org.chromium.chrome.browser.toolbar.top.ToolbarLayout;
-import org.chromium.chrome.browser.toolbar.top.ToolbarUtils;
 import org.chromium.chrome.browser.user_education.IphCommandBuilder;
 import org.chromium.chrome.browser.user_education.UserEducationHelper;
 import org.chromium.components.browser_ui.widget.BrowserUiListMenuUtils;
@@ -48,6 +47,7 @@ import org.chromium.ui.listmenu.ListMenu.Delegate;
 import org.chromium.ui.listmenu.ListMenuItemProperties;
 import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
 import org.chromium.ui.widget.AnchoredPopupWindow;
+import org.chromium.ui.widget.AnchoredPopupWindow.HorizontalOrientation;
 import org.chromium.ui.widget.ViewRectProvider;
 
 import java.util.Collection;
@@ -172,7 +172,6 @@ public class IncognitoIndicatorCoordinator extends ToolbarChild
 
     @Override
     public int updateVisibility(int availableWidth, int widthMeasureSpec, int heightMeasureSpec) {
-        assert ToolbarUtils.isToolbarTabletResizeRefactorEnabled();
         // Hide and consume no width if the desktop-like incognito window feature is not enabled,
         // or if the device is not in incognito mode. Do not cache the width of the indicator.
         if (!IncognitoUtils.shouldOpenIncognitoAsWindow()
@@ -321,7 +320,7 @@ public class IncognitoIndicatorCoordinator extends ToolbarChild
                         .setDesiredContentWidth(desiredWidth)
                         .setHorizontalOverlapAnchor(true)
                         .setPreferredHorizontalOrientation(
-                                AnchoredPopupWindow.HorizontalOrientation.MAX_AVAILABLE_SPACE)
+                                HorizontalOrientation.MAX_AVAILABLE_SPACE)
                         .setVerticalOverlapAnchor(false);
         if (isIncognitoCardEnabled()) {
             builder.setOutsideTouchable(true);

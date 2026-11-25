@@ -4,7 +4,11 @@
 
 #include "net/quic/quic_session_attempt.h"
 
+#include <algorithm>
+#include <vector>
+
 #include "base/auto_reset.h"
+#include "base/containers/flat_set.h"
 #include "base/feature_list.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
@@ -14,6 +18,7 @@
 #include "net/base/features.h"
 #include "net/base/net_error_details.h"
 #include "net/base/net_errors.h"
+#include "net/dns/dns_alias_utility.h"
 #include "net/dns/public/host_resolver_results.h"
 #include "net/log/net_log_with_source.h"
 #include "net/quic/address_utils.h"
@@ -53,6 +58,11 @@ void LogValidConnectionTime(base::TimeTicks start_time) {
 
 }  // namespace
 
+const base::flat_set<std::string>* QuicSessionAttempt::Delegate::GetDnsAliases()
+    const {
+  return nullptr;
+}
+
 QuicSessionAttempt::QuicSessionAttempt(
     Delegate* delegate,
     IPEndPoint ip_endpoint,
@@ -64,7 +74,7 @@ QuicSessionAttempt::QuicSessionAttempt(
     std::optional<ResolutionDetails> resolution_details,
     bool retry_on_alternate_network_before_handshake,
     bool use_dns_aliases,
-    std::set<std::string> dns_aliases,
+    base::flat_set<std::string> dns_aliases,
     std::unique_ptr<QuicCryptoClientConfigHandle> crypto_client_config_handle,
     MultiplexedSessionCreationInitiator session_creation_initiator,
     QuicConnectionReuseDetails quic_connection_reuse_details,
@@ -141,11 +151,22 @@ int QuicSessionAttempt::Start(CompletionOnceCallback callback) {
 }
 
 void QuicSessionAttempt::Cancel() {
+  CancelInternal(CancelReason::kCancelled);
+}
+
+void QuicSessionAttempt::CancelForProactiveIpPooling() {
+  CancelInternal(CancelReason::kProactiveIpPooling);
+}
+
+void QuicSessionAttempt::CancelInternal(CancelReason reason) {
   CHECK_NE(next_state_, State::kNone);
 
   next_state_ = State::kNone;
   callback_.Reset();
   weak_ptr_factory_.InvalidateWeakPtrs();
+  if (cancel_reason_) {
+    cancel_reason_->data = reason;
+  }
   net_log().EndEventWithNetErrorCode(
       NetLogEventType::QUIC_SESSION_POOL_JOB_CONNECT, ERR_ABORTED);
 
@@ -156,7 +177,12 @@ void QuicSessionAttempt::Cancel() {
   QuicChromiumClientSession* session = session_.get();
   CHECK(!pool()->IsSessionActive(session));
   session_ = nullptr;
-  session->CloseSessionOnError(ERR_ABORTED, quic::QUIC_CONNECTION_CANCELLED,
+  quic::QuicErrorCode quic_error = quic::QUIC_CONNECTION_CANCELLED;
+  if (reason == CancelReason::kProactiveIpPooling) {
+    session->MarkClosedByProactiveIpPooling();
+    quic_error = quic::QUIC_CONNECTION_IP_POOLED;
+  }
+  session->CloseSessionOnError(ERR_ABORTED, quic_error,
                                quic::ConnectionCloseBehavior::SILENT_CLOSE);
 }
 
@@ -175,6 +201,7 @@ void QuicSessionAttempt::PopulateNetErrorDetails(
 // static
 void QuicSessionAttempt::HandleCreateSessionResult(
     base::WeakPtr<QuicSessionAttempt> attempt,
+    scoped_refptr<base::RefCountedData<CancelReason>> cancel_reason,
     base::expected<CreateSessionResult, int> result) {
   if (attempt) {
     attempt->OnCreateSessionComplete(std::move(result));
@@ -185,9 +212,14 @@ void QuicSessionAttempt::HandleCreateSessionResult(
   // finished being created after its owner went away instead of leaving it in
   // QuicSessionPool until its handshake or idle timeout.
   if (result.has_value()) {
+    quic::QuicErrorCode quic_error = quic::QUIC_CONNECTION_CANCELLED;
+    if (cancel_reason &&
+        cancel_reason->data == CancelReason::kProactiveIpPooling) {
+      result->session->MarkClosedByProactiveIpPooling();
+      quic_error = quic::QUIC_CONNECTION_IP_POOLED;
+    }
     result->session->CloseSessionOnErrorLater(
-        ERR_ABORTED, quic::QUIC_CONNECTION_CANCELLED,
-        quic::ConnectionCloseBehavior::SILENT_CLOSE);
+        ERR_ABORTED, quic_error, quic::ConnectionCloseBehavior::SILENT_CLOSE);
   }
 }
 
@@ -238,18 +270,22 @@ int QuicSessionAttempt::DoCreateSession() {
     }
     // Proxied connections are not on any specific network.
     network_ = handles::kInvalidNetworkHandle;
+    cancel_reason_ = base::MakeRefCounted<base::RefCountedData<CancelReason>>(
+        CancelReason::kCancelled);
     rv = pool()->CreateSessionOnProxyStream(
         base::BindOnce(&QuicSessionAttempt::HandleCreateSessionResult,
-                       weak_ptr_factory_.GetWeakPtr()),
+                       weak_ptr_factory_.GetWeakPtr(), cancel_reason_),
         key(), quic_version_, cert_verify_flags_, require_confirmation,
         std::move(local_endpoint_), std::move(ip_endpoint_),
         std::move(proxy_stream_), std::move(user_agent), net_log(), network_,
         session_creation_initiator_, quic_connection_reuse_details_);
   } else {
     if (base::FeatureList::IsEnabled(net::features::kAsyncQuicSession)) {
+      cancel_reason_ = base::MakeRefCounted<base::RefCountedData<CancelReason>>(
+          CancelReason::kCancelled);
       return pool()->CreateSessionAsync(
           base::BindOnce(&QuicSessionAttempt::HandleCreateSessionResult,
-                         weak_ptr_factory_.GetWeakPtr()),
+                         weak_ptr_factory_.GetWeakPtr(), cancel_reason_),
           key(), quic_version_, cert_verify_flags_, require_confirmation,
           ip_endpoint_, metadata_, dns_resolution_start_time_,
           dns_resolution_end_time_, resolution_details_, net_log(), network_,
@@ -423,15 +459,41 @@ int QuicSessionAttempt::DoConfirmConnection(int rv) {
     return OK;
   }
 
-  // There may well now be an active session for this IP. The check above only
-  // covers exact session key matches (e.g. same-origin races). We still need
-  // to check for cross-origin IP pooling. If there is an active session for
-  // this IP with a matching certificate, use the existing session instead of
-  // establishing a new one.
+  // There may well now be an active session for this IP or another resolved IP
+  // for this destination. The check above only covers exact session key matches
+  // (e.g. same-origin races). We still need to check for cross-origin IP
+  // pooling. If there is an active session for any of the resolved IPs with a
+  // matching certificate, use the existing session instead of establishing a
+  // new one.
+  const bool pool_all_endpoints = base::FeatureList::IsEnabled(
+      features::kPostHandshakeIpPoolingAllEndpoints);
+  std::vector<IPEndPoint> ip_endpoints;
+  if (pool_all_endpoints) {
+    ip_endpoints = delegate_->GetResolvedIpEndpoints();
+  }
+  base::flat_set<std::string> dns_aliases;
+  if (use_dns_aliases_) {
+    if (const base::flat_set<std::string>* refreshed_aliases =
+            delegate_->GetDnsAliases()) {
+      dns_aliases = *refreshed_aliases;
+    } else {
+      dns_aliases = std::move(dns_aliases_);
+    }
+  }
+  IPEndPoint peer_address =
+      ToIPEndPoint(session_->connection()->peer_address());
+  if (!std::ranges::contains(ip_endpoints, peer_address)) {
+    ip_endpoints.push_back(peer_address);
+  }
+  // Only attach `dns_aliases` on post-handshake IP pooling when
+  // `kPostHandshakeIpPoolingAllEndpoints` is enabled, keeping the Finch control
+  // arm identical to baseline behavior.
   if (QuicChromiumClientSession* matching_session =
           pool()->HasMatchingIpSession(
-              key(), {ToIPEndPoint(session_->connection()->peer_address())},
-              /*aliases=*/{}, use_dns_aliases_)) {
+              key(), ip_endpoints,
+              pool_all_endpoints ? dns_aliases
+                                 : dns_alias_utility::EmptyDnsAliases(),
+              use_dns_aliases_)) {
     QuicSessionPool::LogConnectionIpPooling(true);
     session_->connection()->CloseConnection(
         quic::QUIC_CONNECTION_IP_POOLED,
@@ -442,9 +504,7 @@ int QuicSessionAttempt::DoConfirmConnection(int rv) {
   }
   QuicSessionPool::LogConnectionIpPooling(false);
 
-  pool()->ActivateSession(
-      key(), session_,
-      use_dns_aliases_ ? std::move(dns_aliases_) : std::set<std::string>());
+  pool()->ActivateSession(key(), session_, std::move(dns_aliases));
 
   return OK;
 }

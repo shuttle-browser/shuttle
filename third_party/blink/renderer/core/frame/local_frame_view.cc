@@ -842,9 +842,9 @@ void LocalFrameView::PerformLayout() {
       // tree spine of a common ancestor.
       HeapHashMap<Member<const LayoutBox>, unsigned> fragment_tree_spines;
       for (auto& root : layout_subtree_root_list_.Unordered()) {
-        const LayoutBox* container_box = root->ContainingNGBox();
-        if (container_box && container_box->PhysicalFragmentCount()) {
-          auto add_result = fragment_tree_spines.insert(container_box, 0);
+        const LayoutBox* container = root->ContainingBox();
+        if (container && container->PhysicalFragmentCount()) {
+          auto add_result = fragment_tree_spines.insert(container, 0);
           ++add_result.stored_value->value;
         }
       }
@@ -859,9 +859,9 @@ void LocalFrameView::PerformLayout() {
           continue;
         }
         bool should_rebuild_fragments = false;
-        LayoutBox* container_box = root->ContainingNGBox();
-        if (container_box) {
-          auto it = fragment_tree_spines.find(container_box);
+        LayoutBox* container = root->ContainingBox();
+        if (container) {
+          auto it = fragment_tree_spines.find(container);
           DCHECK(it == fragment_tree_spines.end() || it->value > 0);
           // Ensure fragment-tree consistency just after all the cb's
           // descendants have completed their subtree layout.
@@ -873,13 +873,14 @@ void LocalFrameView::PerformLayout() {
           continue;
 
         if (should_rebuild_fragments)
-          container_box->RebuildFragmentTreeSpine();
+          container->RebuildFragmentTreeSpine();
 
         // We need to ensure that we mark up all layoutObjects up to the
         // LayoutView for paint invalidation. This simplifies our code as we
         // just always do a full tree walk.
-        if (LayoutObject* container = root_layout_object.Container())
-          container->SetShouldCheckForPaintInvalidation();
+        if (LayoutObject* root_container = root_layout_object.Container()) {
+          root_container->SetShouldCheckForPaintInvalidation();
+        }
       }
       layout_subtree_root_list_.Clear();
 #if EXPENSIVE_DCHECKS_ARE_ON()
@@ -1352,6 +1353,98 @@ bool LocalFrameView::RecordNaturalDimensions() {
   return true;
 }
 
+bool LocalFrameView::ShouldSkipResponsiveIframeResize() const {
+  // Detached subframes (e.g., `display: none` same-origin `<iframe>`s) are not
+  // render-throttled, but have no `LayoutEmbeddedContent` in the parent and a
+  // `0x0` layout size. Skip them until `AttachToLayout()` so they do not lock
+  // a `0x0` ICB size or record natural dimensions measured at `0px` inline
+  // size.
+  if (!IsAttached() && !frame_->IsLocalRoot()) {
+    return true;
+  }
+  // Use `CanThrottleRendering()` rather than `ShouldThrottleRendering()` so
+  // callers outside `AllowThrottlingScope` (such as
+  // `ScheduleResponsiveIframeResize()` and `AttachToLayout()`) also recognize
+  // throttled frames.
+  return CanThrottleRendering() || LocalFrameTreeForcesThrottling();
+}
+
+void LocalFrameView::ScheduleResponsiveIframeResize() {
+  needs_responsive_iframe_resize_ = true;
+  // When detached or throttled, `AttachToLayout()`, `BeginLifecycleUpdates()`,
+  // or `RenderThrottlingStatusChanged()` schedules a visual update when the
+  // frame becomes renderable.
+  if (ShouldSkipResponsiveIframeResize()) {
+    return;
+  }
+  if (Page* page = GetPage()) {
+    page->Animator().ScheduleVisualUpdate(
+        frame_, cc::BeginMainFrameReason::kLayoutInvalidation);
+  }
+}
+
+bool LocalFrameView::HasPendingResponsiveIframeResize() {
+  if (ShouldSkipResponsiveIframeResize()) {
+    return false;
+  }
+  if (needs_responsive_iframe_resize_) {
+    return true;
+  }
+  bool has_pending = false;
+  ForAllChildLocalFrameViews([&has_pending](LocalFrameView& child) {
+    if (!has_pending) {
+      has_pending = child.HasPendingResponsiveIframeResize();
+    }
+  });
+  return has_pending;
+}
+
+void LocalFrameView::UpdateResponsiveIframeSizesIfNeeded() {
+  if (ShouldSkipResponsiveIframeResize()) {
+    return;
+  }
+
+  HeapVector<Member<LocalFrameView>> pending_children;
+  ForAllChildLocalFrameViews([&pending_children](LocalFrameView& child) {
+    if (child.HasPendingResponsiveIframeResize()) {
+      pending_children.push_back(&child);
+    }
+  });
+
+  if (!needs_responsive_iframe_resize_ && pending_children.empty()) {
+    return;
+  }
+
+  std::optional<NaturalSizeLayoutScope> natural_size_scope;
+  if (needs_responsive_iframe_resize_) {
+    needs_responsive_iframe_resize_ = false;
+    Document* document = frame_->GetDocument();
+    if (document && document->IsActive() && document->IsHTMLDocument() &&
+        document->HasResponsiveEmbeddedSizing() && frame_->Owner()) {
+      natural_size_scope.emplace(this);
+    }
+  }
+
+  if (!pending_children.empty() || natural_size_scope) {
+    UpdateStyleAndLayout();
+  }
+
+  for (LocalFrameView* child_view : pending_children) {
+    child_view->UpdateResponsiveIframeSizesIfNeeded();
+  }
+
+  if (natural_size_scope) {
+    // Recursing into nested responsive child frames above may have updated
+    // their natural sizes and dirtied `LayoutIFrame`s in this document.
+    if (!pending_children.empty()) {
+      UpdateStyleAndLayout();
+    }
+    if (RecordNaturalDimensions()) {
+      frame_->Owner()->NaturalSizingInfoChanged();
+    }
+  }
+}
+
 void LocalFrameView::RequestSameDocumentNavigationPresentationTime(
     base::OnceCallback<void(const viz::FrameTimingDetails&)> callback) {
   GetFrame()
@@ -1395,6 +1488,7 @@ std::optional<NaturalSizingInfo> LocalFrameView::GetNaturalDimensions() const {
 
 void LocalFrameView::ClearNaturalDimensions() {
   natural_size_.reset();
+  needs_responsive_iframe_resize_ = false;
 }
 
 void LocalFrameView::UpdateGeometry() {
@@ -2971,7 +3065,19 @@ bool LocalFrameView::RunStyleAndLayoutLifecyclePhases(
     DocumentLifecycle::LifecycleState target_state) {
   TRACE_EVENT0("blink,benchmark",
                "LocalFrameView::RunStyleAndLayoutLifecyclePhases");
+  const bool should_update_responsive_iframes =
+      RuntimeEnabledFeatures::ResponsiveIframesAsyncResizeEnabled() &&
+      target_state == DocumentLifecycle::kPaintClean;
+  if (should_update_responsive_iframes) {
+    UpdateResponsiveIframeSizesIfNeeded();
+  }
   UpdateStyleAndLayoutIfNeededRecursive();
+  if (should_update_responsive_iframes && HasPendingResponsiveIframeResize()) {
+    // Style and layout above may have newly attached (e.g., `display: none` ->
+    // visible) or unthrottled a subframe with a pending responsive resize.
+    UpdateResponsiveIframeSizesIfNeeded();
+    UpdateStyleAndLayoutIfNeededRecursive();
+  }
   DCHECK(ShouldThrottleRendering() ||
          Lifecycle().GetState() >= DocumentLifecycle::kLayoutClean);
   if (Lifecycle().GetState() < DocumentLifecycle::kLayoutClean)
@@ -3981,7 +4087,7 @@ gfx::Rect LocalFrameView::ConvertToContainingEmbeddedContentView(
 
     // Add borders and padding etc.
     PhysicalRect rect(local_rect);
-    rect.offset += layout_object->PhysicalContentBoxRect().offset;
+    rect.offset += layout_object->ReplacedContentRect().offset;
     return ToPixelSnappedRect(layout_object->LocalToAbsoluteRect(rect));
   }
 
@@ -3999,7 +4105,7 @@ gfx::Rect LocalFrameView::ConvertFromContainingEmbeddedContentView(
 
       PhysicalRect local_rect =
           layout_object->AbsoluteToLocalRect(PhysicalRect(parent_rect));
-      local_rect.offset -= layout_object->PhysicalContentBoxRect().offset;
+      local_rect.offset -= layout_object->ReplacedContentRect().offset;
       return ToEnclosingRect(local_rect);
     }
 
@@ -4019,7 +4125,7 @@ PhysicalOffset LocalFrameView::ConvertToContainingEmbeddedContentView(
 
     PhysicalOffset point(local_offset);
     // Add borders and padding etc.
-    point += layout_object->PhysicalContentBoxRect().offset;
+    point += layout_object->ReplacedContentRect().offset;
     return layout_object->LocalToAbsolutePoint(point);
   }
 
@@ -4035,7 +4141,7 @@ gfx::PointF LocalFrameView::ConvertToContainingEmbeddedContentView(
 
     PhysicalOffset point = PhysicalOffset::FromPointFRound(local_point);
     // Add borders and padding etc.
-    point += layout_object->PhysicalContentBoxRect().offset;
+    point += layout_object->ReplacedContentRect().offset;
     return static_cast<gfx::PointF>(layout_object->LocalToAbsolutePoint(point));
   }
 
@@ -4058,7 +4164,7 @@ gfx::PointF LocalFrameView::ConvertFromContainingEmbeddedContentView(
 
     gfx::PointF point = layout_object->AbsoluteToLocalPoint(parent_point);
     // Subtract borders and padding etc.
-    point -= gfx::Vector2dF(layout_object->PhysicalContentBoxRect().offset);
+    point -= gfx::Vector2dF(layout_object->ReplacedContentRect().offset);
     return point;
   }
 
@@ -4204,6 +4310,13 @@ void LocalFrameView::AttachToLayout() {
   UpdateRenderThrottlingStatus(IsHiddenForThrottling(),
                                parent_view->CanThrottleRendering(),
                                IsDisplayLocked());
+  if (RuntimeEnabledFeatures::ResponsiveIframesAsyncResizeEnabled() &&
+      HasPendingResponsiveIframeResize()) {
+    if (Page* page = GetPage()) {
+      page->Animator().ScheduleVisualUpdate(
+          frame_, cc::BeginMainFrameReason::kLayoutInvalidation);
+    }
+  }
 
   // This is to handle a special case: a display:none iframe may have a fully
   // populated layout tree if it contains an <embed>. In that case, we must
@@ -4983,10 +5096,31 @@ void LocalFrameView::CrossOriginToNearestMainFrameChanged() {
 }
 
 void LocalFrameView::CrossOriginToParentFrameChanged() {
-  if (LayoutView* layout_view = GetLayoutView()) {
-    if (PaintLayer* root_layer = layout_view->Layer())
-      root_layer->SetNeedsCompositingInputsUpdate();
-  }
+  auto invalidate_subtree = [](auto& self, LocalFrameView& view) -> void {
+    if (auto* owner = view.GetFrame().OwnerLayoutObject()) {
+      if (PaintLayer* owner_layer = owner->Layer()) {
+        owner_layer->SetNeedsRepaint();
+      }
+      if (LocalFrameView* owner_view = owner->GetFrameView()) {
+        owner_view->ScheduleVisualUpdateForPaintInvalidationIfNeeded();
+      }
+    }
+    if (LayoutView* layout_view = view.GetLayoutView()) {
+      layout_view->AddSubtreePaintPropertyUpdateReason(
+          SubtreePaintPropertyUpdateReason::kPreviouslySkipped);
+      layout_view->InvalidatePaintForViewAndDescendants();
+      if (PaintLayer* root_layer = layout_view->Layer()) {
+        root_layer->SetNeedsCompositingInputsUpdate();
+      }
+      view.ScheduleVisualUpdateForPaintInvalidationIfNeeded();
+    }
+    view.ForAllChildLocalFrameViews([&self](LocalFrameView& child_view) {
+      if (HasSameOriginLocalParentFrame(child_view.GetFrame())) {
+        self(self, child_view);
+      }
+    });
+  };
+  invalidate_subtree(invalidate_subtree, *this);
 }
 
 void LocalFrameView::SetViewportIntersection(
@@ -5051,13 +5185,20 @@ void LocalFrameView::RenderThrottlingStatusChanged() {
     // Ensure we'll recompute viewport intersection for the frame subtree during
     // the scheduled visual update.
     SetIntersectionObservationState(kRequired);
-  } else if (GetFrame().IsLocalRoot()) {
-    DCHECK(!IsUpdatingLifecycle());
-    ForceThrottlingScope force_throttling(*this);
-    // TODO(https://crbug.com/1196853): Switch to ScriptForbiddenScope once
-    // failures are fixed.
-    BlinkLifecycleScopeWillBeScriptForbidden forbid_script;
-    RunPaintLifecyclePhase(PaintBenchmarkMode::kNormal);
+  } else {
+    if (Document* document = frame_->GetDocument()) {
+      document->GetDocumentAnimations()
+          .CancelCompositorAnimationsAndMarkForRestart();
+    }
+
+    if (GetFrame().IsLocalRoot()) {
+      DCHECK(!IsUpdatingLifecycle());
+      ForceThrottlingScope force_throttling(*this);
+      // TODO(https://crbug.com/1196853): Switch to ScriptForbiddenScope once
+      // failures are fixed.
+      BlinkLifecycleScopeWillBeScriptForbidden forbid_script;
+      RunPaintLifecyclePhase(PaintBenchmarkMode::kNormal);
+    }
   }
 
 #if DCHECK_IS_ON()

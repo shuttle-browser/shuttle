@@ -24,7 +24,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
@@ -210,8 +209,8 @@
   CHECK_EQ(_signinCoordinator, coordinator);
   [self stopSigninCoordinator];
   if (signinIdentity) {
-    GaiaId gaiaID = signinIdentity.gaiaId;
-    [_saveToPhotosSettingsMediator setSelectedIdentityGaiaID:&gaiaID];
+    [_saveToPhotosSettingsMediator
+        setSelectedIdentityGaiaID:signinIdentity.gaiaId];
   }
 }
 

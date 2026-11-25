@@ -65,6 +65,30 @@ TEST(FacilitatedPaymentsMetricsTest, LogPixCodeCopied) {
                                       /*expected_bucket_count=*/1);
 }
 
+// Tests that the heuristic signals are logged as a bitmask, under the variant
+// for whether the pass decoded a QR code.
+TEST(FacilitatedPaymentsMetricsTest, LogQrCodeHeuristicSignals) {
+  // The design's bit values: link = 1, square = 2, URL keyword = 4 and text
+  // keyword = 8.
+  static constexpr int kSquareAndUrlKeywordSample = 2 + 4;
+  static constexpr int kAllSignalsSample = 1 + 2 + 4 + 8;
+  base::HistogramTester histogram_tester;
+
+  LogQrCodeHeuristicSignals(
+      QrCodeHeuristicSignals({QrCodeHeuristicSignal::kSquareCandidate,
+                              QrCodeHeuristicSignal::kUrlKeywordMatch}),
+      /*qr_code_found=*/true);
+  LogQrCodeHeuristicSignals(QrCodeHeuristicSignals::All(),
+                            /*qr_code_found=*/false);
+
+  histogram_tester.ExpectUniqueSample(
+      "FacilitatedPayments.QrCode.HeuristicSignals.QrFound",
+      kSquareAndUrlKeywordSample, /*expected_bucket_count=*/1);
+  histogram_tester.ExpectUniqueSample(
+      "FacilitatedPayments.QrCode.HeuristicSignals.QrNotFound",
+      kAllSignalsSample, /*expected_bucket_count=*/1);
+}
+
 TEST(FacilitatedPaymentsMetricsTest, LogPixCodeCopiedInIframe) {
   base::HistogramTester histogram_tester;
 
@@ -303,11 +327,8 @@ INSTANTIATE_TEST_SUITE_P(
         AccountLinkingFlowExitedReason::kScreenClosedNotByUser,
         AccountLinkingFlowExitedReason::kScreenClosedByUser,
         AccountLinkingFlowExitedReason::kUserDeclined,
-        AccountLinkingFlowExitedReason::kWalletNotInstalled,
-        AccountLinkingFlowExitedReason::kWalletVersionNotSupported,
         AccountLinkingFlowExitedReason::kUserOptedOut,
         AccountLinkingFlowExitedReason::kNoScreenlockOrBiometricSetup,
-        AccountLinkingFlowExitedReason::kServerSideIneligible,
         AccountLinkingFlowExitedReason::kTabIsNotActive,
         AccountLinkingFlowExitedReason::kUserSwitchedWebsite,
         AccountLinkingFlowExitedReason::kMaxStrikes,
@@ -318,7 +339,9 @@ INSTANTIATE_TEST_SUITE_P(
         AccountLinkingFlowExitedReason::kNotEligiblePerPaymentsBackend,
         AccountLinkingFlowExitedReason::kActionTokenNotAvailable,
         AccountLinkingFlowExitedReason::kUserLoggedOut,
-        AccountLinkingFlowExitedReason::kApiClientNotAvailable));
+        AccountLinkingFlowExitedReason::kApiClientNotAvailable,
+        AccountLinkingFlowExitedReason::kUserCanceledInGmsCore,
+        AccountLinkingFlowExitedReason::kGmsCoreFlowFailed));
 
 TEST(FacilitatedPaymentsMetricsTest,
      LogAccountLinkingGetDetailsForCreatePaymentInstrumentResultAndLatency) {

@@ -166,7 +166,10 @@ if (is_ios) {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "safari_data_importer_unittest.cc" ]
+  sources = [
+    "bookmark_util_unittest.cc",
+    "safari_data_importer_unittest.cc",
+  ]
   deps = [
     ":bookmarks",
     ":safari_data_importer",
@@ -183,19 +186,21 @@ source_set("unit_tests") {
     "//components/history/core/common",
     "//components/history/core/test",
     "//components/password_manager/core/browser/features:utils",
-    "//components/password_manager/core/browser/import:csv",
     "//components/password_manager/core/browser/import:importer",
     "//components/password_manager/core/browser/password_store:test_support",
     "//components/password_manager/core/browser/ui",
     "//components/password_manager/core/browser/ui:credential_ui_entry",
     "//components/password_manager/core/common",
     "//components/prefs:test_support",
+    "//components/reading_list/core",
     "//components/reading_list/core:test_support",
     "//components/sync:test_support",
+    "//components/user_data_importer/common",
     "//components/user_data_importer/mojom",
     "//mojo/public/cpp/bindings",
     "//testing/gmock",
     "//testing/gtest",
+    "//url",
   ]
 
   if (is_ios) {

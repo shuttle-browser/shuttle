@@ -21,7 +21,7 @@ std::pair<int, int> GetAvailablePointerAndHoverTypesImpl() {
   base::android::JavaIntArrayToIntVector(
       env, Java_TouchDevice_availablePointerAndHoverTypes(env),
       &pointer_and_hover_types);
-  DCHECK_EQ(pointer_and_hover_types.size(), 2u);
+  CHECK_EQ(pointer_and_hover_types.size(), 2u, base::NotFatalUntil::M163);
   return {pointer_and_hover_types[0], pointer_and_hover_types[1]};
 }
 
@@ -33,8 +33,7 @@ int MaxTouchPoints() {
   return Java_TouchDevice_maxTouchPoints(jni_zero::AttachCurrentThread());
 }
 
-PointerType GetPrimaryPointerType() {
-  const int available_pointer_types = GetAvailablePointerAndHoverTypes().first;
+PointerType GetPrimaryPointerType(int available_pointer_types) {
   // In desktop mode, prefer fine pointer (mouse/trackpad) as primary.
   if (base::android::device_info::is_desktop()) {
     if (available_pointer_types & POINTER_TYPE_FINE) {
@@ -47,13 +46,13 @@ PointerType GetPrimaryPointerType() {
   if (available_pointer_types & POINTER_TYPE_FINE) {
     return POINTER_TYPE_FINE;
   }
-  DCHECK_EQ(available_pointer_types, POINTER_TYPE_NONE);
+  CHECK_EQ(available_pointer_types, POINTER_TYPE_NONE,
+           base::NotFatalUntil::M163);
   return POINTER_TYPE_NONE;
 }
 
-HoverType GetPrimaryHoverType() {
-  auto [available_pointer_types, available_hover_types] =
-      GetAvailablePointerAndHoverTypes();
+HoverType GetPrimaryHoverType(int available_pointer_types,
+                              int available_hover_types) {
   // In desktop mode, the mouse is the primary input, so report hover.
   if (base::android::device_info::is_desktop()) {
     if (available_hover_types & HOVER_TYPE_HOVER) {
@@ -68,7 +67,7 @@ HoverType GetPrimaryHoverType() {
   if (available_hover_types & HOVER_TYPE_NONE) {
     return HOVER_TYPE_NONE;
   }
-  DCHECK_EQ(available_hover_types, HOVER_TYPE_HOVER);
+  CHECK_EQ(available_hover_types, HOVER_TYPE_HOVER, base::NotFatalUntil::M163);
   return HOVER_TYPE_HOVER;
 }
 

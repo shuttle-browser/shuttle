@@ -31,7 +31,6 @@
 #include "build/android_buildflags.h"
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/omnibox/browser/actions/omnibox_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_concepts.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
@@ -61,7 +60,7 @@
 #include "url/third_party/mozilla/url_parse.h"
 #include "url/url_util.h"
 
-#if (!BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_VR)) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_IOS)
 #include "components/omnibox/browser/vector_icons.h"  // nogncheck
 #include "components/vector_icons/vector_icons.h"     // nogncheck
 #endif
@@ -143,6 +142,65 @@ int GetDeduplicationProviderPreferenceScore(
   return it != kProviderPrefMap.end() ? it->second : 0;
 }
 
+// Returns the template for a match that takes its text from a preferred
+// duplicate: the duplicate's `presentation_source`, with the fields that
+// describe what the match does restored from its own `suggest_template`.
+// Keep in sync with suggest_template_info.proto:
+// - Restored from `suggest_template`: default_search_parameters,
+//   action_suggestions, fusebox_action, entity_id and website_uri.
+// - From `presentation_source`, since they describe how the text is displayed:
+//   style, type_icon, primary_text, secondary_text, image,
+//   secondary_text_placement, wrap_secondary_text and wrap_primary_text. So do
+//   fields added later and unknown fields, since the proto mostly grows in
+//   presentation.
+std::optional<omnibox::SuggestTemplateInfo> ReplaceSuggestTemplatePresentation(
+    std::optional<omnibox::SuggestTemplateInfo> suggest_template,
+    const std::optional<omnibox::SuggestTemplateInfo>& presentation_source) {
+  omnibox::SuggestTemplateInfo result =
+      presentation_source.value_or(omnibox::SuggestTemplateInfo());
+  result.clear_default_search_parameters();
+  result.clear_action_suggestions();
+  result.clear_fusebox_action();
+  result.clear_entity_id();
+  result.clear_website_uri();
+  if (suggest_template) {
+    result.mutable_default_search_parameters()->swap(
+        *suggest_template->mutable_default_search_parameters());
+    result.mutable_action_suggestions()->Swap(
+        suggest_template->mutable_action_suggestions());
+    if (suggest_template->has_fusebox_action()) {
+      result.mutable_fusebox_action()->Swap(
+          suggest_template->mutable_fusebox_action());
+    }
+    if (suggest_template->has_entity_id()) {
+      result.set_entity_id(suggest_template->entity_id());
+    }
+    if (suggest_template->has_website_uri()) {
+      result.set_website_uri(suggest_template->website_uri());
+    }
+  }
+  // Don't keep a template with nothing left in it. ByteSizeLong() also counts
+  // unknown fields, so a template with only unknown fields is kept. Like the
+  // fields not listed above, they come from `presentation_source`.
+  if (result.ByteSizeLong() == 0) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+// Returns the `udm` search parameter of `suggest_template`, i.e. its search
+// mode, e.g. "50" for AI Mode. Empty if it has none.
+std::string_view GetSuggestTemplateUdm(
+    const std::optional<omnibox::SuggestTemplateInfo>& suggest_template) {
+  if (!suggest_template) {
+    return std::string_view();
+  }
+  const auto& search_parameters = suggest_template->default_search_parameters();
+  const auto it = search_parameters.find("udm");
+  return it != search_parameters.end() ? std::string_view(it->second)
+                                       : std::string_view();
+}
+
 int GetOrderForActionType(scoped_refptr<OmniboxAction> action) {
   // Sort: Call -> Directions -> Reviews -> Tab Switch.
   auto* action_in_suggest = OmniboxActionInSuggest::FromAction(action.get());
@@ -182,7 +240,8 @@ size_t ACMatchKeyHash<Args...>::operator()(
 // declaration here.
 // Deduplication key hash for `AutocompleteResult`.
 template struct ACMatchKeyHash<std::string,  // URL
-                               AutocompleteMatchDedupeType>;
+                               AutocompleteMatchDedupeType,
+                               std::string>;  // Suggest template behavior.
 
 // RichAutocompletionParams ---------------------------------------------------
 
@@ -390,6 +449,8 @@ AutocompleteMatch& AutocompleteMatch::operator=(
   android_tab_id = std::move(match.android_tab_id);
   DestroyJavaObject();
   std::swap(java_match_, match.java_match_);
+  std::swap(java_vector_icon_, match.java_vector_icon_);
+  std::swap(java_bookmark_vector_icon_, match.java_bookmark_vector_icon_);
   UpdateJavaObjectNativeRef();
 #endif
   return *this;
@@ -483,7 +544,7 @@ AutocompleteMatch& AutocompleteMatch::operator=(
   return *this;
 }
 
-#if (!BUILDFLAG(IS_ANDROID) || BUILDFLAG(ENABLE_VR)) && !BUILDFLAG(IS_IOS)
+#if !BUILDFLAG(IS_IOS)
 // static
 
 const gfx::VectorIcon& AutocompleteMatch::GetVectorIcon(
@@ -492,7 +553,7 @@ const gfx::VectorIcon& AutocompleteMatch::GetVectorIcon(
   if (suggest_template.has_value() && suggest_template->has_type_icon()) {
     // Update this assertion and the switch below whenever values are added.
     static_assert(omnibox::SuggestTemplateInfo::IconType_MAX ==
-                  omnibox::SuggestTemplateInfo::IMAGE_CREATE);
+                  omnibox::SuggestTemplateInfo::PROMPT_SUGGESTION);
     switch (suggest_template->type_icon()) {
       case omnibox::SuggestTemplateInfo::ICON_TYPE_UNSPECIFIED:
         // When not specified, fall back on regular match icon logic below.
@@ -519,6 +580,8 @@ const gfx::VectorIcon& AutocompleteMatch::GetVectorIcon(
         return features::IsRoundedIconsEnabled()
                    ? omnibox::kSubdirectoryArrowRightIcon
                    : omnibox::kSubdirectoryArrowRightOldIcon;
+      case omnibox::SuggestTemplateInfo::PROMPT_SUGGESTION:
+        return omnibox::kPromptSuggestionIcon;
       case omnibox::SuggestTemplateInfo::GLOBE_WITH_SEARCH_LOOP:
       case omnibox::SuggestTemplateInfo::BANANA:
       case omnibox::SuggestTemplateInfo::DRAFT_SPARK:
@@ -641,16 +704,10 @@ const gfx::VectorIcon& AutocompleteMatch::GetVectorIcon(
           return features::IsRoundedIconsEnabled()
                      ? omnibox::kDomainIcon
                      : omnibox::kEnterpriseOldIcon;
-        case IphType::kHistoryEmbeddingsSettingsPromo:
-          return omnibox::kSparkIcon;
-        case IphType::kHistoryEmbeddingsDisclaimer:
-          return gfx::VectorIcon::EmptyIcon();
         case IphType::kHistoryScopePromo:
           return features::IsRoundedIconsEnabled()
                      ? vector_icons::kHistoryIcon
                      : vector_icons::kHistoryChromeRefreshOldIcon;
-        case IphType::kHistoryEmbeddingsScopePromo:
-          return omnibox::kSparkIcon;
       }
 
     case Type::kSearchSuggestTail:
@@ -1331,7 +1388,6 @@ bool AutocompleteMatch::ShouldHideBasedOnStarterPack(
 
 void AutocompleteMatch::GetKeywordUiState(
     const TemplateURLService* template_url_service,
-    bool is_history_embeddings_enabled,
     KeywordState* keyword_state,
     std::u16string* keyword_out,
     std::u16string* keyword_placeholder_out) const {
@@ -1348,8 +1404,7 @@ void AutocompleteMatch::GetKeywordUiState(
       keyword_out->empty()
           ? nullptr
           : GetTemplateURLWithKeyword(template_url_service, *keyword_out, "");
-  *keyword_placeholder_out =
-      GetKeywordPlaceholder(turl, is_history_embeddings_enabled);
+  *keyword_placeholder_out = GetKeywordPlaceholder(turl);
 }
 
 bool AutocompleteMatch::IsExplicitlyInvokedKeyword(
@@ -1367,17 +1422,11 @@ bool AutocompleteMatch::IsExplicitlyInvokedKeyword(
 
 // static
 std::u16string AutocompleteMatch::GetKeywordPlaceholder(
-    const TemplateURL* template_url,
-    bool is_history_embeddings_enabled) {
+    const TemplateURL* template_url) {
 #if BUILDFLAG(IS_IOS)
-  // `kOmniboxScoped` isn't defined on iOS and all history embedding subfeatures
-  // are disabled on iOS.
   return std::u16string();
 #else
   if (!template_url) {
-    return std::u16string();
-  }
-  if (!history_embeddings::GetFeatureParameters().omnibox_scoped) {
     return std::u16string();
   }
   if (template_url->CreatedByEnterpriseSearchAggregatorPolicy()) {
@@ -1389,9 +1438,7 @@ std::u16string AutocompleteMatch::GetKeywordPlaceholder(
       message_id = IDS_OMNIBOX_BOOKMARKS_SCOPE_PLACEHOLDER_TEXT;
       break;
     case template_url_starter_pack_data::StarterPackId::kHistory:
-      message_id = is_history_embeddings_enabled
-                       ? IDS_OMNIBOX_HISTORY_EMBEDDINGS_SCOPE_PLACEHOLDER_TEXT
-                       : IDS_OMNIBOX_HISTORY_SCOPE_PLACEHOLDER_TEXT;
+      message_id = IDS_OMNIBOX_HISTORY_SCOPE_PLACEHOLDER_TEXT;
       break;
     case template_url_starter_pack_data::StarterPackId::kTabs:
       message_id = IDS_OMNIBOX_TABS_SCOPE_PLACEHOLDER_TEXT;
@@ -1821,6 +1868,11 @@ bool AutocompleteMatch::IsThreadsHistorySuggestion() const {
       omnibox::SuggestSubtype::SUBTYPE_AI_MODE_MORE_THREADS_ENTRYPOINT);
 }
 
+bool AutocompleteMatch::IsAgenticUpdateSuggestion() const {
+  return subtypes.contains(
+      omnibox::SuggestSubtype::SUBTYPE_PERSONAL_UPDATE_AIM_THREAD_EXPLICIT);
+}
+
 bool AutocompleteMatch::IsToolbelt() const {
   return type == omnibox::AutocompleteMatchType::kNullResultMessage &&
          !actions.empty() && omnibox_feature_configs::Toolbelt::Get().enabled;
@@ -1838,13 +1890,45 @@ bool AutocompleteMatch::HasLensSearchAction() const {
 }
 
 bool AutocompleteMatch::IsSearchAimSuggestion() const {
-  if (suggest_template.has_value()) {
-    if (auto it = suggest_template->default_search_parameters().find("udm");
-        it != suggest_template->default_search_parameters().end()) {
-      return it->second == "50";
-    }
+  return GetSuggestTemplateUdm(suggest_template) == "50";
+}
+
+std::string AutocompleteMatch::GetSuggestTemplateBehaviorKey() const {
+  if (!suggest_template) {
+    return std::string();
   }
-  return false;
+  std::string key;
+  // The search mode, e.g. AI Mode for udm=50. Other search parameters, e.g.
+  // an entity's, don't change what the click does, so they're left out and an
+  // entity still dedupes with a plain search for the same query.
+  if (std::string_view udm = GetSuggestTemplateUdm(suggest_template);
+      !udm.empty()) {
+    base::StrAppend(&key, {"udm=", udm, ";"});
+  }
+  if (!suggest_template->has_fusebox_action()) {
+    return key;
+  }
+  // A fusebox action changes what clicking the suggestion does in the
+  // searchbox, e.g. preselecting a tool or pasting the query instead of
+  // submitting it. Each field below changes the click behavior unless it's 0. The two
+  // fields left out, `searchbox_tutorial` and `preferred_inventory`, only
+  // change what the searchbox shows after the click when clicking does
+  // not lead to navigation).
+  const omnibox::SuggestTemplateInfo::FuseboxAction& fusebox_action =
+      suggest_template->fusebox_action();
+  auto append_if_set = [&key](std::string_view name, int value) {
+    if (value != 0) {
+      base::StrAppend(&key, {name, "=", base::NumberToString(value), ";"});
+    }
+  };
+  append_if_set("preselected_tool", fusebox_action.preselected_tool());
+  append_if_set("preselected_model", fusebox_action.preselected_model());
+  append_if_set("preselected_input_source",
+                fusebox_action.preselected_input_source());
+  append_if_set("query_action_override",
+                fusebox_action.query_action_override());
+  append_if_set("searchbox_override", fusebox_action.searchbox_override());
+  return key;
 }
 
 OmniboxSuggestionKind AutocompleteMatch::GetOmniboxSuggestionKind() const {
@@ -2050,6 +2134,15 @@ void AutocompleteMatch::UpgradeMatchWithPropertiesFrom(
     image_dominant_color = duplicate_match.image_dominant_color;
     image_url = duplicate_match.image_url;
     icon_url = duplicate_match.icon_url;
+
+    // So should the template describing how to display it, since the text
+    // above may come from the duplicate's template. What the template does,
+    // e.g. its search parameters, stays with this match. Some presentation
+    // implies behavior, e.g. the AIM sparkle icon goes with udm=50. That's fine
+    // since by default, matches only dedupe if their templates say they do the
+    // same thing (see `GetSuggestTemplateBehaviorKey()`).
+    suggest_template = ReplaceSuggestTemplatePresentation(
+        std::move(suggest_template), duplicate_match.suggest_template);
 
     // Prefer to keep the original `type` for more helpful metric logging.
     // However, searches and non-searches have different ranking & text display

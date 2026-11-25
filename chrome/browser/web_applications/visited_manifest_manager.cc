@@ -6,17 +6,11 @@
 
 #include <algorithm>
 
-#include "base/feature_list.h"
 #include "base/strings/string_util.h"
-#include "third_party/blink/public/common/manifest/manifest_util.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "url/origin.h"
 
 namespace web_app {
-
-// TODO(crbug.com/366323698): Clean this up after m131 hits stable.
-BASE_FEATURE(kBlockMlPromotionInNestedPagesNoManifest,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 VisitedManifestManager::VisitedManifestManager(base::Clock* clock)
     : clock_(clock) {}
@@ -24,9 +18,6 @@ VisitedManifestManager::~VisitedManifestManager() = default;
 
 bool VisitedManifestManager::IsUrlControlledBySeenManifest(
     const GURL& site_url) {
-  if (!base::FeatureList::IsEnabled(kBlockMlPromotionInNestedPagesNoManifest)) {
-    return false;
-  }
   // This returns the first value 'greater than' the given value. Prefixes MUST
   // be equal or less than the candidate string, so the algorithm can iterate
   // backwards until it reaches a different origin.
@@ -49,25 +40,17 @@ bool VisitedManifestManager::IsUrlControlledBySeenManifest(
   return false;
 }
 
-void VisitedManifestManager::OnManifestSeen(
-    const blink::mojom::Manifest& manifest) {
-  if (!base::FeatureList::IsEnabled(kBlockMlPromotionInNestedPagesNoManifest)) {
-    return;
-  }
-  CHECK(!blink::IsEmptyManifest(manifest));
+void VisitedManifestManager::OnManifestSeen(const blink::Manifest& manifest) {
   // Only consider manifests that have specified a `start_url`, as every page
   // has a default manifest.
-  if (!manifest.has_valid_specified_start_url) {
+  if (!manifest.has_valid_specified_start_url()) {
     return;
   }
-  recent_manifest_scopes_.Put(manifest.scope, clock_->Now());
+  recent_manifest_scopes_.Put(manifest.scope(), clock_->Now());
 }
 
 void VisitedManifestManager::ClearSeenScopes(const base::Time& begin_time,
                                              const base::Time& end_time) {
-  if (!base::FeatureList::IsEnabled(kBlockMlPromotionInNestedPagesNoManifest)) {
-    return;
-  }
   auto it = recent_manifest_scopes_.begin();
   while (it != recent_manifest_scopes_.end()) {
     if (it->second >= begin_time && it->second <= end_time) {

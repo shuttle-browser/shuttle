@@ -78,7 +78,7 @@ void ClearAllButFrameAncestors(network::mojom::URLResponseHead* response_head) {
     auto raw_frame_ancestors = policy->raw_directives.find(
         network::mojom::CSPDirectiveName::FrameAncestors);
     if (raw_frame_ancestors == policy->raw_directives.end()) {
-      DCHECK(false);
+      CHECK(false, base::NotFatalUntil::M163);
     } else {
       cleared_policy->header->header_value =
           "frame-ancestors " + raw_frame_ancestors->second;
@@ -122,7 +122,7 @@ void PluginResponseInterceptorURLLoaderThrottle::WillProcessResponse(
     const GURL& response_url,
     network::mojom::URLResponseHead* response_head,
     bool* defer) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   content::WebContents* web_contents =
       content::WebContents::FromFrameTreeNodeId(frame_tree_node_id_);
@@ -225,11 +225,13 @@ void PluginResponseInterceptorURLLoaderThrottle::WillProcessResponse(
   // that handles application/pdf should use the generic OOPIF template,
   // not Chrome's PDF-specific embedder HTML.
   bool is_for_generic_mime_handler = false;
+  const MimeTypesHandler* handler = nullptr;
   if (const auto* extension =
           extensions::ExtensionRegistry::Get(web_contents->GetBrowserContext())
               ->enabled_extensions()
               .GetByID(extension_id)) {
-    if (const MimeTypesHandler* handler = MimeTypesHandler::Get(*extension)) {
+    handler = MimeTypesHandler::Get(*extension);
+    if (handler) {
       is_for_generic_mime_handler = !handler->IsPluginExtension();
     }
   }
@@ -248,7 +250,7 @@ void PluginResponseInterceptorURLLoaderThrottle::WillProcessResponse(
     // Set the payload without creating a MimeHandlerView.
     payload = extensions::CreateTemplateMimeHandlerPage(
         response_url, response_head->mime_type, internal_id,
-        /*use_oopif=*/true);
+        /*use_oopif=*/true, handler);
   } else {
     // The resource is handled by frame-based MimeHandlerView, so let the
     // MimeHandlerView code set the payload.

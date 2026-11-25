@@ -157,6 +157,7 @@ enum class EmbedderType {
 // Responsiveness is a separate axis: a client that is up but unresponsive
 // (`WebClientState::kUnresponsive`) is still `kReady` here, because it can
 // become responsive again on its own.
+// LINT.IfChange(ClientLoadState)
 enum class ClientLoadState {
   // The client is being created or is still loading. It cannot be used yet,
   // but may become ready later.
@@ -167,6 +168,7 @@ enum class ClientLoadState {
   // reloaded.
   kError,
 };
+// LINT.ThenChange(//chrome/browser/glic/service/glic_invoke_handler.cc:ClientLoadStateToDiagnosticString)
 
 std::ostream& operator<<(std::ostream& os, ClientLoadState state);
 
@@ -219,7 +221,8 @@ enum class ClientLoadErrorReason {
 
   // Guest failures. The guest contents itself did not come up.
 
-  // The guest navigation committed an error page.
+  // The guest navigation committed an error page: a network error, or an HTTP
+  // status of 400 or above.
   kGuestLoadFailed = 8,
 
   // The guest renderer process crashed or was killed.
@@ -239,9 +242,23 @@ enum class ClientLoadErrorReason {
   // A warmed client never became ready after the panel was shown.
   kWarmedTimeout = 12,
 
-  kMaxValue = kWarmedTimeout,
+  // More guest failures (see kGuestLoadFailed). Both were reported as
+  // kGuestLoadFailed before M158.
+
+  // The guest navigation was cancelled because its origin is not an allowed
+  // guest origin, e.g. a redirect to a host that is not on the list.
+  kGuestOriginBlocked = 13,
+
+  // The guest navigation committed a regular page, but on an origin that is
+  // not allowed to use the Glic API, so the web client can never connect.
+  kGuestApiNotAllowed = 14,
+
+  // The configured provider differs from the one latched for the profile.
+  kPendingProviderChange = 15,
+
+  kMaxValue = kPendingProviderChange,
 };
-// LINT.ThenChange(//tools/metrics/structured/sync/structured.xml)
+// LINT.ThenChange(//tools/metrics/structured/sync/structured.xml,//chrome/browser/glic/host/glic_page_handler.cc:ToClientLoadErrorReason,//chrome/browser/glic/service/metrics/glic_instance_metrics.cc:ToStructuredReason,//chrome/browser/glic/service/glic_invoke_handler.cc:ClientLoadErrorReasonToDiagnosticString)
 
 // Why a Glic instance was removed. Invocations still running on the instance
 // fail with the matching GlicInvokeError::kInstanceDestroyed* value.

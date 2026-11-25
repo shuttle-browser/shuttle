@@ -4,6 +4,7 @@
 
 #include "ash/wallpaper/wallpaper_utils/sea_pen_metadata_utils.h"
 
+#include <algorithm>
 #include <optional>
 #include <string>
 #include <utility>
@@ -41,7 +42,7 @@ std::optional<std::u16string> GetCreationTimeInfo(
   return base::TimeFormatShortDate(*time);
 }
 
-std::optional<base::DictValue> ParseAsOptionalDict(const std::string& json) {
+std::optional<base::DictValue> ParseAsOptionalDict(std::string_view json) {
   std::optional<base::Value> parsed =
       base::JSONReader::Read(json, base::JSON_PARSE_CHROMIUM_EXTENSIONS);
   if (!parsed.has_value()) {
@@ -216,7 +217,7 @@ std::string QueryDictToXmpString(const base::DictValue& query_dict) {
 }
 
 void DecodeJsonMetadata(
-    const std::string& json,
+    std::string_view json,
     base::OnceCallback<
         void(personalization_app::mojom::RecentSeaPenImageInfoPtr)> callback) {
   std::move(callback).Run(
@@ -224,7 +225,7 @@ void DecodeJsonMetadata(
 }
 
 void DecodeJsonMetadataGetTemplateId(
-    const std::string& json,
+    std::string_view json,
     base::OnceCallback<void(std::optional<int>)> callback) {
   std::move(callback).Run(
       ExtractTemplateIdFromSeaPenQueryDict(ParseAsOptionalDict(json)));
@@ -268,13 +269,13 @@ bool IsValidTemplateQuery(
   }
 
   for (const auto& [query_chip, query_option] : query_options) {
-    if (!chip_set.contains(query_chip)) {
+    if (!std::ranges::contains(chip_set, query_chip)) {
       // The query chip is not in the template's chip set.
       LOG(WARNING) << "Chip id is not found.";
       return false;
     }
     const auto available_options = ChipToOptionSet().find(query_chip)->second;
-    if (!available_options.contains(query_option)) {
+    if (!std::ranges::binary_search(available_options, query_option)) {
       // The query's option is not an allowed option.
       LOG(WARNING) << "Option id not found.";
       return false;

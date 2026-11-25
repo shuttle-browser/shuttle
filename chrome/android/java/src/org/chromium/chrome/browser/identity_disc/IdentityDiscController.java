@@ -63,7 +63,7 @@ import org.chromium.components.feature_engagement.FeatureConstants;
 import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.components.signin.SigninFeatureMap;
 import org.chromium.components.signin.SigninFeatures;
-import org.chromium.components.signin.base.CoreAccountInfo;
+import org.chromium.components.signin.base.AccountInfo;
 import org.chromium.components.signin.identitymanager.IdentityManager;
 import org.chromium.components.signin.identitymanager.PrimaryAccountChangeEvent;
 import org.chromium.components.signin.metrics.SigninAccessPoint;
@@ -211,8 +211,7 @@ public class IdentityDiscController
         }
 
         ensureProfileDataCache(mProfile);
-        final @Nullable CoreAccountId accountId =
-                CoreAccountInfo.getIdFrom(getSignedInAccountInfo());
+        final @Nullable CoreAccountId accountId = AccountInfo.getIdFrom(getSignedInAccountInfo());
         final @Nullable DisplayableProfileData profileData =
                 accountId != null ? mProfileDataCache.getById(accountId) : null;
 
@@ -275,11 +274,17 @@ public class IdentityDiscController
                             mContext,
                             identityManager,
                             subscriptionEligibilityService,
+                            // TODO(crbug.com/578866423): Pass the SyncService and let the
+                            // cache handle the error badge too.
+                            // No SyncService: on an identity error,
+                            // maybeUpdateIdentityErrorAndBadge() sets a badge on the avatar,
+                            // and the cache never draws the ring on a badged avatar.
+                            /* syncService= */ null,
                             aiTierImageSizePx,
                             aiTierRingThicknessPx);
         } else {
             mProfileDataCache =
-                    ProfileDataCache.createWithoutBadge(
+                    ProfileDataCache.create(
                             mContext, identityManager, R.dimen.toolbar_identity_disc_size);
         }
         mProfileDataCache.addObserver(this);
@@ -317,7 +322,7 @@ public class IdentityDiscController
 
         if (profileData
                 .getAccountEmail()
-                .equals(CoreAccountInfo.getEmailFrom(getSignedInAccountInfo()))) {
+                .equals(AccountInfo.getEmailFrom(getSignedInAccountInfo()))) {
             /*
              * We need to call {@link notifyObservers(false)} before calling
              * {@link notifyObservers(true)}. This is because {@link notifyObservers(true)} has been
@@ -402,11 +407,11 @@ public class IdentityDiscController
         }
         mIdentityError = error;
 
-        CoreAccountInfo coreAccountInfo = getSignedInAccountInfo();
-        if (coreAccountInfo != null) {
+        AccountInfo accountInfo = getSignedInAccountInfo();
+        if (accountInfo != null) {
             ensureProfileDataCache(mProfile);
             mProfileDataCache.setBadge(
-                    coreAccountInfo.getId(),
+                    accountInfo.getId(),
                     mIdentityError == UserActionableError.NONE
                             ? null
                             : BadgeConfig.create(R.drawable.ic_error_badge_16dp)
@@ -435,7 +440,7 @@ public class IdentityDiscController
      *
      * @return account info for the current profile. Returns null for OTR profile.
      */
-    private @Nullable CoreAccountInfo getSignedInAccountInfo() {
+    private @Nullable AccountInfo getSignedInAccountInfo() {
         return mIdentityManager != null ? mIdentityManager.getPrimaryAccountInfo() : null;
     }
 

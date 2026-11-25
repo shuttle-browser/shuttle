@@ -121,8 +121,8 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/compositor/layer.h"
 #include "ui/display/screen.h"
 #include "ui/events/event.h"
@@ -829,18 +829,26 @@ void OmniboxViewViews::OnInputMethodChanged() {
 
 ui::TextInputType OmniboxViewViews::GetPreferredTextInputType() const {
 #if BUILDFLAG(IS_WIN)
+  if (location_bar_view_) {
+    return GetPreferredTextInputType(
+        location_bar_view_->GetWidget()->GetInputMethod());
+  }
+#endif  // BUILDFLAG(IS_WIN)
+  return GetPreferredTextInputType(/*input_method=*/nullptr);
+}
+
+// static
+ui::TextInputType OmniboxViewViews::GetPreferredTextInputType(
+    const ui::InputMethod* input_method) {
+#if BUILDFLAG(IS_WIN)
   // We'd like to set the text input type to TEXT_INPUT_TYPE_URL, because this
   // triggers URL-specific layout in software keyboards, e.g. adding top-level
   // "/" and ".com" keys for English.  However, this also causes IMEs to default
   // to Latin character mode, which makes entering search queries difficult for
   // IME users. Therefore, we try to guess whether an IME will be used based on
   // the input language, and set the input type accordingly.
-  if (location_bar_view_) {
-    ui::InputMethod* input_method =
-        location_bar_view_->GetWidget()->GetInputMethod();
-    if (input_method && input_method->IsInputLocaleCJK()) {
-      return ui::TEXT_INPUT_TYPE_SEARCH;
-    }
+  if (input_method && input_method->IsInputLocaleCJK()) {
+    return ui::TEXT_INPUT_TYPE_SEARCH;
   }
 #endif  // BUILDFLAG(IS_WIN)
   return ui::TEXT_INPUT_TYPE_URL;
@@ -1390,7 +1398,7 @@ void OmniboxViewViews::HideImeIfNeeded() {
 
 int OmniboxViewViews::GetOmniboxTextLength() const {
   // TODO(oshima): Support IME.
-  return static_cast<int>(GetText().length());
+  return static_cast<int>(Textfield::GetText().length());
 }
 
 void OmniboxViewViews::SetEmphasis(bool emphasize, const gfx::Range& range) {
@@ -2235,7 +2243,7 @@ bool OmniboxViewViews::HandleKeyEvent(views::Textfield* textfield,
         }
       }
 
-      WindowOpenDisposition disposition =
+      ui::mojom::WindowOpenDisposition disposition =
           searchbox::ComputeOpenDispositionFromModifiersAndLogToUma(
               shift, control, alt, command);
       if (controller()->IsPopupOpen() && !control) {
@@ -2380,7 +2388,8 @@ bool OmniboxViewViews::HandleKeyEvent(views::Textfield* textfield,
             controller()->edit_model()->GetPopupSelection();
         if (selection.IsButtonFocused()) {
           controller()->edit_model()->OpenSelection(
-              selection, event.time_stamp(), WindowOpenDisposition::kCurrentTab,
+              selection, event.time_stamp(),
+              ui::mojom::WindowOpenDisposition::kCurrentTab,
               /*via_keyboard=*/true);
           return true;
         }
@@ -2668,10 +2677,24 @@ void OmniboxViewViews::PerformDrop(
   }
 
   SetUserText(text);
-  if (!HasFocus()) {
-    RequestFocus();
+  if (IsFullWebUIOmniboxReady()) {
+    // Once the Full WebUI omnibox is ready, the native textfield can't take
+    // focus (see `LocationBarView::UpdateFocusBehavior()`), so
+    // `RequestFocus()` would do nothing and leave the dropped text unfocused
+    // in the native view, with the popup closed. Focus the location bar like a
+    // non-user-initiated `FocusLocation()` instead, which opens and focuses the
+    // WebUI popup without querying zero-prefix suggestions. Opening the popup
+    // hands off the dropped text with the native selection, so select it
+    // first.
+    SelectAll(false);
+    location_bar_view_->FocusLocation(/*is_user_initiated=*/false,
+                                      /*clear_focus_if_failed=*/false);
+  } else {
+    if (!HasFocus()) {
+      RequestFocus();
+    }
+    SelectAll(false);
   }
-  SelectAll(false);
   output_drag_op = DragOperation::kCopy;
 }
 

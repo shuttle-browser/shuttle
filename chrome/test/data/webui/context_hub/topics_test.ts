@@ -13,7 +13,7 @@ import type {TopicCollectionCarouselElement} from 'chrome://context-hub/topics/t
 import type {TopicDetailsElement} from 'chrome://context-hub/topics/topic_details.js';
 import {getSuggestedPrompts, TOPIC_DETAILS_TABS, TOPIC_VISITS_TAB} from 'chrome://context-hub/topics/topic_details.js';
 import type {TopicFeedbackControlsElement} from 'chrome://context-hub/topics/topic_feedback_controls.js';
-import {COVERAGE_TOPICS_STORAGE_KEY, getExportFileName, pickCoverageTopicIds, setFileDownloaderForTesting} from 'chrome://context-hub/topics/topic_feedback_export_dialog.js';
+import {COVERAGE_TOPICS_STORAGE_KEY, EXPORT_DRAFT_STORAGE_KEY, getExportFileName, pickCoverageTopicIds, setFileDownloaderForTesting} from 'chrome://context-hub/topics/topic_feedback_export_dialog.js';
 import type {TopicFeedbackExportDialogElement} from 'chrome://context-hub/topics/topic_feedback_export_dialog.js';
 import type {TopicSitesDialogElement} from 'chrome://context-hub/topics/topic_sites_dialog.js';
 import {BADGE_BACKGROUND_COLORS, createEmptyCollectionFeedback, createEmptyTopicFeedback, createTopicSnapshot, DEFAULT_ICON, formatTopicFeedbackComment, getBackgroundColorForTopic, getBadgePath, getBadgeShapeForTopic, getDisplayDomain, getOpenableUrls, getTopicSites, isCollectionFeedbackEmpty, isTopicFeedbackEmpty, isTopicFeedbackValid, MAX_TOPIC_SITES, normalizeTopicFeedbackComment, parseTopicFeedbackComment, setCollectionFeedback, TOPIC_DEFECT_CATEGORIES, toTopicItem} from 'chrome://context-hub/topics/topic_utils.js';
@@ -831,6 +831,7 @@ suite('TopicFeedbackExportDialog', () => {
       kTopicsFeedbackFormUrl: FORM_URL,
     });
     sessionStorage.clear();
+    localStorage.removeItem(EXPORT_DRAFT_STORAGE_KEY);
     handler = TestMock.fromClass(PageHandlerRemote);
     const {instance} = browserProxyFactory.createForTest(handler);
     browserProxyFactory.setInstance(instance);
@@ -855,6 +856,7 @@ suite('TopicFeedbackExportDialog', () => {
   teardown(() => {
     setFileDownloaderForTesting(null);
     sessionStorage.clear();
+    localStorage.removeItem(EXPORT_DRAFT_STORAGE_KEY);
   });
 
   async function openDialog(feedbacks: TopicFeedback[] = []) {
@@ -1022,6 +1024,8 @@ suite('TopicFeedbackExportDialog', () => {
     assertFalse(!!query('#ldap'));
     const download = query<HTMLButtonElement>('#download')!;
     assertTrue(download.disabled);
+    // The rater agrees to the file being used for evaluation.
+    assertTrue(query('#acknowledge')!.textContent.includes('used to evaluate'));
 
     await click('#acknowledge');
     assertFalse(download.disabled);
@@ -1034,7 +1038,7 @@ suite('TopicFeedbackExportDialog', () => {
     assertTrue(download.disabled);
     assertFalse(query('#ratingStatus')!.hasAttribute('complete'));
     assertTrue(query('#ratingProgress')!.textContent.includes(
-        'You rated 3 of 4 topics. Rate every topic'));
+        'You rated 3 of 4 topics. Rate the others'));
 
     // The last topic was rated on its details page in another tab.
     handler.setResultFor(
@@ -1046,6 +1050,60 @@ suite('TopicFeedbackExportDialog', () => {
     assertEquals(
         'You rated every topic.',
         query('#ratingProgress')!.textContent.trim());
+    assertFalse(!!query('#unratedTopics'));
+  });
+
+  test('unrated topics can be left out instead', async () => {
+    await openDialog(likeTopics(3));
+    await click('#acknowledge');
+    const download = query<HTMLButtonElement>('#download')!;
+    assertTrue(download.disabled);
+    const checkboxes = queryAll<CrCheckboxElement>('.leave-out-checkbox');
+    assertEquals(1, checkboxes.length);
+    assertEquals('Topic 4', checkboxes[0]!.textContent.trim());
+    assertDeepEquals([], dialog.getExportOptionsForTesting().excludedTopicIds);
+
+    checkboxes[0]!.click();
+    await microtasksFinished();
+    assertFalse(download.disabled);
+    assertTrue(query('#ratingStatus')!.hasAttribute('complete'));
+    assertEquals(
+        'You rated 3 of 4 topics and left out 1.',
+        query('#ratingProgress')!.textContent.trim());
+    assertDeepEquals(
+        ['topic-4'], dialog.getExportOptionsForTesting().excludedTopicIds);
+
+    // Rating the topic later includes it again.
+    handler.setResultFor(
+        'getTopicFeedbacks', Promise.resolve({feedbacks: likeTopics(4)}));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await microtasksFinished();
+    assertDeepEquals([], dialog.getExportOptionsForTesting().excludedTopicIds);
+    assertFalse(!!query('#unratedTopics'));
+
+    // Clearing the rating doesn't leave it out again.
+    handler.setResultFor(
+        'getTopicFeedbacks', Promise.resolve({feedbacks: likeTopics(3)}));
+    document.dispatchEvent(new Event('visibilitychange'));
+    await microtasksFinished();
+    assertFalse(queryAll<CrCheckboxElement>('.leave-out-checkbox')[0]!.checked);
+    assertDeepEquals([], dialog.getExportOptionsForTesting().excludedTopicIds);
+  });
+
+  test('leaves out all unrated topics at once', async () => {
+    await openDialog(likeTopics(1));
+    await click('#acknowledge');
+    assertTrue(query<HTMLButtonElement>('#download')!.disabled);
+
+    await click('#leaveOutAll');
+    assertTrue(
+        queryAll<CrCheckboxElement>('.leave-out-checkbox')
+            .every(checkbox => checkbox.checked));
+    assertTrue(query<HTMLButtonElement>('#leaveOutAll')!.disabled);
+    assertFalse(query<HTMLButtonElement>('#download')!.disabled);
+    assertDeepEquals(
+        ['topic-2', 'topic-3', 'topic-4'],
+        dialog.getExportOptionsForTesting().excludedTopicIds);
   });
 
   test('downloads the bundle and links to the form', async () => {
@@ -1079,6 +1137,47 @@ suite('TopicFeedbackExportDialog', () => {
 
     await click('#openForm');
     assertEquals(FORM_URL, await openWindowProxy.whenCalled('openUrl'));
+  });
+
+  async function reopenDialog() {
+    view.shadowRoot.querySelector<HTMLElement>('#sendFeedbackButton')!.click();
+    await microtasksFinished();
+    dialog = view.shadowRoot.querySelector('topic-feedback-export-dialog')!;
+    await microtasksFinished();
+  }
+
+  test('keeps unsent choices after closing the dialog', async () => {
+    await openDialog();
+    await select(query<HTMLSelectElement>('#windowSelect')!, '14');
+    queryAll<CrCheckboxElement>('.domain-checkbox')[0]!.click();
+    queryAll<CrCheckboxElement>('.leave-out-checkbox')[0]!.click();
+    query<CrTextareaElement>('#missingTopics')!.value = 'My trip planning';
+    await microtasksFinished();
+    await closeDialog();
+
+    await reopenDialog();
+    assertEquals('14', query<HTMLSelectElement>('#windowSelect')!.value);
+    const options = dialog.getExportOptionsForTesting();
+    assertEquals(14, options.windowDays);
+    assertDeepEquals(
+        ['www.example.com', 'docs.google.com'], options.excludedDomains);
+    assertDeepEquals(['topic-1'], options.excludedTopicIds);
+    assertEquals('My trip planning', options.missingTopics);
+  });
+
+  test('clears unsent choices after downloading', async () => {
+    await openDialog(likeTopics(4));
+    query<CrTextareaElement>('#missingTopics')!.value = 'My trip planning';
+    await microtasksFinished();
+    await click('#acknowledge');
+    await click('#download');
+    await handler.whenCalled('generateTopicsFeedbackBundle');
+    await microtasksFinished();
+    assertEquals(null, localStorage.getItem(EXPORT_DRAFT_STORAGE_KEY));
+    await closeDialog();
+
+    await reopenDialog();
+    assertEquals('', dialog.getExportOptionsForTesting().missingTopics);
   });
 
   test('download is the primary action before downloading', async () => {

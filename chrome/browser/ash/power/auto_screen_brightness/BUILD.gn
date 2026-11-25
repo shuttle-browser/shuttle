@@ -49,8 +49,6 @@ static_library("auto_screen_brightness") {
   deps = [
     "//ash/constants",
     "//base",
-    "//chrome/browser/profiles:profile",
-    "//chrome/browser/profiles:profile_manager",
     "//chrome/common",
     "//chromeos/components/sensors",
     "//chromeos/components/sensors/mojom",
@@ -59,6 +57,7 @@ static_library("auto_screen_brightness") {
     "//components/metrics",
     "//components/prefs",
     "//components/session_manager/core",
+    "//components/user_manager",
     "//content/public/browser",
     "//ui/events",
   ]

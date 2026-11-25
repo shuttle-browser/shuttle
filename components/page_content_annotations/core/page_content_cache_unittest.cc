@@ -124,6 +124,69 @@ TEST_F(PageContentCacheTest, Remove) {
 
   base::RunLoop run_loop_remove;
   ASSERT_FALSE(GetContentForTab(kTabId));
+
+  // Verify that `CachePageContent` followed immediately by
+  // `RemovePageContentForTab` before async store initialization finishes
+  // executes in FIFO order via `pending_tasks_`.
+  cache_.reset();
+  task_environment_.RunUntilIdle();
+  GetOrCreateCache()->CachePageContent(kTabId, kUrl, base::Time::Now(),
+                                       base::Time::Now(),
+                                       TestContent("test title"));
+  GetOrCreateCache()->RemovePageContentForTab(kTabId);
+  EXPECT_FALSE(GetContentForTab(kTabId).has_value());
+}
+
+TEST_F(PageContentCacheTest, UpdateTabId) {
+  static constexpr char kUpdateTabIdLatencyMetric[] =
+      "OptimizationGuide.PageContentStore.UpdateTabIdLatency";
+  static constexpr char kDeletePageContentForTabLatencyMetric[] =
+      "OptimizationGuide.PageContentStore.DeletePageContentForTabLatency";
+  const GURL kUrl("https://example.com/");
+  const optimization_guide::proto::PageContext kPageContext =
+      TestContent("test title");
+
+  GetOrCreateCache()->CachePageContent(1, kUrl, base::Time::Now(),
+                                       base::Time::Now(), kPageContext);
+  ASSERT_TRUE(GetContentForTab(1).has_value());
+
+  base::HistogramTester histogram_tester;
+
+  // Migrate tab 1 -> tab 2 while store is already initialized.
+  GetOrCreateCache()->UpdateTabId(1, 2);
+  EXPECT_FALSE(GetContentForTab(1).has_value());
+  std::optional<optimization_guide::proto::PageContext> migrated =
+      GetContentForTab(2);
+  ASSERT_TRUE(migrated.has_value());
+  EXPECT_EQ(kPageContext.annotated_page_content().main_frame_data().title(),
+            migrated->annotated_page_content().main_frame_data().title());
+  histogram_tester.ExpectTotalCount(kUpdateTabIdLatencyMetric, 1);
+  histogram_tester.ExpectTotalCount(kDeletePageContentForTabLatencyMetric, 0);
+
+  // Updating with identical IDs is a no-op and leaves existing data intact.
+  GetOrCreateCache()->UpdateTabId(2, 2);
+  std::optional<optimization_guide::proto::PageContext> same_id =
+      GetContentForTab(2);
+  ASSERT_TRUE(same_id.has_value());
+  EXPECT_EQ(kPageContext.annotated_page_content().main_frame_data().title(),
+            same_id->annotated_page_content().main_frame_data().title());
+  histogram_tester.ExpectTotalCount(kUpdateTabIdLatencyMetric, 1);
+
+  // Recreate the cache and call UpdateTabId(2, 3) before async store
+  // initialization finishes to verify pending_tasks_ queueing.
+  cache_.reset();
+  task_environment_.RunUntilIdle();
+
+  GetOrCreateCache()->UpdateTabId(2, 3);
+  EXPECT_FALSE(GetContentForTab(2).has_value());
+  std::optional<optimization_guide::proto::PageContext> migrated_on_startup =
+      GetContentForTab(3);
+  ASSERT_TRUE(migrated_on_startup.has_value());
+  EXPECT_EQ(
+      kPageContext.annotated_page_content().main_frame_data().title(),
+      migrated_on_startup->annotated_page_content().main_frame_data().title());
+  histogram_tester.ExpectTotalCount(kUpdateTabIdLatencyMetric, 2);
+  histogram_tester.ExpectTotalCount(kDeletePageContentForTabLatencyMetric, 0);
 }
 
 TEST_F(PageContentCacheTest, DeleteOldDataOnTimer) {

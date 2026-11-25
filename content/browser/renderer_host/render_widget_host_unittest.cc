@@ -82,6 +82,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/dom/dom_node_id.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/synthetic_web_input_event_builders.h"
 #include "third_party/blink/public/common/input/web_mouse_event.h"
 #include "third_party/blink/public/common/page/page_zoom.h"
@@ -773,7 +774,7 @@ class RenderWidgetHostTest : public testing::Test {
 
   virtual void ConfigureView(TestView* view) {}
 
-  void ReinitalizeHost() {
+  void ReinitializeHost() {
     host_->BindWidgetInterfaces(
         mojo::AssociatedRemote<blink::mojom::WidgetHost>()
             .BindNewEndpointAndPassDedicatedReceiver(),
@@ -1577,7 +1578,7 @@ TEST_F(RenderWidgetHostTest, ReceiveFrameTokenFromCrashedRenderer) {
   // RenderWidget is being created.
   blink::VisualProperties props = host_->GetInitialVisualProperties();
   // The RenderWidget is recreated with the initial VisualProperties.
-  ReinitalizeHost();
+  ReinitializeHost();
 
   // The new RenderWidget sends a frame token, which is lower than what the
   // previous RenderWidget sent. This should be okay, as the expected token has
@@ -2600,7 +2601,7 @@ TEST_F(RenderWidgetHostTest, RendererExitedResetsInputRouter) {
   // RenderWidget is being created.
   blink::VisualProperties props = host_->GetInitialVisualProperties();
   // The RenderWidget is recreated with the initial VisualProperties.
-  ReinitalizeHost();
+  ReinitializeHost();
 
   // Make sure the input router is in a fresh state.
   ASSERT_FALSE(host_->input_router()->HasPendingEvents());
@@ -2644,6 +2645,81 @@ TEST_F(RenderWidgetHostTest, DestroyingRenderWidgetResetsInputRouter) {
   EXPECT_EQ(0u, host_->GetRenderInputRouter()->in_flight_event_count());
 }
 
+TEST_F(RenderWidgetHostTest, RendererExitedResetsGestureScrollState) {
+  SimulateGestureEvent(WebInputEvent::Type::kGestureScrollBegin,
+                       blink::WebGestureDevice::kTouchscreen);
+  EXPECT_TRUE(host_->GetRenderInputRouter()->IsAnyScrollGestureInProgress());
+  EXPECT_TRUE(
+      host_->GetRenderInputRouter()->is_in_touchscreen_gesture_scroll());
+  host_->GetRenderInputRouter()->DidStartScrollingViewport();
+  EXPECT_TRUE(host_->GetRenderInputRouter()->is_currently_scrolling_viewport());
+
+  // RendererExited will delete the view.
+  host_->SetView(new TestView(host_.get()));
+  host_->RendererExited();
+
+  // The renderer is recreated.
+  host_->SetView(view_.get());
+  host_->GetInitialVisualProperties();
+  ReinitializeHost();
+  host_->input_router()->MakeActive();
+
+  EXPECT_FALSE(host_->GetRenderInputRouter()->IsAnyScrollGestureInProgress());
+  EXPECT_FALSE(
+      host_->GetRenderInputRouter()->is_in_touchscreen_gesture_scroll());
+  EXPECT_FALSE(
+      host_->GetRenderInputRouter()->is_currently_scrolling_viewport());
+
+  // A subsequent GestureScrollBegin on the recreated widget should not hit
+  // DCHECK(!is_in_gesture_scroll_).
+  SimulateGestureEvent(WebInputEvent::Type::kGestureScrollBegin,
+                       blink::WebGestureDevice::kTouchscreen);
+  EXPECT_TRUE(
+      host_->GetRenderInputRouter()->is_in_touchscreen_gesture_scroll());
+}
+
+TEST_F(RenderWidgetHostTest,
+       RendererExitedDuringFlingResetsGestureScrollState) {
+  view_->SetBounds(gfx::Rect(0, 0, 100, 100));
+
+  SimulateGestureEvent(WebInputEvent::Type::kGestureScrollBegin,
+                       blink::WebGestureDevice::kTouchscreen);
+  host_->GetRenderInputRouter()->DidStartScrollingViewport();
+  host_->ForwardGestureEvent(blink::SyntheticWebGestureEventBuilder::BuildFling(
+      0.f, -1000.f, blink::WebGestureDevice::kTouchscreen));
+  EXPECT_TRUE(host_->GetRenderInputRouter()->IsAnyScrollGestureInProgress());
+  EXPECT_TRUE(
+      host_->GetRenderInputRouter()->is_in_touchscreen_gesture_scroll());
+  EXPECT_TRUE(host_->GetRenderInputRouter()->is_currently_scrolling_viewport());
+  EXPECT_TRUE(static_cast<input::InputRouterImpl*>(host_->input_router())
+                  ->IsFlingActiveForTest());
+
+  // RendererExited will delete the view.
+  host_->SetView(new TestView(host_.get()));
+  host_->RendererExited();
+
+  // The renderer is recreated.
+  host_->SetView(view_.get());
+  host_->GetInitialVisualProperties();
+  ReinitializeHost();
+  host_->input_router()->MakeActive();
+
+  EXPECT_FALSE(host_->GetRenderInputRouter()->IsAnyScrollGestureInProgress());
+  EXPECT_FALSE(
+      host_->GetRenderInputRouter()->is_in_touchscreen_gesture_scroll());
+  EXPECT_FALSE(
+      host_->GetRenderInputRouter()->is_currently_scrolling_viewport());
+  EXPECT_FALSE(static_cast<input::InputRouterImpl*>(host_->input_router())
+                   ->IsFlingActiveForTest());
+
+  // A subsequent GestureScrollBegin on the recreated widget should not hit
+  // DCHECK(!is_in_gesture_scroll_).
+  SimulateGestureEvent(WebInputEvent::Type::kGestureScrollBegin,
+                       blink::WebGestureDevice::kTouchscreen);
+  EXPECT_TRUE(
+      host_->GetRenderInputRouter()->is_in_touchscreen_gesture_scroll());
+}
+
 TEST_F(RenderWidgetHostTest, RendererExitedResetsScreenRectsAck) {
   // Screen rects are sent during initialization, but we are waiting for an ack.
   base::RunLoop().RunUntilIdle();
@@ -2669,7 +2745,7 @@ TEST_F(RenderWidgetHostTest, RendererExitedResetsScreenRectsAck) {
   // RenderWidget is being created.
   blink::VisualProperties props = host_->GetInitialVisualProperties();
   // The RenderWidget is recreated with the initial VisualProperties.
-  ReinitalizeHost();
+  ReinitializeHost();
 
   // The RenderWidget is shown when navigation completes. This sends screen
   // rects again. The IPC is sent as it's not waiting for an ack.
@@ -3322,12 +3398,14 @@ TEST_F(RenderWidgetHostTest, SetAndCommitExternallySourcedComposition) {
   int length = text.length();
   GlobalDOMNodeId node_id;
   node_id.target_element_dom_id = blink::DOMNodeIdType(123);
+  gfx::Range replacement_range(0, 3);
 
   ui::ImeTextSpan ime_text_span;
   ime_text_span.end_offset = length;
   ime_text_span.underline_style = ui::ImeTextSpan::UnderlineStyle::kDot;
-  host_->SetExternallySourcedComposition(text, {ime_text_span}, node_id,
-                                         /*on_complete=*/base::OnceClosure());
+  host_->SetExternallySourcedComposition(
+      text, {ime_text_span}, replacement_range, node_id,
+      /*on_complete=*/base::OnceCallback<void(const gfx::Range&)>());
 
   {
     MockWidgetInputHandler::MessageVector dispatched_messages =
@@ -3338,12 +3416,12 @@ TEST_F(RenderWidgetHostTest, SetAndCommitExternallySourcedComposition) {
     ASSERT_TRUE(ime_message);
     EXPECT_EQ("SetComposition", ime_message->name());
     EXPECT_TRUE(ime_message->Matches(
-        text, {ime_text_span}, gfx::Range::InvalidRange(), length, length,
+        text, {ime_text_span}, replacement_range, length, length,
         blink::mojom::ImeState::kNone, node_id.target_element_dom_id));
   }
 
   host_->CommitExternallySourcedComposition(
-      text, node_id, /*on_complete=*/base::OnceClosure());
+      text, replacement_range, node_id, /*on_complete=*/base::OnceClosure());
 
   {
     MockWidgetInputHandler::MessageVector dispatched_messages =
@@ -3354,7 +3432,7 @@ TEST_F(RenderWidgetHostTest, SetAndCommitExternallySourcedComposition) {
     ASSERT_TRUE(ime_message);
     EXPECT_EQ("CommitText", ime_message->name());
     EXPECT_TRUE(ime_message->Matches(
-        text, std::vector<ui::ImeTextSpan>(), gfx::Range::InvalidRange(), 0, 0,
+        text, std::vector<ui::ImeTextSpan>(), replacement_range, 0, 0,
         blink::mojom::ImeState::kNone, node_id.target_element_dom_id));
   }
 }
@@ -3874,6 +3952,49 @@ TEST_F(RenderWidgetHostTest, RenderFrameMetadataOutOfRangeMessageDisconnects) {
   run_loop.Run();
 
   EXPECT_FALSE(client_remote.is_connected());
+}
+
+TEST_F(RenderWidgetHostTest, ExpectedUserActivationNotification) {
+  base::test::ScopedFeatureList scoped_feature_list(
+      blink::features::kTrustedUserActivationTriggers);
+
+  // Mouse down event allows one activation notification, mouse move and up
+  // events allow none.
+  SimulateMouseEvent(blink::WebInputEvent::Type::kMouseDown);
+  EXPECT_TRUE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+  EXPECT_FALSE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+  SimulateMouseEvent(blink::WebInputEvent::Type::kMouseMove);
+  SimulateMouseEvent(blink::WebInputEvent::Type::kMouseUp);
+  EXPECT_FALSE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+
+  // Touch start event allows one activation notification, touch move and end
+  // events allow none.
+  PressTouchPoint(0, 1);
+  SendTouchEvent();
+  EXPECT_TRUE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+  EXPECT_FALSE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+  MoveTouchPoint(0, 10, 10);
+  SendTouchEvent();
+  ReleaseTouchPoint(0);
+  SendTouchEvent();
+  EXPECT_FALSE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+
+  // Flush pending touch ACKs before FastForwardBy triggers Android's timeout.
+  host_->mock_render_input_router()->GetAndResetDispatchedMessages();
+
+  // Two events allow 2 activation notifications.
+  SimulateMouseEvent(blink::WebInputEvent::Type::kMouseDown);
+  SimulateKeyboardEvent(blink::WebInputEvent::Type::kKeyDown);
+  EXPECT_TRUE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+  EXPECT_TRUE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+  EXPECT_FALSE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
+
+  // Timer resets the expected activation notifications.
+  SimulateMouseEvent(blink::WebInputEvent::Type::kMouseDown);
+  SimulateMouseEvent(blink::WebInputEvent::Type::kMouseDown);
+  task_environment_.FastForwardBy(
+      RenderWidgetHostImpl::kUserActivationVerificationTimeout);
+  EXPECT_FALSE(host_->RemoveExpectedUserActivationNotificationIfAvailable());
 }
 
 }  // namespace content

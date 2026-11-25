@@ -33,6 +33,7 @@ import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabSelectionType;
+import org.chromium.chrome.browser.tab_ui.undo_tab_close_snackbar.UndoBarThrottle;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tasks.tab_management.NestedTabReorderUtils;
 import org.chromium.chrome.browser.tasks.tab_management.TabGridItemLongPressOrchestrator;
@@ -40,7 +41,6 @@ import org.chromium.chrome.browser.tasks.tab_management.TabListItemTouchHelperCa
 import org.chromium.chrome.browser.tasks.tab_management.TabListModel;
 import org.chromium.chrome.browser.tasks.tab_management.TabMultiSelectHelper;
 import org.chromium.chrome.browser.tasks.tab_management.TabProperties;
-import org.chromium.chrome.browser.undo_tab_close_snackbar.UndoBarThrottle;
 import org.chromium.chrome.tab_ui.R;
 import org.chromium.components.browser_ui.util.motion.MotionEventInfo;
 import org.chromium.ui.base.ViewUtils;
@@ -498,7 +498,8 @@ public class VerticalTabListItemTouchHelperCallback extends TabListItemTouchHelp
         mSelectedTabIndex = toViewHolder.getBindingAdapterPosition();
 
         // Perform basic list reordering by updating the TabModel immediately.
-        NestedTabReorderUtils.moveTabOrGroup(tabModel, currentTabId, destinationIndex, isGroup);
+        NestedTabReorderUtils.moveTabOrGroup(
+                tabModel, currentTabId, currentGroupId, destinationIndex, isGroup);
         return true;
     }
 
@@ -572,10 +573,15 @@ public class VerticalTabListItemTouchHelperCallback extends TabListItemTouchHelp
             if (isGroupHeader) {
                 List<Tab> tabsInGroup = tabModel.getTabsInGroup(mDragStartGroupId);
                 startTab = !tabsInGroup.isEmpty() ? tabsInGroup.get(0) : null;
-                mDragStartTabId = startTab != null ? startTab.getId() : Tab.INVALID_TAB_ID;
+                mDragStartTabId = Tab.INVALID_TAB_ID;
 
-                // Select the group header, which ensures a tab within the group is active.
-                selectTabForGroup(tabModel, tabsInGroup);
+                // Select the group header, which ensures a tab within the group is active. Skip
+                // this for collapsed groups so the active tab is unchanged and a hidden tab is not
+                // activated.
+                if (mDragStartGroupId == null
+                        || !tabModel.getTabGroupCollapsed(mDragStartGroupId)) {
+                    selectTabForGroup(tabModel, tabsInGroup);
+                }
 
                 int currentSelectedTabId = getCurrentSelectedTabId();
 
@@ -825,13 +831,17 @@ public class VerticalTabListItemTouchHelperCallback extends TabListItemTouchHelp
         TabModel tabModel = mCurrentTabModelSupplier.get();
         if (mIsDragAbortedByEsc) {
             if (tabModel != null
-                    && mDragStartTabId != Tab.INVALID_TAB_ID
+                    && (mDragStartTabId != Tab.INVALID_TAB_ID || mDragStartGroupId != null)
                     && mDragStartTabModelIndex != TabModel.INVALID_TAB_INDEX) {
                 // Revert tab or group position in the underlying TabModel.
                 // TODO(crbug.com/553670813): Handle reverting group membership if the tab was
                 // dragged into or out of a tab group during the drag.
                 NestedTabReorderUtils.moveTabOrGroup(
-                        tabModel, mDragStartTabId, mDragStartTabModelIndex, mIsDragStartGroup);
+                        tabModel,
+                        mDragStartTabId,
+                        mDragStartGroupId,
+                        mDragStartTabModelIndex,
+                        mIsDragStartGroup);
             }
             mIsDragAbortedByEsc = false;
         }
@@ -873,7 +883,7 @@ public class VerticalTabListItemTouchHelperCallback extends TabListItemTouchHelp
                 }
             }
         }
-        if (mDragStartTabId != Tab.INVALID_TAB_ID) {
+        if (mDragStartTabId != Tab.INVALID_TAB_ID || mDragStartGroupId != null) {
             @DragDropResult int dragResult = computeDragDropResult(viewHolder);
             RecordHistogram.recordEnumeratedHistogram(
                     "Android.VerticalTabs.DragDropResult", dragResult, DragDropResult.COUNT);
@@ -1761,6 +1771,14 @@ public class VerticalTabListItemTouchHelperCallback extends TabListItemTouchHelp
 
         TabModel tabModel = mCurrentTabModelSupplier.get();
         if (tabModel == null) return DragDropResult.ABORTED_NO_CHANGE;
+
+        if (mDragStartTabId == Tab.INVALID_TAB_ID && mDragStartGroupId != null) {
+            List<Tab> groupTabs = tabModel.getTabsInGroup(mDragStartGroupId);
+            if (groupTabs.isEmpty()) return DragDropResult.DRAGGED_OUT;
+            return tabModel.indexOf(groupTabs.get(0)) != mDragStartTabModelIndex
+                    ? DragDropResult.REORDERED
+                    : DragDropResult.ABORTED_NO_CHANGE;
+        }
 
         Tab currentTab = tabModel.getTabById(mDragStartTabId);
         if (currentTab == null) {

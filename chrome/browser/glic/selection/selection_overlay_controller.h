@@ -8,6 +8,8 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "base/callback_list.h"
 #include "base/containers/flat_map.h"
@@ -17,7 +19,11 @@
 #include "chrome/browser/glic/host/context/glic_page_context_fetcher.h"
 #include "chrome/browser/glic/host/glic.mojom.h"
 #include "chrome/browser/glic/public/glic_side_panel_coordinator.h"
+#include "chrome/browser/glic/selection/selection_context.h"
 #include "chrome/browser/glic/selection/selection_overlay.mojom.h"
+#include "chrome/browser/glic/selection/selection_overlay_prewarmer.h"
+#include "chrome/browser/selection/feedback_zip_builder.h"
+#include "chrome/browser/selection/metrics_logger.h"
 #include "chrome/browser/selection/mojom/action.mojom-forward.h"
 #include "chrome/browser/selection/suggestion_service.h"
 #include "chrome/browser/ui/lens/overlay_base_controller.h"
@@ -35,13 +41,17 @@
 namespace content {
 class RenderFrameHost;
 class WebContents;
-}
+}  // namespace content
 
 namespace views {
 class WebView;
 }
 
 class BrowserWindowInterface;
+
+namespace optimization_guide {
+enum class PageContextEligibilityStatus;
+}  // namespace optimization_guide
 
 namespace glic {
 
@@ -57,6 +67,7 @@ class SelectionOverlayController
     kOther,
     kCloseButton,
     kEscapeKeyPress,
+    kBackgroundClick,
   };
 
   SelectionOverlayController(tabs::TabInterface* tab,
@@ -95,27 +106,38 @@ class SelectionOverlayController
       mojo::PendingReceiver<selection::SelectionOverlayPageHandler> receiver,
       mojo::PendingRemote<selection::SelectionOverlayPage> page);
 
-  // Bind the legacy IPC endpoint. See the comment on
-  // `Session::capture_region_observer`.
-  void BindCaptureRegionObserver(
-      mojo::PendingRemote<mojom::CaptureRegionObserver> observer);
   static void CaptureRegion(
       tabs::TabInterface* tab,
       GlicSharingManagerInternal& sharing_manager,
       mojo::PendingRemote<mojom::CaptureRegionObserver> observer,
-      mojom::TabContextOptionsPtr options);
+      mojom::TabContextOptionsPtr options,
+      bool capture_region_handoff = false);
 
   // Returns whether a new overlay session can start on the current tab,
   // applying to every entry point.
   bool CanStartSession();
 
-  void Show(mojom::TabContextOptionsPtr options);
+  void Show(mojom::TabContextOptionsPtr options,
+            ::selection::EntryPoint entry_point);
   // Shows the overlay with a region pre-selected around `selection_bounds`,
   // which is in screen coordinates.
   void ShowWithSelection(content::RenderFrameHost* selected_frame,
                          const gfx::Rect& selection_bounds,
-                         selection::InteractionOptionsPtr interaction_options);
+                         selection::InteractionOptionsPtr interaction_options,
+                         ::selection::EntryPoint entry_point);
   void Close(CloseReason reason = CloseReason::kOther);
+
+  // Starts loading the overlay WebUI while idle, so a following
+  // `ShowWithSelection()` with the same options can show it without waiting
+  // for the WebUI to boot.
+  void MaybePrewarmOverlay(
+      selection::InteractionOptionsPtr interaction_options);
+  void CancelPrewarm();
+  selection::InteractionOptionsPtr GetPrewarmInteractionOptions() const;
+  bool CanBindOverlay(content::WebContents* overlay_contents);
+  // Whether `overlay_contents` is the prewarmed overlay's, whose page handler
+  // is bound once a session adopts it.
+  bool IsPrewarmedOverlay(content::WebContents* overlay_contents) const;
 
   using OverlayClosedCallback = base::OnceCallback<void(CloseReason)>;
   base::CallbackListSubscription RegisterOverlayClosedCallback(
@@ -128,6 +150,9 @@ class SelectionOverlayController
   using SuggestedActionsCallback = base::RepeatingCallback<void(
       const std::vector<selection::SuggestedActionPtr>&)>;
   void GetSuggestedActionsForTesting(SuggestedActionsCallback callback);
+  bool HasPageContextForTesting() const {
+    return session_->tab_context && !session_->redacted_screenshot.empty();
+  }
 
  private:
   void WillDiscardContents(tabs::TabInterface* tab,
@@ -135,6 +160,7 @@ class SelectionOverlayController
                            content::WebContents* new_contents);
   void WillDetach(tabs::TabInterface* tab,
                   tabs::TabInterface::DetachReason reason);
+  void WillDeactivate(tabs::TabInterface* tab);
   void TabDeactivated(tabs::TabInterface* tab);
   void OnFocusedTabChanged(const FocusedTabData& tab_data);
   // This is the same event that drives `OnFocusedTabChanged()`, but it also
@@ -145,7 +171,21 @@ class SelectionOverlayController
   // Subscribes to the Glic side panel state for `tab_` for the length of the
   // session, and forwards changes to the overlay.
   void ObserveSidePanelState();
+  // Subscribes to page context eligibility for `tab_` for the length of the
+  // session. See `OnPageContextEligibilityChanged()`.
+  void ObservePageContextEligibility();
   void OnSidePanelStateChanged(GlicSidePanelCoordinator::State state);
+  // Binds the web client's end of the session. See
+  // `Session::capture_region_observer`.
+  void BindCaptureRegionObserver(
+      mojo::PendingRemote<mojom::CaptureRegionObserver> observer);
+  // Asks the panel's web client to take over a session started from the
+  // page, when the panel is open: from `ShowImpl()` if it already is, from
+  // `OnSidePanelStateChanged()` if it opens mid-session. The client answers
+  // with `CaptureRegion()`, which calls `AdoptSession()`.
+  void PostHandSessionToPanel();
+  void HandSessionToPanel();
+  void AdoptSession(mojo::PendingRemote<mojom::CaptureRegionObserver> observer);
   // What `SelectionOverlayPage::SetSidePanelOpen()` sends: the panel is
   // showing, or backgrounded and comes back with `tab_`.
   bool IsSidePanelOpen() const;
@@ -160,6 +200,8 @@ class SelectionOverlayController
   void OnSplitTabChanged(const SplitTabChange& change) override;
 
   // OverlayBaseController overrides:
+  std::unique_ptr<content::WebContents> TakePrewarmedOverlayWebContents()
+      override;
   void CloseUI() override;
   void RequestSyncClose(DismissalSource dismissal_source) override;
   void StartScreenshotFlow() override;
@@ -196,6 +238,7 @@ class SelectionOverlayController
       const base::UnguessableToken& action_id,
       mojo::GenericPendingAssociatedReceiver channel) override;
   void OpenSettings() override;
+  void OpenDogfoodFeedback() override;
 
  private:
   void OnScreenshotTaken(const SkBitmap& bitmap);
@@ -204,15 +247,36 @@ class SelectionOverlayController
       base::expected<glic::mojom::GetContextResultPtr,
                      page_content_annotations::FetchPageContextErrorDetails>
           fetch_result);
+  bool IsPageContextEligible() const;
+  void OnPageContextEligibilityChanged(
+      optimization_guide::PageContextEligibilityStatus status);
 
   void SetScreenshot(const SkBitmap& screenshot, SkBitmap rgb_screenshot);
 
-  // Render all the selected regions on top of the redacted screenshot.
-  void RenderRegions(bool should_focus_panel);
-  // Renders the pre-selected regions once the overlay is bound and the page
-  // context is ready. Called from each of those steps, so whichever finishes
-  // last does the work.
-  void RenderPendingRegions();
+  // The selected regions that fit in the redacted screenshot, in canvas
+  // pixels, in the form the Glic web client takes. Needs the redacted
+  // screenshot.
+  CapturedRegions GetCapturedRegions() const;
+  // Sends the selected regions to the overlay WebUI and to the tab's Glic
+  // instance. Nothing goes out until the redacted screenshot is here, and
+  // nothing goes to the panel until the page context is; until then the panel
+  // send is pending and `SyncRegionsToPanelIfPending()` finishes it.
+  void SyncRegions(bool should_focus_panel);
+  // The panel half of `SyncRegions()`, for when only the panel is behind.
+  void SyncRegionsToPanel(bool should_focus_panel);
+  void SyncRegionsToPanelIfPending();
+  void SendRegionsToPanel(CapturedRegions captured_regions,
+                          bool should_focus_panel);
+
+  // Whether the regions go in the invoke with the overlay's prompt.
+  bool ShouldSendRegionsWithPrompt() const;
+  // Whether the page context and the redacted screenshot are both here.
+  bool IsPageContextReady() const;
+  // Lets the overlay submit prompts once it's initialized and the page context
+  // is ready.
+  void SendPageContextReceivedIfReady();
+  // Sends `prompt` to glic, with `regions` if there are any.
+  void InvokeWithPrompt(const std::string& prompt, CapturedRegions regions);
 
   struct SelectedRegionData {
     explicit SelectedRegionData(selection::SelectedRegionPtr region);
@@ -234,6 +298,11 @@ class SelectionOverlayController
     uint64_t generation = 0;
   };
 
+  // Shows a usable prewarmed overlay while the screenshot is captured, instead
+  // of loading a new one once the screenshot is here. Drops it otherwise.
+  void MaybeAdoptPrewarmedOverlay();
+  // Binds the page handler that the adopted prewarmed page asked for.
+  void BindPendingPageHandler();
   void Reset();
   void OnTextSurroundingSelectionAvailable(
       const base::UnguessableToken& region_id,
@@ -250,14 +319,19 @@ class SelectionOverlayController
   void SetRegionFromBounds(content::RenderFrameHost* selected_frame,
                            const gfx::Rect& selection_bounds);
   void RequestNewSuggestions(SelectedRegionData& region_data);
+  // Whether the session has what a suggestions request needs: the redacted
+  // screenshot, and the page content if the server request includes it.
+  bool AreSuggestionInputsReady() const;
+  // Requests suggestions for the active region once its surrounding text, the
+  // inputs above and a listener are all here. Called by each of them, so the
+  // last one to arrive makes the request.
+  void MaybeRequestSuggestions();
   void OnSuggestionsReceived(
       const base::UnguessableToken& region_id,
       uint64_t generation,
       bool complete,
-      std::vector<std::unique_ptr<::selection::Suggestion>> suggestions);
-  glic::mojom::AdditionalContextPtr CreateAdditionalContext(
-      std::vector<std::pair<base::UnguessableToken,
-                            glic::mojom::CapturedRegionPtr>> regions);
+      std::vector<std::unique_ptr<::selection::Suggestion>> suggestions,
+      ::selection::FeedbackZipBuilder feedback_zip_builder);
 
   // Everything that belongs to one overlay session. Staged by the entry points
   // before the session starts, and replaced with a fresh one by `Reset()` when
@@ -272,19 +346,32 @@ class SelectionOverlayController
     mojo::Receiver<selection::SelectionOverlayPageHandler> receiver;
     mojo::Remote<selection::SelectionOverlayPage> page;
 
-    // Legacy IPC that's used to signal the web client any browser side errors,
-    // and used to dismiss the overlay from the web client. Only bound if the
-    // overlay is invoked from the web client (web client UI, keyboard
-    // shortcut). There are other invocations from outside the web client.
-    // TODO(b/452032491): Remove this once the old codepath is no longer used.
+    // The web client's end of a session it owns (`owner == kPanel`): errors
+    // go to it, and the overlay closes when the client drops it. Not bound
+    // for a session the page started, until the panel takes that session
+    // over. Use `owner`, not this, to tell the two apart.
     mojo::Remote<mojom::CaptureRegionObserver> capture_region_observer;
+
+    // Who started the session. Set by the entry point; a session the panel
+    // adopts after opening mid-session becomes `kPanel` (b/577143587).
+    enum class Owner {
+      // Started without the web client: `Show()` / `ShowWithSelection()`,
+      // from the hotkey, context menu or selection chip while the side panel
+      // is closed. Handing off to Glic closes the overlay.
+      kDirect,
+      // Started by the side panel's web client through `CaptureRegion()`, or
+      // handed to it when the panel opened mid-session. The overlay stays up
+      // after a hand-off, next to the panel.
+      kPanel,
+    };
+    Owner owner = Owner::kDirect;
 
     bool screenshot_available = false;
     selection::InteractionOptionsPtr interaction_options =
         selection::InteractionOptions::New();
-    // Whether the regions pre-selected at the start of the session still need
-    // to be sent to the web client.
-    bool staged_region_needs_render = false;
+    // Whether `SyncRegions()` ran before the page context and the redacted
+    // screenshot were here, and the panel still has to get the regions.
+    bool panel_sync_pending = false;
     SkBitmap initial_rgb_screenshot;
     SkBitmap redacted_screenshot;
     mojom::TabContextResultPtr tab_context;
@@ -292,7 +379,12 @@ class SelectionOverlayController
     // Caches the user-selected regions and their associated suggestions. To be
     // rendered on top of `initial_rgb_screenshot`.
     base::flat_map<base::UnguessableToken, SelectedRegionData> selected_regions;
+    // The region is still the text selection the session started on. Such a
+    // session sends no region with its prompt: GlicSelectionObserver sends
+    // the text.
+    bool region_is_text_selection = false;
     std::optional<base::UnguessableToken> active_region_id;
+    ::selection::FeedbackZipBuilder feedback_zip_builder;
     base::OneShotTimer surrounding_text_timer;
     mojo::Remote<selection::SuggestedActionsListener>
         suggested_actions_listener;
@@ -300,17 +392,27 @@ class SelectionOverlayController
     // Subscription for `OverlayBaseController::overlay_web_view_` taking focus.
     // Scoped to the lifetime of that WebView.
     base::CallbackListSubscription overlay_web_view_focus_subscription;
+    // The entry point that started this Smart Selection session.
+    std::optional<::selection::EntryPoint> entry_point;
+    // Records Smart Selection UMA metrics for prompt-enabled sessions.
+    std::optional<::selection::MetricsLogger> metrics_logger;
     std::optional<CloseReason> close_reason;
     // Subscription to the active tab changes of the window that hosts `tab_`.
     base::CallbackListSubscription active_tab_subscription;
     // Subscription to the Glic side panel state for `tab_`, so the overlay
     // learns when the panel opens or closes.
     base::CallbackListSubscription side_panel_state_subscription;
+    // Closes the session if the page becomes ineligible for context sharing.
+    base::CallbackListSubscription eligibility_subscription;
   };
   // Never null.
   std::unique_ptr<Session> session_ = std::make_unique<Session>(this);
 
-  std::unique_ptr<::selection::SuggestionTool> quick_answers_tool_;
+  SelectionOverlayPrewarmer prewarmer_;
+  // Whether the shown overlay's page has bound its handler. Unlike `session_`,
+  // this survives the `Reset()` after a page disconnect, so a reloaded page
+  // can't bind to a session whose screenshot callbacks were dropped.
+  bool overlay_page_bound_ = false;
 
   base::OnceCallbackList<void(CloseReason)> overlay_closed_callbacks_;
 

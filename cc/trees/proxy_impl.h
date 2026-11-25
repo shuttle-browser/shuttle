@@ -27,6 +27,10 @@
 
 class GURL;
 
+namespace base {
+class ReadOnlySharedMemoryRegion;
+}
+
 namespace viz {
 class FrameTimingDetails;
 class LocalSurfaceId;
@@ -67,6 +71,8 @@ class CC_EXPORT ProxyImpl : public LayerTreeHostImplDelegate,
 
   ProxyImpl& operator=(const ProxyImpl&) = delete;
 
+  base::ReadOnlySharedMemoryRegion TakeScrollTimingBufferRegion();
+
   void UpdateBrowserControlsStateOnImpl(
       BrowserControlsState constraints,
       BrowserControlsState current,
@@ -95,6 +101,9 @@ class CC_EXPORT ProxyImpl : public LayerTreeHostImplDelegate,
       base::TimeTicks main_thread_start_time,
       std::vector<std::unique_ptr<SwapPromise>> swap_promises,
       bool scroll_and_viewport_changes_synced);
+  // Safe to call from the main thread: `scheduler_` is alive for the lifetime
+  // of `ProxyImpl`, and `NotifyOutOfBandFrame()` only writes to an atomic flag.
+  void NotifyOutOfBandFrameOnMain() { scheduler_->NotifyOutOfBandFrame(); }
   void SetVisibleOnImpl(bool visible);
   void SetShouldWarmUpOnImpl();
   void ReleaseLayerTreeFrameSinkOnImpl(CompletionEvent* completion);

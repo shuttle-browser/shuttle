@@ -1405,7 +1405,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Memory.Dump.Type.{DetailLevel}" enum="MemoryDumpType"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>joenotcharles@google.com</owner>
   <owner>chrome-catan@google.com</owner>
   <summary>
@@ -1780,6 +1780,47 @@ chromium-metrics-reviews@google.com.
         summary="total provisioned (xsu_total). macOS grows and shrinks this
                  on demand, so it is not a fixed capacity"/>
     <variant name="Used" summary="currently used (xsu_used)"/>
+  </token>
+</histogram>
+
+<histogram name="Memory.Experimental.Mac{MacMemoryActivity}RateKBPerSecond"
+    units="KiB/s" expires_after="2027-10-01">
+  <owner>andresrperez@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    The rate of {MacMemoryActivity} on the system, computed from cumulative page
+    counts in host_statistics64() over each 2 minute awake interval. Page counts
+    are scaled to bytes using PAGE_SIZE in base::GetSystemMemoryInfo(), which is
+    16 KiB on Apple Silicon and 4 KiB on Intel (note that x86_64 builds running
+    under Rosetta 2 report a 4 KiB page size).
+
+    Recorded every 2 minutes on macOS starting on the second timer tick (4
+    minutes after browser startup), once an initial baseline snapshot has been
+    captured. Values at or above 10,000,000 KiB/s (~9.5 GiB/s) fall in the
+    overflow bucket.
+  </summary>
+  <token key="MacMemoryActivity">
+    <variant name="Compression"
+        summary="anonymous memory compressed into the kernel compressor
+                 (compressions)"/>
+    <variant name="Decompression"
+        summary="compressed memory unpacked back into RAM on fault
+                 (decompressions)"/>
+    <variant name="PageIn"
+        summary="memory paged in from backing store (pageins)"/>
+    <variant name="PageOut"
+        summary="dirty memory written out to backing store (pageouts)"/>
+    <variant name="Purge"
+        summary="volatile purgeable memory discarded by the kernel without
+                 disk I/O (purges)"/>
+    <variant name="Reactivation"
+        summary="inactive pages rescued back to the active queue before
+                 reclamation (reactivations)"/>
+    <variant name="SwapIn"
+        summary="compressor segments read back from disk swap files (swapins)"/>
+    <variant name="SwapOut"
+        summary="compressor segments flushed out to disk swap files
+                 (swapouts)"/>
   </token>
 </histogram>
 
@@ -2339,7 +2380,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Memory.Gpu.SharedMemoryFootprint" units="MB"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>erikchen@chromium.org</owner>
   <owner>ssid@chromium.org</owner>
   <summary>
@@ -2406,7 +2447,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Memory.MemoryDumpOutcome" enum="RequestOutcome"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>fdoray@chromium.org</owner>
   <owner>catan-team@chromium.org</owner>
   <summary>
@@ -2877,6 +2918,52 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Memory.PressureLevel2.OS" enum="MemoryPressureLevel"
+    expires_after="2027-09-01">
+  <owner>andresrperez@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    The time spent in each memory pressure state according to the native Apple
+    kernel dispatch source, in seconds. Recorded on all Apple platforms when the
+    OS memory pressure state changes, at shutdown, or when it hasn't been
+    recorded in the last 5 minutes. Because this tracks the kernel memory
+    pressure signal in isolation, the Disk bucket is never recorded.
+
+    On macOS, this is recorded in all experiment arms, including those where a
+    Chrome-computed threshold evaluator has replaced the OS signal as the voting
+    evaluator.
+
+    As with Memory.PressureLevel2, the values from this histogram shouldn't be
+    used directly; users should look at the percentage of samples in each
+    bucket.
+  </summary>
+</histogram>
+
+<histogram name="Memory.PressureVoter.{Level}" enum="MemoryPressureVoter"
+    expires_after="2027-03-01">
+  <owner>andresrperez@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Time attributed to each voter while Chrome was at {Level} memory pressure.
+    One sample is one second spent at {Level} with that voter voting at {Level}.
+
+    Recorded on macOS only. Emitted whenever a voter's vote changes, whenever
+    the aggregated pressure level changes, and by a periodic 5-minute timer.
+
+    Voters are co-attributed, not split: if N voters are simultaneously at
+    {Level} for T seconds, each receives the full T seconds. The total across
+    all buckets therefore exceeds the wall-clock time spent at {Level}, and the
+    buckets must be read as per-voter shares of that time rather than as
+    percentages of a whole.
+
+    Voters created without an explicit type are recorded as Unknown/Other.
+  </summary>
+  <token key="Level">
+    <variant name="Critical"/>
+    <variant name="Moderate"/>
+  </token>
+</histogram>
+
 <histogram name="Memory.PressureWindowDuration2.{Type}" units="ms"
     expires_after="2027-04-18">
   <owner>fdoray@chromium.org</owner>
@@ -2912,7 +2999,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Memory.Renderer.EvictedLockedResources.{Source}" units="KB"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>jonross@chromium.org</owner>
   <owner>chrome-gpu-memory@google.com</owner>
   <summary>
@@ -3117,7 +3204,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Memory.RenderProcessHost.Count2.InitializedAndNotDead"
-    units="processes" expires_after="2027-02-28">
+    units="processes" expires_after="2027-05-02">
   <owner>alexmos@chromium.org</owner>
   <owner>creis@chromium.org</owner>
   <owner>lukasza@chromium.org</owner>
@@ -3237,6 +3324,95 @@ chromium-metrics-reviews@google.com.
   <summary>
     System-wide estimate of memory used in ChromeOS, calculated as the
     difference between the amount of total and available memory.
+  </summary>
+</histogram>
+
+<histogram name="Memory.SystemMemoryLists.IntervalsBelow{Threshold}"
+    units="intervals" expires_after="2027-04-11">
+  <owner>fdoray@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Recorded on Windows only. The number of system memory list samples over the
+    course of 30s in which total Available physical memory (the sum of the Zero,
+    Free, and Standby lists) was strictly below {Threshold}. Based on samples
+    collected every 100ms, and emitted every 30s in the browser process after
+    main message loop start.
+  </summary>
+  <token key="Threshold">
+    <variant name="5Pct" summary="5% of total OS-visible physical memory"/>
+    <variant name="10Pct" summary="10% of total OS-visible physical memory"/>
+    <variant name="15Pct" summary="15% of total OS-visible physical memory"/>
+    <variant name="150MB" summary="150 MiB"/>
+    <variant name="250MB" summary="250 MiB"/>
+    <variant name="350MB" summary="350 MiB"/>
+  </token>
+</histogram>
+
+<histogram name="Memory.SystemMemoryLists.MaxAvailableMemoryAfterMinMB"
+    units="MB" expires_after="2027-04-11">
+  <owner>fdoray@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Recorded on Windows only. The maximum Available physical memory (Zero, Free,
+    and Standby lists) observed at or after the sample that recorded the minimum
+    Available physical memory within a 30s recording window. Note that if a
+    rebound is still in progress when the 30s window closes, this only captures
+    the level reached by the end of the window. Based on system memory list
+    samples collected every 100ms, and emitted every 30s in the browser process
+    after main message loop start.
+  </summary>
+</histogram>
+
+<histogram name="Memory.SystemMemoryLists.MaxAvailableMemoryAfterMinPercent"
+    units="%" expires_after="2027-04-11">
+  <owner>fdoray@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Recorded on Windows only. The maximum Available physical memory (Zero, Free,
+    and Standby lists) as a percentage of total OS-visible physical memory
+    observed at or after the sample that recorded the minimum Available physical
+    memory within a 30s recording window. Note that if a rebound is still in
+    progress when the 30s window closes, this only captures the level reached by
+    the end of the window. Based on system memory list samples collected every
+    100ms, and emitted every 30s in the browser process after main message loop
+    start.
+  </summary>
+</histogram>
+
+<histogram name="Memory.SystemMemoryLists.MaxModifiedPageCount" units="pages"
+    expires_after="2027-04-11">
+  <owner>fdoray@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Recorded on Windows only. The maximum number of pages observed in the
+    Modified page list over a 30s recording window. Based on system memory list
+    samples collected every 100ms, and emitted every 30s in the browser process
+    after main message loop start.
+  </summary>
+</histogram>
+
+<histogram name="Memory.SystemMemoryLists.MinAvailableMemoryMB" units="MB"
+    expires_after="2027-04-11">
+  <owner>fdoray@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Recorded on Windows only. The minimum Available physical memory (Zero, Free,
+    and Standby lists) observed over a 30s recording window. Based on system
+    memory list samples collected every 100ms, and emitted every 30s in the
+    browser process after main message loop start.
+  </summary>
+</histogram>
+
+<histogram name="Memory.SystemMemoryLists.MinAvailableMemoryPercent" units="%"
+    expires_after="2027-04-11">
+  <owner>fdoray@chromium.org</owner>
+  <owner>catan-team@chromium.org</owner>
+  <summary>
+    Recorded on Windows only. The minimum Available physical memory (Zero, Free,
+    and Standby lists) as a percentage of total OS-visible physical memory
+    observed over a 30s recording window. Based on system memory list samples
+    collected every 100ms, and emitted every 30s in the browser process after
+    main message loop start.
   </summary>
 </histogram>
 
@@ -3561,7 +3737,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Memory.Total.SharedMemoryFootprint" units="MB"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>erikchen@chromium.org</owner>
   <owner>ssid@chromium.org</owner>
   <summary>

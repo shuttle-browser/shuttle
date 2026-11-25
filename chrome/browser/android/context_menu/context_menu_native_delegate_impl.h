@@ -23,6 +23,12 @@ class ContextMenuNativeDelegateImpl {
       content::WebContents* const web_contents,
       content::ContextMenuParams* const context_menu_params);
 
+  ContextMenuNativeDelegateImpl(const ContextMenuNativeDelegateImpl&) = delete;
+  ContextMenuNativeDelegateImpl& operator=(
+      const ContextMenuNativeDelegateImpl&) = delete;
+
+  ~ContextMenuNativeDelegateImpl();
+
   void RetrieveImageForContextMenu(
       JNIEnv* env,
       content::RenderFrameHost* render_frame_host,
@@ -47,6 +53,7 @@ class ContextMenuNativeDelegateImpl {
   void CopyVideoFrame(JNIEnv* env, content::RenderFrameHost* render_frame_host);
   void DownloadVideoFrame(JNIEnv* env,
                           content::RenderFrameHost* render_frame_host);
+  void ShowInterestInElement(JNIEnv* env);
 
  protected:
   using ImageRetrieveCallback = base::OnceCallback<void(

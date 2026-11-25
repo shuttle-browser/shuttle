@@ -44,6 +44,7 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
+import static org.chromium.base.test.transit.Triggers.noopTo;
 import static org.chromium.base.test.transit.ViewElement.displayingAtLeastOption;
 import static org.chromium.base.test.transit.ViewFinder.waitForView;
 import static org.chromium.chrome.R.plurals.bottom_tab_grid_title_placeholder;
@@ -76,7 +77,6 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Color;
 import android.graphics.Rect;
-import android.os.Build;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.EditText;
@@ -124,7 +124,6 @@ import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
@@ -134,7 +133,6 @@ import org.chromium.base.test.util.Restriction;
 import org.chromium.base.test.util.TestAnimations.EnableAnimations;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.app.bookmarks.BookmarkEditActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.homepage.HomepagePolicyManager;
@@ -177,6 +175,7 @@ import org.chromium.ui.KeyboardVisibilityDelegate;
 import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.ui.modaldialog.DialogDismissalCause;
 import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.test.transit.SoftKeyboardCondition;
 import org.chromium.ui.test.util.DeviceRestriction;
 import org.chromium.ui.test.util.NightModeTestUtils;
 import org.chromium.ui.util.ColorUtils;
@@ -197,7 +196,6 @@ import java.util.concurrent.TimeoutException;
     ChromeFeatureList.ANDROID_BOTTOM_BAR
 })
 @Batch(Batch.PER_CLASS)
-@DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/394671175
 public class TabGridDialogTest {
     private static final String CUSTOMIZED_TITLE1 = "wfh tips";
     private static final String CUSTOMIZED_TITLE2 = "wfh funs";
@@ -322,7 +320,7 @@ public class TabGridDialogTest {
                 addBlankTabs(cta, false, 1);
             }
         } else {
-            LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.BROWSING);
+            LayoutTestUtils.waitForBrowsingLayout(cta);
         }
     }
 
@@ -454,6 +452,7 @@ public class TabGridDialogTest {
     @Test
     @MediumTest
     @RequiresRestart("Group creation modal dialog is sometimes persistent after dismissing")
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/394671175
     public void testTabGroupDialogUi() {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         createTabs(cta, false, 2);
@@ -731,6 +730,7 @@ public class TabGridDialogTest {
     @Test
     @MediumTest
     @Restriction({DeviceRestriction.RESTRICTION_TYPE_NON_AUTO}) // crbug.com/391655333
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/578245446
     public void testDialogSelectionEditor_BookmarkSingleTabView() {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         SnackbarManager snackbarManager = cta.getSnackbarManager();
@@ -764,15 +764,13 @@ public class TabGridDialogTest {
                                 isDisplayed()))
                 .perform(click());
 
-        BookmarkEditActivity activity = BookmarkTestUtil.waitForEditActivity();
-        activity.finish();
-
-        mSelectionEditorRobot.resultRobot.verifyTabListEditorIsVisible();
+        finishBookmarkEditActivityAndVerifyTabListEditor(cta);
     }
 
     @Test
     @MediumTest
     @Restriction({DeviceRestriction.RESTRICTION_TYPE_NON_AUTO}) // crbug.com/391655333
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/578245446
     public void testDialogSelectionEditor_BookmarkTabsView() {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         SnackbarManager snackbarManager = cta.getSnackbarManager();
@@ -807,21 +805,15 @@ public class TabGridDialogTest {
                                 isDisplayed()))
                 .perform(click());
 
-        BookmarkEditActivity activity = BookmarkTestUtil.waitForEditActivity();
-        activity.finish();
+        finishBookmarkEditActivityAndVerifyTabListEditor(cta);
+    }
 
-        // After finishing the BookmarkEditActivity, the ChromeTabbedActivity needs a moment
-        // to regain window focus. Without waiting, Espresso might try to interact with the UI
-        // before it's ready, leading to a RootViewWithoutFocusException.
-        CriteriaHelper.pollUiThread(
-                () -> {
-                    Criteria.checkThat(
-                            "ChromeTabbedActivity did not regain window focus.",
-                            cta.getWindow().getDecorView().hasWindowFocus(),
-                            Matchers.is(true));
-                });
+    private void finishBookmarkEditActivityAndVerifyTabListEditor(ChromeTabbedActivity cta) {
+        BookmarkTestUtil.waitForEditActivity().finish();
 
-        mSelectionEditorRobot.resultRobot.verifyTabListEditorIsVisible();
+        // Look in the ChromeTabbedActivity's windows, not the focused one, which may still be
+        // the finishing BookmarkEditActivity.
+        waitForView(TabListEditorLayout.class, cta, withId(R.id.selectable_list));
     }
 
     @Test
@@ -1198,6 +1190,7 @@ public class TabGridDialogTest {
 
     @Test
     @LargeTest
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/394671175
     public void testTabGroupNaming() throws ExecutionException {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         createTabs(cta, false, 2);
@@ -1239,6 +1232,7 @@ public class TabGridDialogTest {
     @Test
     @LargeTest
     @RequiresRestart("Group creation modal dialog is sometimes persistent when dismissing")
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/394671175
     public void testTabGroupNaming_KeyboardVisibility() throws ExecutionException {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         createTabs(cta, false, 2);
@@ -1270,6 +1264,7 @@ public class TabGridDialogTest {
     // Regression test for https://crbug.com/40895368
     @Test
     @MediumTest
+    @DisableIf.Device(DeviceFormFactor.DESKTOP) // crbug.com/394671175
     public void testTabGroupNaming_afterFocusNoTitleSaved() throws ExecutionException {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         createTabs(cta, false, 3);
@@ -1404,7 +1399,6 @@ public class TabGridDialogTest {
     @DisableFeatures({DATA_SHARING, DATA_SHARING_JOIN_ONLY}) // Needs new goldens post-launch.
     @RequiresRestart("Group creation modal dialog is sometimes persistent when dismissing")
     @ParameterAnnotations.UseMethodParameter(NightModeTestUtils.NightModeParams.class)
-    @DisableIf.Build(sdk_equals = Build.VERSION_CODES.S_V2, message = "crbug.com/40263769")
     public void testRenderDialog_5Tabs_InitialScroll(boolean nightModeEnabled) throws Exception {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         prepareTabsWithThumbnail(mActivityTestRule.getActivityTestRule(), 5, 0, "about:blank");
@@ -1436,7 +1430,6 @@ public class TabGridDialogTest {
     @DisableFeatures({DATA_SHARING, DATA_SHARING_JOIN_ONLY}) // Needs new goldens post-launch.
     @RequiresRestart("Group creation modal dialog is sometimes persistent when dismissing")
     @ParameterAnnotations.UseMethodParameter(NightModeTestUtils.NightModeParams.class)
-    @DisabledTest(message = "crbug.com/385205037, flaky due to thumbnails")
     public void testRenderDialog_TabGroupColorChange(boolean nightModeEnabled) throws Exception {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
 
@@ -1698,7 +1691,7 @@ public class TabGridDialogTest {
         clickThroughConfirmationDialog();
 
         // Rather than destroying the activity the GTS should be showing.
-        LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.HUB);
+        LayoutTestUtils.waitForHubLayout(cta);
         verifyTabSwitcherCardCount(cta, 0);
     }
 
@@ -1848,7 +1841,7 @@ public class TabGridDialogTest {
                                             withId(R.id.tab_grid_dialog_toolbar_container))))
                     .perform(click());
             waitForDialogHidingAnimation(cta);
-            LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.BROWSING);
+            LayoutTestUtils.waitForBrowsingLayout(cta);
 
             openDialogFromStripAndVerify(cta, 4, null);
         }
@@ -1859,7 +1852,6 @@ public class TabGridDialogTest {
     @Feature({"RenderTest"})
     @RequiresRestart("Group creation modal dialog is sometimes persistent when dismissing")
     @ParameterAnnotations.UseMethodParameter(NightModeTestUtils.NightModeParams.class)
-    @DisabledTest(message = "crbug.com/362762206, see also crbug.com/360072870")
     public void testRenderDialog_TwoRows_Portrait(boolean nightModeEnabled) throws Exception {
         final ChromeTabbedActivity cta = mActivityTestRule.getActivity();
         prepareTabsWithThumbnail(mActivityTestRule.getActivityTestRule(), 3, 0, "about:blank");
@@ -1878,12 +1870,12 @@ public class TabGridDialogTest {
                 (RecyclerView) dialogView.findViewById(R.id.tab_list_recycler_view));
         mRenderTestRule.render(dialogView, "3_tabs_portrait_2_row_toolbar_share_button");
 
+        // Open and close the share flow; the dialog should stay open.
         onView(allOf(isDescendantOfA(withId(R.id.dialog_parent_view)), withId(R.id.share_button)))
                 .perform(click());
-        // Dismiss the bottom sheet.
+        waitForView(withText(R.string.collaboration_signin_bottom_sheet_description));
         Espresso.pressBack();
-
-        mRenderTestRule.render(dialogView, "3_tabs_portrait_2_row_toolbar_image_tiles");
+        waitForView(withId(R.id.share_button), isDescendantOfA(withId(R.id.dialog_parent_view)));
     }
 
     /**
@@ -2113,12 +2105,8 @@ public class TabGridDialogTest {
                             // Verify if we can grab focus on the editText or not.
                             assertTrue(v.isFocused());
                         });
-        // Verify if the keyboard shows or not.
-        CriteriaHelper.pollUiThread(
-                () ->
-                        cta.getWindowAndroid()
-                                .getKeyboardDelegate()
-                                .isKeyboardShowing(cta.getCompositorViewHolderForTesting()));
+        // Verify the soft keyboard shows, unless a hardware keyboard is used instead.
+        noopTo().waitFor(new SoftKeyboardCondition(() -> cta, /* expectShowing= */ true));
     }
 
     private void openDialogToolbarMenuAndVerify(ChromeTabbedActivity cta) {
@@ -2451,7 +2439,7 @@ public class TabGridDialogTest {
                     KeyboardVisibilityDelegate delegate =
                             cta.getWindowAndroid().getKeyboardDelegate();
                     boolean keyboardVisible =
-                            delegate.isKeyboardShowing(cta.getCompositorViewHolderForTesting());
+                            delegate.isKeyboardObscuring(cta.getCompositorViewHolderForTesting());
                     boolean isFocused = titleTextView != null && titleTextView.isFocused();
                     Criteria.checkThat(
                             "Title text focus mismatch", isFocused, Matchers.is(shouldFocus));

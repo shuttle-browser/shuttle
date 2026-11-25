@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_VIEWS_WEB_APPS_PROTOCOL_HANDLER_PICKER_INTERACTVE_UITEST_CC_
 #define CHROME_BROWSER_UI_VIEWS_WEB_APPS_PROTOCOL_HANDLER_PICKER_INTERACTVE_UITEST_CC_
 
+#include "base/strings/stringprintf.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/apps/app_service/app_service_proxy_ash.h"
@@ -21,7 +22,7 @@
 #include "chromeos/constants/chromeos_features.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace web_app {
 
@@ -51,7 +52,8 @@ class ProtocolHandlerPickerUITest
 
   void NavigateCurrentTabToAboutBlank() {
     ui_test_utils::NavigateToURLWithDisposition(
-        browser(), GURL("about:blank"), WindowOpenDisposition::kCurrentTab,
+        browser(), GURL("about:blank"),
+        ui::mojom::WindowOpenDisposition::kCurrentTab,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   }
 

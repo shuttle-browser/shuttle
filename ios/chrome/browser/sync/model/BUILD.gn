@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//ios/web/public/js_messaging/optimize_ts.gni")
+
 source_set("model") {
   sources = [
     "enterprise_utils.cc",
@@ -18,6 +20,8 @@ source_set("model") {
     "sync_observer_bridge.mm",
     "sync_service_factory.h",
     "sync_service_factory.mm",
+    "tab_context_decryption_token_java_script_feature.h",
+    "tab_context_decryption_token_java_script_feature.mm",
     "tab_context_sync_service_factory.h",
     "tab_context_sync_service_factory.mm",
   ]
@@ -25,12 +29,12 @@ source_set("model") {
     ":data_type_store_service_factory",
     ":device_info_sync_service_factory",
     ":sync_invalidations_service_factory",
+    ":tab_context_decryption_token_js",
     "//base",
     "//components/autofill/core/browser",
     "//components/browser_sync",
     "//components/collaboration/public",
     "//components/consent_auditor",
-    "//components/dom_distiller/core",
     "//components/history/core/browser",
     "//components/network_time",
     "//components/password_manager/core/browser",
@@ -57,11 +61,12 @@ source_set("model") {
     "//components/trusted_vault",
     "//components/variations/service",
     "//components/version_info",
+    "//components/web_distiller/core",
     "//components/webauthn/core/browser:passkey_model",
     "//google_apis",
     "//ios/chrome/browser/account_settings/model",
     "//ios/chrome/browser/aim/model:aim_availability",
-    "//ios/chrome/browser/autofill/model:entity_suppression_manager_factory",
+    "//ios/chrome/browser/autofill/model:personal_context_entity_metadata_manager_factory",
     "//ios/chrome/browser/bookmarks/model",
     "//ios/chrome/browser/cobrowse/model:factory",
     "//ios/chrome/browser/collaboration/model",
@@ -69,7 +74,6 @@ source_set("model") {
     "//ios/chrome/browser/consent_auditor/model",
     "//ios/chrome/browser/data_sharing/model",
     "//ios/chrome/browser/data_sharing/model/personal_collaboration_data",
-    "//ios/chrome/browser/dom_distiller/model",
     "//ios/chrome/browser/favicon/model",
     "//ios/chrome/browser/gcm/model",
     "//ios/chrome/browser/gcm/model/instance_id",
@@ -98,11 +102,13 @@ source_set("model") {
     "//ios/chrome/browser/tabs/model",
     "//ios/chrome/browser/tabs/model:synced_tabs",
     "//ios/chrome/browser/trusted_vault/model",
+    "//ios/chrome/browser/web_distiller/model",
     "//ios/chrome/browser/webauthn/model",
     "//ios/chrome/browser/webdata_services/model",
     "//ios/chrome/common",
     "//ios/components/webui:url_constants",
     "//ios/web",
+    "//ios/web/public/js_messaging",
     "//net",
     "//ui/base",
     "//url",
@@ -112,6 +118,17 @@ source_set("model") {
     "//ios/chrome/browser/passwords/model:store_factory",
     "//ios/chrome/browser/sync/model/glue",
   ]
+}
+
+optimize_ts("tab_context_decryption_token_js") {
+  visibility = [
+    ":model",
+    ":unit_tests",
+  ]
+
+  sources = [ "resources/tab_context_decryption_token.ts" ]
+
+  deps = [ "//ios/web/public/js_messaging:util_scripts" ]
 }
 
 source_set("device_info_sync_service_factory") {
@@ -234,10 +251,13 @@ source_set("unit_tests") {
     "session_sync_service_factory_unittest.cc",
     "sync_error_browser_agent_unittest.mm",
     "sync_service_factory_unittest.mm",
+    "tab_context_decryption_token_java_script_feature_unittest.mm",
+    "tab_context_decryption_token_javascript_unittest.mm",
   ]
   deps = [
     ":model",
     ":sync_error_browser_agent",
+    ":tab_context_decryption_token_js",
     ":test_support",
     "//base",
     "//base/test:test_support",
@@ -245,12 +265,18 @@ source_set("unit_tests") {
     "//components/browser_sync",
     "//components/commerce/core:feature_list",
     "//components/data_sharing/public",
+    "//components/keyed_service/core",
     "//components/password_manager/core/browser:test_support",
     "//components/password_manager/core/browser/features:password_features",
+    "//components/signin/public/base",
+    "//components/signin/public/identity_manager",
+    "//components/signin/public/identity_manager:test_support",
     "//components/skills:features",
     "//components/supervised_user/core/common:buildflags",
     "//components/sync",
     "//components/sync:test_support",
+    "//components/sync_tab_context",
+    "//components/sync_tab_context:test_support",
     "//ios/chrome/app/profile",
     "//ios/chrome/app/profile:test_utils",
     "//ios/chrome/browser/authentication/ui_bundled:signin_presenter",
@@ -261,16 +287,28 @@ source_set("unit_tests") {
     "//ios/chrome/browser/saved_tab_groups/model",
     "//ios/chrome/browser/shared/coordinator/scene:scene_state_header",
     "//ios/chrome/browser/shared/model/browser/test:test_support",
+    "//ios/chrome/browser/shared/model/profile",
     "//ios/chrome/browser/shared/model/profile/test",
     "//ios/chrome/browser/shared/model/url:constants",
     "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/browser/shared/public/features",
+    "//ios/chrome/browser/signin/model",
+    "//ios/chrome/browser/signin/model:test_support",
     "//ios/chrome/browser/webdata_services/model",
+    "//ios/chrome/test:ios_chrome_test_with_web_state",
     "//ios/chrome/test:test_support",
+    "//ios/web/public/js_messaging",
     "//ios/web/public/test",
+    "//ios/web/public/test:javascript_test",
+    "//testing/gmock",
     "//testing/gtest",
     "//third_party/ocmock",
     "//ui/base",
+    "//url",
+  ]
+  frameworks = [
+    "Foundation.framework",
+    "WebKit.framework",
   ]
 }

@@ -11,6 +11,7 @@ import static org.chromium.components.browser_ui.widget.ListItemBuilder.buildSim
 
 import android.app.Activity;
 import android.content.Context;
+import android.net.Uri;
 import android.os.Bundle;
 import android.text.TextUtils;
 import android.view.View;
@@ -47,6 +48,7 @@ import org.chromium.chrome.browser.intents.BrowserIntentUtils;
 import org.chromium.chrome.browser.partnerbookmarks.PartnerBookmarksReader;
 import org.chromium.chrome.browser.price_tracking.PriceDropNotificationManager;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.browser.sync.ui.batch_upload_card.BatchUploadCardCoordinator;
 import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
@@ -102,6 +104,7 @@ class BookmarkManagerMediator
         implements BookmarkDelegate, PartnerBookmarksReader.FaviconUpdateObserver {
     private static final int PROMO_MAX_INDEX = 1;
     private static final int SEARCH_BOX_MAX_INDEX = 0;
+    private static final String QUERY_PARAM_SEARCH = "q";
 
     private static boolean sPreventLoadingForTesting;
 
@@ -361,6 +364,19 @@ class BookmarkManagerMediator
                 }
             };
 
+    private final ProfileManager.Observer mProfileManagerObserver =
+            new ProfileManager.Observer() {
+                @Override
+                public void onProfileAdded(Profile profile) {}
+
+                @Override
+                public void onProfileDestroyed(Profile destroyedProfile) {
+                    if (Objects.equals(mProfile, destroyedProfile)) {
+                        mProfile = mOriginalProfile;
+                    }
+                }
+            };
+
     private final ObserverList<BookmarkUiObserver> mUiObservers = new ObserverList<>();
     private final BookmarkDragStateDelegate mDragStateDelegate = new BookmarkDragStateDelegate();
     private final Context mContext;
@@ -378,7 +394,8 @@ class BookmarkManagerMediator
     // Whether we're showing in a dialog UI which is only true for phones.
     private final boolean mIsDialogUi;
     private final SettableNonNullObservableSupplier<Boolean> mBackPressStateSupplier;
-    private final Profile mProfile;
+    private Profile mProfile;
+    private final Profile mOriginalProfile;
     private final BookmarkUndoController mBookmarkUndoController;
     private final BookmarkQueryHandler mBookmarkQueryHandler;
     private final ModelList mModelList;
@@ -460,7 +477,10 @@ class BookmarkManagerMediator
         mDragTouchHandler.setLongPressDragDelegate(() -> mDragStateDelegate.getDragActive());
         mIsDialogUi = isDialogUi;
         mBackPressStateSupplier = backPressStateSupplier;
-        mProfile = profile;
+        // Expected to already be the original profile, but calling this getter to be safe.
+        mOriginalProfile = profile.getOriginalProfile();
+        mProfile = profile.shutdownStarted() ? mOriginalProfile : profile;
+        ProfileManager.addObserver(mProfileManagerObserver);
         mModelList = modelList;
         mBookmarkUiPrefs = bookmarkUiPrefs;
         mBookmarkUiPrefs.addObserver(mBookmarkUiPrefsObserver);
@@ -478,7 +498,7 @@ class BookmarkManagerMediator
                         activity,
                         lifecycleOwner,
                         modalDialogManager,
-                        mProfile.getOriginalProfile(),
+                        mOriginalProfile,
                         snackbarManagerSupplierImpl,
                         this::updateBatchUploadCard,
                         BatchUploadCardCoordinator.EntryPoint.BOOKMARK_MANAGER);
@@ -541,12 +561,13 @@ class BookmarkManagerMediator
         mSelectionDelegate.addObserver(mSelectionObserver);
 
         if (!TextUtils.isEmpty(mInitialUrl)) {
-            setState(BookmarkUiState.createStateFromUrl(mInitialUrl, mBookmarkModel));
+            updateForUrl(mInitialUrl);
         }
     }
 
     void onDestroy() {
         mIsDestroyed = true;
+        ProfileManager.removeObserver(mProfileManagerObserver);
         mBookmarkModel.removeObserver(mBookmarkModelObserver);
 
         mBookmarkImageFetcher.destroy();
@@ -658,6 +679,13 @@ class BookmarkManagerMediator
         if (mBookmarkModel == null) return;
 
         if (mBookmarkModel.isBookmarkModelLoaded()) {
+            if (getCurrentUiState() != null && TextUtils.equals(url, getCurrentUiState().mUrl)) {
+                return;
+            }
+
+            String searchQuery =
+                    url != null ? Uri.parse(url).getQueryParameter(QUERY_PARAM_SEARCH) : null;
+
             BookmarkUiState searchState = null;
             if (getCurrentUiMode() == BookmarkUiMode.SEARCHING) {
                 searchState = mStateStack.removeLast();
@@ -665,7 +693,11 @@ class BookmarkManagerMediator
 
             setState(BookmarkUiState.createStateFromUrl(url, mBookmarkModel));
 
-            if (searchState != null) setState(searchState);
+            if (searchQuery != null) {
+                search(searchQuery);
+            } else if (searchState != null) {
+                setState(searchState);
+            }
         } else {
             mInitialUrl = url;
         }
@@ -989,10 +1021,7 @@ class BookmarkManagerMediator
             BookmarkUtils.setLastUsedUrl(state.mUrl);
             // If a loading state is replaced by another loading state, do not notify this change.
             if (mNativePage != null) {
-                boolean replaceLastUrl =
-                        TextUtils.equals(mNativePage.getUrl(), getOriginalBookmarksUrl())
-                                || TextUtils.equals(
-                                        mNativePage.getUrl(), getOriginalNativeBookmarksUrl());
+                boolean replaceLastUrl = isOriginalBookmarksUrl(mNativePage.getUrl());
                 if (replaceLastUrl) {
                     // When navigating to chrome://bookmarks, the initial entry commits
                     // asynchronously in NavigationController. Post to UI_DEFAULT so the initial
@@ -1022,6 +1051,13 @@ class BookmarkManagerMediator
         for (BookmarkUiObserver observer : mUiObservers) {
             notifyStateChange(observer);
         }
+    }
+
+    private boolean isOriginalBookmarksUrl(@Nullable String url) {
+        if (TextUtils.isEmpty(url)) return false;
+        String urlWithoutQuery = Uri.parse(url).buildUpon().clearQuery().build().toString();
+        return TextUtils.equals(urlWithoutQuery, getOriginalBookmarksUrl())
+                || TextUtils.equals(urlWithoutQuery, getOriginalNativeBookmarksUrl());
     }
 
     // TODO(lazzzis): This method can be moved to adapter after bookmark reordering launches.
@@ -1194,6 +1230,9 @@ class BookmarkManagerMediator
     }
 
     private void updateAllLocations() {
+        // Visual locations change whenever the reorder locations do, so update both here.
+        updateAllVisualLocations();
+
         Predicate<ListItem> locationPredicate =
                 (ListItem listItem) ->
                         isBookmarkRowType(listItem.type)
@@ -1205,17 +1244,55 @@ class BookmarkManagerMediator
         }
 
         if (startIndex == lastIndex) {
-            mModelList.get(startIndex).model.set(BookmarkManagerProperties.LOCATION, Location.SOLO);
+            mModelList
+                    .get(startIndex)
+                    .model
+                    .set(BookmarkManagerProperties.REORDER_LOCATION, Location.SOLO);
         } else {
-            mModelList.get(startIndex).model.set(BookmarkManagerProperties.LOCATION, Location.TOP);
+            mModelList
+                    .get(startIndex)
+                    .model
+                    .set(BookmarkManagerProperties.REORDER_LOCATION, Location.TOP);
             mModelList
                     .get(lastIndex)
                     .model
-                    .set(BookmarkManagerProperties.LOCATION, Location.BOTTOM);
+                    .set(BookmarkManagerProperties.REORDER_LOCATION, Location.BOTTOM);
         }
 
         for (int i = startIndex + 1; i < lastIndex; i++) {
-            mModelList.get(i).model.set(BookmarkManagerProperties.LOCATION, Location.MIDDLE);
+            mModelList
+                    .get(i)
+                    .model
+                    .set(BookmarkManagerProperties.REORDER_LOCATION, Location.MIDDLE);
+        }
+    }
+
+    /**
+     * Updates the visual location of every bookmark row within its contiguous run of bookmark rows.
+     * Unlike {@link BookmarkManagerProperties#REORDER_LOCATION}, which only considers movable rows
+     * for reordering, this considers all rows and is used to style the desktop layout.
+     */
+    private void updateAllVisualLocations() {
+        if (!BookmarkUtils.isDesktopBookmarksLayoutEnabled()) return;
+
+        int size = mModelList.size();
+        for (int i = 0; i < size; i++) {
+            ListItem listItem = mModelList.get(i);
+            if (!isBookmarkRowType(listItem.type)) continue;
+
+            boolean hasRowAbove = i > 0 && isBookmarkRowType(mModelList.get(i - 1).type);
+            boolean hasRowBelow = i < size - 1 && isBookmarkRowType(mModelList.get(i + 1).type);
+            final @Location int visualLocation;
+            if (hasRowAbove && hasRowBelow) {
+                visualLocation = Location.MIDDLE;
+            } else if (hasRowAbove) {
+                visualLocation = Location.BOTTOM;
+            } else if (hasRowBelow) {
+                visualLocation = Location.TOP;
+            } else {
+                visualLocation = Location.SOLO;
+            }
+            listItem.model.set(ImprovedBookmarkRowProperties.VISUAL_LOCATION, visualLocation);
         }
     }
 
@@ -1664,7 +1741,8 @@ class BookmarkManagerMediator
 
         if (!bookmarkItem.isFolder()) {
             listItems.add(buildSimpleMenuItem(R.string.contextmenu_open_in_new_tab));
-            if (!mProfile.isOffTheRecord() && IncognitoUtils.isIncognitoModeEnabled(mProfile)) {
+            if (!mProfile.isOffTheRecord()
+                    && IncognitoUtils.isIncognitoModeEnabled(mOriginalProfile)) {
                 listItems.add(buildSimpleMenuItem(R.string.contextmenu_open_in_incognito_tab));
             }
             if (mBookmarkOpener.isOpenInNewWindowSupported()) {
@@ -1680,7 +1758,8 @@ class BookmarkManagerMediator
         BookmarkListEntry entry = model.get(BookmarkManagerProperties.BOOKMARK_LIST_ENTRY);
         BookmarkId bookmarkId = assumeNonNull(entry.getBookmarkItem()).getId();
         ModelList listItems =
-                createListMenuModelList(entry, model.get(BookmarkManagerProperties.LOCATION));
+                createListMenuModelList(
+                        entry, model.get(BookmarkManagerProperties.REORDER_LOCATION));
         ListMenu.Delegate delegate =
                 (item, view) -> {
                     int textId = item.get(ListMenuItemProperties.TITLE_ID);
@@ -1715,7 +1794,7 @@ class BookmarkManagerMediator
                         BookmarkItem bookmarkItem = mBookmarkModel.getBookmarkById(bookmarkId);
                         assumeNonNull(bookmarkItem);
                         mBookmarkManagerOpener.startEditActivity(
-                                mContext, mProfile, bookmarkItem.getId());
+                                mContext, mOriginalProfile, bookmarkItem.getId());
                     } else if (textId == R.string.bookmark_item_copy_link) {
                         BookmarkItem bookmarkItem = mBookmarkModel.getBookmarkById(bookmarkId);
                         assumeNonNull(bookmarkItem);
@@ -1744,7 +1823,7 @@ class BookmarkManagerMediator
                         RecordUserAction.record("Android.BookmarkPage.ReadingList.MarkAsUnread");
                     } else if (textId == R.string.bookmark_item_move) {
                         mBookmarkManagerOpener.startFolderPickerActivity(
-                                mContext, mProfile, bookmarkId);
+                                mContext, mOriginalProfile, bookmarkId);
                         RecordUserAction.record("MobileBookmarkManagerMoveToFolder");
                     } else if (textId == R.string.bookmark_item_delete) {
                         if (mBookmarkModel != null) {
@@ -1793,7 +1872,7 @@ class BookmarkManagerMediator
                 enabled,
                 mSnackbarManager,
                 mContext.getResources(),
-                mProfile,
+                mOriginalProfile,
                 callback,
                 mPriceDropNotificationManager);
     }

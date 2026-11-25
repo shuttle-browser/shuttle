@@ -4,30 +4,25 @@
 
 #include "chrome/browser/ash/net/network_pref_state_observer.h"
 
-#include "chrome/browser/ash/profiles/profile_helper.h"
-#include "chrome/browser/profiles/profile.h"
+#include "base/check.h"
 #include "chromeos/ash/components/install_attributes/install_attributes.h"
 #include "chromeos/ash/components/network/network_handler.h"
 #include "chromeos/ash/components/network/network_metadata_store.h"
 #include "chromeos/ash/components/sync_wifi/wifi_configuration_sync_service.h"
 #include "chromeos/ash/components/sync_wifi/wifi_configuration_sync_service_provider.h"
 #include "components/prefs/pref_service.h"
+#include "components/session_manager/core/session.h"
+#include "components/session_manager/core/session_manager.h"
+#include "components/user_manager/user.h"
+#include "components/user_manager/user_manager.h"
 
 namespace ash {
-
-namespace {
-
-void InitializeNetworkPrefServices(Profile* profile, PrefService* local_state) {
-  NetworkHandler::Get()->InitializePrefServices(
-      profile ? profile->GetPrefs() : nullptr, local_state);
-}
-
-}  // namespace
 
 NetworkPrefStateObserver::NetworkPrefStateObserver(PrefService& local_state)
     : local_state_(local_state) {
   // Initialize NetworkHandler with device prefs only.
-  InitializeNetworkPrefServices(/*profile=*/nullptr, &local_state);
+  NetworkHandler::Get()->InitializePrefServices(
+      /*logged_in_profile_prefs=*/nullptr, &local_state);
 
   session_observation_.Observe(session_manager::SessionManager::Get());
 }
@@ -38,24 +33,32 @@ NetworkPrefStateObserver::~NetworkPrefStateObserver() {
 
 void NetworkPrefStateObserver::OnUserProfileLoaded(
     const AccountId& account_id) {
-  Profile* profile = ProfileHelper::Get()->GetProfileByAccountId(account_id);
-  CHECK(profile);
-
   // Reinitialize the NetworkHandler's pref service when the primary user logs
-  // in. Other profiles are ignored because only the primary user's network
-  // configuration is used on Chrome OS.
-  if (ProfileHelper::IsPrimaryProfile(profile)) {
-    NetworkHandler::Get()->SetIsEnterpriseManaged(
-        InstallAttributes::Get()->IsEnterpriseManaged());
-    InitializeNetworkPrefServices(profile, &local_state_.get());
-    session_observation_.Reset();
+  // in. Other users are ignored because only the primary user's network
+  // configuration is used on ChromeOS.
+  const session_manager::Session* const primary_session =
+      session_manager::SessionManager::Get()->GetPrimarySession();
+  if (!primary_session || primary_session->account_id() != account_id) {
+    return;
+  }
 
-    auto* wifi_sync_service =
-        WifiConfigurationSyncServiceProvider::Get().Find(account_id);
-    if (wifi_sync_service) {
-      wifi_sync_service->SetNetworkMetadataStore(
-          NetworkHandler::Get()->network_metadata_store()->GetWeakPtr());
-    }
+  // The Profile has been created by now, so its prefs are attached to the User.
+  PrefService* const profile_prefs = user_manager::UserManager::Get()
+                                         ->FindUserAndModify(account_id)
+                                         ->GetProfilePrefs();
+  CHECK(profile_prefs);
+
+  NetworkHandler::Get()->SetIsEnterpriseManaged(
+      InstallAttributes::Get()->IsEnterpriseManaged());
+  NetworkHandler::Get()->InitializePrefServices(profile_prefs,
+                                                &local_state_.get());
+  session_observation_.Reset();
+
+  auto* wifi_sync_service =
+      WifiConfigurationSyncServiceProvider::Get().Find(account_id);
+  if (wifi_sync_service) {
+    wifi_sync_service->SetNetworkMetadataStore(
+        NetworkHandler::Get()->network_metadata_store()->GetWeakPtr());
   }
 }
 

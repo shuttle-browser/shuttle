@@ -33,13 +33,10 @@ import org.mockito.junit.MockitoRule;
 import org.mockito.quality.Strictness;
 
 import org.chromium.base.ThreadUtils;
-import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CriteriaHelper;
-import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.settings.MainSettings;
 import org.chromium.chrome.browser.settings.SettingsTestRule;
 import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
@@ -56,16 +53,11 @@ import org.chromium.components.externalauth.ExternalAuthUtils;
 import org.chromium.components.signin.base.CoreAccountInfo;
 import org.chromium.components.signin.metrics.SigninAccessPoint;
 import org.chromium.components.signin.test.util.TestAccounts;
-import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.ui.test.util.MockitoHelper;
 
 /** Test the lifecycle of sign-in and sign-out. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
-@DoNotBatch(
-        reason =
-                "This test suite tests sign-in and sign-out which modifies account and sign-in"
-                        + " state at the process level.")
+@Batch(Batch.PER_CLASS)
 public class SigninSignoutIntegrationTest {
     @Rule
     public final SettingsTestRule<AccountManagementFragment> mSettingsActivityTestRule =
@@ -77,7 +69,7 @@ public class SigninSignoutIntegrationTest {
     private final FreshCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.freshChromeTabbedActivityRule();
 
-    private final SigninTestRule mSigninTestRule = new SigninTestRule();
+    private final SigninTestRule mSigninTestRule = SigninTestRule.createWithCleanups();
 
     // Mock sign-in environment needs to be destroyed after ChromeActivity in case there are
     // observers registered in the AccountManagerFacade mock.
@@ -121,7 +113,6 @@ public class SigninSignoutIntegrationTest {
 
     @Test
     @LargeTest
-    @DisableIf.Device(DeviceFormFactor.AUTOMOTIVE) // crbug.com/572800472
     public void testSignIn() {
         var signinHistogram =
                 HistogramWatcher.newSingleRecordWatcher(
@@ -140,6 +131,7 @@ public class SigninSignoutIntegrationTest {
                                 withId(R.id.account_picker_continue_as_button),
                                 withParent(withId(R.id.account_picker_state_collapsed))))
                 .perform(click());
+        mSigninTestRule.completeDeviceLockIfOnAutomotive();
 
         CriteriaHelper.pollUiThread(() -> mSigninManager.getIdentityManager().hasPrimaryAccount());
         verify(mSignInStateObserverMock).onSignedIn();

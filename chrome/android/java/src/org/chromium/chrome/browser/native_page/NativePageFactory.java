@@ -56,7 +56,7 @@ import org.chromium.chrome.browser.pdf.PdfFragmentViewTrackerImpl;
 import org.chromium.chrome.browser.pdf.PdfInfo;
 import org.chromium.chrome.browser.pdf.PdfPage;
 import org.chromium.chrome.browser.price_tracking.PriceDropNotificationManagerFactory;
-import org.chromium.chrome.browser.printing.PrintHelper;
+import org.chromium.chrome.browser.printing.PrintingDelegate;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.recent_tabs.RecentTabsManager;
 import org.chromium.chrome.browser.recent_tabs.RecentTabsPage;
@@ -345,7 +345,8 @@ public class NativePageFactory {
                             () -> BookmarkModel.getForProfile(profile),
                             mActivity,
                             mActivity.getComponentName(),
-                            /* multiInstanceManager= */ null),
+                            /* multiInstanceManager= */ null,
+                            /* currentTabSupplier= */ null),
                     new BookmarkManagerOpenerImpl(),
                     PriceDropNotificationManagerFactory.create(profile),
                     SigninAndHistorySyncActivityLauncherImpl.get(),
@@ -524,6 +525,9 @@ public class NativePageFactory {
                 return null;
             case NativePageType.CANDIDATE:
                 page = candidatePage;
+                if (isPdf && page != null) {
+                    page.setInitiatorOrigin(assumeNonNull(pdfInfo).initiatorOrigin);
+                }
                 break;
             case NativePageType.NTP:
                 page = getBuilder().buildNewTabPage(tab, url);
@@ -630,6 +634,7 @@ public class NativePageFactory {
                 && !candidatePage.isFrozen()
                 && url.equals(candidatePage.getUrl())) {
             page = candidatePage;
+            page.setInitiatorOrigin(pdfInfo.initiatorOrigin);
         } else {
             assert tabModelSelector != null;
             page =
@@ -737,7 +742,10 @@ public class NativePageFactory {
 
         @Override
         public void print() {
-            PrintHelper.printTab(mTab);
+            PrintingDelegate printingDelegate = PrintingDelegate.getInstance();
+            if (printingDelegate != null) {
+                printingDelegate.print(mTab);
+            }
         }
 
         @Override
@@ -746,6 +754,14 @@ public class NativePageFactory {
                 return;
             }
             DownloadController.downloadUrl(url, mTab);
+        }
+
+        @Override
+        public void downloadLocalFile(String uri, @Nullable String suggestedFileName) {
+            if (mTab.isDestroyed() || mTab.getWebContents() == null || TextUtils.isEmpty(uri)) {
+                return;
+            }
+            DownloadController.downloadLocalFile(uri, suggestedFileName, mTab);
         }
 
         @Override

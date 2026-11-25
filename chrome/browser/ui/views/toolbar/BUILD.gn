@@ -48,6 +48,7 @@ source_set("toolbar") {
     "webui_avatar_toolbar_button.h",
     "webui_back_forward_control.h",
     "webui_battery_saver_control.h",
+    "webui_glic_actor_task_icon_control.h",
     "webui_glic_control.h",
     "webui_home_control.h",
     "webui_media_toolbar_button.h",
@@ -206,6 +207,7 @@ source_set("impl") {
     "webui_avatar_toolbar_button.cc",
     "webui_back_forward_control.cc",
     "webui_battery_saver_control.cc",
+    "webui_glic_actor_task_icon_control.cc",
     "webui_glic_control.cc",
     "webui_home_control.cc",
     "webui_media_toolbar_button.cc",
@@ -357,6 +359,7 @@ source_set("impl") {
     "//components/signin/public/identity_manager",
     "//components/strings:components_strings",
     "//components/strings:components_strings_grit",
+    "//components/subscription_eligibility:tier_names",
     "//components/user_education/views",
     "//components/user_prefs",
     "//components/vector_icons",
@@ -414,6 +417,8 @@ if (!is_android) {
       "test_support/app_menu_test_accessor.h",
       "test_support/glic_button_test_accessor.cc",
       "test_support/glic_button_test_accessor.h",
+      "test_support/media_toolbar_button_test_accessor.cc",
+      "test_support/media_toolbar_button_test_accessor.h",
       "webui_test_utils.cc",
       "webui_test_utils.h",
     ]
@@ -424,6 +429,7 @@ if (!is_android) {
       "//chrome/browser/headless:command_processor",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/interaction",
+      "//chrome/browser/ui/tab_contents",
       "//chrome/browser/ui/toolbar",
       "//chrome/browser/ui/views/frame",
       "//chrome/browser/ui/views/frame:browser_view_header",
@@ -431,14 +437,23 @@ if (!is_android) {
       "//chrome/browser/ui/waap:manager",
       "//chrome/browser/ui/window_feature_controller",
       "//components/metrics:content",
+      "//components/user_education/common",
+      "//content/public/browser",
+      "//content/public/common",
       "//content/test:test_support",
       "//testing/gmock",
       "//testing/gtest",
+      "//third_party/blink/public/common:headers",
       "//ui/actions",
+      "//ui/base",
+      "//ui/base/dragdrop:types",
+      "//ui/base/dragdrop/mojom",
+      "//ui/gfx/geometry",
       "//ui/views",
       "//ui/views:test_support",
       "//ui/views/interaction:test_support",
       "//ui/webui/tracked_element:test_support",
+      "//url",
     ]
   }
 
@@ -531,6 +546,7 @@ if (!is_android) {
 
       if (is_win || is_mac || is_linux) {
         sources += [ "webui_media_toolbar_button_browsertest.cc" ]
+        deps += [ "//chrome/browser/ui/views/profiles:profile_menu_view" ]
       }
 
       if (is_win) {
@@ -546,6 +562,7 @@ if (!is_android) {
         "//chrome/browser/ui:toolbar_controller_util",
         "//chrome/browser/ui/global_media_controls",
         "//chrome/browser/ui/views/contextual_tasks",
+        "//chrome/browser/ui/views/frame:browser_view_layout",
         "//chrome/browser/ui/views/global_media_controls",
         "//chrome/browser/ui/views/performance_controls",
         "//chrome/browser/ui/views/profiles:avatar_toolbar_button",
@@ -620,6 +637,8 @@ if (!is_android && !is_chromeos_device) {
       "//base",
       "//chrome/app:generated_resources",
       "//chrome/app/vector_icons",
+      "//chrome/browser/actor",
+      "//chrome/browser/actor:test_support",
       "//chrome/browser/bookmarks",
       "//chrome/browser/devtools",
       "//chrome/browser/extensions",
@@ -627,6 +646,7 @@ if (!is_android && !is_chromeos_device) {
       "//chrome/browser/preloading",
       "//chrome/browser/profiles:misc",
       "//chrome/browser/profiles:profile",
+      "//chrome/browser/sync",
       "//chrome/browser/ui:accelerator_utils_headers",
       "//chrome/browser/ui:browser_actions",
       "//chrome/browser/ui:browser_command_controller",
@@ -642,6 +662,7 @@ if (!is_android && !is_chromeos_device) {
       "//chrome/browser/ui/tabs:features",
       "//chrome/browser/ui/tabs:tab_menu",
       "//chrome/browser/ui/tabs:tab_strip",
+      "//chrome/browser/ui/tabs:test_support",
       "//chrome/browser/ui/translate:test_support",
       "//chrome/browser/ui/views/extensions:extension_popup",
       "//chrome/browser/ui/views/extensions:extensions_menu_coordinator",
@@ -657,7 +678,6 @@ if (!is_android && !is_chromeos_device) {
       "//chrome/browser/ui/webui/webui_toolbar:impl",
       "//chrome/browser/user_education",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//chrome/test/user_education:impl",
       "//components/bookmarks/browser",
       "//components/commerce/core:feature_list",
@@ -666,9 +686,12 @@ if (!is_android && !is_chromeos_device) {
       "//components/prefs",
       "//components/strings:components_strings",
       "//components/strings:components_strings_grit",
+      "//components/sync:test_support",
+      "//components/sync_sessions",
       "//components/user_education/views",
       "//content/test:test_support",
       "//testing/gtest",
+      "//third_party/blink/public/common:headers",
       "//ui/base",
       "//ui/base:ozone_buildflags",
       "//ui/events:test_support",
@@ -683,6 +706,7 @@ if (!is_android && !is_chromeos_device) {
     if (toolkit_views) {
       deps += [
         "//chrome/browser/ui:toolbar_controller_util",
+        "//chrome/browser/ui/focus",
         "//chrome/browser/ui/views/global_media_controls",
         "//chrome/browser/ui/views/profiles:profile_menu_coordinator",
         "//chrome/browser/ui/views/profiles:profile_menu_view_base",
@@ -709,6 +733,7 @@ if (toolkit_views) {
       "toolbar_controller_unittest.cc",
       "toolbar_ink_drop_util_unittest.cc",
       "webui_battery_saver_control_unittest.cc",
+      "webui_glic_actor_task_icon_control_unittest.cc",
       "webui_glic_control_unittest.cc",
     ]
 
@@ -728,6 +753,7 @@ if (toolkit_views) {
       "//chrome/browser/ui/actions",
       "//chrome/browser/ui/actions:actions_headers",
       "//chrome/browser/ui/browser_window",
+      "//chrome/browser/ui/browser_window/test:test_support",
       "//chrome/browser/ui/color:mixers",
       "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/tabs:test_support",
@@ -738,6 +764,8 @@ if (toolkit_views) {
       "//chrome/browser/ui/views:layout_provider",
       "//chrome/browser/ui/views/frame",
       "//chrome/browser/ui/waap",
+      "//chrome/browser/ui/waap:waap_utils",
+      "//chrome/browser/ui/waap:window_metrics_manager",
       "//chrome/common:buildflags",
       "//chrome/test:test_support",
       "//chrome/test/base:chrome_render_view_host_test_harness",

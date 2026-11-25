@@ -6,8 +6,10 @@
 import './ai_page/ai_mode_search_page.js';
 import './ai_page/ai_suggestions_page.js';
 import './ai_page/dictation_page.js';
-import './ai_page/history_search_page.js';
 import './ai_page/offer_writing_help_page.js';
+// <if expr="_google_chrome">
+import './ai_page/on_device_ai_page.js';
+// </if>
 import './ai_page/skills_page.js';
 import './appearance_page/appearance_fonts_page.js';
 import './autofill_page/contact_info/contact_info_page.js';
@@ -81,8 +83,10 @@ import './site_settings/site_data.js';
 import './site_settings/site_details.js';
 import './site_settings/site_details_permission_device_entry.js';
 import './site_settings/site_settings_page.js';
-// <if expr="is_chromeos">
+// <if expr="enable_smart_card">
 import './site_settings/smart_card_readers_page.js';
+// </if>
+// <if expr="is_chromeos">
 import './site_settings/web_printing_page.js';
 // </if>
 import './site_settings/sound_page.js';
@@ -99,6 +103,7 @@ import './people_page/import_data_dialog.js';
 import './people_page/manage_profile.js';
 // </if>
 import './people_page/account_page.js';
+import './people_page/device_tab_visibility_page.js';
 import './people_page/google_services_page.js';
 import './people_page/signout_dialog.js';
 import './people_page/sync_controls_page.js';
@@ -106,6 +111,7 @@ import './people_page/sync_page.js';
 // Sections
 import './a11y_page/a11y_page_index.js';
 import './downloads_page/downloads_page.js';
+import './general_page/general_page_index.js';
 // <if expr="is_chromeos">
 import './languages_page/languages_page_index_cros.js';
 // </if>
@@ -140,10 +146,8 @@ export {CrTextareaElement} from 'chrome://resources/cr_elements/cr_textarea/cr_t
 export {CrToastElement} from 'chrome://resources/cr_elements/cr_toast/cr_toast.js';
 export {getToastManager} from 'chrome://resources/cr_elements/cr_toast/cr_toast_manager.js';
 export {CrTooltipElement} from 'chrome://resources/cr_elements/cr_tooltip/cr_tooltip.js';
-export {PageCallbackRouter, PageHandlerFactory, PageHandlerRemote, PageRemote} from 'chrome://resources/js/batch_upload_promo.mojom-webui.js';
-export type {PageHandlerInterface} from 'chrome://resources/js/batch_upload_promo.mojom-webui.js';
-export {BatchUploadPromoProxyImpl} from 'chrome://resources/js/batch_upload_promo/batch_upload_promo_proxy.js';
-export type {BatchUploadPromoProxy} from 'chrome://resources/js/batch_upload_promo/batch_upload_promo_proxy.js';
+export {browserProxyFactory as batchUploadPromoProxyFactory} from 'chrome://resources/js/batch_upload_promo.mojom-webui.js';
+export type {PageHandlerInterface, PageRemote} from 'chrome://resources/js/batch_upload_promo.mojom-webui.js';
 export type {IronListElement} from 'chrome://resources/polymer/v3_0/iron-list/iron-list.js';
 export {AccessibilityBrowserProxyImpl} from './a11y_page/a11y_browser_proxy.js';
 export type {AccessibilityBrowserProxy} from './a11y_page/a11y_browser_proxy.js';
@@ -163,12 +167,12 @@ export {AiEnterpriseFeaturePrefName, AiPageActions, FeatureOptInState, SettingsA
 export type {DictationBrowserProxy} from './ai_page/dictation_browser_proxy.js';
 export {DictationBrowserProxyImpl} from './ai_page/dictation_browser_proxy.js';
 export {SettingsDictationPageElement} from './ai_page/dictation_page.js';
-export {SettingsHistorySearchPageElement} from './ai_page/history_search_page.js';
 export {SettingsInlineCueMenuPageElement} from './ai_page/inline_cue_menu_page.js';
 export {COMPOSE_PROACTIVE_NUDGE_DISABLED_SITES_PREF, COMPOSE_PROACTIVE_NUDGE_PREF, SettingsOfferWritingHelpPageElement} from './ai_page/offer_writing_help_page.js';
 // <if expr="_google_chrome">
 export type {OnDeviceAiBrowserProxy, OnDeviceAiEnabled} from './ai_page/on_device_ai_browser_proxy.js';
 export {OnDeviceAiBrowserProxyImpl} from './ai_page/on_device_ai_browser_proxy.js';
+export {SettingsOnDeviceAiPageElement} from './ai_page/on_device_ai_page.js';
 // </if>
 export {SettingsSkillsPageElement} from './ai_page/skills_page.js';
 export {SettingsAppearanceFontsPageElement} from './appearance_page/appearance_fonts_page.js';
@@ -179,7 +183,7 @@ export {AutofillManagerImpl} from './autofill_page/autofill_manager_proxy.js';
 export type {AutofillManagerProxy, PersonalDataChangedListener} from './autofill_page/autofill_manager_proxy.js';
 export {SettingsAddressEditDialogElement} from './autofill_page/contact_info/address_edit_dialog.js';
 export {SettingsAddressRemoveConfirmationDialogElement} from './autofill_page/contact_info/address_remove_confirmation_dialog.js';
-export {AUTOFILL_GMAIL_OTP_FILLING_ENABLED_PREF, AUTOFILL_GMAIL_OTP_OPT_IN_SETTINGS_CHANGE_METRIC, AutofillAddressOptInChange, SettingsContactInfoPageElement} from './autofill_page/contact_info/contact_info_page.js';
+export {AUTOFILL_GMAIL_OTP_FILLING_ENABLED_PREF, AutofillAddressOptInChange, GMAIL_OTP_OPT_IN_SETTINGS_CHANGE_METRIC, GmailOtpSettingsChangeOutcome, SettingsContactInfoPageElement} from './autofill_page/contact_info/contact_info_page.js';
 export {SettingsGmailOtpDisclaimerDialogElement} from './autofill_page/contact_info/gmail_otp_disclaimer_dialog.js';
 export {CountryDetailManagerProxyImpl} from './autofill_page/country_detail_manager_proxy.js';
 export type {CountryDetailManagerProxy} from './autofill_page/country_detail_manager_proxy.js';
@@ -223,6 +227,7 @@ export {SettingsToggleButtonElement} from './controls/settings_toggle_button.js'
 export {DownloadsBrowserProxyImpl} from './downloads_page/downloads_browser_proxy.js';
 export type {DownloadsBrowserProxy} from './downloads_page/downloads_browser_proxy.js';
 export {SettingsDownloadsPageElement} from './downloads_page/downloads_page.js';
+export {SettingsGeneralPageIndexElement} from './general_page/general_page_index.js';
 export {SettingsGlicLoginPermissionsPageElement} from './glic_page/glic_login_permissions_page.js';
 // <if expr="not is_chromeos">
 export {SettingsAddLanguagesDialogElement} from './languages_page/add_languages_dialog.js';
@@ -243,6 +248,9 @@ export {PageColors} from './page_colors.mojom-webui.js';
 // </if>
 
 export {SettingsAccountPageElement} from './people_page/account_page.js';
+export {DeviceTabVisibilityBrowserProxyImpl, SyncedDeviceFormFactor} from './people_page/device_tab_visibility_browser_proxy.js';
+export type {DeviceTabVisibilityBrowserProxy, DeviceTabVisibilityEntry} from './people_page/device_tab_visibility_browser_proxy.js';
+export {SettingsDeviceTabVisibilityPageElement} from './people_page/device_tab_visibility_page.js';
 export {SettingsGoogleServicesPageElement} from './people_page/google_services_page.js';
 // <if expr="not is_chromeos">
 export {ImportDataBrowserProxyImpl, ImportDataStatus} from './people_page/import_data_browser_proxy.js';
@@ -335,7 +343,7 @@ export {defaultSettingLabel} from './site_settings/site_settings_list.js';
 export {SiteSettingsMixin} from './site_settings/site_settings_mixin.js';
 export {SiteSettingsMixinLit} from './site_settings/site_settings_mixin_lit.js';
 export {SettingsSiteSettingsPageElement} from './site_settings/site_settings_page.js';
-// <if expr="is_chromeos">
+// <if expr="enable_smart_card">
 export {SettingsSmartCardReadersPageElement} from './site_settings/smart_card_readers_page.js';
 // </if>
 export {SoundPageElement} from './site_settings/sound_page.js';

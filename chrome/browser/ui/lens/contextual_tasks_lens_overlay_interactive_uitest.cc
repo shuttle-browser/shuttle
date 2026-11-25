@@ -126,7 +126,9 @@ class ContextualTasksLensOverlayControllerInteractiveUiTest
         {{lens::features::kLensOverlayTextSelectionContextMenuEntrypoint,
           {{"contextualize", "true"}}}},
         /*disabled_features=*/
-        {features::kNonBlockingOsClipboardReads,
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads,
          // These tests expect closing the side panel to close Lens sessions in
          // all tabs that share its task.
          contextual_tasks::kContextualTasksSidePanelTabState});
@@ -915,9 +917,12 @@ class ContextualTasksLensOverlayEphemeralButtonInteractiveUiTest
   void SetUpFeatureList() override {
     feature_list_.InitWithFeaturesAndParameters(
         /*enabled_features=*/
-        {{contextual_tasks::kContextualTasksEphemeralBrandedEntryPoint,
-          {{"ContextualTasksEntryPoint", "toolbar-ephemeral-branded"}}}},
-        /*disabled_features=*/{features::kNonBlockingOsClipboardReads});
+        {{contextual_tasks::kContextualTasksPinningV2, {}},
+         {contextual_tasks::kContextualTasksForceEntryPointEligibility, {}}},
+        /*disabled_features=*/
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads});
   }
 };
 
@@ -940,10 +945,10 @@ IN_PROC_BROWSER_TEST_P(
   });
 
   RunTestSequence(
-      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
+      EnsureNotPresent(
+          kPinnedToolbarActionShowSidePanelContextualTasksElementId),
       OpenLensOverlayWithRegionSearch(kFirstTab, kOverlayId, off_center_point),
       WaitForShow(kContextualTasksSidePanelWebViewElementId),
-      EnsureNotPresent(kContextualTasksEphemeralToolbarButtonElementId),
       Do([&]() {
         // Close the panel after it is opened.
         controller->Close();
@@ -951,9 +956,9 @@ IN_PROC_BROWSER_TEST_P(
       WaitForContextualPanelAndLensToClose(),
       GetParam() == contextual_tasks::UserVariation::kIncognito
           ? Steps(EnsureNotPresent(
-                kContextualTasksEphemeralToolbarButtonElementId))
-          : Steps(
-                WaitForShow(kContextualTasksEphemeralToolbarButtonElementId)));
+                kPinnedToolbarActionShowSidePanelContextualTasksElementId))
+          : Steps(WaitForShow(
+                kPinnedToolbarActionShowSidePanelContextualTasksElementId)));
 }
 
 INSTANTIATE_TEST_SUITE_P(
@@ -983,7 +988,12 @@ class ContextualTasksLensOverlayControllerEligibilityInteractiveUiTest
   }
 
   void SetUpFeatureList() override {
-    feature_list_.InitAndDisableFeature(features::kNonBlockingOsClipboardReads);
+    feature_list_.InitWithFeatures(
+        /*enabled_features=*/{},
+        /*disabled_features=*/
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads});
   }
 
   std::unique_ptr<KeyedService> BuildMockAimServiceInstance(
@@ -1097,7 +1107,10 @@ class OmniboxContextualSuggestionInteractiveUiTest
                                {}},
                               {omnibox::kWebUIOmniboxAskGAboutThisPage,
                                {{"Omnibox_AskGBypassPrivacyNotice", "true"}}}},
-        /*disabled_features=*/{features::kNonBlockingOsClipboardReads});
+        /*disabled_features=*/
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads});
   }
 };
 
@@ -1174,7 +1187,10 @@ class ContextualTasksContextMenuAskGoogleInteractiveUiTest
           {{"ContextualTasksContextMenuShowAskGoogle", "true"},
            {"ContextualTasksContextMenuSubmenu", "false"},
            {"ContextualTasksContextMenuRouteAskGoogleToOmnibox", "false"}}}},
-        /*disabled_features=*/{features::kNonBlockingOsClipboardReads});
+        /*disabled_features=*/
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads});
   }
 
   void SetupOptimizationFilter() {
@@ -1469,7 +1485,10 @@ class ContextualTasksContextMenuSubmenuInteractiveUiTest
           {{"ContextualTasksContextMenuShowAskGoogle", "true"},
            {"ContextualTasksContextMenuSubmenu", "true"},
            {"ContextualTasksContextMenuRouteAskGoogleToOmnibox", "false"}}}},
-        /*disabled_features=*/{features::kNonBlockingOsClipboardReads});
+        /*disabled_features=*/
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads});
   }
 };
 
@@ -1681,7 +1700,10 @@ class ContextualTasksContextMenuRouteOmniboxInteractiveUiTest
            {"ContextualTasksContextMenuSubmenu", "false"},
            {"ContextualTasksContextMenuRouteAskGoogleToOmnibox", "true"}}},
          {omnibox::internal::kWebUIOmniboxAimPopup, {}}},
-        /*disabled_features=*/{features::kNonBlockingOsClipboardReads});
+        /*disabled_features=*/
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         features::kNonBlockingOsClipboardReads});
   }
 
   void SetupOptimizationFilter() {
@@ -1899,8 +1921,7 @@ class ContextualTasksLensRegionChipInteractiveUiTest
   InteractiveTestApi::MultiStep OpenContextualTasksSidePanelViaToolbarButton(
       ui::ElementIdentifier side_panel_contents_id) {
     return Steps(
-        EnsurePresent(
-            kPinnedToolbarActionShowSidePanelContextualTasksElementId),
+        WaitForShow(kPinnedToolbarActionShowSidePanelContextualTasksElementId),
         PressButton(kPinnedToolbarActionShowSidePanelContextualTasksElementId),
         WaitForShow(kContextualTasksSidePanelWebViewElementId),
         NameViewRelative(

@@ -9,7 +9,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
@@ -27,9 +26,10 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 import android.content.res.Resources;
-import android.os.Build;
 import android.os.Build.VERSION_CODES;
 import android.os.PersistableBundle;
+import android.widget.TextView;
+import android.widget.Toast;
 
 import androidx.test.core.app.ApplicationProvider;
 
@@ -45,8 +45,8 @@ import org.mockito.junit.MockitoRule;
 import org.robolectric.Robolectric;
 import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowBuild;
 import org.robolectric.shadows.ShadowToast;
-import org.robolectric.util.ReflectionHelpers;
 
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApplicationStatus;
@@ -64,7 +64,6 @@ import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.IntentHandler;
 import org.chromium.chrome.browser.app.tabwindow.TabWindowManagerSingleton;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.homepage.HomepageManager;
 import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.multiwindow.MultiInstanceManager.NewWindowAppSource;
 import org.chromium.chrome.browser.multiwindow.MultiInstanceManager.PersistedInstanceType;
@@ -83,8 +82,6 @@ import org.chromium.components.messages.MessageBannerProperties;
 import org.chromium.components.messages.MessageDispatcher;
 import org.chromium.components.messages.MessageIdentifier;
 import org.chromium.ui.modelutil.PropertyModel;
-import org.chromium.ui.widget.Toast;
-import org.chromium.ui.widget.ToastManager;
 import org.chromium.url.GURL;
 
 import java.util.Arrays;
@@ -104,6 +101,7 @@ public class MultiWindowUtilsUnitTest {
     private static class TestChromeTabbedActivity extends ChromeTabbedActivity {
         int mWindowId;
         boolean mIsIncognitoWindow;
+        @SupportedProfileType int mSupportedProfileType = SupportedProfileType.UNSET;
         Intent mLastNewIntent;
 
         @Override
@@ -118,7 +116,13 @@ public class MultiWindowUtilsUnitTest {
 
         @Override
         public boolean isIncognitoWindow() {
-            return mIsIncognitoWindow;
+            return mIsIncognitoWindow
+                    || mSupportedProfileType == SupportedProfileType.OFF_THE_RECORD;
+        }
+
+        @Override
+        public @SupportedProfileType int getSupportedProfileType() {
+            return mSupportedProfileType;
         }
 
         @Override
@@ -154,7 +158,6 @@ public class MultiWindowUtilsUnitTest {
     @Mock TabModelSelector mTabModelSelector;
     @Mock TabModel mNormalTabModel;
     @Mock TabModel mIncognitoTabModel;
-    @Mock HomepageManager mHomepageManager;
     @Mock DesktopWindowStateManager mDesktopWindowStateManager;
     @Mock AppHeaderState mAppHeaderState;
     @Mock Tab mTab1;
@@ -178,10 +181,6 @@ public class MultiWindowUtilsUnitTest {
                         return mIsInMultiDisplayMode;
                     }
                 };
-
-        when(mHomepageManager.isHomepageEnabled()).thenReturn(true);
-        when(mHomepageManager.getHomepageGurl(/* isIncognito= */ false)).thenReturn(NTP_GURL);
-        HomepageManager.setInstanceForTesting(mHomepageManager);
 
         when(mDesktopWindowStateManager.getAppHeaderState()).thenReturn(mAppHeaderState);
         when(mAppHeaderState.isInDesktopWindow()).thenReturn(false);
@@ -390,7 +389,7 @@ public class MultiWindowUtilsUnitTest {
     @Config(sdk = VERSION_CODES.R)
     public void testCanEnterMultiWindowMode_withCustomOemSupport_returnsTrue() {
         mOverrideContextWrapperTestRule.setIsAutomotive(false);
-        ReflectionHelpers.setStaticField(Build.class, "MANUFACTURER", "samsung");
+        ShadowBuild.setManufacturer("samsung");
         assertTrue(MultiWindowUtils.canEnterMultiWindowMode());
     }
 
@@ -819,35 +818,13 @@ public class MultiWindowUtilsUnitTest {
     }
 
     @Test
-    public void testIsMoveOtherWindowSupported_HasOneTabWithHomePageDisabled_ReturnsTrue() {
-        ChromeTabbedActivity tabbedActivity = createActivity();
-        when(mHomepageManager.isHomepageEnabled()).thenReturn(false);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(1);
-        Shadows.shadowOf(tabbedActivity).setInMultiWindowMode(true);
-        assertTrue(
-                "Should return true when called for last tab with homepage disabled.",
-                mUtils.isMoveToOtherWindowSupported(tabbedActivity, mTabModelSelector));
-    }
-
-    @Test
-    public void testIsMoveOtherWindowSupported_HasOneTabWithHomePageEnabledAsNtp_ReturnsTrue() {
+    public void testIsMoveOtherWindowSupported_HasOneTab_ReturnsTrue() {
         ChromeTabbedActivity tabbedActivity = createActivity();
         when(mTabModelSelector.getTotalTabCount()).thenReturn(1);
         Shadows.shadowOf(tabbedActivity).setInMultiWindowMode(true);
         assertTrue(
-                "Should return true when called for last tab with homepage enabled as NTP.",
+                "Should return true when called for last tab in multi-window mode.",
                 mUtils.isMoveToOtherWindowSupported(tabbedActivity, mTabModelSelector));
-    }
-
-    @Test
-    public void
-            testIsMoveOtherWindowSupported_HasOneTabWithHomePageEnabledAsCustomUrl_ReturnsFalse() {
-        when(mHomepageManager.getHomepageGurl(/* isIncognito= */ false)).thenReturn(TEST_GURL);
-        when(mHomepageManager.isHomepageEnabled()).thenReturn(true);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(1);
-        assertFalse(
-                "Should return false when called for last tab with homepage set as a custom url.",
-                mUtils.isMoveToOtherWindowSupported(null, mTabModelSelector));
     }
 
     @Test
@@ -857,88 +834,6 @@ public class MultiWindowUtilsUnitTest {
         assertFalse(
                 "Should return false for automotive.",
                 mUtils.isMoveToOtherWindowSupported(null, mTabModelSelector));
-    }
-
-    @Test
-    public void testHasAtMostOneTabWithHomepageEnabled_OneTab_HasCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(true);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(1);
-        assertTrue(
-                "Should return true with one tab and custom homepage.",
-                mUtils.hasAtMostOneTabWithHomepageEnabled(mTabModelSelector));
-    }
-
-    @Test
-    public void testHasAtMostOneTabWithHomepageEnabled_OneTab_NoCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(false);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(1);
-        assertFalse(
-                "Should return false with one tab and no custom homepage.",
-                mUtils.hasAtMostOneTabWithHomepageEnabled(mTabModelSelector));
-    }
-
-    @Test
-    public void testHasAtMostOneTabWithHomepageEnabled_WithMoreThanOneTab_HasCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(true);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(2);
-        assertFalse(
-                "Should return false for multiple tabs.",
-                mUtils.hasAtMostOneTabWithHomepageEnabled(mTabModelSelector));
-    }
-
-    @Test
-    public void testHasAtMostOneTabWithHomepageEnabled_WithMoreThanOneTab_NoCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(false);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(2);
-        assertFalse(
-                "Should return false for multiple tabs.",
-                mUtils.hasAtMostOneTabWithHomepageEnabled(mTabModelSelector));
-    }
-
-    @Test
-    public void
-            testHasAtMostOneTabGroupWithHomepageEnabled_OneTabGroupAndNoOtherTabs_HasCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(true);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(3);
-        when(mNormalTabModel.getTabCountForGroup(any())).thenReturn(3);
-        when(mNormalTabModel.getTabAt(0)).thenReturn(mTab1);
-        assertTrue(
-                "Should return true with one tab group and custom homepage.",
-                mUtils.hasAtMostOneTabGroupWithHomepageEnabled(mTabModelSelector, mNormalTabModel));
-    }
-
-    @Test
-    public void
-            testHasAtMostOneTabWithHomepageEnabled_OneTabGroupAndNoOtherTabs_NoCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(false);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(3);
-        when(mNormalTabModel.getTabCountForGroup(any())).thenReturn(3);
-        when(mNormalTabModel.getTabAt(0)).thenReturn(mTab1);
-        assertFalse(
-                "Should return true with one tab group and custom homepage.",
-                mUtils.hasAtMostOneTabGroupWithHomepageEnabled(mTabModelSelector, mNormalTabModel));
-    }
-
-    @Test
-    public void testHasAtMostOneTabWithHomepageEnabled_WithMoreThanOneTabGroup_HasCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(true);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(4);
-        when(mNormalTabModel.getTabCountForGroup(any())).thenReturn(3);
-        when(mNormalTabModel.getTabAt(0)).thenReturn(mTab1);
-        assertFalse(
-                "Should return false for multiple tabs.",
-                mUtils.hasAtMostOneTabGroupWithHomepageEnabled(mTabModelSelector, mNormalTabModel));
-    }
-
-    @Test
-    public void testHasAtMostOneTabWithHomepageEnabled_WithMoreThanOneTabGroup_NoCustomHomepage() {
-        when(mHomepageManager.shouldCloseAppWithZeroTabs()).thenReturn(false);
-        when(mTabModelSelector.getTotalTabCount()).thenReturn(4);
-        when(mNormalTabModel.getTabCountForGroup(any())).thenReturn(3);
-        when(mNormalTabModel.getTabAt(0)).thenReturn(mTab1);
-        assertFalse(
-                "Should return false for multiple tabs.",
-                mUtils.hasAtMostOneTabGroupWithHomepageEnabled(mTabModelSelector, mNormalTabModel));
     }
 
     @Test
@@ -957,6 +852,40 @@ public class MultiWindowUtilsUnitTest {
                 "There should be only 1 running ChromeTabbedActivity.",
                 1,
                 runningTabbedActivityCount);
+    }
+
+    @Test
+    public void testGetVisibleTabbedTaskCount() {
+        addActivity(/* windowId= */ INSTANCE_ID_0, /* tabbedActivity= */ false);
+        TestChromeTabbedActivity activity1 =
+                addRunningTabbedActivity(/* windowId= */ INSTANCE_ID_1);
+        TestChromeTabbedActivity activity2 =
+                addRunningTabbedActivity(/* windowId= */ INSTANCE_ID_2);
+        activity1.mSupportedProfileType = SupportedProfileType.REGULAR;
+        activity2.mSupportedProfileType = SupportedProfileType.OFF_THE_RECORD;
+        ApplicationStatus.onStateChangeForTesting(activity2, ActivityState.PAUSED);
+
+        TestChromeTabbedActivity stoppedActivity =
+                addRunningTabbedActivity(/* windowId= */ TASK_ID_5);
+        stoppedActivity.mSupportedProfileType = SupportedProfileType.REGULAR;
+        ApplicationStatus.onStateChangeForTesting(stoppedActivity, ActivityState.STOPPED);
+
+        assertEquals(
+                "Expected 2 visible ChromeTabbedActivity tasks.",
+                2,
+                MultiWindowUtils.getVisibleTabbedTaskCount());
+        assertEquals(
+                "Expected 1 visible regular ChromeTabbedActivity task.",
+                1,
+                MultiWindowUtils.getVisibleTabbedTaskCount(SupportedProfileType.REGULAR));
+        assertEquals(
+                "Expected 1 visible incognito ChromeTabbedActivity task.",
+                1,
+                MultiWindowUtils.getVisibleTabbedTaskCount(SupportedProfileType.OFF_THE_RECORD));
+        assertEquals(
+                "Expected 0 visible mixed ChromeTabbedActivity tasks.",
+                0,
+                MultiWindowUtils.getVisibleTabbedTaskCount(SupportedProfileType.MIXED));
     }
 
     @Test
@@ -1531,14 +1460,14 @@ public class MultiWindowUtilsUnitTest {
         Context context = ApplicationProvider.getApplicationContext();
         MultiWindowUtils.showInstanceCreationLimitToast(context);
 
-        ToastManager toastManager =
-                ReflectionHelpers.callStaticMethod(ToastManager.class, "getInstance");
-        Toast toast = ReflectionHelpers.callInstanceMethod(toastManager, "getCurrentToast");
+        Toast toast = ShadowToast.getLatestToast();
         Assert.assertNotNull("Toast should have been shown.", toast);
+        TextView textView = (TextView) toast.getView();
 
         String expectedText =
                 context.getString(R.string.multi_instance_creation_limit_message_toast, 3);
-        Assert.assertEquals("Toast text should match.", expectedText, toast.getText().toString());
+        Assert.assertEquals(
+                "Toast text should match.", expectedText, textView.getText().toString());
     }
 
     @Test

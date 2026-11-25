@@ -29,7 +29,6 @@
 #include "chrome/browser/ui/lens/lens_search_controller.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/test/base/ui_test_utils.h"
@@ -50,8 +49,8 @@
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/test_navigation_observer.h"
 #include "net/dns/mock_host_resolver.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/compositor/compositor_switches.h"
 #include "ui/gfx/scoped_animation_duration_scale_mode.h"
 #include "ui/views/controls/webview/webview.h"
@@ -115,12 +114,9 @@ const char kNpsObjectUrl[] =
 // Live tests for Lens Overlay.
 // These tests can be run with:
 // browser_tests --gtest_filter=LensOverlayLiveTest.* --run-live-tests
-class LensOverlayLiveTest : public base::test::WithFeatureOverride,
-                            public signin::test::LiveTest {
+class LensOverlayLiveTest : public signin::test::LiveTest {
  public:
-  LensOverlayLiveTest()
-      : base::test::WithFeatureOverride(
-            syncer::kReplaceSyncPromosWithSignInPromos) {}
+  LensOverlayLiveTest() = default;
   ~LensOverlayLiveTest() override = default;
 
   void SetUp() override {
@@ -183,11 +179,8 @@ class LensOverlayLiveTest : public base::test::WithFeatureOverride,
   }
 
   content::WebContents* GetOverlayWebContents() {
-    auto* controller = browser()
-                           ->GetTabStripModel()
-                           ->GetActiveTab()
-                           ->GetTabFeatures()
-                           ->lens_overlay_controller();
+    auto* controller = LensOverlayController::From(
+        browser()->GetTabStripModel()->GetActiveTab());
     return controller->GetOverlayWebViewForTesting()->GetWebContents();
   }
 
@@ -219,7 +212,8 @@ class LensOverlayLiveTest : public base::test::WithFeatureOverride,
   // the current tab.
   void WaitForPaint(
       std::string_view url,
-      WindowOpenDisposition disposition = WindowOpenDisposition::kCurrentTab,
+      ui::mojom::WindowOpenDisposition disposition =
+          ui::mojom::WindowOpenDisposition::kCurrentTab,
       int browser_test_flags = ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP) {
     ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
         browser(), GURL(url), disposition, browser_test_flags));
@@ -234,11 +228,8 @@ class LensOverlayLiveTest : public base::test::WithFeatureOverride,
 
   // Verifies the side panel opened and loaded a search URL in its iframe.
   void VerifySidePanelLoaded() {
-    auto* controller = browser()
-                           ->GetTabStripModel()
-                           ->GetActiveTab()
-                           ->GetTabFeatures()
-                           ->lens_overlay_controller();
+    auto* controller = LensOverlayController::From(
+        browser()->GetTabStripModel()->GetActiveTab());
 
     // Expect the Lens Overlay results panel to open.
     ASSERT_TRUE(base::test::RunUntil(
@@ -275,7 +266,7 @@ class LensOverlayLiveTest : public base::test::WithFeatureOverride,
   base::test::ScopedFeatureList feature_list_;
 };
 
-IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest,
+IN_PROC_BROWSER_TEST_F(LensOverlayLiveTest,
                        ClickObject_SignedInAndSyncingHistory) {
   std::optional<signin::TestAccountSigninCredentials> test_account =
       GetTestAccounts()->GetAccount("INTELLIGENCE_ACCOUNT");
@@ -291,11 +282,8 @@ IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest,
   EXPECT_TRUE(content::WaitForLoadStop(web_contents()));
 
   // State should start in off.
-  auto* controller = browser()
-                         ->GetTabStripModel()
-                         ->GetActiveTab()
-                         ->GetTabFeatures()
-                         ->lens_overlay_controller();
+  auto* controller = LensOverlayController::From(
+      browser()->GetTabStripModel()->GetActiveTab());
   ASSERT_EQ(controller->state(), State::kOff);
 
   auto* search_controller =
@@ -325,7 +313,7 @@ IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest,
   VerifySidePanelLoaded();
 }
 
-IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest, ClickObject_SignedInOnWebOnly) {
+IN_PROC_BROWSER_TEST_F(LensOverlayLiveTest, ClickObject_SignedInOnWebOnly) {
   std::optional<signin::TestAccountSigninCredentials> test_account =
       GetTestAccounts()->GetAccount("INTELLIGENCE_ACCOUNT");
   // Sign in but do not sync to opted in test account.
@@ -339,11 +327,8 @@ IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest, ClickObject_SignedInOnWebOnly) {
   EXPECT_TRUE(content::WaitForLoadStop(web_contents()));
 
   // State should start in off.
-  auto* controller = browser()
-                         ->GetTabStripModel()
-                         ->GetActiveTab()
-                         ->GetTabFeatures()
-                         ->lens_overlay_controller();
+  auto* controller = LensOverlayController::From(
+      browser()->GetTabStripModel()->GetActiveTab());
   ASSERT_EQ(controller->state(), State::kOff);
 
   auto* search_controller =
@@ -373,17 +358,14 @@ IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest, ClickObject_SignedInOnWebOnly) {
   VerifySidePanelLoaded();
 }
 
-IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest, ClickObject_SignedOut) {
+IN_PROC_BROWSER_TEST_F(LensOverlayLiveTest, ClickObject_SignedOut) {
   // Navigate to a website and wait for paint before starting controller.
   WaitForPaint(kNpsObjectUrl);
   EXPECT_TRUE(content::WaitForLoadStop(web_contents()));
 
   // State should start in off.
-  auto* controller = browser()
-                         ->GetTabStripModel()
-                         ->GetActiveTab()
-                         ->GetTabFeatures()
-                         ->lens_overlay_controller();
+  auto* controller = LensOverlayController::From(
+      browser()->GetTabStripModel()->GetActiveTab());
   ASSERT_EQ(controller->state(), State::kOff);
 
   auto* search_controller =
@@ -412,10 +394,5 @@ IN_PROC_BROWSER_TEST_P(LensOverlayLiveTest, ClickObject_SignedOut) {
   // loaded a result.
   VerifySidePanelLoaded();
 }
-
-// TODO(crbug.com/40066949): Simplify once kSync becomes unreachable or is
-// deleted from the codebase. See ConsentLevel::kSync documentation for
-// details.
-INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(LensOverlayLiveTest);
 
 }  // namespace lens

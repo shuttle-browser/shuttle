@@ -106,9 +106,9 @@
 #include "third_party/blink/public/common/page/page_zoom.h"
 #include "ui/base/base_window.h"
 #include "ui/base/device_form_factor.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/ozone_buildflags.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/geometry/rect.h"
@@ -1074,7 +1074,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionApiTabsIwaDuplicateTest,
 IN_PROC_BROWSER_TEST_F(ExtensionTabsTest, DuplicateTab) {
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          GURL(url::kAboutBlankURL), WindowOpenDisposition::kNewForegroundTab,
+          GURL(url::kAboutBlankURL),
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK);
   content::WebContents* web_contents =
       browser()->OpenURL(params, /*navigation_handle_callback=*/{});
@@ -1112,7 +1113,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabsTest, DuplicateTab) {
 IN_PROC_BROWSER_TEST_F(ExtensionTabsTest, DuplicateTabNoPermission) {
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          GURL(url::kAboutBlankURL), WindowOpenDisposition::kNewForegroundTab,
+          GURL(url::kAboutBlankURL),
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui::PAGE_TRANSITION_LINK);
   content::WebContents* web_contents =
       browser()->OpenURL(params, /*navigation_handle_callback=*/{});
@@ -1334,7 +1336,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabsTest, DiscardedProperty) {
   // Create two additional tabs and wait for them to finish loading.
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          GURL(url::kAboutBlankURL), WindowOpenDisposition::kNewBackgroundTab,
+          GURL(url::kAboutBlankURL),
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
           ui::PAGE_TRANSITION_LINK);
   content::WebContents* web_contents_a =
       browser()->OpenURL(params, /*navigation_handle_callback=*/{});
@@ -1918,7 +1921,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabsTest, Freezing) {
   // Create a background tab.
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), GURL(url::kAboutBlankURL),
-      WindowOpenDisposition::kNewBackgroundTab,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   content::WebContents* web_contents =
       GetTabListInterface()->GetTab(1)->GetContents();
@@ -2013,7 +2016,8 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabsTest, AutoDiscardableProperty) {
   // Create two additional tabs.
   content::OpenURLParams params =
       content::OpenURLParams::CreateBrowserInitiated(
-          GURL(url::kAboutBlankURL), WindowOpenDisposition::kNewBackgroundTab,
+          GURL(url::kAboutBlankURL),
+          ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
           ui::PAGE_TRANSITION_LINK);
   content::WebContents* web_contents_a =
       browser()->OpenURL(params, /*navigation_handle_callback=*/{});
@@ -2311,7 +2315,7 @@ double GetZoomFactor(const content::WebContents* web_contents) {
 
 content::OpenURLParams GetOpenParams(const char* url) {
   return content::OpenURLParams::CreateBrowserInitiated(
-      GURL(url), WindowOpenDisposition::kNewForegroundTab,
+      GURL(url), ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui::PAGE_TRANSITION_LINK);
 }
 
@@ -2600,7 +2604,7 @@ IN_PROC_BROWSER_TEST_P(ExtensionApiPdfTest, TemporaryAddressSpoof) {
   content::TestNavigationManager navigation_manager(
       second_web_contents, GURL("http://www.facebook.com:83"));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url, WindowOpenDisposition::kCurrentTab,
+      browser(), url, ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   // Ensure the PDF has loaded, and get the WebContents to click.
@@ -5443,6 +5447,79 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabsTest,
   std::string error =
       utils::RunFunctionAndReturnError(function.get(), args, profile());
   EXPECT_EQ(tabs_constants::kNotAllowedForPictureInPictureError, error);
+}
+
+// Verifies that TabsMoveFunction, WindowsCreateFunction, and TabsGroupFunction
+// return kNotAllowedForPictureInPictureError when attempting to move or group a
+// Document Picture-in-Picture child WebContents.
+IN_PROC_BROWSER_TEST_F(
+    ExtensionTabsTest,
+    TabsMoveAndWindowsCreate_PictureInPictureWindowRejected) {
+  BrowserWindowInterface* pip_browser =
+      CreateBrowserWindowWithType(BrowserWindowInterface::Type::TYPE_NORMAL);
+  TabListInterface* pip_tab_list = TabListInterface::From(pip_browser);
+  if (pip_tab_list->GetTabCount() == 0) {
+    pip_tab_list->OpenTab(GURL(url::kAboutBlankURL), -1);
+  }
+  content::WebContents* raw_pip_contents =
+      pip_tab_list->GetTab(0)->GetContents();
+  const int pip_tab_id = ExtensionTabUtil::GetTabId(raw_pip_contents);
+  ASSERT_NE(pip_tab_id, api::tabs::TAB_ID_NONE);
+
+  PictureInPictureWindowManager::GetInstance()->EnterDocumentPictureInPicture(
+      GetActiveWebContents(), raw_pip_contents);
+  ASSERT_TRUE(
+      PictureInPictureWindowManager::IsChildWebContents(raw_pip_contents));
+
+  const int normal_window_id =
+      ExtensionTabUtil::GetWindowId(browser_window_interface());
+  scoped_refptr<const Extension> extension =
+      ExtensionBuilder("MovePipTabTest").Build();
+
+  // Moving within the same window should be rejected.
+  {
+    auto move_within_function = base::MakeRefCounted<TabsMoveFunction>();
+    move_within_function->set_extension(extension.get());
+    std::string args = base::StringPrintf(R"([%d, {"index": 0}])", pip_tab_id);
+    std::string error = utils::RunFunctionAndReturnError(
+        move_within_function.get(), args, profile());
+    EXPECT_EQ(tabs_constants::kNotAllowedForPictureInPictureError, error);
+  }
+
+  // Moving the PiP tab into another browser window should be rejected.
+  {
+    auto move_to_window_function = base::MakeRefCounted<TabsMoveFunction>();
+    move_to_window_function->set_extension(extension.get());
+    std::string args = base::StringPrintf(
+        R"([%d, {"windowId": %d, "index": 0}])", pip_tab_id, normal_window_id);
+    std::string error = utils::RunFunctionAndReturnError(
+        move_to_window_function.get(), args, profile());
+    EXPECT_EQ(tabs_constants::kNotAllowedForPictureInPictureError, error);
+  }
+
+  // Creating a new window adopting the PiP tab should be rejected.
+  {
+    auto create_window_function = base::MakeRefCounted<WindowsCreateFunction>();
+    create_window_function->set_extension(extension.get());
+    std::string args = base::StringPrintf(R"([{"tabId": %d}])", pip_tab_id);
+    std::string error = utils::RunFunctionAndReturnError(
+        create_window_function.get(), args, profile());
+    EXPECT_EQ(tabs_constants::kNotAllowedForPictureInPictureError, error);
+  }
+
+  // Grouping the PiP tab should be rejected.
+  {
+    auto group_function = base::MakeRefCounted<TabsGroupFunction>();
+    group_function->set_extension(extension.get());
+    std::string args = base::StringPrintf(
+        R"([{"tabIds": %d, "createProperties": {"windowId": %d}}])", pip_tab_id,
+        normal_window_id);
+    std::string error =
+        utils::RunFunctionAndReturnError(group_function.get(), args, profile());
+    EXPECT_EQ(tabs_constants::kNotAllowedForPictureInPictureError, error);
+  }
+
+  PictureInPictureWindowManager::GetInstance()->ExitPictureInPicture();
 }
 
 // Verifies that TabsUpdateFunction returns an error rather than crashing on a

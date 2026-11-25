@@ -22,6 +22,10 @@ namespace base {
 class CommandLine;
 }
 
+namespace component_updater {
+class ComponentManagerAsh;
+}  // namespace component_updater
+
 namespace metrics {
 class MetricsService;
 }  // namespace metrics
@@ -32,13 +36,22 @@ class SharedURLLoaderFactory;
 
 namespace policy {
 class BrowserPolicyConnectorAsh;
+class DeviceRestrictionScheduleController;
 }  // namespace policy
+
+namespace user_manager {
+class MultiUserSignInPolicyController;
+}  // namespace user_manager
 
 class ApplicationLocaleStorage;
 class PrefService;
 class Profile;
 
 namespace ash {
+
+namespace system {
+class SystemClock;
+}  // namespace system
 
 class SessionLengthLimiter;
 
@@ -65,13 +78,23 @@ class ChromeSessionManager : public session_manager::SessionManagerObserver {
   //   - Launches the auto launched kiosk app;
   //   - Resumes user sessions on crash-and-restart;
   //   - Starts a stub login session for dev or test;
-  // `metrics_service` and `application_locale_storage` must not be nullptr,
-  // and must be valid while main RunLoop is running.
-  // `shared_url_loader_factory` must not be nullptr.
+  // `metrics_service`, `application_locale_storage`,
+  // `device_restriction_schedule_controller`,
+  // `multi_user_sign_in_policy_controller` and `system_clock` must not be
+  // nullptr, and must be valid while main RunLoop is running.
+  // `shared_url_loader_factory` and `component_manager_ash` must not be
+  // nullptr.
   void Initialize(
       ::metrics::MetricsService* metrics_service,
       ApplicationLocaleStorage* application_locale_storage,
       scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+      scoped_refptr<component_updater::ComponentManagerAsh>
+          component_manager_ash,
+      policy::DeviceRestrictionScheduleController*
+          device_restriction_schedule_controller,
+      const user_manager::MultiUserSignInPolicyController*
+          multi_user_sign_in_policy_controller,
+      system::SystemClock* system_clock,
       const base::CommandLine& parsed_command_line,
       Profile* profile,
       bool is_running_test);

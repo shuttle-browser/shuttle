@@ -30,7 +30,6 @@ namespace autofill {
 
 enum class BubbleType;
 
-class AutofillBubbleHandler;
 class PaymentsDataManager;
 
 // Implementation of per-tab class to control the local/server save credit card
@@ -155,12 +154,8 @@ class SaveCardBubbleControllerImpl
 
   // SavePaymentIconController:
   std::u16string GetSavePaymentIconTooltipText() const override;
-  bool ShouldShowSavingPaymentAnimation() const override;
-  bool ShouldShowPaymentSavedLabelAnimation() const override;
-  void OnAnimationEnded() override;
   bool IsIconVisible() const override;
   AutofillBubbleBase* GetPaymentBubbleView() const override;
-  int GetSaveSuccessAnimationStringId() const override;
 
   // BubbleControllerBase:
   void OnBubbleDiscarded() override;
@@ -179,7 +174,6 @@ class SaveCardBubbleControllerImpl
 
   // AutofillBubbleControllerBase::
   void OnVisibilityChanged(content::Visibility visibility) override;
-  std::optional<PageActionIconType> GetPageActionIconType() override;
   void DoShowBubble() override;
 #if !BUILDFLAG(IS_ANDROID)
   std::optional<actions::ActionId> GetActionIdForPageAction() override;
@@ -233,9 +227,6 @@ class SaveCardBubbleControllerImpl
   // Tied to the profile and outlive this object.
   const raw_ref<PaymentsDataManager> payments_data_manager_;
   const raw_ptr<syncer::SyncService> sync_service_;
-
-  // Is true only if the [Card saved] label animation should be shown.
-  bool should_show_card_saved_label_animation_ = false;
 
   // The type of bubble that is either currently being shown or would
   // be shown when the save card icon is clicked.
@@ -305,7 +296,6 @@ class SaveCardBubbleControllerImpl
   // stopped once the bubble is closed.
   base::OneShotTimer auto_close_confirmation_timer_;
 
-  AutofillBubbleHandler* GetAutofillBubbleHandler();
   // Weak pointer factory for this save card bubble controller.
   base::WeakPtrFactory<SaveCardBubbleControllerImpl> weak_ptr_factory_{this};
 

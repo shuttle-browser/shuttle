@@ -6,8 +6,8 @@
 
 #include <algorithm>
 
-#include "base/containers/to_vector.h"
 #include "base/functional/bind.h"
+#include "base/i18n/case_conversion.h"
 #include "base/strings/string_util.h"
 #include "base/time/time.h"
 #include "components/autofill/content/renderer/form_autofill_util.h"
@@ -16,6 +16,7 @@
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_form_control_element.h"
+#include "third_party/blink/public/web/web_form_element.h"
 #include "third_party/blink/public/web/web_local_frame.h"
 #include "third_party/blink/public/web/web_node.h"
 
@@ -58,6 +59,7 @@ bool IsPossibleAnchorElement(blink::WebFormControlElement element) {
     case mojom::FormControlType::kInputNumber:
     case mojom::FormControlType::kInputPassword:
     case mojom::FormControlType::kSelectOne:
+    case mojom::FormControlType::kSyntheticSelectOne:
     case mojom::FormControlType::kInputDate:
       return false;
   }
@@ -66,9 +68,9 @@ bool IsPossibleAnchorElement(blink::WebFormControlElement element) {
 
 // Returns true if `target_node` represents a plausible custom JS-autofill
 // dropdown suggestion. Custom dropdown items are typically rendered using
-// non-form DOM elements (e.g., <div>, <li>, <span>) or <button type="button"
-// role="option">. This is simply a heuristic ruling out common cases and is not
-// exhaustive.
+// non-form DOM elements (e.g., <div>, <li>, <span>) or <button> elements with
+// a relevant ARIA option/listbox/menu role on the button or an ancestor. This
+// is simply a heuristic ruling out common cases and is not exhaustive.
 bool IsPossibleMouseClickTargetElement(blink::WebNode target_node) {
   // If `target_node` is a non-element node (e.g. text inside a <button> or
   // <div>), walk up to its parent element to determine the actual DOM control
@@ -76,22 +78,55 @@ bool IsPossibleMouseClickTargetElement(blink::WebNode target_node) {
   while (target_node && !target_node.IsElementNode()) {
     target_node = target_node.ParentNode();
   }
+  // Clicking empty background space (e.g. <html>, <body>, or <form>) to blur a
+  // field is never a dropdown option selection and should not start the
+  // detection timer.
+  auto target_element = target_node.DynamicTo<blink::WebElement>();
+  if (!target_element || target_element.DynamicTo<blink::WebFormElement>() ||
+      target_element.HasHTMLTagName("html") ||
+      target_element.HasHTMLTagName("body")) {
+    return false;
+  }
   // Custom JS dropdown options (e.g. <div>, <li>, <span>) are generally
   // non-form elements. Clicking form control elements (inputs, checkboxes,
   // radio buttons, submit/reset buttons, etc.) should not start the custom JS
   // autofill detection timer.
-  auto control_element = target_node.DynamicTo<blink::WebFormControlElement>();
+  auto control_element =
+      target_element.DynamicTo<blink::WebFormControlElement>();
   if (!control_element) {
     return true;
   }
-  // Some autocomplete frameworks render dropdown suggestions as
-  // `<button type="button" role="option"/>` for built-in click and
-  // accessibility semantics. Allow such buttons while still rejecting general
-  // form buttons (e.g. submit or reset buttons).
-  return control_element.FormControlTypeForAutofill() ==
-             blink::mojom::FormControlType::kButtonButton &&
-         base::EqualsCaseInsensitiveASCII(
-             control_element.GetAttribute("role").Utf16(), u"option");
+
+  // Some autocomplete frameworks render dropdown suggestions as `<button>`
+  // elements (either `<button type="button">` or a default `<button>` without a
+  // `type` attribute, which defaults to `kButtonSubmit` in HTML) for built-in
+  // click and accessibility semantics.
+  const blink::mojom::FormControlType control_type =
+      control_element.FormControlTypeForAutofill();
+  const bool is_candidate_button =
+      control_type == blink::mojom::FormControlType::kButtonButton ||
+      (control_type == blink::mojom::FormControlType::kButtonSubmit &&
+       !base::EqualsCaseInsensitiveASCII(
+           control_element.GetAttribute("type").Utf16(), u"submit"));
+  if (!is_candidate_button) {
+    return false;
+  }
+
+  // Allow such buttons only when they or an ancestor have an ARIA
+  // option/listbox/menu role, while still rejecting general form buttons (e.g.
+  // reset buttons or explicit `type="submit"` buttons).
+  for (blink::WebNode node = control_element; node; node = node.ParentNode()) {
+    if (auto element = node.DynamicTo<blink::WebElement>()) {
+      std::u16string role = element.GetAttribute("role").Utf16();
+      if (base::EqualsCaseInsensitiveASCII(role, u"option") ||
+          base::EqualsCaseInsensitiveASCII(role, u"listbox") ||
+          base::EqualsCaseInsensitiveASCII(role, u"menu") ||
+          base::EqualsCaseInsensitiveASCII(role, u"menuitem")) {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 mojom::JavaScriptModificationType GetJavaScriptModificationType(
@@ -106,12 +141,34 @@ mojom::JavaScriptModificationType GetJavaScriptModificationType(
   if (new_value.empty()) {
     return mojom::JavaScriptModificationType::kClearing;
   }
-  if (new_value.size() > old_value.size() &&
-      base::StartsWith(new_value, old_value,
-                       base::CompareCase::INSENSITIVE_ASCII)) {
-    return mojom::JavaScriptModificationType::kPrefixCompletion;
+  if (new_value.size() > old_value.size()) {
+    std::u16string lower_old = base::i18n::ToLower(old_value);
+    std::u16string lower_new = base::i18n::ToLower(new_value);
+    if (lower_new.starts_with(lower_old)) {
+      return mojom::JavaScriptModificationType::kPrefixCompletion;
+    }
+    constexpr size_t kMinSubstringMatchSize = 3u;
+    if (lower_old.size() >= kMinSubstringMatchSize &&
+        lower_new.contains(lower_old)) {
+      return mojom::JavaScriptModificationType::kSubstringCompletion;
+    }
   }
   return mojom::JavaScriptModificationType::kReassignment;
+}
+
+// Returns true if `type` represents a modification that sets a new non-empty
+// value on the field.
+bool IsNonEmptyModification(mojom::JavaScriptModificationType type) {
+  switch (type) {
+    case mojom::JavaScriptModificationType::kTrivial:
+    case mojom::JavaScriptModificationType::kClearing:
+      return false;
+    case mojom::JavaScriptModificationType::kReassignment:
+    case mojom::JavaScriptModificationType::kEmptyToNonEmpty:
+    case mojom::JavaScriptModificationType::kPrefixCompletion:
+    case mojom::JavaScriptModificationType::kSubstringCompletion:
+      return true;
+  }
 }
 
 }  // namespace
@@ -198,8 +255,7 @@ void JavaScriptAutofillTracker::OnJavaScriptSetValue(
 
   // (2) `js_logs_` must still have less than `kJsAutofillMaxFieldsChanged`
   // records. If more than that many fields are modified in such a small window
-  // of time, it is likely not an autofill dropdown. This is also a performance
-  // guard since string analysis is performed below.
+  // of time, it is likely not an autofill dropdown.
   if (js_logs_.size() >= kJsAutofillMaxFieldsChanged) {
     return;
   }
@@ -210,16 +266,14 @@ void JavaScriptAutofillTracker::OnJavaScriptSetValue(
     return;
   }
 
-  js_logs_.push_back(mojom::JavaScriptFieldModification::New(
-      form_util::GetFieldRendererId(element),
-      GetJavaScriptModificationType(old_value.Utf16(), element.Value().Utf16()),
-      base::TimeTicks::Now()));
+  js_logs_.emplace_back(form_util::GetFieldRendererId(element),
+                        old_value.Utf16(), base::TimeTicks::Now());
 }
 
 void JavaScriptAutofillTracker::DetectJavaScriptAutofill(
     FieldRendererId trigger_element_id,
     base::TimeTicks timer_start_timestamp) {
-  std::vector<mojom::JavaScriptFieldModificationPtr> logs = std::move(js_logs_);
+  std::vector<LogRecord> logs = std::move(js_logs_);
   js_logs_.clear();
   if (logs.empty()) {
     return;
@@ -233,32 +287,58 @@ void JavaScriptAutofillTracker::DetectJavaScriptAutofill(
     return;
   }
 
-  // For simplicity, only modified and visible (focusable) fields belonging to
-  // the same form as the anchor element are considered, since the browser
-  // receives a single form to analyze for detecting dropdowns.
-  std::erase_if(
-      logs, [target_form = trigger_element.GetOwningFormForAutofill()](
-                const mojom::JavaScriptFieldModificationPtr& record) {
-        blink::WebFormControlElement element =
-            form_util::GetFormControlByRendererId(record->field_id);
-        return !element || !element.IsFocusable() ||
-               element.GetOwningFormForAutofill() != target_form;
-      });
-
+  const blink::WebFormElement target_form =
+      trigger_element.GetOwningFormForAutofill();
   std::vector<mojom::JavaScriptFieldModificationPtr> field_modifications;
   absl::flat_hash_set<FieldRendererId> seen_fields;
 
-  // `logs` is moved here to ensure it is not used below, since
-  // `field_modifications` should be used in what follows as it contains the
-  // filtered list of logs.
-  for (mojom::JavaScriptFieldModificationPtr& record : std::move(logs)) {
-    if (seen_fields.insert(record->field_id).second) {
-      field_modifications.push_back(std::move(record));
+  // Populate `field_modifications` with one entry per modified visible field in
+  // `target_form`. Because JS frameworks may modify a field multiple times
+  // during a single dropdown selection (e.g., clearing the value first and
+  // subsequently setting it to the selected value), only the first `LogRecord`
+  // per field is processed and its `previous_value` is compared against the
+  // field's current (final) value.
+  for (const LogRecord& record : logs) {
+    // (1) Only keep the first record per field so that `record.previous_value`
+    // holds the field's value prior to any JS modifications during the tracking
+    // window.
+    if (!seen_fields.insert(record.field_id).second) {
+      continue;
     }
+
+    // (2) Ignore fields that were removed from the DOM or are hidden (e.g.
+    // hidden billing fields synced from shipping fields).
+    blink::WebFormControlElement element =
+        form_util::GetFormControlByRendererId(record.field_id);
+    if (!element || !element.IsFocusable()) {
+      continue;
+    }
+
+    // (3) For simplicity, only consider fields belonging to the same form as
+    // the anchor element, since the browser receives a single form to analyze
+    // for detecting dropdowns.
+    if (element.GetOwningFormForAutofill() != target_form) {
+      continue;
+    }
+
+    field_modifications.push_back(mojom::JavaScriptFieldModification::New(
+        record.field_id,
+        GetJavaScriptModificationType(record.previous_value,
+                                      element.Value().Utf16()),
+        record.timestamp));
   }
 
-  if (field_modifications.empty() ||
-      field_modifications.size() >= kJsAutofillMaxFieldsChanged) {
+  if (field_modifications.size() >= kJsAutofillMaxFieldsChanged) {
+    return;
+  }
+
+  if (std::ranges::none_of(
+          field_modifications, &IsNonEmptyModification,
+          &mojom::JavaScriptFieldModification::modification_type)) {
+    // Require at least one field to transition to a new non-empty value. This
+    // avoids unnecessary work when all modifications are `kClearing` or
+    // `kTrivial` (e.g., clicking a custom `<span>` "Clear" link, or a framework
+    // re-assigning `.value = .value` across fields on blur).
     return;
   }
 

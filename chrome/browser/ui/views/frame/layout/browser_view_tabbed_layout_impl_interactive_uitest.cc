@@ -9,10 +9,13 @@
 #include <memory>
 #include <vector>
 
+#include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_multi_source_observation.h"
+#include "base/strings/stringprintf.h"
 #include "base/test/scoped_feature_list.h"
+#include "build/build_config.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -23,6 +26,7 @@
 #include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/tabs/features.h"
+#include "chrome/browser/ui/tabs/organizer/organizer_panel_utils.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
@@ -47,6 +51,7 @@
 #include "components/prefs/pref_service.h"
 #include "components/search/ntp_features.h"
 #include "components/user_prefs/user_prefs.h"
+#include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "ui/base/interaction/element_identifier.h"
@@ -67,6 +72,12 @@
 #include "ui/views/view_utils.h"
 #include "url/gurl.h"
 
+#if BUILDFLAG(IS_LINUX)
+#include "chrome/browser/ui/views/frame/browser_native_widget.h"
+#include "chrome/browser/ui/views/frame/browser_widget.h"
+#include "ui/ozone/public/ozone_platform.h"
+#endif
+
 class BrowserViewTabbedLayoutImplUiTest : public InteractiveBrowserTest {
  public:
   static constexpr char kBaselineCl[] = "7635098";
@@ -75,7 +86,15 @@ class BrowserViewTabbedLayoutImplUiTest : public InteractiveBrowserTest {
       : render_mode_resetter_(gfx::AnimationTestApi::SetRichAnimationRenderMode(
             disable_animations
                 ? gfx::Animation::RichAnimationRenderMode::FORCE_DISABLED
-                : gfx::Animation::RichAnimationRenderMode::FORCE_ENABLED)) {}
+                : gfx::Animation::RichAnimationRenderMode::FORCE_ENABLED)) {
+    if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+            switches::kVerifyPixels)) {
+      // TODO(crbug.com/579025166): Update pixel test baselines for
+      // OrganizerPanel.
+      scoped_feature_list_.InitAndDisableFeature(
+          organizer_panel::kOrganizerPanel);
+    }
+  }
 
   ~BrowserViewTabbedLayoutImplUiTest() override = default;
 
@@ -387,6 +406,7 @@ class BrowserViewTabbedLayoutImplUiTest : public InteractiveBrowserTest {
   }
 
  private:
+  base::test::ScopedFeatureList scoped_feature_list_;
   const gfx::AnimationTestApi::RenderModeResetter render_mode_resetter_;
 };
 
@@ -650,6 +670,47 @@ IN_PROC_BROWSER_TEST_F(BrowserViewTabbedLayoutImplUiTest,
                   ReplaceAndShowSidePanel(SidePanelType::kToolbar, large_width),
                   VerifyLayout());
 }
+
+#if BUILDFLAG(IS_LINUX)
+// Regression test for https://crbug.com/574427664. When the system title bar
+// is used, there are no caption buttons, so no grab handle padding should be
+// inserted between the vertical tab strip and the toolbar.
+IN_PROC_BROWSER_TEST_F(BrowserViewTabbedLayoutImplUiTest,
+                       VerticalTabsWithSystemTitleBarHaveNoToolbarGap) {
+  if (!ui::OzonePlatform::GetInstance()
+           ->GetPlatformRuntimeProperties()
+           .supports_server_side_window_decorations) {
+    GTEST_SKIP() << "The platform does not support server-side decorations.";
+  }
+
+  browser()->GetProfile()->GetPrefs()->SetBoolean(prefs::kUseCustomChromeFrame,
+                                                  false);
+  tabs::VerticalTabStripStateController::From(browser())
+      ->SetVerticalTabsEnabled(true);
+  RunScheduledLayouts();
+
+  BrowserView* const browser_view =
+      BrowserView::GetBrowserViewForBrowser(browser());
+  ASSERT_FALSE(browser_view->browser_widget()
+                   ->browser_native_widget()
+                   ->UseCustomFrame());
+
+  gfx::Rect tab_strip_bounds;
+  RunTestSequence(
+      WaitForShow(kTabStripRegionElementId),
+      WithView(kTabStripRegionElementId,
+               [&](views::View* tab_strip) {
+                 tab_strip_bounds = tab_strip->GetBoundsInScreen();
+               }),
+      CheckView(ToolbarView::kToolbarElementId, [&](views::View* toolbar) {
+        // The toolbar should start right where the vertical tab strip ends
+        // (it may overlap by 1 DIP on fractional scale factors).
+        const int toolbar_x = toolbar->GetBoundsInScreen().x();
+        return toolbar_x <= tab_strip_bounds.right() &&
+               toolbar_x >= tab_strip_bounds.right() - 1;
+      }));
+}
+#endif  // BUILDFLAG(IS_LINUX)
 
 enum class TopContainerBackgroundTestMode {
   kDefault,

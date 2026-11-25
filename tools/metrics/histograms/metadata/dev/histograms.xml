@@ -29,6 +29,33 @@ chromium-metrics-reviews@google.com.
   <summary>Specified DevTools action has been taken.</summary>
 </histogram>
 
+<histogram name="DevTools.AiClient.RequestResult{Surface}"
+    enum="DevToolsAiClientRequestResult" expires_after="2027-11-01">
+  <owner>jacktfranklin@google.com</owner>
+  <owner>victorporof@google.com</owner>
+  <owner>finnur@google.com</owner>
+  <owner>alinavarkki@google.com</owner>
+  <owner>yangguo@google.com</owner>
+  <owner>kprokopenko@google.com</owner>
+  <owner>kimanh@google.com</owner>
+  <component>1633102</component>
+  <summary>
+    Records the terminal outcome (success, abort, or granular transport, HTTP,
+    auth, parse, or safety/recitation error) of an AI request sent from the
+    DevTools frontend through AidaClient for {Surface}. Recorded once per
+    doConversation, completeCode, or generateCode call.
+  </summary>
+  <token key="Surface">
+    <variant name="" summary="all AI client requests"/>
+    <variant name=".AiAssistance" summary="AI Assistance (V2 agent)"/>
+    <variant name=".CodeComplete" summary="AI code completion"/>
+    <variant name=".CodeGenerate" summary="AI code generation"/>
+    <variant name=".ConsoleInsights" summary="Console Insights"/>
+    <variant name=".ConversationSummary" summary="Conversation summary"/>
+    <variant name=".PerformanceAnnotations" summary="Performance annotations"/>
+  </token>
+</histogram>
+
 <histogram name="DevTools.AidaResponseTime" units="ms"
     expires_after="2024-07-21">
   <owner>yangguo@google.com</owner>
@@ -124,6 +151,16 @@ chromium-metrics-reviews@google.com.
   <summary>The number of comments created in one turn.</summary>
 </histogram>
 
+<histogram name="DevTools.Comments.CommentQueued" units="count"
+    expires_after="2027-08-12">
+  <owner>nroscino@google.com</owner>
+  <owner>nharshunova@google.com</owner>
+  <owner>yulunz@google.com</owner>
+  <summary>
+    The number of comments queued (saved without being sent to the AI agent).
+  </summary>
+</histogram>
+
 <histogram name="DevTools.Comments.CommentResolvedBy{Resolver}" units="count"
     expires_after="2027-08-12">
   <owner>nharshunova@google.com</owner>
@@ -152,7 +189,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.DeveloperResourceLoaded"
-    enum="DevToolsDeveloperResourceLoaded" expires_after="2027-02-28">
+    enum="DevToolsDeveloperResourceLoaded" expires_after="2027-05-02">
   <owner>bmeurer@google.com</owner>
   <owner>danilsomsikov@google.com</owner>
   <summary>
@@ -235,7 +272,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.ExperimentEnabled" enum="DevtoolsExperiments"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>yangguo@google.com</owner>
   <owner>changhaohan@google.com</owner>
   <summary>
@@ -244,7 +281,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.ExperimentEnabledAtLaunch" enum="DevtoolsExperiments"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>yangguo@google.com</owner>
   <owner>changhaohan@google.com</owner>
   <summary>
@@ -513,6 +550,48 @@ chromium-metrics-reviews@google.com.
     Records the media types of files opened in the DevTools Network panel
     response preview.
   </summary>
+</histogram>
+
+<histogram name="DevTools.OpenAttempt.AllowedByPolicy{PolicyState}"
+    enum="BooleanAllowed" expires_after="2027-10-27">
+  <owner>mickaczmarczyk@google.com</owner>
+  <owner>cbe-cep-eng@google.com</owner>
+  <component>1937512</component>
+  <summary>
+    Measures the policy-allowance rate of attempts to open a new DevTools window
+    for a tab, {PolicyState}, used to monitor for unexpected spikes or drops in
+    policy blocks. Emits Allowed when DevTools opens, and Not Allowed when an
+    enterprise policy check blocks DevTools for the tab and the DevTools policy
+    dialog is shown; see DevTools.BlockedByPolicy.Reason for which check caused
+    the block.
+
+    Counts both user-initiated opens (menu, shortcut, context menu) and
+    programmatic ones (e.g. --auto-open-devtools-for-tabs, automatic opening for
+    new targets). Not recorded for repeated attempts while the policy dialog is
+    already open on the same tab, for toggling an already-open DevTools window,
+    or when DevTools is unavailable for reasons unrelated to policy (such as
+    --kiosk mode, a ChromeOS captive portal sign-in window, or missing UI
+    bindings). Unlike DevTools.BlockedByPolicy, blocked view-source attempts and
+    non-policy UI blocks are not included, so the Not Allowed counts of the two
+    histograms are not expected to match. Desktop only.
+  </summary>
+  <token key="PolicyState">
+    <variant name=""
+        summary="across all profiles, including unmanaged users where no
+                 policy check affects DevTools"/>
+    <variant name=".OnProfileWithPolicyCheck"
+        summary="on profiles where at least one policy check can affect
+                 DevTools availability: an explicitly configured DevTools
+                 policy (DeveloperToolsAvailability, DeveloperToolsDisabled,
+                 DeveloperToolsAvailabilityAllowlist or
+                 DeveloperToolsAvailabilityBlocklist), devtools://devtools
+                 being on URLBlocklist, a managed profile, an installed
+                 policy-forced extension, a policy-installed Isolated Web
+                 App, or a kiosk web app. Recorded for every open attempt on
+                 such profiles (including on URLs that no rule matches) so
+                 the Allowed share measures the open success rate for that
+                 profile population"/>
+  </token>
 </histogram>
 
 <histogram name="DevTools.OpenedByAction" enum="DevToolsOpenedByAction"

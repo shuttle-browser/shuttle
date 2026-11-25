@@ -27,7 +27,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window_state.h"
-#include "chrome/browser/ui/browser_window_theme_observer.h"
+#include "chrome/browser/ui/browser_window_theme_observer/browser_window_theme_observer.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/color/chrome_color_provider_utils.h"
 #include "chrome/browser/ui/page_action/action_ids.h"
@@ -300,6 +300,11 @@ AppBrowserController::AppBrowserController(BrowserWindowInterface* browser,
       theme_provider_(
           ThemeService::CreateBoundThemeProvider(browser_->GetProfile(), this)),
       scoped_unowned_user_data_(browser->GetUnownedUserDataHost(), *this) {
+  CHECK(browser_->GetType() == BrowserWindowInterface::TYPE_APP ||
+        browser_->GetType() == BrowserWindowInterface::TYPE_APP_POPUP ||
+        browser_->GetType() == BrowserWindowInterface::TYPE_FLOATING);
+  CHECK(!has_tab_strip_ ||
+        browser_->GetType() == BrowserWindowInterface::TYPE_APP);
   if (browser_->GetTabStripModel()) {
     CHECK(browser_->GetTabStripModel()->empty());
     browser_->GetTabStripModel()->AddObserver(this);
@@ -906,6 +911,7 @@ void AppBrowserController::AddColorMixers(
       {ui::kColorSysStateDisabled}, {kColorToolbar})};
 #endif
   mixer[kColorToolbarButtonIconInactive] = {kColorToolbarButtonIconDisabled};
+  mixer[kColorOmniboxActionIconInactive] = {kColorToolbarButtonIconInactive};
 
   // App menu highlight colors in PWA window should be derived from the (active)
   // frame color, as that is what it is drawn on top of.

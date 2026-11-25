@@ -11,8 +11,12 @@
 #include "third_party/blink/renderer/core/layout/box_fragment_builder.h"
 #include "third_party/blink/renderer/core/layout/constraint_space.h"
 #include "third_party/blink/renderer/core/layout/constraint_space_builder.h"
+#include "third_party/blink/renderer/core/layout/disable_layout_side_effects_scope.h"
+#include "third_party/blink/renderer/core/layout/fragmented_oof_container.h"
 #include "third_party/blink/renderer/core/layout/length_utils.h"
 #include "third_party/blink/renderer/core/layout/logical_box_fragment.h"
+#include "third_party/blink/renderer/core/layout/oof_positioned_node.h"
+#include "third_party/blink/renderer/core/layout/pagination_utils.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/space_utils.h"
 #include "third_party/blink/renderer/core/style/computed_style.h"
@@ -75,6 +79,58 @@ bool ShouldCloneBlockStartBorderPadding(const BoxFragmentBuilder& builder) {
     }
   }
   return !previous_break_token->IsAtBlockEnd();
+}
+
+void PostProcessFragmentedOofContainer(FragmentedOofContainer* container,
+                                       const LayoutBox* containing_block) {
+  InlineContainingBlockMap& inline_containing_block_map =
+      container->GetInlineContainingBlockMap();
+  if (!inline_containing_block_map.empty()) {
+    DCHECK(containing_block);
+    ComputeInlineContainerGeometry(*containing_block,
+                                   &inline_containing_block_map);
+  }
+
+  for (auto [child_containing_block, child] : container->Children()) {
+    PostProcessFragmentedOofContainer(child, child_containing_block);
+  }
+}
+
+bool BuildFragmentedOofContainerTreeForNode(
+    const LogicalOofPositionedNode& oof_node,
+    const FragmentedOofPath* source,
+    FragmentedOofContainer* container) {
+  const LayoutBox& containing_block = source->GetLayoutBox();
+  WritingDirectionMode writing_direction =
+      containing_block.Style().GetWritingDirection();
+  WritingModeConverter converter(writing_direction,
+                                 containing_block.StitchedSize());
+  LayoutUnit containing_block_size =
+      converter.ToLogical(containing_block.PhysicalPaddingBoxRect().size)
+          .block_size;
+
+  FragmentedOofContainer& child_container =
+      container->EnsureChild(containing_block, containing_block_size);
+  if (const FragmentedOofPath* child_source = source->Child()) {
+    // Build and walk down to the containing block of the OOF.
+    return BuildFragmentedOofContainerTreeForNode(oof_node, child_source,
+                                                  &child_container);
+  }
+
+  child_container.AddOofPositionedNode(oof_node);
+  const OofInlineContainer<LogicalOffset>& inline_container_info =
+      oof_node.InlineContainerInfo();
+  if (const LayoutInline* inline_container =
+          inline_container_info.Container()) {
+    child_container.EnsureInlineContainingBlock(
+        *inline_container, inline_container_info.RelativeOffset());
+  }
+
+  const FragmentedOofInfo& info = source->GetFragmentedOofInfo();
+  bool is_paginated_root = containing_block.IsLayoutView();
+  return info.WasDiscoveredTooLate() ||
+         (!is_paginated_root &&
+          containing_block_size != info.ContainingBlockSizeUsed());
 }
 
 }  // anonymous namespace
@@ -768,8 +824,7 @@ BreakStatus FinishFragmentation(BoxFragmentBuilder* builder) {
       // consumed block-size includes the entire remainder of the fragmentainer.
       // The fragment will normally take up all that space, but not if we've
       // reached the end of the node (and we are breaking because of
-      // overflow). We include the entire fragmentainer in consumed block-size
-      // in order to write offsets correctly back to legacy layout.
+      // overflow).
       builder->SetConsumedBlockSize(previously_consumed_block_size +
                                     std::max(final_block_size, space_left));
     } else {
@@ -1361,7 +1416,11 @@ FragmentationLayoutInput GetFragmentationLayoutInputForChild(
   if (early_break) {
     early_break_in_child = EnterEarlyBreakInChild(child, *early_break);
   }
-  return FragmentationLayoutInput(child_break_token, early_break_in_child);
+  const FragmentedOofContainer* fragmented_oof_container =
+      builder.FragmentedOofContainerForChildNode(child);
+
+  return FragmentationLayoutInput(child_break_token, early_break_in_child,
+                                  fragmented_oof_container);
 }
 
 const EarlyBreak* EnterEarlyBreakInChild(const BlockNode& child,
@@ -1393,6 +1452,7 @@ ConstraintSpace CreateConstraintSpaceForFragmentainer(
     LogicalSize percentage_resolution_size,
     bool balance_columns,
     BreakAppeal min_break_appeal,
+    LayoutUnit block_start_annotation_space,
     const BoxFragmentBuilder* container_builder) {
   ConstraintSpaceBuilder space_builder(
       parent_space, parent_space.GetWritingDirection(), /* is_new_fc */ true);
@@ -1403,6 +1463,9 @@ ConstraintSpace CreateConstraintSpaceForFragmentainer(
   space_builder.SetShouldPropagateChildBreakValues();
   space_builder.SetFragmentainerBlockSize(fragmentainer_size.block_size);
   space_builder.SetIsAnonymous(true);
+  if (RuntimeEnabledFeatures::AnnotationSpaceForMultiColEnabled()) {
+    space_builder.SetBlockStartAnnotationSpace(block_start_annotation_space);
+  }
   if (fragmentation_type == kFragmentColumn) {
     space_builder.SetIsInColumnBfc();
   }
@@ -1560,6 +1623,67 @@ LayoutUnit BlockSizeForFragmentation(
     block_size += annotation_overflow;
 
   return block_size;
+}
+
+bool BuildFragmentedOofContainerTree(const LayoutResult& layout_result,
+                                     BoxFragmentBuilder* builder) {
+  DCHECK(!builder->GetConstraintSpace().HasBlockFragmentation());
+
+  // For successful layout, at the outermost fragmentation context root, if
+  // side-effects are allowed, go through all fragmentable OOFs and see if they
+  // belong in an earlier fragmentainer than where they were discovered, or
+  // whether the final (stitched) containing block-size wasn't known upon
+  // layout, and this affects positioning or layout. Out-of-flow layout is
+  // always disabled if side-effects are disabled, so bail in that case, and
+  // also on unsuccessful layout.
+  if (DisableLayoutSideEffectsScope::IsDisabled() ||
+      layout_result.Status() != LayoutResult::kSuccess) {
+    return false;
+  }
+
+  const auto& fragment =
+      To<PhysicalBoxFragment>(layout_result.GetPhysicalFragment());
+  base::span<PhysicalOofPositionedNode> propagated_oofs =
+      fragment.OutOfFlowPositionedDescendants();
+  if (propagated_oofs.empty()) {
+    return false;
+  }
+
+  auto* fragmented_oof_container_root =
+      MakeGarbageCollected<FragmentedOofContainer>(LayoutUnit());
+  WritingModeConverter converter(fragment.Style().GetWritingDirection(),
+                                 fragment.Size());
+  bool needs_relayout = false;
+  for (const PhysicalOofPositionedNode& descendant : propagated_oofs) {
+    const FragmentedOofPath* path = descendant.GetFragmentedOofPath();
+    if (!path) {
+      // This OOF doesn't participate in fragmentation.
+      continue;
+    }
+    LogicalOofPositionedNode logical_descendant =
+        PhysicalOofPositionedNodeToLogical(descendant, converter);
+
+    if (const FragmentedOofPath* source = path->Child()) {
+      needs_relayout |= BuildFragmentedOofContainerTreeForNode(
+          logical_descendant, source, fragmented_oof_container_root);
+    } else {
+      // This happens when the containing block of an OOF is the initial
+      // containing block (only for pagination). These will always have the
+      // right dimensions in the first layout pass, but in case we need another
+      // pass because of something else, they need to be in the list, so that
+      // they get picked up and laid out during layout.
+      fragmented_oof_container_root->AddOofPositionedNode(logical_descendant);
+    }
+  }
+
+  PostProcessFragmentedOofContainer(fragmented_oof_container_root,
+                                    /*containing_block=*/nullptr);
+
+  // Set it in the current builder. It will then be picked up by the re-layout
+  // algorithm.
+  builder->SetFragmentedOofContainer(fragmented_oof_container_root);
+
+  return needs_relayout;
 }
 
 bool CanPaintMultipleFragments(const PhysicalBoxFragment& fragment) {

@@ -15,7 +15,7 @@
 #include "content/public/browser/web_contents_delegate.h"
 #include "content/public/browser/webid/identity_request_dialog_controller.h"
 #include "content/public/test/test_web_contents_factory.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace webid {
 
@@ -77,6 +77,12 @@ class TestDelegate : public content::WebContentsDelegate {
     }
   }
 
+  void CloseContents(content::WebContents* source) override {
+    if (on_close_contents_) {
+      std::move(on_close_contents_).Run();
+    }
+  }
+
   blink::mojom::DisplayMode GetDisplayMode(
       const content::WebContents* web_contents) override {
     return is_fullscreen_ ? blink::mojom::DisplayMode::kFullscreen
@@ -97,9 +103,13 @@ class TestDelegate : public content::WebContentsDelegate {
     on_activate_contents_ = std::move(on_activate_contents);
   }
 
+  void SetOnCloseContents(base::OnceClosure on_close_contents) {
+    on_close_contents_ = std::move(on_close_contents);
+  }
+
   int opened() const { return opened_; }
   gfx::Rect bounds() const { return bounds_; }
-  WindowOpenDisposition disposition() const { return disposition_; }
+  ui::mojom::WindowOpenDisposition disposition() const { return disposition_; }
 
  private:
   int opened_ = 0;
@@ -107,8 +117,10 @@ class TestDelegate : public content::WebContentsDelegate {
   bool is_fullscreen_{false};
   base::OnceClosure on_open_url_from_tab_;
   base::OnceClosure on_activate_contents_;
+  base::OnceClosure on_close_contents_;
   gfx::Rect bounds_;
-  WindowOpenDisposition disposition_{WindowOpenDisposition::kUnknown};
+  ui::mojom::WindowOpenDisposition disposition_{
+      ui::mojom::WindowOpenDisposition::kUnknown};
 };
 
 }  // namespace
@@ -170,7 +182,8 @@ TEST_F(FedCmModalDialogViewTest, ShowPopupWindowInFullscreen) {
 
   EXPECT_EQ(1, delegate.opened());
   ASSERT_TRUE(web_contents);
-  EXPECT_EQ(WindowOpenDisposition::kNewForegroundTab, delegate.disposition());
+  EXPECT_EQ(ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+            delegate.disposition());
 }
 
 TEST_F(FedCmModalDialogViewTest, ShowPopupWindowFailedByInvalidUrl) {
@@ -225,6 +238,29 @@ TEST_F(FedCmModalDialogViewTest, IdpInitiatedCloseMetric) {
   // Emulate IDP closing the pop-up window.
   popup_window->ClosePopupWindow();
 
+  histogram_tester_->ExpectUniqueSample(
+      "Blink.FedCm.IdpSigninStatus.ClosePopupWindowReason",
+      static_cast<int>(
+          FedCmModalDialogView::ClosePopupWindowReason::kIdpInitiatedClose),
+      1);
+}
+
+// Tests that `ClosePopupWindow()` doesn't use `this` if closing the pop-up
+// deletes it, e.g. by destroying the `FedCmAccountSelectionView` that owns it.
+TEST_F(FedCmModalDialogViewTest, ClosePopupWindowDeletesView) {
+  TestDelegate delegate(web_contents());
+
+  auto popup_window_view = std::make_unique<FedCmModalDialogView>(
+      web_contents(), /*observer=*/nullptr);
+  ASSERT_TRUE(popup_window_view->ShowPopupWindow(
+      GURL(u"https://example.com"), /*user_close_cancels_flow=*/true));
+
+  delegate.SetOnCloseContents(base::BindLambdaForTesting(
+      [&popup_window_view]() { popup_window_view.reset(); }));
+  // This should not crash.
+  popup_window_view->ClosePopupWindow();
+
+  EXPECT_FALSE(popup_window_view);
   histogram_tester_->ExpectUniqueSample(
       "Blink.FedCm.IdpSigninStatus.ClosePopupWindowReason",
       static_cast<int>(

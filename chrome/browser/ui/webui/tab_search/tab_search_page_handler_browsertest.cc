@@ -36,7 +36,6 @@
 #include "chrome/browser/ui/browser_ui_controller/browser_ui_controller.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/recently_audible_helper.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/features.h"
@@ -46,6 +45,7 @@
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_deletion_dialog_controller.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter.h"
 #include "chrome/browser/ui/webui/metrics_reporter/mock_metrics_reporter.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search.mojom-forward.h"
@@ -178,7 +178,8 @@ class TestTabSearchPageHandler : public TabSearchPageHandler {
             std::move(page),
             web_ui,
             webui_controller,
-            &metrics_reporter_) {
+            &metrics_reporter_,
+            /*log_metrics=*/true) {
     auto timer = std::make_unique<base::MockRetainingOneShotTimer>();
     mock_debounce_timer_ = timer.get();
     SetTimerForTesting(std::move(timer));
@@ -199,15 +200,10 @@ class TabSearchPageHandlerTest : public InProcessBrowserTest,
   TabSearchPageHandlerTest() {
     // Parametrize tests on kTabSearchPerformanceImprovements to verify
     // behavior in both enabled and disabled experiment arms.
-    feature_list_.InitWithFeatureState(tabs::kTabSearchPerformanceImprovements,
-                                       GetParam());
-    webui_omnibox_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove these two Features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
+    feature_list_.InitWithFeatureStates(
+        {{tabs::kTabSearchPerformanceImprovements, GetParam()},
+         {features::kTabGroupsFocusing, true},
+         {features::kNonGroupFocus, true}});
   }
 
   void SetUpOnMainThread() override {
@@ -393,7 +389,6 @@ class TabSearchPageHandlerTest : public InProcessBrowserTest,
  private:
   content::TestWebUI web_ui_;
   base::test::ScopedFeatureList feature_list_;
-  base::test::ScopedFeatureList webui_omnibox_feature_list_;
   std::unique_ptr<TestTabSearchPageHandler> handler_;
   std::unique_ptr<TabSearchUI> webui_controller_;
 };
@@ -1727,7 +1722,7 @@ IN_PROC_BROWSER_TEST_P(TabSearchPageHandlerTest, EphemeralTabGroupFilteredOut) {
   AddTabWithTitle(browser1(), tab_url2_, kTabName2);
 
   TabStripModel* tab_strip_model = browser1()->tab_strip_model();
-  tab_strip_model->AddToNewGroup({0, 1}, /*is_ephemeral=*/true);
+  tab_strip_model->EnterFocusMode({0, 1});
 
   tab_search::mojom::PageHandler::GetProfileDataCallback callback =
       base::BindLambdaForTesting(
@@ -1757,6 +1752,36 @@ IN_PROC_BROWSER_TEST_P(TabSearchPageHandlerTest, EphemeralTabGroupFilteredOut) {
                 profile_tabs->recently_closed_tabs[0]->group_id.has_value());
           });
   handler()->GetProfileData(std::move(callback2));
+}
+
+// Verify that New Tab Page favicons (which require theming via
+// ShouldThemifyFavicon()) always populate `favicon_url` as a themed data URI,
+// even when kTabSearchPerformanceImprovements is enabled.
+IN_PROC_BROWSER_TEST_P(TabSearchPageHandlerTest,
+                       NewTabPageFaviconUrlPopulated) {
+  chrome::AddTabAt(browser1(), GURL(chrome::kChromeUINewTabURL), 0, true);
+  content::WaitForLoadStop(
+      browser1()->tab_strip_model()->GetActiveWebContents());
+  BrowserUiController::From(browser1())->ProcessPendingUIUpdates();
+  page_.receiver_.FlushForTesting();
+
+  base::test::TestFuture<tab_search::mojom::ProfileDataPtr> future;
+  handler()->GetProfileData(future.GetCallback());
+  tab_search::mojom::ProfileDataPtr profile_tabs = future.Take();
+
+  const tab_search::mojom::Window* host_window = nullptr;
+  for (const auto& window : profile_tabs->windows) {
+    if (window->is_host_window) {
+      host_window = window.get();
+      break;
+    }
+  }
+  ASSERT_TRUE(host_window);
+  ASSERT_FALSE(host_window->tabs.empty());
+  const tab_search::mojom::Tab* ntp_tab = host_window->tabs[0].get();
+  EXPECT_TRUE(ntp_tab->favicon_url.has_value());
+  EXPECT_TRUE(ntp_tab->favicon_url->SchemeIs(url::kDataScheme));
+  EXPECT_FALSE(ntp_tab->is_default_favicon);
 }
 
 }  // namespace

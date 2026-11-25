@@ -18,6 +18,7 @@
 #import "ios/chrome/browser/signin/model/authentication_service_observer_bridge.h"
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/signin/model/system_identity.h"
 
 @interface AccountPickerSelectionScreenMediator () <
@@ -174,6 +175,11 @@
 }
 
 - (void)extendedAccountInfoDidUpdate:(const AccountInfo&)info {
+  // TODO(crbug.com/576575308): `extendedAccountInfoDidUpdate:` can be called
+  // for accounts on the device that are filtered by
+  // `prefs::kRestrictAccountsToPatterns` via
+  // `ChromeAccountManagerService::OnIdentityOnDeviceUpdated`, for which
+  // `GetIdentityOnDeviceWithGaiaID` returns `nil`.
   id<SystemIdentity> identity =
       _accountManagerService->GetIdentityOnDeviceWithGaiaID(info.GetGaiaId());
   CHECK(identity);

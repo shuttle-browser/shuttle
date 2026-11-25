@@ -2,13 +2,12 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {assertEquals, assertFalse, assertGE, assertLE, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {TestSearchboxBrowserProxy} from 'chrome://webui-test/cr_components/searchbox/test_searchbox_browser_proxy.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
-import {BrowserProxyImpl, OmniboxTextColor, SearchboxBrowserProxy} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {ReadonlyOmniboxElement} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import type {ReadonlyOmniboxElement} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+import {BrowserProxyImpl, OmniboxTextColor} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 import {TestToolbarBrowserProxy} from './test_toolbar_browser_proxy.js';
 import type {TestToolbarUiHandler} from './test_toolbar_browser_proxy.js';
@@ -144,7 +143,6 @@ suite('ReadonlyOmnibox', function() {
     const browserProxy = new TestToolbarBrowserProxy();
     uiHandler = browserProxy.toolbarUIHandler;
     BrowserProxyImpl.setInstance(browserProxy);
-    SearchboxBrowserProxy.setInstance(new TestSearchboxBrowserProxy());
 
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
     omnibox = document.createElement('readonly-omnibox');
@@ -1549,6 +1547,110 @@ suite('ReadonlyOmnibox', function() {
     // so it forwards text dropped into it from outside to the browser.
     uiHandler.reset();
     const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/plain', 'dropped text');
+    omnibox.dispatchEvent(
+        new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer}));
+    await microtasksFinished();
+
+    assertEquals(1, uiHandler.getCallCount('onOmniboxAction'));
+    const args = uiHandler.getArgs('onOmniboxAction');
+    assertTrue(!!args[0].dropText);
+    assertEquals('dropped text', args[0].dropText.text);
+  });
+
+  // Like the native omnibox, a drop within the omnibox puts the caret after the
+  // dropped text. The caret is sent to the browser right away, since a browser
+  // update arriving before the selectionchange event would store it as the
+  // synced selection, and the event would not send it.
+  test('Dropping on self sends the caret after the dropped text', async () => {
+    const input = getTextInput();
+    input.focus();
+    input.value = 'helloworld';
+    input.setSelectionRange(5, 10);
+    await microtasksFinished();
+
+    fakeLeftMouseDown();
+    omnibox.dispatchEvent(new DragEvent('dragstart', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: new DataTransfer(),
+    }));
+    omnibox.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      dataTransfer: new DataTransfer(),
+    }));
+    // The input moves the dropped text and selects it.
+    input.value = 'worldhello';
+    input.setSelectionRange(0, 5);
+    uiHandler.reset();
+    omnibox.dispatchEvent(new DragEvent('dragend', {bubbles: true}));
+
+    // Checked before the asynchronous selectionchange event.
+    assertEquals(5, input.selectionStart);
+    assertEquals(5, input.selectionEnd);
+    assertEquals(1, uiHandler.getCallCount('onOmniboxAction'));
+    const args = uiHandler.getArgs('onOmniboxAction').at(-1);
+    assertTrue(!!args.textInput);
+    assertEquals(5, args.textInput.selection.start);
+    assertEquals(5, args.textInput.selection.end);
+  });
+
+  // A dropped link is forwarded as a URL drop, without the URL: the browser
+  // uses the URL it captured from the drag, rather than the one the WebUI sees,
+  // e.g. about:blank#blocked in place of a javascript: link.
+  test('Dropping a link forwards a URL drop', async () => {
+    uiHandler.reset();
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', 'about:blank#blocked');
+    dataTransfer.setData('text/plain', 'javascript:alert(1)');
+    omnibox.dispatchEvent(
+        new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer}));
+    await microtasksFinished();
+
+    assertEquals(1, uiHandler.getCallCount('onOmniboxAction'));
+    const args = uiHandler.getArgs('onOmniboxAction');
+    assertTrue(!!args[0].dropUrl);
+  });
+
+  // Like OmniboxViewViews::PerformDrop(), a drop carrying several kinds of data
+  // is forwarded as a single action, preferring a URL, then files, then plain
+  // text.
+  test('Dropping a URL, a file and text forwards the URL', async () => {
+    uiHandler.reset();
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', 'https://example.com/');
+    dataTransfer.setData('text/plain', 'dropped text');
+    dataTransfer.items.add(new File([''], 'test.html'));
+    omnibox.dispatchEvent(
+        new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer}));
+    await microtasksFinished();
+
+    assertEquals(1, uiHandler.getCallCount('onOmniboxAction'));
+    const args = uiHandler.getArgs('onOmniboxAction');
+    assertTrue(!!args[0].dropUrl);
+  });
+
+  test('Dropping a file and text forwards the file', async () => {
+    uiHandler.reset();
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/plain', 'dropped text');
+    dataTransfer.items.add(new File([''], 'test.html'));
+    omnibox.dispatchEvent(
+        new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer}));
+    await microtasksFinished();
+
+    assertEquals(1, uiHandler.getCallCount('onOmniboxAction'));
+    const args = uiHandler.getArgs('onOmniboxAction');
+    assertTrue(!!args[0].dropFile);
+  });
+
+  // Like the native omnibox, which ignores a drop's empty URLs, a drop with an
+  // empty `text/uri-list` falls back to its plain text.
+  test('Dropping an empty URL and text forwards the text', async () => {
+    uiHandler.reset();
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', '');
     dataTransfer.setData('text/plain', 'dropped text');
     omnibox.dispatchEvent(
         new DragEvent('drop', {bubbles: true, cancelable: true, dataTransfer}));

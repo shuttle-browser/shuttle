@@ -32,6 +32,7 @@ import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.Observer;
 import org.chromium.chrome.browser.omnibox.LocationBar;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent.ContentPriority;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.SheetState;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController.StateChangeReason;
@@ -339,7 +340,6 @@ public class MiniOriginBarController implements Observer {
                 mMiniOriginBarHeight
                         + mContext.getResources()
                                 .getDimensionPixelSize(R.dimen.toolbar_hairline_height);
-        mControlContainer.doSynchronousLayout(/* forceCaptureAfterLayout= */ false);
         var minifiedLayoutParams =
                 new CoordinatorLayout.LayoutParams(LayoutParams.WRAP_CONTENT, mMiniOriginBarHeight);
         minifiedLayoutParams.gravity = Gravity.CENTER_VERTICAL;
@@ -352,6 +352,7 @@ public class MiniOriginBarController implements Observer {
                 locationBarView.getPaddingTop(),
                 locationBarRightPadding,
                 locationBarView.getPaddingBottom());
+        mControlContainer.doSynchronousLayout(/* forceCaptureAfterLayout= */ false);
 
         recomputeLayouts();
     }
@@ -429,13 +430,11 @@ public class MiniOriginBarController implements Observer {
 
     private boolean isCobrowseSheetOpen() {
         BottomSheetContent content = mBottomSheetController.getCurrentSheetContent();
-        if (content == null
-                || content.getPriority() != BottomSheetContent.ContentPriority.COBROWSE) {
+        if (content == null || content.getPriority() != ContentPriority.COBROWSE) {
             return false;
         }
         int state = mBottomSheetController.getSheetState();
-        return state == BottomSheetController.SheetState.HALF
-                || state == BottomSheetController.SheetState.FULL;
+        return state == SheetState.HALF || state == SheetState.FULL;
     }
 
     /**
@@ -532,7 +531,7 @@ public class MiniOriginBarController implements Observer {
     }
 
     private boolean isKeyboardShowing() {
-        return mKeyboardVisibilityDelegate.isKeyboardShowing(mControlContainer.getView());
+        return mKeyboardVisibilityDelegate.isKeyboardObscuring(mControlContainer.getView());
     }
 
     private void updateAnimationProgress(float minimizationProgress) {
@@ -652,7 +651,7 @@ public class MiniOriginBarController implements Observer {
             ViewUtils.setAncestorsShouldClipChildren(mContainerView, false, View.NO_ID);
             ViewUtils.setAncestorsShouldClipToPadding(mContainerView, false, View.NO_ID);
             mFinalKeyboardHeight =
-                    mKeyboardVisibilityDelegate.isKeyboardShowing(mContainerView)
+                    mKeyboardVisibilityDelegate.isKeyboardObscuring(mContainerView)
                             ? bounds.getUpperBound().bottom
                             : 0;
         }

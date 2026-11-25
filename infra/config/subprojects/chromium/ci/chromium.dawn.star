@@ -1782,11 +1782,31 @@ ci.thin_tester(
             "webgpu_cts_dedicated_worker_tests": targets.remove(
                 reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
             ),
+            "webgpu_cts_tests": targets.mixin(
+                # The vast majority of coverage is already provided by
+                # webgpu_cts_with_validation_tests, so mark as CI-only to
+                # maintain some amount of coverage of what we ship without
+                # wasting as many resources on a low capacity config. See
+                # crbug.com/578581697.
+                ci_only = True,
+            ),
             "webgpu_cts_service_worker_tests": targets.remove(
                 reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
             ),
             "webgpu_cts_shared_worker_tests": targets.remove(
                 reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
+            ),
+            "webgpu_swiftshader_blink_web_tests": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+            ),
+            "webgpu_swiftshader_blink_web_tests_with_backend_validation": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+            ),
+            "webgpu_swiftshader_web_platform_cts_tests": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+            ),
+            "webgpu_swiftshader_web_platform_cts_with_validation_tests": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
             ),
         },
     ),
@@ -1891,11 +1911,31 @@ ci.thin_tester(
         #     "webgpu_cts_dedicated_worker_tests": targets.remove(
         #         reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
         #     ),
+        #     "webgpu_cts_tests": targets.mixin(
+        #        # The vast majority of coverage is already provided by
+        #        # webgpu_cts_with_validation_tests, so mark as CI-only to
+        #        # maintain some amount of coverage of what we ship without
+        #        # wasting as many resources on a low capacity config. See
+        #        # crbug.com/578581697.
+        #        ci_only = True,
+        #    ),
         #     "webgpu_cts_service_worker_tests": targets.remove(
         #         reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
         #     ),
         #     "webgpu_cts_shared_worker_tests": targets.remove(
         #         reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
+        #     ),
+        #     "webgpu_swiftshader_blink_web_tests": targets.remove(
+        #         reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+        #     ),
+        #     "webgpu_swiftshader_blink_web_tests_with_backend_validation": targets.remove(
+        #         reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+        #     ),
+        #     "webgpu_swiftshader_web_platform_cts_tests": targets.remove(
+        #         reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+        #     ),
+        #     "webgpu_swiftshader_web_platform_cts_with_validation_tests": targets.remove(
+        #         reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
         #     ),
         # },
     ),
@@ -2059,11 +2099,31 @@ ci.thin_tester(
             "webgpu_cts_dedicated_worker_tests": targets.remove(
                 reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
             ),
+            "webgpu_cts_tests": targets.mixin(
+                # The vast majority of coverage is already provided by
+                # webgpu_cts_with_validation_tests, so mark as CI-only to
+                # maintain some amount of coverage of what we ship without
+                # wasting as many resources on a low capacity config. See
+                # crbug.com/578581697.
+                ci_only = True,
+            ),
             "webgpu_cts_service_worker_tests": targets.remove(
                 reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
             ),
             "webgpu_cts_shared_worker_tests": targets.remove(
                 reason = "We only need coverage on one GPU per OS, so remove from lower capacity configs.",
+            ),
+            "webgpu_swiftshader_blink_web_tests": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+            ),
+            "webgpu_swiftshader_blink_web_tests_with_backend_validation": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+            ),
+            "webgpu_swiftshader_web_platform_cts_tests": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
+            ),
+            "webgpu_swiftshader_web_platform_cts_with_validation_tests": targets.remove(
+                reason = "SwiftShader coverage is provided by the Intel config which has more capacity. See crbug.com/578581697",
             ),
         },
     ),
@@ -2907,12 +2967,12 @@ ci.thin_tester(
             # unexpectedly slow compared to UHD 630. Fix this and remove these modifications.
             "dawn_end2end_validation_layers_tests": targets.mixin(
                 swarming = targets.swarming(
-                    shards = 8,
+                    shards = 16,
                 ),
             ),
             "dawn_end2end_no_dxc_validation_layers_tests": targets.mixin(
                 swarming = targets.swarming(
-                    shards = 8,
+                    shards = 16,
                 ),
             ),
         },

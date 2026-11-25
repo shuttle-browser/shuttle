@@ -2,11 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://new-tab-page/new_tab_page.js';
+import 'chrome://resources/cr_components/searchbox/searchbox_match.js';
+import 'chrome://webui-test/strings.m.js';
 
-import {SearchboxBrowserProxy} from 'chrome://new-tab-page/new_tab_page.js';
-import type {SearchboxMatchElement} from 'chrome://new-tab-page/new_tab_page.js';
-import {createAutocompleteMatch, createFormattedString, createMatchKeywordModelForTesting} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import {createAutocompleteMatch, createFormattedString, createMatchKeywordModelForTesting, SearchboxBrowserProxy} from 'chrome://resources/cr_components/searchbox/searchbox_browser_proxy.js';
+import type {SearchboxMatchElement} from 'chrome://resources/cr_components/searchbox/searchbox_match.js';
 import {NavigationPredictor} from 'chrome://resources/mojo/components/omnibox/browser/omnibox.mojom-webui.js';
 import {KeywordActivationMethod, KeywordType, SelectionLineState} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {ColorType} from 'chrome://resources/mojo/components/omnibox/browser/suggest_template_info.mojom-webui.js';
@@ -519,6 +519,17 @@ suite('CrComponentsRealboxMatchTest', () => {
     assertTrue(iconStyle()
                    .getPropertyValue('-webkit-mask-image')
                    .includes('dock_to_right.svg'));
+
+    // The icon is not mirrored in RTL. The browser picks the icon for the
+    // physical side the side panel opens on.
+    const originalDir = document.documentElement.dir;
+    document.documentElement.dir = 'rtl';
+    try {
+      await microtasksFinished();
+      assertEquals('none', iconStyle().transform);
+    } finally {
+      document.documentElement.dir = originalDir;
+    }
   });
 
   test('HideDescription', async () => {

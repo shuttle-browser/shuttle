@@ -11,14 +11,29 @@
 #include "base/files/scoped_temp_dir.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/test/bind.h"
 #include "base/test/task_environment.h"
+#include "chrome/browser/tab/collection_storage_observer.h"
+#include "chrome/browser/tab/node_hash_cache.h"
 #include "chrome/browser/tab/restore_entity_tracker.h"
+#include "chrome/browser/tab/storage_collection_synchronizer.h"
 #include "chrome/browser/tab/storage_id.h"
+#include "chrome/browser/tab/storage_loaded_data.h"
+#include "chrome/browser/tab/storage_package.h"
 #include "chrome/browser/tab/tab_storage_packager.h"
+#include "components/split_tabs/split_tab_id.h"
+#include "components/split_tabs/split_tab_visual_data.h"
+#include "components/tabs/public/fake_tab_interface.h"
+#include "components/tabs/public/pinned_tab_collection.h"
+#include "components/tabs/public/split_tab_collection.h"
+#include "components/tabs/public/split_tab_data.h"
 #include "components/tabs/public/tab_collection.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/tabs/public/tab_strip_collection.h"
+#include "components/tabs/public/unpinned_tab_collection.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace tabs {
@@ -31,13 +46,22 @@ class TestPayload : public Payload {
   std::vector<uint8_t> SerializePayload() const override { return {}; }
 };
 
+class TestStoragePackage : public StoragePackage {
+ public:
+  TestStoragePackage() = default;
+  ~TestStoragePackage() override = default;
+
+  std::vector<uint8_t> SerializePayload() const override { return {}; }
+  std::vector<uint8_t> SerializeChildren() const override { return {}; }
+};
+
 class TestTabStoragePackager : public TabStoragePackager {
  public:
   TestTabStoragePackager() = default;
   ~TestTabStoragePackager() override = default;
 
   std::unique_ptr<StoragePackage> Package(const TabInterface* tab) override {
-    return nullptr;
+    return std::make_unique<TestStoragePackage>();
   }
 
   bool IsOffTheRecord(const TabCollection* collection) const override {
@@ -48,12 +72,44 @@ class TestTabStoragePackager : public TabStoragePackager {
     return "test_window";
   }
 
+  int package_tab_strip_count() const { return package_tab_strip_count_; }
+  void reset_package_tab_strip_count() { package_tab_strip_count_ = 0; }
+
  protected:
   std::unique_ptr<Payload> PackageTabStripCollectionData(
       const TabStripCollection* collection,
       StorageIdMapping& mapping) override {
+    ++package_tab_strip_count_;
     return std::make_unique<TestPayload>();
   }
+
+ private:
+  int package_tab_strip_count_ = 0;
+};
+
+class TestRestoreEntityTracker : public RestoreEntityTracker {
+ public:
+  TestRestoreEntityTracker() = default;
+  ~TestRestoreEntityTracker() override = default;
+
+  void SetLoadingContext(StorageLoadingContext* context) override {}
+  void RegisterCollection(StorageId storage_id,
+                          TabStorageType type,
+                          const tabs_pb::Children& children,
+                          std::optional<base::Token> collection_specific_id,
+                          base::PassKey<TabStateStorageDatabase>) override {}
+  void RegisterTab(StorageId storage_id,
+                   const tabs_pb::TabState& tab_state,
+                   base::PassKey<TabStateStorageDatabase>) override {}
+  bool AssociateTab(const TabInterface* tab) override { return true; }
+  bool AssociateCollection(const TabCollection* collection) override {
+    return true;
+  }
+  bool HasTabBeenAssociated(const TabInterface* tab) override { return true; }
+  bool HasCollectionBeenAssociated(TabCollection::Handle handle) override {
+    return true;
+  }
+  bool HasNothingToAssociate() override { return true; }
 };
 
 class TabStateStorageServiceTest : public ::testing::Test {
@@ -64,10 +120,11 @@ class TabStateStorageServiceTest : public ::testing::Test {
   void SetUp() override {
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
     auto packager = std::make_unique<TestTabStoragePackager>();
+    packager_ = packager.get();
     RestoreEntityTrackerFactory tracker_factory = base::BindRepeating(
         [](OnTabAssociation,
            OnCollectionAssociation) -> std::unique_ptr<RestoreEntityTracker> {
-          return nullptr;
+          return std::make_unique<TestRestoreEntityTracker>();
         });
 
     service_ = std::make_unique<TabStateStorageService>(
@@ -78,6 +135,7 @@ class TabStateStorageServiceTest : public ::testing::Test {
   void TearDown() override { service_.reset(); }
 
   TabStateStorageService* service() { return service_.get(); }
+  TestTabStoragePackager* packager() { return packager_; }
 
   void FlushOperations() {
     base::RunLoop run_loop;
@@ -90,6 +148,7 @@ class TabStateStorageServiceTest : public ::testing::Test {
       base::test::TaskEnvironment::MainThreadType::UI};
   base::ScopedTempDir temp_dir_;
   std::unique_ptr<TabStateStorageService> service_;
+  raw_ptr<TestTabStoragePackager> packager_ = nullptr;
 };
 
 // Tests that an empty ScopedBatch executes callbacks upon destruction.
@@ -249,6 +308,183 @@ TEST_F(TabStateStorageServiceTest, HighVolumeOperationCoalescing) {
 
   FlushOperations();
   EXPECT_TRUE(batch_committed);
+}
+
+TEST_F(TabStateStorageServiceTest, SaveStructureSnapshot_DeltaDiffing) {
+  TabStripCollection tab_strip;
+  StorageCollectionSynchronizer synchronizer(&tab_strip, service());
+  CollectionStorageObserver observer(&tab_strip, service());
+  observer.SetSynchronizer(&synchronizer);
+  tab_strip.AddObserver(&observer);
+
+  split_tabs::SplitTabId split_id = split_tabs::SplitTabId::GenerateNew();
+  split_tabs::SplitTabVisualData visual_data(
+      split_tabs::SplitTabLayout::kSideBySide, 0.5);
+  auto split = std::make_unique<SplitTabCollection>(split_id, visual_data);
+  split->AddTab(std::make_unique<FakeTabInterface>(), 0);
+  SplitTabCollection* split_ptr = split.get();
+  tab_strip.unpinned_collection()->AddCollection(std::move(split), 0);
+
+  StorageId split_storage_id = service()->GetStorageId(split_ptr);
+  StorageId tab_strip_storage_id = service()->GetStorageId(&tab_strip);
+
+  // Initial snapshot writes all collections and populates NodeHashCache.
+  EXPECT_EQ(0u, synchronizer.hash_cache().size());
+  packager()->reset_package_tab_strip_count();
+
+  observer.SaveStructureSnapshot(/*clear_unused_nodes=*/false);
+  FlushOperations();
+
+  EXPECT_EQ(4u, synchronizer.hash_cache().size());
+  EXPECT_TRUE(synchronizer.hash_cache().HasNode(split_storage_id));
+  EXPECT_TRUE(synchronizer.hash_cache().HasNode(tab_strip_storage_id));
+  EXPECT_TRUE(synchronizer.hash_cache().HasNode(
+      service()->GetStorageId(tab_strip.pinned_collection())));
+  EXPECT_TRUE(synchronizer.hash_cache().HasNode(
+      service()->GetStorageId(tab_strip.unpinned_collection())));
+  // Root tab strip was packaged once for Save during initial snapshot.
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+
+  std::optional<NodeHashes> initial_split_hashes =
+      synchronizer.hash_cache().GetNodeHashes(split_storage_id);
+  ASSERT_TRUE(initial_split_hashes.has_value());
+  size_t original_payload_hash = initial_split_hashes->payload_hash;
+  size_t original_children_hash = initial_split_hashes->children_hash;
+  EXPECT_NE(NodeHashes::kEmptyHash, original_payload_hash);
+  EXPECT_NE(NodeHashes::kEmptyHash, original_children_hash);
+
+  // Subsequent snapshot persists root TabStripCollection payload (to
+  // preserve platform active tab state), but bypasses unchanged child
+  // collections.
+  packager()->reset_package_tab_strip_count();
+  observer.SaveStructureSnapshot(/*clear_unused_nodes=*/false);
+  FlushOperations();
+
+  // Root tab strip payload is packaged once per snapshot.
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+  std::optional<NodeHashes> noop_split_hashes =
+      synchronizer.hash_cache().GetNodeHashes(split_storage_id);
+  ASSERT_TRUE(noop_split_hashes.has_value());
+  EXPECT_EQ(original_payload_hash, noop_split_hashes->payload_hash);
+  EXPECT_EQ(original_children_hash, noop_split_hashes->children_hash);
+
+  // Split visual metadata change writes only SavePayload for that split.
+  split_ptr->data()->visual_data()->set_split_ratio(0.8);
+  packager()->reset_package_tab_strip_count();
+  observer.SaveStructureSnapshot(/*clear_unused_nodes=*/false);
+  FlushOperations();
+
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+  std::optional<NodeHashes> payload_changed_hashes =
+      synchronizer.hash_cache().GetNodeHashes(split_storage_id);
+  ASSERT_TRUE(payload_changed_hashes.has_value());
+  // Payload hash changed, but children hash remained identical.
+  EXPECT_NE(original_payload_hash, payload_changed_hashes->payload_hash);
+  EXPECT_EQ(original_children_hash, payload_changed_hashes->children_hash);
+
+  // Child addition/move writes only SaveChildren for the affected
+  // collection.
+  split_ptr->AddTab(std::make_unique<FakeTabInterface>(), 1);
+  packager()->reset_package_tab_strip_count();
+  observer.SaveStructureSnapshot(/*clear_unused_nodes=*/false);
+  FlushOperations();
+
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+  std::optional<NodeHashes> children_changed_hashes =
+      synchronizer.hash_cache().GetNodeHashes(split_storage_id);
+  ASSERT_TRUE(children_changed_hashes.has_value());
+  // Children hash changed, but payload hash remained identical to the updated
+  // payload.
+  EXPECT_EQ(payload_changed_hashes->payload_hash,
+            children_changed_hashes->payload_hash);
+  EXPECT_NE(original_children_hash, children_changed_hashes->children_hash);
+
+  // ClearSubTree immediately evicts the node from cache.
+  EXPECT_TRUE(synchronizer.hash_cache().HasNode(split_storage_id));
+  CollectionStorageObserver::ClearSubTree(split_ptr, service(),
+                                          &synchronizer.hash_cache());
+  EXPECT_FALSE(synchronizer.hash_cache().HasNode(split_storage_id));
+  EXPECT_TRUE(
+      tab_strip.unpinned_collection()->MaybeRemoveCollection(split_ptr));
+
+  // PruneExcept removes unreferenced entries when clear_unused_nodes is true.
+  StorageId synthetic_id = base::UnguessableToken::Create();
+  synchronizer.hash_cache().SetNodeHashes(synthetic_id, NodeHashes{123u, 456u});
+  EXPECT_TRUE(synchronizer.hash_cache().HasNode(synthetic_id));
+  observer.SaveStructureSnapshot(/*clear_unused_nodes=*/true);
+  FlushOperations();
+  EXPECT_FALSE(synchronizer.hash_cache().HasNode(synthetic_id));
+  tab_strip.RemoveObserver(&observer);
+}
+
+TEST_F(TabStateStorageServiceTest,
+       FlushPendingStructureSnapshot_ExecutesImmediately) {
+  TabStripCollection tab_strip;
+  StorageCollectionSynchronizer synchronizer(&tab_strip, service());
+  synchronizer.SetCollectionObserver(
+      std::make_unique<CollectionStorageObserver>(&tab_strip, service()));
+
+  packager()->reset_package_tab_strip_count();
+  bool unbatched_callback_executed = false;
+  synchronizer.SaveStructureSnapshot(
+      /*clear_unused_nodes=*/true,
+      base::BindOnce([](bool* executed) { *executed = true; },
+                     &unbatched_callback_executed));
+  EXPECT_EQ(0, packager()->package_tab_strip_count());
+
+  synchronizer.FlushPendingStructureSnapshot();
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+
+  // Subsequent idle run invokes the completion callback without re-executing
+  // the already-flushed snapshot.
+  FlushOperations();
+  EXPECT_TRUE(unbatched_callback_executed);
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+
+  // When flushed inside an enclosing ScopedBatch, completion callbacks wait
+  // until the outer batch commits to the database task runner.
+  packager()->reset_package_tab_strip_count();
+  bool batched_callback_executed = false;
+  synchronizer.SaveStructureSnapshot(
+      /*clear_unused_nodes=*/true,
+      base::BindOnce([](bool* executed) { *executed = true; },
+                     &batched_callback_executed));
+  {
+    TabStateStorageService::ScopedBatch outer_batch =
+        service()->CreateScopedBatch();
+    synchronizer.FlushPendingStructureSnapshot();
+    EXPECT_FALSE(batched_callback_executed);
+  }
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+  FlushOperations();
+  EXPECT_TRUE(batched_callback_executed);
+  EXPECT_EQ(1, packager()->package_tab_strip_count());
+}
+
+TEST_F(TabStateStorageServiceTest, LoadAllNodes_RunsBackgroundTransform) {
+  scoped_refptr<base::SingleThreadTaskRunner> ui_task_runner =
+      base::SingleThreadTaskRunner::GetCurrentDefault();
+  base::RunLoop run_loop;
+  bool ran_off_ui_thread = false;
+  bool ui_closure_executed = false;
+
+  service()->LoadAllNodes(
+      "test_window", /*is_off_the_record=*/false,
+      base::BindLambdaForTesting(
+          [&](std::unique_ptr<StorageLoadedData> loaded_data)
+              -> base::OnceClosure {
+            ran_off_ui_thread = !ui_task_runner->BelongsToCurrentThread();
+            EXPECT_NE(nullptr, loaded_data);
+            return base::BindLambdaForTesting([&]() {
+              EXPECT_TRUE(ui_task_runner->BelongsToCurrentThread());
+              ui_closure_executed = true;
+              run_loop.Quit();
+            });
+          }));
+  run_loop.Run();
+
+  EXPECT_TRUE(ran_off_ui_thread);
+  EXPECT_TRUE(ui_closure_executed);
 }
 
 }  // namespace

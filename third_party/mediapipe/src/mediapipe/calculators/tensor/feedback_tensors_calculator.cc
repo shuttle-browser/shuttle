@@ -16,7 +16,8 @@
 #include <memory>
 #include <utility>
 
-#include "absl/status/status.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
 #include "mediapipe/calculators/tensor/feedback_tensors_calculator.pb.h"
 #include "mediapipe/framework/api2/contract.h"
 #include "mediapipe/framework/api2/node.h"
@@ -84,12 +85,12 @@ class FeedbackTensorsCalculator : public Node {
     std::vector<Tensor> outputs;
     switch (feedback_tensors_location_) {
       case mediapipe::FeedbackTensorsCalculatorOptions::PREPENDED:
-        MP_RETURN_IF_ERROR(AddFeedbackTensors(cc, outputs));
-        MP_RETURN_IF_ERROR(AddInputTensors(cc, outputs));
+        ABSL_RETURN_IF_ERROR(AddFeedbackTensors(cc, outputs));
+        ABSL_RETURN_IF_ERROR(AddInputTensors(cc, outputs));
         break;
       case mediapipe::FeedbackTensorsCalculatorOptions::APPENDED:
-        MP_RETURN_IF_ERROR(AddInputTensors(cc, outputs));
-        MP_RETURN_IF_ERROR(AddFeedbackTensors(cc, outputs));
+        ABSL_RETURN_IF_ERROR(AddInputTensors(cc, outputs));
+        ABSL_RETURN_IF_ERROR(AddFeedbackTensors(cc, outputs));
         break;
       default:
         return absl::InvalidArgumentError(

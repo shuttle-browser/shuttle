@@ -27,6 +27,8 @@ export interface ToolbarChipButtonElement {
  *   automatic accessibility, keyboard nav, and drag-to-cancel behavior.
  * - Label Animation: Supports sliding label transitions via animates-label
  *   and has-label attributes.
+ * - Split Button: Supports flattening one side via the flat-edge attribute
+ *   to visually join an adjacent companion chip.
  *
  * Slots:
  * - prefix-icon: Icon before the text.
@@ -53,6 +55,7 @@ export class ToolbarChipButtonElement extends CrLitElement {
       tooltip: {type: String},
       ariaHasPopup: {type: String},
       ariaExpanded: {type: String},
+      ariaPressed: {type: String},
       disabled: {
         type: Boolean,
         reflect: true,
@@ -76,6 +79,11 @@ export class ToolbarChipButtonElement extends CrLitElement {
       buttonRole: {
         type: String,
       },
+      flatEdge: {
+        type: String,
+        reflect: true,
+        attribute: 'flat-edge',
+      },
     };
   }
 
@@ -94,6 +102,9 @@ export class ToolbarChipButtonElement extends CrLitElement {
   /** Indicates whether the popup triggered by the button is expanded. */
   override accessor ariaExpanded: string|null = null;
 
+  /** Indicates the current pressed state of a toggle button. */
+  override accessor ariaPressed: string|null = null;
+
   /** Whether the button is disabled. */
   accessor disabled: boolean = false;
 
@@ -111,6 +122,14 @@ export class ToolbarChipButtonElement extends CrLitElement {
    * keeps its implicit 'button' role.
    */
   accessor buttonRole: string|null = null;
+
+  /**
+   * Flattens one logical side of the pill so the chip visually joins an
+   * adjacent companion chip as a split button (e.g. the Glic button and the
+   * actor task icon). Uses logical sides, so it mirrors automatically in RTL,
+   * matching Views ToolbarButton::SetFlipCanvasOnPaintForRTLUI().
+   */
+  accessor flatEdge: 'start'|'end'|null = null;
 
   override focus() {
     this.$.button.focus();

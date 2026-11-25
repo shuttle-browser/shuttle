@@ -11,6 +11,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/test_future.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/dictation/dictation_browser_test_base.h"
 #include "chrome/browser/dictation/dictation_keyed_service_factory.h"
@@ -23,6 +24,7 @@
 #include "chrome/browser/feature_engagement/tracker_factory.h"
 #include "chrome/browser/glic/browser_ui/tab_underline_view.h"
 #include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/public/provider_features.h"
 #include "chrome/browser/glic/selection/selection_overlay_controller.h"
 #include "chrome/browser/glic/test_support/glic_browser_test.h"
 #include "chrome/browser/profiles/profile.h"
@@ -44,12 +46,16 @@
 #include "components/feature_engagement/public/tracker.h"
 #include "components/feature_engagement/test/scoped_iph_feature_list.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/device_service.h"
 #include "content/public/browser/global_dom_node_id.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "extensions/common/switches.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
+#include "services/device/public/mojom/wake_lock.mojom.h"
+#include "services/device/public/mojom/wake_lock_provider.mojom.h"
 #include "third_party/blink/public/common/context_menu_data/edit_flags.h"
 #include "third_party/blink/public/common/dom/dom_node_id.h"
 #include "ui/events/keycodes/dom/dom_code.h"
@@ -71,14 +77,9 @@ using ExtensionStreamState = extensions::api::dictation_private::StreamState;
 using ExtensionTranscriptionType =
     extensions::api::dictation_private::TranscriptionType;
 
-class DictationKeyedServiceBrowserTest
-    : public DictationBrowserTestBase,
-      public testing::WithParamInterface<bool> {
+class DictationKeyedServiceBrowserTest : public DictationBrowserTestBase {
  public:
-  DictationKeyedServiceBrowserTest()
-      : DictationKeyedServiceBrowserTest(GetParam()) {}
-  explicit DictationKeyedServiceBrowserTest(bool session_ends_on_stream_end)
-      : DictationBrowserTestBase(session_ends_on_stream_end) {}
+  DictationKeyedServiceBrowserTest() = default;
   ~DictationKeyedServiceBrowserTest() override = default;
 
   void SimulateSpeechRecognition(ListenerStreamProvider* provider,
@@ -93,14 +94,28 @@ class DictationKeyedServiceBrowserTest
     return dictation::GetEditableExpectedText(
         web_contents()->GetPrimaryMainFrame(), selector, expected);
   }
+
+  int32_t GetActiveDisplayWakeLocks() {
+    if (SessionController* controller = session_controller()) {
+      controller->FlushWakeLockForTesting();
+    }
+    mojo::Remote<device::mojom::WakeLockProvider> wake_lock_provider;
+    content::GetDeviceService().BindWakeLockProvider(
+        wake_lock_provider.BindNewPipeAndPassReceiver());
+    base::test::TestFuture<int32_t> future;
+    wake_lock_provider->GetActiveWakeLocksForTests(
+        device::mojom::WakeLockType::kPreventDisplaySleep,
+        future.GetCallback());
+    return future.Get();
+  }
 };
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        CreatedForRegularProfile) {
   EXPECT_NE(DictationKeyedService::Get(profile()), nullptr);
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        NotCreatedForOTRProfile) {
   Profile* otr_profile =
       profile()->GetPrimaryOTRProfile(/*create_if_needed=*/true);
@@ -110,9 +125,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
 class DictationKeyedServiceDisabledBrowserTest
     : public DictationKeyedServiceBrowserTest {
  public:
-  DictationKeyedServiceDisabledBrowserTest()
-      : DictationKeyedServiceBrowserTest(
-            kSessionEndsOnStreamEnd.default_value) {
+  DictationKeyedServiceDisabledBrowserTest() {
     scoped_feature_list_.InitAndDisableFeature(kDictation);
   }
   ~DictationKeyedServiceDisabledBrowserTest() override = default;
@@ -128,7 +141,7 @@ IN_PROC_BROWSER_TEST_F(DictationKeyedServiceDisabledBrowserTest,
 
 // Ensure the context menu entrypoint is shown both before, during, and after a
 // session is active.
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ShouldShowContextMenuItem) {
   EXPECT_TRUE(dictation_service().ShouldShowContextMenuItem());
 
@@ -143,7 +156,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
 
 // Talk to Type is elided when right-clicking a misspelled word, since that menu
 // is already long.
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ContextMenuHiddenForMisspelledWord) {
   content::ContextMenuParams params;
   params.is_editable = true;
@@ -156,7 +169,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_FALSE(menu.IsItemPresent(IDC_CONTENT_CONTEXT_DICTATION));
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ExecuteContextMenuCommand) {
   content::ContextMenuParams params;
   params.is_editable = true;
@@ -183,7 +196,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
 
 // Ensure the context menu item can be used to start a new stream in the same
 // tab as an existing session.
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ExecuteContextMenuCommandExistingSessionSameTab) {
   // Start a first stream
   SimulateInvokeViaContextMenu(web_contents()->GetPrimaryMainFrame(),
@@ -223,7 +236,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
 
 // Ensure the context menu item can be used to start a new stream in a second
 // window, while a session is already active in another window.
-IN_PROC_BROWSER_TEST_P(
+IN_PROC_BROWSER_TEST_F(
     DictationKeyedServiceBrowserTest,
     ExecuteContextMenuCommandExistingSessionDifferentWindow) {
   // Start dictation in the first window.
@@ -269,7 +282,7 @@ IN_PROC_BROWSER_TEST_P(
   EXPECT_EQ(stream1_provider->GetLatestTranscriptionForTesting(), "Final");
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ExecuteContextMenuCommandRichlyEditable) {
   content::ContextMenuParams params;
   params.is_editable = true;
@@ -295,14 +308,10 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_TRUE(provider->GetTarget()->richly_editable());
 }
 
-// Not parameterized: password-field handling does not depend on
-// `kSessionEndsOnStreamEnd`.
 class DictationPasswordLikeFieldBrowserTest
     : public DictationKeyedServiceBrowserTest {
  public:
-  DictationPasswordLikeFieldBrowserTest()
-      : DictationKeyedServiceBrowserTest(
-            kSessionEndsOnStreamEnd.default_value) {}
+  DictationPasswordLikeFieldBrowserTest() = default;
 
  protected:
   void SetUpOnMainThread() override {
@@ -378,13 +387,11 @@ IN_PROC_BROWSER_TEST_F(DictationPasswordLikeFieldBrowserTest,
 }
 
 // Checks the Feature Engagement events that the dictation hotkey IPH is based
-// on. Not parameterized: these don't depend on `kSessionEndsOnStreamEnd`.
+// on.
 class DictationHotkeyIphEventsBrowserTest
     : public DictationKeyedServiceBrowserTest {
  public:
-  DictationHotkeyIphEventsBrowserTest()
-      : DictationKeyedServiceBrowserTest(
-            kSessionEndsOnStreamEnd.default_value) {
+  DictationHotkeyIphEventsBrowserTest() {
     // Browser tests block all IPH, and Feature Engagement only reports event
     // counts for IPH it has a configuration for.
     iph_feature_list_.InitAndEnableFeatures(
@@ -455,7 +462,7 @@ class DictationHotkeyIphEventsBrowserTest
       ExtensionSendTranscriptUpdate(profile(), stream_id,
                                     ExtensionTranscriptionType::kFinal, text);
     }
-    session_controller()->UiRequestEndActiveStream();
+    session_controller()->FinalizeAndShutdown(DictationStreamEndTrigger::kTest);
     ExtensionSendStreamStateUpdate(profile(), stream_id,
                                    ExtensionStreamState::kComplete);
     ASSERT_TRUE(
@@ -518,7 +525,7 @@ IN_PROC_BROWSER_TEST_F(DictationHotkeyIphEventsBrowserTest,
 // TODO(crbug.com/502587072): Add tests which have the test extension simulate
 // stream failures, including on start and mid stream.
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        StartSessionAndReceiveTranscription) {
   StartSession();
 
@@ -556,7 +563,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   WaitForSessionState(SessionState::kInactive);
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        EndActiveStreamEntersFinalizingState) {
   StartSession();
 
@@ -582,7 +589,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   ASSERT_FALSE(provider->IsTranscriptionFinalForTesting());
 
   // Simulate the stream being ended.
-  controller->UiRequestEndActiveStream();
+  controller->FinalizeAndShutdown(DictationStreamEndTrigger::kTest);
 
   // Ensure the controller enters kFinalizing state.
   EXPECT_EQ(controller->GetState(), SessionState::kFinalizing);
@@ -598,7 +605,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   // committed to the target.
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        StartNewStreamWhileFinalizing) {
   StartSession();
 
@@ -620,7 +627,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
                             "Hello");
 
   // Put the first stream into finalization.
-  controller->UiRequestEndActiveStream();
+  controller->FinalizeAndShutdown(DictationStreamEndTrigger::kTest);
 
   // The first stream is now in the finalizing set, and the controller is in
   // kFinalizing.
@@ -648,7 +655,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_EQ(provider2->GetLatestTranscriptionForTesting(), "World");
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ProviderDestroyedAfterComplete) {
   StartSession();
 
@@ -677,7 +684,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_TRUE(base::test::RunUntil([&]() { return provider_weak == nullptr; }));
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        ProviderDestroyedAfterFailed) {
   StartSession();
 
@@ -705,7 +712,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_TRUE(base::test::RunUntil([&]() { return provider_weak == nullptr; }));
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        TranscriptionCommittedToElement) {
   const GURL url =
       embedded_test_server()->GetURL("/textinput/simple_textarea.html");
@@ -750,78 +757,7 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_EDITABLE_TEXT_EQ("#text_id", "Hello World");
 }
 
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
-                       ToggleStreamAndCommit) {
-  if (GetParam()) {
-    GTEST_SKIP()
-        << "Multiple streams per session are not possible in this config.";
-  }
-
-  const GURL url =
-      embedded_test_server()->GetURL("/textinput/simple_textarea.html");
-  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
-  content::SimulateEndOfPaintHoldingOnPrimaryMainFrame(web_contents());
-  content::MainThreadFrameObserver frame_observer(
-      web_contents()->GetPrimaryMainFrame()->GetRenderWidgetHost());
-  frame_observer.Wait();
-
-  // Focus the textarea so that dictation targets it.
-  content::SimulateMouseClickOrTapElementWithId(web_contents(), "text_id");
-
-  std::optional<int> dom_node_id =
-      content::GetDOMNodeId(*web_contents()->GetPrimaryMainFrame(), "#text_id");
-  ASSERT_TRUE(dom_node_id.has_value());
-
-  // Start a new session and stream, commit some text, and stop.
-  {
-    StartSession(TargetDetails(content::GlobalDOMNodeId{
-        web_contents()->GetPrimaryMainFrame()->GetWeakDocumentPtr(),
-        blink::DOMNodeIdType(dom_node_id.value())}));
-
-    ASSERT_TRUE(attached_stream());
-    auto stream_id = attached_stream()->stream_id_for_testing();
-
-    ExtensionWaitForStreamStart(profile(), stream_id);
-    ExtensionSendStreamStateUpdate(profile(), stream_id,
-                                   ExtensionStreamState::kTranscribing);
-
-    SimulateSpeechRecognition(attached_stream(),
-                              ExtensionTranscriptionType::kFinal, "Hello");
-
-    session_controller()->UiRequestEndActiveStream();
-    ExtensionSendStreamStateUpdate(profile(), stream_id,
-                                   ExtensionStreamState::kComplete);
-  }
-
-  EXPECT_EDITABLE_TEXT_EQ("#text_id", "Hello");
-  ASSERT_FALSE(attached_stream());
-  ASSERT_TRUE(base::test::RunUntil([&]() {
-    return session_controller()->GetState() == SessionState::kInactive;
-  }));
-
-  // Start a second stream simulating a click on the "Start" button.
-  {
-    session_controller()->UiRequestStartStream();
-    ASSERT_TRUE(attached_stream());
-
-    auto stream_id = attached_stream()->stream_id_for_testing();
-
-    ExtensionWaitForStreamStart(profile(), stream_id);
-    ExtensionSendStreamStateUpdate(profile(), stream_id,
-                                   ExtensionStreamState::kTranscribing);
-
-    SimulateSpeechRecognition(attached_stream(),
-                              ExtensionTranscriptionType::kFinal, " World");
-
-    session_controller()->UiRequestEndActiveStream();
-    ExtensionSendStreamStateUpdate(profile(), stream_id,
-                                   ExtensionStreamState::kComplete);
-  }
-
-  EXPECT_EDITABLE_TEXT_EQ("#text_id", "Hello World");
-}
-
-IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
                        TypeIntoEditableEndsStream) {
   const GURL url =
       embedded_test_server()->GetURL("/textinput/simple_textarea.html");
@@ -883,9 +819,47 @@ IN_PROC_BROWSER_TEST_P(DictationKeyedServiceBrowserTest,
   EXPECT_EDITABLE_TEXT_EQ("#text_id", "ab c");
 }
 
-INSTANTIATE_TEST_SUITE_P(All,
-                         DictationKeyedServiceBrowserTest,
-                         testing::Bool());
+IN_PROC_BROWSER_TEST_F(DictationKeyedServiceBrowserTest,
+                       AcquiresDisplayWakeLockWhileActive) {
+  const GURL url =
+      embedded_test_server()->GetURL("/textinput/simple_textarea.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+  ASSERT_EQ(GetActiveDisplayWakeLocks(), 0);
+
+  std::optional<int> dom_node_id =
+      content::GetDOMNodeId(*web_contents()->GetPrimaryMainFrame(), "#text_id");
+  ASSERT_TRUE(dom_node_id.has_value());
+
+  StartSession(TargetDetails(content::GlobalDOMNodeId{
+      web_contents()->GetPrimaryMainFrame()->GetWeakDocumentPtr(),
+      blink::DOMNodeIdType(dom_node_id.value())}));
+
+  SessionController* controller = session_controller();
+  ASSERT_NE(controller, nullptr);
+  ASSERT_EQ(controller->GetState(), SessionState::kStreamInitializing);
+  EXPECT_EQ(GetActiveDisplayWakeLocks(), 1);
+
+  ListenerStreamProvider* provider = attached_stream();
+  ASSERT_NE(provider, nullptr);
+  const auto stream_id = provider->stream_id_for_testing();
+
+  ExtensionWaitForStreamStart(profile(), stream_id);
+  ExtensionSendStreamStateUpdate(profile(), stream_id,
+                                 ExtensionStreamState::kTranscribing);
+  ASSERT_EQ(controller->GetState(), SessionState::kTranscribing);
+  EXPECT_EQ(GetActiveDisplayWakeLocks(), 1);
+
+  controller->EndDictationStream(DictationStreamEndTrigger::kTest);
+  ASSERT_EQ(controller->GetState(), SessionState::kFinalizing);
+  EXPECT_EQ(GetActiveDisplayWakeLocks(), 1);
+
+  ExtensionWaitForStreamEnd(profile(), stream_id);
+  ExtensionSendStreamStateUpdate(profile(), stream_id,
+                                 ExtensionStreamState::kComplete);
+  WaitForSessionState(SessionState::kInactive);
+  EXPECT_TRUE(
+      base::test::RunUntil([&]() { return GetActiveDisplayWakeLocks() == 0; }));
+}
 
 // TODO(b/533465625): Ideally we could also make this a child of
 // DictationBrowserTestBase so we get all the helpers.
@@ -1008,7 +982,7 @@ IN_PROC_BROWSER_TEST_P(DictationGlicBrowserTest, BasicStreamFunctions) {
                                 ExtensionTranscriptionType::kPartial, "Hello");
   EXPECT_EQ(provider->GetLatestTranscriptionForTesting(), "Hello");
 
-  controller->UiRequestEndActiveStream();
+  controller->FinalizeAndShutdown(DictationStreamEndTrigger::kTest);
   ExtensionSendStreamStateUpdate(GetProfile(),
                                  provider->stream_id_for_testing(),
                                  ExtensionStreamState::kComplete);
@@ -1158,7 +1132,8 @@ IN_PROC_BROWSER_TEST_P(DictationGlicSelectionOverlayBrowserTest,
   auto* overlay_controller =
       glic::SelectionOverlayController::FromTabWebContents(tab_contents);
   ASSERT_TRUE(overlay_controller);
-  overlay_controller->Show(/*options=*/nullptr);
+  overlay_controller->Show(/*options=*/nullptr,
+                           ::selection::EntryPoint::kKeyboardShortcut);
 
   ASSERT_OK(glic::RunUntilEqual(
       [&]() { return overlay_controller->state(); },

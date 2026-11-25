@@ -36,6 +36,7 @@
 #include "chrome/browser/ui/webui/settings/font_handler.h"
 #include "chrome/browser/ui/webui/settings/shared_settings_localized_strings_provider.h"
 #include "chrome/grit/generated_resources.h"
+#include "chromeos/ash/experiences/settings_ui/resources/grit/ash_settings_strings.h"
 #include "components/live_caption/caption_util.h"
 #include "components/prefs/pref_service.h"
 #include "components/strings/grit/components_strings.h"
@@ -1000,7 +1001,7 @@ void AccessibilitySection::AddLoadTimeData(
       {"durationInSeconds", IDS_SETTINGS_DURATION_IN_SECONDS},
       {"reEnableTouchpadLabel", IDS_SETTINGS_RE_ENABLE_TOUCHPAD},
       {"focusHighlightLabel",
-       IDS_SETTINGS_ACCESSIBILITY_FOCUS_HIGHLIGHT_DESCRIPTION},
+       IDS_OS_SETTINGS_ACCESSIBILITY_FOCUS_HIGHLIGHT_DESCRIPTION},
       {"focusHighlightLabelSubtext",
        IDS_SETTINGS_ACCESSIBILITY_FOCUS_HIGHLIGHT_DESCRIPTION_SUBTEXT},
       {"focusHighlightDisabledByChromevoxTooltip",
@@ -1556,7 +1557,7 @@ void AccessibilitySection::AddLoadTimeData(
        IDS_SETTINGS_TEXT_TO_SPEECH_VOLUME_MINIMUM_LABEL},
       {"ttsSettingsLinkDescription", IDS_SETTINGS_TTS_LINK_DESCRIPTION},
       {"overscrollHistoryNavigationTitle",
-       IDS_SETTINGS_OVERSCROLL_HISTORY_NAVIGATION_TITLE},
+       IDS_OS_SETTINGS_OVERSCROLL_HISTORY_NAVIGATION_TITLE},
   };
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
@@ -1977,17 +1978,10 @@ void AccessibilitySection::OnVoicesChanged() {
 }
 
 void AccessibilitySection::UpdateTextToSpeechVoiceSearchTags() {
-  // Start with no text-to-speech voice search tags.
+  // Built-in TTS voices are always available; avoid GetVoices() as it loads
+  // TTS engines.
   SearchTagRegistry::ScopedTagUpdater updater = registry()->StartUpdate();
-  updater.RemoveSearchTags(GetTextToSpeechVoiceSearchConcepts());
-
-  content::TtsController* tts_controller =
-      content::TtsController::GetInstance();
-  std::vector<content::VoiceData> voices;
-  tts_controller->GetVoices(profile(), GURL(), &voices);
-  if (!voices.empty()) {
-    updater.AddSearchTags(GetTextToSpeechVoiceSearchConcepts());
-  }
+  updater.AddSearchTags(GetTextToSpeechVoiceSearchConcepts());
 }
 
 void AccessibilitySection::OnExtensionLoaded(

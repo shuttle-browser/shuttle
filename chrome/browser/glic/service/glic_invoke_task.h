@@ -6,6 +6,7 @@
 #define CHROME_BROWSER_GLIC_SERVICE_GLIC_INVOKE_TASK_H_
 
 #include <memory>
+#include <string_view>
 #include <vector>
 
 #include "base/functional/callback.h"
@@ -55,7 +56,11 @@ enum class GlicTaskType : int {
   kWaitForClientReady = 17,
   kMaxValue = kWaitForClientReady,
 };
-// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicInvokeTimeoutStage)
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicInvokeTimeoutStage,//chrome/browser/glic/service/glic_invoke_task.cc:GlicTaskTypeToDiagnosticString)
+
+// Returns a `SCREAMING_SNAKE_CASE` identifier for `task_type` for best-effort
+// internal invocation diagnostic strings (carries no stability guarantee).
+std::string_view GlicTaskTypeToDiagnosticString(GlicTaskType task_type);
 
 class GlicInvokeTask {
  public:
@@ -161,7 +166,9 @@ class ShowInstanceTask : public GlicInvokeTask {
  public:
   std::optional<GlicTaskType> GetType() const override;
 
-  ShowInstanceTask(GlicInstanceImpl& instance, ShowOptions options);
+  ShowInstanceTask(GlicInstanceImpl& instance,
+                   ShowOptions options,
+                   base::OnceCallback<void(bool)> on_shown);
   ~ShowInstanceTask() override;
   void Start(base::OnceClosure done_callback) override;
 
@@ -170,6 +177,7 @@ class ShowInstanceTask : public GlicInvokeTask {
   // GlicInstanceCoordinatorImpl and its lifetime is tied to the instance.
   const base::raw_ref<GlicInstanceImpl> instance_;
   std::optional<ShowOptions> options_;
+  base::OnceCallback<void(bool)> on_shown_;
 };
 
 // Task that sets up the instance for a hidden panel.
@@ -177,13 +185,13 @@ class SetupHiddenPanelTask : public GlicInvokeTask {
  public:
   std::optional<GlicTaskType> GetType() const override;
 
-  SetupHiddenPanelTask(GlicInstanceImpl& instance, tabs::TabInterface& tab);
+  SetupHiddenPanelTask(GlicInstanceImpl& instance, tabs::TabHandle tab_handle);
   ~SetupHiddenPanelTask() override;
   void Start(base::OnceClosure done_callback) override;
 
  private:
   const base::raw_ref<GlicInstanceImpl> instance_;
-  const base::raw_ref<tabs::TabInterface> tab_;
+  tabs::TabHandle tab_handle_;
 };
 
 class MaybeInitializeHiddenClientTask : public GlicInvokeTask {
@@ -224,10 +232,13 @@ class WaitForClientConnectedTask : public GlicInvokeTask,
   base::OnceClosure done_callback_;
 };
 
-// What WaitForClientReadyTask does when the client stops on the sign-in panel
-// (`Host::client_load_state()` is `kError` with `client_load_error_reason()`
-// `kSignIn`). Unlike other load failures the client has not given up: it
-// reloads and becomes ready once the user signs in.
+// What WaitForClientReadyTask does when the client stops on a visible sign-in
+// panel (`Host::instance().IsShowing()`, `Host::client_load_state()` is
+// `kError` with `client_load_error_reason()` `kSignIn`). Unlike other load
+// failures, a visible sign-in panel has not given up: the client reloads and
+// becomes ready once the user signs in. When the panel is hidden, no sign-in
+// UI is visible to the user, so `kSignIn` fails immediately with
+// `GlicInvokeError::kClientLoadError`.
 enum class SignInBehavior {
   // The task completes. An invocation with nothing to send the client is done
   // once the panel shows what it should, and the sign-in panel is that.
@@ -272,11 +283,14 @@ class PostCallbackTask : public GlicInvokeTask {
   std::optional<GlicTaskType> GetType() const override;
 
   explicit PostCallbackTask(base::OnceClosure callback);
+  PostCallbackTask(base::OnceClosure callback,
+                   base::OnceCallback<bool()> should_post);
   ~PostCallbackTask() override;
   void Start(base::OnceClosure done_callback) override;
 
  private:
   base::OnceClosure callback_;
+  base::OnceCallback<bool()> should_post_;
 };
 
 // Task that waits for the layout to stabilize after showing the panel.
@@ -302,16 +316,14 @@ class WaitForFreCompletionTask : public GlicInvokeTask {
  public:
   std::optional<GlicTaskType> GetType() const override;
 
-  WaitForFreCompletionTask(::Profile* profile, mojom::FreOverride fre_override);
+  explicit WaitForFreCompletionTask(::Profile* profile);
   ~WaitForFreCompletionTask() override;
   void Start(base::OnceClosure done_callback) override;
 
  private:
   void OnProfileReadyStateChanged();
-  bool ShouldWaitForFreCompletion() const;
 
   raw_ptr<::Profile> profile_;
-  mojom::FreOverride fre_override_;
   base::OnceClosure done_callback_;
   base::CallbackListSubscription subscription_;
 };

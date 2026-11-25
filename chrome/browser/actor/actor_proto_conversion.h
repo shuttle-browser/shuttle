@@ -16,10 +16,12 @@
 #include "chrome/common/actor/action_result.h"
 #include "components/actor/core/aggregated_journal.h"
 #include "components/actor/public/mojom/actor_types.mojom-forward.h"
+#include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/optimization_guide/proto/features/actions_data.pb.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/origin_gating/core/task_policy_config.h"
 #include "components/page_content_annotations/content/page_context_fetcher.h"
+#include "components/page_content_annotations/content/page_context_fetcher_metrics.h"
 #include "components/tabs/public/tab_interface.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 
@@ -152,6 +154,17 @@ void FillInTabObservation(
     const page_content_annotations::FetchPageContextResult& page_context_result,
     optimization_guide::proto::TabObservation& tab_observation);
 
+// Converts an `AIPageContentExtractionStatus` to the corresponding
+// `TabObservation::AnnotatedPageContentResult` proto enum.
+optimization_guide::proto::TabObservation::AnnotatedPageContentResult
+ToAnnotatedPageContentResult(
+    optimization_guide::AIPageContentExtractionStatus status);
+
+// Converts a `ScreenshotCaptureStatus` to the corresponding
+// `TabObservation::ScreenshotResult` proto enum.
+optimization_guide::proto::TabObservation::ScreenshotResult ToScreenshotResult(
+    page_content_annotations::ScreenshotCaptureStatus status);
+
 // Copies script tool results in `action_results` to the input proto.
 template <typename T>
 void CopyScriptToolResults(
@@ -175,6 +188,28 @@ void CopyScriptToolResults(
         tool->mutable_annotations()->set_read_only(
             response->tool->annotations->read_only);
       }
+    }
+  }
+}
+
+// Copies ExecuteJS action results in `action_results` to the input proto. For a
+// failed action, copies the JavaScript error the renderer reported, if any.
+template <typename T>
+void CopyExecuteJsResults(
+    T& proto,
+    const std::vector<ActionResultWithLatencyInfo>& action_results) {
+  for (size_t i = 0; i < action_results.size(); ++i) {
+    const mojom::ActionResult& result = *action_results[i].result;
+    const auto& response = result.execute_js_response;
+    if (IsOk(result) && response) {
+      auto* execute_js_result = proto.add_execute_js_results();
+      execute_js_result->set_index_of_execute_js_action(i);
+      execute_js_result->set_result(response->result);
+      execute_js_result->set_truncated(response->truncated);
+    } else if (response && response->js_error_message) {
+      auto* execute_js_result = proto.add_execute_js_results();
+      execute_js_result->set_index_of_execute_js_action(i);
+      execute_js_result->set_js_error_message(*response->js_error_message);
     }
   }
 }

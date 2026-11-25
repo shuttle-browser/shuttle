@@ -52,6 +52,7 @@ import org.chromium.content.browser.framehost.RenderFrameHostDelegate;
 import org.chromium.content.browser.framehost.RenderFrameHostImpl;
 import org.chromium.content.browser.input.ImeAdapterImpl;
 import org.chromium.content.browser.selection.SelectionPopupControllerImpl;
+import org.chromium.content_public.browser.BackForwardTransitionAnimationManager;
 import org.chromium.content_public.browser.ChildProcessImportance;
 import org.chromium.content_public.browser.ContentFeatureMap;
 import org.chromium.content_public.browser.GlobalRenderFrameHostId;
@@ -68,7 +69,6 @@ import org.chromium.content_public.browser.Visibility;
 import org.chromium.content_public.browser.WebContents;
 import org.chromium.content_public.browser.WebContentsInternals;
 import org.chromium.content_public.browser.WebContentsObserver;
-import org.chromium.content_public.browser.back_forward_transition.AnimationStage;
 import org.chromium.content_public.common.ContentFeatures;
 import org.chromium.ui.BrowserControlsOffsetTagDefinitions;
 import org.chromium.ui.OverscrollRefreshHandler;
@@ -97,10 +97,13 @@ public class WebContentsImpl
                 WindowEventObserver {
     private static final String TAG = "WebContentsImpl";
 
-    // Map from native web contents pointer to WebContentsImpl to allow scaling of unlimited web
-    // contents objects.
+    // Map from peer ID to WebContentsImpl to allow scaling of unlimited web contents objects.
     // ScopedGlobalRef tables are finite.
     private static final LongSparseArray<WebContentsImpl> sWebContentsMap = new LongSparseArray<>();
+
+    // Unlike the native address, a peer ID is never reused within a process, so a stale ID
+    // (e.g. in a Parcel) cannot resolve to a different WebContentsImpl.
+    private static long sNextPeerId = 1;
 
     private static final String PARCEL_VERSION_KEY = "version";
     private static final String PARCEL_WEBCONTENTS_KEY = "webcontents";
@@ -142,9 +145,7 @@ public class WebContentsImpl
                         return null;
                     }
 
-                    // Attempt to retrieve the WebContents object from the native pointer.
-                    return WebContentsImplJni.get()
-                            .fromNativePtr(bundle.getLong(PARCEL_WEBCONTENTS_KEY));
+                    return sWebContentsMap.get(bundle.getLong(PARCEL_WEBCONTENTS_KEY));
                 }
 
                 @Override
@@ -159,6 +160,7 @@ public class WebContentsImpl
     private final List<RenderFrameHostImpl> mFrames = new ArrayList<>();
 
     private long mNativeWebContentsAndroid;
+    private final long mPeerId;
     private final NavigationController mNavigationController;
 
     // Lazily created proxy observer for handling all Java-based WebContentsObservers.
@@ -217,20 +219,26 @@ public class WebContentsImpl
         assert nativeWebContentsAndroid != 0;
         mNativeWebContentsAndroid = nativeWebContentsAndroid;
         mNavigationController = navigationController;
-        assert sWebContentsMap.get(mNativeWebContentsAndroid) == null;
-        sWebContentsMap.put(mNativeWebContentsAndroid, this);
+        mPeerId = sNextPeerId++;
+        sWebContentsMap.put(mPeerId, this);
     }
 
-    @CalledByNative
     @VisibleForTesting(otherwise = VisibleForTesting.PACKAGE_PRIVATE)
     public static WebContentsImpl create(
             long nativeWebContentsAndroid, NavigationController navigationController) {
         return new WebContentsImpl(nativeWebContentsAndroid, navigationController);
     }
 
+    /** Native keeps only the returned peer ID and looks the instance up via getJavaObject(). */
     @CalledByNative
-    public static @Nullable WebContentsImpl getJavaObject(long nativeWebContents) {
-        return sWebContentsMap.get(nativeWebContents);
+    private static long createAndGetPeerId(
+            long nativeWebContentsAndroid, NavigationController navigationController) {
+        return create(nativeWebContentsAndroid, navigationController).mPeerId;
+    }
+
+    @CalledByNative
+    public static @Nullable WebContentsImpl getJavaObject(long peerId) {
+        return sWebContentsMap.get(peerId);
     }
 
     @Override
@@ -310,8 +318,8 @@ public class WebContentsImpl
             userDataHost.destroy();
             mInternalsHolder.set(null);
         }
-        var removedValue = sWebContentsMap.get(nativeWebContentsAndroid);
-        sWebContentsMap.remove(nativeWebContentsAndroid);
+        var removedValue = sWebContentsMap.get(mPeerId);
+        sWebContentsMap.remove(mPeerId);
         assert removedValue != null;
     }
 
@@ -343,7 +351,7 @@ public class WebContentsImpl
         Bundle data = new Bundle();
         data.putLong(PARCEL_VERSION_KEY, PARCELABLE_VERSION_ID);
         data.putParcelable(PARCEL_PROCESS_GUARD_KEY, new ParcelUuid(sParcelableUUID));
-        data.putLong(PARCEL_WEBCONTENTS_KEY, mNativeWebContentsAndroid);
+        data.putLong(PARCEL_WEBCONTENTS_KEY, mPeerId);
         dest.writeBundle(data);
     }
 
@@ -1190,12 +1198,6 @@ public class WebContentsImpl
     }
 
     @Override
-    public void showInterestInElement(int nodeID) {
-        if (mNativeWebContentsAndroid == 0) return;
-        WebContentsImplJni.get().showInterestInElement(mNativeWebContentsAndroid, nodeID);
-    }
-
-    @Override
     public void notifyRendererPreferenceUpdate() {
         if (mNativeWebContentsAndroid == 0) return;
         WebContentsImplJni.get().notifyRendererPreferenceUpdate(mNativeWebContentsAndroid);
@@ -1247,17 +1249,11 @@ public class WebContentsImpl
     }
 
     @Override
-    public void onContentForNavigationEntryShown() {
-        checkNotDestroyed();
-        WebContentsImplJni.get().onContentForNavigationEntryShown(mNativeWebContentsAndroid);
-    }
-
-    @Override
-    @AnimationStage
-    public int getCurrentBackForwardTransitionStage() {
+    public @Nullable BackForwardTransitionAnimationManager
+            getBackForwardTransitionAnimationManager() {
         checkNotDestroyed();
         return WebContentsImplJni.get()
-                .getCurrentBackForwardTransitionStage(mNativeWebContentsAndroid);
+                .getBackForwardTransitionAnimationManager(mNativeWebContentsAndroid);
     }
 
     @Override
@@ -1345,8 +1341,6 @@ public class WebContentsImpl
         // This is static to avoid exposing a public destroy method on the native side of this
         // class.
         void destroyWebContents(long webContentsAndroidPtr);
-
-        WebContents fromNativePtr(long webContentsAndroidPtr);
 
         void clearNativeReference(long nativeWebContentsAndroid);
 
@@ -1536,8 +1530,6 @@ public class WebContentsImpl
         void setDisplayCutoutSafeArea(
                 long nativeWebContentsAndroid, int top, int left, int bottom, int right);
 
-        void showInterestInElement(long nativeWebContentsAndroid, int nodeID);
-
         void notifyRendererPreferenceUpdate(long nativeWebContentsAndroid);
 
         void notifyBrowserControlsHeightChanged(long nativeWebContentsAndroid);
@@ -1548,10 +1540,9 @@ public class WebContentsImpl
 
         boolean needToFireBeforeUnload(long nativeWebContentsAndroid);
 
-        void onContentForNavigationEntryShown(long nativeWebContentsAndroid);
-
-        @AnimationStage
-        int getCurrentBackForwardTransitionStage(long nativeWebContentsAndroid);
+        @JniType("content::BackForwardTransitionAnimationManagerAndroid*")
+        @Nullable BackForwardTransitionAnimationManager getBackForwardTransitionAnimationManager(
+                long nativeWebContentsAndroid);
 
         void setLongPressLinkSelectText(long nativeWebContentsAndroid, boolean enabled);
 

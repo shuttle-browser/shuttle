@@ -489,7 +489,9 @@ namespace internal {
 class GetAppOutputScopedAllowBaseSyncPrimitives;
 class JobTaskSource;
 class TaskTracker;
-bool ReadProcFile(const FilePath& file, std::string* buffer);
+bool ReadProcFile(const FilePath& file,
+                  const FilePath& proc_dir,
+                  std::string* buffer);
 }  // namespace internal
 
 namespace sequence_manager::internal {
@@ -503,6 +505,7 @@ class PlatformSharedMemoryRegion;
 namespace win {
 class OSInfo;
 class ObjectWatcher;
+class ScopedAllowBlockingForUser32AndGdi32;
 class ScopedAllowBlockingForUserAccountControl;
 }  // namespace win
 
@@ -620,6 +623,7 @@ class BASE_EXPORT ScopedAllowBlocking {
   friend class base::android::PmfUtils;
   friend class base::debug::StackTrace;
   friend class base::subtle::PlatformSharedMemoryRegion;
+  friend class base::win::ScopedAllowBlockingForUser32AndGdi32;
   friend class base::win::ScopedAllowBlockingForUserAccountControl;
   friend class blink::DiskDataAllocator;
   friend class chromecast::CrashUtil;
@@ -691,6 +695,7 @@ class BASE_EXPORT ScopedAllowBlocking {
   friend bool ash::CameraAppUIShouldEnableLocalOverride(const std::string&);
   friend base::FilePath base::apple::internal::GetExecutablePath();
   friend bool base::internal::ReadProcFile(const FilePath& file,
+                                           const FilePath& proc_dir,
                                            std::string* buffer);
   friend bool chrome::PathProvider(int,
                                    base::FilePath*);  // http://crbug.com/259796

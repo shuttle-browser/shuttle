@@ -14,10 +14,12 @@
 
 #include "mediapipe/util/rectangle_util.h"
 
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/framework/formats/rect.pb.h"
 #include "mediapipe/framework/port/rectangle.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/statusor.h"
 
 namespace mediapipe {
 
@@ -45,11 +47,11 @@ absl::StatusOr<bool> DoesRectOverlap(
     const mediapipe::NormalizedRect& new_rect,
     absl::Span<const mediapipe::NormalizedRect> existing_rects,
     float min_similarity_threshold) {
-  MP_ASSIGN_OR_RETURN(Rectangle_f new_rectangle, ToRectangle(new_rect));
+  ABSL_ASSIGN_OR_RETURN(Rectangle_f new_rectangle, ToRectangle(new_rect));
 
   for (const mediapipe::NormalizedRect& existing_rect : existing_rects) {
-    MP_ASSIGN_OR_RETURN(Rectangle_f existing_rectangle,
-                        ToRectangle(existing_rect));
+    ABSL_ASSIGN_OR_RETURN(Rectangle_f existing_rectangle,
+                          ToRectangle(existing_rect));
     if (CalculateIou(existing_rectangle, new_rectangle) >
         min_similarity_threshold) {
       return true;

@@ -77,22 +77,26 @@ class AudioProcessorHandlerTest : public ::testing::Test {
       error_callback_;
 
   bool HasVoiceIsolationHandler(const AudioProcessorHandler& handler) {
-    return handler.voice_isolation_handler_ != nullptr;
+    return handler.voice_isolation_handler_for_testing() != nullptr;
   }
 
   bool HasProcessingFifo(const AudioProcessorHandler& handler) {
-    return handler.processing_fifo_ != nullptr;
+    return handler.processing_fifo_for_testing() != nullptr;
   }
 
 #if BUILDFLAG(CHROME_WIDE_ECHO_CANCELLATION)
   bool VoiceIsolationHasProcessingThread(const AudioProcessorHandler& handler) {
-    return handler.voice_isolation_handler_ &&
-           handler.voice_isolation_handler_->HasProcessingThread();
+    const VoiceIsolationHandler* voice_isolation_handler =
+        handler.voice_isolation_handler_for_testing();
+    return voice_isolation_handler &&
+           voice_isolation_handler->HasProcessingThread();
   }
 
   int GetVoiceIsolationFifoSize(const AudioProcessorHandler& handler) {
-    return handler.voice_isolation_handler_
-               ? handler.voice_isolation_handler_->GetFifoSizeForTesting()
+    const VoiceIsolationHandler* voice_isolation_handler =
+        handler.voice_isolation_handler_for_testing();
+    return voice_isolation_handler
+               ? voice_isolation_handler->GetFifoSizeForTesting()
                : 0;
   }
 
@@ -532,19 +536,10 @@ TEST_F(AudioProcessorHandlerTest, GlitchInfoAccumulationWithFifo) {
   media::AudioGlitchInfo glitch_info2{.duration = base::Milliseconds(5),
                                       .count = 1};
 
-  // We push two frames into the FIFO. They will be processed sequentially by
-  // the FIFO thread. The first frame has glitch_info1, the second has
-  // glitch_info2. Wait, because we are pushing two frames before running the
-  // loop, they might get processed in one or two callbacks depending on timing.
-  // But since they are processed sequentially, let's check how the FIFO thread
-  // processes them: For each frame popped from FIFO, it calls
-  // ProcessCapturedAudioInternal, which adds the glitch to the accumulator,
-  // then calls audio_processor_->ProcessCapturedAudio, which runs
-  // OnAudioProcessorOutput, which gets the accumulated glitch info and resets
-  // the accumulator. So they are processed as two separate output frames, each
-  // with their own glitch! Wait! If they are two separate frames, then
-  // `deliver_callback_` will be called TWICE! The first call gets glitch_info1,
-  // and the second gets glitch_info2! Let's verify this behavior:
+  // Each frame popped from `processing_fifo_` runs
+  // ProcessCapturedAudioInternal(), which adds the frame's glitch info to the
+  // accumulator and then calls OnAudioProcessorOutput(), delivering the
+  // accumulated glitch info and resetting the accumulator for the next frame.
   base::RunLoop run_loop1;
   EXPECT_CALL(deliver_callback_, Run(_, _, glitch_info1)).WillOnce([&]() {
     run_loop1.Quit();
@@ -1729,7 +1724,7 @@ TEST_F(AudioProcessorHandlerTest,
   EXPECT_CALL(deliver_callback_, Run(_, _, _))
       .WillRepeatedly([&](const media::AudioBus& bus, base::TimeTicks,
                           const media::AudioGlitchInfo&) {
-        base::span(delivered).copy_from(bus.channel(0));
+        base::span(delivered).copy_from_nonoverlapping(bus.channel(0));
       });
 
   // First active frame (OFF -> ON edge).
@@ -1809,7 +1804,7 @@ TEST_F(AudioProcessorHandlerTest,
       .WillRepeatedly([&](const media::AudioBus& bus, base::TimeTicks,
                           const media::AudioGlitchInfo&) {
         delivered_bus = &bus;
-        base::span(delivered).copy_from(bus.channel(0));
+        base::span(delivered).copy_from_nonoverlapping(bus.channel(0));
       });
 
   // Reach steady-state active processing (first frame is the OFF -> ON fade).
@@ -1885,7 +1880,7 @@ TEST_F(AudioProcessorHandlerTest,
   EXPECT_CALL(deliver_callback_, Run(_, _, _))
       .WillRepeatedly([&](const media::AudioBus& bus, base::TimeTicks,
                           const media::AudioGlitchInfo&) {
-        base::span(delivered).copy_from(bus.channel(0));
+        base::span(delivered).copy_from_nonoverlapping(bus.channel(0));
       });
 
   // Reach steady-state active processing.

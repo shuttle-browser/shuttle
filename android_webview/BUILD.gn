@@ -16,11 +16,10 @@ import("//chrome/android/expectations/expectations.gni")
 import("//components/safe_browsing/buildflags.gni")
 import("//components/site_isolation/site_isolation.gni")
 import("//components/spellcheck/spellcheck_build_features.gni")
+import("//components/strings/grit_defines.gni")
 import("//components/supervised_user/buildflags.gni")
-import("//device/vr/buildflags/buildflags.gni")
 import("//pdf/features.gni")
 import("//printing/buildflags/buildflags.gni")
-import("//services/screen_ai/buildflags/features.gni")
 import("//third_party/jni_zero/jni_zero.gni")
 import("//tools/grit/repack.gni")
 import("//tools/resources/generate_resource_allowlist.gni")
@@ -470,7 +469,7 @@ if (_is_default_toolchain) {
       "//base:service_loader_java",
       "//base/version_info/android:version_constants_java",
       "//build/android:build_java",
-      "//cc/mojom:mojom_java",
+      "//cc/mojom:android_mojo_bindings_java",
       "//components/android_autofill/browser:java",
       "//components/autofill/android:autofill_java",
       "//components/background_task_scheduler:background_task_scheduler_task_ids_java",
@@ -525,7 +524,6 @@ if (_is_default_toolchain) {
       "//third_party/blink/public:blink_headers_java",
       "//third_party/blink/public/mojom:android_mojo_bindings_java",
       "//third_party/blink/public/mojom:authenticator_mojo_bindings_java",
-      "//third_party/blink/public/mojom:mojom_platform_java",
       "//third_party/jni_zero:jni_zero_java",
       "//third_party/metrics_proto:metrics_proto_java",
       "//ui/accessibility:ax_base_java",
@@ -950,12 +948,12 @@ if (_is_default_toolchain) {
 
     deps = [
       ":concatenate_resources_allowlists",
-      "//components/dom_distiller/core:dom_distiller_viewer_js",
       "//components/neterror/resources:bundle_js",
       "//components/resources:about_credits",
       "//components/resources/ssl/ssl_error_assistant:make_ssl_error_assistant_protobuf",
       "//components/security_interstitials/content/resources:build_ts",
       "//components/security_interstitials/core/browser/resources:bundle_js",
+      "//components/web_distiller/core:web_distiller_viewer_js",
     ]
 
     if (enable_supervised_users) {
@@ -964,9 +962,7 @@ if (_is_default_toolchain) {
     }
 
     if (safe_browsing_mode != 0) {
-      deps += [
-        "//components/safe_browsing/content/resources:make_file_types_protobuf",
-      ]
+      deps += [ "//components/safe_browsing/content/resources/download_file_types:make_file_types_protobuf" ]
     }
 
     if (safe_browsing_mode == 2) {
@@ -982,15 +978,7 @@ if (_is_default_toolchain) {
 grit_strings("generate_components_strings") {
   source = "../components/components_strings.grd"
 
-  defines = [
-    "enable_arcore=$enable_arcore",
-    "enable_cardboard=$enable_cardboard",
-    "enable_pdf=$enable_pdf",
-    "enable_print_preview=$enable_print_preview",
-    "enable_screen_ai_service=$enable_screen_ai_service",
-    "enable_vr=$enable_vr",
-    "use_blink=$use_blink",
-  ]
+  defines = components_strings_grit_defines
 
   # components_strings contains strings from all components. WebView
   # will never display most of them, so we try to limit the included

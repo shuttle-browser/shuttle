@@ -15,7 +15,6 @@
 #import "base/metrics/user_metrics.h"
 #import "base/metrics/user_metrics_action.h"
 #import "base/strings/sys_string_conversions.h"
-#import "components/password_manager/core/common/password_manager_features.h"
 #import "components/prefs/pref_service.h"
 #import "components/regional_capabilities/regional_capabilities_service.h"
 #import "components/search_engines/search_engine_settings_data_provider.h"
@@ -270,8 +269,8 @@ const char kUmaSelectDefaultSearchEngine[] =
     if (_regionalCapabilitiesService->IsInSearchEngineChoiceScreenRegion()) {
       TableViewTextHeaderFooterItem* header =
           [[TableViewTextHeaderFooterItem alloc] initWithType:ItemTypeHeader];
-      header.subtitle =
-          l10n_util::GetNSString(IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE);
+      header.subtitle = l10n_util::GetNSString(
+          IDS_SEARCH_ENGINE_CHOICE_SETTINGS_SUBTITLE_RANDOM_ORDER);
       [model setHeader:header
           forSectionWithIdentifier:SectionIdentifierFirstList];
     }

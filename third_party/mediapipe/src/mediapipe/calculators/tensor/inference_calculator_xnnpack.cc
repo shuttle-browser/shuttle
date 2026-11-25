@@ -17,9 +17,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/time/time.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/time/time.h"             // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.h"
 #include "mediapipe/calculators/tensor/inference_calculator_utils.h"
 #include "mediapipe/calculators/tensor/inference_interpreter_delegate_runner.h"
@@ -28,8 +29,7 @@
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/tensor.h"
 #include "mediapipe/framework/port/ret_check.h"
-#include "mediapipe/framework/port/status_macros.h"
-#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"
+#include "tensorflow/lite/delegates/xnnpack/xnnpack_delegate.h"  // from @litert
 
 namespace mediapipe {
 namespace api2 {
@@ -55,7 +55,7 @@ class InferenceCalculatorXnnpackImpl
 
 absl::Status InferenceCalculatorXnnpackImpl::UpdateContract(
     CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(TensorContractCheck(cc));
+  ABSL_RETURN_IF_ERROR(TensorContractCheck(cc));
 
   const auto& options = cc->Options<mediapipe::InferenceCalculatorOptions>();
   RET_CHECK(!options.model_path().empty() ^ kSideInModel(cc).IsConnected())
@@ -65,15 +65,15 @@ absl::Status InferenceCalculatorXnnpackImpl::UpdateContract(
 }
 
 absl::Status InferenceCalculatorXnnpackImpl::Open(CalculatorContext* cc) {
-  MP_ASSIGN_OR_RETURN(inference_runner_, CreateInferenceRunner(cc));
+  ABSL_ASSIGN_OR_RETURN(inference_runner_, CreateInferenceRunner(cc));
   return InferenceCalculatorNodeImpl::UpdateIoMapping(
       cc, inference_runner_->GetInputOutputTensorNames());
 }
 
 absl::StatusOr<std::vector<Tensor>> InferenceCalculatorXnnpackImpl::Process(
     CalculatorContext* cc, const TensorSpan& tensor_span) {
-  MP_ASSIGN_OR_RETURN(std::vector<Tensor> output_tensors,
-                      inference_runner_->Run(cc, tensor_span));
+  ABSL_ASSIGN_OR_RETURN(std::vector<Tensor> output_tensors,
+                        inference_runner_->Run(cc, tensor_span));
   return output_tensors;
 }
 
@@ -84,12 +84,12 @@ absl::Status InferenceCalculatorXnnpackImpl::Close(CalculatorContext* cc) {
 
 absl::StatusOr<std::unique_ptr<InferenceRunner>>
 InferenceCalculatorXnnpackImpl::CreateInferenceRunner(CalculatorContext* cc) {
-  MP_ASSIGN_OR_RETURN(auto model_packet, GetModelAsPacket(cc));
-  MP_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
+  ABSL_ASSIGN_OR_RETURN(auto model_packet, GetModelAsPacket(cc));
+  ABSL_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
   const auto& calculator_opts =
       cc->Options<mediapipe::InferenceCalculatorOptions>();
   const int interpreter_num_threads = calculator_opts.cpu_num_thread();
-  MP_ASSIGN_OR_RETURN(TfLiteDelegatePtr delegate, CreateDelegate(cc));
+  ABSL_ASSIGN_OR_RETURN(TfLiteDelegatePtr delegate, CreateDelegate(cc));
   return CreateInferenceInterpreterDelegateRunner(
       std::move(model_packet), std::move(op_resolver_packet),
       std::move(delegate), interpreter_num_threads,

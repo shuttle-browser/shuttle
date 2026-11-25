@@ -17,12 +17,12 @@
 namespace {
 
 std::unique_ptr<KeyedService> BuildEnterpriseNetworkAuthService(
-    ProfileIOS* profile) {
+    ProfileIOS& profile) {
   if (!enterprise_net::IsDynamicRouteFetchingEnabled()) {
     return nullptr;
   }
   return std::make_unique<enterprise_net::EnterpriseNetworkAuthService>(
-      IdentityManagerFactory::GetForProfile(profile), profile->GetPrefs(),
+      IdentityManagerFactory::GetForProfile(profile), profile.GetPrefs(),
       enterprise::ProfileIdServiceFactoryIOS::GetForProfile(profile),
       ::GetChannel());
 }
@@ -48,6 +48,6 @@ EnterpriseNetworkAuthServiceFactoryIOS::EnterpriseNetworkAuthServiceFactoryIOS(
 
 std::unique_ptr<KeyedService>
 EnterpriseNetworkAuthServiceFactoryIOS::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildEnterpriseNetworkAuthService(profile);
 }

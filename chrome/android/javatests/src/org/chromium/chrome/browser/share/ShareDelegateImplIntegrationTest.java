@@ -12,14 +12,12 @@ import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
-import org.chromium.base.Callback;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
+import org.chromium.chrome.browser.printing.PrintingDelegate;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.share.ShareDelegateImpl.ShareSheetDelegate;
 import org.chromium.chrome.browser.share.android_share_sheet.TabGroupSharingController;
@@ -45,7 +43,6 @@ import java.util.function.Supplier;
 /** Integration tests for the Share Menu handling. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class ShareDelegateImplIntegrationTest {
     private static final String PAGE_WITH_HTTPS_CANONICAL_URL =
             "/chrome/test/data/android/share/link_share_https_canonical.html";
@@ -90,7 +87,7 @@ public class ShareDelegateImplIntegrationTest {
                                         Supplier<Tab> tabProvider,
                                         Supplier<TabModelSelector> tabModelSelectorProvider,
                                         Profile profileSupplier,
-                                        Callback<Tab> printCallback,
+                                        PrintingDelegate printingDelegate,
                                         TabGroupSharingController tabGroupSharingController,
                                         int shareOrigin,
                                         long shareStartTime,

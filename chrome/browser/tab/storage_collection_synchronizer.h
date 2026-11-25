@@ -13,6 +13,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab/node_hash_cache.h"
 #include "chrome/browser/tab/tab_state_storage_service.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_collection_observer.h"
@@ -26,10 +27,6 @@ class StorageCollectionSynchronizer {
  public:
   class CollectionSynchronizerObserver : public TabCollectionObserver {
    public:
-    // Saves the node represented by the handle to storage. This
-    // will only save the payload for the given handle.
-    virtual void SaveChildNodeOnly(TabCollectionNodeHandle handle) = 0;
-
     // Saves a structural snapshot of the collection tree.
     virtual void SaveStructureSnapshot(bool clear_unused_nodes) = 0;
 
@@ -47,9 +44,6 @@ class StorageCollectionSynchronizer {
   StorageCollectionSynchronizer& operator=(
       const StorageCollectionSynchronizer&) = delete;
 
-  // Saves the entire collection and its descendants to the service.
-  void FullSave(base::OnceClosure callback);
-
   // Saves an authoritative structural snapshot of the collection tree.
   // Coalesces rapid mutations via a 0ms PostTask.
   void SaveStructureSnapshot(bool clear_unused_nodes,
@@ -58,22 +52,22 @@ class StorageCollectionSynchronizer {
   // Cancels the restoration process.
   void CancelRestore();
 
-  // Used to manually save a tab.
-  void SaveTab(TabInterface* tab);
-
-  // Used to manually save a tab group payload.
-  void SaveTabGroupPayload(tab_groups::TabGroupId group_id);
-
   // Sets the TabCollectionObserver. If an observer is already set, it will be
   // unregistered before the new one is registered.
   void SetCollectionObserver(
       std::unique_ptr<CollectionSynchronizerObserver> new_observer);
 
- private:
+  // Returns the cache of collection node hashes used for delta snapshots.
+  NodeHashCache& hash_cache() { return hash_cache_; }
+  const NodeHashCache& hash_cache() const { return hash_cache_; }
+
+  // Flushes any queued structural snapshot synchronously if one is scheduled.
   void FlushPendingStructureSnapshot();
 
+ private:
   raw_ptr<TabStripCollection> collection_;
   raw_ptr<TabStateStorageService> service_;
+  NodeHashCache hash_cache_;
   std::unique_ptr<CollectionSynchronizerObserver> observer_;
 
   bool is_snapshot_scheduled_ = false;

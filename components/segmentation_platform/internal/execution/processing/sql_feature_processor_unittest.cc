@@ -41,7 +41,7 @@ class SqlFeatureProcessorTest : public testing::Test {
   }
 
   Data CreateSqlFeature(const std::string& sql,
-                        const MetadataWriter::BindValues& custom_inputs) {
+                        MetadataWriter::BindValues custom_inputs) {
     proto::SegmentationModelMetadata metadata;
     MetadataWriter writer(&metadata);
     MetadataWriter::SqlFeature feature{.sql = sql.c_str()};

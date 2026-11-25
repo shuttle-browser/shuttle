@@ -4,11 +4,13 @@
 
 package org.chromium.chrome.browser.omnibox.suggestions.basic;
 
+import android.graphics.drawable.Drawable;
 import android.text.SpannableStringBuilder;
 import android.text.TextUtils;
 
 import androidx.annotation.ColorInt;
 import androidx.annotation.DrawableRes;
+import androidx.annotation.StringRes;
 import androidx.annotation.VisibleForTesting;
 import androidx.core.text.BidiFormatter;
 
@@ -18,6 +20,8 @@ import org.chromium.chrome.browser.omnibox.MatchClassificationStyle;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState.IconSize;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxImageSupplier;
 import org.chromium.chrome.browser.omnibox.styles.SuggestionSpannable;
 import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteUIContext;
 import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties;
@@ -25,11 +29,13 @@ import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewPr
 import org.chromium.components.metrics.OmniboxEventProtosIntDef.PageClassification;
 import org.chromium.components.omnibox.AutocompleteInput;
 import org.chromium.components.omnibox.AutocompleteMatch;
+import org.chromium.components.omnibox.AutocompleteMatch.MatchClassification;
 import org.chromium.components.omnibox.DocumentType;
 import org.chromium.components.omnibox.OmniboxCapabilities;
+import org.chromium.components.omnibox.OmniboxFeatures;
 import org.chromium.components.omnibox.OmniboxSuggestionKind;
 import org.chromium.components.omnibox.OmniboxSuggestionType;
-import org.chromium.components.omnibox.SuggestTemplateInfoProto.SuggestTemplateInfo;
+import org.chromium.components.omnibox.SuggestTemplateInfoProtoIntDef.IconType;
 import org.chromium.components.omnibox.suggestions.OmniboxSuggestionUiType;
 import org.chromium.components.search_engines.StarterPackId;
 import org.chromium.ui.modelutil.PropertyModel;
@@ -80,65 +86,68 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
 
     @VisibleForTesting
     @DrawableRes
-    int getFallbackIconFromIconType(/* SuggestTemplateInfo.IconType */ int iconType) {
+    int getFallbackIconFromIconType(@IconType int iconType) {
         switch (iconType) {
-            case SuggestTemplateInfo.IconType.ICON_TYPE_UNSPECIFIED_VALUE:
+            case IconType.ICON_TYPE_UNSPECIFIED:
                 return 0;
 
-            case SuggestTemplateInfo.IconType.HISTORY_VALUE:
+            case IconType.HISTORY:
                 return R.drawable.ic_history_24dp;
 
-            case SuggestTemplateInfo.IconType.SEARCH_LOOP_VALUE:
+            case IconType.SEARCH_LOOP:
                 return R.drawable.ic_suggestion_magnifier;
 
-            case SuggestTemplateInfo.IconType.SEARCH_LOOP_WITH_SPARKLE_VALUE:
+            case IconType.SEARCH_LOOP_WITH_SPARKLE:
                 return R.drawable.search_spark_black_24dp;
 
-            case SuggestTemplateInfo.IconType.TRENDING_VALUE:
+            case IconType.TRENDING:
                 return R.drawable.trending_up_black_24dp;
 
-            case SuggestTemplateInfo.IconType.SUB_ARROW_RIGHT_VALUE:
+            case IconType.SUB_ARROW_RIGHT:
                 // TODO(crbug.com/437177158): Replace with the correct symbol when it's available.
                 return R.drawable.ic_suggestion_magnifier;
 
-            case SuggestTemplateInfo.IconType.GLOBE_WITH_SEARCH_LOOP_VALUE:
+            case IconType.GLOBE_WITH_SEARCH_LOOP:
                 return R.drawable.travel_explore_24dp;
 
-            case SuggestTemplateInfo.IconType.BANANA_VALUE:
+            case IconType.BANANA:
                 return R.drawable.create_image_24dp;
 
-            case SuggestTemplateInfo.IconType.FAVICON_VALUE:
+            case IconType.FAVICON:
                 return R.drawable.ic_globe_24dp;
 
-            case SuggestTemplateInfo.IconType.NOTES_SPARK_VALUE:
+            case IconType.NOTES_SPARK:
                 return R.drawable.notes_spark;
 
-            case SuggestTemplateInfo.IconType.DRAFT_SPARK_VALUE:
+            case IconType.DRAFT_SPARK:
                 return R.drawable.draft_spark_24dp;
 
-            case SuggestTemplateInfo.IconType.LIGHTBULB_VALUE:
+            case IconType.LIGHTBULB:
                 return R.drawable.ic_lightbulb_24dp;
 
-            case SuggestTemplateInfo.IconType.ATTACH_FILE_VALUE:
+            case IconType.ATTACH_FILE:
                 return R.drawable.ic_attach_file_24dp;
 
-            case SuggestTemplateInfo.IconType.SCHOOL_VALUE:
+            case IconType.SCHOOL:
                 return R.drawable.ic_school_24dp;
 
-            case SuggestTemplateInfo.IconType.INK_PEN_VALUE:
+            case IconType.INK_PEN:
                 return R.drawable.ic_ink_pen_24dp;
 
-            case SuggestTemplateInfo.IconType.TAB_VALUE:
+            case IconType.TAB:
                 return R.drawable.tab;
 
-            case SuggestTemplateInfo.IconType.PHOTO_SPARK_VALUE:
+            case IconType.PHOTO_SPARK:
                 return R.drawable.ic_photo_spark_24dp;
 
-            case SuggestTemplateInfo.IconType.BOLT_VALUE:
+            case IconType.BOLT:
                 return R.drawable.bolt_24dp;
 
-            case SuggestTemplateInfo.IconType.IMAGE_CREATE_VALUE:
+            case IconType.IMAGE_CREATE:
                 return R.drawable.image_create_24dp;
+
+            case IconType.PROMPT_SUGGESTION:
+                return R.drawable.ic_prompt_suggestion_24dp;
 
             default: // Icon type is specified, but not recognized
                 assert false : "Unrecognized IconType: " + iconType;
@@ -166,6 +175,9 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
 
     @Override
     protected OmniboxDrawableState getFallbackIcon(AutocompleteMatch suggestion) {
+        OmniboxDrawableState vectorIcon = getVectorIcon(suggestion);
+        if (vectorIcon != null) return vectorIcon;
+
         @DrawableRes int icon = 0;
         boolean allowTint = true;
         if (suggestion.getType() == OmniboxSuggestionType.DOCUMENT_SUGGESTION) {
@@ -180,7 +192,7 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
             } else if (starterPackId == StarterPackId.TABS) {
                 icon = R.drawable.switch_to_tab;
             } else if (starterPackId == StarterPackId.GEMINI) {
-                icon = R.drawable.ic_spark_4c_16dp;
+                icon = R.drawable.ic_spark_24dp;
             }
         } else if (suggestion.getTakeoverAction() != null) {
             var action = suggestion.getTakeoverAction();
@@ -204,6 +216,27 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
         return icon == 0
                 ? super.getFallbackIcon(suggestion)
                 : OmniboxDrawableState.forSmallIcon(mUiContext.resourceProvider, icon, allowTint);
+    }
+
+    /**
+     * When {@link OmniboxFeatures#isNativeVectorIconsEnabled()}, returns the suggestion's native
+     * vector icon presented as a medium icon, or {@code null} if the icon should be sourced from
+     * XML drawables instead. Document suggestions keep their multi-color Android drawables.
+     *
+     * @param suggestion The suggestion to retrieve the vector icon for.
+     */
+    private @Nullable OmniboxDrawableState getVectorIcon(AutocompleteMatch suggestion) {
+        if (!OmniboxFeatures.isNativeVectorIconsEnabled()) return null;
+        OmniboxImageSupplier imageSupplier = mUiContext.imageSupplier;
+        if (imageSupplier == null) return null;
+        if (suggestion.getType() == OmniboxSuggestionType.DOCUMENT_SUGGESTION) return null;
+
+        Drawable drawable =
+                imageSupplier.getVectorIcon(
+                        suggestion,
+                        mBookmarkState.isBookmarked(suggestion.getUrl()),
+                        mUiContext.resourceProvider.getEdgeSizeDp(IconSize.MEDIUM));
+        return drawable == null ? null : OmniboxDrawableState.forVectorIcon(drawable);
     }
 
     @Override
@@ -274,30 +307,23 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
         int totalInGroup = model.get(SuggestionCommonProperties.TOTAL_IN_GROUP);
 
         if (totalInGroup > 0) {
-            String announcement;
-            String suggestionKindStr = mContext.getString(getSuggestionKindString(suggestion));
-            if (textLine2 != null && !TextUtils.isEmpty(textLine2.toString())) {
-                announcement =
-                        mUiContext.resourceProvider.getString(
-                                R.string.acc_omnibox_suggestion_in_group_with_type_and_description,
-                                textLine1.toString(),
-                                textLine2.toString(),
-                                suggestionKindStr,
-                                String.valueOf(indexInGroup),
-                                String.valueOf(totalInGroup),
-                                header != null ? header : "");
-
-            } else {
-                announcement =
-                        mUiContext.resourceProvider.getString(
-                                R.string.acc_omnibox_suggestion_in_group_with_type,
-                                textLine1.toString(),
-                                suggestionKindStr,
-                                String.valueOf(indexInGroup),
-                                String.valueOf(totalInGroup),
-                                header != null ? header : "");
-            }
-            model.set(SuggestionViewProperties.CONTENT_DESCRIPTION, announcement);
+            // Formatting the announcement is the single most expensive part of building this
+            // model and is only ever consumed by accessibility services. Capture the cheap
+            // ingredients and defer the formatting until the binder actually needs the string.
+            // Local copies are needed because textLine1/textLine2 are reassigned above.
+            SuggestionSpannable line1 = textLine1;
+            SuggestionSpannable line2 = textLine2;
+            @OmniboxSuggestionKind int suggestionKind = suggestion.getSuggestionKind();
+            model.set(
+                    SuggestionViewProperties.CONTENT_DESCRIPTION_SUPPLIER,
+                    () ->
+                            buildContentDescription(
+                                    line1,
+                                    line2,
+                                    suggestionKind,
+                                    indexInGroup,
+                                    totalInGroup,
+                                    header));
         }
 
         if (!isSearchSuggestion
@@ -309,8 +335,51 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
         setRemoveOrRefineAction(model, input, suggestion, position);
     }
 
-    private int getSuggestionKindString(AutocompleteMatch suggestion) {
-        switch (suggestion.getSuggestionKind()) {
+    /**
+     * Formats the accessibility announcement for a suggestion row.
+     *
+     * <p>This is intentionally invoked lazily (see {@link
+     * SuggestionViewProperties#CONTENT_DESCRIPTION_SUPPLIER}) because it is comparatively expensive
+     * and only needed when an accessibility service inspects the row.
+     *
+     * @param textLine1 The primary text of the suggestion.
+     * @param textLine2 The secondary text of the suggestion, if any.
+     * @param suggestionKind The {@link OmniboxSuggestionKind} of the suggestion.
+     * @param indexInGroup 1-based index of the suggestion within its group.
+     * @param totalInGroup Total number of suggestions within the group.
+     * @param header The group header title, if any.
+     * @return The formatted announcement.
+     */
+    private String buildContentDescription(
+            SuggestionSpannable textLine1,
+            @Nullable SuggestionSpannable textLine2,
+            @OmniboxSuggestionKind int suggestionKind,
+            int indexInGroup,
+            int totalInGroup,
+            @Nullable String header) {
+        String suggestionKindStr = mContext.getString(getSuggestionKindString(suggestionKind));
+        if (textLine2 != null && !TextUtils.isEmpty(textLine2)) {
+            return mUiContext.resourceProvider.getString(
+                    R.string.acc_omnibox_suggestion_in_group_with_type_and_description,
+                    textLine1.toString(),
+                    textLine2.toString(),
+                    suggestionKindStr,
+                    String.valueOf(indexInGroup),
+                    String.valueOf(totalInGroup),
+                    header != null ? header : "");
+        } else {
+            return mUiContext.resourceProvider.getString(
+                    R.string.acc_omnibox_suggestion_in_group_with_type,
+                    textLine1.toString(),
+                    suggestionKindStr,
+                    String.valueOf(indexInGroup),
+                    String.valueOf(totalInGroup),
+                    header != null ? header : "");
+        }
+    }
+
+    private @StringRes int getSuggestionKindString(@OmniboxSuggestionKind int suggestionKind) {
+        switch (suggestionKind) {
             case OmniboxSuggestionKind.CONVERSATION:
                 return R.string.acc_omnibox_suggestion_type_conversation;
             case OmniboxSuggestionKind.SEARCH:
@@ -359,7 +428,7 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
         }
 
         String suggestedQuery = null;
-        List<AutocompleteMatch.MatchClassification> classifications;
+        List<MatchClassification> classifications;
         if (showDescriptionIfPresent
                 && !suggestion.getUrl().isEmpty()
                 && !TextUtils.isEmpty(suggestion.getDescription())) {
@@ -372,9 +441,8 @@ public class BasicSuggestionProcessor extends BaseSuggestionViewProcessor {
         if (suggestedQuery == null) {
             assert false : "Invalid suggestion sent with no displayable text";
             suggestedQuery = "";
-            classifications = new ArrayList<AutocompleteMatch.MatchClassification>();
-            classifications.add(
-                    new AutocompleteMatch.MatchClassification(0, MatchClassificationStyle.NONE));
+            classifications = new ArrayList<MatchClassification>();
+            classifications.add(new MatchClassification(0, MatchClassificationStyle.NONE));
         }
 
         SuggestionSpannable str = new SuggestionSpannable(suggestedQuery);

@@ -86,11 +86,9 @@ constexpr absl::Overload PreToolEventsFn{
           MouseMove(*tab, pt, source),
           MouseClick(*tab, tr.GetClickType(), tr.GetClickCount())};
     },
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     NoUiEvents<ActivateWindowToolRequest>,
     NoUiEvents<CloseWindowToolRequest>,
     NoUiEvents<CreateWindowToolRequest>,
-#endif
     NoUiEvents<ActivateTabToolRequest>,
     NoUiEvents<AddBookmarkToolRequest>,
     NoUiEvents<CloseGeminiPanelToolRequest>,
@@ -143,15 +141,14 @@ constexpr absl::Overload PreToolEventsFn{
     NoUiEvents<AttemptFormFillingToolRequest>,
     NoUiEvents<AttemptOtpFillingToolRequest>,
     NoUiEvents<ChangePasswordToolRequest>,
+    NoUiEvents<ExecuteJsToolRequest>,
     NoUiEvents<ScriptToolRequest>,
     NoUiEvents<ScrollToToolRequest>};
 
 constexpr absl::Overload PostToolEventsFn{
-#if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)
     NoUiEvents<ActivateWindowToolRequest>,
     NoUiEvents<CloseWindowToolRequest>,
     NoUiEvents<CreateWindowToolRequest>,
-#endif
     NoUiEvents<ActivateTabToolRequest>,
     NoUiEvents<AddBookmarkToolRequest>,
     NoUiEvents<ClickToolRequest>,
@@ -163,6 +160,7 @@ constexpr absl::Overload PostToolEventsFn{
     NoUiEvents<ExitFullscreenToolRequest>,
     NoUiEvents<FileUploadToolRequest>,
     NoUiEvents<FindAndHighlightToolRequest>,
+    NoUiEvents<ExecuteJsToolRequest>,
     NoUiEvents<HistoryBackToolRequest>,
     NoUiEvents<HistoryForwardToolRequest>,
 #if !BUILDFLAG(SKIP_ANDROID_UNMIGRATED_ACTOR_FILES)

@@ -24,7 +24,7 @@
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "ui/aura/window.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/views/controls/webview/web_contents_set_background_color.h"
 #include "ui/views/controls/webview/webview.h"
@@ -107,7 +107,10 @@ const base::UnguessableToken& AshWebViewImpl::GetMediaSessionRequestId() {
 }
 
 void AshWebViewImpl::AddedToWidget() {
-  UpdateMinimizeOnBackProperty();
+  // Don't minimize the window on back gestures.
+  if (aura::Window* window = GetWidget()->GetNativeWindow()) {
+    window->SetProperty(ash::kMinimizeOnBackKey, false);
+  }
   AshWebView::AddedToWidget();
 
   // Apply rounded corners. This can't be done earlier since it
@@ -126,9 +129,9 @@ bool AshWebViewImpl::IsWebContentsCreationOverridden(
     const std::string& frame_name,
     const GURL& target_url) {
   if (params_.suppress_navigation) {
-    NotifyDidSuppressNavigation(target_url,
-                                WindowOpenDisposition::kNewForegroundTab,
-                                /*from_user_gesture=*/true);
+    NotifyDidSuppressNavigation(
+        target_url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+        /*from_user_gesture=*/true);
     return true;
   }
   return content::WebContentsDelegate::IsWebContentsCreationOverridden(
@@ -320,7 +323,7 @@ void AshWebViewImpl::InitLayout(Profile* profile) {
 
 void AshWebViewImpl::NotifyDidSuppressNavigation(
     const GURL& url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     bool from_user_gesture) {
   // Note that we post notification to |observers_| as an observer may cause
   // |this| to be deleted during handling of the event which is unsafe to do
@@ -329,7 +332,8 @@ void AshWebViewImpl::NotifyDidSuppressNavigation(
       FROM_HERE,
       base::BindOnce(
           [](const base::WeakPtr<AshWebViewImpl>& self, GURL url,
-             WindowOpenDisposition disposition, bool from_user_gesture) {
+             ui::mojom::WindowOpenDisposition disposition,
+             bool from_user_gesture) {
             if (self) {
               for (auto& observer : self->observers_) {
                 observer.DidSuppressNavigation(url, disposition,
@@ -354,19 +358,8 @@ void AshWebViewImpl::UpdateCanGoBack() {
 
   can_go_back_ = can_go_back;
 
-  UpdateMinimizeOnBackProperty();
-
   for (auto& observer : observers_) {
     observer.DidChangeCanGoBack(can_go_back_);
-  }
-}
-
-void AshWebViewImpl::UpdateMinimizeOnBackProperty() {
-  const bool minimize_on_back = params_.minimize_on_back_key && !can_go_back_;
-  views::Widget* widget = GetWidget();
-  if (widget) {
-    widget->GetNativeWindow()->SetProperty(ash::kMinimizeOnBackKey,
-                                           minimize_on_back);
   }
 }
 

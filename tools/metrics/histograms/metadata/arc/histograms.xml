@@ -857,6 +857,20 @@ chromium-metrics-reviews@google.com.
   <token key="ArcUserTypes" variants="ArcUserTypes"/>
 </histogram>
 
+<histogram name="Arc.AutoLaunch.Result" enum="ArcAutoLaunchResult"
+    expires_after="2027-04-15">
+  <owner>fahadmansoor@google.com</owner>
+  <owner>arc-commercial@google.com</owner>
+  <summary>
+    Records the outcome of auto-launching the Android app configured by the
+    AutoLaunchAndroidApps policy. Recorded once per attempt, when the launch
+    timeout fires (5 minutes after sign-in, or after the policy changes). If the
+    session ends before that, it is recorded at the end of the session instead:
+    as launched if the app was launched by then, or as session ended before
+    timeout otherwise. That is best effort, since the browser might exit first.
+  </summary>
+</histogram>
+
 <histogram
     name="Arc.CloudDpc{TimedCloudDpcOp}.TimeDelta{SuccessFailure}{ArcUserTypes}"
     units="ms" expires_after="2027-03-21">
@@ -1618,7 +1632,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Arc.Net.Qos.QosSocketPercentage" units="%"
-    expires_after="2026-11-15">
+    expires_after="2026-12-31">
   <owner>chuweih@google.com</owner>
   <owner>cros-network-metrics@google.com</owner>
   <summary>
@@ -1872,7 +1886,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Arc.Policy.SecondaryAccountAllowedInArc.Status"
-    enum="SecureConnectPolicyApiStatus" expires_after="2026-12-12">
+    enum="SecureConnectPolicyApiStatus" expires_after="2027-12-12">
   <owner>jhorwich@google.com</owner>
   <owner>arc-commercial@google.com</owner>
   <summary>
@@ -1883,7 +1897,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Arc.Policy.SecondaryAccountAllowedInArc.TimeDelta" units="ms"
-    expires_after="2026-12-12">
+    expires_after="2027-12-12">
   <owner>jhorwich@google.com</owner>
   <owner>arc-commercial@google.com</owner>
   <summary>
@@ -1895,7 +1909,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Arc.Policy.SecondaryAccountAllowedInArc.Value" enum="Boolean"
-    expires_after="2026-12-12">
+    expires_after="2027-12-12">
   <owner>jhorwich@google.com</owner>
   <owner>arc-commercial@google.com</owner>
   <summary>
@@ -2752,21 +2766,6 @@ chromium-metrics-reviews@google.com.
   <summary>
     Total bytes to be migrated in ARCVM /data migration. Reported once at the
     beginning of a new migration.
-  </summary>
-</histogram>
-
-<histogram name="Arc.VmmSwappedOut" enum="VmmSwapOutState"
-    expires_after="2025-07-06">
-  <owner>sstan@chromium.org</owner>
-  <owner>arcvm-eng@google.com</owner>
-  <summary>
-    Records the ARCVM vmm swap status (ARCVM not swapped / ARCVM has been vmm
-    swapped). &quot;vmm swap&quot; means a part of the ARCVM memory lives in
-    ChromeOS side disk and will be automatically swap back when vCPU access it.
-    The recorded &quot;Swapped Out&quot; state means the ARCVM is in the swapped
-    out state at the end of the recording interval. Collected during every
-    metrics recording interval if ARCVM is running. Caveat: The metric will be
-    logged in every UMA record, except the data about the previous session.
   </summary>
 </histogram>
 

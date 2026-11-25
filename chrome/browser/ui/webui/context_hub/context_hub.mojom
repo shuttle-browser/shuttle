@@ -174,7 +174,14 @@ enum ChatRole {
 // Represents a cited source reference in a chat response.
 struct ChatReference {
   string title;
+  // The URL of the page where the cited entry originated.
   url.mojom.Url url;
+  // The source URL of the image when the cited entry is an image (null
+  // otherwise). May point to untrusted third-party web content; WebUI
+  // consumers must render it via chrome://image (e.g. `<img is="cr-auto-img">`;
+  // `url.mojom.Url` is typemapped to `string` in WebUI TypeScript via
+  // `url/mojom/BUILD.gn`).
+  url.mojom.Url? image_url;
 };
 
 struct ChatMessage {
@@ -448,7 +455,8 @@ struct TopicsFeedbackExportDomain {
 // before generating the bundle.
 struct TopicsFeedbackExportPreview {
   TopicsFeedbackExportStats stats;
-  // Hosts visited in the window, most visited first.
+  // Hosts visited in the window, `default_excluded` ones first, then most
+  // visited first.
   array<TopicsFeedbackExportDomain> domains;
 };
 
@@ -464,6 +472,9 @@ struct TopicsFeedbackExportOptions {
   array<string> excluded_domains;
   // Minimized URLs whose visits are exported as redacted stubs.
   array<url.mojom.Url> excluded_urls;
+  // Ids of Topics the rater left out. They're dropped from the bundle, and
+  // their visits are exported as redacted stubs unless a kept Topic has them.
+  array<string> excluded_topic_ids;
   // Free-text description of Topics the rater expected but did not see.
   string missing_topics;
 };
@@ -496,6 +507,34 @@ interface Page {
   OnMemoryBankEntriesDeleted(array<int64> ids);
 };
 
+// Types of user actions that can be recorded during a skill recording session.
+enum SkillRecordingActionType {
+  // A left mouse button click on the active page.
+  kLeftClick,
+};
+
+// Represents a single user action recorded during a skill recording session.
+struct SkillRecordingAction {
+  // The category of user interaction that occurred.
+  SkillRecordingActionType type;
+  // A human-readable summary of the action (e.g., click coordinates).
+  string description;
+  // Time elapsed since the start of the recording session when the action
+  // occurred.
+  mojo_base.mojom.TimeDelta timestamp;
+  // Base64-encoded `data:` URL containing the viewport screenshot captured at
+  // the time of the action, or null if screenshot capture was unavailable or
+  // did not complete before the session ended (`url.mojom.Url` is typemapped to
+  // `string` in WebUI TypeScript via `url/mojom/BUILD.gn`).
+  url.mojom.Url? screenshot_data_url;
+};
+
+// Represents all in-memory data captured during a skill recording session.
+struct SkillRecordingSessionData {
+  // Recorded user actions in chronological order.
+  array<SkillRecordingAction> actions;
+};
+
 // Factory used by the WebUI page (caller) to create a PageHandler in the
 // browser process (callee) for the Context Hub page.
 interface PageHandlerFactory {
@@ -524,15 +563,19 @@ struct MemoryBankFileAttachment {
   string content;
 };
 
-// Represents a single recorded action during a skill recording session.
-struct SkillRecordingAction {
-  string description;
-  mojo_base.mojom.TimeDelta timestamp;
-};
-
-// Data collected during a skill recording session.
-struct SkillRecordingSessionData {
-  array<SkillRecordingAction> actions;
+// Result of validating a user-configured keyboard shortcut that opens the
+// Memory Banks search palette.
+enum MemoryBanksShortcutStatus {
+  // The shortcut can be used.
+  kValid,
+  // The shortcut could not be parsed, does not use a supported key (A-Z, 0-9),
+  // or does not include Ctrl, Alt or Command.
+  kInvalid,
+  // The shortcut uses a modifier combination reserved by the operating system
+  // (for example, Ctrl+Alt on Windows and Linux).
+  kDisallowedModifiers,
+  // The shortcut is already used by Chrome.
+  kConflictsWithBrowserShortcut,
 };
 
 // Provides access to context hub features.
@@ -789,6 +832,29 @@ interface PageHandler {
   [RuntimeFeature=kMemoryBanksSearchPalette]
   CopyAttachmentsToClipboard(array<MemoryBankFileAttachment> files)
       => (CopyAttachmentsToClipboardStatus status);
+
+  // Returns the user-configured keyboard shortcut that opens the Memory Banks
+  // search palette, formatted for display (for example, "Ctrl+Shift+K").
+  // Returns an empty string if no shortcut is set.
+  [RuntimeFeature=kMemoryBanksSearchPalette]
+  GetBrowseMemoryBanksShortcut() => (string display_text);
+
+  // Returns a platform shortcut to suggest when no shortcut is set yet, so the
+  // user can apply it with one click. It is never applied automatically.
+  // `shortcut` uses the `ui::Command` accelerator string format, and
+  // `display_text` is localized for display. Both are empty if no shortcut can
+  // be suggested.
+  [RuntimeFeature=kMemoryBanksSearchPalette]
+  GetSuggestedBrowseMemoryBanksShortcut()
+      => (string shortcut, string display_text);
+
+  // Sets the user-configured keyboard shortcut that opens the Memory Banks
+  // search palette. `shortcut` uses the `ui::Command` accelerator string format
+  // (for example, "Ctrl+Shift+K" or "Command+Shift+K"). An empty `shortcut`
+  // removes the shortcut.
+  [RuntimeFeature=kMemoryBanksSearchPalette]
+  SetBrowseMemoryBanksShortcut(string shortcut)
+      => (MemoryBanksShortcutStatus status);
 
   // Starts a skill recording session.
   [RuntimeFeature=kRecordReplay]

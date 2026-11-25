@@ -31,6 +31,9 @@ export enum ControlKeyState {
   DOWN_AND_CONSUMED,
 }
 
+const MODIFIER_KEYS =
+    ['Alt', 'AltGraph', 'CapsLock', 'Control', 'Meta', 'Shift'];
+
 type Constructor<T> = new (...args: any[]) => T;
 
 export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
@@ -102,8 +105,21 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     // stale results. `activeQueryId` is reset to -1 when the last query needs
     // to be abandoned. `nextQueryId_` is monotonically increasing to avoid
     // reusing IDs.
-    activeQueryId: number = -1;
+    private activeQueryId_: number = -1;
     private nextQueryId_: number = 0;
+
+    get activeQueryId(): number {
+      return this.activeQueryId_;
+    }
+
+    set activeQueryId(queryId: number) {
+      this.activeQueryId_ = queryId;
+      // An 'Enter' pressed before the active query's results arrived waits for
+      // them. Starting a new query, or abandoning the active one should abort
+      // the pending navigate.
+      this.lastIgnoredEnterEvent_ = null;
+    }
+
     lastQueriedInput: string|null = null;
     accessor multiLineEnabled: boolean = false;
     accessor singleLineOnInlineAutocomplete: boolean = false;
@@ -175,14 +191,26 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     // the current ones narrate the new selection. See
     // `onAutocompleteResultChanged()`.
     private narrateNextResultSelection_: boolean = false;
+    // The query for the text of an IME composition that was just committed,
+    // until the user presses a key or the mouse. The browser commits a
+    // composition before it dispatches the mouse press that ends it, e.g. on a
+    // match, so the results of that query could replace the match under the
+    // pointer before the click. The press freezes them instead, like key
+    // presses freeze results (see `onInputWrapperKeydown()`).
+    private compositionCommitQueryId_: number|null = null;
     private searchboxEventTracker_: EventTracker = new EventTracker();
     private callbackRouter_: PageCallbackRouter =
         SearchboxBrowserProxy.getInstance().callbackRouter;
+    private inputTextChangedListenerId_: number|null = null;
     private keywordSpaceTriggeringListenerId_: number|null = null;
     private availableKeywordModelsListenerId_: number|null = null;
 
     override connectedCallback() {
       super.connectedCallback();
+      this.inputTextChangedListenerId_ =
+          this.callbackRouter_.setInputText.addListener((text: string) => {
+            this.getInputElement().setInput({text, inline: ''});
+          });
 
       this.keywordSpaceTriggeringListenerId_ =
           this.callbackRouter_.setKeywordSpaceTriggeringEnabled.addListener(
@@ -204,6 +232,12 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       // potentially erasing user changes like cursor position.
       this.searchboxEventTracker_.add(this, 'input-mousedown', () => {
         this.activeQueryId = -1;
+      });
+      this.searchboxEventTracker_.add(this, 'mousedown', () => {
+        if (this.activeQueryId === this.compositionCommitQueryId_) {
+          this.activeQueryId = -1;
+        }
+        this.compositionCommitQueryId_ = null;
       });
       this.searchboxEventTracker_.add(
           this.getInputElement(), 'searchbox-input-empty-changed',
@@ -236,6 +270,10 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
     override disconnectedCallback() {
       super.disconnectedCallback();
       this.searchboxEventTracker_.removeAll();
+      if (this.inputTextChangedListenerId_ !== null) {
+        this.callbackRouter_.removeListener(this.inputTextChangedListenerId_);
+        this.inputTextChangedListenerId_ = null;
+      }
       if (this.keywordSpaceTriggeringListenerId_ !== null) {
         this.callbackRouter_.removeListener(
             this.keywordSpaceTriggeringListenerId_);
@@ -308,6 +346,8 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       this.dropdownIsVisible = false;
       this.result = null;
       this.getDropdownElement().unselect();
+      // The default match the additional text describes is gone.
+      this.getInputElement().clearAdditionalText();
       this.pageHandler().stopAutocomplete(/*clearResult=*/ true);
       // Autocomplete sends updates once it is stopped. Invalidate those results
       // by setting `activeQueryId` to -1.
@@ -397,7 +437,7 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       const match = matchIndex >= 0 && this.result?.matches ?
           this.result.matches[matchIndex] :
           null;
-      this.pageHandler().openPopupSelection(
+      this.pageHandler().openPopupSelectionWithDisposition(
           this.result?.sequenceId ?? 0, {
             line: matchIndex,
             state: SelectionLineState.kCtrlEnter,
@@ -448,6 +488,10 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       // post-deletion result.
       const deletedLine = this.pendingDeletionLine_;
       this.pendingDeletionLine_ = null;
+      // Likewise, an 'Enter' pressed before this query's results arrived waits
+      // for its first results only, so it can't navigate on a later update.
+      const ignoredEnterEvent = this.lastIgnoredEnterEvent_;
+      this.lastIgnoredEnterEvent_ = null;
 
       this.result = result;
       const hasMatches = this.hasMatches();
@@ -468,13 +512,13 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         this.getInputElement().setInput({
           text: this.lastQueriedInput ?? '',
           inline: firstMatch.inlineAutocompletion,
+          additionalText: firstMatch.additionalText,
         });
 
         // Navigate to the default up-to-date match if the user typed and
         // pressed 'Enter' too fast.
-        if (this.lastIgnoredEnterEvent_) {
-          this.navigateToMatch(0, this.lastIgnoredEnterEvent_);
-          this.lastIgnoredEnterEvent_ = null;
+        if (ignoredEnterEvent) {
+          this.navigateToMatch(0, ignoredEnterEvent);
         }
 
       } else {
@@ -610,6 +654,9 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         this.queryAutocomplete(
             input, /*preventInlineAutocomplete=*/ e.detail.isComposing,
             /*isOnFocus=*/ false);
+        if (event instanceof CompositionEvent) {
+          this.compositionCommitQueryId_ = this.activeQueryId;
+        }
       }
     }
 
@@ -643,7 +690,11 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       this.pageHandler().onFocusChanged(false);
     }
 
-    async onInputWrapperKeydown(e: KeyboardEvent) {
+    /**
+     * Updates the state that every key press affects. It's called by
+     * `onInputWrapperKeydown()` and its overrides.
+     */
+    updateStateForKeydown(e: KeyboardEvent) {
       // On user interaction, freeze the current results to avoid result updates
       // potentially erasing user changes like cursor position. Freezing on
       // 'enter' would break the fast-enter navigations via
@@ -651,17 +702,17 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       // pending results the navigation is waiting for, causing the navigation
       // to never occur. But this is a hack; comparing `e.key !=== 'Enter'` is
       // only a semi-accurate heuristic for whether a navigation is about to
-      // occur.
-      if (e.key !== 'Enter') {
+      // occur. Pressing a modifier key by itself (e.g. the 'Shift' of
+      // 'Shift+Enter') doesn't change the input, so it doesn't freeze the
+      // results either; otherwise, fast modified-Enter navigations would use
+      // stale results.
+      if (e.key !== 'Enter' && !MODIFIER_KEYS.includes(e.key)) {
         this.activeQueryId = -1;
       }
-      const modifier =
-          isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
-      if (modifier && e.key === 'z') {
-        e.stopPropagation();
-        return;
-      }
+      this.compositionCommitQueryId_ = null;
 
+      // Pressing another key with Ctrl consumes it, so a following Enter
+      // doesn't trigger Ctrl+Enter.
       if (this.shouldAppendDotComOnCtrlEnter()) {
         if (e.key === 'Control') {
           if (this.controlKeyState === ControlKeyState.UP) {
@@ -672,6 +723,16 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
             this.controlKeyState = ControlKeyState.DOWN_AND_CONSUMED;
           }
         }
+      }
+    }
+
+    async onInputWrapperKeydown(e: KeyboardEvent) {
+      this.updateStateForKeydown(e);
+      const modifier =
+          isMac ? e.metaKey && !e.ctrlKey : e.ctrlKey && !e.metaKey;
+      if (modifier && e.key === 'z') {
+        e.stopPropagation();
+        return;
       }
 
       const KEYDOWN_HANDLED_KEYS = [
@@ -777,6 +838,21 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
 
       if (this.selection.state === SelectionLineState.kKeywordMode) {
         e.preventDefault();
+        // In the unusual case where a user typed a keyword and query, then
+        // tabbed onto a keyword chip and pressed enter, we need to navigate to
+        // their keyword search even though there is no corresponding match or
+        // URL (because keyword chips don't have an associated URL since they're
+        // generally not navigable).
+        if (this.getInputElement().getInputValue().trim()) {
+          this.pageHandler().openPopupSelection(
+              this.result!.sequenceId, this.selection, {
+                altKey: e.altKey,
+                ctrlKey: e.ctrlKey,
+                metaKey: e.metaKey,
+                shiftKey: e.shiftKey,
+              });
+          return true;
+        }
         this.getInputElement().focus();
         return true;
       }
@@ -833,14 +909,14 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       const isKeywordMode = this.keywordModeManager_.isInKeywordMode ||
           selection.state === SelectionLineState.kKeywordMode;
       const isNormal = selection.state === SelectionLineState.kNormal;
-      const newInline = isNormal && !isKeywordMode && selection.line === 0 &&
-              match.allowedToBeDefaultMatch ?
-          match.inlineAutocompletion :
-          '';
+      const isDefaultMatch = isNormal && !isKeywordMode &&
+          selection.line === 0 && match.allowedToBeDefaultMatch;
+      const newInline = isDefaultMatch ? match.inlineAutocompletion : '';
       const newFillEnd = newFill.length - newInline.length;
       this.getInputElement().setInput({
         text: newFill.substr(0, newFillEnd),
         inline: newInline,
+        additionalText: isDefaultMatch ? match.additionalText : '',
         moveCursorToEnd: newInline.length === 0,
         isMatchPreview: this.isMatchPreview_(match, selection.line),
       });
@@ -920,34 +996,37 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       }
 
       const isPureCtrlEnter = this.shouldAppendDotComOnCtrlEnter() &&
-          e.ctrlKey && !e.shiftKey && !e.altKey && !e.metaKey &&
+          !this.inKeywordMode && e.ctrlKey && !e.shiftKey && !e.altKey &&
+          !e.metaKey &&
           this.controlKeyState !== ControlKeyState.DOWN_AND_CONSUMED;
 
       e.preventDefault();
       if (this.handleVirtualFocusEnter(e)) {
         return;
       }
-      // If no new query's `results` are pending (though new async results for
-      // the current query may be pending), navigate. Otherwise, the user
-      // pressed enter after sending a new query that hasn't returned any
-      // results yet. Wait for the 1st results of the new query before
-      // navigating.
-      if (this.activeQueryId === -1 ||
-          this.result?.queryId === this.activeQueryId) {
+      const resultsPending = this.activeQueryId !== -1 &&
+          this.result?.queryId !== this.activeQueryId;
+      if (isPureCtrlEnter) {
+        // Ctrl+Enter adds 'www.' and '.com' to the previewed match or the
+        // input, but not to the default match. If new results are pending, the
+        // preview is stale, so use the input.
+        const usePreview = !resultsPending &&
+            this.isMatchPreview_(this.selectedMatch, this.matchIndex);
+        this.openCtrlEnterMatch(usePreview ? this.matchIndex : -1);
+      } else if (!resultsPending) {
+        // If no new query's `results` are pending (though new async results for
+        // the current query may be pending), navigate.
         if (this.selectedMatch) {
-          if (isPureCtrlEnter) {
-            this.openCtrlEnterMatch(this.matchIndex);
-          } else {
-            this.navigateToMatch(this.matchIndex, e);
-          }
+          this.navigateToMatch(this.matchIndex, e);
         }
       } else {
         // User typed and pressed 'Enter' too quickly. Ignore this for now
         // because the matches are stale. Navigate to the default match (if
-        // one exists) once the up-to-date matches arrive.
-        this.lastIgnoredEnterEvent_ = e;
-        // Unfreeze `activeQueryId` so pending query results are accepted.
+        // one exists) once the up-to-date matches arrive. Unfreeze
+        // `activeQueryId` so pending query results are accepted. This must come
+        // first, since setting it clears `lastIgnoredEnterEvent_`.
         this.activeQueryId = this.nextQueryId_ - 1;
+        this.lastIgnoredEnterEvent_ = e;
       }
     }
 
@@ -1166,10 +1245,10 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
       // Update the input.
       if (this.selectedMatch) {
         const newFill = this.computeMatchFillIntoEdit(this.selectedMatch);
-        const newInline = this.selectedMatchIndex === 0 &&
-                this.selectedMatch.allowedToBeDefaultMatch ?
-            this.selectedMatch.inlineAutocompletion :
-            '';
+        const isDefaultMatch = this.selectedMatchIndex === 0 &&
+            this.selectedMatch.allowedToBeDefaultMatch;
+        const newInline =
+            isDefaultMatch ? this.selectedMatch.inlineAutocompletion : '';
         const newFillEnd = newFill.length - newInline.length;
         const text = newFill.substr(0, newFillEnd);
         if (!this.keywordModeManager_.isInKeywordMode) {
@@ -1180,6 +1259,8 @@ export const SearchboxMixin = <T extends Constructor<CrLitElement>>(
         this.getInputElement().setInput({
           text: text,
           inline: newInline,
+          additionalText: isDefaultMatch ? this.selectedMatch.additionalText :
+                                           '',
           moveCursorToEnd: newInline.length === 0,
           isMatchPreview: isMatchPreview,
         });
@@ -1365,6 +1446,7 @@ export interface SearchboxMixinInterface extends
   onAutocompleteResultChanged(result: AutocompleteResult|null): void;
   onInputFocusChanged(e: CustomEvent<{value: string}>): void;
   onInputWrapperFocusout(e: FocusEvent): void;
+  updateStateForKeydown(e: KeyboardEvent): void;
   onInputWrapperKeydown(e: KeyboardEvent): void;
   onMatchClick(): void;
   onMatchFocusin(e: CustomEvent<number>): void;

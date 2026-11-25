@@ -87,22 +87,22 @@ std::optional<cbor::rust::MapKey> ConvertCppMapKeyToRust(
     return std::nullopt;
   }
   return key.Visit(absl::Overload{
-      [](int64_t v) { return cbor::rust::MapKey::MakeInt(v); },
+      [](int64_t v) { return cbor::rust::MapKey::Int::Make(v); },
       [](const Value::BinaryValue& v) {
-        return cbor::rust::MapKey::MakeBytestring(
-            rs_std::SliceRef<const uint8_t>(v));
+        return cbor::rust::MapKey::Bytestring::Make(
+            rs::SliceRef<const uint8_t>(v));
       },
       [](const std::string& v) {
-        auto str_ref = rs_std::StrRef::FromUtf8(v);
+        auto str_ref = rs::StrRef::FromUtf8(v);
         CHECK(str_ref.has_value());
-        return cbor::rust::MapKey::MakeString(*str_ref);
+        return cbor::rust::MapKey::String::Make(*str_ref);
       },
       [&](const Value::InvalidUTF8& v) {
         if (!allow_invalid_utf8) {
           NOTREACHED() << constants::kUnsupportedMajorType;
         }
-        return cbor::rust::MapKey::MakeInvalidUtf8(
-            rs_std::SliceRef<const uint8_t>(v.bytes));
+        return cbor::rust::MapKey::InvalidUtf8::Make(
+            rs::SliceRef<const uint8_t>(v.bytes));
       },
       [](const auto&) -> cbor::rust::MapKey { NOTREACHED(); },
   });
@@ -121,23 +121,23 @@ std::optional<cbor::rust::Value> ConvertCppValueToRust(
         if (!allow_invalid_utf8) {
           NOTREACHED() << constants::kUnsupportedMajorType;
         }
-        return cbor::rust::Value::MakeInvalidUtf8(
-            rs_std::SliceRef<const uint8_t>(v.bytes));
+        return cbor::rust::Value::InvalidUtf8::Make(
+            rs::SliceRef<const uint8_t>(v.bytes));
       },
       [](int64_t v) -> std::optional<cbor::rust::Value> {
-        return cbor::rust::Value::MakeInt(v);
+        return cbor::rust::Value::Int::Make(v);
       },
       [](base::span<const uint8_t> v) -> std::optional<cbor::rust::Value> {
-        return cbor::rust::Value::MakeBytestring(
-            rs_std::SliceRef<const uint8_t>(v));
+        return cbor::rust::Value::Bytestring::Make(
+            rs::SliceRef<const uint8_t>(v));
       },
       [](std::string_view v) -> std::optional<cbor::rust::Value> {
-        auto str_ref = rs_std::StrRef::FromUtf8(v);
+        auto str_ref = rs::StrRef::FromUtf8(v);
         CHECK(str_ref.has_value());
-        return cbor::rust::Value::MakeString(*str_ref);
+        return cbor::rust::Value::String::Make(*str_ref);
       },
       [&](base::span<const Value> array) -> std::optional<cbor::rust::Value> {
-        rs_std::Vec<cbor::rust::Value> items =
+        rs::Vec<cbor::rust::Value> items =
             cbor::rust::vec_with_capacity_values(array.size());
         for (const Value& elem : array) {
           std::optional<cbor::rust::Value> converted = ConvertCppValueToRust(
@@ -147,10 +147,10 @@ std::optional<cbor::rust::Value> ConvertCppValueToRust(
           }
           cbor::rust::vec_push_value(items, *std::move(converted));
         }
-        return cbor::rust::Value::MakeArray(std::move(items));
+        return cbor::rust::Value::Array::Make(std::move(items));
       },
       [&](const Value::MapValue& map) -> std::optional<cbor::rust::Value> {
-        rs_std::Vec<cbor::rust::MapEntry> entries =
+        rs::Vec<cbor::rust::MapEntry> entries =
             cbor::rust::vec_with_capacity_entries(map.size());
         for (const auto& [cpp_key, cpp_value] : map) {
           std::optional<cbor::rust::MapKey> key = ConvertCppMapKeyToRust(
@@ -168,17 +168,17 @@ std::optional<cbor::rust::Value> ConvertCppValueToRust(
               cbor::rust::MapEntry{*std::move(key), *std::move(value)});
         }
         // `Value::MapValue` is already sorted in canonical CBOR order.
-        return cbor::rust::Value::MakeMap(
+        return cbor::rust::Value::Map::Make(
             cbor::rust::Map::from_sorted_vec_unchecked(std::move(entries)));
       },
       [](bool v) -> std::optional<cbor::rust::Value> {
-        return cbor::rust::Value::MakeBoolean(v);
+        return cbor::rust::Value::Boolean::Make(v);
       },
       [](Value::Null) -> std::optional<cbor::rust::Value> {
-        return cbor::rust::Value::MakeNull();
+        return cbor::rust::Value::Null::Make();
       },
       [](Value::Undefined) -> std::optional<cbor::rust::Value> {
-        return cbor::rust::Value::MakeUndefined();
+        return cbor::rust::Value::Undefined::Make();
       },
   });
 }
@@ -207,7 +207,7 @@ std::optional<std::vector<uint8_t>> Writer::Write(ValueView node,
     if (!rust_val) {
       return std::nullopt;
     }
-    rs_std::Vec<uint8_t> out = cbor::rust::write(*rust_val);
+    rs::Vec<uint8_t> out = cbor::rust::write(*rust_val);
     output_size = out.size();
     return std::vector<uint8_t>(out.begin(), out.end());
   }

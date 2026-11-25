@@ -2,7 +2,6 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-
 #include "net/http/http_stream_factory.h"
 
 #include <stdint.h>
@@ -18,6 +17,7 @@
 
 #include "base/byte_size.h"
 #include "base/compiler_specific.h"
+#include "base/containers/flat_set.h"
 #include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
 #include "base/run_loop.h"
@@ -25,6 +25,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "build/build_config.h"
+#include "build/buildflag.h"
 #include "net/base/completion_once_callback.h"
 #include "net/base/features.h"
 #include "net/base/net_errors.h"
@@ -39,10 +40,13 @@
 #include "net/base/session_usage.h"
 #include "net/base/test_completion_callback.h"
 #include "net/base/test_proxy_delegate.h"
+#include "net/cert/cert_status_flags.h"
 #include "net/cert/mock_cert_verifier.h"
 #include "net/cert/multi_log_ct_verifier.h"
+#include "net/dns/dns_alias_utility.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/dns/public/secure_dns_policy.h"
+#include "net/http/bidirectional_stream.h"
 #include "net/http/bidirectional_stream_impl.h"
 #include "net/http/bidirectional_stream_request_info.h"
 #include "net/http/http_auth_handler_factory.h"
@@ -57,6 +61,7 @@
 #include "net/http/http_stream_pool_test_util.h"
 #include "net/http/transport_security_state.h"
 #include "net/log/net_log_with_source.h"
+#include "net/net_buildflags.h"
 #include "net/proxy_resolution/configured_proxy_resolution_service.h"
 #include "net/proxy_resolution/proxy_info.h"
 #include "net/quic/mock_crypto_client_stream_factory.h"
@@ -189,9 +194,8 @@ class MockWebSocketHandshakeStream : public WebSocketHandshakeStreamBase {
       LoadTimingInternalInfo* load_timing_internal_info) const override {}
   void SetPriority(RequestPriority priority) override {}
   std::unique_ptr<HttpStream> RenewStreamForAuth() override { return nullptr; }
-  const std::set<std::string>& GetDnsAliases() const override {
-    static const base::NoDestructor<std::set<std::string>> nullset_result;
-    return *nullset_result;
+  const base::flat_set<std::string>& GetDnsAliases() const override {
+    return dns_alias_utility::EmptyDnsAliases();
   }
   std::string_view GetAcceptChViaAlps() const override { return {}; }
 
@@ -408,12 +412,12 @@ class WebSocketStreamCreateHelper
   }
   std::unique_ptr<WebSocketHandshakeStreamBase> CreateHttp2Stream(
       base::WeakPtr<SpdySession> session,
-      std::set<std::string> dns_aliases) override {
+      base::flat_set<std::string> dns_aliases) override {
     NOTREACHED();
   }
   std::unique_ptr<WebSocketHandshakeStreamBase> CreateHttp3Stream(
       std::unique_ptr<QuicChromiumClientSession::Handle> session,
-      std::set<std::string> dns_aliases) override {
+      base::flat_set<std::string> dns_aliases) override {
     NOTREACHED();
   }
 };
@@ -1012,9 +1016,8 @@ TEST_P(HttpStreamFactoryTest, JobNotifiesProxy) {
   const ProxyRetryInfoMap& retry_info =
       session->proxy_resolution_service()->proxy_retry_info();
   EXPECT_EQ(1u, retry_info.size());
-  auto iter = retry_info.find(
-      ProxyChain(ProxyUriToProxyServer("bad:99", ProxyServer::SCHEME_HTTP)));
-  EXPECT_TRUE(iter != retry_info.end());
+  EXPECT_TRUE(retry_info.contains(
+      ProxyChain(ProxyUriToProxyServer("bad:99", ProxyServer::SCHEME_HTTP))));
 }
 
 // This test requests a stream for an https:// URL using an HTTP proxy.
@@ -1070,6 +1073,7 @@ TEST_P(HttpStreamFactoryTest, NoProxyFallbackOnTunnelFail) {
   EXPECT_EQ(0u, retry_info.size());
 }
 
+#if BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 // List of errors that are used in the tests related to QUIC proxy.
 const int quic_proxy_test_mock_errors[] = {
     ERR_PROXY_CONNECTION_FAILED,
@@ -1092,9 +1096,8 @@ const int quic_proxy_test_mock_errors[] = {
 // Tests that a bad QUIC proxy is added to the list of bad proxies.
 TEST_P(HttpStreamFactoryTest, QuicProxyMarkedAsBad) {
   for (int quic_proxy_test_mock_error : quic_proxy_test_mock_errors) {
-    auto quic_proxy_chain =
-        ProxyChain::ForIpProtection({ProxyServer::FromSchemeHostAndPort(
-            ProxyServer::SCHEME_QUIC, "bad", 99)});
+    auto quic_proxy_chain = ProxyChain({ProxyServer::FromSchemeHostAndPort(
+        ProxyServer::SCHEME_QUIC, "bad", 99)});
     std::unique_ptr<ProxyResolutionService> proxy_resolution_service =
         ConfiguredProxyResolutionService::CreateFixedFromProxyChainsForTest(
             {quic_proxy_chain, ProxyChain::Direct()},
@@ -1161,10 +1164,11 @@ TEST_P(HttpStreamFactoryTest, QuicProxyMarkedAsBad) {
     EXPECT_EQ(1u, retry_info.size()) << quic_proxy_test_mock_error;
     EXPECT_TRUE(requester.used_proxy_info().is_direct());
 
-    auto iter = retry_info.find(quic_proxy_chain);
-    EXPECT_TRUE(iter != retry_info.end()) << quic_proxy_test_mock_error;
+    EXPECT_TRUE(retry_info.contains(quic_proxy_chain))
+        << quic_proxy_test_mock_error;
   }
 }
+#endif  // BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 
 // BidirectionalStreamImpl::Delegate to wait until response headers are
 // received.
@@ -1193,6 +1197,7 @@ class TestBidirectionalDelegate : public BidirectionalStreamImpl::Delegate {
   quiche::HttpHeaderBlock response_headers_;
 };
 
+#if BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 struct QuicTestParams {
   QuicTestParams(quic::ParsedQuicVersion quic_version,
                  bool happy_eyeballs_v3_enabled)
@@ -1218,16 +1223,18 @@ std::vector<QuicTestParams> GetTestParams() {
   }
   return params;
 }
+#endif  // BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 
 }  // namespace
 
+#if BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 TEST_P(HttpStreamFactoryTest, UsePreConnectIfNoZeroRTT) {
   for (int num_streams = 1; num_streams < 3; ++num_streams) {
     GURL url = GURL("https://www.google.com");
 
     SpdySessionDependencies session_deps(
         ConfiguredProxyResolutionService::CreateFixedFromProxyChainsForTest(
-            {ProxyChain::ForIpProtection({ProxyServer::FromSchemeHostAndPort(
+            {ProxyChain({ProxyServer::FromSchemeHostAndPort(
                 ProxyServer::SCHEME_QUIC, "quic_proxy", 443)})},
             TRAFFIC_ANNOTATION_FOR_TESTS));
 
@@ -1255,9 +1262,8 @@ TEST_P(HttpStreamFactoryTest, UsePreConnectIfNoZeroRTT) {
     auto session =
         std::make_unique<HttpNetworkSession>(session_params, session_context);
     HttpNetworkSessionPeer peer(session.get());
-    ProxyChain proxy_chain =
-        ProxyChain::ForIpProtection({ProxyServer::FromSchemeHostAndPort(
-            ProxyServer::SCHEME_QUIC, "quic_proxy", 443)});
+    ProxyChain proxy_chain({ProxyServer::FromSchemeHostAndPort(
+        ProxyServer::SCHEME_QUIC, "quic_proxy", 443)});
     CommonConnectJobParams common_connect_job_params =
         session->CreateCommonConnectJobParams();
     auto http_proxy_pool =
@@ -1272,6 +1278,7 @@ TEST_P(HttpStreamFactoryTest, UsePreConnectIfNoZeroRTT) {
     EXPECT_EQ(num_streams, http_proxy_pool_ptr->last_num_streams());
   }
 }
+#endif  // BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 
 namespace {
 
@@ -2218,6 +2225,7 @@ TEST_P(HttpStreamFactoryTest, RequestBidirectionalStreamImpl) {
   EXPECT_TRUE(requester.used_proxy_info().is_direct());
 }
 
+#if BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
 // Tests for creating an HTTP stream via QUIC.
 class HttpStreamFactoryQuicTest
     : public TestWithTaskEnvironment,
@@ -2410,7 +2418,7 @@ TEST_P(HttpStreamFactoryQuicTest, RequestHttpStreamOverQuicProxy) {
   GURL kRequestUrl("https://www.example.org");
   session_deps().proxy_resolution_service =
       ConfiguredProxyResolutionService::CreateFixedFromProxyChainsForTest(
-          {ProxyChain::ForIpProtection({ProxyServer::FromSchemeHostAndPort(
+          {ProxyChain({ProxyServer::FromSchemeHostAndPort(
               ProxyServer::SCHEME_QUIC, "qproxy.example.org", 8888)})},
           TRAFFIC_ANNOTATION_FOR_TESTS);
 
@@ -2494,6 +2502,7 @@ TEST_P(HttpStreamFactoryQuicTest, RequestHttpStreamOverQuicProxy) {
   proxy_quic_data.ExpectAllWriteDataConsumed();
 }
 
+#if BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
 // Check that requesting an HTTP stream over a two QUIC proxies sends the
 // correct set of QUIC packets.
 TEST_P(HttpStreamFactoryQuicTest, RequestHttpStreamOverTwoQuicProxies) {
@@ -2502,7 +2511,7 @@ TEST_P(HttpStreamFactoryQuicTest, RequestHttpStreamOverTwoQuicProxies) {
   session_deps().proxy_resolution_service =
       ConfiguredProxyResolutionService::CreateFixedFromProxyChainsForTest(
           {
-              ProxyChain::ForIpProtection(
+              ProxyChain(
                   {ProxyServer::FromSchemeHostAndPort(
                        ProxyServer::SCHEME_QUIC, "qproxy1.example.org", 8888),
                    ProxyServer::FromSchemeHostAndPort(
@@ -2640,6 +2649,41 @@ TEST_P(HttpStreamFactoryQuicTest, RequestHttpStreamOverTwoQuicProxies) {
   proxy_quic_data.ExpectAllReadDataConsumed();
   proxy_quic_data.ExpectAllWriteDataConsumed();
 }
+#endif  // BUILDFLAG(ENABLE_BRACKETED_PROXY_URIS)
+#endif  // BUILDFLAG(ENABLE_QUIC_PROXY_SUPPORT)
+
+// BidirectionalStream::Delegate that waits for response headers or a failure.
+class WaitForHeadersBidirectionalStreamDelegate
+    : public BidirectionalStream::Delegate {
+ public:
+  WaitForHeadersBidirectionalStreamDelegate() = default;
+  ~WaitForHeadersBidirectionalStreamDelegate() override = default;
+
+  // Waits for headers to be received or for the stream to fail. Returns the
+  // error, or OK if headers were received.
+  int WaitForHeaders() {
+    run_loop_.Run();
+    return error_;
+  }
+
+  // BidirectionalStream::Delegate implementation:
+  void OnStreamReady(bool request_headers_sent) override {}
+  void OnHeadersReceived(const quiche::HttpHeaderBlock& response_headers,
+                         const ProxyInfo& used_proxy_info) override {
+    run_loop_.Quit();
+  }
+  void OnDataRead(int bytes_read) override {}
+  void OnDataSent() override {}
+  void OnTrailersReceived(const quiche::HttpHeaderBlock& trailers) override {}
+  void OnFailed(int error) override {
+    error_ = error;
+    run_loop_.Quit();
+  }
+
+ private:
+  base::RunLoop run_loop_;
+  int error_ = OK;
+};
 
 class HttpStreamFactoryBidirectionalQuicTest
     : public TestWithTaskEnvironment,
@@ -2743,6 +2787,76 @@ class HttpStreamFactoryBidirectionalQuicTest
   quic::ParsedQuicVersion version() const { return version_; }
 
   MockHostResolver* host_resolver() { return &host_resolver_; }
+
+  // Certificate verification details used for QUIC connections. Its
+  // `cert_status` may be modified before calling Initialize().
+  ProofVerifyDetailsChromium& verify_details() { return verify_details_; }
+
+  // Seeds a QUIC alternative service on port 443 for `default_url_`, then makes
+  // a BidirectionalStream request over QUIC that receives a response with an
+  // Alt-Svc header advertising HTTP/2 on port 444. Returns the alternative
+  // services for `default_url_` afterwards. Initialize() must not have been
+  // called yet.
+  AlternativeServiceInfoVector SendRequestAndRecieveAltSvcResponseHeader() {
+    MockQuicData mock_quic_data(version());
+    // Use the default priority, so that MakeRequestHeadersPacket() doesn't add
+    // a PRIORITY_UPDATE frame.
+    spdy::SpdyPriority priority =
+        ConvertRequestPriorityToQuicPriority(DEFAULT_PRIORITY);
+    size_t spdy_headers_frame_length;
+    int packet_num = 1;
+    mock_quic_data.AddWrite(
+        SYNCHRONOUS,
+        client_packet_maker().MakeInitialSettingsPacket(packet_num++));
+    mock_quic_data.AddWrite(
+        SYNCHRONOUS,
+        client_packet_maker().MakeRequestHeadersPacket(
+            packet_num++, GetNthClientInitiatedBidirectionalStreamId(0),
+            /*fin=*/true, priority,
+            client_packet_maker().GetRequestHeaders("GET", "https", "/"),
+            &spdy_headers_frame_length));
+    quiche::HttpHeaderBlock response_headers =
+        server_packet_maker().GetResponseHeaders("200");
+    // Advertise HTTP/2 rather than QUIC, since not all QUIC versions can be
+    // advertised via Alt-Svc.
+    response_headers["alt-svc"] = "h2=\":444\"";
+    size_t spdy_response_headers_frame_length;
+    mock_quic_data.AddRead(ASYNC,
+                           server_packet_maker().MakeResponseHeadersPacket(
+                               1, GetNthClientInitiatedBidirectionalStreamId(0),
+                               /*fin=*/true, std::move(response_headers),
+                               &spdy_response_headers_frame_length));
+    mock_quic_data.AddRead(SYNCHRONOUS, ERR_IO_PENDING);  // No more read data.
+    mock_quic_data.AddSocketDataToFactory(&socket_factory());
+
+    // Add hanging data for the HTTP job.
+    StaticSocketDataProvider hanging_data;
+    hanging_data.set_connect_data(MockConnect(SYNCHRONOUS, ERR_IO_PENDING));
+    socket_factory().AddSocketDataProvider(&hanging_data);
+
+    Initialize();
+    AddQuicAlternativeService();
+
+    auto request_info = std::make_unique<BidirectionalStreamRequestInfo>();
+    request_info->method = "GET";
+    request_info->url = default_url_;
+    request_info->end_stream_on_headers = true;
+    request_info->priority = DEFAULT_PRIORITY;
+
+    WaitForHeadersBidirectionalStreamDelegate delegate;
+    auto stream = std::make_unique<BidirectionalStream>(
+        std::move(request_info), session(),
+        /*send_request_headers_automatically=*/true, &delegate);
+    EXPECT_THAT(delegate.WaitForHeaders(), IsOk());
+    EXPECT_EQ(NextProto::kProtoQUIC, stream->GetProtocol());
+
+    // Read the end of the stream, so it's cleanly closed.
+    auto buffer = base::MakeRefCounted<IOBufferWithSize>(1);
+    EXPECT_THAT(stream->ReadData(buffer.get(), 1), IsOk());
+
+    return session()->http_server_properties()->GetAlternativeServiceInfos(
+        url::SchemeHostPort(default_url_), NetworkAnonymizationKey());
+  }
 
  private:
   quic::test::QuicFlagSaver saver_;
@@ -2862,6 +2976,33 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest,
                                  HttpNetworkSession::SocketPoolType::kNormal,
                                  ProxyChain::Direct()));
   EXPECT_TRUE(requester.used_proxy_info().is_direct());
+}
+
+// Tests that BidirectionalStreams process Alt-Svc headers received over QUIC.
+TEST_P(HttpStreamFactoryBidirectionalQuicTest,
+       BidirectionalStreamQuicProcessesAltSvcHeader) {
+  AlternativeServiceInfoVector alt_svc_infos =
+      SendRequestAndRecieveAltSvcResponseHeader();
+  // The Alt-Svc header should have replaced the seeded alternative service.
+  ASSERT_EQ(1u, alt_svc_infos.size());
+  EXPECT_EQ(NextProto::kProtoHTTP2,
+            alt_svc_infos[0].alternative_service().protocol);
+  EXPECT_EQ(444, alt_svc_infos[0].alternative_service().port);
+}
+
+// Tests that BidirectionalStreams ignore Alt-Svc headers received over QUIC
+// connections with certificate errors.
+TEST_P(HttpStreamFactoryBidirectionalQuicTest,
+       BidirectionalStreamQuicIgnoresAltSvcHeaderWithCertError) {
+  verify_details().cert_verify_result.cert_status =
+      CERT_STATUS_AUTHORITY_INVALID;
+  AlternativeServiceInfoVector alt_svc_infos =
+      SendRequestAndRecieveAltSvcResponseHeader();
+  // The seeded alternative service should be unchanged.
+  ASSERT_EQ(1u, alt_svc_infos.size());
+  EXPECT_EQ(NextProto::kProtoQUIC,
+            alt_svc_infos[0].alternative_service().protocol);
+  EXPECT_EQ(443, alt_svc_infos[0].alternative_service().port);
 }
 
 // Tests that if Http job fails, but Quic job succeeds, we return
@@ -3757,8 +3898,8 @@ TEST_P(HttpStreamFactoryTest, MultiIPAliases) {
 TEST_P(HttpStreamFactoryTest, SpdyIPPoolingWithDnsAliases) {
   SpdySessionDependencies session_deps;
 
-  const std::set<std::string> kDnsAliasesA({"alias1", "alias2"});
-  const std::set<std::string> kDnsAliasesB({"b.com", "b.org", "b.net"});
+  const base::flat_set<std::string> kDnsAliasesA({"alias1", "alias2"});
+  const base::flat_set<std::string> kDnsAliasesB({"b.com", "b.org", "b.net"});
   const std::string kHostnameC("c.example.org");
 
   session_deps.host_resolver->rules()->AddIPLiteralRuleWithDnsAliases(
@@ -3766,7 +3907,8 @@ TEST_P(HttpStreamFactoryTest, SpdyIPPoolingWithDnsAliases) {
   session_deps.host_resolver->rules()->AddIPLiteralRuleWithDnsAliases(
       "b.example.org", "127.0.0.1", kDnsAliasesB);
   session_deps.host_resolver->rules()->AddIPLiteralRuleWithDnsAliases(
-      "c.example.org", "127.0.0.1", /*dns_aliases=*/std::set<std::string>());
+      "c.example.org", "127.0.0.1",
+      /*dns_aliases=*/base::flat_set<std::string>());
 
   // Prepare for an HTTPS connect.
   MockRead mock_read(SYNCHRONOUS, ERR_IO_PENDING);
@@ -4111,8 +4253,8 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest, QuicIPPoolingWithDnsAliases) {
   const GURL kUrlA("https://a.example.org");
   const GURL kUrlB("https://b.example.org");
   const GURL kUrlC("https://c.example.org");
-  const std::set<std::string> kDnsAliasesA({"alias1", "alias2"});
-  const std::set<std::string> kDnsAliasesB({"b.com", "b.org", "b.net"});
+  const base::flat_set<std::string> kDnsAliasesA({"alias1", "alias2"});
+  const base::flat_set<std::string> kDnsAliasesB({"b.com", "b.org", "b.net"});
 
   host_resolver()->rules()->AddIPLiteralRuleWithDnsAliases(
       kUrlA.GetHost(), "127.0.0.1", kDnsAliasesA);
@@ -4120,7 +4262,7 @@ TEST_P(HttpStreamFactoryBidirectionalQuicTest, QuicIPPoolingWithDnsAliases) {
       kUrlB.GetHost(), "127.0.0.1", kDnsAliasesB);
   host_resolver()->rules()->AddIPLiteralRuleWithDnsAliases(
       kUrlC.GetHost(), "127.0.0.1",
-      /*dns_aliases=*/std::set<std::string>());
+      /*dns_aliases=*/base::flat_set<std::string>());
 
   // Prepare mock QUIC data for a first session establishment.
   MockQuicData mock_quic_data(version());

@@ -119,7 +119,9 @@ class DiceWebSigninInterceptionBubbleBrowserTest
             .Build();
     AccountInfo primary_account;
     if (intercept_type !=
-        WebSigninInterceptor::SigninInterceptionType::kChromeSignin) {
+            WebSigninInterceptor::SigninInterceptionType::kChromeSignin &&
+        intercept_type != WebSigninInterceptor::SigninInterceptionType::
+                              kChromeSigninNonIntercept) {
       primary_account =
           AccountInfo::Builder(GaiaId("ID2"), "test2@example.com")
               .SetAccountId(CoreAccountId::FromGaiaId(GaiaId("ID2")))
@@ -198,6 +200,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -238,6 +241,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -302,6 +306,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -351,6 +356,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -396,6 +402,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -442,6 +449,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -510,6 +518,7 @@ IN_PROC_BROWSER_TEST_F(DiceWebSigninInterceptionBubbleBrowserTest,
   base::HistogramTester::CountsMap expected_histogram_total_count = {
       {"Signin.InterceptResult.MultiUser", 1},
       {"Signin.InterceptResult.MultiUser.NoSync", 1},
+      {"Signin.InterceptResult.MultiUser.NotPersonalized", 1},
   };
   EXPECT_THAT(
       histogram_tester.GetTotalCountsForPrefix("Signin.InterceptResult."),
@@ -846,6 +855,10 @@ const InterceptTypesParam kInterceptTypesTestParams[] = {
          IDS_SIGNIN_DICE_WEB_INTERCEPT_AVATAR_BUTTON_SWITCH_PROFILE_TEXT},
     {.intercept_type =
          WebSigninInterceptor::SigninInterceptionType::kChromeSignin,
+     .expected_avatar_text_id =
+         IDS_AVATAR_BUTTON_INTERCEPT_BUBBLE_CHROME_SIGNIN_TEXT},
+    {.intercept_type = WebSigninInterceptor::SigninInterceptionType::
+         kChromeSigninNonIntercept,
      .expected_avatar_text_id =
          IDS_AVATAR_BUTTON_INTERCEPT_BUBBLE_CHROME_SIGNIN_TEXT},
 };

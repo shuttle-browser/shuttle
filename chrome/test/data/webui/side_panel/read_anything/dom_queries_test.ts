@@ -2,8 +2,8 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {getNearestTextBoundaryPoint, getRectsForSegments, getTextNodeOffsets, ReadAloudNode} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
-import {assertEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
+import {getFirstTextNodeAtOrAfter, getLastTextNodeBefore, getNearestTextBoundaryPoint, getRectsForSegments, getTextNodeOffsets, ReadAloudNode} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {assertDeepEquals, assertEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 
 suite('DomQueries', () => {
   setup(() => {
@@ -137,8 +137,7 @@ suite('DomQueries', () => {
       div.textContent = 'Clocks tick and phones still ring';
       document.body.appendChild(div);
 
-      const segments =
-          [{node: ReadAloudNode.create(div)!, start: 0, length: 6}];
+      const segments = [{node: ReadAloudNode.create(div), start: 0, length: 6}];
       const rects = getRectsForSegments(segments);
 
       assertTrue(rects.length > 0);
@@ -157,7 +156,7 @@ suite('DomQueries', () => {
       document.body.appendChild(root);
 
       const segments =
-          [{node: ReadAloudNode.create(root)!, start: 11, length: 5}];
+          [{node: ReadAloudNode.create(root), start: 11, length: 5}];
       const rects = getRectsForSegments(segments);
 
       assertTrue(rects.length > 0);
@@ -169,8 +168,8 @@ suite('DomQueries', () => {
       document.body.appendChild(div);
 
       const segments = [
-        {node: ReadAloudNode.create(div)!, start: 0, length: 3},
-        {node: ReadAloudNode.create(div)!, start: 4, length: 6},
+        {node: ReadAloudNode.create(div), start: 0, length: 3},
+        {node: ReadAloudNode.create(div), start: 4, length: 6},
       ];
       const rects = getRectsForSegments(segments);
 
@@ -184,8 +183,8 @@ suite('DomQueries', () => {
       document.body.appendChild(div);
 
       const segments = [
-        {node: ReadAloudNode.create(div)!, start: 0, length: 10},
-        {node: ReadAloudNode.create(div)!, start: 3, length: 7},
+        {node: ReadAloudNode.create(div), start: 0, length: 10},
+        {node: ReadAloudNode.create(div), start: 3, length: 7},
       ];
       const rects = getRectsForSegments(segments);
 
@@ -202,8 +201,8 @@ suite('DomQueries', () => {
       document.body.appendChild(div2);
 
       const segments = [
-        {node: ReadAloudNode.create(div1)!, start: 0, length: 4},
-        {node: ReadAloudNode.create(div2)!, start: 0, length: 3},
+        {node: ReadAloudNode.create(div1), start: 0, length: 4},
+        {node: ReadAloudNode.create(div2), start: 0, length: 3},
       ];
       const rects = getRectsForSegments(segments);
 
@@ -333,5 +332,111 @@ suite('DomQueries', () => {
           assertEquals(child1, result.node);
           assertEquals(5, result.offset);
         });
+  });
+
+  suite('getFirstTextNodeAtOrAfter', () => {
+    let root: HTMLElement;
+    let hello: Text;
+    let space: Text;
+    let world: Text;
+
+    // <div>"hello"<span>" "</span>"world"</div>
+    setup(() => {
+      root = document.createElement('div');
+      hello = document.createTextNode('hello');
+      space = document.createTextNode(' ');
+      world = document.createTextNode('world');
+      const span = document.createElement('span');
+      span.appendChild(space);
+      root.append(hello, span, world);
+      document.body.appendChild(root);
+    });
+
+    test('returns the first text node at or after the point', () => {
+      // The point is inside the text node.
+      assertEquals(hello, getFirstTextNodeAtOrAfter(hello, 2, root));
+      // The point is at the end of the text node.
+      assertEquals(space, getFirstTextNodeAtOrAfter(hello, 5, root));
+      // The point is before the child at the offset.
+      assertEquals(space, getFirstTextNodeAtOrAfter(root, 1, root));
+      // The point is after all of the text.
+      assertEquals(null, getFirstTextNodeAtOrAfter(root, 3, root));
+    });
+
+    test('skips text nodes that are not valid targets', () => {
+      const isHello = (node: Node) => node === hello;
+      const isWorld = (node: Node) => node === world;
+      // The text node containing the point is valid.
+      assertEquals(hello, getFirstTextNodeAtOrAfter(hello, 2, root, isHello));
+      // The text node containing the point is invalid.
+      assertEquals(world, getFirstTextNodeAtOrAfter(hello, 2, root, isWorld));
+      // The text node in the child at the offset is invalid.
+      assertEquals(world, getFirstTextNodeAtOrAfter(root, 1, root, isWorld));
+      // No text node after the point is valid.
+      assertEquals(null, getFirstTextNodeAtOrAfter(hello, 5, root, isHello));
+    });
+
+    test('passes each text node it considers to isValidTarget', () => {
+      const considered: Node[] = [];
+      const isValidTarget = (node: Node) => {
+        considered.push(node);
+        return node === world;
+      };
+      getFirstTextNodeAtOrAfter(hello, 2, root, isValidTarget);
+      assertDeepEquals([hello, space, world], considered);
+    });
+  });
+
+  suite('getLastTextNodeBefore', () => {
+    let root: HTMLElement;
+    let hello: Text;
+    let space: Text;
+    let world: Text;
+
+    // <div>"hello"<span>" "</span>"world"</div>
+    setup(() => {
+      root = document.createElement('div');
+      hello = document.createTextNode('hello');
+      space = document.createTextNode(' ');
+      world = document.createTextNode('world');
+      const span = document.createElement('span');
+      span.appendChild(space);
+      root.append(hello, span, world);
+      document.body.appendChild(root);
+    });
+
+    test('returns the last text node before the point', () => {
+      // The point is inside the text node.
+      assertEquals(world, getLastTextNodeBefore(world, 2, root));
+      // The point is at the start of the text node.
+      assertEquals(space, getLastTextNodeBefore(world, 0, root));
+      // The point is after the child before the offset.
+      assertEquals(space, getLastTextNodeBefore(root, 2, root));
+      // The point is before all of the text.
+      assertEquals(null, getLastTextNodeBefore(root, 0, root));
+    });
+
+    test('skips text nodes that are not valid targets', () => {
+      const isHello = (node: Node) => node === hello;
+      const isWorld = (node: Node) => node === world;
+      // The text node containing the point is valid.
+      assertEquals(world, getLastTextNodeBefore(world, 2, root, isWorld));
+      // The text node containing the point is invalid.
+      assertEquals(hello, getLastTextNodeBefore(world, 2, root, isHello));
+      // The text node in the child before the offset is invalid.
+      assertEquals(hello, getLastTextNodeBefore(root, 2, root, isHello));
+      // No text node before the point is valid.
+      assertEquals(null, getLastTextNodeBefore(world, 0, root, isWorld));
+    });
+
+    test('passes each text node it considers to isValidTarget', () => {
+      const considered: Node[] = [];
+      const isValidTarget = (node: Node) => {
+        considered.push(node);
+        return node === hello;
+      };
+      getLastTextNodeBefore(world, 2, root, isValidTarget);
+      assertDeepEquals([world, space, hello], considered);
+    });
   });
 });

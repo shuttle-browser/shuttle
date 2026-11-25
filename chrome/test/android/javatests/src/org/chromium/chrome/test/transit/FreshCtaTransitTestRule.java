@@ -4,12 +4,10 @@
 
 package org.chromium.chrome.test.transit;
 
-import android.app.Activity;
 import android.content.Intent;
 
 import com.google.errorprone.annotations.CheckReturnValue;
 
-import org.junit.rules.TestRule;
 import org.junit.runner.Description;
 import org.junit.runners.model.Statement;
 
@@ -21,10 +19,10 @@ import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.test.ChromeTabbedActivityTestRule;
 import org.chromium.chrome.test.transit.ntp.RegularNewTabPageStation;
+import org.chromium.chrome.test.transit.page.BasePageStation;
 import org.chromium.chrome.test.transit.page.CtaPageStation;
 import org.chromium.chrome.test.transit.page.WebPageStation;
-
-import java.util.List;
+import org.chromium.chrome.test.util.TabGroupSyncTestUtils;
 
 /**
  * Rule for integration tests that start a new {@link ChromeTabbedActivity} in each test case.
@@ -35,9 +33,8 @@ import java.util.List;
  * process.
  */
 @NullMarked
-public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements TestRule {
+public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule {
     private static final String TAG = "TestRule";
-    private boolean mSkipInstanceAndTabStateCleanup;
 
     /** Use {@link ChromeTransitTestRules#freshChromeTabbedActivityRule()}. */
     FreshCtaTransitTestRule() {
@@ -55,40 +52,43 @@ public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements T
                 new Statement() {
                     @Override
                     public void evaluate() throws Throwable {
-                        mSkipInstanceAndTabStateCleanup = false;
+                        Throwable failure = null;
                         try {
                             statement.evaluate();
-                        } finally {
-                            try {
-                                // crbug.com/460433346: Skip this clean up to avoid issues in some
-                                // tests, mostly post tasks running after instance and tab state
-                                // clean up on destroyed Activities.
-                                if (!mSkipInstanceAndTabStateCleanup) {
-                                    closeAllWindowsAndDeleteInstanceAndTabState();
-                                }
-                            } finally {
-                                TrafficControl.hopOffPublicTransit();
-                            }
+                        } catch (Throwable t) {
+                            failure = t;
                         }
+                        try {
+                            closeAllWindowsAndDeleteInstanceAndTabState();
+                        } catch (Throwable t) {
+                            // Keep the test's own failure as the primary one.
+                            if (failure == null) {
+                                failure = t;
+                            } else {
+                                failure.addSuppressed(t);
+                            }
+                        } finally {
+                            TrafficControl.hopOffPublicTransit();
+                        }
+                        if (failure != null) throw failure;
                     }
                 };
 
         return mActivityTestRule.apply(thisStatement, description);
     }
 
-    /** Close all Activities, cleaning up instance and tab state of ChromeTabbedActivities. */
+    /**
+     * Close all Activities, cleaning up instance and tab state of ChromeTabbedActivities and saved
+     * tab groups.
+     */
     public void closeAllWindowsAndDeleteInstanceAndTabState() {
-        List<Activity> allActivities = ApplicationStatus.getRunningActivities();
-        for (Activity activity : allActivities) {
-            finishActivityWithCleanup(activity);
-        }
+        finishActivitiesWithCleanup(ApplicationStatus.getRunningActivities());
+        // Closing windows hides their tab groups instead of deleting them, which would leak them
+        // into later tests in the batch.
+        TabGroupSyncTestUtils.removeAllSavedGroups();
     }
 
-    /**
-     * Start the test in a blank page.
-     *
-     * @return the active entry {@link CtaPageStation}
-     */
+    @Override
     public WebPageStation startOnBlankPage() {
         return ChromeTabbedActivityEntryPoints.startOnBlankPage(mActivityTestRule);
     }
@@ -102,6 +102,12 @@ public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements T
         return ChromeTabbedActivityEntryPoints.startOnIncognitoBlankPage(mActivityTestRule);
     }
 
+    @Override
+    public <T extends CtaPageStation> T startOnPage(
+            String url, BasePageStation.Builder<T> builder) {
+        return startOnUrlTo(url).arriveAt(builder.initForEntryPointUrl(url).build());
+    }
+
     /**
      * Start the test with a url that leads to a web page.
      *
@@ -109,7 +115,7 @@ public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements T
      * @return the active entry {@link CtaPageStation}
      */
     public WebPageStation startOnUrl(String url) {
-        return ChromeTabbedActivityEntryPoints.startOnUrl(mActivityTestRule, url);
+        return startOnWebPage(url);
     }
 
     /**
@@ -121,18 +127,6 @@ public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements T
     @CheckReturnValue
     public TripBuilder startOnUrlTo(String url) {
         return ChromeTabbedActivityEntryPoints.startOnUrlTo(mActivityTestRule, url);
-    }
-
-    /**
-     * Start the test in a web page served by the test server.
-     *
-     * @param relativeUrl the relative URL of the page to serve and load
-     * @return the active entry {@link CtaPageStation}
-     */
-    public WebPageStation startOnTestServerUrl(String relativeUrl) {
-        assert relativeUrl.startsWith("/") : "|relativeUrl| must be relative";
-        String fullUrl = mActivityTestRule.getTestServer().getURL(relativeUrl);
-        return ChromeTabbedActivityEntryPoints.startOnUrl(mActivityTestRule, fullUrl);
     }
 
     /**
@@ -188,11 +182,7 @@ public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements T
                                 .build());
     }
 
-    /**
-     * Start the test in an NTP.
-     *
-     * @return the active entry {@link RegularNewTabPageStation}
-     */
+    @Override
     public RegularNewTabPageStation startOnNtp() {
         return ChromeTabbedActivityEntryPoints.startOnNtp(mActivityTestRule);
     }
@@ -205,13 +195,5 @@ public class FreshCtaTransitTestRule extends BaseCtaTransitTestRule implements T
      */
     public WebPageStation alreadyStartedOnBlankPage() {
         return ChromeTabbedActivityEntryPoints.alreadyStartedOnBlankPage();
-    }
-
-    /**
-     * Avoid closing the {@link ChromeTabbedActivity} and cleaning up tab state and instances after
-     * the test.
-     */
-    public void skipWindowAndTabStateCleanup() {
-        mSkipInstanceAndTabStateCleanup = true;
     }
 }

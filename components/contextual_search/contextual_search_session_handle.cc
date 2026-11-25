@@ -8,13 +8,16 @@
 #include <optional>
 #include <ranges>
 #include <set>
+#include <string_view>
 #include <utility>
 #include <vector>
 
 #include "base/containers/flat_set.h"
 #include "base/memory/ptr_util.h"
+#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
+#include "base/strings/string_util.h"
 #include "base/unguessable_token.h"
 #include "components/contextual_search/contextual_search_context_controller.h"
 #include "components/contextual_search/contextual_search_metrics_recorder.h"
@@ -36,6 +39,28 @@
 #include "third_party/lens_server_proto/modality_chip_props.pb.h"
 
 namespace contextual_search {
+
+namespace {
+
+// Some platforms do not report a MIME type for HEIC/HEIF files (e.g. uppercase
+// `.HEIC` on Linux, or Windows without the HEIF extension installed). Infers
+// the MIME type from the file extension so these are uploaded as images.
+std::string_view InferHeifMimeTypeFromFileName(std::string_view file_name) {
+  size_t dot_index = file_name.rfind('.');
+  if (dot_index == std::string_view::npos) {
+    return "";
+  }
+  std::string_view extension = file_name.substr(dot_index + 1);
+  if (base::EqualsCaseInsensitiveASCII(extension, "heic")) {
+    return "image/heic";
+  }
+  if (base::EqualsCaseInsensitiveASCII(extension, "heif")) {
+    return "image/heif";
+  }
+  return "";
+}
+
+}  // namespace
 
 // static
 bool TabInfo::ContainsToken(base::span<const TabInfo> tabs,
@@ -92,25 +117,6 @@ std::vector<FileInfo> TokensToFileInfos(
     file_infos.push_back(*file_info);
   }
   return file_infos;
-}
-
-// Marks the file associated with `token` as superceded and returns a mutable
-// pointer to its FileInfo. Returns nullptr if `controller` is null or if no
-// file is associated with `token`.
-// TODO(crbug.com/564475334): See if this can be moved to
-// `ContextualSearchContextController`.
-FileInfo* MarkFileSuperceded(ContextualSearchContextController* controller,
-                             const base::UnguessableToken& token) {
-  if (!controller) {
-    return nullptr;
-  }
-  const auto* file_info = controller->GetFileInfo(token);
-  if (!file_info) {
-    return nullptr;
-  }
-  auto* mutable_file_info = const_cast<FileInfo*>(file_info);
-  mutable_file_info->is_superceded = true;
-  return mutable_file_info;
 }
 
 // Appends `request_id` to `request_ids` unless an equal request ID is already
@@ -338,6 +344,9 @@ void ContextualSearchSessionHandle::StartFileContextUploadFlow(
   }
 
   lens::MimeType mime_type;
+  if (file_mime_type.empty()) {
+    file_mime_type = std::string(InferHeifMimeTypeFromFileName(file_name));
+  }
   bool mime_type_has_image = file_mime_type.find("image") != std::string::npos;
 
   if (lens::features::IsLensSendRawFileMediaTypesEnabled()) {
@@ -448,6 +457,7 @@ void ContextualSearchSessionHandle::StartTabContextUploadFlow(
           lens::LensOverlayContextualInputUploadType::
               CONTEXTUAL_INPUT_UPLOAD_TYPE_EXPLICIT;
     }
+    std::optional<TabInfo> attached_tab;
     if (contextual_input_data->tab_session_id.has_value()) {
       TabInfo tab;
       tab.context_token = file_token;
@@ -455,12 +465,24 @@ void ContextualSearchSessionHandle::StartTabContextUploadFlow(
       tab.url = contextual_input_data->page_url.value_or(GURL());
       tab.title = contextual_input_data->page_title.value_or("");
       tab.uploaded = !contextual_input_data->is_implicit_upload;
-      // Updates in place if the tab is already attached (e.g. it was
-      // attached before upload, or is being re-uploaded with a new token).
-      AddAttachedTab(std::move(tab));
+      attached_tab = std::move(tab);
     }
+    // `StartFileUploadFlow()` can synchronously fail a pending search URL
+    // request and run a callback that destroys `this` (see
+    // crbug.com/584243604).
+    base::WeakPtr<ContextualSearchSessionHandle> weak_this = AsWeakPtr();
     controller->StartFileUploadFlow(
         file_token, std::move(contextual_input_data), image_options);
+    if (!weak_this) {
+      return;
+    }
+    if (attached_tab.has_value()) {
+      // Updates in place if the tab is already attached (e.g. it was
+      // attached before upload, or is being re-uploaded with a new token).
+      // Runs after `StartFileUploadFlow` so `FileInfo` (`is_implicit_upload`)
+      // and initial upload status are registered before notifying subscribers.
+      AddAttachedTab(std::move(*attached_tab));
+    }
   }
 }
 
@@ -789,7 +811,10 @@ void ContextualSearchSessionHandle::OnSmartTabSharingToggled(bool active) {
       smart_tab_sharing_toggled_since_last_turn_ = true;
 
       auto add_removed_context = [&](const base::UnguessableToken& token) {
-        if (auto* file_info = MarkFileSuperceded(context_controller, token)) {
+        if (const auto* file_info =
+                context_controller
+                    ? context_controller->MarkFileSuperceded(token)
+                    : nullptr) {
           if (file_info->request_id.has_value()) {
             sts_toggled_removed_contexts_.push_back(
                 file_info->request_id.value());
@@ -810,8 +835,10 @@ void ContextualSearchSessionHandle::OnSmartTabSharingToggled(bool active) {
           continue;
         }
         sts_toggled_removed_contexts_.push_back(tab.request_id.value());
-        if (auto* file_info =
-                MarkFileSuperceded(context_controller, tab.context_token)) {
+        if (const auto* file_info =
+                context_controller
+                    ? context_controller->MarkFileSuperceded(tab.context_token)
+                    : nullptr) {
           if (file_info->tab_session_id.has_value()) {
             tab_context_.deselected[file_info->tab_session_id.value()] =
                 std::make_pair(file_info->tab_url.value_or(GURL()),
@@ -861,8 +888,10 @@ void ContextualSearchSessionHandle::OnSmartTabSharingToggled(bool active) {
             if (is_smart_or_implicit_tab(token)) {
               return false;
             }
-            if (auto* file_info =
-                    MarkFileSuperceded(context_controller, token)) {
+            if (const auto* file_info =
+                    context_controller
+                        ? context_controller->MarkFileSuperceded(token)
+                        : nullptr) {
               if (file_info->request_id.has_value()) {
                 sts_toggled_removed_contexts_.push_back(
                     file_info->request_id.value());
@@ -882,8 +911,10 @@ void ContextualSearchSessionHandle::OnSmartTabSharingToggled(bool active) {
               return false;
             }
             sts_toggled_removed_contexts_.push_back(tab.request_id.value());
-            if (auto* file_info =
-                    MarkFileSuperceded(context_controller, tab.context_token)) {
+            if (const auto* file_info =
+                    context_controller ? context_controller->MarkFileSuperceded(
+                                             tab.context_token)
+                                       : nullptr) {
               if (file_info->tab_session_id.has_value()) {
                 tab_context_.deselected[file_info->tab_session_id.value()] =
                     std::make_pair(file_info->tab_url.value_or(GURL()),
@@ -1041,7 +1072,7 @@ ContextualSearchSessionHandle::TakeRemovedContexts() {
                                       attached_it->title)) {
           should_remove_from_server = true;
         } else if (attached_it->context_token != persisted_token) {
-          MarkFileSuperceded(context_controller, persisted_token);
+          context_controller->MarkFileSuperceded(persisted_token);
         }
       }
     }
@@ -1056,7 +1087,7 @@ ContextualSearchSessionHandle::TakeRemovedContexts() {
       added_removed_context =
           AppendUniqueRequestId(removed_contexts, tab.request_id.value());
     }
-    MarkFileSuperceded(context_controller, persisted_token);
+    context_controller->MarkFileSuperceded(persisted_token);
 
     // Check if there is a valid active (potentially new) token for this tab.
     // If so, the tab navigated to a new URL that has a valid replacement token,

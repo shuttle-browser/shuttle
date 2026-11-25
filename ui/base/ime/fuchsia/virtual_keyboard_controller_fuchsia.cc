@@ -7,7 +7,6 @@
 #include <fidl/fuchsia.input.virtualkeyboard/cpp/natural_ostream.h>
 #include <lib/async/default.h>
 #include <lib/fit/function.h>
-#include <lib/sys/cpp/component_context.h>
 
 #include <utility>
 
@@ -22,7 +21,7 @@ VirtualKeyboardControllerFuchsia::VirtualKeyboardControllerFuchsia(
     fuchsia_ui_views::ViewRef view_ref,
     ui::InputMethodBase* input_method)
     : input_method_(input_method) {
-  DCHECK(input_method_);
+  CHECK(input_method_, base::NotFatalUntil::M163);
 
   auto controller_creator_client_end = base::fuchsia_component::Connect<
       fuchsia_input_virtualkeyboard::ControllerCreator>();
@@ -132,7 +131,7 @@ VirtualKeyboardControllerFuchsia::GetFocusedTextType() const {
   TextInputClient* client = input_method_->GetTextInputClient();
   // This function should only be called when there's focus, so there should
   // always be a TextInputClient.
-  DCHECK(client);
+  CHECK(client, base::NotFatalUntil::M163);
 
   switch (client->GetTextInputMode()) {
     case TEXT_INPUT_MODE_NUMERIC:

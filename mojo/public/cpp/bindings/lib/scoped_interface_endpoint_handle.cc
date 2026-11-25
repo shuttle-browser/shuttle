@@ -8,6 +8,7 @@
 #include <string_view>
 
 #include "base/check.h"
+#include "base/compiler_specific.h"
 #include "base/functional/bind.h"
 #include "base/synchronization/lock.h"
 #include "base/task/sequenced_task_runner.h"
@@ -166,9 +167,12 @@ class ScopedInterfaceEndpointHandle::State
     return group_controller_.get();
   }
 
-  const std::optional<DisconnectReason>& disconnect_reason() const {
+  std::optional<DisconnectReason> disconnect_reason() const {
     internal::MayAutoLock locker(&lock_);
-    return disconnect_reason_;
+    if (!disconnect_reason_) {
+      return std::nullopt;
+    }
+    return *disconnect_reason_;
   }
 
  private:
@@ -233,7 +237,8 @@ class ScopedInterfaceEndpointHandle::State
         return;
       }
 
-      disconnect_reason_ = reason;
+      disconnect_reason_ =
+          reason ? std::make_unique<DisconnectReason>(*reason) : nullptr;
       // NOTE: This handle itself is still pending.
       peer_state_ = nullptr;
 
@@ -279,7 +284,9 @@ class ScopedInterfaceEndpointHandle::State
   mutable std::optional<base::Lock> lock_;
 
   bool pending_association_ = false;
-  std::optional<DisconnectReason> disconnect_reason_;
+
+  // Rarely set; out of line to keep InterfaceEndpoint small.
+  std::unique_ptr<DisconnectReason> disconnect_reason_;
 
   scoped_refptr<State> peer_state_;
 
@@ -305,10 +312,10 @@ void ScopedInterfaceEndpointHandle::CreatePairPendingAssociation(
   *handle1 = std::move(result1);
 }
 
-ScopedInterfaceEndpointHandle::ScopedInterfaceEndpointHandle()
+NOINLINE ScopedInterfaceEndpointHandle::ScopedInterfaceEndpointHandle()
     : state_(base::MakeRefCounted<State>()) {}
 
-ScopedInterfaceEndpointHandle::ScopedInterfaceEndpointHandle(
+NOINLINE ScopedInterfaceEndpointHandle::ScopedInterfaceEndpointHandle(
     ScopedInterfaceEndpointHandle&& other)
     : state_(base::MakeRefCounted<State>()) {
   state_.swap(other.state_);
@@ -342,7 +349,7 @@ AssociatedGroupController* ScopedInterfaceEndpointHandle::group_controller()
   return state_->group_controller();
 }
 
-const std::optional<DisconnectReason>&
+std::optional<DisconnectReason>
 ScopedInterfaceEndpointHandle::disconnect_reason() const {
   return state_->disconnect_reason();
 }

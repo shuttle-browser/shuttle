@@ -106,8 +106,6 @@ public class FuseboxCoordinator implements TemplateUrlServiceObserver {
     private @Nullable @BrandedColorScheme Integer mLastBrandedColorScheme;
     private boolean mDestroyed;
     private @Nullable Callback<Boolean> mOnInteractionCompletedCallback;
-    private @Nullable Runnable mOnFirstPickerInteractionCanceledCallback;
-    private @Nullable Runnable mOnPickerInteractionSucceededCallback;
     private final boolean mIsForcedPhoneStyleOmnibox;
     private final OmniboxResourceProvider mResourceProvider;
 
@@ -278,13 +276,9 @@ public class FuseboxCoordinator implements TemplateUrlServiceObserver {
                         mScrimManager,
                         this::getScrimAnchorView,
                         mBackPressManager,
-                        mOnFirstPickerInteractionCanceledCallback,
+                        assertNonNull(mOnInteractionCompletedCallback),
                         mHasAttachmentsSupplier,
                         assertNonNull(mUrlTextWrappingSupplier));
-        if (mOnPickerInteractionSucceededCallback != null) {
-            mMediator.setOnPickerInteractionSucceededCallback(
-                    mOnPickerInteractionSucceededCallback);
-        }
         if (mLastBrandedColorScheme != null) {
             mMediator.updateVisualsForState(mLastBrandedColorScheme);
         }
@@ -403,7 +397,7 @@ public class FuseboxCoordinator implements TemplateUrlServiceObserver {
             if (!mDeferredInitialized) {
                 mPendingSession = session;
                 // A number of UI components, like the StatusView, depend on the FuseboxState. The
-                // FuseboxMediator will eventually control the FuseboxState, but it's is not yet
+                // FuseboxMediator will eventually control the FuseboxState, but it is not yet
                 // created here. So, we do this initial assignment to ensure that these UI
                 // components don't show any bad intermediate states in the meantime.
                 mFuseboxStateSupplier.set(
@@ -477,15 +471,12 @@ public class FuseboxCoordinator implements TemplateUrlServiceObserver {
     void onContextPopupDismissed() {
         if (mViewHolder == null || mViewHolder.plusButton == null) return;
         boolean popupItemSelected = mMediator != null && mMediator.wasPopupItemSelected();
-        if (mMediator != null) {
-            mMediator.handleHidePopup();
-        }
         if (!popupItemSelected) {
             mViewHolder.plusButton.requestFocus();
             mViewHolder.plusButton.sendAccessibilityEvent(AccessibilityEvent.TYPE_VIEW_FOCUSED);
         }
-        if (mOnInteractionCompletedCallback != null) {
-            mOnInteractionCompletedCallback.onResult(popupItemSelected);
+        if (mMediator != null) {
+            mMediator.onPopupDismissed();
         }
     }
 
@@ -515,7 +506,11 @@ public class FuseboxCoordinator implements TemplateUrlServiceObserver {
         // Skip cases where session should not be recorded (e.g. unsupported page class).
         if (mInput == null || mMetrics == null) return;
         mMetrics.notifyOmniboxSessionEnded(
-                userDidNavigate, mInput.getRequestType(), mInput.getModelMode(), mModelList);
+                userDidNavigate,
+                mInput.getRawPageClassification(),
+                mInput.getRequestType(),
+                mInput.getModelMode(),
+                mModelList);
     }
 
     /** Resets the current input session back to search mode. */
@@ -555,28 +550,9 @@ public class FuseboxCoordinator implements TemplateUrlServiceObserver {
         return mHasAttachmentsSupplier;
     }
 
-    /** Set callback to be invoked when the popup is dismissed. */
+    /** Set callback to be invoked when the popup or picker interaction is completed. */
     public void setOnInteractionCompletedCallback(Callback<Boolean> callback) {
         mOnInteractionCompletedCallback = callback;
-    }
-
-    /** Set callback to be invoked when the first picker interaction is canceled. */
-    public void setOnFirstPickerInteractionCanceledCallback(Runnable callback) {
-        mOnFirstPickerInteractionCanceledCallback = callback;
-        if (mMediator != null) {
-            mMediator.setOnFirstPickerInteractionCanceledCallback(callback);
-        }
-    }
-
-    /**
-     * Set callback to be invoked when a picker launched directly on focus (e.g. from the NTP
-     * gallery chip) returns content.
-     */
-    public void setOnPickerInteractionSucceededCallback(Runnable callback) {
-        mOnPickerInteractionSucceededCallback = callback;
-        if (mMediator != null) {
-            mMediator.setOnPickerInteractionSucceededCallback(callback);
-        }
     }
 
     /**

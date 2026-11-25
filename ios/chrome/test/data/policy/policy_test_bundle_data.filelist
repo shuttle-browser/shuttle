@@ -49,6 +49,7 @@
 //ios/chrome/test/data/policy/pref_mapping/DownloadRestrictions.json
 //ios/chrome/test/data/policy/pref_mapping/EditBookmarksEnabled.json
 //ios/chrome/test/data/policy/pref_mapping/EnableExperimentalPolicies.json
+//ios/chrome/test/data/policy/pref_mapping/EnableProxyOverrideRulesForAllUsers.json
 //ios/chrome/test/data/policy/pref_mapping/EnterpriseRealTimeUrlCheckMode.json
 //ios/chrome/test/data/policy/pref_mapping/FilePickerChooseFromDriveSettings.json
 //ios/chrome/test/data/policy/pref_mapping/GeminiActOnWebAllowedForURLs.json
@@ -99,6 +100,7 @@
 //ios/chrome/test/data/policy/pref_mapping/SafeBrowsingEnabled.json
 //ios/chrome/test/data/policy/pref_mapping/SafeBrowsingProtectionLevel.json
 //ios/chrome/test/data/policy/pref_mapping/SafeBrowsingProxiedRealTimeChecksAllowed.json
+//ios/chrome/test/data/policy/pref_mapping/SafeSitesFilterBehavior.json
 //ios/chrome/test/data/policy/pref_mapping/SavingBrowserHistoryDisabled.json
 //ios/chrome/test/data/policy/pref_mapping/SearchContentSharingSettings.json
 //ios/chrome/test/data/policy/pref_mapping/SearchSuggestEnabled.json
@@ -116,5 +118,6 @@
 //ios/chrome/test/data/policy/pref_mapping/UserContextAwareAccessSignalsAllowlist.json
 //ios/chrome/test/data/policy/pref_mapping/UserSecurityAuthenticatedReporting.json
 //ios/chrome/test/data/policy/pref_mapping/UserSecuritySignalsReporting.json
+//ios/chrome/test/data/policy/pref_mapping/VariationsRestrictParameter.json
 //ios/chrome/test/data/policy/pref_mapping/WatermarkStyle.json
 //ios/chrome/test/data/policy/pref_mapping/WebAnnotations.json

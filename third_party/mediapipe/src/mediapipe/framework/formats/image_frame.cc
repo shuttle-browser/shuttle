@@ -23,9 +23,9 @@
 #include <algorithm>
 #include <utility>
 
-#include "absl/log/absl_check.h"
-#include "absl/log/absl_log.h"
-#include "absl/strings/str_cat.h"
+#include "absl/log/absl_check.h"   // from @com_google_absl
+#include "absl/log/absl_log.h"     // from @com_google_absl
+#include "absl/strings/str_cat.h"  // from @com_google_absl
 #include "mediapipe/framework/formats/image_format.pb.h"
 #include "mediapipe/framework/port/aligned_malloc_and_free.h"
 #include "mediapipe/framework/port/proto_ns.h"
@@ -283,6 +283,12 @@ int ImageFrame::NumberOfChannelsForFormat(ImageFormat::Format format) {
       return 2;
     case ImageFormat::VEC32F4:
       return 4;
+    case ImageFormat::VEC16F1:
+      return 1;
+    case ImageFormat::VEC16F2:
+      return 2;
+    case ImageFormat::VEC16F4:
+      return 4;
     case ImageFormat::LAB8:
       return 3;
     case ImageFormat::SBGRA:
@@ -307,6 +313,12 @@ int ImageFrame::ChannelSizeForFormat(ImageFormat::Format format) {
     case ImageFormat::SRGB48:
       return sizeof(uint16_t);
     case ImageFormat::SRGBA64:
+      return sizeof(uint16_t);
+    case ImageFormat::VEC16F1:
+      return sizeof(uint16_t);
+    case ImageFormat::VEC16F2:
+      return sizeof(uint16_t);
+    case ImageFormat::VEC16F4:
       return sizeof(uint16_t);
     case ImageFormat::VEC32F1:
       return sizeof(float);

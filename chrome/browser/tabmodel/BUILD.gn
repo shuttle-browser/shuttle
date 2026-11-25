@@ -35,7 +35,6 @@ android_library("java") {
     "android/java/src/org/chromium/chrome/browser/tabmodel/PassthroughTabRemover.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/PassthroughTabUngrouper.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/PersistentStoreMigrationManager.java",
-    "android/java/src/org/chromium/chrome/browser/tabmodel/ReadOnlyIterator.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/RecordingTabCreator.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/RecordingTabCreatorManager.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/StubTabModel.java",
@@ -75,8 +74,9 @@ android_library("java") {
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabRemover.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabReparentingParams.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabUngrouper.java",
-    "android/java/src/org/chromium/chrome/browser/tabmodel/TabUngrouperFactory.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/UndoGroupMetadata.java",
+    "android/java/src/org/chromium/chrome/browser/tabmodel/undo/UndoClosureSnapshot.java",
+    "android/java/src/org/chromium/chrome/browser/tabmodel/undo/UndoClosureSnapshotFactory.java",
   ]
   deps = [
     "//base:base_java",
@@ -99,6 +99,7 @@ android_library("java") {
     "//content/public/android:content_java",
     "//third_party/android_deps:com_google_errorprone_error_prone_annotations_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
+    "//third_party/jni_zero:jni_zero_java",
     "//ui/android:ui_full_java",
     "//url:gurl_java",
   ]
@@ -128,7 +129,6 @@ robolectric_library("junit") {
     "android/java/src/org/chromium/chrome/browser/tabmodel/MultiTabMetadataUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/OverridableTabCountUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/PassthroughTabRemoverUnitTest.java",
-    "android/java/src/org/chromium/chrome/browser/tabmodel/ReadOnlyIteratorUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/RecordingTabCreatorManagerUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/RecordingTabCreatorUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/StubTabModelUnitTest.java",
@@ -141,8 +141,11 @@ robolectric_library("junit") {
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabGroupVisualDataStoreUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabModelOrderControllerImplUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabModelSelectorTabModelObserverUnitTest.java",
+    "android/java/src/org/chromium/chrome/browser/tabmodel/TabModelSelectorTabObserverUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabModelSelectorTabRegistrationObserverUnitTest.java",
     "android/java/src/org/chromium/chrome/browser/tabmodel/TabModelUtilsUnitTest.java",
+    "android/java/src/org/chromium/chrome/browser/tabmodel/undo/UndoClosureSnapshotFactoryUnitTest.java",
+    "android/java/src/org/chromium/chrome/browser/tabmodel/undo/UndoClosureSnapshotUnitTest.java",
   ]
 
   deps = [
@@ -162,7 +165,6 @@ robolectric_library("junit") {
     "//chrome/browser/tab:java",
     "//chrome/browser/tab_group_sync:factory_java",
     "//chrome/browser/tab_group_sync:features_java",
-    "//chrome/browser/tab_ui/android:java",
     "//chrome/browser/tabmodel:java",
     "//chrome/browser/tabwindow:java",
     "//chrome/browser/ui/android/native_page:java",

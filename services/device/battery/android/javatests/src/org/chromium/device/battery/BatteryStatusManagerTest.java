@@ -4,8 +4,13 @@
 
 package org.chromium.device.battery;
 
+import android.content.BroadcastReceiver;
+import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.os.BatteryManager;
+import android.os.Handler;
 
 import androidx.test.filters.SmallTest;
 
@@ -14,19 +19,26 @@ import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import org.chromium.base.ContextUtils;
 import org.chromium.base.test.BaseJUnit4ClassRunner;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.device.DeviceFeatureList;
 import org.chromium.device.mojom.BatteryStatus;
+
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 
 /** Test suite for BatteryStatusManager. */
 @RunWith(BaseJUnit4ClassRunner.class)
 public class BatteryStatusManagerTest {
     // Values reported in the most recent callback from |mManager|.
-    private boolean mCharging = false;
-    private double mChargingTime = 0;
-    private double mDischargingTime = 0;
-    private double mLevel = 0;
+    private boolean mCharging;
+    private double mChargingTime;
+    private double mDischargingTime;
+    private double mLevel;
+    private CountDownLatch mCallbackLatch;
 
-    private BatteryStatusManager.BatteryStatusCallback mCallback =
+    private final BatteryStatusManager.BatteryStatusCallback mCallback =
             new BatteryStatusManager.BatteryStatusCallback() {
                 @Override
                 public void onBatteryStatusChanged(BatteryStatus batteryStatus) {
@@ -34,17 +46,22 @@ public class BatteryStatusManagerTest {
                     mChargingTime = batteryStatus.chargingTime;
                     mDischargingTime = batteryStatus.dischargingTime;
                     mLevel = batteryStatus.level;
+                    mCallbackLatch.countDown();
                 }
             };
 
     private BatteryStatusManager mManager;
 
     private void verifyValues(
-            boolean charging, double chargingTime, double dischargingTime, double level) {
+            boolean charging, double chargingTime, double dischargingTime, double level)
+            throws InterruptedException {
+        Assert.assertTrue(
+                "Timed out waiting for BatteryStatusCallback",
+                mCallbackLatch.await(5, TimeUnit.SECONDS));
         Assert.assertEquals(charging, mCharging);
-        Assert.assertEquals(chargingTime, mChargingTime);
-        Assert.assertEquals(dischargingTime, mDischargingTime);
-        Assert.assertEquals(level, mLevel);
+        Assert.assertEquals(chargingTime, mChargingTime, 0.0);
+        Assert.assertEquals(dischargingTime, mDischargingTime, 0.0);
+        Assert.assertEquals(level, mLevel, 0.0);
     }
 
     private static class FakeAndroidBatteryManager
@@ -94,6 +111,7 @@ public class BatteryStatusManagerTest {
     }
 
     public void initializeBatteryManager(FakeAndroidBatteryManager managerForTesting) {
+        mCallbackLatch = new CountDownLatch(1);
         mManager =
                 BatteryStatusManager.createBatteryStatusManagerForTesting(
                         mCallback, managerForTesting);
@@ -101,7 +119,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testOnReceiveBatteryNotPluggedIn() {
+    public void testOnReceiveBatteryNotPluggedIn() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, 0);
@@ -115,7 +133,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testOnReceiveBatteryPluggedInACCharging() {
+    public void testOnReceiveBatteryPluggedInACCharging() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, BatteryManager.BATTERY_PLUGGED_AC);
@@ -129,7 +147,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testOnReceiveBatteryPluggedInACNotCharging() {
+    public void testOnReceiveBatteryPluggedInACNotCharging() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, BatteryManager.BATTERY_PLUGGED_AC);
@@ -143,7 +161,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testOnReceiveBatteryPluggedInUSBFull() {
+    public void testOnReceiveBatteryPluggedInUSBFull() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, BatteryManager.BATTERY_PLUGGED_USB);
@@ -157,7 +175,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testOnReceiveNoBattery() {
+    public void testOnReceiveNoBattery() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, false);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, BatteryManager.BATTERY_PLUGGED_USB);
@@ -168,7 +186,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testOnReceiveNoPluggedStatus() {
+    public void testOnReceiveNoPluggedStatus() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
 
@@ -185,7 +203,39 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testChargingTimeEstimate() {
+    @DisableFeatures(DeviceFeatureList.BATTERY_STATUS_MANAGER_BROADCAST_RECEIVER_IN_BACKGROUND)
+    public void testStartStopWithoutStickyIntent() {
+        Context originalContext = ContextUtils.getApplicationContext();
+        Context contextWithoutStickyIntent =
+                new ContextWrapper(originalContext) {
+                    @Override
+                    public Intent registerReceiver(
+                            BroadcastReceiver receiver,
+                            IntentFilter filter,
+                            String broadcastPermission,
+                            Handler scheduler,
+                            int flags) {
+                        return null;
+                    }
+
+                    @Override
+                    public void unregisterReceiver(BroadcastReceiver receiver) {}
+                };
+        ContextUtils.initApplicationContextForTests(contextWithoutStickyIntent);
+        try {
+            Assert.assertFalse(mManager.isEnabledForTesting());
+            mManager.start();
+            Assert.assertTrue(mManager.isEnabledForTesting());
+            mManager.stop();
+            Assert.assertFalse(mManager.isEnabledForTesting());
+        } finally {
+            ContextUtils.initApplicationContextForTests(originalContext);
+        }
+    }
+
+    @Test
+    @SmallTest
+    public void testChargingTimeEstimate() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, BatteryManager.BATTERY_PLUGGED_USB);
@@ -204,7 +254,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testDischargingTimeEstimate() {
+    public void testDischargingTimeEstimate() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, 0);
@@ -224,7 +274,7 @@ public class BatteryStatusManagerTest {
 
     @Test
     @SmallTest
-    public void testDischargingTimeEstimateRounding() {
+    public void testDischargingTimeEstimateRounding() throws InterruptedException {
         Intent intent = new Intent(Intent.ACTION_BATTERY_CHANGED);
         intent.putExtra(BatteryManager.EXTRA_PRESENT, true);
         intent.putExtra(BatteryManager.EXTRA_PLUGGED, 0);

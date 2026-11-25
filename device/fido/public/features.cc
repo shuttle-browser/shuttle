@@ -7,14 +7,6 @@
 #include "base/feature_list.h"
 #include "build/build_config.h"
 
-namespace {
-
-// Default ttl (in seconds) for keeping the cached opportunistically retrieved
-// key in case its Gaia Id doesn't match to primary signed-in account.
-constexpr int kDefaultOpportunisticRetrievalTimeToKeepCachedKeySeconds = 300;
-
-}  // namespace
-
 namespace device {
 
 // Flags defined in this file should have a comment above them that either
@@ -51,6 +43,9 @@ constexpr base::FeatureParam<PasskeyUnlockErrorUiExperimentArm>
         &kPasskeyUnlockErrorUi, "passkey_unlock_ui_experiment_arm",
         PasskeyUnlockErrorUiExperimentArm::kVerify,
         &kPasskeyUnlockErrorUiExperimentArms};
+
+// Not yet enabled by default.
+BASE_FEATURE(kPasskeyUnlockIdentityErrorUi, base::FEATURE_DISABLED_BY_DEFAULT);
 #endif
 
 #if BUILDFLAG(IS_MAC)
@@ -93,10 +88,14 @@ BASE_FEATURE(kWebAuthnUseInsecureSoftwareUnexportableKeys,
 BASE_FEATURE(kWebAuthnEnclaveAuthenticatorDelay,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Not yet enabled by default.
+// Enabled by default for the Origin Trial. Do not remove until the Origin Trial
+// expires.
 BASE_FEATURE(kWebAuthnAmbientSignin,
              "WebAuthenticationAmbientSignin",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Experiment flag. Enabled by default in M159. Removed when no longer needed.
+BASE_FEATURE(kWebAuthnAmbientChipOnlyTimeout, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Deprecation flag. Disabled by default in M145. Remove in or after M148.
 #if BUILDFLAG(IS_ANDROID)
@@ -123,15 +122,6 @@ BASE_FEATURE(kWebAuthnCrossDeviceFallbackUrl,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kWebAuthnRemoteClientDataJson, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Enabled by default in M152. Remove in or after M155.
-BASE_FEATURE(kWebAuthnOpportunisticRetrieval, base::FEATURE_ENABLED_BY_DEFAULT);
-
-BASE_FEATURE_PARAM(int,
-                   kWebAuthnOpportunisticRetrievalTimeToKeepCachedKeySeconds,
-                   &kWebAuthnOpportunisticRetrieval,
-                   "cached_key_ttl",
-                   kDefaultOpportunisticRetrievalTimeToKeepCachedKeySeconds);
 
 // Enabled by default in M148. Remove in or after M152.
 BASE_FEATURE(kWebAuthnDoNotAlwaysTerminateStateMachineDuringIdentityChange,

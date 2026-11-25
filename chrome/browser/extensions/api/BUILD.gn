@@ -43,6 +43,7 @@ group("api_implementations") {
     "//chrome/browser/extensions/api/gcm",
     "//chrome/browser/extensions/api/glic_private",
     "//chrome/browser/extensions/api/history",
+    "//chrome/browser/extensions/api/image_writer_private",
     "//chrome/browser/extensions/api/module",
     "//chrome/browser/extensions/api/notifications",
     "//chrome/browser/extensions/api/omnibox",
@@ -132,7 +133,6 @@ function_registration("api_registration") {
   custom_impl_schemas = [
     "accessibility_service_private",
     "action",
-    "autotest_private",
     "browser_action",
     "chrome_web_view_internal",
     "chromeos_info_private",
@@ -143,9 +143,6 @@ function_registration("api_registration") {
     "experimental_actor",
     "experimental_ai_data",
     "extension",
-    "login",
-    "login_screen_storage",
-    "login_state",
     "media_player_private",
     "platform_keys_internal",
     "speech_recognition_private",
@@ -158,10 +155,6 @@ function_registration("api_registration") {
   inputs = [
     "//chrome/browser/chromeos/extensions/accessibility_service_private/accessibility_service_private.h",
     "//chrome/browser/chromeos/extensions/info_private/info_private_api.h",
-    "//chrome/browser/chromeos/extensions/login_screen/login/login_api.h",
-    "//chrome/browser/chromeos/extensions/login_screen/login_screen_storage/login_screen_storage_api.h",
-    "//chrome/browser/chromeos/extensions/login_screen/login_state/login_state_api.h",
-    "//chrome/browser/ash/extensions/autotest_private/autotest_private_api.h",
     "//chrome/browser/ash/extensions/media_player_api.h",
     "//chrome/browser/extensions/api/enterprise_login/enterprise_login_api.h",
     "enterprise_platform_keys/enterprise_platform_keys_api.h",
@@ -210,14 +203,11 @@ function_registration("api_registration") {
 
   if (is_chromeos) {
     deps += [
-      "//chrome/browser/ash/extensions/autotest_private",
-
       # TODO: We should pull these out into a separate build and function
       # generation step so that //chrome/browser/extensions has fewer
       # dependencies on //chrome/browser/chromeos.
       "//chrome/browser/chromeos/extensions/accessibility_service_private",
       "//chrome/browser/chromeos/extensions/info_private",
-      "//chrome/browser/chromeos/extensions/login_screen/login_screen_storage",
     ]
   }
 }

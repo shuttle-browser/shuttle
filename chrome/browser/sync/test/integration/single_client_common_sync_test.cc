@@ -133,10 +133,7 @@ class SingleClientCommonSyncTest
       public testing::WithParamInterface<SyncTest::SetupSyncMode> {
  public:
   SingleClientCommonSyncTest() : SyncTest(SINGLE_CLIENT) {
-    if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
-      scoped_feature_list_.InitAndEnableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    } else {
+    if (GetSetupSyncMode() != SetupSyncMode::kSyncTransportOnly) {
       // Skip sync-to-signin migration for sync-the-feature tests. This is to
       // avoid the sync state changing between the PRE_ tests.
       scoped_feature_list_.InitAndDisableFeature(
@@ -352,18 +349,8 @@ IN_PROC_BROWSER_TEST_P(SingleClientCommonSyncTest, ReusesSameCacheGuid) {
   EXPECT_EQ(old_cache_guid, transport_data_prefs.GetCacheGuid());
 }
 
-// TODO(crbug.com/542347163): Re-enable test.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
-#define MAYBE_ShouldCrashAwaitQuiescenceForE2ETest \
-  DISABLED_ShouldCrashAwaitQuiescenceForE2ETest
-#else
-#define MAYBE_ShouldCrashAwaitQuiescenceForE2ETest \
-  ShouldCrashAwaitQuiescenceForE2ETest
-#endif
-IN_PROC_BROWSER_TEST_P(
-    SingleClientCommonSyncTest,
-    E2E_ENABLED(MAYBE_ShouldCrashAwaitQuiescenceForE2ETest)) {
+IN_PROC_BROWSER_TEST_P(SingleClientCommonSyncTest,
+                       E2E_ENABLED(ShouldCrashAwaitQuiescenceForE2ETest)) {
   ASSERT_TRUE(SetupSync());
   EXPECT_CHECK_DEATH_WITH(
       { EXPECT_TRUE(AwaitQuiescence()); },
@@ -378,7 +365,6 @@ class SingleClientGetUnsyncedTypesTest : public SyncTest {
     // mode.
     feature_list_.InitWithFeatures(
         {switches::kEnablePreferencesAccountStorage,
-         syncer::kSeparateLocalAndAccountThemes,
          switches::kSyncEnableBookmarksInTransportMode},
         {});
 #endif  // !BUILDFLAG(IS_ANDROID)
@@ -406,9 +392,7 @@ IN_PROC_BROWSER_TEST_F(SingleClientGetUnsyncedTypesTest,
   ASSERT_TRUE(SetupSync());
 
 #if !BUILDFLAG(IS_ANDROID)
-  // Note: Depending on the state of feature flags (specifically
-  // kReplaceSyncPromosWithSignInPromos), Bookmarks may or may not be considered
-  // selected by default.
+  // Note: Bookmarks may or may not be considered selected by default.
   GetSyncService(0)->GetUserSettings()->SetSelectedType(
       syncer::UserSelectableType::kBookmarks, true);
   // Enable account storage for bookmarks.
@@ -548,16 +532,7 @@ IN_PROC_BROWSER_TEST_F(SingleClientGetUnsyncedTypesTest, SignInPendingState) {
 #if !BUILDFLAG(IS_ANDROID)
 class SingleClientFeatureToTransportSyncTest : public SyncTest {
  public:
-  SingleClientFeatureToTransportSyncTest() : SyncTest(SINGLE_CLIENT) {
-    // Note: kReplaceSyncPromosWithSignInPromos is required so that bookmarks
-    // and reading list are considered selected-by-default for non-syncing
-    // users.
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/
-        {syncer::kReadingListEnableSyncTransportModeUponSignIn,
-         syncer::kReplaceSyncPromosWithSignInPromos},
-        /*disabled_features=*/{});
-  }
+  SingleClientFeatureToTransportSyncTest() : SyncTest(SINGLE_CLIENT) {}
 
   ~SingleClientFeatureToTransportSyncTest() override = default;
 
@@ -598,9 +573,6 @@ class SingleClientFeatureToTransportSyncTest : public SyncTest {
     return static_cast<reading_list::DualReadingListModel*>(
         ReadingListModelFactory::GetForBrowserContext(GetProfile(0)));
   }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
 
  protected:
   const GURL kUrl{"https://url.com/"};
@@ -687,16 +659,11 @@ IN_PROC_BROWSER_TEST_F(SingleClientFeatureToTransportSyncTest,
       "Sync.ClearMetadataWhileStopped",
       syncer::DataTypeHistogramValue(syncer::SECURITY_EVENTS), 0);
 
-  // With `kSeparateLocalAndAccountSearchEngines`, the same model is used for
-  // both transport mode and Sync-the-feature mode, so the metadata should *not*
-  // have been cleared.
+  // The same model is used for both transport mode and Sync-the-feature mode,
+  // so the metadata should *not* have been cleared.
   histograms_.ExpectBucketCount(
       "Sync.ClearMetadataWhileStopped",
-      syncer::DataTypeHistogramValue(syncer::SEARCH_ENGINES),
-      base::FeatureList::IsEnabled(
-          syncer::kSeparateLocalAndAccountSearchEngines)
-          ? 0
-          : 1);
+      syncer::DataTypeHistogramValue(syncer::SEARCH_ENGINES), 0);
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -706,10 +673,8 @@ class SingleClientPolicySyncTest
  public:
   SingleClientPolicySyncTest() : SyncTest(SINGLE_CLIENT) {
     if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
-      scoped_feature_list_.InitWithFeatures(
-          {syncer::kReplaceSyncPromosWithSignInPromos,
-           switches::kSyncEnableBookmarksInTransportMode},
-          {});
+      scoped_feature_list_.InitAndEnableFeature(
+          switches::kSyncEnableBookmarksInTransportMode);
     }
   }
   ~SingleClientPolicySyncTest() override = default;
@@ -818,16 +783,7 @@ IN_PROC_BROWSER_TEST_P(SingleClientPolicySyncTest,
 
 class SingleClientOldProgressMarkerSyncTest : public SyncTest {
  public:
-  SingleClientOldProgressMarkerSyncTest() : SyncTest(SINGLE_CLIENT) {
-    features_.InitWithFeatures(
-        /*enabled_features=*/{syncer::kReplaceSyncPromosWithSignInPromos,
-#if !BUILDFLAG(IS_ANDROID)
-                              syncer::
-                                  kReadingListEnableSyncTransportModeUponSignIn,
-#endif  // !BUILDFLAG(IS_ANDROID)
-                              switches::kSyncEnableBookmarksInTransportMode},
-        /*disabled_features=*/{});
-  }
+  SingleClientOldProgressMarkerSyncTest() : SyncTest(SINGLE_CLIENT) {}
   ~SingleClientOldProgressMarkerSyncTest() override = default;
   SingleClientOldProgressMarkerSyncTest(
       const SingleClientOldProgressMarkerSyncTest&) = delete;
@@ -841,7 +797,8 @@ class SingleClientOldProgressMarkerSyncTest : public SyncTest {
   }
 
  private:
-  base::test::ScopedFeatureList features_;
+  base::test::ScopedFeatureList features_{
+      switches::kSyncEnableBookmarksInTransportMode};
 
  protected:
   const base::Uuid kBookmarkUuid1 =

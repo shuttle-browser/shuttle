@@ -16,12 +16,13 @@
 #include "base/test/test_future.h"
 #include "base/test/values_test_util.h"
 #include "components/password_manager/core/browser/remote_actor/remote_actor_switches.h"
-#include "components/password_manager/core/common/password_manager_features.h"
+#include "components/password_manager/core/common/remote_actor/remote_actor_features.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "services/network/public/cpp/weak_wrapper_shared_url_loader_factory.h"
 #include "services/network/test/test_url_loader_factory.h"
 #include "services/network/test/test_utils.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace password_manager {
@@ -118,11 +119,13 @@ TEST_F(RemoteActorCredentialPermissionClientTest,
 }
 
 TEST_F(RemoteActorCredentialPermissionClientTest,
-       GrantPasswordPermissionWithCustomOAuthClientId) {
+       GrantPasswordPermissionWithGeminiConfigJsonOverrides) {
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeatureWithParameters(
-      features::kRemoteActorCredentialSharing,
-      {{"oauth_client_id", "custom_client_id"}});
+      features::kRemoteActorCredentialSharing, {{"gemini_config_json", R"({
+          "oauth_client_id": "custom_gemini_oauth_client_id",
+          "task_namespace_id": 99
+        })"}});
 
   identity_test_env_.MakePrimaryAccountAvailable("user@gmail.com",
                                                  signin::ConsentLevel::kSignin);
@@ -143,11 +146,20 @@ TEST_F(RemoteActorCredentialPermissionClientTest,
   ASSERT_TRUE(pending_request);
 
   std::string upload_data = network::GetUploadData(pending_request->request);
-  auto body_value = base::test::ParseJson(upload_data);
-  ASSERT_TRUE(body_value.is_dict());
-  const base::DictValue* agent = body_value.GetDict().FindDict("agent");
-  ASSERT_TRUE(agent);
-  EXPECT_EQ(*agent->FindString("agentOauthClientId"), "custom_client_id");
+  EXPECT_THAT(base::test::ParseJson(upload_data),
+              base::test::IsSupersetOfValue(base::test::ParseJson(R"({
+                "agent": {
+                  "agentOauthClientId": "custom_gemini_oauth_client_id"
+                },
+                "delegationContext": {
+                  "taskConstraint": {
+                    "taskId": {
+                      "namespaceId": 99,
+                      "id": "test_task_id"
+                    }
+                  }
+                }
+              })")));
 
   test_url_loader_factory_.SimulateResponseForPendingRequest(
       pending_request->request.url.spec(), "{}");
@@ -273,11 +285,51 @@ TEST_F(RemoteActorCredentialPermissionClientTest,
 }
 
 TEST_F(RemoteActorCredentialPermissionClientTest,
-       GrantPasswordPermissionEmptyClientId) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeatureWithParameters(
-      features::kRemoteActorCredentialSharing, {{"oauth_client_id", ""}});
+       GrantPasswordPermissionWithExplicitAgentParams) {
+  identity_test_env_.MakePrimaryAccountAvailable("user@gmail.com",
+                                                 signin::ConsentLevel::kSignin);
 
+  base::test::TestFuture<bool> future;
+  RemoteActorCredentialPermissionClient::PasswordPermission permission;
+  permission.task_id = "glic_task_id";
+  permission.web_origin = "https://nike.com";
+  permission.password_client_tag_hash = "tag_hash";
+  permission.actor_oauth_client_id = "test_agent_client_id";
+  permission.task_namespace_id = 41;
+
+  client_->GrantPasswordPermission(permission, future.GetCallback());
+
+  identity_test_env_.WaitForAccessTokenRequestIfNecessaryAndRespondWithToken(
+      "token", base::Time::Max());
+
+  ASSERT_EQ(1, test_url_loader_factory_.NumPending());
+  auto* pending_request = test_url_loader_factory_.GetPendingRequest(0);
+  ASSERT_TRUE(pending_request);
+
+  std::string upload_data = network::GetUploadData(pending_request->request);
+  EXPECT_THAT(base::test::ParseJson(upload_data),
+              base::test::IsSupersetOfValue(base::test::ParseJson(R"({
+                "agent": {
+                  "agentOauthClientId": "test_agent_client_id"
+                },
+                "delegationContext": {
+                  "taskConstraint": {
+                    "taskId": {
+                      "namespaceId": 41,
+                      "id": "glic_task_id"
+                    }
+                  }
+                }
+              })")));
+
+  test_url_loader_factory_.SimulateResponseForPendingRequest(
+      pending_request->request.url.spec(), "{}");
+
+  EXPECT_TRUE(future.Get());
+}
+
+TEST_F(RemoteActorCredentialPermissionClientTest,
+       GrantPasswordPermissionNonPositiveTaskNamespaceId) {
   identity_test_env_.MakePrimaryAccountAvailable("user@gmail.com",
                                                  signin::ConsentLevel::kSignin);
 
@@ -286,6 +338,7 @@ TEST_F(RemoteActorCredentialPermissionClientTest,
   permission.task_id = "test_task_id";
   permission.web_origin = "https://nike.com";
   permission.password_client_tag_hash = "tag_hash";
+  permission.task_namespace_id = 0;
 
   client_->GrantPasswordPermission(permission, future.GetCallback());
 

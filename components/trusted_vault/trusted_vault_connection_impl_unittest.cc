@@ -5,10 +5,15 @@
 #include "components/trusted_vault/trusted_vault_connection_impl.h"
 
 #include <memory>
+#include <optional>
 #include <string>
+#include <string_view>
 #include <utility>
+#include <variant>
+#include <vector>
 
 #include "base/base64url.h"
+#include "base/check.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
@@ -41,6 +46,7 @@
 #include "services/network/test/test_utils.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/functional/overload.h"
 
 namespace trusted_vault {
 
@@ -66,6 +72,10 @@ std::unique_ptr<SecureBoxKeyPair> MakeTestKeyPair() {
   return SecureBoxKeyPair::CreateByPrivateKeyImport(private_key_bytes);
 }
 
+std::vector<uint8_t> GenerateRandomPublicKey() {
+  return SecureBoxKeyPair::GenerateRandom()->public_key().ExportToBytes();
+}
+
 trusted_vault_pb::SecurityDomain MakeSecurityDomainWithDegradedRecoverability(
     SecurityDomainId security_domain_id,
     bool recoverability_degraded) {
@@ -89,67 +99,80 @@ trusted_vault_pb::JoinSecurityDomainsResponse MakeJoinSecurityDomainsResponse(
 }
 
 constexpr char kTestSerializedWrappedPIN[] = "wrapped PIN";
-// A valid hex encoded securebox public key.
-constexpr char kTestMemberPublicKey[] =
-    "045C8A5DF0CE8205E62621449AD2C5F7320EE6D1BC41A4BBC423289ADAF9954996F9E893C6"
-    "13C99EDFC5B28BD119C80AD034DE52819963F3056E0F230264D62828";
 constexpr int kTestKeyVersion = 100;
 constexpr int kTestGPMExpirySeconds = 1000000;
 constexpr int kTestLSKFExpirySeconds = 1000001;
-constexpr char kTestMemberProof[] = "member_proof";
-constexpr char kTestWrappedKey[] = "wrapped_key";
 
-enum class Member {
-  kPhysical,
-  kOtherSecurityDomain,
-  kUsableVirtual,
-  kUnusableVirtual,
-  kGooglePasswordManagerPIN,
-  kUnusableGooglePasswordManagerPIN,
-  kICloudKeychain,
-  kInvalidICloudKeychain,
+struct Member {
+  enum class MemberType {
+    kPhysical,
+    kUsableVirtual,
+    kUnusableVirtual,
+    kGooglePasswordManagerPIN,
+    kUnusableGooglePasswordManagerPIN,
+    kICloudKeychain,
+    kInvalidICloudKeychain,
+  };
+
+  MemberType member_type;
+  std::vector<std::variant<SecurityDomainId, std::string>> security_domains;
+  std::vector<uint8_t> public_key;
+  TrustedVaultKeyAndVersion key_and_version;
 };
 
 trusted_vault_pb::ListSecurityDomainMembersResponse MakeSecurityDomainMembers(
-    SecurityDomainId security_domain_id,
     const std::vector<Member>& members,
-    std::optional<std::string> next_page_token) {
+    std::optional<std::string_view> next_page_token) {
   trusted_vault_pb::ListSecurityDomainMembersResponse response;
 
-  for (auto member_type : members) {
+  for (const Member& member_info : members) {
+    std::unique_ptr<SecureBoxPublicKey> public_key =
+        SecureBoxPublicKey::CreateByImport(member_info.public_key);
+    CHECK(public_key);
+
+    std::string encoded_public_key;
+    base::Base64UrlEncode(member_info.public_key,
+                          base::Base64UrlEncodePolicy::OMIT_PADDING,
+                          &encoded_public_key);
+
     trusted_vault_pb::SecurityDomainMember* member =
         response.add_security_domain_members();
-    member->set_name("name");
-    std::string public_key_bytes;
-    base::HexStringToString(kTestMemberPublicKey, &public_key_bytes);
-    member->set_public_key(std::move(public_key_bytes));
-    member->add_memberships()->set_security_domain("other security domain");
-    auto* membership = member->add_memberships();
-    auto* key = membership->add_keys();
-    if (member_type != Member::kOtherSecurityDomain) {
-      membership->set_security_domain(
-          GetSecurityDomainPath(security_domain_id));
-      key->set_epoch(kTestKeyVersion * 2);
-    } else {
-      key->set_epoch(kTestKeyVersion);
-    }
-    key->set_member_proof(kTestMemberProof);
-    key->set_wrapped_key(kTestWrappedKey);
+    member->set_name(kSecurityDomainMemberNamePrefix + encoded_public_key);
+    AssignBytesToProtoString(member_info.public_key,
+                             member->mutable_public_key());
 
-    switch (member_type) {
-      case Member::kPhysical:
+    for (const auto& security_domain : member_info.security_domains) {
+      auto* membership = member->add_memberships();
+      membership->set_security_domain(
+          std::visit(absl::Overload{
+                         [](SecurityDomainId domain) {
+                           return GetSecurityDomainPath(domain);
+                         },
+                         [](const std::string& domain) { return domain; },
+                     },
+                     security_domain));
+
+      auto* key = membership->add_keys();
+      key->set_epoch(member_info.key_and_version.version);
+      AssignBytesToProtoString(
+          ComputeMemberProof(*public_key, member_info.key_and_version.key),
+          key->mutable_member_proof());
+      AssignBytesToProtoString(
+          ComputeTrustedVaultWrappedKey(*public_key,
+                                        member_info.key_and_version.key),
+          key->mutable_wrapped_key());
+    }
+
+    switch (member_info.member_type) {
+      case Member::MemberType::kPhysical:
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_PHYSICAL_DEVICE);
         break;
-      case Member::kOtherSecurityDomain:
-        member->set_member_type(
-            trusted_vault_pb::SecurityDomainMember::MEMBER_TYPE_UNSPECIFIED);
-        break;
-      case Member::kUnusableVirtual:
+      case Member::MemberType::kUnusableVirtual:
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_LOCKSCREEN_KNOWLEDGE_FACTOR);
         break;
-      case Member::kUsableVirtual: {
+      case Member::MemberType::kUsableVirtual: {
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_LOCKSCREEN_KNOWLEDGE_FACTOR);
         member->mutable_member_metadata()->set_usable_for_retrieval(true);
@@ -159,16 +182,16 @@ trusted_vault_pb::ListSecurityDomainMembersResponse MakeSecurityDomainMembers(
             kTestLSKFExpirySeconds);
         break;
       }
-      case Member::kICloudKeychain:
+      case Member::MemberType::kICloudKeychain:
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_ICLOUD_KEYCHAIN);
         break;
-      case Member::kInvalidICloudKeychain:
+      case Member::MemberType::kInvalidICloudKeychain:
         member->set_public_key("invalid-public-key");
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_ICLOUD_KEYCHAIN);
         break;
-      case Member::kGooglePasswordManagerPIN: {
+      case Member::MemberType::kGooglePasswordManagerPIN: {
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_GOOGLE_PASSWORD_MANAGER_PIN);
         member->mutable_member_metadata()->set_usable_for_retrieval(true);
@@ -180,7 +203,7 @@ trusted_vault_pb::ListSecurityDomainMembersResponse MakeSecurityDomainMembers(
         gpm_metadata->set_encrypted_pin_hash(kTestSerializedWrappedPIN);
         break;
       }
-      case Member::kUnusableGooglePasswordManagerPIN:
+      case Member::MemberType::kUnusableGooglePasswordManagerPIN:
         member->set_member_type(trusted_vault_pb::SecurityDomainMember::
                                     MEMBER_TYPE_GOOGLE_PASSWORD_MANAGER_PIN);
         member->mutable_member_metadata()->set_usable_for_retrieval(false);
@@ -198,6 +221,29 @@ signin::AccessTokenInfo MakeAccessTokenInfo(const std::string& access_token) {
       access_token,
       /*expiration_time_param=*/base::Time::Now() + base::Hours(1),
       /*id_token=*/std::string());
+}
+
+const trusted_vault_pb::RotatedSharedMemberKey* FindRotatedSharedMemberKey(
+    const trusted_vault_pb::RotateSharedKeyRequest& request,
+    const SecureBoxPublicKey& public_key) {
+  std::string encoded_public_key;
+  base::Base64UrlEncode(public_key.ExportToBytes(),
+                        base::Base64UrlEncodePolicy::OMIT_PADDING,
+                        &encoded_public_key);
+  const std::string member_name =
+      kSecurityDomainMemberNamePrefix + encoded_public_key;
+  auto it = std::ranges::find_if(
+      request.rotated_shared_member_keys(),
+      [&member_name](const auto& rotated_key) {
+        return rotated_key.security_domain_member() == member_name;
+      });
+  return it != request.rotated_shared_member_keys().end() ? &*it : nullptr;
+}
+
+const trusted_vault_pb::RotatedSharedMemberKey* FindRotatedSharedMemberKey(
+    const trusted_vault_pb::RotateSharedKeyRequest& request,
+    const SecureBoxKeyPair& key_pair) {
+  return FindRotatedSharedMemberKey(request, key_pair.public_key());
 }
 
 // TODO(crbug.com/40143544): revisit this tests suite and determine what
@@ -291,19 +337,20 @@ class TrustedVaultConnectionImplTest
         response_body, response_http_code);
   }
 
-  bool RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+  bool RespondToListSecurityDomainMembersRequest(
       const std::set<SecurityDomainId>& security_domain_filter,
       const std::set<trusted_vault_pb::SecurityDomainMember_MemberType>&
-          recovery_factor_filter,
-      const std::optional<std::string>& next_page_token,
+          member_filter,
+      bool force_strong_read,
+      std::optional<std::string_view> next_page_token,
       net::HttpStatusCode response_http_code,
       const std::string& response_body) {
     // Allow request to reach |test_url_loader_factory_|.
     base::RunLoop().RunUntilIdle();
 
     GURL request_url = GetFullListSecurityDomainMembersURLForTesting(
-        next_page_token, kTestURL, security_domain_filter,
-        recovery_factor_filter);
+        kTestURL, security_domain_filter, member_filter, next_page_token,
+        force_strong_read);
 
     return test_url_loader_factory_.SimulateResponseForPendingRequest(
         request_url.spec(), response_body, response_http_code);
@@ -640,6 +687,36 @@ TEST_P(TrustedVaultConnectionImplTest,
   EXPECT_THAT(deserialized_body.security_domain_member().member_type(),
               Eq(trusted_vault_pb::SecurityDomainMember::
                      MEMBER_TYPE_LOCKSCREEN_KNOWLEDGE_FACTOR));
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       ShouldSendJoinSecurityDomainsRequestForGaiaPassword) {
+  std::unique_ptr<SecureBoxKeyPair> key_pair = MakeTestKeyPair();
+  ASSERT_THAT(key_pair, NotNull());
+
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RegisterAuthenticationFactor(
+          /*account_info=*/CoreAccountInfo(), security_domain(),
+          GetTrustedVaultKeysWithVersions(kTrustedVaultKeys,
+                                          /*last_key_version=*/1234),
+          key_pair->public_key(), GaiaPassword(),
+          TrustedVaultConnection::RegisterAuthenticationFactorCallback());
+  EXPECT_THAT(request, NotNull());
+
+  const network::TestURLLoaderFactory::PendingRequest* pending_request =
+      GetPendingHTTPRequest();
+  ASSERT_THAT(pending_request, NotNull());
+  const network::ResourceRequest& resource_request = pending_request->request;
+  EXPECT_THAT(resource_request.method, Eq("POST"));
+  EXPECT_THAT(resource_request.url, Eq(GetFullJoinSecurityDomainsURLForTesting(
+                                        kTestURL, security_domain())));
+
+  trusted_vault_pb::JoinSecurityDomainsRequest deserialized_body;
+  ASSERT_TRUE(deserialized_body.ParseFromString(
+      network::GetUploadData(resource_request)));
+  EXPECT_THAT(
+      deserialized_body.security_domain_member().member_type(),
+      Eq(trusted_vault_pb::SecurityDomainMember::MEMBER_TYPE_GAIA_PASSWORD));
 }
 
 TEST_P(TrustedVaultConnectionImplTest,
@@ -1184,6 +1261,9 @@ MATCHER_P2(
 
 TEST_P(TrustedVaultConnectionImplTest,
        DownloadAuthenticationFactorsRegistrationState_Basic_ServerFiltering) {
+  const TrustedVaultKeyAndVersion key_and_version(/*key=*/{1, 2, 3, 4},
+                                                  /*version=*/kTestKeyVersion);
+
   base::MockCallback<TrustedVaultConnection::
                          DownloadAuthenticationFactorsRegistrationStateCallback>
       callback;
@@ -1199,21 +1279,39 @@ TEST_P(TrustedVaultConnectionImplTest,
                   DownloadAuthenticationFactorsRegistrationStateResult::State::
                       kRecoverable)));
 
-  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
       /*security_domain_filter=*/{security_domain()},
-      /*recovery_factor_filter=*/{},
+      /*member_filter=*/{}, /*force_strong_read=*/false,
       /*next_page_token=*/std::nullopt, net::HTTP_OK,
       /*response_body=*/
       MakeSecurityDomainMembers(
-          security_domain(),
-          {Member::kPhysical, Member::kOtherSecurityDomain,
-           Member::kUsableVirtual},
+          {{
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {security_domain()},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {"other_security_domain"},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kUsableVirtual,
+               .security_domains = {"other_security_domain", security_domain()},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = key_and_version,
+           }},
           /*next_page_token=*/std::nullopt)
           .SerializeAsString()));
 }
 
 TEST_P(TrustedVaultConnectionImplTest,
        DownloadAuthenticationFactorsRegistrationState_RecoveryFactorFilter) {
+  const TrustedVaultKeyAndVersion key_and_version(/*key=*/{1, 2, 3, 4},
+                                                  /*version=*/kTestKeyVersion);
+
   base::MockCallback<TrustedVaultConnection::
                          DownloadAuthenticationFactorsRegistrationStateCallback>
       callback;
@@ -1230,16 +1328,32 @@ TEST_P(TrustedVaultConnectionImplTest,
                   DownloadAuthenticationFactorsRegistrationStateResult::State::
                       kRecoverable)));
 
-  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
       /*security_domain_filter=*/{security_domain()},
-      /*recovery_factor_filter=*/
+      /*member_filter=*/
       {trusted_vault_pb::SecurityDomainMember::MEMBER_TYPE_PHYSICAL_DEVICE},
+      /*force_strong_read=*/false,
       /*next_page_token=*/std::nullopt, net::HTTP_OK,
       /*response_body=*/
       MakeSecurityDomainMembers(
-          security_domain(),
-          {Member::kPhysical, Member::kOtherSecurityDomain,
-           Member::kUsableVirtual},
+          {{
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {security_domain()},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {"other_security_domain"},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kUsableVirtual,
+               .security_domains = {security_domain()},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = key_and_version,
+           }},
           /*next_page_token=*/std::nullopt)
           .SerializeAsString()));
 }
@@ -1247,16 +1361,78 @@ TEST_P(TrustedVaultConnectionImplTest,
 TEST_P(TrustedVaultConnectionImplTest,
        DownloadAuthenticationFactorsRegistrationState_Cases) {
   using State = DownloadAuthenticationFactorsRegistrationStateResult::State;
-  std::string member_public_key_bytes;
-  base::HexStringToString(kTestMemberPublicKey, &member_public_key_bytes);
-  const GpmPinMetadata gpm_pin_metadata(
-      member_public_key_bytes,
-      UsableRecoveryPinMetadata(
-          kTestSerializedWrappedPIN,
-          /*expiry=*/base::Time::FromTimeT(kTestGPMExpirySeconds)));
-  const GpmPinMetadata unusable_gpm_pin_metadata(
-      std::move(member_public_key_bytes), /*pin_metadata=*/std::nullopt);
+  const TrustedVaultKeyAndVersion key_and_version(/*key=*/{1, 2, 3, 4},
+                                                  /*version=*/kTestKeyVersion);
+
+  const auto make_gpm_pin_metadata = [](const std::vector<uint8_t>& public_key,
+                                        bool usable) {
+    std::string public_key_bytes;
+    AssignBytesToProtoString(public_key, &public_key_bytes);
+    return GpmPinMetadata(
+        std::move(public_key_bytes),
+        usable ? std::make_optional(UsableRecoveryPinMetadata(
+                     kTestSerializedWrappedPIN,
+                     /*expiry=*/base::Time::FromTimeT(kTestGPMExpirySeconds)))
+               : std::nullopt);
+  };
+
+  const std::vector<uint8_t> gpm_pin_public_key_1 = GenerateRandomPublicKey();
+  const GpmPinMetadata gpm_pin_metadata_1 =
+      make_gpm_pin_metadata(gpm_pin_public_key_1, /*usable=*/true);
+  const std::vector<uint8_t> gpm_pin_public_key_2 = GenerateRandomPublicKey();
+  const GpmPinMetadata gpm_pin_metadata_2 =
+      make_gpm_pin_metadata(gpm_pin_public_key_2, /*usable=*/true);
+  const std::vector<uint8_t> unusable_gpm_pin_public_key =
+      GenerateRandomPublicKey();
+  const GpmPinMetadata unusable_gpm_pin_metadata =
+      make_gpm_pin_metadata(unusable_gpm_pin_public_key, /*usable=*/false);
+  const std::unique_ptr<SecureBoxKeyPair> icloud_key_pair =
+      SecureBoxKeyPair::GenerateRandom();
   const base::Time lskf_expiry = base::Time::FromTimeT(kTestLSKFExpirySeconds);
+
+  const auto make_member = [&](Member::MemberType member_type) {
+    return Member{
+        .member_type = member_type,
+        .security_domains = {security_domain()},
+        .public_key = GenerateRandomPublicKey(),
+        .key_and_version = key_and_version,
+    };
+  };
+  const auto make_other_domain_member = [&]() {
+    return Member{
+        .member_type = Member::MemberType::kPhysical,
+        .security_domains = {"other_security_domain"},
+        .public_key = GenerateRandomPublicKey(),
+        .key_and_version =
+            TrustedVaultKeyAndVersion(/*key=*/{5, 6, 7, 8},
+                                      /*version=*/kTestKeyVersion * 2),
+    };
+  };
+  const Member gpm_pin_member_1{
+      .member_type = Member::MemberType::kGooglePasswordManagerPIN,
+      .security_domains = {security_domain()},
+      .public_key = gpm_pin_public_key_1,
+      .key_and_version = key_and_version,
+  };
+  const Member gpm_pin_member_2{
+      .member_type = Member::MemberType::kGooglePasswordManagerPIN,
+      .security_domains = {security_domain()},
+      .public_key = gpm_pin_public_key_2,
+      .key_and_version = key_and_version,
+  };
+  const Member unusable_gpm_pin_member{
+      .member_type = Member::MemberType::kUnusableGooglePasswordManagerPIN,
+      .security_domains = {security_domain()},
+      .public_key = unusable_gpm_pin_public_key,
+      .key_and_version = key_and_version,
+  };
+  const Member icloud_keychain_member{
+      .member_type = Member::MemberType::kICloudKeychain,
+      .security_domains = {security_domain()},
+      .public_key = icloud_key_pair->public_key().ExportToBytes(),
+      .key_and_version = key_and_version,
+  };
+
   const struct TestCase {
     // responses contains the set of security domain members included in each
     // page of results from the "server".
@@ -1265,7 +1441,7 @@ TEST_P(TrustedVaultConnectionImplTest,
     std::optional<int> expected_key_version;
     std::optional<GpmPinMetadata> expected_gpm_pin_metadata;
     std::vector<base::Time> expected_lskf_expiries;
-    std::optional<std::string> expected_icloud_key;
+    std::optional<std::vector<uint8_t>> expected_icloud_key;
   } kTestCases[] = {
       {
           {{}},
@@ -1282,106 +1458,117 @@ TEST_P(TrustedVaultConnectionImplTest,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kOtherSecurityDomain}, {Member::kOtherSecurityDomain}},
+          {{make_other_domain_member()}, {make_other_domain_member()}},
           State::kEmpty,
           /*expected_key_version=*/std::nullopt,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kPhysical}},
+          {{make_member(Member::MemberType::kPhysical)}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kPhysical, Member::kUsableVirtual}},
+          {{make_member(Member::MemberType::kPhysical),
+            make_member(Member::MemberType::kUsableVirtual)}},
           State::kRecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{lskf_expiry},
       },
       {
-          {{Member::kPhysical, Member::kUnusableVirtual}},
+          {{make_member(Member::MemberType::kPhysical),
+            make_member(Member::MemberType::kUnusableVirtual)}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kPhysical}, {}, {Member::kUsableVirtual}},
+          {{make_member(Member::MemberType::kPhysical)},
+           {},
+           {make_member(Member::MemberType::kUsableVirtual)}},
           State::kRecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{lskf_expiry},
       },
       {
-          {{Member::kUsableVirtual}, {}, {Member::kPhysical}},
+          {{make_member(Member::MemberType::kUsableVirtual)},
+           {},
+           {make_member(Member::MemberType::kPhysical)}},
           State::kRecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{lskf_expiry},
       },
       {
-          {{Member::kPhysical}, {}, {Member::kUnusableVirtual}},
+          {{make_member(Member::MemberType::kPhysical)},
+           {},
+           {make_member(Member::MemberType::kUnusableVirtual)}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kPhysical}, {}, {Member::kOtherSecurityDomain}},
+          {{make_member(Member::MemberType::kPhysical)},
+           {},
+           {make_other_domain_member()}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kGooglePasswordManagerPIN}, {Member::kOtherSecurityDomain}},
+          {{gpm_pin_member_1}, {make_other_domain_member()}},
           State::kRecoverable,
           /*expected_key_version=*/kTestKeyVersion,
-          /*expected_gpm_pin_metadata=*/gpm_pin_metadata,
+          /*expected_gpm_pin_metadata=*/gpm_pin_metadata_1,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kGooglePasswordManagerPIN},
-           {Member::kGooglePasswordManagerPIN}},
+          {{gpm_pin_member_1}, {gpm_pin_member_2}},
           State::kRecoverable,
           /*expected_key_version=*/kTestKeyVersion,
-          /*expected_gpm_pin_metadata=*/gpm_pin_metadata,
+          /*expected_gpm_pin_metadata=*/gpm_pin_metadata_2,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kUnusableGooglePasswordManagerPIN}},
+          {{unusable_gpm_pin_member}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/unusable_gpm_pin_metadata,
           /*expected_lskf_expiries=*/{},
       },
       {
-          {{Member::kICloudKeychain}},
+          {{icloud_keychain_member}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
-          /*expected_icloud_keys=*/{kTestMemberPublicKey},
+          /*expected_icloud_key=*/
+          icloud_key_pair->public_key().ExportToBytes(),
       },
       {
-          {{Member::kInvalidICloudKeychain}},
+          {{make_member(Member::MemberType::kInvalidICloudKeychain)}},
           State::kIrrecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{},
-          /*expected_icloud_keys=*/{},
+          /*expected_icloud_key=*/std::nullopt,
       },
       {
-          {{Member::kUsableVirtual, Member::kUsableVirtual}},
+          {{make_member(Member::MemberType::kUsableVirtual),
+            make_member(Member::MemberType::kUsableVirtual)}},
           State::kRecoverable,
           /*expected_key_version=*/kTestKeyVersion,
           /*expected_gpm_pin_metadata=*/std::nullopt,
           /*expected_lskf_expiries=*/{lskf_expiry, lskf_expiry},
-          /*expected_icloud_keys=*/{},
+          /*expected_icloud_key=*/std::nullopt,
       },
   };
 
@@ -1417,14 +1604,13 @@ TEST_P(TrustedVaultConnectionImplTest,
         EXPECT_CALL(keep_alive_callback, Run());
         next_page_token = base::NumberToString(i);
       }
-      ASSERT_TRUE(
-          RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
-              /*security_domain_filter=*/{security_domain()},
-              /*recovery_factor_filter=*/{}, prev_next_page_token, net::HTTP_OK,
-              /*response_body=*/
-              MakeSecurityDomainMembers(security_domain(), test.responses[i],
-                                        next_page_token)
-                  .SerializeAsString()));
+      ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+          /*security_domain_filter=*/{security_domain()},
+          /*member_filter=*/{}, /*force_strong_read=*/false,
+          prev_next_page_token, net::HTTP_OK,
+          /*response_body=*/
+          MakeSecurityDomainMembers(test.responses[i], next_page_token)
+              .SerializeAsString()));
       EXPECT_TRUE(
           testing::Mock::VerifyAndClearExpectations(&keep_alive_callback));
       num_pages_downloaded++;
@@ -1433,20 +1619,24 @@ TEST_P(TrustedVaultConnectionImplTest,
 
     EXPECT_EQ(num_pages_downloaded, test.responses.size());
     EXPECT_EQ(result->state, test.expected_result);
+    EXPECT_EQ(result->key_version, test.expected_key_version);
     EXPECT_EQ(result->gpm_pin_metadata, test.expected_gpm_pin_metadata);
     EXPECT_EQ(result->lskf_expiries, test.expected_lskf_expiries);
     EXPECT_EQ(result->icloud_keys.size(), test.expected_icloud_key ? 1u : 0u);
     if (test.expected_icloud_key) {
-      EXPECT_EQ(base::HexEncode(
-                    result->icloud_keys.at(0).public_key->ExportToBytes()),
-                test.expected_icloud_key);
+      EXPECT_EQ(result->icloud_keys.at(0).public_key->ExportToBytes(),
+                *test.expected_icloud_key);
       EXPECT_EQ(result->icloud_keys.at(0).member_keys.size(), 1u);
-      EXPECT_EQ(result->icloud_keys.at(0).member_keys.at(0).proof,
-                ProtoStringToBytes(kTestMemberProof));
-      EXPECT_EQ(result->icloud_keys.at(0).member_keys.at(0).wrapped_key,
-                ProtoStringToBytes(kTestWrappedKey));
+      EXPECT_THAT(
+          result->icloud_keys.at(0).member_keys.at(0).proof,
+          ElementsAreArray(ComputeMemberProof(
+              *result->icloud_keys.at(0).public_key, key_and_version.key)));
+      EXPECT_THAT(DecryptTrustedVaultWrappedKey(
+                      icloud_key_pair->private_key(),
+                      result->icloud_keys.at(0).member_keys.at(0).wrapped_key),
+                  Eq(key_and_version.key));
       EXPECT_EQ(result->icloud_keys.at(0).member_keys.at(0).version,
-                kTestKeyVersion * 2);
+                key_and_version.version);
     }
   }
 }
@@ -1468,9 +1658,9 @@ TEST_P(TrustedVaultConnectionImplTest,
                   DownloadAuthenticationFactorsRegistrationStateResult::State::
                       kError)));
 
-  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
       /*security_domain_filter=*/{security_domain()},
-      /*recovery_factor_filter=*/{},
+      /*member_filter=*/{}, /*force_strong_read=*/false,
       /*next_page_token=*/std::nullopt, net::HTTP_INTERNAL_SERVER_ERROR,
       /*response_body=*/""));
 }
@@ -1492,9 +1682,9 @@ TEST_P(TrustedVaultConnectionImplTest,
                   DownloadAuthenticationFactorsRegistrationStateResult::State::
                       kError)));
 
-  ASSERT_TRUE(RespondToDownloadAuthenticationFactorsRegistrationStateRequest(
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
       /*security_domain_filter=*/{security_domain()},
-      /*recovery_factor_filter=*/{},
+      /*member_filter=*/{}, /*force_strong_read=*/false,
       /*next_page_token=*/std::nullopt, net::HTTP_OK,
       /*response_body=*/"not a valid protobuf"));
 }
@@ -1510,8 +1700,8 @@ TEST_P(TrustedVaultConnectionImplTest, DownloadGaiaPasswordPublicKeySuccess) {
       future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
-      connection()->DownloadGaiaPasswordPublicKey(
-          CoreAccountInfo(), security_domain(), future.GetCallback());
+      connection()->DownloadGaiaPasswordPublicKey(CoreAccountInfo(),
+                                                  future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
   EXPECT_TRUE(RespondToDownloadGaiaPasswordPublicKeyRequest(
@@ -1521,6 +1711,31 @@ TEST_P(TrustedVaultConnectionImplTest, DownloadGaiaPasswordPublicKeySuccess) {
             TrustedVaultDownloadPasswordPublicKeyStatus::kSuccess);
   EXPECT_THAT(future.Get<1>(), ElementsAreArray(expected_public_key.begin(),
                                                 expected_public_key.end()));
+  histogram_tester().ExpectUniqueSample(
+      /*name=*/"TrustedVault.AccessTokenFetchSuccess",
+      /*sample=*/true,
+      /*expected_bucket_count=*/1);
+  histogram_tester().ExpectUniqueSample(
+      /*name=*/"TrustedVault.SecurityDomainServiceURLFetchResponse",
+      /*sample=*/net::HTTP_OK,
+      /*expected_bucket_count=*/1);
+  histogram_tester().ExpectUniqueSample(
+      /*name=*/
+      "TrustedVault.SecurityDomainServiceURLFetchResponse.NoSecurityDomain",
+      /*sample=*/net::HTTP_OK,
+      /*expected_bucket_count=*/1);
+  histogram_tester().ExpectUniqueSample(
+      /*name=*/
+      "TrustedVault.SecurityDomainServiceURLFetchResponse."
+      "DownloadGaiaPasswordPublicKey",
+      /*sample=*/net::HTTP_OK,
+      /*expected_bucket_count=*/1);
+  histogram_tester().ExpectUniqueSample(
+      /*name=*/
+      "TrustedVault.SecurityDomainServiceURLFetchResponse."
+      "DownloadGaiaPasswordPublicKey.NoSecurityDomain",
+      /*sample=*/net::HTTP_OK,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_P(TrustedVaultConnectionImplTest,
@@ -1530,8 +1745,8 @@ TEST_P(TrustedVaultConnectionImplTest,
       future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
-      connection()->DownloadGaiaPasswordPublicKey(
-          CoreAccountInfo(), security_domain(), future.GetCallback());
+      connection()->DownloadGaiaPasswordPublicKey(CoreAccountInfo(),
+                                                  future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
   EXPECT_TRUE(RespondToDownloadGaiaPasswordPublicKeyRequestWithNetworkError());
@@ -1548,8 +1763,8 @@ TEST_P(TrustedVaultConnectionImplTest,
       future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
-      connection()->DownloadGaiaPasswordPublicKey(
-          CoreAccountInfo(), security_domain(), future.GetCallback());
+      connection()->DownloadGaiaPasswordPublicKey(CoreAccountInfo(),
+                                                  future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
   EXPECT_TRUE(RespondToDownloadGaiaPasswordPublicKeyRequest(
@@ -1570,8 +1785,8 @@ TEST_P(TrustedVaultConnectionImplTest,
       future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
-      connection()->DownloadGaiaPasswordPublicKey(
-          CoreAccountInfo(), security_domain(), future.GetCallback());
+      connection()->DownloadGaiaPasswordPublicKey(CoreAccountInfo(),
+                                                  future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
   EXPECT_TRUE(RespondToDownloadGaiaPasswordPublicKeyRequest(
@@ -1593,34 +1808,69 @@ TEST_P(TrustedVaultConnectionImplTest,
       future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
-      connection->DownloadGaiaPasswordPublicKey(
-          CoreAccountInfo(), security_domain(), future.GetCallback());
+      connection->DownloadGaiaPasswordPublicKey(CoreAccountInfo(),
+                                                future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
   EXPECT_EQ(future.Get<0>(), TrustedVaultDownloadPasswordPublicKeyStatus::
                                  kPersistentAccessTokenFetchError);
   EXPECT_THAT(future.Get<1>(), IsEmpty());
+  histogram_tester().ExpectUniqueSample(
+      /*name=*/"TrustedVault.AccessTokenFetchSuccess",
+      /*sample=*/false,
+      /*expected_bucket_count=*/1);
 
   // No requests should be sent to the network.
   EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
 }
 
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeySuccess) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
-  request_proto.set_security_domain("test_security_domain");
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+  const int new_epoch = 201;
 
-  int new_epoch = 123;
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair_1 =
+      SecureBoxKeyPair::GenerateRandom();
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair_2 =
+      SecureBoxKeyPair::GenerateRandom();
+  const std::vector<const SecureBoxKeyPair*> member_key_pairs = {
+      member_key_pair_1.get(), member_key_pair_2.get()};
+
   trusted_vault_pb::RotateSharedKeyResponse response_proto;
   response_proto.set_new_epoch(new_epoch);
 
+  base::HistogramTester histogram_tester;
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
-  // Verify request sent.
+  // 1. Respond to ListSecurityDomainMembers request with two distinct members.
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {security_domain()},
+               .public_key = member_key_pair_1->public_key().ExportToBytes(),
+               .key_and_version = last_key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kUsableVirtual,
+               .security_domains = {"other_security_domain", security_domain()},
+               .public_key = member_key_pair_2->public_key().ExportToBytes(),
+               .key_and_version = last_key_and_version,
+           }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  // 2. Verify RotateSharedKey POST request sent.
   const network::TestURLLoaderFactory::PendingRequest* pending_request =
       GetPendingHTTPRequest();
   ASSERT_THAT(pending_request, NotNull());
@@ -1632,9 +1882,144 @@ TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeySuccess) {
   trusted_vault_pb::RotateSharedKeyRequest deserialized_body;
   EXPECT_TRUE(deserialized_body.ParseFromString(
       network::GetUploadData(resource_request)));
-  EXPECT_THAT(deserialized_body.security_domain(), Eq("test_security_domain"));
+  EXPECT_THAT(deserialized_body.security_domain(),
+              Eq(GetSecurityDomainPath(security_domain())));
+  EXPECT_THAT(deserialized_body.base_epoch(), Eq(last_key_and_version.version));
+  ASSERT_THAT(deserialized_body.rotated_shared_member_keys(),
+              SizeIs(member_key_pairs.size()));
+  for (const auto* key_pair : member_key_pairs) {
+    const trusted_vault_pb::RotatedSharedMemberKey* rotated_key =
+        FindRotatedSharedMemberKey(deserialized_body, *key_pair);
+    ASSERT_THAT(rotated_key, NotNull());
+    EXPECT_THAT(DecryptTrustedVaultWrappedKey(
+                    key_pair->private_key(),
+                    ProtoStringToBytes(rotated_key->wrapped_key())),
+                Eq(new_key));
+    EXPECT_TRUE(
+        VerifyMemberProof(key_pair->public_key(), new_key,
+                          ProtoStringToBytes(rotated_key->member_proof())));
+  }
+  EXPECT_TRUE(VerifyRotationProof(
+      new_key, last_key_and_version.key,
+      ProtoStringToBytes(deserialized_body.rotation_proof())));
 
-  // Respond
+  // 3. Respond to RotateSharedKey request.
+  EXPECT_TRUE(RespondToRotateSharedKeyRequest(
+      net::HTTP_OK, response_proto.SerializeAsString()));
+
+  EXPECT_THAT(future.Get<0>(), Eq(TrustedVaultKeyRotationStatus::kSuccess));
+  EXPECT_THAT(future.Get<1>(), Eq(new_epoch));
+  histogram_tester.ExpectUniqueSample(
+      /*name=*/"TrustedVault.KeyRotationStatus." + security_domain_name_uma(),
+      /*sample=*/TrustedVaultKeyRotationStatus::kSuccess,
+      /*expected_bucket_count=*/1);
+  histogram_tester.ExpectUniqueSample(
+      /*name=*/
+      "TrustedVault.SecurityDomainServiceURLFetchResponse."
+      "DownloadRecoveryFactorsForKeyRotation." +
+          security_domain_name_uma(),
+      /*sample=*/net::HTTP_OK,
+      /*expected_bucket_count=*/1);
+  histogram_tester.ExpectUniqueSample(
+      /*name=*/
+      "TrustedVault.SecurityDomainServiceURLFetchResponse."
+      "RotateSharedKey." +
+          security_domain_name_uma(),
+      /*sample=*/net::HTTP_OK,
+      /*expected_bucket_count=*/1);
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeySuccessWithPagination) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+  const int new_epoch = 201;
+
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair_1 =
+      SecureBoxKeyPair::GenerateRandom();
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair_2 =
+      SecureBoxKeyPair::GenerateRandom();
+
+  trusted_vault_pb::RotateSharedKeyResponse response_proto;
+  response_proto.set_new_epoch(new_epoch);
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  // Page 1: valid member of `security_domain()`, with next_page_token =
+  // "page2".
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = member_key_pair_1->public_key().ExportToBytes(),
+              .key_and_version = last_key_and_version,
+          }},
+          "page2")
+          .SerializeAsString()));
+
+  // Page 2: member of another domain, with next_page_token = "page3".
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/"page2", net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {"other_security_domain"},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version =
+                  TrustedVaultKeyAndVersion(/*key=*/{9, 9}, /*version=*/100),
+          }},
+          "page3")
+          .SerializeAsString()));
+
+  // Page 3: second valid member of `security_domain()`, no next_page_token.
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/"page3", net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kUsableVirtual,
+              .security_domains = {security_domain()},
+              .public_key = member_key_pair_2->public_key().ExportToBytes(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  const network::TestURLLoaderFactory::PendingRequest* pending_request =
+      GetPendingHTTPRequest();
+  ASSERT_THAT(pending_request, NotNull());
+  trusted_vault_pb::RotateSharedKeyRequest deserialized_body;
+  ASSERT_TRUE(deserialized_body.ParseFromString(
+      network::GetUploadData(pending_request->request)));
+  ASSERT_THAT(deserialized_body.rotated_shared_member_keys(), SizeIs(2));
+  const trusted_vault_pb::RotatedSharedMemberKey* rotated_key_1 =
+      FindRotatedSharedMemberKey(deserialized_body, *member_key_pair_1);
+  ASSERT_THAT(rotated_key_1, NotNull());
+  EXPECT_THAT(DecryptTrustedVaultWrappedKey(
+                  member_key_pair_1->private_key(),
+                  ProtoStringToBytes(rotated_key_1->wrapped_key())),
+              Eq(new_key));
+
+  const trusted_vault_pb::RotatedSharedMemberKey* rotated_key_2 =
+      FindRotatedSharedMemberKey(deserialized_body, *member_key_pair_2);
+  ASSERT_THAT(rotated_key_2, NotNull());
+  EXPECT_THAT(DecryptTrustedVaultWrappedKey(
+                  member_key_pair_2->private_key(),
+                  ProtoStringToBytes(rotated_key_2->wrapped_key())),
+              Eq(new_key));
+
   EXPECT_TRUE(RespondToRotateSharedKeyRequest(
       net::HTTP_OK, response_proto.SerializeAsString()));
 
@@ -1642,15 +2027,423 @@ TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeySuccess) {
   EXPECT_THAT(future.Get<1>(), Eq(new_epoch));
 }
 
+TEST_P(TrustedVaultConnectionImplTest,
+       RotateSharedKeySuccessWithDuplicateMembersAcrossPages) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+  const int new_epoch = 201;
+
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair_1 =
+      SecureBoxKeyPair::GenerateRandom();
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair_2 =
+      SecureBoxKeyPair::GenerateRandom();
+
+  trusted_vault_pb::RotateSharedKeyResponse response_proto;
+  response_proto.set_new_epoch(new_epoch);
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  // Page 1: contains member 1.
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = member_key_pair_1->public_key().ExportToBytes(),
+              .key_and_version = last_key_and_version,
+          }},
+          "page2")
+          .SerializeAsString()));
+
+  // Page 2: returns member 1 again (duplicate across pages) and member 2.
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/"page2", net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {security_domain()},
+               .public_key = member_key_pair_1->public_key().ExportToBytes(),
+               .key_and_version = last_key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kUsableVirtual,
+               .security_domains = {security_domain()},
+               .public_key = member_key_pair_2->public_key().ExportToBytes(),
+               .key_and_version = last_key_and_version,
+           }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  const network::TestURLLoaderFactory::PendingRequest* pending_request =
+      GetPendingHTTPRequest();
+  ASSERT_THAT(pending_request, NotNull());
+  trusted_vault_pb::RotateSharedKeyRequest deserialized_body;
+  ASSERT_TRUE(deserialized_body.ParseFromString(
+      network::GetUploadData(pending_request->request)));
+  // Verify member 1 was deduplicated and only 2 rotated keys were generated.
+  ASSERT_THAT(deserialized_body.rotated_shared_member_keys(), SizeIs(2));
+  const trusted_vault_pb::RotatedSharedMemberKey* rotated_key_1 =
+      FindRotatedSharedMemberKey(deserialized_body, *member_key_pair_1);
+  ASSERT_THAT(rotated_key_1, NotNull());
+  EXPECT_THAT(DecryptTrustedVaultWrappedKey(
+                  member_key_pair_1->private_key(),
+                  ProtoStringToBytes(rotated_key_1->wrapped_key())),
+              Eq(new_key));
+
+  const trusted_vault_pb::RotatedSharedMemberKey* rotated_key_2 =
+      FindRotatedSharedMemberKey(deserialized_body, *member_key_pair_2);
+  ASSERT_THAT(rotated_key_2, NotNull());
+  EXPECT_THAT(DecryptTrustedVaultWrappedKey(
+                  member_key_pair_2->private_key(),
+                  ProtoStringToBytes(rotated_key_2->wrapped_key())),
+              Eq(new_key));
+
+  EXPECT_TRUE(RespondToRotateSharedKeyRequest(
+      net::HTTP_OK, response_proto.SerializeAsString()));
+
+  EXPECT_THAT(future.Get<0>(), Eq(TrustedVaultKeyRotationStatus::kSuccess));
+  EXPECT_THAT(future.Get<1>(), Eq(new_epoch));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyListMembersFailed) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_INTERNAL_SERVER_ERROR, ""));
+
+  EXPECT_THAT(future.Get<0>(), Eq(TrustedVaultKeyRotationStatus::kOtherError));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyEmptySecurityDomain) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {"other_security_domain"},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kEmptySecurityDomain));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyInvalidMemberProof) {
+  const int epoch = 200;
+  const TrustedVaultKeyAndVersion wrong_key_and_version(/*key=*/{9, 9, 9},
+                                                        epoch);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    wrong_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version =
+                  TrustedVaultKeyAndVersion(/*key=*/{1, 2, 3, 4}, epoch),
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kKeyProofsVerificationFailed));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       RotateSharedKeyListMembersCorruptedProto) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK, "corrupted_proto_bytes"));
+
+  EXPECT_THAT(future.Get<0>(), Eq(TrustedVaultKeyRotationStatus::kOtherError));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyInvalidMemberPublicKey) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  trusted_vault_pb::ListSecurityDomainMembersResponse members_response =
+      MakeSecurityDomainMembers(
+          {{
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {security_domain()},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = last_key_and_version,
+           },
+           {
+               .member_type = Member::MemberType::kPhysical,
+               .security_domains = {security_domain()},
+               .public_key = GenerateRandomPublicKey(),
+               .key_and_version = last_key_and_version,
+           }},
+          /*next_page_token=*/std::nullopt);
+  members_response.mutable_security_domain_members(1)->set_public_key(
+      "invalid-public-key");
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      members_response.SerializeAsString()));
+
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kKeyProofsVerificationFailed));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyMissingMemberEpochKey) {
+  const std::vector<uint8_t> key = {1, 2, 3, 4};
+  const TrustedVaultKeyAndVersion different_epoch_key_and_version(
+      key, /*version=*/201);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    different_epoch_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version =
+                  TrustedVaultKeyAndVersion(key, /*version=*/200),
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kKeyProofsVerificationFailed));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       RotateSharedKeyMemberEpochGreaterThanLocalVersion) {
+  const std::vector<uint8_t> key = {1, 2, 3, 4};
+  const TrustedVaultKeyAndVersion last_key_and_version(key, /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version =
+                  TrustedVaultKeyAndVersion(key, /*version=*/201),
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
+
+  EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kLocalDataObsolete));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest,
+       RotateSharedKeyMemberHasNewerEpochAlongsideBaseEpoch) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> newer_key = {7, 8, 9};
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  std::unique_ptr<SecureBoxKeyPair> member_key_pair =
+      SecureBoxKeyPair::GenerateRandom();
+  trusted_vault_pb::ListSecurityDomainMembersResponse members_response =
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = member_key_pair->public_key().ExportToBytes(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt);
+  trusted_vault_pb::SharedMemberKey* newer_shared_key =
+      members_response.mutable_security_domain_members(0)
+          ->mutable_memberships(0)
+          ->add_keys();
+  newer_shared_key->set_epoch(last_key_and_version.version + 1);
+  AssignBytesToProtoString(
+      ComputeTrustedVaultWrappedKey(member_key_pair->public_key(), newer_key),
+      newer_shared_key->mutable_wrapped_key());
+  AssignBytesToProtoString(
+      ComputeMemberProof(member_key_pair->public_key(), newer_key),
+      newer_shared_key->mutable_member_proof());
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      members_response.SerializeAsString()));
+
+  EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kLocalDataObsolete));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyEmptyMemberKeys) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+
+  trusted_vault_pb::ListSecurityDomainMembersResponse members_response =
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt);
+  members_response.mutable_security_domain_members(0)
+      ->mutable_memberships(0)
+      ->clear_keys();
+
+  base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
+  ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      members_response.SerializeAsString()));
+
+  EXPECT_THAT(GetPendingHTTPRequest(), IsNull());
+  EXPECT_THAT(future.Get<0>(),
+              Eq(TrustedVaultKeyRotationStatus::kKeyProofsVerificationFailed));
+  EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyNetworkError) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
 
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
+
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
 
   // Advance time to bypass retry logic.
   task_environment().FastForwardBy(
@@ -1664,32 +2457,70 @@ TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyNetworkError) {
 }
 
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyBadRequest) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+  const std::string members_response =
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString();
 
+  base::HistogramTester histogram_tester;
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK, members_response));
   EXPECT_TRUE(RespondToRotateSharedKeyRequest(net::HTTP_BAD_REQUEST, ""));
 
   EXPECT_THAT(future.Get<0>(),
               Eq(TrustedVaultKeyRotationStatus::kMembershipMismatch));
   EXPECT_THAT(future.Get<1>(), Eq(0));
+  histogram_tester.ExpectUniqueSample(
+      /*name=*/"TrustedVault.KeyRotationStatus." + security_domain_name_uma(),
+      /*sample=*/TrustedVaultKeyRotationStatus::kMembershipMismatch,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyNotFound) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
 
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
   EXPECT_TRUE(RespondToRotateSharedKeyRequest(net::HTTP_NOT_FOUND, ""));
 
   EXPECT_THAT(future.Get<0>(),
@@ -1698,32 +2529,69 @@ TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyNotFound) {
 }
 
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyConflict) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
 
+  base::HistogramTester histogram_tester;
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
   EXPECT_TRUE(RespondToRotateSharedKeyRequest(net::HTTP_CONFLICT, ""));
 
   EXPECT_THAT(future.Get<0>(),
               Eq(TrustedVaultKeyRotationStatus::kLocalDataObsolete));
   EXPECT_THAT(future.Get<1>(), Eq(0));
+  histogram_tester.ExpectUniqueSample(
+      /*name=*/"TrustedVault.KeyRotationStatus." + security_domain_name_uma(),
+      /*sample=*/TrustedVaultKeyRotationStatus::kLocalDataObsolete,
+      /*expected_bucket_count=*/1);
 }
 
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyInternalServerError) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
 
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
   EXPECT_TRUE(
       RespondToRotateSharedKeyRequest(net::HTTP_INTERNAL_SERVER_ERROR, ""));
 
@@ -1732,20 +2600,92 @@ TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyInternalServerError) {
 }
 
 TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyParsingError) {
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
 
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                    request_proto, future.GetCallback());
+                                    last_key_and_version, new_key,
+                                    future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK,
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString()));
   EXPECT_TRUE(
       RespondToRotateSharedKeyRequest(net::HTTP_OK, "corrupted_proto_bytes"));
 
   EXPECT_THAT(future.Get<0>(), Eq(TrustedVaultKeyRotationStatus::kOtherError));
   EXPECT_THAT(future.Get<1>(), Eq(0));
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyInvalidNewEpoch) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+  const std::string members_response =
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString();
+
+  // Case 1: Empty response body (proto3 `new_epoch` defaults to 0).
+  {
+    base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+    std::unique_ptr<TrustedVaultConnection::Request> request =
+        connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                      last_key_and_version, new_key,
+                                      future.GetCallback());
+    ASSERT_THAT(request, NotNull());
+    ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+        /*security_domain_filter=*/{security_domain()},
+        /*member_filter=*/{}, /*force_strong_read=*/true,
+        /*next_page_token=*/std::nullopt, net::HTTP_OK, members_response));
+    EXPECT_TRUE(RespondToRotateSharedKeyRequest(net::HTTP_OK, ""));
+    EXPECT_THAT(future.Get<0>(),
+                Eq(TrustedVaultKeyRotationStatus::kOtherError));
+    EXPECT_THAT(future.Get<1>(), Eq(0));
+  }
+
+  // Case 2: Non-advancing `new_epoch` (`new_epoch == base_epoch`).
+  {
+    trusted_vault_pb::RotateSharedKeyResponse response_proto;
+    response_proto.set_new_epoch(last_key_and_version.version);
+
+    base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
+    std::unique_ptr<TrustedVaultConnection::Request> request =
+        connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                      last_key_and_version, new_key,
+                                      future.GetCallback());
+    ASSERT_THAT(request, NotNull());
+    ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+        /*security_domain_filter=*/{security_domain()},
+        /*member_filter=*/{}, /*force_strong_read=*/true,
+        /*next_page_token=*/std::nullopt, net::HTTP_OK, members_response));
+    EXPECT_TRUE(RespondToRotateSharedKeyRequest(
+        net::HTTP_OK, response_proto.SerializeAsString()));
+    EXPECT_THAT(future.Get<0>(),
+                Eq(TrustedVaultKeyRotationStatus::kOtherError));
+    EXPECT_THAT(future.Get<1>(), Eq(0));
+  }
 }
 
 TEST_P(TrustedVaultConnectionImplTest,
@@ -1754,13 +2694,17 @@ TEST_P(TrustedVaultConnectionImplTest,
       CreateConnectionWithAccessTokenError(
           TrustedVaultAccessTokenFetcher::FetchingError::kPersistentAuthError);
 
-  trusted_vault_pb::RotateSharedKeyRequest request_proto;
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
 
+  base::HistogramTester histogram_tester;
   base::test::TestFuture<TrustedVaultKeyRotationStatus, int> future;
 
   std::unique_ptr<TrustedVaultConnection::Request> request =
       connection->RotateSharedKey(CoreAccountInfo(), security_domain(),
-                                  request_proto, future.GetCallback());
+                                  last_key_and_version, new_key,
+                                  future.GetCallback());
   ASSERT_THAT(request, NotNull());
 
   // No requests should be sent to the network.
@@ -1770,6 +2714,58 @@ TEST_P(TrustedVaultConnectionImplTest,
       future.Get<0>(),
       Eq(TrustedVaultKeyRotationStatus::kPersistentAccessTokenFetchError));
   EXPECT_THAT(future.Get<1>(), Eq(0));
+  histogram_tester.ExpectUniqueSample(
+      /*name=*/"TrustedVault.KeyRotationStatus." + security_domain_name_uma(),
+      /*sample=*/
+      TrustedVaultKeyRotationStatus::kPersistentAccessTokenFetchError,
+      /*expected_bucket_count=*/1);
+}
+
+TEST_P(TrustedVaultConnectionImplTest, RotateSharedKeyCancellation) {
+  const TrustedVaultKeyAndVersion last_key_and_version(/*key=*/{1, 2, 3, 4},
+                                                       /*version=*/200);
+  const std::vector<uint8_t> new_key = {4, 5, 6};
+  const std::string members_response =
+      MakeSecurityDomainMembers(
+          {{
+              .member_type = Member::MemberType::kPhysical,
+              .security_domains = {security_domain()},
+              .public_key = GenerateRandomPublicKey(),
+              .key_and_version = last_key_and_version,
+          }},
+          /*next_page_token=*/std::nullopt)
+          .SerializeAsString();
+
+  base::HistogramTester histogram_tester;
+  base::MockCallback<TrustedVaultConnection::RotateSharedKeyCallback> callback;
+  EXPECT_CALL(callback, Run).Times(0);
+
+  // Cancel while ListSecurityDomainMembers is in flight.
+  std::unique_ptr<TrustedVaultConnection::Request> request =
+      connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                    last_key_and_version, new_key,
+                                    callback.Get());
+  ASSERT_THAT(request, NotNull());
+  request.reset();
+  RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK, members_response);
+
+  // Cancel while RotateSharedKey POST is in flight.
+  request = connection()->RotateSharedKey(CoreAccountInfo(), security_domain(),
+                                          last_key_and_version, new_key,
+                                          callback.Get());
+  ASSERT_THAT(request, NotNull());
+  ASSERT_TRUE(RespondToListSecurityDomainMembersRequest(
+      /*security_domain_filter=*/{security_domain()},
+      /*member_filter=*/{}, /*force_strong_read=*/true,
+      /*next_page_token=*/std::nullopt, net::HTTP_OK, members_response));
+  request.reset();
+  RespondToRotateSharedKeyRequest(net::HTTP_OK, /*response_content=*/"");
+
+  histogram_tester.ExpectTotalCount(
+      "TrustedVault.KeyRotationStatus." + security_domain_name_uma(), 0);
 }
 
 }  // namespace

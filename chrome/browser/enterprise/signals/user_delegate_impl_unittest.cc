@@ -59,9 +59,10 @@ class UserDelegateImplTest : public testing::Test {
  protected:
 #if BUILDFLAG(IS_ANDROID)
   void SetUp() override {
-    // IsDeviceTrustConnectorAndroidEnabled() returns false on desktop form
-    // factors. Pin a non-desktop form factor so that these tests behave the
-    // same on all Android devices.
+    // `IsDeviceTrustConnectorAndroidEnabled()` also depends on
+    // `kDeviceTrustConnectorDesktopFormFactors` on desktop form factors. Pin a
+    // non-desktop form factor so that these tests behave the same on all
+    // Android devices.
     base::android::device_info::set_is_desktop_for_testing(false);
   }
 
@@ -185,6 +186,41 @@ TEST_F(UserDelegateImplTest, GetPolicyScopesNeedingSignals_Empty) {
 }
 
 #if BUILDFLAG(IS_ANDROID)
+// Tests that GetPrimaryAccountGaiaId returns the Gaia ID of the primary
+// account.
+TEST_F(UserDelegateImplTest, GetPrimaryAccountGaiaId_PrimaryAccount) {
+  auto account = identity_test_env_.MakePrimaryAccountAvailable(
+      kUserEmail, signin::ConsentLevel::kSignin);
+  identity_test_env_.MakeAccountAvailable(
+      kOtherUserEmail, {.set_cookie = true, .gaia_id = kOtherUserGaiaId});
+
+  CreateDelegate();
+  EXPECT_EQ(user_delegate_->GetPrimaryAccountGaiaId(), account.GetGaiaId());
+}
+
+// Tests that GetPrimaryAccountGaiaId returns an empty Gaia ID when there is no
+// primary account.
+TEST_F(UserDelegateImplTest, GetPrimaryAccountGaiaId_NoPrimaryAccount) {
+  identity_test_env_.MakeAccountAvailable(
+      kOtherUserEmail, {.set_cookie = true, .gaia_id = kOtherUserGaiaId});
+
+  CreateDelegate();
+  EXPECT_TRUE(user_delegate_->GetPrimaryAccountGaiaId().empty());
+}
+
+// Tests that GetPrimaryAccountGaiaId returns an empty Gaia ID when the identity
+// manager is a nullptr.
+TEST_F(UserDelegateImplTest, GetPrimaryAccountGaiaId_NullManager) {
+  // Instantiate all of the dependencies and reset the delegate.
+  CreateDelegate();
+  user_delegate_ = std::make_unique<UserDelegateImpl>(
+      testing_profile_.get(), nullptr, signals_dependency_delegate_.get());
+
+  identity_test_env_.MakePrimaryAccountAvailable(kUserEmail,
+                                                 signin::ConsentLevel::kSignin);
+  EXPECT_TRUE(user_delegate_->GetPrimaryAccountGaiaId().empty());
+}
+
 // TODO(crbug.com/463390232): Update these tests once the explicit consent
 // preference is wired for Android managed profiles.
 
@@ -198,17 +234,35 @@ TEST_F(UserDelegateImplTest,
   EXPECT_FALSE(user_delegate_->IsCollectSignalsConsentRequired());
 }
 
-// Tests that consent is required for a managed user on desktop form factors,
-// where the Device Trust Connector is not supported yet, even when the
-// DeviceTrustConnectorAndroid feature is enabled.
+// Tests that consent is required for a managed user on desktop form factors
+// when the `kDeviceTrustConnectorDesktopFormFactors` feature is disabled, even
+// when the `kDeviceTrustConnectorAndroid` feature is enabled.
 TEST_F(
     UserDelegateImplTest,
     IsCollectSignalsConsentRequired_FeatureEnabled_ManagedUser_DesktopFormFactor) {
-  base::test::ScopedFeatureList feature_list{
-      enterprise_connectors::kDeviceTrustConnectorAndroid};
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {enterprise_connectors::kDeviceTrustConnectorAndroid},
+      {enterprise_connectors::kDeviceTrustConnectorDesktopFormFactors});
   base::android::device_info::set_is_desktop_for_testing(true);
   CreateDelegate(/*is_managed_user=*/true);
   EXPECT_TRUE(user_delegate_->IsCollectSignalsConsentRequired());
+}
+
+// Tests that consent is not required for a managed user on desktop form
+// factors when both the `kDeviceTrustConnectorAndroid` and the
+// `kDeviceTrustConnectorDesktopFormFactors` features are enabled.
+TEST_F(
+    UserDelegateImplTest,
+    IsCollectSignalsConsentRequired_FeatureEnabled_ManagedUser_DesktopFormFactorWithDesktopFeature) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {enterprise_connectors::kDeviceTrustConnectorAndroid,
+       enterprise_connectors::kDeviceTrustConnectorDesktopFormFactors},
+      {});
+  base::android::device_info::set_is_desktop_for_testing(true);
+  CreateDelegate(/*is_managed_user=*/true);
+  EXPECT_FALSE(user_delegate_->IsCollectSignalsConsentRequired());
 }
 
 // Tests that consent is required for an unmanaged user on Android even when the

@@ -29,7 +29,7 @@ struct SessionWindow;
 
 namespace sync_sessions {
 class OpenTabsUIDelegate;
-struct SyncedSession;
+class SyncedSession;
 }  // namespace sync_sessions
 
 // TODO(crbug.com/40261558): Move this class to chrome/browser/recent_tabs
@@ -47,11 +47,9 @@ class ForeignSessionHelper {
 
   ~ForeignSessionHelper();
 
-  void Destroy();
   bool IsTabSyncEnabled();
   void TriggerSessionSync();
   void SetOnForeignSessionCallback(
-      JNIEnv* env,
       const base::android::JavaRef<jobject>& callback);
   bool GetForeignSessions(JNIEnv* env,
                           const base::android::JavaRef<jobject>& result);

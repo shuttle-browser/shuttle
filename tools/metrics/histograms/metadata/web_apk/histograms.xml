@@ -93,7 +93,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="WebApk.Install.InstallEvent" enum="WebApkInstallEvent"
-    expires_after="2027-02-21">
+    expires_after="2027-04-25">
   <owner>hartmanng@chromium.org</owner>
   <owner>src/chrome/android/webapk/OWNERS</owner>
   <summary>
@@ -154,15 +154,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="WebApk.Launch.NetworkError" enum="NetErrorCodes"
-    expires_after="2024-06-01">
-  <owner>hartmanng@chromium.org</owner>
-  <owner>src/chrome/android/webapk/OWNERS</owner>
-  <summary>
-    Records the error codes when a WebAPK is launched with network failures.
-  </summary>
-</histogram>
-
 <histogram name="WebApk.LaunchFromViewIntent" enum="Boolean"
     expires_after="2026-12-14">
   <owner>hartmanng@chromium.org</owner>
@@ -210,7 +201,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="WebApk.ShellApkVersion2{WebApkDistributorType}" units="units"
-    expires_after="2027-02-14">
+    expires_after="2027-04-25">
   <owner>hartmanng@chromium.org</owner>
   <owner>src/chrome/android/webapk/OWNERS</owner>
   <summary>
@@ -415,27 +406,6 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="WebApk.Update.NumStaleUpdateRequestFiles" units="files"
-    expires_after="2024-10-06">
-  <owner>hartmanng@chromium.org</owner>
-  <owner>src/chrome/android/webapk/OWNERS</owner>
-  <summary>
-    Records the number of zombie &quot;WebAPK update request&quot; files that
-    the update process failed to cleanup. Recorded for all WebAPKs whenever a
-    WebAPK or webapp is launched.
-  </summary>
-</histogram>
-
-<histogram name="WebApk.Update.RequestSent" enum="WebApkUpdateRequestSent"
-    expires_after="2024-02-20">
-  <owner>hartmanng@chromium.org</owner>
-  <owner>src/chrome/android/webapk/OWNERS</owner>
-  <summary>
-    Records the time point when a request to update a WebAPK is sent to the
-    WebAPK Server.
-  </summary>
-</histogram>
-
 <histogram name="WebApk.Update.ShellVersion" units="units"
     expires_after="2027-05-19">
   <owner>eirage@chromium.org</owner>
@@ -445,18 +415,6 @@ chromium-metrics-reviews@google.com.
     &quot;Shell APK version&quot; The &quot;Shell APK version&quot; is
     documented in
     chrome/android/webapk/shell_apk/current_version/current_version.gni
-  </summary>
-</histogram>
-
-<histogram name="WebApk.Update.UpdateEmptyUniqueId.NeedsUpgrade" enum="Boolean"
-    expires_after="2025-04-27">
-  <owner>eirage@chromium.org</owner>
-  <owner>hartmanng@chromium.org</owner>
-  <owner>src/chrome/android/webapk/OWNERS</owner>
-  <summary>
-    For WebAPK unique ID migration, record whether an update is neede (with
-    non-empty update reason). This only records for the first legacy update that
-    updates the WebAPK from an empty id.
   </summary>
 </histogram>
 

@@ -42,6 +42,18 @@ export const COVERAGE_TOPIC_COUNT = 3;
 // dialog and the topics' details pages.
 export const COVERAGE_TOPICS_STORAGE_KEY = 'topicsFeedbackCoverageTopicIds';
 
+// Local storage key of the rater's unsent choices in the dialog, so that they
+// survive closing the dialog, e.g. to rate topics first.
+export const EXPORT_DRAFT_STORAGE_KEY = 'topicsFeedbackExportDraft';
+
+interface ExportDraft {
+  windowDays: number;
+  domainExclusions: Array<[string, boolean]>;
+  excludedUrls: string[];
+  excludedTopicIds: string[];
+  missingTopics: string;
+}
+
 // Saves `contents` as a file named `fileName` in the user's downloads.
 export type FileDownloader = (contents: string, fileName: string) => void;
 
@@ -147,6 +159,7 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
       previewState_: {type: String},
       domainExclusions_: {type: Object},
       excludedUrls_: {type: Object},
+      excludedTopicIds_: {type: Object},
       expandedDomains_: {type: Object},
       missingTopics_: {type: String},
       acknowledged_: {type: Boolean},
@@ -160,26 +173,30 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
   accessor topics: TopicItem[] = [];
   accessor feedbacks: Map<string, TopicFeedback> = new Map();
   protected accessor windowDays_: number = DEFAULT_EXPORT_WINDOW_DAYS;
-  protected accessor preview_: TopicsFeedbackExportPreview|null = null;
+  private accessor preview_: TopicsFeedbackExportPreview|null = null;
   protected accessor previewState_: ExportPreviewState = 'loading';
   // Whether the rater excluded each domain. Domains the rater hasn't changed
   // keep the default from the preview.
-  protected accessor domainExclusions_: Map<string, boolean> = new Map();
-  protected accessor excludedUrls_: Set<string> = new Set();
-  protected accessor expandedDomains_: Set<string> = new Set();
+  private accessor domainExclusions_: Map<string, boolean> = new Map();
+  private accessor excludedUrls_: Set<string> = new Set();
+  // Ids of the listed, unrated topics the rater left out.
+  private accessor excludedTopicIds_: Set<string> = new Set();
+  private accessor expandedDomains_: Set<string> = new Set();
   protected accessor missingTopics_: string = '';
   protected accessor acknowledged_: boolean = false;
-  protected accessor coverageTopicIds_: string[] = [];
+  private accessor coverageTopicIds_: string[] = [];
   protected accessor exportState_: ExportState = 'idle';
   // Whether a bundle was downloaded since the dialog opened. Stays true if a
   // later download fails, so the form stays the next step.
-  protected accessor hasDownloaded_: boolean = false;
+  private accessor hasDownloaded_: boolean = false;
   protected accessor confirmingClear_: boolean = false;
 
   // Ignores previews of windows the rater has since moved away from.
   private previewRequestId_: number = 0;
 
   override connectedCallback() {
+    // Before the first render, which would otherwise save over the draft.
+    this.restoreDraft_();
     super.connectedCallback();
     this.fetchPreview_();
   }
@@ -192,6 +209,65 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
       sessionStorage.setItem(
           COVERAGE_TOPICS_STORAGE_KEY, JSON.stringify(this.coverageTopicIds_));
     }
+    // Forget topics once they're rated or no longer listed, so they don't come
+    // back as left out later.
+    if (changedProperties.has('topics') || changedProperties.has('feedbacks')) {
+      const unratedIds =
+          new Set(this.getUnratedTopics_().map(topic => topic.id));
+      const excludedTopicIds =
+          new Set([...this.excludedTopicIds_].filter(id => unratedIds.has(id)));
+      if (excludedTopicIds.size !== this.excludedTopicIds_.size) {
+        this.excludedTopicIds_ = excludedTopicIds;
+      }
+    }
+  }
+
+  override updated(changedProperties: PropertyValues<this>) {
+    super.updated(changedProperties);
+    const changedPrivateProperties =
+        changedProperties as Map<PropertyKey, unknown>;
+    if (changedPrivateProperties.has('windowDays_') ||
+        changedPrivateProperties.has('domainExclusions_') ||
+        changedPrivateProperties.has('excludedUrls_') ||
+        changedPrivateProperties.has('excludedTopicIds_') ||
+        changedPrivateProperties.has('missingTopics_')) {
+      this.saveDraft_();
+    }
+  }
+
+  private restoreDraft_() {
+    try {
+      const draft: Partial<ExportDraft> =
+          JSON.parse(localStorage.getItem(EXPORT_DRAFT_STORAGE_KEY) || '{}');
+      if (EXPORT_WINDOW_DAYS.includes(Number(draft.windowDays))) {
+        this.windowDays_ = Number(draft.windowDays);
+      }
+      if (Array.isArray(draft.domainExclusions)) {
+        this.domainExclusions_ = new Map(draft.domainExclusions);
+      }
+      if (Array.isArray(draft.excludedUrls)) {
+        this.excludedUrls_ = new Set(draft.excludedUrls);
+      }
+      if (Array.isArray(draft.excludedTopicIds)) {
+        this.excludedTopicIds_ = new Set(draft.excludedTopicIds);
+      }
+      if (typeof draft.missingTopics === 'string') {
+        this.missingTopics_ = draft.missingTopics;
+      }
+    } catch {
+      // Ignore a malformed draft.
+    }
+  }
+
+  private saveDraft_() {
+    const draft: ExportDraft = {
+      windowDays: this.windowDays_,
+      domainExclusions: [...this.domainExclusions_],
+      excludedUrls: [...this.excludedUrls_],
+      excludedTopicIds: [...this.excludedTopicIds_],
+      missingTopics: this.missingTopics_,
+    };
+    localStorage.setItem(EXPORT_DRAFT_STORAGE_KEY, JSON.stringify(draft));
   }
 
   showModal() {
@@ -252,9 +328,16 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
     if (this.areAllTopicsRated_()) {
       return 'You rated every topic.';
     }
-    return `You rated ${this.getRatedTopicCount_()} of ${
-               count(this.topics.length, 'topic')}. ` +
-        'Rate every topic on the Topics page before downloading.';
+    const rated = `You rated ${this.getRatedTopicCount_()} of ${
+        count(this.topics.length, 'topic')}`;
+    const leftOut = this.getLeftOutTopicCount_();
+    const leftOutText = leftOut > 0 ? ` and left out ${leftOut}` : '';
+    if (this.areAllTopicsHandled_()) {
+      return `${rated}${leftOutText}.`;
+    }
+    return `${rated}${leftOutText}. ` +
+        'Rate the others on the Topics page, or leave them out below, ' +
+        'before downloading.';
   }
 
   private isTopicRated_(topic: TopicItem): boolean {
@@ -266,10 +349,50 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
     return this.topics.filter(topic => this.isTopicRated_(topic)).length;
   }
 
-  // Every topic shown at the time of the export must have a thumbs up or down,
-  // so that the bundle covers all of them.
-  protected areAllTopicsRated_(): boolean {
+  private areAllTopicsRated_(): boolean {
     return this.getRatedTopicCount_() === this.topics.length;
+  }
+
+  // Leaving out unrated topics.
+
+  protected getUnratedTopics_(): TopicItem[] {
+    return this.topics.filter(topic => !this.isTopicRated_(topic));
+  }
+
+  protected isTopicLeftOut_(topic: TopicItem): boolean {
+    return this.excludedTopicIds_.has(topic.id);
+  }
+
+  private getLeftOutTopicCount_(): number {
+    return this.topics.filter(topic => this.isTopicLeftOut_(topic)).length;
+  }
+
+  // Every topic shown at the time of the export must be rated or left out, so
+  // that the bundle doesn't miss any by accident.
+  protected areAllTopicsHandled_(): boolean {
+    return this.getRatedTopicCount_() + this.getLeftOutTopicCount_() ===
+        this.topics.length;
+  }
+
+  protected onLeaveOutCheckedChanged_(e: CustomEvent<{value: boolean}>) {
+    const id = (e.currentTarget as HTMLElement).dataset['id'];
+    if (id === undefined || e.detail.value === this.excludedTopicIds_.has(id)) {
+      return;
+    }
+    const excludedTopicIds = new Set(this.excludedTopicIds_);
+    if (e.detail.value) {
+      excludedTopicIds.add(id);
+    } else {
+      excludedTopicIds.delete(id);
+    }
+    this.excludedTopicIds_ = excludedTopicIds;
+  }
+
+  protected onLeaveOutAllClick_() {
+    this.excludedTopicIds_ = new Set([
+      ...this.excludedTopicIds_,
+      ...this.getUnratedTopics_().map(topic => topic.id),
+    ]);
   }
 
   // Coverage prompt.
@@ -388,7 +511,7 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
   // Actions.
 
   protected canDownload_(): boolean {
-    return this.previewState_ === 'loaded' && this.areAllTopicsRated_() &&
+    return this.previewState_ === 'loaded' && this.areAllTopicsHandled_() &&
         this.acknowledged_ && this.exportState_ !== 'exporting';
   }
 
@@ -408,6 +531,8 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
                         .flatMap(domain => domain.urls)
                         .map(url => url.url)
                         .filter(url => this.excludedUrls_.has(url)),
+      excludedTopicIds: this.topics.filter(topic => this.isTopicLeftOut_(topic))
+                            .map(topic => topic.id),
       missingTopics: this.missingTopics_.trim(),
     };
   }
@@ -422,6 +547,7 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
       const {jsonBundle} = await browserProxyFactory.getInstance()
                                .handler.generateTopicsFeedbackBundle(options);
       fileDownloader(jsonBundle, getExportFileName(new Date()));
+      localStorage.removeItem(EXPORT_DRAFT_STORAGE_KEY);
       this.exportState_ = 'done';
       this.hasDownloaded_ = true;
     } catch (e) {
@@ -466,6 +592,7 @@ export class TopicFeedbackExportDialogElement extends CrLitElement {
     this.confirmingClear_ = false;
     await browserProxyFactory.getInstance().handler.clearTopicFeedbacks();
     sessionStorage.removeItem(COVERAGE_TOPICS_STORAGE_KEY);
+    localStorage.removeItem(EXPORT_DRAFT_STORAGE_KEY);
     this.fire('topic-feedbacks-cleared');
   }
 

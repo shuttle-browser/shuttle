@@ -63,8 +63,8 @@ void SerializeInspectionResult(const ModuleInfoKey& module_key,
 bool DeserializeInspectionResult(uint32_t min_time_stamp,
                                  base::PickleIterator* pickle_iterator,
                                  InspectionResultsCache* result) {
-  DCHECK(pickle_iterator);
-  DCHECK(result);
+  CHECK(pickle_iterator, base::NotFatalUntil::M163);
+  CHECK(result, base::NotFatalUntil::M163);
 
   // ModuleInfoKey:
   base::FilePath module_path;
@@ -86,7 +86,6 @@ bool DeserializeInspectionResult(uint32_t min_time_stamp,
   ModuleInspectionResult& inspection_result = value.second.first;
   uint32_t& time_stamp = value.second.second;
 
-  std::u16string location, basename;
   if (!pickle_iterator->ReadString16(&inspection_result.location) ||
       !pickle_iterator->ReadString16(&inspection_result.basename) ||
       !pickle_iterator->ReadString16(&inspection_result.product_name) ||
@@ -139,7 +138,7 @@ ReadCacheResult DeserializeInspectionResultsCache(
     uint32_t min_time_stamp,
     base::PickleIterator pickle_iterator,
     InspectionResultsCache* result) {
-  DCHECK(result);
+  CHECK(result, base::NotFatalUntil::M163);
 
   // Make a copy of the iterator before iterating to be able to consume the full
   // payload later when computing the MD5 hash.
@@ -200,7 +199,7 @@ void AddInspectionResultToCache(
                                  CalculateTimeStamp(base::Time::Now()))));
   // An insertion should always succeed because the user of this code never
   // tries to insert an existing value.
-  DCHECK(insert_result.second);
+  CHECK(insert_result.second, base::NotFatalUntil::M163);
 }
 
 std::optional<ModuleInspectionResult> GetInspectionResultFromCache(

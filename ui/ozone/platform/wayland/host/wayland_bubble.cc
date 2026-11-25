@@ -52,7 +52,11 @@ void WaylandBubble::Hide() {
   }
 
   WaylandWindow::Hide();
+  auto weak_this = AsWeakPtr();
   Deactivate();
+  if (!weak_this) {
+    return;
+  }
   subsurface_.reset();
   connection()->Flush();
 }
@@ -90,14 +94,22 @@ void WaylandBubble::SetInputRegion(
 
 void WaylandBubble::Activate() {
   if (subsurface_ && activatable_ && parent_window()) {
+    auto weak_this = AsWeakPtr();
     parent_window()->ActivateBubble(this);
+    if (!weak_this) {
+      return;
+    }
   }
   WaylandWindow::Activate();
 }
 
 void WaylandBubble::Deactivate() {
   if (IsActive()) {
+    auto weak_this = AsWeakPtr();
     parent_window()->ActivateBubble(nullptr);
+    if (!weak_this) {
+      return;
+    }
   }
   WaylandWindow::Deactivate();
 }
@@ -150,7 +162,7 @@ void WaylandBubble::AddToParentAsSubsurface() {
 
   subsurface_ =
       root_surface()->CreateSubsurface(parent_window()->root_surface());
-  DCHECK(subsurface_);
+  CHECK(subsurface_, base::NotFatalUntil::M163);
 
   SetSubsurfacePosition();
 
@@ -187,7 +199,7 @@ void WaylandBubble::SetSubsurfacePosition() {
 
 bool WaylandBubble::OnInitialize(PlatformWindowInitProperties properties,
                                  PlatformWindowDelegate::State* state) {
-  DCHECK(parent_window());
+  CHECK(parent_window(), base::NotFatalUntil::M163);
 
   // `window_state` is always `kNormal` on WaylandBubble.
   state->window_state = PlatformWindowState::kNormal;

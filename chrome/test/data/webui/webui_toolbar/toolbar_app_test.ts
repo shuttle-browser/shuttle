@@ -3,37 +3,22 @@
 // found in the LICENSE file.
 
 import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {browserProxyFactory} from 'chrome://resources/cr_components/help_bubble/help_bubble.mojom-webui.js';
 import type {HelpBubbleHandlerInterface} from 'chrome://resources/cr_components/help_bubble/help_bubble.mojom-webui.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import type {TrackedElementIdentifier} from 'chrome://resources/mojo/ui/webui/resources/js/tracked_element/tracked_element.mojom-webui.js';
-import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {TestSearchboxBrowserProxy} from 'chrome://webui-test/cr_components/searchbox/test_searchbox_browser_proxy.js';
+import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {TestBrowserProxy} from 'chrome://webui-test/test_browser_proxy.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
-import {AppMenuIconType, AppMenuSeverity, AvatarToolbarButtonState, BrowserProxyImpl, ContentSettingImageType, createDefaultLocationBarState, INVALID_FOCUS_REQUEST_HANDLE, PageActionAnimationStyle, PageActionId, SearchboxBrowserProxy, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import {AppMenuIconType, AppMenuSeverity, AvatarToolbarButtonState, BrowserProxyImpl, ContentSettingImageType, createDefaultLocationBarState, INVALID_FOCUS_REQUEST_HANDLE, PageActionAnimationStyle, PageActionId, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 import type {FocusRequestListener, ToolbarAppElement, ToolbarStateListener} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 import {TestToolbarBrowserProxy as BaseTestToolbarBrowserProxy} from './test_toolbar_browser_proxy.js';
 
-class TestBrowserControlsHandler extends TestBrowserProxy {
-  constructor() {
-    super(['navigate']);
-  }
-
-  navigate(url: any, disposition: any) {
-    this.methodCalled('navigate', url, disposition);
-  }
-}
-
 class TestToolbarBrowserProxy extends BaseTestToolbarBrowserProxy {
   private listener_: ToolbarStateListener|null = null;
-
-  constructor() {
-    super();
-    this.browserControlsHandler = new TestBrowserControlsHandler();
-  }
 
   override addToolbarStateListener(listener: ToolbarStateListener) {
     this.methodCalled('addToolbarStateListener', listener);
@@ -138,6 +123,13 @@ function createMockToolbarState() {
       shouldMatchToolbarStyle: false,
       useCustomThemeFallback: false,
       nudgeLabel: null as string | null,
+      isSplit: false,
+    },
+    glicActorTaskIconState: {
+      shouldShow: false,
+      nudgeLabel: null as string | null,
+      tooltip: '',
+      isPressed: false,
     },
     overflowButtonControlState: {
       isContextMenuVisible: false,
@@ -185,7 +177,6 @@ suite('ToolbarAppTest', () => {
 
     browserProxy = new TestToolbarBrowserProxy();
     BrowserProxyImpl.setInstance(browserProxy);
-    SearchboxBrowserProxy.setInstance(new TestSearchboxBrowserProxy());
 
     loadTimeData.overrideValues({
       enableReloadButton: true,
@@ -215,6 +206,12 @@ suite('ToolbarAppTest', () => {
 
     assertEquals(
         1, browserProxy.toolbarUIHandler.getCallCount('onPageInitialized'));
+    assertEquals(7, startTrackingCalls.length);
+
+    // The location bar contents, which track elements of their own, render
+    // once the browser's state arrives.
+    browserProxy.fireToolbarStateListener([], createMockToolbarState());
+    await microtasksFinished();
     assertEquals(9, startTrackingCalls.length);
   });
 
@@ -264,6 +261,12 @@ suite('ToolbarAppTest', () => {
     // Verify app initializes synchronously without needing a Mojo update
     assertEquals(
         1, browserProxy.toolbarUIHandler.getCallCount('onPageInitialized'));
+    assertEquals(7, startTrackingCalls.length);
+
+    // The location bar contents, which track elements of their own, render
+    // once the browser's state arrives.
+    browserProxy.fireToolbarStateListener([], createMockToolbarState());
+    await microtasksFinished();
     assertEquals(9, startTrackingCalls.length);
 
     // Verify initial boot snapshot captures the correct values
@@ -272,6 +275,32 @@ suite('ToolbarAppTest', () => {
     assertFalse(snapshot.isNavigationLoading);
     assertTrue(snapshot.backButtonEnabled);
     assertFalse(snapshot.forwardButtonEnabled);
+  });
+
+  test('Sync Enabled - Location Bar Waits For State', async () => {
+    browserProxy.setInitialState({
+      initialWebUISurfaceSyncEnabled: true,
+      isFallbackPrewarming: false,
+      isNavigationLoading: false,
+      backButtonEnabled: true,
+      forwardButtonEnabled: false,
+    });
+
+    app = document.createElement('toolbar-app');
+    document.body.appendChild(app);
+    await microtasksFinished();
+
+    // The toolbar renders and initializes synchronously, but the location bar
+    // contents wait for the browser's state.
+    const locationBar = app.shadowRoot.querySelector('location-bar');
+    assertTrue(!!locationBar);
+    assertFalse(!!locationBar.shadowRoot.querySelector('readonly-omnibox'));
+    assertEquals(
+        1, browserProxy.toolbarUIHandler.getCallCount('onPageInitialized'));
+
+    browserProxy.fireToolbarStateListener([], createMockToolbarState());
+    await microtasksFinished();
+    assertTrue(!!locationBar.shadowRoot.querySelector('readonly-omnibox'));
   });
 
   test('Sync Enabled - Synchronous Mojo Update', async () => {
@@ -770,7 +799,7 @@ suite('ToolbarAppTest', () => {
     await microtasksFinished();
 
     const avatarButton = app.shadowRoot.querySelector('avatar-button')!;
-    const textSpan = avatarButton.shadowRoot.querySelector('#text')!;
+    const textSpan = avatarButton.$.text;
 
     assertTrue(avatarButton.classList.contains('initial-load'));
 
@@ -820,7 +849,7 @@ suite('ToolbarAppTest', () => {
     await microtasksFinished();
 
     const avatarButton = app.shadowRoot.querySelector('avatar-button')!;
-    const textSpan = avatarButton.shadowRoot.querySelector('#text')!;
+    const textSpan = avatarButton.$.text;
 
     assertTrue(avatarButton.classList.contains('initial-load'));
 
@@ -888,7 +917,7 @@ suite('ToolbarAppTest', () => {
     browserProxy.fireToolbarStateListener([], navState);
     await microtasksFinished();
 
-    assertFalse(avatarButton.hasAttribute('has-label'));
+    assertEquals('no-text', avatarButton.getAttribute('label-mode'));
     assertFalse(appMenuButton.hasAttribute('has-label'));
     assertEquals(
         '0px', window.getComputedStyle(appMenuButton).marginInlineStart);
@@ -901,7 +930,7 @@ suite('ToolbarAppTest', () => {
     browserProxy.fireToolbarStateListener([], appMenuExpandedState);
     await microtasksFinished();
 
-    assertFalse(avatarButton.hasAttribute('has-label'));
+    assertEquals('no-text', avatarButton.getAttribute('label-mode'));
     assertTrue(appMenuButton.hasAttribute('has-label'));
     assertEquals(
         '3px', window.getComputedStyle(appMenuButton).marginInlineStart);
@@ -916,15 +945,47 @@ suite('ToolbarAppTest', () => {
     browserProxy.fireToolbarStateListener([], bothExpandedState);
     await microtasksFinished();
 
-    assertTrue(avatarButton.hasAttribute('has-label'));
+    assertEquals('text', avatarButton.getAttribute('label-mode'));
     assertTrue(appMenuButton.hasAttribute('has-label'));
     assertEquals(
         '0px', window.getComputedStyle(appMenuButton).marginInlineStart);
 
-    // 4. If avatar button is overflowed/hidden, appMenuButton's leading margin
-    // uncollapses to 3px.
-    avatarButton.classList.add('overflow-display-none');
+    // 4. Avatar label collapsed due to lack of space, but the avatar button is
+    // still visible, since overflow is prevented. The avatar button keeps its
+    // 3px trailing margin, so appMenuButton's leading margin stays collapsed to
+    // 0px.
+    const avatarCollapsedState = createMockToolbarState();
+    avatarCollapsedState.avatarControlState.text = 'Paused';
+    avatarCollapsedState.appMenuControlState.labelText = 'Update';
+    browserProxy.fireToolbarStateListener([], {
+      ...avatarCollapsedState,
+      avatarControlState: {
+        ...avatarCollapsedState.avatarControlState,
+        preventOverflow: true,
+      },
+    });
     await microtasksFinished();
+    avatarButton.setToMinWidth();
+
+    assertEquals('collapsed', avatarButton.getAttribute('label-mode'));
+    assertFalse(avatarButton.classList.contains('overflow-display-none'));
+    assertTrue(appMenuButton.hasAttribute('has-label'));
+    assertEquals(
+        '3px', window.getComputedStyle(avatarButton.$.button).marginInlineEnd);
+    assertEquals(
+        '0px', window.getComputedStyle(appMenuButton).marginInlineStart);
+
+    // 5. If avatar button is overflowed/hidden, appMenuButton's leading margin
+    // uncollapses to 3px.
+    const avatarHiddenState = createMockToolbarState();
+    avatarHiddenState.avatarControlState.text = 'Paused';
+    avatarHiddenState.appMenuControlState.labelText = 'Update';
+    browserProxy.fireToolbarStateListener([], avatarHiddenState);
+    await microtasksFinished();
+    avatarButton.setToMinWidth();
+
+    assertEquals('collapsed', avatarButton.getAttribute('label-mode'));
+    assertTrue(avatarButton.classList.contains('overflow-display-none'));
     assertEquals(
         '3px', window.getComputedStyle(appMenuButton).marginInlineStart);
   });
@@ -1149,7 +1210,7 @@ suite('ToolbarAppTest', () => {
     const root = app.shadowRoot;
     const locationBar = root.querySelector('location-bar')!.shadowRoot;
     const labels = [
-      root.querySelector('avatar-button')!.shadowRoot.querySelector('#text')!,
+      root.querySelector('avatar-button')!.$.text,
       root.querySelector('app-menu-button')!.shadowRoot.querySelector('#text')!,
       locationBar.querySelector('selected-keyword')!.shadowRoot.querySelector(
           '#text-wrap')!,
@@ -1204,5 +1265,129 @@ suite('ToolbarAppTest', () => {
     await microtasksFinished();
 
     assertFalse(!!app.shadowRoot.querySelector('avatar-button'));
+  });
+
+  // Dispatches a drop of `dataTransfer` on the empty toolbar area.
+  async function dropOnToolbar(dataTransfer: DataTransfer) {
+    app = document.createElement('toolbar-app');
+    document.body.appendChild(app);
+    await microtasksFinished();
+    app.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      clientX: 10,
+      clientY: 20,
+      dataTransfer,
+    }));
+  }
+
+  test('DropUrlOnToolbar', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData(
+        'text/uri-list', 'https://example.com/\nhttps://other.com/');
+    dataTransfer.setData('text/plain', 'some text');
+    await dropOnToolbar(dataTransfer);
+
+    await browserProxy.toolbarUIHandler.whenCalled('onToolbarDropUrl');
+    assertEquals(
+        0, browserProxy.toolbarUIHandler.getCallCount('onToolbarDropText'));
+  });
+
+  // Dispatches a drop of `dataTransfer` on the home button.
+  async function dropOnHomeButton(dataTransfer: DataTransfer) {
+    app = document.createElement('toolbar-app');
+    document.body.appendChild(app);
+    browserProxy.fireToolbarStateListener([], createMockToolbarState());
+    await microtasksFinished();
+
+    const homeButton = app.shadowRoot.querySelector<HTMLElement>('home-button');
+    assertTrue(!!homeButton);
+    const button = homeButton.shadowRoot!.querySelector('#button');
+    assertTrue(!!button);
+    button.dispatchEvent(new DragEvent('drop', {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      dataTransfer,
+    }));
+    await microtasksFinished();
+  }
+
+  // The browser uses the first valid URL of the list, which skips empty lines,
+  // so a leading line break does not make the URL empty.
+  test('DropUrlListWithLeadingCrlfOnToolbar', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', '\r\nhttps://example.com/');
+    await dropOnToolbar(dataTransfer);
+    await microtasksFinished();
+
+    assertEquals(
+        1, browserProxy.toolbarUIHandler.getCallCount('onToolbarDropUrl'));
+  });
+
+  // A type can be present with empty data, e.g. setData(type, ''). Like native
+  // Views, which ignores a drop's empty URLs, the drop then falls back to its
+  // plain text.
+  test('DropEmptyUrlAndTextOnToolbar', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', '');
+    dataTransfer.setData('text/plain', 'some text');
+    await dropOnToolbar(dataTransfer);
+    await microtasksFinished();
+
+    assertEquals(
+        0, browserProxy.toolbarUIHandler.getCallCount('onToolbarDropUrl'));
+    assertEquals(
+        1, browserProxy.toolbarUIHandler.getCallCount('onToolbarDropText'));
+    assertEquals(
+        'some text',
+        browserProxy.toolbarUIHandler.getArgs('onToolbarDropText')[0]);
+  });
+
+  // See DropUrlListWithLeadingCrlfOnToolbar.
+  test('DropUrlListWithLeadingCrlfOnHomeButton', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', '\r\nhttps://example.com/');
+    await dropOnHomeButton(dataTransfer);
+
+    assertEquals(
+        1, browserProxy.toolbarUIHandler.getCallCount('onHomeButtonDropUrl'));
+  });
+
+  // See DropEmptyUrlAndTextOnToolbar.
+  test('DropEmptyUrlAndTextOnHomeButton', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/uri-list', '');
+    dataTransfer.setData('text/plain', 'some text');
+    await dropOnHomeButton(dataTransfer);
+
+    assertEquals(
+        0, browserProxy.toolbarUIHandler.getCallCount('onHomeButtonDropUrl'));
+    assertEquals(
+        1, browserProxy.toolbarUIHandler.getCallCount('onHomeButtonDropText'));
+    assertEquals(
+        'some text',
+        browserProxy.toolbarUIHandler.getArgs('onHomeButtonDropText')[0]);
+  });
+
+  test('DropTextOnToolbar', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.setData('text/plain', 'some text');
+    await dropOnToolbar(dataTransfer);
+
+    assertEquals(
+        'some text',
+        await browserProxy.toolbarUIHandler.whenCalled('onToolbarDropText'));
+  });
+
+  test('DropFileOnToolbar', async () => {
+    const dataTransfer = new DataTransfer();
+    dataTransfer.items.add(new File(['contents'], 'file.txt'));
+    await dropOnToolbar(dataTransfer);
+
+    assertDeepEquals(
+        {x: 10, y: 20},
+        await browserProxy.toolbarUIHandler.whenCalled('onToolbarDropFile'));
   });
 });

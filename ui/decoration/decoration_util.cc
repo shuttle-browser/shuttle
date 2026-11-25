@@ -31,6 +31,18 @@
 
 namespace ui::decoration {
 
+namespace {
+
+gfx::RoundedCornersF InsetRoundedCorners(const gfx::RoundedCornersF& corners,
+                                         float inset) {
+  return gfx::RoundedCornersF(std::max(0.0f, corners.upper_left() - inset),
+                              std::max(0.0f, corners.upper_right() - inset),
+                              std::max(0.0f, corners.lower_right() - inset),
+                              std::max(0.0f, corners.lower_left() - inset));
+}
+
+}  // namespace
+
 // static
 gfx::Outsets ShadowGenerator::GetMargins(const gfx::ShadowValues& shadows) {
   return gfx::ShadowValue::GetMargin(shadows).ToOutsets();
@@ -63,7 +75,7 @@ void ShadowGenerator::Draw(gfx::Canvas* canvas,
 gfx::Insets ShadowGenerator::GetNineboxApertureInsets(
     const gfx::ShadowValues& shadows,
     const gfx::RoundedCornersF& rounded_corners) {
-  DCHECK(!shadows.empty());
+  CHECK(!shadows.empty(), base::NotFatalUntil::M163);
 
   // We need enough space to render the full range of blur and the corner
   // rounding.
@@ -73,7 +85,8 @@ gfx::Insets ShadowGenerator::GetNineboxApertureInsets(
   // `is_pill_shaped` describes the shape of the content around which the
   // shadows are drawn, so their values must match.
   for (const auto& shadow : shadows) {
-    DCHECK_EQ(is_pill_shaped, shadow.is_pill_shaped());
+    CHECK_EQ(is_pill_shaped, shadow.is_pill_shaped(),
+             base::NotFatalUntil::M163);
   }
 #endif  // DCHECK_IS_ON()
   const gfx::Insets corner_insets = GetInsetsForRoundedCorners(rounded_corners);
@@ -122,7 +135,7 @@ void DrawHighlightBorder(gfx::Canvas* canvas,
                          const gfx::RoundedCornersF& rounded_corners,
                          const gfx::Rect& bounds) {
   const int thickness = value.thickness();
-  DCHECK_GT(thickness, 0);
+  CHECK_GT(thickness, 0, base::NotFatalUntil::M163);
 
   cc::PaintFlags flags;
   flags.setStrokeWidth(thickness);
@@ -140,24 +153,36 @@ void DrawHighlightBorder(gfx::Canvas* canvas,
   const gfx::RoundedCornersF scaled_radii =
       gfx::ScaleRoundedCorners(rounded_corners, dsf);
 
+  // When rasterizing a pill into a ninebox image, `bounds` includes a 1 DIP
+  // center aperture on top of `2 * radius`. Insetting the radii by each ring's
+  // centerline inset matches the radii Skia scales a pill to at its true size
+  // and keeps the 1 DIP center aperture a straight segment rather than an arc.
+  const gfx::RoundedCornersF outer_radii =
+      value.is_pill_shaped() ? InsetRoundedCorners(scaled_radii, half_thickness)
+                             : scaled_radii;
+  const gfx::RoundedCornersF inner_radii =
+      value.is_pill_shaped()
+          ? InsetRoundedCorners(scaled_radii, thickness + half_thickness)
+          : scaled_radii;
+
   gfx::RectF outer_border_bounds(pixel_bounds);
   outer_border_bounds.Inset(half_thickness);
   canvas->DrawPath(SkPath::RRect(gfx::RoundedRectFToSkRRect(outer_border_bounds,
-                                                            scaled_radii)),
+                                                            outer_radii)),
                    flags);
 
   gfx::RectF inner_border_bounds(pixel_bounds);
   inner_border_bounds.Inset(thickness + half_thickness);
   flags.setColor(value.highlight_color());
   canvas->DrawPath(SkPath::RRect(gfx::RoundedRectFToSkRRect(inner_border_bounds,
-                                                            scaled_radii)),
+                                                            inner_radii)),
                    flags);
 }
 
 // static
 gfx::Outsets HighlightBorderGenerator::GetMargins(
     const HighlightBorderValue& value) {
-  DCHECK_GT(value.thickness(), 0);
+  CHECK_GT(value.thickness(), 0, base::NotFatalUntil::M163);
   return gfx::Outsets();
 }
 
@@ -165,11 +190,25 @@ gfx::Outsets HighlightBorderGenerator::GetMargins(
 gfx::Insets HighlightBorderGenerator::GetNineboxApertureInsets(
     const HighlightBorderValue& value,
     const gfx::RoundedCornersF& rounded_corners) {
-  DCHECK_GT(value.thickness(), 0);
+  CHECK_GT(value.thickness(), 0, base::NotFatalUntil::M163);
 
-  // Both rings' corner arcs end within two thicknesses plus the radius.
-  return gfx::Insets(2 * value.thickness()) +
-         GetInsetsForRoundedCorners(rounded_corners);
+  const gfx::Insets ring_insets(2 * value.thickness());
+  const gfx::Insets corner_insets = GetInsetsForRoundedCorners(rounded_corners);
+  if (!value.is_pill_shaped()) {
+    // Both rings' corner arcs end within two thicknesses plus the radius.
+    return ring_insets + corner_insets;
+  }
+
+  // For pill-shaped content, instead of allocating space separately for the
+  // rings and rounded corners, both rings can be drawn within the space already
+  // occupied by the corner's curvature (with their radii inset to stay
+  // concentric; see DrawHighlightBorder) so the patches do not overlap in
+  // NinePatchLayer.
+  return gfx::Insets::TLBR(
+      std::max(ring_insets.top(), corner_insets.top()),
+      std::max(ring_insets.left(), corner_insets.left()),
+      std::max(ring_insets.bottom(), corner_insets.bottom()),
+      std::max(ring_insets.right(), corner_insets.right()));
 }
 
 // static

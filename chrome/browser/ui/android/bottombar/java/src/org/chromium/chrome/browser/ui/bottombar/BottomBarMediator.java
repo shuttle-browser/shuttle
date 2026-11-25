@@ -21,7 +21,6 @@ import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
-import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
 import org.chromium.chrome.browser.glic.GlicEnabling;
 import org.chromium.chrome.browser.glic.GlicKeyedService;
 import org.chromium.chrome.browser.glic.GlicKeyedServiceFactory;
@@ -33,15 +32,9 @@ import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.theme.ThemeColorProvider;
 import org.chromium.chrome.browser.ui.actions.ActionId;
-import org.chromium.chrome.browser.ui.actions.ActionProperties;
-import org.chromium.chrome.browser.ui.actions.ActionRegistry;
-import org.chromium.chrome.browser.ui.android.bars_common.IphIntent;
 import org.chromium.chrome.browser.ui.bottombar.BottomBarHostManager.Host;
 import org.chromium.chrome.browser.ui.bottombar.BottomBarMetrics.CandidateAction;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
-import org.chromium.components.browser_ui.widget.highlight.ViewHighlighter.HighlightParams;
-import org.chromium.components.feature_engagement.FeatureConstants;
-import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.ui.modelutil.PropertyModel;
 
 /** Mediator for the bottom bar */
@@ -49,7 +42,6 @@ import org.chromium.ui.modelutil.PropertyModel;
 public class BottomBarMediator
         implements ThemeColorProvider.TintObserver,
                 BottomBarButtonManager.Listener,
-                BottomBarPromoDialogCoordinator.BottomBarPromoDialogListener,
                 LayoutStateObserver,
                 SharedPreferences.OnSharedPreferenceChangeListener,
                 Destroyable {
@@ -82,15 +74,13 @@ public class BottomBarMediator
     private final BottomBarButtonManager mButtonManager;
     private final ThemeColorProvider mThemeColorProvider;
     private final VisibilityDelegate mVisibilityDelegate;
-    private final BottomBarPromoDialogCoordinator mPromoDialogCoordinator;
     private final NonNullObservableSupplier<Boolean> mHomepageEnabledSupplier;
     private final NonNullObservableSupplier<Boolean> mOmniboxFocusStateSupplier;
     private final NonNullObservableSupplier<@ControlsPosition Integer> mToolbarPositionSupplier;
     private final NullableObservableSupplier<Profile> mProfileSupplier;
-    private final NullableObservableSupplier<PropertyModel> mGlicActionSupplier;
-    private final NullableObservableSupplier<PropertyModel> mNewTabActionSupplier;
     private final @Nullable BottomBarEducationCoordinator mEducationCoordinator;
     private final NullableObservableSupplier<Tab> mTabSupplier;
+    private final BottomBarLongPressMenuHandler mLongPressMenuHandler;
 
     // Observers and Callbacks
     private final Callback<Boolean> mHomepageEnabledObserver = this::onHomepageEnabledChanged;
@@ -105,7 +95,6 @@ public class BottomBarMediator
     private @Nullable GlicKeyedService mGlicKeyedService;
     private @Nullable Profile mOriginalProfile;
     private @TriState int mIsVisible;
-    private @Nullable IphIntent mNewTabIphIntent;
     private @Nullable LayoutStateProvider mLayoutStateProvider;
     private @Nullable @ActionId Integer mResolvedCandidateExtraAction;
 
@@ -131,14 +120,12 @@ public class BottomBarMediator
      * @param visibilityDelegate Delegate to handle compositor-level visibility changes.
      * @param profileSupplier Supplier of the current profile.
      * @param omniboxFocusStateSupplier Supplier of the omnibox focus state.
-     * @param promoDialogCoordinator The {@link BottomBarPromoDialogCoordinator} for the promo
-     *     dialog.
-     * @param actionRegistry The {@link ActionRegistry}.
      * @param layoutStateProvider The {@link LayoutStateProvider} to observe layout state changes.
      * @param toolbarPositionSupplier Supplier of the current toolbar position.
      * @param educationCoordinator The {@link BottomBarEducationCoordinator} for the education
      *     bubble.
      * @param tabSupplier Supplier of the current tab.
+     * @param longPressMenuHandler Handler for the menu shown when long-pressing the bottom bar.
      */
     public BottomBarMediator(
             Context context,
@@ -149,12 +136,11 @@ public class BottomBarMediator
             VisibilityDelegate visibilityDelegate,
             NullableObservableSupplier<Profile> profileSupplier,
             NonNullObservableSupplier<Boolean> omniboxFocusStateSupplier,
-            BottomBarPromoDialogCoordinator promoDialogCoordinator,
-            ActionRegistry actionRegistry,
             LayoutStateProvider layoutStateProvider,
             NonNullObservableSupplier<@ControlsPosition Integer> toolbarPositionSupplier,
             @Nullable BottomBarEducationCoordinator educationCoordinator,
-            NullableObservableSupplier<Tab> tabSupplier) {
+            NullableObservableSupplier<Tab> tabSupplier,
+            BottomBarLongPressMenuHandler longPressMenuHandler) {
         mContext = context;
         mModel = model;
         mButtonManager = buttonManager;
@@ -163,13 +149,17 @@ public class BottomBarMediator
         mVisibilityDelegate = visibilityDelegate;
         mProfileSupplier = profileSupplier;
         mOmniboxFocusStateSupplier = omniboxFocusStateSupplier;
-        mPromoDialogCoordinator = promoDialogCoordinator;
         mToolbarPositionSupplier = toolbarPositionSupplier;
         mEducationCoordinator = educationCoordinator;
         mTabSupplier = tabSupplier;
-        mGlicActionSupplier = actionRegistry.get(ActionId.GLIC);
-        mNewTabActionSupplier = actionRegistry.get(ActionId.NEW_TAB);
+        mLongPressMenuHandler = longPressMenuHandler;
         mGlicTimeToAppearRecorded = false;
+
+        // Without the listener the bar never becomes long-clickable, so the kill switch restores
+        // the old touch handling completely.
+        if (BottomBarConfigUtils.isLongPressMenuEnabled()) {
+            mModel.set(BottomBarProperties.ON_LONG_CLICK_LISTENER, _ -> maybeShowLongPressMenu());
+        }
 
         if (!BottomBarConfigUtils.shouldShowOnGts()) {
             layoutStateProvider.addObserver(this);
@@ -191,11 +181,21 @@ public class BottomBarMediator
         mButtonManager.setListener(this);
     }
 
+    private boolean maybeShowLongPressMenu() {
+        if (mIsVisible != TriState.TRUE
+                || mHost != Host.TABBED
+                || !BottomBarConfigUtils.shouldShowSettingsToggle(mContext)) {
+            return false;
+        }
+        return mLongPressMenuHandler.showMenu();
+    }
+
     private void onOmniboxFocusChanged(boolean focused) {
         updateVisibility();
     }
 
     private void onToolbarPositionChanged(@ControlsPosition int position) {
+        mLongPressMenuHandler.dismiss();
         updateTopPadding();
     }
 
@@ -241,8 +241,11 @@ public class BottomBarMediator
         mModel.set(BottomBarProperties.IS_VISIBLE, isVisible);
         mVisibilityDelegate.onVisibilityChanged(isVisible);
 
-        if (!isVisible && mEducationCoordinator != null) {
-            mEducationCoordinator.onBottomBarHidden();
+        if (!isVisible) {
+            mLongPressMenuHandler.dismiss();
+            if (mEducationCoordinator != null) {
+                mEducationCoordinator.onBottomBarHidden();
+            }
         }
 
         if (didBecomeVisible) {
@@ -251,24 +254,24 @@ public class BottomBarMediator
                 BottomBarMetrics.recordGlicTimeToAppear(0);
                 mGlicTimeToAppearRecorded = true;
             }
-            maybeShowIphs();
+            maybeShowEducation();
         }
     }
 
     /**
      * Notifies the mediator that the startup promo flow has finished.
      *
-     * <p>This marks the startup promo flow as finished, unlocking the ability to show BottomBar
-     * IPHs. If no startup promo was shown, it attempts to show the IPHs immediately. If a promo was
-     * shown, it defers showing IPHs until a subsequent visibility change to avoid
-     * double-promotions.
+     * <p>This marks the startup promo flow as finished, unlocking the ability to show the education
+     * onboarding. If no startup promo was shown (or if education claimed the slot), it attempts to
+     * show it immediately. If another promo was shown, it defers showing education until a
+     * subsequent visibility change to avoid double-promotions.
      *
      * @param promoShown True if any startup promo was shown during the startup flow.
      */
     public void onStartupPromoFlowFinished(boolean promoShown) {
         mStartupPromoFlowFinished = true;
         if (!promoShown || mEducationClaimedPromoSlot) {
-            maybeShowIphs();
+            maybeShowEducation();
         }
     }
 
@@ -286,7 +289,7 @@ public class BottomBarMediator
         return false;
     }
 
-    private void maybeShowIphs() {
+    private void maybeShowEducation() {
         if (!mStartupPromoFlowFinished) return;
         boolean isBottomBarVisible = mIsVisible == TriState.TRUE;
 
@@ -297,28 +300,6 @@ public class BottomBarMediator
             if (isBottomBarVisible && currentTab != null && !currentTab.isOffTheRecord()) {
                 mEducationCoordinator.maybeShow();
             }
-            return;
-        }
-
-        boolean isExtraVisible = mModel.get(BottomBarProperties.IS_EXTRA_BUTTON_VISIBLE);
-        if (isBottomBarVisible && isExtraVisible) {
-            Profile profile = mProfileSupplier.get();
-            Tracker tracker =
-                    profile == null
-                            ? null
-                            : TrackerFactory.getTrackerForProfile(profile.getOriginalProfile());
-            boolean hasSeenPromo =
-                    tracker != null
-                            && tracker.hasEverTriggered(
-                                    FeatureConstants.ANDROID_BOTTOM_BAR_PROMO_DIALOG, false);
-
-            if (!mPromoDialogCoordinator.isShowing() && hasSeenPromo) {
-                triggerNewTabIph();
-            }
-        } else if (isBottomBarVisible) {
-            // Trigger the new tab IPH if the bottom bar is visible but the GLIC button is not
-            // visible.
-            triggerNewTabIph();
         }
     }
 
@@ -386,8 +367,7 @@ public class BottomBarMediator
 
         boolean visible =
                 GlicEnabling.isEnabledForProfile(originalProfile)
-                        && (GlicEnabling.isPolicyEnforced(originalProfile)
-                                || BottomBarConfigUtils.isGlicButtonEnabled());
+                        && BottomBarConfigUtils.isGlicButtonEnabled();
 
         if (visible && !mGlicWasVisible) {
             mGlicAppearedTimeMs = SystemClock.uptimeMillis();
@@ -488,7 +468,7 @@ public class BottomBarMediator
     @Override
     public void onButtonVisibilityChanged(int actionId, boolean visible) {
         if (actionId == ActionId.GLIC && visible) {
-            maybeShowIphs();
+            maybeShowEducation();
         }
     }
 
@@ -517,6 +497,9 @@ public class BottomBarMediator
     public void setParent(@Host int host) {
         if (mHost == host) return;
         mHost = host;
+        if (host != Host.TABBED) {
+            mLongPressMenuHandler.dismiss();
+        }
         updateTopPadding();
         if (host == Host.TABBED) {
             updateColorSchemeFromThemeColorProvider();
@@ -533,72 +516,6 @@ public class BottomBarMediator
         mVisibilityDelegate.onBackgroundColorChanged();
     }
 
-    @Override
-    public void onPromoDialogAccepted() {
-        PropertyModel actionModel = mGlicActionSupplier.get();
-        if (actionModel == null) return;
-
-        HighlightParams highlightParams =
-                BottomBarUtils.createButtonHighlightParams(
-                        mContext, /* useNewTabBackgroundRadius= */ false);
-
-        IphIntent iphIntent =
-                new IphIntent.Builder(FeatureConstants.ANDROID_BOTTOM_BAR_GLIC)
-                        .setStringResId(R.string.iph_android_bottom_bar_glic)
-                        .setAccessibilityResId(R.string.iph_android_bottom_bar_glic)
-                        .setHighlightParams(highlightParams)
-                        .setOnShowCallback(
-                                () ->
-                                        BottomBarMetrics.recordIphEvent(
-                                                BottomBarMetrics.IphEvent.SHOWN,
-                                                BottomBarMetrics.IphFeature.GLIC))
-                        .setOnDismissCallback(
-                                () -> {
-                                    BottomBarMetrics.recordIphEvent(
-                                            BottomBarMetrics.IphEvent.DISMISSED,
-                                            BottomBarMetrics.IphFeature.GLIC);
-                                    triggerNewTabIph();
-                                })
-                        .build();
-
-        actionModel.set(ActionProperties.IPH_INTENT, iphIntent);
-    }
-
-    private void triggerNewTabIph() {
-        if (BottomBarConfigUtils.isEducationEnabled()) return;
-
-        PropertyModel newTabModel = mNewTabActionSupplier.get();
-        if (newTabModel == null) return;
-
-        // Only trigger the New Tab IPH once.
-        if (mNewTabIphIntent != null) return;
-
-        IphIntent.Builder newTabIphBuilder =
-                new IphIntent.Builder(FeatureConstants.ANDROID_BOTTOM_BAR_NEW_TAB)
-                        .setStringResId(R.string.iph_android_bottom_bar_new_tab)
-                        .setAccessibilityResId(R.string.iph_android_bottom_bar_new_tab);
-
-        HighlightParams newTabHighlightParams =
-                BottomBarUtils.createButtonHighlightParams(
-                        mContext, mButtonManager.hasCenteredButton());
-        newTabIphBuilder.setHighlightParams(newTabHighlightParams);
-        IphIntent newTabIph =
-                newTabIphBuilder
-                        .setOnShowCallback(
-                                () ->
-                                        BottomBarMetrics.recordIphEvent(
-                                                BottomBarMetrics.IphEvent.SHOWN,
-                                                BottomBarMetrics.IphFeature.NEW_TAB))
-                        .setOnDismissCallback(
-                                () ->
-                                        BottomBarMetrics.recordIphEvent(
-                                                BottomBarMetrics.IphEvent.DISMISSED,
-                                                BottomBarMetrics.IphFeature.NEW_TAB))
-                        .build();
-        newTabModel.set(ActionProperties.IPH_INTENT, newTabIph);
-        mNewTabIphIntent = newTabIph;
-    }
-
     private void updateColorSchemeFromThemeColorProvider() {
         @BrandedColorScheme int brandedColorScheme = mThemeColorProvider.getBrandedColorScheme();
         mModel.set(BottomBarProperties.COLOR_SCHEME, brandedColorScheme);
@@ -613,6 +530,8 @@ public class BottomBarMediator
     @Override
     public void destroy() {
         mDestroyed = true;
+        // The view can outlive the mediator. Clearing the listener keeps it from retaining this.
+        mModel.set(BottomBarProperties.ON_LONG_CLICK_LISTENER, null);
         mThemeColorProvider.removeTintObserver(this);
         mHomepageEnabledSupplier.removeObserver(mHomepageEnabledObserver);
         if (mObservingSharedPrefs) {
@@ -633,15 +552,5 @@ public class BottomBarMediator
             mLayoutStateProvider.removeObserver(this);
             mLayoutStateProvider = null;
         }
-
-        PropertyModel glicModel = mGlicActionSupplier.get();
-        if (glicModel != null) {
-            glicModel.set(ActionProperties.IPH_INTENT, null);
-        }
-        PropertyModel newTabModel = mNewTabActionSupplier.get();
-        if (newTabModel != null) {
-            newTabModel.set(ActionProperties.IPH_INTENT, null);
-        }
-        mNewTabIphIntent = null;
     }
 }

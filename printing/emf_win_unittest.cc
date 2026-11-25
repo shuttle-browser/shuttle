@@ -13,7 +13,9 @@
 #include <optional>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "base/containers/span.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/path_service.h"
@@ -21,9 +23,12 @@
 #include "printing/mojom/print.mojom.h"
 #include "printing/printing_context.h"
 #include "printing/printing_context_win.h"
+#include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/geometry/point.h"
 #include "ui/gfx/geometry/size.h"
+
+using testing::ElementsAre;
 
 namespace printing {
 
@@ -47,6 +52,78 @@ class EmfPrintingTest : public testing::Test, public PrintingContext::Delegate {
 };
 
 const uint32_t EMF_HEADER_SIZE = 128;
+
+std::vector<char> CreateTestEmfData() {
+  std::vector<char> data;
+  Emf emf;
+  EXPECT_TRUE(emf.Init());
+  EXPECT_TRUE(emf.context());
+  EXPECT_TRUE(::SetGraphicsMode(emf.context(), GM_ADVANCED));
+  ::Rectangle(emf.context(), 10, 10, 190, 190);
+
+  BITMAPINFO bmi = {};
+  bmi.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+  bmi.bmiHeader.biWidth = 1;
+  bmi.bmiHeader.biHeight = 1;
+  bmi.bmiHeader.biPlanes = 1;
+  bmi.bmiHeader.biBitCount = 32;
+  bmi.bmiHeader.biCompression = BI_RGB;
+  uint32_t pixel = 0x00FF0000;
+  ::StretchDIBits(emf.context(), 0, 0, 10, 10, 0, 0, 1, 1, &pixel, &bmi,
+                  DIB_RGB_COLORS, SRCCOPY);
+
+  constexpr XFORM kXform = {1.0f, 0.0f, 0.0f, 1.0f, 10.0f, 10.0f};
+  EXPECT_TRUE(::SetWorldTransform(emf.context(), &kXform));
+  EXPECT_TRUE(::ModifyWorldTransform(emf.context(), &kXform, MWT_LEFTMULTIPLY));
+
+  ::SetLayout(emf.context(), LAYOUT_RTL);
+  ::Rectangle(emf.context(), 20, 20, 180, 180);
+  EXPECT_TRUE(emf.FinishDocument());
+  uint32_t size = emf.GetDataSize();
+  EXPECT_GT(size, EMF_HEADER_SIZE);
+  EXPECT_TRUE(emf.GetDataAsVector(&data));
+  EXPECT_EQ(data.size(), size);
+  return data;
+}
+
+// To simplify testing, only examine these types and ignore others like
+// `EMR_SAVEDC` and `EMR_SELECTOBJECT`.
+bool IsRecordTypeOfInterest(DWORD type) {
+  return type == EMR_HEADER || type == EMR_SETWORLDTRANSFORM ||
+         type == EMR_MODIFYWORLDTRANSFORM || type == EMR_RECTANGLE ||
+         type == EMR_STRETCHDIBITS || type == EMR_EOF;
+}
+
+std::vector<DWORD> SafePlaybackAndGetRecordTypes(
+    base::span<const uint8_t> data) {
+  Emf src_emf;
+  if (!src_emf.InitFromData(data)) {
+    ADD_FAILURE();
+    return {};
+  }
+
+  Emf dest_emf;
+  if (!dest_emf.Init() || !dest_emf.context()) {
+    ADD_FAILURE();
+    return {};
+  }
+  EXPECT_TRUE(::SetGraphicsMode(dest_emf.context(), GM_ADVANCED));
+  EXPECT_TRUE(src_emf.SafePlayback(dest_emf.context()));
+  if (!dest_emf.FinishDocument()) {
+    ADD_FAILURE();
+    return {};
+  }
+
+  Emf::Enumerator emf_enum(dest_emf, nullptr, nullptr);
+  std::vector<DWORD> record_types;
+  for (const auto& record : emf_enum) {
+    DWORD type = record.record()->iType;
+    if (IsRecordTypeOfInterest(type)) {
+      record_types.push_back(type);
+    }
+  }
+  return record_types;
+}
 
 }  // namespace
 
@@ -120,13 +197,7 @@ TEST_F(EmfPrintingTest, Enumerate) {
   Emf::Enumerator emf_enum(emf, context.context(), &page_bounds);
   for (Emf::Enumerator::const_iterator itr = emf_enum.begin();
        itr != emf_enum.end(); ++itr) {
-    // To help debugging.
-    ptrdiff_t index = itr - emf_enum.begin();
-    // If you get this assert, you need to lookup iType in wingdi.h. It starts
-    // with EMR_HEADER.
-    EMR_HEADER;
-    EXPECT_TRUE(itr->SafePlayback(&emf_enum.context_))
-        << " index: " << index << " type: " << itr->record()->iType;
+    itr->SafePlayback(&emf_enum.context_);
   }
   context.DocumentDone();
 }
@@ -201,6 +272,127 @@ TEST(EmfTest, RemainingMetafileSize) {
 
   EXPECT_EQ(emf_enum.context_.remaining_metafile_size, remaining_size);
   EXPECT_EQ(remaining_size, 0u);
+}
+
+TEST(EmfTest, SafePlayback) {
+  std::vector<char> data = CreateTestEmfData();
+  ASSERT_FALSE(HasFailure());
+
+  // On an EMF DC, `::SetWorldTransform()` records an `EMR_SETWORLDTRANSFORM`
+  // and an `EMR_MODIFYWORLDTRANSFORM` (`MWT_SET`) pair:
+  // - Playing `EMR_HEADER` calls `::SetWorldTransform()`, emitting `{35, 36}`.
+  // - Playing the source EMF's `EMR_SETWORLDTRANSFORM` and `MWT_SET` records
+  //   each call `::SetWorldTransform()` and `::ModifyWorldTransform()`,
+  //   emitting `{35, 36, 36}` twice.
+  // - Playing the source EMF's `MWT_LEFTMULTIPLY` record calls
+  //   `::ModifyWorldTransform()`, emitting `{36}`.
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_STRETCHDIBITS, EMR_SETWORLDTRANSFORM,
+                  EMR_MODIFYWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_MODIFYWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_EOF));
+}
+
+TEST(EmfTest, SafePlaybackSkipsInvalidRecords) {
+  std::vector<char> data = CreateTestEmfData();
+  ASSERT_FALSE(HasFailure());
+
+  // Corrupt records so `Emf::Record::SafePlayback()` rejects them while
+  // `record->nSize` remains valid for enumeration:
+  // - Corrupt `EMR_STRETCHDIBITS` and `BITMAPINFOHEADER` fields.
+  // - Swap `iType` between `EMR_SETWORLDTRANSFORM` and
+  //   `EMR_MODIFYWORLDTRANSFORM` so their sizes no longer match their types.
+  EMRSTRETCHDIBITS* stretch_dibits_record = nullptr;
+  BITMAPINFOHEADER* bmih = nullptr;
+  bool found_set_world_transform = false;
+  bool found_modify_world_transform = false;
+  base::span<uint8_t> span = base::as_writable_byte_span(data);
+  while (span.size() >= sizeof(ENHMETARECORD)) {
+    auto* record = reinterpret_cast<ENHMETARECORD*>(span.data());
+    if (record->iType == EMR_STRETCHDIBITS) {
+      ASSERT_GE(span.size(), sizeof(EMRSTRETCHDIBITS));
+      stretch_dibits_record = reinterpret_cast<EMRSTRETCHDIBITS*>(span.data());
+      ASSERT_LE(stretch_dibits_record->offBmiSrc + sizeof(BITMAPINFOHEADER),
+                span.size());
+      bmih = reinterpret_cast<BITMAPINFOHEADER*>(
+          span.subspan(stretch_dibits_record->offBmiSrc).data());
+    } else if (record->iType == EMR_SETWORLDTRANSFORM) {
+      ASSERT_EQ(record->nSize, sizeof(EMRSETWORLDTRANSFORM));
+      record->iType = EMR_MODIFYWORLDTRANSFORM;
+      found_set_world_transform = true;
+    } else if (record->iType == EMR_MODIFYWORLDTRANSFORM) {
+      ASSERT_EQ(record->nSize, sizeof(EMRMODIFYWORLDTRANSFORM));
+      record->iType = EMR_SETWORLDTRANSFORM;
+      found_modify_world_transform = true;
+    }
+    ASSERT_LE(record->nSize, span.size());
+    span = span.subspan(record->nSize);
+  }
+  ASSERT_TRUE(stretch_dibits_record);
+  ASSERT_TRUE(bmih);
+  ASSERT_TRUE(found_set_world_transform);
+  ASSERT_TRUE(found_modify_world_transform);
+
+  // Set `cbBmiSrc` to 0 in `EMR_STRETCHDIBITS`.
+  const DWORD original_cb_bmi_src = stretch_dibits_record->cbBmiSrc;
+  stretch_dibits_record->cbBmiSrc = 0;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
+  stretch_dibits_record->cbBmiSrc = original_cb_bmi_src;
+
+  // Make `offBmiSrc` unaligned in `EMR_STRETCHDIBITS`.
+  ++stretch_dibits_record->offBmiSrc;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
+  --stretch_dibits_record->offBmiSrc;
+
+  // Set `iUsageSrc` to `DIB_PAL_COLORS` in `EMR_STRETCHDIBITS`.
+  stretch_dibits_record->iUsageSrc = DIB_PAL_COLORS;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
+  stretch_dibits_record->iUsageSrc = DIB_RGB_COLORS;
+
+  // Set an invalid `biSize` in `BITMAPINFOHEADER`.
+  const DWORD original_bi_size = bmih->biSize;
+  bmih->biSize = sizeof(BITMAPINFOHEADER) - 4;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
+  bmih->biSize = original_bi_size;
+
+  // Set `biBitCount` to 8 so `cbBmiSrc` is too small for the required 256-color
+  // palette.
+  const WORD original_bi_bit_count = bmih->biBitCount;
+  bmih->biBitCount = 8;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
+
+  // Set `biBitCount` to an unsupported value (16).
+  bmih->biBitCount = 16;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
+  bmih->biBitCount = original_bi_bit_count;
+
+  // Set `biClrUsed` to 1.
+  bmih->biClrUsed = 1;
+  EXPECT_THAT(
+      SafePlaybackAndGetRecordTypes(base::as_byte_span(data)),
+      ElementsAre(EMR_HEADER, EMR_SETWORLDTRANSFORM, EMR_MODIFYWORLDTRANSFORM,
+                  EMR_RECTANGLE, EMR_RECTANGLE, EMR_EOF));
 }
 
 TEST(PostScriptMetaFileTest, SafePlaybackUndersizedComment) {

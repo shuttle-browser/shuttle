@@ -36,7 +36,7 @@
 #include "printing/buildflags/buildflags.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-forward.h"
 #include "ui/base/interaction/element_identifier.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/gfx/geometry/vector2d.h"
 #include "ui/gfx/text_constants.h"
 #include "ui/menus/simple_menu_model.h"
@@ -266,7 +266,7 @@ class RenderViewContextMenu
       const GURL& url,
       const GURL& referring_url,
       const url::Origin& initiator,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       ui::PageTransition transition,
       const std::string& extra_headers,
       bool started_from_context_menu,
@@ -350,6 +350,7 @@ class RenderViewContextMenu
   void AppendVideoItems();
   void AppendMediaItems();
   void AppendPluginItems();
+  bool IsFullPagePlugin() const;
   void AppendPageItems();
   void AppendExitFullscreenItem();
   void AppendCopyItem();
@@ -361,6 +362,7 @@ class RenderViewContextMenu
   void AppendMediaRouterItem();
   void AppendReadAnythingItem();
   void AppendSaveToMemoryBanksItem();
+  void AppendBrowseMemoryBanksItem();
   bool CanSaveImageToMemoryBanks() const;
   void AppendGlicItems();
   void AppendRotationItems();
@@ -475,6 +477,7 @@ class RenderViewContextMenu
   void ExecOpenInReadAnything();
   void ExecListenToThisPage();
   void ExecSaveToMemoryBanks();
+  void ExecBrowseMemoryBanks();
 
   void MediaPlayerAction(const blink::mojom::MediaPlayerAction& action);
   void SearchForVideoFrame(int event_flags,
@@ -518,6 +521,17 @@ class RenderViewContextMenu
       supervised_user::WebFilteringResult result);
 
   void MaybeAppendOpenGlicItem(bool add_separator = true);
+  bool CanAppendGlicSmartSuggestionItem() const;
+  void AppendGlicSmartSuggestionItem(const std::u16string& label);
+
+  // Appends the Glic smart suggestion item at the top of the menu if the
+  // feature is enabled, the browser/profile/page are eligible (see
+  // `CanAppendGlicSmartSuggestionItem()`), the target is not a password field,
+  // and the context is a non-empty text selection, a valid image with non-empty
+  // bounds, an editable field with non-empty bounds, a page, or a full-page
+  // plugin. Note that this does not append an item on links (unless there is a
+  // text selection or valid image), as links are handled separately in
+  // `AppendLinkItems()` so the item is placed after the "Open link..." items.
   void MaybeAppendGlicSmartSuggestionItem();
 
   // Opens the Lens overlay to search a region defined by the given bounds of
@@ -546,7 +560,7 @@ class RenderViewContextMenu
   // next to the active tab. If the active tab is already in the split view,
   // then the tab that wasn't the source of the link will be navigated to the
   // link instead.
-  void OpenLinkInSplitView(split_tabs::SplitTabLayout layout);
+  void OpenLinkInSplitView();
 #endif  // !BUILDFLAG(IS_ANDROID)
 
   // The destination URL to use if the user tries to search for or navigate to
@@ -652,7 +666,6 @@ class RenderViewContextMenu
   const bool is_paste_and_match_style_enabled_;
 
   std::unique_ptr<ui::SimpleMenuModel> send_tab_to_self_submenu_;
-  std::unique_ptr<ui::SimpleMenuModel> split_layout_submenu_;
 
   //  Used for CTR metrics of menu item for opening Glic.
   bool glic_item_shown_ = false;

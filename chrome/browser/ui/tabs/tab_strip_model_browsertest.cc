@@ -29,9 +29,9 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_test_utils.h"
 #include "chrome/browser/ui/ui_features.h"
+#include "chrome/browser/ui/unload_controller.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/web_applications/test/web_app_browsertest_util.h"
-#include "chrome/browser/web_applications/test/os_integration_test_override_impl.h"
 #include "chrome/browser/web_applications/test/prevent_close_test_base.h"
 #include "chrome/browser/web_applications/test/web_app_install_test_utils.h"
 #include "chrome/browser/web_applications/web_app_install_info.h"
@@ -49,7 +49,6 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_LINUX)
@@ -109,7 +108,6 @@ class TabStripModelPreventCloseTest : public PreventCloseTestBase,
     observer_.Observe(browser->GetTabStripModel());
   }
 
-  web_app::OsIntegrationTestOverrideBlockingRegistration faked_os_integration_;
   base::ScopedObservation<TabStripModel, TabStripModelPreventCloseTest>
       observer_{this};
   base::CallbackListSubscription browser_did_close_subscription_;
@@ -147,17 +145,35 @@ IN_PROC_BROWSER_TEST_F(TabStripModelPreventCloseTest,
   }
 }
 
-// TODO(b/321593065): enable this flaky test.
-#if BUILDFLAG(IS_CHROMEOS)
-#define MAYBE_PreventCloseEnforcedByPolicyTabbedAppShallBeClosable \
-  DISABLED_PreventCloseEnforcedByPolicyTabbedAppShallBeClosable
-#else
-#define MAYBE_PreventCloseEnforcedByPolicyTabbedAppShallBeClosable \
-  PreventCloseEnforcedByPolicyTabbedAppShallBeClosable
-#endif
 IN_PROC_BROWSER_TEST_F(
     TabStripModelPreventCloseTest,
-    MAYBE_PreventCloseEnforcedByPolicyTabbedAppShallBeClosable) {
+    ForceSkipWarningUserOnCloseAllowsClosingPreventCloseTab) {
+  InstallPWA(GURL(kCalculatorAppUrl), ash::kCalculatorAppId);
+  SetPoliciesAndWaitUntilInstalled(ash::kCalculatorAppId,
+                                   kPreventCloseEnabledForCalculator,
+                                   kCalculatorForceInstalled);
+  BrowserWindowInterface* const browser =
+      LaunchPWA(ash::kCalculatorAppId, /*launch_in_window=*/true);
+  ASSERT_TRUE(browser);
+
+  ObserveBrowser(browser);
+
+  TabStripModel* const tab_strip_model = browser->GetTabStripModel();
+  ASSERT_EQ(1, tab_strip_model->count());
+  EXPECT_EQ(!kShouldPreventClose,
+            tab_strip_model->IsTabClosable(tab_strip_model->GetActiveTab()));
+
+  UnloadController::From(browser)->set_force_skip_warning_user_on_close(true);
+  EXPECT_TRUE(tab_strip_model->IsTabClosable(tab_strip_model->GetActiveTab()));
+
+  EXPECT_CALL(*this, OnTabCloseCancelled(_)).Times(0);
+
+  tab_strip_model->CloseAllTabs();
+  EXPECT_EQ(0, tab_strip_model->count());
+}
+
+IN_PROC_BROWSER_TEST_F(TabStripModelPreventCloseTest,
+                       PreventCloseEnforcedByPolicyTabbedAppShallBeClosable) {
   InstallPWA(GURL(kCalculatorAppUrl), ash::kCalculatorAppId);
   SetPoliciesAndWaitUntilInstalled(ash::kCalculatorAppId,
                                    kPreventCloseEnabledForCalculator,
@@ -323,8 +339,10 @@ IN_PROC_BROWSER_TEST_F(TabStripModelBrowserTest,
   tab_groups::TabGroupId group_id = tab_strip_model->AddToNewGroup({4});
   tab_strip_model->ActivateTabAt(1);
 
-  tab_strip_model->UpdateTabInSplit(tab_strip_model->GetTabAtIndex(1), 4,
-                                    TabStripModel::SplitUpdateType::kReplace);
+  tab_strip_model->UpdateTabInSplit(
+      tab_strip_model->GetTabAtIndex(1)->GetHandle(),
+      tab_strip_model->GetTabAtIndex(4)->GetHandle(),
+      TabStripModel::SplitUpdateType::kReplace);
 
   // Make sure the dialog is shown, and fake clicking the button.
   tab_groups::DeletionDialogController* deletion_dialog_controller =
@@ -483,11 +501,6 @@ IN_PROC_BROWSER_TEST_F(TabStripModelBrowserTest, CommandDuplicateSelected) {
 
 // TODO(crbug.com/501991031): Fails on "chrome/ci/linux-chromeos-chrome".
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING) && BUILDFLAG(IS_CHROMEOS)
-#define MAYBE_TestCloseTabDuringMoveOperation \
-  DISABLED_TestCloseTabDuringMoveOperation
-// TODO(crbug.com/542347163): Re-enable test.
-#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
 #define MAYBE_TestCloseTabDuringMoveOperation \
   DISABLED_TestCloseTabDuringMoveOperation
 #else

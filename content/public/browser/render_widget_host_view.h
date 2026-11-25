@@ -107,10 +107,11 @@ class CONTENT_EXPORT RenderWidgetHostView {
   virtual void SetBounds(const gfx::Rect& rect) = 0;
 
   // Coordinate points received from a renderer process need to be transformed
-  // to the top-level frame's coordinate space. For coordinates received from
-  // the top-level frame's renderer this is a no-op as they are already
-  // properly transformed; however, coordinates received from an out-of-process
-  // iframe renderer process require transformation.
+  // to the top-level frame's coordinate space, in DIPs (points in physical
+  // pixels must be converted to DIPs first). For coordinates received from the
+  // top-level frame's renderer this is a no-op as they are already properly
+  // transformed; however, coordinates received from an out-of-process iframe
+  // renderer process require transformation.
   virtual gfx::PointF TransformPointToRootCoordSpaceF(
       const gfx::PointF& point) const = 0;
 
@@ -330,8 +331,6 @@ class CONTENT_EXPORT RenderWidgetHostView {
   // coordinates. No-op unless VirtualKeyboardMode is kOverlaysContent.
   virtual void NotifyVirtualKeyboardOverlayRect(
       const gfx::Rect& keyboard_rect) = 0;
-
-  virtual void ShowInterestInElement(int) = 0;
 
   // Returns true if this widget is a HTML popup, e.g. a <select> menu.
   virtual bool IsHTMLFormPopup() const = 0;

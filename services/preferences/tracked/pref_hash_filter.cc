@@ -191,12 +191,6 @@ void PrefHashFilter::SetPrefService(PrefService* pref_service) {
   pref_service_ = pref_service;
 }
 
-void PrefHashFilter::SetMigratedPaths(
-    base::span<const std::string> migrated_paths) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  migrated_paths_.assign(migrated_paths.begin(), migrated_paths.end());
-}
-
 // static
 void PrefHashFilter::RegisterProfilePrefs(
     user_prefs::PrefRegistrySyncable* registry) {
@@ -442,6 +436,10 @@ void PrefHashFilter::DeferredEncryptorRevalidation(
   DictionaryHashStoreContents dictionary_contents(pref_store_contents_at_load);
   std::unique_ptr<PrefHashStoreTransaction> transaction(
       pref_hash_store_->BeginTransaction(&dictionary_contents, encryptor_));
+  // This is the first transaction after load that has access to the encryptor,
+  // so record the result of verifying the super encrypted hash here (once per
+  // load) rather than on every transaction.
+  transaction->RecordSuperEncryptedHashResult();
 
   // Schedule a write to disk by updating a tracked preference. This is done to
   // ensure the newly computed encrypted hashes are flushed to the pref store.
@@ -471,15 +469,6 @@ void PrefHashFilter::DeferredEncryptorRevalidation(
       base::UmaHistogramExactLinear(
           histogram_name, preference->GetReportingId(), reporting_ids_count_);
       continue;
-    }
-
-    // Preferences migrated on first run (from initial preferences) were
-    // seeded before the encryptor was available and therefore lack encrypted
-    // hashes. Initialize their encrypted hashes directly so that they are
-    // properly anchored in os_crypt without relying on legacy HMAC fallback.
-    if (std::ranges::contains(migrated_paths_, path)) {
-      preference->OnNewValue(value_at_load, transaction.get(),
-                             encryptor_.get());
     }
 
     if (preference->EnforceAndReport(
@@ -513,7 +502,6 @@ void PrefHashFilter::DeferredEncryptorRevalidation(
 
   pref_service_->SetString(
       pref_to_write, base::NumberToString(base::Time::Now().ToInternalValue()));
-  migrated_paths_.clear();
   if (on_deferred_revalidation_complete_for_testing_) {
     std::move(on_deferred_revalidation_complete_for_testing_).Run();
   }

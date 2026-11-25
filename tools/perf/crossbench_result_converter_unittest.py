@@ -15,7 +15,7 @@ tracing_dir = (
   pathlib.Path(__file__).absolute().parents[2] / 'third_party/catapult/tracing'
 )
 sys.path.append(str(tracing_dir))
-from tracing.value import histogram
+from tracing.value import histogram, histogram_set
 from tracing.value.diagnostics import reserved_infos
 
 
@@ -266,6 +266,61 @@ class CrossbenchResultConverterTest(unittest.TestCase):
       browser_diagnostic = diag.AsDict()['values']
     self.assertIsNotNone(browser_diagnostic)
     self.assertEqual(list(browser_diagnostic), ['BrowserA'])
+
+  def test_loadline2_convert(self):
+    csv_content = (
+      'Metric,BrowserA\n'
+      'TOTAL_SCORE,123.45 units\n'
+      'cnn_article,54.321 ± 0.574 units\n'
+    )
+    with tempfile.TemporaryDirectory() as temp_dir:
+      dir_path = pathlib.Path(temp_dir)
+      csv_path = dir_path / 'loadline2.csv'
+      csv_path.write_text(csv_content)
+      cb_results = {
+        'probes': {
+          'loadline2_probe': {
+            'csv': [str(csv_path)],
+          }
+        }
+      }
+      (dir_path / 'cb.results.json').write_text(json.dumps(cb_results))
+
+      out_file = dir_path / 'out.json'
+      crossbench_result_converter.convert(
+        dir_path,
+        out_file,
+        benchmark='loadline2_phone.crossbench',
+        story='default',
+        results_label='canary',
+      )
+
+      raw_dicts = json.loads(out_file.read_text())
+
+    results = self.list_to_dict(raw_dicts)
+    self.assertEqual(len(results), 2)
+    self.check_result(results, 'TOTAL_SCORE', 123.45, 'unitless_biggerIsBetter')
+    self.check_result(results, 'cnn_article', 54.321, 'unitless_biggerIsBetter')
+
+    hist_set = histogram_set.HistogramSet()
+    hist_set.ImportDicts(raw_dicts)
+    hist = hist_set.GetHistogramNamed('cnn_article')
+    self.assertEqual(
+      hist.diagnostics[reserved_infos.BENCHMARKS.name].GetOnlyElement(),
+      'loadline2_phone.crossbench',
+    )
+    self.assertEqual(
+      hist.diagnostics[reserved_infos.STORIES.name].GetOnlyElement(),
+      'default',
+    )
+    self.assertEqual(
+      hist.diagnostics[reserved_infos.LABELS.name].GetOnlyElement(),
+      'canary',
+    )
+    self.assertEqual(
+      hist.diagnostics['browser'].GetOnlyElement(),
+      'BrowserA',
+    )
 
   def test_web_power_results(self):
     csv_content = (
@@ -520,6 +575,104 @@ class CrossbenchResultConverterTest(unittest.TestCase):
     self.assertEqual(by_story['newtab_startup']['sampleValues'], [150.0, 160.0])
     self.assertEqual(by_story['blank_startup']['sampleValues'], [110.0, 120.0])
     self.assertEqual(by_story['google_startup']['sampleValues'], [190.0])
+
+  def test_blink_ai(self):
+    blink_ai_metrics = {
+      'Iteration 1': {'values': [1]},
+      'geomean': {'values': [100.0]},
+      'downloadTimeMs': {'values': [500.5]},
+      'language_model.sessionCreationTimeMs': {'values': [120.5]},
+      'language_model.coldTimeToFirstTokenMs': {'values': [45.2]},
+      'language_model.coldTotalPromptTimeMs': {'values': [250.0]},
+      'language_model.coldTokensPerSecond': {'values': [45.8]},
+      'language_model.warmTokensPerSecond': {'values': [50.2, 55.1, 56.3]},
+      'mtp_summary.coldAcceptanceRate': {'values': [0.72]},
+      'mtp_summary.warmAcceptanceRate': {'values': [0.75, 0.78, 0.80]},
+      'tokensPerSecond': {'values': [48.0]},
+      'acceptanceRate': {'values': [0.65]},
+      'vram_peak_bytes': {'values': [209715200]},
+      'vram_peak_mb': {'values': [200.0]},
+      'vram/peak_mb': {'values': [200.0]},
+    }
+    with tempfile.TemporaryDirectory() as temp_dir:
+      dir_path = pathlib.Path(temp_dir)
+      blink_ai_json_path = dir_path / 'blink_ai.json'
+      blink_ai_json_path.write_text(json.dumps(blink_ai_metrics))
+
+      cb_results = {
+        'browsers': {
+          'BrowserA': {
+            'probes': {
+              'blink_ai': {
+                'json': [str(blink_ai_json_path)],
+              },
+            },
+          },
+        },
+      }
+      (dir_path / 'cb.results.json').write_text(json.dumps(cb_results))
+
+      out_file = dir_path / 'out.json'
+      crossbench_result_converter.convert(
+        dir_path, out_file, benchmark='blink-ai.crossbench'
+      )
+      result = self.list_to_dict(json.loads(out_file.read_text()))
+
+    self.assertNotIn('Iteration 1', result)
+    self.assertNotIn('geomean', result)
+    self.assertNotIn('vram_peak_mb', result)
+    self.assertNotIn('vram/peak_mb', result)
+    self.check_result(result, 'downloadTimeMs', 500.5, 'ms_smallerIsBetter')
+    self.check_result(
+      result,
+      'language_model.sessionCreationTimeMs',
+      120.5,
+      'ms_smallerIsBetter',
+    )
+    self.check_result(
+      result,
+      'language_model.coldTimeToFirstTokenMs',
+      45.2,
+      'ms_smallerIsBetter',
+    )
+    self.check_result(
+      result,
+      'language_model.coldTotalPromptTimeMs',
+      250.0,
+      'ms_smallerIsBetter',
+    )
+    self.check_result(
+      result,
+      'language_model.coldTokensPerSecond',
+      45.8,
+      'unitless_biggerIsBetter',
+    )
+    self.check_result(
+      result,
+      'language_model.warmTokensPerSecond',
+      50.2,
+      'unitless_biggerIsBetter',
+      sample_size=3,
+    )
+    self.check_result(
+      result, 'mtp_summary.coldAcceptanceRate', 0.72, 'unitless_biggerIsBetter'
+    )
+    self.check_result(
+      result,
+      'mtp_summary.warmAcceptanceRate',
+      0.75,
+      'unitless_biggerIsBetter',
+      sample_size=3,
+    )
+    self.check_result(
+      result, 'tokensPerSecond', 48.0, 'unitless_biggerIsBetter'
+    )
+    self.check_result(
+      result, 'acceptanceRate', 0.65, 'unitless_biggerIsBetter'
+    )
+    self.check_result(
+      result, 'vram_peak_bytes', 209715200, 'sizeInBytes_smallerIsBetter'
+    )
 
 
 if __name__ == '__main__':

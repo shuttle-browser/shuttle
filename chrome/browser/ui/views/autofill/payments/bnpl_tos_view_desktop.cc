@@ -6,13 +6,12 @@
 
 #include "base/functional/bind.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/views/autofill/payments/bnpl_tos_dialog.h"
 #include "components/autofill/core/browser/ui/payments/bnpl_tos_controller.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 using tabs::TabInterface;
 
@@ -38,8 +37,7 @@ BnplTosViewDesktop::BnplTosViewDesktop(
       tab_interface->RegisterWillDetach(base::BindRepeating(
           &BnplTosDialog::OnTabDetached, dialog_view->GetWeakPtr()));
 
-  dialog_widget_ = tab_interface->GetTabFeatures()
-                       ->tab_dialog_manager()
+  dialog_widget_ = tabs::TabDialogManager::From(tab_interface)
                        ->CreateAndShowDialog(
                            dialog_view.release(),
                            std::make_unique<tabs::TabDialogManager::Params>());
@@ -48,10 +46,11 @@ BnplTosViewDesktop::BnplTosViewDesktop(
 BnplTosViewDesktop::~BnplTosViewDesktop() = default;
 
 void BnplTosViewDesktop::OpenLink(const GURL& url) {
-  web_contents_->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
-                             url, WindowOpenDisposition::kNewForegroundTab,
-                             ui::PAGE_TRANSITION_LINK),
-                         /*navigation_handle_callback=*/{});
+  web_contents_->OpenURL(
+      content::OpenURLParams::CreateBrowserInitiated(
+          url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+          ui::PAGE_TRANSITION_LINK),
+      /*navigation_handle_callback=*/{});
 }
 
 }  // namespace autofill

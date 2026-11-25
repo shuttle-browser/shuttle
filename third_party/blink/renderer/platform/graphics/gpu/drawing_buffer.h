@@ -71,7 +71,7 @@
 namespace cc {
 class Layer;
 class TextureLayer;
-}
+}  // namespace cc
 
 namespace gpu {
 namespace gles2 {
@@ -80,8 +80,7 @@ class GLES2Interface;
 }  // namespace gpu
 
 namespace blink {
-class CanvasResource;
-class ExternalCanvasResource;
+class ExportedCanvasResource;
 class Extensions3DUtil;
 class StaticBitmapImage;
 class WebGraphicsContext3DProvider;
@@ -154,7 +153,8 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   void BeginDestruction();
 
   // Issues a glClear() on all framebuffers associated with this DrawingBuffer.
-  void ClearFramebuffers(GLbitfield clear_mask);
+  // Returns false for failure (context loss).
+  [[nodiscard]] bool ClearFramebuffers(GLbitfield clear_mask);
 
   // Indicates whether the DrawingBuffer internally allocated a packed
   // depth-stencil renderbuffer in the situation where the end user only asked
@@ -191,10 +191,12 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   void SetColorSpace(PredefinedColorSpace color_space);
   void SetHdrMetadata(const gfx::HDRMetadata& hdr_metadata);
 
-  // Bind the default framebuffer to |target|. |target| must be
+  // Bind the default framebuffer to `target`. `target` must be
   // GL_FRAMEBUFFER, GL_READ_FRAMEBUFFER, or GL_DRAW_FRAMEBUFFER.
-  void Bind(GLenum target);
-  // Restore the default framebuffer binding to |target| in the GL context
+  // Returns false if discarded buffers could not be reallocated (in which case
+  // context loss is forced).
+  bool Bind(GLenum target);
+  // Restore the default framebuffer binding to `target` in the GL context
   // without ensuring/reallocating discarded buffers.
   void RestoreDefaultFramebufferBinding(GLenum target = GL_FRAMEBUFFER);
   gfx::Size Size() const { return size_; }
@@ -218,8 +220,9 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // Returns false if the contents had previously been marked as changed and
   // have not yet been resolved.
   bool MarkContentsChanged();
-  // Restore buffers if they have been discarded.
-  void EnsureBuffers();
+  // Restore buffers if they have been discarded. Returns false if reallocation
+  // failed (in which case context loss is forced).
+  [[nodiscard]] bool EnsureBuffers();
 
   void SetBufferClearNeeded(bool);
   void RequireExplicitBufferClear();
@@ -242,6 +245,8 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // operations.
   void SetDrawBuffer(GLenum draw_buffer);
 
+  // Returns the compositing layer for this buffer, or nullptr once
+  // BeginDestruction() has started.
   cc::Layer* CcLayer();
 
   gpu::gles2::GLES2Interface* ContextGL();
@@ -320,9 +325,9 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // latency (e.g., to the display compositor).
   bool SupportsNoCopyExportForLowLatency();
 
-  scoped_refptr<CanvasResource> ExportCanvasResource();
+  scoped_refptr<ExportedCanvasResource> ExportCanvasResource();
 
-  scoped_refptr<ExternalCanvasResource> ExportLowLatencyCanvasResource();
+  scoped_refptr<ExportedCanvasResource> ExportLowLatencyCanvasResource();
   scoped_refptr<StaticBitmapImage> ExportLowLatencyBitmap();
 
   bool IsWebGL2() const {
@@ -369,7 +374,6 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   }
 
  private:
-  friend class ScopedRGBEmulationForBlitFramebuffer;
   friend class ScopedStateRestorer;
   friend class ColorBuffer;
 
@@ -470,12 +474,12 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   void DiscardBackBuffer();
   void DiscardMSAADepthStencilBuffers();
 
-  void EnsureBackColorBuffer();
-  void EnsureMSAADepthStencilBuffers();
+  [[nodiscard]] bool EnsureBackColorBuffer();
+  [[nodiscard]] bool EnsureMSAADepthStencilBuffers();
 
   // The same as clearFramebuffers(), but leaves GL state dirty.
-  void ClearFramebuffersInternal(GLbitfield clear_mask,
-                                 ClearOption clear_option);
+  [[nodiscard]] bool ClearFramebuffersInternal(GLbitfield clear_mask,
+                                               ClearOption clear_option);
 
   // The same as reset(), but leaves GL state dirty.
   bool ResizeFramebufferInternal(GLenum requested_format,
@@ -558,9 +562,6 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   // s_currentResourceUsePixels is updated.
   void SetSize(const gfx::Size&);
 
-  // Read the content of the FrameBuffer into the bitmap.
-  void ReadFramebufferIntoBitmapPixels(uint8_t* pixels);
-
   // Helper function which does a readback from the currently-bound
   // framebuffer into a buffer of a certain size with 4-byte pixels.
   void ReadBackFramebuffer(base::span<uint8_t> pixels,
@@ -568,11 +569,6 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
                            SkAlphaType destination_alpha_type,
                            GrSurfaceOrigin destination_origin,
                            SourceDrawingBuffer source_buffer);
-
-  // If RGB emulation is required, then the CHROMIUM image's alpha channel
-  // must be immediately cleared after it is bound to a texture. Nothing
-  // should be allowed to change the alpha channel after this.
-  void ClearChromiumImageAlpha(const ColorBuffer&);
 
   // Tries to create a CHROMIUM_image backed texture if
   // SharedGpuContext::WebGLImageChromiumEnabled() is true. On failure,
@@ -594,11 +590,6 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
 
   // Whether the WebGL client wants a depth or stencil buffer.
   bool WantDepthOrStencil();
-
-  // Helpers to ensure correct behavior of BlitFramebuffer when using
-  // an emulated RGB CHROMIUM_image back buffer.
-  bool SetupRGBEmulationForBlitFramebuffer(bool is_user_draw_framebuffer_bound);
-  void CleanupRGBEmulationForBlitFramebuffer();
 
   // Reallocate Multisampled renderbuffer, used by explicit resolve when resize
   // and GPU switch
@@ -697,6 +688,9 @@ class PLATFORM_EXPORT DrawingBuffer : public cc::TextureLayerClient,
   int sample_count_ = 0;
   int eqaa_storage_sample_count_ = 0;
   bool destruction_in_progress_ = false;
+  // Context loss is asynchronous, this is true when the context is lost, but
+  // its async task hasn't executed yet.
+  bool context_loss_pending_ = false;
   bool is_hidden_ = false;
   bool has_eqaa_support = false;
 

@@ -40,7 +40,6 @@ class ContextualSearchProvider;
 class DocumentProvider;
 class FeaturedSearchProvider;
 class GURL;
-class HistoryFuzzyProvider;
 class HistoryQuickProvider;
 class HistoryURLProvider;
 class KeywordProvider;
@@ -372,6 +371,8 @@ class AutocompleteController : public AutocompleteProviderListener,
                            ContextualSearchActionAttachedInZeroSuggest);
   FRIEND_TEST_ALL_PREFIXES(AutocompleteControllerTest,
                            AttachContextualSearchOpenLensActionToMatches);
+  FRIEND_TEST_ALL_PREFIXES(AutocompleteControllerTest,
+                           AttachContextualSearchFulfillmentActionWithoutLens);
   FRIEND_TEST_ALL_PREFIXES(
       AutocompleteControllerTest,
       ContextualSearchOpenLensActionAttachedPageKeywordMode);
@@ -395,7 +396,7 @@ class AutocompleteController : public AutocompleteProviderListener,
   FRIEND_TEST_ALL_PREFIXES(OmniboxViewTest, DoesNotUpdateAutocompleteOnBlur);
   FRIEND_TEST_ALL_PREFIXES(OmniboxViewViewsTest, CloseOmniboxPopupOnTextDrag);
   FRIEND_TEST_ALL_PREFIXES(OmniboxViewViewsTest, FriendlyAccessibleLabel);
-  FRIEND_TEST_ALL_PREFIXES(OmniboxViewViewsTest, AccessiblePopup);
+  FRIEND_TEST_ALL_PREFIXES(OmniboxViewViewsViewsPopupTest, AccessiblePopup);
   FRIEND_TEST_ALL_PREFIXES(OmniboxViewViewsTest, MaintainCursorAfterFocusCycle);
 #if BUILDFLAG(IS_WIN)
   FRIEND_TEST_ALL_PREFIXES(OmniboxViewViewsUIATest, AccessibleOmnibox);
@@ -564,7 +565,6 @@ class AutocompleteController : public AutocompleteProviderListener,
   raw_ptr<OnDeviceHeadProvider> on_device_head_provider_ = nullptr;
   raw_ptr<ClipboardProvider> clipboard_provider_ = nullptr;
   raw_ptr<VoiceSuggestProvider> voice_suggest_provider_ = nullptr;
-  raw_ptr<HistoryFuzzyProvider> history_fuzzy_provider_ = nullptr;
   raw_ptr<OpenTabProvider> open_tab_provider_ = nullptr;
   raw_ptr<TabGroupProvider> tab_group_provider_ = nullptr;
   raw_ptr<FeaturedSearchProvider> featured_search_provider_ = nullptr;

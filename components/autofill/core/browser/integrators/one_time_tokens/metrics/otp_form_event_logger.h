@@ -5,6 +5,8 @@
 #ifndef COMPONENTS_AUTOFILL_CORE_BROWSER_INTEGRATORS_ONE_TIME_TOKENS_METRICS_OTP_FORM_EVENT_LOGGER_H_
 #define COMPONENTS_AUTOFILL_CORE_BROWSER_INTEGRATORS_ONE_TIME_TOKENS_METRICS_OTP_FORM_EVENT_LOGGER_H_
 
+#include <string_view>
+
 #include "base/containers/span.h"
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/form_structure.h"
@@ -29,6 +31,7 @@ class OtpFormEventLogger : public FormEventLoggerBase {
                             base::TimeTicks form_parsed_timestamp,
                             bool off_the_record,
                             base::span<const Suggestion> suggestions) override;
+  void OnDestroyed() override;
 
   void LogUkmInteractedWithForm(FormSignature form_signature) override;
 
@@ -55,10 +58,44 @@ class OtpFormEventLogger : public FormEventLoggerBase {
       const FormStructure& form,
       AutocompleteUnrecognizedBehavior ac_unrecognized_behavior) const override;
 
+  // Also record the funnel and key metrics as
+  // `OneTimePassword.GmailEligibleClients` for users who are eligible for Gmail
+  // OTPs.
+  void RecordInteractionAfterParsedAsType(LogBuffer& logs) const override;
+  void RecordSuggestionAfterInteraction(LogBuffer& logs) const override;
+  void RecordFillAfterSuggestion(LogBuffer& logs) const override;
+  void RecordSubmissionAfterFill(LogBuffer& logs) const override;
+  void RecordFormSubmission(LogBuffer& logs) const override;
+  void RecordFillingReadiness(LogBuffer& logs) const override;
+  void RecordFillingAcceptance(LogBuffer& logs) const override;
+  void RecordFillingCorrectness(LogBuffer& logs) const override;
+  void RecordFillingAssistance(LogBuffer& logs) const override;
+
  private:
+  // Returns whether the user is eligible for Gmail OTPs: Gmail OTP suggestions
+  // are enabled, the user opted into them, a Gmail OTP backend exists, and the
+  // user is signed in with a Gmail account. This does not guarantee that the
+  // user gets Gmail OTPs, e.g. their Gmail settings may still block them.
+  bool IsEligibleForGmailOtps() const;
+
+  // Records
+  // `Autofill.KeyMetrics.{metric}.OneTimePassword.GmailEligibleClients` if the
+  // user is eligible for Gmail OTPs.
+  void RecordGmailKeyMetric(std::string_view metric, bool value) const;
+
+  // Records `{histogram_prefix}OneTimePassword.GmailEligibleClients` if the
+  // user is eligible for Gmail OTPs. Unlike `RecordGmailKeyMetric()`, it is not
+  // recorded per profile, like the base class's funnel and form submission
+  // metrics.
+  void RecordGmailHistogram(std::string_view histogram_prefix,
+                            bool value) const;
+
   // Tracks the number of OTPs that have been made available for filling during
   // the lifetime of a form.
   bool otp_for_filling_existed_ = false;
+
+  // Set in `OnDestroyed()`, right before the metrics are recorded.
+  bool is_eligible_for_gmail_otps_ = false;
 };
 
 }  // namespace autofill::autofill_metrics

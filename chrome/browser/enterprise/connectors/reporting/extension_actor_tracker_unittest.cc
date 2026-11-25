@@ -6,13 +6,18 @@
 
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/policy/dm_token_utils.h"
 #include "chrome/test/base/chrome_render_view_host_test_harness.h"
 #include "chrome/test/base/testing_profile.h"
+#include "components/enterprise/connectors/core/connectors_prefs.h"
 #include "components/enterprise/connectors/core/features.h"
+#include "components/enterprise/connectors/core/reporting_constants.h"
 #include "components/enterprise/connectors/core/reporting_test_utils.h"
+#include "components/policy/core/common/policy_types.h"
+#include "components/prefs/pref_service.h"
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
@@ -22,8 +27,8 @@
 #include "third_party/blink/public/common/input/web_gesture_event.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/input/web_mouse_event.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -61,12 +66,36 @@ TEST_F(ExtensionActorTrackerTest, SetAndClearActiveActorLifecycle) {
   EXPECT_EQ(std::nullopt,
             ExtensionActorTracker::GetActiveActor(web_contents()));
 
-  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
   EXPECT_EQ("extension_alpha",
             ExtensionActorTracker::GetActiveActor(web_contents()));
 
   // Last-writer-wins when a second extension issues a command.
-  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_beta");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_beta",
+                                        "Runtime.evaluate");
+  EXPECT_EQ("extension_beta",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // Untracked read-only CDP commands do not overwrite the active actor.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_gamma",
+                                        "Network.enable");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_gamma",
+                                        "DOM.getDocument");
+  EXPECT_EQ("extension_beta",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // Tracked CDP commands update the active actor.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_gamma",
+                                        "DOM.focus");
+  EXPECT_EQ("extension_gamma",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "DOM.setFileInputFiles");
+  EXPECT_EQ("extension_alpha",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_beta",
+                                        "Input.dispatchMouseEvent");
   EXPECT_EQ("extension_beta",
             ExtensionActorTracker::GetActiveActor(web_contents()));
 
@@ -77,7 +106,8 @@ TEST_F(ExtensionActorTrackerTest, SetAndClearActiveActorLifecycle) {
 
 TEST_F(ExtensionActorTrackerTest,
        UserInteractionClearsActorUnlessDebuggerOrScroll) {
-  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
 
   blink::WebMouseEvent debugger_event;
   debugger_event.SetType(blink::WebInputEvent::Type::kMouseDown);
@@ -100,7 +130,8 @@ TEST_F(ExtensionActorTrackerTest,
 }
 
 TEST_F(ExtensionActorTrackerTest, DidFinishNavigationClearsCrossDocumentOnly) {
-  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
 
   NiceMock<content::MockNavigationHandle> same_doc_nav(web_contents());
   same_doc_nav.set_has_committed(true);
@@ -119,9 +150,200 @@ TEST_F(ExtensionActorTrackerTest, DidFinishNavigationClearsCrossDocumentOnly) {
             ExtensionActorTracker::GetActiveActor(web_contents()));
 }
 
+TEST_F(ExtensionActorTrackerTest, BrowserInitiatedNavigationClearsActor) {
+  // Omnibox, Reload button and Back button navigations are user input that
+  // never reaches the page.
+  for (ui::PageTransition transition :
+       {ui::PageTransitionFromInt(ui::PAGE_TRANSITION_TYPED |
+                                  ui::PAGE_TRANSITION_FROM_ADDRESS_BAR),
+        ui::PAGE_TRANSITION_RELOAD,
+        ui::PageTransitionFromInt(ui::PAGE_TRANSITION_LINK |
+                                  ui::PAGE_TRANSITION_FORWARD_BACK)}) {
+    SCOPED_TRACE(transition);
+    ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                          "Runtime.evaluate");
+
+    NiceMock<content::MockNavigationHandle> user_nav(web_contents());
+    user_nav.set_is_in_primary_main_frame(true);
+    user_nav.set_is_renderer_initiated(false);
+    user_nav.set_page_transition(transition);
+    tracker()->DidStartNavigation(&user_nav);
+    EXPECT_EQ(std::nullopt,
+              ExtensionActorTracker::GetActiveActor(web_contents()));
+  }
+}
+
+TEST_F(ExtensionActorTrackerTest, ExtensionNavigationStartKeepsActor) {
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
+
+  // Renderer-initiated, e.g. `location.href` set by `Runtime.evaluate`.
+  NiceMock<content::MockNavigationHandle> renderer_nav(web_contents());
+  renderer_nav.set_is_in_primary_main_frame(true);
+  renderer_nav.set_is_renderer_initiated(true);
+  tracker()->DidStartNavigation(&renderer_nav);
+  EXPECT_EQ("extension_alpha",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // Browser-initiated by an extension API.
+  NiceMock<content::MockNavigationHandle> api_nav(web_contents());
+  api_nav.set_is_in_primary_main_frame(true);
+  api_nav.set_is_renderer_initiated(false);
+  api_nav.set_page_transition(ui::PageTransitionFromInt(
+      ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_FROM_API));
+  tracker()->DidStartNavigation(&api_nav);
+  EXPECT_EQ("extension_alpha",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // `Page.reload` is browser-initiated without `PAGE_TRANSITION_FROM_API`.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Page.reload");
+  NiceMock<content::MockNavigationHandle> reload_nav(web_contents());
+  reload_nav.set_is_in_primary_main_frame(true);
+  reload_nav.set_is_renderer_initiated(false);
+  reload_nav.set_page_transition(ui::PAGE_TRANSITION_RELOAD);
+  tracker()->DidStartNavigation(&reload_nav);
+  EXPECT_EQ("extension_alpha",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+}
+
+TEST_F(ExtensionActorTrackerTest, ExtensionHistoryNavigationKeepsActor) {
+  // These commands start browser-initiated navigations without
+  // `PAGE_TRANSITION_FROM_API`.
+  const ui::PageTransition kBackForward = ui::PageTransitionFromInt(
+      ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_FORWARD_BACK);
+  const std::pair<const char*, ui::PageTransition> kCommands[] = {
+      {"tabs.reload", ui::PAGE_TRANSITION_RELOAD},
+      {"tabs.goBack", kBackForward},
+      {"tabs.goForward", kBackForward},
+      {"Page.navigateToHistoryEntry", kBackForward},
+  };
+  for (const auto& [command, transition] : kCommands) {
+    SCOPED_TRACE(command);
+    ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                          "Runtime.evaluate");
+    ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                          command);
+
+    NiceMock<content::MockNavigationHandle> history_nav(web_contents());
+    history_nav.set_url(GURL("https://example.com/previous"));
+    history_nav.set_is_in_primary_main_frame(true);
+    history_nav.set_is_renderer_initiated(false);
+    history_nav.set_page_transition(transition);
+    tracker()->DidStartNavigation(&history_nav);
+    EXPECT_EQ("extension_alpha",
+              ExtensionActorTracker::GetActiveActor(web_contents()));
+
+    history_nav.set_has_committed(true);
+    tracker()->DidFinishNavigation(&history_nav);
+    EXPECT_EQ("extension_alpha",
+              ExtensionActorTracker::GetActiveActor(web_contents()));
+
+    // The next browser-initiated navigation is user input again.
+    NiceMock<content::MockNavigationHandle> typed_nav(web_contents());
+    typed_nav.set_is_in_primary_main_frame(true);
+    typed_nav.set_is_renderer_initiated(false);
+    typed_nav.set_page_transition(ui::PAGE_TRANSITION_TYPED);
+    tracker()->DidStartNavigation(&typed_nav);
+    EXPECT_EQ(std::nullopt,
+              ExtensionActorTracker::GetActiveActor(web_contents()));
+  }
+}
+
+TEST_F(ExtensionActorTrackerTest, HistoryNavigationFromAboutBlankKeepsActor) {
+  NavigateAndCommit(GURL("about:blank"));
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "tabs.goBack");
+
+  NiceMock<content::MockNavigationHandle> back_nav(web_contents());
+  back_nav.set_is_in_primary_main_frame(true);
+  back_nav.set_is_renderer_initiated(false);
+  back_nav.set_page_transition(ui::PageTransitionFromInt(
+      ui::PAGE_TRANSITION_LINK | ui::PAGE_TRANSITION_FORWARD_BACK));
+  tracker()->DidStartNavigation(&back_nav);
+  EXPECT_EQ("extension_alpha",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+}
+
+TEST_F(ExtensionActorTrackerTest, FailedExtensionNavigationDoesNotKeepActor) {
+  // A history command that fails before starting a navigation leaves
+  // `is_initial_navigation_` set.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Page.navigateToHistoryEntry");
+
+  NiceMock<content::MockNavigationHandle> typed_nav(web_contents());
+  typed_nav.set_url(GURL("https://example.com/typed"));
+  typed_nav.set_is_in_primary_main_frame(true);
+  typed_nav.set_is_renderer_initiated(false);
+  typed_nav.set_page_transition(ui::PageTransitionFromInt(
+      ui::PAGE_TRANSITION_TYPED | ui::PAGE_TRANSITION_FROM_ADDRESS_BAR));
+  tracker()->DidStartNavigation(&typed_nav);
+  EXPECT_EQ(std::nullopt,
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // A command during the user's navigation is not kept past its commit.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
+  typed_nav.set_has_committed(true);
+  tracker()->DidFinishNavigation(&typed_nav);
+  EXPECT_EQ(std::nullopt,
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+}
+
+TEST_F(ExtensionActorTrackerTest,
+       UserReloadOfExtensionNavigationDoesNotRestoreActor) {
+  // The reload after an interstitial bypass, the Reload button and Back keep
+  // the extension as the initiator of the original navigation.
+  for (ui::PageTransition transition :
+       {ui::PAGE_TRANSITION_RELOAD,
+        ui::PageTransitionFromInt(ui::PAGE_TRANSITION_LINK |
+                                  ui::PAGE_TRANSITION_FORWARD_BACK)}) {
+    SCOPED_TRACE(transition);
+    ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                          "tabs.update");
+
+    NiceMock<content::MockNavigationHandle> user_nav(web_contents());
+    user_nav.set_url(GURL("https://example.com/target"));
+    user_nav.set_is_in_primary_main_frame(true);
+    user_nav.set_is_renderer_initiated(false);
+    user_nav.set_page_transition(transition);
+    user_nav.set_initiator_origin(
+        url::Origin::Create(GURL("chrome-extension://extension_alpha")));
+    tracker()->DidStartNavigation(&user_nav);
+    user_nav.set_has_committed(true);
+    tracker()->DidFinishNavigation(&user_nav);
+    EXPECT_EQ(std::nullopt,
+              ExtensionActorTracker::GetActiveActor(web_contents()));
+  }
+}
+
+TEST_F(ExtensionActorTrackerTest,
+       ExtensionInitiatedNavigationDoesNotKeepActor) {
+  // These commands start navigations with the extension as the initiator, so
+  // if they fail, the user's next Reload or Back is not attributed.
+  for (const char* command : {"tabs.update", "Page.navigate"}) {
+    for (ui::PageTransition transition :
+         {ui::PAGE_TRANSITION_RELOAD,
+          ui::PageTransitionFromInt(ui::PAGE_TRANSITION_LINK |
+                                    ui::PAGE_TRANSITION_FORWARD_BACK)}) {
+      SCOPED_TRACE(testing::Message() << command << " " << transition);
+      ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                            command);
+
+      NiceMock<content::MockNavigationHandle> user_nav(web_contents());
+      user_nav.set_is_in_primary_main_frame(true);
+      user_nav.set_is_renderer_initiated(false);
+      user_nav.set_page_transition(transition);
+      tracker()->DidStartNavigation(&user_nav);
+      EXPECT_EQ(std::nullopt,
+                ExtensionActorTracker::GetActiveActor(web_contents()));
+    }
+  }
+}
+
 TEST_F(ExtensionActorTrackerTest, AboutBlankDoesNotConsumeInitialNavigation) {
   ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
-                                        /*is_initial_navigation=*/true);
+                                        "tabs.create");
 
   NiceMock<content::MockNavigationHandle> blank_nav(web_contents());
   blank_nav.set_url(GURL("about:blank"));
@@ -130,6 +352,11 @@ TEST_F(ExtensionActorTrackerTest, AboutBlankDoesNotConsumeInitialNavigation) {
   tracker()->DidFinishNavigation(&blank_nav);
   EXPECT_EQ("extension_alpha",
             ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // Non-navigation commands while the initial navigation is in flight do not
+  // reset `is_initial_navigation_`.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
 
   NiceMock<content::MockNavigationHandle> target_nav(web_contents());
   target_nav.set_url(GURL("https://example.com"));
@@ -146,11 +373,28 @@ TEST_F(ExtensionActorTrackerTest, AboutBlankDoesNotConsumeInitialNavigation) {
   tracker()->DidFinishNavigation(&user_nav);
   EXPECT_EQ(std::nullopt,
             ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  // Same-document navigations consume `is_initial_navigation_`.
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "tabs.goBack");
+  NiceMock<content::MockNavigationHandle> hash_nav(web_contents());
+  hash_nav.set_url(GURL("https://other.com#section"));
+  hash_nav.set_has_committed(true);
+  hash_nav.set_is_in_primary_main_frame(true);
+  hash_nav.set_is_same_document(true);
+  tracker()->DidFinishNavigation(&hash_nav);
+  EXPECT_EQ("extension_alpha",
+            ExtensionActorTracker::GetActiveActor(web_contents()));
+
+  tracker()->DidFinishNavigation(&user_nav);
+  EXPECT_EQ(std::nullopt,
+            ExtensionActorTracker::GetActiveActor(web_contents()));
 }
 
 TEST_F(ExtensionActorTrackerTest,
        ExtensionFormAndDownloadNavigationsPreserveAttribution) {
-  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
 
   NiceMock<content::MockNavigationHandle> extension_nav(web_contents());
   extension_nav.set_url(GURL("https://example.com/target"));
@@ -184,11 +428,12 @@ TEST_F(ExtensionActorTrackerTest,
 TEST_F(ExtensionActorTrackerTest,
        DidOpenRequestedURLPropagatesActorToChildWebContents) {
   std::unique_ptr<content::WebContents> child_wc = CreateTestWebContents();
-  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha");
+  ExtensionActorTracker::SetActiveActor(web_contents(), "extension_alpha",
+                                        "Runtime.evaluate");
 
   tracker()->DidOpenRequestedURL(
       child_wc.get(), main_rfh(), GURL("https://example.com/popup"),
-      content::Referrer(), WindowOpenDisposition::kNewForegroundTab,
+      content::Referrer(), ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui::PAGE_TRANSITION_LINK, /*started_from_context_menu=*/false,
       /*renderer_initiated=*/true);
 
@@ -201,7 +446,8 @@ TEST_F(ExtensionActorTrackerTest, DisabledWhenFeatureOrEnterprisePolicyOff) {
   EXPECT_FALSE(ExtensionActorTracker::IsEnabled(browser_context()));
 
   std::unique_ptr<content::WebContents> unmanaged_tab = CreateTestWebContents();
-  ExtensionActorTracker::SetActiveActor(unmanaged_tab.get(), "extension_alpha");
+  ExtensionActorTracker::SetActiveActor(unmanaged_tab.get(), "extension_alpha",
+                                        "Runtime.evaluate");
   EXPECT_EQ(nullptr,
             ExtensionActorTracker::FromWebContents(unmanaged_tab.get()));
 
@@ -210,6 +456,17 @@ TEST_F(ExtensionActorTrackerTest, DisabledWhenFeatureOrEnterprisePolicyOff) {
   scoped_feature_list_.InitAndDisableFeature(
       kEnterpriseExtensionActorAttribution);
   EXPECT_FALSE(ExtensionActorTracker::IsEnabled(browser_context()));
+}
+
+TEST_F(ExtensionActorTrackerTest, EnabledWithRealTimeUrlCheckOnly) {
+  test::SetOnSecurityEventReporting(profile()->GetPrefs(), /*enabled=*/false);
+  EXPECT_FALSE(ExtensionActorTracker::IsEnabled(browser_context()));
+
+  profile()->GetPrefs()->SetInteger(kEnterpriseRealTimeUrlCheckMode,
+                                    REAL_TIME_CHECK_FOR_MAINFRAME_ENABLED);
+  profile()->GetPrefs()->SetInteger(kEnterpriseRealTimeUrlCheckScope,
+                                    policy::POLICY_SCOPE_MACHINE);
+  EXPECT_TRUE(ExtensionActorTracker::IsEnabled(browser_context()));
 }
 
 }  // namespace

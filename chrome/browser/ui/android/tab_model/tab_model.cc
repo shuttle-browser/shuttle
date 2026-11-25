@@ -41,7 +41,7 @@ TabModel::TabModel(Profile* profile,
                        custom_tab_profile_type,
                    TabModelType tab_model_type)
     : live_tab_context_(new AndroidLiveTabContext(this)),
-      synced_window_delegate_(new browser_sync::SyncedWindowDelegateAndroid(
+      synced_window_delegate_(new SyncedWindowDelegateAndroid(
           this,
           activity_type == ActivityType::kTabbed)),
       profile_(profile),
@@ -161,17 +161,17 @@ bool TabModel::IsEmptyRegularModelForEphemeralOrIncognitoCct() const {
 // static
 // From //chrome/browser/tab_list/tab_list_interface.h
 bool TabListInterface::CanEditTabList(Profile& profile) {
-  for (TabModel* model : TabModelList::models()) {
-    if (model->GetProfile() != &profile ||
-        model->GetTabModelType() != TabModel::TabModelType::kStandard ||
+  bool can_edit = true;
+  TabModelList::ForEach(&profile, [&](TabModel* model) {
+    if (model->GetTabModelType() != TabModel::TabModelType::kStandard ||
         model->IsEmptyRegularModelForEphemeralOrIncognitoCct()) {
-      continue;
+      return true;
     }
-
     if (!model->IsThisTabListEditable()) {
+      can_edit = false;
       return false;
     }
-  }
-
-  return true;
+    return true;
+  });
+  return can_edit;
 }

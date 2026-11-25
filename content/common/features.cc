@@ -75,6 +75,10 @@ BASE_FEATURE_PARAM(base::TimeDelta,
                    "AsyncBeforeUnloadTimeout",
                    base::Milliseconds(500));
 
+// Uses drag session IDs to prevent stale Aura drag callbacks and cleanup from
+// modifying a newer drag.
+BASE_FEATURE(kAuraDragDropSessionId, base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Synchronously continuing with navigation can lead to trying to start another
 // navigation synchronously while the first navigation is still being processed
 // on the stack. This results in re-entrancy which is unsafe and triggers a
@@ -425,10 +429,6 @@ BASE_FEATURE(kKeepUnassignedSiteInstanceInOriginalBrowsingInstance,
 // invalid (non-allowlisted) headers in a navigation request.
 BASE_FEATURE(kKillOnInvalidNavigationHeaders, base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Kill switch for crbug.com/424995036. When enabled, the top of a
-// PopupWidgetHost is constrained to be at or below the line of death.
-BASE_FEATURE(kLimitPopupWidgetHostPosition, base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Enables Local Network Access checks for all types of web workers.
 //
 // The exact checks run are the same as for other document subresources, and
@@ -611,6 +611,9 @@ BASE_FEATURE(kPreloadActivationReportWithExtensionInterception,
 // See content/browser/preloading/preloading_config.cc to see how to use this
 // feature.
 BASE_FEATURE(kPreloadingConfig, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kPrioritizeCompositorTaskRunnerOnStartup,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kPrioritizeResizeTaskRunnerOnStartup,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -864,12 +867,42 @@ BASE_FEATURE(kSkipEarlyCommitPendingForCrashedFrame,
 BASE_FEATURE(kSkipRendererCancellationThrottle,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// When enabled, main-frame same-document commits that replace the current
+// entry without changing its URL or virtual URL (e.g.
+// `history.replaceState()` with the current URL) do not include
+// INVALIDATE_TYPE_URL in the resulting NavigationStateChanged() notification,
+// so that embedders can skip URL-dependent UI updates.
+BASE_FEATURE(kSkipUrlInvalidationForUnchangedSameDocumentReplacement,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 #if BUILDFLAG(IS_ANDROID)
 // When enabled, ensure high-rank processes are on the LRU list while app is in
 // background or the effective binding state is in conflict with low rank
 // processes.
 BASE_FEATURE(kStrictHighRankProcessLRU, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
+
+// When enabled, UI thread proxies of a main frame document's network
+// subresource URLLoaderFactory (e.g. the extensions WebRequest proxy) bind
+// their receivers to a kHigh priority task queue instead of the UI thread's
+// default task queue, so that starting a subresource request isn't delayed by
+// unrelated default-queue work.
+BASE_FEATURE(kSubresourceLoaderProxyTaskQueue,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+// When true, only documents that commit while their WebContents is visible use
+// the kHigh priority task queue.
+BASE_FEATURE_PARAM(bool,
+                   kSubresourceLoaderProxyTaskQueueVisibleOnly,
+                   &kSubresourceLoaderProxyTaskQueue,
+                   true);
+// When true, prerendered main frames also use the kHigh priority task queue
+// (subject to `kSubresourceLoaderProxyTaskQueueVisibleOnly`). False by default
+// so background prerenders do not preempt default-queue UI work for the primary
+// page.
+BASE_FEATURE_PARAM(bool,
+                   kSubresourceLoaderProxyTaskQueueIncludePrerendering,
+                   &kSubresourceLoaderProxyTaskQueue,
+                   false);
 
 // Allows swipe left/right from touchpad change browser navigation.
 // On platforms that don't have this enabled by default, the overscroll gesture
@@ -911,13 +944,12 @@ BASE_FEATURE(kWarmUpNetworkProcess, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kWebAssemblyDynamicTiering, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables in-process resource loading for WebUI renderer processes.
-BASE_FEATURE(kWebUIInProcessResourceLoading,
-#if BUILDFLAG(IS_ANDROID)
-             base::FEATURE_DISABLED_BY_DEFAULT
-#else
-             base::FEATURE_ENABLED_BY_DEFAULT
-#endif
-);
+BASE_FEATURE(kWebUIInProcessResourceLoading, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Optimizes WebUI `LocalResourceLoaderConfig` generation and avoids redundant
+// deep-clones during navigation commit.
+BASE_FEATURE(kWebUIOptimizeLocalResourceLoaderConfig,
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables WebOTP calls in cross-origin iframes if allowed by Permissions
 // Policy.

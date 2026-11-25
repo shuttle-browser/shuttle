@@ -60,6 +60,7 @@
 #include "third_party/blink/public/mojom/messaging/transferable_message.mojom.h"
 #include "third_party/blink/public/mojom/scroll/scroll_into_view_params.mojom.h"
 #include "third_party/perfetto/include/perfetto/tracing/track.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/gfx/geometry/rect_f.h"
 
 namespace content {
@@ -554,11 +555,11 @@ void RenderFrameProxyHost::DisableAutoResize() {
   GetAssociatedRemoteFrame()->DisableAutoResize();
 }
 
-void RenderFrameProxyHost::DidUpdateVisualProperties(
-    const cc::RenderFrameMetadata& metadata) {
+void RenderFrameProxyHost::DidUpdateChildLocalSurfaceId(
+    const viz::LocalSurfaceId& local_surface_id) {
   if (!is_render_frame_proxy_live())
     return;
-  GetAssociatedRemoteFrame()->DidUpdateVisualProperties(metadata);
+  GetAssociatedRemoteFrame()->DidUpdateChildLocalSurfaceId(local_surface_id);
 }
 
 void RenderFrameProxyHost::ChildProcessGone() {
@@ -1041,7 +1042,7 @@ void RenderFrameProxyHost::OpenURL(blink::mojom::OpenURLParamsPtr params) {
 
   // Since this navigation targeted a specific RenderFrameProxy, it should stay
   // in the current tab.
-  CHECK_EQ(WindowOpenDisposition::kCurrentTab, params->disposition,
+  CHECK_EQ(ui::mojom::WindowOpenDisposition::kCurrentTab, params->disposition,
            base::NotFatalUntil::M152);
 
   // Augment |download_policy| for situations that were not covered on the

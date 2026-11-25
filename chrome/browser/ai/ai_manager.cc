@@ -4,8 +4,12 @@
 
 #include "chrome/browser/ai/ai_manager.h"
 
+#include <algorithm>
 #include <memory>
 #include <optional>
+#include <string_view>
+#include <utility>
+#include <vector>
 
 #include "base/check.h"
 #include "base/containers/fixed_flat_set.h"
@@ -18,6 +22,7 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "base/strings/strcat.h"
+#include "base/strings/string_split.h"
 #include "base/strings/stringprintf.h"
 #include "base/types/expected.h"
 #include "base/types/optional_ref.h"
@@ -33,6 +38,7 @@
 #include "chrome/browser/ai/ai_summarizer.h"
 #include "chrome/browser/ai/ai_writer.h"
 #include "chrome/browser/ai/features.h"
+#include "chrome/browser/ai/semantic_embedder_spaces.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service.h"
@@ -45,7 +51,6 @@
 #include "components/optimization_guide/core/model_execution/on_device_capability.h"
 #include "components/optimization_guide/core/model_execution/on_device_features.h"
 #include "components/optimization_guide/core/model_execution/on_device_prefs.h"
-#include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/core/optimization_guide_features.h"
 #include "components/optimization_guide/proto/common_types.pb.h"
 #include "components/optimization_guide/proto/feature_configs.pb.h"
@@ -72,6 +77,7 @@
 #include "third_party/blink/public/mojom/ai/ai_manager.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_proofreader.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_rewriter.mojom.h"
+#include "third_party/blink/public/mojom/ai/ai_semantic_embedder.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_writer.mojom.h"
 #include "third_party/blink/public/mojom/ai/model_streaming_responder.mojom.h"
 #include "third_party/blink/public/mojom/devtools/console_message.mojom-shared.h"
@@ -403,6 +409,21 @@ void CreateSessionWithConfig(
       ::optimization_guide::SessionConfigParams{}, std::move(wrapper));
 }
 
+void RequestAssetsAndWaitForClient(
+    optimization_guide::ModelBrokerClient* broker_client,
+    const std::string& use_case,
+    mojo::PendingRemote<on_device_model::mojom::DownloadObserver> monitor,
+    base::OnceCallback<void(base::WeakPtr<optimization_guide::ModelClient>)>
+        callback) {
+  if (monitor) {
+    broker_client->AddModelDownloadProgressObserver(use_case,
+                                                    std::move(monitor));
+  }
+
+  broker_client->RequestAssetsFor(use_case);
+  broker_client->GetSubscriber(use_case).WaitForClient(std::move(callback));
+}
+
 // Request assets and wait for the model broker client to become
 // available by reading the use case from the use case config provided by the
 // model broker.
@@ -421,13 +442,8 @@ void RequestAssetsAndWaitForClientWithConfig(
     return;
   }
 
-  if (monitor) {
-    broker_client->AddModelDownloadProgressObserver(*use_case,
-                                                    std::move(monitor));
-  }
-
-  broker_client->RequestAssetsFor(*use_case);
-  broker_client->GetSubscriber(*use_case).WaitForClient(std::move(callback));
+  RequestAssetsAndWaitForClient(broker_client, *use_case, std::move(monitor),
+                                std::move(callback));
 }
 
 template <typename OptionsPtr>
@@ -721,16 +737,17 @@ std::string_view AILanguageModelSamplingModeToString(
 }
 
 #if !BUILDFLAG(IS_ANDROID)
-AIManager::DecisionModelBackend GetDecisionModelBackend() {
+std::string GetLayaUseCase(AIManager::DecisionModelBackend backend) {
   using Backend = AIManager::DecisionModelBackend;
-  static constexpr base::FeatureParam<Backend>::Option kOptions[] = {
-      {Backend::kEmbeddingGemmaV1, "embedding_gemma_v1"},
-      {Backend::kLanguageModel, "language_model"},
-  };
-  const base::FeatureParam<Backend> kBackend{
-      &blink::features::kAIDecisionModelAPI, "backend",
-      Backend::kEmbeddingGemmaV1, &kOptions};
-  return kBackend.Get();
+  switch (backend) {
+    case Backend::kLayaEnWint8:
+      return "laya_en_wint8";
+    case Backend::kLayaMlWint8:
+      return "laya_ml_wint8";
+    case Backend::kEmbeddingGemmaV1:
+    case Backend::kLanguageModel:
+      NOTREACHED();
+  }
 }
 
 // Only the manifest broker resolves the Prompt API's model from its feature
@@ -748,6 +765,34 @@ bool AreLanguageModelDecisionModelFeaturesEnabled() {
              optimization_guide::kOptimizationGuideManifestBroker) &&
          base::FeatureList::IsEnabled(
              on_device_model::features::kOnDeviceModelForceCpuBackend);
+}
+
+// Returns backends enabled by `backend` (`"*"` or `,`-separated names; use
+// `%2C` on `--enable-features`); the first enabled backend is the default.
+std::vector<AIManager::DecisionModelBackend> GetEnabledDecisionModelBackends() {
+  using Backend = AIManager::DecisionModelBackend;
+  static constexpr std::pair<std::string_view, Backend> kBackends[] = {
+      {"embedding_gemma_v1", Backend::kEmbeddingGemmaV1},
+      {"language_model", Backend::kLanguageModel},
+      {"laya_en_wint8", Backend::kLayaEnWint8},
+      {"laya_ml_wint8", Backend::kLayaMlWint8},
+  };
+  const base::FeatureParam<std::string> kBackend{
+      &blink::features::kAIDecisionModelAPI, "backend", "*"};
+  std::vector<Backend> enabled;
+  for (const std::string& token :
+       base::SplitString(kBackend.Get(), ",", base::TRIM_WHITESPACE,
+                         base::SPLIT_WANT_NONEMPTY)) {
+    for (const auto& [name, backend] : kBackends) {
+      if ((token == "*" || token == name) &&
+          (backend != Backend::kLanguageModel ||
+           AreLanguageModelDecisionModelFeaturesEnabled()) &&
+          !std::ranges::contains(enabled, backend)) {
+        enabled.push_back(backend);
+      }
+    }
+  }
+  return enabled;
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -770,6 +815,7 @@ AIManager::AIManager(content::BrowserContext* browser_context,
       Profile::FromBrowserContext(browser_context_));
   if (service) {
     model_broker_client_ = service->CreateModelBrokerClient();
+    profile_has_optimization_guide_keyed_service_ = true;
   }
 }
 
@@ -906,19 +952,14 @@ void AIManager::CreateLanguageModel(
                                       weak_factory_.GetWeakPtr(),
                                       std::move(client), std::move(options))));
   } else {
-    if (monitor) {
-      model_broker_client_->AddModelDownloadProgressObserver(
-          optimization_guide::ToUseCaseName(
-              optimization_guide::mojom::OnDeviceFeature::kPromptApi),
-          std::move(monitor));
-    }
-    model_broker_client_->RequestAssetsFor(
-        optimization_guide::mojom::OnDeviceFeature::kPromptApi);
-    model_broker_client_
-        ->GetSubscriber(optimization_guide::mojom::OnDeviceFeature::kPromptApi)
-        .WaitForClient(base::BindOnce(&AIManager::CreateLanguageModelInternal,
-                                      weak_factory_.GetWeakPtr(),
-                                      std::move(client), std::move(options)));
+    RequestAssetsAndWaitForClient(
+        model_broker_client_.get(),
+        optimization_guide::ToUseCaseName(
+            optimization_guide::mojom::OnDeviceFeature::kPromptApi),
+        std::move(monitor),
+        base::BindOnce(&AIManager::CreateLanguageModelInternal,
+                       weak_factory_.GetWeakPtr(), std::move(client),
+                       std::move(options)));
   }
 }
 
@@ -1710,10 +1751,10 @@ void AIManager::OnSessionCreated(
 
   if (initial_request.has_value()) {
     auto initial_request_copy = initial_request.value().Clone();
-    session->GetExecutionInputSizeInTokens(
+    session->GetInputSizeInTokens(
         initial_request.value().read(),
         base::BindOnce(
-            &AIManager::OnGotExecutionInputSizeInTokens<
+            &AIManager::OnGotInitialInputSizeInTokens<
                 ContextBoundObjectType, ContextBoundObjectReceiverInterface,
                 ClientRemoteInterface, CreateOptionsPtrType>,
             weak_factory_.GetWeakPtr(), std::move(options),
@@ -1735,24 +1776,29 @@ template <typename ContextBoundObjectType,
           typename ContextBoundObjectReceiverInterface,
           typename ClientRemoteInterface,
           typename CreateOptionsPtrType>
-void AIManager::OnGotExecutionInputSizeInTokens(
+void AIManager::OnGotInitialInputSizeInTokens(
     CreateOptionsPtrType options,
     optimization_guide::MultimodalMessage initial_request,
     mojo::Remote<ClientRemoteInterface> client_remote,
     std::unique_ptr<optimization_guide::OnDeviceSession> session,
-    std::optional<uint32_t> result) {
-  if (!result.has_value()) {
+    std::optional<optimization_guide::InputSizeInTokens> initial_input_size) {
+  if (!initial_input_size.has_value()) {
     on_device_ai::SendClientRemoteError(
         client_remote,
         blink::mojom::AIManagerCreateClientError::kUnableToCalculateTokenSize);
     return;
   }
+  // Both the input context (prefilled via SetInput() below) and any execution
+  // input known now (but sent with each execution later) count toward the
+  // context window.
+  const uint32_t initial_input_tokens = initial_input_size->total();
   const uint32_t context_window = GetInputContextLimit(options, session.get());
-  if (result.value() > context_window) {
+  if (initial_input_tokens > context_window) {
     on_device_ai::SendClientRemoteError(
         client_remote,
         blink::mojom::AIManagerCreateClientError::kInitialInputTooLarge,
-        blink::mojom::QuotaErrorInfo::New(result.value(), context_window));
+        blink::mojom::QuotaErrorInfo::New(initial_input_tokens,
+                                          context_window));
     return;
   }
 
@@ -1881,6 +1927,7 @@ bool AIManager::IsBlocked(
 }
 
 void AIManager::CanCreateSemanticEmbedder(
+    blink::mojom::AISemanticEmbedderCreateOptionsPtr options,
     CanCreateSemanticEmbedderCallback callback) {
   if (!base::FeatureList::IsEnabled(blink::features::kAIEmbeddingsAPI)) {
     std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
@@ -1888,16 +1935,26 @@ void AIManager::CanCreateSemanticEmbedder(
     return;
   }
 
-  // TODO(crbug.com/428233906): Implement a dedicated Permissions Policy for the
-  // Embedding API.
   if (IsPermissionsPolicyBlocked(
-          network::mojom::PermissionsPolicyFeature::kLanguageModel)) {
+          network::mojom::PermissionsPolicyFeature::kSemanticEmbedder)) {
     receivers_.ReportBadMessage("Permissions policy disabled");
     return;
   }
 
   if (auto pref_blocked_result = GetPrefBlockedResult()) {
     std::move(callback).Run(*pref_blocked_result);
+    return;
+  }
+
+  if (!profile_has_optimization_guide_keyed_service_) {
+    std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
+                                kUnavailableServiceNotRunning);
+    return;
+  }
+
+  if (!semantic_embedder::SupportsEmbeddingSpace(options->embedding_space)) {
+    std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
+                                kUnavailableUnsupportedEmbeddingSpace);
     return;
   }
 
@@ -1923,18 +1980,25 @@ void AIManager::CanCreateSemanticEmbedder(
 void AIManager::CreateSemanticEmbedder(
     mojo::PendingRemote<blink::mojom::AIManagerCreateSemanticEmbedderClient>
         client,
+    blink::mojom::AISemanticEmbedderCreateOptionsPtr options,
     mojo::PendingRemote<on_device_model::mojom::DownloadObserver> monitor) {
   if (!base::FeatureList::IsEnabled(blink::features::kAIEmbeddingsAPI)) {
     receivers_.ReportBadMessage("Feature not enabled");
     return;
   }
 
-  if (IsBlocked(network::mojom::PermissionsPolicyFeature::kLanguageModel)) {
+  if (IsBlocked(network::mojom::PermissionsPolicyFeature::kSemanticEmbedder)) {
     receivers_.ReportBadMessage("Policy or user setting disabled");
     return;
   }
 
-  if (!AISemanticEmbedderServiceLauncher::Get()->AllowedToLaunch()) {
+  if (!semantic_embedder::SupportsEmbeddingSpace(options->embedding_space)) {
+    receivers_.ReportBadMessage("Unsupported embedding space");
+    return;
+  }
+
+  if (!profile_has_optimization_guide_keyed_service_ ||
+      !AISemanticEmbedderServiceLauncher::Get()->AllowedToLaunch()) {
     mojo::Remote<blink::mojom::AIManagerCreateSemanticEmbedderClient>
         client_remote(std::move(client));
     client_remote->OnError(
@@ -1979,6 +2043,35 @@ void AIManager::OnSemanticEmbedderModelReady(
   client_remote->OnResult(std::move(pending_remote));
 }
 
+void AIManager::GetSupportedEmbeddingSpaces(
+    GetSupportedEmbeddingSpacesCallback callback) {
+  // Unlike CanCreateSemanticEmbedder(), ignores the crash limit and the
+  // download state: they affect availability(), not the list of spaces.
+  if (!base::FeatureList::IsEnabled(blink::features::kAIEmbeddingsAPI)) {
+    std::move(callback).Run({});
+    return;
+  }
+
+  if (IsPermissionsPolicyBlocked(
+          network::mojom::PermissionsPolicyFeature::kSemanticEmbedder)) {
+    receivers_.ReportBadMessage("Permissions policy disabled");
+    return;
+  }
+
+  if (GetPrefBlockedResult().has_value() ||
+      !profile_has_optimization_guide_keyed_service_) {
+    std::move(callback).Run({});
+    return;
+  }
+
+  std::vector<blink::mojom::AISemanticEmbedderSpaceInfoPtr> supported_spaces;
+  for (const auto& space : semantic_embedder::GetSupportedEmbeddingSpaces()) {
+    supported_spaces.push_back(blink::mojom::AISemanticEmbedderSpaceInfo::New(
+        std::string(space.name), space.shutdown_date));
+  }
+  std::move(callback).Run(std::move(supported_spaces));
+}
+
 #if !BUILDFLAG(IS_ANDROID)
 base::expected<DecisionModelSchemaCompiler::CompiledSchema,
                blink::mojom::ModelAvailabilityCheckResult>
@@ -1986,6 +2079,20 @@ AIManager::CheckDecisionModelOptions(
     blink::mojom::AIDecisionModelCreateOptionsPtr& options,
     bool require_questions) {
   CHECK(options);
+  const std::vector<DecisionModelBackend> enabled =
+      GetEnabledDecisionModelBackends();
+  if (!options->backend && !enabled.empty()) {
+    options->backend = enabled.front();
+  }
+  if (!options->backend || !std::ranges::contains(enabled, *options->backend)) {
+    // Blink only creates after `CanCreateDecisionModel()` reports the API as
+    // available, which it never does when the backend is disabled.
+    if (require_questions) {
+      receivers_.ReportBadMessage("Decisions API backend unavailable");
+    }
+    return base::unexpected(blink::mojom::ModelAvailabilityCheckResult::
+                                kUnavailableFeatureNotEnabled);
+  }
   // TODO(crbug.com/565849508): Track supported languages for DecisionModel.
   if (!CheckAndFixLanguages(
           options, "DecisionModel",
@@ -2038,40 +2145,38 @@ void AIManager::CanCreateDecisionModel(
     std::move(callback).Run(schema.error());
     return;
   }
-
-  const DecisionModelBackend backend =
-      options->backend.value_or(GetDecisionModelBackend());
-
-  if (backend == DecisionModelBackend::kLanguageModel) {
-    if (!AreLanguageModelDecisionModelFeaturesEnabled()) {
-      std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
-                                  kUnavailableFeatureNotEnabled);
+  switch (*options->backend) {
+    case DecisionModelBackend::kLanguageModel:
+      // Same foundation model and use case as the Prompt API, resolved from its
+      // feature config, which is also what picks the model version (e.g. Gemma
+      // 4).
+      CanCreateSessionWithConfig<
+          optimization_guide::proto::PromptApiFeatureConfig>(
+          optimization_guide::mojom::OnDeviceFeature::kPromptApi,
+          on_device_model::Capabilities(), std::move(callback));
+      return;
+    case DecisionModelBackend::kEmbeddingGemmaV1: {
+      auto* service_launcher = AISemanticEmbedderServiceLauncher::Get();
+      if (!service_launcher->AllowedToLaunch()) {
+        std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
+                                    kUnavailableTooManyRecentCrashes);
+        return;
+      }
+      if (!service_launcher->controller()->IsModelAvailable()) {
+        std::move(callback).Run(
+            blink::mojom::ModelAvailabilityCheckResult::kDownloadable);
+        return;
+      }
+      std::move(callback).Run(
+          blink::mojom::ModelAvailabilityCheckResult::kAvailable);
       return;
     }
-    // Same foundation model and use case as the Prompt API, resolved from its
-    // feature config, which is also what picks the model version (e.g. Gemma
-    // 4).
-    CanCreateSessionWithConfig<
-        optimization_guide::proto::PromptApiFeatureConfig>(
-        optimization_guide::mojom::OnDeviceFeature::kPromptApi,
-        on_device_model::Capabilities(), std::move(callback));
-    return;
+    case DecisionModelBackend::kLayaEnWint8:
+    case DecisionModelBackend::kLayaMlWint8:
+      CanCreateSession(GetLayaUseCase(*options->backend),
+                       on_device_model::Capabilities(), std::move(callback));
+      return;
   }
-
-  CHECK_EQ(backend, DecisionModelBackend::kEmbeddingGemmaV1);
-  auto* service_launcher = AISemanticEmbedderServiceLauncher::Get();
-  if (!service_launcher->AllowedToLaunch()) {
-    std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
-                                kUnavailableTooManyRecentCrashes);
-    return;
-  }
-  if (!service_launcher->controller()->IsModelAvailable()) {
-    std::move(callback).Run(
-        blink::mojom::ModelAvailabilityCheckResult::kDownloadable);
-    return;
-  }
-  std::move(callback).Run(
-      blink::mojom::ModelAvailabilityCheckResult::kAvailable);
 #else
   std::move(callback).Run(blink::mojom::ModelAvailabilityCheckResult::
                               kUnavailableFeatureNotEnabled);
@@ -2094,42 +2199,26 @@ void AIManager::CreateDecisionModel(
     receivers_.ReportBadMessage("Policy or user setting disabled");
     return;
   }
-  const DecisionModelBackend backend =
-      options->backend.value_or(GetDecisionModelBackend());
   auto schema = CheckDecisionModelOptions(options, /*require_questions=*/true);
   if (!schema.has_value()) {
     return;
   }
-
-  if (backend == DecisionModelBackend::kLanguageModel) {
-    // Blink only creates after `CanCreateDecisionModel()` reports the API as
-    // available, which it never does without these.
-    if (!AreLanguageModelDecisionModelFeaturesEnabled()) {
-      receivers_.ReportBadMessage("Decisions API backend unavailable");
+  const DecisionModelBackend backend = *options->backend;
+  switch (backend) {
+    case DecisionModelBackend::kLanguageModel:
+      CreateLanguageModelDecisionModel(
+          std::move(client), std::move(schema).value(), std::move(monitor));
       return;
-    }
-    CreateLanguageModelDecisionModel(
-        std::move(client), std::move(schema).value(), std::move(monitor));
-    return;
+    case DecisionModelBackend::kEmbeddingGemmaV1:
+      CreateEmbeddingGemmaV1DecisionModel(
+          std::move(client), std::move(schema).value(), std::move(monitor));
+      return;
+    case DecisionModelBackend::kLayaEnWint8:
+    case DecisionModelBackend::kLayaMlWint8:
+      CreateLayaDecisionModel(backend, std::move(client), std::move(options),
+                              std::move(monitor));
+      return;
   }
-
-  CHECK_EQ(backend, DecisionModelBackend::kEmbeddingGemmaV1);
-  auto* service_launcher = AISemanticEmbedderServiceLauncher::Get();
-  if (!service_launcher->AllowedToLaunch()) {
-    on_device_ai::SendClientRemoteError(
-        mojo::Remote<blink::mojom::AIManagerCreateDecisionModelClient>(
-            std::move(client)),
-        blink::mojom::AIManagerCreateClientError::kUnableToCreateSession);
-    return;
-  }
-
-  if (monitor) {
-    service_launcher->AddDownloadObserver(std::move(monitor));
-  }
-
-  service_launcher->WaitForModelAvailable(base::BindOnce(
-      &AIManager::OnDecisionModelEmbedderReady, weak_factory_.GetWeakPtr(),
-      std::move(client), std::move(schema).value()));
 #else
   on_device_ai::SendClientRemoteError(
       mojo::Remote<blink::mojom::AIManagerCreateDecisionModelClient>(
@@ -2210,6 +2299,29 @@ void AIManager::OnDecisionModelLanguageModelReady(
   MaybeTryEagerInit();
 }
 
+void AIManager::CreateEmbeddingGemmaV1DecisionModel(
+    mojo::PendingRemote<blink::mojom::AIManagerCreateDecisionModelClient>
+        client,
+    DecisionModelSchemaCompiler::CompiledSchema schema,
+    mojo::PendingRemote<on_device_model::mojom::DownloadObserver> monitor) {
+  auto* service_launcher = AISemanticEmbedderServiceLauncher::Get();
+  if (!service_launcher->AllowedToLaunch()) {
+    on_device_ai::SendClientRemoteError(
+        mojo::Remote<blink::mojom::AIManagerCreateDecisionModelClient>(
+            std::move(client)),
+        blink::mojom::AIManagerCreateClientError::kUnableToCreateSession);
+    return;
+  }
+
+  if (monitor) {
+    service_launcher->AddDownloadObserver(std::move(monitor));
+  }
+
+  service_launcher->WaitForModelAvailable(base::BindOnce(
+      &AIManager::OnDecisionModelEmbedderReady, weak_factory_.GetWeakPtr(),
+      std::move(client), std::move(schema)));
+}
+
 void AIManager::OnDecisionModelEmbedderReady(
     mojo::PendingRemote<blink::mojom::AIManagerCreateDecisionModelClient>
         client,
@@ -2229,6 +2341,41 @@ void AIManager::OnDecisionModelEmbedderReady(
       std::make_unique<AIEmbeddingGemmaV1DecisionModel>(
           context_bound_object_set_, std::move(schema),
           *service_launcher->controller()->GetEmbedder(), std::move(client)));
+}
+
+void AIManager::CreateLayaDecisionModel(
+    DecisionModelBackend backend,
+    mojo::PendingRemote<blink::mojom::AIManagerCreateDecisionModelClient>
+        client,
+    blink::mojom::AIDecisionModelCreateOptionsPtr options,
+    mojo::PendingRemote<on_device_model::mojom::DownloadObserver> monitor) {
+  if (!model_broker_client_) {
+    on_device_ai::SendClientRemoteError(
+        mojo::Remote<blink::mojom::AIManagerCreateDecisionModelClient>(
+            std::move(client)),
+        blink::mojom::AIManagerCreateClientError::kUnableToCreateSession);
+    return;
+  }
+
+  RequestAssetsAndWaitForClient(
+      model_broker_client_.get(), GetLayaUseCase(backend), std::move(monitor),
+      base::BindOnce(&AIManager::OnDecisionModelLayaReady,
+                     weak_factory_.GetWeakPtr(), std::move(client),
+                     std::move(options)));
+}
+
+void AIManager::OnDecisionModelLayaReady(
+    mojo::PendingRemote<blink::mojom::AIManagerCreateDecisionModelClient>
+        client,
+    blink::mojom::AIDecisionModelCreateOptionsPtr options,
+    base::WeakPtr<optimization_guide::ModelClient> model_client) {
+  // TODO(crbug.com/565849508): Implement the Laya DecisionModel backend using
+  // `model_client`.
+  mojo::Remote<blink::mojom::AIManagerCreateDecisionModelClient> client_remote(
+      std::move(client));
+  on_device_ai::SendClientRemoteError(
+      client_remote,
+      blink::mojom::AIManagerCreateClientError::kUnableToCreateSession);
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 

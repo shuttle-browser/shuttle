@@ -255,6 +255,10 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
     raw_input_button_state_ = state;
   }
 
+  bool ignore_window_pos_changes_for_testing() const {
+    return ignore_window_pos_changes_;
+  }
+
  protected:
   HWNDMessageHandler(HWNDMessageHandlerDelegate* delegate,
                      const std::string& debugging_id);
@@ -294,6 +298,19 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
 
   using TouchIDs = std::set<DWORD>;
   enum class DwmFrameState { kOff, kOn };
+
+  // Client area size and show state. The show state is included because Widget
+  // detects show state changes when notified of a client size change (see
+  // Widget::OnNativeWidgetSizeChanged()).
+  struct ClientAreaState {
+    gfx::Size size;
+    bool is_maximized = false;
+    bool is_minimized = false;
+    bool is_fullscreen = false;
+
+    friend bool operator==(const ClientAreaState&,
+                           const ClientAreaState&) = default;
+  };
 
   // Overridden from WindowImpl:
   HICON GetDefaultWindowIcon() const override;
@@ -365,6 +382,10 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // ViewsDelegate::GetAppbarAutohideEdges() for details.
   void OnAppbarAutohideEdgesChanged();
 
+  // Ensures that OnNCCalcSize() applies up-to-date auto-hide taskbar
+  // adjustments, after a display or work area change.
+  void UpdateAutohideTaskbarAdjustments();
+
   // Can be called after the delegate has had the opportunity to set focus and
   // did not do so.
   void SetInitialFocus();
@@ -389,6 +410,15 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // Responds to the client area changing size, either at window creation time
   // or subsequently.
   void ClientAreaSizeChanged();
+
+  // Records `client_size` and the current show state in
+  // `last_client_area_state_`. Returns true if they changed. Must be called
+  // before every `delegate_->HandleClientSizeChanged()` call when
+  // `kSkipRedundantSendFrameChanged` is enabled.
+  // TODO(crbug.com/568824848): Replace with a helper that updates
+  // `last_client_area_state_` and calls `delegate_->HandleClientSizeChanged()`
+  // once `kSkipRedundantSendFrameChanged` is launched.
+  bool UpdateClientAreaState(const gfx::Size& client_size);
 
   // Resets the window region for the current widget bounds if necessary.
   // If |force| is true, the window region is reset to NULL even for native
@@ -751,6 +781,11 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
   // Keeps track of the last size type param received from a WM_SIZE message.
   UINT last_size_param_ = SIZE_RESTORED;
 
+  // Client area state when `delegate_->HandleClientSizeChanged()` was last
+  // called. Only maintained when `kSkipRedundantSendFrameChanged` is enabled,
+  // to skip notifying the delegate when it didn't change.
+  std::optional<ClientAreaState> last_client_area_state_;
+
   // The last-seen monitor containing us, and its rect and work area.  These are
   // used to catch updates to the rect and work area and react accordingly.
   HMONITOR last_monitor_;
@@ -759,6 +794,11 @@ class VIEWS_EXPORT HWNDMessageHandler : public gfx::WindowImpl,
 
   // True the first time nccalc is called on a sizable widget
   bool is_first_nccalc_;
+
+  // Auto-hide taskbar edges applied by the last OnNCCalcSize() call, or nullopt
+  // if it didn't apply auto-hide taskbar adjustments (e.g. the window wasn't
+  // maximized, uses a system-drawn frame, or has no custom frame insets).
+  std::optional<int> applied_autohide_edges_;
 
   // Copy of custom window region specified via SetRegion(), if any.
   base::win::ScopedGDIObject<HRGN> custom_window_region_;

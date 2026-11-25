@@ -31,7 +31,7 @@ namespace {
 
 // Serializes the `Sec-CH-UA-Full-Version-List` structured header value (RFC
 // 8941) using the client's full version number.
-// TODO(crbug.com/486945769): Replace this local helper with a //ios/web API
+// TODO(crbug.com/578470030): Replace this local helper with a //ios/web API
 // (e.g. on web::WebClient) for User-Agent metadata / Client Hints.
 std::string GetFullVersionList() {
   const std::string_view full_version = version_info::GetVersionNumber();
@@ -60,7 +60,7 @@ AimEligibilityService::Configuration CreateConfiguration(
     bool is_off_the_record) {
   AimEligibilityService::Configuration config;
   config.is_off_the_record = is_off_the_record;
-  // TODO(crbug.com/486945769): Query full version list via a //ios/web API
+  // TODO(crbug.com/578470030): Query full version list via a //ios/web API
   // once available.
   config.full_version_list = GetFullVersionList();
   if (!base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks)) {
@@ -76,16 +76,16 @@ AimEligibilityService::Configuration CreateConfiguration(
   return config;
 }
 
-std::unique_ptr<KeyedService> BuildAimEligibilityService(ProfileIOS* profile) {
-  if (auto service = tests_hook::CreateAimEligibilityService(profile)) {
+std::unique_ptr<KeyedService> BuildAimEligibilityService(ProfileIOS& profile) {
+  if (auto service = tests_hook::CreateAimEligibilityService(&profile)) {
     return service;
   }
   return std::make_unique<IOSChromeAimEligibilityService>(
-      profile->GetPrefs(),
+      profile.GetPrefs(),
       ios::TemplateURLServiceFactory::GetForProfile(profile),
-      profile->GetSharedURLLoaderFactory(),
+      profile.GetSharedURLLoaderFactory(),
       IdentityManagerFactory::GetForProfile(profile),
-      CreateConfiguration(profile->IsOffTheRecord()));
+      CreateConfiguration(profile.IsOffTheRecord()));
 }
 
 }  // namespace
@@ -114,6 +114,6 @@ IOSChromeAimEligibilityServiceFactory::IOSChromeAimEligibilityServiceFactory(
 
 std::unique_ptr<KeyedService>
 IOSChromeAimEligibilityServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildAimEligibilityService(profile);
 }

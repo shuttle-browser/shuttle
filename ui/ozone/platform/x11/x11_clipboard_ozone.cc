@@ -17,7 +17,7 @@
 #if BUILDFLAG(IS_LINUX)
 #include "base/strings/string_view_util.h"
 #include "ui/base/clipboard/clipboard_util_linux.h"
-#include "ui/gfx/x/atom_cache.h"
+#include "ui/gfx/x/connection.h"
 #endif
 
 namespace ui {
@@ -26,7 +26,7 @@ X11ClipboardOzone::X11ClipboardOzone()
     : helper_(std::make_unique<XClipboardHelper>(
           base::BindRepeating(&X11ClipboardOzone::OnSelectionChanged,
                               base::Unretained(this)))) {
-  DCHECK(helper_);
+  CHECK(helper_, base::NotFatalUntil::M163);
 }
 
 X11ClipboardOzone::~X11ClipboardOzone() = default;
@@ -52,15 +52,16 @@ void X11ClipboardOzone::RequestClipboardData(
     ClipboardBuffer buffer,
     const std::string& mime_type,
     PlatformClipboard::RequestDataClosure callback) {
-  DCHECK(!callback.is_null());
+  CHECK(!callback.is_null(), base::NotFatalUntil::M163);
 
 #if BUILDFLAG(IS_LINUX)
   if (mime_type == kMimeTypeUriList) {
     auto uri_list_atoms = helper_->GetAtomsForFormat(
         ClipboardFormatType::CustomPlatformType(kMimeTypeUriList));
+    auto* connection = x11::Connection::Get();
     std::vector<x11::Atom> portal_atoms = {
-        x11::GetAtom(kMimeTypePortalFileTransfer),
-        x11::GetAtom(kMimeTypePortalFiles)};
+        connection->GetAtom(kMimeTypePortalFileTransfer),
+        connection->GetAtom(kMimeTypePortalFiles)};
 
     helper_->GetAvailableMimeTypesAsync(
         buffer,
@@ -118,7 +119,7 @@ void X11ClipboardOzone::OnPathsExtracted(
 void X11ClipboardOzone::GetAvailableMimeTypes(
     ClipboardBuffer buffer,
     PlatformClipboard::GetMimeTypesClosure callback) {
-  DCHECK(!callback.is_null());
+  CHECK(!callback.is_null(), base::NotFatalUntil::M163);
   helper_->GetAvailableMimeTypesAsync(buffer, std::move(callback));
 }
 

@@ -6,6 +6,8 @@
 #define CHROME_BROWSER_GLIC_SERVICE_GLIC_INVOKE_HANDLER_H_
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <variant>
 #include <vector>
 
@@ -32,6 +34,13 @@ class GlicInstanceImpl;
 
 class SequentialTaskGroup;
 enum class GlicTaskType;
+
+// Formats best-effort internal diagnostic context for invocation error
+// callbacks (carries no stability guarantee).
+std::string FormatInvokeDiagnosticInfo(
+    std::optional<GlicTaskType> last_active_task,
+    std::optional<ClientLoadState> client_load_state_at_start,
+    std::optional<ClientLoadErrorReason> client_load_error_reason);
 
 // Handles an invocation of Glic, parsing options and communicating with the
 // instance's host.
@@ -104,11 +113,25 @@ class GlicInvokeHandler {
   uint64_t invocation_id() const { return metrics_->GetInvocationId(); }
 
  private:
+  // Describes the actor surface in `options_.target.actuation_target`.
+  struct ActuationSurface {
+    // The handle is null when `options_.target.actuation_target` holds a
+    // mojom::ActuationTarget.
+    actor::ActorSurfaceHandle handle;
+    // True when `handle` is a surface other than the invoked tab, such as a
+    // headless surface. This is false for every mojom::ActuationTarget value,
+    // including kNewTab.
+    bool differs_from_invoked_tab = false;
+  };
+
   bool IsFloatingTarget() const;
   bool IsTabTarget() const;
   tabs::TabInterface& GetTab() const;
   mojom::InvokeOptionsPtr CreateMojoOptions();
   bool IsActuatingFeatureMode() const;
+  // Returns the actor surface in `options_.target.actuation_target` and
+  // whether it is a surface other than the invoked tab.
+  ActuationSurface GetActuationSurface() const;
 
   // Deletes `this`. Exactly one of these methods will be called.
   void OnSuccess();
@@ -121,6 +144,8 @@ class GlicInvokeHandler {
                        tabs::TabInterface::DetachReason reason);
   void OnConversationInfoChanged(const mojom::ConversationInfo& info);
   void OnActuatingChanged(bool actuating);
+  void OnShowInstanceCompleted(bool panel_opened);
+  bool WasPanelOpened() const;
   // The coordinator cancels `this` before destroying the instance.
   const base::raw_ref<GlicInstanceImpl> instance_;
   ResolvedTarget resolved_target_;
@@ -132,6 +157,8 @@ class GlicInvokeHandler {
   const bool requires_client_invoke_;
 
   bool should_wait_for_load_ = false;
+  bool panel_opened_by_show_ = false;
+  std::optional<ClientLoadState> client_load_state_at_start_;
   base::CallbackListSubscription tab_destruction_subscription_;
   base::CallbackListSubscription conversation_subscription_;
   base::CallbackListSubscription actuating_subscription_;

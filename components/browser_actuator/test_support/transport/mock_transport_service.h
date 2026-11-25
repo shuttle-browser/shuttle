@@ -19,8 +19,8 @@ class MockTransportService : public TransportService {
 
   MOCK_METHOD(TransportChannel*, GetChannel, (), (override));
   MOCK_METHOD(TransportSession*,
-              GetOrCreateSession,
-              (std::string_view session_id),
+              CreateSession,
+              (std::string_view session_id, InitIngressSource ingress_source),
               (override));
   MOCK_METHOD(TransportSession*,
               GetSession,

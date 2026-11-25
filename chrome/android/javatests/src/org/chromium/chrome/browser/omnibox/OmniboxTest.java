@@ -37,9 +37,9 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.params.SkipCommandLineParameterization;
+import org.chromium.base.test.transit.Triggers;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.EnormousTest;
@@ -51,7 +51,6 @@ import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.omnibox.status.StatusCoordinator;
@@ -65,6 +64,7 @@ import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
 import org.chromium.chrome.test.transit.omnibox.OmniboxFacility;
+import org.chromium.chrome.test.transit.page.PageLoadStartedCondition;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.chrome.test.util.OmniboxTestUtils;
@@ -90,11 +90,8 @@ import java.util.List;
  * framework once it supports Test Rule Parameterization.
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @SuppressLint("SetTextI18n")
 @Batch(Batch.PER_CLASS)
-// TODO(b/555414915): Update Android tests with WebUI NTP enabled on AL.
-@DisableFeatures(ChromeFeatureList.USE_WEB_UI_NTP_ANDROID)
 public class OmniboxTest {
     private static final String SUGGESTION_TEXT = "suggestion text";
 
@@ -109,17 +106,15 @@ public class OmniboxTest {
     @EnormousTest
     @Feature({"Omnibox"})
     public void testSimpleUse() throws InterruptedException {
-        mActivityTestRule.startOnBlankPage();
+        WebPageStation page = mActivityTestRule.startOnBlankPage();
         OmniboxTestUtils omnibox = new OmniboxTestUtils(mActivityTestRule.getActivity());
         omnibox.requestFocus();
         omnibox.typeText("aaaaaaa", false);
         omnibox.checkSuggestionsShown();
 
-        ChromeTabUtils.waitForTabPageLoadStart(
-                mActivityTestRule.getActivityTab(),
-                null,
-                () -> omnibox.sendKey(KeyEvent.KEYCODE_ENTER),
-                20L);
+        Triggers.runTo(() -> omnibox.sendKey(KeyEvent.KEYCODE_ENTER))
+                .withTimeout(20000L)
+                .waitFor(new PageLoadStartedCondition(page.loadedTabElement));
     }
 
     /**
@@ -544,6 +539,8 @@ public class OmniboxTest {
 
     private void waitForTabSelectedAndRestored(Tab expected) {
         ChromeTabbedActivity cta = mActivityTestRule.getActivity();
+        // Not waitForBrowsingLayout(): the restored Omnibox is focused, which hides toolbar
+        // buttons that CtaPageStation expects.
         LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.BROWSING);
         CriteriaHelper.pollUiThread(
                 () -> {

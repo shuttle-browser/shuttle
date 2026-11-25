@@ -19,13 +19,14 @@
 #import "components/autofill/core/common/autofill_payments_features.h"
 #import "components/autofill/ios/common/features.h"
 #import "components/strings/grit/components_strings.h"
+#import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
 #import "ios/chrome/browser/autofill/ui_bundled/autofill_app_interface.h"
 #import "ios/chrome/browser/autofill/ui_bundled/bottom_sheet/bottom_sheet_constants.h"
-#import "ios/chrome/browser/badges/model/features.h"
 #import "ios/chrome/browser/badges/ui_bundled/badge_constants.h"
 #import "ios/chrome/browser/infobars/ui_bundled/banners/infobar_banner_constants.h"
 #import "ios/chrome/browser/infobars/ui_bundled/modals/infobar_save_card_modal_constants.h"
 #import "ios/chrome/browser/metrics/model/metrics_app_interface.h"
+#import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_matchers.h"
@@ -254,11 +255,6 @@ void FillAndSubmitXframeCreditCardForm() {
 - (AppLaunchConfiguration)appConfigurationForTestCase {
   AppLaunchConfiguration config;
 
-  if ([self isRunningTest:@selector(testOfferLocalSave_WithInfobar)]) {
-    // This test needs the badge.
-    config.features_disabled.push_back(kAutofillBadgeRemoval);
-  }
-
   if ([self isRunningTest:@selector(testStickySavePromptJourney)]) {
     config.features_enabled.push_back(kAutofillStickyInfobarIos);
   }
@@ -286,6 +282,9 @@ void FillAndSubmitXframeCreditCardForm() {
 
 - (void)setUp {
   [super setUp];
+
+  [SigninEarlGrey
+      signinWithFakeIdentity:[FakeSystemIdentity fakeIdentityWithMissingNames]];
 
   net::test_server::RegisterDefaultHandlers(self.testServer);
 
@@ -317,6 +316,16 @@ void FillAndSubmitXframeCreditCardForm() {
 }
 
 #pragma mark - Page interaction helper methods
+
+// Loads the credit card upload form and waits for Autofill to parse it.
+// `BrowserAutofillManager::ValidateSubmittedForm()` drops submissions of forms
+// that are not yet in the Autofill form cache, so filling and submitting right
+// after the page load is racy.
+- (void)loadCreditCardUploadForm {
+  [ChromeEarlGrey loadURL:self.testServer->GetURL(kCreditCardUploadForm)];
+  GREYAssertTrue([AutofillAppInterface waitForFormToBeCachedInMainFrame],
+                 @"Forms were not parsed and cached.");
+}
 
 - (void)fillAndSubmitFormWithID:(NSString*)formID {
   [ChromeEarlGrey tapWebStateElementWithID:formID];
@@ -378,7 +387,7 @@ void FillAndSubmitXframeCreditCardForm() {
                       errorCode:(int)errorCode
                    forLocalSave:(BOOL)localSave
                      numStrikes:(std::optional<int>)numStrikes {
-  [ChromeEarlGrey loadURL:self.testServer->GetURL(kCreditCardUploadForm)];
+  [self loadCreditCardUploadForm];
 
   // Set up the Google Payments server response.
   [AutofillAppInterface setPaymentsResponse:fakeResponse
@@ -591,7 +600,7 @@ void FillAndSubmitXframeCreditCardForm() {
 
 // Test upstream card upload is offered when submitting xframe credit card form
 // and Google Payments server is queried to request card upload.
-- (void)DISABLED_testOfferUpstream_FullData_PaymentsAccepts_Xframe {
+- (void)testOfferUpstream_FullData_PaymentsAccepts_Xframe {
   // Serve ios http files.
   net::test_server::RegisterDefaultHandlers(self.testServer);
   GREYAssertTrue(self.testServer->Start(), @"Server did not start.");
@@ -983,7 +992,7 @@ void FillAndSubmitXframeCreditCardForm() {
 }
 
 // Test saving credit card locally as fallback with a xframe credit card form.
-- (void)DISABLED_testUserData_LocalSave_UserAccepts_Xframe {
+- (void)testUserData_LocalSave_UserAccepts_Xframe {
   // Serve ios http files.
   net::test_server::RegisterDefaultHandlers(self.testServer);
   GREYAssertTrue(self.testServer->Start(), @"Server did not start.");
@@ -1040,9 +1049,7 @@ void FillAndSubmitXframeCreditCardForm() {
 // Ensures that submitting the form should query Google Payments; but the
 // fallback local save prompt should not appear if the maximum
 // StrikeDatabase strike limit is reached.
-// TODO(crbug.com/507579591): Improve StrikeDatabase test infra and re-enable
-//                            this test.
-- (void)DISABLED_testNotOfferLocalSave_MaxStrikesReached {
+- (void)testNotOfferLocalSave_MaxStrikesReached {
   // Incur the maximum number of strikes by showing and declining save
   // bottomsheet and infobar.
 
@@ -1102,7 +1109,7 @@ void FillAndSubmitXframeCreditCardForm() {
 - (void)testStickySavePromptJourney {
   const GURL testPageURL = self.testServer->GetURL(kCreditCardUploadForm);
 
-  [ChromeEarlGrey loadURL:testPageURL];
+  [self loadCreditCardUploadForm];
 
   // Set up the Google Payments server response.
   [AutofillAppInterface setPaymentsResponse:kResponseGetUploadDetailsFailure
@@ -1344,7 +1351,7 @@ void FillAndSubmitXframeCreditCardForm() {
   GREYAssertEqual(0U, [AutofillAppInterface localCreditCount],
                   @"There should be no saved credit card.");
 
-  [ChromeEarlGrey loadURL:self.testServer->GetURL(kCreditCardUploadForm)];
+  [self loadCreditCardUploadForm];
 
   // Set up the Google Payments server response.
   [AutofillAppInterface setPaymentsResponse:kResponseGetUploadDetailsFailure
@@ -1374,11 +1381,11 @@ void FillAndSubmitXframeCreditCardForm() {
       [self waitForUIElementToAppearWithMatcher:LocalBannerLabelsMatcher()],
       @"Local save card infobar failed to show.");
 
-  // Verify that the badge is displayed.
+  // Verify that the badge is not displayed.
   [[EarlGrey
       selectElementWithMatcher:grey_accessibilityID(
                                    kBadgeButtonSaveCardAccessibilityIdentifier)]
-      assertWithMatcher:grey_notNil()];
+      assertWithMatcher:grey_nil()];
 
   // Tap the save button.
   [[EarlGrey selectElementWithMatcher:LocalSaveButtonMatcher()]
@@ -1395,15 +1402,14 @@ void FillAndSubmitXframeCreditCardForm() {
                   @"Credit card should have been saved.");
 }
 
-// TODO(crbug.com/440644620): Find a solution to page loading flakes.
 // Tests that the save card flow via the infobar still works correctly when the
 // badge is removed.
-- (void)FLAKY_testInfobarWithoutBadge {
+- (void)testInfobarWithoutBadge {
   // Ensure there are no saved credit cards.
   GREYAssertEqual(0U, [AutofillAppInterface localCreditCount],
                   @"There should be no saved credit card.");
 
-  [ChromeEarlGrey loadURL:self.testServer->GetURL(kCreditCardUploadForm)];
+  [self loadCreditCardUploadForm];
 
   // Set up the Google Payments server response.
   [AutofillAppInterface setPaymentsResponse:kResponseGetUploadDetailsFailure

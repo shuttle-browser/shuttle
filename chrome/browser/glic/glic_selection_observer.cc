@@ -5,13 +5,11 @@
 #include "chrome/browser/glic/glic_selection_observer.h"
 
 #include "base/containers/flat_set.h"
-#include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "base/task/sequenced_task_runner.h"
-#include "base/task/thread_pool.h"
 #include "build/build_config.h"
 #include "chrome/browser/glic/browser_ui/glic_selection_widget_controller.h"
 #include "chrome/browser/glic/common/local_hotkey_manager.h"
@@ -25,8 +23,9 @@
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_side_panel_coordinator.h"
 #include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
+#include "chrome/browser/glic/selection/quick_answers_tool.h"
+#include "chrome/browser/glic/selection/selection_context.h"
 #include "chrome/browser/glic/selection/shake_trigger.h"
-#include "chrome/browser/glic/selection/text_selection_context.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -94,6 +93,7 @@ GlicSelectionObserver* GlicSelectionObserver::From(tabs::TabInterface* tab) {
 GlicSelectionObserver::GlicSelectionObserver(content::WebContents* web_contents)
     : content::WebContentsObserver(web_contents) {
   CHECK(web_contents);
+  last_web_contents_size_ = web_contents->GetSize();
   shake_trigger_ = std::make_unique<ShakeTrigger>(web_contents, *this);
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
@@ -247,6 +247,16 @@ void GlicSelectionObserver::UpdateSelectionStateFromContextMenu(
                        SelectionSource::kContextMenu);
 }
 
+void GlicSelectionObserver::UpdateSelectionStateFromSmartSuggestionContextMenu(
+    const std::u16string& selected_text) {
+  ResetPendingSelection();
+  if (last_selected_text_ == selected_text && has_sent_selection_context_) {
+    return;
+  }
+  UpdateSelectionState(selected_text, /*is_pending_selection=*/false,
+                       SelectionSource::kAutomatic);
+}
+
 void GlicSelectionObserver::DismissUI(DismissReason reason) {
   bounds_retry_count_ = 0;
   ResetPendingSelection();
@@ -330,6 +340,14 @@ void GlicSelectionObserver::PrimaryPageChanged(content::Page& page) {
 }
 
 void GlicSelectionObserver::PrimaryMainFrameWasResized(bool width_changed) {
+  // Ignore notifications where the WebContents size is unchanged (e.g., when
+  // `SynchronizeVisualProperties()` fires for non-size changes such as surface
+  // ID or screen info updates).
+  const gfx::Size current_size = web_contents()->GetSize();
+  if (current_size == last_web_contents_size_) {
+    return;
+  }
+  last_web_contents_size_ = current_size;
   DismissUI(DismissReason::kExternal);
 }
 
@@ -406,6 +424,7 @@ void GlicSelectionObserver::UpdateSelectionState(
   bool panel_showing = IsPanelShowing(tab_interface, bwi);
   bool show_widget =
       is_pending_selection && IsInlineCueEnabled() &&
+      IsQuickAnswersEligible() &&
       // Only normal browser windows show the widget, not popups or app windows.
       bwi->GetType() == BrowserWindowInterface::Type::TYPE_NORMAL;
 
@@ -455,8 +474,8 @@ void GlicSelectionObserver::SendAdditionalContextToPanel(
     return;
   }
 
-  mojom::AdditionalContextPtr context =
-      CreateTextSelectionContext(web_contents(), selected_text);
+  mojom::AdditionalContextPtr context = CreateTextSelectionContext(
+      web_contents(), selected_text, SelectionTextLength::kElided);
 
   // Common case: the tab's instance already exists and is showing. This is a
   // background update of the panel's selection context, not a user asking to
@@ -482,8 +501,7 @@ void GlicSelectionObserver::SendAdditionalContextToPanel(
 
   // Clearing a previous selection only matters while the panel is open to
   // display it; never start an invocation just to send an empty selection.
-  if (selected_text.empty() &&
-      base::FeatureList::IsEnabled(features::kGlicInvokeErrorRecoveryFixes)) {
+  if (selected_text.empty()) {
     return;
   }
 
@@ -707,9 +725,7 @@ void GlicSelectionObserver::OnGlobalPanelShowHide() {
 
 void GlicSelectionObserver::CreatePageContextEligibilityAPI(
     std::string account) {
-  base::ThreadPool::PostTaskAndReplyWithResult(
-      FROM_HERE, {base::TaskPriority::BEST_EFFORT, base::MayBlock()},
-      base::BindOnce(&optimization_guide::PageContextEligibility::Get),
+  optimization_guide::PageContextEligibility::GetAsync(
       base::BindOnce(&GlicSelectionObserver::OnPageContextEligibilityAPILoaded,
                      weak_ptr_factory_.GetWeakPtr(), std::move(account)));
 }
@@ -740,6 +756,15 @@ void GlicSelectionObserver::ResetSelectionState() {
                        SelectionSource::kAutomatic);
   // This should clear the rest.
   ResetPendingSelection();
+}
+
+bool GlicSelectionObserver::IsQuickAnswersEligible() const {
+  if (!base::FeatureList::IsEnabled(
+          features::kQuickAnswersSelectionSuggestions)) {
+    return true;
+  }
+  auto* tool = QuickAnswersTool::FromTabWebContents(web_contents());
+  return tool && tool->IsEligible();
 }
 
 }  // namespace glic

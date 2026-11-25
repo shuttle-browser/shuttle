@@ -5,6 +5,7 @@
 #include "components/autofill/core/browser/filling/filling_product.h"
 
 #include <string>
+#include <utility>
 
 #include "base/notreached.h"
 #include "build/buildflag.h"
@@ -92,6 +93,7 @@ FillingProduct GetFillingProductFromSuggestionType(SuggestionType type) {
     case SuggestionType::kPasswordEntry:
     case SuggestionType::kPasswordFieldByFieldFilling:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kPendingStateTrustedVaultError:
     case SuggestionType::kTroubleSigningInEntry:
     case SuggestionType::kViewPasswordDetails:
       return FillingProduct::kPassword;
@@ -179,6 +181,8 @@ FillingProduct GetFillingProductFromSuggestionDataSource(
       return FillingProduct::kIdentityCredential;
     case SuggestionGenerator::SuggestionDataSource::kPasskey:
       return FillingProduct::kPasskey;
+    case SuggestionGenerator::SuggestionDataSource::kTrustedVaultError:
+      return FillingProduct::kPassword;
     case SuggestionGenerator::SuggestionDataSource::kCompose:
       return FillingProduct::kCompose;
     case SuggestionGenerator::SuggestionDataSource::kOneTimePassword:
@@ -194,7 +198,7 @@ static int32_t JNI_FillingProductBridge_GetFillingProductFromSuggestionType(
     JNIEnv* env,
     int32_t type) {
   SuggestionType suggestion_type = static_cast<SuggestionType>(type);
-  return static_cast<int32_t>(
+  return std::to_underlying(
       GetFillingProductFromSuggestionType(suggestion_type));
 }
 #endif  // BUILDFLAG(IS_ANDROID)

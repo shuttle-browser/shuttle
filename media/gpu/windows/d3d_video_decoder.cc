@@ -142,7 +142,8 @@ D3DVideoDecoder::D3DVideoDecoder(
       supported_configs_(std::move(supported_configs)),
       use_shared_handle_(
           base::FeatureList::IsEnabled(kD3D12VideoDecoder) ||
-          base::FeatureList::IsEnabled(kD3D11VideoDecoderUseSharedHandle)) {
+          (base::FeatureList::IsEnabled(kD3D11VideoDecoderUseSharedHandle) &&
+           !gpu_workarounds_.disable_d3d11_video_decoder_shared_handle)) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(media_log_);
   CHECK(backend_);
@@ -154,11 +155,21 @@ D3DVideoDecoder::~D3DVideoDecoder() {
   // Log whatever usage we measured, if any.
   LogPictureBufferUsage();
 
-  // Declaration order in the header means that `backend` will be destroyed
-  // before `accelerated_video_decoder_` so that we can complete any D3D
-  // specific cleanup before the accelerated decoder is destroyed.
-  // `accelerated_video_decoder_` will be destroyed before `picture_buffers_`
-  // since it can reference picture buffers.
+  // `accelerated_video_decoder_` and `d3d_video_decoder_wrapper_` hold raw_ptrs
+  // to `picture_buffers_` (in codec DPB pictures and `D3D12ReferenceFrameList`
+  // respectively), so reset them before `ClearPictureBuffers()`.
+  //
+  // Even after `picture_buffers_.clear()`, a `D3DPictureBuffer` can outlive
+  // `this` if an in-flight `DefaultD3DTextureWrapper::GpuResources` init task
+  // or a client `VideoFrame` release callback still holds a `scoped_refptr` to
+  // it. `ClearPictureBuffers()` explicitly resets each buffer's
+  // `ID3D11VideoDecoderOutputView` now so the output views are guaranteed to be
+  // released before `~D3DVideoDecoder()`'s member destructors destroy
+  // `texture_selector_`, `decoder_configurator_`, and `backend_` (whose
+  // destructor flushes the D3D11 device context).
+  accelerated_video_decoder_.reset();
+  d3d_video_decoder_wrapper_.reset();
+  ClearPictureBuffers();
 }
 
 VideoDecoderType D3DVideoDecoder::GetDecoderType() const {
@@ -225,6 +236,20 @@ bool D3DVideoDecoder::RecreateDecoderWrapper() {
              : 8);
   }
 
+  // Release any existing decoder wrapper, output views, and cached backend
+  // textures and flush the device context before creating a new hardware
+  // decoder instance.
+  const bool had_existing_resources =
+      d3d_video_decoder_wrapper_ || !picture_buffers_.empty() ||
+      texture_selector_ || decoder_configurator_;
+  d3d_video_decoder_wrapper_.reset();
+  ClearPictureBuffers();
+  texture_selector_.reset();
+  decoder_configurator_.reset();
+  if (had_existing_resources) {
+    backend_->ReleaseResources();
+  }
+
   auto decoder_configurator_result = backend_->CreateDecoderConfigurator(
       bit_depth, config_, chroma_sampling_, gpu_preferences_, gpu_workarounds_,
       media_log_.get());
@@ -260,7 +285,8 @@ bool D3DVideoDecoder::RecreateDecoderWrapper() {
   use_shared_handle_ =
       base::FeatureList::IsEnabled(kD3D12VideoDecoder) ||
       (base::FeatureList::IsEnabled(kD3D11VideoDecoderUseSharedHandle) &&
-       use_single_texture.value());
+       use_single_texture.value() &&
+       !gpu_workarounds_.disable_d3d11_video_decoder_shared_handle);
 
   use_single_video_decoder_texture_ =
       use_single_texture.value() || use_shared_handle_ ||
@@ -369,10 +395,13 @@ void D3DVideoDecoder::Initialize(const VideoDecoderConfig& config,
     config_.set_hdr_metadata(config.hdr_metadata());
     d3d_video_decoder_wrapper_->Reset();
   } else {
-    d3d_video_decoder_wrapper_.reset();
     accelerated_video_decoder_.reset();
-    picture_buffers_.clear();
     if (!InitializeAcceleratedDecoder(config)) {
+      d3d_video_decoder_wrapper_.reset();
+      ClearPictureBuffers();
+      texture_selector_.reset();
+      decoder_configurator_.reset();
+      backend_->ReleaseResources();
       return;
     }
     profile_ = config.profile();
@@ -658,7 +687,6 @@ void D3DVideoDecoder::DoDecode() {
       if (!RecreateDecoderWrapper()) {
         return;
       }
-      picture_buffers_.clear();
     } else if (result == media::AcceleratedVideoDecoder::kTryAgain) {
       LOG(ERROR) << "Try again is not supported";
       NotifyError(D3DStatus::Codes::kTryAgainNotSupported);
@@ -802,6 +830,14 @@ void D3DVideoDecoder::CreatePictureBuffers() {
   if (!result.is_ok()) {
     return NotifyError(std::move(result).AddHere());
   }
+}
+
+void D3DVideoDecoder::ClearPictureBuffers() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  for (auto& buffer : picture_buffers_) {
+    buffer->ResetOutputView();
+  }
+  picture_buffers_.clear();
 }
 
 D3DPictureBuffer* D3DVideoDecoder::GetPicture() {

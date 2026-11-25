@@ -204,6 +204,7 @@ public class FuseboxCoordinatorUnitTest {
                         mBackPressManager,
                         isForcedPhoneStyleOmnibox);
         coordinator.setUrlTextWrappingSupplier(mUrlTextWrappingSupplier);
+        coordinator.setOnInteractionCompletedCallback(mOnInteractionCompletedCallback);
         return coordinator;
     }
 
@@ -415,7 +416,7 @@ public class FuseboxCoordinatorUnitTest {
         RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
         mCoordinator.notifyOmniboxSessionEnded(true);
 
-        verify(mMetrics).notifyOmniboxSessionEnded(eq(true), anyInt(), anyInt(), any());
+        verify(mMetrics).notifyOmniboxSessionEnded(eq(true), anyInt(), anyInt(), anyInt(), any());
 
         mCoordinator.endInput();
         clearInvocations(mMetrics);
@@ -423,7 +424,7 @@ public class FuseboxCoordinatorUnitTest {
         mCoordinator.beginInput(mSession);
         mCoordinator.notifyOmniboxSessionEnded(false);
 
-        verify(mMetrics).notifyOmniboxSessionEnded(eq(false), anyInt(), anyInt(), any());
+        verify(mMetrics).notifyOmniboxSessionEnded(eq(false), anyInt(), anyInt(), anyInt(), any());
     }
 
     @Test
@@ -434,15 +435,12 @@ public class FuseboxCoordinatorUnitTest {
         mCoordinator.setMediatorForTesting(mMediator);
         doReturn(false).when(mMediator).wasPopupItemSelected();
 
-        mCoordinator.setOnInteractionCompletedCallback(mOnInteractionCompletedCallback);
-
         var viewHolder = assumeNonNull(mCoordinator.getViewHolderForTesting());
         viewHolder.plusButton.setVisibility(View.VISIBLE);
         mCoordinator.onContextPopupDismissed();
 
-        verify(mMediator).handleHidePopup();
+        verify(mMediator).onPopupDismissed();
         assertTrue(viewHolder.plusButton.isFocused());
-        verify(mOnInteractionCompletedCallback).onResult(false);
     }
 
     @Test
@@ -453,15 +451,12 @@ public class FuseboxCoordinatorUnitTest {
         mCoordinator.setMediatorForTesting(mMediator);
         doReturn(true).when(mMediator).wasPopupItemSelected();
 
-        mCoordinator.setOnInteractionCompletedCallback(mOnInteractionCompletedCallback);
-
         var viewHolder = assumeNonNull(mCoordinator.getViewHolderForTesting());
         viewHolder.plusButton.setVisibility(View.VISIBLE);
         mCoordinator.onContextPopupDismissed();
 
-        verify(mMediator).handleHidePopup();
+        verify(mMediator).onPopupDismissed();
         assertFalse(viewHolder.plusButton.isFocused());
-        verify(mOnInteractionCompletedCallback).onResult(true);
     }
 
     @Test

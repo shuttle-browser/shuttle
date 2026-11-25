@@ -24,9 +24,9 @@
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_context_style.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/signin/model/system_identity.h"
 #import "ios/chrome/grit/ios_branded_strings.h"
 #import "ios/chrome/grit/ios_strings.h"
@@ -82,7 +82,7 @@ NSString* GetPromoLabelString(
         return nil;
       }
       if (NSString* label =
-              signin::GetPromoLabelStringForNtpSignedOutIcon(preference)) {
+              signin::GetPromoLabelStringForDefaultFlow(preference)) {
         return label;
       }
       return l10n_util::GetNSString(IDS_IOS_IDENTITY_DISC_SIGN_IN_PROMO_LABEL);
@@ -202,6 +202,7 @@ NSString* GetPromoLabelString(
     case signin_metrics::AccessPoint::kAppSwitcherAISummarization:
     case signin_metrics::AccessPoint::kGeminiExternalAppStoreEvent:
     case signin_metrics::AccessPoint::kPasswordManagerCard:
+    case signin_metrics::AccessPoint::kEnterpriseProxy:
       // Nothing prevents instantiating ConsistencyDefaultAccountViewController
       // with an arbitrary entry point, API-wise. In doubt, no label is a good,
       // generic default that fits all entry points.
@@ -431,6 +432,11 @@ NSString* GetPromoLabelString(
 }
 
 - (void)extendedAccountInfoDidUpdate:(const AccountInfo&)info {
+  // TODO(crbug.com/576575308): `extendedAccountInfoDidUpdate:` can be called
+  // for accounts on the device that are filtered by
+  // `prefs::kRestrictAccountsToPatterns` via
+  // `ChromeAccountManagerService::OnIdentityOnDeviceUpdated`, for which
+  // `GetIdentityOnDeviceWithGaiaID` returns `nil`.
   id<SystemIdentity> identity =
       _accountManagerService->GetIdentityOnDeviceWithGaiaID(info.GetGaiaId());
   [self handleIdentityUpdated:identity];

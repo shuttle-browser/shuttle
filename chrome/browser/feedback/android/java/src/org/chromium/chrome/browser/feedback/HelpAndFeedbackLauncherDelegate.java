@@ -11,12 +11,19 @@ import android.net.Uri;
 import android.provider.Browser;
 import android.text.TextUtils;
 
+import org.chromium.base.Log;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
+
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.List;
 
 /** Delegate that handles the display of the HelpAndFeedback flows. */
 @NullMarked
 public interface HelpAndFeedbackLauncherDelegate {
+    String TAG = "HelpAndFeedback";
     String FALLBACK_SUPPORT_URL = "https://support.google.com/chrome/topic/6069782";
     String P_LINK_URL_PREFIX = "https://support.google.com/chrome/?p=";
 
@@ -51,21 +58,54 @@ public interface HelpAndFeedbackLauncherDelegate {
     }
 
     /**
+     * Returns the p-link help URL for the given help context, or null if it should open the help
+     * homepage instead.
+     *
+     * <p>Help contexts in {@code R.array.help_contexts_using_homepage} or in the {@link
+     * ChromeFeatureList#USE_P_LINK_IN_HELP_HOMEPAGE_CONTEXTS} Finch param (comma-separated) open
+     * the help homepage. All other help contexts use p-links.
+     *
+     * @param context The context used to read resources.
+     * @param helpContext The help context string.
+     * @return The p-link help URL, or null to open the help homepage.
+     */
+    // TODO(crbug.com/365755043): Clean this up later.
+    static @Nullable String getPLinkHelpUrlIfSupported(Context context, String helpContext) {
+        if (!ChromeFeatureList.isEnabled(ChromeFeatureList.USE_P_LINK_IN_HELP)) return null;
+        List<String> homepageHelpContexts =
+                new ArrayList<>(
+                        Arrays.asList(
+                                context.getResources()
+                                        .getStringArray(R.array.help_contexts_using_homepage)));
+        String extraHomepageHelpContexts =
+                ChromeFeatureList.getFieldTrialParamByFeatureAsString(
+                        ChromeFeatureList.USE_P_LINK_IN_HELP,
+                        ChromeFeatureList.USE_P_LINK_IN_HELP_HOMEPAGE_CONTEXTS);
+        for (String extraContext : extraHomepageHelpContexts.split(",")) {
+            String trimmed = extraContext.trim();
+            if (!trimmed.isEmpty()) homepageHelpContexts.add(trimmed);
+        }
+        String pLinkUrl =
+                homepageHelpContexts.contains(helpContext) ? null : P_LINK_URL_PREFIX + helpContext;
+        Log.d(TAG, "Help context: %s, p-link URL: %s", helpContext, pLinkUrl);
+        return pLinkUrl;
+    }
+
+    /**
      * Handles the fallback help case of opening the URL in the browser.
      *
      * @param context The context launching the fallback support.
      * @param url The url to open.
      */
     static void launchFallbackSupportUri(Context context, @Nullable String url) {
-        Intent intent =
-                new Intent(
-                        Intent.ACTION_VIEW,
-                        Uri.parse(TextUtils.isEmpty(url) ? FALLBACK_SUPPORT_URL : url));
+        String targetUrl = TextUtils.isEmpty(url) ? FALLBACK_SUPPORT_URL : url;
+        Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(targetUrl));
         // Let Chrome know that this intent is from Chrome, so that it does not close the app when
         // the user presses 'back' button.
         intent.putExtra(Browser.EXTRA_APPLICATION_ID, context.getPackageName());
         intent.putExtra(Browser.EXTRA_CREATE_NEW_TAB, true);
         intent.setPackage(context.getPackageName());
+        Log.d(TAG, "Fallback support URL: %s", targetUrl);
         context.startActivity(intent);
     }
 }

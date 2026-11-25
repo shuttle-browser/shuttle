@@ -14,7 +14,6 @@
 
 #include "base/containers/span.h"
 #include "base/functional/bind.h"
-#include "base/memory/raw_ptr.h"
 #include "base/run_loop.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_util.h"
@@ -89,8 +88,8 @@
 #include "net/dns/mock_host_resolver.h"
 #include "ui/base/clipboard/clipboard.h"
 #include "ui/base/clipboard/scoped_clipboard_writer.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 #include "ui/gfx/geometry/point.h"
@@ -195,9 +194,6 @@ class OmniboxViewTest : public InProcessBrowserTest {
   OmniboxViewTest& operator=(const OmniboxViewTest&) = delete;
 
  protected:
-  raw_ptr<contextual_tasks::MockContextualTasksService>
-      mock_contextual_tasks_service_ = nullptr;
-
   void SetUpOnMainThread() override {
     ASSERT_TRUE(ui_test_utils::BringBrowserWindowToFront(browser()));
     ASSERT_NO_FATAL_FAILURE(SetupComponents());
@@ -234,7 +230,6 @@ class OmniboxViewTest : public InProcessBrowserTest {
 
   void TearDownOnMainThread() override {
     test_location_bar_model_.reset();
-    mock_contextual_tasks_service_ = nullptr;
     webui_toolbar_wc_util_.reset();
     InProcessBrowserTest::TearDownOnMainThread();
   }
@@ -567,14 +562,10 @@ class OmniboxViewTest : public InProcessBrowserTest {
         ->SetTestingFactory(
             context,
             base::BindRepeating(
-                [](OmniboxViewTest* self,
-                   content::BrowserContext*) -> std::unique_ptr<KeyedService> {
-                  auto mock = std::make_unique<testing::NiceMock<
+                [](content::BrowserContext*) -> std::unique_ptr<KeyedService> {
+                  return std::make_unique<testing::NiceMock<
                       contextual_tasks::MockContextualTasksService>>();
-                  self->mock_contextual_tasks_service_ = mock.get();
-                  return mock;
-                },
-                base::Unretained(this)));
+                }));
   }
 
   policy::MockConfigurationPolicyProvider* policy_provider() {
@@ -834,7 +825,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxViewTest, ClearUserTextAfterBackgroundCommit) {
   GURL url2("data:text/html,page2");
   NavigateParams params(browser(), url2, ui::PAGE_TRANSITION_LINK);
   params.source_contents = contents;
-  params.disposition = WindowOpenDisposition::kCurrentTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   ui_test_utils::NavigateToURL(&params);
 
   // Switch back to the first tab.  The user text should be cleared, and the

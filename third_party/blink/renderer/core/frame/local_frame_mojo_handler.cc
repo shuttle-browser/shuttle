@@ -370,6 +370,9 @@ LocalFrameMojoHandler::LocalFrameMojoHandler(blink::LocalFrame& frame)
   registry->AddAssociatedInterface(
       BindRepeating(&LocalFrameMojoHandler::BindFullscreenVideoElementReceiver,
                     WrapWeakPersistent(this)));
+  registry->AddAssociatedInterface(BindRepeating(
+      &LocalFrameMojoHandler::BindOutsideContextCSPViolationReporterReceiver,
+      WrapWeakPersistent(this)));
 }
 
 void LocalFrameMojoHandler::Trace(Visitor* visitor) const {
@@ -385,6 +388,7 @@ void LocalFrameMojoHandler::Trace(Visitor* visitor) const {
   visitor->Trace(local_frame_receiver_);
   visitor->Trace(main_frame_receiver_);
   visitor->Trace(fullscreen_video_receiver_);
+  visitor->Trace(outside_context_csp_violation_reporter_receiver_);
   visitor->Trace(device_posture_receiver_);
 }
 
@@ -399,6 +403,7 @@ void LocalFrameMojoHandler::DidDetachFrame() {
   // automatically reset on context destruction.
   local_frame_receiver_.reset();
   main_frame_receiver_.reset();
+  outside_context_csp_violation_reporter_receiver_.reset();
   // TODO(tkent): Should we reset other receivers?
 }
 
@@ -508,6 +513,19 @@ void LocalFrameMojoHandler::BindFullscreenVideoElementReceiver(
   fullscreen_video_receiver_.Bind(
       std::move(receiver), frame_->GetTaskRunner(TaskType::kInternalDefault));
   fullscreen_video_receiver_.SetFilter(
+      std::make_unique<ActiveURLMessageFilter>(frame_));
+}
+
+void LocalFrameMojoHandler::BindOutsideContextCSPViolationReporterReceiver(
+    mojo::PendingAssociatedReceiver<
+        mojom::blink::OutsideContextCSPViolationReporter> receiver) {
+  if (frame_->IsDetached()) {
+    return;
+  }
+
+  outside_context_csp_violation_reporter_receiver_.Bind(
+      std::move(receiver), frame_->GetTaskRunner(TaskType::kNetworking));
+  outside_context_csp_violation_reporter_receiver_.SetFilter(
       std::make_unique<ActiveURLMessageFilter>(frame_));
 }
 
@@ -799,31 +817,24 @@ void LocalFrameMojoHandler::AdvanceFocusForIME(
   next_element->Focus(FocusParams(FocusTrigger::kUserGesture));
 }
 
-void LocalFrameMojoHandler::ReportContentSecurityPolicyViolation(
-    network::mojom::blink::CSPViolationPtr violation) {
-  auto* source_location = MakeGarbageCollected<SourceLocation>(
-      violation->source_location->url, String(),
-      violation->source_location->line, violation->source_location->column,
-      nullptr);
+bool LocalFrameMojoHandler::IsCSPEffectiveDirectiveAllowedForViolationReporting(
+    network::mojom::blink::CSPDirectiveName effective_type) const {
+  // The effective directive is not validated since the frame host is trusted.
+  return true;
+}
 
-  frame_->Console().AddMessage(MakeGarbageCollected<ConsoleMessage>(
-      mojom::blink::ConsoleMessageSource::kSecurity,
-      mojom::blink::ConsoleMessageLevel::kError, violation->console_message,
-      source_location));
+blink::LocalFrame*
+LocalFrameMojoHandler::GetContextFrameForCSPViolationReporting(
+    network::mojom::blink::CSPDirectiveName effective_type) {
+  return effective_type ==
+                 network::mojom::blink::CSPDirectiveName::FrameAncestors
+             ? frame_
+             : nullptr;
+}
 
-  auto directive_type =
-      ContentSecurityPolicy::GetDirectiveType(violation->effective_directive);
-  blink::LocalFrame* context_frame =
-      directive_type == network::mojom::blink::CSPDirectiveName::FrameAncestors
-          ? frame_
-          : nullptr;
-
-  DomWindow()->GetContentSecurityPolicy()->ReportViolation(
-      violation->directive, directive_type, violation->console_message,
-      violation->blocked_url, violation->report_endpoints,
-      violation->use_reporting_api, violation->header, violation->type,
-      ContentSecurityPolicyViolationType::kURLViolation, source_location,
-      context_frame, nullptr /* Element */);
+ContentSecurityPolicy*
+LocalFrameMojoHandler::GetContentSecurityPolicyForViolationReporting() {
+  return DomWindow()->GetContentSecurityPolicy();
 }
 
 void LocalFrameMojoHandler::DidUpdateFramePolicy(
@@ -1020,17 +1031,19 @@ void LocalFrameMojoHandler::JavaScriptExecuteRequestInIsolatedWorld(
 
 void LocalFrameMojoHandler::InvokeScriptToolForInspector(
     const ToolInvocationToken& invocation_id,
-    const String& tool_name,
+    mojom::blink::ScriptToolSelectorPtr tool,
     const String& input_arguments,
     InvokeScriptToolForInspectorCallback callback) {
   if (auto* model_context =
           ModelContextSupplement::GetIfExists(*GetDocument())) {
-    // DevTools refers to tools by name, but `ExecuteTool()` keys on the tool's
-    // (non-web-exposed) id, so resolve the name here. If the tool is
-    // unregistered before the posted task runs, `ExecuteTool()` simply won't
-    // find the id and will fail, rather than running whatever tool happens to
-    // hold the name by then.
-    if (ToolData* tool_data = model_context->FindToolDataByName(tool_name)) {
+    // `ExecuteTool()` keys on the tool's (non-web-exposed) id, so resolve a
+    // name to an id here. Either way, if the tool is unregistered before the
+    // posted task runs, `ExecuteTool()` simply won't find the id and will fail,
+    // rather than running whatever tool happens to hold the name by then.
+    ToolData* tool_data =
+        tool->is_id() ? model_context->FindToolDataById(tool->get_id())
+                      : model_context->FindToolDataByName(tool->get_name());
+    if (tool_data) {
       frame_->GetTaskRunner(TaskType::kInternalInspector)
           ->PostTask(FROM_HERE,
                      blink::BindOnce(

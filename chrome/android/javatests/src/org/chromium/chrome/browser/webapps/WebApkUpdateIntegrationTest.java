@@ -37,6 +37,7 @@ import org.chromium.chrome.browser.flags.ActivityType;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.test.MockCertVerifierRuleAndroid;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.util.browser.webapps.WebappTestPage;
 import org.chromium.components.webapk.lib.client.WebApkValidator;
 import org.chromium.components.webapk.lib.common.WebApkMetaDataKeys;
 import org.chromium.components.webapk.proto.WebApkProto;
@@ -49,7 +50,24 @@ import org.chromium.webapk.lib.common.WebApkConstants;
 
 import java.io.FileInputStream;
 
-/** Integration tests for WebAPK feature. */
+/**
+ * Integration tests for WebAPK startup manifest update detection.
+ *
+ * <p><b>Harness setup:</b> Wraps the application {@link PackageManager} via {@link
+ * PackageManagerWrapper} so {@code PackageManager#getApplicationInfo} returns test metadata ({@link
+ * WebApkMetaDataKeys}) for the pre-installed {@code org.chromium.webapk.test} package pointing to
+ * the local {@link EmbeddedTestServer}, disables APK signature verification via {@link
+ * WebApkValidator#setDisableValidationForTesting}, enables updates via {@code
+ * WebApkUpdateManager#setUpdatesDisabledForTesting}, and passes {@link
+ * ChromeSwitches#CHECK_FOR_WEB_MANIFEST_UPDATE_ON_STARTUP} so opening the WebAPK triggers a
+ * manifest update check on startup.
+ *
+ * <p><b>Real vs. stubbed boundaries:</b> Launches {@link WebappActivity} directly via {@link
+ * WebApkActivityTestRule}, detects the changed manifest name, drives and accepts the real
+ * name-change modal confirmation dialog ({@link ModalDialogProperties}), and verifies the
+ * serialized {@link WebApkProto.WebApk} update request proto written to disk. Does not contact a
+ * live WebAPK minting server or install an updated APK via Google Play or {@code PackageInstaller}.
+ */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @DoNotBatch(reason = "The update pipeline runs once per startup.")
 @CommandLineFlags.Add({
@@ -70,7 +88,8 @@ public class WebApkUpdateIntegrationTest {
 
     // Android Manifest meta data for {@link WEBAPK_PACKAGE_NAME}.
     // TODO(eirage): change all to use mTestServer.
-    private static final String WEBAPK_MANIFEST_URL = "/chrome/test/data/banners/manifest.json";
+    private static final String WEBAPK_MANIFEST_URL =
+            "/chrome/test/data/banners/manifest_one_icon.json";
     private static final String WEBAPK_START_URL =
             "/chrome/test/data/banners/manifest_test_page.html";
     private static final String WEBAPK_SCOPE_URL = "/chrome/test/data/banners/";
@@ -189,12 +208,9 @@ public class WebApkUpdateIntegrationTest {
     @Test
     @LargeTest
     @Feature({"Webapps"})
-    @DisableIf.Device({
-        DeviceFormFactor.DESKTOP_FREEFORM, // crbug.com/511288857
-        DeviceFormFactor.AUTOMOTIVE // crbug.com/572962865
-    })
+    @DisableIf.Device(DeviceFormFactor.DESKTOP_FREEFORM) // crbug.com/511288857
     public void testStoreUpdateRequestToFile() throws Exception {
-        String pageUrl = mTestServer.getURL(WEBAPK_START_URL);
+        String pageUrl = WebappTestPage.getTestUrlWithManifest(mTestServer, WEBAPK_MANIFEST_URL);
         HistogramWatcher histogramWatcher =
                 HistogramWatcher.newSingleRecordWatcher(
                         "WebApk.Update.ShellVersion", SHELL_APK_VERSION);

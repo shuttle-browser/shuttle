@@ -10,6 +10,8 @@
 #import "ios/chrome/browser/autofill/autofill_ai/public/save_entity_params.h"
 #import "ios/chrome/browser/autofill/autofill_ai/ui/autofill_ai_save_entity_mutator.h"
 
+class GURL;
+
 namespace autofill {
 class EntityDataManager;
 }  // namespace autofill
@@ -32,6 +34,9 @@ class EntityDataManager;
     NS_DESIGNATED_INITIALIZER;
 
 - (instancetype)init NS_UNAVAILABLE;
+
+// Called when a link in the footer is tapped.
+- (void)didTapFooterLinkURL:(const GURL&)url;
 
 // Disconnects the mediator and handles any cleanup.
 - (void)disconnect;

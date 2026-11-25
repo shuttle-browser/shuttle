@@ -42,7 +42,9 @@
 #include "chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/composebox_everywhere_handler.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/debug/omnibox_everywhere_debug_page_handler.h"
+#include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_file_selector.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_handler.h"
+#include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_hotkey_bubble_view.h"
 #include "chrome/browser/ui/webui/omnibox_everywhere/omnibox_everywhere_page_handler.h"
 #include "chrome/browser/ui/webui/sanitized_image/sanitized_image_source.h"
 #include "chrome/common/webui_url_constants.h"
@@ -134,60 +136,15 @@ class OmniboxEverywhereMostVisitedPrefObserver
 };
 
 void AddMostVisitedSourceStrings(content::WebUIDataSource* source) {
+  source->AddLocalizedStrings(MostVisitedHandler::GetWebUIDataSourceDict());
+
   source->AddBoolean("omniboxEverywhereMostVisitedEnabled",
                      omnibox::kOmniboxEverywhereMostVisitedParam.Get());
   source->AddBoolean(
       "omniboxEverywhereMostVisitedHideTitle",
       !omnibox::kOmniboxEverywhereMostVisitedShowTitleParam.Get());
+  source->AddLocalizedString("close", IDS_ACCNAME_CLOSE);
 
-  static constexpr webui::LocalizedString kMostVisitedStrings[] = {
-      {"addLinkTitle", IDS_NTP_CUSTOM_LINKS_ADD_SHORTCUT_TITLE},
-      {"close", IDS_ACCNAME_CLOSE},
-      {"editLinkTitle", IDS_NTP_CUSTOM_LINKS_EDIT_SHORTCUT},
-      {"viewLinkTitle", IDS_NTP_CUSTOM_LINKS_SHORTCUT_DETAILS_TITLE},
-      {"invalidUrl", IDS_NTP_CUSTOM_LINKS_INVALID_URL},
-      {"linkAddedMsg", IDS_NTP_CONFIRM_MSG_SHORTCUT_ADDED},
-      {"linkCancel", IDS_NTP_CUSTOM_LINKS_CANCEL},
-      {"linkCantCreate", IDS_NTP_CUSTOM_LINKS_CANT_CREATE},
-      {"linkCantEdit", IDS_NTP_CUSTOM_LINKS_CANT_EDIT},
-      {"viewLink", IDS_NTP_CUSTOM_LINKS_DETAILS},
-      {"linkDone", IDS_NTP_CUSTOM_LINKS_DONE},
-      {"linkEditedMsg", IDS_NTP_CONFIRM_MSG_SHORTCUT_EDITED},
-      {"linkRemove", IDS_NTP_CUSTOM_LINKS_REMOVE},
-      {"linkRemoveA11y", IDS_NTP_MOST_VISITED_SITES_REMOVE},
-      {"linkRemovedMsg", IDS_NTP_CONFIRM_MSG_SHORTCUT_REMOVED},
-      {"shortcutMoreActions", IDS_NTP_CUSTOM_LINKS_MORE_ACTIONS},
-      {"enterpriseShortcutSubtitle", IDS_NTP_ENTERPRISE_SHORTCUT_SUBTITLE},
-      {"nameField", IDS_NTP_CUSTOM_LINKS_NAME},
-      {"restoreDefaultLinks", IDS_NTP_CONFIRM_MSG_RESTORE_DEFAULTS},
-      {"restoreDefaultEnterpriseShortcuts",
-       IDS_NTP_CONFIRM_MSG_RESTORE_ENTERPRISE_DEFAULTS},
-      {"restoreThumbnailsShort", IDS_NEW_TAB_RESTORE_THUMBNAILS_SHORT_LINK},
-      {"shortcutAlreadyExists", IDS_NTP_CUSTOM_LINKS_ALREADY_EXISTS},
-      {"urlField", IDS_NTP_CUSTOM_LINKS_URL},
-      {"showMore", IDS_NTP_SHOW_MORE_BUTTON_LABEL},
-      {"showLess", IDS_NTP_SHOW_LESS_BUTTON_LABEL},
-      {"shortcutsInactivityRemovalMsg",
-       IDS_NTP_MOST_VISITED_SHORTCUTS_INACTIVITY_REMOVAL},
-      {"moduleInactivityRemovalMsg", IDS_NTP_MODULE_INACTIVITY_REMOVAL},
-      {"modulesInactivityRemovalMsg", IDS_NTP_MODULES_INACTIVITY_REMOVAL},
-      {"undo", IDS_NEW_TAB_UNDO_THUMBNAIL_REMOVE},
-  };
-  source->AddLocalizedStrings(kMostVisitedStrings);
-
-  ui::Accelerator undo_accelerator(ui::VKEY_Z, ui::EF_PLATFORM_ACCELERATOR);
-  source->AddString("undoDescription", l10n_util::GetStringFUTF16(
-                                           IDS_UNDO_DESCRIPTION,
-                                           undo_accelerator.GetShortcutText()));
-
-  source->AddInteger("maxTilesInCollapsedState",
-                     ntp_features::GetMaxTilesInCollapsedState());
-  source->AddInteger("maxShortcutsInExpandedState",
-                     ntp_features::GetMaxShortcutsInExpandedState());
-  source->AddInteger("maxMostVisitedTilesInExpandedState",
-                     ntp_features::GetMaxMostVisitedTilesInExpandedState());
-  source->AddInteger("maxEnterpriseShortcuts",
-                     ntp_features::GetMaxEnterpriseShortcuts());
   source->AddInteger("preconnectStartTimeThreshold", 0);
   source->AddInteger("prefetchStartTimeThreshold", 0);
   source->AddBoolean("prefetchTriggerEnabled", false);
@@ -291,6 +248,11 @@ OmniboxEverywhereUI::OmniboxEverywhereUI(content::WebUI* web_ui)
       {"screenshotRegionLabel", IDS_OMNIBOX_EVERYWHERE_REGION},
       {"screenshotWindowLabel", IDS_OMNIBOX_EVERYWHERE_WINDOW},
       {"searchBoxHintAskOrType", IDS_NTP_SEARCH_BOX_PLACEHOLDER_ASK_OR_TYPE},
+      {"searchBoxHintDragAndDrop",
+       IDS_OMNIBOX_EVERYWHERE_PLACEHOLDER_DRAG_AND_DROP},
+      {"searchBoxHintFileOrImage",
+       IDS_OMNIBOX_EVERYWHERE_PLACEHOLDER_FILE_OR_IMAGE},
+      {"searchBoxHintLens", IDS_OMNIBOX_EVERYWHERE_PLACEHOLDER_LENS},
       {"shareScreenshotLabel", IDS_OMNIBOX_EVERYWHERE_SHARE_SCREENSHOT},
       {"switchProfileLabel", IDS_OMNIBOX_EVERYWHERE_SWITCH_PROFILE},
   };
@@ -745,7 +707,7 @@ void OmniboxEverywhereUI::ClearContextualSessionHandle() {
   pending_upload_statuses_.clear();
   pending_screenshot_tokens_.clear();
   is_composebox_mode_ = false;
-  screenshot_origin_was_searchbox_ = false;
+  context_upload_origin_was_searchbox_ = false;
 
   // OmniboxEverywhereUI concurrently hosts both `omnibox_handler_` and
   // `composebox_handler_` across a persistent WebContents.
@@ -958,14 +920,14 @@ void OmniboxEverywhereUI::ExecuteScreenshotCommand(
     return;
   }
 
-  screenshot_origin_was_searchbox_ = !is_composebox_mode_;
+  context_upload_origin_was_searchbox_ = !is_composebox_mode_;
 
   // Open Composebox immediately from the Lens entry point with a pending
   // screenshot state so that when the capture/picker UI dismisses, the view
   // transitions directly into Composebox without briefly rendering the
   // Loomnibox omnibox or flashing zero-prefix suggestions.
   auto initial_state = omnibox_everywhere::mojom::ComposeboxInitialState::New();
-  initial_state->is_pending_screenshot = true;
+  initial_state->is_pending_context_upload = true;
   OpenComposebox(std::move(initial_state));
 
   auto on_capture_done =
@@ -1001,14 +963,25 @@ void OmniboxEverywhereUI::ExecuteScreenshotCommand(
 void OmniboxEverywhereUI::OnScreenshotCaptureDone(
     const std::optional<base::UnguessableToken>& token) {
   if (!token.has_value()) {
-    if (screenshot_origin_was_searchbox_) {
-      SetIsComposebox(false);
-    }
-    if (page_handler_) {
-      page_handler_->OnScreenshotCaptureCancelled();
-    }
+    OnContextUploadCanceled();
+    return;
   }
-  screenshot_origin_was_searchbox_ = false;
+  context_upload_origin_was_searchbox_ = false;
+}
+
+void OmniboxEverywhereUI::OnContextUploadCanceled() {
+  // Shared cancellation handler for both screenshot capture and the native file
+  // chooser (`OmniboxEverywhereFileSelector::FileSelectionCanceled`). If the
+  // upload started from the Searchbox, revert `is_composebox_mode_` and notify
+  // the WebUI so it transitions back from the collapsed Composebox pill to the
+  // Searchbox.
+  if (context_upload_origin_was_searchbox_) {
+    SetIsComposebox(false);
+  }
+  if (page_handler_) {
+    page_handler_->OnScreenshotCaptureCancelled();
+  }
+  context_upload_origin_was_searchbox_ = false;
 }
 
 bool OmniboxEverywhereUI::IsCommandIdChecked(int command_id) const {
@@ -1087,7 +1060,7 @@ void OmniboxEverywhereUI::OnComposeboxHandlerDisconnected() {
 void OmniboxEverywhereUI::AddFileContext(
     const base::UnguessableToken& token,
     searchbox::mojom::SelectedFileInfoPtr file_info) {
-  screenshot_origin_was_searchbox_ = false;
+  context_upload_origin_was_searchbox_ = false;
   if (is_composebox_mode_ && composebox_handler_) {
     composebox_handler_->AddFileContextFromBrowser(token, std::move(file_info));
   } else {
@@ -1136,7 +1109,55 @@ void OmniboxEverywhereUI::OnOverflowMenuClosed() {
   SynthesizeMouseMoveEvent();
 }
 
+void OmniboxEverywhereUI::CancelTransientUi() {
+  if (context_menu_) {
+    context_menu_->Cancel();
+    context_menu_.reset();
+  }
+  if (screenshot_menu_runner_ && screenshot_menu_runner_->IsRunning()) {
+    screenshot_menu_runner_->Cancel();
+  }
+  ResetScreenshotMenu();
+  if (file_selector_) {
+    file_selector_->Cancel();
+  }
+  if (omnibox_handler_) {
+    omnibox_handler_->CleanupDrivePicker();
+  }
+  if (composebox_handler_) {
+    composebox_handler_->CleanupDrivePicker();
+  }
+  omnibox_everywhere::OmniboxEverywhereHotkeyBubbleView::CloseIfOpen();
+}
+
+void OmniboxEverywhereUI::FocusInput() {
+  if (page_handler_) {
+    page_handler_->FocusInput();
+  }
+}
+
+void OmniboxEverywhereUI::OnDemoted() {
+  if (page_handler_) {
+    page_handler_->OnDemoted();
+  }
+}
+
 void OmniboxEverywhereUI::OnFileChooserOpened() {
+  // Record whether the user launched the file chooser from the Searchbox so
+  // `OnContextUploadCanceled()` can return to the Searchbox if the dialog is
+  // cancelled. Then immediately transition the WebUI into the collapsed
+  // Composebox pill (`is_pending_context_upload = true`) so the widget shrinks
+  // to its compact height before `OmniboxEverywhereFileSelector` presents the
+  // native file chooser sheet. When `is_composebox_mode_` is already true,
+  // `OpenComposebox()` updates `isPendingContextUpload` in-place on the
+  // existing `<omnibox-everywhere-composebox>`, preserving any typed query,
+  // attached context chips, and active tool/model selections.
+  context_upload_origin_was_searchbox_ = !is_composebox_mode_;
+
+  auto initial_state = omnibox_everywhere::mojom::ComposeboxInitialState::New();
+  initial_state->is_pending_context_upload = true;
+  OpenComposebox(std::move(initial_state));
+
   if (auto* service =
           OmniboxEverywhereServiceFactory::GetForProfile(profile_)) {
     service->OnFileChooserOpened();
@@ -1173,15 +1194,14 @@ void OmniboxEverywhereUI::ShowContextActionMenu(const gfx::Rect& anchor_rect) {
   }
 
   if (!file_selector_) {
-    file_selector_ = std::make_unique<OmniboxPopupFileSelector>(
-        web_contents->GetTopLevelNativeWindow());
-    file_selector_->set_open_ai_mode_callback(base::BindRepeating(
-        &OmniboxEverywhereUI::OpenComposebox, weak_factory_.GetWeakPtr(),
-        /*initial_state=*/nullptr));
-    file_selector_->set_file_chooser_opened_callback(base::BindRepeating(
-        &OmniboxEverywhereUI::OnFileChooserOpened, weak_factory_.GetWeakPtr()));
-    file_selector_->set_file_chooser_closed_callback(base::BindRepeating(
-        &OmniboxEverywhereUI::OnFileChooserClosed, weak_factory_.GetWeakPtr()));
+    file_selector_ = std::make_unique<OmniboxEverywhereFileSelector>(
+        web_contents->GetTopLevelNativeWindow(),
+        base::BindRepeating(&OmniboxEverywhereUI::OnFileChooserOpened,
+                            weak_factory_.GetWeakPtr()),
+        base::BindRepeating(&OmniboxEverywhereUI::OnFileChooserClosed,
+                            weak_factory_.GetWeakPtr()),
+        base::BindRepeating(&OmniboxEverywhereUI::OnContextUploadCanceled,
+                            weak_factory_.GetWeakPtr()));
   }
 
   gfx::Point screen_point = CalculateContextMenuAnchorPoint(

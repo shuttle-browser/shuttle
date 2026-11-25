@@ -11,6 +11,7 @@
 #include "base/containers/to_vector.h"
 #include "base/functional/callback.h"
 #include "base/memory/ptr_util.h"
+#include "base/not_fatal_until.h"
 #include "base/notimplemented.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
@@ -30,6 +31,7 @@
 #include "ui/views/accessibility/ax_virtual_view.h"
 #include "ui/views/accessibility/tree/widget_ax_manager.h"
 #include "ui/views/view.h"
+#include "ui/views/view_guard.h"
 #include "ui/views/view_utils.h"
 #include "ui/views/widget/root_view.h"
 #include "ui/views/widget/widget.h"
@@ -149,8 +151,8 @@ void ViewAccessibility::AddVirtualChildViewAt(
     std::unique_ptr<AXVirtualView> virtual_view,
     size_t index) {
   CHECK(view_);
-  DCHECK(virtual_view);
-  DCHECK_LE(index, virtual_children_.size());
+  CHECK(virtual_view, base::NotFatalUntil::M163);
+  CHECK_LE(index, virtual_children_.size(), base::NotFatalUntil::M163);
 
   if (virtual_view->parent_view() == this) {
     return;
@@ -183,7 +185,7 @@ void ViewAccessibility::AddVirtualChildViewAt(
 
 std::unique_ptr<AXVirtualView> ViewAccessibility::RemoveVirtualChildView(
     AXVirtualView* virtual_view) {
-  DCHECK(virtual_view);
+  CHECK(virtual_view, base::NotFatalUntil::M163);
   auto cur_index = GetIndexOf(virtual_view);
   if (!cur_index.has_value()) {
     return {};
@@ -232,7 +234,7 @@ void ViewAccessibility::RemoveAllVirtualChildViews() {
 }
 
 bool ViewAccessibility::Contains(const AXVirtualView* virtual_view) const {
-  DCHECK(virtual_view);
+  CHECK(virtual_view, base::NotFatalUntil::M163);
   for (const auto& virtual_child : virtual_children_) {
     // AXVirtualView::Contains() also checks if the provided virtual view is the
     // same as |this|.
@@ -245,7 +247,7 @@ bool ViewAccessibility::Contains(const AXVirtualView* virtual_view) const {
 
 std::optional<size_t> ViewAccessibility::GetIndexOf(
     const AXVirtualView* virtual_view) const {
-  DCHECK(virtual_view);
+  CHECK(virtual_view, base::NotFatalUntil::M163);
   const auto iter = std::ranges::find(virtual_children_, virtual_view,
                                       &std::unique_ptr<AXVirtualView>::get);
   return iter != virtual_children_.end()
@@ -295,6 +297,19 @@ void ViewAccessibility::NotifyEvent(ax::mojom::Event event_type,
   if (widget && !widget->GetNativeView()) {
     return;
   }
+
+  // Malicious or badly-configured programs hooking accessibility callbacks can
+  // theoretically destroy the view being updated in a number of ways by
+  // immediately injecting events into the current process in response to an
+  // accessibility event. In almost all cases, this makes the calling code
+  // unsafe in ways that are hard to fully harden against.
+  //
+  // Instead of hardening every such point, harden this method to prevent
+  // synchronous destruction of the view being updated through bad re-entrancy.
+  //
+  // TODO(https://crbug.com/578997426): Remove upstream guards when this becomes
+  // a hard error.
+  ViewGuard guard(*view_, base::NotFatalUntil::M165);
 
   AXUpdateNotifier::Get()->NotifyViewEvent(view_, event_type);
 
@@ -552,7 +567,8 @@ void ViewAccessibility::SetName(std::u16string name,
     // is a common pattern, and then the View sets the accessible name to the
     // same string, we need to make sure that we clear the description.
     // Otherwise we'll end up with the same accessible name and description.
-    if (GetCachedName() == view_->GetTooltipText() &&
+    if (!view_->GetTooltipText().empty() &&
+        GetCachedName() == view_->GetTooltipText() &&
         GetCachedDescription() == view_->GetTooltipText()) {
       RemoveDescription();
     }
@@ -582,10 +598,10 @@ void ViewAccessibility::SetName(std::u16string name) {
 }
 
 void ViewAccessibility::SetName(View& naming_view) {
-  DCHECK_NE(view_, &naming_view);
+  CHECK_NE(view_, &naming_view, base::NotFatalUntil::M163);
 
   std::u16string name = naming_view.GetViewAccessibility().GetCachedName();
-  DCHECK(!name.empty());
+  CHECK(!name.empty(), base::NotFatalUntil::M163);
   SetName(std::move(name), ax::mojom::NameFrom::kRelatedElement);
 
   data_.AddIntListAttribute(ax::mojom::IntListAttribute::kLabelledbyIds,
@@ -944,7 +960,7 @@ void ViewAccessibility::SetDescription(
 
 void ViewAccessibility::SetDescription(View& describing_view) {
   CHECK(view_);
-  DCHECK_NE(view_, &describing_view);
+  CHECK_NE(view_, &describing_view, base::NotFatalUntil::M163);
 
   std::u16string name = describing_view.GetViewAccessibility().GetCachedName();
   DCHECK(!name.empty())
@@ -971,6 +987,13 @@ std::u16string ViewAccessibility::GetCachedDescription() const {
 void ViewAccessibility::OnTooltipTextChanged(
     std::optional<std::u16string> old_tooltip_text) {
   if (!view_) {
+    return;
+  }
+
+  // `kAttributeExplicitlyEmpty` opts out of alternative description sources
+  // such as the tooltip text.
+  if (data_.GetDescriptionFrom() ==
+      ax::mojom::DescriptionFrom::kAttributeExplicitlyEmpty) {
     return;
   }
 
@@ -2056,7 +2079,7 @@ void ViewAccessibility::OnWidgetDestroyed(Widget* widget) {
 
 void ViewAccessibility::OnWidgetUpdated(Widget* widget, Widget* old_widget) {
   CHECK(widget);
-  DCHECK_EQ(widget, GetWidget());
+  CHECK_EQ(widget, GetWidget(), base::NotFatalUntil::M163);
   if (widget == old_widget) {
     return;
   }

@@ -9,6 +9,8 @@ import static org.chromium.chrome.browser.tabmodel.TabGroupTitleUtils.UNSET_TAB_
 
 import androidx.annotation.VisibleForTesting;
 
+import org.jni_zero.JniPtr;
+
 import org.chromium.base.Token;
 import org.chromium.base.supplier.LazyOneshotSupplier;
 import org.chromium.base.supplier.NonNullObservableSupplier;
@@ -324,7 +326,7 @@ public class EmptyTabModel implements IncognitoTabModelInternal {
     }
 
     @Override
-    public @Nullable TabStripCollection getTabStripCollection() {
+    public @Nullable JniPtr<TabStripCollection> getTabStripCollection() {
         return null;
     }
 
@@ -403,18 +405,10 @@ public class EmptyTabModel implements IncognitoTabModelInternal {
     public void moveGroupToIndex(Token tabGroupId, int newIndex) {}
 
     @Override
-    public boolean willMergingCreateNewGroup(List<Tab> tabsToMerge) {
-        return false;
-    }
-
-    @Override
     public void createSingleTabGroup(Tab tab) {}
 
     @Override
     public void createTabGroupForTabGroupSync(List<Tab> tabs, Token tabGroupId) {}
-
-    @Override
-    public void mergeTabsToGroup(int sourceTabId, int destinationTabId) {}
 
     @Override
     public void mergeListOfTabsToGroup(
@@ -490,9 +484,6 @@ public class EmptyTabModel implements IncognitoTabModelInternal {
 
     @Override
     public void setTabGroupCollapsed(Token tabGroupId, boolean isCollapsed, boolean animate) {}
-
-    @Override
-    public void deleteTabGroupCollapsed(Token tabGroupId) {}
 
     @Override
     public void moveTabOutOfGroupInDirection(int sourceTabId, boolean trailing) {}

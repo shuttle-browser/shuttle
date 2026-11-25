@@ -14,6 +14,7 @@
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window.h"
+#include "chrome/browser/ui/commerce/commerce_ui_tab_helper.h"
 #include "chrome/browser/ui/commerce/mock_commerce_ui_tab_helper.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -34,7 +35,6 @@
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
-#include "components/sync/base/features.h"
 #include "components/ukm/test_ukm_recorder.h"
 #include "content/public/test/browser_test.h"
 #include "services/metrics/public/cpp/ukm_builders.h"
@@ -427,11 +427,8 @@ IN_PROC_BROWSER_TEST_P(PriceTrackingViewFeatureFlagBrowserTest,
   const bool is_feature_enabled = GetParam();
   mock_shopping_service->SetIsShoppingListEligible(is_feature_enabled);
 
-  auto* mock_tab_helper =
-      static_cast<MockCommerceUiTabHelper*>(browser()
-                                                ->GetActiveTabInterface()
-                                                ->GetTabFeatures()
-                                                ->commerce_ui_tab_helper());
+  auto* mock_tab_helper = static_cast<MockCommerceUiTabHelper*>(
+      commerce::CommerceUiTabHelper::From(browser()->GetActiveTabInterface()));
   ON_CALL(*mock_tab_helper, GetProductImage)
       .WillByDefault(
           testing::ReturnRef(mock_tab_helper->GetValidProductImage()));
@@ -448,27 +445,15 @@ IN_PROC_BROWSER_TEST_P(PriceTrackingViewFeatureFlagBrowserTest,
 }
 
 class BookmarkBubbleViewShoppingCollectionBrowserTest
-    : public BookmarkBubbleViewMigrationBrowserTest,
-      public testing::WithParamInterface<bool> {
+    : public BookmarkBubbleViewMigrationBrowserTest {
  public:
-  BookmarkBubbleViewShoppingCollectionBrowserTest()
-      : BookmarkBubbleViewMigrationBrowserTest(InitializationMode::kDefer) {
-    test_features_.InitWithFeatureStates(
-        {{commerce::kShoppingList, true},
-         {syncer::kReplaceSyncPromosWithSignInPromos, GetParam()}});
-  }
-
   void SetUpOnMainThread() override {
     BookmarkBubbleViewMigrationBrowserTest::SetUpOnMainThread();
 
     signin::MakePrimaryAccountAvailable(
         IdentityManagerFactory::GetForProfile(browser()->GetProfile()),
-        "test@example.com",
-        GetParam() ? signin::ConsentLevel::kSignin
-                   : signin::ConsentLevel::kSync);
-    if (GetParam()) {
-      GetBookmarkModel()->CreateAccountPermanentFolders();
-    }
+        "test@example.com", signin::ConsentLevel::kSignin);
+    GetBookmarkModel()->CreateAccountPermanentFolders();
   }
 
   void OnWillCreateBrowserContextServices(
@@ -504,7 +489,7 @@ class BookmarkBubbleViewShoppingCollectionBrowserTest
   }
 };
 
-IN_PROC_BROWSER_TEST_P(BookmarkBubbleViewShoppingCollectionBrowserTest,
+IN_PROC_BROWSER_TEST_F(BookmarkBubbleViewShoppingCollectionBrowserTest,
                        IPHShown) {
   AddProductInfoToBookmark();
   MoveBookmarkToShoppingCollection();
@@ -520,7 +505,7 @@ IN_PROC_BROWSER_TEST_P(BookmarkBubbleViewShoppingCollectionBrowserTest,
       BookmarkBubbleView::bookmark_bubble()->GetFootnoteViewForTesting());
 }
 
-IN_PROC_BROWSER_TEST_P(BookmarkBubbleViewShoppingCollectionBrowserTest,
+IN_PROC_BROWSER_TEST_F(BookmarkBubbleViewShoppingCollectionBrowserTest,
                        IPHNotShown_NotInCollection) {
   AddProductInfoToBookmark();
 
@@ -535,7 +520,7 @@ IN_PROC_BROWSER_TEST_P(BookmarkBubbleViewShoppingCollectionBrowserTest,
       BookmarkBubbleView::bookmark_bubble()->GetFootnoteViewForTesting());
 }
 
-IN_PROC_BROWSER_TEST_P(BookmarkBubbleViewShoppingCollectionBrowserTest,
+IN_PROC_BROWSER_TEST_F(BookmarkBubbleViewShoppingCollectionBrowserTest,
                        IPHNotShown_NotAProduct) {
   MoveBookmarkToShoppingCollection();
 
@@ -549,16 +534,6 @@ IN_PROC_BROWSER_TEST_P(BookmarkBubbleViewShoppingCollectionBrowserTest,
   EXPECT_FALSE(
       BookmarkBubbleView::bookmark_bubble()->GetFootnoteViewForTesting());
 }
-
-#if BUILDFLAG(IS_CHROMEOS)
-INSTANTIATE_TEST_SUITE_P(All,
-                         BookmarkBubbleViewShoppingCollectionBrowserTest,
-                         testing::Bool());
-#else
-INSTANTIATE_TEST_SUITE_P(All,
-                         BookmarkBubbleViewShoppingCollectionBrowserTest,
-                         testing::Values(true));
-#endif
 
 class BookmarkBubbleViewWithAccountBookmarksBrowserTest
     : public BookmarkBubbleViewMigrationBrowserTest {

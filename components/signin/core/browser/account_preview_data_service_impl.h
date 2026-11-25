@@ -15,6 +15,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
+#include "base/time/time.h"
 #include "base/version_info/channel.h"
 #include "build/build_config.h"
 #include "components/prefs/pref_change_registrar.h"
@@ -56,10 +57,24 @@ class AccountPreviewDataServiceImpl : public AccountPreviewDataService,
     kExternalAppAccountUpdated = 4,
     kPrimaryAccountSet = 5,
     kPrimaryAccountCleared = 6,
-    kPreferredAccountMissingForFRE = 7,
-    kMaxValue = kPreferredAccountMissingForFRE,
+    kPreferredAccountMissingForAsyncFetch = 7,
+    kMaxValue = kPreferredAccountMissingForAsyncFetch,
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:AccountPreviewFetchTriggerCause)
+
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  //
+  // LINT.IfChange(AsyncPreferredAccountResult)
+  enum class AsyncPreferredAccountResult {
+    kCached = 0,
+    kFetchedWithResult = 1,
+    kFetchedWithoutResult = 2,
+    kTimeout = 3,
+    kCancelled = 4,
+    kMaxValue = kCancelled,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/signin/enums.xml:AccountPreviewAsyncPreferredAccountResult)
 
   AccountPreviewDataServiceImpl(
       SigninClient* signin_client,
@@ -87,10 +102,11 @@ class AccountPreviewDataServiceImpl : public AccountPreviewDataService,
       const GaiaId& gaia_id,
       base::OnceCallback<void(std::optional<AccountPreviewPreference>)>
           callback) override;
-#if BUILDFLAG(IS_IOS)
-  void GetPreferredAccountForFRESignin(
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  void GetPreferredAccountForSigninAsync(
       base::OnceCallback<void(std::optional<AccountPreviewPreference>)>
-          callback) override;
+          callback,
+      base::TimeDelta timeout) override;
 #endif
 
   // Retrieves the cached preview data. Exposed specifically for testing.
@@ -146,7 +162,7 @@ class AccountPreviewDataServiceImpl : public AccountPreviewDataService,
   void RecordAccountsUsedForLastFetch();
   void OnAllFetchesCompleted(bool should_reset_periodic_timer);
   void OnAllAccountsFetchCanceled();
-  void FinalizeAllAccountsFetch();
+  void FinalizeAllAccountsFetch(bool fetch_completed);
   void OnSigninAllowedPrefChanged();
   void CreateAndStartRepeatingTimer();
   void ResetTimer();
@@ -237,10 +253,17 @@ class AccountPreviewDataServiceImpl : public AccountPreviewDataService,
   base::ScopedObservation<IdentityManager, IdentityManager::Observer>
       identity_manager_observation_{this};
 
-#if BUILDFLAG(IS_IOS)
-  // Requests originating from `GetPreferredAccountForSigninWhenReady()` that
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
+  struct PendingPreferredAccountRequest;
+  // Called when a preferred account request times out.
+  void OnPendingPreferredAccountRequestTimedOut(
+      PendingPreferredAccountRequest* request);
+  void ResolvePendingPreferredAccountRequests(
+      std::optional<AccountPreviewPreference> preference,
+      AsyncPreferredAccountResult result);
+  // Requests originating from `GetPreferredAccountForSigninAsync()` that
   // wait for the preferred account computation to complete.
-  std::vector<base::OnceCallback<void(std::optional<AccountPreviewPreference>)>>
+  std::vector<std::unique_ptr<PendingPreferredAccountRequest>>
       pending_preferred_account_requests_;
 #endif
 

@@ -54,6 +54,7 @@ import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.search_engines.SearchEngineType;
 import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
 import org.chromium.chrome.browser.ui.favicon.FaviconHelper;
+import org.chromium.chrome.browser.ui.favicon.FaviconHelper.FaviconImageCallback;
 import org.chromium.components.image_fetcher.ImageFetcher;
 import org.chromium.components.metrics.OmniboxEventProtosIntDef.PageClassification;
 import org.chromium.components.omnibox.AutocompleteResult;
@@ -75,7 +76,7 @@ public class SearchEngineServiceUnitTest {
     @Rule
     public final MockitoRule mMockitoRule = MockitoJUnit.rule().strictness(Strictness.STRICT_STUBS);
 
-    @Captor private ArgumentCaptor<FaviconHelper.FaviconImageCallback> mCallbackCaptor;
+    @Captor private ArgumentCaptor<FaviconImageCallback> mCallbackCaptor;
     @Captor private ArgumentCaptor<Callback<Bitmap>> mImageFetcherCallbackCaptor;
     @Captor private ArgumentCaptor<StatusIconResource> mStatusIconCaptor;
     @Mock private FaviconHelper mFaviconHelper;
@@ -418,7 +419,7 @@ public class SearchEngineServiceUnitTest {
         verify(mFaviconHelper)
                 .getLocalFaviconImageForURL(
                         any(), any(), anyInt(), anyBoolean(), mCallbackCaptor.capture());
-        FaviconHelper.FaviconImageCallback faviconCallback = mCallbackCaptor.getValue();
+        FaviconImageCallback faviconCallback = mCallbackCaptor.getValue();
         faviconCallback.onFaviconAvailable(null, new GURL(LOGO_URL));
 
         // Not emitting second null icon
@@ -491,7 +492,7 @@ public class SearchEngineServiceUnitTest {
 
     @Test
     public void testRetrieveFavicon_Gemini() {
-        checkStarterPackFavicon(StarterPackId.GEMINI, R.drawable.ic_spark_4c_16dp);
+        checkStarterPackFavicon(StarterPackId.GEMINI, R.drawable.ic_spark_24dp);
     }
 
     @Test
@@ -517,7 +518,10 @@ public class SearchEngineServiceUnitTest {
         searchEngineService.retrieveFavicon(mTemplateUrl, mStarterPackCallback);
 
         verify(mStarterPackCallback).onResult(mStatusIconCaptor.capture());
-        assertEquals(expectedDrawableRes, mStatusIconCaptor.getValue().getIconRes());
+        assertEquals(
+                new StatusIconResource(
+                        expectedDrawableRes, R.color.default_icon_color_accent1_tint_list),
+                mStatusIconCaptor.getValue());
     }
 
     @Test

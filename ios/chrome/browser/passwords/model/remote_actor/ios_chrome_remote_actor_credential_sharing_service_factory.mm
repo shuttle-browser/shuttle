@@ -8,7 +8,7 @@
 #import <utility>
 
 #import "components/password_manager/core/browser/remote_actor/remote_actor_credential_sharing_service_impl.h"
-#import "components/password_manager/core/common/password_manager_features.h"
+#import "components/password_manager/core/common/remote_actor/remote_actor_features.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "services/network/public/cpp/shared_url_loader_factory.h"
@@ -23,12 +23,13 @@ IOSChromeRemoteActorCredentialSharingServiceFactory::
 
 std::unique_ptr<KeyedService>
 IOSChromeRemoteActorCredentialSharingServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
-  if (!password_manager::features::RemoteActorCredentialSharingEnabled()) {
+    ProfileIOS& profile) const {
+  if (!password_manager::features::
+          RemoteActorCredentialSharingGeminiEnabled()) {
     return nullptr;
   }
   return std::make_unique<
       password_manager::RemoteActorCredentialSharingServiceImpl>(
       IdentityManagerFactory::GetForProfile(profile),
-      profile->GetSharedURLLoaderFactory());
+      profile.GetSharedURLLoaderFactory());
 }

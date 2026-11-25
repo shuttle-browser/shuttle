@@ -26,7 +26,7 @@
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
-#include "chrome/browser/ui/views/omnibox/omnibox_popup_presenter_base.h"
+#include "chrome/browser/ui/webui/cr_components/searchbox/contextual_searchbox_handler.h"
 #include "chrome/browser/ui/webui/cr_components/searchbox/plural_string_provider.h"
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
@@ -40,6 +40,7 @@
 #include "chrome/browser/ui/webui/searchbox/webui_omnibox_handler.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager.h"
 #include "chrome/browser/ui/webui/theme_colors_source_manager_factory.h"
+#include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_profile.h"
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_user_profile.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_layout_css_helper.h"
@@ -49,6 +50,7 @@
 #include "chrome/grit/omnibox_popup_resources_map.h"
 #include "components/contextual_search/contextual_search_metrics_recorder.h"
 #include "components/contextual_search/contextual_search_service.h"
+#include "components/contextual_search/input_state_model.h"
 #include "components/favicon_base/favicon_url_parser.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/lens/lens_features.h"
@@ -115,14 +117,6 @@ void PopulateAiModeButtonUiConfig(base::DictValue& dict, Profile* profile) {
   dict.Set("searchboxComposeButtonIcon", compose_icon.spec());
 }
 
-// Returns whether the WebUIDataSource of `web_ui` is shared by the windows of
-// all profiles, i.e. it is in TopChromeWebUIProfile. If so, the loadTimeData
-// values that depend on the profile are passed to each frame instead of being
-// in the data source.
-bool IsWebUIDataSourceShared(content::WebUI* web_ui) {
-  return Profile::FromWebUI(web_ui)->IsTopChromeWebUIProfile();
-}
-
 }  // namespace
 
 bool OmniboxPopupUIConfig::IsWebUIEnabled(
@@ -143,9 +137,10 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
     : TopChromeWebUIController(web_ui,
                                /*enable_chrome_send=*/true,
                                /*enable_chrome_histograms=*/true),
-      profile_(Profile::FromWebUI(web_ui)) {
+      content::WebContentsObserver(web_ui->GetWebContents()),
+      profile_(webui::GetUserProfile(web_ui->GetWebContents())) {
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
-      profile_, chrome::kChromeUIOmniboxPopupHost);
+      Profile::FromWebUI(web_ui), chrome::kChromeUIOmniboxPopupHost);
 
   source->AddLocalizedStrings(
       SearchboxHandler::GetProfileIndependentWebUIDataSourceDict(
@@ -153,9 +148,16 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   // The values that depend on the profile. If the data source is shared by the
   // windows of all profiles, WebUIRenderFrameCreated() passes them to each
   // frame instead.
-  if (!IsWebUIDataSourceShared(web_ui)) {
+  if (!webui::IsWebUIDataSourceShared(web_ui)) {
     source->AddLocalizedStrings(GetProfileLoadTimeData(profile_));
   }
+
+  // Default search engine placeholders, see
+  // `omnibox_popup::mojom::PlaceholderType`. `$1` is the search engine name.
+  source->AddLocalizedString("omniboxSearchOrTypeUrlPlaceholder",
+                             IDS_OMNIBOX_PLACEHOLDER_TEXT);
+  source->AddLocalizedString("omniboxAskOrTypeUrlPlaceholder",
+                             IDS_WEBUI_OMNIBOX_PLACEHOLDER_TEXT);
 
   source->AddBoolean("isTopChromeSearchbox", true);
   FullWebUIOmniboxLayoutHelper::PopulateLoadTimeData(source);
@@ -309,11 +311,16 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
       network::mojom::CSPDirectiveName::MediaSrc,
       "media-src blob: data: 'self';");
 
-  content::URLDataSource::Add(profile_,
-                              std::make_unique<SanitizedImageSource>(profile_));
-  content::URLDataSource::Add(
-      profile_, std::make_unique<FaviconSource>(
-                    profile_, chrome::FaviconUrlFormat::kFavicon2));
+  {
+    // The URL data sources are added to the profile of the WebUI, which is
+    // shared by the windows of all profiles in TopChromeWebUIProfile.
+    Profile* webui_profile = Profile::FromWebUI(web_ui);
+    content::URLDataSource::Add(
+        webui_profile, std::make_unique<SanitizedImageSource>(webui_profile));
+    content::URLDataSource::Add(
+        webui_profile, std::make_unique<FaviconSource>(
+                           webui_profile, chrome::FaviconUrlFormat::kFavicon2));
+  }
 
   // Allow the WebUI to report the Lens icon so it can anchor an IPH.
   ui::TrackedElementHandlerDocumentSingleton::Register(
@@ -349,9 +356,13 @@ base::DictValue OmniboxPopupUI::GetProfileLoadTimeData(Profile* profile) {
 
   PopulateAiModeButtonUiConfig(dict, profile);
 
+  // We lack `WebContents` `ColorProvider` context to fetch theme from.
+  // Default to light mode; `OmniboxPopupHandler` will push the correct themed
+  // icon upon connection.
   dict.Set("searchboxDefaultIcon",
            GetDefaultSearchProviderIcon(
-               TemplateURLServiceFactory::GetForProfile(profile)));
+               TemplateURLServiceFactory::GetForProfile(profile),
+               /*is_dark_mode=*/false));
   // The popup chip UI entrypoint is enabled by the AskG experiment
   // (kAskGShowChip).
   dict.Set("composeboxShowChip",
@@ -365,11 +376,11 @@ base::DictValue OmniboxPopupUI::GetProfileLoadTimeData(Profile* profile) {
 void OmniboxPopupUI::WebUIRenderFrameCreated(
     content::RenderFrameHost* render_frame_host) {
   // If the data source isn't shared, the constructor added these values to it.
-  if (!IsWebUIDataSourceShared(web_ui())) {
+  if (!webui::IsWebUIDataSourceShared(web_ui())) {
     return;
   }
-  if (std::optional<std::string> json = base::WriteJson(GetProfileLoadTimeData(
-          webui::GetUserProfile(web_ui()->GetWebContents())))) {
+  if (std::optional<std::string> json =
+          base::WriteJson(GetProfileLoadTimeData(profile_))) {
     render_frame_host->SetWebUIProperty("profileLoadTimeData", *json);
   }
 }
@@ -393,6 +404,12 @@ void OmniboxPopupUI::PopulateLocalResourceLoaderConfig(
   }
   theme_colors_manager->PopulateLocalResourceLoaderConfig(
       config, requesting_origin, web_ui()->GetWebContents());
+}
+
+void OmniboxPopupUI::OnColorProviderChanged() {
+  if (popup_handler_) {
+    popup_handler_->NotifyDefaultSearchProviderChanged();
+  }
 }
 
 void OmniboxPopupUI::BindInterface(
@@ -421,8 +438,8 @@ void OmniboxPopupUI::CreatePageHandler(
         static_cast<ChromeOmniboxClient*>(omnibox_controller->client());
     CHECK(client);
     omnibox_handler_ = std::make_unique<WebuiOmniboxFullHandler>(
-        std::move(pending_page_handler), std::move(page),
-        Profile::FromWebUI(web_ui()), web_ui()->GetWebContents(),
+        std::move(pending_page_handler), std::move(page), profile_,
+        web_ui()->GetWebContents(),
         std::make_unique<ChromeOmniboxClient>(
             client->GetLocationBar(), client->browser(), client->profile()),
         base::BindRepeating(&OmniboxPopupUI::GetOrCreateContextualSessionHandle,
@@ -431,7 +448,7 @@ void OmniboxPopupUI::CreatePageHandler(
     omnibox_handler_ = std::make_unique<WebuiOmniboxHandler>(
         std::move(pending_page_handler), std::move(page),
         metrics_reporter_service->metrics_reporter(), omnibox_controller,
-        Profile::FromWebUI(web_ui()), web_ui()->GetWebContents(),
+        profile_, web_ui()->GetWebContents(),
         base::BindRepeating(&OmniboxPopupUI::GetOrCreateContextualSessionHandle,
                             base::Unretained(this)));
   }
@@ -511,14 +528,17 @@ void OmniboxPopupUI::CreatePageHandler(
                           base::Unretained(this)),
       base::BindRepeating(&OmniboxPopupUI::ClearContextualSessionHandle,
                           base::Unretained(this)));
+  if (omnibox::IsDynamicAimFulfillmentEnabledForOmnibox()) {
+    composebox_handler_->OptInToDynamicAimFulfillment();
+  }
 
-  // If presenter delegate is connected, set the delegate in the handler so the
-  // handler can notify the delegate when there are embedded permissions prompt
-  // changes. Otherwise, once the presenter delegate connects itself, connect
-  // the two there instead. `composebox_handler_` is used since composebox page
-  // handler is where PEPC mojo call lives.
-  if (presenter_delegate_) {
-    composebox_handler_->set_delegate(presenter_delegate_);
+  // If the searchbox handler delegate is connected, set the delegate in the
+  // handler so the handler can notify the delegate when there are embedded
+  // permissions prompt changes. Otherwise, once the delegate connects itself,
+  // connect the two there instead. `composebox_handler_` is used since
+  // composebox page handler is where PEPC mojo call lives.
+  if (searchbox_handler_delegate_) {
+    composebox_handler_->set_delegate(searchbox_handler_delegate_);
   }
 }
 
@@ -554,6 +574,25 @@ void OmniboxPopupUI::OnLensIconShown(ui::TrackedElement* element) {
   }
 }
 
+void OmniboxPopupUI::EnterAimMode() {
+  if (auto* input_state_model = GetComposeboxInputStateModel()) {
+    input_state_model->EnterAimMode();
+  }
+}
+
+contextual_search::InputStateModel*
+OmniboxPopupUI::GetComposeboxInputStateModel() {
+  if (composebox_handler_) {
+    return composebox_handler_->input_state_model();
+  }
+  auto* session_handle = GetOrCreateContextualSessionHandle();
+  return session_handle
+             ? ContextualSearchboxHandler::GetOrCreateInputStateModelForSession(
+                   web_ui()->GetWebContents(), *session_handle)
+                   .get()
+             : nullptr;
+}
+
 ContextualSearchboxHandler* OmniboxPopupUI::GetContextualSearchboxHandler() {
   if (composebox_handler_) {
     return composebox_handler_.get();
@@ -572,7 +611,7 @@ OmniboxPopupUI::GetOrCreateContextualSessionHandle() {
           contextual_search::ContextualSearchSource::kOmnibox,
           lens::LensOverlayInvocationSource::kOmniboxContextualQuery);
       shared_session_handle_->CheckSearchContentSharingSettings(
-          Profile::FromWebUI(web_ui())->GetPrefs());
+          profile_->GetPrefs());
     }
   }
   return shared_session_handle_.get();
@@ -582,8 +621,9 @@ void OmniboxPopupUI::ClearContextualSessionHandle() {
   shared_session_handle_.reset();
 }
 
-void OmniboxPopupUI::SetPresenterDelegate(OmniboxPopupPresenterBase* delegate) {
-  presenter_delegate_ = delegate;
+void OmniboxPopupUI::SetSearchboxHandlerDelegate(
+    SearchboxHandler::Delegate* delegate) {
+  searchbox_handler_delegate_ = delegate;
 
   // If the handler is initialized already, set the delegate in the handler so
   // the handler can notify the delegate when there are embedded permissions
@@ -591,6 +631,61 @@ void OmniboxPopupUI::SetPresenterDelegate(OmniboxPopupPresenterBase* delegate) {
   // there instead. `composebox_handler_` is used since composebox page handler
   // is where PEPC mojo call lives.
   if (composebox_handler_) {
-    composebox_handler_->set_delegate(presenter_delegate_);
+    composebox_handler_->set_delegate(searchbox_handler_delegate_);
   }
+}
+
+void OmniboxPopupUI::DetachFromWindow() {
+  if (omnibox_handler_) {
+    // The full WebUI popup's handler is bound to one window.
+    CHECK(!omnibox::ShouldUseWebUIOmniboxFullHandler());
+    static_cast<WebuiOmniboxHandler*>(omnibox_handler_.get())
+        ->DetachFromOmniboxController();
+  }
+  if (popup_handler_) {
+    popup_handler_->DetachFromOmniboxController();
+  }
+  if (composebox_handler_) {
+    static_cast<OmniboxComposeboxHandler*>(composebox_handler_.get())
+        ->DetachFromOmniboxController();
+  }
+  if (popup_aim_handler_) {
+    popup_aim_handler_->clear_cached_draft_text();
+  }
+  // Attachments and tab context in the session come from the old window.
+  ClearContextualSessionHandle();
+  // Leaves no pointer into the old window, which may close before the popup
+  // is attached to another one.
+  OmniboxPopupWebContentsHelper::GetOrCreateForWebContents(
+      web_ui()->GetWebContents())
+      ->set_omnibox_controller(nullptr);
+}
+
+void OmniboxPopupUI::AttachToWindow(OmniboxController* omnibox_controller) {
+  CHECK(omnibox_controller);
+  // The composebox handler and client read the controller from the helper.
+  OmniboxPopupWebContentsHelper::GetOrCreateForWebContents(
+      web_ui()->GetWebContents())
+      ->set_omnibox_controller(omnibox_controller);
+  if (omnibox_handler_) {
+    static_cast<WebuiOmniboxHandler*>(omnibox_handler_.get())
+        ->AttachToOmniboxController(omnibox_controller);
+  }
+  if (popup_handler_) {
+    popup_handler_->AttachToOmniboxController(omnibox_controller);
+  }
+  if (composebox_handler_) {
+    static_cast<OmniboxComposeboxHandler*>(composebox_handler_.get())
+        ->AttachToOmniboxController(omnibox_controller);
+  }
+}
+
+bool OmniboxPopupUI::CanMoveToAnotherWindow() const {
+  if (popup_aim_handler_ && popup_aim_handler_->preserve_context_on_close()) {
+    return false;
+  }
+  if (omnibox_handler_ && omnibox_handler_->IsDriveUploadPending()) {
+    return false;
+  }
+  return !composebox_handler_ || !composebox_handler_->IsDriveUploadPending();
 }

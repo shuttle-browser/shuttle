@@ -9,7 +9,6 @@
 <translation id="1013952917065545813">Anda boleh kembali ke sini untuk membuka semula tab yang baru anda tutup</translation>
 <translation id="1016495303386450659">Item dikemas kini</translation>
 <translation id="1018804590490383958">Imbas dan autolengkap</translation>
-<translation id="1019990162050689579">Aktiviti Apl Gemini</translation>
 <translation id="102471647093736603">Tekan dan tahan untuk mengalihkan bar alamat</translation>
 <translation id="102645702181682900">Tugasan dimulakan</translation>
 <translation id="102916930470544692">Kunci laluan</translation>
@@ -40,6 +39,7 @@
 <translation id="1085677983426914530"><ph name="FILENAME" /> tidak dapat dibuka</translation>
 <translation id="1086486568852410168">Cari dengan Google Lens</translation>
 <translation id="1095093219235104018">Cari dan isi dengan Gemini</translation>
+<translation id="1096245844813536669">Menyerahkan carian anda secara automatik apabila anda berhenti bercakap</translation>
 <translation id="1096992026380844478">Tetapan penyegerakan anda akan dipulihkan berdasarkan sandaran terakhir anda. <ph name="BEGIN_LINK" />Lihat item yang boleh anda segerakkan<ph name="END_LINK" /></translation>
 <translation id="1103523840287552314">Sentiasa terjemahkan <ph name="LANGUAGE" /></translation>
 <translation id="1110772719190051587">Buka kunci dengan Face ID</translation>
@@ -50,6 +50,7 @@
 <translation id="1122068467107743258">Tempat kerja</translation>
 <translation id="1126696498560056882">Urus akaun pada peranti ini</translation>
 <translation id="1126809382673880764">Tidak melindungi anda daripada laman web, muat turun dan sambungan yang berbahaya. Anda akan mendapat perlindungan Penyemakan Imbas Selamat, jika tersedia, dalam perkhidmatan Google yang lain, seperti Gmail dan Carian.</translation>
+<translation id="112943553659469376">"<ph name="PROMPT" />"</translation>
 <translation id="1133418583142946603">Tambah tab semasa</translation>
 <translation id="1136104150802877429">Paparkan ulasan produk</translation>
 <translation id="1142371195993008685">Matikan pemberitahuan untuk <ph name="FEATURE_NAME" /></translation>
@@ -360,6 +361,7 @@
 <translation id="2015722694326466240">Untuk melihat kata laluan, mula-mula anda mesti menetapkan kod laluan pada peranti anda.</translation>
 <translation id="201759455285471444">Kembangkan kumpulan tab.</translation>
 <translation id="2022431790688770637">Urus cadangan Gemini</translation>
+<translation id="2023265063803387188">Gemini tidak tersedia dalam Mod inkognito</translation>
 <translation id="2031515492007104071">Level Up</translation>
 <translation id="2044394949148788042">Buka grid tab</translation>
 <translation id="2044681667265133332">Akaun <ph name="USER_EMAIL" /> diurus oleh <ph name="HOSTED_DOMAIN" />, yang boleh melihat sesetengah maklumat. <ph name="BEGIN_LINK" />Ketahui lebih lanjut<ph name="END_LINK" /></translation>
@@ -392,7 +394,6 @@
 <translation id="2139867232736819575">Cari Teks yang Anda Salin</translation>
 <translation id="2140913838150159519">Sematkan tab</translation>
 <translation id="2147127444698817042">Hanya tersedia pada iPhone</translation>
-<translation id="2148326276832455306">Sembang disemak dan akan digunakan untuk meningkatkan Google AI. Anda boleh <ph name="BEGIN_LINK" />mengurus aktiviti anda<ph name="END_LINK" />, termasuk maklumat tentang lokasi anda. <ph name="BEGIN_LINK" />Ketahui pilihan anda dengan lebih lanjut<ph name="END_LINK" />.</translation>
 <translation id="2148799636999124959">Log masuk ke laman dan apl dengan pantas menggunakan kata laluan anda yang disimpan.</translation>
 <translation id="2149968176347646218">Sambungan tidak selamat</translation>
 <translation id="2149973817440762519">Edit Penanda Halaman</translation>
@@ -458,7 +459,6 @@
 <translation id="2327445548174191329">Daripada <ph name="DEVICE_NAME" /></translation>
 <translation id="2330607597130465898">Tiada perlindungan</translation>
 <translation id="233375395665273385">Padamkan dan log keluar</translation>
-<translation id="2340966584724330791">Google mengumpulkan sembang anda dan perkara yang anda kongsi dengan Gemini (seperti fail, video, skrin dan foto). Google juga mengumpulkan maklum balas anda, maklumat daripada laman web yang anda lawati dengan Gemini, penggunaan produk dan maklumat lokasi (termasuk lokasi umum peranti anda, alamat IP atau alamat Rumah atau Tempat Kerja dalam Google Account anda).</translation>
 <translation id="2350463587705616331">Warna latar sepia</translation>
 <translation id="2351097562818989364">Tetapan terjemahan anda telah ditetapkan semula.</translation>
 <translation id="2353784052777482798">{COUNT,plural, =1{Anda boleh menyimpan kata laluan anda untuk {DOMAIN_ONE} dalam Google Account, {EMAIL}.}=2{Anda boleh menyimpan kata laluan anda untuk {DOMAIN_ONE} dan{DOMAIN_TWO} dalam Google Account anda, {EMAIL}.}=3{Anda boleh menyimpan kata laluan anda untuk {DOMAIN_ONE}, {DOMAIN_TWO} dan {OTHER_DOMAINS_COUNT} yang lain dalam Google Account anda {EMAIL}.}other{Anda boleh menyimpan kata laluan anda untuk {DOMAIN_ONE}, {DOMAIN_TWO} dan {OTHER_DOMAINS_COUNT} yang lain dalam Google Account anda {EMAIL}.}}</translation>
@@ -508,6 +508,7 @@
 <translation id="2496180316473517155">Sejarah penyemakan imbas</translation>
 <translation id="2496626742194544812">Pergi ke Tab Pertama</translation>
 <translation id="2499505845365628575">Anda boleh menemukan semua sejarah penyemakan imbas anda daripada <ph name="HISTORY_BUTTON_ACCESSIBILITY_LABEL" />.</translation>
+<translation id="2499948218922929716">Dapatkan pemberitahuan tentang kemaskinian keselamatan, tema tersuai dan pelbagai lagi.</translation>
 <translation id="251033673027346551">Lawati Google Wallet untuk mengurus <ph name="BEGIN_LINK" />pilihan data dan privasi<ph name="END_LINK" />.</translation>
 <translation id="2511117522375201202">Anda mempunyai <ph name="NUMBER_OF_PASSWORDS" /> kata laluan yang terjejas yang boleh mendedahkan keselamatan anda kepada risiko.</translation>
 <translation id="2512709994717613803">Tahap <ph name="LEVEL_NUMBER" /></translation>
@@ -518,6 +519,7 @@
 <translation id="2524699375503213836">Bawa data anda daripada Safari</translation>
 <translation id="2526166285241366046">Simpan kata laluan</translation>
 <translation id="2529021024822217800">Buka Semua</translation>
+<translation id="2536421147135705892">Benarkan Geolokasi?</translation>
 <translation id="2536991091671391962">Anda boleh menggunakan kata laluan yang disimpan pada mana-mana peranti. Kata laluan tersebut disimpan pada Google Password Manager untuk <ph name="EMAIL" />.</translation>
 <translation id="2538103551183528357">Disembunyikan, kata laluan</translation>
 <translation id="2538705697765638552">Simpan maklumat anda dan selesaikan tugasan dengan lebih pantas, seperti mengisi borang merentas produk Google. Anda boleh mengurus maklumat anda dalam Google Wallet untuk <ph name="USER_EMAIL" />.</translation>
@@ -671,6 +673,7 @@
 <translation id="3038136505713492417">Sahkan identiti anda untuk menggunakan kunci laluan pada peranti ini</translation>
 <translation id="3039671569659952257">Padamkan folder</translation>
 <translation id="3041835740069544003">Kini Chrome boleh mengesan dan mengisi lebih banyak borang dengan pemahaman borang yang lebih pintar. Untuk melakukan tindakan ini, kandungan halaman dan URL boleh diproses dalam ruang privasi pada awan. Urus dalam tetapan.</translation>
+<translation id="3042118633250374317">Google menggunakan sejarah anda untuk menyediakan perkhidmatan, melindungi Google, pengguna dan orang ramai, serta membangunkan dan meningkatkan perkhidmatan dengan bantuan jurusemak. Jangan masukkan maklumat yang tidak mahu disemak atau digunakan.</translation>
 <translation id="3050988301648974170">Buka Semakan Kata Laluan</translation>
 <translation id="3053332585453689122">Menghantar URL yang anda lawati dan sedikit sampel kandungan halaman, muat turun, aktiviti sambungan dan maklumat sistem kepada Penyemakan Imbas Selamat Google untuk disemak jika sampel tersebut berbahaya.</translation>
 <translation id="3055102495753300780">Storan maklumat</translation>
@@ -742,7 +745,6 @@
 <translation id="3265736395246760288">Log masuk dengan lebih pantas daripada mana-mana peranti anda yang disegerakkan.</translation>
 <translation id="3268166994745151153">Hal ini bermakna anda akan kehilangan kemajuan semasa anda</translation>
 <translation id="3272527697863656322">Batal</translation>
-<translation id="3272955648592358996">Data anda meningkatkan Google AI</translation>
 <translation id="3273510436356991673">Sesuaikan skrin utama</translation>
 <translation id="327455571215090823">Autolengkap yang lebih pintar, kekal peribadi</translation>
 <translation id="3277021493514034324">Alamat tapak disalin</translation>
@@ -852,6 +854,7 @@
 <translation id="3641456520301071208">Laman boleh meminta lokasi anda</translation>
 <translation id="3642060527569456384">Kumpulan tab disimpan dan dikemaskinikan secara automatik merentas semua peranti anda.</translation>
 <translation id="3643338347976071250">{count,plural, =1{{count} kata laluan disimpan pada peranti ini sahaja. Untuk menggunakan kata laluan ini pada peranti anda yang lain, simpan kata laluan dalam Google Account anda, {email}.}other{{count} kata laluan disimpan pada peranti ini sahaja. Untuk menggunakan kata laluan ini pada peranti anda yang lain, simpan kata laluan dalam Google Account anda, {email}.}}</translation>
+<translation id="3657176844107584515"><ph name="EMAIL" />, keahlian Google.</translation>
 <translation id="3659297405161482746">Tiada kaedah pembayaran ditemukan</translation>
 <translation id="3662966164093827811">{count,plural, =1{1 dipilih}other{# dipilih}}</translation>
 <translation id="3668035568083954765">Lindungi privasi anda dan kekal selamat</translation>
@@ -919,7 +922,6 @@
 <translation id="3888863481921783344">Ini akan digunakan untuk menunjukkan kepada anda kenalan yang mungkin diundang ke acara anda.</translation>
 <translation id="3891414008432200754">Harga</translation>
 <translation id="3892144330757387737">Anda dapat menemukan sejarah anda di sini</translation>
-<translation id="3892695492576181257">Apabila Simpan Aktiviti dihidupkan, aktiviti anda disimpan dalam Aktiviti Apl Gemini selama 18 bulan yang boleh anda tukar kepada 3 atau 36 bulan. Google menggunakan aktiviti anda untuk membangunkan dan meningkatkan perkhidmatan Google (termasuk model Gemini) serta untuk melindungi Google, pengguna Google dan orang awam dengan bantuan jurusemak. Data yang disemak oleh penyedia perkhidmatan diputuskan sambungan daripada akaun anda dan disimpan selama 3 tahun.</translation>
 <translation id="3893858854379998374">Untuk menyimpan penanda halaman dalam akaun anda, padamkan penanda halaman anda yang tidak digunakan</translation>
 <translation id="3897092660631435901">Menu</translation>
 <translation id="3904270275864974753">Edit karusel</translation>
@@ -949,12 +951,14 @@
 <translation id="3955740319737378355">Selesai</translation>
 <translation id="3955822496205734389">Anda mempunyai kata laluan lemah.</translation>
 <translation id="3957016963627617921">Lakukan lebih banyak perkara dengan Gemini dalam Chrome</translation>
+<translation id="3957737662589242353"><ph name="NAME" />, <ph name="EMAIL" />, keahlian Google.</translation>
 <translation id="3958312024468322930">Seret ikon tersebut kepada dok pada bahagian bawah Skrin Utama anda</translation>
 <translation id="3962326069546168954">Simpan</translation>
 <translation id="3967327056943561740">Penanda halaman</translation>
 <translation id="3967822245660637423">Muat turun selesai</translation>
 <translation id="3973560090698854095">Langkah ini memadamkan alamat yang disimpan dalam Google Account <ph name="USER_EMAIL" /> anda.</translation>
 <translation id="398604237578616937">Log masuk sebagai <ph name="USER_EMAIL" />. Buka menu akaun.</translation>
+<translation id="3986082989454912832">Jawab</translation>
 <translation id="3986739045730058129">Akses tab</translation>
 <translation id="3992684624889376114">Perihal halaman ini</translation>
 <translation id="3993594519743675442">Sembunyikan Tetapkan Peringatan</translation>
@@ -1107,7 +1111,6 @@
 <translation id="4470766488397113689">Apakah perkara yang mahu anda usahakan?</translation>
 <translation id="4471472356135655769">Tidak dapat mengeksport kata laluan</translation>
 <translation id="4472575034687746823">Bermula</translation>
-<translation id="4473565697543262065">Tindakan ini memadamkan maklumat yang dipilih yang disimpan pada peranti ini dan dalam Google Account anda <ph name="USER_EMAIL" /></translation>
 <translation id="4473608001744970767">Sembunyikan Jejak Harga</translation>
 <translation id="4474142134969976028">Tiada hasil carian yang sepadan</translation>
 <translation id="4474494258097106883">Dibina untuk iPhone Anda</translation>
@@ -1210,6 +1213,7 @@
 <translation id="479628432297359449">Hentikan muat turun?</translation>
 <translation id="4796496140132859135">Kumpulan tab. Dikuncupkan.</translation>
 <translation id="4800912004582762296">Mengklik</translation>
+<translation id="4800930308997591052">Beralih kepada <ph name="EMAIL" /> untuk berkongsi tab antara peranti anda dengan lancar dan mendapatkan kata laluan, penanda halaman dan pelbagai lagi daripada Google Account anda.</translation>
 <translation id="4802185666270672526">Sembunyikan Minta Laman Desktop</translation>
 <translation id="4803185665210547709">Diurus oleh organisasi anda.
 <ph name="BEGIN_LINK" />Ketahui Lebih Lanjut<ph name="END_LINK" /></translation>
@@ -1218,6 +1222,7 @@
 <translation id="4808744395915275922">Kemaskinian</translation>
 <translation id="4813345808229079766">Sambungan</translation>
 <translation id="4821595350501541683">Tab telah ditutup dan data semakan imbas dipadamkan</translation>
+<translation id="4821645169621230110">Cara sejarah anda digunakan</translation>
 <translation id="4823322556950229674">Anda boleh menekan dan menahan untuk mengalihkan bar alamat dan butang kembali kepada bahagian bawah</translation>
 <translation id="4824480232751123840">Kelantangan</translation>
 <translation id="4824497107140370669">{count,plural, =0{{domain}}=1{{domain} dan 1 yang lain}other{{domain} dan {count} yang lain}}</translation>
@@ -1245,6 +1250,7 @@
 <translation id="4877597489778380935">Ingatkan saya kemudian</translation>
 <translation id="4881695831933465202">Buka</translation>
 <translation id="4883766694719903356">Grid Tab Inkognito</translation>
+<translation id="4884205780547482830">Data anda membantu kami melatih AI generatif</translation>
 <translation id="4884937942297374058">Perlindungan dipertingkat dimatikan</translation>
 <translation id="4887391901725877182">Sari Kata</translation>
 <translation id="488785315393301722">Tunjukkan Butiran</translation>
@@ -1331,6 +1337,7 @@
 <translation id="5128788795241319992">Terokai menu baharu</translation>
 <translation id="5132942445612118989">Segerakkan kata laluan, sejarah &amp; pelbagai lagi pada semua peranti</translation>
 <translation id="5137568953923142260">Benarkan sekali</translation>
+<translation id="5139344197062265975">Gunakan mikrofon anda untuk bersembang dengan Gemini. Apabila anda bercakap dengan Gemini, audio akan disimpan dalam Sejarah Gemini (jika dihidupkan). Data anda tidak digunakan untuk meningkatkan model AI generatif</translation>
 <translation id="5141363746588976328">Sembunyikan kad penurunan harga pada tab anda</translation>
 <translation id="514154868070499296">Fon: <ph name="FONT" /></translation>
 <translation id="5145331760738811130">Tinggalkan Penukar Tab</translation>
@@ -1428,9 +1435,7 @@
 <translation id="5443636120437209490">Penyemakan imbas yang lebih baik secara lalai</translation>
 <translation id="5444892875087332195">Penanda halaman</translation>
 <translation id="5447973833955560753">Kata laluan pemulihan</translation>
-<translation id="5448623529214315261">Foto yang disimpan <ph name="INDEX" /></translation>
 <translation id="5452354193031718372">Gunakan kata laluan kukuh:</translation>
-<translation id="5453088693079603292">Jenis aktiviti yang dikumpulkan</translation>
 <translation id="5454211924362324495">Untuk menghalang orang lain daripada menggunakan kata laluan anda, <ph name="BEGIN_LINK" />tukar kata laluan pada <ph name="WEBSITE" /><ph name="END_LINK" /></translation>
 <translation id="5457082343331641453">Tambahkan pada carian anda</translation>
 <translation id="5457226814769348910">Buka Versi Luar Talian</translation>
@@ -1544,7 +1549,6 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="5801568494490449797">Keutamaan</translation>
 <translation id="5803566855766646066">Adakah anda pasti anda mahu membuang kad baharu ini?</translation>
 <translation id="5804241973901381774">Kebenaran</translation>
-<translation id="58081802114142635">Aktiviti anda meningkatkan Google AI</translation>
 <translation id="5817176759448082654">Semakan Kata Laluan</translation>
 <translation id="5818161931099046557">Edit dalam Google Account</translation>
 <translation id="5819208479324046259">Diurus oleh <ph name="MANAGER" />. <ph name="BEGIN_LINK" />Ketahui lebih lanjut<ph name="END_LINK" /></translation>
@@ -1593,7 +1597,6 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="5971459446352190251">Carian Kod QR</translation>
 <translation id="5971872012779224351">{count,plural, =1{1 penanda halaman dipadamkan}other{{count} penanda halaman dipadamkan}}</translation>
 <translation id="5972844218283131174">Nyahpilih semua</translation>
-<translation id="597482816780655631">Gemini ialah AI dan mungkin melakukan kesilapan, termasuk tentang orang. Sesetengah kandungan mungkin hanya sesuai untuk sesetengah orang. Sembang disemak dan akan digunakan untuk meningkatkan Google AI. <ph name="BEGIN_LINK" />Ketahui perihal pilihan anda<ph name="END_LINK" />. <ph name="BEGIN_LINK" />Syarat<ph name="END_LINK" /> dan <ph name="BEGIN_LINK" />Notis Privasi<ph name="END_LINK" /> kami digunakan.</translation>
 <translation id="5976160379964388480">Lain-lain</translation>
 <translation id="5977976211062815271">Pada peranti ini</translation>
 <translation id="5986043348928676121">Seterusnya</translation>
@@ -1604,6 +1607,7 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="6000893618966378846">"Padamkan data semakan imbas" selesai!</translation>
 <translation id="6004988584831654445">Anda sudah sedia! Dapatkan pemberitahuan apabila tugasan baharu tiba.</translation>
 <translation id="6006672969046233841">Tab Baharu</translation>
+<translation id="6006758170939001741"><ph name="BEGIN_LINK" />Syarat<ph name="END_LINK" />, <ph name="BEGIN_LINK" />Syarat Lokasi Korea<ph name="END_LINK" /> dan <ph name="BEGIN_LINK" />Notis Privasi<ph name="END_LINK" /> kami digunakan. Sembang disemak dan digunakan untuk melatih model AI generatif. Gemini ialah AI dan mungkin melakukan kesilapan, termasuk tentang orang. Sesetengah kandungan mungkin hanya sesuai untuk sesetengah orang. Anda boleh <ph name="BEGIN_LINK" />mengurus sejarah anda<ph name="END_LINK" />, termasuk <ph name="BEGIN_LINK" />maklumat tentang lokasi anda<ph name="END_LINK" />. <ph name="BEGIN_LINK" />Ketahui perihal pilihan anda dengan lebih lanjut<ph name="END_LINK" /></translation>
 <translation id="6011308810877101166">Tingkatkan cadangan carian</translation>
 <translation id="6012140227487808125">Menyulitkan...</translation>
 <translation id="6014801569448771146">Semak kata laluan anda</translation>
@@ -1611,7 +1615,6 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="6027945736510816438">Adakah anda maksudkan <ph name="WEBSITE" />?</translation>
 <translation id="6032845897905314562">ciri baharu</translation>
 <translation id="6038823991892265570">Urus storan Google</translation>
-<translation id="6039429417015973673"><ph name="TITLE" />, <ph name="PUBLISHER_INFORMATION" />, <ph name="PUBLICATION_DATE" /></translation>
 <translation id="6040143037577758943">Tutup</translation>
 <translation id="6042308850641462728">Lagi</translation>
 <translation id="6045460247888249350">Tambahkan tajuk</translation>
@@ -1700,7 +1703,6 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="628251768213143684">Anda boleh mengurus data yang disimpan dalam Google Account anda pada bila-bila masa</translation>
 <translation id="6284652193729350524">Tawarkan untuk menterjemah <ph name="LANGUAGE" /></translation>
 <translation id="6293101329759844770">Untuk menghidupkan Penyemakan Imbas Selamat, buka <ph name="BEGIN_LINK" />Perkhidmatan Google<ph name="END_LINK" /> dan ketik Penyemakan Imbas Selamat.</translation>
-<translation id="6295140892595702619">Gunakan mikrofon anda untuk bersembang dengan Gemini. Apabila anda bercakap dengan Gemini, audio akan disimpan dalam Aktiviti Apl Gemini (jika dihidupkan). Data anda tidak digunakan untuk meningkatkan model AI generatif</translation>
 <translation id="6295751040240588413">Nama panggilan kad tidak sah</translation>
 <translation id="629730747756840877">Akaun</translation>
 <translation id="6301104306974789820">Dapatkan pemberitahuan penjejakan harga</translation>
@@ -1820,7 +1822,6 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="6609890790934458793">Kata laluan untuk <ph name="WEBSITE" />, <ph name="SECOND_WEBSITE" />dan <ph name="THIRD_WEBSITE" /> akan dipadamkan. Akaun anda tidak akan dipadamkan.</translation>
 <translation id="661266467055912436">Meningkatkan keselamatan untuk anda dan semua orang yang melayari web.</translation>
 <translation id="6612912757320004438">Benarkan Pemberitahuan Tab…</translation>
-<translation id="6613372200395638275">Untuk memberikan bantuan yang disesuaikan, Gemini berkongsi sesetengah data anda (seperti sebahagian daripada sembang anda, lokasi dan maklumat lain yang berkaitan) dengan perkhidmatan Google yang lain, seperti Maps dan Flights. Perkhidmatan ini mungkin menggunakan maklumat tersebut untuk meningkatkan prestasi, walaupun anda memadamkan aktiviti Apl Gemini anda kemudian. Ketahui maklumat lanjut dalam <ph name="BEGIN_LINK" />Hab Privasi Apl Gemini<ph name="END_LINK" />.</translation>
 <translation id="6617761071025228250">Kosongkan teks</translation>
 <translation id="6619015782482868078">Tema aqua</translation>
 <translation id="6620279676667515405">Batal</translation>
@@ -1845,6 +1846,7 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="6670729408462528018">Galeri</translation>
 <translation id="6671294218820966278">Tandai sebagai Dibaca</translation>
 <translation id="6672697278890207089">Masukkan ungkapan laluan anda</translation>
+<translation id="6673666785752667010">Tutup AI Mode</translation>
 <translation id="6674917187596384849">Anda boleh menukar antara akaun dengan mudah</translation>
 <translation id="6676349090816247042">Pilihan log masuk.</translation>
 <translation id="667999046851023355">Dokumen</translation>
@@ -1852,6 +1854,7 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="6682680306647339111">Peringatan dialih keluar</translation>
 <translation id="6683022854667115063">Fon kepala</translation>
 <translation id="6684262542644248484">Log masuk ke laman web</translation>
+<translation id="668475086425500258">tetapan laman</translation>
 <translation id="6685259053455152195">Pintasan untuk mengubah suai tetapan dengan pantas dan menggunakan ciri daripada bar alamat.</translation>
 <translation id="6689342293888598653">Warna latar putih</translation>
 <translation id="6689685206615181381">Hanya mod Inkognito tersedia</translation>
@@ -1867,7 +1870,6 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="672735642903863329">Dapatkan penanda halaman, kata laluan dan pelbagai lagi pada semua peranti anda.</translation>
 <translation id="6729493062119577923">Aktiviti kumpulan tab kongsi</translation>
 <translation id="6732087373923685049">kamera</translation>
-<translation id="6736243959894955139">Alamat</translation>
 <translation id="6746338529702829275">Semak data akaun anda</translation>
 <translation id="6749473226660745022">Foto</translation>
 <translation id="6750456911389438250">{count,plural, =1{{count} item sejarah diimport}other{{count} item sejarah diimport}}</translation>
@@ -1896,6 +1898,7 @@ Serah mestilah turut didayakan dalam bahagian Umum pada Tetapan dan peranti anda
 <translation id="6830728435402077660">Tidak selamat</translation>
 <translation id="6831043979455480757">Terjemah</translation>
 <translation id="6842136130964845393">Untuk memastikan anda dapat mengakses kata laluan anda yang disimpan pada bila-bila masa, sahkan itu anda</translation>
+<translation id="6843744036364481304">Sejarah sembang yang disimpan</translation>
 <translation id="6844773122575789617">Hidupkan AI Mode</translation>
 <translation id="6851516051005285358">Minta Tapak Versi Komputer</translation>
 <translation id="6857446173140146664">Padamkan Latar</translation>
@@ -1951,7 +1954,6 @@ Untuk meneruskan proses daripada komputer anda, beralih kepada <ph name="OTHER_E
 <translation id="6979737339423435258">Sepanjang masa</translation>
 <translation id="6980507581230208647">Tema ros</translation>
 <translation id="6983306615164277634">Anda juga boleh sentuh dan tahan bar alamat untuk menukar kedudukan.</translation>
-<translation id="6987201788018524855">Terokai ciri berguna yang telah anda terlepas</translation>
 <translation id="6989636517316575338">Tanya tentang mana-mana halaman</translation>
 <translation id="6990519590575500580">Facetime</translation>
 <translation id="6998236305642926573">Semua Tugasan</translation>
@@ -1980,7 +1982,6 @@ Untuk meneruskan proses daripada komputer anda, beralih kepada <ph name="OTHER_E
 <translation id="7091023926159231962">{count,plural, =1{Tidak dapat mengimport {count} kata laluan}other{Tidak dapat mengimport {count} kata laluan}}</translation>
 <translation id="7095110968493193530">Kepada Google Password Manager untuk <ph name="EMAIL" /></translation>
 <translation id="7097046145876891318">Dalam bar alamat, ketik sejarah harga untuk melihat perubahan harga dari semasa ke semasa</translation>
-<translation id="7098554251807199977">Perbualan anda dengan Gemini atau <ph name="BEGIN_LINK" />data Google Workspace<ph name="END_LINK" /> anda tidak akan disemak atau digunakan untuk meningkatkan model AI generatif.</translation>
 <translation id="7102005569666697658">Memuat turun… <ph name="FILE_SIZE" /></translation>
 <translation id="7104701424653979232">Menu → Tetapan → Kaedah pembayaran</translation>
 <translation id="7108338896283013870">Sembunyikan</translation>
@@ -1990,7 +1991,6 @@ Untuk meneruskan proses daripada komputer anda, beralih kepada <ph name="OTHER_E
 <translation id="7128693485119315539">Organisasi anda mungkin perlu melihat dan mengurus data penyemakan imbas yang dikaitkan dengan akaun terurus anda, seperti sejarah penyemakan imbas dan kata laluan anda.</translation>
 <translation id="713215255510512027"><ph name="FILENAME" /> (<ph name="FILESIZE" />)</translation>
 <translation id="7136892417564438900">Kamera tidak tersedia</translation>
-<translation id="7138678301420049075">Lain-lain</translation>
 <translation id="7140355148730164340"><ph name="EMAIL" />. <ph name="AI_TIER" />.</translation>
 <translation id="7141960840225504692">Tab anda akan ditutup dan data semakan imbas dipadamkan</translation>
 <translation id="714291438898585119">Dibintangi</translation>
@@ -2021,6 +2021,7 @@ Untuk meneruskan proses daripada komputer anda, beralih kepada <ph name="OTHER_E
 <translation id="7223134495231529579">Simpan pada Muat Turun</translation>
 <translation id="722339453342442311">Semak sekarang</translation>
 <translation id="7227235818314667565">Urus Perkongsian</translation>
+<translation id="7232376892719594461">Perbualan anda dengan Gemini atau <ph name="BEGIN_LINK" />data Google Workspace<ph name="END_LINK" /> anda tidak akan disemak atau digunakan untuk melatih model AI generatif.</translation>
 <translation id="7233006041370588369">Pilih kata laluan untuk diisi.</translation>
 <translation id="7238074332967840767">Keselamatan</translation>
 <translation id="723874023660911012">Tukar Profil</translation>
@@ -2035,6 +2036,7 @@ Untuk meneruskan proses daripada komputer anda, beralih kepada <ph name="OTHER_E
 <translation id="728025568708172005">Pengenalan</translation>
 <translation id="7280980607183752256">Fail ini tidak dapat diimport</translation>
 <translation id="7282197670900591579">Tema kuning sitron</translation>
+<translation id="7283937415134849498">Untuk memberikan bantuan yang disesuaikan, Gemini berkongsi sesetengah data anda (seperti sebahagian daripada sembang anda, lokasi dan maklumat lain yang berkaitan) dengan perkhidmatan Google yang lain, seperti Maps dan Flights. Perkhidmatan ini mungkin menggunakan maklumat tersebut untuk meningkatkan prestasi, walaupun anda memadamkan sejarah Gemini anda kemudian. Ketahui maklumat lanjut dalam <ph name="BEGIN_LINK" />Hab Privasi Apl Gemini<ph name="END_LINK" />.</translation>
 <translation id="7293429513719260019">Pilih bahasa</translation>
 <translation id="72961285530871072">Tindakan ini akan memadamkan kemajuan Level Up anda secara kekal dan data penggunaan ciri untuk Level Up tidak akan dihantar kepada Google untuk profil anda lagi.
 
@@ -2102,6 +2104,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="7486006552035434095">Pastikan peranti anda disegerakkan</translation>
 <translation id="7491131399623468277">Pergi ke Tetapan…</translation>
 <translation id="7491161827858509164">Untuk melihat fail yang telah anda muat turun sebelum ini, buka <ph name="BEGIN_LINK" />Fail<ph name="END_LINK" /></translation>
+<translation id="7496554840683586365">Laman ini cuba membuka App Store. Tindakan ini akan membawa anda keluar daripada Inkognito.</translation>
 <translation id="7498234416455752244">Teruskan mengedit</translation>
 <translation id="7500244509706269886">Borang autolengkap</translation>
 <translation id="750493650310597496">0 dipilih</translation>
@@ -2136,6 +2139,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="7596103009408415410">{COUNT,plural, =1{Tutup {COUNT} tab yang tidak aktif?}other{Tutup {COUNT} tab yang tidak aktif?}}</translation>
 <translation id="7598439272585186139">Dapatkan perlindungan lanjut</translation>
 <translation id="7600965453749440009">Jangan sekali-kali terjemahkan <ph name="LANGUAGE" /></translation>
+<translation id="760230853074995500">Sembang disemak dan digunakan untuk melatih model AI generatif. Anda boleh <ph name="BEGIN_LINK" />mengurus sejarah anda<ph name="END_LINK" />, termasuk <ph name="BEGIN_LINK" />maklumat tentang lokasi anda<ph name="END_LINK" />. <ph name="BEGIN_LINK" />Ketahui perihal pilihan anda dengan lebih lanjut<ph name="END_LINK" />.</translation>
 <translation id="7603308509262646847">Autoisi pemegang kad <ph name="NAME" /></translation>
 <translation id="7603852183842204213">Pop timbul disekat (<ph name="NUMBER_OF_BLOCKED_POPUPS" />)</translation>
 <translation id="7605594153474022051">Penyegerakan tidak berfungsi</translation>
@@ -2145,6 +2149,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="7618220760967055820">Pilih butang yang ditunjukkan pada bar alat</translation>
 <translation id="7620522820075868385">Batal</translation>
 <translation id="762078666799342162">Anda boleh melihat muat turun terdahulu anda dalam <ph name="BEGIN_LINK" />Fail<ph name="END_LINK" /></translation>
+<translation id="7636034359405891151">Sambung semula dari tempat anda berhenti pada komputer anda</translation>
 <translation id="7638584964844754484">Frasa laluan tidak betul</translation>
 <translation id="7639276194483401980">{COUNT,plural, =0{Kata laluan yang terjejas}=1{{COUNT} kata laluan yang terjejas}other{{COUNT} kata laluan yang terjejas}}</translation>
 <translation id="7640669552036055091">Tab daripada Android</translation>
@@ -2421,7 +2426,6 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="8439758443371991593">Sembunyikan Tambahkan pada Senarai Bacaan</translation>
 <translation id="8443986842926457191">URL melebihi 2048 aksara</translation>
 <translation id="8449869326050867919">Kata laluan dikongsi</translation>
-<translation id="8461708300275916315">Jika anda berumur bawah 18 tahun</translation>
 <translation id="8473815223723723001">Edit Imej dengan Gemini</translation>
 <translation id="8473863474539038330">Alamat dan pelbagai lagi</translation>
 <translation id="8474378002946546633">Benarkan pemberitahuan</translation>
@@ -2501,7 +2505,6 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="8672733398999596205">Dayakan Semua</translation>
 <translation id="8674716540979958118">Anda mempunyai kata laluan yang terjejas.</translation>
 <translation id="8679900250380464358">Tambahkan pada Senarai Bacaan</translation>
-<translation id="8680643216091361291">Tetapan <ph name="BEGIN_LINK" />Simpan Aktiviti<ph name="END_LINK" /> anda dimatikan secara lalai. Apabila Simpan Aktiviti dimatikan, Google menyimpan sembang anda selama 3 hari. Google menggunakan data yang disimpan untuk memastikan Apl Gemini berfungsi dengan betul, membantu untuk memastikan Apl Gemini selamat dan menggunakan maklum balas anda untuk menyelesaikan masalah. Anda boleh menghidupkan Simpan Aktiviti untuk membantu kami meningkatkan Google AI untuk semua orang.</translation>
 <translation id="8680787084697685621">Butiran log masuk akaun sudah lapuk.</translation>
 <translation id="868648444055742370">"<ph name="SITE_DOMAIN" />" tidak dibenarkan untuk mengakses mikrofon anda</translation>
 <translation id="8690752723634292147">Sahkan pemadaman</translation>
@@ -2533,6 +2536,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="8746155870861185046">Kongsi serlahan</translation>
 <translation id="8748678031495824833">Buka alatan AI pada halaman</translation>
 <translation id="8750037785291841318">Anda dapat menemukan tab anda di sini</translation>
+<translation id="8751126814549746156">Sejarah anda dipadamkan secara automatik selepas 18 bulan. Anda boleh menukar tempoh masa ini dalam Tetapan. Sembang yang disemak oleh penyedia perkhidmatan diasingkan daripada akaun anda dan disimpan hingga 3 tahun. Anda boleh <ph name="BEGIN_LINK" />mematikan<ph name="END_LINK" /> tetapan Sejarah anda pada bila-bila masa.</translation>
 <translation id="8756969031206844760">Kemas kini kata laluan?</translation>
 <translation id="8763613688786959833">Pergi ke Tab Terakhir</translation>
 <translation id="8766790350274092814">Kata laluan untuk <ph name="WEBSITE" /> dan <ph name="SECOND_WEBSITE" /> akan dipadamkan. Akaun anda tidak akan dipadamkan.</translation>
@@ -2559,7 +2563,6 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="882557203579758546">Cari dalam Halaman…</translation>
 <translation id="8829809207373502270">Kunci laluan ini tidak berfungsi lagi. Kunci laluan ini telah dipadamkan daripada <ph name="WEBSITE" /> dan akan dipadamkan daripada laman web ini tidak lama lagi. <ph name="BEGIN_LINK" />Perihal kunci laluan<ph name="END_LINK" /></translation>
 <translation id="8831208860914609320">Tutup semua butang yang tidak aktif</translation>
-<translation id="8831871601813227635"><ph name="BEGIN_LINK" />Syarat<ph name="END_LINK" />, <ph name="BEGIN_LINK" />Syarat Lokasi Korea<ph name="END_LINK" /> dan <ph name="BEGIN_LINK" />Notis Privasi<ph name="END_LINK" /> kami digunakan. Sembang disemak dan akan digunakan untuk meningkatkan Google AI. Gemini ialah AI dan mungkin melakukan kesilapan, termasuk tentang orang. Sesetengah kandungan mungkin hanya sesuai untuk sesetengah orang. Anda boleh <ph name="BEGIN_LINK" />mengurus aktiviti anda<ph name="END_LINK" />, termasuk maklumat tentang lokasi anda. <ph name="BEGIN_LINK" />Ketahui perihal pilihan anda dengan lebih lanjut<ph name="END_LINK" /></translation>
 <translation id="8837654851594567190">Isih mengikut penerbit</translation>
 <translation id="884351711508006491">Maklumat anda disimpan pada peranti anda.</translation>
 <translation id="8844136307393039959">Penurunan harga pada produk yang anda jejaki</translation>
@@ -2579,6 +2582,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="8893208530912252670">Video</translation>
 <translation id="890009681345348416">40+ kata laluan diisi secara automatik</translation>
 <translation id="8900845556227858314">Apl Penyemak Imbas</translation>
+<translation id="8903042868629070803">Jika anda berumur 18 tahun ke atas, Google juga menggunakan sejarah anda untuk <ph name="BEGIN_LINK" />melatih model AI generatif<ph name="END_LINK" />. Anda boleh <ph name="BEGIN_LINK" />mematikan ciri ini<ph name="END_LINK" /> untuk sembang masa hadapan pada bila-bila masa.</translation>
 <translation id="890565330728586731">Kembali</translation>
 <translation id="8907722425137681851">Cari dalam halaman…</translation>
 <translation id="8909135823018751308">Kongsi…</translation>
@@ -2606,6 +2610,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="8976382372951310360">Bantuan</translation>
 <translation id="8976414606286374109">Kad disimpan pada Google Account anda.</translation>
 <translation id="8981454092730389528">Kawalan Aktiviti Google</translation>
+<translation id="8987736167266086032">Sambung semula dari tempat anda berhenti</translation>
 <translation id="8988107725234939347"><ph name="WEBSITE_TITLE" />, laman yang disematkan</translation>
 <translation id="8989779557457435460">Kongsi tab semasa secara lalai</translation>
 <translation id="8990960056509724223">Fail tidak dapat disimpan disebabkan oleh dasar organisasi anda</translation>
@@ -2622,7 +2627,6 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="9039373489628511875">Lebar Jalur</translation>
 <translation id="9042363670218758847">Beralih kepada reka letak yang dibina untuk carian pantas</translation>
 <translation id="9042893549633094279">Privasi dan keselamatan</translation>
-<translation id="9044703854323320868">Mesej Gmail <ph name="INDEX" /></translation>
 <translation id="9055291197094969722">Buat kumpulan tab untuk mengatur tab anda yang terbuka dan kekal produktif</translation>
 <translation id="9055580485132823283">Anda akan memadamkan {password_count} kata laluan, {passkey_count} kunci laluan serta senarai laman &amp; apl yang anda pilih untuk tidak sekali-kali menyimpan log masuk. Mana-mana akaun yang anda buat untuk laman dan apl tidak akan dipadamkan.</translation>
 <translation id="9057030985451135243">Ketahui tentang kumpulan tab dikongsi</translation>
@@ -2631,6 +2635,7 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="9066097352053395362">Sembunyikan Edit Penanda Halaman</translation>
 <translation id="9070824521421603770">Anda akan dilog keluar dan tab akan ditutup</translation>
 <translation id="9072837124205571418">Kumpulan tab daripada semua peranti</translation>
+<translation id="9073322251019919253">Gemini ialah AI dan mungkin melakukan kesilapan, termasuk tentang orang. Sesetengah kandungan mungkin hanya sesuai untuk sesetengah orang. Sembang disemak dan digunakan untuk melatih model AI generatif. Anda boleh <ph name="BEGIN_LINK" />mengurus sejarah anda<ph name="END_LINK" />, termasuk <ph name="BEGIN_LINK" />maklumat tentang lokasi anda<ph name="END_LINK" />. <ph name="BEGIN_LINK" />Ketahui perihal pilihan anda<ph name="END_LINK" />. <ph name="BEGIN_LINK" />Syarat<ph name="END_LINK" /> dan <ph name="BEGIN_LINK" />Notis Privasi<ph name="END_LINK" /> kami digunakan.</translation>
 <translation id="9081058212938299310">Kemas kini kata laluan untuk <ph name="USERNAME" />?</translation>
 <translation id="908365381820697818">Kini anda boleh menemukan dan mengisi maklumat daripada Gmail dan pelbagai lagi</translation>
 <translation id="9083838294503912307">Hidupkan penyegerakan untuk melakukan penyegerakan dan pemperibadian pada semua peranti.</translation>
@@ -2640,12 +2645,14 @@ Anda boleh memulakan semula pada bila-bila masa.</translation>
 <translation id="9090979472668095374">Sebutkan kembali jawapan</translation>
 <translation id="9094033019050270033">Kemaskinikan kata laluan</translation>
 <translation id="9098541895599151034">Padamkan <ph name="NUMBER_OF_ACCOUNTS" /> Kata laluan?</translation>
+<translation id="909874878420399003">Serahan automatik</translation>
 <translation id="9099233023029360602">Tanya akaun yang mahu digunakan setiap kali</translation>
 <translation id="9099821309562615674">Pastikan teks yang mahu diterjemahkan jelas dan berada dalam bingkai.</translation>
 <translation id="9100610230175265781">Frasa laluan diperlukan</translation>
 <translation id="91023216973987714">Kaedah pembayaran</translation>
 <translation id="9106655997975673326">Daripada "<ph name="SOURCE_DEVICE" />"</translation>
 <translation id="9107664647686727385">Semak kata laluan yang terjejas</translation>
+<translation id="9115035712231910133">Imej {title} dilampirkan</translation>
 <translation id="9119764377203471454">Tidak dapat menambahkan lampiran</translation>
 <translation id="9124387962554796433">Google mungkin menggunakan sejarah anda untuk memperibadikan Carian dan perkhidmatan Google yang lain.</translation>
 <translation id="9124978074365039456">Beli, terjemahkan dan kenal pasti perkara yang anda lihat menggunakan kamera dan galeri foto anda</translation>

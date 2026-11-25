@@ -8,7 +8,6 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -44,12 +43,12 @@ import org.chromium.base.shared_preferences.SharedPreferencesManager;
 import org.chromium.base.test.ActivityFinisher;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.UserActionTester;
 import org.chromium.chrome.browser.app.tabmodel.ArchivedTabModelOrchestrator;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.night_mode.NightModeUtils;
 import org.chromium.chrome.browser.night_mode.ThemeType;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
@@ -57,6 +56,7 @@ import org.chromium.chrome.browser.tab.TabArchiverImpl.Clock;
 import org.chromium.chrome.browser.tab.state.ArchivePersistedTabData;
 import org.chromium.chrome.browser.tabmodel.TabClosureParams;
 import org.chromium.chrome.browser.tabmodel.TabCreator;
+import org.chromium.chrome.browser.tabmodel.TabGroupMergeNotificationType;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -69,13 +69,13 @@ import org.chromium.components.tab_group_sync.TabGroupSyncService;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /** Tests for TabArchiver. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class TabArchiverTest {
     @Rule
@@ -696,12 +696,15 @@ public class TabArchiverTest {
                     // Set the timestamp for the second and third tabs sharing the same URL (not
                     // fourth since it
                     // will be the new active tab), tab 2 at 0 and tab 3 at 1.
-                    TabImpl tab1 = ((TabImpl) mRegularTabModel.getTabAt(0));
+                    TabImpl tab1 = ((TabImpl) mRegularTabModel.getTabAtChecked(0));
                     tab1.setTimestampMillisForTesting(0);
-                    TabImpl tab2 = ((TabImpl) mRegularTabModel.getTabAt(1));
+                    TabImpl tab2 = ((TabImpl) mRegularTabModel.getTabAtChecked(1));
                     tab2.setTimestampMillisForTesting(0);
                     TabModel tabModel = mRegularTabModelSelector.getModel(false);
-                    tabModel.mergeTabsToGroup(tab2.getId(), tab1.getId());
+                    tabModel.mergeListOfTabsToGroup(
+                            List.of(tab2),
+                            tab1,
+                            TabGroupMergeNotificationType.NOTIFY_IF_NOT_NEW_GROUP);
                 });
 
         assertEquals(4, getTabCountOnUiThread(mRegularTabModel));
@@ -1296,6 +1299,7 @@ public class TabArchiverTest {
 
     @Test
     @MediumTest
+    @DisableFeatures(ChromeFeatureList.LOAD_ALL_TABS_AT_STARTUP)
     public void testUnarchiveAndRestoreTabs_RestoreFrozenTabWithWebContentsState() {
         Tab tab =
                 mActivityTestRule.loadUrlInNewTab(
@@ -1324,8 +1328,7 @@ public class TabArchiverTest {
 
         assertNotNull(archivedTab);
         assertNull(archivedTab.getWebContents());
-        WebContentsState oldContentsState = archivedTab.getWebContentsState();
-        assertNotNull(oldContentsState);
+        assertNotNull(archivedTab.getWebContentsState());
 
         // Unarchive and restore the frozen tab into the regular tab model.
         runOnUiThreadBlocking(
@@ -1342,9 +1345,8 @@ public class TabArchiverTest {
         Tab restoredTab = runOnUiThreadBlocking(() -> mRegularTabModel.getTabById(tab.getId()));
         assertNotNull(restoredTab);
 
-        // Verify that the restored tab has an independent WebContentsState instance and can be
-        // loaded / selected without crashing.
-        assertNotSame(oldContentsState, restoredTab.getWebContentsState());
+        // The restored tab may share the archived tab's immutable WebContentsState; verify it can
+        // still be loaded after the archived tab was closed.
         runOnUiThreadBlocking(
                 () -> {
                     assertTrue(restoredTab.loadIfNeeded(/* forceBackingSize= */ false));

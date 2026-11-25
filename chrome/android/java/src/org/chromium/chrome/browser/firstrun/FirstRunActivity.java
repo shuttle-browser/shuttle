@@ -16,8 +16,10 @@ import android.graphics.Color;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.LayoutInflater;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.ViewGroup;
 
 import androidx.annotation.CallSuper;
 import androidx.annotation.ColorInt;
@@ -41,6 +43,7 @@ import org.chromium.build.annotations.MonotonicNonNull;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.back_press.BackPressHelper;
 import org.chromium.chrome.browser.browser_controls.BrowserStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.customtabs.CustomTabActivity;
 import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
@@ -56,14 +59,19 @@ import org.chromium.chrome.browser.ui.default_browser_promo.DefaultBrowserPromoU
 import org.chromium.chrome.browser.ui.desktop_windowing.AppHeaderCoordinator;
 import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeUtils;
 import org.chromium.chrome.browser.ui.signin.DialogWhenLargeContentLayout;
-import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninMediator;
+import org.chromium.chrome.browser.ui.signin.fullscreen_signin.FullscreenSigninLoadPoint;
 import org.chromium.chrome.browser.ui.signin.history_sync.HistorySyncHelper;
 import org.chromium.chrome.browser.ui.system.StatusBarColorController;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetControllerFactory;
+import org.chromium.components.browser_ui.bottomsheet.ManagedBottomSheetController;
 import org.chromium.components.browser_ui.desktop_windowing.AppHeaderState;
 import org.chromium.components.browser_ui.desktop_windowing.AppHeaderStateProvider;
 import org.chromium.components.browser_ui.desktop_windowing.DesktopWindowStateManager.AppHeaderObserver;
 import org.chromium.components.browser_ui.modaldialog.AppModalPresenter;
 import org.chromium.components.browser_ui.styles.SemanticColorUtils;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager;
+import org.chromium.components.browser_ui.widget.scrim.ScrimManager.ScrimClient;
 import org.chromium.components.feature_engagement.EventConstants;
 import org.chromium.components.metrics.LowEntropySource;
 import org.chromium.components.signin.metrics.SigninAccessPoint;
@@ -74,6 +82,7 @@ import org.chromium.ui.edge_to_edge.EdgeToEdgeSystemBarColorHelper;
 import org.chromium.ui.interpolators.Interpolators;
 import org.chromium.ui.modaldialog.ModalDialogManager;
 import org.chromium.ui.modaldialog.ModalDialogManager.ModalDialogType;
+import org.chromium.ui.util.ColorUtils;
 
 import java.util.ArrayList;
 import java.util.BitSet;
@@ -255,6 +264,8 @@ public class FirstRunActivity extends FirstRunActivityBase
 
     private @Nullable AppHeaderCoordinator mAppHeaderCoordinator;
     private @Nullable View mContentView;
+    private @Nullable ScrimManager mScrimManager;
+    private @Nullable ManagedBottomSheetController mBottomSheetController;
 
     private boolean isFlowKnown() {
         return mFreProperties != null;
@@ -299,6 +310,11 @@ public class FirstRunActivity extends FirstRunActivityBase
     @Override
     public SafetyPromoFirstRunState getSafetyPromoFirstRunState() {
         return mSafetyPromoFirstRunState;
+    }
+
+    @Override
+    public BottomSheetController getBottomSheetController() {
+        return assumeNonNull(mBottomSheetController);
     }
 
     /** Creates first page and sets up adapter. Should result UI being shown on the screen. */
@@ -502,6 +518,64 @@ public class FirstRunActivity extends FirstRunActivityBase
         return mContentView;
     }
 
+    /**
+     * Creates the {@link BottomSheetController} for the First Run Experience, and adds the sheet
+     * container on top of the content view so that the sheets are shown over the whole activity.
+     *
+     * @param contentView The content view of the activity.
+     */
+    private void createBottomSheetController(ViewGroup contentView) {
+        ViewGroup sheetContainer =
+                (ViewGroup)
+                        LayoutInflater.from(this)
+                                .inflate(
+                                        R.layout.bottom_sheet_container,
+                                        contentView,
+                                        /* attachToRoot= */ false);
+        ScrimManager scrimManager =
+                new ScrimManager(this, contentView, ScrimClient.FIRST_RUN_ACTIVITY);
+        mScrimManager = scrimManager;
+        scrimManager.getStatusBarColorSupplier().addSyncObserver(this::applyScrimToStatusBar);
+        mBottomSheetController =
+                BottomSheetControllerFactory.createBottomSheetController(
+                        () -> scrimManager,
+                        getWindow(),
+                        assumeNonNull(getWindowAndroid()).getKeyboardDelegate(),
+                        () -> sheetContainer,
+                        () -> 0,
+                        /* desktopWindowStateManager= */ null,
+                        getInsetObserver(),
+                        /* enableLargeFormFactorUi= */ ChromeFeatureList
+                                .sBottomSheetOnDesktopWindowing
+                                .isEnabled());
+        contentView.addView(sheetContainer);
+        BackPressHelper.create(
+                this,
+                getOnBackPressedDispatcher(),
+                mBottomSheetController.getBottomSheetBackPressHandler());
+    }
+
+    /**
+     * Tints the status bar with the scrim color, on top of the default status bar color. The scrim
+     * is drawn in the content view, which doesn't cover the status bar.
+     *
+     * @param scrimColor The (translucent) scrim color over the status bar, transparent if none.
+     */
+    private void applyScrimToStatusBar(@ColorInt int scrimColor) {
+        // TODO(crbug.com/534388538): Handle tablets/LFF, where the FRE is shown as a modal and the
+        // status bar color is colorSurfaceContainerLow.
+        if (DialogWhenLargeContentLayout.shouldShowAsDialog(this)) return;
+
+        @ColorInt int baseColor = SemanticColorUtils.getDefaultBgColor(this);
+        @ColorInt int finalColor = ColorUtils.overlayColor(baseColor, scrimColor);
+        EdgeToEdgeSystemBarColorHelper edgeToEdgeSystemBarColorHelper =
+                getEdgeToEdgeManager() != null
+                        ? getEdgeToEdgeManager().getEdgeToEdgeSystemBarColorHelper()
+                        : null;
+        StatusBarColorController.setStatusBarColor(
+                edgeToEdgeSystemBarColorHelper, this, finalColor);
+    }
+
     @Override
     @Initializer
     public void triggerLayoutInflation() {
@@ -512,7 +586,9 @@ public class FirstRunActivity extends FirstRunActivityBase
                 "MobileFre.FromLaunch.TriggerLayoutInflation",
                 SystemClock.elapsedRealtime() - mIntentCreationElapsedRealtimeMs);
 
-        setContentView(createContentView());
+        View contentView = createContentView();
+        setContentView(contentView);
+        createBottomSheetController((ViewGroup) contentView);
 
         // SigninFirstRunFragment doesn't use getProperties() and can be shown right away, without
         // waiting for FirstRunFlowSequencer.
@@ -971,8 +1047,7 @@ public class FirstRunActivity extends FirstRunActivityBase
     }
 
     @Override
-    public void recordLoadCompletedHistograms(
-            @FullscreenSigninMediator.LoadPoint int slowestLoadPoint) {
+    public void recordLoadCompletedHistograms(@FullscreenSigninLoadPoint int slowestLoadPoint) {
         // TODO: crbug.com/462005651 - Remove obsolete
         // "MobileFre.FromLaunch.NativePolicyAndChildStatusLoaded" histogram.
         RecordHistogram.recordTimesHistogram(
@@ -982,9 +1057,7 @@ public class FirstRunActivity extends FirstRunActivityBase
                 "MobileFre.FromLaunch.InitialLoadCompleted",
                 SystemClock.elapsedRealtime() - mIntentCreationElapsedRealtimeMs);
         RecordHistogram.recordEnumeratedHistogram(
-                "MobileFre.SlowestLoadPoint",
-                slowestLoadPoint,
-                FullscreenSigninMediator.LoadPoint.MAX);
+                "MobileFre.SlowestLoadPoint", slowestLoadPoint, FullscreenSigninLoadPoint.MAX);
     }
 
     @Override
@@ -1078,6 +1151,17 @@ public class FirstRunActivity extends FirstRunActivityBase
                 mAppHeaderCoordinator.destroy();
                 mAppHeaderCoordinator = null;
             }
+        }
+        if (mBottomSheetController != null) {
+            mBottomSheetController.destroy();
+            mBottomSheetController = null;
+        }
+        if (mScrimManager != null) {
+            mScrimManager.destroy();
+            mScrimManager = null;
+        }
+        if (mFirstRunFlowSequencer != null) {
+            mFirstRunFlowSequencer.destroy();
         }
         super.onDestroy();
     }

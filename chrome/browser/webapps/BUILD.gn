@@ -67,6 +67,7 @@ if (is_android) {
       "//chrome/common",
       "//components/feature_engagement/public",
       "//components/infobars/content",
+      "//components/paint_preview/buildflags",
       "//components/resources",
       "//components/security_state/content",
       "//components/webapps/browser",
@@ -112,6 +113,7 @@ if (!is_android) {
     sources = [ "web_app_offline_interactive_uitest.cc" ]
 
     deps = [
+      ":webapps",
       "//base",
       "//base/test:test_support",
       "//chrome/browser/profiles:profile",
@@ -120,7 +122,6 @@ if (!is_android) {
       "//chrome/browser/web_applications",
       "//chrome/browser/web_applications:web_applications_test_support",
       "//chrome/test:test_support",
-      "//chrome/test:test_support_ui",
       "//components/metrics:content",
       "//components/webapps/browser:test_support",
       "//content/test:test_support",

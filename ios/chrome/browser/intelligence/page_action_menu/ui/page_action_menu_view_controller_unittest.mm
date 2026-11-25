@@ -6,7 +6,7 @@
 
 #import "base/test/metrics/histogram_tester.h"
 #import "base/test/scoped_feature_list.h"
-#import "components/dom_distiller/core/mojom/distilled_page_prefs.mojom.h"
+#import "components/web_distiller/core/mojom/distilled_page_prefs.mojom.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_content_entry_point.h"
 #import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_feature.h"
@@ -190,7 +190,7 @@ TEST_F(PageActionMenuViewControllerTest, SetSelectedFontFamily) {
   [view_controller_ loadViewIfNeeded];
 
   [view_controller_
-      setSelectedFontFamily:dom_distiller::mojom::FontFamily::kSerif];
+      setSelectedFontFamily:web_distiller::mojom::FontFamily::kSerif];
   NSString* expectedSubstring = l10n_util::GetNSString(
       IDS_IOS_READER_MODE_OPTIONS_FONT_FAMILY_SERIF_LABEL);
 
@@ -199,7 +199,7 @@ TEST_F(PageActionMenuViewControllerTest, SetSelectedFontFamily) {
   EXPECT_TRUE([subtitleLabel.text containsString:expectedSubstring]);
 
   [view_controller_
-      setSelectedFontFamily:dom_distiller::mojom::FontFamily::kSansSerif];
+      setSelectedFontFamily:web_distiller::mojom::FontFamily::kSansSerif];
   expectedSubstring = l10n_util::GetNSString(
       IDS_IOS_READER_MODE_OPTIONS_FONT_FAMILY_SANS_SERIF_LABEL);
   EXPECT_TRUE([subtitleLabel.text containsString:expectedSubstring]);
@@ -410,7 +410,7 @@ TEST_F(PageActionMenuViewControllerTest,
       l10n_util::GetNSString(IDS_IOS_PERMISSIONS_SETTING_NOT_ALLOWED);
 
   EXPECT_NSEQ(dropdownButton.accessibilityValue, allowedOnceTitle);
-  // "Allowed once" is offered, between the other options, while selected.
+  // All three settings are offered, with "Allowed once" in the middle.
   NSArray<NSString*>* expectedInitialTitles =
       @[ allowedTitle, allowedOnceTitle, notAllowedTitle ];
   EXPECT_NSEQ([dropdownButton.menu.children valueForKey:@"title"],
@@ -438,11 +438,9 @@ TEST_F(PageActionMenuViewControllerTest,
   OCMVerifyAll(mock_mutator_);
 
   EXPECT_NSEQ(dropdownButton.accessibilityValue, allowedTitle);
-  // "Allowed once" is no longer offered after switching away from it.
-  NSArray<NSString*>* expectedUpdatedTitles =
-      @[ allowedTitle, notAllowedTitle ];
+  // "Allowed once" is still offered after switching away from it.
   EXPECT_NSEQ([dropdownButton.menu.children valueForKey:@"title"],
-              expectedUpdatedTitles);
+              expectedInitialTitles);
   EXPECT_TRUE([disclaimerLabel.text
       containsString:
           l10n_util::GetNSStringF(

@@ -5,13 +5,17 @@
 #include "components/autofill/core/browser/geo/country_names.h"
 
 #include <map>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "base/containers/map_util.h"
 #include "base/i18n/case_conversion.h"
+#include "base/i18n/icubridge/default_icu_locale.h"
+#include "base/i18n/language_tag.h"
 #include "base/i18n/rtl.h"
+#include "base/i18n/tag_converters.h"
 #include "base/no_destructor.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -26,22 +30,25 @@ namespace autofill {
 
 namespace {
 
-constexpr std::string_view kDefaultLocale = "en-US";
+constexpr base::i18n::LanguageTag kDefaultLocale =
+    base::i18n::GetKnownLanguageTag("en-US");
 
 // Computes the value for CountryNames::common_names_.
 std::map<std::string, std::string> GetCommonNames() {
   std::map<std::string, std::string> common_names;
   // Add 2- and 3-letter ISO country codes.
-  for (const std::string& country_code :
+  for (const FixedCountryCode& country_code :
        CountryDataMap::GetInstance()->country_codes()) {
-    common_names.insert(std::make_pair(country_code, country_code));
+    common_names.emplace(std::string_view(country_code),
+                         std::string_view(country_code));
 
     std::string iso3_country_code =
-        icu::Locale(nullptr, country_code.c_str()).getISO3Country();
+        icu::Locale(nullptr, std::string(country_code).c_str())
+            .getISO3Country();
 
     // ICU list of countries can be out-of-date with CLDR.
     if (!iso3_country_code.empty())
-      common_names.insert(std::make_pair(iso3_country_code, country_code));
+      common_names.emplace(std::move(iso3_country_code), country_code);
   }
 
   // Add a few other common synonyms.
@@ -64,14 +71,14 @@ std::map<std::string, std::string> GetCommonNames() {
 // static
 CountryNames* CountryNames::GetInstance() {
   static base::NoDestructor<CountryNames> instance(
-      base::i18n::GetConfiguredLocale());
+      base::i18n::GetDefaultIcuLocale());
   return instance.get();
 }
 
-CountryNames::CountryNames(std::string locale_name)
-    : application_locale_name_(std::move(locale_name)),
-      country_names_for_default_locale_(std::string(kDefaultLocale)),
-      country_names_for_application_locale_(application_locale_name_),
+CountryNames::CountryNames(const base::i18n::LanguageTag& locale)
+    : application_locale_(locale),
+      country_names_for_default_locale_(kDefaultLocale),
+      country_names_for_application_locale_(locale),
       common_names_(GetCommonNames()),
       localized_country_names_cache_(10) {}
 
@@ -108,10 +115,13 @@ const std::string& CountryNames::GetCountryCodeForLocalizedCountryName(
   // Do an unconditional lookup using the default and app_locale.
   // Chances are that the name of the country matches the localized one.
   const std::string& localized_result = GetCountryCode(country);
-  // Terminate if a country code was determined or if the locale matches the
-  // default ones.
-  if (!localized_result.empty() || locale_name == application_locale_name_ ||
-      locale_name == kDefaultLocale || locale_name.empty()) {
+  if (!localized_result.empty()) {
+    return localized_result;
+  }
+  // Terminate if the locale is invalid or matches the default ones.
+  const std::optional<base::i18n::LanguageTag> locale =
+      base::i18n::GetLanguageTagFromString(locale_name);
+  if (!locale || *locale == application_locale_ || *locale == kDefaultLocale) {
     return localized_result;
   }
   // Acquire a lock for the localization cache.
@@ -123,8 +133,8 @@ const std::string& CountryNames::GetCountryCodeForLocalizedCountryName(
     return iter->second.GetCountryCode(country);
 
   // Put the country names for the locale into the cache.
-  auto it = localized_country_names_cache_.Put(
-      locale_name, CountryNamesForLocale(std::string(locale_name)));
+  auto it = localized_country_names_cache_.Put(locale_name,
+                                               CountryNamesForLocale(*locale));
   const CountryNamesForLocale& country_names_for_locale = it->second;
   return country_names_for_locale.GetCountryCode(country);
 }

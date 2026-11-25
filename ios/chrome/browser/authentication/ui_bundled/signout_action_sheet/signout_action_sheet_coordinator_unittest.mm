@@ -7,31 +7,24 @@
 #import <UIKit/UIKit.h>
 
 #import "base/memory/raw_ptr.h"
-#import "base/strings/sys_string_conversions.h"
 #import "base/test/metrics/histogram_tester.h"
 #import "base/test/metrics/user_action_tester.h"
 #import "base/test/mock_callback.h"
 #import "base/test/run_until.h"
-#import "base/test/scoped_feature_list.h"
 #import "components/prefs/pref_service.h"
 #import "components/signin/public/base/signin_metrics.h"
-#import "components/signin/public/base/signin_pref_names.h"
 #import "components/sync/test/mock_sync_service.h"
-#import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/test/fake_scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
-#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_manager_ios.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/scene_commands.h"
 #import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/public/snackbar/snackbar_message.h"
 #import "ios/chrome/browser/shared/public/snackbar/snackbar_message_action.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
@@ -49,7 +42,6 @@
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "third_party/ocmock/gtest_support.h"
 #import "ui/base/l10n/l10n_util.h"
-#import "ui/strings/grit/ui_strings.h"
 
 class SignoutActionSheetCoordinatorTest : public PlatformTest {
  public:
@@ -85,8 +77,7 @@ class SignoutActionSheetCoordinatorTest : public PlatformTest {
     sync_service_mock_ = static_cast<syncer::MockSyncService*>(
         SyncServiceFactory::GetForProfile(personal_profile_.get()));
 
-    Browser* browser =
-        scene_state_.browserProviderInterface.currentBrowserProvider.browser;
+    Browser* browser = scene_state_.browserProviderInterface.currentBrowser;
     [browser->GetCommandDispatcher()
         startDispatchingToTarget:snackbar_handler_
                      forProtocol:@protocol(SnackbarCommands)];
@@ -120,8 +111,7 @@ class SignoutActionSheetCoordinatorTest : public PlatformTest {
   SignoutActionSheetCoordinator* CreateCoordinator(
       BOOL show_undo_button,
       signin_metrics::ProfileSignout source) {
-    Browser* browser =
-        scene_state_.browserProviderInterface.currentBrowserProvider.browser;
+    Browser* browser = scene_state_.browserProviderInterface.currentBrowser;
     signout_coordinator_ = [[SignoutActionSheetCoordinator alloc]
         initWithBaseViewController:view_controller_
                            browser:browser
@@ -272,7 +262,6 @@ TEST_F(SignoutActionSheetCoordinatorTest,
 // Tests that the snackbar message shown after user-initiated sign-out includes
 // an undo action, and that triggering the action records the user action.
 TEST_F(SignoutActionSheetCoordinatorTest, SignoutSnackbarMessageHasUndoAction) {
-  base::test::ScopedFeatureList feature_list(kIdentityAwareness);
   authentication_service()->SignIn(identity_,
                                    signin_metrics::AccessPoint::kStartPage);
 
@@ -328,7 +317,6 @@ TEST_F(SignoutActionSheetCoordinatorTest, SignoutSnackbarMessageHasUndoAction) {
 // does not include an undo action.
 TEST_F(SignoutActionSheetCoordinatorTest,
        SignoutSnackbarMessageHasNoUndoActionWhenNotUserInitiated) {
-  base::test::ScopedFeatureList feature_list(kIdentityAwareness);
   authentication_service()->SignIn(identity_,
                                    signin_metrics::AccessPoint::kStartPage);
 

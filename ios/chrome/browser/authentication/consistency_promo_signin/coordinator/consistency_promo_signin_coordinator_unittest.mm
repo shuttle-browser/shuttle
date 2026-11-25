@@ -8,23 +8,16 @@
 
 #import <utility>
 
-#import "base/test/scoped_feature_list.h"
 #import "components/signin/core/browser/account_reconcilor.h"
-#import "components/signin/public/base/signin_switches.h"
-#import "components/sync/test/test_sync_service.h"
 #import "components/test/ios/test_utils.h"
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/browser/authentication/consistency_promo_signin/coordinator/consistency_promo_signin_mediator.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_test_util.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/consistency_promo_signin/consistency_default_account/consistency_default_account_coordinator.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/consistency_promo_signin/consistency_sheet/consistency_sheet_navigation_controller.h"
-#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_in_progress.h"
-#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
-#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
-#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
@@ -221,44 +214,6 @@ TEST_F(ConsistencyPromoSigninCoordinatorTest, StartAndCancel) {
   [coordinator_ stop];
   coordinator_ = nil;
   EXPECT_FALSE(scene_state_.signinInProgress);
-}
-
-TEST_F(ConsistencyPromoSigninCoordinatorTest, NoAccountWebSigninEnabled) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndEnableFeature(switches::kNoAccountWebSignin);
-
-  ConsistencyPromoSigninCoordinator* web_signin_coordinator =
-      [ConsistencyPromoSigninCoordinator
-          coordinatorWithBaseViewController:base_view_controller_mock_
-                                    browser:browser_.get()
-                               contextStyle:SigninContextStyle::kDefault
-                                accessPoint:signin_metrics::AccessPoint::
-                                                kWebSignin
-                       confirmChangeProfile:nil
-                       prepareChangeProfile:nil
-                       continuationProvider:NotReachedContinuationProvider()];
-
-  EXPECT_NE(nil, web_signin_coordinator);
-  [web_signin_coordinator stop];
-}
-
-TEST_F(ConsistencyPromoSigninCoordinatorTest, NoAccountWebSigninDisabled) {
-  base::test::ScopedFeatureList scoped_feature_list;
-  scoped_feature_list.InitAndDisableFeature(switches::kNoAccountWebSignin);
-
-  ConsistencyPromoSigninCoordinator* web_signin_coordinator =
-      [ConsistencyPromoSigninCoordinator
-          coordinatorWithBaseViewController:base_view_controller_mock_
-                                    browser:browser_.get()
-                               contextStyle:SigninContextStyle::kDefault
-                                accessPoint:signin_metrics::AccessPoint::
-                                                kWebSignin
-                       confirmChangeProfile:nil
-                       prepareChangeProfile:nil
-                       continuationProvider:NotReachedContinuationProvider()];
-
-  EXPECT_EQ(nil, web_signin_coordinator);
-  [web_signin_coordinator stop];
 }
 
 }  // namespace

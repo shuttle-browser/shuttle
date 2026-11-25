@@ -12,7 +12,6 @@
 #include "base/synchronization/lock.h"
 #include "chrome/browser/ash/arc/arc_util.h"
 #include "chrome/browser/ash/arc/session/arc_session_manager.h"
-#include "chrome/browser/ash/arc/vmm/arcvm_working_set_trim_executor.h"
 #include "chrome/browser/performance_manager/mechanisms/working_set_trimmer.h"
 #include "chrome/browser/performance_manager/policies/policy_features.h"
 #include "chrome/browser/performance_manager/policies/working_set_trimmer_policy_arcvm.h"
@@ -46,7 +45,7 @@ void GetArcProcessList(
     base::WeakPtr<
         performance_manager::policies::WorkingSetTrimmerPolicyChromeOS> ptr,
     int processes_per_trim) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   arc::ArcProcessService* arc_process_service = arc::ArcProcessService::Get();
   if (!arc_process_service) {
     return;
@@ -191,7 +190,7 @@ void WorkingSetTrimmerPolicyChromeOS::OnUpdateMemoryLimit() {}
 
 void WorkingSetTrimmerPolicyChromeOS::set_arcvm_delegate_for_testing(
     ArcVmDelegate* delegate) {
-  DCHECK(!g_arcvm_delegate_for_testing || !delegate);
+  CHECK(!g_arcvm_delegate_for_testing || !delegate, base::NotFatalUntil::M163);
   g_arcvm_delegate_for_testing = delegate;
 }
 
@@ -372,7 +371,7 @@ void WorkingSetTrimmerPolicyChromeOS::TrimArcProcesses() {
 }
 
 void WorkingSetTrimmerPolicyChromeOS::TrimArcVmProcesses(bool is_critical) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   // TODO(crbug.com/40755583): Let the policy own WorkingSetTrimmerPolicyArcVm
   // instance once performance_manager code is migrated to UI thread.
   auto* arcvm_delegate = g_arcvm_delegate_for_testing
@@ -443,7 +442,7 @@ void WorkingSetTrimmerPolicyChromeOS::DoTrimArcVm(
     mechanism::WorkingSetTrimmerChromeOS* trimmer,
     mechanism::ArcVmReclaimType reclaim_type,
     int page_limit) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   trimmer->TrimArcVmWorkingSet(
       base::BindOnce(&WorkingSetTrimmerPolicyChromeOS::OnTrimArcVmWorkingSet,
@@ -455,7 +454,7 @@ void WorkingSetTrimmerPolicyChromeOS::OnTrimArcVmWorkingSet(
     mechanism::ArcVmReclaimType reclaim_type,
     bool success,
     const std::string& failure_reason) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
 
   // NOTE: To ease unit test, we invoke OnArcVmTrimEnded even when
   // |reclaim_type| is not kReclaimAll.

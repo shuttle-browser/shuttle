@@ -349,6 +349,20 @@ export enum CancelActionsResult {
   FAILED = 3,
 }
 
+// Types of multi-tab sharing tooltip impressions.
+export enum TooltipImpressionType {
+  // Default value for unknown or unrecognized tooltip variants.
+  UNKNOWN = 0,
+  // Step 1: Initial contextual tooltip shown when a tab is first shared.
+  TOOLTIP1 = 1,
+  // Step 2 (Copy A): Follow-up tooltip highlighting multi-tab comparison.
+  TOOLTIP2A = 2,
+  // Step 2 (Copy B): Follow-up tooltip highlighting managing shared tabs.
+  TOOLTIP2B = 3,
+  // Step 3: Tooltip shown inside the tab picker guiding multi-tab selection.
+  TOOLTIP3 = 4,
+}
+
 // Reason for failure when switching a conversation.
 export enum SwitchConversationErrorReason {
   UNKNOWN = 0,
@@ -629,6 +643,11 @@ export enum FreOverride {
   TRUST_FIRST_CLICK = 2,
   // Variation that starts with full client unlocked and shows inline consent.
   TRUST_FIRST_INLINE = 3,
+  // The host shows a native FRE overlay above the client. The client must not
+  // show its own FRE or consent UI. The overlay blocks the client until the
+  // user accepts. On accept, the host marks the FRE as completed. On decline,
+  // the host closes the panel.
+  NATIVE_FRE = 4,
 }
 
 // Entry points that can trigger the opening of the panel.
@@ -680,6 +699,8 @@ export enum InvocationSource {
   // User clicked an anchored contextual cue chip.
   ANCHORED_CONTEXTUAL_CUE = 22,
   // From the context menu.
+  // Deprecated. Split into kWebContentsContextMenuLink,
+  // kWebContentsContextMenuPage and kWebContentsContextMenuTextSelection.
   WEB_CONTENTS_CONTEXT_MENU = 23,
   // User clicked on text selection nudge.
   TEXT_SELECTION_NUDGE = 24,
@@ -730,15 +751,16 @@ export enum InvocationSource {
   // User clicked "Ask Gemini" on a link in the context menu. Android only;
   // desktop has no link-specific item.
   WEB_CONTENTS_CONTEXT_MENU_LINK = 46,
-  // User clicked "Ask Gemini" on the page in the context menu. On desktop,
-  // also clicks that don't attach the selection.
+  // User clicked "Ask Gemini" in the context menu with no text selected. On
+  // desktop, this includes clicks on a link.
   WEB_CONTENTS_CONTEXT_MENU_PAGE = 47,
   // User clicked "Ask Gemini" on selected text, from the context menu on
-  // desktop (when the selection is attached) or the text selection menu on
-  // Android.
+  // desktop or the text selection menu on Android.
   WEB_CONTENTS_CONTEXT_MENU_TEXT_SELECTION = 48,
   // Invoked by the actor GeminiPanelTool.
   ACTOR_TOOL = 49,
+  // User clicked a conversation row in the activity list bubble.
+  ACTIVITY_LIST_BUBBLE = 50,
 }
 
 // Target for actuation.
@@ -1107,6 +1129,10 @@ export declare interface CreateActorTabOptions {
 export declare interface CaptureRegionParams {
   tabId: string;
   options: TabContextOptions;
+  // Set when this capture answers an invoke that asked the panel to take over
+  // the user's selection (see InvocationPayload). Lets the browser tell it
+  // apart from the user starting a capture.
+  captureRegionHandoff?: boolean;
 }
 
 // Holds optional parameters for GlicBrowserHost#activateTabWithUrl.
@@ -1225,6 +1251,14 @@ export declare interface ExperimentalTriggeringPayload {
   paymentMetadata: ArrayBuffer;
 }
 
+// Payload for invoking region capture.
+export declare interface CaptureRegionPayload {
+  // Set when the browser asks the client to start a capture so the panel can
+  // take over a region selection the user already started on the page. Pass
+  // it back in CaptureRegionParams when starting that capture.
+  captureRegionHandoff: boolean;
+}
+
 // Options for invoking Glic.
 export declare interface InvokeOptions {
   // Source that triggered this invocation.
@@ -1248,7 +1282,10 @@ export declare interface InvokeOptions {
   zssConfig?: ZssConfig;
   // Source-specific payload for the invocation.
   payload?: InvocationPayload;
-  // The ID of the tab to actuate on, if actuationTarget is kTargetSurface.
+  // TODO(b/582448011): Replace actuation_target and actuation_tab_id with one
+  // union that matches Target::actuation_target in glic_invoke_options.h.
+  // The ID of the ActorSurface (which can be a tab or a headless surface), to
+  // actuate on, if actuation_target == kTargetSurface.
   actuationTabId?: string;
 }
 
@@ -1480,7 +1517,10 @@ export declare interface TaskOptions {
   duration?: TaskDuration;
   // The feature mode for the task.
   featureMode?: FeatureMode;
-  // The initial target tab to actuate on.
+  // The actor surface ID of the initial target to actuate on, such as a tab's
+  // surface or a headless surface. A tab's actor surface ID matches its tab ID
+  // only while kUseTabHandleAsSurfaceHandle is enabled. The field name
+  // predates actor surfaces.
   actuationTabId?: string;
 }
 

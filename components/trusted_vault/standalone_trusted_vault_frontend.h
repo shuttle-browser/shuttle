@@ -88,7 +88,8 @@ class StandaloneTrustedVaultFrontend
   void StoreKeys(const GaiaId& gaia_id,
                  SecurityDomainId security_domain,
                  const std::vector<std::vector<uint8_t>>& keys,
-                 int last_key_version);
+                 int last_key_version,
+                 std::optional<TrustedVaultUserActionTriggerForUMA> trigger);
   void MarkLocalKeysAsStale(const CoreAccountInfo& account_info,
                             SecurityDomainId security_domain,
                             base::OnceCallback<void(bool)> cb);
@@ -100,6 +101,12 @@ class StandaloneTrustedVaultFrontend
                                 const std::vector<uint8_t>& public_key,
                                 int method_type_hint,
                                 base::OnceCallback<void(bool)> cb);
+  void CanEnroll(const CoreAccountInfo& account_info,
+                 SecurityDomainId security_domain,
+                 base::OnceCallback<void(bool)> cb);
+  void Enroll(const CoreAccountInfo& account_info,
+              SecurityDomainId security_domain,
+              base::OnceCallback<void(const std::vector<uint8_t>&, int)> cb);
   void ClearLocalDataForAccount(const CoreAccountInfo& account_info);
 
   // Testing methods.
@@ -131,7 +138,9 @@ class StandaloneTrustedVaultFrontend
   void InitializeBackend(
       std::unique_ptr<StandaloneTrustedVaultStorage> storage);
 
-  void NotifyTrustedVaultKeysChanged(
+  void NotifyAllVaultKeysChanged();
+  void NotifyVaultKeysChanged(
+      SecurityDomainId security_domain,
       std::optional<TrustedVaultUserActionTriggerForUMA> trigger);
   void NotifyRecoverabilityDegradedChanged(SecurityDomainId security_domain);
 

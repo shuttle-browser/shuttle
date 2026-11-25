@@ -24,7 +24,6 @@
 #include "chrome/browser/contextual_tasks/active_task_context_provider.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks.mojom.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_context_service_factory.h"
-#include "chrome/browser/contextual_tasks/contextual_tasks_panel_controller.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_ui.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_utils.h"
@@ -83,19 +82,6 @@
 #endif
 
 namespace {
-
-// CGI param attached to every query submitted while the side panel's current
-// open session reopened a previously collapsed thread via a toolbar button (as
-// opposed to opening fresh or resuming a thread from thread history, which
-// navigates the panel). Lets the server distinguish queries after a
-// toolbar-button reopen, which otherwise carry no client-side marker because
-// reopening the collapsed panel does not navigate it. The value encodes which
-// toolbar button reopened the panel: absent = not reopened via toolbar button,
-// `kReopenedViaPinnedToolbarButton` = permanently pinned toolbar button,
-// `kReopenedViaEphemeralToolbarButton` = ephemeral toolbar button.
-inline constexpr char kReopenedViaToolbarQueryParameterKey[] = "ctrs";
-inline constexpr char kReopenedViaPinnedToolbarButton[] = "1";
-inline constexpr char kReopenedViaEphemeralToolbarButton[] = "2";
 
 std::string ExtractMimeType(const base::FilePath& path) {
 #if BUILDFLAG(IS_ANDROID)
@@ -214,6 +200,23 @@ lens::LensOverlayDismissalSource ToLensOverlayDismissalSource(
 }
 #endif
 
+// Tells the window's contextual tasks panel that a query was submitted, if
+// `webui_contents` is the panel's active `WebContents`. A query submitted from
+// a Contextual Tasks UI shown in a tab isn't counted for the panel's session.
+void NotifyPanelOfQuerySubmitted(content::WebContents* webui_contents) {
+  BrowserWindowInterface* browser_window_interface =
+      webui::GetBrowserWindowInterface(webui_contents);
+  if (!browser_window_interface) {
+    return;
+  }
+  auto* controller = contextual_tasks::ContextualTasksPanelController::From(
+      browser_window_interface);
+  if (controller && controller->IsPanelOpenForContextualTask() &&
+      controller->GetActiveWebContents() == webui_contents) {
+    controller->OnQuerySubmitted();
+  }
+}
+
 }  // namespace
 
 ContextualTasksComposeboxHandler::ContextualTasksComposeboxHandler(
@@ -286,6 +289,7 @@ ContextualTasksComposeboxHandler::~ContextualTasksComposeboxHandler() {
 void ContextualTasksComposeboxHandler::MarkContextUploadFinished(
     const base::UnguessableToken& token) {
   pending_context_uploads_.erase(token);
+  UpdateHasUnsubmittedQuery();
   MaybeSendPendingQuery();
 }
 
@@ -434,6 +438,7 @@ void ContextualTasksComposeboxHandler::CreateAndSendQueryMessage(
   }
   base::RecordAction(base::UserMetricsAction(
       "ContextualTasks.Composebox.UserAction.QuerySubmitted"));
+  NotifyPanelOfQuerySubmitted(web_ui_interface_->GetWebUIWebContents());
   auto* session_handle = GetContextualSessionHandle();
 
   // Retrieve the overlay token before closing the overlay, as the controller
@@ -608,6 +613,36 @@ std::vector<int32_t> ContextualTasksComposeboxHandler::GetSelectedTabIds()
     tab_ids.push_back(tab_id);
   }
   return tab_ids;
+}
+
+bool ContextualTasksComposeboxHandler::HasUnsubmittedQuery() {
+  // Intentionally calls the base class GetSelectedTabIds() rather than the
+  // override, which also includes `delayed_tabs_`.
+  if (!pending_context_uploads_.empty() ||
+      !ContextualSearchboxHandler::GetSelectedTabIds().empty()) {
+    return true;
+  }
+#if !BUILDFLAG(IS_ANDROID)
+  // Has visual selection.
+  if (visual_selection_token_.has_value()) {
+    return true;
+  }
+#endif
+  // Check if there are any uploaded tabs in the session handle.
+  return !GetUploadedContextTokens().empty();
+}
+
+void ContextualTasksComposeboxHandler::UpdateHasUnsubmittedQuery() {
+  if (!web_ui_interface_) {
+    return;
+  }
+  content::WebContents* web_contents = web_ui_interface_->GetWebUIWebContents();
+  if (!web_contents) {
+    return;
+  }
+  contextual_tasks::ContextualTasksWebContentsUserData::
+      GetOrCreateForWebContents(web_contents)
+          ->set_has_unsubmitted_query(HasUnsubmittedQuery());
 }
 
 void ContextualTasksComposeboxHandler::OnWillBeDestroyed() {
@@ -945,36 +980,13 @@ void ContextualTasksComposeboxHandler::ContinueCreateAndSendQueryMessage(
       DeactivateSmartTabSharing();
     }
 
-    // Tag queries submitted during a side panel session that was reopened via a
-    // toolbar button so the server can attribute them separately from queries
-    // in never-collapsed sessions or threads selected from thread history, and
-    // tell apart which toolbar button reopened the panel.
-    std::map<std::string, std::string> cgi_params = additional_cgi_params;
-    if (auto* browser_window_interface = webui::GetBrowserWindowInterface(
-            web_ui_interface_->GetWebUIWebContents())) {
-      auto* panel_controller =
-          contextual_tasks::ContextualTasksPanelController::From(
-              browser_window_interface);
-      if (panel_controller &&
-          panel_controller->IsPanelOpenForContextualTask() &&
-          panel_controller->IsActiveSessionReopenedViaToolbarButton()) {
-        using EntrySource =
-            contextual_tasks::ContextualTasksPanelController::EntrySource;
-        cgi_params[kReopenedViaToolbarQueryParameterKey] =
-            panel_controller->GetActiveEntrySource() ==
-                    EntrySource::kPermanentToolbarButton
-                ? kReopenedViaPinnedToolbarButton
-                : kReopenedViaEphemeralToolbarButton;
-      }
-    }
-
     // Create a client to aim message and send it to the page.
     auto create_client_to_aim_request_info =
         contextual_tasks::PrepareClientToAimRequestInfo(
             query, session_handle, web_ui_interface_,
             GetInputState().active_tool, GetInputState().active_model,
             GetActiveTabContextId(), overlay_token, is_voice_search,
-            cgi_params);
+            additional_cgi_params);
 
     // Delay submission if context still uploading.
     if (IsAnyContextUploading()) {
@@ -1139,6 +1151,7 @@ void ContextualTasksComposeboxHandler::AddFileContext(
   }
   auto token = session_handle->CreateContextToken();
   pending_context_uploads_.insert(token);
+  UpdateHasUnsubmittedQuery();
   std::string mime_type = file_info->mime_type;
   std::string file_name = file_info->file_name;
   ContextualSearchboxHandler::page_->AddFileContext(token,
@@ -1225,6 +1238,7 @@ void ContextualTasksComposeboxHandler::AddTabContext(
   auto token = contextual_session_handle->CreateContextToken();
 
   pending_context_uploads_.insert(token);
+  UpdateHasUnsubmittedQuery();
 
   ContextualSearchboxHandler::ContinueAddTabContext(
       tab_id, delay_upload, token,
@@ -1270,6 +1284,7 @@ void ContextualTasksComposeboxHandler::ClearFiles(
   visual_selection_token_.reset();
   visual_selection_overlay_token_.reset();
 #endif
+  UpdateHasUnsubmittedQuery();
 }
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -1374,6 +1389,7 @@ void ContextualTasksComposeboxHandler::OnVisualSelectionAdded(
     visual_selection_token_ = std::nullopt;
     visual_selection_overlay_token_ = std::nullopt;
   }
+  UpdateHasUnsubmittedQuery();
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -1452,6 +1468,7 @@ void ContextualTasksComposeboxHandler::DeleteContext(
   } else if (deleted_tab_url.has_value()) {
     auto_suggestion_manager->OnTabContextRemoved(deleted_tab_url.value());
   }
+  UpdateHasUnsubmittedQuery();
 }
 
 bool ContextualTasksComposeboxHandler::HasAutoSuggestedTab() {

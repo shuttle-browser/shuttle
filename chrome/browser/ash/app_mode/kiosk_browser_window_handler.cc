@@ -20,7 +20,7 @@
 #include "base/time/time.h"
 #include "chrome/browser/ash/app_mode/kiosk_policies.h"
 #include "chrome/browser/ash/app_mode/kiosk_settings_navigation_throttle.h"
-#include "chrome/browser/ash/app_mode/kiosk_troubleshooting_controller_ash.h"
+#include "chrome/browser/ash/app_mode/kiosk_troubleshooting_controller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chromeos/ash/components/browser_delegate/browser_controller.h"
 #include "chromeos/ash/components/browser_delegate/browser_delegate.h"
@@ -31,8 +31,8 @@
 #include "content/public/browser/web_contents_observer.h"
 #include "ui/aura/window.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_delegate.h"
 #include "ui/views/widget/widget_observer.h"
@@ -167,7 +167,7 @@ KioskBrowserWindowHandler::KioskBrowserWindowHandler(
           std::move(shutdown_kiosk_browser_session_callback)),
       kiosk_policies_(profile->GetPrefs()) {
   kiosk_troubleshooting_controller_ =
-      std::make_unique<ash::KioskTroubleshootingControllerAsh>(
+      std::make_unique<KioskTroubleshootingController>(
           profile->GetPrefs(),
           base::BindOnce(&KioskBrowserWindowHandler::Shutdown,
                          weak_ptr_factory_.GetWeakPtr()));
@@ -266,7 +266,7 @@ void KioskBrowserWindowHandler::HandleNewSettingsWindow(
     // Create a new app browser.
     ash::BrowserController::GetInstance()->OpenUrl(
         account_id, GURL(url_string),
-        {.disposition = WindowOpenDisposition::kNewPopup,
+        {.disposition = ui::mojom::WindowOpenDisposition::kNewPopup,
          .transition = ui::PAGE_TRANSITION_AUTO_TOPLEVEL});
 
     // We do not save the newly created browser to the `settings_browser_` here

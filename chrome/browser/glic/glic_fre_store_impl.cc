@@ -11,6 +11,7 @@
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "build/build_config.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/glic/gemini_enterprise/geic_fre.h"
 #include "chrome/browser/glic/gemini_enterprise/geic_pref_names.h"
 #include "chrome/browser/glic/glic_metrics.h"
@@ -73,6 +74,20 @@ class GeminiGlicFreStore final : public GlicFreStore {
 #endif  // !BUILDFLAG(IS_ANDROID)
   }
 
+  void ResetForDebugging(Profile* profile) const override {
+    SetStatus(profile, prefs::FreStatus::kNotStarted);
+    // Resets the browser-wide OS launcher and global hotkey state set up after
+    // onboarding (see `CompleteOnboarding()`), so that it is set up again.
+    if (PrefService* local_state = g_browser_process->local_state()) {
+      local_state->ClearPref(prefs::kGlicLauncherEnabled);
+      local_state->ClearPref(prefs::kGlicLauncherHotkey);
+      local_state->ClearPref(prefs::kGlicHotkeyGlobalScopeEnabled);
+      local_state->SetInteger(
+          prefs::kGlicDefaultHotkeyScope,
+          std::to_underlying(prefs::DefaultHotkeyScope::kNotMigrated));
+    }
+  }
+
   void ApplyDevSwitches(Profile* profile) const override {
     auto* command_line = base::CommandLine::ForCurrentProcess();
     if (command_line->HasSwitch(::switches::kGlicAlwaysOpenFre)) {
@@ -89,10 +104,6 @@ class GeminiGlicFreStore final : public GlicFreStore {
     SetStatus(profile, prefs::FreStatus::kNotStarted);
   }
 
-  // The Gemini section already waits for the FRE through
-  // `ProfileEnablement::ShouldShowSettingsPage()`.
-  bool HidesSettingsUntilCompleted() const override { return false; }
-
   std::string_view GetStatusPrefName() const override {
     return prefs::kGlicCompletedFre;
   }
@@ -104,8 +115,8 @@ class GeminiEnterpriseGlicFreStore final : public GlicFreStore {
   ~GeminiEnterpriseGlicFreStore() override = default;
 
   prefs::FreStatus GetStatus(Profile* profile) const override {
-    // Not enforced until the GE web app can complete it.
-    // TODO(b/576766756): Remove once `features::kGeicFre` is enabled.
+    // Not enforced if `features::kGeicFre` is disabled, e.g. as a kill switch.
+    // TODO(b/581395107): Remove along with `features::kGeicFre`.
     if (!base::FeatureList::IsEnabled(features::kGeicFre)) {
       return prefs::FreStatus::kCompleted;
     }
@@ -117,17 +128,26 @@ class GeminiEnterpriseGlicFreStore final : public GlicFreStore {
 
   void SetStatus(Profile* profile, prefs::FreStatus status) const override {
     // The GEiC FRE can't be dismissed, and is only reset with
-    // `--geic-reset-fre`, so only completion is stored.
+    // `ResetForDebugging()` (also used by `--geic-reset-fre`), so only
+    // completion is stored.
     if (status == prefs::FreStatus::kCompleted) {
       geic::CompleteFre(profile);
     }
   }
 
   void CompleteOnboarding(Profile* profile) const override {
-    // The consumer onboarding side effects (metrics, OS launcher, IPH) don't
-    // apply.
-    // TODO(b/576047042): Add GEiC onboarding metrics.
+    if (auto* glic_service = GlicKeyedService::Get(profile)) {
+      glic_service->metrics()->OnGeicOnboardingAccept();
+    }
+    // The OS launcher and IPH side effects don't apply.
     SetStatus(profile, prefs::FreStatus::kCompleted);
+  }
+
+  void ResetForDebugging(Profile* profile) const override {
+    // Only resets the FRE for the current GE instance. The browser-wide OS
+    // launcher and hotkey prefs are left alone: GEiC onboarding doesn't set
+    // them up, and they may belong to another (consumer) profile.
+    geic::ResetFre(profile);
   }
 
   void ApplyDevSwitches(Profile* profile) const override {
@@ -136,18 +156,14 @@ class GeminiEnterpriseGlicFreStore final : public GlicFreStore {
     // `geic::GetFreStatus()`), so that nothing is persisted.
     if (base::CommandLine::ForCurrentProcess()->HasSwitch(
             ::switches::kGeicResetFre)) {
-      // Clears the GEiC FRE status for all GE instances.
-      profile->GetPrefs()->ClearPref(geic::prefs::kGeicCompletedFre);
+      ResetForDebugging(profile);
     }
   }
 
   void OnPrimaryAccountCleared(Profile* profile) const override {
-    // The GEiC FRE is stored per GE instance, not per account, so it is kept.
-    // TODO(b/576047045): Confirm whether signing out should reset the GEiC FRE.
+    // Intentionally a no-op: this is only called on Android, where GEiC isn't
+    // supported.
   }
-
-  bool HidesSettingsUntilCompleted() const override { return true; }
-
   // Keyed by GE instance, so changes for other GE instances are also
   // reported.
   std::string_view GetStatusPrefName() const override {

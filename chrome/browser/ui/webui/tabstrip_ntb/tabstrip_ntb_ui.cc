@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/webui/tabstrip_ntb/tabstrip_ntb_ui.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 
 #include "base/check.h"
@@ -24,6 +25,7 @@
 #include "content/public/browser/web_contents_user_data.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "mojo/public/cpp/bindings/remote.h"
 #include "ui/webui/webui_util.h"
 
 #if !BUILDFLAG(OPTIMIZE_WEBUI)
@@ -34,20 +36,22 @@ namespace tabstrip_ntb {
 
 namespace {
 
-// Associates a `tabs_api::TabStripService` with the WebContents hosting
-// chrome://tabstrip-ntb.top-chrome/. If a `TabStripNtbUI` is created before
-// there is a service, it leaves the service end of its pipe here, and the
-// service picks it up when it is set.
+// Associates a `tabs_api::TabStripService` and button visibility state with the
+// WebContents hosting chrome://tabstrip-ntb.top-chrome/. Stored on the
+// WebContents rather than on `TabStripNtbUI` so they survive renderer crashes
+// and reloads. If a `TabStripNtbUI` is created before there is a service, it
+// leaves the service end of its pipe here, and the service picks it up when it
+// is set.
 class TabStripServiceUserData
     : public content::WebContentsUserData<TabStripServiceUserData> {
  public:
   ~TabStripServiceUserData() override = default;
 
   // Connects `service_end` to the service, or holds it until there is one.
+  // Replaces any unconsumed pending end if the WebUI is recreated (e.g., on
+  // renderer crash recovery) before a service is attached.
   void Connect(
       mojo::PendingReceiver<tabs_api::mojom::TabStripService> service_end) {
-    CHECK(!pending_service_end_.is_valid())
-        << "TabStripServiceUserData already has a pending service end";
     pending_service_end_ = std::move(service_end);
     MaybeConnect();
   }
@@ -55,6 +59,23 @@ class TabStripServiceUserData
   void SetService(tabs_api::TabStripService* service) {
     service_ = service;
     MaybeConnect();
+  }
+
+  void BindPage(mojo::PendingRemote<tabstrip_ntb::mojom::Page> page) {
+    page_.reset();
+    page_.Bind(std::move(page));
+    if (button_visible_.has_value()) {
+      // If the button visibility was set before the page was bound (or before a
+      // renderer crash recreated the controller), set it now.
+      page_->SetButtonVisible(*button_visible_);
+    }
+  }
+
+  void SetButtonVisible(bool visible) {
+    button_visible_ = visible;
+    if (page_.is_bound()) {
+      page_->SetButtonVisible(visible);
+    }
   }
 
  private:
@@ -72,6 +93,8 @@ class TabStripServiceUserData
 
   raw_ptr<tabs_api::TabStripService> service_ = nullptr;
   mojo::PendingReceiver<tabs_api::mojom::TabStripService> pending_service_end_;
+  mojo::Remote<tabstrip_ntb::mojom::Page> page_;
+  std::optional<bool> button_visible_;
 };
 
 WEB_CONTENTS_USER_DATA_KEY_IMPL(TabStripServiceUserData);
@@ -118,11 +141,32 @@ void TabStripNtbUI::SetTabStripServiceForWebContents(
       ->SetService(service);
 }
 
+// static
+void TabStripNtbUI::SetButtonVisibleForWebContents(
+    content::WebContents* web_contents,
+    bool visible) {
+  CHECK(web_contents);
+  TabStripServiceUserData::GetOrCreateForWebContents(web_contents)
+      ->SetButtonVisible(visible);
+}
+
 void TabStripNtbUI::BindInterface(
     mojo::PendingReceiver<tabs_api::mojom::TabStripService> receiver) {
   CHECK(tab_strip_client_end_.is_valid())
       << "TabStripService client end already bound";
   CHECK(FusePipes(std::move(receiver), std::move(tab_strip_client_end_)));
+}
+
+void TabStripNtbUI::BindInterface(
+    mojo::PendingReceiver<tabstrip_ntb::mojom::PageHandlerFactory> receiver) {
+  page_factory_receiver_.reset();
+  page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void TabStripNtbUI::BindPage(
+    mojo::PendingRemote<tabstrip_ntb::mojom::Page> page) {
+  TabStripServiceUserData::GetOrCreateForWebContents(web_ui()->GetWebContents())
+      ->BindPage(std::move(page));
 }
 
 WEB_UI_CONTROLLER_TYPE_IMPL(TabStripNtbUI)

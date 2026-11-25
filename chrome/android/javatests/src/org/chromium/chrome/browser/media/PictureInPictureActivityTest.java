@@ -5,7 +5,6 @@
 package org.chromium.chrome.browser.media;
 
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.timeout;
 import static org.mockito.Mockito.times;
@@ -22,12 +21,14 @@ import android.graphics.Rect;
 import android.os.Bundle;
 import android.util.Rational;
 import android.view.View;
+import android.view.WindowManager;
 
 import androidx.lifecycle.Lifecycle;
 import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.hamcrest.Matchers;
+import org.jni_zero.JniRawPtr;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
@@ -41,7 +42,6 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.UnguessableToken;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
@@ -49,7 +49,6 @@ import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.media.PictureInPictureActivity.PictureInPictureButtonAction;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -70,7 +69,6 @@ import java.util.concurrent.TimeoutException;
 /** Tests for PictureInPictureActivity. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Restriction(DeviceRestriction.RESTRICTION_TYPE_NON_AUTO)
 public class PictureInPictureActivityTest {
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
@@ -119,7 +117,7 @@ public class PictureInPictureActivityTest {
         VideoOverlayActivityJni.setInstanceForTesting(mNativeMock);
         mOriginalHelper = PictureInPictureActivity.setLaunchIntoPipHelper(mLaunchIntoPipHelper);
         when(mNativeMock.onActivityStart(eq(mNativeWindowToken), any(), any()))
-                .thenReturn(NATIVE_OVERLAY);
+                .thenAnswer(inv -> JniRawPtr.createForTesting(NATIVE_OVERLAY));
     }
 
     @After
@@ -182,7 +180,7 @@ public class PictureInPictureActivityTest {
                 () ->
                         activity.onPictureInPictureModeChanged(
                                 /* isInPictureInPictureMode= */ false, newConfig));
-        verify(mNativeMock, times(1)).onBackToTab(NATIVE_OVERLAY);
+        verify(mNativeMock, times(1)).onBackToTab(any());
     }
 
     @Test
@@ -194,12 +192,13 @@ public class PictureInPictureActivityTest {
         View view = activity.getViewForTesting();
         ThreadUtils.runOnUiThreadBlocking(() -> view.layout(0, 0, reasonableSize, reasonableSize));
         verify(mNativeMock, times(1))
-                .onViewSizeChanged(NATIVE_OVERLAY, reasonableSize, reasonableSize);
+                .onViewSizeChanged(any(), eq(reasonableSize), eq(reasonableSize));
         // An unreasonably large size should not generate a resize event.
         final int unreasonableSize = activity.getWindowAndroid().getDisplay().getDisplayWidth();
         ThreadUtils.runOnUiThreadBlocking(
                 () -> view.layout(0, 0, unreasonableSize, unreasonableSize));
-        verify(mNativeMock, times(0)).onViewSizeChanged(anyInt(), anyInt(), anyInt());
+        verify(mNativeMock, times(0))
+                .onViewSizeChanged(any(), eq(unreasonableSize), eq(unreasonableSize));
         testExitOn(activity, () -> activity.close());
     }
 
@@ -211,12 +210,12 @@ public class PictureInPictureActivityTest {
                 activity.mMediaActionsButtonsManager;
 
         activity.updateVisibleActions(new int[] {MediaSessionAction.PLAY});
-        activity.setPlaybackState(PlaybackState.PAUSED);
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PAUSED));
         ArrayList<RemoteAction> actions = manager.getActionsForPictureInPictureParams();
         Assert.assertEquals(1, actions.size());
         Assert.assertEquals(manager.mPlay, actions.get(0));
 
-        activity.setPlaybackState(PlaybackState.PLAYING);
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PLAYING));
         actions = manager.getActionsForPictureInPictureParams();
         Assert.assertEquals(manager.mPause, actions.get(0));
 
@@ -249,6 +248,28 @@ public class PictureInPictureActivityTest {
         actions = manager.getActionsForPictureInPictureParams();
         Assert.assertEquals(1, actions.size());
         Assert.assertFalse(actions.get(0).isEnabled());
+        testExitOn(activity, () -> activity.close());
+    }
+
+    @Test
+    @MediumTest
+    public void testKeepScreenOnWhilePlaying() throws Throwable {
+        PictureInPictureActivity activity = startPictureInPictureActivity();
+        Assert.assertFalse(isKeepScreenOnSet(activity));
+
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PLAYING));
+        Assert.assertTrue(isKeepScreenOnSet(activity));
+
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PAUSED));
+        Assert.assertFalse(isKeepScreenOnSet(activity));
+
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PLAYING));
+        Assert.assertTrue(isKeepScreenOnSet(activity));
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> activity.setPlaybackState(PlaybackState.END_OF_VIDEO));
+        Assert.assertFalse(isKeepScreenOnSet(activity));
+
         testExitOn(activity, () -> activity.close());
     }
 
@@ -290,7 +311,7 @@ public class PictureInPictureActivityTest {
         activity.updateVisibleActions(new int[] {MediaSessionAction.NEXT_TRACK});
         manager.mNextTrack.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .nextTrack(eq(NATIVE_OVERLAY));
+                .nextTrack(any());
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -300,7 +321,7 @@ public class PictureInPictureActivityTest {
         activity.updateVisibleActions(new int[] {MediaSessionAction.PREVIOUS_TRACK});
         manager.mPreviousTrack.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .previousTrack(eq(NATIVE_OVERLAY));
+                .previousTrack(any());
         histogramWatcher.assertExpected();
 
         testExitOn(activity, () -> activity.close());
@@ -320,7 +341,7 @@ public class PictureInPictureActivityTest {
         activity.updateVisibleActions(new int[] {MediaSessionAction.NEXT_SLIDE});
         manager.mNextSlide.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .nextSlide(eq(NATIVE_OVERLAY));
+                .nextSlide(any());
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -330,7 +351,7 @@ public class PictureInPictureActivityTest {
         activity.updateVisibleActions(new int[] {MediaSessionAction.PREVIOUS_SLIDE});
         manager.mPreviousSlide.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .previousSlide(eq(NATIVE_OVERLAY));
+                .previousSlide(any());
         histogramWatcher.assertExpected();
 
         testExitOn(activity, () -> activity.close());
@@ -349,8 +370,7 @@ public class PictureInPictureActivityTest {
                         PICTURE_IN_PICTURE_ACTION_HISTOGRAM, PictureInPictureButtonAction.HIDE);
         activity.updateVisibleActions(new int[] {MediaSessionAction.EXIT_PICTURE_IN_PICTURE});
         manager.mHide.getActionIntent().send();
-        verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL))
-                .hide(eq(NATIVE_OVERLAY));
+        verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL)).hide(any());
         histogramWatcher.assertExpected();
 
         testExitOn(activity, () -> activity.close());
@@ -442,7 +462,7 @@ public class PictureInPictureActivityTest {
                     MediaSessionAction.PLAY,
                     MediaSessionAction.NEXT_TRACK
                 });
-        activity.setPlaybackState(PlaybackState.PLAYING);
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PLAYING));
         actions = manager.getActionsForPictureInPictureParams();
         Assert.assertEquals("Should be trimmed to 3 actions", 3, actions.size());
         Assert.assertEquals(manager.mHide, actions.get(0));
@@ -477,7 +497,7 @@ public class PictureInPictureActivityTest {
         PictureInPictureActivity.MediaActionButtonsManager manager =
                 activity.mMediaActionsButtonsManager;
 
-        activity.setPlaybackState(PlaybackState.PLAYING);
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PLAYING));
         activity.setMicrophoneMuted(false);
         activity.setCameraState(true);
 
@@ -487,7 +507,7 @@ public class PictureInPictureActivityTest {
                         PictureInPictureButtonAction.TOGGLE_MICROPHONE);
         manager.mMicrophone.getAction().getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .toggleMicrophone(eq(NATIVE_OVERLAY), eq(false));
+                .toggleMicrophone(any(), eq(false));
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -496,7 +516,7 @@ public class PictureInPictureActivityTest {
                         PictureInPictureButtonAction.TOGGLE_CAMERA);
         manager.mCamera.getAction().getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .toggleCamera(eq(NATIVE_OVERLAY), eq(false));
+                .toggleCamera(any(), eq(false));
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -504,10 +524,10 @@ public class PictureInPictureActivityTest {
                         PICTURE_IN_PICTURE_ACTION_HISTOGRAM, PictureInPictureButtonAction.PAUSE);
         manager.mPause.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .togglePlayPause(eq(NATIVE_OVERLAY), eq(false));
+                .togglePlayPause(any(), eq(false));
         histogramWatcher.assertExpected();
 
-        activity.setPlaybackState(PlaybackState.PAUSED);
+        ThreadUtils.runOnUiThreadBlocking(() -> activity.setPlaybackState(PlaybackState.PAUSED));
         activity.setMicrophoneMuted(true);
         activity.setCameraState(false);
 
@@ -516,7 +536,7 @@ public class PictureInPictureActivityTest {
                         PICTURE_IN_PICTURE_ACTION_HISTOGRAM, PictureInPictureButtonAction.PLAY);
         manager.mPlay.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .togglePlayPause(eq(NATIVE_OVERLAY), eq(true));
+                .togglePlayPause(any(), eq(true));
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -525,7 +545,7 @@ public class PictureInPictureActivityTest {
                         PictureInPictureButtonAction.TOGGLE_MICROPHONE);
         manager.mMicrophone.getAction().getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .toggleMicrophone(eq(NATIVE_OVERLAY), eq(true));
+                .toggleMicrophone(any(), eq(true));
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -534,7 +554,7 @@ public class PictureInPictureActivityTest {
                         PictureInPictureButtonAction.TOGGLE_CAMERA);
         manager.mCamera.getAction().getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .toggleCamera(eq(NATIVE_OVERLAY), eq(true));
+                .toggleCamera(any(), eq(true));
         histogramWatcher.assertExpected();
 
         histogramWatcher =
@@ -542,7 +562,7 @@ public class PictureInPictureActivityTest {
                         PICTURE_IN_PICTURE_ACTION_HISTOGRAM, PictureInPictureButtonAction.HANG_UP);
         manager.mHangUp.getActionIntent().send();
         verify(mNativeMock, timeout(CriteriaHelper.DEFAULT_MAX_TIME_TO_POLL).times(1))
-                .hangUp(eq(NATIVE_OVERLAY));
+                .hangUp(any());
         histogramWatcher.assertExpected();
 
         testExitOn(activity, () -> activity.close());
@@ -551,18 +571,19 @@ public class PictureInPictureActivityTest {
     @Test
     @MediumTest
     public void testNotifyNativeWhenTabClose() throws Throwable {
-        mActivityTestRule.skipWindowAndTabStateCleanup();
-
         PictureInPictureActivity activity = startPictureInPictureActivity();
         testExitOn(activity, () -> mTab.setClosing(/* closing= */ true));
-        verify(mNativeMock, times(1)).destroyStartedByJava(NATIVE_OVERLAY);
+        verify(mNativeMock, times(1)).destroyStartedByJava(any());
+        // The tab was only marked as closing, not closed through the TabModel. Unmark it so the
+        // TabModel can close it during teardown.
+        ThreadUtils.runOnUiThreadBlocking(() -> mTab.setClosing(/* closing= */ false));
     }
 
     @Test
     @MediumTest
     public void testPipWindowExitsIfTokenDoesNotExist() throws Throwable {
         // If the window token doesn't produce a native window, then the activity should exit.
-        when(mNativeMock.onActivityStart(eq(mNativeWindowToken), any(), any())).thenReturn(0L);
+        when(mNativeMock.onActivityStart(eq(mNativeWindowToken), any(), any())).thenReturn(null);
         PictureInPictureActivity activity = launchPictureInPictureActivity();
 
         // The activity should be destroyed, because its native window is gone.
@@ -577,11 +598,19 @@ public class PictureInPictureActivityTest {
 
         verify(mNativeMock, times(1)).onActivityStart(eq(mNativeWindowToken), eq(activity), any());
         // Nothing should be destroyed, because there was no native window.
-        verify(mNativeMock, times(0)).destroyStartedByJava(anyInt());
+        verify(mNativeMock, times(0)).destroyStartedByJava(any());
     }
 
     private WebContents getWebContents() {
         return mActivityTestRule.getWebContents();
+    }
+
+    private static boolean isKeepScreenOnSet(Activity activity) {
+        return ThreadUtils.runOnUiThreadBlocking(
+                () ->
+                        (activity.getWindow().getAttributes().flags
+                                        & WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+                                != 0);
     }
 
     private void testExitOn(Activity activity, Runnable runnable) throws Throwable {

@@ -44,6 +44,7 @@
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/prefetch_test_util.h"
+#include "content/public/test/preloading_test_util.h"
 #include "content/public/test/prerender_test_util.h"
 #include "extensions/common/extension_features.h"
 #include "net/dns/mock_host_resolver.h"
@@ -51,8 +52,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/navigation/preloading_headers.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 namespace {
 
@@ -68,6 +69,15 @@ enum class PrefetchStatus {
 enum class PrerenderFinalStatus {
   kActivated = 0,
   kPrerenderFailedDuringPrefetch = 86,
+};
+
+// Minimal copy of content/browser/preloading/preloading_data_impl.h
+enum class PredictorConfusionMatrix {
+  kTruePositive = 0,
+  kFalsePositive = 1,
+  kTrueNegative = 2,
+  kFalseNegative = 3,
+  kMaxValue = kFalseNegative
 };
 
 }  // namespace alternative_content
@@ -449,7 +459,11 @@ class SearchPreloadBrowserTestBase : public PlatformBrowserTest,
     waiter.AddPageExpectation(page_load_metrics::PageLoadMetricsTestWaiter::
                                   TimingField::kFirstContentfulPaint);
 
-    ASSERT_TRUE(content::NavigateToURL(&GetWebContents(), url));
+    // Use `NavigateToPrerenderedResult()` so the navigation carries
+    // `PAGE_TRANSITION_GENERATED | PAGE_TRANSITION_FROM_ADDRESS_BAR`, matching
+    // the search domain callback registered by
+    // `SetIsNavigationInDomainCallback()`.
+    NavigateToPrerenderedResult(url);
 
     waiter.Wait();
   }
@@ -465,7 +479,7 @@ class SearchPreloadBrowserTestBase : public PlatformBrowserTest,
     observer.set_wait_event(wait_event);
     GetWebContents().OpenURL(
         content::OpenURLParams::CreateBrowserInitiated(
-            url, WindowOpenDisposition::kCurrentTab,
+            url, ui::mojom::WindowOpenDisposition::kCurrentTab,
             ui::PageTransitionFromInt(ui::PAGE_TRANSITION_GENERATED |
                                       ui::PAGE_TRANSITION_FROM_ADDRESS_BAR)),
         /*navigation_handle_callback=*/{});
@@ -592,6 +606,17 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnSuggest.Prerender",
                        {});
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnPress.Prefetch", {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma("Preloading.Predictor.OmniboxMousePredictor.Precision",
+                       {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxMousePredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
 
   histogram_tester().ExpectBucketCount(
       "Prerender.Experimental.PrerenderHostFinalStatus.Embedder_"
@@ -675,6 +700,25 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnSuggest.Prerender",
                        {});
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnPress.Prefetch", {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kSuccess,
+       content::PreloadingTriggeringOutcome::kDuplicate});
+  // Both the original and the duplicate attempts match the navigation, so
+  // Precision records two `kTruePositive` samples while Recall records one.
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive,
+       alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
 
   histogram_tester().ExpectBucketCount(
       "Prerender.Experimental.PrerenderHostFinalStatus.Embedder_"
@@ -943,6 +987,17 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
                        {});
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnPress.Prefetch",
                        {SearchPreloadSignalResult::kPrefetchTriggered});
+  uma_tester.ExpectUma("Preloading.Predictor.DefaultSearchEngine.Precision",
+                       {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxMousePredictor.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxMousePredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
 
   uma_tester.ExpectTotalCount(
       "PreloadServingMetrics.PageLoad.Clients.PaintTiming."
@@ -956,6 +1011,112 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
       "PreloadServingMetrics.PageLoad.Clients.PaintTiming."
       "NavigationToFirstContentfulPaint.WithPrerender",
       0);
+}
+
+// Verifies that multiple `OnNavigationLikely()` calls with different predictors
+// (both using `confidence = 100`) on the same suggestion record predictions for
+// each predictor independently.
+IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
+                       OnNavigationLikely_MultiplePredictors) {
+  HistogramTesterWrapper uma_tester;
+  SetUpTemplateURLService(/*prefetch_likely_navigations=*/true);
+  SetUpSearchPreloadService({
+      .no_vary_search_data_cache = R"(key-order, params, except=("q"))",
+  });
+
+  ASSERT_TRUE(content::NavigateToURL(
+      &GetWebContents(), embedded_test_server()->GetURL("/empty.html")));
+
+  std::string original_query = "he";
+  std::string search_terms = "hello";
+  SearchUrls urls = GetSearchUrls(search_terms);
+
+  AutocompleteMatch autocomplete_match = CreateSearchSuggestionMatch(
+      original_query, search_terms, PrefetchHint::kEnabled,
+      PrerenderHint::kDisabled);
+
+  {
+    content::test::TestPrefetchWatcher watcher;
+
+    ASSERT_TRUE(GetSearchPreloadService().OnNavigationLikely(
+        1, autocomplete_match,
+        omnibox::mojom::NavigationPredictor::kUpOrDownArrowButton,
+        &GetWebContents()));
+
+    watcher.WaitUntilPrefetchResponseCompleted(std::nullopt,
+                                               urls.prefetch_on_press);
+  }
+
+  ASSERT_FALSE(GetSearchPreloadService().OnNavigationLikely(
+      1, autocomplete_match, omnibox::mojom::NavigationPredictor::kTouchDown,
+      &GetWebContents()));
+
+  NavigateAndWaitFCP(urls.navigation);
+  NavigateAwayToRecordHistogram();
+
+  uma_tester.ExpectUma(
+      "Omnibox.DsePreload.SignalResult.OnPress.Prefetch",
+      {SearchPreloadSignalResult::kPrefetchTriggered,
+       SearchPreloadSignalResult::kNotTriggeredAlreadyTriggered});
+  uma_tester.ExpectUma("Preloading.Predictor.DefaultSearchEngine.Precision",
+                       {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxSearchPredictor.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxSearchPredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxTouchDownPredirector.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxTouchDownPredirector.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma("Preloading.Predictor.OmniboxMousePredictor.Precision",
+                       {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxMousePredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
+
+  // The first `OnNavigationLikely()` (`kUpOrDownArrowButton`) triggers
+  // prefetch, and the second one (`kTouchDown`) records a duplicate attempt.
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxSearchPredictor.TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kSuccess});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxSearchPredictor.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxSearchPredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxTouchDownPredirector."
+      "TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kDuplicate});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxTouchDownPredirector.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxTouchDownPredirector.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.TriggeringOutcome", {});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.Precision", {});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.TriggeringOutcome",
+      {});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.Precision", {});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
 }
 
 // `OnNavigationLikely()` doesn't trigger prefetch if default search provider
@@ -1049,6 +1210,36 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
   uma_tester.ExpectUma(
       "Omnibox.DsePreload.SignalResult.OnPress.Prefetch",
       {SearchPreloadSignalResult::kNotTriggeredAlreadyTriggered});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxMousePredictor.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxMousePredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kSuccess});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kDuplicate});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
 
   uma_tester.ExpectTotalCount(
       "PreloadServingMetrics.PageLoad.Clients.PaintTiming."
@@ -1062,6 +1253,74 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest,
       "PreloadServingMetrics.PageLoad.Clients.PaintTiming."
       "NavigationToFirstContentfulPaint.WithPrerender",
       0);
+}
+
+// Same as `OnAutocompleteResultChanged_Then_OnNavigationLikely`, but
+// `(kPrefetch, kOmniboxMousePredictor)` is held back. The duplicate attempt for
+// `kOmniboxMousePredictor` should not record `kDuplicate` as its triggering
+// outcome.
+IN_PROC_BROWSER_TEST_F(
+    SearchPreloadBrowserTest,
+    OnAutocompleteResultChanged_Then_OnNavigationLikely_Holdback) {
+  content::test::PreloadingConfigOverride preloading_config_override;
+  preloading_config_override.SetHoldback(
+      content::PreloadingType::kPrefetch,
+      chrome_preloading_predictor::kOmniboxMousePredictor, true);
+
+  HistogramTesterWrapper uma_tester;
+  SetUpTemplateURLService(/*prefetch_likely_navigations=*/true);
+  SetUpSearchPreloadService({
+      .no_vary_search_data_cache = R"(key-order, params, except=("q"))",
+  });
+
+  ASSERT_TRUE(content::NavigateToURL(
+      &GetWebContents(), embedded_test_server()->GetURL("/empty.html")));
+
+  std::string original_query = "he";
+  std::string search_terms = "hello";
+  SearchUrls urls = GetSearchUrls(search_terms);
+
+  {
+    content::test::TestPrefetchWatcher watcher;
+
+    ChangeAutocompleteResult(original_query, search_terms,
+                             PrefetchHint::kEnabled, PrerenderHint::kDisabled);
+
+    watcher.WaitUntilPrefetchResponseCompleted(std::nullopt,
+                                               urls.prefetch_on_suggest);
+  }
+
+  EXPECT_EQ(1, request_collector().CountByPath(urls.prefetch_on_suggest));
+
+  AutocompleteMatch autocomplete_match = CreateSearchSuggestionMatch(
+      original_query, search_terms, PrefetchHint::kEnabled,
+      PrerenderHint::kDisabled);
+
+  const bool is_triggered_prefetch =
+      GetSearchPreloadService().OnNavigationLikely(
+          1, autocomplete_match,
+          omnibox::mojom::NavigationPredictor::kMouseDown, &GetWebContents());
+  ASSERT_FALSE(is_triggered_prefetch);
+
+  // Navigate.
+  NavigateAndWaitFCP(urls.navigation);
+
+  NavigateAwayToRecordHistogram();
+
+  // Prefetch is used.
+  EXPECT_EQ(1, request_collector().CountByPath(urls.prefetch_on_suggest));
+  EXPECT_EQ(0, request_collector().CountByPath(urls.prefetch_on_press));
+  EXPECT_EQ(0, request_collector().CountByPath(urls.navigation));
+
+  uma_tester.ExpectUma(
+      "Omnibox.DsePreload.SignalResult.OnPress.Prefetch",
+      {SearchPreloadSignalResult::kNotTriggeredAlreadyTriggered});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.DefaultSearchEngine.TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kSuccess});
+  uma_tester.ExpectUma(
+      "Preloading.Prefetch.Attempt.OmniboxMousePredictor.TriggeringOutcome",
+      {content::PreloadingTriggeringOutcome::kUnspecified});
 }
 
 // Scenario:
@@ -2527,6 +2786,17 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest_AheadOfImminentNavigation,
 
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnPress.Prefetch",
                        {SearchPreloadSignalResult::kPrefetchTriggered});
+  uma_tester.ExpectUma("Preloading.Predictor.DefaultSearchEngine.Precision",
+                       {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxTouchDownPredirector.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxTouchDownPredirector.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
 }
 
 // `OnNavigationLikely()` with `kUpOrDownArrowButton` is not marked as ahead of
@@ -2569,6 +2839,17 @@ IN_PROC_BROWSER_TEST_F(SearchPreloadBrowserTest_AheadOfImminentNavigation,
 
   uma_tester.ExpectUma("Omnibox.DsePreload.SignalResult.OnPress.Prefetch",
                        {SearchPreloadSignalResult::kPrefetchTriggered});
+  uma_tester.ExpectUma("Preloading.Predictor.DefaultSearchEngine.Precision",
+                       {});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.DefaultSearchEngine.Recall",
+      {alternative_content::PredictorConfusionMatrix::kFalseNegative});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxSearchPredictor.Precision",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
+  uma_tester.ExpectUma(
+      "Preloading.Predictor.OmniboxSearchPredictor.Recall",
+      {alternative_content::PredictorConfusionMatrix::kTruePositive});
 }
 
 // Test suite for the case that `kDsePreload2AheadOfImminentNavigation` is

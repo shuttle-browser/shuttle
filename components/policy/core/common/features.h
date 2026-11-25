@@ -26,6 +26,12 @@ POLICY_EXPORT BASE_DECLARE_FEATURE(
 // Enables the addition of new security fields for SecOps.
 POLICY_EXPORT BASE_DECLARE_FEATURE(kEnhancedSecurityEventFields);
 
+// Returns true if `kEnhancedSecurityEventFields` is enabled and supported on
+// the current platform. On Windows 11 24H2+, this returns false due to hangs
+// during synchronous WLAN API queries.
+// TODO(crbug.com/577109904): Re-enable once network name query is asynchronous.
+POLICY_EXPORT bool IsEnhancedSecurityEventFieldsEnabled();
+
 // Controls if we can use the cec flag in PolicyData.
 POLICY_EXPORT BASE_DECLARE_FEATURE(kUseCECFlagInPolicyData);
 
@@ -39,10 +45,10 @@ POLICY_EXPORT BASE_DECLARE_FEATURE(kUserPolicyCacheSizeLimit2MB);
 POLICY_EXPORT BASE_DECLARE_FEATURE(
     kInitializePoliciesForSignedInUserInNewEntryPoints);
 
-// Controls whether to use RestrictionsManager instead of UserManager in
-// AppRestrictionsProvider to retrieve application restrictions.
+// When enabled, the CBCM enrollment token is read again right before the
+// deferred initialization enrolls the browser.
 POLICY_EXPORT BASE_DECLARE_FEATURE(
-    kUseRestrictionsManagerInAppRestrictionsProvider);
+    kCbcmRefreshEnrollmentTokenBeforeDeferredInit);
 #endif
 
 // Enables a configurable delay for policy registration.
@@ -114,6 +120,15 @@ POLICY_EXPORT extern const base::FeatureParam<base::TimeDelta>
 
 // Returns true if `kMigrateSecureConnectApiToDmServer` is enabled.
 POLICY_EXPORT bool IsMigrateSecureConnectApiToDmServerEnabled();
+
+// When enabled, UserInfoFetcher will use
+// CredentialsMode::kOmitBug_775438_Workaround instead of CredentialsMode::kOmit
+// for user info requests.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kPolicyUserInfoFetcherUseOmitBugWorkaround);
+
+// When enabled, CBCM unenrollment on HTTP 410 requires an explicit
+// `DeviceManagementErrorDetail` in the response body.
+POLICY_EXPORT BASE_DECLARE_FEATURE(kCbcmRequireErrorDetailForUnenrollment);
 
 }  // namespace policy::features
 

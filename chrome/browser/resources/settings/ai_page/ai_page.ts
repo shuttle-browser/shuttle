@@ -13,7 +13,6 @@ import '../internal/icons.html.js';
 // </if>
 
 import {PrefService} from '/shared/settings/prefs2/pref_service.js';
-import {PrefServiceObserverMixinLit} from '/shared/settings/prefs2/pref_service_observer_mixin_lit.js';
 import {WebUiListenerMixinLit} from 'chrome://resources/cr_elements/web_ui_listener_mixin_lit.js';
 import {assert, assertNotReached} from 'chrome://resources/js/assert.js';
 import {OpenWindowProxyImpl} from 'chrome://resources/js/open_window_proxy.js';
@@ -29,7 +28,6 @@ import {SettingsViewMixinLit} from '../settings_page/settings_view_mixin_lit.js'
 
 import {getCss} from './ai_page.css.js';
 import {getHtml} from './ai_page.html.js';
-import {FeatureOptInState, SettingsAiPageFeaturePrefName} from './constants.js';
 // <if expr="_google_chrome">
 import type {OnDeviceAiBrowserProxy, OnDeviceAiEnabled} from './on_device_ai_browser_proxy.js';
 import {OnDeviceAiBrowserProxyImpl} from './on_device_ai_browser_proxy.js';
@@ -37,8 +35,8 @@ import {OnDeviceAiBrowserProxyImpl} from './on_device_ai_browser_proxy.js';
 const ON_DEVICE_AI_PREF_KEY = 'synthetic.settings.on_device_ai_enabled';
 // </if>
 
-const SettingsAiPageElementBase = WebUiListenerMixinLit(
-    SettingsViewMixinLit(PrefServiceObserverMixinLit(CrLitElement)));
+const SettingsAiPageElementBase =
+    WebUiListenerMixinLit(SettingsViewMixinLit(CrLitElement));
 
 export class SettingsAiPageElement extends SettingsAiPageElementBase {
   static get is() {
@@ -56,7 +54,6 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
   static override get properties() {
     return {
       showComposeControl_: {type: Boolean},
-      showHistorySearchControl_: {type: Boolean},
       showPasswordChangeControl_: {type: Boolean},
       showAiSuggestionsControl_: {type: Boolean},
       showInlineCueMenuControl_: {type: Boolean},
@@ -64,16 +61,14 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
       showIndigoControl_: {type: Boolean},
       showGoogleSearchAiModeWorkspaceControl_: {type: Boolean},
       showDictationControl_: {type: Boolean},
-      historySearchPref_: {type: Object},
+      // <if expr="_google_chrome">
+      showOnDeviceAiAdvancedSettings_: {type: Boolean},
+      // </if>
     };
   }
 
-  private accessor historySearchPref_:
-      chrome.settingsPrivate.PrefObject<number>|undefined;
   protected accessor showComposeControl_: boolean =
       loadTimeData.getBoolean('showComposeControl');
-  protected accessor showHistorySearchControl_: boolean =
-      loadTimeData.getBoolean('showHistorySearchControl');
   protected accessor showPasswordChangeControl_: boolean =
       loadTimeData.getBoolean('showPasswordChangeControl');
   protected accessor showAiSuggestionsControl_: boolean =
@@ -88,6 +83,10 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
       loadTimeData.getBoolean('showGoogleSearchAiModeWorkspaceControl');
   protected accessor showDictationControl_: boolean =
       loadTimeData.getBoolean('showDictationControl');
+  // <if expr="_google_chrome">
+  protected accessor showOnDeviceAiAdvancedSettings_: boolean =
+      loadTimeData.getBoolean('showOnDeviceAiAdvancedSettings');
+  // </if>
 
   private shouldRecordMetrics_: boolean = true;
   private metricsBrowserProxy_: MetricsBrowserProxy =
@@ -99,8 +98,6 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
 
   override connectedCallback() {
     super.connectedCallback();
-    this.mirrorPref(
-        SettingsAiPageFeaturePrefName.HISTORY_SEARCH, 'historySearchPref_');
     this.maybeLogVisibilityMetrics_();
     // <if expr="_google_chrome">
     const setOnDeviceAiPref = (onDeviceAiEnabled: OnDeviceAiEnabled) =>
@@ -124,9 +121,6 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
     this.shouldRecordMetrics_ = false;
 
     this.metricsBrowserProxy_.recordBooleanHistogram(
-        'Settings.AiPage.ElementVisibility.HistorySearch',
-        this.showHistorySearchControl_);
-    this.metricsBrowserProxy_.recordBooleanHistogram(
         'Settings.AiPage.ElementVisibility.Compose', this.showComposeControl_);
     this.metricsBrowserProxy_.recordBooleanHistogram(
         'Settings.AiPage.ElementVisibility.PasswordChange',
@@ -139,15 +133,6 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
     this.metricsBrowserProxy_.recordBooleanHistogram(
         'Settings.AiPage.ElementVisibility.GoogleSearchAiModeWorkspace',
         this.showGoogleSearchAiModeWorkspaceControl_);
-  }
-
-  protected onHistorySearchRowClick_() {
-    this.recordInteractionMetrics_(
-        AiPageInteractions.HISTORY_SEARCH_CLICK,
-        'Settings.AiPage.HistorySearchEntryPointClick');
-
-    const router = Router.getInstance();
-    router.navigateTo(router.getRoutes().HISTORY_SEARCH);
   }
 
   protected onComposeRowClick_() {
@@ -255,20 +240,12 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
     this.metricsBrowserProxy_.recordAction(action);
   }
 
-  protected getHistorySearchSublabel_(): string {
-    const isAnswersEnabled =
-        loadTimeData.getBoolean('historyEmbeddingsAnswersFeatureEnabled');
-    if (this.historySearchPref_?.value === FeatureOptInState.ENABLED) {
-      return isAnswersEnabled ?
-          loadTimeData.getString('historySearchWithAnswersSublabelOn') :
-          loadTimeData.getString('historySearchSublabelOn');
-    }
-    return isAnswersEnabled ?
-        loadTimeData.getString('historySearchWithAnswersSublabelOff') :
-        loadTimeData.getString('historySearchSublabelOff');
+  // <if expr="_google_chrome">
+  protected onOnDeviceAiRowClick_() {
+    const router = Router.getInstance();
+    router.navigateTo(router.getRoutes().ON_DEVICE_AI);
   }
 
-  // <if expr="_google_chrome">
   protected onOnDeviceAiSubLabelLinkClicked_() {
     OpenWindowProxyImpl.getInstance().openUrl(
         loadTimeData.getString('onDeviceAiLearnMoreUrl'));
@@ -305,10 +282,6 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
   override getFocusConfig() {
     const map = new Map();
 
-    if (routes.HISTORY_SEARCH) {
-      map.set(routes.HISTORY_SEARCH.path, '#historySearchRowV2');
-    }
-
     if (routes.OFFER_WRITING_HELP) {
       map.set(routes.OFFER_WRITING_HELP.path, '#composeRowV2');
     }
@@ -329,6 +302,12 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
       map.set(routes.DICTATION.path, '#dictationRow');
     }
 
+    // <if expr="_google_chrome">
+    if (routes.ON_DEVICE_AI) {
+      map.set(routes.ON_DEVICE_AI.path, '#onDeviceAiRow');
+    }
+    // </if>
+
     return map;
   }
 
@@ -337,10 +316,12 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
     const ids = [
       'compose',
       'dictation',
-      'historySearch',
       'aiSuggestions',
       'inlineCueMenu',
       'skills',
+      // <if expr="_google_chrome">
+      'onDeviceAi',
+      // </if>
     ];
     assert(ids.includes(childViewId));
 
@@ -349,10 +330,6 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
       case 'compose':
         assert(this.showComposeControl_);
         triggerId = 'composeRowV2';
-        break;
-      case 'historySearch':
-        assert(this.showHistorySearchControl_);
-        triggerId = 'historySearchRowV2';
         break;
       case 'aiSuggestions':
         assert(this.showAiSuggestionsControl_);
@@ -370,6 +347,12 @@ export class SettingsAiPageElement extends SettingsAiPageElementBase {
         assert(this.showDictationControl_);
         triggerId = 'dictationRow';
         break;
+      // <if expr="_google_chrome">
+      case 'onDeviceAi':
+        assert(this.showOnDeviceAiAdvancedSettings_);
+        triggerId = 'onDeviceAiRow';
+        break;
+      // </if>
       default:
         assertNotReached();
     }

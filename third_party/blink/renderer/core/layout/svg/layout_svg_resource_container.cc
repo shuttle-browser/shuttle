@@ -38,9 +38,11 @@ namespace {
 LocalSVGResource* ResourceForContainer(
     const LayoutSVGResourceContainer& resource_container) {
   const SVGElement& element = *resource_container.GetElement();
-  return element.GetTreeScope()
-      .EnsureSVGTreeScopedResources()
-      .ExistingResourceForId(element.GetIdAttribute());
+  SVGTreeScopeResources* scope_resources =
+      element.GetTreeScope().ExistingSVGTreeScopedResources();
+  return scope_resources
+             ? scope_resources->ExistingResourceForId(element.GetIdAttribute())
+             : nullptr;
 }
 
 float ObjectBoundingBoxUnitToUserUnits(const Length& length,
@@ -181,8 +183,10 @@ void LayoutSVGResourceContainer::InvalidateClientsIfActiveResource() {
   // in tree order), notify any clients that they need to reevaluate the
   // resource's contents.
   LocalSVGResource* resource = ResourceForContainer(*this);
-  if (!resource || resource->Target() != GetElement())
+  if (!resource ||
+      resource->Target(SVGResource::Usage::kElement) != GetElement()) {
     return;
+  }
   GetDocument().ScheduleSVGResourceInvalidation(*resource);
 }
 
@@ -311,8 +315,10 @@ void LayoutSVGResourceContainer::MarkAllClientsForInvalidation(
   if (is_invalidating_)
     return;
   LocalSVGResource* resource = ResourceForContainer(*this);
-  if (!resource || resource->Target() != GetElement())
+  if (!resource ||
+      resource->Target(SVGResource::Usage::kElement) != GetElement()) {
     return;
+  }
   // Remove modes for which invalidations have already been
   // performed. If no modes remain we are done.
   invalidation_mask &= ~completed_invalidations_mask_;

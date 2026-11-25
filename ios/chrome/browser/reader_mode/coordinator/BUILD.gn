@@ -13,7 +13,6 @@ source_set("coordinator") {
   ]
   deps = [
     ":options",
-    "//ios/chrome/browser/dom_distiller/model",
     "//ios/chrome/browser/intelligence/bwg/model:gemini_service",
     "//ios/chrome/browser/intelligence/bwg/model:gemini_service_factory",
     "//ios/chrome/browser/intelligence/bwg/model:tab_helper",
@@ -26,6 +25,7 @@ source_set("coordinator") {
     "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/chrome/browser/shared/public/commands",
     "//ios/chrome/browser/tabs/model",
+    "//ios/chrome/browser/web_distiller/model",
     "//ios/chrome/common/ui/util",
     "//ios/web/public",
   ]
@@ -59,9 +59,8 @@ source_set("options") {
   ]
   deps = [
     "//base",
-    "//components/dom_distiller/ios",
     "//components/feature_engagement/public",
-    "//ios/chrome/browser/dom_distiller/model",
+    "//components/web_distiller/ios",
     "//ios/chrome/browser/feature_engagement/model",
     "//ios/chrome/browser/reader_mode/model",
     "//ios/chrome/browser/reader_mode/ui:constants",
@@ -71,6 +70,7 @@ source_set("options") {
     "//ios/chrome/browser/shared/model/profile",
     "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/chrome/browser/shared/public/commands",
+    "//ios/chrome/browser/web_distiller/model",
   ]
 }
 
@@ -85,14 +85,14 @@ source_set("unit_tests") {
     ":coordinator",
     ":options",
     "//base/test:test_support",
-    "//components/dom_distiller/core",
-    "//components/dom_distiller/core/mojom",
-    "//ios/chrome/browser/dom_distiller/model",
+    "//components/web_distiller/core",
+    "//components/web_distiller/core/mojom",
     "//ios/chrome/browser/intelligence/bwg/model:gemini_service",
     "//ios/chrome/browser/intelligence/bwg/model:gemini_service_factory",
     "//ios/chrome/browser/reader_mode/ui",
     "//ios/chrome/browser/shared/model/browser/test:test_support",
     "//ios/chrome/browser/shared/model/profile/test",
+    "//ios/chrome/browser/web_distiller/model",
     "//ios/web/public/test",
     "//testing/gtest",
   ]

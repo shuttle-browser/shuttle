@@ -35,27 +35,8 @@ export interface SettingsMenuElement {
   $: {
     autofill: HTMLLinkElement,
     menu: CrMenuSelectorElement,
-    people: HTMLLinkElement,
   };
 }
-
-const pathToActionMap: Map<string, string> = new Map([
-  ['/people', 'SettingsMenu_PeopleClicked'],
-  ['/autofill', 'SettingsMenu_AutofillClicked'],
-  ['/privacy', 'SettingsMenu_PrivacyClicked'],
-  ['/performance', 'SettingsMenu_PerformanceClicked'],
-  ['/ai', 'SettingsMenu_AiPageEntryPointClicked'],
-  ['/appearance', 'SettingsMenu_AppearanceClicked'],
-  ['/search', 'SettingsMenu_SearchClicked'],
-  ['/defaultBrowser', 'SettingsMenu_DefaultBrowserClicked'],
-  ['/onStartup', 'SettingsMenu_OnStartupClicked'],
-  ['/languages', 'SettingsMenu_LanguagesClicked'],
-  ['/downloads', 'SettingsMenu_DownloadsClicked'],
-  ['/accessibility', 'SettingsMenu_AccessibilityClicked'],
-  ['/system', 'SettingsMenu_SystemClicked'],
-  ['/reset', 'SettingsMenu_ResetClicked'],
-  ['/help', 'SettingsMenu_AboutClicked'],
-]);
 
 const SettingsMenuElementBase = RouteObserverMixinLit(CrLitElement);
 
@@ -79,6 +60,8 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
         reflect: true,
       },
 
+      settingsRefresh2026Enabled_: {type: Boolean},
+
       /**
        * Dictionary defining page visibility.
        */
@@ -89,11 +72,40 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
   }
 
   accessor collapsed: boolean = false;
+  protected accessor settingsRefresh2026Enabled_: boolean =
+      loadTimeData.getString('settingsRefresh2026') !== '';
   protected accessor pageVisibility_: PageVisibility|undefined = pageVisibility;
   private accessor showAiPage_: boolean = loadTimeData.getBoolean('showAiPage');
+  private pathToActionMap_: Map<string, string>;
 
   private metricsBrowserProxy_: MetricsBrowserProxy =
       MetricsBrowserProxyImpl.getInstance();
+
+  constructor() {
+    super();
+
+    this.pathToActionMap_ = new Map([
+      ['/people', 'SettingsMenu_PeopleClicked'],
+      ['/autofill', 'SettingsMenu_AutofillClicked'],
+      ['/privacy', 'SettingsMenu_PrivacyClicked'],
+      ['/performance', 'SettingsMenu_PerformanceClicked'],
+      ['/ai', 'SettingsMenu_AiPageEntryPointClicked'],
+      ['/appearance', 'SettingsMenu_AppearanceClicked'],
+      ['/search', 'SettingsMenu_SearchClicked'],
+      ['/defaultBrowser', 'SettingsMenu_DefaultBrowserClicked'],
+      ['/onStartup', 'SettingsMenu_OnStartupClicked'],
+      ['/languages', 'SettingsMenu_LanguagesClicked'],
+      ['/downloads', 'SettingsMenu_DownloadsClicked'],
+      ['/accessibility', 'SettingsMenu_AccessibilityClicked'],
+      ['/system', 'SettingsMenu_SystemClicked'],
+      ['/reset', 'SettingsMenu_ResetClicked'],
+      ['/help', 'SettingsMenu_AboutClicked'],
+    ]);
+    if (this.settingsRefresh2026Enabled_) {
+      this.pathToActionMap_.set('/', 'SettingsMenu_HomeClicked');
+      this.pathToActionMap_.set('/general', 'SettingsMenu_GeneralClicked');
+    }
+  }
 
   protected shouldHideMenuItem_(visibility: boolean|object|undefined): boolean {
     return visibility === false;
@@ -152,7 +164,7 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     this.setSelectedPath_(path);
     this.metricsBrowserProxy_.recordSettingsNavCategoryClicked();
 
-    const action = pathToActionMap.get(path);
+    const action = this.pathToActionMap_.get(path);
     if (action) {
       this.metricsBrowserProxy_.recordAction(action);
     }

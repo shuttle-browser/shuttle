@@ -68,10 +68,7 @@ android_library("java") {
 }
 
 generate_jni("jni_headers") {
-  sources = [
-    "android/java/src/org/chromium/chrome/browser/quick_delete/QuickDeleteBridge.java",
-    "android/java/src/org/chromium/chrome/browser/quick_delete/QuickDeleteControllerProvider.java",
-  ]
+  sources = [ "android/java/src/org/chromium/chrome/browser/quick_delete/QuickDeleteBridge.java" ]
 }
 
 android_resources("java_resources") {
@@ -94,7 +91,6 @@ android_resources("java_resources") {
 robolectric_library("junit") {
   resources_package = "org.chromium.chrome.browser.quick_delete"
   sources = [
-    "android/junit/src/org/chromium/chrome/browser/quick_delete/QuickDeleteControllerProviderUnitTest.java",
     "android/junit/src/org/chromium/chrome/browser/quick_delete/QuickDeleteDialogDelegateUnitTest.java",
     "android/junit/src/org/chromium/chrome/browser/quick_delete/QuickDeleteMediatorTest.java",
     "android/junit/src/org/chromium/chrome/browser/quick_delete/QuickDeleteMetricsDelegateTest.java",
@@ -132,6 +128,7 @@ robolectric_library("junit") {
     "//components/sync/android:sync_java",
     "//content/public/android:content_full_java",
     "//content/public/test/android:content_java_test_support",
+    "//third_party/jni_zero:jni_zero_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
     "//ui/android:ui_java_test_support",
@@ -169,7 +166,6 @@ android_library("javatests") {
     "//chrome/browser/ui/android/appmenu:java",
     "//chrome/browser/ui/android/appmenu/test:test_support_java",
     "//chrome/browser/ui/android/layouts:java",
-    "//chrome/browser/ui/android/layouts/test:java",
     "//chrome/browser/ui/android/night_mode:night_mode_java_test_support",
     "//chrome/test/android:chrome_java_integration_test_support",
     "//chrome/test/android:chrome_java_test_support_common",

@@ -43,6 +43,7 @@
 class AccountInfo;
 class BrowserWindowInterface;
 class Profile;
+class SigninUIError;
 class TabStripModel;
 struct CoreAccountId;
 struct CoreAccountInfo;
@@ -180,21 +181,13 @@ class SigninViewController {
       const WebSigninInterceptor::Delegate::BubbleParameters& bubble_parameters,
       base::OnceCallback<void(SigninInterceptionResult)> callback);
 
-  // Shows the Chrome Signin bubble (`SigninInterceptionType::kChromeSignin`)
-  // for `account`. The bubble is owned by `SigninViewController`; if accepted,
-  // it signs the user into Chrome using `access_point` and closes the bubble.
+  // Shows the Chrome Signin bubble
+  // (`SigninInterceptionType::kChromeSigninNonIntercept`) for `account`. The
+  // bubble is owned by `SigninViewController`; if accepted, it signs the user
+  // into Chrome using `access_point` and closes the bubble.
   void ShowChromeSigninBubble(const AccountInfo& account,
                               signin_metrics::AccessPoint access_point);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
-  // Shows the modal sync confirmation dialog as a browser-modal dialog on top
-  // of the |browser_|'s window.
-  // `is_signin_intercept` is true if the confirmation dialog is shown after
-  // signin intercept, which has a slightly different UI.
-  // `is_sync_promo` is true if the sync confirmation dialog is offered as an
-  // option. It is false if the user explicitly initiated the flow.
-  void ShowModalSyncConfirmationDialog(bool is_signin_intercept,
-                                       bool is_sync_promo);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
   // Shows the modal history sync opt in dialog as a browser-modal dialog on top
@@ -225,9 +218,11 @@ class SigninViewController {
       std::unique_ptr<signin::EnterpriseProfileCreationDialogParams>
           create_param);
 
-  // Shows the modal sign-in error dialog as a browser-modal dialog on top of
-  // the |browser_|'s window.
-  void ShowModalSigninErrorDialog();
+#if !BUILDFLAG(IS_CHROMEOS)
+  // If `error.message()` is not empty, shows the modal sign-in error dialog as
+  // a browser-modal dialog on top of the `browser_`'s window.
+  void ShowModalSigninErrorDialog(const SigninUIError& error);
+#endif
 
   // Returns true if the modal dialog is shown.
   bool ShowsModalDialog();

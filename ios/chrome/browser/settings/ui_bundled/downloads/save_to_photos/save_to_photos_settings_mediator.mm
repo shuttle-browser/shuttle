@@ -22,6 +22,7 @@
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 
 @interface SaveToPhotosSettingsMediator () <IdentityManagerObserving,
                                             PrefObserverDelegate>
@@ -110,10 +111,10 @@
 
 #pragma mark - SaveToPhotosSettingsMutator
 
-- (void)setSelectedIdentityGaiaID:(const GaiaId*)gaiaID {
-  CHECK(!gaiaID->empty());
+- (void)setSelectedIdentityGaiaID:(const GaiaId&)gaiaID {
+  CHECK(!gaiaID.empty());
   _prefService->SetString(prefs::kIosSaveToPhotosDefaultGaiaId,
-                          gaiaID->ToString());
+                          gaiaID.ToString());
 }
 
 - (void)setAskWhichAccountToUseEveryTime:(BOOL)askEveryTime {

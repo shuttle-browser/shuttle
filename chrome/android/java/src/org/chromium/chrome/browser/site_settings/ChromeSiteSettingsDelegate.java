@@ -235,20 +235,34 @@ public class ChromeSiteSettingsDelegate implements SiteSettingsDelegate {
 
     @Override
     public void launchSettingsHelpAndFeedbackActivity(Activity currentActivity) {
-        HelpAndFeedbackLauncherImpl.getForProfile(mProfile)
-                .show(
-                        currentActivity,
-                        currentActivity.getString(R.string.help_context_settings),
-                        null);
+        // TODO(crbug.com/365755043): Always use help_context_site_settings once UsePLinkInHelp is
+        // removed.
+        int helpContextRes =
+                ChromeFeatureList.isEnabled(ChromeFeatureList.USE_P_LINK_IN_HELP)
+                        ? R.string.help_context_site_settings
+                        : R.string.help_context_settings;
+        showHelpAndFeedback(currentActivity, helpContextRes);
     }
 
     @Override
     public void launchProtectedContentHelpAndFeedbackActivity(Activity currentActivity) {
+        showHelpAndFeedback(currentActivity, R.string.help_context_protected_content);
+    }
+
+    @Override
+    public void launchCookiesHelpAndFeedbackActivity(Activity currentActivity) {
+        // TODO(crbug.com/365755043): Always use help_context_cookies_settings once UsePLinkInHelp
+        // is removed.
+        int helpContextRes =
+                ChromeFeatureList.isEnabled(ChromeFeatureList.USE_P_LINK_IN_HELP)
+                        ? R.string.help_context_cookies_settings
+                        : R.string.help_context_settings;
+        showHelpAndFeedback(currentActivity, helpContextRes);
+    }
+
+    private void showHelpAndFeedback(Activity activity, int helpContextRes) {
         HelpAndFeedbackLauncherImpl.getForProfile(mProfile)
-                .show(
-                        currentActivity,
-                        currentActivity.getString(R.string.help_context_protected_content),
-                        null);
+                .show(activity, activity.getString(helpContextRes), null);
     }
 
     // TODO(crbug.com/40286347): Migrate to `HelpAndFeedbackLauncherImpl` when

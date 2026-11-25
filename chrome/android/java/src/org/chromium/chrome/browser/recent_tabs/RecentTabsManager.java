@@ -123,7 +123,7 @@ public class RecentTabsManager
         mSignInManager = assumeNonNull(IdentityServicesProvider.get().getSigninManager(mProfile));
 
         mProfileDataCache =
-                ProfileDataCache.createWithDefaultImageSizeAndNoBadge(
+                ProfileDataCache.createWithDefaultImageSize(
                         activity, mSignInManager.getIdentityManager());
         mSigninPromoCoordinator =
                 new SigninPromoCoordinator(
@@ -212,7 +212,6 @@ public class RecentTabsManager
 
         mUpdatedCallback = null;
 
-        mPrefs.destroy();
         mPrefs = null;
 
         SessionsInvalidationManager.get(mProfile).onRecentTabsPageClosed();

@@ -9,12 +9,14 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
 import android.app.PendingIntent;
 import android.content.Context;
 import android.content.Intent;
 import android.graphics.Bitmap;
+import android.graphics.Color;
 import android.net.Network;
 import android.os.Binder;
 import android.os.Bundle;
@@ -23,7 +25,9 @@ import android.os.Parcel;
 import android.view.WindowManager;
 import android.widget.RemoteViews;
 
+import androidx.browser.auth.AuthTabColorSchemeParams;
 import androidx.browser.auth.AuthTabIntent;
+import androidx.browser.customtabs.CustomTabColorSchemeParams;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.trusted.ScreenOrientation;
 import androidx.browser.trusted.TrustedWebActivityDisplayMode.DefaultMode;
@@ -36,8 +40,11 @@ import org.chromium.base.ContextUtils;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.chrome.browser.browserservices.intents.BrowserServicesIntentDataProvider.CustomTabsUiType;
 import org.chromium.chrome.browser.browserservices.intents.BrowserServicesIntentDataProvider.TitleVisibility;
+import org.chromium.chrome.browser.browserservices.intents.CustomButtonParams.ButtonType;
+import org.chromium.chrome.browser.customtabs.CustomButtonParamsImpl;
 import org.chromium.chrome.browser.flags.ActivityType;
 import org.chromium.chrome.browser.flags.CustomTabProfileType;
+import org.chromium.components.browser_ui.widget.TintedDrawable;
 
 import java.util.List;
 
@@ -101,11 +108,39 @@ public class CustomTabIntentDataHolderUnitTest {
         assertFalse(restored.mIsPartialCustomTabFixedHeight);
         assertFalse(restored.mContentScrollMayResizeTab);
         assertFalse(restored.mInteractWithBackground);
-        assertFalse(restored.mCctTabSwitcherEnabledForChromeExperiment);
-        assertFalse(restored.mCctTabSwitcherEnabledForEmbedderExperiment);
+        assertFalse(restored.mTabbedCctAllowedByEmbedder);
+        assertFalse(restored.mTabbedCctEnabledByEmbedder);
         assertNull(restored.mAuthRedirectScheme);
         assertNull(restored.mAuthRedirectHost);
         assertNull(restored.mAuthRedirectPath);
+        assertNull(restored.mLightColorSchemeParams.toolbarColor);
+        assertNull(restored.mLightColorSchemeParams.secondaryToolbarColor);
+        assertNull(restored.mLightColorSchemeParams.navigationBarColor);
+        assertNull(restored.mLightColorSchemeParams.navigationBarDividerColor);
+        assertNull(restored.mDarkColorSchemeParams.toolbarColor);
+        assertNull(restored.mDarkColorSchemeParams.secondaryToolbarColor);
+        assertNull(restored.mDarkColorSchemeParams.navigationBarColor);
+        assertNull(restored.mDarkColorSchemeParams.navigationBarDividerColor);
+        assertNull(restored.mLightAuthTabColorSchemeParams.getToolbarColor());
+        assertNull(restored.mLightAuthTabColorSchemeParams.getNavigationBarColor());
+        assertNull(restored.mLightAuthTabColorSchemeParams.getNavigationBarDividerColor());
+        assertNull(restored.mDarkAuthTabColorSchemeParams.getToolbarColor());
+        assertNull(restored.mDarkAuthTabColorSchemeParams.getNavigationBarColor());
+        assertNull(restored.mDarkAuthTabColorSchemeParams.getNavigationBarDividerColor());
+        assertEquals(Color.TRANSPARENT, restored.mInitialBackgroundColor);
+        assertTrue(restored.mCustomButtonParams.isEmpty());
+        assertSame(
+                restored.mLightColorSchemeParams,
+                restored.getColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_LIGHT));
+        assertSame(
+                restored.mDarkColorSchemeParams,
+                restored.getColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK));
+        assertSame(
+                restored.mLightAuthTabColorSchemeParams,
+                restored.getAuthTabColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_LIGHT));
+        assertSame(
+                restored.mDarkAuthTabColorSchemeParams,
+                restored.getAuthTabColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK));
     }
 
     @Test
@@ -145,6 +180,20 @@ public class CustomTabIntentDataHolderUnitTest {
         PendingIntent swipeUpPi =
                 PendingIntent.getBroadcast(
                         context, 3, new Intent("swipe_up"), PendingIntent.FLAG_IMMUTABLE);
+        CustomButtonParams shareButton =
+                CustomButtonParamsImpl.createShareButton(context, Color.BLACK);
+        CustomButtonParams bottomBarButton =
+                CustomButtonParamsImpl.fromIntent(
+                                context,
+                                new CustomTabsIntent.Builder()
+                                        .addToolbarItem(
+                                                8,
+                                                Bitmap.createBitmap(8, 8, Bitmap.Config.ARGB_8888),
+                                                "eight",
+                                                swipeUpPi)
+                                        .build()
+                                        .intent)
+                        .get(0);
 
         ImmersiveMode twaDisplayMode =
                 new ImmersiveMode(
@@ -196,11 +245,34 @@ public class CustomTabIntentDataHolderUnitTest {
                         .setIsPartialCustomTabFixedHeight(true)
                         .setContentScrollMayResizeTab(true)
                         .setInteractWithBackground(true)
-                        .setCctTabSwitcherEnabledForChromeExperiment(true)
-                        .setCctTabSwitcherEnabledForEmbedderExperiment(true)
+                        .setTabbedCctAllowedByEmbedder(true)
+                        .setTabbedCctEnabledByEmbedder(true)
                         .setAuthRedirectScheme("myscheme")
                         .setAuthRedirectHost("auth.example.com")
                         .setAuthRedirectPath("/callback")
+                        .setLightColorSchemeParams(
+                                new CustomTabColorSchemeParams.Builder()
+                                        .setToolbarColor(0xFF112233)
+                                        .setSecondaryToolbarColor(0xFF445566)
+                                        .setNavigationBarColor(0xFF778899)
+                                        .setNavigationBarDividerColor(0xFFAABBCC)
+                                        .build())
+                        .setDarkColorSchemeParams(
+                                new CustomTabColorSchemeParams.Builder()
+                                        .setToolbarColor(0xFF000001)
+                                        .build())
+                        .setLightAuthTabColorSchemeParams(
+                                new AuthTabColorSchemeParams.Builder()
+                                        .setToolbarColor(0xFF223344)
+                                        .setNavigationBarColor(0xFF556677)
+                                        .setNavigationBarDividerColor(0xFF8899AA)
+                                        .build())
+                        .setDarkAuthTabColorSchemeParams(
+                                new AuthTabColorSchemeParams.Builder()
+                                        .setToolbarColor(0xFF000002)
+                                        .build())
+                        .setInitialBackgroundColor(0xFF123456)
+                        .setCustomButtonParams(List.of(shareButton, bottomBarButton))
                         .build();
 
         CustomTabIntentDataHolder restored = roundTripThroughParcel(original);
@@ -263,11 +335,128 @@ public class CustomTabIntentDataHolderUnitTest {
         assertTrue(restored.mIsPartialCustomTabFixedHeight);
         assertTrue(restored.mContentScrollMayResizeTab);
         assertTrue(restored.mInteractWithBackground);
-        assertTrue(restored.mCctTabSwitcherEnabledForChromeExperiment);
-        assertTrue(restored.mCctTabSwitcherEnabledForEmbedderExperiment);
+        assertTrue(restored.mTabbedCctAllowedByEmbedder);
+        assertTrue(restored.mTabbedCctEnabledByEmbedder);
         assertEquals("myscheme", restored.mAuthRedirectScheme);
         assertEquals("auth.example.com", restored.mAuthRedirectHost);
         assertEquals("/callback", restored.mAuthRedirectPath);
+        assertEquals(Integer.valueOf(0xFF112233), restored.mLightColorSchemeParams.toolbarColor);
+        assertEquals(
+                Integer.valueOf(0xFF445566),
+                restored.mLightColorSchemeParams.secondaryToolbarColor);
+        assertEquals(
+                Integer.valueOf(0xFF778899), restored.mLightColorSchemeParams.navigationBarColor);
+        assertEquals(
+                Integer.valueOf(0xFFAABBCC),
+                restored.mLightColorSchemeParams.navigationBarDividerColor);
+        assertEquals(Integer.valueOf(0xFF000001), restored.mDarkColorSchemeParams.toolbarColor);
+        assertNull(restored.mDarkColorSchemeParams.secondaryToolbarColor);
+        assertNull(restored.mDarkColorSchemeParams.navigationBarColor);
+        assertNull(restored.mDarkColorSchemeParams.navigationBarDividerColor);
+        assertEquals(
+                Integer.valueOf(0xFF000001),
+                restored.getColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK).toolbarColor);
+        assertEquals(
+                Integer.valueOf(0xFF223344),
+                restored.mLightAuthTabColorSchemeParams.getToolbarColor());
+        assertEquals(
+                Integer.valueOf(0xFF556677),
+                restored.mLightAuthTabColorSchemeParams.getNavigationBarColor());
+        assertEquals(
+                Integer.valueOf(0xFF8899AA),
+                restored.mLightAuthTabColorSchemeParams.getNavigationBarDividerColor());
+        assertEquals(
+                Integer.valueOf(0xFF000002),
+                restored.mDarkAuthTabColorSchemeParams.getToolbarColor());
+        assertNull(restored.mDarkAuthTabColorSchemeParams.getNavigationBarColor());
+        assertNull(restored.mDarkAuthTabColorSchemeParams.getNavigationBarDividerColor());
+        assertEquals(
+                Integer.valueOf(0xFF000002),
+                restored.getAuthTabColorSchemeParams(CustomTabsIntent.COLOR_SCHEME_DARK)
+                        .getToolbarColor());
+        assertEquals(0xFF123456, restored.mInitialBackgroundColor);
+        assertEquals(2, restored.mCustomButtonParams.size());
+        CustomButtonParams restoredShare = restored.mCustomButtonParams.get(0);
+        assertEquals(CustomTabsIntent.TOOLBAR_ACTION_BUTTON_ID, restoredShare.getId());
+        assertEquals(shareButton.getDescription(), restoredShare.getDescription());
+        assertTrue(restoredShare.showOnToolbar());
+        assertEquals(ButtonType.CCT_SHARE_BUTTON, restoredShare.getType());
+        assertTrue(restoredShare.getIcon(context) instanceof TintedDrawable);
+        assertNotNull(restoredShare.getPendingIntent());
+
+        CustomButtonParams restoredBottom = restored.mCustomButtonParams.get(1);
+        assertEquals(8, restoredBottom.getId());
+        assertEquals("eight", restoredBottom.getDescription());
+        assertFalse(restoredBottom.showOnToolbar());
+        assertEquals(ButtonType.OTHER, restoredBottom.getType());
+        assertFalse(restoredBottom.getIcon(context) instanceof TintedDrawable);
+        assertEquals(swipeUpPi, restoredBottom.getPendingIntent());
+    }
+
+    @Test
+    public void testParcelRoundTrip_customButtonUpdateSurvives() {
+        Context context = ContextUtils.getApplicationContext();
+        CustomTabIntentDataHolder original =
+                new CustomTabIntentDataHolder.Builder()
+                        .setCustomButtonParams(
+                                List.of(
+                                        CustomButtonParamsImpl.createShareButton(
+                                                context, Color.BLACK)))
+                        .build();
+        original.mCustomButtonParams
+                .get(0)
+                .update(Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888), "new");
+
+        CustomTabIntentDataHolder restored = roundTripThroughParcel(original);
+
+        assertEquals(1, restored.mCustomButtonParams.size());
+        assertEquals("new", restored.mCustomButtonParams.get(0).getDescription());
+    }
+
+    @Test
+    public void testParcelRoundTrip_remoteViewsAndSwipeUpUpdatesSurvive() {
+        Context context = ContextUtils.getApplicationContext();
+        RemoteViews initialViews =
+                new RemoteViews(context.getPackageName(), android.R.layout.list_content);
+        PendingIntent initialPi =
+                PendingIntent.getBroadcast(
+                        context, 1, new Intent("initial_rv"), PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent initialSwipePi =
+                PendingIntent.getBroadcast(
+                        context, 2, new Intent("initial_swipe"), PendingIntent.FLAG_IMMUTABLE);
+        CustomTabIntentDataHolder holder =
+                new CustomTabIntentDataHolder.Builder()
+                        .setRemoteViews(initialViews)
+                        .setClickableViewIds(new int[] {1})
+                        .setRemoteViewsPendingIntent(initialPi)
+                        .setSecondaryToolbarSwipeUpPendingIntent(initialSwipePi)
+                        .build();
+
+        RemoteViews updatedViews =
+                new RemoteViews(context.getPackageName(), android.R.layout.simple_list_item_1);
+        PendingIntent updatedPi =
+                PendingIntent.getBroadcast(
+                        context, 3, new Intent("updated_rv"), PendingIntent.FLAG_IMMUTABLE);
+        PendingIntent updatedSwipePi =
+                PendingIntent.getBroadcast(
+                        context, 4, new Intent("updated_swipe"), PendingIntent.FLAG_IMMUTABLE);
+        holder.updateRemoteViews(updatedViews, new int[] {10, 20}, updatedPi);
+        holder.setSecondaryToolbarSwipeUpPendingIntent(updatedSwipePi);
+
+        CustomTabIntentDataHolder restored = roundTripThroughParcel(holder);
+        assertNotNull(restored.mRemoteViews);
+        assertEquals(android.R.layout.simple_list_item_1, restored.mRemoteViews.getLayoutId());
+        assertArrayEquals(new int[] {10, 20}, restored.mClickableViewIds);
+        assertEquals(updatedPi, restored.mRemoteViewsPendingIntent);
+        assertEquals(updatedSwipePi, restored.mSecondaryToolbarSwipeUpPendingIntent);
+
+        restored.updateRemoteViews(null, null, null);
+        restored.setSecondaryToolbarSwipeUpPendingIntent(null);
+        CustomTabIntentDataHolder restoredCleared = roundTripThroughParcel(restored);
+        assertNull(restoredCleared.mRemoteViews);
+        assertNull(restoredCleared.mClickableViewIds);
+        assertNull(restoredCleared.mRemoteViewsPendingIntent);
+        assertNull(restoredCleared.mSecondaryToolbarSwipeUpPendingIntent);
     }
 
     @Test

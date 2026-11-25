@@ -8,6 +8,7 @@ import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
 
+import androidx.annotation.IntDef;
 import androidx.annotation.StringRes;
 
 import org.chromium.base.Token;
@@ -43,6 +44,8 @@ import org.chromium.components.tab_group_sync.SavedTabGroupTab;
 import org.chromium.components.tab_group_sync.TabGroupSyncService;
 import org.chromium.components.tab_group_sync.TabGroupUiActionHandler;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -51,6 +54,28 @@ import java.util.Objects;
 /** Helper methods for Tab Group UI components and string resources. */
 @NullMarked
 public class TabGroupUiUtils {
+    /** Result of attempting to open a saved tab group via {@link #openTabGroup}. */
+    @IntDef({
+        OpenTabGroupResult.NONE,
+        OpenTabGroupResult.CURRENT_WINDOW,
+        OpenTabGroupResult.ANOTHER_WINDOW
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    public @interface OpenTabGroupResult {
+        /**
+         * The group could not be opened, or could not be brought to the foreground in another
+         * window.
+         */
+        int NONE = 0;
+
+        /** The group was restored or opened in the current window's {@link TabModel}. */
+        int CURRENT_WINDOW = 1;
+
+        /**
+         * The group was already open in another window and that window was brought to the front.
+         */
+        int ANOTHER_WINDOW = 2;
+    }
 
     /** Returns whether cross-window tab group operations are enabled. */
     public static boolean isCrossWindowTabGroupOperationsEnabled() {
@@ -132,18 +157,26 @@ public class TabGroupUiUtils {
                                         : null);
                 TabModel localTabModel = getTabModelForGroup(tabModel, effectiveGroupId);
                 return GroupWindowInfo.forSyncedGroup(
-                        context, localTabModel, savedGroup, checker.getState(savedGroup));
+                        context,
+                        localTabModel,
+                        savedGroup,
+                        checker.getState(savedGroup),
+                        Collections.emptyList());
             }
         }
         if (groupId != null) {
             TabModel localTabModel = getTabModelForGroup(tabModel, groupId);
             return GroupWindowInfo.forLocalGroup(
-                    context, localTabModel, groupId, checker.getState(groupId));
+                    context,
+                    localTabModel,
+                    groupId,
+                    checker.getState(groupId),
+                    Collections.emptyList());
         } else if (syncGroupId != null && syncService != null) {
             SavedTabGroup group = syncService.getGroup(syncGroupId);
             if (group != null) {
                 return GroupWindowInfo.forSyncedGroup(
-                        context, tabModel, group, checker.getState(group));
+                        context, tabModel, group, checker.getState(group), Collections.emptyList());
             }
         }
         return null;
@@ -340,12 +373,14 @@ public class TabGroupUiUtils {
         }
     }
 
-    private static boolean isGroupClosingInAnotherWindow(@Nullable Token groupId) {
-        if (groupId == null) return false;
+    private static boolean isGroupActiveInAnotherWindow(@Nullable Token groupId) {
+        if (groupId == null) {
+            return false;
+        }
         TabWindowManager windowManager = TabWindowManagerSingleton.getInstance();
         @WindowId
         int windowId =
-                windowManager.findWindowIdForTabGroup(groupId, /* includeClosingGroups= */ true);
+                windowManager.findWindowIdForTabGroup(groupId, /* includeClosingGroups= */ false);
         if (windowId == TabWindowManager.INVALID_WINDOW_ID) {
             return false;
         }
@@ -355,13 +390,24 @@ public class TabGroupUiUtils {
         }
         TabModel incognitoModel = selector.getModel(/* incognito= */ true);
         assert getLocalTabsInGroup(incognitoModel, groupId).isEmpty()
-                : "isGroupClosingInAnotherWindow is only meant for non-incognito groups.";
+                : "isGroupActiveInAnotherWindow is only meant for non-incognito groups.";
 
         TabModel otherModel = selector.getModel(/* incognito= */ false);
-        return !otherModel.containsTabGroup(groupId);
+        return otherModel.containsTabGroup(groupId);
     }
 
-    private static boolean isRemoteGroup(GroupWindowInfo group) {
+    static boolean isGroupClosingInAnotherWindow(Token groupId) {
+        TabWindowManager windowManager = TabWindowManagerSingleton.getInstance();
+        @WindowId
+        int windowId =
+                windowManager.findWindowIdForTabGroup(groupId, /* includeClosingGroups= */ true);
+        if (windowId == TabWindowManager.INVALID_WINDOW_ID) {
+            return false;
+        }
+        return !isGroupActiveInAnotherWindow(groupId);
+    }
+
+    private static boolean shouldRestoreFromSync(GroupWindowInfo group) {
         if (!isRemoteGroupOperationsEnabled() || group.syncId == null) {
             return false;
         }
@@ -372,9 +418,28 @@ public class TabGroupUiUtils {
             return true;
         }
         if (group.groupWindowState == GroupWindowState.IN_ANOTHER) {
-            return isGroupClosingInAnotherWindow(group.localId);
+            return !isGroupActiveInAnotherWindow(group.localId);
         }
         return false;
+    }
+
+    private static boolean isValidAnotherWindowDestination(GroupWindowInfo destinationGroup) {
+        if (!isCrossWindowTabGroupOperationsEnabled() || destinationGroup.localId == null) {
+            return false;
+        }
+        if (!isRemoteGroupOperationsEnabled()) {
+            boolean isClosing =
+                    destinationGroup.syncId != null
+                            && isGroupClosingInAnotherWindow(destinationGroup.localId);
+            return !isClosing;
+        }
+        if (destinationGroup.syncId == null) {
+            return TabWindowManagerSingleton.getInstance()
+                            .findWindowIdForTabGroup(
+                                    destinationGroup.localId, /* includeClosingGroups= */ false)
+                    != TabWindowManager.INVALID_WINDOW_ID;
+        }
+        return true;
     }
 
     /**
@@ -393,7 +458,7 @@ public class TabGroupUiUtils {
         if (destinationGroup == null) {
             return false;
         }
-        if (isRemoteGroup(destinationGroup)) {
+        if (shouldRestoreFromSync(destinationGroup)) {
             return isRemoteGroupOperationsEnabled()
                     && destinationGroup.syncId != null
                     && syncService != null
@@ -404,12 +469,7 @@ public class TabGroupUiUtils {
             return false;
         }
         if (destinationGroup.groupWindowState == GroupWindowState.IN_ANOTHER) {
-            boolean isClosing =
-                    destinationGroup.syncId != null
-                            && isGroupClosingInAnotherWindow(destinationGroup.localId);
-            return isCrossWindowTabGroupOperationsEnabled()
-                    && destinationGroup.localId != null
-                    && !isClosing;
+            return isValidAnotherWindowDestination(destinationGroup);
         }
         return destinationGroup.localId != null;
     }
@@ -451,15 +511,16 @@ public class TabGroupUiUtils {
      * @param syncService The {@link TabGroupSyncService}.
      * @param uiActionHandler The {@link TabGroupUiActionHandler}.
      * @param syncId The sync ID of the tab group to open.
+     * @return The {@link OpenTabGroupResult} indicating how/where the group was opened.
      */
-    public static void openTabGroup(
+    public static @OpenTabGroupResult int openTabGroup(
             @Nullable Context context,
             TabModel tabModel,
             @Nullable TabGroupSyncService syncService,
             @Nullable TabGroupUiActionHandler uiActionHandler,
             String syncId) {
         if (syncService == null || uiActionHandler == null) {
-            return;
+            return OpenTabGroupResult.NONE;
         }
         SavedTabGroup savedGroup = syncService.getGroup(syncId);
         if (savedGroup != null && savedGroup.localId != null) {
@@ -467,9 +528,9 @@ public class TabGroupUiUtils {
             commitClosingTabsForGroup(tabModel, groupId);
             TabModel targetModel = getTabModelForGroup(tabModel, groupId);
             if (targetModel != tabModel && targetModel.containsTabGroup(groupId)) {
-                if (openTabGroupInOtherWindow(context, groupId, syncId)) {
-                    return;
-                }
+                return openTabGroupInOtherWindow(context, groupId, syncId)
+                        ? OpenTabGroupResult.ANOTHER_WINDOW
+                        : OpenTabGroupResult.NONE;
             }
             if (!targetModel.containsTabGroup(groupId)) {
                 savedGroup = syncService.getGroup(syncId);
@@ -480,6 +541,7 @@ public class TabGroupUiUtils {
             }
         }
         uiActionHandler.openTabGroup(syncId);
+        return OpenTabGroupResult.CURRENT_WINDOW;
     }
 
     /**
@@ -606,13 +668,13 @@ public class TabGroupUiUtils {
         if (groupInfo == null || !isValidDestination(groupInfo, syncService, uiActionHandler)) {
             return null;
         }
-        if (isRemoteGroup(groupInfo)) {
-            return maybeRestoreRemoteGroup(tabModel, groupInfo, syncService, uiActionHandler);
+        if (shouldRestoreFromSync(groupInfo)) {
+            return maybeRestoreFromSync(tabModel, groupInfo, syncService, uiActionHandler);
         }
         return groupInfo.groupWindowState != GroupWindowState.HIDDEN ? groupInfo.localId : null;
     }
 
-    private static @Nullable Token maybeRestoreRemoteGroup(
+    private static @Nullable Token maybeRestoreFromSync(
             TabModel sourceTabModel,
             GroupWindowInfo destinationGroup,
             @Nullable TabGroupSyncService syncService,

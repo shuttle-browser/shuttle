@@ -13,7 +13,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static androidx.test.espresso.matcher.ViewMatchers.withText;
 
-import static org.chromium.chrome.browser.layouts.LayoutTestUtils.waitForLayout;
+import static org.chromium.chrome.browser.layouts.LayoutTestUtils.waitForBrowsingLayout;
 
 import android.content.pm.ActivityInfo;
 import android.content.pm.ResolveInfo;
@@ -60,6 +60,8 @@ import org.chromium.chrome.browser.tasks.tab_management.TabUiTestHelper;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.util.ChromeRenderTestRule;
 import org.chromium.chrome.test.util.browser.sync.SyncTestUtil;
+import org.chromium.components.browser_ui.notifications.BaseNotificationManagerProxyFactory;
+import org.chromium.components.browser_ui.notifications.MockNotificationManagerProxy;
 import org.chromium.components.messages.DismissReason;
 import org.chromium.components.messages.ManagedMessageDispatcher;
 import org.chromium.components.messages.MessageDispatcherProvider;
@@ -98,6 +100,8 @@ public class SendTabToSelfReceiverTest {
     public void setUp() {
         AsyncInitializationActivity.interceptMoveTaskToBackForTesting();
         PersistedTabDataConfiguration.setUseTestConfig(true);
+        BaseNotificationManagerProxyFactory.setInstanceForTesting(
+                new MockNotificationManagerProxy());
         mSyncTestRule.setUpAccountAndSignInForTesting();
 
         mLocalCacheGuid = mSyncTestRule.getFakeServerHelper().getLocalCacheGuid();
@@ -167,6 +171,7 @@ public class SendTabToSelfReceiverTest {
     @Test
     @LargeTest
     @Feature({"Sync", "RenderTest"})
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfMessageBanner() throws Exception {
         long now = getCurrentTimeSinceWindowsEpochMicros();
         injectSendTabToSelfEntity(
@@ -186,6 +191,7 @@ public class SendTabToSelfReceiverTest {
     @Test
     @LargeTest
     @Feature({"Sync"})
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfMessageBanner_BottomControls() {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -213,6 +219,7 @@ public class SendTabToSelfReceiverTest {
     @Test
     @LargeTest
     @Feature({"Sync"})
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfMessageBannerClickOpensSingleTab() {
         long now = getCurrentTimeSinceWindowsEpochMicros();
         injectSendTabToSelfEntity(
@@ -248,6 +255,7 @@ public class SendTabToSelfReceiverTest {
     @Test
     @LargeTest
     @Feature({"Sync"})
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfMessageBannerClickOpensNewestTabForMultipleTabs() {
         long now = getCurrentTimeSinceWindowsEpochMicros();
         ThreadUtils.runOnUiThreadBlocking(
@@ -296,6 +304,7 @@ public class SendTabToSelfReceiverTest {
     @Test
     @LargeTest
     @Feature({"Sync"})
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testNoSendTabToSelfMessageBannerForExpiredEntry() {
         long now = getCurrentTimeSinceWindowsEpochMicros();
         // Set the shared time to 10 days ago, which is greater than the TTL of the STTS entry.
@@ -364,7 +373,7 @@ public class SendTabToSelfReceiverTest {
 
         // Click on the STTS tab card to select/interact with it
         TabUiTestHelper.clickNthCardFromTabSwitcher(mSyncTestRule.getActivity(), 1);
-        waitForLayout(mSyncTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        waitForBrowsingLayout(mSyncTestRule.getActivity());
 
         // Re-open the Tab Switcher to verify the label is gone
         TabUiTestHelper.enterTabSwitcher(mSyncTestRule.getActivity());
@@ -505,7 +514,7 @@ public class SendTabToSelfReceiverTest {
         // Click on the tab card to activate it.
         // Note: The auto-opened tab is at index 1. Index 0 is the default tab.
         TabUiTestHelper.clickNthCardFromTabSwitcher(mSyncTestRule.getActivity(), 1);
-        waitForLayout(mSyncTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        waitForBrowsingLayout(mSyncTestRule.getActivity());
 
         // Verify that the histograms were logged.
         watcher.assertExpected();
@@ -562,6 +571,7 @@ public class SendTabToSelfReceiverTest {
     @LargeTest
     @Feature({"Sync"})
     @EnableFeatures(ChromeFeatureList.SEND_TAB_TO_SELF_SUPPORT_AUTO_OPEN_IN_TAB_GRID)
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfReceivedInTabSwitcher_GetsLabelImmediately_NoMessageBanner() {
         // Enter Tab Switcher.
         TabUiTestHelper.enterTabSwitcher(mSyncTestRule.getActivity());
@@ -678,6 +688,7 @@ public class SendTabToSelfReceiverTest {
     @LargeTest
     @Feature({"Sync"})
     @EnableFeatures(ChromeFeatureList.SEND_TAB_TO_SELF_SUPPORT_AUTO_OPEN_IN_TAB_GRID)
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testAutoOpenOnActivationAfterReceivedInBackground() {
         ChromeTabbedActivity activity = mSyncTestRule.getActivity();
 
@@ -720,6 +731,7 @@ public class SendTabToSelfReceiverTest {
         ChromeFeatureList.SEND_TAB_TO_SELF_SUPPORT_AUTO_OPEN_IN_TAB_GRID,
         ChromeFeatureList.SEND_TAB_TO_SELF_OPEN_NATIVE_APP
     })
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfOpenNativeApp_MessageBannerShownWhenSelectedFromTabSwitcher() {
         ResolveInfo resolveInfo = new ResolveInfo();
         resolveInfo.activityInfo = new ActivityInfo();
@@ -745,7 +757,7 @@ public class SendTabToSelfReceiverTest {
 
         // Click on the tab card to activate it.
         TabUiTestHelper.clickNthCardFromTabSwitcher(mSyncTestRule.getActivity(), 1);
-        waitForLayout(mSyncTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        waitForBrowsingLayout(mSyncTestRule.getActivity());
 
         // Verify that the data was removed after activation.
         Assert.assertNull(
@@ -763,6 +775,7 @@ public class SendTabToSelfReceiverTest {
         ChromeFeatureList.SEND_TAB_TO_SELF_SUPPORT_AUTO_OPEN_IN_TAB_GRID,
         ChromeFeatureList.SEND_TAB_TO_SELF_OPEN_NATIVE_APP
     })
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfOpenNativeApp_MessageBannerShownAfterRestartFromTabSwitcher() {
         ResolveInfo resolveInfo = new ResolveInfo();
         resolveInfo.activityInfo = new ActivityInfo();
@@ -804,7 +817,7 @@ public class SendTabToSelfReceiverTest {
 
         // Click on the tab card to activate it.
         TabUiTestHelper.clickNthCardFromTabSwitcher(mSyncTestRule.getActivity(), 1);
-        waitForLayout(mSyncTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        waitForBrowsingLayout(mSyncTestRule.getActivity());
 
         // Verify that the data was removed after activation upon showing the tab.
         Assert.assertNull(
@@ -823,6 +836,7 @@ public class SendTabToSelfReceiverTest {
         ChromeFeatureList.SEND_TAB_TO_SELF_SUPPORT_AUTO_OPEN_IN_TAB_GRID,
         ChromeFeatureList.SEND_TAB_TO_SELF_OPEN_NATIVE_APP
     })
+    @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // TODO(crbug.com/577466171): Re-enable.
     public void testSendTabToSelfOpenNativeApp_MultipleTabs_MessageBannerShownOnPrimaryAction() {
         ResolveInfo resolveInfo = new ResolveInfo();
         resolveInfo.activityInfo = new ActivityInfo();
@@ -880,7 +894,10 @@ public class SendTabToSelfReceiverTest {
     // On desktop Android, back gestures follow desktop conventions (see
     // ChromeFeatureList.BACK_GESTURE_REFLECTS_DESKTOP_BEHAVIOR) and do not switch or close tabs
     // when history is exhausted.
-    @DisableIf.Device(DeviceFormFactor.DESKTOP)
+    @DisableIf.Device({
+        DeviceFormFactor.DESKTOP,
+        DeviceFormFactor.ONLY_TABLET
+    }) // TODO(crbug.com/577466171): Re-enable.
     public void
             testSendTabToSelfMessageBannerClick_BackGestureSwitchesToPreviousTabWithoutClosing() {
         long now = getCurrentTimeSinceWindowsEpochMicros();
@@ -972,7 +989,7 @@ public class SendTabToSelfReceiverTest {
 
         // Click on the received tab card (index 1) from the tab switcher.
         TabUiTestHelper.clickNthCardFromTabSwitcher(mSyncTestRule.getActivity(), 1);
-        waitForLayout(mSyncTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        waitForBrowsingLayout(mSyncTestRule.getActivity());
 
         // Verify that the received tab (index 1) is selected.
         Assert.assertEquals(
@@ -994,7 +1011,10 @@ public class SendTabToSelfReceiverTest {
     @LargeTest
     @Feature({"Sync"})
     @EnableFeatures({ChromeFeatureList.SEND_TAB_TO_SELF_SWITCH_TO_PARENT_ON_BACK})
-    @DisableIf.Device(DeviceFormFactor.DESKTOP)
+    @DisableIf.Device({
+        DeviceFormFactor.DESKTOP,
+        DeviceFormFactor.ONLY_TABLET
+    }) // TODO(crbug.com/577466171): Re-enable.
     public void
             testSendTabToSelfMessageBannerClick_AlreadyOnTab_BackGestureFollowsStandardBehavior() {
         long now = getCurrentTimeSinceWindowsEpochMicros();

@@ -5,11 +5,15 @@
 #include "chrome/browser/actor/transport/actor_keyed_service_adapter.h"
 
 #include <memory>
+#include <optional>
+#include <utility>
 
 #include "base/memory/raw_ptr.h"
 #include "base/test/test_future.h"
 #include "chrome/browser/actor/actor_enterprise_policy_checker.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_surface.h"
+#include "chrome/browser/actor/actor_surface_handle.h"
 #include "chrome/browser/actor/actor_surface_registry.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/common/actor.mojom.h"
@@ -20,11 +24,11 @@
 #include "components/optimization_guide/proto/features/actions_data.pb.h"
 #include "components/tabs/public/mock_tab_interface.h"
 #include "content/public/test/browser_task_environment.h"
+#include "content/public/test/test_renderer_host.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace actor {
-namespace {
 
 class ActorKeyedServiceAdapterTest : public testing::Test {
  public:
@@ -37,21 +41,41 @@ class ActorKeyedServiceAdapterTest : public testing::Test {
 
   void TearDown() override { actor_service_->Shutdown(); }
 
-  std::unique_ptr<tabs::MockTabInterface> CreateMockTab() {
+  std::unique_ptr<tabs::MockTabInterface> CreateMockTab(
+      content::WebContents* contents) {
     auto mock_tab = std::make_unique<tabs::MockTabInterface>();
     ON_CALL(*mock_tab, GetProfile)
         .WillByDefault(testing::Return(profile_.get()));
+    ON_CALL(*mock_tab, GetContents).WillByDefault(testing::Return(contents));
     actor_service_->GetSurfaceRegistry().OnTabCreated(*mock_tab);
     return mock_tab;
   }
 
+  static optimization_guide::proto::Actions BuildActionsProto(
+      TaskId task_id,
+      const proto::PerformActionsRequest& request) {
+    return ActorKeyedServiceAdapter::BuildActionsProto(task_id, request);
+  }
+
+  static proto::PerformActionsResponse BuildPerformActionsResponse(
+      optimization_guide::proto::ActionsResult result,
+      const proto::ObservationConfig* observation_config) {
+    return ActorKeyedServiceAdapter::BuildPerformActionsResponse(
+        std::move(result), observation_config);
+  }
+
  protected:
   content::BrowserTaskEnvironment task_environment_;
+  // Lets ActorKeyedService::CreateHeadlessActorSurface() create a WebContents
+  // in this unit test.
+  content::RenderViewHostTestEnabler rvh_test_enabler_;
   std::unique_ptr<TestingProfile> profile_;
   raw_ptr<ActorKeyedService> actor_service_;
   ActorEnterprisePolicyChecker enterprise_policy_checker_;
   ActorKeyedServiceAdapter adapter_;
 };
+
+namespace {
 
 TEST_F(ActorKeyedServiceAdapterTest, StartTaskCreatesBrowserActuatorTask) {
   proto::StartTaskRequest request;
@@ -72,13 +96,15 @@ TEST_F(ActorKeyedServiceAdapterTest, StartTaskCreatesBrowserActuatorTask) {
 }
 
 TEST_F(ActorKeyedServiceAdapterTest, StartTaskPopulatesTitleAndBoundSurfaces) {
-  std::unique_ptr<tabs::MockTabInterface> mock_tab = CreateMockTab();
-  const int32_t tab_id = mock_tab->GetHandle().raw_value();
+  std::unique_ptr<tabs::MockTabInterface> mock_tab =
+      CreateMockTab(/*contents=*/nullptr);
+  const int32_t surface_id =
+      ActorSurfaceHandle::From(mock_tab->GetHandle()).raw_value();
 
   proto::StartTaskRequest request;
   request.set_task_title("Book flight");
   proto::TargetSurface* surface = request.add_target_surfaces();
-  surface->set_tab_id(tab_id);
+  surface->set_tab_id(surface_id);
   surface->set_execution_mode(proto::TargetSurface::HEADED);
 
   base::test::TestFuture<TaskId, proto::StartTaskResponse> future;
@@ -87,7 +113,7 @@ TEST_F(ActorKeyedServiceAdapterTest, StartTaskPopulatesTitleAndBoundSurfaces) {
   const auto& [task_id, response] = future.Get();
   EXPECT_EQ(response.status(), proto::StartTaskResponse::STATUS_OK);
   ASSERT_EQ(response.bound_surfaces_size(), 1);
-  EXPECT_EQ(response.bound_surfaces(0).tab_id(), tab_id);
+  EXPECT_EQ(response.bound_surfaces(0).tab_id(), surface_id);
   EXPECT_EQ(response.bound_surfaces(0).execution_mode(),
             proto::TargetSurface::HEADED);
 
@@ -95,6 +121,57 @@ TEST_F(ActorKeyedServiceAdapterTest, StartTaskPopulatesTitleAndBoundSurfaces) {
   ASSERT_TRUE(task);
   EXPECT_EQ(task->title(), "Book flight");
   EXPECT_TRUE(task->HasTab(mock_tab->GetHandle()));
+}
+
+TEST_F(ActorKeyedServiceAdapterTest, StartTaskBindsHeadlessSurface) {
+  ScopedHeadlessActorSurface headless =
+      actor_service_->CreateHeadlessActorSurface();
+  const ActorSurfaceHandle handle = headless.actor_surface_handle();
+
+  proto::StartTaskRequest request;
+  proto::TargetSurface* target = request.add_target_surfaces();
+  target->set_tab_id(handle.raw_value());
+  target->set_execution_mode(proto::TargetSurface::HEADLESS);
+  base::test::TestFuture<TaskId, proto::StartTaskResponse> future;
+  adapter_.StartTask(request, future.GetCallback());
+
+  const auto& [task_id, response] = future.Get();
+  EXPECT_EQ(response.status(), proto::StartTaskResponse::STATUS_OK);
+  ASSERT_EQ(response.bound_surfaces_size(), 1);
+  EXPECT_EQ(response.bound_surfaces(0).tab_id(), handle.raw_value());
+  ActorTask* task = actor_service_->GetTask(task_id);
+  ASSERT_TRUE(task);
+  EXPECT_TRUE(task->IsActingOnActorSurface(handle));
+}
+
+TEST_F(ActorKeyedServiceAdapterTest,
+       StartTaskRejectsTabIdThatIsNotAnActorSurfaceId) {
+  // ActorSurfaceRegistry::OnTabCreated() maps a tab that hosts a headless
+  // surface's WebContents to that surface, so the tab ID differs from the
+  // actor surface ID.
+  ScopedHeadlessActorSurface headless =
+      actor_service_->CreateHeadlessActorSurface();
+  const ActorSurfaceHandle handle = headless.actor_surface_handle();
+  ActorSurface* surface = handle.Get();
+  ASSERT_TRUE(surface);
+  std::unique_ptr<tabs::MockTabInterface> mock_tab =
+      CreateMockTab(surface->GetWebContents());
+  ASSERT_NE(mock_tab->GetHandle().raw_value(), handle.raw_value());
+
+  proto::StartTaskRequest request;
+  request.add_target_surfaces()->set_tab_id(mock_tab->GetHandle().raw_value());
+  base::test::TestFuture<TaskId, proto::StartTaskResponse> future;
+  adapter_.StartTask(request, future.GetCallback());
+
+  const auto& [task_id, response] = future.Get();
+  EXPECT_FALSE(task_id);
+  EXPECT_EQ(response.status(),
+            proto::StartTaskResponse::STATUS_TARGET_TAB_NOT_FOUND);
+
+  // CreateMockTab() made the surface tab-backed. Demote it before `headless`
+  // is destroyed, because ActorKeyedService::DestroyHeadlessActorSurface()
+  // CHECKs that the surface is not tab-backed.
+  actor_service_->GetSurfaceRegistry().OnSurfaceWillBeDemoted(handle);
 }
 
 TEST_F(ActorKeyedServiceAdapterTest,
@@ -113,6 +190,53 @@ TEST_F(ActorKeyedServiceAdapterTest,
             proto::StartTaskResponse::STATUS_TARGET_TAB_NOT_FOUND);
   EXPECT_TRUE(response.bound_surfaces().empty());
   EXPECT_EQ(actor_service_->GetActiveTasksCount(), 0u);
+}
+
+TEST_F(ActorKeyedServiceAdapterTest,
+       StartTaskReturnsTargetTabNotFoundForUnresolvedSurfaceIds) {
+  // An unset or 0 ID asks Chrome to create a surface, which StartTask() does
+  // not support yet. CreateForTesting() mints a handle that resolves to no
+  // surface; it is negative while kUseTabHandleAsSurfaceHandle is enabled.
+  const std::optional<int32_t> tab_ids[] = {
+      std::nullopt, 0, ActorSurfaceHandle::CreateForTesting().raw_value()};
+  for (const std::optional<int32_t>& tab_id : tab_ids) {
+    SCOPED_TRACE(testing::PrintToString(tab_id));
+    proto::StartTaskRequest request;
+    proto::TargetSurface* surface = request.add_target_surfaces();
+    if (tab_id) {
+      surface->set_tab_id(*tab_id);
+    }
+
+    base::test::TestFuture<TaskId, proto::StartTaskResponse> future;
+    adapter_.StartTask(request, future.GetCallback());
+
+    const auto& [task_id, response] = future.Get();
+    EXPECT_FALSE(task_id);
+    EXPECT_EQ(response.status(),
+              proto::StartTaskResponse::STATUS_TARGET_TAB_NOT_FOUND);
+  }
+  EXPECT_EQ(actor_service_->GetActiveTasksCount(), 0u);
+}
+
+// The surface ID comes from the server, so a surface that another profile owns
+// must not resolve in this profile's registry.
+TEST_F(ActorKeyedServiceAdapterTest,
+       StartTaskReturnsTargetTabNotFoundForOtherProfileSurface) {
+  std::unique_ptr<TestingProfile> other_profile =
+      TestingProfile::Builder().Build();
+  ScopedHeadlessActorSurface other_headless =
+      ActorKeyedService::Get(other_profile.get())->CreateHeadlessActorSurface();
+
+  proto::StartTaskRequest request;
+  request.add_target_surfaces()->set_tab_id(
+      other_headless.actor_surface_handle().raw_value());
+  base::test::TestFuture<TaskId, proto::StartTaskResponse> future;
+  adapter_.StartTask(request, future.GetCallback());
+
+  const auto& [task_id, response] = future.Get();
+  EXPECT_FALSE(task_id);
+  EXPECT_EQ(response.status(),
+            proto::StartTaskResponse::STATUS_TARGET_TAB_NOT_FOUND);
 }
 
 TEST_F(ActorKeyedServiceAdapterTest, StopTaskStopsExistingTaskAndReturnsTrue) {
@@ -192,6 +316,8 @@ TEST_F(ActorKeyedServiceAdapterTest, ActRejectsUnknownTask) {
 
   base::test::TestFuture<proto::PerformActionsResponse> unknown_future;
   adapter_.Act(TaskId(9999), unknown_request, unknown_future.GetCallback());
+  EXPECT_EQ(unknown_future.Get().status(),
+            proto::PerformActionsResponse::STATUS_TAB_DISCONNECTED);
   EXPECT_EQ(unknown_future.Get().action_status_code(),
             static_cast<int32_t>(mojom::ActionResultCode::kTaskWentAway));
 }
@@ -209,6 +335,8 @@ TEST_F(ActorKeyedServiceAdapterTest, ActRejectsInvalidActionArguments) {
   adapter_.Act(task_id, request, act_future.GetCallback());
 
   const auto& response = act_future.Get();
+  EXPECT_EQ(response.status(),
+            proto::PerformActionsResponse::STATUS_ACTION_FAILED);
   EXPECT_EQ(response.action_status_code(),
             static_cast<int32_t>(mojom::ActionResultCode::kClickMissingTarget));
   EXPECT_EQ(response.failed_action_index(), 0);
@@ -231,6 +359,186 @@ TEST_F(ActorKeyedServiceAdapterTest, ActExecutesWaitActionAndBuildsResult) {
   EXPECT_EQ(response.action_status_code(),
             static_cast<int32_t>(mojom::ActionResultCode::kOk));
   EXPECT_FALSE(response.has_failed_action_index());
+}
+
+TEST_F(ActorKeyedServiceAdapterTest,
+       BuildActionsProtoMapsObservationConfigAndAgentContainerConfig) {
+  proto::PerformActionsRequest none_request;
+  none_request.mutable_observation_config()->set_level(
+      proto::ObservationConfig::OBSERVATION_LEVEL_NONE);
+  optimization_guide::proto::Actions none_actions =
+      BuildActionsProto(TaskId(6), none_request);
+  EXPECT_EQ(none_actions.task_id(), 6);
+  EXPECT_TRUE(none_actions.skip_async_observation_collection());
+
+  proto::PerformActionsRequest status_only_request;
+  status_only_request.mutable_observation_config()->set_level(
+      proto::ObservationConfig::OBSERVATION_LEVEL_STATUS_ONLY);
+  optimization_guide::proto::Actions status_only_actions =
+      BuildActionsProto(TaskId(7), status_only_request);
+  EXPECT_EQ(status_only_actions.task_id(), 7);
+  EXPECT_FALSE(status_only_actions.skip_async_observation_collection());
+
+  proto::PerformActionsRequest full_request;
+  full_request.add_actions()->mutable_wait()->set_wait_time_ms(10);
+  full_request.mutable_observation_config()->set_level(
+      proto::ObservationConfig::OBSERVATION_LEVEL_FULL);
+  full_request.mutable_agent_container_config()
+      ->add_location_rules()
+      ->mutable_location()
+      ->mutable_site()
+      ->set_domain("example.com");
+
+  optimization_guide::proto::Actions full_actions =
+      BuildActionsProto(TaskId(8), full_request);
+  EXPECT_EQ(full_actions.task_id(), 8);
+  ASSERT_EQ(full_actions.actions_size(), 1);
+  EXPECT_FALSE(full_actions.skip_async_observation_collection());
+  EXPECT_EQ(full_actions.task_metadata()
+                .security()
+                .agent_container_config()
+                .location_rules_size(),
+            1);
+}
+
+TEST_F(ActorKeyedServiceAdapterTest,
+       BuildPerformActionsResponseMapsStatusAndObservations) {
+  optimization_guide::proto::ActionsResult result;
+  result.set_action_result(
+      static_cast<int32_t>(mojom::ActionResultCode::kUrlBlocked));
+  result.set_index_of_failed_action(2);
+  result.add_extra_information("step 0 ok");
+
+  optimization_guide::proto::TabObservation* tab_obs = result.add_tabs();
+  tab_obs->set_id(15);
+  tab_obs->set_result(
+      optimization_guide::proto::TabObservation::TAB_OBSERVATION_OK);
+  tab_obs->set_screenshot("png_bytes");
+  tab_obs->set_screenshot_mime_type("image/png");
+  optimization_guide::proto::FrameData* main_frame =
+      tab_obs->mutable_annotated_page_content()->mutable_main_frame_data();
+  main_frame->set_url("https://example.com/checkout");
+
+  proto::PerformActionsResponse full_response =
+      BuildPerformActionsResponse(result, nullptr);
+  EXPECT_EQ(full_response.status(),
+            proto::PerformActionsResponse::STATUS_SECURITY_VIOLATION);
+  ASSERT_TRUE(full_response.has_failed_action_index());
+  EXPECT_EQ(full_response.failed_action_index(), 2);
+  ASSERT_EQ(full_response.extra_information_size(), 1);
+  EXPECT_EQ(full_response.extra_information(0), "step 0 ok");
+  ASSERT_EQ(full_response.observations_size(), 1);
+  EXPECT_EQ(full_response.observations(0).tab_id(), 15);
+  EXPECT_EQ(full_response.observations(0).status(),
+            proto::BrowserObservation::STATUS_OBSERVED);
+  EXPECT_EQ(full_response.observations(0).current_url(),
+            "https://example.com/checkout");
+  ASSERT_TRUE(full_response.observations(0).has_screenshot_data());
+  EXPECT_EQ(full_response.observations(0).screenshot_data().inline_data(),
+            "png_bytes");
+  EXPECT_EQ(full_response.observations(0).screenshot_data().mime_type(),
+            "image/png");
+  EXPECT_TRUE(
+      full_response.observations(0).has_inline_annotated_page_content());
+
+  proto::ObservationConfig screenshot_only_config;
+  screenshot_only_config.set_level(
+      proto::ObservationConfig::OBSERVATION_LEVEL_SCREENSHOT_ONLY);
+  proto::PerformActionsResponse screenshot_only_response =
+      BuildPerformActionsResponse(result, &screenshot_only_config);
+  ASSERT_EQ(screenshot_only_response.observations_size(), 1);
+  EXPECT_EQ(
+      screenshot_only_response.observations(0).screenshot_data().inline_data(),
+      "png_bytes");
+  EXPECT_FALSE(screenshot_only_response.observations(0)
+                   .has_inline_annotated_page_content());
+
+  proto::ObservationConfig apc_only_config;
+  apc_only_config.set_level(
+      proto::ObservationConfig::OBSERVATION_LEVEL_APC_ONLY);
+  proto::PerformActionsResponse apc_only_response =
+      BuildPerformActionsResponse(result, &apc_only_config);
+  ASSERT_EQ(apc_only_response.observations_size(), 1);
+  EXPECT_FALSE(apc_only_response.observations(0).has_screenshot_data());
+  EXPECT_TRUE(
+      apc_only_response.observations(0).has_inline_annotated_page_content());
+
+  proto::ObservationConfig status_only_config;
+  status_only_config.set_level(
+      proto::ObservationConfig::OBSERVATION_LEVEL_STATUS_ONLY);
+  proto::PerformActionsResponse status_only_response =
+      BuildPerformActionsResponse(result, &status_only_config);
+  ASSERT_EQ(status_only_response.observations_size(), 1);
+  EXPECT_EQ(status_only_response.observations(0).tab_id(), 15);
+  EXPECT_EQ(status_only_response.observations(0).status(),
+            proto::BrowserObservation::STATUS_OBSERVED);
+  EXPECT_EQ(status_only_response.observations(0).current_url(),
+            "https://example.com/checkout");
+  EXPECT_EQ(status_only_response.observations(0).screenshot_case(),
+            proto::BrowserObservation::SCREENSHOT_NOT_SET);
+  EXPECT_EQ(status_only_response.observations(0).page_content_case(),
+            proto::BrowserObservation::PAGE_CONTENT_NOT_SET);
+
+  proto::ObservationConfig none_config;
+  none_config.set_level(proto::ObservationConfig::OBSERVATION_LEVEL_NONE);
+  proto::PerformActionsResponse none_response =
+      BuildPerformActionsResponse(result, &none_config);
+  EXPECT_TRUE(none_response.observations().empty());
+}
+
+TEST_F(ActorKeyedServiceAdapterTest,
+       BuildPerformActionsResponseMapsObservationErrors) {
+  optimization_guide::proto::ActionsResult result;
+  result.set_action_result(static_cast<int32_t>(mojom::ActionResultCode::kOk));
+
+  optimization_guide::proto::TabObservation* crashed_tab = result.add_tabs();
+  crashed_tab->set_id(10);
+  crashed_tab->set_result(
+      optimization_guide::proto::TabObservation::TAB_OBSERVATION_PAGE_CRASHED);
+
+  optimization_guide::proto::TabObservation* timeout_tab = result.add_tabs();
+  timeout_tab->set_id(20);
+  timeout_tab->set_result(
+      optimization_guide::proto::TabObservation::TAB_OBSERVATION_FETCH_ERROR);
+  timeout_tab->set_screenshot_result(
+      optimization_guide::proto::TabObservation::SCREENSHOT_TIMEOUT);
+  timeout_tab->set_annotated_page_content_result(
+      optimization_guide::proto::TabObservation::ANNOTATED_PAGE_CONTENT_ERROR);
+
+  optimization_guide::proto::TabObservation* unset_fetch_error_tab =
+      result.add_tabs();
+  unset_fetch_error_tab->set_id(30);
+  unset_fetch_error_tab->set_result(
+      optimization_guide::proto::TabObservation::TAB_OBSERVATION_FETCH_ERROR);
+
+  proto::PerformActionsResponse response =
+      BuildPerformActionsResponse(result, nullptr);
+  ASSERT_EQ(response.observations_size(), 3);
+  EXPECT_EQ(response.observations(0).tab_id(), 10);
+  EXPECT_EQ(response.observations(0).status(),
+            proto::BrowserObservation::STATUS_PAGE_CRASHED);
+  EXPECT_FALSE(response.observations(0).has_screenshot_data());
+  EXPECT_FALSE(response.observations(0).has_screenshot_error());
+
+  EXPECT_EQ(response.observations(1).tab_id(), 20);
+  EXPECT_EQ(response.observations(1).status(),
+            proto::BrowserObservation::STATUS_OBSERVED);
+  ASSERT_TRUE(response.observations(1).has_screenshot_error());
+  EXPECT_EQ(response.observations(1).screenshot_error().code(),
+            proto::ObservationError::CODE_TIMEOUT);
+  ASSERT_TRUE(response.observations(1).has_page_content_error());
+  EXPECT_EQ(response.observations(1).page_content_error().code(),
+            proto::ObservationError::CODE_FAILED);
+
+  EXPECT_EQ(response.observations(2).tab_id(), 30);
+  EXPECT_EQ(response.observations(2).status(),
+            proto::BrowserObservation::STATUS_OBSERVED);
+  ASSERT_TRUE(response.observations(2).has_screenshot_error());
+  EXPECT_EQ(response.observations(2).screenshot_error().code(),
+            proto::ObservationError::CODE_FAILED);
+  ASSERT_TRUE(response.observations(2).has_page_content_error());
+  EXPECT_EQ(response.observations(2).page_content_error().code(),
+            proto::ObservationError::CODE_FAILED);
 }
 
 }  // namespace

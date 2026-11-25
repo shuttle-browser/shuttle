@@ -254,7 +254,10 @@ class SyncService : public KeyedService {
     kDeviceManagementError = 12,
     kMaxValue = kDeviceManagementError,
 #else
-    kMaxValue = kBookmarksLimitExceeded,
+    // The user needs to take action in order to get access to encryption keys
+    // for passkeys.
+    kPasskeysLocked = 13,
+    kMaxValue = kPasskeysLocked,
 #endif  // BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
   };
   // LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:UserActionableError)
@@ -538,11 +541,9 @@ class SyncService : public KeyedService {
   // ACTIONS / STATE CHANGE REQUESTS
   //////////////////////////////////////////////////////////////////////////////
 
-  // Called when a datatype (SyncableService) has a need for sync to start
-  // ASAP, presumably because a local change event has occurred but we're
-  // still in deferred start mode, meaning the SyncableService hasn't been
-  // told to MergeDataAndStartSyncing yet.
-  // TODO(crbug.com/40901006): Remove this API.
+  // Called when a datatype has a need for sync to start ASAP, bypassing the
+  // deferred startup delay (see crbug.com/40872516), e.g. because a local
+  // change event or user interaction requires immediate server communication.
   virtual void OnDataTypeRequestsSyncStartup(DataType type) = 0;
 
   // The reason why TriggerRefresh() was called.
@@ -583,6 +584,15 @@ class SyncService : public KeyedService {
   // page is opened.
   virtual void SetInvalidationsForSessionsEnabled(bool enabled) = 0;
 #endif  // BUILDFLAG(IS_ANDROID)
+
+  // Called by the passkey unlock logic when whether Google Password Manager
+  // passkeys are locked changes. When `passkeys_locked` is true and
+  // `WEBAUTHN_CREDENTIAL` is active, `GetUserActionableError()` reports
+  // `UserActionableError::kPasskeysLocked` (ranked with other errors).
+  // TODO(crbug.com/470338958): Reconsider this design, e.g. move
+  // `UserActionableError` out of `SyncService` into a dedicated service, so
+  // `SyncService` doesn't need passkey-specific state.
+  virtual void SetPasskeysLocked(bool passkeys_locked) = 0;
 
   // Shares the explicit passphrase content with layers outside of the browser
   // which have an independent sync client, and thus separate encryption

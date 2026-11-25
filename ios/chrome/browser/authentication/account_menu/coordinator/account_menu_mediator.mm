@@ -13,8 +13,8 @@
 #import "base/metrics/user_metrics_action.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/prefs/pref_service.h"
-#import "components/signin/public/base/signin_switches.h"
 #import "components/signin/public/identity_manager/objc/identity_manager_observer_bridge.h"
+#import "components/subscription_eligibility/ai_subscription_tier_names.h"
 #import "components/subscription_eligibility/objc/subscription_eligibility_observer_bridge.h"
 #import "components/subscription_eligibility/subscription_eligibility_service.h"
 #import "components/sync/service/sync_service_utils.h"
@@ -26,11 +26,9 @@
 #import "ios/chrome/browser/authentication/account_menu/ui/account_menu_view_controller.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow_delegate.h"
-#import "ios/chrome/browser/authentication/ui_bundled/cells/table_view_account_item.h"
 #import "ios/chrome/browser/authentication/ui_bundled/change_profile/change_profile_load_url.h"
 #import "ios/chrome/browser/authentication/ui_bundled/change_profile/change_profile_open_ntp.h"
 #import "ios/chrome/browser/authentication/ui_bundled/change_profile/change_profile_settings_continuation.h"
-#import "ios/chrome/browser/authentication/ui_bundled/continuation.h"
 #import "ios/chrome/browser/authentication/ui_bundled/enterprise/enterprise_utils.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
@@ -38,13 +36,13 @@
 #import "ios/chrome/browser/settings/manage_sync/public/sync_error_settings_command_handler.h"
 #import "ios/chrome/browser/settings/model/sync/utils/account_error_ui_info.h"
 #import "ios/chrome/browser/settings/model/sync/utils/identity_error_util.h"
-#import "ios/chrome/browser/settings/ui_bundled/settings_table_view_controller_constants.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_observer_bridge.h"
 #import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
+#import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/sync/model/sync_observer_bridge.h"
 
 @interface AccountMenuMediator () <AuthenticationFlowDelegate,
@@ -249,8 +247,11 @@
     // ensures the Account Menu and the NTP displays are consistent.
     return 0;
   }
-  return std::max<NSInteger>(
-      _subscriptionEligibilityService->GetAiSubscriptionTier(), 0);
+  const int tier = _subscriptionEligibilityService->GetAiSubscriptionTier();
+  return subscription_eligibility::GetAiSubscriptionTierDisplayInfo(tier)
+                 .show_decoration
+             ? tier
+             : 0;
 }
 
 - (NSString*)managementDescription {
@@ -288,6 +289,10 @@
 }
 
 - (void)extendedAccountInfoDidUpdate:(const AccountInfo&)info {
+  // TODO(crbug.com/576575308): Currently called even for identities that do
+  // not match `kRestrictAccountsToPatterns` because
+  // `ChromeAccountManagerService::OnIdentityOnDeviceUpdated` does not filter
+  // them out.
   [self updateIdentitiesIfAllowed];
 }
 
@@ -312,8 +317,10 @@
         syncer::IdentityErrorDisplaySurface::kAccountMenu, _error.errorType);
   }
   [self.consumer updateErrorSection:_error];
-  if (_subscriptionEligibilityService->GetAiSubscriptionTier() > 0 &&
-      IsAiSubscriptionAvatarRingIOSEnabled()) {
+  if (IsAiSubscriptionAvatarRingIOSEnabled() &&
+      subscription_eligibility::GetAiSubscriptionTierDisplayInfo(
+          _subscriptionEligibilityService->GetAiSubscriptionTier())
+          .show_decoration) {
     // We may need to add/remove the AI Tier rings and chip.
     [self.consumer updatePrimaryAccount];
   }
@@ -347,7 +354,7 @@
                  }];
 }
 
-- (void)accountTappedWithGaiaID:(const GaiaId*)gaiaID
+- (void)accountTappedWithGaiaID:(const GaiaId&)gaiaID
                      targetRect:(CGRect)targetRect {
   if (self.userInteractionsBlocked) {
     return;
@@ -355,7 +362,7 @@
 
   id<SystemIdentity> identityToSignin = nil;
   for (id<SystemIdentity> identity : _identities) {
-    if (identity.gaiaId == *gaiaID) {
+    if (identity.gaiaId == gaiaID) {
       identityToSignin = identity;
       break;
     }
@@ -375,79 +382,12 @@
   if (self.userInteractionsBlocked) {
     return;
   }
-  switch (_error.errorType) {
-    case syncer::SyncService::UserActionableError::kSignInNeedsUpdate: {
-      BOOL isMDMError = NO;
-      if (!base::FeatureList::IsEnabled(
-              switches::kHandleMdmErrorsForDasherAccounts)) {
-        isMDMError = _authenticationService->HasCachedMDMErrorForIdentity(
-            _primaryIdentityBeforeSignin);
-      }
-      if (!isMDMError) {
-        base::RecordAction(
-            base::UserMetricsAction("Signin_AccountMenu_ErrorButton_Reauth"));
-        self.userInteractionsBlocked = YES;
-        [self.syncErrorSettingsCommandHandler openPrimaryAccountReauthDialog];
-      } else {
-        base::RecordAction(
-            base::UserMetricsAction("Signin_AccountMenu_ErrorButton_MDM"));
-        self.userInteractionsBlocked = YES;
-        [self.syncErrorSettingsCommandHandler
-            openMDMErrorDialogWithSystemIdentity:_primaryIdentityBeforeSignin];
-      }
-      break;
-    }
-    case syncer::SyncService::UserActionableError::kDeviceManagementError: {
-      base::RecordAction(
-          base::UserMetricsAction("Signin_AccountMenu_ErrorButton_MDM"));
-      self.userInteractionsBlocked = YES;
-      [self.syncErrorSettingsCommandHandler
-          openMDMErrorDialogWithSystemIdentity:_primaryIdentityBeforeSignin];
-      break;
-    }
-    case syncer::SyncService::UserActionableError::kNeedsPassphrase:
-      base::RecordAction(
-          base::UserMetricsAction("Signin_AccountMenu_ErrorButton_Passphrase"));
-      self.userInteractionsBlocked = YES;
-      [self.syncErrorSettingsCommandHandler
-          openPassphraseDialogWithModalPresentation:YES];
-      break;
-    case syncer::SyncService::UserActionableError::
-        kNeedsTrustedVaultKeyForPasswords:
-      base::RecordAction(base::UserMetricsAction(
-          "Signin_AccountMenu_ErrorButton_TrustedVaultForPasswords"));
-      [self.syncErrorSettingsCommandHandler openTrustedVaultReauthForFetchKeys];
-      break;
-    case syncer::SyncService::UserActionableError::
-        kNeedsTrustedVaultKeyForEverything:
-      base::RecordAction(base::UserMetricsAction(
-          "Signin_AccountMenu_ErrorButton_TrustedVaultForEverything"));
-      [self.syncErrorSettingsCommandHandler openTrustedVaultReauthForFetchKeys];
-      break;
-    case syncer::SyncService::UserActionableError::
-        kTrustedVaultRecoverabilityDegradedForPasswords:
-      base::RecordAction(base::UserMetricsAction(
-          "Signin_AccountMenu_ErrorButton_TrustedVaultDegradedForPasswords"));
-      [self.syncErrorSettingsCommandHandler
-              openTrustedVaultReauthForDegradedRecoverability];
-      break;
-    case syncer::SyncService::UserActionableError::
-        kTrustedVaultRecoverabilityDegradedForEverything:
-      base::RecordAction(base::UserMetricsAction(
-          "Signin_AccountMenu_ErrorButton_TrustedVaultDegradedForEverything"));
-      [self.syncErrorSettingsCommandHandler
-              openTrustedVaultReauthForDegradedRecoverability];
-      break;
-    case syncer::SyncService::UserActionableError::kBookmarksLimitExceeded:
-      base::RecordAction(base::UserMetricsAction(
-          "Signin_AccountMenu_ErrorButton_BookmarksLimitExceeded"));
-      [self.syncErrorSettingsCommandHandler openBookmarksLimitExceededHelp];
-      break;
-    case syncer::SyncService::UserActionableError::kNone:
-    // TODO(crbug.com/370026230): Update this case once GetAccountErrorUIInfo()
-    // returns a non-nil value for it.
-    case syncer::SyncService::UserActionableError::kNeedsClientUpgrade:
-      NOTREACHED();
+  CHECK(_error);
+  if (HandleIdentityErrorButtonTap(
+          _error.errorType, _authenticationService,
+          self.syncErrorSettingsCommandHandler,
+          syncer::IdentityErrorDisplaySurface::kAccountMenu)) {
+    self.userInteractionsBlocked = YES;
   }
 }
 

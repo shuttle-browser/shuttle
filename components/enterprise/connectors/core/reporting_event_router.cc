@@ -126,6 +126,42 @@ void MaybeSetExtensionInitiator(
   *event.mutable_initiator()->mutable_chrome_extension() = *extension_initiator;
 }
 
+// Returns whether the attribution feature that gates `initiator`'s populated
+// variant is enabled and eligible to be reported.
+bool IsInitiatorAttributionEnabled(
+    const ReportingEventRouter::EventInitiatorInfo& initiator,
+    bool include_device_info) {
+  using EventInitiatorInfo = ReportingEventRouter::EventInitiatorInfo;
+  switch (initiator.initiator_case()) {
+    case EventInitiatorInfo::kChromeExtension:
+      return base::FeatureList::IsEnabled(kEnterpriseExtensionActorAttribution);
+    case EventInitiatorInfo::kExternalProcessInfo:
+    case EventInitiatorInfo::kBrowserFeatureInfo:
+      return include_device_info &&
+             base::FeatureList::IsEnabled(kEventReportingCdpAttribution);
+    case EventInitiatorInfo::kBrowserAgentInfo:
+      return base::FeatureList::IsEnabled(kEnterpriseGlicActorAttribution);
+    case EventInitiatorInfo::INITIATOR_NOT_SET:
+      return false;
+  }
+  return false;
+}
+
+// Moves `initiator` onto `event` when present and the feature for its
+// populated variant is enabled (and `include_device_info` is true for
+// device-level CDP attribution). Leaves `event.initiator` unset otherwise so
+// consumers can tell "unknown" from "empty".
+void MaybeSetEventInitiator(
+    chrome::cros::reporting::proto::Event& event,
+    std::optional<ReportingEventRouter::EventInitiatorInfo> initiator,
+    bool include_device_info) {
+  if (!initiator ||
+      !IsInitiatorAttributionEnabled(*initiator, include_device_info)) {
+    return;
+  }
+  *event.mutable_initiator() = *std::move(initiator);
+}
+
 }  // namespace
 
 ReportingEventRouter::SensitiveDataEvent::SensitiveDataEvent() = default;
@@ -151,7 +187,8 @@ void ReportingEventRouter::OnLoginEvent(
     const GURL& url,
     bool is_federated,
     const url::SchemeHostPort& federated_origin,
-    const std::u16string& username) {
+    const std::u16string& username,
+    const std::optional<EventInitiatorInfo>& initiator) {
   if (!IsEventEnabled(kKeyLoginEvent)) {
     return;
   }
@@ -170,6 +207,9 @@ void ReportingEventRouter::OnLoginEvent(
                       reporting_client_->GetProfileIdentifier(),
                       reporting_client_->GetProfileUserName());
     *event.mutable_time() = ToProtoTimestamp(base::Time::Now());
+    MaybeSetEventInitiator(
+        event, initiator,
+        reporting_client_->ShouldIncludeDeviceInfo(settings->per_profile));
 
     reporting_client_->ReportEvent(std::move(event), settings.value());
 }
@@ -248,7 +288,8 @@ void ReportingEventRouter::OnUrlFilteringInterstitial(
     const std::string& threat_type,
     const safe_browsing::RTLookupResponse& response,
     const ReferrerChain& referrer_chain,
-    const std::string& tab_title) {
+    const std::string& tab_title,
+    std::optional<EventInitiatorInfo> initiator) {
   if (!IsEventEnabled(kKeyUrlFilteringInterstitialEvent)) {
     return;
   }
@@ -263,6 +304,9 @@ void ReportingEventRouter::OnUrlFilteringInterstitial(
           url, threat_type, response, reporting_client_->GetProfileIdentifier(),
           reporting_client_->GetProfileUserName(), active_user, referrer_chain,
           tab_title);
+  MaybeSetEventInitiator(
+      event, std::move(initiator),
+      reporting_client_->ShouldIncludeDeviceInfo(settings->per_profile));
 
   *event.mutable_time() = ToProtoTimestamp(base::Time::Now());
 
@@ -274,7 +318,8 @@ void ReportingEventRouter::OnSecurityInterstitialProceeded(
     const std::string& reason,
     int net_error_code,
     const ReferrerChain& referrer_chain,
-    const std::string& tab_title) {
+    const std::string& tab_title,
+    std::optional<EventInitiatorInfo> initiator) {
   if (!IsEventEnabled(kKeyInterstitialEvent)) {
     return;
   }
@@ -287,6 +332,9 @@ void ReportingEventRouter::OnSecurityInterstitialProceeded(
       /*clicked_through=*/true, EventResult::BYPASSED,
       reporting_client_->GetProfileIdentifier(),
       reporting_client_->GetProfileUserName(), referrer_chain, tab_title);
+  MaybeSetEventInitiator(
+      event, std::move(initiator),
+      reporting_client_->ShouldIncludeDeviceInfo(settings->per_profile));
   *event.mutable_time() = ToProtoTimestamp(base::Time::Now());
 
   reporting_client_->ReportEvent(std::move(event), settings.value());
@@ -298,7 +346,8 @@ void ReportingEventRouter::OnSecurityInterstitialShown(
     int net_error_code,
     bool proceed_anyway_disabled,
     const ReferrerChain& referrer_chain,
-    const std::string& tab_title) {
+    const std::string& tab_title,
+    std::optional<EventInitiatorInfo> initiator) {
   if (!IsEventEnabled(kKeyInterstitialEvent)) {
     return;
   }
@@ -314,6 +363,9 @@ void ReportingEventRouter::OnSecurityInterstitialShown(
       /*clicked_through=*/false, event_result,
       reporting_client_->GetProfileIdentifier(),
       reporting_client_->GetProfileUserName(), referrer_chain, tab_title);
+  MaybeSetEventInitiator(
+      event, std::move(initiator),
+      reporting_client_->ShouldIncludeDeviceInfo(settings->per_profile));
   *event.mutable_time() = ToProtoTimestamp(base::Time::Now());
 
   reporting_client_->ReportEvent(std::move(event), settings.value());

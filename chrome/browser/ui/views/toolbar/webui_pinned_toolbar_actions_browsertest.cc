@@ -24,10 +24,12 @@
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ttc/core/features.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
+#include "chrome/browser/ui/interaction/browser_elements.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_model.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -37,6 +39,7 @@
 #include "chrome/browser/ui/views/toolbar/webui_pinned_toolbar_actions_test_base.h"
 #include "chrome/browser/ui/views/toolbar/webui_test_utils.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
+#include "chrome/browser/ui/webui/webui_toolbar/utils/toolbar_button_utils.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_ui.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/grit/generated_resources.h"
@@ -255,21 +258,24 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest, RouteMediaIcons) {
     // Make sure the icon got wired through.
     EXPECT_EQ(
         test.expected_icon,
-        EvalJsOnPinnedAction(
-            mojom_action, "return btn?.getAttribute('iron-icon') || '(null)'"));
+        EvalJsOnPinnedAction(mojom_action, "return iconName || '(null)'"));
 
     // And the color. Like native pinned toolbar buttons, vector icons use the
-    // toolbar button icon color rather than the action's own color.
+    // toolbar button icon color rather than the action's own color. Check the
+    // computed fill, as --iron-icon-fill-color is "currentColor" here; the
+    // icon inherits its color from the toolbar-chip-button.
     const SkColor icon_color = BrowserView::GetBrowserViewForBrowser(browser())
                                    ->GetColorProvider()
                                    ->GetColor(kColorToolbarButtonIcon);
+    ASSERT_EQ(SK_AlphaOPAQUE, SkColorGetA(icon_color));
     EXPECT_EQ(
-        base::StringPrintf(
-            "--cr-icon-button-fill-color: rgba(%d, %d, %d, %.2f);",
-            SkColorGetR(icon_color), SkColorGetG(icon_color),
-            SkColorGetB(icon_color), SkColorGetA(icon_color) / 255.0),
-        EvalJsOnPinnedAction(mojom_action,
-                             "return btn?.getAttribute('style') || '(null)'"));
+        base::StringPrintf("rgb(%d, %d, %d)", SkColorGetR(icon_color),
+                           SkColorGetG(icon_color), SkColorGetB(icon_color)),
+        EvalJsOnPinnedAction(
+            mojom_action,
+            "const icon = btn?.querySelector('icon-from-table')"
+            "    ?.shadowRoot?.querySelector('cr-icon'); "
+            "return icon ? getComputedStyle(icon).fill : '(null)';"));
 
     UnpinAction(kActionRouteMedia, mojom_action);
   }
@@ -291,10 +297,9 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
   EXPECT_EQ(features::IsRoundedIconsEnabled()
                 ? "webui-toolbar:password_manager"
                 : "webui-toolbar:password_manager_old",
-            EvalJsOnPinnedAction(
-                toolbar_ui_api::mojom::PinnedToolbarAction::
-                    kShowPasswordsBubbleOrPage,
-                "return btn?.getAttribute('iron-icon') || '(null)'"));
+            EvalJsOnPinnedAction(toolbar_ui_api::mojom::PinnedToolbarAction::
+                                     kShowPasswordsBubbleOrPage,
+                                 "return iconName || '(null)'"));
 }
 
 IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest, SidePanelToggle) {
@@ -408,7 +413,7 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
       EvalJsOnPinnedAction(mojom_action,
                            "return !!btn && "
                            "btn.hasAttribute('is-menu-open') && "
-                           "btn.getAttribute('aria-pressed') === 'true';")
+                           "innerBtn.getAttribute('aria-pressed') === 'true';")
           .ExtractBool());
 
   // Deactivate action.
@@ -426,7 +431,7 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
       EvalJsOnPinnedAction(mojom_action,
                            "return !!btn && "
                            "!btn.hasAttribute('is-menu-open') && "
-                           "btn.getAttribute('aria-pressed') === 'false';")
+                           "innerBtn.getAttribute('aria-pressed') === 'false';")
           .ExtractBool());
 
   // Activate action.
@@ -435,10 +440,11 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
 
   // Verify it's highlighted.
   EXPECT_TRUE(base::test::RunUntil([&]() {
-    return EvalJsOnPinnedAction(mojom_action,
-                                "return !!btn && "
-                                "btn.hasAttribute('is-menu-open') && "
-                                "btn.getAttribute('aria-pressed') === 'true';")
+    return EvalJsOnPinnedAction(
+               mojom_action,
+               "return !!btn && "
+               "btn.hasAttribute('is-menu-open') && "
+               "innerBtn.getAttribute('aria-pressed') === 'true';")
         .ExtractBool();
   }));
 
@@ -476,14 +482,39 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
       action_id, BrowserActions::From(browser())->root_action_item());
   ASSERT_TRUE(action_item);
 
+  const auto* color_provider =
+      BrowserView::GetBrowserViewForBrowser(browser())->GetColorProvider();
+  const auto expected_rgb = [color_provider](ui::ColorId color_id) {
+    const SkColor color = color_provider->GetColor(color_id);
+    EXPECT_EQ(SK_AlphaOPAQUE, SkColorGetA(color));
+    return base::StringPrintf("rgb(%d, %d, %d)", SkColorGetR(color),
+                              SkColorGetG(color), SkColorGetB(color));
+  };
+  constexpr char kGetIconFillJs[] =
+      "const icon = btn?.querySelector('icon-from-table')"
+      "    ?.shadowRoot?.querySelector('cr-icon'); "
+      "return icon ? getComputedStyle(icon).fill : '(null)';";
+  constexpr char kGetIconForcedColorAdjustJs[] =
+      "const icon = btn?.querySelector('icon-from-table')"
+      "    ?.shadowRoot?.querySelector('cr-icon'); "
+      "return icon ? getComputedStyle(icon).forcedColorAdjust : '(null)';";
+  constexpr char kGetInnerBtnOpacityJs[] =
+      "return innerBtn ? getComputedStyle(innerBtn).opacity : '(null)';";
+
   // Disable the action.
   action_item->SetEnabled(false);
 
-  // Verify button is disabled in WebUI.
+  // Verify button is disabled in WebUI and uses the inactive icon color
+  // directly without dimming #button with disabled opacity.
   ASSERT_TRUE(base::test::RunUntil([&]() {
     return EvalJsOnPinnedAction(mojom_action, "return !!btn && btn.disabled;")
         .ExtractBool();
   }));
+  EXPECT_EQ(expected_rgb(kColorToolbarButtonIconInactive),
+            EvalJsOnPinnedAction(mojom_action, kGetIconFillJs));
+  EXPECT_EQ("none",
+            EvalJsOnPinnedAction(mojom_action, kGetIconForcedColorAdjustJs));
+  EXPECT_EQ("1", EvalJsOnPinnedAction(mojom_action, kGetInnerBtnOpacityJs));
 
   // Re-enable.
   action_item->SetEnabled(true);
@@ -491,6 +522,11 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
     return !EvalJsOnPinnedAction(mojom_action, "return !!btn && btn.disabled;")
                 .ExtractBool();
   }));
+  EXPECT_EQ(expected_rgb(kColorToolbarButtonIcon),
+            EvalJsOnPinnedAction(mojom_action, kGetIconFillJs));
+  EXPECT_EQ("auto",
+            EvalJsOnPinnedAction(mojom_action, kGetIconForcedColorAdjustJs));
+  EXPECT_EQ("1", EvalJsOnPinnedAction(mojom_action, kGetInnerBtnOpacityJs));
 }
 
 IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest, PinUnpinnable) {
@@ -574,6 +610,60 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
                   BrowserActions::From(browser())->root_action_item())
       ->SetProperty(kActionItemUnderlineIndicatorKey, false);
   verify_activated(false);
+}
+
+IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest, IconSizeDelta) {
+  actions::ActionId action_id = kActionPrint;
+  toolbar_ui_api::mojom::PinnedToolbarAction mojom_action =
+      toolbar_ui_api::mojom::PinnedToolbarAction::kPrint;
+
+  PinAction(action_id, mojom_action);
+
+  actions::ActionItem* const action_item =
+      actions::ActionManager::Get().FindAction(
+          action_id, BrowserActions::From(browser())->root_action_item());
+  ASSERT_TRUE(action_item);
+
+  // Returns the rendered width (in px) of the action's icon, or -1 if the
+  // icon isn't rendered.
+  auto get_icon_width = [&]() {
+    return EvalJsOnPinnedAction(
+               mojom_action,
+               "const icon = btn?.querySelector('icon-from-table'); "
+               "return icon ? icon.getBoundingClientRect().width : -1;")
+        .ExtractDouble();
+  };
+
+  // Waits until the WebUI state reflects `expected_delta` and the icon is
+  // rendered at `expected_width`.
+  auto verify_icon_size = [&](int expected_delta, double expected_width) {
+    ASSERT_TRUE(base::test::RunUntil([&]() {
+      return EvalJsOnPinnedAction(mojom_action,
+                                  "return actionEl.state.iconSizeDelta;")
+                     .ExtractInt() == expected_delta &&
+             get_icon_width() == expected_width;
+    }));
+  };
+
+  // The delta defaults to zero, and the icon is drawn at the default size.
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return EvalJsOnPinnedAction(mojom_action,
+                                "return actionEl.state.iconSizeDelta;")
+                   .ExtractInt() == 0 &&
+           get_icon_width() > 0;
+  }));
+  const double default_icon_width = get_icon_width();
+
+  // Setting the property propagates to the WebUI state and shrinks the icon.
+  constexpr int kIconSizeDelta = -2;
+  action_item->SetProperty(chrome::kActionItemIconSizeDeltaKey, kIconSizeDelta);
+  verify_icon_size(kIconSizeDelta, default_icon_width + kIconSizeDelta);
+
+  // Clearing the property restores the default.
+  action_item->SetProperty(chrome::kActionItemIconSizeDeltaKey, 0);
+  verify_icon_size(0, default_icon_width);
+
+  UnpinAction(action_id, mojom_action);
 }
 
 IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
@@ -781,8 +871,9 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
       base::UTF16ToUTF8(action_item->GetAccessibleName().empty()
                             ? action_item->GetTooltipText()
                             : action_item->GetAccessibleName());
-  std::string default_description =
-      base::UTF16ToUTF8(action_item->GetTooltipText());
+  // Like native PinnedActionToolbarButton, the accessible description is
+  // explicitly empty; the tooltip is exposed separately.
+  const std::string_view kEmptyDescription = "";
 
   // Locate the print button once by its default name and remember its AX node
   // id. Later lookups use the id rather than the name, since an empty name
@@ -801,37 +892,37 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
   const ui::AXNodeID print_node_id = print_node->id;
 
   ASSERT_TRUE(WaitForButtonAccessibleState(web_contents, print_node_id,
-                                           default_name, default_description,
+                                           default_name, kEmptyDescription,
                                            ax::mojom::CheckedState::kFalse));
 
   // Verify checked state updates when highlighted.
   webui_toolbar_view->GetPinnedToolbarActions()->UpdateActionState(action_id,
                                                                    true);
   ASSERT_TRUE(WaitForButtonAccessibleState(web_contents, print_node_id,
-                                           default_name, default_description,
+                                           default_name, kEmptyDescription,
                                            ax::mojom::CheckedState::kTrue));
 
   webui_toolbar_view->GetPinnedToolbarActions()->UpdateActionState(action_id,
                                                                    false);
   ASSERT_TRUE(WaitForButtonAccessibleState(web_contents, print_node_id,
-                                           default_name, default_description,
+                                           default_name, kEmptyDescription,
                                            ax::mojom::CheckedState::kFalse));
 
   // Test all values are provided.
   action_item->SetTooltipText(u"tooltip");
   action_item->SetAccessibleName(u"accessible_name");
-  ASSERT_TRUE(WaitForButtonAccessibleState(web_contents, print_node_id,
-                                           "accessible_name", "tooltip"));
+  ASSERT_TRUE(WaitForButtonAccessibleState(
+      web_contents, print_node_id, "accessible_name", kEmptyDescription));
 
   // Test accessible_name is empty (Fallback to Tooltip).
   action_item->SetAccessibleName(u"");
   ASSERT_TRUE(WaitForButtonAccessibleState(web_contents, print_node_id,
-                                           "tooltip", "tooltip"));
+                                           "tooltip", kEmptyDescription));
 
   // Test tooltip and accessible_name are empty.
   action_item->SetTooltipText(u"");
-  ASSERT_TRUE(
-      WaitForButtonAccessibleState(web_contents, print_node_id, "", ""));
+  ASSERT_TRUE(WaitForButtonAccessibleState(web_contents, print_node_id, "",
+                                           kEmptyDescription));
 }
 
 IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest, ToolbarDivider) {
@@ -987,11 +1078,11 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
                       : "webui-toolbar:info_chrome_refresh_old";
 #endif
 
-  // Verify iron-icon attribute in WebUI.
+  // Verify the icon in WebUI.
   EXPECT_TRUE(base::test::RunUntil([&]() {
     return EvalJsOnPinnedAction(toolbar_ui_api::mojom::PinnedToolbarAction::
                                     kSidePanelShowAboutThisSite,
-                                "return btn?.getAttribute('iron-icon') || '';")
+                                "return iconName || '';")
                .ExtractString() == expected_icon;
   }));
 }
@@ -1013,11 +1104,11 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
                       : "webui-toolbar:search_chrome_refresh_old_icon";
 #endif
 
-  // Verify iron-icon attribute in WebUI.
+  // Verify the icon in WebUI.
   EXPECT_TRUE(base::test::RunUntil([&]() {
     return EvalJsOnPinnedAction(toolbar_ui_api::mojom::PinnedToolbarAction::
                                     kSidePanelShowLensOverlayResults,
-                                "return btn?.getAttribute('iron-icon') || '';")
+                                "return iconName || '';")
                .ExtractString() == expected_icon;
   }));
 }
@@ -1033,6 +1124,16 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsBrowserTest,
   base::RunLoop run_loop;
 
   model_->UpdatePinnedState(action_id, true);
+
+  // The WebUI hasn't rendered the button yet, so its element can't be found.
+  // Verify GetBubbleAnchor() falls back to the location bar.
+  ASSERT_TRUE(pinned_actions->IsActionPinnedOrPoppedOut(action_id));
+  ASSERT_FALSE(BrowserElements::From(browser())->GetElement(
+      webui_toolbar::ActionIdToElementIdentifier(action_id)));
+  pinned_actions->allow_missing_anchor_for_testing_ = true;
+  EXPECT_EQ(pinned_actions->GetBubbleAnchor(action_id).GetIfView(),
+            GetLocationBarView());
+  pinned_actions->allow_missing_anchor_for_testing_ = false;
 
   pinned_actions->PostOrQueueActionAfterAnimation(
       base::BindLambdaForTesting([&]() {
@@ -1241,7 +1342,7 @@ IN_PROC_BROWSER_TEST_F(WebUIPinnedToolbarActionsTtcBrowserTest,
   EXPECT_TRUE(base::test::RunUntil([&]() {
     return EvalJsOnPinnedAction(
                toolbar_ui_api::mojom::PinnedToolbarAction::kTtcToolbar,
-               "return btn?.getAttribute('iron-icon') || '';")
+               "return iconName || '';")
                .ExtractString() == expected_icon;
   }));
 

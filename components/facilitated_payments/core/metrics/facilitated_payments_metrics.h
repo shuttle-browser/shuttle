@@ -7,6 +7,7 @@
 
 #include <optional>
 
+#include "base/containers/enum_set.h"
 #include "components/facilitated_payments/core/utils/facilitated_payments_ui_utils.h"
 #include "components/facilitated_payments/core/utils/facilitated_payments_utils.h"
 #include "components/facilitated_payments/core/validation/payment_link_validator.h"
@@ -216,11 +217,15 @@ enum class AccountLinkingFlowExitedReason {
   kScreenClosedNotByUser = 1,
   kScreenClosedByUser = 2,
   kUserDeclined = 3,
-  kWalletNotInstalled = 4,
-  kWalletVersionNotSupported = 5,
+  // Obsolete: Only used by the Wallet-redirect account linking flow, which has
+  // been replaced by native account linking.
+  // kWalletNotInstalled = 4,
+  // kWalletVersionNotSupported = 5,
   kUserOptedOut = 6,
   kNoScreenlockOrBiometricSetup = 7,
-  kServerSideIneligible = 8,
+  // Obsolete: Replaced by `kGetDetailsFailed` and
+  // `kNotEligiblePerPaymentsBackend`.
+  // kServerSideIneligible = 8,
   kTabIsNotActive = 9,
   kUserSwitchedWebsite = 10,
   kMaxStrikes = 11,
@@ -278,6 +283,47 @@ enum class PixIframeUrlType {
 };
 // LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.Pix.IframeUrlType)
 
+// The outcome of one payment QR code decoding pass.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(QrCodeDetectionResult)
+enum class QrCodeDetectionResult {
+  // No image on the page passed the extraction filters.
+  kImagesNotFound = 0,
+  // Image extraction or barcode decoding could not run, or was interrupted.
+  kDetectorUnavailable = 1,
+  // Images were decoded, but no QR code was found.
+  kQrCodeNotFound = 2,
+  // Exactly one QR code was decoded.
+  kSingleQrCodeFound = 3,
+  // More than one QR code was decoded.
+  kMultipleQrCodesFound = 4,
+  kMaxValue = kMultipleQrCodesFound,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.QrCode.DetectionResult)
+
+// The renderer's heuristic signals that started a QR code decoding pass. Each
+// value is a bit in the logged sample, so that every combination of signals
+// has its own bucket.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(QrCodeHeuristicSignal)
+enum class QrCodeHeuristicSignal {
+  kFacilitatedPaymentLink = 0,
+  kSquareCandidate = 1,
+  kUrlKeywordMatch = 2,
+  kTextKeywordMatch = 3,
+  kMaxValue = kTextKeywordMatch,
+};
+// LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.QrCode.HeuristicSignals)
+
+using QrCodeHeuristicSignals =
+    base::EnumSet<QrCodeHeuristicSignal,
+                  QrCodeHeuristicSignal::kFacilitatedPaymentLink,
+                  QrCodeHeuristicSignal::kMaxValue>;
+
 // Converts `PaymentLinkValidator::Scheme` to a string for logging.
 std::string SchemeToString(PaymentLinkValidator::Scheme scheme);
 
@@ -294,6 +340,18 @@ void LogPixIframeUrlType(PixIframeUrlType url_type);
 // Log if the iframe is same-origin with the main frame when a Pix code is
 // copied in an iframe.
 void LogPixIframeIsSameOriginAsMainFrame(bool is_same_origin);
+
+// Logs the outcome of one payment QR code decoding pass.
+void LogQrCodeDetectionResult(QrCodeDetectionResult result);
+
+// Logs the heuristic `signals` that started a QR code decoding pass, split by
+// whether the pass decoded a QR code.
+void LogQrCodeHeuristicSignals(QrCodeHeuristicSignals signals,
+                               bool qr_code_found);
+
+// Logs the 1-based index of the decoding pass that first decoded a QR code on
+// a page.
+void LogQrCodeSuccessfulAttemptIndex(int attempt_index);
 
 // Log when a given payment link in a certain page for an eWallet push payment
 // flow is detected.

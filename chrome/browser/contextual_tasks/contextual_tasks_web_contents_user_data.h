@@ -43,6 +43,7 @@ struct TabInfo;
 }  // namespace contextual_search
 
 namespace content {
+class Page;
 class RenderFrameHost;
 }  // namespace content
 
@@ -83,6 +84,22 @@ class ContextualTasksWebContentsUserData
     kMaxValue = kEmptyConvertedContext,
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/contextual_tasks/enums.xml:ContextualTasksThreadContextLibraryUpdateOutcome)
+
+  // Whether the AI Mode page is in the zero state or mid-thread, as far as the
+  // browser knows. These values are persisted to logs. Entries should not be
+  // renumbered and numeric values should never be reused.
+  // LINT.IfChange(ContextualTasksPageState)
+  enum class PageState {
+    // The page has not reported its state since it connected or since the
+    // input plate was last cleared (e.g. on a task change).
+    kUnknown = 0,
+    // The page reported that it is in the zero state.
+    kZeroState = 1,
+    // The page reported that it is mid-thread, or a query was submitted.
+    kThread = 2,
+    kMaxValue = kThread,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/contextual_tasks/enums.xml:ContextualTasksPageState)
 
   enum class ContextState {
     kNone,
@@ -178,6 +195,13 @@ class ContextualTasksWebContentsUserData
   const std::string& GetConnectedDocumentIdForTesting() const;
   PageSearchDebugState GetPageSearchDebugState() const;
 
+  // Returns the zero-state/mid-thread state of the AI Mode page in the primary
+  // page. This is `kZeroState` or `kThread` once the page reports its state via
+  // `OnPageChanged()`, and `kThread` after a query is submitted. It is
+  // `kUnknown` after the page connects and after the input plate is cleared
+  // (e.g. via `OnTaskChanged()`), until the page next reports its state.
+  PageState GetPageState() const;
+
   // Parses and handles an incoming SearchToClientMessage. Returns true if the
   // message was a valid SearchToClientMessage with a recognized payload, or
   // false if the caller should fall back to legacy AimToClientMessage parsing.
@@ -258,6 +282,11 @@ class ContextualTasksWebContentsUserData
     return failed_context_uploads_;
   }
   bool submit_pending() const { return pending_submit_.has_value(); }
+  std::optional<base::UnguessableToken> pending_submit_overlay_token() const;
+  bool has_unsubmitted_query() const { return has_unsubmitted_query_; }
+  void set_has_unsubmitted_query(bool has_unsubmitted_query) {
+    has_unsubmitted_query_ = has_unsubmitted_query;
+  }
   void DeleteContext(const base::UnguessableToken& file_token);
   void DeleteTabContext(int32_t tab_id);
   bool OnBrowserTabClosedOrNavigated(SessionID tab_session_id,
@@ -382,11 +411,34 @@ class ContextualTasksWebContentsUserData
       contextual_search::ContextualSearchSessionHandle* session_handle,
       const std::optional<base::UnguessableToken>& overlay_token);
   std::vector<lens::AddedContext> GetLensAddedContexts(
-      std::optional<base::UnguessableToken>& overlay_token);
+      std::optional<base::UnguessableToken>& overlay_token,
+      std::string_view query_text);
+  // Returns true if the tab identified by `tab_id` / `tab_url` / `tab_title`
+  // has been explicitly deselected (or had its auto-suggested chip dismissed
+  // without being re-attached) for the upcoming submission.
+  bool IsTabDeselectedForSubmission(
+      const contextual_search::ContextualSearchSessionHandle& session_handle,
+      SessionID tab_id,
+      const GURL& tab_url,
+      std::string_view tab_title);
+#if !BUILDFLAG(IS_ANDROID)
+  tabs::TabInterface* GetActiveBrowserTab();
+  void SyncVisualSelectionCacheWithModel();
+  void CacheVisualSelectionState();
+  void InvalidateVisualSelectionState();
+  void ClearVisualSelectionState();
+  bool IsVisualSelectionInvalidated();
+  std::optional<contextual_search::FileInfo> FindLensFileInfo(
+      contextual_search::ContextualSearchSessionHandle& session_handle,
+      std::optional<base::UnguessableToken> candidate_token) const;
+#endif
   void DispatchSerializedSearchMessage(
       const std::vector<uint8_t>& message_bytes);
   PageSearchState& GetPrimaryPageSearchState();
   const PageSearchState* GetPrimaryPageSearchState() const;
+  // Returns true if both the profile allows sharing tab context and the
+  // current page's server handshake did not disable the `TABS` capability.
+  bool CanShareTabsForCurrentPage();
   // Returns true if the session has tabs for the context library to show:
   // unsubmitted tabs, submitted (persisted) tabs, or tabs restored from the AIM
   // thread. Keep in sync with
@@ -407,6 +459,7 @@ class ContextualTasksWebContentsUserData
   std::optional<ImplicitTab> implicit_tab_;
   base::flat_set<GURL> dismissed_implicit_urls_;
   bool preserve_prestaged_context_ = false;
+  bool has_unsubmitted_query_ = false;
   base::RepeatingClosureList zero_state_callbacks_;
 
   base::flat_map<base::UnguessableToken,
@@ -421,6 +474,18 @@ class ContextualTasksWebContentsUserData
   base::CallbackListSubscription tab_context_subscription_;
   base::WeakPtr<contextual_search::ContextualSearchContextController>
       observed_controller_;
+
+#if !BUILDFLAG(IS_ANDROID)
+  uint64_t cached_lens_crop_sequence_ = 0;
+  std::optional<base::UnguessableToken> visual_selection_overlay_token_;
+  std::optional<contextual_search::FileInfo> visual_selection_file_info_;
+  std::optional<SessionID> visual_selection_tab_session_id_;
+  std::optional<GURL> visual_selection_tab_url_;
+  std::optional<std::string> visual_selection_tab_title_;
+  base::WeakPtr<content::Page> visual_selection_source_page_;
+  bool has_visual_selection_source_page_ = false;
+  bool visual_selection_invalidated_ = false;
+#endif
 
   // A pending task associated with this web contents.
   std::optional<base::Uuid> pending_task_id_;

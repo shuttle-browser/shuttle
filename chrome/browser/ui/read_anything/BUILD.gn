@@ -122,10 +122,10 @@ source_set("impl") {
     "//chrome/browser:browser_process",
     "//chrome/browser/accessibility",
     "//chrome/browser/component_updater",
-    "//chrome/browser/dom_distiller",
     "//chrome/browser/extensions",
     "//chrome/browser/language",
     "//chrome/browser/profiles",
+    "//chrome/browser/reader_mode",
     "//chrome/browser/ui:ui_features",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/exclusive_access",
@@ -160,20 +160,6 @@ source_set("impl") {
   }
 }
 
-source_set("test_support") {
-  testonly = true
-  sources = [
-    "read_anything_test_utils.cc",
-    "read_anything_test_utils.h",
-  ]
-  deps = [
-    ":prefs",
-    "//chrome/browser/profiles:profile",
-    "//chrome/common/read_anything:mojo_bindings",
-    "//components/prefs",
-  ]
-}
-
 source_set("browser_tests") {
   testonly = true
   defines = [ "HAS_OUT_OF_PROC_TEST_RUNNER" ]
@@ -188,7 +174,6 @@ source_set("browser_tests") {
   deps = [
     ":impl",
     ":read_anything",
-    ":test_support",
     ":views",
     "//base",
     "//base/test:test_support",
@@ -203,25 +188,28 @@ source_set("browser_tests") {
     "//chrome/browser/ui:view_ids",
     "//chrome/browser/ui/browser_window",
     "//chrome/browser/ui/find_bar",
+    "//chrome/browser/ui/page_action",
     "//chrome/browser/ui/side_panel",
     "//chrome/browser/ui/side_panel:side_panel_views_dependent",
+    "//chrome/browser/ui/views/animations",
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/frame:contents_container_view",
     "//chrome/browser/ui/views/side_panel",
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/ui/webui/side_panel/read_anything",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//chrome/test/base:browser_test_waiters",
     "//chrome/test/user_education:impl",
     "//components/optimization_guide/core",
     "//components/page_load_metrics/browser:test_support",
     "//components/search_engines",
+    "//components/tabs:public",
     "//content/test:test_support",
     "//extensions/browser:test_support",
     "//pdf:buildflags",
     "//testing/gtest",
     "//ui/accessibility",
+    "//ui/gfx:test_support",
     "//ui/views",
   ]
 
@@ -251,7 +239,6 @@ source_set("interactive_ui_tests") {
 
   deps = [
     ":read_anything",
-    ":test_support",
     "//base",
     "//base/test:test_support",
     "//chrome/browser",
@@ -264,7 +251,6 @@ source_set("interactive_ui_tests") {
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/ui/views/side_panel",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//chrome/test/user_education:impl",
     "//components/user_education/views",
     "//content/test:test_support",

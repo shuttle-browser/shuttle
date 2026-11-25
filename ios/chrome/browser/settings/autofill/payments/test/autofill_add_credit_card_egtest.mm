@@ -4,6 +4,7 @@
 
 #import "base/ios/ios_util.h"
 #import "ios/chrome/browser/autofill/ui_bundled/autofill_app_interface.h"
+#import "ios/chrome/browser/settings/ui_bundled/settings_table_view_controller_constants.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
@@ -96,15 +97,11 @@ id<GREYMatcher> CardNumberIconView(NSString* icon_type) {
 - (void)setUp {
   [super setUp];
   [ChromeEarlGreyUI openSettingsMenu];
-  if ([ChromeEarlGrey isYourSavedInfoSettingsPageIosEnabled]) {
-    [ChromeEarlGreyUI
-        tapSettingsMenuButton:grey_accessibilityID(
-                                  @"kSettingsAutofillAndPasswordsCellId")];
-    [[EarlGrey selectElementWithMatcher:PaymentMethodsButton()]
-        performAction:grey_tap()];
-  } else {
-    [ChromeEarlGreyUI tapSettingsMenuButton:PaymentMethodsButton()];
-  }
+  [ChromeEarlGreyUI
+      tapSettingsMenuButton:grey_accessibilityID(
+                                kSettingsAutofillAndPasswordsCellId)];
+  [[EarlGrey selectElementWithMatcher:PaymentMethodsButton()]
+      performAction:grey_tap()];
   [[EarlGrey selectElementWithMatcher:SettingsToolbarAddButton()]
       performAction:grey_tap()];
 }
@@ -147,12 +144,7 @@ id<GREYMatcher> CardNumberIconView(NSString* icon_type) {
 }
 
 // Tests that the 'Cancel' button dismisses the screen.
-// TODO(crbug.com/40157443): test flaky on iPads.
 - (void)testCancelButtonDismissesScreen {
-  if ([ChromeEarlGrey isIPadIdiom]) {
-    EARL_GREY_TEST_DISABLED(@"Fails on iPad.");
-  }
-
   [[EarlGrey selectElementWithMatcher:chrome_test_util::AddCreditCardView()]
       assertWithMatcher:grey_notNil()];
   [[EarlGrey
@@ -257,11 +249,7 @@ id<GREYMatcher> CardNumberIconView(NSString* icon_type) {
 // Tests when a user tries to add a valid card number, the screen is dismissed
 // and the new card number appears on the Autofill Credit Card 'Payment Methods'
 // screen.
-// TODO(crbug.com/40157443): test flaky on iPads.
 - (void)testAddButtonOnValidNumber {
-  if ([ChromeEarlGrey isIPadIdiom]) {
-    EARL_GREY_TEST_DISABLED(@"Fails on iPad.");
-  }
   [AutofillAppInterface clearCreditCardStore];
   [[EarlGrey selectElementWithMatcher:CardNumberTextField()]
       performAction:grey_replaceText(@"4111111111111111")];

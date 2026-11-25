@@ -25,6 +25,10 @@ struct BlinkGCPluginOptions {
   // TODO(chromium:1283867): Enable this checks once all violations are handled.
   bool enable_persistent_in_unique_ptr_check = false;
 
+  // Enables checks for Persistent<T> in types held by standard collections
+  // (e.g. std::optional) in garbage collected classes.
+  bool enable_persistent_in_std_collection_check = false;
+
   // On stack references to garbage collected objects should use raw pointers.
   // Although using Members/WeakMembers on stack is not strictly incorrect, it
   // is redundant and incurs additional costs that can mount up and become
@@ -46,6 +50,10 @@ struct BlinkGCPluginOptions {
   // GCed objects and in stl and WTF collections. Do not remove this flag. It is
   // needed for disabling the check for Pdfium builds.
   bool enable_off_heap_collections_of_gced_check = true;
+
+  // Enables checks for STACK_ALLOCATED() objects in STL collections.
+  // TODO(crbug.com/350256130): Enable by default once rolled out in BUILD.gn.
+  bool enable_off_heap_collections_of_stack_allocated_check = false;
 
   std::set<std::string> ignored_classes;
   std::set<std::string> checked_namespaces;

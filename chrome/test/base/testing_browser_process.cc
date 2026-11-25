@@ -5,8 +5,13 @@
 #include "chrome/test/base/testing_browser_process.h"
 
 #include <memory>
+#include <optional>
+#include <string>
+#include <utility>
 
 #include "base/functional/bind.h"
+#include "base/i18n/language_tag.h"
+#include "base/i18n/tag_converters.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
 #include "base/path_service.h"
@@ -296,8 +301,7 @@ void TestingBrowserProcess::Init() {
   // of the features.
   features_->PostBrowserProcessInitCore();
 
-  // Assume locale is initialized to "en" during initialization.
-  features_->application_locale_storage()->Set("en");
+  InitApplicationLocale();
 
   // See comment in constructor.
   if (!network::TestNetworkConnectionTracker::HasInstance()) {
@@ -402,6 +406,10 @@ void TestingBrowserProcess::SetVariationsService(
   variations_service_ = variations_service;
 }
 
+void TestingBrowserProcess::SetStartupData(StartupData* startup_data) {
+  startup_data_ = startup_data;
+}
+
 PrefService* TestingBrowserProcess::local_state() {
   return testing_local_state_.get();
 }
@@ -416,7 +424,7 @@ variations::VariationsService* TestingBrowserProcess::variations_service() {
 }
 
 StartupData* TestingBrowserProcess::startup_data() {
-  return nullptr;
+  return startup_data_;
 }
 
 policy::ChromeBrowserPolicyConnector*
@@ -584,14 +592,17 @@ TestingBrowserProcess::device_parental_controls() {
 const std::string& TestingBrowserProcess::GetApplicationLocale() {
   CHECK(features_);
   CHECK(features_->application_locale_storage());
-  return features_->application_locale_storage()->Get();
+  return application_locale_;
 }
 
 void TestingBrowserProcess::SetApplicationLocale(
     const std::string& actual_locale) {
   CHECK(features_);
   CHECK(features_->application_locale_storage());
-  return features_->application_locale_storage()->Set(actual_locale);
+  if (std::optional<base::i18n::LanguageTag> locale_tag =
+          base::i18n::GetLanguageTagFromString(actual_locale)) {
+    features_->application_locale_storage()->SetTag(*std::move(locale_tag));
+  }
 }
 
 DownloadStatusUpdater* TestingBrowserProcess::download_status_updater() {
@@ -696,8 +707,12 @@ os_crypt_async::OSCryptAsync* TestingBrowserProcess::os_crypt_async() {
 void TestingBrowserProcess::set_additional_os_crypt_async_provider_for_test(
     size_t precedence,
     std::unique_ptr<os_crypt_async::KeyProvider> provider) {
-  // Not implemented.
-  NOTREACHED();
+  std::vector<std::pair<os_crypt_async::OSCryptAsync::Precedence,
+                        std::unique_ptr<os_crypt_async::KeyProvider>>>
+      providers;
+  providers.emplace_back(precedence, std::move(provider));
+  os_crypt_async_ =
+      std::make_unique<os_crypt_async::OSCryptAsync>(std::move(providers));
 }
 
 BuildState* TestingBrowserProcess::GetBuildState() {
@@ -731,8 +746,27 @@ void TestingBrowserProcess::CreateGlobalFeaturesPreProfileManager() {
 void TestingBrowserProcess::CreateGlobalFeaturesPostProfileManager() {
   features_->PostBrowserProcessInit();
 
+  InitApplicationLocale();
+}
+
+void TestingBrowserProcess::InitApplicationLocale() {
+  ApplicationLocaleStorage* application_locale_storage =
+      features_->application_locale_storage();
+  CHECK(application_locale_storage);
+
+  // `Unretained` is safe as CallbackListSubscription does not outlive `this`.
+  on_locale_changed_callback_subscription_ =
+      application_locale_storage->RegisterOnLocaleChangedCallback(
+          base::BindRepeating(&TestingBrowserProcess::OnLocaleChanged,
+                              base::Unretained(this)));
+
   // Assume locale is initialized to "en" during initialization.
-  features_->application_locale_storage()->Set("en");
+  application_locale_storage->SetTag(base::i18n::GetKnownLanguageTag("en"));
+}
+
+void TestingBrowserProcess::OnLocaleChanged(
+    const base::i18n::LanguageTag& new_locale) {
+  application_locale_ = new_locale.tag_string();
 }
 
 void TestingBrowserProcess::WillDestroyCurrentTaskEnvironment() {
@@ -768,6 +802,12 @@ void TestingBrowserProcess::MaybeStartTearDown() {
   }
   is_torn_down_ = true;
 
+  // Shut down GlobalFeatures while TaskEnvironment and ThreadPool are still
+  // active, without destroying `testing_profile_manager_` or
+  // `profile_manager_` (which tests may still reference until their own
+  // TearDown() / destructor completes).
+  features_->PostMainMessageLoopRun();
+  os_crypt_async_.reset();
   network_time_tracker_.reset();
 #if BUILDFLAG(ENABLE_CHROME_NOTIFICATIONS)
   notification_ui_manager_.reset();

@@ -12,10 +12,10 @@
 #import "components/prefs/pref_service.h"
 #import "components/safe_browsing/core/browser/db/sb_local_database_manager.h"
 #import "components/safe_browsing/core/browser/db/v5_get_hash_protocol_manager.h"
+#import "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
 #import "components/safe_browsing/core/browser/realtime/url_lookup_service_base.h"
-#import "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
-#import "components/safe_browsing/core/browser/safe_browsing_url_checker_impl.h"
-#import "components/safe_browsing/core/browser/url_checker_delegate.h"
+#import "components/safe_browsing/core/browser/url_checker/safe_browsing_url_checker_impl.h"
+#import "components/safe_browsing/core/browser/url_checker/url_checker_delegate.h"
 #import "components/safe_browsing/core/browser/utils/url_loader_factory_params.h"
 #import "components/safe_browsing/core/common/features.h"
 #import "components/safe_browsing/core/common/safebrowsing_constants.h"
@@ -44,6 +44,11 @@ inline constexpr std::string_view kClientName = "googlechrome";
 #else
 inline constexpr std::string_view kClientName = "chromium";
 #endif
+
+std::string GetProfileModeSuffix(web::WebState* web_state) {
+  return web_state->GetBrowserState()->IsOffTheRecord() ? "Incognito"
+                                                        : "Regular";
+}
 
 }  // namespace
 
@@ -213,10 +218,11 @@ SafeBrowsingServiceImpl::CreateUrlChecker(
       url_lookup_service ? url_lookup_service->GetWeakPtr() : nullptr,
       hash_real_time_service ? hash_real_time_service->GetWeakPtr() : nullptr,
       hash_real_time_selection,
-      /*is_async_check=*/false, /*check_allowlist_before_hash_database=*/false,
+      /*is_async_check=*/false,
       /*tab_id=*/SessionID::InvalidValue(), /*referring_app_info=*/std::nullopt,
       v5_get_hash_protocol_manager ? v5_get_hash_protocol_manager->GetWeakPtr()
-                                   : nullptr);
+                                   : nullptr,
+      GetProfileModeSuffix(web_state));
 }
 
 std::unique_ptr<safe_browsing::SafeBrowsingUrlCheckerImpl>
@@ -278,10 +284,11 @@ SafeBrowsingServiceImpl::CreateAsyncChecker(
       url_lookup_service ? url_lookup_service->GetWeakPtr() : nullptr,
       hash_real_time_service ? hash_real_time_service->GetWeakPtr() : nullptr,
       hash_real_time_selection,
-      /*is_async_check=*/true, /*check_allowlist_before_hash_database=*/false,
+      /*is_async_check=*/true,
       /*tab_id=*/SessionID::InvalidValue(), /*referring_app_info=*/std::nullopt,
       v5_get_hash_protocol_manager ? v5_get_hash_protocol_manager->GetWeakPtr()
-                                   : nullptr);
+                                   : nullptr,
+      GetProfileModeSuffix(web_state));
 }
 
 std::unique_ptr<safe_browsing::SafeBrowsingUrlCheckerImpl>
@@ -314,10 +321,11 @@ SafeBrowsingServiceImpl::CreateSyncChecker(
       /*hash_realtime_service=*/nullptr,
       /*hash_realtime_selection=*/
       safe_browsing::hash_realtime_utils::HashRealTimeSelection::kNone,
-      /*is_async_check=*/false, /*check_allowlist_before_hash_database=*/false,
+      /*is_async_check=*/false,
       /*tab_id=*/SessionID::InvalidValue(), /*referring_app_info=*/std::nullopt,
       v5_get_hash_protocol_manager ? v5_get_hash_protocol_manager->GetWeakPtr()
-                                   : nullptr);
+                                   : nullptr,
+      GetProfileModeSuffix(web_state));
 }
 
 // Checks if async check should be created.

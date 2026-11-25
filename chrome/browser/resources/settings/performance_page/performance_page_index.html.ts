@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import {html} from '//resources/lit/v3_0/lit.rollup.js';
+
 import type {PerformancePageIndexElement} from './performance_page_index.js';
 
 export function getHtml(this: PerformancePageIndexElement) {
@@ -11,6 +12,11 @@ export function getHtml(this: PerformancePageIndexElement) {
     ?show-all="${this.shouldShowAll}">
   <settings-performance-page slot="view" id="performance">
   </settings-performance-page>
+
+  ${this.settingsRefresh2026Enabled_ ? html`
+    <settings-tab-hover-preview-page slot="view" id="tab-hover-preview">
+    </settings-tab-hover-preview-page>
+  ` : ''}
 
   <settings-memory-page slot="view" id="memory"></settings-memory-page>
 

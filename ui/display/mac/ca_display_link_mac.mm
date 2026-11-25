@@ -54,7 +54,7 @@ API_AVAILABLE(macos(14.0))
 
 @implementation CADisplayLinkTarget
 - (void)step:(CADisplayLink*)displayLink {
-  DCHECK(_callback);
+  CHECK(_callback, base::NotFatalUntil::M163);
   _callback.Run();
 }
 
@@ -303,6 +303,8 @@ WindowServerEventPumpThread::WindowServerEventPumpThread(
     : base::Thread("WindowServerEventPumpThread"),
       update_vsync_displays_cb_(std::move(update_vsync_displays_cb)),
       viz_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()) {
+  TRACE_EVENT0("gpu", "WindowServerEventPumpThread()");
+
   weak_ptr_ = weak_factory_.GetWeakPtr();
 
   base::Thread::Options thread_options;
@@ -359,6 +361,11 @@ WindowServerEventPumpThread::~WindowServerEventPumpThread() {
 }
 
 void WindowServerEventPumpThread::PumpWindowServerEvents() {
+  {
+    TRACE_EVENT0("gpu",
+                 "Start WindowServerEventPumpThread::PumpWindowServerEvents()");
+  }
+
   CGSConnectionID connection_id = CGSMainConnectionID();
   // We haven't seen this happen in practice, but WebKit's implementation
   // checks for 0 as an invalid connection ID. See
@@ -412,6 +419,8 @@ void WindowServerEventPumpThread::PumpWindowServerEvents() {
     constexpr mach_msg_size_t kReceiveSize = sizeof(message);
     mach_msg_return_t mr = mach_msg(&message.header, MACH_RCV_MSG, 0,
                                     kReceiveSize, port, 0, MACH_PORT_NULL);
+
+    TRACE_EVENT0("gpu", "WindowServerEventPumpThread MACH_RCV_MSG WakeUp");
 
     // For crash dump analysis only.
     ++wakeups;
@@ -517,7 +526,7 @@ void WindowServerEventPumpThread::DisableDisplayLink(Result failure) {
     return;
   }
 
-  DCHECK_NE(failure, Result::kSuccess);
+  CHECK_NE(failure, Result::kSuccess, base::NotFatalUntil::M163);
   RecordWindowServerEventPumpResult(failure);
 
   shutdown_ = true;

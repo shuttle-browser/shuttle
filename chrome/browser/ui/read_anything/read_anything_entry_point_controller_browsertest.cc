@@ -27,7 +27,6 @@
 #include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
 #include "chrome/browser/ui/side_panel/side_panel_ui.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -38,6 +37,7 @@
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/keyed_service/content/browser_context_dependency_manager.h"
 #include "components/prefs/pref_service.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -88,10 +88,8 @@ class ReadAnythingEntryPointControllerTestBase
   }
 
   void RegisterPageActionObserver() {
-    auto* page_action_controller = browser()
-                                       ->GetActiveTabInterface()
-                                       ->GetTabFeatures()
-                                       ->page_action_controller();
+    auto* page_action_controller = page_actions::PageActionController::From(
+        browser()->GetActiveTabInterface());
     CHECK(page_action_controller);
     RegisterAsPageActionObserver(*page_action_controller);
   }
@@ -165,6 +163,63 @@ IN_PROC_BROWSER_TEST_F(ReadAnythingEntryPointControllerBrowserTest,
   histogram_tester.ExpectUniqueSample(
       "Accessibility.ReadAnything.ShowTriggered",
       ReadAnythingOpenTrigger::kReadAnythingContextMenu, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingEntryPointControllerBrowserTest,
+                       ShowUIInSidePanel) {
+  base::HistogramTester histogram_tester;
+  auto* controller =
+      ReadAnythingController::From(browser()->GetActiveTabInterface());
+  ASSERT_TRUE(controller);
+
+  // Reading Mode opens in the immersive overlay by default, but kSidePanel
+  // opens it in the side panel.
+  ReadAnythingEntryPointController::ShowUI(
+      browser(), ReadAnythingOpenTrigger::kAppMenu,
+      ReadAnythingEntryPointController::Presentation::kSidePanel);
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return SidePanelUI::From(browser())->IsSidePanelEntryShowing(
+        SidePanelEntryKey(SidePanelEntryId::kReadAnything));
+  }));
+  EXPECT_EQ(controller->GetPresentationState(),
+            ReadAnythingController::PresentationState::kInSidePanel);
+  histogram_tester.ExpectUniqueSample(
+      "Accessibility.ReadAnything.ShowTriggered",
+      ReadAnythingOpenTrigger::kAppMenu, 1);
+}
+
+IN_PROC_BROWSER_TEST_F(ReadAnythingEntryPointControllerBrowserTest,
+                       ShowUIInSidePanelFromImmersiveOverlay) {
+  base::HistogramTester histogram_tester;
+  auto* controller =
+      ReadAnythingController::From(browser()->GetActiveTabInterface());
+  ASSERT_TRUE(controller);
+  ReadAnythingEntryPointController::ShowUI(browser(),
+                                           ReadAnythingOpenTrigger::kAppMenu);
+  VerifyUIState();
+
+  // Reading Mode moves from the immersive overlay to the side panel. It was
+  // already open, so this isn't recorded as another open.
+  ReadAnythingEntryPointController::ShowUI(
+      browser(), ReadAnythingOpenTrigger::kReadAnythingContextMenu,
+      ReadAnythingEntryPointController::Presentation::kSidePanel);
+  EXPECT_TRUE(base::test::RunUntil([&]() {
+    return SidePanelUI::From(browser())->IsSidePanelEntryShowing(
+        SidePanelEntryKey(SidePanelEntryId::kReadAnything));
+  }));
+  EXPECT_EQ(controller->GetPresentationState(),
+            ReadAnythingController::PresentationState::kInSidePanel);
+  histogram_tester.ExpectUniqueSample(
+      "Accessibility.ReadAnything.ShowTriggered",
+      ReadAnythingOpenTrigger::kAppMenu, 1);
+
+  // The immersive overlay was closed and handed its WebUI to the side panel,
+  // so Reading Mode can move back to the immersive overlay. This is checked
+  // right away because the page has no content, so Reading Mode moves itself
+  // to the side panel once it finishes distilling the page.
+  ReadAnythingEntryPointController::ShowUI(browser(),
+                                           ReadAnythingOpenTrigger::kAppMenu);
+  VerifyUIState();
 }
 
 class ReadAnythingEntryPointControllerOmniboxDisabledBrowserTest
@@ -782,7 +837,7 @@ IN_PROC_BROWSER_TEST_F(
     CheckIfShouldSuggestReadingMode_AutomationEnabledIsNotCandidate) {
   ASSERT_TRUE(ui_test_utils::NavigateToURL(
       browser(),
-      embedded_test_server()->GetURL("/dom_distiller/simple_article.html")));
+      embedded_test_server()->GetURL("/web_distiller/simple_article.html")));
 
   bool is_good_candidate = true;
   base::RunLoop run_loop;

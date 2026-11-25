@@ -7,9 +7,7 @@
 #import <utility>
 
 #import "components/pref_registry/pref_registry_syncable.h"
-#import "components/prefs/pref_service_factory.h"
 #import "components/signin/core/browser/account_investigator.h"
-#import "components/signin/public/identity_manager/identity_manager.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 
@@ -24,10 +22,10 @@ AccountInvestigatorFactory::AccountInvestigatorFactory(PassKey key)
 }
 
 std::unique_ptr<KeyedService>
-AccountInvestigatorFactory::BuildServiceInstanceFor(ProfileIOS* profile) const {
+AccountInvestigatorFactory::BuildServiceInstanceFor(ProfileIOS& profile) const {
   std::unique_ptr<AccountInvestigator> investigator =
       std::make_unique<AccountInvestigator>(
-          profile->GetPrefs(), IdentityManagerFactory::GetForProfile(profile));
+          profile.GetPrefs(), IdentityManagerFactory::GetForProfile(profile));
   investigator->Initialize();
   return std::move(investigator);
 }

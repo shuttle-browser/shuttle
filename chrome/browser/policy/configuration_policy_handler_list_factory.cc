@@ -156,6 +156,7 @@
 #include "media/media_buildflags.h"
 #include "pdf/buildflags.h"
 #include "printing/buildflags/buildflags.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/accessibility/accessibility_prefs.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -291,7 +292,7 @@
 #endif  // BUILDFLAG(ENTERPRISE_WATERMARK)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
-#include "components/safe_browsing/content/common/file_type_policies_prefs.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies_prefs.h"
 #endif
 
 #if !BUILDFLAG(IS_ANDROID)
@@ -675,7 +676,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kDefaultSubAppsWithoutPromptsSetting,
     prefs::kManagedDefaultSubAppsWithoutPromptsSetting,
     base::Value::Type::INTEGER },
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   {  key::kDefaultSmartCardConnectSetting,
     prefs::kManagedDefaultSmartCardConnectSetting,
     base::Value::Type::INTEGER },
@@ -880,7 +881,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kSitePerProcess,
     prefs::kSitePerProcess,
     base::Value::Type::BOOLEAN },
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
   { key::kSmartCardConnectAllowedForUrls,
     prefs::kManagedSmartCardConnectAllowedForUrls,
     base::Value::Type::LIST },
@@ -1512,7 +1513,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     chromeos::prefs::kCaptivePortalAuthenticationIgnoresProxy,
     base::Value::Type::BOOLEAN },
   { key::kUnifiedDesktopEnabledByDefault,
-    prefs::kUnifiedDesktopEnabledByDefault,
+    ash::prefs::kUnifiedDesktopEnabledByDefault,
     base::Value::Type::BOOLEAN },
   { key::kArcEnabled,
     arc::prefs::kArcEnabled,
@@ -1638,7 +1639,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     ash::prefs::kKerberosCustomPrefilledConfig,
     base::Value::Type::STRING },
   { key::kStartupBrowserWindowLaunchSuppressed,
-    prefs::kStartupBrowserWindowLaunchSuppressed,
+    ash::prefs::kStartupBrowserWindowLaunchSuppressed,
     base::Value::Type::BOOLEAN },
   { key::kLockScreenMediaPlaybackEnabled,
     ash::prefs::kLockScreenMediaControlsEnabled,
@@ -1674,7 +1675,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     ash::prefs::kPinUnlockAutosubmitEnabled,
     base::Value::Type::BOOLEAN },
   { key::kCastReceiverEnabled,
-    prefs::kCastReceiverEnabled,
+    ash::prefs::kCastReceiverEnabled,
     base::Value::Type::BOOLEAN },
   { key::kVpnConfigAllowed,
     ash::prefs::kVpnConfigAllowed,
@@ -1693,9 +1694,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     base::Value::Type::BOOLEAN },
   { key::kDeletePrintJobHistoryAllowed,
     ash::prefs::kDeletePrintJobHistoryAllowed,
-    base::Value::Type::BOOLEAN },
-  { key::kSuggestedContentEnabled,
-    ash::prefs::kSuggestedContentEnabled,
     base::Value::Type::BOOLEAN },
   { key::kRequiredClientCertificateForUser,
     ash::prefs::kRequiredClientCertificateForUser,
@@ -1890,7 +1888,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     ash::prefs::kHmwManagedSettings,
     base::Value::Type::INTEGER},
   { key::kAllowExcludeDisplayInMirrorMode,
-    prefs::kAllowExcludeDisplayInMirrorMode,
+    ash::prefs::kAllowExcludeDisplayInMirrorMode,
     base::Value::Type::BOOLEAN},
   { key::kArcOpenLinksInBrowserByDefault,
     arc::prefs::kArcOpenLinksInBrowserByDefault,
@@ -2164,10 +2162,10 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     ash::prefs::kClipboardHistoryEnabled,
     base::Value::Type::INTEGER },
   { key::kDeskAPIThirdPartyAccessEnabled,
-    prefs::kDeskAPIThirdPartyAccessEnabled,
+    ash::prefs::kDeskAPIThirdPartyAccessEnabled,
     base::Value::Type::BOOLEAN },
   { key::kDeskAPIThirdPartyAllowlist,
-    prefs::kDeskAPIThirdPartyAllowlist,
+    ash::prefs::kDeskAPIThirdPartyAllowlist,
     base::Value::Type::LIST },
   { key::kDeskAPIDeskSaveAndShareEnabled,
     prefs::kDeskAPIDeskSaveAndShareEnabled,
@@ -2209,7 +2207,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     prefs::kForceMaximizeOnFirstRun,
     base::Value::Type::BOOLEAN },
   { key::kInsightsExtensionEnabled,
-    prefs::kInsightsExtensionEnabled,
+    ash::prefs::kInsightsExtensionEnabled,
     base::Value::Type::BOOLEAN },
   { key::kEnableSyncConsent,
     ash::prefs::kEnableSyncConsent,
@@ -2218,7 +2216,7 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     chromeos::prefs::kKeepFullscreenWithoutNotificationUrlAllowList,
     base::Value::Type::LIST },
   { key::kRestrictedManagedGuestSessionExtensionCleanupExemptList,
-    prefs::kRestrictedManagedGuestSessionExtensionCleanupExemptList,
+    ash::prefs::kRestrictedManagedGuestSessionExtensionCleanupExemptList,
     base::Value::Type::LIST },
   { key::kNewWindowsInKioskAllowed,
     ash::prefs::kNewWindowsInKioskAllowed,
@@ -2428,9 +2426,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
   { key::kCreateThemesSettings,
     optimization_guide::prefs::kWallpaperSearchEnterprisePolicyAllowed,
     base::Value::Type::INTEGER},
-  { key::kHistorySearchSettings,
-    optimization_guide::prefs::kHistorySearchEnterprisePolicyAllowed,
-    base::Value::Type::INTEGER},
 #endif // !BUILDFLAG(IS_ANDROID)
   { key::kTabCompareSettings,
     optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed,
@@ -2513,12 +2508,6 @@ const PolicyToPreferenceMapEntry kSimplePolicyMap[] = {
     ash::prefs::kAuthenticationFlowAutoReloadInterval,
     base::Value::Type::INTEGER },
 #endif  // BUILDFLAG(IS_CHROMEOS)
-
-#if BUILDFLAG(IS_MAC)
-  { key::kAdHocCodeSigningForPWAsEnabled,
-    prefs::kWebAppsUseAdHocCodeSigningForAppShims,
-    base::Value::Type::BOOLEAN },
-#endif // BUILDFLAG(IS_MAC)
 
   { key::kWebAudioOutputBufferingEnabled,
     prefs::kWebAudioOutputBufferingEnabled,
@@ -3163,7 +3152,7 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
 #if BUILDFLAG(USE_CUPS)
   handlers->AddHandler(std::make_unique<extensions::ExtensionListPolicyHandler>(
       key::kPrintingAPIExtensionsAllowlist,
-      prefs::kPrintingAPIExtensionsAllowlist, /*allow_wildcards=*/false));
+      ash::prefs::kPrintingAPIExtensionsAllowlist, /*allow_wildcards=*/false));
 #endif  // BUILDFLAG(USE_CUPS)
 #else   // BUILDFLAG(IS_CHROMEOS)
   std::vector<std::unique_ptr<ConfigurationPolicyHandler>>
@@ -3620,9 +3609,6 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
   gen_ai_default_policies.emplace_back(key::kDevToolsGenAiSettings,
                                        prefs::kDevToolsGenAiSettings);
   gen_ai_default_policies.emplace_back(
-      key::kHistorySearchSettings,
-      optimization_guide::prefs::kHistorySearchEnterprisePolicyAllowed);
-  gen_ai_default_policies.emplace_back(
       key::kTabCompareSettings,
       optimization_guide::prefs::kProductSpecificationsEnterprisePolicyAllowed);
   gen_ai_default_policies.emplace_back(
@@ -3730,10 +3716,10 @@ std::unique_ptr<ConfigurationPolicyHandlerList> BuildHandlerList(
           {{0, 0}, {1, 0}, {2, 1}}));
   handlers->AddHandler(std::make_unique<GenAiDefaultSettingsPolicyHandler>(
       gen_ai_default_policies));
-#if !BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(std::make_unique<GeminiSparkSettingsPolicyHandler>(
       std::make_unique<GenAiDefaultSettingsPolicyHandler>(
           gen_ai_default_policies)));
+#if !BUILDFLAG(IS_ANDROID)
   handlers->AddHandler(std::make_unique<SmartTabSharingSettingsPolicyHandler>(
       std::make_unique<GenAiDefaultSettingsPolicyHandler>(
           gen_ai_default_policies)));

@@ -24,7 +24,8 @@ namespace {
 
 // Default description for the `find_and_highlight` tool.
 constexpr std::string_view kFindAndHighlightToolDescription =
-    "Highlight and scroll to specific text on the page.";
+    "Highlight, point out, or show where specific text appears on the page, "
+    "scrolling it into view.";
 
 // Description for the `query` parameter of the `find_and_highlight` tool.
 constexpr std::string_view kQueryParamDescription =
@@ -64,9 +65,10 @@ ToolRequest::CreateToolResult FindAndHighlightToolRequest::CreateTool(
 
   ActorSurface* actor_surface = GetActorSurfaceHandle().Get();
   if (!actor_surface) {
-    return {/*tool=*/nullptr, MakeResult(mojom::ActionResultCode::kTabWentAway,
-                                         /*requires_page_stabilization=*/false,
-                                         "The tab is no longer present.")};
+    return {/*tool=*/nullptr,
+            MakeResult(mojom::ActionResultCode::kTabWentAway,
+                       /*requires_page_stabilization=*/false,
+                       "The target surface is no longer present.")};
   }
 
   return {std::make_unique<FindAndHighlightTool>(task_id, tool_delegate,

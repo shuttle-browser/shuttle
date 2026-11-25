@@ -61,6 +61,7 @@
 #include "services/metrics/public/cpp/ukm_source_id.h"
 #include "services/network/public/mojom/web_sandbox_flags.mojom.h"
 #include "third_party/blink/public/common/features_generated.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/common/manifest/manifest_util.h"
 #include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/mojom/devtools/inspector_issue.mojom.h"
@@ -670,7 +671,7 @@ void WebInstallServiceImpl::OnDidCheckInstallabilityForCurrentDocumentInstall(
     InstallFromManifestCallbackWithMetrics callback_with_metrics,
     base::WeakPtr<WebAppDataRetriever> data_retriever,
     std::optional<GURL> linked_manifest_url,
-    blink::mojom::ManifestPtr manifest,
+    std::optional<blink::Manifest> manifest,
     bool valid_manifest_for_web_app,
     webapps::InstallableStatusCode error_code) {
   // Remove the data retriever from the set now that the callback has completed.
@@ -711,7 +712,7 @@ void WebInstallServiceImpl::OnDidCheckInstallabilityForCurrentDocumentInstall(
 
   // The Web Install API currently requires that the manifest is from the same
   // trusted origin as the current document to prevent origin spoofing.
-  if (!origin().IsSameOriginWith(manifest->id)) {
+  if (!origin().IsSameOriginWith(manifest->id())) {
     std::move(callback_with_metrics)
         .Run(web_app::WebInstallServiceResult::kInstallCommandFailed,
              blink::mojom::WebInstallServiceResult::kDataError);
@@ -720,7 +721,7 @@ void WebInstallServiceImpl::OnDidCheckInstallabilityForCurrentDocumentInstall(
 
   // The Web Install API no-argument signature requires the manifest to have a
   // developer-specified id to prevent multiple installs of the same app.
-  if (!manifest->has_custom_id) {
+  if (!manifest->has_custom_id()) {
     if (!IsInitiatingPageGoneOrChanged() && linked_manifest_url &&
         linked_manifest_url->is_valid() &&
         origin().IsSameOriginWith(url::Origin::Create(*linked_manifest_url))) {
@@ -768,7 +769,7 @@ void WebInstallServiceImpl::OnDidCheckInstallabilityForCurrentDocumentInstall(
   auto* provider = WebAppProvider::GetForWebContents(web_contents);
   CHECK(provider);
   std::optional<webapps::ManifestId> computed_manifest_id =
-      webapps::ManifestId::Create(manifest->id);
+      webapps::ManifestId::Create(manifest->id());
   CHECK(computed_manifest_id);
 
   std::optional<webapps::AppId> installed_app_id =
@@ -929,12 +930,12 @@ void WebInstallServiceImpl::OnManifestParsed(
              blink::mojom::WebInstallServiceResult::kDataError);
     return;
   }
-  blink::mojom::ManifestPtr parsed_manifest = std::move(parse_result).value();
+  blink::Manifest parsed_manifest = std::move(parse_result).value();
 
   // If the developer provided a manifest ID, it should match what was just
   // parsed and computed.
   if (options->manifest_id.has_value()) {
-    if (parsed_manifest->id != *options->manifest_id) {
+    if (parsed_manifest.id() != *options->manifest_id) {
       std::move(callback_with_metrics)
           .Run(web_app::WebInstallServiceResult::kManifestIdMismatch,
                blink::mojom::WebInstallServiceResult::kDataError);
@@ -943,7 +944,7 @@ void WebInstallServiceImpl::OnManifestParsed(
   } else {
     // The developer did not provide a manifest ID, so the parsed manifest
     // must have declared one.
-    if (!parsed_manifest->has_custom_id) {
+    if (!parsed_manifest.has_custom_id()) {
       if (can_report_devtools_issue) {
         ReportWebInstallIssue(
             render_frame_host(), options->manifest_url,
@@ -958,7 +959,7 @@ void WebInstallServiceImpl::OnManifestParsed(
 
   // Explicit manifest installs require at least one parsed icon. Check before
   // profile and permission checks to preserve DataError behavior.
-  if (parsed_manifest->icons.empty()) {
+  if (parsed_manifest.icons().empty()) {
     std::move(callback_with_metrics)
         .Run(web_app::WebInstallServiceResult::kNoManifestIcons,
              blink::mojom::WebInstallServiceResult::kDataError);
@@ -1032,10 +1033,9 @@ void WebInstallServiceImpl::OnManifestPermissionDecided(
     InstallFromManifestCallbackWithMetrics callback_with_metrics,
     blink::mojom::ManifestInstallOptionsPtr options,
     std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker,
-    blink::mojom::ManifestPtr manifest,
+    blink::Manifest manifest,
     const std::vector<content::PermissionResult>& permission_result) {
   CHECK(options);
-  CHECK(manifest);
   CHECK_EQ(permission_result.size(), 1u);
 
   if (permission_result[0].status != PermissionStatus::GRANTED) {
@@ -1053,7 +1053,7 @@ void WebInstallServiceImpl::ContinueManifestInstall(
     InstallFromManifestCallbackWithMetrics callback_with_metrics,
     blink::mojom::ManifestInstallOptionsPtr options,
     std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker,
-    blink::mojom::ManifestPtr manifest) {
+    blink::Manifest manifest) {
   CHECK(options);
 
   if (IsInitiatingPageGoneOrChanged()) {
@@ -1084,7 +1084,7 @@ void WebInstallServiceImpl::ContinueManifestInstall(
   // If the app described by this manifest is already installed, show a launch
   // dialog, instead of install.
   std::optional<webapps::ManifestId> valid_manifest_id =
-      webapps::ManifestId::Create(manifest->id);
+      webapps::ManifestId::Create(manifest.id());
   // A successfully parsed manifest always has a valid computed ID.
   CHECK(valid_manifest_id);
   // These reads can be unsafe as the launch command itself rechecks the app
@@ -1109,7 +1109,7 @@ void WebInstallServiceImpl::ContinueManifestInstall(
 
   provider->ui_manager().TriggerInstallDialogForManifestInstall(
       content::WebContents::FromRenderFrameHost(&render_frame_host()),
-      initiating_page_, std::move(install_tracker), std::move(manifest),
+      initiating_page_, std::move(install_tracker), manifest,
       options->manifest_url, last_committed_url_,
       base::BindOnce(&WebInstallServiceImpl::OnAppInstalledFromManifest,
                      weak_ptr_factory_.GetWeakPtr(),
@@ -1357,7 +1357,6 @@ void WebInstallServiceImpl::RequestWebInstallPermission(
       break;
   }
 
-  GURL requesting_origin = origin().GetURL();
   // User gesture requirement is enforced in NavigatorWebInstall::InstallImpl.
   permission_controller->RequestPermissionsFromCurrentDocument(
       &render_frame_host(),
@@ -1365,7 +1364,7 @@ void WebInstallServiceImpl::RequestWebInstallPermission(
           content::PermissionDescriptorUtil::
               CreatePermissionDescriptorForPermissionType(
                   blink::PermissionType::WEB_APP_INSTALLATION),
-          /*user_gesture=*/true, requesting_origin),
+          /*user_gesture=*/true),
       std::move(callback));
 }
 

@@ -8,8 +8,6 @@ import build.gn_helpers  # noqa: F401
 
 CRONET_LICENSE_NAME = "external_cronet_license"
 
-EXTRAS_ANDROID_BP_FILE = "Android.extras.bp"
-
 LIBCRYPTO_STRIPPED = "libcrypto"
 LIBCRYPTO_UNSTRIPPED = "libcrypto_unstripped"
 
@@ -215,15 +213,24 @@ _builtin_deps = {
     # instead use the library from AOSP which has a workaround for it. See
     # https://crbug.com/394303030.
     '//third_party/rust/rustversion/v1:lib__proc_macro': add_rustversion_deps,
-    # Crubit GN helper and stdlib binding targets. In Soong, `crubit_cpp_from_rust`
-    # natively links `libcrubit_support_cc`, `libcrubit_bridge_rust`, and the
-    # prebuilt toolchain's stdlib Crubit bindings (`libcore_crubit`,
-    # `liballoc_crubit`, `libstd_crubit`), so Chromium's GN targets for these
-    # are not needed.
-    '//build/rust/crubit:crubit': always_disable,
-    '//build/rust/crubit:cpp_api_from_rust_bindings_cpp_deps': always_disable,
+    # Crubit GN helper targets for the Rust side of the bindings and the Rust
+    # stdlib bindings. In Soong, `crubit_cpp_from_rust` natively provides
+    # `libcrubit_bridge_rust` and the prebuilt toolchain's stdlib Crubit
+    # bindings (`libcore_crubit`, `liballoc_crubit`, `libstd_crubit`), so
+    # Chromium's GN targets for these are not needed.
+    #
+    # Note: the C++ side (`//build/rust/crubit:crubit` and
+    # `//build/rust/crubit:cpp_api_from_rust_bindings_cpp_deps`) is *not*
+    # disabled: gn_utils.py translates it into Cronet's own build of Crubit's
+    # C++ support library, see `gn_utils.CRUBIT_CPP_SUPPORT_TARGET`.
     '//build/rust/crubit:cpp_api_from_rust_bindings_rs_deps': always_disable,
     '//build/rust/std:std_bindings': always_disable,
+    # Chromium-internal GTest unittest Java support libraries pulled in by
+    # `test()`/`cronet_test()` APK wrapper targets (`__apk__java`). AOSP runs
+    # GTests via `//testing/android/native_test:native_test_java`, so these
+    # APK-wrapper-only Java targets are not used in Soong.
+    '//base/test:test_support_java': always_disable,
+    '//base:base_unittest_support_java': always_disable,
 }
 
 builtin_deps = {
@@ -246,8 +253,6 @@ builtin_deps.update(
 replace_deps = {
     '//third_party/boringssl:boringssl': enable_boringssl,
 }
-
-BLUEPRINTS_EXTRAS = {"": ["build = [\"Android.extras.bp\"]"]}
 
 BLUEPRINTS_MAPPING = {
     # BoringSSL's Android.bp is manually maintained and generated via a template,

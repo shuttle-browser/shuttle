@@ -48,9 +48,6 @@ BASE_FEATURE(kAmbientModeDevUseProdFeature,
              "ChromeOSAmbientModeDevChannelUseProdServer",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Adds support for allowing or disabling APN modification by policy.
-BASE_FEATURE(kAllowApnModificationPolicy, base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Controls whether proxy settings from policy or extensions are applied
 // verbatim without appending implicit bypass rules for simple hostnames.
 BASE_FEATURE(kApplyManagedProxyBypassListVerbatim,
@@ -668,9 +665,6 @@ BASE_FEATURE(kFilesMaterializedViews, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enable background cleanup for old files in Trash.
 BASE_FEATURE(kFilesTrashAutoCleanup, base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enable files app trash for Drive.
-BASE_FEATURE(kFilesTrashDrive, base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Fix manual ip address persistence on managed device with 2 ethernet ports.
 BASE_FEATURE(kFixStaticIpForTwoManagedEthPorts,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -954,7 +948,7 @@ BASE_FEATURE(kInstantHotspotOnNearby, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kInstantTethering, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables the inline update flow for Isolated Web Apps in Settings.
-BASE_FEATURE(kIsolatedWebAppInlineUpdate, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kIsolatedWebAppInlineUpdate, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables or disables the internal server side speech recognition on ChromeOS.
 // The supported locales for this feature are specified using the locales
@@ -997,11 +991,6 @@ BASE_FEATURE(kLanguagePacksFonts, base::FEATURE_ENABLED_BY_DEFAULT);
 // Enables loading in fonts via language packs on login, even after a download.
 const base::FeatureParam<bool> kLanguagePacksFontsLoadAfterDownloadDuringLogin =
     {&kLanguagePacksFonts, "load_after_download_during_login", true};
-
-// Enables the UI and relative logic to manage Language Packs in Settings.
-// This feature allows users to install/remove languages and input methods
-// via the corresponding Settings page.
-BASE_FEATURE(kLanguagePacksInSettings, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Uses short intervals for launcher nudge for testing if enabled.
 BASE_FEATURE(kLauncherNudgeShortInterval, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -1062,6 +1051,11 @@ BASE_FEATURE(kLocalFactorsPasswordComplexity, base::FEATURE_ENABLED_BY_DEFAULT);
 // Enables local authentication controller with PIN support.
 BASE_FEATURE(kLocalAuthenticationWithPin, base::FEATURE_ENABLED_BY_DEFAULT);
 
+// Enables client certificate authentication for browser-process network
+// requests on the login screen (e.g. behind an mTLS proxy).
+BASE_FEATURE(kLoginScreenProxyClientCertAuth,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Feature to allow MAC address randomization to be enabled for WiFi networks.
 BASE_FEATURE(kMacAddressRandomization, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -1121,20 +1115,12 @@ const base::FeatureParam<base::TimeDelta> kEcheScanningCycleOffTime{
 // Enables a limit on the number of notifications that can show.
 BASE_FEATURE(kNotificationLimit, base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Extracts controller logic from child views of `NotificationCenterView` to
-// place it in a new `NotificationCenterController` class.
-BASE_FEATURE(kNotificationCenterController, base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Enabled notification expansion animation.
 BASE_FEATURE(kNotificationExpansionAnimation,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables notifications to be shown within context menus.
 BASE_FEATURE(kNotificationsInContextMenu, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Kill switch for https://crbug.com/502771678. Forces OEM apps to receive
-// updates from the Chrome Web Store, which is the safe default.
-BASE_FEATURE(kOemAppsMustUpdateFromWebstore, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Controls whether to enable on-device grammar check service.
 BASE_FEATURE(kOnDeviceGrammarCheck, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -1162,12 +1148,6 @@ BASE_FEATURE(kOsSyncAccessibilitySettingsBatch3,
 // Whether the OneDrive upload flow should immediately prompt the user to
 // re-authenticate without first showing a notification.
 BASE_FEATURE(kOneDriveUploadImmediateReauth, base::FEATURE_ENABLED_BY_DEFAULT);
-
-// Whether the new UI for pinned notifications will be enabled.
-// go/ongoing-ui
-// TODO(crbug.com/563193206): Remove once c/b/device_notifications is cleaned
-// up.
-BASE_FEATURE(kOngoingProcesses, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, CHOOBE Screen will be shown during the new user onboarding flow.
 BASE_FEATURE(kOobeChoobe, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -1202,9 +1182,6 @@ BASE_FEATURE(kOobeInputMethods, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, SplitModifierKeyboardInfoScreen will be shown in OOBE.
 BASE_FEATURE(kOobeSplitModifierKeyboardInfo, base::FEATURE_ENABLED_BY_DEFAULT);
-
-// Enables OOBE Jelly features.
-BASE_FEATURE(kOobeJelly, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables OOBE perks discovery feature.
 BASE_FEATURE(kOobePerksDiscovery, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -1337,6 +1314,13 @@ BASE_FEATURE(kOrcaSupportDemoMode, base::FEATURE_ENABLED_BY_DEFAULT);
 // if jelly-colors is also enabled.
 BASE_FEATURE(kParentAccessJelly, base::FEATURE_DISABLED_BY_DEFAULT);
 
+// During online re-authentication, routes users whose PinWeaver-backed
+// password auth factor is locked out (too many wrong attempts) to cryptohome
+// recovery if they have a recovery factor, instead of failing with a generic
+// error until the lockout expires. See b/578979328.
+BASE_FEATURE(kPasswordLockoutRecoveryRouting,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Limits the items on the shelf to the ones associated with windows the
 // currently active desk.
 BASE_FEATURE(kPerDeskShelf, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -1394,12 +1378,6 @@ BASE_FEATURE(kQuickDim, base::FEATURE_ENABLED_BY_DEFAULT);
 // Note, that this feature is set from session manager via
 // command-line flag.
 BASE_FEATURE(kQuickUnlockFingerprint, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// TODO(crbug.com/1104164) - Remove this once most
-// users have their preferences backfilled.
-// Controls whether the PIN auto submit backfill operation should be performed.
-BASE_FEATURE(kQuickUnlockPinAutosubmitBackfill,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables reordering of screens in the recovery flow.
 BASE_FEATURE(kRecoveryFlowReorder, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -1592,9 +1570,6 @@ BASE_FEATURE(kTerminalDev, base::FEATURE_DISABLED_BY_DEFAULT);
 // Enables experimental feature for resizing tiling windows.
 BASE_FEATURE(kTilingWindowResize, base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enables trilinear filtering.
-BASE_FEATURE(kTrilinearFiltering, base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Use the Android staging SM-DS server when fetching pending eSIM profiles.
 BASE_FEATURE(kUseAndroidStagingSmds, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -1766,9 +1741,6 @@ BASE_FEATURE(kFwupdDeveloperMode, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kCrostiniAdvancedAccessControls,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-// Enables support for sideloading android apps into Arc via crostini.
-BASE_FEATURE(kCrostiniArcSideload, base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Enables distributed model for TPM1.2, i.e., using tpm_managerd and
 // attestationd.
 BASE_FEATURE(kCryptohomeDistributedModel, base::FEATURE_DISABLED_BY_DEFAULT);
@@ -1897,10 +1869,6 @@ bool IsAmbientEQDefaultOff() {
 
 bool IsAmbientModeDevUseProdEnabled() {
   return base::FeatureList::IsEnabled(kAmbientModeDevUseProdFeature);
-}
-
-bool IsAllowApnModificationPolicyEnabled() {
-  return base::FeatureList::IsEnabled(kAllowApnModificationPolicy);
 }
 
 bool IsApplyManagedProxyBypassListVerbatimEnabled() {
@@ -2412,6 +2380,10 @@ bool IsLobsterEnabledForManagedUsers() {
   return base::FeatureList::IsEnabled(kLobsterForManagedUsers);
 }
 
+bool IsLoginScreenProxyClientCertAuthEnabled() {
+  return base::FeatureList::IsEnabled(kLoginScreenProxyClientCertAuth);
+}
+
 bool IsProductivityLauncherImageSearchEnabled() {
   return base::FeatureList::IsEnabled(kFeatureManagementLocalImageSearch);
 }
@@ -2436,10 +2408,6 @@ bool IsOAuthIppEnabled() {
   return base::FeatureList::IsEnabled(kEnableOAuthIpp);
 }
 
-bool IsNotificationCenterControllerEnabled() {
-  return true;
-}
-
 bool IsNotificationExpansionAnimationEnabled() {
   return base::FeatureList::IsEnabled(kNotificationExpansionAnimation);
 }
@@ -2450,20 +2418,6 @@ bool IsNotificationsInContextMenuEnabled() {
 
 bool IsNssDbClientCertsRollbackEnabled() {
   return base::FeatureList::IsEnabled(kEnableNssDbClientCertsRollback);
-}
-
-// TODO(crbug.com/563193206): Remove once c/b/device_notifications is cleaned
-// up.
-bool AreOngoingProcessesEnabled() {
-  return base::FeatureList::IsEnabled(kOngoingProcesses);
-}
-
-bool IsOemAppsMustUpdateFromWebstoreEnabled() {
-  return base::FeatureList::IsEnabled(kOemAppsMustUpdateFromWebstore);
-}
-
-bool IsOobeJellyEnabled() {
-  return base::FeatureList::IsEnabled(kOobeJelly);
 }
 
 bool IsModifierSplitEnabled() {
@@ -2547,6 +2501,10 @@ bool IsParentAccessJellyEnabled() {
   return base::FeatureList::IsEnabled(kParentAccessJelly);
 }
 
+bool IsPasswordLockoutRecoveryRoutingEnabled() {
+  return base::FeatureList::IsEnabled(kPasswordLockoutRecoveryRouting);
+}
+
 bool IsPerDeskShelfEnabled() {
   return base::FeatureList::IsEnabled(kPerDeskShelf);
 }
@@ -2565,10 +2523,6 @@ bool IsPhoneHubCallNotificationEnabled() {
 
 bool IsPhoneHubShortQuickActionPodsTitlesEnabled() {
   return base::FeatureList::IsEnabled(kPhoneHubShortQuickActionPodsTitles);
-}
-
-bool IsPinAutosubmitBackfillFeatureEnabled() {
-  return base::FeatureList::IsEnabled(kQuickUnlockPinAutosubmitBackfill);
 }
 
 bool IsProjectorAppDebugMode() {
@@ -2725,12 +2679,6 @@ bool IsTouchpadInDiagnosticsAppEnabled() {
 
 bool IsTouchscreenCalibrationEnabled() {
   return base::FeatureList::IsEnabled(kEnableTouchscreenCalibration);
-}
-
-bool IsTrilinearFilteringEnabled() {
-  static bool use_trilinear_filtering =
-      base::FeatureList::IsEnabled(kTrilinearFiltering);
-  return use_trilinear_filtering;
 }
 
 bool ShouldUseAndroidStagingSmds() {

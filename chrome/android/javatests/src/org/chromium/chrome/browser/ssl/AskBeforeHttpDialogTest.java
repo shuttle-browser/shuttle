@@ -22,11 +22,9 @@ import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
-import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.preferences.Pref;
 import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -44,13 +42,8 @@ import org.chromium.ui.modaldialog.ModalDialogManager;
 
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-    ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1"
-})
+@CommandLineFlags.Add(ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1")
 @EnableFeatures({"HttpsUpgrades", "HttpsFirstDialogUi"})
-// TODO(b/555414915): Update Android tests with WebUI NTP enabled on AL.
-@DisableFeatures(ChromeFeatureList.USE_WEB_UI_NTP_ANDROID)
 public class AskBeforeHttpDialogTest {
 
     @Rule
@@ -179,6 +172,7 @@ public class AskBeforeHttpDialogTest {
 
     @Test
     @LargeTest
+    @DisabledTest(message = "https://crbug.com/581428041")
     public void testDialogIsShownAndClickLearnMoreWorks() {
         // Expect 0 = "TOTAL_VISITS" and 4 = "SHOW_LEARN_MORE" once, and 0 = "SHOW" once.
         var histogramWatcher =

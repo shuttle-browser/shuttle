@@ -33,7 +33,7 @@ NS_ASSUME_NONNULL_BEGIN
                       forceRequest:(BOOL)forceRequest
                    intelligentScan:(BOOL)intelligentScan;
 
-// Triggers the completion of visual classification with `scores`.
+// Triggers the completion of visual classification for `url` with `scores`.
 + (void)triggerClassificationDoneWithURL:(NSString*)url
                             visualScores:(NSArray<NSNumber*>*)scores;
 
@@ -42,7 +42,7 @@ NS_ASSUME_NONNULL_BEGIN
 + (NSInteger)cachedRealTimeURLClientSideDetectionTypeForURL:(NSString*)url;
 
 // Sets whether the local resource / localhost pre-classification check should
-// be bypassed for testing.
+// be bypassed (`bypass`) for testing.
 + (void)setBypassLocalResourceCheckForTesting:(BOOL)bypass;
 
 // Sets up a mock phishing report server that records whether the outgoing
@@ -54,6 +54,16 @@ NS_ASSUME_NONNULL_BEGIN
 // Returns whether the last sent ClientPhishingRequest had intelligent scan
 // info.
 + (BOOL)lastSentPhishingRequestHasIntelligentScanInfo;
+
+// Pauses asynchronous Safe Browsing query completion for the current `WebState`
+// for testing. Returns NO if there is no current `WebState` or it has no
+// `SafeBrowsingQueryManager`, in which case nothing is paused.
++ (BOOL)pauseAsyncQueriesForTesting;
+
+// Resumes asynchronous Safe Browsing query completion for the `WebState` paused
+// by `pauseAsyncQueriesForTesting` and runs buffered query completions for
+// testing.
++ (void)resumeAsyncQueriesForTesting;
 
 @end
 

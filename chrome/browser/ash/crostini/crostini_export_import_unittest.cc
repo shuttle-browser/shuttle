@@ -51,6 +51,8 @@
 
 namespace crostini {
 
+using Status = CrostiniExportImportNotificationController::Status;
+
 struct ExportProgressOptionalArguments {
   uint32_t total_files{};
   uint64_t total_bytes{};
@@ -299,8 +301,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -316,8 +317,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageSuccess) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 50);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -332,8 +332,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageSuccess) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 60);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -369,8 +368,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageFail) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -410,8 +408,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageFailSpace) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -451,8 +448,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageCancelled) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -465,11 +461,9 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageCancelled) {
   }
 
   // CANCEL:
-  crostini_export_import_->CancelOperation(ExportImportType::EXPORT_DISK_IMAGE,
-                                           custom_container_id_);
+  crostini_export_import_->CancelOperation(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -483,8 +477,7 @@ TEST_F(CrostiniExportImportTest, TestExportDiskImageCancelled) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 7);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -517,8 +510,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -534,8 +526,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageSuccess) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 50);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -550,8 +541,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageSuccess) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 60);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -588,8 +578,7 @@ TEST_F(CrostiniExportImportTest, TestImportZstdFileSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -605,8 +594,7 @@ TEST_F(CrostiniExportImportTest, TestImportZstdFileSuccess) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 50);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -621,8 +609,7 @@ TEST_F(CrostiniExportImportTest, TestImportZstdFileSuccess) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 60);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -659,8 +646,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageFail) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -701,8 +687,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageFailSpace) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -743,8 +728,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageCancelled) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
 
   std::string notification_id;
   {
@@ -757,11 +741,9 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageCancelled) {
   }
 
   // CANCEL:
-  crostini_export_import_->CancelOperation(ExportImportType::IMPORT_DISK_IMAGE,
-                                           custom_container_id_);
+  crostini_export_import_->CancelOperation(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -775,8 +757,7 @@ TEST_F(CrostiniExportImportTest, TestImportDiskImageCancelled) {
   SendDiskImageProgress(default_container_id_,
                         vm_tools::concierge::DISK_STATUS_IN_PROGRESS, 7);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -805,8 +786,7 @@ TEST_F(CrostiniExportImportTest, TestExportSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -827,8 +807,7 @@ TEST_F(CrostiniExportImportTest, TestExportSuccess) {
        .files_streamed = 30,
        .bytes_streamed = 10});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -848,8 +827,7 @@ TEST_F(CrostiniExportImportTest, TestExportSuccess) {
        .files_streamed = 55,
        .bytes_streamed = 66});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -870,8 +848,7 @@ TEST_F(CrostiniExportImportTest, TestExportSuccess) {
        .files_streamed = 90,
        .bytes_streamed = 85});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -910,8 +887,7 @@ TEST_F(CrostiniExportImportTest, TestExportCustomVmContainerSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -932,8 +908,7 @@ TEST_F(CrostiniExportImportTest, TestExportCustomVmContainerSuccess) {
        .files_streamed = 55,
        .bytes_streamed = 66});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -954,8 +929,7 @@ TEST_F(CrostiniExportImportTest, TestExportCustomVmContainerSuccess) {
        .files_streamed = 90,
        .bytes_streamed = 85});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -992,8 +966,7 @@ TEST_F(CrostiniExportImportTest, TestExportFail) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1032,8 +1005,7 @@ TEST_F(CrostiniExportImportTest, TestExportCancelled) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1045,11 +1017,9 @@ TEST_F(CrostiniExportImportTest, TestExportCancelled) {
   }
 
   // CANCELLING:
-  crostini_export_import_->CancelOperation(ExportImportType::EXPORT,
-                                           custom_container_id_);
+  crostini_export_import_->CancelOperation(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -1070,8 +1040,7 @@ TEST_F(CrostiniExportImportTest, TestExportCancelled) {
        .files_streamed = 50,
        .bytes_streamed = 50});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -1105,8 +1074,7 @@ TEST_F(CrostiniExportImportTest, TestExportDoneBeforeCancelled) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1118,11 +1086,9 @@ TEST_F(CrostiniExportImportTest, TestExportDoneBeforeCancelled) {
   }
 
   // CANCELLING:
-  crostini_export_import_->CancelOperation(ExportImportType::EXPORT,
-                                           default_container_id_);
+  crostini_export_import_->CancelOperation(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1157,8 +1123,7 @@ TEST_F(CrostiniExportImportTest, TestImportSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1176,8 +1141,7 @@ TEST_F(CrostiniExportImportTest, TestImportSuccess) {
           ImportLxdContainerProgressSignal_Status_IMPORTING_UPLOAD,
       {.progress_percent = 20});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1194,8 +1158,7 @@ TEST_F(CrostiniExportImportTest, TestImportSuccess) {
           ImportLxdContainerProgressSignal_Status_IMPORTING_UNPACK,
       {.progress_percent = 20});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1213,8 +1176,7 @@ TEST_F(CrostiniExportImportTest, TestImportSuccess) {
           ImportLxdContainerProgressSignal_Status_IMPORTING_UNPACK,
       {.progress_percent = 40});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1249,8 +1211,7 @@ TEST_F(CrostiniExportImportTest, TestImportCustomVmContainerSuccess) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(custom_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1268,8 +1229,7 @@ TEST_F(CrostiniExportImportTest, TestImportCustomVmContainerSuccess) {
           ImportLxdContainerProgressSignal_Status_IMPORTING_UNPACK,
       {.progress_percent = 20});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -1287,8 +1247,7 @@ TEST_F(CrostiniExportImportTest, TestImportCustomVmContainerSuccess) {
           ImportLxdContainerProgressSignal_Status_IMPORTING_UNPACK,
       {.progress_percent = 40});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   {
     const message_center::Notification* notification =
         GetNotification(custom_container_id_);
@@ -1321,8 +1280,7 @@ TEST_F(CrostiniExportImportTest, TestImportFail) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1356,8 +1314,7 @@ TEST_F(CrostiniExportImportTest, TestImportCancelled) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1369,11 +1326,9 @@ TEST_F(CrostiniExportImportTest, TestImportCancelled) {
   }
 
   // CANCELLING:
-  crostini_export_import_->CancelOperation(ExportImportType::IMPORT,
-                                           default_container_id_);
+  crostini_export_import_->CancelOperation(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1390,8 +1345,7 @@ TEST_F(CrostiniExportImportTest, TestImportCancelled) {
           ImportLxdContainerProgressSignal_Status_IMPORTING_UPLOAD,
       {.progress_percent = 50});
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1421,8 +1375,7 @@ TEST_F(CrostiniExportImportTest, TestImportDoneBeforeCancelled) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1434,11 +1387,9 @@ TEST_F(CrostiniExportImportTest, TestImportDoneBeforeCancelled) {
   }
 
   // CANCELLING:
-  crostini_export_import_->CancelOperation(ExportImportType::IMPORT,
-                                           default_container_id_);
+  crostini_export_import_->CancelOperation(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::CANCELLING);
+  EXPECT_EQ(controller->status(), Status::CANCELLING);
   {
     const message_center::Notification* notification =
         GetNotification(default_container_id_);
@@ -1471,8 +1422,7 @@ TEST_F(CrostiniExportImportTest, TestImportFailArchitecture) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =
@@ -1511,8 +1461,7 @@ TEST_F(CrostiniExportImportTest, TestImportFailSpace) {
   base::WeakPtr<CrostiniExportImportNotificationController> controller =
       GetController(default_container_id_);
   ASSERT_NE(controller, nullptr);
-  EXPECT_EQ(controller->status(),
-            CrostiniExportImportStatusTracker::Status::RUNNING);
+  EXPECT_EQ(controller->status(), Status::RUNNING);
   std::string notification_id;
   {
     const message_center::Notification* notification =

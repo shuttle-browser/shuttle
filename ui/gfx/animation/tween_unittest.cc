@@ -6,7 +6,6 @@
 
 #include <math.h>
 
-#include "base/time/time.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/gfx/geometry/rect.h"
@@ -143,24 +142,6 @@ TEST(TweenTest, LinearIntValueBetweenNegative) {
   EXPECT_EQ(0, Tween::LinearIntValueBetween(4.0 / 4.0, -2, 0));
 }
 
-TEST(TweenTest, ClampedFloatValueBetweenTimeTicks) {
-  const float v1 = 10.0f;
-  const float v2 = 20.0f;
-
-  const auto t0 = base::TimeTicks();
-
-  base::TimeTicks from = t0 + base::Seconds(1);
-  base::TimeTicks to = t0 + base::Seconds(2);
-
-  base::TimeTicks t_before = t0 + base::Seconds(0.9);
-  base::TimeTicks t_between = t0 + base::Seconds(1.6);
-  base::TimeTicks t_after = t0 + base::Seconds(2.2);
-
-  EXPECT_EQ(v1, Tween::ClampedFloatValueBetween(t_before, from, v1, to, v2));
-  EXPECT_EQ(16.0, Tween::ClampedFloatValueBetween(t_between, from, v1, to, v2));
-  EXPECT_EQ(v2, Tween::ClampedFloatValueBetween(t_after, from, v1, to, v2));
-}
-
 // Verifies the corners of the rect are animated, rather than the origin/size
 // (which would result in different rounding).
 TEST(TweenTest, RectValueBetween) {
@@ -229,6 +210,18 @@ TEST(TweenTest, SizeFValueBetweenClampedExtrapolation) {
   // We should not extrapolate in this case as it would result in a negative and
   // invalid size.
   EXPECT_SIZEF_EQ(s1, Tween::SizeFValueBetween(kBefore, s1, s2));
+}
+
+// ACCEL_90_DECEL_5_70 is the time-reverse of ACCEL_5_70_DECEL_90, so an exit
+// played on it retraces the enter curve backwards.
+TEST(TweenTest, Accel90Decel570IsTimeReversedAccel570Decel90) {
+  for (int i = 0; i <= 20; ++i) {
+    const double t = i / 20.0;
+    EXPECT_NEAR(
+        Tween::CalculateValue(Tween::ACCEL_90_DECEL_5_70, t),
+        1.0 - Tween::CalculateValue(Tween::ACCEL_5_70_DECEL_90, 1.0 - t), 1e-4)
+        << "t = " << t;
+  }
 }
 
 }  // namespace

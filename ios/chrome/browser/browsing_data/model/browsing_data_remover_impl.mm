@@ -20,13 +20,17 @@
 #import "base/task/sequenced_task_runner.h"
 #import "components/autofill/core/browser/data_manager/addresses/address_data_manager.h"
 #import "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
-#import "components/autofill/core/browser/data_manager/autofill_ai/entity_suppression_manager.h"
+#import "components/autofill/core/browser/data_manager/autofill_ai/personal_context_entity_metadata_manager.h"
 #import "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #import "components/autofill/core/browser/data_manager/personal_data_manager.h"
 #import "components/autofill/core/browser/webdata/autofill_webdata_service.h"
 #import "components/autofill/core/common/autofill_features.h"
 #import "components/autofill/core/common/autofill_payments_features.h"
 #import "components/browsing_data/core/cookie_or_cache_deletion_choice.h"
+#import "components/content_settings/core/browser/host_content_settings_map.h"
+#import "components/content_settings/core/browser/permission_settings_info.h"
+#import "components/content_settings/core/browser/permission_settings_registry.h"
+#import "components/content_settings/core/browser/website_settings_info.h"
 #import "components/desktop_to_mobile_promos/features.h"
 #import "components/history/core/browser/history_service.h"
 #import "components/keyed_service/core/service_access_type.h"
@@ -40,13 +44,15 @@
 #import "components/signin/ios/browser/account_consistency_service.h"
 #import "components/signin/public/base/signin_pref_names.h"
 #import "components/strike_database/strike_database.h"
+#import "components/translate/core/browser/translate_prefs.h"
 #import "ios/chrome/browser/autofill/model/ios_autofill_entity_data_manager_factory.h"
-#import "ios/chrome/browser/autofill/model/ios_autofill_entity_suppression_manager_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_personal_context_entity_metadata_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/strike_database_factory.h"
 #import "ios/chrome/browser/bookmarks/model/bookmark_remover_helper.h"
 #import "ios/chrome/browser/browsing_data/model/browsing_data_remove_mask.h"
 #import "ios/chrome/browser/browsing_data/model/system_snapshots_cleaner.h"
+#import "ios/chrome/browser/content_settings/model/host_content_settings_map_factory.h"
 #import "ios/chrome/browser/crash_report/model/crash_helper.h"
 #import "ios/chrome/browser/cross_platform_promos/model/cross_platform_promos_data_remover.h"
 #import "ios/chrome/browser/external_files/model/external_file_remover.h"
@@ -76,6 +82,7 @@
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/signin/model/account_consistency_service_factory.h"
 #import "ios/chrome/browser/tracing/ios_tracing_controller.h"
+#import "ios/chrome/browser/translate/model/chrome_ios_translate_client.h"
 #import "ios/chrome/browser/web/model/font_size/font_size_tab_helper.h"
 #import "ios/chrome/browser/web_state_list/model/web_usage_enabler/web_usage_enabler_browser_agent.h"
 #import "ios/chrome/browser/webdata_services/model/web_data_service_factory.h"
@@ -142,6 +149,19 @@ void ClearCookies(
   cookie_store->DeleteAllCreatedInTimeRangeAsync(
       creation_range,
       base::BindOnce(&DeleteCallbackAdapter, std::move(callback)));
+}
+
+// Removes the user-set exceptions of every permission setting type (e.g.
+// camera, microphone) modified within [`delete_begin`, `delete_end`).
+void RemoveSiteSettings(HostContentSettingsMap* host_content_settings_map,
+                        base::Time delete_begin,
+                        base::Time delete_end) {
+  for (const content_settings::PermissionSettingsInfo* info :
+       *content_settings::PermissionSettingsRegistry::GetInstance()) {
+    host_content_settings_map->ClearSettingsForOneTypeWithPredicate(
+        info->website_settings_info()->type(), delete_begin, delete_end,
+        HostContentSettingsMap::PatternSourcePredicate());
+  }
 }
 
 std::set<Browser*> GetAllBrowsersForProfile(ProfileIOS* profile) {
@@ -628,11 +648,11 @@ void BrowsingDataRemoverImpl::RemoveImpl(base::Time delete_begin,
       }
       if (base::FeatureList::IsEnabled(
               autofill::features::kAutofillAmbientAutofillSuppression)) {
-        if (autofill::EntitySuppressionManager* entity_suppression_manager =
-                IOSAutofillEntitySuppressionManagerFactory::GetForProfile(
-                    profile_)) {
-          entity_suppression_manager->ClearSuppressions(delete_begin,
-                                                        delete_end);
+        if (autofill::
+                PersonalContextEntityMetadataManager* entity_metadata_manager =
+                    IOSAutofillPersonalContextEntityMetadataManagerFactory::
+                        GetForProfile(profile_)) {
+          entity_metadata_manager->ClearSuppressions(delete_begin, delete_end);
         }
       }
 
@@ -718,6 +738,22 @@ void BrowsingDataRemoverImpl::RemoveImpl(base::Time delete_begin,
     // existing data. As browsing data is being cleared, it is fine to clear the
     // last username, as there will be no data to be merged.
     profile_->GetPrefs()->ClearPref(prefs::kGoogleServicesLastSignedInUsername);
+  }
+
+  if (IsRemoveDataMaskSet(mask, BrowsingDataRemoveMask::REMOVE_SITE_SETTINGS)) {
+    base::RecordAction(
+        base::UserMetricsAction("ClearBrowsingData_ContentSettings"));
+    RemoveSiteSettings(
+        ios::HostContentSettingsMapFactory::GetForProfile(profile_).get(),
+        delete_begin, delete_end);
+    ChromeIOSTranslateClient::CreateTranslatePrefs(profile_->GetPrefs())
+        ->DeleteNeverPromptSitesBetween(delete_begin, delete_end);
+    // TODO(crbug.com/581332708): Clear zoom levels within the time range once
+    // they store a last-modified time. Until then, they can only be cleared
+    // for all time.
+    if (delete_begin.is_null() && delete_end.is_max()) {
+      FontSizeTabHelper::ClearUserZoomPrefs(profile_->GetPrefs());
+    }
   }
 
   // Remove stored zoom levels.

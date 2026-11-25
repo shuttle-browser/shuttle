@@ -87,6 +87,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/chrome_debug_urls.h"
+#include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/input/synthetic_web_input_event_builders.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/scheme_registry.h"
@@ -96,7 +97,9 @@
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "third_party/blink/public/mojom/page/page_visibility_state.mojom.h"
 #include "third_party/skia/include/core/SkColor.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ui_base_features.h"
+#include "ui/display/screen.h"
 #include "ui/gfx/font_render_params.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/size.h"
@@ -460,6 +463,37 @@ class MockNetworkContext : public network::TestNetworkContext {
 };
 
 }  // namespace
+
+namespace {
+
+// Returns an off-the-record BrowserContext as the user BrowserContext of any
+// frame.
+class LearningTestUserContentBrowserClient : public TestContentBrowserClient {
+ public:
+  LearningTestUserContentBrowserClient() {
+    browser_context_.set_is_off_the_record(true);
+  }
+
+  // ContentBrowserClient:
+  BrowserContext* GetUserBrowserContext(WebContents& web_contents) override {
+    return &browser_context_;
+  }
+
+ private:
+  TestBrowserContext browser_context_;
+};
+
+}  // namespace
+
+// Tests that IME learning uses the off-the-record state of the user
+// BrowserContext, instead of that of the WebContents.
+TEST_F(WebContentsImplTest, ShouldDoLearningUsesUserBrowserContext) {
+  EXPECT_TRUE(contents()->ShouldDoLearning());
+
+  LearningTestUserContentBrowserClient browser_client;
+  ScopedContentBrowserClientSetting browser_client_setting(&browser_client);
+  EXPECT_FALSE(contents()->ShouldDoLearning());
+}
 
 TEST_F(WebContentsImplTest, SetMainFrameMimeType) {
   ASSERT_TRUE(controller().IsInitialNavigation());
@@ -2195,7 +2229,7 @@ TEST_F(WebContentsImplTest, CreateNewWindowBlockedBySystem) {
   contents()->SetDelegate(&delegate);
 
   mojom::CreateNewWindowParams params;
-  params.disposition = WindowOpenDisposition::kNewPictureInPicture;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewPictureInPicture;
 
   FrameTree* result =
       static_cast<WebContentsImpl*>(contents())
@@ -4571,6 +4605,17 @@ TEST_F(WebContentsImplTest, ConstrainPopupBounds) {
   EXPECT_EQ(contents()->ConstrainPopupBounds(above_line_of_death),
             gfx::Rect(100, kLineOfDeath, 200, 100));
 
+  // If moving the popup down to the line of death would push its bottom past
+  // the display's work area, its height is reduced to fit within the work area.
+  const gfx::Rect work_area =
+      display::Screen::Get()->GetPrimaryDisplay().work_area();
+  ASSERT_GT(work_area.bottom(), kLineOfDeath);
+  const int kTallHeight = work_area.bottom() - 50;
+  gfx::Rect tall_popup_above_line_of_death(100, 50, 200, kTallHeight);
+  EXPECT_EQ(
+      contents()->ConstrainPopupBounds(tall_popup_above_line_of_death),
+      gfx::Rect(100, kLineOfDeath, 200, work_area.bottom() - kLineOfDeath));
+
   // A popup whose top is exactly at the line of death is unchanged.
   gfx::Rect at_line_of_death(100, kLineOfDeath, 200, 100);
   EXPECT_EQ(contents()->ConstrainPopupBounds(at_line_of_death),
@@ -4590,7 +4635,8 @@ TEST_F(WebContentsImplTest, ConstrainPopupBounds) {
   // When the feature is disabled, popups above the line of death are not
   // clamped.
   base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndDisableFeature(features::kLimitPopupWidgetHostPosition);
+  feature_list.InitAndDisableFeature(
+      blink::features::kLimitPopupWidgetHostPosition);
   EXPECT_EQ(contents()->ConstrainPopupBounds(above_line_of_death),
             above_line_of_death);
 }

@@ -342,11 +342,13 @@ void GlicHandler::HandleGetGlicSelectionShortcut(const base::ListValue& args) {
   CHECK_EQ(1U, args.size());
   const base::Value& callback_id = args[0];
 
+  Profile* profile = Profile::FromWebUI(web_ui());
+  ui::Accelerator accelerator =
+      glic::GlicLauncherConfiguration::GetSelectionHotkey(profile);
+
   AllowJavascript();
-  ResolveJavascriptCallback(
-      callback_id,
-      base::UTF16ToUTF8(glic::GlicLauncherConfiguration::GetSelectionHotkey()
-                            .GetShortcutText()));
+  ResolveJavascriptCallback(callback_id,
+                            base::UTF16ToUTF8(accelerator.GetShortcutText()));
 }
 
 void GlicHandler::HandleSetGlicSelectionShortcut(const base::ListValue& args) {

@@ -18,7 +18,6 @@
 #include "mojo/public/cpp/test_support/test_utils.h"
 #include "net/base/features.h"
 #include "net/base/load_flags.h"
-#include "net/base/mock_network_change_notifier.h"
 #include "net/disk_cache/buildflags.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/http/http_cache.h"
@@ -161,20 +160,12 @@ class CorsURLLoaderFactoryTest : public testing::Test,
     factory_owner_.reset();
   }
 
-  const CorsURLLoaderFactory* GetCorsURLLoaderFactory() const {
-    return factory_owner_->GetCorsURLLoaderFactoryForTesting();
-  }
-
   net::test_server::EmbeddedTestServer* test_server() { return &test_server_; }
 
   NetworkContext* network_context() { return network_context_.get(); }
 
   std::vector<mojo::Remote<mojom::URLLoader>>& url_loaders() {
     return url_loaders_;
-  }
-
-  net::test::MockNetworkChangeNotifier* mock_network_change_notifier() {
-    return scoped_mock_network_change_notifier_->mock_network_change_notifier();
   }
 
   std::vector<std::unique_ptr<TestURLLoaderClient>>&
@@ -194,12 +185,6 @@ class CorsURLLoaderFactoryTest : public testing::Test,
 
  private:
   mojo::FakeMessageDispatchContext mojo_context_;
-  // This is required by NetworkBoundCorsURLLoaderFactoryTest but has to live
-  // here to destruct things in the right order (it must outlive
-  // url_request_context_).
-  std::unique_ptr<net::test::ScopedMockNetworkChangeNotifier>
-      scoped_mock_network_change_notifier_ =
-          std::make_unique<net::test::ScopedMockNetworkChangeNotifier>();
   std::unique_ptr<net::URLRequestContext> url_request_context_;
   ResourceScheduler resource_scheduler_;
   std::unique_ptr<NetworkService> network_service_;
@@ -526,8 +511,39 @@ TEST_F(RequireCrossSiteRequestForCookiesCorsURLLoaderFactoryTest,
   EXPECT_EQ(net::OK, client->completion_status().error_code);
 }
 
+class SharedWorkerSameSiteCookiesNoneCorsURLLoaderFactoryTest
+    : public CorsURLLoaderFactoryTest {
+  void SetUp() override {
+    auto factory_params = network::mojom::URLLoaderFactoryParams::New();
+    const url::Origin kOrigin =
+        url::Origin::Create(GURL("https://example.test"));
+    factory_params->isolation_info = net::IsolationInfo::Create(
+        net::IsolationInfo::RequestType::kOther, kOrigin, kOrigin,
+        net::SiteForCookies(), /*nonce=*/std::nullopt,
+        net::NetworkIsolationPartition::kSharedWorkerSameSiteCookiesNone);
+    auto context_params = mojom::NetworkContextParams::New();
+    BaseSetup(std::move(factory_params), std::move(context_params));
+  }
+};
+
+TEST_F(SharedWorkerSameSiteCookiesNoneCorsURLLoaderFactoryTest,
+       NonNullSiteForCookiesRejected) {
+  ResourceRequest request;
+  GURL url = test_server()->GetURL("/echoall");
+  request.mode = mojom::RequestMode::kCors;
+  request.credentials_mode = mojom::CredentialsMode::kInclude;
+  request.method = net::HttpRequestHeaders::kGetMethod;
+  request.url = url;
+  request.request_initiator = url::Origin::Create(url);
+  request.site_for_cookies = net::SiteForCookies::FromUrl(url);
+  mojo::test::BadMessageObserver bad_message_observer;
+  CreateLoaderAndStart(request);
+  EXPECT_EQ(
+      "CorsURLLoaderFactory: all requests in this context must be cross-site",
+      bad_message_observer.WaitForBadMessage());
+}
+
 TEST_F(CorsURLLoaderFactoryTest, UntrustedCorsPreflightRequestAreFailed) {
-  EXPECT_FALSE(GetCorsURLLoaderFactory()->IsCorsPreflighLoadOptionAllowed());
   ResourceRequest request;
   GURL url = test_server()->GetURL("/echoall");
   request.mode = mojom::RequestMode::kNavigate;
@@ -559,31 +575,6 @@ TEST_F(CorsURLLoaderFactoryTest,
       "CorsURLLoaderFactory: kURLLoadOptionReadAndDiscardBody and "
       "kURLLoadOptionSniffMimeType cannot be used together",
       bad_message_observer.WaitForBadMessage());
-}
-
-class NetworkBoundCorsURLLoaderFactoryTest : public CorsURLLoaderFactoryTest {
-  void SetUp() override {
-    // Setting URLLoaderFactoryParams::bound_network requires
-    // net::base::NetworkChangeNotifier::AreNetworkHandlesSupported() == true.
-    // To make that the case, force its support.
-    mock_network_change_notifier()->ForceNetworkHandlesSupported();
-    auto factory_params = network::mojom::URLLoaderFactoryParams::New();
-    factory_params->disable_web_security = true;
-    auto context_params = mojom::NetworkContextParams::New();
-    context_params->bound_network = 1234;
-    BaseSetup(std::move(factory_params), std::move(context_params));
-  }
-};
-
-// Regression test for crbug.com/366242716.
-TEST_F(NetworkBoundCorsURLLoaderFactoryTest, CorsPreflightRequestAreAllowed) {
-  if constexpr (BUILDFLAG(IS_ANDROID)) {
-    EXPECT_TRUE(GetCorsURLLoaderFactory()->IsCorsPreflighLoadOptionAllowed());
-  } else {
-    GTEST_SKIP() << "Network bound NetworkContext/URLRequestContext is "
-                    "supported only on "
-                    "Android, see URLRequestContextBuilder::BindToNetwork";
-  }
 }
 
 TEST_F(CorsURLLoaderFactoryTest, ForbiddenSecHeader) {

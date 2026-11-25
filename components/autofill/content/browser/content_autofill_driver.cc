@@ -9,9 +9,12 @@
 #include <type_traits>
 #include <utility>
 #include <variant>
+#include <vector>
 
 #include "base/barrier_callback.h"
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
+#include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "components/autofill/content/browser/bad_message.h"
 #include "components/autofill/content/browser/content_autofill_driver_factory.h"
@@ -329,25 +332,30 @@ void ContentAutofillDriver::Reset(ContentAutofillDriverFactoryPassKey) {
 }
 
 void ContentAutofillDriver::TriggerFormExtractionInDriverFrame(
-    AutofillDriverRouterAndFormForestPassKey pass_key) {
+    AutofillDriverRouterAndFormForestPassKey pass_key,
+    bool force) {
   if (!IsActive()) {
     LOG(WARNING) << "Skipped Autofill message for inactive frame";
     return;
   }
-  GetAutofillAgent()->TriggerFormExtraction();
+  // TODO(crbug.com/581683357): Merge TriggerFormExtractionWithResponse() and
+  // TriggerFormExtraction() when the feature is cleaned up.
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillMergeTriggerFormExtractionFunctions)) {
+    GetAutofillAgent()->TriggerFormExtractionWithResponse(force,
+                                                          base::DoNothing());
+  } else {
+    GetAutofillAgent()->TriggerFormExtraction(force);
+  }
 }
 
 void ContentAutofillDriver::TriggerFormExtractionInAllFrames(
+    bool force,
     base::OnceCallback<void(bool success)> form_extraction_finished_callback) {
-  std::vector<ContentAutofillDriver*> drivers;
-  render_frame_host()->GetMainFrame()->ForEachRenderFrameHost(
-      [&drivers](content::RenderFrameHost* rfh) {
-        if (rfh->IsActive()) {
-          if (auto* driver = GetForRenderFrameHost(rfh)) {
-            drivers.push_back(driver);
-          }
-        }
-      });
+  std::vector<autofill::AutofillDriver*> drivers = owner_->GetExistingDrivers();
+  std::erase_if(drivers, [](const autofill::AutofillDriver* driver) {
+    return !driver->IsActive();
+  });
   auto barrier_callback = base::BarrierCallback<bool>(
       drivers.size(),
       base::BindOnce(
@@ -358,21 +366,11 @@ void ContentAutofillDriver::TriggerFormExtractionInAllFrames(
                 .Run(std::ranges::all_of(successes, std::identity()));
           },
           std::move(form_extraction_finished_callback)));
-  for (ContentAutofillDriver* driver : drivers) {
-    driver->GetAutofillAgent()->TriggerFormExtractionWithResponse(
-        barrier_callback);
+  for (autofill::AutofillDriver* driver : drivers) {
+    static_cast<ContentAutofillDriver*>(driver)
+        ->GetAutofillAgent()
+        ->TriggerFormExtractionWithResponse(force, barrier_callback);
   }
-}
-
-void ContentAutofillDriver::ClearFormCacheInAllFrames() {
-  render_frame_host()->GetMainFrame()->ForEachRenderFrameHost(
-      [](content::RenderFrameHost* rfh) {
-        if (rfh->IsActive()) {
-          if (auto* driver = GetForRenderFrameHost(rfh)) {
-            driver->GetAutofillAgent()->ClearFormCache();
-          }
-        }
-      });
 }
 
 void ContentAutofillDriver::ObserveFieldVisibility(
@@ -784,6 +782,16 @@ ContentAutofillDriver::GetAutofillAgent() {
         &autofill_agent_);
   }
   return autofill_agent_;
+}
+
+const mojo::AssociatedRemote<mojom::CustomFormControlAgent>&
+ContentAutofillDriver::GetCustomFormControlAgent() {
+  // Here is a lazy binding, and will not reconnect after connection error.
+  if (!custom_form_control_agent_) {
+    render_frame_host_->GetRemoteAssociatedInterfaces()->GetInterface(
+        &custom_form_control_agent_);
+  }
+  return custom_form_control_agent_;
 }
 
 bool ContentAutofillDriver::IsSafeToFill(

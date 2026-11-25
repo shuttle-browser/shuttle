@@ -7,8 +7,11 @@
 #include "base/android/jni_android.h"
 #include "base/android/scoped_java_ref.h"
 #include "base/check.h"
+#include "base/functional/bind.h"
 #include "base/location.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/task/single_thread_task_runner.h"
+#include "base/trace_event/trace_event.h"
 #include "chrome/browser/page_load_metrics/page_load_metrics_initialize.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/android/tab_model/tab_model.h"
@@ -27,6 +30,7 @@
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/input/web_keyboard_event.h"
 #include "third_party/blink/public/common/input/web_mouse_event.h"
+#include "third_party/jni_zero/jni_zero.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/android/view_android.h"
 #include "ui/base/page_transition_types.h"
@@ -40,6 +44,13 @@
 namespace android {
 
 namespace {
+
+// Maximum number of immediate recoveries before delaying retries.
+constexpr uint32_t kMaxCrashRecoveryTimes = 3;
+// Time without a crash after which `crash_count_` is reset.
+constexpr base::TimeDelta kCrashRecoverResetInterval = base::Seconds(10);
+// Delay before retrying recovery once `kMaxCrashRecoveryTimes` is exceeded.
+constexpr base::TimeDelta kCrashRecoverRetryInterval = base::Minutes(1);
 
 std::unique_ptr<content::WebContents> CreateWebContents(Profile* profile,
                                                         const GURL& url) {
@@ -72,43 +83,57 @@ bool IsActivatingInputEvent(const blink::WebInputEvent& event) {
 
 }  // namespace
 
-// The NTB does not observe tab strip events, so it uses an injector without an
-// EventBridge.
 TabStripNtbWebUiHost::TabStripNtbWebUiHost(
-    TabModel* tab_model,
+    Profile* profile,
     base::TimeTicks activity_creation_time,
     const base::android::JavaRef<jobject>& java_coordinator)
-    : tab_model_(tab_model),
-      activity_creation_time_(activity_creation_time),
-      java_coordinator_(java_coordinator),
-      service_(std::make_unique<tabs_api::TabStripServiceImpl>(
-          tabs_api::AndroidTabStripApiInjector::CreateWithoutEventBridge(
-              tab_model,
-              TabModel::TabLaunchType::FROM_CHROME_UI))) {
-  TabModelList::AddObserver(this);
+    : activity_creation_time_(activity_creation_time),
+      java_coordinator_(java_coordinator) {
+  TRACE_EVENT("ui", "TabStripNtbWebUiHost::TabStripNtbWebUiHost");
+  CHECK(profile);
+  profile_observation_.Observe(profile);
   const GURL url(chrome::kChromeUITabStripNtbURL);
-  web_contents_ = CreateWebContents(tab_model->GetProfile(), url);
+  web_contents_ = CreateWebContents(profile, url);
   web_contents_->SetOwnerLocationForDebug(FROM_HERE);
   web_contents_->SetDelegate(this);
   // The page only paints the button; the tab strip behind must show through.
   web_contents_->SetPageBaseBackgroundColor(SK_ColorTRANSPARENT);
   InitializePageLoadMetricsForWebContents(web_contents_.get());
-  // Attached before navigating, so the WebUI can bind to the service during
-  // construction.
-  tabstrip_ntb::TabStripNtbUI::SetTabStripServiceForWebContents(
-      web_contents_.get(), service_.get());
   Observe(web_contents_.get());
   if (content::RenderFrameHost* main_frame =
           web_contents_->GetPrimaryMainFrame()) {
     input_event_observation_.Observe(main_frame->GetRenderWidgetHost());
   }
 
-  content::NavigationController::LoadURLParams load_params(url);
-  load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
-  web_contents_->GetController().LoadURLWithParams(load_params);
+  LoadWebUi();
 }
 
 TabStripNtbWebUiHost::~TabStripNtbWebUiHost() {
+  Reset();
+}
+
+void TabStripNtbWebUiHost::SetTabModel(TabModel* tab_model) {
+  CHECK(tab_model);
+  CHECK(!tab_model_);
+  if (!web_contents_) {
+    return;
+  }
+  CHECK_EQ(web_contents_->GetBrowserContext(), tab_model->GetProfile());
+  tab_model_ = tab_model;
+  TabModelList::AddObserver(this, profile_observation_.GetSource());
+  service_ = std::make_unique<tabs_api::TabStripServiceImpl>(
+      tabs_api::AndroidTabStripApiInjector::CreateWithoutEventBridge(
+          tab_model, TabModel::TabLaunchType::FROM_CHROME_UI));
+  tabstrip_ntb::TabStripNtbUI::SetTabStripServiceForWebContents(
+      web_contents_.get(), service_.get());
+}
+
+void TabStripNtbWebUiHost::OnProfileWillBeDestroyed(Profile* profile) {
+  // IncognitoTabModelImpl notifies IncognitoProfileDestroyer::didBecomeEmpty()
+  // before destroying the delegate TabModel (and firing OnTabModelRemoved).
+  // Tear down the WebContents here during MaybeSendDestroyedNotification() so
+  // its RenderProcessHost is unregistered before ProfileDestroyer checks for
+  // live hosts.
   Reset();
 }
 
@@ -116,17 +141,33 @@ void TabStripNtbWebUiHost::OnTabModelRemoved(TabModel* tab_model) {
   if (tab_model != tab_model_) {
     return;
   }
-  // An incognito window destroys its TabModel as soon as its last tab closes,
-  // before the window is torn down. Tear down the WebContents and service now
-  // so that the WebContents does not keep a RenderProcessHost for the
-  // off-the-record Profile alive and block ProfileDestroyer.
+  // An incognito window destroys its TabModel as soon as its last tab closes
+  // (even when another incognito window keeps the OTR Profile alive), before
+  // the window itself is torn down. Tear down the WebContents and service now
+  // so that the adapters' TabModel references do not dangle.
   Reset();
+}
+
+void TabStripNtbWebUiHost::LoadWebUi() {
+  if (!web_contents_) {
+    return;
+  }
+  content::NavigationController::LoadURLParams load_params(
+      (GURL(chrome::kChromeUITabStripNtbURL)));
+  load_params.transition_type = ui::PAGE_TRANSITION_AUTO_TOPLEVEL;
+  web_contents_->GetController().LoadURLWithParams(load_params);
 }
 
 void TabStripNtbWebUiHost::Reset() {
   if (!web_contents_) {
     return;
   }
+  weak_ptr_factory_.InvalidateWeakPtrs();
+  if (tab_model_) {
+    tab_model_ = nullptr;
+    TabModelList::RemoveObserver(this, profile_observation_.GetSource());
+  }
+  profile_observation_.Reset();
   input_event_observation_.Reset();
   java_coordinator_.Reset();
   Observe(nullptr);
@@ -138,8 +179,6 @@ void TabStripNtbWebUiHost::Reset() {
   // Destroy before |tab_model_| finishes destruction so the adapters'
   // TabModel* never dangles.
   service_.reset();
-  tab_model_ = nullptr;
-  TabModelList::RemoveObserver(this);
 }
 
 void TabStripNtbWebUiHost::Resize(int32_t width_px, int32_t height_px) {
@@ -149,6 +188,14 @@ void TabStripNtbWebUiHost::Resize(int32_t width_px, int32_t height_px) {
   ui::ViewAndroid* view = web_contents_->GetNativeView();
   view->OnPhysicalBackingSizeChanged(gfx::Size(width_px, height_px));
   view->OnSizeChanged(width_px, height_px);
+}
+
+void TabStripNtbWebUiHost::SetButtonVisible(bool visible) {
+  if (!web_contents_) {
+    return;
+  }
+  tabstrip_ntb::TabStripNtbUI::SetButtonVisibleForWebContents(
+      web_contents_.get(), visible);
 }
 
 scoped_refptr<cc::slim::Layer> TabStripNtbWebUiHost::GetLayer() {
@@ -175,6 +222,29 @@ void TabStripNtbWebUiHost::RenderFrameHostChanged(
   input_event_observation_.Observe(new_host->GetRenderWidgetHost());
 }
 
+void TabStripNtbWebUiHost::PrimaryMainFrameRenderProcessGone(
+    base::TerminationStatus status) {
+  // Reload on all termination statuses, including
+  // TERMINATION_STATUS_NORMAL_TERMINATION, which Android reports when the OS
+  // kills a renderer while Chrome is in the background or holds a waived
+  // binding.
+  const base::TimeTicks now = base::TimeTicks::Now();
+  if (now - last_crash_time_ >= kCrashRecoverResetInterval) {
+    crash_count_ = 0;
+  }
+  last_crash_time_ = now;
+  base::OnceCallback callback = base::BindOnce(&TabStripNtbWebUiHost::LoadWebUi,
+                                               weak_ptr_factory_.GetWeakPtr());
+  if (++crash_count_ <= kMaxCrashRecoveryTimes) {
+    // PostTask avoids re-entering RenderProcessHostImpl::ProcessDied().
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, std::move(callback));
+  } else {
+    base::SingleThreadTaskRunner::GetCurrentDefault()->PostDelayedTask(
+        FROM_HERE, std::move(callback), kCrashRecoverRetryInterval);
+  }
+}
+
 void TabStripNtbWebUiHost::OnFirstContentfulPaintInPrimaryMainFrame(
     base::TimeTicks presentation_time) {
   if (recorded_first_paint_ || activity_creation_time_.is_null()) {
@@ -182,6 +252,8 @@ void TabStripNtbWebUiHost::OnFirstContentfulPaintInPrimaryMainFrame(
   }
   recorded_first_paint_ = true;
   if (presentation_time >= activity_creation_time_) {
+    TRACE_EVENT_INSTANT("ui", "TabStripNewTabButtonFirstPaint",
+                        presentation_time);
     base::UmaHistogramMediumTimes(
         "Android.TabStrip.NewTabButton.ActivityCreationToFirstPaint",
         presentation_time - activity_creation_time_);
@@ -211,39 +283,25 @@ content::WebContents* TabStripNtbWebUiHost::GetWebContents() {
   return web_contents_.get();
 }
 
-static int64_t JNI_NtbWebUiCoordinator_Init(
-    JNIEnv* env,
-    const base::android::JavaRef<jobject>& caller,
-    int32_t session_id,
-    int64_t activity_creation_uptime_ms) {
-  SessionID id = SessionID::FromSerializedValue(session_id);
-  CHECK(id.is_valid());
-  TabModel* tab_model = TabModelList::FindTabModelWithWindowSessionId(id);
-  CHECK(tab_model);
+static jni_zero::JniUniquePtr<TabStripNtbWebUiHost>
+JNI_NtbWebUiCoordinator_Init(const base::android::JavaRef<jobject>& caller,
+                             Profile* profile,
+                             int64_t activity_creation_uptime_ms) {
   base::TimeTicks activity_creation_time =
       activity_creation_uptime_ms > 0
           ? base::TimeTicks::FromUptimeMillis(activity_creation_uptime_ms)
           : base::TimeTicks();
-  return reinterpret_cast<intptr_t>(
-      new TabStripNtbWebUiHost(tab_model, activity_creation_time, caller));
+  return jni_zero::MakeUnique<TabStripNtbWebUiHost>(
+      profile, activity_creation_time, caller);
 }
 
-static content::WebContents* JNI_NtbWebUiCoordinator_GetWebContents(
-    JNIEnv* env,
-    int64_t host_ptr) {
-  return reinterpret_cast<TabStripNtbWebUiHost*>(host_ptr)->GetWebContents();
-}
-
-static void JNI_NtbWebUiCoordinator_Resize(JNIEnv* env,
-                                           int64_t host_ptr,
-                                           int32_t width_px,
-                                           int32_t height_px) {
-  reinterpret_cast<TabStripNtbWebUiHost*>(host_ptr)->Resize(width_px,
-                                                            height_px);
-}
-
-static void JNI_NtbWebUiCoordinator_Destroy(JNIEnv* env, int64_t host_ptr) {
-  delete reinterpret_cast<TabStripNtbWebUiHost*>(host_ptr);
+static void JNI_NtbWebUiCoordinator_SetTabModel(TabStripNtbWebUiHost* host,
+                                                int32_t session_id) {
+  SessionID id = SessionID::FromSerializedValue(session_id);
+  CHECK(id.is_valid());
+  TabModel* tab_model = TabModelList::FindTabModelWithWindowSessionId(id);
+  CHECK(tab_model);
+  host->SetTabModel(tab_model);
 }
 
 }  // namespace android

@@ -444,12 +444,12 @@ bool AutofillProfileComparator::ProfilesHaveDifferentSettingsVisibleValues(
     const AutofillProfile& p1,
     const AutofillProfile& p2,
     const std::string& app_locale) {
-  if (p1.GetUserVisibleTypes() != p2.GetUserVisibleTypes()) {
-    return false;
-  }
+  FieldTypeSet visible_types = p1.GetUserVisibleTypes();
+  visible_types.insert_all(p2.GetUserVisibleTypes());
   // Return true if at least one value corresponding to the settings visible
-  // types is different between the two profiles.
-  return std::ranges::any_of(p1.GetUserVisibleTypes(), [&](FieldType type) {
+  // types is different between the two profiles. Since `ADDRESS_HOME_COUNTRY`
+  // is included in `visible_types`, differing countries are also handled here.
+  return std::ranges::any_of(visible_types, [&](FieldType type) {
     if (IsAlternativeNameType(type)) {
       // Consider two alternative names that differ only in the character set
       // equal.

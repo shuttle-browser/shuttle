@@ -15,6 +15,7 @@
 #import "components/application_locale_storage/application_locale_storage.h"
 #import "components/contextual_search/contextual_search_service.h"
 #import "components/contextual_search/contextual_search_session_handle.h"
+#import "components/contextual_search/footprints/public/drive_disclaimer_controller.h"
 #import "components/contextual_search/internal/ios/composebox_query_controller_ios.h"
 #import "components/lens/lens_features.h"
 #import "components/lens/lens_overlay_invocation_source.h"
@@ -39,6 +40,7 @@
 #import "ios/chrome/browser/composebox/public/composebox_theme.h"
 #import "ios/chrome/browser/composebox/public/features.h"
 #import "ios/chrome/browser/composebox/shared/coordinator/composebox_attachment_diff.h"
+#import "ios/chrome/browser/composebox/shared/coordinator/composebox_drive_disclaimer_util.h"
 #import "ios/chrome/browser/composebox/shared/coordinator/composebox_picker_drive_result.h"
 #import "ios/chrome/browser/composebox/shared/coordinator/composebox_picker_presenter.h"
 #import "ios/chrome/browser/composebox/shared/metrics/composebox_metrics_recorder.h"
@@ -85,10 +87,12 @@
 #import "ios/chrome/browser/web/model/web_navigation_util.h"
 #import "ios/chrome/common/channel_info.h"
 #import "ios/public/provider/chrome/browser/voice_search/voice_search_api.h"
+#import "ios/public/provider/chrome/browser/voice_search/voice_search_coordinator_delegate.h"
 #import "ios/web/public/web_state.h"
 #import "net/base/apple/url_conversions.h"
 #import "services/network/public/cpp/shared_url_loader_factory.h"
 #import "third_party/omnibox_proto/searchbox_config.pb.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace {
 const size_t kMaxURLDisplayChars = 32 * 1024;
@@ -130,6 +134,7 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
     OmniboxFocusDelegate,
     UINavigationControllerDelegate,
     UIViewControllerTransitioningDelegate,
+    VoiceSearchCoordinatorDelegate,
     WebLocationBarDelegate>
 @end
 
@@ -201,7 +206,9 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
   _viewController.delegate = self;
   _pickerPresenter = [[ComposeboxPickerPresenter alloc]
       initWithBaseViewController:_viewController
-                         browser:self.browser];
+                         browser:self.browser
+       driveDisclaimerController:composebox::CreateDriveDisclaimerController(
+                                     self.browser)];
   _pickerPresenter.delegate = self;
   _pickerPresenter.dataSource = self;
   _pickerPresenter.metricsRecorder = _metricsRecorder;
@@ -400,12 +407,6 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
   [_omniboxCoordinator focusOmnibox];
 }
 
-- (void)processContextLibraryWebpageSignalWithURL:(const GURL&)url
-                                            title:(NSString*)title {
-  CHECK(_entrypoint == ComposeboxEntrypoint::kCobrowse);
-  [_mediator processContextLibraryWebpageSignalWithURL:url title:title];
-}
-
 - (void)updateTheme:(ComposeboxTheme*)theme {
   _theme = theme;
   [_viewController updateTheme:theme];
@@ -420,10 +421,8 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
 
   if (IsVoiceSearchEvolutionPhase1Enabled()) {
     [self stopVoiceSearchCoordinator];
-    // TODO(crbug.com/571184218): Implement `VoiceSearchCoordinatorDelegate` to
-    // submit recognized queries and stop the coordinator on dismissal.
     _voiceSearchCoordinator = ios::provider::CreateVoiceSearchCoordinator(
-        _viewController, self.browser, /*delegate=*/nil);
+        _viewController, self.browser, self);
     [_voiceSearchCoordinator start];
     return;
   }
@@ -562,6 +561,7 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
     case ComposeboxMode::kAIM:
     case ComposeboxMode::kCanvas:
     case ComposeboxMode::kDeepSearch:
+    case ComposeboxMode::kPTM:
       [self showMaxAttachmentSnackbarError];
       return;
     case ComposeboxMode::kImageGeneration:
@@ -643,7 +643,8 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
                                postContent:
                                    (TemplateURLRef::PostContent*)postContent
                                 transition:(ui::PageTransition)transition
-                               disposition:(WindowOpenDisposition)disposition
+                               disposition:
+                                   (ui::mojom::WindowOpenDisposition)disposition
     destination_url_entered_without_scheme:
         (bool)destination_url_entered_without_scheme {
   if (url.SchemeIs(url::kJavaScriptScheme)) {
@@ -665,8 +666,8 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
     UrlLoadParams params = UrlLoadParams::InNewTab(web_params);
     params.disposition = disposition;
     params.in_incognito = isIncognito;
-    if (params.disposition == WindowOpenDisposition::kCurrentTab) {
-      params.disposition = WindowOpenDisposition::kNewForegroundTab;
+    if (params.disposition == ui::mojom::WindowOpenDisposition::kCurrentTab) {
+      params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
     }
     UrlLoadingBrowserAgent::FromBrowser(self.browser)->Load(params);
   }
@@ -709,6 +710,30 @@ contextual_search::ContextualSearchSource ContextualSearchSourceFromEntrypoint(
 }
 
 - (void)omniboxDidEndEditing {
+}
+
+#pragma mark - VoiceSearchCoordinatorDelegate
+
+- (void)voiceSearchCoordinator:(ChromeCoordinator*)coordinator
+             didRecognizeQuery:(NSString*)query {
+  CHECK_EQ(coordinator, _voiceSearchCoordinator);
+  [self stopVoiceSearchCoordinator];
+  [_mediator sendVoiceSearchQuery:query];
+}
+
+- (void)voiceSearchCoordinator:(ChromeCoordinator*)coordinator
+        didRequestEditingQuery:(NSString*)query {
+  CHECK_EQ(coordinator, _voiceSearchCoordinator);
+  [self stopVoiceSearchCoordinator];
+  [self focusComposebox];
+  if ([_omniboxCoordinator isOmniboxFirstResponder]) {
+    [_omniboxCoordinator insertTextToOmnibox:query];
+  }
+}
+
+- (void)voiceSearchCoordinatorDidFinish:(ChromeCoordinator*)coordinator {
+  CHECK_EQ(coordinator, _voiceSearchCoordinator);
+  [self stopVoiceSearchCoordinator];
 }
 
 #pragma mark - Private helpers

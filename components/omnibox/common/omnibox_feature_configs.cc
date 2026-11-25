@@ -55,11 +55,6 @@ BASE_FEATURE(AiMode::kAiModeEligibility,
              base::FEATURE_DISABLED_BY_DEFAULT);
 AiMode::AiMode() {
   allow_ai_mode_matches = base::FeatureList::IsEnabled(kAllowAiModeMatches);
-  do_not_dedupe_aim_suggestions =
-      base::FeatureParam<bool>(&kAllowAiModeMatches,
-                               "DoNotDedupeAimSuggestions",
-                               do_not_dedupe_aim_suggestions)
-          .Get();
 
   do_not_show_historic_aim_suggestions =
       base::FeatureParam<bool>(&kAllowAiModeMatches,
@@ -318,6 +313,19 @@ Toolbelt::Toolbelt(const Toolbelt&) = default;
 Toolbelt& Toolbelt::operator=(const Toolbelt&) = default;
 Toolbelt::~Toolbelt() = default;
 
+BASE_FEATURE(kOmniboxDedupeBySuggestTemplateBehavior,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+DedupeBySuggestTemplateBehavior::DedupeBySuggestTemplateBehavior() {
+  enabled =
+      base::FeatureList::IsEnabled(kOmniboxDedupeBySuggestTemplateBehavior);
+}
+
+DedupeBySuggestTemplateBehavior::DedupeBySuggestTemplateBehavior(
+    const DedupeBySuggestTemplateBehavior&) = default;
+DedupeBySuggestTemplateBehavior& DedupeBySuggestTemplateBehavior::operator=(
+    const DedupeBySuggestTemplateBehavior&) = default;
+DedupeBySuggestTemplateBehavior::~DedupeBySuggestTemplateBehavior() = default;
+
 DocumentProvider::DocumentProvider() {
   enabled = base::FeatureList::IsEnabled(omnibox::kDocumentProvider);
   min_query_length =
@@ -348,39 +356,6 @@ DocumentProvider& DocumentProvider::operator=(const DocumentProvider&) =
     default;
 DocumentProvider& DocumentProvider::operator=(DocumentProvider&&) = default;
 DocumentProvider::~DocumentProvider() = default;
-
-BASE_FEATURE(AdjustOmniboxIndent::kAdjustOmniboxIndent,
-             "AdjustOmniboxIndent",
-             base::FEATURE_DISABLED_BY_DEFAULT);
-
-AdjustOmniboxIndent::AdjustOmniboxIndent() {
-  const bool enabled = base::FeatureList::IsEnabled(kAdjustOmniboxIndent);
-  indent_input_when_popup_closed =
-      enabled ? base::FeatureParam<bool>(&kAdjustOmniboxIndent,
-                                         "indent-input-when-popup-closed", true)
-                    .Get()
-              : false;
-  input_icon_indent_offset =
-      enabled ? base::FeatureParam<int>(&kAdjustOmniboxIndent,
-                                        "input-icon-indent-offset", -7)
-                    .Get()
-              : 0;
-  input_text_indent_offset =
-      enabled ? base::FeatureParam<int>(&kAdjustOmniboxIndent,
-                                        "input-text-indent-offset", -2)
-                    .Get()
-              : 0;
-  match_icon_indent_offset =
-      enabled ? base::FeatureParam<int>(&kAdjustOmniboxIndent,
-                                        "match-icon-indent-offset", -7)
-                    .Get()
-              : 0;
-  match_text_indent_offset =
-      enabled ? base::FeatureParam<int>(&kAdjustOmniboxIndent,
-                                        "match-text-indent-offset", -9)
-                    .Get()
-              : 0;
-}
 
 // static
 BASE_FEATURE(ForceAllowedToBeDefault::kForceAllowedToBeDefault,
@@ -723,7 +698,7 @@ ComposeboxSuggestionLimit::~ComposeboxSuggestionLimit() = default;
 // Feature to enable the short suggest path.
 BASE_FEATURE(SuggestPathClientConfig::kUseShortSuggestPathV1,
              "OmniboxUseShortSuggestPathV1",
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE_PARAM(std::string,
                    kSuggestPathClient,
                    &SuggestPathClientConfig::kUseShortSuggestPathV1,

@@ -32,7 +32,7 @@ class AccountSettingService;
 namespace autofill {
 class AddressDataManager;
 class AutofillWebDataService;
-class EntitySuppressionManager;
+class PersonalContextEntityMetadataManager;
 }  // namespace autofill
 
 namespace bookmarks {
@@ -157,8 +157,8 @@ class CommonControllerBuilder {
           web_data_service_on_disk,
       const scoped_refptr<autofill::AutofillWebDataService>&
           web_data_service_in_memory);
-  void SetEntitySuppressionManager(
-      autofill::EntitySuppressionManager* entity_suppression_manager);
+  void SetPersonalContextEntityMetadataManager(
+      autofill::PersonalContextEntityMetadataManager* entity_metadata_manager);
   void SetAimEligibilityService(AimEligibilityService* aim_eligibility_service);
   void SetBookmarkModel(bookmarks::BookmarkModel* bookmark_model);
   void SetBookmarkSyncService(
@@ -360,16 +360,12 @@ class CommonControllerBuilder {
   // Factory function for DataTypeController instances for wallet-related
   // datatypes, which live in `db_thread_` and have a delegate accessible via
   // AutofillWebDataService.
-  // If `with_transport_mode_support` is true, the controller will support
-  // transport mode, implemented via an independent AutofillWebDataService,
-  // namely `web_data_service_in_memory_`.
   std::unique_ptr<syncer::DataTypeController> CreateWalletDataTypeController(
       syncer::DataType type,
       const base::RepeatingCallback<
           base::WeakPtr<syncer::DataTypeControllerDelegate>(
               autofill::AutofillWebDataService*)>& delegate_from_web_data,
-      syncer::SyncService* sync_service,
-      bool with_transport_mode_support);
+      syncer::SyncService* sync_service);
 
   // For all above, nullopt indicates the corresponding setter wasn't invoked.
   // nullptr indicates the setter was invoked with nullptr.
@@ -434,8 +430,8 @@ class CommonControllerBuilder {
   SafeOptional<raw_ptr<TemplateURLService>> template_url_service_;
   SafeOptional<raw_ptr<skills::SkillsService>> skills_service_;
   SafeOptional<raw_ptr<notebooks::NotebooksService>> notebooks_service_;
-  SafeOptional<raw_ptr<autofill::EntitySuppressionManager>>
-      entity_suppression_manager_;
+  SafeOptional<raw_ptr<autofill::PersonalContextEntityMetadataManager>>
+      entity_metadata_manager_;
 };
 
 }  // namespace browser_sync

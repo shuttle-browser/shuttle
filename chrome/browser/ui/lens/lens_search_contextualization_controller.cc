@@ -4,6 +4,7 @@
 
 #include "chrome/browser/ui/lens/lens_search_contextualization_controller.h"
 
+#include "base/containers/linear_find.h"
 #include "base/functional/bind.h"
 #include "base/strings/string_split.h"
 #include "base/task/bind_post_task.h"
@@ -154,6 +155,10 @@ LensSearchContextualizationController::
 void LensSearchContextualizationController::CancelInFlightContextualization() {
   in_flight_weak_ptr_factory_.InvalidateWeakPtrs();
   is_page_context_eligible_ = false;
+  if (auto* query_controller =
+          lens_search_controller_->lens_overlay_query_controller()) {
+    query_controller->ResetPageContentData();
+  }
   page_contents_.clear();
   primary_content_type_ = lens::MimeType::kUnknown;
   viewport_screenshot_.reset();
@@ -510,20 +515,10 @@ void LensSearchContextualizationController::UpdatePageContext(
   // TODO(crbug.com/399215935): Ideally, this check should ensure that any of
   // the content date has not changed. For now, we only check if the
   // primary_content_type bytes have changed.
-  auto old_page_content_it = std::ranges::find_if(
-      page_contents_, [&primary_content_type](const auto& page_content) {
-        return page_content.content_type_ == primary_content_type;
-      });
-  auto new_page_content_it = std::ranges::find_if(
-      page_contents, [&primary_content_type](const auto& page_content) {
-        return page_content.content_type_ == primary_content_type;
-      });
-  const lens::PageContent* old_page_content =
-      old_page_content_it != page_contents_.end() ? &(*old_page_content_it)
-                                                  : nullptr;
-  const lens::PageContent* new_page_content =
-      new_page_content_it != page_contents.end() ? &(*new_page_content_it)
-                                                 : nullptr;
+  const lens::PageContent* old_page_content = base::LinearFind(
+      page_contents_, primary_content_type, &lens::PageContent::content_type_);
+  const lens::PageContent* new_page_content = base::LinearFind(
+      page_contents, primary_content_type, &lens::PageContent::content_type_);
 
   if (primary_content_type_ == primary_content_type && old_page_content &&
       new_page_content) {
@@ -1031,14 +1026,9 @@ void LensSearchContextualizationController::IsPageContextEligible(
 
 void LensSearchContextualizationController::CreatePageContextEligibilityAPI() {
   // Post to a background thread to avoid blocking the set up of the overlay.
-  // Use USER_BLOCKING priority because page context eligibility is on the
-  // critical path for opening the Lens Overlay and checking page context.
-  base::ThreadPool::PostTaskAndReplyWithResult(
-      FROM_HERE, {base::TaskPriority::USER_BLOCKING, base::MayBlock()},
-      base::BindOnce(&optimization_guide::PageContextEligibility::Get),
-      base::BindOnce(&LensSearchContextualizationController::
-                         OnPageContextEligibilityAPILoaded,
-                     weak_ptr_factory_.GetWeakPtr()));
+  optimization_guide::PageContextEligibility::GetAsync(base::BindOnce(
+      &LensSearchContextualizationController::OnPageContextEligibilityAPILoaded,
+      weak_ptr_factory_.GetWeakPtr()));
 }
 
 void LensSearchContextualizationController::CheckPageContextEligibilityOnly() {

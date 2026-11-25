@@ -42,7 +42,6 @@
 #include "base/trace_event/memory_dump_manager.h"
 #include "build/android_buildflags.h"
 #include "build/build_config.h"
-#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "components/lens/lens_features.h"
 #include "components/omnibox/browser/actions/contextual_search_action.h"
 #include "components/omnibox/browser/actions/omnibox_action_in_suggest.h"
@@ -65,7 +64,6 @@
 #include "components/omnibox/browser/document_provider.h"
 #include "components/omnibox/browser/enterprise_search_aggregator_provider.h"
 #include "components/omnibox/browser/featured_search_provider.h"
-#include "components/omnibox/browser/history_embeddings_provider.h"
 #include "components/omnibox/browser/history_fuzzy_provider.h"
 #include "components/omnibox/browser/history_quick_provider.h"
 #include "components/omnibox/browser/history_scoring_signals_annotator.h"
@@ -891,15 +889,12 @@ void AutocompleteController::OnProviderUpdate(
   }
 
   // Allow some providers to trigger updates after `stop_timer_` has fired.
-  // TODO(crbug.com/364303536) This is a temporary fix for allowing history
-  //   embedding answers to `UpdateResults()` after `stop_timer_` has fired.
   // TODO(crbug.com/408512535): This is a temporary fix for allowing the
   //   contextual search provider to `UpdateResults()` after `stop_timer_` has
   //   fired.
   bool allow_post_done_updates =
       provider &&
-      (provider->type() == AutocompleteProvider::Type::kHistoryEmbeddings ||
-       provider->type() == AutocompleteProvider::Type::kUnscopedExtension ||
+      (provider->type() == AutocompleteProvider::Type::kUnscopedExtension ||
        provider->type() == AutocompleteProvider::Type::kContextualSearch ||
        provider->type() ==
            AutocompleteProvider::Type::kEnterpriseSearchAggregator);
@@ -1252,12 +1247,9 @@ bool AutocompleteController::ShouldRunProvider(
           return (keyword_turl->starter_pack_id() ==
                   template_url_starter_pack_data::StarterPackId::kBookmarks);
 
-        // @History starter pack scope - run the history providers & featured
-        // search for embeddings IPH suggestions.
+        // @History starter pack scope - run the history providers.
         case AutocompleteProvider::Type::kHistoryQuick:
         case AutocompleteProvider::Type::kHistoryUrl:
-        case AutocompleteProvider::Type::kHistoryEmbeddings:
-        case AutocompleteProvider::Type::kFeaturedSearch:
           return (keyword_turl->starter_pack_id() ==
                   template_url_starter_pack_data::StarterPackId::kHistory);
 
@@ -1323,10 +1315,6 @@ bool AutocompleteController::ShouldRunProvider(
 
     case AutocompleteProvider::Type::kOpenTab:
       return config_.unscoped_open_tab_suggestions;
-#if !BUILDFLAG(IS_IOS)
-    case AutocompleteProvider::Type::kHistoryEmbeddings:
-      return history_embeddings::GetFeatureParameters().omnibox_unscoped;
-#endif
     default:
       break;
   }
@@ -1403,13 +1391,6 @@ void AutocompleteController::InitializeAsyncProviders(int provider_types) {
     providers_.push_back(base::MakeRefCounted<CalculatorProvider>(
         provider_client_.get(), this, search_provider_));
   }
-#if !BUILDFLAG(IS_IOS)
-  if (provider_types &
-      static_cast<int>(AutocompleteProvider::Type::kHistoryEmbeddings)) {
-    providers_.push_back(base::MakeRefCounted<HistoryEmbeddingsProvider>(
-        provider_client_.get(), this));
-  }
-#endif
   if (provider_types &
       static_cast<int>(AutocompleteProvider::Type::kUnscopedExtension)) {
     auto unscoped_extension_provider =
@@ -1513,10 +1494,8 @@ void AutocompleteController::InitializeSyncProviders(int provider_types) {
   }
   if (provider_types &
       static_cast<int>(AutocompleteProvider::Type::kHistoryFuzzy)) {
-    auto history_fuzzy_provider =
-        base::MakeRefCounted<HistoryFuzzyProvider>(provider_client_.get());
-    history_fuzzy_provider_ = history_fuzzy_provider.get();
-    providers_.push_back(std::move(history_fuzzy_provider));
+    providers_.push_back(
+        base::MakeRefCounted<HistoryFuzzyProvider>(provider_client_.get()));
   }
   if (provider_types & static_cast<int>(AutocompleteProvider::Type::kOpenTab)) {
     auto open_tab_provider =
@@ -1627,9 +1606,14 @@ void AutocompleteController::UpdateResult(UpdateType update_type,
   MlRerank(old_result);
 
   // If the entrypoints aren't visible, then Lens is active and contextual
-  // suggestions shouldn't be shown.
+  // suggestions shouldn't be shown. This doesn't apply if the client can open
+  // the co-browse panel or fulfill contextual suggestions without Lens (e.g.
+  // on desktop Android), where the Lens entrypoints don't exist at all.
   const bool is_lens_active =
-      !autocomplete_provider_client()->AreLensEntrypointsVisible();
+      !autocomplete_provider_client()->AreLensEntrypointsVisible() &&
+      !autocomplete_provider_client()->CanOpenCoBrowsePanelWithoutLens() &&
+      !autocomplete_provider_client()
+           ->CanFulfillContextualSuggestionsWithoutLens();
   const bool can_show_contextual_suggestions = CanShowContextualSuggestions(
       autocomplete_provider_client()->IsPagePaywalled());
   const bool mia_enabled =
@@ -1865,12 +1849,23 @@ void AutocompleteController::AttachActions() {
   if (omnibox_feature_configs::ContextualSearch::Get()
           .contextual_zero_suggest_lens_fulfillment &&
       input_.IsZeroSuggest()) {
-    internal_result_.AttachContextualSearchFulfillmentActionToMatches();
+    if (provider_client_->CanFulfillContextualSuggestionsWithoutLens()) {
+      // Lens isn't used for fulfillment (e.g. desktop Android); every
+      // contextual suggestion issues a contextual AI Mode query instead.
+      internal_result_.AttachContextualSearchFulfillmentActionToMatches(
+          /*include_lens_search_matches=*/true);
+    } else {
+#if !BUILDFLAG(IS_ANDROID)
+      // Lens-fulfilled ContextualSearchFulfillmentAction is Desktop-only;
+      // Android only has the Lens Overlay entry point.
+      internal_result_.AttachContextualSearchFulfillmentActionToMatches();
+#endif
 
-    // This should intentionally override the fulfillment action if present.
-    if (omnibox_feature_configs::ContextualSearch::Get()
-            .suggestions_fulfilled_by_lens_supported) {
-      internal_result_.AttachContextualSearchOpenLensActionToMatches();
+      // This should intentionally override the fulfillment action if present.
+      if (omnibox_feature_configs::ContextualSearch::Get()
+              .suggestions_fulfilled_by_lens_supported) {
+        internal_result_.AttachContextualSearchOpenLensActionToMatches();
+      }
     }
 
   } else if (input_.in_keyword_mode()) {
@@ -2018,7 +2013,7 @@ void AutocompleteController::UpdateAssociatedKeywords(
 
 void AutocompleteController::UpdateKeywordDescriptions(
     AutocompleteResult* result) {
-  // No need to update the description on Android since description for plain
+  // No need to update the description on mobile since description for plain
   // text match is not allowed.
   // The Lens searchbox does not require the search engine name description
   // label since all suggestions will be from a single source.
@@ -2028,7 +2023,7 @@ void AutocompleteController::UpdateKeywordDescriptions(
     return;
   }
 
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
   // Do not include search engine name for the DSE.
   auto* default_engine = template_url_service_->GetDefaultSearchProvider();
 #endif
@@ -2040,7 +2035,7 @@ void AutocompleteController::UpdateKeywordDescriptions(
         continue;
       }
 
-#if BUILDFLAG(IS_ANDROID)
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_IOS)
       if (default_engine && i->keyword == default_engine->keyword()) {
         continue;
       }
@@ -3015,8 +3010,7 @@ void AutocompleteController::MaybeCleanIphSuggestions(
                                           &AutocompleteMatch::IsToolbelt);
   if (has_toolbelt) {
     result->EraseMatchesWhere([](const auto& match) {
-      return match.IsIphSuggestion() &&
-             match.iph_type != IphType::kHistoryEmbeddingsDisclaimer;
+      return match.IsIphSuggestion();
     });
   }
 }

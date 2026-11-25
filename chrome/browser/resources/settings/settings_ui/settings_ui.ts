@@ -16,6 +16,7 @@ import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar.js';
 import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar_search_field.js';
 import 'chrome://resources/cr_elements/icons.html.js';
 import '../icons.html.js';
+import '../search/settings_search_dropdown.js';
 import '../settings_main/settings_main.js';
 import '../settings_menu/settings_menu.js';
 
@@ -79,14 +80,17 @@ export class SettingsUiElement extends SettingsUiElementBase {
       narrow_: {type: Boolean},
       lastSearchQuery_: {type: String},
       isSettingsRefresh2026_: {type: Boolean},
+      isSettingsSearch2026Enabled_: {type: Boolean},
     };
   }
 
   protected accessor toolbarSpinnerActive_: boolean = false;
   protected accessor narrow_: boolean = false;
-  private accessor lastSearchQuery_: string = '';
+  protected accessor lastSearchQuery_: string = '';
   private accessor isSettingsRefresh2026_: boolean =
       loadTimeData.getString('settingsRefresh2026') !== '';
+  protected accessor isSettingsSearch2026Enabled_: boolean =
+      loadTimeData.getBoolean('enableSettingsSearch2026');
 
   private activeTimer_: ActiveTimer|null = null;
 
@@ -190,6 +194,12 @@ export class SettingsUiElement extends SettingsUiElementBase {
     this.$.scrollableShadow.classList.toggle(
         'force-on', route === routes.PRIVACY_GUIDE || route.depth > 1);
 
+    // TODO(b:578148222): Support the URL `search` param with the search
+    // dropdown. Until then, skip the in-page search when it's enabled.
+    if (this.isSettingsSearch2026Enabled_) {
+      return;
+    }
+
     const urlSearchQuery =
         Router.getInstance().getQueryParameters().get('search') || '';
     if (urlSearchQuery === this.lastSearchQuery_) {
@@ -229,6 +239,11 @@ export class SettingsUiElement extends SettingsUiElementBase {
    * Handles the 'search-changed' event fired from the toolbar.
    */
   protected onSearchChanged_(e: CustomEvent<string>) {
+    if (this.isSettingsSearch2026Enabled_) {
+      this.lastSearchQuery_ = e.detail;
+      return;
+    }
+
     let query = e.detail;
     if (query.length > MAX_QUERY_LENGTH) {
       query = query.substring(0, MAX_QUERY_LENGTH);
@@ -245,6 +260,7 @@ export class SettingsUiElement extends SettingsUiElementBase {
    * Handles the 'search-finished' event fired from settings-main.
    */
   protected onSearchFinished_(e: CustomEvent<SearchFinishedDetail>) {
+    assert(!this.isSettingsSearch2026Enabled_);
     this.searchMetricsRecorder_.onSearchFinished(
         e.detail.query, e.detail.matchCount);
   }
@@ -253,6 +269,7 @@ export class SettingsUiElement extends SettingsUiElementBase {
    * Handles the 'search-result-interaction' event fired from settings-main.
    */
   protected onSearchResultInteraction_() {
+    assert(!this.isSettingsSearch2026Enabled_);
     this.searchMetricsRecorder_.onSearchResultInteraction();
   }
 

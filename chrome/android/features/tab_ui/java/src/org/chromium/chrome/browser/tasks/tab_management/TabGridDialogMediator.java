@@ -59,6 +59,7 @@ import org.chromium.chrome.browser.tab.TabLaunchTypeUtils;
 import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncServiceFactory;
 import org.chromium.chrome.browser.tab_ui.RecyclerViewPosition;
+import org.chromium.chrome.browser.tab_ui.undo_tab_close_snackbar.UndoClosureRestorer;
 import org.chromium.chrome.browser.tabmodel.TabClosingSource;
 import org.chromium.chrome.browser.tabmodel.TabClosureParamsUtils;
 import org.chromium.chrome.browser.tabmodel.TabCreatorUtil;
@@ -70,6 +71,7 @@ import org.chromium.chrome.browser.tabmodel.TabGroupUtils.TabMovedCallback;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelUtils;
+import org.chromium.chrome.browser.tabmodel.undo.UndoClosureSnapshot;
 import org.chromium.chrome.browser.tasks.tab_management.TabGridContextMenuCoordinator.ShowTabListEditor;
 import org.chromium.chrome.browser.tasks.tab_management.TabGridItemLongPressOrchestrator.CancelLongPressTabItemEventListener;
 import org.chromium.chrome.browser.tasks.tab_management.TabListEditorAction.ButtonType;
@@ -282,6 +284,11 @@ public class TabGridDialogMediator
     private @Nullable String mCurrentGroupModifiedTitle;
     private @Nullable CollaborationActivityMessageCardViewModel mCollaborationActivityPropertyModel;
 
+    // Tracks the most recent closure snapshot eligible to reselect its `ClosedTab.wasSelected` tab
+    // on undo. Cleared when the user manually selects a tab, switches tab models, hides the dialog,
+    // or resolves the snackbar.
+    private @Nullable UndoClosureSnapshot mReselectableSnapshot;
+
     TabGridDialogMediator(
             Activity activity,
             DialogController dialogController,
@@ -390,6 +397,13 @@ public class TabGridDialogMediator
 
                     @Override
                     public void didSelectTab(Tab tab, @TabSelectionType int type, int lastId) {
+                        switch (type) {
+                            case TabSelectionType.FROM_USER,
+                                    TabSelectionType.FROM_OMNIBOX,
+                                    TabSelectionType.FROM_NEW,
+                                    TabSelectionType.FROM_UNDO ->
+                                    mReselectableSnapshot = null;
+                        }
                         if (!isVisible()) return;
 
                         // When opened from the tab switcher, the switcher handles the tab switch
@@ -669,6 +683,7 @@ public class TabGridDialogMediator
     }
 
     void hideDialog(boolean showAnimation) {
+        mReselectableSnapshot = null;
         if (!isVisible()) {
             if (!showAnimation) {
                 // Forcibly finish any pending animations.
@@ -1046,7 +1061,7 @@ public class TabGridDialogMediator
     private void onDeferredKeyboardHidden() {
         if (!mModel.get(TabGridDialogProperties.IS_TITLE_TEXT_FOCUSED)) return;
         View decorView = mActivity.getWindow().getDecorView();
-        if (KeyboardVisibilityDelegate.getInstance().isKeyboardShowing(decorView)) return;
+        if (KeyboardVisibilityDelegate.getInstance().isKeyboardObscuring(decorView)) return;
         onKeyboardHidden();
     }
 
@@ -1335,6 +1350,15 @@ public class TabGridDialogMediator
     public void onAction(@Nullable Object actionData) {
         assumeNonNull(actionData);
         TabModel model = assumeNonNull(mCurrentTabModelSupplier.get());
+        if (actionData instanceof UndoClosureSnapshot snapshot) {
+            // Reference equality is intentional: each closure creates a distinct snapshot
+            // instance, and only the most recently queued closure may reselect a tab.
+            boolean reselect = !model.isIncognitoBranded() && snapshot == mReselectableSnapshot;
+            mReselectableSnapshot = null;
+            UndoClosureRestorer.restoreClosure(
+                    model, snapshot, reselect, mActivity, mSnackbarManager);
+            return;
+        }
         if (actionData instanceof Integer tabId) {
             model.cancelTabClosure(tabId);
         } else {
@@ -1352,6 +1376,13 @@ public class TabGridDialogMediator
     @Override
     public void onDismissNoAction(@Nullable Object actionData) {
         assumeNonNull(actionData);
+        // Snapshot closures are committed at close time, so there is nothing to commit here.
+        if (actionData instanceof UndoClosureSnapshot snapshot) {
+            if (snapshot == mReselectableSnapshot) {
+                mReselectableSnapshot = null;
+            }
+            return;
+        }
         TabModel model = assumeNonNull(mCurrentTabModelSupplier.get());
         if (actionData instanceof Integer tabId) {
             model.commitTabClosure(tabId);
@@ -1415,6 +1446,7 @@ public class TabGridDialogMediator
 
     private void onTabModelChanged(@Nullable TabModel newTabModel, @Nullable TabModel oldTabModel) {
         removeTabModelObserver(oldTabModel);
+        mReselectableSnapshot = null;
 
         if (newTabModel != null) {
             boolean isIncognito = newTabModel.isIncognito();
@@ -1460,6 +1492,12 @@ public class TabGridDialogMediator
 
     Runnable getScrimClickRunnableForTesting() {
         return mScrimClickRunnable;
+    }
+
+    void setReselectableSnapshotForTesting(@Nullable UndoClosureSnapshot snapshot) {
+        var oldValue = mReselectableSnapshot;
+        mReselectableSnapshot = snapshot;
+        ResettersForTesting.register(() -> mReselectableSnapshot = oldValue);
     }
 
     private void removeCollaborationActivityMessageCard() {

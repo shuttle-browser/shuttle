@@ -8,7 +8,6 @@
 #include <memory>
 #include <utility>
 
-#include "ash/constants/ash_features.h"
 #include "ash/public/cpp/window_properties.h"
 #include "ash/shell.h"
 #include "ash/style/system_decoration.h"
@@ -45,7 +44,6 @@
 #include "ui/compositor/layer_animation_observer.h"
 #include "ui/compositor/layer_animator.h"
 #include "ui/compositor/layer_observer.h"
-#include "ui/compositor/scoped_layer_request.h"
 #include "ui/gfx/geometry/insets.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
@@ -57,7 +55,7 @@
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/widget/widget.h"
 #include "ui/wm/core/coordinate_conversion.h"
-#include "ui/wm/core/shadow_controller.h"
+#include "ui/wm/core/decoration_controller.h"
 #include "ui/wm/core/window_animations.h"
 #include "ui/wm/core/window_util.h"
 
@@ -243,9 +241,9 @@ void ScopedOverviewTransformWindow::RestoreWindow(bool reset_transform,
                                                   bool animate) {
   base::AutoReset<bool> restoring(&is_restoring_, true);
 
-  // Shadow controller may be null on shutdown.
-  if (auto* shadow_controller = Shell::Get()->shadow_controller()) {
-    shadow_controller->UpdateShadowForWindow(window_);
+  // Decoration controller may be null on shutdown.
+  if (auto* decoration_controller = Shell::Get()->decoration_controller()) {
+    decoration_controller->UpdateDecorationForWindow(window_);
   }
 
   // We will handle clipping here, no need to do anything in the destructor.
@@ -277,16 +275,6 @@ void ScopedOverviewTransformWindow::RestoreWindow(bool reset_transform,
     // Use identity transform directly to reset window's transform when exiting
     // overview.
     window_util::SetTransform(window_, gfx::Transform());
-
-    // Add requests to cache render surface and perform trilinear filtering for
-    // the exit animation of overview mode. The requests will be removed when
-    // the exit animation finishes.
-    if (features::IsTrilinearFilteringEnabled()) {
-      for (auto& settings : animation_settings_list) {
-        settings->CacheRenderSurface();
-        settings->TrilinearFiltering();
-      }
-    }
   }
 
   ScopedOverviewAnimationSettings animation_settings(
@@ -484,21 +472,7 @@ bool ScopedOverviewTransformWindow::IsMinimizedOrTucked() const {
 }
 
 void ScopedOverviewTransformWindow::PrepareForOverview() {
-  Shell::Get()->shadow_controller()->UpdateShadowForWindow(window_);
-
-  // Add requests to cache render surface and perform trilinear filtering. The
-  // requests will be removed in dtor. So the requests will be valid during the
-  // enter animation and the whole time during overview mode. For the exit
-  // animation of overview mode, we need to add those requests again.
-  if (features::IsTrilinearFilteringEnabled()) {
-    for (auto* window :
-         window_util::GetVisibleTransientTreeIterator(GetOverviewWindow())) {
-      cache_render_surface_locks_.push_back(
-          std::make_unique<ui::ScopedCacheRenderSurfaceLock>(window->layer()));
-      trilinear_filtering_locks_.push_back(
-          std::make_unique<ui::ScopedTrilinearFilteringLock>(window->layer()));
-    }
-  }
+  Shell::Get()->decoration_controller()->UpdateDecorationForWindow(window_);
 }
 
 void ScopedOverviewTransformWindow::EnsureVisible() {

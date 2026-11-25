@@ -80,13 +80,6 @@ void LogPageContentAnnotationsStorageStatus(
       status);
 }
 
-void LogRelatedSearchesExtracted(bool success) {
-  base::UmaHistogramBoolean(
-      "OptimizationGuide.PageContentAnnotationsService."
-      "RelatedSearchesExtracted",
-      success);
-}
-
 void LogRelatedSearchesCacheHit(bool cache_hit) {
   base::UmaHistogramBoolean(
       "OptimizationGuide.PageContentAnnotationsService.RelatedSearchesCache."
@@ -622,7 +615,6 @@ void PageContentAnnotationsService::OnRelatedSearchesExtracted(
       status ==
           continuous_search::SearchResultExtractorClientStatus::kSuccess ||
       !related_searches_from_zps_prefetch.empty();
-  LogRelatedSearchesExtracted(success);
 
   if (!success) {
     return;
@@ -873,7 +865,6 @@ void PageContentAnnotationsService::PersistRemotePageMetadata(
     model_annotations.entities.emplace_back(entity.entity_id(), entity.score());
   }
 
-  std::vector<history::VisitContentModelAnnotations::Category> categories;
   for (const auto& category : page_entities_metadata.categories()) {
     int category_score = static_cast<int>(100 * category.score());
     if (category_score < features::kMinimumPageCategoryScoreToPersist) {

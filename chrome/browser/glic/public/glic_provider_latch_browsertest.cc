@@ -12,6 +12,7 @@
 #include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_provider.h"
@@ -26,6 +27,7 @@
 #include "components/policy/core/common/policy_map.h"
 #include "components/policy/core/common/policy_types.h"
 #include "components/policy/policy_constants.h"
+#include "components/prefs/pref_service.h"
 #include "content/public/test/browser_test.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -176,6 +178,7 @@ IN_PROC_BROWSER_TEST_F(GlicProviderLatchGeicPolicyBrowserTest,
             GlicProviderLatch::GetProvider(*profile));
   EXPECT_EQ(GetLocalizedGuestURL(GURL(kCanonicalPolicyUrl)),
             GetGlicProviderSpec(profile).GetGuestUrl(profile));
+  EXPECT_FALSE(GetGlicProviderSpec(profile).CanSwitchBetweenGeminiProviders());
 }
 
 #if !BUILDFLAG(IS_CHROMEOS)
@@ -190,8 +193,87 @@ IN_PROC_BROWSER_TEST_F(GlicProviderLatchGeicPolicyBrowserTest,
             GlicProviderLatch::GetProvider(second_profile));
   EXPECT_EQ(GetLocalizedGuestURL(GURL(kCanonicalPolicyUrl)),
             GetGlicProviderSpec(&second_profile).GetGuestUrl(&second_profile));
+  EXPECT_FALSE(
+      GetGlicProviderSpec(&second_profile).CanSwitchBetweenGeminiProviders());
 }
 #endif  // !BUILDFLAG(IS_CHROMEOS)
+
+// With `GeminiEnterpriseUrl` configured at `policy::POLICY_SCOPE_MACHINE`,
+// personal profiles latch as Gemini Enterprise with
+// `CanSwitchBetweenGeminiProviders() == true` by default, latch as consumer
+// Gemini on the next browser launch after setting
+// `glic::prefs::kGlicAssistantSelection` to `AssistantSelection::kConsumer`,
+// and latch back as Gemini Enterprise on the subsequent launch after setting
+// it to `AssistantSelection::kEnterprise`.
+class GlicProviderLatchGeicDevicePolicyBrowserTest
+    : public InProcessBrowserTest {
+ public:
+  GlicProviderLatchGeicDevicePolicyBrowserTest()
+      : glic_test_env_(GlicTestEnvironmentConfig{}, GetGeicEnabledFeatures()) {}
+
+  void SetUpInProcessBrowserTestFixture() override {
+    InProcessBrowserTest::SetUpInProcessBrowserTestFixture();
+    policy_provider_.SetDefaultReturns(
+        /*is_initialization_complete_return=*/true,
+        /*is_first_policy_load_complete_return=*/true);
+    policy::PolicyMap policies;
+    policies.Set(policy::key::kGeminiEnterpriseUrl,
+                 policy::POLICY_LEVEL_MANDATORY, policy::POLICY_SCOPE_MACHINE,
+                 policy::POLICY_SOURCE_CLOUD, base::Value(kPolicyUrl), nullptr);
+    policy_provider_.UpdateChromePolicy(policies);
+    policy::BrowserPolicyConnector::SetPolicyProviderForTesting(
+        &policy_provider_);
+  }
+
+ protected:
+  testing::NiceMock<policy::MockConfigurationPolicyProvider> policy_provider_;
+  GlicTestEnvironment glic_test_env_;
+};
+
+// Step 1 (initial launch, default `kAuto` selection): verifies the profile
+// latches to Gemini Enterprise with provider switching enabled in Settings,
+// then sets `kGlicAssistantSelection` to `kConsumer` for the next launch.
+IN_PROC_BROWSER_TEST_F(GlicProviderLatchGeicDevicePolicyBrowserTest,
+                       PRE_PRE_UserOptOutLatchesGeminiOnNextLaunch) {
+  Profile* profile = browser()->GetProfile();
+  EXPECT_EQ(GlicProvider::kGeminiEnterprise,
+            GlicProviderLatch::GetProvider(*profile));
+  EXPECT_EQ(GetLocalizedGuestURL(GURL(kCanonicalPolicyUrl)),
+            GetGlicProviderSpec(profile).GetGuestUrl(profile));
+  EXPECT_TRUE(GetGlicProviderSpec(profile).CanSwitchBetweenGeminiProviders());
+
+  profile->GetPrefs()->SetInteger(
+      prefs::kGlicAssistantSelection,
+      static_cast<int>(prefs::AssistantSelection::kConsumer));
+}
+
+// Step 2 (second launch, after opting out to `kConsumer`): verifies the
+// profile now latches to consumer Gemini while keeping provider switching
+// enabled in Settings, then sets `kGlicAssistantSelection` to `kEnterprise`
+// for the next launch.
+IN_PROC_BROWSER_TEST_F(GlicProviderLatchGeicDevicePolicyBrowserTest,
+                       PRE_UserOptOutLatchesGeminiOnNextLaunch) {
+  Profile* profile = browser()->GetProfile();
+  EXPECT_EQ(GlicProvider::kGemini, GlicProviderLatch::GetProvider(*profile));
+  EXPECT_TRUE(GetGlicProviderSpec(profile).CanSwitchBetweenGeminiProviders());
+
+  profile->GetPrefs()->SetInteger(
+      prefs::kGlicAssistantSelection,
+      static_cast<int>(prefs::AssistantSelection::kEnterprise));
+}
+
+// Step 3 (third launch, after switching back to `kEnterprise`): verifies the
+// profile latches back to Gemini Enterprise with the policy guest URL and
+// provider switching still enabled in Settings.
+IN_PROC_BROWSER_TEST_F(GlicProviderLatchGeicDevicePolicyBrowserTest,
+                       UserOptOutLatchesGeminiOnNextLaunch) {
+  Profile* profile = browser()->GetProfile();
+  EXPECT_EQ(GlicProvider::kGeminiEnterprise,
+            GlicProviderLatch::GetProvider(*profile));
+  EXPECT_EQ(GetLocalizedGuestURL(GURL(kCanonicalPolicyUrl)),
+            GetGlicProviderSpec(profile).GetGuestUrl(profile));
+  EXPECT_TRUE(GetGlicProviderSpec(profile).CanSwitchBetweenGeminiProviders());
+}
 
 }  // namespace
 }  // namespace glic

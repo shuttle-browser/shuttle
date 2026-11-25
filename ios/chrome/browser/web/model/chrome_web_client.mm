@@ -12,7 +12,6 @@
 #import "base/check.h"
 #import "base/command_line.h"
 #import "base/feature_list.h"
-#import "base/ios/ios_util.h"
 #import "base/ios/ns_error_util.h"
 #import "base/memory/ref_counted_memory.h"
 #import "base/metrics/histogram_functions.h"
@@ -26,7 +25,6 @@
 #import "components/autofill/ios/common/features.h"
 #import "components/autofill/ios/form_util/form_handlers_java_script_feature.h"
 #import "components/autofill/ios/form_util/programmatic_form_submission_handler_java_script_feature.h"
-#import "components/dom_distiller/core/url_constants.h"
 #import "components/enterprise/connectors/core/features.h"
 #import "components/enterprise/connectors/core/reporting_event_router.h"
 #import "components/google/core/common/google_util.h"
@@ -40,8 +38,10 @@
 #import "components/search_engines/template_url_service.h"
 #import "components/strings/grit/components_strings.h"
 #import "components/supervised_user/core/browser/supervised_user_interstitial.h"
+#import "components/sync/base/features.h"
 #import "components/translate/ios/browser/translate_java_script_feature.h"
 #import "components/version_info/version_info.h"
+#import "components/web_distiller/core/url_constants.h"
 #import "components/webauthn/ios/features.h"
 #import "components/webauthn/ios/passkey_java_script_feature.h"
 #import "ios/chrome/browser/autofill/model/bottom_sheet/autofill_bottom_sheet_java_script_feature.h"
@@ -52,6 +52,7 @@
 #import "ios/chrome/browser/enterprise/connectors/device_trust/model/device_trust_util.h"
 #import "ios/chrome/browser/enterprise/connectors/ios_enterprise_interstitial.h"
 #import "ios/chrome/browser/enterprise/connectors/reporting/ios_reporting_event_router_factory.h"
+#import "ios/chrome/browser/enterprise/proxy/model/enterprise_proxy_error.h"
 #import "ios/chrome/browser/flags/chrome_switches.h"
 #import "ios/chrome/browser/https_upgrades/model/https_upgrade_service_factory.h"
 #import "ios/chrome/browser/intelligence/actor/tools/model/action_target_java_script_feature.h"
@@ -94,6 +95,7 @@
 #import "ios/chrome/browser/supervised_user/model/supervised_user_interstitial_java_script_feature.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_service_factory.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_url_filter_tab_helper.h"
+#import "ios/chrome/browser/sync/model/tab_context_decryption_token_java_script_feature.h"
 #import "ios/chrome/browser/unified_consent/model/url_keyed_data_collection_consent_helper_factory_ios.h"
 #import "ios/chrome/browser/unified_consent/model/url_keyed_data_collection_consent_helper_ios.h"
 #import "ios/chrome/browser/universal_optout/model/eligibility_utils.h"
@@ -103,6 +105,7 @@
 #import "ios/chrome/browser/web/model/choose_file/choose_file_tab_helper.h"
 #import "ios/chrome/browser/web/model/chrome_main_parts.h"
 #import "ios/chrome/browser/web/model/dark_mode_detection/dark_mode_detection_java_script_feature.h"
+#import "ios/chrome/browser/web/model/enterprise_proxy_error_page_util.h"
 #import "ios/chrome/browser/web/model/error_page_util.h"
 #import "ios/chrome/browser/web/model/font_size/font_size_java_script_feature.h"
 #import "ios/chrome/browser/web/model/image_fetch/image_fetch_java_script_feature.h"
@@ -407,7 +410,7 @@ scoped_refptr<base::RefCountedMemory> ChromeWebClient::GetDataResourceBytes(
 
 void ChromeWebClient::GetAdditionalWebUISchemes(
     std::vector<std::string>* additional_schemes) {
-  additional_schemes->push_back(dom_distiller::kDomDistillerScheme);
+  additional_schemes->push_back(web_distiller::kWebDistillerScheme);
 }
 
 void ChromeWebClient::PostBrowserURLRewriterCreation(
@@ -523,6 +526,11 @@ std::vector<web::JavaScriptFeature*> ChromeWebClient::GetJavaScriptFeatures(
     features.push_back(DeviceTrustJavaScriptFeature::GetInstance());
   }
 
+  if (base::FeatureList::IsEnabled(syncer::kSyncEncryptedTabContext)) {
+    features.push_back(
+        TabContextDecryptionTokenJavaScriptFeature::GetInstance());
+  }
+
   return features;
 }
 
@@ -559,6 +567,10 @@ void ChromeWebClient::PrepareErrorPage(
     DCHECK_EQ(kHttpsOnlyModeErrorCode, final_underlying_error.code);
     std::move(callback).Run(
         GetHttpsOnlyModeErrorPageHtml(web_state, navigation_id));
+  } else if ([final_underlying_error.domain
+                 isEqualToString:kEnterpriseProxyErrorDomain]) {
+    std::move(callback).Run(GetEnterpriseProxyErrorPageHtml(
+        web_state, url, error, is_post, is_off_the_record, navigation_id));
   } else if (ssl_info.has_value()) {
     IOSSSLErrorHandler::HandleSSLError(
         web_state, net::MapCertStatusToNetError(ssl_info.value().cert_status),
@@ -578,11 +590,8 @@ UIView* ChromeWebClient::GetWindowedContainer() {
 }
 
 bool ChromeWebClient::EnableFullscreenAPI() const {
-  // Only use the Fullscreen API on iOS 16.4+, which fixes serious crashes in
-  // earlier versions. Also, only enable on iPad to match expectations of the
-  // iOS web ecosystem.
-  return base::ios::IsRunningOnOrLater(16, 4, 0) &&
-         ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET;
+  // Only enable on iPad to match expectations of the iOS web ecosystem.
+  return ui::GetDeviceFormFactor() == ui::DEVICE_FORM_FACTOR_TABLET;
 }
 
 bool ChromeWebClient::EnableLongPressUIContextMenu() const {

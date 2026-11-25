@@ -27,7 +27,6 @@
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/tabs/inactive_window_mouse_event_controller.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_delegate.h"
 #include "chrome/browser/ui/views/extensions/security_dialog_tracker.h"
@@ -58,6 +57,7 @@
 #include "third_party/blink/public/mojom/webid/federated_request.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
+#include "ui/gfx/image/image_skia.h"
 #include "ui/gfx/image/image_skia_operations.h"
 #include "ui/gfx/native_ui_types.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
@@ -158,8 +158,7 @@ void FedCmAccountSelectionView::OnPageActionClicked() {
                           accounts_[0]->browser_trusted_login_state) ==
                           content::IdentityRequestAccount::LoginState::kSignIn;
 
-  auto* features = tab_->GetTabFeatures();
-  auto* controller = features->page_action_controller();
+  auto* controller = page_actions::PageActionController::From(tab_);
 
   // Passing false to hide_dialog_widget_after_idp_login_popup_ to ensure the
   // widget is shown.
@@ -187,7 +186,7 @@ void FedCmAccountSelectionView::OnPageActionClicked() {
         l10n_util::GetStringUTF16(IDS_FEDERATION_SIGNING_IN_TITLE));
     controller->ShowSuggestionChip(kActionFederation);
     controller->Show(kActionFederation);
-    if (!NotifyDelegate([&]() {
+    if (!RunAndCheckAlive([&]() {
           delegate_->OnAccountSelected(
               accounts_[0]->identity_provider->idp_metadata.config_url,
               accounts_[0]->id,
@@ -230,12 +229,10 @@ void FedCmAccountSelectionView::ShowDialogWidget() {
     params->get_dialog_bounds = base::BindRepeating(
         &FedCmAccountSelectionView::GetDialogBounds, base::Unretained(this));
     // Features may not be available under some unit tests. Check first.
-    if (auto* features = tab_->GetTabFeatures()) {
-      if (auto* inactive_event_controller =
-              features->inactive_window_mouse_event_controller()) {
-        tab_accept_mouse_events_ =
-            inactive_event_controller->AcceptMouseEventsWhileWindowInactive();
-      }
+    if (auto* inactive_event_controller =
+            tabs::InactiveWindowMouseEventController::From(tab_)) {
+      tab_accept_mouse_events_ =
+          inactive_event_controller->AcceptMouseEventsWhileWindowInactive();
     }
   }
   ShowDialog(GetDialogWidget(), std::move(params));
@@ -316,10 +313,8 @@ bool FedCmAccountSelectionView::Show(
         return true;
       }
       if (tab_) {
-        if (auto* features = tab_->GetTabFeatures()) {
-          if (auto* controller = features->page_action_controller()) {
-            controller->Hide(kActionFederation);
-          }
+        if (auto* controller = page_actions::PageActionController::From(tab_)) {
+          controller->Hide(kActionFederation);
         }
       }
     }
@@ -375,7 +370,7 @@ bool FedCmAccountSelectionView::Show(
                                  /*show_back_button=*/false);
         }
         state_ = State::VERIFYING;
-        if (!NotifyDelegate([&]() {
+        if (!RunAndCheckAlive([&]() {
               delegate_->OnAccountSelected(
                   new_idp_data.idp_metadata.config_url, new_accounts_[0]->id,
                   new_accounts_[0]->idp_claimed_login_state.value_or(
@@ -683,6 +678,12 @@ void FedCmAccountSelectionView::ShowUrl(LinkType link_type, const GURL& url) {
     case LinkType::PRIVACY_POLICY:
       UMA_HISTOGRAM_BOOLEAN("Blink.FedCm.SignUp.PrivacyPolicyClicked", true);
       break;
+
+    case LinkType::IDP_LINK:
+      // Not recorded, so that the histograms above only count the RP's links.
+      // TODO(crbug.com/581372729): Record clicks on each of the identity
+      // provider's links, and how often the links are shown.
+      break;
   }
 }
 
@@ -743,7 +744,7 @@ void FedCmAccountSelectionView::CreateOrUpdateViewAndWidget(
 }
 
 void FedCmAccountSelectionView::OnAccountsDisplayed() {
-  if (!NotifyDelegate([&]() { delegate_->OnAccountsDisplayed(); })) {
+  if (!RunAndCheckAlive([&]() { delegate_->OnAccountsDisplayed(); })) {
     return;
   }
 }
@@ -776,7 +777,7 @@ bool FedCmAccountSelectionView::OnAccountSelected(
       (state_ == State::SINGLE_ACCOUNT_PICKER &&
        dialog_type_ == DialogType::BUBBLE)) {
     state_ = State::VERIFYING;
-    if (!NotifyDelegate([&]() {
+    if (!RunAndCheckAlive([&]() {
           delegate_->OnAccountSelected(
               idp_data.idp_metadata.config_url, account->id,
               account->idp_claimed_login_state.value_or(
@@ -926,7 +927,7 @@ void FedCmAccountSelectionView::OnLoginToIdP(const GURL& idp_config_url,
         webid::AccountChooserResult::kUseOtherAccountButton;
   }
 
-  if (!NotifyDelegate(
+  if (!RunAndCheckAlive(
           [&]() { delegate_->OnLoginToIdP(idp_config_url, idp_login_url); })) {
     return;
   }
@@ -977,7 +978,7 @@ void FedCmAccountSelectionView::OnGotIt(const ui::Event& event) {
     return;
   }
 
-  if (!NotifyDelegate(
+  if (!RunAndCheckAlive(
           [&]() { delegate_->OnDismiss(DismissReason::kGotItButton); })) {
     return;
   }
@@ -990,10 +991,10 @@ void FedCmAccountSelectionView::OnMoreDetails(const ui::Event& event) {
     return;
   }
 
-  if (!NotifyDelegate([&]() { delegate_->OnMoreDetails(); })) {
+  if (!RunAndCheckAlive([&]() { delegate_->OnMoreDetails(); })) {
     return;
   }
-  if (!NotifyDelegate(
+  if (!RunAndCheckAlive(
           [&]() { delegate_->OnDismiss(DismissReason::kMoreDetailsButton); })) {
     return;
   }
@@ -1008,7 +1009,12 @@ content::WebContents* FedCmAccountSelectionView::ShowModalDialog(
     // TODO(crbug.com/324052630): Support add account with multi IDP API. An add
     // account pop-up of a different IDP might be open, so this might need to
     // load the new IDP's login URL.
-    popup_window_->ResizeAndFocusPopupWindow();
+    //
+    // Resizing and focusing the pop-up can synchronously destroy `this`.
+    if (!RunAndCheckAlive(
+            [&]() { popup_window_->ResizeAndFocusPopupWindow(); })) {
+      return nullptr;
+    }
   } else {
     popup_window_ = CreatePopupWindow();
   }
@@ -1078,7 +1084,12 @@ void FedCmAccountSelectionView::CloseModalDialog() {
     // This ensures that OnPopupWindowDestroyed is only called when the user
     // closes the popup.
     popup_window_->ResetObserver();
-    popup_window_->ClosePopupWindow();
+
+    // Closing the pop-up can synchronously destroy `this`, e.g. if it activates
+    // another tab.
+    if (!RunAndCheckAlive([&]() { popup_window_->ClosePopupWindow(); })) {
+      return;
+    }
     popup_window_.reset();
 
     UpdateDialogVisibilityAndPosition();
@@ -1121,8 +1132,8 @@ bool FedCmAccountSelectionView::CanFitInWebContents() {
 
 void FedCmAccountSelectionView::UpdateDialogPosition() {
   // Features may not be available under some unit tests. Check first.
-  if (auto* features = tab_->GetTabFeatures()) {
-    features->tab_dialog_manager()->UpdateModalDialogBounds();
+  if (auto* tab_dialog_manager = tabs::TabDialogManager::From(tab_)) {
+    tab_dialog_manager->UpdateModalDialogBounds();
   }
 }
 
@@ -1190,11 +1201,11 @@ void FedCmAccountSelectionView::OnPopupWindowDestroyed() {
   Close(/*notify_delegate=*/true, /*hide_widget=*/false);
 }
 
-bool FedCmAccountSelectionView::NotifyDelegate(
-    base::FunctionRef<void()> notify_callback) {
+bool FedCmAccountSelectionView::RunAndCheckAlive(
+    base::FunctionRef<void()> callback) {
   base::WeakPtr<FedCmAccountSelectionView> weak_this =
       weak_ptr_factory_.GetWeakPtr();
-  notify_callback();
+  callback();
   return weak_this != nullptr;
 }
 
@@ -1239,12 +1250,10 @@ void FedCmAccountSelectionView::Close(bool notify_delegate, bool hide_widget) {
   scoped_user_data_.reset();
   CancelAmbientBubble();
   if (IsAmbientEnabled() && tab_) {
-    if (auto* features = tab_->GetTabFeatures()) {
-      if (auto* controller = features->page_action_controller()) {
-        controller->Hide(kActionFederation);
-        controller->HideSuggestionChip(kActionFederation);
-        controller->HideAnchoredMessage(kActionFederation);
-      }
+    if (auto* controller = page_actions::PageActionController::From(tab_)) {
+      controller->Hide(kActionFederation);
+      controller->HideSuggestionChip(kActionFederation);
+      controller->HideAnchoredMessage(kActionFederation);
     }
   }
 
@@ -1333,21 +1342,19 @@ FedCmAccountSelectionView::CreatePopupWindow() {
 void FedCmAccountSelectionView::ShowDialog(
     views::Widget* widget,
     std::unique_ptr<tabs::TabDialogManager::Params> params) {
-  tab_->GetTabFeatures()->tab_dialog_manager()->ShowDialog(widget,
-                                                           std::move(params));
+  tabs::TabDialogManager::From(tab_)->ShowDialog(widget, std::move(params));
 }
 
 void FedCmAccountSelectionView::UpdateDialogVisibility(
     bool requested_visibility) {
-  if (auto* features = tab_->GetTabFeatures()) {
-    features->tab_dialog_manager()->UpdateDialogVisibility(
-        requested_visibility);
+  if (auto* tab_dialog_manager = tabs::TabDialogManager::From(tab_)) {
+    tab_dialog_manager->UpdateDialogVisibility(requested_visibility);
   }
 }
 
 bool FedCmAccountSelectionView::IsDialogManaged(views::Widget* widget) {
-  if (auto* features = tab_->GetTabFeatures()) {
-    return features->tab_dialog_manager()->IsDialogManaged(widget);
+  if (auto* tab_dialog_manager = tabs::TabDialogManager::From(tab_)) {
+    return tab_dialog_manager->IsDialogManaged(widget);
   }
   return false;
 }
@@ -1664,12 +1671,7 @@ bool FedCmAccountSelectionView::ShowPageAction(
     return false;
   }
 
-  auto* features = tab_->GetTabFeatures();
-  if (!features) {
-    return false;
-  }
-
-  auto* controller = features->page_action_controller();
+  auto* controller = page_actions::PageActionController::From(tab_);
   if (!controller) {
     return false;
   }
@@ -1804,6 +1806,18 @@ bool FedCmAccountSelectionView::ShowAmbientBubble(
             *account, ambient_signin::kAccountPictureSize,
             /*idp_image=*/std::nullopt,
             /*device_scale_factor=*/1.0f));
+    // Like in the regular FedCM UI with multiple IdPs, the IdP's icon is a
+    // badge on the account picture. There is no badge if the icon is missing,
+    // isn't square, or is so small that its safe zone would be scaled up.
+    const gfx::ImageSkia idp_icon = account->identity_provider->idp_metadata
+                                        .brand_decoded_icon.AsImageSkia();
+    if (idp_icon.width() == idp_icon.height() &&
+        idp_icon.width() >= ambient_signin::kBadgeImageSize /
+                                webid::kMaskableWebIconSafeZoneRatio) {
+      federated_credential.badge =
+          ui::ImageModel::FromImageSkia(webid::CreateCircleCroppedImage(
+              idp_icon, ambient_signin::kBadgeImageSize));
+    }
     // Accounts with fields to share show the disclosure text in the modal
     // dialog after the bubble. Other accounts are signed in right away, which
     // the chip shows. These include all sign-in accounts, whose fields content
@@ -1824,17 +1838,17 @@ bool FedCmAccountSelectionView::ShowAmbientBubble(
       });
   auto request =
       std::make_unique<ambient_signin::AmbientLoginPermissionRequest>(
-          origin, origin,
-          std::vector<ambient_signin::PasskeyOrPasswordCredential>(),
+          origin, std::vector<ambient_signin::PasskeyOrPasswordCredential>(),
           /*credential_selected_callback=*/base::NullCallback(),
           std::move(federated_credentials),
           base::BindOnce(
               &FedCmAccountSelectionView::OnAmbientBubbleAccountSelected,
               ambient_bubble_weak_ptr_factory_.GetWeakPtr()),
-          base::BindRepeating(
-              &FedCmAccountSelectionView::OnAmbientBubbleDecided,
-              ambient_bubble_weak_ptr_factory_.GetWeakPtr()),
-          bubble_starts_open);
+          ambient_signin::AmbientLoginPermissionRequest::Options{
+              .permission_decided_callback = base::BindRepeating(
+                  &FedCmAccountSelectionView::OnAmbientBubbleDecided,
+                  ambient_bubble_weak_ptr_factory_.GetWeakPtr()),
+              .bubble_starts_open = bubble_starts_open});
 
   // Set before adding the request, since the decided callback runs
   // synchronously if the request is rejected right away.
@@ -1923,8 +1937,8 @@ void FedCmAccountSelectionView::HandleAmbientBubbleDecision(
     // TODO(crbug.com/567563304): Tell apart requests whose bubble the user
     // closed so that the appropriate DismissReason (and cooldown) can be used.
     // `this` may be deleted after this call.
-    std::ignore =
-        NotifyDelegate([&]() { delegate_->OnDismiss(DismissReason::kOther); });
+    std::ignore = RunAndCheckAlive(
+        [&]() { delegate_->OnDismiss(DismissReason::kOther); });
     return;
   }
 
@@ -1940,7 +1954,7 @@ void FedCmAccountSelectionView::HandleAmbientBubbleDecision(
 
   state_ = State::VERIFYING;
   // `this` may be deleted after this call.
-  std::ignore = NotifyDelegate([&]() {
+  std::ignore = RunAndCheckAlive([&]() {
     delegate_->OnAccountSelected(
         account->identity_provider->idp_metadata.config_url, account->id,
         account->idp_claimed_login_state.value_or(
@@ -1955,8 +1969,8 @@ void FedCmAccountSelectionView::ShowAmbientRequestPermissionModal(
   CHECK(!GetDialogWidget());
   if (!tab_) {
     // `this` may be deleted after this call.
-    std::ignore =
-        NotifyDelegate([&]() { delegate_->OnDismiss(DismissReason::kOther); });
+    std::ignore = RunAndCheckAlive(
+        [&]() { delegate_->OnDismiss(DismissReason::kOther); });
     return;
   }
 

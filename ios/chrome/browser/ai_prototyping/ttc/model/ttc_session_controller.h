@@ -14,6 +14,7 @@
 #import "base/scoped_observation.h"
 #import "base/sequence_checker.h"
 #import "components/ttc/app/public/error_codes.h"
+#import "ios/chrome/browser/ai_prototyping/ttc/model/tools/ttc_actuation_handler.h"
 #import "ios/chrome/browser/ai_prototyping/ttc/model/ttc_conversation.h"
 #import "ios/chrome/browser/ai_prototyping/ttc/model/ttc_page_context_monitor.h"
 #import "ios/chrome/browser/ai_prototyping/ttc/model/ttc_session_controller_observer.h"
@@ -21,12 +22,11 @@
 #import "ios/chrome/browser/ai_prototyping/ttc/model/ttc_voice_focused_web_state_tracker.h"
 
 class BrowserList;
+class TTCJournal;
 
 namespace ttc {
 class TtcBackend;
 }  // namespace ttc
-
-class TTCJournal;
 
 namespace web {
 class WebState;
@@ -53,18 +53,24 @@ class TtcSessionController : public TtcConversation::Delegate,
   web::WebState* GetVoiceFocusedWebState() const;
 
   // Constructs a session controller injecting a custom `conversation`
-  // coordinator and optional `voice_focused_web_state_tracker`. When
-  // `voice_focused_web_state_tracker` is `nullptr` (e.g., in unit tests),
-  // page context tracking is disabled.
-  explicit TtcSessionController(std::unique_ptr<TtcConversation> conversation,
-                                std::unique_ptr<TtcVoiceFocusedWebStateTracker>
-                                    voice_focused_web_state_tracker = nullptr);
+  // coordinator, optional `voice_focused_web_state_tracker`, and optional
+  // `actuation_handler`. When `voice_focused_web_state_tracker` is `nullptr`
+  // (e.g., in unit tests), page context tracking is disabled. When
+  // `actuation_handler` is `nullptr`, tool execution is disabled and incoming
+  // tool calls fail with `kExecutorDestroyed`.
+  explicit TtcSessionController(
+      std::unique_ptr<TtcConversation> conversation,
+      std::unique_ptr<TtcVoiceFocusedWebStateTracker>
+          voice_focused_web_state_tracker = nullptr,
+      std::unique_ptr<TtcActuationHandler> actuation_handler = nullptr);
 
   // Constructs a session controller creating a `TtcConversation` with
   // `backend`, optionally monitoring the active `WebState` of `browser_list`
-  // (or none if `nullptr`).
-  explicit TtcSessionController(std::unique_ptr<ttc::TtcBackend> backend,
-                                BrowserList* browser_list = nullptr);
+  // (or none if `nullptr`), and optional `actuation_handler`.
+  explicit TtcSessionController(
+      std::unique_ptr<ttc::TtcBackend> backend,
+      BrowserList* browser_list = nullptr,
+      std::unique_ptr<TtcActuationHandler> actuation_handler = nullptr);
 
   // Constructs a session controller using a default `TtcConversation`.
   TtcSessionController();
@@ -77,6 +83,13 @@ class TtcSessionController : public TtcConversation::Delegate,
 
   // Starts the session.
   void StartSession();
+
+  // Mutes or unmutes microphone capture while the session is `kLive`. Returns
+  // `true` if the mute state changed.
+  bool SetMicMuted(bool muted);
+
+  // Returns whether microphone capture is currently muted.
+  bool IsMicMuted() const;
 
   // Transitions the session lifecycle to `kFinished`.
   void StopSession();
@@ -99,8 +112,11 @@ class TtcSessionController : public TtcConversation::Delegate,
   // `TtcConversation::Delegate` implementation:
   void OnConversationInitialized() override;
   void OnConversationClosed() override;
+  void OnConversationMicMutedChanged(bool muted) override;
   void OnAudioEnergyUpdated(float energy) override;
   void OnConversationError(ttc::ErrorCode error) override;
+  void OnToolCall(const ttc::ToolRequest& tool_request,
+                  ttc::ToolResponseCallback tool_response_callback) override;
 
   // `TtcVoiceFocusedWebStateTracker::Observer` implementation:
   void OnVoiceFocusedWebStateChanged(web::WebState* web_state) override;
@@ -111,6 +127,11 @@ class TtcSessionController : public TtcConversation::Delegate,
 
  private:
   friend class TtcSessionControllerTest;
+
+  // Transitions `lifecycle_` to `kFinished` immediately and posts
+  // `StopSession()` asynchronously so conversation/backend teardown does not
+  // run while a `TtcConversation` or `TtcBackend` callback is on the stack.
+  void StopSessionAsync();
 
   // Updates `lifecycle_` and notifies registered observers if the state
   // changed.
@@ -129,11 +150,16 @@ class TtcSessionController : public TtcConversation::Delegate,
   // Journal logging helpers.
   void LogLifecycleTransition(TTCSessionLifecycle current_lifecycle,
                               TTCSessionLifecycle new_lifecycle);
+  void LogMicMuted(bool muted);
   void LogSessionError(ttc::ErrorCode error);
   void LogAppDidEnterBackground();
+  void LogActuationUnavailable(const std::string& tool_name);
 
   // Underlying conversation coordinator owned by this session controller.
   std::unique_ptr<TtcConversation> conversation_;
+
+  // Handler bridging incoming tool calls to `ActorService`.
+  std::unique_ptr<TtcActuationHandler> actuation_handler_;
 
   // Tracker following the active `WebState` across the profile's regular
   // `Browser`s. May be `nullptr` in unit tests constructed without a
@@ -156,6 +182,13 @@ class TtcSessionController : public TtcConversation::Delegate,
   // Registered observers receiving session lifecycle, audio level, and error
   // updates.
   base::ObserverList<TtcSessionControllerObserver> observers_;
+
+  // Whether `StopSession()` has already torn down the active conversation and
+  // page context tracking.
+  bool is_stopped_ = false;
+
+  // Last microphone mute state broadcast to `observers_` once `kLive`.
+  bool notified_mic_muted_ = false;
 
   // Whether a fatal error has already been reported during this session.
   bool fatal_error_reported_ = false;

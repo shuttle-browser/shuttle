@@ -314,8 +314,8 @@ SiteInfo SiteInfo::Create(const IsolationContext& isolation_context,
   // while the agent_cluster_key_ has a site URL which is the WebUI TLD. This
   // allows WebUI to continue to differentiate WebUIType via site URL while
   // allowing WebUI with a shared TLD to share a RenderProcessHost.
-  // TODO(crbug.com/40176090): Remove this and replace it with
-  // SiteInstanceGroups once the support lands.
+  // TODO(crbug.com/579199089): Remove this and replace it with
+  // WebUIConfig-based process lock configuration.
   if (IsWebUIAndUsesTLDForProcessLockURL(url_info.url)) {
     CHECK(!effective_url.has_value());
     effective_url = url_info.url;
@@ -948,8 +948,8 @@ AgentClusterKey SiteInfo::GetAgentClusterKeyForURL(
   // proceed with regular computations. This allows WebUI to continue to
   // differentiate WebUIType via SiteURL while allowing WebUI with a shared TLD
   // to share a RenderProcessHost.
-  // TODO(crbug.com/40176090): Remove this and replace it with SiteInstance
-  // groups once the support lands.
+  // TODO(crbug.com/579199089): Remove this and replace it with
+  // WebUIConfig-based process lock configuration.
   if (IsWebUIAndUsesTLDForProcessLockURL(url_info.url) &&
       !effective_url.has_value()) {
     WebUIDomains host_domains = GetWebUIDomains(url_info.url);
@@ -969,14 +969,14 @@ AgentClusterKey SiteInfo::GetAgentClusterKeyForURL(
   // Ideally, we should check that the origin we've received corresponds to a
   // data URL with an opaque origin when setting the following boolean
   // is_origin_isolated_sandboxed_data_iframe to true. However, doing so will
-  // make the ChildProcessSecurity::CanAccessOrigin check called from
-  // NavigationRequest::GetOriginForURLLoaderFactoryAfterResponse() fail.
+  // make the ChildProcessSecurityPolicyImpl::CanCommitNewOrigin check called
+  // from NavigationRequest::GetOriginForURLLoaderFactoryAfterResponse() fail.
   //
-  // ChildProcessSecurity::CanAccessOrigin eventually calls
-  // ChildProcessSecurityPolicyImpl::CanAccessMaybeOpaqueOrigin, but the latter
-  // only takes a GURL as an argument and not an origin. So for a data URL with
-  // an opaque origin, the GURL passed to the function is the precursor origin.
-  // This GURL is passed to
+  // ChildProcessSecurityPolicyImpl::CanCommitNewOrigin eventually calls
+  // ChildProcessSecurityPolicyImpl::CanCommitMaybeOpaqueNewOrigin, but the
+  // latter only takes a GURL as an argument and not an origin. So for a data
+  // URL with an opaque origin, the GURL passed to the function is the precursor
+  // origin. This GURL is passed to
   // ChildProcessSecurityPolicyImpl::PerformJailAndCitadelChecks. The function
   // then creates an expected ProcessLock based on this GURL, that is the
   // precursor URL for the data URL and not the actual data URL. However, it

@@ -112,9 +112,7 @@ void PopulatePlatformDataSource(content::WebUIDataSource* source,
   source->AddString(kManagedByIconKey, "");
   source->AddBoolean(kIsManagedKey, false);
 
-  // History Clusters and Embeddings are disabled on Android.
-  source->AddBoolean(kEnableHistoryEmbeddingsKey, false);
-  source->AddBoolean(kMaybeShowEmbeddingsIphKey, false);
+  // History Clusters are disabled on Android.
   source->AddBoolean(kIsHistoryClustersEnabledKey, false);
   source->AddBoolean(kIsHistoryClustersVisibleKey, false);
 }
@@ -150,7 +148,7 @@ CreateForeignSessionPageHandler(
       std::move(receiver), std::move(page), profile, web_ui->GetWebContents(),
       base::BindRepeating([](content::WebContents* source_web_contents,
                              const ::sessions::SessionTab& tab,
-                             WindowOpenDisposition disposition) {
+                             ui::mojom::WindowOpenDisposition disposition) {
         SessionRestore::RestoreForeignSessionTab(source_web_contents, tab,
                                                  disposition);
       }),
@@ -165,7 +163,7 @@ CreateForeignSessionPageHandler(
               for (const auto& tab : window->tabs) {
                 SessionRestore::RestoreForeignSessionTab(
                     web_contents.get(), *tab,
-                    WindowOpenDisposition::kNewBackgroundTab);
+                    ui::mojom::WindowOpenDisposition::kNewBackgroundTab);
               }
             }
           },

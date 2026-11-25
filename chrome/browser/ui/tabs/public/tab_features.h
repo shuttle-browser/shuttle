@@ -67,12 +67,10 @@ class FramebustBlockTabHelper;
 class FormInteractionTabHelper;
 class FromGWSNavigationAndKeepAliveRequestObserver;
 class HatsHelper;
-class HistoryEmbeddingsTabHelper;
 class HttpAuthCacheStatus;
 class IntentPickerTabHelper;
 class IntentPickerViewPageActionController;
 class JsOptimizationsPageActionController;
-class LensOverlayController;
 class LensOverlayHomeworkPageActionController;
 class LensSearchController;
 class ManagePasswordsPageActionController;
@@ -84,6 +82,7 @@ class NavigationPredictorPreconnectClient;
 class NewTabPagePreloadPipelineManager;
 class OneTimePermissionsTrackerHelper;
 class PinnedTranslateActionListener;
+class PrewarmTabHelper;
 class Profile;
 class PwaInstallPageActionController;
 class QwacWebContentsObserver;
@@ -228,13 +227,14 @@ class NavigationExtensionEnabler;
 namespace glic {
 class ContextualCueingHelper;
 class GlicCueTabState;
+class GlicGeminiWebWarmingObserver;
 class GlicInstanceHelper;
 class GlicMarketingPageTabHelper;
-class GlicPromotionSourceNavigationObserver;
 class GlicTabIndicatorHelper;
 class GlicSidePanelCoordinator;
 class GlicSelectionObserver;
 class GlicWebDragObserver;
+class QuickAnswersTool;
 class SelectionOverlayController;
 class SelectionSuggestionTool;
 class GlicPageFeaturesManager;
@@ -416,7 +416,6 @@ class TabInterface;
 //
 // Do not add more public accessors. Instead use the UnownedUserData design
 // pattern, see ui/base/unowned_user_data/README.md.
-// TODO(crbug.com/481268779): Remove existing public accessors.
 class TabFeatures {
  public:
   TabFeatures();
@@ -425,80 +424,12 @@ class TabFeatures {
   TabFeatures(const TabFeatures&) = delete;
   TabFeatures& operator=(const TabFeatures&) = delete;
 
-  enterprise_data_protection::DataProtectionNavigationController*
-  data_protection_controller() {
-    return data_protection_tab_controller_.get();
-  }
-
-  permissions::PermissionIndicatorsTabData* permission_indicators_tab_data() {
-    return permission_indicators_tab_data_.get();
-  }
-
   // Note: Temporary until there is a more uniform way to swap out features for
   // testing.
   customize_chrome::SidePanelController*
   SetCustomizeChromeSidePanelControllerForTesting(
       std::unique_ptr<customize_chrome::SidePanelController>
           customize_chrome_side_panel_controller);
-
-  commerce::CommerceUiTabHelper* commerce_ui_tab_helper() {
-    return commerce_ui_tab_helper_.get();
-  }
-
-  extensions::ExtensionSidePanelManager* extension_side_panel_manager() {
-    return extension_side_panel_manager_.get();
-  }
-
-  tab_groups::SavedTabGroupWebContentsListener*
-  saved_tab_group_web_contents_listener() const {
-    return saved_tab_group_web_contents_listener_.get();
-  }
-
-  TabDialogManager* tab_dialog_manager() { return tab_dialog_manager_.get(); }
-
-  page_actions::PageActionController* page_action_controller() {
-    return page_action_controller_.get();
-  }
-
-  JsOptimizationsPageActionController*
-  js_optimizations_page_action_controller() {
-    return js_optimizations_page_action_controller_.get();
-  }
-
-  FileSystemAccessPageActionController*
-  file_system_access_page_action_controller() {
-    return file_system_access_page_action_controller_.get();
-  }
-
-  ManagePasswordsPageActionController*
-  manage_passwords_page_action_controller() {
-    return manage_passwords_page_action_controller_.get();
-  }
-
-  zoom::ZoomViewController* zoom_view_controller() {
-    return zoom_view_controller_.get();
-  }
-
-  LensOverlayController* lens_overlay_controller();
-  const LensOverlayController* lens_overlay_controller() const;
-
-#if !BUILDFLAG(IS_ANDROID)
-  record_replay::RecordReplayClient* record_replay_client() {
-    return record_replay_client_.get();
-  }
-#endif
-
-  PwaInstallPageActionController* pwa_install_page_action_controller() {
-    return pwa_install_page_action_controller_.get();
-  }
-
-  RecordReplayPageActionController* record_replay_page_action_controller() {
-    return record_replay_page_action_controller_.get();
-  }
-
-  InactiveWindowMouseEventController* inactive_window_mouse_event_controller() {
-    return inactive_window_mouse_event_controller_.get();
-  }
 
   TabUIHelper* SetTabUIHelperForTesting(
       std::unique_ptr<TabUIHelper> tab_ui_helper);
@@ -510,25 +441,6 @@ class TabFeatures {
 
   TabAlertController* SetTabAlertControllerForTesting(
       std::unique_ptr<TabAlertController> tab_alert_controller);
-
-  autofill::BubbleManager* autofill_bubble_manager() {
-    return autofill_bubble_manager_.get();
-  }
-
-  autofill::BubbleManager* SetBubbleManagerForTesting(
-      std::unique_ptr<autofill::BubbleManager> bubble_manager);
-
-  BookmarkBarPreloadPipelineManager* bookmarkbar_preload_pipeline_manager() {
-    return bookmarkbar_preload_pipeline_manager_.get();
-  }
-
-  NewTabPagePreloadPipelineManager* new_tab_page_preload_pipeline_manager() {
-    return new_tab_page_preload_pipeline_manager_.get();
-  }
-
-  site_engagement::SiteEngagementService::Helper* site_engagement_helper() {
-    return site_engagement_helper_.get();
-  }
 
   // Called exactly once to initialize features.
   void Init(TabInterface& tab, Profile* profile);
@@ -686,6 +598,7 @@ class TabFeatures {
   std::unique_ptr<selection::SuggestionService> selection_suggestion_service_;
   std::unique_ptr<glic::SelectionSuggestionTool>
       glic_selection_suggestion_tool_;
+  std::unique_ptr<glic::QuickAnswersTool> glic_quick_answers_tool_;
   std::unique_ptr<lens::LensSuggestionTool> lens_suggestion_tool_;
   std::unique_ptr<glic::SelectionOverlayController>
       glic_selection_overlay_controller_;
@@ -693,8 +606,8 @@ class TabFeatures {
   std::unique_ptr<glic::GlicPageFeaturesManager> glic_page_features_manager_;
   std::unique_ptr<glic::GlicMarketingPageTabHelper>
       glic_marketing_page_tab_helper_;
-  std::unique_ptr<glic::GlicPromotionSourceNavigationObserver>
-      glic_promotion_source_navigation_observer_;
+  std::unique_ptr<glic::GlicGeminiWebWarmingObserver>
+      glic_gemini_web_warming_observer_;
 
   // Observes page loads to decide when to offer glic contextual cueing.
   std::unique_ptr<glic::ContextualCueingHelper> contextual_cueing_helper_;
@@ -926,6 +839,11 @@ class TabFeatures {
   std::unique_ptr<ZeroSuggestPrefetchTabHelper>
       zero_suggest_prefetch_tab_helper_;
 
+  // Observes page load completion, first paint, and visibility changes to
+  // trigger Default Search Engine prewarm when
+  // `kPrewarmPageLoadAndTabSwitchAfterPaintTrigger` is enabled.
+  std::unique_ptr<PrewarmTabHelper> prewarm_tab_helper_;
+
   // Controls the visibility of the intent picker page action.
   std::unique_ptr<IntentPickerTabHelper> intent_picker_tab_helper_;
 
@@ -981,8 +899,6 @@ class TabFeatures {
   std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
 
   std::unique_ptr<tasks::TaskTabHelper> task_tab_helper_;
-
-  std::unique_ptr<HistoryEmbeddingsTabHelper> history_embeddings_tab_helper_;
 
   std::unique_ptr<download::DownloadNavigationObserver>
       download_navigation_observer_;

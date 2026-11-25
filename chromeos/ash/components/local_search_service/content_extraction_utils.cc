@@ -7,7 +7,6 @@
 #include <memory>
 #include <string>
 #include <string_view>
-#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -15,6 +14,7 @@
 #include "base/containers/extend.h"
 #include "base/containers/fixed_flat_set.h"
 #include "base/i18n/case_conversion.h"
+#include "base/i18n/language_tag.h"
 #include "base/i18n/transliterator.h"
 #include "base/i18n/unicodestring.h"
 #include "base/memory/ptr_util.h"
@@ -22,11 +22,13 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "chromeos/ash/components/string_matching/tokenized_string.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 
 namespace ash::local_search_service {
 
 namespace {
 
+using ::base::i18n::GetKnownLanguageTag;
 using string_matching::TokenizedString;
 
 std::unique_ptr<base::i18n::Transliterator> CreateDiacriticRemover() {
@@ -50,7 +52,8 @@ std::unique_ptr<base::i18n::Transliterator> CreateHyphenRemover() {
 }  // namespace
 
 std::vector<Token> ConsolidateToken(const std::vector<Token>& tokens) {
-  std::unordered_map<std::u16string, std::vector<WeightedPosition>> dictionary;
+  absl::flat_hash_map<std::u16string, std::vector<WeightedPosition>> dictionary;
+  dictionary.reserve(tokens.size());
   for (const auto& token : tokens) {
     base::Extend(dictionary[token.content], token.positions);
   }
@@ -66,7 +69,7 @@ std::vector<Token> ConsolidateToken(const std::vector<Token>& tokens) {
 std::vector<Token> ExtractContent(const std::string& content_id,
                                   const std::u16string& text,
                                   double weight,
-                                  const std::string& locale) {
+                                  const base::i18n::LanguageTag& locale) {
   // Use two different string tokenizing algorithms for Latin and non Latin
   // locale.
   TokenizedString::Mode mode;
@@ -84,34 +87,50 @@ std::vector<Token> ExtractContent(const std::string& content_id,
   std::vector<Token> tokens;
 
   for (size_t i = 0; i < num_tokens; i++) {
-    const std::u16string word = Normalizer(tokenized_string.tokens()[i]);
-    if (IsStopword(word, locale))
+    std::u16string word = Normalizer(tokenized_string.tokens()[i]);
+    if (IsStopword(word, locale)) {
       continue;
-    tokens.push_back(Token(
-        word,
-        {WeightedPosition(
-            weight, Position(content_id, tokenized_string.mappings()[i].start(),
-                             tokenized_string.mappings()[i].end() -
-                                 tokenized_string.mappings()[i].start()))}));
+    }
+    std::vector<WeightedPosition> positions;
+    positions.emplace_back(
+        weight, Position(content_id, tokenized_string.mappings()[i].start(),
+                         tokenized_string.mappings()[i].end() -
+                             tokenized_string.mappings()[i].start()));
+    tokens.emplace_back(std::move(word), std::move(positions));
   }
 
   return tokens;
 }
 
-bool IsNonLatinLocale(const std::string& locale) {
+bool IsNonLatinLocale(const base::i18n::LanguageTag& locale) {
   static constexpr auto kNonLatinLocales =
-      base::MakeFixedFlatSet<std::string_view>(
-          {"am", "ar", "be", "bg", "bn", "el", "fa", "gu", "hi", "hy", "iw",
-           "ja", "ka", "kk", "km", "kn", "ko", "ky", "lo", "mk", "ml", "mn",
-           "mr", "my", "pa", "ru", "sr", "ta", "te", "th", "uk", "zh"});
-  return kNonLatinLocales.contains(std::string_view(locale).substr(0, 2));
+      base::MakeFixedFlatSet<base::i18n::LanguageTag>({
+          GetKnownLanguageTag("am"), GetKnownLanguageTag("ar"),
+          GetKnownLanguageTag("be"), GetKnownLanguageTag("bg"),
+          GetKnownLanguageTag("bn"), GetKnownLanguageTag("el"),
+          GetKnownLanguageTag("fa"), GetKnownLanguageTag("gu"),
+          GetKnownLanguageTag("he"), GetKnownLanguageTag("hi"),
+          GetKnownLanguageTag("hy"), GetKnownLanguageTag("ja"),
+          GetKnownLanguageTag("ka"), GetKnownLanguageTag("kk"),
+          GetKnownLanguageTag("km"), GetKnownLanguageTag("kn"),
+          GetKnownLanguageTag("ko"), GetKnownLanguageTag("ky"),
+          GetKnownLanguageTag("lo"), GetKnownLanguageTag("mk"),
+          GetKnownLanguageTag("ml"), GetKnownLanguageTag("mn"),
+          GetKnownLanguageTag("mr"), GetKnownLanguageTag("my"),
+          GetKnownLanguageTag("pa"), GetKnownLanguageTag("ru"),
+          GetKnownLanguageTag("sr"), GetKnownLanguageTag("ta"),
+          GetKnownLanguageTag("te"), GetKnownLanguageTag("th"),
+          GetKnownLanguageTag("uk"), GetKnownLanguageTag("zh"),
+      });
+  return kNonLatinLocales.contains(locale.WithLanguageSubtagOnly());
 }
 
-bool IsStopword(const std::u16string& word, const std::string& locale) {
+bool IsStopword(const std::u16string& word,
+                const base::i18n::LanguageTag& locale) {
   // TODO(thanhdng): Currently we support stopword list for English only. In the
   // future, when we need to support other languages, creates resource files to
   // store the stopwords.
-  if (!locale.starts_with("en")) {
+  if (locale.language_subtag() != "en") {
     return false;
   }
 

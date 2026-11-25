@@ -48,6 +48,7 @@ import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
+import org.chromium.chrome.test.transit.Journeys;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.content_public.browser.LoadUrlParams;
@@ -56,6 +57,7 @@ import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.url.GURL;
 
+import java.util.List;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -198,14 +200,14 @@ public class ChromeTabCreatorTest {
                 () -> {
                     ChromeTabCreator tabCreator =
                             mActivityTestRule.getActivity().getCurrentTabCreator();
-                    int initialCount =
-                            mActivityTestRule.getActivity().getCurrentTabModel().getCount();
+                    TabModel tabModel = mActivityTestRule.getActivity().getCurrentTabModel();
+                    int initialCount = tabModel.getCount();
                     String url1 = mTestServer.getURL(TEST_PATH);
                     String url2 = mTestServer.getURL("/chrome/test/data/android/google.html");
                     String url3 = mTestServer.getURL("/chrome/test/data/android/about.html");
                     tabCreator.createNewTabs(
                             new LoadUrlParams(url1),
-                            java.util.List.of(url2, url3),
+                            List.of(url2, url3),
                             TabLaunchType.FROM_CHROME_UI,
                             /* parent= */ null,
                             /* openInTabGroup= */ false,
@@ -213,23 +215,53 @@ public class ChromeTabCreatorTest {
                     assertEquals(
                             "Tab model should have 3 new tabs",
                             initialCount + 3,
-                            mActivityTestRule.getActivity().getCurrentTabModel().getCount());
+                            tabModel.getCount());
+                    assertEquals(url1, tabModel.getTabAt(initialCount).getUrl().getSpec());
+                    assertEquals(url2, tabModel.getTabAt(initialCount + 1).getUrl().getSpec());
+                    assertEquals(url3, tabModel.getTabAt(initialCount + 2).getUrl().getSpec());
+                });
+    }
+
+    /**
+     * Verify that createNewTabs with FROM_BOOKMARK_BAR_BACKGROUND appends all tabs in order at the
+     * end of the tab model while keeping the original active tab selected.
+     */
+    @Test
+    @MediumTest
+    @Feature({"Browser"})
+    public void testCreateNewTabs_BookmarkBarBackground() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    ChromeTabCreator tabCreator =
+                            mActivityTestRule.getActivity().getCurrentTabCreator();
+                    TabModel tabModel = mActivityTestRule.getActivity().getCurrentTabModel();
+                    // Add a second tab and re-select index 0 so the active tab is not at the end.
+                    tabCreator.createNewTab(
+                            new LoadUrlParams(mTestServer.getURL(TEST_PATH_2)),
+                            TabLaunchType.FROM_CHROME_UI,
+                            /* parent= */ null);
+                    TabModelUtils.setIndex(tabModel, /* index= */ 0);
+                    assertEquals(0, tabModel.index());
+
+                    int initialCount = tabModel.getCount();
+                    String url1 = mTestServer.getURL(TEST_PATH);
+                    String url2 = mTestServer.getURL("/chrome/test/data/android/google.html");
+                    String url3 = mTestServer.getURL(TEST_PATH_2);
+                    tabCreator.createNewTabs(
+                            new LoadUrlParams(url1),
+                            List.of(url2, url3),
+                            TabLaunchType.FROM_BOOKMARK_BAR_BACKGROUND,
+                            /* parent= */ null,
+                            /* openInTabGroup= */ false,
+                            /* intent= */ null);
                     assertEquals(
-                            url2,
-                            mActivityTestRule
-                                    .getActivity()
-                                    .getCurrentTabModel()
-                                    .getTabAt(initialCount + 1)
-                                    .getUrl()
-                                    .getSpec());
-                    assertEquals(
-                            url3,
-                            mActivityTestRule
-                                    .getActivity()
-                                    .getCurrentTabModel()
-                                    .getTabAt(initialCount + 2)
-                                    .getUrl()
-                                    .getSpec());
+                            "Tab model should have 3 new tabs",
+                            initialCount + 3,
+                            tabModel.getCount());
+                    assertEquals("Original active tab should remain selected", 0, tabModel.index());
+                    assertEquals(url1, tabModel.getTabAt(initialCount).getUrl().getSpec());
+                    assertEquals(url2, tabModel.getTabAt(initialCount + 1).getUrl().getSpec());
+                    assertEquals(url3, tabModel.getTabAt(initialCount + 2).getUrl().getSpec());
                 });
     }
 
@@ -249,7 +281,7 @@ public class ChromeTabCreatorTest {
                     Tab firstTab =
                             tabCreator.createNewTabs(
                                     new LoadUrlParams(url1),
-                                    java.util.List.of(url2),
+                                    List.of(url2),
                                     TabLaunchType.FROM_LONGPRESS_BACKGROUND_IN_GROUP,
                                     /* parent= */ null,
                                     /* openInTabGroup= */ true,
@@ -473,22 +505,26 @@ public class ChromeTabCreatorTest {
                         .getUrl());
     }
 
+    /**
+     * Opens a new tab from the current tab and merges the two tabs into a tab group.
+     *
+     * @return The tab that was current before the new tab was opened.
+     */
+    private Tab groupCurrentTabWithNewTab() {
+        Tab currentTab = mPage.loadedTabElement.value();
+        mPage = mPage.openFakeLinkToWebPage(mTestServer.getURL(TEST_PATH));
+        Journeys.mergeTabsToGroupProgrammatically(
+                mPage, currentTab, mPage.loadedTabElement.value());
+        return currentTab;
+    }
+
     @Test
     @MediumTest
     @Feature({"Browser"})
     public void testCreateNewTabSameGroupAsParent_FromLongpressForegroundInGroup() {
+        Tab currentTab = groupCurrentTabWithNewTab();
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    Tab currentTab = mActivityTestRule.getActivity().getActivityTab();
-                    Tab tabForGroup =
-                            mActivityTestRule
-                                    .getActivity()
-                                    .getCurrentTabCreator()
-                                    .createNewTab(
-                                            new LoadUrlParams(mTestServer.getURL(TEST_PATH)),
-                                            TabLaunchType.FROM_LINK,
-                                            currentTab);
-                    ChromeTabUtils.mergeTabsToGroup(currentTab, tabForGroup);
                     Tab newTab =
                             mActivityTestRule
                                     .getActivity()
@@ -509,18 +545,9 @@ public class ChromeTabCreatorTest {
     @MediumTest
     @Feature({"Browser"})
     public void testCreateNewTabSameGroupAsParent_FromLongpressBackgroundInGroup() {
+        Tab currentTab = groupCurrentTabWithNewTab();
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    Tab currentTab = mActivityTestRule.getActivity().getActivityTab();
-                    Tab tabForGroup =
-                            mActivityTestRule
-                                    .getActivity()
-                                    .getCurrentTabCreator()
-                                    .createNewTab(
-                                            new LoadUrlParams(mTestServer.getURL(TEST_PATH)),
-                                            TabLaunchType.FROM_LINK,
-                                            currentTab);
-                    ChromeTabUtils.mergeTabsToGroup(currentTab, tabForGroup);
                     Tab newTab =
                             mActivityTestRule
                                     .getActivity()
@@ -541,18 +568,9 @@ public class ChromeTabCreatorTest {
     @MediumTest
     @Feature({"Browser"})
     public void testCreateNewTab_ParentInGroup_FromLongpressBackground_OutsideGroup() {
+        Tab currentTab = groupCurrentTabWithNewTab();
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    Tab currentTab = mActivityTestRule.getActivity().getActivityTab();
-                    Tab tabForGroup =
-                            mActivityTestRule
-                                    .getActivity()
-                                    .getCurrentTabCreator()
-                                    .createNewTab(
-                                            new LoadUrlParams(mTestServer.getURL(TEST_PATH)),
-                                            TabLaunchType.FROM_LINK,
-                                            currentTab);
-                    ChromeTabUtils.mergeTabsToGroup(currentTab, tabForGroup);
                     Tab newTab =
                             mActivityTestRule
                                     .getActivity()
@@ -569,18 +587,9 @@ public class ChromeTabCreatorTest {
     @MediumTest
     @Feature({"Browser"})
     public void testCreateNewTab_FromLongpressForeground_OutsideGroup() {
+        Tab currentTab = groupCurrentTabWithNewTab();
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    Tab currentTab = mActivityTestRule.getActivity().getActivityTab();
-                    Tab tabForGroup =
-                            mActivityTestRule
-                                    .getActivity()
-                                    .getCurrentTabCreator()
-                                    .createNewTab(
-                                            new LoadUrlParams(mTestServer.getURL(TEST_PATH)),
-                                            TabLaunchType.FROM_LINK,
-                                            currentTab);
-                    ChromeTabUtils.mergeTabsToGroup(currentTab, tabForGroup);
                     Tab newTab =
                             mActivityTestRule
                                     .getActivity()

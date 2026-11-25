@@ -18,7 +18,7 @@
 #include "chrome/browser/web_applications/web_app_management_type.h"
 #include "components/services/app_service/public/cpp/file_handler.h"
 #include "components/webapps/common/web_app_id.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 
 class GURL;
 
@@ -47,15 +47,9 @@ enum class ForInstallableSite {
 using DownloadedIconsHttpResults =
     base::flat_map<IconUrlWithSize, int /*http_status_code*/>;
 
-// A map of |IconUrlWithSize| to http status results. `http_status_code` is
-// never 0.
-using DownloadedIconsHttpResults =
-    base::flat_map<IconUrlWithSize, int /*http_status_code*/>;
-
 // Converts from the manifest type to the Chrome type.
 void PopulateFileHandlerInfoFromManifest(
-    const std::vector<blink::mojom::ManifestFileHandlerPtr>&
-        manifest_file_handlers,
+    const std::vector<blink::Manifest::FileHandler>& manifest_file_handlers,
     const GURL& app_scope,
     WebAppInstallInfo* web_app_info);
 

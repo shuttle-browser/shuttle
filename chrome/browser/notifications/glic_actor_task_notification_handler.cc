@@ -4,7 +4,9 @@
 
 #include "chrome/browser/notifications/glic_actor_task_notification_handler.h"
 
+#include <optional>
 #include <string_view>
+#include <utility>
 
 #include "base/feature_list.h"
 #include "base/functional/callback_helpers.h"
@@ -13,11 +15,14 @@
 #include "base/strings/utf_string_conversions.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/ui/actor_ui_state_manager.h"
+#include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_provider_metrics.h"
 #include "chrome/browser/glic/public/service/glic_activity_manager.h"
 #include "chrome/browser/glic/public/service/legacy_glic_activity_manager.h"
 #include "chrome/browser/notifications/notification_display_service.h"
 #include "chrome/browser/notifications/notification_display_service_factory.h"
+#include "chrome/browser/notifications/notification_display_service_impl.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
@@ -32,10 +37,35 @@
 namespace {
 constexpr char kActorTaskStartNotificationPrefix[] = "actor_task_start_";
 constexpr char kNotifierId[] = "glic_actor_task";
+constexpr char kTaskOsNotificationEventHistogramSuffix[] =
+    "Actor.TaskOsNotification.Event";
+// Static placeholder title sent by the server when an eagerly generated
+// conversation title is not yet available at task creation time.
+constexpr char kDefaultPlaceholderTaskTitle[] = "Running task in Chrome";
 
 std::string GetNotificationId(actor::TaskId task_id) {
   return base::StrCat({kActorTaskStartNotificationPrefix,
                        base::NumberToString(task_id.value())});
+}
+
+std::optional<actor::TaskId> ParseTaskId(std::string_view notification_id) {
+  if (!notification_id.starts_with(kActorTaskStartNotificationPrefix)) {
+    return std::nullopt;
+  }
+
+  uint32_t task_id_val = 0;
+  if (!base::StringToUint(notification_id.substr(
+                              std::size(kActorTaskStartNotificationPrefix) - 1),
+                          &task_id_val)) {
+    return std::nullopt;
+  }
+  return actor::TaskId(task_id_val);
+}
+
+void RecordTaskOsNotificationEvent(Profile* profile,
+                                   GlicActorTaskNotificationEvent event) {
+  glic::GlicMetricReporter(profile).RecordEnumeration(
+      kTaskOsNotificationEventHistogramSuffix, event);
 }
 }  // namespace
 
@@ -56,6 +86,8 @@ void GlicActorTaskNotificationHandler::MaybeShow(Profile* profile,
   BrowserWindowInterface* last_active =
       collection ? collection->GetLastActiveBrowser() : nullptr;
   if (last_active && last_active->IsActive()) {
+    RecordTaskOsNotificationEvent(
+        profile, GlicActorTaskNotificationEvent::kSkippedBrowserActive);
     return;
   }
 
@@ -70,17 +102,35 @@ void GlicActorTaskNotificationHandler::MaybeShow(Profile* profile,
     return;
   }
 
-  std::u16string title = l10n_util::GetStringUTF16(
-      IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE);
   std::optional<std::string> task_title =
       state_manager->GetActorTaskTitle(task_id);
-  std::u16string body =
-      task_title && !task_title->empty()
-          ? l10n_util::GetStringFUTF16(
-                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY,
-                base::UTF8ToUTF16(*task_title))
-          : l10n_util::GetStringUTF16(
-                IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_FALLBACK);
+  const bool has_task_title = task_title && !task_title->empty();
+  std::u16string title;
+  std::u16string body;
+  if (base::FeatureList::IsEnabled(
+          features::kGlicExperimentalTriggeringOsNotificationUpdatedStrings)) {
+    const bool has_custom_task_title =
+        has_task_title && *task_title != kDefaultPlaceholderTaskTitle;
+    title = l10n_util::GetStringUTF16(
+        IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE_V2);
+    body =
+        has_custom_task_title
+            ? l10n_util::GetStringFUTF16(
+                  IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_STARTED_WITH_TITLE_V2,
+                  base::UTF8ToUTF16(*task_title))
+            : l10n_util::GetStringUTF16(
+                  IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_STARTED_V2);
+  } else {
+    title = l10n_util::GetStringUTF16(
+        IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_TITLE);
+    body =
+        has_task_title
+            ? l10n_util::GetStringFUTF16(
+                  IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY,
+                  base::UTF8ToUTF16(*task_title))
+            : l10n_util::GetStringUTF16(
+                  IDS_ACTOR_EXPERIMENTAL_TRIGGERING_NOTIFICATION_BODY_FALLBACK);
+  }
 
   std::string notification_id = GetNotificationId(task_id);
   message_center::Notification notification(
@@ -106,13 +156,52 @@ void GlicActorTaskNotificationHandler::Close(Profile* profile,
   }
 
   auto* notification_service =
-      NotificationDisplayServiceFactory::GetForProfile(profile);
+      NotificationDisplayServiceImpl::GetForProfile(profile);
   if (!notification_service) {
     return;
   }
 
+  if (auto* handler = static_cast<GlicActorTaskNotificationHandler*>(
+          notification_service->GetNotificationHandler(
+              NotificationHandler::Type::GLIC_ACTOR_TASK))) {
+    handler->displayed_tasks_.erase(task_id);
+  }
+
   notification_service->Close(NotificationHandler::Type::GLIC_ACTOR_TASK,
                               GetNotificationId(task_id));
+}
+
+void GlicActorTaskNotificationHandler::OnShow(
+    Profile* profile,
+    const std::string& notification_id) {
+  std::optional<actor::TaskId> task_id = ParseTaskId(notification_id);
+  if (!profile || !task_id.has_value()) {
+    return;
+  }
+
+  displayed_tasks_.insert(*task_id);
+  RecordTaskOsNotificationEvent(profile,
+                                GlicActorTaskNotificationEvent::kShown);
+}
+
+void GlicActorTaskNotificationHandler::OnClose(
+    Profile* profile,
+    const GURL& origin,
+    const std::string& notification_id,
+    bool by_user,
+    base::OnceClosure completed_closure) {
+  base::ScopedClosureRunner runner(std::move(completed_closure));
+  std::optional<actor::TaskId> task_id = ParseTaskId(notification_id);
+  if (!profile || !task_id.has_value()) {
+    return;
+  }
+
+  if (!displayed_tasks_.erase(*task_id)) {
+    return;
+  }
+
+  RecordTaskOsNotificationEvent(profile,
+                                GlicActorTaskNotificationEvent::kClosed);
 }
 
 void GlicActorTaskNotificationHandler::OnClick(
@@ -123,19 +212,16 @@ void GlicActorTaskNotificationHandler::OnClick(
     const std::optional<std::u16string>& reply,
     base::OnceClosure completed_closure) {
   base::ScopedClosureRunner runner(std::move(completed_closure));
-  if (!profile ||
-      !notification_id.starts_with(kActorTaskStartNotificationPrefix)) {
+  std::optional<actor::TaskId> task_id_opt = ParseTaskId(notification_id);
+  if (!profile || !task_id_opt.has_value()) {
     return;
   }
+  actor::TaskId task_id = *task_id_opt;
 
-  uint32_t task_id_val = 0;
-  if (!base::StringToUint(
-          std::string_view(notification_id)
-              .substr(std::size(kActorTaskStartNotificationPrefix) - 1),
-          &task_id_val)) {
-    return;
+  if (displayed_tasks_.erase(task_id)) {
+    RecordTaskOsNotificationEvent(profile,
+                                  GlicActorTaskNotificationEvent::kClicked);
   }
-  actor::TaskId task_id(task_id_val);
 
   if (auto* notification_service =
           NotificationDisplayServiceFactory::GetForProfile(profile)) {

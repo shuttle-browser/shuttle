@@ -4,6 +4,8 @@
 
 package org.chromium.chrome.browser.omnibox.status;
 
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 
 import static org.chromium.base.ThreadUtils.runOnUiThreadBlocking;
@@ -18,6 +20,7 @@ import android.widget.LinearLayout;
 import androidx.core.content.res.ResourcesCompat;
 import androidx.test.filters.MediumTest;
 
+import org.jni_zero.JniUniquePtr;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -32,8 +35,8 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.ResettersForTesting;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.test.BaseActivityTestRule;
-import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterAnnotations.UseMethodParameter;
+import org.chromium.base.test.params.ParameterAnnotations.UseRunnerDelegate;
 import org.chromium.base.test.params.ParameterProvider;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
@@ -47,6 +50,7 @@ import org.chromium.chrome.browser.omnibox.NewTabPageDelegate;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.status.StatusProperties.PermissionIconResource;
 import org.chromium.chrome.browser.omnibox.status.StatusProperties.StatusIconResource;
+import org.chromium.chrome.browser.omnibox.status.StatusView.IconTransitionType;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.toolbar.LocationBarModel;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
@@ -67,7 +71,7 @@ import java.util.List;
 
 /** Render tests for {@link StatusView}. */
 @RunWith(ParameterizedRunner.class)
-@ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
+@UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
 @Batch(Batch.PER_CLASS)
 public class StatusViewRenderTest {
     @ClassRule
@@ -108,6 +112,9 @@ public class StatusViewRenderTest {
     public void setUp() {
         ChromeAutocompleteSchemeClassifierJni.setInstanceForTesting(
                 mChromeAutocompleteSchemeClassifierJni);
+        doAnswer(invocation -> JniUniquePtr.createForTesting(1L))
+                .when(mChromeAutocompleteSchemeClassifierJni)
+                .createAutocompleteClassifier(any());
 
         doReturn(true).when(mIncognitoProfile).isOffTheRecord();
 
@@ -243,7 +250,7 @@ public class StatusViewRenderTest {
                                     false);
                     PermissionIconResource statusIcon =
                             new PermissionIconResource(locationIcon, false);
-                    statusIcon.setTransitionType(StatusView.IconTransitionType.ROTATE);
+                    statusIcon.setTransitionType(IconTransitionType.ROTATE);
                     mStatusModel.set(StatusProperties.STATUS_VIEW_BACKGROUND, mBackground);
                     mStatusModel.set(
                             StatusProperties.STATUS_VIEW_TOOLTIP_TEXT,
@@ -266,7 +273,7 @@ public class StatusViewRenderTest {
                                     sActivity.getTheme());
                     StatusIconResource statusIcon =
                             new PermissionIconResource(storeIconDrawable, false);
-                    statusIcon.setTransitionType(StatusView.IconTransitionType.ROTATE);
+                    statusIcon.setTransitionType(IconTransitionType.ROTATE);
                     mStatusModel.set(StatusProperties.STATUS_VIEW_BACKGROUND, mBackground);
                     mStatusModel.set(
                             StatusProperties.STATUS_VIEW_TOOLTIP_TEXT,

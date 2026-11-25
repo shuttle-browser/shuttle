@@ -32,7 +32,7 @@ static ResolvedUnderlinePosition ResolveUnderlinePosition(
   // scripts where it would not be appropriate (e.g., ideographs.)
   // However, this has performance implications. For now, we only work with
   // vertical text.
-  if (style.GetFontBaseline() != kCentralBaseline) {
+  if (style.GetFontBaseline() != FontBaseline::kCentral) {
     if (EnumHasFlags(position, TextUnderlinePosition::kUnder)) {
       return ResolvedUnderlinePosition::kUnder;
     }
@@ -241,8 +241,6 @@ TextDecorationInfo::TextDecorationInfo(
       fragment_context_(fragment_context),
       conservative_inset_bounds_(conservative_inset_bounds),
       // NOTE: The use of is_svg_text here is probably problematic.
-      // See LayoutSVGInlineText::ComputeNewScaledFontForStyle() for
-      // a workaround that is needed due to that.
       use_decorating_box_(inline_context && !decoration_override_ &&
                           !is_svg_text && ShouldUseDecoratingBox(target_style)),
       is_svg_text_(is_svg_text) {

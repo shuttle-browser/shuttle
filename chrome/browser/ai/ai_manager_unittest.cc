@@ -5,17 +5,22 @@
 #include "chrome/browser/ai/ai_manager.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <vector>
 
 #include "base/files/file_path.h"
+#include "base/functional/callback_helpers.h"
 #include "base/memory/raw_ptr.h"
 #include "base/task/current_thread.h"
 #include "base/test/mock_callback.h"
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "chrome/browser/ai/ai_language_model.h"
 #include "chrome/browser/ai/ai_semantic_embedder_service_launcher.h"
 #include "chrome/browser/ai/ai_test_utils.h"
+#include "chrome/browser/ai/semantic_embedder_spaces.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/optimization_guide/mock_optimization_guide_keyed_service.h"
 #include "chrome/browser/optimization_guide/model_execution/optimization_guide_global_state.h"
@@ -34,8 +39,10 @@
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/test_renderer_host.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/test_support/test_utils.h"
 #include "mojo/public/mojom/base/work_in_progress.mojom.h"
+#include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom.h"
 #include "services/on_device_model/public/cpp/features.h"
 #include "services/on_device_model/public/mojom/download_observer.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -45,6 +52,7 @@
 #include "third_party/blink/public/mojom/ai/ai_language_model.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_manager.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_rewriter.mojom.h"
+#include "third_party/blink/public/mojom/ai/ai_semantic_embedder.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_summarizer.mojom.h"
 #include "third_party/blink/public/mojom/ai/ai_writer.mojom.h"
 
@@ -74,6 +82,14 @@ std::vector<blink::mojom::AILanguageCodePtr> MakeLanguageCodeVector(
     result.push_back(blink::mojom::AILanguageCode::New(language));
   }
   return result;
+}
+
+// Options for CanCreateSemanticEmbedder() and CreateSemanticEmbedder() that
+// ask for `embedding_space`.
+blink::mojom::AISemanticEmbedderCreateOptionsPtr MakeSemanticEmbedderOptions(
+    const std::string& embedding_space =
+        semantic_embedder::kEmbeddingGemmaV1Space) {
+  return blink::mojom::AISemanticEmbedderCreateOptions::New(embedding_space);
 }
 
 class TestCreateSemanticEmbedderClient
@@ -217,6 +233,10 @@ class AIManagerTest : public AITestUtils::AITestBase {
         .AddUnsafeSolution("prompt_api", "base", CreateSolution())
         .AddUnsafeSolution("writing_assistance_api", "base", CreateSolution())
         .AddUnsafeSolution("summarizer_api", "base", CreateSolution())
+        .AddBaseModel("laya_en_wint8")
+        .AddBaseModel("laya_ml_wint8")
+        .AddUnsafeSolution("laya_en_wint8", "laya_en_wint8")
+        .AddUnsafeSolution("laya_ml_wint8", "laya_ml_wint8")
         .SetFeatureConfig("prompt_api",
                           optimization_guide::AnyWrapProto(prompt_api_cfg))
         .SetFeatureConfig("writing_assistance_api",
@@ -386,7 +406,8 @@ TEST_F(AIManagerTest, CanCreateSemanticEmbedderCrashLimit) {
   // Check it is available
   {
     base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
-    ai_manager_->CanCreateSemanticEmbedder(future.GetCallback());
+    ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                           future.GetCallback());
     EXPECT_EQ(future.Get(),
               blink::mojom::ModelAvailabilityCheckResult::kAvailable);
   }
@@ -399,7 +420,8 @@ TEST_F(AIManagerTest, CanCreateSemanticEmbedderCrashLimit) {
   // Check it is unavailable.
   {
     base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
-    ai_manager_->CanCreateSemanticEmbedder(future.GetCallback());
+    ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                           future.GetCallback());
     EXPECT_EQ(future.Get(), blink::mojom::ModelAvailabilityCheckResult::
                                 kUnavailableTooManyRecentCrashes);
   }
@@ -407,6 +429,189 @@ TEST_F(AIManagerTest, CanCreateSemanticEmbedderCrashLimit) {
   // Cleanup
   service_launcher->RecordSuccessfulUse();
   service_launcher->controller()->MaybeUpdateModelInfo(std::nullopt);
+}
+
+TEST_F(AIManagerTest, CanCreateSemanticEmbedderRejectsUnknownSpace) {
+  {
+    base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+    ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                           future.GetCallback());
+    EXPECT_EQ(future.Get(),
+              blink::mojom::ModelAvailabilityCheckResult::kDownloadable);
+  }
+  {
+    base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+    ai_manager_->CanCreateSemanticEmbedder(
+        MakeSemanticEmbedderOptions("some-other-space"), future.GetCallback());
+    EXPECT_EQ(future.Get(), blink::mojom::ModelAvailabilityCheckResult::
+                                kUnavailableUnsupportedEmbeddingSpace);
+  }
+}
+
+TEST_F(AIManagerTest, CreateSemanticEmbedderRejectsUnknownSpace) {
+  mojo::test::BadMessageObserver observer;
+  TestCreateSemanticEmbedderClient client;
+  GetAIManagerRemote()->CreateSemanticEmbedder(
+      client.BindNewPipeAndPassRemote(),
+      MakeSemanticEmbedderOptions("some-other-space"),
+      /*monitor=*/mojo::NullRemote());
+  EXPECT_EQ(observer.WaitForBadMessage(), "Unsupported embedding space");
+}
+
+// The reply to GetSupportedEmbeddingSpaces().
+using SupportedSpaces =
+    std::vector<blink::mojom::AISemanticEmbedderSpaceInfoPtr>;
+
+TEST_F(AIManagerTest, GetSupportedEmbeddingSpacesListsServedSpaces) {
+  // No model is installed: discovery does not depend on download state.
+  ASSERT_FALSE(AISemanticEmbedderServiceLauncher::Get()
+                   ->controller()
+                   ->IsModelAvailable());
+
+  base::test::TestFuture<SupportedSpaces> future;
+  ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+  const SupportedSpaces& spaces = future.Get();
+  ASSERT_EQ(spaces.size(), 1u);
+  EXPECT_EQ(spaces[0]->embedding_space,
+            semantic_embedder::kEmbeddingGemmaV1Space);
+  EXPECT_FALSE(spaces[0]->shutdown_date.has_value());
+}
+
+TEST_F(AIManagerTest, GetSupportedEmbeddingSpacesIgnoresCrashLimit) {
+  auto* service_launcher = AISemanticEmbedderServiceLauncher::Get();
+  service_launcher->OnServiceDisconnected(/*is_idle=*/false);
+  service_launcher->OnServiceDisconnected(/*is_idle=*/false);
+  service_launcher->OnServiceDisconnected(/*is_idle=*/false);
+  ASSERT_FALSE(service_launcher->AllowedToLaunch());
+
+  base::test::TestFuture<SupportedSpaces> future;
+  ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+  EXPECT_EQ(future.Get().size(), 1u);
+}
+
+TEST_F(AIManagerTest,
+       GetSupportedEmbeddingSpacesEmptyWhenEnterprisePolicyDisabled) {
+  SetBuiltInAIAPIsEnterprisePolicy(false);
+  {
+    base::test::TestFuture<SupportedSpaces> future;
+    ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+    EXPECT_TRUE(future.Get().empty());
+  }
+  SetBuiltInAIAPIsEnterprisePolicy(true);
+
+  SetGenAILocalEnterprisePolicy(false);
+  {
+    base::test::TestFuture<SupportedSpaces> future;
+    ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+    EXPECT_TRUE(future.Get().empty());
+  }
+  SetGenAILocalEnterprisePolicy(true);
+}
+
+TEST_F(AIManagerTest, GetSupportedEmbeddingSpacesEmptyWhenUserSettingDisabled) {
+  SetOnDeviceAiUserSetting(false);
+  base::test::TestFuture<SupportedSpaces> future;
+  ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+  EXPECT_TRUE(future.Get().empty());
+  SetOnDeviceAiUserSetting(true);
+}
+
+// Blink answers params() itself in a frame the permissions policy blocks, so
+// a call that still arrives is a bad message.
+TEST_F(AIManagerTest, GetSupportedEmbeddingSpacesPermissionsPolicyDisabled) {
+  DisablePolicy(network::mojom::PermissionsPolicyFeature::kSemanticEmbedder);
+  mojo::test::BadMessageObserver observer;
+  GetAIManagerRemote()->GetSupportedEmbeddingSpaces(base::DoNothing());
+  EXPECT_EQ(observer.WaitForBadMessage(), "Permissions policy disabled");
+}
+
+TEST_F(AIManagerTest, GetSupportedEmbeddingSpacesEmptyWhenFeatureDisabled) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(blink::features::kAIEmbeddingsAPI);
+  base::test::TestFuture<SupportedSpaces> future;
+  ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+  EXPECT_TRUE(future.Get().empty());
+}
+
+TEST_F(AIManagerTest,
+       GetSupportedEmbeddingSpacesEmptyWithoutOptimizationGuide) {
+  SetupNullOptimizationGuideKeyedService();
+  base::test::TestFuture<SupportedSpaces> future;
+  ai_manager_->GetSupportedEmbeddingSpaces(future.GetCallback());
+  EXPECT_TRUE(future.Get().empty());
+}
+
+// Sign-in, lock-screen and System profiles have no
+// OptimizationGuideKeyedService.
+TEST_F(AIManagerTest, CanCreateSemanticEmbedderWithoutOptimizationGuide) {
+  SetupNullOptimizationGuideKeyedService();
+
+  base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+  ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                         future.GetCallback());
+  EXPECT_EQ(future.Get(), blink::mojom::ModelAvailabilityCheckResult::
+                              kUnavailableServiceNotRunning);
+}
+
+TEST_F(AIManagerTest, CreateSemanticEmbedderWithoutOptimizationGuide) {
+  SetupNullOptimizationGuideKeyedService();
+  // The model is browser-global and installed, so only the missing service can
+  // make create() fail.
+  auto* service_launcher = AISemanticEmbedderServiceLauncher::Get();
+  ASSERT_TRUE(service_launcher->controller()->MaybeUpdateModelInfo(
+      optimization_guide::ModelInfo{
+          .model_file_path = base::FilePath(FILE_PATH_LITERAL("embeddings")),
+          .additional_files = {base::FilePath(FILE_PATH_LITERAL("sp"))},
+          .version = 1,
+          .model_metadata = optimization_guide::AnyWrapProto(
+              optimization_guide::proto::PassageEmbeddingsModelMetadata()),
+      }));
+
+  TestCreateSemanticEmbedderClient client;
+  ai_manager_->CreateSemanticEmbedder(client.BindNewPipeAndPassRemote(),
+                                      MakeSemanticEmbedderOptions(),
+                                      /*monitor=*/mojo::NullRemote());
+
+  ASSERT_TRUE(base::test::RunUntil([&] {
+    return client.future().IsReady() || client.error_future().IsReady();
+  }));
+  ASSERT_TRUE(client.error_future().IsReady());
+  EXPECT_EQ(client.error_future().Get(),
+            blink::mojom::AIManagerCreateClientError::kUnableToCreateSession);
+}
+
+TEST_F(AIManagerTest, CanCreateSemanticEmbedderPermissionsPolicyDisabled) {
+  DisablePolicy(network::mojom::PermissionsPolicyFeature::kSemanticEmbedder);
+  mojo::test::BadMessageObserver observer;
+  GetAIManagerRemote()->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                                  base::DoNothing());
+  EXPECT_EQ(observer.WaitForBadMessage(), "Permissions policy disabled");
+}
+
+TEST_F(AIManagerTest, CreateSemanticEmbedderPermissionsPolicyDisabled) {
+  DisablePolicy(network::mojom::PermissionsPolicyFeature::kSemanticEmbedder);
+  mojo::test::BadMessageObserver observer;
+  TestCreateSemanticEmbedderClient client;
+  GetAIManagerRemote()->CreateSemanticEmbedder(
+      client.BindNewPipeAndPassRemote(), MakeSemanticEmbedderOptions(),
+      /*monitor=*/mojo::NullRemote());
+  EXPECT_EQ(observer.WaitForBadMessage(), "Policy or user setting disabled");
+}
+
+// The Semantic Embedder has its own policy, so blocking "language-model" does
+// not block it.
+TEST_F(AIManagerTest, SemanticEmbedderIgnoresLanguageModelPolicy) {
+  DisablePolicy(network::mojom::PermissionsPolicyFeature::kLanguageModel);
+  mojo::test::BadMessageObserver observer;
+  mojo::Remote<blink::mojom::AIManager> ai_manager = GetAIManagerRemote();
+  base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+  ai_manager->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                        future.GetCallback());
+  ai_manager.FlushForTesting();
+  EXPECT_FALSE(observer.got_bad_message());
+  ASSERT_TRUE(future.IsReady());
+  EXPECT_EQ(future.Get(),
+            blink::mojom::ModelAvailabilityCheckResult::kDownloadable);
 }
 
 TEST_F(AIManagerTest, CanCreateFeatureDisabled) {
@@ -481,18 +686,32 @@ MakeBooleanDecisionModelOptions() {
 // Enables the specified Decisions API backend and any required dependencies.
 void EnableDecisionModel(base::test::ScopedFeatureList& feature_list,
                          AIManager::DecisionModelBackend backend) {
-  if (backend == AIManager::DecisionModelBackend::kEmbeddingGemmaV1) {
-    feature_list.InitWithFeaturesAndParameters(
-        {{blink::features::kAIDecisionModelAPI,
-          {{"backend", "embedding_gemma_v1"}}}},
-        {});
-    return;
+  switch (backend) {
+    case AIManager::DecisionModelBackend::kEmbeddingGemmaV1:
+      feature_list.InitWithFeaturesAndParameters(
+          {{blink::features::kAIDecisionModelAPI,
+            {{"backend", "embedding_gemma_v1"}}}},
+          {});
+      return;
+    case AIManager::DecisionModelBackend::kLanguageModel:
+      feature_list.InitWithFeaturesAndParameters(
+          {{blink::features::kAIDecisionModelAPI,
+            {{"backend", "language_model"}}},
+           {on_device_model::features::kOnDeviceModelForceCpuBackend, {}},
+           {optimization_guide::kOptimizationGuideManifestBroker, {}}},
+          {});
+      return;
+    case AIManager::DecisionModelBackend::kLayaEnWint8:
+      feature_list.InitAndEnableFeatureWithParameters(
+          blink::features::kAIDecisionModelAPI,
+          {{"backend", "laya_en_wint8"}});
+      return;
+    case AIManager::DecisionModelBackend::kLayaMlWint8:
+      feature_list.InitAndEnableFeatureWithParameters(
+          blink::features::kAIDecisionModelAPI,
+          {{"backend", "laya_ml_wint8"}});
+      return;
   }
-  feature_list.InitWithFeaturesAndParameters(
-      {{blink::features::kAIDecisionModelAPI, {{"backend", "language_model"}}},
-       {on_device_model::features::kOnDeviceModelForceCpuBackend, {}},
-       {optimization_guide::kOptimizationGuideManifestBroker, {}}},
-      {});
 }
 
 TEST_F(AIManagerTest, CanCreateDecisionModel) {
@@ -513,6 +732,8 @@ TEST_F(AIManagerTest, CanCreateDecisionModel) {
 
   for (AIManager::DecisionModelBackend backend :
        {AIManager::DecisionModelBackend::kEmbeddingGemmaV1,
+        AIManager::DecisionModelBackend::kLayaEnWint8,
+        AIManager::DecisionModelBackend::kLayaMlWint8,
         AIManager::DecisionModelBackend::kLanguageModel}) {
     SCOPED_TRACE(static_cast<int>(backend));
     base::test::ScopedFeatureList feature_list;
@@ -629,6 +850,41 @@ TEST_F(AIManagerTest, CanCreateDecisionModelWithEmbeddingGemmaV1Backend) {
   service_launcher->controller()->MaybeUpdateModelInfo(std::nullopt);
 }
 
+TEST_F(AIManagerTest, CanCreateDecisionModelWithLayaBackend) {
+  for (const char* variant : {"laya_en_wint8", "laya_ml_wint8"}) {
+    base::test::ScopedFeatureList variant_feature_list;
+    variant_feature_list.InitAndEnableFeatureWithParameters(
+        blink::features::kAIDecisionModelAPI, {{"backend", variant}});
+
+    std::string component_key = std::string(variant) + "_key";
+    EXPECT_FALSE(fake_broker_->component_state().IsRegistered(component_key));
+
+    base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult>
+        before_future;
+    ai_manager_->CanCreateDecisionModel(MakeBooleanDecisionModelOptions(),
+                                        before_future.GetCallback());
+    EXPECT_EQ(before_future.Get(),
+              blink::mojom::ModelAvailabilityCheckResult::kDownloadable);
+
+    mojo::PendingRemote<blink::mojom::AIManagerCreateDecisionModelClient>
+        client;
+    std::ignore = client.InitWithNewPipeAndPassReceiver();
+    ai_manager_->CreateDecisionModel(std::move(client),
+                                     MakeBooleanDecisionModelOptions(),
+                                     mojo::NullRemote());
+
+    EXPECT_TRUE(base::test::RunUntil([&]() {
+      base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult>
+          after_future;
+      ai_manager_->CanCreateDecisionModel(MakeBooleanDecisionModelOptions(),
+                                          after_future.GetCallback());
+      return after_future.Get() ==
+             blink::mojom::ModelAvailabilityCheckResult::kAvailable;
+    }));
+    EXPECT_TRUE(fake_broker_->component_state().IsRegistered(component_key));
+  }
+}
+
 TEST_F(AIManagerTest, CanCreateDecisionModelWithLanguageModelBackend) {
   // Without `kOnDeviceModelForceCpuBackend` and
   // `kOptimizationGuideManifestBroker`, the language model backend is
@@ -730,7 +986,31 @@ TEST_F(AIManagerTest, CreateDecisionModelWithExplicitBackendOption) {
               optimization_guide::proto::PassageEmbeddingsModelMetadata()),
       });
 
-  // Verify availability can be checked per backend.
+  // Verify availability defaults to the first enabled backend and can be
+  // checked per backend.
+  {
+    base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+    ai_manager_->CanCreateDecisionModel(
+        blink::mojom::AIDecisionModelCreateOptions::New(),
+        future.GetCallback());
+    EXPECT_EQ(future.Get(),
+              blink::mojom::ModelAvailabilityCheckResult::kAvailable);
+  }
+  {
+    base::test::ScopedFeatureList reversed_list;
+    reversed_list.InitWithFeaturesAndParameters(
+        {{blink::features::kAIDecisionModelAPI,
+          {{"backend", "language_model,embedding_gemma_v1"}}},
+         {on_device_model::features::kOnDeviceModelForceCpuBackend, {}},
+         {optimization_guide::kOptimizationGuideManifestBroker, {}}},
+        {});
+    base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+    ai_manager_->CanCreateDecisionModel(
+        blink::mojom::AIDecisionModelCreateOptions::New(),
+        future.GetCallback());
+    EXPECT_EQ(future.Get(),
+              blink::mojom::ModelAvailabilityCheckResult::kDownloadable);
+  }
   {
     auto options = blink::mojom::AIDecisionModelCreateOptions::New();
     options->backend = AIManager::DecisionModelBackend::kLanguageModel;
@@ -772,6 +1052,52 @@ TEST_F(AIManagerTest, CreateDecisionModelWithExplicitBackendOption) {
 
   EXPECT_EQ(GetAIManagerContextBoundObjectSetSize(), 2u);
 }
+
+TEST_F(AIManagerTest, DecisionModelRejectsDisabledBackendOption) {
+  for (bool enable_embedding_gemma_v1 : {true, false}) {
+    SCOPED_TRACE(enable_embedding_gemma_v1);
+    base::test::ScopedFeatureList feature_list;
+    feature_list.InitWithFeaturesAndParameters(
+        {{blink::features::kAIDecisionModelAPI,
+          {{"backend", enable_embedding_gemma_v1 ? "embedding_gemma_v1"
+                                                 : "language_model"}}},
+         {on_device_model::features::kOnDeviceModelForceCpuBackend, {}},
+         {optimization_guide::kOptimizationGuideManifestBroker, {}}},
+        {});
+    const auto enabled =
+        enable_embedding_gemma_v1
+            ? AIManager::DecisionModelBackend::kEmbeddingGemmaV1
+            : AIManager::DecisionModelBackend::kLanguageModel;
+    const auto disabled =
+        enable_embedding_gemma_v1
+            ? AIManager::DecisionModelBackend::kLanguageModel
+            : AIManager::DecisionModelBackend::kEmbeddingGemmaV1;
+
+    for (auto backend : {enabled, disabled}) {
+      auto options = blink::mojom::AIDecisionModelCreateOptions::New();
+      options->backend = backend;
+      base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
+      ai_manager_->CanCreateDecisionModel(std::move(options),
+                                          future.GetCallback());
+      EXPECT_EQ(future.Get(),
+                backend == enabled
+                    ? blink::mojom::ModelAvailabilityCheckResult::kDownloadable
+                    : blink::mojom::ModelAvailabilityCheckResult::
+                          kUnavailableFeatureNotEnabled);
+    }
+
+    mojo::PendingRemote<blink::mojom::AIManagerCreateDecisionModelClient>
+        client;
+    std::ignore = client.InitWithNewPipeAndPassReceiver();
+    auto options = MakeBooleanDecisionModelOptions();
+    options->backend = disabled;
+    mojo::test::BadMessageObserver bad_message_observer;
+    GetAIManagerRemote()->CreateDecisionModel(
+        std::move(client), std::move(options), mojo::NullRemote());
+    EXPECT_EQ(bad_message_observer.WaitForBadMessage(),
+              "Decisions API backend unavailable");
+  }
+}
 #else
 TEST_F(AIManagerTest, CanCreateDecisionModelUnavailableOnAndroid) {
   base::test::TestFuture<blink::mojom::ModelAvailabilityCheckResult> future;
@@ -796,7 +1122,8 @@ TEST_F(AIManagerTest, CanCreateEnterprisePolicyDisabled) {
   ai_manager_->CanCreateSummarizer(/*options=*/{}, callback.Get());
   ai_manager_->CanCreateRewriter(/*options=*/{}, callback.Get());
   ai_manager_->CanCreateProofreader(/*options=*/{}, callback.Get());
-  ai_manager_->CanCreateSemanticEmbedder(callback.Get());
+  ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                         callback.Get());
   SetBuiltInAIAPIsEnterprisePolicy(true);
 }
 
@@ -814,7 +1141,8 @@ TEST_F(AIManagerTest, CanCreateLocalStateEnterprisePolicyDisabled) {
   ai_manager_->CanCreateSummarizer(/*options=*/{}, callback.Get());
   ai_manager_->CanCreateRewriter(/*options=*/{}, callback.Get());
   ai_manager_->CanCreateProofreader(/*options=*/{}, callback.Get());
-  ai_manager_->CanCreateSemanticEmbedder(callback.Get());
+  ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                         callback.Get());
   SetGenAILocalEnterprisePolicy(true);
 }
 
@@ -835,7 +1163,8 @@ TEST_F(AIManagerTest, CanCreateLocalStateUserSettingsDisabled) {
   ai_manager_->CanCreateSummarizer(/*options=*/{}, callback.Get());
   ai_manager_->CanCreateRewriter(/*options=*/{}, callback.Get());
   ai_manager_->CanCreateProofreader(/*options=*/{}, callback.Get());
-  ai_manager_->CanCreateSemanticEmbedder(callback.Get());
+  ai_manager_->CanCreateSemanticEmbedder(MakeSemanticEmbedderOptions(),
+                                         callback.Get());
 
   const auto& messages = tester->GetConsoleMessages();
   ASSERT_EQ(messages.size(), baseline_count + 1);
@@ -1022,6 +1351,7 @@ TEST_F(AIManagerTest, CreateSemanticEmbedderWaitsForModel) {
   MockDownloadObserver monitor;
 
   ai_manager_->CreateSemanticEmbedder(client.BindNewPipeAndPassRemote(),
+                                      MakeSemanticEmbedderOptions(),
                                       monitor.BindNewPipeAndPassRemote());
 
   // Wait a bit and verify it hasn't resolved.
@@ -1068,6 +1398,7 @@ TEST_F(AIManagerTest, CreateSemanticEmbedderDownloadProgress) {
                            optimization_guide::kNormalizedDownloadProgressMax));
 
   ai_manager_->CreateSemanticEmbedder(client.BindNewPipeAndPassRemote(),
+                                      MakeSemanticEmbedderOptions(),
                                       monitor.BindNewPipeAndPassRemote());
 
   task_environment()->RunUntilIdle();  // nocheck
@@ -1119,6 +1450,7 @@ TEST_F(AIManagerTest, CreateSemanticEmbedderCrashLimit) {
   MockDownloadObserver monitor;
 
   ai_manager_->CreateSemanticEmbedder(client.BindNewPipeAndPassRemote(),
+                                      MakeSemanticEmbedderOptions(),
                                       monitor.BindNewPipeAndPassRemote());
 
   EXPECT_TRUE(client.error_future().Wait());
@@ -1151,6 +1483,7 @@ TEST_F(AIManagerTest, CreateSemanticEmbedderComponentUpdateFailed) {
           });
 
   ai_manager_->CreateSemanticEmbedder(client.BindNewPipeAndPassRemote(),
+                                      MakeSemanticEmbedderOptions(),
                                       monitor.BindNewPipeAndPassRemote());
 
   task_environment()->RunUntilIdle();  // nocheck

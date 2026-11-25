@@ -2,6 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import 'chrome://resources/cr_elements/cr_toolbar/cr_toolbar_search_field.js';
 import './organizer_list.js';
 import '/strings.m.js';
@@ -20,6 +21,7 @@ import {RecentTabsDelegate} from './delegates/recent_tabs_delegate.js';
 import {TabGroupsDelegate} from './delegates/tab_groups_delegate.js';
 import type {OrganizerListElement} from './organizer_list.js';
 import type {OrganizerListSectionDelegate} from './organizer_list_section_delegate.js';
+import {recordCloseMetrics, resetCloseMetrics} from './organizer_list_section_delegate.js';
 import type {BrowserProxy} from './organizer_panel.mojom-webui.js';
 import {browserProxyFactory} from './organizer_panel.mojom-webui.js';
 
@@ -54,10 +56,15 @@ export class OrganizerPanelAppElement extends CrLitElement {
         type: Boolean,
         reflect: true,
       },
+      inTrayView: {
+        type: Boolean,
+        reflect: true,
+      },
     };
   }
 
   accessor verticalTabsEnabled: boolean = false;
+  accessor inTrayView: boolean = true;
   protected accessor shortcut_: string = loadTimeData.getString('shortcutText');
   protected accessor searchQuery_: string = '';
   protected accessor sectionDelegates_:
@@ -66,17 +73,24 @@ export class OrganizerPanelAppElement extends CrLitElement {
 
   private browserProxy_: BrowserProxy = browserProxyFactory.getInstance();
   private verticalTabsEnabledChangedListenerId_: number|null = null;
+  private inTrayViewChangedListenerId_: number|null = null;
   private onKeydown_: (e: KeyboardEvent) => void = (e: KeyboardEvent) => {
     if (e.key === 'Tab') {
+      const path = e.composedPath();
       const closeButton = this.getCloseButton_();
-      if (closeButton && e.composedPath().includes(closeButton)) {
+      if (closeButton && path.includes(closeButton)) {
         if (!e.shiftKey) {
           this.$.searchField.getSearchInput().focus();
         } else {
-          if (!this.$.list.focusLastSection()) {
+          if (!this.$.list.focusLastSection(true)) {
             this.$.searchField.getSearchInput().focus();
           }
         }
+        e.preventDefault();
+        e.stopPropagation();
+      } else if (
+          !e.shiftKey && path.includes(this.$.searchField) &&
+          this.$.list.focusFirstSection()) {
         e.preventDefault();
         e.stopPropagation();
       }
@@ -92,6 +106,7 @@ export class OrganizerPanelAppElement extends CrLitElement {
   };
   private onVisibilityChange_: () => void = () => {
     if (document.visibilityState === 'hidden') {
+      recordCloseMetrics();
       this.$.searchField.setValue('');
       this.searchQuery_ = '';
       this.$.list.scrollTop = 0;
@@ -100,6 +115,7 @@ export class OrganizerPanelAppElement extends CrLitElement {
 
   override connectedCallback() {
     super.connectedCallback();
+    resetCloseMetrics();
     ColorChangeUpdater.forDocument().start();
     this.addEventListener('keydown', this.onKeydown_);
     window.addEventListener('focus', this.onWindowFocused_);
@@ -109,6 +125,11 @@ export class OrganizerPanelAppElement extends CrLitElement {
         this.browserProxy_.callbackRouter.onVerticalTabsEnabledChanged
             .addListener((verticalTabsEnabled: boolean) => {
               this.verticalTabsEnabled = verticalTabsEnabled;
+            });
+    this.inTrayViewChangedListenerId_ =
+        this.browserProxy_.callbackRouter.onIsInTrayViewChanged.addListener(
+            (inTrayView: boolean) => {
+              this.inTrayView = inTrayView;
             });
   }
 
@@ -122,6 +143,10 @@ export class OrganizerPanelAppElement extends CrLitElement {
     this.browserProxy_.callbackRouter.removeListener(
         this.verticalTabsEnabledChangedListenerId_);
     this.verticalTabsEnabledChangedListenerId_ = null;
+    assert(this.inTrayViewChangedListenerId_ !== null);
+    this.browserProxy_.callbackRouter.removeListener(
+        this.inTrayViewChangedListenerId_);
+    this.inTrayViewChangedListenerId_ = null;
   }
 
   private getCloseButton_(): HTMLElement|null {
@@ -130,6 +155,10 @@ export class OrganizerPanelAppElement extends CrLitElement {
       return null;
     }
     return button;
+  }
+
+  protected onCloseButtonClick_() {
+    this.browserProxy_.handler.closePanel();
   }
 
   protected onFocusAfterList_(e: CustomEvent<{sourceEvent?: KeyboardEvent}>) {

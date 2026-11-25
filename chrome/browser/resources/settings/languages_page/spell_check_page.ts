@@ -28,7 +28,9 @@ import type {CrCollapseElement} from 'chrome://resources/cr_elements/cr_collapse
 // </if>
 import {I18nMixinLit} from 'chrome://resources/cr_elements/i18n_mixin_lit.js';
 import {assert} from 'chrome://resources/js/assert.js';
+// <if expr="not is_macosx">
 import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+// </if>
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 // <if expr="_google_chrome">
@@ -86,20 +88,24 @@ export class SettingsSpellCheckPageElement extends
       spellCheckLanguages_: {type: Array},
       // </if>
 
+      // <if expr="_google_chrome or not is_macosx">
       enableSpellcheckingPref_: {type: Object},
+      // </if>
       useSpellingServicePref_: {type: Object},
       forcedDictionariesPref_: {type: Object},
       blockedDictionariesPref_: {type: Object},
     };
   }
 
+  // <if expr="_google_chrome or not is_macosx">
   protected accessor enableSpellcheckingPref_:
       chrome.settingsPrivate.PrefObject<boolean>|undefined;
-  protected accessor useSpellingServicePref_:
+  // </if>
+  private accessor useSpellingServicePref_:
       chrome.settingsPrivate.PrefObject<boolean>|undefined;
-  protected accessor forcedDictionariesPref_:
+  private accessor forcedDictionariesPref_:
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
-  protected accessor blockedDictionariesPref_:
+  private accessor blockedDictionariesPref_:
       chrome.settingsPrivate.PrefObject<string[]>|undefined;
   // <if expr="not is_macosx">
   protected accessor spellCheckLanguages_:
@@ -114,7 +120,9 @@ export class SettingsSpellCheckPageElement extends
     super.connectedCallback();
 
     this.mirrorPrefs({
+      // <if expr="_google_chrome or not is_macosx">
       'browser.enable_spellchecking': 'enableSpellcheckingPref_',
+      // </if>
       'spellcheck.use_spelling_service': 'useSpellingServicePref_',
       'spellcheck.forced_dictionaries': 'forcedDictionariesPref_',
       'spellcheck.blocked_dictionaries': 'blockedDictionariesPref_',
@@ -134,29 +142,27 @@ export class SettingsSpellCheckPageElement extends
     // </if>
   }
 
+  // <if expr="not is_macosx">
   override disconnectedCallback() {
     super.disconnectedCallback();
 
-    // <if expr="not is_macosx">
     if (this.boundOnLanguagesChanged_) {
       this.languageHelper_.removeEventListener(
           'languages-changed', this.boundOnLanguagesChanged_);
       this.boundOnLanguagesChanged_ = null;
     }
-    // </if>
   }
 
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
 
-    // <if expr="not is_macosx">
     const changedPrivateProperties =
         changedProperties as Map<PropertyKey, unknown>;
     if (changedPrivateProperties.has('enableSpellcheckingPref_')) {
       this.updateSpellcheckEnabled_();
     }
-    // </if>
   }
+  // </if>
 
   protected onEnableSpellcheckingToggleSettingsBooleanControlChange_(e: Event) {
     this.languageSettingsMetricsProxy_.recordSettingsMetric(

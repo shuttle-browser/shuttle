@@ -53,6 +53,8 @@
 #import "ios/chrome/browser/cobrowse/model/cobrowse_context.h"
 #import "ios/chrome/browser/default_browser/model/utils.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/first_run/coordinator/first_run_coordinator.h"
+#import "ios/chrome/browser/first_run/coordinator/first_run_screen_provider.h"
 #import "ios/chrome/browser/first_run/guided_tour/coordinator/guided_tour_coordinator.h"
 #import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_controller.h"
 #import "ios/chrome/browser/history/ui_bundled/history_coordinator_factory.h"
@@ -71,6 +73,7 @@
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_availability.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_entry_flow_result.h"
+#import "ios/chrome/browser/intelligence/contextual_cueing/coordinator/gemini_contextual_cue_settings_coordinator.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/mailto_handler/model/mailto_handler_service.h"
 #import "ios/chrome/browser/mailto_handler/model/mailto_handler_service_factory.h"
@@ -99,7 +102,6 @@
 #import "ios/chrome/browser/shared/coordinator/scene/state/tab_grid_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios_util.h"
@@ -194,6 +196,7 @@ inline LayoutStateScenePassKey PassKey() {
 }  // namespace
 
 @interface SceneCoordinator () <AccountMenuCoordinatorDelegate,
+                                FirstRunCoordinatorDelegate,
                                 GeminiWebModalCoordinatorDelegate,
                                 HistoryCoordinatorDelegate,
                                 IncognitoInterstitialCoordinatorDelegate,
@@ -245,6 +248,8 @@ inline LayoutStateScenePassKey PassKey() {
   // TODO(crbug.com/573186211): Remove once `IOSGeminiBottomSheetMigration`
   // completes rollout.
   GeminiWebModalCoordinator* _geminiWebModalCoordinator;
+  GeminiContextualCueSettingsCoordinator*
+      _geminiContextualCueSettingsCoordinator;
   // Coordinator for display of the Password Checkup.
   PasswordCheckupCoordinator* _passwordCheckupCoordinator;
   // Coordinator for display of Password Settings.
@@ -289,6 +294,8 @@ inline LayoutStateScenePassKey PassKey() {
   SettingsNavigationController* _settingsNavigationController;
   // Completion block called when Settings are dismissed.
   ProceduralBlock _settingsDismissalCompletion;
+  // Coordinator for the First Run UI.
+  FirstRunCoordinator* _firstRunCoordinator;
   // Coordinator for the Guided Tour.
   GuidedTourCoordinator* _guidedTourCoordinator;
   // Coordinator for the undo sign-out flow.
@@ -415,6 +422,8 @@ inline LayoutStateScenePassKey PassKey() {
   self.UIHandler = nil;
   self.tabGridDelegate = nil;
   self.sceneURLLoadingService = nullptr;
+  [_firstRunCoordinator stop];
+  _firstRunCoordinator = nil;
   _guidedTourCoordinator.completion = nil;
   [self hideGuidedTour];
   [_geminiContainerCoordinator stop];
@@ -425,6 +434,7 @@ inline LayoutStateScenePassKey PassKey() {
   _geminiEntryFlowCoordinator = nil;
   [_geminiWebModalCoordinator stop];
   _geminiWebModalCoordinator = nil;
+  [self hideGeminiContextualCueSettingsModal];
 
   _incognitoBrowser = nullptr;
 }
@@ -432,9 +442,9 @@ inline LayoutStateScenePassKey PassKey() {
 #pragma mark - Public
 
 - (void)setBrowsersFromProvider:(id<BrowserProviderInterface>)provider {
-  _regularBrowser = provider.mainBrowserProvider.browser->AsWeakPtr();
+  _regularBrowser = provider.mainBrowser->AsWeakPtr();
   _inactiveBrowser = _regularBrowser->GetInactiveBrowser()->AsWeakPtr();
-  _incognitoBrowser = provider.incognitoBrowserProvider.browser;
+  _incognitoBrowser = provider.incognitoBrowser;
 }
 
 - (BOOL)isTabGridActive {
@@ -1044,9 +1054,6 @@ inline LayoutStateScenePassKey PassKey() {
                                          prepareChangeProfile:
                                              prepareChangeProfile
                                          continuationProvider:provider];
-  if (!_signinCoordinator) {
-    return;
-  }
   // Copy the URL so it can be safely captured in the block.
   GURL copiedURL = URL;
   [self startSigninCoordinatorWithCompletion:^(
@@ -1075,7 +1082,6 @@ inline LayoutStateScenePassKey PassKey() {
 }
 
 - (void)showUndoSignoutFromSnackbarForIdentity:(id<SystemIdentity>)identity {
-  CHECK(IsIdentityAwarenessEnabled());
   ChromeAccountManagerService* accountManagerService =
       ChromeAccountManagerServiceFactory::GetForProfile(self.profile);
   if (!accountManagerService ||
@@ -1140,6 +1146,7 @@ inline LayoutStateScenePassKey PassKey() {
 
 - (void)openAIMenu {
   DCHECK(self.currentBrowser);
+  [_AIPrototypingCoordinator stop];
   _AIPrototypingCoordinator = [[AIPrototypingCoordinator alloc]
       initWithBaseViewController:self.activeViewController
                          browser:self.currentBrowser];
@@ -1227,6 +1234,22 @@ inline LayoutStateScenePassKey PassKey() {
   [_managedConfirmationScreenCoordinator start];
 }
 
+- (void)showFirstRunUIWithCompletion:(ProceduralBlock)completion {
+  CHECK(!_firstRunCoordinator);
+  FirstRunScreenProvider* provider =
+      [[FirstRunScreenProvider alloc] initForProfile:self.profile];
+  UIViewController* baseViewController = IsUseSceneViewControllerEnabled()
+                                             ? _viewController
+                                             : self.activeViewController;
+  _firstRunCoordinator = [[FirstRunCoordinator alloc]
+      initWithBaseViewController:baseViewController
+                         browser:_regularBrowser.get()
+                  screenProvider:provider
+                      completion:completion];
+  _firstRunCoordinator.delegate = self;
+  [_firstRunCoordinator start];
+}
+
 - (void)showGuidedTourWithCompletion:
     (void (^)(BOOL guidedTourStarted))completion {
   CHECK(!_guidedTourCoordinator, base::NotFatalUntil::M162);
@@ -1246,6 +1269,13 @@ inline LayoutStateScenePassKey PassKey() {
 - (void)hideGuidedTour {
   [_guidedTourCoordinator stop];
   _guidedTourCoordinator = nil;
+}
+
+#pragma mark - FirstRunCoordinatorDelegate
+
+- (void)didFinishFirstRun {
+  [_firstRunCoordinator stopWithCompletion];
+  _firstRunCoordinator = nil;
 }
 
 #pragma mark - ManagedProfileCreationCoordinatorDelegate
@@ -1862,8 +1892,7 @@ inline LayoutStateScenePassKey PassKey() {
 }
 
 - (Browser*)currentBrowser {
-  return self.sceneState.browserProviderInterface.currentBrowserProvider
-      .browser;
+  return self.sceneState.browserProviderInterface.currentBrowser;
 }
 
 
@@ -2951,6 +2980,26 @@ inline LayoutStateScenePassKey PassKey() {
                              URL:URL];
   _geminiWebModalCoordinator.delegate = self;
   [_geminiWebModalCoordinator start];
+}
+
+- (void)showGeminiContextualCueSettingsModal {
+  if (_geminiContextualCueSettingsCoordinator) {
+    return;
+  }
+
+  UIViewController* baseViewController = IsUseSceneViewControllerEnabled()
+                                             ? _viewController
+                                             : self.activeViewController;
+  _geminiContextualCueSettingsCoordinator =
+      [[GeminiContextualCueSettingsCoordinator alloc]
+          initWithBaseViewController:baseViewController
+                             browser:_regularBrowser.get()];
+  [_geminiContextualCueSettingsCoordinator start];
+}
+
+- (void)hideGeminiContextualCueSettingsModal {
+  [_geminiContextualCueSettingsCoordinator stop];
+  _geminiContextualCueSettingsCoordinator = nil;
 }
 
 #pragma mark - Helper methods for Gemini entry flow

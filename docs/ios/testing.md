@@ -116,6 +116,46 @@ GREY_STUB_CLASS_IN_APP_MAIN_QUEUE(MyTestAppInterface)
 If you don't you'll get linker errors that read like “Undefined symbols for
 architecture… MyTestAppInterface”
 
+##### Header documentation and Model Context Protocol (MCP) conformance
+
+Header discovery for the EarlGrey MCP server driver
+(`//ios/testing/earl_grey_mcp/`) is dictated by
+`//ios/testing/earl_grey_mcp/mcp_domains.yaml`. Headers matching the domain
+rules in `mcp_domains.yaml` (including feature `*app_interface.h` classes and
+test-side `*earl_grey.h` helpers) are ingested to dynamically expose testing
+interfaces as strongly-typed tools for AI agents.
+
+To guarantee complete tool schemas and prevent overflowing LLM context limits,
+`//ios/PRESUBMIT.py` enforces the following invariants on all matched headers:
+
+1. **Method Descriptions**: Every class (`+`) and instance (`-`) method
+   declaration must have a preceding comment block (`// ...`) describing its
+   behavior. Block comments (`/* ... */`) are not allowed.
+2. **Parameter Enclosure**: Every parameter (except `error:(NSError**)`, which
+   is reserved for error reporting) must be documented in the comment with its
+   exact parameter name enclosed in backticks (e.g. `` `<paramName>` ``).
+3. **Return Value Descriptions**: All non-`void` return types must be described
+   (e.g., `Returns ...`).
+4. **Category Grouping & Breadth Caps**: Use `#pragma mark - <Category>` to
+   group related methods. Classes with more than 35 methods must be partitioned
+   into categories containing at most 35 methods each, with no more than 35
+   categories per class.
+5. **Domain Classification (`mcp_domains.yaml`)**: All exposed headers are
+   mapped into functional domain groups declared in
+   `//ios/testing/earl_grey_mcp/mcp_domains.yaml`. When adding a new App
+   Interface or EarlGrey helper header:
+   - Verify that its file path matches an `includes` glob pattern in
+     `mcp_domains.yaml` (e.g., `ios/chrome/browser/**/test/*app_interface.h`).
+   - If introducing a new testing domain or placing headers in a directory not
+     covered by existing glob patterns, add or update the domain rule in
+     `mcp_domains.yaml`.
+   - Headers not covered by any domain rule are rejected by
+     `extract_eg_metadata.py` and excluded from MCP tool registration.
+   - If creating private backend interfaces or plumbing that should not be
+     exposed directly to agents, list them under `excludes` in
+     `mcp_domains.yaml`.
+
+
 #### Creating test targets and adding the target to test suites
 
 1. Create a test target. Add a target(`source_set`) named "eg2_tests" into the

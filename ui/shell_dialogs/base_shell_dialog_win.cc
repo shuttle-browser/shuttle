@@ -47,8 +47,11 @@ BaseShellDialogImpl::BaseShellDialogImpl() {
 
 BaseShellDialogImpl::~BaseShellDialogImpl() {
   // All runs should be complete by the time this is called!
-  if (--instance_count_ == 0)
+  if (--instance_count_ == 0) {
+    // TODO(crbug.com/583484130): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK(GetOwners().empty());
+  }
 }
 
 // static
@@ -65,10 +68,13 @@ void BaseShellDialogImpl::DisableOwner(HWND owner) {
 std::unique_ptr<BaseShellDialogImpl::RunState> BaseShellDialogImpl::BeginRun(
     HWND owner) {
   // Cannot run a modal shell dialog if one is already running for this owner.
+  // TODO(crbug.com/580068883): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(!IsRunningDialogForOwner(owner));
   // The owner must be a top level window, otherwise we could end up with two
   // entries in our map for the same top level window.
-  DCHECK(!owner || owner == GetAncestor(owner, GA_ROOT));
+  CHECK(!owner || owner == GetAncestor(owner, GA_ROOT),
+        base::NotFatalUntil::M163);
   auto run_state = std::make_unique<RunState>();
   run_state->dialog_task_runner = CreateDialogTaskRunner();
   run_state->owner = owner;
@@ -81,9 +87,12 @@ std::unique_ptr<BaseShellDialogImpl::RunState> BaseShellDialogImpl::BeginRun(
 
 void BaseShellDialogImpl::EndRun(std::unique_ptr<RunState> run_state) {
   if (run_state->owner) {
+    // TODO(crbug.com/581711694): CHECK-exclusion: Convert to a CHECK once we
+    // are confident it won't be triggered.
     DCHECK(IsRunningDialogForOwner(run_state->owner));
     SetOwnerEnabled(run_state->owner, true);
-    DCHECK(GetOwners().find(run_state->owner) != GetOwners().end());
+    CHECK(GetOwners().find(run_state->owner) != GetOwners().end(),
+          base::NotFatalUntil::M163);
     GetOwners().erase(run_state->owner);
   }
 }

@@ -39,8 +39,7 @@ import org.chromium.chrome.browser.omnibox.fusebox.FuseboxProperties.BackgroundS
 import org.chromium.chrome.browser.omnibox.fusebox.PopupButtonData.PopupButtonType;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.components.browser_ui.widget.RoundedCornerOutlineProvider;
-import org.chromium.components.omnibox.IconResourceIdsProto.IconResourceIds;
-import org.chromium.components.omnibox.IconResourceIdsProtoIntDef;
+import org.chromium.components.omnibox.IconResourceIdsProtoIntDef.IconResourceIds;
 import org.chromium.ui.KeyboardVisibilityDelegate;
 import org.chromium.ui.modelutil.PropertyKey;
 import org.chromium.ui.modelutil.PropertyModel;
@@ -114,6 +113,14 @@ class FuseboxViewBinder {
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_CAMERA_ENABLED) {
             view.popup.mCameraButton.setEnabled(
                     model.get(FuseboxProperties.POPUP_ATTACH_CAMERA_ENABLED));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_CAMERA_ICON) {
+            getViewHolder(view.popup.mCameraButton)
+                    .mActionIcon
+                    .setImageResource(model.get(FuseboxProperties.POPUP_ATTACH_CAMERA_ICON));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_CAMERA_TEXT) {
+            getViewHolder(view.popup.mCameraButton)
+                    .mActionText
+                    .setText(model.get(FuseboxProperties.POPUP_ATTACH_CAMERA_TEXT));
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_CAMERA_VISIBLE) {
             updateButtonVisibility(
                     model, FuseboxProperties.POPUP_ATTACH_CAMERA_VISIBLE, view.popup.mCameraButton);
@@ -135,6 +142,14 @@ class FuseboxViewBinder {
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_DRIVE_ENABLED) {
             view.popup.mDriveButton.setEnabled(
                     model.get(FuseboxProperties.POPUP_ATTACH_DRIVE_ENABLED));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_DRIVE_ICON) {
+            getViewHolder(view.popup.mDriveButton)
+                    .mActionIcon
+                    .setImageResource(model.get(FuseboxProperties.POPUP_ATTACH_DRIVE_ICON));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_DRIVE_TEXT) {
+            getViewHolder(view.popup.mDriveButton)
+                    .mActionText
+                    .setText(model.get(FuseboxProperties.POPUP_ATTACH_DRIVE_TEXT));
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_DRIVE_VISIBLE) {
             updateButtonVisibility(
                     model, FuseboxProperties.POPUP_ATTACH_DRIVE_VISIBLE, view.popup.mDriveButton);
@@ -144,6 +159,14 @@ class FuseboxViewBinder {
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_FILE_ENABLED) {
             view.popup.mFileButton.setEnabled(
                     model.get(FuseboxProperties.POPUP_ATTACH_FILE_ENABLED));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_FILE_ICON) {
+            getViewHolder(view.popup.mFileButton)
+                    .mActionIcon
+                    .setImageResource(model.get(FuseboxProperties.POPUP_ATTACH_FILE_ICON));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_FILE_TEXT) {
+            getViewHolder(view.popup.mFileButton)
+                    .mActionText
+                    .setText(model.get(FuseboxProperties.POPUP_ATTACH_FILE_TEXT));
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_FILE_VISIBLE) {
             updateButtonVisibility(
                     model, FuseboxProperties.POPUP_ATTACH_FILE_VISIBLE, view.popup.mFileButton);
@@ -153,6 +176,14 @@ class FuseboxViewBinder {
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_GALLERY_ENABLED) {
             view.popup.mGalleryButton.setEnabled(
                     model.get(FuseboxProperties.POPUP_ATTACH_GALLERY_ENABLED));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_GALLERY_ICON) {
+            getViewHolder(view.popup.mGalleryButton)
+                    .mActionIcon
+                    .setImageResource(model.get(FuseboxProperties.POPUP_ATTACH_GALLERY_ICON));
+        } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_GALLERY_TEXT) {
+            getViewHolder(view.popup.mGalleryButton)
+                    .mActionText
+                    .setText(model.get(FuseboxProperties.POPUP_ATTACH_GALLERY_TEXT));
         } else if (propertyKey == FuseboxProperties.POPUP_ATTACH_GALLERY_VISIBLE) {
             updateButtonVisibility(
                     model,
@@ -472,7 +503,7 @@ class FuseboxViewBinder {
             var drawable = new BitmapDrawable(res, data.customIcon);
             setCustomButtonDrawables(buttonView, drawable, data.selected);
         } else {
-            int iconId = data.iconId == 0 ? IconResourceIds.GLOBE_VALUE : data.iconId;
+            @IconResourceIds int iconId = data.iconId == 0 ? IconResourceIds.GLOBE : data.iconId;
             @DrawableRes int iconRes = FuseboxIconUtils.getResIdForIconId(iconId);
             setButtonDrawables(buttonView, iconRes, data.selected);
         }
@@ -712,8 +743,7 @@ class FuseboxViewBinder {
 
         @ColorInt int colorOnSurface = mResourceProvider.getColorOnSurface();
 
-        @IconResourceIdsProtoIntDef.IconResourceIds
-        int iconId = model.get(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID);
+        @IconResourceIds int iconId = model.get(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID);
         @DrawableRes int startIconRes = FuseboxIconUtils.getResIdForIconId(iconId);
         Drawable startDrawable =
                 startIconRes != Resources.ID_NULL ? context.getDrawable(startIconRes) : null;

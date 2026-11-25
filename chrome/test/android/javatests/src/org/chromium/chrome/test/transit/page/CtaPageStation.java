@@ -12,16 +12,14 @@ import static org.hamcrest.CoreMatchers.allOf;
 
 import static org.chromium.base.test.transit.ViewSpec.viewSpec;
 import static org.chromium.chrome.browser.url_constants.UrlConstantResolver.getOriginalNativeNtpUrl;
+import static org.chromium.chrome.browser.url_constants.UrlConstantResolver.getOriginalNtpUrl;
 
 import android.app.Activity;
 import android.os.SystemClock;
 import android.view.KeyEvent;
 import android.view.View;
 
-import androidx.test.platform.app.InstrumentationRegistry;
-
 import org.chromium.base.DeviceInfo;
-import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.transit.OptionalViewElement;
 import org.chromium.base.test.transit.TripBuilder;
 import org.chromium.base.test.transit.ViewElement;
@@ -29,8 +27,6 @@ import org.chromium.base.test.transit.ViewSpec;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.compositor.layouts.components.CompositorButton;
-import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutHelper;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.layouts.LayoutType;
@@ -40,6 +36,7 @@ import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tabmodel.TabModelUtils;
 import org.chromium.chrome.browser.toolbar.top.ToolbarControlContainer;
+import org.chromium.chrome.browser.url_constants.UrlOverrideUtils;
 import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.transit.SoftKeyboardFacility;
 import org.chromium.chrome.test.transit.hub.IncognitoTabSwitcherStation;
@@ -51,7 +48,8 @@ import org.chromium.chrome.test.transit.omnibox.FakeOmniboxSuggestions;
 import org.chromium.chrome.test.transit.omnibox.OmniboxFacility;
 import org.chromium.chrome.test.transit.signin.SignedOutAccountMenuFacility;
 import org.chromium.chrome.test.transit.tab_search.TabSearchOverlayFacility;
-import org.chromium.chrome.test.util.TabStripUtils;
+import org.chromium.chrome.test.transit.tab_strip.TabStripFacility;
+import org.chromium.chrome.test.transit.vertical_tabs.VerticalTabsFacility;
 import org.chromium.components.signin.SigninFeatureMap;
 import org.chromium.components.signin.SigninFeatures;
 import org.chromium.content_public.browser.test.util.TouchCommon;
@@ -72,14 +70,9 @@ public class CtaPageStation extends BasePageStation<ChromeTabbedActivity> {
             viewSpec(
                     withId(R.id.optional_toolbar_button),
                     withContentDescription(R.string.accessibility_toolbar_btn_mic));
-    public static final ViewSpec<View> TAB_SEARCH_BUTTON = viewSpec(withId(R.id.tab_search_button));
-
-    // The first show inflates the whole overlay, which can take several seconds on loaded bots.
-    private static final long TAB_SEARCH_OVERLAY_OPEN_TIMEOUT_MS = 7500L;
 
     public final OptionalViewElement<View> optionalToolbarMicButtonElement;
     public final OptionalViewElement<View> homeButtonElement;
-    public final OptionalViewElement<View> tabSearchButtonElement;
     public final OptionalViewElement<View> signinButtonElement;
     // TODO(crbug.com/477035792): Temporarily nullable while the toolbar is being migrated.
     public final @Nullable ViewElement<ToolbarControlContainer> toolbarElement;
@@ -129,10 +122,6 @@ public class CtaPageStation extends BasePageStation<ChromeTabbedActivity> {
 
         // The optional toolbar mic button specifically.
         optionalToolbarMicButtonElement = declareOptionalView(TOOLBAR_MIC_BUTTON);
-
-        // The tab search button is only intended to appear on desktop.
-        tabSearchButtonElement =
-                declareOptionalView(TAB_SEARCH_BUTTON, ViewElement.unscopedOption());
 
         // The sign-in button only appears when the toolbar sign-in button feature is enabled.
         signinButtonElement =
@@ -184,43 +173,34 @@ public class CtaPageStation extends BasePageStation<ChromeTabbedActivity> {
         return signinButtonElement.clickTo().enterFacility(new SignedOutAccountMenuFacility());
     }
 
-    /** Opens the Tab Search overlay by clicking the tab search button. */
+    /**
+     * Expects the horizontal tab strip. Only tablets and desktop have one.
+     *
+     * <p>Each call enters a new {@link TabStripFacility}, so keep the returned one instead of
+     * calling this again on the same Station.
+     */
+    public TabStripFacility<CtaPageStation> expectTabStrip() {
+        assert getActivity().isTablet() : "The tab strip is only shown on tablets and desktop";
+        return noopTo().enterFacility(new TabStripFacility<>());
+    }
+
+    /**
+     * Expects the vertical tabs rail, shown instead of the horizontal tab strip when vertical tabs
+     * are enabled.
+     */
+    public VerticalTabsFacility<CtaPageStation> expectVerticalTabs() {
+        return noopTo().enterFacility(new VerticalTabsFacility<>());
+    }
+
+    /**
+     * Opens the Tab Search overlay by clicking the tab search button in the horizontal tab strip.
+     *
+     * <p>With vertical tabs, use {@link VerticalTabsFacility#openTabSearchOverlay()}.
+     */
     public TabSearchOverlayFacility<CtaPageStation> openTabSearchOverlay() {
         recheckActiveConditions();
         assert ChromeFeatureList.sTabSearchForDesktop.isEnabled();
-
-        ChromeTabbedActivity activity = getActivity();
-        boolean hasVerticalTabSearchButton =
-                ThreadUtils.runOnUiThreadBlocking(
-                        () -> {
-                            View v = activity.findViewById(R.id.tab_search_button);
-                            return v != null && v.isShown();
-                        });
-        // In vertical tabs mode, the tab search button is an Android View in the hierarchy,
-        // so it can be clicked via Espresso.
-        if (hasVerticalTabSearchButton) {
-            return tabSearchButtonElement
-                    .clickTo()
-                    .withTimeout(TAB_SEARCH_OVERLAY_OPEN_TIMEOUT_MS)
-                    .enterFacility(new TabSearchOverlayFacility<>());
-        }
-
-        // In the horizontal tab strip, the tab search button is drawn in the native composited UI
-        // without an Android View, so simulate a click on the compositor button directly.
-        StripLayoutHelper strip = TabStripUtils.getStripLayoutHelper(activity, mIsIncognito);
-        assert strip != null;
-        CompositorButton tabSearchButton = strip.getTabSearchButton();
-        assert tabSearchButton != null;
-        return runTo(
-                        () -> {
-                            TabStripUtils.settleDownCompositor(strip);
-                            TabStripUtils.clickCompositorButton(
-                                    tabSearchButton,
-                                    InstrumentationRegistry.getInstrumentation(),
-                                    activity);
-                        })
-                .withTimeout(TAB_SEARCH_OVERLAY_OPEN_TIMEOUT_MS)
-                .enterFacility(new TabSearchOverlayFacility<>());
+        return expectTabStrip().openTabSearchOverlay();
     }
 
     /** Opens the Tab Search overlay via keyboard shortcut (Alt+Shift+A). */
@@ -249,7 +229,7 @@ public class CtaPageStation extends BasePageStation<ChromeTabbedActivity> {
                                             0,
                                             metaState));
                         })
-                .withTimeout(TAB_SEARCH_OVERLAY_OPEN_TIMEOUT_MS)
+                .withTimeout(TabSearchOverlayFacility.OPEN_TIMEOUT_MS)
                 .enterFacility(new TabSearchOverlayFacility<>());
     }
 
@@ -369,8 +349,11 @@ public class CtaPageStation extends BasePageStation<ChromeTabbedActivity> {
 
     /** Loads the regular NTP in the same tab and waits to transition. */
     public RegularNewTabPageStation loadNtp() {
-        return loadPageProgrammatically(
-                getOriginalNativeNtpUrl(), RegularNewTabPageStation.newBuilder());
+        String ntpUrl =
+                UrlOverrideUtils.isWebUiNtpOverrideEnabled()
+                        ? getOriginalNtpUrl()
+                        : getOriginalNativeNtpUrl();
+        return loadPageProgrammatically(ntpUrl, RegularNewTabPageStation.newBuilder());
     }
 
     public WebPageStation loadAboutBlank() {
@@ -397,6 +380,34 @@ public class CtaPageStation extends BasePageStation<ChromeTabbedActivity> {
      */
     public WebPageStation openFakeLinkToWebPage(String url) {
         return openFakeLink(url, WebPageStation.newBuilder());
+    }
+
+    /**
+     * Loads a |url| in a new tab as if opened from Chrome UI and waits to transition.
+     *
+     * <p>Unlike {@link #openFakeLink(String, Builder)}, which inserts the new tab next to the
+     * current one, this appends the new tab at the end of the tab model, like opening a new tab
+     * from the app menu does.
+     */
+    public <T extends CtaPageStation> T openUrlInNewTab(String url, Builder<T> builder) {
+        return runOnUiThreadTo(
+                        () ->
+                                getActivity()
+                                        .getTabCreator(mIsIncognito)
+                                        .launchUrl(url, TabLaunchType.FROM_CHROME_UI))
+                .arriveAt(
+                        builder.initOpeningNewTab()
+                                .withIncognito(mIsIncognito)
+                                .withExpectedUrlSubstring(url)
+                                .build());
+    }
+
+    /**
+     * Loads a |url| in a new tab leading to a webpage as if opened from Chrome UI and waits to
+     * transition. The new tab is appended at the end of the tab model.
+     */
+    public WebPageStation openWebPageInNewTab(String url) {
+        return openUrlInNewTab(url, WebPageStation.newBuilder());
     }
 
     /** Click the URL bar or Search Box to enter the Omnibox. */

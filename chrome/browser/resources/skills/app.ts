@@ -29,7 +29,8 @@ import {ErrorType} from './error_page.js';
 import type {SkillsSidebarElement} from './sidebar.js';
 import {Page} from './sidebar.js';
 import {SkillsManagementAction, SkillsManagementPage} from './skill_metrics.mojom-webui.js';
-import {SkillsPageBrowserProxy} from './skills_page_browser_proxy.js';
+import {browserProxyFactory} from './skills.mojom-webui.js';
+import type {BrowserProxy} from './skills.mojom-webui.js';
 import type {UserSkillsPageElement} from './user_skills_page.js';
 
 export interface SkillsAppElement {
@@ -64,12 +65,12 @@ export class SkillsAppElement extends CrLitElement {
 
   protected accessor selectedPage_: Page = Page.USER_SKILLS;
   protected accessor narrow_: boolean = false;
-  protected accessor isDrawerOpen_: boolean = false;
-  protected accessor isSkillsEnabled_: boolean =
+  private accessor isDrawerOpen_: boolean = false;
+  private accessor isSkillsEnabled_: boolean =
       loadTimeData.getBoolean('isSkillsEnabled');
 
   private eventTracker_: EventTracker = new EventTracker();
-  private proxy_: SkillsPageBrowserProxy = SkillsPageBrowserProxy.getInstance();
+  private proxy_: BrowserProxy = browserProxyFactory.getInstance();
   private listenerIds_: number[] = [];
 
   override connectedCallback() {
@@ -117,6 +118,10 @@ export class SkillsAppElement extends CrLitElement {
   }
 
   protected getErrorType_(): ErrorType|null {
+    if (loadTimeData.valueExists('isSkillsSupported') &&
+        !loadTimeData.getBoolean('isSkillsSupported')) {
+      return ErrorType.SKILLS_UNSUPPORTED;
+    }
     if (!loadTimeData.getBoolean('isGlicEnabled')) {
       return ErrorType.GLIC_NOT_ENABLED;
     }

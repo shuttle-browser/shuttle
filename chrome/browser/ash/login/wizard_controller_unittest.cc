@@ -16,6 +16,8 @@
 #include "ash/wm/tablet_mode/tablet_mode_controller.h"
 #include "base/check_deref.h"
 #include "base/functional/callback.h"
+#include "base/i18n/language_tag.h"
+#include "base/metrics/user_metrics.h"
 #include "base/strings/strcat.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/scoped_chromeos_version_info.h"
@@ -46,6 +48,7 @@
 #include "chrome/browser/extensions/test_extension_system.h"
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/prefs/browser_prefs.h"
+#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/keyboard/chrome_keyboard_controller_client.h"
 #include "chrome/browser/ui/ash/login/fake_login_display_host.h"
 #include "chrome/browser/ui/ash/wallpaper/test_wallpaper_controller.h"
@@ -57,7 +60,6 @@
 #include "chrome/browser/ui/webui/ash/login/update_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/user_creation_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/welcome_screen_handler.h"
-#include "chrome/common/chrome_constants.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile_manager.h"
 #include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
@@ -80,12 +82,17 @@
 #include "chromeos/ash/services/network_config/public/cpp/cros_network_config_test_helper.h"
 #include "components/application_locale_storage/application_locale_storage.h"
 #include "components/language/core/browser/pref_names.h"
+#include "components/metrics/metrics_service.h"
+#include "components/metrics/metrics_state_manager.h"
+#include "components/metrics/test/test_enabled_state_provider.h"
+#include "components/metrics/test/test_metrics_service_client.h"
 #include "components/ownership/mock_owner_key_util.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/session_manager/core/fake_session_manager_delegate.h"
 #include "components/session_manager/core/session_manager.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/user_manager/fake_user_manager.h"
+#include "components/user_manager/multi_user/multi_user_sign_in_policy_controller.h"
 #include "components/user_manager/scoped_user_manager.h"
 #include "content/public/test/browser_task_environment.h"
 #include "content/public/test/test_web_contents_factory.h"
@@ -256,6 +263,18 @@ class WizardControllerTestBase : public ::testing::Test {
     StatsReportingController::Initialize(
         TestingBrowserProcess::GetGlobal()->local_state());
 
+    // Needed for WizardController and ShowLoginWizard().
+    base::SetRecordActionTaskRunner(
+        task_environment_->GetMainThreadTaskRunner());
+    metrics_state_manager_ = metrics::MetricsStateManager::Create(
+        TestingBrowserProcess::GetGlobal()->local_state(),
+        &enabled_state_provider_, std::wstring(), base::FilePath());
+    metrics_service_ = std::make_unique<metrics::MetricsService>(
+        metrics_state_manager_.get(), &metrics_service_client_,
+        TestingBrowserProcess::GetGlobal()->local_state());
+    TestingBrowserProcess::GetGlobal()->SetMetricsService(
+        metrics_service_.get());
+
     // PreMainMessageLoopRun:
     session_termination_manager_ =
         std::make_unique<ash::SessionTerminationManager>();
@@ -263,6 +282,11 @@ class WizardControllerTestBase : public ::testing::Test {
 
     // PreProfileInit:
     fake_user_manager_.Reset(std::make_unique<user_manager::FakeUserManager>());
+    // Needed by WizardController.
+    multi_user_sign_in_policy_controller_ =
+        std::make_unique<user_manager::MultiUserSignInPolicyController>(
+            TestingBrowserProcess::GetGlobal()->local_state(),
+            fake_user_manager_.Get());
     session_manager_->OnUserManagerCreated(fake_user_manager_.Get());
     quick_unlock::PinBackend::Initialize(
         TestingBrowserProcess::GetGlobal()->local_state());
@@ -295,14 +319,12 @@ class WizardControllerTestBase : public ::testing::Test {
 
     browser_controller_ = std::make_unique<ash::BrowserControllerImpl>();
 
-    AshTestHelper::InitParams params;
-    params.start_session = false;
-    params.local_state = TestingBrowserProcess::GetGlobal()->local_state();
     test_context_factories_ = std::make_unique<ui::TestContextFactories>(
         /*enable_pixel_output=*/false);
     ash_test_helper_ = std::make_unique<AshTestHelper>(
         test_context_factories_->GetContextFactory());
-    ash_test_helper_->SetUp(std::move(params));
+    ash_test_helper_->SetUp(
+        {.local_state = TestingBrowserProcess::GetGlobal()->local_state()});
 
     // Initialize TimezoneResolverManager here because it depends on
     // SystemLocationProvider, which is initialized in AshTestHelper::SetUp.
@@ -372,7 +394,12 @@ class WizardControllerTestBase : public ::testing::Test {
     profile_manager_.reset();
     services_customization_document_.reset();
     session_manager_.reset();
+    multi_user_sign_in_policy_controller_.reset();
     fake_user_manager_.Reset();
+
+    TestingBrowserProcess::GetGlobal()->SetMetricsService(nullptr);
+    metrics_service_.reset();
+    metrics_state_manager_.reset();
 
     task_environment_.reset();
 
@@ -419,6 +446,8 @@ class WizardControllerTestBase : public ::testing::Test {
 
  protected:
   testing::NiceMock<MockEnrollmentLauncher> mock_enrollment_launcher_;
+  std::unique_ptr<user_manager::MultiUserSignInPolicyController>
+      multi_user_sign_in_policy_controller_;
 
  private:
   base::test::ScopedCommandLine command_line_;
@@ -437,6 +466,11 @@ class WizardControllerTestBase : public ::testing::Test {
       services_customization_document_;
 
   std::unique_ptr<ScopedTestingCrosSettings> cros_settings_;
+  metrics::TestEnabledStateProvider enabled_state_provider_{/*consent=*/false,
+                                                            /*enabled=*/false};
+  metrics::TestMetricsServiceClient metrics_service_client_;
+  std::unique_ptr<metrics::MetricsStateManager> metrics_state_manager_;
+  std::unique_ptr<metrics::MetricsService> metrics_service_;
   std::unique_ptr<ash::SessionTerminationManager> session_termination_manager_;
   std::unique_ptr<AuthEventsRecorder> auth_events_recorder_;
   user_manager::TypedScopedUserManager<user_manager::FakeUserManager>
@@ -475,7 +509,9 @@ class WizardControllerTest : public WizardControllerTestBase {
     test_web_ui_->set_web_contents(
         web_contents_factory_->CreateWebContents(web_ui_profile));
 
-    fake_login_display_host_ = std::make_unique<FakeLoginDisplayHost>();
+    fake_login_display_host_ = std::make_unique<FakeLoginDisplayHost>(
+        TestingBrowserProcess::GetGlobal()->local_state(),
+        multi_user_sign_in_policy_controller_.get());
     auto oobe_ui = std::make_unique<OobeUI>(
         TestingBrowserProcess::GetGlobal()->local_state(),
         TestingBrowserProcess::GetGlobal()
@@ -507,6 +543,8 @@ class WizardControllerTest : public WizardControllerTestBase {
         TestingBrowserProcess::GetGlobal()
             ->platform_part()
             ->device_restriction_schedule_controller(),
+        multi_user_sign_in_policy_controller_.get(),
+        TestingBrowserProcess::GetGlobal()->platform_part()->GetSystemClock(),
         fake_login_display_host_->GetWizardContext());
     wizard_controller_ = wizard_controller.get();
     fake_login_display_host_->SetWizardController(std::move(wizard_controller));
@@ -617,7 +655,7 @@ TEST_F(WizardControllerTest,
   TestingBrowserProcess::GetGlobal()
       ->GetFeatures()
       ->application_locale_storage()
-      ->Set("en-GB");
+      ->SetTag(base::i18n::GetKnownLanguageTag("en-GB"));
   TestingBrowserProcess::GetGlobal()->local_state()->SetString(
       language::prefs::kApplicationLocale, "en-AU");
 

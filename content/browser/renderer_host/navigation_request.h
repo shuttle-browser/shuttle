@@ -102,6 +102,10 @@
 #include "content/browser/android/navigation_handle_proxy.h"
 #endif
 
+namespace base {
+class DeferredSequencedTaskRunner;
+}  // namespace base
+
 namespace blink {
 struct NavigationDownloadPolicy;
 }  // namespace blink
@@ -1333,6 +1337,14 @@ class CONTENT_EXPORT NavigationRequest
   void SetFetchLaterLoaderFactoryContextForTesting(
       base::WeakPtr<KeepAliveURLLoaderService::FactoryContext> factory_context);
 
+  // Returns a DeferredSequencedTaskRunner backed by the UI thread's
+  // kSubresourceLoaderProxy task queue. Tasks posted to this runner are
+  // deferred until the navigation finishes (after DidFinishNavigation),
+  // ensuring that subresource requests for the new document cannot overtake
+  // DidCommitNavigation on the UI thread.
+  scoped_refptr<base::DeferredSequencedTaskRunner>
+  GetOrCreateSubresourceLoaderProxyTaskRunner();
+
   // Outcome of Content Security Policy Embedded Enforcement (CSPEE).
   // These values are persisted to logs. Entries should not be renumbered and
   // numeric values should never be reused.
@@ -1486,12 +1498,6 @@ class CONTENT_EXPORT NavigationRequest
   void set_resume_commit_closure(base::OnceClosure closure) {
     resume_commit_closure_ = std::move(closure);
   }
-
-  // Records metrics for `GetFrameHostForNavigation()` attempts that failed due
-  // to this `NavigationRequest` being in the pending commit state.
-  // `commit_attempt` should be true if `GetFrameHostForNavigation()` failed
-  // when trying to get a RenderFrameHost when committing a navigation.
-  void RecordMetricsForBlockedGetFrameHostAttempt(bool commit_attempt);
 
   // Creates a WebUI object for this navigation and saves it in `web_ui_`. Later
   // on, the WebUI created will be moved to `frame_host` (if `frame_host` is
@@ -3645,6 +3651,13 @@ class CONTENT_EXPORT NavigationRequest
   bool did_set_keep_alive_url_loader_factory_context_for_testing_ = false;
   bool did_set_fetch_later_url_loader_factory_context_for_testing_ = false;
 
+  // Task runner passed to embedder proxies of the committing document's
+  // network-backed subresource URLLoaderFactory. Deferred until the navigation
+  // finishes so that subresource requests from the new document cannot overtake
+  // DidCommitNavigation on the UI thread.
+  scoped_refptr<base::DeferredSequencedTaskRunner>
+      subresource_loader_proxy_task_runner_;
+
   scoped_refptr<NavigationOrDocumentHandle> navigation_or_document_handle_;
 
   // Exposes getters and setters for Blink Runtime-Enabled Features to the
@@ -3709,11 +3722,6 @@ class CONTENT_EXPORT NavigationRequest
     // When this `NavigationRequest` caused its speculative RenderFrameHost to
     // enter pending commit.
     base::TimeTicks start_time;
-    // How many `GetFrameHostForNavigation()` calls failed in total.
-    int blocked_count = 0;
-    // How many `GetFrameHostForNavigation()` calls failed when trying to assign
-    // a final `RenderFrameHost` for commit.
-    int blocked_commit_count = 0;
   };
   PendingCommitMetrics pending_commit_metrics_;
 

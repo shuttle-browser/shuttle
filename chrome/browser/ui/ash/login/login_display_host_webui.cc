@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/ash/login/login_display_host_webui.h"
 
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,7 @@
 #include "base/check_is_test.h"
 #include "base/command_line.h"
 #include "base/functional/bind.h"
+#include "base/i18n/language_tag.h"
 #include "base/location.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
@@ -58,7 +60,6 @@
 #include "chrome/browser/ash/system/timezone_resolver_manager.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
-#include "chrome/browser/global_features.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/keyboard/chrome_keyboard_controller_client.h"
 #include "chrome/browser/ui/ash/login/input_events_blocker.h"
@@ -75,7 +76,6 @@
 #include "chrome/browser/ui/webui/ash/login/oobe_ui.h"
 #include "chrome/browser/ui/webui/ash/login/os_install_screen_handler.h"
 #include "chrome/browser/ui/webui/ash/login/welcome_screen_handler.h"
-#include "chrome/common/chrome_constants.h"
 #include "chromeos/ash/components/audio/sounds.h"
 #include "chromeos/ash/components/browser_delegate/browser_controller.h"
 #include "chromeos/ash/components/dbus/session_manager/session_manager_client.h"
@@ -246,21 +246,26 @@ void MaybeShutdownLoginDisplayHostWebUI() {
 // ShowLoginWizard is split into two parts. This function is sometimes called
 // from TriggerShowLoginWizardFinish() directly, and sometimes from
 // OnLanguageSwitchedCallback() (if locale was updated).
+// `local_state`, `metrics_service`, `application_locale_storage`,
+// `browser_policy_connector_ash`, `device_restriction_schedule_controller`,
+// `multi_user_sign_in_policy_controller` and `system_clock` must be non-null
+// and must outlive the LoginDisplayHost created here.
+// `shared_url_loader_factory` and `component_manager_ash` must be non-null.
 void ShowLoginWizardFinish(
+    PrefService* local_state,
+    ::metrics::MetricsService* metrics_service,
+    ApplicationLocaleStorage* application_locale_storage,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    policy::DeviceRestrictionScheduleController*
+        device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock,
     OobeScreenId first_screen,
     const StartupCustomizationDocument* startup_manifest) {
   TRACE_EVENT0("chromeos", "ShowLoginWizard::ShowLoginWizardFinish");
-
-  // TODO(crbug.com/403154552): Avoid g_browser_process.
-  PrefService* local_state = g_browser_process->local_state();
-  ::metrics::MetricsService* metrics_service =
-      g_browser_process->metrics_service();
-  ApplicationLocaleStorage* application_locale_storage =
-      g_browser_process->GetFeatures()->application_locale_storage();
-  scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory =
-      g_browser_process->shared_url_loader_factory();
-  policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash =
-      g_browser_process->platform_part()->browser_policy_connector_ash();
 
   // `ShowLoginWizardFinish` can be called as a result of
   // `OnLanguageSwitchedCallback` and it can happen that the browser started to
@@ -287,13 +292,19 @@ void ShowLoginWizardFinish(
   } else if (ShouldShowSigninScreen(CHECK_DEREF(local_state), first_screen)) {
     display_host = new LoginDisplayHostMojo(
         local_state, metrics_service, application_locale_storage,
-        shared_url_loader_factory, browser_policy_connector_ash,
+        std::move(shared_url_loader_factory), browser_policy_connector_ash,
+        std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock,
         DisplayedScreen::SIGN_IN_SCREEN,
         /*update_geolocation_usage_allowed=*/true);
   } else {
     display_host = new LoginDisplayHostWebUI(
         local_state, metrics_service, application_locale_storage,
-        shared_url_loader_factory, browser_policy_connector_ash);
+        std::move(shared_url_loader_factory), browser_policy_connector_ash,
+        std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock);
   }
 
   // Restore system timezone.
@@ -358,7 +369,19 @@ void NotifyLocaleChange() {
   LocaleUpdateController::Get()->OnLocaleChanged();
 }
 
+// The dependencies are forwarded to ShowLoginWizardFinish().
 void OnLanguageSwitchedCallback(
+    PrefService* local_state,
+    ::metrics::MetricsService* metrics_service,
+    ApplicationLocaleStorage* application_locale_storage,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    policy::DeviceRestrictionScheduleController*
+        device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock,
     std::unique_ptr<ShowLoginWizardSwitchLanguageCallbackData> self,
     const locale_util::LanguageSwitchResult& result) {
   TRACE_EVENT0("login", "OnLanguageSwitchedCallback");
@@ -369,24 +392,52 @@ void OnLanguageSwitchedCallback(
 
   // Notify the locale change.
   NotifyLocaleChange();
-  ShowLoginWizardFinish(self->first_screen, self->startup_manifest);
+  ShowLoginWizardFinish(
+      local_state, metrics_service, application_locale_storage,
+      std::move(shared_url_loader_factory), browser_policy_connector_ash,
+      std::move(component_manager_ash), device_restriction_schedule_controller,
+      multi_user_sign_in_policy_controller, system_clock, self->first_screen,
+      self->startup_manifest);
 }
 
 // Triggers ShowLoginWizardFinish directly if no locale switch is required
 // (`switch_locale` is empty) or after a locale switch otherwise.
+// `local_state`, `metrics_service`, `application_locale_storage`,
+// `browser_policy_connector_ash`, `device_restriction_schedule_controller`,
+// `multi_user_sign_in_policy_controller` and `system_clock` must be non-null,
+// must remain valid until ShowLoginWizardFinish() runs, and must outlive the
+// LoginDisplayHost it creates.
+// `shared_url_loader_factory` and `component_manager_ash` must be non-null.
 void TriggerShowLoginWizardFinish(
+    PrefService* local_state,
+    ::metrics::MetricsService* metrics_service,
+    ApplicationLocaleStorage* application_locale_storage,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    policy::DeviceRestrictionScheduleController*
+        device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock,
     std::string switch_locale,
     std::unique_ptr<ShowLoginWizardSwitchLanguageCallbackData> data,
     bool login_input_methods_only) {
   if (switch_locale.empty()) {
-    ShowLoginWizardFinish(data->first_screen, data->startup_manifest);
+    ShowLoginWizardFinish(
+        local_state, metrics_service, application_locale_storage,
+        std::move(shared_url_loader_factory), browser_policy_connector_ash,
+        std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock, data->first_screen,
+        data->startup_manifest);
   } else {
-    locale_util::SwitchLanguageCallback callback(
-        base::BindOnce(&OnLanguageSwitchedCallback, std::move(data)));
-
-    // TODO(crbug.com/404133029): Avoid g_browser_process usage.
-    ApplicationLocaleStorage* application_locale_storage =
-        g_browser_process->GetFeatures()->application_locale_storage();
+    locale_util::SwitchLanguageCallback callback(base::BindOnce(
+        &OnLanguageSwitchedCallback, local_state, metrics_service,
+        application_locale_storage, std::move(shared_url_loader_factory),
+        browser_policy_connector_ash, std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock, std::move(data)));
 
     // Load locale keyboards here. Hardware layout would be automatically
     // enabled.
@@ -488,12 +539,22 @@ LoginDisplayHostWebUI::LoginDisplayHostWebUI(
     ::metrics::MetricsService* metrics_service,
     ApplicationLocaleStorage* application_locale_storage,
     scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
-    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash)
+    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    policy::DeviceRestrictionScheduleController*
+        device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock)
     : LoginDisplayHostCommon(local_state,
                              metrics_service,
                              application_locale_storage,
                              std::move(shared_url_loader_factory),
                              browser_policy_connector_ash,
+                             std::move(component_manager_ash),
+                             device_restriction_schedule_controller,
+                             multi_user_sign_in_policy_controller,
+                             system_clock,
                              /*update_geolocation_usage_allowed=*/true),
       oobe_startup_sound_played_(
           StartupUtils::IsOobeCompleted(local_state_.get())) {
@@ -624,14 +685,12 @@ void LoginDisplayHostWebUI::StartWizard(OobeScreenId first_screen) {
   } else if (wizard_controller_) {
     wizard_controller_->AdvanceToScreen(first_screen);
   } else {
-    // TODO(crbug.com/404133029): Avoid using g_browser_process.
     wizard_controller_ = std::make_unique<WizardController>(
         &local_state_.get(), &metrics_service_.get(),
         &application_locale_storage_.get(), shared_url_loader_factory_.get(),
-        &browser_policy_connector_ash_.get(),
-        g_browser_process->platform_part()->component_manager_ash(),
-        g_browser_process->platform_part()
-            ->device_restriction_schedule_controller(),
+        &browser_policy_connector_ash_.get(), component_manager_ash_,
+        &device_restriction_schedule_controller_.get(),
+        &multi_user_sign_in_policy_controller_.get(), &system_clock_.get(),
         GetWizardContext());
     NotifyWizardCreated();
     wizard_controller_->Init(first_screen);
@@ -699,14 +758,12 @@ void LoginDisplayHostWebUI::OnStartAppLaunch() {
 
   login_view_->set_should_emit_login_prompt_visible(false);
   if (!wizard_controller_) {
-    // TODO(crbug.com/404133029): Avoid using g_browser_process.
     wizard_controller_ = std::make_unique<WizardController>(
         &local_state_.get(), &metrics_service_.get(),
         &application_locale_storage_.get(), shared_url_loader_factory_.get(),
-        &browser_policy_connector_ash_.get(),
-        g_browser_process->platform_part()->component_manager_ash(),
-        g_browser_process->platform_part()
-            ->device_restriction_schedule_controller(),
+        &browser_policy_connector_ash_.get(), component_manager_ash_,
+        &device_restriction_schedule_controller_.get(),
+        &multi_user_sign_in_policy_controller_.get(), &system_clock_.get(),
         GetWizardContext());
     NotifyWizardCreated();
   }
@@ -1219,18 +1276,19 @@ void LoginDisplayHostWebUI::PlayStartupSoundIfPossible() {
 
 // Declared in login_wizard.h so that others don't need to depend on our .h.
 // TODO(nkostylev): Split this into a smaller functions.
-void ShowLoginWizard(OobeScreenId first_screen) {
-  // TODO(crbug.com/403154552): Avoid using g_browser_process.
-  PrefService& local_state = CHECK_DEREF(g_browser_process->local_state());
-  ::metrics::MetricsService* metrics_service =
-      g_browser_process->metrics_service();
-  ApplicationLocaleStorage* application_locale_storage =
-      g_browser_process->GetFeatures()->application_locale_storage();
-  scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory =
-      g_browser_process->shared_url_loader_factory();
-  policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash =
-      g_browser_process->platform_part()->browser_policy_connector_ash();
-
+void ShowLoginWizard(
+    PrefService* local_state,
+    ::metrics::MetricsService* metrics_service,
+    ApplicationLocaleStorage* application_locale_storage,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    policy::DeviceRestrictionScheduleController*
+        device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock,
+    OobeScreenId first_screen) {
   if (ash::BrowserController::GetInstance()->IsTryingToQuit()) {
     return;
   }
@@ -1248,7 +1306,7 @@ void ShowLoginWizard(OobeScreenId first_screen) {
           switches::kNaturalScrollDefault));
 
   auto session_state = session_manager::SessionState::OOBE;
-  if (IsOobeComplete(local_state)) {
+  if (IsOobeComplete(CHECK_DEREF(local_state))) {
     session_state = session_manager::SessionState::LOGIN_PRIMARY;
   }
   session_manager::SessionManager::Get()->SetSessionState(session_state);
@@ -1260,13 +1318,17 @@ void ShowLoginWizard(OobeScreenId first_screen) {
   // TODO(b/338302062): Determine whether we should wait on OOBE config
   // retrieval before calling GetPrescribedEnrollmentConfig here.
   const policy::EnrollmentConfig enrollment_config =
-      policy::EnrollmentConfig::GetPrescribedEnrollmentConfig(local_state);
+      policy::EnrollmentConfig::GetPrescribedEnrollmentConfig(
+          CHECK_DEREF(local_state));
   if (enrollment_config.should_enroll() &&
       first_screen == ash::OOBE_SCREEN_UNKNOWN) {
     // Manages its own lifetime. See ShutdownDisplayHost().
     auto* display_host = new LoginDisplayHostWebUI(
-        &local_state, metrics_service, application_locale_storage,
-        shared_url_loader_factory, browser_policy_connector_ash);
+        local_state, metrics_service, application_locale_storage,
+        std::move(shared_url_loader_factory), browser_policy_connector_ash,
+        std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock);
     // Shows networks screen instead of enrollment screen to resume the
     // interrupted auto start enrollment flow because enrollment screen does
     // not handle flaky network. See http://crbug.com/41082635
@@ -1279,21 +1341,22 @@ void ShowLoginWizard(OobeScreenId first_screen) {
     return;
   }
 
-  if (StartupUtils::IsEulaAccepted(local_state)) {
+  if (StartupUtils::IsEulaAccepted(CHECK_DEREF(local_state))) {
     DelayNetworkCall(ServicesCustomizationDocument::GetInstance()
                          .EnsureCustomizationAppliedClosure());
 
+    // TODO(crbug.com/403154552): Avoid using g_browser_process.
     g_browser_process->platform_part()
         ->GetTimezoneResolverManager()
         ->UpdateTimezoneResolver();
   }
 
   std::string current_locale =
-      local_state.GetString(language::prefs::kApplicationLocale);
+      local_state->GetString(language::prefs::kApplicationLocale);
   language::ConvertToActualUILocale(&current_locale);
   VLOG(1) << "Current locale: " << current_locale;
 
-  if (ShouldShowSigninScreen(local_state, first_screen)) {
+  if (ShouldShowSigninScreen(CHECK_DEREF(local_state), first_screen)) {
     std::string switch_locale = GetManagedLoginScreenLocale();
     if (switch_locale == current_locale) {
       switch_locale.clear();
@@ -1302,8 +1365,13 @@ void ShowLoginWizard(OobeScreenId first_screen) {
     std::unique_ptr<ShowLoginWizardSwitchLanguageCallbackData> data =
         std::make_unique<ShowLoginWizardSwitchLanguageCallbackData>(
             first_screen, nullptr);
-    TriggerShowLoginWizardFinish(switch_locale, std::move(data),
-                                 /*login_input_methods_only=*/true);
+    TriggerShowLoginWizardFinish(
+        local_state, metrics_service, application_locale_storage,
+        std::move(shared_url_loader_factory), browser_policy_connector_ash,
+        std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock, switch_locale,
+        std::move(data), /*login_input_methods_only=*/true);
     return;
   }
 
@@ -1315,7 +1383,13 @@ void ShowLoginWizard(OobeScreenId first_screen) {
   // and has not been set yet. We cannot call
   // LanguageSwitchMenu::SwitchLanguage here before
   // EmitLoginPromptReady.
-  const std::string& locale = startup_manifest->initial_locale_default();
+  const std::optional<base::i18n::LanguageTag> initial_locale =
+      startup_manifest->initial_locale_default();
+  // TODO(crbug.com/542711615): Migrate the APIs below (e.g.
+  // SetInputMethodLoginDefaultFromVPD()) to take a base::i18n::LanguageTag.
+  const std::string locale = initial_locale
+                                 ? std::string(initial_locale->tag_string())
+                                 : std::string();
 
   const std::string& layout = startup_manifest->keyboard_layout();
   VLOG(1) << "Initial locale: " << locale << " keyboard layout: " << layout;
@@ -1330,8 +1404,13 @@ void ShowLoginWizard(OobeScreenId first_screen) {
                                                     startup_manifest));
 
   if (!current_locale.empty() || locale.empty()) {
-    TriggerShowLoginWizardFinish(std::string(), std::move(data),
-                                 /*login_input_methods_only=*/false);
+    TriggerShowLoginWizardFinish(
+        local_state, metrics_service, application_locale_storage,
+        std::move(shared_url_loader_factory), browser_policy_connector_ash,
+        std::move(component_manager_ash),
+        device_restriction_schedule_controller,
+        multi_user_sign_in_policy_controller, system_clock, std::string(),
+        std::move(data), /*login_input_methods_only=*/false);
     return;
   }
 
@@ -1339,14 +1418,29 @@ void ShowLoginWizard(OobeScreenId first_screen) {
   // Chrome locale. Otherwise it will be lost if Chrome restarts.
   // Don't need to schedule pref save because setting initial local
   // will enforce preference saving.
-  local_state.SetString(language::prefs::kApplicationLocale, locale);
-  StartupUtils::SetInitialLocale(local_state, locale);
+  local_state->SetString(language::prefs::kApplicationLocale, locale);
+  StartupUtils::SetInitialLocale(CHECK_DEREF(local_state), locale);
 
-  TriggerShowLoginWizardFinish(locale, std::move(data),
-                               /*login_input_methods_only=*/false);
+  TriggerShowLoginWizardFinish(
+      local_state, metrics_service, application_locale_storage,
+      std::move(shared_url_loader_factory), browser_policy_connector_ash,
+      std::move(component_manager_ash), device_restriction_schedule_controller,
+      multi_user_sign_in_policy_controller, system_clock, locale,
+      std::move(data), /*login_input_methods_only=*/false);
 }
 
-void SwitchWebUItoMojo() {
+void SwitchWebUItoMojo(
+    PrefService* local_state,
+    ::metrics::MetricsService* metrics_service,
+    ApplicationLocaleStorage* application_locale_storage,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    policy::BrowserPolicyConnectorAsh* browser_policy_connector_ash,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    policy::DeviceRestrictionScheduleController*
+        device_restriction_schedule_controller,
+    const user_manager::MultiUserSignInPolicyController*
+        multi_user_sign_in_policy_controller,
+    system::SystemClock* system_clock) {
   auto* oobe_ui = LoginDisplayHost::default_host()->GetOobeUI();
   if (oobe_ui) {
     CHECK_EQ(oobe_ui->display_type(), OobeUI::kOobeDisplay,
@@ -1354,7 +1448,11 @@ void SwitchWebUItoMojo() {
   }
 
   // This replaces WebUI host with the Mojo (views) host.
-  ShowLoginWizard(ash::OOBE_SCREEN_UNKNOWN);
+  ShowLoginWizard(
+      local_state, metrics_service, application_locale_storage,
+      std::move(shared_url_loader_factory), browser_policy_connector_ash,
+      std::move(component_manager_ash), device_restriction_schedule_controller,
+      multi_user_sign_in_policy_controller, system_clock, OOBE_SCREEN_UNKNOWN);
 }
 
 }  // namespace ash

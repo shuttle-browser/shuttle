@@ -15,9 +15,9 @@ import androidx.test.filters.MediumTest;
 import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
-import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
+import org.junit.rules.RuleChain;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
@@ -32,13 +32,11 @@ import org.chromium.base.test.params.ParameterProvider;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.chrome.browser.browsing_data.BrowsingDataBridge;
 import org.chromium.chrome.browser.browsing_data.BrowsingDataType;
 import org.chromium.chrome.browser.browsing_data.TimePeriod;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxLayoutMode;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
@@ -53,7 +51,6 @@ import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
-import org.chromium.chrome.test.batch.BlankCTATabInitialStateRule;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.components.content_settings.ContentSetting;
@@ -72,22 +69,18 @@ import java.util.List;
 /** Testing the interactions with permissions on a site and how it affects page info. */
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 // TODO(crbug.com/344672094): Failing when batched, batch this again.
 public class PageInfoDiscoverabilityTest {
-    @ClassRule
-    public static final AutoResetCtaTransitTestRule sActivityTestRule =
+    public final AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
 
-    @ClassRule
-    public static final PermissionTestRule sPermissionTestRule =
-            new PermissionTestRule(sActivityTestRule.getActivityTestRule());
-
-    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
+    public final PermissionTestRule mPermissionTestRule = new PermissionTestRule(mActivityTestRule);
 
     @Rule
-    public final BlankCTATabInitialStateRule mInitialStateRule =
-            new BlankCTATabInitialStateRule(sActivityTestRule.getActivityTestRule(), false);
+    public final RuleChain mRuleChain =
+            RuleChain.outerRule(mActivityTestRule).around(mPermissionTestRule);
+
+    @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     private static final String GEOLOCATION_TEST = "/chrome/test/data/geolocation/geolocation.html";
 
@@ -194,10 +187,6 @@ public class PageInfoDiscoverabilityTest {
                             .value(ContentSettingsType.VR, true));
             parameters.add(
                     new ParameterSet()
-                            .name("RequestType.kTopLevelStorageAccess")
-                            .value(ContentSettingsType.TOP_LEVEL_STORAGE_ACCESS, false));
-            parameters.add(
-                    new ParameterSet()
                             .name("RequestType.kWindowManagement")
                             .value(ContentSettingsType.WINDOW_MANAGEMENT, true));
 
@@ -241,7 +230,8 @@ public class PageInfoDiscoverabilityTest {
 
     @Before
     public void setUp() throws Exception {
-        mContext = sPermissionTestRule.getActivity();
+        mActivityTestRule.startOnBlankPage();
+        mContext = mActivityTestRule.getActivity();
         mPermissionDialogController = PermissionDialogController.getInstance();
 
         ThreadUtils.runOnUiThreadBlocking(
@@ -262,7 +252,7 @@ public class PageInfoDiscoverabilityTest {
                                     ObservableSuppliers.createNonNull(
                                             ProfileManager.getLastUsedRegularProfile()),
                                     mPageInfoIphController,
-                                    sPermissionTestRule.getActivity().getWindowAndroid(),
+                                    mActivityTestRule.getActivity().getWindowAndroid(),
                                     /* pageInfoAction= */ null,
                                     ObservableSuppliers.createNonNull(FuseboxState.DISABLED),
                                     ObservableSuppliers.createNonNull(FuseboxLayoutMode.TOOLBAR),
@@ -318,7 +308,8 @@ public class PageInfoDiscoverabilityTest {
                         requestablePermission,
                         RuntimePermissionTestUtils.RuntimePromptResponse.GRANT);
         RuntimePermissionTestUtils.runTestForgiving(
-                sPermissionTestRule,
+                mActivityTestRule.getActivity(),
+                mPermissionTestRule,
                 testAndroidPermissionDelegate,
                 GEOLOCATION_TEST,
                 /* expectPermissionAllowed= */ true,
@@ -353,7 +344,8 @@ public class PageInfoDiscoverabilityTest {
                         requestablePermission,
                         RuntimePermissionTestUtils.RuntimePromptResponse.DENY);
         RuntimePermissionTestUtils.runTestForgiving(
-                sPermissionTestRule,
+                mActivityTestRule.getActivity(),
+                mPermissionTestRule,
                 testAndroidPermissionDelegate,
                 GEOLOCATION_TEST,
                 /* expectPermissionAllowed= */ false,
@@ -394,7 +386,7 @@ public class PageInfoDiscoverabilityTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     mPermissionStatusHandler.onDialogResult(
-                            sPermissionTestRule.getActivity().getWindowAndroid(),
+                            mActivityTestRule.getActivity().getWindowAndroid(),
                             permissions,
                             ContentSetting.ALLOW);
                 });

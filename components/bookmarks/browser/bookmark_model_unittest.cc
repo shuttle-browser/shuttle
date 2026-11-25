@@ -12,7 +12,6 @@
 #include <set>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 #include <utility>
 
 #include "base/files/file_util.h"
@@ -56,6 +55,7 @@
 #include "components/sync/base/features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/models/tree_node_iterator.h"
 #include "ui/gfx/image/image.h"
@@ -317,7 +317,7 @@ void VerifyModelMatchesNode(TestNode* expected, const BookmarkNode* actual) {
 
 void VerifyNoDuplicateIDs(BookmarkModel* model) {
   ui::TreeNodeIterator<const BookmarkNode> it(model->root_node());
-  std::unordered_set<int64_t> ids;
+  absl::flat_hash_set<int64_t> ids;
   while (it.has_next()) {
     ASSERT_TRUE(ids.insert(it.Next()->id()).second);
   }
@@ -1357,6 +1357,19 @@ TEST_F(BookmarkModelTest, MoveWithUuidCollisionInDescendant) {
             model()->GetNodeByUuid(folder2->uuid(),
                                    NodeTypeForUuidLookup::kAccountNodes));
 }
+
+#if defined(GTEST_HAS_DEATH_TEST)
+using BookmarkModelDeathTest = BookmarkModelTest;
+
+TEST_F(BookmarkModelDeathTest, MoveIntoSelfOrDescendantCrashes) {
+  const BookmarkNode* folder =
+      model()->AddFolder(model()->bookmark_bar_node(), 0, u"Folder");
+  const BookmarkNode* child = model()->AddFolder(folder, 0, u"Child");
+
+  EXPECT_DEATH(model()->Move(folder, folder, 0), "");
+  EXPECT_DEATH(model()->Move(folder, child, 0), "");
+}
+#endif  // defined(GTEST_HAS_DEATH_TEST)
 
 // Tests the default node if no bookmarks have been added yet
 TEST_F(BookmarkModelTest, ParentForNewNodesWithEmptyModel) {

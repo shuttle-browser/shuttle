@@ -94,13 +94,16 @@ if (!is_android) {
       ":in_process_fuzzer_buildflags",
       ":js_in_process_fuzzer_utils",
       "//chrome/browser",
+      "//services/webnn/public/mojom:features",
     ]
     if (enable_mojom_fuzzer) {
       # Mojo scripts pages, loading the MojoJS bindings of the fuzzed
       # interfaces. Fuzzilli profiles tell the fuzzer which page to load.
       data_deps = [
+        "//services/webnn/public/mojom:mojom_fuzzilli",
         "//third_party/blink/public/mojom:authenticator_mojo_bindings_fuzzilli",
         "//third_party/blink/public/mojom:credentialmanagement_mojo_bindings_fuzzilli",
+        "//third_party/blink/public/mojom:mojom_modules_fuzzilli",
         "//third_party/blink/public/mojom:mojom_platform_fuzzilli",
       ]
     }

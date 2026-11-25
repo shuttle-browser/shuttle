@@ -192,7 +192,7 @@ void WebView::LoadInitialURL(const GURL& url,
           : GURL();
   content::WebContents* web_contents =
       GetWebContents(initial_url, invoke_location);
-  DCHECK(web_contents);
+  CHECK(web_contents, base::NotFatalUntil::M163);
   web_contents->GetController().LoadURLWithParams(params);
 }
 
@@ -206,7 +206,7 @@ bool WebView::GetFastResize() const {
 
 void WebView::EnableSizingFromWebContents(const gfx::Size& min_size,
                                           const gfx::Size& max_size) {
-  DCHECK(!max_size.IsEmpty());
+  CHECK(!max_size.IsEmpty(), base::NotFatalUntil::M163);
   min_size_ = min_size;
   max_size_ = max_size;
   if (web_contents() &&
@@ -423,6 +423,8 @@ void WebView::AboutToRequestFocusFromTabTraversal(bool reverse) {
 }
 
 void WebView::AddedToWidget() {
+  // Track lifecycle even before WebContents is attached.
+  UpdateWidgetAXManagerObservation();
   if (!web_contents()) {
     return;
   }
@@ -435,8 +437,6 @@ void WebView::AddedToWidget() {
   if (holder_->native_view()) {
     SetNativeViewHostAccessibleParent(parent());
   }
-
-  HandleWidgetAXManagerEnablement();
 }
 
 void WebView::RemovedFromWidget() {
@@ -545,7 +545,7 @@ void WebView::RenderFrameHostChanged(content::RenderFrameHost* old_host,
   // yet. If the DCHECK fires, then we would need to handle the initial main
   // frame when it its renderer frame is created.
   if (!old_host) {
-    DCHECK(!new_host->IsRenderFrameLive());
+    CHECK(!new_host->IsRenderFrameLive(), base::NotFatalUntil::M163);
     return;
   }
 
@@ -625,7 +625,7 @@ void WebView::AttachWebContentsNativeView() {
   // We set the parent accessible of the native view to be our parent.
   SetNativeViewHostAccessibleParent(parent());
 
-  HandleWidgetAXManagerEnablement();
+  UpdateWidgetAXManagerObservation();
 
   // The WebContents is not focused automatically when attached, so we need to
   // tell the WebContents it has focus if this has focus.
@@ -665,11 +665,17 @@ void WebView::SetNativeViewHostAccessibleParent(View* parent) {
   // expose. That is never the web view itself, because its own accessible
   // belongs to the web contents.
   gfx::NativeViewAccessible parent_accessible = gfx::NativeViewAccessible();
-  const bool has_child_tree =
-      GetViewAccessibility().GetChildTreeID() != ui::AXTreeIDUnknown();
-  if (parent && (!ViewAccessibility::IsViewsAccessibilityTreeEnabled() ||
-                 has_child_tree)) {
-    parent_accessible = parent->GetNativeViewAccessible();
+  if (parent) {
+    bool expose_parent = !ViewAccessibility::IsViewsAccessibilityTreeEnabled();
+    if (!expose_parent &&
+        GetViewAccessibility().GetChildTreeID() != ui::AXTreeIDUnknown()) {
+      Widget* widget = GetWidget();
+      WidgetAXManager* manager = widget ? widget->ax_manager() : nullptr;
+      expose_parent = manager && manager->is_enabled();
+    }
+    if (expose_parent) {
+      parent_accessible = parent->GetNativeViewAccessible();
+    }
   }
 
   if (holder_->native_view()) {
@@ -754,15 +760,17 @@ void WebView::OnWidgetAXManagerEnabled() {
   if (holder_->native_view()) {
     SetNativeViewHostAccessibleParent(parent());
   }
+}
 
-  widget_ax_manager_observation_.Reset();
+void WebView::OnWidgetAXManagerDisabled() {
+  SetNativeViewHostAccessibleParent(nullptr);
 }
 
 bool WebView::IsWebContentsAlive() const {
   return web_contents() && !web_contents()->IsCrashed();
 }
 
-void WebView::HandleWidgetAXManagerEnablement() {
+void WebView::UpdateWidgetAXManagerObservation() {
   if (!::features::IsAccessibilityTreeForViewsEnabled()) {
     return;
   }
@@ -773,6 +781,12 @@ void WebView::HandleWidgetAXManagerEnablement() {
   }
 
   WidgetAXManager* manager = widget->ax_manager();
+  if (widget_ax_manager_observation_.GetSource() != manager) {
+    widget_ax_manager_observation_.Reset();
+    if (manager) {
+      widget_ax_manager_observation_.Observe(manager);
+    }
+  }
   if (!manager) {
     return;
   }
@@ -781,12 +795,6 @@ void WebView::HandleWidgetAXManagerEnablement() {
     if (holder_->native_view()) {
       SetNativeViewHostAccessibleParent(parent());
     }
-    widget_ax_manager_observation_.Reset();
-    return;
-  }
-
-  if (!widget_ax_manager_observation_.IsObserving()) {
-    widget_ax_manager_observation_.Observe(manager);
   }
 }
 
@@ -835,7 +843,7 @@ void WebView::LostMainFrame() {
 }
 
 void WebView::MaybeEnableAutoResize(content::RenderFrameHost* frame_host) {
-  DCHECK(frame_host->IsRenderFrameLive());
+  CHECK(frame_host->IsRenderFrameLive(), base::NotFatalUntil::M163);
   if (!max_size_.IsEmpty()) {
     frame_host->GetView()->EnableAutoResize(min_size_, max_size_);
   }

@@ -257,6 +257,10 @@ std::string_view GetStringNameForOptimizationType(
       return "FilterExecutionStrategy";
     case proto::OptimizationType::PAYMENT_QR_CODE_MERCHANT_URL_REGEX_ALLOWLIST:
       return "PaymentQrCodeMerchantUrlRegexAllowlist";
+    case proto::OptimizationType::QUICK_ANSWERS:
+      return "QuickAnswers";
+    case proto::OptimizationType::DICTATION_ELIGIBLE:
+      return "DictationEligible";
   }
 
   // The returned string is used to record histograms for the optimization type.

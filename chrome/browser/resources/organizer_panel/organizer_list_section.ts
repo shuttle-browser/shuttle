@@ -12,8 +12,9 @@ import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 
 import {getCss} from './organizer_list_section.css.js';
 import {getHtml} from './organizer_list_section.html.js';
-import type {OrganizerListSectionClient, OrganizerListSectionDelegate} from './organizer_list_section_delegate.js';
+import type {OrganizerAction, OrganizerListSectionClient, OrganizerListSectionDelegate} from './organizer_list_section_delegate.js';
 import type {OrganizerListSectionHeaderElement} from './organizer_list_section_header.js';
+import {OrganizerSectionMenuOption} from './organizer_list_section_header.js';
 import type {HighlightableOrganizerListSectionItem, OrganizerListSectionItem, OrganizerListSectionItemElement} from './organizer_list_section_item.js';
 import type {BrowserProxy, SectionState} from './organizer_panel.mojom-webui.js';
 import {browserProxyFactory} from './organizer_panel.mojom-webui.js';
@@ -21,6 +22,18 @@ import type {SearchOptions} from './search_utils.js';
 import {search} from './search_utils.js';
 
 export const INITIAL_ITEM_COUNT = 3;
+
+// LINT.IfChange(OrganizerSectionToggleAction)
+/**
+ * These values are persisted to logs and should not be renumbered or reused.
+ * See tools/metrics/histograms/metadata/tab/enums.xml.
+ */
+export enum OrganizerSectionToggleAction {
+  EXPAND = 0,
+  COLLAPSE = 1,
+  COUNT = COLLAPSE + 1,
+}
+// LINT.ThenChange(//tools/metrics/histograms/metadata/tab/enums.xml:OrganizerSectionToggleAction)
 
 export interface OrganizerListSectionElement {
   $: {
@@ -51,6 +64,7 @@ export class OrganizerListSectionElement extends CrLitElement implements
         notify: true,
       },
       noAnimation_: {type: Boolean},
+      prefersReducedMotion_: {type: Boolean},
       showAll_: {type: Boolean},
       searchQuery: {type: String},
       filteredItems_: {type: Array},
@@ -65,10 +79,13 @@ export class OrganizerListSectionElement extends CrLitElement implements
 
   private browserProxy_: BrowserProxy = browserProxyFactory.getInstance();
   private sectionStateChangedListenerId_: number|null = null;
+  private reducedMotionQuery_: MediaQueryList|null = null;
+  private windowShownTimestamp_: number = performance.now();
   accessor delegate: OrganizerListSectionDelegate<unknown>|null = null;
   accessor items: Array<OrganizerListSectionItem<unknown>> = [];
   accessor expanded: boolean = true;
   protected accessor noAnimation_: boolean = false;
+  protected accessor prefersReducedMotion_: boolean = false;
   protected accessor showAll_: boolean = false;
   accessor searchQuery: string = '';
   protected accessor filteredItems_:
@@ -115,14 +132,25 @@ export class OrganizerListSectionElement extends CrLitElement implements
   // so all sections need to refetch their data upon visibility change.
   private onVisibilityChange_: () => void = () => {
     if (document.visibilityState === 'visible') {
+      this.windowShownTimestamp_ = performance.now();
       this.updateItems_();
       this.updateSectionState_();
     }
   };
 
+  private onReducedMotionChange_: () => void = () => {
+    assert(this.reducedMotionQuery_ !== null);
+    this.prefersReducedMotion_ = this.reducedMotionQuery_.matches;
+  };
+
   override connectedCallback() {
     super.connectedCallback();
     document.addEventListener('visibilitychange', this.onVisibilityChange_);
+    this.reducedMotionQuery_ =
+        window.matchMedia('(prefers-reduced-motion: reduce)');
+    this.prefersReducedMotion_ = this.reducedMotionQuery_.matches;
+    this.reducedMotionQuery_.addEventListener(
+        'change', this.onReducedMotionChange_);
     this.sectionStateChangedListenerId_ =
         this.browserProxy_.callbackRouter.onSectionsStateChanged.addListener(
             (sectionsState: Record<string, SectionState>) => {
@@ -133,6 +161,10 @@ export class OrganizerListSectionElement extends CrLitElement implements
   override disconnectedCallback() {
     super.disconnectedCallback();
     document.removeEventListener('visibilitychange', this.onVisibilityChange_);
+    assert(this.reducedMotionQuery_ !== null);
+    this.reducedMotionQuery_.removeEventListener(
+        'change', this.onReducedMotionChange_);
+    this.reducedMotionQuery_ = null;
     assert(this.sectionStateChangedListenerId_ !== null);
     this.browserProxy_.callbackRouter.removeListener(
         this.sectionStateChangedListenerId_);
@@ -155,7 +187,8 @@ export class OrganizerListSectionElement extends CrLitElement implements
       this.updateFilteredItems_();
     }
 
-    this.hidden = this.hasNoSearchResults_();
+    this.hidden = !this.delegate || this.hasNoSearchResults_() ||
+        (this.delegate.shouldHide?.() ?? false);
   }
 
   onItemsChanged(items: Array<OrganizerListSectionItem<unknown>>) {
@@ -238,6 +271,29 @@ export class OrganizerListSectionElement extends CrLitElement implements
         this.delegate.getId(), this.expanded);
   }
 
+  protected onToggleAction_(e: CustomEvent<{expanded: boolean}>) {
+    assert(this.delegate);
+    chrome.histograms.recordEnumerationValue(
+        `Tabs.Organizer.Section.${
+            this.delegate.getHistogramSectionName()}.ToggleAction`,
+        e.detail.expanded ? OrganizerSectionToggleAction.EXPAND :
+                            OrganizerSectionToggleAction.COLLAPSE,
+        OrganizerSectionToggleAction.COUNT);
+  }
+
+  protected onMenuAction_(
+      e: CustomEvent<{option: OrganizerSectionMenuOption}>) {
+    assert(this.delegate);
+    const showAll = e.detail.option === OrganizerSectionMenuOption.SHOW_ALL;
+    if (this.showAll_ === showAll) {
+      return;
+    }
+    chrome.histograms.recordEnumerationValue(
+        `Tabs.Organizer.Section.${
+            this.delegate.getHistogramSectionName()}.MenuAction`,
+        e.detail.option, OrganizerSectionMenuOption.COUNT);
+  }
+
   protected hasZeroState_(): boolean {
     return !this.isSearching_() &&
         (this.getFilteredItems_().length === 0 ||
@@ -259,10 +315,21 @@ export class OrganizerListSectionElement extends CrLitElement implements
         this.delegate.getId(), this.showAll_);
   }
 
+  private recordActionMetrics_(action: OrganizerAction, index: number) {
+    const state = this.isSearching_() ? 'Filtered' : 'Unfiltered';
+    chrome.histograms.recordSmallCount(
+        `Tabs.Organizer.WebUI.IndexOf${action}In${state}List`, index);
+    chrome.histograms.recordMediumTime(
+        `Tabs.Organizer.WebUI.TimeTo${action}In${state}List`,
+        Math.round(performance.now() - this.windowShownTimestamp_));
+  }
+
   protected onItemClick_(e: Event) {
     const target = e.currentTarget as OrganizerListSectionItemElement;
     assert(target.item);
     assert(this.delegate);
+    this.recordActionMetrics_(
+        this.delegate.getItemClickAction(), Number(target.dataset['index']));
     this.delegate.onItemClick(target.item);
     this.browserProxy_.handler.closePanel();
   }
@@ -275,6 +342,10 @@ export class OrganizerListSectionElement extends CrLitElement implements
     assert(e.detail.buttonElement);
     assert(this.delegate);
     const itemElement = e.currentTarget as OrganizerListSectionItemElement;
+    const action = this.delegate.getActionButtonClickAction?.();
+    if (action) {
+      this.recordActionMetrics_(action, Number(itemElement.dataset['index']));
+    }
     await this.delegate.onItemActionButtonClicked?.(
         e.detail.item, e.detail.buttonElement);
     itemElement.resetActionButtonStateIfNeeded();
@@ -318,6 +389,18 @@ export class OrganizerListSectionElement extends CrLitElement implements
 
   override focus() {
     this.$.header.focus();
+  }
+
+  focusLast(focusMenuButtonIfVisible: boolean = false) {
+    if (this.isSearching_()) {
+      this.getVisibleItems().at(-1)?.focusLast();
+      return;
+    }
+    if (focusMenuButtonIfVisible && this.$.header.isMenuButtonVisible()) {
+      this.$.header.focusMenuButton();
+    } else {
+      this.focus();
+    }
   }
 
   getNavigableElements(): HTMLElement[] {

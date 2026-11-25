@@ -148,7 +148,7 @@
 #include "services/network/public/cpp/simple_url_loader.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "third_party/blink/public/common/features.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/webui/untrusted_web_ui_browsertest_util.h"
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -4241,7 +4241,7 @@ IN_PROC_BROWSER_TEST_P(DeclarativeNetRequestBrowserTest,
 
   // Querying the badge text with the activeTab access for the current tab
   // should provide the matched action count.
-  active_tab_granter->GrantIfRequested(extension_1);
+  active_tab_granter->GrantIfRequested(extension_1, base::DoNothing());
   EXPECT_EQ("1", query_badge_text(extension_1->id(), first_tab_id));
   // Revoking activeTab should cause the placeholder text to be returned again
   // since we don't have the declarativeNetRequestFeedback permission.
@@ -4934,7 +4934,7 @@ IN_PROC_BROWSER_TEST_P(DeclarativeNetRequestBrowserTest,
   NavigateFrame(kFrameName1, get_url_for_host("def.com"));
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), page_url, WindowOpenDisposition::kNewForegroundTab,
+      browser(), page_url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   ASSERT_EQ(2, browser()->tab_strip_model()->count());
@@ -5232,7 +5232,7 @@ IN_PROC_BROWSER_TEST_P(DeclarativeNetRequestBrowserTest,
   const Extension* dnr_extension = last_loaded_extension();
 
   // Grant the activeTab permission for the second tab.
-  active_tab_granter->GrantIfRequested(dnr_extension);
+  active_tab_granter->GrantIfRequested(dnr_extension, base::DoNothing());
 
   int second_tab_id = ExtensionTabUtil::GetTabId(GetActiveWebContents());
 
@@ -7457,7 +7457,7 @@ IN_PROC_BROWSER_TEST_P(DeclarativeNetRequestControllableResponseTest,
       "google.com", "/pages_with_script/index.html");
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), page_url, WindowOpenDisposition::kNewForegroundTab,
+      browser(), page_url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_TAB);
 
   controllable_http_response().WaitForRequest();

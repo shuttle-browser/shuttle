@@ -489,10 +489,6 @@ const AttributeTriggers* HTMLElement::TriggersForAttributeName(
        &HTMLElement::OnContainerTimingAttrChanged},
       {html_names::kContainertimingignoreAttr, kNoWebFeature, kNoEvent,
        &HTMLElement::OnContainerTimingIgnoreAttrChanged},
-      // Deprecated dashed spelling: still functional, but warns. Remove once
-      // the origin trial ends.
-      {html_names::kContainertimingIgnoreAttr, kNoWebFeature, kNoEvent,
-       &HTMLElement::OnContainerTimingIgnoreAttrChanged},
 
       {html_names::kOnabortAttr, kNoWebFeature, event_type_names::kAbort,
        nullptr},
@@ -1503,6 +1499,22 @@ bool HTMLElement::IsPopoverReady(PopoverTriggerAction action,
                           "Not supported on elements that are not popovers.");
     return false;
   }
+  if (action == PopoverTriggerAction::kHide) {
+    if (GetPopoverData()->visibilityState() !=
+        PopoverVisibilityState::kShowing) {
+      // Important to check that visibility is not kShowing (rather than
+      // popoverOpen()), because a hide transition might have been started on
+      // this popover already, and we don't want to allow a double-hide.
+      return false;
+    }
+    if (expected_document && &GetDocument() != expected_document) {
+      maybe_throw_exception(DOMExceptionCode::kInvalidStateError,
+                            "Invalid when the document changes while showing "
+                            "or hiding a popover element.");
+      return false;
+    }
+    return true;
+  }
   if (!GetDocument().IsActive()) {
     maybe_throw_exception(
         DOMExceptionCode::kInvalidStateError,
@@ -1511,13 +1523,6 @@ bool HTMLElement::IsPopoverReady(PopoverTriggerAction action,
   }
   if (action == PopoverTriggerAction::kShow &&
       GetPopoverData()->visibilityState() != PopoverVisibilityState::kHidden) {
-    return false;
-  }
-  if (action == PopoverTriggerAction::kHide &&
-      GetPopoverData()->visibilityState() != PopoverVisibilityState::kShowing) {
-    // Important to check that visibility is not kShowing (rather than
-    // popoverOpen()), because a hide transition might have been started on this
-    // popover already, and we don't want to allow a double-hide.
     return false;
   }
   if (!isConnected()) {
@@ -2446,7 +2451,8 @@ PopoverHideResult HTMLElement::HideAllPopoversUntil(
         // stack.
         return PopoverHideResult::kHidden;
       }
-      while (last_to_hide && last_to_hide->popoverOpen()) {
+      while (last_to_hide && last_to_hide->popoverOpen() &&
+             stack.Contains(last_to_hide)) {
         CHECK(!stack.empty());
         auto stack_top = stack.back();
         if (stack_top->HidePopoverInternal(
@@ -2660,9 +2666,10 @@ PopoverHideResult HTMLElement::HidePopoverInternal(
   if (transition_behavior ==
       HidePopoverTransitionBehavior::kFireEventsAndWaitForTransitions) {
     // Fire the "closing" beforetoggle event.
-    auto* event = ToggleEvent::Create(
-        event_type_names::kBeforetoggle, Event::Cancelable::kNo,
-        /*old_state*/ keywords::kOpen, /*new_state*/ keywords::kClosed, invoker);
+    auto* event = ToggleEvent::Create(event_type_names::kBeforetoggle,
+                                      Event::Cancelable::kNo,
+                                      /*old_state*/ keywords::kOpen,
+                                      /*new_state*/ keywords::kClosed, invoker);
     if (invoker && RuntimeEnabledFeatures::ShadowRootReferenceTargetEnabled(
                        invoker->GetExecutionContext())) {
       event->SetComposed(true);
@@ -2673,12 +2680,10 @@ PopoverHideResult HTMLElement::HidePopoverInternal(
     CHECK_EQ(event->newState(), keywords::kClosed);
     event->SetTarget(this);
     auto result = DispatchEvent(*event);
-    if (result != DispatchEventResult::kNotCanceled) {
-      // The event can be cancelled before dispatch, if the target or execution
-      // context no longer exists, etc. See crbug.com/1445329.
-      CHECK_EQ(result, DispatchEventResult::kCanceledBeforeDispatch);
-      return PopoverHideResult::kHidden;
-    }
+    // The event can be cancelled before dispatch, if the target or execution
+    // context no longer exists, etc. See crbug.com/40268117.
+    CHECK(result == DispatchEventResult::kNotCanceled ||
+          result == DispatchEventResult::kCanceledBeforeDispatch);
 
     // The 'beforetoggle' event handler could have changed this popover, e.g. by
     // changing its type, removing it from the document, or calling
@@ -2829,6 +2834,7 @@ PopoverHideResult HTMLElement::HidePopoverInternal(
 
   // Re-apply display:none, and stop matching `:popover-open`.
   GetPopoverData()->setVisibilityState(PopoverVisibilityState::kHidden);
+  GetPopoverData()->setHidingThisPopover(false);
 
   PseudoStateChanged(CSSSelector::kPseudoPopoverOpen);
   if (HTMLSelectElement::IsPopoverPickerElement(this)) {
@@ -3691,9 +3697,12 @@ CommandEventType HTMLElement::GetCommandEventType(
 }
 
 const AtomicString& HTMLElement::autocapitalize() const {
-  DEFINE_STATIC_LOCAL(const AtomicString, kCharacters, ("characters"));
-  DEFINE_STATIC_LOCAL(const AtomicString, kWords, ("words"));
-  DEFINE_STATIC_LOCAL(const AtomicString, kSentences, ("sentences"));
+  DEFINE_STATIC_LOCAL(const AtomicString, kCharacters,
+                      (AtomicString::FromLiteral<"characters">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, kWords,
+                      (AtomicString::FromLiteral<"words">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, kSentences,
+                      (AtomicString::FromLiteral<"sentences">()));
 
   const AtomicString& value = FastGetAttribute(html_names::kAutocapitalizeAttr);
   if (value.empty())
@@ -3889,8 +3898,10 @@ void HTMLElement::setTranslate(bool enable) {
 // default).
 // http://www.whatwg.org/specs/web-apps/current-work/multipage/common-dom-interfaces.html#limited-to-only-known-values
 static inline const AtomicString& ToValidDirValue(const AtomicString& value) {
-  DEFINE_STATIC_LOCAL(const AtomicString, ltr_value, ("ltr"));
-  DEFINE_STATIC_LOCAL(const AtomicString, rtl_value, ("rtl"));
+  DEFINE_STATIC_LOCAL(const AtomicString, ltr_value,
+                      (AtomicString::FromLiteral<"ltr">()));
+  DEFINE_STATIC_LOCAL(const AtomicString, rtl_value,
+                      (AtomicString::FromLiteral<"rtl">()));
 
   if (EqualIgnoringAsciiCase(value, ltr_value)) {
     return ltr_value;
@@ -4075,6 +4086,15 @@ void HTMLElement::RemovedFrom(ContainerNode& insertion_point) {
       IsUnboundedElementActive() &&
       !GetDocument().StatePreservingAtomicMoveInProgress()) {
     SetUnboundedElementActive(false, UnboundedEvents::kSuppress);
+  }
+
+  // Drop the container timing record when a container root is disconnected,
+  // including during atomic moves (moveBefore()).
+  if (was_in_document && FastHasAttribute(html_names::kContainertimingAttr) &&
+      RuntimeEnabledFeatures::ContainerTimingEnabled(GetExecutionContext())) {
+    if (auto* window = GetDocument().domWindow()) {
+      ContainerTiming::From(*window).OnContainerRootDisconnected(this);
+    }
   }
 
   Element::RemovedFrom(insertion_point);
@@ -4359,6 +4379,13 @@ void HTMLElement::DefaultEventHandler(Event& event) {
 }
 
 bool HTMLElement::HandleKeyboardActivation(Event& event) {
+  // If the focus is on a descendant (such as a text field),
+  // skip handling keyboard activation.
+  if (RuntimeEnabledFeatures::KeyboardActivationFocusCheckEnabled()) {
+    if (GetDocument().FocusedElement() != this) {
+      return false;
+    }
+  }
   auto* keyboard_event = DynamicTo<KeyboardEvent>(event);
   if (keyboard_event) {
     if (event.type() == event_type_names::kKeydown &&
@@ -4654,31 +4681,16 @@ void HTMLElement::OnContainerTimingAttrChanged(
 
 void HTMLElement::OnContainerTimingIgnoreAttrChanged(
     const AttributeModificationParams& params) {
-  // Both spellings are handled here and share the same use counter. The dashed
-  // `containertiming-ignore` one is deprecated in favor of
-  // `containertimingignore`: it stays functional for the remainder of the
-  // origin trial, but warns. The warning fires on every occurrence on purpose:
-  // measured usage is negligible and the spelling goes away when the trial
-  // ends, so it is not worth tracking per-page state to suppress repeats.
+  // Count attribute adoption, but ignore attributes in user agent shadow DOM
+  // (consistent with the generic attribute use-counting in ParseAttribute).
   if (!params.new_value.IsNull() && !IsInUserAgentShadowRoot()) {
     UseCounter::Count(GetDocument(),
                       WebFeature::kContainerTimingIgnoreAttribute);
-    if (params.name == html_names::kContainertimingIgnoreAttr) {
-      AddConsoleMessage(
-          mojom::blink::ConsoleMessageSource::kDeprecation,
-          mojom::blink::ConsoleMessageLevel::kWarning,
-          "The 'containertiming-ignore' attribute is deprecated and will be "
-          "removed. Use 'containertimingignore' instead.");
-    }
   }
 
   if (!RuntimeEnabledFeatures::ContainerTimingEnabled(GetExecutionContext())) {
     return;
   }
-  // Only this spelling's presence is tracked here. That is still correct when
-  // the element carries both spellings: all this does is mark the subtree for
-  // re-attribution, and the pre-paint walk resolves the effective ignore state
-  // through HasContainerTimingIgnoreAttribute(), which sees both spellings.
   bool had_container_timing_ignore = !params.old_value.IsNull();
   bool has_container_timing_ignore = !params.new_value.IsNull();
   if (had_container_timing_ignore == has_container_timing_ignore) {

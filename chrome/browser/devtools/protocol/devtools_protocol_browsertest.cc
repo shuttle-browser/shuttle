@@ -2,8 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#include <optional>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include "base/base64.h"
 #include "base/check_deref.h"
@@ -38,6 +40,7 @@
 #include "chrome/browser/private_verification_tokens/private_verification_tokens_service.h"
 #include "chrome/browser/private_verification_tokens/private_verification_tokens_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/search_engines/template_url_service_factory.h"
 #include "chrome/browser/ssl/https_upgrades_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/common/chrome_paths.h"
@@ -45,6 +48,7 @@
 #include "chrome/common/pref_names.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/chrome_test_utils.h"
+#include "chrome/test/base/search_test_utils.h"
 #include "components/content_settings/core/browser/cookie_settings.h"
 #include "components/content_settings/core/common/pref_names.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
@@ -54,6 +58,9 @@
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/privacy_sandbox/privacy_sandbox_attestations/privacy_sandbox_attestations.h"
 #include "components/private_verification_tokens/common/private_verification_tokens_token.h"
+#include "components/search_engines/template_url.h"
+#include "components/search_engines/template_url_data.h"
+#include "components/search_engines/template_url_service.h"
 #include "components/services/app_service/public/cpp/app_launch_params.h"
 #include "content/public/browser/btm_redirect.h"
 #include "content/public/browser/btm_service.h"
@@ -87,8 +94,8 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/boringssl/src/include/openssl/ssl.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/gfx/codec/png_codec.h"
 #include "url/origin.h"
 
@@ -379,7 +386,8 @@ IN_PROC_BROWSER_TEST_F(DevToolsProtocolTest,
       chrome_test_utils::GetActiveWebContents(this);
 
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GURL("about:blank"), WindowOpenDisposition::kNewForegroundTab,
+      browser(), GURL("about:blank"),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   content::WebContents* other_web_contents =
       chrome_test_utils::GetActiveWebContents(this);
@@ -564,7 +572,7 @@ IN_PROC_BROWSER_TEST_F(DevToolsProtocolTest, MAYBE_AutoAttachToUnloadedTab) {
   // 1. Create two tabs.
   ASSERT_TRUE(ui_test_utils::NavigateToURL(browser(), url1));
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), url2, WindowOpenDisposition::kNewForegroundTab,
+      browser(), url2, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   ASSERT_EQ(2, browser()->tab_strip_model()->count());
   ASSERT_EQ(1, browser()->tab_strip_model()->active_index());
@@ -890,9 +898,11 @@ IN_PROC_BROWSER_TEST_F(DevToolsProtocolTest,
   EXPECT_FALSE(agent_host->GetWebContents());
 }
 
+// TODO(https://crbug.com/580985658): Re-enable after fixing OwningTestTabModel
+// outliving the disposed OTR Profile.
 IN_PROC_BROWSER_TEST_F(
     DevToolsProtocolTest,
-    DisposeBrowserContextClosesFrozenTabsAcrossTabModelRemoval) {
+    DISABLED_DisposeBrowserContextClosesFrozenTabsAcrossTabModelRemoval) {
   AttachToBrowserTarget();
 
   const base::DictValue* result =
@@ -1193,11 +1203,11 @@ IN_PROC_BROWSER_TEST_F(
   GURL url("invalid.scheme:for-sure");
   ui_test_utils::AllBrowserTabAddedWaiter tab_added_waiter;
 
-  content::WebContents* web_contents =
-      browser()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
-                             url, WindowOpenDisposition::kNewForegroundTab,
-                             ui::PAGE_TRANSITION_TYPED),
-                         /*navigation_handle_callback=*/{});
+  content::WebContents* web_contents = browser()->OpenURL(
+      content::OpenURLParams::CreateBrowserInitiated(
+          url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+          ui::PAGE_TRANSITION_TYPED),
+      /*navigation_handle_callback=*/{});
   tab_added_waiter.Wait();
   ASSERT_TRUE(WaitForLoadStop(web_contents));
 
@@ -1347,7 +1357,8 @@ testing::AssertionResult SimulateBtmBounce(BrowserWindowInterface* browser,
                                            const GURL& bounce_url,
                                            const GURL& final_url) {
   if (!ui_test_utils::NavigateToURLWithDisposition(
-          browser, initial_url, WindowOpenDisposition::kNewForegroundTab,
+          browser, initial_url,
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab,
           ui_test_utils::BROWSER_TEST_WAIT_FOR_TAB |
               ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP)) {
     return testing::AssertionFailure()
@@ -1918,9 +1929,10 @@ class ExtensionProtocolTest : public DevToolsProtocolTest {
 #if !BUILDFLAG(IS_ANDROID)
   // Android does not support Chrome Apps.
   void LaunchApp(const std::string& app_id) {
-    apps::AppLaunchParams params(
-        app_id, apps::LaunchContainer::kLaunchContainerNone,
-        WindowOpenDisposition::kNewWindow, apps::LaunchSource::kFromTest);
+    apps::AppLaunchParams params(app_id,
+                                 apps::LaunchContainer::kLaunchContainerNone,
+                                 ui::mojom::WindowOpenDisposition::kNewWindow,
+                                 apps::LaunchSource::kFromTest);
     apps::AppServiceProxyFactory::GetForProfile(
         chrome_test_utils::GetProfile(this))
         ->BrowserAppLauncher()
@@ -2454,6 +2466,20 @@ class DevToolsProtocolTest_PrivateVerificationTokens
     pvt_service_ = PrivateVerificationTokensServiceFactory::GetForProfile(
         browser()->GetProfile());
     ASSERT_NE(pvt_service_, nullptr);
+
+    TemplateURLService* template_url_service =
+        TemplateURLServiceFactory::GetForProfile(browser()->GetProfile());
+    search_test_utils::WaitForTemplateURLServiceToLoad(template_url_service);
+
+    TemplateURLData data;
+    data.SetShortName(u"Test DSE");
+    data.SetKeyword(u"testdse");
+    data.SetURL("https://issuer.example.com/search?q={searchTerms}");
+    TemplateURL* template_url =
+        template_url_service->Add(std::make_unique<TemplateURL>(data));
+    ASSERT_TRUE(template_url);
+    template_url_service->SetUserSelectedDefaultSearchProvider(template_url);
+
     if (!pvt_service_->is_initialized()) {
       base::test::TestFuture<void> init_future;
       class Waiter : public PrivateVerificationTokensService::Observer {
@@ -3564,6 +3590,69 @@ IN_PROC_BROWSER_TEST_F(DevToolsProtocolPrerenderTest,
   EXPECT_FALSE(result);
   ASSERT_TRUE(error());
   EXPECT_EQ(*error()->FindString("message"), "Not attached to an active page");
+}
+
+class DevToolsProtocolWebMCPTest : public DevToolsProtocolTest {
+ public:
+  DevToolsProtocolWebMCPTest() {
+    feature_list_.InitAndEnableFeature(blink::features::kWebMCP);
+  }
+
+ protected:
+  // Calls Page.getAnnotatedPageContent and returns the names of the main
+  // frame's script tools.
+  std::vector<std::string> GetScriptToolNames() {
+    const base::DictValue* result =
+        SendCommandSync("Page.getAnnotatedPageContent");
+    if (!result) {
+      ADD_FAILURE() << "Page.getAnnotatedPageContent failed";
+      return {};
+    }
+    const std::string* content_base64 = result->FindString("content");
+    std::string decoded_proto;
+    optimization_guide::proto::AnnotatedPageContent apc;
+    if (!content_base64 ||
+        !base::Base64Decode(*content_base64, &decoded_proto) ||
+        !apc.ParseFromString(decoded_proto)) {
+      ADD_FAILURE() << "Failed to decode AnnotatedPageContent";
+      return {};
+    }
+    std::vector<std::string> names;
+    for (const auto& tool : apc.main_frame_data().script_tools()) {
+      names.push_back(tool.name());
+    }
+    return names;
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(DevToolsProtocolWebMCPTest,
+                       GetAnnotatedPageContentExcludesDebuggingTools) {
+  ASSERT_TRUE(embedded_test_server()->Start());
+  ASSERT_TRUE(content::NavigateToURL(
+      web_contents(), embedded_test_server()->GetURL("/empty.html")));
+  ASSERT_TRUE(content::ExecJs(web_contents(), R"JS(
+    (async () => {
+      await document.modelContext.registerTool({
+        name: "regular_tool",
+        description: "A regular tool",
+        execute: () => {},
+      });
+      await document.modelContext.registerTool({
+        name: "debugging_tool",
+        description: "A tool for developer debugging",
+        annotations: {debugging: true},
+        execute: () => {},
+      });
+    })()
+  )JS"));
+
+  Attach();
+
+  // Debugging tools are only exposed through the WebMCP domain.
+  EXPECT_THAT(GetScriptToolNames(), testing::ElementsAre("regular_tool"));
 }
 
 #endif  // !BUILDFLAG(IS_ANDROID)

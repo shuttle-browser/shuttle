@@ -9,6 +9,7 @@ import android.content.Context;
 import androidx.annotation.VisibleForTesting;
 
 import org.chromium.base.Callback;
+import org.chromium.base.CallbackController;
 import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
@@ -23,7 +24,6 @@ import org.chromium.chrome.browser.ui.enterprise_signals_disclaimer.EnterpriseSi
 import org.chromium.chrome.browser.ui.enterprise_signals_disclaimer.EnterpriseSignalsDisclaimerController.ShownOn;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.signin.base.AccountInfo;
-import org.chromium.components.signin.base.CoreAccountInfo;
 import org.chromium.components.signin.metrics.SignoutReason;
 import org.chromium.google_apis.gaia.CoreAccountId;
 import org.chromium.ui.modaldialog.ModalDialogManager;
@@ -43,6 +43,7 @@ public class StartupSigninStateCheckController implements NativeInitObserver, De
     private final ActivityLifecycleDispatcher mLifecycleDispatcher;
     private final MonotonicObservableSupplier<Profile> mProfileSupplier;
     private final EnterpriseSignalsDisclaimerController mDisclaimerController;
+    private final CallbackController mCallbackController = new CallbackController();
     private boolean mDestroyed;
 
     /**
@@ -90,6 +91,7 @@ public class StartupSigninStateCheckController implements NativeInitObserver, De
     @Override
     public void onDestroy() {
         mDestroyed = true;
+        mCallbackController.destroy();
         mLifecycleDispatcher.unregister(this);
         mDisclaimerController.destroy();
     }
@@ -134,14 +136,12 @@ public class StartupSigninStateCheckController implements NativeInitObserver, De
 
         signinManager.isAccountManaged(
                 primaryAccount,
-                (Boolean isAccountManaged) -> {
-                    if (mDestroyed) {
-                        return;
-                    }
-                    if (isAccountManaged) {
-                        showManagementNotice(signinManager, primaryAccount);
-                    }
-                });
+                mCallbackController.makeCancelable(
+                        (Boolean isAccountManaged) -> {
+                            if (isAccountManaged) {
+                                showManagementNotice(signinManager, primaryAccount);
+                            }
+                        }));
     }
 
     /** Shows the management notice for the primary account. */
@@ -165,16 +165,17 @@ public class StartupSigninStateCheckController implements NativeInitObserver, De
                         }
                         signinManager.setUserAcceptedAccountManagement(false);
                         signinManager.runAfterOperationInProgress(
-                                () -> {
-                                    if (!mDestroyed
-                                            && signinManager.isSignOutAllowed()
-                                            && isPrimaryAccount(
-                                                    signinManager, primaryAccount.getId())) {
-                                        signinManager.signOut(
-                                                SignoutReason
-                                                        .USER_DECLINED_ENTERPRISE_MANAGEMENT_DISCLAIMER);
-                                    }
-                                });
+                                mCallbackController.makeCancelable(
+                                        () -> {
+                                            if (signinManager.isSignOutAllowed()
+                                                    && isPrimaryAccount(
+                                                            signinManager,
+                                                            primaryAccount.getId())) {
+                                                signinManager.signOut(
+                                                        SignoutReason
+                                                                .USER_DECLINED_ENTERPRISE_MANAGEMENT_DISCLAIMER);
+                                            }
+                                        }));
                     }
                 };
 
@@ -206,8 +207,7 @@ public class StartupSigninStateCheckController implements NativeInitObserver, De
 
     private static boolean isPrimaryAccount(
             SigninManager signinManager, CoreAccountId primaryAccountId) {
-        CoreAccountInfo primaryAccountInfo =
-                signinManager.getIdentityManager().getPrimaryAccountInfo();
+        AccountInfo primaryAccountInfo = signinManager.getIdentityManager().getPrimaryAccountInfo();
         if (primaryAccountInfo == null) {
             return false;
         }

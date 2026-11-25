@@ -57,8 +57,9 @@ class TabIcon : public views::View, public views::AnimationDelegateViews {
   ~TabIcon() override;
 
   // Sets the tab data (network state, favicon, load progress, etc.) that are
-  // used to render the tab icon.
-  void SetData(const tabs::TabData& data);
+  // used to render the tab icon, along with whether the icon can currently
+  // paint to a layer.
+  void SetData(const tabs::TabData& data, bool can_paint_to_layer);
 
   // Sets whether this tab is currently active.
   void SetActiveState(bool is_active);
@@ -84,6 +85,9 @@ class TabIcon : public views::View, public views::AnimationDelegateViews {
 
   gfx::ImageSkia GetThemedIconForTesting() { return themed_favicon_; }
   bool GetActiveStateForTesting() { return is_active_tab_; }
+  int GetIncreasedDiscardIndicatorRadiusForTesting() const {
+    return increased_discard_indicator_radius_;
+  }
 
   // Called by the parent view when the width available to draw the tab icon
   // changes, to determine whether to increase the discard indicator radius.

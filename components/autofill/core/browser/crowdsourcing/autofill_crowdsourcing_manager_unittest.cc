@@ -1963,7 +1963,7 @@ TEST_P(AutofillUploadTest, MAYBE_PeriodicReset) {
 
   base::HistogramTester histogram_tester;
 
-  TestAutofillClock test_clock;
+  TestAutofillClockDeprecated test_clock;
   test_clock.SetNow(AutofillClock::Now());
 
   // The first attempt should succeed.
@@ -2004,7 +2004,13 @@ TEST_P(AutofillUploadTest, MAYBE_PeriodicReset) {
       1, 2);
 }
 
-TEST_P(AutofillUploadTest, ResetOnClearUploadHistory) {
+// Flaky on fuchsia bots, see crbug.com/446943496.
+#if BUILDFLAG(IS_FUCHSIA)
+#define MAYBE_ResetOnClearUploadHistory DISABLED_ResetOnClearUploadHistory
+#else
+#define MAYBE_ResetOnClearUploadHistory ResetOnClearUploadHistory
+#endif
+TEST_P(AutofillUploadTest, MAYBE_ResetOnClearUploadHistory) {
   ASSERT_NE(DISABLED, GetParam());
 
   AutofillCrowdsourcingManager crowdsourcing_manager(
@@ -2022,7 +2028,7 @@ TEST_P(AutofillUploadTest, ResetOnClearUploadHistory) {
 
   base::HistogramTester histogram_tester;
 
-  TestAutofillClock test_clock;
+  TestAutofillClockDeprecated test_clock;
   test_clock.SetNow(AutofillClock::Now());
 
   // The first attempt should succeed.

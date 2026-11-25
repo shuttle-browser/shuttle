@@ -4,6 +4,8 @@
 
 #include "chrome/browser/signin/e2e_tests/signin_util.h"
 
+#include <string>
+
 #include "base/strings/stringprintf.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/profiles/profile.h"
@@ -92,7 +94,8 @@ void SignInFunctions::SignInFromSettings(
   ASSERT_TRUE(content::WaitForLoadStop(gaia_login_tab));
   if (complete_signin_operation) {
     SignInFromCurrentPage(gaia_login_tab, test_account,
-                          previously_signed_in_accounts);
+                          previously_signed_in_accounts,
+                          PrimaryAccountWait::kWaitForAdded);
   }
 }
 
@@ -103,10 +106,6 @@ void SignInFunctions::SignInFromSettingsWithSyncChoice(
 #if !BUILDFLAG(ENABLE_DICE_SUPPORT)
   NOTREACHED();
 #else
-  SignInTestObserver observer(identity_manager(browser_.Run()),
-                              account_reconcilor(browser_.Run()),
-                              ConsentLevel::kSignin);
-
   std::unique_ptr<content::TestNavigationObserver> history_sync_observer =
       std::make_unique<content::TestNavigationObserver>(
           HistorySyncOptinUI::AppendHistorySyncOptinQueryParams(
@@ -116,8 +115,6 @@ void SignInFunctions::SignInFromSettingsWithSyncChoice(
 
   SignInFromSettings(test_account, previously_signed_in_accounts,
                      /*complete_signin_operation=*/true);
-  observer.WaitForAccountChanges(previously_signed_in_accounts + 1,
-                                 PrimaryAccountWait::kWaitForAdded);
 
   history_sync_observer->Wait();
   switch (sync_choice) {
@@ -136,7 +133,8 @@ void SignInFunctions::SignInFromSettingsWithSyncChoice(
 void SignInFunctions::SignInFromCurrentPage(
     content::WebContents* web_contents,
     const TestAccountSigninCredentials& test_account,
-    int previously_signed_in_accounts) {
+    int previously_signed_in_accounts,
+    PrimaryAccountWait primary_account_wait) {
   ASSERT_TRUE(content::WaitForLoadStop(web_contents));
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
@@ -146,7 +144,23 @@ void SignInFunctions::SignInFromCurrentPage(
   login_ui_test_utils::ExecuteJsToSigninInSigninFrame(
       web_contents, test_account.user, test_account.password);
   observer.WaitForAccountChanges(previously_signed_in_accounts + 1,
-                                 PrimaryAccountWait::kNotWait);
+                                 primary_account_wait);
+}
+
+void SignInFunctions::SignInFromPasswordChallengePage(
+    content::WebContents* web_contents,
+    const std::string& password,
+    int previously_signed_in_accounts,
+    PrimaryAccountWait primary_account_wait) {
+  ASSERT_TRUE(content::WaitForLoadStop(web_contents));
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents->GetBrowserContext());
+  SignInTestObserver observer(IdentityManagerFactory::GetForProfile(profile),
+                              AccountReconcilorFactory::GetForProfile(profile),
+                              ConsentLevel::kSignin);
+  login_ui_test_utils::EnterPasswordInNewGaiaFlow(web_contents, password);
+  observer.WaitForAccountChanges(previously_signed_in_accounts + 1,
+                                 primary_account_wait);
 }
 
 void SignInFunctions::SignOutFromWeb() {

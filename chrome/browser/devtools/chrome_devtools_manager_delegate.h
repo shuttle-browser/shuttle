@@ -15,6 +15,7 @@
 #include "chrome/browser/devtools/global_confirm_info_bar.h"
 #include "chrome/browser/devtools/protocol/protocol.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
+#include "components/enterprise/buildflags/buildflags.h"
 #include "components/infobars/core/confirm_infobar_delegate.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "content/public/browser/devtools_agent_host_observer.h"
@@ -23,6 +24,11 @@
 
 class ChromeDevToolsSession;
 class ScopedKeepAlive;
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+namespace enterprise_connectors {
+class CdpActorSessionTracker;
+}  // namespace enterprise_connectors
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
 using RemoteLocations = std::set<net::HostPortPair>;
 
 class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
@@ -99,6 +105,9 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
       TargetType target_type,
       bool new_window) override;
   bool HasBundledFrontendResources() override;
+  void GetBrowserWindowCaptureDevice(
+      content::WebContents* web_contents,
+      BrowserWindowCaptureDeviceCallback callback) override;
   void AcceptDebugging(AcceptCallback) override;
   void SetActiveWebSocketConnections(size_t count) override;
 
@@ -109,7 +118,8 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
   void OnAccept() override;
   void OnDismiss() override;
 
-  raw_ptr<GlobalConfirmInfoBar> infobar_ = nullptr;
+  // The infobar can delete itself if it cannot be shown in a tab.
+  base::WeakPtr<GlobalConfirmInfoBar> infobar_;
   std::map<content::DevToolsAgentHostClientChannel*,
            std::unique_ptr<ChromeDevToolsSession>>
       sessions_;
@@ -120,6 +130,10 @@ class ChromeDevToolsManagerDelegate : public content::DevToolsManagerDelegate,
   RemoteLocations remote_locations_;
   std::unique_ptr<ScopedKeepAlive> keep_alive_;
   std::unique_ptr<ScopedProfileKeepAlive> profile_keep_alive_;
+#if BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
+  std::unique_ptr<enterprise_connectors::CdpActorSessionTracker>
+      cdp_actor_session_tracker_;
+#endif  // BUILDFLAG(ENTERPRISE_CDP_ATTRIBUTION)
 };
 
 #endif  // CHROME_BROWSER_DEVTOOLS_CHROME_DEVTOOLS_MANAGER_DELEGATE_H_

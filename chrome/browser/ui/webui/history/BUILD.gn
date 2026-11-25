@@ -55,7 +55,6 @@ source_set("history") {
     "//components/favicon_base",
     "//components/history/core/browser",
     "//components/history_clusters/core",
-    "//components/history_embeddings/core",
     "//components/page_image_service",
     "//components/page_image_service/mojom:mojo_bindings",
     "//components/pref_registry",
@@ -93,7 +92,7 @@ source_set("history") {
     sources += [ "history_ui_platform_handlers_android.cc" ]
     deps += [
       "//chrome/browser/flags:flags_android",
-      "//chrome/browser/quick_delete:jni_headers",
+      "//chrome/browser/settings:jni_headers",
       "//ui/android",
     ]
   }
@@ -103,15 +102,14 @@ source_set("history") {
     public += [ "foreign_session_handler.h" ]
     deps += [
       "//chrome/browser/glic",
-      "//chrome/browser/history_embeddings",
       "//chrome/browser/ui:chrome_pages",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/hats",
       "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/signin",
+      "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/webui:managed_ui_handler",
-      "//chrome/browser/ui/webui/cr_components/history_embeddings",
       "//chrome/browser/ui/webui/history_clusters",
       "//chrome/browser/ui/webui/ntp",
       "//chrome/browser/ui/webui/page_not_available_for_guest",
@@ -121,7 +119,6 @@ source_set("history") {
       "//chrome/browser/ui/webui/user_education",
       "//components/signin/core/browser",
       "//components/tabs:public",
-      "//ui/webui/resources/cr_components/history_embeddings:mojo_bindings",
     ]
   }
 }
@@ -146,12 +143,7 @@ source_set("unit_tests") {
     "//url",
   ]
 
-  if (is_android) {
-    deps += [
-      "//chrome/browser/flags:flags_android",
-      "//ui/android",
-    ]
-  } else {
+  if (!is_android) {
     sources += [
       "browsing_history_handler_unittest.cc",
       "foreign_session_handler_unittest.cc",
@@ -163,6 +155,7 @@ source_set("unit_tests") {
     deps += [
       "//chrome/browser/bookmarks",
       "//chrome/browser/critical_actions",
+      "//chrome/browser/history",
       "//chrome/browser/signin",
       "//chrome/browser/sync",
       "//chrome/browser/ui:test_support",

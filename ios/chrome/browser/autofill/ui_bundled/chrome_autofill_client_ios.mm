@@ -26,6 +26,7 @@
 #import "components/autofill/core/browser/crowdsourcing/votes_uploader.h"
 #import "components/autofill/core/browser/data_manager/autofill_ai/entity_data_manager.h"
 #import "components/autofill/core/browser/data_manager/valuables/valuables_data_manager.h"
+#import "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
 #import "components/autofill/core/browser/form_import/addresses/autofill_save_update_address_profile_delegate_ios.h"
 #import "components/autofill/core/browser/form_import/form_data_importer.h"
 #import "components/autofill/core/browser/form_predictions_tracker.h"
@@ -62,7 +63,6 @@
 #import "components/ukm/ios/ukm_url_recorder.h"
 #import "ios/chrome/browser/affiliations/model/ios_chrome_affiliation_service_factory.h"
 #import "ios/chrome/browser/autofill/atmemory/model/ios_at_memory_query_service_factory.h"
-#import "ios/chrome/browser/autofill/atmemory/public/at_memory_commands.h"
 #import "ios/chrome/browser/autofill/autofill_ai/error_dialog/model/autofill_ai_error_dialog_context.h"
 #import "ios/chrome/browser/autofill/autofill_ai/public/save_entity_params.h"
 #import "ios/chrome/browser/autofill/model/address_normalizer_factory.h"
@@ -78,8 +78,8 @@
 #import "ios/chrome/browser/autofill/model/ios_autofill_ai_model_executor_factory.h"
 #import "ios/chrome/browser/autofill/model/ios_autofill_ai_personal_context_access_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/ios_autofill_entity_data_manager_factory.h"
-#import "ios/chrome/browser/autofill/model/ios_autofill_entity_suppression_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/ios_autofill_field_classification_model_handler_factory.h"
+#import "ios/chrome/browser/autofill/model/ios_autofill_personal_context_entity_metadata_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/ios_wallet_pass_access_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/personal_data_manager_factory.h"
 #import "ios/chrome/browser/autofill/model/strike_database_factory.h"
@@ -272,9 +272,10 @@ EntityDataManager* ChromeAutofillClientIOS::GetEntityDataManager() {
   return IOSAutofillEntityDataManagerFactory::GetForProfile(profile_);
 }
 
-EntitySuppressionManager*
-ChromeAutofillClientIOS::GetEntitySuppressionManager() {
-  return IOSAutofillEntitySuppressionManagerFactory::GetForProfile(profile_);
+PersonalContextEntityMetadataManager*
+ChromeAutofillClientIOS::GetPersonalContextEntityMetadataManager() {
+  return IOSAutofillPersonalContextEntityMetadataManagerFactory::GetForProfile(
+      profile_);
 }
 
 WalletPassAccessManager* ChromeAutofillClientIOS::GetWalletPassAccessManager() {
@@ -631,11 +632,6 @@ void ChromeAutofillClientIOS::UpdateAutofillDataListValues(
 void ChromeAutofillClientIOS::HideSuggestions(
     SuggestionHidingReason reason,
     std::optional<FillingProduct> product) {
-  if (product == FillingProduct::kAtMemory) {
-    [at_memory_handler_ dismissAtMemory];
-    return;
-  }
-
   // If a `product` filter is specified, only hide if it matches the active
   // popup.
   if (product && active_suggestion_delegate_ &&
@@ -898,10 +894,22 @@ void ChromeAutofillClientIOS::ShowEntityImportBubble(
     infobar_manager_->RemoveInfoBar(*existing_infobar);
   }
 
-  SaveEntityParams params(std::move(new_entity), std::move(old_entity),
-                          *std::move(user_email), save_is_synchronous,
-                          std::move(prompt_result_callback),
-                          std::move(public_passes_notice));
+  // TODO(crbug.com/573949431): Update the logic to decide
+  // `show_explicit_decline_button` using Emmett Account Location:
+  // 1. GDPR countries: `show_explicit_decline_button = true`.
+  // 2. Non-GDPR countries: `show_explicit_decline_button = false`.
+  // 3. Unavailable or unknown Emmett country: Suppress the save prompt.
+  const bool show_explicit_decline_button =
+      base::FeatureList::IsEnabled(
+          features::kAutofillRegionalizedPrivatePassesUxRefine) &&
+      GetWalletPassType(new_entity.type(), new_entity.record_type()) ==
+          EntityInstance::WalletPassType::kPrivate;
+
+  SaveEntityParams params(
+      std::move(new_entity), std::move(old_entity), *std::move(user_email),
+      save_is_synchronous, std::move(prompt_result_callback),
+      std::move(public_passes_notice),
+      /*show_explicit_decline_button=*/show_explicit_decline_button);
 
   auto delegate = std::make_unique<AutofillAiSaveEntityInfoBarDelegateIOS>(
       std::move(params),
@@ -992,9 +1000,9 @@ void ChromeAutofillClientIOS::ShowAutofillAiSaveUpdateUI() {
 
 void ChromeAutofillClientIOS::OnActorTaskStateChange(bool is_actuating) {
   if (is_actuating) {
-    for (AutofillDriver* driver :
-         GetAutofillDriverFactory().GetExistingDrivers()) {
-      driver->GetAutofillManager().ReparseKnownForms();
+    if (AutofillManager* manager = GetAutofillManagerForPrimaryMainFrame()) {
+      manager->TriggerFormExtractionInAllFrames(/*force=*/true,
+                                                base::DoNothing());
     }
   }
 }

@@ -6,6 +6,7 @@
 
 #include "base/json/values_util.h"
 #include "base/test/bind.h"
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/scoped_mock_time_message_loop_task_runner.h"
 #include "base/test/test_future.h"
@@ -66,6 +67,9 @@ struct ManagementDisclaimerTestParam {
   bool expected_management_accepted;
   bool expected_primary_account;
   bool expected_refresh_token;
+  // Whether the disclaimer flow reports that profile separation is enforced by
+  // policy (second argument of the completion callback).
+  bool expected_profile_creation_required_by_policy;
 };
 
 const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
@@ -81,6 +85,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = false,
         .expected_primary_account = true,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = false,
     },
     // - Managed
     // - No policies
@@ -95,6 +100,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = true,
         .expected_primary_account = true,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = false,
     },
     // - Managed
     // - Profile creation is enforced by policy
@@ -112,6 +118,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = true,
         .expected_primary_account = true,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = true,
     },
     // - Managed
     // - No policies
@@ -127,6 +134,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = true,
         .expected_primary_account = true,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = false,
     },
     // - Managed
     // - Profile creation is enforced by policy
@@ -145,6 +153,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = true,
         .expected_primary_account = true,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = true,
     },
     // - Managed
     // - No policies
@@ -159,6 +168,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = false,
         .expected_primary_account = false,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = false,
     },
     // - Managed
     // - Profile creation is enforced by policy
@@ -176,6 +186,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = false,
         .expected_primary_account = false,
         .expected_refresh_token = false,
+        .expected_profile_creation_required_by_policy = true,
     },
     // - Managed
     // - No policies
@@ -190,18 +201,13 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = false,
         .expected_primary_account = false,
         .expected_refresh_token = true,
+        .expected_profile_creation_required_by_policy = false,
     },
     // - Managed
     // - Profile creation is enforced by policy
     // - No User choice
     {
-#if BUILDFLAG(IS_MAC) || (BUILDFLAG(IS_WIN) && defined(ADDRESS_SANITIZER))
-        // TODO(crbug.com/505194363): Re-enable on Mac once deflaked.
-        // TODO(crbug.com/549938845): Flaky on Win ASan.
-        .test_name = "DISABLED_Managed_EnforcedByPolicy_Dismiss",
-#else
         .test_name = "Managed_EnforcedByPolicy_Dismiss",
-#endif
         .user_choice = std::nullopt,
         .policies = policy::ProfileSeparationPolicies(
             /*profile_separation_settings=*/policy::ProfileSeparationSettings::
@@ -213,6 +219,7 @@ const ManagementDisclaimerTestParam kManagementDisclaimerTestParams[] = {
         .expected_management_accepted = false,
         .expected_primary_account = false,
         .expected_refresh_token = false,
+        .expected_profile_creation_required_by_policy = true,
     },
 };
 
@@ -280,10 +287,12 @@ class ProfileManagementDisclaimerServiceBrowserFocusBrowserTest
   }
 
   void ReplaceCurrentBrowserWithNewOne() {
+    BrowserWindowInterface* const old_browser = browser();
     BrowserWindowInterface* const new_browser =
-        CreateBrowser(browser()->GetProfile());
-    CloseBrowserSynchronously(browser());
+        CreateBrowser(old_browser->GetProfile());
     SetBrowser(new_browser);
+    CloseBrowserSynchronously(old_browser);
+    ui_test_utils::WaitForBrowserSetLastActive(new_browser);
     ASSERT_EQ(browser(), new_browser);
   }
 
@@ -322,24 +331,18 @@ IN_PROC_BROWSER_TEST_P(
       signin::TriboolFromBool(GetParam().is_managed));
   ASSERT_FALSE(enterprise_util::UserAcceptedAccountManagement(GetProfile()));
 
+  base::test::TestFuture<Profile*, bool> future;
+  disclaimer_service->AddCallbackForTesting(future.GetCallback());
+
   // Create a new browser to trigger the profile management disclaimer.
   ReplaceCurrentBrowserWithNewOne();
 
-  Profile* new_profile = nullptr;
-
-  if (GetParam().user_choice.has_value()) {
-    base::test::TestFuture<Profile*, bool> future;
-    disclaimer_service->EnsureManagedProfileForAccount(
-        primary_account_info.GetAccountId(),
-        signin_metrics::AccessPoint::kEnterpriseManagementDisclaimerAtStartup,
-        future.GetCallback());
-    ASSERT_TRUE(future.Wait());
-    new_profile = future.Get<Profile*>();
-  }
-
   auto* signin_view_controller = SigninViewController::From(browser());
   if (!GetParam().is_managed) {
-    base::RunLoop().RunUntilIdle();
+    ASSERT_TRUE(future.Wait());
+    EXPECT_EQ(future.Get<Profile*>(), nullptr);
+    EXPECT_EQ(future.Get<bool>(),
+              GetParam().expected_profile_creation_required_by_policy);
     ASSERT_FALSE(signin_view_controller->ShowsModalDialog());
     ASSERT_TRUE(
         identity_manager()->HasPrimaryAccount(signin::ConsentLevel::kSignin));
@@ -348,12 +351,21 @@ IN_PROC_BROWSER_TEST_P(
   }
 
   if (!GetParam().user_choice.has_value()) {
-    base::RunLoop().RunUntilIdle();
-    ASSERT_TRUE(signin_view_controller->ShowsModalDialog());
+    ASSERT_TRUE(base::test::RunUntil(
+        [&]() { return signin_view_controller->ShowsModalDialog(); }));
 
     // Dismiss the dialog without any user choice.
     signin_view_controller->CloseModalSignin();
   }
+
+  ASSERT_TRUE(future.Wait());
+  // The result must come from the disclaimer flow that the browser focus
+  // started, which evaluated the profile separation policies. A flow that
+  // times out waiting for account info resets before evaluating them and
+  // reports `false`.
+  EXPECT_EQ(future.Get<bool>(),
+            GetParam().expected_profile_creation_required_by_policy);
+  Profile* new_profile = future.Get<Profile*>();
 
   Profile* verify_profile = nullptr;
   switch (GetParam().expected_profile_result) {
@@ -373,10 +385,12 @@ IN_PROC_BROWSER_TEST_P(
 
   EXPECT_EQ(enterprise_util::UserAcceptedAccountManagement(verify_profile),
             GetParam().expected_management_accepted);
-  EXPECT_EQ(
-      GetIdentityManager(verify_profile)
-          ->HasAccountWithRefreshToken(primary_account_info.GetAccountId()),
-      GetParam().expected_refresh_token);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return GetIdentityManager(verify_profile)
+               ->HasAccountWithRefreshToken(
+                   primary_account_info.GetAccountId()) ==
+           GetParam().expected_refresh_token;
+  }));
 
   if (verify_profile != GetProfile()) {
     EXPECT_EQ(GetIdentityManager(verify_profile)
@@ -537,8 +551,8 @@ IN_PROC_BROWSER_TEST_P(ProfileManagementDisclaimerServiceSigninBrowserTest,
   }
 
   if (!GetParam().user_choice.has_value()) {
-    base::RunLoop().RunUntilIdle();
-    ASSERT_TRUE(signin_view_controller->ShowsModalDialog());
+    ASSERT_TRUE(base::test::RunUntil(
+        [&]() { return signin_view_controller->ShowsModalDialog(); }));
 
     // Dismiss the dialog without any user choice.
     signin_view_controller->CloseModalSignin();
@@ -562,10 +576,12 @@ IN_PROC_BROWSER_TEST_P(ProfileManagementDisclaimerServiceSigninBrowserTest,
 
   EXPECT_EQ(enterprise_util::UserAcceptedAccountManagement(verify_profile),
             GetParam().expected_management_accepted);
-  EXPECT_EQ(
-      GetIdentityManager(verify_profile)
-          ->HasAccountWithRefreshToken(primary_account_info.GetAccountId()),
-      GetParam().expected_refresh_token);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return GetIdentityManager(verify_profile)
+               ->HasAccountWithRefreshToken(
+                   primary_account_info.GetAccountId()) ==
+           GetParam().expected_refresh_token;
+  }));
 
   if (verify_profile != GetProfile()) {
     EXPECT_EQ(GetIdentityManager(verify_profile)

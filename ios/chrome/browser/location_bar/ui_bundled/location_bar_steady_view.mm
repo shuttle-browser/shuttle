@@ -4,6 +4,7 @@
 
 #import "ios/chrome/browser/location_bar/ui_bundled/location_bar_steady_view.h"
 
+#import "base/apple/foundation_util.h"
 #import "base/check.h"
 #import "base/check_op.h"
 #import "components/strings/grit/components_strings.h"
@@ -144,6 +145,47 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
                                                               alpha:alpha];
                    }
                    completion:nil];
+}
+
+- (CGRect)accessibilityFrame {
+  LocationBarSteadyView* steadyView =
+      base::apple::ObjCCast<LocationBarSteadyView>(self.superview);
+  if (!steadyView) {
+    // superview is nil before this button is added to the view hierarchy.
+    return [super accessibilityFrame];
+  }
+
+  CGRect selfFrame = self.frame;
+  UIButton* trailingButton = steadyView.trailingButton;
+  if (trailingButton && !trailingButton.hidden && trailingButton.enabled &&
+      trailingButton.alpha > 0) {
+    CGRect trailingButtonFrame = trailingButton.frame;
+    if (CGRectIntersectsRect(selfFrame, trailingButtonFrame)) {
+      // Adjust `selfFrame` so it does not overlap with `trailingButtonFrame`.
+      if (CGRectGetMidX(trailingButtonFrame) >= CGRectGetMidX(selfFrame)) {
+        // LTR: Trailing button is on the right.
+        selfFrame.size.width =
+            CGRectGetMinX(trailingButtonFrame) - CGRectGetMinX(selfFrame);
+      } else {
+        // RTL: Trailing button is on the left.
+        CGFloat trailingButtonMaxX = CGRectGetMaxX(trailingButtonFrame);
+        selfFrame.size.width = CGRectGetMaxX(selfFrame) - trailingButtonMaxX;
+        selfFrame.origin.x = trailingButtonMaxX;
+      }
+    }
+  }
+  LocationBarBadgesContainerView* badgesContainerView =
+      steadyView.badgesContainerView;
+  if (badgesContainerView.accessibilityElements.count > 0) {
+    CGRectEdge leadingEdge = self.effectiveUserInterfaceLayoutDirection ==
+                                     UIUserInterfaceLayoutDirectionRightToLeft
+                                 ? CGRectMaxXEdge
+                                 : CGRectMinXEdge;
+    CGRect slice;
+    CGRectDivide(selfFrame, &slice, &selfFrame,
+                 CGRectGetWidth(badgesContainerView.frame), leadingEdge);
+  }
+  return UIAccessibilityConvertFrameToScreenCoordinates(selfFrame, steadyView);
 }
 
 @end
@@ -334,13 +376,12 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
 
   _locationButton = [[LocationBarSteadyButton alloc] init];
   _locationButton.translatesAutoresizingMaskIntoConstraints = NO;
-  [_locationButton addSubview:_trailingButton];
-  [_locationButton insertSubview:_trailingButtonSpotlightView
-                    belowSubview:_trailingButton];
   [_locationButton addSubview:_locationContainerView];
-  AddSameCenterConstraints(_trailingButton, _trailingButtonSpotlightView);
 
   [self addSubview:_locationButton];
+  [self addSubview:_trailingButtonSpotlightView];
+  [self addSubview:_trailingButton];
+  AddSameCenterConstraints(_trailingButton, _trailingButtonSpotlightView);
 
   AddSameConstraints(self, _locationButton);
 
@@ -772,6 +813,9 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
 #pragma mark - LocationBarContentSizeDelegate
 
 - (void)locationBarContentSizeDidChange {
+  [self updateAccessibility];
+  UIAccessibilityPostNotification(UIAccessibilityLayoutChangedNotification,
+                                  nil);
   // Received from the badges container; re-publish it as a change of this
   // view, as the badges are part of its content.
   [self.contentSizeDelegate locationBarContentSizeDidChange];
@@ -796,6 +840,9 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
     [self.accessibleElements addObject:_customLeadingView];
   }
 
+  [self.accessibleElements
+      addObjectsFromArray:self.badgesContainerView.accessibilityElements];
+
   [_accessibleElements addObject:_locationButton];
 
   if ([self shouldShowIncognitoBadge]) {
@@ -807,12 +854,8 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
         [NSString stringWithFormat:@"%@ %@", self.locationLabel.text,
                                    self.securityLevelAccessibilityString];
   } else {
-    self.locationButton.accessibilityValue =
-        [NSString stringWithFormat:@"%@", self.locationLabel.text];
+    self.locationButton.accessibilityValue = self.locationLabel.text;
   }
-
-  [self.accessibleElements
-      addObjectsFromArray:self.badgesContainerView.accessibilityElements];
 
   if (self.trailingButton && self.trailingButton.enabled) {
     if (!IsChromeNextIaEnabled() || !self.trailingButton.hidden) {
@@ -821,7 +864,7 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
   }
 }
 
-// Propagates the incognito state to the badges container view.
+// Updates the incognito state and constraints.
 - (void)setIncognito:(BOOL)incognito {
   _incognito = incognito;
   if (_incognito && !_incognitoImageView) {
@@ -843,7 +886,6 @@ const CGFloat kCustomLeadingViewAnimationDuration = 0.3;
     _incognitoImageView.tintColor = self.colorScheme.fontColor;
   }
 
-  self.badgesContainerView.incognito = incognito;
   [self updateContainerConstraints];
 }
 

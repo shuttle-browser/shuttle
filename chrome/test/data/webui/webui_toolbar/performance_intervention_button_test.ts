@@ -2,9 +2,9 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
-import {assertEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
 import {BrowserProxyImpl} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
@@ -97,5 +97,43 @@ suite('PerformanceInterventionButton', function() {
     dispatchMouseClick();
     assertEquals(
         3, handler.getCallCount('onPerformanceInterventionButtonClicked'));
+  });
+
+  test('ActiveState', async () => {
+    assertFalse(button.hasAttribute('is-active'));
+
+    // 1. When shown, is-active is present.
+    button.state = {shouldBeShown: true};
+    await button.updateComplete;
+    assertTrue(button.hasAttribute('is-active'));
+
+    // 2. Highlighting and unhighlighting without clicking the button keeps
+    // is-active present.
+    button.highlightTracker.onHighlightChanged(true);
+    await button.updateComplete;
+    assertTrue(button.hasAttribute('is-active'));
+
+    button.highlightTracker.onHighlightChanged(false);
+    await button.updateComplete;
+    assertTrue(button.hasAttribute('is-active'));
+
+    // 3. Clicking the button deactivates it.
+    const crIconButton = button.shadowRoot!.querySelector('cr-icon-button')!;
+    crIconButton.click();
+    await button.updateComplete;
+    assertFalse(button.hasAttribute('is-active'));
+
+    // 4. Unrelated state updates while shouldBeShown remains true do not
+    // re-activate the button.
+    button.state = {shouldBeShown: true};
+    await button.updateComplete;
+    assertFalse(button.hasAttribute('is-active'));
+
+    // 5. Hiding and re-showing resets is-active to true.
+    button.state = {shouldBeShown: false};
+    await button.updateComplete;
+    button.state = {shouldBeShown: true};
+    await button.updateComplete;
+    assertTrue(button.hasAttribute('is-active'));
   });
 });

@@ -15,10 +15,11 @@
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
 #include "chrome/browser/readaloud/read_aloud_audio_broker.h"
+#include "chrome/browser/readaloud/read_aloud_playback_session.h"
 #include "chrome/browser/readaloud/read_aloud_voice_catalog.h"
 #include "chrome/common/readaloud/read_aloud.mojom.h"
-#include "components/dom_distiller/core/task_tracker.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/web_distiller/core/task_tracker.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/base/big_buffer.h"
 #include "mojo/public/cpp/bindings/receiver.h"
@@ -34,7 +35,6 @@ class Profile;
 namespace readaloud {
 
 class OverviewGenerationBroker;
-class ReadAloudPlaybackSession;
 class ReadAloudServiceTest;
 class SpeechSynthesisBroker;
 class VoicePreviewController;
@@ -43,7 +43,7 @@ class VoicePreviewController;
 // Chrome, which allows users to listen to web page content.
 //
 // Manages Read Aloud audio playback of distilled web page content by
-// coordinating page distillation (via `DomDistillerService`), audio synthesis
+// coordinating page distillation (via `WebDistillerService`), audio synthesis
 // in the utility process, and UI state synchronization via `Delegate`.
 //
 // Instantiated per-Profile by `ReadAloudServiceFactory`. Observes the target
@@ -54,7 +54,7 @@ class VoicePreviewController;
 // user switches focus to a different tab.
 class ReadAloudService
     : public KeyedService,
-      public dom_distiller::ViewRequestDelegate,
+      public web_distiller::ViewRequestDelegate,
       public read_aloud::mojom::ReadAloudPlaybackControllerClient,
       public content::WebContentsObserver {
  public:
@@ -91,6 +91,21 @@ class ReadAloudService
     kMaxValue = kContentParsingFailed,
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/readaloud/enums.xml:ReadAloudOverviewOutcome)
+
+  // Outcome of standard (Classic mode) playback preparation in
+  // ReadAloudService. These values are persisted to logs. Entries should not be
+  // renumbered and numeric values should never be reused.
+  // LINT.IfChange(StandardPlaybackOutcome)
+  enum class StandardPlaybackOutcome {
+    kSuccess = 0,
+    kDistillationFailed = 1,
+    kEmptyContent = 2,
+    kInitialSynthesisFailed = 3,
+    kPlayOnReadyTimeout = 4,
+    kUtilityDisconnected = 5,
+    kMaxValue = kUtilityDisconnected,
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/readaloud/enums.xml:ReadAloudStandardPlaybackOutcome)
 
   // Interface for dispatching events from the native service to the UI.
   // State changes are sent to the UI via this delegate.
@@ -152,7 +167,8 @@ class ReadAloudService
   explicit ReadAloudService(
       Profile* profile,
       PlaybackControllerBinder controller_binder = {},
-      ReadAloudAudioBroker::AudioStreamFactoryBinder factory_binder = {});
+      ReadAloudAudioBroker::AudioStreamFactoryBinder factory_binder = {},
+      ReadAloudPlaybackSession::MediaSessionGetter media_session_getter = {});
 
   ReadAloudService(const ReadAloudService&) = delete;
   ReadAloudService& operator=(const ReadAloudService&) = delete;
@@ -234,7 +250,7 @@ class ReadAloudService
   void Initialize(content::WebContents* web_contents);
 
   // TODO(b/553612030): Refactor out GetViewerHandleForTesting().
-  dom_distiller::ViewerHandle* GetViewerHandleForTesting() const {
+  web_distiller::ViewerHandle* GetViewerHandleForTesting() const {
     return viewer_handle_.get();
   }
 
@@ -253,16 +269,14 @@ class ReadAloudService
           RequestSpeechSynthesisCallback callback) override;
 
  private:
-  // Triggers distillation of a webpage using DomDistillerService.
+  // Triggers distillation of a webpage using WebDistillerService.
   void DistillPage(content::WebContents* web_contents);
 
-  // dom_distiller::ViewRequestDelegate:
+  // web_distiller::ViewRequestDelegate:
   void OnArticleReady(
-      const dom_distiller::DistilledArticleProto* article_proto) override;
-  void OnArticleUpdated(
-      dom_distiller::ArticleDistillationUpdate article_update) override;
+      const web_distiller::DistilledArticleProto* article_proto) override;
   void OnDistillationFailed(
-      dom_distiller::DistillationParseResult reason) override;
+      web_distiller::DistillationParseResult reason) override;
 
   // Sends page title and publisher metadata to the UI delegate.
   void ProvideInitialMetadata();
@@ -294,11 +308,21 @@ class ReadAloudService
   // Releases the media session, distillation and utility resources without
   // notifying the delegate.
   void ResetPlayback();
+  // Records successful standard playback startup and TTFA to UMA if waiting for
+  // the initial audio playback.
+  void MaybeRecordStartupSuccess();
+  // Records the outcome of the standard playback startup phase to UMA if
+  // waiting for the initial audio playback. Clears startup tracking state.
+  void MaybeRecordStartupOutcome(StandardPlaybackOutcome outcome);
+  // Clears transient startup tracking state. Does not reset
+  // `first_audio_emitted_` flag, which should persist across pause/resume.
+  void ClearStartupTrackingState();
 
   raw_ptr<Profile> profile_;
   PlaybackControllerBinder controller_binder_;
+  ReadAloudPlaybackSession::MediaSessionGetter media_session_getter_;
   std::unique_ptr<ReadAloudAudioBroker> audio_broker_;
-  std::unique_ptr<dom_distiller::ViewerHandle> viewer_handle_;
+  std::unique_ptr<web_distiller::ViewerHandle> viewer_handle_;
   std::unique_ptr<Delegate> delegate_;
   base::TimeTicks distillation_start_time_;
   base::TimeTicks overview_generation_start_time_;
@@ -331,6 +355,13 @@ class ReadAloudService
   // Tracks explicit user playback intent in the browser process across
   // asynchronous distillation and overview generation operations.
   bool user_requested_play_ = false;
+
+  // Tracks startup lifecycle (from Play() trigger to first audio rendering).
+  // Cleared on first audio chunk or startup error to prevent re-recording
+  // across subsequent pause/resume or mid-article buffering events.
+  base::TimeTicks standard_playback_start_time_;
+  bool waiting_for_first_audio_ = false;
+  bool first_audio_emitted_ = false;
 
   base::WeakPtrFactory<ReadAloudService> weak_factory_{this};
 };

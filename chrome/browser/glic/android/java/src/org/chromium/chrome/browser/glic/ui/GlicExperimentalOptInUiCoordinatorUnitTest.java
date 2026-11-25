@@ -7,9 +7,13 @@ package org.chromium.chrome.browser.glic.ui;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -19,11 +23,13 @@ import android.graphics.Color;
 import android.graphics.drawable.ColorDrawable;
 import android.view.Gravity;
 import android.view.View;
+import android.view.ViewStub;
 import android.widget.FrameLayout;
 
 import androidx.activity.ComponentDialog;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 
+import org.jni_zero.JniRawPtr;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -35,12 +41,21 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.mockito.quality.Strictness;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowLooper;
 
+import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
+import org.chromium.chrome.browser.browser_controls.BrowserControlsVisibilityManager;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.glic.R;
+import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
+import org.chromium.chrome.browser.tab.TabObscuringHandler;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.components.browser_ui.widget.gesture.BackPressHandlerRegistry;
 import org.chromium.components.thinwebview.ThinWebView;
 import org.chromium.components.thinwebview.ThinWebViewFactory;
 import org.chromium.content_public.browser.WebContents;
@@ -53,6 +68,7 @@ import org.chromium.ui.modaldialog.ModalDialogProperties;
 import org.chromium.ui.modelutil.PropertyModel;
 
 import java.lang.ref.WeakReference;
+import java.util.concurrent.TimeUnit;
 
 /** Unit tests for {@link GlicExperimentalOptInUiCoordinator}. */
 @RunWith(BaseRobolectricTestRunner.class)
@@ -101,14 +117,21 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @Mock private WebContents mWebContents;
     @Mock private ThinWebView mThinWebView;
     @Mock private GlicExperimentalOptInUiCoordinator.Natives mNativeMock;
+    @Mock private SnackbarManager mSnackbarManager;
 
     private TestActivity mActivity;
     private TestWindowAndroid mWindowAndroid;
+    private JniRawPtr<
+                    GlicExperimentalOptInUiCoordinator
+                            .NativeGlicExperimentalOptInUIHostAndroid>
+            mNativePtr;
+    private GlicUiCoordinator mGlicUiCoordinator;
 
     @Before
     public void setUp() {
         GlicExperimentalOptInUiCoordinatorJni.setInstanceForTesting(mNativeMock);
         ThinWebViewFactory.setInstanceForTesting(mThinWebView);
+        mNativePtr = JniRawPtr.createForTesting(NATIVE_PTR);
 
         mActivityScenarioRule
                 .getScenario()
@@ -124,17 +147,31 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
         when(mThinWebView.getView()).thenReturn(new View(mActivity));
         // ContentView talks to the WebContents once it takes focus, which a mock cannot service.
         when(mWebContents.isDestroyed()).thenReturn(true);
+        doAnswer(
+                        invocation -> {
+                            PropertyModel model = invocation.getArgument(0);
+                            int cause = invocation.getArgument(1);
+                            model.get(ModalDialogProperties.CONTROLLER).onDismiss(model, cause);
+                            return null;
+                        })
+                .when(mModalDialogManager)
+                .dismissDialog(any(), eq(DialogDismissalCause.NAVIGATE_BACK_OR_TOUCH_OUTSIDE));
     }
 
     @After
     public void tearDown() {
+        if (mGlicUiCoordinator != null) {
+            mGlicUiCoordinator.destroy();
+            mGlicUiCoordinator = null;
+        }
+        mNativePtr.release();
         mWindowAndroid.destroy();
     }
 
     @Test
     public void testShow_Success() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
 
         assertNotNull("Coordinator should not be null", coordinator);
         verify(mThinWebView).attachWebContents(eq(mWebContents), any(), any());
@@ -154,7 +191,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
         mWindowAndroid.mActivityRef = new WeakReference<>(null);
 
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
 
         assertNull("Coordinator should be null when activity is null", coordinator);
         verify(mModalDialogManager, never()).showDialog(any(), any(Integer.class));
@@ -165,7 +202,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
         mWindowAndroid.mDialogManager = null;
 
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
 
         assertNull("Coordinator should be null when ModalDialogManager is null", coordinator);
         verify(mModalDialogManager, never()).showDialog(any(), any(Integer.class));
@@ -174,7 +211,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @Test
     public void testOnDismiss_FromModalDialogManager() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
         PropertyModel model = coordinator.getPropertyModelForTesting();
         assertNotNull(model);
@@ -183,14 +220,14 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
         assertNotNull("Controller should not be null", controller);
         controller.onDismiss(model, DialogDismissalCause.NAVIGATE_BACK_OR_TOUCH_OUTSIDE);
 
-        verify(mNativeMock).onDismissed(NATIVE_PTR);
+        verify(mNativeMock).onDismissed(mNativePtr);
         verify(mThinWebView).destroy();
     }
 
     @Test
     public void testOnNativeDestroyed() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
         PropertyModel model = coordinator.getPropertyModelForTesting();
         assertNotNull(model);
@@ -206,13 +243,13 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
 
         verify(mThinWebView).destroy();
         // Regression guard: native destruction must not call back into native.
-        verify(mNativeMock, never()).onDismissed(any(Long.class));
+        verify(mNativeMock, never()).onDismissed(any());
     }
 
     @Test
     public void testCloseButton_ClicksAndDismissesDialog() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
         PropertyModel model = coordinator.getPropertyModelForTesting();
         assertNotNull(model);
@@ -238,7 +275,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @Config(qualifiers = "w1000dp-h1000dp")
     public void testShow_FlagDisabled_UsesDefaultSize() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
 
         // The dialog offers 1000x1000dp, more than the card needs, so the card uses its full
@@ -260,7 +297,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @EnableFeatures(ChromeFeatureList.GLIC_EXPERIMENTAL_OPT_IN_DIALOG_NON_SCROLLABLE)
     public void testShow_FlagEnabled_UsesNonScrollableHeight() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
 
         // Same as the default size, but the flag switches the height to the non-scrollable
@@ -277,7 +314,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @Config(qualifiers = "w1000dp-h500dp-land")
     public void testShow_Landscape_UsesLandscapeSize() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
 
         // In landscape, values-land/dimens.xml overrides the size to 600x310dp. The dialog
@@ -294,7 +331,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @Config(qualifiers = "w1000dp-h1000dp")
     public void testShow_CardCappedToAvailableSpace() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
 
         // The dialog offers only 300x400dp, less than the 380x567dp target, so the card shrinks
@@ -307,7 +344,7 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
     @Test
     public void testShow_ClearsWindowBackgroundAndRoundsCard() {
         GlicExperimentalOptInUiCoordinator coordinator =
-                GlicExperimentalOptInUiCoordinator.show(NATIVE_PTR, mWindowAndroid, mWebContents);
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
         assertNotNull(coordinator);
         PropertyModel model = coordinator.getPropertyModelForTesting();
         assertTrue(model.get(ModalDialogProperties.CUSTOM_VIEW).getClipToOutline());
@@ -320,6 +357,119 @@ public class GlicExperimentalOptInUiCoordinatorUnitTest {
         assertEquals(
                 Color.TRANSPARENT,
                 ((ColorDrawable) dialog.getWindow().getDecorView().getBackground()).getColor());
+    }
+
+    @Test
+    public void testShow_TriggersPendingActorTaskSnackbarWhenGlicUiCoordinatorAttached() {
+        when(mSnackbarManager.canShowSnackbar()).thenReturn(true);
+        mGlicUiCoordinator = createGlicUiCoordinator();
+        assertSame(mGlicUiCoordinator, GlicUiCoordinator.from(mWindowAndroid));
+
+        GlicExperimentalOptInUiCoordinator coordinator =
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
+        assertNotNull(coordinator);
+
+        ArgumentCaptor<Snackbar> snackbarCaptor = ArgumentCaptor.forClass(Snackbar.class);
+        verify(mSnackbarManager).showSnackbar(snackbarCaptor.capture());
+        assertEquals(
+                mActivity.getString(R.string.actor_notification_title_preparing_to_start_task),
+                snackbarCaptor.getValue().getTextForTesting());
+    }
+
+    @Test
+    public void testShowAndAccept_RefreshesAndKeepsPendingActorTaskSnackbar() {
+        when(mSnackbarManager.canShowSnackbar()).thenReturn(true);
+        mGlicUiCoordinator = createGlicUiCoordinator();
+
+        GlicExperimentalOptInUiCoordinator coordinator =
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
+        assertNotNull(coordinator);
+        verify(mSnackbarManager).showSnackbar(any());
+        clearInvocations(mSnackbarManager);
+
+        ShadowLooper.idleMainLooper(1, TimeUnit.MINUTES);
+        coordinator.onOptInAccepted();
+        coordinator.simulateDismissingForTesting();
+
+        ShadowLooper.idleMainLooper(1, TimeUnit.MINUTES);
+        verify(mSnackbarManager, never()).dismissSnackbars(any());
+        verify(mSnackbarManager, never()).showSnackbar(any());
+
+        ShadowLooper.idleMainLooper(1, TimeUnit.MINUTES);
+        verify(mSnackbarManager).dismissSnackbars(any());
+        verify(mSnackbarManager).showSnackbar(any());
+    }
+
+    @Test
+    public void testShowAndDismissWithoutAccept_ShowsErrorSnackbar() {
+        when(mSnackbarManager.canShowSnackbar()).thenReturn(true);
+        mGlicUiCoordinator = createGlicUiCoordinator();
+
+        GlicExperimentalOptInUiCoordinator coordinator =
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
+        assertNotNull(coordinator);
+        verify(mSnackbarManager).showSnackbar(any());
+        clearInvocations(mSnackbarManager);
+
+        coordinator.simulateDismissingForTesting();
+
+        verify(mSnackbarManager).dismissSnackbars(any());
+        ArgumentCaptor<Snackbar> snackbarCaptor = ArgumentCaptor.forClass(Snackbar.class);
+        verify(mSnackbarManager).showSnackbar(snackbarCaptor.capture());
+        assertEquals(
+                mActivity.getString(R.string.actor_task_list_bubble_row_failed_task_subtitle),
+                snackbarCaptor.getValue().getTextForTesting());
+        assertEquals(
+                mActivity.getString(R.string.actor_snackbar_back_to_gemini),
+                snackbarCaptor.getValue().getActionText());
+    }
+
+    @Test
+    public void testShow_DoesNotTriggerSnackbarAfterGlicUiCoordinatorDestroyed() {
+        mGlicUiCoordinator = createGlicUiCoordinator();
+        mGlicUiCoordinator.destroy();
+        mGlicUiCoordinator = null;
+        assertNull(GlicUiCoordinator.from(mWindowAndroid));
+
+        GlicExperimentalOptInUiCoordinator coordinator =
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
+        assertNotNull(coordinator);
+
+        verify(mSnackbarManager, never()).showSnackbar(any());
+    }
+
+    @Test
+    public void testShow_DoesNotTriggerSnackbarWhenShowFails() {
+        mGlicUiCoordinator = createGlicUiCoordinator();
+        mWindowAndroid.mDialogManager = null;
+
+        GlicExperimentalOptInUiCoordinator coordinator =
+                GlicExperimentalOptInUiCoordinator.show(mNativePtr, mWindowAndroid, mWebContents);
+        assertNull(coordinator);
+
+        verify(mSnackbarManager, never()).showSnackbar(any());
+    }
+
+    private GlicUiCoordinator createGlicUiCoordinator() {
+        TabModelSelector tabModelSelector = mock(TabModelSelector.class);
+        when(tabModelSelector.getCurrentTabSupplier())
+                .thenReturn(ObservableSuppliers.alwaysNull());
+        return new GlicUiCoordinator(
+                mActivity,
+                mWindowAndroid,
+                /* tabBottomSheetManager= */ null,
+                ObservableSuppliers.alwaysNull(),
+                ObservableSuppliers.alwaysNull(),
+                ObservableSuppliers.createNonNull(tabModelSelector),
+                mock(BrowserControlsVisibilityManager.class),
+                mock(TabObscuringHandler.class),
+                mSnackbarManager,
+                mock(BackPressHandlerRegistry.class),
+                ObservableSuppliers.alwaysNull(),
+                new ViewStub(mActivity),
+                mock(ActivityLifecycleDispatcher.class),
+                ObservableSuppliers.createNonNull(false),
+                /* sideUiStateProvider= */ null);
     }
 
     /** Measures the card as the dialog would, offering it at most the given space. */

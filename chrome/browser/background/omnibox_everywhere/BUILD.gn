@@ -12,6 +12,7 @@ source_set("omnibox_everywhere") {
     "//base",
     "//chrome/browser/status_icons",
     "//components/prefs",
+    "//components/search_engines",
   ]
 
   if (is_win) {
@@ -23,9 +24,11 @@ source_set("omnibox_everywhere") {
     "//chrome/app:branded_strings",
     "//chrome/app:generated_resources",
     "//chrome/app/theme:theme_resources",
+    "//chrome/browser:after_startup_task_utils",
     "//chrome/browser:browser_process",
     "//chrome/browser/lifetime",
     "//chrome/browser/profiles/keep_alive",
+    "//chrome/browser/search_engines",
     "//chrome/browser/ui:chrome_pages",
     "//chrome/browser/ui/omnibox",
     "//chrome/browser/ui/omnibox/omnibox_everywhere:icon",
@@ -33,6 +36,7 @@ source_set("omnibox_everywhere") {
     "//chrome/common",
     "//components/keep_alive_registry",
     "//components/vector_icons",
+    "//content/public/browser",
     "//ui/base",
   ]
 }

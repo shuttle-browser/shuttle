@@ -125,15 +125,6 @@ public interface ChromeAndroidTask {
             ChromeAndroidTaskFeatureKey featureKey, Supplier<@Nullable T> featureSupplier);
 
     /**
-     * Removes all {@link ChromeAndroidTaskFeature}s associated with the given {@link
-     * ActivityWindowAndroid}.
-     *
-     * @param activityWindowAndroid The associated activity.
-     * @see #addFeature
-     */
-    void removeAllFeaturesForActivity(ActivityWindowAndroid activityWindowAndroid);
-
-    /**
      * Returns the currently <i>valid</i> {@link Profile}s in the {@code Activity} represented by
      * the given {@link ActivityWindowAndroid}.
      *
@@ -240,6 +231,22 @@ public interface ChromeAndroidTask {
      */
     @Deprecated
     List<Long> getAllNativeBrowserWindowPtrs();
+
+    /**
+     * Returns the address of the native {@code BrowserWindowInterface} that is currently active in
+     * this Task, or 0 if none is active.
+     *
+     * <p>A window is active when its {@code ChromeActivity} is the topmost one in this Task and is
+     * the top resumed Activity. If the native object hasn't been created, this method will create
+     * it before returning its address.
+     *
+     * @deprecated Please do <i>not</i> call this method. Observe activation via {@link
+     *     #addAndroidBrowserWindowObserver} instead, and see the deprecation notes of {@link
+     *     #getOrCreateNativeBrowserWindowPtr} for the preferred way to access a native {@code
+     *     BrowserWindowInterface}.
+     */
+    @Deprecated
+    long getActiveNativeBrowserWindowPtr();
 
     /**
      * Adds an {@link AndroidBrowserWindowObserver} for future {@code AndroidBrowserWindow} events.

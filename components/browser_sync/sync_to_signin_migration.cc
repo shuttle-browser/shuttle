@@ -36,6 +36,10 @@
 #include "extensions/buildflags/buildflags.h"
 #include "google_apis/gaia/gaia_id.h"
 
+#if BUILDFLAG(IS_CHROMEOS)
+#include "components/signin/public/base/signin_switches.h"
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
 namespace browser_sync {
 
 #if !BUILDFLAG(IS_IOS)
@@ -55,7 +59,8 @@ enum class SyncToSigninMigrationDecision {
   kUndoNotNecessary = 7,
   kMigrateForced = 8,
   kDontMigrateAuthError = 9,
-  kMaxValue = kDontMigrateAuthError
+  kDontMigrateChromeOsUndoSigninEnabled = 10,
+  kMaxValue = kDontMigrateChromeOsUndoSigninEnabled
 };
 // LINT.ThenChange(/tools/metrics/histograms/metadata/sync/enums.xml:SyncToSigninMigrationDecisionOverall)
 
@@ -169,6 +174,20 @@ SyncToSigninMigrationDecision GetSyncToSigninMigrationDecision(
       return SyncToSigninMigrationDecision::kUndoMigration;
     }
   }
+#if BUILDFLAG(IS_CHROMEOS)
+  // On ChromeOS, `kUndoChromeOsUseConsentLevelSignin` reverts all signed-in
+  // users back to `ConsentLevel::kSync` during session startup. If this profile
+  // was previously migrated by Sync-to-Signin migration, undo the migration
+  // cleanly here (before KeyedServices are created) rather than letting Ash
+  // flip the consent level mid-startup.
+  if (!pref_service
+           ->GetString(prefs::kGoogleServicesSyncingGaiaIdMigratedToSignedIn)
+           .empty() &&
+      base::FeatureList::IsEnabled(
+          switches::kUndoChromeOsUseConsentLevelSignin)) {
+    return SyncToSigninMigrationDecision::kUndoMigration;
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   if (pref_service->GetString(prefs::kGoogleServicesAccountId).empty()) {
     // Signed-out user, nothing to migrate.
@@ -234,10 +253,18 @@ SyncToSigninMigrationDecision GetSyncToSigninMigrationDecision(
 
   // Check the feature flag(s) last, so that metrics can record all the other
   // reasons to not do the migration, even with the flag disabled.
-  if (!syncer::IsReplaceSyncPromosWithSignInPromosEnabled() ||
-      !base::FeatureList::IsEnabled(switches::kMigrateSyncingUserToSignedIn)) {
+  if (!base::FeatureList::IsEnabled(switches::kMigrateSyncingUserToSignedIn)) {
     return SyncToSigninMigrationDecision::kDontMigrateFlagDisabled;
   }
+#if BUILDFLAG(IS_CHROMEOS)
+  // On ChromeOS, `kUndoChromeOsUseConsentLevelSignin` reverts signed-in users
+  // back to `ConsentLevel::kSync` during session startup. Skip the migration
+  // when it's enabled to prevent an infinite migration/revert loop with Ash.
+  if (base::FeatureList::IsEnabled(
+          switches::kUndoChromeOsUseConsentLevelSignin)) {
+    return SyncToSigninMigrationDecision::kDontMigrateChromeOsUndoSigninEnabled;
+  }
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   return forced ? SyncToSigninMigrationDecision::kMigrateForced
                 : SyncToSigninMigrationDecision::kMigrate;
@@ -298,7 +325,8 @@ void UndoSyncToSigninMigration(PrefService* pref_service) {
   pref_service->ClearPref(prefs::kGoogleServicesSyncingUserMigrationType);
 
   // Selected-data-types prefs: No reverse migration - the user will just go
-  // back to their previous Sync settings.
+  // back to their previous Sync settings (except on ChromeOS, where current
+  // browser and OS settings are preserved).
 
   // Bookmarks: The forward migration is an atomic file move. Either that
   // happened, in which case the Sync machinery will clean up the account store
@@ -320,6 +348,24 @@ void UndoSyncToSigninMigration(PrefService* pref_service) {
   pref_service->ClearPref(
       syncer::prefs::internal::kMigrateExtensionsFromLocalToAccount);
 }
+
+#if BUILDFLAG(IS_CHROMEOS)
+// Turns off all OS data types if `kSyncDisabledViaDashboard` is set. OS data
+// types don't support separate local and account storage, so otherwise, local
+// OS data would get uploaded to the account once Sync-the-transport starts
+// running. Signed-in non-syncing users get the same treatment when this pref is
+// set, see `SyncUserSettingsImpl::SetSyncFeatureDisabledViaDashboard()`.
+void DisableOsTypesIfSyncDisabledViaDashboard(PrefService* pref_service) {
+  syncer::SyncPrefs sync_prefs(pref_service);
+  if (!sync_prefs.IsSyncFeatureDisabledViaDashboard()) {
+    return;
+  }
+  sync_prefs.SetSelectedOsTypes(
+      /*sync_all_os_types=*/false,
+      /*registered_types=*/syncer::UserSelectableOsTypeSet::All(),
+      /*selected_types=*/syncer::UserSelectableOsTypeSet());
+}
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 void RecordReadingListPrefMigrationState(ReadingListPrefMigrationState state) {
@@ -476,6 +522,7 @@ void RecordMigrationType(PrefService* pref_service,
       break;
     case SyncToSigninMigrationDecision::kUndoMigration:
     case SyncToSigninMigrationDecision::kUndoNotNecessary:
+    case SyncToSigninMigrationDecision::kDontMigrateChromeOsUndoSigninEnabled:
       // No need to record the metric in this case.
       return;
   }
@@ -532,6 +579,7 @@ void MaybeMigrateSyncingUserToSignedInInternal(
     case SyncToSigninMigrationDecision::kDontMigrateSyncStatusInitializing:
     case SyncToSigninMigrationDecision::kDontMigrateAuthError:
     case SyncToSigninMigrationDecision::kUndoNotNecessary:
+    case SyncToSigninMigrationDecision::kDontMigrateChromeOsUndoSigninEnabled:
       // No migration, and no point in recording per-type metrics - we're done.
       return;
     case SyncToSigninMigrationDecision::kDontMigrateFlagDisabled:
@@ -659,6 +707,12 @@ void MaybeMigrateSyncingUserToSignedInInternal(
   // Migrate the global data type prefs (used for Sync-the-feature) over to the
   // account-specific ones.
   syncer::SyncPrefs::MigrateGlobalDataTypePrefsToAccount(pref_service, gaia_id);
+
+#if BUILDFLAG(IS_CHROMEOS)
+  // The OS data type prefs aren't account-specific, so they carry over as-is,
+  // unless `kSyncDisabledViaDashboard` is set.
+  DisableOsTypesIfSyncDisabledViaDashboard(pref_service);
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   // Ensure the prefs changes are persisted as soon as possible. (They get
   // persisted on shutdown anyway, but better make sure.)

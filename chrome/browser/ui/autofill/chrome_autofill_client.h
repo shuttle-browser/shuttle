@@ -10,6 +10,7 @@
 #include <string>
 #include <vector>
 
+#include "base/auto_reset.h"
 #include "base/containers/flat_set.h"
 #include "base/functional/callback.h"
 #include "base/i18n/rtl.h"
@@ -50,13 +51,16 @@
 #include "url/origin.h"
 
 #if BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/ui/autofill/autofill_snackbar_controller_impl.h"
 #include "components/autofill/core/browser/ui/autofill_tapjacking_protector.h"
 #else  // BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/autofill/autofill_field_promo_controller.h"
 #endif  // BUILDFLAG(IS_ANDROID)
 
 class ToastController;
+
+namespace device_reauth {
+class DeviceAuthAvailabilityChecker;
+}
 
 namespace optimization_guide {
 class RemoteModelExecutor;
@@ -76,6 +80,7 @@ namespace autofill {
 // TODO(crbug.com/364089352): When //c/b/ui/android/autofill gets modularized,
 // //c/b/ui/autofill/ can depend directly on it.
 class AutofillAiSaveUpdateEntityFlowManager;
+class AutofillSnackbarControllerImpl;
 class SaveUpdateAddressProfileFlowManager;
 class AutofillMessageController;
 class AutofillDialogController;
@@ -85,10 +90,12 @@ class TouchToFillAutofillController;
 class ActorAutofillManager;
 class AutofillAiPersonalContextAccessManager;
 class AutofillOptimizationGuideDecider;
+class CustomFormControlScriptRunner;
 class EmailVerificationController;
 class EmailVerifierDelegate;
 class FormFieldData;
 class GmailOtpOptInCoordinator;
+class OtpCoordinator;
 class OtpFieldDetector;
 class OtpMetricsTracker;
 class ChromeOtpPhishGuardDelegate;
@@ -177,7 +184,8 @@ class ChromeAutofillClient : public ContentAutofillClient {
   AutofillAiManager* GetAutofillAiManager() final;
   AutofillAiPersonalContextAccessManager*
   GetAutofillAiPersonalContextAccessManager() final;
-  EntitySuppressionManager* GetEntitySuppressionManager() final;
+  PersonalContextEntityMetadataManager*
+  GetPersonalContextEntityMetadataManager() final;
   AutofillAiModelCache* GetAutofillAiModelCache() final;
   AutofillAiModelExecutor* GetAutofillAiModelExecutor() final;
   consent_auditor::ConsentAuditor* GetConsentAuditor() final;
@@ -369,12 +377,6 @@ class ChromeAutofillClient : public ContentAutofillClient {
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
 #if BUILDFLAG(IS_ANDROID)
-  void SetAutofillSnackbarControllerImplForTesting(
-      std::unique_ptr<AutofillSnackbarControllerImpl>
-          autofill_snackbar_controller_impl) {
-    autofill_snackbar_controller_impl_ =
-        std::move(autofill_snackbar_controller_impl);
-  }
   void SetAutofillTapjackingProtectorImplForTesting(
       std::unique_ptr<AutofillTapjackingProtector>
           autofill_tapjacking_protector_impl) {
@@ -383,6 +385,23 @@ class ChromeAutofillClient : public ContentAutofillClient {
   }
 #endif  // BUILDFLAG(IS_ANDROID)
 #endif  // defined(UNIT_TEST)
+
+#if BUILDFLAG(IS_ANDROID)
+  void SetAutofillSnackbarControllerImplForTesting(
+      std::unique_ptr<AutofillSnackbarControllerImpl>
+          autofill_snackbar_controller_impl);
+#endif  // BUILDFLAG(IS_ANDROID)
+
+  // Test override factory invoked on each `GetDeviceAuthAvailabilityChecker()`
+  // call instead of querying the OS. Pass a non-null callback to
+  // `SetDeviceAuthAvailabilityCheckerFactoryForTesting()` and keep the
+  // returned `base::AutoReset` alive for the duration of the test.
+  using DeviceAuthAvailabilityCheckerFactoryForTesting =
+      base::RepeatingCallback<
+          std::unique_ptr<device_reauth::DeviceAuthAvailabilityChecker>()>;
+  static base::AutoReset<DeviceAuthAvailabilityCheckerFactoryForTesting>
+  SetDeviceAuthAvailabilityCheckerFactoryForTesting(
+      DeviceAuthAvailabilityCheckerFactoryForTesting factory);
 
   // ContentAutofillClient:
   std::unique_ptr<AutofillManager> CreateManager(
@@ -394,12 +413,14 @@ class ChromeAutofillClient : public ContentAutofillClient {
       override;
 
   OtpFieldDetector* GetOtpFieldDetector() override;
+  OtpCoordinator* GetOtpCoordinator() override;
   OtpMetricsTracker* GetOtpMetricsTracker() override;
   OtpPhishGuardDelegate* GetOtpPhishGuardDelegate() override;
 
   FormPredictionsTracker* GetFormPredictionsTracker() override;
 
   one_time_tokens::SmsOtpService* GetSmsOtpService() const final;
+  one_time_tokens::GmailOtpService* GetGmailOtpService() override;
   one_time_tokens::GmailOtpBackend* GetGmailOtpBackend() const final;
 
  protected:
@@ -462,13 +483,15 @@ class ChromeAutofillClient : public ContentAutofillClient {
   VotesUploader votes_uploader_{this};
   std::unique_ptr<FormDataImporter> form_data_importer_;
 
-  payments::ChromePaymentsAutofillClient payments_autofill_client_{this};
+  std::unique_ptr<payments::ChromePaymentsAutofillClient>
+      payments_autofill_client_{
+          payments::ChromePaymentsAutofillClient::Create(this)};
   SingleFieldFillRouter single_field_fill_router_{
       // This call is during construction, so GetAutocompleteHistoryManager()
       // does not dispatch to more-derived classes, should there be any.
       GetAutocompleteHistoryManager(),
-      payments_autofill_client_.GetIbanManager(),
-      payments_autofill_client_.GetMerchantPromoCodeManager()};
+      payments_autofill_client_->GetIbanManager(),
+      payments_autofill_client_->GetMerchantPromoCodeManager()};
 
   base::WeakPtr<AutofillSuggestionController> suggestion_controller_;
   base::Time flow_id_date_;
@@ -503,6 +526,11 @@ class ChromeAutofillClient : public ContentAutofillClient {
   std::unique_ptr<EmailVerificationController> email_verification_controller_;
   std::unique_ptr<EmailVerifierDelegate> email_verifier_delegate_;
   std::unique_ptr<ChromeOtpPhishGuardDelegate> otp_phish_guard_delegate_;
+  std::unique_ptr<OtpCoordinator> otp_coordinator_;
+  // Only exists on desktop, if the browser has a
+  // `CustomFormControlScriptIndex`.
+  std::unique_ptr<CustomFormControlScriptRunner>
+      custom_form_control_script_runner_;
 
   // Removes the subscription when the `ChromeAutofillClient` is destroyed.
   base::CallbackListSubscription actor_task_state_changed_subscription_;
@@ -511,6 +539,23 @@ class ChromeAutofillClient : public ContentAutofillClient {
   std::unique_ptr<ActorAutofillManager> actor_autofill_manager_;
 
   AtMemoryCopyPasteObserver at_memory_copy_paste_observer_{this};
+
+  class OtpTabActivityObserver : public content::WebContentsObserver {
+   public:
+    explicit OtpTabActivityObserver(ChromeAutofillClient* client);
+    ~OtpTabActivityObserver() override = default;
+
+    // content::WebContentsObserver:
+    void OnVisibilityChanged(content::Visibility visibility) override;
+    void OnWebContentsFocused(
+        content::RenderWidgetHost* render_widget_host) override;
+    void OnWebContentsLostFocus(
+        content::RenderWidgetHost* render_widget_host) override;
+
+   private:
+    const base::raw_ref<ChromeAutofillClient> client_;
+  };
+  OtpTabActivityObserver otp_tab_activity_observer_{this};
 
   SEQUENCE_CHECKER(sequence_checker_);
 

@@ -172,8 +172,6 @@ std::optional<ui::HeatmapPalmDetector::CropHeatmap> GetCropHeatmap(
   if (info.HasKeyEvent(BTN_TOOL_PEN)) {
     return std::nullopt;
   }
-  std::vector<SupportedHidrawDevice> supported_hidraw_devices =
-      GetSupportedHidrawDevices();
   for (const SupportedHidrawDevice& device : GetSupportedHidrawDevices()) {
     if (info.name() == device.name && info.vendor_id() == device.vendor_id &&
         info.product_id() == device.product_id) {
@@ -249,8 +247,6 @@ HeatmapPalmDetector::ModelId TouchEventConverterEvdev::GetHidrawModelId(
   if (info.HasKeyEvent(BTN_TOOL_PEN)) {
     return HeatmapPalmDetector::ModelId::kNotSupported;
   }
-  std::vector<SupportedHidrawDevice> supported_hidraw_devices =
-      GetSupportedHidrawDevices();
   for (const SupportedHidrawDevice& device : GetSupportedHidrawDevices()) {
     if (info.name() == device.name && info.vendor_id() == device.vendor_id &&
         info.product_id() == device.product_id) {
@@ -651,7 +647,7 @@ EventType TouchEventConverterEvdev::GetEventTypeForTouch(
       touch.was_touching && !touch.was_delayed && !touch.was_cancelled;
 
   // Delaying an already live touch is not possible.
-  DCHECK(!touch_was_alive || !touch.delayed);
+  CHECK(!touch_was_alive || !touch.delayed, base::NotFatalUntil::M163);
 
   if ((!touch_was_alive && !touch_is_alive) || touch.was_cancelled) {
     // Ignore this touch; it was never born or has already died.

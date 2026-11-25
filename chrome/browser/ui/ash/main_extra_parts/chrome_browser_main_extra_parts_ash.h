@@ -10,7 +10,6 @@
 
 #include "base/functional/callback.h"
 #include "chrome/browser/chrome_browser_main_extra_parts.h"
-#include "chrome/common/buildflags.h"
 #include "chromeos/ash/components/login/readahead/login_readahead_performer.h"
 #include "chromeos/components/mahi/public/cpp/mahi_media_app_content_manager.h"
 
@@ -226,11 +225,6 @@ class ChromeBrowserMainExtraPartsAsh : public ChromeBrowserMainExtraParts {
   base::OnceClosure post_browser_start_callback_;
 
   std::unique_ptr<ash::VideoConferenceManagerAsh> video_conference_manager_ash_;
-
-  // Once Sanitize is completed, ash is restarted. After ash has restarted, we
-  // should check if the restart has happened right after a sanitize. If that is
-  // the case, sanitize done dialog should be shown to the user.
-  void CheckIfSanitizeCompleted();
 };
 
 #endif  // CHROME_BROWSER_UI_ASH_MAIN_EXTRA_PARTS_CHROME_BROWSER_MAIN_EXTRA_PARTS_ASH_H_

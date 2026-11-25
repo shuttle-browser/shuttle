@@ -13,19 +13,24 @@
 // limitations under the License.
 
 #include <string>
+#include <utility>
 
-#include "absl/container/flat_hash_map.h"
-#include "absl/log/absl_log.h"
-#include "absl/strings/match.h"
-#include "absl/strings/strip.h"
+#include "absl/container/flat_hash_map.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"           // from @com_google_absl
+#include "absl/log/absl_log.h"             // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/strings/match.h"            // from @com_google_absl
+#include "absl/strings/strip.h"            // from @com_google_absl
 #include "mediapipe/calculators/core/packet_resampler_calculator.pb.h"
 #include "mediapipe/calculators/tensorflow/unpack_media_sequence_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/location.h"
+#include "mediapipe/framework/port/status_builder.h"
 #include "mediapipe/util/audio_decoder.pb.h"
 #include "mediapipe/util/sequence/media_sequence.h"
-#include "tensorflow/core/example/example.pb.h"
-#include "tensorflow/core/example/feature.pb.h"
+#include "tensorflow/core/example/example.pb.h"  // from @org_tensorflow
+#include "tensorflow/core/example/feature.pb.h"  // from @org_tensorflow
 
 namespace mediapipe {
 
@@ -292,7 +297,7 @@ class UnpackMediaSequenceCalculator : public CalculatorBase {
       }
     }
     if (cc->OutputSidePackets().HasTag(kAudioDecoderOptions)) {
-      auto audio_decoder_options = absl::make_unique<AudioDecoderOptions>(
+      auto audio_decoder_options = std::make_unique<AudioDecoderOptions>(
           options.base_audio_decoder_options());
       if (mpms::HasClipStartTimestamp(sequence)) {
         if (options.force_decoding_from_start_of_media()) {
@@ -313,7 +318,7 @@ class UnpackMediaSequenceCalculator : public CalculatorBase {
           .Set(Adopt(audio_decoder_options.release()));
     }
     if (cc->OutputSidePackets().HasTag(kPacketResamplerOptions)) {
-      auto resampler_options = absl::make_unique<CalculatorOptions>();
+      auto resampler_options = std::make_unique<CalculatorOptions>();
       *(resampler_options->MutableExtension(
           PacketResamplerCalculatorOptions::ext)) =
           options.base_packet_resampler_options();

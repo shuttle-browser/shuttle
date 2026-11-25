@@ -6,7 +6,9 @@
 
 #import "base/feature_list.h"
 #import "base/strings/sys_string_conversions.h"
+#import "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
 #import "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
+#import "components/autofill/core/common/autofill_features.h"
 #import "components/autofill/core/common/autofill_payments_features.h"
 #import "components/strings/grit/components_strings.h"
 #import "ios/chrome/browser/autofill/model/message/autofill_legal_message_line.h"
@@ -26,6 +28,149 @@ constexpr CGFloat kWalletLogoSpacing = 6.0;
 // by `ParseStringWithLinks()` in ios/chrome/common/string_util.h.
 NSString* const kBeginLinkTag = @"BEGIN_LINK";
 NSString* const kEndLinkTag = @"END_LINK";
+
+// Blank line separating the storage notice from the disclosure legal messages
+// in the footer text.
+NSString* const kStorageNoticeSeparator = @"\n\n";
+
+// Line break separating consecutive disclosure legal messages in the footer
+// text.
+NSString* const kDisclosureLegalMessageSeparator = @"\n";
+
+NSString* WrapInLinkTags(NSString* text) {
+  return
+      [NSString stringWithFormat:@"%@%@%@", kBeginLinkTag, text, kEndLinkTag];
+}
+
+// Returns the storage notice footer text for saving an entity to Google Wallet,
+// formatted with `user_email`, and appends the corresponding link URLs to
+// `urls` (if non-nil) in the order their link tags appear in the returned
+// string.
+NSString* GetSaveEntityToWalletFooterTextAppendingURLsTo(
+    const std::u16string& user_email,
+    bool is_private_pass,
+    NSMutableArray<CrURL*>* urls) {
+  int string_id = autofill::GetSaveToWalletSubtitleStringId(is_private_pass);
+  std::u16string google_wallet =
+      l10n_util::GetStringUTF16(IDS_AUTOFILL_GOOGLE_WALLET_TITLE);
+
+  if (string_id ==
+      IDS_AUTOFILL_AI_SAVE_ENTITY_TO_WALLET_DIALOG_SUBTITLE_PRIVATE_PASS) {
+    NSString* how_info_is_used_link = WrapInLinkTags(l10n_util::GetNSString(
+        IDS_AUTOFILL_HOW_THIS_INFO_IS_USED_ACROSS_GOOGLE_LINK));
+    [urls addObject:[[CrURL alloc]
+                        initWithGURL:autofill::GetManageYourInfoURL()]];
+
+    NSString* privacy_policy_link = WrapInLinkTags(
+        l10n_util::GetNSString(IDS_AUTOFILL_PRIVACY_POLICY_LINK));
+    [urls addObject:[[CrURL alloc]
+                        initWithGURL:autofill::GetGooglePrivacyPolicyURL()]];
+
+    return l10n_util::GetNSStringF(
+        string_id, google_wallet,
+        base::SysNSStringToUTF16(how_info_is_used_link), user_email,
+        base::SysNSStringToUTF16(privacy_policy_link));
+  }
+
+  NSString* formatted_link = WrapInLinkTags(
+      l10n_util::GetNSString(IDS_AUTOFILL_MANAGE_YOUR_INFO_LINK));
+  [urls
+      addObject:[[CrURL alloc] initWithGURL:autofill::GetManageYourInfoURL()]];
+
+  return l10n_util::GetNSStringF(string_id, google_wallet,
+                                 base::SysNSStringToUTF16(formatted_link),
+                                 google_wallet, user_email);
+}
+
+// Returns the storage notice footer text for updating an entity saved in
+// Google Wallet, formatted with `user_email`, and appends the corresponding
+// Google Wallet passes link URL to `urls` (if non-nil).
+NSString* GetUpdateEntitySavedInWalletFooterTextAppendingURLsTo(
+    const std::u16string& user_email,
+    NSMutableArray<CrURL*>* urls) {
+  NSString* google_wallet =
+      l10n_util::GetNSString(IDS_AUTOFILL_GOOGLE_WALLET_TITLE);
+  NSString* formatted_link = WrapInLinkTags(google_wallet);
+  [urls addObject:[[CrURL alloc]
+                      initWithGURL:autofill::GetGoogleWalletPassesURL()]];
+  return l10n_util::GetNSStringF(
+      IDS_AUTOFILL_AI_UPDATE_ENTITY_TO_WALLET_DIALOG_SUBTITLE,
+      base::SysNSStringToUTF16(formatted_link), user_email);
+}
+
+NSString* TextForDisclosureLegalMessageAppendingURLsTo(
+    AutofillLegalMessageLine* legal_message,
+    NSMutableArray<CrURL*>* urls,
+    std::vector<GURL>& legal_message_urls) {
+  NSString* line_text = legal_message.messageText;
+  NSArray<NSValue*>* link_ranges = legal_message.linkRanges;
+  const std::vector<GURL>& link_urls = legal_message.linkURLs;
+
+  NSMutableArray<NSString*>* fragments = [NSMutableArray array];
+  NSUInteger current_index = 0;
+  for (NSUInteger i = 0; i < link_ranges.count && i < link_urls.size(); ++i) {
+    NSRange range = [link_ranges[i] rangeValue];
+    if (range.location == NSNotFound || range.location < current_index ||
+        NSMaxRange(range) > line_text.length) {
+      continue;
+    }
+
+    [fragments addObject:[line_text substringWithRange:NSMakeRange(
+                                                           current_index,
+                                                           range.location -
+                                                               current_index)]];
+
+    NSString* link_text = [line_text substringWithRange:range];
+    const GURL& url = link_urls[i];
+    if (url.is_valid()) {
+      [fragments addObject:WrapInLinkTags(link_text)];
+      [urls addObject:[[CrURL alloc] initWithGURL:url]];
+      legal_message_urls.push_back(url);
+    } else {
+      [fragments addObject:link_text];
+    }
+
+    current_index = NSMaxRange(range);
+  }
+
+  [fragments addObject:[line_text substringFromIndex:current_index]];
+  return [fragments componentsJoinedByString:@""];
+}
+
+// Formats `legal_messages` with tappable link tags, appends their valid link
+// URLs to `urls` (if non-nil) and their GURL values to `legal_message_urls`,
+// and returns `storage_notice_text` combined with the formatted legal message
+// lines separated by a blank line (or `storage_notice_text` unchanged when
+// `legal_messages` has no non-empty lines).
+NSString* CombineStorageNoticeWithLegalMessages(
+    NSString* storage_notice_text,
+    NSArray<AutofillLegalMessageLine*>* legal_messages,
+    NSMutableArray<CrURL*>* urls,
+    std::vector<GURL>& legal_message_urls) {
+  if (legal_messages.count == 0) {
+    return storage_notice_text;
+  }
+
+  NSMutableArray<NSString*>* disclosure_legal_message_texts =
+      [NSMutableArray arrayWithCapacity:legal_messages.count];
+  for (AutofillLegalMessageLine* legal_message in legal_messages) {
+    NSString* line_text = TextForDisclosureLegalMessageAppendingURLsTo(
+        legal_message, urls, legal_message_urls);
+    if (line_text.length > 0) {
+      [disclosure_legal_message_texts addObject:line_text];
+    }
+  }
+
+  if (disclosure_legal_message_texts.count == 0) {
+    return storage_notice_text;
+  }
+
+  NSString* legal_block = [disclosure_legal_message_texts
+      componentsJoinedByString:kDisclosureLegalMessageSeparator];
+  return [NSString stringWithFormat:@"%@%@%@", storage_notice_text,
+                                    kStorageNoticeSeparator, legal_block];
+}
+
 }  // namespace
 
 namespace autofill {
@@ -180,73 +325,46 @@ NSString* GetDialogTitleForEditEntity(EntityTypeName entity_type_name) {
   }
 }
 
-NSString* WrapInLinkTags(NSString* text) {
-  return
-      [NSString stringWithFormat:@"%@%@%@", kBeginLinkTag, text, kEndLinkTag];
-}
+AutofillAiEntityFooterContent GetEntityFooterContent(
+    const EntityInstance& entity,
+    bool is_update,
+    const std::u16string& user_email,
+    NSArray<AutofillLegalMessageLine*>* legal_messages) {
+  NSMutableArray<CrURL*>* urls = [NSMutableArray array];
+  NSString* storage_notice_text = nil;
 
-NSString* TextForDisclosureLegalMessageAppendingURLsTo(
-    AutofillLegalMessageLine* legal_message,
-    NSMutableArray<CrURL*>* urls) {
-  NSString* lineText = legal_message.messageText;
-  NSArray<NSValue*>* linkRanges = legal_message.linkRanges;
-  const std::vector<GURL>& linkURLs = legal_message.linkURLs;
-
-  NSMutableArray<NSString*>* fragments = [NSMutableArray array];
-  NSUInteger currentIndex = 0;
-  for (NSUInteger i = 0; i < linkRanges.count && i < linkURLs.size(); ++i) {
-    NSRange range = [linkRanges[i] rangeValue];
-    if (range.location == NSNotFound || range.location < currentIndex ||
-        NSMaxRange(range) > lineText.length) {
-      continue;
-    }
-
-    [fragments
-        addObject:[lineText substringWithRange:NSMakeRange(currentIndex,
-                                                           range.location -
-                                                               currentIndex)]];
-
-    NSString* linkText = [lineText substringWithRange:range];
-    const GURL& url = linkURLs[i];
-    if (url.is_valid()) {
-      [fragments addObject:WrapInLinkTags(linkText)];
-      [urls addObject:[[CrURL alloc] initWithGURL:url]];
-    } else {
-      [fragments addObject:linkText];
-    }
-
-    currentIndex = NSMaxRange(range);
+  if (entity.record_type() != EntityInstance::RecordType::kServerWallet ||
+      user_email.empty()) {
+    storage_notice_text =
+        l10n_util::GetNSString(IDS_IOS_AUTOFILL_AI_FOOTER_SAVE_TO_DEVICE);
+  } else if (is_update) {
+    storage_notice_text =
+        GetUpdateEntitySavedInWalletFooterTextAppendingURLsTo(user_email, urls);
+  } else {
+    bool is_private_pass =
+        GetWalletPassType(entity.type(), entity.record_type()) ==
+        EntityInstance::WalletPassType::kPrivate;
+    storage_notice_text = GetSaveEntityToWalletFooterTextAppendingURLsTo(
+        user_email, is_private_pass, urls);
   }
 
-  [fragments addObject:[lineText substringFromIndex:currentIndex]];
-  return [fragments componentsJoinedByString:@""];
-}
+  std::vector<GURL> legal_message_urls;
+  NSString* footer_text = CombineStorageNoticeWithLegalMessages(
+      storage_notice_text, legal_messages, urls, legal_message_urls);
 
-NSString* GetSaveEntityToWalletFooterText(NSString* user_email) {
-  NSString* googleWallet =
-      l10n_util::GetNSString(IDS_AUTOFILL_GOOGLE_WALLET_TITLE);
-  NSString* linkText =
-      l10n_util::GetNSString(IDS_AUTOFILL_MANAGE_YOUR_INFO_LINK);
-  NSString* formattedLink = WrapInLinkTags(linkText);
-  return l10n_util::GetNSStringF(GetSaveToWalletSubtitleStringId(),
-                                 base::SysNSStringToUTF16(googleWallet),
-                                 base::SysNSStringToUTF16(formattedLink),
-                                 base::SysNSStringToUTF16(googleWallet),
-                                 base::SysNSStringToUTF16(user_email));
-}
-
-NSString* GetUpdateEntitySavedInWalletFooterText(NSString* user_email) {
-  NSString* googleWallet =
-      l10n_util::GetNSString(IDS_AUTOFILL_GOOGLE_WALLET_TITLE);
-  NSString* formattedLink = WrapInLinkTags(googleWallet);
-  return l10n_util::GetNSStringF(
-      IDS_AUTOFILL_AI_UPDATE_ENTITY_TO_WALLET_DIALOG_SUBTITLE,
-      base::SysNSStringToUTF16(formattedLink),
-      base::SysNSStringToUTF16(user_email));
+  return AutofillAiEntityFooterContent{
+      .text = footer_text,
+      .urls = urls,
+      .legal_message_urls = std::move(legal_message_urls),
+  };
 }
 
 GURL GetManageYourInfoURL() {
   return GURL("https://support.google.com/wallet?p=private_use_across_google");
+}
+
+GURL GetGooglePrivacyPolicyURL() {
+  return GURL("https://policies.google.com/privacy");
 }
 
 GURL GetGoogleWalletPassesURL() {
@@ -277,12 +395,32 @@ UIView* CreateBrandedTitleForWalletSave(NSString* title) {
   return titleView;
 }
 
-int GetSaveToWalletSubtitleStringId() {
+int GetSaveToWalletSubtitleStringId(bool is_private_pass) {
+  if (is_private_pass &&
+      base::FeatureList::IsEnabled(
+          features::kAutofillRegionalizedPrivatePassesUxRefine)) {
+    return IDS_AUTOFILL_AI_SAVE_ENTITY_TO_WALLET_DIALOG_SUBTITLE_PRIVATE_PASS;
+  }
   return IDS_AUTOFILL_AI_SAVE_ENTITY_TO_WALLET_DIALOG_SUBTITLE_NEW;
 }
 
 int GetSaveEntityAcceptButtonStringId() {
   return IDS_AUTOFILL_SAVE_ADDRESS_PROMPT_OK_BUTTON_LABEL;
+}
+
+bool AreCrURLArraysEqual(NSArray<CrURL*>* array1, NSArray<CrURL*>* array2) {
+  if (array1 == array2) {
+    return true;
+  }
+  if (!array1 || !array2 || array1.count != array2.count) {
+    return false;
+  }
+  for (NSUInteger i = 0; i < array1.count; ++i) {
+    if (array1[i].gurl != array2[i].gurl) {
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace autofill

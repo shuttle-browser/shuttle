@@ -50,6 +50,11 @@ class VIEWS_EXPORT MenuModelAdapter : public MenuDelegate,
   // returned MenuItemView.
   std::unique_ptr<MenuItemView> CreateMenu();
 
+  // Stops observing the ui::MenuModel passed to the constructor, i.e. clears
+  // `this` as its MenuModelDelegate, so that further changes to the model are
+  // no longer reflected in the menu. Called on destruction.
+  void DetachFromMenuModel();
+
   void set_triggerable_event_flags(int triggerable_event_flags) {
     triggerable_event_flags_ = triggerable_event_flags;
   }
@@ -120,6 +125,9 @@ class VIEWS_EXPORT MenuModelAdapter : public MenuDelegate,
 
   // Optional callback triggered during OnMenuClosed().
   base::RepeatingClosure on_menu_closed_callback_;
+
+  // True while BuildMenu() is on the stack.
+  bool is_building_ = false;
 };
 
 }  // namespace views

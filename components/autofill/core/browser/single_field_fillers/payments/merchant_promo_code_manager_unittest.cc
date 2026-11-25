@@ -209,8 +209,7 @@ TEST_F(MerchantPromoCodeManagerTest,
 
 TEST_F(MerchantPromoCodeManagerTest,
        DoesNotShowPromoCodeOffersForOffTheRecord) {
-  std::string promo_code = SetUpPromoCodeOffer(
-      kTestOriginUrl, GURL("https://offer-details-url.com/"));
+  SetUpPromoCodeOffer(kTestOriginUrl, GURL("https://offer-details-url.com/"));
   client().set_is_off_the_record(true);
 
   // Setting up mock to verify that suggestions returning is not triggered if
@@ -453,6 +452,41 @@ TEST_F(MerchantPromoCodeManagerTest,
   histogram_tester.ExpectBucketCount(
       "Autofill.FormEvents.PromoCode",
       autofill_metrics::PromoCodeFormEvent::kPromoCodeSuggestionsShown, 2);
+}
+
+TEST_F(MerchantPromoCodeManagerTest,
+       LogManageOffersSelectedMetrics_LogsOncePerPageLoad) {
+  base::HistogramTester histogram_tester;
+
+  // Selecting "Manage offers" logs the funnel event.
+  promo_manager().LogManageOffersSelectedMetrics();
+  histogram_tester.ExpectUniqueSample(
+      "Autofill.FormEvents.PromoCode",
+      autofill_metrics::PromoCodeFormEvent::kManageOffersClicked, 1);
+
+  // Selecting "Manage offers" again on the same page does not log again.
+  promo_manager().LogManageOffersSelectedMetrics();
+  histogram_tester.ExpectUniqueSample(
+      "Autofill.FormEvents.PromoCode",
+      autofill_metrics::PromoCodeFormEvent::kManageOffersClicked, 1);
+}
+
+TEST_F(MerchantPromoCodeManagerTest,
+       LogManageOffersSelectedMetrics_Reset_AllowsSubsequentLogging) {
+  base::HistogramTester histogram_tester;
+
+  promo_manager().LogManageOffersSelectedMetrics();
+  histogram_tester.ExpectBucketCount(
+      "Autofill.FormEvents.PromoCode",
+      autofill_metrics::PromoCodeFormEvent::kManageOffersClicked, 1);
+
+  // Resetting page load metrics allows the event to be logged again on the next
+  // click.
+  promo_manager().Reset();
+  promo_manager().LogManageOffersSelectedMetrics();
+  histogram_tester.ExpectBucketCount(
+      "Autofill.FormEvents.PromoCode",
+      autofill_metrics::PromoCodeFormEvent::kManageOffersClicked, 2);
 }
 
 TEST_F(MerchantPromoCodeManagerTest,

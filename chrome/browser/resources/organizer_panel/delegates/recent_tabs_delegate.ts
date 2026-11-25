@@ -9,7 +9,8 @@ import type {TemplateResult} from '//resources/lit/v3_0/lit.rollup.js';
 import {html} from '//resources/lit/v3_0/lit.rollup.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 
-import type {OrganizerListSectionClient, OrganizerListSectionDelegate} from '../organizer_list_section_delegate.js';
+import type {OrganizerAction, OrganizerListSectionClient, OrganizerListSectionDelegate, OrganizerSection} from '../organizer_list_section_delegate.js';
+import {OrganizerPanelCloseAction, setCloseAction} from '../organizer_list_section_delegate.js';
 import type {OrganizerListSectionItem} from '../organizer_list_section_item.js';
 import type {OrganizerListSectionItemDescriptionPart} from '../organizer_list_section_item_description.js';
 import type {BrowserProxy, ProfileData, RecentlyClosedSplitView, RecentlyClosedTab, RecentlyClosedTabGroup, TabsRemovedInfo} from '../tab_search.mojom-webui.js';
@@ -62,6 +63,10 @@ export class RecentTabsDelegate implements
     return loadTimeData.getString('recentlyClosed');
   }
 
+  getHistogramSectionName(): OrganizerSection {
+    return 'RecentlyClosed';
+  }
+
   async getItems():
       Promise<Array<OrganizerListSectionItem<RecentlyClosedItem>>> {
     await this.updateItems_();
@@ -77,9 +82,24 @@ export class RecentTabsDelegate implements
   onItemClick(item: OrganizerListSectionItem<RecentlyClosedItem>) {
     const data = item.data;
     assert(data);
+    if (isTabGroup(data)) {
+      chrome.histograms?.recordUserAction?.(
+          'OrganizerPanel.OpenRecentlyClosedTabGroup');
+    } else if (isSplitView(data)) {
+      chrome.histograms?.recordUserAction?.(
+          'OrganizerPanel.OpenRecentlyClosedSplitView');
+    } else {
+      chrome.histograms?.recordUserAction?.(
+          'OrganizerPanel.OpenRecentlyClosedTab');
+    }
+    setCloseAction(OrganizerPanelCloseAction.OPEN_RECENTLY_CLOSED);
     const id =
         isTabGroup(data) || isSplitView(data) ? data.sessionId : data.tabId;
     this.browserProxy_.handler.openRecentlyClosedEntry(id);
+  }
+
+  getItemClickAction(): OrganizerAction {
+    return 'OpenRecentlyClosedEntry';
   }
 
   private async updateItems_() {
@@ -175,12 +195,21 @@ export class RecentTabsDelegate implements
         matchable: false,
       });
     }
+    const ariaDescription = splitView.lastActiveElapsedText ?
+        [splitView.lastActiveElapsedText] :
+        [];
     description.push(
         {text: splitView.tabTitles[0]!}, {text: splitView.tabTitles[1]!});
 
     return {
       title: [loadTimeData.getString('splitView')],
+      ariaLabel: [
+        loadTimeData.getString('splitView'),
+        splitView.tabTitles[0]!,
+        splitView.tabTitles[1]!,
+      ],
       description,
+      ariaDescription,
       extraSearchTerms: splitView.tabUrls.map(url => getHostnameOrUrl(url)),
       prefixIcon: getSplitViewPrefixIcon(
           [splitView.tabUrls[0]!, splitView.tabUrls[1]!], splitView.layout),
@@ -190,12 +219,23 @@ export class RecentTabsDelegate implements
 
   private tabGroupToSectionItem_(tabGroup: RecentlyClosedTabGroup):
       OrganizerListSectionItem<RecentlyClosedItem> {
-    const title = tabGroup.title || getTabCountText(tabGroup.tabCount);
+    const tabCountText = getTabCountText(tabGroup.tabCount);
+    const hasTitle = Boolean(tabGroup.title.trim());
+    const title = hasTitle ? tabGroup.title : tabCountText;
+    const ariaDescription: string[] = [];
+    if (hasTitle) {
+      ariaDescription.push(tabCountText);
+    }
+    if (tabGroup.lastActiveElapsedText) {
+      ariaDescription.push(tabGroup.lastActiveElapsedText);
+    }
     return {
       title: [title],
+      ariaLabel: [loadTimeData.getString('tabGroup'), title],
       description: tabGroup.lastActiveElapsedText ?
           [{text: tabGroup.lastActiveElapsedText, matchable: false}] :
           [],
+      ariaDescription,
       data: tabGroup,
     };
   }

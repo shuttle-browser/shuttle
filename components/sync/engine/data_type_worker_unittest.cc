@@ -6,6 +6,7 @@
 
 #include <stdint.h>
 
+#include <limits>
 #include <string>
 #include <utility>
 #include <vector>
@@ -87,7 +88,7 @@ sync_pb::EntitySpecifics EncryptPasswordSpecificsWithNthKey(
     int n,
     const sync_pb::PasswordSpecificsData& unencrypted_password) {
   sync_pb::EntitySpecifics encrypted_specifics;
-  FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(n))
+  FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(n))
       ->EncryptString(
           unencrypted_password.SerializeAsString(),
           encrypted_specifics.mutable_password()->mutable_encrypted());
@@ -295,7 +296,7 @@ class DataTypeWorkerTest : public ::testing::Test {
   }
 
   // Mimic a Nigori update with a keybag that cannot be decrypted, which means
-  // the cryptographer becomes unusable (no default key until the issue gets
+  // the cryptographer becomes unusable (no primary key until the issue gets
   // resolved, via DecryptPendingKey()).
   void AddPendingKey() {
     AddPendingKeyWithoutEnablingEncryption();
@@ -307,10 +308,10 @@ class DataTypeWorkerTest : public ::testing::Test {
 
   void AddPendingKeyWithoutEnablingEncryption() {
     DCHECK(encryption_keys_count_ == 0 ||
-           cryptographer_.GetDefaultEncryptionKeyName() ==
+           cryptographer_.GetPrimaryEncryptionKeyName() ==
                GetNthKeyName(encryption_keys_count_));
     encryption_keys_count_++;
-    cryptographer_.InvalidateDefaultEncryptionKey();
+    cryptographer_.InvalidatePrimaryEncryptionKey();
     if (worker()) {
       worker()->OnCryptographerChange();
     }
@@ -320,10 +321,10 @@ class DataTypeWorkerTest : public ::testing::Test {
   // Decrypts the pending key and adds it to the cryptographer.
   void DecryptPendingKey() {
     DCHECK_GT(encryption_keys_count_, 0);
-    DCHECK(cryptographer_.GetDefaultEncryptionKeyName().empty());
+    DCHECK(cryptographer_.GetPrimaryEncryptionKeyName().empty());
     std::string last_key_name = GetNthKeyName(encryption_keys_count_);
     cryptographer_.AddEncryptionKey(last_key_name);
-    cryptographer_.SelectDefaultEncryptionKey(last_key_name);
+    cryptographer_.SelectPrimaryEncryptionKey(last_key_name);
 
     if (worker()) {
       worker()->OnCryptographerChange();
@@ -339,7 +340,7 @@ class DataTypeWorkerTest : public ::testing::Test {
 
     specifics->Clear();
     AddDefaultFieldValue(data_type_, specifics);
-    FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(n))
+    FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(n))
         ->EncryptString(plaintext, specifics->mutable_encrypted());
   }
 
@@ -482,7 +483,12 @@ class DataTypeWorkerTest : public ::testing::Test {
   void PumpModelThread() { processor()->RunQueuedTasks(); }
 
   // Returns true if the `worker_` is ready to commit something.
-  bool WillCommit() { return worker()->GetContribution(INT_MAX) != nullptr; }
+  bool WillCommit() {
+    return worker()->GetContribution(
+               /*max_entries=*/std::numeric_limits<size_t>::max(),
+               /*max_target_specifics_bytes=*/std::numeric_limits<
+                   size_t>::max()) != nullptr;
+  }
 
   // Pretend to successfully commit all outstanding unsynced items.
   // It is safe to call this only if WillCommit() returns true.
@@ -491,7 +497,9 @@ class DataTypeWorkerTest : public ::testing::Test {
   // about other tasks being run between the time when the commit request is
   // issued and the time when the commit response is received.
   void DoSuccessfulCommit() {
-    DoSuccessfulCommit(worker()->GetContribution(INT_MAX));
+    DoSuccessfulCommit(worker()->GetContribution(
+        /*max_entries=*/std::numeric_limits<size_t>::max(),
+        /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
   }
 
   void DoSuccessfulCommit(std::unique_ptr<CommitContribution> contribution) {
@@ -507,8 +515,9 @@ class DataTypeWorkerTest : public ::testing::Test {
   }
 
   void DoCommitFailure() {
-    std::unique_ptr<CommitContribution> contribution(
-        worker()->GetContribution(INT_MAX));
+    std::unique_ptr<CommitContribution> contribution(worker()->GetContribution(
+        /*max_entries=*/std::numeric_limits<size_t>::max(),
+        /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
     DCHECK(contribution);
 
     contribution->ProcessCommitFailure(SyncCommitError::kNetworkError);
@@ -547,8 +556,8 @@ class DataTypeWorkerTest : public ::testing::Test {
   SingleTypeMockServer* server() { return mock_server_.get(); }
   MockNudgeHandler* nudge_handler() { return &mock_nudge_handler_; }
   StatusController* status_controller() { return &status_controller_; }
-  std::string default_encryption_key_name() {
-    return cryptographer_.GetDefaultEncryptionKeyName();
+  std::string primary_encryption_key_name() {
+    return cryptographer_.GetPrimaryEncryptionKeyName();
   }
 
  private:
@@ -608,7 +617,11 @@ TEST_F(DataTypeWorkerTest, SimpleCommit) {
   NormalInitialize();
 
   EXPECT_EQ(0, nudge_handler()->GetNumCommitNudges());
-  EXPECT_EQ(nullptr, worker()->GetContribution(INT_MAX));
+  EXPECT_EQ(
+      nullptr,
+      worker()->GetContribution(
+          /*max_entries=*/std::numeric_limits<size_t>::max(),
+          /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
   EXPECT_EQ(0U, server()->GetNumCommitMessages());
   EXPECT_EQ(0U, processor()->GetNumCommitResponses());
   histogram_tester.ExpectBucketCount(
@@ -1174,7 +1187,7 @@ TEST_F(DataTypeWorkerTest, EncryptedCommit) {
   AddPendingKey();
   DecryptPendingKey();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 
   // Normal commit request stuff.
@@ -1206,7 +1219,7 @@ TEST_F(DataTypeWorkerTest, EncryptedDelete) {
   AddPendingKey();
   DecryptPendingKey();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 
   // Normal commit request stuff.
@@ -1243,8 +1256,6 @@ TEST_F(DataTypeWorkerTest, EncryptionBlocksUpdates) {
   // Update local cryptographer, verify everything is pushed to processor.
   DecryptPendingKey();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  std::vector<const UpdateResponseData*> updates_list =
-      processor()->GetNthUpdateResponse(0);
   EXPECT_EQ(
       server()->GetProgress().SerializeAsString(),
       processor()->GetNthUpdateState(0).progress_marker().SerializeAsString());
@@ -1354,7 +1365,7 @@ TEST_F(DataTypeWorkerTest, InitializeWithCryptographer) {
   // possible, so that it will have the chance to re-encrypt local data if
   // necessary.
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 }
 
@@ -1372,7 +1383,7 @@ TEST_F(DataTypeWorkerTest, InitializeWithPendingCryptographer) {
   // Init the cryptographer, it'll push the EKN.
   DecryptPendingKey();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 }
 
@@ -1391,7 +1402,7 @@ TEST_F(DataTypeWorkerTest, FirstInitializeWithCryptographer) {
   // Now perform first sync and make sure the EKN makes it.
   TriggerTypeRootUpdateFromServer();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 }
 
@@ -1409,7 +1420,7 @@ TEST_F(DataTypeWorkerTest, CryptographerDuringInitialization) {
   // Now perform first sync and make sure the EKN makes it.
   TriggerTypeRootUpdateFromServer();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 }
 
@@ -1437,7 +1448,7 @@ TEST_F(DataTypeWorkerTest, ReceiveUndecryptableEntries) {
   const UpdateResponseData& update = processor()->GetUpdateResponse(kHash1);
   EXPECT_EQ(kTag1, update.entity.specifics.preference().name());
   EXPECT_EQ(kValue1, update.entity.specifics.preference().value());
-  EXPECT_EQ(default_encryption_key_name(), update.encryption_key_name);
+  EXPECT_EQ(primary_encryption_key_name(), update.encryption_key_name);
 }
 
 TEST_F(DataTypeWorkerTest, OverwriteUndecryptableUpdateWithDecryptableOne) {
@@ -2066,12 +2077,13 @@ TEST_F(GetLocalChangesRequestTest, SuccessfulRequest) {
     CommitRequestDataList response;
     response.push_back(std::make_unique<CommitRequestData>());
     response.back()->specifics_hash = kHash1;
-    request->SetResponse(std::move(response));
+    request->SetResponse(std::move(response), /*has_more_local_changes=*/true);
   }
   done_event_.Wait();
   CommitRequestDataList response = request->ExtractResponse();
   EXPECT_EQ(1U, response.size());
   EXPECT_EQ(kHash1, response[0]->specifics_hash);
+  EXPECT_TRUE(request->has_more_local_changes());
 }
 
 // Analogous test fixture but uses PASSWORDS instead of PREFERENCES, in order
@@ -2095,7 +2107,7 @@ TEST_F(DataTypeWorkerPasswordsTest, PasswordCommit) {
   AddPendingKey();
   DecryptPendingKey();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 
   EntitySpecifics specifics;
@@ -2139,7 +2151,7 @@ TEST_F(DataTypeWorkerPasswordsTest, PasswordCommitWithCustomPassphrase) {
   AddPendingKey();
   DecryptPendingKey();
   ASSERT_EQ(1U, processor()->GetNumUpdateResponses());
-  EXPECT_EQ(default_encryption_key_name(),
+  EXPECT_EQ(primary_encryption_key_name(),
             processor()->GetNthUpdateState(0).encryption_key_name());
 
   EntitySpecifics specifics;
@@ -2595,8 +2607,9 @@ TEST_F(DataTypeWorkerTest, ShouldNotHaveLocalChangesOnSuccessfulLastCommit) {
   worker()->NudgeForCommit();
   ASSERT_TRUE(worker()->HasLocalChanges());
 
-  std::unique_ptr<CommitContribution> contribution(
-      worker()->GetContribution(kMaxEntities));
+  std::unique_ptr<CommitContribution> contribution(worker()->GetContribution(
+      kMaxEntities,
+      /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
   ASSERT_THAT(contribution, NotNull());
   ASSERT_EQ(1u, contribution->GetNumEntries());
 
@@ -2634,8 +2647,9 @@ TEST_F(DataTypeWorkerTest, ShouldHaveLocalChangesOnSuccessfulNotLastCommit) {
   worker()->NudgeForCommit();
   ASSERT_TRUE(worker()->HasLocalChanges());
 
-  std::unique_ptr<CommitContribution> contribution(
-      worker()->GetContribution(kMaxEntities));
+  std::unique_ptr<CommitContribution> contribution(worker()->GetContribution(
+      kMaxEntities,
+      /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
   ASSERT_THAT(contribution, NotNull());
   ASSERT_EQ(kMaxEntities, contribution->GetNumEntries());
   DoSuccessfulCommit(std::move(contribution));
@@ -2658,8 +2672,9 @@ TEST_F(DataTypeWorkerTest, ShouldHaveLocalChangesWhenNudgedWhileInFlight) {
   ASSERT_TRUE(worker()->HasLocalChanges());
 
   // Start a commit.
-  std::unique_ptr<CommitContribution> contribution(
-      worker()->GetContribution(kMaxEntities));
+  std::unique_ptr<CommitContribution> contribution(worker()->GetContribution(
+      kMaxEntities,
+      /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
   ASSERT_THAT(contribution, NotNull());
   ASSERT_EQ(1u, contribution->GetNumEntries());
 
@@ -2679,7 +2694,8 @@ TEST_F(DataTypeWorkerTest, ShouldHaveLocalChangesWhenNudgedWhileInFlight) {
   EXPECT_FALSE(worker()->HasLocalChanges());
 }
 
-TEST_F(DataTypeWorkerTest, ShouldHaveLocalChangesWhenContributedMaxEntities) {
+TEST_F(DataTypeWorkerTest,
+       ShouldNotHaveLocalChangesWhenContributedMaxEntities) {
   const size_t kMaxEntities = 2;
   NormalInitialize();
   ASSERT_FALSE(worker()->HasLocalChanges());
@@ -2689,19 +2705,108 @@ TEST_F(DataTypeWorkerTest, ShouldHaveLocalChangesWhenContributedMaxEntities) {
   worker()->NudgeForCommit();
   ASSERT_TRUE(worker()->HasLocalChanges());
 
-  std::unique_ptr<CommitContribution> contribution(
-      worker()->GetContribution(kMaxEntities));
+  std::unique_ptr<CommitContribution> contribution(worker()->GetContribution(
+      kMaxEntities,
+      /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max()));
   ASSERT_THAT(contribution, NotNull());
   ASSERT_EQ(kMaxEntities, contribution->GetNumEntries());
   DoSuccessfulCommit(std::move(contribution));
+  EXPECT_FALSE(worker()->HasLocalChanges());
+}
 
-  // The worker is still not aware if there are more changes available. It is
-  // supposed that GetContribution() will be called until it returns less than
-  // `max_entities` items. This is not the intended behaviour, but this is how
-  // things currently work.
+TEST_F(DataTypeWorkerTest, ShouldLimitContributionByMaxBytes) {
+  NormalInitialize();
+
+  const sync_pb::EntitySpecifics specifics1 = GenerateSpecifics(kTag1, kValue1);
+  const sync_pb::EntitySpecifics specifics2 = GenerateSpecifics(kTag2, kValue2);
+  const sync_pb::EntitySpecifics specifics3 = GenerateSpecifics(kTag3, kValue3);
+  const size_t kTwoEntriesBytes =
+      specifics1.ByteSizeLong() + specifics2.ByteSizeLong();
+
+  processor()->AppendCommitRequest(kHash1, specifics1);
+  processor()->AppendCommitRequest(kHash2, specifics2);
+  processor()->AppendCommitRequest(kHash3, specifics3);
+  worker()->NudgeForCommit();
+
+  // Only the first two entries fit within `kTwoEntriesBytes`.
+  std::unique_ptr<CommitContribution> contribution =
+      worker()->GetContribution(/*max_entries=*/10, kTwoEntriesBytes);
+  ASSERT_THAT(contribution, NotNull());
+  EXPECT_EQ(2u, contribution->GetNumEntries());
+  EXPECT_EQ(kTwoEntriesBytes,
+            contribution->GetPostEncryptionSpecificsByteSize());
+  DoSuccessfulCommit(std::move(contribution));
   EXPECT_TRUE(worker()->HasLocalChanges());
-  contribution = worker()->GetContribution(kMaxEntities);
-  ASSERT_THAT(contribution, IsNull());
+
+  // The remaining entry is committed in the next contribution.
+  contribution =
+      worker()->GetContribution(/*max_entries=*/10, kTwoEntriesBytes);
+  ASSERT_THAT(contribution, NotNull());
+  EXPECT_EQ(1u, contribution->GetNumEntries());
+  EXPECT_EQ(specifics3.ByteSizeLong(),
+            contribution->GetPostEncryptionSpecificsByteSize());
+  DoSuccessfulCommit(std::move(contribution));
+  EXPECT_FALSE(worker()->HasLocalChanges());
+}
+
+TEST_F(DataTypeWorkerTest,
+       ShouldLimitContributionByMaxBytesWithEncryptionOverhead) {
+  NormalInitialize();
+  AddPendingKey();
+  DecryptPendingKey();
+
+  const sync_pb::EntitySpecifics specifics1 = GenerateSpecifics(kTag1, kValue1);
+  const sync_pb::EntitySpecifics specifics2 = GenerateSpecifics(kTag2, kValue2);
+  ASSERT_GE(specifics1.ByteSizeLong(), 3u);
+  const size_t kMaxBytes = specifics1.ByteSizeLong() + 1;
+
+  processor()->AppendCommitRequest(kHash1, specifics1);
+  processor()->AppendCommitRequest(kHash2, specifics2);
+  worker()->NudgeForCommit();
+
+  // Without encryption, `kMaxBytes` (> 1 entry's unencrypted size) would gather
+  // both entries. With encryption enabled, `max_target_specifics_bytes` is
+  // scaled down by 3/4 to account for Base64 overhead, so the first entry
+  // already reaches the scaled limit.
+  std::unique_ptr<CommitContribution> contribution =
+      worker()->GetContribution(/*max_entries=*/10, kMaxBytes);
+  ASSERT_THAT(contribution, NotNull());
+  EXPECT_EQ(1u, contribution->GetNumEntries());
+  DoSuccessfulCommit(std::move(contribution));
+  EXPECT_TRUE(worker()->HasLocalChanges());
+
+  contribution = worker()->GetContribution(/*max_entries=*/10, kMaxBytes);
+  ASSERT_THAT(contribution, NotNull());
+  EXPECT_EQ(1u, contribution->GetNumEntries());
+  DoSuccessfulCommit(std::move(contribution));
+  EXPECT_FALSE(worker()->HasLocalChanges());
+}
+
+TEST_F(DataTypeWorkerTest, ShouldCommitSingleOversizedEntry) {
+  NormalInitialize();
+
+  const sync_pb::EntitySpecifics specifics1 = GenerateSpecifics(kTag1, kValue1);
+  const sync_pb::EntitySpecifics specifics2 = GenerateSpecifics(kTag2, kValue2);
+  ASSERT_GT(specifics1.ByteSizeLong(), 1u);
+
+  processor()->AppendCommitRequest(kHash1, specifics1);
+  processor()->AppendCommitRequest(kHash2, specifics2);
+  worker()->NudgeForCommit();
+
+  // Even when `max_target_specifics_bytes` is smaller than a single entry, the
+  // first entry is still included so progress is made.
+  std::unique_ptr<CommitContribution> contribution = worker()->GetContribution(
+      /*max_entries=*/10, /*max_target_specifics_bytes=*/1);
+  ASSERT_THAT(contribution, NotNull());
+  EXPECT_EQ(1u, contribution->GetNumEntries());
+  DoSuccessfulCommit(std::move(contribution));
+  EXPECT_TRUE(worker()->HasLocalChanges());
+
+  contribution = worker()->GetContribution(
+      /*max_entries=*/10, /*max_target_specifics_bytes=*/1);
+  ASSERT_THAT(contribution, NotNull());
+  EXPECT_EQ(1u, contribution->GetNumEntries());
+  DoSuccessfulCommit(std::move(contribution));
   EXPECT_FALSE(worker()->HasLocalChanges());
 }
 
@@ -2727,7 +2832,7 @@ TEST_F(DataTypeWorkerPasswordsTest,
   sync_pb::PasswordSpecificsData_Notes notes_backup;
   notes_backup.add_note()->set_value(kPasswordNoteBackup);
 
-  FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(1))
+  FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(1))
       ->EncryptString(notes_backup.SerializeAsString(),
                       encrypted_specifics.mutable_password()
                           ->mutable_encrypted_notes_backup());
@@ -2772,7 +2877,7 @@ TEST_F(DataTypeWorkerPasswordsTest,
   sync_pb::PasswordSpecificsData_Notes notes_backup;
   notes_backup.add_note()->set_value(kPasswordNoteBackup);
 
-  FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(1))
+  FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(1))
       ->EncryptString(notes_backup.SerializeAsString(),
                       encrypted_specifics.mutable_password()
                           ->mutable_encrypted_notes_backup());
@@ -2843,7 +2948,7 @@ TEST_F(DataTypeWorkerPasswordsTest, ShouldEmitNotesBackupCorrupted) {
   sync_pb::PasswordSpecificsData_Notes notes_backup;
   notes_backup.add_note()->set_value(kPasswordNoteBackup);
 
-  FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(1))
+  FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(1))
       ->EncryptString(notes_backup.SerializeAsString(),
                       encrypted_specifics.mutable_password()
                           ->mutable_encrypted_notes_backup());
@@ -2958,8 +3063,9 @@ TEST_F(DataTypeWorkerSendTabToSelfTest, SendTabToSelfCommitWithPageContext) {
   // Normal commit request stuff.
   const ClientTagHash hash = GenerateSTTSHash("guid");
   processor()->SetCommitRequest(GenerateCommitRequest(hash, specifics));
-  std::unique_ptr<CommitContribution> contribution =
-      worker()->GetContribution(INT_MAX);
+  std::unique_ptr<CommitContribution> contribution = worker()->GetContribution(
+      /*max_entries=*/std::numeric_limits<size_t>::max(),
+      /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max());
   ASSERT_NE(nullptr, contribution);
   DoSuccessfulCommit(std::move(contribution));
 
@@ -3001,7 +3107,7 @@ TEST_F(DataTypeWorkerSendTabToSelfTest,
   specifics.mutable_send_tab_to_self()->set_url("https://example.com");
   // Use a different cryptographer to encrypt, simulating another device.
   auto other_cryptographer =
-      FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(1));
+      FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(1));
   ASSERT_TRUE(other_cryptographer->Encrypt(
       page_context,
       specifics.mutable_send_tab_to_self()->mutable_encrypted_page_context()));
@@ -3062,7 +3168,7 @@ TEST_F(DataTypeWorkerSendTabToSelfTest,
   // Use a different cryptographer to encrypt, simulating another device, using
   // a key that the worker does not have yet.
   auto other_cryptographer =
-      FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(1));
+      FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(1));
   ASSERT_TRUE(other_cryptographer->Encrypt(
       page_context,
       specifics.mutable_send_tab_to_self()->mutable_encrypted_page_context()));
@@ -3116,8 +3222,9 @@ TEST_F(DataTypeWorkerSendTabToSelfTest,
 
   const ClientTagHash hash = GenerateSTTSHash("guid");
   processor()->SetCommitRequest(GenerateCommitRequest(hash, specifics));
-  std::unique_ptr<CommitContribution> contribution =
-      worker()->GetContribution(INT_MAX);
+  std::unique_ptr<CommitContribution> contribution = worker()->GetContribution(
+      /*max_entries=*/std::numeric_limits<size_t>::max(),
+      /*max_target_specifics_bytes=*/std::numeric_limits<size_t>::max());
   ASSERT_NE(nullptr, contribution);
   DoSuccessfulCommit(std::move(contribution));
 
@@ -3173,7 +3280,7 @@ TEST_F(DataTypeWorkerSendTabToSelfTest,
   sync_pb::EntitySpecifics encrypted_specifics;
   // Use a different cryptographer to encrypt, simulating another device.
   auto other_cryptographer =
-      FakeCryptographer::FromSingleDefaultKey(GetNthKeyName(1));
+      FakeCryptographer::FromSinglePrimaryKey(GetNthKeyName(1));
   // Since the entire specifics is encrypted, the `page_context` field does not
   // get encrypted separately.
   ASSERT_TRUE(other_cryptographer->Encrypt(

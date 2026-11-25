@@ -39,6 +39,7 @@
 #include "content/public/test/content_browser_test.h"
 #include "content/public/test/content_browser_test_utils.h"
 #include "content/public/test/media_start_stop_observer.h"
+#include "content/public/test/popup_test_utils.h"
 #include "content/shell/browser/shell.h"
 #include "content/shell/common/shell_switches.h"
 #include "net/dns/mock_host_resolver.h"
@@ -768,7 +769,14 @@ IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTest,
           optimization_guide::proto::CLICKABILITY_REASON_CLICKABLE_CONTROL));
 
   const auto& label = ActionableContentRootNode().children_nodes()[1];
-  EXPECT_FALSE(label.content_attributes().has_interaction_info());
+  ASSERT_TRUE(label.content_attributes().has_interaction_info());
+  const auto& label_interaction = label.content_attributes().interaction_info();
+  EXPECT_TRUE(label_interaction.clickability_reasons().empty());
+  EXPECT_FALSE(label_interaction.is_disabled());
+  EXPECT_THAT(label_interaction.interaction_disabled_reasons(),
+              testing::UnorderedElementsAre(
+                  optimization_guide::proto::
+                      INTERACTION_DISABLED_REASON_POINTER_EVENTS_NONE));
   EXPECT_EQ(label.content_attributes().label_for_dom_node_id(),
             input.content_attributes().common_ancestor_dom_node_id());
 }
@@ -830,7 +838,14 @@ IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTest,
   // be offscreen because there is no overlap with the viewport rect.
   EXPECT_GE(option_geometry.outer_bounding_box().y(),
             page_content().viewport_geometry().height());
-  EXPECT_FALSE(size_option->content_attributes().has_interaction_info());
+  ASSERT_TRUE(size_option->content_attributes().has_interaction_info());
+  const auto& option_interaction =
+      size_option->content_attributes().interaction_info();
+  EXPECT_TRUE(option_interaction.clickability_reasons().empty());
+  EXPECT_THAT(option_interaction.interaction_disabled_reasons(),
+              testing::UnorderedElementsAre(
+                  optimization_guide::proto::
+                      INTERACTION_DISABLED_REASON_VISUALLY_UNREACHABLE));
 }
 
 IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTest,
@@ -858,7 +873,14 @@ IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTest,
   // it as directly actionable because scrolling cannot bring it on screen.
   const auto& option_geometry = size_option->content_attributes().geometry();
   EXPECT_LT(option_geometry.outer_bounding_box().x(), 0);
-  EXPECT_FALSE(size_option->content_attributes().has_interaction_info());
+  ASSERT_TRUE(size_option->content_attributes().has_interaction_info());
+  const auto& option_interaction =
+      size_option->content_attributes().interaction_info();
+  EXPECT_TRUE(option_interaction.clickability_reasons().empty());
+  EXPECT_THAT(option_interaction.interaction_disabled_reasons(),
+              testing::UnorderedElementsAre(
+                  optimization_guide::proto::
+                      INTERACTION_DISABLED_REASON_VISUALLY_UNREACHABLE));
 }
 
 IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTest,
@@ -1500,11 +1522,22 @@ class PageContentProtoProviderBrowserTestMultiProcess
   base::test::ScopedFeatureList feature_list_;
 };
 
-// TODO(crbug.com/438250758): Test is flaky.
 IN_PROC_BROWSER_TEST_P(PageContentProtoProviderBrowserTestMultiProcess,
-                       DISABLED_AIPageContentMultipleCrossSiteFrames) {
-  LoadPage(https_server()->GetURL("a.com", "/iframe_cross_site.html"),
-           GetActionableAIPageContentOptions());
+                       AIPageContentMultipleCrossSiteFrames) {
+  LoadPage(https_server()->GetURL("a.com", "/iframe_cross_site.html"), nullptr);
+
+  for (size_t i = 0; i < 2; ++i) {
+    auto* sub_frame = ChildFrameAt(web_contents()->GetPrimaryMainFrame(), i);
+    ASSERT_TRUE(sub_frame);
+
+    base::test::TestFuture<bool> future;
+    sub_frame->GetRenderWidgetHost()->InsertVisualStateCallback(
+        future.GetCallback());
+    ASSERT_TRUE(future.Wait())
+        << "Timeout waiting for subframe syncing with renderer";
+  }
+
+  LoadData(GetActionableAIPageContentOptions());
 
   const auto& root_node = ActionableContentRootNode();
   EXPECT_EQ(root_node.children_nodes().size(), 2);
@@ -2084,6 +2117,7 @@ IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTestScriptTools, Basic) {
   EXPECT_EQ(tool.input_schema(),
             "{\"type\":\"object\",\"properties\":{\"text\":{\"description\":"
             "\"Value to echo\",\"type\":\"string\"}},\"required\":[\"text\"]}");
+  EXPECT_FALSE(tool.has_output_schema());
   EXPECT_TRUE(tool.annotations().read_only());
 }
 
@@ -2115,6 +2149,24 @@ IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTestScriptTools,
   EXPECT_EQ(tool.description(), "echo input");
   EXPECT_FALSE(tool.has_input_schema());
   EXPECT_FALSE(tool.annotations().read_only());
+}
+
+IN_PROC_BROWSER_TEST_F(PageContentProtoProviderBrowserTestScriptTools,
+                       OutputSchema) {
+  LoadPage(https_server()->GetURL("/script_tool_output_schema.html"));
+
+  const auto& frame_data = page_content().main_frame_data();
+  ASSERT_EQ(frame_data.script_tools().size(), 1u);
+
+  const auto& tool = frame_data.script_tools().at(0);
+  EXPECT_EQ(tool.name(), "echo");
+  EXPECT_EQ(tool.description(), "echo input");
+  EXPECT_EQ(tool.input_schema(),
+            "{\"type\":\"object\",\"properties\":{\"text\":{\"description\":"
+            "\"Value to echo\",\"type\":\"string\"}},\"required\":[\"text\"]}");
+  EXPECT_EQ(tool.output_schema(),
+            "{\"type\":\"object\",\"properties\":{\"text\":{\"description\":"
+            "\"Echoed value\",\"type\":\"string\"}},\"required\":[\"text\"]}");
 }
 
 class PageContentProtoProviderBrowserTestMediaData

@@ -122,6 +122,11 @@ std::optional<int> GetFirstRunRecency();
 // switches, but the former takes precedence.
 std::string GetSegmentForForcedDeviceSwitcherExperience();
 
+// Returns whether the forced device switcher segment in Experimental Settings
+// or command-line flags is `AndroidPhone`, or `std::nullopt` if no forced
+// segment is configured.
+std::optional<bool> IsForcedDeviceSwitcherAndroidPhone();
+
 // Returns the selected shopper segment the user wants to simulate as a string.
 // The string should either be nil, "ShoppingUser", or "Other". The value could
 // be set both from Experimental Settings and command line switches, but the
@@ -148,6 +153,10 @@ std::optional<int> GetForcedInactivityThresholdForSafetyCheckNotifications();
 // Whether the Lens Shop state for Tips (Magic Stack) should display a product
 // image.
 bool ShouldDisplayLensShopTipWithImage();
+
+// Returns true if the Magic Stack Tips state should be reset on startup.
+// Calling this method resets the flag to false.
+bool ShouldResetMagicStackTipsState();
 
 // Whether Inactive Tabs should be in Demo mode, where tabs are
 // considered inactive after a minute.
@@ -243,6 +252,11 @@ bool IsWebExtensionLoadDelayDefault();
 
 // Whether App Switcher AI summarization external URL testing is enabled.
 bool IsAppSwitcherAISummarizationTestingExternalURLEnabled();
+
+// Whether the geolocation permission prompt frequency restriction should be
+// bypassed for the current app session. Returns true by default on Canary
+// channel.
+bool ShouldBypassGeolocationPromptRestriction();
 
 }  // namespace experimental_flags
 

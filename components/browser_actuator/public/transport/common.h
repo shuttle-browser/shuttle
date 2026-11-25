@@ -17,11 +17,14 @@ enum class PayloadType {
   kControl = 1,
   kExperimentalTriggering = 2,
   kActuation = 3,
+  kTaskIngress = 4,
+  kProbe = 5,
 };
 // LINT.ThenChange(
 //     //components/browser_actuator/internal/transport/metrics_utils.h:PayloadTypeToMetricSuffix,
-//     //tools/metrics/histograms/metadata/browser_actuator/histograms.xml:BrowserActuatorTransportPayloadType,
-//     //components/browser_actuator/internal/transport/session_stream_recorder.cc:RecorderPayloadTypes)
+//     //components/browser_actuator/internal/transport/session_stream_recorder.cc:FromUpstreamProtoPayloadType,
+//     //components/browser_actuator/public/transport/payload_type_mapping.h:RoutablePayloadTypes,
+//     //tools/metrics/histograms/metadata/browser_actuator/histograms.xml:BrowserActuatorTransportPayloadType)
 
 // Identifies the feature factory instance, to ensure we do not re-register
 // factories of the same type.
@@ -31,11 +34,27 @@ enum class FactoryId {
   kExperimentalTriggering = 2,
   kSessionStreamRecorder = 3,
   kActuation = 4,
+  kTaskIngress = 5,
+  kProbe = 6,
 };
 
 enum class SendUpstreamMessageError {
   kChannelDisconnected,
 };
+
+// Identifies the downstream ingress channel that initialized a transport
+// session.
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(InitIngressSource)
+enum class InitIngressSource {
+  kUnspecified = 0,
+  kFcmPush = 1,
+  kWatchSessionsStream = 2,
+  kLocalChromeIngest = 3,
+  kMaxValue = kLocalChromeIngest,
+};
+// LINT.ThenChange(//tools/metrics/histograms/enums.xml:BrowserActuatorSessionInitIngressSource)
 
 }  // namespace browser_actuator::transport
 

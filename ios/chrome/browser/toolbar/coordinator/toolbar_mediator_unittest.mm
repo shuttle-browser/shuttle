@@ -42,6 +42,7 @@
 #import "ios/chrome/browser/shared/public/commands/activity_service_commands.h"
 #import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/fullscreen_commands.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/commands/page_side_swipe_commands.h"
 #import "ios/chrome/browser/shared/public/commands/popup_menu_commands.h"
@@ -66,6 +67,7 @@
 #import "ios/web/public/test/fakes/fake_navigation_manager.h"
 #import "ios/web/public/test/fakes/fake_web_state.h"
 #import "ios/web/public/test/web_task_environment.h"
+#import "ios/web/public/ui/crw_web_view_proxy.h"
 #import "testing/gtest_mac.h"
 #import "testing/platform_test.h"
 #import "third_party/ocmock/OCMock/OCMock.h"
@@ -104,19 +106,13 @@ class ToolbarMediatorTest : public PlatformTest,
         AuthenticationServiceFactory::GetDefaultFactory());
     builder.AddTestingFactory(SyncServiceFactory::GetInstance(),
                               base::BindRepeating(&CreateTestSyncService));
-    builder.AddTestingFactory(GeminiServiceFactory::GetInstance(),
-                              GeminiServiceFactory::GetDefaultFactory());
     builder.AddTestingFactory(
         OptimizationGuideServiceFactory::GetInstance(),
         OptimizationGuideServiceFactory::GetDefaultFactory());
     profile_ = std::move(builder).Build();
 
     auth_service_ = AuthenticationServiceFactory::GetForProfile(profile_.get());
-    gemini_service_ptr_ = std::make_unique<GeminiServiceImpl>(
-        profile_.get(), auth_service_,
-        IdentityManagerFactory::GetForProfile(profile_.get()),
-        profile_->GetPrefs(),
-        OptimizationGuideServiceFactory::GetForProfile(profile_.get()));
+    gemini_service_ = GeminiServiceFactory::GetForProfile(profile_.get());
 
     browser_ = std::make_unique<TestBrowser>(profile_.get());
     WebNavigationBrowserAgent::CreateForBrowser(browser_.get());
@@ -160,7 +156,7 @@ class ToolbarMediatorTest : public PlatformTest,
                          topPosition:GetParam()
         defaultBrowserBannerAppAgent:GetParam() ? mock_app_agent_ : nil
                authenticationService:auth_service_
-                       geminiService:gemini_service_ptr_.get()
+                       geminiService:gemini_service_.get()
                   geminiBrowserAgent:gemini_browser_agent_];
     mediator_.navigationBrowserAgent =
         WebNavigationBrowserAgent::FromBrowser(browser_.get());
@@ -232,10 +228,6 @@ class ToolbarMediatorTest : public PlatformTest,
     }
   }
 
-  void SetFloatyInvoked(bool invoked) {
-    gemini_browser_agent_->is_floaty_invoked_ = invoked;
-  }
-
   void TearDown() override {
     [mediator_ disconnect];
     mediator_ = nil;
@@ -257,7 +249,7 @@ class ToolbarMediatorTest : public PlatformTest,
   id settings_handler_;
   raw_ptr<AuthenticationService> auth_service_;
   raw_ptr<GeminiBrowserAgent> gemini_browser_agent_;
-  std::unique_ptr<GeminiService> gemini_service_ptr_;
+  raw_ptr<GeminiService> gemini_service_;
   raw_ptr<web::FakeNavigationManager> fake_navigation_manager_;
 };
 
@@ -746,7 +738,7 @@ TEST_P(ToolbarMediatorTest, TestAssistantButtonTapped) {
   id mock_gemini_handler = OCMProtocolMock(@protocol(GeminiCommands));
   mediator_.geminiHandler = mock_gemini_handler;
 
-  SetFloatyInvoked(false);
+  gemini_browser_agent_->SetContainerInvoked(false);
   OCMExpect([mock_gemini_handler
       startGeminiEntryFlowWithStartupState:[OCMArg any]
                         baseViewController:nil
@@ -756,7 +748,7 @@ TEST_P(ToolbarMediatorTest, TestAssistantButtonTapped) {
 
   // Test that the floaty is dismissed if the assistant button is tapped while
   // it is showing.
-  SetFloatyInvoked(true);
+  gemini_browser_agent_->SetContainerInvoked(true);
   OCMExpect([mock_gemini_handler dismissGeminiFlowWithCompletion:nil]);
   [mediator_ assistantButtonTapped];
 
@@ -781,7 +773,7 @@ TEST_P(ToolbarMediatorTest, TestAssistantButtonTappedInIncognito) {
                        topPosition:GetParam()
       defaultBrowserBannerAppAgent:GetParam() ? mock_app_agent_ : nil
              authenticationService:auth_service_
-                     geminiService:gemini_service_ptr_.get()
+                     geminiService:gemini_service_.get()
                 geminiBrowserAgent:gemini_browser_agent_];
   id mock_delegate = OCMProtocolMock(@protocol(ToolbarMediatorDelegate));
   incognito_mediator.delegate = mock_delegate;
@@ -1025,8 +1017,7 @@ TEST_P(ToolbarMediatorTest, TestAssistantButtonVisibleInIncognito) {
   scoped_feature_list.InitWithFeatures({kPageActionMenu}, {});
 
   SetLocationEligible(true);
-  ProfileIOS* otr_profile =
-      profile_->CreateOffTheRecordProfileWithTestingFactories();
+  ProfileIOS* otr_profile = profile_->GetOffTheRecordProfile();
   std::unique_ptr<web::FakeWebState> web_state = CreateWebState();
   web_state->SetBrowserState(otr_profile);
   browser_->GetWebStateList()->InsertWebState(
@@ -1036,6 +1027,82 @@ TEST_P(ToolbarMediatorTest, TestAssistantButtonVisibleInIncognito) {
 
   OCMExpect([consumer_ setAssistantButtonVisible:YES enabled:YES]);
   [mediator_ updateAssistantButton];
+  EXPECT_OCMOCK_VERIFY(consumer_);
+}
+
+// Tests that keyboard notifications force fullscreen mode for the bottom
+// toolbar when `kFullscreenRefactoring` is enabled.
+TEST_P(ToolbarMediatorTest, TestKeyboardForcesFullscreenWhenRefactored) {
+  if (GetParam() || !IsBottomOmniboxAvailable()) {
+    // Only the bottom toolbar pins above the keyboard, and bottom omnibox is
+    // not available on iPad.
+    return;
+  }
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndEnableFeature(kFullscreenRefactoring);
+
+  BrowserLayoutState* layout_state = browser_->GetBrowserLayoutState();
+  [layout_state setToolbarPosition:ToolbarPosition::kBottom
+                           passKey:layout_state::LayoutStateTestPassKeyFactory::
+                                       CreateToolbarKey()];
+  mediator_.browserLayoutState = layout_state;
+
+  id mock_fullscreen_commands = OCMProtocolMock(@protocol(FullscreenCommands));
+  mediator_.fullscreenCommands = mock_fullscreen_commands;
+
+  id mock_web_view_proxy = OCMProtocolMock(@protocol(CRWWebViewProxy));
+  OCMStub([mock_web_view_proxy isKeyboardVisible]).andReturn(YES);
+
+  std::unique_ptr<web::FakeWebState> web_state = CreateWebState();
+  web_state->SetWebViewProxy(mock_web_view_proxy);
+  browser_->GetWebStateList()->InsertWebState(
+      std::move(web_state),
+      WebStateList::InsertionParams::AtIndex(0).Activate());
+
+  OCMExpect([mock_fullscreen_commands
+      forceFullscreen:YES
+              feature:ForceFullscreenFeature::kKeyboard]);
+  OCMExpect([consumer_ setLocationIndicatorVisible:YES
+                                   forNotification:[OCMArg any]]);
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:UIKeyboardWillShowNotification
+                    object:nil];
+  EXPECT_OCMOCK_VERIFY(mock_fullscreen_commands);
+  EXPECT_OCMOCK_VERIFY(consumer_);
+
+  OCMExpect([mock_fullscreen_commands
+      forceFullscreen:NO
+              feature:ForceFullscreenFeature::kKeyboard]);
+  OCMExpect([consumer_ setLocationIndicatorVisible:NO
+                                   forNotification:[OCMArg any]]);
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:UIKeyboardWillHideNotification
+                    object:nil];
+  EXPECT_OCMOCK_VERIFY(mock_fullscreen_commands);
+  EXPECT_OCMOCK_VERIFY(consumer_);
+
+  // Re-show the keyboard, then move the toolbar position to `kTop` while the
+  // keyboard is still visible; forced fullscreen should be exited immediately.
+  OCMExpect([mock_fullscreen_commands
+      forceFullscreen:YES
+              feature:ForceFullscreenFeature::kKeyboard]);
+  OCMExpect([consumer_ setLocationIndicatorVisible:YES
+                                   forNotification:[OCMArg any]]);
+  [[NSNotificationCenter defaultCenter]
+      postNotificationName:UIKeyboardWillShowNotification
+                    object:nil];
+  EXPECT_OCMOCK_VERIFY(mock_fullscreen_commands);
+  EXPECT_OCMOCK_VERIFY(consumer_);
+
+  OCMExpect([mock_fullscreen_commands
+      forceFullscreen:NO
+              feature:ForceFullscreenFeature::kKeyboard]);
+  OCMExpect([consumer_ setLocationIndicatorVisible:NO forNotification:nil]);
+  OCMExpect([consumer_ setHasOmnibox:NO]);
+  [layout_state setToolbarPosition:ToolbarPosition::kTop
+                           passKey:layout_state::LayoutStateTestPassKeyFactory::
+                                       CreateToolbarKey()];
+  EXPECT_OCMOCK_VERIFY(mock_fullscreen_commands);
   EXPECT_OCMOCK_VERIFY(consumer_);
 }
 

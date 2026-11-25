@@ -10,6 +10,7 @@ import static androidx.test.espresso.matcher.ViewMatchers.isDisplayed;
 import static androidx.test.espresso.matcher.ViewMatchers.withId;
 
 import static org.hamcrest.Matchers.allOf;
+import static org.hamcrest.Matchers.is;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
@@ -36,15 +37,13 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.TriState;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
+import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.MinAndroidSdkLevel;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabSelectionType;
 import org.chromium.chrome.browser.tab.TabState;
@@ -77,7 +76,6 @@ import java.util.List;
 @Batch(Batch.PER_CLASS)
 @EnableFeatures(SensitiveContentFeatures.SENSITIVE_CONTENT)
 @MinAndroidSdkLevel(Build.VERSION_CODES.VANILLA_ICE_CREAM)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class SensitiveContentTest {
     private static final class TestSensitiveContentClientObserver
             implements SensitiveContentClient.Observer {
@@ -90,6 +88,10 @@ public class SensitiveContentTest {
 
         public boolean getContentSensitivity() {
             return mContentIsSensitive;
+        }
+
+        public void pollContentSensitivity(boolean expected) {
+            pollUiThread(() -> Criteria.checkThat(mContentIsSensitive, is(expected)));
         }
     }
 
@@ -120,16 +122,15 @@ public class SensitiveContentTest {
         assertNotSensitive(mPage);
 
         CtaPageStation page = mPage.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
-        assertSensitive(page);
+        waitUntilSensitive(page);
 
         page = page.loadWebPageProgrammatically(mTestServer.getURL(NOT_SENSITIVE_FILE));
-        assertNotSensitive(page);
+        waitUntilNotSensitive(page);
     }
 
     @Test
     @MediumTest
     @DisableIf.Device(DeviceFormFactor.DESKTOP_FREEFORM) // crbug.com/511287319
-    @DisabledTest(message = "https://crbug.com/572882982")
     public void testSensitiveContentClientObserver() {
         assertNotSensitive(mPage);
 
@@ -142,26 +143,31 @@ public class SensitiveContentTest {
                 new TestSensitiveContentClientObserver();
         ThreadUtils.runOnUiThreadBlocking(() -> client.addObserver(observer));
 
-        assertFalse(observer.getContentSensitivity());
-        CtaPageStation page = mPage.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
-        assertSensitive(page);
-        assertTrue(observer.getContentSensitivity());
+        CtaPageStation page = mPage;
+        try {
+            assertFalse(observer.getContentSensitivity());
+            page = page.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
+            waitUntilSensitive(page);
+            observer.pollContentSensitivity(true);
 
-        page = page.loadWebPageProgrammatically(mTestServer.getURL(NOT_SENSITIVE_FILE));
-        assertNotSensitive(page);
-        assertFalse(observer.getContentSensitivity());
+            page = page.loadWebPageProgrammatically(mTestServer.getURL(NOT_SENSITIVE_FILE));
+            waitUntilNotSensitive(page);
+            observer.pollContentSensitivity(false);
+        } finally {
+            ThreadUtils.runOnUiThreadBlocking(() -> client.removeObserver(observer));
+        }
 
         // After observation is removed, the observer will not be notified anymore.
-        ThreadUtils.runOnUiThreadBlocking(() -> client.removeObserver(observer));
         page = page.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
-        assertSensitive(page);
+        waitUntilSensitive(page);
         assertFalse(observer.getContentSensitivity());
     }
 
     @Test
     @MediumTest
     public void testSwapViewAndroidDelegate() {
-        mPage.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
+        CtaPageStation page = mPage.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
+        waitUntilSensitive(page);
 
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -179,7 +185,7 @@ public class SensitiveContentTest {
                             "",
                             newViewAndroidDelegate,
                             newContainerView,
-                            null,
+                            mCtaTestRule.getActivity().getWindowAndroid(),
                             WebContents.createDefaultInternalsHolder());
                     pollUiThreadNested(
                             () ->
@@ -197,11 +203,11 @@ public class SensitiveContentTest {
         assertFalse(tab.getTabHasSensitiveContent());
 
         CtaPageStation page = mPage.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
-        assertSensitive(page);
+        waitUntilSensitive(page);
         assertTrue(tab.getTabHasSensitiveContent());
 
         page = page.loadWebPageProgrammatically(mTestServer.getURL(NOT_SENSITIVE_FILE));
-        assertNotSensitive(page);
+        waitUntilNotSensitive(page);
         assertFalse(tab.getTabHasSensitiveContent());
     }
 
@@ -328,7 +334,7 @@ public class SensitiveContentTest {
         pollUiThread(() -> secondIncognitoTab.getTabHasSensitiveContent());
         // Group the incognito tabs.
         TabUiTestHelper.createTabGroup(
-                mCtaTestRule.getActivity(), true, List.of(firstIncognitoTab, secondIncognitoTab));
+                page.getActivity(), true, List.of(firstIncognitoTab, secondIncognitoTab));
         // Open the incognito tab switcher.
         final IncognitoTabSwitcherStation incognitoTabSwitcher = page.openIncognitoTabSwitcher();
         // Check that the incognito tab switcher is sensitive.
@@ -387,8 +393,9 @@ public class SensitiveContentTest {
         // Open a third tab.
         page = page.openNewTabFast();
         // Load sensitive content into the third tab.
+        final Tab thirdTab = page.loadedTabElement.value();
         page = page.loadWebPageProgrammatically(mTestServer.getURL(SENSITIVE_FILE));
-        assertTrue(page.loadedTabElement.value().getTabHasSensitiveContent());
+        pollUiThread(() -> thirdTab.getTabHasSensitiveContent());
         // Open a fourth tab.
         page = page.openNewTabFast();
 
@@ -411,7 +418,7 @@ public class SensitiveContentTest {
         page = partialSwipe.finishSwipe(WebPageStation.newBuilder());
         // After the swipe ends, the content container should return to not being sensitive.
         assertNotSensitive(page.getActivity());
-        assertSensitive(page);
+        waitUntilSensitive(page);
 
         // Swiping from a sensitive tab to a not sensitive one should mark the content container as
         // sensitive.
@@ -450,8 +457,15 @@ public class SensitiveContentTest {
         assertNotEquals(View.CONTENT_SENSITIVITY_SENSITIVE, getPageContentSensitivity(page));
     }
 
-    private void assertSensitive(CtaPageStation page) {
-        assertEquals(View.CONTENT_SENSITIVITY_SENSITIVE, getPageContentSensitivity(page));
+    // TODO(crbug.com/579299331): Measure typical time-to-sensitive (e.g. via
+    // LatencyUntilSensitive histograms and CQ/CI bots) and set an explicit timeout instead of
+    // CriteriaHelper's default 3s.
+    private void waitUntilNotSensitive(CtaPageStation page) {
+        pollUiThread(() -> getPageContentSensitivity(page) != View.CONTENT_SENSITIVITY_SENSITIVE);
+    }
+
+    private void waitUntilSensitive(CtaPageStation page) {
+        pollUiThread(() -> getPageContentSensitivity(page) == View.CONTENT_SENSITIVITY_SENSITIVE);
     }
 
     private int getPageContentSensitivity(CtaPageStation page) {

@@ -2,6 +2,8 @@
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
+import("//components/enterprise/buildflags/buildflags.gni")
+
 # GEiC Finch and command-line configuration helpers.
 #
 # This is a GLiC-internal helper, not a general purpose enablement check; see
@@ -20,8 +22,12 @@ source_set("geic_enabling") {
     "//chrome/browser/glic",
     "//chrome/browser/glic/public:features",
     "//chrome/browser/metrics",
+    "//chrome/browser/policy",
     "//chrome/browser/profiles:profile",
     "//chrome/common:constants",
+    "//components/optimization_guide/core:features",
+    "//components/policy:generated",
+    "//components/policy/core/common",
     "//components/prefs",
     "//components/variations/service",
     "//content/public/browser",
@@ -31,7 +37,7 @@ source_set("geic_enabling") {
 }
 
 # Gemini Enterprise host allowlist, shared by GEiC guest URL resolution and the
-# GeminiEnterpriseUrl and GeminiEnterpriseSettings policy handlers.
+# GeminiEnterpriseUrl policy handler.
 source_set("url_allowlist") {
   sources = [
     "geic_url_allowlist.cc",
@@ -40,7 +46,6 @@ source_set("url_allowlist") {
 
   deps = [
     "//base",
-    "//chrome/browser/glic/public:features",
     "//url",
   ]
 }
@@ -75,7 +80,6 @@ source_set("geic_fre") {
     "//chrome/browser/profiles:profile",
     "//chrome/common:constants",
     "//components/prefs",
-    "//url",
   ]
 }
 
@@ -111,6 +115,7 @@ source_set("unit_tests") {
   sources = [
     "geic_enabling_unittest.cc",
     "geic_fre_unittest.cc",
+    "geic_url_allowlist_unittest.cc",
     "glic_gemini_enterprise_manager_unittest.cc",
   ]
 
@@ -119,19 +124,29 @@ source_set("unit_tests") {
     ":geic_fre",
     ":geic_pref_names",
     ":gemini_enterprise",
+    ":url_allowlist",
     "//base",
     "//base/test:test_support",
     "//chrome/browser/glic",
     "//chrome/browser/glic:mojo_bindings",
     "//chrome/browser/glic/public:features",
+    "//chrome/browser/glic/public:provider",
     "//chrome/browser/metrics",
+    "//chrome/browser/policy",
     "//chrome/common:constants",
     "//chrome/test:test_support",
+    "//chrome/test/base:testing_browser_process",
+    "//components/optimization_guide/core:features",
+    "//components/policy:generated",
+    "//components/policy/core/common",
+    "//components/policy/core/common:test_support",
     "//components/prefs",
     "//components/variations",
     "//components/variations/service",
     "//content/test:test_support",
     "//mojo/public/cpp/bindings",
+    "//net",
+    "//testing/gmock",
     "//testing/gtest",
     "//url",
   ]
@@ -153,15 +168,18 @@ source_set("browser_tests") {
     "//base",
     "//base/test:test_support",
     "//chrome/browser/glic",
+    "//chrome/browser/glic:impl",
     "//chrome/browser/glic:mojo_bindings",
     "//chrome/browser/glic/public:features",
     "//chrome/browser/glic/test_support",
     "//chrome/browser/profiles:profile",
+    "//chrome/browser/signin",
     "//chrome/browser/tab_list",
     "//chrome/browser/ui/browser_window",
     "//chrome/common:constants",
     "//chrome/test:test_support",
     "//components/prefs",
+    "//components/signin/public/identity_manager:test_support",
     "//components/tabs:public",
     "//content/public/browser",
     "//content/test:test_support",
@@ -169,4 +187,22 @@ source_set("browser_tests") {
     "//testing/gtest",
     "//url",
   ]
+
+  if (enterprise_data_controls && !is_android) {
+    sources += [ "geic_paste_policy_browsertest.cc" ]
+    deps += [
+      "//chrome/browser/enterprise/connectors/test:test_support",
+      "//chrome/browser/enterprise/data_controls:test_support",
+      "//chrome/browser/glic:impl",
+      "//chrome/browser/glic/public:provider",
+      "//chrome/browser/policy:test_support",
+      "//components/enterprise/common/proto:dlp_policy_event_proto",
+      "//components/enterprise/data_controls/content/browser",
+      "//components/enterprise/data_controls/core/browser:test_support",
+      "//components/policy/core/common:test_support",
+      "//net:test_support",
+      "//ui/base/clipboard",
+      "//ui/base/clipboard:clipboard_test_support",
+    ]
+  }
 }

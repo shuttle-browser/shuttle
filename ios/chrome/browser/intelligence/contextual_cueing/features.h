@@ -127,6 +127,11 @@ BASE_DECLARE_FEATURE_PARAM(bool, kDisableFrequencyCappingAndBackoff);
 // execution requests.
 BASE_DECLARE_FEATURE_PARAM(size_t, kMaxBackgroundTabs);
 
+// Maximum number of eligible historical tabs to include in contextual cue model
+// execution requests, and the time window to query from history.
+BASE_DECLARE_FEATURE_PARAM(size_t, kMaxHistoricalTabs);
+BASE_DECLARE_FEATURE_PARAM(base::TimeDelta, kHistoricalTabsTimeWindow);
+
 // Maximum consecutive Message UI impressions ignored without interaction for a
 // vertical before permanently switching to Omnibox Chip UI for that vertical.
 BASE_DECLARE_FEATURE_PARAM(size_t, kMaxConsecutiveMessageIgnores);
@@ -155,6 +160,17 @@ BASE_DECLARE_FEATURE_PARAM(bool, kShowCuesToConsentedUsers);
 BASE_DECLARE_FEATURE_PARAM(bool, kShowCuesToSignedInUsers);
 // Whether cues are shown to every user, including signed-out users.
 BASE_DECLARE_FEATURE_PARAM(bool, kShowCuesToAllUsers);
+
+// Whether contextual cue events are logged to the Private Insights service.
+// Mirrors desktop `kEnablePrivateInsightsLogging` on `kContextualCueingV2`.
+// Logging also needs a `PrivateInsightsService` for the profile, which only
+// exists when `private_insights::kPrivateInsightsFeature` is enabled.
+BASE_DECLARE_FEATURE_PARAM(bool, kEnablePrivateInsightsLogging);
+
+// Returns true if `IsGeminiContextualSuggestionsCuesEnabled()` and
+// `kEnablePrivateInsightsLogging` is set. Callers must still handle a null
+// `PrivateInsightsService`.
+bool IsPrivateInsightsLoggingEnabled();
 
 }  // namespace contextual_cueing
 

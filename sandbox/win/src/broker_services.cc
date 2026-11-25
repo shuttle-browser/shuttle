@@ -338,6 +338,19 @@ std::wstring CreateFilteredEnvironment() {
 
 }  // namespace
 
+void BrokerServicesDelegate::ParallelLaunchPostTaskAndReplyWithResult(
+    const base::Location& from_here,
+    base::OnceCallback<CreateTargetResult()> task,
+    base::OnceCallback<void(CreateTargetResult)> reply) {
+  // Process creation can hang in third-party hooks. Do not let it block
+  // shutdown; the target's job will kill it when the broker exits.
+  base::ThreadPool::PostTaskAndReplyWithResult(
+      from_here,
+      {base::MayBlock(), base::TaskPriority::USER_BLOCKING,
+       base::TaskShutdownBehavior::CONTINUE_ON_SHUTDOWN},
+      std::move(task), std::move(reply));
+}
+
 BrokerServicesBase::BrokerServicesBase() {}
 
 // The broker uses a dedicated worker thread that services the job completion
@@ -400,6 +413,12 @@ ResultCode BrokerServicesBase::InitForTesting(
                                           std::move(target_tracker));
 }
 
+void BrokerServicesBase::Shutdown() {
+  CHECK(!is_shutdown_);
+  is_shutdown_ = true;
+  weak_factory_.InvalidateWeakPtrsAndDoom();
+}
+
 // The destructor should only be called when the Broker process is terminating.
 // Since BrokerServicesBase is a singleton, this is called from the CRT
 // termination handlers, if this code lives on a DLL it is called during
@@ -440,16 +459,13 @@ std::unique_ptr<TargetPolicy> BrokerServicesBase::CreatePolicy(
   // Empty key implies we will not use the store. The policy will need
   // to look after its config.
   if (!tag.empty()) {
-    // Otherwise the broker owns the memory, not the policy.
     auto found = config_cache_.find(tag);
-    ConfigBase* shared_config = nullptr;
     if (found == config_cache_.end()) {
-      auto new_config = std::make_unique<ConfigBase>();
-      shared_config = new_config.get();
-      config_cache_[std::string(tag)] = std::move(new_config);
-      policy->SetConfig(shared_config);
+      auto new_config = base::MakeRefCounted<ConfigBase>();
+      config_cache_[std::string(tag)] = new_config;
+      policy->SetConfig(std::move(new_config));
     } else {
-      policy->SetConfig(found->second.get());
+      policy->SetConfig(found->second);
     }
   }
   return policy;
@@ -458,6 +474,13 @@ std::unique_ptr<TargetPolicy> BrokerServicesBase::CreatePolicy(
 void BrokerServicesBase::SpawnTargetAsync(const base::CommandLine& command_line,
                                           std::unique_ptr<TargetPolicy> policy,
                                           SpawnTargetCallback result_callback) {
+  if (is_shutdown_) {
+    std::move(result_callback)
+        .Run(base::win::ScopedProcessInformation(), ERROR_SHUTDOWN_IN_PROGRESS,
+             SBOX_ERROR_UNEXPECTED_CALL);
+    return;
+  }
+
   // The `policy` downcast is safe as long as we control CreatePolicy().
   SpawnTargetAsyncImpl(
       command_line,
@@ -579,18 +602,18 @@ void BrokerServicesBase::SpawnTargetAsyncImpl(
 
   broker_services_delegate_->ParallelLaunchPostTaskAndReplyWithResult(
       FROM_HERE,
-      base::BindOnce(&BrokerServicesBase::CreateTarget, base::Unretained(this),
-                     command_line, std::move(result.value())),
+      base::BindOnce(&BrokerServicesBase::CreateTarget, command_line,
+                     std::move(result.value())),
       base::BindOnce(&BrokerServicesBase::FinishSpawnTarget,
-                     base::Unretained(this), std::move(policy_base),
+                     weak_factory_.GetWeakPtr(), std::move(policy_base),
                      std::move(result_callback)));
 }
 
+// static
 CreateTargetResult BrokerServicesBase::CreateTarget(
     base::CommandLine command_line,
     CreateTargetInfo target_info) {
   TRACE_EVENT_BEGIN("startup", "TargetProcess::Create");
-  broker_services_delegate_->BeforeTargetProcessCreateOnCreationThread();
 
   // Spawn the target process suspended.
   CreateTargetResult result;

@@ -55,7 +55,7 @@ public class ActorExternalTriggerSnackbarController
     private final MonotonicObservableSupplier<Profile> mProfileSupplier;
     private final ActivityLifecycleDispatcher mActivityLifecycleDispatcher;
     private final Handler mHandler = new Handler(Looper.getMainLooper());
-    private final Runnable mTimeoutRunnable = this::onPreparingTimeout;
+    private final Runnable mTimeoutRunnable = this::onPendingActorTaskFailed;
     private final Callback<Profile> mProfileObserver = this::onProfileAdded;
 
     private @Nullable ActorKeyedService mActorKeyedService;
@@ -96,23 +96,26 @@ public class ActorExternalTriggerSnackbarController
     }
 
     /**
-     * Called when ChromeTabbedActivity receives a trusted Glic external-trigger fallback intent
-     * indicating that a new actor task is pending creation.
+     * Notifies that ChromeTabbedActivity received a trusted Glic external-trigger fallback intent
+     * or that the experimental opt-in dialog was shown or accepted for a pending actor task.
      */
     public void onPendingActorTaskTrigger() {
+        if (mIsPendingTaskStart) {
+            schedulePreparingTimeout();
+            return;
+        }
         dismissSnackbar();
         mIsPendingTaskStart = true;
         schedulePreparingTimeout();
         maybeShowSnackbar();
     }
 
-    private void schedulePreparingTimeout() {
-        mHandler.removeCallbacks(mTimeoutRunnable);
-        mHandler.postDelayed(
-                mTimeoutRunnable, ActorTaskTimeoutParameters.getPreparingToStartTaskTimeoutMs());
-    }
-
-    private void onPreparingTimeout() {
+    /**
+     * Notifies that a pending actor task trigger failed before task creation (for example, when the
+     * preparing timeout expires or when the user declines or dismisses the experimental opt-in
+     * dialog).
+     */
+    public void onPendingActorTaskFailed() {
         if (!mIsPendingTaskStart) {
             return;
         }
@@ -133,6 +136,12 @@ public class ActorExternalTriggerSnackbarController
         mSnackbarManager.showSnackbar(errorSnackbar);
 
         mIsErrorSnackbarShowing = true;
+    }
+
+    private void schedulePreparingTimeout() {
+        mHandler.removeCallbacks(mTimeoutRunnable);
+        mHandler.postDelayed(
+                mTimeoutRunnable, ActorTaskTimeoutParameters.getPreparingToStartTaskTimeoutMs());
     }
 
     private void maybeShowSnackbar() {

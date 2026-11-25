@@ -43,7 +43,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_edit_model.h"
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -93,8 +92,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/color_utils.h"
 #include "ui/views/accessibility/view_accessibility.h"
@@ -262,10 +261,10 @@ class PwaInstallViewBrowserTest : public base::test::WithFeatureOverride,
 
   // Starts a navigation to |url| but does not wait for it to finish.
   void StartNavigateToUrl(const GURL& url) {
-    browser()->OpenURL(
-        content::OpenURLParams::CreateBrowserInitiated(
-            url, WindowOpenDisposition::kCurrentTab, ui::PAGE_TRANSITION_TYPED),
-        /*navigation_handle_callback=*/{});
+    browser()->OpenURL(content::OpenURLParams::CreateBrowserInitiated(
+                           url, ui::mojom::WindowOpenDisposition::kCurrentTab,
+                           ui::PAGE_TRANSITION_TYPED),
+                       /*navigation_handle_callback=*/{});
     app_banner_manager_->WaitForInstallableCheckTearDown();
   }
 
@@ -846,10 +845,7 @@ IN_PROC_BROWSER_TEST_P(PwaInstallViewBrowserTest, PwaIntallIphIgnored) {
 IN_PROC_BROWSER_TEST_P(PwaInstallViewBrowserTest,
                        OnCloseDoesntRecordIgnoreIfExecuting) {
   PwaInstallPageActionController* pwa_install_controller =
-      browser()
-          ->GetActiveTabInterface()
-          ->GetTabFeatures()
-          ->pwa_install_page_action_controller();
+      PwaInstallPageActionController::From(browser()->GetActiveTabInterface());
   pwa_install_controller->SetIsExecuting(true);
 
   MockRecordIgnoreDelegate record_ignore;
@@ -861,10 +857,7 @@ IN_PROC_BROWSER_TEST_P(PwaInstallViewBrowserTest,
 IN_PROC_BROWSER_TEST_P(PwaInstallViewBrowserTest,
                        OnCloseRecordsIgnoreIfNotExecuting) {
   PwaInstallPageActionController* pwa_install_controller =
-      browser()
-          ->GetActiveTabInterface()
-          ->GetTabFeatures()
-          ->pwa_install_page_action_controller();
+      PwaInstallPageActionController::From(browser()->GetActiveTabInterface());
   ASSERT_FALSE(pwa_install_controller->GetIsExecuting());
 
   MockRecordIgnoreDelegate record_ignore;

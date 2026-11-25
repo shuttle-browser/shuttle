@@ -4,6 +4,7 @@
 
 import("//components/safe_browsing/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
+import("//third_party/blink/public/public_features.gni")
 
 source_set("page_info") {
   public = [
@@ -104,13 +105,13 @@ source_set("impl") {
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/browser/vr",
     "//components/content_settings/browser/ui",
-    "//components/dom_distiller/core",
     "//components/omnibox/browser:vector_icons",
     "//components/page_info/core",
     "//components/privacy_sandbox:features",
     "//components/strings:components_branded_strings_grit",
     "//components/strings:components_strings_grit",
     "//components/strings:privacy_sandbox_strings_grit",
+    "//components/web_distiller/core",
     "//content/public/browser",
     "//extensions/buildflags",
     "//ui/base",
@@ -204,7 +205,6 @@ source_set("browser_tests") {
     "//chrome/browser/ui/views/frame:multi_contents_view",
     "//chrome/browser/web_applications:web_applications_test_support",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//components/lookalikes/core:proto_gen",
     "//components/lookalikes/core:safety_tips",
     "//components/safe_browsing/content/browser/password_protection:test_support",
@@ -217,6 +217,10 @@ source_set("browser_tests") {
     sources += [ "suspicious_site_bubble_view_browsertest.cc" ]
     deps += [ "//components/safe_browsing/core/browser:suspicious_site_warning_allowlist" ]
   }
+
+  if (is_mac) {
+    deps += [ "//chrome/browser/apps/app_shim" ]
+  }
 }
 
 source_set("interactive_ui_tests") {
@@ -228,12 +232,12 @@ source_set("interactive_ui_tests") {
     "//base",
     "//chrome/browser/ui/views/frame:browser_view_header",
     "//chrome/test:test_support",
-    "//chrome/test:test_support_ui",
     "//content/test:test_support",
+    "//third_party/blink/public:buildflags",
     "//ui/events:test_support",
   ]
 
-  if (is_chromeos) {
+  if (enable_smart_card) {
     deps += [ "//chrome/browser/smart_card" ]
   }
 }

@@ -89,7 +89,7 @@ ThumbnailCache::ThumbnailCache(size_t default_cache_size,
       ui_resource_provider_(nullptr),
       save_jpeg_thumbnails_(save_jpeg_thumbnails),
       read_in_progress_(false) {
-  DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+  CHECK_CURRENTLY_ON(content::BrowserThread::UI, base::NotFatalUntil::M163);
   ScheduleRecordCacheMetrics(base::Minutes(1));
 }
 
@@ -304,11 +304,7 @@ void ThumbnailCache::PruneCache() {
 void ThumbnailCache::DecompressEtc1ThumbnailFromFile(
     TabId tab_id,
     base::OnceCallback<void(bool, const SkBitmap&)> post_decompress_callback) {
-  auto decompress_task = base::BindOnce(
-      &thumbnail::Etc1ThumbnailHelper::Decompress, etc1_helper_.GetWeakPtr(),
-      std::move(post_decompress_callback));
-  etc1_helper_.Read(
-      tab_id, base::BindPostTaskToCurrentDefault(std::move(decompress_task)));
+  etc1_helper_.ReadAndDecompress(tab_id, std::move(post_decompress_callback));
 }
 
 void ThumbnailCache::ScheduleRecordCacheMetrics(base::TimeDelta mean_delay) {
@@ -501,7 +497,7 @@ void ThumbnailCache::SetCaptureMinRequestTimeForTesting(int timeMs) {
 }
 
 void ThumbnailCache::InvalidateCachedThumbnail(Thumbnail* thumbnail) {
-  DCHECK(thumbnail);
+  CHECK(thumbnail, base::NotFatalUntil::M163);
   TabId tab_id = thumbnail->tab_id();
   cc::UIResourceId uid = thumbnail->ui_resource_id();
 

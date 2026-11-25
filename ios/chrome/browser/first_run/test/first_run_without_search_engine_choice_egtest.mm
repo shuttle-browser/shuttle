@@ -228,8 +228,7 @@ id<GREYMatcher> ManageUMALinkMatcher() {
 }
 
 // Tests to turn off UMA, and open the UMA dialog to turn it back on.
-// TODO(crbug.com/377227225): Reenable when flakiness is fixed.
-- (void)DISABLED_testUMAUncheckedAndCheckItAgain {
+- (void)testUMAUncheckedAndCheckItAgain {
   // Verify 2 steps FRE.
   [self verifyEnterpriseWelcomeScreenIsDisplayedWithFRESigninIntent:
             FRESigninIntentRegular];
@@ -240,7 +239,16 @@ id<GREYMatcher> ManageUMALinkMatcher() {
                       scrollViewIdentifier:
                           kButtonStackScrollViewAccessibilityIdentifier]
       performAction:grey_tap()];
-  [ChromeEarlGreyUI waitForAppToIdle];
+
+  // Wait for the switch cell to be visible before tapping to avoid tapping
+  // while the modal sheet is sliding up.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      grey_allOf(chrome_test_util::TableViewSwitchCell(
+                                     kImproveChromeItemAccessibilityIdentifier,
+                                     /*is_toggled_on=*/YES,
+                                     /*enabled=*/YES),
+                                 grey_sufficientlyVisible(), nil)];
+
   // Turn off UMA.
   [[EarlGrey
       selectElementWithMatcher:chrome_test_util::TableViewSwitchCell(
@@ -257,7 +265,16 @@ id<GREYMatcher> ManageUMALinkMatcher() {
                       scrollViewIdentifier:
                           kButtonStackScrollViewAccessibilityIdentifier]
       performAction:grey_tap()];
-  [ChromeEarlGreyUI waitForAppToIdle];
+
+  // Wait for the switch cell in the toggled-off state before turning it back
+  // on.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      grey_allOf(chrome_test_util::TableViewSwitchCell(
+                                     kImproveChromeItemAccessibilityIdentifier,
+                                     /*is_toggled_on=*/NO,
+                                     /*enabled=*/YES),
+                                 grey_sufficientlyVisible(), nil)];
+
   // Turn UMA back on.
   [[EarlGrey
       selectElementWithMatcher:chrome_test_util::TableViewSwitchCell(
@@ -265,6 +282,15 @@ id<GREYMatcher> ManageUMALinkMatcher() {
                                    /*is_toggled_on=*/NO,
                                    /*enabled=*/YES)]
       performAction:chrome_test_util::TurnTableViewSwitchOn(YES)];
+
+  // Wait for the switch cell to reflect the toggled-on state before closing.
+  [ChromeEarlGrey waitForUIElementToAppearWithMatcher:
+                      grey_allOf(chrome_test_util::TableViewSwitchCell(
+                                     kImproveChromeItemAccessibilityIdentifier,
+                                     /*is_toggled_on=*/YES,
+                                     /*enabled=*/YES),
+                                 grey_sufficientlyVisible(), nil)];
+
   // Close UMA dialog.
   [[EarlGrey
       selectElementWithMatcher:chrome_test_util::NavigationBarDoneButton()]
@@ -637,9 +663,8 @@ TAG_SMOKE_TEST(FirstRunWithoutSearchEngineChoiceTestCase,
 
 #pragma mark - Supervised User
 
-// TODO(crbug.com/40070867): This test is failing.
 // Tests FRE with UMA default value and with sign-in for a supervised user.
-- (void)DISABLED_testWithUMACheckedAndSigninSupervised {
+- (void)testWithUMACheckedAndSigninSupervised {
   // Add a fake supervised identity to the device.
   FakeSystemIdentity* fakeSupervisedIdentity =
       [FakeSystemIdentity fakeIdentity1];

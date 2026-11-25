@@ -26,7 +26,6 @@ import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
@@ -48,7 +47,6 @@ import java.util.concurrent.TimeoutException;
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
 @CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
     ContentSwitches.HOST_RESOLVER_RULES + "=MAP * 127.0.0.1",
     "ignore-certificate-errors"
 })
@@ -65,8 +63,7 @@ public class LocationPrecisionChooserRenderTest {
     private final boolean mNightModeEnabled;
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
-    public PermissionTestRule mPermissionRule =
-            new PermissionTestRule(mActivityTestRule.getActivityTestRule());
+    public PermissionTestRule mPermissionRule = new PermissionTestRule(mActivityTestRule);
 
     @Rule
     public RuleChain mRuleChain = RuleChain.outerRule(mActivityTestRule).around(mPermissionRule);
@@ -103,7 +100,7 @@ public class LocationPrecisionChooserRenderTest {
 
     @Before
     public void setUp() throws Exception {
-        mPermissionRule.setUpActivity();
+        mActivityTestRule.startOnBlankPage();
         NightModeTestUtils.setUpNightModeForBlankUiTestActivity(mNightModeEnabled);
     }
 
@@ -113,12 +110,12 @@ public class LocationPrecisionChooserRenderTest {
     }
 
     private void testPrompt(String goldenViewId) throws TimeoutException, IOException {
-        mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab(
+        mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(
                 "initiate_getCurrentPosition()");
 
         mPermissionRule.waitForDialogShownState(true);
 
-        View modalDialogView = mPermissionRule.getActivity().findViewById(R.id.modal_dialog_view);
+        View modalDialogView = mActivityTestRule.getActivity().findViewById(R.id.modal_dialog_view);
         RenderTestRule.sanitize(modalDialogView);
 
         mRenderTestRule.render(modalDialogView, goldenViewId);
@@ -144,10 +141,10 @@ public class LocationPrecisionChooserRenderTest {
         mPermissionRule.setUpUrl(TEST_FILE_GEOLOCATION_ELEMENT);
         CountDownLatch latch = new CountDownLatch(1);
         latch.await(2, TimeUnit.SECONDS);
-        DOMUtils.clickNode(mPermissionRule.getWebContents(), "geolocation");
+        DOMUtils.clickNode(mActivityTestRule.getWebContents(), "geolocation");
         mPermissionRule.waitForDialogShownState(true);
 
-        View modalDialogView = mPermissionRule.getActivity().findViewById(R.id.modal_dialog_view);
+        View modalDialogView = mActivityTestRule.getActivity().findViewById(R.id.modal_dialog_view);
         RenderTestRule.sanitize(modalDialogView);
 
         mRenderTestRule.render(modalDialogView, "geolocation_element_prompt");

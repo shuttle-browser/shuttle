@@ -8,6 +8,7 @@
 #include <array>
 #include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -26,6 +27,7 @@
 #include "content/browser/media/media_devices_util.h"
 #include "content/common/content_export.h"
 #include "media/audio/audio_device_description.h"
+#include "media/capture/mojom/video_capture_types.mojom-shared.h"
 #include "media/capture/video/video_capture_device_descriptor.h"
 #include "media/capture/video_capture_types.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
@@ -76,6 +78,15 @@ class CONTENT_EXPORT MediaDevicesManager
     BoolDeviceTypes() { fill(false); }
   };
 
+  struct DevicePermissionState {
+    bool has_browser_permission = false;
+    // When true, activating a device may show a system permission prompt.
+    bool system_may_prompt = false;
+  };
+  using DevicePermissionStates =
+      std::array<DevicePermissionState,
+                 static_cast<size_t>(MediaDeviceType::kNumMediaDeviceTypes)>;
+
   enum class DeviceStartMonitoringMode {
     kNone,
     kStartAudio,          // Start audio monitoring, leave video unmodified.
@@ -122,6 +133,12 @@ class CONTENT_EXPORT MediaDevicesManager
   using UIInputDeviceChangeCallback = base::RepeatingCallback<void(
       MediaDeviceType stream_type,
       const blink::WebMediaDeviceInfoArray& devices)>;
+  // When a `kDevicesWithCapabilities` enumeration changes only camera
+  // pan/tilt/zoom support, this callback updates video input-device information
+  // without reporting a device-list change.
+  using UpdateVideoControlSupportCallback = base::RepeatingCallback<void(
+      MediaDeviceType device_type,
+      const blink::WebMediaDeviceInfoArray& devices)>;
 
   static bool IsRelaxedCacheFeatureEnabled();
 
@@ -129,7 +146,8 @@ class CONTENT_EXPORT MediaDevicesManager
       media::AudioSystem* audio_system,
       const scoped_refptr<VideoCaptureManager>& video_capture_manager,
       StopRemovedInputDeviceCallback stop_removed_input_device_cb,
-      UIInputDeviceChangeCallback ui_input_device_change_cb);
+      UIInputDeviceChangeCallback ui_input_device_change_cb,
+      UpdateVideoControlSupportCallback update_video_control_support_cb);
 
   MediaDevicesManager(const MediaDevicesManager&) = delete;
   MediaDevicesManager& operator=(const MediaDevicesManager&) = delete;
@@ -168,6 +186,10 @@ class CONTENT_EXPORT MediaDevicesManager
                                const BoolDeviceTypes& requested_types,
                                EnumerationCallback callback,
                                uint64_t request_id = 0);
+
+  // Permanently sets `video_enumeration_mode_` to `kDevicesWithCapabilities`.
+  // An enumeration already in progress retains its original mode.
+  void SetVideoEnumerationModeToDevicesWithCapabilities();
 
   // Performs a possibly cached device enumeration for the requested device
   // types and reports the results to `callback`. The enumeration results are
@@ -390,7 +412,7 @@ class CONTENT_EXPORT MediaDevicesManager
       bool request_audio_input_capabilities,
       EnumerateDevicesCallback callback,
       const MediaDeviceSaltAndOrigin& salt_and_origin,
-      const MediaDevicesManager::BoolDeviceTypes& has_permissions);
+      const MediaDevicesManager::DevicePermissionStates& permission_states);
   void OnDevicesEnumeratedAndRanked(
       uint64_t request_id,
       GlobalRenderFrameHostId render_frame_host_id,
@@ -399,7 +421,7 @@ class CONTENT_EXPORT MediaDevicesManager
       bool request_audio_input_capabilities,
       EnumerateDevicesCallback callback,
       const MediaDeviceSaltAndOrigin& salt_and_origin,
-      const MediaDevicesManager::BoolDeviceTypes& has_permissions,
+      const MediaDevicesManager::DevicePermissionStates& permission_states,
       const MediaDeviceEnumeration& enumeration);
   void GetAudioInputCapabilities(
       uint64_t request_id,
@@ -443,6 +465,9 @@ class CONTENT_EXPORT MediaDevicesManager
                       bool use_group_id = false);
   void ProcessClientRequests();
   bool IsEnumerationRequestReady(const EnumerationRequest& request_info);
+  bool CanVideoInputCacheSatisfyEnumerationMode(
+      media::mojom::VideoCaptureDeviceEnumerationMode requested_mode) const;
+  void MaybeStartVideoEnumerationWithCapabilities();
 
   // Helpers to handle device-change notification.
   void HandleDevicesChanged(MediaDeviceType type);
@@ -494,6 +519,7 @@ class CONTENT_EXPORT MediaDevicesManager
   scoped_refptr<VideoCaptureManager> video_capture_manager_;
   StopRemovedInputDeviceCallback stop_removed_input_device_cb_;
   UIInputDeviceChangeCallback ui_input_device_change_cb_;
+  UpdateVideoControlSupportCallback update_video_control_support_cb_;
 
   std::unique_ptr<MediaDevicesPermissionChecker> permission_checker_;
 
@@ -506,6 +532,19 @@ class CONTENT_EXPORT MediaDevicesManager
   using CacheInfos = std::vector<CacheInfo>;
   CacheInfos cache_infos_;
 
+  // Starts at the platform default (`kDevicesOnly` only on Windows with
+  // `kWinDeviceEnumerationWithoutActivation` enabled). Once a caller requests
+  // enumeration with capabilities, subsequent enumerations use
+  // `kDevicesWithCapabilities`.
+  media::mojom::VideoCaptureDeviceEnumerationMode video_enumeration_mode_;
+  // Mode of the most recent video enumeration result, if any.
+  std::optional<media::mojom::VideoCaptureDeviceEnumerationMode>
+      cached_video_enumeration_mode_;
+  // Mode of the video enumeration started for the ongoing update, if any. We
+  // track it here in case `video_enumeration_mode_` changes before that
+  // enumeration completes.
+  std::optional<media::mojom::VideoCaptureDeviceEnumerationMode>
+      ongoing_update_video_enumeration_mode_;
   BoolDeviceTypes cache_is_populated_;
   std::vector<EnumerationRequest> client_requests_;
   MediaDeviceEnumeration current_snapshot_;

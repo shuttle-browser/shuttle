@@ -17,6 +17,7 @@
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "chromeos/dbus/power/power_manager_client.h"
+#include "components/session_manager/core/session_manager.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
@@ -26,8 +27,8 @@
 #include "services/viz/public/mojom/compositing/video_detector_observer.mojom.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/aura/client/focus_client.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/user_activity/user_activity_detector.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
 
 namespace ash::power::ml {
@@ -90,6 +91,7 @@ class AdaptiveScreenBrightnessManagerBrowserTest : public InProcessBrowserTest {
         std::make_unique<AdaptiveScreenBrightnessManager>(
             std::move(logger), ui::UserActivityDetector::Get(),
             chromeos::PowerManagerClient::Get(), nullptr, nullptr,
+            session_manager::SessionManager::Get(),
             observer.InitWithNewPipeAndPassReceiver(),
             std::move(periodic_timer));
   }
@@ -112,13 +114,14 @@ class AdaptiveScreenBrightnessManagerBrowserTest : public InProcessBrowserTest {
   ukm::SourceId NavigateInBrowser(
       BrowserWindowInterface* target_browser,
       const GURL& url,
-      WindowOpenDisposition disposition = WindowOpenDisposition::kCurrentTab) {
+      ui::mojom::WindowOpenDisposition disposition =
+          ui::mojom::WindowOpenDisposition::kCurrentTab) {
     EXPECT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
         target_browser, url, disposition,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
     TabStripModel* const tab_strip_model = target_browser->GetTabStripModel();
     content::WebContents* const contents =
-        disposition == WindowOpenDisposition::kNewBackgroundTab
+        disposition == ui::mojom::WindowOpenDisposition::kNewBackgroundTab
             ? tab_strip_model->GetWebContentsAt(tab_strip_model->count() - 1)
             : tab_strip_model->GetActiveWebContents();
     return contents->GetPrimaryMainFrame()->GetPageUkmSourceId();
@@ -132,10 +135,10 @@ class AdaptiveScreenBrightnessManagerBrowserTest : public InProcessBrowserTest {
 IN_PROC_BROWSER_TEST_F(AdaptiveScreenBrightnessManagerBrowserTest,
                        SingleBrowser) {
   NavigateInBrowser(browser(), embedded_test_server()->GetURL("/title1.html"),
-                    WindowOpenDisposition::kCurrentTab);
+                    ui::mojom::WindowOpenDisposition::kCurrentTab);
   const ukm::SourceId source_id2 = NavigateInBrowser(
       browser(), embedded_test_server()->GetURL("/title2.html"),
-      WindowOpenDisposition::kNewForegroundTab);
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 
   InitializeBrightness(75.0f);
   FireTimer();

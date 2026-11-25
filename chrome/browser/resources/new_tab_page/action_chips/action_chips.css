@@ -6,7 +6,6 @@
  * #type=style-lit
  * #import=chrome://resources/cr_elements/cr_shared_style_lit.css.js
  * #import=chrome://resources/cr_elements/cr_icons_lit.css.js
- * #scheme=relative
  * #include=cr-shared-style-lit cr-icons-lit
  * #css_wrapper_metadata_end */
 
@@ -78,6 +77,10 @@
   width: 240px;
 }
 
+:host([small-chips-enabled]) .action-chips-wrapper {
+  max-width: none;
+}
+
 :host([small-chips-enabled]) .action-chips-container {
   row-gap: 8px;
 }
@@ -110,6 +113,11 @@
 :host([small-chips-enabled]) .action-chip .chip-title {
   font-weight: 400;
   max-width: 150px;
+}
+
+:host([uncapped-width-enabled]) .action-chip,
+:host([uncapped-width-enabled]) .action-chip .chip-title {
+  max-width: unset;
 }
 
 .chip-button-wrapper {
@@ -201,7 +209,7 @@
   font-weight: 500;
   line-height: 20px;
   overflow: hidden;
-  text-align: left;
+  text-align: start;
   text-overflow: ellipsis;
   white-space: nowrap;
   width: 100%;
@@ -250,8 +258,8 @@
   --cr-icon-image: url('chrome://resources/images/icon_clear_old.svg');
   align-self: center;
   display: none;
+  inset-inline-end: 16px;
   position: absolute;
-  right: 16px;
 }
 
 :host-context([webui-rounded-icons]) .chip-remove-button {
@@ -261,7 +269,7 @@
 
 /* Responsive container widths and reserved min-heights. Breakpoints are
  * measured against the NTP's main column (the rhsWrapper query container
- * declared on #rhsWrapper in app.css) instead of the window, so the chips
+ * declared on #rhsWrapper in app.css) instead of the window, so standard chips
  * keep their side margins when the column is narrower than the window (e.g.
  * when the LHS panel is shown).
  * - Standard chips: height 56px, gap 14px, margin-bottom 40px.
@@ -309,7 +317,7 @@
 }
 
 /* Unset reserved min-height once small chips are rendered so the container
- * adapts naturally to 1, 2, or 3 rows without hardcoded geometry
+ * adapts naturally to the number of rows without hardcoded geometry
  * calculations. */
 :host([small-chips-enabled][has-chips]) {
   min-height: unset;

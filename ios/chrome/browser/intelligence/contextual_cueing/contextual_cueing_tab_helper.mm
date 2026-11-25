@@ -5,6 +5,7 @@
 #import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cueing_tab_helper.h"
 
 #import <algorithm>
+#import <utility>
 
 #import "base/check.h"
 #import "base/containers/flat_set.h"
@@ -13,14 +14,18 @@
 #import "base/strings/sys_string_conversions.h"
 #import "base/strings/utf_string_conversions.h"
 #import "base/task/sequenced_task_runner.h"
+#import "base/time/time.h"
 #import "components/contextual_cueing/contextual_cueing_enums.h"
 #import "components/feature_engagement/public/event_constants.h"
 #import "components/feature_engagement/public/feature_constants.h"
 #import "components/feature_engagement/public/tracker.h"
+#import "components/history/core/browser/history_service.h"
+#import "components/history/core/browser/history_types.h"
 #import "components/optimization_guide/core/model_execution/remote_model_executor.h"
 #import "components/optimization_guide/core/model_quality/model_quality_log_entry.h"
 #import "components/optimization_guide/core/optimization_guide_util.h"
 #import "components/prefs/pref_service.h"
+#import "components/private_insights/private_insights_service.h"
 #import "components/signin/public/base/consent_level.h"
 #import "components/signin/public/identity_manager/account_capabilities.h"
 #import "components/signin/public/identity_manager/account_info.h"
@@ -29,11 +34,13 @@
 #import "components/sync/service/sync_service.h"
 #import "components/sync/service/sync_user_settings.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/history/model/history_service_factory.h"
 #import "ios/chrome/browser/intelligence/bwg/metrics/gemini_metrics.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_service.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_service_factory.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_prefs.h"
 #import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cue_infobar_delegate.h"
+#import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cue_log_event_builder.h"
 #import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cueing_cap_tracker_service.h"
 #import "ios/chrome/browser/intelligence/contextual_cueing/contextual_cueing_cap_tracker_service_factory.h"
 #import "ios/chrome/browser/intelligence/contextual_cueing/features.h"
@@ -47,6 +54,7 @@
 #import "ios/chrome/browser/location_bar/badge/ui/location_bar_badge_constants.h"
 #import "ios/chrome/browser/optimization_guide/model/optimization_guide_service.h"
 #import "ios/chrome/browser/optimization_guide/model/optimization_guide_service_factory.h"
+#import "ios/chrome/browser/private_insights/model/private_insights_service_factory.h"
 #import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/public/commands/location_bar_badge_commands.h"
@@ -58,6 +66,37 @@
 #import "ios/web/public/web_state.h"
 
 namespace contextual_cueing {
+
+namespace {
+
+using private_insights::events::ContextualCueLogEvent;
+
+// Returns the service that the contextual cues of `web_state` are logged to, or
+// null if they must not be logged: logging is disabled, or the profile is
+// off-the-record (it never has a service).
+private_insights::PrivateInsightsService* GetPrivateInsightsService(
+    web::WebState* web_state) {
+  if (!web_state || !IsPrivateInsightsLoggingEnabled()) {
+    return nullptr;
+  }
+  ProfileIOS* profile =
+      ProfileIOS::FromBrowserState(web_state->GetBrowserState());
+  if (!profile) {
+    return nullptr;
+  }
+  return PrivateInsightsServiceFactory::GetForProfile(*profile);
+}
+
+// Logs the cue presentation in `snapshot` to `service` as `event_type`.
+void LogToPrivateInsights(private_insights::PrivateInsightsService* service,
+                          ContextualCueLogEvent::EventType event_type,
+                          const ContextualCueSnapshot& snapshot) {
+  service->LogContextualCueEvent(
+      CreateContextualCueLogEvent(event_type, snapshot));
+}
+
+}  // namespace
+
 ContextualCueingTabHelper::ContextualCueingTabHelper(web::WebState* web_state)
     : web_state_(web_state),
       current_url_(web_state ? web_state->GetLastCommittedURL() : GURL()) {
@@ -139,6 +178,9 @@ ContextualCueingTabHelper::GetActiveCategoryType() const {
 
 bool ContextualCueingTabHelper::RecordCueShown() {
   CHECK(!fet_dismiss_runner_);
+  // Each call starts a new presentation, even if FET rejects it below, so a
+  // later click is never attributed to an earlier one.
+  shown_cue_snapshot_.reset();
   feature_engagement::Tracker* tracker = GetFeatureEngagementTracker();
   if (tracker && !IsIgnoreContextualCueingThresholdsEnabled()) {
     if (!tracker->ShouldTriggerHelpUI(
@@ -164,6 +206,7 @@ bool ContextualCueingTabHelper::RecordCueShown() {
     cap_service->RecordCueShown(web_state_->GetLastCommittedURL(),
                                 active_category_type_);
   }
+  LogCueShownToPrivateInsights();
   return true;
 }
 
@@ -176,6 +219,9 @@ void ContextualCueingTabHelper::RecordCueDismissed() {
     }
   }
 
+  // Only SHOWN and CLICKED are logged to Private Insights on iOS. A dismissal
+  // still ends the presentation, so a later click is not attributed to it.
+  shown_cue_snapshot_.reset();
   DismissFeatureEngagementPromo();
 }
 
@@ -192,6 +238,7 @@ void ContextualCueingTabHelper::RecordCueClicked() {
         feature_engagement::events::kIOSGeminiContextualCueChipUsed);
   }
 
+  LogCueClickedToPrivateInsights();
   DismissFeatureEngagementPromo();
 }
 
@@ -326,6 +373,13 @@ void ContextualCueingTabHelper::DidFinishNavigation(
   }
   current_url_ = url;
 
+  // A navigation to a new page invalidates the cue: `CancelClassification()`
+  // below tears down its infobar or chip, so no click can follow for it. Drop
+  // its snapshot so that a later `RecordCueClicked()` (e.g. from a tap on the
+  // legacy "Ask Gemini" chip, which shares the badge type) is not attributed
+  // to it.
+  shown_cue_snapshot_.reset();
+
   if (!IsGeminiSuggestionsSettingEnabled()) {
     CancelClassification();
     categories_.reset();
@@ -394,6 +448,7 @@ void ContextualCueingTabHelper::CancelClassification() {
     return;
   }
   weak_ptr_factory_.InvalidateWeakPtrs();
+  cancelable_task_tracker_.TryCancelAll();
   log_entry_.reset();
   is_model_execution_in_flight_ = false;
 
@@ -641,10 +696,59 @@ void ContextualCueingTabHelper::InitiateModelExecutionRequest(
   request.add_supported_surfaces(
       optimization_guide::proto::CONTEXTUAL_CUEING_SURFACE_GEMINI_IN_CHROME);
 
-  if (delegate_) {
-    base::flat_set<GURL> seen_urls;
-    seen_urls.insert(expected_url.GetWithoutRef());
+  const size_t max_historical_tabs = kMaxHistoricalTabs.Get();
+  if (max_historical_tabs > 0) {
+    history::HistoryService* history_service =
+        ios::HistoryServiceFactory::GetForProfile(profile);
+    if (history_service) {
+      history::QueryOptions options;
+      options.begin_time = base::Time::Now() - kHistoricalTabsTimeWindow.Get();
+      options.duplicate_policy = history::QueryOptions::REMOVE_ALL_DUPLICATES;
+      options.policy_for_404_visits =
+          history::VisitQuery404sPolicy::kExclude404s;
+      // Only include visits originating from the local device (stored with an
+      // empty `originator_cache_guid`) that are known to sync.
+      options.restrict_to_synced_urls = true;
+      options.client_ids = {""};
+      // Buffer the query limit to account for deduplication against the active
+      // tab, background tabs, and duplicate URL visits.
+      options.max_count =
+          max_historical_tabs * 2 + kMaxBackgroundTabs.Get() + 1;
+      history_service->QueryHistory(
+          std::u16string(), options,
+          base::BindOnce(&ContextualCueingTabHelper::OnHistoryQueryComplete,
+                         weak_ptr_factory_.GetWeakPtr(), expected_url,
+                         std::move(request)),
+          &cancelable_task_tracker_);
+      return;
+    }
+  }
 
+  OnHistoryQueryComplete(expected_url, std::move(request),
+                         history::QueryResults());
+}
+
+void ContextualCueingTabHelper::OnHistoryQueryComplete(
+    const GURL& expected_url,
+    optimization_guide::proto::ContextualCueingRequest request,
+    history::QueryResults results) {
+  if (!web_state_ || web_state_->GetLastCommittedURL() != expected_url) {
+    is_model_execution_in_flight_ = false;
+    return;
+  }
+
+  ProfileIOS* profile =
+      ProfileIOS::FromBrowserState(web_state_->GetBrowserState());
+  CHECK(profile);
+  OptimizationGuideService* service =
+      OptimizationGuideServiceFactory::GetForProfile(profile);
+  if (!service) {
+    is_model_execution_in_flight_ = false;
+    return;
+  }
+
+  base::flat_set<GURL> seen_urls = {expected_url.GetWithoutRef()};
+  if (delegate_) {
     std::vector<BackgroundTabContext> bg_contexts =
         delegate_->GetEligibleBackgroundTabs(web_state_,
                                              kMaxBackgroundTabs.Get());
@@ -656,6 +760,32 @@ void ContextualCueingTabHelper::InitiateModelExecutionRequest(
       auto* tab_context = request.add_background_tabs();
       tab_context->set_url(bg_context.url.spec());
       tab_context->set_title(bg_context.title);
+    }
+  }
+
+  // Kept for `RecordCueShown()`, which logs them as the `recent_pages` of the
+  // cue this request produces.
+  if (GetPrivateInsightsService(web_state_)) {
+    cue_request_background_tabs_.assign(request.background_tabs().begin(),
+                                        request.background_tabs().end());
+  }
+
+  const size_t max_historical_tabs = kMaxHistoricalTabs.Get();
+  if (!results.empty() && max_historical_tabs > 0) {
+    for (const auto& visit : results) {
+      if (static_cast<size_t>(request.historical_tabs_size()) >=
+          max_historical_tabs) {
+        break;
+      }
+      if (!visit.url().is_valid() || !visit.url().SchemeIsHTTPOrHTTPS()) {
+        continue;
+      }
+      if (!seen_urls.insert(visit.url().GetWithoutRef()).second) {
+        continue;
+      }
+      auto* historical_tab = request.add_historical_tabs();
+      historical_tab->set_url(visit.url().spec());
+      historical_tab->set_title(base::UTF16ToUTF8(visit.title()));
     }
   }
 
@@ -751,6 +881,8 @@ void ContextualCueingTabHelper::NotifyContextualCueReceived(
     }
   } else {
     cue_ui_type_.reset();
+    // Only kept for a cue.
+    cue_request_background_tabs_.clear();
   }
   for (Observer& observer : observers_) {
     observer.OnContextualCueReceived(this, cue_);
@@ -763,6 +895,7 @@ void ContextualCueingTabHelper::NotifyContextualCueReceived(
 void ContextualCueingTabHelper::InvalidateCue() {
   active_category_type_.reset();
   has_presented_cue_ = false;
+  cue_request_background_tabs_.clear();
   DismissFeatureEngagementPromo();
   if (!cue_.has_value()) {
     return;
@@ -892,6 +1025,10 @@ void ContextualCueingTabHelper::OnSuggestionsPreferenceChanged() {
   bool is_eligible = IsGeminiSuggestionsSettingEnabled() &&
                      IsUserEligibleForContextualCues(profile);
   if (!is_eligible) {
+    // As on navigation, `CancelClassification()` tears down the cue's infobar
+    // or chip, so no click can follow for it. Ending its presentation also
+    // keeps a later click from being logged after the user opted out.
+    shown_cue_snapshot_.reset();
     CancelClassification();
     categories_.reset();
     page_classification_result_.reset();
@@ -900,6 +1037,38 @@ void ContextualCueingTabHelper::OnSuggestionsPreferenceChanged() {
 
 void ContextualCueingTabHelper::DismissFeatureEngagementPromo() {
   fet_dismiss_runner_.RunAndReset();
+}
+
+// TODO(crbug.com/563212558): Until the omnibox chip renders the cue itself,
+// SHOWN is logged when the infobar or chip is requested rather than rendered,
+// and taps on the legacy "Ask Gemini" chip, which also call
+// `RecordCueClicked()`, can be logged as CLICKED of a cue shown on the same
+// page.
+void ContextualCueingTabHelper::LogCueShownToPrivateInsights() {
+  private_insights::PrivateInsightsService* service =
+      GetPrivateInsightsService(web_state_);
+  if (!service || !cue_.has_value()) {
+    return;
+  }
+  shown_cue_snapshot_ =
+      std::make_unique<ContextualCueSnapshot>(CreateContextualCueSnapshot(
+          web_state_, *cue_, cue_request_background_tabs_));
+  LogToPrivateInsights(service, ContextualCueLogEvent::SHOWN,
+                       *shown_cue_snapshot_);
+}
+
+void ContextualCueingTabHelper::LogCueClickedToPrivateInsights() {
+  std::unique_ptr<ContextualCueSnapshot> snapshot =
+      std::exchange(shown_cue_snapshot_, nullptr);
+  if (!snapshot) {
+    return;
+  }
+  private_insights::PrivateInsightsService* service =
+      GetPrivateInsightsService(web_state_);
+  if (!service) {
+    return;
+  }
+  LogToPrivateInsights(service, ContextualCueLogEvent::CLICKED, *snapshot);
 }
 
 }  // namespace contextual_cueing

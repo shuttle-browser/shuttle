@@ -12,7 +12,7 @@ import "ui/gfx/geometry/mojom/geometry.mojom";
 import "url/mojom/url.mojom";
 
 // The form control types supported by Autofill: a subset of
-// blink::mojom::FormControlType plus kContentEditable.
+// blink::mojom::FormControlType plus kContentEditable and kSyntheticSelectOne.
 // Do not modify the integer values because they are used UKM metrics.
 enum FormControlType {
   kContentEditable = 0,
@@ -32,6 +32,9 @@ enum FormControlType {
   kTextArea = 14,
   kInputDate = 15,
   // deprecated: kInputHiddenEmailVerification = 16,
+  // A form control behaving like select-one, but is not implemented using
+  // <select> (often implemented through divs and click handlers).
+  kSyntheticSelectOne = 17,
 };
 
 // The list of all HTML autocomplete field mode hints supported by Chrome.
@@ -262,22 +265,23 @@ struct FormFieldData {
 
   // From which source the label is inferred.
   enum LabelSource {
-    kUnknown,           // No label.
-    kLabelTag,          // <label> sibling/ancestor.
-    kPTag,              // <p> sibling.
-    kDivTable,          // <div> ancestor.
-    kTdTag,             // <td> sibling.
-    kDdTag,             // <dd> sibling.
-    kLiTag,             // <li> ancestor.
-    kPlaceHolder,       // placeholder attribute.
-    kAriaLabel,         // aria-label attribute.
-    kCombined,          // Text node sibling (includes <b>, etc).
-    kValue,             // value attribute.
-    kForId,             // <label> for-attribute that links to an control
-                        // via its id attribute.
-    kForName,           // <label> for-attribute that links to an control
-                        // via its name attribute.
-    kOverlayingLabel,   // Succeeding DOM node overlaying the input.
+    kUnknown,                  // No label.
+    kLabelTag,                 // <label> sibling/ancestor.
+    kPTag,                     // <p> sibling.
+    kDivTable,                 // <div> ancestor.
+    kTdTag,                    // <td> sibling.
+    kDdTag,                    // <dd> sibling.
+    kLiTag,                    // <li> ancestor.
+    kPlaceHolder,              // placeholder attribute.
+    kAriaLabel,                // aria-label attribute.
+    kCombined,                 // Text node sibling (includes <b>, etc).
+    kValue,                    // value attribute.
+    kForId,                    // <label> for-attribute that links to an control
+                               // via its id attribute.
+    kForName,                  // <label> for-attribute that links to an control
+                               // via its name attribute.
+    kOverlayingLabel,          // Succeeding DOM node overlaying the input.
+    kCustomFormControlScript,  // Provided by a custom form control script.
   };
 
   mojo_base.mojom.String16 label;
@@ -629,12 +633,21 @@ enum JavaScriptModificationType {
   kClearing = 3,
   // The field was non-empty and the old value is a prefix of the new value.
   kPrefixCompletion = 4,
+  // The field was non-empty and the old value is a non-prefix substring of the
+  // new value.
+  kSubstringCompletion = 5,
 };
 
-// Represents a form field modification performed by custom JavaScript autofill.
+// Represents a form field modification performed by custom JavaScript autofill
+// during a detection window.
 struct JavaScriptFieldModification {
   FieldRendererId field_id;
+  // The net modification type comparing the field's value prior to the first
+  // JavaScript modification in the window against its final value at the end of
+  // the window.
   JavaScriptModificationType modification_type;
+  // The timestamp of the first JavaScript modification to this field during the
+  // window.
   mojo_base.mojom.TimeTicks timestamp;
 };
 

@@ -43,10 +43,13 @@ import android.view.ViewConfiguration;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import androidx.test.espresso.Espresso;
 import androidx.test.espresso.ViewInteraction;
+import androidx.test.espresso.matcher.RootMatchers;
 import androidx.test.filters.LargeTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
+import org.hamcrest.Matchers;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -96,7 +99,7 @@ import java.util.concurrent.TimeoutException;
 /** End-to-end test for the extension toolbar on Desktop Android. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE, ChromeSwitches.TEST_TYPE})
+@CommandLineFlags.Add(ChromeSwitches.TEST_TYPE)
 // @ImportantFormFactors may look redundant, but is actually essential to make this test run on CQ
 // because android-desktop CQ builders run chrome_public_test_apk_desktop that only covers tests
 // specific to desktop.
@@ -258,7 +261,7 @@ public class ExtensionsToolbarTest {
         ViewUtils.onViewWaiting(withId(R.id.extensions_menu_site_settings_toggle)).perform(click());
 
         // Close the menu so Espresso can find views in the activity window again.
-        androidx.test.espresso.Espresso.pressBack();
+        Espresso.pressBack();
 
         // Check the button state after blocking all extensions.
         ViewUtils.onViewWaiting(
@@ -622,7 +625,7 @@ public class ExtensionsToolbarTest {
         ViewUtils.onViewWaiting(withId(R.id.extensions_menu_site_settings_toggle)).perform(click());
 
         // Close the menu so Espresso can find views in the activity window again.
-        androidx.test.espresso.Espresso.pressBack();
+        Espresso.pressBack();
 
         // Check the button state after blocking all extensions.
         ViewUtils.onViewWaiting(
@@ -1221,12 +1224,11 @@ public class ExtensionsToolbarTest {
         CriteriaHelper.pollInstrumentationThread(
                 () -> {
                     try {
-                        androidx.test.espresso.Espresso.onView(
-                                        withText(R.string.extensions_pinned_by_default_iph_body))
+                        Espresso.onView(withText(R.string.extensions_pinned_by_default_iph_body))
                                 .inRoot(
-                                        androidx.test.espresso.matcher.RootMatchers.withDecorView(
+                                        RootMatchers.withDecorView(
                                                 not(
-                                                        org.hamcrest.Matchers.is(
+                                                        Matchers.is(
                                                                 mActivityTestRule
                                                                         .getActivity()
                                                                         .getWindow()

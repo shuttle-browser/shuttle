@@ -21,7 +21,6 @@
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/account_info.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
-#include "components/sync/base/features.h"
 #include "components/sync/test/test_sync_service.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "google_apis/gaia/gaia_id.h"
@@ -317,19 +316,11 @@ TEST_F(CollaborationServiceImplTest, SyncStatusChanges) {
   EXPECT_EQ(service_->GetServiceStatus().sync_status,
             SyncStatus::kSyncWithoutTabGroup);
 
-  if (syncer::IsReplaceSyncPromosWithSignInPromosEnabled()) {
-    // If sync-the-feature is not required, kNotSyncing is never happening.
-    test_sync_service_->SetSignedOut();
-    test_sync_service_->FireStateChanged();
-    EXPECT_EQ(service_->GetServiceStatus().sync_status,
-              SyncStatus::kSyncWithoutTabGroup);
-  } else {
-    // Sign out removes sync consent.
-    test_sync_service_->SetSignedOut();
-    test_sync_service_->FireStateChanged();
-    EXPECT_EQ(service_->GetServiceStatus().sync_status,
-              SyncStatus::kNotSyncing);
-  }
+  // If sync-the-feature is not required, kNotSyncing is never happening.
+  test_sync_service_->SetSignedOut();
+  test_sync_service_->FireStateChanged();
+  EXPECT_EQ(service_->GetServiceStatus().sync_status,
+            SyncStatus::kSyncWithoutTabGroup);
 }
 
 TEST_F(CollaborationServiceImplTest, SyncTypeDisabledByEnterprise) {
@@ -354,9 +345,6 @@ TEST_F(CollaborationServiceImplTest, SyncTypeDisabledByEnterprise) {
   EXPECT_EQ(service_->GetServiceStatus().sync_status,
             SyncStatus::kSyncDisabledByEnterprise);
 #else
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(syncer::kReplaceSyncPromosWithSignInPromos);
-
   // Set up a policy to disable Saved Tab Groups.
   test_sync_service_->GetUserSettings()->SetTypeIsManagedByPolicy(
       syncer::UserSelectableType::kSavedTabGroups, true);
@@ -367,9 +355,6 @@ TEST_F(CollaborationServiceImplTest, SyncTypeDisabledByEnterprise) {
 }
 
 TEST_F(CollaborationServiceImplTest, SyncDisabledByEnterprise) {
-  base::test::ScopedFeatureList feature_list;
-  feature_list.InitAndEnableFeature(syncer::kReplaceSyncPromosWithSignInPromos);
-
   // Disable sync by enterprise policy.
   test_sync_service_->SetAllowedByEnterprisePolicy(false);
   test_sync_service_->FireStateChanged();

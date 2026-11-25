@@ -11,7 +11,7 @@
 #include "ui/events/event_utils.h"
 #include "ui/events/platform/x11/x11_event_source.h"
 #include "ui/gfx/native_ui_types.h"
-#include "ui/gfx/x/atom_cache.h"
+#include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/xlib_support.h"
 #include "ui/gfx/x/xproto.h"
 #include "ui/gtk/gtk_compat.h"
@@ -43,7 +43,7 @@ void GtkUiPlatformX11::OnInitialized() {
 
 GdkWindow* GtkUiPlatformX11::GetGdkWindow(
     gfx::AcceleratedWidget window_id) const {
-  DCHECK(!gtk::GtkCheckVersion(4));
+  CHECK(!gtk::GtkCheckVersion(4), base::NotFatalUntil::M163);
   GdkDisplay* display = gdk_display_get_default();
   GdkWindow* gdk_window = gdk_x11_window_lookup_for_display(
       display, static_cast<uint32_t>(window_id));
@@ -69,9 +69,9 @@ void GtkUiPlatformX11::SetGtkWidgetTransientFor(GtkWidget* widget,
           : gdk_x11_window_get_xid(gtk_widget_get_window(widget)));
   connection_->SetProperty(x11_window, x11::Atom::WM_TRANSIENT_FOR,
                            x11::Atom::WINDOW, parent);
-  connection_->SetProperty(x11_window, x11::GetAtom("_NET_WM_WINDOW_TYPE"),
-                           x11::Atom::ATOM,
-                           x11::GetAtom("_NET_WM_WINDOW_TYPE_DIALOG"));
+  connection_->SetProperty(
+      x11_window, connection_->GetAtom("_NET_WM_WINDOW_TYPE"), x11::Atom::ATOM,
+      connection_->GetAtom("_NET_WM_WINDOW_TYPE_DIALOG"));
 
   ui::LinuxUiDelegate::GetInstance()->SetTransientWindowForParent(
       parent, static_cast<gfx::AcceleratedWidget>(x11_window));
@@ -83,9 +83,9 @@ void GtkUiPlatformX11::ClearTransientFor(gfx::AcceleratedWidget parent) {
 }
 
 void GtkUiPlatformX11::ShowGtkWindow(GtkWindow* window) {
-  // We need to call gtk_window_present after making the widgets visible to make
-  // sure window gets correctly raised and gets focus.
-  DCHECK(ui::X11EventSource::HasInstance());
+  // gtk_window_present_with_time() also maps `window`, so it gets correctly
+  // raised and gets focus.
+  CHECK(ui::X11EventSource::HasInstance(), base::NotFatalUntil::M163);
   gtk_window_present_with_time(
       window,
       static_cast<uint32_t>(ui::X11EventSource::GetInstance()->GetTimestamp()));

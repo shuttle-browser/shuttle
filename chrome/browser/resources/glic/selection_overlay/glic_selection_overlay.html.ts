@@ -63,31 +63,46 @@ export function getHtml(this: GlicSelectionOverlayElement) {
       this.enableSelectionOverlayPromptBox ? html`
       <div id="floatingPromptContainer"
           ?hidden="${!this.showFloatingPrompt}"
+          ?above-selection="${this.promptAboveSelection}"
           style="${this.floatingPromptStyle}">
         ${this.enableSelectionOverlayPromptBox ? html`
-          <div class="searchbox-pill">
-            <div class="sparkle-icon">
-              <img src="/spark.svg" width="20" height="20">
-            </div>
-            <input id="promptInput"
-                type="text"
-                placeholder="$i18n{askGemini}"
-                aria-label="$i18n{askGemini}"
-                @input="${this.onPromptInput}"
-                @keydown="${this.onInputKeydown}"
-                @pointerdown="${this.onPromptPointerdown}"
-                autocomplete="off">
-            <cr-icon-button id="submitPromptButton"
-                ?hidden="${!this.hasPromptText}"
-                title="$i18n{submitPrompt}"
-                aria-label="$i18n{submitPrompt}"
-                @click="${this.onSubmitPromptClick}"
+          <div class="searchbox-row">
+            <div class="searchbox-pill"
+                @click="${this.onSearchboxPillClick}"
                 @pointerdown="${this.onPromptPointerdown}">
-            </cr-icon-button>
+              <div class="sparkle-icon">
+                <img src="/spark.svg">
+              </div>
+              <input id="promptInput"
+                  type="text"
+                  placeholder="$i18n{askGemini}"
+                  aria-label="$i18n{askGemini}"
+                  @input="${this.onPromptInput}"
+                  @keydown="${this.onInputKeydown}"
+                  autocomplete="off">
+              <cr-icon-button id="submitPromptButton"
+                  ?hidden="${!this.hasPromptText}"
+                  ?disabled="${!this.pageContextReceived}"
+                  title="${this.getSubmitPromptTitle()}"
+                  aria-label="$i18n{submitPrompt}"
+                  @click="${this.onSubmitPromptClick}">
+              </cr-icon-button>
+            </div>
+            ${this.enableSelectionOverlayDogfoodFeedback ? html`
+              <cr-button id="dogfoodFeedbackButton"
+                  class="dogfood-feedback-button"
+                  title="$i18n{sendFeedback}"
+                  aria-label="$i18n{sendFeedback}"
+                  @click="${this.onDogfoodFeedbackClick}"
+                  @pointerdown="${this.onPromptPointerdown}">
+                <div class="dogfood-feedback-icon"></div>
+              </cr-button>
+            ` : ''}
           </div>
         ` : ''}
 
         <div class="action-chips-row"
+            ?no-prompt-box="${!this.enableSelectionOverlayPromptBox}"
             @pointerdown="${this.onPromptPointerdown}">
           ${this.suggestedActions.map((action, index) => html`
             <cr-button class="action-chip"
@@ -101,7 +116,8 @@ export function getHtml(this: GlicSelectionOverlayElement) {
               <span class="chip-label">${action.title}</span>
             </cr-button>
           `)}
-          ${!this.enableSelectionOverlayPromptBox ? html`
+          ${!this.enableSelectionOverlayPromptBox &&
+            this.suggestedActions.length > 0 ? html`
             <cr-button id="settingsButton"
                 class="settings-button"
                 title="$i18n{settings}"
@@ -109,6 +125,15 @@ export function getHtml(this: GlicSelectionOverlayElement) {
                 @click="${this.onSettingsClick}">
               <div class="settings-icon"></div>
             </cr-button>
+            ${this.enableSelectionOverlayDogfoodFeedback ? html`
+              <cr-button id="dogfoodFeedbackButton"
+                  class="dogfood-feedback-button"
+                  title="$i18n{sendFeedback}"
+                  aria-label="$i18n{sendFeedback}"
+                  @click="${this.onDogfoodFeedbackClick}">
+                <div class="dogfood-feedback-icon"></div>
+              </cr-button>
+            ` : ''}
           ` : ''}
         </div>
 

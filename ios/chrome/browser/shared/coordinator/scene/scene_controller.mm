@@ -51,6 +51,7 @@
 #import "ios/chrome/app/tests_hook.h"
 #import "ios/chrome/browser/app_store_rating/model/app_store_rating_scene_agent.h"
 #import "ios/chrome/browser/app_store_rating/model/features.h"
+#import "ios/chrome/browser/authentication/account_switching_promo/model/account_switching_promo_scene_agent.h"
 #import "ios/chrome/browser/authentication/age_mismatch_signout/coordinator/signin_account_capabilities_scene_agent.h"
 #import "ios/chrome/browser/authentication/signin/fullscreen_promo/model/fullscreen_signin_promo_scene_agent.h"
 #import "ios/chrome/browser/authentication/ui_bundled/change_profile/change_profile_authentication_continuation.h"
@@ -118,6 +119,7 @@
 #import "ios/chrome/browser/share_extension/model/share_extension_scene_agent.h"
 #import "ios/chrome/browser/shared/coordinator/default_browser_promo/non_modal_default_browser_promo_scheduler_scene_agent.h"
 #import "ios/chrome/browser/shared/coordinator/layout_guide/layout_guide_scene_agent.h"
+#import "ios/chrome/browser/shared/coordinator/scene/chrome_connection_options.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_controller+OTRProfileDeletion.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_controller_testing.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
@@ -197,6 +199,7 @@
 #import "ui/base/device_form_factor.h"
 #import "ui/base/l10n/l10n_util.h"
 #import "ui/base/l10n/l10n_util_mac.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #import "ui/base/page_transition_types.h"
 
 namespace {
@@ -480,8 +483,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
         agentFromScene:self.sceneState] logUserEnteredAppViaFirstPartyScheme];
   }
 
-  Browser* mainBrowser =
-      self.sceneState.browserProviderInterface.mainBrowserProvider.browser;
+  Browser* mainBrowser = self.sceneState.browserProviderInterface.mainBrowser;
   if (!mainBrowser) {
     return;
   }
@@ -793,7 +795,8 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
     return;
   }
 
-  if (urlLoadParams.disposition == WindowOpenDisposition::kSwitchToTab) {
+  if (urlLoadParams.disposition ==
+      ui::mojom::WindowOpenDisposition::kSwitchToTab) {
     // Check if it's already the displayed tab and no switch is necessary
     if (currentWebState &&
         currentWebState->GetVisibleURL() == urlLoadParams.web_params.url) {
@@ -836,7 +839,8 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
 
   if (shouldOpenNewTab) {
     [targetBVC appendTabAddedCompletion:tabOpenedCompletion];
-    urlLoadParams.disposition = WindowOpenDisposition::kNewForegroundTab;
+    urlLoadParams.disposition =
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab;
     urlLoadParams.in_incognito = targetMode == ApplicationMode::INCOGNITO;
     UrlLoadingBrowserAgent::FromBrowser(targetInterface.browser)
         ->Load(urlLoadParams);
@@ -844,7 +848,7 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
   }
 
   // Otherwise, load `urlLoadParams` in the current tab.
-  urlLoadParams.disposition = WindowOpenDisposition::kCurrentTab;
+  urlLoadParams.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   UrlLoadingBrowserAgent::FromBrowser(targetInterface.browser)
       ->Load(urlLoadParams);
   if (tabOpenedCompletion) {
@@ -1038,7 +1042,8 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
       BOOL isURLEmpty = urlLoadParams.web_params.url.is_empty();
       BOOL isBrowserEmpty = targetInterface.browser->GetWebStateList()->empty();
       BOOL shouldAvoidNewTab =
-          (urlLoadParams.disposition == WindowOpenDisposition::kSwitchToTab) ||
+          (urlLoadParams.disposition ==
+           ui::mojom::WindowOpenDisposition::kSwitchToTab) ||
           (self.NTPActionAfterTabSwitcherDismissal == OPEN_LATEST_TAB);
 
       if (isURLEmpty && shouldAvoidNewTab && !isBrowserEmpty) {
@@ -1440,6 +1445,9 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
       if (accountParam.length == 0) {
         continue;
       }
+      // TODO(crbug.com/576575308): `FindGaiaIdForGoogleOneAccount` does not
+      // filter by `kRestrictAccountsToPatterns`, so `newGaiaID` may belong to a
+      // restricted account.
       newGaiaID = FindGaiaIdForGoogleOneAccount(accountParam);
       if (newGaiaID.empty()) {
         continue;
@@ -2054,6 +2062,11 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
   PolicyWatcherBrowserAgent* policyWatcherAgent =
       PolicyWatcherBrowserAgent::FromBrowser(self.mainInterface.browser);
   policyWatcherAgent->Initialize(policyChangeCommandsHandler);
+
+  if (AccountSwitchingPromoSceneAgent* accountSwitchingPromoAgent =
+          [AccountSwitchingPromoSceneAgent agentWithProfile:profile]) {
+    [sceneState addAgent:accountSwitchingPromoAgent];
+  }
 
   if (ShouldPromoManagerDisplayPromos()) {
     [sceneState addAgent:[[PromosManagerSceneAgent alloc]
@@ -2689,7 +2702,6 @@ UrlLoadParams UpdateParamsForDinoGame(UrlLoadParams params) {
   }
 }
 
-// TODO(crbug.com/526644569): Handle user waiting for page to load.
 // Starts the Gemini flow when an App Switcher intent occurs.
 - (void)startGeminiFlowForAppSwitcherIntent {
   CHECK(IsAppSwitcherAISummarizationEnabled());

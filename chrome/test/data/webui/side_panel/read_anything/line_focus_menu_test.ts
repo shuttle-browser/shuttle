@@ -5,47 +5,37 @@
 import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 
 import type {LineFocusMenuElement} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
-import {LINE_FOCUS_FEATURE_NAME, LineFocusMovement, LineFocusStyle, ToolbarEvent, userEducationProxyFactory} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {LineFocusMovement, LineFocusStyle, ToolbarEvent} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {loadTimeData} from 'chrome-untrusted://resources/js/load_time_data.js';
-import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
-import {TestUserEducationMixedTrustHandler} from 'chrome-untrusted://webui-test/test_user_education_mixed_trust_handler.js';
+import {assertEquals, assertFalse, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome-untrusted://webui-test/test_util.js';
 
 import {setupTestEnvironment, stubAnimationFrame} from './common.js';
 
 suite('LineFocusMenuElement', () => {
   let lineFocusMenu: LineFocusMenuElement;
-  let userEducationHandler: TestUserEducationMixedTrustHandler;
 
   setup(() => {
     setupTestEnvironment();
-    userEducationHandler = new TestUserEducationMixedTrustHandler();
-    userEducationProxyFactory.setInstance({handler: userEducationHandler});
-
     lineFocusMenu = document.createElement('line-focus-menu');
     document.body.appendChild(lineFocusMenu);
   });
 
-  test('has header shortcut', () => {
-    assertEquals(
-        loadTimeData.getString('lineFocusShortcutLabel'),
-        lineFocusMenu.$.menu.menuGroups[0]!.header.shortcut);
-  });
-
-  test('notifies of feature use if enabled on close', async () => {
-    lineFocusMenu.close();
-    assertEquals(
-        0, userEducationHandler.getCallCount('notifyNewBadgeFeatureUsed'));
-
-    lineFocusMenu.lineFocusEnabled = true;
+  test('has header shortcut and exposes it in group aria-label', async () => {
     await microtasksFinished();
-    lineFocusMenu.close();
-    assertEquals(userEducationProxyFactory, lineFocusMenu.proxy);
+    const expectedLabel = loadTimeData.getString('lineFocusLabel');
+    const expectedShortcut = loadTimeData.getString('lineFocusShortcutLabel');
+
+    assertEquals(expectedLabel, lineFocusMenu.$.menu.label);
     assertEquals(
-        1, userEducationHandler.getCallCount('notifyNewBadgeFeatureUsed'));
-    assertDeepEquals(
-        [LINE_FOCUS_FEATURE_NAME],
-        userEducationHandler.getArgs('notifyNewBadgeFeatureUsed'));
+        expectedShortcut, lineFocusMenu.$.menu.menuGroups[0]!.header.shortcut);
+
+    const group = lineFocusMenu.$.menu.$.lazyMenu.get()
+                      .querySelector<HTMLElement>('.menu-group');
+    assertTrue(!!group);
+    assertEquals(
+        `${expectedLabel} (${expectedShortcut})`,
+        group.getAttribute('aria-label'));
   });
 
   test('line focus style prop update changes selected items', async () => {
@@ -136,6 +126,18 @@ suite('LineFocusMenuElement', () => {
       lineFocusMenu = document.createElement('line-focus-menu');
       document.body.appendChild(lineFocusMenu);
       await microtasksFinished();
+    });
+
+    test('uses toolsLabel for menu label and keeps shortcut in group', () => {
+      assertEquals(
+          loadTimeData.getString('toolsLabel'), lineFocusMenu.$.menu.label);
+      const group = lineFocusMenu.$.menu.$.lazyMenu.get()
+                        .querySelector<HTMLElement>('.menu-group');
+      assertTrue(!!group);
+      assertEquals(
+          `${loadTimeData.getString('lineFocusLabel')} (${
+              loadTimeData.getString('lineFocusShortcutLabel')})`,
+          group.getAttribute('aria-label'));
     });
 
     test(

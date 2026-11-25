@@ -74,8 +74,10 @@ class DataProtectionTabHelper
 
   static constexpr char kScreenshotBlockSourceHistogram[] =
       "IOS.Enterprise.DataProtection.ScreenshotBlock.Source";
-  static constexpr char kScreenshotBlockLookupSuccessHistogram[] =
-      "IOS.Enterprise.DataProtection.ScreenshotBlock.Lookup.Success";
+  static constexpr char kRealTimeURLLookupSuccessHistogram[] =
+      "IOS.Enterprise.DataProtection.RealTimeURL.Lookup.Success";
+  static constexpr char kWatermarkTriggeredHistogram[] =
+      "IOS.Enterprise.DataProtection.Watermark.Triggered";
 
   // Adds/removes observers to listen for data protection state changes.
   void AddObserver(DataProtectionTabHelperObserver* observer);
@@ -94,10 +96,10 @@ class DataProtectionTabHelper
     return committed_navigation_.watermark_text;
   }
 
-  // Sets the watermark text for the tab for testing.
-  void SetWatermarkTextForTesting(const std::string& watermark_text) {
-    committed_navigation_.watermark_text = watermark_text;
-  }
+  // Applies `watermark_text` to the committed page for testing, as if it came
+  // from an enterprise policy verdict: the watermark is shown, updated or
+  // removed (if empty) and observers are notified.
+  void SetWatermarkTextForTesting(const std::string& watermark_text);
 
   // web::WebStateObserver:
   void WasShown(web::WebState* web_state) override;

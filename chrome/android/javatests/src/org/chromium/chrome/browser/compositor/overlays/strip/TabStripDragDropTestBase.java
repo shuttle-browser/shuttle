@@ -24,7 +24,6 @@ import org.junit.Rule;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.Token;
 import org.chromium.base.test.util.ApplicationTestUtils;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.MinAndroidSdkLevel;
@@ -33,7 +32,6 @@ import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.compositor.overlays.strip.reorder.TabStripDragHandler;
 import org.chromium.chrome.browser.dragdrop.ChromeDropDataAndroid;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.multiwindow.MultiWindowTestHelper;
 import org.chromium.chrome.browser.multiwindow.MultiWindowUtils;
 import org.chromium.chrome.browser.tasks.tab_management.TabDragHandlerBase;
@@ -48,7 +46,6 @@ import java.util.ArrayList;
 import java.util.List;
 
 /** Base class for Tab Strip drag-and-drop integration tests. */
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Restriction(DeviceFormFactor.TABLET_OR_DESKTOP)
 @MinAndroidSdkLevel(Build.VERSION_CODES.S)
 @DoNotBatch(reason = "This test suite tests multi-window instances.")
@@ -110,8 +107,10 @@ public abstract class TabStripDragDropTestBase {
     protected ChromeTabbedActivity setupSourceWindow(int additionalTabs) {
         ChromeTabbedActivity sourceActivity = mActivityTestRule.getActivity();
         if (additionalTabs > 0) {
-            ChromeTabUtils.newTabsFromMenu(
-                    InstrumentationRegistry.getInstrumentation(), sourceActivity, additionalTabs);
+            for (int i = 0; i < additionalTabs; i++) {
+                ChromeTabUtils.newTabFromMenu(
+                        InstrumentationRegistry.getInstrumentation(), sourceActivity);
+            }
         }
         TabStripUtils.settleDownCompositor(mStripLayoutHelper);
         return sourceActivity;
@@ -126,8 +125,10 @@ public abstract class TabStripDragDropTestBase {
         StripLayoutHelper destHelper = TabStripTestUtils.getActiveStripLayoutHelper(destActivity);
         TabStripUtils.settleDownCompositor(destHelper);
         if (additionalTabs > 0) {
-            ChromeTabUtils.newTabsFromMenu(
-                    InstrumentationRegistry.getInstrumentation(), destActivity, additionalTabs);
+            for (int i = 0; i < additionalTabs; i++) {
+                ChromeTabUtils.newTabFromMenu(
+                        InstrumentationRegistry.getInstrumentation(), destActivity);
+            }
             TabStripUtils.settleDownCompositor(destHelper);
         }
         return destActivity;
@@ -261,6 +262,7 @@ public abstract class TabStripDragDropTestBase {
                             .onDrag(
                                     destActivity.findViewById(R.id.control_container),
                                     dragEndEvent);
+                    TabStripTestUtils.getActiveStripLayoutHelper(destActivity).finishAnimations();
                 });
     }
 

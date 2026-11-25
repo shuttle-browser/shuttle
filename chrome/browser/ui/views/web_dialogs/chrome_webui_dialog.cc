@@ -13,14 +13,13 @@
 #include "base/memory/ptr_util.h"
 #include "base/task/single_thread_task_runner.h"
 #include "chrome/browser/ui/tabs/public/tab_dialog_manager.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "components/constrained_window/constrained_window_views.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
 #include "ui/base/mojom/ui_base_types.mojom-shared.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/display/display.h"
 #include "ui/display/display_observer.h"
 #include "ui/display/screen.h"
@@ -86,9 +85,8 @@ std::unique_ptr<views::Widget> ChromeWebUIDialog::Show(
     // visibility with the tab, closes on navigate and detach, suppresses input
     // on the page underneath, and maintains CanShowModalUI(). A bare child
     // widget looks modal and blocks nothing.
-    tabs::TabFeatures* features = spec.parent_tab->GetTabFeatures();
     tabs::TabDialogManager* manager =
-        features ? features->tab_dialog_manager() : nullptr;
+        tabs::TabDialogManager::From(spec.parent_tab.get());
     CHECK(manager) << "kChild dialogs require a tab with a TabDialogManager";
     widget = manager->CreateTabScopedDialog(dialog.release());
   } else if (spec.modal_type == ui::mojom::ModalType::kWindow ||
@@ -195,7 +193,7 @@ void ChromeWebUIDialog::ShowWidget() {
     }
 
     tabs::TabDialogManager* manager =
-        spec_.parent_tab->GetTabFeatures()->tab_dialog_manager();
+        tabs::TabDialogManager::From(spec_.parent_tab.get());
     // The TabDialogManager owns visibility once the dialog is registered, so
     // Widget::Show() would bypass its bookkeeping and a repeat ShowUI() must
     // not register twice.
@@ -260,7 +258,7 @@ void ChromeWebUIDialog::ResizeDueToAutoResize(content::WebContents* source,
   if (spec_.modal_type == ui::mojom::ModalType::kChild) {
     if (spec_.parent_tab) {
       tabs::TabDialogManager* manager =
-          spec_.parent_tab->GetTabFeatures()->tab_dialog_manager();
+          tabs::TabDialogManager::From(spec_.parent_tab.get());
       if (manager->IsDialogManaged(GetWidget())) {
         manager->UpdateModalDialogBounds();
       }
@@ -340,7 +338,7 @@ content::WebContents* ChromeWebUIDialog::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {

@@ -1037,6 +1037,12 @@ struct CaptureRegionParams {
   // @glic_type string
   int32 tab_id;
   TabContextOptions options;
+
+  // Set when this capture answers an invoke that asked the panel to take over
+  // the user's selection (see InvocationPayload). Lets the browser tell it
+  // apart from the user starting a capture.
+  // @glic_optional
+  bool capture_region_handoff;
 };
 
 // Interface for annotation-related functionality, used by the web client.
@@ -1134,6 +1140,24 @@ struct SendTabToSelfDevice {
   // The time when the device last updated its sync metadata.
   mojo_base.mojom.Time? last_updated_time;
 };
+
+// @generate glic_api
+// Types of multi-tab sharing tooltip impressions.
+// LINT.IfChange(TooltipImpressionType)
+[Stable, Extensible]
+enum TooltipImpressionType {
+  // Default value for unknown or unrecognized tooltip variants.
+  [Default] kUnknown = 0,
+  // Step 1: Initial contextual tooltip shown when a tab is first shared.
+  kTooltip1 = 1,
+  // Step 2 (Copy A): Follow-up tooltip highlighting multi-tab comparison.
+  kTooltip2a = 2,
+  // Step 2 (Copy B): Follow-up tooltip highlighting managing shared tabs.
+  kTooltip2b = 3,
+  // Step 3: Tooltip shown inside the tab picker guiding multi-tab selection.
+  kTooltip3 = 4,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicTooltipMultiTabImpression)
 
 // Access to the browser from the web client by proxy through the WebUI.
 // A single WebClientHandler will provide access to the browser for only
@@ -1396,6 +1420,10 @@ interface WebClientHandler {
   // Called when the opt-in CTA is shown.
   OnOptinImpression();
 
+  // Called when the web client's main prompt input field receives focus
+  // after opening or warm-reopening the panel.
+  OnInputFocused();
+
   // Called when the user submits input.
   OnUserInputSubmitted(
       WebClientMode mode, [MinVersion=1] PromptType prompt_type);
@@ -1501,6 +1529,19 @@ interface WebClientHandler {
   // Returns the list of target devices available for Send Tab to Self.
   [RuntimeFeature=glic.mojom.features.kGlicSendTabToSelf]
   GetSendTabToSelfDevices() => (array<SendTabToSelfDevice> devices);
+
+  // Reports when a multi-tab sharing tooltip is shown to the user in the web
+  // client. Records the impression timestamp to track whether the user closes
+  // the Glic panel or floaty window within 10 seconds of the tooltip
+  // impression.
+  // `impression`: The specific tooltip step and copy variant shown.
+  OnTooltipImpression(TooltipImpressionType impression);
+
+  // Reports when a currently shown multi-tab sharing tooltip is hidden (e.g.
+  // close button, click outside, timeout, typing, or engaging with the
+  // tooltip) so Chrome stops considering it visible for ClosedWhileShown
+  // tracking.
+  OnTooltipHidden();
 };
 
 // Accesses zero state suggestions from the web client.
@@ -1651,6 +1692,15 @@ struct ExperimentalTriggeringPayload {
   array<uint8> payment_metadata;
 };
 
+// @generate glic_api
+// Payload for invoking region capture.
+struct CaptureRegionPayload {
+  // Set when the browser asks the client to start a capture so the panel can
+  // take over a region selection the user already started on the page. Pass
+  // it back in CaptureRegionParams when starting that capture.
+  bool capture_region_handoff;
+};
+
 union InvocationPayload {
   UniversalCartPayload universal_cart;
 
@@ -1659,6 +1709,8 @@ union InvocationPayload {
 
   [MinVersion=4]
   ExperimentalTriggeringPayload experimental_triggering;
+
+  CaptureRegionPayload capture_region;
 };
 
 // @generate glic_api
@@ -1696,7 +1748,10 @@ struct InvokeOptions {
   // Source-specific payload for the invocation.
   InvocationPayload? payload;
 
-  // The ID of the tab to actuate on, if actuationTarget is kTargetSurface.
+  // TODO(b/582448011): Replace actuation_target and actuation_tab_id with one
+  // union that matches Target::actuation_target in glic_invoke_options.h.
+  // The ID of the ActorSurface (which can be a tab or a headless surface), to
+  // actuate on, if actuation_target == kTargetSurface.
   [MinVersion=1]
   int32? actuation_tab_id;
 };
@@ -1844,6 +1899,7 @@ union AdditionalContextPart {
   AnnotatedPageData annotated_page_data;
   PdfDocumentData pdf_document_data;
   TabContextResult tab_context;
+  // @deprecated Chrome no longer sends `region`. Use `pending_region` instead.
   CapturedRegion region;
   PendingCapturedRegion pending_region;
   ParentConversationMetadata parent_conversation_metadata;

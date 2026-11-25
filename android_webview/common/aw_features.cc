@@ -96,6 +96,10 @@ const base::FeatureParam<double> kWebViewCodeCacheSizeLimitMultiplier{
     &kWebViewCacheSizeLimitDerivedFromAppCacheQuota,
     "WebViewCodeCacheSizeLimitMultiplier", 0.5};
 
+// Enables access to the request body for content restriction in WebView.
+BASE_FEATURE(kWebViewContentRestrictionRequestBodySupport,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Enables content restriction support in WebView.
 BASE_FEATURE(kWebViewContentRestrictionSupport,
              base::FEATURE_DISABLED_BY_DEFAULT);
@@ -294,7 +298,7 @@ BASE_FEATURE(kWebViewMoveWorkToProviderInitThreadPool,
 // When enabled, accessing multi-profile APIs skips automatic initialization
 // of the Default profile during startup.
 BASE_FEATURE(kWebViewMultiProfileSkipDefaultProfile,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Kill switch for the WebView Navigate method.
 BASE_FEATURE(kWebViewNavigate, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -412,7 +416,7 @@ BASE_FEATURE(kWebViewRenderDocument, base::FEATURE_ENABLED_BY_DEFAULT);
 // Enables using a single shared gpu::SharedContextState across all
 // OutputSurfaceProviderWebView instances.
 BASE_FEATURE(kWebViewSingleSharedContextState,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 // When enabled, navigation headers will be saved and restored as part
 // of saved state for WebView.

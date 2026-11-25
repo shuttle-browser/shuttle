@@ -50,10 +50,12 @@ SVGLayoutResult LayoutSVGContainer::UpdateSVGLayout(
     const SVGLayoutInfo& layout_info) {
   NOT_DESTROYED();
   DCHECK(NeedsLayout());
-  if (layout_info.viewport_changed && HasViewportDependence() &&
-      IsSVGTransformableContainer()) {
-    // TODO: This will be called if any descendant has a viewport dependency,
-    // not just if this container has one.
+  // If this container itself depends on the viewport (as determined during
+  // the previous layout), the local transform needs to be recomputed when
+  // the viewport changes. This covers both transformable containers (i.e
+  // transform-box: view-box) and markers (markerWidth/markerHeight/refX/refY
+  // with relative lengths).
+  if (layout_info.viewport_changed && self_has_viewport_dependence_) {
     SetNeedsTransformUpdate();
   }
 
@@ -117,17 +119,19 @@ bool LayoutSVGContainer::UpdateAfterSVGLayout(
   }
 
   if (!IsSVGHiddenContainer()) {
-    SetTransformAffectsVectorEffect(false);
+    bool transform_affects_vector_effect = false;
     ClearSVGDescendantMayHaveTransformRelatedOperations();
     for (auto* child = FirstChild(); child; child = child->NextSibling()) {
-      if (child->TransformAffectsVectorEffect())
-        SetTransformAffectsVectorEffect(true);
+      if (child->TransformAffectsVectorEffect()) {
+        transform_affects_vector_effect = true;
+      }
       if (child->Style().HasCurrentTransformRelatedAnimation() ||
           child->SVGDescendantMayHaveTransformRelatedOperations() ||
           child->Style().HasNonIdentityTransformOperation()) {
         SetSVGDescendantMayHaveTransformRelatedOperations();
       }
     }
+    SetTransformAffectsVectorEffect(transform_affects_vector_effect);
   }
 
   return transform_change != SVGTransformChange::kNone;

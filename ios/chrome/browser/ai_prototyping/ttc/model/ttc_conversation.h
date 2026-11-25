@@ -48,12 +48,21 @@ class TtcConversation : public ttc::TtcBackend::Observer {
     // Invoked when the underlying transport session closes cleanly.
     virtual void OnConversationClosed() = 0;
 
+    // Invoked when the conversation's microphone mute state changes.
+    virtual void OnConversationMicMutedChanged(bool muted) = 0;
+
     // Invoked when the microphone audio energy level updates. `energy` is
     // normalized in [0.0, 1.0].
     virtual void OnAudioEnergyUpdated(float energy) = 0;
 
     // Invoked when the conversation encounters an audio or transport error.
     virtual void OnConversationError(ttc::ErrorCode error) = 0;
+
+    // Invoked when the backend requests execution of `tool_request`, passing
+    // `tool_response_callback` for the execution result.
+    virtual void OnToolCall(
+        const ttc::ToolRequest& tool_request,
+        ttc::ToolResponseCallback tool_response_callback) = 0;
   };
 
   // Convenience constructor using a default `TTCAudioSessionController` and
@@ -86,6 +95,13 @@ class TtcConversation : public ttc::TtcBackend::Observer {
   // Starts the conversation session: connects to the backend and begins audio
   // capture.
   void Start();
+
+  // Mutes or unmutes microphone capture while keeping backend transport and
+  // model audio playback active.
+  void SetMicMuted(bool muted);
+
+  // Whether microphone capture is currently muted.
+  bool IsMicMuted() const;
 
   // Stops the conversation session: halts active audio capture and playback,
   // and disconnects the backend.
@@ -129,6 +145,9 @@ class TtcConversation : public ttc::TtcBackend::Observer {
   void OnGenerationStateChanged(bool started,
                                 bool completed,
                                 bool interrupted) override;
+  void OnModelTurnStateUpdate(ttc::ModelTurnStateUpdate update,
+                              int64_t generation_id) override;
+  void OnUserTurnStateUpdate(ttc::UserTurnStateUpdate update) override;
   void OnToolCall(const ttc::ToolRequest& tool_request,
                   ttc::ToolResponseCallback response_callback) override;
   void OnJournalEvent(const ttc::ServerJournalEvent& journal_event) override;
@@ -138,6 +157,13 @@ class TtcConversation : public ttc::TtcBackend::Observer {
   void HandleStartCaptureResult(bool success,
                                 NSError* error,
                                 uint64_t generation);
+
+  // Handles completion of a capture resume request triggered by
+  // `SetMicMuted(false)`, rolling back to muted on failure instead of reporting
+  // a fatal session error.
+  void HandleResumeCaptureResult(uint64_t generation,
+                                 BOOL success,
+                                 NSError* error);
 
   // Notifies `delegate_` of a conversation error.
   void HandleError(ttc::ErrorCode error);
@@ -199,6 +225,9 @@ class TtcConversation : public ttc::TtcBackend::Observer {
 
   // Guard flag preventing re-entrant `Stop()` invocations.
   bool is_stopping_ = false;
+
+  // Whether microphone capture is currently muted.
+  bool is_mic_muted_ = false;
 
   // Optional session journal for structured event logging.
   base::WeakPtr<TTCJournal> journal_;

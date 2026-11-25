@@ -8,6 +8,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
 #include "base/observer_list.h"
 #include "base/scoped_observation.h"
@@ -49,12 +50,12 @@ class RecordingObserver : public VoiceFocusedContentsTracker::Observer {
   }
 
   // Returns the changes recorded since the last call, and clears them.
-  std::vector<content::WebContents*> TakeChanges() {
+  std::vector<raw_ptr<content::WebContents>> TakeChanges() {
     return std::exchange(changes_, {});
   }
 
  private:
-  std::vector<content::WebContents*> changes_;
+  std::vector<raw_ptr<content::WebContents>> changes_;
   base::ScopedObservation<VoiceFocusedContentsTracker,
                           VoiceFocusedContentsTracker::Observer>
       observation_{this};
@@ -215,7 +216,6 @@ class FakeTabModel : public OwningTestTabModel {
   void DestroyDeferredTabBeforeModelTeardown() {
     ASSERT_TRUE(deferred_tab_);
     deferred_tab_->SendWillDetachUpdate(
-        nullptr,
         static_cast<int32_t>(tabs::TabInterface::DetachReason::kDelete));
     observers_.Notify(&TabModelObserver::OnTabClosePending,
                       std::vector<TabAndroid*>{});
@@ -229,9 +229,8 @@ class FakeTabModel : public OwningTestTabModel {
   // destroyed before being re-inserted.
   void DetachDeferredTabForReparenting() {
     ASSERT_TRUE(deferred_tab_);
-    deferred_tab_->SendWillDetachUpdate(
-        nullptr, static_cast<int32_t>(
-                     tabs::TabInterface::DetachReason::kInsertIntoOtherWindow));
+    deferred_tab_->SendWillDetachUpdate(static_cast<int32_t>(
+        tabs::TabInterface::DetachReason::kInsertIntoOtherWindow));
   }
 
   // Destroys a detached deferred tab without any further WillDetach or
@@ -270,6 +269,7 @@ class FakeWindow {
 
   void Add(FakeTabModel& tab_model) { tab_model.SetWindowId(session_id_); }
   void Activate() { browsers_->SimulateBrowserActivated(&browser_); }
+  BrowserWindowInterface* browser() { return &browser_; }
 
  private:
   const raw_ref<FakeGlobalBrowserCollection> browsers_;
@@ -300,6 +300,7 @@ TEST_F(VoiceFocusedContentsTrackerAndroidTest, ActiveTabAtCreation) {
   EXPECT_EQ(
       tabs::TabInterface::MaybeGetFromContents(tracker.GetActiveWebContents()),
       tab);
+  EXPECT_EQ(tracker.GetActiveBrowserWindow(), window_.browser());
 }
 
 // When no TabModel of the profile is active, GetActiveWebContents() is null.
@@ -431,7 +432,9 @@ TEST_F(VoiceFocusedContentsTrackerAndroidTest, FollowsWindowActivation) {
   model_b.SetIsActiveModel(true);
   TabAndroid* tab_b = model_b.AddWebContentsTab(&profile_);
   EXPECT_EQ(tracker.GetActiveWebContents(), tab_a->web_contents());
+  EXPECT_EQ(tracker.GetActiveBrowserWindow(), window_.browser());
   window_b.Activate();
+  EXPECT_EQ(tracker.GetActiveBrowserWindow(), window_b.browser());
   EXPECT_THAT(observer.TakeChanges(),
               ::testing::ElementsAre(tab_b->web_contents()));
 
@@ -440,6 +443,7 @@ TEST_F(VoiceFocusedContentsTrackerAndroidTest, FollowsWindowActivation) {
   window_.Activate();
   model_b.AddWebContentsTab(&profile_, /*select=*/true);
   EXPECT_EQ(tracker.GetActiveWebContents(), tab_a->web_contents());
+  EXPECT_EQ(tracker.GetActiveBrowserWindow(), window_.browser());
   EXPECT_THAT(observer.TakeChanges(),
               ::testing::ElementsAre(tab_a->web_contents()));
 
@@ -466,8 +470,10 @@ TEST_F(VoiceFocusedContentsTrackerAndroidTest,
   window_b->Activate();
 
   VoiceFocusedContentsTrackerAndroid tracker(profile_, &browsers_);
+  ASSERT_EQ(tracker.GetActiveBrowserWindow(), window_b->browser());
   window_b.reset();
   EXPECT_EQ(tracker.GetActiveWebContents(), tab_a->web_contents());
+  EXPECT_EQ(tracker.GetActiveBrowserWindow(), window_.browser());
 }
 
 // TabModels belonging to a different profile or an incognito/OTR profile are

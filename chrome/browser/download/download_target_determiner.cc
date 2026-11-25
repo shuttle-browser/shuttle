@@ -27,7 +27,7 @@
 #include "chrome/browser/download/download_stats.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/safe_browsing/safe_browsing_metrics_collector_factory.h"
+#include "chrome/browser/safe_browsing/metrics_collector/safe_browsing_metrics_collector_factory.h"
 #include "chrome/browser/supervised_user/supervised_user_url_filtering_service_factory.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -38,7 +38,7 @@
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/safe_browsing/buildflags.h"
-#include "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
+#include "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
 #include "components/supervised_user/core/browser/supervised_user_url_filtering_service.h"
 #include "components/supervised_user/core/common/features.h"
 #include "content/public/browser/browser_context.h"
@@ -88,7 +88,7 @@
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
 #include "components/safe_browsing/content/browser/download/download_stats.h"
-#include "components/safe_browsing/content/common/file_type_policies.h"
+#include "components/safe_browsing/content/common/file_type_policies/file_type_policies.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/safe_browsing/core/common/safe_browsing_prefs.h"
 #endif
@@ -279,7 +279,7 @@ void DownloadTargetDeterminer::DoLoop() {
 
 DownloadTargetDeterminer::Result
 DownloadTargetDeterminer::DoCheckSupervisedUserUrlFilter() {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
   next_state_ = STATE_GENERATE_TARGET_PATH;
 
   if (!GetProfile()->IsChild() ||
@@ -313,9 +313,10 @@ DownloadTargetDeterminer::DoCheckSupervisedUserUrlFilter() {
 
 void DownloadTargetDeterminer::CheckSupervisedUserDownloadUrlDone(
     supervised_user::WebFilteringResult result) {
-  DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  DCHECK(next_state_ == STATE_CHECK_SUPERVISED_USER_URL_FILTER ||
-         next_state_ == STATE_GENERATE_TARGET_PATH);
+  CHECK_CURRENTLY_ON(BrowserThread::UI, base::NotFatalUntil::M163);
+  CHECK(next_state_ == STATE_CHECK_SUPERVISED_USER_URL_FILTER ||
+            next_state_ == STATE_GENERATE_TARGET_PATH,
+        base::NotFatalUntil::M163);
 
   if (result.IsBlocked()) {
     RecordDownloadCancelReason(DownloadCancelReason::kSupervisedUserBlocked);
@@ -925,7 +926,9 @@ bool DownloadTargetDeterminer::DetermineIfHandledSafelyHelper(
   }
 
 #if BUILDFLAG(ENABLE_PLUGINS)
-  CHECK(!mime_type.empty(), base::NotFatalUntil::M161);
+  // TODO(crbug.com/581721899): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!mime_type.empty());
   auto* plugin_service = content::PluginService::GetInstance();
   plugin_service->GetPlugins();
   return plugin_service->HasPlugin(

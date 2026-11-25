@@ -797,8 +797,9 @@ TEST_F(ViewAXPlatformNodeDelegateTest, SetNameAndDescription) {
             ax::mojom::NameFrom::kRelatedElement);
 
   // Setting the labelledby View to itself should trigger a DCHECK.
-  EXPECT_DCHECK_DEATH_WITH(button_accessibility()->SetName(*button_),
-                           "DCHECK failed: view_ != &naming_view");
+  EXPECT_CHECK_DEATH_WITH(button_accessibility()->SetName(*button_),
+                          "Check failed: view_ != &naming_view",
+                          base::NotFatalUntil::M163);
 }
 
 TEST_F(ViewAXPlatformNodeDelegateTest, SetIsSelected) {
@@ -1416,10 +1417,14 @@ TEST_F(ViewAXPlatformNodeDelegateTableTest, TableHasCell) {
   EXPECT_NE(std::nullopt, table_accessibility()->GetCellId(0, 0));
   EXPECT_NE(std::nullopt, table_accessibility()->GetCellId(0, 3));
   EXPECT_NE(std::nullopt, table_accessibility()->GetCellId(9, 3));
-  EXPECT_DCHECK_DEATH(table_accessibility()->GetCellId(-1, 0));
-  EXPECT_DCHECK_DEATH(table_accessibility()->GetCellId(0, -1));
-  EXPECT_DCHECK_DEATH(table_accessibility()->GetCellId(10, 0));
-  EXPECT_DCHECK_DEATH(table_accessibility()->GetCellId(0, 4));
+  EXPECT_CHECK_DEATH(table_accessibility()->GetCellId(-1, 0),
+                     base::NotFatalUntil::M163);
+  EXPECT_CHECK_DEATH(table_accessibility()->GetCellId(0, -1),
+                     base::NotFatalUntil::M163);
+  EXPECT_CHECK_DEATH(table_accessibility()->GetCellId(10, 0),
+                     base::NotFatalUntil::M163);
+  EXPECT_CHECK_DEATH(table_accessibility()->GetCellId(0, 4),
+                     base::NotFatalUntil::M163);
 }
 
 TEST_F(ViewAXPlatformNodeDelegateMenuTest, MenuTest) {

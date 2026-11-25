@@ -837,6 +837,8 @@ IN_PROC_BROWSER_TEST_F(TabDragCaptureLostTest, ReleaseCaptureOnDrag) {
   ASSERT_TRUE(ui_test_utils::SendMouseMoveSync(
       GetCenterInScreenCoordinates(tab_strip->tab_at(0))));
   EXPECT_FALSE(IsDragSessionActive(tab_strip));
+  ASSERT_TRUE(
+      ui_test_utils::SendMouseEventsSync(ui_controls::LEFT, ui_controls::UP));
 }
 
 #endif
@@ -864,6 +866,32 @@ IN_PROC_BROWSER_TEST_F(TabDragControllerTest, GestureEndShouldEndDragTest) {
   EXPECT_FALSE(IsDragSessionActive(tab_strip));
 }
 
+namespace {
+
+// Reports `window` as the topmost window at every point, unless it is ignored.
+// Tests that drive TabDragController directly with synthesized events use this
+// to avoid depending on the platform's real pointer state, e.g: on Wayland,
+// the window under a point is determined by the current pointer focus.
+class FixedWindowFinder : public WindowFinder {
+ public:
+  explicit FixedWindowFinder(gfx::NativeWindow window) : window_(window) {}
+  FixedWindowFinder(const FixedWindowFinder&) = delete;
+  FixedWindowFinder& operator=(const FixedWindowFinder&) = delete;
+  ~FixedWindowFinder() override = default;
+
+  // WindowFinder:
+  gfx::NativeWindow GetLocalProcessWindowAtPoint(
+      const gfx::Point& screen_point,
+      const std::set<gfx::NativeWindow>& ignore) override {
+    return ignore.contains(window_) ? gfx::NativeWindow() : window_;
+  }
+
+ private:
+  gfx::NativeWindow window_;
+};
+
+}  // namespace
+
 IN_PROC_BROWSER_TEST_F(TabDragControllerTest,
                        DetachToNewBrowserWindowDestroyedDuringShow) {
   TabStrip* tab_strip = GetTabStripForBrowser(browser());
@@ -885,6 +913,9 @@ IN_PROC_BROWSER_TEST_F(TabDragControllerTest,
   TabDragController* controller =
       tab_strip->GetDragContext()->GetDragController();
   ASSERT_NE(controller, nullptr);
+  SetWindowFinderForTabStrip(tab_strip,
+                             std::make_unique<FixedWindowFinder>(
+                                 tab_strip->GetWidget()->GetNativeWindow()));
 
   // First drag movement starts the drag session.
   ASSERT_EQ(controller->Drag(tab_1_center + gfx::Vector2d(20, 0)),
@@ -930,6 +961,9 @@ IN_PROC_BROWSER_TEST_F(TabDragControllerTest,
   TabDragController* controller =
       tab_strip->GetDragContext()->GetDragController();
   ASSERT_NE(controller, nullptr);
+  SetWindowFinderForTabStrip(tab_strip,
+                             std::make_unique<FixedWindowFinder>(
+                                 tab_strip->GetWidget()->GetNativeWindow()));
 
   ASSERT_EQ(controller->Drag(tab_1_center + gfx::Vector2d(20, 0)),
             TabDragController::Liveness::kAlive);
@@ -3447,6 +3481,67 @@ IN_PROC_BROWSER_TEST_P(DetachToBrowserTabDragControllerTest,
   EXPECT_EQ(new_browser->GetWindow()->IsMaximized(),
             kMaximizedStateRetainedOnTabDrag);
 }
+
+// Drags from a browser that was launched maximized with work-area bounds
+// (simulating first launch without smaller restored bounds) to a separate
+// window and releases mouse.
+IN_PROC_BROWSER_TEST_P(DetachToBrowserTabDragControllerTest,
+                       DetachToOwnWindowFromInitiallyMaximizedWindow) {
+  const gfx::Rect work_area =
+      display::Screen::Get()
+          ->GetDisplayNearestWindow(browser()->GetWindow()->GetNativeWindow())
+          .work_area();
+
+  BrowserWindowCreateParams params(browser()->GetProfile(),
+                                   /*from_user_gesture=*/false);
+  params.initial_bounds = work_area;
+  params.initial_show_state = ui::mojom::WindowShowState::kMaximized;
+  BrowserWindowInterface* maximized_browser =
+      CreateBrowserWindow(std::move(params));
+  AddBlankTabAndShow(maximized_browser);
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return maximized_browser->GetWindow()->GetNativeWindow()->IsVisible();
+  }));
+  ui_test_utils::MaximizeAndWaitUntilUIUpdateDone(*maximized_browser);
+  CloseBrowserSynchronously(browser());
+
+  AddTabsAndResetBrowser(maximized_browser, 1);
+  TabStrip* tab_strip = GetTabStripForBrowser(maximized_browser);
+
+  // Move to the first tab and drag it enough so that it detaches.
+  int tab_0_width = tab_strip->tab_at(0)->width();
+  BrowserWindowInterface* const new_browser = DragTabForDetachAndNotify(
+      maximized_browser, base::BindOnce(&DetachToBrowserTabDragControllerTest::
+                                            ReleaseInputAfterWindowDetached,
+                                        base::Unretained(this), tab_0_width));
+  ASSERT_TRUE(new_browser);
+
+  // Should no longer be dragging.
+  ASSERT_FALSE(IsDragSessionActive(tab_strip));
+  ASSERT_FALSE(TabDragController::IsActive());
+
+  WaitForBrowserActivation(new_browser);
+  TabStrip* tab_strip2 = GetTabStripForBrowser(new_browser);
+  ASSERT_FALSE(IsDragSessionActive(tab_strip2));
+
+  EXPECT_EQ("0", IDString(new_browser->GetTabStripModel()));
+  EXPECT_EQ("1", IDString(maximized_browser->GetTabStripModel()));
+
+  EXPECT_FALSE(new_browser->GetWindow()->IsFullscreen());
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+  EXPECT_FALSE(new_browser->GetWindow()->IsMaximized());
+  const gfx::Rect new_bounds = new_browser->GetWindow()->GetBounds();
+  EXPECT_LE(new_bounds.width(), work_area.width() - 20);
+  EXPECT_LE(new_bounds.height(), work_area.height() - 20);
+#endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_LINUX)
+  if (maximized_browser->GetWindow()->IsMaximized()) {
+    EXPECT_LT(new_bounds.size().Area64(), (work_area.size().Area64() / 5) * 4);
+  }
+#endif  // BUILDFLAG(IS_LINUX)
+}
 #endif  // !BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_CHROMEOS)
@@ -4973,7 +5068,11 @@ IN_PROC_BROWSER_TEST_P(DetachToBrowserTabDragControllerTest,
   ASSERT_EQ(4, model->count());
   ASSERT_EQ(2u, group_model->GetTabGroup(group)->ListTabs().length());
 
-  // Drag group1, group should remain collapsed.
+  content::WebContents* const active_contents = model->GetActiveWebContents();
+  EXPECT_FALSE(model->IsTabCollapsed(model->active_index()));
+
+  // Drag group1, group should remain collapsed and active tab should remain
+  // unchanged outside the collapsed group.
   ASSERT_TRUE(PressInputAtCenter(tab_strip->group_header(group)));
   ASSERT_TRUE(DragInputToCenter(tab_strip->tab_at(1)));
   ASSERT_TRUE(TabDragController::IsActive());
@@ -4981,6 +5080,8 @@ IN_PROC_BROWSER_TEST_P(DetachToBrowserTabDragControllerTest,
   ASSERT_TRUE(ReleaseInput());
   StopAnimating(tab_strip);
   EXPECT_TRUE(model->IsGroupCollapsed(group));
+  EXPECT_EQ(model->GetActiveWebContents(), active_contents);
+  EXPECT_FALSE(model->IsTabCollapsed(model->active_index()));
 }
 
 #if BUILDFLAG(IS_MAC)

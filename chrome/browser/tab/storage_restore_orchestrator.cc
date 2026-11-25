@@ -10,6 +10,7 @@
 #include "base/check.h"
 #include "base/types/pass_key.h"
 #include "chrome/browser/tab/collection_storage_observer.h"
+#include "chrome/browser/tab/node_hash_cache.h"
 #include "chrome/browser/tab/restore_entity_tracker.h"
 #include "chrome/browser/tab/storage_collection_synchronizer.h"
 #include "chrome/browser/tab/storage_id.h"
@@ -203,12 +204,14 @@ void StorageRestoreOrchestrator::OnChildrenRemoved(
     const TabCollectionNodes& handles) {
   auto batch = service_->CreateScopedBatch();
   RestoreEntityTracker* tracker = loaded_data_->GetTracker();
+  NodeHashCache* hash_cache =
+      synchronizer_ ? &synchronizer_->hash_cache() : nullptr;
   for (const auto& handle : handles) {
     if (std::holds_alternative<TabCollection::Handle>(handle)) {
       const TabCollection* collection =
           std::get<TabCollection::Handle>(handle).Get();
       tracker->AssociateCollection(collection);
-      CollectionStorageObserver::ClearSubTree(collection, service_);
+      CollectionStorageObserver::ClearSubTree(collection, service_, hash_cache);
     } else if (std::holds_alternative<TabHandle>(handle)) {
       const TabInterface* tab = std::get<TabHandle>(handle).Get();
       tracker->AssociateTab(tab);
@@ -230,36 +233,9 @@ void StorageRestoreOrchestrator::OnChildMoved(
   }
 }
 
-void StorageRestoreOrchestrator::SaveChildNodeOnly(
-    TabCollectionNodeHandle handle) {
-  RestoreEntityTracker* tracker = loaded_data_->GetTracker();
-  if (std::holds_alternative<TabHandle>(handle)) {
-    const TabInterface* tab = std::get<TabHandle>(handle).Get();
-    if (tab->GetParentCollection()) {
-      tracker->AssociateTab(tab);
-      service_->Save(tab);
-    }
-  } else if (std::holds_alternative<TabCollection::Handle>(handle)) {
-    const TabCollection* collection =
-        std::get<TabCollection::Handle>(handle).Get();
-    if (collection->GetParentCollection()) {
-      if (!tracker->AssociateCollection(collection) &&
-          !tracker->HasCollectionBeenAssociated(collection->GetHandle())) {
-        service_->Save(collection);
-      } else {
-        service_->SavePayload(collection);
-      }
-    }
-  }
-  if (synchronizer_) {
-    synchronizer_->SaveStructureSnapshot(/*clear_unused_nodes=*/false,
-                                         base::NullCallback());
-  }
-}
-
 void StorageRestoreOrchestrator::SaveStructureSnapshot(
     bool clear_unused_nodes) {
-  DCHECK(!clear_unused_nodes);
+  CHECK(!clear_unused_nodes, base::NotFatalUntil::M163);
   if (is_restore_cancelled_) {
     return;
   }

@@ -33,9 +33,7 @@ class ContainerTimingTest : public PageTestBase {
   }
 
   void TriggerPopulateEntries() {
-    auto* performance =
-        DOMWindowPerformance::performance(*GetDocument().domWindow());
-    performance->PopulateContainerTimingEntries();
+    GetContainerTiming().EmitPerformanceEntries();
   }
 
   wtf_size_t GetContainerEntryCount() {
@@ -75,7 +73,7 @@ TEST_F(ContainerTimingTest, Propagation_BasicHierarchy) {
     </div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   // Paint in the content node inside both container timing roots.
@@ -97,8 +95,8 @@ TEST_F(ContainerTimingTest, Propagation_InsertContainerRootInMiddle) {
     </div>
   )HTML");
 
-  auto* middle = GetDocument().getElementById(AtomicString("middle"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* middle = GetElementById("middle");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(middle);
   ASSERT_TRUE(content);
 
@@ -136,8 +134,8 @@ TEST_F(ContainerTimingTest, Propagation_AddIgnoreStopsPropagation) {
     </div>
   )HTML");
 
-  auto* inner = GetDocument().getElementById(AtomicString("inner"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* inner = GetElementById("inner");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(inner);
   ASSERT_TRUE(content);
 
@@ -171,8 +169,8 @@ TEST_F(ContainerTimingTest, Propagation_RemoveIgnoreRestoresPropagation) {
     </div>
   )HTML");
 
-  auto* inner = GetDocument().getElementById(AtomicString("inner"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* inner = GetElementById("inner");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(inner);
   ASSERT_TRUE(content);
 
@@ -210,7 +208,7 @@ TEST_F(ContainerTimingTest, Propagation_DeeplyNestedHierarchy) {
     </div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   // Test a deeper hierarchy. We should get performance entries in all three
@@ -233,8 +231,8 @@ TEST_F(ContainerTimingTest, Propagation_ParentCacheReEstablishment) {
     </div>
   )HTML");
 
-  auto* b = GetDocument().getElementById(AtomicString("b"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* b = GetElementById("b");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(b);
   ASSERT_TRUE(content);
 
@@ -268,7 +266,7 @@ TEST_F(ContainerTimingTest, Propagation_IgnoreBlocksOnMultiplePaints) {
     </div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   // Each paint should produce exactly one entry (inner only). Outer must
@@ -301,8 +299,8 @@ TEST_F(ContainerTimingTest, StaleTrackerGuard_InitialRootRemoved) {
     </div>
   )HTML");
 
-  auto* inner = GetDocument().getElementById(AtomicString("inner"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* inner = GetElementById("inner");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(inner);
   ASSERT_TRUE(content);
 
@@ -336,8 +334,8 @@ TEST_F(ContainerTimingTest, StaleTrackerGuard_ParentRootRemoved) {
     </div>
   )HTML");
 
-  auto* outer = GetDocument().getElementById(AtomicString("outer"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* outer = GetElementById("outer");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(outer);
   ASSERT_TRUE(content);
 
@@ -358,6 +356,22 @@ TEST_F(ContainerTimingTest, StaleTrackerGuard_ParentRootRemoved) {
   EXPECT_EQ(count_initial + 1u, GetContainerEntryCount());
 }
 
+// A paint presented after its root was disconnected must not recreate the
+// dropped record.
+TEST_F(ContainerTimingTest, StaleTrackerGuard_RootDisconnected) {
+  SetBodyContent(R"HTML(
+    <div id="root" containertiming="root"><div id="content">x</div></div>
+  )HTML");
+  auto* root = GetElementById("root");
+  auto* content = GetElementById("content");
+  SimulatePaint(content, gfx::RectF(0, 0, 100, 100));
+  ASSERT_TRUE(GetContainerTiming().HasRecordForTesting(root));
+
+  root->remove();
+  SimulatePaint(content, gfx::RectF(200, 0, 100, 100));
+  EXPECT_FALSE(GetContainerTiming().HasRecordForTesting(root));
+}
+
 // Regression test for the graceful early return in OnElementPainted (previously
 // a CHECK). The painted element is inside a container timing root, but it is
 // neither a text-aggregation nor an image-generating node, so the pre-paint
@@ -371,7 +385,7 @@ TEST_F(ContainerTimingTest, NullContainerRoot_UntrackedElementReturns) {
     </div>
   )HTML");
 
-  auto* plain = GetDocument().getElementById(AtomicString("plain"));
+  auto* plain = GetElementById("plain");
   ASSERT_TRUE(plain);
 
   // Inside #root, but the pre-paint walk never marks it, so the tracker has no
@@ -393,7 +407,7 @@ TEST_F(ContainerTimingTest, PaintWithDirtyContainerTimingBit_DoesNotCrash) {
     <div id="root" containertiming="root">x</div>
   )HTML");
 
-  auto* root = GetDocument().getElementById(AtomicString("root"));
+  auto* root = GetElementById("root");
   ASSERT_TRUE(root);
 
   // First paint: bit is clean, one entry emitted.
@@ -426,7 +440,7 @@ TEST_F(ContainerTimingTest, Propagation_CachedRootPath) {
     </div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   // Initial paint — attribution via the initial walk.
@@ -461,7 +475,7 @@ TEST_F(ContainerTimingTest, Propagation_CachedStopNodePath) {
     </div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   // Initial paint — content is under a stop node, no entry produced.
@@ -492,7 +506,7 @@ TEST_F(ContainerTimingTest, TextRootWithIgnore_SelfReported) {
     </div>
   )HTML");
 
-  auto* text_root = GetDocument().getElementById(AtomicString("text-root"));
+  auto* text_root = GetElementById("text-root");
   ASSERT_TRUE(text_root);
 
   // The text aggregator is the text-root div; the pre-paint walk marks
@@ -507,24 +521,6 @@ TEST_F(ContainerTimingTest, TextRootWithIgnore_SelfReported) {
 
 // An ancestor with only `containertimingignore` (no `containertiming`) must
 // stop the upward walk and produce no entries.
-// The deprecated dashed spelling must keep working until it is removed.
-TEST_F(ContainerTimingTest, Propagation_DeprecatedDashedIgnoreStopsWalk) {
-  SetBodyContent(R"HTML(
-    <div id="root" containertiming="root">
-      <div id="ignored" containertiming-ignore>
-        <div id="content">x</div>
-      </div>
-    </div>
-  )HTML");
-
-  auto* content = GetDocument().getElementById(AtomicString("content"));
-  ASSERT_TRUE(content);
-
-  SimulatePaint(content, gfx::RectF(0, 0, 100, 100));
-  TriggerPopulateEntries();
-  EXPECT_EQ(0u, GetContainerEntryCount());
-}
-
 TEST_F(ContainerTimingTest, Propagation_IgnoreOnlyStopsWalk) {
   SetBodyContent(R"HTML(
     <div containertiming="outer">
@@ -534,7 +530,7 @@ TEST_F(ContainerTimingTest, Propagation_IgnoreOnlyStopsWalk) {
     </div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   SimulatePaint(content, gfx::RectF(0, 0, 100, 100));
@@ -549,7 +545,7 @@ TEST_F(ContainerTimingTest, Propagation_NoRootInAncestors) {
     <div><div id="content">x</div></div>
   )HTML");
 
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* content = GetElementById("content");
   ASSERT_TRUE(content);
 
   SimulatePaint(content, gfx::RectF(0, 0, 100, 100));
@@ -569,8 +565,8 @@ TEST_F(ContainerTimingTest, Propagation_AddIgnoreMarksLayout) {
     </div>
   )HTML");
 
-  auto* inner = GetDocument().getElementById(AtomicString("inner"));
-  auto* content = GetDocument().getElementById(AtomicString("content"));
+  auto* inner = GetElementById("inner");
+  auto* content = GetElementById("content");
   ASSERT_TRUE(inner);
   ASSERT_TRUE(content);
 
@@ -605,10 +601,10 @@ TEST_F(ContainerTimingTest, Propagation_TwoSiblingsBreakOnSharedAncestor) {
     </div>
   )HTML");
 
-  auto* a = GetDocument().getElementById(AtomicString("a"));
-  auto* b = GetDocument().getElementById(AtomicString("b"));
-  auto* ca = GetDocument().getElementById(AtomicString("ca"));
-  auto* cb = GetDocument().getElementById(AtomicString("cb"));
+  auto* a = GetElementById("a");
+  auto* b = GetElementById("b");
+  auto* ca = GetElementById("ca");
+  auto* cb = GetElementById("cb");
   ASSERT_TRUE(a);
   ASSERT_TRUE(b);
   ASSERT_TRUE(ca);
@@ -639,8 +635,8 @@ TEST_F(ContainerTimingTest, AttributesContentToRoot) {
     </div>
   )HTML");
 
-  auto* root = GetDocument().getElementById(AtomicString("root"));
-  auto* grandchild = GetDocument().getElementById(AtomicString("grandchild"));
+  auto* root = GetElementById("root");
+  auto* grandchild = GetElementById("grandchild");
   ASSERT_TRUE(root);
   ASSERT_TRUE(grandchild);
 
@@ -661,9 +657,9 @@ TEST_F(ContainerTimingTest, UnrelatedElementNotAttributed) {
     <div id="outside">y</div>
   )HTML");
 
-  auto* root = GetDocument().getElementById(AtomicString("root"));
-  auto* inside = GetDocument().getElementById(AtomicString("inside"));
-  auto* outside = GetDocument().getElementById(AtomicString("outside"));
+  auto* root = GetElementById("root");
+  auto* inside = GetElementById("inside");
+  auto* outside = GetElementById("outside");
   ASSERT_TRUE(root);
   ASSERT_TRUE(inside);
   ASSERT_TRUE(outside);
@@ -688,7 +684,7 @@ TEST_F(ContainerTimingTest, InsertionUnderRootAttributed) {
     </div>
   )HTML");
 
-  auto* root = GetDocument().getElementById(AtomicString("root"));
+  auto* root = GetElementById("root");
   ASSERT_TRUE(root);
 
   auto* inserted = GetDocument().CreateRawElement(html_names::kDivTag);
@@ -716,8 +712,8 @@ TEST_F(ContainerTimingTest, RemovingRootClearsAttribution) {
     </div>
   )HTML");
 
-  auto* root = GetDocument().getElementById(AtomicString("root"));
-  auto* inside = GetDocument().getElementById(AtomicString("inside"));
+  auto* root = GetElementById("root");
+  auto* inside = GetElementById("inside");
   ASSERT_TRUE(root);
   ASSERT_TRUE(inside);
 
@@ -742,9 +738,9 @@ TEST_F(ContainerTimingTest, TextGateUsesTracker) {
     <div id="et" elementtiming="et">z</div>
   )HTML");
 
-  auto* inside = GetDocument().getElementById(AtomicString("inside"));
-  auto* outside = GetDocument().getElementById(AtomicString("outside"));
-  auto* et = GetDocument().getElementById(AtomicString("et"));
+  auto* inside = GetElementById("inside");
+  auto* outside = GetElementById("outside");
+  auto* et = GetElementById("et");
   ASSERT_TRUE(inside);
   ASSERT_TRUE(outside);
   ASSERT_TRUE(et);
@@ -765,8 +761,8 @@ TEST_F(ContainerTimingTest, LastPaintedElementIsLargestPainter) {
     </div>
   )HTML");
 
-  auto* big = GetDocument().getElementById(AtomicString("big"));
-  auto* small = GetDocument().getElementById(AtomicString("small"));
+  auto* big = GetElementById("big");
+  auto* small = GetElementById("small");
   ASSERT_TRUE(big);
   ASSERT_TRUE(small);
 
@@ -791,8 +787,8 @@ TEST_F(ContainerTimingTest, LargestPainterResetsAfterEntry) {
     </div>
   )HTML");
 
-  auto* big = GetDocument().getElementById(AtomicString("big"));
-  auto* small = GetDocument().getElementById(AtomicString("small"));
+  auto* big = GetElementById("big");
+  auto* small = GetElementById("small");
   ASSERT_TRUE(big);
   ASSERT_TRUE(small);
 
@@ -820,8 +816,8 @@ TEST_F(ContainerTimingTest, LargestPainterIsIndependentOfPaintOrder) {
     </div>
   )HTML");
 
-  auto* narrow = GetDocument().getElementById(AtomicString("narrow"));
-  auto* wide = GetDocument().getElementById(AtomicString("wide"));
+  auto* narrow = GetElementById("narrow");
+  auto* wide = GetElementById("wide");
   ASSERT_TRUE(narrow);
   ASSERT_TRUE(wide);
 
@@ -849,9 +845,9 @@ TEST_F(ContainerTimingTest, LargestPainterUsesOwnAreaNotContributedArea) {
     </div>
   )HTML");
 
-  auto* first = GetDocument().getElementById(AtomicString("first"));
-  auto* overlapping = GetDocument().getElementById(AtomicString("overlapping"));
-  auto* fresh = GetDocument().getElementById(AtomicString("fresh"));
+  auto* first = GetElementById("first");
+  auto* overlapping = GetElementById("overlapping");
+  auto* fresh = GetElementById("fresh");
   ASSERT_TRUE(first);
   ASSERT_TRUE(overlapping);
   ASSERT_TRUE(fresh);
@@ -884,9 +880,9 @@ TEST_F(ContainerTimingTest, LargestPainterCanBeFullyCoveredContent) {
     </div>
   )HTML");
 
-  auto* first = GetDocument().getElementById(AtomicString("first"));
-  auto* covered = GetDocument().getElementById(AtomicString("covered"));
-  auto* edge = GetDocument().getElementById(AtomicString("edge"));
+  auto* first = GetElementById("first");
+  auto* covered = GetElementById("covered");
+  auto* edge = GetElementById("edge");
   ASSERT_TRUE(first);
   ASSERT_TRUE(covered);
   ASSERT_TRUE(edge);
@@ -908,6 +904,71 @@ TEST_F(ContainerTimingTest, LargestPainterCanBeFullyCoveredContent) {
 
   ASSERT_EQ(2u, GetContainerEntryCount());
   EXPECT_EQ(covered, GetLastContainerEntry()->lastPaintedElement());
+}
+
+TEST_F(ContainerTimingTest, RemovingAttributeDropsRecord) {
+  SetBodyContent(R"HTML(
+    <div id="root" containertiming="root"><div id="content">x</div></div>
+  )HTML");
+  auto* root = GetElementById("root");
+  SimulatePaint(GetElementById("content"), gfx::RectF(0, 0, 100, 100));
+  ASSERT_TRUE(GetContainerTiming().HasRecordForTesting(root));
+
+  root->removeAttribute(html_names::kContainertimingAttr);
+  EXPECT_FALSE(GetContainerTiming().HasRecordForTesting(root));
+}
+
+TEST_F(ContainerTimingTest, RemovingRootDropsRecord) {
+  SetBodyContent(R"HTML(
+    <div id="root" containertiming="root"><div id="content">x</div></div>
+  )HTML");
+  auto* root = GetElementById("root");
+  SimulatePaint(GetElementById("content"), gfx::RectF(0, 0, 100, 100));
+  ASSERT_TRUE(GetContainerTiming().HasRecordForTesting(root));
+
+  root->remove();
+  EXPECT_FALSE(GetContainerTiming().HasRecordForTesting(root));
+}
+
+TEST_F(ContainerTimingTest, RemovingAncestorDropsNestedRecords) {
+  SetBodyContent(R"HTML(
+    <div id="wrapper">
+      <div id="outer" containertiming="outer">
+        <div id="inner" containertiming="inner"><div id="content">x</div></div>
+      </div>
+    </div>
+  )HTML");
+  auto* outer = GetElementById("outer");
+  auto* inner = GetElementById("inner");
+  SimulatePaint(GetElementById("content"), gfx::RectF(0, 0, 100, 100));
+  ASSERT_TRUE(GetContainerTiming().HasRecordForTesting(outer));
+  ASSERT_TRUE(GetContainerTiming().HasRecordForTesting(inner));
+
+  GetElementById("wrapper")->remove();
+  EXPECT_FALSE(GetContainerTiming().HasRecordForTesting(outer));
+  EXPECT_FALSE(GetContainerTiming().HasRecordForTesting(inner));
+}
+
+// Otherwise the reinserted content falls inside the painted region.
+TEST_F(ContainerTimingTest, ReinsertedRootStartsFreshRecord) {
+  SetBodyContent(R"HTML(
+    <div id="root" containertiming="root"><div id="content">x</div></div>
+  )HTML");
+  auto* root = GetElementById("root");
+  auto* content = GetElementById("content");
+  SimulatePaint(content, gfx::RectF(0, 0, 100, 100));
+  TriggerPopulateEntries();
+  ASSERT_EQ(1u, GetContainerEntryCount());
+
+  root->remove();
+  GetDocument().body()->AppendChild(root);
+  UpdateAllLifecyclePhasesForTest();
+  SimulatePaint(content, gfx::RectF(0, 0, 100, 100));
+  TriggerPopulateEntries();
+
+  ASSERT_EQ(2u, GetContainerEntryCount());
+  EXPECT_EQ(root, GetLastContainerEntry()->rootElement());
+  EXPECT_EQ(10000, GetLastContainerEntry()->size());
 }
 
 class ContainerTimingIframeIsolationTest : public PageTestBase {
@@ -958,8 +1019,8 @@ TEST_F(ContainerTimingIframeIsolationTest, IframeIsolation) {
   auto* parent_performance =
       DOMWindowPerformance::performance(*GetDocument().domWindow());
   auto* child_performance = DOMWindowPerformance::performance(*child_window);
-  parent_performance->PopulateContainerTimingEntries();
-  child_performance->PopulateContainerTimingEntries();
+  parent_ct.EmitPerformanceEntries();
+  child_ct.EmitPerformanceEntries();
 
   EXPECT_EQ(0u, parent_performance
                     ->getBufferedEntriesByType(AtomicString("container"))

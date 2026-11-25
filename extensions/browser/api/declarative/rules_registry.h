@@ -112,6 +112,11 @@ class RulesRegistry : public base::RefCountedThreadSafe<RulesRegistry> {
   // shut down.
   void OnShutdown();
 
+  // Called when the registry service removes this registry before shutdown.
+  // Detaches it from the BrowserContext and signals `ready()` if not yet
+  // signaled so any callbacks queued on `ready()` still run.
+  void OnRemoved();
+
   // Called to notify the RulesRegistry that the extension availability has
   // changed, so that the registry can update which rules are active.
   void OnExtensionUnloaded(const Extension* extension);
@@ -122,10 +127,8 @@ class RulesRegistry : public base::RefCountedThreadSafe<RulesRegistry> {
   // Every ExtensionId counts as one entry, even if it contains no rules.
   size_t GetNumberOfUsedRuleIdentifiersForTesting() const;
 
-  // Returns the RulesCacheDelegate. This is used for testing.
-  RulesCacheDelegate* rules_cache_delegate_for_testing() const {
-    return cache_delegate_.get();
-  }
+  // Returns the RulesCacheDelegate associated with this registry, if any.
+  RulesCacheDelegate* cache_delegate() const { return cache_delegate_.get(); }
 
   // Returns the context where the rules registry lives.
   content::BrowserContext* browser_context() const { return browser_context_; }
@@ -188,10 +191,11 @@ class RulesRegistry : public base::RefCountedThreadSafe<RulesRegistry> {
       RulesDictionary* destination,
       std::vector<const api::events::Rule*>* rules_out);
 
-  // The precondition for calling this method is that all rules have unique IDs.
-  // AddRules establishes this precondition and calls into this method.
-  // Stored rules already meet this precondition and so they avoid calling
-  // CheckAndFillInOptionalRules for improved performance.
+  // Adds `rules_in` to `destination` without filling in optional `id` or
+  // `priority` fields (`priority` must already be set). Validates that all
+  // rule IDs are present, valid UTF-8, and unique. `AddRulesInternal()` fills
+  // optional fields before calling this, whereas stored rules already have
+  // them populated and call this directly.
   //
   // Returns an empty string if the function is successful or an error
   // message otherwise. If the function is successful, and if the

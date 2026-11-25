@@ -12,6 +12,7 @@
 #include "chrome/browser/search_engines/template_url_service_factory_test_util.h"
 #include "chrome/test/base/chrome_render_view_host_test_harness.h"
 #include "components/search_engines/template_url_service.h"
+#include "components/tabs/public/mock_tab_interface.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/preloading_test_util.h"
@@ -56,7 +57,7 @@ class BookmarkBarPreloadPipelineManagerTest
 
     bookmarkbar_preload_manager_ =
         std::make_unique<BookmarkBarPreloadPipelineManager>(
-            GetActiveWebContents());
+            tab_, GetActiveWebContents());
   }
 
   content::WebContents* GetActiveWebContents() { return web_contents(); }
@@ -80,13 +81,16 @@ class BookmarkBarPreloadPipelineManagerTest
 
   ukm::TestAutoSetUkmRecorder& ukm_recorder() { return ukm_recorder_; }
 
-  void TearDown() override { ChromeRenderViewHostTestHarness::TearDown(); }
+  void TearDown() override {
+    bookmarkbar_preload_manager_.reset();
+    ChromeRenderViewHostTestHarness::TearDown();
+  }
 
  protected:
   GURL GetUrl(const std::string& path) { return test_server_.GetURL(path); }
 
   BookmarkBarPreloadPipelineManager* bookmarkbar_preload_manager() {
-    return bookmarkbar_preload_manager_.get();
+    return BookmarkBarPreloadPipelineManager::From(&tab_);
   }
 
  private:
@@ -102,6 +106,7 @@ class BookmarkBarPreloadPipelineManagerTest
   // This timer is for making TimeToNextNavigation in UKM consistent.
   base::ScopedMockElapsedTimersForTest test_timer_;
 
+  tabs::MockTabInterface tab_;
   std::unique_ptr<BookmarkBarPreloadPipelineManager>
       bookmarkbar_preload_manager_;
 };
@@ -127,9 +132,9 @@ TEST_F(BookmarkBarPreloadPipelineManagerTest,
 
   SimulateNavigationCommitted(preloading_url);
   {
-    auto attempt_ukm_entries =
-        ukm_recorder().GetEntries(ukm::builders::Preloading_Attempt::kEntryName,
-                                  content::test::kPreloadingAttemptUkmMetrics);
+    auto attempt_ukm_entries = ukm_recorder().GetEntries(
+        ukm::builders::Preloading_Attempt::kEntryName,
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 2u);
 
     ukm::SourceId ukm_source_id =
@@ -171,9 +176,9 @@ TEST_F(BookmarkBarPreloadPipelineManagerTest, PrefetchDisallowSearchUrl) {
 
   SimulateNavigationCommitted(prefetch_url);
   {
-    auto attempt_ukm_entries =
-        ukm_recorder().GetEntries(ukm::builders::Preloading_Attempt::kEntryName,
-                                  content::test::kPreloadingAttemptUkmMetrics);
+    auto attempt_ukm_entries = ukm_recorder().GetEntries(
+        ukm::builders::Preloading_Attempt::kEntryName,
+        content::test::GetPreloadingAttemptUkmMetrics());
     EXPECT_EQ(attempt_ukm_entries.size(), 1u);
 
     ukm::SourceId ukm_source_id =

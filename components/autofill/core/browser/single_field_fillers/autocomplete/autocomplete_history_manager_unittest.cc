@@ -1069,6 +1069,25 @@ TEST_F(AutocompleteHistoryManagerTest, Migration_PrefNotUpdatedOnFailure) {
             1);
 }
 
+// Tests that a null result from `MigrateDataFromLegacyTable` (e.g., on
+// database failure) does not crash or update the migration generation pref.
+TEST_F(AutocompleteHistoryManagerTest, Migration_NullResultDoesNotUpdatePref) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndEnableFeatureWithParameters(
+      features::kAutofillLabelSensitiveAutocomplete,
+      {{"autocomplete_label_sensitive_migration_generation", "2"}});
+  prefs_->SetInteger(
+      prefs::kAutofillAutocompleteLabelSensitiveMigrationGeneration, 1);
+
+  EXPECT_CALL(*web_data_service_, MigrateDataFromLegacyTable)
+      .WillOnce(RunOnceCallback<0>(kTestDbQueryId, nullptr));
+  AutocompleteHistoryManager manager(web_data_service_, prefs_.get());
+
+  EXPECT_EQ(prefs_->GetInteger(
+                prefs::kAutofillAutocompleteLabelSensitiveMigrationGeneration),
+            1);
+}
+
 // Tests that autocomplete table stats are queried and logged with a delay after
 // profile startup when kAutofillRecordAutocompleteTableStats is enabled.
 TEST_F(AutocompleteHistoryManagerTest, TableStats_QueriesAndLogsOnStartup) {
@@ -1350,6 +1369,24 @@ TEST_F(AutocompleteHistoryManagerTest, EntriesCleanup_Success) {
             prefs_->GetInteger(prefs::kAutocompleteLastVersionRetentionPolicy));
 }
 
+// Tests that a null result from `RemoveExpiredAutocompleteEntries` (e.g., on
+// database failure) does not crash or update the last cleaned major version
+// preference.
+TEST_F(AutocompleteHistoryManagerTest,
+       EntriesCleanup_NullResultDoesNotUpdatePref) {
+  prefs_->SetInteger(prefs::kAutocompleteLastVersionRetentionPolicy, -1);
+
+  EXPECT_CALL(*web_data_service_, RemoveExpiredAutocompleteEntries)
+      .WillOnce([](WebDataServiceRequestCallback cb) {
+        std::move(cb).Run(kTestDbQueryId, nullptr);
+        return kTestDbQueryId;
+      });
+  AutocompleteHistoryManager manager(web_data_service_, prefs_.get());
+
+  EXPECT_EQ(-1,
+            prefs_->GetInteger(prefs::kAutocompleteLastVersionRetentionPolicy));
+}
+
 // Tests that `IsFieldNameMeaningfulForAutocomplete` correctly filters out
 // field names that are not meaningful for autocomplete.
 TEST_F(AutocompleteHistoryManagerTest, IsFieldNameMeaningfulForAutocomplete) {
@@ -1491,6 +1528,37 @@ TEST_F(AutocompleteHistoryManagerTest,
 
   autocomplete_manager_->OnWillSubmitFormWithFields(form.fields(),
                                                     &form_structure);
+}
+
+// Tests that fields with ineligible HTML autocomplete attributes are not saved
+// in history even when the submitted form is not cached (i.e. `form` is null).
+TEST_F(AutocompleteHistoryManagerTest,
+       AutocompleteAttributeBasedFiltering_WithoutFormStructure) {
+  FormData form = test::GetFormData(
+      {.fields = {{.name = u"Name not matching CC regex",
+                   .value = u"000",
+                   .autocomplete_attribute = "cc-csc"},
+                  {.name = u"Name not matching CC regex",
+                   .value = u"111",
+                   .autocomplete_attribute = "cc-number"},
+                  {.name = u"Name not matching CC regex",
+                   .value = u"222",
+                   .autocomplete_attribute = "iban"},
+                  {.name = u"Name not matching CC regex",
+                   .value = u"333",
+                   .autocomplete_attribute = "promo-code"},
+                  {.name = u"Name not matching CC regex",
+                   .value = u"444",
+                   .autocomplete_attribute = "given-name"},
+                  {.name = u"Name not matching CC regex", .value = u"555"}}});
+
+  EXPECT_CALL(
+      *(web_data_service_.get()),
+      AddFormFields(ElementsAre(Property(&FormFieldData::value, u"444"),
+                                Property(&FormFieldData::value, u"555"))));
+
+  autocomplete_manager_->OnWillSubmitFormWithFields(form.fields(),
+                                                    /*form=*/nullptr);
 }
 
 // Tests that loyalty card fields are saved in autocomplete history if they

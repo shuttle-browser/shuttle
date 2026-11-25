@@ -108,12 +108,33 @@ export function getHtml(this: TopicFeedbackExportDialogElement) {
 
     <section id="coverageSection">
       <h2>Your ratings</h2>
-      <div id="ratingStatus" ?complete="${this.areAllTopicsRated_()}">
-        <cr-icon icon="${this.areAllTopicsRated_() ?
+      <div id="ratingStatus" ?complete="${this.areAllTopicsHandled_()}">
+        <cr-icon icon="${this.areAllTopicsHandled_() ?
             'cr:check-circle' : 'cr:error'}" aria-hidden="true">
         </cr-icon>
         <div id="ratingProgress">${this.getRatingProgressText_()}</div>
       </div>
+      ${this.getUnratedTopics_().length > 0 ? html`
+        <div class="secondary">
+          Check the topics you don't want to share. Visits that are only in
+          these topics are sent without their URL and title.
+        </div>
+        <ul id="unratedTopics">
+          ${this.getUnratedTopics_().map(topic => html`
+            <li>
+              <cr-checkbox class="leave-out-checkbox" data-id="${topic.id}"
+                  ?checked="${this.isTopicLeftOut_(topic)}"
+                  @checked-changed="${this.onLeaveOutCheckedChanged_}">
+                ${topic.title}
+              </cr-checkbox>
+            </li>
+          `)}
+        </ul>
+        <cr-button id="leaveOutAll" @click="${this.onLeaveOutAllClick_}"
+            ?disabled="${this.areAllTopicsHandled_()}">
+          Leave out all unrated
+        </cr-button>
+      ` : ''}
       ${this.getCoverageTopics_().length > 0 ? html`
         <div class="secondary">
           If you have time, also review these topics on their details page:
@@ -148,12 +169,14 @@ export function getHtml(this: TopicFeedbackExportDialogElement) {
         The file contains your topics, your ratings and comments, and the URLs,
         titles and times of the pages you visited in this window, except what
         you exclude above, plus your Chrome version and experiment state. Only
-        the Topics team can access it. It's deleted 18 months after upload; to
-        have it deleted sooner, contact the Topics team.
+        the Topics team can access it. The team uses it to evaluate and improve
+        Topics, including testing new versions. It's deleted 18 months after
+        upload; to have it deleted sooner, contact the Topics team.
       </p>
       <cr-checkbox id="acknowledge" ?checked="${this.acknowledged_}"
           @checked-changed="${this.onAcknowledgeCheckedChanged_}">
-        I understand what's shared
+        I understand what's shared and agree to it being used to evaluate
+        Topics
       </cr-checkbox>
     </section>
 

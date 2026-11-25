@@ -19,7 +19,7 @@
 #include "content/public/browser/permission_result.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/mojom/manifest/manifest_manager.mojom-forward.h"
 #include "third_party/blink/public/mojom/permissions/permission_status.mojom.h"
 #include "third_party/blink/public/mojom/web_install/web_install.mojom.h"
@@ -158,7 +158,7 @@ class WebInstallServiceImpl
       InstallFromManifestCallbackWithMetrics callback_with_metrics,
       base::WeakPtr<WebAppDataRetriever> data_retriever,
       std::optional<GURL> linked_manifest_url,
-      blink::mojom::ManifestPtr manifest,
+      std::optional<blink::Manifest> manifest,
       bool valid_manifest_for_web_app,
       webapps::InstallableStatusCode error_code);
 
@@ -202,7 +202,7 @@ class WebInstallServiceImpl
       InstallFromManifestCallbackWithMetrics callback_with_metrics,
       blink::mojom::ManifestInstallOptionsPtr options,
       std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker,
-      blink::mojom::ManifestPtr manifest,
+      blink::Manifest manifest,
       const std::vector<content::PermissionResult>& permission_result);
 
   // Shared "permission granted, proceed to install" step for the manifest URL
@@ -211,7 +211,7 @@ class WebInstallServiceImpl
       InstallFromManifestCallbackWithMetrics callback_with_metrics,
       blink::mojom::ManifestInstallOptionsPtr options,
       std::unique_ptr<webapps::MlInstallOperationTracker> install_tracker,
-      blink::mojom::ManifestPtr manifest);
+      blink::Manifest manifest);
 
   // Callback for when the manifest URL install command completes.
   void OnAppInstalledFromManifest(

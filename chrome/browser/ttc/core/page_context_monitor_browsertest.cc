@@ -8,27 +8,33 @@
 #include <string>
 #include <vector>
 
+#include "base/command_line.h"
 #include "base/functional/bind.h"
 #include "base/run_loop.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/gmock_callback_support.h"
+#include "base/test/run_until.h"
 #include "base/test/test_future.h"
+#include "build/build_config.h"
+#include "chrome/browser/actor/actor_test_util.h"
+#include "chrome/browser/actor/enterprise_policy_checker.h"
 #include "chrome/browser/page_content_annotations/page_content_extraction_service_factory.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ttc/core/page_context_util.h"
 #include "chrome/browser/ttc/core/session_controller.h"
 #include "chrome/browser/ttc/core/test_utils.h"
 #include "chrome/browser/ttc/core/ttc_core_browser_test_base.h"
 #include "chrome/browser/ttc/core/ttc_keyed_service.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/tabs/tab_strip_model.h"
-#include "chrome/test/base/ui_test_utils.h"
 #include "components/actor/core/safety_list_manager.h"
 #include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 #include "components/page_content_annotations/content/page_content_extraction_service.h"
 #include "components/page_content_annotations/core/page_content_extraction_types.h"
+#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/content_switches.h"
 #include "content/public/common/referrer.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
@@ -36,10 +42,16 @@
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/base/base_window.h"
 #include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
 #include "url/origin.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/test/base/ui_test_utils.h"
+#include "ui/base/base_window.h"
+#endif
 
 namespace ttc {
 namespace {
@@ -82,12 +94,31 @@ std::vector<std::string> CollectText(
   return text;
 }
 
+// Matches an AnnotatedPageContent without any content.
+auto IsEmptyPageContent() {
+  return testing::Property(
+      "ByteSizeLong",
+      &optimization_guide::proto::AnnotatedPageContent::ByteSizeLong, 0u);
+}
+
 class PageContextMonitorBrowserTest : public TtcCoreBrowserTestBase {
  public:
   PageContextMonitorBrowserTest() = default;
   ~PageContextMonitorBrowserTest() override = default;
 
   // TtcCoreBrowserTestBase:
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    TtcCoreBrowserTestBase::SetUpCommandLine(command_line);
+#if BUILDFLAG(IS_ANDROID)
+    // Test devices are often offline. The offline status indicator that appears
+    // a few seconds after startup resizes the top controls, which asserts if
+    // the controls are not fully shown at that moment (e.g. during a tab
+    // switch). See crbug.com/574927722.
+    command_line->AppendSwitch(
+        switches::kForceOnlineConnectionStateForIndicator);
+#endif
+  }
+
   void SetUpOnMainThread() override {
     // Serves /cross-site/<host>/<path>. Must be set up before the base class
     // starts the server.
@@ -111,6 +142,26 @@ class PageContextMonitorBrowserTest : public TtcCoreBrowserTestBase {
   }
 
  protected:
+  tabs::TabInterface* active_tab() {
+    return tabs::TabInterface::GetFromContents(web_contents());
+  }
+
+  TabListInterface* tab_list() {
+    return TabListInterface::From(active_tab()->GetBrowserWindowInterface());
+  }
+
+  void OpenForegroundTab(const GURL& url) {
+    // Open in the background and activate explicitly: on Android, a foreground
+    // open runs the new-tab animation, which can re-select the new tab
+    // asynchronously after a subsequent tab switch.
+    tabs::TabInterface* tab =
+        tab_list()->OpenTab(url, /*index=*/-1, /*foreground=*/false);
+    ASSERT_TRUE(tab);
+    ASSERT_TRUE(content::WaitForLoadStop(tab->GetContents()));
+    tab_list()->ActivateTab(tab->GetHandle());
+    ASSERT_TRUE(base::test::RunUntil([tab]() { return tab->IsActivated(); }));
+  }
+
   // Starts a session and waits for the initial notification, leaving no
   // expectations set on the conversation.
   void StartSession() {
@@ -126,6 +177,13 @@ class PageContextMonitorBrowserTest : public TtcCoreBrowserTestBase {
     EXPECT_CALL(*conversation(), OnPageContextInvalidated())
         .WillOnce(base::test::InvokeFuture(future));
     return future;
+  }
+
+  void FlushMessageLoop() {
+    base::RunLoop run_loop;
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, run_loop.QuitClosure());
+    run_loop.Run();
   }
 
   // Navigates to an arbitrary page but blocks it from firing the load event.
@@ -154,9 +212,12 @@ class PageContextMonitorBrowserTest : public TtcCoreBrowserTestBase {
     ASSERT_TRUE(subframe_manager_->WaitForNavigationFinished());
   }
 
-  bool IsUrlSupported(const GURL& url) {
+  bool IsUrlSupported(const GURL& url,
+                      const actor::EnterprisePolicyChecker*
+                          enterprise_policy_checker = nullptr) {
     base::test::TestFuture<bool> supported;
-    IsUrlSupportedForPageContext(url, supported.GetCallback());
+    IsUrlSupportedForPageContext(url, enterprise_policy_checker,
+                                 supported.GetCallback());
     return supported.Get();
   }
 
@@ -175,6 +236,11 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest, InitialPageChange) {
 // Navigating the monitored page must notify the conversation that the page
 // context it has is stale before the load event is fired.
 IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest, PrimaryPageNavigated) {
+  // Start from a fully loaded page. On Android the initial about:blank load
+  // can still be committing when the test body starts, and its commit would
+  // otherwise be reported as an additional page change below.
+  ASSERT_TRUE(content::NavigateToURL(
+      web_contents(), embedded_test_server()->GetURL("/simple.html")));
   StartSession();
 
   auto navigated = ExpectPageChange();
@@ -190,12 +256,17 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest, PrimaryPageNavigated) {
 IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest, ActiveTabChanged) {
   const GURL first_url = embedded_test_server()->GetURL("/title2.html");
   ASSERT_TRUE(content::NavigateToURL(web_contents(), first_url));
+  tabs::TabInterface* first_tab = active_tab();
+  ASSERT_TRUE(first_tab);
 
   // Open a second, fully loaded tab and leave it active, so that activating
   // the original tab below is the only thing that can signal a page change.
   const GURL second_url = embedded_test_server()->GetURL("/simple.html");
-  ASSERT_TRUE(AddTabAtIndex(1, second_url, ui::PAGE_TRANSITION_TYPED));
-  ASSERT_EQ(browser()->tab_strip_model()->active_index(), 1);
+  ASSERT_NO_FATAL_FAILURE(OpenForegroundTab(second_url));
+  tabs::TabInterface* second_tab = active_tab();
+  ASSERT_TRUE(second_tab);
+  ASSERT_NE(second_tab, first_tab);
+  ASSERT_EQ(tab_list()->GetActiveIndex(), 1);
 
   StartSession();
   {
@@ -212,9 +283,10 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest, ActiveTabChanged) {
   EXPECT_CALL(*conversation(),
               SendContextUpdate(first_url, "Title Of Awesomeness", testing::_))
       .WillOnce(base::test::RunOnceClosure(first_tab_sent.GetCallback()));
-  browser()->tab_strip_model()->ActivateTabAt(0);
+  tab_list()->ActivateTab(first_tab->GetHandle());
   EXPECT_TRUE(tab_changed.Wait());
   EXPECT_TRUE(first_tab_sent.Wait());
+  ASSERT_EQ(web_contents(), first_tab->GetContents());
   EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
 
   // Navigating the newly active tab must also trigger a page change
@@ -228,11 +300,12 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest, ActiveTabChanged) {
   base::test::TestFuture<void> second_tab_sent;
   EXPECT_CALL(*conversation(), SendContextUpdate(second_url, "OK", testing::_))
       .WillOnce(base::test::RunOnceClosure(second_tab_sent.GetCallback()));
-  browser()->tab_strip_model()->ActivateTabAt(1);
+  tab_list()->ActivateTab(second_tab->GetHandle());
   EXPECT_TRUE(switched_back.Wait());
   EXPECT_TRUE(second_tab_sent.Wait());
 }
 
+#if !BUILDFLAG(IS_ANDROID)
 // Activating a different browser window of the same profile must switch
 // monitoring to the newly active window's active tab, and closing all browser
 // windows of the profile must invalidate the page context.
@@ -289,11 +362,12 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
   // profile and browser.
   SetBrowser(CreateBrowser(test_profile));
 }
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 // A session on a page whose URL is not supported (e.g. non-NTP chrome:// pages,
-// data: and about: URLs) must never send page context to the conversation,
-// whether PCES extracts the page's content or not, and must resume sending
-// context once the page navigates to a supported URL.
+// data: and about: URLs) must never send the page's content or title to the
+// conversation, whether PCES extracts the page's content or not, and must
+// resume sending context once the page navigates to a supported URL.
 IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
                        UnsupportedUrlsAreNotFetchedOrEmitted) {
   page_content_annotations::PageContentExtractionService* extraction_service =
@@ -301,14 +375,28 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
           GetForProfile(profile());
   ASSERT_TRUE(extraction_service);
 
-  // Starts a session, which fetches context for the current page, and waits
-  // for the initial notification. The conversation is left expecting no
-  // context updates.
-  auto start_session_expecting_no_context = [&]() {
+  // Starts a session on `url` and waits for the initial invalidation (and, if
+  // `wait_for_context_update` is true, for the origin-only context update).
+  auto start_session_expecting_no_context = [&](const GURL& url,
+                                                bool wait_for_context_update) {
     ttc_service().StartSession();
     ASSERT_TRUE(conversation());
-    EXPECT_CALL(*conversation(), SendContextUpdate).Times(0);
+    base::test::TestFuture<void> context_updated;
+    // Only the page's origin may be sent, without its title or content.
+    auto& expectation =
+        EXPECT_CALL(*conversation(),
+                    SendContextUpdate(url::Origin::Create(url).GetURL(),
+                                      std::string(), IsEmptyPageContent()));
+    if (wait_for_context_update) {
+      expectation.WillOnce(
+          base::test::RunOnceClosure(context_updated.GetCallback()));
+    } else {
+      expectation.Times(testing::AnyNumber());
+    }
     EXPECT_TRUE(ExpectPageChange().Wait());
+    if (wait_for_context_update) {
+      EXPECT_TRUE(context_updated.Wait());
+    }
   };
 
   for (const GURL& url :
@@ -319,7 +407,8 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
     ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
 
     // Starting a session must not send anything for the page.
-    ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context());
+    ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context(
+        url, /*wait_for_context_update=*/false));
 
     // Having an active session makes PCES extract every page in the profile.
     // Wait for that extraction (triggering it if it has not started), to make
@@ -339,7 +428,8 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
 
     // Neither must a new session, which finds the extracted content cached.
     ttc_service().EndSession();
-    ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context());
+    ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context(
+        url, /*wait_for_context_update=*/false));
     base::RunLoop().RunUntilIdle();
     EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
 
@@ -348,9 +438,10 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
 
   // Navigating from an unsupported page to a supported one during a session
   // must invalidate the context and send context for the new page.
-  ASSERT_TRUE(
-      content::NavigateToURL(web_contents(), GURL("chrome://version/")));
-  ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context());
+  const GURL unsupported_url("chrome://version/");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), unsupported_url));
+  ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context(
+      unsupported_url, /*wait_for_context_update=*/true));
   EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
 
   const GURL supported_url = embedded_test_server()->GetURL("/simple.html");
@@ -415,9 +506,10 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
 }
 
 // A session on a page for which the actor safety lists block a navigation from
-// the page's URL to itself must never send page context to the conversation,
-// whether the page's content is extracted during the session or already cached,
-// and must resume sending context once the page navigates to an allowed URL.
+// the page's URL to itself must never send the page's content or title to the
+// conversation, whether the page's content is extracted during the session or
+// already cached, and must resume sending context once the page navigates to an
+// allowed URL.
 IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
                        SafetyListBlockedUrlsAreNotFetchedOrEmitted) {
   actor::SetSafetyListsForTesting(actor::SafetyListManager::GetInstance(),
@@ -437,7 +529,10 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
   auto start_session_expecting_no_context = [&]() {
     ttc_service().StartSession();
     ASSERT_TRUE(conversation());
-    EXPECT_CALL(*conversation(), SendContextUpdate).Times(0);
+    // Only the page's origin may be sent, without its title or content.
+    EXPECT_CALL(*conversation(), SendContextUpdate(testing::_, std::string(),
+                                                   IsEmptyPageContent()))
+        .Times(testing::AnyNumber());
     EXPECT_TRUE(ExpectPageChange().Wait());
   };
 
@@ -472,13 +567,17 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
       web_contents()->GetPrimaryPage(), extracted.GetCallback(),
       /*trigger_if_not_cached=*/true);
   ASSERT_TRUE(extracted.Wait());
-  base::RunLoop().RunUntilIdle();
+  FlushMessageLoop();
   EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
 
   // Neither must a new session, which finds the extracted content cached.
+  // Delivering cached content takes two task hops: `FetchPageContext` posts
+  // `MaybeNotifyPageContextFetched`, which posts the `SafetyListManager::Find`
+  // callback (`NotifyPageContextFetched`).
   ttc_service().EndSession();
   ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context());
-  base::RunLoop().RunUntilIdle();
+  FlushMessageLoop();
+  FlushMessageLoop();
   EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
 
   // Navigating from a blocked page to an allowed one during a session must
@@ -490,6 +589,122 @@ IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
   ASSERT_TRUE(content::NavigateToURL(web_contents(), allowed_url));
   EXPECT_TRUE(navigated.Wait());
   EXPECT_TRUE(sent.Wait());
+}
+
+// A renderer crash must replace the conversation's context for the page with
+// just the page's origin, since the page's content is gone.
+IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
+                       RendererCrashSendsContextWithoutContent) {
+  const GURL url = embedded_test_server()->GetURL("/simple.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  StartSession();
+  {
+    base::test::TestFuture<void> sent;
+    EXPECT_CALL(*conversation(), SendContextUpdate(url, "OK", testing::_))
+        .WillOnce(base::test::RunOnceClosure(sent.GetCallback()));
+    EXPECT_TRUE(sent.Wait());
+    EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
+  }
+
+  base::test::TestFuture<void> sent;
+  EXPECT_CALL(*conversation(),
+              SendContextUpdate(url::Origin::Create(url).GetURL(),
+                                std::string(), IsEmptyPageContent()))
+      .WillOnce(base::test::RunOnceClosure(sent.GetCallback()));
+  content::CrashTab(web_contents());
+  EXPECT_TRUE(sent.Wait());
+}
+
+// Enterprise policy explicitly blocking URLs must prevent page context from
+// being fetched or emitted to the conversation, whether the page's content is
+// extracted during the session or already cached, and must resume sending
+// context once the page navigates to an allowed URL.
+IN_PROC_BROWSER_TEST_F(PageContextMonitorBrowserTest,
+                       EnterprisePolicyBlockedUrlsAreNotFetchedOrEmitted) {
+  auto mock_checker = std::make_unique<actor::MockPolicyChecker>(
+      actor::EnterprisePolicyChecker::UrlBlockReason::kExplicitlyBlocked);
+  actor::MockPolicyChecker* raw_checker = mock_checker.get();
+  ttc_service().SetEnterprisePolicyCheckerForTesting(std::move(mock_checker));
+
+  page_content_annotations::PageContentExtractionService* extraction_service =
+      page_content_annotations::PageContentExtractionServiceFactory::
+          GetForProfile(profile());
+  ASSERT_TRUE(extraction_service);
+
+  auto start_session_expecting_no_context = [&]() {
+    ttc_service().StartSession();
+    ASSERT_TRUE(conversation());
+    // Only the page's origin may be sent, without its title or content.
+    EXPECT_CALL(*conversation(), SendContextUpdate(testing::_, std::string(),
+                                                   IsEmptyPageContent()))
+        .Times(testing::AnyNumber());
+    EXPECT_TRUE(ExpectPageChange().Wait());
+  };
+
+  const GURL blocked_url =
+      embedded_test_server()->GetURL("blocked.com", "/simple.html");
+  const GURL allowed_url =
+      embedded_test_server()->GetURL("allowed.com", "/simple.html");
+
+  ASSERT_FALSE(IsUrlSupported(blocked_url, raw_checker));
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), blocked_url));
+
+  // Starting a session on a blocked page must not send context even once PCES
+  // extracts the page's content.
+  ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context());
+  base::test::TestFuture<
+      std::optional<page_content_annotations::ExtractedPageContentResult>>
+      extracted;
+  extraction_service->GetExtractedPageContentAndEligibilityForPageAsync(
+      web_contents()->GetPrimaryPage(), extracted.GetCallback(),
+      /*trigger_if_not_cached=*/true);
+  ASSERT_TRUE(extracted.Wait());
+  FlushMessageLoop();
+  EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
+
+  // Neither must a new session, which finds the extracted content cached.
+  ttc_service().EndSession();
+  ASSERT_NO_FATAL_FAILURE(start_session_expecting_no_context());
+  FlushMessageLoop();
+  EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
+
+  // If the policy unblocks or allows the page, navigating to it sends context.
+  raw_checker->set_reason(
+      actor::EnterprisePolicyChecker::UrlBlockReason::kExplicitlyAllowed);
+  ASSERT_TRUE(IsUrlSupported(allowed_url, raw_checker));
+
+  auto navigated = ExpectPageChange();
+  base::test::TestFuture<void> sent;
+  EXPECT_CALL(*conversation(), SendContextUpdate(allowed_url, "OK", testing::_))
+      .WillOnce(base::test::RunOnceClosure(sent.GetCallback()));
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), allowed_url));
+  EXPECT_TRUE(navigated.Wait());
+  EXPECT_TRUE(sent.Wait());
+  EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
+
+  // Navigating back to a blocked page during an active session invalidates old
+  // context and suppresses sending new page context.
+  raw_checker->set_reason(
+      actor::EnterprisePolicyChecker::UrlBlockReason::kExplicitlyBlocked);
+  ASSERT_FALSE(IsUrlSupported(blocked_url, raw_checker));
+
+  EXPECT_CALL(*conversation(), SendContextUpdate(testing::_, std::string(),
+                                                 IsEmptyPageContent()))
+      .Times(testing::AnyNumber());
+  navigated = ExpectPageChange();
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), blocked_url));
+  EXPECT_TRUE(navigated.Wait());
+
+  base::test::TestFuture<
+      std::optional<page_content_annotations::ExtractedPageContentResult>>
+      extracted_blocked;
+  extraction_service->GetExtractedPageContentAndEligibilityForPageAsync(
+      web_contents()->GetPrimaryPage(), extracted_blocked.GetCallback(),
+      /*trigger_if_not_cached=*/true);
+  ASSERT_TRUE(extracted_blocked.Wait());
+  FlushMessageLoop();
+  EXPECT_TRUE(testing::Mock::VerifyAndClearExpectations(conversation()));
 }
 
 // Extracted page context includes the content of a cross-site iframe.

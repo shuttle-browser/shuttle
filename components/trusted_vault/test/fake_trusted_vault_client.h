@@ -5,8 +5,10 @@
 #ifndef COMPONENTS_TRUSTED_VAULT_TEST_FAKE_TRUSTED_VAULT_CLIENT_H_
 #define COMPONENTS_TRUSTED_VAULT_TEST_FAKE_TRUSTED_VAULT_CLIENT_H_
 
+#include <cstdint>
 #include <list>
 #include <map>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -108,6 +110,12 @@ class FakeTrustedVaultClient : public TrustedVaultClient {
     add_trusted_recovery_method_success_ = success;
   }
 
+  // Sets the return value for the callback of `CanEnroll()`.
+  void SetCanEnroll(bool can_enroll) { can_enroll_ = can_enroll; }
+
+  // Sets whether `Enroll()` succeeds or fails.
+  void SetEnrollSuccess(bool success) { enroll_success_ = success; }
+
   // TrustedVaultClient implementation.
   void AddObserver(Observer* observer) override;
   void RemoveObserver(Observer* observer) override;
@@ -131,6 +139,11 @@ class FakeTrustedVaultClient : public TrustedVaultClient {
       const std::vector<uint8_t>& public_key,
       int method_type_hint,
       base::OnceCallback<void(bool)> callback) override;
+  void CanEnroll(const CoreAccountInfo& account_info,
+                 base::OnceCallback<void(bool)> callback) override;
+  void Enroll(const CoreAccountInfo& account_info,
+              base::OnceCallback<void(const std::vector<uint8_t>&, int)>
+                  callback) override;
   void ClearLocalDataForAccount(const CoreAccountInfo& account_info) override;
 
  private:
@@ -142,6 +155,10 @@ class FakeTrustedVaultClient : public TrustedVaultClient {
     std::vector<std::vector<uint8_t>> keys;
   };
 
+  void CompleteStaleFetchKeys(
+      const GaiaId& gaia_id,
+      base::OnceCallback<void(const std::vector<std::vector<uint8_t>>&)>
+          callback);
   void PostCompleteAllPendingRequests();
 
   const bool auto_complete_requests_;
@@ -157,6 +174,8 @@ class FakeTrustedVaultClient : public TrustedVaultClient {
   std::vector<base::OnceClosure> pending_responses_;
   bool is_recovery_method_required_ = false;
   bool add_trusted_recovery_method_success_ = true;
+  bool can_enroll_ = true;
+  bool enroll_success_ = true;
 
   base::WeakPtrFactory<FakeTrustedVaultClient> weak_ptr_factory_{this};
 };

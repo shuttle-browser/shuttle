@@ -270,6 +270,9 @@ void DumpAccessibilityTestBase::ChooseFeatures(
   // prunes redundant (next|previous) on line IDs.
   enabled_features->emplace_back(
       features::kAccessibilityPruneRedundantInlineConnectivity);
+#if BUILDFLAG(IS_WIN)
+  enabled_features->emplace_back(features::kUiaDisconnectRootProviders);
+#endif
 }
 
 std::string DumpAccessibilityTestBase::DumpTreeAsString() const {

@@ -9,14 +9,17 @@
 
 :host {
   align-items: center;
-  display: flex;
   border-radius: 8px;
+  display: flex;
+  height: 38px;
+  outline: none;
+  position: relative;
 }
 
 :host(:not([disabled]):hover),
 :host(.hovered:not([disabled])),
 :host([menu-open_]:not([disabled])),
-:host-context(html.focus-outline-visible):host(:not([disabled]):focus-within) {
+:host-context(html.focus-outline-visible):host(:focus-within) {
   background-color: var(--cr-hover-background-color);
 }
 
@@ -26,19 +29,22 @@
 
 #expandButton {
   --cr-expand-button-icon-size: 20px;
-  --cr-expand-button-size: 24px;
+  --cr-expand-button-size: 32px;
   --cr-icon-button-fill-color: var(--color-organizer-panel-foreground-subtle,
-      var(--cr-secondary-text-color));
-  --cr-icon-button-focus-outline-color: transparent;
+      var(--color-sys-on-surface-subtle));
   --cr-section-vertical-padding: 0;
+  box-sizing: border-box;
   color: var(--color-organizer-panel-foreground-subtle,
-      var(--cr-secondary-text-color));
+      var(--color-sys-on-surface-subtle));
   flex: 1;
-  font-size: 9px;
-  font-weight: 700;
-  line-height: 16px;
-  padding: 8px;
-  text-transform: uppercase;
+  font-size: 12px;
+  font-weight: 500;
+  height: 100%;
+  line-height: 18px;
+  min-width: 0;
+  padding-block: 0;
+  padding-inline-end: 4px;
+  padding-inline-start: 12px;
 }
 
 #expandButton[disabled] {
@@ -48,34 +54,46 @@
 #expandButton::part(icon) {
   --cr-icon-button-focus-outline-color: transparent;
   box-shadow: none;
-  margin-block: -4px;
-  margin-inline-end: 8px;
-  margin-inline-start: 2px;
-  order: -1;
+  margin-inline-end: 0;
+  margin-inline-start: 0;
   outline: none;
+}
+
+:host([expanded]:not([disabled])) #expandButton::part(icon) {
+  margin-inline-start: 32px;
 }
 
 #expandButton[disabled]::part(icon) {
   display: none;
 }
 
+#headerTitle {
+  contain: inline-size;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 #menuButton {
   --cr-icon-button-fill-color: var(--color-organizer-panel-foreground-subtle,
-      var(--cr-secondary-text-color));
+      var(--color-sys-on-surface-subtle));
+  --cr-icon-button-focus-outline-color: transparent;
   --cr-icon-button-icon-size: 16px;
-  --cr-icon-button-margin-end: 12px;
+  --cr-icon-button-margin-end: 0;
   --cr-icon-button-margin-start: 0;
-  --cr-icon-button-size: 24px;
+  --cr-icon-button-size: 32px;
   display: none;
-  margin-block: -4px;
+  inset-inline-end: 36px;
+  position: absolute;
 }
 
 :host([expanded]:not([disabled])) #menuButton {
   display: inline-flex;
 }
 
-:host-context(html:not(.focus-outline-visible)) #menuButton {
-  --cr-icon-button-focus-outline-color: transparent;
+:host-context(html.focus-outline-visible) #menuButton {
+  --cr-icon-button-focus-outline-color: var(--cr-focus-outline-color);
 }
 
 #menu cr-icon {

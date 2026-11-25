@@ -221,6 +221,10 @@ inline constexpr char16_t kPrivacyHubGeolocationAccuracyLearnMoreURL[] =
 inline constexpr char kPrivacyHubGeolocationLearnMoreURL[] =
     "https://support.google.com/chromebook/?p=manage_your_location";
 
+// The URL path to Google's Embedded Privacy Policy page.
+inline constexpr char kPrivacyPolicyOnlineURLPath[] =
+    "https://policies.google.com/privacy/embedded";
+
 // The URL for the help center article about local data recovery on Chrome OS
 // devices.
 inline constexpr char kRecoveryLearnMoreURL[] =
@@ -250,10 +254,6 @@ inline constexpr char kSmbSharesLearnMoreURL[] =
 // hub page.
 inline constexpr char kSpeakOnMuteDetectionLearnMoreURL[] =
     "https://support.google.com/chromebook?p=mic-mute";
-
-// The URL for the "Learn more" page for Suggested Content in the privacy page.
-inline constexpr char kSuggestedContentLearnMoreURL[] =
-    "https://support.google.com/chromebook?p=explorecontent";
 
 // The URL to a support article with more information about gestures available
 // in tablet mode on Chrome OS (gesture to go to home screen, overview, or to go

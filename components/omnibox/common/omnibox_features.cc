@@ -17,6 +17,7 @@
 namespace omnibox {
 namespace {
 constexpr bool IS_ANDROID = !!BUILDFLAG(IS_ANDROID);
+constexpr bool IS_CHROMEOS = !!BUILDFLAG(IS_CHROMEOS);
 constexpr bool IS_IOS = !!BUILDFLAG(IS_IOS);
 
 constexpr base::FeatureState DISABLED = base::FEATURE_DISABLED_BY_DEFAULT;
@@ -214,6 +215,10 @@ BASE_FEATURE(kOmniboxFuseboxUserEdGuidedTour, DISABLED);
 // attached.
 BASE_FEATURE(kOmniboxDisableTabsForCanvas, ENABLED);
 
+// When enabled, AIM queries submitted from the Omnibox while on a web page open
+// in a new tab instead of navigating away from the current page.
+BASE_FEATURE(kOmniboxAimOpenInNewTab, DISABLED);
+
 // Enables the AIM entrypoint for third party search engines.
 BASE_FEATURE(kAim3pEntrypoint, ENABLED);
 const base::FeatureParam<bool> kAim3pEntrypointDebug{
@@ -236,12 +241,16 @@ BASE_FEATURE(kOmniboxAimDeferShowUntilVisualStateReadyWithFullWebUI, DISABLED);
 // it after the browser window's first presentation, or earlier if the popup is
 // shown or another caller needs the AIM WebContents. See
 // `OmniboxPopupAimPresenter` and `kOmniboxAimPopupCreateOnFirstPresentation`.
-BASE_FEATURE(kOmniboxAimPopupDeferCreation, DISABLED);
+// Enabled on ChromeOS, where session restore at login creates every restored
+// window at once.
+BASE_FEATURE(kOmniboxAimPopupDeferCreation, enable_if(IS_CHROMEOS));
 // When enabled, the WebUI omnibox popup that shows suggestions does not create
 // its WebUI content (and so its WebContents and renderer) while the browser
 // window is built. It creates it after the browser window's first
-// presentation, or earlier if the popup is shown. See `OmniboxPopupPresenter`.
-BASE_FEATURE(kOmniboxWebUIPopupDeferCreation, DISABLED);
+// presentation, or earlier if the popup is shown. See `OmniboxPopupPresenter`
+// and `kOmniboxWebUIPopupCreateOnFocus`.
+// Enabled on ChromeOS, like `kOmniboxAimPopupDeferCreation`.
+BASE_FEATURE(kOmniboxWebUIPopupDeferCreation, enable_if(IS_CHROMEOS));
 // When enabled, the Omnibox WebUI popup will defer showing until the WebUI has
 // painted a clean frame, avoiding the issue of the popup being shown with a
 // stale frame.
@@ -345,6 +354,12 @@ BASE_FEATURE(kOmniboxFullWebUIDestroyWidgetOnHide, ENABLED);
 BASE_FEATURE(kOmniboxAimDestroyWidgetOnHide, ENABLED);
 BASE_FEATURE(kOmniboxWebUIDestroyWidgetOnHide, DISABLED);
 
+// When enabled, the browser windows of a profile share their classic and AI
+// Mode WebUI popups. A window that needs a popup takes an idle one of the same
+// kind from another window instead of loading a new WebContents, and skips
+// prewarming one if another window already has one.
+BASE_FEATURE(kOmniboxWebUIPopupShareAcrossWindows, DISABLED);
+
 // When enabled, a location bar creates its AI Mode popup (and the WebContents
 // behind it) only once the profile is eligible for it, instead of at window
 // creation. Ineligible profiles never show the popup, so this saves one
@@ -360,6 +375,12 @@ BASE_FEATURE(kWebUISearchboxWithoutModelController, DISABLED);
 // keyboard right after showing it. See crbug.com/534375541.
 // Enabled by default; retained as a kill switch.
 BASE_FEATURE(kOmniboxDebounceKeyboardVisibility, ENABLED);
+
+// When enabled, skips redundant pre-tab omnibox/location-bar updates during
+// `LocationBarView::Init()`, coalesces redundant `LocationBarView::OnChanged()`
+// and `LocationIconView::Update()` calls during `LocationBarView::Update()`,
+// and avoids the duplicate `TextChanged()` call in `OmniboxView::RevertAll()`.
+BASE_FEATURE(kOmniboxSkipRedundantLocationBarUpdates, ENABLED);
 
 // Feature used to default typed navigations to use HTTPS instead of HTTP.
 // This only applies to navigations that don't have a scheme such as
@@ -469,6 +490,11 @@ BASE_FEATURE(kTruncateSearchUrlQ, DISABLED);
 
 // Enable asynchronous Fusebox view inflation.
 BASE_FEATURE(kOmniboxFuseboxAsyncInflation, DISABLED);
+
+// When enabled, the Android omnibox suggestions container starts inflating on a
+// background thread as soon as AutocompleteCoordinator is created (rather than
+// on native initialization), and is never inflated synchronously as a fallback.
+BASE_FEATURE(kOmniboxEarlyInflation, DISABLED);
 
 // When enabled, AIM image attachments will be downscaled on load before
 // reaching the C++ side.
@@ -668,6 +694,13 @@ BASE_FEATURE(kForceAndroidRealbox, DISABLED);
 // If enabled, disables ligatures in the URL bar on Android.
 BASE_FEATURE(kUrlBarWithoutLigatures, ENABLED);
 
+// Kill switch: when enabled, the URL bar's stylus handwriting bounds do not
+// extend above the URL bar. The Android platform default extends the
+// handwriting-initiation area 40dp above an editable TextView, which overlaps
+// the tablet tab strip and causes stylus drags on tabs to start handwriting in
+// the omnibox instead (b/514550853).
+BASE_FEATURE(kUrlBarNoHandwritingBoundsAbove, ENABLED);
+
 // If enabled, Java-cached ZPS will be served.
 // The cached ZPS made sense on sub-4GB Android Go devices
 BASE_FEATURE(kServeJavaCachedZeroSuggest, ENABLED);
@@ -675,6 +708,13 @@ BASE_FEATURE(kServeJavaCachedZeroSuggest, ENABLED);
 // If enabled, OmniboxSuggestionsDropdown will force reset the scroll position
 // of the Omnibox suggestion list to the top during any re-layout.
 BASE_FEATURE(kResetSuggestionsScroll, DISABLED);
+
+// If enabled, the typed-text autocomplete request is started right after the
+// next frame is drawn (i.e. once the location bar has repainted with the new
+// character), rather than after a fixed 30ms delay. The fixed delay is the
+// single largest component of keystroke-to-suggestions latency
+// (b/578525544).
+BASE_FEATURE(kOmniboxPostFrameAutocompleteStart, DISABLED);
 
 // Kill switch for special handling for session-less voice search queries
 // (e.g. from NTP fakebox). This special case was added to address b/541295247.
@@ -687,6 +727,17 @@ BASE_FEATURE(kSuppressStatusIconDuringHttpNavigation, ENABLED);
 // redirects on Android.
 BASE_FEATURE(kOmniboxAndroidIntranetRedirect, DISABLED);
 
+// If enabled, the Omnibox, New Tab Page and toolbar mic buttons delegate voice
+// capture and transcription to the Android Google App Voice Plate (via an
+// explicit activity intent), and navigate directly upon receiving the
+// transcription.
+BASE_FEATURE(kOmniboxVoicePlateIntent, DISABLED);
+
+// If enabled, Omnibox suggestion icons are rasterized from the native
+// gfx::VectorIcon definitions (shared with desktop) instead of being sourced
+// from Android XML drawables.
+BASE_FEATURE(kOmniboxNativeVectorIcons, DISABLED);
+
 namespace android {
 static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
   static const base::Feature* const kFeaturesExposedToJava[] = {
@@ -695,8 +746,10 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kOmniboxTouchDownTriggerForPrefetch,
       &kOmniboxPrefetchSelectedSuggestionsOmtAndroid,
       &kOmniboxFuseboxAsyncInflation,
+      &kOmniboxEarlyInflation,
       &kRichAutocompletion,
       &kUrlBarWithoutLigatures,
+      &kUrlBarNoHandwritingBoundsAbove,
       &kPostDelayedTaskFocusTab,
       &kOmniboxMobileParityUpdateV2,
       &kOmniboxXGeoFailClosedOnPreciseLeak,
@@ -714,16 +767,20 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kAIMSuppressVerbatimMatch,
       &kAim3pEntrypoint,
       &kResetSuggestionsScroll,
+      &kOmniboxPostFrameAutocompleteStart,
       &kExactMatchFavicons,
       &kStarterPackExpansion,
       &kOmniboxSearchPrefetchOnEnterKeyDown,
       &kOmniboxAimImageDownscaling,
       &kOmniboxDebounceKeyboardVisibility,
       &kOmniboxDisableTabsForCanvas,
+      &kOmniboxAimOpenInNewTab,
       &kOmniboxSessionlessVoiceSearch,
       &kSuppressStatusIconDuringHttpNavigation,
       &kZeroSuggestPrefetchOnPageLoadAndTabSwitch,
-      &kAndroidTabSearchCloseTabButton};
+      &kAndroidTabSearchCloseTabButton,
+      &kOmniboxVoicePlateIntent,
+      &kOmniboxNativeVectorIcons};
   static base::NoDestructor<base::android::FeatureMap> kFeatureMap(
       kFeaturesExposedToJava);
   return reinterpret_cast<int64_t>(kFeatureMap.get());
@@ -734,7 +791,12 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
 // If enabled, X-Geo headers are sent using the platform-agnostic C++
 // implementation. On Android, enabling this flag will disable the legacy Java
 // implementation.
-BASE_FEATURE(kPlatformAgnosticXGeo, DISABLED);
+BASE_FEATURE(kPlatformAgnosticXGeo, ENABLED);
+
+// If enabled, URL-what-you-typed matches are made the default match instead of
+// matches for the same URL with different casing, so verbatim input casing is
+// preserved for URL paths, which may be case sensitive.
+BASE_FEATURE(kOmniboxPreserveVerbatimUrlCase, ENABLED);
 
 // If enabled, Inline Location Signaling is enabled gating all development
 // and experimentation for the feature.

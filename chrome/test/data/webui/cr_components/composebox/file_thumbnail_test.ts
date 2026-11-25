@@ -2,10 +2,11 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://contextual-tasks/strings.m.js';
+import 'chrome://webui-test/strings.m.js';
+import 'chrome://resources/cr_components/composebox/file_thumbnail.js';
 
 import type {TabFaviconElement} from 'chrome://resources/cr_components/composebox/composebox_tab_favicon.js';
-import {ComposeboxFileThumbnailElement} from 'chrome://resources/cr_components/composebox/file_thumbnail.js';
+import type {ComposeboxFileThumbnailElement} from 'chrome://resources/cr_components/composebox/file_thumbnail.js';
 import type {CrIconElement} from 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {ContextUploadStatus} from 'chrome://resources/mojo/components/omnibox/composebox/composebox_query.mojom-webui.js';
@@ -24,14 +25,16 @@ suite('ComposeboxFileThumbnailTest', () => {
       tabFaviconChipsToCoinsEnabled: false,
     });
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
   });
 
   test('display document file (flag disabled)', async () => {
     loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: false});
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
 
     // Arrange.
@@ -55,7 +58,8 @@ suite('ComposeboxFileThumbnailTest', () => {
   test('display document file (flag enabled) for non-pdf', async () => {
     loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: true});
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
 
     // Arrange.
@@ -79,7 +83,8 @@ suite('ComposeboxFileThumbnailTest', () => {
   test('display pdf file (flag enabled)', async () => {
     loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: true});
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
 
     // Arrange.
@@ -105,7 +110,8 @@ suite('ComposeboxFileThumbnailTest', () => {
   test('display document file (flag enabled) for google doc', async () => {
     loadTimeData.overrideValues({lensSendRawFileMediaTypesEnabled: true});
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
 
     // Arrange.
@@ -129,6 +135,28 @@ suite('ComposeboxFileThumbnailTest', () => {
         fileThumbnailElement.shadowRoot.querySelector('.document-icon');
     assertTrue(!!icon);
     assertEquals(icon.tagName, 'IMG');
+    assertEquals(icon.getAttribute('auto-src'), iconUrl);
+  });
+
+  test('display image without visual source as document chip', async () => {
+    const iconUrl =
+        'https://drive-thirdparty.googleusercontent.com/32/type/image/jpeg';
+    fileThumbnailElement.file = createFile(0, {
+      type: 'image/jpeg',
+      objectUrl: null,
+      dataUrl: undefined,
+      thumbnailUrl: undefined,
+      iconUrl,
+    });
+    await microtasksFinished();
+
+    assertEquals(
+        null, fileThumbnailElement.shadowRoot.querySelector('#imgChip'));
+    assertTrue(
+        !!fileThumbnailElement.shadowRoot.querySelector('#documentChip'));
+    const icon =
+        fileThumbnailElement.shadowRoot.querySelector('.document-icon');
+    assertTrue(!!icon);
     assertEquals(icon.getAttribute('auto-src'), iconUrl);
   });
 
@@ -157,7 +185,8 @@ suite('ComposeboxFileThumbnailTest', () => {
   test('android renders clank chip structure', async () => {
     loadTimeData.overrideValues({isAndroid: true});
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
 
     // Image.
@@ -207,7 +236,8 @@ suite('ComposeboxFileThumbnailTest', () => {
 
   test('shows animation for entering attachment', async () => {
     // Arrange.
-    fileThumbnailElement = new ComposeboxFileThumbnailElement();
+    fileThumbnailElement =
+        document.createElement('cr-composebox-file-thumbnail');
     document.body.appendChild(fileThumbnailElement);
 
     const animation = new Animation();
@@ -352,7 +382,7 @@ function createThumbnailElement(isAndroid: boolean):
     tabFaviconChipsToCoinsEnabled: false,
   });
   document.body.innerHTML = window.trustedTypes!.emptyHTML;
-  const element = new ComposeboxFileThumbnailElement();
+  const element = document.createElement('cr-composebox-file-thumbnail');
   document.body.appendChild(element);
   return element;
 }
@@ -413,6 +443,41 @@ function createThumbnailElement(isAndroid: boolean):
       assertEquals(
           (thumbnail as HTMLImageElement).src,
           fileThumbnailElement.file.dataUrl);
+    });
+
+    [{name: 'photo.heic', type: 'image/heic', objectUrl: 'blob:foo'},
+     {name: 'IMG_1234.HEIC', type: 'image/heif', objectUrl: 'blob:foo'},
+     {name: 'photo.HEIF', type: '', objectUrl: 'blob:foo'},
+     {name: 'browser.heic', type: 'image/heic', dataUrl: 'data:image/heic,'},
+    ].forEach(fileOverrides => {
+      const name = fileOverrides.name;
+      test(`display HEIF image ${name} as document chip`, async () => {
+        // Arrange.
+        fileThumbnailElement.file = createFile(1, fileOverrides);
+        await microtasksFinished();
+
+        // Assert the undecodable image is shown as a document chip.
+        assertFalse(
+            !!fileThumbnailElement.shadowRoot.querySelector('.img-thumbnail'));
+        const title =
+            fileThumbnailElement.shadowRoot.querySelector('#documentTitle');
+        assertTrue(!!title);
+        assertEquals(name, title.textContent);
+      });
+    });
+
+    test('display HEIF image with thumbnailUrl as image', async () => {
+      // Arrange.
+      fileThumbnailElement.file = createFile(1, {
+        name: 'photo.heic',
+        type: 'image/heic',
+        thumbnailUrl: 'https://example.com/thumbnail.png',
+      });
+      await microtasksFinished();
+
+      // Assert the server-provided thumbnail is shown.
+      assertTrue(
+          !!fileThumbnailElement.shadowRoot.querySelector('.img-thumbnail'));
     });
 
     test('display video file', async () => {

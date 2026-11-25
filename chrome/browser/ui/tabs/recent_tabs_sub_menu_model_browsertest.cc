@@ -42,6 +42,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
+#include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
 #include "chrome/common/chrome_switches.h"
@@ -75,7 +76,7 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 using ::testing::ElementsAre;
 
@@ -133,7 +134,10 @@ void VerifyModel(const ui::MenuModel* model, base::span<const ModelData> data) {
 
 class RecentTabsSubMenuModelTest : public InProcessBrowserTest {
  public:
-  RecentTabsSubMenuModelTest() = default;
+  RecentTabsSubMenuModelTest() {
+    focus_feature_list_.InitWithFeatures(
+        {features::kTabGroupsFocusing, features::kNonGroupFocus}, {});
+  }
   RecentTabsSubMenuModelTest(const RecentTabsSubMenuModelTest&) = delete;
   RecentTabsSubMenuModelTest& operator=(const RecentTabsSubMenuModelTest&) =
       delete;
@@ -193,7 +197,7 @@ class RecentTabsSubMenuModelTest : public InProcessBrowserTest {
 
   void AddTabToBrowser(const GURL& tab_url) {
     ui_test_utils::NavigateToURLWithDisposition(
-        browser(), tab_url, WindowOpenDisposition::kNewForegroundTab,
+        browser(), tab_url, ui::mojom::WindowOpenDisposition::kNewForegroundTab,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   }
 
@@ -201,7 +205,7 @@ class RecentTabsSubMenuModelTest : public InProcessBrowserTest {
                                      const GURL& url) {
     ui_test_utils::BrowserCreatedObserver browser_created_observer;
     ui_test_utils::NavigateToURLWithDisposition(
-        browser, url, WindowOpenDisposition::kNewWindow,
+        browser, url, ui::mojom::WindowOpenDisposition::kNewWindow,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_BROWSER);
     BrowserWindowInterface* new_browser = browser_created_observer.Wait();
     ui_test_utils::WaitUntilBrowserBecomeActive(new_browser);
@@ -209,6 +213,7 @@ class RecentTabsSubMenuModelTest : public InProcessBrowserTest {
   }
 
  private:
+  base::test::ScopedFeatureList focus_feature_list_;
   std::unique_ptr<syncer::DataTypeProcessor> sync_processor_;
 };
 
@@ -521,7 +526,7 @@ IN_PROC_BROWSER_TEST_F(RecentTabsSubMenuModelTest,
       AddBrowser(browser(), {GURL("about:blank?0")});
   ui_test_utils::NavigateToURLWithDisposition(
       new_browser, GURL("about:blank?1"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   new_browser->GetTabStripModel()->ActivateTabAt(0);
@@ -571,7 +576,7 @@ IN_PROC_BROWSER_TEST_F(RecentTabsSubMenuModelTest,
   for (int i = 1; i <= 7; ++i) {
     ui_test_utils::NavigateToURLWithDisposition(
         new_browser, GURL("about:blank?" + base::NumberToString(i)),
-        WindowOpenDisposition::kNewForegroundTab,
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   }
 
@@ -671,7 +676,7 @@ IN_PROC_BROWSER_TEST_F(RecentTabsSubMenuModelTest,
   for (int i = 1; i <= 3; ++i) {
     ui_test_utils::NavigateToURLWithDisposition(
         new_browser, GURL("about:blank?" + base::NumberToString(i)),
-        WindowOpenDisposition::kNewForegroundTab,
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
         ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   }
 
@@ -797,13 +802,13 @@ IN_PROC_BROWSER_TEST_F(RecentTabsSubMenuModelTest,
   // Add 2 tabs and close them.
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), GURL("http://wnd/tab0"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_TAB |
           ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   ui_test_utils::NavigateToURLWithDisposition(
       browser(), GURL("http://wnd/tab1"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   browser()->tab_strip_model()->CloseSelectedTabs();
@@ -813,7 +818,7 @@ IN_PROC_BROWSER_TEST_F(RecentTabsSubMenuModelTest,
       AddBrowser(browser(), {GURL("http://wnd1/tab0")});
   ui_test_utils::NavigateToURLWithDisposition(
       new_browser, GURL("http://wnd1/tab1"),
-      WindowOpenDisposition::kNewForegroundTab,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   chrome::GroupTab(new_browser);
   chrome::CloseWindow(new_browser);
@@ -1230,7 +1235,7 @@ IN_PROC_BROWSER_TEST_F(RecentTabsSubMenuModelTest,
   AddTabToBrowser(GURL("http://foo/2"));
 
   // Put tabs 1 and 2 into an ephemeral group and close tab 2.
-  browser()->tab_strip_model()->AddToNewGroup({1, 2}, /*is_ephemeral=*/true);
+  browser()->tab_strip_model()->EnterFocusMode({1, 2});
   browser()->tab_strip_model()->CloseWebContentsAt(
       2, TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB);
 

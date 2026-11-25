@@ -8,13 +8,13 @@
 
 #include "base/auto_reset.h"
 #include "base/metrics/field_trial_params.h"
+#include "base/types/optional_ref.h"
 #include "chrome/browser/banners/app_banner_manager_desktop.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/page_action/page_action_controller.h"
 #include "chrome/browser/ui/page_action/page_action_observer.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/web_applications/web_app_constants.h"
 #include "chrome/browser/web_applications/web_app_helpers.h"
@@ -22,11 +22,11 @@
 #include "chrome/grit/generated_resources.h"
 #include "components/feature_engagement/public/feature_constants.h"
 #include "components/site_engagement/content/site_engagement_service.h"
+#include "components/tabs/public/tab_interface.h"
 #include "components/webapps/browser/banners/app_banner_manager.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_contents_observer.h"
-#include "third_party/blink/public/common/manifest/manifest_util.h"
 #include "ui/base/l10n/l10n_util.h"
 
 namespace {
@@ -40,6 +40,14 @@ const base::FeatureParam<int> kIphSiteEngagementThresholdParam{
 
 }  // namespace
 
+DEFINE_USER_DATA(PwaInstallPageActionController);
+
+// static
+PwaInstallPageActionController* PwaInstallPageActionController::From(
+    tabs::TabInterface* tab) {
+  return tab ? Get(tab->GetUnownedUserDataHost()) : nullptr;
+}
+
 PwaInstallPageActionController::PwaInstallPageActionController(
     tabs::TabInterface& tab_interface,
     page_actions::PageActionController& page_action_controller)
@@ -48,7 +56,8 @@ PwaInstallPageActionController::PwaInstallPageActionController(
       record_ignore_delegate_(this),
       page_action_controller_(page_action_controller),
       iph_is_enabled_(base::FeatureList::IsEnabled(
-          feature_engagement::kIPHDesktopPwaInstallFeature)) {
+          feature_engagement::kIPHDesktopPwaInstallFeature)),
+      scoped_unowned_user_data_(tab_interface.GetUnownedUserDataHost(), *this) {
   content::WebContents* web_contents = tab_interface_->GetContents();
   if (web_contents) {
     Observe(web_contents);
@@ -207,21 +216,13 @@ void PwaInstallPageActionController::Hide() {
 
 void PwaInstallPageActionController::OnInstallableWebAppStatusUpdated(
     webapps::InstallableWebAppCheckResult result,
-    const std::optional<webapps::WebAppBannerData>& data) {
+    base::optional_ref<const webapps::WebAppBannerData> data) {
   UpdateVisibility();
 }
 
 void PwaInstallPageActionController::PrimaryMainFrameRenderProcessGone(
     base::TerminationStatus status) {
   UpdateVisibility();
-}
-
-page_actions::PageActionController&
-PwaInstallPageActionController::GetPageActionController() {
-  page_actions::PageActionController* all_actions_controller =
-      tab_interface_->GetTabFeatures()->page_action_controller();
-  CHECK(all_actions_controller);
-  return *all_actions_controller;
 }
 
 bool PwaInstallPageActionController::ShouldShowIph(
@@ -231,9 +232,6 @@ bool PwaInstallPageActionController::ShouldShowIph(
     return false;
   }
   if (iph_pending_) {
-    return false;
-  }
-  if (blink::IsEmptyManifest(data.manifest()) || !data.manifest_id.is_valid()) {
     return false;
   }
   webapps::AppId app_id =

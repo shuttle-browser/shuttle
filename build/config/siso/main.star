@@ -19,7 +19,6 @@ load("./linux.star", chromium_linux = "chromium")
 load("./mac.star", chromium_mac = "chromium")
 load("./mojo.star", "mojo")
 load("./platform.star", "platform")
-load("./reclient.star", "reclient")
 load("./rust.star", "rust")
 load("./simple.star", "simple")
 load("./typescript_all.star", "typescript_all")
@@ -40,27 +39,6 @@ def __disable_remote(ctx, step_config):
         return step_config
     for rule in step_config["rules"]:
         rule["remote"] = False
-    return step_config
-
-def __disable_remote_host_tools_for_msan(ctx, step_config):
-    # In MSan builds, host tools (protoc, compiled_action targets) are run
-    # with MSan-instrumented shared libraries from
-    # //third_party/instrumented_libs. Only a small set of those libraries is
-    # declared as an input of the action, so when the tool runs remotely the
-    # dynamic loader silently falls back to the worker's uninstrumented system
-    # libraries for everything else (e.g. glib for tools that depend on //base
-    # in component builds), and MSan reports false positives.
-    # Run such steps locally in MSan builds.
-    if gn.args(ctx).get("is_msan") != "true":
-        return step_config
-    for rule in step_config["rules"]:
-        if not rule.get("remote"):
-            continue
-        prefix = rule.get("command_prefix", "")
-        if "/build/gn_run_binary.py" in prefix or \
-           "/tools/protoc_wrapper/protoc_wrapper.py" in prefix or \
-           rule.get("name") in ("default", "default-python"):
-            rule["remote"] = False
     return step_config
 
 def __unset_timeout(ctx, step_config):
@@ -112,15 +90,7 @@ def init(ctx):
         "rules": [],
         # Outputs with known missing deps. They don't fail the build with
         # -missing_deps=error/fatal.
-        "missing_deps": {
-            "./android_clang_arm/obj/chrome/browser/offline_pages/impl/offline_page_utils_android.o": "crbug.com/572931511",
-            "./android_clang_arm/obj/chrome/browser/webapps/android_impl/webapps_client_android.o": "crbug.com/572931511",
-            "./obj/ash/quick_pair/repository/repository/device_address_map.o": "crbug.com/546524333",
-            "./obj/ash/quick_pair/repository/repository/device_image_store.o": "crbug.com/546524333",
-            "./obj/chrome/browser/ash/guest_os/public/public/guest_os_mount_provider.o": "crbug.com/565544340",
-            "./obj/chrome/browser/offline_pages/impl/offline_page_utils_android.o": "crbug.com/572931511",
-            "./obj/chrome/browser/webapps/android_impl/webapps_client_android.o": "crbug.com/572931511",
-        },
+        "missing_deps": {},
         # Executables sent from Windows host to Linux workers need to set executable bit explicitly.
         # This is necessary for cross platform build actions. e.g. node binary for typescript
         "executables": [
@@ -136,14 +106,11 @@ def init(ctx):
     step_config = rust.step_config(ctx, step_config)
     step_config = simple.step_config(ctx, step_config)
     step_config = typescript_all.step_config(ctx, step_config)
-    if reclient.enabled(ctx):
-        step_config = reclient.step_config(ctx, step_config)
 
     step_config = denylist.step_config(ctx, step_config)
 
     step_config = __setup_python(ctx, step_config)
     step_config = __disable_remote(ctx, step_config)
-    step_config = __disable_remote_host_tools_for_msan(ctx, step_config)
     step_config = __unset_timeout(ctx, step_config)
 
     filegroups = {}
@@ -159,7 +126,6 @@ def init(ctx):
     handlers.update(host.handlers)
     handlers.update(rust.handlers)
     handlers.update(simple.handlers)
-    handlers.update(reclient.handlers)
     handlers.update(typescript_all.handlers)
 
     return module(

@@ -352,7 +352,8 @@ class ContextualTasksUiServiceZeroStateEnabledTest
         {{contextual_tasks::kContextualTasks, {}},
          {omnibox::kWebUIOmniboxAskGAboutThisPage,
           {{"Omnibox_AskGCoBrowse", "true"}}}},
-        {});
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture});
   }
 
  private:
@@ -394,8 +395,11 @@ class ContextualTasksUiServiceZeroStateDisabledTest
     : public ContextualTasksUiServiceZeroStateTestBase {
  public:
   ContextualTasksUiServiceZeroStateDisabledTest() {
-    feature_list_.InitWithFeatures({contextual_tasks::kContextualTasks},
-                                   {omnibox::kWebUIOmniboxAskGAboutThisPage});
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks},
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture,
+         omnibox::kWebUIOmniboxAskGAboutThisPage});
   }
 
  private:
@@ -440,7 +444,10 @@ class ContextualTasksUiServiceTaskReuseTest
     : public ContextualTasksUiServiceZeroStateTestBase {
  public:
   ContextualTasksUiServiceTaskReuseTest() {
-    feature_list_.InitWithFeatures({contextual_tasks::kContextualTasks}, {});
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks},
+        {contextual_tasks::kContextualTasksRearchitecture,
+         contextual_tasks::kContextualTasksSidePanelRearchitecture});
   }
 
  private:
@@ -898,6 +905,7 @@ IN_PROC_BROWSER_TEST_F(
 
   content::WebContents* panel_contents = controller->GetActiveWebContents();
   ASSERT_TRUE(panel_contents);
+  content::WaitForLoadStop(panel_contents);
   std::optional<ContextualTask> initial_task = controller->GetCurrentTask();
   ASSERT_TRUE(initial_task.has_value());
 

@@ -13,18 +13,17 @@
 #import "base/metrics/histogram_functions.h"
 #import "base/metrics/user_metrics.h"
 #import "base/metrics/user_metrics_action.h"
-#import "base/strings/sys_string_conversions.h"
 #import "base/task/bind_post_task.h"
 #import "components/handoff/handoff_utility.h"
 #import "components/password_manager/core/browser/ui/password_check_referrer.h"
 #import "components/prefs/pref_service.h"
-#import "components/search_engines/template_url_service.h"
 #import "ios/chrome/app/application_delegate/tab_opening.h"
 #import "ios/chrome/app/profile/profile_state.h"
 #import "ios/chrome/app/spotlight/actions_spotlight_manager.h"
 #import "ios/chrome/app/spotlight/spotlight_util.h"
 #import "ios/chrome/app/startup/app_launch_metrics.h"
 #import "ios/chrome/app/task_request_private.h"
+#import "ios/chrome/app/task_request_utils.h"
 #import "ios/chrome/app/unexpected_mode_toast_util.h"
 #import "ios/chrome/browser/credential_exchange/model/credential_import_manager_swift.h"
 #import "ios/chrome/browser/credential_provider/model/features.h"
@@ -35,11 +34,9 @@
 #import "ios/chrome/browser/lens/ui_bundled/lens_entrypoint.h"
 #import "ios/chrome/browser/policy/model/policy_util.h"
 #import "ios/chrome/browser/reading_list/model/reading_list_browser_agent.h"
-#import "ios/chrome/browser/search_engines/model/template_url_service_factory.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_controller.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
@@ -61,6 +58,7 @@
 #import "ios/chrome/common/intents/OpenInChromeIntent.h"
 #import "ios/chrome/common/intents/SearchInChromeIntent.h"
 #import "net/base/apple/url_conversions.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace {
 
@@ -154,17 +152,17 @@ Browser* GetBrowserForTargetMode(SceneState* scene_state,
   id<BrowserProviderInterface> interface = scene_state.browserProviderInterface;
   switch (target_mode) {
     case ApplicationModeForTabOpening::NORMAL:
-      return interface.mainBrowserProvider.browser;
+      return interface.mainBrowser;
     case ApplicationModeForTabOpening::INCOGNITO:
-      return interface.incognitoBrowserProvider.browser;
+      return interface.incognitoBrowser;
     case ApplicationModeForTabOpening::CURRENT:
-      return interface.currentBrowserProvider.browser;
+      return interface.currentBrowser;
     case ApplicationModeForTabOpening::UNDETERMINED:
-      return interface.currentBrowserProvider.browser;
+      return interface.currentBrowser;
     case ApplicationModeForTabOpening::APP_SWITCHER_INCOGNITO:
-      return interface.incognitoBrowserProvider.browser;
+      return interface.incognitoBrowser;
     case ApplicationModeForTabOpening::APP_SWITCHER_UNDETERMINED:
-      return interface.currentBrowserProvider.browser;
+      return interface.currentBrowser;
   }
 
   NOTREACHED();
@@ -423,8 +421,8 @@ void OpenLatestTab(SceneState* sceneState,
       base::BindOnce(&OpenLatestTabWithBrowser), browser->AsWeakPtr()));
 
   UrlLoadParams params;
-  // Use SWITCH_TO_TAB as a signal to avoid opening a new NTP if tabs exist.
-  params.disposition = WindowOpenDisposition::kSwitchToTab;
+  // Use `kSwitchToTab` as a signal to avoid opening a new NTP if tabs exist.
+  params.disposition = ui::mojom::WindowOpenDisposition::kSwitchToTab;
 
   id<TabOpening> tabOpener = sceneState.controller;
   [tabOpener dismissModalsAndMaybeOpenSelectedTabInMode:targetMode
@@ -575,24 +573,6 @@ void FocusOmniboxWithBrowser(Browser* browser) {
   [handler showComposebox];
 }
 
-// Generates a GURL for a given search query using the default search provider.
-GURL GenerateResultGURLFromSearchQuery(NSString* search_query,
-                                       ProfileIOS* profile) {
-  TemplateURLService* template_url_service =
-      ios::TemplateURLServiceFactory::GetForProfile(profile);
-  const TemplateURL* default_url =
-      template_url_service->GetDefaultSearchProvider();
-  if (default_url && !default_url->url().empty() &&
-      default_url->url_ref().IsValid(
-          template_url_service->search_terms_data())) {
-    std::u16string query_string = base::SysNSStringToUTF16(search_query);
-    TemplateURLRef::SearchTermsArgs search_args(query_string);
-    return GURL(default_url->url_ref().ReplaceSearchTerms(
-        search_args, template_url_service->search_terms_data()));
-  }
-  return GURL();
-}
-
 // Callback taking a Browser pointer.
 using CallbackWithBrowser = base::OnceCallback<void(Browser*)>;
 
@@ -615,15 +595,20 @@ URLAndCallback GetURLAndCallbackFromSearchInChromeIntent(
     return {url_to_open, {}};
   }
 
+  // Whitespace-only phrases are treated as empty. Shortcuts donated by older
+  // Chrome versions carry a single space as `searchPhrase`, because SiriKit
+  // used to reject donations with an empty parameter.
   NSString* search_phrase = intent.searchPhrase;
-  if (search_phrase.length > 0) {
-    GURL generated_url =
-        GenerateResultGURLFromSearchQuery(search_phrase, profile);
-    if (generated_url.is_valid()) {
-      url_to_open = generated_url;
-    }
-  } else {
+  NSString* trimmed_search_phrase = [search_phrase
+      stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+  if (trimmed_search_phrase.length == 0) {
     return {url_to_open, base::BindOnce(&FocusOmniboxWithBrowser)};
+  }
+
+  GURL generated_url =
+      GenerateResultGURLFromSearchQuery(search_phrase, profile);
+  if (generated_url.is_valid()) {
+    url_to_open = generated_url;
   }
   return {url_to_open, {}};
 }
@@ -637,9 +622,14 @@ std::vector<GURL> GetURLsFromOpenInIncognitoIntent(INIntent* intent) {
 
 // Returns the list of URLs from an `OpenInChromeIntent`.
 std::vector<GURL> GetURLsFromOpenInChromeIntent(INIntent* intent) {
-  OpenInChromeIntent* typed_intent =
-      base::apple::ObjCCastStrict<OpenInChromeIntent>(intent);
-  return GURLVectorWithNSURLArray(typed_intent.url);
+  id intent_url = base::apple::ObjCCastStrict<OpenInChromeIntent>(intent).url;
+  // Old versions of the intent, which can still be passed to Chrome by
+  // shortcuts saved long ago (see crbug.com/1133825), declare `url` as a single
+  // `NSURL` rather than an array.
+  if ([intent_url isKindOfClass:[NSURL class]]) {
+    intent_url = @[ intent_url ];
+  }
+  return GURLVectorWithNSURLArray(base::apple::ObjCCast<NSArray>(intent_url));
 }
 
 // Open an URL coming from spotlight.
@@ -744,8 +734,7 @@ void OpenSpotlightURL(NSURL* webpage_url,
   }
   SceneState* sceneState = self.sceneState;
   CHECK(sceneState);
-  Browser* browser =
-      sceneState.browserProviderInterface.currentBrowserProvider.browser;
+  Browser* browser = sceneState.browserProviderInterface.currentBrowser;
   CHECK(browser);
 
   PrefService* prefs = sceneState.profileState.profile->GetPrefs();

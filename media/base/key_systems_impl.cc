@@ -37,7 +37,7 @@ struct MimeTypeToCodecs {
 // Mapping between containers and their codecs.
 // Only audio codecs can belong to a "audio/*" mime_type, and only video codecs
 // can belong to a "video/*" mime_type.
-static const MimeTypeToCodecs kMimeTypeToCodecsMap[] = {
+static constexpr MimeTypeToCodecs kMimeTypeToCodecsMap[] = {
     {"audio/webm", EME_CODEC_WEBM_AUDIO_ALL},
     {"video/webm", EME_CODEC_WEBM_VIDEO_ALL},
     {"audio/mp4", EME_CODEC_MP4_AUDIO_ALL},
@@ -493,21 +493,6 @@ void KeySystemsImpl::AddMimeTypeCodecMaskForTesting(
     const std::string& mime_type,
     uint32_t codecs_mask) {
   RegisterMimeType(mime_type, static_cast<EmeCodec>(codecs_mask));
-}
-
-void KeySystemsImpl::ResetForTesting() {
-  weak_factory_.InvalidateWeakPtrs();
-  has_updated_ = false;
-  DCHECK(pending_callbacks_.empty())
-      << "Should have no update callbacks for a clean test.";
-  pending_key_systems_.clear();
-  key_system_info_vector_.clear();
-  mime_type_to_codecs_map_.clear();
-  codec_map_for_testing_.clear();
-  audio_codec_mask_ = EME_CODEC_AUDIO_ALL;
-  video_codec_mask_ = EME_CODEC_VIDEO_ALL;
-
-  Initialize();
 }
 
 std::string KeySystemsImpl::GetBaseKeySystemName(

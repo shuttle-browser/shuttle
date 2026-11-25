@@ -4,7 +4,6 @@
 
 #include "ui/ozone/platform/flatland/flatland_sysmem_buffer_collection.h"
 
-#include <fuchsia/sysmem/cpp/fidl.h>
 #include <lib/zx/eventpair.h>
 
 #include <bit>
@@ -16,7 +15,6 @@
 #include "base/numerics/checked_math.h"
 #include "base/task/current_thread.h"
 #include "build/build_config.h"
-#include "flatland_sysmem_buffer_collection.h"
 #include "gpu/vulkan/vulkan_device_queue.h"
 #include "gpu/vulkan/vulkan_function_pointers.h"
 #include "ui/ozone/platform/flatland/flatland_surface_factory.h"
@@ -166,8 +164,8 @@ VkFormatFeatureFlags GetFormatFeatureFlagsFromUsage(VkImageUsageFlags usage) {
 
 VkImageFormatConstraintsInfoFUCHSIA GetDefaultImageFormatConstraintsInfo(
     const VkImageCreateInfo& create_info) {
-  DCHECK(create_info.format != VK_FORMAT_UNDEFINED);
-  DCHECK(create_info.usage != 0);
+  CHECK(create_info.format != VK_FORMAT_UNDEFINED, base::NotFatalUntil::M163);
+  CHECK(create_info.usage != 0, base::NotFatalUntil::M163);
 
   static const VkSysmemColorSpaceFUCHSIA kSrgbColorSpace = {
       VK_STRUCTURE_TYPE_SYSMEM_COLOR_SPACE_FUCHSIA, nullptr,
@@ -431,7 +429,8 @@ FlatlandSysmemBufferCollection::CreateNativePixmap(
     return nullptr;
   }
 
-  DCHECK_EQ(base::GetRelatedKoid(handle.buffer_collection_handle).value(), id_);
+  CHECK_EQ(base::GetRelatedKoid(handle.buffer_collection_handle).value(), id_,
+           base::NotFatalUntil::M163);
   // sysmem always fills out settings(), buffer_settings(), coherency_domain()
   handle.ram_coherency =
       buffers_info_.settings().buffer_settings().coherency_domain() ==
@@ -442,7 +441,8 @@ FlatlandSysmemBufferCollection::CreateNativePixmap(
     return new FlatlandSysmemNativePixmap(this, std::move(handle), size);
 
   zx::vmo main_plane_vmo;
-  DCHECK(buffers_info_.buffers()[handle.buffer_index].vmo().is_valid());
+  CHECK(buffers_info_.buffers()[handle.buffer_index].vmo().is_valid(),
+        base::NotFatalUntil::M163);
   zx_status_t status =
       buffers_info_.buffers()[handle.buffer_index].vmo().duplicate(
           ZX_RIGHT_SAME_RIGHTS, &main_plane_vmo);
@@ -593,7 +593,7 @@ bool FlatlandSysmemBufferCollection::CreateVkImage(
 
 fuchsia::ui::composition::BufferCollectionImportToken
 FlatlandSysmemBufferCollection::GetFlatlandImportToken() const {
-  DCHECK(HasFlatlandImportToken());
+  CHECK(HasFlatlandImportToken(), base::NotFatalUntil::M163);
 
   fuchsia::ui::composition::BufferCollectionImportToken import_dup;
   zx_status_t status = flatland_import_token_.value.duplicate(
@@ -755,8 +755,10 @@ bool FlatlandSysmemBufferCollection::InitializeInternal(
 
   // sysmem always fills out buffers(), settings(), image_format_constraints(),
   // size_bytes(), is_secure()
-  DCHECK_GE(buffers_info_.buffers().size(), min_buffer_count);
-  DCHECK(buffers_info_.settings().has_image_format_constraints());
+  CHECK_GE(buffers_info_.buffers().size(), min_buffer_count,
+           base::NotFatalUntil::M163);
+  CHECK(buffers_info_.settings().has_image_format_constraints(),
+        base::NotFatalUntil::M163);
 
   buffer_size_ = buffers_info_.settings().buffer_settings().size_bytes();
   is_protected_ = buffers_info_.settings().buffer_settings().is_secure();
@@ -808,8 +810,8 @@ void FlatlandSysmemBufferCollection::InitializeImageCreateInfo(
 
 void FlatlandSysmemBufferCollection::OnZxHandleSignalled(zx_handle_t handle,
                                                          zx_signals_t signals) {
-  DCHECK_EQ(handle, handle_.get());
-  DCHECK_EQ(signals, ZX_EVENTPAIR_PEER_CLOSED);
+  CHECK_EQ(handle, handle_.get(), base::NotFatalUntil::M163);
+  CHECK_EQ(signals, ZX_EVENTPAIR_PEER_CLOSED, base::NotFatalUntil::M163);
 
   // Move the callbacks to the stack since running them may release the last
   // reference to `this`.

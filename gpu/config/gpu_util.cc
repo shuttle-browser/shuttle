@@ -405,7 +405,6 @@ void SetProcessGlWorkaroundsFromGpuFeatures(
 
   gl::GlWorkarounds workarounds = {
       .disable_d3d11 = is_enabled(DISABLE_D3D11),
-      .disable_metal = is_enabled(DISABLE_METAL),
 #if BUILDFLAG(IS_WIN)
       .disable_direct_composition_video_overlays =
           is_enabled(DISABLE_DIRECT_COMPOSITION_VIDEO_OVERLAYS),
@@ -629,7 +628,6 @@ GpuFeatureInfo ComputeGpuFeatureInfo(const GPUInfo& gpu_info,
 
     use_software_gl = gl::IsSoftwareGLImplementation(*requested_impl);
     if (use_software_gl) {
-      std::string use_gl = command_line->GetSwitchValueASCII(switches::kUseGL);
       std::string use_angle =
           command_line->GetSwitchValueASCII(switches::kUseANGLE);
       if (use_angle == gl::kANGLEImplementationSwiftShaderForWebGLName ||

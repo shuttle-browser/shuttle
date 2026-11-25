@@ -5,11 +5,15 @@
 #ifndef COMPONENTS_WEBAPPS_BROWSER_INSTALLABLE_INSTALLABLE_PAGE_DATA_H_
 #define COMPONENTS_WEBAPPS_BROWSER_INSTALLABLE_INSTALLABLE_PAGE_DATA_H_
 
+#include <memory>
+#include <optional>
 #include <vector>
 
+#include "base/types/optional_ref.h"
 #include "components/webapps/browser/installable/installable_data.h"
 #include "components/webapps/common/web_page_metadata.mojom.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
+#include "third_party/blink/public/mojom/manifest/manifest.mojom-shared.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "url/gurl.h"
 
@@ -31,7 +35,7 @@ class InstallablePageData {
   void Reset();
 
   void OnManifestFetched(
-      blink::mojom::ManifestPtr manifest,
+      std::optional<blink::Manifest> manifest,
       GURL manifest_url,
       InstallableStatusCode error = InstallableStatusCode::NO_ERROR_DETECTED);
   void OnPageMetadataFetched(mojom::WebPageMetadataPtr web_page_metadata);
@@ -41,7 +45,7 @@ class InstallablePageData {
   void OnPrimaryIconFetchedError(InstallableStatusCode code);
   void OnScreenshotsDownloaded(std::vector<Screenshot> screenshots);
 
-  const blink::mojom::Manifest& GetManifest() const;
+  base::optional_ref<const blink::Manifest> GetManifest() const;
   const mojom::WebPageMetadata& WebPageMetadata() const;
 
   const GURL& manifest_url() const { return manifest_->url; }
@@ -65,10 +69,12 @@ class InstallablePageData {
     ManifestProperty();
     ~ManifestProperty();
 
-    InstallableStatusCode error = InstallableStatusCode::NO_ERROR_DETECTED;
+    // Heap-allocated rather than inline std::optional so pages without a
+    // manifest do not reserve ~2.2 KiB per tab.
+    std::unique_ptr<blink::Manifest> manifest;
     //  This can be empty if the page doesn't have a manifest url.
     GURL url;
-    blink::mojom::ManifestPtr manifest = blink::mojom::Manifest::New();
+    InstallableStatusCode error = InstallableStatusCode::NO_ERROR_DETECTED;
     bool fetched = false;
   };
 

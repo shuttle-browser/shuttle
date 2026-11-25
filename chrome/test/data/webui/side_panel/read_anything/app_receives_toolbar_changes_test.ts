@@ -5,12 +5,12 @@
 import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 
 import type {AppElement, ContentController, LanguageToastElement, LineFocusController, SpeechController, VoiceLanguageController, VoiceNotificationManager} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
-import {LineFocusMovement, LineFocusStyle, ReadAloudSettingsChange, ReadAnythingSettingsChange, ToolbarEvent} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {ContentType, LineFocusMovement, LineFocusStyle, ReadAloudSettingsChange, ReadAnythingSettingsChange, ToolbarEvent} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {assertArrayEquals, assertEquals, assertFalse, assertLT, assertNotEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 import {keyDownOn} from 'chrome-untrusted://webui-test/keyboard_mock_interactions.js';
 import {hasStyle, microtasksFinished, whenCheck} from 'chrome-untrusted://webui-test/test_util.js';
 
-import {createSpeechSynthesisVoice, emitEvent, setContent, setupAppTestEnvironment, setupBasicSpeech} from './common.js';
+import {createAndSetVoices, createSpeechSynthesisVoice, emitEvent, setContent, setupAppTestEnvironment, setupBasicSpeech} from './common.js';
 import type {TestAudioBrowserProxy} from './test_audio_browser_proxy.js';
 import type {TestContentBrowserProxy} from './test_content_browser_proxy.js';
 import type {TestMetricsBrowserProxy} from './test_metrics_browser_proxy.js';
@@ -423,28 +423,6 @@ suite('AppReceivesToolbarChanges', () => {
         assertEquals('', app.$.container.style.paddingTop);
       });
 
-  suite('with line focus disabled', () => {
-    setup(async () => {
-      const result = await setupAppTestEnvironment({lineFocusEnabled: false});
-      app = result.app;
-      visualBrowserProxy = result.visualBrowserProxy;
-    });
-
-    test('line focus change does nothing', async () => {
-      const lineFocus = app.$.lineFocus;
-      assertTrue(!!lineFocus);
-
-      emitEvent(
-          app, ToolbarEvent.LINE_FOCUS_STYLE,
-          {detail: {data: LineFocusStyle.UNDERLINE}});
-      await microtasksFinished();
-      assertEquals(
-          '',
-          window.getComputedStyle(lineFocus).getPropertyValue(
-              '--line-focus-display'));
-    });
-  });
-
   test('font size change updates line focus line height', async () => {
     app.updateContent();
     emitEvent(app, ToolbarEvent.LINE_FOCUS_TOGGLE, {detail: {data: true}});
@@ -646,6 +624,38 @@ suite('AppReceivesToolbarChanges', () => {
       assertFalse(speechController.isSpeechActive());
       assertTrue(speechController.isSpeechTreeInitialized());
       assertTrue(speechController.hasSpeechBeenTriggered());
+    });
+
+    test('voice change while playing restarts speech', async () => {
+      setupBasicSpeech(speech);
+      await emitPlayPause();
+      createAndSetVoices(speech, [
+        {lang: 'en', name: 'Google Sheldon'},
+        {lang: 'en', name: 'Google Mary'},
+      ]);
+      speech.reset();
+
+      emitEvent(
+          app, ToolbarEvent.VOICE,
+          {detail: {selectedVoice: speech.getVoices()[1]}});
+
+      assertEquals(2, speech.getCallCount('cancel'));
+      assertEquals(1, speech.getCallCount('speak'));
+      assertEquals(0, speech.getCallCount('pause'));
+    });
+
+    test('not playable until speech engine loads', async () => {
+      setupBasicSpeech(speech);
+      contentController.setState(ContentType.HAS_CONTENT);
+      await microtasksFinished();
+      assertTrue(app.$.toolbar.isReadAloudPlayable);
+
+      await emitPlayPause();
+      assertFalse(app.$.toolbar.isReadAloudPlayable);
+
+      speech.getArgs('speak')[0].onstart();
+      await microtasksFinished();
+      assertTrue(app.$.toolbar.isReadAloudPlayable);
     });
 
     suite('on keyboard k pressed', () => {
@@ -1112,6 +1122,20 @@ suite('AppReceivesToolbarChanges', () => {
 
       assertEquals(
           1, visualBrowserProxy.getCallCount('onTranslationRequested'));
+    });
+
+    test('send feedback requested', () => {
+      contentBrowserProxy.sendFeedbackEnabled = true;
+      emitEvent(app, ToolbarEvent.SEND_FEEDBACK);
+
+      assertEquals(1, contentBrowserProxy.getCallCount('onSendFeedback'));
+    });
+
+    test('send feedback ignored when flag disabled', () => {
+      contentBrowserProxy.sendFeedbackEnabled = false;
+      emitEvent(app, ToolbarEvent.SEND_FEEDBACK);
+
+      assertEquals(0, contentBrowserProxy.getCallCount('onSendFeedback'));
     });
   });
 });

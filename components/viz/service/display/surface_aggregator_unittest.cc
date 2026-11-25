@@ -1346,8 +1346,13 @@ TEST_F(SurfaceAggregatorValidSurfaceTest, UndrawnSurfaces) {
 }
 
 TEST_F(SurfaceAggregatorValidSurfaceTest, UndrawnSurfacesWithCopyRequests) {
+  TestVizClient grandchild(this, &manager_, kArbitraryFrameSinkId3,
+                           gfx::Rect(5, 5));
+  grandchild.SubmitCompositorFrame(SkColors::kRed);
+
   TestVizClient child(this, &manager_, kArbitraryFrameSinkId1,
                       gfx::Rect(10, 10));
+  child.SetEmbeddedClient(&grandchild, true);
   child.SubmitCompositorFrame(SkColors::kBlue);
   child.RequestCopyOfOutput();
 
@@ -1376,11 +1381,14 @@ TEST_F(SurfaceAggregatorValidSurfaceTest, UndrawnSurfacesWithCopyRequests) {
       Quad::SolidColorQuad(SkColors::kGreen, parent.bounds()),
       Quad::SolidColorQuad(SkColors::kBlack, gfx::Rect(5, 5))};
   std::vector<Quad> expected_copy_quads = {
-      Quad::SolidColorQuad(SkColors::kBlue, child.bounds())};
+      Quad::SolidColorQuad(SkColors::kBlue, child.bounds()),
+      Quad::SolidColorQuad(SkColors::kRed, grandchild.bounds())};
   std::vector<Pass> expected_passes = {Pass(expected_copy_quads, kSurfaceSize),
                                        Pass(expected_quads, kSurfaceSize)};
-  AggregateAndVerify(expected_passes, {root_surface_id_, parent.surface_id(),
-                                       child.surface_id()});
+  AggregateAndVerify(expected_passes,
+                     {root_surface_id_, parent.surface_id(), child.surface_id(),
+                      grandchild.surface_id()});
+  EXPECT_FALSE(grandchild.GetSurface()->HasUndrawnActiveFrame());
   EXPECT_FALSE(child.GetSurface()->HasUndrawnActiveFrame());
   EXPECT_FALSE(parent.GetSurface()->HasUndrawnActiveFrame());
 }
@@ -1432,7 +1440,6 @@ TEST_F(SurfaceAggregatorValidSurfaceTest,
       Quad::SolidColorQuad(SkColors::kYellow, second_parent.bounds()),
       Quad::SolidColorQuad(SkColors::kBlue, gfx::Rect(10, 10)),
       Quad::SolidColorQuad(SkColors::kBlack, gfx::Rect(5, 5))};
-  std::vector<Quad> expected_copy_quads = {};
   std::vector<Pass> expected_passes = {Pass(expected_quads, kSurfaceSize)};
   AggregateAndVerify(expected_passes,
                      {root_surface_id_, first_parent.surface_id(),
@@ -8921,6 +8928,78 @@ TEST_P(SurfaceAggregatorValidSurfaceWithMergingPassesTest,
   testing::Mock::VerifyAndClearExpectations(&aggregated_damage_callback);
 }
 
+// Verifies that when an old surface and a new surface from the same FrameSinkId
+// are both aggregated in the same frame, the new surface takes the root render
+// pass ID from the old surface and the old surface gets a distinct ID so
+// neither pass is treated as a duplicate.
+TEST_F(SurfaceAggregatorValidSurfaceTest,
+       OldAndNewSurfaceSameFrameSinkAggregatedTogether) {
+  TestSurfaceIdAllocator child_surface_id_allocator(
+      child_sink_->frame_sink_id());
+
+  SurfaceId child_surface_id1 = child_surface_id_allocator.Get();
+  child_sink_->SubmitCompositorFrame(
+      child_surface_id1.local_surface_id(),
+      CompositorFrameBuilder()
+          .AddRenderPass(
+              RenderPassBuilder(CompositorRenderPassId{1}, kSurfaceSize)
+                  .AddSolidColorQuad(gfx::Rect(5, 5), SkColors::kGreen))
+          .Build());
+
+  // First aggregation resolves `child_surface_id1`.
+  root_sink_->SubmitCompositorFrame(
+      root_surface_id_.local_surface_id(),
+      CompositorFrameBuilder()
+          .AddRenderPass(
+              RenderPassBuilder(CompositorRenderPassId{1}, kSurfaceSize)
+                  .AddSurfaceQuad(gfx::Rect(kSurfaceSize),
+                                  SurfaceRange(std::nullopt, child_surface_id1),
+                                  {.allow_merge = false}))
+          .Build());
+  auto frame1 = AggregateFrame(root_surface_id_);
+  ASSERT_EQ(2u, frame1.render_pass_list.size());
+  const AggregatedRenderPassId original_child_pass_id =
+      frame1.render_pass_list[0]->id;
+
+  // Submit a frame to a new surface `child_surface_id2` on the same frame sink
+  // with a CopyOutputRequest.
+  child_surface_id_allocator.Increment();
+  SurfaceId child_surface_id2 = child_surface_id_allocator.Get();
+  child_sink_->SubmitCompositorFrame(
+      child_surface_id2.local_surface_id(),
+      CompositorFrameBuilder()
+          .AddRenderPass(
+              RenderPassBuilder(CompositorRenderPassId{1}, kSurfaceSize)
+                  .AddStubCopyOutputRequest()
+                  .AddSolidColorQuad(gfx::Rect(5, 5), SkColors::kBlue))
+          .Build());
+
+  // Aggregate a root frame that embeds both `child_surface_id1` (unmerged) and
+  // `child_surface_id2` (which has a CopyOutputRequest).
+  root_sink_->SubmitCompositorFrame(
+      root_surface_id_.local_surface_id(),
+      CompositorFrameBuilder()
+          .AddRenderPass(
+              RenderPassBuilder(CompositorRenderPassId{1}, kSurfaceSize)
+                  .AddSurfaceQuad(gfx::Rect(kSurfaceSize),
+                                  SurfaceRange(std::nullopt, child_surface_id1),
+                                  {.allow_merge = false})
+                  .AddSurfaceQuad(gfx::Rect(kSurfaceSize),
+                                  SurfaceRange(std::nullopt, child_surface_id2),
+                                  {.allow_merge = true}))
+          .Build());
+  auto frame2 = AggregateFrame(root_surface_id_);
+
+  // Both child surfaces and the root surface should have distinct passes, with
+  // `child_surface_id2` reusing `original_child_pass_id` and retaining its
+  // CopyOutputRequest.
+  ASSERT_EQ(3u, frame2.render_pass_list.size());
+  EXPECT_NE(frame2.render_pass_list[0]->id, original_child_pass_id);
+  EXPECT_TRUE(frame2.render_pass_list[0]->copy_requests.empty());
+  EXPECT_EQ(frame2.render_pass_list[1]->id, original_child_pass_id);
+  EXPECT_EQ(1u, frame2.render_pass_list[1]->copy_requests.size());
+}
+
 // Verifies that if a CompositorFrame contains a render pass id cycle then the
 // frame is rejected as invalid.
 TEST_F(SurfaceAggregatorValidSurfaceTest,
@@ -9110,6 +9189,71 @@ TEST_F(SurfaceAggregatorValidSurfaceTest,
       gfx::Transform::MakeScale(kEmbeddingScale / kBackingScale);
   EXPECT_EQ(expected_transform,
             embedder_quad->shared_quad_state->quad_to_target_transform);
+}
+
+// Verifies that a retained child root pass and its embedding RPDQ are reduced
+// to a requested backing scale below 1, including partial visibility, without
+// changing their on-screen geometry.
+TEST_F(SurfaceAggregatorValidSurfaceTest,
+       RenderNonMergedSurfaceAtSubOneBackingScale) {
+  base::test::ScopedFeatureList scoped_feature_list(
+      features::kRenderNonMergedSurfaceAtBackingScale);
+
+  constexpr float kBackingScale = 0.9f;
+  constexpr float kEmbeddingScale = 0.9f;
+  const gfx::Rect child_rect(100, 50);
+  const gfx::Rect visible_rect(10, 10, 20, 10);
+  TestSurfaceIdAllocator child_surface_id(child_sink_->frame_sink_id());
+  SubmitChildFrame(child_sink_.get(), child_surface_id.local_surface_id(),
+                   child_rect, kBackingScale);
+  SubmitRootFrameWithSurfaceQuad(child_surface_id, child_rect, visible_rect,
+                                 kEmbeddingScale,
+                                 /*allow_child_root_pass_merge=*/false);
+
+  const auto aggregated_frame = AggregateFrame(root_surface_id_);
+  ASSERT_EQ(2u, aggregated_frame.render_pass_list.size());
+
+  const auto* child_pass = aggregated_frame.render_pass_list[0].get();
+  EXPECT_EQ(gfx::Rect(90, 45), child_pass->output_rect);
+  // The copied child pass starts with an identity transform_to_root_target.
+  // Aggregation concatenates the SurfaceDrawQuad's 0.9x embedding transform,
+  // then removes the 0.9x backing scale:
+  //
+  //   identity * kEmbeddingScale * (1 / kBackingScale)
+  //     = 0.9 * (1 / 0.9)
+  //     = identity
+  //
+  // The pass's 90x45 backing therefore remains 90x45 on screen.
+  const gfx::Transform expected_child_pass_transform =
+      gfx::Transform::MakeScale(kEmbeddingScale / kBackingScale);
+  EXPECT_TRUE(child_pass->transform_to_root_target.ApproximatelyEqual(
+      expected_child_pass_transform, 1e-6f));
+
+  const auto* embedder_pass = aggregated_frame.render_pass_list[1].get();
+  ASSERT_EQ(1u, embedder_pass->quad_list.size());
+  ASSERT_EQ(DrawQuad::Material::kAggregatedRenderPass,
+            embedder_pass->quad_list.front()->material);
+  const auto* embedder_quad = AggregatedRenderPassDrawQuad::MaterialCast(
+      embedder_pass->quad_list.front());
+  EXPECT_EQ(gfx::Rect(90, 45), embedder_quad->rect);
+  EXPECT_EQ(gfx::Rect(9, 9, 18, 9), embedder_quad->visible_rect);
+  EXPECT_EQ(gfx::RectF(90.f, 45.f), embedder_quad->tex_coord_rect());
+  EXPECT_EQ(gfx::Rect(90, 45),
+            embedder_quad->shared_quad_state->quad_layer_rect);
+  EXPECT_EQ(gfx::Rect(9, 9, 18, 9),
+            embedder_quad->shared_quad_state->visible_quad_layer_rect);
+  // The RPDQ starts with the SurfaceDrawQuad's 0.9x transform. Its rect has
+  // already been converted from 100x50 content coordinates to the 90x45
+  // backing coordinates, so aggregation removes the backing scale from the
+  // transform:
+  //
+  //   kEmbeddingScale * (1 / kBackingScale)
+  //     = 0.9 * (1 / 0.9)
+  //     = identity
+  const gfx::Transform expected_rpdq_transform =
+      gfx::Transform::MakeScale(kEmbeddingScale / kBackingScale);
+  EXPECT_TRUE(embedder_quad->shared_quad_state->quad_to_target_transform
+                  .ApproximatelyEqual(expected_rpdq_transform, 1e-6f));
 }
 
 // Verifies that a render-target limit clamps only the retained pass backing,

@@ -37,7 +37,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/events/keycodes/dom/dom_key.h"
 #include "ui/views/bubble/bubble_border.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
@@ -74,6 +74,8 @@ std::u16string InterceptionTypeToIdentityPillText(
       return l10n_util::GetStringUTF16(
           IDS_SIGNIN_DICE_WEB_INTERCEPT_AVATAR_BUTTON_SWITCH_PROFILE_TEXT);
     case WebSigninInterceptor::SigninInterceptionType::kChromeSignin:
+    case WebSigninInterceptor::SigninInterceptionType::
+        kChromeSigninNonIntercept:
       return l10n_util::GetStringUTF16(
           IDS_AVATAR_BUTTON_INTERCEPT_BUBBLE_CHROME_SIGNIN_TEXT);
     case WebSigninInterceptor::SigninInterceptionType::kMultiUser:
@@ -95,6 +97,8 @@ std::optional<std::u16string> InteractionTypeToIdentityPillAccessibilityLabel(
     WebSigninInterceptor::SigninInterceptionType interception_type) {
   switch (interception_type) {
     case WebSigninInterceptor::SigninInterceptionType::kChromeSignin:
+    case WebSigninInterceptor::SigninInterceptionType::
+        kChromeSigninNonIntercept:
       return l10n_util::GetStringUTF16(
           IDS_AVATAR_BUTTON_INTERCEPT_BUBBLE_CHROME_SIGNIN_ACCESSIBILITY_LABEL);
     case WebSigninInterceptor::SigninInterceptionType::kProfileSwitch:
@@ -147,21 +151,25 @@ std::string_view GetChromeSigninReactionString(
   }
 }
 
-void RecordChromeSigninInterceptResult(base::TimeTicks start_time,
-                                       SigninInterceptionResult result) {
+void RecordChromeSigninInterceptResult(
+    WebSigninInterceptor::SigninInterceptionType interception_type,
+    base::TimeTicks start_time,
+    SigninInterceptionResult result) {
   CHECK_NE(start_time, base::TimeTicks());
-  constexpr std::string_view kBaseResponseTimeHistogram =
-      "Signin.Intercept.ChromeSignin.ResponseTime";
-
   std::string_view reaction = GetChromeSigninReactionString(result);
-  std::string reaction_time_histogram_name =
-      base::StrCat({kBaseResponseTimeHistogram, reaction});
+  std::string reaction_time_histogram_name = base::StrCat(
+      {"Signin.Intercept",
+       DiceWebSigninInterceptorDelegate::GetHistogramSuffix(interception_type),
+       ".ResponseTime", reaction});
 
   base::UmaHistogramMediumTimes(reaction_time_histogram_name,
                                 base::TimeTicks::Now() - start_time);
 
-  // Only record user action on successful signin inputs.
-  if (result == SigninInterceptionResult::kAccepted) {
+  // Only record user action on successful signin inputs for the intercept
+  // bubble.
+  if (result == SigninInterceptionResult::kAccepted &&
+      interception_type ==
+          WebSigninInterceptor::SigninInterceptionType::kChromeSignin) {
     RecordSigninUserActionForAccessPoint(
         signin_metrics::AccessPoint::kChromeSigninInterceptBubble);
   }
@@ -173,6 +181,8 @@ void RecordDismissReason(
   // Only those types show a bubble that would be dismissible.
   CHECK(interception_type ==
             WebSigninInterceptor::SigninInterceptionType::kChromeSignin ||
+        interception_type == WebSigninInterceptor::SigninInterceptionType::
+                                 kChromeSigninNonIntercept ||
         interception_type ==
             WebSigninInterceptor::SigninInterceptionType::kEnterprise ||
         interception_type ==
@@ -276,7 +286,7 @@ content::WebContents* DiceWebSigninInterceptionBubbleView::AddNewContents(
     content::WebContents* source,
     std::unique_ptr<content::WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
@@ -360,7 +370,10 @@ void DiceWebSigninInterceptionBubbleView::SetHeightAndShowWidget(int height) {
 
   if (IsChromeSignin()) {
     chrome_signin_bubble_shown_time_ = base::TimeTicks::Now();
-    RecordMetricsChromeSigninInterceptStarted();
+    if (bubble_parameters_.interception_type ==
+        WebSigninInterceptor::SigninInterceptionType::kChromeSignin) {
+      RecordMetricsChromeSigninInterceptStarted();
+    }
   }
 }
 
@@ -396,7 +409,8 @@ void DiceWebSigninInterceptionBubbleView::OnInterceptionResult(
   // due to subtle race conditions, e.g. when the account is removed before
   // the bubble is fully initialized.
   if (IsChromeSignin() && !chrome_signin_bubble_shown_time_.is_null()) {
-    RecordChromeSigninInterceptResult(chrome_signin_bubble_shown_time_, result);
+    RecordChromeSigninInterceptResult(bubble_parameters_.interception_type,
+                                      chrome_signin_bubble_shown_time_, result);
   }
 
   RecordInterceptionResult(bubble_parameters_, profile_, result);
@@ -442,8 +456,7 @@ void DiceWebSigninInterceptionBubbleView::Dismiss(
 }
 
 bool DiceWebSigninInterceptionBubbleView::IsChromeSignin() const {
-  return bubble_parameters_.interception_type ==
-         WebSigninInterceptor::SigninInterceptionType::kChromeSignin;
+  return bubble_parameters_.IsChromeSignin();
 }
 
 void DiceWebSigninInterceptionBubbleView::ApplyAvatarButtonEffects() {

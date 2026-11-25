@@ -23,6 +23,7 @@
 #include "base/check_deref.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ref.h"
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/scoped_observation.h"
@@ -36,9 +37,9 @@
 #include "chrome/browser/ash/mahi/mahi_availability.h"
 #include "chrome/browser/ash/mahi/mahi_cache_manager.h"
 #include "chrome/browser/feedback/show_feedback_page.h"
-#include "chrome/browser/profiles/profile_manager.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
-#include "chromeos/ash/components/browser_context_helper/annotated_account_id.h"
+#include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
 #include "chromeos/ash/components/history/history_service_provider.h"
 #include "chromeos/ash/components/manta/manta_service_provider.h"
 #include "chromeos/ash/experiences/settings_ui/settings_app_manager.h"
@@ -187,14 +188,18 @@ MahiResponseStatus GetMahiResponseStatusFromMantaStatus(
 }
 
 std::unique_ptr<manta::MahiProvider> CreateProvider() {
-  Profile* profile = ProfileManager::GetActiveUserProfile();
-  if (!profile) {
+  // TODO(crbug.com/278643115): Take the account_id from the callers.
+  const auto* session =
+      session_manager::SessionManager::Get()->GetActiveSession();
+  if (!session ||
+      !ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
+          session->account_id())) {
     LogProviderCreationStatus(ProviderCreationStatus::kProfileUnavailable);
     return nullptr;
   }
 
-  if (manta::MantaService* service = ash::MantaServiceProvider::Get().Find(
-          CHECK_DEREF(ash::AnnotatedAccountId::Get(profile)))) {
+  if (manta::MantaService* service =
+          ash::MantaServiceProvider::Get().Find(session->account_id())) {
     auto provider = service->CreateMahiProvider();
     if (!provider) {
       LogProviderCreationStatus(
@@ -223,10 +228,14 @@ bool IsMahiApproved() {
 
 namespace ash {
 
-MahiManagerImpl::MahiManagerImpl()
-    : cache_manager_(std::make_unique<MahiCacheManager>()),
+MahiManagerImpl::MahiManagerImpl(
+    const variations::VariationsService* variations_service)
+    : variations_service_(CHECK_DEREF(variations_service)),
+      cache_manager_(std::make_unique<MahiCacheManager>()),
       mahi_nudge_controller_(std::make_unique<MahiNudgeController>()) {
   magic_boost_state_observation_.Observe(chromeos::MagicBoostState::Get());
+  CHECK(SessionController::Get());
+  session_observation_.Observe(SessionController::Get());
 }
 
 MahiManagerImpl::~MahiManagerImpl() {
@@ -608,9 +617,15 @@ void MahiManagerImpl::OpenFeedbackDialog() {
   base::DictValue ai_metadata;
   ai_metadata.Set(feedback::kMahiMetadataKey, "true");
 
+  // TODO(crbug.com/278643115): Take the account_id from the callers.
+  const auto* session =
+      session_manager::SessionManager::Get()->GetActiveSession();
+  CHECK(session);
+  Profile* profile = Profile::FromBrowserContext(
+      ash::BrowserContextHelper::Get()->GetBrowserContextByAccountId(
+          session->account_id()));
   chrome::ShowFeedbackPage(
-      /*browser=*/ProfileBrowserCollection::GetForProfile(
-          ProfileManager::GetActiveUserProfile())
+      /*browser=*/ProfileBrowserCollection::GetForProfile(profile)
           ->GetLastActiveBrowser(),
       /*source=*/feedback::kFeedbackSourceAI, description_template,
       /*description_placeholder_text=*/
@@ -625,6 +640,7 @@ void MahiManagerImpl::OpenMahiPanel(int64_t display_id,
                                     const gfx::Rect& mahi_menu_bounds) {
   ui_controller_.OpenMahiPanel(display_id, mahi_menu_bounds,
                                /*elucidation_in_use=*/false);
+  ObservePanelWidget();
 }
 
 void MahiManagerImpl::OpenMahiPanelForElucidation(
@@ -632,11 +648,12 @@ void MahiManagerImpl::OpenMahiPanelForElucidation(
     const gfx::Rect& mahi_menu_bounds) {
   ui_controller_.OpenMahiPanel(display_id, mahi_menu_bounds,
                                /*elucidation_in_use=*/true);
+  ObservePanelWidget();
 }
 
 bool MahiManagerImpl::IsEnabled() {
-  return (mahi_availability::IsMahiAvailable().has_value() &&
-          mahi_availability::IsMahiAvailable().value()) &&
+  return mahi_availability::IsMahiAvailable(variations_service_.get())
+             .value_or(false) &&
          chromeos::MagicBoostState::Get()->hmr_enabled().value_or(false);
 }
 
@@ -748,6 +765,49 @@ void MahiManagerImpl::OnHMREnabledUpdated(bool enabled) {
 
 void MahiManagerImpl::OnIsDeleting() {
   magic_boost_state_observation_.Reset();
+}
+
+void MahiManagerImpl::OnActiveUserSessionChanged(const AccountId& account_id) {
+  weak_ptr_factory_for_requests_.InvalidateWeakPtrs();
+  cache_manager_->ClearCache();
+}
+
+void MahiManagerImpl::OnWidgetClosing(views::Widget* widget) {
+  MaybeClearPanelState(widget);
+}
+
+void MahiManagerImpl::OnWidgetDestroying(views::Widget* widget) {
+  panel_widget_observations_.RemoveObservation(widget);
+  MaybeClearPanelState(widget);
+}
+
+void MahiManagerImpl::MaybeClearPanelState(views::Widget* widget) {
+  // Keep the state if `widget` was replaced by a newly opened panel.
+  views::Widget* panel_widget = ui_controller_.mahi_panel_widget();
+  if (panel_widget && panel_widget != widget) {
+    return;
+  }
+
+  // Discard in-flight requests for the closing panel so late responses do not
+  // repopulate panel state or hit CHECKs on cleared fields.
+  weak_ptr_factory_for_requests_.InvalidateWeakPtrs();
+
+  // Release the panel's page content, which can be several MB, and the
+  // other panel state once the panel is closed.
+  current_panel_content_ = chromeos::MahiPageContent();
+  current_panel_info_ = chromeos::MahiPageInfo();
+  current_panel_qa_.clear();
+  current_selected_text_.reset();
+  latest_summary_.clear();
+  latest_elucidation_.clear();
+}
+
+void MahiManagerImpl::ObservePanelWidget() {
+  views::Widget* panel_widget = ui_controller_.mahi_panel_widget();
+  if (panel_widget &&
+      !panel_widget_observations_.IsObservingSource(panel_widget)) {
+    panel_widget_observations_.AddObservation(panel_widget);
+  }
 }
 
 bool MahiManagerImpl::MaybeInitializeAndDiscardPendingRequests() {

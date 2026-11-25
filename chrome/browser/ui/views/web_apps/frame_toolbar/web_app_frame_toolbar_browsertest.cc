@@ -53,7 +53,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/content_settings/content_setting_image_model.h"
 #include "chrome/browser/ui/download/download_display.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -151,6 +150,7 @@
 #include "ui/actions/action_id.h"
 #include "ui/base/hit_test.h"
 #include "ui/base/models/menu_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ozone_buildflags.h"
 #include "ui/events/event.h"
 #include "ui/events/event_constants.h"
@@ -191,7 +191,10 @@
 #endif
 
 #if BUILDFLAG(IS_MAC)
-#include "chrome/browser/web_applications/os_integration/mac/app_shim_registry.h"
+#include "chrome/browser/apps/app_shim/app_shim_host_mac.h"
+#include "chrome/browser/apps/app_shim/app_shim_manager_mac.h"
+#include "chrome/services/mac_notifications/public/mojom/mac_notifications.mojom.h"
+#include "ui/base/test/scoped_fake_nswindow_fullscreen.h"
 #endif
 
 #if defined(USE_AURA)
@@ -380,7 +383,9 @@ IN_PROC_BROWSER_TEST_F(
       gfx::ScopedAnimationDurationScaleMode::NORMAL_DURATION);
   WebAppToolbarButtonContainer::DisableAnimationForTesting(false);
 
-  const GURL app_url("https://test.org");
+  ASSERT_TRUE(embedded_https_test_server().Started());
+  const GURL app_url =
+      embedded_https_test_server().GetURL("/web_apps/basic.html");
   const webapps::AppId app_id =
       helper()->InstallAndLaunchWebApp(browser(), app_url);
 
@@ -403,8 +408,15 @@ IN_PROC_BROWSER_TEST_F(
 
   // Simulate system-level notification permission being denied and the web app
   // requesting notification permission.
-  AppShimRegistry::Get()->SaveNotificationPermissionStatusForApp(
-      app_id, AppShimRegistry::NotificationPermissionStatus::kImplicitlyDenied);
+  AppShimHost* app_shim_host =
+      apps::AppShimManager::Get()->FindHost(browser()->GetProfile(), app_id);
+  ASSERT_TRUE(app_shim_host);
+  app_shim_host->SetNotificationPermissionStatusForTesting(
+      mac_notifications::mojom::PermissionStatus::kDenied);
+  HostContentSettingsMapFactory::GetForProfile(browser()->GetProfile())
+      ->SetContentSettingDefaultScope(app_url, app_url,
+                                      ContentSettingsType::NOTIFICATIONS,
+                                      CONTENT_SETTING_ALLOW);
   content_settings::PageSpecificContentSettings::GetForFrame(
       web_contents->GetPrimaryMainFrame())
       ->SetNotificationsWasDeniedBecauseOfSystemPermission();
@@ -419,9 +431,7 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_TRUE(notification_view->is_label_kept_expanded_for_testing());
 
   // Once the label has finished animating in, it stays expanded while the
-  // bubble is open. The animation is stepped manually rather than by spinning
-  // the run loop, since the real app shim may connect and overwrite the faked
-  // system permission status in the meantime.
+  // bubble is open.
   gfx::AnimationTestApi label_animation(
       &notification_view->slide_animation_for_testing());
   base::TimeTicks start_time = base::TimeTicks::Now();
@@ -454,16 +464,31 @@ IN_PROC_BROWSER_TEST_F(
 
   // Granting system notification permission hides the icon and resets the
   // label animation.
-  AppShimRegistry::Get()->SaveNotificationPermissionStatusForApp(
-      app_id, AppShimRegistry::NotificationPermissionStatus::kGranted);
+  app_shim_host->SetNotificationPermissionStatusForTesting(
+      mac_notifications::mojom::PermissionStatus::kGranted);
   views::test::RunScheduledLayout(helper()->browser_view());
   EXPECT_FALSE(notification_view->GetVisible());
   EXPECT_FALSE(notification_view->ShouldShowLabel());
 
-  // Denying system notification permission again re-shows the icon and
-  // re-runs the label animation, this time without auto-opening the bubble.
-  AppShimRegistry::Get()->SaveNotificationPermissionStatusForApp(
-      app_id, AppShimRegistry::NotificationPermissionStatus::kImplicitlyDenied);
+  // When notifications are used without requesting permission (e.g. when
+  // Chrome-level permission was already granted), implicitly denying system
+  // notification permission again re-shows the icon and re-runs the label
+  // animation, this time without auto-opening the bubble. Recreate
+  // `PageSpecificContentSettings` since it has no method to clear
+  // `SetNotificationsWasDeniedBecauseOfSystemPermission()` without navigating.
+  content_settings::PageSpecificContentSettings::DeleteForPage(
+      web_contents->GetPrimaryPage());
+  content_settings::PageSpecificContentSettings::CreateForPage(
+      web_contents->GetPrimaryPage(),
+      content_settings::PageSpecificContentSettings::GetDelegateForWebContents(
+          web_contents));
+  content_settings::PageSpecificContentSettings::GetForFrame(
+      web_contents->GetPrimaryMainFrame())
+      ->OnContentAllowed(ContentSettingsType::NOTIFICATIONS);
+  app_shim_host->SetNotificationPermissionStatusForTesting(
+      mac_notifications::mojom::PermissionStatus::kNotDetermined);
+  app_shim_host->SetNotificationPermissionStatusForTesting(
+      mac_notifications::mojom::PermissionStatus::kDenied);
   views::test::RunScheduledLayout(helper()->browser_view());
   EXPECT_TRUE(notification_view->GetVisible());
   EXPECT_TRUE(notification_view->ShouldShowLabel());
@@ -726,6 +751,35 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest,
             u"Customize and control A minimal-ui app");
   EXPECT_EQ(menu_button->GetRenderedTooltipText(gfx::Point()),
             u"Customize and control A minimal-ui app");
+}
+
+IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest,
+                       MenuButtonIgnoresShowMenuWhenAlreadyShowing) {
+  const GURL app_url("https://test.org");
+  helper()->InstallAndLaunchWebApp(browser(), app_url);
+
+  WebAppMenuButton* const menu_button = views::AsViewClass<WebAppMenuButton>(
+      views::ElementTrackerViews::GetInstance()->GetFirstMatchingView(
+          kToolbarAppMenuButtonElementId,
+          views::ElementTrackerViews::GetContextForView(
+              helper()->browser_view())));
+  ASSERT_TRUE(menu_button);
+  EXPECT_FALSE(menu_button->IsMenuShowing());
+
+  menu_button->ShowMenuWithFlags(views::MenuRunner::NO_FLAGS);
+  EXPECT_TRUE(menu_button->IsMenuShowing());
+  views::MenuItemView* const initial_root_item =
+      menu_button->GetRootMenuItemViewForTesting();
+  EXPECT_NE(initial_root_item, nullptr);
+
+  // Calling ShowMenuWithFlags while the menu is already showing must be a no-op
+  // and must not recreate the running menu.
+  menu_button->ShowMenuWithFlags(views::MenuRunner::NO_FLAGS);
+  EXPECT_TRUE(menu_button->IsMenuShowing());
+  EXPECT_EQ(menu_button->GetRootMenuItemViewForTesting(), initial_root_item);
+
+  menu_button->CloseMenu();
+  EXPECT_FALSE(menu_button->IsMenuShowing());
 }
 
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest, MenuButtonUpdatePending) {
@@ -1944,7 +1998,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
     GTEST_SKIP();
   }
 
-  auto app_id = InstallAndLaunchFullyDraggableWebApp();
+  InstallAndLaunchFullyDraggableWebApp();
   ToggleWindowControlsOverlayAndWait();
 
   BrowserView* browser_view = helper()->browser_view();
@@ -2020,7 +2074,7 @@ IN_PROC_BROWSER_TEST_F(
   if (views::test::IsOzoneBubblesUsingPlatformWidgets()) {
     GTEST_SKIP();
   }
-  auto app_id = InstallAndLaunchFullyDraggableWebApp();
+  InstallAndLaunchFullyDraggableWebApp();
   ToggleWindowControlsOverlayAndWait();
   BrowserView* browser_view = helper()->browser_view();
   auto* app_controller =
@@ -2302,7 +2356,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
 // app's window.
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
                        DownloadIconVisibilityForAppDownload) {
-  webapps::AppId app_id = InstallAndLaunchWebApp();
+  InstallAndLaunchWebApp();
   ToggleWindowControlsOverlayAndWait();
 
   BrowserWindowInterface* non_app_browser = CreateBrowser(profile());
@@ -2341,7 +2395,7 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
 // app's window.
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_WindowControlsOverlay,
                        DownloadIconVisibilityForRegularDownload) {
-  webapps::AppId app_id = InstallAndLaunchWebApp();
+  InstallAndLaunchWebApp();
   ToggleWindowControlsOverlayAndWait();
 
   BrowserWindowInterface* non_app_browser = CreateBrowser(profile());
@@ -2562,6 +2616,7 @@ IN_PROC_BROWSER_TEST_F(
 IN_PROC_BROWSER_TEST_F(
     WebAppFrameToolbarBrowserTest_WindowControlsOverlayNoToggle,
     WCODisabledInMacFullscreen) {
+  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen;
   InstallAndLaunchWebApp();
 
   BrowserView* browser_view = helper()->browser_view();
@@ -3509,6 +3564,9 @@ IN_PROC_BROWSER_TEST_F(
     GTEST_SKIP() << "Flaky on Wayland";
   }
 #endif
+#if BUILDFLAG(IS_MAC)
+  ui::test::ScopedFakeNSWindowFullscreen fake_fullscreen;
+#endif
   InstallAndLaunchWebApp();
   helper()->GrantWindowManagementPermission();
   auto* browser_view = helper()->browser_view();
@@ -4334,7 +4392,8 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_ScopeExtensionsOriginText,
       out_of_extended_scope_host_, "/ssl/blank_page.html");
   content::TestNavigationManager navigation_manager(contents, out_of_scope_url);
   ui_test_utils::NavigateToURLWithDisposition(
-      popup_browser, out_of_scope_url, WindowOpenDisposition::kCurrentTab,
+      popup_browser, out_of_scope_url,
+      ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_NO_WAIT);
   ASSERT_TRUE(navigation_manager.WaitForRequestStart());
   ASSERT_EQ(about_blank_url, contents->GetLastCommittedURL());
@@ -4463,25 +4522,13 @@ IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarBrowserTest_ScopeExtensionsOriginText,
 
 class WebAppFrameToolbarUninstallButtonTest
     : public WebAppFrameToolbarBrowserTest_WindowControlsOverlay {
- public:
-  WebAppFrameToolbarUninstallButtonTest() {
-    feature_list_.InitWithFeatures(
-        /*enabled_features=*/
-        {features::kWebAppInstallDialog},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove these two Features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
-  }
-
  private:
-  base::test::ScopedFeatureList feature_list_;
+  base::test::ScopedFeatureList feature_list_{features::kWebAppInstallDialog};
 };
 
 IN_PROC_BROWSER_TEST_F(WebAppFrameToolbarUninstallButtonTest, ButtonExists) {
   const GURL app_url("https://test.org");
-  webapps::AppId app_id = helper()->InstallAndLaunchWebApp(browser(), app_url);
+  helper()->InstallAndLaunchWebApp(browser(), app_url);
 
   WebAppToolbarButtonContainer* toolbar_right_container =
       helper()->web_app_frame_toolbar()->get_right_container_for_testing();

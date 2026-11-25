@@ -38,6 +38,7 @@
 #include "third_party/blink/public/common/permissions/permission_utils.h"
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom.h"
 #include "third_party/jni_zero/default_conversions.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "url/gurl.h"
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
@@ -142,13 +143,13 @@ WebContents* AwWebContentsDelegate::AddNewContents(
     WebContents* source,
     std::unique_ptr<WebContents> new_contents,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& window_features,
     bool user_gesture,
     bool* was_blocked) {
   JNIEnv* env = AttachCurrentThread();
 
-  bool is_dialog = disposition == WindowOpenDisposition::kNewPopup;
+  bool is_dialog = disposition == ui::mojom::WindowOpenDisposition::kNewPopup;
   ScopedJavaLocalRef<jobject> java_delegate = GetJavaDelegate(env);
   bool create_popup = false;
 
@@ -375,8 +376,10 @@ bool AwWebContentsDelegate::ShouldAllowPartialParamMismatchOfPrerender2(
   // TODO(https://crbug.com/340416082): Relax initiator check for all platforms.
 
   // `ui::PAGE_TRANSITION_FROM_API` bit distinguishes that the activation
-  // navigation is triggered by `WebView.loadUrl()`.
-  return navigation_handle.GetPageTransition() & ui::PAGE_TRANSITION_FROM_API;
+  // navigation is triggered by `WebView.loadUrl()`, which is always
+  // browser-initiated.
+  return !navigation_handle.IsRendererInitiated() &&
+         (navigation_handle.GetPageTransition() & ui::PAGE_TRANSITION_FROM_API);
 }
 
 bool AwWebContentsDelegate::isModalContextMenu() const {

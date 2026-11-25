@@ -12,45 +12,35 @@
 #import "base/ios/block_types.h"
 #import "base/memory/raw_ptr.h"
 #import "base/metrics/histogram_functions.h"
-#import "base/metrics/user_metrics.h"
 #import "base/notreached.h"
-#import "base/strings/sys_string_conversions.h"
-#import "components/bookmarks/common/bookmark_features.h"
 #import "components/policy/core/browser/signin/profile_separation_policies.h"
 #import "components/prefs/pref_service.h"
 #import "components/signin/core/browser/active_primary_accounts_metrics_recorder.h"
 #import "components/signin/public/base/consent_level.h"
-#import "components/signin/public/base/gaia_id_hash.h"
 #import "components/signin/public/base/signin_pref_names.h"
+#import "components/signin/public/base/signin_switches.h"
 #import "components/signin/public/identity_manager/tribool.h"
-#import "components/sync/base/account_pref_utils.h"
 #import "components/sync/service/sync_service.h"
-#import "components/sync/service/sync_user_settings.h"
 #import "google_apis/gaia/gaia_id.h"
 #import "ios/chrome/app/application_delegate/app_state.h"
 #import "ios/chrome/app/change_profile_commands.h"
 #import "ios/chrome/app/profile/profile_state.h"
+#import "ios/chrome/browser/authentication/account_switching_promo/model/account_switching_promo_prefs.h"
 #import "ios/chrome/browser/authentication/enterprise/public/managed_profile_creation_constants.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow_delegate.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow_in_profile.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_flow/authentication_flow_performer.h"
 #import "ios/chrome/browser/authentication/ui_bundled/authentication_ui_util.h"
-#import "ios/chrome/browser/flags/ios_chrome_flag_descriptions.h"
-#import "ios/chrome/browser/ntp/ui_bundled/new_tab_page_feature.h"
 #import "ios/chrome/browser/shared/coordinator/scene/scene_state.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
-#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/model/profile/profile_ios_util.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
-#import "ios/chrome/browser/signin/model/capabilities_types.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
-#import "ios/chrome/browser/signin/model/chrome_account_manager_service_factory.h"
 #import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/browser/signin/model/system_identity.h"
@@ -227,6 +217,44 @@ void RecordUnsyncedDataHistogramIfNeeded(UnsyncedDataTypeHistogram histogram,
   }
 }
 
+// Completes the sign-in flow when signing in to the same profile.
+void CompleteSameProfileSignIn(
+    base::WeakPtr<Browser> weak_browser,
+    id<AuthenticationFlowDelegate> delegate,
+    id<SystemIdentity> previous_primary_identity,
+    id<SystemIdentity> identity_to_sign_in,
+    PostSignInActionSet post_sign_in_actions,
+    signin_metrics::AccessPoint access_point,
+    signin_ui::CancelationReason cancelation_reason) {
+  if (cancelation_reason == signin_ui::CancelationReason::kNotCanceled &&
+      previous_primary_identity &&
+      base::FeatureList::IsEnabled(
+          switches::kEnableAccountPreviewSwitchingAccount)) {
+    // The account switching promo state is only stored in the personal
+    // profile.
+    if (Browser* browser = weak_browser.get();
+        browser && IsPersonalProfile(browser->GetProfile())) {
+      signin::SuppressAccountSwitchingReversePair(
+          *browser->GetProfile()->GetPrefs(), previous_primary_identity.gaiaId,
+          identity_to_sign_in.gaiaId);
+    }
+  }
+  ProceduralBlock completion = ^() {
+    if (Browser* browser = weak_browser.get()) {
+      CompletePostSignInActions(post_sign_in_actions, identity_to_sign_in,
+                                browser, access_point);
+    }
+  };
+  if (delegate) {
+    [delegate
+        authenticationFlowDidSignInInSameProfileWithIdentity:identity_to_sign_in
+                                           cancelationReason:cancelation_reason
+                                                  completion:completion];
+  } else {
+    completion();
+  }
+}
+
 }  // namespace
 
 @interface AuthenticationFlow ()
@@ -287,6 +315,10 @@ void RecordUnsyncedDataHistogramIfNeeded(UnsyncedDataTypeHistogram histogram,
   // The value is set during `kCheckUnsyncedData` step.
   std::optional<syncer::DataTypeSet> _unsyncedDataTypes;
 
+  // The primary identity at the beginning of the flow, or nil if there was no
+  // primary account.
+  id<SystemIdentity> _previousPrimaryIdentity;
+
   // For metrics: Whether there was a managed primary account at the beginning
   // of the flow. Set to nullopt if there was no primary account at all.
   std::optional<bool> _wasPrimaryAccountManaged;
@@ -342,6 +374,7 @@ void RecordUnsyncedDataHistogramIfNeeded(UnsyncedDataTypeHistogram histogram,
     // identity.
     CHECK(![current_primary_identity isEqual:identity]);
     if (current_primary_identity) {
+      _previousPrimaryIdentity = current_primary_identity;
       _wasPrimaryAccountManaged =
           authenticationService->HasPrimaryIdentityManaged();
     }
@@ -730,6 +763,7 @@ void RecordUnsyncedDataHistogramIfNeeded(UnsyncedDataTypeHistogram histogram,
     CHECK(!_signInInProfileCompletion);
     PostSignInActionSet postSignInActions = _postSignInActions;
     id<SystemIdentity> identityToSignIn = _identityToSignIn;
+    id<SystemIdentity> previousPrimaryIdentity = _previousPrimaryIdentity;
     signin_metrics::AccessPoint accessPoint = _accessPoint;
     // In case of sign-in in same profile, we can reuse the same browser.
     base::WeakPtr<Browser> weakBrowser = _browser->AsWeakPtr();
@@ -740,25 +774,12 @@ void RecordUnsyncedDataHistogramIfNeeded(UnsyncedDataTypeHistogram histogram,
     __weak id<AuthenticationFlowDelegate> delegate = [self takeDelegate];
     // Not using a call to a method on self, because self will be
     // deallocated by the time the `signinCompletion` is executed.
-    _signInInProfileCompletion = ^(
-        signin_ui::CancelationReason cancelationReason) {
-      ProceduralBlock completion = ^() {
-        if (Browser* browser = weakBrowser.get()) {
-          CompletePostSignInActions(postSignInActions, identityToSignIn,
-                                    browser, accessPoint);
-        }
-      };
-      if (delegate) {
-        [delegate
-            authenticationFlowDidSignInInSameProfileWithIdentity:
-                identityToSignIn
-                                               cancelationReason:
-                                                   cancelationReason
-                                                      completion:completion];
-      } else {
-        completion();
-      }
-    };
+    _signInInProfileCompletion =
+        ^(signin_ui::CancelationReason cancelationReason) {
+          CompleteSameProfileSignIn(
+              weakBrowser, delegate, previousPrimaryIdentity, identityToSignIn,
+              postSignInActions, accessPoint, cancelationReason);
+        };
     [self continueFlow];
     return;
   }
@@ -894,6 +915,7 @@ void RecordUnsyncedDataHistogramIfNeeded(UnsyncedDataTypeHistogram histogram,
   _performer = nil;
   _browser = nullptr;
   _identityToSignIn = nil;
+  _previousPrimaryIdentity = nil;
   _identityToSignInHostedDomain = nil;
   _browserForAuthenticationFlowInProfile = nullptr;
   _confirmChangeProfile = nil;

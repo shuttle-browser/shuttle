@@ -4,6 +4,8 @@
 
 #include "ash/wm/native_cursor_manager_ash.h"
 
+#include <optional>
+
 #include "ash/display/cursor_window_controller.h"
 #include "ash/display/window_tree_host_manager.h"
 #include "ash/shell.h"
@@ -111,35 +113,19 @@ void NativeCursorManagerAsh::SetCursor(
 void NativeCursorManagerAsh::SetCursorSize(
     ui::CursorSize cursor_size,
     ::wm::NativeCursorManagerDelegate* delegate) {
-  cursor_loader_.SetSize(cursor_size);
+  cursor_size_ = cursor_size;
   delegate->CommitCursorSize(cursor_size);
-
-  // Sets the cursor to reflect the scale change immediately.
-  if (delegate->IsCursorVisible())
-    SetCursor(delegate->GetCursor(), delegate);
-
-  Shell::Get()
-      ->window_tree_host_manager()
-      ->cursor_window_controller()
-      ->SetCursorSize(cursor_size);
+  UpdateCustomCursorSize(delegate);
 }
 
 void NativeCursorManagerAsh::SetLargeCursorSizeInDip(
     int large_cursor_size_in_dip,
     ::wm::NativeCursorManagerDelegate* delegate) {
-  cursor_loader_.SetLargeCursorSizeInDip(large_cursor_size_in_dip);
+  large_cursor_size_in_dip_ = large_cursor_size_in_dip;
   delegate->CommitLargeCursorSizeInDip(large_cursor_size_in_dip);
-
-  // Sets the cursor to reflect the large cursor size change immediately.
-  if (delegate->IsCursorVisible()) {
-    SetCursor(delegate->GetCursor(), delegate);
-  }
-
-  Shell::Get()
-      ->window_tree_host_manager()
-      ->cursor_window_controller()
-      ->SetLargeCursorSizeInDip(large_cursor_size_in_dip);
+  UpdateCustomCursorSize(delegate);
 }
+
 void NativeCursorManagerAsh::SetVisibility(
     bool visible,
     ::wm::NativeCursorManagerDelegate* delegate) {
@@ -185,6 +171,25 @@ void NativeCursorManagerAsh::SetCursorColor(
       ->window_tree_host_manager()
       ->cursor_window_controller()
       ->SetCursorColor(color);
+}
+
+void NativeCursorManagerAsh::UpdateCustomCursorSize(
+    ::wm::NativeCursorManagerDelegate* delegate) {
+  const std::optional<int> custom_cursor_size =
+      cursor_size_ == ui::CursorSize::kLarge
+          ? std::make_optional(large_cursor_size_in_dip_)
+          : std::nullopt;
+  cursor_loader_.SetCustomCursorSize(custom_cursor_size);
+
+  // Sets the cursor to reflect the size change immediately.
+  if (delegate->IsCursorVisible()) {
+    SetCursor(delegate->GetCursor(), delegate);
+  }
+
+  Shell::Get()
+      ->window_tree_host_manager()
+      ->cursor_window_controller()
+      ->SetCustomCursorSize(custom_cursor_size);
 }
 
 }  // namespace ash

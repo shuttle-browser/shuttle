@@ -4,18 +4,13 @@
 
 #import "ios/chrome/browser/authentication/ui_bundled/cells/table_view_account_item.h"
 
-#import "base/apple/foundation_util.h"
 #import "base/strings/sys_string_conversions.h"
-#import "ios/chrome/browser/settings/ui_bundled/cells/settings_cells_constants.h"
-#import "ios/chrome/browser/shared/model/profile/features.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
 #import "ios/chrome/browser/shared/ui/table_view/content_configuration/image_content_configuration.h"
 #import "ios/chrome/browser/shared/ui/table_view/content_configuration/table_view_cell_content_configuration.h"
-#import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/signin/ui/avatar/ai_tier_avatar_content_configuration.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
 #import "ios/chrome/common/ui/table_view/table_view_cells_constants.h"
-#import "ios/chrome/common/ui/util/constraints_ui_util.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ui/base/l10n/l10n_util_mac.h"
 
@@ -88,7 +83,7 @@ constexpr CGFloat kEnterpriseIconPointSize = 20;
       [[AITierAvatarContentConfiguration alloc]
           initWithAvatarImage:self.image
                      diameter:kTableViewIconImageSize
-                     sizeType:AITierAvatarSizeType::kFullView
+                     sizeType:AITierAvatarSizeTypeFullView
               showsAITierRing:showsAITierRing];
 
   configuration.leadingConfiguration = avatarConfiguration;
@@ -107,9 +102,9 @@ constexpr CGFloat kEnterpriseIconPointSize = 20;
   BOOL isManaged = self.detailImage == TableViewAccountDetailImage::kManaged;
 
   // When not set, the screen readers will read this cell as "text, detailText".
-  // Add a custom accessibility label for managed accounts to append "managed by
-  // your organization" so that the screen readers read this cell as "text,
-  // detailText, managed by your organization".
+  // Add a custom accessibility label for managed accounts or accounts with an
+  // AI tier ring to append "managed by your organization" or "Google
+  // membership".
   if (isManaged) {
     cell.accessibilityLabel =
         self.text && self.detailText
@@ -119,6 +114,17 @@ constexpr CGFloat kEnterpriseIconPointSize = 20;
                   base::SysNSStringToUTF16(self.detailText))
             : l10n_util::GetNSStringF(
                   IDS_IOS_SIGNIN_ACCOUNT_PICKER_CHOOSE_ACCOUNT_ITEM_DESCRIPTION_WITH_EMAIL_MANAGED,
+                  base::SysNSStringToUTF16(self.text ? self.text
+                                                     : self.detailText));
+  } else if (showsAITierRing) {
+    cell.accessibilityLabel =
+        self.text && self.detailText
+            ? l10n_util::GetNSStringF(
+                  IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_NAME_AND_EMAIL_GOOGLE_MEMBERSHIP,
+                  base::SysNSStringToUTF16(self.text),
+                  base::SysNSStringToUTF16(self.detailText))
+            : l10n_util::GetNSStringF(
+                  IDS_IOS_ACCOUNT_TABLE_VIEW_ITEM_WITH_EMAIL_GOOGLE_MEMBERSHIP,
                   base::SysNSStringToUTF16(self.text ? self.text
                                                      : self.detailText));
   } else {

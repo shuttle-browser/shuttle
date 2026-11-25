@@ -42,7 +42,6 @@ BASE_DECLARE_FEATURE(kPageActionMenu);
 // launched ones.
 BASE_DECLARE_FEATURE(kGeminiKillSwitch);
 
-// TODO(crbug.com/494235953): Clean up when feature is enabled by default.
 // Returns true if the page action menu is enabled.
 bool IsPageActionMenuEnabled();
 
@@ -259,6 +258,9 @@ bool ActorDisablesInputDuringActuation();
 
 // Feature flag controlling Actor origin gating.
 BASE_DECLARE_FEATURE(kActorOriginGating);
+
+// Returns true if Actor origin gating is enabled.
+bool IsActorOriginGatingEnabled();
 
 extern const char kActorOriginGatingExplicitParam[];
 extern const char kActorOriginGatingImplicitParam[];

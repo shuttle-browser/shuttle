@@ -7,10 +7,7 @@
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/path_service.h"
-#include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
-#include "crypto/obsolete/md5.h"
-#include "net/base/network_interfaces.h"
 
 namespace remoting {
 namespace {
@@ -18,13 +15,12 @@ const base::FilePath::CharType kChromeRemoteDesktopDir[] =
     FILE_PATH_LITERAL("chrome-remote-desktop");
 }  // namespace
 
-std::string GetHostHash() {
-  return "host#" +
-         base::HexEncodeLower(crypto::obsolete::Md5::Hash(net::GetHostName()));
-}
-
 base::FilePath GetVarLibDir() {
   return base::FilePath("/var/lib").Append(kChromeRemoteDesktopDir);
+}
+
+base::FilePath GetRunDir() {
+  return base::FilePath("/run").Append(kChromeRemoteDesktopDir);
 }
 
 base::FilePath GetMultiProcessHostGlobalConfigDir() {

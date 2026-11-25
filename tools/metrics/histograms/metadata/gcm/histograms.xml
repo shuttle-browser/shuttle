@@ -111,21 +111,10 @@ chromium-metrics-reviews@google.com.
 
 <histogram name="GCM.MessageValid" enum="BooleanSuccess"
     expires_after="2026-03-08">
-  <owner>smaier@chromium.org</owner>
+  <owner>smaier@google.com</owner>
   <summary>
     Records whether or not a received GCM message is valid and will proceed to
     running a background task.
-  </summary>
-</histogram>
-
-<histogram name="GCM.RegistrationCacheStatus" enum="GCMRegistrationCacheStatus"
-    expires_after="2023-04-16">
-  <owner>nator@chromium.org</owner>
-  <owner>peter@chromium.org</owner>
-  <owner>rayankans@chromium.org</owner>
-  <summary>
-    Reports the status of cached GCM registration. This is recorded when a new
-    registration request is considered on the GCM client.
   </summary>
 </histogram>
 
@@ -156,16 +145,6 @@ chromium-metrics-reviews@google.com.
     case was split up in M56 (merged mid-beta to M55) to separate out the
     Response parsing failed, Internal server error, Quota exceeded, and Device
     has too many registrations cases.
-  </summary>
-</histogram>
-
-<histogram name="GCM.SendWebPushMessageResult" enum="SendWebPushMessageResult"
-    expires_after="2025-08-17">
-  <owner>knollr@chromium.org</owner>
-  <owner>peter@chromium.org</owner>
-  <summary>
-    Result of sending web push messages. Recorded when the message has either
-    been sent, or has been dropped because an error happened.
   </summary>
 </histogram>
 

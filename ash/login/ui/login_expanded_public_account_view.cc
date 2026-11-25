@@ -45,7 +45,6 @@
 #include "ui/views/border.h"
 #include "ui/views/controls/image_view.h"
 #include "ui/views/controls/label.h"
-#include "ui/views/highlight_border.h"
 #include "ui/views/layout/box_layout.h"
 #include "ui/views/layout/box_layout_view.h"
 #include "ui/views/layout/fill_layout.h"
@@ -434,14 +433,12 @@ class RightPaneView : public NonAccessibleView {
     views::StyledLabel::RangeStyleInfo style;
     style.custom_font = learn_more_label_->GetFontList().Derive(
         0, gfx::Font::FontStyle::NORMAL, gfx::Font::Weight::NORMAL);
-    style.override_color_id =
-        static_cast<ui::ColorId>(cros_tokens::kCrosSysOnSurface);
+    style.override_color = cros_tokens::kCrosSysOnSurface;
     learn_more_label_->AddStyleRange(gfx::Range(0, offset), style);
 
     views::StyledLabel::RangeStyleInfo link_style =
         views::StyledLabel::RangeStyleInfo::CreateForLink(on_learn_more_tapped);
-    link_style.override_color_id =
-        static_cast<ui::ColorId>(cros_tokens::kCrosSysPrimary);
+    link_style.override_color = cros_tokens::kCrosSysPrimary;
     learn_more_label_->AddStyleRange(gfx::Range(offset, offset + link.length()),
                                      link_style);
     learn_more_label_->SetAutoColorReadabilityEnabled(false);
@@ -798,12 +795,10 @@ LoginExpandedPublicAccountView::LoginExpandedPublicAccountView(
           std::make_unique<LoginExpandedPublicAccountEventHandler>(this)) {
   SetBackground(views::CreateRoundedRectBackground(
       cros_tokens::kCrosSysSystemBaseElevated, kJellyRoundRectCornerRadiusDp));
-  SetBorder(std::make_unique<views::HighlightBorder>(
-      kJellyRoundRectCornerRadiusDp,
-      views::HighlightBorder::Type::kHighlightBorderOnShadow));
-  shadow_ = SystemDecoration::CreateForView(
-      this, SystemDecoration::ShadowType::kElevation12);
-  shadow_->SetRoundedCorners(
+  decoration_ = SystemDecoration::CreateForView(
+      this, SystemDecoration::ShadowType::kElevation12,
+      SystemDecoration::HighlightBorderMode::kHighlightBorder);
+  decoration_->SetRoundedCorners(
       gfx::RoundedCornersF(kJellyRoundRectCornerRadiusDp));
 
   SetPreferredSize(GetPreferredSizeLandscape());
@@ -911,7 +906,6 @@ const LoginUserInfo& LoginExpandedPublicAccountView::current_user() const {
 }
 
 void LoginExpandedPublicAccountView::Hide() {
-  shadow_.reset();
   SetVisible(false);
   right_pane_->Reset();
   on_dismissed_.Run();

@@ -549,6 +549,38 @@ well. Thus, for a feature to show, its own configuration and all of its
 groups' configurations must be met. Effectively, the strictest set of rules
 will apply.
 
+## Enterprise Policy (PromotionsEnabled)
+
+The `PromotionsEnabled` enterprise policy maps to the local-state boolean pref
+`prefs::kPromotionsEnabled` (`Pref.PROMOTIONS_ENABLED` in Java, defaulting to
+`true`). When the policy is disabled, `TrackerImpl` refuses to trigger
+In-Product Help promotions (`shouldTriggerHelpUi`,
+`shouldTriggerHelpUiWithSnooze`, and `wouldTriggerHelpUi` return `false`) and
+records `TriggerHelpUIResult.FAILURE_BLOCKED_BY_ENTERPRISE_POLICY` to
+`InProductHelp.ShouldTriggerHelpUI` and
+`InProductHelp.ShouldTriggerHelpUI.<IPH_Feature>`. On Desktop,
+`BrowserFeaturePromoController` similarly checks `prefs::kPromotionsEnabled`
+via `DoesEnterprisePolicyBlockPromotions()` for low-priority non-toast
+promotions while exempting medium- and high-priority legal notices, keyed
+notices, and actionable alerts. On Android, exemptions are defined centrally
+in `EnterprisePolicyBypassAllowlist.java` (`ALLOWLISTED_FEATURES`).
+
+### New Policy Exemptions
+
+*   **Eligibility**: Features are typically only exempt from the policy if
+    they fit into high-priority categories, such as legal, regulatory,
+    privacy, or security. Exceptions are made case-by-case and must be
+    approved by leadership.
+*   **Approval**: New exemptions must be documented and justification needs
+    to be added to the CL description (we do this to ensure that surfaces
+    do not accidentally bypass the policy). When adding a new exemption,
+    the CL must be approved by owners, and the CL description must contain
+    the following tag:
+
+```
+[UserEducation.BypassPolicyCheck]=<justification and link to approval>
+```
+
 ## Configuration Format
 
 Each In-Product Help feature must have its own feature configuration

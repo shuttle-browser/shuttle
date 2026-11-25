@@ -24,11 +24,9 @@ BOOL CALLBACK EnumMonitorForProfilePathCallback(HMONITOR monitor,
                                                 HDC input_hdc,
                                                 LPRECT rect,
                                                 LPARAM data) {
-  std::wstring device_name;
   MONITORINFOEX monitor_info{};
   monitor_info.cbSize = sizeof(monitor_info);
   ::GetMonitorInfo(monitor, &monitor_info);
-  device_name = std::wstring(monitor_info.szDevice);
 
   std::wstring profile_path;
   HDC hdc = ::CreateDC(monitor_info.szDevice, NULL, NULL, NULL);
@@ -92,7 +90,7 @@ ColorProfileReader::BuildDisplayIdToPathMapOnBackgroundThread() {
 
 void ColorProfileReader::BuildDisplayIdToPathMapCompleted(
     DisplayIdToPathMap new_display_id_to_path_map) {
-  DCHECK(update_in_flight_);
+  CHECK(update_in_flight_, base::NotFatalUntil::M163);
 
   // Are there any changes from previous results
   if (display_id_to_path_map_ == new_display_id_to_path_map) {
@@ -128,7 +126,7 @@ ColorProfileReader::ReadProfilesOnBackgroundThread(
 
 void ColorProfileReader::ReadProfilesCompleted(
     DisplayIdToProfileMap display_id_to_profile_map) {
-  DCHECK(update_in_flight_);
+  CHECK(update_in_flight_, base::NotFatalUntil::M163);
   update_in_flight_ = false;
   display_id_to_profile_map_ = std::move(display_id_to_profile_map);
   client_->OnColorProfilesChanged();

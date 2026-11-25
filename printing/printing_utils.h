@@ -32,16 +32,7 @@ COMPONENT_EXPORT(PRINTING_BASE)
 std::u16string SimplifyDocumentTitle(const std::u16string& title);
 
 COMPONENT_EXPORT(PRINTING_BASE)
-std::u16string SimplifyDocumentTitleWithLength(const std::u16string& title,
-                                               size_t length);
-
-COMPONENT_EXPORT(PRINTING_BASE)
-std::u16string FormatDocumentTitleWithOwner(const std::u16string& owner,
-                                            const std::u16string& title);
-
-COMPONENT_EXPORT(PRINTING_BASE)
-std::u16string FormatDocumentTitleWithOwnerAndLength(
-    const std::u16string& owner,
+std::u16string SimplifyDocumentTitleWithLengthForTesting(
     const std::u16string& title,
     size_t length);
 

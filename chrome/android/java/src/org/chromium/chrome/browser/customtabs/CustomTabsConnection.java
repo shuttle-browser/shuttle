@@ -419,11 +419,9 @@ public class CustomTabsConnection {
             String packageName = getClientPackageNameForSession(session);
             Log.i(
                     TAG,
-                    "New Custom Tab session created by package: "
-                            + packageName
-                            + " (UID: "
-                            + Binder.getCallingUid()
-                            + ")");
+                    "New Custom Tab session created by package: %s (UID: %d)",
+                    packageName,
+                    Binder.getCallingUid());
         }
         return success;
     }
@@ -1172,7 +1170,7 @@ public class CustomTabsConnection {
                 ParallelRequestStatus.NUM_ENTRIES);
 
         if (mLogRequests) {
-            Log.w(TAG, "handleParallelRequest() = " + PARALLEL_REQUEST_MESSAGES[status]);
+            Log.w(TAG, "handleParallelRequest() = %s", PARALLEL_REQUEST_MESSAGES[status]);
         }
 
         // Success is already reported per URL, report any failures here.
@@ -1234,9 +1232,10 @@ public class CustomTabsConnection {
         }
 
         Uri referrer = IntentUtils.safeGetParcelableExtra(intent, PARALLEL_REQUEST_REFERRER_KEY);
-        int policy =
-                intent.getIntExtra(PARALLEL_REQUEST_REFERRER_POLICY_KEY, ReferrerPolicy.DEFAULT);
         if (referrer == null) return ParallelRequestStatus.FAILURE_INVALID_REFERRER;
+        int policy =
+                IntentUtils.safeGetIntExtra(
+                        intent, PARALLEL_REQUEST_REFERRER_POLICY_KEY, ReferrerPolicy.DEFAULT);
         if (policy < ReferrerPolicy.MIN_VALUE || policy > ReferrerPolicy.MAX_VALUE) {
             policy = ReferrerPolicy.DEFAULT;
         }
@@ -1304,12 +1303,14 @@ public class CustomTabsConnection {
             return 0;
         }
 
-        List<Uri> resourceList = intent.getParcelableArrayListExtra(RESOURCE_PREFETCH_URL_LIST_KEY);
+        List<Uri> resourceList =
+                IntentUtils.getParcelableArrayListExtra(intent, RESOURCE_PREFETCH_URL_LIST_KEY);
         Uri referrer = IntentUtils.safeGetParcelableExtra(intent, PARALLEL_REQUEST_REFERRER_KEY);
-        int policy =
-                intent.getIntExtra(PARALLEL_REQUEST_REFERRER_POLICY_KEY, ReferrerPolicy.DEFAULT);
-
         if (resourceList == null || referrer == null) return 0;
+
+        int policy =
+                IntentUtils.safeGetIntExtra(
+                        intent, PARALLEL_REQUEST_REFERRER_POLICY_KEY, ReferrerPolicy.DEFAULT);
         if (policy < 0 || policy > ReferrerPolicy.MAX_VALUE) policy = ReferrerPolicy.DEFAULT;
         Origin origin = Origin.create(referrer);
         if (origin == null) return 0;

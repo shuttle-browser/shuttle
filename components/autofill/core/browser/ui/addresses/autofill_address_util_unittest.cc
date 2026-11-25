@@ -4,6 +4,10 @@
 
 #include "components/autofill/core/browser/ui/addresses/autofill_address_util.h"
 
+#include <string_view>
+
+#include "base/i18n/icubridge/default_icu_locale.h"
+#include "base/i18n/language_tag.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/raw_ptr.h"
 #include "base/test/scoped_feature_list.h"
@@ -11,6 +15,7 @@
 #include "components/autofill/core/browser/data_model/addresses/autofill_i18n_api.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/geo/address_i18n.h"
+#include "components/autofill/core/browser/geo/country_data.h"
 #include "components/autofill/core/browser/test_utils/autofill_test_util.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -22,7 +27,9 @@ using ::testing::ElementsAre;
 
 class AddressFormattingTest : public ::testing::Test {
  public:
-  static std::string GetLocale() { return base::i18n::GetConfiguredLocale(); }
+  static base::i18n::LanguageTag GetLocale() {
+    return base::i18n::GetDefaultIcuLocale();
+  }
 };
 
 // This is a regression test from crbug.com/1259928. Address formats of
@@ -32,7 +39,8 @@ TEST_F(AddressFormattingTest, GetAddressComponentsSkipsEmptyLines) {
   std::vector<std::vector<AutofillAddressUIComponent>> lines;
   std::string components_language_code;
   // For Åland Islands the last line contains "ÅLAND" and should be skipped.
-  GetAddressComponents("AX", GetLocale(), /*include_literals=*/false, &lines,
+  GetAddressComponents("AX", GetLocale(),
+                       /*include_literals=*/false, &lines,
                        &components_language_code);
 
   EXPECT_FALSE(
@@ -44,7 +52,8 @@ TEST_F(AddressFormattingTest, GetAddressComponentsSkipsEmptyLines) {
 TEST_F(AddressFormattingTest, GetAddressComponentsWithExtensions) {
   std::vector<std::vector<AutofillAddressUIComponent>> lines;
   std::string components_language_code;
-  GetAddressComponents("GB", GetLocale(), /*include_literals=*/false, &lines,
+  GetAddressComponents("GB", GetLocale(),
+                       /*include_literals=*/false, &lines,
                        &components_language_code);
 
   // Expect to find a line consisting solely of a state field.
@@ -67,7 +76,8 @@ TEST_F(AddressFormattingTest, GetAddressComponentsWithExtensions) {
 TEST_F(AddressFormattingTest, GetEnvelopeStyleAddressSanity) {
   AutofillProfile profile = test::GetFullProfile();
   std::u16string address =
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/true,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/true,
                               /*include_country=*/true);
 
   // The exact format of the address depends on the format in the
@@ -75,11 +85,13 @@ TEST_F(AddressFormattingTest, GetEnvelopeStyleAddressSanity) {
   // some more highlevel conditions that are less probable to change.
 
   // The full name should be part of the envelope style address.
-  EXPECT_NE(address.find(profile.GetInfo(NAME_FULL, GetLocale())),
+  EXPECT_NE(address.find(profile.GetInfo(
+                NAME_FULL, std::string(GetLocale().tag_string()))),
             std::string::npos);
 
   // City should be part of the envelope style address.
-  EXPECT_NE(address.find(profile.GetInfo(ADDRESS_HOME_CITY, GetLocale())),
+  EXPECT_NE(address.find(profile.GetInfo(
+                ADDRESS_HOME_CITY, std::string(GetLocale().tag_string()))),
             std::string::npos);
 
   // Check that some literals are properly returned.
@@ -94,14 +106,16 @@ TEST_F(AddressFormattingTest, GetEnvelopeStyleAddressSanity) {
 
   // The country shouldn't be returned when include_country=false.
   EXPECT_EQ(
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/true,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/true,
                               /*include_country=*/false)
           .find(u"United States"),
       std::string::npos);
 
   // The recipient shouldn't be returned when include_recipient=false.
   EXPECT_EQ(
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/false,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/false,
                               /*include_country=*/true)
           .find(u"John H. Doe"),
       std::string::npos);
@@ -122,7 +136,8 @@ TEST_F(AddressFormattingTest, GetEnvelopeStyleAddressWhenEmptyFullname) {
                                      .Build());
 
   std::u16string address =
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/true,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/true,
                               /*include_country=*/true);
   // The US envelope style address should *not* start with a new line.
   EXPECT_NE(address.front(), '\n');
@@ -148,7 +163,8 @@ TEST_F(AddressFormattingTest,
                                      .Build());
 
   std::u16string address =
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/true,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/true,
                               /*include_country=*/true);
   // There should be no consecutive new lines.
   EXPECT_EQ(address.find(u"\n\n"), std::string::npos);
@@ -175,7 +191,8 @@ TEST_F(
                                      .Build());
 
   std::u16string address =
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/true,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/true,
                               /*include_country=*/true);
   // There should be no consecutive white spaces.
   EXPECT_EQ(address.find(u"  "), std::string::npos);
@@ -201,12 +218,16 @@ TEST_F(AddressFormattingTest, GetEnvelopeStyleAddressWithExtensions) {
                                      .Build());
 
   std::u16string address =
-      GetEnvelopeStyleAddress(profile, GetLocale(), /*include_recipient=*/true,
+      GetEnvelopeStyleAddress(profile, std::string(GetLocale().tag_string()),
+                              /*include_recipient=*/true,
                               /*include_country=*/true);
   // Expect the zip code, followed by a new line and the state.
   EXPECT_NE(
-      address.find(profile.GetInfo(ADDRESS_HOME_ZIP, GetLocale()) + u"\n" +
-                   profile.GetInfo(ADDRESS_HOME_STATE, GetLocale())),
+      address.find(profile.GetInfo(ADDRESS_HOME_ZIP,
+                                   std::string(GetLocale().tag_string())) +
+                   u"\n" +
+                   profile.GetInfo(ADDRESS_HOME_STATE,
+                                   std::string(GetLocale().tag_string()))),
       std::string::npos);
 }
 
@@ -331,6 +352,44 @@ TEST_F(AddressFormattingTest, GetEnvelopeStyleAddressWithPartialAddress) {
                               /*include_country=*/true);
 
   EXPECT_EQ(address, u"742 Evergreen Terrace\nSpringfield\nUnited States");
+}
+
+// Tests that `GetProfileDifferenceForUi()` detects changes for every field type
+// in `AutofillProfile::GetUserVisibleTypes()` across all countries.
+// `ProfileImportProcess` relies on `GetProfileDifferenceForUi()` to detect
+// whether a settings-visible profile merge has any user-visible differences to
+// show in an update prompt.
+TEST_F(AddressFormattingTest,
+       GetProfileDifferenceForUiCoversAllUserVisibleTypes) {
+  for (FixedCountryCode country_code :
+       CountryDataMap::GetInstance()->country_codes()) {
+    SCOPED_TRACE(std::string_view(country_code));
+    const AddressCountryCode address_country_code{std::string(country_code)};
+    const AutofillProfile profile1(address_country_code);
+    for (FieldType type : profile1.GetUserVisibleTypes()) {
+      SCOPED_TRACE(FieldTypeToStringView(type));
+      AutofillProfile profile2 = profile1;
+      switch (type) {
+        case PHONE_HOME_WHOLE_NUMBER:
+          profile2.SetRawInfo(type, u"+16502111111");
+          break;
+        case ALTERNATIVE_FULL_NAME:
+          profile2.SetRawInfo(type, u"やまもと あおい");
+          break;
+        case ADDRESS_HOME_COUNTRY:
+          profile2.SetRawInfo(
+              type, std::string_view(country_code) == "US" ? u"DE" : u"US");
+          break;
+        default:
+          profile2.SetRawInfo(type, u"Test Value");
+          break;
+      }
+      ASSERT_NE(profile1.GetInfo(type, "en-US"),
+                profile2.GetInfo(type, "en-US"));
+      EXPECT_FALSE(
+          GetProfileDifferenceForUi(profile1, profile2, "en-US").empty());
+    }
+  }
 }
 
 }  // namespace autofill

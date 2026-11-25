@@ -6,27 +6,21 @@
 
 #import <utility>
 
-#import "base/apple/foundation_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "components/sync/service/sync_service.h"
-#import "ios/chrome/browser/authentication/add_account_signin/coordinator/add_account_signin_coordinator.h"
 #import "ios/chrome/browser/authentication/consistency_promo_signin/coordinator/consistency_promo_signin_coordinator.h"
 #import "ios/chrome/browser/authentication/history_sync/coordinator/history_sync_popup_coordinator.h"
 #import "ios/chrome/browser/authentication/history_sync/model/history_sync_utils.h"
-#import "ios/chrome/browser/authentication/ui_bundled/continuation.h"
 #import "ios/chrome/browser/authentication/ui_bundled/fullscreen_signin/coordinator/fullscreen_signin_coordinator.h"
 #import "ios/chrome/browser/authentication/ui_bundled/fullscreen_signin/coordinator/fullscreen_signin_coordinator_delegate.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/instant_signin/instant_signin_coordinator.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_coordinator+protected.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_screen_provider.h"
-#import "ios/chrome/browser/authentication/ui_bundled/signin/signin_utils.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
-#import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
-#import "ios/chrome/browser/signin/model/chrome_account_manager_service_factory.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
 
@@ -51,16 +45,19 @@ enum class SignInHistorySyncStep {
   kCompleted,
 };
 
-// Converts HistorySyncResult in SigninCoordinatorResult.
-SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
-    HistorySyncResult history_sync_result) {
+// Converts HistorySyncResult into SigninCoordinatorResultOrIdentity.
+SigninCoordinatorResultOrIdentity
+HistorySyncResultToSigninCoordinatorResultOrIdentity(
+    HistorySyncResult history_sync_result,
+    id<SystemIdentity> identity) {
   switch (history_sync_result) {
     case HistorySyncResult::kSuccess:
     case HistorySyncResult::kUserCanceled:
     case HistorySyncResult::kSkipped:
-      return SigninCoordinatorResultSuccess;
+      CHECK(identity);
+      return identity;
     case HistorySyncResult::kPrimaryIdentityRemoved:
-      return SigninCoordinatorResultInterrupted;
+      return base::unexpected(SigninCoordinatorResultInterrupted);
   }
   NOTREACHED();
 }
@@ -131,7 +128,8 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
   _authenticationService =
       AuthenticationServiceFactory::GetForProfile(self.profile);
   _syncService = SyncServiceFactory::GetForProfile(self.profile);
-  [self presentNextStepWithPreviousResult:SigninCoordinatorResultSuccess];
+  _currentStep = [self nextStep];
+  [self createAndPresentStepChildCoordinator];
 }
 
 #pragma mark - AnimatedCoordinator
@@ -159,9 +157,10 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
                 didFinishWithResult:(HistorySyncResult)result {
   CHECK_EQ(coordinator, _historySyncPopupCoordinator);
   [self stopHistorySyncPopupCoordinatorAnimated:YES];
-  SigninCoordinatorResult signinResult =
-      HistorySyncResultToSigninCoordinatorResult(result);
-  [self presentNextStepWithPreviousResult:signinResult];
+  id<SystemIdentity> identity = _authenticationService->GetPrimaryIdentity();
+  SigninCoordinatorResultOrIdentity signinResult =
+      HistorySyncResultToSigninCoordinatorResultOrIdentity(result, identity);
+  [self presentNextStepWithPreviousResult:std::move(signinResult)];
 }
 
 #pragma mark - Private
@@ -185,24 +184,27 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
 
 // Moves to the next step and presents the coordinator of that next step.
 - (void)presentNextStepWithPreviousResult:
-    (SigninCoordinatorResult)previousResult {
+    (SigninCoordinatorResultOrIdentity)previousResult {
   CHECK(!_signinCoordinator) << base::SysNSStringToUTF8([self description]);
   CHECK(!_historySyncPopupCoordinator)
       << base::SysNSStringToUTF8([self description]);
-  switch (previousResult) {
-    case SigninCoordinatorResultSuccess:
-    case SigninCoordinatorResultDisabled:
-      _currentStep = [self nextStep];
-      break;
-    case SigninCoordinatorProfileSwitch:
-    case SigninCoordinatorResultInterrupted:
-    case SigninCoordinatorResultCanceledByUser:
-      _currentStep = SignInHistorySyncStep::kCompleted;
-      break;
-    case SigninCoordinatorUINotAvailable:
-      // SigninAndHistorySyncController presents its child coordinators
-      // directly and does not use `ShowSigninCommand`.
-      NOTREACHED();
+  if (previousResult.has_value()) {
+    _currentStep = [self nextStep];
+  } else {
+    switch (previousResult.error()) {
+      case SigninCoordinatorResultDisabled:
+        _currentStep = [self nextStep];
+        break;
+      case SigninCoordinatorProfileSwitch:
+      case SigninCoordinatorResultInterrupted:
+      case SigninCoordinatorResultCanceledByUser:
+        _currentStep = SignInHistorySyncStep::kCompleted;
+        break;
+      case SigninCoordinatorUINotAvailable:
+        // SigninAndHistorySyncController presents its child coordinators
+        // directly and does not use `ShowSigninCommand`.
+        NOTREACHED();
+    }
   }
   if (_currentStep != SignInHistorySyncStep::kCompleted) {
     [self createAndPresentStepChildCoordinator];
@@ -213,20 +215,18 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
   AuthenticationService* authService =
       AuthenticationServiceFactory::GetForProfile(self.profile);
   id<SystemIdentity> identity = authService->GetPrimaryIdentity();
-  SigninCoordinatorResult result;
-  if (previousResult == SigninCoordinatorResultInterrupted) {
-    result = SigninCoordinatorResultInterrupted;
+  SigninCoordinatorResultOrIdentity result;
+  if (!previousResult.has_value() &&
+      previousResult.error() == SigninCoordinatorResultInterrupted) {
     // If a SigninCoordinator is interrupted, the completion info should not
-    // contain a identity even if a sign-in has been completed successfully.
-    identity = nil;
+    // contain an identity even if a sign-in has been completed successfully.
+    result = base::unexpected(SigninCoordinatorResultInterrupted);
   } else if (identity) {
-    result = SigninCoordinatorResultSuccess;
+    result = identity;
   } else {
-    result = SigninCoordinatorResultCanceledByUser;
+    result = base::unexpected(SigninCoordinatorResultCanceledByUser);
   }
-  id<SystemIdentity> completionIdentity = identity;
-  [self runCompletionWithSigninResult:result
-                   completionIdentity:completionIdentity];
+  [self runCompletionWithSigninResult:std::move(result)];
 }
 
 // Creates the current step coordinator according to `_currentStep`.
@@ -260,11 +260,8 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
       _signinCoordinator.signinCompletion =
           ^(SigninCoordinator* coordinator,
             SigninCoordinatorResultOrIdentity result) {
-            SigninCoordinatorResult signinResult = signin::
-                SigninCoordinatorResultFromSigninCoordinatorResultOrIdentity(
-                    std::move(result));
-            [weakSelf currentSigninStepDidFinishWithCoordinator:coordinator
-                                                         result:signinResult];
+            [weakSelf signinStepDoneWithCoordinator:coordinator
+                                             result:std::move(result)];
           };
       [_signinCoordinator start];
       return;
@@ -282,11 +279,8 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
       _signinCoordinator.signinCompletion =
           ^(SigninCoordinator* coordinator,
             SigninCoordinatorResultOrIdentity result) {
-            SigninCoordinatorResult signinResult = signin::
-                SigninCoordinatorResultFromSigninCoordinatorResultOrIdentity(
-                    std::move(result));
-            [weakSelf currentSigninStepDidFinishWithCoordinator:coordinator
-                                                         result:signinResult];
+            [weakSelf signinStepDoneWithCoordinator:coordinator
+                                             result:std::move(result)];
           };
       [_signinCoordinator start];
       return;
@@ -296,8 +290,8 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
                                       self.profile->GetPrefs(),
                                       _optionalHistorySync) !=
           history_sync::HistorySyncSkipReason::kNone) {
-        [self
-            presentNextStepWithPreviousResult:SigninCoordinatorResultDisabled];
+        [self presentNextStepWithPreviousResult:
+                  base::unexpected(SigninCoordinatorResultDisabled)];
       } else {
         _historySyncPopupCoordinator = [[HistorySyncPopupCoordinator alloc]
             initWithBaseViewController:self.baseViewController
@@ -320,16 +314,16 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
 }
 
 // Stops the child coordinator and prepares the next step to present.
-- (void)
-    currentSigninStepDidFinishWithCoordinator:(SigninCoordinator*)coordinator
-                                       result:(SigninCoordinatorResult)result {
+- (void)signinStepDoneWithCoordinator:(SigninCoordinator*)coordinator
+                               result:
+                                   (SigninCoordinatorResultOrIdentity)result {
   // TODO(crbug.com/40929259): Turn into CHECK.
   DUMP_WILL_BE_CHECK_EQ(_signinCoordinator, coordinator)
       << base::SysNSStringToUTF8([self description]);
   DUMP_WILL_BE_CHECK(!_historySyncPopupCoordinator)
       << base::SysNSStringToUTF8([self description]);
   [self stopSigninCoordinatorAnimated:YES];
-  [self presentNextStepWithPreviousResult:result];
+  [self presentNextStepWithPreviousResult:std::move(result)];
 }
 
 // Returns the next step for `_currentStep`.
@@ -361,13 +355,12 @@ SigninCoordinatorResult HistorySyncResultToSigninCoordinatorResult(
 
 #pragma mark - FullscreenSigninCoordinatorDelegate
 
-- (void)fullscreenSigninCoordinatorWantsToBeStopped:
-            (FullscreenSigninCoordinator*)coordinator
-                                             result:(SigninCoordinatorResult)
-                                                        result {
+- (void)
+    fullscreenSigninCoordinatorDone:(FullscreenSigninCoordinator*)coordinator
+                             result:(SigninCoordinatorResultOrIdentity)result {
   CHECK_EQ(_fullscreenSigninCoordinator, coordinator);
   [self stopFullscreenSigninCoordinator];
-  [self presentNextStepWithPreviousResult:result];
+  [self presentNextStepWithPreviousResult:std::move(result)];
 }
 
 #pragma mark - NSObject

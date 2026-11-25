@@ -143,37 +143,39 @@ void ExpectNoUpdateSequence(
            "request.apps",
            base::ListValue().Append(std::move(app_expectation))))},
       base::BindRepeating(
-          [](const std::string& app_id, bool v4) {
-            return v4 ? absl::StrFormat(
-                            ")]}'\n"
-                            R"({"response":{)"
-                            R"(  "protocol":"4.0",)"
-                            R"(  "apps":[)"
-                            R"(    {)"
-                            R"(      "appid":"%s",)"
-                            R"(      "status":"ok",)"
-                            R"(      "updatecheck":{)"
-                            R"(        "status":"noupdate")"
-                            R"(      })"
-                            R"(    })"
-                            R"(  ])"
-                            R"(}})",
-                            app_id)
-                      : absl::StrFormat(
-                            ")]}'\n"
-                            R"({"response":{)"
-                            R"(  "protocol":"3.1",)"
-                            R"(  "app":[)"
-                            R"(    {)"
-                            R"(      "appid":"%s",)"
-                            R"(      "status":"ok",)"
-                            R"(      "updatecheck":{)"
-                            R"(        "status":"noupdate")"
-                            R"(      })"
-                            R"(    })"
-                            R"(  ])"
-                            R"(}})",
-                            app_id);
+          [](const std::string& app_id, ProtocolVersion protocol_version) {
+            if (protocol_version == ProtocolVersion::kV4) {
+              return absl::StrFormat(
+                  ")]}'\n"
+                  R"({"response":{)"
+                  R"(  "protocol":"4.0",)"
+                  R"(  "apps":[)"
+                  R"(    {)"
+                  R"(      "appid":"%s",)"
+                  R"(      "status":"ok",)"
+                  R"(      "updatecheck":{)"
+                  R"(        "status":"noupdate")"
+                  R"(      })"
+                  R"(    })"
+                  R"(  ])"
+                  R"(}})",
+                  app_id);
+            }
+            return absl::StrFormat(
+                ")]}'\n"
+                R"({"response":{)"
+                R"(  "protocol":"3.1",)"
+                R"(  "app":[)"
+                R"(    {)"
+                R"(      "appid":"%s",)"
+                R"(      "status":"ok",)"
+                R"(      "updatecheck":{)"
+                R"(        "status":"noupdate")"
+                R"(      })"
+                R"(    })"
+                R"(  ])"
+                R"(}})",
+                app_id);
           },
           app_id));
 }
@@ -1072,6 +1074,11 @@ class IntegrationLowerVersionTest
 INSTANTIATE_TEST_SUITE_P(IntegrationLowerVersionTestCases,
                          IntegrationLowerVersionTest,
                          ::testing::ValuesIn(GetRealUpdaterLowerVersions()));
+#if BUILDFLAG(IS_WIN)
+// TODO(crbug.com/579543435): Remove once `old_updater` is rolled; see
+// `GetRealUpdaterLowerVersions()`.
+GTEST_ALLOW_UNINSTANTIATED_PARAMETERIZED_TEST(IntegrationLowerVersionTest);
+#endif
 
 TEST_P(IntegrationLowerVersionTest, OverinstallWorking) {
   ASSERT_NO_FATAL_FAILURE(SetupRealUpdater(GetParam().updater_setup_path));
@@ -3271,6 +3278,13 @@ TEST_F(IntegrationTestDeviceManagement, ForceInstall) {
 }
 
 TEST_F(IntegrationTestDeviceManagement, QualifyUpdaterWhenUpdateDisabled) {
+#if BUILDFLAG(IS_WIN)
+  // TODO(crbug.com/579543435): Remove once `old_updater` is rolled; see
+  // `GetRealUpdaterLowerVersions()`.
+  if (GetRealUpdaterLowerVersions().empty()) {
+    GTEST_SKIP();
+  }
+#endif
   // This test depends on the companion app to provide CBCM policies. On macOS
   // the companion app requires a valid ksadmin to install, which the fake
   // updater does not provide.
@@ -3323,6 +3337,13 @@ TEST_F(IntegrationTestDeviceManagement, QualifyUpdaterWhenUpdateDisabled) {
 
 TEST_F(IntegrationTestDeviceManagement,
        QualifyUpdaterWhenNextCheckDelayIsZero) {
+#if BUILDFLAG(IS_WIN)
+  // TODO(crbug.com/579543435): Remove once `old_updater` is rolled; see
+  // `GetRealUpdaterLowerVersions()`.
+  if (GetRealUpdaterLowerVersions().empty()) {
+    GTEST_SKIP();
+  }
+#endif
   // This test depends on the companion app to provide CBCM policies. On macOS
   // the companion app requires a valid ksadmin to install, which the fake
   // updater does not provide.
@@ -6749,13 +6770,13 @@ TEST_F(EventLoggingIntegrationTest, SendsLogs) {
                                 UpdateService::Priority::kForeground, v1, v1));
   test_event_logging_server.ExpectOnce(
       {request::GetPathMatcher(test_event_logging_server.event_logging_path()),
-       base::BindRepeating([](const HttpRequest& request) {
+       base::BindRepeating([](const HttpRequest& request)
+                               -> testing::AssertionResult {
          enterprise_companion::telemetry_logger::proto::LogRequest log_request;
          if (!log_request.ParseFromString(request.decoded_content)) {
-           ADD_FAILURE() << "Failed to parse log request";
-           return false;
+           return testing::AssertionFailure() << "Failed to parse log request";
          }
-         return true;
+         return testing::AssertionSuccess();
        })},
       enterprise_companion::telemetry_logger::proto::LogResponse()
           .SerializeAsString(),

@@ -20,7 +20,6 @@
 #include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/profiles/profile.h"
@@ -464,7 +463,7 @@ class GlicButton : public GlicBaseShim<T>,
 
   // Show or hide the split button styling, used when the task indicator is
   // present.
-  void SetSplitButtonCornerStyling() {
+  virtual void SetSplitButtonCornerStyling() {
     SetLeftRightCornerRadii(GetSplitRoundedEdgeRadius(), kSplitFlatEdgetRadius);
   }
 
@@ -859,9 +858,7 @@ class GlicButton : public GlicBaseShim<T>,
   }
 
   ui::ImageModel GetNormalIcon(const int icon_size) {
-    auto* service = GlicKeyedService::Get(profile_);
-    CHECK(service);
-    const int icon_id = service->provider_spec().GetEntryPointIconId();
+    const int icon_id = GetGlicProviderSpec(profile_).GetEntryPointIconId();
     return ui::ImageModel::FromImageSkia(
         *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(icon_id));
   }

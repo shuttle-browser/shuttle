@@ -16,16 +16,18 @@
 #include <unordered_map>
 #include <vector>
 
-#include "absl/container/node_hash_map.h"
-#include "absl/log/absl_check.h"
-#include "absl/strings/str_format.h"
-#include "absl/types/span.h"
+#include "absl/container/node_hash_map.h"  // from @com_google_absl
+#include "absl/log/absl_check.h"           // from @com_google_absl
+#include "absl/status/status.h"            // from @com_google_absl
+#include "absl/status/status_macros.h"     // from @com_google_absl
+#include "absl/strings/str_format.h"       // from @com_google_absl
+#include "absl/types/span.h"               // from @com_google_absl
 #include "mediapipe/calculators/tflite/tflite_tensors_to_classification_calculator.pb.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/formats/classification.pb.h"
 #include "mediapipe/framework/port/ret_check.h"
 #include "mediapipe/util/resource_util.h"
-#include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/interpreter.h"  // from @litert
 #if defined(MEDIAPIPE_MOBILE)
 #include "mediapipe/util/android/file/base/file.h"
 #include "mediapipe/util/android/file/base/helpers.h"
@@ -101,10 +103,10 @@ absl::Status TfLiteTensorsToClassificationCalculator::Open(
   top_k_ = options_.top_k();
   if (options_.has_label_map_path()) {
     std::string string_path;
-    MP_ASSIGN_OR_RETURN(string_path,
-                        PathToResourceAsFile(options_.label_map_path()));
+    ABSL_ASSIGN_OR_RETURN(string_path,
+                          PathToResourceAsFile(options_.label_map_path()));
     std::string label_map_string;
-    MP_RETURN_IF_ERROR(file::GetContents(string_path, &label_map_string));
+    ABSL_RETURN_IF_ERROR(file::GetContents(string_path, &label_map_string));
 
     std::istringstream stream(label_map_string);
     std::string line;
@@ -141,7 +143,7 @@ absl::Status TfLiteTensorsToClassificationCalculator::Process(
   }
   const float* raw_scores = raw_score_tensor->data.f;
 
-  auto classification_list = absl::make_unique<ClassificationList>();
+  auto classification_list = std::make_unique<ClassificationList>();
   if (options_.binary_classification()) {
     Classification* class_first = classification_list->add_classification();
     Classification* class_second = classification_list->add_classification();

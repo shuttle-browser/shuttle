@@ -39,9 +39,9 @@
 #include "extensions/buildflags/buildflags.h"
 #include "google_apis/google_api_keys.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "url/gurl.h"
 
@@ -244,6 +244,7 @@ void RegisterInfoBars() {
                                  ? omnibox::kChromeProductIcon
                                  : vector_icons::kProductRefreshIcon)
                     .SetScope(infobars::InfoBarScope::kGlobal)
+                    .SetIsPromotional(true)
                     // Only offer to pin in normal, non-incognito,
                     // non-guest browsers.
                     .SetBrowserFilter(base::BindRepeating(
@@ -396,6 +397,7 @@ void RegisterInfoBars() {
             .SetExpireOnNavigation(false)
             .SetShouldHideInFullscreen(true)
             .SetShouldAnimate(false)
+            .SetIsPromotional(true)
             .SetBrowserFilter(
                 base::BindRepeating([](BrowserWindowInterface* browser) {
                   const Profile* profile = browser->GetProfile();
@@ -433,6 +435,7 @@ void RegisterInfoBars() {
                                  : omnibox::kProductChromeRefreshOldIcon)
             .SetScope(InfoBarScope::kGlobal)
             .SetExpireOnNavigation(false)
+            .SetIsPromotional(true)
             .SetBrowserFilter(
                 base::BindRepeating([](BrowserWindowInterface* browser) {
                   return session_restore_infobar::
@@ -463,6 +466,7 @@ void RegisterInfoBars() {
             .SetScope(InfoBarScope::kGlobal)
             .SetExpireOnNavigation(false)
             .SetShouldHideInFullscreen(true)
+            .SetIsPromotional(true)
             .SetBrowserFilter(
                 base::BindRepeating([](BrowserWindowInterface* browser) {
                   const Profile* profile = browser->GetProfile();
@@ -521,7 +525,7 @@ void RegisterInfoBars() {
                             browser, GURL("chrome://inspect#remote-debugging"),
                             ui::PAGE_TRANSITION_LINK);
                         params.disposition =
-                            WindowOpenDisposition::kNewForegroundTab;
+                            ui::mojom::WindowOpenDisposition::kNewForegroundTab;
                         Navigate(&params);
                       }));
                 }))

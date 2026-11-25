@@ -42,7 +42,6 @@ import androidx.test.espresso.matcher.ViewMatchers.Visibility;
 import androidx.test.filters.MediumTest;
 
 import org.hamcrest.Matchers;
-import org.junit.AfterClass;
 import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
@@ -59,9 +58,10 @@ import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.OneshotSupplierImpl;
 import org.chromium.base.supplier.SupplierUtils;
-import org.chromium.base.test.params.ParameterAnnotations;
+import org.chromium.base.test.params.ParameterAnnotations.UseMethodParameter;
+import org.chromium.base.test.params.ParameterAnnotations.UseMethodParameterBefore;
+import org.chromium.base.test.params.ParameterAnnotations.UseRunnerDelegate;
 import org.chromium.base.test.params.ParameterizedRunner;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
@@ -73,7 +73,6 @@ import org.chromium.chrome.R;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
 import org.chromium.chrome.browser.browser_controls.BrowserStateBrowserControlsVisibilityDelegate;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.fullscreen.BrowserControlsManager;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.omnibox.LocationBarBackgroundDrawable;
@@ -95,27 +94,27 @@ import org.chromium.chrome.browser.toolbar.optional_button.ButtonDataImpl;
 import org.chromium.chrome.browser.toolbar.optional_button.OptionalButtonCoordinator;
 import org.chromium.chrome.browser.toolbar.signin_button.SigninButtonCoordinator;
 import org.chromium.chrome.browser.toolbar.top.ToolbarPhone.VisualState;
-import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.chrome.browser.ui.theme.ChromeSemanticColorUtils;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.chrome.test.util.BottomBarTestUtils;
+import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.chrome.test.util.NewTabPageTestUtils;
 import org.chromium.chrome.test.util.OmniboxTestUtils;
+import org.chromium.components.embedder_support.util.UrlConstants;
 import org.chromium.components.omnibox.OmniboxFeatureList;
 import org.chromium.components.search_engines.AiModeButtonUiConfig;
 import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.components.signin.SigninFeatures;
 import org.chromium.ui.base.DeviceFormFactor;
-import org.chromium.ui.test.util.NightModeTestUtils;
+import org.chromium.ui.test.util.NightModeTestUtils.NightModeParams;
 import org.chromium.ui.test.util.ViewUtils;
 
 /** Instrumentation tests for {@link ToolbarPhone}. */
 @RunWith(ParameterizedRunner.class)
-@ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
+@UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
 @Restriction(DeviceFormFactor.PHONE)
 public class ToolbarPhoneTest {
     @Rule public final MockitoRule mMockitoRule = MockitoJUnit.rule();
@@ -145,7 +144,7 @@ public class ToolbarPhoneTest {
     private NonNullObservableSupplier<StatusIconResource> mAiModeButtonIconSupplier;
     private WebPageStation mPage;
 
-    @ParameterAnnotations.UseMethodParameterBefore(NightModeTestUtils.NightModeParams.class)
+    @UseMethodParameterBefore(NightModeParams.class)
     public void setupNightMode(boolean nightModeEnabled) {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -178,11 +177,6 @@ public class ToolbarPhoneTest {
         mToolbar = mActivityTestRule.getActivity().findViewById(R.id.toolbar);
         mToolbarButtonsContainer = mToolbar.findViewById(R.id.toolbar_buttons);
         mOmnibox = new OmniboxTestUtils(mActivityTestRule.getActivity());
-    }
-
-    @AfterClass
-    public static void tearDownAfterActivityDestroyed() {
-        ChromeNightModeTestUtils.tearDownNightModeAfterChromeActivityDestroyed();
     }
 
     @Test
@@ -394,6 +388,7 @@ public class ToolbarPhoneTest {
     public void testToolbarColorSameAsSuggestionColorWhenFocus_activeColorOmnibox() {
         LocationBarCoordinator locationBarCoordinator =
                 (LocationBarCoordinator) mToolbar.getLocationBar();
+        OmniboxResourceProvider resourceProvider = mToolbar.getOmniboxResourceProviderForTesting();
         ColorDrawable toolbarBackgroundDrawable = mToolbar.getBackgroundDrawable();
         mToolbar.setLocationBarBackgroundDrawableForTesting(mLocationbarBackgroundDrawable);
         int nonFocusedRadius =
@@ -413,15 +408,12 @@ public class ToolbarPhoneTest {
                 () -> {
                     Criteria.checkThat(
                             toolbarBackgroundDrawable.getColor(),
-                            Matchers.is(
-                                    OmniboxResourceProvider.getSuggestionsDropdownBackgroundColor(
-                                            mToolbar.getContext(),
-                                            BrandedColorScheme.APP_DEFAULT)));
+                            Matchers.is(resourceProvider.getSuggestionsDropdownBackgroundColor()));
                 });
-        verify(mLocationbarBackgroundDrawable)
-                .setBackgroundColor(
-                        OmniboxResourceProvider.getStandardSuggestionBackgroundColor(
-                                mToolbar.getContext(), BrandedColorScheme.APP_DEFAULT));
+        int expectedLocationBarColor =
+                ThreadUtils.runOnUiThreadBlocking(
+                        resourceProvider::getStandardSuggestionBackgroundColor);
+        verify(mLocationbarBackgroundDrawable).setBackgroundColor(expectedLocationBarColor);
         verify(mLocationbarBackgroundDrawable, atLeastOnce()).setCornerRadius(focusedRadius);
 
         // Clear focus on the Omnibox
@@ -433,10 +425,7 @@ public class ToolbarPhoneTest {
                 () -> {
                     Criteria.checkThat(
                             toolbarBackgroundDrawable.getColor(),
-                            Matchers.not(
-                                    OmniboxResourceProvider.getSuggestionsDropdownBackgroundColor(
-                                            mToolbar.getContext(),
-                                            BrandedColorScheme.APP_DEFAULT)));
+                            Matchers.not(resourceProvider.getSuggestionsDropdownBackgroundColor()));
                 });
         verify(mLocationbarBackgroundDrawable, atLeastOnce()).setBackgroundColor(anyInt());
         verify(mLocationbarBackgroundDrawable, atLeastOnce()).setCornerRadius(nonFocusedRadius);
@@ -633,6 +622,27 @@ public class ToolbarPhoneTest {
 
     @Test
     @MediumTest
+    @EnableFeatures(SigninFeatures.SIGNIN_LEVEL_UP_BUTTON)
+    @DisableFeatures(ChromeFeatureList.ANDROID_BOTTOM_BAR)
+    public void testSigninButton_followsToolbarNtpState() {
+        mActivityTestRule.loadUrl(getOriginalNativeNtpUrl());
+        Tab tab = mActivityTestRule.getActivityTab();
+        NewTabPageTestUtils.waitForNtpLoaded(tab);
+        CriteriaHelper.pollUiThread(() -> mToolbar.isLocationBarShownInNtp());
+        CriteriaHelper.pollUiThread(
+                () -> mToolbar.getSigninButtonCoordinatorForTesting().isShown());
+
+        // Leaving the NTP should update the signin button from the toolbar's visual state
+        // update, the same update that shows the optional button, so both change together.
+        mToolbar.setSigninButtonCoordinatorForTesting(mSigninButtonCoordinator);
+        mActivityTestRule.loadUrl("about:blank");
+        CriteriaHelper.pollUiThread(() -> !mToolbar.isLocationBarShownInNtp());
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> verify(mSigninButtonCoordinator, atLeastOnce()).updateButtonVisibility());
+    }
+
+    @Test
+    @MediumTest
     public void testToolbarBackgroundChange() {
         ColorDrawable toolbarBackgroundDrawable = mToolbar.getBackgroundDrawable();
         @ColorInt
@@ -659,7 +669,7 @@ public class ToolbarPhoneTest {
 
     @Test
     @MediumTest
-    @ParameterAnnotations.UseMethodParameter(NightModeTestUtils.NightModeParams.class)
+    @UseMethodParameter(NightModeParams.class)
     public void testRealSearchBoxAppearanceChange(boolean nightModeEnabled) {
         LocationBarCoordinator locationBarCoordinator =
                 (LocationBarCoordinator) mToolbar.getLocationBar();
@@ -716,7 +726,9 @@ public class ToolbarPhoneTest {
         // Load the new tab page.
         mActivityTestRule.loadUrl(getOriginalNativeNtpUrl());
         Tab tab = mActivityTestRule.getActivityTab();
-        NewTabPageTestUtils.waitForNtpLoaded(tab);
+        // TODO(crbug.com/428022848): Hop on once RegularNewTabPageStation can model an NTP
+        // without a search provider logo.
+        ChromeTabUtils.waitForNtpLoaded(tab);
         ViewGroup fakeSearchBox = mActivityTestRule.getActivity().findViewById(R.id.search_box);
         assertEquals(true, mToolbar.isLocationBarShownInGeneralNtp());
         assertEquals(View.VISIBLE, fakeSearchBox.getVisibility());
@@ -851,6 +863,63 @@ public class ToolbarPhoneTest {
                             0);
                     mToolbar.onUrlFocusChange(true);
                     assertTrue(mToolbar.isAnimationRunningForTesting());
+                });
+    }
+
+    @Test
+    @MediumTest
+    public void testHairlineShownOnNativePageWithErrorPageUnderneath() {
+        // chrome://history is a native page on Android. The WebContents underneath it commits an
+        // error page (there is no history WebUI on Android), which must not hide the hairline.
+        mActivityTestRule.loadUrl(UrlConstants.HISTORY_URL);
+        CriteriaHelper.pollUiThread(
+                () -> mActivityTestRule.getActivity().getActivityTab().isNativePage());
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mToolbar.updateHairlineVisibility();
+                    assertTrue(mToolbar.shouldDrawHairline());
+                    assertEquals(View.VISIBLE, mToolbar.getToolbarHairline().getVisibility());
+                });
+    }
+
+    @Test
+    @MediumTest
+    public void testHairlineOnIncognitoNtp_dependsOnToolbarPosition() {
+        mActivityTestRule.loadUrlInNewTab(UrlConstants.NTP_URL, /* incognito= */ true);
+        CriteriaHelper.pollUiThread(
+                () -> mActivityTestRule.getActivity().getActivityTab().isIncognitoBranded());
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    BrowserControlsManager browserControlsManager =
+                            mActivityTestRule.getActivity().getBrowserControlsManager();
+                    // Top-anchored: the incognito NTP intentionally blends into the toolbar.
+                    assertEquals(
+                            ControlsPosition.TOP, browserControlsManager.getControlsPosition());
+                    mToolbar.updateHairlineVisibility();
+                    assertFalse(mToolbar.shouldDrawHairline());
+
+                    // Bottom-anchored: the hairline separates page content from the omnibox.
+                    browserControlsManager.setControlsPosition(
+                            ControlsPosition.BOTTOM,
+                            0,
+                            0,
+                            0,
+                            browserControlsManager.getTopControlsHeight(),
+                            0,
+                            0);
+                    mToolbar.updateHairlineVisibility();
+                    assertTrue(mToolbar.shouldDrawHairline());
+                    assertEquals(View.VISIBLE, mToolbar.getToolbarHairline().getVisibility());
+
+                    browserControlsManager.setControlsPosition(
+                            ControlsPosition.TOP,
+                            browserControlsManager.getBottomControlsHeight(),
+                            0,
+                            0,
+                            0,
+                            0,
+                            0);
                 });
     }
 }

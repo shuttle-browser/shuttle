@@ -26,6 +26,7 @@
 #include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "base/types/optional_ref.h"
 #include "build/build_config.h"
 #include "content/public/browser/navigation_controller.h"
 
@@ -36,7 +37,6 @@
 #include "chrome/browser/banners/app_banner_manager_browsertest_base.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/common/chrome_features.h"
 #include "components/webapps/browser/banners/app_banner_metrics.h"
 #include "components/webapps/browser/banners/app_banner_settings_helper.h"
@@ -112,7 +112,7 @@ class AppBannerManagerObserverAdapter : public AppBannerManager::Observer {
  private:
   void OnInstallableWebAppStatusUpdated(
       InstallableWebAppCheckResult result,
-      const std::optional<WebAppBannerData>& data) override {
+      base::optional_ref<const WebAppBannerData> data) override {
     if (result != filter_) {
       LOG(WARNING) << "Filtered result: " << base::ToString(result);
       return;
@@ -182,23 +182,9 @@ class AppBannerManagerBrowserTest
 
   void SetUpCommandLine(base::CommandLine* command_line) override {
     if (GetParam() == CheckWebAppExistence::kAsync) {
-      feature_list_.InitWithFeatures(
-          /*enabled_features=*/
-          {features::kCheckWebAppExistenceAsync},
-          /*disabled_features=*/
-          // TODO(crbug.com/452061489): Fix tests that fail when the WebUI
-          // Omnibox is enabled and then remove these two Features.
-          {omnibox::internal::kWebUIOmniboxPopup,
-           omnibox::internal::kWebUIOmniboxAimPopup});
+      feature_list_.InitAndEnableFeature(features::kCheckWebAppExistenceAsync);
     } else {
-      feature_list_.InitWithFeatures(
-          /*enabled_features=*/{},
-          /*disabled_features=*/
-          {features::kCheckWebAppExistenceAsync,
-           // TODO(crbug.com/452061489): Fix tests that fail when the WebUI
-           // Omnibox is enabled and then remove these two Features.
-           omnibox::internal::kWebUIOmniboxPopup,
-           omnibox::internal::kWebUIOmniboxAimPopup});
+      feature_list_.InitAndDisableFeature(features::kCheckWebAppExistenceAsync);
     }
   }
 

@@ -190,7 +190,7 @@ void DrmThread::CreateBufferFromHandle(
     scoped_refptr<DrmFramebuffer>* out_framebuffer) {
   TRACE_EVENT0("drm", "DrmThread::CreateBufferFromHandle");
   scoped_refptr<ui::DrmDevice> drm = device_manager_->GetDrmDevice(widget);
-  DCHECK(drm);
+  CHECK(drm, base::NotFatalUntil::M163);
 
   std::unique_ptr<GbmBuffer> buffer = drm->gbm_device()->CreateBufferFromHandle(
       GetFourCCFormatFromSharedImageFormat(format), size, std::move(handle));
@@ -263,7 +263,7 @@ void DrmThread::SetDrmModifiersFilter(
 void DrmThread::CreateWindow(gfx::AcceleratedWidget widget,
                              const gfx::Rect& initial_bounds) {
   TRACE_EVENT0("drm", "DrmThread::CreateWindow");
-  DCHECK_GT(widget, last_created_window_);
+  CHECK_GT(widget, last_created_window_, base::NotFatalUntil::M163);
   last_created_window_ = widget;
 
   std::unique_ptr<DrmWindow> window(
@@ -331,12 +331,17 @@ void DrmThread::GetHardwareCapabilities(
     gfx::AcceleratedWidget widget,
     HardwareCapabilitiesCallback receive_callback) {
   TRACE_EVENT0("drm,hwoverlays", "DrmThread::GetHardwareCapabilities");
-  DCHECK(screen_manager_->GetWindow(widget));
-  DCHECK(device_manager_->GetDrmDevice(widget));
-  HardwareDisplayController* hdc =
-      screen_manager_->GetWindow(widget)->GetController();
-  HardwareDisplayPlaneManager* plane_manager =
-      device_manager_->GetDrmDevice(widget)->plane_manager();
+  DrmWindow* window = screen_manager_->GetWindow(widget);
+  scoped_refptr<ui::DrmDevice> drm_device =
+      device_manager_->GetDrmDevice(widget);
+  if (!window || !drm_device) {
+    HardwareCapabilities hardware_capabilities;
+    hardware_capabilities.is_valid = false;
+    std::move(receive_callback).Run(hardware_capabilities);
+    return;
+  }
+  HardwareDisplayController* hdc = window->GetController();
+  HardwareDisplayPlaneManager* plane_manager = drm_device->plane_manager();
 
   if (!hdc || !plane_manager) {
     HardwareCapabilities hardware_capabilities;
@@ -491,7 +496,7 @@ void DrmThread::AddDrmDeviceReceiver(
 }
 
 void DrmThread::ProcessPendingTasks() {
-  DCHECK(!device_manager_->GetDrmDevices().empty());
+  CHECK(!device_manager_->GetDrmDevices().empty(), base::NotFatalUntil::M163);
 
   for (auto& task_info : pending_tasks_) {
     std::move(task_info.task).Run();

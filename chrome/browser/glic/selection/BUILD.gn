@@ -12,12 +12,16 @@ source_set("selection") {
   sources = [
     "explain_suggestion.cc",
     "explain_suggestion.h",
+    "explain_suggestion_fre.cc",
+    "explain_suggestion_fre.h",
     "inline_cue_blocklist_utils.cc",
     "inline_cue_blocklist_utils.h",
     "quick_answers_tool.cc",
     "quick_answers_tool.h",
     "selection_overlay_controller.cc",
     "selection_overlay_controller.h",
+    "selection_overlay_prewarmer.cc",
+    "selection_overlay_prewarmer.h",
     "selection_overlay_untrusted_ui.cc",
     "selection_overlay_untrusted_ui.h",
     "selection_suggestion.cc",
@@ -25,14 +29,13 @@ source_set("selection") {
     "selection_suggestion_tool.cc",
     "selection_suggestion_tool.h",
     "shake_trigger.cc",
-    "text_selection_context.cc",
-    "text_selection_context.h",
   ]
 
   public_deps = [
     ":mojo_bindings",
     ":shake_trigger",
     "//chrome/browser/glic",
+    "//chrome/browser/glic:selection_context",
     "//chrome/browser/selection",
     "//chrome/browser/ui/lens",
   ]
@@ -42,6 +45,7 @@ source_set("selection") {
     "//chrome/browser:browser_process",
     "//chrome/browser/actor",
     "//chrome/browser/content_settings:content_settings_factory",
+    "//chrome/browser/download",
     "//chrome/browser/glic:mojo_bindings",
     "//chrome/browser/glic:public_types",
     "//chrome/browser/glic/public:features",
@@ -55,20 +59,26 @@ source_set("selection") {
     "//chrome/browser/ui:browser_element_identifiers",
     "//chrome/browser/ui:chrome_pages",
     "//chrome/browser/ui/browser_window",
+    "//chrome/browser/ui/tabs:page_context_eligibility_helper",
     "//chrome/browser/ui/tabs:tab_strip",
     "//chrome/browser/ui/webui:webui_util",
     "//chrome/browser/ui/webui/top_chrome",
     "//components/actor/public/mojom:mojo_bindings",
+    "//components/constrained_window",
     "//components/content_settings/core/browser",
     "//components/content_settings/core/common",
     "//components/input",
+    "//components/optimization_guide/content/browser:page_context_eligibility",
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/prefs",
     "//components/search_engines",
     "//mojo/public/mojom/base",
     "//third_party/blink/public/common:headers",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
     "//ui/gfx/geometry",
+    "//ui/views",
   ]
 }
 
@@ -99,6 +109,7 @@ source_set("interactive_ui_tests") {
   sources = [ "selection_overlay_interactive_uitests.cc" ]
   deps = [
     ":selection",
+    "//chrome/app:generated_resources",
     "//chrome/browser/actor:test_support",
     "//chrome/browser/background/glic",
     "//chrome/browser/glic",
@@ -113,13 +124,16 @@ source_set("interactive_ui_tests") {
     "//chrome/browser/ui/views/frame:multi_contents_view",
     "//chrome/common:constants",
     "//chrome/test:test_support",
+    "//components/optimization_guide/content/browser:test_support",
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
+    "//components/prefs",
     "//content/test:test_support",
     "//testing/gtest",
     "//ui/base",
     "//ui/base:ozone_buildflags",
     "//ui/base/interaction",
+    "//ui/views",
   ]
   if (use_ozone) {
     deps += [ "//ui/ozone" ]
@@ -133,20 +147,31 @@ source_set("browser_tests") {
   deps = [
     ":selection",
     "//base",
+    "//chrome/browser/download",
     "//chrome/browser/glic",
     "//chrome/browser/glic/test_support",
     "//chrome/browser/optimization_guide",
+    "//chrome/browser/optimization_guide:test_support",
     "//chrome/browser/search_engines",
     "//chrome/browser/ui:browser_element_identifiers",
+    "//chrome/browser/ui/tabs:page_context_eligibility_helper",
     "//chrome/common:constants",
     "//chrome/test:test_interfaces",
     "//chrome/test:test_support",
+    "//components/input",
+    "//components/optimization_guide/content/browser:page_context_eligibility",
+    "//components/optimization_guide/content/browser:test_support",
     "//components/optimization_guide/core",
     "//components/optimization_guide/proto:optimization_guide_proto",
     "//components/search_engines",
     "//content/test:test_support",
+    "//net:test_support",
     "//testing/gtest",
+    "//third_party/blink/public/common:headers",
+    "//ui/base",
+    "//ui/base/mojom:ui_base_types",
     "//ui/gfx/geometry",
+    "//ui/views",
   ]
 }
 
@@ -155,6 +180,7 @@ source_set("unit_tests") {
   sources = [
     "inline_cue_blocklist_utils_unittest.cc",
     "quick_answers_tool_unittest.cc",
+    "selection_overlay_prewarmer_unittest.cc",
     "selection_suggestion_tool_unittest.cc",
     "shake_trigger_unittest.cc",
   ]
@@ -175,10 +201,12 @@ source_set("unit_tests") {
     "//components/prefs",
     "//components/tabs:test_support",
     "//content/test:test_support",
+    "//net",
     "//services/network:test_support",
     "//services/network/public/cpp",
     "//testing/gmock",
     "//testing/gtest",
     "//third_party/blink/public/common:headers",
+    "//url",
   ]
 }

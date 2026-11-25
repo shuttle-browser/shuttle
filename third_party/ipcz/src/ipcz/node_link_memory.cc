@@ -9,6 +9,7 @@
 #include <cstdint>
 #include <utility>
 
+#include "base/logging.h"
 #include "ipcz/buffer_id.h"
 #include "ipcz/driver_memory.h"
 #include "ipcz/fragment_descriptor.h"
@@ -20,7 +21,6 @@
 #include "third_party/abseil-cpp/absl/base/macros.h"
 #include "third_party/abseil-cpp/absl/numeric/bits.h"
 #include "third_party/abseil-cpp/absl/synchronization/mutex.h"
-#include "util/log.h"
 #include "util/ref_counted.h"
 
 namespace ipcz {
@@ -189,7 +189,7 @@ void NodeLinkMemory::SetNodeLink(Ref<NodeLink> link) {
   {
     absl::MutexLock lock(&mutex_);
     node_link_ = std::move(link);
-    if (!node_link_) {
+    if (!node_link_ || capacity_callbacks_.empty()) {
       return;
     }
 
@@ -198,10 +198,11 @@ void NodeLinkMemory::SetNodeLink(Ref<NodeLink> link) {
     for (auto& [size, callbacks] : capacity_callbacks_) {
       block_sizes_needed.push_back(size);
     }
+    link = node_link_;
   }
 
   for (size_t size : block_sizes_needed) {
-    RequestBlockCapacity(size, [](bool) {});
+    AllocateBlockBuffer(link, size);
   }
 }
 
@@ -232,14 +233,14 @@ DriverMemoryWithMapping NodeLinkMemory::AllocateMemory(
   primary_buffer.header.next_sublink_id.store(kMaxInitialPortals,
                                               std::memory_order_relaxed);
 
-  // Note: InitializeRegion() performs an atomic release, so atomic stores
-  // before this section can be relaxed.
-  primary_buffer.block_allocator_64().InitializeRegion();
-  primary_buffer.block_allocator_256().InitializeRegion();
-  primary_buffer.block_allocator_512().InitializeRegion();
-  primary_buffer.block_allocator_1k().InitializeRegion();
-  primary_buffer.block_allocator_2k().InitializeRegion();
-  primary_buffer.block_allocator_4k().InitializeRegion();
+  // Note: InitializePrezeroedRegion() performs an atomic release, so atomic
+  // stores before this section can be relaxed.
+  primary_buffer.block_allocator_64().InitializePrezeroedRegion();
+  primary_buffer.block_allocator_256().InitializePrezeroedRegion();
+  primary_buffer.block_allocator_512().InitializePrezeroedRegion();
+  primary_buffer.block_allocator_1k().InitializePrezeroedRegion();
+  primary_buffer.block_allocator_2k().InitializePrezeroedRegion();
+  primary_buffer.block_allocator_4k().InitializePrezeroedRegion();
   return {std::move(memory), std::move(mapping)};
 }
 
@@ -430,11 +431,6 @@ void NodeLinkMemory::RequestBlockCapacity(
     RequestBlockCapacityCallback callback) {
   ABSL_ASSERT(block_size >= kMinFragmentSize);
 
-  const size_t min_buffer_size = block_size * kMinBlockAllocatorCapacity;
-  const size_t num_pages =
-      (min_buffer_size + kBlockAllocatorPageSize - 1) / kBlockAllocatorPageSize;
-  const size_t buffer_size = num_pages * kBlockAllocatorPageSize;
-
   Ref<NodeLink> link;
   {
     absl::MutexLock lock(&mutex_);
@@ -456,6 +452,15 @@ void NodeLinkMemory::RequestBlockCapacity(
     link = node_link_;
   }
 
+  AllocateBlockBuffer(std::move(link), block_size);
+}
+
+void NodeLinkMemory::AllocateBlockBuffer(Ref<NodeLink> link,
+                                         size_t block_size) {
+  const size_t min_buffer_size = block_size * kMinBlockAllocatorCapacity;
+  const size_t num_pages =
+      (min_buffer_size + kBlockAllocatorPageSize - 1) / kBlockAllocatorPageSize;
+  const size_t buffer_size = num_pages * kBlockAllocatorPageSize;
   node_->AllocateSharedMemory(
       buffer_size, [self = WrapRefCounted(this), block_size,
                     link = std::move(link)](DriverMemory memory) {
@@ -466,7 +471,7 @@ void NodeLinkMemory::RequestBlockCapacity(
         }
 
         BlockAllocator allocator(mapping.bytes(), block_size);
-        allocator.InitializeRegion();
+        allocator.InitializePrezeroedRegion();
 
         // SUBTLE: We first share the new buffer with the remote node, then
         // register it locally. If we registered the buffer locally first, this

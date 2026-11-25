@@ -15,6 +15,8 @@
 #include <vector>
 
 #include "base/containers/flat_map.h"
+#include "base/containers/span.h"
+#include "base/functional/function_ref.h"
 #include "base/i18n/rtl.h"
 #include "base/memory/stack_allocated.h"
 #include "components/autofill/content/renderer/timing.h"
@@ -46,12 +48,16 @@ namespace content {
 class RenderFrame;
 }  // namespace content
 
+namespace gfx {
+class RectF;
+}  // namespace gfx
+
 namespace autofill {
 
+struct CustomFormControl;
 class FieldDataManager;
 class FormData;
 class FormFieldData;
-class SynchronousFormCache;
 
 namespace form_util {
 
@@ -66,7 +72,10 @@ namespace form_util {
 using ButtonTitlesCache = base::flat_map<FormRendererId, ButtonTitleList>;
 
 // Extracts FormData from the form element with `form_id`, or the unowned form
-// if `form_id.is_null()`.
+// if `form_id.is_null()`. `custom_controls` are the custom form controls owned
+// by the form; they are converted to `FormFieldData` and merged with the
+// standard autofillable form controls in DOM order into the extracted
+// `FormData::fields()`.
 //
 // The document must be the one we want to extract fields from. In other words:
 // Do not blindly pass "some" WebDocument for `document`! If `form_id` is
@@ -79,7 +88,8 @@ std::optional<FormData> ExtractFormData(
     FormRendererId form_id,
     const FieldDataManager& field_data_manager,
     const CallTimerState& timer_state,
-    ButtonTitlesCache* button_titles_cache);
+    ButtonTitlesCache* button_titles_cache,
+    base::span<const CustomFormControl> custom_controls = {});
 
 // Helper function to assist in getting the canonical form of the action and
 // origin. The action will properly take into account <BASE>, and both will
@@ -147,6 +157,10 @@ std::vector<blink::WebFormControlElement> GetOwnedAutofillableFormControls(
     const blink::WebDocument& document,
     const blink::WebFormElement& form_element);
 
+// Returns the outermost <form> ancestor of `n`, or a null `WebFormElement`.
+// See README.md for the relevant terminology.
+blink::WebFormElement GetOutermostAncestorFormElement(blink::WebNode n);
+
 struct FormAndField {
   STACK_ALLOCATED();
 
@@ -155,17 +169,14 @@ struct FormAndField {
   const FormFieldData& field;
 };
 
-// Extracts the FormData that represents the form of `element`. If that form
-// cannot be extracted (e.g., because it is too large), falls back to a
-// single-field form that contains `element`. If however `element` is not
-// autofillable, returns nullopt. `form_cache` can be used to optimize form
-// extractions occurring synchronously after this function call.
+// Extracts the FormData that represents the form of `element` using
+// `extract_form_fn`. If that form cannot be extracted (e.g., because it is too
+// large), falls back to a single-field form that contains `element`. If however
+// `element` is not autofillable, returns nullopt.
 std::optional<FormAndField> FindFormAndFieldForFormControlElement(
     const blink::WebFormControlElement& element,
-    const FieldDataManager& field_data_manager,
-    const CallTimerState& timer_state,
-    form_util::ButtonTitlesCache* button_titles_cache,
-    const SynchronousFormCache& form_cache);
+    base::FunctionRef<std::optional<FormData>(const blink::WebDocument&,
+                                              FormRendererId)> extract_form_fn);
 
 // Creates a FormData containing a single field out of a contenteditable
 // non-form element. The FormData is synthetic in the sense that it does not
@@ -270,6 +281,23 @@ blink::WebElement GetContentEditableByRendererId(
 
 std::string GetAutocompleteAttribute(const blink::WebElement& element);
 
+// Returns the ARIA label text of the elements denoted by the aria-labelledby
+// attribute of `element` or the value of the aria-label attribute of
+// `element`, with priority given to the aria-labelledby attribute.
+std::u16string GetAriaLabel(const blink::WebDocument& document,
+                            const blink::WebElement& element);
+
+// Returns the ARIA description text of the elements denoted by the
+// aria-describedby attribute of `element` or the value of the aria-description
+// attribute of `element`, with priority given to the aria-describedby
+// attribute.
+std::u16string GetAriaDescription(const blink::WebDocument& document,
+                                  const blink::WebElement& element);
+
+// Returns the bounds of `element` in window coordinates, or an empty
+// `gfx::RectF` if the element's frame cannot be resolved.
+gfx::RectF GetBoundsInWindow(const blink::WebElement& element);
+
 // Iterates through the node neighbors of form and form control elements in
 // `document` in search of four digit combinations.
 void TraverseDomForFourDigitCombinations(
@@ -356,16 +384,12 @@ std::u16string GetAriaLabelForTesting(const blink::WebDocument& document,
                                       const blink::WebElement& element);
 std::u16string GetAriaDescriptionForTesting(const blink::WebDocument& document,
                                             const blink::WebElement& element);
-void InferLabelForElementsForTesting(
-    base::span<const blink::WebFormControlElement> control_elements,
-    std::vector<FormFieldData>& fields);
+void InferLabelForElementsForTesting(base::span<FormFieldData> fields);
 std::u16string FindChildTextWithIgnoreListForTesting(
     const blink::WebNode& node,
     const std::set<blink::WebNode>& divs_to_skip);
 std::vector<SelectOption> GetDataListOptionsForTesting(
     const blink::WebInputElement& element);
-blink::WebFormElement GetOutermostAncestorFormElementForTesting(
-    blink::WebNode n);
 bool IsDOMPredecessorForTesting(const blink::WebNode& x,
                                 const blink::WebNode& y,
                                 const blink::WebNode& ancestor_hint);

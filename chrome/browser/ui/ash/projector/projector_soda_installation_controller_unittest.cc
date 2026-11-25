@@ -2,7 +2,7 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-#include "projector_soda_installation_controller.h"
+#include "chrome/browser/ui/ash/projector/projector_soda_installation_controller.h"
 
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_pref_names.h"
@@ -10,23 +10,27 @@
 #include "ash/public/cpp/projector/projector_controller.h"
 #include "ash/public/cpp/projector/projector_new_screencast_precondition.h"
 #include "ash/public/cpp/test/mock_projector_client.h"
+#include "ash/test/ash_test_helper.h"
 #include "ash/webui/projector_app/test/mock_app_client.h"
 #include "base/check_deref.h"
 #include "base/functional/bind.h"
-#include "base/memory/raw_ptr.h"
+#include "base/i18n/tag_converters.h"
 #include "base/test/scoped_feature_list.h"
+#include "chrome/browser/ash/login/test/chrome_user_session_test_environment_delegate.h"
 #include "chrome/browser/global_features.h"
-#include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/speech/speech_recognition_recognizer_client_impl.h"
 #include "chrome/test/base/chrome_ash_test_base.h"
 #include "chrome/test/base/testing_browser_process.h"
-#include "chrome/test/base/testing_profile_manager.h"
+#include "components/account_id/account_id_literal.h"
 #include "components/application_locale_storage/application_locale_storage.h"
 #include "components/prefs/pref_service.h"
+#include "components/session_manager/test/user_session_test_environment.h"
 #include "components/soda/constants.h"
 #include "components/soda/mock_soda_installer.h"
 #include "components/soda/soda_installer.h"
+#include "components/user_manager/user.h"
+#include "components/user_manager/user_manager.h"
+#include "google_apis/gaia/gaia_id.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
@@ -34,16 +38,20 @@ namespace ash {
 
 namespace {
 
+const char kEnglishLocale[] = "en-US";
+const char kNonEnglishLocale[] = "fr";
+
+constexpr auto kAccountId =
+    AccountIdLiteral::FromUserEmailGaiaId("test-user@example.com",
+                                          GaiaId::Literal("1234567890"));
+
 inline void SetLocale(const std::string& locale) {
   TestingBrowserProcess::GetGlobal()
       ->GetFeatures()
       ->application_locale_storage()
-      ->Set(locale);
+      ->SetTag(base::i18n::GetLanguageTagFromString(locale).value());
   LocaleUpdateController::Get()->OnLocaleChanged();
 }
-
-const char kEnglishLocale[] = "en-US";
-const char kNonEnglishLocale[] = "fr";
 
 }  // namespace
 
@@ -63,13 +71,22 @@ class ProjectorSodaInstallationControllerTest : public ChromeAshTestBase {
   ~ProjectorSodaInstallationControllerTest() override = default;
 
   // ChromeAshTestBase:
+  void SetUpInitParams(AshTestHelper::InitParams& init_params) override {
+    ChromeAshTestBase::SetUpInitParams(init_params);
+    init_params.users.clear();
+    init_params.user_session_test_environment_delegate =
+        std::make_unique<test::ChromeUserSessionTestEnvironmentDelegate>(
+            TestingBrowserProcess::GetGlobal());
+  }
+
   void SetUp() override {
     ChromeAshTestBase::SetUp();
 
-    testing_profile_manager_ = std::make_unique<TestingProfileManager>(
-        TestingBrowserProcess::GetGlobal());
-    ASSERT_TRUE(testing_profile_manager_->SetUp());
-    testing_profile_ = ProfileManager::GetPrimaryUserProfile();
+    ASSERT_TRUE(
+        ash_test_helper()->user_session_test_environment().AddRegularUser(
+            kAccountId));
+    ash_test_helper()->user_session_test_environment().LogIn(kAccountId);
+    SimulateUserLogin({.account_id = kAccountId});
 
     soda_installer_ = std::make_unique<speech::MockSodaInstaller>();
     ON_CALL(*soda_installer(), GetAvailableLanguages)
@@ -113,14 +130,6 @@ class ProjectorSodaInstallationControllerTest : public ChromeAshTestBase {
     soda_installer_.reset();
 
     ChromeAshTestBase::TearDown();
-    // ProfileManager is destroyed in OnSubsystemsTornDown()
-    // invoked inside AshTestHelper::TearDown().
-    EXPECT_FALSE(testing_profile_manager_.get());
-  }
-
-  void OnSubsystemsTornDown() override {
-    ChromeAshTestBase::OnSubsystemsTornDown();
-    testing_profile_manager_.reset();
   }
 
   MockAppClient& app_client() { return *mock_app_client_; }
@@ -138,10 +147,6 @@ class ProjectorSodaInstallationControllerTest : public ChromeAshTestBase {
   speech::LanguageCode fr_fr() { return speech::LanguageCode::kFrFr; }
 
  private:
-  raw_ptr<Profile, DanglingUntriaged> testing_profile_ = nullptr;
-
-  std::unique_ptr<TestingProfileManager> testing_profile_manager_;
-
   std::unique_ptr<speech::MockSodaInstaller> soda_installer_;
   std::unique_ptr<MockProjectorClient> mock_client_;
   std::unique_ptr<MockAppClient> mock_app_client_;
@@ -169,8 +174,9 @@ TEST_F(ProjectorSodaInstallationControllerTest, IsSpeechRecognitionAvailable) {
 }
 
 TEST_F(ProjectorSodaInstallationControllerTest, InstallSoda) {
-  ProfileManager::GetPrimaryUserProfile()->GetPrefs()->SetBoolean(
-      prefs::kProjectorCreationFlowEnabled, true);
+  CHECK_DEREF(user_manager::UserManager::Get()->FindUserAndModify(kAccountId))
+      .GetProfilePrefs()
+      ->SetBoolean(prefs::kProjectorCreationFlowEnabled, true);
 
   // Test case where SODA is already installed.
   soda_installation_controller()->InstallSoda(

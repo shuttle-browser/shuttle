@@ -10,6 +10,7 @@
 #include <initializer_list>
 #include <map>
 #include <memory>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -17,6 +18,7 @@
 #include <utility>
 #include <vector>
 
+#include "ash/constants/ash_paths.h"
 #include "ash/constants/ash_pref_names.h"
 #include "ash/constants/chrome_switches.h"
 #include "ash/constants/web_app_id_constants.h"
@@ -46,6 +48,7 @@
 #include "base/metrics/histogram.h"
 #include "base/metrics/statistics_recorder.h"
 #include "base/notreached.h"
+#include "base/path_service.h"
 #include "base/run_loop.h"
 #include "base/scoped_observation.h"
 #include "base/strings/strcat.h"
@@ -56,6 +59,7 @@
 #include "base/test/gmock_expected_support.h"
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/test/scoped_path_override.h"
 #include "base/test/test_future.h"
 #include "base/values.h"
 #include "build/build_config.h"
@@ -80,7 +84,6 @@
 #include "chrome/browser/ash/app_list/arc/arc_app_list_prefs.h"
 #include "chrome/browser/ash/app_list/arc/arc_app_test.h"
 #include "chrome/browser/ash/app_list/arc/arc_app_utils.h"
-#include "chrome/browser/ash/app_list/arc/arc_default_app_list.h"
 #include "chrome/browser/ash/apps/apk_web_app_service.h"
 #include "chrome/browser/ash/arc/arc_util.h"
 #include "chrome/browser/ash/arc/session/arc_session_manager.h"
@@ -138,7 +141,7 @@
 #include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/browser/web_applications/web_app_install_info.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
-#include "chrome/common/chrome_constants.h"
+#include "chrome/common/chrome_paths.h"
 #include "chrome/test/base/browser_with_test_window_test.h"
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
@@ -154,6 +157,8 @@
 #include "chromeos/ash/experiences/arc/metrics/arc_metrics_constants.h"
 #include "chromeos/ash/experiences/arc/mojom/app.mojom.h"
 #include "chromeos/ash/experiences/arc/mojom/compatibility_mode.mojom.h"
+#include "chromeos/ash/experiences/arc/session/arc_bridge_service.h"
+#include "chromeos/ash/experiences/arc/session/arc_service_manager.h"
 #include "chromeos/ash/experiences/arc/test/arc_util_test_support.h"
 #include "chromeos/ash/experiences/arc/test/fake_app_instance.h"
 #include "chromeos/ash/experiences/system_web_apps/types/system_web_app_delegate.h"
@@ -2540,6 +2545,66 @@ TEST_F(ChromeShelfControllerWithArcTest, ArcDeferredLaunchForActiveApp) {
   EXPECT_TRUE(shelf_controller_->GetShelfSpinnerController()->HasApp(app_id));
 }
 
+namespace {
+
+// Reports a task for `app` synchronously on launch, so the window's shelf item
+// delegate is installed before the launch call returns (the ARC ghost-window
+// path does this in production but needs exo, which unit tests lack).
+class TaskCreatingFakeAppInstance : public arc::FakeAppInstance {
+ public:
+  TaskCreatingFakeAppInstance(arc::mojom::AppHost* app_host,
+                              arc::mojom::AppInfoPtr app)
+      : arc::FakeAppInstance(app_host), app_(std::move(app)) {}
+
+  void LaunchIntentWithWindowInfo(
+      const std::string& intent_uri,
+      arc::mojom::WindowInfoPtr window_info) override {
+    arc::FakeAppInstance::LaunchIntentWithWindowInfo(intent_uri,
+                                                     std::move(window_info));
+    SendTaskCreated(/*taskId=*/1, *app_, /*intent=*/std::string());
+  }
+
+ private:
+  arc::mojom::AppInfoPtr app_;
+};
+
+}  // namespace
+
+// Verifies that the deferred launch from an ARC spinner is safe when the launch
+// synchronously installs the app window's ShelfItemDelegate.
+TEST_F(ChromeShelfControllerWithArcTest,
+       ArcDeferredLaunchDelegateReplacedDuringLaunch) {
+  InitShelfController();
+
+  std::vector<arc::mojom::AppInfoPtr> apps;
+  apps.emplace_back(arc_app_test_.fake_apps()[0]->Clone());
+  const std::string app_id = ArcAppTest::GetAppId(*apps[0]);
+  const ash::ShelfID shelf_id(app_id);
+
+  // Register the app, then stop ARC so that launching it shows a spinner.
+  arc_app_test_.app_instance()->SendRefreshAppList(apps);
+  arc_app_test_.StopArcInstance();
+  arc::LaunchApp(profile(), app_id, ui::EF_LEFT_MOUSE_BUTTON,
+                 arc::UserInteractionType::NOT_USER_INITIATED);
+  ASSERT_TRUE(shelf_controller_->GetShelfSpinnerController()->HasApp(app_id));
+
+  // Reconnect with an instance that creates the task synchronously during the
+  // deferred launch, then make the app ready to trigger that launch.
+  auto* const app_connection =
+      arc_app_test_.arc_service_manager()->arc_bridge_service()->app();
+  auto app_instance = std::make_unique<TaskCreatingFakeAppInstance>(
+      arc_app_test_.arc_app_list_prefs(), apps[0]->Clone());
+  app_connection->SetInstance(app_instance.get());
+  app_instance->SendRefreshAppList(apps);
+
+  EXPECT_EQ(1u, app_instance->launch_intents().size());
+  EXPECT_FALSE(shelf_controller_->GetShelfSpinnerController()->HasApp(app_id));
+  // The task's window controller, not the spinner or a shortcut, owns the item.
+  EXPECT_NE(nullptr, model_->GetAppWindowShelfItemController(shelf_id));
+
+  app_connection->CloseInstance(app_instance.get());
+}
+
 // TODO(crbug.com/915840): this test is flakey and/or often crashes.
 TEST_F(ChromeShelfControllerMultiProfileWithArcTest, DISABLED_ArcMultiUser) {
   SendListOfArcApps();
@@ -4066,7 +4131,11 @@ class ChromeShelfControllerArcDefaultAppsTest
  protected:
   void SetUp() override {
     ArcAppIcon::DisableSafeDecodingForTesting();
-    ArcDefaultAppList::UseTestAppsDirectory();
+    base::FilePath test_data_dir;
+    ASSERT_TRUE(base::PathService::Get(chrome::DIR_TEST_DATA, &test_data_dir));
+    arc_default_apps_dir_override_.emplace(
+        ash::DIR_ARC_DEFAULT_APPS,
+        test_data_dir.AppendASCII("arc_default_apps"));
     ChromeShelfControllerTestBase::SetUp();
   }
 
@@ -4081,6 +4150,7 @@ class ChromeShelfControllerArcDefaultAppsTest
 
  private:
   apps::AppServiceRegistry app_service_registry_;
+  std::optional<base::ScopedPathOverride> arc_default_apps_dir_override_;
 };
 
 class ChromeShelfControllerPlayStoreAvailabilityTest
@@ -4101,9 +4171,16 @@ class ChromeShelfControllerPlayStoreAvailabilityTest
     }
     // To prevent crash on test exit and pending decode request.
     ArcAppIcon::DisableSafeDecodingForTesting();
-    ArcDefaultAppList::UseTestAppsDirectory();
+    base::FilePath test_data_dir;
+    ASSERT_TRUE(base::PathService::Get(chrome::DIR_TEST_DATA, &test_data_dir));
+    arc_default_apps_dir_override_.emplace(
+        ash::DIR_ARC_DEFAULT_APPS,
+        test_data_dir.AppendASCII("arc_default_apps"));
     ChromeShelfControllerTestBase::SetUp();
   }
+
+ private:
+  std::optional<base::ScopedPathOverride> arc_default_apps_dir_override_;
 };
 
 }  // namespace

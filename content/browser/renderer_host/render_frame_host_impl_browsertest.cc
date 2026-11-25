@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <initializer_list>
+#include <map>
 #include <memory>
 #include <optional>
 #include <string>
@@ -26,6 +27,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
+#include "base/task/sequenced_task_runner.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/gtest_util.h"
@@ -53,10 +55,13 @@
 #include "content/common/frame.mojom-test-utils.h"
 #include "content/common/frame_messages.mojom.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/browser_task_traits.h"
+#include "content/public/browser/browser_thread.h"
 #include "content/public/browser/cors_origin_pattern_setter.h"
 #include "content/public/browser/document_service.h"
 #include "content/public/browser/document_user_data.h"
 #include "content/public/browser/focused_node_details.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/javascript_dialog_manager.h"
 #include "content/public/browser/network_service_util.h"
 #include "content/public/browser/origin_trials_controller_delegate.h"
@@ -114,10 +119,12 @@
 #include "services/network/public/cpp/network_switches.h"
 #include "services/network/public/cpp/resource_request.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "services/network/public/cpp/url_loader_factory_builder.h"
 #include "services/network/public/mojom/clear_data_filter.mojom.h"
 #include "services/network/public/mojom/connection_change_observer_client.mojom.h"
 #include "services/network/public/mojom/network_context.mojom.h"
 #include "services/network/public/mojom/url_loader_factory.mojom.h"
+#include "services/network/test/test_url_loader_client.h"
 #include "services/network/test/test_url_loader_factory.h"
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -127,6 +134,7 @@
 #include "third_party/blink/public/mojom/browser_interface_broker.mojom-test-utils.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-test-utils.h"
 #include "third_party/blink/public/mojom/navigation/navigation_params.mojom.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
 #include "url/gurl.h"
 #include "url/origin.h"
 
@@ -3046,7 +3054,6 @@ IN_PROC_BROWSER_TEST_F(RenderFrameHostImplBrowserTest, FastNavigationAbort) {
   // NavigationHandleGrabber::SendingNavigationCommitted(). The navigation
   // should get aborted because of the document.open() in the navigating RFH.
   NavigationHandleGrabber observer(web_contents());
-  const std::u16string title = u"done";
   EXPECT_TRUE(ExecJs(web_contents(), "window.location.href='/title2.html'"));
   observer.WaitForTitle2();
   // Flush IPCs to make sure the renderer didn't tell us to navigate. Need to
@@ -4746,7 +4753,6 @@ IN_PROC_BROWSER_TEST_F(RenderFrameHostImplBrowserTest,
   EXPECT_TRUE(
       NavigateToURL(shell(), embedded_test_server()->GetURL("/title2.html")));
   main_frame = web_contents()->GetPrimaryMainFrame();
-  BackForwardCacheBlockingDetails empty_vector;
   main_frame->DidChangeBackForwardCacheDisablingFeatures(
       CreateBlockingDetails({}));
 }
@@ -5410,6 +5416,37 @@ IN_PROC_BROWSER_TEST_F(RenderFrameHostImplBrowserTest,
   EXPECT_EQ(subframe_url, child->GetLastCommittedURL());
   EXPECT_TRUE(net::SiteForCookies::FromUrl(GURL("file:///"))
                   .IsEquivalent(child->ComputeSiteForCookies()));
+}
+
+IN_PROC_BROWSER_TEST_F(RenderFrameHostImplBrowserTest,
+                       SandboxedFileFrameFragmentNavigation) {
+  GURL parent_url = GetFileURL(FILE_PATH_LITERAL("title1.html"));
+  GURL child_url = GetFileURL(FILE_PATH_LITERAL("title2.html"));
+  ASSERT_TRUE(NavigateToURL(shell(), parent_url));
+  ASSERT_TRUE(ExecJs(web_contents(), JsReplace(R"(
+      const frame = document.createElement('iframe');
+      frame.sandbox = 'allow-scripts';
+      frame.src = $1;
+      document.body.appendChild(frame);
+  )",
+                                               child_url)));
+  ASSERT_TRUE(WaitForLoadStop(web_contents()));
+
+  RenderFrameHost* child = ChildFrameAt(root_frame_host(), 0);
+  ASSERT_TRUE(child);
+  ASSERT_TRUE(child->GetLastCommittedOrigin().opaque());
+  ASSERT_EQ(child_url, child->GetLastCommittedURL());
+
+  EXPECT_TRUE(ExecJs(child, "location.hash = 'top'"));
+  EXPECT_EQ(child_url.Resolve("#top"), child->GetLastCommittedURL());
+  EXPECT_EQ(child, ChildFrameAt(root_frame_host(), 0));
+
+  WebContentsConsoleObserver console_observer(web_contents());
+  console_observer.SetPattern("Not allowed to load local resource: file:*");
+  GURL other_url = GetFileURL(FILE_PATH_LITERAL("title3.html"));
+  EXPECT_TRUE(ExecJs(child, JsReplace("location.href = $1", other_url)));
+  ASSERT_TRUE(console_observer.Wait());
+  EXPECT_EQ(child_url.Resolve("#top"), child->GetLastCommittedURL());
 }
 
 IN_PROC_BROWSER_TEST_F(RenderFrameHostImplBrowserTest,
@@ -9034,6 +9071,957 @@ IN_PROC_BROWSER_TEST_P(RenderFrameHostImplAsyncBeforeUnloadBrowserTest,
       [&]() { return RetrievePingsFromMessageQueue(&msg_queue) == 1; }));
 }
 
+class RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest
+    : public RenderFrameHostImplBeforeUnloadBrowserTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  class UseCounterContentBrowserClient
+      : public ContentBrowserTestContentBrowserClient {
+   public:
+    void LogWebFeatureForCurrentPage(
+        RenderFrameHost* render_frame_host,
+        blink::mojom::WebFeature feature) override {
+      counted_features_[render_frame_host->GetGlobalId()].insert(feature);
+    }
+
+    bool IsUseCounted(RenderFrameHost* render_frame_host,
+                      blink::mojom::WebFeature feature) const {
+      auto it = counted_features_.find(render_frame_host->GetGlobalId());
+      if (it == counted_features_.end()) {
+        return false;
+      }
+      return it->second.contains(feature);
+    }
+
+    void Reset() { counted_features_.clear(); }
+
+   private:
+    std::map<GlobalRenderFrameHostId, std::set<blink::mojom::WebFeature>>
+        counted_features_;
+  };
+
+  RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest() = default;
+
+  void SetUpCommandLine(base::CommandLine* command_line) override {
+    RenderFrameHostImplBeforeUnloadBrowserTest::SetUpCommandLine(command_line);
+    IsolateAllSitesForTesting(command_line);
+  }
+
+  void SetUpOnMainThread() override {
+    RenderFrameHostImplBeforeUnloadBrowserTest::SetUpOnMainThread();
+    browser_client_ = std::make_unique<UseCounterContentBrowserClient>();
+  }
+
+  void TearDownOnMainThread() override {
+    browser_client_.reset();
+    RenderFrameHostImplBeforeUnloadBrowserTest::TearDownOnMainThread();
+  }
+
+  void SimulateFormEdit(RenderFrameHostImpl* rfh) {
+    SimulateEndOfPaintHoldingOnPrimaryMainFrame(web_contents());
+    WaitForCopyableViewInFrame(rfh);
+    ASSERT_TRUE(ExecJs(rfh,
+                       "const input = document.createElement('input');"
+                       "input.type = 'text';"
+                       "input.id = 'test-input';"
+                       "document.body.appendChild(input);"
+                       "window.focus();"
+                       "input.focus();",
+                       EXECUTE_SCRIPT_NO_USER_GESTURE));
+    ASSERT_EQ(rfh, web_contents()->GetFocusedFrame());
+    SimulateCharTyped(web_contents(), 'a');
+    ASSERT_TRUE(ExecJs(rfh,
+                       "new Promise(resolve => {"
+                       "  const input = document.getElementById('test-input');"
+                       "  if (input.value === 'a') {"
+                       "    resolve();"
+                       "  } else {"
+                       "    input.addEventListener('input', () => resolve(), "
+                       "                           {once: true});"
+                       "  }"
+                       "});",
+                       EXECUTE_SCRIPT_NO_USER_GESTURE));
+  }
+
+  void SimulateDivEdit(RenderFrameHostImpl* rfh) {
+    SimulateEndOfPaintHoldingOnPrimaryMainFrame(web_contents());
+    WaitForCopyableViewInFrame(rfh);
+    ASSERT_TRUE(ExecJs(rfh,
+                       "const div = document.createElement('div');"
+                       "div.contentEditable = 'true';"
+                       "div.id = 'test-div';"
+                       "document.body.appendChild(div);"
+                       "window.focus();"
+                       "div.focus();",
+                       EXECUTE_SCRIPT_NO_USER_GESTURE));
+    ASSERT_EQ(rfh, web_contents()->GetFocusedFrame());
+    SimulateCharTyped(web_contents(), 'a');
+    ASSERT_TRUE(ExecJs(rfh,
+                       "new Promise(resolve => {"
+                       "  const div = document.getElementById('test-div');"
+                       "  if (div.textContent === 'a') {"
+                       "    resolve();"
+                       "  } else {"
+                       "    div.addEventListener('input', () => resolve(), "
+                       "                         {once: true});"
+                       "  }"
+                       "});",
+                       EXECUTE_SCRIPT_NO_USER_GESTURE));
+  }
+
+  void SimulateEdit(RenderFrameHostImpl* rfh) {
+    if (GetParam()) {
+      SimulateFormEdit(rfh);
+    } else {
+      SimulateDivEdit(rfh);
+    }
+  }
+
+  FrameTreeNode* AddSubframe(RenderFrameHostImpl* parent_rfh, const GURL& url) {
+    size_t initial_child_count = parent_rfh->child_count();
+    EXPECT_TRUE(
+        ExecJs(parent_rfh,
+               JsReplace("const child = document.createElement('iframe');"
+                         "child.src = $1;"
+                         "document.body.appendChild(child);",
+                         url),
+               EXECUTE_SCRIPT_NO_USER_GESTURE));
+    EXPECT_TRUE(WaitForLoadStop(web_contents()));
+    EXPECT_EQ(initial_child_count + 1, parent_rfh->child_count());
+    return parent_rfh->child_at(initial_child_count);
+  }
+
+  bool IsUseCounted(RenderFrameHostImpl* rfh,
+                    blink::mojom::WebFeature feature) {
+    return browser_client_->IsUseCounted(rfh, feature);
+  }
+
+  void CheckBeforeUnloadDialogRuns(
+      RenderFrameHostImpl* beforeunload_rfh,
+      PageImpl::UserEditScope expected_edit_scope) {
+    const PageImpl::UserEditScope expected_form_edit_scope =
+        GetParam() ? expected_edit_scope : PageImpl::UserEditScope::kNoEdit;
+    CheckBeforeUnloadDialogRuns(beforeunload_rfh, expected_form_edit_scope,
+                                expected_edit_scope);
+  }
+
+  void CheckBeforeUnloadDialogRuns(
+      RenderFrameHostImpl* beforeunload_rfh,
+      PageImpl::UserEditScope expected_form_edit_scope,
+      PageImpl::UserEditScope expected_user_edit_scope) {
+    browser_client_->Reset();
+    PrepContentsForBeforeUnloadTest(web_contents(),
+                                    /*trigger_user_activation=*/false);
+    // Navigate to a 204 URL and proceed through the beforeunload dialog so the
+    // document remains loaded and we can subsequently test blocking unload on
+    // the same page.
+    GURL nocontent_url(embedded_test_server()->GetURL("c.com", "/nocontent"));
+    shell()->LoadURL(nocontent_url);
+    dialog_manager()->Wait();
+    EXPECT_EQ(1, dialog_manager()->num_beforeunload_dialogs_seen());
+    CloseDialogAndProceed();
+    EXPECT_TRUE(WaitForLoadStop(web_contents()));
+
+    const bool expect_form_edit =
+        expected_form_edit_scope != PageImpl::UserEditScope::kNoEdit;
+    const bool expect_user_edit =
+        expected_user_edit_scope != PageImpl::UserEditScope::kNoEdit;
+    EXPECT_EQ(
+        expect_form_edit,
+        IsUseCounted(
+            beforeunload_rfh,
+            blink::mojom::WebFeature::kBeforeUnloadShowedDialogWithFormEdit));
+    EXPECT_EQ(!expect_form_edit,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithoutFormEdit));
+    EXPECT_EQ(
+        expected_form_edit_scope == PageImpl::UserEditScope::kSameOrigin,
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadShowedDialogWithSameOriginFormEdit));
+    EXPECT_EQ(expected_form_edit_scope == PageImpl::UserEditScope::kSameSite,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithSameSiteFormEdit));
+    EXPECT_EQ(expected_form_edit_scope == PageImpl::UserEditScope::kCrossSite,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithCrossSiteFormEdit));
+    EXPECT_EQ(
+        expect_user_edit,
+        IsUseCounted(
+            beforeunload_rfh,
+            blink::mojom::WebFeature::kBeforeUnloadShowedDialogWithUserEdit));
+    EXPECT_EQ(!expect_user_edit,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithoutUserEdit));
+    EXPECT_EQ(!expect_form_edit && !expect_user_edit,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithoutUserOrFormEdit));
+    EXPECT_EQ(
+        expected_user_edit_scope == PageImpl::UserEditScope::kSameOrigin,
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadShowedDialogWithSameOriginUserEdit));
+    EXPECT_EQ(expected_user_edit_scope == PageImpl::UserEditScope::kSameSite,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithSameSiteUserEdit));
+    EXPECT_EQ(expected_user_edit_scope == PageImpl::UserEditScope::kCrossSite,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadShowedDialogWithCrossSiteUserEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh, blink::mojom::WebFeature::
+                              kBeforeUnloadDialogBlockedUnloadWithFormEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh, blink::mojom::WebFeature::
+                              kBeforeUnloadDialogBlockedUnloadWithoutFormEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh,
+        blink::mojom::WebFeature::
+            kBeforeUnloadDialogBlockedUnloadWithSameOriginFormEdit));
+    EXPECT_FALSE(
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadDialogBlockedUnloadWithSameSiteFormEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh,
+        blink::mojom::WebFeature::
+            kBeforeUnloadDialogBlockedUnloadWithCrossSiteFormEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh, blink::mojom::WebFeature::
+                              kBeforeUnloadDialogBlockedUnloadWithUserEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh, blink::mojom::WebFeature::
+                              kBeforeUnloadDialogBlockedUnloadWithoutUserEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh,
+        blink::mojom::WebFeature::
+            kBeforeUnloadDialogBlockedUnloadWithoutUserOrFormEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh,
+        blink::mojom::WebFeature::
+            kBeforeUnloadDialogBlockedUnloadWithSameOriginUserEdit));
+    EXPECT_FALSE(
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadDialogBlockedUnloadWithSameSiteUserEdit));
+    EXPECT_FALSE(IsUseCounted(
+        beforeunload_rfh,
+        blink::mojom::WebFeature::
+            kBeforeUnloadDialogBlockedUnloadWithCrossSiteUserEdit));
+
+    // Navigate again and cancel the dialog to verify the UseCounters for
+    // blocking unload.
+    GURL target_url(embedded_test_server()->GetURL("c.com", "/title1.html"));
+    shell()->LoadURL(target_url);
+    dialog_manager()->Wait();
+    EXPECT_EQ(2, dialog_manager()->num_beforeunload_dialogs_seen());
+    CloseDialogAndCancel();
+    EXPECT_TRUE(WaitForLoadStop(web_contents()));
+    ASSERT_TRUE(base::test::RunUntil([&]() {
+      return !web_contents()
+                  ->GetPrimaryMainFrame()
+                  ->is_waiting_for_beforeunload_completion();
+    }));
+
+    EXPECT_EQ(expect_form_edit,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadDialogBlockedUnloadWithFormEdit));
+    EXPECT_EQ(
+        !expect_form_edit,
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadDialogBlockedUnloadWithoutFormEdit));
+    EXPECT_EQ(expected_form_edit_scope == PageImpl::UserEditScope::kSameOrigin,
+              IsUseCounted(
+                  beforeunload_rfh,
+                  blink::mojom::WebFeature::
+                      kBeforeUnloadDialogBlockedUnloadWithSameOriginFormEdit));
+    EXPECT_EQ(
+        expected_form_edit_scope == PageImpl::UserEditScope::kSameSite,
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadDialogBlockedUnloadWithSameSiteFormEdit));
+    EXPECT_EQ(expected_form_edit_scope == PageImpl::UserEditScope::kCrossSite,
+              IsUseCounted(
+                  beforeunload_rfh,
+                  blink::mojom::WebFeature::
+                      kBeforeUnloadDialogBlockedUnloadWithCrossSiteFormEdit));
+    EXPECT_EQ(expect_user_edit,
+              IsUseCounted(beforeunload_rfh,
+                           blink::mojom::WebFeature::
+                               kBeforeUnloadDialogBlockedUnloadWithUserEdit));
+    EXPECT_EQ(
+        !expect_user_edit,
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadDialogBlockedUnloadWithoutUserEdit));
+    EXPECT_EQ(!expect_form_edit && !expect_user_edit,
+              IsUseCounted(
+                  beforeunload_rfh,
+                  blink::mojom::WebFeature::
+                      kBeforeUnloadDialogBlockedUnloadWithoutUserOrFormEdit));
+    EXPECT_EQ(expected_user_edit_scope == PageImpl::UserEditScope::kSameOrigin,
+              IsUseCounted(
+                  beforeunload_rfh,
+                  blink::mojom::WebFeature::
+                      kBeforeUnloadDialogBlockedUnloadWithSameOriginUserEdit));
+    EXPECT_EQ(
+        expected_user_edit_scope == PageImpl::UserEditScope::kSameSite,
+        IsUseCounted(beforeunload_rfh,
+                     blink::mojom::WebFeature::
+                         kBeforeUnloadDialogBlockedUnloadWithSameSiteUserEdit));
+    EXPECT_EQ(expected_user_edit_scope == PageImpl::UserEditScope::kCrossSite,
+              IsUseCounted(
+                  beforeunload_rfh,
+                  blink::mojom::WebFeature::
+                      kBeforeUnloadDialogBlockedUnloadWithCrossSiteUserEdit));
+
+    // Finally, navigate and proceed.
+    shell()->LoadURL(target_url);
+    dialog_manager()->Wait();
+    EXPECT_EQ(3, dialog_manager()->num_beforeunload_dialogs_seen());
+    CloseDialogAndProceed();
+    EXPECT_TRUE(WaitForLoadStop(web_contents()));
+    EXPECT_EQ(target_url, web_contents()->GetLastCommittedURL());
+  }
+
+ private:
+  std::unique_ptr<UseCounterContentBrowserClient> browser_client_;
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    /*is_form_edit=*/testing::Bool(),
+    [](const testing::TestParamInfo<bool>& info) {
+      return info.param ? "FormEdit" : "DivEdit";
+    });
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_NoEdit) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kNoEdit);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_ExecCommandDoesNotCountAsEdit) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  if (GetParam()) {
+    ASSERT_TRUE(ExecJs(main_rfh,
+                       "const input = document.createElement('input');"
+                       "input.type = 'text';"
+                       "document.body.appendChild(input);"
+                       "window.focus();"
+                       "input.focus();"
+                       "document.execCommand('insertText', false, 'a');"
+                       "const textarea = document.createElement('textarea');"
+                       "document.body.appendChild(textarea);"
+                       "textarea.focus();"
+                       "document.execCommand('insertText', false, 'b');",
+                       EXECUTE_SCRIPT_NO_USER_GESTURE));
+  } else {
+    ASSERT_TRUE(ExecJs(main_rfh,
+                       "const div = document.createElement('div');"
+                       "div.contentEditable = 'true';"
+                       "document.body.appendChild(div);"
+                       "window.focus();"
+                       "div.focus();"
+                       "document.execCommand('insertText', false, 'a');",
+                       EXECUTE_SCRIPT_NO_USER_GESTURE));
+  }
+
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kNoEdit);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_EditInMainFrame) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  SimulateEdit(main_rfh);
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_FormEditWithoutUserEdit) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  main_rfh->DidHaveFormEdit();
+  CheckBeforeUnloadDialogRuns(
+      main_rfh,
+      /*expected_form_edit_scope=*/PageImpl::UserEditScope::kSameOrigin,
+      /*expected_user_edit_scope=*/PageImpl::UserEditScope::kNoEdit);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_ReloadResetsEditState) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  SimulateEdit(root->current_frame_host());
+
+  ReloadBlockUntilNavigationsComplete(shell(), 1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kNoEdit);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_EditAfterReload) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  SimulateEdit(root->current_frame_host());
+
+  ReloadBlockUntilNavigationsComplete(shell(), 1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  SimulateEdit(main_rfh);
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_EditInSameOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* subframe_rfh = root->child_at(0)->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  SimulateEdit(subframe_rfh);
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_EditInSameSiteSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(sub.a.com)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* subframe_rfh = root->child_at(0)->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+  ASSERT_EQ(net::SchemefulSite(main_rfh->GetLastCommittedOrigin()),
+            net::SchemefulSite(subframe_rfh->GetLastCommittedOrigin()));
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  SimulateEdit(subframe_rfh);
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kSameSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    MainFrameBeforeUnload_EditInCrossOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* subframe_rfh = root->child_at(0)->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), subframe_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(root, SHOW_DIALOG, EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(main_rfh->HasStickyUserActivation());
+
+  SimulateEdit(subframe_rfh);
+  CheckBeforeUnloadDialogRuns(main_rfh, PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeBeforeUnload_NoEdit) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* subframe = root->child_at(0);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* subframe_rfh = subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(subframe_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(subframe_rfh, PageImpl::UserEditScope::kNoEdit);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeBeforeUnload_EditInMainFrame) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* subframe = root->child_at(0);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* subframe_rfh = subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(subframe_rfh->HasStickyUserActivation());
+
+  SimulateEdit(main_rfh);
+  CheckBeforeUnloadDialogRuns(subframe_rfh,
+                              PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeBeforeUnload_EditInSameOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a,a)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* subframe = root->child_at(0);
+  FrameTreeNode* same_origin_subframe = root->child_at(1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* subframe_rfh = subframe->current_frame_host();
+  RenderFrameHostImpl* same_origin_subframe_rfh =
+      same_origin_subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(subframe_rfh->HasStickyUserActivation());
+
+  SimulateEdit(same_origin_subframe_rfh);
+  CheckBeforeUnloadDialogRuns(subframe_rfh,
+                              PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeBeforeUnload_EditInSameSiteSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a,sub.a.com)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* same_origin_subframe = root->child_at(0);
+  FrameTreeNode* same_site_subframe = root->child_at(1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* same_origin_rfh =
+      same_origin_subframe->current_frame_host();
+  RenderFrameHostImpl* same_site_rfh = same_site_subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            same_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(same_origin_rfh->GetLastCommittedOrigin(),
+            same_site_rfh->GetLastCommittedOrigin());
+  ASSERT_EQ(net::SchemefulSite(same_origin_rfh->GetLastCommittedOrigin()),
+            net::SchemefulSite(same_site_rfh->GetLastCommittedOrigin()));
+
+  InstallBeforeUnloadHandler(same_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(same_origin_rfh->HasStickyUserActivation());
+
+  SimulateEdit(same_site_rfh);
+  CheckBeforeUnloadDialogRuns(same_origin_rfh,
+                              PageImpl::UserEditScope::kSameSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeBeforeUnload_EditInCrossOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a,b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* same_origin_subframe = root->child_at(0);
+  FrameTreeNode* cross_origin_subframe = root->child_at(1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* same_origin_rfh =
+      same_origin_subframe->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            same_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(same_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(same_origin_rfh->HasStickyUserActivation());
+
+  SimulateEdit(cross_origin_rfh);
+  CheckBeforeUnloadDialogRuns(same_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeBeforeUnload_NoEdit) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* cross_origin_subframe = root->child_at(0);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(cross_origin_rfh);
+  EXPECT_TRUE(cross_origin_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(cross_origin_rfh,
+                              PageImpl::UserEditScope::kNoEdit);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeBeforeUnload_EditInMainFrame) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* cross_origin_subframe = root->child_at(0);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(cross_origin_rfh);
+  EXPECT_TRUE(cross_origin_rfh->HasStickyUserActivation());
+
+  SimulateEdit(main_rfh);
+  CheckBeforeUnloadDialogRuns(cross_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeBeforeUnload_EditInSameOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a,b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* same_origin_subframe = root->child_at(0);
+  FrameTreeNode* cross_origin_subframe = root->child_at(1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* same_origin_rfh =
+      same_origin_subframe->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            same_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(cross_origin_rfh);
+  EXPECT_TRUE(cross_origin_rfh->HasStickyUserActivation());
+
+  SimulateEdit(same_origin_rfh);
+  CheckBeforeUnloadDialogRuns(cross_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeBeforeUnload_EditInCrossOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(b,c)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  FrameTreeNode* cross_origin_subframe = root->child_at(0);
+  FrameTreeNode* cross_origin_subframe_2 = root->child_at(1);
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh_2 =
+      cross_origin_subframe_2->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+  ASSERT_NE(cross_origin_rfh_2->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(cross_origin_rfh);
+  EXPECT_TRUE(cross_origin_rfh->HasStickyUserActivation());
+
+  SimulateEdit(cross_origin_rfh_2);
+  CheckBeforeUnloadDialogRuns(cross_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeCreatedAfterEditBeforeUnload_EditInMainFrame) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  SimulateEdit(main_rfh);
+
+  FrameTreeNode* subframe = AddSubframe(
+      main_rfh, embedded_test_server()->GetURL("a.com", "/title1.html"));
+  RenderFrameHostImpl* subframe_rfh = subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            subframe_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(subframe_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(subframe_rfh,
+                              PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeCreatedAfterEditBeforeUnload_EditInSameOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* first_subframe_rfh =
+      root->child_at(0)->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            first_subframe_rfh->GetLastCommittedOrigin());
+
+  SimulateEdit(first_subframe_rfh);
+
+  FrameTreeNode* second_subframe = AddSubframe(
+      main_rfh, embedded_test_server()->GetURL("a.com", "/title1.html"));
+  RenderFrameHostImpl* second_subframe_rfh =
+      second_subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            second_subframe_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(second_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(second_subframe_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(second_subframe_rfh,
+                              PageImpl::UserEditScope::kSameOrigin);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    SameOriginSubframeCreatedAfterEditBeforeUnload_EditInCrossOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* cross_origin_rfh =
+      root->child_at(0)->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  SimulateEdit(cross_origin_rfh);
+
+  FrameTreeNode* same_origin_subframe = AddSubframe(
+      main_rfh, embedded_test_server()->GetURL("a.com", "/title1.html"));
+  RenderFrameHostImpl* same_origin_rfh =
+      same_origin_subframe->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            same_origin_rfh->GetLastCommittedOrigin());
+
+  InstallBeforeUnloadHandler(same_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  EXPECT_TRUE(same_origin_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(same_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeCreatedAfterEditBeforeUnload_EditInMainFrame) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+
+  SimulateEdit(main_rfh);
+
+  FrameTreeNode* cross_origin_subframe = AddSubframe(
+      main_rfh, embedded_test_server()->GetURL("b.com", "/title1.html"));
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(cross_origin_rfh);
+  EXPECT_TRUE(cross_origin_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(cross_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeCreatedAfterEditBeforeUnload_EditInSameOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(a)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* same_origin_rfh =
+      root->child_at(0)->current_frame_host();
+  ASSERT_EQ(main_rfh->GetLastCommittedOrigin(),
+            same_origin_rfh->GetLastCommittedOrigin());
+
+  SimulateEdit(same_origin_rfh);
+
+  FrameTreeNode* cross_origin_subframe = AddSubframe(
+      main_rfh, embedded_test_server()->GetURL("b.com", "/title1.html"));
+  RenderFrameHostImpl* cross_origin_rfh =
+      cross_origin_subframe->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(cross_origin_rfh);
+  EXPECT_TRUE(cross_origin_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(cross_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplRequireUserEditForBeforeUnloadBrowserTest,
+    CrossOriginSubframeCreatedAfterEditBeforeUnload_EditInCrossOriginSubframe) {
+  EXPECT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a(b)")));
+  FrameTreeNode* root = web_contents()->GetPrimaryFrameTree().root();
+  RenderFrameHostImpl* main_rfh = root->current_frame_host();
+  RenderFrameHostImpl* first_cross_origin_rfh =
+      root->child_at(0)->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            first_cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), first_cross_origin_rfh->GetProcess());
+
+  SimulateEdit(first_cross_origin_rfh);
+
+  FrameTreeNode* second_cross_origin_subframe = AddSubframe(
+      main_rfh, embedded_test_server()->GetURL("d.com", "/title1.html"));
+  RenderFrameHostImpl* second_cross_origin_rfh =
+      second_cross_origin_subframe->current_frame_host();
+  ASSERT_NE(main_rfh->GetLastCommittedOrigin(),
+            second_cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(first_cross_origin_rfh->GetLastCommittedOrigin(),
+            second_cross_origin_rfh->GetLastCommittedOrigin());
+  ASSERT_NE(main_rfh->GetProcess(), second_cross_origin_rfh->GetProcess());
+  ASSERT_NE(first_cross_origin_rfh->GetProcess(),
+            second_cross_origin_rfh->GetProcess());
+
+  InstallBeforeUnloadHandler(second_cross_origin_subframe, SHOW_DIALOG,
+                             EXECUTE_SCRIPT_NO_USER_GESTURE);
+  NotifyUserActivation(main_rfh);
+  NotifyUserActivation(second_cross_origin_rfh);
+  EXPECT_TRUE(second_cross_origin_rfh->HasStickyUserActivation());
+
+  CheckBeforeUnloadDialogRuns(second_cross_origin_rfh,
+                              PageImpl::UserEditScope::kCrossSite);
+}
+
 class RenderFrameHostImplBrowserTestWithStoragePartitioning
     : public RenderFrameHostImplBrowserTest,
       public testing::WithParamInterface<bool> {
@@ -9775,7 +10763,7 @@ IN_PROC_BROWSER_TEST_F(RenderFrameHostImplBrowserTestWithBFCache,
   EXPECT_TRUE(rfh_a->IsInBackForwardCache());
   RenderViewHostImpl* rvh_a =
       static_cast<RenderViewHostImpl*>(rfh_a->GetRenderViewHost());
-  std::vector<viz::SurfaceId> ids = rvh_a->CollectSurfaceIdsForEviction();
+  rvh_a->CollectSurfaceIdsForEviction();
 
   web_contents()->GetPrimaryMainFrame()->ActivateUserActivation(
       blink::mojom::UserActivationNotificationType::kInteraction,
@@ -9808,7 +10796,7 @@ IN_PROC_BROWSER_TEST_F(
   EXPECT_TRUE(rfh_a->IsInBackForwardCache());
   RenderViewHostImpl* rvh_a =
       static_cast<RenderViewHostImpl*>(rfh_a->GetRenderViewHost());
-  std::vector<viz::SurfaceId> ids = rvh_a->CollectSurfaceIdsForEviction();
+  rvh_a->CollectSurfaceIdsForEviction();
 
   // Navigate back to A.
   ASSERT_TRUE(HistoryGoBack(web_contents()));
@@ -9990,6 +10978,110 @@ IN_PROC_BROWSER_TEST_F(InitialEmptyDocumentInsecureRequestStateBrowserTest,
   EXPECT_EQ(subframe_rfh->frame_tree_node(),
             popup_rfh->frame_tree_node()->opener());
   ExpectSameInsecureRequestState(subframe_rfh, popup_rfh);
+}
+
+// Regression test for https://crbug.com/574394862.
+//
+// Scenario:
+// 1. A document with "upgrade-insecure-requests" opens an about:blank popup.
+// 2. The popup replaces its document by navigating to a javascript: URL.
+// 3. The new document performs a same-document navigation.
+//
+// The same-document commit must be accepted and the renderer process must not
+// be killed.
+IN_PROC_BROWSER_TEST_F(
+    RenderFrameHostImplBrowserTest,
+    JavaScriptUrlReplacementInPopupPreservesInsecureNavigationsSet) {
+  GURL opener_url(embedded_test_server()->GetURL(
+      "a.com",
+      "/set-header?Content-Security-Policy: upgrade-insecure-requests; "
+      "block-all-mixed-content"));
+  ASSERT_TRUE(NavigateToURL(shell(), opener_url));
+
+  ShellAddedObserver new_shell_observer;
+  ASSERT_TRUE(ExecJs(shell(), "window.open('about:blank');"));
+  Shell* popup = new_shell_observer.GetShell();
+  WebContentsImpl* popup_contents =
+      static_cast<WebContentsImpl*>(popup->web_contents());
+  ASSERT_TRUE(WaitForLoadStop(popup_contents));
+
+  RenderFrameHostImpl* popup_rfh = popup_contents->GetPrimaryMainFrame();
+  ASSERT_TRUE(ExecJs(popup_rfh, R"(
+    location.href = "javascript:'<script>" +
+        "history.pushState({}, \"\", \"about:blank#same-doc\");" +
+        "</script>replaced'";
+  )"));
+
+  // Wait until the browser has either accepted the same-document commit or
+  // killed the renderer.
+  const GURL same_doc_url("about:blank#same-doc");
+  ASSERT_TRUE(base::test::RunUntil([&] {
+    return popup_rfh->GetLastCommittedURL() == same_doc_url ||
+           !popup_rfh->IsRenderFrameLive();
+  }));
+  EXPECT_EQ(same_doc_url, popup_rfh->GetLastCommittedURL());
+  EXPECT_TRUE(popup_rfh->IsRenderFrameLive());
+}
+
+// Regression test for https://crbug.com/574439684.
+//
+// Scenario:
+// 1. A main frame with "block-all-mixed-content" embeds a cross-site iframe.
+// 2. The iframe opens an about:blank popup.
+// 3. The popup replaces its document by navigating to a javascript: URL.
+// 4. The new document performs a same-document navigation.
+//
+// The same-document commit must be accepted and the renderer process must not
+// be killed.
+IN_PROC_BROWSER_TEST_F(
+    RenderFrameHostImplBrowserTest,
+    JavaScriptUrlReplacementInSubframePopupPreservesInsecureRequestPolicy) {
+  GURL main_url(embedded_test_server()->GetURL(
+      "a.com", "/set-header?Content-Security-Policy: block-all-mixed-content"));
+  ASSERT_TRUE(NavigateToURL(shell(), main_url));
+  ASSERT_TRUE(ExecJs(shell(), R"(
+    const iframe = document.createElement('iframe');
+    iframe.id = 'child0';
+    document.body.appendChild(iframe);
+  )"));
+
+  GURL subframe_url(embedded_test_server()->GetURL("b.com", "/title1.html"));
+  ASSERT_TRUE(NavigateIframeToURL(web_contents(), "child0", subframe_url));
+  RenderFrameHostImpl* subframe_rfh =
+      static_cast<RenderFrameHostImpl*>(ChildFrameAt(root_frame_host(), 0));
+  ASSERT_TRUE(subframe_rfh);
+
+  ShellAddedObserver new_shell_observer;
+  ASSERT_TRUE(ExecJs(subframe_rfh, "window.open('about:blank');"));
+  Shell* popup = new_shell_observer.GetShell();
+  WebContentsImpl* popup_contents =
+      static_cast<WebContentsImpl*>(popup->web_contents());
+  ASSERT_TRUE(WaitForLoadStop(popup_contents));
+
+  RenderFrameHostImpl* popup_rfh = popup_contents->GetPrimaryMainFrame();
+  auto insecure_request_policy = [&] {
+    return popup_rfh->frame_tree_node()
+        ->current_replication_state()
+        .insecure_request_policy;
+  };
+  EXPECT_EQ(blink::mojom::InsecureRequestPolicy::kBlockAllMixedContent,
+            insecure_request_policy());
+
+  ASSERT_TRUE(ExecJs(popup_rfh, R"(
+    location.href = "javascript:'<script>" +
+        "history.pushState({}, \"\", \"about:blank#same-doc\");" +
+        "</script>replaced'";
+  )"));
+  const GURL same_doc_url("about:blank#same-doc");
+  ASSERT_TRUE(base::test::RunUntil(
+      [&] { return popup_rfh->GetLastCommittedURL() == same_doc_url; }));
+  EXPECT_TRUE(popup_rfh->IsRenderFrameLive());
+
+  // TODO(crbug.com/574439684): The renderer lost the insecure request policy
+  // and the browser picked it up from the same-document commit. Once fixed,
+  // this should remain kBlockAllMixedContent.
+  EXPECT_EQ(blink::mojom::InsecureRequestPolicy::kLeaveInsecureRequestsAlone,
+            insecure_request_policy());
 }
 
 // Tests that paint holding is not used when an opener-created popup that is
@@ -12010,6 +13102,701 @@ IN_PROC_BROWSER_TEST_F(RenderFrameHostImplTextInputTypeBrowserTest,
   ASSERT_TRUE(ExecJs(web_contents(), "document.activeElement.blur()"));
   EXPECT_TRUE(base::test::RunUntil(
       [&] { return !root_frame_host()->GetFocusedElementTextInputType(); }));
+}
+
+namespace {
+
+// Records whether `WillCreateURLLoaderFactory()` was given a task runner for
+// each frame's network-backed document subresource URLLoaderFactory.
+class SubresourceProxyTaskRunnerRecordingClient
+    : public ContentBrowserTestContentBrowserClient {
+ public:
+  // ContentBrowserClient:
+  void WillCreateURLLoaderFactory(
+      BrowserContext* browser_context,
+      RenderFrameHost* frame,
+      int render_process_id,
+      URLLoaderFactoryType type,
+      const url::Origin& request_initiator,
+      const net::IsolationInfo& isolation_info,
+      std::optional<int64_t> navigation_id,
+      ukm::SourceIdObj ukm_source_id,
+      network::URLLoaderFactoryBuilder& factory_builder,
+      mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
+          header_client,
+      bool* bypass_redirect_checks,
+      bool* disable_secure_dns,
+      network::mojom::URLLoaderFactoryOverridePtr* factory_override,
+      scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+      bool is_for_network_service) override {
+    if (frame && type == URLLoaderFactoryType::kDocumentSubResource &&
+        is_for_network_service) {
+      if (navigation_response_task_runner) {
+        EXPECT_TRUE(
+            navigation_response_task_runner->RunsTasksInCurrentSequence());
+      }
+      has_task_runner_[frame->GetGlobalId()] =
+          !!navigation_response_task_runner;
+      ++factory_creation_count_[frame->GetGlobalId()];
+    }
+    ContentBrowserTestContentBrowserClient::WillCreateURLLoaderFactory(
+        browser_context, frame, render_process_id, type, request_initiator,
+        isolation_info, std::move(navigation_id), ukm_source_id,
+        factory_builder, header_client, bypass_redirect_checks,
+        disable_secure_dns, factory_override,
+        std::move(navigation_response_task_runner), is_for_network_service);
+  }
+
+  std::optional<bool> HasTaskRunner(RenderFrameHost* rfh) const {
+    auto it = has_task_runner_.find(rfh->GetGlobalId());
+    if (it == has_task_runner_.end()) {
+      return std::nullopt;
+    }
+    return it->second;
+  }
+
+  size_t FactoryCreationCount(RenderFrameHost* rfh) const {
+    auto it = factory_creation_count_.find(rfh->GetGlobalId());
+    return it == factory_creation_count_.end() ? 0u : it->second;
+  }
+
+ private:
+  std::map<GlobalRenderFrameHostId, bool> has_task_runner_;
+  std::map<GlobalRenderFrameHostId, size_t> factory_creation_count_;
+};
+
+class RenderFrameHostImplSubresourceLoaderProxyTaskQueueBrowserTest
+    : public RenderFrameHostImplBrowserTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  RenderFrameHostImplSubresourceLoaderProxyTaskQueueBrowserTest() {
+    feature_list_.InitWithFeatureState(
+        features::kSubresourceLoaderProxyTaskQueue, GetParam());
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+}  // namespace
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    RenderFrameHostImplSubresourceLoaderProxyTaskQueueBrowserTest,
+    testing::Bool());
+
+// With kSubresourceLoaderProxyTaskQueue enabled, the outermost main frame's
+// network subresource URLLoaderFactory is created with a task runner for
+// embedder proxies. Subframes never get one.
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplSubresourceLoaderProxyTaskQueueBrowserTest,
+    TaskRunnerOnlyForOutermostMainFrame) {
+  SubresourceProxyTaskRunnerRecordingClient client;
+
+  ASSERT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL(
+                   "a.com", "/cross_site_iframe_factory.html?a.com(a.com)")));
+  RenderFrameHostImpl* main_frame = root_frame_host();
+  ASSERT_EQ(1u, main_frame->child_count());
+  RenderFrameHostImpl* child_frame =
+      main_frame->child_at(0)->current_frame_host();
+
+  EXPECT_EQ(client.HasTaskRunner(main_frame), std::optional<bool>(GetParam()));
+  EXPECT_EQ(client.HasTaskRunner(child_frame), std::optional<bool>(false));
+}
+
+namespace {
+
+// Parameterized on kSubresourceLoaderProxyTaskQueueVisibleOnly.
+class RenderFrameHostImplSubresourceLoaderProxyTaskQueueVisibilityBrowserTest
+    : public RenderFrameHostImplBrowserTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  RenderFrameHostImplSubresourceLoaderProxyTaskQueueVisibilityBrowserTest() {
+    feature_list_.InitAndEnableFeatureWithParameters(
+        features::kSubresourceLoaderProxyTaskQueue,
+        {{features::kSubresourceLoaderProxyTaskQueueVisibleOnly.name,
+          GetParam() ? "true" : "false"}});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+}  // namespace
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    RenderFrameHostImplSubresourceLoaderProxyTaskQueueVisibilityBrowserTest,
+    testing::Bool());
+
+// A main frame document that commits while its WebContents is hidden only gets
+// a task runner for embedder proxies if
+// kSubresourceLoaderProxyTaskQueueVisibleOnly is false.
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplSubresourceLoaderProxyTaskQueueVisibilityBrowserTest,
+    HiddenWebContents) {
+  SubresourceProxyTaskRunnerRecordingClient client;
+
+  // Create a hidden WebContents detached from the native Shell window so that
+  // native window occlusion recalculations (e.g. on Aura) cannot flip its
+  // visibility back to VISIBLE during navigation.
+  WebContents::CreateParams create_params(web_contents()->GetBrowserContext());
+  create_params.initially_hidden = true;
+  std::unique_ptr<WebContents> hidden_contents =
+      WebContents::Create(create_params);
+  ASSERT_EQ(Visibility::HIDDEN, hidden_contents->GetVisibility());
+  ASSERT_TRUE(
+      NavigateToURL(hidden_contents.get(),
+                    embedded_test_server()->GetURL("a.com", "/title1.html")));
+
+  EXPECT_EQ(client.HasTaskRunner(hidden_contents->GetPrimaryMainFrame()),
+            std::optional<bool>(!GetParam()));
+}
+
+namespace {
+
+// Parameterized on `kSubresourceLoaderProxyTaskQueueIncludePrerendering`
+// (`std::nullopt` exercises the default parameter value).
+class RenderFrameHostImplSubresourceLoaderProxyTaskQueuePrerenderBrowserTest
+    : public RenderFrameHostImplBrowserTest,
+      public testing::WithParamInterface<std::optional<bool>> {
+ public:
+  RenderFrameHostImplSubresourceLoaderProxyTaskQueuePrerenderBrowserTest()
+      : prerender_helper_(base::BindLambdaForTesting(
+            [this]() { return shell()->web_contents(); })) {
+    if (GetParam().has_value()) {
+      feature_list_.InitAndEnableFeatureWithParameters(
+          features::kSubresourceLoaderProxyTaskQueue,
+          {{features::kSubresourceLoaderProxyTaskQueueIncludePrerendering.name,
+            *GetParam() ? "true" : "false"}});
+    } else {
+      feature_list_.InitAndEnableFeature(
+          features::kSubresourceLoaderProxyTaskQueue);
+    }
+  }
+
+  test::PrerenderTestHelper& prerender_helper() { return prerender_helper_; }
+
+ private:
+  test::PrerenderTestHelper prerender_helper_;
+  base::test::ScopedFeatureList feature_list_;
+};
+
+}  // namespace
+
+INSTANTIATE_TEST_SUITE_P(
+    All,
+    RenderFrameHostImplSubresourceLoaderProxyTaskQueuePrerenderBrowserTest,
+    testing::Values(std::nullopt, false, true));
+
+// Even when the hosting WebContents is visible, a prerendered main frame only
+// receives a high-priority task runner for embedder proxies if
+// `kSubresourceLoaderProxyTaskQueueIncludePrerendering` is true (false by
+// default), and keeps the factory created at prerender commit upon activation.
+IN_PROC_BROWSER_TEST_P(
+    RenderFrameHostImplSubresourceLoaderProxyTaskQueuePrerenderBrowserTest,
+    PrerenderedMainFrame) {
+  SubresourceProxyTaskRunnerRecordingClient client;
+
+  ASSERT_EQ(Visibility::VISIBLE, web_contents()->GetVisibility());
+  const GURL initial_url =
+      embedded_test_server()->GetURL("a.com", "/title1.html");
+  const GURL prerender_url =
+      embedded_test_server()->GetURL("a.com", "/title2.html");
+  ASSERT_TRUE(NavigateToURL(shell(), initial_url));
+  EXPECT_EQ(client.HasTaskRunner(web_contents()->GetPrimaryMainFrame()),
+            std::optional<bool>(true));
+
+  PrerenderHostId host_id = prerender_helper().AddPrerender(prerender_url);
+  RenderFrameHostImpl* prerender_rfh = static_cast<RenderFrameHostImpl*>(
+      prerender_helper().GetPrerenderedMainFrameHost(host_id));
+  ASSERT_TRUE(prerender_rfh);
+  EXPECT_TRUE(prerender_rfh->IsOutermostMainFrame());
+  EXPECT_TRUE(prerender_rfh->frame_tree()->is_prerendering());
+
+  const bool expect_prerender_task_runner = GetParam().value_or(false);
+  EXPECT_EQ(client.HasTaskRunner(prerender_rfh),
+            std::optional<bool>(expect_prerender_task_runner));
+  const size_t pre_activation_factory_count =
+      client.FactoryCreationCount(prerender_rfh);
+  EXPECT_GT(pre_activation_factory_count, 0u);
+
+  // Activating the prerendered page reuses the subresource URLLoaderFactory
+  // created at prerender commit time without recreating it.
+  prerender_helper().NavigatePrimaryPage(prerender_url);
+  EXPECT_EQ(prerender_rfh, web_contents()->GetPrimaryMainFrame());
+  EXPECT_EQ(pre_activation_factory_count,
+            client.FactoryCreationCount(prerender_rfh));
+  EXPECT_EQ(client.HasTaskRunner(prerender_rfh),
+            std::optional<bool>(expect_prerender_task_runner));
+}
+
+namespace {
+
+// Proxies a frame's subresource URLLoaderFactory on
+// `navigation_response_task_runner` (mirroring
+// extensions::WebRequestProxyingURLLoaderFactory) and records when
+// `CreateLoaderAndStart()` runs relative to navigation commit and default-queue
+// tasks.
+class SubresourceProxyCommitOrderingClient
+    : public ContentBrowserTestContentBrowserClient,
+      public network::mojom::URLLoaderFactory {
+ public:
+  explicit SubresourceProxyCommitOrderingClient(
+      std::vector<std::string>* execution_order,
+      base::RepeatingClosure on_event)
+      : execution_order_(execution_order), on_event_(std::move(on_event)) {}
+
+  // ContentBrowserClient:
+  void WillCreateURLLoaderFactory(
+      BrowserContext* browser_context,
+      RenderFrameHost* frame,
+      int render_process_id,
+      URLLoaderFactoryType type,
+      const url::Origin& request_initiator,
+      const net::IsolationInfo& isolation_info,
+      std::optional<int64_t> navigation_id,
+      ukm::SourceIdObj ukm_source_id,
+      network::URLLoaderFactoryBuilder& factory_builder,
+      mojo::PendingRemote<network::mojom::TrustedURLLoaderHeaderClient>*
+          header_client,
+      bool* bypass_redirect_checks,
+      bool* disable_secure_dns,
+      network::mojom::URLLoaderFactoryOverridePtr* factory_override,
+      scoped_refptr<base::SequencedTaskRunner> navigation_response_task_runner,
+      bool is_for_network_service) override {
+    if (frame && type == URLLoaderFactoryType::kDocumentSubResource &&
+        is_for_network_service && intercept_next_subresource_factory_) {
+      intercept_next_subresource_factory_ = false;
+      ASSERT_TRUE(navigation_response_task_runner);
+      frame_id_ = frame->GetGlobalId();
+      proxy_task_runner_ = navigation_response_task_runner;
+      auto [receiver, target_remote] = factory_builder.Append();
+      target_factory_.Bind(std::move(target_remote), proxy_task_runner_);
+      proxy_receivers_.Add(this, std::move(receiver), proxy_task_runner_);
+    }
+    ContentBrowserTestContentBrowserClient::WillCreateURLLoaderFactory(
+        browser_context, frame, render_process_id, type, request_initiator,
+        isolation_info, std::move(navigation_id), ukm_source_id,
+        factory_builder, header_client, bypass_redirect_checks,
+        disable_secure_dns, factory_override,
+        std::move(navigation_response_task_runner), is_for_network_service);
+  }
+
+  // network::mojom::URLLoaderFactory:
+  void CreateLoaderAndStart(
+      mojo::PendingReceiver<network::mojom::URLLoader> loader,
+      int32_t request_id,
+      uint32_t options,
+      const network::ResourceRequest& request,
+      mojo::PendingRemote<network::mojom::URLLoaderClient> client,
+      const net::MutableNetworkTrafficAnnotationTag& traffic_annotation)
+      override {
+    if (request.url.path() == "/subresource") {
+      RenderFrameHostImpl* rfh = RenderFrameHostImpl::FromID(frame_id_);
+      ASSERT_TRUE(rfh);
+      was_frame_active_at_request_start_ = rfh->IsActive();
+      committed_url_at_request_start_ = rfh->GetLastCommittedURL();
+      execution_order_->push_back("CreateLoaderAndStart");
+      on_event_.Run();
+    }
+    target_factory_->CreateLoaderAndStart(std::move(loader), request_id,
+                                          options, request, std::move(client),
+                                          traffic_annotation);
+  }
+
+  void Clone(mojo::PendingReceiver<network::mojom::URLLoaderFactory> receiver)
+      override {
+    proxy_receivers_.Add(this, std::move(receiver), proxy_task_runner_);
+  }
+
+  ShouldAllowSameSiteRenderFrameHostChangeResult
+  ShouldAllowSameSiteRenderFrameHostChange(
+      const RenderFrameHost& rfh) override {
+    if (disallow_same_site_rfh_change_) {
+      return ShouldAllowSameSiteRenderFrameHostChangeResult::kNotAllowed;
+    }
+    return ContentBrowserTestContentBrowserClient::
+        ShouldAllowSameSiteRenderFrameHostChange(rfh);
+  }
+
+  void set_disallow_same_site_rfh_change(bool disallow) {
+    disallow_same_site_rfh_change_ = disallow;
+  }
+
+  void set_intercept_next_subresource_factory(bool intercept) {
+    intercept_next_subresource_factory_ = intercept;
+  }
+
+  bool was_frame_active_at_request_start() const {
+    return was_frame_active_at_request_start_;
+  }
+
+  const GURL& committed_url_at_request_start() const {
+    return committed_url_at_request_start_;
+  }
+
+ private:
+  raw_ptr<std::vector<std::string>> execution_order_;
+  base::RepeatingClosure on_event_;
+  bool disallow_same_site_rfh_change_ = false;
+  bool intercept_next_subresource_factory_ = false;
+  GlobalRenderFrameHostId frame_id_;
+  scoped_refptr<base::SequencedTaskRunner> proxy_task_runner_;
+  mojo::ReceiverSet<network::mojom::URLLoaderFactory> proxy_receivers_;
+  mojo::Remote<network::mojom::URLLoaderFactory> target_factory_;
+  bool was_frame_active_at_request_start_ = false;
+  GURL committed_url_at_request_start_;
+};
+
+class ReadyToCommitPauserObserver : public WebContentsObserver {
+ public:
+  ReadyToCommitPauserObserver(WebContents* web_contents,
+                              const GURL& target_url,
+                              std::vector<std::string>* execution_order,
+                              base::RepeatingClosure on_event)
+      : WebContentsObserver(web_contents),
+        target_url_(target_url),
+        execution_order_(execution_order),
+        on_event_(std::move(on_event)) {}
+
+  void ReadyToCommitNavigation(NavigationHandle* navigation_handle) override {
+    if (navigation_handle->GetURL() == target_url_) {
+      navigation_request_ =
+          NavigationRequest::From(navigation_handle)->GetWeakPtr();
+      pauser_ = std::make_unique<CommitNavigationPauser>(
+          static_cast<RenderFrameHostImpl*>(
+              navigation_handle->GetRenderFrameHost()));
+      ready_to_commit_loop_.Quit();
+    }
+  }
+
+  void DidFinishNavigation(NavigationHandle* navigation_handle) override {
+    if (navigation_handle->GetURL() == target_url_ &&
+        navigation_handle->HasCommitted()) {
+      execution_order_->push_back("DidFinishNavigation");
+      on_event_.Run();
+    }
+  }
+
+  void WaitForCommitAndPause() {
+    ready_to_commit_loop_.Run();
+    ASSERT_TRUE(pauser_);
+    pauser_->WaitForCommitAndPause();
+  }
+
+  void ResumePausedCommit() {
+    ASSERT_TRUE(pauser_);
+    pauser_->ResumePausedCommit();
+  }
+
+  NavigationRequest* navigation_request() const {
+    return navigation_request_.get();
+  }
+
+ private:
+  const GURL target_url_;
+  raw_ptr<std::vector<std::string>> execution_order_;
+  base::RepeatingClosure on_event_;
+  base::RunLoop ready_to_commit_loop_;
+  base::WeakPtr<NavigationRequest> navigation_request_;
+  std::unique_ptr<CommitNavigationPauser> pauser_;
+};
+
+class RenderFrameHostImplSubresourceLoaderProxyCommitOrderingBrowserTest
+    : public RenderFrameHostImplBrowserTest {
+ public:
+  RenderFrameHostImplSubresourceLoaderProxyCommitOrderingBrowserTest() {
+    feature_list_.InitAndEnableFeature(
+        features::kSubresourceLoaderProxyTaskQueue);
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+void RegisterPageWithSubresourceHandler(net::EmbeddedTestServer& server) {
+  server.RegisterRequestHandler(base::BindLambdaForTesting(
+      [](const net::test_server::HttpRequest& request)
+          -> std::unique_ptr<net::test_server::HttpResponse> {
+        auto response = std::make_unique<net::test_server::BasicHttpResponse>();
+        response->set_code(net::HTTP_OK);
+        if (request.relative_url == "/page_with_subresource.html") {
+          response->set_content_type("text/html");
+          response->set_content(R"(
+            <!DOCTYPE html>
+            <script>
+              fetch('/subresource', {method: 'POST'});
+              console.log('subresource_requested');
+            </script>
+          )");
+          return response;
+        }
+        if (request.relative_url == "/subresource") {
+          response->set_content_type("text/plain");
+          response->set_content("ok");
+          return response;
+        }
+        return nullptr;
+      }));
+}
+
+}  // namespace
+
+// Verifies that when `DidCommitNavigation` is still queued on the default UI
+// task queue while the new document issues its first subresource requests,
+// `CreateLoaderAndStart()` on the proxied subresource URLLoaderFactory does not
+// overtake `DidCommitNavigation` / `DidFinishNavigation`, and runs on the
+// high-priority `kSubresourceLoaderProxy` queue immediately after commit ahead
+// of subsequent default-queue tasks.
+IN_PROC_BROWSER_TEST_F(
+    RenderFrameHostImplSubresourceLoaderProxyCommitOrderingBrowserTest,
+    SubresourceRequestsDoNotOvertakePendingCommit) {
+  net::EmbeddedTestServer subresource_server;
+  RegisterPageWithSubresourceHandler(subresource_server);
+  ASSERT_TRUE(subresource_server.Start());
+
+  ASSERT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+
+  const GURL target_url =
+      subresource_server.GetURL("b.com", "/page_with_subresource.html");
+
+  std::vector<std::string> execution_order;
+  base::RunLoop completion_loop;
+  auto on_event = base::BindLambdaForTesting([&]() {
+    if (execution_order.size() == 3u) {
+      completion_loop.Quit();
+    }
+  });
+
+  SubresourceProxyCommitOrderingClient proxy_client(&execution_order, on_event);
+  proxy_client.set_intercept_next_subresource_factory(true);
+
+  ReadyToCommitPauserObserver commit_pauser(web_contents(), target_url,
+                                            &execution_order, on_event);
+  WebContentsConsoleObserver console_observer(web_contents());
+  console_observer.SetPattern("subresource_requested");
+
+  shell()->LoadURL(target_url);
+
+  // Hold `DidCommitNavigation` on the browser side and wait until the renderer
+  // has committed the document and issued `fetch('/subresource')`.
+  commit_pauser.WaitForCommitAndPause();
+  ASSERT_TRUE(console_observer.Wait());
+  base::RunLoop flush_high_priority_queue;
+  GetUIThreadTaskRunner({BrowserTaskType::kSubresourceLoaderProxy})
+      ->PostTask(FROM_HERE, flush_high_priority_queue.QuitClosure());
+  flush_high_priority_queue.Run();
+
+  // Even though the renderer has already sent `CreateLoaderAndStart` for
+  // `/subresource`, the proxy task runner must keep it deferred while the
+  // navigation commit has not yet been processed on the UI thread.
+  EXPECT_TRUE(execution_order.empty());
+
+  // Queue the held `DidCommitNavigation` on the default UI queue followed by
+  // another default-queue task. Once `DidCommitNavigation` finishes, the
+  // deferred subresource `CreateLoaderAndStart` must be flushed to the
+  // high-priority `kSubresourceLoaderProxy` queue and run ahead of the trailing
+  // default-queue task.
+  auto default_task_runner = GetUIThreadTaskRunner({BrowserTaskType::kDefault});
+  default_task_runner->PostTask(FROM_HERE, base::BindLambdaForTesting([&]() {
+                                  commit_pauser.ResumePausedCommit();
+                                }));
+  default_task_runner->PostTask(
+      FROM_HERE, base::BindLambdaForTesting([&]() {
+        execution_order.push_back("TrailingDefaultTask");
+        on_event.Run();
+      }));
+  completion_loop.Run();
+
+  EXPECT_THAT(execution_order, testing::ElementsAre("DidFinishNavigation",
+                                                    "CreateLoaderAndStart",
+                                                    "TrailingDefaultTask"));
+  EXPECT_TRUE(proxy_client.was_frame_active_at_request_start());
+  EXPECT_EQ(target_url, proxy_client.committed_url_at_request_start());
+}
+
+// Verifies that creating a subresource URLLoaderFactory for the already
+// committed document (`CreateNetworkServiceDefaultFactory`) while a same-RFH
+// cross-document navigation is in `READY_TO_COMMIT` does not attach that
+// factory to the in-flight navigation's `DeferredSequencedTaskRunner`.
+IN_PROC_BROWSER_TEST_F(
+    RenderFrameHostImplSubresourceLoaderProxyCommitOrderingBrowserTest,
+    LastCommittedFactoryNotDeferredByPendingSameRfhCommit) {
+  const GURL initial_url =
+      embedded_test_server()->GetURL("a.com", "/title1.html");
+  const GURL target_url =
+      embedded_test_server()->GetURL("a.com", "/title2.html");
+  ASSERT_TRUE(NavigateToURL(shell(), initial_url));
+  RenderFrameHostImpl* main_rfh = root_frame_host();
+  main_rfh->DisableProactiveBrowsingInstanceSwapForTesting();
+
+  std::vector<std::string> execution_order;
+  base::RunLoop pre_commit_loop;
+  base::RunLoop finish_commit_loop;
+  auto on_event = base::BindLambdaForTesting([&]() {
+    if (execution_order.size() == 2u) {
+      pre_commit_loop.Quit();
+    } else if (execution_order.size() == 3u) {
+      finish_commit_loop.Quit();
+    }
+  });
+
+  // Disallow same-site RenderFrameHost swaps so `target_url` commits in-place
+  // on `main_rfh` while `initial_url` is still the last committed document.
+  SubresourceProxyCommitOrderingClient proxy_client(&execution_order, on_event);
+  proxy_client.set_disallow_same_site_rfh_change(true);
+  ReadyToCommitPauserObserver commit_pauser(web_contents(), target_url,
+                                            &execution_order, on_event);
+
+  shell()->LoadURL(target_url);
+  commit_pauser.WaitForCommitAndPause();
+  ASSERT_TRUE(main_rfh->HasPendingCommitForCrossDocumentNavigation());
+  ASSERT_NE(nullptr, commit_pauser.navigation_request());
+  ASSERT_EQ(NavigationRequest::READY_TO_COMMIT,
+            commit_pauser.navigation_request()->state());
+  ASSERT_EQ(main_rfh, commit_pauser.navigation_request()->GetRenderFrameHost());
+
+  // While `target_url` is paused in `READY_TO_COMMIT` on `main_rfh`, build a
+  // factory for the currently committed `initial_url` document. It must receive
+  // the direct `kSubresourceLoaderProxy` task runner rather than the pending
+  // navigation's deferred runner, running ahead of a default-queue task before
+  // `target_url` finishes committing.
+  auto proxy_task_runner =
+      GetUIThreadTaskRunner({BrowserTaskType::kSubresourceLoaderProxy});
+  auto default_task_runner = GetUIThreadTaskRunner({BrowserTaskType::kDefault});
+
+  proxy_client.set_intercept_next_subresource_factory(true);
+  mojo::Remote<network::mojom::URLLoaderFactory> last_committed_factory;
+  EXPECT_FALSE(main_rfh->CreateNetworkServiceDefaultFactory(
+      last_committed_factory.BindNewPipeAndPassReceiver(proxy_task_runner)));
+
+  network::ResourceRequest subresource_request;
+  subresource_request.url =
+      embedded_test_server()->GetURL("a.com", "/subresource");
+  subresource_request.request_initiator = main_rfh->GetLastCommittedOrigin();
+  mojo::Remote<network::mojom::URLLoader> loader;
+  network::TestURLLoaderClient loader_client;
+  last_committed_factory->CreateLoaderAndStart(
+      loader.BindNewPipeAndPassReceiver(proxy_task_runner), /*request_id=*/1,
+      network::mojom::kURLLoadOptionNone, subresource_request,
+      loader_client.CreateRemote(),
+      net::MutableNetworkTrafficAnnotationTag(TRAFFIC_ANNOTATION_FOR_TESTS));
+  default_task_runner->PostTask(FROM_HERE, base::BindLambdaForTesting([&]() {
+                                  execution_order.push_back("DefaultQueueTask");
+                                  on_event.Run();
+                                }));
+  pre_commit_loop.Run();
+
+  EXPECT_THAT(execution_order,
+              testing::ElementsAre("CreateLoaderAndStart", "DefaultQueueTask"));
+  EXPECT_EQ(initial_url, proxy_client.committed_url_at_request_start());
+
+  commit_pauser.ResumePausedCommit();
+  finish_commit_loop.Run();
+  EXPECT_THAT(execution_order,
+              testing::ElementsAre("CreateLoaderAndStart", "DefaultQueueTask",
+                                   "DidFinishNavigation"));
+}
+
+// Verifies that when two cross-document navigations are concurrently in
+// `READY_TO_COMMIT` on the same `RenderFrameHostImpl` and the earlier one has a
+// later `NavigationStart()`, the second navigation's subresource factory binds
+// to its own `DeferredSequencedTaskRunner` rather than the first navigation's
+// runner (which starts as soon as the first navigation finishes).
+IN_PROC_BROWSER_TEST_F(
+    RenderFrameHostImplSubresourceLoaderProxyCommitOrderingBrowserTest,
+    ConcurrentSameRfhCommitsUseOwnDeferredTaskRunner) {
+  net::EmbeddedTestServer subresource_server;
+  RegisterPageWithSubresourceHandler(subresource_server);
+  ASSERT_TRUE(subresource_server.Start());
+
+  ASSERT_TRUE(NavigateToURL(
+      shell(), embedded_test_server()->GetURL("a.com", "/title1.html")));
+  RenderFrameHostImpl* main_rfh = root_frame_host();
+  main_rfh->DisableProactiveBrowsingInstanceSwapForTesting();
+
+  const GURL first_url =
+      embedded_test_server()->GetURL("a.com", "/title2.html");
+  const GURL second_url =
+      subresource_server.GetURL("a.com", "/page_with_subresource.html");
+
+  std::vector<std::string> execution_order;
+  base::RunLoop completion_loop;
+  auto on_event = base::BindLambdaForTesting([&]() {
+    if (execution_order.size() == 3u) {
+      completion_loop.Quit();
+    }
+  });
+
+  // Disallow same-site RenderFrameHost swaps so both `first_url` and
+  // `second_url` commit in-place on `main_rfh`.
+  SubresourceProxyCommitOrderingClient proxy_client(&execution_order, on_event);
+  proxy_client.set_disallow_same_site_rfh_change(true);
+
+  // Start `first_url` on `main_rfh` and hold its `DidCommitNavigation` while
+  // advancing its `NavigationStart()` ahead of `second_url`.
+  std::vector<std::string> ignored_first_order;
+  ReadyToCommitPauserObserver first_pauser(
+      web_contents(), first_url, &ignored_first_order, base::DoNothing());
+  shell()->LoadURL(first_url);
+  first_pauser.WaitForCommitAndPause();
+
+  NavigationRequest* first_request = first_pauser.navigation_request();
+  ASSERT_NE(nullptr, first_request);
+  ASSERT_EQ(main_rfh, first_request->GetRenderFrameHost());
+  first_request->UpdateNavigationStartTime(
+      base::TimeTicks::Now() + base::Minutes(1),
+      /*for_legacy=*/false, /*showed_dialog=*/true);
+
+  // Now commit `second_url` on the same `main_rfh` while `first_request` is
+  // still in `READY_TO_COMMIT` with the latest `NavigationStart()`.
+  proxy_client.set_intercept_next_subresource_factory(true);
+  ReadyToCommitPauserObserver second_pauser(web_contents(), second_url,
+                                            &execution_order, on_event);
+  WebContentsConsoleObserver console_observer(web_contents());
+  console_observer.SetPattern("subresource_requested");
+
+  shell()->LoadURL(second_url);
+  second_pauser.WaitForCommitAndPause();
+  NavigationRequest* second_request = second_pauser.navigation_request();
+  ASSERT_NE(nullptr, second_request);
+  ASSERT_EQ(main_rfh, first_request->GetRenderFrameHost());
+  ASSERT_EQ(main_rfh, second_request->GetRenderFrameHost());
+  ASSERT_EQ(NavigationRequest::READY_TO_COMMIT, first_request->state());
+  ASSERT_EQ(NavigationRequest::READY_TO_COMMIT, second_request->state());
+  ASSERT_GT(first_request->NavigationStart(),
+            second_request->NavigationStart());
+  ASSERT_TRUE(console_observer.Wait());
+
+  // Finishing `first_request` destroys it and starts its deferred task runner,
+  // while `second_url`'s `DidCommitNavigation` is still paused. `second_url`'s
+  // subresource `CreateLoaderAndStart` must remain deferred.
+  first_pauser.ResumePausedCommit();
+  base::RunLoop flush_high_priority_queue;
+  GetUIThreadTaskRunner({BrowserTaskType::kSubresourceLoaderProxy})
+      ->PostTask(FROM_HERE, flush_high_priority_queue.QuitClosure());
+  flush_high_priority_queue.Run();
+  EXPECT_TRUE(execution_order.empty());
+
+  auto default_task_runner = GetUIThreadTaskRunner({BrowserTaskType::kDefault});
+  default_task_runner->PostTask(FROM_HERE, base::BindLambdaForTesting([&]() {
+                                  second_pauser.ResumePausedCommit();
+                                }));
+  default_task_runner->PostTask(
+      FROM_HERE, base::BindLambdaForTesting([&]() {
+        execution_order.push_back("TrailingDefaultTask");
+        on_event.Run();
+      }));
+  completion_loop.Run();
+
+  EXPECT_THAT(execution_order, testing::ElementsAre("DidFinishNavigation",
+                                                    "CreateLoaderAndStart",
+                                                    "TrailingDefaultTask"));
+  EXPECT_TRUE(proxy_client.was_frame_active_at_request_start());
+  EXPECT_EQ(second_url, proxy_client.committed_url_at_request_start());
 }
 
 }  // namespace content

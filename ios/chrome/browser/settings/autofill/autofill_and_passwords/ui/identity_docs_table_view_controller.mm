@@ -294,7 +294,6 @@ enum class ItemType {
   _addButtonInToolbar.target = nil;
   _addButtonInToolbar.menu = [AutofillAIAddEntitiesMenuBuilder
       buildMenuWithTypes:_writableEntityTypes
-          profileEnabled:NO
          entitiesEnabled:_identityDocsEnabled && _identityDocsToggleEnabled &&
                          !_identityDocsToggleManaged
                 delegate:self];
@@ -304,10 +303,6 @@ enum class ItemType {
 }
 
 #pragma mark - AutofillAIAddEntitiesMenuDelegate
-
-- (void)didSelectAddAutofillProfile {
-  NOTREACHED();
-}
 
 - (void)didSelectAddEntityWithType:(autofill::EntityType)type {
   [self.mutator didSelectAddEntityWithType:type];
@@ -333,6 +328,14 @@ enum class ItemType {
 
 // Override.
 - (void)deleteItems:(NSArray<NSIndexPath*>*)indexPaths {
+  [self showDeleteConfirmationForIndexPaths:indexPaths sourceView:nil];
+}
+
+// Presents the deletion confirmation action sheet for `indexPaths`, anchored
+// to `sourceView` when provided (e.g. swipe-to-delete) or `self.deleteButton`
+// otherwise.
+- (void)showDeleteConfirmationForIndexPaths:(NSArray<NSIndexPath*>*)indexPaths
+                                 sourceView:(UIView*)sourceView {
   NSMutableArray<TableViewItem*>* items =
       [NSMutableArray arrayWithCapacity:indexPaths.count];
   for (NSIndexPath* indexPath in indexPaths) {
@@ -343,7 +346,7 @@ enum class ItemType {
   }
 
   NSString* deletionConfirmationString =
-      GetDeletionConfirmationStringWithEntities(false, std::u16string());
+      GetDeletionConfirmationStringWithEntities();
 
   UIAlertControllerStyle preferredStyle = UIAlertControllerStyleActionSheet;
   if (UIContentSizeCategoryIsAccessibilityCategory(
@@ -356,10 +359,15 @@ enum class ItemType {
                                           message:nil
                                    preferredStyle:preferredStyle];
 
-  alertController.popoverPresentationController.barButtonItem =
-      self.deleteButton;
-  alertController.popoverPresentationController.permittedArrowDirections =
-      UIPopoverArrowDirectionAny;
+  UIPopoverPresentationController* popover =
+      alertController.popoverPresentationController;
+  if (sourceView) {
+    popover.sourceView = sourceView;
+    popover.sourceRect = sourceView.bounds;
+  } else {
+    popover.barButtonItem = self.deleteButton;
+  }
+  popover.permittedArrowDirections = UIPopoverArrowDirectionAny;
 
   __weak __typeof(self) weakSelf = self;
 
@@ -465,7 +473,10 @@ enum class ItemType {
       _settingsAreDismissed) {
     return;
   }
-  [self deleteItems:@[ indexPath ]];
+  UITableViewCell* cell = [tableView cellForRowAtIndexPath:indexPath];
+  UIView* sourceView = cell.window ? cell : tableView;
+  [self showDeleteConfirmationForIndexPaths:@[ indexPath ]
+                                 sourceView:sourceView];
 }
 
 - (UITableViewCell*)tableView:(UITableView*)tableView

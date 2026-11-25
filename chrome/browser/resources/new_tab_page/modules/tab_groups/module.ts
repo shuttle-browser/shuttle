@@ -11,10 +11,10 @@ import '../module_header.js';
 import './icons.html.js';
 import './icon_container.js';
 
-import type {PropertyValues} from '//resources/lit/v3_0/lit.rollup.js';
 import {MojoPluralStringProxy} from 'chrome://resources/cr_components/search/mojo_plural_string_proxy.js';
 import {assert} from 'chrome://resources/js/assert.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
+import type {PropertyValues} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 import {CrLitElement} from 'chrome://resources/lit/v3_0/lit.rollup.js';
 
 import {I18nMixinLit} from '../../i18n_setup.js';
@@ -230,7 +230,7 @@ async function createElement(): Promise<TabGroupsModuleElement|null> {
     return null;
   }
 
-  const element = new TabGroupsModuleElement();
+  const element = document.createElement('ntp-tab-groups-module');
   element.tabGroups = tabGroups;
   element.showZeroState = showZeroState;
   return element;

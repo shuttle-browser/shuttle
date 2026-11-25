@@ -356,8 +356,7 @@ MockMerchantPromoCodeManager*
 TestPaymentsAutofillClient::GetMerchantPromoCodeManager() {
   if (!mock_merchant_promo_code_manager_) {
     mock_merchant_promo_code_manager_ =
-        std::make_unique<testing::NiceMock<MockMerchantPromoCodeManager>>(
-            &client_.get());
+        std::make_unique<testing::NiceMock<MockMerchantPromoCodeManager>>();
   }
   return mock_merchant_promo_code_manager_.get();
 }
@@ -495,11 +494,6 @@ BnplStrategy* TestPaymentsAutofillClient::GetBnplStrategy() {
 
 BnplUiDelegate* TestPaymentsAutofillClient::GetBnplUiDelegate() {
   return bnpl_ui_delegate_.get();
-}
-
-WalletReminderNoticeUiDelegate*
-TestPaymentsAutofillClient::GetWalletReminderNoticeUiDelegate() {
-  return wallet_reminder_notice_ui_delegate_.get();
 }
 
 WalletReminderNoticeManager*

@@ -54,6 +54,7 @@
 #include "ui/views/background.h"
 #include "ui/views/bubble/bubble_frame_view.h"
 #include "ui/views/bubble_histograms_variant.h"
+#include "ui/views/focus/focus_manager.h"
 #include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/layout/layout_manager.h"
 #include "ui/views/layout/layout_provider.h"
@@ -216,6 +217,8 @@ Widget* CreateBubbleWidget(BubbleDialogDelegate* bubble,
                                   ? Widget::InitParams::Activatable::kYes
                                   : Widget::InitParams::Activatable::kNo;
   bubble->OnBeforeBubbleWidgetInit(&bubble_params, bubble_widget.get());
+  // TODO(crbug.com/580312768): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
   DCHECK(bubble_params.parent || !bubble->has_parent());
   bubble_widget->Init(std::move(bubble_params));
   return bubble_widget.release();
@@ -254,13 +257,13 @@ class BubbleDialogDelegate::AnchorViewObserver : public ViewObserver {
   void OnViewIsDeleting(View* observed_view) override {
     // The anchor is being deleted, make sure the parent bubble no longer
     // observes it.
-    DCHECK_EQ(anchor_view_, observed_view);
+    CHECK_EQ(anchor_view_, observed_view, base::NotFatalUntil::M163);
     scoped_notify_ = nullptr;
     parent_->SetAnchorView(nullptr);
   }
 
   void OnViewVisibleBoundsChanged(View* observed_view) override {
-    DCHECK_EQ(anchor_view_, observed_view);
+    CHECK_EQ(anchor_view_, observed_view, base::NotFatalUntil::M163);
     if (bubble_widget_visible_) {
       parent_->OnAnchorBoundsChanged();
     } else {
@@ -274,13 +277,13 @@ class BubbleDialogDelegate::AnchorViewObserver : public ViewObserver {
  private:
   void AddToAnchorVector() {
     auto& vector = GetAnchorVector(anchor_view_);
-    DCHECK(!std::ranges::contains(vector, parent_));
+    CHECK(!std::ranges::contains(vector, parent_), base::NotFatalUntil::M163);
     vector.push_back(parent_);
   }
 
   void RemoveFromAnchorVector() {
     auto& vector = GetAnchorVector(anchor_view_);
-    DCHECK(!vector.empty());
+    CHECK(!vector.empty(), base::NotFatalUntil::M163);
 
     auto iter = vector.cend() - 1;
     bool latest_anchor_bubble_will_change = (*iter == parent_);
@@ -288,7 +291,7 @@ class BubbleDialogDelegate::AnchorViewObserver : public ViewObserver {
       iter = std::find(vector.cbegin(), iter, parent_);
     }
 
-    DCHECK(iter != vector.cend());
+    CHECK(iter != vector.cend(), base::NotFatalUntil::M163);
     vector.erase(iter);
 
     if (!vector.empty() && latest_anchor_bubble_will_change) {
@@ -329,10 +332,12 @@ class BubbleDialogDelegate::AnchorWidgetObserver : public WidgetObserver,
   // WidgetObserver:
   void OnWidgetDestroying(Widget* widget) override {
 #if !BUILDFLAG(IS_MAC)
-    DCHECK(window_observation_.IsObservingSource(widget->GetNativeWindow()));
+    CHECK(window_observation_.IsObservingSource(widget->GetNativeWindow()),
+          base::NotFatalUntil::M163);
     window_observation_.Reset();
 #endif
-    DCHECK(widget_observation_.IsObservingSource(widget));
+    CHECK(widget_observation_.IsObservingSource(widget),
+          base::NotFatalUntil::M163);
     widget_observation_.Reset();
     owner_->OnAnchorWidgetDestroying();
     // |this| may be destroyed here!
@@ -406,7 +411,7 @@ class BubbleDialogDelegate::BubbleWidgetObserver : public WidgetObserver {
   }
 
   void OnWidgetDestroyed(Widget* widget) override {
-    DCHECK(observation_.IsObservingSource(widget));
+    CHECK(observation_.IsObservingSource(widget), base::NotFatalUntil::M163);
     observation_.Reset();
     owner_->OnWidgetDestroyed(widget);
   }
@@ -442,12 +447,12 @@ class BubbleDialogDelegateView::CloseOnDeactivatePin::Pins {
 
   void AddPin(CloseOnDeactivatePin* pin) {
     const auto result = pins_.insert(pin);
-    DCHECK(result.second);
+    CHECK(result.second, base::NotFatalUntil::M163);
   }
 
   void RemovePin(CloseOnDeactivatePin* pin) {
     const auto result = pins_.erase(pin);
-    DCHECK(result);
+    CHECK(result, base::NotFatalUntil::M163);
   }
 
  protected:
@@ -548,8 +553,8 @@ Widget* BubbleDialogDelegate::CreateBubbleInternal(
   // of the window. To avoid unpleasant surprises, disallow setting an anchor
   // view or rectangle on these types of bubbles.
   if (delegate->GetModalType() == ui::mojom::ModalType::kWindow) {
-    DCHECK(!delegate->GetAnchorView());
-    DCHECK_EQ(delegate->GetAnchorRect(), gfx::Rect());
+    CHECK(!delegate->GetAnchorView(), base::NotFatalUntil::M163);
+    CHECK_EQ(delegate->GetAnchorRect(), gfx::Rect(), base::NotFatalUntil::M163);
   }
 
   delegate->Init();
@@ -756,7 +761,7 @@ void BubbleDialogDelegate::SetMainImage(ui::ImageModel main_image) {
   // changing it is). Adding an image while it's showing would require a jarring
   // re-layout.
   if (main_image_.IsEmpty()) {
-    DCHECK(!GetBubbleFrameView());
+    CHECK(!GetBubbleFrameView(), base::NotFatalUntil::M163);
   }
   main_image_ = std::move(main_image);
   if (GetBubbleFrameView()) {
@@ -895,18 +900,20 @@ gfx::Size BubbleDialogDelegate::GetMaxAvailableScreenSpaceToPlaceBubble(
     bool adjust_if_offscreen,
     BubbleFrameView::PreferredArrowAdjustment arrow_adjustment) {
   // TODO(sanchit.abrol@microsoft.com): Implement for other arrows.
-  DCHECK(arrow == BubbleBorder::TOP_LEFT || arrow == BubbleBorder::TOP_RIGHT ||
-         arrow == BubbleBorder::BOTTOM_RIGHT ||
-         arrow == BubbleBorder::BOTTOM_LEFT);
-  DCHECK_EQ(arrow_adjustment,
-            BubbleFrameView::PreferredArrowAdjustment::kMirror);
+  CHECK(arrow == BubbleBorder::TOP_LEFT || arrow == BubbleBorder::TOP_RIGHT ||
+            arrow == BubbleBorder::BOTTOM_RIGHT ||
+            arrow == BubbleBorder::BOTTOM_LEFT,
+        base::NotFatalUntil::M163);
+  CHECK_EQ(arrow_adjustment, BubbleFrameView::PreferredArrowAdjustment::kMirror,
+           base::NotFatalUntil::M163);
 
 #if BUILDFLAG(IS_OZONE)
   // This function should not be called in ozone platforms where global screen
   // coordinates are not available.
-  DCHECK(ui::OzonePlatform::GetInstance()
-             ->GetPlatformProperties()
-             .supports_global_screen_coordinates);
+  CHECK(ui::OzonePlatform::GetInstance()
+            ->GetPlatformProperties()
+            .supports_global_screen_coordinates,
+        base::NotFatalUntil::M163);
 #endif
 
   gfx::Rect anchor_rect;
@@ -1053,17 +1060,6 @@ gfx::Rect BubbleDialogDelegate::GetBubbleBounds() {
 
   bool adjust_to_fix_available_bounds =
       adjust_if_offscreen_ && !anchor_minimized && has_anchor;
-
-  // Some platforms, such as ozone/wayland, do not support global screen
-  // coordinates manipulation by client applications, which makes bubble
-  // offscreen adjustments buggy, so bypass it if that's the case.
-#if BUILDFLAG(IS_OZONE)
-  if (!ui::OzonePlatform::GetInstance()
-           ->GetPlatformProperties()
-           .supports_global_screen_coordinates) {
-    adjust_to_fix_available_bounds = false;
-  }
-#endif
 
   return GetBubbleFrameView()->GetUpdatedWindowBounds(
       anchor_rect, arrow(), GetWidget()->client_view()->GetPreferredSize({}),
@@ -1263,7 +1259,7 @@ bool BubbleDialogDelegate::IsSameAnchor(BubbleAnchor anchor) const {
   } else if (views::View* rhs_view = anchor.GetIfView()) {
     return rhs_view == lhs.GetIfView();
   } else {
-    DCHECK(anchor.IsNull());
+    CHECK(anchor.IsNull(), base::NotFatalUntil::M163);
     return lhs.IsNull();
   }
 }
@@ -1313,7 +1309,7 @@ void BubbleDialogDelegate::SetSubtitleAllowCharacterBreak(bool allow) {
 
 void BubbleDialogDelegate::UpdateFrameColor() {
   View* const contents_view = GetContentsView();
-  DCHECK(contents_view);
+  CHECK(contents_view, base::NotFatalUntil::M163);
 
   BubbleFrameView* frame_view = GetBubbleFrameView();
   if (frame_view) {
@@ -1372,6 +1368,7 @@ void BubbleDialogDelegate::OnBubbleWidgetVisibilityChanged(bool visible) {
   if (anchor_view_observer_) {
     anchor_view_observer_->UpdateBubbleVisibility(visible);
   }
+  UpdateAnchoredDialogRegistration();
 
   UpdateHighlightedButton(visible);
 
@@ -1419,6 +1416,7 @@ void BubbleDialogDelegate::SetAnchoredDialogKey() {
     std::erase(delegates, this);
     delegates.push_back(this);
   }
+  UpdateAnchoredDialogRegistration();
 }
 
 void BubbleDialogDelegate::ClearAnchoredDialogKey() {
@@ -1427,6 +1425,58 @@ void BubbleDialogDelegate::ClearAnchoredDialogKey() {
     anchor_view->ClearProperty(kAnchoredDialogKey);
   }
   std::erase(GetAnchoredTrackedElementDelegates(), this);
+  anchored_dialog_registration_.reset();
+}
+
+void BubbleDialogDelegate::UpdateAnchoredDialogRegistration() {
+  // Bubbles anchored to Views use kAnchoredDialogKey instead.
+  //
+  // If showing the widget is asynchronous, IsVisible() becomes true when
+  // OnBubbleWidgetVisibilityChanged() is called, which calls this again.
+  const Widget* const widget = GetWidget();
+  const bool should_register = widget && widget->IsVisible() &&
+                               !widget->IsClosed() &&
+                               focus_traversable_from_anchor_view_ &&
+                               !GetAnchorView() && anchor_tracked_element_;
+  if (!should_register) {
+    anchored_dialog_registration_.reset();
+    return;
+  }
+  if (!anchored_dialog_registration_) {
+    anchored_dialog_registration_ =
+        ui::AnchoredDialogRegistry::GetInstance()->Register(
+            anchor_tracked_element_.get(), *this);
+  }
+}
+
+bool BubbleDialogDelegate::FocusFromAnchor(bool reverse) {
+  Widget* const widget = GetWidget();
+  if (!widget || widget->IsClosed() || !widget->IsVisible() ||
+      !widget->CanActivate()) {
+    return false;
+  }
+  FocusManager* const focus_manager = widget->GetFocusManager();
+  if (!focus_manager) {
+    return false;
+  }
+
+  // Mirror what FocusManager::AdvanceFocus() does when FocusSearch enters a
+  // dialog anchored to a View.
+  View* const view = focus_manager->GetNextFocusableView(
+      /*starting_view=*/nullptr, widget, reverse, /*dont_loop=*/true);
+  if (!view) {
+    return false;
+  }
+  ViewTracker view_tracker(view);
+  // E.g. lets a WebView in the bubble focus its first or last element.
+  view->AboutToRequestFocusFromTabTraversal(reverse);
+  if (!view_tracker.view() || widget->IsClosed()) {
+    return false;
+  }
+  focus_manager->SetFocusedViewWithReason(
+      view_tracker.view(), FocusManager::FocusChangeReason::kFocusTraversal);
+  widget->Activate();
+  return true;
 }
 
 void BubbleDialogDelegate::UpdateHighlightedButton(bool highlighted) {

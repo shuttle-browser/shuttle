@@ -5,13 +5,13 @@
 #include "chrome/browser/ash/settings/owner_pending_setting_controller.h"
 
 #include <string>
+#include <utility>
 
 #include "base/functional/bind.h"
 #include "base/logging.h"
 #include "chrome/browser/ash/ownership/owner_settings_service_ash.h"
 #include "chrome/browser/ash/ownership/owner_settings_service_ash_factory.h"
 #include "chrome/browser/ash/settings/device_settings_service.h"
-#include "chrome/browser/profiles/profile.h"
 #include "chromeos/ash/components/settings/cros_settings.h"
 #include "components/ownership/owner_settings_service.h"
 #include "components/prefs/pref_registry_simple.h"
@@ -48,7 +48,7 @@ void OwnerPendingSettingController::Set(Profile* profile, base::Value value) {
     // See OnOwnershipTaken.
     VLOG(1) << "Pending owner; setting pending pref name: "
             << pending_pref_name_;
-    local_state_->Set(pending_pref_name_, value);
+    local_state_->Set(pending_pref_name_, std::move(value));
     NotifyObservers();
   }
 }

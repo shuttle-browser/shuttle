@@ -19,6 +19,10 @@
 
 class Profile;
 
+namespace actor {
+class EnterprisePolicyChecker;
+}
+
 namespace content {
 class BrowserContext;
 }
@@ -28,6 +32,8 @@ namespace ttc {
 class Conversation;
 class SessionController;
 class SessionControllerImpl;
+class SessionView;
+class SessionViewDelegate;
 class TtcActorUiStateManager;
 
 // SupportsUserData lets platform-specific bridges (e.g. the Android JNI
@@ -79,21 +85,42 @@ class TtcKeyedService : public KeyedService, public base::SupportsUserData {
       SessionController& session_controller,
       std::unique_ptr<AudioController> audio_controller = nullptr);
 
-  SessionController* session_controller() { return session_controller_.get(); }
+  // Creates the SessionView for a session. Never returns null.
+  std::unique_ptr<SessionView> MakeSessionView(
+      base::PassKey<SessionControllerImpl>,
+      SessionViewDelegate& delegate);
+
+  // The active session's controller, or null if there's none.
+  SessionController* session_controller();
+
+  // Mutes or unmutes the active session's microphone (see
+  // SessionControllerImpl::SetMicMuted()). Returns whether the state changed:
+  // false if there's no live session, or the microphone already was in that
+  // state.
+  bool SetMicMuted(bool muted);
+  // Whether the active session's microphone is muted. False if there's no live
+  // session.
+  bool IsMicMuted() const;
 
   // The ActorUiStateManagerInterface implementation used by actor tasks created
   // for TTC sessions.
   TtcActorUiStateManager& actor_ui_state_manager();
+
+  // The EnterprisePolicyChecker used for policy gating in TTC sessions.
+  const actor::EnterprisePolicyChecker* enterprise_policy_checker() const;
+  void SetEnterprisePolicyCheckerForTesting(
+      std::unique_ptr<actor::EnterprisePolicyChecker> checker);
 
   base::WeakPtr<TtcKeyedService> GetWeakPtr();
 
  private:
   raw_ptr<Profile> profile_;
   ConversationFactory conversation_factory_;
+  std::unique_ptr<actor::EnterprisePolicyChecker> enterprise_policy_checker_;
   // Must outlive `session_controller_`, which indirectly holds a reference to
   // it, as do the actor tasks created during a session.
   std::unique_ptr<TtcActorUiStateManager> actor_ui_state_manager_;
-  std::unique_ptr<SessionController> session_controller_;
+  std::unique_ptr<SessionControllerImpl> session_controller_;
 
   base::RepeatingCallbackList<void(ServiceState)> state_changed_callbacks_;
 

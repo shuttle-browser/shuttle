@@ -28,9 +28,16 @@ ReadingListModelFactory::GetAsDualReadingListModelForProfile(
     return nullptr;
   }
 
+  return GetAsDualReadingListModelForProfile(*profile);
+}
+
+// static
+reading_list::DualReadingListModel*
+ReadingListModelFactory::GetAsDualReadingListModelForProfile(
+    ProfileIOS& profile) {
   return GetInstance()
       ->GetServiceForProfileAs<reading_list::DualReadingListModel>(
-          *profile, /*create=*/true);
+          profile, /*create=*/true);
 }
 
 ReadingListModelFactory::ReadingListModelFactory(PassKey key)
@@ -42,7 +49,7 @@ ReadingListModelFactory::ReadingListModelFactory(PassKey key)
 }
 
 std::unique_ptr<KeyedService> ReadingListModelFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   syncer::OnceDataTypeStoreFactory store_factory =
       DataTypeStoreServiceFactory::GetForProfile(profile)->GetStoreFactory();
   auto local_storage =

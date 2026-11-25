@@ -6,6 +6,7 @@ package org.chromium.chrome.browser.contextual_tasks;
 
 import org.jni_zero.NativeMethods;
 
+import org.chromium.base.DeviceInfo;
 import org.chromium.base.FeatureList;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
@@ -33,19 +34,33 @@ public final class ContextualTasksUtils {
 
     /**
      * Returns whether the Contextual Tasks UI is enabled. If called before native init, it will
-     * look at the values of cached flags from earlier session.
+     * look at the values of cached flags from earlier session. Always false on non-desktop form
+     * factors (phones and tablets).
      *
      * @return True if Contextual Tasks UI is enabled.
      */
     public static boolean isContextualTasksUiEnabled() {
         if (!FeatureList.isNativeInitialized()) {
-            return ChromeFeatureList.sContextualTasksSidePanel.isEnabled();
+            return DeviceInfo.isDesktop()
+                    && ChromeFeatureList.sContextualTasksSidePanel.isEnabled();
         }
         return ContextualTasksUtilsJni.get().isContextualTasksUiEnabled();
+    }
+
+    /**
+     * Returns whether signed-out users (including incognito) are allowed to use Contextual Tasks in
+     * the side panel on Desktop Android. Must be called after native initialization.
+     *
+     * @return True if kAllowSignedOutUserInDesktopAndroid is enabled on a desktop form factor.
+     */
+    public static boolean isAllowSignedOutUserInDesktopAndroidEnabled() {
+        return ContextualTasksUtilsJni.get().isAllowSignedOutUserInDesktopAndroidEnabled();
     }
 
     @NativeMethods
     public interface Natives {
         boolean isContextualTasksUiEnabled();
+
+        boolean isAllowSignedOutUserInDesktopAndroidEnabled();
     }
 }

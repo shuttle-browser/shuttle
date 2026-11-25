@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <memory>
+#include <optional>
 
 #include "base/feature_list.h"
 #include "base/strings/string_util.h"
@@ -20,7 +21,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/omnibox/omnibox_tab_helper.h"
 #include "chrome/browser/ui/views/chrome_typography.h"
-#include "chrome/browser/ui/views/location_bar/location_bar_util.h"
 #include "chrome/browser/ui/views/location_bar/webui_location_bar.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_placeholder_util.h"
 #include "chrome/browser/ui/views/omnibox/omnibox_popup_closer.h"
@@ -29,6 +29,7 @@
 #include "chrome/browser/ui/views/page_action/webui_page_action_control.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
 #include "chrome/browser/ui/webui/webui_toolbar/browser_controls_service.h"
+#include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_drag_state.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "components/omnibox/browser/omnibox_pref_names.h"
@@ -40,7 +41,7 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "net/cert/cert_status_flags.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/dom/dom_key.h"
 #include "ui/events/keycodes/dom/keycode_converter.h"
@@ -49,6 +50,7 @@
 #include "ui/views/focus/focus_manager.h"
 #include "ui/views/view.h"
 #include "ui/views/widget/widget.h"
+#include "url/gurl.h"
 
 WebUIReadOnlyOmnibox::UpdatePropagator::~UpdatePropagator() = default;
 
@@ -149,6 +151,9 @@ WebUIReadOnlyOmnibox::OnOmniboxAction(
     case toolbar_ui_api::mojom::OmniboxAction::Tag::kDropText:
       return OnDropText(*action->get_drop_text());
 
+    case toolbar_ui_api::mojom::OmniboxAction::Tag::kDropUrl:
+      return OnDropUrl();
+
     case toolbar_ui_api::mojom::OmniboxAction::Tag::kDropFile:
       return OnDropFile(*action->get_drop_file());
 
@@ -238,7 +243,7 @@ void WebUIReadOnlyOmnibox::SetCaretPos(size_t caret_pos) {
 
 void WebUIReadOnlyOmnibox::SetAdditionalText(
     const std::u16string& additional_text) {
-  additional_text_ = FormatOmniboxAdditionalText(additional_text);
+  additional_text_ = omnibox::FormatAdditionalText(additional_text);
   RequestUpdateWebUI();
 }
 
@@ -385,6 +390,7 @@ void WebUIReadOnlyOmnibox::OnRevertTemporaryText(
 
 void WebUIReadOnlyOmnibox::OnBeforePossibleChange() {
   state_before_change_ = GetStateWithoutInlineSuggestion();
+  had_inline_autocompletion_before_change_ = !inline_autocompletion_.empty();
 
   // User is editing or traversing the text, as opposed to moving
   // through suggestions. Clear the accessibility label
@@ -397,6 +403,13 @@ bool WebUIReadOnlyOmnibox::OnAfterPossibleChange(bool allow_keyword_ui_change) {
   State new_state = GetStateWithoutInlineSuggestion();
   OmniboxView::StateChanges state_changes =
       GetStateChanges(state_before_change_, new_state);
+  // Properly set diff bits when deleting inline completion.
+  if (!state_changes.text_differs &&
+      had_inline_autocompletion_before_change_ &&
+      inline_autocompletion_.empty()) {
+    state_changes.selection_differs = true;
+    state_changes.just_deleted_text = true;
+  }
 
   bool something_changed = controller()->edit_model()->OnAfterPossibleChange(
       state_changes, allow_keyword_ui_change);
@@ -901,7 +914,7 @@ WebUIReadOnlyOmnibox::OnKey(
         }
       }
 
-      WindowOpenDisposition disposition =
+      ui::mojom::WindowOpenDisposition disposition =
           searchbox::ComputeOpenDispositionFromModifiersAndLogToUma(
               shift, control, alt, command);
       if (!control) {
@@ -942,7 +955,9 @@ WebUIReadOnlyOmnibox::OnKey(
 
     case ui::DomKey::ARROW_DOWN:
       CHECK(!control, base::NotFatalUntil::M162);
-      CHECK(!alt, base::NotFatalUntil::M162);
+      // TODO(crbug.com/580242268): CHECK-exclusion: Convert to a CHECK once we
+      // are confident it won't be triggered.
+      DCHECK(!alt);
       CHECK(!shift, base::NotFatalUntil::M162);
       CHECK(!command, base::NotFatalUntil::M162);
       controller()->edit_model()->OnUpOrDownPressed(/*down=*/true,
@@ -985,7 +1000,8 @@ WebUIReadOnlyOmnibox::OnKey(
         if (selection.IsButtonFocused()) {
           controller()->edit_model()->OpenSelection(
               selection, base::TimeTicks::Now(),
-              WindowOpenDisposition::kCurrentTab, /*via_keyboard=*/true);
+              ui::mojom::WindowOpenDisposition::kCurrentTab,
+              /*via_keyboard=*/true);
         }
       }
       break;
@@ -1051,7 +1067,29 @@ WebUIReadOnlyOmnibox::OnDropText(
   base::TrimWhitespace(text, base::TRIM_ALL, &text);
 
   SetUserText(text, /*update_popup=*/false);
+  FocusForDrop();
   SelectAll(false);
+  return base::ok(std::monostate());
+}
+
+base::expected<std::monostate, mojo_base::mojom::ErrorPtr>
+WebUIReadOnlyOmnibox::OnDropUrl() {
+  // Use the drag's URL as captured by the browser before
+  // `RenderWidgetHost::FilterDropData`, which is the one
+  // OmniboxViewViews::PerformDrop() sees.
+  std::optional<GURL> url = webui_toolbar::WebUIToolbarDragState::TakeDragUrl(
+      toolbar_delegate_ ? toolbar_delegate_->GetWebContents() : nullptr);
+  if (!url) {
+    return base::ok(std::monostate());
+  }
+
+  const std::u16string text =
+      omnibox::StripJavascriptSchemas(base::UTF8ToUTF16(url->spec()));
+  if (!text.empty()) {
+    SetUserText(text, /*update_popup=*/false);
+    FocusForDrop();
+    SelectAll(false);
+  }
   return base::ok(std::monostate());
 }
 
@@ -1063,10 +1101,20 @@ WebUIReadOnlyOmnibox::OnDropFile(
     std::u16string text = base::UTF8ToUTF16(url->spec());
     if (!text.empty()) {
       SetUserText(text, /*update_popup=*/false);
+      FocusForDrop();
       SelectAll(false);
     }
   }
   return base::ok(std::monostate());
+}
+
+void WebUIReadOnlyOmnibox::FocusForDrop() {
+  // Like OmniboxViewViews::PerformDrop(), focus the omnibox when something is
+  // dropped into it. The focus is not user initiated, so that it neither
+  // unelides the text nor opens the popup.
+  if (!has_focus_) {
+    SetFocus(/*is_user_initiated=*/false);
+  }
 }
 
 base::expected<std::monostate, mojo_base::mojom::ErrorPtr>

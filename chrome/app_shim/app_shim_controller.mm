@@ -58,13 +58,13 @@
 #include "components/variations/variations_switches.h"
 #include "content/public/browser/remote_cocoa.h"
 #include "crypto/hash.h"
+#include "mojo/public/cpp/bindings/callback_helpers.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "mojo/public/cpp/platform/named_platform_channel.h"
 #include "mojo/public/cpp/platform/platform_channel.h"
 #include "ui/accelerated_widget_mac/window_resize_helper_mac.h"
 #import "ui/base/cocoa/macos27_sdk.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 #include "ui/gfx/image/image.h"
 
@@ -307,10 +307,10 @@ void AppShimController::PreInitFeatureState(
       {"AppShimLaunchChromeSilently", "AppShimNotificationAttribution",
        "CacheGurlSchemeIsHttpOrHttpsResult", "DcheckIsFatal",
        "DisallowSpaceCharacterInURLHostParsing", "LRUCacheMemoryConsumer",
-       "NonSpecialLeadingSlashHandling", "PreservePercentEncodedDotInPath",
-       "UseIDNAContextJRules", "MojoBindingsInlineSLS", "MojoIpczMemV2",
-       "MojoFixGeometricBufferGrowth", "MojoFixGeometricBufferGrowth2",
-       "UseAdHocSigningForWebAppShims", "UseNSURLDataForGURLConversion",
+       "MemoryConsumerModeOverrides", "NonSpecialLeadingSlashHandling",
+       "PreservePercentEncodedDotInPath", "UseIDNAContextJRules",
+       "MojoBindingsInlineSLS", "MojoIpczMemV2", "MojoFixGeometricBufferGrowth",
+       "MojoFixGeometricBufferGrowth2", "UseNSURLDataForGURLConversion",
        "SonomaAccessibilityActivationRefinements", "FeatureParamWithCache",
        "UseMachVouchers"});
 }
@@ -773,6 +773,21 @@ void AppShimController::OnShimConnectedResponse(
     [NSApp terminate:nil];
     return;
   }
+  // While the constructor should have created the `notification_service_`
+  // instance already, it is possible that the base::FeatureList state at the
+  // time did not match the current Chrome state, so make sure to create the
+  // service now if it wasn't created already.
+  if (!notification_service_ && ShouldCreateNotificationServiceUN()) {
+    CHECK(notification_action_handler_remote_);
+    notification_service_ =
+        std::make_unique<mac_notifications::MacNotificationServiceUN>(
+            std::move(notification_action_handler_remote_),
+            base::BindRepeating(
+                &AppShimController::NotificationPermissionStatusChanged,
+                base::Unretained(this)),
+            UNUserNotificationCenter.currentNotificationCenter);
+  }
+
   shim_receiver_.Bind(std::move(app_shim_receiver),
                       ui::WindowResizeHelperMac::Get()->task_runner());
   shim_receiver_.set_disconnect_with_reason_handler(
@@ -818,8 +833,43 @@ void AppShimController::CreateCommandDispatcherForWidget(uint64_t widget_id) {
   }
 }
 
-void AppShimController::SetBadgeLabel(const std::string& badge_label) {
+void AppShimController::SetBadgeLabel(const std::string& badge_label,
+                                      SetBadgeLabelCallback callback) {
   NSApp.dockTile.badgeLabel = base::SysUTF8ToNSString(badge_label);
+  if (!notification_service_un()) {
+    std::move(callback).Run(
+        chrome::mojom::AppShimBadgeResult::kNoPermissionService);
+    return;
+  }
+  notification_service_un()->SynchronizePermissionStatus(
+      base::BindOnce([](mac_notifications::mojom::PermissionStatus status,
+                        bool badge_enabled) {
+        BadgeUpdateOSStatus os_status;
+        switch (status) {
+          case mac_notifications::mojom::PermissionStatus::kNotDetermined:
+            os_status = BadgeUpdateOSStatus::kNotDetermined;
+            break;
+          case mac_notifications::mojom::PermissionStatus::kPromptPending:
+            os_status = BadgeUpdateOSStatus::kPromptPending;
+            break;
+          case mac_notifications::mojom::PermissionStatus::kDenied:
+            os_status = BadgeUpdateOSStatus::kDenied;
+            break;
+          case mac_notifications::mojom::PermissionStatus::kGranted:
+            os_status = badge_enabled
+                            ? BadgeUpdateOSStatus::kGranted
+                            : BadgeUpdateOSStatus::kGrantedBadgeDisabled;
+            break;
+        }
+        base::UmaHistogramEnumeration(
+            "Notifications.Permissions.AppShim.BadgeUpdateOSStatus", os_status);
+        return os_status == BadgeUpdateOSStatus::kGranted
+                   ? chrome::mojom::AppShimBadgeResult::kSuccess
+                   : chrome::mojom::AppShimBadgeResult::kBlockedByOSPermission;
+      })
+          .Then(mojo::WrapCallbackWithDefaultInvokeIfNotRun(
+              std::move(callback),
+              chrome::mojom::AppShimBadgeResult::kNoPermissionService)));
 }
 
 void AppShimController::UpdateProfileMenu(
@@ -883,6 +933,12 @@ void AppShimController::RequestNotificationPermission(
   notification_service_un()->RequestPermission(std::move(callback));
 }
 
+void AppShimController::SynchronizeNotificationPermissionStatus() {
+  if (auto* service = notification_service_un()) {
+    service->SynchronizePermissionStatus();
+  }
+}
+
 void AppShimController::BindNotificationService(
     mojo::PendingReceiver<mac_notifications::mojom::MacNotificationService>
         service,
@@ -895,20 +951,6 @@ void AppShimController::BindNotificationService(
   // UNUserNotification API (and not support notification attribution on other
   // platforms at all).
   if (WebAppIsAdHocSigned()) {
-    // While the constructor should have created the `notification_service_`
-    // instance already, it is possible that the base::FeatureList state at the
-    // time did not match the current Chrome state, so make sure to create the
-    // service now if it wasn't created already.
-    if (!notification_service_ && ShouldCreateNotificationServiceUN()) {
-      CHECK(notification_action_handler_remote_);
-      notification_service_ =
-          std::make_unique<mac_notifications::MacNotificationServiceUN>(
-              std::move(notification_action_handler_remote_),
-              base::BindRepeating(
-                  &AppShimController::NotificationPermissionStatusChanged,
-                  base::Unretained(this)),
-              UNUserNotificationCenter.currentNotificationCenter);
-    }
     if (notification_service_un()) {
       // Note that `handler` as passed in to this method is ignored.
       // Notification actions instead will be dispatched to the app-shim scoped

@@ -8,12 +8,17 @@
 
 #include "base/check.h"
 #include "base/check_op.h"
+#include "base/logging.h"
+#include "base/numerics/safe_conversions.h"
 #include "build/build_config.h"
 #include "components/memory_pressure/memory_pressure_voter.h"
 
 #if BUILDFLAG(IS_WIN)
-#include "base/metrics/histogram_functions.h"
-#include "base/numerics/safe_conversions.h"
+#include "base/metrics/histogram_macros.h"
+#endif
+
+#if BUILDFLAG(IS_MAC)
+#include "base/system/sys_info.h"
 #endif
 
 namespace memory_pressure {
@@ -62,6 +67,57 @@ constexpr base::ByteSize kEarlyExitCommitThreshold = base::GiB(2);
 }  // namespace
 #endif  // BUILDFLAG(IS_WIN)
 
+#if BUILDFLAG(IS_MAC)
+namespace features {
+BASE_FEATURE(kMacAvailableMemoryPressureEvaluator,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+}  // namespace features
+
+namespace {
+
+// Default physical memory thresholds for macOS.
+//
+// Unlike Windows (~300 MiB available RAM paging limit), Chromium's available
+// physical memory equation on macOS incorporates file-backed caches:
+// ((free_count - speculative_count) * PAGE_SIZE) + file_backed_cache.
+//
+// On Apple platforms, the operating system retains a substantial, irreducible
+// baseline of disk-mapped executable code and system frameworks within
+// file-backed RAM even during high memory pressure and memory compression
+// exhaustion. As a result, system lockups and OS out-of-memory conditions occur
+// at significantly higher computed memory floors than on Windows.
+//
+// Defaulting to 1200 MiB Moderate / 800 MiB Critical sits safely above this
+// file-backed baseline without triggering premature discarding on consumer
+// Macs.
+constexpr base::ByteSize kDefaultMacModerateThreshold = base::MiB(1200);
+constexpr base::ByteSize kDefaultMacCriticalThreshold = base::MiB(800);
+
+BASE_FEATURE_PARAM(int,
+                   kMacModerateThresholdMB,
+                   &features::kMacAvailableMemoryPressureEvaluator,
+                   kDefaultMacModerateThreshold.InMiB());
+BASE_FEATURE_PARAM(int,
+                   kMacCriticalThresholdMB,
+                   &features::kMacAvailableMemoryPressureEvaluator,
+                   kDefaultMacCriticalThreshold.InMiB());
+
+// Thresholds as a percentage of total physical RAM. When set (non-zero), they
+// take precedence over the MB params. The available-memory plateau, where the
+// kernel pins the file cache at its protected minimum, sits at ~9-12% of RAM
+// regardless of RAM size, so a percentage means the same thing on every Mac.
+BASE_FEATURE_PARAM(int,
+                   kMacModerateThresholdPercent,
+                   &features::kMacAvailableMemoryPressureEvaluator,
+                   0);
+BASE_FEATURE_PARAM(int,
+                   kMacCriticalThresholdPercent,
+                   &features::kMacAvailableMemoryPressureEvaluator,
+                   0);
+
+}  // namespace
+#endif  // BUILDFLAG(IS_MAC)
+
 ThresholdMemoryPressureEvaluator::ThresholdMemoryPressureEvaluator(
     base::ByteSize moderate_threshold,
     base::ByteSize critical_threshold,
@@ -69,8 +125,8 @@ ThresholdMemoryPressureEvaluator::ThresholdMemoryPressureEvaluator(
     : AvailableMemoryMonitorEvaluator(std::move(voter)),
       moderate_threshold_(moderate_threshold),
       critical_threshold_(critical_threshold) {
-  DCHECK_GE(moderate_threshold_, critical_threshold_);
-  DCHECK(critical_threshold_.is_positive());
+  CHECK_GE(moderate_threshold_, critical_threshold_);
+  CHECK(critical_threshold_.is_positive());
 }
 
 ThresholdMemoryPressureEvaluator::~ThresholdMemoryPressureEvaluator() = default;
@@ -85,6 +141,47 @@ ThresholdMemoryPressureEvaluator::CreateWithWinDefaults(
       std::move(voter));
 }
 #endif  // BUILDFLAG(IS_WIN)
+
+#if BUILDFLAG(IS_MAC)
+// static
+std::unique_ptr<ThresholdMemoryPressureEvaluator>
+ThresholdMemoryPressureEvaluator::CreateWithMacFeatureParams(
+    std::unique_ptr<MemoryPressureVoter> voter) {
+  const int moderate_pct = kMacModerateThresholdPercent.Get();
+  const int critical_pct = kMacCriticalThresholdPercent.Get();
+  if (moderate_pct != 0 || critical_pct != 0) {
+    if (critical_pct > 0 && critical_pct <= moderate_pct &&
+        moderate_pct <= 100) {
+      const base::ByteSize total = base::SysInfo::AmountOfTotalPhysicalMemory();
+      return std::make_unique<ThresholdMemoryPressureEvaluator>(
+          total * moderate_pct / 100, total * critical_pct / 100,
+          std::move(voter));
+    }
+    DLOG(WARNING) << "Invalid Finch percent thresholds for Mac threshold "
+                     "memory pressure evaluator (Moderate: "
+                  << moderate_pct << "%, Critical: " << critical_pct
+                  << "%). Falling back to MB thresholds.";
+  }
+
+  int moderate_mb = kMacModerateThresholdMB.Get();
+  int critical_mb = kMacCriticalThresholdMB.Get();
+
+  if (critical_mb <= 0 || moderate_mb < critical_mb) {
+    DLOG(WARNING)
+        << "Invalid Finch thresholds for Mac threshold memory pressure "
+           "evaluator (Moderate: "
+        << moderate_mb << " MiB, Critical: " << critical_mb
+        << " MiB). Falling back to default thresholds.";
+    return std::make_unique<ThresholdMemoryPressureEvaluator>(
+        kDefaultMacModerateThreshold, kDefaultMacCriticalThreshold,
+        std::move(voter));
+  }
+
+  return std::make_unique<ThresholdMemoryPressureEvaluator>(
+      base::MiB(static_cast<uint64_t>(moderate_mb)),
+      base::MiB(static_cast<uint64_t>(critical_mb)), std::move(voter));
+}
+#endif  // BUILDFLAG(IS_MAC)
 
 base::MemoryPressureLevel
 ThresholdMemoryPressureEvaluator::CalculateCurrentPressureLevel(
@@ -146,11 +243,12 @@ void ThresholdMemoryPressureEvaluator::RecordCommitHistograms(
   base::ByteSize commit_limit = sample.total_commit_bytes;
   base::ByteSize commit_available = sample.available_commit_bytes;
 
-  base::UmaHistogramCounts10M("Memory.CommitLimitMB",
-                              base::saturated_cast<int>(commit_limit.InMiB()));
-  base::UmaHistogramCounts10M(
-      "Memory.CommitAvailableMB",
-      base::saturated_cast<int>(commit_available.InMiB()));
+  // Cache the histograms to avoid acquiring the global histogram lookup lock on
+  // every memory pressure poll after initialization.
+  UMA_HISTOGRAM_COUNTS_10M("Memory.CommitLimitMB",
+                           base::saturated_cast<int>(commit_limit.InMiB()));
+  UMA_HISTOGRAM_COUNTS_10M("Memory.CommitAvailableMB",
+                           base::saturated_cast<int>(commit_available.InMiB()));
 
   int percentage_used;
   if (commit_limit.is_zero()) {
@@ -165,7 +263,7 @@ void ThresholdMemoryPressureEvaluator::RecordCommitHistograms(
         percentage_remaining > 100 ? 0u : 100 - percentage_remaining);
   }
 
-  base::UmaHistogramPercentage("Memory.CommitPercentageUsed", percentage_used);
+  UMA_HISTOGRAM_PERCENTAGE("Memory.CommitPercentageUsed", percentage_used);
 }
 #endif  // BUILDFLAG(IS_WIN)
 

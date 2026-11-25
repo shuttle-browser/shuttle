@@ -61,6 +61,11 @@
 #include "url/gurl.h"
 #include "url/origin.h"
 
+#if BUILDFLAG(IS_LINUX)
+#include "base/nix/xdg_util.h"
+#include "chrome/browser/web_applications/os_integration/web_app_shortcut_linux.h"
+#endif  // BUILDFLAG(IS_LINUX)
+
 namespace web_app {
 
 namespace {
@@ -267,11 +272,11 @@ class FinalizeInstallOrUpdateJobTest : public WebAppTest {
   }
 
   void AddFileHandler(
-      std::vector<blink::mojom::ManifestFileHandlerPtr>* file_handlers) {
-    auto file_handler = blink::mojom::ManifestFileHandler::New();
-    file_handler->action = GURL("https://example.com/action");
-    file_handler->name = u"Test handler";
-    file_handler->accept[u"application/pdf"].emplace_back(u".pdf");
+      std::vector<blink::Manifest::FileHandler>* file_handlers) {
+    blink::Manifest::FileHandler file_handler;
+    file_handler.action = GURL("https://example.com/action");
+    file_handler.name = u"Test handler";
+    file_handler.accept[u"application/pdf"].emplace_back(u".pdf");
     file_handlers->push_back(std::move(file_handler));
   }
 
@@ -853,10 +858,10 @@ TEST_F(FinalizeInstallOrUpdateJobTest,
 TEST_F(FinalizeInstallOrUpdateJobTest, OnWebAppManifestUpdatedTriggered) {
   auto info = CreateAppInfo(kDefaultAppUrl, kDefaultAppTitle);
 
-  webapps::AppId app_id = test::InstallWebApp(
-      profile(), std::make_unique<WebAppInstallInfo>(info->Clone()),
-      /*overwrite_existing_manifest_fields=*/true,
-      webapps::WebappInstallSource::EXTERNAL_POLICY);
+  test::InstallWebApp(profile(),
+                      std::make_unique<WebAppInstallInfo>(info->Clone()),
+                      /*overwrite_existing_manifest_fields=*/true,
+                      webapps::WebappInstallSource::EXTERNAL_POLICY);
 
   FinalizeInstallResult result = AwaitFinalizeInstallOrUpdate(
       *info, FinalizeJobOptions::ForSilentUpdate());
@@ -898,7 +903,7 @@ TEST_F(FinalizeInstallOrUpdateJobTest, InstallOsHooksDisabledForDefaultApps) {
                                   info->start_url()));
 
   // Update the app, adding a file handler.
-  std::vector<blink::mojom::ManifestFileHandlerPtr> file_handlers;
+  std::vector<blink::Manifest::FileHandler> file_handlers;
   AddFileHandler(&file_handlers);
   PopulateFileHandlerInfoFromManifest(file_handlers, info->start_url(),
                                       info.get());
@@ -917,10 +922,10 @@ TEST_F(FinalizeInstallOrUpdateJobTest, MigrationSourceChangeSchedulesSync) {
           {webapps::ManifestId(GURL("https://migration.foo.example/"))});
 
   // 1. Install without migration sources.
-  webapps::AppId app_id = test::InstallWebApp(
-      profile(), std::make_unique<WebAppInstallInfo>(info->Clone()),
-      /*overwrite_existing_manifest_fields=*/true,
-      webapps::WebappInstallSource::INTERNAL_DEFAULT);
+  test::InstallWebApp(profile(),
+                      std::make_unique<WebAppInstallInfo>(info->Clone()),
+                      /*overwrite_existing_manifest_fields=*/true,
+                      webapps::WebappInstallSource::INTERNAL_DEFAULT);
 
   // 2. Expect ScheduleResolveWebAppPendingMigrationInfo to be called.
   EXPECT_CALL(*mock_scheduler_, ScheduleResolveWebAppPendingMigrationInfo(_, _))
@@ -1050,5 +1055,69 @@ TEST_P(FinalizeInstallOrUpdateJobShortcutReasonTest,
 
 INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(
     FinalizeInstallOrUpdateJobShortcutReasonTest);
+
+#if BUILDFLAG(IS_LINUX)
+class FinalizeInstallOrUpdateJobPortalPreflightTest
+    : public base::test::WithFeatureOverride,
+      public testing::Test {
+ public:
+  FinalizeInstallOrUpdateJobPortalPreflightTest()
+      : base::test::WithFeatureOverride(kWebAppsUseDynamicLauncherPortal) {}
+
+ private:
+  base::nix::ScopedAppSandboxOverrideForTesting app_sandbox_override_{
+      base::nix::AppSandbox::kFlatpak};
+};
+
+TEST_P(FinalizeInstallOrUpdateJobPortalPreflightTest, UserInstall) {
+  FinalizeJobOptions options(
+      webapps::WebappInstallSource::MENU_CREATE_SHORTCUT);
+  EXPECT_EQ(FinalizeInstallOrUpdateJob::ShouldRunPortalPreflight(options),
+            IsParamFeatureEnabled());
+}
+
+TEST_P(FinalizeInstallOrUpdateJobPortalPreflightTest, HostInstallSkipped) {
+  // Without an app sandbox, launchers are always written directly, regardless
+  // of the feature state.
+  base::nix::ScopedAppSandboxOverrideForTesting no_sandbox(
+      base::nix::AppSandbox::kNone);
+  FinalizeJobOptions options(
+      webapps::WebappInstallSource::MENU_CREATE_SHORTCUT);
+  EXPECT_FALSE(FinalizeInstallOrUpdateJob::ShouldRunPortalPreflight(options));
+}
+
+TEST_P(FinalizeInstallOrUpdateJobPortalPreflightTest, SnapInstallSkipped) {
+  // The DynamicLauncher portal doesn't support snaps, so snap installs keep
+  // using the legacy path regardless of the feature state.
+  base::nix::ScopedAppSandboxOverrideForTesting snap(
+      base::nix::AppSandbox::kSnap);
+  FinalizeJobOptions options(
+      webapps::WebappInstallSource::MENU_CREATE_SHORTCUT);
+  EXPECT_FALSE(FinalizeInstallOrUpdateJob::ShouldRunPortalPreflight(options));
+}
+
+TEST_P(FinalizeInstallOrUpdateJobPortalPreflightTest, SilentUpdateSkipped) {
+  // Silent updates can't show the portal dialog. They must not run the
+  // preflight, regardless of the feature state.
+  EXPECT_FALSE(FinalizeInstallOrUpdateJob::ShouldRunPortalPreflight(
+      FinalizeJobOptions::ForSilentUpdate()));
+}
+
+TEST_P(FinalizeInstallOrUpdateJobPortalPreflightTest, NonUserInstallSkipped) {
+  EXPECT_FALSE(FinalizeInstallOrUpdateJob::ShouldRunPortalPreflight(
+      FinalizeJobOptions(webapps::WebappInstallSource::EXTERNAL_POLICY)));
+}
+
+TEST_P(FinalizeInstallOrUpdateJobPortalPreflightTest,
+       InstallWithoutOsIntegrationSkipped) {
+  FinalizeJobOptions options(
+      webapps::WebappInstallSource::MENU_CREATE_SHORTCUT);
+  options.install_state = proto::InstallState::INSTALLED_WITHOUT_OS_INTEGRATION;
+  EXPECT_FALSE(FinalizeInstallOrUpdateJob::ShouldRunPortalPreflight(options));
+}
+
+INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(
+    FinalizeInstallOrUpdateJobPortalPreflightTest);
+#endif  // BUILDFLAG(IS_LINUX)
 
 }  // namespace web_app

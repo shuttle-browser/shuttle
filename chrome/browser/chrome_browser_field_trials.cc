@@ -10,6 +10,7 @@
 #include "base/command_line.h"
 #include "base/feature_list.h"
 #include "base/features.h"
+#include "base/functional/callback_helpers.h"
 #include "base/metrics/field_trial.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/path_service.h"
@@ -25,6 +26,7 @@
 #include "components/metrics/metrics_features.h"
 #include "components/metrics/metrics_pref_names.h"
 #include "components/metrics/persistent_histograms.h"
+#include "components/password_manager/core/browser/features/password_features.h"
 #include "components/site_isolation/features.h"
 #include "components/variations/feature_overrides.h"
 #include "components/version_info/version_info.h"
@@ -43,7 +45,6 @@
 #include "chrome/browser/media/webrtc/desktop_media_picker.h"
 #include "chrome/common/chrome_features.h"
 #include "components/autofill/core/common/autofill_features.h"
-#include "components/download/public/common/download_features.h"
 #include "content/common/features.h"
 #include "content/public/common/content_features.h"
 #include "gpu/config/gpu_finch_features.h"
@@ -61,10 +62,14 @@
 #endif
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-#include "base/check_deref.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/signin/first_run_desktop_refresh_field_trial.h"
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_POSIX)
+#include "base/check_deref.h"
+#include "chrome/browser/metrics/client_id_backup_correctness_fix_field_trial.h"
+#endif  // BUILDFLAG(IS_POSIX)
 
 ChromeBrowserFieldTrials::ChromeBrowserFieldTrials(PrefService* local_state)
     : local_state_(local_state) {
@@ -105,6 +110,11 @@ void ChromeBrowserFieldTrials::SetUpClientSideFieldTrials(
         CHECK_DEREF(feature_list), entropy_providers.default_entropy());
   }
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+
+#if BUILDFLAG(IS_POSIX)
+  metrics::CreateClientIdBackupCorrectnessFixFieldTrial(
+      CHECK_DEREF(feature_list), entropy_providers.default_entropy());
+#endif  // BUILDFLAG(IS_POSIX)
 }
 
 void ChromeBrowserFieldTrials::RegisterSyntheticTrials() {
@@ -140,19 +150,10 @@ void ChromeBrowserFieldTrials::RegisterFeatureOverrides(
   feature_overrides.EnableFeature(kAndroidMediaPicker);
   feature_overrides.EnableFeature(features::kUserMediaScreenCapturing);
 
-  // Enable open download in new tab.
-  // TODO(crbug.com/531944280): Remove when rollout is complete to all form
-  // factors.
-  feature_overrides.EnableFeature(download::features::kOpenDownloadInNewTab);
-
-  // Enable`save as`context menu.
-  feature_overrides.EnableFeature(
-      download::features::kEnableDownloadSaveAsContextMenu);
-
-  // Enable open download in preferred app.
-  // TODO(crbug.com/539965859): Remove when rollout is complete to all form
-  // factors.
-  feature_overrides.EnableFeature(chrome::android::kOpenDownloadInPreferredApp);
+  // Enables the tab sharing toolbar on Desktop Android.
+  // TODO(crbug.com/552925889): Remove when rollout to other form factors is
+  // complete.
+  feature_overrides.EnableFeature(chrome::android::kTabSharingToolbarAndroid);
 
   // Enable background media capturing on desktop devices.
   // TODO(crbug.com/426461170): Remove once we enable this feature for all form
@@ -391,4 +392,9 @@ void ChromeBrowserFieldTrials::EnableRuntimeMutableFeatures(
   variations::PlatformFieldTrials::EnableRuntimeMutableFeatures(feature_list);
 
   // Add calls to enable runtime-mutable features here.
+#if !BUILDFLAG(IS_ANDROID)
+  // Defined on desktop only (see password_features.h).
+  feature_list->EnableRuntimeMutability(
+      password_manager::features::kPasskeyUnlockPromo, base::DoNothing());
+#endif  // !BUILDFLAG(IS_ANDROID)
 }

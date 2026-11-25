@@ -50,7 +50,6 @@
 #include "chrome/browser/chromeos/policy/dlp/dlp_rules_manager.h"
 #include "chrome/browser/chromeos/policy/dlp/dlp_rules_manager_factory.h"
 #include "chrome/browser/enterprise/data_controls/dlp_reporting_manager.h"
-#include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/system_web_apps/system_web_app_ui_utils.h"
 #include "chrome/browser/ui/webui/ash/cloud_upload/cloud_upload_util.h"
 #include "chromeos/ash/components/system_web_apps/system_web_app_type.h"
@@ -519,9 +518,20 @@ void DlpFilesControllerAsh::IsFilesTransferRestricted(
     DlpRulesManager::RuleMetadata rule_metadata;
     if (destination.component()) {
       data_controls::Component dst_component = *destination.component();
-      level = rules_manager_->IsRestrictedComponent(
-          file.source_url, dst_component, DlpRulesManager::Restriction::kFiles,
-          &source_pattern, &rule_metadata);
+      if (dst_component == data_controls::Component::kUnknownComponent) {
+        // Passing empty URL will return restricted if there's a rule
+        // restricting the src against any dst (*), otherwise it will return
+        // ALLOW.
+        level = rules_manager_->IsRestrictedDestination(
+            file.source_url, GURL(), DlpRulesManager::Restriction::kFiles,
+            &source_pattern, /*out_destination_pattern=*/nullptr,
+            &rule_metadata);
+      } else {
+        level = rules_manager_->IsRestrictedComponent(
+            file.source_url, dst_component,
+            DlpRulesManager::Restriction::kFiles, &source_pattern,
+            &rule_metadata);
+      }
       actual_dst = DlpFileDestination(dst_component);
       MaybeReportEvent(file.inode, file.crtime, file.path,
                        file.source_url.spec(), actual_dst, rule_metadata,

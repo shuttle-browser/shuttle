@@ -101,9 +101,10 @@ class PasswordsPrivateDelegate
 
   // Adds the |username| and |password| corresponding to the |url| to the
   // specified store and returns true if the operation succeeded. Fails and
-  // returns false if the data is invalid or an entry with such origin and
-  // username already exists. Updates the default store to the used one on
-  // success if account storage is enabled.
+  // returns false if the data is invalid, an entry with such origin and
+  // username already exists, or saving new passwords is blocked by mandatory
+  // policy. Updates the default store to the used one on success if account
+  // storage is enabled.
   // |url|: The url of the password entry, must be a valid http(s) ip/web
   //        address as is or after adding http(s) scheme.
   // |username|: The username to save, can be empty.
@@ -191,8 +192,10 @@ class PasswordsPrivateDelegate
   // |recipients|.
   virtual void SharePassword(int id, const ShareRecipients& recipients) = 0;
 
-  // Trigger the password import procedure, allowing the user to select a file
-  // containing passwords to import.
+  // Triggers the password import procedure, allowing the user to select a file
+  // containing passwords to import. Completes with `kUnknownError` without
+  // opening the file picker if saving new passwords is blocked by mandatory
+  // policy.
   // |to_store|: destination store (Device or Account) for imported passwords.
   // |results_callback|: Used to communicate the status and summary of the
   // import process.
@@ -247,15 +250,13 @@ class PasswordsPrivateDelegate
   virtual std::vector<api::passwords_private::PasswordUiEntryList>
   GetCredentialsWithReusedPassword() = 0;
 
-  // Attempts to mute |credential| from the password store. Returns whether
-  // the mute succeeded.
-  virtual bool MuteInsecureCredential(
-      const api::passwords_private::PasswordUiEntry& credential) = 0;
+  // Attempts to mute the credential with `id` from the password store. Returns
+  // whether the mute succeeded.
+  virtual bool MuteInsecureCredential(int id) = 0;
 
-  // Attempts to unmute |credential| from the password store. Returns whether
-  // the unmute succeeded.
-  virtual bool UnmuteInsecureCredential(
-      const api::passwords_private::PasswordUiEntry& credential) = 0;
+  // Attempts to unmute the credential with `id` from the password store.
+  // Returns whether the unmute succeeded.
+  virtual bool UnmuteInsecureCredential(int id) = 0;
 
   // Requests to start a check for insecure passwords. Invokes |callback|
   // once a check is running or the request was stopped via StopPasswordCheck().
@@ -303,7 +304,8 @@ class PasswordsPrivateDelegate
   virtual void DisconnectCloudAuthenticator(
       base::OnceCallback<void(bool)> success_callback) = 0;
 
-  virtual bool IsConnectedToCloudAuthenticator() = 0;
+  virtual void IsConnectedToCloudAuthenticator(
+      base::OnceCallback<void(bool)> is_connected_callback) = 0;
 
   // Returns the current actionable error.
   virtual password_manager::ActionableError GetActionableError() = 0;

@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -64,8 +63,8 @@
 #include "services/metrics/public/cpp/ukm_source.h"
 #include "services/network/public/cpp/network_switches.h"
 #include "services/network/public/cpp/simple_url_loader.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 namespace {
 
@@ -147,7 +146,7 @@ void NavigateToURLSync(BrowserWindowInterface* browser, const GURL& url) {
 
   NavigateParams params(browser, url, ui::PAGE_TRANSITION_LINK);
   params.initiator_origin = url::Origin::Create(GURL("about:blank"));
-  params.disposition = WindowOpenDisposition::kCurrentTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
   params.is_renderer_initiated = true;
   ui_test_utils::NavigateToURL(&params);
 
@@ -259,11 +258,8 @@ class LookalikeUrlNavigationThrottleBrowserTest : public InProcessBrowserTest {
             net::EmbeddedTestServer::TYPE_HTTPS)) {}
 
   void SetUp() override {
-    // TODO(b:507481593): Some tests are failing when enabling these features.
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features*/ {},
-        /*disabled_features*/ {omnibox::internal::kWebUIOmniboxPopup,
-                               omnibox::internal::kWebUIOmniboxAimPopup});
+    scoped_feature_list_.InitAndEnableFeature(
+        kOptimizeLookalikeUrlNavigationThrottle);
     InProcessBrowserTest::SetUp();
   }
 
@@ -1064,6 +1060,21 @@ IN_PROC_BROWSER_TEST_F(LookalikeUrlNavigationThrottleBrowserTest,
       "NavigationSuggestion.UpdateEngagedSitesDeferTime", 0);
 }
 
+// Tests that navigations to URLs that early-return in CheckUrlForLookalikes()
+// before inspecting engaged sites (such as top domains or safe TLDs) are not
+// deferred when the engaged sites list is stale.
+IN_PROC_BROWSER_TEST_F(LookalikeUrlNavigationThrottleBrowserTest,
+                       TopDomainNavigationNotDeferredForEngagedSites) {
+  base::HistogramTester histograms;
+  // Advance clock to make the engaged sites list stale.
+  test_clock()->Advance(base::Hours(1));
+  NavigateToURLSync(browser(), GetURL("google.com"));
+  test_clock()->Advance(base::Hours(1));
+  NavigateToURLSync(browser(), GetURL("site.gov"));
+  histograms.ExpectTotalCount(
+      "NavigationSuggestion.UpdateEngagedSitesDeferTime", 0);
+}
+
 // TODO(crbug.com/40146482): Enable test when MacOS flake is fixed.
 // TODO(crbug.com/40706320): Enable test when Win/Linux flake is fixed.
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
@@ -1586,7 +1597,7 @@ IN_PROC_BROWSER_TEST_F(LookalikeUrlNavigationThrottleBrowserTest,
   // Reload the interstitial twice. Should still work.
   for (size_t i = 0; i < 2; i++) {
     content::TestNavigationObserver navigation_observer(web_contents);
-    chrome::Reload(browser(), WindowOpenDisposition::kCurrentTab);
+    chrome::Reload(browser(), ui::mojom::WindowOpenDisposition::kCurrentTab);
     navigation_observer.Wait();
 
     EXPECT_EQ(LookalikeUrlBlockingPage::kTypeForTesting,

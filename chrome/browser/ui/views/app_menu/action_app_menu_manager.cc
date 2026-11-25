@@ -45,9 +45,14 @@
 #include "chrome/browser/lifetime/scheduled_restart_manager.h"
 #endif
 #if BUILDFLAG(IS_CHROMEOS)
+#include "chromeos/strings/grit/chromeos_strings.h"
+#include "chromeos/ui/frame/desks/move_to_desks_menu_delegate.h"
+#include "chromeos/ui/frame/desks/move_to_desks_menu_model.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
+#include "ui/base/base_window.h"
 #include "ui/display/screen.h"
+#include "ui/views/widget/widget.h"
 #endif
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
@@ -79,6 +84,7 @@
 #include "chrome/browser/ui/views/bookmarks/saved_tab_groups/saved_tab_group_everything_menu.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_button_menu_highlighter.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
+#include "chrome/browser/ui/web_applications/web_app_browser_controller.h"
 #include "chrome/browser/ui/web_applications/web_app_menu_model.h"
 #include "chrome/browser/ui/web_applications/web_app_ui_utils.h"
 #include "chrome/browser/ui/webui/side_panel/customize_chrome/customize_chrome_page_handler.h"
@@ -99,7 +105,6 @@
 #include "components/send_tab_to_self/features.h"
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/skills/features.h"
-#include "components/sync/base/features.h"
 #include "components/user_education/common/tutorial/tutorial_description.h"
 #include "components/user_education/common/tutorial/tutorial_registry.h"
 #include "components/user_education/common/tutorial/tutorial_service.h"
@@ -108,6 +113,7 @@
 #include "extensions/buildflags/buildflags.h"
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 #include "chrome/browser/extensions/extension_ui_util.h"
+#include "chrome/browser/ui/extensions/extensions_container.h"
 #endif
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "ui/actions/action_id.h"
@@ -230,6 +236,14 @@ class AppMenuBuilder {
     }
     auto item =
         AppMenuActionItem::CreateIndirect(id, scope_, std::move(params));
+    if (item && parent_) {
+      parent_->AddChild(std::move(item));
+    }
+    return *this;
+  }
+
+  // Adds a directly constructed action item.
+  AppMenuBuilder& AddActionItem(std::unique_ptr<actions::ActionItem> item) {
     if (item && parent_) {
       parent_->AddChild(std::move(item));
     }
@@ -368,8 +382,12 @@ class AppMenuBuilder {
       has_alerted_child_ = true;
     }
 
-    item->SetPopulateChildrenCallback(std::move(populate_callback));
-    item->PopulateChildItems();
+    // Skip populating children for hidden submenu actions (e.g. actions
+    // hidden behind a disabled feature flag).
+    if (item->GetActionItem()->GetVisible()) {
+      item->SetPopulateChildrenCallback(std::move(populate_callback));
+      item->PopulateChildItems();
+    }
     parent_->AddChild(std::move(item));
     return *this;
   }
@@ -447,7 +465,8 @@ ActionAppMenuManager::ActionAppMenuManager(
     AppMenuDragAndDropDelegate::Host* drag_and_drop_host)
     : browser_window_interface_(browser_window_interface),
       recent_tabs_menu_(
-          std::make_unique<RecentTabsDynamicMenu>(browser_window_interface)),
+          std::make_unique<RecentTabsDynamicMenu>(browser_window_interface,
+                                                  drag_and_drop_host)),
       bookmarks_menu_(
           std::make_unique<BookmarksDynamicMenu>(browser_window_interface,
                                                  drag_and_drop_host)),
@@ -765,8 +784,12 @@ void ActionAppMenuManager::AddYourChromeActions(actions::ActionItem* root) {
               /*build_submenu=*/std::nullopt,
               {.element_id = AppMenuModel::kHistoryMenuItem});
 
-          section.AddSubmenu(
-              kActionOtherDeviceTabsSubmenu, [](AppMenuBuilder& sub) {},
+          section.AddDynamicSubmenu(
+              kActionOtherDeviceTabsSubmenu,
+              base::BindRepeating(
+                  &RecentTabsDynamicMenu::BuildOtherDeviceTabsActions,
+                  recent_tabs_menu_->GetWeakPtr()),
+              /*build_submenu=*/std::nullopt,
               {.element_id = AppMenuModel::kOtherDeviceTabsMenuItem,
                .is_submenu = true});
         }
@@ -1186,7 +1209,6 @@ void ActionAppMenuManager::AddFooterActions(actions::ActionItem* root) {
       .AddSection(DisplayType::kFooter, [browser_window_interface =
                                              browser_window_interface_.get()](
                                             AppMenuBuilder& section) {
-        section.AddAction(kActionOptions);
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
         section.AddSubmenu(
@@ -1227,6 +1249,7 @@ void ActionAppMenuManager::AddFooterActions(actions::ActionItem* root) {
         if (browser_defaults::kShowExitMenuItem) {
           section.AddAction(kActionExit);
         }
+        section.AddAction(kActionOptions);
 
 #if !BUILDFLAG(IS_CHROMEOS)
         Profile* profile = browser_window_interface->GetProfile();
@@ -1246,6 +1269,35 @@ void ActionAppMenuManager::AddWebAppActions(actions::ActionItem* root) {
   auto* const app_browser_controller =
       web_app::AppBrowserController::From(browser_window_interface_);
   CHECK(app_browser_controller);
+
+  web_app::WebAppBrowserController* app_controller =
+      app_browser_controller->AsWebAppBrowserController();
+  if (app_controller && (app_controller->HasPendingUpdate() ||
+                         app_controller->HasPendingMigration())) {
+    gfx::ImageSkia icon = app_controller->GetAppMenuIcon();
+    ui::ImageModel update_icon;
+    if (!icon.isNull()) {
+      update_icon = ui::ImageModel::FromImageSkia(icon);
+    }
+    if (update_icon.IsEmpty()) {
+      update_icon = ui::ImageModel::FromVectorIcon(
+          features::IsRoundedIconsEnabled()
+              ? kRocketLaunchIcon
+              : kBrowserToolsUpdateChromeRefreshOldIcon,
+          ui::kColorMenuIconOnEmphasizedBackground);
+    }
+    AppMenuBuilder(root, browser_window_interface_,
+                   highlighted_menu_identifier_,
+                   ui::kColorAppMenuUpgradeRowBackground)
+        .AddSection(
+            DisplayType::kSection, [&update_icon](AppMenuBuilder& section) {
+              section.AddAction(
+                  kActionWebAppUpgradeDialog,
+                  {.display_type = DisplayType::kNotification,
+                   .icon_override = std::move(update_icon),
+                   .item_height = AppMenuActionItem::ItemHeight::kMedium});
+            });
+  }
 
   AppMenuBuilder builder(root, browser_window_interface_,
                          highlighted_menu_identifier_);
@@ -1280,12 +1332,99 @@ void ActionAppMenuManager::AddWebAppActions(actions::ActionItem* root) {
   AppMenuBuilder(root, browser_window_interface_, highlighted_menu_identifier_,
                  kColorAppMenuToolsAndActionsBackground,
                  kColorAppMenuToolsAndActionsForeground)
-      .AddSection(DisplayType::kSection, [this](AppMenuBuilder& section) {
+      .AddSection(DisplayType::kSection, [this, app_browser_controller,
+                                          is_isolated_web_app](
+                                             AppMenuBuilder& section) {
         section.AddAction(kActionCopyUrl);
 
         if (ShouldAllowOpenInChrome(browser_window_interface_)) {
           section.AddAction(kActionOpenInChrome);
         }
+
+        if (app_browser_controller->has_tab_strip() &&
+            !app_browser_controller->ShouldHideNewTabButton()) {
+          section.AddAction(
+              kActionNewTab,
+              {.icon_override = ui::ImageModel::FromVectorIcon(
+                   features::IsRoundedIconsEnabled() ? kTabIcon
+                                                     : kNewTabRefreshOldIcon)});
+        }
+
+#if BUILDFLAG(IS_CHROMEOS)
+        views::Widget* widget =
+            browser_window_interface_->GetWindow()
+                ? views::Widget::GetWidgetForNativeWindow(
+                      browser_window_interface_->GetWindow()->GetNativeWindow())
+                : nullptr;
+        if (widget &&
+            chromeos::MoveToDesksMenuDelegate::ShouldShowMoveToDesksMenu()) {
+          chromeos::MoveToDesksMenuDelegate delegate(widget);
+          section.AddSubmenu(kActionMoveToDesksSubmenu, [&delegate,
+                                                         widget](AppMenuBuilder&
+                                                                     sub) {
+            if (delegate.IsCommandIdEnabled(chromeos::MoveToDesksMenuModel::
+                                                TOGGLE_ASSIGN_TO_ALL_DESKS)) {
+              auto item =
+                  actions::ActionItem::Builder(
+                      base::BindRepeating(
+                          [](views::Widget* w, actions::ActionItem*,
+                             actions::ActionInvocationContext) {
+                            chromeos::MoveToDesksMenuDelegate(w).ExecuteCommand(
+                                chromeos::MoveToDesksMenuModel::
+                                    TOGGLE_ASSIGN_TO_ALL_DESKS,
+                                0);
+                          },
+                          widget))
+                      .SetText(
+                          l10n_util::GetStringUTF16(IDS_ASSIGN_TO_ALL_DESKS))
+                      .SetChecked(delegate.IsCommandIdChecked(
+                          chromeos::MoveToDesksMenuModel::
+                              TOGGLE_ASSIGN_TO_ALL_DESKS))
+                      .Build();
+              item->SetProperty(AppMenuActionItem::kIsCheckableKey, true);
+              sub.AddActionItem(std::move(item));
+              sub.AddDivider();
+            }
+
+            constexpr int kMaxNumberOfDesks =
+                chromeos::MoveToDesksMenuModel::MOVE_TO_DESK_16 -
+                chromeos::MoveToDesksMenuModel::MOVE_TO_DESK_1 + 1;
+            for (int i = 0; i < kMaxNumberOfDesks; ++i) {
+              int command_id =
+                  chromeos::MoveToDesksMenuModel::MOVE_TO_DESK_1 + i;
+              if (!delegate.IsCommandIdVisible(command_id)) {
+                continue;
+              }
+              auto item =
+                  actions::ActionItem::Builder(
+                      base::BindRepeating(
+                          [](views::Widget* w, int cid, actions::ActionItem*,
+                             actions::ActionInvocationContext) {
+                            chromeos::MoveToDesksMenuDelegate(w).ExecuteCommand(
+                                cid, 0);
+                          },
+                          widget, command_id))
+                      .SetText(delegate.GetLabelForCommandId(command_id))
+                      .SetChecked(delegate.IsCommandIdChecked(command_id))
+                      .SetEnabled(delegate.IsCommandIdEnabled(command_id))
+                      .Build();
+              item->SetProperty(AppMenuActionItem::kIsCheckableKey, true);
+              sub.AddActionItem(std::move(item));
+            }
+          });
+        }
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+        ExtensionsContainer* extensions_container =
+            ExtensionsContainer::From(*browser_window_interface_);
+        if (base::FeatureList::IsEnabled(
+                features::kDesktopPWAsElidedExtensionsMenu) &&
+            extensions_container && extensions_container->HasAnyExtensions() &&
+            !is_isolated_web_app) {
+          section.AddAction(kActionWebAppShowExtensions);
+        }
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
         section.AddDivider(ui::MenuSeparatorType::SPACING_SEPARATOR)
             .AddSubmenu(

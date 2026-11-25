@@ -91,6 +91,7 @@ source_set("extensions") {
     "//ui/base/unowned_user_data",
     "//ui/gfx",
     "//ui/gfx/geometry",
+    "//url",
   ]
 
   if (enable_extensions) {
@@ -124,7 +125,6 @@ source_set("extensions") {
       "//ui/base/mojom:ui_base_types",
       "//ui/gfx",
       "//ui/gfx/geometry",
-      "//url",
     ]
   }
 }
@@ -213,6 +213,7 @@ source_set("impl") {
     "//chrome/common/extensions",
     "//components/google/core/common",
     "//components/image_fetcher/core",
+    "//components/regional_capabilities",
     "//components/search_engines",
     "//components/sessions",
     "//components/strings:components_strings",
@@ -309,8 +310,6 @@ source_set("impl") {
       "//chrome/browser/ui/profiles",
       "//chrome/browser/ui/side_panel:side_panel_views_dependent",
       "//chrome/browser/ui/startup",
-      "//chrome/browser/ui/tabs/organizer",
-      "//chrome/browser/ui/views/tabs/organizer",
       "//chrome/browser/ui/web_applications:launch_utils",
       "//chrome/browser/ui/window_metadata",
       "//chrome/browser/web_applications",
@@ -448,6 +447,7 @@ source_set("browser_tests") {
       "//chrome/browser:chrome_content_browser_client",
       "//chrome/browser/apps/app_service:test_support",
       "//chrome/browser/extensions:test_support",
+      "//chrome/browser/image_fetcher",
       "//chrome/browser/preloading/prerender",
       "//chrome/browser/profiles:profile",
       "//chrome/browser/search_engines",
@@ -469,13 +469,19 @@ source_set("browser_tests") {
       "//chrome/common:non_code_constants",
       "//chrome/common/extensions",
       "//chrome/common/extensions/api",
-      "//chrome/test:test_support_ui",
       "//components/enterprise/isolated_mode",
+      "//components/image_fetcher/core",
+      "//components/image_fetcher/core:test_support",
+      "//components/policy:generated",
+      "//components/policy/core/browser",
+      "//components/policy/core/common",
+      "//components/policy/core/common:test_support",
       "//components/prefs",
       "//components/proxy_config",
       "//components/search_engines",
       "//components/search_engines:test_support",
       "//components/sessions",
+      "//components/vector_icons",
       "//components/webapps/browser",
       "//components/webapps/common",
       "//content/public/browser",
@@ -489,6 +495,7 @@ source_set("browser_tests") {
       "//net",
       "//pdf:buildflags",
       "//pdf:features",
+      "//testing/gmock",
       "//third_party/blink/public/common",
       "//third_party/blink/public/common:headers",
       "//ui/base",
@@ -496,6 +503,7 @@ source_set("browser_tests") {
       "//ui/base:features",
       "//ui/color:color_headers",
       "//ui/gfx",
+      "//ui/gfx:test_support",
       "//ui/native_theme",
       "//ui/native_theme:test_support",
     ]

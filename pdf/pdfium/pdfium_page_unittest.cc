@@ -21,11 +21,13 @@
 #include "build/build_config.h"
 #include "pdf/accessibility_structs.h"
 #include "pdf/buildflags.h"
+#include "pdf/pdf_rect.h"
 #include "pdf/pdfium/pdfium_engine.h"
 #include "pdf/pdfium/pdfium_test_base.h"
 #include "pdf/test/test_client.h"
 #include "pdf/test/test_helpers.h"
 #include "pdf/ui/thumbnail.h"
+#include "printing/units.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/pdfium/public/fpdf_formfill.h"
@@ -769,6 +771,70 @@ TEST_P(PDFiumPageHeuristicEnhancementsTest, GetLineSegmentInfoNoPaths) {
   EXPECT_TRUE(page.GetLineSegmentInfo().empty());
 }
 
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetFilledRectInfo) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("thin_filled_rules.pdf"));
+  ASSERT_TRUE(engine);
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  std::vector<gfx::RectF> filled_rects = page.GetFilledRectInfo();
+  if (!HeuristicEnhancementsEnabled()) {
+    EXPECT_TRUE(filled_rects.empty());
+    return;
+  }
+
+  // Converts a rectangle on the 400x400 pt page to pixels.
+  auto to_pixel = [](const PdfRect& rect) {
+    return gfx::ScaleRect(gfx::RectF(rect.left(), 400.0f - rect.top(),
+                                     rect.width(), rect.height()),
+                          1.0f / printing::kUnitConversionFactorPixelsToPoints);
+  };
+
+  // Rectangles appear in path order. The curved subpath and the ignored shapes
+  // are skipped.
+  const auto kExpectedRects = std::to_array<gfx::RectF>({
+      // Simple horizontal rules.
+      to_pixel({50, 300, 350, 300.8f}),
+      to_pixel({50, 280, 350, 280.5f}),
+      to_pixel({50, 240, 350, 240.8f}),
+      // Two rules in one path.
+      to_pixel({50, 200, 350, 200.5f}),
+      to_pixel({50, 180, 350, 180.5f}),
+      // Skia-style closed and unclosed rectangles.
+      to_pixel({50, 169.25f, 350, 170}),
+      to_pixel({50, 154.25f, 350, 155}),
+      // Unclosed rectangle with its last point on the closing edge.
+      to_pixel({50, 100, 140, 100.8f}),
+      // Vertical rule.
+      to_pixel({149.6f, 125, 150.4f, 150}),
+      // Rectangles of other sizes.
+      to_pixel({300, 60, 340, 80}),
+      to_pixel({50, 60, 55, 60.5f}),
+      to_pixel({50, 80, 150, 83.6f}),
+      // Rectangle in a path with a curved subpath.
+      to_pixel({50, 10, 350, 10.5f}),
+  });
+
+  // Thin heights lose float precision when subtracting large coordinates.
+  constexpr float kTolerancePx = 0.001f;
+  ASSERT_EQ(kExpectedRects.size(), filled_rects.size());
+  for (size_t i = 0; i < kExpectedRects.size(); ++i) {
+    SCOPED_TRACE(testing::Message() << "at index " << i);
+    EXPECT_RECTF_NEAR(kExpectedRects[i], filled_rects[i], kTolerancePx);
+  }
+}
+
+TEST_P(PDFiumPageHeuristicEnhancementsTest, GetFilledRectInfoNoPaths) {
+  TestClient client(/*use_skia_renderer=*/false);
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("hello_world2.pdf"));
+  ASSERT_TRUE(engine);
+
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  EXPECT_TRUE(page.GetFilledRectInfo().empty());
+}
+
 INSTANTIATE_TEST_SUITE_P(All,
                          PDFiumPageHeuristicEnhancementsTest,
                          testing::Bool());
@@ -1202,6 +1268,90 @@ TEST_P(PDFiumPageTextTest, GetTextRunInfoAtWithHeuristicEnhancements) {
   EXPECT_EQ(direction_enabled, AccessibilityTextDirection::kLeftToRight);
 }
 
+TEST_P(PDFiumPageTextTest,
+       TextRunBoundsAfterLinkAtLineEndWithHeuristicEnhancements) {
+  base::test::ScopedFeatureList scoped_feature_list(
+      ::features::kPdfAccessibilityHeuristicEnhancements);
+  TestClient client(/*use_skia_renderer=*/GetParam());
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("whitespace_after_link.pdf"));
+  ASSERT_TRUE(engine);
+
+  // The link "http://example.com" ends the first line, so the next run starts
+  // with the trailing space and line break: " \r\nNext line".
+  constexpr int kNextRunStartIndex = 24;
+  constexpr int kNextLineStartIndex = 27;
+  PDFiumPage& page = GetPDFiumPage(*engine, 0);
+  std::optional<AccessibilityTextRunInfo> text_run =
+      page.GetTextRunInfoAt(kNextRunStartIndex);
+  ASSERT_TRUE(text_run.has_value());
+  EXPECT_EQ(static_cast<uint32_t>(kNextRunStartIndex), text_run->start_index);
+  EXPECT_EQ(12u, text_run->len);
+
+  // The run's bounds must cover only the second line, not reach back up to the
+  // trailing space on the first line.
+  const gfx::RectF next_line_char_bounds =
+      page.GetCharBounds(kNextLineStartIndex);
+  EXPECT_TRUE(text_run->bounds.Contains(next_line_char_bounds));
+  EXPECT_LT(text_run->bounds.height(), 2 * next_line_char_bounds.height());
+}
+
+TEST_P(PDFiumPageTextTest,
+       TextRunBoundsAfterLinkBeforeIndentedLineWithHeuristicEnhancements) {
+  base::test::ScopedFeatureList scoped_feature_list(
+      ::features::kPdfAccessibilityHeuristicEnhancements);
+  TestClient client(/*use_skia_renderer=*/GetParam());
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("whitespace_after_link.pdf"));
+  ASSERT_TRUE(engine);
+
+  // The link "http://example.com" ends the first line, and the second line
+  // starts with whitespace, so the next run is " \r\n \t Next line".
+  constexpr int kNextRunStartIndex = 24;
+  constexpr int kIndentStartIndex = 27;
+  constexpr int kNextLineTextStartIndex = 30;
+  PDFiumPage& page = GetPDFiumPage(*engine, 1);
+  std::optional<AccessibilityTextRunInfo> text_run =
+      page.GetTextRunInfoAt(kNextRunStartIndex);
+  ASSERT_TRUE(text_run.has_value());
+  EXPECT_EQ(static_cast<uint32_t>(kNextRunStartIndex), text_run->start_index);
+  EXPECT_EQ(15u, text_run->len);
+
+  // The run's bounds must cover only the text on the second line. Like a run
+  // that starts a line without a link before it, the bounds skip the leading
+  // whitespace.
+  const gfx::RectF next_line_char_bounds =
+      page.GetCharBounds(kNextLineTextStartIndex);
+  EXPECT_TRUE(text_run->bounds.Contains(next_line_char_bounds));
+  EXPECT_FALSE(
+      text_run->bounds.Contains(page.GetCharBounds(kIndentStartIndex)));
+  EXPECT_LT(text_run->bounds.height(), 2 * next_line_char_bounds.height());
+}
+
+TEST_P(PDFiumPageTextTest,
+       TextRunBoundsAfterLinkMidLineWithHeuristicEnhancements) {
+  base::test::ScopedFeatureList scoped_feature_list(
+      ::features::kPdfAccessibilityHeuristicEnhancements);
+  TestClient client(/*use_skia_renderer=*/GetParam());
+  std::unique_ptr<PDFiumEngine> engine =
+      InitializeEngine(&client, FILE_PATH_LITERAL("whitespace_after_link.pdf"));
+  ASSERT_TRUE(engine);
+
+  // The link "http://example.com" is followed by " now" on the same line, so
+  // the next run starts with a space that stays in its bounds.
+  constexpr int kNextRunStartIndex = 24;
+  PDFiumPage& page = GetPDFiumPage(*engine, 2);
+  std::optional<AccessibilityTextRunInfo> text_run =
+      page.GetTextRunInfoAt(kNextRunStartIndex);
+  ASSERT_TRUE(text_run.has_value());
+  EXPECT_EQ(static_cast<uint32_t>(kNextRunStartIndex), text_run->start_index);
+  EXPECT_EQ(4u, text_run->len);
+  EXPECT_TRUE(
+      base::IsUnicodeWhitespace(page.GetCharUnicode(kNextRunStartIndex)));
+  EXPECT_TRUE(
+      text_run->bounds.Contains(page.GetCharBounds(kNextRunStartIndex)));
+}
+
 TEST_P(PDFiumPageTextTest, GetTextRunInfoFontWeight) {
   // Test invalid weight (FPDFFont_GetWeight returns -1, which is mapped to 0).
   {
@@ -1409,21 +1559,6 @@ TEST_P(PDFiumPageThumbnailTest, GenerateThumbnailWithNoOverlapCropBox) {
   ASSERT_TRUE(image);
   EXPECT_TRUE(IsImageBlank(*image));
 }
-
-#if BUILDFLAG(ENABLE_PDF_INK2)
-TEST_P(PDFiumPageThumbnailTest, GetThumbnailSize) {
-  TestClient client(/*use_skia_renderer=*/GetParam());
-  std::unique_ptr<PDFiumEngine> engine =
-      InitializeEngine(&client, FILE_PATH_LITERAL("variable_page_sizes.pdf"));
-  ASSERT_EQ(7, engine->GetNumberOfPages());
-
-  for (const auto& params : kGenerateThumbnailTestParams) {
-    EXPECT_EQ(
-        params.expected_thumbnail_size,
-        engine->GetThumbnailSize(params.page_index, params.device_pixel_ratio));
-  }
-}
-#endif  // BUILDFLAG(ENABLE_PDF_INK2)
 
 INSTANTIATE_TEST_SUITE_P(All, PDFiumPageThumbnailTest, testing::Bool());
 

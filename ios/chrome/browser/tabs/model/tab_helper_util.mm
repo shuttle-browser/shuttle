@@ -9,7 +9,6 @@
 #import "components/commerce/ios/browser/commerce_tab_helper.h"
 #import "components/data_sharing/public/features.h"
 #import "components/enterprise/browser/reporting/reporting_features.h"
-#import "components/enterprise/net/core/features.h"
 #import "components/favicon/core/favicon_service.h"
 #import "components/favicon/ios/web_favicon_driver.h"
 #import "components/history/core/browser/top_sites.h"
@@ -44,7 +43,6 @@
 #import "ios/chrome/browser/contextual_panel/model/contextual_panel_model_service_factory.h"
 #import "ios/chrome/browser/contextual_panel/model/contextual_panel_tab_helper.h"
 #import "ios/chrome/browser/crash_report/model/breadcrumbs/breadcrumb_manager_tab_helper.h"
-#import "ios/chrome/browser/dom_distiller/model/distiller_service_factory.h"
 #import "ios/chrome/browser/download/model/ar_quick_look_tab_helper.h"
 #import "ios/chrome/browser/download/model/document_download_tab_helper.h"
 #import "ios/chrome/browser/download/model/download_manager_tab_helper.h"
@@ -140,6 +138,7 @@
 #import "ios/chrome/browser/web/model/sad_tab_tab_helper.h"
 #import "ios/chrome/browser/web/model/web_performance_metrics/web_performance_metrics_tab_helper.h"
 #import "ios/chrome/browser/web/model/web_view_proxy/web_view_proxy_tab_helper.h"
+#import "ios/chrome/browser/web_distiller/model/distiller_service_factory.h"
 #import "ios/chrome/browser/web_selection/model/web_selection_tab_helper.h"
 #import "ios/chrome/browser/webauthn/model/ios_chrome_passkey_client.h"
 #import "ios/chrome/browser/webauthn/model/ios_passkey_model_factory.h"
@@ -269,7 +268,9 @@ void AttachTabHelpers(web::WebState* web_state, TabHelperFilter filter_flags) {
   attacher.Create<PassKitTabHelper>();
   attacher.Create<DriveTabHelper>();
 
-  attacher.Create<ITunesUrlsHandlerTabHelper>();
+  attacher.CreateWhen<ITunesUrlsHandlerTabHelper>(
+      !attacher.IsForLensOverlay() && !attacher.IsForPrerender() &&
+      !attacher.IsForGeminiWebModal());
   attacher.Create<PageloadForegroundDurationTabHelper>();
 
   attacher.Create<LookalikeUrlTabHelper>();
@@ -455,13 +456,17 @@ void AttachTabHelpers(web::WebState* web_state, TabHelperFilter filter_flags) {
       .WithFactory<DeviceTrustServiceFactoryIOS>(profile);
 
   // Lets `ProxyServiceController` attribute proxy auth challenges to the
-  // pending navigation. Not needed for prerendering, which is cancelled on auth
-  // challenges, nor in Incognito, where the controller doesn't exist.
-  attacher
-      .CreateDeferredWhen<EnterpriseProxyTabHelper>(
-          !attacher.IsOffTheRecord() && !attacher.IsForPrerender() &&
-          enterprise_net::IsDynamicRouteFetchingEnabled())
-      .WithFactory<EnterpriseProxyErrorServiceFactoryIOS>(profile);
+  // pending navigation. `EnterpriseProxyErrorService` only exists while dynamic
+  // route fetching is enabled. Not needed for prerendering, which is cancelled
+  // on auth challenges, nor in Incognito, where the controller doesn't exist.
+  // LINT.IfChange(EnterpriseProxyTabHelperGating)
+  if (!attacher.IsOffTheRecord() && !attacher.IsForPrerender()) {
+    if (enterprise_net::EnterpriseProxyErrorService* error_service =
+            EnterpriseProxyErrorServiceFactoryIOS::GetForProfile(profile)) {
+      attacher.Create<EnterpriseProxyTabHelper>(error_service);
+    }
+  }
+  // LINT.ThenChange(//ios/chrome/browser/main/model/browser_agent_util.mm:EnterpriseProxyBrowserAgentGating)
 
   if (web::features::IsCobaltEnabled()) {
     ios::provider::AttachCobaltTabHelpers(attacher);

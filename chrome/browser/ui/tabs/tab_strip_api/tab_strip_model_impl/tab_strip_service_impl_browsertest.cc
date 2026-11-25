@@ -10,12 +10,10 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/test/bind.h"
 #include "base/test/gtest_util.h"
-#include "base/test/scoped_feature_list.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/browser_window_theme_observer.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
+#include "chrome/browser/ui/browser_window_theme_observer/browser_window_theme_observer.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_group_model.h"
@@ -30,6 +28,7 @@
 #include "components/browser_apis/tab_strip/tab_strip_api.mojom.h"
 #include "components/browser_apis/tab_strip/tab_strip_experiment_api.mojom.h"
 #include "components/browser_apis/tab_strip/tab_strip_service_impl.h"
+#include "components/browser_apis/tab_strip/tab_strip_service_view.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tabs/public/tab_group.h"
 #include "content/public/test/browser_test.h"
@@ -63,8 +62,8 @@ class TestTabStripClient : public tabs_api::mojom::TabsObserver {
   void OnTabsCreated(tabs_api::mojom::OnTabsCreatedEventPtr event) {
     for (auto& tab_created_container : event->tabs) {
       auto& tab = tab_created_container->tab;
-      auto tab_id = tab->id;
-      tabs.emplace(std::string(tab_id.Id()), std::move(tab));
+      auto tab_id = tab.id;
+      tabs.emplace(std::string(tab_id.Id()), tab);
     }
     tab_created_events.push_back(event.Clone());
   }
@@ -87,9 +86,9 @@ class TestTabStripClient : public tabs_api::mojom::TabsObserver {
     switch (event->which()) {
       case tabs_api::mojom::OnDataChangedEvent::Tag::kTab: {
         const auto& tab = event->get_tab()->data;
-        std::string id_str = std::string(tab->id.Id());
+        std::string id_str = std::string(tab.id.Id());
         if (tabs.contains(id_str)) {
-          tabs.at(id_str) = tab.Clone();
+          tabs.at(id_str) = tab;
         }
         const auto& mask = event->get_tab()->mask;
         if (mask && mask->favicon) {
@@ -136,7 +135,7 @@ class TestTabStripClient : public tabs_api::mojom::TabsObserver {
   std::vector<tabs_api::mojom::OnTabsCreatedEventPtr> tab_created_events;
   std::vector<tabs_api::mojom::OnNodesClosedEventPtr> node_closed_events;
 
-  std::map<std::string, tabs_api::mojom::TabPtr> tabs;
+  std::map<std::string, tabs_api::Tab> tabs;
 
   // Number of data changed events received where the favicon field was marked
   // as changed.
@@ -148,15 +147,7 @@ class TabStripServiceImplBrowserTest : public InProcessBrowserTest {
   using TabStripService = tabs_api::mojom::TabStripService;
   using TabStripExperimentService = tabs_api::mojom::TabStripExperimentService;
 
-  TabStripServiceImplBrowserTest() {
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{},
-        /*disabled_features=*/
-        // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox
-        // is enabled and then remove these two Features.
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
-  }
+  TabStripServiceImplBrowserTest() = default;
 
   void SetUpOnMainThread() override {
     InProcessBrowserTest::SetUpOnMainThread();
@@ -217,7 +208,7 @@ class TabStripServiceImplBrowserTest : public InProcessBrowserTest {
     if (data->which() == target_tag) {
       switch (data->which()) {
         case tabs_api::mojom::Data::Tag::kTab:
-          return data->get_tab()->id;
+          return data->get_tab().id;
         case tabs_api::mojom::Data::Tag::kTabStrip:
           return data->get_tab_strip()->id;
         case tabs_api::mojom::Data::Tag::kPinnedTabs:
@@ -247,7 +238,7 @@ class TabStripServiceImplBrowserTest : public InProcessBrowserTest {
     const auto& data = container.data;
     switch (data->which()) {
       case tabs_api::mojom::Data::Tag::kTab:
-        return data->get_tab()->id;
+        return data->get_tab().id;
       case tabs_api::mojom::Data::Tag::kTabStrip:
         return data->get_tab_strip()->id;
       case tabs_api::mojom::Data::Tag::kPinnedTabs:
@@ -283,7 +274,7 @@ class TabStripServiceImplBrowserTest : public InProcessBrowserTest {
     return std::nullopt;
   }
 
-  tabs_api::mojom::TabPtr CreateTabAt(
+  std::optional<tabs_api::Tab> CreateTabAt(
       mojo::Remote<TabStripService>& remote,
       std::optional<tabs_api::Position> position = std::nullopt,
       std::optional<GURL> url = std::nullopt) {
@@ -297,7 +288,8 @@ class TabStripServiceImplBrowserTest : public InProcessBrowserTest {
         }));
     run_loop.Run();
     EXPECT_TRUE(result.has_value());
-    return result.has_value() ? std::move(result.value()) : nullptr;
+    return result.has_value() ? std::make_optional(std::move(result.value()))
+                              : std::nullopt;
   }
 
   void CreateTabs(mojo::Remote<TabStripService>& remote,
@@ -309,9 +301,6 @@ class TabStripServiceImplBrowserTest : public InProcessBrowserTest {
   }
 
   std::unique_ptr<tabs_api::TabStripServiceImpl> tab_strip_service_;
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest, SynchronousObserver) {
@@ -329,15 +318,7 @@ IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest, SynchronousObserver) {
   ASSERT_EQ(1, observer.num_callbacks);
 }
 
-// TODO(crbug.com/542347163): Re-enable test.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_MAC) || \
-    BUILDFLAG(IS_WIN)
-#define MAYBE_PreventsReentrancy DISABLED_PreventsReentrancy
-#else
-#define MAYBE_PreventsReentrancy PreventsReentrancy
-#endif
-IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest,
-                       MAYBE_PreventsReentrancy) {
+IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest, PreventsReentrancy) {
   class ReallyBadObserver
       : public tabs_api::observation::TabStripApiBatchedObserver {
    public:
@@ -499,7 +480,7 @@ IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest, Observation) {
       ui_test_utils::NavigateToURL(browser(), GURL("https://www.google.com/")));
   receiver.FlushForTesting();
   ASSERT_EQ("https://www.google.com/",
-            client.tabs.find(std::string(created_tab->id.Id()))->second->url);
+            client.tabs.find(std::string(created_tab->id.Id()))->second.url);
 
   TabStripService::CloseNodesResult close_result;
   base::RunLoop close_tab_loop;
@@ -673,7 +654,7 @@ IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest, SetSelectedTabs) {
     ASSERT_EQ(should_be_selected, tab->IsSelected());
 
     auto& observation_tab = observation->client.tabs.at(tab_id);
-    ASSERT_EQ(should_be_active, observation_tab->is_active)
+    ASSERT_EQ(should_be_active, observation_tab.is_active)
         << "bad id was: " << tab_id;
     // There is a race that is preventing this from reliably completing. Fix
     // then retest.
@@ -967,4 +948,67 @@ IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest, GetAllTabsForProfile) {
         run_loop.Quit();
       }));
   run_loop.Run();
+}
+
+namespace {
+
+void ExpectContainersMatch(const tabs_api::mojom::Container& actual,
+                           const tabs_api::mojom::Container& expected) {
+  ASSERT_EQ(static_cast<bool>(actual.data), static_cast<bool>(expected.data));
+  if (actual.data) {
+    ASSERT_EQ(actual.data->which(), expected.data->which());
+    if (actual.data->is_tab()) {
+      const tabs_api::Tab& a = actual.data->get_tab();
+      const tabs_api::Tab& b = expected.data->get_tab();
+      EXPECT_EQ(a.id, b.id);
+      EXPECT_EQ(a.title, b.title);
+      EXPECT_EQ(a.url, b.url);
+      EXPECT_EQ(a.is_active, b.is_active);
+      EXPECT_EQ(a.is_selected, b.is_selected);
+      EXPECT_EQ(a.is_blocked, b.is_blocked);
+      EXPECT_EQ(a.network_state, b.network_state);
+      EXPECT_EQ(a.alert_states, b.alert_states);
+    }
+  }
+  ASSERT_EQ(actual.children.size(), expected.children.size());
+  for (size_t i = 0; i < actual.children.size(); ++i) {
+    ExpectContainersMatch(*actual.children[i], *expected.children[i]);
+  }
+}
+
+}  // namespace
+
+IN_PROC_BROWSER_TEST_F(TabStripServiceImplBrowserTest,
+                       TabStripServiceViewTracksMutations) {
+  tabs_api::TabStripServiceView view(*tab_strip_service_);
+  ASSERT_EQ(view.GetTabs().size(), 1u);
+  ASSERT_NE(view.GetActiveTab(), nullptr);
+
+  auto create1 =
+      tab_strip_service_->CreateTabAt(std::nullopt, GURL("about:blank?1"));
+  ASSERT_TRUE(create1.has_value());
+  auto create2 =
+      tab_strip_service_->CreateTabAt(std::nullopt, GURL("about:blank?2"));
+  ASSERT_TRUE(create2.has_value());
+
+  ASSERT_EQ(view.GetTabs().size(), 3u);
+  ASSERT_NE(view.GetActiveTab(), nullptr);
+  EXPECT_EQ(view.GetActiveTab()->id, create2->id);
+
+  // Activate the middle tab and verify O(1) active-tab lookup updates.
+  ASSERT_TRUE(tab_strip_service_->ActivateTab(create1->id).has_value());
+  ASSERT_NE(view.GetActiveTab(), nullptr);
+  EXPECT_EQ(view.GetActiveTab()->id, create1->id);
+
+  // Group tabs 1 and 2, then close tab 2, and check structural parity with a
+  // fresh GetTabsWithoutObservation() snapshot.
+  browser()->tab_strip_model()->AddToNewGroup({1, 2});
+  ASSERT_TRUE(tab_strip_service_->CloseNodes({create2->id}).has_value());
+  EXPECT_EQ(view.GetTabs().size(), 2u);
+  EXPECT_EQ(view.GetTab(create2->id), nullptr);
+
+  auto fresh_snapshot = tab_strip_service_->GetTabsWithoutObservation();
+  ASSERT_TRUE(fresh_snapshot.has_value());
+  ASSERT_NE(view.root(), nullptr);
+  ExpectContainersMatch(*view.root(), **fresh_snapshot);
 }

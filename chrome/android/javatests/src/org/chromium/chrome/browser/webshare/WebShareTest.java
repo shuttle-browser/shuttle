@@ -18,11 +18,8 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObserver;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -30,13 +27,13 @@ import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.page.WebPageStation;
 import org.chromium.content_public.browser.test.util.TouchCommon;
+import org.chromium.content_public.browser.test.util.WebContentsUtils;
 import org.chromium.net.test.EmbeddedTestServer;
 import org.chromium.ui.base.DeviceFormFactor;
 
 /** Test suite for Web Share (navigator.share) functionality. */
 @RunWith(ChromeJUnit4ClassRunner.class)
 @Batch(Batch.PER_CLASS)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @DisableIf.Device(DeviceFormFactor.ONLY_TABLET) // crbug.com/41486142
 public class WebShareTest {
     @Rule
@@ -123,8 +120,7 @@ public class WebShareTest {
     @Feature({"WebShare"})
     public void testWebShareApk() throws Exception {
         mActivityTestRule.loadUrl(mTestServer.getURL(TEST_FILE_APK));
-        // Click (instead of directly calling the JavaScript function) to simulate a user gesture.
-        TouchCommon.singleClickView(mTab.getView());
+        singleClickTabView();
         Assert.assertEquals(
                 "Fail: NotAllowedError: Permission denied", mUpdateWaiter.waitForUpdate());
     }
@@ -133,11 +129,9 @@ public class WebShareTest {
     @Test
     @MediumTest
     @Feature({"WebShare"})
-    @DisabledTest(message = "https://crbug.com/515530862")
     public void testWebShareDex() throws Exception {
         mActivityTestRule.loadUrl(mTestServer.getURL(TEST_FILE_DEX));
-        // Click (instead of directly calling the JavaScript function) to simulate a user gesture.
-        TouchCommon.singleClickView(mTab.getView());
+        singleClickTabView();
         Assert.assertEquals(
                 "Fail: NotAllowedError: Permission denied", mUpdateWaiter.waitForUpdate());
     }
@@ -148,8 +142,7 @@ public class WebShareTest {
     @Feature({"WebShare"})
     public void testWebShareMany() throws Exception {
         mActivityTestRule.loadUrl(mTestServer.getURL(TEST_FILE_MANY));
-        // Click (instead of directly calling the JavaScript function) to simulate a user gesture.
-        TouchCommon.singleClickView(mTab.getView());
+        singleClickTabView();
         Assert.assertEquals(
                 "Fail: NotAllowedError: "
                         + "Failed to execute 'share' on 'Navigator': Permission denied",
@@ -162,8 +155,7 @@ public class WebShareTest {
     @Feature({"WebShare"})
     public void testWebShareLarge() throws Exception {
         mActivityTestRule.loadUrl(mTestServer.getURL(TEST_FILE_LARGE));
-        // Click (instead of directly calling the JavaScript function) to simulate a user gesture.
-        TouchCommon.singleClickView(mTab.getView());
+        singleClickTabView();
         Assert.assertEquals(
                 "Fail: NotAllowedError: "
                         + "Failed to execute 'share' on 'Navigator': Permission denied",
@@ -176,8 +168,7 @@ public class WebShareTest {
     @Feature({"WebShare"})
     public void testWebShareLongText() throws Exception {
         mActivityTestRule.loadUrl(mTestServer.getURL(TEST_LONG_TEXT));
-        // Click (instead of directly calling the JavaScript function) to simulate a user gesture.
-        TouchCommon.singleClickView(mTab.getView());
+        singleClickTabView();
         Assert.assertEquals(
                 "Fail: NotAllowedError: "
                         + "Failed to execute 'share' on 'Navigator': Permission denied",
@@ -190,11 +181,17 @@ public class WebShareTest {
     @Feature({"WebShare"})
     public void testWebShareSeparator() throws Exception {
         mActivityTestRule.loadUrl(mTestServer.getURL(TEST_FILE_SEPARATOR));
-        // Click (instead of directly calling the JavaScript function) to simulate a user gesture.
-        TouchCommon.singleClickView(mTab.getView());
+        singleClickTabView();
         Assert.assertEquals(
                 "Fail: NotAllowedError: "
                         + "Failed to execute 'share' on 'Navigator': Permission denied",
                 mUpdateWaiter.waitForUpdate());
+    }
+
+    private void singleClickTabView() throws Exception {
+        // Wait for the newly loaded page's compositor frame to be presented in Viz before
+        // dispatching a touch event to simulate a user gesture.
+        WebContentsUtils.waitForCopyableViewInWebContents(mTab.getWebContents());
+        TouchCommon.singleClickView(mTab.getView());
     }
 }

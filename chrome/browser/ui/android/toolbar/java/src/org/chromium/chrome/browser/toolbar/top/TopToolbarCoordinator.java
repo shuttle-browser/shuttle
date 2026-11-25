@@ -52,6 +52,7 @@ import org.chromium.chrome.browser.layouts.LayoutStateProvider;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.omnibox.LocationBar;
 import org.chromium.chrome.browser.omnibox.OmniboxStub;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabObscuringHandler;
@@ -79,6 +80,7 @@ import org.chromium.chrome.browser.toolbar.top.NavigationPopup.HistoryDelegate;
 import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator;
 import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator.TabStripTransitionDelegate;
 import org.chromium.chrome.browser.toolbar.top.tab_strip.TabStripTransitionCoordinator.TabStripTransitionHandler;
+import org.chromium.chrome.browser.ttc.TtcEntryPoint;
 import org.chromium.chrome.browser.ui.appmenu.AppMenuButtonHelper;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.browser.ui.signin.SigninAndHistorySyncActivityLauncher;
@@ -178,6 +180,11 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
      */
     private @Nullable WindowAndroid mAiOverlayWindowAndroid;
 
+    /** The window's TTC entry point, which the TTC toolbar button reflects. */
+    private @Nullable TtcEntryPoint mTtcEntryPoint;
+
+    private final TtcEntryPoint.Observer mTtcEntryPointObserver = this::updateTtcButton;
+
     /**
      * Creates a new {@link TopToolbarCoordinator}.
      *
@@ -221,6 +228,7 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
      *     display.
      * @param onDownloadButtonClicked Runnable to be called when the download button is tapped.
      * @param suppressTabStripAtStart if {@code true}, suppress tab strip when Chrome starts.
+     * @param omniboxResourceProvider The {@link OmniboxResourceProvider} for Omnibox resources.
      */
     public TopToolbarCoordinator(
             ToolbarControlContainer controlContainer,
@@ -271,7 +279,8 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
             Runnable onSigninTapped,
             NonNullObservableSupplier<DownloadToolbarButtonState> downloadButtonStateSupplier,
             Runnable onDownloadButtonClicked,
-            boolean suppressTabStripAtStart) {
+            boolean suppressTabStripAtStart,
+            OmniboxResourceProvider omniboxResourceProvider) {
         mSuppressTabStripAtStart = suppressTabStripAtStart;
         mToolbarLayout = toolbarLayout;
         mMenuButtonCoordinator = browsingModeMenuButtonCoordinator;
@@ -293,6 +302,7 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
                                 windowAndroid,
                                 signinButtonStub,
                                 tabSupplier,
+                                mToolbarLayout::isShowingNtp,
                                 omniboxStubSupplier,
                                 onSigninTapped,
                                 mToolbarLayout::beginButtonTransition,
@@ -373,6 +383,14 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
                         });
             }
         }
+        if (ToolbarFeatures.isTtcToolbarButtonSupported()
+                && mToolbarLayout instanceof ToolbarTablet) {
+            // Scoped to this window: the TTC session UI of this window publishes whether the
+            // button should show and handles its clicks.
+            mTtcEntryPoint = TtcEntryPoint.from(windowAndroid);
+            mTtcEntryPoint.addObserver(mTtcEntryPointObserver);
+            updateTtcButton();
+        }
         controlContainer.setPostInitializationDependencies(
                 this,
                 toolbarLayout,
@@ -404,7 +422,8 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
                 normalThemeColorProvider,
                 incognitoStateProvider,
                 incognitoWindowCountSupplier,
-                windowAndroid);
+                windowAndroid,
+                omniboxResourceProvider);
         mAppMenuButtonHelperSupplier = appMenuButtonHelperSupplier;
         new OneShotCallback<>(mAppMenuButtonHelperSupplier, this::setAppMenuButtonHelper);
         homepageEnabledSupplier.addSyncObserverAndCallIfNonNull(
@@ -618,12 +637,23 @@ public class TopToolbarCoordinator implements Toolbar, TopControlLayer {
         mOverlayCoordinator.setBookmarkBarHeightSupplier(bookmarkBarHeightSupplier);
     }
 
+    private void updateTtcButton() {
+        TtcEntryPoint entryPoint = mTtcEntryPoint;
+        if (entryPoint == null || !(mToolbarLayout instanceof ToolbarTablet toolbarTablet)) return;
+        toolbarTablet.setTtcButtonState(
+                entryPoint.shouldShow(), entryPoint.isActive(), v -> entryPoint.toggleSession());
+    }
+
     /** Cleans up any code as necessary. */
     @SuppressWarnings("NullAway")
     public void destroy() {
         if (ToolbarFeatures.isAiOverlayDialogEnabled() && mAiOverlayWindowAndroid != null) {
             AiOverlayDialogBridge.setAudioEnergyListener(mAiOverlayWindowAndroid, null);
             mAiOverlayWindowAndroid = null;
+        }
+        if (mTtcEntryPoint != null) {
+            mTtcEntryPoint.removeObserver(mTtcEntryPointObserver);
+            mTtcEntryPoint = null;
         }
         if (mOverlayCoordinator != null) {
             mOverlayCoordinator.destroy();

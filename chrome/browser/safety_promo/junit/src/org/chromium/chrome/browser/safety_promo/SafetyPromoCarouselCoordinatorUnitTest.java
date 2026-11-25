@@ -9,7 +9,11 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNotSame;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.clearInvocations;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -25,6 +29,8 @@ import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -32,6 +38,8 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableNullableObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent;
+import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 
 import java.util.List;
 
@@ -47,7 +55,9 @@ public class SafetyPromoCarouselCoordinatorUnitTest {
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
     @Mock private Runnable mAdvancePage;
+    @Mock private BottomSheetController mBottomSheetController;
     @Mock private SafetyPromoCarouselMediator mMockMediator;
+    @Captor private ArgumentCaptor<BottomSheetContent> mBottomSheetContentCaptor;
 
     private Context mContext;
     private SafetyPromoCarouselCoordinator mCoordinator;
@@ -89,12 +99,102 @@ public class SafetyPromoCarouselCoordinatorUnitTest {
     }
 
     @Test
+    public void testShowMeHowClick_showsBottomSheet() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
+
+        mCoordinator.getView().findViewById(R.id.fre_show_me_how_button).performClick();
+
+        verify(mBottomSheetController)
+                .requestShowContent(any(BottomSheetContent.class), /* animate= */ eq(true));
+    }
+
+    @Test
+    public void testShowMeHowDoubleClick_showsBottomSheetOnce() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
+        View showMeHowButton = mCoordinator.getView().findViewById(R.id.fre_show_me_how_button);
+
+        showMeHowButton.performClick();
+        showMeHowButton.performClick();
+
+        verify(mBottomSheetController)
+                .requestShowContent(any(BottomSheetContent.class), /* animate= */ eq(true));
+    }
+
+    @Test
+    public void testShowMeHowClick_afterBottomSheetDestroyed_showsNewBottomSheet() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
+        View showMeHowButton = mCoordinator.getView().findViewById(R.id.fre_show_me_how_button);
+
+        showMeHowButton.performClick();
+        verify(mBottomSheetController)
+                .requestShowContent(mBottomSheetContentCaptor.capture(), /* animate= */ eq(true));
+        clearInvocations(mBottomSheetController);
+
+        mBottomSheetContentCaptor.getValue().destroy();
+        showMeHowButton.performClick();
+
+        verify(mBottomSheetController)
+                .requestShowContent(any(BottomSheetContent.class), /* animate= */ eq(true));
+    }
+
+    @Test
+    public void testShowMeHowClick_showsActiveItemTitle() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false,
+                ObservableSuppliers.createNullable(SafetyPromoItem.INCOGNITO));
+
+        BottomSheetContent content = showBottomSheet();
+
+        TextView titleView =
+                content.getContentView().findViewById(R.id.safety_promo_bottom_sheet_title);
+        assertEquals(
+                mContext.getString(SafetyPromoItem.INCOGNITO.bottomSheetTitleResId),
+                titleView.getText().toString());
+    }
+
+    @Test
     public void testDestroy() {
         createCoordinator(/* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
 
         mCoordinator.destroy();
 
         verify(mMockMediator).destroy();
+    }
+
+    @Test
+    public void testDestroy_dismissesBottomSheet() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
+        BottomSheetContent content = showBottomSheet();
+
+        mCoordinator.destroy();
+
+        verify(mBottomSheetController).hideContent(eq(content), /* animate= */ eq(false));
+    }
+
+    @Test
+    public void testConfigurationChange_resourcesChanged_dismissesBottomSheet() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
+        BottomSheetContent content = showBottomSheet();
+
+        changeResources(/* useLandscapeLayout= */ false);
+
+        verify(mBottomSheetController).hideContent(eq(content), /* animate= */ eq(false));
+    }
+
+    @Test
+    public void testConfigurationChange_rotation_keepsBottomSheet() {
+        createCoordinatorWithRealMediator(
+                /* useLandscapeLayout= */ false, ObservableSuppliers.createNullable());
+        showBottomSheet();
+
+        rotate(/* useLandscapeLayout= */ true);
+
+        verify(mBottomSheetController, never()).hideContent(any(), anyBoolean());
     }
 
     @Test
@@ -232,7 +332,12 @@ public class SafetyPromoCarouselCoordinatorUnitTest {
             SettableNullableObservableSupplier<SafetyPromoItem> supplier) {
         mCoordinator =
                 new SafetyPromoCarouselCoordinator(
-                        mContext, useLandscapeLayout, supplier, mAdvancePage, TEST_ITEMS);
+                        mContext,
+                        useLandscapeLayout,
+                        supplier,
+                        mAdvancePage,
+                        mBottomSheetController,
+                        TEST_ITEMS);
         mCoordinator.setMediatorForTesting(mMockMediator);
     }
 
@@ -241,7 +346,12 @@ public class SafetyPromoCarouselCoordinatorUnitTest {
             SettableNullableObservableSupplier<SafetyPromoItem> supplier) {
         mCoordinator =
                 new SafetyPromoCarouselCoordinator(
-                        mContext, useLandscapeLayout, supplier, mAdvancePage, TEST_ITEMS);
+                        mContext,
+                        useLandscapeLayout,
+                        supplier,
+                        mAdvancePage,
+                        mBottomSheetController,
+                        TEST_ITEMS);
     }
 
     private void rotate(boolean useLandscapeLayout) {
@@ -250,6 +360,14 @@ public class SafetyPromoCarouselCoordinatorUnitTest {
 
     private void changeResources(boolean useLandscapeLayout) {
         mCoordinator.onConfigurationChanged(useLandscapeLayout, /* resourcesChanged= */ true);
+    }
+
+    /** Clicks "Show me how" and returns the content of the bottom sheet shown. */
+    private BottomSheetContent showBottomSheet() {
+        mCoordinator.getView().findViewById(R.id.fre_show_me_how_button).performClick();
+        verify(mBottomSheetController)
+                .requestShowContent(mBottomSheetContentCaptor.capture(), /* animate= */ eq(true));
+        return mBottomSheetContentCaptor.getValue();
     }
 
     private void assertTitle(SafetyPromoCarouselView view, SafetyPromoItem item) {

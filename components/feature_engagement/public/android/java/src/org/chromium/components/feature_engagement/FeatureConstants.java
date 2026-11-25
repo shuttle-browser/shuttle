@@ -31,9 +31,6 @@ import java.lang.annotation.RetentionPolicy;
     FeatureConstants.ANDROID_BOTTOM_BAR_ADDRESS_BAR,
     FeatureConstants.ANDROID_BOTTOM_BAR_EDUCATION,
     FeatureConstants.ANDROID_BOTTOM_BAR_EDUCATION_TOOLTIPS,
-    FeatureConstants.ANDROID_BOTTOM_BAR_GLIC,
-    FeatureConstants.ANDROID_BOTTOM_BAR_NEW_TAB,
-    FeatureConstants.ANDROID_BOTTOM_BAR_PROMO_DIALOG,
     FeatureConstants.ANDROID_TAB_DECLUTTER_FEATURE,
     FeatureConstants.ANDROID_TIPS_OPT_IN_PROMO_FEATURE,
     FeatureConstants.ANDROID_VERTICAL_TABS_NEW_LABEL,
@@ -107,6 +104,7 @@ import java.lang.annotation.RetentionPolicy;
     FeatureConstants.MENU_ADD_TO_GROUP,
     FeatureConstants.MOST_VISITED_TILES_CUSTOMIZATION_PIN,
     FeatureConstants.NEW_TAB_PAGE_THEME_CUSTOMIZATION_FEATURE,
+    FeatureConstants.NEW_TAB_PAGE_THEME_CUSTOMIZATION_MAGIC_STACK_FEATURE,
     FeatureConstants.NOTIFICATION_PERMISSION_PROMO_FEATURE,
     FeatureConstants.PAGE_INFO_FEATURE,
     FeatureConstants.PAGE_INFO_STORE_INFO_FEATURE,
@@ -194,15 +192,6 @@ public @interface FeatureConstants {
 
     /** Bottom bar education tooltip tour shown after the user opts in. */
     String ANDROID_BOTTOM_BAR_EDUCATION_TOOLTIPS = "IPH_AndroidBottomBarEducationTooltips";
-
-    /** Describes the GLIC button on the new bottom bar. */
-    String ANDROID_BOTTOM_BAR_GLIC = "IPH_AndroidBottomBarGlic";
-
-    /** Describes the new tab button moved down in the bottom bar. */
-    String ANDROID_BOTTOM_BAR_NEW_TAB = "IPH_AndroidBottomBarNewTab";
-
-    /** Describes the promo dialog shown to introduce the bottom bar. */
-    String ANDROID_BOTTOM_BAR_PROMO_DIALOG = "IPH_AndroidBottomBarPromoDialog";
 
     String ANDROID_TAB_DECLUTTER_FEATURE = "IPH_AndroidTabDeclutter";
     String ANDROID_TIPS_OPT_IN_PROMO_FEATURE = "IPH_AndroidTipsOptInPromo";
@@ -406,6 +395,10 @@ public @interface FeatureConstants {
 
     /** An IPH feature to inform users about the NTP theme customization options. */
     String NEW_TAB_PAGE_THEME_CUSTOMIZATION_FEATURE = "IPH_NewTabPageThemeCustomization";
+
+    /** An IPH feature to track the NTP theme customization promo card in the Magic Stack. */
+    String NEW_TAB_PAGE_THEME_CUSTOMIZATION_MAGIC_STACK_FEATURE =
+            "IPH_NewTabPageThemeCustomizationMagicStack";
 
     String NOTIFICATION_PERMISSION_PROMO_FEATURE = "IPH_NotificationPermissionPromo";
 

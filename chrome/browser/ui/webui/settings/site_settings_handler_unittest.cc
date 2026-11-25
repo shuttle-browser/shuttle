@@ -116,7 +116,7 @@
 #include "components/permissions/test/permission_test_util.h"
 #include "components/prefs/testing_pref_service.h"
 #include "components/privacy_sandbox/privacy_sandbox_features.h"
-#include "components/safe_browsing/core/browser/safe_browsing_metrics_collector.h"
+#include "components/safe_browsing/core/browser/metrics_collector/safe_browsing_metrics_collector.h"
 #include "components/services/app_service/public/cpp/app_registry_cache.h"
 #include "components/services/app_service/public/cpp/app_types.h"
 #include "components/services/app_service/public/cpp/app_update.h"
@@ -158,6 +158,7 @@
 #include "third_party/blink/public/common/features_generated.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/bluetooth/web_bluetooth.mojom.h"
+#include "third_party/blink/public/public_buildflags.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/text/bytes_formatting.h"
 #include "ui/base/unowned_user_data/scoped_unowned_user_data.h"
@@ -166,10 +167,13 @@
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/ash/login/users/fake_chrome_user_manager.h"
-#include "chrome/browser/smart_card/smart_card_permission_context.h"
-#include "chrome/browser/smart_card/smart_card_permission_context_factory.h"
 #include "components/account_id/account_id.h"
 #include "components/user_manager/scoped_user_manager.h"
+#endif
+
+#if BUILDFLAG(ENABLE_SMART_CARD)
+#include "chrome/browser/smart_card/smart_card_permission_context.h"
+#include "chrome/browser/smart_card/smart_card_permission_context_factory.h"
 #endif
 
 #if BUILDFLAG(ENABLE_PLUGINS)
@@ -1327,10 +1331,10 @@ TEST_P(SiteSettingsHandlerSchemeTest, HandleClearUnpartitionedUsage) {
 }
 
 class SiteSettingsHandlerTest : public SiteSettingsHandlerBaseTest {
-#if BUILDFLAG(IS_CHROMEOS)
+#if BUILDFLAG(ENABLE_SMART_CARD)
  private:
   base::test::ScopedFeatureList feature_list_{blink::features::kSmartCard};
-#endif  // BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(ENABLE_SMART_CARD)
 };
 
 TEST_F(SiteSettingsHandlerTest, GetAndSetDefault) {
@@ -1806,14 +1810,10 @@ TEST_F(SiteSettingsHandlerTest, Cookies) {
 
 TEST_F(SiteSettingsHandlerTest, GetRecentSitePermissions) {
   // Constants used only in this test.
-  std::string kAllowed =
-      content_settings::ContentSettingToString(CONTENT_SETTING_ALLOW);
   std::string kBlocked = content_settings::ContentSettingToString(
       ContentSetting::CONTENT_SETTING_BLOCK);
   std::string kEmbargo =
       SiteSettingSourceToString(site_settings::SiteSettingSource::kEmbargo);
-  std::string kPreference =
-      SiteSettingSourceToString(site_settings::SiteSettingSource::kPreference);
 
   base::ListValue get_recent_permissions_args;
   get_recent_permissions_args.Append(kCallbackId);

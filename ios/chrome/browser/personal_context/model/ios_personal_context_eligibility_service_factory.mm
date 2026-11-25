@@ -43,17 +43,16 @@ IOSPersonalContextEligibilityServiceFactory::
 
 std::unique_ptr<KeyedService>
 IOSPersonalContextEligibilityServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   if (!base::FeatureList::IsEnabled(
           personal_context::features::kPersonalContext)) {
     return nullptr;
   }
 
   account_settings::AccountSettingService* account_settings_service =
-      IOSAccountSettingServiceFactory::GetForProfile(
-          profile->GetOriginalProfile());
+      IOSAccountSettingServiceFactory::GetForProfile(profile);
   signin::IdentityManager* identity_manager =
-      IdentityManagerFactory::GetForProfile(profile->GetOriginalProfile());
+      IdentityManagerFactory::GetForProfile(profile);
 
   ApplicationContext* application_context = GetApplicationContext();
   std::string locale =
@@ -65,6 +64,6 @@ IOSPersonalContextEligibilityServiceFactory::BuildServiceInstanceFor(
 
   return std::make_unique<
       personal_context::PersonalContextEligibilityServiceImpl>(
-      account_settings_service, identity_manager, profile->GetPrefs(),
+      account_settings_service, identity_manager, profile.GetPrefs(),
       GetCountryCodeFromVariations(), locale);
 }

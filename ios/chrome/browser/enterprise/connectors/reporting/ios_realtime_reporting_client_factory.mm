@@ -17,8 +17,8 @@ namespace enterprise_connectors {
 namespace {
 
 std::unique_ptr<KeyedService> BuildRealtimeReportingClient(
-    ProfileIOS* profile) {
-  return std::make_unique<IOSRealtimeReportingClient>(profile);
+    ProfileIOS& profile) {
+  return std::make_unique<IOSRealtimeReportingClient>(&profile);
 }
 
 }  // namespace
@@ -41,7 +41,7 @@ IOSRealtimeReportingClientFactory::IOSRealtimeReportingClientFactory(
 
 std::unique_ptr<KeyedService>
 IOSRealtimeReportingClientFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildRealtimeReportingClient(profile);
 }
 

@@ -9,15 +9,21 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.doAnswer;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.robolectric.Shadows.shadowOf;
 
 import android.graphics.Bitmap;
 import android.graphics.drawable.BitmapDrawable;
+import android.graphics.drawable.ColorDrawable;
 import android.graphics.drawable.Drawable;
 import android.view.ContextThemeWrapper;
 
@@ -38,10 +44,13 @@ import org.chromium.base.Callback;
 import org.chromium.base.ContextUtils;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.DisableFeatures;
+import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.browser_controls.BrowserControlsStateProvider.ControlsPosition;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
+import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState.IconSize;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxImageSupplier;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteUIContext;
@@ -58,8 +67,12 @@ import org.chromium.components.omnibox.AutocompleteMatch;
 import org.chromium.components.omnibox.AutocompleteMatchBuilder;
 import org.chromium.components.omnibox.DocumentType;
 import org.chromium.components.omnibox.OmniboxCapabilities;
+import org.chromium.components.omnibox.OmniboxFeatureList;
+import org.chromium.components.omnibox.OmniboxSuggestionKind;
 import org.chromium.components.omnibox.OmniboxSuggestionType;
 import org.chromium.components.omnibox.SuggestTemplateInfoProto.SuggestTemplateInfo;
+import org.chromium.components.omnibox.SuggestTemplateInfoProtoIntDef.ActionType;
+import org.chromium.components.omnibox.SuggestTemplateInfoProtoIntDef.IconType;
 import org.chromium.components.omnibox.action.ActionPresentationMode;
 import org.chromium.components.omnibox.action.OmniboxActionDelegate;
 import org.chromium.components.search_engines.StarterPackId;
@@ -221,8 +234,7 @@ public class BasicSuggestionProcessorUnitTest {
                                                 0,
                                                 "tab switch",
                                                 "tab switch",
-                                                SuggestTemplateInfo.TemplateAction.ActionType
-                                                        .CHROME_TAB_SWITCH_VALUE,
+                                                ActionType.CHROME_TAB_SWITCH,
                                                 "https://google.com",
                                                 /* tabId= */ 0,
                                                 ActionPresentationMode.BUTTON)))
@@ -362,53 +374,38 @@ public class BasicSuggestionProcessorUnitTest {
     public void getFallbackIconFromIconType_validIconForEachType() {
         var resourceMap =
                 Map.ofEntries(
-                        Map.entry(SuggestTemplateInfo.IconType.ICON_TYPE_UNSPECIFIED, 0),
-                        Map.entry(SuggestTemplateInfo.IconType.HISTORY, R.drawable.ic_history_24dp),
+                        Map.entry(IconType.ICON_TYPE_UNSPECIFIED, 0),
+                        Map.entry(IconType.HISTORY, R.drawable.ic_history_24dp),
+                        Map.entry(IconType.SEARCH_LOOP, R.drawable.ic_suggestion_magnifier),
                         Map.entry(
-                                SuggestTemplateInfo.IconType.SEARCH_LOOP,
-                                R.drawable.ic_suggestion_magnifier),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.SEARCH_LOOP_WITH_SPARKLE,
+                                IconType.SEARCH_LOOP_WITH_SPARKLE,
                                 R.drawable.search_spark_black_24dp),
+                        Map.entry(IconType.TRENDING, R.drawable.trending_up_black_24dp),
+                        Map.entry(IconType.SUB_ARROW_RIGHT, R.drawable.ic_suggestion_magnifier),
+                        Map.entry(IconType.GLOBE_WITH_SEARCH_LOOP, R.drawable.travel_explore_24dp),
+                        Map.entry(IconType.BANANA, R.drawable.create_image_24dp),
+                        Map.entry(IconType.FAVICON, R.drawable.ic_globe_24dp),
+                        Map.entry(IconType.NOTES_SPARK, R.drawable.notes_spark),
+                        Map.entry(IconType.DRAFT_SPARK, R.drawable.draft_spark_24dp),
+                        Map.entry(IconType.LIGHTBULB, R.drawable.ic_lightbulb_24dp),
+                        Map.entry(IconType.ATTACH_FILE, R.drawable.ic_attach_file_24dp),
+                        Map.entry(IconType.SCHOOL, R.drawable.ic_school_24dp),
+                        Map.entry(IconType.INK_PEN, R.drawable.ic_ink_pen_24dp),
+                        Map.entry(IconType.TAB, R.drawable.tab),
+                        Map.entry(IconType.PHOTO_SPARK, R.drawable.ic_photo_spark_24dp),
+                        Map.entry(IconType.BOLT, R.drawable.bolt_24dp),
+                        Map.entry(IconType.IMAGE_CREATE, R.drawable.image_create_24dp),
                         Map.entry(
-                                SuggestTemplateInfo.IconType.TRENDING,
-                                R.drawable.trending_up_black_24dp),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.SUB_ARROW_RIGHT,
-                                R.drawable.ic_suggestion_magnifier),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.GLOBE_WITH_SEARCH_LOOP,
-                                R.drawable.travel_explore_24dp),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.BANANA, R.drawable.create_image_24dp),
-                        Map.entry(SuggestTemplateInfo.IconType.FAVICON, R.drawable.ic_globe_24dp),
-                        Map.entry(SuggestTemplateInfo.IconType.NOTES_SPARK, R.drawable.notes_spark),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.DRAFT_SPARK,
-                                R.drawable.draft_spark_24dp),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.LIGHTBULB,
-                                R.drawable.ic_lightbulb_24dp),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.ATTACH_FILE,
-                                R.drawable.ic_attach_file_24dp),
-                        Map.entry(SuggestTemplateInfo.IconType.SCHOOL, R.drawable.ic_school_24dp),
-                        Map.entry(SuggestTemplateInfo.IconType.INK_PEN, R.drawable.ic_ink_pen_24dp),
-                        Map.entry(SuggestTemplateInfo.IconType.TAB, R.drawable.tab),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.PHOTO_SPARK,
-                                R.drawable.ic_photo_spark_24dp),
-                        Map.entry(SuggestTemplateInfo.IconType.BOLT, R.drawable.bolt_24dp),
-                        Map.entry(
-                                SuggestTemplateInfo.IconType.IMAGE_CREATE,
-                                R.drawable.image_create_24dp));
+                                IconType.PROMPT_SUGGESTION, R.drawable.ic_prompt_suggestion_24dp));
 
-        for (var iconType : SuggestTemplateInfo.IconType.values()) {
-            assertTrue(iconType.toString(), resourceMap.containsKey(iconType));
+        for (@IconType int iconType = IconType.MIN_VALUE;
+                iconType <= IconType.MAX_VALUE;
+                iconType++) {
+            assertTrue(String.valueOf(iconType), resourceMap.containsKey(iconType));
             assertEquals(
-                    iconType.toString(),
+                    String.valueOf(iconType),
                     (int) resourceMap.get(iconType),
-                    mProcessor.getFallbackIconFromIconType(iconType.getNumber()));
+                    mProcessor.getFallbackIconFromIconType(iconType));
         }
     }
 
@@ -484,6 +481,95 @@ public class BasicSuggestionProcessorUnitTest {
 
         assertNotEquals(icon1, icon2);
         assertEquals(mBitmap, ((BitmapDrawable) icon2.drawable).getBitmap());
+    }
+
+    @Test
+    @EnableFeatures(OmniboxFeatureList.OMNIBOX_NATIVE_VECTOR_ICONS)
+    public void vectorIcons_shownAsMediumIconsWhenEnabled() {
+        mProcessor.onNativeInitialized();
+        mIsBookmarked.mState = true;
+        int sizeDp = mResourceProvider.getEdgeSizeDp(IconSize.MEDIUM);
+        doReturn(new BitmapDrawable(ContextUtils.getApplicationContext().getResources(), mBitmap))
+                .when(mImageSupplier)
+                .getVectorIcon(any(), eq(true), eq(sizeDp));
+
+        createUrlSuggestion(OmniboxSuggestionType.URL_WHAT_YOU_TYPED, "");
+
+        verify(mImageSupplier).getVectorIcon(eq(mSuggestion), eq(true), eq(sizeDp));
+        OmniboxDrawableState icon = mModel.get(BaseSuggestionViewProperties.ICON);
+        assertNotNull(icon);
+        assertEquals(IconSize.MEDIUM, icon.size);
+        assertTrue(icon.allowTint);
+        assertEquals(mBitmap, ((BitmapDrawable) icon.drawable).getBitmap());
+    }
+
+    @Test
+    @EnableFeatures(OmniboxFeatureList.OMNIBOX_NATIVE_VECTOR_ICONS)
+    public void vectorIcons_doNotOverrideSuggestionImages() {
+        mProcessor.onNativeInitialized();
+        int sizeDp = mResourceProvider.getEdgeSizeDp(IconSize.MEDIUM);
+        doReturn(new BitmapDrawable(ContextUtils.getApplicationContext().getResources(), mBitmap))
+                .when(mImageSupplier)
+                .getVectorIcon(any(), eq(false), eq(sizeDp));
+        // Simulate an image served synchronously from the in-memory cache.
+        Drawable image = new ColorDrawable(0xFF0000FF);
+        doAnswer(
+                        inv -> {
+                            inv.<Callback<Drawable>>getArgument(1).onResult(image);
+                            return null;
+                        })
+                .when(mImageSupplier)
+                .fetchImage(any(), any());
+
+        mSuggestion =
+                createSuggestionBuilder(OmniboxSuggestionType.SEARCH_SUGGEST_ENTITY, "")
+                        .setIsSearch(true)
+                        .setImageUrl(JUnitTestGURLs.URL_1)
+                        .build();
+        mModel = mProcessor.createModel();
+        mProcessor.populateModel(mInput, mSuggestion, mModel, 0);
+
+        OmniboxDrawableState icon = mModel.get(BaseSuggestionViewProperties.ICON);
+        assertNotNull(icon);
+        assertEquals(IconSize.LARGE, icon.size);
+        assertSame(image, icon.drawable);
+    }
+
+    @Test
+    @EnableFeatures(OmniboxFeatureList.OMNIBOX_NATIVE_VECTOR_ICONS)
+    public void vectorIcons_keepFallbackWhenUnavailable() {
+        mProcessor.onNativeInitialized();
+        doReturn(null).when(mImageSupplier).getVectorIcon(any(), anyBoolean(), anyInt());
+
+        createUrlSuggestion(OmniboxSuggestionType.URL_WHAT_YOU_TYPED, "");
+
+        OmniboxDrawableState icon = mModel.get(BaseSuggestionViewProperties.ICON);
+        assertNotNull(icon);
+        assertEquals(IconSize.SMALL, icon.size);
+        assertEquals(R.drawable.ic_globe_24dp, icon.resourceIdForTesting);
+    }
+
+    @Test
+    @EnableFeatures(OmniboxFeatureList.OMNIBOX_NATIVE_VECTOR_ICONS)
+    public void vectorIcons_notFetchedForDocumentSuggestions() {
+        mProcessor.onNativeInitialized();
+        mSuggestion =
+                createSuggestionBuilder(OmniboxSuggestionType.DOCUMENT_SUGGESTION, "")
+                        .setDocumentType(DocumentType.DRIVE_DOCS)
+                        .build();
+        mModel = mProcessor.createModel();
+        mProcessor.populateModel(mInput, mSuggestion, mModel, 0);
+
+        verify(mImageSupplier, never()).getVectorIcon(any(), anyBoolean(), anyInt());
+    }
+
+    @Test
+    @DisableFeatures(OmniboxFeatureList.OMNIBOX_NATIVE_VECTOR_ICONS)
+    public void vectorIcons_notFetchedWhenDisabled() {
+        mProcessor.onNativeInitialized();
+        createUrlSuggestion(OmniboxSuggestionType.URL_WHAT_YOU_TYPED, "");
+
+        verify(mImageSupplier, never()).getVectorIcon(any(), anyBoolean(), anyInt());
     }
 
     @Test
@@ -655,7 +741,7 @@ public class BasicSuggestionProcessorUnitTest {
         mModel = mProcessor.createModel();
         mProcessor.populateModel(mInput, mSuggestion, mModel, 0);
         OmniboxDrawableState icon4 = mModel.get(BaseSuggestionViewProperties.ICON);
-        assertEquals(R.drawable.ic_spark_4c_16dp, shadowOf(icon4.drawable).getCreatedFromResId());
+        assertEquals(R.drawable.ic_spark_24dp, shadowOf(icon4.drawable).getCreatedFromResId());
     }
 
     @Test
@@ -685,7 +771,8 @@ public class BasicSuggestionProcessorUnitTest {
                 "Google, Technology corporation. Search. 2 of 5 in the group Trending"
                         + " Searches.";
         assertEquals(
-                expectedAnnouncement, mModel.get(SuggestionViewProperties.CONTENT_DESCRIPTION));
+                expectedAnnouncement,
+                mModel.get(SuggestionViewProperties.CONTENT_DESCRIPTION_SUPPLIER).get());
     }
 
     @Test
@@ -693,8 +780,7 @@ public class BasicSuggestionProcessorUnitTest {
         mProcessor.onNativeInitialized();
         mSuggestion =
                 createSuggestionBuilder(OmniboxSuggestionType.SEARCH_SUGGEST, "Gemini")
-                        .setSuggestionKind(
-                                org.chromium.components.omnibox.OmniboxSuggestionKind.CONVERSATION)
+                        .setSuggestionKind(OmniboxSuggestionKind.CONVERSATION)
                         .setDescription("AI Mode")
                         .build();
         mModel = mProcessor.createModel();
@@ -709,7 +795,36 @@ public class BasicSuggestionProcessorUnitTest {
         String expectedAnnouncement =
                 "Gemini, AI Mode. Conversation. 3 of 4 in the group AI Suggestions.";
         assertEquals(
-                expectedAnnouncement, mModel.get(SuggestionViewProperties.CONTENT_DESCRIPTION));
+                expectedAnnouncement,
+                mModel.get(SuggestionViewProperties.CONTENT_DESCRIPTION_SUPPLIER).get());
+    }
+
+    @Test
+    public void accessibilityAnnouncements_noDescription() {
+        mProcessor.onNativeInitialized();
+        mSuggestion =
+                createSuggestionBuilder(OmniboxSuggestionType.SEARCH_SUGGEST, "Google")
+                        .setIsSearch(true)
+                        .setDescription("")
+                        .build();
+        mModel = mProcessor.createModel();
+        mModel.set(SuggestionCommonProperties.HEADER_TITLE, "Trending Searches");
+        mModel.set(SuggestionCommonProperties.INDEX_IN_GROUP, 0);
+        mModel.set(SuggestionCommonProperties.TOTAL_IN_GROUP, 3);
+
+        mProcessor.populateModel(mInput, mSuggestion, mModel, 0);
+
+        assertEquals(
+                "Google. Search. 1 of 3 in the group Trending Searches.",
+                mModel.get(SuggestionViewProperties.CONTENT_DESCRIPTION_SUPPLIER).get());
+    }
+
+    @Test
+    public void accessibilityAnnouncements_notSetWithoutGroup() {
+        mProcessor.onNativeInitialized();
+        createSearchSuggestion(OmniboxSuggestionType.SEARCH_SUGGEST, "Google");
+        assertEquals(0, mModel.get(SuggestionCommonProperties.TOTAL_IN_GROUP));
+        assertNull(mModel.get(SuggestionViewProperties.CONTENT_DESCRIPTION_SUPPLIER));
     }
 
     @Test

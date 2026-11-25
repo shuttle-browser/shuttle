@@ -17,13 +17,14 @@
 #include <memory>
 #include <optional>
 
-#include "Eigen/Core"
-#include "Eigen/Geometry"
-#include "Eigen/LU"
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
+#include "Eigen/Core"                   // from @eigen
+#include "Eigen/Geometry"               // from @eigen
+#include "Eigen/LU"                     // from @eigen
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
 #include "mediapipe/calculators/image/affine_transformation.h"
 #include "mediapipe/framework/calculator_framework.h"
 #include "mediapipe/framework/port/ret_check.h"
@@ -207,7 +208,7 @@ class GlTextureWarpAffineRunner
           absl::StrCat(mediapipe::kMediaPipeFragmentShaderPreamble,
                        interpolation_def, kFragShader);
 
-      MP_ASSIGN_OR_RETURN(program_, create_fn(vert_src, frag_src));
+      ABSL_ASSIGN_OR_RETURN(program_, create_fn(vert_src, frag_src));
 
       auto create_custom_zero_fn = [&]() -> absl::StatusOr<Program> {
         std::string custom_zero_border_mode_def = R"(
@@ -220,10 +221,10 @@ class GlTextureWarpAffineRunner
       };
 #if GL_CLAMP_TO_BORDER_MAY_BE_SUPPORTED
       if (!IsGlClampToBorderSupported(gl_helper_->GetGlContext())) {
-        MP_ASSIGN_OR_RETURN(program_custom_zero_, create_custom_zero_fn());
+        ABSL_ASSIGN_OR_RETURN(program_custom_zero_, create_custom_zero_fn());
       }
 #else
-      MP_ASSIGN_OR_RETURN(program_custom_zero_, create_custom_zero_fn());
+      ABSL_ASSIGN_OR_RETURN(program_custom_zero_, create_custom_zero_fn());
 #endif  // GL_CLAMP_TO_BORDER_MAY_BE_SUPPORTED
 
       glGenFramebuffers(1, &framebuffer_);
@@ -253,14 +254,14 @@ class GlTextureWarpAffineRunner
       const AffineTransformation::Size& size,
       AffineTransformation::BorderMode border_mode) override {
     std::unique_ptr<GpuBuffer> gpu_buffer;
-    MP_RETURN_IF_ERROR(
+    ABSL_RETURN_IF_ERROR(
         gl_helper_->RunInGlContext([this, &input, &matrix, &size, &border_mode,
                                     &gpu_buffer]() -> absl::Status {
           auto input_texture = gl_helper_->CreateSourceTexture(input);
           auto output_texture = gl_helper_->CreateDestinationTexture(
               size.width, size.height, input.format());
 
-          MP_RETURN_IF_ERROR(
+          ABSL_RETURN_IF_ERROR(
               RunInternal(input_texture, matrix, border_mode, &output_texture));
           gpu_buffer = output_texture.GetFrame<GpuBuffer>();
           return absl::OkStatus();
@@ -324,8 +325,8 @@ class GlTextureWarpAffineRunner
 
     // uniforms
     Eigen::Matrix<float, 4, 4, Eigen::RowMajor> eigen_mat(matrix.data());
-    MP_ASSIGN_OR_RETURN(bool is_matrix_vertical_flip_needed,
-                        mediapipe::IsGpuOriginAtBottom(gpu_origin_));
+    ABSL_ASSIGN_OR_RETURN(bool is_matrix_vertical_flip_needed,
+                          mediapipe::IsGpuOriginAtBottom(gpu_origin_));
     if (is_matrix_vertical_flip_needed) {
       // @matrix describes affine transformation in terms of TOP LEFT origin, so
       // in some cases/on some platforms an extra flipping should be done before
@@ -426,9 +427,9 @@ absl::StatusOr<std::unique_ptr<
 CreateAffineTransformationGlRunner(
     std::shared_ptr<GlCalculatorHelper> gl_helper, GpuOrigin::Mode gpu_origin,
     AffineTransformation::Interpolation interpolation) {
-  auto runner = absl::make_unique<GlTextureWarpAffineRunner>(
+  auto runner = std::make_unique<GlTextureWarpAffineRunner>(
       gl_helper, gpu_origin, interpolation);
-  MP_RETURN_IF_ERROR(runner->Init());
+  ABSL_RETURN_IF_ERROR(runner->Init());
   return runner;
 }
 

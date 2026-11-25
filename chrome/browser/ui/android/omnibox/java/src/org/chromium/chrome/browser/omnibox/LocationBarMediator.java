@@ -90,6 +90,7 @@ import org.chromium.chrome.browser.omnibox.status.StatusCoordinator;
 import org.chromium.chrome.browser.omnibox.status.StatusProperties.StatusIconResource;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteCoordinator;
+import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteCoordinator.NavigationTarget;
 import org.chromium.chrome.browser.omnibox.suggestions.OmniboxAnimator;
 import org.chromium.chrome.browser.omnibox.suggestions.OmniboxLoadUrlParams;
 import org.chromium.chrome.browser.omnibox.suggestions.OmniboxSuggestionsContainer;
@@ -481,9 +482,6 @@ public class LocationBarMediator
                         mCallbackController.makeCancelable(
                                 (present) -> updateNavigateButtonVisibility()));
         mFuseboxCoordinator.setOnInteractionCompletedCallback(this::onFuseboxInteractionCompleted);
-        mFuseboxCoordinator.setOnFirstPickerInteractionCanceledCallback(this::endInput);
-        mFuseboxCoordinator.setOnPickerInteractionSucceededCallback(
-                () -> onFuseboxInteractionCompleted(/* actionTaken= */ true));
         mLocationBarLayout
                 .getActivationChip()
                 .setOnClickListener(v -> onActivationChipClicked(/* viaKeyboard= */ false));
@@ -585,14 +583,13 @@ public class LocationBarMediator
                     @Override
                     public void handleActivationEvent(KeyEvent event) {
                         if (mAutocompleteCoordinator == null) return;
-                        @AutocompleteCoordinator.NavigationTarget
-                        int target = AutocompleteCoordinator.NavigationTarget.CURRENT_TAB;
+                        @NavigationTarget int target = NavigationTarget.CURRENT_TAB;
                         if (event.isAltPressed() && event.isShiftPressed()) {
-                            target = AutocompleteCoordinator.NavigationTarget.NEW_BACKGROUND_TAB;
+                            target = NavigationTarget.NEW_BACKGROUND_TAB;
                         } else if (event.isAltPressed()) {
-                            target = AutocompleteCoordinator.NavigationTarget.NEW_TAB;
+                            target = NavigationTarget.NEW_TAB;
                         } else if (event.isShiftPressed()) {
-                            target = AutocompleteCoordinator.NavigationTarget.NEW_WINDOW;
+                            target = NavigationTarget.NEW_WINDOW;
                         }
                         mAutocompleteCoordinator.loadTypedOmniboxText(event.getEventTime(), target);
                     }
@@ -1024,7 +1021,6 @@ public class LocationBarMediator
      */
     @VisibleForTesting
     /* package */ boolean shouldTriggerSiteSearch(UrlBarTextChangeInfo info) {
-
         if (info.isDelete()) {
             // Deletions should never trigger site-search. This helps avoid accidentally activating
             // site-search when the user is trying to delete text.
@@ -2998,6 +2994,7 @@ public class LocationBarMediator
         updateSearchEngineStatusIconShownState();
         // Update the visuals to use correct incognito colors.
         mUrlCoordinator.setIncognitoColorsEnabled(mLocationBarDataProvider.isIncognitoBranded());
+        updateBrandedColorScheme();
     }
 
     @Override
@@ -3114,7 +3111,10 @@ public class LocationBarMediator
         // session again, which also covers sessions begun without a request, e.g. on focus.
         FuseboxSessionState.applyPageMetadata(input, mLocationBarDataProvider);
         if (input.getDisplayState() == DisplayState.WEBSITE) {
-            input.setDisplayState(DisplayState.DRAFTING);
+            input.setDisplayState(
+                    input.getAutocompleteState() == AutocompleteState.STANDBY_NO_FOCUS
+                            ? DisplayState.DRAFTING_NO_FOCUS
+                            : DisplayState.DRAFTING);
         }
 
         var state = FuseboxSessionState.from(mLocationBarDataProvider);
@@ -3273,18 +3273,20 @@ public class LocationBarMediator
         assert mCurrentInput != null;
         // We set the selection to SELECT_END so that on resume, when we set the selection to
         // SELECT_ALL in @see #beginOrResumeInput(boolean), a view update actually occurs (the
-        // UrlBarMediator guards against duplicate updates.
+        // UrlBarMediator guards against duplicate updates).
         mCurrentInput
                 .commitPreviewText()
                 .setSelection(TextSelection.SELECT_END)
-                .setAutocompleteState(AutocompleteState.STANDBY);
-        pushUrlBarDataFromCurrentInput();
+                .setAutocompleteState(AutocompleteState.STANDBY)
+                .setDisplayState(DisplayState.DRAFTING_NO_FOCUS);
+        mUrlCoordinator.setUrlBarData(
+                getUrlBarDataForCurrentInput(mCurrentInput),
+                ScrollType.SCROLL_TO_BEGINNING,
+                mCurrentInput.getSelection());
 
         // TODO(b/550394727): Fix committing preview text on defocus via window change.
         // Clicking another window doesn't seem to commit the preview text. It looks like preview
         // text is null.
-
-        mCurrentInput.setDisplayState(DisplayState.DRAFTING_NO_FOCUS);
 
         // TODO(b/548101684): Figure out why the url text isn't highlighted on refocus if we put
         // this focus clearing in call @see #onDisplayStateChanged(int). First verify the truth of
@@ -3463,7 +3465,10 @@ public class LocationBarMediator
 
     @Override
     public void shareText(String text) {
-        ShareParams params = new ShareParams.Builder(mWindowAndroid, /* title= */ "", text).build();
+        ShareParams params =
+                new ShareParams.Builder(mWindowAndroid, /* title= */ "", /* url= */ "")
+                        .setText(text)
+                        .build();
         ShareHelper.shareWithSystemShareSheetUi(params);
     }
 
@@ -3476,9 +3481,7 @@ public class LocationBarMediator
     public void onPerformPasteAndGo(String text) {
         if (!mNativeInitialized || mAutocompleteCoordinator == null) return;
         mAutocompleteCoordinator.loadPastedText(
-                text,
-                TimeUtils.uptimeMillis(),
-                AutocompleteCoordinator.NavigationTarget.CURRENT_TAB);
+                text, TimeUtils.uptimeMillis(), NavigationTarget.CURRENT_TAB);
     }
 
     @Override
@@ -3719,7 +3722,7 @@ public class LocationBarMediator
 
         @Override
         public boolean hasSpaceToShow() {
-            if (!mIsTablet || !ChromeFeatureList.sToolbarTabletResizeRefactor.isEnabled()) {
+            if (!mIsTablet) {
                 return true;
             }
             return mHasSpaceToShow;
@@ -3732,8 +3735,6 @@ public class LocationBarMediator
 
         @Override
         public int updateVisibility(int availableWidth) {
-            assert ChromeFeatureList.sToolbarTabletResizeRefactor.isEnabled();
-
             mHasSpaceToShow = availableWidth >= mButtonWidth;
             if (mShouldShowButton.get() && mHasSpaceToShow) {
                 mUpdateButtonVisibility.onResult(true);
@@ -3915,8 +3916,7 @@ public class LocationBarMediator
             // from the views.
             if (mAutocompleteCoordinator != null) {
                 mAutocompleteCoordinator.loadTypedOmniboxText(
-                        TimeUtils.uptimeMillis(),
-                        AutocompleteCoordinator.NavigationTarget.CURRENT_TAB);
+                        TimeUtils.uptimeMillis(), NavigationTarget.CURRENT_TAB);
             }
             return;
         }
@@ -3934,9 +3934,7 @@ public class LocationBarMediator
     private void clearEditingAndUserText() {
         if (mCurrentInput == null || mUrlCoordinator == null) return;
         mUrlCoordinator.setUrlBarData(
-                UrlBarData.forNonUrlText(""),
-                UrlBar.ScrollType.NO_SCROLL,
-                TextSelection.SELECT_END);
+                UrlBarData.forNonUrlText(""), ScrollType.NO_SCROLL, TextSelection.SELECT_END);
         mCurrentInput.setUserText("");
     }
 

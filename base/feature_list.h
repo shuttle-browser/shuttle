@@ -296,14 +296,16 @@ class BASE_EXPORT FeatureList {
   // is about to change, and `post_mutation_callback` is invoked right after the
   // feature's state has changed.
   //
-  // This method should only be called once per feature and *MUST* be
-  // called before attempting to inspect the feature state of a runtime mutable
-  // feature (i.e. calling `IsEnabled()` or looking up a FeatureParam value).
+  // This method may only be called once per feature during FeatureList
+  // initialization (before `SetInstance()`) and on the main sequence, and
+  // *MUST* be called before inspecting the feature state on an initialized
+  // FeatureList (i.e. calling `IsEnabled()` or looking up a FeatureParam
+  // value). Early calls to `IsEnabled()` before `SetInstance()` return the
+  // feature's default state.
   //
-  // This method may only be called during FeatureList initialization and on
-  // the main sequence. Implementers of runtime-mutable features should update
-  // the PlatformFieldTrials::EnableRuntimeMutableFeatures() override for
-  // their platform(s) to call this method for their runtime-mutable feature(s).
+  // Implementers of runtime-mutable features should update the
+  // PlatformFieldTrials::EnableRuntimeMutableFeatures() override for their
+  // platform(s) to call this method for their runtime-mutable feature(s).
   void EnableRuntimeMutability(
       const Feature& feature,
       OnRuntimeMutableFeatureStateChangedCallback pre_mutation_callback,
@@ -865,8 +867,8 @@ class BASE_EXPORT FeatureList {
   bool initialized_from_command_line_ = false;
 
   // Used when querying `base::Feature` state to determine if the cached value
-  // in the `Feature` object is populated and valid. See the comment on
-  // `base::Feature::cached_value` for more details.
+  // in the feature's state storage is populated and valid. See the comment on
+  // `base::Feature::state` for more details.
   const uint16_t caching_context_;
 
   // If this instance was set with SetEarlyAccessInstance(), this set contains

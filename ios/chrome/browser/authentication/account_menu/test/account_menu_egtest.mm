@@ -4,7 +4,6 @@
 
 #import <UIKit/UIKit.h>
 
-#import "base/ios/ios_util.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/ios/wait_util.h"
 #import "components/signin/public/base/signin_switches.h"
@@ -13,31 +12,23 @@
 #import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
 #import "ios/chrome/browser/authentication/test/signin_earl_grey_ui_test_util.h"
 #import "ios/chrome/browser/authentication/ui_bundled/cells/ai_subscription_chip_constants.h"
-#import "ios/chrome/browser/bookmarks/test/bookmark_earl_grey.h"
 #import "ios/chrome/browser/metrics/model/metrics_app_interface.h"
 #import "ios/chrome/browser/ntp/ui_bundled/new_tab_page_constants.h"
-#import "ios/chrome/browser/ntp/ui_bundled/new_tab_page_feature.h"
 #import "ios/chrome/browser/settings/google_services/public/google_services_settings_constants.h"
 #import "ios/chrome/browser/settings/manage_accounts/public/manage_accounts_table_view_controller_constants.h"
-#import "ios/chrome/browser/shared/model/prefs/pref_names.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
-#import "ios/chrome/browser/shared/public/snackbar/snackbar_constants.h"
 #import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/browser/signin/model/test_constants.h"
 #import "ios/chrome/browser/signin/model/test_constants_utils.h"
-#import "ios/chrome/browser/start_surface/ui_bundled/start_surface_features.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
 #import "ios/chrome/test/earl_grey/chrome_matchers.h"
-#import "ios/chrome/test/earl_grey/chrome_matchers_app_interface.h"
 #import "ios/chrome/test/earl_grey/chrome_test_case.h"
-#import "ios/chrome/test/earl_grey/test_switches.h"
 #import "ios/testing/earl_grey/app_launch_manager.h"
 #import "ios/testing/earl_grey/earl_grey_test.h"
 #import "ios/testing/test_tag_registry.h"
-#import "net/test/embedded_test_server/embedded_test_server.h"
 #import "ui/base/l10n/l10n_util.h"
 
 namespace {
@@ -75,15 +66,6 @@ id<GREYMatcher> identityDiscMatcher() {
 
 @implementation AccountMenuTestCase
 
-+ (void)setUpForTestCase {
-  [SigninEarlGrey setUseFakeResponsesForProfileSeparationPolicyRequests];
-}
-
-+ (void)tearDown {
-  [SigninEarlGrey clearUseFakeResponsesForProfileSeparationPolicyRequests];
-  [super tearDown];
-}
-
 - (AppLaunchConfiguration)appConfigurationForTestCase {
   AppLaunchConfiguration config = [super appConfigurationForTestCase];
   if ([self isRunningTest:@selector(testUserActionableMDMErrorFlow)] ||
@@ -97,12 +79,14 @@ id<GREYMatcher> identityDiscMatcher() {
 
 - (void)setUp {
   [super setUp];
+  [SigninEarlGrey setUseFakeResponsesForProfileSeparationPolicyRequests];
   // Adding the sync passphrase must be done before signin due to limitation of
   // the fakes.
   [ChromeEarlGrey addSyncPassphrase:kPassphrase];
 }
 
 - (void)tearDownHelper {
+  [SigninEarlGrey clearUseFakeResponsesForProfileSeparationPolicyRequests];
   [ChromeEarlGrey signOutAndClearIdentities];
   [super tearDownHelper];
 }
@@ -324,11 +308,6 @@ TAG_SMOKE_TEST(AccountMenuTestCase, testSignOut);
 
 // Tests that the add account button opens the add account view.
 - (void)testAddAccount {
-  // TODO(crbug.com/516431613): Re-enable this flaky test on iOS below 26.
-  if (!base::ios::IsRunningOnIOS26OrLater()) {
-    EARL_GREY_TEST_DISABLED(@"Flaky on iOS below 26.");
-  }
-
   [SigninEarlGrey signinWithFakeIdentity:kPrimaryIdentity];
   [self selectIdentityDisc];
   for (NSString* cancelButtonId in
@@ -337,18 +316,18 @@ TAG_SMOKE_TEST(AccountMenuTestCase, testSignOut);
                                             kAccountMenuAddAccountButtonId)]
         performAction:grey_tap()];
     // Checks the Fake authentication view is shown
-    [[EarlGrey selectElementWithMatcher:grey_accessibilityID(
-                                            kFakeAuthActivityViewIdentifier)]
-        assertWithMatcher:grey_sufficientlyVisible()];
+    [ChromeEarlGrey waitForSufficientlyVisibleElementWithMatcher:
+                        grey_accessibilityID(kFakeAuthActivityViewIdentifier)];
     // Close the SSO view controller.
     id<GREYMatcher> matcher = grey_allOf(grey_accessibilityID(cancelButtonId),
                                          grey_sufficientlyVisible(), nil);
     [[EarlGrey selectElementWithMatcher:matcher] performAction:grey_tap()];
+    // Make sure the SSO view controller is fully removed before the next
+    // iteration or before ending the test.
+    [ChromeEarlGrey waitForUIElementToDisappearWithMatcher:
+                        grey_accessibilityID(kFakeAuthActivityViewIdentifier)];
+    [ChromeEarlGreyUI waitForAppToIdle];
   }
-  // Make sure the SSO view controller is fully removed before ending the test.
-  // The tear down needs to remove other view controllers, and it cannot be done
-  // during the animation of the SSO view controller.
-  [ChromeEarlGreyUI waitForAppToIdle];
 
   // TODO(crbug.com/41493423): Check whether the Add Account or Account Menu
   // should be logged as Signin started histogram.
@@ -356,19 +335,13 @@ TAG_SMOKE_TEST(AccountMenuTestCase, testSignOut);
 
 // Tests the enter passphrase button.
 - (void)testAddPassphrase {
-  // TODO(crbug.com/516431613): Re-enable this flaky test on iOS below 26.
-  if (!base::ios::IsRunningOnIOS26OrLater()) {
-    EARL_GREY_TEST_DISABLED(@"Flaky on iOS below 26.");
-  }
-
   [SigninEarlGrey signinWithFakeIdentity:kPrimaryIdentity];
   // Encrypt synced data with a passphrase to enable passphrase encryption for
   // the signed in account.
   [self selectIdentityDisc];
   // Check the error button is displayed.
-  [[EarlGrey selectElementWithMatcher:grey_accessibilityID(
-                                          kAccountMenuErrorActionButtonId)]
-      assertWithMatcher:grey_sufficientlyVisible()];
+  [ChromeEarlGrey waitForSufficientlyVisibleElementWithMatcher:
+                      grey_accessibilityID(kAccountMenuErrorActionButtonId)];
   // Tap on it
   [[EarlGrey selectElementWithMatcher:grey_accessibilityID(
                                           kAccountMenuErrorActionButtonId)]
@@ -381,16 +354,15 @@ TAG_SMOKE_TEST(AccountMenuTestCase, testSignOut);
   // Enter the passphrase.
   [SigninEarlGreyUI submitSyncPassphrase:kPassphrase];
   // Entering the passphrase closes the view.
-  [[EarlGrey selectElementWithMatcher:
-                 grey_accessibilityID(
-                     kSyncEncryptionPassphraseTableViewAccessibilityIdentifier)]
-      assertWithMatcher:grey_nil()];
+  [ChromeEarlGrey
+      waitForUIElementToDisappearWithMatcher:
+          grey_accessibilityID(
+              kSyncEncryptionPassphraseTableViewAccessibilityIdentifier)];
   // Check the error button disappeared.
-  [[EarlGrey
-      selectElementWithMatcher:grey_allOf(grey_accessibilityID(
-                                              kAccountMenuErrorActionButtonId),
-                                          grey_sufficientlyVisible(), nil)]
-      assertWithMatcher:grey_nil()];
+  [ChromeEarlGrey
+      waitForUIElementToDisappearWithMatcher:
+          grey_allOf(grey_accessibilityID(kAccountMenuErrorActionButtonId),
+                     grey_sufficientlyVisible(), nil)];
 }
 
 // Tests that tapping on the secondary account button causes the primary account
@@ -435,8 +407,7 @@ TAG_SMOKE_TEST(AccountMenuTestCase, testSignOut);
 // Tests that tapping on a managed account button causes the primary account
 // to be changed and the account menu view to be closed after showing managed
 // account sign-in dialog.
-// TODO(crbug.com/507486331): Re-enable test
-- (void)DISABLED_testSwitchToManagedAccount {
+- (void)testSwitchToManagedAccount {
   [SigninEarlGrey signinWithFakeIdentity:kPrimaryIdentity];
   [SigninEarlGrey addFakeIdentity:kManagedIdentity1];
   [self selectIdentityDisc];
@@ -465,8 +436,7 @@ TAG_SMOKE_TEST(AccountMenuTestCase, testSignOut);
   [self assertAccountMenuIsNotShown];
 }
 
-// TODO(crbug.com/507486331): Re-enable test
-- (void)DISABLED_testSwitchFromManagedAccountToManagedAccount {
+- (void)testSwitchFromManagedAccountToManagedAccount {
   [SigninEarlGrey
       signinWithFakeManagedIdentityInPersonalProfile:kManagedIdentity1];
   [ChromeEarlGreyUI waitForAppToIdle];

@@ -29,6 +29,7 @@ source_set("coordinator") {
     "//components/search_engines",
     "//components/security_state/ios",
     "//components/segmentation_platform/embedder/home_modules/tips_manager:signal_constants",
+    "//ios/chrome/app:tests_hook",
     "//ios/chrome/app/application_delegate:app_state",
     "//ios/chrome/app/profile",
     "//ios/chrome/app/strings:ios_strings_grit",
@@ -39,7 +40,6 @@ source_set("coordinator") {
     "//ios/chrome/browser/default_browser/model:default_browser_interest_signals",
     "//ios/chrome/browser/device_orientation/ui_bundled",
     "//ios/chrome/browser/feature_engagement/model",
-    "//ios/chrome/browser/first_run/public:best_features_item",
     "//ios/chrome/browser/fullscreen/model",
     "//ios/chrome/browser/fullscreen/public:metrics",
     "//ios/chrome/browser/fullscreen/ui_bundled",
@@ -90,7 +90,6 @@ source_set("coordinator") {
     "//ios/chrome/browser/url_loading/model",
     "//ios/chrome/browser/web/model",
     "//ios/chrome/browser/web/model:delegate",
-    "//ios/chrome/browser/welcome_back/model:features",
     "//ios/chrome/common:string_conversions",
     "//ios/chrome/common/app_group",
     "//ios/chrome/common/ui/colors",
@@ -175,6 +174,7 @@ source_set("unit_tests") {
     "//testing/gtest",
     "//third_party/ocmock",
     "//ui/base:test_support",
+    "//ui/base/mojom",
   ]
 }
 

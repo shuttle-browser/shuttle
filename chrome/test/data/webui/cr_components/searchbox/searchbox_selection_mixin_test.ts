@@ -66,7 +66,8 @@ suite('CrComponentsSearchboxSelectionMixinTest', () => {
 
   setup(() => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
-    element = new TestSearchboxSelectionMixinElement();
+    element = document.createElement('test-searchbox-selection-mixin') as
+        TestSearchboxSelectionMixinElement;
     document.body.appendChild(element);
   });
 
@@ -675,6 +676,11 @@ suite('CrComponentsSearchboxSelectionMixinTest', () => {
     assertFalse(selectionIsNativelySupported({
       line: -1,
       state: SelectionLineState.kFocusedButtonContextualChip,
+      actionIndex: 0,
+    }));
+    assertFalse(selectionIsNativelySupported({
+      line: -1,
+      state: SelectionLineState.kFocusedButtonProfile,
       actionIndex: 0,
     }));
   });

@@ -15,7 +15,6 @@
 #include "chromecast/common/feature_constants.h"
 #include "chromecast/common/mojom/activity_window.mojom.h"
 #include "chromecast/common/mojom/application_media_capabilities.mojom.h"
-#include "chromecast/common/mojom/assistant_messenger.mojom.h"
 #include "chromecast/common/mojom/audio_socket.mojom.h"
 #include "chromecast/common/mojom/cast_demo.mojom.h"
 #include "chromecast/common/mojom/gesture.mojom.h"
@@ -152,9 +151,6 @@ void PopulateCastFrameBinders(
   binder_map->Add<::chromecast::mojom::ActivityWindow>(base::BindRepeating(
       &BindFromCastWebContentsWithFeature<::chromecast::mojom::ActivityWindow>,
       feature::kEnableWindowControls));
-  binder_map->Add<
-      ::chromecast::mojom::AssistantMessageService>(base::BindRepeating(
-      &BindFromCastWebContents<::chromecast::mojom::AssistantMessageService>));
   binder_map->Add<::chromecast::mojom::GestureSource>(base::BindRepeating(
       &BindFromCastWebContentsWithFeature<::chromecast::mojom::GestureSource>,
       feature::kEnableSystemGestures));

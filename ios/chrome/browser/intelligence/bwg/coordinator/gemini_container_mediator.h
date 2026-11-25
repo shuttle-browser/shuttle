@@ -25,7 +25,7 @@ class AuthenticationService;
 class Browser;
 class FullscreenController;
 class GeminiContainerMediatorEventHandler;
-class GeminiSharedTabsDelegate;
+class GeminiSharedTabsManager;
 @class GeminiConfiguration;
 @class GeminiGatewayManager;
 @class GeminiPageContext;
@@ -37,6 +37,7 @@ class GeminiSharedTabsDelegate;
 @protocol GeminiCommands;
 @protocol GeminiContainerMediatorDelegate;
 @protocol GeminiZeroStateConsumer;
+@protocol SnackbarCommands;
 
 // Mediator for the Gemini container.
 @interface GeminiContainerMediator : NSObject <AssistantContainerDelegate,
@@ -64,6 +65,9 @@ class GeminiSharedTabsDelegate;
 // Controller for browser fullscreen state.
 @property(nonatomic, assign) FullscreenController* fullscreenController;
 
+// Handler for displaying snackbars.
+@property(nonatomic, weak) id<SnackbarCommands> snackbarHandler;
+
 // Consumer interface for handling UI updates from the coordinator.
 @property(nonatomic, weak) id<GeminiContainerConsumer> consumer;
 
@@ -86,7 +90,7 @@ class GeminiSharedTabsDelegate;
              actorService:(actor::ActorService*)actorService
     authenticationService:(AuthenticationService*)authService
              eventHandler:(GeminiContainerMediatorEventHandler*)eventHandler
-       sharedTabsDelegate:(GeminiSharedTabsDelegate*)sharedTabsDelegate
+        sharedTabsManager:(GeminiSharedTabsManager*)sharedTabsManager
     sessionMetricsManager:(GeminiSessionMetricsManager*)sessionMetricsManager
     NS_DESIGNATED_INITIALIZER;
 
@@ -151,7 +155,7 @@ class GeminiSharedTabsDelegate;
 // floaty is already invoked.
 - (void)updateWithStartupState:(GeminiStartupState*)startupState;
 
-// Propagates active page context and shared tabs from `sharedTabsDelegate` to
+// Propagates active page context and shared tabs from `sharedTabsManager` to
 // the provider.
 - (void)propagatePageContext:(GeminiPageContext*)pageContext;
 

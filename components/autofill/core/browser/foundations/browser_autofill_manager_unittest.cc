@@ -111,6 +111,7 @@
 #include "components/autofill/core/browser/metrics/ukm_metrics_test_util.h"
 #include "components/autofill/core/browser/ml_model/autofill_ai/mock_autofill_ai_model_cache.h"
 #include "components/autofill/core/browser/ml_model/autofill_ai/mock_autofill_ai_model_executor.h"
+#include "components/autofill/core/browser/network/autofill_ai/mock_autofill_ai_personal_context_access_manager.h"
 #include "components/autofill/core/browser/payments/amount_extraction_manager.h"
 #include "components/autofill/core/browser/payments/constants.h"
 #include "components/autofill/core/browser/payments/credit_card_cvc_authenticator.h"
@@ -173,6 +174,7 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_map.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/gfx/geometry/rect.h"
@@ -231,6 +233,7 @@ using upload_contents_matchers::FieldAutofillTypeIs;
 using upload_contents_matchers::FieldsAre;
 using upload_contents_matchers::FormSignatureIs;
 using upload_contents_matchers::ObservedSubmissionIs;
+using upload_contents_matchers::StructuralFormSignatureIs;
 using UkmAutofillKeyMetricsType = ukm::builders::Autofill_KeyMetrics;
 
 constexpr Suggestion::Icon kAddressEntryIcon = Suggestion::Icon::kAccount;
@@ -582,7 +585,11 @@ class MockPaymentsAutofillClient : public payments::TestPaymentsAutofillClient {
 
 class MockAutofillClient : public TestAutofillClient {
  public:
-  MockAutofillClient() = default;
+  MockAutofillClient() {
+    ON_CALL(*this, GetAutocompleteHistoryManager).WillByDefault([this] {
+      return TestAutofillClient::GetAutocompleteHistoryManager();
+    });
+  }
   MockAutofillClient(const MockAutofillClient&) = delete;
   MockAutofillClient& operator=(const MockAutofillClient&) = delete;
   ~MockAutofillClient() override = default;
@@ -647,12 +654,17 @@ class MockAutofillClient : public TestAutofillClient {
               (FillingProduct filling_product,
                const HatsSurveyStringData& field_filling_stats_data),
               (override));
+  MOCK_METHOD(AutocompleteHistoryManager*,
+              GetAutocompleteHistoryManager,
+              (),
+              (override));
   MOCK_METHOD(AutofillComposeDelegate*, GetComposeDelegate, (), (override));
   MOCK_METHOD(bool,
               ShowAutofillFieldIphForFeature,
               (const FormFieldData& field, AutofillClient::IphFeature feature),
               (override));
   MOCK_METHOD(void, HideAutofillFieldIph, (), (override));
+  MOCK_METHOD(bool, IsGlicConsented, (), (const, override));
   MOCK_METHOD(bool, IsTabInActorMode, (), (const, override));
   MOCK_METHOD(AutofillAiManager*, GetAutofillAiManager, (), (override));
   MOCK_METHOD(void, ShowAutofillAiPrivateInferenceNotice, (), (override));
@@ -1003,6 +1015,10 @@ class BrowserAutofillManagerTest : public testing::Test,
                                        TestBrowserAutofillManager,
                                        NiceMock<MockPaymentsAutofillClient>> {
  public:
+  explicit BrowserAutofillManagerTest(
+      const std::vector<base::test::FeatureRef>& enabled_features = {})
+      : scoped_feature_list_(enabled_features, /*disabled_features=*/{}) {}
+
   void SetUp() override {
     // Advance the mock clock to a fixed, arbitrary, somewhat recent date.
     base::Time year2020;
@@ -1098,19 +1114,17 @@ class BrowserAutofillManagerTest : public testing::Test,
         std::nullopt, AutofillManagerTestApi::pass_key());
     if (const AutofillProfile* profile =
             personal_data().address_data_manager().GetProfileByGUID(guid)) {
-      autofill_manager().FillOrPreviewForm(mojom::ActionPersistence::kFill,
-                                           form.global_id(), field.global_id(),
-                                           profile, trigger_source,
-                                           /*require_user_confirmation=*/false,
-                                           /*blocked_fields=*/{});
+      autofill_manager().FillOrPreviewForm(
+          mojom::ActionPersistence::kFill, form.global_id(), field.global_id(),
+          FillingProduct::kAddress, profile, trigger_source,
+          /*require_user_confirmation=*/false, /*blocked_fields=*/{});
     } else if (const CreditCard* card =
                    personal_data().payments_data_manager().GetCreditCardByGUID(
                        guid)) {
-      autofill_manager().FillOrPreviewForm(mojom::ActionPersistence::kFill,
-                                           form.global_id(), field.global_id(),
-                                           card, trigger_source,
-                                           /*require_user_confirmation=*/false,
-                                           /*blocked_fields=*/{});
+      autofill_manager().FillOrPreviewForm(
+          mojom::ActionPersistence::kFill, form.global_id(), field.global_id(),
+          FillingProduct::kCreditCard, card, trigger_source,
+          /*require_user_confirmation=*/false, /*blocked_fields=*/{});
     }
   }
 
@@ -1209,8 +1223,8 @@ class BrowserAutofillManagerTest : public testing::Test,
     EXPECT_CALL(autofill_driver(), ApplyFormAction).Times(AtLeast(1));
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form->global_id(),
-        form->fields()[0].global_id(), &card, AutofillTriggerSource::kPopup,
-        /*require_user_confirmation=*/false,
+        form->fields()[0].global_id(), FillingProduct::kCreditCard, &card,
+        AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
         /*blocked_fields=*/{});
   }
 
@@ -1389,6 +1403,10 @@ class BrowserAutofillManagerTest : public testing::Test,
     personal_data().payments_data_manager().AddCreditCard(credit_card3);
   }
 
+  // The feature list must be destroyed after `task_environment_` to avoid race
+  // conditions in base/threading/platform_thread_android.cc:
+  // crbug.com/582602077
+  base::test::ScopedFeatureList scoped_feature_list_;
   base::test::TaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   test::AutofillUnitTestEnvironment autofill_test_environment_;
@@ -1693,6 +1711,42 @@ TEST_F(BrowserAutofillManagerTest, WebauthnSignInWithAnotherDeviceSuggestion) {
        Suggestion(SuggestionType::kSeparator),
        Suggestion(SuggestionType::kWebauthnSignInWithAnotherDevice),
        CreateManageAddressesSuggestion()});
+}
+
+class BrowserAutofillManagerTrustedVaultTest
+    : public BrowserAutofillManagerTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  BrowserAutofillManagerTrustedVaultTest() {
+    feature_list_.InitWithFeatureState(
+        features::kAutofillNewSuggestionGeneration, GetParam());
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         BrowserAutofillManagerTrustedVaultTest,
+                         testing::Bool());
+
+// Tests that the `kPendingStateTrustedVaultError` suggestion is present if
+// the `PasswordManagerDelegate` returns it, both when
+// `kAutofillNewSuggestionGeneration` is enabled and disabled.
+TEST_P(BrowserAutofillManagerTrustedVaultTest,
+       TrustedVaultUnlockSuggestionMergedWithAddressSuggestions) {
+  FormData form = CreateTestHybridSignUpFormData();
+  FormsSeen({form});
+
+  ON_CALL(password_delegate(), GetTrustedVaultUnlockSuggestion)
+      .WillByDefault(
+          Return(Suggestion(SuggestionType::kPendingStateTrustedVaultError)));
+
+  OnAskForValuesToFill(form, form.fields()[0]);
+
+  EXPECT_THAT(
+      external_delegate()->suggestions(),
+      Contains(Suggestion(SuggestionType::kPendingStateTrustedVaultError)));
 }
 
 TEST_F(BrowserAutofillManagerTest,
@@ -2160,6 +2214,10 @@ TEST_F(
   // Fill data in CC Number field and set it as autofilled.
   test_api(form).field(1).set_value(u"4444 4444 4444 4444");
   test_api(form).field(1).set_is_autofilled_according_to_renderer(true);
+  test_api(autofill_manager())
+      .FindCachedFormById(form.global_id())
+      ->field(1)
+      ->AddFieldModifier(FieldModifier::kAutofill);
 
   // Expect that suggestions are returned for the expiry type field.
   const FormFieldData& expiry_type_field = form.fields()[2];
@@ -2667,9 +2725,9 @@ TEST_F(BrowserAutofillManagerTest,
   FormsSeen({form});
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &local_card,
-      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
-      /*blocked_fields=*/{});
+      form.fields().front().global_id(), FillingProduct::kCreditCard,
+      &local_card, AutofillTriggerSource::kPopup,
+      /*require_user_confirmation=*/false, /*blocked_fields=*/{});
 }
 
 TEST_F(BrowserAutofillManagerTest,
@@ -2684,9 +2742,9 @@ TEST_F(BrowserAutofillManagerTest,
   FormsSeen({form});
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &server_card,
-      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
-      /*blocked_fields=*/{});
+      form.fields().front().global_id(), FillingProduct::kCreditCard,
+      &server_card, AutofillTriggerSource::kPopup,
+      /*require_user_confirmation=*/false, /*blocked_fields=*/{});
 }
 
 TEST_F(BrowserAutofillManagerTest,
@@ -2711,9 +2769,9 @@ TEST_F(BrowserAutofillManagerTest,
   FormsSeen({form});
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &filled_card,
-      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
-      /*blocked_fields=*/{});
+      form.fields().front().global_id(), FillingProduct::kCreditCard,
+      &filled_card, AutofillTriggerSource::kPopup,
+      /*require_user_confirmation=*/false, /*blocked_fields=*/{});
 }
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
@@ -2752,8 +2810,8 @@ TEST_F(BrowserAutofillManagerTest, FillOrPreviewForm_CreditCard_Bnpl) {
   FormsSeen({form});
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &bnpl_virtual_card,
-      AutofillTriggerSource::kPopup,
+      form.fields().front().global_id(), FillingProduct::kCreditCard,
+      &bnpl_virtual_card, AutofillTriggerSource::kPopup,
       /*require_user_confirmation=*/false,
       /*blocked_fields=*/{});
 }
@@ -2785,8 +2843,8 @@ TEST_F(BrowserAutofillManagerTest,
   CreditCard card = test::GetMaskedServerCard();
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &card, AutofillTriggerSource::kPopup,
-      /*require_user_confirmation=*/false,
+      form.fields().front().global_id(), FillingProduct::kCreditCard, &card,
+      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
       /*blocked_fields=*/{});
 }
 
@@ -2817,9 +2875,9 @@ TEST_F(BrowserAutofillManagerTest,
   FormsSeen({form});
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields().front().global_id(), &credit_card,
-      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
-      /*blocked_fields=*/{});
+      form.fields().front().global_id(), FillingProduct::kCreditCard,
+      &credit_card, AutofillTriggerSource::kPopup,
+      /*require_user_confirmation=*/false, /*blocked_fields=*/{});
 }
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) ||
         // BUILDFLAG(IS_CHROMEOS)
@@ -5396,47 +5454,58 @@ TEST_F(BrowserAutofillManagerTest, PageLanguageGetsCorrectlySet) {
   EXPECT_EQ(autofill_manager().GetCurrentPageLanguage(), LanguageCode("zh"));
 }
 
-// Test language detection on frames depending on whether the frame is active or
-// not.
+// Test language detection on frames depending on whether the frame is the
+// outermost active main frame.
 class BrowserAutofillManagerTestPageLanguageDetection
     : public BrowserAutofillManagerTest,
-      public WithParamInterface<bool> {
+      public WithParamInterface<std::tuple<bool, bool, bool>> {
  public:
-  BrowserAutofillManagerTestPageLanguageDetection() {
-    scoped_features_.InitWithFeatures(
-        /*enabled_features=*/{features::kAutofillPageLanguageDetection},
-        /*disabled_features=*/{});
+  BrowserAutofillManagerTestPageLanguageDetection()
+      : BrowserAutofillManagerTest({features::kAutofillPageLanguageDetection}) {
   }
 
-  bool is_active() const { return GetParam(); }
-
- private:
-  base::test::ScopedFeatureList scoped_features_;
+  bool is_active() const { return std::get<0>(GetParam()); }
+  bool has_parent() const { return std::get<1>(GetParam()); }
+  bool is_embedded() const { return std::get<2>(GetParam()); }
 };
 
 TEST_P(BrowserAutofillManagerTestPageLanguageDetection, GetsCorrectlyDetected) {
-  FormData form = CreateTestAddressFormData();
+  MockAutofillManagerObserver observer;
+  base::ScopedObservation<AutofillManager, MockAutofillManagerObserver>
+      observation{&observer};
+  observation.Observe(&autofill_manager());
 
+  MockFunction<void()> check;
+  {
+    InSequence s;
+    EXPECT_CALL(observer, OnBeforeFormsSeen);
+    EXPECT_CALL(check, Call);
+    EXPECT_CALL(observer, OnBeforeFormsSeen)
+        .Times(is_active() && !has_parent() && !is_embedded());
+  }
+
+  FormData form = CreateTestAddressFormData();
   autofill_manager().OnFormsSeen({form}, {},
                                  AutofillManagerTestApi::pass_key());
+
+  check.Call();
 
   translate::LanguageDetectionDetails language_detection_details;
   language_detection_details.adopted_language = "hu";
   autofill_client().GetLanguageState()->SetCurrentLanguage("hu");
 
-  MockAutofillManagerObserver observer;
-  base::ScopedObservation<AutofillManager, MockAutofillManagerObserver>
-      observation{&observer};
-  observation.Observe(&autofill_manager());
-  EXPECT_CALL(observer, OnBeforeLanguageDetermined).Times(is_active());
-
   autofill_driver().SetIsActive(is_active());
+  autofill_driver().SetParent(has_parent() ? &autofill_driver() : nullptr);
+  autofill_driver().SetIsEmbedded(is_embedded());
   autofill_manager().OnLanguageDetermined(language_detection_details);
+  autofill_driver().SetParent(nullptr);
 }
 
 INSTANTIATE_TEST_SUITE_P(All,
                          BrowserAutofillManagerTestPageLanguageDetection,
-                         testing::Bool());
+                         testing::Combine(testing::Bool(),
+                                          testing::Bool(),
+                                          testing::Bool()));
 
 // BrowserAutofillManagerTest with different browser profile types.
 class BrowserAutofillManagerProfileMetricsTest
@@ -5877,8 +5946,14 @@ TEST_F(BrowserAutofillManagerTest,
 
   auto mock_web_data_service =
       base::MakeRefCounted<testing::NiceMock<MockAutofillWebDataService>>();
-  autofill_client().set_autocomplete_history_manager(
-      std::make_unique<MockAutocompleteHistoryManager>(mock_web_data_service));
+  MockAutocompleteHistoryManager autocomplete_history_manager(
+      mock_web_data_service);
+  ON_CALL(autofill_client(), GetAutocompleteHistoryManager)
+      .WillByDefault(Return(&autocomplete_history_manager));
+  absl::Cleanup reset_autocomplete_manager = [&] {
+    ON_CALL(autofill_client(), GetAutocompleteHistoryManager)
+        .WillByDefault(Return(nullptr));
+  };
 
   FormData form =
       test::GetFormData({.fields = {{.label = u"label", .name = u"name"}}});
@@ -6065,11 +6140,11 @@ class BrowserAutofillManagerTest_AutofillAi
             autofill_client().GetIdentityManager(),
             autofill_client().GetSyncService(),
             webdata_helper_.autofill_webdata_service(),
-            /*history_service=*/nullptr,
-            /*pcontext_manager=*/nullptr,
+            /*history_service=*/nullptr, &pcontext_manager_,
             /*strike_database=*/nullptr,
             /*variation_country_code=*/GeoIpCountryCode("US")));
     autofill_client().SetUpPrefsAndIdentityForAutofillAi();
+    autofill_client().set_personal_context_access_manager(&pcontext_manager_);
 
     ai_manager_ =
         std::make_unique<AutofillAiManager>(&autofill_client(),
@@ -6079,10 +6154,14 @@ class BrowserAutofillManagerTest_AutofillAi
   }
   AutofillAiManager& ai_manager() { return *ai_manager_.get(); }
   AutofillWebDataServiceTestHelper& webdata_helper() { return webdata_helper_; }
+  MockAutofillAiPersonalContextAccessManager& pcontext_manager() {
+    return pcontext_manager_;
+  }
 
  private:
   base::test::ScopedFeatureList feature_list_{
-      features::kAutofillAiWithDataSchema};
+      {features::kAutofillAiWithDataSchema, features::kAutofillAiOrder}};
+  NiceMock<MockAutofillAiPersonalContextAccessManager> pcontext_manager_;
   std::unique_ptr<AutofillAiManager> ai_manager_;
   AutofillWebDataServiceTestHelper webdata_helper_{
       std::make_unique<EntityTable>()};
@@ -6130,6 +6209,70 @@ TEST_F(BrowserAutofillManagerTest_AutofillAi,
       "Autofill.Ai.KeyMetrics.FillingReadiness.Vehicle.Local", 1, 1);
   histogram_tester.ExpectBucketCount(
       "Autofill.Ai.KeyMetrics.FillingReadiness.Vehicle", 1, 1);
+}
+
+// Tests that opening a domain-fallback sub-popup marks the child
+// `kFillAutofillAi` suggestions as shown so `FillingAcceptance` is recorded
+// alongside `FillingAssistance` when a fallback suggestion is accepted.
+TEST_F(BrowserAutofillManagerTest_AutofillAi,
+       AutofillAiKeyMetrics_FallbackSubPopupOpenedAndAccepted) {
+  const EntityInstance order = test::GetOrderEntityInstance({
+      .id = u"ORD-123",
+      .merchant_domain = u"merchant.example",
+  });
+  autofill_client().GetEntityDataManager()->OnPrefetchContextComplete(
+      pcontext_manager(), std::vector<EntityInstance>{order});
+  autofill_client().set_last_committed_primary_main_frame_url(
+      GURL("https://other-site.example"));
+
+  FormData form = test::GetFormData(
+      {.fields = {{.role = ORDER_ID}}, .url = "https://other-site.example"});
+  FormsSeen({form});
+  FormStructure* cached_form =
+      test_api(autofill_manager()).FindCachedFormById(form.global_id());
+  ASSERT_TRUE(cached_form);
+  cached_form->field(0)->SetTypeTo(
+      AutofillType(ORDER_ID), AutofillPredictionSource::kServerCrowdsourcing);
+  ai_manager().OnFormSeen(*cached_form);
+
+  std::vector<Suggestion> root_suggestions =
+      ai_manager().GetSuggestions(*cached_form, form.fields()[0]);
+  ASSERT_FALSE(root_suggestions.empty());
+  ASSERT_EQ(root_suggestions[0].type, SuggestionType::kAutofillAiOtherOrders);
+  ASSERT_FALSE(root_suggestions[0].children.empty());
+
+  // 1. Show the root popup containing `kAutofillAiOtherOrders`.
+  autofill_manager().DidShowSuggestions(root_suggestions, /*metadata=*/{},
+                                        form.global_id(),
+                                        form.fields()[0].global_id(), {});
+  // 2. Open the fallback sub-popup containing the child `kFillAutofillAi`
+  // suggestion.
+  autofill_manager().DidShowSuggestions(root_suggestions[0].children,
+                                        {.multi_index = {0}}, form.global_id(),
+                                        form.fields()[0].global_id(), {});
+  // 3. Accept the fallback order suggestion and submit the form.
+  autofill_manager().FillOrPreviewForm(
+      mojom::ActionPersistence::kFill, form.global_id(),
+      form.fields()[0].global_id(), FillingProduct::kAutofillAi, &order,
+      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
+      /*blocked_fields=*/{});
+
+  base::HistogramTester histogram_tester;
+  FormSubmitted(form);
+
+  histogram_tester.ExpectUniqueSample(
+      "Autofill.Ai.KeyMetrics.FillingAssistance.Order.PersonalContext", true,
+      1);
+  histogram_tester.ExpectUniqueSample(
+      "Autofill.Ai.KeyMetrics.FillingAcceptance.Order.PersonalContext", true,
+      1);
+  histogram_tester.ExpectUniqueSample(
+      "Autofill.Ai.Funnel.Submitted.SuggestionAfterReadiness.Order."
+      "PersonalContext",
+      true, 1);
+  histogram_tester.ExpectUniqueSample(
+      "Autofill.Ai.Funnel.Submitted.FillAfterSuggestion.Order.PersonalContext",
+      true, 1);
 }
 
 class BrowserAutofillManagerTest_MockAutofillAi
@@ -6914,6 +7057,35 @@ TEST_F(BrowserAutofillManagerVotingTest, DynamicFormSubmission) {
   FormSubmitted(form_);
 }
 
+// Test that if the form changes between the query and the submission (without
+// the change being reported via `FormsSeen()`), the upload carries the
+// query-time `form_signature()` and the query-time
+// `structural_form_signature()`, not the signatures of the submitted form.
+TEST_F(BrowserAutofillManagerVotingTest,
+       SubmissionOfChangedFormUsesQueryTimeSignatures) {
+  SimulateTypingFirstNameIntoFirstField();
+  const FormSignature query_form_signature = CalculateFormSignature(form_);
+  const FormSignature query_structural_signature =
+      CalculateStructuralFormSignature(form_);
+
+  // Grow the form by one field without notifying the manager via FormsSeen(),
+  // e.g. because a script inserted the field right before the submission.
+  test_api(form_).Append(CreateTestFormField(
+      "Zip code", "zip", "", FormControlType::kInputText, "postal-code"));
+  ASSERT_NE(query_form_signature, CalculateFormSignature(form_));
+  ASSERT_NE(query_structural_signature,
+            CalculateStructuralFormSignature(form_));
+
+  EXPECT_CALL(crowdsourcing_manager(),
+              StartUploadRequest(
+                  FirstElementIs(AllOf(
+                      FormSignatureIs(query_form_signature),
+                      StructuralFormSignatureIs(query_structural_signature),
+                      ObservedSubmissionIs(true))),
+                  _, _));
+  FormSubmitted(form_);
+}
+
 // Ensure that a blur votes is sent after a navigation.
 TEST_F(BrowserAutofillManagerVotingTest, BlurVoteOnNavigation) {
   SimulateTypingFirstNameIntoFirstField();
@@ -7321,9 +7493,9 @@ TEST_F(BrowserAutofillManagerOtpSuggestionsTest, OtpFilling) {
   // Ask to fill the form.
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields()[0].global_id(), &otp_fill_data,
-      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
-      /*blocked_fields=*/{});
+      form.fields()[0].global_id(), FillingProduct::kOneTimePassword,
+      &otp_fill_data, AutofillTriggerSource::kPopup,
+      /*require_user_confirmation=*/false, /*blocked_fields=*/{});
 
   // Verify that the right data is sent to the renderer.
   ASSERT_EQ(1u, filled_fields.size());
@@ -7357,6 +7529,59 @@ TEST_F(BrowserAutofillManagerOtpSuggestionsTest,
   // We expect no suggestions.
   external_delegate()->CheckNoSuggestions(form.fields()[0].global_id());
 }
+
+// Parameterized on whether `kAutofillNewSuggestionGeneration` is enabled.
+class BrowserAutofillManagerOtpTypedValueTest
+    : public BrowserAutofillManagerOtpSuggestionsTest,
+      public WithParamInterface<bool> {
+ public:
+  BrowserAutofillManagerOtpTypedValueTest() {
+    feature_list_.InitWithFeatureState(
+        features::kAutofillNewSuggestionGeneration, GetParam());
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+// Tests that OTP suggestions are matched against the value that the user types
+// into the OTP field: An OTP that completes the typed value is offered, while
+// an OTP that contradicts it is not.
+TEST_P(BrowserAutofillManagerOtpTypedValueTest,
+       OtpSuggestionsAreMatchedAgainstTypedValue) {
+  FormData form = CreateAndSeeOtpForm();
+  ON_CALL(otp_manager(), GetOtpSuggestions)
+      .WillByDefault(base::test::RunOnceCallbackRepeatedly<2>(
+          std::vector<one_time_tokens::OneTimeToken>{
+              one_time_tokens::OneTimeToken(
+                  one_time_tokens::OneTimeTokenType::kSmsOtp, "083203",
+                  base::TimeTicks::Now())}));
+  ON_CALL(autocomplete_history_manager(), OnGetSingleFieldSuggestions)
+      .WillByDefault(
+          [](const FormData& form, const FormStructure* form_structure,
+             const FormFieldData& field, const AutofillField* autofill_field,
+             const AutofillClient& client,
+             SingleFieldFillRouter::OnSuggestionsReturnedCallback
+                 on_suggestions_returned) {
+            std::move(on_suggestions_returned).Run(field.global_id(), {});
+          });
+
+  test_api(form).field(0).set_value(u"08");
+  OnAskForValuesToFill(form, form.fields()[0],
+                       AutofillSuggestionTriggerSource::kTextFieldValueChanged);
+  EXPECT_THAT(external_delegate()->suggestions(),
+              ElementsAre(EqualsSuggestion(
+                  SuggestionType::kOneTimePasswordEntry, u"083203")));
+
+  test_api(form).field(0).set_value(u"12");
+  OnAskForValuesToFill(form, form.fields()[0],
+                       AutofillSuggestionTriggerSource::kTextFieldValueChanged);
+  external_delegate()->CheckNoSuggestions(form.fields()[0].global_id());
+}
+
+INSTANTIATE_TEST_SUITE_P(,
+                         BrowserAutofillManagerOtpTypedValueTest,
+                         testing::Bool());
 
 // Tests that triggering suggestions with `kGmailOneTimePasswordAvailable`
 // queries the `OtpManager` and returns OTP suggestions.
@@ -7509,8 +7734,9 @@ TEST_F(BrowserAutofillManagerTest, FillOrPreviewForm_BlockedFields) {
 
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields()[0].global_id(), &profile, AutofillTriggerSource::kPopup,
-      /*require_user_confirmation=*/false, blocked_fields);
+      form.fields()[0].global_id(), FillingProduct::kAddress, &profile,
+      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
+      blocked_fields);
 }
 
 // Tests that blocked_fields are preserved through the asynchronous credit
@@ -7544,8 +7770,9 @@ TEST_F(BrowserAutofillManagerTest,
 
   autofill_manager().FillOrPreviewForm(
       mojom::ActionPersistence::kFill, form.global_id(),
-      form.fields()[0].global_id(), &card, AutofillTriggerSource::kPopup,
-      /*require_user_confirmation=*/true, blocked_fields);
+      form.fields()[0].global_id(), FillingProduct::kCreditCard, &card,
+      AutofillTriggerSource::kPopup, /*require_user_confirmation=*/true,
+      blocked_fields);
 }
 
 class BrowserAutofillManagerSuggestionMergingTest
@@ -7857,32 +8084,36 @@ TEST_F(BrowserAutofillManagerTest,
 }
 
 // Tests that an address picker is detected when fewer than 3 address fields
-// are modified if the trigger field underwent prefix completion.
+// are modified if the trigger field underwent prefix or substring completion.
 TEST_F(
     BrowserAutofillManagerTest,
-    OnDidDetectJavaScriptAutofill_AddressPicker_WithPrefixCompletionFewerThanMinFields) {
-  FormData form = test::GetFormData({.fields = {{.role = ADDRESS_HOME_LINE1},
-                                                {.role = ADDRESS_HOME_CITY},
-                                                {.role = ADDRESS_HOME_ZIP}}});
-  FormsSeen({form});
+    OnDidDetectJavaScriptAutofill_AddressPicker_WithCompletionFewerThanMinFields) {
+  for (mojom::JavaScriptModificationType completion_type :
+       {mojom::JavaScriptModificationType::kPrefixCompletion,
+        mojom::JavaScriptModificationType::kSubstringCompletion}) {
+    FormData form = test::GetFormData({.fields = {{.role = ADDRESS_HOME_LINE1},
+                                                  {.role = ADDRESS_HOME_CITY},
+                                                  {.role = ADDRESS_HOME_ZIP}}});
+    FormsSeen({form});
 
-  FormStructure* form_structure =
-      test_api(autofill_manager()).FindCachedFormById(form.global_id());
-  ASSERT_TRUE(form_structure);
+    FormStructure* form_structure =
+        test_api(autofill_manager()).FindCachedFormById(form.global_id());
+    ASSERT_TRUE(form_structure);
 
-  // 2 address fields modified, and the trigger field has kPrefixCompletion.
-  std::vector<JavaScriptFieldModification> field_modifications = {
-      {.field_id = form.fields()[0].global_id(),
-       .modification_type =
-           mojom::JavaScriptModificationType::kPrefixCompletion},
-      {.field_id = form.fields()[1].global_id(),
-       .modification_type = mojom::JavaScriptModificationType::kReassignment}};
+    // 2 address fields modified, and the trigger field has `completion_type`.
+    std::vector<JavaScriptFieldModification> field_modifications = {
+        {.field_id = form.fields()[0].global_id(),
+         .modification_type = completion_type},
+        {.field_id = form.fields()[1].global_id(),
+         .modification_type =
+             mojom::JavaScriptModificationType::kReassignment}};
 
-  autofill_manager().OnDidDetectJavaScriptAutofill(
-      form, form.fields()[0].global_id(), field_modifications,
-      base::TimeTicks::Now(), AutofillManagerTestApi::pass_key());
+    autofill_manager().OnDidDetectJavaScriptAutofill(
+        form, form.fields()[0].global_id(), field_modifications,
+        base::TimeTicks::Now(), AutofillManagerTestApi::pass_key());
 
-  EXPECT_TRUE(form_structure->field(0)->did_trigger_javascript_autofill());
+    EXPECT_TRUE(form_structure->field(0)->did_trigger_javascript_autofill());
+  }
 }
 
 // Tests that a single-field email picker is detected when an email address
@@ -8131,7 +8362,7 @@ TEST_F(BrowserAutofillManagerTest_MockAutofillAi,
 
   Mock::VerifyAndClearExpectations(&autofill_client());
 
-  autofill_client().set_is_glic_consented(true);
+  ON_CALL(autofill_client(), IsGlicConsented).WillByDefault(Return(true));
   NiceMock<personal_context::MockPersonalContextEligibilityService>
       mock_eligibility_service;
   ON_CALL(mock_eligibility_service, GetEligibilityState)

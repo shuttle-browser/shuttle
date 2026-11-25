@@ -6,8 +6,8 @@ import type {String16} from 'chrome://resources/mojo/mojo/public/mojom/base/stri
 import type {DragEventSource} from 'chrome://resources/mojo/ui/base/dragdrop/mojom/drag_drop_types.mojom-webui.js';
 import type {MenuSourceType} from 'chrome://resources/mojo/ui/base/mojom/menu_source_type.mojom-webui.js';
 import type {PointF, RectF} from 'chrome://resources/mojo/ui/gfx/geometry/mojom/geometry.mojom-webui.js';
-import type {Url} from 'chrome://resources/mojo/url/mojom/url.mojom-webui.js';
 import {TestBrowserProxy} from 'chrome://webui-test/test_browser_proxy.js';
+import type {ExtensionActionId} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 import {InitialStateReader, INVALID_FOCUS_REQUEST_HANDLE, INVALID_SHOW_SPLIT_TABS_CONTEXT_MENU_HANDLE, INVALID_TOOLBAR_STATE_LISTENER_HANDLE} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 import type {AdjustOmniboxTextForCopyResult, BrowserProxy, ContentSettingImageType, ContextMenuType, FocusRequestHandle, FocusRequestListener, InitialState, LhsChipIdentifier, OmniboxAction, PageActionId, PageActionTrigger, PinnedToolbarAction, ShowSplitTabsContextMenuHandle, ShowSplitTabsContextMenuListener, ToolbarFlatStateSchema, ToolbarStateListener, ToolbarStateListenerHandle, ToolbarUIServiceInterface} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
@@ -24,8 +24,8 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
   constructor() {
     super([
       'adjustOmniboxTextForCopy',
-      'bind',
       'executeExtensionAction',
+      'getInitialState',
       'invokePinnedToolbarAction',
       'moveExtensionAction',
       'moveExtensionActionBy',
@@ -34,6 +34,7 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
       'onAppMenuFocusChanged',
       'onContentSettingImageAnimationEnded',
       'onContentSettingImagePointerDown',
+      'onGlicActorTaskIconClicked',
       'onGlicButtonClicked',
       'onHomeButtonDropFile',
       'onHomeButtonDropText',
@@ -53,6 +54,8 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
       'onPageInitialized',
       'onPerformanceInterventionButtonClicked',
       'onToolbarDropFile',
+      'onToolbarDropText',
+      'onToolbarDropUrl',
       'setAvatarButtonFocused',
       'setAvatarButtonHovered',
       'setAvatarButtonIphPromoShowing',
@@ -64,8 +67,8 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
     ]);
   }
 
-  bind(): Promise<InitialState> {
-    this.methodCalled('bind');
+  getInitialState(): Promise<InitialState> {
+    this.methodCalled('getInitialState');
     return new Promise<never>(() => {});
   }
 
@@ -163,8 +166,8 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
     this.methodCalled('onLhsChipDrag', [identifier, source]);
   }
 
-  onHomeButtonDropUrl(url: Url) {
-    this.methodCalled('onHomeButtonDropUrl', url);
+  onHomeButtonDropUrl() {
+    this.methodCalled('onHomeButtonDropUrl');
   }
 
   onHomeButtonDropFile(dropPosition: PointF) {
@@ -177,6 +180,14 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
 
   onToolbarDropFile(dropPosition: PointF) {
     this.methodCalled('onToolbarDropFile', dropPosition);
+  }
+
+  onToolbarDropText(text: string) {
+    this.methodCalled('onToolbarDropText', text);
+  }
+
+  onToolbarDropUrl() {
+    this.methodCalled('onToolbarDropUrl');
   }
 
   showAvatarMenu() {
@@ -203,12 +214,12 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
     this.methodCalled('onAppMenuFocusChanged', focused);
   }
 
-  executeExtensionAction(extensionId: string) {
-    this.methodCalled('executeExtensionAction', [extensionId]);
+  executeExtensionAction(id: ExtensionActionId) {
+    this.methodCalled('executeExtensionAction', [id]);
   }
 
-  showExtensionContextMenu(extensionId: string, source: MenuSourceType) {
-    this.methodCalled('showExtensionContextMenu', [extensionId, source]);
+  showExtensionContextMenu(id: ExtensionActionId, source: MenuSourceType) {
+    this.methodCalled('showExtensionContextMenu', [id, source]);
   }
 
   onPerformanceInterventionButtonClicked() {
@@ -221,6 +232,10 @@ export class TestToolbarUiHandler extends TestBrowserProxy implements
 
   onGlicButtonClicked() {
     this.methodCalled('onGlicButtonClicked');
+  }
+
+  onGlicActorTaskIconClicked() {
+    this.methodCalled('onGlicActorTaskIconClicked');
   }
 
   onLocationBarFocusWithinChanged(focusInside: boolean) {

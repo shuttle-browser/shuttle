@@ -100,6 +100,11 @@ class UkmService : public UkmRecorderImpl {
   // collected event metrics, etc.).
   void Purge();
 
+  // Deletes all in-memory recordings and clears in-memory log observers (e.g.,
+  // for chrome://ukm and chrome://metrics-internals), while preserving
+  // persisted unsent logs in ukm_log_store().
+  void PurgeInMemoryRecordings();
+
   // Deletes all unsent local data related to Chrome extensions.
   void PurgeExtensionsData();
 
@@ -132,6 +137,10 @@ class UkmService : public UkmRecorderImpl {
   uint64_t client_id() const { return client_id_; }
   int32_t session_id() const { return session_id_; }
 
+  // Returns whether UKM debug data (e.g., for chrome://ukm and
+  // chrome://metrics-internals) is allowed to be exposed.
+  bool IsDebugDataAllowed() const;
+
   // Adds/removes an observer that monitors logs events.
   void AddLogsObserver(metrics::MetricsLogsEventManager::Observer* observer);
   void RemoveLogsObserver(metrics::MetricsLogsEventManager::Observer* observer);
@@ -150,7 +159,6 @@ class UkmService : public UkmRecorderImpl {
   friend ::metrics::UkmBrowserTestBase;
   friend ::ukm::UkmTestHelper;
   friend ::ukm::debug::UkmDebugDataExtractor;
-  friend ::ukm::UkmUtilsForTest;
 
   FRIEND_TEST_ALL_PREFIXES(::ChromeMetricsServiceClientTest,
                            TestRegisterUKMProviders);

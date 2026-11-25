@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/core/layout/constraint_space_builder.h"
 #include "third_party/blink/renderer/core/layout/floats_utils.h"
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
+#include "third_party/blink/renderer/core/layout/fragmented_oof_container.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_break_token.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_cursor.h"
 #include "third_party/blink/renderer/core/layout/inline/inline_item_result_ruby_column.h"
@@ -472,6 +473,7 @@ LineBreaker::LineBreaker(InlineNode node,
                          const LeadingFloats& leading_floats,
                          const InlineBreakToken* break_token,
                          const ColumnSpannerPath* column_spanner_path,
+                         const FragmentedOofContainer* fragmented_oof_container,
                          ExclusionSpace* exclusion_space)
     : line_opportunity_(line_opportunity),
       node_(node),
@@ -496,6 +498,7 @@ LineBreaker::LineBreaker(InlineNode node,
       exclusion_space_(exclusion_space),
       break_token_(break_token),
       column_spanner_path_(column_spanner_path),
+      fragmented_oof_container_(fragmented_oof_container),
       break_iterator_(text_content_),
       shaper_(text_content_),
       spacing_(text_content_, is_svg_text_),
@@ -584,9 +587,6 @@ inline InlineItemResult* LineBreaker::AddItem(const InlineItem& item,
     DCHECK_GE(current_.text_offset, item.StartOffset());
     DCHECK_GE(end_offset, current_.text_offset);
     DCHECK_LE(end_offset, item.EndOffset());
-  }
-  if (item.IsTextCombine()) [[unlikely]] {
-    line_info->SetHaveTextCombineOrRubyItem();
   }
   InlineItemResults* item_results = line_info->MutableResults();
   return &item_results->emplace_back(
@@ -1238,6 +1238,27 @@ bool LineBreaker::CanBreakAfter(const InlineItem& item) const {
   // Bidi controls produced by kOpenRubyColumn/kCloseRubyColumn are ignorable.
   unsigned ignorable_bidi_length = IgnorableBidiControlLength(item);
   if (ignorable_bidi_length > 0u) {
+    // When `item` is followed by a <ruby>, remove the bidi controls from the
+    // text so that they don't affect the break opportunity; e.g., a preserved
+    // space followed by a <ruby>. Text before `break_iterator_.StartOffset()`
+    // is disregarded anyway.
+    //
+    // Keep the existing behavior if `item` ends a ruby column. This avoids a
+    // new break opportunity after a collapsible space between `</rt>` and
+    // `</ruby>`; e.g., "<ruby>\n<rt>x</rt>\n</ruby>\nword".
+    if (RuntimeEnabledFeatures::RubySoftWrapAfterPreservedSpaceEnabled() &&
+        Text()[item.EndOffset()] != uchar::kPopDirectionalIsolate) {
+      const wtf_size_t start_offset = break_iterator_.StartOffset();
+      DCHECK_LE(start_offset, item.EndOffset());
+      StringBuilder text_content;
+      text_content.Append(
+          StringView(Text(), start_offset, item.EndOffset() - start_offset));
+      text_content.Append(
+          StringView(Text(), item.EndOffset() + ignorable_bidi_length));
+      LazyLineBreakIterator break_iterator(break_iterator_,
+                                           text_content.ReleaseString());
+      return break_iterator.IsBreakable(item.EndOffset() - start_offset);
+    }
     return break_iterator_.IsBreakable(item.EndOffset() +
                                        ignorable_bidi_length);
   }
@@ -3273,6 +3294,10 @@ void LineBreaker::HandleBlockInInline(const InlineItem& item,
     FragmentationLayoutInput fragmentation;
     fragmentation.break_token = block_break_token;
     fragmentation.column_spanner_path = spanner_path_for_child;
+    if (fragmented_oof_container_) {
+      fragmentation.fragmented_oof_container =
+          fragmented_oof_container_->GetChild(*block_node.GetLayoutBox());
+    }
     const LayoutResult* layout_result =
         block_node.Layout(child_space, fragmentation);
     // Ensure `NeedsCollectInlines` isn't set, or it may cause security risks.
@@ -3572,9 +3597,9 @@ LineInfo LineBreaker::CreateSubLineInfo(
   LineInfo sub_line_info;
   LineBreaker sub_line_breaker(
       node_, mode, constraint_space_, LineLayoutOpportunity(limit),
-      empty_leading_floats,
-      /* break_token */ nullptr,
-      /* column_spanner_path */ nullptr, &empty_exclusion_space);
+      empty_leading_floats, /*InlineBreakToken=*/nullptr,
+      /*ColumnSpannerPath=*/nullptr, /*FragmentedOofContainer=*/{},
+      &empty_exclusion_space);
   sub_line_breaker.disallow_auto_wrap_ = disallow_auto_wrap;
   sub_line_breaker.SetInputRange(start, end_item_index,
                                  initial_whitespace_state, this);
@@ -3619,7 +3644,6 @@ InlineItemResult* LineBreaker::AddRubyColumnResult(
   if (data->base_line.MayHaveRubyOverhang()) {
     line_info.SetMayHaveRubyOverhang();
   }
-  line_info.SetHaveTextCombineOrRubyItem();
   data->is_continuation = is_continuation;
 
   data->annotation_line_list = annotation_line_list;
@@ -3814,9 +3838,11 @@ void LineBreaker::HandleFloat(const InlineItem& item,
       constraint_space_.GetLineClampData().FloatState();
 
   const BlockNode float_node(To<LayoutBox>(item.GetLayoutObject()));
-  // TODO(crbug.com/40267498): Should use GetFragmentationLayoutInputForChild()
-  // here.
   FragmentationLayoutInput fragmentation(float_break_token);
+  if (fragmented_oof_container_) {
+    fragmentation.fragmented_oof_container =
+        fragmented_oof_container_->GetChild(*float_node.GetLayoutBox());
+  }
   UnpositionedFloat unpositioned_float(
       float_node, fragmentation, constraint_space_.AvailableSize(),
       float_node.IsReplaced()

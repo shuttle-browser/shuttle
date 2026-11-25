@@ -9,7 +9,8 @@
 #include "ios/chrome/browser/shared/model/profile/typed_profile_keyed_service_factory_ios.h"
 
 // Singleton that owns OhttpKeyService objects, one for each active
-// ProfileIOS. It returns nullptr for incognito ProfileIOS.
+// ProfileIOS. For incognito ProfileIOS, a separate instance is created when
+// kHashPrefixRealTimeLookupsOnIncognitoAndGuest is enabled.
 class OhttpKeyServiceFactory final : public TypedProfileKeyedServiceFactoryIOS<
                                          OhttpKeyServiceFactory,
                                          safe_browsing::OhttpKeyService> {
@@ -23,7 +24,7 @@ class OhttpKeyServiceFactory final : public TypedProfileKeyedServiceFactoryIOS<
  private:
   // ProfileKeyedServiceFactoryIOS implementation.
   std::unique_ptr<KeyedService> BuildServiceInstanceFor(
-      ProfileIOS* profile) const final;
+      ProfileIOS& profile) const final;
 };
 
 #endif  // IOS_CHROME_BROWSER_SAFE_BROWSING_MODEL_OHTTP_KEY_SERVICE_FACTORY_H_

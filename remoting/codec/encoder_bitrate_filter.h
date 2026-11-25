@@ -13,6 +13,13 @@ namespace remoting {
 // for encoder.
 class EncoderBitrateFilter final {
  public:
+  static constexpr int kDefaultMinimumBitrateKbps = 1000;
+
+  // Minimum target bitrate per megapixel. Chosen experimentally such that when
+  // the screen is not changing the codec converges to the target quantizer in
+  // less than 10 frames.
+  static constexpr int kDefaultMinimumBitrateKbpsPerMegapixel = 2500;
+
   explicit EncoderBitrateFilter(int minimum_bitrate_kbps_per_megapixel);
   ~EncoderBitrateFilter();
 
@@ -25,7 +32,7 @@ class EncoderBitrateFilter final {
   // This is the minimum number to avoid returning unreasonable value from
   // GetTargetBitrateKbps(). It roughly equals to the minimum bitrate of a 780 x
   // 512 screen for VP8, or 1024 x 558 screen for H264.
-  int minimum_bitrate_kbps_ = 1000;
+  int minimum_bitrate_kbps_ = kDefaultMinimumBitrateKbps;
   WeightedSamples bandwidth_kbps_;
   int bitrate_kbps_ = minimum_bitrate_kbps_;
 };

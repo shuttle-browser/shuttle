@@ -216,9 +216,8 @@ public class LaunchIntentDispatcher {
             }
 
             Intent newTabIntent =
-                    IntentHandler.createTrustedOpenNewTabIntent(
-                            currentActivity, /* incognito= */ false);
-            newTabIntent.putExtra(GlicIntentConstants.EXTRA_GLIC_PENDING_ACTOR_TASK, true);
+                    ActorForegroundServiceController.get()
+                            .createTrustedPendingActorTaskNewTabIntent();
             currentActivity.setResult(Activity.RESULT_OK);
             recordExternalTriggerDispatchResult(
                     ExternalTriggerDispatchResult.OPENED_FOREGROUND_TAB);
@@ -331,8 +330,8 @@ public class LaunchIntentDispatcher {
         if (intent == null) return false;
         Log.w(
                 TAG,
-                "CustomTabsIntent#shouldAlwaysUseBrowserUI() = "
-                        + CustomTabsIntent.shouldAlwaysUseBrowserUI(intent));
+                "CustomTabsIntent#shouldAlwaysUseBrowserUI() = %b",
+                CustomTabsIntent.shouldAlwaysUseBrowserUI(intent));
         if (CustomTabsIntent.shouldAlwaysUseBrowserUI(intent)
                 || (!intent.hasExtra(CustomTabsIntent.EXTRA_SESSION)
                         && !AuthTabIntentDataProvider.isAuthTabIntent(intent))) {

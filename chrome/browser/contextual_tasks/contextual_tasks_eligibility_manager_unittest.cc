@@ -6,6 +6,7 @@
 
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_test_utils.h"
 #include "components/contextual_search/contextual_search_service.h"
 #include "components/contextual_search/pref_names.h"
 #include "components/contextual_tasks/public/features.h"
@@ -30,6 +31,7 @@ class ContextualTasksEligibilityManagerTest : public testing::Test {
   ~ContextualTasksEligibilityManagerTest() override = default;
 
   void SetUp() override {
+    SKIP_IF_CONTEXTUAL_TASKS_UNSUPPORTED();
     identity_test_env_ = std::make_unique<signin::IdentityTestEnvironment>();
     aim_eligibility_service_ = std::make_unique<MockAimEligibilityService>(
         prefs_, nullptr, nullptr, nullptr);

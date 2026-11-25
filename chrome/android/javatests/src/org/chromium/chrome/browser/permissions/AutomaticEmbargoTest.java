@@ -19,7 +19,6 @@ import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.DisableFeatures;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.permissions.PermissionTestRule.PermissionUpdateWaiter;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -35,13 +34,11 @@ import org.chromium.ui.modaldialog.ModalDialogManager.ModalDialogType;
 
 /** Test suite for permissions automatic embargo logic. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class AutomaticEmbargoTest {
     public AutoResetCtaTransitTestRule mActivityTestRule =
             ChromeTransitTestRules.autoResetCtaActivityRule();
     public PermissionTestRule mPermissionRule =
-            new PermissionTestRule(
-                    mActivityTestRule.getActivityTestRule(), /* useHttpsServer= */ true);
+            new PermissionTestRule(mActivityTestRule, /* useHttpsServer= */ true);
 
     @Rule
     public RuleChain mRuleChain = RuleChain.outerRule(mActivityTestRule).around(mPermissionRule);
@@ -56,43 +53,45 @@ public class AutomaticEmbargoTest {
 
     private static final int NUMBER_OF_DISMISSALS = 3;
 
-  @Before
-  public void setUp() throws Exception {
-    mPermissionRule.setUpActivity();
-  }
+    @Before
+    public void setUp() throws Exception {
+        mActivityTestRule.startOnBlankPage();
+    }
 
-  private void runTest(
-      final String testFile,
-      final String javascript,
-      final String updaterPrefix,
-      final boolean withGesture)
-      throws Exception {
-    Tab tab = mPermissionRule.getActivityTab();
-    PermissionUpdateWaiter updateWaiter =
-        new PermissionUpdateWaiter(updaterPrefix, mPermissionRule.getActivity());
-    ThreadUtils.runOnUiThreadBlocking(() -> tab.addObserver(updateWaiter));
+    private void runTest(
+            final String testFile,
+            final String javascript,
+            final String updaterPrefix,
+            final boolean withGesture)
+            throws Exception {
+        Tab tab = mActivityTestRule.getActivityTab();
+        PermissionUpdateWaiter updateWaiter =
+                new PermissionUpdateWaiter(updaterPrefix, mActivityTestRule.getActivity());
+        ThreadUtils.runOnUiThreadBlocking(() -> tab.addObserver(updateWaiter));
 
-    for (int i = 0; i < NUMBER_OF_DISMISSALS; ++i) {
+        for (int i = 0; i < NUMBER_OF_DISMISSALS; ++i) {
             mPermissionRule.setUpUrl(testFile);
             if (withGesture) {
-                mPermissionRule.runJavaScriptCodeWithUserGestureInCurrentTab(javascript);
+                mActivityTestRule.runJavaScriptCodeWithUserGestureInCurrentTab(javascript);
             } else {
-                mPermissionRule.runJavaScriptCodeInCurrentTab(javascript);
-      }
-      PermissionTestRule.waitForDialog(mPermissionRule.getActivity());
-      int dialogType = mPermissionRule.getActivity().getModalDialogManager().getCurrentType();
-      ThreadUtils.runOnUiThreadBlocking(
-          () -> {
-            mPermissionRule
-                .getActivity()
-                .getModalDialogManager()
-                .getCurrentPresenterForTest()
-                .dismissCurrentDialog(
-                    dialogType == ModalDialogType.APP
-                        ? DialogDismissalCause.NAVIGATE_BACK_OR_TOUCH_OUTSIDE
-                        : DialogDismissalCause.NAVIGATE_BACK);
-          });
-      InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+                mActivityTestRule.runJavaScriptCodeInCurrentTab(javascript);
+            }
+            PermissionTestRule.waitForDialog(mActivityTestRule.getActivity());
+            int dialogType =
+                    mActivityTestRule.getActivity().getModalDialogManager().getCurrentType();
+            ThreadUtils.runOnUiThreadBlocking(
+                    () -> {
+                        mActivityTestRule
+                                .getActivity()
+                                .getModalDialogManager()
+                                .getCurrentPresenterForTest()
+                                .dismissCurrentDialog(
+                                        dialogType == ModalDialogType.APP
+                                                ? DialogDismissalCause
+                                                        .NAVIGATE_BACK_OR_TOUCH_OUTSIDE
+                                                : DialogDismissalCause.NAVIGATE_BACK);
+                    });
+            InstrumentationRegistry.getInstrumentation().waitForIdleSync();
         }
 
         mPermissionRule.runNoPromptTest(

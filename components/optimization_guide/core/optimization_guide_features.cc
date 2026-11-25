@@ -5,33 +5,23 @@
 #include "components/optimization_guide/core/optimization_guide_features.h"
 
 #include <algorithm>
-#include <cstring>
 #include <optional>
 
 #include "base/byte_size.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
-#include "base/logging.h"
-#include "base/metrics/field_trial.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_split.h"
-#include "base/strings/string_util.h"
-#include "base/strings/to_string.h"
 #include "base/system/sys_info.h"
 #include "base/time/time.h"
-#include "components/optimization_guide/core/feature_registry/feature_keys.h"
+#include "build/build_config.h"
 #include "components/optimization_guide/core/feature_registry/mqls_feature_registry.h"
-#include "components/optimization_guide/core/model_execution/on_device_features.h"
-#include "components/optimization_guide/core/optimization_guide_enums.h"
 #include "components/optimization_guide/proto/common_types.pb.h"
-#include "components/variations/hashing.h"
-#include "google_apis/gaia/gaia_constants.h"
 #include "google_apis/google_api_keys.h"
-#include "net/base/url_util.h"
-#include "ui/base/l10n/l10n_util.h"
+#include "url/url_constants.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "components/version_info/android/channel_getter.h"
@@ -142,25 +132,6 @@ const base::FeatureParam<std::string> kPerformanceClassListForImageInput{
 
 BASE_FEATURE(kOnDeviceModelBackgroundDownload,
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-const base::FeatureParam<std::string>
-    kOnDeviceModelBackgroundDownloadAllowedFeatures{
-        &kOnDeviceModelBackgroundDownload, "allowed_features",
-        "PromptApi,WritingAssistanceApi,Summarize"};
-
-bool IsOnDeviceModelBackgroundDownloadEnabledForFeature(
-    mojom::OnDeviceFeature feature) {
-  if (!base::FeatureList::IsEnabled(kOnDeviceModelBackgroundDownload)) {
-    return false;
-  }
-  std::string allowed_features_string =
-      kOnDeviceModelBackgroundDownloadAllowedFeatures.Get();
-  std::vector<std::string_view> allowed_features =
-      base::SplitStringPiece(allowed_features_string, ",",
-                             base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
-  return std::ranges::contains(allowed_features, GetVariantName(feature));
-}
-
 
 BASE_FEATURE(kBrokerModelSessionsForUntrustedProcesses,
              base::FEATURE_DISABLED_BY_DEFAULT);

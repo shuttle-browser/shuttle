@@ -77,12 +77,17 @@ public class BookmarkActivity extends SnackbarActivity {
         @Nullable ComponentName parentComponent =
                 IntentUtils.safeGetParcelableExtra(
                         getIntent(), IntentHandler.EXTRA_PARENT_COMPONENT);
+        // Use the original profile: `profile` may be an OTR profile that gets destroyed while this
+        // activity is still showing (e.g. last incognito tab closed), which would make the
+        // supplier return null.
+        Profile originalProfile = profile.getOriginalProfile();
         mBookmarkOpener =
                 new BookmarkOpenerImpl(
-                        () -> BookmarkModel.getForProfile(profile),
+                        () -> BookmarkModel.getForProfile(originalProfile),
                         /* context= */ this,
                         /* componentName= */ parentComponent,
-                        /* multiInstanceManager= */ null);
+                        /* multiInstanceManager= */ null,
+                        /* currentTabSupplier= */ null);
 
         ScrimManager scrimManager =
                 new ScrimManager(this, getContentView(), ScrimClient.BOOKMARK_ACTIVITY);
@@ -109,7 +114,7 @@ public class BookmarkActivity extends SnackbarActivity {
                 new BookmarkManagerCoordinator(
                         getWindowAndroid(),
                         this,
-                        true,
+                        /* isDialogUi= */ true,
                         getSnackbarManager(),
                         () -> bottomSheetController,
                         getActivityResultTracker(),
@@ -117,7 +122,7 @@ public class BookmarkActivity extends SnackbarActivity {
                         mBookmarkUiPrefs,
                         mBookmarkOpener,
                         new BookmarkManagerOpenerImpl(),
-                        PriceDropNotificationManagerFactory.create(profile),
+                        PriceDropNotificationManagerFactory.create(originalProfile),
                         /* edgeToEdgePadAdjusterGenerator= */ view ->
                                 EdgeToEdgeControllerFactory.createForViewAndObserveSupplier(
                                         view, getEdgeToEdgeSupplier()),

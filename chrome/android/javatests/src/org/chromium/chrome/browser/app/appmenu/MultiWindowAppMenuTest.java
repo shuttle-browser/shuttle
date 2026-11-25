@@ -19,14 +19,11 @@ import org.junit.runner.RunWith;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.Token;
 import org.chromium.base.test.transit.TransitAsserts;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
-import org.chromium.chrome.browser.multiwindow.MultiWindowTestHelper;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tabmodel.TabClosureParams;
 import org.chromium.chrome.browser.tabmodel.TabGroupMergeNotificationType;
@@ -51,12 +48,10 @@ import java.util.List;
 
 /** Public Transit tests for operations through the app menu in multi-window. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @DoNotBatch(reason = "Batching not yet supported in multi-window")
 // In phones, the New Window option in the app menu is only enabled when already in multi-window or
 // multi-display mode with Chrome not running in an adjacent window.
 @Restriction({DeviceFormFactor.TABLET_OR_DESKTOP, DeviceRestriction.RESTRICTION_TYPE_NON_AUTO})
-@EnableFeatures(ChromeFeatureList.TOOLBAR_TABLET_RESIZE_REFACTOR)
 public class MultiWindowAppMenuTest {
     @Rule
     public FreshCtaTransitTestRule mCtaTestRule =
@@ -176,7 +171,7 @@ public class MultiWindowAppMenuTest {
                             tabs2, tabs2.get(0), TabGroupMergeNotificationType.DONT_NOTIFY);
                 });
 
-        MultiWindowTestHelper.moveActivityToFront(page1InFirstWindow.getActivity());
+        page1InFirstWindow.bringWindowToFront();
 
         WebPageStation page2InFirstWindow =
                 page1InFirstWindow.openRegularTabAppMenu().openNewTab().loadAboutBlank();
@@ -241,8 +236,8 @@ public class MultiWindowAppMenuTest {
                                     /* allowDialog= */ false);
                 });
 
-        // 4. Bring Window 1 back to the foreground and wait for ActivityState.RESUMED.
-        MultiWindowTestHelper.moveActivityToFront(page1.getActivity());
+        // 4. Bring Window 1 back to the foreground.
+        page1.bringWindowToFront();
 
         // 5. Open Window 1 app menu and verify tab groups submenu.
         RegularWebPageAppMenuFacility appMenu = page1.openRegularTabAppMenu();

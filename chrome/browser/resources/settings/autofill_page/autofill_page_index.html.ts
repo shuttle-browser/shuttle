@@ -11,8 +11,12 @@ export function getHtml(this: SettingsAutofillPageIndexElement) {
 <cr-view-manager id="viewManager" class="cr-centered-card-container"
     ?show-all="${this.shouldShowAll}">
 
-  <settings-autofill-page slot="view" id="parent">
-  </settings-autofill-page>
+  ${this.isSettingsRefresh2026Enabled_ ? html`
+    <settings-autofill-page-v2 slot="view" id="parent">
+    </settings-autofill-page-v2>
+  ` : html`
+    <settings-autofill-page slot="view" id="parent"></settings-autofill-page>
+  `}
 
   <settings-contact-info-page slot="view" id="contactInfo"
       data-parent-view-id="parent"
@@ -25,26 +29,22 @@ export function getHtml(this: SettingsAutofillPageIndexElement) {
   </settings-identity-docs-page>
 
 <if expr="is_win or is_macosx">
-  <settings-passkeys-page slot="view" id="passkeys"
-      data-parent-view-id="parent"
+  <settings-passkeys-page slot="view" id="passkeys" data-parent-view-id="parent"
       route-path="${this.routes_.PASSKEYS.path}">
   </settings-passkeys-page>
 </if>
 
-  <settings-payments-page slot="view" id="payments"
-      data-parent-view-id="parent"
+  <settings-payments-page slot="view" id="payments" data-parent-view-id="parent"
       route-path="${this.routes_.PAYMENTS.path}">
   </settings-payments-page>
 
-  <settings-travel-page slot="view" id="travel"
-      data-parent-view-id="parent"
+  <settings-travel-page slot="view" id="travel" data-parent-view-id="parent"
       route-path="${this.routes_.TRAVEL.path}">
   </settings-travel-page>
 
   ${this.isShoppingEnabled_ ? html`
     <settings-shopping-page slot="view" id="shopping"
-        data-parent-view-id="parent"
-        route-path="${this.routes_.SHOPPING.path}">
+        data-parent-view-id="parent" route-path="${this.routes_.SHOPPING.path}">
     </settings-shopping-page>
   ` : ''}
 

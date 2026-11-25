@@ -27,7 +27,6 @@
 #if !BUILDFLAG(IS_IOS)
 #include "components/omnibox/browser/geolocation_header_service.h"
 #endif  // !BUILDFLAG(IS_IOS)
-#include "components/omnibox/browser/history_fuzzy_provider.h"
 #include "components/omnibox/browser/history_url_provider.h"
 #include "components/omnibox/browser/omnibox_client.h"
 #include "components/omnibox/browser/omnibox_event_global_tracker.h"
@@ -191,7 +190,6 @@ void OpenMatch(
   GURL destination_url = action ? action->getUrl() : match.destination_url;
 
   omnibox::RecordActionShownForAllActions(result, selection);
-  HistoryFuzzyProvider::RecordOpenMatchMetrics(result, match);
 
   // TODO(crbug.com/530290300): This should no longer be possible once
   //  selections are tied to source result. Eliminate and simplify below.
@@ -768,12 +766,8 @@ std::u16string GetAccessibilityLabelForSelection(
   // any other suffix.
   if (selection.state == OmniboxPopupSelection::LineState::kNormal &&
       ContextualSearchProvider::HasSidePanelDescription(match, client)) {
-    // TODO(crbug.com/573671297): Hardcoded format string is to avoid adding a
-    // translation string after M158 string cutoff. Will be replaced by a
-    // dedicated suffix message.
-    const std::u16string side_panel_suffix = base::StrCat(
-        {u"$1, ",
-         l10n_util::GetStringUTF16(IDS_CONTEXTUAL_SEARCH_OPENS_IN_SIDE_PANEL)});
+    const std::u16string side_panel_suffix = l10n_util::GetStringUTF16(
+        IDS_ACC_CONTEXTUAL_SEARCH_OPENS_IN_SIDE_PANEL_SUFFIX);
     additional_message =
         additional_message.empty()
             ? side_panel_suffix

@@ -361,8 +361,18 @@ class FakeRenderWidgetHostViewAura : public RenderWidgetHostViewAura {
     return RenderWidgetHostViewAura::CanSynchronizeVisualProperties();
   }
 
+  void SetBounds(const gfx::Rect& rect) override {
+    RenderWidgetHostViewAura::SetBounds(rect);
+    if (set_bounds_callback_) {
+      std::move(set_bounds_callback_).Run();
+    }
+  }
+
   bool use_real_should_skip_cursor_update_ = false;
   size_t can_synchronize_visual_properties_count_ = 0;
+  // If set, this runs at the end of the next SetBounds(), which is where
+  // UpdateLegacyWin() can run a nested message loop on Windows.
+  base::OnceClosure set_bounds_callback_;
   gfx::Size last_frame_size_;
   raw_ptr<FakeWindowEventDispatcher> dispatcher_;
 };
@@ -1067,8 +1077,7 @@ class RenderWidgetHostViewAuraOverscrollTest
   void ReleaseAndResetDispatchedMessages() {
     ReleaseTouchPoint(0);
     SendTouchEvent();
-    MockWidgetInputHandler::MessageVector events =
-        GetAndResetDispatchedMessages();
+    GetAndResetDispatchedMessages();
   }
 
   MockWidgetInputHandler::MessageVector ExpectGestureScrollEndForWheelScrolling(
@@ -1413,6 +1422,31 @@ TEST_F(RenderWidgetHostViewAuraTest, PopupClosesWhenParentMoves) {
   EXPECT_TRUE(observer.destroyed());
 }
 #endif
+
+// A popup can be closed in a nested message loop while InitAsPopup() sets its
+// bounds, e.g. because its parent loses focus. It must not be deleted until
+// InitAsPopup() returns, or be initialized any further, e.g. shown.
+TEST_F(RenderWidgetHostViewAuraTest, PopupClosedWhileSettingBounds) {
+  parent_view_->SetBounds(gfx::Rect(10, 10, 400, 400));
+  parent_view_->Focus();
+  EXPECT_TRUE(parent_view_->HasFocus());
+
+  FakeRenderWidgetHostViewAura* popup = view_;
+  widget_host_ = nullptr;  // Deleted when the popup is closed.
+  view_ = nullptr;         // Deleted when InitAsPopup() returns.
+  std::optional<TestWindowObserver> observer;
+  popup->set_bounds_callback_ = base::BindLambdaForTesting([&]() {
+    observer.emplace(popup->GetNativeView());
+    parent_view_->OnWindowFocused(/*gained_focus=*/nullptr,
+                                  parent_view_->GetNativeView());
+    EXPECT_TRUE(popup->destroy_pending());
+  });
+
+  popup->SetWidgetType(WidgetType::kPopup);
+  popup->InitAsPopup(parent_view_, gfx::Rect(10, 10, 100, 100),
+                     gfx::Rect(10, 10, 1, 1));
+  EXPECT_TRUE(observer->destroyed());
+}
 
 // Checks that IME-composition-event state is maintained correctly.
 TEST_F(RenderWidgetHostViewAuraTest, SetCompositionText) {
@@ -1864,6 +1898,63 @@ TEST_F(RenderWidgetHostViewAuraTest,
         << "Failed for DomCode: "
         << ui::KeycodeConverter::DomCodeToCodeString(dom_code);
   }
+}
+
+TEST_F(RenderWidgetHostViewAuraTest, KeyEventRoutingWithLockKeyboard) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(features::kSystemKeyboardLock);
+
+  InitViewForFrame(parent_view_->GetNativeView());
+  view_->ShowWithVisibility(PageVisibilityState::kVisible);
+
+  aura::WindowTreeHost* host = view_->GetNativeView()->GetHost();
+  ASSERT_TRUE(host);
+  EXPECT_FALSE(view_->IsKeyboardLocked());
+  EXPECT_FALSE(host->IsKeyLocked(ui::DomCode::US_A));
+
+  ASSERT_TRUE(
+      view_->LockKeyboard(base::flat_set<ui::DomCode>{ui::DomCode::US_A}));
+  EXPECT_TRUE(view_->IsKeyboardLocked());
+  EXPECT_TRUE(host->IsKeyLocked(ui::DomCode::US_A));
+  EXPECT_FALSE(host->IsKeyLocked(ui::DomCode::US_B));
+
+  // Locked key skips the prehandler and is sent to the input handler.
+  ui::KeyEvent locked_key_event(
+      ui::EventType::kKeyPressed,
+      ui::DomCodeToUsLayoutKeyboardCode(ui::DomCode::US_A), ui::DomCode::US_A,
+      ui::EF_NONE);
+  view_->OnKeyEvent(&locked_key_event);
+  ASSERT_FALSE(render_widget_host_delegate()->last_keyboard_event());
+  ASSERT_TRUE(base::test::RunUntil([&]() {
+    return !widget_host_->input_handler()->dispatched_messages().empty();
+  }));
+  auto events = GetAndResetDispatchedMessages();
+  ASSERT_FALSE(events.empty());
+  ASSERT_TRUE(events[0]->ToEvent());
+  const blink::WebKeyboardEvent* blink_key_event =
+      static_cast<const blink::WebKeyboardEvent*>(
+          &events[0]->ToEvent()->Event()->Event());
+  EXPECT_EQ(locked_key_event.key_code(), blink_key_event->windows_key_code);
+  EXPECT_EQ(
+      ui::KeycodeConverter::DomCodeToNativeKeycode(locked_key_event.code()),
+      blink_key_event->native_key_code);
+
+  // Unlocked key passes through the prehandler.
+  ui::KeyEvent unlocked_key_event(
+      ui::EventType::kKeyPressed,
+      ui::DomCodeToUsLayoutKeyboardCode(ui::DomCode::US_B), ui::DomCode::US_B,
+      ui::EF_NONE);
+  view_->OnKeyEvent(&unlocked_key_event);
+  const input::NativeWebKeyboardEvent* prehandled_event =
+      render_widget_host_delegate()->last_keyboard_event();
+  ASSERT_TRUE(prehandled_event);
+  EXPECT_EQ(unlocked_key_event.key_code(), prehandled_event->windows_key_code);
+
+  // Unlocking clears both RenderWidgetHostViewEventHandler and WindowTreeHost
+  // lock state.
+  view_->UnlockKeyboard();
+  EXPECT_FALSE(view_->IsKeyboardLocked());
+  EXPECT_FALSE(host->IsKeyLocked(ui::DomCode::US_A));
 }
 
 TEST_F(RenderWidgetHostViewAuraTest, TimerBasedWheelEventPhaseInfo) {

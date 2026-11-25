@@ -232,6 +232,21 @@ try_.compilator_builder(
 )
 
 try_.builder(
+    name = "mac-devtools-frontend-rel",
+    description_html = "Runs DevTools Frontend tests exactly like mac-rel",
+    mirrors = [
+        "ci/mac-devtools-frontend-rel",
+    ],
+    gn_args = "ci/mac-devtools-frontend-rel",
+    cpu = cpu.ARM64,
+    contact_team_email = "chrome-devtools@google.com",
+    cq_settings = try_.cq_settings(
+        includable_only = True,
+    ),
+    main_list_view = "try",
+)
+
+try_.builder(
     name = "mac-webdriver-bidi-rel",
     description_html = "Runs webdriver bidi tests exactly like mac-rel",
     mirrors = [
@@ -840,7 +855,7 @@ ios_builder(
     use_clang_coverage = True,
 )
 
-ios_builder(
+try_.orchestrator_builder(
     name = "ios-simulator-full-configs",
     branch_selector = branches.selector.IOS_BRANCHES,
     mirrors = [
@@ -853,7 +868,9 @@ ios_builder(
             "partial_code_coverage_instrumentation",
         ],
     ),
-    cpu = cpu.ARM64,
+    os = os.LINUX_DEFAULT,
+    compilator = "ios-simulator-full-configs-compilator",
+    contact_team_email = "bling-engprod@google.com",
     coverage_exclude_sources = "ios_test_files_and_test_utils",
     coverage_test_types = ["overall", "unit"],
     cq_settings = try_.cq_settings(
@@ -861,9 +878,24 @@ ios_builder(
             "ios/.+",
         ],
     ),
+    experiments = {
+        # crbug.com/40280175
+        "chromium_checkout.expand_submodules": 100,
+    },
     main_list_view = "try",
-    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
     use_clang_coverage = True,
+    xcode = xcode.xcode_default,
+)
+
+try_.compilator_builder(
+    name = "ios-simulator-full-configs-compilator",
+    branch_selector = branches.selector.IOS_BRANCHES,
+    # Set builderless to False so that branch builders use builderful bots
+    builderless = False,
+    cpu = cpu.ARM64,
+    ssd = None,
+    contact_team_email = "bling-engprod@google.com",
+    main_list_view = "try",
 )
 
 ios_builder(
@@ -919,11 +951,11 @@ ios_builder(
 )
 
 ios_builder(
-    name = "ios26-beta-simulator",
+    name = "ios27-duo-beta-simulator",
     mirrors = [
-        "ci/ios26-beta-simulator",
+        "ci/ios27-duo-beta-simulator",
     ],
-    gn_args = "ci/ios26-beta-simulator",
+    gn_args = "ci/ios27-duo-beta-simulator",
     cpu = cpu.ARM64,
     siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
 )
@@ -936,11 +968,11 @@ ios_builder(
 )
 
 ios_builder(
-    name = "ios26-sdk-simulator",
+    name = "ios27-duo-simulator",
     mirrors = [
-        "ci/ios26-sdk-simulator",
+        "ci/ios27-duo-simulator",
     ],
-    gn_args = "ci/ios26-sdk-simulator",
+    gn_args = "ci/ios27-duo-simulator",
     cpu = cpu.ARM64,
     xcode = xcode.xcode_beta,
 )

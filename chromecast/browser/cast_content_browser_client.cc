@@ -15,6 +15,8 @@
 #include "base/files/scoped_file.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback.h"
+#include "base/i18n/icubridge/default_icu_locale.h"
+#include "base/i18n/language_tag.h"
 #include "base/i18n/rtl.h"
 #include "base/logging.h"
 #include "base/message_loop/message_pump_type.h"
@@ -52,7 +54,6 @@
 #include "chromecast/common/cors_exempt_headers.h"
 #include "chromecast/common/global_descriptors.h"
 #include "chromecast/common/user_agent.h"
-#include "chromecast/external_mojo/broker_service/broker_service.h"
 #include "chromecast/media/audio/cast_audio_manager.h"
 #include "chromecast/media/cdm/cast_cdm_factory.h"
 #include "chromecast/media/cdm/cast_cdm_origin_provider.h"
@@ -94,6 +95,7 @@
 #include "services/network/public/cpp/network_switches.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/common/web_preferences/web_preferences.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/display/display.h"
 #include "ui/display/screen.h"
 #include "ui/gl/gl_switches.h"
@@ -331,14 +333,6 @@ bool CastContentBrowserClient::EnableRemoteDebuggingImmediately() {
   return true;
 }
 
-std::vector<std::string> CastContentBrowserClient::GetStartupServices() {
-  return {
-#if BUILDFLAG(ENABLE_EXTERNAL_MOJO_SERVICES)
-      external_mojo::BrokerService::kServiceName
-#endif
-  };
-}
-
 std::unique_ptr<content::BrowserMainParts>
 CastContentBrowserClient::CreateBrowserMainParts(
     bool /* is_integration_test */) {
@@ -357,10 +351,17 @@ bool CastContentBrowserClient::IsHandledURL(const GURL& url) {
     return false;
   }
 
+  // Schemes that are always served by the browser process itself.  file: must
+  // be listed regardless of switches::kEnableLocalFileAccesses: a scheme that
+  // is *not* reported as handled is treated by ChildProcessSecurityPolicy as
+  // an external protocol that any renderer may request, which would let a
+  // compromised renderer navigate to arbitrary file:// URLs.  Whether local
+  // files may actually be served is decided by IsFileAccessAllowed() below.
   static const char* const kProtocolList[] = {
       content::kChromeUIScheme, content::kChromeDevToolsScheme,
       kChromeResourceScheme,    url::kBlobScheme,
       url::kDataScheme,         url::kFileSystemScheme,
+      url::kFileScheme,
   };
 
   const std::string& scheme = url.GetScheme();
@@ -370,12 +371,16 @@ bool CastContentBrowserClient::IsHandledURL(const GURL& url) {
     }
   }
 
-  if (scheme == url::kFileScheme) {
-    return base::CommandLine::ForCurrentProcess()->HasSwitch(
-        switches::kEnableLocalFileAccesses);
-  }
-
   return false;
+}
+
+bool CastContentBrowserClient::IsFileAccessAllowed(
+    const base::FilePath& path,
+    const base::FilePath& absolute_path,
+    const base::FilePath& profile_path) {
+  // Local file access is a development-only feature on Cast devices.
+  return base::CommandLine::ForCurrentProcess()->HasSwitch(
+      switches::kEnableLocalFileAccesses);
 }
 
 void CastContentBrowserClient::AppendExtraCommandLineSwitches(
@@ -505,9 +510,12 @@ void CastContentBrowserClient::OverrideWebPreferences(
   }
 }
 
-std::string CastContentBrowserClient::GetApplicationLocale() {
-  const std::string locale(base::i18n::GetConfiguredLocale());
-  return locale.empty() ? "en-US" : locale;
+base::i18n::LanguageTag CastContentBrowserClient::GetApplicationLocale() {
+  const base::i18n::LanguageTag locale = base::i18n::GetDefaultIcuLocale();
+  if (locale == base::i18n::GetKnownLanguageTag("und")) {
+    return base::i18n::GetKnownLanguageTag("en-US");
+  }
+  return locale;
 }
 
 void CastContentBrowserClient::AllowCertificateError(
@@ -619,7 +627,7 @@ bool CastContentBrowserClient::CanCreateWindow(
     const GURL& target_url,
     const content::Referrer& referrer,
     const std::string& frame_name,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& features,
     bool user_gesture,
     bool opener_suppressed,
@@ -672,13 +680,6 @@ CastContentBrowserClient::GetServiceManifestOverlay(
   }
 
   return std::nullopt;
-}
-
-std::vector<service_manager::Manifest>
-CastContentBrowserClient::GetExtraServiceManifests() {
-  // NOTE: This could be simplified and the list of manifests could be inlined.
-  // Not done yet since it would require touching downstream cast code.
-  return GetCastContentPackagedServicesOverlayManifest().packaged_services;
 }
 
 void CastContentBrowserClient::GetAdditionalMappedFilesForChildProcess(
@@ -850,6 +851,5 @@ CastContentBrowserClient::ShouldOverrideLocalNetworkAccessRequestPolicy(
 std::string CastContentBrowserClient::GetUserAgent() {
   return chromecast::GetUserAgent();
 }
-
 }  // namespace shell
 }  // namespace chromecast

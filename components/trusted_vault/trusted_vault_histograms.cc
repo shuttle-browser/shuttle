@@ -4,12 +4,14 @@
 
 #include "components/trusted_vault/trusted_vault_histograms.h"
 
+#include <optional>
 #include <string>
 
 #include "base/metrics/histogram_functions.h"
 #include "base/notreached.h"
 #include "base/strings/strcat.h"
 #include "components/trusted_vault/local_recovery_factor.h"
+#include "components/trusted_vault/trusted_vault_connection.h"
 #include "components/trusted_vault/trusted_vault_server_constants.h"
 
 namespace trusted_vault {
@@ -39,8 +41,13 @@ std::string GetTrustedVaultURLFetchReasonSuffix(
       return "DownloadAuthenticationFactorsRegistrationState";
     case TrustedVaultURLFetchReasonForUMA::kRegisterICloudKeychain:
       return "RegisterICloudKeychain";
+    case TrustedVaultURLFetchReasonForUMA::kRegisterGaiaPassword:
+      return "RegisterGaiaPassword";
     case TrustedVaultURLFetchReasonForUMA::kDownloadGaiaPasswordPublicKey:
       return "DownloadGaiaPasswordPublicKey";
+    case TrustedVaultURLFetchReasonForUMA::
+        kDownloadRecoveryFactorsForKeyRotation:
+      return "DownloadRecoveryFactorsForKeyRotation";
     case TrustedVaultURLFetchReasonForUMA::kRotateSharedKey:
       return "RotateSharedKey";
   }
@@ -120,17 +127,20 @@ void RecordTrustedVaultRecoveryFactorRegistrationOutcome(
       registration_outcome);
 }
 
-void RecordTrustedVaultURLFetchResponse(SecurityDomainId security_domain_id,
-                                        TrustedVaultURLFetchReasonForUMA reason,
-                                        int http_response_code,
-                                        int net_error) {
+void RecordTrustedVaultURLFetchResponse(
+    std::optional<SecurityDomainId> security_domain_id,
+    TrustedVaultURLFetchReasonForUMA reason,
+    int http_response_code,
+    int net_error) {
   CHECK_LE(net_error, 0);
   CHECK_GE(http_response_code, 0);
 
   const int value = http_response_code == 0 ? net_error : http_response_code;
   const std::string reason_suffix = GetTrustedVaultURLFetchReasonSuffix(reason);
   const std::string security_domain_name =
-      GetSecurityDomainNameForUma(security_domain_id);
+      security_domain_id.has_value()
+          ? GetSecurityDomainNameForUma(*security_domain_id)
+          : "NoSecurityDomain";
 
   base::UmaHistogramSparse("TrustedVault.SecurityDomainServiceURLFetchResponse",
                            value);
@@ -192,6 +202,14 @@ void RecordTrustedVaultDownloadKeysStatus(
     TrustedVaultDownloadKeysStatusForUMA status) {
   RecordTrustedVaultDownloadKeysStatus(LocalRecoveryFactorType::kPhysicalDevice,
                                        SecurityDomainId::kChromeSync, status);
+}
+
+void RecordTrustedVaultKeyRotationStatus(SecurityDomainId security_domain_id,
+                                         TrustedVaultKeyRotationStatus status) {
+  base::UmaHistogramEnumeration(
+      base::StrCat({"TrustedVault.KeyRotationStatus.",
+                    GetSecurityDomainNameForUma(security_domain_id)}),
+      status);
 }
 
 void RecordTrustedVaultRecoverKeysOutcome(

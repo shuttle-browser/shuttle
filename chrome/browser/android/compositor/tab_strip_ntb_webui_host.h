@@ -10,9 +10,12 @@
 
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "base/time/time.h"
 #include "cc/slim/layer.h"
+#include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/profiles/profile_observer.h"
 #include "chrome/browser/ui/android/tab_model/tab_model_list_observer.h"
 #include "content/public/browser/render_widget_host.h"
 #include "content/public/browser/web_contents_delegate.h"
@@ -38,16 +41,22 @@ class TabStripNtbWebUiHost
     : public content::WebContentsObserver,
       public content::WebContentsDelegate,
       public content::RenderWidgetHost::InputEventObserver,
+      public ProfileObserver,
       public TabModelListObserver {
  public:
-  TabStripNtbWebUiHost(TabModel* tab_model,
+  TabStripNtbWebUiHost(Profile* profile,
                        base::TimeTicks activity_creation_time,
                        const base::android::JavaRef<jobject>& java_coordinator);
   TabStripNtbWebUiHost(const TabStripNtbWebUiHost&) = delete;
   TabStripNtbWebUiHost& operator=(const TabStripNtbWebUiHost&) = delete;
   ~TabStripNtbWebUiHost() override;
 
+  // Binds the hosted WebContents to |tab_model| by creating and attaching its
+  // TabStripService. Must be called at most once, with a TabModel belonging to
+  // the same Profile passed at construction.
+  void SetTabModel(TabModel* tab_model);
   void Resize(int32_t width_px, int32_t height_px);
+  void SetButtonVisible(bool visible);
   // Returns the hosted WebContents. It stays owned by this object.
   content::WebContents* GetWebContents();
 
@@ -58,6 +67,8 @@ class TabStripNtbWebUiHost
   void RenderFrameCreated(content::RenderFrameHost* render_frame_host) override;
   void RenderFrameHostChanged(content::RenderFrameHost* old_host,
                               content::RenderFrameHost* new_host) override;
+  void PrimaryMainFrameRenderProcessGone(
+      base::TerminationStatus status) override;
   void OnFirstContentfulPaintInPrimaryMainFrame(
       base::TimeTicks presentation_time) override;
 
@@ -70,18 +81,26 @@ class TabStripNtbWebUiHost
                     const blink::WebInputEvent& event,
                     input::InputEventSource source) override;
 
+  // ProfileObserver:
+  void OnProfileWillBeDestroyed(Profile* profile) override;
+
   // TabModelListObserver:
   void OnTabModelAdded(TabModel* tab_model) override {}
   void OnTabModelRemoved(TabModel* tab_model) override;
 
  private:
+  void LoadWebUi();
   void Reset();
 
-  // The TabModel the service operates on. Caller is responsible for calling
-  // Reset when the TabModel is destroyed.
-  raw_ptr<TabModel> tab_model_;
+  // The TabModel the service operates on. Null until SetTabModel() is called
+  // or after Reset().
+  raw_ptr<TabModel> tab_model_ = nullptr;
   base::TimeTicks activity_creation_time_;
   bool recorded_first_paint_ = false;
+  // How many times the NTB WebUI renderer has exited. Cleared after
+  // `kCrashRecoverResetInterval` has passed without a crash.
+  uint32_t crash_count_ = 0;
+  base::TimeTicks last_crash_time_;
   base::android::ScopedJavaGlobalRef<jobject> java_coordinator_;
   // Declared before |web_contents_| so that it is destroyed after it. Null
   // once |tab_model_| is destroyed.
@@ -92,6 +111,8 @@ class TabStripNtbWebUiHost
   base::ScopedObservation<content::RenderWidgetHost,
                           content::RenderWidgetHost::InputEventObserver>
       input_event_observation_{this};
+  base::ScopedObservation<Profile, ProfileObserver> profile_observation_{this};
+  base::WeakPtrFactory<TabStripNtbWebUiHost> weak_ptr_factory_{this};
 };
 
 }  // namespace android

@@ -168,6 +168,7 @@ void OpenXrApiWrapper::Reset() {
 
   session_options_.reset();
   on_session_started_callback_.Reset();
+  on_session_resumed_callback_.Reset();
   on_session_ended_callback_.Reset();
   visibility_changed_callback_.Reset();
 }
@@ -183,6 +184,7 @@ bool OpenXrApiWrapper::Initialize(XrInstance instance,
   graphics_binding_ = graphics_binding;
   session_running_ = false;
   pending_frame_ = false;
+  stop_pending_ = false;
 
   DCHECK(instance != XR_NULL_HANDLE);
   instance_ = instance;
@@ -190,10 +192,6 @@ bool OpenXrApiWrapper::Initialize(XrInstance instance,
   DCHECK(HasInstance());
 
   if (XR_FAILED(InitializeSystem())) {
-    return false;
-  }
-
-  if (!graphics_binding_->Initialize(instance_, system_)) {
     return false;
   }
 
@@ -256,6 +254,7 @@ void OpenXrApiWrapper::Uninitialize() {
   Reset();
   session_running_ = false;
   pending_frame_ = false;
+  stop_pending_ = false;
 }
 
 bool OpenXrApiWrapper::HasInstance() const {
@@ -334,6 +333,12 @@ XrResult OpenXrApiWrapper::InitializeSystem() {
   DCHECK(!HasSystem());
 
   RETURN_IF_XR_FAILED(GetSystem(instance_, &system_));
+
+  // The view configurations are clamped to the binding's max texture size,
+  // which a binding may only know once it is initialized.
+  if (!graphics_binding_->Initialize(instance_, system_)) {
+    return XR_ERROR_INITIALIZATION_FAILED;
+  }
 
   RETURN_IF_XR_FAILED(
       InitializeViewConfig(kPrimaryViewConfiguration, primary_view_config_));
@@ -1014,7 +1019,6 @@ XrResult OpenXrApiWrapper::UpdateLocalFloorSpace() {
 
 XrResult OpenXrApiWrapper::BeginSession() {
   DCHECK(HasSession());
-  DCHECK(on_session_started_callback_);
 
   XrSessionBeginInfo session_begin_info = {XR_TYPE_SESSION_BEGIN_INFO};
   session_begin_info.primaryViewConfigurationType = primary_view_config_.Type();
@@ -1038,10 +1042,22 @@ XrResult OpenXrApiWrapper::BeginSession() {
   if (XR_SUCCEEDED(xr_result))
     session_running_ = true;
 
-  std::move(on_session_started_callback_)
-      .Run(std::move(session_options_), xr_result);
+  // Only the first xrBeginSession() starts the WebXR session. Later ones
+  // resume it after the runtime stopped it.
+  if (on_session_started_callback_) {
+    std::move(on_session_started_callback_)
+        .Run(std::move(session_options_), xr_result);
+  } else if (XR_SUCCEEDED(xr_result)) {
+    on_session_resumed_callback_.Run();
+  }
 
   return xr_result;
+}
+
+XrResult OpenXrApiWrapper::StopSession() {
+  stop_pending_ = false;
+  session_running_ = false;
+  return xrEndSession(session_);
 }
 
 XrResult OpenXrApiWrapper::BeginFrame() {
@@ -1237,6 +1253,10 @@ XrResult OpenXrApiWrapper::EndFrame() {
     RETURN_IF_XR_FAILED(xrEndFrame(session_, &end_frame_info));
   }
   pending_frame_ = false;
+
+  if (stop_pending_) {
+    return StopSession();
+  }
 
   return XR_SUCCESS;
 }
@@ -1563,7 +1583,15 @@ XrResult OpenXrApiWrapper::ProcessEvents() {
           xr_result = BeginSession();
           break;
         case XR_SESSION_STATE_STOPPING:
-          return ShutdownSession();
+          // The runtime may make the session READY again later, e.g. when the
+          // app becomes visible again, so only end the OpenXR session here.
+          // The WebXR session ends if the runtime moves on to EXITING.
+          if (pending_frame_) {
+            stop_pending_ = true;
+          } else {
+            xr_result = StopSession();
+          }
+          break;
         case XR_SESSION_STATE_SYNCHRONIZED:
           visibility_changed_callback_.Run(
               device::mojom::XRVisibilityState::HIDDEN);

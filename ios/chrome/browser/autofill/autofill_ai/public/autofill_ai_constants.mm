@@ -10,9 +10,9 @@ NSString* const kAutofillAISaveEntityCancelButtonId =
     @"kAutofillAISaveEntityCancelButtonId";
 NSString* const kAutofillAISaveEntitySaveButtonId =
     @"kAutofillAISaveEntitySaveButtonId";
+NSString* const kAutofillAISaveEntityNoThanksButtonId =
+    @"kAutofillAISaveEntityNoThanksButtonId";
 NSString* const kAutofillAISourcesTableViewId =
     @"kAutofillAISourcesTableViewId";
 NSString* const kAutofillAISourcesCancelButtonId =
     @"kAutofillAISourcesCancelButtonId";
-NSString* const kAutofillAISaveEntityLegalDisclosureId =
-    @"kAutofillAISaveEntityLegalDisclosureId";

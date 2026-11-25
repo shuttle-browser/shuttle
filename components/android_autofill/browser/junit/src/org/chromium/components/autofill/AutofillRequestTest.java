@@ -19,13 +19,17 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
 
 import java.util.Arrays;
 
 /** Unit test for {@link AutofillRequest}. */
 @RunWith(BaseRobolectricTestRunner.class)
-@EnableFeatures({"AndroidAutofillImprovedVisibilityDetection"})
+@EnableFeatures({
+    AndroidAutofillFeatures.ANDROID_AUTOFILL_IMPROVED_VISIBILITY_DETECTION_NAME,
+    AndroidAutofillFeatures.ANDROID_AUTOFILL_INCLUDE_SELECT_OPTION_VALUES_NAME
+})
 public class AutofillRequestTest {
     private static final int FORM_SESSION_ID = 123;
     private static final String FORM_DOMAIN = "https://example.com";
@@ -41,14 +45,18 @@ public class AutofillRequestTest {
     private static FormFieldDataBuilder createDatalistFieldBuilder() {
         FormFieldDataBuilder builder = new FormFieldDataBuilder();
         builder.mValue = "current value";
-        builder.mDatalistValues = new String[] {"entry1", "entry2"};
+        builder.mDatalistOptions =
+                Arrays.asList(
+                        new SelectOption("entry1", "label1"), new SelectOption("entry2", "label2"));
         return builder;
     }
 
     private static FormFieldDataBuilder createListFieldBuilder() {
         FormFieldDataBuilder builder = new FormFieldDataBuilder();
-        builder.mOptionValues = new String[] {"value1", "value2"};
-        builder.mOptionContents = new String[] {"content1", "content2"};
+        builder.mOptions =
+                Arrays.asList(
+                        new SelectOption("value1", "content1"),
+                        new SelectOption("value2", "content2"));
         builder.mValue = "value2";
         return builder;
     }
@@ -162,9 +170,11 @@ public class AutofillRequestTest {
         // Datalists also have text type.
         assertEquals(View.AUTOFILL_TYPE_TEXT, child.getAutofillType());
         assertEquals(AutofillValue.forText(fieldBuilder.mValue), child.getAutofillValue());
-        assertEquals(fieldBuilder.mDatalistValues.length, child.getAutofillOptions().length);
-        assertEquals(fieldBuilder.mDatalistValues[0], child.getAutofillOptions()[0]);
-        assertEquals(fieldBuilder.mDatalistValues[1], child.getAutofillOptions()[1]);
+        assertEquals(fieldBuilder.mDatalistOptions.size(), child.getAutofillOptions().length);
+        assertEquals(
+                fieldBuilder.mDatalistOptions.get(0).getValue(), child.getAutofillOptions()[0]);
+        assertEquals(
+                fieldBuilder.mDatalistOptions.get(1).getValue(), child.getAutofillOptions()[1]);
     }
 
     @Test
@@ -178,6 +188,9 @@ public class AutofillRequestTest {
         TestViewStructure child = structure.getChild(0);
 
         assertEquals(View.AUTOFILL_TYPE_LIST, child.getAutofillType());
+        assertArrayEquals(
+                new String[] {"content1", "content2", "value1", "value2"},
+                child.getAutofillOptions());
         // The field's value matches the option entry with index 1.
         assertEquals(AutofillValue.forList(1), child.getAutofillValue());
 
@@ -188,6 +201,21 @@ public class AutofillRequestTest {
         assertEquals(View.AUTOFILL_TYPE_LIST, child.getAutofillType());
         // If there is no matching entry, the AutofillValue is not set.
         assertEquals(null, child.getAutofillValue());
+    }
+
+    @Test
+    @DisableFeatures(AndroidAutofillFeatures.ANDROID_AUTOFILL_INCLUDE_SELECT_OPTION_VALUES_NAME)
+    public void testControlTypeSpecificInformationIsSetForListFieldsWithoutOptionValues() {
+        FormFieldDataBuilder fieldBuilder = createListFieldBuilder();
+        TestViewStructure structure =
+                fillStructureForRequest(createRequest(FORM_SESSION_ID, fieldBuilder.build()));
+
+        assertEquals(1, structure.getChildCount());
+        TestViewStructure child = structure.getChild(0);
+
+        assertEquals(View.AUTOFILL_TYPE_LIST, child.getAutofillType());
+        assertArrayEquals(new String[] {"content1", "content2"}, child.getAutofillOptions());
+        assertEquals(AutofillValue.forList(1), child.getAutofillValue());
     }
 
     @Test
@@ -243,11 +271,37 @@ public class AutofillRequestTest {
         // The underlying FormFieldData object is updated.
         assertEquals("value1", request.getField((short) 0).getValue());
 
-        // Invalid list indices are ignored.
+        // Matching an appended option value index (N..2N-1) maps back to mOptions.get(j % N).
         valuesToFill.put(child.getId(), AutofillValue.forList(3));
+        assertTrue(request.autofill(valuesToFill));
+        assertEquals("value2", request.getField((short) 0).getValue());
+        assertEquals(AutofillValue.forList(1), request.getFieldNewValue(0));
+
+        // Invalid list indices are ignored.
+        valuesToFill.put(child.getId(), AutofillValue.forList(4));
         assertFalse(request.autofill(valuesToFill));
-        assertEquals("value1", request.getField((short) 0).getValue());
+        assertEquals("value2", request.getField((short) 0).getValue());
         valuesToFill.put(child.getId(), AutofillValue.forList(-1));
+        assertFalse(request.autofill(valuesToFill));
+        assertEquals("value2", request.getField((short) 0).getValue());
+    }
+
+    @Test
+    @DisableFeatures(AndroidAutofillFeatures.ANDROID_AUTOFILL_INCLUDE_SELECT_OPTION_VALUES_NAME)
+    public void testAutofillUpdatesListFieldWithoutOptionValues() {
+        FormFieldDataBuilder fieldBuilder = createListFieldBuilder();
+        AutofillRequest request = createRequest(FORM_SESSION_ID, fieldBuilder.build());
+        TestViewStructure structure = fillStructureForRequest(request);
+        assertEquals(1, structure.getChildCount());
+        TestViewStructure child = structure.getChild(0);
+
+        SparseArray<AutofillValue> valuesToFill = new SparseArray<>();
+        valuesToFill.append(child.getId(), AutofillValue.forList(0));
+        assertTrue(request.autofill(valuesToFill));
+        assertEquals("value1", request.getField((short) 0).getValue());
+
+        // Indices >= mOptions.size() are ignored when the feature is disabled.
+        valuesToFill.put(child.getId(), AutofillValue.forList(2));
         assertFalse(request.autofill(valuesToFill));
         assertEquals("value1", request.getField((short) 0).getValue());
     }

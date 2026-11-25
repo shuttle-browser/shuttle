@@ -65,8 +65,7 @@ import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.components.browser_ui.styles.ChromeColors;
 import org.chromium.components.omnibox.AutocompleteRequestType;
-import org.chromium.components.omnibox.IconResourceIdsProto.IconResourceIds;
-import org.chromium.components.omnibox.IconResourceIdsProtoIntDef;
+import org.chromium.components.omnibox.IconResourceIdsProtoIntDef.IconResourceIds;
 import org.chromium.components.omnibox.OmniboxFeatureList;
 import org.chromium.components.omnibox.OmniboxFeatures;
 import org.chromium.ui.KeyboardVisibilityDelegate;
@@ -230,7 +229,7 @@ public class FuseboxViewBinderUnitTest {
                 .with(FuseboxProperties.REQUEST_TYPE, AutocompleteRequestType.SEARCH)
                 .with(
                         FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                        IconResourceIdsProtoIntDef.IconResourceIds.SEARCH_LOUPE_WITH_SPARKLE)
+                        IconResourceIds.SEARCH_LOUPE_WITH_SPARKLE)
                 .with(FuseboxProperties.REQUEST_TYPE_BUTTON_SHOULD_TINT_ICON, false)
                 .with(FuseboxProperties.REQUEST_TYPE_BUTTON_TEXT, "test label")
                 .with(FuseboxProperties.REQUEST_TYPE_BUTTON_VISIBLE, false)
@@ -509,6 +508,50 @@ public class FuseboxViewBinderUnitTest {
     }
 
     @Test
+    public void attachmentButtonsText_setsText() {
+        mModel.set(FuseboxProperties.POPUP_ATTACH_CAMERA_TEXT, "Snap photo");
+        mModel.set(FuseboxProperties.POPUP_ATTACH_GALLERY_TEXT, "Photos");
+        mModel.set(FuseboxProperties.POPUP_ATTACH_FILE_TEXT, "Documents");
+        mModel.set(FuseboxProperties.POPUP_ATTACH_DRIVE_TEXT, "Cloud Drive");
+
+        TextView cameraText = mPopup.mCameraButton.findViewById(R.id.action_text);
+        TextView galleryText = mPopup.mGalleryButton.findViewById(R.id.action_text);
+        TextView fileText = mPopup.mFileButton.findViewById(R.id.action_text);
+        TextView driveText = mPopup.mDriveButton.findViewById(R.id.action_text);
+
+        assertEquals("Snap photo", cameraText.getText());
+        assertEquals("Photos", galleryText.getText());
+        assertEquals("Documents", fileText.getText());
+        assertEquals("Cloud Drive", driveText.getText());
+    }
+
+    @Test
+    public void attachmentButtonsIcon_setsImageResource() {
+        mModel.set(FuseboxProperties.POPUP_ATTACH_CAMERA_ICON, R.drawable.photo_camera_24dp);
+        mModel.set(
+                FuseboxProperties.POPUP_ATTACH_GALLERY_ICON, R.drawable.add_photo_alternate_24dp);
+        mModel.set(FuseboxProperties.POPUP_ATTACH_FILE_ICON, R.drawable.ic_folder_24dp);
+        mModel.set(FuseboxProperties.POPUP_ATTACH_DRIVE_ICON, R.drawable.gs_drive_vd_theme_24);
+
+        ImageView cameraIcon = mPopup.mCameraButton.findViewById(R.id.start_icon);
+        ImageView galleryIcon = mPopup.mGalleryButton.findViewById(R.id.start_icon);
+        ImageView fileIcon = mPopup.mFileButton.findViewById(R.id.start_icon);
+        ImageView driveIcon = mPopup.mDriveButton.findViewById(R.id.start_icon);
+
+        assertEquals(
+                R.drawable.photo_camera_24dp,
+                shadowOf(cameraIcon.getDrawable()).getCreatedFromResId());
+        assertEquals(
+                R.drawable.add_photo_alternate_24dp,
+                shadowOf(galleryIcon.getDrawable()).getCreatedFromResId());
+        assertEquals(
+                R.drawable.ic_folder_24dp, shadowOf(fileIcon.getDrawable()).getCreatedFromResId());
+        assertEquals(
+                R.drawable.gs_drive_vd_theme_24,
+                shadowOf(driveIcon.getDrawable()).getCreatedFromResId());
+    }
+
+    @Test
     public void addCurrentTabButton() {
         mModel.set(FuseboxProperties.POPUP_ATTACH_CURRENT_TAB_VISIBLE, false);
         assertEquals(View.GONE, mPopup.mAddCurrentTab.getVisibility());
@@ -604,17 +647,13 @@ public class FuseboxViewBinderUnitTest {
 
     @Test
     public void requestTypeDrawable() {
-        mModel.set(
-                FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.BANANA);
+        mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID, IconResourceIds.BANANA);
         assertStartDrawable(R.drawable.create_image_24dp);
         assertNull(mViewHolder.requestType.getCompoundDrawablesRelative()[1]);
         assertNotNull(mViewHolder.requestType.getCompoundDrawablesRelative()[2]);
         assertNull(mViewHolder.requestType.getCompoundDrawablesRelative()[3]);
 
-        mModel.set(
-                FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.IMAGE_CREATE);
+        mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID, IconResourceIds.IMAGE_CREATE);
         assertStartDrawable(R.drawable.image_create_24dp);
         assertNull(mViewHolder.requestType.getCompoundDrawablesRelative()[1]);
         assertNotNull(mViewHolder.requestType.getCompoundDrawablesRelative()[2]);
@@ -622,36 +661,28 @@ public class FuseboxViewBinderUnitTest {
 
         mModel.set(
                 FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.SEARCH_LOUPE_WITH_SPARKLE);
+                IconResourceIds.SEARCH_LOUPE_WITH_SPARKLE);
         assertStartDrawable(R.drawable.search_spark_black_24dp);
         assertNull(mViewHolder.requestType.getCompoundDrawablesRelative()[1]);
         assertNotNull(mViewHolder.requestType.getCompoundDrawablesRelative()[2]);
         assertNull(mViewHolder.requestType.getCompoundDrawablesRelative()[3]);
 
-        mModel.set(
-                FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.TRAVEL_EXPLORE);
+        mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID, IconResourceIds.TRAVEL_EXPLORE);
         assertStartDrawable(R.drawable.travel_explore_24dp);
         assertNotNull(mViewHolder.requestType.getCompoundDrawablesRelative()[2]);
 
-        mModel.set(
-                FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.DRAFT_SPARK);
+        mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID, IconResourceIds.DRAFT_SPARK);
         assertStartDrawable(R.drawable.draft_spark_24dp);
         assertNotNull(mViewHolder.requestType.getCompoundDrawablesRelative()[2]);
 
-        mModel.set(
-                FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.PLACE_WHITE);
+        mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID, IconResourceIds.PLACE_WHITE);
         assertNull(mViewHolder.requestType.getCompoundDrawablesRelative()[0]);
         assertNotNull(mViewHolder.requestType.getCompoundDrawablesRelative()[2]);
     }
 
     @Test
     public void requestTypeDrawable_tintToggleKeepsStartIcon() {
-        mModel.set(
-                FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID,
-                IconResourceIdsProtoIntDef.IconResourceIds.BANANA);
+        mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_ICON_ID, IconResourceIds.BANANA);
         assertStartDrawable(R.drawable.create_image_24dp);
 
         mModel.set(FuseboxProperties.REQUEST_TYPE_BUTTON_SHOULD_TINT_ICON, true);
@@ -810,7 +841,7 @@ public class FuseboxViewBinderUnitTest {
         PopupButtonData buttonData =
                 new PopupButtonData.Builder()
                         .setType(PopupButtonType.MODEL)
-                        .setIconId(IconResourceIds.AUTORENEW_VALUE)
+                        .setIconId(IconResourceIds.AUTORENEW)
                         .build();
         mModel.set(FuseboxProperties.POPUP_MODEL_BUTTON_DATA_LIST, List.of(buttonData));
         assertNotNull(
@@ -872,7 +903,7 @@ public class FuseboxViewBinderUnitTest {
         PopupButtonData buttonData =
                 new PopupButtonData.Builder()
                         .setType(PopupButtonType.TOOL)
-                        .setIconId(IconResourceIds.BANANA_VALUE)
+                        .setIconId(IconResourceIds.BANANA)
                         .build();
         mModel.set(FuseboxProperties.POPUP_TOOL_BUTTON_DATA_LIST, List.of(buttonData));
         assertNotNull(
@@ -884,7 +915,7 @@ public class FuseboxViewBinderUnitTest {
         PopupButtonData buttonData =
                 new PopupButtonData.Builder()
                         .setType(PopupButtonType.MODEL)
-                        .setIconId(IconResourceIds.ACUTE_VALUE)
+                        .setIconId(IconResourceIds.ACUTE)
                         .build();
         mModel.set(FuseboxProperties.POPUP_MODEL_BUTTON_DATA_LIST, List.of(buttonData));
         assertNotNull(

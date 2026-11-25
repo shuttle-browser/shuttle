@@ -26,7 +26,7 @@
 #include "chrome/common/webui_url_constants.h"
 #include "components/content_settings/core/browser/host_content_settings_map.h"
 #include "components/keyed_service/core/service_access_type.h"
-#include "components/safe_browsing/content/browser/ui_manager.h"
+#include "components/safe_browsing/content/browser/interstitials/ui_manager.h"
 #include "components/safe_browsing/core/browser/suspicious_site_warning_allowlist.h"
 #include "components/safe_browsing/core/common/features.h"
 #include "components/security_interstitials/content/security_interstitial_tab_helper.h"
@@ -35,8 +35,8 @@
 #include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/common/referrer.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "url/origin.h"
 
 namespace safe_browsing {
@@ -322,7 +322,8 @@ void SuspiciousSiteControllerDesktop::OnLearnMoreClicked() {
     web_contents()->OpenURL(
         content::OpenURLParams::CreateBrowserInitiated(
             GURL(chrome::kSafeBrowsingHelpCenterURL),
-            WindowOpenDisposition::kNewForegroundTab, ui::PAGE_TRANSITION_LINK),
+            ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+            ui::PAGE_TRANSITION_LINK),
         /*navigation_handle_callback=*/{});
   }
 }

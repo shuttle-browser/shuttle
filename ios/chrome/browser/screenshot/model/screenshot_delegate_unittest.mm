@@ -10,7 +10,6 @@
 #import "base/test/scoped_feature_list.h"
 #import "components/enterprise/data_controls/core/browser/test_utils.h"
 #import "ios/chrome/browser/enterprise/data_protection/model/data_protection_tab_helper.h"
-#import "ios/chrome/browser/shared/model/browser/browser_provider.h"
 #import "ios/chrome/browser/shared/model/browser/browser_provider_interface.h"
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
@@ -24,9 +23,8 @@
 #import "third_party/ocmock/OCMock/OCMock.h"
 #import "url/gurl.h"
 
-// A fake object that implements BrowserProvider and BrowserProviderInterface.
-@interface ScreenshotDelegateTestProvider
-    : NSObject <BrowserProviderInterface, BrowserProvider>
+// A fake object that implements BrowserProviderInterface.
+@interface ScreenshotDelegateTestProvider : NSObject <BrowserProviderInterface>
 @end
 
 @implementation ScreenshotDelegateTestProvider {
@@ -48,30 +46,20 @@
 
 #pragma mark - BrowserProviderInterface
 
-- (id<BrowserProvider>)mainBrowserProvider {
-  return self;
-}
-
-- (id<BrowserProvider>)currentBrowserProvider {
-  return self;
-}
-
-- (id<BrowserProvider>)incognitoBrowserProvider {
-  return nil;
-}
-
-- (BOOL)hasIncognitoBrowserProvider {
-  return NO;
-}
-
-#pragma mark - BrowserProvider
-
-- (Browser*)browser {
+- (Browser*)mainBrowser {
   return _browser.get();
 }
 
-- (UIViewController*)viewController:(BrowserProviderPassKey)key {
-  NOTREACHED();
+- (Browser*)currentBrowser {
+  return _browser.get();
+}
+
+- (Browser*)incognitoBrowser {
+  return nullptr;
+}
+
+- (BOOL)hasIncognitoBrowser {
+  return NO;
 }
 
 @end
@@ -110,7 +98,7 @@ class ScreenshotDelegateTest : public PlatformTest {
   // the screenshot delegate to use it.
   void SetupMockTab(std::unique_ptr<web::FakeWebState> web_state) {
     [browser_provider_interface_ createBrowserWithProfile:profile_.get()];
-    Browser* browser = browser_provider_interface_.mainBrowserProvider.browser;
+    Browser* browser = browser_provider_interface_.mainBrowser;
     WebStateList* web_state_list = browser->GetWebStateList();
 
     web_state_list->InsertWebState(
@@ -206,7 +194,7 @@ TEST_F(ScreenshotDelegateTest, NilBrowser) {
   // Expected: nil NSData.
 
   // Assert that the BrowserProviderIterface has no Browser.
-  ASSERT_FALSE(browser_provider_interface_.mainBrowserProvider.browser);
+  ASSERT_FALSE(browser_provider_interface_.mainBrowser);
 
   CreateScreenshotDelegate();
   VerifyScreenshotBlocked(true);
@@ -219,7 +207,7 @@ TEST_F(ScreenshotDelegateTest, NilWebState) {
 
   // Create an empty Browser in the BrowserProviderInterface.
   [browser_provider_interface_ createBrowserWithProfile:profile_.get()];
-  ASSERT_TRUE(browser_provider_interface_.mainBrowserProvider.browser);
+  ASSERT_TRUE(browser_provider_interface_.mainBrowser);
 
   CreateScreenshotDelegate();
   VerifyScreenshotBlocked(true);

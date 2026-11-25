@@ -19,8 +19,10 @@
 #include "chrome/browser/glic/common/panel_focus_dependent_hotkey_manager.h"
 #include "chrome/browser/glic/common/panel_visibility_dependent_hotkey_manager.h"
 #include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/host/glic_drag_and_drop_util.h"
 #include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/glic/public/features.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/glic/public/widget/glic_side_panel_coordinator_android.h"
@@ -49,6 +51,7 @@
 #include "ui/android/accelerator_manager_android.h"
 #include "ui/android/window_android.h"
 #include "ui/base/base_window.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/content_accelerators/accelerator_util.h"
 #include "ui/events/keycodes/keyboard_codes.h"
 
@@ -98,8 +101,13 @@ GlicSidePanelUi::GlicSidePanelUi(Profile* profile,
   // PrivilegedWebContents APIs instead of setting the delegate directly.
   content::WebContents* web_contents = delegate_->host().webui_contents();
   SetWebContentsDelegate(web_contents, /*delegate=*/this);
+  ConfigureGlicDragAndDropForWebContents(web_contents);
 
+  glic_side_panel_coordinator->SetIsLoading(
+      delegate_->host().IsShowingNativeLoading());
   glic_side_panel_coordinator->SetWebContents(web_contents);
+  glic_side_panel_coordinator->SetNativeFreAcceptedCallback(base::BindRepeating(
+      &GlicSidePanelUi::OnNativeFreAccepted, weak_ptr_factory_.GetWeakPtr()));
 
   host_observation_.Observe(&delegate_->host());
   panel_state_.kind = mojom::PanelStateKind::kAttached;
@@ -111,6 +119,9 @@ GlicSidePanelUi::~GlicSidePanelUi() {
   // `panel_` weak pointers) is still valid.
   panel_focus_dependent_hotkey_manager_.reset();
   panel_visibility_dependent_hotkey_manager_.reset();
+  if (auto* glic_side_panel_coordinator = GetGlicSidePanelCoordinator()) {
+    glic_side_panel_coordinator->SetIsLoading(false);
+  }
   content::WebContents* web_contents = delegate_->host().webui_contents();
   SetWebContentsDelegate(web_contents, /*delegate=*/nullptr,
                          /*expected_delegate=*/this);
@@ -213,11 +224,14 @@ void GlicSidePanelUi::ClosePanel() {
   Close(CloseOptions());
 }
 
-void GlicSidePanelUi::OnReload() {
-  auto* glic_side_panel_coordinator = GetGlicSidePanelCoordinator();
-  if (glic_side_panel_coordinator) {
-    glic_side_panel_coordinator->SetWebContents(
-        delegate_->host().webui_contents());
+void GlicSidePanelUi::ContentsCreated() {
+  if (auto* glic_side_panel_coordinator = GetGlicSidePanelCoordinator()) {
+    content::WebContents* web_contents = delegate_->host().webui_contents();
+    SetWebContentsDelegate(web_contents, /*delegate=*/this);
+    ConfigureGlicDragAndDropForWebContents(web_contents);
+    glic_side_panel_coordinator->SetIsLoading(
+        delegate_->host().IsShowingNativeLoading());
+    glic_side_panel_coordinator->SetWebContents(web_contents);
   }
 }
 
@@ -230,7 +244,14 @@ void GlicSidePanelUi::ActiveWebContentsChanged(
                              /*expected_delegate=*/this);
     }
     SetWebContentsDelegate(new_contents, /*delegate=*/this);
+    ConfigureGlicDragAndDropForWebContents(new_contents);
     glic_side_panel_coordinator->SetWebContents(new_contents);
+  }
+}
+
+void GlicSidePanelUi::NativeLoadingStateChanged(bool is_showing) {
+  if (auto* glic_side_panel_coordinator = GetGlicSidePanelCoordinator()) {
+    glic_side_panel_coordinator->SetIsLoading(is_showing);
   }
 }
 
@@ -322,7 +343,14 @@ bool GlicSidePanelUi::CanDragEnter(
           features::kGlicDragAndDropFileUploadAndroid)) {
     return false;
   }
-  return !data.filenames.empty() || !data.file_system_files.empty();
+  // File upload is unavailable until the user completes the FRE; mirror the
+  // disabled "+" upload menu by rejecting drags too.
+  if (!GlicEnabling::HasConsentedForProfile(profile_)) {
+    return false;
+  }
+  // Page context eligibility for web drags is decided once, at drop, in
+  // `StartDragAndDropInvoke`.
+  return IsValidDragPayload(data);
 }
 
 void GlicSidePanelUi::RequestMediaAccessPermission(
@@ -514,6 +542,10 @@ void GlicSidePanelUi::SyncEmbedderWindowActivation() {
   }
 }
 
+void GlicSidePanelUi::OnNativeFreAccepted() {
+  delegate_->AcceptNativeFre();
+}
+
 bool GlicSidePanelUi::CheckMediaAccessPermission(
     content::RenderFrameHost* render_frame_host,
     const url::Origin& security_origin,
@@ -536,7 +568,7 @@ void GlicSidePanelUi::RunFileChooser(
 bool GlicSidePanelUi::HandleWindowCreation(
     content::RenderFrameHost* opener,
     const GURL& target_url,
-    WindowOpenDisposition disposition,
+    ui::mojom::WindowOpenDisposition disposition,
     const blink::mojom::WindowFeatures& features) {
   return MaybeHandleGlicWindowCreation(opener, target_url, disposition,
                                        features);

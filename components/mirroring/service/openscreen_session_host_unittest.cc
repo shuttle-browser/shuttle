@@ -536,8 +536,23 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
   }
 
   void SendRemotingNotSupported() {
-    // Remoting not being supported should NOT surface an error.
-    EXPECT_CALL(*this, OnError(_)).Times(0);
+    if (cast_mode_ == "mirroring") {
+      // Remoting not being supported during mirroring should NOT surface an
+      // error.
+      EXPECT_CALL(*this, OnError(_)).Times(0);
+    } else {
+      EXPECT_CALL(*this, DidStop()).Times(0);
+      EXPECT_CALL(*this, OnError(_)).Times(0);
+      EXPECT_CALL(*this, LogErrorMessage(_));
+      // Expect to send OFFER message to fallback on mirroring.
+      EXPECT_CALL(*this, OnOutboundMessage(SenderMessage::Type::kOffer));
+      EXPECT_CALL(*this, OnRemotingStateChanged(false));
+      // The start of remoting is expected to fail.
+      EXPECT_CALL(
+          remoting_source_,
+          OnStartFailed(RemotingStartFailReason::INVALID_ANSWER_MESSAGE));
+      EXPECT_CALL(remoting_source_, OnSinkGone()).Times(AtLeast(1));
+    }
 
     session_host_->OnError(
         session_host_->session_.get(),
@@ -545,6 +560,10 @@ class OpenscreenSessionHostTest : public mojom::ResourceProvider,
                           "this receiver does not support remoting"));
 
     task_environment_.RunUntilIdle();
+    if (cast_mode_ != "mirroring") {
+      cast_mode_ = "mirroring";
+      Mock::VerifyAndClear(&remoting_source_);
+    }
     Mock::VerifyAndClear(this);
   }
 
@@ -985,6 +1004,31 @@ TEST_F(OpenscreenSessionHostTest, StartRemotingFailed) {
   StopSession();
 }
 
+TEST_F(OpenscreenSessionHostTest,
+       StartRemotingRejectedWithRemotingNotSupported) {
+  CreateSession(SessionType::AUDIO_AND_VIDEO);
+  StartSession();
+  SendRemotingCapabilities();
+  StartRemoting();
+  SendRemotingNotSupported();
+  GenerateAndReplyWithAnswer();
+  CaptureOneVideoFrame();
+  StopSession();
+}
+
+TEST_F(OpenscreenSessionHostTest, StopsSessionOnNonAnswerErrorDuringRemoting) {
+  CreateSession(SessionType::AUDIO_AND_VIDEO);
+  StartSession();
+  SendRemotingCapabilities();
+  StartRemoting();
+
+  EXPECT_CALL(*this, DidStop());
+  EXPECT_CALL(*this, OnError(SessionError::ENCODING_ERROR));
+  EXPECT_CALL(*this, LogErrorMessage(_));
+  PushFatalAudioCaptureError();
+  task_environment_.RunUntilIdle();
+}
+
 TEST_F(OpenscreenSessionHostTest, SwitchSourceTabFromMirroring) {
   CreateSession(SessionType::AUDIO_AND_VIDEO);
   StartSession();
@@ -1034,34 +1078,91 @@ TEST_F(OpenscreenSessionHostTest, UpdateBandwidthEstimate) {
   SetVideoSender(std::move(fake_video_sender));
 
   constexpr uint32_t kMinVideoBitrate = 393216;
-  constexpr uint32_t kMaxVideoBitrate = 1250000;
-  // The default bitrate is capped by the maximum video bitrate.
-  EXPECT_EQ(GetInitialBandwidth(), GetVideoNetworkBandwidth());
+  constexpr int kTinyEstimate = 1000;
+  constexpr int kHugeEstimate = 100000000;
 
-  // If the estimate is below the minimum and frames were dropped, it should
-  // stay at the minimum.
+  const uint32_t initial_bandwidth = GetInitialBandwidth();
+  EXPECT_EQ(initial_bandwidth, GetVideoNetworkBandwidth());
+
+  // When frames are dropped, the bandwidth should back off multiplicatively
+  // toward the estimate, by at most 50% per update, instead of snapping to it.
   fake_sender_ptr->set_frames_dropped(1);
-  UpdateBandwidthEstimate(1000);
+  UpdateBandwidthEstimate(kTinyEstimate);
+  EXPECT_EQ(initial_bandwidth / 2, GetVideoNetworkBandwidth());
+
+  fake_sender_ptr->set_frames_dropped(2);
+  UpdateBandwidthEstimate(kTinyEstimate);
+  EXPECT_EQ(initial_bandwidth / 4, GetVideoNetworkBandwidth());
+
+  // Without new frame drops, a low estimate should not reduce the bandwidth.
+  UpdateBandwidthEstimate(kTinyEstimate);
+  EXPECT_EQ(initial_bandwidth / 4, GetVideoNetworkBandwidth());
+
+  // Once congestion clears, the bandwidth should quickly recover to the level
+  // in use before the last backoff...
+  UpdateBandwidthEstimate(kHugeEstimate);
+  EXPECT_EQ(initial_bandwidth * 3 / 8, GetVideoNetworkBandwidth());
+  UpdateBandwidthEstimate(kHugeEstimate);
+  EXPECT_EQ(initial_bandwidth / 2, GetVideoNetworkBandwidth());
+
+  // ...and then increase conservatively.
+  const uint32_t after_conservative_increase = initial_bandwidth / 2 * 11 / 10;
+  UpdateBandwidthEstimate(kHugeEstimate);
+  EXPECT_EQ(after_conservative_increase, GetVideoNetworkBandwidth());
+
+  // A frame drop with a high estimate should still back off, by 15%.
+  fake_sender_ptr->set_frames_dropped(3);
+  UpdateBandwidthEstimate(kHugeEstimate);
+  const uint32_t after_15_percent_backoff =
+      after_conservative_increase * 85 / 100;
+  EXPECT_EQ(after_15_percent_backoff, GetVideoNetworkBandwidth());
+
+  // Increases are limited to 80% of the bandwidth estimate.
+  const uint32_t capped_usable = after_15_percent_backoff + 100000;
+  UpdateBandwidthEstimate(capped_usable * 5 / 4);
+  EXPECT_EQ(capped_usable, GetVideoNetworkBandwidth());
+
+  // Sustained frame drops should reduce the bandwidth down to the minimum.
+  for (int i = 0; i < 10; ++i) {
+    fake_sender_ptr->set_frames_dropped(4 + i);
+    UpdateBandwidthEstimate(kTinyEstimate);
+  }
   EXPECT_EQ(kMinVideoBitrate, GetVideoNetworkBandwidth());
 
-  // It should gradually reach the max bandwidth estimate when raised.
-  UpdateBandwidthEstimate(1000000);
-  EXPECT_EQ(432537u, GetVideoNetworkBandwidth());
+  StopSession();
+}
 
-  UpdateBandwidthEstimate(1000000);
-  EXPECT_EQ(475790u, GetVideoNetworkBandwidth());
-  for (int i = 0; i < 20; ++i) {
-    UpdateBandwidthEstimate(1000000);
-  }
-  // The max should be 80% of the bandwidth estimate.
-  EXPECT_EQ(800000u, GetVideoNetworkBandwidth());
+TEST_F(OpenscreenSessionHostTest,
+       UpdateBandwidthEstimateUsesLegacyBehaviorWhenBackoffDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitAndDisableFeature(
+      features::kCastStreamingGradualBandwidthBackoff);
+  CreateSession(SessionType::VIDEO_ONLY);
+  StartSession();
 
-  // The video bitrate should stay saturated at the cap when reached.
-  for (int i = 0; i < 20; ++i) {
-    UpdateBandwidthEstimate(kMaxVideoBitrate + 1);
-  }
-  // The max should be 80% of `kMaxVideoBitrate`.
-  EXPECT_EQ(1000000u, GetVideoNetworkBandwidth());
+  auto fake_video_sender = std::make_unique<FakeVideoSender>();
+  FakeVideoSender* fake_sender_ptr = fake_video_sender.get();
+  SetVideoSender(std::move(fake_video_sender));
+
+  const uint32_t initial_bandwidth = GetInitialBandwidth();
+  EXPECT_EQ(initial_bandwidth, GetVideoNetworkBandwidth());
+
+  // Without frame drops, a low estimate should not reduce the bandwidth.
+  const int low_estimate = initial_bandwidth / 2;
+  UpdateBandwidthEstimate(low_estimate);
+  EXPECT_EQ(initial_bandwidth, GetVideoNetworkBandwidth());
+
+  // With frame drops, the bandwidth snaps straight down to 80% of the
+  // estimate, instead of backing off gradually.
+  fake_sender_ptr->set_frames_dropped(1);
+  UpdateBandwidthEstimate(low_estimate);
+  const uint32_t snapped_bandwidth = static_cast<uint32_t>(0.8 * low_estimate);
+  EXPECT_EQ(snapped_bandwidth, GetVideoNetworkBandwidth());
+
+  // Recovery is always conservative, with no fast recovery.
+  UpdateBandwidthEstimate(100000000);
+  EXPECT_EQ(static_cast<uint32_t>(snapped_bandwidth * 1.1),
+            GetVideoNetworkBandwidth());
 
   StopSession();
 }
@@ -1070,12 +1171,27 @@ TEST_F(OpenscreenSessionHostTest, PreservesBandwidthWhenNoFramesDropped) {
   CreateSession(SessionType::VIDEO_ONLY);
   StartSession();
 
+  auto fake_video_sender = std::make_unique<FakeVideoSender>();
+  SetVideoSender(std::move(fake_video_sender));
+
   EXPECT_EQ(GetInitialBandwidth(), GetVideoNetworkBandwidth());
 
   // Updating bandwidth estimate with a lower estimate but without frame drops
   // should not reduce the available video bandwidth.
   UpdateBandwidthEstimate(1000);
   EXPECT_EQ(GetInitialBandwidth(), GetVideoNetworkBandwidth());
+
+  StopSession();
+}
+
+TEST_F(OpenscreenSessionHostTest,
+       UpdateBandwidthEstimateIgnoredWithoutVideoSender) {
+  CreateSession(SessionType::AUDIO_ONLY);
+  StartSession();
+
+  const uint32_t expected_bandwidth = GetVideoNetworkBandwidth();
+  UpdateBandwidthEstimate(1000);
+  EXPECT_EQ(expected_bandwidth, GetVideoNetworkBandwidth());
 
   StopSession();
 }
@@ -1111,8 +1227,13 @@ TEST_F(OpenscreenSessionHostTest,
   UpdateBandwidthEstimate(0);
   EXPECT_EQ(initial_bandwidth, GetVideoNetworkBandwidth());
 
+  // A frame drop during active streaming backs off by 15% toward a high
+  // estimate.
   fake_sender_ptr->set_frames_dropped(2);
-  // The usable bandwidth is 80% of the estimate, so this estimate saturates it.
+  UpdateBandwidthEstimate(initial_bandwidth / 4 * 5);
+  EXPECT_EQ(initial_bandwidth * 85 / 100, GetVideoNetworkBandwidth());
+
+  // Once congestion clears, it recovers.
   UpdateBandwidthEstimate(initial_bandwidth / 4 * 5);
   EXPECT_EQ(initial_bandwidth, GetVideoNetworkBandwidth());
 

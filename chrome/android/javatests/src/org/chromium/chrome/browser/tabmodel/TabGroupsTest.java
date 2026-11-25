@@ -30,7 +30,6 @@ import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
-import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tab.TabSelectionType;
@@ -48,10 +47,7 @@ import java.util.List;
 
 /** Integration tests for the Tab Groups feature on Android. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({
-    ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE,
-    ChromeSwitches.DISABLE_STARTUP_PROMOS
-})
+@CommandLineFlags.Add(ChromeSwitches.DISABLE_STARTUP_PROMOS)
 @Restriction({DeviceFormFactor.PHONE})
 @Batch(Batch.PER_CLASS)
 public class TabGroupsTest {
@@ -207,7 +203,7 @@ public class TabGroupsTest {
 
         // Wait to enter the tab switcher.
         ChromeTabbedActivity cta = (ChromeTabbedActivity) mActivityTestRule.getActivity();
-        LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.HUB);
+        LayoutTestUtils.waitForHubLayout(cta);
 
         InOrder calledInOrder = inOrder(mTabModelObserver);
         ThreadUtils.runOnUiThreadBlocking(
@@ -230,7 +226,7 @@ public class TabGroupsTest {
 
         // Exit the tab switcher.
         ThreadUtils.runOnUiThreadBlocking(() -> cta.onBackPressed());
-        LayoutTestUtils.waitForLayout(cta.getLayoutManager(), LayoutType.BROWSING);
+        LayoutTestUtils.waitForBrowsingLayout(cta);
 
         List<Tab> finalTabs = getCurrentTabs();
         assertEquals(5, finalTabs.size());

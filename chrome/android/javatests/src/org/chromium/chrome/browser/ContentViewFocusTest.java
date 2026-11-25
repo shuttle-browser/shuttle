@@ -22,7 +22,6 @@ import org.chromium.base.task.PostTask;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
@@ -30,13 +29,10 @@ import org.chromium.base.test.util.Restriction;
 import org.chromium.base.test.util.UrlUtils;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.layouts.LayoutTestUtils;
-import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
-import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.components.browser_ui.widget.gesture.SwipeGestureListener.ScrollDirection;
 import org.chromium.components.browser_ui.widget.gesture.SwipeGestureListener.SwipeHandler;
 import org.chromium.content_public.browser.ViewEventSink;
@@ -51,7 +47,6 @@ import java.util.ArrayDeque;
 
 /** Test suite for ContentView focus and its interaction with Tab switcher, Tab swiping, etc. */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class ContentViewFocusTest {
     @Rule
@@ -117,10 +112,8 @@ public class ContentViewFocusTest {
     @Test
     @DisabledTest(message = "http://crbug.com/40961297")
     public void testHideSelectionOnPhoneTabSwiping() throws Exception {
-        mActivityTestRule.startOnBlankPage();
         // Setup
-        ChromeTabUtils.newTabsFromMenu(
-                InstrumentationRegistry.getInstrumentation(), mActivityTestRule.getActivity(), 2);
+        mActivityTestRule.startOnBlankPage().openNewTabFast().openNewTabFast();
         String url =
                 UrlUtils.getIsolatedTestFileUrl(
                         "chrome/test/data/android/content_view_focus/content_view_focus_long_text.html");
@@ -194,8 +187,7 @@ public class ContentViewFocusTest {
         Assert.assertNotNull("'tab_switcher_button' view is not found.", tabSwitcherButton);
         TouchCommon.singleClickView(
                 mActivityTestRule.getActivity().findViewById(R.id.tab_switcher_button));
-        LayoutTestUtils.waitForLayout(
-                mActivityTestRule.getActivity().getLayoutManager(), LayoutType.HUB);
+        LayoutTestUtils.waitForHubLayout(mActivityTestRule.getActivity());
 
         // Make sure the view loses focus. It is immediately given focus back
         // because it's the only focusable view.
@@ -206,8 +198,7 @@ public class ContentViewFocusTest {
         Assert.assertNotNull("'tab_switcher_button' view is not found.", tabSwitcherButton);
         TouchCommon.singleClickView(
                 mActivityTestRule.getActivity().findViewById(R.id.tab_switcher_button));
-        LayoutTestUtils.waitForLayout(
-                mActivityTestRule.getActivity().getLayoutManager(), LayoutType.BROWSING);
+        LayoutTestUtils.waitForBrowsingLayout(mActivityTestRule.getActivity());
 
         Assert.assertTrue("Content view didn't regain focus", blockForFocusChanged());
         Assert.assertFalse("Unexpected focus change", haveFocusChanges());

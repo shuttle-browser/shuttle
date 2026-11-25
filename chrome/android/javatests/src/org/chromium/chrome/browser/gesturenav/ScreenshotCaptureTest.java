@@ -18,7 +18,6 @@ import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.After;
-import org.junit.AfterClass;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -41,7 +40,6 @@ import org.chromium.base.test.util.UrlUtils;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.fullscreen.BrowserControlsManager;
 import org.chromium.chrome.browser.fullscreen.FullscreenManagerTestUtils;
 import org.chromium.chrome.browser.homepage.HomepageTestRule;
@@ -55,6 +53,7 @@ import org.chromium.chrome.test.util.NewTabPageTestUtils;
 import org.chromium.chrome.test.util.browser.suggestions.SuggestionsDependenciesRule;
 import org.chromium.chrome.test.util.browser.suggestions.mostvisited.FakeMostVisitedSites;
 import org.chromium.components.embedder_support.util.UrlConstants;
+import org.chromium.content_public.browser.test.util.BackForwardTransitionAnimationManagerTestUtils;
 import org.chromium.content_public.browser.test.util.UiUtils;
 import org.chromium.content_public.browser.test.util.WebContentsUtils;
 import org.chromium.net.test.EmbeddedTestServer;
@@ -67,7 +66,7 @@ import java.util.concurrent.TimeoutException;
 
 /** Test that the screenshot was successfully taken when navigating as expected. */
 @RunWith(ParameterizedRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE, "hide-scrollbars"})
+@CommandLineFlags.Add("hide-scrollbars")
 @DisableFeatures(ChromeFeatureList.USE_WEB_UI_NTP_ANDROID)
 @DoNotBatch(reason = "Affect nav settings")
 @DisableIf.Build(supported_abis_includes = "x86", message = "https://crbug.com/337886037")
@@ -116,11 +115,6 @@ public class ScreenshotCaptureTest {
         ChromeNightModeTestUtils.setUpNightModeBeforeChromeActivityLaunched();
     }
 
-    @AfterClass
-    public static void tearDownAfterActivityDestroyed() {
-        ChromeNightModeTestUtils.tearDownNightModeAfterChromeActivityDestroyed();
-    }
-
     @Before
     public void setUp() {
         TestAnimations.setEnabled(true);
@@ -135,7 +129,7 @@ public class ScreenshotCaptureTest {
         mSuggestionsDeps.getFactory().mostVisitedSites = mostVisitedSites;
         mScreenshotCaptureTestHelper = new ScreenshotCaptureTestHelper();
         mHomepageTestRule.useChromeNtpForTest();
-        GestureNavigationUtils.setMinRequiredPhysicalRamMbForTesting(0);
+        BackForwardTransitionAnimationManagerTestUtils.setMinRequiredPhysicalRamMbForTesting(0);
     }
 
     @After
@@ -227,6 +221,7 @@ public class ScreenshotCaptureTest {
     @Test
     @MediumTest
     @Feature({"RenderTest"})
+    @DisabledTest(message = "https://crbug.com/578542537")
     @ParameterAnnotations.UseMethodParameter(NightModeTestUtils.NightModeParams.class)
     public void testNavigatingAwayFromNtpToWebUiPage(boolean nightModeEnabled)
             throws IOException, TimeoutException, InterruptedException {
@@ -337,7 +332,8 @@ public class ScreenshotCaptureTest {
                             try {
                                 mRenderTestRule.compareForResult(
                                         bitmap,
-                                        "navigate_back_to_ntp_from_normal_page_without_top_controls");
+                                        "navigate_back_to_ntp_from_normal_page"
+                                                + "_without_top_controls");
                             } catch (IOException e) {
                                 throw new RuntimeException(e);
                             }

@@ -102,7 +102,6 @@ class VerticalTabStripRegionView final
   void AddedToWidget() override;
   void RemovedFromWidget() override;
   void Layout(PassKey) override;
-  views::View* GetDefaultFocusableChild() override;
   gfx::Size GetMinimumSize() const override;
   gfx::Size CalculatePreferredSize(
       const views::SizeBounds& available_size) const override;
@@ -201,7 +200,11 @@ class VerticalTabStripRegionView final
   // strip.
   gfx::Rect GetTabStripDraggableBounds() const override;
 
+  // Returns whether the resize area should be visible.
+  bool ShouldShowResizeArea() const;
+
   void OnExpandOnHoverEnabledChanged(bool enabled);
+  void HandlePaintAsActiveChanged();
   void UpdateExpandOnHoverState(std::optional<bool> hovered = std::nullopt);
   void OnMouseVelocityHeuristicInterval();
   void CalculateMouseVelocityForExpandOnHover();
@@ -289,6 +292,9 @@ class VerticalTabStripRegionView final
   // The mouse exit event debounce timer.
   base::OneShotTimer mouse_exit_timer_;
 
+  // Debounces transient active -> inactive -> active blips (e.g. during child
+  // popup/bubble focus handoffs) before collapsing expand-on-hover.
+  base::OneShotTimer paint_as_active_timer_;
   base::CallbackListSubscription paint_as_active_subscription_;
 };
 

@@ -523,20 +523,14 @@ public class PersonalDataManager implements Destroyable {
     }
 
     /**
-     * TODO(crbug.com/41256488): Reduce the number of Java to Native calls when getting profiles.
-     *
-     * <p>Gets the profiles to show in the settings page. Returns all the profiles without any
+     * Gets the profiles to show in the settings page. Returns all the profiles without any
      * processing.
      *
      * @return The list of profiles to show in the settings.
      */
     public List<AutofillProfile> getProfilesForSettings() {
         ThreadUtils.assertOnUiThread();
-        return getProfilesWithLabels(
-                PersonalDataManagerJni.get()
-                        .getProfileLabelsForSettings(mPersonalDataManagerAndroid),
-                PersonalDataManagerJni.get()
-                        .getProfileGUIDsForSettings(mPersonalDataManagerAndroid));
+        return PersonalDataManagerJni.get().getProfilesForSettings(mPersonalDataManagerAndroid);
     }
 
     public String getProfileDescriptionForEditor(String guid) {
@@ -546,34 +540,14 @@ public class PersonalDataManager implements Destroyable {
     }
 
     /**
-     * TODO(crbug.com/41256488): Reduce the number of Java to Native calls when getting profiles
-     *
-     * <p>Gets the profiles to suggest when filling a form or completing a transaction. The profiles
+     * Gets the profiles to suggest when filling a form or completing a transaction. The profiles
      * will have been processed to be more relevant to the user.
      *
      * @return The list of profiles to suggest to the user.
      */
-    public ArrayList<AutofillProfile> getProfilesToSuggest() {
+    public List<AutofillProfile> getProfilesToSuggest() {
         ThreadUtils.assertOnUiThread();
-        return getProfilesWithLabels(
-                PersonalDataManagerJni.get().getProfileLabelsToSuggest(mPersonalDataManagerAndroid),
-                PersonalDataManagerJni.get().getProfileGUIDsToSuggest(mPersonalDataManagerAndroid));
-    }
-
-    private ArrayList<AutofillProfile> getProfilesWithLabels(
-            String[] profileLabels, String[] profileGUIDs) {
-        ArrayList<AutofillProfile> profiles = new ArrayList<>(profileGUIDs.length);
-        for (int i = 0; i < profileGUIDs.length; i++) {
-            AutofillProfile profile =
-                    new AutofillProfile(
-                            PersonalDataManagerJni.get()
-                                    .getProfileByGUID(
-                                            mPersonalDataManagerAndroid, profileGUIDs[i]));
-            profile.setLabel(profileLabels[i]);
-            profiles.add(profile);
-        }
-
-        return profiles;
+        return PersonalDataManagerJni.get().getProfilesToSuggest(mPersonalDataManagerAndroid);
     }
 
     @Nullable
@@ -599,44 +573,22 @@ public class PersonalDataManager implements Destroyable {
                 .setProfileToLocal(mPersonalDataManagerAndroid, profile, profile.getGUID());
     }
 
-    /** Gets the number of credit cards for the settings page. */
-    public int getCreditCardCountForSettings() {
-        ThreadUtils.assertOnUiThread();
-        return PersonalDataManagerJni.get()
-                .getCreditCardGUIDsForSettings(mPersonalDataManagerAndroid)
-                .length;
-    }
-
     /**
      * Gets the credit cards to show in the settings page. Returns all the cards without any
      * processing.
      */
     public List<CreditCard> getCreditCardsForSettings() {
         ThreadUtils.assertOnUiThread();
-        return getCreditCards(
-                PersonalDataManagerJni.get()
-                        .getCreditCardGUIDsForSettings(mPersonalDataManagerAndroid));
+        return PersonalDataManagerJni.get().getCreditCardsForSettings(mPersonalDataManagerAndroid);
     }
 
     /**
      * Gets the credit cards to suggest when filling a form or completing a transaction. The cards
      * will have been processed to be more relevant to the user.
      */
-    public ArrayList<CreditCard> getCreditCardsToSuggest() {
+    public List<CreditCard> getCreditCardsToSuggest() {
         ThreadUtils.assertOnUiThread();
-        return getCreditCards(
-                PersonalDataManagerJni.get()
-                        .getCreditCardGUIDsToSuggest(mPersonalDataManagerAndroid));
-    }
-
-    private ArrayList<CreditCard> getCreditCards(String[] creditCardGUIDs) {
-        ArrayList<CreditCard> cards = new ArrayList<>(creditCardGUIDs.length);
-        for (int i = 0; i < creditCardGUIDs.length; i++) {
-            cards.add(
-                    PersonalDataManagerJni.get()
-                            .getCreditCardByGUID(mPersonalDataManagerAndroid, creditCardGUIDs[i]));
-        }
-        return cards;
+        return PersonalDataManagerJni.get().getCreditCardsToSuggest(mPersonalDataManagerAndroid);
     }
 
     public CreditCard getCreditCard(String guid) {
@@ -1053,21 +1005,17 @@ public class PersonalDataManager implements Destroyable {
 
         boolean isDataLoaded(long nativePersonalDataManagerAndroid);
 
-        @JniType("std::vector<std::string>")
-        String[] getProfileGUIDsForSettings(long nativePersonalDataManagerAndroid);
+        // TODO(crbug.com/41256488): Create JNI converters for the AutofillProfile class.
+        @JniType("std::vector")
+        List<AutofillProfile> getProfilesForSettings(long nativePersonalDataManagerAndroid);
 
-        @JniType("std::vector<std::string>")
-        String[] getProfileGUIDsToSuggest(long nativePersonalDataManagerAndroid);
-
-        @JniType("std::vector<std::u16string>")
-        String[] getProfileLabelsForSettings(long nativePersonalDataManagerAndroid);
+        // TODO(crbug.com/41256488): Create JNI converters for the AutofillProfile class.
+        @JniType("std::vector")
+        List<AutofillProfile> getProfilesToSuggest(long nativePersonalDataManagerAndroid);
 
         @JniType("std::u16string")
         String getProfileDescriptionForEditor(
                 long nativePersonalDataManagerAndroid, @JniType("std::string") String guid);
-
-        @JniType("std::vector<std::u16string>")
-        String[] getProfileLabelsToSuggest(long nativePersonalDataManagerAndroid);
 
         AutofillProfile getProfileByGUID(
                 long nativePersonalDataManagerAndroid, @JniType("std::string") String guid);
@@ -1096,11 +1044,13 @@ public class PersonalDataManager implements Destroyable {
                 @JniType("std::string") String guid,
                 boolean includeCountry);
 
-        @JniType("std::vector<std::string>")
-        String[] getCreditCardGUIDsForSettings(long nativePersonalDataManagerAndroid);
+        // TODO(crbug.com/41256488): Create JNI converters for the CreditCard class.
+        @JniType("std::vector")
+        List<CreditCard> getCreditCardsForSettings(long nativePersonalDataManagerAndroid);
 
-        @JniType("std::vector<std::string>")
-        String[] getCreditCardGUIDsToSuggest(long nativePersonalDataManagerAndroid);
+        // TODO(crbug.com/41256488): Create JNI converters for the CreditCard class.
+        @JniType("std::vector")
+        List<CreditCard> getCreditCardsToSuggest(long nativePersonalDataManagerAndroid);
 
         CreditCard getCreditCardByGUID(
                 long nativePersonalDataManagerAndroid, @JniType("std::string") String guid);

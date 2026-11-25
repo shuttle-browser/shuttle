@@ -17,6 +17,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/stringprintf.h"
+#include "base/strings/utf_string_conversions.h"
 #include "base/task/cancelable_task_tracker.h"
 #include "base/test/gmock_callback_support.h"
 #include "base/test/scoped_feature_list.h"
@@ -83,6 +84,7 @@
 #include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/context_hub/memory_banks_shortcut.h"
 #include "chrome/browser/context_hub/record_replay/skill_recording_service.h"  // nogncheck
 #include "chrome/browser/context_hub/record_replay/skill_recording_service_factory.h"  // nogncheck
 #include "chrome/browser/glic/glic_pref_names.h"                    // nogncheck
@@ -101,7 +103,11 @@
 #include "chrome/test/base/testing_profile_manager.h"
 #include "components/tabs/public/mock_tab_interface.h"  // nogncheck
 #include "components/tabs/public/tab_interface.h"       // nogncheck
+#include "ui/base/accelerators/accelerator.h"
+#include "ui/base/accelerators/command.h"
 #include "ui/base/clipboard/test/test_clipboard.h"      // nogncheck
+#include "ui/events/event_constants.h"
+#include "ui/events/keycodes/keyboard_codes.h"
 #endif
 
 namespace context_hub {
@@ -959,7 +965,7 @@ TEST(ContextHubMojomTraitsTest, MemoryBankEntrySerialization_Image) {
 }
 
 TEST(ContextHubMojomTraitsTest, ChatReferenceSerialization) {
-  context_hub::MemoryBankChatCitation input{
+  context_hub::MemoryBankChatCitation input = {
       .title = "Example Doc",
       .url = GURL("https://example.com/doc"),
   };
@@ -969,6 +975,20 @@ TEST(ContextHubMojomTraitsTest, ChatReferenceSerialization) {
               browser::context_hub::mojom::ChatReference>(input, output));
   EXPECT_EQ(output.title, "Example Doc");
   EXPECT_EQ(output.url, GURL("https://example.com/doc"));
+  EXPECT_FALSE(output.image_url.has_value());
+
+  context_hub::MemoryBankChatCitation image_input = {
+      .title = "Example Image",
+      .url = GURL("https://example.com/page"),
+      .image_url = GURL("https://example.com/image.png"),
+  };
+  context_hub::MemoryBankChatCitation image_output;
+  ASSERT_TRUE(mojo::test::SerializeAndDeserialize<
+              browser::context_hub::mojom::ChatReference>(image_input,
+                                                          image_output));
+  EXPECT_EQ(image_output.title, "Example Image");
+  EXPECT_EQ(image_output.url, GURL("https://example.com/page"));
+  EXPECT_EQ(image_output.image_url, GURL("https://example.com/image.png"));
 }
 
 TEST(ContextHubMojomTraitsTest, MemoryBankChatMessageSerialization) {
@@ -2516,6 +2536,88 @@ TEST_F(ContextHubPageHandlerTest, AskGeminiWithContext_WithSelectedEntries) {
   EXPECT_TRUE(service->GetMemoryBankChatHistory().empty());
 }
 
+TEST_F(ContextHubPageHandlerTest, AskGeminiWithContext_WithImageEntry) {
+  ContextHubService* service =
+      ContextHubServiceFactory::GetForProfile(&profile_);
+  ASSERT_TRUE(service);
+
+  base::test::TestFuture<bool> save_image_future;
+  service->SaveMemoryBankEntry(
+      MemoryBankEntry(MemoryBankType::kImage, GURL("https://example.com/test"),
+                      "Test Diagram", /*selected_text=*/std::nullopt,
+                      GURL("https://example.com/diagram.png")),
+      save_image_future.GetCallback());
+  ASSERT_TRUE(save_image_future.Wait());
+
+  base::test::TestFuture<const std::vector<MemoryBankEntry>&>
+      all_entries_future;
+  handler_->GetAllMemoryBankEntries(all_entries_future.GetCallback());
+  std::vector<MemoryBankEntry> entries = all_entries_future.Take();
+  ASSERT_EQ(entries.size(), 1u);
+  int64_t entry_id = entries[0].id;
+
+  EXPECT_CALL(
+      *GetMockOptimizationGuideService(),
+      ExecuteModel(optimization_guide::ModelBasedCapabilityKey::kContextHub, _,
+                   _, _))
+      .WillOnce([entry_id](
+                    optimization_guide::ModelBasedCapabilityKey feature,
+                    const google::protobuf::MessageLite& request_metadata,
+                    const optimization_guide::ModelExecutionOptions& options,
+                    optimization_guide::
+                        OptimizationGuideModelExecutionResultCallback
+                            callback) {
+        const auto& request =
+            static_cast<const optimization_guide::proto::ContextHubRequest&>(
+                request_metadata);
+        EXPECT_EQ(request.request_type(),
+                  optimization_guide::proto::
+                      CONTEXT_HUB_REQUEST_TYPE_MEMORY_BANK_CHAT);
+        EXPECT_EQ(request.user_command(), "Describe diagram");
+        ASSERT_EQ(request.entry_items_size(), 1);
+        EXPECT_TRUE(request.entry_items(0).has_memory_bank_entry());
+        EXPECT_EQ(request.entry_items(0).memory_bank_entry().id(), entry_id);
+        EXPECT_EQ(request.entry_items(0).memory_bank_entry().tab_title(),
+                  "Test Diagram");
+        EXPECT_EQ(request.entry_items(0).memory_bank_entry().url(),
+                  "https://example.com/test");
+        EXPECT_EQ(request.entry_items(0).memory_bank_entry().type(),
+                  optimization_guide::proto::MEMORY_BANK_TYPE_IMAGE);
+
+        optimization_guide::proto::ContextHubResponse response;
+        optimization_guide::proto::MemoryBankChatResponse* chat_response =
+            response.mutable_memory_bank_chat_response();
+        chat_response->set_text_response("Description of Test Diagram.");
+        chat_response->add_cited_entry_indices(0);
+
+        optimization_guide::proto::Any any_response;
+        any_response.set_type_url(
+            "type.googleapis.com/optimization_guide.proto.ContextHubResponse");
+        response.SerializeToString(any_response.mutable_value());
+
+        std::move(callback).Run(
+            optimization_guide::OptimizationGuideModelExecutionResult(
+                base::ok(std::move(any_response)), nullptr),
+            nullptr);
+      });
+
+  base::test::TestFuture<const MemoryBankChatHistoryTurn&> ask_future;
+  handler_->AskGeminiWithContext("Describe diagram", {entry_id},
+                                 /*save_to_history=*/false,
+                                 ask_future.GetCallback());
+
+  MemoryBankChatHistoryTurn response = ask_future.Take();
+  EXPECT_EQ(response.turn.role(),
+            optimization_guide::proto::ChatHistoryTurn::ROLE_ASSISTANT);
+  EXPECT_EQ(response.turn.message_content(), "Description of Test Diagram.");
+  ASSERT_EQ(response.citations.size(), 1u);
+  EXPECT_EQ(response.citations[0].title, "Test Diagram");
+  EXPECT_EQ(response.citations[0].url, GURL("https://example.com/test"));
+  EXPECT_EQ(response.citations[0].image_url,
+            GURL("https://example.com/diagram.png"));
+  EXPECT_TRUE(service->GetMemoryBankChatHistory().empty());
+}
+
 TEST_F(ContextHubPageHandlerTest, ClearTodoFeedbacks) {
   ContextHubService* service =
       ContextHubServiceFactory::GetForProfile(&profile_);
@@ -4002,8 +4104,9 @@ TEST_F(ContextHubPageHandlerGlicTest, RunTodoTaskInvokesGlicWithAutoSubmit) {
                            "Details: Confirm Q3 roadmap"));
   EXPECT_EQ(captured_options_->feature_mode,
             glic::mojom::FeatureMode::kActuation);
-  EXPECT_EQ(captured_options_->target.actuation_target,
-            glic::mojom::ActuationTarget::kAgentDecides);
+  EXPECT_THAT(captured_options_->target.actuation_target,
+              ::testing::VariantWith<glic::mojom::ActuationTarget>(
+                  glic::mojom::ActuationTarget::kAgentDecides));
   EXPECT_TRUE(std::holds_alternative<glic::NewConversation>(
       captured_options_->target.conversation));
   EXPECT_TRUE(std::holds_alternative<glic::DefaultSurface>(
@@ -4064,6 +4167,119 @@ TEST_F(ContextHubPageHandlerTest, OpenWebUrl_Success) {
   base::test::TestFuture<void> future;
   handler_->OpenWebUrl(GURL("https://example.com"), future.GetCallback());
   EXPECT_TRUE(future.Wait());
+}
+
+TEST_F(ContextHubPageHandlerTest, GetBrowseMemoryBanksShortcut_EmptyByDefault) {
+  base::test::TestFuture<const std::string&> future;
+  handler_->GetBrowseMemoryBanksShortcut(future.GetCallback());
+  EXPECT_EQ("", future.Get());
+}
+
+TEST_F(ContextHubPageHandlerTest,
+       GetSuggestedBrowseMemoryBanksShortcut_ReturnsValidUnsetSuggestion) {
+  base::test::TestFuture<const std::string&, const std::string&> future;
+  handler_->GetSuggestedBrowseMemoryBanksShortcut(future.GetCallback());
+
+  const ui::Accelerator suggested =
+      context_hub::GetSuggestedBrowseMemoryBanksShortcut();
+  EXPECT_EQ(ui::Command::AcceleratorToString(suggested), future.Get<0>());
+  EXPECT_EQ(base::UTF16ToUTF8(suggested.GetShortcutText()), future.Get<1>());
+  EXPECT_FALSE(future.Get<0>().empty());
+
+  // Suggesting a shortcut never sets it.
+  EXPECT_EQ("", profile_.GetPrefs()->GetString(
+                    context_hub::prefs::kContextHubBrowseMemoryBanksShortcut));
+
+  // The suggestion can be applied as is.
+  base::test::TestFuture<browser::context_hub::mojom::MemoryBanksShortcutStatus>
+      set_future;
+  handler_->SetBrowseMemoryBanksShortcut(future.Get<0>(),
+                                         set_future.GetCallback());
+  EXPECT_EQ(browser::context_hub::mojom::MemoryBanksShortcutStatus::kValid,
+            set_future.Get());
+}
+
+TEST_F(ContextHubPageHandlerTest, SetBrowseMemoryBanksShortcut_Success) {
+  // Ctrl+Shift+K (Command+Shift+K on macOS), which no built-in shortcut uses.
+  const ui::Accelerator accelerator(
+      ui::VKEY_K, ui::EF_PLATFORM_ACCELERATOR | ui::EF_SHIFT_DOWN);
+  const std::string expected_display_text =
+      base::UTF16ToUTF8(accelerator.GetShortcutText());
+
+  base::test::TestFuture<browser::context_hub::mojom::MemoryBanksShortcutStatus>
+      set_future;
+  handler_->SetBrowseMemoryBanksShortcut(
+      ui::Command::AcceleratorToString(accelerator), set_future.GetCallback());
+  EXPECT_EQ(browser::context_hub::mojom::MemoryBanksShortcutStatus::kValid,
+            set_future.Get());
+  EXPECT_EQ(ui::Command::AcceleratorToString(accelerator),
+            profile_.GetPrefs()->GetString(
+                context_hub::prefs::kContextHubBrowseMemoryBanksShortcut));
+
+  base::test::TestFuture<const std::string&> get_future;
+  handler_->GetBrowseMemoryBanksShortcut(get_future.GetCallback());
+  EXPECT_EQ(expected_display_text, get_future.Get());
+}
+
+TEST_F(ContextHubPageHandlerTest,
+       SetBrowseMemoryBanksShortcut_EmptyClearsShortcut) {
+  profile_.GetPrefs()->SetString(
+      context_hub::prefs::kContextHubBrowseMemoryBanksShortcut,
+      ui::Command::AcceleratorToString(ui::Accelerator(
+          ui::VKEY_K, ui::EF_PLATFORM_ACCELERATOR | ui::EF_SHIFT_DOWN)));
+
+  base::test::TestFuture<browser::context_hub::mojom::MemoryBanksShortcutStatus>
+      future;
+  handler_->SetBrowseMemoryBanksShortcut("", future.GetCallback());
+  EXPECT_EQ(browser::context_hub::mojom::MemoryBanksShortcutStatus::kValid,
+            future.Get());
+  EXPECT_EQ("", profile_.GetPrefs()->GetString(
+                    context_hub::prefs::kContextHubBrowseMemoryBanksShortcut));
+}
+
+TEST_F(ContextHubPageHandlerTest, SetBrowseMemoryBanksShortcut_RejectsInvalid) {
+  base::test::TestFuture<browser::context_hub::mojom::MemoryBanksShortcutStatus>
+      future;
+  handler_->SetBrowseMemoryBanksShortcut("K", future.GetCallback());
+  EXPECT_EQ(browser::context_hub::mojom::MemoryBanksShortcutStatus::kInvalid,
+            future.Get());
+  EXPECT_EQ("", profile_.GetPrefs()->GetString(
+                    context_hub::prefs::kContextHubBrowseMemoryBanksShortcut));
+}
+
+TEST_F(ContextHubPageHandlerTest,
+       SetBrowseMemoryBanksShortcut_RejectsConflict) {
+  base::test::TestFuture<browser::context_hub::mojom::MemoryBanksShortcutStatus>
+      future;
+  // Ctrl+Shift+M (Command+Shift+M on macOS) opens the profile menu.
+  handler_->SetBrowseMemoryBanksShortcut(
+      ui::Command::AcceleratorToString(ui::Accelerator(
+          ui::VKEY_M, ui::EF_PLATFORM_ACCELERATOR | ui::EF_SHIFT_DOWN)),
+      future.GetCallback());
+  EXPECT_EQ(browser::context_hub::mojom::MemoryBanksShortcutStatus::
+                kConflictsWithBrowserShortcut,
+            future.Get());
+  EXPECT_EQ("", profile_.GetPrefs()->GetString(
+                    context_hub::prefs::kContextHubBrowseMemoryBanksShortcut));
+}
+
+TEST_F(ContextHubPageHandlerTest,
+       SetBrowseMemoryBanksShortcut_RejectsDisallowedModifiers) {
+#if BUILDFLAG(IS_MAC)
+  // Option without Command or Control is used to type special characters.
+  constexpr char kShortcut[] = "Alt+K";
+#else
+  // Ctrl+Alt is the same as AltGr on international keyboard layouts.
+  constexpr char kShortcut[] = "Ctrl+Alt+K";
+#endif
+  base::test::TestFuture<browser::context_hub::mojom::MemoryBanksShortcutStatus>
+      future;
+  handler_->SetBrowseMemoryBanksShortcut(kShortcut, future.GetCallback());
+  EXPECT_EQ(browser::context_hub::mojom::MemoryBanksShortcutStatus::
+                kDisallowedModifiers,
+            future.Get());
+  EXPECT_EQ("", profile_.GetPrefs()->GetString(
+                    context_hub::prefs::kContextHubBrowseMemoryBanksShortcut));
 }
 
 TEST_F(ContextHubPageHandlerTest, OpenWebUrl_InvalidUrlReportsBadMessage) {

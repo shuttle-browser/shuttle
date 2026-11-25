@@ -14,6 +14,7 @@
 #include <optional>
 #include <vector>
 
+#include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
 #include "base/message_loop/message_pump_for_io.h"
 #include "base/run_loop.h"
@@ -44,7 +45,7 @@ class FakeCameraStream final
 
   // Verifies that the I420 image stored at |data| matches the frame produced
   // by ProduceFrame().
-  static void ValidateFrameData(const uint8_t* data,
+  static void ValidateFrameData(base::span<const uint8_t> data,
                                 gfx::Size size,
                                 uint8_t salt);
 
@@ -82,11 +83,7 @@ class FakeCameraStream final
   void SetBufferCollection2(
       fidl::InterfaceHandle<fuchsia::sysmem2::BufferCollectionToken>
           token_handle) override;
-  void SetBufferCollection(
-      fidl::InterfaceHandle<fuchsia::sysmem::BufferCollectionToken>
-          token_handle) override;
   void WatchBufferCollection2(WatchBufferCollection2Callback callback) override;
-  void WatchBufferCollection(WatchBufferCollectionCallback callback) override;
   void GetNextFrame(GetNextFrameCallback callback) override;
 
   // fuchsia::camera3::testing::Stream_TestBase override.

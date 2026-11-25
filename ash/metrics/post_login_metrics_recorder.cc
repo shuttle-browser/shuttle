@@ -56,7 +56,7 @@ std::string GetDeviceModeSuffix() {
                                                 : "ClamshellMode";
 }
 
-void ReportLoginThroughputEvent(const std::string& event_name,
+void ReportLoginThroughputEvent(std::string_view event_name,
                                 base::TimeTicks begin,
                                 base::TimeTicks end) {
   // NOTE: list all expected event names with string literals here because we
@@ -108,9 +108,9 @@ class MetricTime : public DeferredMetricsReporter::Metric {
         buckets_(buckets) {}
   ~MetricTime() override = default;
 
-  void Report(const std::string& prefix) override {
-    base::UmaHistogramCustomTimes(prefix + name_, duration_, min_, max_,
-                                  buckets_);
+  void Report(std::string_view prefix) override {
+    base::UmaHistogramCustomTimes(base::StrCat({prefix, name_}), duration_,
+                                  min_, max_, buckets_);
   }
 
  private:
@@ -127,8 +127,8 @@ class MetricPercentage : public DeferredMetricsReporter::Metric {
       : name_(std::move(name)), percentage_(percentage) {}
   ~MetricPercentage() override = default;
 
-  void Report(const std::string& prefix) override {
-    base::UmaHistogramPercentage(prefix + name_, percentage_);
+  void Report(std::string_view prefix) override {
+    base::UmaHistogramPercentage(base::StrCat({prefix, name_}), percentage_);
   }
 
  private:

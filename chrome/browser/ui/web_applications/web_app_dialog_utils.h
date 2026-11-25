@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_UI_WEB_APPLICATIONS_WEB_APP_DIALOG_UTILS_H_
 #define CHROME_BROWSER_UI_WEB_APPLICATIONS_WEB_APP_DIALOG_UTILS_H_
 
+#include "base/auto_reset.h"
 #include "base/functional/callback_forward.h"
 #include "chrome/browser/ui/web_applications/web_app_dialogs.h"
 #include "chrome/browser/web_applications/web_app_install_manager.h"
@@ -13,6 +14,10 @@
 
 class BrowserWindowInterface;
 class Profile;
+
+namespace blink {
+class Manifest;
+}  // namespace blink
 
 namespace content {
 class Page;
@@ -63,7 +68,7 @@ void CreateWebAppForManifestInstall(
     content::WebContents* initiating_web_contents,
     base::WeakPtr<content::Page> initiating_page,
     std::unique_ptr<webapps::MlInstallOperationTracker> tracker,
-    blink::mojom::ManifestPtr manifest,
+    blink::Manifest manifest,
     const GURL& manifest_url,
     const GURL& requesting_page_url,
     WebAppInstalledCallback installed_callback);
@@ -74,6 +79,12 @@ void CreateWebAppForManifestInstall(
 void ShowPwaInstallDialog(BrowserWindowInterface* bwi);
 
 void SetInstalledCallbackForTesting(WebAppInstalledCallback callback);
+
+// While the AutoReset is alive, every WebAppInstallFlowDialog Show() is stored
+// in `captured_show` instead of running. A later show overwrites a pending
+// callback. `captured_show` must outlive the guard.
+[[nodiscard]] base::AutoReset<base::OnceClosure*>
+CaptureInstallDialogShowForTesting(base::OnceClosure* captured_show);
 
 }  // namespace web_app
 

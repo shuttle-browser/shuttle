@@ -4,6 +4,7 @@
 
 #include "components/enterprise/connectors/core/features.h"
 
+#include "base/time/time.h"
 #include "build/build_config.h"
 
 namespace enterprise_connectors {
@@ -26,7 +27,7 @@ BASE_FEATURE_PARAM(size_t,
                    kMaxContentAnalysisFileSizeMB,
                    &kEnableNewUploadSizeLimit,
                    "max_file_size_mb",
-                   /*default_value=*/250);
+                   /*default_value=*/2048);
 
 // Controls whether encrypted file upload is enabled.
 BASE_FEATURE(kEnableEncryptedFileUpload, base::FEATURE_ENABLED_BY_DEFAULT);
@@ -73,11 +74,29 @@ BASE_FEATURE(kNonBlockingFileOpeningJobCancel,
 BASE_FEATURE(kEnableAuditOnlyNetworkRequestConnector,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kContentAnalysisClipboardCopy, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kContentAnalysisClipboardCopy, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kEnterpriseExtensionActorAttribution,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kEventReportingCdpAttribution, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE_PARAM(int,
+                   kCdpAttributionMaxActorsPerTab,
+                   &kEventReportingCdpAttribution,
+                   /*default_value=*/5);
+
+BASE_FEATURE_PARAM(base::TimeDelta,
+                   kCdpAttributionActorIdleTtl,
+                   &kEventReportingCdpAttribution,
+                   /*default_value=*/base::Seconds(30));
+
+BASE_FEATURE_PARAM(int,
+                   kCdpAttributionMaxPendingExtractions,
+                   &kEventReportingCdpAttribution,
+                   /*default_value=*/16);
+
+BASE_FEATURE(kEnterpriseGlicActorAttribution,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace enterprise_connectors

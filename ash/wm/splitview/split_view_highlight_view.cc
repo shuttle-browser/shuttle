@@ -8,6 +8,7 @@
 
 #include "ash/display/screen_orientation_controller.h"
 #include "ash/shell.h"
+#include "ash/style/system_decoration.h"
 #include "ash/wm/splitview/split_view_controller.h"
 #include "ash/wm/splitview/split_view_types.h"
 #include "base/i18n/rtl.h"
@@ -18,8 +19,6 @@
 #include "ui/compositor/layer_type.h"
 #include "ui/gfx/geometry/rounded_corners_f.h"
 #include "ui/views/background.h"
-#include "ui/views/highlight_border.h"
-#include "ui/views/view_decoration.h"
 #include "ui/views/view_observer.h"
 #include "ui/views/widget/widget.h"
 
@@ -69,19 +68,27 @@ SplitViewHighlightView::SplitViewHighlightView(bool is_right_or_bottom)
       cros_tokens::kCrosSysPrimary,
       gfx::RoundedCornersF(kHighlightScreenRoundRectRadius)));
 
-  view_decoration_ = std::make_unique<views::ViewDecoration>(this);
-  view_decoration_->SetRoundedCornerRadius(kHighlightScreenRoundRectRadius);
+  // Parent the highlight border under `layer()` rather than as a sibling region
+  // layer so it inherits `layer()`'s opacity and clip-rect animations.
+  highlight_border_ = SystemDecoration::Create(
+      SystemDecoration::ShadowType::kNone,
+      SystemDecoration::HighlightBorderMode::kHighlightBorder);
+  highlight_border_->SetRoundedCornerRadius(kHighlightScreenRoundRectRadius);
+  layer()->Add(highlight_border_->GetLayer());
 }
 
 SplitViewHighlightView::~SplitViewHighlightView() = default;
 
-void SplitViewHighlightView::OnThemeChanged() {
-  views::View::OnThemeChanged();
-  view_decoration_->SetHighlightBorder(
-      views::HighlightBorder::GetHighlightColor(
-          *this, views::HighlightBorder::Type::kHighlightBorderNoShadow),
-      views::HighlightBorder::GetBorderColor(
-          *this, views::HighlightBorder::Type::kHighlightBorderNoShadow));
+void SplitViewHighlightView::AddedToWidget() {
+  highlight_border_->ObserveColorProviderSource(GetWidget());
+}
+
+void SplitViewHighlightView::RemovedFromWidget() {
+  highlight_border_->ObserveColorProviderSource(nullptr);
+}
+
+void SplitViewHighlightView::OnBoundsChanged(const gfx::Rect& previous_bounds) {
+  highlight_border_->SetContentBounds(GetLocalBounds());
 }
 
 void SplitViewHighlightView::SetBounds(

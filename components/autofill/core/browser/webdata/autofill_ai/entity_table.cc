@@ -324,7 +324,7 @@ bool EntityTable::AddAttribute(const EntityInstance& entity,
       base::UmaHistogramBoolean("Autofill.Ai.EntityTable.EncryptStatus", false);
       return false;
     }
-    s.BindInt(4, static_cast<int>(attribute.GetVerificationStatus(type)));
+    s.BindInt(4, std::to_underlying(attribute.GetVerificationStatus(type)));
     if (!s.Run()) {
       return false;
     }

@@ -8,6 +8,9 @@ import {html} from '//resources/lit/v3_0/lit.rollup.js';
 import {HistorySignInState} from './constants.js';
 // </if>
 
+// <if expr="is_android">
+import {getHtml as getIllustrationHtml} from './empty_state_illustration.html.js';
+// </if>
 import type {HistorySyncedDeviceManagerElement} from './synced_device_manager.js';
 
 export function getHtml(this: HistorySyncedDeviceManagerElement) {
@@ -18,16 +21,17 @@ export function getHtml(this: HistorySyncedDeviceManagerElement) {
   ${this.syncedDevices_.map((syncedDevice, index) => html`
     <history-synced-device-card .device="${syncedDevice.device}"
         .lastUpdateTime="${syncedDevice.lastUpdateTime}"
-        .tabs="${syncedDevice.tabs}"
-        .separatorIndexes="${syncedDevice.separatorIndexes}"
-        .searchTerm="${this.searchTerm}" .sessionTag="${syncedDevice.tag}"
-        ?opened="${syncedDevice.opened}"
+        .windows="${syncedDevice.windows}" .searchTerm="${this.searchTerm}"
+        .sessionTag="${syncedDevice.tag}" ?opened="${syncedDevice.opened}"
         @opened-changed="${this.onCardOpenedChanged_}" data-index="${index}">
     </history-synced-device-card>
   `)}
 </div>
 <div id="noSyncedTabs" class="centered-message"
     ?hidden="${!this.showNoSyncedMessage_()}">
+<if expr="is_android">
+  ${this.fetchingSyncedTabs_ ? '' : getIllustrationHtml()}
+</if>
   ${this.noSyncedTabsMessage_()}
 </div>
 

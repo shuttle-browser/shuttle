@@ -614,6 +614,8 @@ public class SingleCategorySettings extends BaseSiteSettingsFragment
             if (mCategory.getType() == SiteSettingsCategory.Type.PROTECTED_MEDIA) {
                 getSiteSettingsDelegate()
                         .launchProtectedContentHelpAndFeedbackActivity(getActivity());
+            } else if (mCategory.getType() == SiteSettingsCategory.Type.THIRD_PARTY_COOKIES) {
+                getSiteSettingsDelegate().launchCookiesHelpAndFeedbackActivity(getActivity());
             } else {
                 getSiteSettingsDelegate().launchSettingsHelpAndFeedbackActivity(getActivity());
             }
@@ -1371,7 +1373,7 @@ public class SingleCategorySettings extends BaseSiteSettingsFragment
         if (permissionBlockedByOs) {
             maybeShowOsWarning(screen);
         }
-        if (permissionBlockedByOs || !mCategory.enabledInAndroid(getContext())) {
+        if (!mCategory.enabledInAndroid(getContext())) {
             screen.removePreference(notificationsVibrate);
             screen.removePreference(mNotificationsQuietUiPref);
             screen.removePreference(mNotificationsTriStatePref);

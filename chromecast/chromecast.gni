@@ -50,10 +50,6 @@ declare_args() {
   # TODO(ziyangch): make the parsing logic have ability to quote/escape characters.
   default_command_line_flags = []
 
-  # Set to true to enable external Mojo services to communicate with services
-  # within cast_shell.
-  enable_external_mojo_services = is_linux || is_chromeos || is_android
-
   # Recording happens at this sample rate. Must be 16000, 48000 or 96000 Hz.
   audio_input_sample_rate = 16000
 
@@ -165,10 +161,14 @@ template("cast_shared_library") {
 # referenced below are declared in BUILDCONFIG.gn.
 set_defaults("cast_executable") {
   configs = default_executable_configs
+  configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
+  configs += [ "//build/config/compiler:thinlto_optimize_max" ]
 }
 
 set_defaults("cast_shared_library") {
   configs = default_shared_library_configs
+  configs -= [ "//build/config/compiler:thinlto_optimize_default" ]
+  configs += [ "//build/config/compiler:thinlto_optimize_max" ]
   if (is_android) {
     configs -= [ "//build/config/android:hide_all_but_jni_onload" ]
   }

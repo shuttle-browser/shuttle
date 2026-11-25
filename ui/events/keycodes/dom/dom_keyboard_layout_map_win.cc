@@ -13,6 +13,7 @@
 #include "base/check_op.h"
 #include "base/containers/flat_map.h"
 #include "base/logging.h"
+#include "base/memory/raw_ptr_exclusion.h"
 #include "ui/events/keycodes/dom/dom_code.h"
 #include "ui/events/keycodes/dom/dom_key.h"
 #include "ui/events/keycodes/dom/dom_keyboard_layout_map_base.h"
@@ -40,7 +41,8 @@ class DomKeyboardLayoutMapWin : public DomKeyboardLayoutMapBase {
 
   // Set of keyboard layout handles provided by the operating system.
   // The handles stored do not need to be released when the vector is destroyed.
-  std::vector<HKL> keyboard_layout_handles_;
+  // RAW_PTR_EXCLUSION: Passed as a contiguous HKL array to external APIs.
+  RAW_PTR_EXCLUSION std::vector<HKL> keyboard_layout_handles_;
 };
 
 DomKeyboardLayoutMapWin::DomKeyboardLayoutMapWin() = default;
@@ -62,7 +64,7 @@ uint32_t DomKeyboardLayoutMapWin::GetKeyboardLayoutCount() {
     DPLOG(ERROR) << "GetKeyboardLayoutList failed: ";
     return false;
   }
-  DCHECK_EQ(keyboard_layout_count, copy_count);
+  CHECK_EQ(keyboard_layout_count, copy_count, base::NotFatalUntil::M163);
 
   // The set of layouts returned from GetKeyboardLayoutList does not follow the
   // the order of the layouts in the control panel so we use GetKeyboardLayout
@@ -79,8 +81,9 @@ uint32_t DomKeyboardLayoutMapWin::GetKeyboardLayoutCount() {
 ui::DomKey DomKeyboardLayoutMapWin::GetDomKeyFromDomCodeForLayout(
     ui::DomCode dom_code,
     uint32_t keyboard_layout_index) {
-  DCHECK_NE(dom_code, ui::DomCode::NONE);
-  DCHECK_LT(keyboard_layout_index, keyboard_layout_handles_.size());
+  CHECK_NE(dom_code, ui::DomCode::NONE, base::NotFatalUntil::M163);
+  CHECK_LT(keyboard_layout_index, keyboard_layout_handles_.size(),
+           base::NotFatalUntil::M163);
 
   HKL keyboard_layout = keyboard_layout_handles_[keyboard_layout_index];
   int32_t scan_code = ui::KeycodeConverter::DomCodeToNativeKeycode(dom_code);

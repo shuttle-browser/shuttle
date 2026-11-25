@@ -59,9 +59,9 @@
 #include "content/public/browser/manifest_icon_downloader.h"
 #include "content/public/common/content_features.h"
 #include "mojo/public/cpp/bindings/struct_ptr.h"
-#include "net/base/mime_util.h"
 #include "net/http/http_util.h"
 #include "third_party/blink/public/common/manifest/manifest.h"
+#include "third_party/blink/public/common/manifest/manifest_util.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "third_party/skia/include/core/SkColor.h"
@@ -275,11 +275,11 @@ void PopulateHomeTabIcons(WebAppInstallInfo* web_app_info,
 }
 
 apps::FileHandler::LaunchType ToFileHandlerLaunchType(
-    blink::mojom::ManifestFileHandler::LaunchType launch_type) {
+    blink::Manifest::FileHandler::LaunchType launch_type) {
   switch (launch_type) {
-    case blink::mojom::ManifestFileHandler::LaunchType::kSingleClient:
+    case blink::Manifest::FileHandler::LaunchType::kSingleClient:
       return apps::FileHandler::LaunchType::kSingleClient;
-    case blink::mojom::ManifestFileHandler::LaunchType::kMultipleClients:
+    case blink::Manifest::FileHandler::LaunchType::kMultipleClients:
       return apps::FileHandler::LaunchType::kMultipleClients;
   }
 }
@@ -313,28 +313,21 @@ void PopulateTrustedIconsFromDownloadedBitmapsAndMetadata(
 }  // namespace
 
 void PopulateFileHandlerInfoFromManifest(
-    const std::vector<blink::mojom::ManifestFileHandlerPtr>&
-        manifest_file_handlers,
+    const std::vector<blink::Manifest::FileHandler>& manifest_file_handlers,
     const GURL& app_scope,
     WebAppInstallInfo* web_app_info) {
   apps::FileHandlers web_app_file_handlers;
 
   for (const auto& manifest_file_handler : manifest_file_handlers) {
-    if (!manifest_file_handler) {
-      continue;
-    }
     apps::FileHandler web_app_file_handler;
-    web_app_file_handler.action = manifest_file_handler->action;
-    web_app_file_handler.display_name = manifest_file_handler->name;
+    web_app_file_handler.action = manifest_file_handler.action;
+    web_app_file_handler.display_name = manifest_file_handler.name;
     web_app_file_handler.launch_type =
-        ToFileHandlerLaunchType(manifest_file_handler->launch_type);
+        ToFileHandlerLaunchType(manifest_file_handler.launch_type);
 
-    for (const auto& it : manifest_file_handler->accept) {
+    for (const auto& it : manifest_file_handler.accept) {
       std::string mime_type = base::UTF16ToUTF8(it.first);
-      std::string top_level_mime_type;
-      if (!net::ParseMimeTypeWithoutParameter(mime_type, &top_level_mime_type,
-                                              nullptr) ||
-          !net::IsValidTopLevelMimeType(top_level_mime_type)) {
+      if (!blink::IsValidFileHandlerMimeType(mime_type)) {
         continue;
       }
       apps::FileHandler::AcceptEntry web_app_accept_entry;
@@ -494,6 +487,12 @@ void RecordDownloadedIconsHttpResultsCodeClass(
   for (const auto& url_and_http_status_code : icons_http_results) {
     int http_status_code = url_and_http_status_code.second;
     if (http_status_code != 0) {
+      // CHECK-exclusion: http_status_code originates from remote HTTP server
+      // responses when downloading web app icons. Using CHECK_LE(100,
+      // http_status_code, base::NotFatalUntil::M163) and CHECK_GT(600,
+      // http_status_code, base::NotFatalUntil::M163) validates untrusted
+      // website data using CHECK, allowing external web servers returning
+      // non-standard status codes to crash the browser process.
       DCHECK_LE(100, http_status_code);
       DCHECK_GT(600, http_status_code);
       base::UmaHistogramExactLinear(histogram_name.data(),
@@ -662,7 +661,9 @@ void SetWebAppManifestFields(const WebAppInstallInfo& web_app_info,
   // WebApp.
   CHECK_EQ(web_app_info.manifest_id(), web_app.manifest_id());
 
-  CHECK(!web_app_info.title.empty(), base::NotFatalUntil::M162);
+  // TODO(crbug.com/579501075): CHECK-exclusion: Convert to a CHECK once we are
+  // confident it won't be triggered.
+  DCHECK(!web_app_info.title.empty());
   web_app.SetName(base::UTF16ToUTF8(web_app_info.title.value()));
 
   const GURL& start_url = web_app_info.start_url();

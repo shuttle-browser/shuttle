@@ -105,6 +105,13 @@ class ReadAloudPlaybackController
   // preserving cached Opus segments in PrefetchManager.
   void ExecuteSeek(const TimelinePosition& target);
 
+  // Applies `pending_word_seek_` against the freshly set timeline, if any. The
+  // pending seek could not be validated when received, so it is silently
+  // dropped if it no longer resolves (e.g. the re-distilled text differs).
+  // A target that still resolves against different text may land on a
+  // different word.
+  void MaybeApplyPendingWordSeek();
+
   // Invoked by `prefetch_manager_` when an in-flight synthesis request is
   // dispatched.
   void OnPrefetchSynthesisRequest(uint32_t chunk_index,
@@ -119,8 +126,10 @@ class ReadAloudPlaybackController
 
   // Invoked by `audio_renderer` when a word becomes audible.
   void OnWordBoundaryReached(uint32_t start_character_offset,
-                             uint32_t end_character_offset,
-                             base::TimeDelta audio_timestamp);
+                             uint32_t end_character_offset);
+
+  // Invoked by `audio_renderer` once all buffered audio finishes playing out.
+  void OnAudioEndOfStream();
 
   // Maximum duration a Play request will remain deferred before timing out.
   static constexpr base::TimeDelta kClassicPlayOnReadyTimeout =
@@ -155,6 +164,16 @@ class ReadAloudPlaybackController
   // Invoked by `decoder_sequencer_` at the end of each replenish cycle while
   // playback is pumping, reporting how the decoded audio queue is doing.
   void OnPumpStatusChanged(ReadAloudDecoderSequencer::PumpStatus status);
+
+  // Invoked by `decoder_sequencer_` when a chunk has been decoded into PCM
+  // segments, refining the timeline with the exact decoded audio duration.
+  void OnChunkDecoded(uint32_t chunk_index, base::TimeDelta duration);
+
+  // Updates `timeline_` for `chunk_index` and refreshes `seek_base_` if a seek
+  // anchor is active at or after `chunk_index`.
+  void UpdateChunkTimelineAndSeekBase(uint32_t chunk_index,
+                                      base::TimeDelta duration,
+                                      std::vector<WordTiming> timings = {});
 
   // Halts playback: cancels any pending play-on-ready, pauses the audio output
   // stream, stops the decoder pump and reports `state`.
@@ -217,6 +236,14 @@ class ReadAloudPlaybackController
   // added to its media time to get the overall elapsed audio playback time
   // along the timeline (reported to the UI progress bar).
   base::TimeDelta seek_base_;
+  // Canonical chunk and character offset of the last seek target, used to
+  // refresh `seek_base_` when chunks at or before the seek target have their
+  // durations or word timings refined by synthesis or decoding.
+  std::optional<IndexedCharRange> seek_anchor_;
+  // `SeekToWord()` target (chunk index, character offset) received while
+  // there is no text, e.g. when restoring the position after a voice change.
+  // Applied by `SetTextContent()` before playback starts.
+  std::optional<std::pair<uint32_t, uint32_t>> pending_word_seek_;
   // Last (elapsed, duration) sent by ReportProgress(), used to suppress
   // duplicate reports. Empty until the first report of a session.
   std::optional<std::pair<base::TimeDelta, base::TimeDelta>>

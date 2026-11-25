@@ -13,7 +13,7 @@ static_library("logging") {
   deps = [
     "//ash/constants",
     "//base",
-    "//chrome/common",
+    "//chromeos/ash/components/logging",
     "//content/public/browser",
   ]
 }
@@ -31,7 +31,7 @@ source_set("browser_tests") {
     "//base",
     "//chrome/browser/ash/login:test_support",
     "//chrome/browser/ash/login/test:test_support",
-    "//chrome/common",
+    "//chromeos/ash/components/logging",
     "//components/account_id",
     "//components/session_manager/core",
     "//content/public/browser",

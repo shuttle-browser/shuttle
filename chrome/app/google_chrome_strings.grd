@@ -352,11 +352,23 @@ chromium_strings.grd. -->
       <message name="IDS_PRODUCT_LOGO_ENTERPRISE_ALT_TEXT" desc="Alt text for the Chrome Enterprise logo image." formatter_data="android_java">
         Chrome Enterprise logo
       </message>
+      <message name="IDS_SETTINGS_ACCOUNT_ROW_DESCRIPTION_WITH_MEMBERSHIP" is_accessibility_with_no_ui="true" desc="Read by screen readers for the account row at the top of the Settings page, which shows the user's name and email, when the user has an AI subscription. Tapping on the row opens the Account settings page." formatter_data="android_java">
+        <ph name="USER_NAME">%1$s<ex>Jessica Doe</ex></ph>, <ph name="EMAIL">%2$s<ex>jessica@gmail.com</ex></ph>. Google membership.
+      </message>
+      <message name="IDS_SETTINGS_ACCOUNT_ROW_DESCRIPTION_SINGLE_LINE_WITH_MEMBERSHIP" is_accessibility_with_no_ui="true" desc="Read by screen readers for the account row at the top of the Settings page, when the row shows only the user's name or only their email, and the user has an AI subscription. Tapping on the row opens the Account settings page." formatter_data="android_java">
+        <ph name="USER_NAME_OR_EMAIL">%1$s<ex>jessica@gmail.com</ex></ph>. Google membership.
+      </message>
       <message name="IDS_ACCESSIBILITY_TOOLBAR_BTN_IDENTITY_DISC_WITH_NAME_AND_EMAIL_AI_TIER" desc="The content description for a toolbar button displaying user profile picture when the user has an AI subscription. Tapping on this button navigates to Settings page" formatter_data="android_java">
         Signed in as <ph name="USER_NAME">%1$s<ex>Peter Parker</ex></ph>, <ph name="USER_EMAIL">%2$s<ex>peter.parker@gmail.com</ex></ph>, Google membership. Open the account menu
       </message>
       <message name="IDS_ACCESSIBILITY_TOOLBAR_BTN_IDENTITY_DISC_WITH_NAME_AI_TIER" desc="The content description for a toolbar button displaying user profile picture when the user has an AI subscription, for users who don't have a readable email address. Tapping on this button navigates to Settings page" formatter_data="android_java">
         Signed in as <ph name="USER_NAME">%s<ex>Bruce Wayne</ex></ph>, Google membership. Open the account menu
+      </message>
+      <message name="IDS_ACCOUNT_SETTINGS_CARD_DESCRIPTION_WITH_MEMBERSHIP" is_accessibility_with_no_ui="true" desc="Read by screen readers for the card at the top of the Account settings page, which shows the user's name and email, when the user has an AI subscription whose name isn't shown." formatter_data="android_java">
+        <ph name="USER_NAME">%1$s<ex>Jessica Doe</ex></ph>, <ph name="EMAIL">%2$s<ex>jessica@gmail.com</ex></ph>. Google membership.
+      </message>
+      <message name="IDS_ACCOUNT_SETTINGS_CARD_DESCRIPTION_SINGLE_LINE_WITH_MEMBERSHIP" is_accessibility_with_no_ui="true" desc="Read by screen readers for the card at the top of the Account settings page, when the card shows only the user's name or only their email, and the user has an AI subscription whose name isn't shown." formatter_data="android_java">
+        <ph name="USER_NAME_OR_EMAIL">%1$s<ex>jessica@gmail.com</ex></ph>. Google membership.
       </message>
       <if expr="is_macosx or is_chromeos">
         <message name="IDS_TASK_MANAGER_TITLE" desc="The title of the Task Manager window">
@@ -1085,6 +1097,9 @@ Google Chrome is unable to recover your settings.
       <message name="IDS_EXTENSIONS_INCOGNITO_WARNING" desc="Warns the user that Chrome cannot prevent extensions from recording history in Incognito mode. Displayed in extensions management UI after an extension is selected to be run in Incognito mode.">
         Warning: Google Chrome cannot prevent extensions from recording your browsing history. To disable this extension in Incognito mode, unselect this option.
       </message>
+      <message name="IDS_EXTENSIONS_ISOLATED_MODE_WARNING" desc="Warns the user that Chrome cannot prevent extensions from recording history in Isolated mode. Displayed in extensions management UI after an extension is selected to be run in Isolated mode.">
+        Warning: Google Chrome cannot prevent extensions from recording your browsing history. To disable this extension in Isolated mode, unselect this option.
+      </message>
       <message name="IDS_EXTENSIONS_UNINSTALL" desc="The label for a control that triggers an extension uninstall.">
         Remove from Chrome
       </message>
@@ -1460,9 +1475,6 @@ Google Chrome is unable to recover your settings.
         </message>
         <message name="IDS_ACCOUNT_PREVIEW_SETTINGS_PROMO_SUBTITLE_EXTENSIONS" desc="Subtitle of a sign-in promo in Settings informing the user they can access their extensions on all their devices.">
           To get your extensions and more on all your devices, sign in to Chrome
-        </message>
-        <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_BUBBLE_CHROME_SIGNIN_SUBTITLE" desc="Subtitle of the Chrome Signin Bubble intercept that is shown when a signed out user signs in on the web with it's first account.">
-          To get your passwords and more on all your devices, sign in to Chrome
         </message>
         <message name="IDS_SIGNIN_DICE_WEB_INTERCEPT_BUBBLE_CHROME_SIGNIN_SUBTITLE_WITH_BOOKMARKS" desc="Subtitle of the Chrome Signin Bubble intercept that is shown when a signed out user signs in on the web with it's first account.">
           To get your passwords, bookmarks, and more on all your devices, sign in to Chrome
@@ -2113,6 +2125,12 @@ Google Chrome is unable to recover your settings.
           Pinned! You can access Google Lens again from the new button on the toolbar
         </message>
 
+        <message name="IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH_HEADER" desc="The header text of the IPH describing that the Contextual Tasks side panel is pinnable.">
+          Access Search from any tab
+        </message>
+        <message name="IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH_TEXT" desc="The body text of the IPH describing that the Contextual Tasks side panel is pinnable.">
+          Easily ask questions as you browse with Google Search
+        </message>
         <message name="IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH" desc="The body text of the IPH describing that the Contextual Tasks side panel is pinnable.">
           You can pin Google Search AI Mode to ask questions as you browse
         </message>
@@ -2130,6 +2148,9 @@ Google Chrome is unable to recover your settings.
         </message>
         <message name="IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH_PIN_SHORTCUT" desc="The text on the button to pin the Contextual Tasks shortcut in the pinnable IPH.">
           Pin Shortcut
+        </message>
+        <message name="IDS_SIDE_PANEL_CONTEXTUAL_TASKS_PINNABLE_IPH_PIN_TO_TOOLBAR" desc="The text on the button in the pinnable IPH that pins the Contextual Tasks shortcut to the toolbar.">
+          Pin to toolbar
         </message>
         <message name="IDS_CONTEXTUAL_TASKS_EPHEMERAL_TOOLBAR_BUTTON_IPH" desc="The body text of the IPH describing that the Contextual Tasks ephemeral toolbar button can be used to reopen Google Search AI Mode.">
           You can reopen Google Search AI Mode to ask questions while you browse
@@ -2231,6 +2252,12 @@ Google Chrome is unable to recover your settings.
         </message>
         <message name="IDS_TUTORIAL_CONTEXTUAL_TASKS_STEP3_PANEL" desc="The body text of the third step of the Contextual Tasks tutorial.">
           Success! You can now easily ask questions as you browse with Google Search panel
+        </message>
+        <message name="IDS_TUTORIAL_CONTEXTUAL_TASKS_SUCCESS" desc="The body text of the tutorial completion bubble shown after the Contextual Tasks shortcut is pinned to the toolbar.">
+          Google Search in Chrome pinned to toolbar!
+        </message>
+        <message name="IDS_CONTEXTUAL_TASKS_OPEN_GOOGLE_SEARCH_IN_CHROME" desc="Label for an action that opens Google Search in Chrome (the Contextual Tasks side panel).">
+          Open Google Search in Chrome
         </message>
 
         <!-- Overlay WebUI Strings -->
@@ -3461,6 +3488,24 @@ Google Chrome is unable to recover your settings.
       <!-- GEiC (Gemini Enterprise in Chrome) settings -->
       <message name="IDS_SETTINGS_GEIC_SECTION_TITLE" desc="Text of the Gemini Enterprise section header on the AI settings page. Also used as the label of the row button leading to the Gemini Enterprise subpage, and as the title of that subpage.">
         Gemini Enterprise in Chrome
+      </message>
+      <message name="IDS_SETTINGS_GEIC_ENABLED_BY_DEVICE_POLICY_TOGGLE" desc="Heading for the setting row in Gemini Enterprise in Chrome settings that allows a user to switch back to their unmanaged consumer Gemini assistant when Gemini Enterprise was enabled by a device-level policy.">
+        Switch back to your unmanaged Gemini assistant
+      </message>
+      <message name="IDS_SETTINGS_GEIC_ENABLED_BY_DEVICE_POLICY_TOGGLE_SUBLABEL" desc="Description for the setting row in Gemini Enterprise in Chrome settings that explains switching back to the unmanaged consumer Gemini assistant and relaunching Chrome.">
+        You can switch to the Gemini assistant originally associated with your Google Account and not managed by <ph name="DOMAIN">$1<ex>example.com</ex></ph>. Answers will no longer be grounded in files or services managed by <ph name="DOMAIN">$1<ex>example.com</ex></ph> and your chat history won’t carry over. It may not be suitable to use for work. Switching requires relaunching Chrome.
+      </message>
+      <message name="IDS_SETTINGS_GEIC_ENABLED_BY_DEVICE_POLICY_BUTTON" desc="Label for the button in Gemini settings that switches between Gemini Enterprise and consumer Gemini on this profile and relaunches Chrome.">
+        Relaunch Chrome to switch
+      </message>
+      <message name="IDS_SETTINGS_GLIC_SWITCH_TO_GEIC_TOGGLE" desc="Heading for the setting row in Gemini in Chrome settings that allows a user to switch to Gemini Enterprise when Gemini Enterprise was enabled by a device-level policy.">
+        Switch to Gemini Enterprise
+      </message>
+      <message name="IDS_SETTINGS_GLIC_SWITCH_TO_GEIC_TOGGLE_SUBLABEL" desc="Description for the setting row in Gemini in Chrome settings that explains switching to Gemini Enterprise and relaunching Chrome.">
+        This managed browser can use a Gemini assistant set up for work by <ph name="DOMAIN">$1<ex>example.com</ex></ph>. It can find info and provide answers grounded in the organization’s files and approved services. Using it with a personal profile may not be recommended. Chat history won’t carry over. Switching requires relaunching Chrome.
+      </message>
+      <message name="IDS_SETTINGS_GEIC_DEFAULT_MANAGEMENT_DOMAIN" desc="Fallback noun phrase used in place of a domain name when the device manager domain is not known.">
+        your organization
       </message>
 
       <if expr="is_macosx">

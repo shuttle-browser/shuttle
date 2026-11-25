@@ -4,22 +4,17 @@
 
 #import "base/strings/sys_string_conversions.h"
 #import "base/test/ios/wait_util.h"
-#import "components/feature_engagement/public/feature_constants.h"
-#import "components/signin/internal/identity_manager/account_capabilities_constants.h"
 #import "components/signin/public/base/signin_switches.h"
 #import "google_apis/gaia/core_account_id.h"
 #import "ios/chrome/browser/authentication/test/signin_earl_grey.h"
 #import "ios/chrome/browser/authentication/test/signin_earl_grey_ui_test_util.h"
 #import "ios/chrome/browser/authentication/test/signin_matchers.h"
 #import "ios/chrome/browser/authentication/ui_bundled/signin/signin_constants.h"
-#import "ios/chrome/browser/authentication/ui_bundled/views/views_constants.h"
 #import "ios/chrome/browser/flags/chrome_switches.h"
 #import "ios/chrome/browser/metrics/model/metrics_app_interface.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
-#import "ios/chrome/browser/signin/model/capabilities_types.h"
 #import "ios/chrome/browser/signin/model/fake_system_identity.h"
 #import "ios/chrome/browser/signin/model/test_constants.h"
-#import "ios/chrome/common/ui/promo_style/constants.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey.h"
 #import "ios/chrome/test/earl_grey/chrome_earl_grey_ui.h"
 #import "ios/chrome/test/earl_grey/chrome_matchers.h"
@@ -27,7 +22,6 @@
 #import "ios/chrome/test/earl_grey/test_switches.h"
 #import "ios/testing/earl_grey/app_launch_manager.h"
 #import "ios/testing/earl_grey/earl_grey_test.h"
-#import "ios/testing/earl_grey/matchers.h"
 
 using chrome_test_util::GREYAssertErrorNil;
 
@@ -81,7 +75,6 @@ void OpenNTPAndBackgroundAndForegroundApp() {
 
 - (void)setUp {
   [super setUp];
-  [[self class] testForStartup];
   chrome_test_util::GREYAssertErrorNil(
       [MetricsAppInterface setupHistogramTester]);
   [ChromeEarlGrey
@@ -212,10 +205,8 @@ void OpenNTPAndBackgroundAndForegroundApp() {
   [SigninEarlGrey verifySignedInWithFakeIdentity:fakeIdentity];
 }
 
-// Tests sign-in promo behavior in landscape. It should appears if and only if
-// the device is an ipad.
-// TODO(crbug.com/40266894): Need to enable this test.
-- (void)DISABLED_testNoSignInPromoInLandscapeMode {
+// Tests that the sign-in promo is visible in landscape mode.
+- (void)testSignInPromoInLandscapeMode {
   [EarlGrey rotateInterfaceToOrientation:UIInterfaceOrientationLandscapeLeft
                                    error:nil];
   FakeSystemIdentity* fakeIdentity = [FakeSystemIdentity fakeIdentity1];
@@ -223,13 +214,7 @@ void OpenNTPAndBackgroundAndForegroundApp() {
 
   OpenNTPAndBackgroundAndForegroundApp();
 
-  if ([ChromeEarlGrey isIPadIdiom]) {
-    VerifySigninPromoSufficientlyVisible();
-  } else {
-    [[EarlGrey
-        selectElementWithMatcher:chrome_test_util::SigninScreenPromoMatcher()]
-        assertWithMatcher:grey_notVisible()];
-  }
+  VerifySigninPromoSufficientlyVisible();
 }
 
 #pragma mark - Helpers

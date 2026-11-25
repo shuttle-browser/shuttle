@@ -33,7 +33,6 @@
 #include "components/image_fetcher/core/mock_image_fetcher.h"
 #include "components/image_fetcher/core/request_metadata.h"
 #include "components/signin/public/base/signin_switches.h"
-#include "components/sync/base/features.h"
 #include "components/tabs/public/mock_tab_interface.h"
 #include "components/ukm/test_ukm_recorder.h"
 #include "content/public/browser/navigation_details.h"
@@ -108,14 +107,12 @@ class CommerceUiTabHelperTest : public testing::TestWithParam<TestSyncConfig> {
         IsSyncFeatureEnabledIncludingBookmarks());
     if (IsTransportModeFeatureEnabled()) {
       sync_features_.InitWithFeatures(
-          /*enabled_features=*/{syncer::kReplaceSyncPromosWithSignInPromos,
-                                switches::kSyncEnableBookmarksInTransportMode},
+          /*enabled_features=*/{switches::kSyncEnableBookmarksInTransportMode},
           /*disabled_features=*/{});
     } else {
       sync_features_.InitWithFeatures(
           /*enabled_features=*/{},
           /*disabled_features=*/{
-              syncer::kReplaceSyncPromosWithSignInPromos,
               switches::kSyncEnableBookmarksInTransportMode});
     }
     bookmark_model_ =
@@ -163,7 +160,7 @@ class CommerceUiTabHelperTest : public testing::TestWithParam<TestSyncConfig> {
     ON_CALL(tab_interface_, GetBrowserWindowInterface())
         .WillByDefault(testing::Return(&browser_window_interface_));
     ON_CALL(browser_window_interface_, GetUnownedUserDataHost())
-        .WillByDefault(testing::ReturnRef(data_host_));
+        .WillByDefault(testing::ReturnRef(window_data_host_));
     // Register the call to action controller.
     call_to_action_ =
         std::make_unique<CallToActionLock>(&browser_window_interface_);
@@ -237,6 +234,7 @@ class CommerceUiTabHelperTest : public testing::TestWithParam<TestSyncConfig> {
   content::TestWebContentsFactory test_web_contents_factory_;
   raw_ptr<content::WebContents> web_contents_;
   ui::UnownedUserDataHost data_host_;
+  ui::UnownedUserDataHost window_data_host_;
   std::unique_ptr<CallToActionLock> call_to_action_;
   MockBrowserWindowInterface browser_window_interface_;
   tabs::MockTabInterface tab_interface_;
@@ -255,6 +253,22 @@ class CommerceUiTabHelperTest : public testing::TestWithParam<TestSyncConfig> {
   base::test::ScopedFeatureList sync_features_;
   base::test::ScopedFeatureList features_;
 };
+
+TEST_P(CommerceUiTabHelperTest, FromTabInterface) {
+  EXPECT_EQ(CommerceUiTabHelper::From(nullptr), nullptr);
+  EXPECT_EQ(CommerceUiTabHelper::From(&tab_interface_), tab_helper_.get());
+
+  ui::UnownedUserDataHost other_tab_data_host;
+  tabs::MockTabInterface other_tab;
+  ON_CALL(other_tab, GetUnownedUserDataHost())
+      .WillByDefault(testing::ReturnRef(other_tab_data_host));
+  EXPECT_EQ(CommerceUiTabHelper::From(&other_tab), nullptr);
+
+  // Holds a raw_ref to `tab_helper_`, so reset it before `tab_helper_`.
+  discounts_page_action_controller_.reset();
+  tab_helper_.reset();
+  EXPECT_EQ(CommerceUiTabHelper::From(&tab_interface_), nullptr);
+}
 
 // Make sure unsubscribe without a bookmark for the current page is functional.
 TEST_P(CommerceUiTabHelperTest, TestSubscriptionChangeNoBookmark) {

@@ -24,6 +24,7 @@
 #include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/provider_features.h"
 #include "chrome/browser/glic/test_support/glic_browser_test.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -134,7 +135,7 @@ class GlicExperimentalOptInTest
     std::vector<base::test::FeatureRefAndParams> enabled_features;
 
     base::FieldTrialParams params;
-    params[features::kGlicExperimentalTriggeringOptInURL.name] =
+    params[features::kGlicExperimentalTriggeringOptInUrlParam] =
         test_url.spec();
     enabled_features.push_back({features::kGlicExperimentalTriggering, params});
 
@@ -296,6 +297,13 @@ function isHidden(e) { return !!(e && e.hidden); }
   // WebContents inside <webview> lack critical extensions observers. We
   // manually attach them here to enable IPC bindings and navigation success.
   void OnWebContentsCreated(content::WebContents* web_contents) {
+    // Contexts without keyed services, e.g. TopChromeWebUIProfile, have no
+    // extension system.
+    if (BrowserContextDependencyManager::GetInstance()
+            ->AreBrowserContextServicesDisabledByDefault(
+                web_contents->GetBrowserContext())) {
+      return;
+    }
     extensions::ChromeExtensionWebContentsObserver::CreateForWebContents(
         web_contents);
     extensions::TabHelper::CreateForWebContents(web_contents);

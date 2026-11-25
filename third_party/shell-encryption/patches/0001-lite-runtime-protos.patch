@@ -1,0 +1,32 @@
+Build the protos with LITE_RUNTIME, as Chromium links protobuf_lite.
+Without it shell_encryption_unittests aborts at startup:
+  File already exists in database: serialization.proto
+
+Chromium commit ec26a3acf49dc (crbug.com/1095129).
+
+diff --git a/src/serialization.proto b/src/serialization.proto
+index db1f1368167b0..ccc4f1314b55f 100644
+--- a/src/serialization.proto
++++ b/src/serialization.proto
+@@ -15,6 +15,8 @@
+ 
+ syntax = "proto2";
+ 
++option optimize_for = LITE_RUNTIME;
++
+ package rlwe;
+ 
+ option go_package = "github.com/google/shell-encryption";
+diff --git a/src/testing/coefficient_polynomial.proto b/src/testing/coefficient_polynomial.proto
+index b378557ff5623..35f02ef5645a5 100644
+--- a/src/testing/coefficient_polynomial.proto
++++ b/src/testing/coefficient_polynomial.proto
+@@ -15,6 +15,8 @@
+ 
+ syntax = "proto2";
+ 
++option optimize_for = LITE_RUNTIME;
++
+ package rlwe;
+ 
+ // Polynomial in coefficient representation

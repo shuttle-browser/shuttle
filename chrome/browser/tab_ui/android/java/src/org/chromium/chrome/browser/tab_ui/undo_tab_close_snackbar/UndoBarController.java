@@ -1,0 +1,334 @@
+// Copyright 2015 The Chromium Authors
+// Use of this source code is governed by a BSD-style license that can be
+// found in the LICENSE file.
+
+package org.chromium.chrome.browser.tab_ui.undo_tab_close_snackbar;
+
+import static org.chromium.build.NullUtil.assumeNonNull;
+
+import android.content.Context;
+
+import org.chromium.base.Token;
+import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.build.annotations.NullMarked;
+import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabId;
+import org.chromium.chrome.browser.tab_ui.R;
+import org.chromium.chrome.browser.tabmodel.TabModel;
+import org.chromium.chrome.browser.tabmodel.TabModelSelector;
+import org.chromium.chrome.browser.tabmodel.undo.UndoClosureSnapshot;
+import org.chromium.chrome.browser.tabmodel.undo.UndoClosureSnapshot.ClosedTab;
+import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager.SnackbarManageable;
+import org.chromium.ui.util.TokenHolder;
+
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
+import java.util.List;
+import java.util.ListIterator;
+import java.util.Map;
+import java.util.Map.Entry;
+import java.util.Set;
+
+/**
+ * A controller that listens to and visually represents cancelable tab closures. This is an abstract
+ * class that is implemented for both regular {@link Tab}s and groups based on them as well as tabs
+ * combined with {@link SavedTabGroup}s.
+ */
+@NullMarked
+public abstract class UndoBarController
+        implements SnackbarManager.SnackbarController, UndoBarThrottle {
+    /** Tracking state of an undo bar held by the {@link SnackbarManager}. */
+    private static final class UndoBarEntry {
+        /** The immutable record of the closure this bar was shown for. */
+        final UndoClosureSnapshot mSnapshot;
+
+        /**
+         * The ids of the bar's tabs that are not yet undone or committed outside of the bar, in
+         * snapshot order. The bar's own undo or dismissal acts only on these tabs.
+         */
+        final Set<@TabId Integer> mRemainingTabIds;
+
+        /** The groups of the snapshot that were restored outside of the bar. */
+        final Set<Token> mRestoredGroupIds = new HashSet<>();
+
+        /** Whether any of the bar's tabs was undone outside of the bar. */
+        boolean mAnyUndoneExternally;
+
+        UndoBarEntry(UndoClosureSnapshot snapshot) {
+            mSnapshot = snapshot;
+            mRemainingTabIds = new LinkedHashSet<>(snapshot.tabs.size());
+            for (ClosedTab tab : snapshot.tabs) {
+                mRemainingTabIds.add(tab.id);
+            }
+        }
+    }
+
+    private final TokenHolder mThrottle = new TokenHolder(this::maybeProcessEvents);
+    protected final TabModelSelector mTabModelSelector;
+    protected final SnackbarManager.SnackbarManageable mSnackbarManageable;
+    protected final Context mContext;
+
+    /**
+     * Undo bar requests waiting to be shown; drained immediately unless undo bars are throttled.
+     */
+    private final List<UndoBarEntry> mEventQueue = new ArrayList<>();
+
+    /**
+     * Undo bars currently held by the {@link SnackbarManager} (showing or queued there), mapped to
+     * their tracking state. Keys use identity equality, as {@link UndoBarContent} does not override
+     * {@link Object#equals(Object)}. An entry is removed before the bar's own action or dismissal
+     * is handled, or once all of its tabs are resolved outside of the bar. Insertion-ordered so
+     * that bars resolved together are dismissed in the order they were shown.
+     */
+    private final Map<UndoBarContent, UndoBarEntry> mShownBars = new LinkedHashMap<>();
+
+    /**
+     * Creates an instance of a {@link UndoBarController}.
+     *
+     * @param context The {@link Context} in which snackbar is shown.
+     * @param selector The {@link TabModelSelector} that will be used to commit and undo tab
+     *     closures.
+     * @param snackbarManageable The holder class to get the manager that helps to show up snackbar.
+     */
+    public UndoBarController(
+            Context context, TabModelSelector selector, SnackbarManageable snackbarManageable) {
+        mSnackbarManageable = snackbarManageable;
+        mTabModelSelector = selector;
+        mContext = context;
+    }
+
+    @Override
+    public int startThrottling() {
+        return mThrottle.acquireToken();
+    }
+
+    @Override
+    public void stopThrottling(int token) {
+        mThrottle.releaseToken(token);
+    }
+
+    /**
+     * Records the undo histogram and delegates to {@link #handleUndoAction(UndoClosureSnapshot,
+     * Set)} for the bar's remaining tabs, i.e. those not already undone or committed outside of the
+     * bar. Does nothing if the bar is not tracked, which cannot happen in practice: {@link
+     * SnackbarManager#canShowSnackbar()} gates both the tracking and {@link
+     * SnackbarManager#showSnackbar}, and a bar whose tabs were all resolved outside of it is
+     * dismissed at once.
+     *
+     * @param actionData The {@link UndoBarContent} payload.
+     */
+    @Override
+    public void onAction(@Nullable Object actionData) {
+        UndoBarContent barContent = assumeNonNull((UndoBarContent) actionData);
+        // Stop tracking first so the resulting tab model events are not treated as external.
+        UndoBarEntry shownBar = mShownBars.remove(barContent);
+        if (shownBar == null) return;
+        RecordHistogram.recordSparseHistogram("Tab.CloseUndoBar.Undone", barContent.umaType);
+        handleUndoAction(shownBar.mSnapshot, shownBar.mRemainingTabIds);
+    }
+
+    /**
+     * Records the dismissal histogram and delegates to {@link
+     * #handleDismissNoAction(UndoClosureSnapshot, Set)} for the bar's remaining tabs, i.e. those
+     * not already undone or committed outside of the bar. Does nothing if the bar was dismissed
+     * because all of its tabs were resolved externally, in which case {@link
+     * #onTabsResolvedExternally} already handled the histogram.
+     *
+     * @param actionData The {@link UndoBarContent} payload.
+     */
+    @Override
+    public void onDismissNoAction(@Nullable Object actionData) {
+        UndoBarContent barContent = assumeNonNull((UndoBarContent) actionData);
+        UndoBarEntry shownBar = mShownBars.remove(barContent);
+        // Untracked means onTabsResolvedExternally() dismissed it; never commit from that path.
+        if (shownBar == null) return;
+        RecordHistogram.recordSparseHistogram("Tab.CloseUndoBar.Dismissed", barContent.umaType);
+        handleDismissNoAction(shownBar.mSnapshot, shownBar.mRemainingTabIds);
+    }
+
+    /**
+     * Executes the undo action for a tracked bar after the undo histogram has been recorded. By
+     * default, cancels pending closures for {@code remainingTabIds}, ignoring saved tab group sync
+     * IDs.
+     *
+     * @param snapshot The closure snapshot associated with the bar.
+     * @param remainingTabIds The IDs of the bar's tabs not yet resolved outside of the bar.
+     */
+    protected void handleUndoAction(
+            UndoClosureSnapshot snapshot, Set<@TabId Integer> remainingTabIds) {
+        // Tabs resolved outside of the bar may have been closed again under a new pending closure
+        // that this bar does not own, so only act on the remaining tabs.
+        for (@TabId int tabId : remainingTabIds) {
+            cancelTabClosure(tabId);
+        }
+    }
+
+    /**
+     * Executes the dismissal action for a tracked bar after the dismissal histogram has been
+     * recorded. By default, commits pending closures for {@code remainingTabIds}, ignoring saved
+     * tab group sync IDs.
+     *
+     * @param snapshot The closure snapshot associated with the bar.
+     * @param remainingTabIds The IDs of the bar's tabs not yet resolved outside of the bar.
+     */
+    protected void handleDismissNoAction(
+            UndoClosureSnapshot snapshot, Set<@TabId Integer> remainingTabIds) {
+        // The entry was removed before this call, so resulting commit events cannot modify
+        // remainingTabIds.
+        for (@TabId int tabId : remainingTabIds) {
+            commitTabClosure(tabId);
+        }
+    }
+
+    /**
+     * Queues an undo bar to be shown for the given snapshot.
+     *
+     * @param snapshot The immutable snapshot of the closed tabs and groups.
+     */
+    protected void queueUndoBar(UndoClosureSnapshot snapshot) {
+        mEventQueue.add(new UndoBarEntry(snapshot));
+        maybeProcessEvents();
+    }
+
+    /** Discards all queued snapshots. */
+    protected void clearEventQueue() {
+        mEventQueue.clear();
+    }
+
+    /**
+     * Updates queued snapshots to reflect that the given tab group was restored.
+     *
+     * @param gid The identifier of the restored group.
+     */
+    protected void onTabGroupRestored(Token gid) {
+        for (UndoBarEntry entry : mEventQueue) {
+            entry.mRestoredGroupIds.add(gid);
+        }
+    }
+
+    /**
+     * Notes that the given tabs were undone or committed outside of the undo bars. The tabs are
+     * first dropped from the queued, not yet shown snapshots. Any shown bar whose tabs are now all
+     * resolved is dismissed without committing; the dismissal histogram is recorded for it only if
+     * none of its tabs was undone outside of the bar. A bar with tabs remaining keeps showing, and
+     * its own undo or dismissal then acts only on the remaining tabs.
+     *
+     * @param tabIds The collection of tab identifiers that were resolved.
+     * @param undone Whether the tabs were undone (true) or committed (false).
+     */
+    protected void onTabsResolvedExternally(Collection<@TabId Integer> tabIds, boolean undone) {
+        dropFromQueue(tabIds);
+
+        List<UndoBarContent> resolvedBars = new ArrayList<>();
+        for (Iterator<Entry<UndoBarContent, UndoBarEntry>> iterator =
+                        mShownBars.entrySet().iterator();
+                iterator.hasNext(); ) {
+            Entry<UndoBarContent, UndoBarEntry> entry = iterator.next();
+            UndoBarEntry shownBar = entry.getValue();
+            if (shownBar.mRemainingTabIds.removeAll(tabIds) && undone) {
+                shownBar.mAnyUndoneExternally = true;
+            }
+            if (!shownBar.mRemainingTabIds.isEmpty()) continue;
+
+            iterator.remove();
+            UndoBarContent barContent = entry.getKey();
+            if (shownBar.mAnyUndoneExternally) {
+                RecordHistogram.recordSparseHistogram(
+                        "Tab.CloseUndoBar.UndoneExternally", barContent.umaType);
+            } else {
+                RecordHistogram.recordSparseHistogram(
+                        "Tab.CloseUndoBar.Dismissed", barContent.umaType);
+            }
+            resolvedBars.add(barContent);
+        }
+
+        // Dismiss after iterating, as the dismissal re-enters onDismissNoAction(), which returns
+        // early for untracked bars (no histogram, no commit).
+        SnackbarManager snackbarManager = mSnackbarManageable.getSnackbarManager();
+        for (UndoBarContent barContent : resolvedBars) {
+            snackbarManager.dismissSnackbars(this, barContent);
+        }
+    }
+
+    /**
+     * Drops the specified tabs from any queued snapshots. Snapshots that become empty are removed.
+     *
+     * @param tabIds The collection of tab identifiers to remove from the queue.
+     */
+    private void dropFromQueue(Collection<@TabId Integer> tabIds) {
+        for (ListIterator<UndoBarEntry> iterator = mEventQueue.listIterator();
+                iterator.hasNext(); ) {
+            UndoBarEntry entry = iterator.next();
+            entry.mRemainingTabIds.removeAll(tabIds);
+            if (entry.mRemainingTabIds.isEmpty()
+                    && entry.mSnapshot.savedTabGroupSyncIds.isEmpty()) {
+                iterator.remove();
+            }
+        }
+    }
+
+    private void maybeProcessEvents() {
+        if (mThrottle.hasTokens()) return;
+
+        while (!mEventQueue.isEmpty()) {
+            UndoBarEntry entry = mEventQueue.remove(0);
+            showUndoBar(entry);
+        }
+    }
+
+    /**
+     * Attempts to show the undo snackbar for the given snapshot. Tracking of the bar ends in one of
+     * three ways: undo is tapped ({@link #onAction}, which delegates to {@link #handleUndoAction});
+     * it is dismissed or times out ({@link #onDismissNoAction}, which delegates to {@link
+     * #handleDismissNoAction}); or it is dismissed after all of its tabs were resolved outside of
+     * the bar, in which case nothing is committed; it records the external undo histogram if any of
+     * its tabs was undone outside of the bar, and the dismissal histogram otherwise.
+     *
+     * @param entry The bar's snapshot and tracking state.
+     */
+    private void showUndoBar(UndoBarEntry entry) {
+        if (entry.mRemainingTabIds.isEmpty() && entry.mSnapshot.savedTabGroupSyncIds.isEmpty()) {
+            return;
+        }
+
+        UndoBarContent barContent =
+                UndoBarContentFactory.create(
+                        mContext, entry.mSnapshot, entry.mRemainingTabIds, entry.mRestoredGroupIds);
+
+        // showSnackbar() silently drops the bar when it cannot be shown; only track shown bars.
+        if (mSnackbarManageable.getSnackbarManager().canShowSnackbar()) {
+            mShownBars.put(barContent, entry);
+        }
+        mSnackbarManageable
+                .getSnackbarManager()
+                .showSnackbar(
+                        Snackbar.make(
+                                        barContent.content,
+                                        this,
+                                        Snackbar.TYPE_ACTION,
+                                        barContent.umaType)
+                                .setDuration(
+                                        entry.mSnapshot.isAllTabs
+                                                ? SnackbarManager.DEFAULT_SNACKBAR_DURATION_LONG_MS
+                                                : SnackbarManager.DEFAULT_SNACKBAR_DURATION_MS)
+                                .setTemplateText(barContent.template)
+                                .setAction(mContext.getString(R.string.undo), barContent));
+    }
+
+    private void cancelTabClosure(@TabId int tabId) {
+        TabModel model = mTabModelSelector.getModelForTabId(tabId);
+        if (model != null) model.cancelTabClosure(tabId);
+    }
+
+    private void commitTabClosure(@TabId int tabId) {
+        TabModel model = mTabModelSelector.getModelForTabId(tabId);
+        if (model != null) model.commitTabClosure(tabId);
+    }
+}

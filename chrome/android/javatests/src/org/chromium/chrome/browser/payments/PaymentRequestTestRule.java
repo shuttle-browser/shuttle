@@ -16,6 +16,7 @@ import androidx.annotation.IntDef;
 
 import org.hamcrest.Matchers;
 import org.junit.Assert;
+import org.junit.rules.ExternalResource;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.task.PostTask;
@@ -26,6 +27,7 @@ import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.CriteriaNotSatisfiedException;
 import org.chromium.chrome.R;
 import org.chromium.chrome.browser.app.ChromeActivity;
+import org.chromium.chrome.browser.autofill.AutofillTestHelper;
 import org.chromium.chrome.browser.autofill.CardUnmaskPrompt;
 import org.chromium.chrome.browser.autofill.CardUnmaskPrompt.CardUnmaskObserverForTest;
 import org.chromium.chrome.browser.autofill.editors.common.EditorObserverForTest;
@@ -35,7 +37,10 @@ import org.chromium.chrome.browser.payments.ui.PaymentRequestSection.OptionSecti
 import org.chromium.chrome.browser.payments.ui.PaymentRequestSection.OptionSection.OptionRow;
 import org.chromium.chrome.browser.payments.ui.PaymentRequestUi;
 import org.chromium.chrome.browser.payments.ui.PaymentRequestUi.PaymentRequestObserverForTest;
-import org.chromium.chrome.test.ChromeTabbedActivityTestRule;
+import org.chromium.chrome.browser.preferences.Pref;
+import org.chromium.chrome.test.transit.BaseCtaTransitTestRule;
+import org.chromium.chrome.test.transit.page.WebPageStation;
+import org.chromium.chrome.test.util.ChromeApplicationTestUtils;
 import org.chromium.components.payments.PayerData;
 import org.chromium.components.payments.PaymentApp;
 import org.chromium.components.payments.PaymentAppFactoryDelegate;
@@ -45,6 +50,7 @@ import org.chromium.components.payments.PaymentRequestService;
 import org.chromium.components.payments.PaymentRequestService.PaymentRequestServiceObserverForTest;
 import org.chromium.components.payments.ui.InputProtector;
 import org.chromium.components.payments.ui.test_support.FakeClock;
+import org.chromium.components.user_prefs.UserPrefs;
 import org.chromium.content_public.browser.WebContents;
 import org.chromium.content_public.browser.test.util.DOMUtils;
 import org.chromium.content_public.browser.test.util.JavaScriptUtils;
@@ -66,8 +72,13 @@ import java.util.UUID;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicReference;
 
-/** Custom ActivityTestRule for integration test for payments. */
-/*package*/ class PaymentRequestTestRule extends ChromeTabbedActivityTestRule
+/**
+ * Custom TestRule for integration tests for payments.
+ *
+ * <p>Declare it together with a {@link BaseCtaTransitTestRule} in a RuleChain, and call {@link
+ * #startOnTestPage()} to start the test.
+ */
+/*package*/ class PaymentRequestTestRule extends ExternalResource
         implements PaymentRequestObserverForTest,
                 PaymentRequestServiceObserverForTest,
                 ChromePaymentRequestDelegateImplObserverForTest,
@@ -132,8 +143,7 @@ import java.util.concurrent.atomic.AtomicReference;
     /* package */ static final String ENABLE_EXPERIMENTAL_WEB_PLATFORM_FEATURES =
             "enable-experimental-web-platform-features";
 
-    // We need a consistent port so that strings don't vary for render tests.
-    private static final int TEST_PORT = 41234;
+    private static final String TEST_PAGE_PATH_PREFIX = "/components/test/data/payments/";
 
     private final PaymentsCallbackHelper<PaymentRequestUi> mShowCalled;
     private final PaymentsCallbackHelper<PaymentRequestUi> mReadyForInput;
@@ -163,12 +173,12 @@ import java.util.concurrent.atomic.AtomicReference;
     private final FakeClock mClock;
     private final InputProtector mInputProtector;
 
-    private final boolean mDelayStartActivity;
+    private final BaseCtaTransitTestRule mCtaTestRule;
     private boolean mAutoAdvanceInputProtectorClock;
 
     private final AtomicReference<WebContents> mWebContentsRef;
 
-    private final String mTestFilePath;
+    private final String mTestFileName;
 
     private CardUnmaskPrompt mCardUnmaskPrompt;
 
@@ -177,40 +187,14 @@ import java.util.concurrent.atomic.AtomicReference;
     /**
      * Creates an instance of PaymentRequestTestRule.
      *
-     * @param testFileName The file name of an test page in //components/test/data/payments,
-     *     'about:blank', or a data url which starts with 'data:'.
+     * @param ctaTestRule The {@link BaseCtaTransitTestRule} declared by the test, which must wrap
+     *     this rule in a RuleChain.
+     * @param testFileName The file name of a test page in //components/test/data/payments, or a
+     *     data url which starts with 'data:'.
      */
-    /* package */ PaymentRequestTestRule(String testFileName) {
-        this(testFileName, false);
-    }
-
-    /**
-     * Creates an instance of PaymentRequestTestRule.
-     *
-     * @param testFileName The file name of an test page in //components/test/data/payments,
-     *     'about:blank', or a data url which starts with 'data:'.
-     * @param delayStartActivity Whether to delay the start of the main activity. When true, {@link
-     *     #startMainActivityWithURL()} needs to be called to start the main activity; otherwise,
-     *     the main activity would start automatically.
-     */
-    /* package */ PaymentRequestTestRule(String testFileName, boolean delayStartActivity) {
-        this(testFileName, /* pathPrefix= */ "/components/test/data/payments/", delayStartActivity);
-    }
-
-    /**
-     * Creates an instance of PaymentRequestTestRule with a test page, which is specified by
-     * pathPrefix and testFileName combined into a path relative to the repository root. For
-     * example, if testFileName is "merchant.html", pathPrefix is "components/test/data/payments/",
-     * the method would look for a test page at "components/test/data/payments/merchant.html".
-     *
-     * @param testFileName The file name of the test page.
-     * @param pathPrefix The prefix path to testFileName.
-     * @param delayStartActivity Whether to delay the start of the main activity.
-     */
-    private PaymentRequestTestRule(
-            String testFilePath, String pathPrefix, boolean delayStartActivity) {
-        super();
-        getEmbeddedTestServerRule().setServerPort(TEST_PORT);
+    /* package */ PaymentRequestTestRule(BaseCtaTransitTestRule ctaTestRule, String testFileName) {
+        mCtaTestRule = ctaTestRule;
+        mTestFileName = testFileName;
         mShowCalled = new PaymentsCallbackHelper<>();
         mReadyForInput = new PaymentsCallbackHelper<>();
         mReadyToPay = new PaymentsCallbackHelper<>();
@@ -235,38 +219,36 @@ import java.util.concurrent.atomic.AtomicReference;
         mCompleteHandled = new CallbackHelper();
         mRendererClosedMojoConnection = new CallbackHelper();
         mWebContentsRef = new AtomicReference<>();
-        if (testFilePath.equals("about:blank") || testFilePath.startsWith("data:")) {
-            mTestFilePath = testFilePath;
-        } else {
-            mTestFilePath = getTestServer().getURL(pathPrefix + testFilePath);
-        }
-        mDelayStartActivity = delayStartActivity;
         mAutoAdvanceInputProtectorClock = true;
         mClock = new FakeClock();
         mInputProtector = new InputProtector(mClock);
     }
 
-    /* package */ void setObserversAndWaitForInitialPageLoad() throws InterruptedException {
-        setObserversAndWaitForInitialPageLoad(getActivity());
-    }
-
-    /* package */ void setObserversAndWaitForInitialPageLoad(ChromeActivity activity)
-            throws InterruptedException {
-        // TODO(crbug.com/40728764): Figure out what these tests need to wait on to not be flaky
-        // instead of sleeping.
-        Thread.sleep(2000);
-
-        ThreadUtils.runOnUiThreadBlocking(
-                () -> {
-                    mWebContentsRef.set(activity.getCurrentWebContents());
-                    PaymentRequestUi.setEditorObserverForTest(PaymentRequestTestRule.this);
-                    PaymentRequestUi.setPaymentRequestObserverForTest(PaymentRequestTestRule.this);
-                    PaymentRequestService.setObserverForTest(PaymentRequestTestRule.this);
-                    ChromePaymentRequestFactory.setChromePaymentRequestDelegateImplObserverForTest(
-                            PaymentRequestTestRule.this);
-                    CardUnmaskPrompt.setObserverForTest(PaymentRequestTestRule.this);
-                });
-        assertWaitForPageScaleFactorMatch(0.5f);
+    // TODO(crbug.com/490460408): Move test observers to before(), migrate
+    // PaymentRequestContactDetailsTest#testPaymentRequestIncognitoMode to Public Transit, and check
+    // whether WebPageStation's enter conditions let us drop the scale-factor wait.
+    /* package */ void setObserversAndWaitForInitialPageLoad(ChromeActivity activity) {
+        boolean useDesktopUserAgent =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> {
+                            mWebContentsRef.set(activity.getCurrentWebContents());
+                            PaymentRequestUi.setEditorObserverForTest(PaymentRequestTestRule.this);
+                            PaymentRequestUi.setPaymentRequestObserverForTest(
+                                    PaymentRequestTestRule.this);
+                            PaymentRequestService.setObserverForTest(PaymentRequestTestRule.this);
+                            ChromePaymentRequestFactory
+                                    .setChromePaymentRequestDelegateImplObserverForTest(
+                                            PaymentRequestTestRule.this);
+                            CardUnmaskPrompt.setObserverForTest(PaymentRequestTestRule.this);
+                            return mWebContentsRef
+                                    .get()
+                                    .getNavigationController()
+                                    .getUseDesktopUserAgent();
+                        });
+        // Payment test pages set <meta name="viewport" content="..., initial-scale=0.5">, which
+        // desktop user-agent mode ignores (rendering at 1.0f).
+        ChromeApplicationTestUtils.assertWaitForPageScaleFactorMatch(
+                activity, useDesktopUserAgent ? 1.0f : 0.5f);
     }
 
     /* package */ PaymentsCallbackHelper<PaymentRequestUi> getShowCalled() {
@@ -396,7 +378,8 @@ import java.util.concurrent.atomic.AtomicReference;
     /* package */ void runJavaScriptAndWaitForUiEvent(String code, CallbackHelper helper)
             throws TimeoutException {
         int callCount = helper.getCallCount();
-        runJavaScriptCodeWithUserGestureInCurrentTab(code);
+        JavaScriptUtils.executeJavaScriptWithUserGestureAndWaitForResult(
+                mWebContentsRef.get(), code);
         helper.waitForCallback(callCount);
     }
 
@@ -413,7 +396,8 @@ import java.util.concurrent.atomic.AtomicReference;
                 promiseCode
                         + ".then(result => domAutomationController.send(result))"
                         + ".catch(error => domAutomationController.send(error));";
-        return JavaScriptUtils.runJavascriptWithUserGestureAndAsyncResult(getWebContents(), code);
+        return JavaScriptUtils.runJavascriptWithUserGestureAndAsyncResult(
+                mWebContentsRef.get(), code);
     }
 
     /** Clicks on an HTML node. */
@@ -1356,23 +1340,49 @@ import java.util.concurrent.atomic.AtomicReference;
         public void dismissInstrument() {}
     }
 
-    public void startMainActivity() {
-        assert mDelayStartActivity;
-        startMainActivityWithURL(mTestFilePath);
+    /**
+     * Starts or resets ChromeTabbedActivity on the test page and waits for it to be ready for
+     * payments.
+     *
+     * @return the entry {@link WebPageStation} showing the test page.
+     */
+    /* package */ WebPageStation startOnTestPage() {
+        assert mWebContentsRef.get() == null : "Test already started";
+
+        WebPageStation page;
+        if (mTestFileName.startsWith("data:")) {
+            // Data URLs get canonicalized when loaded, so only match the "data:" scheme prefix.
+            page =
+                    mCtaTestRule.startOnPage(
+                            mTestFileName,
+                            WebPageStation.newBuilder().withExpectedUrlSubstring("data:"));
+        } else {
+            page = mCtaTestRule.startOnTestServerUrl(TEST_PAGE_PATH_PREFIX + mTestFileName);
+        }
+        setObserversAndWaitForInitialPageLoad(mCtaTestRule.getActivity());
+        return page;
     }
 
     @Override
     protected void before() throws Throwable {
         super.before();
         PaymentAppService.getInstance().resetForTest();
-        if (!mDelayStartActivity) {
-            startMainActivityWithURL(mTestFilePath);
-            setObserversAndWaitForInitialPageLoad();
-        }
     }
 
     @Override
     protected void after() {
+        if (mWebContentsRef.get() != null) {
+            try {
+                new AutofillTestHelper().clearAllDataForTesting();
+            } catch (TimeoutException e) {
+                throw new RuntimeException(e);
+            }
+            ThreadUtils.runOnUiThreadBlocking(
+                    () ->
+                            UserPrefs.get(mCtaTestRule.getProfile(/* incognito= */ false))
+                                    .clearPref(Pref.CAN_MAKE_PAYMENT_ENABLED));
+        }
+        mWebContentsRef.set(null);
         PaymentAppService.getInstance().resetForTest();
         super.after();
     }

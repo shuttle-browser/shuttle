@@ -24,6 +24,13 @@ bool ShouldUseActionsForBrowserCommands();
 
 BASE_DECLARE_FEATURE(kAllowEyeDropperWGCScreenCapture);
 
+BASE_DECLARE_FEATURE(kBrowserWindowListenerObservation);
+bool IsBrowserWindowListenerObservationEnabled();
+
+#if !BUILDFLAG(IS_ANDROID)
+BASE_DECLARE_FEATURE(kBookmarkBarAreaKeyboardNavigation);
+#endif  // !BUILDFLAG(IS_ANDROID)
+
 BASE_DECLARE_FEATURE(kCtrlTabMru);
 
 BASE_DECLARE_FEATURE(kFastFaviconDisplay);
@@ -34,13 +41,19 @@ BASE_DECLARE_FEATURE(kFeedbackDisabledDialog);
 BASE_DECLARE_FEATURE(kLegacySearchIntegrityCheck);
 #endif
 
+BASE_DECLARE_FEATURE(kFedCmIdpLinks);
+
 BASE_DECLARE_FEATURE(kFedCmPermissionUiWithContainer);
+
+BASE_DECLARE_FEATURE(kFindInPageMatchCase);
 
 BASE_DECLARE_FEATURE(kImportExportFlags);
 
 // Shows a "+N" count pill in the bottom-most infobar while lower-priority
 // infobars wait in the prioritization queue.
 BASE_DECLARE_FEATURE(kInfoBarQueuedCountPill);
+
+BASE_DECLARE_FEATURE(kFindInPageSkipViewport);
 
 BASE_DECLARE_FEATURE(kKeyboardLockHeldEscExitsTabFullscreen);
 
@@ -71,6 +84,8 @@ BASE_DECLARE_FEATURE(kSettingsSearch2026);
 // Enables search in the app Chrome menu.
 BASE_DECLARE_FEATURE(kChroMenuSearch);
 BASE_DECLARE_FEATURE_PARAM(std::string, kChroMenuSearchQuery);
+// Enables the redesigned History page refresh features.
+BASE_DECLARE_FEATURE(kHistoryPageRefresh);
 
 bool IsTabStripDeclutterEnabled();
 bool IsToolbarGlowUpEnabled();
@@ -82,6 +97,7 @@ bool IsTabGroupColorRefreshEnabled();
 bool IsWebuiRefresh2026Enabled();
 bool IsSettingsRefresh2026Enabled();
 bool IsSettingsSearch2026Enabled();
+bool IsHistoryPageRefreshEnabled();
 
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
@@ -206,6 +222,7 @@ BASE_DECLARE_FEATURE(kProcessIsolationSettings);
 
 BASE_DECLARE_FEATURE(kLensOverlayVirtualFocusNavigation);
 BASE_DECLARE_FEATURE(kOmniboxEverywhereVirtualFocusNavigation);
+BASE_DECLARE_FEATURE(kOmniboxPopupDesktopWidget);
 BASE_DECLARE_FEATURE(kWebuiBrowserVirtualFocusNavigation);
 
 BASE_DECLARE_FEATURE_PARAM(base::TimeDelta, kShowDropTargetForTabDelay);
@@ -277,7 +294,6 @@ BASE_DECLARE_FEATURE(kPasswordSaveUpdateDropdownMenuExperiment);
 BASE_DECLARE_FEATURE(kNTPFooterBadgingPolicies);
 
 BASE_DECLARE_FEATURE(kEnterpriseManagementDisclaimerUsesCustomLabel);
-BASE_DECLARE_FEATURE(kEnterpriseReleaseNotes);
 BASE_DECLARE_FEATURE(kManagedProfileRequiredInterstitial);
 // Enables WebUI migration for chrome://management on Android Mobile.
 BASE_DECLARE_FEATURE(kMigrateManagementPageToWebUIOnMobile);
@@ -298,9 +314,6 @@ BASE_DECLARE_FEATURE(kMacDeferInputContextUntilFirstPaint);
 // Controls whether the site-specific data dialog shows a related installed
 // applications section.
 BASE_DECLARE_FEATURE(kPageSpecificDataDialogRelatedInstalledAppsSection);
-
-// Feature for the promotion banner on the top of chrome://management page
-BASE_DECLARE_FEATURE(kEnableManagementPromotionBanner);
 
 // Gates the optimization to cache LocationBarView in
 // LensOverlayHomeworkPageActionController.
@@ -336,10 +349,6 @@ BASE_DECLARE_FEATURE(kByDateHistoryInSidePanel);
 
 // If enabled, the "Tabs from other devices" side panel will be available.
 BASE_DECLARE_FEATURE(kTabsFromOtherDevicesSidePanel);
-
-// If enabled, the "Tabs from other devices" toolbar button will be pinned by
-// default.
-BASE_DECLARE_FEATURE(kTabsFromOtherDevicesSidePanelPinnedByDefault);
 
 #if !BUILDFLAG(IS_ANDROID)
 
@@ -410,6 +419,7 @@ BASE_DECLARE_FEATURE(kTabGroupRibbon);
 bool IsTabGroupRibbonEnabled();
 
 BASE_DECLARE_FEATURE(kNonGroupFocus);
+BASE_DECLARE_FEATURE_PARAM(int, kNonGroupFocusIphMinTabs);
 
 BASE_DECLARE_FEATURE(kOmniboxResizingPrioritization);
 

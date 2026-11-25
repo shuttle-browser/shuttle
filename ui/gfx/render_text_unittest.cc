@@ -9,8 +9,10 @@
 #include <stdint.h>
 
 #include <algorithm>
+#include <array>
 #include <memory>
 #include <numeric>
+#include <optional>
 #include <set>
 #include <string>
 #include <string_view>
@@ -3461,7 +3463,6 @@ TEST_F(RenderTextTest, MoveCursor_UpDown_Cache) {
   render_text->SetMultiline(true);
   EXPECT_EQ(3U, render_text->GetNumLines());
 
-  std::vector<size_t> expected_lines;
   std::vector<Range> expected_range;
 
   // SELECTION_NONE.
@@ -3705,7 +3706,7 @@ TEST_F(RenderTextTest, GetDisplayTextDirection) {
 struct GetTextIndexOfLineCase {
   const char* test_name;
   const char16_t* const text;
-  const std::vector<size_t> line_breaks;
+  const std::array<std::optional<size_t>, 5> line_breaks;
   const bool set_word_wrap = false;
   const bool set_obscured = false;
 };
@@ -3731,12 +3732,13 @@ TEST_P(RenderTextTestWithGetTextIndexOfLineCase, GetTextIndexOfLine) {
   }
   render_text->SetObscured(param.set_obscured);
   render_text->SetText(param.text);
-  for (size_t i = 0; i < param.line_breaks.size(); ++i) {
-    EXPECT_EQ(param.line_breaks[i], render_text->GetTextIndexOfLine(i));
+  for (size_t i = 0; i < param.line_breaks.size() && param.line_breaks[i];
+       ++i) {
+    EXPECT_EQ(*param.line_breaks[i], render_text->GetTextIndexOfLine(i));
   }
 }
 
-const GetTextIndexOfLineCase kGetTextIndexOfLineCases[] = {
+constexpr GetTextIndexOfLineCase kGetTextIndexOfLineCases[] = {
     {"emptyString", u"", {0}},
     // The following test strings are three character strings.
     // The word wrap makes each character fall on a new line.
@@ -6464,7 +6466,6 @@ TEST_F(RenderTextTest, Multiline_SurrogatePairsOrCombiningChars) {
   // Below is a Devanagari two-character combining sequence U+0921 U+093F. The
   // sequence forms a single display character and should not be separated.
   const char16_t kCombiningChars[] = {0x921, 0x93F, 0};
-  const std::u16string text_combining(kCombiningChars);
   const int kCombiningCharsWidth =
       GetStringWidth(kCombiningChars, render_text->font_list());
 

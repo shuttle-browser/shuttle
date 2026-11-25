@@ -61,7 +61,6 @@
 #include "chrome/browser/ui/omnibox/omnibox_view.h"
 #include "chrome/browser/ui/page_action/page_action_properties_provider.h"
 #include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
-#include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
@@ -149,7 +148,6 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/theme_provider.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/color/color_id.h"
 #include "ui/color/color_provider.h"
@@ -240,6 +238,13 @@ bool IsPositionInWindowCaptionForView(const views::View* view,
       const gfx::Point point_in_child =
           views::View::ConvertPointToTarget(view, child, point);
       return IsPositionInWindowCaptionForView(child, point_in_child);
+    }
+    // The WebUI toolbar hosts its controls in a single WebView, so ask it
+    // whether the point falls between its controls rather than on one.
+    if (const auto* webui_toolbar =
+            views::AsViewClass<WebUIToolbarWebView>(child)) {
+      return webui_toolbar->IsPositionInWindowCaption(
+          views::View::ConvertPointToTarget(view, child, point));
     }
     // Separators and dividers are non-interactive and should be treated
     // as caption area.
@@ -447,10 +452,15 @@ void ToolbarView::Init() {
   }
 
   if (!features::IsWebUIReloadButtonEnabled()) {
+    // TODO(crbug.com/548363252): Align `IsWebUIToolbarEnabled()` and
+    // `IsWebUIReloadButtonEnabled()` metrics gating so `OnCreated()` is not
+    // called by both `WebUIToolbarWebView` and `ReloadButton` when another
+    // WebUI toolbar element is enabled without `kWebUIReloadButton`.
+    auto* window_manager = InitialWebUIWindowMetricsManager::From(browser_);
     reload_ = AddChildView(std::make_unique<ReloadButton>(
         browser_->GetProfile(),
         chrome::BrowserCommandController::From(browser_),
-        InitialWebUIWindowMetricsManager::From(browser_)));
+        window_manager ? &window_manager->GetMetricsDispatcher() : nullptr));
   }
 
   if (!features::IsWebUIHomeButtonEnabled()) {
@@ -687,6 +697,11 @@ void ToolbarView::Init() {
     should_display_vertical_tabs_ =
         vertical_tab_strip_state_controller->ShouldDisplayVerticalTabs();
   }
+  // The toolbar is only part of the window caption while the vertical tab strip
+  // is shown, so the WebUI toolbar only needs its draggable regions then.
+  if (toolbar_webview_) {
+    toolbar_webview_->SetDraggableRegionsEnabled(should_display_vertical_tabs_);
+  }
   if (glic::GlicEnabling::IsProfileEligible(browser_view_->GetProfile())) {
     UpdateGlicButtonVisibility();
   }
@@ -716,8 +731,9 @@ void ToolbarView::Init() {
 }
 
 void ToolbarView::InitGlicContainer() {
-  if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
-      features::kGlicActorUiTaskIcon.Get()) {
+  if ((base::FeatureList::IsEnabled(features::kGlicActorUi) &&
+       features::kGlicActorUiTaskIcon.Get()) ||
+      base::FeatureList::IsEnabled(features::kGlicActivityHub)) {
     glic_actor_button_container_ =
         AddChildView(CreateGlicActorButtonContainer());
     glic_actor_task_icon_ =
@@ -730,6 +746,9 @@ void ToolbarView::InitGlicContainer() {
 void ToolbarView::OnVerticalTabStripModeChanged(
     tabs::VerticalTabStripStateController* controller) {
   should_display_vertical_tabs_ = controller->ShouldDisplayVerticalTabs();
+  if (toolbar_webview_) {
+    toolbar_webview_->SetDraggableRegionsEnabled(should_display_vertical_tabs_);
+  }
   UpdateGlicButtonVisibility();
   UpdateGlicActorVisibility();
   // Invalidate the layout cache so responsive buttons (forward, home, split,
@@ -783,18 +802,26 @@ ToolbarView::CreateGlicActorTaskIcon() {
 }
 
 void ToolbarView::OnGlicActorTaskIconClicked() {
+  if (base::FeatureList::IsEnabled(features::kGlicActivityHub)) {
+    if (glic_split_button_controller_ && glic_actor_task_icon_) {
+      glic_actor_task_icon_->ToggleActivityBubble(
+          *glic_split_button_controller_);
+    }
+    return;
+  }
+
   Profile* const profile = browser_view_->GetProfile();
   auto* activity_manager = glic::LegacyGlicActivityManager::Get(profile);
   if (!activity_manager) {
     return;
   }
 
-  ActorTaskListBubbleController* controller =
-      ActorTaskListBubbleController::From(browser_view_->browser());
+  auto* controller =
+      glic::GlicActivityListBubbleController::From(browser_view_->browser());
   // Only show the bubble if the button is not currently pressed. Clicking on
   // the pressed button should dismiss the nudge.
-  if (!glic_actor_task_icon_->GetIsPressed()) {
-    controller->ShowBubble(glic_actor_task_icon_);
+  if (!glic_actor_task_icon_->GetIsPressed() && controller) {
+    controller->ShowBubble();
   }
 
   auto current_task_nudge_state =
@@ -952,7 +979,9 @@ void ToolbarView::ShowGlicActorTaskIcon() {
   glic_button_ = glic_button_view_;
   SetGlicActorShowState(true);
   SetGlicShowState(true);
-  glic_button_view_->Collapse();
+  if (!base::FeatureList::IsEnabled(features::kGlicActivityHub)) {
+    glic_button_view_->Collapse();
+  }
   glic_button_view_->SetSplitButtonCornerStyling();
   UpdateGlicActorButtonContainerBorders();
 
@@ -995,34 +1024,40 @@ void ToolbarView::SetGlicActorNudgePressedState(bool pressed) {
   }
 }
 
-void ToolbarView::ShowActorTaskListBubble() {
+void ToolbarView::UpdateGlicSplitButtonUi(
+    const glic::GlicSplitButtonUiState& state) {
+  if (glic_actor_task_icon_) {
+    glic_actor_task_icon_->UpdateSplitButtonUi(state, *this);
+  }
+}
+
+void ToolbarView::ShowActivityListBubble() {
   if (!glic_actor_task_icon_) {
     return;
   }
-  if (!actor_task_list_bubble_) {
-    Profile* profile = browser_->GetProfile();
-    auto* manager = glic::LegacyGlicActivityManager::Get(profile);
-    auto* controller = ActorTaskListBubbleController::From(browser_);
-    if (manager && controller) {
-      actor_task_list_bubble_ = std::make_unique<ActorTaskListBubble>(
-          profile, browser_, manager->actor_task_list_bubble_rows(),
-          base::BindRepeating(&ActorTaskListBubbleController::OnTaskRowClicked,
-                              base::Unretained(controller)));
-    }
+  if (activity_list_bubble_) {
+    activity_list_bubble_->Close();
+    activity_list_bubble_.reset();
   }
-  if (actor_task_list_bubble_) {
-    actor_task_list_bubble_->Show(glic_actor_task_icon_);
-  }
-}
-
-void ToolbarView::CloseActorTaskListBubble() {
-  if (actor_task_list_bubble_) {
-    actor_task_list_bubble_->Close();
+  if (auto* controller =
+          glic::GlicActivityListBubbleController::From(browser_)) {
+    activity_list_bubble_ = std::make_unique<glic::GlicActivityListBubble>(
+        controller->CreateRowViewModels(),
+        base::BindRepeating(
+            &glic::GlicActivityListBubbleController::OnBubbleDestroyed,
+            controller->GetWeakPtr()));
+    activity_list_bubble_->Show(glic_actor_task_icon_);
   }
 }
 
-bool ToolbarView::IsActorTaskListBubbleShowing() {
-  return actor_task_list_bubble_ && actor_task_list_bubble_->IsShowing();
+void ToolbarView::CloseActivityListBubble() {
+  if (activity_list_bubble_) {
+    activity_list_bubble_->Close();
+  }
+}
+
+bool ToolbarView::IsActivityListBubbleShowing() {
+  return activity_list_bubble_ && activity_list_bubble_->IsShowing();
 }
 
 void ToolbarView::FinalizeHideGlicActorTaskIcon() {
@@ -1096,6 +1131,10 @@ void ToolbarView::ExecuteHideToolbarNudge(glic::GlicButtonInterface* button) {
   }
 
   button->SetIsShowingNudge(false);
+  if (button == glic_actor_task_icon_ && glic_button_view_ &&
+      base::FeatureList::IsEnabled(features::kGlicActivityHub)) {
+    glic_button_view_->Expand();
+  }
 }
 
 void ToolbarView::UpdateGlicActorVisibility() {
@@ -2052,9 +2091,8 @@ views::BubbleAnchor ToolbarView::GetPageActionBubbleAnchor(
 }
 
 void ToolbarView::ZoomChangedForActiveTab(bool can_show_bubble) {
-  auto* zoom_view_controller = browser_->GetActiveTabInterface()
-                                   ->GetTabFeatures()
-                                   ->zoom_view_controller();
+  auto* zoom_view_controller =
+      zoom::ZoomViewController::From(browser_->GetActiveTabInterface());
   CHECK(zoom_view_controller);
   zoom_view_controller->UpdatePageActionIconAndBubbleVisibility(
       /*prefer_to_show_bubble=*/can_show_bubble, /*from_user_gesture=*/false);

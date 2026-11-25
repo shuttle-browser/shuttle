@@ -42,10 +42,10 @@ import org.mockito.quality.Strictness;
 import org.chromium.base.FakeTimeTestRule;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.BaseActivityTestRule;
+import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisableIf;
-import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
@@ -55,6 +55,7 @@ import org.chromium.chrome.browser.ui.signin.MinorModeHelper;
 import org.chromium.chrome.browser.ui.signin.R;
 import org.chromium.chrome.test.util.ActivityTestUtils;
 import org.chromium.chrome.test.util.browser.signin.SigninTestRule;
+import org.chromium.components.signin.base.AccountInfo;
 import org.chromium.components.signin.metrics.SigninAccessPoint;
 import org.chromium.components.signin.metrics.SyncButtonsType;
 import org.chromium.components.signin.test.util.TestAccounts;
@@ -68,16 +69,17 @@ import org.chromium.ui.test.util.ViewUtils;
 /** Tests for the standalone history sync consent dialog */
 @RunWith(ContentJUnit4ClassRunner.class)
 @CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
-@DoNotBatch(reason = "This test relies on native initialization")
+@Batch(Batch.PER_CLASS)
 public class HistorySyncTest {
     @Rule
     public final MockitoRule mMockitoRule = MockitoJUnit.rule().strictness(Strictness.STRICT_STUBS);
 
-    @Rule
+    @Rule(order = 0)
+    public final SigninTestRule mSigninTestRule = SigninTestRule.createWithCleanups();
+
+    @Rule(order = 1)
     public final BaseActivityTestRule<BlankUiTestActivity> mActivityTestRule =
             new BaseActivityTestRule<>(BlankUiTestActivity.class);
-
-    @Rule public final SigninTestRule mSigninTestRule = new SigninTestRule();
 
     private static final @SigninAccessPoint int SIGNIN_ACCESS_POINT = SigninAccessPoint.WEB_SIGNIN;
     private static final int MINOR_MODE_RESTRICTIONS_FETCH_DEADLINE_MS = 1000;
@@ -95,6 +97,7 @@ public class HistorySyncTest {
         mActivityTestRule.launchActivity(null);
         SyncServiceFactory.setInstanceForTesting(mSyncServiceMock);
         HistorySyncHelper.setInstanceForTesting(mHistorySyncHelperMock);
+        HistorySyncViewBinder.setMinorModeButtonShownMetricRecordedForTesting(false);
     }
 
     @After
@@ -106,7 +109,6 @@ public class HistorySyncTest {
                         mHistorySyncCoordinator = null;
                     });
         }
-        mSigninTestRule.forceSignOut();
         ActivityTestUtils.clearActivityOrientation(mActivityTestRule.getActivity());
     }
 
@@ -449,14 +451,13 @@ public class HistorySyncTest {
                     Assert.assertNull(historySyncActivity.findViewById(R.id.button_secondary));
                 });
 
-        // Capability is received as MINOR_MODE_REQUIRED after an arbitrary amount of time that is
-        // less than the deadline {@link MinorModeHelper.CAPABILITY_TIMEOUT_MS}. Buttons
-        // will be equally weighted.
-        ThreadUtils.runOnUiThreadBlocking(
-                () -> {
-                    mSigninTestRule.resolveMinorModeToRestricted(
-                            TestAccounts.AADC_UNRESOLVED_ACCOUNT.getId());
-                });
+        // Simulate capability update arriving on the same CoreAccountId as MINOR_MODE_REQUIRED
+        // after an arbitrary amount of time that is less than the deadline
+        // {@link MinorModeHelper.CAPABILITY_TIMEOUT_MS}. Buttons will be equally weighted.
+        mSigninTestRule.updateAccount(
+                new AccountInfo.Builder(TestAccounts.AADC_UNRESOLVED_ACCOUNT)
+                        .accountCapabilities(TestAccounts.MINOR_MODE_REQUIRED)
+                        .build());
 
         onViewWaiting(withId(R.id.button_secondary));
 

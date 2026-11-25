@@ -4,6 +4,8 @@
 
 #import "ios/chrome/browser/lens/ui_bundled/lens_coordinator.h"
 
+#import "base/metrics/user_metrics.h"
+#import "base/metrics/user_metrics_action.h"
 #import "components/feature_engagement/public/event_constants.h"
 #import "components/feature_engagement/public/feature_constants.h"
 #import "components/feature_engagement/public/tracker.h"
@@ -13,7 +15,6 @@
 #import "components/search_engines/template_url_service.h"
 #import "components/segmentation_platform/embedder/home_modules/tips_manager/signal_constants.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
-#import "ios/chrome/browser/first_run/public/best_features_item.h"
 #import "ios/chrome/browser/intents/model/intents_donation_helper.h"
 #import "ios/chrome/browser/lens/ui_bundled/features.h"
 #import "ios/chrome/browser/lens/ui_bundled/lens_availability.h"
@@ -46,7 +47,6 @@
 #import "ios/chrome/browser/url_loading/model/url_loading_browser_agent.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_params.h"
 #import "ios/chrome/browser/web/model/web_navigation_util.h"
-#import "ios/chrome/browser/welcome_back/model/features.h"
 #import "ios/chrome/common/NSString+Chromium.h"
 #import "ios/chrome/common/app_group/app_group_constants.h"
 #import "ios/chrome/grit/ios_strings.h"
@@ -340,16 +340,13 @@ const base::TimeDelta kCloseLensViewTimeout = base::Seconds(10);
                                                     base::Time::Now());
 
   [self recordLensUsage];
-
-  // Notify Welcome Back to remove Lens from the eligible features.
-  if (IsWelcomeBackEnabled()) {
-    MarkWelcomeBackFeatureUsed(BestFeaturesItemType::kLensSearch);
-  }
 }
 
 #pragma mark - ChromeLensControllerDelegate
 
 - (void)lensControllerDidTapDismissButton {
+  base::RecordAction(
+      base::UserMetricsAction("Mobile.LensViewFinder.DismissTapped"));
   _dismissed = YES;
   self.lensWebPageLoadTriggeredFromInputSelection = NO;
   web::WebState* loadingWebState = self.loadingWebState;
@@ -402,10 +399,13 @@ const base::TimeDelta kCloseLensViewTimeout = base::Seconds(10);
 }
 
 - (void)lensControllerDidGenerateImage:(UIImage*)image {
-  // NO-OP.
+  base::RecordAction(
+      base::UserMetricsAction("Mobile.LensOverlay.CameraSearch.Performed"));
 }
 
 - (void)lensControllerDidSelectURL:(NSURL*)url {
+  base::RecordAction(
+      base::UserMetricsAction("Mobile.LensViewFinder.CameraURLOpen"));
   // This method is called when the user selects a URL within the Lens UI
   // and should be treated as a link press.
   web::NavigationManager::WebLoadParams params =
@@ -457,16 +457,7 @@ const base::TimeDelta kCloseLensViewTimeout = base::Seconds(10);
   // Web page and we are expecting a Lens Web page load, dismiss the Lens UI.
   if (self.viewController && self.lensWebPageLoadTriggeredFromInputSelection &&
       ios::provider::IsLensWebResultsURL(webState->GetLastCommittedURL())) {
-    self.lensWebPageLoadTriggeredFromInputSelection = NO;
-    self.loadingWebState = nil;
-    [self dismissViewController];
-
-    // As this was a successful Lens Web results page load, trigger the toolbar
-    // slide-in animation.
-    CommandDispatcher* dispatcher = self.browser->GetCommandDispatcher();
-    id<ToolbarCommands> toolbarCommandsHandler =
-        HandlerForProtocol(dispatcher, ToolbarCommands);
-    [toolbarCommandsHandler triggerToolbarSlideInAnimation];
+    [self dismissLensUIForLensWebPageLoad];
   }
 }
 
@@ -474,6 +465,13 @@ const base::TimeDelta kCloseLensViewTimeout = base::Seconds(10);
   const id<ChromeLensController> lensController = self.lensController;
   if (self.lensWebPageLoadTriggeredFromInputSelection && lensController) {
     [lensController triggerSecondaryTransitionAnimation];
+
+    // With no loading results panel, show the Lens Web page as soon as it
+    // starts loading so the Lens UI doesn't appear frozen.
+    if (self.viewController &&
+        base::FeatureList::IsEnabled(kLensHideLoadingWebResultsPanel)) {
+      [self dismissLensUIForLensWebPageLoad];
+    }
   }
 }
 
@@ -520,6 +518,19 @@ const base::TimeDelta kCloseLensViewTimeout = base::Seconds(10);
   }
   loadParams.in_incognito = self.isOffTheRecord;
   UrlLoadingBrowserAgent::FromBrowser(self.browser)->Load(loadParams);
+}
+
+// Dismisses the Lens UI to reveal the Lens Web page load and triggers the
+// toolbar slide-in animation.
+- (void)dismissLensUIForLensWebPageLoad {
+  self.lensWebPageLoadTriggeredFromInputSelection = NO;
+  self.loadingWebState = nil;
+  [self dismissViewController];
+
+  CommandDispatcher* dispatcher = self.browser->GetCommandDispatcher();
+  id<ToolbarCommands> toolbarCommandsHandler =
+      HandlerForProtocol(dispatcher, ToolbarCommands);
+  [toolbarCommandsHandler triggerToolbarSlideInAnimation];
 }
 
 - (void)dismissViewController {

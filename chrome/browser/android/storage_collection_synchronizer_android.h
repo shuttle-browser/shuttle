@@ -8,7 +8,6 @@
 #include <jni.h>
 
 #include "base/functional/callback_forward.h"
-#include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab/storage_collection_synchronizer.h"
 #include "chrome/browser/tab/tab_state_storage_service.h"
@@ -28,13 +27,10 @@ class StorageCollectionSynchronizerAndroid {
   StorageCollectionSynchronizerAndroid& operator=(
       const StorageCollectionSynchronizerAndroid&) = delete;
 
-  void FullSave(JNIEnv* env, base::OnceClosure callback);
-  void SaveStructureSnapshot(JNIEnv* env,
-                             bool clear_unused_nodes,
+  void SaveStructureSnapshot(bool clear_unused_nodes,
                              base::OnceClosure callback);
-  void CancelRestore(JNIEnv* env);
-  void SaveTab(JNIEnv* env, TabAndroid* tab);
-  void SaveTabGroupPayload(JNIEnv* env, base::Token group_id);
+  void FlushPendingStructureSnapshot();
+  void CancelRestore();
 
   void ConsumeRestoreOrchestratorFactory(
       JNIEnv* env,
@@ -42,9 +38,6 @@ class StorageCollectionSynchronizerAndroid {
   void ConsumeCollectionObserverFactory(
       JNIEnv* env,
       const jni_zero::JavaRef<jobject>& j_object);
-
-  // Should only be destroyed through Java object.
-  void Destroy(JNIEnv* env);
 
  private:
   StorageCollectionSynchronizer synchronizer_;

@@ -571,13 +571,16 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.AmbientMode.AnimationSmoothness.PhotoTransition" units="%"
-    expires_after="2026-09-06">
+    expires_after="2027-10-25">
   <owner>cowmoo@google.com</owner>
   <owner>cros-p13n-eng@google.com</owner>
   <summary>
     Emitted when the ambient mode photo transition animation completes to report
     the smoothness of this animation. 100% represents ideally smooth 60 frames
     per second.
+
+    Warning: this histogram was expired from 2026-09-06 to 2026-10-25; data may
+    be missing.
   </summary>
 </histogram>
 
@@ -590,6 +593,20 @@ chromium-metrics-reviews@google.com.
     session. The metric is emitted when ambient mode is ended. 2 new animated
     ambient mode themes have been added started in M104.
   </summary>
+</histogram>
+
+<histogram name="Ash.AmbientMode.LottieAnimationSmoothness.{Settings}"
+    units="%" expires_after="2027-10-25">
+  <owner>cowmoo@google.com</owner>
+  <owner>cros-p13n-eng@google.com</owner>
+  <summary>
+    Emitted periodically while {Settings} is rendering in ambient mode. 100%
+    represents ideal smoothness.
+
+    Warning: this histogram was expired from 2025-06-30 to 2026-10-25; data may
+    be missing.
+  </summary>
+  <token key="Settings" variants="AmbientUiSettings"/>
 </histogram>
 
 <histogram name="Ash.AmbientMode.PhotoSource" enum="AmbientModePhotoSource"
@@ -650,7 +667,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.AmbientMode.VideoSmoothness.{Settings}" units="%"
-    expires_after="2026-01-25">
+    expires_after="2027-10-25">
   <owner>cowmoo@google.com</owner>
   <owner>cros-p13n-eng@chromium.org</owner>
   <summary>
@@ -664,6 +681,9 @@ chromium-metrics-reviews@google.com.
     record and will not be tracked. As such, this metric is just a general gauge
     of the video's performance in the field. Separate fine-grained metrics
     tracking rebuffering frequency and duration may be added in the future.
+
+    Warning: this histogram was expired from 2026-01-25 to 2026-10-25; data may
+    be missing.
   </summary>
   <token key="Settings" variants="AmbientUiSettings"/>
 </histogram>
@@ -4285,15 +4305,16 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Ash.HotseatTransition.AnimationSmoothness{HotseatTransitionType}"
-    units="%" expires_after="2025-12-31">
-  <owner>anasalazar@google.com</owner>
+    units="%" expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>chromeos-launcher@google.com</owner>
   <summary>
     Tracks the animation smoothness for the ShelfWidget's animating background
     during transitions of the hotseat to shown, extended, and hidden hotseat
     states. Check Ash.HotseatWidgetAnimation.AnimationSmoothness for smoothness
     of the HotseatWidget. {HotseatTransitionType} Warning: this histogram was
-    expired from 2023-09-06 to 2025-02-22; data may be missing.
+    expired from 2023-09-06 to 2025-02-22 and from 2025-12-31 to 2026-10-25;
+    data may be missing.
   </summary>
   <token key="HotseatTransitionType" variants="HotseatTransitionType"/>
 </histogram>
@@ -4323,28 +4344,32 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Ash.HotseatWidgetAnimation.AnimationSmoothness{HotseatTransitionType}"
-    units="%" expires_after="2025-05-15">
-  <owner>anasalazar@chromium.org</owner>
+    units="%" expires_after="2027-10-25">
   <owner>newcomer@chromium.org</owner>
+  <owner>chromeos-launcher@google.com</owner>
   <summary>
     Tracks the animation smoothness for the bounds animation of the hotseat
     widget's elements during transitions of the hotseat to shown, extended, and
     hidden hotseat states. Check Ash.HotseatTransition.AnimationSmoothness for
     smoothness of the shelf's animating background. {HotseatTransitionType}
+    Warning: this histogram was expired from 2025-05-15 to 2026-10-25; data may
+    be missing.
   </summary>
   <token key="HotseatTransitionType" variants="HotseatTransitionType"/>
 </histogram>
 
 <histogram
     name="Ash.HotseatWidgetAnimation.{HotseatWidgetElement}AnimationSmoothness"
-    units="%" expires_after="2025-05-15">
-  <owner>anasalazar@chromium.org</owner>
+    units="%" expires_after="2027-10-25">
   <owner>newcomer@chromium.org</owner>
+  <owner>chromeos-launcher@google.com</owner>
   <summary>
     Tracks the animation smoothness for the bounds animation of the hotseat
     widget's elements during transitions of the hotseat to shown, extended, and
     hidden hotseat states. Check Ash.HotseatTransition.AnimationSmoothness for
     smoothness of the shelf's animating background. {HotseatWidgetElement}
+    Warning: this histogram was expired from 2025-05-15 to 2026-10-25; data may
+    be missing.
   </summary>
   <token key="HotseatWidgetElement">
     <variant name="TranslucentBackground."
@@ -4449,7 +4474,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.Login.Lock.SessionStateChange" enum="SessionLockEvent"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>mslus@google.com</owner>
   <owner>cros-lurs@google.com</owner>
   <summary>Records all session lock and unlock events.</summary>
@@ -4599,7 +4624,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.Login.TotalSessionDuration" units="minutes"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>hidehiko@chromium.org</owner>
   <owner>raging@google.com</owner>
   <owner>cros-lurs@google.com</owner>
@@ -5392,12 +5417,15 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.NotifierFramework.Nudge.{PrimaryOrSecondary}ButtonPressed"
-    enum="NudgeCatalogName" expires_after="2025-01-15">
-  <owner>kradtke@google.com</owner>
+    enum="NudgeCatalogName" expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>cros-status-area-eng@google.com</owner>
   <summary>
     Records the nudge catalog name when a user presses one of the nudge's
     buttons.
+
+    Warning: this histogram was expired from 2025-01-15 to 2026-10-25; data may
+    be missing.
   </summary>
   <token key="PrimaryOrSecondary">
     <variant name="Primary"/>
@@ -5407,38 +5435,43 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Ash.NotifierFramework.PinnedSystemNotification.ShownWithoutIcon"
-    enum="NotificationCatalogName" expires_after="2025-02-15">
-  <owner>kradtke@google.com</owner>
+    enum="NotificationCatalogName" expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>cros-status-area-eng@google.com</owner>
   <summary>
     Records a `catalog_name` whenever a pinned notification is shown without
     having provided a `vector_small_image` through its `Notification` object.
     All pinned notifications must have an icon, so the metric will be used to
-    track misbehaving notifications.
+    track misbehaving notifications. Warning: this histogram was expired from
+    2025-02-15 to 2026-10-25; data may be missing.
   </summary>
 </histogram>
 
 <histogram
     name="Ash.NotifierFramework.PinnedSystemNotification.ShownWithoutTitle"
-    enum="NotificationCatalogName" expires_after="2025-02-15">
-  <owner>kradtke@google.com</owner>
+    enum="NotificationCatalogName" expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>cros-status-area-eng@google.com</owner>
   <summary>
     Records a `catalog_name` whenever a pinned notification is shown without
     having provided a `title` through its `Notification` object. All pinned
     notifications must have a title, so the metric will be used to track
-    misbehaving notifications.
+    misbehaving notifications. Warning: this histogram was expired from
+    2025-02-15 to 2026-10-25; data may be missing.
   </summary>
 </histogram>
 
 <histogram name="Ash.NotifierFramework.Toast.Dismissed.{TimeRange}"
-    enum="ToastCatalogName" expires_after="2025-01-15">
-  <owner>kradtke@google.com</owner>
+    enum="ToastCatalogName" expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>cros-status-area-eng@google.com</owner>
   <summary>
     Tracks the time a specific toast spends on screen before being dismissed by
     the user or system. Records the toast catalog name in one of the time
     buckets available when toast is dismissed either manually or by time out.
+
+    Warning: this histogram was expired from 2025-01-15 to 2026-10-25; data may
+    be missing.
   </summary>
   <token key="TimeRange">
     <variant name="After7s"/>
@@ -5458,11 +5491,14 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.NotifierFramework.Toast.TimeInQueue" units="ms"
-    expires_after="2025-05-19">
-  <owner>kradtke@chromium.org</owner>
+    expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>cros-status-area-eng@google.com</owner>
   <summary>
     Records the time a toast spends in queue before it's shown on screen.
+
+    Warning: this histogram was expired from 2025-05-19 to 2026-10-25; data may
+    be missing.
   </summary>
 </histogram>
 
@@ -5543,14 +5579,15 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Ash.NotifierFramework.{UnpinnedOrPinned}SystemNotification.Popup.UserJourneyTime"
-    units="ms" expires_after="2025-01-15">
-  <owner>kradtke@google.com</owner>
+    units="ms" expires_after="2027-10-25">
+  <owner>newcomer@chromium.org</owner>
   <owner>cros-status-area-eng@google.com</owner>
   <summary>
     Records the time a system notification spends as a pop-up before being
     dismissed either by the user or system. Starts measuring time whenever the
     pop-up is shown to the user, and records metric when the pop-up is dismissed
-    either manually or by time out.
+    either manually or by time out. Warning: this histogram was expired from
+    2025-01-15 to 2026-10-25; data may be missing.
   </summary>
   <token key="UnpinnedOrPinned">
     <variant name=""/>
@@ -6574,7 +6611,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Ash.RefactoringHint.ProfilePolicyConnectorIsManaged.{PossibleCases}"
-    units="hash" expires_after="2027-04-01">
+    enum="ProfilePolicyConnectorCallersCodeLocation" expires_after="2027-04-01">
   <owner>junis@google.com</owner>
   <owner>hidehiko@chromium.org</owner>
   <summary>
@@ -7512,7 +7549,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Ash.ShortcutCustomization.ModifyType.{ActionName}"
-    enum="ShortcutCustomizationModificationType" expires_after="2027-02-14">
+    enum="ShortcutCustomizationModificationType" expires_after="2027-05-02">
   <owner>jimmyxgong@chromium.org</owner>
   <owner>cros-device-enablement@google.com</owner>
   <summary>

@@ -6,13 +6,7 @@
 
 namespace partition_alloc::internal {
 
-namespace {
-constinit PartitionTlsRegistry g_instance;
-}
-
-PartitionTlsRegistry& PartitionTlsRegistry::Instance() {
-  return g_instance;
-}
+constinit PartitionTlsRegistry PartitionTlsRegistry::g_instance_;
 
 void PartitionTlsRegistry::Register(PartitionTls* tls) {
   internal::ScopedGuard scoped_locker(GetLock());

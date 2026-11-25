@@ -8,7 +8,6 @@
 
 #import "base/feature_list.h"
 #import "components/pref_registry/pref_registry_syncable.h"
-#import "components/prefs/pref_service.h"
 #import "components/signin/core/browser/account_preview_data_service.h"
 #import "components/signin/core/browser/account_preview_data_service_impl.h"
 #import "components/signin/ios/browser/wait_for_network_callback_helper_ios.h"
@@ -36,7 +35,7 @@ AccountPreviewDataServiceFactory::AccountPreviewDataServiceFactory(PassKey key)
 
 std::unique_ptr<KeyedService>
 AccountPreviewDataServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   if (!base::FeatureList::IsEnabled(switches::kEnableAccountPreviewData)) {
     return nullptr;
   }
@@ -54,8 +53,8 @@ AccountPreviewDataServiceFactory::BuildServiceInstanceFor(
       SigninClientFactory::GetForProfile(profile),
       IdentityManagerFactory::GetForProfile(profile),
       SyncServiceFactory::GetForProfile(profile),
-      GetApplicationContext()->GetLocalState(), profile->GetPrefs(),
-      profile->GetSharedURLLoaderFactory(),
+      GetApplicationContext()->GetLocalState(), profile.GetPrefs(),
+      profile.GetSharedURLLoaderFactory(),
       std::make_unique<WaitForNetworkCallbackHelperIOS>(), ::GetChannel(),
       profile_metrics_service);
 }

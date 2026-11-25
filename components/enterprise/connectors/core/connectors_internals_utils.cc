@@ -9,7 +9,6 @@
 #include "base/i18n/icubridge/icu_bridge.h"
 #include "base/i18n/language_tag.h"
 #include "base/i18n/time_formatting.h"
-#include "base/json/json_reader.h"
 #include "base/json/json_writer.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
@@ -217,44 +216,11 @@ connectors_internals::mojom::Int32ValuePtr ToMojomValue(
                        : nullptr;
 }
 
-std::string GetJsonForReportRequest(
+base::DictValue GetSignalsForReportRequest(
     const enterprise_reporting::ReportRequest& request) {
-  auto proto_request = request.GetChromeProfileReportRequest();
-
-  int policy_count = 0;
-  if (proto_request.has_browser_report()) {
-    for (const auto& profile_info :
-         proto_request.browser_report().chrome_user_profile_infos()) {
-      policy_count += profile_info.chrome_policies_size();
-    }
-  }
-
-  if (proto_request.has_attestation_payload() &&
-      !proto_request.attestation_payload().attestation_blob().empty()) {
-    proto_request.mutable_attestation_payload()->set_attestation_blob(
-        "[attestation blob collected but omitted for readability]");
-  }
-
-  std::string signals_json =
-      enterprise_reporting::GetSecuritySignalsInReport(proto_request);
-
-  if (policy_count > 0) {
-    std::optional<base::Value> parsed_value =
-        base::JSONReader::Read(signals_json, base::JSON_PARSE_RFC);
-
-    if (parsed_value && parsed_value->is_dict()) {
-      parsed_value->GetDict().Set(
-          "chrome_policies",
-          base::StringPrintf(
-              "[%d policies collected but omitted for readability]",
-              policy_count));
-
-      base::JSONWriter::WriteWithOptions(
-          *parsed_value, base::JSONWriter::OPTIONS_PRETTY_PRINT, &signals_json);
-    }
-  }
-
-  return signals_json;
+  return enterprise_reporting::GetSecuritySignalsDictInReport(
+      request.GetChromeProfileReportRequest(),
+      /*include_policy_summary=*/true);
 }
 
 std::string GetStringFromTimestamp(base::Time timestamp) {
@@ -352,15 +318,25 @@ CreateSignalsReportingState(
   bool signals_report_enabled =
       report_scheduler && report_scheduler->AreSecurityReportsEnabled();
 
+  // Prefer showing exactly what was last uploaded, as some signals (e.g. client
+  // certificates) are only collected as part of an upload. Cached signals are
+  // not shown when signals reporting is disabled.
+  connectors_internals::mojom::SignalsPtr signals;
+  if (signals_report_enabled && report_scheduler->GetLastUploadedSignals()) {
+    signals = connectors_internals::mojom::Signals::New(
+        report_scheduler->GetLastUploadedSignals()->Clone(),
+        connectors_internals::mojom::SignalsSource::kLastUploadedReport);
+  }
+
   return connectors_internals::mojom::SignalsReportingState::New(
       std::move(error_info), status_report_enabled, signals_report_enabled,
       std::move(last_upload_attempt_time_string),
       std::move(last_upload_success_time_string),
       std::move(last_signals_upload_config), can_collect_all_signals,
-      /*signals_json=*/std::nullopt);
+      std::move(signals));
 }
 
-std::pair<std::optional<std::string>, std::optional<std::string>>
+std::pair<std::optional<std::string>, std::optional<base::DictValue>>
 ProcessReportGenerationResult(
     base::expected<enterprise_reporting::ReportRequestQueue,
                    enterprise_reporting::ReportGenerationError> result) {
@@ -376,7 +352,7 @@ ProcessReportGenerationResult(
   enterprise_reporting::ReportRequestQueue requests = std::move(result).value();
   std::unique_ptr<enterprise_reporting::ReportRequest> request =
       std::move(requests.front());
-  return {std::nullopt, GetJsonForReportRequest(*request)};
+  return {std::nullopt, GetSignalsForReportRequest(*request)};
 }
 
 #if BUILDFLAG(ENTERPRISE_PROXY)
@@ -432,10 +408,20 @@ GetProvisioningDomainState(
 
     const base::DictValue* fetched_dict =
         domain_dict.FindDict("fetched_config");
+    const base::DictValue* last_failure_dict =
+        domain_dict.FindDict("last_failure");
     std::string routes_json;
     if (fetched_dict) {
-      base::JSONWriter::WriteWithOptions(
-          *fetched_dict, base::JSONWriter::OPTIONS_PRETTY_PRINT, &routes_json);
+      if (last_failure_dict) {
+        base::DictValue routes_dict = fetched_dict->Clone();
+        routes_dict.Set("last_failure", last_failure_dict->Clone());
+        base::JSONWriter::WriteWithOptions(
+            routes_dict, base::JSONWriter::OPTIONS_PRETTY_PRINT, &routes_json);
+      } else {
+        base::JSONWriter::WriteWithOptions(
+            *fetched_dict, base::JSONWriter::OPTIONS_PRETTY_PRINT,
+            &routes_json);
+      }
     }
 
     pvd_configs.push_back(

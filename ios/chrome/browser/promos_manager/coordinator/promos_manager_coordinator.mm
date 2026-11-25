@@ -71,8 +71,6 @@
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/browser/sync/model/sync_service_factory.h"
-#import "ios/chrome/browser/welcome_back/coordinator/welcome_back_display_handler.h"
-#import "ios/chrome/browser/welcome_back/model/features.h"
 #import "ios/chrome/browser/whats_new/coordinator/promo/whats_new_promo_display_handler.h"
 #import "ios/chrome/browser/whats_new/coordinator/whats_new_util.h"
 #import "ios/chrome/common/ui/confirmation_alert/confirmation_alert_action_handler.h"
@@ -601,12 +599,6 @@
   if (IsFullscreenSigninPromoManagerMigrationEnabled()) {
     _displayHandlerPromos[promos_manager::Promo::FullscreenSignin] =
         [[FullscreenSigninPromoDisplayHandler alloc] init];
-  }
-
-  // Welcome Back promo handler.
-  if (IsWelcomeBackEnabled()) {
-    _displayHandlerPromos[promos_manager::Promo::WelcomeBack] =
-        [[WelcomeBackDisplayHandler alloc] init];
   }
 
   // Safari Import remind me later handler.

@@ -48,13 +48,13 @@ MATCHER(NullTime, "") {
   return arg.is_null();
 }
 
-MATCHER_P(HasDefaultKeyDerivedFrom, key_params, "") {
+MATCHER_P(HasPrimaryKeyDerivedFrom, key_params, "") {
   const Cryptographer& cryptographer = arg;
-  std::unique_ptr<Nigori> expected_default_nigori = Nigori::CreateByDerivation(
+  std::unique_ptr<Nigori> expected_primary_nigori = Nigori::CreateByDerivation(
       NigoriPassKey::ForTesting(), key_params.derivation_params,
       key_params.password);
-  return cryptographer.GetDefaultEncryptionKeyName() ==
-         expected_default_nigori->GetKeyName();
+  return cryptographer.GetPrimaryEncryptionKeyName() ==
+         expected_primary_nigori->GetKeyName();
 }
 
 MATCHER(HasKeystoreNigori, "") {
@@ -216,8 +216,7 @@ MATCHER_P(HasBootstrapTokenKeyDerivedFrom, expected_key_params, "") {
   }
   std::unique_ptr<Nigori> expected_nigori = MakeNigoriKey(expected_key_params);
   sync_pb::NigoriKey expected_key;
-  expected_nigori->ExportKeys(expected_key.mutable_deprecated_user_key(),
-                              expected_key.mutable_encryption_key(),
+  expected_nigori->ExportKeys(expected_key.mutable_encryption_key(),
                               expected_key.mutable_mac_key());
   const sync_pb::NigoriKey& given_key = arg.ToProto();
   return given_key.encryption_key() == expected_key.encryption_key() &&
@@ -496,7 +495,7 @@ TEST_F(NigoriSyncBridgeImplTest, ShouldAcceptKeysFromImplicitPassphraseNigori) {
   bridge()->SetDecryptionPassphrase(kKeyParams.password);
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeyParams));
 }
 
 // Simplest case of keystore Nigori: we have only one keystore key and no old
@@ -529,7 +528,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(bridge()->GetKeystoreMigrationTime(), Not(NullTime()));
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // Simplest case of keystore Nigori with CrossUserSharingKeys.
@@ -582,12 +581,12 @@ TEST_F(
   EXPECT_THAT(key_pair_in_cryptographer.GetRawPublicKey(),
               testing::ElementsAreArray(raw_public_key));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // Tests that client can properly process remote updates with rotated keystore
 // nigori. Cryptographer should be able to decrypt any data encrypted with any
-// keystore key and use current keystore key as default key.
+// keystore key and use current keystore key as primary key.
 TEST_F(NigoriSyncBridgeImplTest, ShouldAcceptKeysFromRotatedKeystoreNigori) {
   const std::vector<uint8_t> kRawOldKey = {5, 6, 7, 8};
   const KeyParamsForTesting kOldKeyParams =
@@ -607,7 +606,7 @@ TEST_F(NigoriSyncBridgeImplTest, ShouldAcceptKeysFromRotatedKeystoreNigori) {
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kOldKeyParams));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kCurrentKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kCurrentKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kCurrentKeyParams));
 }
 
 // In the backward compatible mode keystore Nigori's keystore_decryptor_token
@@ -631,7 +630,7 @@ TEST_F(NigoriSyncBridgeImplTest,
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kGaiaKeyParams));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kGaiaKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kGaiaKeyParams));
 }
 
 // Tests that we can successfully use old keys from encryption_keybag in
@@ -662,7 +661,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   for (const KeyParamsForTesting& key_params : kAllKeyParams) {
     EXPECT_THAT(*cryptographer(), CanDecryptWith(key_params));
   }
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kCurrentKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kCurrentKeyParams));
 }
 
 // Tests that we build keystore Nigori, put it to processor, initialize the
@@ -694,7 +693,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_EQ(PassphraseType::kKeystorePassphrase, bridge()->GetPassphraseType());
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // Tests that upon receiving Nigori corrupted due to absence of
@@ -718,7 +717,6 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(bridge()->MergeFullSyncData(std::move(entity_data)),
               Ne(std::nullopt));
 }
-
 
 // This test emulates late arrival of keystore keys, so neither
 // `keystore_decryptor_token` or `encryption_keybag` could be decrypted at the
@@ -746,12 +744,12 @@ TEST_F(NigoriSyncBridgeImplTest, ShouldDecryptPendingKeysInKeystoreMode) {
   EXPECT_CALL(*observer(), OnKeystoreKeysAccepted());
   EXPECT_TRUE(bridge()->SetKeystoreKeys({kRawKeystoreKey}));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // This test emulates late arrival of keystore keys in backward-compatible
 // keystore mode, so neither `keystore_decryptor_token` or `encryption_keybag`
-// could be decrypted at the moment NigoriSpecifics arrived. Since default key
+// could be decrypted at the moment NigoriSpecifics arrived. Since primary key
 // is derived from legacy implicit passphrase, pending keys should be decrypted
 // once passphrase passed to SetDecryptionPassphrase().
 // SetKeystoreKeys() intentionally not called in this test, to not allow
@@ -784,7 +782,7 @@ TEST_F(NigoriSyncBridgeImplTest,
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kPassphraseKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kPassphraseKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kPassphraseKeyParams));
 
   // Regression part of the test, SetKeystoreKeys() call in this scenario used
   // to cause the crash (see crbug.com/1042203).
@@ -848,7 +846,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_TRUE(bridge()->SetKeystoreKeys({kRawKeystoreKey}));
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
   EXPECT_FALSE(bridge()->NeedKeystoreKey());
 }
 
@@ -897,7 +895,7 @@ TEST_F(NigoriSyncBridgeImplTest,
 
   EXPECT_THAT(bridge()->GetDataForDebugging(), HasKeystoreNigori());
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // Tests that we can perform initial sync with custom passphrase Nigori.
@@ -1096,7 +1094,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   ASSERT_THAT(bridge()->MergeFullSyncData(std::move(entity_data)),
               Eq(std::nullopt));
   ASSERT_TRUE(cryptographer()->CanEncrypt());
-  // Encryption should succeed since a default key exists.
+  // Encryption should succeed since a primary key exists.
   CrossUserSharingPublicPrivateKeyPair peer_key_pair =
       CrossUserSharingPublicPrivateKeyPair::GenerateNewKeyPair();
   ASSERT_TRUE(
@@ -1119,7 +1117,7 @@ TEST_F(NigoriSyncBridgeImplTest,
 // able to decrypt the data encrypted with old key (i.e. keystore keys or old
 // GAIA passphrase) we add one extra key to the encryption keybag.
 TEST_P(NigoriSyncBridgeImplTestWithOptionalScryptDerivation,
-       ShouldDecryptWithCustomPassphraseAndUpdateDefaultKey) {
+       ShouldDecryptWithCustomPassphraseAndUpdatePrimaryKey) {
   const KeyParamsForTesting kOldKeyParams =
       Pbkdf2PassphraseKeyParamsForTesting("old_key");
   const KeyParamsForTesting& passphrase_key_params =
@@ -1146,7 +1144,7 @@ TEST_P(NigoriSyncBridgeImplTestWithOptionalScryptDerivation,
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kOldKeyParams));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(passphrase_key_params));
   EXPECT_THAT(*cryptographer(),
-              HasDefaultKeyDerivedFrom(passphrase_key_params));
+              HasPrimaryKeyDerivedFrom(passphrase_key_params));
 }
 
 TEST_P(NigoriSyncBridgeImplTestWithOptionalScryptDerivation,
@@ -1168,7 +1166,7 @@ TEST_P(NigoriSyncBridgeImplTestWithOptionalScryptDerivation,
   bridge()->SetDecryptionPassphrase(GetCustomPassphraseKeyParams().password);
   EXPECT_TRUE(cryptographer()->CanEncrypt());
   EXPECT_THAT(*cryptographer(),
-              HasDefaultKeyDerivedFrom(GetCustomPassphraseKeyParams()));
+              HasPrimaryKeyDerivedFrom(GetCustomPassphraseKeyParams()));
 }
 
 TEST_P(NigoriSyncBridgeImplTestWithOptionalScryptDerivation,
@@ -1185,7 +1183,7 @@ TEST_P(NigoriSyncBridgeImplTestWithOptionalScryptDerivation,
   MimicRestartWithLocalData(nigori_local_data());
   EXPECT_TRUE(cryptographer()->CanEncrypt());
   EXPECT_THAT(*cryptographer(),
-              HasDefaultKeyDerivedFrom(GetCustomPassphraseKeyParams()));
+              HasPrimaryKeyDerivedFrom(GetCustomPassphraseKeyParams()));
 }
 
 INSTANTIATE_TEST_SUITE_P(Scrypt,
@@ -1242,7 +1240,7 @@ TEST_F(NigoriSyncBridgeImplTest,
 
   EXPECT_THAT(*cryptographer(), CanDecryptWith(passphrase_key_params));
   EXPECT_THAT(*cryptographer(),
-              HasDefaultKeyDerivedFrom(passphrase_key_params));
+              HasPrimaryKeyDerivedFrom(passphrase_key_params));
 }
 
 // Tests that pending local change with setting custom passphrase is applied,
@@ -1312,7 +1310,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams2));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(passphrase_key_params));
   EXPECT_THAT(*cryptographer(),
-              HasDefaultKeyDerivedFrom(passphrase_key_params));
+              HasPrimaryKeyDerivedFrom(passphrase_key_params));
 }
 
 // Tests that SetEncryptionPassphrase() call doesn't lead to custom passphrase
@@ -1364,7 +1362,7 @@ TEST_F(NigoriSyncBridgeImplTest, ShouldRestoreKeystoreNigori) {
   EXPECT_THAT(*bridge()->GetCryptographer(),
               CanDecryptWith(kKeystoreKeyParams));
   EXPECT_THAT(*bridge()->GetCryptographer(),
-              HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+              HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // Commit with keystore Nigori initialization might be not completed before
@@ -1403,7 +1401,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(*bridge()->GetCryptographer(),
               CanDecryptWith(kKeystoreKeyParams));
   EXPECT_THAT(*bridge()->GetCryptographer(),
-              HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+              HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 // Tests the initial sync with a trusted vault Nigori. Observers should be
@@ -1762,7 +1760,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kTrustedVaultKeyParams));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kCustomPassphraseKeyParams));
   EXPECT_THAT(*cryptographer(),
-              HasDefaultKeyDerivedFrom(kCustomPassphraseKeyParams));
+              HasPrimaryKeyDerivedFrom(kCustomPassphraseKeyParams));
 }
 
 // Tests processing of remote incremental update that transits from trusted
@@ -2225,14 +2223,14 @@ TEST_F(
 }
 
 TEST_F(NigoriSyncBridgeImplTest,
-       ShouldIgnoreLocalDataWithEncryptionKeysWithoutDefaultKeyName) {
+       ShouldIgnoreLocalDataWithEncryptionKeysWithoutPrimaryKeyName) {
   ASSERT_TRUE(PerformInitialSyncWithSimpleKeystoreNigori());
   sync_pb::NigoriLocalData local_data = nigori_local_data();
   // Mimic legacy/corrupted state where `key_bag` is non-empty and
-  // `default_key_name` is empty.
+  // `primary_key_name` is empty.
   local_data.mutable_nigori_model()
       ->mutable_cryptographer_data()
-      ->clear_default_key_name();
+      ->clear_primary_key_name();
 
   // Ensure that bridge ignores local state.
   EXPECT_CALL(*processor(),
@@ -2361,7 +2359,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(bridge()->GetKeystoreMigrationTime(), Not(NullTime()));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeyParams));
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeystoreKeyParams));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeystoreKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeystoreKeyParams));
 }
 
 TEST_F(NigoriSyncBridgeImplTest,
@@ -2415,7 +2413,7 @@ TEST_F(NigoriSyncBridgeImplTest,
   EXPECT_THAT(bridge()->GetKeystoreMigrationTime(), NullTime());
   EXPECT_THAT(*cryptographer(), CanDecryptWith(kKeyParams));
   EXPECT_THAT(*cryptographer(), Not(CanDecryptWith(kKeystoreKeyParams)));
-  EXPECT_THAT(*cryptographer(), HasDefaultKeyDerivedFrom(kKeyParams));
+  EXPECT_THAT(*cryptographer(), HasPrimaryKeyDerivedFrom(kKeyParams));
 }
 
 TEST_F(NigoriSyncBridgeImplTest,

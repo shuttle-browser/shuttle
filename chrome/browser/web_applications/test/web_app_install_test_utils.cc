@@ -41,6 +41,7 @@
 #include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/web_contents.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-shared.h"
 #include "url/gurl.h"
 
@@ -226,7 +227,6 @@ webapps::AppId InstallWebAppWithoutOsIntegration(
     web_app_info->title = u"WebAppInstallInfo App Name";
   }
 
-  webapps::AppId app_id;
   base::test::TestFuture<const webapps::AppId&, webapps::InstallResultCode>
       future;
   auto* provider = WebAppProvider::GetForTest(profile);
@@ -338,7 +338,7 @@ webapps::AppId InstallForWebContents(
 
 std::unique_ptr<WebAppInstallInfo> GetInstallInfoForCurrentManifest(
     base::WeakPtr<content::WebContents> web_contents,
-    const blink::mojom::Manifest& manifest,
+    const blink::Manifest& manifest,
     WebAppInstallInfoConstructOptions construct_options) {
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());

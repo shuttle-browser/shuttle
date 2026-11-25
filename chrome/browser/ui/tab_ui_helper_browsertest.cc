@@ -9,25 +9,40 @@
 
 #include "base/callback_list.h"
 #include "base/functional/bind.h"
+#include "base/run_loop.h"
+#include "chrome/browser/favicon/favicon_service_factory.h"
+#include "chrome/browser/history/history_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/performance_controls/test_support/memory_saver_browser_test_mixin.h"
+#include "chrome/browser/ui/sad_tab_helper.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
+#include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
+#include "components/favicon/core/favicon_service.h"
+#include "components/favicon_base/favicon_types.h"
+#include "components/history/core/browser/history_service.h"
+#include "components/history/core/browser/history_types.h"
+#include "components/keyed_service/core/service_access_type.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/tabs/public/tab_network_state.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
 #include "content/public/test/browser_test_utils.h"
+#include "content/public/test/no_renderer_crashes_assertion.h"
 #include "content/public/test/prerender_test_util.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/test/embedded_test_server/embedded_test_server.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/gfx/image/image.h"
 
 namespace {
 class MockTabUIHelperSubscriber {
@@ -96,7 +111,7 @@ IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest, DiscardUiChangeIsNotified) {
 
 IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest, NotifyWhenTabVisibilityChanges) {
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GetURL(), WindowOpenDisposition::kNewBackgroundTab,
+      browser(), GetURL(), ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
 
   TabStripModel* const tab_strip_model = browser()->tab_strip_model();
@@ -152,7 +167,7 @@ IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest, NetworkStateChangeIsNotified) {
   EXPECT_CALL(*tab_ui_change_waiter, OnTabUIChange())
       .Times(testing::AnyNumber());
   ui_test_utils::NavigateToURLWithDisposition(
-      browser(), GetURL(), WindowOpenDisposition::kCurrentTab,
+      browser(), GetURL(), ui::mojom::WindowOpenDisposition::kCurrentTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP);
   EXPECT_EQ(tab_ui_helper->GetTabNetworkState(), tabs::TabNetworkState::kNone);
 }
@@ -174,7 +189,7 @@ IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest, TabCrashStateChangeIsNotified) {
 IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest, ShouldHideThrobberIsNotified) {
   ASSERT_TRUE(ui_test_utils::NavigateToURLWithDisposition(
       browser(), GURL(url::kAboutBlankURL),
-      WindowOpenDisposition::kNewBackgroundTab,
+      ui::mojom::WindowOpenDisposition::kNewBackgroundTab,
       ui_test_utils::BROWSER_TEST_WAIT_FOR_LOAD_STOP));
   tabs::TabInterface* const tab_interface =
       browser()->GetTabStripModel()->GetTabAtIndex(1);
@@ -186,6 +201,83 @@ IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest, ShouldHideThrobberIsNotified) {
   EXPECT_CALL(*tab_ui_change_waiter, OnTabUIChange());
   tab_ui_helper->SetCreatedBySessionRestore(true);
   EXPECT_TRUE(tab_ui_helper->ShouldHideThrobber());
+}
+
+IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest,
+                       PendingNavigationStateChangeIsNotified) {
+  ASSERT_NE(ui_test_utils::NavigateToURL(
+                browser(), embedded_test_server()->GetURL("/title2.html")),
+            nullptr);
+  tabs::TabInterface* const tab_interface =
+      browser()->tab_strip_model()->GetActiveTab();
+  TabUIHelper* const tab_ui_helper = TabUIHelper::From(tab_interface);
+  ASSERT_EQ(tab_ui_helper->GetTitle(), u"Title Of Awesomeness");
+
+  const GURL pending_navigation_url("https://example.com/deferred");
+  HistoryServiceFactory::GetForProfile(browser()->GetProfile(),
+                                       ServiceAccessType::EXPLICIT_ACCESS)
+      ->AddPage(pending_navigation_url, base::Time::Now(),
+                history::SOURCE_BROWSED);
+  SkBitmap bitmap;
+  bitmap.allocN32Pixels(16, 16);
+  bitmap.eraseColor(SK_ColorRED);
+  FaviconServiceFactory::GetForProfile(browser()->GetProfile(),
+                                       ServiceAccessType::EXPLICIT_ACCESS)
+      ->SetFavicons({pending_navigation_url},
+                    GURL("https://example.com/favicon.ico"),
+                    favicon_base::IconType::kFavicon,
+                    gfx::Image::CreateFrom1xBitmap(bitmap));
+
+  base::RunLoop favicon_run_loop;
+  auto tab_ui_change_waiter =
+      std::make_unique<MockTabUIHelperSubscriber>(tab_ui_helper);
+  EXPECT_CALL(*tab_ui_change_waiter, OnTabUIChange())
+      .WillOnce(testing::Return())
+      .WillOnce([&favicon_run_loop]() { favicon_run_loop.Quit(); });
+
+  tab_ui_helper->SetPendingNavigationState(pending_navigation_url,
+                                           u"Deferred Title");
+  EXPECT_EQ(tab_ui_helper->GetTitle(), u"Deferred Title");
+
+  favicon_run_loop.Run();
+  EXPECT_FALSE(tab_ui_helper->GetFavicon().IsEmpty());
+
+  EXPECT_CALL(*tab_ui_change_waiter, OnTabUIChange()).Times(1);
+  tab_ui_helper->ClearPendingNavigationState();
+  EXPECT_EQ(tab_ui_helper->GetTitle(), u"Title Of Awesomeness");
+}
+
+IN_PROC_BROWSER_TEST_F(TabUIHelperBrowserTest,
+                       ClosingCrashedTabWithNeedsReload) {
+  content::ScopedAllowRendererCrashes scoped_allow_renderer_crashes;
+
+  ASSERT_NE(ui_test_utils::NavigateToURL(
+                browser(), embedded_test_server()->GetURL("/title1.html")),
+            nullptr);
+  ASSERT_TRUE(AddTabAtIndex(1, embedded_test_server()->GetURL("/title2.html"),
+                            ui::PAGE_TRANSITION_TYPED));
+
+  TabStripModel* const tab_strip_model = browser()->tab_strip_model();
+  ASSERT_EQ(tab_strip_model->active_index(), 1);
+  tabs::TabInterface* const crashed_tab = tab_strip_model->GetTabAtIndex(1);
+  content::WebContents* const crashed_contents = crashed_tab->GetContents();
+
+  // Crash the active tab so that SadTabHelper installs the SadTab overlay view,
+  // hiding the underlying WebView NativeViewHost (and making the WebContents
+  // occluded/hidden).
+  content::CrashTab(crashed_contents);
+  ASSERT_TRUE(TabUIHelper::From(crashed_tab)->IsCrashed());
+  ASSERT_NE(SadTabHelper::From(crashed_tab)->sad_tab(), nullptr);
+
+  // Mark the crashed tab's NavigationController as needing reload so that when
+  // ~SadTabController detaches the crashed overlay view and restores the
+  // NativeViewHost's visibility during DestroyTabFeatures(),
+  // NavigationControllerImpl::SetActive(true) triggers LoadIfNecessary()
+  // synchronously while TabFeatures is mid-destruction and
+  // tab->GetTabFeatures() is nullptr.
+  crashed_contents->GetController().SetNeedsReload();
+
+  tab_strip_model->CloseWebContentsAt(1, TabCloseTypes::CLOSE_USER_GESTURE);
 }
 
 class TabUIHelperWithPrerenderingTest : public InProcessBrowserTest {

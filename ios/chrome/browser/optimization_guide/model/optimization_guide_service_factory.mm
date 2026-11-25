@@ -30,13 +30,22 @@
 
 namespace {
 
+// Returns the NetworkContext from `weak_profile` or nullptr.
+network::mojom::NetworkContext* GetNetworkContext(
+    base::WeakPtr<ProfileIOS> weak_profile) {
+  if (ProfileIOS* profile = weak_profile.get()) {
+    return profile->GetNetworkContext();
+  }
+  return nullptr;
+}
+
 std::unique_ptr<KeyedService> BuildOptimizationGuideService(
-    ProfileIOS* profile) {
+    ProfileIOS& profile) {
   if (!optimization_guide::features::IsOptimizationHintsEnabled()) {
     return nullptr;
   }
 
-  ProfileIOS* original_profile = profile->GetOriginalProfile();
+  ProfileIOS* original_profile = profile.GetOriginalProfile();
 
   // Regardless of whether the profile is off the record or not, initialize the
   // Optimization Guide with the database associated with the original profile.
@@ -44,7 +53,7 @@ std::unique_ptr<KeyedService> BuildOptimizationGuideService(
   base::FilePath profile_path = original_profile->GetStatePath();
 
   base::WeakPtr<optimization_guide::OptimizationGuideStore> hint_store;
-  if (profile->IsOffTheRecord()) {
+  if (profile.IsOffTheRecord()) {
     OptimizationGuideService* original_ogs =
         OptimizationGuideServiceFactory::GetForProfile(original_profile);
     DCHECK(original_ogs);
@@ -54,7 +63,7 @@ std::unique_ptr<KeyedService> BuildOptimizationGuideService(
   std::unique_ptr<optimization_guide::ModelExecutionManager::Delegate>
       delegate = nullptr;
 #if BUILDFLAG(BUILD_WITH_MODEL_EXECUTION)
-  if (!profile->IsOffTheRecord()) {
+  if (!profile.IsOffTheRecord()) {
     private_ai::PrivateAiService* private_ai_service =
         PrivateAiServiceFactory::GetForProfile(profile);
     delegate =
@@ -63,20 +72,16 @@ std::unique_ptr<KeyedService> BuildOptimizationGuideService(
 #endif
 
   auto service = std::make_unique<OptimizationGuideService>(
-      proto_db_provider, profile_path, profile->IsOffTheRecord(),
+      proto_db_provider, profile_path, profile.IsOffTheRecord(),
       std::string(GetApplicationContext()
                       ->GetApplicationLocaleStorage()
                       ->GetTag()
                       .tag_string()),
-      hint_store, profile->GetPrefs(),
+      hint_store, profile.GetPrefs(),
       BrowserListFactory::GetForProfile(profile),
       GetApplicationContext()->GetSharedURLLoaderFactory(),
       IdentityManagerFactory::GetForProfile(profile), std::move(delegate),
-      base::BindRepeating(
-          [](base::WeakPtr<ProfileIOS> profile) {
-            return profile ? profile->GetNetworkContext() : nullptr;
-          },
-          profile->AsWeakPtr()));
+      base::BindRepeating(&GetNetworkContext, profile.AsWeakPtr()));
 
   service->DoFinalInit(
       BackgroundDownloadServiceFactory::GetForProfile(profile));
@@ -120,6 +125,6 @@ OptimizationGuideServiceFactory::GetDefaultFactory() {
 
 std::unique_ptr<KeyedService>
 OptimizationGuideServiceFactory::BuildServiceInstanceFor(
-    ProfileIOS* profile) const {
+    ProfileIOS& profile) const {
   return BuildOptimizationGuideService(profile);
 }

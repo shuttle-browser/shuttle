@@ -33,13 +33,17 @@ import org.chromium.url.GURL;
 /* package */ class OnStartupUrlDialogCoordinator {
     private final Context mContext;
     private final ModalDialogManager mModalDialogManager;
+    private final @ModalDialogType int mDialogType;
     private @Nullable PropertyModel mDialogModel;
     private boolean mIsEditMode;
 
     /* package */ OnStartupUrlDialogCoordinator(
-            Context context, ModalDialogManager modalDialogManager) {
+            Context context,
+            ModalDialogManager modalDialogManager,
+            @ModalDialogType int dialogType) {
         mContext = context;
         mModalDialogManager = modalDialogManager;
+        mDialogType = dialogType;
     }
 
     /* package */ void show(@Nullable String initialUrl, Callback<String> onSaveCallback) {
@@ -89,7 +93,7 @@ import org.chromium.url.GURL;
                         .with(
                                 ModalDialogProperties.BUTTON_STYLES,
                                 ButtonStyles.PRIMARY_FILLED_NEGATIVE_OUTLINE)
-                        .with(ModalDialogProperties.CANCEL_ON_TOUCH_OUTSIDE, true)
+                        .with(ModalDialogProperties.CANCEL_ON_TOUCH_OUTSIDE, false)
                         .with(ModalDialogProperties.POSITIVE_BUTTON_DISABLED, true)
                         .build();
 
@@ -118,7 +122,7 @@ import org.chromium.url.GURL;
         }
 
         mDialogModel = dialogModel;
-        mModalDialogManager.showDialog(dialogModel, ModalDialogType.APP);
+        mModalDialogManager.showDialog(dialogModel, mDialogType);
         urlEditText.requestFocus();
         KeyboardUtils.showKeyboard(urlEditText);
     }
@@ -138,9 +142,15 @@ import org.chromium.url.GURL;
         }
     }
 
-    // Normalizes the user input and accepts only valid HTTP and HTTPS URLs.
+    // Normalizes the user input and accepts only valid HTTP and HTTPS URLs. A
+    // host containing an escaped character (e.g. "%20" for a space) is never
+    // resolvable, but GURL still reports it as valid while
+    // DisallowSpaceCharacterInURLHostParsing is disabled.
     private static @Nullable GURL getValidatedUrl(String input) {
         GURL fixedUrl = UrlFormatter.fixupUrl(input.trim());
-        return fixedUrl.isValid() && UrlUtilities.isHttpOrHttps(fixedUrl) ? fixedUrl : null;
+        if (!fixedUrl.isValid() || !UrlUtilities.isHttpOrHttps(fixedUrl)) {
+            return null;
+        }
+        return fixedUrl.getHost().contains("%") ? null : fixedUrl;
     }
 }

@@ -8,16 +8,15 @@ import type {BackupPasswordDetailsCardElement} from 'chrome://password-manager/p
 import {Page, PasswordManagerImpl, PasswordViewPageInteractions, Router, SyncBrowserProxyImpl} from 'chrome://password-manager/password_manager.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {flushTasks} from 'chrome://webui-test/polymer_test_util.js';
-import {eventToPromise, isVisible} from 'chrome://webui-test/test_util.js';
+import {eventToPromise, isVisible, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
 import {TestPasswordManagerProxy} from './test_password_manager_proxy.js';
 import {TestSyncBrowserProxy} from './test_sync_browser_proxy.js';
 import {createAffiliatedDomain, createPasswordEntry} from './test_util.js';
 
-async function createCardElement(
+function createCardElement(
     password: chrome.passwordsPrivate.PasswordUiEntry|null =
-        null): Promise<BackupPasswordDetailsCardElement> {
+        null): BackupPasswordDetailsCardElement {
   if (!password) {
     password = createPasswordEntry({
       url: 'test.com',
@@ -29,7 +28,6 @@ async function createCardElement(
   const card = document.createElement('backup-password-details-card');
   card.password = password;
   document.body.appendChild(card);
-  await flushTasks();
   return card;
 }
 
@@ -44,17 +42,16 @@ suite('BackupPasswordDetailsCardTest', function() {
     syncProxy = new TestSyncBrowserProxy();
     SyncBrowserProxyImpl.setInstance(syncProxy);
     Router.getInstance().navigateTo(Page.PASSWORDS);
-    return flushTasks();
   });
 
-  test('Content displayed properly', async function() {
+  test('Content displayed properly', function() {
     const password = createPasswordEntry({
       url: 'test.com',
       username: 'vik',
       backupPassword: {value: 'backup', creationDate: 'Mar 17'},
     });
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertEquals(password.username, card.$.usernameValue.value);
     assertEquals(password.backupPassword!.value, card.$.passwordValue.value);
@@ -80,7 +77,7 @@ suite('BackupPasswordDetailsCardTest', function() {
       backupPassword: {value: 'backup', creationDate: 'Mar 17'},
     });
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertTrue(isVisible(card.$.copyPasswordButton));
 
@@ -93,9 +90,24 @@ suite('BackupPasswordDetailsCardTest', function() {
     assertEquals(
         PasswordViewPageInteractions.PASSWORD_COPY_BUTTON_CLICKED,
         await passwordManager.whenCalled('recordPasswordViewInteraction'));
-
-    await flushTasks();
   });
+
+  test(
+      'Copy password does not dispatch value-copied on failure',
+      async function() {
+        passwordManager.data.copyPlaintextBackupPasswordSuccessful = false;
+        const card = createCardElement();
+        let valueCopiedFired = false;
+        card.addEventListener('value-copied', () => {
+          valueCopiedFired = true;
+        });
+
+        card.$.copyPasswordButton.click();
+        await passwordManager.whenCalled('copyPlaintextBackupPassword');
+        await microtasksFinished();
+
+        assertFalse(valueCopiedFired);
+      });
 
   test('Delete password', async function() {
     const password = createPasswordEntry({
@@ -105,7 +117,7 @@ suite('BackupPasswordDetailsCardTest', function() {
       backupPassword: {value: 'backup', creationDate: 'Mar 17'},
     });
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertTrue(isVisible(card.$.deleteButton));
 
@@ -115,7 +127,7 @@ suite('BackupPasswordDetailsCardTest', function() {
     assertEquals(params.id, password.id);
   });
 
-  test('Links properly displayed', async function() {
+  test('Links properly displayed', function() {
     const password = createPasswordEntry({
       url: 'test.com',
       username: 'vik',
@@ -126,10 +138,10 @@ suite('BackupPasswordDetailsCardTest', function() {
       createAffiliatedDomain('m.test.com'),
     ];
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     const listItemElements =
-        card.shadowRoot!.querySelectorAll<HTMLAnchorElement>('a.site-link');
+        card.shadowRoot.querySelectorAll<HTMLAnchorElement>('a.site-link');
     assertEquals(listItemElements.length, password.affiliatedDomains.length);
 
     password.affiliatedDomains.forEach((expectedDomain, i) => {
@@ -149,7 +161,7 @@ suite('BackupPasswordDetailsCardTest', function() {
       backupPassword: {value: 'backup', creationDate: 'Mar 17'},
     });
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertEquals(
         loadTimeData.getString('showPassword'),
@@ -163,6 +175,7 @@ suite('BackupPasswordDetailsCardTest', function() {
     assertEquals(
         PasswordViewPageInteractions.PASSWORD_SHOW_BUTTON_CLICKED,
         await passwordManager.whenCalled('recordPasswordViewInteraction'));
+    await microtasksFinished();
 
     assertEquals(
         loadTimeData.getString('hidePassword'),
@@ -173,7 +186,7 @@ suite('BackupPasswordDetailsCardTest', function() {
         'icon-visibility-off', card.$.showPasswordButton.getAttribute('class'));
   });
 
-  test('Sites title', async function() {
+  test('Sites title', function() {
     const password = createPasswordEntry({
       url: 'test.com',
       username: 'vik',
@@ -187,14 +200,14 @@ suite('BackupPasswordDetailsCardTest', function() {
       },
     ];
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertEquals(
         card.$.domainLabel.textContent.trim(),
         loadTimeData.getString('sitesLabel'));
   });
 
-  test('Apps title', async function() {
+  test('Apps title', function() {
     const password = createPasswordEntry({
       url: 'test.com',
       username: 'vik',
@@ -208,14 +221,14 @@ suite('BackupPasswordDetailsCardTest', function() {
       },
     ];
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertEquals(
         card.$.domainLabel.textContent.trim(),
         loadTimeData.getString('appsLabel'));
   });
 
-  test('Apps and sites title', async function() {
+  test('Apps and sites title', function() {
     const password = createPasswordEntry({
       url: 'test.com',
       username: 'vik',
@@ -234,7 +247,7 @@ suite('BackupPasswordDetailsCardTest', function() {
       },
     ];
 
-    const card = await createCardElement(password);
+    const card = createCardElement(password);
 
     assertEquals(
         card.$.domainLabel.textContent.trim(),
@@ -260,10 +273,11 @@ suite('BackupPasswordDetailsCardTest', function() {
     });
     password2.affiliatedDomains = [createAffiliatedDomain('test.com')];
 
-    const card = await createCardElement(password1);
+    const card = createCardElement(password1);
     card.isPasswordVisible = true;
 
     card.password = password2;
+    await microtasksFinished();
     assertFalse(card.isPasswordVisible);
   });
 });

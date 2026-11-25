@@ -6,6 +6,7 @@ import type {CrLazyRenderLitElement} from '//resources/cr_elements/cr_lazy_rende
 import type {AppElement} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {AudioBrowserProxyImpl, BrowserProxy, ContentBrowserProxyImpl, ContentController, LineFocusController, MetricsBrowserProxyImpl, NodeStore, playFromSelectionTimeout, ReadAloudHighlighter, ReadAloudNode, ReadAloudNodeStore, ReadAnythingLogger, SelectionController, setInstance, SpeechBrowserProxyImpl, SpeechController, TextSegmenter, ToolbarEvent, VisualBrowserProxyImpl, VoiceLanguageController, VoiceNotificationManager, WordBoundaries} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import type {Segment} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
+import {assertEquals, assertStringContains, assertStringExcludes, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 import {MockTimer} from 'chrome-untrusted://webui-test/mock_timer.js';
 import {microtasksFinished} from 'chrome-untrusted://webui-test/test_util.js';
 
@@ -45,7 +46,9 @@ export interface AppTestSetupResult extends TestSetupResult {
 
 export interface AppTestFlags {
   readAnythingImprovedUiEnabled?: boolean;
-  lineFocusEnabled?: boolean;
+  // Uses the real ReadAloud model instead of TestReadAloudModelBrowserProxy.
+  // Only for integration tests that need text segmented from the DOM.
+  useRealReadAloudModel?: boolean;
 }
 
 // Initializes all singletons, mocks, and controllers in their strict
@@ -63,9 +66,6 @@ export function setupTestEnvironment(flags?: AppTestFlags): TestSetupResult {
     visualBrowserProxy.readAnythingImprovedUiEnabled =
         flags.readAnythingImprovedUiEnabled;
   }
-  if (flags?.lineFocusEnabled !== undefined) {
-    visualBrowserProxy.lineFocusEnabled = flags.lineFocusEnabled;
-  }
   VisualBrowserProxyImpl.setInstance(visualBrowserProxy);
   const contentBrowserProxy = new TestContentBrowserProxy();
   ContentBrowserProxyImpl.setInstance(contentBrowserProxy);
@@ -78,7 +78,8 @@ export function setupTestEnvironment(flags?: AppTestFlags): TestSetupResult {
   const metrics = mockMetrics();
   const logger = ReadAnythingLogger.getInstance();
   const readAloudModel = new TestReadAloudModelBrowserProxy();
-  setInstance(readAloudModel);
+  // A null instance makes getReadAloudModel() lazily create the real model.
+  setInstance(flags?.useRealReadAloudModel ? null : readAloudModel);
   const nodeStore = new NodeStore();
   NodeStore.setInstance(nodeStore);
   const readAloudNodeStore = new ReadAloudNodeStore();
@@ -174,12 +175,18 @@ export function stubAnimationFrame() {
   };
 }
 
-export function playFromSelectionWithMockTimer(app: AppElement): void {
+// Runs `play` and skips the delay before playing from a selection or line
+// focus position.
+export function playWithMockTimer(play: () => void): void {
   const mockTimer = new MockTimer();
   mockTimer.install();
-  emitEvent(app, ToolbarEvent.PLAY_PAUSE);
+  play();
   mockTimer.tick(playFromSelectionTimeout);
   mockTimer.uninstall();
+}
+
+export function playFromSelectionWithMockTimer(app: AppElement): void {
+  playWithMockTimer(() => emitEvent(app, ToolbarEvent.PLAY_PAUSE));
 }
 
 // Returns the list of items in the given dropdown menu
@@ -249,12 +256,30 @@ export function setContent(
   const node = document.createTextNode(text);
   NodeStore.getInstance().setDomNode(node, id);
   const segments: Segment[] =
-      [{node: ReadAloudNode.create(node)!, start: 0, length: text.length}];
+      [{node: ReadAloudNode.create(node), start: 0, length: text.length}];
   if (model) {
     model.setCurrentTextSegments(segments);
     model.setCurrentTextContent(text);
   }
   return node;
+}
+
+function getInnerHtml(axNodeId: number): string {
+  const node = NodeStore.getInstance().getDomNode(axNodeId);
+  assertTrue(node instanceof Element);
+  return node.innerHTML;
+}
+
+export function assertHtml(html: string, axNodeId: number) {
+  assertEquals(html, getInnerHtml(axNodeId));
+}
+
+export function assertHtmlContains(partialHtml: string, axNodeId: number) {
+  assertStringContains(getInnerHtml(axNodeId), partialHtml);
+}
+
+export function assertHtmlExcludes(partialHtml: string, axNodeId: number) {
+  assertStringExcludes(getInnerHtml(axNodeId), partialHtml);
 }
 
 export function setWindowSize(height: number, width: number) {

@@ -4,6 +4,7 @@
 
 #include "ash/constants/ash_features.h"
 #include "ash/public/cpp/desk_template.h"
+#include "base/strings/stringprintf.h"
 #include "base/test/bind.h"
 #include "base/test/simple_test_clock.h"
 #include "base/uuid.h"
@@ -15,7 +16,6 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "components/desks_storage/core/desk_model.h"
 #include "components/desks_storage/core/desk_sync_service.h"
-#include "components/sync/base/features.h"
 #include "components/sync/base/time.h"
 #include "components/sync/protocol/entity_specifics.pb.h"
 #include "components/sync/protocol/workspace_desk_specifics.pb.h"
@@ -67,11 +67,6 @@ class SingleClientWorkspaceDeskSyncTest
   SingleClientWorkspaceDeskSyncTest() : SyncTest(SINGLE_CLIENT) {
     kTestUuid1_ =
         base::Uuid::ParseCaseInsensitive(base::StringPrintf(kUuidFormat, 1));
-
-    if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
-      features_.InitAndEnableFeature(
-          syncer::kReplaceSyncPromosWithSignInPromos);
-    }
   }
 
   SingleClientWorkspaceDeskSyncTest(const SingleClientWorkspaceDeskSyncTest&) =
@@ -106,7 +101,6 @@ class SingleClientWorkspaceDeskSyncTest
   base::Uuid kTestUuid1_;
 
  private:
-  base::test::ScopedFeatureList features_;
   base::SimpleTestClock clock_;
 };
 

@@ -17,6 +17,7 @@ import android.content.res.Configuration;
 import android.content.res.Resources;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.Point;
 import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
@@ -202,7 +203,7 @@ public class TabGridDialogView extends FrameLayout {
                 () -> {
                     assumeNonNull(mParent);
                     // Skip updating the parent view size caused by keyboard showing.
-                    if (!KeyboardVisibilityDelegate.getInstance().isKeyboardShowing(this)) {
+                    if (!KeyboardVisibilityDelegate.getInstance().isKeyboardObscuring(this)) {
                         mParentWidth = mParent.getWidth();
                         mParentHeight = mParent.getHeight();
                         updateDialogWithOrientation(getOrientation());
@@ -457,7 +458,10 @@ public class TabGridDialogView extends FrameLayout {
         // In case where user jumps to a new page from dialog, clean existing animations in
         // mHideDialogAnimation and play basic fade out instead of zooming back to corresponding tab
         // grid card.
-        if (sourceView == null) {
+        if (sourceView == null
+                || mParent == null
+                || !isAttachedToWindow()
+                || sourceView.getParent() == null) {
             mShowDialogAnimation = new AnimatorSet();
             mShowDialogAnimation.play(mBasicFadeInAnimation);
             mShowDialogAnimation.removeAllListeners();
@@ -478,7 +482,9 @@ public class TabGridDialogView extends FrameLayout {
 
         mItemView = sourceView;
         Rect rect = new Rect();
-        mItemView.getGlobalVisibleRect(rect);
+        Point itemViewOrigin = new Point();
+        mItemView.getGlobalVisibleRect(rect, itemViewOrigin);
+        boolean isClippedAtTop = rect.top > itemViewOrigin.y;
         // Offset for status bar (top) and nav bar when landscape (left).
         Rect dialogParentRect = new Rect();
         assumeNonNull(mParent).getGlobalVisibleRect(dialogParentRect);
@@ -494,7 +500,7 @@ public class TabGridDialogView extends FrameLayout {
         // Calculate a clip mask to avoid any source view that is not fully visible from drawing
         // over other UI.
         Rect itemViewParentRect = new Rect();
-        ((View) mItemView.getParent()).getGlobalVisibleRect(itemViewParentRect);
+        ((View) assumeNonNull(mItemView.getParent())).getGlobalVisibleRect(itemViewParentRect);
         int clipTop = itemViewParentRect.top - dialogParentRect.top;
         FrameLayout.LayoutParams params =
                 (FrameLayout.LayoutParams) mAnimationClip.getLayoutParams();
@@ -527,11 +533,11 @@ public class TabGridDialogView extends FrameLayout {
         // Calculate position and size info about the original tab grid card.
         float sourceTop = rect.top;
         float sourceLeft = rect.left + mTabGridCardPadding;
-        if (rect.top == clipTop) {
-            // If the clipping is off the "top" of the screen i.e. the rect is touching the clip
-            // bound. Then we need to add clip compensation when animating the card by starting it
-            // in its original position. However, if the clip is less than padding we also need to
-            // take whatever top padding is visible into account.
+        if (isClippedAtTop) {
+            // If the clipping is off the "top" of the screen. Then we need to add clip
+            // compensation when animating the card by starting it in its original position.
+            // However, if the clip is less than padding we also need to take whatever top padding
+            // is visible into account.
             if (isYClipLessThanPadding) {
                 float clipDelta = mTabGridCardPadding - yClip;
                 sourceTop += clipDelta;

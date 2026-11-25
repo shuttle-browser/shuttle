@@ -4,13 +4,11 @@
 
 #include "chrome/browser/ash/customization/customization_document.h"
 
-#include <algorithm>
 #include <memory>
 #include <optional>
 #include <string_view>
 #include <utility>
 
-#include "ash/constants/ash_features.h"
 #include "ash/constants/ash_paths.h"
 #include "ash/constants/ash_pref_names.h"
 #include "base/check_deref.h"
@@ -18,7 +16,8 @@
 #include "base/files/file_util.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
-#include "base/i18n/rtl.h"
+#include "base/i18n/language_tag.h"
+#include "base/i18n/tag_converters.h"
 #include "base/json/json_reader.h"
 #include "base/logging.h"
 #include "base/memory/raw_ptr.h"
@@ -404,25 +403,34 @@ void StartupCustomizationDocument::Init(
               system::kKeyboardLayoutKey)) {
     keyboard_layout_ = std::string(keyboard_statistic.value());
   }
-  configured_locales_ = base::SplitString(
-      initial_locale_, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
 
-  // Convert ICU locale to chrome ("en_US" to "en-US", etc.).
-  std::ranges::for_each(configured_locales_, base::i18n::GetCanonicalLocale);
-
-  // Let's always have configured_locales_.front() a valid entry.
-  if (configured_locales_.size() == 0)
-    configured_locales_.push_back(std::string());
+  // Parse the configured locales as language tags, which also converts legacy
+  // ICU locales to BCP47 ("en_US" to "en-US", etc.). Invalid locales are
+  // dropped.
+  configured_locales_.clear();
+  for (std::string_view locale :
+       base::SplitStringPiece(initial_locale_, ",", base::TRIM_WHITESPACE,
+                              base::SPLIT_WANT_NONEMPTY)) {
+    std::optional<base::i18n::LanguageTag> tag =
+        base::i18n::GetLanguageTagFromString(locale);
+    if (!tag) {
+      LOG(WARNING) << "Ignoring invalid initial locale: " << locale;
+      continue;
+    }
+    configured_locales_.push_back(*std::move(tag));
+  }
 }
 
-const std::vector<std::string>&
+const std::vector<base::i18n::LanguageTag>&
 StartupCustomizationDocument::configured_locales() const {
   return configured_locales_;
 }
 
-const std::string& StartupCustomizationDocument::initial_locale_default()
-    const {
-  CHECK_GT(configured_locales_.size(), 0UL, base::NotFatalUntil::M160);
+std::optional<base::i18n::LanguageTag>
+StartupCustomizationDocument::initial_locale_default() const {
+  if (configured_locales_.empty()) {
+    return std::nullopt;
+  }
   return configured_locales_.front();
 }
 
@@ -739,30 +747,21 @@ base::DictValue ServicesCustomizationDocument::GetDefaultAppsInProviderFormat(
       }
       base::Value* update_url_value =
           entry.Find(ExternalProviderImpl::kExternalUpdateUrl);
-      if (ash::features::IsOemAppsMustUpdateFromWebstoreEnabled()) {
-        // Fix for crbug.com/502771678. OEM apps must update from the webstore.
-        // Providing a non-webstore update URL is a fatal error.
-        if (update_url_value) {
-          CHECK(update_url_value->is_string());
-          GURL update_url(update_url_value->GetString());
-          CHECK(update_url.is_valid());
-          if (!extension_urls::IsWebstoreUpdateUrl(update_url)) {
-            // Use log because official builds strip the stream passed to CHECK.
-            LOG(FATAL) << "Invalid update URL: " << update_url;
-          }
-          // If we get here, a extension provided a valid update URL.
-        } else {
-          // Provide the default update URL.
-          entry.Set(ExternalProviderImpl::kExternalUpdateUrl,
-                    extension_urls::GetWebstoreUpdateUrl().spec());
+      // Fix for crbug.com/502771678. OEM apps must update from the webstore.
+      // Providing a non-webstore update URL is a fatal error.
+      if (update_url_value) {
+        CHECK(update_url_value->is_string());
+        GURL update_url(update_url_value->GetString());
+        CHECK(update_url.is_valid());
+        if (!extension_urls::IsWebstoreUpdateUrl(update_url)) {
+          // Use log because official builds strip the stream passed to CHECK.
+          LOG(FATAL) << "Invalid update URL: " << update_url;
         }
+        // If we get here, an extension provided a valid update URL.
       } else {
-        // Legacy behavior. Keep any provided external_update_url value, but
-        // override to web store if it's not set.
-        if (!update_url_value) {
-          entry.Set(ExternalProviderImpl::kExternalUpdateUrl,
-                    extension_urls::GetWebstoreUpdateUrl().spec());
-        }
+        // Provide the default update URL.
+        entry.Set(ExternalProviderImpl::kExternalUpdateUrl,
+                  extension_urls::GetWebstoreUpdateUrl().spec());
       }
       prefs.SetByDottedPath(app_id, std::move(entry));
     }

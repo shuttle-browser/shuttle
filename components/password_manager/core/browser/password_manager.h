@@ -184,7 +184,7 @@ class PasswordManager : public PasswordManagerInterface {
       PasswordManagerDriver* driver,
       const autofill::FormData& form_data,
       autofill::FieldRendererId generation_element_id,
-      const std::u16string& password) override;
+      const PasswordString& password) override;
 
   // Handles a dynamic form submission. In contrast to OnPasswordFormSubmitted()
   // this method does not wait for OnPasswordFormsRendered() before invoking
@@ -482,8 +482,6 @@ class PasswordManager : public PasswordManagerInterface {
   // The embedder-level client. Must outlive this class.
   const raw_ptr<PasswordManagerClient> client_;
 
-  const base::CallbackListSubscription account_store_cb_list_subscription_;
-
   // Server predictions for the forms on the page.
   std::map<std::pair<autofill::FormSignature, DriverId>, FormPredictions>
       server_predictions_;
@@ -513,6 +511,9 @@ class PasswordManager : public PasswordManagerInterface {
               kMaxSingleUsernameFieldsToStore);
 
   base::ObserverList<Observer> observers_;
+
+  const base::CallbackListSubscription account_store_cb_list_subscription_;
+  const base::CallbackListSubscription profile_store_cb_list_subscription_;
 };
 
 }  // namespace password_manager

@@ -19,9 +19,12 @@
 #include "chrome/browser/extensions/glic_util.h"
 #include "chrome/browser/glic/actor/glic_actor_policy_checker.h"
 #include "chrome/browser/glic/host/glic.mojom.h"
+#include "chrome/browser/glic/host/guest_util.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_feature.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/glic/public/service/glic_instance_coordinator.h"
 #include "chrome/browser/metrics/chrome_metrics_service_accessor.h"
 #include "chrome/browser/profiles/profile.h"
@@ -79,15 +82,6 @@ constexpr char kGlicApiInvokeSyntheticFieldTrialName[] =
     "GlicApiInvokeSyntheticFieldTrial";
 constexpr char kUniversalCartGroupName[] = "UniversalCart";
 constexpr char kGlicServiceNotAvailable[] = "Glic service not available";
-// Gemini Web origins, including corp and staging ones, that may embed
-// subframes that call glicPrivate.
-constexpr auto kGeminiOrigins = std::to_array<std::string_view>({
-    "https://gemini.google.com",
-    "https://gemini.corp.google.com",
-    "https://gemini-autopush.corp.google.com",
-    "https://gemini-preprod.corp.google.com",
-    "https://gemini-staging.corp.google.com",
-});
 
 using PromptCallback =
     base::OnceCallback<void(extensions::api::glic_private::ErrorCode,
@@ -224,26 +218,29 @@ api::glic_private::ProfileState CreateProfileState(
   state.user_enable_actuation_on_web =
       glic_service && glic_service->enabling().GetUserEnabledActuationOnWeb();
 
-  bool invocation_source_enabled = false;
+  if (!glic::GetGlicProviderSpec(profile).SupportsFeature(
+          glic::GlicFeature::kGooglePageInvocation)) {
+    return state;
+  }
+
   switch (invocation_source) {
     case api::glic_private::InvocationSource::kUniversalCart:
-      invocation_source_enabled = base::FeatureList::IsEnabled(
+      state.invocation_source_enabled = base::FeatureList::IsEnabled(
           extensions_features::kApiGlicAccessFromGoogleWebpage);
       break;
     case api::glic_private::InvocationSource::kPromotionPage:
-      invocation_source_enabled = base::FeatureList::IsEnabled(
+      state.invocation_source_enabled = base::FeatureList::IsEnabled(
           extensions_features::kApiGlicAccessFromPromotionPage);
       break;
     case api::glic_private::InvocationSource::kWebContinuity:
-      invocation_source_enabled = base::FeatureList::IsEnabled(
+      state.invocation_source_enabled = base::FeatureList::IsEnabled(
           extensions_features::kApiGlicAccessFromWebContinuity);
       break;
     case api::glic_private::InvocationSource::kUnknown:
     case api::glic_private::InvocationSource::kNone:
-      invocation_source_enabled = false;
+      state.invocation_source_enabled = false;
       break;
   }
-  state.invocation_source_enabled = invocation_source_enabled;
 
   return state;
 }
@@ -378,12 +375,6 @@ content::RenderFrameHost* GetRfhForDocumentId(
       document_id);
 }
 
-bool IsGeminiOrigin(const url::Origin& origin) {
-  return std::ranges::any_of(kGeminiOrigins, [&](std::string_view gemini) {
-    return origin.IsSameOriginWith(GURL(gemini));
-  });
-}
-
 std::optional<extensions::api::glic_private::ErrorCode> ValidateRenderFrameHost(
     Profile* profile,
     content::RenderFrameHost* rfh) {
@@ -397,7 +388,7 @@ std::optional<extensions::api::glic_private::ErrorCode> ValidateRenderFrameHost(
   // could embed a Google subframe to make Glic act on that page.
   for (content::RenderFrameHost* ancestor = rfh->GetParent(); ancestor;
        ancestor = ancestor->GetParent()) {
-    if (!IsGeminiOrigin(ancestor->GetLastCommittedOrigin())) {
+    if (!glic::IsGeminiOrigin(ancestor->GetLastCommittedOrigin())) {
       return api::glic_private::ErrorCode::kLocalInvalidDocumentId;
     }
   }

@@ -17,6 +17,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/safe_ref.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "base/types/expected.h"
 #include "chrome/browser/autofill/actor/one_time_tokens/actor_login_context.h"
 #include "chrome/browser/autofill/actor/one_time_tokens/actor_one_time_token_filling_service.h"
@@ -24,7 +25,6 @@
 #include "components/autofill/core/common/unique_ids.h"
 #include "components/one_time_tokens/core/browser/gmail_otp_retriever.h"
 #include "components/one_time_tokens/core/browser/one_time_token_retrieval_error.h"
-#include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents_observer.h"
 
 class Profile;
@@ -35,6 +35,7 @@ class AggregatedJournal;
 
 namespace content {
 class NavigationHandle;
+class WebContents;
 }  // namespace content
 
 class GURL;
@@ -49,7 +50,7 @@ class ActorFillingObserver;
 
 // Implementation for the ActorOneTimeTokenFillingService. This is owned by
 // `actor::ExecutionEngine`. It's called by the AttemptOtpFillingTool and
-// interacts with the `GmailOtpBackend`.
+// interacts with the `GmailOtpService`.
 class ActorOneTimeTokenFillingServiceImpl
     : public ActorOneTimeTokenFillingService,
       public content::WebContentsObserver {
@@ -62,7 +63,7 @@ class ActorOneTimeTokenFillingServiceImpl
 
   // ActorOneTimeTokenFillingService:
   void OnPasswordFillingStarted(
-      tabs::TabHandle tab_handle,
+      content::WebContents* web_contents,
       const url::Origin& origin,
       bool should_use_strong_matching,
       base::span<const int> global_frame_ids) override;
@@ -71,21 +72,22 @@ class ActorOneTimeTokenFillingServiceImpl
   std::optional<url::Origin> GetLoginContextOrigin() const override;
   bool GetLoginContextShouldUseStrongMatching() const override;
   void RetrieveOtp(
-      tabs::TabHandle tab_handle,
+      content::WebContents* web_contents,
       const url::Origin& otp_frame_origin,
       const std::vector<FieldGlobalId>& trigger_field_ids,
-      bool is_login_flow,
+      bool allow_psl_matching,
+      PredictedOtpType predicted_otp_type,
       base::OnceCallback<
           void(base::expected<std::string,
                               one_time_tokens::OneTimeTokenRetrievalError>)>
           callback) override;
 
-  void FillOtp(tabs::TabHandle tab_handle,
+  void FillOtp(content::WebContents* web_contents,
                const std::vector<FieldGlobalId>& trigger_field_ids,
                const std::string& otp,
                base::OnceCallback<void(bool)> callback) override;
-  FormFillingContextStatus ValidateFormFillingContext(
-      tabs::TabHandle tab_handle,
+  FormFillingContextValidationResult ValidateFormFillingContext(
+      content::WebContents* web_contents,
       base::span<const FieldGlobalId> trigger_field_ids) const override;
   void FetchUserDataProcessingConsent(
       FetchUserDataProcessingConsentCallback callback) override;
@@ -99,7 +101,7 @@ class ActorOneTimeTokenFillingServiceImpl
       const GURL& url,
       base::expected<one_time_tokens::GmailOtpRetriever::Result,
                      one_time_tokens::OneTimeTokenRetrievalError> result);
-  // Receives log messages emitted to the log sink of the `GmailOtpBackend` via
+  // Receives log messages emitted to the log sink of the `GmailOtpService` via
   // `LOG_OTT` and forwards them to `journal_`.
   void OnBackendLogMessage(std::string_view message);
 
@@ -112,6 +114,9 @@ class ActorOneTimeTokenFillingServiceImpl
   base::OnceCallback<void(
       base::expected<std::string, one_time_tokens::OneTimeTokenRetrievalError>)>
       retrieve_otp_callback_;
+  // The predicted OTP type of the request that owns `retrieve_otp_callback_`.
+  PredictedOtpType retrieve_otp_predicted_type_ = PredictedOtpType::kUnknown;
+  std::optional<base::TimeTicks> retrieve_otp_start_time_;
   std::unique_ptr<ActorFillingObserver> filling_observer_;
 
   base::WeakPtrFactory<ActorOneTimeTokenFillingServiceImpl> weak_ptr_factory_{

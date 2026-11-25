@@ -27,6 +27,22 @@ namespace {
 // DWORD field of variable length that can sometimes have a length of 0.
 constexpr uint32_t kMinEnhMetaRecordSize = 8;
 
+uint32_t GetExpectedBmiSize(const BITMAPINFOHEADER& bmih) {
+  // Assume values used in PDFium's core/fxge/win32/cgdi_device_driver.cpp are
+  // not going to change.
+  switch (bmih.biBitCount) {
+    case 1:
+    case 8:
+      return sizeof(BITMAPINFOHEADER) +
+             sizeof(RGBQUAD) * (1u << bmih.biBitCount);
+    case 24:
+    case 32:
+      return sizeof(BITMAPINFOHEADER);
+    default:
+      return 0;
+  }
+}
+
 const BITMAPINFOHEADER* GetBitmapInfoHeader(
     base::span<const uint8_t> record_span) {
   if (record_span.size() < sizeof(EMRSTRETCHDIBITS)) {
@@ -36,7 +52,9 @@ const BITMAPINFOHEADER* GetBitmapInfoHeader(
   const auto* sdib_record =
       reinterpret_cast<const EMRSTRETCHDIBITS*>(record_span.data());
   if (sdib_record->offBmiSrc < sizeof(EMRSTRETCHDIBITS) ||
-      sdib_record->cbBmiSrc < sizeof(BITMAPINFOHEADER)) {
+      sdib_record->offBmiSrc % alignof(BITMAPINFOHEADER) != 0 ||
+      sdib_record->cbBmiSrc < sizeof(BITMAPINFOHEADER) ||
+      sdib_record->iUsageSrc != DIB_RGB_COLORS) {
     return nullptr;
   }
 
@@ -46,8 +64,19 @@ const BITMAPINFOHEADER* GetBitmapInfoHeader(
     return nullptr;
   }
 
-  return reinterpret_cast<const BITMAPINFOHEADER*>(
+  const auto* bmih = reinterpret_cast<const BITMAPINFOHEADER*>(
       record_span.subspan(sdib_record->offBmiSrc).data());
+  if (bmih->biSize != sizeof(BITMAPINFOHEADER) ||
+      bmih->biCompression != BI_RGB || bmih->biClrUsed != 0) {
+    return nullptr;
+  }
+
+  const uint32_t expected_bmi_size = GetExpectedBmiSize(*bmih);
+  if (expected_bmi_size == 0 || sdib_record->cbBmiSrc != expected_bmi_size) {
+    return nullptr;
+  }
+
+  return bmih;
 }
 
 base::span<const uint8_t> GetGdiCommentData(
@@ -192,8 +221,8 @@ int CALLBACK Emf::SafePlaybackProc(HDC hdc,
   context->objects_count = objects_count;
   context->hdc = hdc;
   Record record_instance(record);
-  bool success = record_instance.SafePlayback(context);
-  return success ? 1 : 0;
+  record_instance.SafePlayback(context);
+  return 1;
 }
 
 PostScriptMetaFile::PostScriptMetaFile() = default;
@@ -249,12 +278,14 @@ Emf::Record::Record(const ENHMETARECORD* record) : record_(record) {
   DCHECK(record_);
 }
 
-bool Emf::Record::Play(Emf::EnumerationContext* context) const {
-  return 0 != PlayEnhMetaFileRecord(context->hdc, context->handle_table,
-                                    record_, context->objects_count);
+void Emf::Record::Play(Emf::EnumerationContext* context) const {
+  // Ignore the return value, as GDI playback of an individual record can fail
+  // on some printer drivers without invalidating the rest of the page.
+  ::PlayEnhMetaFileRecord(context->hdc, context->handle_table, record_,
+                          context->objects_count);
 }
 
-bool Emf::Record::SafePlayback(Emf::EnumerationContext* context) const {
+void Emf::Record::SafePlayback(Emf::EnumerationContext* context) const {
   // For EMF field description, see [MS-EMF] Enhanced Metafile Format
   // Specification.
   //
@@ -292,7 +323,6 @@ bool Emf::Record::SafePlayback(Emf::EnumerationContext* context) const {
   // We also process any custom EMR_GDICOMMENT records which are our
   // placeholders for StartPage and EndPage.
   // Note: I should probably care about view ports and clipping, eventually.
-  bool res = false;
   const XFORM* base_matrix = context->base_matrix;
   switch (record()->iType) {
     case EMR_STRETCHDIBITS: {
@@ -300,73 +330,84 @@ bool Emf::Record::SafePlayback(Emf::EnumerationContext* context) const {
       base::span<const uint8_t> record_span = UNSAFE_BUFFERS(base::span(
           reinterpret_cast<const uint8_t*>(record()), record()->nSize));
       if (record_span.empty()) {
-        return false;
+        // Here and below. Return early and ignore malformed records.
+        return;
       }
 
       const BITMAPINFOHEADER* bmih = GetBitmapInfoHeader(record_span);
-      if (!bmih || bmih->biCompression != BI_RGB) {
-        return false;
+      if (!bmih) {
+        return;
       }
 
-      res = Play(context);
+      Play(context);
       break;
     }
     case EMR_SETWORLDTRANSFORM: {
-      DCHECK_EQ(record()->nSize, sizeof(DWORD) * 2 + sizeof(XFORM));
-      const XFORM* xform = reinterpret_cast<const XFORM*>(record()->dParm);
+      if (record()->nSize != sizeof(EMRSETWORLDTRANSFORM)) {
+        return;
+      }
+      const auto* xform_record =
+          reinterpret_cast<const EMRSETWORLDTRANSFORM*>(record());
       HDC hdc = context->hdc;
+      // Ignore the return value of the final WorldTransform API calls, as a
+      // single GDI failure should not abort the entire page. This applies to
+      // the rest of the function as well.
       if (base_matrix) {
-        res = 0 != ::SetWorldTransform(hdc, base_matrix) &&
-              ::ModifyWorldTransform(hdc, xform, MWT_LEFTMULTIPLY);
+        if (::SetWorldTransform(hdc, base_matrix)) {
+          ::ModifyWorldTransform(hdc, &xform_record->xform, MWT_LEFTMULTIPLY);
+        }
       } else {
-        res = 0 != ::SetWorldTransform(hdc, xform);
+        ::SetWorldTransform(hdc, &xform_record->xform);
       }
       break;
     }
     case EMR_MODIFYWORLDTRANSFORM: {
-      CHECK_EQ(record()->nSize, sizeof(EMRMODIFYWORLDTRANSFORM));
+      if (record()->nSize != sizeof(EMRMODIFYWORLDTRANSFORM)) {
+        return;
+      }
       const auto* modify_world_transform =
           reinterpret_cast<const EMRMODIFYWORLDTRANSFORM*>(record());
       HDC hdc = context->hdc;
       switch (modify_world_transform->iMode) {
         case MWT_IDENTITY:
           if (base_matrix) {
-            res = 0 != ::SetWorldTransform(hdc, base_matrix);
+            ::SetWorldTransform(hdc, base_matrix);
           } else {
-            res = 0 != ::ModifyWorldTransform(
-                           hdc, &modify_world_transform->xform, MWT_IDENTITY);
+            ::ModifyWorldTransform(hdc, &modify_world_transform->xform,
+                                   MWT_IDENTITY);
           }
           break;
         case MWT_LEFTMULTIPLY:
         case MWT_RIGHTMULTIPLY:
-          res = 0 != ::ModifyWorldTransform(hdc, &modify_world_transform->xform,
-                                            modify_world_transform->iMode);
+          ::ModifyWorldTransform(hdc, &modify_world_transform->xform,
+                                 modify_world_transform->iMode);
           break;
         case 4:  // MWT_SET
           if (base_matrix) {
-            res = 0 != ::SetWorldTransform(hdc, base_matrix) &&
-                  ::ModifyWorldTransform(hdc, &modify_world_transform->xform,
-                                         MWT_LEFTMULTIPLY);
+            if (::SetWorldTransform(hdc, base_matrix)) {
+              ::ModifyWorldTransform(hdc, &modify_world_transform->xform,
+                                     MWT_LEFTMULTIPLY);
+            }
           } else {
-            res = 0 != ::SetWorldTransform(hdc, &modify_world_transform->xform);
+            ::SetWorldTransform(hdc, &modify_world_transform->xform);
           }
           break;
         default:
-          res = false;
+          // Ignore unrecognized transform mode.
           break;
       }
       break;
     }
     case EMR_SETLAYOUT:
       // Ignore it.
-      res = true;
       break;
     default: {
-      res = Play(context);
+      // To handle other record types explicitly in a `case` above, look in
+      // wingdi.h for `iType` and `EMR_HEADER`.
+      Play(context);
       break;
     }
   }
-  return res;
 }
 
 void Emf::StartPage(const gfx::Size& /*page_size*/,

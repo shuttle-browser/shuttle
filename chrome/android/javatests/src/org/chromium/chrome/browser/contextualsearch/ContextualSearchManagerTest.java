@@ -70,12 +70,15 @@ import org.chromium.chrome.browser.overlay_panel.PanelState;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
 import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.tab.Tab;
+import org.chromium.chrome.browser.tab.TabCreationState;
+import org.chromium.chrome.browser.tab.TabLaunchType;
 import org.chromium.chrome.browser.tabmodel.TabClosureParams;
-import org.chromium.chrome.browser.tabmodel.TabModelSelectorObserver;
+import org.chromium.chrome.browser.tabmodel.TabModelSelectorTabModelObserver;
 import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeController;
 import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeUtils;
 import org.chromium.chrome.browser.ui.signin.ForcedSigninStatusProvider;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
+import org.chromium.chrome.test.transit.ChromeTriggers;
 import org.chromium.chrome.test.util.ChromeTabUtils;
 import org.chromium.chrome.test.util.FullscreenTestUtils;
 import org.chromium.chrome.test.util.MenuUtils;
@@ -94,6 +97,7 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicReference;
 
 @DisableIf.Device(DeviceFormFactor.DESKTOP) // Explicitly not supported.
 // TODO(donnd): Create class with limited API to encapsulate the internals of simulations.
@@ -247,15 +251,22 @@ public class ContextualSearchManagerTest extends ContextualSearchInstrumentation
         // Track Tab creation with this helper.
         final CallbackHelper tabCreatedHelper = new CallbackHelper();
         int tabCreatedHelperCallCount = tabCreatedHelper.getCallCount();
-        TabModelSelectorObserver observer =
-                new TabModelSelectorObserver() {
-                    @Override
-                    public void onNewTabCreated(Tab tab) {
-                        tabCreatedHelper.notifyCalled();
-                    }
-                };
+        AtomicReference<TabModelSelectorTabModelObserver> observer = new AtomicReference<>();
         ThreadUtils.runOnUiThreadBlocking(
-                () -> mActivityTestRule.getActivity().getTabModelSelector().addObserver(observer));
+                () -> {
+                    observer.set(
+                            new TabModelSelectorTabModelObserver(
+                                    mActivityTestRule.getActivity().getTabModelSelector()) {
+                                @Override
+                                public void didAddTab(
+                                        Tab tab,
+                                        @TabLaunchType int type,
+                                        @TabCreationState int creationState,
+                                        boolean markedForSelection) {
+                                    tabCreatedHelper.notifyCalled();
+                                }
+                            });
+                });
         // Track User Actions
         mActionTester = new UserActionTester();
 
@@ -289,7 +300,7 @@ public class ContextualSearchManagerTest extends ContextualSearchInstrumentation
         // -------- CLEAN UP ---------
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
-                    mActivityTestRule.getActivity().getTabModelSelector().removeObserver(observer);
+                    if (observer.get() != null) observer.get().destroy();
                 });
     }
 
@@ -976,7 +987,7 @@ public class ContextualSearchManagerTest extends ContextualSearchInstrumentation
 
         // Create a new tab so |ca| isn't destroyed.
         ChromeTabUtils.newTabFromMenu(InstrumentationRegistry.getInstrumentation(), ca);
-        ChromeTabUtils.switchTabInCurrentTabModel(ca, 0);
+        ChromeTriggers.selectTabProgrammatically(mActivityTestRule.getActivity(), 0);
 
         int testTabId = mActivityTestRule.getActivityTab().getId();
         MenuUtils.invokeCustomMenuActionSync(
@@ -1162,8 +1173,8 @@ public class ContextualSearchManagerTest extends ContextualSearchInstrumentation
                 () -> {
                     try {
                         Criteria.checkThat(
-                                mPanel.getPanelHeightFromState(PanelState.PEEKED),
-                                Matchers.equalTo(defaultHeight));
+                                (double) mPanel.getPanelHeightFromState(PanelState.PEEKED),
+                                Matchers.closeTo(defaultHeight, /* error= */ 0.001));
                     } catch (CriteriaNotSatisfiedException ex) {
                         throw new AssertionError(
                                 "Error - Peek Height or Bar Height is not the normal expected value"
@@ -1183,8 +1194,10 @@ public class ContextualSearchManagerTest extends ContextualSearchInstrumentation
                 () -> {
                     try {
                         Criteria.checkThat(
-                                mPanel.getPanelHeightFromState(PanelState.PEEKED),
-                                Matchers.equalTo(defaultHeight + arbitraryGestureNavHeight));
+                                (double) mPanel.getPanelHeightFromState(PanelState.PEEKED),
+                                Matchers.closeTo(
+                                        defaultHeight + arbitraryGestureNavHeight,
+                                        /* error= */ 0.001));
                     } catch (CriteriaNotSatisfiedException ex) {
                         throw new AssertionError(
                                 "When EdgeToEdge is active the Peek position should be inset for"

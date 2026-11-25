@@ -79,6 +79,16 @@ chromium-metrics-reviews@google.com.
   <int value="1" label="Protected"/>
 </enum>
 
+<enum name="BooleanSectionExpanded">
+  <int value="0" label="Collapsed"/>
+  <int value="1" label="Expanded"/>
+</enum>
+
+<enum name="BooleanSectionShowAll">
+  <int value="0" label="ShowSome"/>
+  <int value="1" label="ShowAll"/>
+</enum>
+
 <!-- LINT.IfChange(DeviceType) -->
 
 <enum name="DeviceType">
@@ -232,6 +242,40 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="No user action taken"/>
 </enum>
 
+<!-- LINT.IfChange(OrganizerPanelCloseAction) -->
+
+<enum name="OrganizerPanelCloseAction">
+  <int value="0" label="NoAction"/>
+  <int value="1" label="ClosedTab"/>
+  <int value="2" label="OpenRecentlyClosed"/>
+  <int value="3" label="SwitchToTab"/>
+  <int value="4" label="OpenCrossDeviceTab"/>
+  <int value="5" label="CreateTabGroup"/>
+  <int value="6" label="OpenTabGroup"/>
+  <int value="7" label="OpenTabGroupMenu"/>
+  <int value="8" label="OpenCrossDevicePromo"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/resources/organizer_panel/organizer_list_section_delegate.ts:OrganizerPanelCloseAction) -->
+
+<!-- LINT.IfChange(OrganizerSectionMenuOption) -->
+
+<enum name="OrganizerSectionMenuOption">
+  <int value="0" label="ShowSome"/>
+  <int value="1" label="ShowAll"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/resources/organizer_panel/organizer_list_section_header.ts:OrganizerSectionMenuOption) -->
+
+<!-- LINT.IfChange(OrganizerSectionToggleAction) -->
+
+<enum name="OrganizerSectionToggleAction">
+  <int value="0" label="Expand"/>
+  <int value="1" label="Collapse"/>
+</enum>
+
+<!-- LINT.ThenChange(//chrome/browser/resources/organizer_panel/organizer_list_section.ts:OrganizerSectionToggleAction) -->
+
 <!-- LINT.IfChange(PersistentStoreType) -->
 
 <enum name="PersistentStoreType">
@@ -274,7 +318,8 @@ chromium-metrics-reviews@google.com.
       label="Opened from the tab group submenu from the everything menu."/>
   <int value="2" label="Opened from the tab group submenu from the app menu."/>
   <int value="3"
-      label="Opened from the tab group submenu from the mac system menu."/>
+      label="(Obsolete) Opened from the tab group submenu from the mac system
+             menu."/>
   <int value="4"
       label="Opened from the tab group submenu from the organizer panel."/>
 </enum>
@@ -344,7 +389,8 @@ chromium-metrics-reviews@google.com.
       label="Opened from the tab group submenu from the everything menu."/>
   <int value="6" label="Opened from the tab group submenu from the app menu."/>
   <int value="7"
-      label="Opened from the tab group submenu from the mac system menu."/>
+      label="(Obsolete) Opened from the tab group submenu from the mac system
+             menu."/>
   <int value="8"
       label="Opened from the tab group submenu from the organizer panel."/>
 </enum>
@@ -459,10 +505,12 @@ chromium-metrics-reviews@google.com.
 <enum name="TabGroupFocusEntryPoint">
   <int value="0" label="Editor bubble ('Focus group')"/>
   <int value="1" label="Tab context menu ('Focus tab group')"/>
-  <int value="2" label="Tab context menu ('Focus tab(s)')"/>
+  <int value="2" label="(Obsolete) Tab context menu ('Focus tab(s)')"/>
   <int value="3" label="Bookmarks bar context menu ('Focus group')"/>
   <int value="4" label="App menu ('Focus group')"/>
   <int value="5" label="Organizer panel context menu ('Focus group')"/>
+  <int value="6" label="Tab context menu ('Focus tab')"/>
+  <int value="7" label="Tab context menu ('Focus tabs')"/>
 </enum>
 
 <!-- LINT.ThenChange(//chrome/browser/ui/tabs/tab_enums.h:TabGroupFocusEntryPoint) -->

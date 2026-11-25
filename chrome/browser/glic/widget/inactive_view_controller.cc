@@ -185,10 +185,13 @@ void InactiveViewController::CaptureScreenshot(
 
 void InactiveViewController::OnScreenshotCaptured(gfx::Image screenshot) {
   screenshot_ = screenshot.AsImageSkia();
-  CheckForImageDistortion();
-  animation_->Reset();
-  animation_->Show();
-  UpdateImageView();
+  is_image_dirty_ = true;
+  if (IsViewDrawn()) {
+    StartScrimAnimation();
+    UpdateImageView();
+  } else {
+    SnapScrimToFullOpacity();
+  }
 }
 
 base::WeakPtr<InactiveViewController> InactiveViewController::GetWeakPtr() {
@@ -196,8 +199,24 @@ base::WeakPtr<InactiveViewController> InactiveViewController::GetWeakPtr() {
 }
 
 void InactiveViewController::OnViewBoundsChanged(views::View* observed_view) {
-  CheckForImageDistortion();
-  UpdateImageView();
+  if (image_view_->GetImage().size() != image_view_->size()) {
+    UpdateImageView();
+  }
+}
+
+void InactiveViewController::OnViewVisibilityChanged(views::View* observed_view,
+                                                     views::View* starting_view,
+                                                     bool visible) {
+  OnViewDrawnStateChanged();
+}
+
+void InactiveViewController::OnViewAddedToWidget(views::View* observed_view) {
+  OnViewDrawnStateChanged();
+}
+
+void InactiveViewController::OnViewRemovedFromWidget(
+    views::View* observed_view) {
+  OnViewDrawnStateChanged();
 }
 
 void InactiveViewController::OnViewIsDeleting(views::View* observed_view) {
@@ -219,24 +238,24 @@ void InactiveViewController::AnimationProgressed(
 }
 
 void InactiveViewController::UpdateImageView() {
-  if (!image_view_ || screenshot_.isNull()) {
+  if (!image_view_) {
     return;
   }
-  if (image_view_->size().IsEmpty()) {
+  if ((!is_image_dirty_ &&
+       image_view_->GetImage().size() == image_view_->size()) ||
+      !IsViewDrawn() || screenshot_.isNull() || image_view_->size().IsEmpty()) {
     return;
   }
+  is_image_dirty_ = false;
 
   gfx::ImageSkia resized_image = gfx::ImageSkiaOperations::CreateResizedImage(
       screenshot_, skia::ImageOperations::RESIZE_BEST, image_view_->size());
 
-  views::View* card_view = card_view_tracker_.view();
-  if (card_view) {
-    card_view->SetVisible(is_image_distorted_);
+  const bool is_image_distorted = IsImageDistorted();
+  if (views::View* card_view = card_view_tracker_.view()) {
+    card_view->SetVisible(is_image_distorted);
   }
-
-  if (is_image_distorted_) {
-    image_view_->layer()->SetLayerBlur(kBlurRadius);
-  }
+  image_view_->layer()->SetLayerBlur(is_image_distorted ? kBlurRadius : 0.0f);
   image_view_->SetImage(ui::ImageModel::FromImageSkia(resized_image));
 }
 
@@ -268,14 +287,9 @@ void InactiveViewController::UpdateScrimOpacity(double animation_value) {
   scrim_view->layer()->SetOpacity(opacity);
 }
 
-void InactiveViewController::CheckForImageDistortion() {
-  if (!image_view_ || screenshot_.isNull()) {
-    is_image_distorted_ = false;
-    return;
-  }
-  if (image_view_->size().IsEmpty()) {
-    is_image_distorted_ = false;
-    return;
+bool InactiveViewController::IsImageDistorted() const {
+  if (!image_view_ || screenshot_.isNull() || image_view_->size().IsEmpty()) {
+    return false;
   }
 
   // Get aspect ratios.
@@ -285,6 +299,28 @@ void InactiveViewController::CheckForImageDistortion() {
       static_cast<float>(image_view_->width()) / image_view_->height();
 
   // Check if they are significantly different.
-  is_image_distorted_ = std::abs(source_aspect_ratio - view_aspect_ratio) >
-                        kBlurAspectRatioThreshold;
+  return std::abs(source_aspect_ratio - view_aspect_ratio) >
+         kBlurAspectRatioThreshold;
+}
+
+bool InactiveViewController::IsViewDrawn() const {
+  return image_view_ && image_view_->IsDrawn();
+}
+
+void InactiveViewController::OnViewDrawnStateChanged() {
+  if (IsViewDrawn()) {
+    UpdateImageView();
+  } else if (animation_->is_animating()) {
+    SnapScrimToFullOpacity();
+  }
+}
+
+void InactiveViewController::StartScrimAnimation() {
+  animation_->Reset();
+  animation_->Show();
+}
+
+void InactiveViewController::SnapScrimToFullOpacity() {
+  animation_->Reset(1.0);
+  UpdateScrimOpacity(1.0);
 }

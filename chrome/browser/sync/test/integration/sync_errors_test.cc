@@ -23,7 +23,6 @@
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/sync/base/data_type.h"
-#include "components/sync/base/features.h"
 #include "components/sync/engine/sync_protocol_error.h"
 #include "components/sync/model/data_type_controller_delegate.h"
 #include "components/sync/model/type_entities_count.h"
@@ -125,10 +124,8 @@ class SyncErrorTest
   SyncErrorTest() : SyncTest(SINGLE_CLIENT) {
     if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
       scoped_feature_list_.InitWithFeatures(
-          {syncer::kReplaceSyncPromosWithSignInPromos,
-           switches::kSyncEnableBookmarksInTransportMode,
-           switches::kEnablePreferencesAccountStorage,
-           syncer::kSeparateLocalAndAccountSearchEngines},
+          {switches::kSyncEnableBookmarksInTransportMode,
+           switches::kEnablePreferencesAccountStorage},
           {});
     }
   }
@@ -301,9 +298,6 @@ IN_PROC_BROWSER_TEST_P(SyncErrorTest, ClientDataObsoleteTest) {
   const BookmarkNode* node1 = AddFolder(0, 0, u"title1", GetStoreType());
   SetTitle(0, node1, u"new_title1");
   ASSERT_TRUE(UpdatedProgressMarkerChecker(GetSyncService(0)).Wait());
-
-  std::string description = "Not My Fault";
-  std::string url = "www.google.com";
 
   // Remember cache_guid before actionable error.
   syncer::SyncStatus status;

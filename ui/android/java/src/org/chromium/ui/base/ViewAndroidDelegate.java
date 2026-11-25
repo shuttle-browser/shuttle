@@ -609,12 +609,7 @@ public class ViewAndroidDelegate {
     }
 
     @CalledByNative
-    private void setTooltipFromKeyboard(
-            @JniType("std::u16string") String text,
-            int unusedX,
-            int unusedY,
-            int unusedWidth,
-            int unusedHeight) {
+    private void setTooltipFromKeyboard(@JniType("std::u16string") String text) {
         // Exit early in case of empty or null tooltip Strings.
         if (TextUtils.isEmpty(text) || text.trim().isEmpty()) {
             clearTooltipFromKeyboard();
@@ -685,9 +680,10 @@ public class ViewAndroidDelegate {
         mDragAndDropDelegateImpl.destroy();
     }
 
-    public static void setDragAndDropDelegateForTest(DragAndDropDelegate testDelegate) {
+    public static void setDragAndDropDelegateForTest(@Nullable DragAndDropDelegate testDelegate) {
+        DragAndDropDelegate oldValue = sDragAndDropDelegateForTesting;
         sDragAndDropDelegateForTesting = testDelegate;
-        ResettersForTesting.register(() -> sDragAndDropDelegateForTesting = null);
+        ResettersForTesting.register(() -> sDragAndDropDelegateForTesting = oldValue);
     }
 
     @CalledByNative

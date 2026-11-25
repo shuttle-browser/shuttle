@@ -114,7 +114,11 @@ Symbol SymbolForTip(TipIdentifier tip) {
     case TipIdentifier::kTipsNotifications:
       return SymbolBellBadge;
     case TipIdentifier::kNTPCustomization:
-      return SymbolHideAction;
+      if (segmentation_platform::features::
+              IsMagicStackNTPCustomizationTipIosActionableEnabled()) {
+        return SymbolMoon;
+      }
+      return SymbolSwitch2;
   }
 }
 
@@ -173,6 +177,7 @@ std::optional<Symbol> GetBadgeSymbolConfigForTip(TipIdentifier tip,
   // LINT.IfChange(Copy)
   config.productImageData = self.productImageData;
   config.audience = self.audience;
+  config.consumer = self.consumer;
   // LINT.ThenChange(tips_module_config.h:Copy)
   return config;
 }
@@ -209,11 +214,15 @@ std::optional<Symbol> GetBadgeSymbolConfigForTip(TipIdentifier tip,
     case TipIdentifier::kEnhancedSafeBrowsing:
       return GetNSString(IDS_IOS_MAGIC_STACK_TIP_SAFE_BROWSING_TITLE);
     case TipIdentifier::kNTPTheme:
+      return GetNSString(IDS_IOS_MAGIC_STACK_TIP_NTP_THEME_TITLE);
     case TipIdentifier::kNTPCustomization:
+      if (segmentation_platform::features::
+              IsMagicStackNTPCustomizationTipIosActionableEnabled()) {
+        return GetNSString(IDS_IOS_NTP_CUSTOMIZATION_PROMO_TITLE);
+      }
       return GetNSString(IDS_IOS_MAGIC_STACK_TIP_NTP_THEME_TITLE);
     case TipIdentifier::kTipsNotifications:
-      // TODO(crbug.com/566958827): Add the correct strings once finalized.
-      return @"Get Chrome Tips";
+      return GetNSString(IDS_IOS_MAGIC_STACK_TIP_TIPS_NOTIFICATION_TITLE);
   }
 }
 
@@ -240,8 +249,7 @@ std::optional<Symbol> GetBadgeSymbolConfigForTip(TipIdentifier tip,
     case TipIdentifier::kNTPTheme:
       return GetNSString(IDS_IOS_MAGIC_STACK_TIP_NTP_THEME_DESCRIPTION);
     case TipIdentifier::kTipsNotifications:
-      // TODO(crbug.com/566958827): Add the correct strings once finalized.
-      return @"Get notified about security updates, custom themes, and more.";
+      return GetNSString(IDS_IOS_MAGIC_STACK_TIP_TIPS_NOTIFICATION_DESCIPTION);
     case TipIdentifier::kNTPCustomization:
       return GetNSString(IDS_IOS_MAGIC_STACK_TIP_NTP_CUSTOMIZATION_DESCRIPTION);
   }
@@ -345,6 +353,10 @@ std::optional<Symbol> GetBadgeSymbolConfigForTip(TipIdentifier tip,
       }
       return [UIColor colorNamed:kPink500Color];
     case TipIdentifier::kNTPCustomization:
+      if (segmentation_platform::features::
+              IsMagicStackNTPCustomizationTipIosActionableEnabled()) {
+        return [UIColor colorNamed:kGrey600Color];
+      }
       return [UIColor colorNamed:kPurple500Color];
     case TipIdentifier::kNTPTheme:
       return nil;

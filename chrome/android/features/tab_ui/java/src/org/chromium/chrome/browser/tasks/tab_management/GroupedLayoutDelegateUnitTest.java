@@ -221,12 +221,6 @@ public class GroupedLayoutDelegateUnitTest {
     }
 
     @Test
-    public void testGetInsertionIndexOfTab_NullTab() {
-        int insertionIndex = mDelegate.getInsertionIndexOfTab(null);
-        assertEquals(TabModel.INVALID_TAB_INDEX, insertionIndex);
-    }
-
-    @Test
     public void testOnTabAdded_NewTab_Standalone() {
         setupTabsInModel(mTab1);
 
@@ -1157,7 +1151,6 @@ public class GroupedLayoutDelegateUnitTest {
         when(mTab1.getTabGroupId()).thenReturn(groupId1);
         when(mTab2.getTabGroupId()).thenReturn(groupId1);
         setupTabsInModel(mTab1, mTab2);
-        setupRepresentativeTab(mTab1, mTab1, 0);
         when(mTabModel.getTabsInGroup(groupId1)).thenReturn(List.of(mTab1, mTab2));
 
         GroupedLayoutDelegate delegate =
@@ -1187,7 +1180,6 @@ public class GroupedLayoutDelegateUnitTest {
     @Test
     public void testDidMergeTabToGroup_UpdatesCards() {
         setupTabsInModel(mTab1, mTab2);
-        setupRepresentativeTab(mTab2, mTab2, 0);
         when(mTabModel.getTabsInGroup(TAB_GROUP_ID)).thenReturn(List.of(mTab1, mTab2));
         when(mTabModel.getTabById(TAB1_ID)).thenReturn(mTab1);
         when(mTab1.getTabGroupId()).thenReturn(TAB_GROUP_ID);

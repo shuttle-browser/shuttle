@@ -9,6 +9,7 @@
 #include <string>
 
 #include "chrome/browser/glic/browser_ui/activity_list_bubble/glic_activity_list_bubble_controller_delegate.h"
+#include "chrome/browser/glic/browser_ui/glic_split_button_ui_state.h"
 
 namespace glic {
 
@@ -35,7 +36,8 @@ struct NudgeParams {
 
 // Delegate interface for the UI container that houses GlicButton and
 // GlicActorTaskIcon.
-class GlicSplitButtonDelegate : public ActorTaskListBubbleControllerDelegate {
+class GlicSplitButtonDelegate
+    : public GlicActivityListBubbleControllerDelegate {
  public:
   ~GlicSplitButtonDelegate() override;
 
@@ -69,10 +71,13 @@ class GlicSplitButtonDelegate : public ActorTaskListBubbleControllerDelegate {
   // Update the nudge button "pressed state".
   virtual void SetGlicActorNudgePressedState(bool pressed);
 
-  // ActorTaskListBubbleControllerDelegate:
-  void ShowActorTaskListBubble() override;
-  void CloseActorTaskListBubble() override;
-  bool IsActorTaskListBubbleShowing() override;
+  // Update the secondary split button UI state.
+  virtual void UpdateGlicSplitButtonUi(const GlicSplitButtonUiState& state);
+
+  // GlicActivityListBubbleControllerDelegate:
+  void ShowActivityListBubble() override;
+  void CloseActivityListBubble() override;
+  bool IsActivityListBubbleShowing() override;
 
   // Methods related to glic button visibility and glic panel visibility
 

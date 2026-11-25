@@ -5,6 +5,8 @@
 #include "chrome/browser/actor/actor_test_util.h"
 
 #include <memory>
+#include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
@@ -16,6 +18,7 @@
 #include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/threading/thread_restrictions.h"
+#include "base/types/expected_macros.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_proto_conversion.h"
 #include "chrome/browser/actor/actor_surface_handle.h"
@@ -55,10 +58,12 @@
 #include "components/optimization_guide/proto/hints.pb.h"
 #include "components/sessions/core/session_id.h"
 #include "components/tabs/public/tab_interface.h"
+#include "content/public/browser/global_routing_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/test/browser_test_utils.h"
 #include "testing/gtest/include/gtest/gtest.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/gfx/geometry/point.h"
 
 namespace actor {
@@ -695,12 +700,14 @@ std::unique_ptr<ToolRequest> MakeTypeRequest(TabInterface& tab,
       ActorSurfaceHandle::From(tab.GetHandle()), MakeTarget(type_point), text,
       follow_by_enter, TypeToolRequest::Mode::kReplace);
 }
-std::unique_ptr<ToolRequest> MakeSelectRequest(content::RenderFrameHost& rfh,
-                                               int content_node_id,
-                                               std::string_view value) {
+std::unique_ptr<ToolRequest> MakeSelectRequest(
+    content::RenderFrameHost& rfh,
+    int content_node_id,
+    std::string_view value,
+    mojom::SelectAction::OptionMatchMode match_mode) {
   return std::make_unique<SelectToolRequest>(GetActorSurfaceHandleForFrame(rfh),
                                              MakeTarget(rfh, content_node_id),
-                                             value);
+                                             value, match_mode);
 }
 
 std::unique_ptr<ToolRequest> MakeScrollRequest(
@@ -772,8 +779,9 @@ std::unique_ptr<ToolRequest> MakeWaitRequest(TabInterface* observe_tab) {
 std::unique_ptr<ToolRequest> MakeCreateTabRequest(SessionID window_id,
                                                   bool foreground) {
   return std::make_unique<CreateTabToolRequest>(
-      window_id.id(), foreground ? WindowOpenDisposition::kNewForegroundTab
-                                 : WindowOpenDisposition::kNewBackgroundTab);
+      window_id.id(),
+      foreground ? ::ui::mojom::WindowOpenDisposition::kNewForegroundTab
+                 : ::ui::mojom::WindowOpenDisposition::kNewBackgroundTab);
 }
 
 std::unique_ptr<ToolRequest> MakeActivateTabRequest(TabHandle tab) {
@@ -911,6 +919,18 @@ void ExpectElementDisabledResultWithReason(ActResultFuture& future,
   expected_message += reason;
   expected_message += ".";
   EXPECT_EQ(expected_message, result->message);
+}
+
+std::optional<DomNode> GetDomNodeOnPage(content::RenderFrameHost& rfh,
+                                        std::string_view query_selector) {
+  const content::GlobalRenderFrameHostToken frame_token =
+      rfh.GetGlobalFrameToken();
+  ASSIGN_OR_RETURN(int node_id, content::GetDOMNodeId(rfh, query_selector));
+  ASSIGN_OR_RETURN(
+      std::string document_identifier,
+      DocumentIdentifierUserData::GetDocumentIdentifier(frame_token));
+  return DomNode{.node_id = node_id,
+                 .document_identifier = std::move(document_identifier)};
 }
 
 bool SetUpOptimizationGuideComponentBlocklist(const base::FilePath& path,
@@ -1072,6 +1092,44 @@ TestTabState::TestTabState(content::WebContents* web_contents) {
 TestTabState::~TestTabState() {
   will_detach_callback_list_.Notify(&tab,
                                     tabs::TabInterface::DetachReason::kDelete);
+}
+
+ActorJournalRecorder::Entry::Entry() = default;
+
+ActorJournalRecorder::Entry::Entry(const Entry&) = default;
+
+ActorJournalRecorder::Entry& ActorJournalRecorder::Entry::operator=(
+    const Entry&) = default;
+
+ActorJournalRecorder::Entry::~Entry() = default;
+
+ActorJournalRecorder::ActorJournalRecorder(AggregatedJournal& journal) {
+  observation_.Observe(&journal);
+}
+
+ActorJournalRecorder::~ActorJournalRecorder() = default;
+
+std::vector<ActorJournalRecorder::Entry> ActorJournalRecorder::GetEntries(
+    std::string_view event) const {
+  std::vector<Entry> entries;
+  for (const Entry& entry : entries_) {
+    if (entry.event == event) {
+      entries.push_back(entry);
+    }
+  }
+  return entries;
+}
+
+void ActorJournalRecorder::WillAddJournalEntry(
+    const AggregatedJournal::Entry& entry) {
+  Entry& recorded = entries_.emplace_back();
+  recorded.type = entry.data->type;
+  recorded.event = entry.data->event;
+  recorded.task_id = entry.data->task_id;
+  recorded.track_uuid = entry.data->track_uuid;
+  for (const mojom::JournalDetailsPtr& detail : entry.data->details) {
+    recorded.details.emplace(detail->key, detail->value);
+  }
 }
 
 }  // namespace actor

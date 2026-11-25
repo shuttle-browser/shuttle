@@ -38,6 +38,16 @@ MultiSourceMemoryPressureMonitor::MultiSourceMemoryPressureMonitor()
       ) {
   CHECK(!g_monitor);
   g_monitor = this;
+#if BUILDFLAG(IS_MAC)
+  // Only macOS handles multiple voters, so attribution is only meaningful
+  // there. Elsewhere the callback stays unset and nothing is recorded.
+  // Unretained is safe because |aggregator_| is declared before
+  // |level_reporter_|, so it outlives the reporter's final flush on
+  // destruction.
+  level_reporter_.SetVoterAttributionCallback(
+      base::BindRepeating(&MemoryPressureVoteAggregator::GetVotersForLevel,
+                          base::Unretained(&aggregator_)));
+#endif
 }
 
 MultiSourceMemoryPressureMonitor::~MultiSourceMemoryPressureMonitor() {
@@ -66,29 +76,25 @@ void MultiSourceMemoryPressureMonitor::MaybeStartPlatformVoter() {
 }
 
 std::unique_ptr<MemoryPressureVoter>
-MultiSourceMemoryPressureMonitor::CreateVoter() {
+MultiSourceMemoryPressureMonitor::CreateVoter(
+    MemoryPressureVoterType voter_type) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  return aggregator_.CreateVoter();
+  return aggregator_.CreateVoter(voter_type);
 }
 
-void MultiSourceMemoryPressureMonitor::SetDiskPressureState(
-    bool new_is_disk_pressure) {
+void MultiSourceMemoryPressureMonitor::OnDiskOnlyCriticalChanged(
+    bool is_disk_only_critical) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  level_reporter_.SetDiskPressureState(new_is_disk_pressure);
-}
-
-void MultiSourceMemoryPressureMonitor::SetOsPressureLevel(
-    base::MemoryPressureLevel new_os_pressure_level) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  level_reporter_.SetOsPressureLevel(new_os_pressure_level);
+  level_reporter_.SetDiskOnlyCritical(is_disk_only_critical);
 }
 
 void MultiSourceMemoryPressureMonitor::OnMemoryPressureLevelChanged(
-    base::MemoryPressureLevel level) {
+    base::MemoryPressureLevel level,
+    bool is_disk_only_critical) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_NE(current_pressure_level_, level);
 
-  level_reporter_.OnMemoryPressureLevelChanged(level);
+  level_reporter_.OnMemoryPressureLevelChanged(level, is_disk_only_critical);
 
   TRACE_EVENT_INSTANT(
       "base", "MultiSourceMemoryPressureMonitor::OnMemoryPressureLevelChanged",
@@ -105,6 +111,11 @@ void MultiSourceMemoryPressureMonitor::OnMemoryPressureLevelChanged(
 void MultiSourceMemoryPressureMonitor::OnNotifyListenersRequested() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   dispatch_callback_.Run(current_pressure_level_);
+}
+
+void MultiSourceMemoryPressureMonitor::OnBeforeVoteChange() {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  level_reporter_.OnBeforeVoteChange();
 }
 
 void MultiSourceMemoryPressureMonitor::SetSystemEvaluator(

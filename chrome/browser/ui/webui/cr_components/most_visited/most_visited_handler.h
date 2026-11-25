@@ -9,7 +9,6 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
-#include "base/time/time.h"
 #include "chrome/browser/ui/search/most_visited_metrics_logger.h"
 #include "chrome/common/search/ntp_logging_events.h"
 #include "components/ntp_tiles/most_visited_sites.h"
@@ -29,6 +28,10 @@
 class GURL;
 class Profile;
 class NewTabPagePreloadPipelineManager;
+
+namespace base {
+class DictValue;
+}  // namespace base
 
 namespace content {
 class WebContents;
@@ -59,11 +62,12 @@ class MostVisitedHandler : public most_visited::mojom::MostVisitedPageHandler,
       mojo::PendingRemote<most_visited::mojom::MostVisitedPage> pending_page,
       Profile* profile,
       content::WebContents* web_contents,
-      std::unique_ptr<MostVisitedMetricsLogger> logger,
-      const base::Time& navigation_start_time = base::Time());
+      std::unique_ptr<MostVisitedMetricsLogger> logger);
   MostVisitedHandler(const MostVisitedHandler&) = delete;
   MostVisitedHandler& operator=(const MostVisitedHandler&) = delete;
   ~MostVisitedHandler() override;
+
+  static base::DictValue GetWebUIDataSourceDict();
 
   // See MostVisitedSites::EnableTileTypes.
   virtual void EnableTileTypes(
@@ -131,7 +135,6 @@ class MostVisitedHandler : public most_visited::mojom::MostVisitedPageHandler,
   std::unique_ptr<ntp_tiles::MostVisitedSites> most_visited_sites_;
   raw_ptr<content::WebContents> web_contents_;
   std::unique_ptr<MostVisitedMetricsLogger> logger_;
-  base::Time navigation_start_time_;
   GURL last_blocklisted_;
 
   mojo::Receiver<most_visited::mojom::MostVisitedPageHandler> page_handler_;

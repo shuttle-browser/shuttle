@@ -38,11 +38,8 @@ import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
-import org.chromium.base.test.util.ApplicationTestUtils;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.password_manager.GetLoginMatchType;
 import org.chromium.chrome.browser.password_manager.PasswordManagerResourceProvider;
@@ -73,7 +70,6 @@ import java.util.List;
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
 @DoNotBatch(reason = "The tests can't be batched because they run for different set-ups.")
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 public class TouchToFillPasswordManagerRenderTest {
     @ParameterAnnotations.ClassParameter
     private static final List<ParameterSet> sClassParams =
@@ -188,15 +184,6 @@ public class TouchToFillPasswordManagerRenderTest {
         mTouchToFillView = null;
         mModel = null;
         mBottomSheetController = null;
-        try {
-            ApplicationTestUtils.finishActivity(mActivityTestRule.getActivity());
-        } catch (Exception e) {
-            // Activity was already closed (e.g. due to last test tearing down the suite).
-        }
-        ThreadUtils.runOnUiThreadBlocking(
-                () -> {
-                    ChromeNightModeTestUtils.tearDownNightModeAfterChromeActivityDestroyed();
-                });
     }
 
     @Test

@@ -26,6 +26,7 @@
 #import "ios/chrome/browser/enterprise/proxy/model/proxy_service_controller.h"
 #import "ios/chrome/browser/enterprise/proxy/model/proxy_service_controller_factory.h"
 #import "ios/chrome/browser/geolocation/model/geolocation_manager.h"
+#import "ios/chrome/browser/intelligence/actor/model/actor_tab_helper.h"
 #import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/overlays/model/public/overlay_callback_manager.h"
@@ -33,9 +34,9 @@
 #import "ios/chrome/browser/overlays/model/public/overlay_request.h"
 #import "ios/chrome/browser/overlays/model/public/overlay_request_queue.h"
 #import "ios/chrome/browser/overlays/model/public/overlay_response.h"
-#import "ios/chrome/browser/overlays/model/public/web_content_area/geolocation_prompt_dialog_overlay.h"
 #import "ios/chrome/browser/overlays/model/public/web_content_area/http_auth_overlay.h"
 #import "ios/chrome/browser/overlays/model/public/web_content_area/insecure_form_overlay.h"
+#import "ios/chrome/browser/permissions/model/geolocation_system_permission_infobar_delegate.h"
 #import "ios/chrome/browser/permissions/model/permissions_metrics.h"
 #import "ios/chrome/browser/permissions/model/permissions_tab_helper.h"
 #import "ios/chrome/browser/shared/model/application_context/application_context.h"
@@ -44,6 +45,7 @@
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/gemini_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/public/features/system_flags.h"
 #import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_capabilities.h"
 #import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
@@ -57,6 +59,7 @@
 #import "ios/web/public/permissions/permissions.h"
 #import "ios/web/public/ui/context_menu_params.h"
 #import "ios/web/public/ui/crw_web_view_proxy.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace {
 // Callback for HTTP authentication dialogs. This callback is a standalone
@@ -189,22 +192,9 @@ void PostPermissionDecision(web::WebStatePermissionDecisionHandler handler,
       FROM_HERE, base::BindOnce(handler, decision));
 }
 
-void OnRequestGeolocationPermissionResponse(
-    web::WebStatePermissionDecisionHandler handler,
-    OverlayResponse* response) {
-  if (response) {
-    auto* info = response->GetInfo<GeolocationPromptDialogResponse>();
-    if (info && info->tapped_settings()) {
-      [[UIApplication sharedApplication]
-                    openURL:
-                        [NSURL URLWithString:UIApplicationOpenSettingsURLString]
-                    options:@{}
-          completionHandler:nil];
-    }
-
-    handler(web::PermissionDecisionDeny);
-  }
-}
+// Tracks whether the geolocation system prompt was already shown during the
+// current app process session when the bypass experimental flag is enabled.
+bool g_geolocation_system_prompt_shown_this_session = false;
 
 }  // namespace
 
@@ -295,6 +285,13 @@ web::WebState* WebStateDelegateBrowserAgent::CreateNewWebState(
     return nullptr;
   }
 
+  // Keep actor-controlled tabs bound to their tab by redirecting new-window
+  // requests in-place instead of opening a new tab or blocking a popup.
+  ActorTabHelper* actor_helper = ActorTabHelper::FromWebState(source);
+  if (actor_helper && actor_helper->MaybeHandleNewTabRequest(url)) {
+    return nullptr;
+  }
+
   // Check if requested web state is a popup and block it if necessary.
   if (!initiated_by_user) {
     auto* helper = BlockedPopupTabHelper::FromWebState(source);
@@ -342,9 +339,9 @@ web::WebState* WebStateDelegateBrowserAgent::OpenURLFromWebState(
   insertion_params.parent = source;
 
   switch (params.disposition) {
-    case WindowOpenDisposition::kNewForegroundTab:
-    case WindowOpenDisposition::kNewBackgroundTab:
-    case WindowOpenDisposition::kNewPopup: {
+    case ui::mojom::WindowOpenDisposition::kNewForegroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewBackgroundTab:
+    case ui::mojom::WindowOpenDisposition::kNewPopup: {
       // Under some circumstances, this callback may be triggered from WebKit
       // synchronously as part of handling some other WebStateList mutation
       // (typically deleting a WebState and then activating another as a side
@@ -364,16 +361,17 @@ web::WebState* WebStateDelegateBrowserAgent::OpenURLFromWebState(
         return nullptr;
       }
 
-      if (params.disposition == WindowOpenDisposition::kNewPopup) {
+      if (params.disposition == ui::mojom::WindowOpenDisposition::kNewPopup) {
         insertion_params.opened_by_dom = true;
       } else {
         insertion_params.in_background =
-            params.disposition == WindowOpenDisposition::kNewBackgroundTab;
+            params.disposition ==
+            ui::mojom::WindowOpenDisposition::kNewBackgroundTab;
       }
       return tab_insertion_agent()->InsertWebState(load_params,
                                                    insertion_params);
     }
-    case WindowOpenDisposition::kCurrentTab: {
+    case ui::mojom::WindowOpenDisposition::kCurrentTab: {
       source->GetNavigationManager()->LoadURLWithParams(load_params);
       return source;
     }
@@ -493,25 +491,29 @@ void WebStateDelegateBrowserAgent::RequestGeolocationPermission(
     handler(web::PermissionDecisionShowDefaultPrompt);
     return;
   }
-  PrefService* local_state = GetApplicationContext()->GetLocalState();
-  const base::Time shown =
-      local_state->GetTime(prefs::kIosGeolocationSystemPromptLastShownTime);
 
-  if (!shown.is_null()) {
-    handler(web::PermissionDecisionDeny);
-    return;
+  // TODO(crbug.com/544803863): Clean up this bypass logic once the exact
+  // frequency and conditions for prompting the user are finalized.
+  if (experimental_flags::ShouldBypassGeolocationPromptRestriction()) {
+    if (g_geolocation_system_prompt_shown_this_session) {
+      handler(web::PermissionDecisionDeny);
+      return;
+    }
+    g_geolocation_system_prompt_shown_this_session = true;
+  } else {
+    PrefService* local_state = GetApplicationContext()->GetLocalState();
+    const base::Time shown =
+        local_state->GetTime(prefs::kIosGeolocationSystemPromptLastShownTime);
+
+    if (!shown.is_null()) {
+      handler(web::PermissionDecisionDeny);
+      return;
+    }
+    local_state->SetTime(prefs::kIosGeolocationSystemPromptLastShownTime,
+                         base::Time::Now());
   }
-  local_state->SetTime(prefs::kIosGeolocationSystemPromptLastShownTime,
-                       base::Time::Now());
 
-  std::unique_ptr<OverlayRequest> request =
-      OverlayRequest::CreateWithConfig<GeolocationPromptDialogRequest>();
-
-  request->GetCallbackManager()->AddCompletionCallback(base::BindOnce(
-      &OnRequestGeolocationPermissionResponse, std::move(handler)));
-
-  OverlayRequestQueue::FromWebState(source, OverlayModality::kWebContentArea)
-      ->AddRequest(std::move(request));
+  GeolocationSystemPermissionInfoBarDelegate::Create(source, handler);
 }
 
 void WebStateDelegateBrowserAgent::OnProxyAuthChallenge(

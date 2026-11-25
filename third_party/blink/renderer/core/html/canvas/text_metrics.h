@@ -31,6 +31,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_canvas_text_baseline.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_text_cluster_options.h"
 #include "third_party/blink/renderer/core/core_export.h"
+#include "third_party/blink/renderer/core/html/canvas/shaped_text.h"
 #include "third_party/blink/renderer/core/html/canvas/text_cluster.h"
 #include "third_party/blink/renderer/platform/bindings/script_wrappable.h"
 #include "third_party/blink/renderer/platform/fonts/font.h"
@@ -42,20 +43,26 @@ namespace blink {
 
 class DOMRectReadOnly;
 class ExceptionState;
-class PlainTextPainter;
+class SimpleFontData;
 class TextClusterOptions;
 
 class CORE_EXPORT TextMetrics final : public ScriptWrappable {
   DEFINE_WRAPPERTYPEINFO();
 
  public:
-  TextMetrics();
-  TextMetrics(const Font* font,
-              const TextDirection& direction,
-              V8CanvasTextBaseline::Enum baseline,
-              V8CanvasTextAlign::Enum align,
-              const String& text,
-              PlainTextPainter& text_painter);
+  // Computes the metrics of the whole `shaped_text`, and keeps a reference to
+  // it for the shaping-based queries below.
+  explicit TextMetrics(ShapedText& shaped_text);
+  // Computes the metrics of the [start, end) range of `shaped_text`, such as a
+  // glyph run at `run_x` (relative to the alignment point) with advance
+  // `run_width`. The vertical metrics use `font_data`, or the primary font if
+  // null, relative to the primary font's textBaseline anchor.
+  TextMetrics(ShapedText& shaped_text,
+              uint32_t start,
+              uint32_t end,
+              double run_x,
+              double run_width,
+              const SimpleFontData* font_data);
 
   double width() const { return width_; }
   double actualBoundingBoxLeft() const { return actual_bounding_box_left_; }
@@ -92,37 +99,14 @@ class CORE_EXPORT TextMetrics final : public ScriptWrappable {
   HeapVector<Member<TextCluster>> getTextClusters(
       const TextClusterOptions* options);
 
-  const Font* GetFont() const { return font_; }
+  const Font* GetFont() const { return shaped_text_->GetFont(); }
 
   void Trace(Visitor*) const override;
 
-  struct RunWithOffset {
-    DISALLOW_NEW();
-
-    void Trace(Visitor* visitor) const { visitor->Trace(shape_result_); }
-
-    Member<const ShapeResult> shape_result_{
-        nullptr, Member<const ShapeResult>::AtomicInitializerTag{}};
-    String text_;
-    TextDirection direction_;
-    unsigned character_offset_;
-    unsigned num_characters_;
-    float x_position_;
-  };
-
  private:
-  void Update(const Font*,
-              const TextDirection& direction,
-              V8CanvasTextBaseline::Enum baseline,
-              V8CanvasTextAlign::Enum align,
-              const String&,
-              PlainTextPainter& text_painter);
-  // A helper for Update().  This function updates `runs_with_offset_`, and
-  // returns a pair of the total width and the glyph bounding rectangle.
-  std::pair<float, gfx::RectF> MeasureRuns(PlainTextPainter& text_painter);
-
-  unsigned CorrectForMixedBidi(HeapVector<RunWithOffset>::reverse_iterator&,
-                               unsigned);
+  void InitFromShapedText();
+  void PopulateVerticalMetrics(const SimpleFontData& font_data,
+                               const gfx::RectF& glyph_bounds);
 
   HeapVector<Member<TextCluster>> getTextClustersImpl(
       uint32_t start,
@@ -134,8 +118,6 @@ class CORE_EXPORT TextMetrics final : public ScriptWrappable {
   double width_ = 0.0;
   double actual_bounding_box_left_ = 0.0;
   double actual_bounding_box_right_ = 0.0;
-  // Delta needed for handling textAlign correctly.
-  float text_align_dx_ = 0.0;
   // y-direction
   double font_bounding_box_ascent_ = 0.0;
   double font_bounding_box_descent_ = 0.0;
@@ -147,23 +129,7 @@ class CORE_EXPORT TextMetrics final : public ScriptWrappable {
   Member<Baselines> baselines_;
 
   // Needed for selection rects, bounding boxes and caret position.
-  Member<const Font> font_;
-  TextDirection direction_;
-  String text_;
-
-  // Values from the canvas context at the moment the text was measured.
-  V8CanvasTextAlign::Enum ctx_text_align_ = V8CanvasTextAlign::Enum::kStart;
-  V8CanvasTextBaseline::Enum ctx_text_baseline_ =
-      V8CanvasTextBaseline::Enum::kAlphabetic;
-
-  HeapVector<RunWithOffset> runs_with_offset_;
-};
-
-template <>
-struct VectorTraits<TextMetrics::RunWithOffset>
-    : VectorTraitsBase<TextMetrics::RunWithOffset> {
-  static constexpr bool kCanClearUnusedSlotsWithMemset = true;
-  static constexpr bool kCanTraceConcurrently = true;
+  const Member<ShapedText> shaped_text_;
 };
 
 }  // namespace blink

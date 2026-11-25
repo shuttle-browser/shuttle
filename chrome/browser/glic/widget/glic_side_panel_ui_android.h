@@ -23,6 +23,7 @@
 #include "content/public/browser/media_stream_request.h"
 #include "third_party/blink/public/mojom/mediastream/media_stream.mojom-forward.h"
 #include "ui/base/accelerators/accelerator.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 
 class BrowserWindowInterface;
 class GlobalBrowserCollection;
@@ -90,11 +91,12 @@ class GlicSidePanelUi
   bool IsShowing() const override;
   bool IsShowingOrBackgrounded() const override;
   void ClosePanel() override;
-  void OnReload() override;
   void OnMicrophoneStatusChanged(mojom::MicrophoneStatus status) override {}
 
   // Host::Observer:
   void ActiveWebContentsChanged(content::WebContents* new_contents) override;
+  void ContentsCreated() override;
+  void NativeLoadingStateChanged(bool is_showing) override;
 
   // web_contents_delegate_android::WebContentsDelegateAndroid and
   // pwc::PrivilegedWebContents::EmbedderDelegate:
@@ -120,7 +122,7 @@ class GlicSidePanelUi
   bool HandleWindowCreation(
       content::RenderFrameHost* opener,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& features) override;
 
   // BrowserCollectionObserver
@@ -230,6 +232,8 @@ class GlicSidePanelUi
   // Notifies the delegate if the embedder window is no longer active. Used to
   // catch up on deactivations suppressed during a permission prompt.
   void SyncEmbedderWindowActivation();
+
+  void OnNativeFreAccepted();
 
   base::CallbackListSubscription panel_visibility_subscription_;
   base::ScopedObservation<GlobalBrowserCollection, BrowserCollectionObserver>

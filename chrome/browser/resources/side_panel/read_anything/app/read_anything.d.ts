@@ -76,7 +76,6 @@ declare namespace chrome {
     // The last line focus value used when it was on.
     let lastNonDisabledLineFocus: number;
     // Whether line focus is currently on. i.e. it is in a mode other than off.
-    // The feature flag check is separate under isLineFocusEnabled.
     let isLineFocusOn: boolean;
 
     // Enum values for various visual theme changes.
@@ -141,9 +140,6 @@ declare namespace chrome {
     // Whether the phrase highlighting feature flag is enabled.
     let isPhraseHighlightingEnabled: boolean;
 
-    // Whether the line focus feature flag is enabled.
-    let isLineFocusEnabled: boolean;
-
     // Indicates if this page is a Google doc.
     let isGoogleDocs: boolean;
 
@@ -157,10 +153,11 @@ declare namespace chrome {
     // to date when isTranslatePdfEnabled is true.
     let isContentTranslated: boolean;
 
-    // Whether the browser is waiting for the distilled content to be
-    // translated. While true, content should stay hidden behind the loading
-    // screen.
-    let isAwaitingTranslation: boolean;
+    // Whether content should stay hidden behind the loading screen until it's
+    // translated, or the translation empty state should be shown instead of
+    // the untranslated content because the translation failed. One of the
+    // TranslationState values in content_controller.ts.
+    let translationState: number;
 
     // Fonts supported by the user's current language.
     let supportedFonts: string[];
@@ -178,16 +175,13 @@ declare namespace chrome {
     // If distillations have been queued up.
     let requiresDistillation: boolean;
 
-    // If the speech tree has been initialized in the renderer.
-    let isSpeechTreeInitialized: boolean;
-
     // Max number of characters to display in one line of Reading mode.
     let maxLineWidth: number;
 
-    // Distiled title from DOM distiller distillation.
+    // Distilled title from Readability distillation.
     let htmlTitle: string;
 
-    // Distiled html content from DOM distiller distillation.
+    // Distilled html content from Readability distillation.
     let htmlContent: string;
 
     // The active URL of the main panel document.
@@ -321,6 +315,9 @@ declare namespace chrome {
     // Called when a user requests translation via the webui toolbar.
     function onTranslationRequested(): void;
 
+    // Called when a user requests to send feedback via the webui toolbar.
+    function onSendFeedback(): void;
+
     // Called when a user toggles images via the webui toolbar.
     function onImagesEnabledToggled(): void;
 
@@ -407,9 +404,6 @@ declare namespace chrome {
     // SidePanelWebUIView::ShowUI
     function shouldShowUi(): boolean;
 
-    // Called by the Read Anything app to request the presentation state.
-    function sendGetPresentationStateRequest(): void;
-
     // Called by the Read Anything app to close the Read Anything UI.
     function close(): void;
 
@@ -428,6 +422,12 @@ declare namespace chrome {
     // Called by the Read Anything app to toggle between presentation modes.
     function togglePresentation(): void;
 
+    // Asynchronously calculates the phrase boundaries for each of the given
+    // sentences. The result is returned via onPhraseBoundariesReady() with the
+    // same `requestId`.
+    function requestPhraseBoundaries(requestId: number, sentences: string[]):
+        void;
+
     ////////////////////////////////////////////////////////////////
     // Implemented in read_anything/app.ts and called by native c++.
     ////////////////////////////////////////////////////////////////
@@ -439,11 +439,6 @@ declare namespace chrome {
     function onPresentationStateReceived(presentationState: number): void;
 
     function onPinStateReceived(pinState: boolean): void;
-
-    // Called when the browser starts or stops waiting for the distilled
-    // content to be translated. While awaiting, content should stay hidden
-    // behind the loading screen.
-    function onAwaitingTranslationChanged(awaiting: boolean): void;
 
     // Display the empty state page to tell the user we can't distill the page.
     function showEmpty(): void;
@@ -461,8 +456,8 @@ declare namespace chrome {
     // Ping that the selection has been updated.
     function updateSelection(): void;
 
-    // Called when the translation state of the page changes. The new state can
-    // be read from isContentTranslated.
+    // Called when the translation state of the content changes. The new state
+    // can be read from isContentTranslated and translationState.
     function onTranslationStateChanged(): void;
 
     // Read Aloud state should be updated if the lock screen state changes.
@@ -485,38 +480,20 @@ declare namespace chrome {
     // preferences and can be used to set up the page.
     function restoreSettingsFromPrefs(): void;
 
-    // Inits the AXPosition instance in ReadAnythingAppController with the
-    // starting node. Currently needed to orient the AXPosition to the correct
-    // position, but we should be able to remove this in the future.
-    function initAxPositionWithNode(startingNodeId: number): void;
-
-    // Gets the text content of the next text that should be spoken and
-    // highlighted.
-    function getCurrentTextContent(): string;
-
-    // Resets the granularity index.
-    function resetGranularityIndex(): void;
-
     // Called after the ReadAnythingAppController maps the readability text
     // blocks to the AXTree.
     function onRenderedTextMappingReady(): void;
 
-    // Increments the processed_granularity_index_ in ReadAnythingAppModel,
-    // effectively updating ReadAloud's state of the current granularity to
-    // refer to the next granularity.
-    function movePositionToNextGranularity(): void;
-
-    // Decrements the processed_granularity_index_ in ReadAnythingAppModel,
-    // effectively updating ReadAloud's state of the current granularity to
-    // refer to the previous granularity.
-    function movePositionToPreviousGranularity(): void;
+    // Called with the result of requestPhraseBoundaries(). `requestId` is the
+    // ID passed to requestPhraseBoundaries(). `boundaries` has one entry per
+    // requested sentence, each containing the start offsets of the phrases in
+    // that sentence. An entry is empty if the phrase boundaries for that
+    // sentence couldn't be calculated.
+    function onPhraseBoundariesReady(requestId: number, boundaries: number[][]):
+        void;
 
     // Signal that the page language has changed.
     function languageChanged(): void;
-
-    // Gets the accessible text boundary for the given string
-    function getAccessibleBoundary(text: string, maxSpeechLength: number):
-        number;
 
     // Requests the image in the form of bitmap. onImageDownloaded will be
     // called when the image has been downloaded.
@@ -584,30 +561,6 @@ declare namespace chrome {
     // Increment the cumulative speech line count for the current line focus
     // session.
     function incrementLineFocusSpeechLines(): void;
-
-    // Returns a list of node ids and ranges (start and length) associated with
-    // the index within the given text segment. The intended use is for
-    // highlighting the ranges. Note that a highlight can span over multiple
-    // nodes in certain cases. If the `phrases` argument is `true`, the text
-    // ranges for the containing phrase are returned, otherwise the text ranges
-    // for the word are returned.
-    //
-    // For example, for a segment of text composed of two nodes:
-    // Node 1: "Hello, this is a "
-    // Node 2: "segment of text."
-    // An index of "20" will return the node id associated with node 2, a start
-    // index of 0, and a length of 8 (covering the word "segment ").
-    function getHighlightForCurrentSegmentIndex(
-        index: number, phrases: boolean):
-        Array<{nodeId: number, start: number, length: number}>;
-
-    // Returns a list of node ids and ranges (start and length) associated with
-    // the full next text segment to speak and highlight. Note that a highlight
-    // can span over multiple nodes in certain cases. This is different from
-    // getHighlightForCurrentSegmentIndex in that this returns the full sentence
-    // whereas the other returns a segment (word or phrase) within the sentence.
-    function getCurrentTextSegments():
-        Array<{nodeId: number, start: number, length: number}>;
 
     // Called when the main frame undergoes a same document navigation (such as
     // a fragment navigation).

@@ -57,10 +57,7 @@ source_set("features") {
     "password_manager_features.h",
   ]
 
-  deps = [
-    "//base",
-    "//build:blink_buildflags",
-  ]
+  deps = [ "//base" ]
 }
 
 source_set("unit_tests") {
@@ -77,6 +74,11 @@ source_set("unit_tests") {
     "//components/autofill/core/common:test_support",
     "//testing/gtest",
   ]
+
+  if (!is_android) {
+    deps +=
+        [ "//components/password_manager/core/common/remote_actor:unit_tests" ]
+  }
 
   if (is_ios) {
     sources += [ "passwords_directory_util_ios_unittest.cc" ]

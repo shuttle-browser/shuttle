@@ -15,10 +15,12 @@ import androidx.test.filters.MediumTest;
 import androidx.test.platform.app.InstrumentationRegistry;
 
 import org.junit.Assert;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 
+import org.chromium.base.DeviceInfo;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Features.DisableFeatures;
@@ -46,6 +48,11 @@ import org.chromium.ui.util.ColorUtils;
 public class MediaViewerUtilsTest {
     @Rule
     public CustomTabActivityTestRule mCustomTabActivityTestRule = new CustomTabActivityTestRule();
+
+    @Before
+    public void setUp() {
+        DeviceInfo.setIsDesktopForTesting(false);
+    }
 
     @Test
     @MediumTest
@@ -149,7 +156,7 @@ public class MediaViewerUtilsTest {
 
     @Test
     @MediumTest
-    @EnableFeatures(ChromeFeatureList.OPEN_DOWNLOAD_IN_NEW_TAB)
+    @DisableFeatures(ChromeFeatureList.OPEN_DOWNLOAD_IN_NEW_TAB)
     @Restriction(DeviceFormFactor.PHONE)
     public void testOpenDownloadInNewTab_Phone() {
         Uri uri = Uri.parse(TestContentProvider.createContentUrl("google.png"));

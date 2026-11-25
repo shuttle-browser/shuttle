@@ -29,6 +29,8 @@ base_feature_param!(
 
 #[gtest(RustFeatureTest, DefaultStates)]
 fn test_default_states() {
+    expect_eq!(FeatureOnByDefault.default_state(), FeatureState::Enabled);
+    expect_eq!(FeatureOffByDefault.default_state(), FeatureState::Disabled);
     expect_true!(FeatureOnByDefault.is_enabled());
     expect_false!(FeatureOffByDefault.is_enabled());
 }
@@ -134,6 +136,8 @@ fn test_init_and_enable_feature() {
     let mut scoped_feature_list = ScopedFeatureList::new();
     scoped_feature_list.init_and_enable_feature(&FeatureOffByDefault);
     expect_true!(FeatureOffByDefault.is_enabled());
+    // Caching the override must not change the default state.
+    expect_eq!(FeatureOffByDefault.default_state(), FeatureState::Disabled);
 }
 
 #[gtest(RustFeatureTest, InitAndDisableFeature)]
@@ -141,4 +145,6 @@ fn test_init_and_disable_feature() {
     let mut scoped_feature_list = ScopedFeatureList::new();
     scoped_feature_list.init_and_disable_feature(&FeatureOnByDefault);
     expect_false!(FeatureOnByDefault.is_enabled());
+    // Caching the override must not change the default state.
+    expect_eq!(FeatureOnByDefault.default_state(), FeatureState::Enabled);
 }

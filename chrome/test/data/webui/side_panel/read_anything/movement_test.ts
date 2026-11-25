@@ -6,9 +6,9 @@ import 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js'
 
 import type {NodeStore} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
 import {currentReadHighlightClass, MovementGranularity, PARENT_OF_HIGHLIGHT_CLASS, PhraseHighlight, previousReadHighlightClass, ReadAloudNode, SentenceHighlight, WordHighlight} from 'chrome-untrusted://read-anything-side-panel.top-chrome/read_anything.js';
-import {assertEquals, assertFalse, assertGT, assertNotEquals, assertStringContains, assertStringExcludes, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
+import {assertEquals, assertFalse, assertGT, assertNotEquals, assertTrue} from 'chrome-untrusted://webui-test/chai_assert.js';
 
-import {setupTestEnvironment, setWindowSize} from './common.js';
+import {assertHtml, assertHtmlContains, assertHtmlExcludes, setupTestEnvironment, setWindowSize} from './common.js';
 
 suite('Movement', () => {
   let nodeStore: NodeStore;
@@ -21,22 +21,6 @@ suite('Movement', () => {
     nodeStore = result.nodeStore;
   });
 
-  function assertHtml(html: string, id: number) {
-    assertEquals(
-        html, (nodeStore.getDomNode(id) as Element).innerHTML,
-        (nodeStore.getDomNode(id) as Element).innerHTML);
-  }
-
-  function assertHtmlContains(partialHtml: string, id: number) {
-    assertStringContains(
-        (nodeStore.getDomNode(id) as Element).innerHTML, partialHtml);
-  }
-
-  function assertHtmlExcludes(partialHtml: string, id: number) {
-    assertStringExcludes(
-        (nodeStore.getDomNode(id) as Element).innerHTML, partialHtml);
-  }
-
   suite('MovementGranularity', () => {
     test('isEmpty is true when no highlights are added', () => {
       const granularity = new MovementGranularity();
@@ -48,7 +32,7 @@ suite('Movement', () => {
       const p = document.createElement('p');
       p.innerText = 'I\'m gonna make a change';
       nodeStore.setDomNode(p, id);
-      const segments = [{node: ReadAloudNode.create(p)!, start: 0, length: 5}];
+      const segments = [{node: ReadAloudNode.create(p), start: 0, length: 5}];
 
       const granularity = new MovementGranularity();
       granularity.addHighlight(new SentenceHighlight(segments));
@@ -62,7 +46,7 @@ suite('Movement', () => {
       p1.innerText = 'For once in my life.';
       nodeStore.setDomNode(p1, id1);
       const segments1 = [{
-        node: ReadAloudNode.create(p1)!,
+        node: ReadAloudNode.create(p1),
         start: 0,
         length: p1.innerText.length,
       }];
@@ -71,7 +55,7 @@ suite('Movement', () => {
       p2.innerText = 'It\'s gonna feel real good, ';
       nodeStore.setDomNode(p2, id2);
       const segments2 = [{
-        node: ReadAloudNode.create(p2)!,
+        node: ReadAloudNode.create(p2),
         start: 0,
         length: p2.innerText.length,
       }];
@@ -97,7 +81,7 @@ suite('Movement', () => {
       p1.innerText = 'For once in my life.';
       nodeStore.setDomNode(p1, id1);
       const segments1 = [{
-        node: ReadAloudNode.create(p1)!,
+        node: ReadAloudNode.create(p1),
         start: 0,
         length: p1.innerText.length,
       }];
@@ -106,7 +90,7 @@ suite('Movement', () => {
       p2.innerText = 'It\'s gonna feel real good, ';
       nodeStore.setDomNode(p2, id2);
       const segments2 = [{
-        node: ReadAloudNode.create(p2)!,
+        node: ReadAloudNode.create(p2),
         start: 0,
         length: p2.innerText.length,
       }];
@@ -143,7 +127,7 @@ suite('Movement', () => {
       nodeStore.setDomNode(targetP, TARGET_NODE_ID);
       // Highlight the off-screen element
       const segments = [{
-        node: ReadAloudNode.create(targetP)!,
+        node: ReadAloudNode.create(targetP),
         start: 0,
         length: targetP.innerText.length,
       }];
@@ -195,7 +179,7 @@ suite('Movement', () => {
       nodeStore.setDomNode(targetP, TARGET_NODE_ID);
       // Highlight the off-screen element
       const segments = [{
-        node: ReadAloudNode.create(targetP)!,
+        node: ReadAloudNode.create(targetP),
         start: 0,
         length: targetP.innerText.length,
       }];
@@ -246,7 +230,7 @@ suite('Movement', () => {
 
       // The previous highlight that is on-screen.
       const segments1 = [{
-        node: ReadAloudNode.create(onscreenWord)!,
+        node: ReadAloudNode.create(onscreenWord),
         start: 0,
         length: onscreenWord.textContent.length,
       }];
@@ -258,7 +242,7 @@ suite('Movement', () => {
       // The initially off-screen highlight representing the currently
       // spoken text.
       const segments2 = [{
-        node: ReadAloudNode.create(offscreenWord)!,
+        node: ReadAloudNode.create(offscreenWord),
         start: 0,
         length: offscreenWord.textContent.length,
       }];
@@ -286,7 +270,7 @@ suite('Movement', () => {
         nodeStore.setDomNode(p, id);
         const granularity = new MovementGranularity();
         const wordSegments =
-            [{node: ReadAloudNode.create(p)!, start: 0, length: 4}];
+            [{node: ReadAloudNode.create(p), start: 0, length: 4}];
         granularity.addHighlight(new WordHighlight(wordSegments, 4));
         assertHtmlContains(currentReadHighlightClass, id);
 
@@ -311,12 +295,12 @@ suite('Movement', () => {
             const granularity = new MovementGranularity();
             const sentenceSegments = [
               {
-                node: ReadAloudNode.create(p1)!,
+                node: ReadAloudNode.create(p1),
                 start: 0,
                 length: p1.innerText.length,
               },
               {
-                node: ReadAloudNode.create(p2)!,
+                node: ReadAloudNode.create(p2),
                 start: 0,
                 length: p2.innerText.length,
               },
@@ -326,7 +310,7 @@ suite('Movement', () => {
             assertHtmlContains(currentReadHighlightClass, id2);
             // After highlighting the sentence, highlight the first word.
             const upcomingWordSegments =
-                [{node: ReadAloudNode.create(p1)!, start: 0, length: 4}];
+                [{node: ReadAloudNode.create(p1), start: 0, length: 4}];
 
             granularity.onWillHighlightWordOrPhrase(upcomingWordSegments);
 
@@ -355,15 +339,15 @@ suite('Movement', () => {
             nodeStore.setDomNode(p3, id3);
 
             const granularity = new MovementGranularity();
-            const p3Node = ReadAloudNode.create(p3)!;
+            const p3Node = ReadAloudNode.create(p3);
             const sentenceSegments = [
               {
-                node: ReadAloudNode.create(p1)!,
+                node: ReadAloudNode.create(p1),
                 start: 0,
                 length: p1.innerText.length,
               },
               {
-                node: ReadAloudNode.create(p2)!,
+                node: ReadAloudNode.create(p2),
                 start: 0,
                 length: p2.innerText.length,
               },
@@ -400,7 +384,7 @@ suite('Movement', () => {
         const granularity = new MovementGranularity();
         const sentenceSegments = [
           {
-            node: ReadAloudNode.create(p)!,
+            node: ReadAloudNode.create(p),
             start: 0,
             length: p.innerText.length,
           },
@@ -426,7 +410,7 @@ suite('Movement', () => {
       p.innerText = text;
       nodeStore.setDomNode(p, id);
       const segments =
-          [{node: ReadAloudNode.create(p)!, start: 0, length: text.length}];
+          [{node: ReadAloudNode.create(p), start: 0, length: text.length}];
 
       const highlight = new SentenceHighlight(segments);
 
@@ -448,12 +432,12 @@ suite('Movement', () => {
       nodeStore.setDomNode(a, id2);
       const segments = [
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: 0,
           length: text1.length,
         },
         {
-          node: ReadAloudNode.create(a)!,
+          node: ReadAloudNode.create(a),
           start: 0,
           length: text2.length,
         },
@@ -479,7 +463,7 @@ suite('Movement', () => {
       nodeStore.setDomNode(p, id);
       const segments = [
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: 0,
           length: text1.length,
         },
@@ -493,10 +477,8 @@ suite('Movement', () => {
       const childNodes = parent.childNodes;
       assertEquals(2, childNodes.length);
       const currentHighlight = childNodes.item(0);
-      assertTrue(!!currentHighlight);
-      assertEquals(
-          currentReadHighlightClass,
-          (currentHighlight as HTMLElement).className);
+      assertTrue(currentHighlight instanceof HTMLElement);
+      assertEquals(currentReadHighlightClass, currentHighlight.className);
       const currentText = currentHighlight.firstChild;
       assertTrue(!!currentText);
       // The new highlight should replace the original paragraph, and the new
@@ -524,7 +506,7 @@ suite('Movement', () => {
       nodeStore.setDomNode(p, id);
       const segments = [
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: text1.length,
           length: text1.length + text2.length,
         },
@@ -538,15 +520,13 @@ suite('Movement', () => {
       const childNodes = parent.childNodes;
       assertEquals(2, childNodes.length);
       const prefix = childNodes.item(0);
-      assertTrue(!!prefix);
-      assertEquals(
-          previousReadHighlightClass, (prefix as HTMLElement).className);
+      assertTrue(prefix instanceof HTMLElement);
+      assertEquals(previousReadHighlightClass, prefix.className);
       const prefixText = prefix.firstChild;
       assertTrue(!!prefixText);
       const current = childNodes.item(1);
-      assertTrue(!!current);
-      assertEquals(
-          currentReadHighlightClass, (current as HTMLElement).className);
+      assertTrue(current instanceof HTMLElement);
+      assertEquals(currentReadHighlightClass, current.className);
       const currentText = current.firstChild;
       assertTrue(!!currentText);
       // The new highlight should replace the original paragraph, and the new
@@ -576,8 +556,8 @@ suite('Movement', () => {
           nodeStore.setDomNode(p1, id1);
           nodeStore.setDomNode(p2, id2);
           const segments = [
-            {node: ReadAloudNode.create(p1)!, start: 0, length: text1.length},
-            {node: ReadAloudNode.create(p2)!, start: 0, length: text2.length},
+            {node: ReadAloudNode.create(p1), start: 0, length: text1.length},
+            {node: ReadAloudNode.create(p2), start: 0, length: text2.length},
           ];
 
           new SentenceHighlight(segments);
@@ -599,7 +579,7 @@ suite('Movement', () => {
       nodeStore.setDomNode(p, id);
       // The segment covers the whole text, but the TTS length is just the word.
       const segments = [{
-        node: ReadAloudNode.create(p)!,
+        node: ReadAloudNode.create(p),
         start: 0,
         length: p.innerText.length,
       }];
@@ -621,7 +601,7 @@ suite('Movement', () => {
       nodeStore.setDomNode(p, id);
       // The segment covers the whole text, but the TTS length is just the word.
       const segments =
-          [{node: ReadAloudNode.create(p)!, start: 0, length: word.length}];
+          [{node: ReadAloudNode.create(p), start: 0, length: word.length}];
 
       new WordHighlight(segments, 0);
 
@@ -642,12 +622,12 @@ suite('Movement', () => {
       nodeStore.setDomNode(p, id);
       const segments = [
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: text1.length,
           length: word.length,
         },
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: text1.length + word.length,
           length: text2.length,
         },
@@ -669,7 +649,7 @@ suite('Movement', () => {
       p.innerText = text;
       nodeStore.setDomNode(p, id);
       const segments =
-          [{node: ReadAloudNode.create(p)!, start: 0, length: text.length}];
+          [{node: ReadAloudNode.create(p), start: 0, length: text.length}];
 
       const highlight = new PhraseHighlight(segments);
 
@@ -691,12 +671,12 @@ suite('Movement', () => {
       nodeStore.setDomNode(a, id2);
       const segments = [
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: 0,
           length: text1.length,
         },
         {
-          node: ReadAloudNode.create(a)!,
+          node: ReadAloudNode.create(a),
           start: 0,
           length: text2.length,
         },
@@ -722,12 +702,12 @@ suite('Movement', () => {
       nodeStore.setDomNode(p, id);
       const segments = [
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: text1.length,
           length: word.length,
         },
         {
-          node: ReadAloudNode.create(p)!,
+          node: ReadAloudNode.create(p),
           start: text1.length + word.length,
           length: text2.length,
         },
@@ -747,7 +727,7 @@ suite('Movement', () => {
     p.innerText = text;
     nodeStore.setDomNode(p, id);
     const segments =
-        [{node: ReadAloudNode.create(p)!, start: 0, length: text.length}];
+        [{node: ReadAloudNode.create(p), start: 0, length: text.length}];
 
     const highlight = new SentenceHighlight(segments);
     assertHtmlContains(currentReadHighlightClass, id);
@@ -766,7 +746,7 @@ suite('Movement', () => {
     p.innerText = text;
     nodeStore.setDomNode(p, id);
     const segments =
-        [{node: ReadAloudNode.create(p)!, start: 0, length: text.length}];
+        [{node: ReadAloudNode.create(p), start: 0, length: text.length}];
 
     const highlight = new SentenceHighlight(segments);
     assertHtmlContains(currentReadHighlightClass, id);
@@ -789,7 +769,8 @@ suite('Movement', () => {
     let segments =
         [{node: readAloudNode, start: prefix.length, length: word.length}];
     new WordHighlight(segments, word.length);
-    let node = nodeStore.getDomNode(id) as HTMLElement;
+    let node = nodeStore.getDomNode(id);
+    assertTrue(node instanceof Element);
     let highlights =
         node.querySelectorAll<HTMLElement>('.' + currentReadHighlightClass);
     assertEquals(1, highlights.length);
@@ -807,7 +788,8 @@ suite('Movement', () => {
       length: phrase.length,
     }];
     new SentenceHighlight(segments);
-    node = nodeStore.getDomNode(id) as HTMLElement;
+    node = nodeStore.getDomNode(id);
+    assertTrue(node instanceof Element);
     highlights =
         node.querySelectorAll<HTMLElement>('.' + currentReadHighlightClass);
     assertEquals(1, highlights.length);
@@ -826,7 +808,7 @@ suite('Movement', () => {
     const text = 'A summer\'s disregard.';
     p.innerText = text;
     nodeStore.setDomNode(p, id);
-    const readAloudNode = ReadAloudNode.create(p)!;
+    const readAloudNode = ReadAloudNode.create(p);
     const segments = [{node: readAloudNode, start: 0, length: text.length}];
     const originalDomNode = readAloudNode.domNode();
 
@@ -854,7 +836,7 @@ suite('Movement', () => {
 
         // Save the <tr> in the nodeStore to be able to use assertHtmlExcludes.
         nodeStore.setDomNode(tr, containerId);
-        const readAloudNode = ReadAloudNode.create(whitespaceNode)!;
+        const readAloudNode = ReadAloudNode.create(whitespaceNode);
         const segments = [
           {
             node: readAloudNode,

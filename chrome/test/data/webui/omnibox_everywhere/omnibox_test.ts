@@ -6,8 +6,8 @@ import 'chrome://omnibox-everywhere.top-chrome/omnibox_everywhere.js';
 
 import {FreChinMode} from 'chrome://omnibox-everywhere.top-chrome/fre_chin.js';
 import type {FreChinElement} from 'chrome://omnibox-everywhere.top-chrome/fre_chin.js';
-import {ComposeboxProxyImpl, OmniboxEverywhereBrowserProxyImpl, SearchboxBrowserProxy} from 'chrome://omnibox-everywhere.top-chrome/omnibox_everywhere.js';
-import type {OmniboxEverywhereAppElement, OmniboxEverywhereComposeboxElement, OmniboxEverywhereOmniboxElement, OmniboxEverywhereProfileIconElement} from 'chrome://omnibox-everywhere.top-chrome/omnibox_everywhere.js';
+import {browserProxyFactory as omniboxEverywhereProxyFactory, ComposeboxProxyImpl, OmniboxEverywherePageHandlerRemote, SearchboxBrowserProxy} from 'chrome://omnibox-everywhere.top-chrome/omnibox_everywhere.js';
+import type {OmniboxEverywhereAppElement, OmniboxEverywhereComposeboxElement, OmniboxEverywhereOmniboxElement, OmniboxEverywherePageRemote, OmniboxEverywhereProfileIconElement} from 'chrome://omnibox-everywhere.top-chrome/omnibox_everywhere.js';
 import {ComposeboxFile} from 'chrome://resources/cr_components/composebox/common.js';
 import type {ComposeboxState} from 'chrome://resources/cr_components/composebox/common.js';
 import {PageHandlerRemote} from 'chrome://resources/cr_components/composebox/composebox.mojom-webui.js';
@@ -21,7 +21,7 @@ import {createAutocompleteResultForTesting, createSearchMatchForTesting} from 'c
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import {getDeepActiveElement} from 'chrome://resources/js/util.js';
 import {FreStage, SelectionDirection, SelectionLineState, SelectionStep} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
-import type {PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerRemote as SearchboxPageHandlerRemote, SelectedFileInfo} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
+import type {AutocompleteMatch, PageCallbackRouter as SearchboxPageCallbackRouter, PageHandlerRemote as SearchboxPageHandlerRemote, SelectedFileInfo} from 'chrome://resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import {TextDirection} from 'chrome://resources/mojo/mojo/public/mojom/base/text_direction.mojom-webui.js';
 import type {UnguessableToken} from 'chrome://resources/mojo/mojo/public/mojom/base/unguessable_token.mojom-webui.js';
 import {MenuSourceType} from 'chrome://resources/mojo/ui/base/mojom/menu_source_type.mojom-webui.js';
@@ -30,7 +30,7 @@ import {MockTimer} from 'chrome://webui-test/mock_timer.js';
 import {TestMock} from 'chrome://webui-test/test_mock.js';
 import {eventToPromise, microtasksFinished} from 'chrome://webui-test/test_util.js';
 
-import {TestOmniboxEverywhereBrowserProxy, TestSearchboxBrowserProxy} from './test_searchbox_browser_proxy.js';
+import {TestSearchboxBrowserProxy} from './test_searchbox_browser_proxy.js';
 
 function getInputValue(
     inputElement: HTMLInputElement|HTMLTextAreaElement|HTMLElement): string {
@@ -53,7 +53,8 @@ function blurActiveElement() {
 suite('OmniboxEverywhereOmniboxTest', () => {
   let omnibox: OmniboxEverywhereOmniboxElement;
   let testProxy: TestSearchboxBrowserProxy;
-  let testEverywhereProxy: TestOmniboxEverywhereBrowserProxy;
+  let testEverywhereHandler: TestMock<OmniboxEverywherePageHandlerRemote>&
+      OmniboxEverywherePageHandlerRemote;
 
   setup(async () => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
@@ -80,8 +81,11 @@ suite('OmniboxEverywhereOmniboxTest', () => {
     });
     testProxy = new TestSearchboxBrowserProxy();
     SearchboxBrowserProxy.setInstance(testProxy);
-    testEverywhereProxy = new TestOmniboxEverywhereBrowserProxy();
-    OmniboxEverywhereBrowserProxyImpl.setInstance(testEverywhereProxy);
+    testEverywhereHandler =
+        TestMock.fromClass(OmniboxEverywherePageHandlerRemote);
+    omniboxEverywhereProxyFactory.setInstance(
+        omniboxEverywhereProxyFactory.createForTest(testEverywhereHandler)
+            .instance);
     omnibox = document.createElement('omnibox-everywhere-omnibox');
     document.body.appendChild(omnibox);
     await microtasksFinished();
@@ -98,7 +102,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
     });
 
     const args =
-        await testEverywhereProxy.handler.whenCalled('showContextActionMenu');
+        await testEverywhereHandler.whenCalled('showContextActionMenu');
     assertEquals(10, args.x);
     assertEquals(20, args.y);
     assertEquals(30, args.width);
@@ -120,6 +124,19 @@ suite('OmniboxEverywhereOmniboxTest', () => {
 
         assertTrue(omnibox.hasAttribute('is-dragging-file'));
         assertEquals(GlowAnimationState.DRAGGING, omnibox.animationState);
+
+        const glow =
+            omnibox.shadowRoot.querySelector<SearchAnimatedGlowElement>(
+                'search-animated-glow')!;
+        const dragDropPlaceholder =
+            glow.shadowRoot.querySelector<HTMLElement>('#dragDropPlaceholder')!;
+        assertEquals('12px', window.getComputedStyle(dragDropPlaceholder).top);
+
+        omnibox.dropdownIsVisible = true;
+        await microtasksFinished();
+        assertEquals('18px', window.getComputedStyle(dragDropPlaceholder).top);
+        omnibox.dropdownIsVisible = false;
+        await microtasksFinished();
 
         inputWrapper?.dispatchEvent(new DragEvent('dragleave', {
           bubbles: true,
@@ -817,6 +834,28 @@ suite('OmniboxEverywhereOmniboxTest', () => {
         window.getComputedStyle(bottomControls).animationName);
   });
 
+  test('profile icon follows the action buttons in tab order', () => {
+    // Tab order follows the DOM. In the 1-line pill, the voice, Lens, and
+    // overflow buttons render before the trailing profile icon.
+    const tabStops = [
+      '#input',
+      '#voiceSearchButton',
+      '#lensSearchButton',
+      '#overflowMenuButton',
+      '#profileIcon',
+    ].map(selector => omnibox.shadowRoot.querySelector(selector));
+    for (let i = 1; i < tabStops.length; i++) {
+      const previous = tabStops[i - 1];
+      const next = tabStops[i];
+      assertTrue(!!previous);
+      assertTrue(!!next);
+      assertTrue(
+          (previous.compareDocumentPosition(next) &
+           Node.DOCUMENT_POSITION_FOLLOWING) !== 0,
+          `#${previous.id} should precede #${next.id}`);
+    }
+  });
+
   test(
       'clicking lens button calls showScreenshotMenu and sets ' +
           'isScreenshotMenuOpen',
@@ -1046,20 +1085,58 @@ suite('OmniboxEverywhereOmniboxTest', () => {
     assertFalse(omnibox.showContextEntrypoint);
   });
 
+  async function createOmniboxWithProfilePicker() {
+    loadTimeData.overrideValues({omniboxEverywhereProfilePickerEnabled: true});
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    omnibox = document.createElement('omnibox-everywhere-omnibox');
+    document.body.appendChild(omnibox);
+    await microtasksFinished();
+  }
+
+  async function showDropdownWithVirtualFocus(matches: AutocompleteMatch[]) {
+    omnibox.virtualFocusEnabled = true;
+    omnibox.dropdownIsVisible = true;
+    omnibox.activeQueryId = 0;
+    testProxy.page.autocompleteResultChanged(
+        createAutocompleteResultForTesting({
+          queryId: 0,
+          input: 'query',
+          matches,
+        }));
+    await microtasksFinished();
+  }
+
+  function dispatchKeyOnInput(init: KeyboardEventInit): KeyboardEvent {
+    const keyEvent = new KeyboardEvent('keydown', {
+      ...init,
+      bubbles: true,
+      composed: true,
+      cancelable: true,
+    });
+    omnibox.$.input.inputElement.dispatchEvent(keyEvent);
+    return keyEvent;
+  }
+
+  async function dispatchTab(shiftKey: boolean = false) {
+    const tabEvent = dispatchKeyOnInput({key: 'Tab', shiftKey});
+    await microtasksFinished();
+    assertTrue(tabEvent.defaultPrevented);
+  }
+
   test(
       'Tab and Shift+Tab navigate across AIM, contextual entrypoint (+), ' +
-          'voice search, lens search, and back to input when dropdown is ' +
-          'visible',
+          'voice search, lens search, profile, and back to input when ' +
+          'dropdown is visible',
       async () => {
-        omnibox.virtualFocusEnabled = true;
-        omnibox.dropdownIsVisible = true;
-        const match =
-            createSearchMatchForTesting({allowedToBeDefaultMatch: true});
-        const result = createAutocompleteResultForTesting({matches: [match]});
-        omnibox.activeQueryId = 0;
-        testProxy.page.autocompleteResultChanged(result);
-        await microtasksFinished();
+        await createOmniboxWithProfilePicker();
+        const profileContainer = omnibox.$.profileIcon.$.profileContainer;
+        assertEquals(0, profileContainer.tabIndex);
+        await showDropdownWithVirtualFocus(
+            [createSearchMatchForTesting({allowedToBeDefaultMatch: true})]);
 
+        // Like the other input row buttons, the profile button leaves the
+        // native Tab order while virtual focus handles Tab.
+        assertEquals(-1, profileContainer.tabIndex);
         assertEquals(0, omnibox.selection.line);
         assertEquals(SelectionLineState.kNormal, omnibox.selection.state);
 
@@ -1070,19 +1147,9 @@ suite('OmniboxEverywhereOmniboxTest', () => {
             '.searchbox-icon-button-container.voice')!;
         const lensContainer = omnibox.shadowRoot.querySelector<HTMLElement>(
             '.searchbox-icon-button-container.lens')!;
-
-        const dispatchTab = async (shiftKey: boolean = false) => {
-          const tabEvent = new KeyboardEvent('keydown', {
-            key: 'Tab',
-            shiftKey,
-            bubbles: true,
-            composed: true,
-            cancelable: true,
-          });
-          omnibox.$.input.inputElement.dispatchEvent(tabEvent);
-          await microtasksFinished();
-          assertTrue(tabEvent.defaultPrevented);
-        };
+        const profileIcon = omnibox.$.profileIcon;
+        const profileRing = () =>
+            window.getComputedStyle(profileIcon.$.profileContainer).boxShadow;
 
         // Tab 1 -> AIM button.
         await dispatchTab();
@@ -1115,28 +1182,48 @@ suite('OmniboxEverywhereOmniboxTest', () => {
         assertFalse(entrypoint.hasVirtualFocus);
         assertFalse(voiceContainer.hasAttribute('has-virtual-focus'));
         assertTrue(lensContainer.hasAttribute('has-virtual-focus'));
+        assertFalse(profileIcon.hasAttribute('has-virtual-focus'));
 
-        // Tab 5 -> Wraps back to default match / search input (line 0).
+        // Tab 5 -> Profile button, which renders last.
+        await dispatchTab();
+        assertEquals(
+            SelectionLineState.kFocusedButtonProfile, omnibox.selection.state);
+        assertTrue(profileIcon.hasAttribute('has-virtual-focus'));
+        assertNotEquals('none', profileRing());
+        assertFalse(lensContainer.hasAttribute('has-virtual-focus'));
+        assertEquals(
+            'Chrome profile Test Profile test@example.com',
+            omnibox.$.input.$.selectionAnnouncement.textContent);
+
+        // Tab 6 -> Wraps back to default match / search input (line 0).
         await dispatchTab();
         assertEquals(0, omnibox.selection.line);
         assertEquals(SelectionLineState.kNormal, omnibox.selection.state);
-        assertFalse(lensContainer.hasAttribute('has-virtual-focus'));
+        assertFalse(profileIcon.hasAttribute('has-virtual-focus'));
+        assertEquals('none', profileRing());
 
-        // Shift+Tab 1 -> Back to Lens search button.
+        // Shift+Tab 1 -> Back to Profile button.
+        await dispatchTab(/*shiftKey=*/ true);
+        assertEquals(
+            SelectionLineState.kFocusedButtonProfile, omnibox.selection.state);
+        assertTrue(profileIcon.hasAttribute('has-virtual-focus'));
+
+        // Shift+Tab 2 -> Back to Lens search button.
         await dispatchTab(/*shiftKey=*/ true);
         assertEquals(
             SelectionLineState.kFocusedButtonLensSearch,
             omnibox.selection.state);
         assertTrue(lensContainer.hasAttribute('has-virtual-focus'));
+        assertFalse(profileIcon.hasAttribute('has-virtual-focus'));
 
-        // Shift+Tab 2 -> Back to Voice search (Mic) button.
+        // Shift+Tab 3 -> Back to Voice search (Mic) button.
         await dispatchTab(/*shiftKey=*/ true);
         assertEquals(
             SelectionLineState.kFocusedButtonVoiceSearch,
             omnibox.selection.state);
         assertTrue(voiceContainer.hasAttribute('has-virtual-focus'));
 
-        // Shift+Tab 3 -> Back to Contextual entrypoint (+) button.
+        // Shift+Tab 4 -> Back to Contextual entrypoint (+) button.
         await dispatchTab(/*shiftKey=*/ true);
         assertEquals(
             SelectionLineState.kFocusedButtonContextEntrypoint,
@@ -1148,17 +1235,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
       'Enter on virtually focused contextual entrypoint triggers ' +
           'showContextActionMenu',
       async () => {
-        omnibox.virtualFocusEnabled = true;
-        omnibox.dropdownIsVisible = true;
-        const match = createSearchMatchForTesting();
-        omnibox.activeQueryId = 0;
-        testProxy.page.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
-              queryId: 0,
-              input: 'query',
-              matches: [match],
-            }));
-        await microtasksFinished();
+        await showDropdownWithVirtualFocus([createSearchMatchForTesting()]);
 
         omnibox.setSelection({
           line: -1,
@@ -1167,18 +1244,12 @@ suite('OmniboxEverywhereOmniboxTest', () => {
         });
         await microtasksFinished();
 
-        const enterEvent = new KeyboardEvent('keydown', {
-          key: 'Enter',
-          bubbles: true,
-          composed: true,
-          cancelable: true,
-        });
-        omnibox.$.input.inputElement.dispatchEvent(enterEvent);
+        const enterEvent = dispatchKeyOnInput({key: 'Enter'});
         await microtasksFinished();
 
         assertTrue(enterEvent.defaultPrevented);
-        const args = await testEverywhereProxy.handler.whenCalled(
-            'showContextActionMenu');
+        const args =
+            await testEverywhereHandler.whenCalled('showContextActionMenu');
         assertTrue(args !== undefined);
       });
 
@@ -1255,17 +1326,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
   test(
       'Enter on virtually focused voice and lens buttons activates them',
       async () => {
-        omnibox.virtualFocusEnabled = true;
-        omnibox.dropdownIsVisible = true;
-        const match = createSearchMatchForTesting();
-        omnibox.activeQueryId = 0;
-        testProxy.page.autocompleteResultChanged(
-            createAutocompleteResultForTesting({
-              queryId: 0,
-              input: 'query',
-              matches: [match],
-            }));
-        await microtasksFinished();
+        await showDropdownWithVirtualFocus([createSearchMatchForTesting()]);
 
         let voiceSearchDispatched = false;
         omnibox.addEventListener('open-voice-search', () => {
@@ -1279,13 +1340,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
         });
         await microtasksFinished();
 
-        const enterVoiceEvent = new KeyboardEvent('keydown', {
-          key: 'Enter',
-          bubbles: true,
-          composed: true,
-          cancelable: true,
-        });
-        omnibox.$.input.inputElement.dispatchEvent(enterVoiceEvent);
+        const enterVoiceEvent = dispatchKeyOnInput({key: 'Enter'});
         await microtasksFinished();
 
         assertTrue(enterVoiceEvent.defaultPrevented);
@@ -1298,18 +1353,382 @@ suite('OmniboxEverywhereOmniboxTest', () => {
         });
         await microtasksFinished();
 
-        const enterLensEvent = new KeyboardEvent('keydown', {
-          key: 'Enter',
-          bubbles: true,
-          composed: true,
-          cancelable: true,
-        });
-        omnibox.$.input.inputElement.dispatchEvent(enterLensEvent);
+        const enterLensEvent = dispatchKeyOnInput({key: 'Enter'});
         await microtasksFinished();
 
         assertTrue(enterLensEvent.defaultPrevented);
         assertEquals(1, testProxy.handler.getCallCount('showScreenshotMenu'));
       });
+
+  test(
+      'profile button is the last available selection, only with the ' +
+          'profile picker',
+      async () => {
+        const defaultMatch =
+            createSearchMatchForTesting({allowedToBeDefaultMatch: true});
+        const match = createSearchMatchForTesting();
+        const getStates = (matches: AutocompleteMatch[]) =>
+            omnibox
+                .getAvailableSelections(
+                    createAutocompleteResultForTesting({matches}))
+                .map(s => [s.line, s.state]);
+
+        // Omitted when the profile picker is disabled.
+        assertFalse(getStates([defaultMatch])
+                        .some(
+                            ([, state]) => state ===
+                                SelectionLineState.kFocusedButtonProfile));
+
+        // Appended after Lens, matching the button's render order.
+        await createOmniboxWithProfilePicker();
+        assertDeepEquals(
+            [
+              [0, SelectionLineState.kNormal],
+              [0, SelectionLineState.kFocusedButtonAim],
+              [1, SelectionLineState.kNormal],
+              [-1, SelectionLineState.kFocusedButtonContextEntrypoint],
+              [-1, SelectionLineState.kFocusedButtonVoiceSearch],
+              [-1, SelectionLineState.kFocusedButtonLensSearch],
+              [-1, SelectionLineState.kFocusedButtonProfile],
+            ],
+            getStates([defaultMatch, match]));
+      });
+
+  test(
+      'Enter on virtually focused profile button opens menu and restores ' +
+          'input focus on close',
+      async () => {
+        await createOmniboxWithProfilePicker();
+        const profileIcon = omnibox.$.profileIcon;
+        const closeMenu = async () => {
+          const closed = eventToPromise('close', profileIcon);
+          profileIcon.$.profileMenu.close();
+          await closed;
+        };
+
+        // While collapsed, closing the menu leaves focus on the profile button.
+        omnibox.virtualFocusEnabled = true;
+        profileIcon.$.profileContainer.focus();
+        profileIcon.$.profileContainer.click();
+        await microtasksFinished();
+        await closeMenu();
+        assertEquals(profileIcon.$.profileContainer, getDeepActiveElement());
+
+        // While expanded, closing a clicked menu returns focus to the input
+        // without announcing the profile button.
+        await showDropdownWithVirtualFocus(
+            [createSearchMatchForTesting({allowedToBeDefaultMatch: true})]);
+        profileIcon.$.profileContainer.focus();
+        profileIcon.$.profileContainer.click();
+        await microtasksFinished();
+        await closeMenu();
+        assertEquals(omnibox.$.input.inputElement, getDeepActiveElement());
+        assertEquals('', omnibox.$.input.$.selectionAnnouncement.textContent);
+
+        // Enter on the virtually focused profile button opens the menu without
+        // navigating, and closing it restores input focus and re-narrates.
+        omnibox.setSelection({
+          line: -1,
+          state: SelectionLineState.kFocusedButtonProfile,
+          actionIndex: 0,
+        });
+        await microtasksFinished();
+        const enterEvent = dispatchKeyOnInput({key: 'Enter'});
+        await microtasksFinished();
+        assertTrue(enterEvent.defaultPrevented);
+        assertTrue(profileIcon.$.profileMenu.open);
+        assertEquals(
+            0, testProxy.handler.getCallCount('openAutocompleteMatch'));
+
+        await closeMenu();
+        assertEquals(omnibox.$.input.inputElement, getDeepActiveElement());
+        assertEquals(
+            'Chrome profile Test Profile test@example.com',
+            omnibox.$.input.$.selectionAnnouncement.textContent);
+
+        // Closing while inactive (persistent mode keeps the window visible)
+        // leaves focus and narration untouched.
+        omnibox.$.input.$.selectionAnnouncement.textContent = '';
+        dispatchKeyOnInput({key: 'Enter'});
+        await microtasksFinished();
+        assertTrue(profileIcon.$.profileMenu.open);
+        omnibox.isActive = false;
+        await closeMenu();
+        assertEquals(profileIcon.$.profileContainer, getDeepActiveElement());
+        assertEquals('', omnibox.$.input.$.selectionAnnouncement.textContent);
+        omnibox.isActive = true;
+        await microtasksFinished();
+
+        // Space also opens the menu. Closing via `visibilitychange` while
+        // hidden leaves focus and narration untouched.
+        const spaceEvent = dispatchKeyOnInput({key: ' '});
+        await microtasksFinished();
+        assertTrue(spaceEvent.defaultPrevented);
+        assertTrue(profileIcon.$.profileMenu.open);
+        const closed = eventToPromise('close', profileIcon);
+        Object.defineProperty(
+            document, 'hidden', {value: true, configurable: true});
+        try {
+          document.dispatchEvent(new Event('visibilitychange'));
+          await closed;
+          assertEquals(profileIcon.$.profileContainer, getDeepActiveElement());
+          assertEquals('', omnibox.$.input.$.selectionAnnouncement.textContent);
+        } finally {
+          Reflect.deleteProperty(document, 'hidden');
+        }
+      });
+
+  test(
+      'cycles through all four placeholder hints when focused and Fusebox is ' +
+          'enabled',
+      async () => {
+        const inputEl = omnibox.$.input.inputElement;
+        const advanceToNextPlaceholder = async () => {
+          // Each transition runs HOLD -> FADE_OUT -> FADE_IN (which updates
+          // inputEl.placeholder at the start of FADE_IN). `Animation.finish()`
+          // queues the `finish` event for the next animation frame, so await
+          // `finish` before advancing the next stage.
+          const animTarget = omnibox.$.input.$.mirrorContainer;
+          for (let i = 0; i < 3; i++) {
+            const anim = animTarget.getAnimations()[0];
+            assertTrue(!!anim);
+            const finished = eventToPromise('finish', anim);
+            anim.finish();
+            await finished;
+          }
+        };
+
+        const lensPlaceholder = omnibox.$.lensPlaceholder;
+
+        assertEquals('Ask Google or type a URL', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+
+        await advanceToNextPlaceholder();
+        assertEquals(
+            'Ask about your screen with Google Lens', inputEl.placeholder);
+        assertFalse(lensPlaceholder.hidden);
+        assertEquals(
+            'Ask about your screen with Google Lens',
+            lensPlaceholder.textContent.trim());
+        const lensIcon = lensPlaceholder.querySelector<HTMLElement>('span');
+        assertTrue(!!lensIcon);
+        assertEquals('16px', window.getComputedStyle(lensIcon).width);
+        assertEquals('16px', window.getComputedStyle(lensIcon).height);
+
+        await advanceToNextPlaceholder();
+        assertEquals('Ask about a file or image', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+
+        await advanceToNextPlaceholder();
+        assertEquals('Drag and drop files here', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+
+        // Wraps back around to the first hint.
+        await advanceToNextPlaceholder();
+        assertEquals('Ask Google or type a URL', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+      });
+
+  test(
+      'pauses placeholder cycling when unfocused or typing and filters hints ' +
+          'by capability',
+      async () => {
+        const inputEl = omnibox.$.input.inputElement;
+        const lensPlaceholder = omnibox.$.lensPlaceholder;
+        const getPlaceholderAnimations = (targetInput: HTMLElement = inputEl) =>
+            (targetInput.closest('#mirrorContainer') ?? targetInput)
+                .getAnimations();
+        const advanceToNextPlaceholder =
+            async (targetInput: HTMLElement = inputEl) => {
+          for (let i = 0; i < 3; i++) {
+            const anim = getPlaceholderAnimations(targetInput)[0];
+            assertTrue(!!anim);
+            const finished = eventToPromise('finish', anim);
+            anim.finish();
+            await finished;
+          }
+        };
+
+        // Advance to the second hint ("Ask about your screen with Google
+        // Lens").
+        await advanceToNextPlaceholder();
+        assertEquals(
+            'Ask about your screen with Google Lens', inputEl.placeholder);
+        assertFalse(lensPlaceholder.hidden);
+
+        // Unfocusing (persistent resting state) stops cycling and resets to the
+        // initial placeholder.
+        omnibox.isActive = false;
+        await microtasksFinished();
+        assertEquals(0, getPlaceholderAnimations().length);
+        assertEquals('Ask Google or type a URL', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+
+        // Refocusing resumes cycling from the first hint.
+        omnibox.isActive = true;
+        await microtasksFinished();
+        assertEquals(1, getPlaceholderAnimations().length);
+        await advanceToNextPlaceholder();
+        assertEquals(
+            'Ask about your screen with Google Lens', inputEl.placeholder);
+        assertFalse(lensPlaceholder.hidden);
+
+        // Opening the suggestions dropdown (clicking into the onFocus state)
+        // stops cycling, hides `#lensPlaceholder`, and shows the static
+        // placeholder.
+        omnibox.dropdownIsVisible = true;
+        await microtasksFinished();
+        assertEquals(0, getPlaceholderAnimations().length);
+        assertEquals('Ask Google or type a URL', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+
+        // Closing the dropdown resumes cycling from the first hint.
+        omnibox.dropdownIsVisible = false;
+        await microtasksFinished();
+        assertEquals(1, getPlaceholderAnimations().length);
+        assertEquals('Ask Google or type a URL', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+        await advanceToNextPlaceholder();
+        assertFalse(lensPlaceholder.hidden);
+
+        // Typing a single space (' ') hides the Lens placeholder and stops
+        // cycling even though trimmed `hasUserInput_` remains false.
+        omnibox.$.input.setInput({text: ' ', inline: ''});
+        omnibox.$.input.dispatchEvent(new CustomEvent(
+            'searchbox-input-text-updated',
+            {detail: {value: ' ', isComposing: false}}));
+        await microtasksFinished();
+        assertEquals(0, getPlaceholderAnimations().length);
+        assertTrue(lensPlaceholder.hidden);
+
+        omnibox.setInputText('');
+        await microtasksFinished();
+        assertEquals(1, getPlaceholderAnimations().length);
+        await advanceToNextPlaceholder();
+        assertFalse(lensPlaceholder.hidden);
+
+        // Typing stops cycling; clearing restarts from the first hint.
+        omnibox.setInputText('cats');
+        await microtasksFinished();
+        assertEquals(0, getPlaceholderAnimations().length);
+        assertTrue(lensPlaceholder.hidden);
+
+        omnibox.setInputText('');
+        await microtasksFinished();
+        assertEquals(1, getPlaceholderAnimations().length);
+        assertEquals('Ask Google or type a URL', inputEl.placeholder);
+        assertTrue(lensPlaceholder.hidden);
+
+        // Selecting/previewing an autocomplete match stops cycling and hides
+        // `#lensPlaceholder`.
+        await advanceToNextPlaceholder();
+        assertFalse(lensPlaceholder.hidden);
+        omnibox.selectedMatch = createSearchMatchForTesting({
+          fillIntoEdit: 'https://example.com',
+        });
+        await microtasksFinished();
+        assertEquals(0, getPlaceholderAnimations().length);
+        assertTrue(lensPlaceholder.hidden);
+        omnibox.selectedMatch = null;
+        await microtasksFinished();
+        assertEquals(1, getPlaceholderAnimations().length);
+
+        // Toggling multiLineEnabled rebinds the cycler to the newly rendered
+        // textarea/input after `<cr-searchbox-input>` finishes updating.
+        omnibox.multiLineEnabled = true;
+        await microtasksFinished();
+        await omnibox.$.input.updateComplete;
+        await microtasksFinished();
+        const multiLineInputEl = omnibox.$.input.inputElement;
+        assertEquals(1, getPlaceholderAnimations(multiLineInputEl).length);
+        await advanceToNextPlaceholder(multiLineInputEl);
+        assertEquals(
+            'Ask about your screen with Google Lens',
+            multiLineInputEl.placeholder);
+        assertFalse(lensPlaceholder.hidden);
+        omnibox.multiLineEnabled = false;
+        await microtasksFinished();
+        await omnibox.$.input.updateComplete;
+        await microtasksFinished();
+
+        // Disabling Lens search and drag-and-drop omits their respective hints.
+        document.body.innerHTML = window.trustedTypes!.emptyHTML;
+        loadTimeData.overrideValues({
+          isFuseboxEnabled: true,
+          searchboxLensSearch: false,
+          composeboxContextDragAndDropEnabled: false,
+        });
+        const filteredOmnibox =
+            document.createElement('omnibox-everywhere-omnibox');
+        document.body.appendChild(filteredOmnibox);
+        await microtasksFinished();
+
+        const filteredInput = filteredOmnibox.$.input.inputElement;
+        assertEquals('Ask Google or type a URL', filteredInput.placeholder);
+        await advanceToNextPlaceholder(filteredInput);
+        assertEquals('Ask about a file or image', filteredInput.placeholder);
+        await advanceToNextPlaceholder(filteredInput);
+        assertEquals('Ask Google or type a URL', filteredInput.placeholder);
+
+        // Disabling Fusebox falls back to static searchBoxHint without cycling.
+        document.body.innerHTML = window.trustedTypes!.emptyHTML;
+        loadTimeData.overrideValues({
+          isFuseboxEnabled: false,
+        });
+        const nonFuseboxOmnibox =
+            document.createElement('omnibox-everywhere-omnibox');
+        document.body.appendChild(nonFuseboxOmnibox);
+        await microtasksFinished();
+
+        const nonFuseboxInput = nonFuseboxOmnibox.$.input.inputElement;
+        assertEquals(0, getPlaceholderAnimations(nonFuseboxInput).length);
+        assertTrue(nonFuseboxOmnibox.$.lensPlaceholder.hidden);
+        assertEquals(
+            loadTimeData.getString('searchBoxHint'),
+            nonFuseboxInput.placeholder);
+      });
+
+  test('switches searchboxIcon between light and dark mode', async () => {
+    const originalMatchMedia = window.matchMedia;
+    const fakeMediaQuery = Object.assign(new EventTarget(), {
+      matches: false,
+      media: '(prefers-color-scheme: dark)',
+      onchange: null,
+      addListener: () => {},
+      removeListener: () => {},
+    }) as unknown as MediaQueryList & {matches: boolean};
+    window.matchMedia = (query: string) =>
+        query === '(prefers-color-scheme: dark)' ?
+        fakeMediaQuery :
+        originalMatchMedia.call(window, query);
+
+    try {
+      const themedOmnibox =
+          document.createElement('omnibox-everywhere-omnibox');
+      document.body.appendChild(themedOmnibox);
+      await microtasksFinished();
+
+      assertEquals(
+          '//resources/cr_components/searchbox/icons/google_g_gradient.svg',
+          themedOmnibox.$.input.searchboxIcon);
+
+      fakeMediaQuery.matches = true;
+      fakeMediaQuery.dispatchEvent(new Event('change'));
+      await microtasksFinished();
+      assertEquals(
+          '//resources/cr_components/searchbox/icons/google_g_cr23.svg',
+          themedOmnibox.$.input.searchboxIcon);
+
+      fakeMediaQuery.matches = false;
+      fakeMediaQuery.dispatchEvent(new Event('change'));
+      await microtasksFinished();
+      assertEquals(
+          '//resources/cr_components/searchbox/icons/google_g_gradient.svg',
+          themedOmnibox.$.input.searchboxIcon);
+    } finally {
+      window.matchMedia = originalMatchMedia;
+    }
+  });
 
   suite('OverflowMenu', () => {
     test('renders after Lens button with menu ARIA semantics', () => {
@@ -1324,6 +1743,28 @@ suite('OmniboxEverywhereOmniboxTest', () => {
           'false', omnibox.$.overflowMenuButton.getAttribute('aria-expanded'));
     });
 
+    test('is hidden when expanded unless focused', async () => {
+      const container = omnibox.$.overflowMenuButton.parentElement!;
+      const display = () => window.getComputedStyle(container).display;
+      assertEquals('flex', display());
+
+      omnibox.dropdownIsVisible = true;
+      await microtasksFinished();
+      assertEquals('none', display());
+
+      omnibox.dropdownIsVisible = false;
+      omnibox.setInputText('query');
+      await microtasksFinished();
+      assertEquals('none', display());
+
+      omnibox.setInputText('');
+      await microtasksFinished();
+      omnibox.$.overflowMenuButton.focus();
+      omnibox.dropdownIsVisible = true;
+      await microtasksFinished();
+      assertEquals('flex', display());
+    });
+
     test(
         'opens with rounded rect, preserves dropdown on focusout, and resets ' +
             'on close or dismissing click',
@@ -1335,7 +1776,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
           button.click();
 
           const [rect, sourceType] =
-              await testEverywhereProxy.handler.whenCalled('showOverflowMenu');
+              await testEverywhereHandler.whenCalled('showOverflowMenu');
           assertDeepEquals({x: 120, y: 36, width: 28, height: 28}, rect);
           // click() has `detail` 0, like a keyboard activation.
           assertEquals(MenuSourceType.kKeyboard, sourceType);
@@ -1352,7 +1793,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
 
           // Primary pointerdown prevents focus transfer and suppresses reopen
           // unless cancelled by pointercancel.
-          testEverywhereProxy.handler.reset();
+          testEverywhereHandler.reset();
           const downEvent = new PointerEvent(
               'pointerdown', {bubbles: true, cancelable: true, button: 0});
           button.dispatchEvent(downEvent);
@@ -1360,7 +1801,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
           button.click();
           await microtasksFinished();
           assertEquals(
-              0, testEverywhereProxy.handler.getCallCount('showOverflowMenu'));
+              0, testEverywhereHandler.getCallCount('showOverflowMenu'));
           assertFalse(omnibox.isOverflowMenuOpen);
 
           // pointercancel clears suppression so the next click opens the menu.
@@ -1375,7 +1816,7 @@ suite('OmniboxEverywhereOmniboxTest', () => {
           assertFalse(button.parentElement!.classList.contains('menu-open'));
 
           button.click();
-          await testEverywhereProxy.handler.whenCalled('showOverflowMenu');
+          await testEverywhereHandler.whenCalled('showOverflowMenu');
           assertTrue(omnibox.isOverflowMenuOpen);
         });
 
@@ -1385,14 +1826,14 @@ suite('OmniboxEverywhereOmniboxTest', () => {
                ['mouse', MenuSourceType.kMouse],
                ['touch', MenuSourceType.kTouch],
       ] as Array<[string, MenuSourceType]>) {
-        testEverywhereProxy.handler.reset();
+        testEverywhereHandler.reset();
         omnibox.isOverflowMenuOpen = false;
         button.dispatchEvent(new PointerEvent(
             'pointerdown', {bubbles: true, button: 0, pointerType}));
         button.dispatchEvent(
             new MouseEvent('click', {bubbles: true, detail: 1}));
         const [, sourceType] =
-            await testEverywhereProxy.handler.whenCalled('showOverflowMenu');
+            await testEverywhereHandler.whenCalled('showOverflowMenu');
         assertEquals(expected, sourceType);
         omnibox.onOverflowMenuClosed();
       }
@@ -1404,7 +1845,8 @@ suite('OmniboxEverywhereOmniboxTest', () => {
 suite('OmniboxEverywhereComposeboxTest', () => {
   let composebox: OmniboxEverywhereComposeboxElement;
   let testProxy: TestSearchboxBrowserProxy;
-  let testEverywhereProxy: TestOmniboxEverywhereBrowserProxy;
+  let testEverywhereHandler: TestMock<OmniboxEverywherePageHandlerRemote>&
+      OmniboxEverywherePageHandlerRemote;
   let mockPageHandler: TestMock<PageHandlerRemote>&PageHandlerRemote;
 
   setup(async () => {
@@ -1423,8 +1865,11 @@ suite('OmniboxEverywhereComposeboxTest', () => {
     });
     testProxy = new TestSearchboxBrowserProxy();
     SearchboxBrowserProxy.setInstance(testProxy);
-    testEverywhereProxy = new TestOmniboxEverywhereBrowserProxy();
-    OmniboxEverywhereBrowserProxyImpl.setInstance(testEverywhereProxy);
+    testEverywhereHandler =
+        TestMock.fromClass(OmniboxEverywherePageHandlerRemote);
+    omniboxEverywhereProxyFactory.setInstance(
+        omniboxEverywhereProxyFactory.createForTest(testEverywhereHandler)
+            .instance);
     mockPageHandler = TestMock.fromClass(PageHandlerRemote);
     ComposeboxProxyImpl.setInstance(new ComposeboxProxyImpl(
         mockPageHandler,
@@ -1499,8 +1944,8 @@ suite('OmniboxEverywhereComposeboxTest', () => {
           anchorRect: {x: 15, y: 25, width: 35, height: 45},
         });
 
-        const args = await testEverywhereProxy.handler.whenCalled(
-            'showContextActionMenu');
+        const args =
+            await testEverywhereHandler.whenCalled('showContextActionMenu');
         assertEquals(15, args.x);
         assertEquals(25, args.y);
         assertEquals(35, args.width);
@@ -1598,6 +2043,13 @@ suite('OmniboxEverywhereComposeboxTest', () => {
         await microtasksFinished();
 
         assertTrue(composebox.hasAttribute('is-dragging-file'));
+
+        const glow =
+            composebox.shadowRoot.querySelector<SearchAnimatedGlowElement>(
+                'search-animated-glow')!;
+        const dragDropPlaceholder =
+            glow.shadowRoot.querySelector<HTMLElement>('#dragDropPlaceholder')!;
+        assertEquals('18px', window.getComputedStyle(dragDropPlaceholder).top);
 
         dropZone?.dispatchEvent(new DragEvent('dragleave', {
           bubbles: true,
@@ -1962,7 +2414,9 @@ class MockSpeechRecognition {
 suite('OmniboxEverywhereAppTest', () => {
   let app: OmniboxEverywhereAppElement;
   let testProxy: TestSearchboxBrowserProxy;
-  let testEverywhereProxy: TestOmniboxEverywhereBrowserProxy;
+  let testEverywhereHandler: TestMock<OmniboxEverywherePageHandlerRemote>&
+      OmniboxEverywherePageHandlerRemote;
+  let testEverywherePage: OmniboxEverywherePageRemote;
   let mockPageHandler: TestMock<PageHandlerRemote>&PageHandlerRemote;
 
   setup(async () => {
@@ -2007,8 +2461,12 @@ suite('OmniboxEverywhereAppTest', () => {
 
     testProxy = new TestSearchboxBrowserProxy();
     SearchboxBrowserProxy.setInstance(testProxy);
-    testEverywhereProxy = new TestOmniboxEverywhereBrowserProxy();
-    OmniboxEverywhereBrowserProxyImpl.setInstance(testEverywhereProxy);
+    testEverywhereHandler =
+        TestMock.fromClass(OmniboxEverywherePageHandlerRemote);
+    const {instance, remote} =
+        omniboxEverywhereProxyFactory.createForTest(testEverywhereHandler);
+    omniboxEverywhereProxyFactory.setInstance(instance);
+    testEverywherePage = remote;
     mockPageHandler = TestMock.fromClass(PageHandlerRemote);
     ComposeboxProxyImpl.setInstance(new ComposeboxProxyImpl(
         mockPageHandler,
@@ -2018,6 +2476,42 @@ suite('OmniboxEverywhereAppTest', () => {
     app = document.createElement('omnibox-everywhere-app');
     document.body.appendChild(app);
     await microtasksFinished();
+  });
+
+  test('mousedown on a drag region prevents its default action', async () => {
+    function mousedown(target: Element|null, button = 0): boolean {
+      assertTrue(!!target);
+      const event = new MouseEvent(
+          'mousedown',
+          {bubbles: true, composed: true, cancelable: true, button});
+      target.dispatchEvent(event);
+      return event.defaultPrevented;
+    }
+
+    // Pressing the background around the input and the dropdown would
+    // otherwise move focus out of the input (closing the dropdown) and start a
+    // selection.
+    const searchbox =
+        app.shadowRoot.querySelector('omnibox-everywhere-omnibox')!;
+    assertTrue(mousedown(searchbox.$.inputWrapper));
+    assertTrue(
+        mousedown(searchbox.shadowRoot.querySelector('.dropdownContainer')));
+    // Right-clicks and presses on interactive (no-drag) elements keep their
+    // default action.
+    assertFalse(mousedown(searchbox.$.inputWrapper, /*button=*/ 2));
+    assertFalse(mousedown(searchbox.$.input.inputElement));
+    assertFalse(
+        mousedown(searchbox.shadowRoot.querySelector('cr-searchbox-dropdown')!
+                      .shadowRoot.querySelector('[part~="dropdown-content"]')));
+
+    // Same for the composebox.
+    searchbox.fire('open-composebox', {text: '', files: [], mode: 0, model: 0});
+    await microtasksFinished();
+    const composebox =
+        app.shadowRoot.querySelector('omnibox-everywhere-composebox')!;
+    assertTrue(!!composebox);
+    assertTrue(mousedown(composebox));
+    assertFalse(mousedown(composebox.$.composeboxInput.inputElement));
   });
 
 
@@ -2262,9 +2756,9 @@ suite('OmniboxEverywhereAppTest', () => {
         await microtasksFinished();
 
         let isComposebox =
-            await testEverywhereProxy.handler.whenCalled('setIsComposebox');
+            await testEverywhereHandler.whenCalled('setIsComposebox');
         assertTrue(isComposebox);
-        testEverywhereProxy.handler.reset();
+        testEverywhereHandler.reset();
 
         const composebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox')!;
@@ -2274,9 +2768,9 @@ suite('OmniboxEverywhereAppTest', () => {
         await microtasksFinished();
 
         isComposebox =
-            await testEverywhereProxy.handler.whenCalled('setIsComposebox');
+            await testEverywhereHandler.whenCalled('setIsComposebox');
         assertFalse(isComposebox);
-        testEverywhereProxy.handler.reset();
+        testEverywhereHandler.reset();
 
         // Reopen composebox and verify query submission cleans up UI without
         // calling setIsComposebox across Mojo.
@@ -2284,9 +2778,9 @@ suite('OmniboxEverywhereAppTest', () => {
             'open-composebox', {text: 'query', files: [], mode: 0, model: 0});
         await microtasksFinished();
         isComposebox =
-            await testEverywhereProxy.handler.whenCalled('setIsComposebox');
+            await testEverywhereHandler.whenCalled('setIsComposebox');
         assertTrue(isComposebox);
-        testEverywhereProxy.handler.reset();
+        testEverywhereHandler.reset();
 
         const activeComposebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox')!;
@@ -2294,8 +2788,7 @@ suite('OmniboxEverywhereAppTest', () => {
         activeComposebox.fire('composebox-submit');
         await microtasksFinished();
 
-        assertEquals(
-            0, testEverywhereProxy.handler.getCallCount('setIsComposebox'));
+        assertEquals(0, testEverywhereHandler.getCallCount('setIsComposebox'));
         const restoredSearchbox =
             app.shadowRoot.querySelector('omnibox-everywhere-omnibox');
         assertTrue(!!restoredSearchbox);
@@ -2479,8 +2972,6 @@ suite('OmniboxEverywhereAppTest', () => {
             '', app.style.getPropertyValue('--voice_search_minimum_width'));
       });
 
-  // TODO(crbug.com/552283274): Flaky on Mac.
-  // <if expr="not is_macosx">
   test(
       'open-voice-search reflects attribute on app and hides MV tiles and ' +
           'content',
@@ -2529,6 +3020,7 @@ suite('OmniboxEverywhereAppTest', () => {
         assertTrue(!!searchbox);
         assertTrue(!!mvContainer);
         assertFalse(appWithMv.hasAttribute('show-voice-search-overlay_'));
+        assertEquals('flex', window.getComputedStyle(mvContainer).display);
 
         searchbox.fire('open-voice-search');
         await microtasksFinished();
@@ -2556,7 +3048,6 @@ suite('OmniboxEverywhereAppTest', () => {
         assertEquals('block', window.getComputedStyle(content).display);
         assertEquals('flex', window.getComputedStyle(mvContainer).display);
       });
-  // </if>
 
   test(
       'MVT container hides when context menu, screenshot menu, or user input is present',
@@ -2770,12 +3261,11 @@ suite('OmniboxEverywhereAppTest', () => {
             closeButton.getAttribute('aria-label'));
 
         closeButton.click();
-        await testEverywhereProxy.handler.whenCalled('onDismissMostVisited');
+        await testEverywhereHandler.whenCalled('onDismissMostVisited');
         await microtasksFinished();
 
         assertEquals(
-            1,
-            testEverywhereProxy.handler.getCallCount('onDismissMostVisited'));
+            1, testEverywhereHandler.getCallCount('onDismissMostVisited'));
         assertTrue(mvContainer.hidden);
       });
 
@@ -2889,21 +3379,37 @@ suite('OmniboxEverywhereAppTest', () => {
 
         const mv = dynamicApp.shadowRoot.querySelector('cr-most-visited')!;
         assertTrue(!!mv);
+        const searchbox =
+            dynamicApp.shadowRoot.querySelector('omnibox-everywhere-omnibox')!;
+        assertTrue(!!searchbox);
 
-        // Deactivate window to enter resting state in persistent mode.
-        window.dispatchEvent(new Event('blur'));
+        // Demote window to enter resting state in persistent mode.
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
         await microtasksFinished();
         assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
         assertEquals('4', mv.getAttribute('max-tiles'));
 
-        // Focus window (active state) expands searchbox and MVT to 5 tiles.
+        // Focus window (active state) keeps small-loomnibox until the text
+        // input is focused, then expands searchbox and MVT to 5 tiles.
         window.dispatchEvent(new Event('focus'));
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals('4', mv.getAttribute('max-tiles'));
+
+        searchbox.$.input.inputElement.dispatchEvent(
+            new FocusEvent('focusin', {bubbles: true, composed: true}));
         await microtasksFinished();
         assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
         assertEquals('5', mv.getAttribute('max-tiles'));
 
-        // Blur window again.
+        // A transient window blur (e.g. a native menu) keeps it expanded; only
+        // demotion shrinks it back.
         window.dispatchEvent(new Event('blur'));
+        await microtasksFinished();
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
         await microtasksFinished();
         assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
         assertEquals('4', mv.getAttribute('max-tiles'));
@@ -2946,18 +3452,297 @@ suite('OmniboxEverywhereAppTest', () => {
         assertEquals('600', dynamicApp600.getAttribute('dynamic-sizing-width'));
         const mv = dynamicApp600.shadowRoot.querySelector('cr-most-visited')!;
         assertTrue(!!mv);
+        const searchbox = dynamicApp600.shadowRoot.querySelector(
+            'omnibox-everywhere-omnibox')!;
+        assertTrue(!!searchbox);
 
         // Resting state uses 4 tiles.
-        window.dispatchEvent(new Event('blur'));
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
         await microtasksFinished();
         assertTrue(dynamicApp600.hasAttribute('small-loomnibox'));
         assertEquals('4', mv.getAttribute('max-tiles'));
 
-        // Active state in 600px variant expands to 5 tiles.
+        // Active state in 600px variant expands to 5 tiles once the text input
+        // is focused.
         window.dispatchEvent(new Event('focus'));
+        await microtasksFinished();
+        assertTrue(dynamicApp600.hasAttribute('small-loomnibox'));
+        assertEquals('4', mv.getAttribute('max-tiles'));
+
+        searchbox.$.input.inputElement.dispatchEvent(
+            new FocusEvent('focusin', {bubbles: true, composed: true}));
         await microtasksFinished();
         assertFalse(dynamicApp600.hasAttribute('small-loomnibox'));
         assertEquals('5', mv.getAttribute('max-tiles'));
+      });
+
+  test(
+      'dynamicSizing only expands when text input is focused and stays ' +
+          'expanded until demotion',
+      async () => {
+        document.body.innerHTML = window.trustedTypes!.emptyHTML;
+        loadTimeData.overrideValues({
+          omniboxEverywhereMostVisitedEnabled: true,
+          dynamicSizing: true,
+          isPersistentMode: true,
+          isFuseboxEnabled: true,
+          searchboxLensSearch: true,
+          searchboxShowComposeEntrypoint: true,
+          initialFreStage: 0,
+        });
+        const dynamicApp = document.createElement('omnibox-everywhere-app');
+        document.body.appendChild(dynamicApp);
+        await microtasksFinished();
+
+        const searchbox =
+            dynamicApp.shadowRoot.querySelector('omnibox-everywhere-omnibox')!;
+        assertTrue(!!searchbox);
+        const lensButton = searchbox.shadowRoot.querySelector<HTMLElement>(
+            '#lensSearchButton')!;
+        assertTrue(!!lensButton);
+        const composeButton =
+            searchbox.$.input.querySelector<HTMLElement>('#composeButton')!;
+        assertTrue(!!composeButton);
+
+        const inputElement = searchbox.$.input.inputElement;
+
+        // 1. Demotion collapses to 480px and clears input focus, so that Blink
+        // does not restore it (and expand mid-click) on click-activation.
+        searchbox.$.input.focus();
+        assertEquals(inputElement, getDeepActiveElement());
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+
+        // 2. Activating the demoted window (e.g. a click on the background, a
+        // drag, or a button) stays at 480px and doesn't focus the input.
+        window.dispatchEvent(new Event('focus'));
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('is-active'));
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        dynamicApp.click();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+
+        // Focus on the AI Mode button slotted inside the input doesn't count.
+        composeButton.dispatchEvent(
+            new FocusEvent('focusin', {bubbles: true, composed: true}));
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // Opening and closing the Lens menu keeps it at 480px.
+        lensButton.focus();
+        lensButton.click();
+        await microtasksFinished();
+        assertTrue(searchbox.isScreenshotMenuOpen);
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        testProxy.page.onScreenshotMenuClosed();
+        await testProxy.page.$.flushForTesting();
+        await microtasksFinished();
+        assertFalse(searchbox.isScreenshotMenuOpen);
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // Closing the + context menu keeps it at 480px.
+        testEverywherePage.onContextMenuClosed();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // 3. Regression: focusing the input while a button inside the same
+        // shadow tree (Lens) holds focus, and while the window is blurred
+        // (e.g. by a native menu), still expands. Blink trims this `focusin`
+        // at the omnibox host (target and relatedTarget retarget to the same
+        // element), so the app never sees it; the searchbox reports it.
+        window.dispatchEvent(new Event('blur'));
+        await microtasksFinished();
+        assertEquals(lensButton, getDeepActiveElement());
+        let appSawFocusin = false;
+        dynamicApp.addEventListener('focusin', () => {
+          appSawFocusin = true;
+        }, {once: true});
+        searchbox.$.input.focus();
+        await microtasksFinished();
+        assertFalse(appSawFocusin);
+        assertEquals(inputElement, getDeepActiveElement());
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // 4. Moving focus from the input to a button doesn't shrink it.
+        lensButton.focus();
+        await microtasksFinished();
+        assertEquals(lensButton, getDeepActiveElement());
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // 5. A transient window blur (e.g. a native context menu) doesn't
+        // shrink it, and refocusing the window restores input focus.
+        window.dispatchEvent(new Event('blur'));
+        await microtasksFinished();
+        assertFalse(dynamicApp.hasAttribute('is-active'));
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        window.dispatchEvent(new Event('focus'));
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('is-active'));
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(inputElement, getDeepActiveElement());
+
+        // 6. Demotion shrinks it, and becoming visible while demoted doesn't
+        // expand it or focus the input.
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+        Object.defineProperty(
+            document, 'visibilityState',
+            {value: 'visible', configurable: true});
+        try {
+          document.dispatchEvent(new Event('visibilitychange'));
+          await microtasksFinished();
+          assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+          assertEquals(document.body, getDeepActiveElement());
+        } finally {
+          delete (document as {visibilityState?: string}).visibilityState;
+        }
+
+        // 7. Hotkey/tray invocation: `ActivateAndFocus()` focuses the
+        // WebContents before sending `FocusInput`, so the window 'focus'
+        // arrives first (and stays at 480px); `focusInput` then expands and
+        // focuses the input.
+        window.dispatchEvent(new Event('focus'));
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+        testEverywherePage.focusInput();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(inputElement, getDeepActiveElement());
+
+        // 8. Composebox mode: after demotion, closing the + menu stays at
+        // 480px, and focusing the composebox input expands.
+        searchbox.fire(
+            'open-composebox', {text: '', files: [], mode: 0, model: 0});
+        await microtasksFinished();
+        const composebox = dynamicApp.shadowRoot.querySelector(
+            'omnibox-everywhere-composebox')!;
+        assertTrue(!!composebox);
+        const composeboxInputElement =
+            composebox.$.composeboxInput.inputElement;
+
+        // While expanded, closing the + context menu restores input focus.
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        blurActiveElement();
+        testEverywherePage.onContextMenuClosed();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertEquals(composeboxInputElement, getDeepActiveElement());
+
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+
+        // Closing the + context menu (or the menu being canceled by demotion)
+        // doesn't focus the composebox input, so it stays at 480px.
+        testEverywherePage.onContextMenuClosed();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+
+        composeboxInputElement.focus();
+        await microtasksFinished();
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // A + menu action that reopens the composebox (e.g. picking a model)
+        // focuses the input, so it expands.
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        testEverywherePage.openComposebox(null);
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(composeboxInputElement, getDeepActiveElement());
+
+        // 9. Leaving composebox mode in the background (e.g. the AI Mode pref
+        // turning off) while demoted stays at 480px and doesn't focus the
+        // input.
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        testProxy.page.updateAimPopupEligibility(false);
+        await testProxy.page.$.flushForTesting();
+        await microtasksFinished();
+        assertFalse(!!dynamicApp.shadowRoot.querySelector(
+            'omnibox-everywhere-composebox'));
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+        assertEquals(document.body, getDeepActiveElement());
+      });
+
+  test('dynamicSizing clicking the voice search button expands', async () => {
+    document.body.innerHTML = window.trustedTypes!.emptyHTML;
+    loadTimeData.overrideValues({
+      omniboxEverywhereMostVisitedEnabled: true,
+      dynamicSizing: true,
+      isPersistentMode: true,
+      initialFreStage: 0,
+    });
+    const dynamicApp = document.createElement('omnibox-everywhere-app');
+    document.body.appendChild(dynamicApp);
+    await microtasksFinished();
+    const searchbox =
+        dynamicApp.shadowRoot.querySelector('omnibox-everywhere-omnibox')!;
+    const voiceButton =
+        searchbox.shadowRoot.querySelector<HTMLElement>('#voiceSearchButton')!;
+    assertTrue(!!voiceButton);
+
+    testEverywherePage.onDemoted();
+    await testEverywherePage.$.flushForTesting();
+    await microtasksFinished();
+    assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+
+    voiceButton.click();
+    await microtasksFinished();
+    assertTrue(!!dynamicApp.shadowRoot.querySelector('#voiceSearchDialog'));
+    assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+  });
+
+  test(
+      'dynamicSizing hotkey expands even while the FRE intro modal shows',
+      async () => {
+        document.body.innerHTML = window.trustedTypes!.emptyHTML;
+        loadTimeData.overrideValues({
+          omniboxEverywhereMostVisitedEnabled: true,
+          dynamicSizing: true,
+          isPersistentMode: true,
+          initialFreStage: FreStage.kIntroModal,
+        });
+        const dynamicApp = document.createElement('omnibox-everywhere-app');
+        document.body.appendChild(dynamicApp);
+        await microtasksFinished();
+        assertTrue(!!dynamicApp.shadowRoot.querySelector('fre-modal'));
+
+        testEverywherePage.onDemoted();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertTrue(dynamicApp.hasAttribute('small-loomnibox'));
+
+        // The input can't take focus under the modal, but the hotkey still
+        // expands Loomnibox (and the FRE modal with it).
+        testEverywherePage.focusInput();
+        await testEverywherePage.$.flushForTesting();
+        await microtasksFinished();
+        assertFalse(dynamicApp.hasAttribute('small-loomnibox'));
+        assertFalse(
+            dynamicApp.shadowRoot.querySelector('fre-modal')!.hasAttribute(
+                'small-loomnibox'));
       });
 
   test(
@@ -3853,6 +4638,10 @@ suite('OmniboxEverywhereProfileIconTest', () => {
         assertEquals(
             'Chrome profile\nTest Profile\ntest@example.com',
             container.getAttribute('title'));
+
+        container.click();
+        await microtasksFinished();
+        assertFalse(profileIcon.$.profileMenu.open);
       });
 
   test('profile icon is clickable when profile picker is enabled', async () => {
@@ -3992,7 +4781,9 @@ suite('OmniboxEverywhereProfileIconTest', () => {
 suite('OmniboxEverywhereContextMenuTest', () => {
   let app: OmniboxEverywhereAppElement;
   let testProxy: TestSearchboxBrowserProxy;
-  let testEverywhereProxy: TestOmniboxEverywhereBrowserProxy;
+  let testEverywhereHandler: TestMock<OmniboxEverywherePageHandlerRemote>&
+      OmniboxEverywherePageHandlerRemote;
+  let testEverywherePage: OmniboxEverywherePageRemote;
 
   setup(async () => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
@@ -4018,10 +4809,20 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       smallFont: false,
       isPersistentMode: true,
     });
+    const mostVisitedHandler = TestMock.fromClass(MostVisitedPageHandlerRemote);
+    const {instance: mostVisitedInstance} =
+        browserProxyFactory.createForTest(mostVisitedHandler);
+    browserProxyFactory.setInstance(mostVisitedInstance);
+    mostVisitedHandler.setResultFor(
+        'getMostVisitedExpandedState', Promise.resolve({isExpanded: false}));
     testProxy = new TestSearchboxBrowserProxy();
     SearchboxBrowserProxy.setInstance(testProxy);
-    testEverywhereProxy = new TestOmniboxEverywhereBrowserProxy();
-    OmniboxEverywhereBrowserProxyImpl.setInstance(testEverywhereProxy);
+    testEverywhereHandler =
+        TestMock.fromClass(OmniboxEverywherePageHandlerRemote);
+    const {instance, remote} =
+        omniboxEverywhereProxyFactory.createForTest(testEverywhereHandler);
+    omniboxEverywhereProxyFactory.setInstance(instance);
+    testEverywherePage = remote;
     const mockPageHandler = TestMock.fromClass(PageHandlerRemote);
     ComposeboxProxyImpl.setInstance(new ComposeboxProxyImpl(
         mockPageHandler,
@@ -4045,7 +4846,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
     });
 
     const args =
-        await testEverywhereProxy.handler.whenCalled('showContextActionMenu');
+        await testEverywhereHandler.whenCalled('showContextActionMenu');
     assertEquals(10, args.x);
     assertEquals(20, args.y);
     assertEquals(30, args.width);
@@ -4056,13 +4857,13 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       'openComposebox with tool Mojo listener switches app to composebox mode',
       async () => {
         assertFalse(app.hasAttribute('is-composebox-mode_'));
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kDeepSearch,
           model: ModelMode.kUnspecified,
           tab: null,
           fileToken: null,
           fileInfo: null,
-          isPendingScreenshot: false,
+          isPendingContextUpload: false,
         });
         await microtasksFinished();
 
@@ -4079,7 +4880,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       'openComposebox with tab Mojo listener adds tab to composebox',
       async () => {
         assertFalse(app.hasAttribute('is-composebox-mode_'));
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: {
@@ -4089,11 +4890,12 @@ suite('OmniboxEverywhereContextMenuTest', () => {
             showInCurrentTabChip: false,
             showInPreviousTabChip: false,
             isLoading: false,
+            recentTab: false,
             lastActive: {internalValue: 0n},
           },
           fileToken: null,
           fileInfo: null,
-          isPendingScreenshot: false,
+          isPendingContextUpload: false,
         });
         await microtasksFinished();
 
@@ -4105,7 +4907,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
   test(
       'openComposebox with file Mojo listener adds file to composebox',
       async () => {
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
@@ -4118,7 +4920,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
             isDeletable: true,
             selectionTime: new Date(),
           },
-          isPendingScreenshot: false,
+          isPendingContextUpload: false,
         });
         await microtasksFinished();
 
@@ -4136,7 +4938,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       'file upload validation error displays error scrim in composebox',
       async () => {
         const testToken = '00000000000000010000000000000002';
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
@@ -4149,7 +4951,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
             isDeletable: true,
             selectionTime: new Date(),
           },
-          isPendingScreenshot: false,
+          isPendingContextUpload: false,
         });
         await microtasksFinished();
 
@@ -4176,7 +4978,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       'max images exceeded error displays error scrim and button dismisses',
       async () => {
         const testToken = '00000000000000010000000000000003';
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
@@ -4189,7 +4991,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
             isDeletable: true,
             selectionTime: new Date(),
           },
-          isPendingScreenshot: false,
+          isPendingContextUpload: false,
         });
         await microtasksFinished();
 
@@ -4217,25 +5019,36 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       });
 
   test(
-      'openComposebox with isPendingScreenshot suppresses suggestions dropdown',
+      'openComposebox with isPendingContextUpload suppresses suggestions ' +
+          'dropdown',
       async () => {
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
           fileToken: null,
           fileInfo: null,
-          isPendingScreenshot: true,
+          isPendingContextUpload: true,
         });
         await microtasksFinished();
 
         const composebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox');
         assertTrue(!!composebox);
-        assertTrue(composebox.isPendingScreenshot);
+        assertTrue(composebox.isPendingContextUpload);
         assertFalse(composebox.computeShowDropdown());
+        composebox.isContextMenuOpen = true;
+        assertFalse(composebox.computeShowDropdown());
+        composebox.isContextMenuOpen = false;
 
-        // Delivering a file context resets isPendingScreenshot and plays glow.
+        // Window blur while context upload is pending (e.g. native file picker
+        // sheet taking focus) does not clear active state in persistent mode.
+        window.dispatchEvent(new Event('blur'));
+        await microtasksFinished();
+        assertTrue(app.hasAttribute('is-active'));
+
+        // Delivering a file context resets isPendingContextUpload and plays
+        // glow.
         let glowPlayed = false;
         composebox.playGlowAnimation = () => {
           glowPlayed = true;
@@ -4252,8 +5065,13 @@ suite('OmniboxEverywhereContextMenuTest', () => {
             });
         await microtasksFinished();
 
-        assertFalse(composebox.isPendingScreenshot);
+        assertFalse(composebox.isPendingContextUpload);
         assertTrue(glowPlayed);
+
+        // Once the pending upload is resolved, window blur clears active state.
+        window.dispatchEvent(new Event('blur'));
+        await microtasksFinished();
+        assertFalse(app.hasAttribute('is-active'));
       });
 
   test(
@@ -4266,27 +5084,27 @@ suite('OmniboxEverywhereContextMenuTest', () => {
         assertFalse(
             !!app.shadowRoot.querySelector('omnibox-everywhere-composebox'));
 
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
           fileToken: null,
           fileInfo: null,
-          isPendingScreenshot: true,
+          isPendingContextUpload: true,
         });
         await microtasksFinished();
 
-        // Should be in composebox mode with isPendingScreenshot = true.
+        // Should be in composebox mode with isPendingContextUpload = true.
         const composebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox');
         assertTrue(!!composebox);
-        assertTrue(composebox.isPendingScreenshot);
+        assertTrue(composebox.isPendingContextUpload);
 
         // Reset the mock calls before cancelling.
-        testEverywhereProxy.handler.reset();
+        testEverywhereHandler.reset();
 
         // Cancel the screenshot capture.
-        testEverywhereProxy.page.onScreenshotCaptureCancelled();
+        testEverywherePage.onScreenshotCaptureCancelled();
         await microtasksFinished();
 
         // App should revert to searchbox mode.
@@ -4295,7 +5113,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
         assertTrue(
             !!app.shadowRoot.querySelector('omnibox-everywhere-omnibox'));
         const isComposeboxArg =
-            await testEverywhereProxy.handler.whenCalled('setIsComposebox');
+            await testEverywhereHandler.whenCalled('setIsComposebox');
         assertFalse(isComposeboxArg);
       });
 
@@ -4305,47 +5123,51 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       async () => {
         // First transition to composebox mode normally (e.g. from context
         // menu).
-        testEverywhereProxy.page.openComposebox({
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
           fileToken: null,
           fileInfo: null,
-          isPendingScreenshot: false,
+          isPendingContextUpload: false,
         });
         await microtasksFinished();
 
         let composebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox');
         assertTrue(!!composebox);
-        assertFalse(composebox.isPendingScreenshot);
+        assertFalse(composebox.isPendingContextUpload);
+        composebox.input = 'existing multiline query';
+        await microtasksFinished();
 
-        // Initiate screenshot from within composebox mode.
-        testEverywhereProxy.page.openComposebox({
+        // Initiate screenshot/file upload from within composebox mode.
+        testEverywherePage.openComposebox({
           tool: ToolMode.kUnspecified,
           model: ModelMode.kUnspecified,
           tab: null,
           fileToken: null,
           fileInfo: null,
-          isPendingScreenshot: true,
+          isPendingContextUpload: true,
         });
         await microtasksFinished();
 
         composebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox');
         assertTrue(!!composebox);
-        assertTrue(composebox.isPendingScreenshot);
+        assertTrue(composebox.isPendingContextUpload);
+        assertEquals('existing multiline query', composebox.input);
 
         // Cancel the screenshot capture.
-        testEverywhereProxy.page.onScreenshotCaptureCancelled();
+        testEverywherePage.onScreenshotCaptureCancelled();
         await microtasksFinished();
 
-        // Should remain in composebox mode with isPendingScreenshot reset to
-        // false.
+        // Should remain in composebox mode with isPendingContextUpload reset to
+        // false and typed query preserved.
         composebox =
             app.shadowRoot.querySelector('omnibox-everywhere-composebox');
         assertTrue(!!composebox);
-        assertFalse(composebox.isPendingScreenshot);
+        assertFalse(composebox.isPendingContextUpload);
+        assertEquals('existing multiline query', composebox.input);
       });
 
   test('input does not overspill profile icon in RTL or LTR', async () => {
@@ -4376,7 +5198,9 @@ suite('OmniboxEverywhereContextMenuTest', () => {
       async () => {
         const rootStyle = document.documentElement.style;
         const darkTokens: Array<[string, string]> = [
-          ['--color-sys-surface', 'rgb(31, 31, 31)'],
+          ['--color-new-tab-page-background', 'rgb(60, 60, 60)'],
+          ['--color-new-tab-page-most-visited-foreground', 'rgb(227, 227, 227)'],
+          ['--color-new-tab-page-add-shortcut-foreground', 'rgb(227, 227, 227)'],
           ['--color-sys-on-surface', 'rgb(227, 227, 227)'],
           ['--color-sys-on-surface-subtle', 'rgb(196, 199, 197)'],
           ['--color-sys-neutral-outline', 'rgb(68, 71, 70)'],
@@ -4395,7 +5219,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
           await microtasksFinished();
 
           assertEquals(
-              'rgb(31, 31, 31)',
+              'rgb(60, 60, 60)',
               window.getComputedStyle(omnibox.$.inputWrapper).backgroundColor);
           assertEquals(
               'rgb(227, 227, 227)',
@@ -4403,7 +5227,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
 
           const omniboxStyle = window.getComputedStyle(omnibox);
           assertEquals(
-              'rgb(31, 31, 31)',
+              'rgb(60, 60, 60)',
               omniboxStyle.getPropertyValue('--color-searchbox-background')
                   .trim());
           assertEquals(
@@ -4414,7 +5238,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
               'omnibox-everywhere-profile-icon')!;
           assertTrue(!!profileIcon);
           assertEquals(
-              'rgb(31, 31, 31)',
+              'rgb(60, 60, 60)',
               window.getComputedStyle(profileIcon)
                   .getPropertyValue('--profile-icon-background')
                   .trim());
@@ -4423,7 +5247,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
               '#mostVisitedContainer')!;
           assertTrue(!!mvtContainer);
           assertEquals(
-              'rgb(31, 31, 31)',
+              'rgb(60, 60, 60)',
               window.getComputedStyle(mvtContainer).backgroundColor);
 
           const mvt =
@@ -4438,13 +5262,13 @@ suite('OmniboxEverywhereContextMenuTest', () => {
               mvtStyle.getPropertyValue('--add-shortcut-foreground-color')
                   .trim());
 
-          testEverywhereProxy.page.openComposebox({
+          testEverywherePage.openComposebox({
             tool: ToolMode.kUnspecified,
             model: ModelMode.kUnspecified,
             tab: null,
             fileToken: null,
             fileInfo: null,
-            isPendingScreenshot: false,
+            isPendingContextUpload: false,
           });
           await microtasksFinished();
 
@@ -4458,7 +5282,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
                    '--color-search-animated-glow-background',
                ]) {
             assertEquals(
-                'rgb(31, 31, 31)',
+                'rgb(60, 60, 60)',
                 composeboxStyle.getPropertyValue(prop).trim());
           }
           assertEquals(
@@ -4483,7 +5307,7 @@ suite('OmniboxEverywhereContextMenuTest', () => {
         omnibox.isOverflowMenuOpen = true;
         await microtasksFinished();
 
-        testEverywhereProxy.page.onOverflowMenuClosed();
+        testEverywherePage.onOverflowMenuClosed();
         await microtasksFinished();
 
         assertFalse(omnibox.isOverflowMenuOpen);

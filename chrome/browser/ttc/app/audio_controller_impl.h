@@ -17,6 +17,7 @@
 #include "base/containers/circular_deque.h"
 #include "base/containers/span.h"
 #include "base/functional/callback.h"
+#include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
@@ -43,6 +44,8 @@ class AudioSystem;
 
 namespace ttc {
 
+class DebugSink;
+
 // Implements the AudioIO subsystem for TTC. Manages microphone
 // capture, speaker playback, and audio hardware routing via the
 // Chrome Audio Service.
@@ -55,9 +58,13 @@ class AudioControllerImpl : public AudioController,
   using AudioSystemFactory =
       base::RepeatingCallback<std::unique_ptr<media::AudioSystem>()>;
 
+  // `debug_sink` is optional and must outlive this object. When it's set, the
+  // capture format, mute state, mic level and playback errors are reported to
+  // it.
   explicit AudioControllerImpl(
       AudioStreamFactoryBinder factory_binder = AudioStreamFactoryBinder(),
-      AudioSystemFactory audio_system_factory = AudioSystemFactory());
+      AudioSystemFactory audio_system_factory = AudioSystemFactory(),
+      DebugSink* debug_sink = nullptr);
   ~AudioControllerImpl() override;
 
   AudioControllerImpl(const AudioControllerImpl&) = delete;
@@ -123,16 +130,23 @@ class AudioControllerImpl : public AudioController,
       const std::optional<media::AudioParameters>& device_params);
   // Called on the realtime capture thread, from `capture_fifo_`.
   void DeliverCapturedAudio(const media::AudioBus& audio_bus, int frame_delay);
+  // (Re)creates `capture_callback_runner_`, dropping the captured audio that
+  // the previous one has posted but not yet delivered.
+  void ResetCaptureCallbackRunner();
   void OnCapturedAudioOnMainThread(std::vector<int16_t> pcm_data,
                                    media::AudioParameters params,
                                    float energy);
   void OnAudioRenderedOnMainThread(int64_t completed_sequence);
   void OnAudioErrorOnMainThread(ErrorCode error_code);
+  void OnRenderErrorOnMainThread();
 
   scoped_refptr<base::SequencedTaskRunner> main_task_runner_;
   AudioStreamFactoryBinder factory_binder_;
   AudioSystemFactory audio_system_factory_;
   std::unique_ptr<media::AudioSystem> audio_system_;
+  // Null unless the TTC debug tools are enabled. Only used on the main
+  // sequence.
+  const raw_ptr<DebugSink> debug_sink_;
 
   base::ObserverList<Observer,
                      /*check_empty=*/false,
@@ -144,6 +158,7 @@ class AudioControllerImpl : public AudioController,
       capture_callback_runner_;
   base::RepeatingCallback<void(int64_t)> render_callback_runner_;
   base::RepeatingCallback<void(ErrorCode)> error_callback_runner_;
+  base::RepeatingClosure render_error_callback_runner_;
 
   // True from StartCapture() until StopCapture(), including while the device
   // parameters query is in flight.
@@ -165,6 +180,9 @@ class AudioControllerImpl : public AudioController,
       GUARDED_BY(playback_lock_);
   AudioEnvelopeExtractor audio_envelope_extractor_;
 
+  // Only for `capture_callback_runner_`, so that StopCapture() can drop the
+  // audio it has posted.
+  base::WeakPtrFactory<AudioControllerImpl> capture_weak_factory_{this};
   base::WeakPtrFactory<AudioControllerImpl> weak_factory_{this};
 };
 

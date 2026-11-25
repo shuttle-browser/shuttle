@@ -224,13 +224,25 @@ class LineBreakStrategy {
 
 void PlaceRelativePositionedItems(const ConstraintSpace& constraint_space,
                                   LogicalLineItems* line_box) {
+  const WritingDirectionMode writing_direction =
+      constraint_space.GetWritingDirection();
   for (auto& child : *line_box) {
-    const auto* physical_fragment = child.GetPhysicalFragment();
+    const auto* physical_fragment =
+        DynamicTo<PhysicalBoxFragment>(child.GetPhysicalFragment());
     if (!physical_fragment) {
       continue;
     }
-    child.rect.offset += ComputeRelativeOffsetForInline(
-        constraint_space, physical_fragment->Style());
+    // Storing the relative insets for an inline-box is handled within:
+    // `InlineLayoutStateStack::BoxData::CreateBoxFragment`
+    if (physical_fragment->IsInlineBox()) {
+      continue;
+    }
+    const PhysicalBoxStrut insets =
+        ComputeRelativeInsets(physical_fragment->Style(), writing_direction,
+                              constraint_space.AvailableSize());
+    physical_fragment->GetMutableForPositioned().SetUsedPositionInsets(insets);
+    child.rect.offset +=
+        ComputeRelativeOffsetForInline(insets, writing_direction);
   }
 }
 
@@ -1231,10 +1243,10 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
       line_info.SetBfcOffset({line_opportunity.line_left_offset,
                               line_opportunity.bfc_block_offset});
     } else {
-      LineBreaker line_breaker(Node(), LineBreakerMode::kContent,
-                               constraint_space, line_opportunity,
-                               leading_floats, break_token,
-                               column_spanner_path_, &GetExclusionSpace());
+      LineBreaker line_breaker(
+          Node(), LineBreakerMode::kContent, constraint_space, line_opportunity,
+          leading_floats, break_token, column_spanner_path_,
+          context_->GetFragmentedOofContainer(), &GetExclusionSpace());
       line_break_strategy.SetupLineBreaker(context_, line_breaker);
       if (RuntimeEnabledFeatures::CSSLineClampLineBreakingEllipsisEnabled() &&
           GetLineClampState(nullptr) == LineClampState::kLineClampEllipsis) {
@@ -1265,7 +1277,8 @@ const LayoutResult* InlineLayoutAlgorithm::Layout() {
             LineBreaker line_breaker_without_ellipsis(
                 Node(), LineBreakerMode::kContent, constraint_space,
                 line_opportunity, leading_floats, break_token,
-                column_spanner_path_, &GetExclusionSpace());
+                column_spanner_path_, context_->GetFragmentedOofContainer(),
+                &GetExclusionSpace());
             line_break_strategy.SetupLineBreaker(context_,
                                                  line_breaker_without_ellipsis);
             LineInfo line_info_without_ellipsis;

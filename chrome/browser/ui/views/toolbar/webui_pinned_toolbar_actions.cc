@@ -8,11 +8,13 @@
 #include <optional>
 #include <vector>
 
+#include "base/check_is_test.h"
 #include "base/containers/flat_set.h"
 #include "base/memory/raw_ref.h"
 #include "base/notimplemented.h"
 #include "base/notreached.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
+#include "chrome/browser/ui/actions/chrome_action_properties.h"
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
@@ -21,6 +23,7 @@
 #include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
 #include "chrome/browser/ui/side_panel/side_panel_enums.h"
 #include "chrome/browser/ui/toolbar/pinned_toolbar/pinned_toolbar_actions_ids.h"
+#include "chrome/browser/ui/views/frame/toolbar_button_provider.h"
 #include "chrome/browser/ui/views/toolbar/download_button.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button_menu_model.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
@@ -259,6 +262,11 @@ void WebUIPinnedToolbarActions::OnActionsChanged() {
       state->progress_ring = download_button_->GetProgressRingState();
       state->badge_number = download_button_->GetBadgeNumber();
     }
+    // Like native PinnedActionToolbarButton::GetIconSize(), shrink the icon by
+    // the action's icon size delta.
+    state->icon_size_delta =
+        item->GetProperty(chrome::kActionItemIconSizeDeltaKey);
+    CHECK_LE(state->icon_size_delta, 0);
 
     ui::ImageModel image_model;
     if (actions::IsActionClass<actions::StatefulImageActionItem>(item)) {
@@ -481,8 +489,25 @@ views::BubbleAnchor WebUIPinnedToolbarActions::GetBubbleAnchor(
     ui::TrackedElement* element =
         BrowserElements::From(delegate_->GetBrowser())
             ->GetElement(webui_toolbar::ActionIdToElementIdentifier(action_id));
-    CHECK(element, base::NotFatalUntil::M162);
-    return views::BubbleAnchor(element);
+    if (element) {
+      return views::BubbleAnchor(element);
+    }
+    // In production, we can, exceptionally rarely, end up here when a bubble
+    // attempts to anchor to a just-shown pinned toolbar button whose
+    // TrackedElementManager registration IPC hasn't yet reached the browser
+    // process. In these rare cases, fall back to anchoring to the location
+    // bar.
+    if (!allow_missing_anchor_for_testing_) {
+      // If you hit this assertion in a test simulating a user clicking on a
+      // pinned toolbar action, you need to make the test wait for the pinned
+      // toolbar action's ui::TrackedElement* to become non-null before clicking
+      // on it, which mimics how a user would behave (i.e. they wouldn't click
+      // on something before it's visible).
+      CHECK_IS_NOT_TEST();
+    }
+    // Fall back to anchoring to the location bar.
+    return ToolbarButtonProvider::From(delegate_->GetBrowser())
+        ->GetBubbleAnchor(std::nullopt);
   }
   return views::BubbleAnchor();
 }

@@ -37,8 +37,6 @@
 #include "components/contextual_tasks/public/features.h"
 #include "components/contextual_tasks/public/mock_contextual_tasks_service.h"
 #include "components/contextual_tasks/public/query_contextualizer.h"
-#include "components/dom_distiller/core/url_constants.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/omnibox/browser/actions/omnibox_action.h"
 #include "components/omnibox/browser/actions/tab_switch_action.h"
 #include "components/omnibox/browser/autocomplete_controller.h"
@@ -55,12 +53,15 @@
 #include "components/omnibox/browser/test_omnibox_client.h"
 #include "components/omnibox/browser/test_scheme_classifier.h"
 #include "components/omnibox/browser/unscoped_extension_provider.h"
+#include "components/omnibox/common/composebox_features.h"
 #include "components/omnibox/common/omnibox_feature_configs.h"
 #include "components/omnibox/common/omnibox_features.h"
 #include "components/omnibox/common/omnibox_focus_state.h"
 #include "components/sessions/core/session_id.h"
 #include "components/sync_preferences/testing_pref_service_syncable.h"
 #include "components/url_formatter/url_fixer.h"
+#include "components/web_distiller/core/url_constants.h"
+#include "components/web_distiller/core/url_utils.h"
 #include "content/public/test/browser_task_environment.h"
 #include "extensions/buildflags/buildflags.h"
 #include "testing/gmock/include/gmock/gmock.h"
@@ -68,7 +69,7 @@
 #include "third_party/metrics_proto/omnibox_event.pb.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/l10n/l10n_util.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/image/image_unittest_util.h"
 
@@ -104,8 +105,9 @@ void OpenUrlFromEditBox(OmniboxController* controller,
     model->SetUserText(url_text);
   }
   model->OnSetFocus(false);
-  model->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab, GURL(),
-                             std::u16string(), 0);
+  model->OpenMatchForTesting(match,
+                             ui::mojom::WindowOpenDisposition::kCurrentTab,
+                             GURL(), std::u16string(), 0);
 }
 
 class FakeQueryContextualizerDelegate
@@ -242,7 +244,10 @@ class OmniboxEditModelTest : public testing::Test {
   std::unique_ptr<TestOmniboxView> view_;
 };
 
-TEST_F(OmniboxEditModelTest, DISABLED_InlineAutocompleteText) {
+// Verifies that `OmniboxEditModel` properly updates inline autocomplete text
+// in the attached view during typing, reverting, and accepting temporary text.
+// Ensures that `inline_autocompletion()` reflects the expected suggestions.
+TEST_F(OmniboxEditModelTest, InlineAutocompleteText) {
   // Test if the model updates the inline autocomplete text in the view.
   EXPECT_EQ(std::u16string(), view()->inline_autocompletion());
   model()->SetUserText(u"he");
@@ -335,6 +340,66 @@ TEST_F(OmniboxEditModelTest, RevertZeroSuggestTemporaryText) {
             controller()->autocomplete_controller()->input().focus_type());
 }
 
+TEST_F(OmniboxEditModelTest, RevertUneditedText) {
+  location_bar_model()->set_url(GURL("https://www.example.com/"));
+  location_bar_model()->set_url_for_display(u"example.com");
+  EXPECT_TRUE(model()->ResetDisplayTexts());
+  model()->Revert();
+
+  // Unelided permanent text without user input reverts back to display text.
+  model()->Unelide();
+  EXPECT_EQ(u"https://www.example.com/", view()->GetText());
+  model()->RevertUneditedText();
+  EXPECT_EQ(u"example.com", view()->GetText());
+  EXPECT_FALSE(model()->user_input_in_progress());
+
+  // Temporary text without user input (e.g. previewing a zero-prefix
+  // suggestion) reverts back to permanent display text even when user_text()
+  // matches GetPermanentDisplayText().
+  location_bar_model()->set_url(GURL("chrome://newtab/"));
+  location_bar_model()->set_url_for_display(u"");
+  EXPECT_TRUE(model()->ResetDisplayTexts());
+  model()->Revert();
+  model()->OnPopupDataChanged(u"temporary zps text",
+                              /*is_temporary_text=*/true, std::u16string(),
+                              std::u16string(), std::u16string(),
+                              KeywordState::kNone, std::u16string(), {});
+  EXPECT_TRUE(model()->has_temporary_text());
+  EXPECT_EQ(u"temporary zps text", view()->GetText());
+  model()->RevertUneditedText();
+  EXPECT_FALSE(model()->has_temporary_text());
+  EXPECT_EQ(u"", view()->GetText());
+
+  location_bar_model()->set_url(GURL("https://www.example.com/"));
+  location_bar_model()->set_url_for_display(u"example.com");
+  EXPECT_TRUE(model()->ResetDisplayTexts());
+  model()->Revert();
+
+  // User text matching the permanent display text or full URL reverts.
+  model()->SetUserText(u"example.com");
+  EXPECT_TRUE(model()->user_input_in_progress());
+  model()->RevertUneditedText();
+  EXPECT_FALSE(model()->user_input_in_progress());
+
+  model()->SetUserText(u"https://www.example.com/");
+  EXPECT_TRUE(model()->user_input_in_progress());
+  model()->RevertUneditedText();
+  EXPECT_FALSE(model()->user_input_in_progress());
+
+  // Edited drafts and keyword mode stay untouched.
+  model()->SetUserText(u"draft");
+  model()->RevertUneditedText();
+  EXPECT_TRUE(model()->user_input_in_progress());
+  EXPECT_EQ(u"draft", model()->user_text());
+
+  model()->SetUserText(u"");
+  model()->EnterKeywordModeForDefaultSearchProvider(
+      OmniboxEventProto::KEYBOARD_SHORTCUT);
+  ASSERT_TRUE(model()->is_keyword_selected());
+  model()->RevertUneditedText();
+  EXPECT_TRUE(model()->is_keyword_selected());
+}
+
 TEST_F(OmniboxEditModelTest, FullWebUISuppressesZeroSuggestRequest) {
   view()->set_is_full_webui_omnibox(true);
   location_bar_model()->set_url(GURL("https://www.example.com/"));
@@ -373,7 +438,8 @@ TEST_F(OmniboxEditModelTest, AlternateNavHasHTTP) {
 
   model()->OnSetFocus(false);  // Avoids DCHECK in OpenMatch().
   model()->SetUserText(u"http://abcd");
-  model()->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab,
+  model()->OpenMatchForTesting(match,
+                               ui::mojom::WindowOpenDisposition::kCurrentTab,
                                alternate_nav_url, std::u16string(), 0);
   EXPECT_TRUE(
       AutocompleteInput::HasHTTPScheme(alternate_nav_match.fill_into_edit));
@@ -382,7 +448,8 @@ TEST_F(OmniboxEditModelTest, AlternateNavHasHTTP) {
       .WillOnce(SaveArg<10>(&alternate_nav_match));
 
   model()->SetUserText(u"abcd");
-  model()->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab,
+  model()->OpenMatchForTesting(match,
+                               ui::mojom::WindowOpenDisposition::kCurrentTab,
                                alternate_nav_url, std::u16string(), 0);
   EXPECT_TRUE(
       AutocompleteInput::HasHTTPScheme(alternate_nav_match.fill_into_edit));
@@ -702,9 +769,10 @@ TEST_F(OmniboxEditModelTest, CtrlEnterSelectionNavigatesToDesiredTLDNoMatch) {
 
   TestOmniboxClient* client =
       static_cast<TestOmniboxClient*>(controller_->client());
-  EXPECT_CALL(*client, OnAutocompleteAccept(GURL("http://www.google.com/"), _,
-                                            WindowOpenDisposition::kCurrentTab,
-                                            _, _, _, _, _, _, _, _))
+  EXPECT_CALL(*client, OnAutocompleteAccept(
+                           GURL("http://www.google.com/"), _,
+                           ui::mojom::WindowOpenDisposition::kCurrentTab, _, _,
+                           _, _, _, _, _, _))
       .Times(1);
 
   // When selection state is kCtrlEnter and line is kNoMatch (e.g. popup closed
@@ -1187,6 +1255,215 @@ TEST_F(OmniboxEditModelPopupTest, PopupStepSelection) {
   EXPECT_EQ(Selection(5, Selection::LineState::kNormal),
             model()->GetPopupSelection());
 }
+
+// Tests stepping (via Tab) into keyword mode when user text contains query
+// text (e.g. "bing.com q"). Verifies that autocomplete is not rerun, popup
+// matches are preserved, and stepping out (Shift+Tab / Tab) restores text.
+TEST_F(OmniboxEditModelPopupTest, PopupStepSelectionWithKeywordAndQuery) {
+  TemplateURLData data;
+  data.SetShortName(u"bing");
+  data.SetKeyword(u"bing.com");
+  data.SetURL("https://bing.com?q={searchTerms}");
+  data.is_active = TemplateURLData::ActiveStatus::kTrue;
+  TemplateURL* turl = controller()->client()->GetTemplateURLService()->Add(
+      std::make_unique<TemplateURL>(data));
+  ASSERT_TRUE(turl);
+
+  ACMatches matches;
+  AutocompleteMatch match0(nullptr, 1000, false,
+                           omnibox::AutocompleteMatchType::kSearchWhatYouTyped);
+  match0.allowed_to_be_default_match = true;
+  match0.fill_into_edit = u"bing.com q";
+  match0.associated_keyword = u"bing.com";
+  matches.push_back(match0);
+
+  AutocompleteMatch match1(nullptr, 900, false,
+                           omnibox::AutocompleteMatchType::kSearchSuggest);
+  match1.fill_into_edit = u"bing.com query 2";
+  matches.push_back(match1);
+
+  auto* result = &AutocompleteControllerPublishedResult();
+  result->AppendMatches(matches);
+  AutocompleteInput input(u"bing.com q", metrics::OmniboxEventProto::NTP,
+                          TestSchemeClassifier());
+  AutocompleteControllerInput() = input;
+  result->SortAndCull(input, /*template_url_service=*/nullptr,
+                      triggered_feature_service(), /*is_lens_active=*/false,
+                      /*can_show_contextual_suggestions=*/false,
+                      /*mia_enabled=*/false, /*is_incognito=*/false);
+  model()->OnPopupResultChanged();
+
+  view_->SetUserText(u"bing.com q");
+  model()->OnPopupDataChanged(std::u16string(), /*is_temporary_text=*/false,
+                              std::u16string(), u"bing.com", std::u16string(),
+                              KeywordState::kHint, std::u16string(), match0);
+  EXPECT_EQ(Selection(0, Selection::LineState::kNormal),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_hint());
+  EXPECT_EQ(u"bing.com q", view_->GetText());
+
+  // Tab focuses the keyword chip and enters keyword mode without rerunning
+  // autocomplete or replacing the popup matches.
+  model()->OnTabPressed(false);
+  EXPECT_EQ(Selection(0, Selection::LineState::kKeywordMode),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_selected());
+  EXPECT_EQ(u"q", view_->GetText());
+  EXPECT_EQ(u"q", model()->user_text());
+  EXPECT_EQ(2u, result->size());
+
+  // Shift+Tab exits keyword mode and restores the original input text.
+  model()->OnTabPressed(true);
+  EXPECT_EQ(Selection(0, Selection::LineState::kNormal),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_hint());
+  EXPECT_FALSE(model()->is_keyword_selected());
+  EXPECT_EQ(u"bing.com q", view_->GetText());
+  EXPECT_EQ(u"bing.com q", model()->user_text());
+
+  // Tab again enters keyword mode, and another Tab advances to the next match
+  // and exits keyword mode.
+  model()->OnTabPressed(false);
+  EXPECT_EQ(Selection(0, Selection::LineState::kKeywordMode),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_selected());
+
+  model()->OnTabPressed(false);
+  EXPECT_EQ(Selection(1, Selection::LineState::kNormal),
+            model()->GetPopupSelection());
+  EXPECT_FALSE(model()->is_keyword_selected());
+  EXPECT_EQ(u"bing.com query 2", view_->GetText());
+}
+
+// Tests stepping (via Tab) into keyword mode without query text (e.g. "bing").
+// Verifies that stepping in enters keyword mode with empty text, and stepping
+// out (Shift+Tab / Tab) restores text and user_text.
+TEST_F(OmniboxEditModelPopupTest, PopupStepSelectionWithKeywordWithoutQuery) {
+  TemplateURLData data;
+  data.SetShortName(u"bing");
+  data.SetKeyword(u"bing.com");
+  data.SetURL("https://bing.com?q={searchTerms}");
+  data.is_active = TemplateURLData::ActiveStatus::kTrue;
+  TemplateURL* turl = controller()->client()->GetTemplateURLService()->Add(
+      std::make_unique<TemplateURL>(data));
+  ASSERT_TRUE(turl);
+
+  ACMatches matches;
+  AutocompleteMatch match0(nullptr, 1000, false,
+                           omnibox::AutocompleteMatchType::kSearchWhatYouTyped);
+  match0.allowed_to_be_default_match = true;
+  match0.fill_into_edit = u"bing.com";
+  match0.associated_keyword = u"bing.com";
+  matches.push_back(match0);
+
+  AutocompleteMatch match1(nullptr, 900, false,
+                           omnibox::AutocompleteMatchType::kSearchSuggest);
+  match1.fill_into_edit = u"bing.com query 2";
+  matches.push_back(match1);
+
+  auto* result = &AutocompleteControllerPublishedResult();
+  result->AppendMatches(matches);
+  AutocompleteInput input(u"bing", metrics::OmniboxEventProto::NTP,
+                          TestSchemeClassifier());
+  AutocompleteControllerInput() = input;
+  result->SortAndCull(input, /*template_url_service=*/nullptr,
+                      triggered_feature_service(), /*is_lens_active=*/false,
+                      /*can_show_contextual_suggestions=*/false,
+                      /*mia_enabled=*/false, /*is_incognito=*/false);
+  model()->OnPopupResultChanged();
+
+  view_->SetUserText(u"bing");
+  model()->OnPopupDataChanged(std::u16string(), /*is_temporary_text=*/false,
+                              std::u16string(), u"bing.com", std::u16string(),
+                              KeywordState::kHint, std::u16string(), match0);
+  EXPECT_EQ(Selection(0, Selection::LineState::kNormal),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_hint());
+  EXPECT_EQ(u"bing", view_->GetText());
+
+  // Tab focuses the keyword chip and enters keyword mode without query text.
+  model()->OnTabPressed(false);
+  EXPECT_EQ(Selection(0, Selection::LineState::kKeywordMode),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_selected());
+  EXPECT_EQ(std::u16string(), view_->GetText());
+  EXPECT_EQ(std::u16string(), model()->user_text());
+  EXPECT_EQ(2u, result->size());
+
+  // Shift+Tab exits keyword mode and restores the original input text.
+  model()->OnTabPressed(true);
+  EXPECT_EQ(Selection(0, Selection::LineState::kNormal),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_hint());
+  EXPECT_FALSE(model()->is_keyword_selected());
+  EXPECT_EQ(u"bing.com", view_->GetText());
+  EXPECT_EQ(u"bing", model()->user_text());
+
+  // Tab again enters keyword mode, and another Tab advances to the next match
+  // and exits keyword mode.
+  model()->OnTabPressed(false);
+  EXPECT_EQ(Selection(0, Selection::LineState::kKeywordMode),
+            model()->GetPopupSelection());
+  EXPECT_TRUE(model()->is_keyword_selected());
+
+  model()->OnTabPressed(false);
+  EXPECT_EQ(Selection(1, Selection::LineState::kNormal),
+            model()->GetPopupSelection());
+  EXPECT_FALSE(model()->is_keyword_selected());
+  EXPECT_EQ(u"bing.com query 2", view_->GetText());
+}
+
+// Opening the keyword chip selection after tabbing into keyword mode with text
+// after the keyword searches the keyword for that text, without inline
+// autocompletion, since the popup still shows the pre-keyword-mode matches.
+TEST_F(OmniboxEditModelPopupTest, OpenKeywordChipSelectionWithQuery) {
+  TemplateURLData data;
+  data.SetShortName(u"bing");
+  data.SetKeyword(u"bing.com");
+  data.SetURL("https://bing.com/?q={searchTerms}");
+  data.is_active = TemplateURLData::ActiveStatus::kTrue;
+  for (TemplateURLService* service :
+       {controller()->client()->GetTemplateURLService(),
+        client()
+            ->autocomplete_classifier()
+            ->autocomplete_controller()
+            ->autocomplete_provider_client()
+            ->GetTemplateURLService()}) {
+    if (!service->GetTemplateURLForKeyword(u"bing.com")) {
+      ASSERT_TRUE(service->Add(std::make_unique<TemplateURL>(data)));
+    }
+  }
+
+  AutocompleteMatch match(
+      controller()->autocomplete_controller()->search_provider(), 1000, false,
+      omnibox::AutocompleteMatchType::kSearchWhatYouTyped);
+  match.allowed_to_be_default_match = true;
+  match.fill_into_edit = u"bing.com q";
+  match.associated_keyword = u"bing.com";
+  match.destination_url = GURL("https://google.com/search?q=bing.com+q");
+  auto* result = &AutocompleteControllerPublishedResult();
+  result->AppendMatches({match});
+  AutocompleteControllerInput() = AutocompleteInput(
+      u"bing.com q", metrics::OmniboxEventProto::NTP, TestSchemeClassifier());
+  model()->OnPopupResultChanged();
+
+  model()->OnSetFocus(false);
+  view_->SetUserText(u"bing.com q");
+  model()->OnPopupDataChanged(std::u16string(), /*is_temporary_text=*/false,
+                              std::u16string(), u"bing.com", std::u16string(),
+                              KeywordState::kHint, std::u16string(), match);
+  model()->OnTabPressed(false);
+  ASSERT_EQ(Selection(0, Selection::LineState::kKeywordMode),
+            model()->GetPopupSelection());
+  ASSERT_TRUE(model()->is_keyword_selected());
+
+  EXPECT_CALL(*client(), OnAutocompleteAccept(
+                             GURL("https://bing.com/?q=q"), _,
+                             ui::mojom::WindowOpenDisposition::kCurrentTab, _,
+                             _, _, _, _, _, _, _))
+      .Times(1);
+  model()->OpenSelection(Selection(0, Selection::LineState::kKeywordMode));
+}
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 // Actions are not part of the selection stepping in Android at all.
@@ -1485,7 +1762,7 @@ TEST_F(OmniboxEditModelPopupTest, OpenActionSelectionLogsOmniboxEvent) {
   model()->OpenSelection(OmniboxPopupSelection(
       1, OmniboxPopupSelection::LineState::kFocusedButtonAction));
   EXPECT_EQ(client()->last_log_disposition(),
-            WindowOpenDisposition::kSwitchToTab);
+            ui::mojom::WindowOpenDisposition::kSwitchToTab);
   histogram_tester.ExpectUniqueSample("Omnibox.EventCount", 1, 1);
 }
 #endif
@@ -1521,10 +1798,10 @@ TEST_F(OmniboxEditModelPopupTest, CtrlEnterOnPopupLineLogsGeneratedUrlMatch) {
             }
           }));
 
-  EXPECT_CALL(*client(),
-              OnAutocompleteAccept(GURL("http://www.google.com/"), _,
-                                   WindowOpenDisposition::kCurrentTab, _, _, _,
-                                   _, _, _, _, _))
+  EXPECT_CALL(*client(), OnAutocompleteAccept(
+                             GURL("http://www.google.com/"), _,
+                             ui::mojom::WindowOpenDisposition::kCurrentTab, _,
+                             _, _, _, _, _, _, _))
       .Times(1);
   model()->OpenSelection(
       OmniboxPopupSelection(0, OmniboxPopupSelection::LineState::kCtrlEnter));
@@ -1566,9 +1843,10 @@ TEST_F(OmniboxEditModelPopupTest, CtrlEnterWithoutDotComUrlLogsPopupMatches) {
 
   const OmniboxPopupSelection selection(
       0, OmniboxPopupSelection::LineState::kCtrlEnter);
-  EXPECT_CALL(*client(), OnAutocompleteAccept(
-                             search_url, _, WindowOpenDisposition::kCurrentTab,
-                             _, _, _, _, _, _, _, _))
+  EXPECT_CALL(*client(),
+              OnAutocompleteAccept(
+                  search_url, _, ui::mojom::WindowOpenDisposition::kCurrentTab,
+                  _, _, _, _, _, _, _, _))
       .Times(1);
   model()->OpenSelection(selection);
 
@@ -1976,15 +2254,16 @@ TEST_F(OmniboxEditModelTest, OpenTabMatch) {
   match.destination_url = GURL("https://foo/");
   match.from_keyword = true;
 
-  WindowOpenDisposition disposition;
+  ui::mojom::WindowOpenDisposition disposition;
   EXPECT_CALL(*client(), OnAutocompleteAccept(_, _, _, _, _, _, _, _, _, _, _))
       .WillOnce(SaveArg<2>(&disposition));
 
   model()->OnSetFocus(false);  // Avoids DCHECK in OpenMatch().
   model()->SetUserText(u"http://abcd");
-  model()->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab,
+  model()->OpenMatchForTesting(match,
+                               ui::mojom::WindowOpenDisposition::kCurrentTab,
                                GURL(), std::u16string(), 0);
-  EXPECT_EQ(disposition, WindowOpenDisposition::kSwitchToTab);
+  EXPECT_EQ(disposition, ui::mojom::WindowOpenDisposition::kSwitchToTab);
 
   EXPECT_CALL(*client(), OnAutocompleteAccept(_, _, _, _, _, _, _, _, _, _, _))
       .WillOnce(SaveArg<2>(&disposition));
@@ -1992,9 +2271,10 @@ TEST_F(OmniboxEditModelTest, OpenTabMatch) {
   // Suggestions not from the Open Tab Provider or not from keyword mode should
   // not change the disposition.
   match.from_keyword = false;
-  model()->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab,
+  model()->OpenMatchForTesting(match,
+                               ui::mojom::WindowOpenDisposition::kCurrentTab,
                                GURL(), std::u16string(), 0);
-  EXPECT_EQ(disposition, WindowOpenDisposition::kCurrentTab);
+  EXPECT_EQ(disposition, ui::mojom::WindowOpenDisposition::kCurrentTab);
 
   EXPECT_CALL(*client(), OnAutocompleteAccept(_, _, _, _, _, _, _, _, _, _, _))
       .WillOnce(SaveArg<2>(&disposition));
@@ -2002,9 +2282,10 @@ TEST_F(OmniboxEditModelTest, OpenTabMatch) {
   match.provider = controller()->autocomplete_controller()->search_provider();
   match.type = omnibox::AutocompleteMatchType::kSearchWhatYouTyped;
   match.from_keyword = true;
-  model()->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab,
+  model()->OpenMatchForTesting(match,
+                               ui::mojom::WindowOpenDisposition::kCurrentTab,
                                GURL(), std::u16string(), 0);
-  EXPECT_EQ(disposition, WindowOpenDisposition::kCurrentTab);
+  EXPECT_EQ(disposition, ui::mojom::WindowOpenDisposition::kCurrentTab);
 }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -2129,20 +2410,20 @@ TEST_F(OmniboxEditModelPopupTest,
   // Match 2: regular search match.
   matches.push_back(AutocompleteMatch(
       nullptr, 800, false, omnibox::AutocompleteMatchType::kSearchSuggest));
-  // Match 3: IPH disclaimer.
+  // Match 3: IPH with link.
   AutocompleteMatch disclaimer_iph(
       nullptr, 700, false, omnibox::AutocompleteMatchType::kNullResultMessage);
-  disclaimer_iph.iph_type = IphType::kHistoryEmbeddingsDisclaimer;
+  disclaimer_iph.iph_type = IphType::kGemini;
   disclaimer_iph.iph_link_url = GURL("chrome://settings");
   disclaimer_iph.contents = u"Disclaimer Text";
   matches.push_back(disclaimer_iph);
   // Match 4: regular search match.
   matches.push_back(AutocompleteMatch(
       nullptr, 600, false, omnibox::AutocompleteMatchType::kSearchSuggest));
-  // Match 5: IPH settings promo.
+  // Match 5: Second IPH with link.
   AutocompleteMatch settings_promo_iph(
       nullptr, 500, false, omnibox::AutocompleteMatchType::kNullResultMessage);
-  settings_promo_iph.iph_type = IphType::kHistoryEmbeddingsSettingsPromo;
+  settings_promo_iph.iph_type = IphType::kHistoryScopePromo;
   settings_promo_iph.iph_link_url = GURL("chrome://settings");
   settings_promo_iph.contents = u"Settings Promo Text";
   matches.push_back(settings_promo_iph);
@@ -2214,6 +2495,30 @@ TEST_F(OmniboxEditModelPopupTest, AimPopupEnabledPopupOpened) {
       "Omnibox.AimEntrypoint.Activated.ViaKeyboard", false, 1);
   histogram_tester.ExpectBucketCount(
       "Omnibox.AimEntrypoint.Activated.UserTextPresent", false, 1);
+}
+
+// The AI Mode button opens the compose box in AI Mode; the "+" menu doesn't,
+// even right after the button.
+TEST_F(OmniboxEditModelPopupTest, AiModeButtonEntersAimMode) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      {omnibox::kDynamicAimFulfillment, omnibox::kDynamicAimFulfillmentOmnibox},
+      {});
+  EXPECT_CALL(*client(), IsAimPopupEnabled()).WillRepeatedly(Return(true));
+
+  model()->OpenAiMode(OmniboxEditModel::AimActivation::kClickOrGesture);
+  EXPECT_TRUE(model()->enter_aim_mode());
+
+  model()->OpenAiMode(OmniboxEditModel::AimActivation::kContextMenu);
+  EXPECT_FALSE(model()->enter_aim_mode());
+}
+
+TEST_F(OmniboxEditModelPopupTest,
+       AiModeButtonWithoutDynamicAimFulfillmentDoesNotEnterAimMode) {
+  EXPECT_CALL(*client(), IsAimPopupEnabled()).WillRepeatedly(Return(true));
+
+  model()->OpenAiMode(OmniboxEditModel::AimActivation::kClickOrGesture);
+  EXPECT_FALSE(model()->enter_aim_mode());
 }
 
 TEST_F(OmniboxEditModelPopupTest, RecordAiModeMetrics_ThirdParty) {
@@ -2602,13 +2907,13 @@ TEST_F(OmniboxEditModelTest, NavigateToThirdPartyAiMode) {
 
   // Test with query.
   EXPECT_CALL(*client(), OpenUrl(GURL("https://url.com/search?p=query"),
-                                 WindowOpenDisposition::kCurrentTab))
+                                 ui::mojom::WindowOpenDisposition::kCurrentTab))
       .Times(1);
   model()->NavigateToThirdPartyAiMode(u"query");
 
   // Test without query.
   EXPECT_CALL(*client(), OpenUrl(GURL("https://url-empty.com"),
-                                 WindowOpenDisposition::kCurrentTab))
+                                 ui::mojom::WindowOpenDisposition::kCurrentTab))
       .Times(1);
   model()->NavigateToThirdPartyAiMode(u"");
 }
@@ -2663,7 +2968,7 @@ TEST_F(OmniboxEditModelContextualSearchTest,
 
   model()
       ->NavigateToAiModeWithContextualizerOnContextualizationCompleteForTesting(
-          u"test query", WindowOpenDisposition::kCurrentTab,
+          u"test query", ui::mojom::WindowOpenDisposition::kCurrentTab,
           session_handle->AsWeakPtr());
 }
 
@@ -2705,7 +3010,8 @@ TEST_F(OmniboxEditModelContextualSearchTest,
   // yet).
   model()
       ->NavigateToAiModeWithContextualizerOnContextualizationCompleteForTesting(
-          u"test query", WindowOpenDisposition::kCurrentTab, nullptr);
+          u"test query", ui::mojom::WindowOpenDisposition::kCurrentTab,
+          nullptr);
 }
 
 TEST_F(OmniboxEditModelTest, OpenComposeboxForAskG) {
@@ -2740,7 +3046,8 @@ TEST_F(OmniboxEditModelTest, OpenMatchWithActionPreservesPopupState) {
             OmniboxPopupState::kAim);
 
   model()->OnSetFocus(false);
-  model()->OpenMatchForTesting(match, WindowOpenDisposition::kCurrentTab,
+  model()->OpenMatchForTesting(match,
+                               ui::mojom::WindowOpenDisposition::kCurrentTab,
                                GURL(), std::u16string(),
                                /*index=*/0, base::TimeTicks::Now());
 

@@ -55,6 +55,7 @@ import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.lifecycle.NativeInitObserver;
 import org.chromium.chrome.browser.locale.LocaleManager;
 import org.chromium.chrome.browser.omnibox.LocationBarMediator.OmniboxUma;
+import org.chromium.chrome.browser.omnibox.UrlBar.ScrollType;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxLayoutMode;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.FuseboxState;
 import org.chromium.chrome.browser.omnibox.fusebox.Fusebox.PopupState;
@@ -81,6 +82,7 @@ import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.toolbar.ToolbarVariationUtils;
 import org.chromium.chrome.browser.toolbar.optional_button.ButtonData;
 import org.chromium.chrome.browser.toolbar.optional_button.OptionalButtonCoordinator;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeController;
 import org.chromium.chrome.browser.ui.edge_to_edge.TopInsetProvider;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.browser.user_education.UserEducationHelper;
@@ -218,6 +220,7 @@ public class LocationBarCoordinator
      * @param omniboxSuggestionsDropdownScrollListener Listener for suggestions dropdown scroll.
      * @param tabModelSelectorSupplier Supplier of the {@link TabModelSelector}.
      * @param topInsetProvider Provider for top insets.
+     * @param edgeToEdgeControllerSupplier Supplier of the {@link EdgeToEdgeController}.
      * @param locationBarEmbedder Embedder for location bar.
      * @param uiOverrides embedder-specific UI overrides
      * @param baseChromeLayout The base view hosting Chrome that certain views (e.g. the omnibox
@@ -269,6 +272,7 @@ public class LocationBarCoordinator
                     omniboxSuggestionsDropdownScrollListener,
             MonotonicObservableSupplier<TabModelSelector> tabModelSelectorSupplier,
             TopInsetProvider topInsetProvider,
+            MonotonicObservableSupplier<EdgeToEdgeController> edgeToEdgeControllerSupplier,
             LocationBarEmbedder locationBarEmbedder,
             LocationBarEmbedderUiOverrides uiOverrides,
             @Nullable View baseChromeLayout,
@@ -362,6 +366,7 @@ public class LocationBarCoordinator
                         fuseboxStateSupplier,
                         fuseboxLayoutModeSupplier,
                         topInsetProvider,
+                        edgeToEdgeControllerSupplier,
                         uiOverrides::isFullWidthExpansionAllowed);
 
         mPageZoomIndicatorCoordinator =
@@ -766,11 +771,6 @@ public class LocationBarCoordinator
     }
 
     @Override
-    public OmniboxResourceProvider getResourceProvider() {
-        return mResourceProvider;
-    }
-
-    @Override
     public @Nullable OmniboxStub getOmniboxStub() {
         return mLocationBarMediator;
     }
@@ -875,7 +875,7 @@ public class LocationBarCoordinator
 
     @Override
     public boolean isKeyboardActive() {
-        return KeyboardVisibilityDelegate.getInstance().isKeyboardShowing(mUrlBar)
+        return KeyboardVisibilityDelegate.getInstance().isKeyboardObscuring(mUrlBar)
                 || (mLocationBarLayout.getContext().getResources().getConfiguration().keyboard
                         == Configuration.KEYBOARD_QWERTY);
     }
@@ -914,9 +914,7 @@ public class LocationBarCoordinator
     @Override
     public void setOmniboxEditingText(String text) {
         mUrlCoordinator.setUrlBarData(
-                UrlBarData.forNonUrlText(text),
-                UrlBar.ScrollType.NO_SCROLL,
-                TextSelection.SELECT_END);
+                UrlBarData.forNonUrlText(text), ScrollType.NO_SCROLL, TextSelection.SELECT_END);
         updateButtonVisibility();
     }
 

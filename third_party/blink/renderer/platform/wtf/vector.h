@@ -49,6 +49,7 @@
 #include "third_party/blink/renderer/platform/wtf/forward.h"  // For default Vector template parameters.
 #include "third_party/blink/renderer/platform/wtf/gc_plugin.h"
 #include "third_party/blink/renderer/platform/wtf/hash_table_deleted_value_type.h"
+#include "third_party/blink/renderer/platform/wtf/sanitizers.h"
 #include "third_party/blink/renderer/platform/wtf/stack_util.h"
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/type_traits.h"
@@ -242,26 +243,33 @@ struct VectorTypeOperations {
       if constexpr (IsTraceable<T>::value) {
         static_assert(Allocator::kIsGarbageCollected);
         UNSAFE_TODO(AtomicWriteMemcpy(dst, src, bytes));
+        if (origin != VectorOperationOrigin::kConstruction) {
+          // SAFETY: TODO(359904345): VectorTypeOperations should operate on
+          // spans.
+          base::span<T> UNSAFE_BUFFERS(
+              elements(base::unchecked, dst,
+                       static_cast<wtf_size_t>(std::distance(src, src_end))));
+          ConstructTraits::NotifyNewElements(elements);
+        }
       } else {
         // NOLINTNEXTLINE(bugprone-undefined-memory-manipulation)
         UNSAFE_TODO(memcpy(dst, src, bytes));
       }
     } else {
+      if constexpr (IsTraceable<T>::value) {
+        static_assert(Allocator::kIsGarbageCollected);
+        if (origin != VectorOperationOrigin::kConstruction) {
+          UNSAFE_TODO(for (T* s = src, *d = dst; s != src_end; ++s, ++d) {
+            ConstructTraits::ConstructAndNotifyElement(d, std::move(*s));
+            s->~T();
+          });
+          return;
+        }
+      }
       UNSAFE_TODO(for (T* s = src, *d = dst; s != src_end; ++s, ++d) {
         ConstructTraits::Construct(d, std::move(*s));
         s->~T();
       });
-    }
-    if constexpr (IsTraceable<T>::value) {
-      static_assert(Allocator::kIsGarbageCollected);
-      if (origin != VectorOperationOrigin::kConstruction) {
-        // SAFETY: TODO(359904345): VectorTypeOperations should operate on
-        // spans.
-        base::span<T> UNSAFE_BUFFERS(
-            elements(base::unchecked, dst,
-                     static_cast<wtf_size_t>(std::distance(src, src_end))));
-        ConstructTraits::NotifyNewElements(elements);
-      }
     }
   }
 
@@ -288,6 +296,14 @@ struct VectorTypeOperations {
             AtomicWriteMemcpy<sizeof(T), alignof(T)>(d, s);
           }
         });
+        if (origin != VectorOperationOrigin::kConstruction) {
+          // SAFETY: TODO(359904345): VectorTypeOperations should operate on
+          // spans.
+          base::span<T> UNSAFE_BUFFERS(
+              elements(base::unchecked, dst,
+                       static_cast<wtf_size_t>(std::distance(src, src_end))));
+          ConstructTraits::NotifyNewElements(elements);
+        }
       } else {
         // NOLINTNEXTLINE(bugprone-undefined-memory-manipulation)
         UNSAFE_TODO(memmove(dst, src,
@@ -301,6 +317,20 @@ struct VectorTypeOperations {
         return;
       }
       DCHECK_GT(dst, src);
+      if constexpr (IsTraceable<T>::value) {
+        static_assert(Allocator::kIsGarbageCollected);
+        if (origin != VectorOperationOrigin::kConstruction) {
+          UNSAFE_TODO({
+            T* s = src_end - 1;
+            T* d = dst + (s - src);
+            for (; s >= src; --s, --d) {
+              ConstructTraits::ConstructAndNotifyElement(d, std::move(*s));
+              s->~T();
+            }
+          });
+          return;
+        }
+      }
       UNSAFE_TODO({
         T* s = src_end - 1;
         T* d = dst + (s - src);
@@ -309,17 +339,6 @@ struct VectorTypeOperations {
           s->~T();
         }
       });
-    }
-    if constexpr (IsTraceable<T>::value) {
-      static_assert(Allocator::kIsGarbageCollected);
-      if (origin != VectorOperationOrigin::kConstruction) {
-        // SAFETY: TODO(359904345): VectorTypeOperations should operate on
-        // spans.
-        base::span<T> UNSAFE_BUFFERS(
-            elements(base::unchecked, dst,
-                     static_cast<wtf_size_t>(std::distance(src, src_end))));
-        ConstructTraits::NotifyNewElements(elements);
-      }
     }
   }
 
@@ -338,16 +357,6 @@ struct VectorTypeOperations {
           AtomicWriteMemcpy<sizeof(T), alignof(T)>(d, s);
           AtomicWriteMemcpy<sizeof(T), alignof(T)>(s, buf);
         });
-        const wtf_size_t len = CheckedDistance(src, src_end);
-        if (src_origin != VectorOperationOrigin::kConstruction) {
-          // SAFETY: TODO(359904345): VectorTypeOperations should operate on
-          // spans.
-          base::span<T> UNSAFE_BUFFERS(elements(base::unchecked, src, len));
-          ConstructTraits::NotifyNewElements(elements);
-        }
-        // SAFETY: TODO(359904345): VectorTypeOperations should operate on spans.
-        base::span<T> UNSAFE_BUFFERS(elements(base::unchecked, dst, len));
-        ConstructTraits::NotifyNewElements(elements);
       } else {
         std::swap_ranges(reinterpret_cast<char*>(src),
                          reinterpret_cast<char*>(src_end),
@@ -355,6 +364,19 @@ struct VectorTypeOperations {
       }
     } else {
       std::swap_ranges(src, src_end, dst);
+    }
+    if constexpr (IsTraceable<T>::value) {
+      static_assert(Allocator::kIsGarbageCollected);
+      const wtf_size_t len = CheckedDistance(src, src_end);
+      if (src_origin != VectorOperationOrigin::kConstruction) {
+        // SAFETY: TODO(359904345): VectorTypeOperations should operate on
+        // spans.
+        base::span<T> UNSAFE_BUFFERS(elements(base::unchecked, src, len));
+        ConstructTraits::NotifyNewElements(elements);
+      }
+      // SAFETY: TODO(359904345): VectorTypeOperations should operate on spans.
+      base::span<T> UNSAFE_BUFFERS(elements(base::unchecked, dst, len));
+      ConstructTraits::NotifyNewElements(elements);
     }
   }
 
@@ -382,6 +404,16 @@ struct VectorTypeOperations {
         }
       }
     } else {
+      if constexpr (IsTraceable<T>::value) {
+        static_assert(Allocator::kIsGarbageCollected);
+        if (origin != VectorOperationOrigin::kConstruction) {
+          UNSAFE_TODO(for (const T* s = src; s != src_end; ++s, ++dst) {
+            *dst = *s;
+            ConstructTraits::NotifyNewElement(dst);
+          });
+          return;
+        }
+      }
       std::copy(src, src_end, dst);
     }
   }
@@ -409,25 +441,24 @@ struct VectorTypeOperations {
                                                    T* dst,
                                                    VectorOperationOrigin origin,
                                                    Proj proj) {
-    size_t size = 0;
-    T* dst_begin = dst;
+    if constexpr (IsTraceable<T>::value) {
+      static_assert(Allocator::kIsGarbageCollected);
+      if (origin != VectorOperationOrigin::kConstruction) {
+        UNSAFE_TODO(while (src != src_end) {
+          ConstructTraits::ConstructAndNotifyElement(
+              dst, std::invoke(proj, std::forward<decltype(*src)>(*src)));
+          ++dst;
+          ++src;
+        });
+        return;
+      }
+    }
     UNSAFE_TODO(while (src != src_end) {
       ConstructTraits::Construct(
           dst, std::invoke(proj, std::forward<decltype(*src)>(*src)));
       ++dst;
       ++src;
-      ++size;
     });
-    if constexpr (IsTraceable<T>::value) {
-      static_assert(Allocator::kIsGarbageCollected);
-      if (origin != VectorOperationOrigin::kConstruction) {
-        // SAFETY: TODO(359904345): VectorTypeOperations should operate on
-        // spans.
-        base::span<T> UNSAFE_BUFFERS(
-            elements(base::unchecked, dst_begin, size));
-        ConstructTraits::NotifyNewElements(elements);
-      }
-    }
   }
 
   ALWAYS_INLINE static void UninitializedFill(T* const dst,
@@ -443,20 +474,18 @@ struct VectorTypeOperations {
                     "memset is unsupported for garbage-collected vectors.");
       UNSAFE_TODO(memset(dst, static_cast<uint8_t>(val), dst_end - dst));
     } else {
-      UNSAFE_TODO(for (T* current = dst; current != dst_end; ++current) {
-        ConstructTraits::Construct(current, T(val));
-      });
       if constexpr (IsTraceable<T>::value) {
         static_assert(Allocator::kIsGarbageCollected);
         if (origin != VectorOperationOrigin::kConstruction) {
-          // SAFETY: TODO(359904345): VectorTypeOperations should operate on
-          // spans.
-          base::span<T> UNSAFE_BUFFERS(
-              elements(base::unchecked, dst,
-                       static_cast<wtf_size_t>(std::distance(dst, dst_end))));
-          ConstructTraits::NotifyNewElements(elements);
+          UNSAFE_TODO(for (T* current = dst; current != dst_end; ++current) {
+            ConstructTraits::ConstructAndNotifyElement(current, T(val));
+          });
+          return;
         }
       }
+      UNSAFE_TODO(for (T* current = dst; current != dst_end; ++current) {
+        ConstructTraits::Construct(current, T(val));
+      });
     }
   }
 
@@ -1065,9 +1094,11 @@ class VectorBuffer : protected VectorBufferBase<T, Allocator, true> {
   using Base::capacity_;
 
   static const wtf_size_t kInlineBufferSize = kInlineCapacity * sizeof(T);
-  T* InlineBuffer() { return unsafe_reinterpret_cast_ptr<T*>(inline_buffer_); }
-  const T* InlineBuffer() const {
-    return unsafe_reinterpret_cast_ptr<const T*>(inline_buffer_);
+  NO_SANITIZE_UNRELATED_CAST T* InlineBuffer() {
+    return reinterpret_cast<T*>(inline_buffer_);
+  }
+  NO_SANITIZE_UNRELATED_CAST const T* InlineBuffer() const {
+    return reinterpret_cast<const T*>(inline_buffer_);
   }
 
   void VerifyInlinedBuffer() {

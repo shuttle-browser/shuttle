@@ -104,17 +104,16 @@ void LockProcessIfNeeded(ChildProcessId process_id,
   if (url && site_instance->RequiresDedicatedProcess() &&
       site_instance->GetSiteInfo().ShouldLockProcessToSite(isolation_context)) {
     policy->LockProcess(
-        isolation_context, process_id,
-        ProcessLock::FromSiteInfo(site_instance->GetSiteInfo()));
+        process_id, ProcessLock::FromSiteInfo(site_instance->GetSiteInfo()));
   } else if (policy->GetProcessLock(process_id).is_invalid()) {
     policy->LockProcess(
-        isolation_context, process_id,
-        ProcessLock::CreateAllowAnySite(
-            StoragePartitionConfig::CreateDefault(browser_context),
-            site_instance->GetWebExposedIsolationInfo(),
-            /*cross_origin_isolation_key=*/std::nullopt,
-            browser_context->UniqueToken()));
+        process_id, ProcessLock::CreateAllowAnySite(
+                        StoragePartitionConfig::CreateDefault(browser_context),
+                        site_instance->GetWebExposedIsolationInfo(),
+                        /*cross_origin_isolation_key=*/std::nullopt,
+                        browser_context->UniqueToken()));
   }
+  policy->IncludeIsolationContext(process_id.value(), isolation_context);
 }
 
 }  // namespace
@@ -1879,6 +1878,92 @@ TEST_P(ChildProcessSecurityPolicyTest, MatchesCommittedOrigin) {
   EXPECT_TRUE(matches_committed_origin("file://localhost/", false));
 }
 
+// Verifies that adding an origin that has already been committed in a process
+// does not create a duplicate entry in the process's committed origins, while
+// distinct opaque origins with the same precursor are tracked separately.
+TEST_P(ChildProcessSecurityPolicyTest, AddCommittedOriginIgnoresDuplicates) {
+  ChildProcessSecurityPolicyImpl* p =
+      ChildProcessSecurityPolicyImpl::GetInstance();
+
+  MockRenderProcessHost process(browser_context());
+  LockProcessIfNeeded(process.GetID(), browser_context());
+  const ChildProcessId process_id = process.GetID();
+  const int renderer_id = process.GetDeprecatedID();
+  EXPECT_EQ(0u, p->GetCommittedOriginCountForTesting(process_id));
+
+  auto foo_origin = url::Origin::Create(GURL("http://foo.com"));
+  p->AddCommittedOrigin(renderer_id, foo_origin);
+  EXPECT_EQ(1u, p->GetCommittedOriginCountForTesting(process_id));
+
+  // Adding the same origin again, including a separately constructed copy,
+  // should be a no-op.
+  p->AddCommittedOrigin(renderer_id, foo_origin);
+  p->AddCommittedOrigin(renderer_id,
+                        url::Origin::Create(GURL("http://foo.com/path")));
+  EXPECT_EQ(1u, p->GetCommittedOriginCountForTesting(process_id));
+
+  // A different origin should be added.
+  p->AddCommittedOrigin(renderer_id,
+                        url::Origin::Create(GURL("http://bar.com")));
+  EXPECT_EQ(2u, p->GetCommittedOriginCountForTesting(process_id));
+
+  // Opaque origins are distinguished by their nonces, so adding the same
+  // opaque origin twice should only add one entry, but a second opaque origin
+  // with the same precursor should be added separately.
+  auto opaque_with_foo_precursor = foo_origin.DeriveNewOpaqueOrigin();
+  p->AddCommittedOrigin(renderer_id, opaque_with_foo_precursor);
+  EXPECT_EQ(3u, p->GetCommittedOriginCountForTesting(process_id));
+  p->AddCommittedOrigin(renderer_id, opaque_with_foo_precursor);
+  EXPECT_EQ(3u, p->GetCommittedOriginCountForTesting(process_id));
+  p->AddCommittedOrigin(renderer_id, foo_origin.DeriveNewOpaqueOrigin());
+  EXPECT_EQ(4u, p->GetCommittedOriginCountForTesting(process_id));
+}
+
+// Verifies that committed origin checks continue to work after the process is
+// removed while a Handle still exists, and stop working once the Handle is
+// gone.
+TEST_P(ChildProcessSecurityPolicyTest, CommittedOriginsAfterProcessRemoval) {
+  ChildProcessSecurityPolicyImpl* p =
+      ChildProcessSecurityPolicyImpl::GetInstance();
+
+  const GURL foo_url("http://foo.com/");
+  auto foo_origin = url::Origin::Create(foo_url);
+
+  auto process = std::make_unique<MockRenderProcessHost>(browser_context());
+  const ChildProcessId process_id = process->GetID();
+  const int renderer_id = process->GetDeprecatedID();
+  LockProcessIfNeeded(process_id, browser_context());
+  p->AddCommittedOrigin(renderer_id, foo_origin);
+  EXPECT_TRUE(p->MatchesCommittedOriginForTesting(process_id, foo_url, false));
+  EXPECT_TRUE(p->CanAccessDataForOrigin(renderer_id, foo_origin));
+  EXPECT_TRUE(p->HostsOrigin(renderer_id, foo_origin));
+
+  // Creating a Handle should make the ProcessState live beyond Remove(), which
+  // happens when the RenderProcessHost is destroyed.
+  auto handle = p->CreateHandle(process_id);
+  process.reset();
+  EXPECT_TRUE(p->MatchesCommittedOriginForTesting(process_id, foo_url, false));
+  EXPECT_EQ(1u, p->GetCommittedOriginCountForTesting(process_id));
+  EXPECT_TRUE(p->CanAccessDataForOrigin(renderer_id, foo_origin));
+  EXPECT_TRUE(handle.CanAccessDataForOrigin(foo_origin));
+  EXPECT_TRUE(p->HostsOrigin(renderer_id, foo_origin));
+
+  // Invalidate `handle` so it does not preserve process state anymore.
+  handle = ChildProcessSecurityPolicyImpl::Handle();
+
+  // Post a task to the IO loop that then posts a task to the UI loop.
+  // This should cause the |run_loop| to return after the removal has completed.
+  base::RunLoop run_loop;
+  GetIOThreadTaskRunner({})->PostTaskAndReply(FROM_HERE, base::DoNothing(),
+                                              run_loop.QuitClosure());
+  run_loop.Run();
+
+  EXPECT_FALSE(p->MatchesCommittedOriginForTesting(process_id, foo_url, false));
+  EXPECT_EQ(0u, p->GetCommittedOriginCountForTesting(process_id));
+  EXPECT_FALSE(p->CanAccessDataForOrigin(renderer_id, foo_origin));
+  EXPECT_FALSE(p->HostsOrigin(renderer_id, foo_origin));
+}
+
 TEST_P(ChildProcessSecurityPolicyTest, SandboxedProcessEnforcements) {
   ChildProcessSecurityPolicyImpl* p =
       ChildProcessSecurityPolicyImpl::GetInstance();
@@ -1897,8 +1982,9 @@ TEST_P(ChildProcessSecurityPolicyTest, SandboxedProcessEnforcements) {
                                          /*is_fenced=*/false,
                                          /*is_fixed_storage_partition=*/false);
   process.SetProcessLock(
-      sandboxed_instance->GetIsolationContext(),
       ProcessLock::FromSiteInfo(sandboxed_instance->GetSiteInfo()));
+  p->IncludeIsolationContext(renderer_id,
+                             sandboxed_instance->GetIsolationContext());
 
   auto foo_origin = url::Origin::Create(GURL("https://foo.com"));
   auto opaque_foo_origin = foo_origin.DeriveNewOpaqueOrigin();
@@ -1909,16 +1995,12 @@ TEST_P(ChildProcessSecurityPolicyTest, SandboxedProcessEnforcements) {
 
   // A sandboxed process should be able to commit new URLs, as long as they
   // have an opaque origin with a matching precursor.
-  EXPECT_TRUE(p->CanAccessOrigin(renderer_id, opaque_foo_origin,
-                                 AccessType::kCanCommitNewOrigin));
+  EXPECT_TRUE(p->CanCommitNewOrigin(process.GetID(), opaque_foo_origin));
   // TODO(crbug.com/325410297): Currently, non-opaque origins are allowed to
   // commit. Fix this and flip the expectation to false.
-  EXPECT_TRUE(p->CanAccessOrigin(renderer_id, foo_origin,
-                                 AccessType::kCanCommitNewOrigin));
-  EXPECT_FALSE(p->CanAccessOrigin(renderer_id, bar_origin,
-                                  AccessType::kCanCommitNewOrigin));
-  EXPECT_FALSE(p->CanAccessOrigin(renderer_id, opaque_bar_origin,
-                                  AccessType::kCanCommitNewOrigin));
+  EXPECT_TRUE(p->CanCommitNewOrigin(process.GetID(), foo_origin));
+  EXPECT_FALSE(p->CanCommitNewOrigin(process.GetID(), bar_origin));
+  EXPECT_FALSE(p->CanCommitNewOrigin(process.GetID(), opaque_bar_origin));
 
   // A sandboxed process should not be able to access data for any origin,
   // including origins it has committed.
@@ -1946,19 +2028,18 @@ TEST_P(ChildProcessSecurityPolicyTest, SandboxedProcessEnforcements) {
                                   AccessType::kHostsOrigin));
 }
 
-// Verify that kCanCommitNewOrigin checks, which obtain the process's
+// Verify that CanCommitNewOrigin checks, which obtain the process's
 // BrowserContext from its RenderProcessHost, fail if the RenderProcessHost is
 // gone.
 TEST_P(ChildProcessSecurityPolicyTest,
        CanCommitNewOriginRequiresRenderProcessHost) {
   ChildProcessSecurityPolicyImpl* p =
       ChildProcessSecurityPolicyImpl::GetInstance();
-  using AccessType = ChildProcessSecurityPolicyImpl::AccessType;
 
   TestBrowserContext browser_context;
   // The process below is locked to https://foo.com if needed. With full site
   // isolation (e.g., on desktop), this gives it a site lock, so the
-  // kCanCommitNewOrigin check that succeeds goes through the Jail check. With
+  // CanCommitNewOrigin check that succeeds goes through the Jail check. With
   // partial site isolation (e.g., on Android), foo.com doesn't require a
   // dedicated process, so the process gets a lock that allows any site, and
   // that check goes through the Citadel check instead. The check that fails
@@ -1969,28 +2050,25 @@ TEST_P(ChildProcessSecurityPolicyTest,
 
   // A process with a live RenderProcessHost can commit.
   auto process = std::make_unique<MockRenderProcessHost>(&browser_context);
-  LockProcessIfNeeded(process->GetID(), &browser_context, foo_url);
-  const int renderer_id = process->GetDeprecatedID();
-  EXPECT_TRUE(p->CanAccessOrigin(renderer_id, foo_origin,
-                                 AccessType::kCanCommitNewOrigin));
+  const ChildProcessId renderer_id = process->GetID();
+  LockProcessIfNeeded(renderer_id, &browser_context, foo_url);
+  EXPECT_TRUE(p->CanCommitNewOrigin(renderer_id, foo_origin));
 
   // Without a RenderProcessHost, there's no way to obtain the process's
-  // BrowserContext, so kCanCommitNewOrigin checks should fail. (To test this,
+  // BrowserContext, so CanCommitNewOrigin checks should fail. (To test this,
   // use a Handle to keep the process's ProcessState alive after its
   // RenderProcessHost is destroyed.)
-  auto handle = p->CreateHandle(process->GetID());
+  auto handle = p->CreateHandle(renderer_id);
   process.reset();
-  EXPECT_FALSE(p->CanAccessOrigin(renderer_id, foo_origin,
-                                  AccessType::kCanCommitNewOrigin));
+  EXPECT_FALSE(p->CanCommitNewOrigin(renderer_id, foo_origin));
 }
 
-// Verify that kCanCommitNewOrigin checks fail once the process's BrowserContext
+// Verify that CanCommitNewOrigin checks fail once the process's BrowserContext
 // has started shutting down.
 TEST_P(ChildProcessSecurityPolicyTest,
        CanCommitNewOriginFailsAfterBrowserContextShutdownStarted) {
   ChildProcessSecurityPolicyImpl* p =
       ChildProcessSecurityPolicyImpl::GetInstance();
-  using AccessType = ChildProcessSecurityPolicyImpl::AccessType;
 
   TestBrowserContext browser_context;
   // As in CanCommitNewOriginRequiresRenderProcessHost, the process is locked
@@ -2000,17 +2078,15 @@ TEST_P(ChildProcessSecurityPolicyTest,
   const url::Origin foo_origin = url::Origin::Create(foo_url);
 
   MockRenderProcessHost process(&browser_context);
-  LockProcessIfNeeded(process.GetID(), &browser_context, foo_url);
-  const int renderer_id = process.GetDeprecatedID();
-  EXPECT_TRUE(p->CanAccessOrigin(renderer_id, foo_origin,
-                                 AccessType::kCanCommitNewOrigin));
+  const ChildProcessId renderer_id = process.GetID();
+  LockProcessIfNeeded(renderer_id, &browser_context, foo_url);
+  EXPECT_TRUE(p->CanCommitNewOrigin(renderer_id, foo_origin));
 
-  // Once the BrowserContext starts shutting down, kCanCommitNewOrigin checks
+  // Once the BrowserContext starts shutting down, CanCommitNewOrigin checks
   // should fail, since some of the state they depend on (e.g., isolated
   // origins) has already been cleared for that BrowserContext.
   browser_context.NotifyWillBeDestroyed();
-  EXPECT_FALSE(p->CanAccessOrigin(renderer_id, foo_origin,
-                                  AccessType::kCanCommitNewOrigin));
+  EXPECT_FALSE(p->CanCommitNewOrigin(renderer_id, foo_origin));
 }
 
 TEST_P(ChildProcessSecurityPolicyTest, PdfProcessEnforcements) {
@@ -2031,8 +2107,8 @@ TEST_P(ChildProcessSecurityPolicyTest, PdfProcessEnforcements) {
                                          /*is_fenced=*/false,
                                          /*is_fixed_storage_partition=*/false);
   process.SetProcessLock(
-      pdf_instance->GetIsolationContext(),
       ProcessLock::FromSiteInfo(pdf_instance->GetSiteInfo()));
+  p->IncludeIsolationContext(renderer_id, pdf_instance->GetIsolationContext());
 
   auto foo_origin = url::Origin::Create(GURL("https://foo.com"));
   auto bar_origin = url::Origin::Create(GURL("https://bar.com"));
@@ -2040,10 +2116,8 @@ TEST_P(ChildProcessSecurityPolicyTest, PdfProcessEnforcements) {
   using AccessType = ChildProcessSecurityPolicyImpl::AccessType;
 
   // A PDF process should be able to commit new URLs that match its ProcessLock.
-  EXPECT_TRUE(p->CanAccessOrigin(renderer_id, foo_origin,
-                                 AccessType::kCanCommitNewOrigin));
-  EXPECT_FALSE(p->CanAccessOrigin(renderer_id, bar_origin,
-                                  AccessType::kCanCommitNewOrigin));
+  EXPECT_TRUE(p->CanCommitNewOrigin(process.GetID(), foo_origin));
+  EXPECT_FALSE(p->CanCommitNewOrigin(process.GetID(), bar_origin));
 
   // A PDF process should also be able to host an origin that matches its
   // ProcessLock; for example, PDF documents can still use postMessage so they
@@ -2085,8 +2159,9 @@ TEST_P(ChildProcessSecurityPolicyTest, PdfProcessSandboxedFileSystem) {
                                          /*is_fenced=*/false,
                                          /*is_fixed_storage_partition=*/false);
   process.SetProcessLock(
-      pdf_instance->GetIsolationContext(),
       ProcessLock::FromSiteInfo(pdf_instance->GetSiteInfo()));
+  p->IncludeIsolationContext(process.GetDeprecatedID(),
+                             pdf_instance->GetIsolationContext());
 
   auto foo_origin = url::Origin::Create(GURL("https://foo.com"));
   p->AddCommittedOrigin(process.GetDeprecatedID(), foo_origin);
@@ -3500,6 +3575,27 @@ TEST_P(ChildProcessSecurityPolicyTest,
   p->ClearIsolatedOriginsForTesting();
 }
 
+TEST_P(ChildProcessSecurityPolicyTest,
+       LockProcessDoesNotRegisterBrowsingInstance) {
+  TestBrowserContext context;
+  MockRenderProcessHost process(&context);
+  auto* policy = ChildProcessSecurityPolicyImpl::GetInstance();
+  scoped_refptr<SiteInstanceImpl> site_instance =
+      SiteInstanceImpl::Create(&context);
+
+  policy->LockProcess(
+      process.GetID(),
+      ProcessLock::CreateAllowAnySite(
+          StoragePartitionConfig::CreateDefault(&context),
+          WebExposedIsolationInfo::CreateNonIsolated(),
+          /*cross_origin_isolation_key=*/std::nullopt, context.UniqueToken()));
+  EXPECT_EQ(0u, policy->BrowsingInstanceIdCountForTesting(process.GetID()));
+
+  policy->IncludeIsolationContext(process.GetDeprecatedID(),
+                                  site_instance->GetIsolationContext());
+  EXPECT_EQ(1u, policy->BrowsingInstanceIdCountForTesting(process.GetID()));
+}
+
 // This test verifies that CanAccessDataForOrigin returns true for a process id
 // even if all BrowsingInstanceIDs for that process have been deleted, so long
 // as the request matches the process' lock. This test sets an origin-keyed
@@ -3529,8 +3625,10 @@ TEST_P(ChildProcessSecurityPolicyTest, NoBrowsingInstanceIDs_OriginKeyed) {
             /*is_fenced=*/false,
             /*is_fixed_storage_partition=*/false);
 
-    p->LockProcess(foo_instance->GetIsolationContext(), process_id,
+    p->LockProcess(process_id,
                    ProcessLock::FromSiteInfo(foo_instance->GetSiteInfo()));
+    p->IncludeIsolationContext(renderer_id,
+                               foo_instance->GetIsolationContext());
     p->AddCommittedOrigin(renderer_id, foo);
 
     EXPECT_TRUE(p->GetProcessLock(process_id).IsLockedToSite());
@@ -3591,8 +3689,10 @@ TEST_P(ChildProcessSecurityPolicyTest_NoOriginKeyedProcessesByDefault,
             /*is_guest=*/false,
             /*is_fenced=*/false,
             /*is_fixed_storage_partition=*/false);
-    p->LockProcess(foo_instance->GetIsolationContext(), process_id,
+    p->LockProcess(process_id,
                    ProcessLock::FromSiteInfo(foo_instance->GetSiteInfo()));
+    p->IncludeIsolationContext(renderer_id,
+                               foo_instance->GetIsolationContext());
     p->AddCommittedOrigin(renderer_id, sub_foo_origin);
 
     EXPECT_TRUE(p->GetProcessLock(process_id).IsLockedToSite());
@@ -3662,16 +3762,16 @@ TEST_P(ChildProcessSecurityPolicyTest, NoBrowsingInstanceIDs_UnlockedProcess) {
   {
     scoped_refptr<SiteInstanceImpl> foo_instance =
         SiteInstanceImpl::CreateForTesting(&context, foo_url);
-    // Lock the process with an "allow_any_site" lock, using `foo_instance`'s
-    // BrowsingInstance rather than a fixed BrowsingInstanceId. This is
-    // important when this test is run with other tests, as then the
-    // BrowsingInstanceId will not be 1 in general.
-    p->LockProcess(foo_instance->GetIsolationContext(), process_id,
+    // Register `foo_instance`'s BrowsingInstance rather than a fixed ID.
+    // Its ID will not necessarily be 1 when this runs with other tests.
+    p->LockProcess(process_id,
                    ProcessLock::CreateAllowAnySite(
                        StoragePartitionConfig::CreateDefault(&context),
                        WebExposedIsolationInfo::CreateNonIsolated(),
                        /*cross_origin_isolation_key=*/std::nullopt,
                        context.UniqueToken()));
+    p->IncludeIsolationContext(process.GetDeprecatedID(),
+                               foo_instance->GetIsolationContext());
 
     EXPECT_TRUE(foo_instance->HasSite());
     if (ShouldUseDefaultSiteInstanceGroup()) {
@@ -3718,11 +3818,13 @@ TEST_P(ChildProcessSecurityPolicyTest, CannotLockUsedProcessToSite) {
 
   // Start by putting foo.com into an allows-any-site process.
   p->LockProcess(
-      foo_instance->GetIsolationContext(), process_id,
+      process_id,
       ProcessLock::CreateAllowAnySite(
           StoragePartitionConfig::CreateDefault(&context),
           WebExposedIsolationInfo::CreateNonIsolated(),
           /*cross_origin_isolation_key=*/std::nullopt, context.UniqueToken()));
+  p->IncludeIsolationContext(process.GetDeprecatedID(),
+                             foo_instance->GetIsolationContext());
   EXPECT_TRUE(p->GetProcessLock(process_id).AllowsAnySite());
   EXPECT_FALSE(p->GetProcessLock(process_id).IsLockedToSite());
 
@@ -3745,12 +3847,50 @@ TEST_P(ChildProcessSecurityPolicyTest, CannotLockUsedProcessToSite) {
 #endif
   EXPECT_CHECK_DEATH_WITH(
       {
-        p->LockProcess(bar_instance->GetIsolationContext(), process_id,
+        p->LockProcess(process_id,
                        ProcessLock::FromSiteInfo(bar_instance->GetSiteInfo()));
       },
       IsRustProcessStateEnabled()
           ? kExpectedRustDeathMessage
           : "Cannot lock an already used process to .*bar\\.com");
+}
+
+// Tests that a process is marked as used when it is locked to a site.
+TEST_P(ChildProcessSecurityPolicyTest, LockToSiteMarksProcessAsUsed) {
+  ChildProcessSecurityPolicyImpl* p =
+      ChildProcessSecurityPolicyImpl::GetInstance();
+  TestBrowserContext context;
+  MockRenderProcessHost process(&context);
+  const ChildProcessId process_id = process.GetID();
+
+  scoped_refptr<SiteInstanceImpl> foo_instance =
+      SiteInstanceImpl::CreateForTesting(&context, GURL("https://foo.com"));
+
+  // An allows-any-site lock does not mark the process as used.
+  p->LockProcess(
+      process_id,
+      ProcessLock::CreateAllowAnySite(
+          StoragePartitionConfig::CreateDefault(&context),
+          WebExposedIsolationInfo::CreateNonIsolated(),
+          /*cross_origin_isolation_key=*/std::nullopt, context.UniqueToken()));
+  p->IncludeIsolationContext(process.GetDeprecatedID(),
+                             foo_instance->GetIsolationContext());
+  EXPECT_TRUE(p->GetProcessLock(process_id).is_unused());
+
+  // A lock to a site marks the process as used.
+  p->LockProcess(process_id,
+                 ProcessLock::FromSiteInfo(foo_instance->GetSiteInfo()));
+  p->IncludeIsolationContext(process.GetDeprecatedID(),
+                             foo_instance->GetIsolationContext());
+  EXPECT_TRUE(p->GetProcessLock(process_id).IsLockedToSite());
+  EXPECT_FALSE(p->GetProcessLock(process_id).is_unused());
+
+  // Note: A process that allows any site but has been used (the "Unlocked"
+  // state in process_lock.rs) is also considered used. C++ ProcessLock does not
+  // yet represent this state explicitly; it is currently the combination of
+  // AllowsAnySite() and set_is_used().
+  // TODO(crbug.com/562982504): Represent the Unlocked state explicitly
+  // in the C++ ProcessLock, matching the typestates in process_lock.rs.
 }
 
 // Tests that queries for GetProcessLock work after RenderProcessHost removal
@@ -3766,8 +3906,10 @@ TEST_P(ChildProcessSecurityPolicyTest, GetProcessLockAfterProcessRemoval) {
   // Lock process to foo.com.
   auto process = std::make_unique<MockRenderProcessHost>(&context);
   const ChildProcessId process_id = process->GetID();
-  p->LockProcess(foo_instance->GetIsolationContext(), process_id,
+  p->LockProcess(process_id,
                  ProcessLock::FromSiteInfo(foo_instance->GetSiteInfo()));
+  p->IncludeIsolationContext(process->GetDeprecatedID(),
+                             foo_instance->GetIsolationContext());
   EXPECT_TRUE(p->GetProcessLock(process_id).IsLockedToSite());
   EXPECT_FALSE(p->GetProcessLock(process_id).AllowsAnySite());
 

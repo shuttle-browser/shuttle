@@ -32,7 +32,6 @@
 #include "chrome/browser/ui/signin/signin_view_controller_delegate.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
-#include "chrome/browser/ui/webui/signin/signin_url_utils.h"
 #include "chrome/browser/ui/webui/signin/signin_utils.h"
 #include "chrome/common/pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -48,15 +47,14 @@
 #include "components/signin/public/identity_manager/tribool.h"
 #include "components/supervised_user/core/common/features.h"
 #include "components/sync/base/data_type_histogram.h"
-#include "components/sync/base/features.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/buildflags/buildflags.h"
 #include "google_apis/gaia/core_account_id.h"
 #include "google_apis/gaia/gaia_id.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_observer.h"
@@ -74,8 +72,6 @@
 #include "chrome/browser/ui/navigator/browser_navigator.h"
 #include "chrome/browser/ui/navigator/browser_navigator_params.h"
 #include "chrome/browser/ui/signin/chrome_signout_confirmation_prompt.h"
-#include "chrome/browser/ui/signin/signin_qrcode_infobar.h"  // nogncheck
-#include "chrome/browser/ui/signin/signin_qrcode_infobar_delegate.h"  // nogncheck
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
@@ -85,7 +81,7 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/branded_strings.h"
 #include "chrome/grit/generated_resources.h"
-#include "components/infobars/content/content_infobar_manager.h"  // nogncheck
+#include "components/signin/core/browser/account_preview_data_service.h"
 #include "components/signin/public/base/account_consistency_method.h"
 #include "components/signin/public/identity_manager/accounts_mutator.h"
 #include "components/signin/public/identity_manager/primary_account_mutator.h"
@@ -93,7 +89,6 @@
 #include "components/sync/base/user_selectable_type.h"
 #include "components/sync/service/sync_service.h"
 #include "content/public/browser/navigation_handle.h"
-#include "device/bluetooth/bluetooth_adapter.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "google_apis/gaia/gaia_urls.h"
 #include "google_apis/google_api_keys.h"
@@ -107,6 +102,10 @@
 #include "chrome/browser/extensions/sync/extension_sync_util.h"
 #include "extensions/common/extension.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+
+#if !BUILDFLAG(IS_CHROMEOS)
+#include "chrome/browser/ui/webui/signin/signin_ui_error.h"
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 namespace {
 
@@ -144,79 +143,12 @@ class NewTabWebContentsObserver : public content::WebContentsObserver {
   base::OnceCallback<void(content::WebContents*)> callback_;
 };
 
-class SigninQRCodeInfoBarLoader
-    : public content::WebContentsObserver,
-      public content::WebContentsUserData<SigninQRCodeInfoBarLoader> {
- public:
-  ~SigninQRCodeInfoBarLoader() override = default;
-
-  // content::WebContentsObserver:
-  void ReadyToCommitNavigation(
-      content::NavigationHandle* navigation_handle) override {
-    if (!navigation_handle->IsInPrimaryMainFrame()) {
-      return;
-    }
-    ready_to_commit_ = true;
-    MaybeShowInfoBar();
-  }
-
-  void OnHybridTransportSupported(bool can_show) {
-    hybrid_supported_check_done_ = true;
-    can_show_infobar_ = can_show;
-    MaybeShowInfoBar();
-  }
-
- private:
-  explicit SigninQRCodeInfoBarLoader(content::WebContents* web_contents)
-      : content::WebContentsObserver(web_contents),
-        content::WebContentsUserData<SigninQRCodeInfoBarLoader>(*web_contents) {
-  }
-
-  void MaybeShowInfoBar() {
-    if (hybrid_supported_check_done_ && !can_show_infobar_) {
-      // We already know hybrid transport is not supported; no need to wait for
-      // navigation to commit.
-      web_contents()->RemoveUserData(UserDataKey());
-      return;
-    }
-    if (!ready_to_commit_ || !hybrid_supported_check_done_) {
-      // Wait for both events to complete.
-      return;
-    }
-    // Verify we are still on the sign-in page (e.g. the navigation wasn't
-    // redirected or cancelled).
-    DiceTabHelper* tab_helper = DiceTabHelper::FromWebContents(web_contents());
-    if (tab_helper && tab_helper->IsChromeSigninPage()) {
-      infobars::InfoBarManager* infobar_manager =
-          infobars::ContentInfoBarManager::FromWebContents(web_contents());
-      if (infobar_manager) {
-        auto delegate =
-            std::make_unique<SigninQRCodeInfoBarDelegate>(web_contents());
-        auto* model =
-            SigninQRCodeModel::GetOrCreateForWebContents(web_contents());
-        infobar_manager->AddInfoBar(
-            std::make_unique<SigninQRCodeInfoBar>(std::move(delegate), model));
-      }
-    }
-    web_contents()->RemoveUserData(UserDataKey());
-  }
-
-  bool ready_to_commit_ = false;
-  bool hybrid_supported_check_done_ = false;
-  bool can_show_infobar_ = false;
-
-  friend class content::WebContentsUserData<SigninQRCodeInfoBarLoader>;
-  WEB_CONTENTS_USER_DATA_KEY_DECL();
-};
-
-WEB_CONTENTS_USER_DATA_KEY_IMPL(SigninQRCodeInfoBarLoader);
-
 // Opens a new tab on |url| or reuses the current tab if it is the NTP.
 void ShowTabOverwritingNTP(BrowserWindowInterface* browser,
                            TabStripModel* tab_strip_model,
                            const GURL& url) {
   NavigateParams params(browser, url, ui::PAGE_TRANSITION_AUTO_BOOKMARK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   params.window_action = NavigateParams::WindowAction::kShowWindow;
   params.user_gesture = false;
   params.tabstrip_add_types |= AddTabTypes::ADD_INHERIT_OPENER;
@@ -226,7 +158,7 @@ void ShowTabOverwritingNTP(BrowserWindowInterface* browser,
     const GURL& contents_url = contents->GetVisibleURL();
     if (contents_url == chrome::ChromeUINewTabURLAsGURL() ||
         search::IsInstantNTP(contents) || contents_url == url::kAboutBlankURL) {
-      params.disposition = WindowOpenDisposition::kCurrentTab;
+      params.disposition = ui::mojom::WindowOpenDisposition::kCurrentTab;
     }
   }
 
@@ -541,7 +473,7 @@ void SigninViewController::MaybeShowChromeSigninDialogForExtensions(
   // Create a new tab page and wait for the navigation to complete.
   NavigateParams params(&browser_.get(), chrome::ChromeUINewTabURLAsGURL(),
                         ui::PAGE_TRANSITION_AUTO_BOOKMARK);
-  params.disposition = WindowOpenDisposition::kNewForegroundTab;
+  params.disposition = ui::mojom::WindowOpenDisposition::kNewForegroundTab;
   params.window_action = NavigateParams::WindowAction::kShowWindow;
   params.user_gesture = false;
   params.tabstrip_add_types |= AddTabTypes::ADD_INHERIT_OPENER;
@@ -612,10 +544,27 @@ void SigninViewController::ShowChromeSigninBubble(
       base::BindOnce(&SigninViewController::OnChromeSigninBubbleResult,
                      weak_ptr_factory_.GetWeakPtr(),
                      account.GetCoreAccountInfo(), access_point));
+
+  std::optional<signin::AccountPreviewDataService::AccountPreviewPreference>
+      account_preview_preference;
+  if (signin::AccountPreviewDataService* account_preview_data_service =
+          AccountPreviewDataServiceFactory::GetForProfile(GetProfile())) {
+    if (std::optional<
+            signin::AccountPreviewDataService::AccountPreviewPreference>
+            preferred_account =
+                account_preview_data_service->GetPreferredAccountForSignin();
+        preferred_account.has_value() &&
+        preferred_account->gaia_id == account.GetGaiaId()) {
+      account_preview_preference = std::move(preferred_account);
+    }
+  }
+
   WebSigninInterceptor::Delegate::BubbleParameters bubble_parameters(
-      WebSigninInterceptor::SigninInterceptionType::kChromeSignin,
+      WebSigninInterceptor::SigninInterceptionType::kChromeSigninNonIntercept,
       /*intercepted_account=*/account,
       /*primary_account=*/AccountInfo());
+  bubble_parameters.account_preview_preference =
+      std::move(account_preview_preference);
   CreateInterceptionBubble(bubble_parameters,
                            chrome_signin_bubble_callback_.callback());
 }
@@ -669,24 +618,10 @@ void SigninViewController::OnBubbleClosed(views::Widget::ClosedReason reason) {
   }
 }
 
-void SigninViewController::ShowModalSyncConfirmationDialog(
-    bool is_signin_intercept,
-    bool is_sync_promo) {
-  CloseModalSignin();
-  dialog_ = std::make_unique<SigninModalDialogImpl>(
-      SigninViewControllerDelegate::CreateSyncConfirmationDelegate(
-          &browser_.get(),
-          is_signin_intercept ? SyncConfirmationStyle::kSigninInterceptModal
-                              : SyncConfirmationStyle::kDefaultModal,
-          is_sync_promo),
-      GetOnModalDialogClosedCallback());
-}
-
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 void SigninViewController::ShowModalHistorySyncOptInDialog(
     bool should_close_modal_dialog,
     HistorySyncOptinHelper::FlowCompletedCallback callback) {
-  CHECK(syncer::IsReplaceSyncPromosWithSignInPromosEnabled());
   CloseModalSignin();
   dialog_ = std::make_unique<SigninModalDialogImpl>(
       SigninViewControllerDelegate::CreateSyncHistoryOptInDelegate(
@@ -710,12 +645,20 @@ void SigninViewController::ShowModalManagedUserNoticeDialog(
 #endif
 }
 
-void SigninViewController::ShowModalSigninErrorDialog() {
+#if !BUILDFLAG(IS_CHROMEOS)
+void SigninViewController::ShowModalSigninErrorDialog(
+    const SigninUIError& error) {
+  // TODO(crbug.com/40225985): Check if the condition should be `!error.IsOk()`.
+  if (error.message().empty()) {
+    return;
+  }
   CloseModalSignin();
   dialog_ = std::make_unique<SigninModalDialogImpl>(
-      SigninViewControllerDelegate::CreateSigninErrorDelegate(&browser_.get()),
+      SigninViewControllerDelegate::CreateSigninErrorDelegate(&browser_.get(),
+                                                              error),
       GetOnModalDialogClosedCallback());
 }
+#endif  // !BUILDFLAG(IS_CHROMEOS)
 
 bool SigninViewController::ShowsModalDialog() {
   return dialog_ != nullptr;
@@ -845,22 +788,6 @@ void SigninViewController::ShowDiceSigninTab(
       DiceTabHelper::GetHistorySyncOptinCallbackForBrowser(),
       DiceTabHelper::OnSigninHeaderReceived(),
       DiceTabHelper::GetShowSigninErrorCallbackForBrowser());
-
-  if (switches::IsMagiChromePasskeyBannerEnabled()) {
-    SigninQRCodeInfoBarLoader::CreateForWebContents(active_contents);
-    signin::IsHybridTransportSupportedForQrCodeSignin(base::BindOnce(
-        [](base::WeakPtr<content::WebContents> web_contents, bool can_start,
-           scoped_refptr<device::BluetoothAdapter>) {
-          if (!web_contents) {
-            return;
-          }
-          if (auto* loader = SigninQRCodeInfoBarLoader::FromWebContents(
-                  web_contents.get())) {
-            loader->OnHybridTransportSupported(can_start);
-          }
-        },
-        active_contents->GetWeakPtr()));
-  }
 }
 
 void SigninViewController::ShowEnableHistorySyncTab(

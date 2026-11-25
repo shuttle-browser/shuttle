@@ -993,24 +993,6 @@ TEST_P(LayerWithDelegateTest, CloneWithCacheRenderSurface) {
   EXPECT_FALSE(layer_test_api.cc_layer()->cache_render_surface());
 }
 
-TEST_P(LayerWithDelegateTest, CloneWithTrilinearFiltering) {
-  auto layer = CreateLayer<LayerSolidColor>();
-  ui::LayerTestApi layer_test_api(layer.get());
-  EXPECT_FALSE(layer_test_api.cc_layer()->trilinear_filtering());
-
-  {
-    ScopedTrilinearFilteringLock lock(layer.get());
-    EXPECT_TRUE(layer_test_api.cc_layer()->trilinear_filtering());
-
-    auto clone = layer->Clone();
-    // Cloning should not preserve trilinear_filtering flag.
-    ui::LayerTestApi clone_test_api(clone.get());
-    EXPECT_FALSE(clone_test_api.cc_layer()->trilinear_filtering());
-  }
-
-  EXPECT_FALSE(layer_test_api.cc_layer()->trilinear_filtering());
-}
-
 TEST_P(LayerWithDelegateTest, CloneDamagedRegion) {
   auto layer = CreateLayer<LayerTextured>();
   ui::LayerTestApi layer_test_api(layer.get());
@@ -2283,8 +2265,9 @@ TEST_P(LayerWithRealCompositorTest, MAYBE_BackgroundInvert) {
                                               kPixelLocationNotInL1.y()));
 }
 
-// TODO(crbug.com/40280155): Flaky on fuchsia-arm64 builds. Re-enable this test.
-#if BUILDFLAG(IS_FUCHSIA) && defined(ARCH_CPU_ARM64)
+// TODO(crbug.com/40280155): Flaky on fuchsia-arm64 debug builds. Re-enable this
+// test.
+#if BUILDFLAG(IS_FUCHSIA) && defined(ARCH_CPU_ARM64) && !defined(NDEBUG)
 #define MAYBE_BackgroundBlur DISABLED_BackgroundBlur
 #else
 #define MAYBE_BackgroundBlur BackgroundBlur
@@ -2339,8 +2322,9 @@ TEST_P(LayerWithRealCompositorTest, MAYBE_BackgroundBlur) {
   EXPECT_TRUE(MatchesPNGFile(bitmap, ref_img2, fuzzy_comparator));
 }
 
-// TODO(crbug.com/40280155): Flaky on fuchsia-arm64 builds. Re-enable this test.
-#if BUILDFLAG(IS_FUCHSIA) && defined(ARCH_CPU_ARM64)
+// TODO(crbug.com/40280155): Flaky on fuchsia-arm64 debug builds. Re-enable this
+// test.
+#if BUILDFLAG(IS_FUCHSIA) && defined(ARCH_CPU_ARM64) && !defined(NDEBUG)
 #define MAYBE_BackgroundBlurChangeDeviceScale \
   DISABLED_BackgroundBlurChangeDeviceScale
 #else
@@ -3114,24 +3098,6 @@ TEST_P(LayerWithRealCompositorTest, SwitchCCLayerCacheRenderSurface) {
   EXPECT_TRUE(l1_test_api.cc_layer()->cache_render_surface());
 }
 
-// Tests that when a layer with trilinear_filtering flag has its CC layer
-// switched, that the trilinear_filtering flag is maintained.
-TEST_P(LayerWithRealCompositorTest, SwitchCCLayerTrilinearFiltering) {
-  auto root = CreateLayer<LayerTextured>();
-  auto l1 = CreateLayer<LayerTextured>();
-  GetCompositor()->SetRootLayer(root.get());
-  root->Add(l1.get());
-
-  ScopedTrilinearFilteringLock trilinear_lock(l1.get());
-
-  // Change l1's cc::Layer.
-  ui::LayerTestApi l1_test_api(l1.get());
-  ASSERT_TRUE(l1_test_api.SwitchToTexturedLayer());
-
-  // Ensure that the trilinear_filtering flag is maintained.
-  EXPECT_TRUE(l1_test_api.cc_layer()->trilinear_filtering());
-}
-
 // Tests that when a layer with masks_to_bounds flag has its CC layer switched,
 // that the masks_to_bounds flag is maintained.
 TEST_P(LayerWithRealCompositorTest, SwitchCCLayerMasksToBounds) {
@@ -3147,7 +3113,7 @@ TEST_P(LayerWithRealCompositorTest, SwitchCCLayerMasksToBounds) {
   // Change l1's cc::Layer.
   ASSERT_TRUE(l1_test_api.SwitchToTexturedLayer());
 
-  // Ensure that the trilinear_filtering flag is maintained.
+  // Ensure that the masks_to_bounds flag is maintained.
   EXPECT_TRUE(l1_test_api.cc_layer()->masks_to_bounds());
 }
 

@@ -38,7 +38,6 @@
 #include "components/webapps/browser/installable/installable_metrics.h"
 #include "components/webapps/browser/uninstall_result_code.h"
 #include "components/webapps/isolated_web_apps/types/iwa_version.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom-forward.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/web_applications/isolated_web_apps/policy/isolated_web_app_cache_client.h"
@@ -51,6 +50,10 @@
 class GURL;
 class Profile;
 class BrowserWindowInterface;
+
+namespace blink {
+class Manifest;
+}  // namespace blink
 
 namespace content {
 class Page;
@@ -633,6 +636,19 @@ class WebAppCommandScheduler {
       base::OnceClosure done,
       const base::Location& location = FROM_HERE);
 
+#if BUILDFLAG(IS_CHROMEOS)
+  // Records the explicit user choice for "Opening supported links" in
+  // `WebApp::user_link_capturing_preference`. On ChromeOS, App Service keeps
+  // the effective link capturing state. This method does not change App Service
+  // or other apps. Will CHECK-fail if `app_id` is empty. Does nothing if the
+  // app is not installed or is a System Web App. See b/578641259.
+  void SetUserLinkCapturingChoiceOnChromeOs(
+      const webapps::AppId& app_id,
+      bool open_in_app,
+      base::OnceClosure done,
+      const base::Location& location = FROM_HERE);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+
   // Runs a series of icon health checks for `app_id`. See
   // `WebAppIconDiagnosticResult` for more information on what diagnostics are
   // returned.
@@ -645,7 +661,7 @@ class WebAppCommandScheduler {
   // (`navigator.install({manifest_url})`). Installs a web app from a
   // pre-parsed manifest, downloading icons via the shared web contents.
   void InstallAppFromManifest(
-      blink::mojom::ManifestPtr manifest,
+      blink::Manifest manifest,
       const GURL& manifest_url,
       base::WeakPtr<content::WebContents> initiating_web_contents,
       base::WeakPtr<content::Page> initiating_page,
@@ -743,7 +759,7 @@ class WebAppCommandScheduler {
   // a manifest.
   void ScheduleWebAppInstallFromMigrateFromField(
       base::WeakPtr<content::WebContents> web_contents,
-      blink::mojom::ManifestPtr manifest,
+      blink::Manifest manifest,
       WebAppInstallFromMigrateFromFieldCallback callback,
       const base::Location& location = FROM_HERE);
 

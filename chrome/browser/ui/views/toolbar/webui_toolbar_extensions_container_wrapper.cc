@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <utility>
+#include <variant>
 
 #include "base/functional/bind.h"
 #include "base/no_destructor.h"
@@ -17,6 +18,7 @@
 #include "chrome/browser/ui/extensions/extensions_container.h"
 #include "chrome/browser/ui/extensions/settings_api_bubble_helpers.h"
 #include "chrome/browser/ui/interaction/browser_elements.h"
+#include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
 #include "chrome/browser/ui/views/toolbar/webui_toolbar_web_view.h"
@@ -76,18 +78,22 @@ bool WebUIToolbarExtensionsContainerWrapper::UpdateExtensionsButtonState() {
     // Ask ExtensionsToolbarViewModel::GetButtonState() for actual state.
     content::WebContents* web_contents =
         delegate_->GetBrowser()->GetTabStripModel()->GetActiveWebContents();
-    Profile* profile = delegate_->GetBrowser()->GetProfile();
-    if (web_contents && extensions_container_ && profile) {
-      new_state = ExtensionsToolbarViewModel::GetButtonState(
-          delegate_->GetBrowser(), *web_contents,
-          ToolbarActionsModel::Get(profile),
-          base::BindOnce(&WebUIToolbarExtensionsContainerWrapper::
-                             AnyActionHasCurrentSiteAccess,
-                         base::Unretained(this)));
+    if (web_contents && extensions_container_) {
+      new_state = extensions_container_->GetToolbarViewModel()->GetButtonState(
+          *web_contents);
     }
   }
 
-  if (new_state != extensions_button_state_) {
+  bool has_flat_edge = false;
+  auto it = cached_actions_.find(kExtensionsRequestAccessButtonActionId);
+  if (it != cached_actions_.end() && it->second->is_visible) {
+    has_flat_edge = true;
+  }
+
+  const bool edge_changed = (has_flat_edge != extensions_button_has_flat_edge_);
+  extensions_button_has_flat_edge_ = has_flat_edge;
+
+  if (new_state != extensions_button_state_ || edge_changed) {
     extensions_button_state_ = new_state;
     return true;
   }
@@ -99,7 +105,9 @@ WebUIToolbarExtensionsContainerWrapper::GetExtensionsButton() {
   extensions_bar::mojom::ExtensionActionInfoPtr button =
       extensions_bar::mojom::ExtensionActionInfo::New();
 
-  button->id = kExtensionsButtonId;
+  button->id =
+      extensions_bar::mojom::ExtensionActionId::NewExtensionsMenuButton(
+          std::monostate());
   button->is_visible = true;
   // The extensions button is never hidden due to overflow.
   button->force_visible = true;
@@ -116,22 +124,11 @@ WebUIToolbarExtensionsContainerWrapper::GetExtensionsButton() {
           extensions_button_state_);
   button->tooltip = ExtensionsToolbarViewModel::GetToolbarButtonTooltipText(
       extensions_button_state_);
+  button->flat_edge = extensions_button_has_flat_edge_
+                          ? extensions_bar::mojom::FlatEdge::kStart
+                          : extensions_bar::mojom::FlatEdge::kNone;
 
   return button;
-}
-
-bool WebUIToolbarExtensionsContainerWrapper::AnyActionHasCurrentSiteAccess(
-    content::WebContents& web_contents) {
-  for (const auto& [_, action] : cached_actions_) {
-    ToolbarActionViewModel* action_model =
-        extensions_container_->GetActionForId(action->id);
-    if (action_model &&
-        action_model->GetSiteInteraction(&web_contents) ==
-            extensions::SitePermissionsHelper::SiteInteraction::kGranted) {
-      return true;
-    }
-  }
-  return false;
 }
 
 void WebUIToolbarExtensionsContainerWrapper::OnActiveTabChanged(
@@ -139,7 +136,6 @@ void WebUIToolbarExtensionsContainerWrapper::OnActiveTabChanged(
   if (browser_interface && browser_interface->GetTabStripModel()) {
     content::WebContents* active_contents =
         browser_interface->GetTabStripModel()->GetActiveWebContents();
-    Observe(active_contents);
     if (active_contents) {
       // No need to check whether the active tab is an extension-controlled NTP
       // here; the helper inspects the tab's visible navigation entry and
@@ -148,18 +144,6 @@ void WebUIToolbarExtensionsContainerWrapper::OnActiveTabChanged(
       extensions::MaybeShowExtensionControlledNewTabPage(browser_interface,
                                                          active_contents);
     }
-  }
-  if (extensions_container_) {
-    // State of extensions depends on what's active --- e.g. some may be
-    // disabled on some URLs.
-    extensions_container_->NotifyOfAllActions();
-  }
-}
-
-void WebUIToolbarExtensionsContainerWrapper::PrimaryPageChanged(
-    content::Page& page) {
-  if (extensions_container_) {
-    extensions_container_->NotifyOfAllActions();
   }
 }
 
@@ -171,7 +155,8 @@ void WebUIToolbarExtensionsContainerWrapper::OnActionsAddedOrUpdated(
   std::vector<std::string> new_ids;
   for (const auto& action : actions) {
     if (action->is_visible) {
-      new_ids.push_back(action->id);
+      new_ids.push_back(
+          WebUIToolbarExtensionsContainer::GetActionKey(*action->id));
     }
   }
   if (new_ids != last_sent_extension_ids_) {
@@ -179,9 +164,11 @@ void WebUIToolbarExtensionsContainerWrapper::OnActionsAddedOrUpdated(
   }
 
   for (auto& action : actions) {
-    auto it = cached_actions_.find(action->id);
+    std::string key =
+        WebUIToolbarExtensionsContainer::GetActionKey(*action->id);
+    auto it = cached_actions_.find(key);
     if (it == cached_actions_.end() || !mojo::Equals(it->second, action)) {
-      cached_actions_[action->id] = std::move(action);
+      cached_actions_[std::move(key)] = std::move(action);
       changed = true;
     }
   }
@@ -305,25 +292,56 @@ void WebUIToolbarExtensionsContainerWrapper::SendExtensionsState() {
     state.push_back(GetExtensionsButton());
   }
   last_sent_extension_ids_ = std::move(sent_ids);
+
+  const int old_preferred_width = GetWidth(WidthType::kPreferredWidth);
+  const int old_min_width = GetWidth(WidthType::kMinWidth);
   delegate_->OnExtensionsStateChanged(std::move(state));
+  if (old_preferred_width != GetWidth(WidthType::kPreferredWidth) ||
+      old_min_width != GetWidth(WidthType::kMinWidth)) {
+    delegate_->OnPreferredSizeChanged();
+  }
+}
+
+int WebUIToolbarExtensionsContainerWrapper::GetWidth(
+    WidthType width_type) const {
+  const int gap = GetLayoutConstant(LayoutConstant::kToolbarIconDefaultMargin);
+  const auto& extensions_state = delegate_->GetState().extensions_state;
+  int width = 0;
+  for (const auto& action : extensions_state) {
+    // Javascript may hide all actions other than the extensions menu button
+    // and forced visible actions.
+    if (width_type == WidthType::kMinWidth &&
+        !action->id->is_extensions_menu_button() && !action->force_visible) {
+      continue;
+    }
+    // Matches toolbar_button.css, plus the trailing margin from
+    // toolbar_action_container.css.
+    width += GetLayoutConstant(LayoutConstant::kToolbarButtonHeight) + gap;
+  }
+  if (width) {
+    // Matches toolbar_divider.css, plus the trailing margin from
+    // toolbar_action_container.css. Since the divider is the last child, its
+    // leading and trailing margins are both
+    // `kToolbarDividerSpacing - kToolbarIconDefaultMargin`.
+    width += GetLayoutConstant(LayoutConstant::kToolbarDividerWidth) +
+             2 * GetLayoutConstant(LayoutConstant::kToolbarDividerSpacing) -
+             2 * gap;
+  }
+  return width;
 }
 
 void WebUIToolbarExtensionsContainerWrapper::ExecuteUserAction(
-    const std::string& extension_id) {
+    extensions_bar::mojom::ExtensionActionIdPtr id) {
   if (extensions_container_) {
-    if (extension_id == kExtensionsButtonId) {
-      extensions_container_->ToggleExtensionsMenu();
-    } else {
-      extensions_container_->ExecuteUserAction(extension_id);
-    }
+    extensions_container_->ExecuteUserAction(std::move(id));
   }
 }
 
 void WebUIToolbarExtensionsContainerWrapper::ShowContextMenu(
     ui::mojom::MenuSourceType source,
-    const std::string& extension_id) {
-  if (extensions_container_ && extension_id != kExtensionsButtonId) {
-    extensions_container_->ShowContextMenu(source, extension_id);
+    extensions_bar::mojom::ExtensionActionIdPtr id) {
+  if (extensions_container_) {
+    extensions_container_->ShowContextMenu(source, std::move(id));
   }
 }
 

@@ -10,11 +10,12 @@
 #import "components/sessions/core/live_tab.h"
 #import "components/sessions/core/tab_restore_types.h"
 #import "components/split_tabs/split_tab_id.h"
+#import "ui/base/mojom/window_open_disposition.mojom-shared.h"
 
 namespace {
 
 // Build an instance of FakeTabRestoreService.
-std::unique_ptr<KeyedService> BuildInstance(ProfileIOS* profile) {
+std::unique_ptr<KeyedService> BuildInstance(ProfileIOS& profile) {
   return std::make_unique<FakeTabRestoreService>();
 }
 
@@ -81,6 +82,18 @@ void FakeTabRestoreService::GroupCloseStopped(
   NOTREACHED();
 }
 
+void FakeTabRestoreService::PromoteEphemeralTabGroup(
+    const tab_groups::TabGroupId& group_id,
+    const tab_groups::TabGroupVisualData& visual_data) {
+  NOTREACHED();
+}
+
+void FakeTabRestoreService::UpdateSavedTabGroupId(
+    const tab_groups::TabGroupId& group_id,
+    const base::Uuid& saved_group_id) {
+  NOTREACHED();
+}
+
 void FakeTabRestoreService::SplitClosed(const split_tabs::SplitTabId& id) {
   NOTREACHED();
 }
@@ -126,9 +139,10 @@ void FakeTabRestoreService::RemoveLeastRecentlyUsedEntries(int num_to_remove) {
 }
 
 std::optional<std::vector<sessions::LiveTab*>>
-FakeTabRestoreService::RestoreEntryById(sessions::LiveTabContext* context,
-                                        SessionID session_id,
-                                        WindowOpenDisposition disposition) {
+FakeTabRestoreService::RestoreEntryById(
+    sessions::LiveTabContext* context,
+    SessionID session_id,
+    ui::mojom::WindowOpenDisposition disposition) {
   NOTREACHED();
 }
 

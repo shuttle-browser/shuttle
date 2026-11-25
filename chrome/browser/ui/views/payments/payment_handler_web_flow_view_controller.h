@@ -30,7 +30,7 @@
 #include "third_party/skia/include/core/SkColor.h"
 #include "ui/base/interaction/element_identifier.h"
 #include "ui/base/models/image_model.h"
-#include "ui/base/window_open_disposition.h"
+#include "ui/base/mojom/window_open_disposition.mojom-forward.h"
 #include "ui/views/controls/webview/web_contents_delegate_views.h"
 #include "ui/views/view_tracker.h"
 #include "ui/views/widget/widget.h"
@@ -106,13 +106,6 @@ class PaymentHandlerWebFlowViewController
   };
   // This ctor forwards its first 3 args to PaymentRequestSheetController's
   // ctor.
-  // |payment_request_web_contents| is the page that initiated the
-  // PaymentRequest. It is used in two ways:
-  // - Its web developer console is used to print error messages.
-  // - When kPaymentHandlerModalDialogHost is disabled, its
-  //   WebContentsModalDialogHost is lent to the payment handler for the
-  //   display of modal dialogs initiated from the payment handler's web
-  //   content.
   // |profile| is the browser context used to create the new payment handler
   // WebContents object that will navigate to |target|.
   // |first_navigation_complete_callback| is invoked once the payment handler
@@ -121,7 +114,6 @@ class PaymentHandlerWebFlowViewController
       base::WeakPtr<PaymentRequestSpec> spec,
       base::WeakPtr<PaymentRequestState> state,
       base::WeakPtr<PaymentRequestDialogView> dialog,
-      content::WebContents* payment_request_web_contents,
       Profile* profile,
       GURL target,
       PaymentHandlerOpenWindowCallback first_navigation_complete_callback);
@@ -161,7 +153,7 @@ class PaymentHandlerWebFlowViewController
       content::WebContents* source,
       std::unique_ptr<content::WebContents> new_contents,
       const GURL& target_url,
-      WindowOpenDisposition disposition,
+      ui::mojom::WindowOpenDisposition disposition,
       const blink::mojom::WindowFeatures& window_features,
       bool user_gesture,
       bool* was_blocked) override;

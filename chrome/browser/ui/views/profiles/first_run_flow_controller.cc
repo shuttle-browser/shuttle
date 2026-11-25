@@ -26,6 +26,8 @@
 #include "base/version_info/channel.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
+#include "chrome/browser/glic/public/glic_feature.h"
+#include "chrome/browser/glic/public/glic_provider_spec.h"
 #include "chrome/browser/policy/cloud/user_policy_signin_service.h"
 #include "chrome/browser/policy/cloud/user_policy_signin_service_factory.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
@@ -46,7 +48,7 @@
 #include "chrome/browser/ui/views/profiles/feature_showcase/feature_showcase_step_eligibility_checker.h"
 #include "chrome/browser/ui/views/profiles/feature_showcase/gemini_step_eligibility_checker.h"
 #include "chrome/browser/ui/views/profiles/feature_showcase/google_lens_step_eligibility_checker.h"
-#include "chrome/browser/ui/views/profiles/feature_showcase/password_manager_feature_showcase_eligibility_checker.h"
+#include "chrome/browser/ui/views/profiles/feature_showcase/password_manager_step_eligibility_checker.h"
 #include "chrome/browser/ui/views/profiles/feature_showcase/themes_and_customization_step_eligibility_checker.h"
 #include "chrome/browser/ui/views/profiles/profile_management_flow_controller_impl.h"
 #include "chrome/browser/ui/views/profiles/profile_management_step_controller.h"
@@ -662,19 +664,20 @@ class FeatureShowcaseStepController : public ProfileManagementStepController {
     // Register checkers in order of priority (highest first).
     checkers.push_back(
         std::make_unique<DefaultBrowserStepEligibilityChecker>());
-    if (base::FeatureList::IsEnabled(
-            switches::kFirstRunFeatureShowcaseGeminiStep)) {
+    const bool gemini_step_supported =
+        glic::GetGlicProviderSpec(profile_).SupportsFeature(
+            glic::GlicFeature::kFirstRunShowcase);
+    if (gemini_step_supported) {
       checkers.push_back(std::make_unique<GeminiStepEligibilityChecker>());
     }
     checkers.push_back(std::make_unique<GoogleLensStepEligibilityChecker>());
     checkers.push_back(
-        std::make_unique<PasswordManagerFeatureShowcaseEligibilityChecker>());
+        std::make_unique<PasswordManagerStepEligibilityChecker>());
     checkers.push_back(
         std::make_unique<ThemesAndCustomizationStepEligibilityChecker>());
 
     base::flat_map<std::string, std::string> conflicting_steps;
-    if (base::FeatureList::IsEnabled(
-            switches::kFirstRunFeatureShowcaseGeminiStep)) {
+    if (gemini_step_supported) {
       conflicting_steps = {
           {kFeatureShowcaseGeminiStepIdentifier,
            kFeatureShowcaseGoogleLensStepIdentifier},

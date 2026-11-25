@@ -3,9 +3,11 @@
 // found in the LICENSE file.
 
 import {foreignTabsBrowserProxyFactory, ForeignTabsDelegate, ForeignTabsPageHandlerRemote} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
-import type {ForeignTab} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
+import type {ForeignTab, OrganizerListSectionItemElement} from 'chrome://organizer-panel.top-chrome/organizer_panel.js';
+import type {CrIconElement} from 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
-import {assertDeepEquals, assertEquals, assertTrue} from 'chrome://webui-test/chai_assert.js';
+import {render} from 'chrome://resources/lit/v3_0/lit.rollup.js';
+import {assertDeepEquals, assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {TestMock} from 'chrome://webui-test/test_mock.js';
 
 suite('ForeignTabsDelegateTest', () => {
@@ -42,7 +44,10 @@ suite('ForeignTabsDelegateTest', () => {
 
   setup(() => {
     loadTimeData.resetForTesting({
+      diceSupportEnabled: true,
+      isUserSignedIn: true,
       tabsOnOtherDevices: 'Tabs on other devices',
+      signInOnPhone: 'Sign in on your phone',
     });
     mockHandler = TestMock.fromClass(ForeignTabsPageHandlerRemote);
     mockHandler.setResultFor(
@@ -54,6 +59,8 @@ suite('ForeignTabsDelegateTest', () => {
   test('returns id and localized header', () => {
     assertEquals('cross-device-tabs', delegate.getId());
     assertEquals('Tabs on other devices', delegate.getHeader());
+    assertEquals('CrossDeviceTabs', delegate.getHistogramSectionName());
+    assertEquals('OpenCrossDeviceTab', delegate.getItemClickAction());
   });
 
   test(
@@ -109,4 +116,88 @@ suite('ForeignTabsDelegateTest', () => {
     assertEquals(sampleTabs[1]!.sessionTag, sessionTag);
     assertEquals(sampleTabs[1]!.sessionTabId, sessionTabId);
   });
+
+  test('shouldHide returns true when user is signed out', async () => {
+    loadTimeData.overrideValues({isUserSignedIn: false});
+    delegate = new ForeignTabsDelegate();
+    assertTrue(delegate.shouldHide());
+
+    const items = await delegate.getItems();
+    assertEquals(0, items.length);
+    assertTrue(delegate.shouldHide());
+    assertEquals(0, mockHandler.getCallCount('getForeignTabs'));
+  });
+
+  test('shouldHide returns true when no DICE and no tabs', async () => {
+    loadTimeData.overrideValues({
+      isUserSignedIn: true,
+      diceSupportEnabled: false,
+    });
+    mockHandler.setResultFor('getForeignTabs', Promise.resolve({tabs: []}));
+    delegate = new ForeignTabsDelegate();
+    assertTrue(delegate.shouldHide());
+
+    const items = await delegate.getItems();
+    assertEquals(0, items.length);
+    assertTrue(delegate.shouldHide());
+    assertEquals(1, mockHandler.getCallCount('getForeignTabs'));
+  });
+
+  test('shouldHide returns false when no DICE and has tabs', async () => {
+    loadTimeData.overrideValues({
+      isUserSignedIn: true,
+      diceSupportEnabled: false,
+    });
+    mockHandler.setResultFor(
+        'getForeignTabs', Promise.resolve({tabs: [...sampleTabs]}));
+    delegate = new ForeignTabsDelegate();
+    assertTrue(delegate.shouldHide());
+
+    const items = await delegate.getItems();
+    assertEquals(3, items.length);
+    assertFalse(delegate.shouldHide());
+  });
+
+  test('shouldHide returns false when DICE supported', async () => {
+    loadTimeData.overrideValues({
+      isUserSignedIn: true,
+      diceSupportEnabled: true,
+    });
+    mockHandler.setResultFor('getForeignTabs', Promise.resolve({tabs: []}));
+    delegate = new ForeignTabsDelegate();
+    assertFalse(delegate.shouldHide());
+
+    const items = await delegate.getItems();
+    assertEquals(0, items.length);
+    assertFalse(delegate.shouldHide());
+  });
+
+  test(
+      'returns zero state and triggers showCrossDeviceSignInPromo on click',
+      () => {
+        const zeroState = delegate.getZeroState();
+        assertTrue(!!zeroState);
+
+        const container = document.createElement('div');
+        document.body.appendChild(container);
+        render(zeroState, container);
+
+        const item = container.querySelector<OrganizerListSectionItemElement>(
+            'organizer-list-section-item');
+        assertTrue(!!item);
+        assertDeepEquals(['Sign in on your phone'], item.item.title);
+
+        const icon = item.item.prefixIcon?.element;
+        assertTrue(!!icon);
+
+        const iconContainer = document.createElement('div');
+        document.body.appendChild(iconContainer);
+        render(icon, iconContainer);
+        const crIcon = iconContainer.querySelector<CrIconElement>('cr-icon');
+        assertTrue(!!crIcon);
+        assertEquals('organizer-panel:login', crIcon.icon);
+
+        item.click();
+        assertEquals(1, mockHandler.getCallCount('showCrossDeviceSignInPromo'));
+      });
 });

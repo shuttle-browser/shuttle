@@ -25,8 +25,8 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "ui/base/ime/ash/fake_ime_keyboard.h"
 #include "ui/base/ime/ash/ime_keyboard.h"
-#include "ui/base/ime/ash/input_method_manager.h"
 #include "ui/base/ime/ash/mock_input_method_manager.h"
+#include "ui/base/ime/ash/scoped_input_method_manager_for_testing.h"
 #include "ui/base/ime/fake_text_input_client.h"
 #include "ui/base/ime/input_method.h"
 #include "ui/views/test/widget_test.h"
@@ -51,17 +51,12 @@ class QuickInsertPixelTest : public AshTestBase,
                              public testing::WithParamInterface</*RTL*/ bool> {
  public:
   QuickInsertPixelTest() {
-    input_method::InputMethodManager::Initialize(
-        new MockInputMethodManagerWithKeyboard);
-
     CHECK(history_dir_.CreateUniqueTempDir());
     history_service_ =
         history::CreateHistoryService(history_dir_.GetPath(), true);
 
     QuickInsertController::DisableFeatureTourForTesting();
   }
-
-  ~QuickInsertPixelTest() { input_method::InputMethodManager::Shutdown(); }
 
   void SetUp() override {
     AshTestBase::SetUp();
@@ -98,6 +93,10 @@ class QuickInsertPixelTest : public AshTestBase,
   QuickInsertController& controller() { return *controller_; }
 
  private:
+  // Created before `SetUp()`, so `AshTestHelper` uses it instead of its own.
+  input_method::ScopedInputMethodManagerForTesting<
+      MockInputMethodManagerWithKeyboard>
+      input_method_manager_;
   NiceMock<MockQuickInsertClient> client_;
   std::unique_ptr<QuickInsertController> controller_;
   base::ScopedTempDir history_dir_;
@@ -116,7 +115,7 @@ TEST_P(QuickInsertPixelTest, UnfocusedMode) {
 
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       "quick_insert_unfocused",
-      /*revision_number=*/1, controller().widget_for_testing()));
+      /*revision_number=*/2, controller().widget_for_testing()));
 }
 
 TEST_P(QuickInsertPixelTest, FocusedModeNoSelection) {
@@ -128,7 +127,7 @@ TEST_P(QuickInsertPixelTest, FocusedModeNoSelection) {
 
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       "quick_insert_focused_no_selection",
-      /*revision_number=*/2, controller().widget_for_testing()));
+      /*revision_number=*/3, controller().widget_for_testing()));
 }
 
 TEST_P(QuickInsertPixelTest, FocusedModeHasSelection) {
@@ -141,7 +140,7 @@ TEST_P(QuickInsertPixelTest, FocusedModeHasSelection) {
 
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       "quick_insert_focused_no_selection",
-      /*revision_number=*/1, controller().widget_for_testing()));
+      /*revision_number=*/2, controller().widget_for_testing()));
 }
 
 }  // namespace

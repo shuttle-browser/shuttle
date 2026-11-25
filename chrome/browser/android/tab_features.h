@@ -85,6 +85,7 @@ class FindsTabHelper;
 
 namespace glic {
 class ContextualCueingHelper;
+class GlicGeminiWebWarmingObserver;
 class GlicInstanceHelper;
 class GlicMarketingPageTabHelper;
 class GlicSidePanelCoordinator;
@@ -170,7 +171,6 @@ class ExternalProtocolObserver;
 class FileSystemAccessPermissionRequestManager;
 class FileSystemAccessTabHelper;
 class FromGWSNavigationAndKeepAliveRequestObserver;
-class HistoryEmbeddingsTabHelper;
 class HttpAuthCacheStatus;
 class MediaStateObserver;
 class MixedContentSettingsTabHelper;
@@ -202,20 +202,11 @@ class TabInterface;
 class PageContextEligibilityHelper;
 
 // This class holds state that is scoped to a tab in Android. It is constructed
-// after the WebContents/tab_helpers, and destroyed before.
+// after the WebContents, and destroyed before.
 class TabFeatures {
  public:
   TabFeatures(content::WebContents* web_contents, Profile* profile);
   ~TabFeatures();
-
-  NewTabPagePreloadPipelineManager* new_tab_page_preload_pipeline_manager() {
-    return new_tab_page_preload_pipeline_manager_.get();
-  }
-
-  enterprise_data_protection::DataProtectionNavigationController*
-  data_protection_controller() {
-    return data_protection_tab_controller_.get();
-  }
 
   tasks::TaskTabHelper* task_tab_helper() { return task_tab_helper_.get(); }
 
@@ -284,6 +275,8 @@ class TabFeatures {
   std::unique_ptr<tabs::PageContextEligibilityHelper>
       page_context_eligibility_helper_;
   std::unique_ptr<glic::GlicInstanceHelper> glic_instance_helper_;
+  std::unique_ptr<glic::GlicGeminiWebWarmingObserver>
+      glic_gemini_web_warming_observer_;
   std::unique_ptr<glic::GlicMarketingPageTabHelper>
       glic_marketing_page_tab_helper_;
   std::unique_ptr<glic::GlicSidePanelCoordinator> glic_side_panel_coordinator_;
@@ -325,7 +318,6 @@ class TabFeatures {
   std::unique_ptr<RecentlyAudibleHelper> recently_audible_helper_;
   std::unique_ptr<SoundContentSettingObserver> sound_content_setting_observer_;
   std::unique_ptr<tasks::TaskTabHelper> task_tab_helper_;
-  std::unique_ptr<HistoryEmbeddingsTabHelper> history_embeddings_tab_helper_;
   std::unique_ptr<download::DownloadNavigationObserver>
       download_navigation_observer_;
   std::unique_ptr<history::WebContentsTopSitesObserver>

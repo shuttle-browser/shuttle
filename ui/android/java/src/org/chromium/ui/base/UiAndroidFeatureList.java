@@ -126,12 +126,6 @@ public class UiAndroidFeatureList {
                     /* defaultValue= */ true,
                     /* defaultValueInTests= */ true);
 
-    public static final CachedFlag sUpdatePaddingForDisplayCalculation =
-            newCachedFlag(
-                    UiAndroidFeatures.UPDATE_PADDING_FOR_DISPLAY_CALCULATION,
-                    /* defaultValue= */ true,
-                    /* defaultValueInTests= */ true);
-
     public static final CachedFlag sReportBottomOverscrolls =
             newCachedFlag(
                     UiAndroidFeatures.REPORT_BOTTOM_OVERSCROLLS,
@@ -156,11 +150,6 @@ public class UiAndroidFeatureList {
     public static final MutableBooleanParamWithSafeDefault sSubmenuTypeOverrideForceDrilldown =
             sSubmenuTypeOverride.newBooleanParam("force_drilldown", false);
 
-    public static final MutableFlagWithSafeDefault sAndroidResourceMemoryOptimization =
-            newMutableFlagWithSafeDefault(
-                    UiAndroidFeatures.ANDROID_RESOURCE_MEMORY_OPTIMIZATION,
-                    /* defaultValue= */ true);
-
     public static final List<CachedFlag> sFlagsCachedUiAndroid =
             List.of(
                     sAndroidPreserveStatusBarInsetsWhenUnfocused,
@@ -168,7 +157,6 @@ public class UiAndroidFeatureList {
                     sAndroidWindowOcclusion,
                     sConnectedDisplayDensityDebugLogs,
                     sRefactorMinWidthContextOverride,
-                    sUpdatePaddingForDisplayCalculation,
                     sMaximumWindowForGestureNavDetection);
 
     public static final List<CachedFeatureParam<?>> sParamsCached =

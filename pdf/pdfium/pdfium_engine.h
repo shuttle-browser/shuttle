@@ -14,6 +14,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/containers/flat_map.h"
@@ -477,9 +478,6 @@ class PDFiumEngine : public DocumentLoader::Client,
   // testing.
   virtual void UpdateTextActiveAndInvalidate(TextId id, bool active);
 
-  // Virtual to support testing.
-  virtual gfx::Size GetThumbnailSize(int page_index, float device_pixel_ratio);
-
   // Writes the supplied stroke for the page at `page_index`.  The same `id`
   // gets used with `UpdateStrokeUsage()`.  Must provide a valid `page_index`.
   // Virtual to support testing.
@@ -612,7 +610,7 @@ class PDFiumEngine : public DocumentLoader::Client,
 
   // `PdfAnnotationAgent::Container`:
   bool FindAndHighlightTextFragments(
-      base::span<const std::string> text_fragments) override;
+      base::span<const std::string_view> text_fragments) override;
   void ScrollTextFragmentIntoView() override;
   void RemoveTextFragments() override;
 

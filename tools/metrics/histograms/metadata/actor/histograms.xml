@@ -84,6 +84,7 @@ chromium-metrics-reviews@google.com.
   <variant name="CreateWindow" summary="Create Window"/>
   <variant name="DragAndRelease" summary="Drag And Release"/>
   <variant name="EnterFullscreen" summary="Enter Fullscreen"/>
+  <variant name="ExecuteJsTool" summary="Execute JS Tool"/>
   <variant name="ExitFullscreen" summary="Exit Fullscreen"/>
   <variant name="FileUpload" summary="File Upload"/>
   <variant name="FindAndHighlight" summary="Find And Highlight"/>
@@ -373,7 +374,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.Login.AccountTypesShown" enum="ActorLoginAccountTypes"
-    expires_after="2027-02-25">
+    expires_after="2027-05-02">
   <owner>ioanap@google.com</owner>
   <owner>otara@google.com</owner>
   <owner>web-identity-eng@google.com</owner>
@@ -433,7 +434,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.Login.GetCredentialsCompletedToAccountChosen" units="ms"
-    expires_after="2027-02-25">
+    expires_after="2027-05-02">
   <owner>ioanap@google.com</owner>
   <owner>otara@google.com</owner>
   <owner>web-identity-eng@google.com</owner>
@@ -444,7 +445,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.Login.GetCredentialsLatency" units="ms"
-    expires_after="2027-02-25">
+    expires_after="2027-05-02">
   <owner>ioanap@google.com</owner>
   <owner>otara@google.com</owner>
   <owner>web-identity-eng@google.com</owner>
@@ -456,7 +457,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.Login.NumAccountsShown" units="count"
-    expires_after="2027-02-25">
+    expires_after="2027-05-02">
   <owner>ioanap@google.com</owner>
   <owner>otara@google.com</owner>
   <owner>web-identity-eng@google.com</owner>
@@ -468,7 +469,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.Login.SelectedAccountType"
-    enum="ActorLoginSelectedAccountType" expires_after="2027-02-25">
+    enum="ActorLoginSelectedAccountType" expires_after="2027-05-02">
   <owner>ioanap@google.com</owner>
   <owner>otara@google.com</owner>
   <owner>web-identity-eng@google.com</owner>
@@ -530,7 +531,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.NavigationGating.DarkLaunchConfirmationRequestLatency"
-    units="ms" expires_after="2027-02-14">
+    units="ms" expires_after="2027-05-02">
   <owner>masnoble@google.com</owner>
   <owner>dylancutler@google.com</owner>
   <summary>
@@ -541,7 +542,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.NavigationGating.GatingDecision2" enum="GatingDecision"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>tquintanilla@google.com</owner>
   <owner>dylancutler@google.com</owner>
   <summary>
@@ -584,7 +585,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.NavigationGating.TimeElapsedForGating2" units="ms"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>dylancutler@google.com</owner>
   <owner>johannhof@google.com</owner>
   <summary>
@@ -656,7 +657,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Actor.ObservationDelay.DidNavigate" enum="Boolean"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>dtapuska@google.com</owner>
   <owner>bokan@google.com</owner>
   <owner>chrome-synapse-team@google.com</owner>
@@ -703,6 +704,9 @@ chromium-metrics-reviews@google.com.
     <variant name="WaitForFederatedLogin"/>
     <variant name="WaitForLoadCompletion"/>
     <variant name="WaitForPageStability"/>
+    <variant name="WaitForScriptTools"
+        summary="WaitForScriptTools (only recorded when the page's tools
+                 weren't ready when the state was entered)"/>
     <variant name="WaitForVisualStateUpdate"/>
   </token>
 </histogram>

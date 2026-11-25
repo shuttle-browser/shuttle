@@ -36,6 +36,7 @@ export import AdditionalContext = generated.AdditionalContext;
 export import AnnotatedPageData = generated.AnnotatedPageData;
 export import AutofillSuggestion = generated.AutofillSuggestion;
 export import CaptureRegionParams = generated.CaptureRegionParams;
+export import CaptureRegionPayload = generated.CaptureRegionPayload;
 export import CaptureRegionResult = generated.CaptureRegionResult;
 export import CapturedRegion = generated.CapturedRegion;
 export import CloseAuthTabOptions = generated.CloseAuthTabOptions;
@@ -164,6 +165,7 @@ export import SkillsWebClientEvent = generated.SkillsWebClientEvent;
 export import SwitchConversationErrorReason =
     generated.SwitchConversationErrorReason;
 export import TaskDuration = generated.TaskDuration;
+export import TooltipImpressionType = generated.TooltipImpressionType;
 export import UnpinTrigger = generated.UnpinTrigger;
 export import UserGrantedPermissionDuration =
     generated.UserGrantedPermissionDuration;
@@ -209,6 +211,10 @@ export declare interface AdditionalContextPart {
   annotatedPageData?: AnnotatedPageData;
   pdf?: PdfDocumentData;
   tabContext?: TabContextResult;
+  /**
+   * @deprecated Chrome no longer sends `region`. Use `pendingRegion`
+   * instead.
+   */
   region?: CapturedRegion;
   pendingRegion?: PendingCapturedRegion;
   parentConversationMetadata?: ParentConversationMetadata;
@@ -219,6 +225,7 @@ export declare interface InvocationPayload {
   universalCart?: UniversalCartPayload;
   skillsPayload?: SkillsPayload;
   experimentalTriggering?: ExperimentalTriggeringPayload;
+  captureRegion?: CaptureRegionPayload;
 }
 
 /**
@@ -1627,6 +1634,12 @@ export declare interface GlicBrowserHostMetrics {
   /** Called when the opt-in CTA is shown. */
   onOptinImpression?(): void;
 
+  /**
+   * Called when the web client's main prompt input field receives focus
+   * after opening or warm-reopening the panel.
+   */
+  onInputFocused?(): void;
+
   /** Called when the user has submitted input via the web client. */
   onUserInputSubmitted?(mode: WebClientMode, promptType?: PromptType): void;
 
@@ -1683,6 +1696,15 @@ export declare interface GlicBrowserHostMetrics {
    * Called when we want to record an use counter metric.
    */
   onRecordUseCounter?(action: WebUseCounter): void;
+
+  /** Called when a multi-tab sharing tooltip is shown. */
+  onTooltipImpression?(impression: TooltipImpressionType): void;
+
+  /**
+   * Called when a currently displayed multi-tab sharing tooltip is hidden in
+   * the web client (e.g. dismissed, timed out, or engaged with).
+   */
+  onTooltipHidden?(): void;
 
   // Removed fields and methods :
   onModelChanged?(): never;  // Last seen on Canary 146.0.7639.0

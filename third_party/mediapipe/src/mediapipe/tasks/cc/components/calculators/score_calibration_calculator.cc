@@ -17,9 +17,10 @@
 #include <utility>
 #include <vector>
 
-#include "absl/status/status.h"
-#include "absl/status/statusor.h"
-#include "absl/strings/str_format.h"
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/status/statusor.h"       // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/framework/api2/node.h"
 #include "mediapipe/framework/api2/port.h"
 #include "mediapipe/framework/calculator_framework.h"
@@ -178,9 +179,10 @@ absl::Status ScoreCalibrationCalculator::Process(CalculatorContext* cc) {
     for (int i = 0; i < num_scores; ++i) {
       // Use the "safe" flavor as we need to check that the externally provided
       // indices are not out-of-bounds.
-      MP_ASSIGN_OR_RETURN(raw_calibrated_scores[i],
-                          SafeComputeCalibratedScore(
-                              static_cast<int>(raw_indices[i]), raw_scores[i]));
+      ABSL_ASSIGN_OR_RETURN(
+          raw_calibrated_scores[i],
+          SafeComputeCalibratedScore(static_cast<int>(raw_indices[i]),
+                                     raw_scores[i]));
     }
   } else {
     if (num_scores != options_.sigmoids_size()) {

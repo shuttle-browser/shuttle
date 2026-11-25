@@ -19,7 +19,6 @@
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/profiles/profile_selections.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/omnibox/omnibox_next_features.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -61,6 +60,10 @@
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "components/policy/core/common/features.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
+#if BUILDFLAG(IS_WIN)
+#include "crypto/scoped_fake_unexportable_key_provider.h"
+#endif  // BUILDFLAG(IS_WIN)
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/webui/top_chrome/top_chrome_webui_profile.h"
@@ -220,7 +223,6 @@ class ProfileKeyedServiceBrowserTest : public InProcessBrowserTest {
 #endif  // BUILDFLAG(IS_WIN)
           network::features::kBrowsingTopics,
           extensions_features::kForceWebRequestProxyForTest,
-          network::features::kReduceAcceptLanguage,
           features::kMainNodeAnnotations,
           omnibox::kOnDeviceTailModel,
           omnibox::kOnDeviceHeadProviderNonIncognito,
@@ -410,15 +412,7 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceBrowserTest,
 class ProfileKeyedServiceGuestBrowserTest
     : public ProfileKeyedServiceBrowserTest {
  public:
-  ProfileKeyedServiceGuestBrowserTest() {
-    // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox is
-    // enabled and then remove this.
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{},
-        /*disabled_features=*/
-        {omnibox::internal::kWebUIOmniboxPopup,
-         omnibox::internal::kWebUIOmniboxAimPopup});
-  }
+  ProfileKeyedServiceGuestBrowserTest() = default;
   ~ProfileKeyedServiceGuestBrowserTest() override = default;
 
   // ProfileKeyedServiceBrowserTest:
@@ -430,26 +424,21 @@ class ProfileKeyedServiceGuestBrowserTest
         ash::switches::kLoginUser,
         user_manager::GuestAccountId().GetUserEmail());
   }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 #else
 class ProfileKeyedServiceGuestBrowserTest
     : public ProfileKeyedServiceBrowserTest {
  public:
-  ProfileKeyedServiceGuestBrowserTest() {
-    // TODO(crbug.com/452061489): Fix tests that fail when the WebUI Omnibox is
-    // enabled and then remove this.
-    scoped_feature_list_.InitWithFeatures(
-        /*enabled_features=*/{},
-        /*disabled_features=*/{omnibox::internal::kWebUIOmniboxPopup,
-                               omnibox::internal::kWebUIOmniboxAimPopup});
-  }
+  ProfileKeyedServiceGuestBrowserTest() = default;
   ~ProfileKeyedServiceGuestBrowserTest() override = default;
 
+#if BUILDFLAG(IS_WIN)
  private:
-  base::test::ScopedFeatureList scoped_feature_list_;
+  // BoundSessionCookieRefreshService is only created with an unexportable key
+  // provider, which Windows only has on machines with a TPM. Use a fake one so
+  // the expected services don't depend on the bot's hardware.
+  crypto::ScopedFakeUnexportableKeyProvider fake_key_provider_;
+#endif  // BUILDFLAG(IS_WIN)
 };
 #endif
 
@@ -529,7 +518,6 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     "ProtocolHandlerRegistry",
     "ReadAnythingServiceFactory",
     "RealtimeReportingClient",
-    "ReduceAcceptLanguage",
     "RendererUpdater",
     "ResumableTCPServerSocketManager",
     "ResumableTCPSocketManager",
@@ -632,6 +620,14 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     guest_otr_active_services.insert("AimEligibilityExtensionBridge");
     guest_otr_active_services.insert("ExtensionMojoBinderRegistry");
   }
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  if (base::FeatureList::IsEnabled(
+          contextual_tasks::kContextualTasksRearchitecture)) {
+    guest_otr_active_services.insert("ContextualTasksExtensionBridge");
+    guest_otr_active_services.insert("ExtensionConfigMap");
+    guest_otr_active_services.insert("ExtensionMojoBinderRegistry");
+  }
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
   // On ChromeOS, Guest session startup navigates to chrome://newtab (a WebUI)
   // by default, whereas Desktop CreateGuestBrowser() navigates to about:blank.
@@ -657,13 +653,6 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
   ASSERT_FALSE(guest_otr_profile->IsRegularProfile());
   ASSERT_TRUE(guest_otr_profile->IsOffTheRecord());
   ASSERT_TRUE(guest_otr_profile->IsGuestSession());
-  if (features::IsLazyOptimizationGuideModelsEnabled()) {
-    // OptimizationGuideGlobalStateHolderKeyedService remains active here
-    // because CreateGuestBrowser() creates a WebContents whose
-    // ChromeTranslateClient instantiates LanguageDetectionModelService.
-    guest_otr_active_services.erase("OnDeviceTailModelService");
-    guest_otr_active_services.erase("PredictionModelHandlerProvider");
-  }
   if (base::FeatureList::IsEnabled(features::kLazyKeyedServiceInstantiation) &&
       features::kLazyKeyedServiceInstantiationExtensions.Get()) {
     guest_otr_active_services.erase("SafeBrowsingPrivateEventRouter");
@@ -878,7 +867,6 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     "ListFamilyMembersService",
     "LocalOrSyncableBookmarkSyncServiceFactory",
     "LoginDetectionKeyedService",
-    "LoginUIServiceFactory",
     "MDnsAPI",
     "ManagedBookmarkService",
     "ManagedConfigurationAPI",
@@ -1037,7 +1025,6 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     // TODO(crbug.com/374351946):
     // Verify these are necessary: then reorder or remove.
 
-    "AccountManagerPolicyController",
     "ArcAppsPrivateAPI",
     "AuthTokenValidatorFactory",
     "AutotestPrivateAPI",
@@ -1096,6 +1083,12 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
   }
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
   if (base::FeatureList::IsEnabled(
+          contextual_tasks::kContextualTasksRearchitecture)) {
+    guest_active_services.insert("ContextualTasksExtensionBridge");
+    guest_active_services.insert("ExtensionConfigMap");
+    guest_active_services.insert("ExtensionMojoBinderRegistry");
+  }
+  if (base::FeatureList::IsEnabled(
           policy::features::kEnableExtensionInstallPolicyFetching)) {
     guest_active_services.insert("ExtensionInstallPolicyService");
   }
@@ -1134,16 +1127,6 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     guest_active_services.erase("PageContentAnnotationsService");
     guest_active_services.erase("ZeroSuggestCacheServiceFactory");
   }
-  if (features::IsLazyOptimizationGuideModelsEnabled()) {
-    guest_active_services.erase("AutocompleteScoringModelService");
-    guest_active_services.erase("OnDeviceTailModelService");
-    guest_active_services.erase(
-        "OptimizationGuideGlobalStateHolderKeyedService");
-    guest_active_services.erase("PredictionModelHandlerProvider");
-  }
-  if (features::IsLazyAfterStartupKeyedServicesEnabled()) {
-    guest_active_services.erase("AutofillPrivateEventRouter");
-  }
   if (base::FeatureList::IsEnabled(features::kLazyKeyedServiceInstantiation) &&
       features::kLazyKeyedServiceInstantiationExtensions.Get()) {
     guest_active_services.erase("SafeBrowsingPrivateEventRouter");
@@ -1171,10 +1154,6 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
   if (base::FeatureList::IsEnabled(features::kLazyKeyedServiceInstantiation) &&
       features::kLazyKeyedServiceInstantiationSafeBrowsing.Get()) {
     guest_active_services.erase("SafeBrowsingTailoredSecurityService");
-  }
-  if (base::FeatureList::IsEnabled(features::kLazyKeyedServiceInstantiation) &&
-      features::kLazyKeyedServiceInstantiationCommerceAndUI.Get()) {
-    guest_active_services.erase("LoginUIServiceFactory");
   }
 #if BUILDFLAG(IS_CHROMEOS)
   if (base::FeatureList::IsEnabled(features::kLazyKeyedServiceInstantiation) &&

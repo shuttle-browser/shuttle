@@ -312,7 +312,7 @@ InputDispatcher::InputDispatcher(base::OnceClosure callback,
 
 InputDispatcher::~InputDispatcher() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK_EQ(current_dispatcher_, this);
+  CHECK_EQ(current_dispatcher_, this, base::NotFatalUntil::M163);
   current_dispatcher_ = nullptr;
   UnhookWindowsHookEx(hook_);
   hook_ = nullptr;
@@ -320,7 +320,7 @@ InputDispatcher::~InputDispatcher() {
 
 void InputDispatcher::InstallHook() {
   DCHECK_CALLED_ON_VALID_THREAD(thread_checker_);
-  DCHECK(!current_dispatcher_);
+  CHECK(!current_dispatcher_, base::NotFatalUntil::M163);
 
   current_dispatcher_ = this;
 
@@ -354,7 +354,7 @@ LRESULT CALLBACK InputDispatcher::MouseHook(int n_code,
                                             LPARAM l_param) {
   HHOOK hook = hook_;
   if (n_code == HC_ACTION) {
-    DCHECK(current_dispatcher_);
+    CHECK(current_dispatcher_, base::NotFatalUntil::M163);
     current_dispatcher_->DispatchedMessage(
         static_cast<UINT>(w_param),
         reinterpret_cast<MOUSEHOOKSTRUCT*>(l_param));
@@ -470,7 +470,7 @@ void InputDispatcher::MatchingMessageProcessed(bool definitively_done) {
       flushing_messages_ = true;
       auto weak_ptr = weak_factory_.GetWeakPtr();
       base::RunLoop().RunUntilIdle();
-      DCHECK(weak_ptr);
+      CHECK(weak_ptr, base::NotFatalUntil::M163);
     }
   }
 
@@ -946,7 +946,7 @@ bool SendMouseEventsImpl(MouseButton type,
 
 bool SendTouchEventsImpl(int action, int num, int x, int y) {
   const int kTouchesLengthCap = 16;
-  DCHECK_LE(num, kTouchesLengthCap);
+  CHECK_LE(num, kTouchesLengthCap, base::NotFatalUntil::M163);
 
   using InitializeTouchInjectionFn = BOOL(WINAPI*)(UINT32, DWORD);
   static const auto initialize_touch_injection =

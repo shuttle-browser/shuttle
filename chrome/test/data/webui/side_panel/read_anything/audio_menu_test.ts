@@ -27,15 +27,6 @@ suite('AudioMenuElement', () => {
     audioBrowserProxy = result.audioBrowserProxy;
   });
 
-  test('highlight granularity prop update changes selected item', async () => {
-    createAudioMenu();
-    const wordHighlight = audioBrowserProxy.getWordHighlighting();
-    audioMenu.highlightGranularity = wordHighlight;
-    await microtasksFinished();
-
-    assertEquals(wordHighlight, audioMenu.$.menu.menuGroups[1]!.selectedValue);
-  });
-
   test('on highlight change does not close menus', async () => {
     createAudioMenu();
     let closeAllMenusCount = 0;
@@ -89,7 +80,8 @@ suite('AudioMenuElement', () => {
     assertFalse(audioMenu.$.menu.$.lazyMenu.get().open);
   });
 
-  test('opens and closes accent menu and restores focus', async () => {
+  // TODO(crbug.com/578217996): Flaky.
+  test.skip('opens and closes accent menu and restores focus', async () => {
     createAudioMenu();
     stubAnimationFrame();
     audioMenu.open(document.body);
@@ -112,7 +104,8 @@ suite('AudioMenuElement', () => {
     assertEquals(accentButton, audioMenu.$.menu.shadowRoot.activeElement);
   });
 
-  test(
+  // TODO(crbug.com/578217996): Flaky.
+  test.skip(
       'opens and closes voice selection dialog from audio menu action item',
       async () => {
         createAudioMenu();

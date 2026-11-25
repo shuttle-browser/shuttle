@@ -5,6 +5,7 @@
 #ifndef COMPONENTS_BROWSER_ACTUATOR_INTERNAL_TRANSPORT_UPSTREAM_MESSAGE_CLIENT_UPSTREAM_MESSAGE_CLIENT_H_
 #define COMPONENTS_BROWSER_ACTUATOR_INTERNAL_TRANSPORT_UPSTREAM_MESSAGE_CLIENT_UPSTREAM_MESSAGE_CLIENT_H_
 
+#include <cstddef>
 #include <cstdint>
 #include <memory>
 #include <optional>
@@ -59,7 +60,10 @@ class UpstreamMessageClient {
   UpstreamMessageClient& operator=(const UpstreamMessageClient&) = delete;
 
   // Assembles an `ActuatorUpstreamMessage` envelope for `message`, initiates
-  // the HTTPS POST to the server, and returns the assembled envelope.
+  // the HTTPS POST to the server, and returns the assembled envelope. If the
+  // request is rejected before network dispatch (e.g. untrustworthy endpoint or
+  // pending-request cap reached), `callback` is invoked asynchronously with
+  // `(false, -1)` and the assembled envelope is still returned.
   virtual ActuatorUpstreamMessage SendUpstreamMessage(
       std::string_view session_id,
       int64_t client_sequence_number,
@@ -67,6 +71,12 @@ class UpstreamMessageClient {
       PayloadType payload_type,
       const google::protobuf::MessageLite& message,
       SendCompleteCallback callback);
+
+  // Cancels all in-flight upstream requests without invoking their completion
+  // callbacks. Used when the primary account signs out or changes.
+  void CancelPendingRequests();
+
+  size_t GetPendingRequestsCountForTesting() const;
 
  private:
   void OnMessageSent(

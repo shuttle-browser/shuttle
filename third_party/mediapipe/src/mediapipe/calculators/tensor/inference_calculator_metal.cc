@@ -21,9 +21,11 @@
 #include <string>
 #include <vector>
 
-#include "absl/log/absl_log.h"
-#include "absl/memory/memory.h"
-#include "absl/strings/str_format.h"
+#include "absl/log/absl_log.h"          // from @com_google_absl
+#include "absl/memory/memory.h"         // from @com_google_absl
+#include "absl/status/status.h"         // from @com_google_absl
+#include "absl/status/status_macros.h"  // from @com_google_absl
+#include "absl/strings/str_format.h"    // from @com_google_absl
 #include "mediapipe/calculators/tensor/inference_calculator.h"
 #include "mediapipe/calculators/tensor/inference_io_mapper.h"
 #include "mediapipe/calculators/tensor/tensor_span.h"
@@ -33,10 +35,10 @@
 #include "mediapipe/gpu/MPPMetalUtil.h"
 #include "mediapipe/gpu/gpu_buffer.h"
 #include "mediapipe/util/tflite/config.h"
-#include "tensorflow/lite/delegates/gpu/common/shape.h"
-#include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"
-#include "tensorflow/lite/delegates/gpu/metal_delegate.h"
-#include "tensorflow/lite/delegates/gpu/metal_delegate_internal.h"
+#include "tensorflow/lite/delegates/gpu/common/shape.h"             // from @litert
+#include "tensorflow/lite/delegates/gpu/metal/buffer_convert.h"     // from @litert
+#include "tensorflow/lite/delegates/gpu/metal_delegate.h"           // from @litert
+#include "tensorflow/lite/delegates/gpu/metal_delegate_internal.h"  // from @litert
 
 namespace {
 
@@ -124,7 +126,7 @@ class InferenceCalculatorMetalImpl
 
 absl::Status InferenceCalculatorMetalImpl::UpdateContract(
     CalculatorContract* cc) {
-  MP_RETURN_IF_ERROR(TensorContractCheck(cc));
+  ABSL_RETURN_IF_ERROR(TensorContractCheck(cc));
 
   RET_CHECK(!kDelegate(cc).IsConnected())
       << "Delegate configuration through side packet is not supported.";
@@ -133,7 +135,7 @@ absl::Status InferenceCalculatorMetalImpl::UpdateContract(
       << "Either model as side packet or model path in options is required.";
 
   WarnFeedbackTensorsUnsupported(cc);
-  MP_RETURN_IF_ERROR([MPPMetalHelper updateContract:cc]);
+  ABSL_RETURN_IF_ERROR([MPPMetalHelper updateContract:cc]);
   return absl::OkStatus();
 }
 
@@ -215,9 +217,9 @@ absl::Status InferenceCalculatorMetalImpl::Close(CalculatorContext* cc) {
 
 absl::Status InferenceCalculatorMetalImpl::InitInterpreter(
     CalculatorContext* cc) {
-  MP_ASSIGN_OR_RETURN(model_packet_, GetModelAsPacket(cc));
+  ABSL_ASSIGN_OR_RETURN(model_packet_, GetModelAsPacket(cc));
   const auto& model = *model_packet_.Get();
-  MP_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
+  ABSL_ASSIGN_OR_RETURN(auto op_resolver_packet, GetOpResolverAsPacket(cc));
   const auto& op_resolver = op_resolver_packet.Get();
   tflite::InterpreterBuilder interpreter_builder(model, op_resolver);
   AddDelegate(cc, &interpreter_builder);
@@ -225,19 +227,21 @@ absl::Status InferenceCalculatorMetalImpl::InitInterpreter(
       cc->Options<mediapipe::InferenceCalculatorOptions>().cpu_num_thread());
   RET_CHECK_EQ(interpreter_builder(&interpreter_), kTfLiteOk);
   RET_CHECK(interpreter_);
-  MP_ASSIGN_OR_RETURN(
+  ABSL_ASSIGN_OR_RETURN(
       const auto& io_mapping,
       InferenceIoMapper::GetInputOutputTensorNamesFromInterpreter(
           *interpreter_));
-  MP_RETURN_IF_ERROR(
+  ABSL_RETURN_IF_ERROR(
       InferenceCalculatorNodeImpl::UpdateIoMapping(cc, io_mapping));
 
-  MP_RETURN_IF_ERROR(CreateConverters(cc));
+  ABSL_RETURN_IF_ERROR(CreateConverters(cc));
   RET_CHECK_EQ(interpreter_->AllocateTensors(), kTfLiteOk);
   // TODO: Support quantized tensors.
-  RET_CHECK_NE(
-      interpreter_->tensor(interpreter_->inputs()[0])->quantization.type,
-      kTfLiteAffineQuantization);
+  if (interpreter_->tensor(interpreter_->inputs()[0])->quantization.type ==
+      kTfLiteAffineQuantization) {
+    return absl::InvalidArgumentError(
+        "Quantized tensors are not supported by the macOS/iOS GPU delegate.");
+  }
   return absl::OkStatus();
 }
 
@@ -316,8 +320,7 @@ absl::Status InferenceCalculatorMetalImpl::CreateConverters(
                                      isFloat16:allow_precision_loss_
                                convertToPBHWC4:true];
   if (converter_to_BPHWC4_ == nil) {
-    return mediapipe::InternalError(
-        "Error initializating input buffer converter");
+    return absl::InternalError("Error initializating input buffer converter");
   }
   // Create converter for GPU output.
   converter_from_BPHWC4_ =

@@ -31,6 +31,8 @@ namespace autofill {
 namespace {
 
 using ::favicon::MockLargeIconService;
+using ::testing::_;
+using ::testing::Property;
 
 MATCHER_P(ImagesAreEqual, img, "") {
   // Compare bitmaps as `AreImagesEqual()` also compare the number of
@@ -110,7 +112,7 @@ TEST_F(PasswordFaviconLoaderTest, LoadsImagesFromFaviconService) {
                 ui::ResourceBundle::GetSharedInstance().GetImageNamed(
                     IDR_DISABLE));
             ASSERT_TRUE(result.bitmap.is_valid());
-            std::move(result_callback).Run(result);
+            std::move(result_callback).Run(std::move(result));
           }));
 
   base::MockOnceCallback<void(const gfx::Image&)> on_success;
@@ -149,7 +151,12 @@ TEST_F(PasswordFaviconLoaderTest, FailsWithInvalidResponseFromFaviconService) {
 }
 
 TEST_F(PasswordFaviconLoaderTest, LoadsImagesFromImageFetcher) {
-  EXPECT_CALL(image_fetcher(), FetchImageAndData_)
+  EXPECT_CALL(
+      image_fetcher(),
+      FetchImageAndData_(
+          GURL("https://google.com/favicon.ico"), _, _,
+          Property(&image_fetcher::ImageFetcherParams::block_local_requests,
+                   true)))
       .WillOnce(MockFetchImageAndData(
           [](image_fetcher::ImageFetcherCallback* callback) {
             std::move(*callback).Run(
@@ -204,7 +211,7 @@ TEST_F(PasswordFaviconLoaderTest, ImagesFromFaviconServiceAreCached) {
         favicon_base::LargeIconResult result = GetFaviconResult(
             ui::ResourceBundle::GetSharedInstance().GetImageNamed(IDR_DISABLE));
         ASSERT_TRUE(result.bitmap.is_valid());
-        std::move(callback).Run(result);
+        std::move(callback).Run(std::move(result));
       }));
   EXPECT_CALL(
       on_success,

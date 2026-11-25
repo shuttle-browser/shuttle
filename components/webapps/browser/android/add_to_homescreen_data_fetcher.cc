@@ -22,10 +22,10 @@
 #include "base/task/single_thread_task_runner.h"
 #include "base/task/thread_pool.h"
 #include "base/threading/thread_restrictions.h"
-#include "components/dom_distiller/core/url_utils.h"
 #include "components/favicon/content/large_icon_service_getter.h"
 #include "components/favicon/core/large_icon_service.h"
 #include "components/favicon_base/favicon_types.h"
+#include "components/web_distiller/core/url_utils.h"
 #include "components/webapps/browser/android/webapps_icon_utils.h"
 #include "components/webapps/browser/android/webapps_utils.h"
 #include "components/webapps/browser/features.h"
@@ -40,7 +40,6 @@
 #include "third_party/blink/public/common/manifest/manifest_icon_selector.h"
 #include "third_party/blink/public/common/manifest/manifest_util.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-shared.h"
-#include "third_party/blink/public/mojom/manifest/manifest.mojom.h"
 #include "ui/gfx/codec/png_codec.h"
 #include "ui/gfx/favicon_size.h"
 #include "url/gurl.h"
@@ -53,7 +52,7 @@ namespace {
 // visible URL may be a distilled article which is not appropriate for a home
 // screen shortcut.
 GURL GetShortcutUrl(content::WebContents* web_contents) {
-  return dom_distiller::url_utils::GetOriginalUrlFromDistillerUrl(
+  return web_distiller::url_utils::GetOriginalUrlFromDistillerUrl(
       web_contents->GetLastCommittedURL());
 }
 
@@ -156,11 +155,10 @@ bool ContainsResetError(const std::vector<InstallableStatusCode>& errors) {
          std::ranges::contains(errors, InstallableStatusCode::RENDERER_EXITING);
 }
 
-bool ArePageAndManifestUrlsEligibleForWebApk(
-    const GURL& page_url,
-    const blink::mojom::Manifest& manifest) {
-  return page_url.SchemeIsHTTPOrHTTPS() && !blink::IsEmptyManifest(manifest) &&
-         WebappsUtils::AreWebManifestUrlsWebApkCompatible(manifest);
+bool ArePageAndManifestUrlsEligibleForWebApk(const GURL& page_url,
+                                             const blink::Manifest* manifest) {
+  return page_url.SchemeIsHTTPOrHTTPS() && manifest &&
+         WebappsUtils::AreWebManifestUrlsWebApkCompatible(*manifest);
 }
 
 // Decision bucket for a fetch that ends in SHORTCUT because of `data`, shared
@@ -173,7 +171,7 @@ AddToHomescreenDataFetcher::AnyPageDecision ShortcutDecisionFor(
   if (ContainsResetError(data.errors)) {
     return AddToHomescreenDataFetcher::AnyPageDecision::kShortcutReset;
   }
-  if (!ArePageAndManifestUrlsEligibleForWebApk(page_url, *data.manifest) ||
+  if (!ArePageAndManifestUrlsEligibleForWebApk(page_url, data.manifest) ||
       std::ranges::contains(data.errors, InstallableStatusCode::IN_INCOGNITO) ||
       std::ranges::contains(data.errors,
                             InstallableStatusCode::NOT_FROM_SECURE_ORIGIN)) {
@@ -299,7 +297,11 @@ void AddToHomescreenDataFetcher::OnDidGetInstallableData(
       /*has_manifest=*/!data.manifest_url->is_empty());
 
   shortcut_info_.UpdateFromWebPageMetadata(*data.web_page_metadata);
-  shortcut_info_.UpdateFromManifest(*data.manifest);
+  if (data.manifest) {
+    shortcut_info_.UpdateFromManifest(*data.manifest);
+    // Save the splash screen URL for the later download.
+    shortcut_info_.UpdateBestSplashIcon(*data.manifest);
+  }
   // Keep a 404 / unparsable manifest URL out of ShortcutInfo so the WebAPK
   // update path never fetches it.
   if (!IsStopgapEnabled() ||
@@ -308,8 +310,6 @@ void AddToHomescreenDataFetcher::OnDidGetInstallableData(
           InstallableStatusCode::MANIFEST_PARSING_OR_NETWORK_ERROR)) {
     shortcut_info_.manifest_url = (*data.manifest_url);
   }
-  // Save the splash screen URL for the later download.
-  shortcut_info_.UpdateBestSplashIcon(*data.manifest);
 
   installable_manager_->GetData(
       ParamsToFetchPrimaryIcon(),
@@ -363,6 +363,7 @@ void AddToHomescreenDataFetcher::OnDidPerformInstallableCheck(
   if (!IsStopgapEnabled()) {
     bool webapk_compatible =
         (data.errors.empty() && data.installable_check_passed &&
+         data.manifest &&
          WebappsUtils::AreWebManifestUrlsWebApkCompatible(*data.manifest));
 
     if (!webapk_compatible) {
@@ -398,7 +399,7 @@ void AddToHomescreenDataFetcher::OnDidPerformInstallableCheck(
   }
 
   const bool eligible = ArePageAndManifestUrlsEligibleForWebApk(
-                            shortcut_info_.url, *data.manifest) &&
+                            shortcut_info_.url, data.manifest) &&
                         AllErrorsAreClassification(data.errors);
 
   if (!eligible) {

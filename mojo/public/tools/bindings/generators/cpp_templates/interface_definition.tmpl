@@ -23,10 +23,8 @@
   {{struct.name}}DataView input_data_view({{params}}, {{message}});
   {{struct_macros.deserialize(struct, "input_data_view", "p_%s", "success")}}
   if (!success) {
-    ReportValidationErrorForMessage(
-        {{message}},
-        mojo::internal::VALIDATION_ERROR_DESERIALIZATION_FAILED,
-        {{class_name}}::Name_, {{method_number}}, {{is_response}});
+    mojo::internal::ReportDeserializationErrorForMessage(
+        {{message}}, {{class_name}}::Name_, {{method_number}}, {{is_response}});
     return false;
   }
 {%- endmacro %}
@@ -149,15 +147,11 @@ const char* {{interface.name}}::MessageToMethodName_(mojo::Message& message) {
 uint32_t {{interface.name}}::{{method.name}}_Sym::IPCStableHash() {
   // This method's address is used for identifying the mojo method name after
   // symbolization. So each IPCStableHash should have a unique address.
-  // We cannot use NO_CODE_FOLDING() here - it relies on the uniqueness of
-  // __LINE__ value, which is not unique across different mojo modules.
-  // The code below is very similar to NO_CODE_FOLDING, but it uses a unique
-  // hash instead of __LINE__.
+  // Returning a unique hash ensures that the function body is unique, and thus
+  // prevents identical code folding (except for the variants of the same
+  // method, e.g. blink and non-blink, which is fine).
 {%-     set message_name = "%s::%s::%s"|format(namespace_as_string, interface.name, method.name) %}
-  static constexpr uint32_t kHash = {{message_name|ipc_hash}};  // IPCStableHash for {{message_name}}
-  const uint32_t hash = kHash;
-  base::debug::Alias(&hash);
-  return hash;
+  return {{message_name|ipc_hash}};  // IPCStableHash for {{message_name}}
 }
 {%-   endfor %}
 # endif // !BUILDFLAG(IS_FUCHSIA)
@@ -178,7 +172,7 @@ bool {{class_name}}::{{method.name}}({{interface_macros.declare_sync_method_para
 {%- for method in interface.methods -%}
 {%-   if method.response_parameters != None %}
 {%-     if method.sync %}
-class {{class_name}}_{{method.name}}_HandleSyncResponse
+class {{class_name}}_{{method.name}}_HandleSyncResponse final
     : public mojo::MessageReceiver {
  public:
   {{class_name}}_{{method.name}}_HandleSyncResponse(
@@ -215,7 +209,7 @@ class {{class_name}}_{{method.name}}_HandleSyncResponse
 };
 {%-   endif %}
 
-class {{class_name}}_{{method.name}}_ForwardToCallback
+class {{class_name}}_{{method.name}}_ForwardToCallback final
     : public mojo::MessageReceiver {
  public:
   {{class_name}}_{{method.name}}_ForwardToCallback(
@@ -374,61 +368,21 @@ void {{proxy_name}}::{{method.name}}(
 {%-     set response_params_struct = method.response_param_struct %}
 {%-     set params_description =
             "%s.%s response"|format(interface.name, method.name) %}
-class {{class_name}}_{{method.name}}_ProxyToResponder : public ::mojo::internal::ProxyToResponder {
+class {{class_name}}_{{method.name}}_ProxyToResponder {
  public:
-{%-      if method.result_response != None -%}
-{%        set response_type = method.response_parameters[0].kind %}
   static {{class_name}}::{{method.name}}Callback CreateCallback(
       ::mojo::Message& message,
       std::unique_ptr<mojo::internal::ResponderThunk>&& responder) {
-    std::unique_ptr<{{class_name}}_{{method.name}}_ProxyToResponder> proxy(
-        new {{class_name}}_{{method.name}}_ProxyToResponder(
-            message, std::move(responder)));
-    return base::BindOnce(&Transform)
-      .Then(base::BindOnce(&{{class_name}}_{{method.name}}_ProxyToResponder::Run,
-                          std::move(proxy)));
-  }
-
-  static {{response_type|cpp_wrapper_call_type}} Transform({{interface_macros.result_response_to_expected(method.result_response)}} in) {
-    return in.has_value() ? {{response_type|get_qualified_name_for_kind}}::NewSuccess(std::move(in.value())) :
-                            {{response_type|get_qualified_name_for_kind}}::NewFailure(std::move(in.error()));
-  }
-
-{%      else %}
-  static {{class_name}}::{{method.name}}Callback CreateCallback(
-      ::mojo::Message& message,
-      std::unique_ptr<mojo::internal::ResponderThunk>&& responder) {
-    std::unique_ptr<{{class_name}}_{{method.name}}_ProxyToResponder> proxy(
-        new {{class_name}}_{{method.name}}_ProxyToResponder(
-            message, std::move(responder)));
-    return base::BindOnce(&{{class_name}}_{{method.name}}_ProxyToResponder::Run,
-                          std::move(proxy));
-  }
-{%-      endif %}
-
-  ~{{class_name}}_{{method.name}}_ProxyToResponder() {
+    return ::mojo::internal::ProxyToResponder::CreateCallback(
+        &Run, message, std::move(responder)
 #if DCHECK_IS_ON()
-    if (responder_) {
-      // If we're being destroyed without being run, we want to ensure the
-      // binding endpoint has been closed. This checks for that asynchronously.
-      // We pass a bound generated callback to handle the response so that any
-      // resulting DCHECK stack will have useful interface type information.
-      // Instantiate a ScopedFizzleBlockShutdownTasks to allow this request to
-      // fizzle if this happens after shutdown and the endpoint is bound to a
-      // BLOCK_SHUTDOWN sequence.
-      base::ThreadPoolInstance::ScopedFizzleBlockShutdownTasks fizzler;
-      responder_->IsConnectedAsync(base::BindOnce(&OnIsConnectedComplete));
-    }
+        ,
+        &OnIsConnectedComplete
 #endif
+    );
   }
 
  private:
-  {{class_name}}_{{method.name}}_ProxyToResponder(
-      ::mojo::Message& message,
-      std::unique_ptr<mojo::internal::ResponderThunk>&& responder)
-      : ::mojo::internal::ProxyToResponder(message, std::move(responder)) {
-  }
-
 #if DCHECK_IS_ON()
   static void OnIsConnectedComplete(bool connected) {
     DCHECK(!connected)
@@ -439,8 +393,17 @@ class {{class_name}}_{{method.name}}_ProxyToResponder : public ::mojo::internal:
   }
 #endif
 
-  void Run(
-      {{interface_macros.declare_params("in_", method.response_parameters)}});
+{%-      if method.result_response != None %}
+  static void Run(
+      ::mojo::internal::ProxyToResponder* proxy,
+      {{interface_macros.result_response_to_expected(method.result_response)}} in_expected_result);
+{%-      else %}
+  static void Run(
+      ::mojo::internal::ProxyToResponder* proxy
+{%-        if method.response_parameters %},
+      {{interface_macros.declare_params("in_", method.response_parameters)}}
+{%-        endif %});
+{%-      endif %}
 };
 
 bool {{class_name}}_{{method.name}}_ForwardToCallback::Accept(
@@ -467,8 +430,22 @@ bool {{class_name}}_{{method.name}}_ForwardToCallback::Accept(
   return true;
 }
 
+{%-     if method.result_response != None %}
 void {{class_name}}_{{method.name}}_ProxyToResponder::Run(
-    {{interface_macros.declare_params("in_", method.response_parameters)}}) {
+    ::mojo::internal::ProxyToResponder* proxy,
+    {{interface_macros.result_response_to_expected(method.result_response)}} in_expected_result) {
+{%-       set response_type = method.response_parameters[0].kind %}
+  auto in_{{method.response_parameters[0].name}} =
+      in_expected_result.has_value()
+          ? {{response_type|get_qualified_name_for_kind}}::NewSuccess(std::move(in_expected_result.value()))
+          : {{response_type|get_qualified_name_for_kind}}::NewFailure(std::move(in_expected_result.error()));
+{%-     else %}
+void {{class_name}}_{{method.name}}_ProxyToResponder::Run(
+    ::mojo::internal::ProxyToResponder* proxy
+{%-       if method.response_parameters %},
+    {{interface_macros.declare_params("in_", method.response_parameters)}}
+{%-       endif %}) {
+{%-     endif %}
 #if BUILDFLAG(MOJO_TRACE_ENABLED)
 {%-     set event_name = "Send reply %s::%s::%s"
                % (namespace_as_string, class_name, method.name) %}
@@ -478,27 +455,17 @@ void {{class_name}}_{{method.name}}_ProxyToResponder::Run(
                                  parameter_group="async_response_parameters",
                                  dereference_parameters=False)}}
 #endif
-{{interface_macros.build_message_flags(True, "is_sync_", "true", "false",
-                                       "false", "kFlags")}}
 {{interface_macros.build_serialized_message(
     message_name, method, "in_%s", response_params_struct,
-    response_params_description, "kFlags", "message", method.send_validation)}}
+    response_params_description, "proxy->response_flags()", "message",
+    method.send_validation)}}
 
 #if defined(ENABLE_IPC_FUZZER)
   message.set_interface_name({{class_name}}::Name_);
   message.set_method_name("{{method.name}}");
 #endif
 
-  message.set_request_id(request_id_);
-  message.set_trace_nonce(trace_nonce_);
-  ::mojo::internal::SendMojoMessage(*responder_, message);
-  // SendMojoMessage() fails silently if the responder connection is closed,
-  // or if the message is malformed.
-  //
-  // TODO(darin): If Accept() returns false due to a malformed message, that
-  // may be good reason to close the connection. However, we don't have a
-  // way to do that from here. We should add a way.
-  responder_ = nullptr;
+  proxy->SendResponse(message);
 }
 {%-   endif -%}
 

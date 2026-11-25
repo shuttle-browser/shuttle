@@ -14,13 +14,16 @@
 #include "base/functional/bind.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/weak_ptr.h"
+#include "base/run_loop.h"
 #include "base/task/single_thread_task_runner.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/task_environment.h"
 #include "base/test/test_simple_task_runner.h"
 #include "chrome/browser/apps/app_shim/app_shim_host_bootstrap_mac.h"
 #include "chrome/common/mac/app_shim.mojom.h"
 #include "content/public/test/browser_task_environment.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
+#include "mojo/public/cpp/bindings/pending_remote.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
 namespace {
@@ -39,6 +42,9 @@ class TestingAppShim : public chrome::mojom::AppShim {
   mojo::PendingReceiver<chrome::mojom::AppShimHostBootstrap>
   GetHostBootstrapReceiver() {
     return host_bootstrap_remote_.BindNewPipeAndPassReceiver();
+  }
+  mojo::Remote<chrome::mojom::AppShimHostBootstrap>& host_bootstrap_remote() {
+    return host_bootstrap_remote_;
   }
 
   chrome::mojom::AppShimLaunchResult GetLaunchResult() const {
@@ -62,7 +68,10 @@ class TestingAppShim : public chrome::mojom::AppShim {
   void CreateCommandDispatcherForWidget(uint64_t widget_id) override {}
   void SetUserAttention(
       chrome::mojom::AppShimAttentionType attention_type) override {}
-  void SetBadgeLabel(const std::string& badge_label) override {}
+  void SetBadgeLabel(const std::string& badge_label,
+                     SetBadgeLabelCallback callback) override {
+    std::move(callback).Run(chrome::mojom::AppShimBadgeResult::kSuccess);
+  }
   void UpdateProfileMenu(std::vector<chrome::mojom::ProfileMenuItemPtr>
                              profile_menu_items) override {}
   void UpdateApplicationDockMenu(
@@ -73,6 +82,7 @@ class TestingAppShim : public chrome::mojom::AppShim {
           provider) override {}
   void RequestNotificationPermission(
       RequestNotificationPermissionCallback callback) override {}
+  void SynchronizeNotificationPermissionStatus() override {}
   void BindChildHistogramFetcherFactory(
       mojo::PendingReceiver<metrics::mojom::ChildHistogramFetcherFactory>
           receiver) override {}
@@ -133,6 +143,16 @@ class TestingAppShimHostBootstrap : public AppShimHostBootstrap {
 
 const char kTestAppId[] = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
 
+chrome::mojom::AppShimInfoPtr MakeAppShimInfo(
+    chrome::mojom::AppShimLaunchType launch_type) {
+  auto app_shim_info = chrome::mojom::AppShimInfo::New();
+  app_shim_info->profile_path = base::FilePath("Profile 1");
+  app_shim_info->app_id = kTestAppId;
+  app_shim_info->app_url = GURL("https://example.com");
+  app_shim_info->launch_type = launch_type;
+  return app_shim_info;
+}
+
 class AppShimHostTest : public testing::Test,
                         public AppShimHostBootstrap::Client,
                         public AppShimHost::Client {
@@ -152,16 +172,34 @@ class AppShimHostTest : public testing::Test,
   chrome::mojom::AppShimHost* GetMojoHost() { return host_remote_.get(); }
 
   void DoOnShimConnected(chrome::mojom::AppShimLaunchType launch_type) {
-    auto app_shim_info = chrome::mojom::AppShimInfo::New();
-    app_shim_info->profile_path = base::FilePath("Profile 1");
-    app_shim_info->app_id = kTestAppId;
-    app_shim_info->app_url = GURL("https://example.com");
-    app_shim_info->launch_type = launch_type;
     // Ownership of TestingAppShimHostBootstrap will be transferred to its host.
     (new TestingAppShimHostBootstrap(shim_->GetHostBootstrapReceiver()))
         ->OnShimConnected(host_remote_.BindNewPipeAndPassReceiver(),
-                          std::move(app_shim_info),
+                          MakeAppShimInfo(launch_type),
                           shim_->GetOnShimConnectedCallback());
+  }
+
+  // Sends OnShimConnected over the bootstrap mojo pipe, so that the
+  // implementation receives a real mojo reply callback.
+  void DoOnShimConnectedOverMojo(chrome::mojom::AppShimLaunchType launch_type) {
+    auto app_shim_info = MakeAppShimInfo(launch_type);
+    app_shim_info->notification_action_handler =
+        notification_action_handler_.InitWithNewPipeAndPassReceiver();
+    new TestingAppShimHostBootstrap(shim_->GetHostBootstrapReceiver());
+    shim_->host_bootstrap_remote()->OnShimConnected(
+        host_remote_.BindNewPipeAndPassReceiver(), std::move(app_shim_info),
+        shim_->GetOnShimConnectedCallback());
+  }
+
+  bool IsBootstrapRemoteConnected() {
+    return shim_->host_bootstrap_remote().is_connected();
+  }
+
+  void WaitForBootstrapRemoteDisconnect() {
+    base::RunLoop run_loop;
+    shim_->host_bootstrap_remote().set_disconnect_handler(
+        run_loop.QuitClosure());
+    run_loop.Run();
   }
 
   chrome::mojom::AppShimLaunchResult GetLaunchResult() {
@@ -178,8 +216,10 @@ class AppShimHostTest : public testing::Test,
     ++launch_count_;
     if (bootstrap->GetLaunchType() == chrome::mojom::AppShimLaunchType::kNormal)
       ++launch_now_count_;
-    host_ = std::make_unique<TestingAppShimHost>(this, bootstrap->GetAppId(),
-                                                 bootstrap->GetProfilePath());
+    if (!host_) {
+      host_ = std::make_unique<TestingAppShimHost>(this, bootstrap->GetAppId(),
+                                                   bootstrap->GetProfilePath());
+    }
     if (launch_result_ == chrome::mojom::AppShimLaunchResult::kSuccess)
       host_->OnBootstrapConnected(std::move(bootstrap));
     else
@@ -192,7 +232,10 @@ class AppShimHostTest : public testing::Test,
       web_app::LaunchShimUpdateBehavior update_behavior,
       web_app::ShimLaunchMode launch_mode,
       apps::ShimLaunchedCallback launched_callback,
-      apps::ShimTerminatedCallback terminated_callback) override {}
+      apps::ShimTerminatedCallback terminated_callback) override {
+    launched_callback_ = std::move(launched_callback);
+    terminated_callback_ = std::move(terminated_callback);
+  }
   void OnShimProcessDisconnected(AppShimHost* host) override {
     DCHECK_EQ(host, host_.get());
     host_ = nullptr;
@@ -221,6 +264,9 @@ class AppShimHostTest : public testing::Test,
   int launch_now_count_ = 0;
   int close_count_ = 0;
   int focus_count_ = 0;
+  apps::ShimLaunchedCallback launched_callback_;
+  apps::ShimTerminatedCallback terminated_callback_;
+  std::unique_ptr<TestingAppShimHost> host_;
 
  private:
   void SetUp() override {
@@ -235,15 +281,15 @@ class AppShimHostTest : public testing::Test,
 
   std::unique_ptr<AppShimHostBootstrap> launched_bootstrap_;
 
-  // AppShimHost will destroy itself in AppShimHost::Close, so use a weak
-  // pointer here to avoid lifetime issues.
-  std::unique_ptr<TestingAppShimHost> host_;
   mojo::Remote<chrome::mojom::AppShimHost> host_remote_;
+  mojo::PendingRemote<mac_notifications::mojom::MacNotificationActionHandler>
+      notification_action_handler_;
 };
 
 }  // namespace
 
 TEST_F(AppShimHostTest, TestOnShimConnectedWithHandler) {
+  base::HistogramTester histogram_tester;
   AppShimHostBootstrap::SetClient(this);
   DoOnShimConnected(chrome::mojom::AppShimLaunchType::kNormal);
   EXPECT_EQ(kTestAppId, host()->GetAppId());
@@ -261,6 +307,8 @@ TEST_F(AppShimHostTest, TestOnShimConnectedWithHandler) {
   RunUntilIdle();
   EXPECT_EQ(1, close_count_);
   EXPECT_EQ(nullptr, host());
+  EXPECT_TRUE(
+      histogram_tester.GetTotalCountsForPrefix("Apps.AppShim.").empty());
   AppShimHostBootstrap::SetClient(nullptr);
 }
 
@@ -276,11 +324,145 @@ TEST_F(AppShimHostTest, TestNoLaunchNow) {
   AppShimHostBootstrap::SetClient(nullptr);
 }
 
+// A bootstrap may be destroyed while its OnShimConnected reply callback is
+// still pending, e.g. when browser shutdown drops queued host-connection
+// callbacks. This must close the channel instead of crashing.
+TEST_F(AppShimHostTest, DestroyBootstrapWithPendingCallback) {
+  // A null client makes OnShimConnected drop the bootstrap without running
+  // its callback, as happens when the AppShimListener is destroyed at
+  // shutdown.
+  AppShimHostBootstrap::SetClient(nullptr);
+  DoOnShimConnectedOverMojo(chrome::mojom::AppShimLaunchType::kNormal);
+  WaitForBootstrapRemoteDisconnect();
+  EXPECT_FALSE(IsBootstrapRemoteConnected());
+}
+
 TEST_F(AppShimHostTest, TestFailLaunch) {
   AppShimHostBootstrap::SetClient(this);
   launch_result_ = chrome::mojom::AppShimLaunchResult::kAppNotFound;
   DoOnShimConnected(chrome::mojom::AppShimLaunchType::kNormal);
   EXPECT_EQ(chrome::mojom::AppShimLaunchResult::kAppNotFound,
             GetLaunchResult());
+  AppShimHostBootstrap::SetClient(nullptr);
+}
+
+TEST_F(AppShimHostTest, TestLifecycleMetricsBackgroundLaunch) {
+  base::HistogramTester histogram_tester;
+  host_ = std::make_unique<TestingAppShimHost>(this, kTestAppId,
+                                               base::FilePath("Profile 1"));
+  host_->LaunchShim(web_app::ShimLaunchMode::kBackground);
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Background",
+      AppShimHost::LifecycleState::kLaunchInitiated, 1);
+
+  // Simulate shim process successfully launching.
+  ASSERT_TRUE(launched_callback_);
+  std::move(launched_callback_).Run(base::Process::Current());
+
+  histogram_tester.ExpectBucketCount("Apps.AppShim.Lifecycle.Background",
+                                     AppShimHost::LifecycleState::kPidReceived,
+                                     1);
+
+  // Simulate bootstrap connecting.
+  AppShimHostBootstrap::SetClient(this);
+  DoOnShimConnected(chrome::mojom::AppShimLaunchType::kRegisterOnly);
+
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Background",
+      AppShimHost::LifecycleState::kBootstrapConnected, 1);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToConnect.Background", 1);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToFailure.Background", 0);
+  histogram_tester.ExpectUniqueSample("Apps.AppShim.LaunchResult.Background",
+                                      AppShimHost::LaunchResult::kSuccess, 1);
+
+  // Simulate disconnect.
+  SimulateDisconnect();
+  RunUntilIdle();
+
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Background",
+      AppShimHost::LifecycleState::kTerminatedAfterConnect, 1);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.Lifecycle.Background", 4);
+  AppShimHostBootstrap::SetClient(nullptr);
+}
+
+TEST_F(AppShimHostTest, TestLifecycleMetricsFailedLaunch) {
+  base::HistogramTester histogram_tester;
+  host_ = std::make_unique<TestingAppShimHost>(this, kTestAppId,
+                                               base::FilePath("Profile 1"));
+  host_->LaunchShim(web_app::ShimLaunchMode::kNormal);
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Normal",
+      AppShimHost::LifecycleState::kLaunchInitiated, 1);
+
+  // Simulate initial launch failing; this triggers an automatic recreate retry.
+  ASSERT_TRUE(launched_callback_);
+  std::move(launched_callback_).Run(base::Process());
+
+  histogram_tester.ExpectBucketCount("Apps.AppShim.Lifecycle.Normal",
+                                     AppShimHost::LifecycleState::kLaunchFailed,
+                                     1);
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Normal",
+      AppShimHost::LifecycleState::kLaunchInitiated, 2);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToFailure.Normal", 1);
+
+  // Simulate recreated launch also failing.
+  ASSERT_TRUE(launched_callback_);
+  std::move(launched_callback_).Run(base::Process());
+
+  histogram_tester.ExpectBucketCount("Apps.AppShim.Lifecycle.Normal",
+                                     AppShimHost::LifecycleState::kLaunchFailed,
+                                     2);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.Lifecycle.Normal", 4);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToFailure.Normal", 2);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToConnect.Normal", 0);
+  histogram_tester.ExpectUniqueSample(
+      "Apps.AppShim.LaunchResult.Normal",
+      AppShimHost::LaunchResult::kFailedProcessCreation, 1);
+  EXPECT_EQ(1, close_count_);
+  EXPECT_EQ(nullptr, host());
+}
+
+TEST_F(AppShimHostTest, TestLifecycleMetricsDisconnectedBeforeHandshake) {
+  base::HistogramTester histogram_tester;
+  host_ = std::make_unique<TestingAppShimHost>(this, kTestAppId,
+                                               base::FilePath("Profile 1"));
+  host_->LaunchShim(web_app::ShimLaunchMode::kNormal);
+
+  // Simulate shim process successfully launching, then terminating before
+  // connecting.
+  ASSERT_TRUE(launched_callback_);
+  std::move(launched_callback_).Run(base::Process::Current());
+  ASSERT_TRUE(terminated_callback_);
+  std::move(terminated_callback_).Run();
+
+  histogram_tester.ExpectBucketCount("Apps.AppShim.Lifecycle.Normal",
+                                     AppShimHost::LifecycleState::kPidReceived,
+                                     1);
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Normal",
+      AppShimHost::LifecycleState::kDisconnectedBeforeHandshake, 1);
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Normal",
+      AppShimHost::LifecycleState::kLaunchInitiated, 2);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToFailure.Normal", 1);
+
+  // Simulate the recreated shim launching and connecting successfully.
+  ASSERT_TRUE(launched_callback_);
+  std::move(launched_callback_).Run(base::Process::Current());
+  AppShimHostBootstrap::SetClient(this);
+  DoOnShimConnected(chrome::mojom::AppShimLaunchType::kNormal);
+
+  histogram_tester.ExpectBucketCount("Apps.AppShim.Lifecycle.Normal",
+                                     AppShimHost::LifecycleState::kPidReceived,
+                                     2);
+  histogram_tester.ExpectBucketCount(
+      "Apps.AppShim.Lifecycle.Normal",
+      AppShimHost::LifecycleState::kBootstrapConnected, 1);
+  histogram_tester.ExpectTotalCount("Apps.AppShim.TimeToConnect.Normal", 1);
+  histogram_tester.ExpectUniqueSample(
+      "Apps.AppShim.LaunchResult.Normal",
+      AppShimHost::LaunchResult::kSuccessAfterRecreate, 1);
   AppShimHostBootstrap::SetClient(nullptr);
 }

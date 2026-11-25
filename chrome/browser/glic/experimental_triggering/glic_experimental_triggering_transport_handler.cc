@@ -6,12 +6,14 @@
 
 #include <memory>
 #include <optional>
+#include <string>
 #include <string_view>
 #include <utility>
 
 #include "base/check.h"
 #include "base/functional/bind.h"
 #include "base/logging.h"
+#include "base/uuid.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/glic/experimental_triggering/actor_log.h"
 #include "chrome/browser/glic/experimental_triggering/glic_experimental_triggering_converters.h"
@@ -29,19 +31,7 @@ namespace {
 
 bool IsTerminalResponse(const ExperimentalTriggeringResponse& response) {
   if (response.task_update.has_value()) {
-    switch (response.task_update->state) {
-      case TaskUpdate::State::kComplete:
-      case TaskUpdate::State::kStopped:
-      case TaskUpdate::State::kFailed:
-        return true;
-      case TaskUpdate::State::kUnknown:
-      case TaskUpdate::State::kStarting:
-      case TaskUpdate::State::kRunning:
-      case TaskUpdate::State::kPaused:
-      case TaskUpdate::State::kYield:
-      case TaskUpdate::State::kResumed:
-        return false;
-    }
+    return response.task_update->IsTerminal();
   }
   if (response.execute_actions_response.has_value()) {
     return true;
@@ -90,6 +80,10 @@ void GlicExperimentalTriggeringTransportHandler::OnMessage(
   if (context_id.empty() && session()) {
     context_id = std::string(session()->GetSessionId());
   }
+  if (context_id.empty()) {
+    context_id = base::Uuid::GenerateRandomV4().AsLowercaseString();
+  }
+  triggering.set_context_id(context_id);
 
   if (!coordinator_) {
     actor::ActorKeyedService* actor_service =
@@ -117,17 +111,19 @@ void GlicExperimentalTriggeringTransportHandler::OnMessage(
     return;
   }
 
-  std::optional<ExperimentalTriggeringResponse> domain_response =
-      coordinator_->OnProtoMessage(
-          context_id, triggering, std::move(result_logger),
-          base::BindRepeating(
-              &GlicExperimentalTriggeringTransportHandler::SendResponse,
-              weak_ptr_factory_.GetWeakPtr()),
-          /*prepared_tab=*/nullptr);
-
-  if (domain_response.has_value()) {
-    SendResponse(std::move(*domain_response));
-  }
+  coordinator_->OnProtoMessage(
+      context_id, triggering, std::move(result_logger),
+      base::BindRepeating(
+          &GlicExperimentalTriggeringTransportHandler::SendResponse,
+          weak_ptr_factory_.GetWeakPtr()),
+      base::BindOnce(
+          [](base::WeakPtr<GlicExperimentalTriggeringTransportHandler> self,
+             std::optional<ExperimentalTriggeringResponse> response) {
+            if (self && response.has_value()) {
+              self->SendResponse(std::move(*response));
+            }
+          },
+          weak_ptr_factory_.GetWeakPtr()));
 }
 
 void GlicExperimentalTriggeringTransportHandler::SendResponse(

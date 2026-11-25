@@ -5,6 +5,8 @@
 #ifndef COMPONENTS_PAGE_CONTENT_ANNOTATIONS_CORE_PAGE_CONTENT_CACHE_H_
 #define COMPONENTS_PAGE_CONTENT_ANNOTATIONS_CORE_PAGE_CONTENT_CACHE_H_
 
+#include <stdint.h>
+
 #include <set>
 
 #include "base/files/file_path.h"
@@ -77,6 +79,12 @@ class PageContentCache {
   // Called when a tab is updated or closed. This will remove any contents
   // stored for the tab.
   void RemovePageContentForTab(int64_t tab_id);
+
+  // Migrates any cached page content from `old_tab_id` to `new_tab_id`. Both
+  // tab IDs must be positive. This should only be called when an existing tab
+  // is assigned a new tab ID (e.g., during session restore or when discarding
+  // a tab by replacing its `WebContents`).
+  void UpdateTabId(int64_t old_tab_id, int64_t new_tab_id);
 
   // Called when the tab state is initialized to perform cleanup of stale
   // entries.

@@ -179,8 +179,21 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//tools/metrics/histograms/metadata/ui/histograms.xml:WebUIHostname) -->
 
+<histogram name="ActivityReporter.IncompleteReports" units="reports"
+    expires_after="2027-01-27">
+  <owner>sorin@chromium.org</owner>
+  <owner>src/components/activity_reporter/OWNERS</owner>
+  <summary>
+    Records the number of activity report update checks still in progress when
+    the activity reporter is destroyed during a clean shutdown. Such reports may
+    have reached the server, but their responses were not processed. Emitted
+    once per session that reports activity; not emitted on Android or after
+    crashes, and rarely on iOS. Typically uploaded on the next browser launch.
+  </summary>
+</histogram>
+
 <histogram name="ActivityReporter.InitialDateLastActiveState"
-    enum="InitialDateLastActiveState" expires_after="2027-01-19">
+    enum="InitialDateLastActiveState" expires_after="2027-05-02">
   <owner>noahrose@google.com</owner>
   <owner>src/components/activity_reporter/OWNERS</owner>
   <summary>
@@ -613,7 +626,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ClientHints.AcceptCHFrame" enum="AcceptCHFrameRestart"
-    expires_after="2027-02-21">
+    expires_after="2027-04-25">
   <owner>victortan@chromium.org</owner>
   <owner>miketaylr@chromium.org</owner>
   <owner>katabolism-finch@google.com</owner>
@@ -626,7 +639,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ClientHints.CriticalCHRestart" enum="CriticalCHRestart"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>victortan@chromium.org</owner>
   <owner>miketaylr@chromium.org</owner>
   <owner>katabolism-finch@google.com</owner>
@@ -890,7 +903,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ComponentUpdater.UpdateCompleteError"
-    enum="UpdateClientErrors" expires_after="2026-12-31">
+    enum="UpdateClientErrors" expires_after="2027-11-01">
   <owner>sorin@chromium.org</owner>
   <owner>src/components/component_updater/OWNERS</owner>
   <summary>The result of an install or an update check.</summary>
@@ -904,7 +917,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ComponentUpdater.UpdateCompleteTime" units="ms"
-    expires_after="2026-12-20">
+    expires_after="2027-11-01">
   <owner>sorin@chromium.org</owner>
   <owner>src/components/component_updater/OWNERS</owner>
   <summary>
@@ -1577,6 +1590,19 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="Feedback.ChromeOSApp.ScreenshotAndTabInfo"
+    enum="FeedbackAppScreenshotAndTabInfo" expires_after="2027-09-30">
+  <owner>khorimoto@google.com</owner>
+  <owner>cros-device-enablement@google.com</owner>
+  <summary>
+    Records whether a screenshot was available and included in a feedback report
+    sent from the ChromeOS feedback app, and whether information about the
+    user's open tabs (the mem_usage_with_title system log) was sent with it. The
+    open-tab information is only sent when both the screenshot and the system
+    and app info are included. Recorded once per report, when the user sends it.
+  </summary>
+</histogram>
+
 <histogram name="Feedback.ChromeOSApp.TimeOnPage.{FeedbackAppPage}" units="s"
     expires_after="2027-01-30">
   <owner>longbowei@google.com</owner>
@@ -1748,7 +1774,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Feedback.NotAllowed.RequestSource" enum="FeedbackSource"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>jlebel@chromium.org</owner>
   <owner>chrome-regionalcapabilities@google.com</owner>
   <summary>
@@ -1853,7 +1879,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Feedback.TrustSafetySentiment.CallTriggerOccurred"
-    enum="TrustSafetySentimentFeatureArea" expires_after="2026-11-15">
+    enum="TrustSafetySentimentFeatureArea" expires_after="2027-11-15">
   <owner>skrakowi@google.com</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -2904,6 +2930,27 @@ chromium-metrics-reviews@google.com.
     is received) respectively.
 
     Recorded when the channel gets unpaused.
+  </summary>
+</histogram>
+
+<histogram name="Mojo.Channel.OffThreadSendQueueTime" units="microseconds"
+    expires_after="2027-04-30">
+  <owner>nafisabedin@google.com</owner>
+  <owner>pasko@chromium.org</owner>
+  <improvement direction="LOWER_IS_BETTER"/>
+  <summary>
+    For a channel-associated Mojo message sent from a thread other than the
+    channel's IO thread, measures the time from
+    IPC::ChannelAssociatedGroupController posting the send task until that task
+    starts running on the IO thread. Time spent afterwards queued while the
+    channel is paused or not yet bound is excluded. Messages sent from the IO
+    thread are not recorded.
+
+    Recorded in the sending process. Senders include the browser UI thread (to
+    renderers) and the renderer main thread (to the browser).
+
+    Sub-sampled to 1/1000 sends to reduce measurement overhead. Only recorded on
+    clients with high-resolution clocks.
   </summary>
 </histogram>
 
@@ -4212,17 +4259,6 @@ chromium-metrics-reviews@google.com.
   </token>
 </histogram>
 
-<histogram name="ReduceAcceptLanguage.AcceptLanguageNegotiationRestart"
-    enum="AcceptLanguageNegotiationRestart" expires_after="2026-07-26">
-  <owner>victortan@chromium.org</owner>
-  <owner>awillia@chromium.org</owner>
-  <owner>miketaylr@chromium.org</owner>
-  <summary>
-    Count of requests restarted or the reason why not restarted when reducing
-    accept-language HTTP header.
-  </summary>
-</histogram>
-
 <histogram name="ReduceAcceptLanguage.AcceptLanguagePrefValueIsEmpty"
     enum="BooleanAvailable" expires_after="M145">
   <owner>victortan@chromium.org</owner>
@@ -4357,7 +4393,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="SB2.DownloadChecks" enum="SB2DownloadChecks"
-    expires_after="2027-02-28">
+    expires_after="2027-05-02">
   <owner>xinghuilu@chromium.org</owner>
   <owner>chrome-counter-abuse-alerts@google.com</owner>
   <summary>
@@ -5134,16 +5170,8 @@ useful for Chirp alerts (go/crca-alerts). -->
   </summary>
 </histogram>
 
-<histogram name="SpellCheck.api.showUI" enum="BooleanEnabled"
-    expires_after="M124">
-  <owner>groby@chromium.org</owner>
-  <summary>
-    The number of times the platform spelling UI was enabled/disabled.
-  </summary>
-</histogram>
-
 <histogram name="SpellCheck.Browser.InitForRendererTime" units="ms"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>sisidovski@chromium.org</owner>
   <owner>chrome-loading@google.com</owner>
   <summary>
@@ -5211,7 +5239,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="SpellCheck.Renderer.InitializeTime" units="ms"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>sisidovski@chromium.org</owner>
   <owner>chrome-loading@google.com</owner>
   <summary>
@@ -5401,7 +5429,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="Style.InvalidationTime" units="microseconds"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>futhark@chromium.org</owner>
   <summary>
     Microseconds spent in StyleEngine::InvalidateStyle. Only samples from high
@@ -5410,7 +5438,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="Style.RebuildLayoutTreeTime" units="microseconds"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>futhark@chromium.org</owner>
   <summary>
     Microseconds spent in RebuildLayoutTree called from Document::UpdateStyle.
@@ -5418,7 +5446,7 @@ useful for Chirp alerts (go/crca-alerts). -->
 </histogram>
 
 <histogram name="Style.RecalcTime" units="microseconds"
-    expires_after="2027-03-01">
+    expires_after="2027-05-02">
   <owner>futhark@chromium.org</owner>
   <summary>
     Microseconds spent in RecalcStyle called from Document::UpdateStyle.
@@ -5862,7 +5890,7 @@ should be kept until we use this API.  -->
 </histogram>
 
 <histogram name="UpdateClient.DownloadTime2{AppID}" units="ms"
-    expires_after="2027-02-14">
+    expires_after="2027-05-02">
   <owner>noahrose@google.com</owner>
   <owner>sorin@chromium.org</owner>
   <summary>

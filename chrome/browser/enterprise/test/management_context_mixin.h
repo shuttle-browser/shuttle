@@ -26,11 +26,16 @@ class ScopedDevicePolicyUpdate;
 }  // namespace ash
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+namespace policy {
+class ScopedManagementServiceOverrideForTesting;
+}  // namespace policy
+
 namespace enterprise::test {
 
 struct ManagementContext {
   bool is_cloud_user_managed = false;
   bool is_cloud_machine_managed = false;
+  bool is_platform_managed = false;
   bool affiliated = false;
 };
 
@@ -62,6 +67,10 @@ class ManagementContextMixin : public InProcessBrowserTestMixin {
   void SetCloudUserPolicies(
       base::flat_map<std::string, std::optional<base::Value>> policy_entries);
 
+  // Updates the user's affiliation status and refreshes the active Chrome
+  // policies accordingly.
+  void SetAffiliation(bool affiliated);
+
 #if BUILDFLAG(IS_CHROMEOS)
   // Returns a scoped object which can be used to set device policies. When that
   // object goes out of scope, the policy update will be applied.
@@ -72,6 +81,13 @@ class ManagementContextMixin : public InProcessBrowserTestMixin {
   // function will overwrite conflicting entries, but will not remove old policy
   // values whose keys don't conflict.
   virtual void SetCloudMachinePolicies(
+      base::flat_map<std::string, std::optional<base::Value>>
+          policy_entries) = 0;
+
+  // Will set the given `policy_entries` for the managed platform. This
+  // function will overwrite conflicting entries, but will not remove old policy
+  // values whose keys don't conflict.
+  virtual void SetPlatformPolicies(
       base::flat_map<std::string, std::optional<base::Value>>
           policy_entries) = 0;
 #endif
@@ -97,6 +113,8 @@ class ManagementContextMixin : public InProcessBrowserTestMixin {
   testing::NiceMock<policy::MockConfigurationPolicyProvider>
       user_policy_provider_;
   ManagementContext management_context_;
+  std::unique_ptr<policy::ScopedManagementServiceOverrideForTesting>
+      scoped_management_service_override_;
 };
 
 }  // namespace enterprise::test

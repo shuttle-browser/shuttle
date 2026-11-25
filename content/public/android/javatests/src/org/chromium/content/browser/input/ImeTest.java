@@ -8,6 +8,7 @@ import android.content.ClipData;
 import android.content.ClipboardManager;
 import android.content.Context;
 import android.graphics.Color;
+import android.os.Build;
 import android.os.SystemClock;
 import android.text.InputType;
 import android.text.SpannableString;
@@ -37,6 +38,7 @@ import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.CriteriaNotSatisfiedException;
+import org.chromium.base.test.util.DisableIf;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.UrlUtils;
@@ -755,6 +757,7 @@ public class ImeTest {
     @Test
     @SmallTest
     @Feature({"TextInput"})
+    @DisabledTest(message = "https://crbug.com/580803463")
     public void testSelectActionBarClearedOnTappingInput() throws Exception {
         mRule.commitText("Sample_Text", 1);
         DOMUtils.longPressNode(mRule.getWebContents(), "input_text");
@@ -1053,6 +1056,7 @@ public class ImeTest {
     @Test
     @SmallTest
     @Feature({"TextInput", "Main"})
+    @DisabledTest(message = "https://crbug.com/580803463")
     public void testRepeatBackspaceKeycode() throws Throwable {
         mRule.focusElement("textarea");
 
@@ -1115,6 +1119,9 @@ public class ImeTest {
     @Test
     @SmallTest
     @Feature({"TextInput", "Main"})
+    @DisableIf.Build(
+            sdk_is_greater_than = Build.VERSION_CODES.BAKLAVA,
+            message = "https://crbug.com/579554693")
     public void testPhysicalKeyboard_AccentKeyCodes() throws Throwable {
         mRule.focusElementAndWaitForStateUpdate("textarea");
         int index = 0;
@@ -1474,6 +1481,7 @@ public class ImeTest {
     @Test
     @SmallTest
     @Feature({"TextInput"})
+    @DisabledTest(message = "https://crbug.com/580803463")
     public void testPastePopupShowAndHide() throws Throwable {
         mRule.commitText("hello", 1);
         mRule.waitAndVerifyUpdateSelection(0, 5, 5, -1, -1);
@@ -1510,6 +1518,7 @@ public class ImeTest {
     @Test
     @SmallTest
     @Feature({"TextInput"})
+    @DisabledTest(message = "https://crbug.com/580803463")
     public void testSelectionClearedOnKeyEvent() throws Throwable {
         mRule.commitText("Sample_Text", 1);
         mRule.waitAndVerifyUpdateSelection(0, 11, 11, -1, -1);

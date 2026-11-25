@@ -5,6 +5,7 @@
 #ifndef CHROME_BROWSER_NTP_CUSTOMIZATION_NTP_ANDROID_CUSTOM_BACKGROUND_SERVICE_H_
 #define CHROME_BROWSER_NTP_CUSTOMIZATION_NTP_ANDROID_CUSTOM_BACKGROUND_SERVICE_H_
 
+#include <memory>
 #include <optional>
 #include <string>
 
@@ -52,11 +53,31 @@ class NtpAndroidCustomBackgroundService
   ~NtpAndroidCustomBackgroundService() override;
 
   void SetThemeCollectionBridge(NtpThemeCollectionBridge* bridge);
-  void SetSyncedThemeBridge(NtpSyncedThemeBridge* bridge);
+
+  // Returns the bridge to the Java NtpSyncedThemeBridge of this profile,
+  // creating it on first use. Java asks for it when NtpSyncedThemeManager
+  // attaches to the profile; until then no synced theme is reported to Java.
+  NtpSyncedThemeBridge* GetOrCreateSyncedThemeBridge();
+
+  // Replaces the bridge synced themes are reported to; null detaches it.
+  void SetSyncedThemeBridgeForTesting(
+      std::unique_ptr<NtpSyncedThemeBridge> bridge);
+
+  // Delivers the theme stored in preferences to the synced theme bridge as if
+  // it had just arrived from sync. Sync doesn't re-emit a theme that is
+  // already stored, e.g. one delivered in a previous session or before the
+  // bridge was attached, so the bridge calls this when it attaches.
+  void GetStoredContinuousThemeAndNotify();
 
   // Returns the DataTypeControllerDelegate for the THEMES_ANDROID sync data
   // type, or nullptr if sync is disabled.
   base::WeakPtr<syncer::DataTypeControllerDelegate> GetSyncControllerDelegate();
+
+  // Exposes whether the underlying Android theme sync bridge is ready.
+  bool IsThemeSyncReady() const { return is_theme_sync_ready_; }
+
+  // Callback invoked when the underlying theme sync bridge reaches readiness.
+  void OnThemeSyncReady();
 
   // NtpCustomBackgroundServiceBase:
   void SetCustomBackgroundInfo(const GURL& background_url,
@@ -67,6 +88,7 @@ class NtpAndroidCustomBackgroundService
                                const std::string& collection_id) override;
   void SelectLocalBackgroundImage(const base::FilePath& path) override;
   void ResetCustomBackgroundInfo() override;
+  void RefreshBackgroundIfNeeded() override;
   void OnNextCollectionImageAvailable() override;
   std::optional<int> GetNextRefreshTimestamp() const override;
 
@@ -136,14 +158,15 @@ class NtpAndroidCustomBackgroundService
   // has been reset to default from sync.
   void ApplyDefaultThemeFromSync();
 
-  // Re-delivers the theme collection currently stored in preferences to the
-  // synced theme bridge, as if it had just arrived from sync. Posted from
-  // SetSyncedThemeBridge() so that a theme that was synced before the bridge
-  // attached (e.g. in a previous session) still reaches Java.
-  void ReApplySyncedTheme();
+  // The profile this service belongs to. Only handed to the Java peer of
+  // `synced_theme_bridge_`, which calls back into this service by profile.
+  const raw_ptr<Profile> profile_;
 
   raw_ptr<NtpThemeCollectionBridge> theme_collection_bridge_ = nullptr;
-  raw_ptr<NtpSyncedThemeBridge> synced_theme_bridge_ = nullptr;
+
+  // The bridge to the Java NtpSyncedThemeBridge; null until Java first asks
+  // for it, see GetOrCreateSyncedThemeBridge().
+  std::unique_ptr<NtpSyncedThemeBridge> synced_theme_bridge_;
 
   // Cache of the last user-selected or active custom background state, used
   // to differentiate between daily refresh setup (first select) and
@@ -156,17 +179,20 @@ class NtpAndroidCustomBackgroundService
       theme_sync_bridge_;
 
   // True only while ApplyThemeCollectionFromSync() writes the custom
-  // background dictionary and while ReApplySyncedTheme() runs, so that the
-  // resulting NotifyAboutBackgrounds() is routed to the synced theme bridge as
-  // a sync update. The Java callback runs synchronously within that write, so
-  // it must not re-enter this service with a local write, which would be
-  // misrouted as a sync update too.
+  // background dictionary, so that the resulting NotifyAboutBackgrounds() is
+  // routed to the synced theme bridge as a sync update. The Java callback runs
+  // synchronously within that write, so it must not re-enter this service with
+  // a local write, which would be misrouted as a sync update too.
   bool applying_sync_update_ = false;
 
   // True while updating the primary color in the background preference
   // dictionary. Used to suppress re-entrant NotifyAboutBackgrounds() calls
   // from PrefChangeRegistrar.
   bool updating_color_pref_ = false;
+
+  // True once the underlying theme sync bridge has reached initial readiness
+  // (or immediately if theme sync is disabled).
+  bool is_theme_sync_ready_ = true;
 
   base::WeakPtrFactory<NtpAndroidCustomBackgroundService> weak_ptr_factory_{
       this};

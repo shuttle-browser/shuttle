@@ -2,15 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {assert} from '//resources/js/assert.js';
+import {assert, assertNotReached} from '//resources/js/assert.js';
 import {loadTimeData} from '//resources/js/load_time_data.js';
 
 import type {VisualBrowserProxy} from '../app/visual_browser_proxy.js';
 import {VisualBrowserProxyImpl} from '../app/visual_browser_proxy.js';
-import type {AudioBrowserProxy} from '../read_aloud/audio_browser_proxy.js';
-import {AudioBrowserProxyImpl} from '../read_aloud/audio_browser_proxy.js';
 import {previousReadHighlightClass} from '../read_aloud/movement.js';
-import {getReadAloudModel} from '../read_aloud/read_aloud_model_browser_proxy.js';
+import {getReadAloudModel} from '../read_aloud/read_aloud_model.js';
 import {ReadAloudNode} from '../read_aloud/read_aloud_types.js';
 import {SpeechController} from '../read_aloud/speech_controller.js';
 import {isBlockTrackingEnabled, isDistilledByReadability, LOG_EMPTY_DELAY_MS} from '../shared/common.js';
@@ -141,7 +139,27 @@ export enum ContentType {
   NO_SELECTABLE_CONTENT,
   // There is content displayed in Reading mode.
   HAS_CONTENT,
+  // There is no content to display, Reading mode was opened to translate, and
+  // the user can try to select text to translate.
+  NO_CONTENT_TRANSLATION,
 }
+
+// Whether content is hidden because of a translation of it. Mirrors the
+// renderer's ReadAnythingAppModel::TranslationState, which is passed as a
+// number.
+// LINT.IfChange(ReadAnythingTranslationState)
+export enum TranslationState {
+  // The content is shown as usual.
+  NONE = 0,
+  // The content is drawn (so it can be translated) but kept behind the loading
+  // screen until it's translated.
+  AWAITING = 1,
+  // The translation failed, so the translation empty state is shown instead of
+  // the untranslated content, which is drawn but hidden so it can still be
+  // translated.
+  FAILED = 2,
+}
+// LINT.ThenChange(//chrome/renderer/accessibility/read_anything/read_anything_app_model.h:ReadAnythingTranslationState)
 
 export interface ContentState {
   type: ContentType;
@@ -166,6 +184,13 @@ const CONTENT_STATES: Record<ContentType, ContentState> = {
     imagePath: './images/empty_state.svg',
     darkImagePath: './images/empty_state.svg',
     heading: loadTimeData.getString('emptyStateHeader'),
+    subheading: loadTimeData.getString('emptyStateSubheader'),
+  },
+  [ContentType.NO_CONTENT_TRANSLATION]: {
+    type: ContentType.NO_CONTENT_TRANSLATION,
+    imagePath: './images/empty_state.svg',
+    darkImagePath: './images/empty_state.svg',
+    heading: loadTimeData.getString('emptyStateTranslationHeader'),
     subheading: loadTimeData.getString('emptyStateSubheader'),
   },
   [ContentType.NO_SELECTABLE_CONTENT]: {
@@ -198,19 +223,16 @@ export class ContentController {
       VisualBrowserProxyImpl.getInstance();
   private contentBrowserProxy_: ContentBrowserProxy =
       ContentBrowserProxyImpl.getInstance();
-  private audioBrowserProxy_: AudioBrowserProxy =
-      AudioBrowserProxyImpl.getInstance();
 
   private readonly listeners_: ContentListener[] = [];
   private currentState_: ContentState = CONTENT_STATES[ContentType.NO_CONTENT];
   private previousRootId_?: number;
 
-  // Whether the browser is waiting for the content to be translated. While
-  // true, content is drawn (so it can be translated) but the state stays
-  // LOADING so it's kept behind the loading screen.
-  private isAwaitingTranslation_: boolean = false;
-  // Whether content was drawn while awaiting translation, so the transition
-  // to HAS_CONTENT was deferred until the translation is shown or fails.
+  // Whether content is kept behind the loading screen or the translation empty
+  // state because of a translation.
+  private translationState_: TranslationState = TranslationState.NONE;
+  // Whether content was drawn but is hidden until it's translated, either
+  // while awaiting translation or after a translation failed.
   private isHidingContentForTranslation_: boolean = false;
 
   // Holds the text nodes extracted from the current rendered distillation.
@@ -224,11 +246,11 @@ export class ContentController {
     this.contentBrowserProxy_.onNodeWillBeDeleted.addListener(
         this.onNodeWillBeDeleted.bind(this));
     this.contentBrowserProxy_.showEmpty.addListener(this.setEmpty.bind(this));
-    this.visualBrowserProxy_.onAwaitingTranslationChanged.addListener(
-        this.setAwaitingTranslation_.bind(this));
+    this.contentBrowserProxy_.onTranslationStateChanged.addListener(
+        () => this.setTranslationState_(
+            this.contentBrowserProxy_.getTranslationState()));
     // The browser may have signaled before this listener was registered.
-    this.isAwaitingTranslation_ =
-        this.visualBrowserProxy_.isAwaitingTranslation();
+    this.translationState_ = this.contentBrowserProxy_.getTranslationState();
   }
 
   getState(): ContentState {
@@ -242,7 +264,15 @@ export class ContentController {
   }
 
   setState(type: ContentType) {
-    if (type === ContentType.HAS_CONTENT && this.isAwaitingTranslation_) {
+    if (type === ContentType.HAS_CONTENT &&
+        this.translationState_ === TranslationState.FAILED) {
+      // Keep showing the translation empty state instead of the untranslated
+      // content, which is drawn so it can still be translated.
+      this.applyState_(
+          ContentType.NO_CONTENT_TRANSLATION, /*hideForTranslation=*/ true);
+    } else if (
+        type === ContentType.HAS_CONTENT &&
+        this.translationState_ === TranslationState.AWAITING) {
       // Keep the state matching what's shown: the content is drawn so it can
       // be translated, but stays behind the loading screen until then.
       this.applyState_(ContentType.LOADING, /*hideForTranslation=*/ true);
@@ -264,17 +294,40 @@ export class ContentController {
     this.listeners_.forEach(l => l.onContentStateChange());
   }
 
-  private setAwaitingTranslation_(awaiting: boolean) {
-    if (awaiting === this.isAwaitingTranslation_) {
+  private setTranslationState_(state: TranslationState) {
+    if (state === this.translationState_) {
       return;
     }
-    this.isAwaitingTranslation_ = awaiting;
-    if (awaiting && this.hasContent()) {
-      // Content that's already shown goes back behind the loading screen.
-      this.applyState_(ContentType.LOADING, /*hideForTranslation=*/ true);
-    } else if (!awaiting && this.isHidingContentForTranslation_) {
-      // Whether the translation is shown or failed, the content is now shown.
-      this.applyState_(ContentType.HAS_CONTENT, /*hideForTranslation=*/ false);
+    this.translationState_ = state;
+    // Content that's drawn, whether it's shown or already hidden for a
+    // translation, stays drawn so that it can be translated.
+    const hasDrawnContent =
+        this.hasContent() || this.isHidingContentForTranslation_;
+    switch (state) {
+      case TranslationState.AWAITING:
+        if (hasDrawnContent) {
+          this.applyState_(ContentType.LOADING, /*hideForTranslation=*/ true);
+        }
+        break;
+      case TranslationState.FAILED:
+        // Show the translation empty state instead of the untranslated
+        // content, whether it's shown or hidden behind the loading screen.
+        this.applyState_(
+            ContentType.NO_CONTENT_TRANSLATION,
+            /*hideForTranslation=*/ hasDrawnContent);
+        break;
+      case TranslationState.NONE:
+        // The content was translated, the user made a selection, or reading
+        // mode stopped waiting, so show the content.
+        if (this.isHidingContentForTranslation_) {
+          this.applyState_(
+              ContentType.HAS_CONTENT, /*hideForTranslation=*/ false);
+        }
+        break;
+      default:
+        // The state comes from the renderer, which only sends the values in
+        // TranslationState.
+        assertNotReached(`Invalid translation state: ${state}`);
     }
   }
 
@@ -284,7 +337,8 @@ export class ContentController {
 
   isEmpty(): boolean {
     return this.currentState_.type === ContentType.NO_CONTENT ||
-        this.currentState_.type === ContentType.NO_SELECTABLE_CONTENT;
+        this.currentState_.type === ContentType.NO_SELECTABLE_CONTENT ||
+        this.currentState_.type === ContentType.NO_CONTENT_TRANSLATION;
   }
 
   attemptToRedistill() {
@@ -309,8 +363,17 @@ export class ContentController {
   }
 
   private getNoContentType_() {
-    return this.contentBrowserProxy_.isGoogleDocs() ?
-        ContentType.NO_SELECTABLE_CONTENT :
+    if (this.contentBrowserProxy_.isGoogleDocs()) {
+      return ContentType.NO_SELECTABLE_CONTENT;
+    }
+    // Distillation that finds no content while awaiting a translation means
+    // there's nothing to translate. A translated PDF is redistilled as more of
+    // it loads, so a later distillation that finds no content is still part of
+    // the translation.
+    const isTranslatedPdf = this.visualBrowserProxy_.isPdf() &&
+        this.contentBrowserProxy_.isContentTranslated();
+    return this.translationState_ !== TranslationState.NONE || isTranslatedPdf ?
+        ContentType.NO_CONTENT_TRANSLATION :
         ContentType.NO_CONTENT;
   }
 
@@ -323,8 +386,8 @@ export class ContentController {
 
     // When a node is deleted, the read aloud model can get out of sync with the
     // DOM. To be safe, delete the node from the model.
-    if (deletedNode && !this.audioBrowserProxy_.isPhraseHighlightingEnabled()) {
-      getReadAloudModel().onNodeWillBeDeleted?.(deletedNode);
+    if (deletedNode) {
+      getReadAloudModel().onNodeWillBeDeleted(deletedNode);
     }
 
     if (deletedNode) {
@@ -588,17 +651,12 @@ export class ContentController {
         this.listeners_.forEach(l => l.onNewPageDrawn());
       }
       this.nodeStore_.estimateWordsSeenWithDelay();
-      // Initialize the speech tree with the new content.
-      if (!this.audioBrowserProxy_.isPhraseHighlightingEnabled()) {
-        const contextNode = ReadAloudNode.create(rootNode);
-        if (contextNode) {
-          // Don't initialize until after drawing otherwise, the DOM nodes might
-          // not yet exist in the tree.
-          // TODO(crbug.com/575459750): Don't let Read Aloud setup block
-          // distillation or other Reading mode work.
-          getReadAloudModel().init(contextNode);
-        }
-      }
+      // Initialize the speech tree with the new content. Don't initialize
+      // until after drawing. Otherwise, the DOM nodes might not yet exist in
+      // the tree.
+      // TODO(crbug.com/575459750): Don't let Read Aloud setup block
+      // distillation or other Reading mode work.
+      getReadAloudModel().init(ReadAloudNode.create(rootNode));
     });
   }
 
@@ -813,16 +871,6 @@ export class ContentController {
         isPdf && this.contentBrowserProxy_.isSuperscript(nodeId);
     const isSubscript = isPdf && !isSuperscript &&
         this.contentBrowserProxy_.isSubscript(nodeId);
-
-    // When creating text nodes, save the first text node id. We need this
-    // node id to call InitAXPosition in playSpeech. If it's not saved here,
-    // we have to retrieve it through a DOM search such as createTreeWalker,
-    // which can be computationally expensive.
-    // This needs to be done after the text node is created and added to the
-    // node store.
-    if (this.audioBrowserProxy_.isPhraseHighlightingEnabled()) {
-      this.speechController_.initializeSpeechTree(textNode);
-    }
 
     if (!shouldBold && !isOverline && !isSuperscript && !isSubscript) {
       return textNode;
@@ -1078,8 +1126,8 @@ export class ContentController {
       this.speechController_.resetForNewContent();
       const container = shadowRoot.getElementById('container') || shadowRoot;
       this.updateReadAloudState(container as Node);
-    } else if (!this.audioBrowserProxy_.isPhraseHighlightingEnabled()) {
-      getReadAloudModel().resetModel?.();
+    } else {
+      getReadAloudModel().resetModel();
     }
   }
 

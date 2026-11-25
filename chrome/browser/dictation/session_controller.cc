@@ -32,6 +32,9 @@
 #include "content/public/browser/global_dom_node_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "services/device/public/mojom/wake_lock.mojom.h"
+#include "services/device/public/mojom/wake_lock_provider.mojom.h"
 #include "third_party/blink/public/common/input/web_input_event.h"
 #include "third_party/blink/public/common/input/web_keyboard_event.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom.h"
@@ -68,6 +71,10 @@ SessionController::~SessionController() {
         (!attached_stream_provider_ && finalizing_stream_providers_.empty()));
   if (attached_stream_provider_) {
     EndDictationStream(DictationStreamEndTrigger::kDestructor);
+  }
+  if (is_wake_lock_active_) {
+    GetWakeLock()->CancelWakeLock();
+    is_wake_lock_active_ = false;
   }
   VT_LOG(GetBrowserContext()) << "=== Session Ended";
 }
@@ -135,7 +142,7 @@ void SessionController::DidGetUserInteraction(
     if (attached_stream_provider_) {
       EndDictationStream(DictationStreamEndTrigger::kEscapeKey);
     } else {
-      FinalizeAndShutdown();
+      FinalizeAndShutdown(DictationStreamEndTrigger::kEscapeKey);
     }
     return;
   }
@@ -187,43 +194,6 @@ void SessionController::OnFocusChangedInPage(
   if (attached_stream_provider_) {
     EndDictationStream(DictationStreamEndTrigger::kFocusChange);
   }
-
-  if (kSessionEndsOnStreamEnd.Get()) {
-    // Do not start additional streams, if we only do one stream in a session.
-    return;
-  }
-
-  if (details.editable_level == content::EditableLevel::kNotEditable ||
-      !details.global_dom_node_id.document.AsRenderFrameHostIfValid()) {
-    return;
-  }
-
-  content::GlobalDOMNodeId newly_focused_target_id = details.global_dom_node_id;
-
-  const bool is_finalizing_for_same_element = std::ranges::any_of(
-      finalizing_stream_providers_,
-      [&newly_focused_target_id](
-          const std::unique_ptr<StreamProvider>& provider) {
-        CHECK(newly_focused_target_id.document.AsRenderFrameHostIfValid());
-        return provider->GetTarget() &&
-               provider->GetTarget()
-                       ->global_dom_node_id()
-                       .document.AsRenderFrameHostIfValid() ==
-                   newly_focused_target_id.document
-                       .AsRenderFrameHostIfValid() &&
-               provider->GetTarget()
-                       ->global_dom_node_id()
-                       .target_element_dom_id ==
-                   newly_focused_target_id.target_element_dom_id;
-      });
-
-  if (!is_finalizing_for_same_element && !is_shutting_down_) {
-    StartDictationStream(
-        TargetDetails(
-            newly_focused_target_id,
-            details.editable_level == content::EditableLevel::kRichlyEditable),
-        DictationStreamStartTrigger::kFocusChange, base::TimeTicks::Now());
-  }
 }
 
 void SessionController::PrimaryPageChanged(content::Page& page) {
@@ -258,11 +228,7 @@ void SessionController::EndDictationStream(DictationStreamEndTrigger trigger) {
   CHECK(attached_stream_provider_);
   CHECK(state_ == SessionState::kStreamInitializing ||
         state_ == SessionState::kTranscribing);
-  if (kSessionEndsOnStreamEnd.Get()) {
-    // If ending a stream also ends the session, trigger shutdown after this one
-    // finalizes.
-    is_shutting_down_ = true;
-  }
+  is_shutting_down_ = true;
   attached_stream_provider_->Stop(trigger);
   // TODO(b/525943882): Consider whether an initializing stream should be
   // immediately moved to deletion, rather than finalizing.
@@ -285,34 +251,16 @@ void SessionController::UiRequestEndSession() {
   EndSessionAsynchronously();
 }
 
-void SessionController::UiRequestEndActiveStream() {
-  EndDictationStream(DictationStreamEndTrigger::kDoneButton);
-}
-
-void SessionController::FinalizeAndShutdown() {
+void SessionController::FinalizeAndShutdown(DictationStreamEndTrigger trigger) {
   VT_LOG(GetBrowserContext()) << __func__;
   is_shutting_down_ = true;
   if (attached_stream_provider_) {
-    EndDictationStream(DictationStreamEndTrigger::kShutdown);
+    EndDictationStream(trigger);
   } else if (state_ == SessionState::kInactive) {
     // EndSession will destroy `this` which owns other objects that call into
     // here so PostTask to avoid destroying objects in the callstack.
     EndSessionAsynchronously();
   }
-}
-
-void SessionController::UiRequestStartStream() {
-  CHECK(!attached_stream_provider_);
-  CHECK_EQ(state_, SessionState::kInactive);
-  CHECK(!is_shutting_down_);
-
-  // A stream is always started when the session is created using an explicit
-  // target. Starting from UI can only happen after that.
-  CHECK(last_used_target_details_.has_value());
-
-  StartDictationStream(*last_used_target_details_,
-                       DictationStreamStartTrigger::kStartButton,
-                       base::TimeTicks::Now());
 }
 
 SessionState SessionController::GetState() const {
@@ -339,9 +287,7 @@ void SessionController::DidUpdateStreamProviderState(
       stream_provider.GetState() == StreamState::kFailed) {
     std::unique_ptr<StreamProvider> provider_to_delete;
     if (is_attached) {
-      if (kSessionEndsOnStreamEnd.Get()) {
-        is_shutting_down_ = true;
-      }
+      is_shutting_down_ = true;
       provider_to_delete = std::move(attached_stream_provider_);
     } else {
       auto it = std::ranges::find_if(finalizing_stream_providers_,
@@ -401,6 +347,12 @@ SessionController::AddSessionStateChangedCallback(
   return session_state_changed_callback_list_.Add(std::move(callback));
 }
 
+void SessionController::FlushWakeLockForTesting() {
+  if (wake_lock_) {
+    wake_lock_.FlushForTesting();  // IN-TEST
+  }
+}
+
 void SessionController::MoveToState(SessionState new_state) {
   if (new_state == state_) {
     return;
@@ -423,6 +375,8 @@ void SessionController::MoveToState(SessionState new_state) {
   const SessionState old_state = state_;
   state_ = new_state;
 
+  UpdateWakeLock();
+
   if (old_state == kStreamInitializing) {
     const base::TimeDelta elapsed =
         base::TimeTicks::Now() - stream_trigger_time_;
@@ -440,17 +394,50 @@ void SessionController::MoveToState(SessionState new_state) {
   session_state_changed_callback_list_.Notify(new_state);
 
   if (state_ == SessionState::kInactive && is_shutting_down_) {
-    if (kSessionEndsOnStreamEnd.Get()) {
-      auto_session_end_timer_.Start(
-          FROM_HERE, kAutoSessionEndDelay.Get(),
-          base::BindOnce(&SessionController::EndSessionSynchronously,
-                         weak_ptr_factory_.GetWeakPtr()));
-    } else {
-      // EndSession destroys `this` so do this async so callers to MoveToState
-      // don't have to avoid the UAF landmine.
-      EndSessionAsynchronously();
-    }
+    auto_session_end_timer_.Start(
+        FROM_HERE, kAutoSessionEndDelay.Get(),
+        base::BindOnce(&SessionController::EndSessionSynchronously,
+                       weak_ptr_factory_.GetWeakPtr()));
   }
+}
+
+void SessionController::UpdateWakeLock() {
+  bool should_hold_wake_lock = false;
+  switch (state_) {
+    case SessionState::kInactive:
+    case SessionState::kEnded:
+      should_hold_wake_lock = false;
+      break;
+    case SessionState::kStreamInitializing:
+    case SessionState::kTranscribing:
+    case SessionState::kFinalizing:
+      should_hold_wake_lock = true;
+      break;
+  }
+  if (should_hold_wake_lock && !is_wake_lock_active_) {
+    GetWakeLock()->RequestWakeLock();
+    is_wake_lock_active_ = true;
+  } else if (!should_hold_wake_lock && is_wake_lock_active_) {
+    GetWakeLock()->CancelWakeLock();
+    is_wake_lock_active_ = false;
+  }
+}
+
+device::mojom::WakeLock* SessionController::GetWakeLock() {
+  // Lazy binding; does not reconnect after connection error.
+  if (!wake_lock_) {
+    mojo::Remote<device::mojom::WakeLockProvider> wake_lock_provider;
+    delegate_->BindWakeLockProvider(
+        wake_lock_provider.BindNewPipeAndPassReceiver());
+    // Although we could attribute the lock to the associated WebContents, it
+    // does not make a difference on any platform where this feature is enabled,
+    // and so is omitted for simplicity.
+    wake_lock_provider->GetWakeLockWithoutContext(
+        device::mojom::WakeLockType::kPreventDisplaySleep,
+        device::mojom::WakeLockReason::kOther, "Dictation",
+        wake_lock_.BindNewPipeAndPassReceiver());
+  }
+  return wake_lock_.get();
 }
 
 void SessionController::EndSessionAsynchronously() {

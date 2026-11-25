@@ -62,8 +62,8 @@
 #include "chromeos/ash/components/geolocation/system_location_provider.h"
 #include "chromeos/ash/components/login/login_state/login_state.h"
 #include "chromeos/ash/components/policy/restriction_schedule/device_restriction_schedule_controller.h"
-#include "chromeos/ash/components/scheduler_config/scheduler_configuration_manager.h"
 #include "chromeos/ash/components/settings/cros_settings.h"
+#include "chromeos/ash/components/system/scheduler_configuration_manager_base.h"
 #include "chromeos/ash/components/timezone/timezone_resolver.h"
 #include "components/custom_handlers/protocol_handler_registry.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
@@ -82,7 +82,6 @@
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "services/service_manager/public/cpp/service.h"
 #include "ui/base/page_transition_types.h"
-#include "ui/base/window_open_disposition.h"
 
 namespace {
 
@@ -128,7 +127,7 @@ BrowserProcessPlatformPart::~BrowserProcessPlatformPart() {
 }
 
 void BrowserProcessPlatformPart::InitializeAutomaticRebootManager() {
-  DCHECK(!automatic_reboot_manager_);
+  CHECK(!automatic_reboot_manager_, base::NotFatalUntil::M163);
 
   automatic_reboot_manager_ =
       std::make_unique<ash::system::AutomaticRebootManager>(
@@ -141,7 +140,7 @@ void BrowserProcessPlatformPart::ShutdownAutomaticRebootManager() {
 }
 
 void BrowserProcessPlatformPart::InitializeUserManager() {
-  DCHECK(!user_manager_);
+  CHECK(!user_manager_, base::NotFatalUntil::M163);
   CHECK(session_manager_);
   auto* local_state = g_browser_process->local_state();
   user_manager_ = std::make_unique<user_manager::UserManagerImpl>(
@@ -214,7 +213,7 @@ void BrowserProcessPlatformPart::ShutdownDeviceRestrictionScheduleController() {
 }
 
 void BrowserProcessPlatformPart::InitializeDeviceDisablingManager() {
-  DCHECK(!device_disabling_manager_);
+  CHECK(!device_disabling_manager_, base::NotFatalUntil::M163);
 
   device_disabling_manager_delegate_ =
       std::make_unique<ash::system::DeviceDisablingManagerDefaultDelegate>();
@@ -269,7 +268,7 @@ void BrowserProcessPlatformPart::InitializeComponentManager() {
     return;
   }
 
-  DCHECK(!component_manager_ash_);
+  CHECK(!component_manager_ash_, base::NotFatalUntil::M163);
   component_manager_ash_ =
       base::MakeRefCounted<component_updater::CrOSComponentInstaller>(
           std::make_unique<component_updater::MetadataTable>(
@@ -289,9 +288,9 @@ void BrowserProcessPlatformPart::ShutdownComponentManager() {
 }
 
 void BrowserProcessPlatformPart::InitializeSchedulerConfigurationManager() {
-  DCHECK(!scheduler_configuration_manager_);
+  CHECK(!scheduler_configuration_manager_, base::NotFatalUntil::M163);
   scheduler_configuration_manager_ =
-      std::make_unique<ash::SchedulerConfigurationManager>(
+      ash::SchedulerConfigurationManagerBase::Create(
           ash::DebugDaemonClient::Get(), g_browser_process->local_state());
 }
 
@@ -300,7 +299,7 @@ void BrowserProcessPlatformPart::ShutdownSchedulerConfigurationManager() {
 }
 
 void BrowserProcessPlatformPart::InitializeAshProxyMonitor() {
-  DCHECK(!ash_proxy_monitor_);
+  CHECK(!ash_proxy_monitor_, base::NotFatalUntil::M163);
   ash_proxy_monitor_ = std::make_unique<ash::AshProxyMonitor>(
       g_browser_process->local_state(), g_browser_process->profile_manager());
 }
@@ -311,13 +310,13 @@ void BrowserProcessPlatformPart::ShutdownAshProxyMonitor() {
 
 void BrowserProcessPlatformPart::InitializePrimaryProfileServices(
     Profile* primary_profile) {
-  DCHECK(primary_profile);
+  CHECK(primary_profile, base::NotFatalUntil::M163);
 
-  DCHECK(!essential_search_manager_);
+  CHECK(!essential_search_manager_, base::NotFatalUntil::M163);
   essential_search_manager_ =
       app_list::EssentialSearchManager::Create(primary_profile);
 
-  DCHECK(!in_session_password_change_manager_);
+  CHECK(!in_session_password_change_manager_, base::NotFatalUntil::M163);
   in_session_password_change_manager_ =
       ash::InSessionPasswordChangeManager::CreateIfEnabled(
           g_browser_process->local_state(), primary_profile,
@@ -370,7 +369,7 @@ void BrowserProcessPlatformPart::ShutdownPrimaryProfileServices() {
 }
 
 void BrowserProcessPlatformPart::RegisterKeepAlive() {
-  DCHECK(!keep_alive_);
+  CHECK(!keep_alive_, base::NotFatalUntil::M163);
   keep_alive_ = std::make_unique<ScopedKeepAlive>(
       KeepAliveOrigin::BROWSER_PROCESS_CHROMEOS,
       KeepAliveRestartOption::DISABLED);
@@ -405,7 +404,6 @@ void BrowserProcessPlatformPart::InitializeTimezoneResolverManager() {
 
 ash::system::TimeZoneResolverManager*
 BrowserProcessPlatformPart::GetTimezoneResolverManager() {
-  CHECK(timezone_resolver_manager_);
   return timezone_resolver_manager_.get();
 }
 
@@ -428,7 +426,8 @@ void BrowserProcessPlatformPart::DestroySystemClock() {
 }
 
 void BrowserProcessPlatformPart::CreateProfileHelper() {
-  DCHECK(!created_profile_helper_ && !profile_helper_);
+  CHECK(!created_profile_helper_ && !profile_helper_,
+        base::NotFatalUntil::M163);
   created_profile_helper_ = true;
   profile_helper_ = ash::ProfileHelper::CreateInstance();
 }

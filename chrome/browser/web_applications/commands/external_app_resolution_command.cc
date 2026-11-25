@@ -53,6 +53,7 @@
 #include "components/webapps/common/web_app_id.h"
 #include "content/public/browser/render_frame_host.h"
 #include "content/public/browser/web_contents.h"
+#include "third_party/blink/public/common/manifest/manifest.h"
 #include "url/origin.h"
 
 namespace web_app {
@@ -322,7 +323,7 @@ void ExternalAppResolutionCommand::OnGetWebAppInstallInfoInCommand(
 }
 
 void ExternalAppResolutionCommand::OnDidPerformInstallableCheck(
-    blink::mojom::ManifestPtr opt_manifest,
+    std::optional<blink::Manifest> opt_manifest,
     bool valid_manifest_for_web_app,
     webapps::InstallableStatusCode error_code) {
   CHECK(install_params_.has_value());
@@ -342,13 +343,13 @@ void ExternalAppResolutionCommand::OnDidPerformInstallableCheck(
   // A system app should always have a manifest icon.
   if (install_surface_ == webapps::WebappInstallSource::SYSTEM_DEFAULT) {
     CHECK(opt_manifest);
-    CHECK(!opt_manifest->icons.empty());
+    CHECK(!opt_manifest->icons().empty());
   }
 
   GetMutableDebugValue().Set("had_manifest", opt_manifest ? true : false);
   if (IsCrossOriginCommittedDocument() ||
       (opt_manifest && !url::IsSameOriginWith(install_options_.install_url,
-                                              opt_manifest->id))) {
+                                              opt_manifest->id()))) {
     RejectCrossOriginInstallInfo();
     return;
   }
@@ -361,7 +362,7 @@ void ExternalAppResolutionCommand::OnDidPerformInstallableCheck(
 
   // Follow the path with a valid `opt_manifest`.
   if (opt_manifest) {
-    RetrieveWebAppInfoFromManifest(std::move(opt_manifest));
+    RetrieveWebAppInfoFromManifest(std::move(*opt_manifest));
     return;
   }
 
@@ -387,10 +388,9 @@ void ExternalAppResolutionCommand::OnDidPerformInstallableCheck(
 }
 
 void ExternalAppResolutionCommand::RetrieveWebAppInfoFromManifest(
-    blink::mojom::ManifestPtr opt_manifest) {
-  CHECK(opt_manifest);
+    blink::Manifest manifest) {
   WebAppInstallInfoConstructOptions construct_options;
-  construct_options.download_page_favicons = opt_manifest->icons.empty();
+  construct_options.download_page_favicons = manifest.icons().empty();
   // For installations triggered via policy with `install_as_shortcut` set to
   // true, the app needs resources fetched from the manifest and it should also
   // behave like DIY apps.
@@ -399,11 +399,11 @@ void ExternalAppResolutionCommand::RetrieveWebAppInfoFromManifest(
   // All external installs are done by Chrome and can be considered trusted.
   construct_options.use_manifest_icons_as_trusted = true;
 
-  GetMutableDebugValue().Set("manifest_id", opt_manifest->id.spec());
+  GetMutableDebugValue().Set("manifest_id", manifest.id().spec());
 
   manifest_to_install_info_job_ =
       ManifestToWebAppInstallInfoJob::CreateAndStart(
-          *opt_manifest, *data_retriever_.get(),
+          manifest, *data_retriever_.get(),
           /*background_installation=*/true, install_surface_,
           web_contents_->GetWeakPtr(), [](IconUrlSizeSet&) {},
           GetMutableDebugValue(),

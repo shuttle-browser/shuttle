@@ -83,7 +83,7 @@ class ArcUtilTest : public ash::AshTestBase {
 
   void SetUpInitParams(ash::AshTestHelper::InitParams& init_params) override {
     ash::AshTestBase::SetUpInitParams(init_params);
-    init_params.start_session = false;
+    init_params.users.clear();
   }
 
   void SetUp() override {
@@ -809,7 +809,6 @@ TEST_F(ArcUtilTest, EnsureStaleArcVmAndArcVmUpstartJobsStopped_Success) {
   EnsureStaleArcVmAndArcVmUpstartJobsStopped("0123456789abcdef",
                                              future.GetCallback());
   EXPECT_TRUE(future.Get());
-  task_environment()->RunUntilIdle();
   EXPECT_TRUE(jobs_to_be_stopped.empty());
   EXPECT_EQ(ash::FakeConciergeClient::Get()->stop_vm_call_count(), 1);
 }

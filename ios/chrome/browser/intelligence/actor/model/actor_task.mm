@@ -6,16 +6,20 @@
 
 #import <algorithm>
 #import <utility>
+#import <variant>
 
+#import "base/check_op.h"
 #import "base/functional/bind.h"
 #import "base/functional/callback_helpers.h"
 #import "base/location.h"
+#import "base/notreached.h"
 #import "base/strings/string_number_conversions.h"
 #import "base/strings/sys_string_conversions.h"
 #import "base/task/bind_post_task.h"
 #import "base/task/sequenced_task_runner.h"
 #import "base/time/time.h"
 #import "base/timer/timer.h"
+#import "base/types/expected.h"
 #import "components/actor/core/aggregated_journal.h"
 #import "components/actor/public/mojom/actor_types.mojom.h"
 #import "components/sessions/core/session_id.h"
@@ -45,14 +49,6 @@ namespace {
 
 // Safety timeout duration to wait for pages to finish loading.
 constexpr base::TimeDelta kPageLoadTimeout = base::Seconds(7);
-
-// Default title for confirmation intervention prompts.
-// TODO(crbug.com/573515833): Localize default title string.
-NSString* const kDefaultConfirmationTitle = @"Input needed";
-
-// Default button text for confirmation intervention prompts.
-// TODO(crbug.com/556739755): Localize default button text string.
-NSString* const kDefaultConfirmationButtonText = @"Continue";
 
 // Returns the string representation of the ActorTaskState.
 std::string ActorTaskStateToString(ActorTaskState state) {
@@ -87,17 +83,24 @@ ActorControlState ControlStateForTaskState(ActorTaskState task_state) {
       return ActorControlState::kActorControlled;
     case ActorTaskState::kInit:
       return ActorControlState::kInactive;
-    // TODO(crbug.com/496164697): Add all states and remove the default case.
+    // TODO(crbug.com/580899072): Add all states and remove the default case.
     default:
       return ActorControlState::kInactive;
   }
 }
 
 // Posts `callback` with a single `code` result. Posted so that callers are
-// never re-entered from within `ActorTask::Act()`.
+// never re-entered from within `ActorTask::Act()` or `ActorTask::Stop()`.
 void PostActReply(ActCallback callback, mojom::ActionResultCode code) {
   base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, base::BindOnce(std::move(callback), MakeActionResults(code)));
+}
+
+// Posts `callback` with `result`, so that callers are never re-entered.
+void PostInterruptReply(ActorTaskResultCallback<InterruptResponse> callback,
+                        ActorTaskResult<InterruptResponse> result) {
+  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+      FROM_HERE, base::BindOnce(std::move(callback), std::move(result)));
 }
 
 // Sends `observer` the snapshot of a task taken when it registered.
@@ -140,7 +143,8 @@ ActorTask::ActorTask(ActorTaskId task_id,
                      AggregatedJournal* journal,
                      ActorToolFactory* tool_factory,
                      BrowserList* browser_list,
-                     const ActorEnterprisePolicyCheckerIOS* policy_checker)
+                     const ActorEnterprisePolicyCheckerIOS* policy_checker,
+                     base::OnceClosure on_stopped)
     : task_id_(task_id),
       browser_list_(browser_list),
       title_(title),
@@ -148,10 +152,12 @@ ActorTask::ActorTask(ActorTaskId task_id,
       allow_incognito_web_states_(allow_incognito_web_states),
       journal_(journal),
       tool_factory_(tool_factory),
-      policy_checker_(policy_checker) {
+      policy_checker_(policy_checker),
+      on_stopped_(std::move(on_stopped)) {
   CHECK(journal);
   CHECK(tool_factory);
   CHECK(browser_list);
+  CHECK(on_stopped_);
   // TODO(crbug.com/504704411): Allow incognito WebStates.
   CHECK(!allow_incognito_web_states_);
   engine_ = std::make_unique<ActorEngine>(/*execution_updates_delegate=*/this,
@@ -171,6 +177,7 @@ ActorTask::~ActorTask() {
   // Stops the heartbeat and fails any live background task.
   background_worker_.reset();
 
+  [observers_ removeAllObservers];
   observers_ = nil;
 }
 
@@ -207,12 +214,20 @@ ActorTaskState ActorTask::GetState() const {
   return state_;
 }
 
+bool ActorTask::IsCompleted() const {
+  return IsTerminalState(state_);
+}
+
 void ActorTask::Act(std::vector<std::unique_ptr<ActorToolRequest>> actions,
                     const std::string& task_update,
                     ActCallback callback) {
-  // TODO(crbug.com/503054406): Reject `Act()` in invalid states (e.g. stopped
-  // with `kTaskWentAway`, paused with `kTaskPaused`, `kWaitingOnUser`).
-  if (pending_act_) {
+  if (IsCompleted()) {
+    PostActReply(std::move(callback), mojom::ActionResultCode::kTaskWentAway);
+    return;
+  }
+  // TODO(crbug.com/503054406): Reject `Act()` in other invalid states (e.g.
+  // paused with `kTaskPaused`, `kWaitingOnUser`).
+  if (HasPendingOperation()) {
     constexpr mojom::ActionResultCode kRejectionCode =
         mojom::ActionResultCode::kExecutionEngineExistingAction;
     LogActRejection(*journal_, task_id_, "ActorTask::Act", kRejectionCode);
@@ -231,12 +246,12 @@ void ActorTask::Act(std::vector<std::unique_ptr<ActorToolRequest>> actions,
                               weak_ptr_factory_.GetWeakPtr()));
 }
 
-bool ActorTask::HasPendingAct() const {
-  return pending_act_.has_value();
+bool ActorTask::HasPendingOperation() const {
+  return pending_act_ || pending_interrupt_;
 }
 
 void ActorTask::AddControlledWebState(web::WebState* web_state) {
-  if (!web_state) {
+  if (!web_state || IsCompleted()) {
     return;
   }
 
@@ -262,7 +277,8 @@ void ActorTask::AddControlledWebState(web::WebState* web_state) {
     }
 
     if (ActorTabHelper* tab_helper = ActorTabHelper::FromWebState(web_state)) {
-      tab_helper->SetControlState(ControlStateForTaskState(state_));
+      tab_helper->SetControlState(ControlStateForTaskState(state_),
+                                  source_info_);
     }
 
     background_worker_->OnWebStateAdded(web_state);
@@ -276,10 +292,14 @@ void ActorTask::AddControlledWebState(web::WebState* web_state) {
 }
 
 void ActorTask::Stop(ActorTaskStoppedReason stop_reason) {
-  if (IsTerminalState(state_)) {
+  if (IsCompleted()) {
     return;
   }
-  // TODO(crbug.com/532978481): Map `stop_reason` to the corresponding terminal
+  // Cancel first so any `Act()` reply is posted before the state transition.
+  CancelOngoingActions(mojom::ActionResultCode::kTaskWentAway);
+  policy_deciders_.clear();
+  SetInterventionDelegate(nil);
+  // TODO(crbug.com/576290373): Map `stop_reason` to the corresponding terminal
   // `ActorTaskState` (`kFinished`, `kFailed`, `kCancelled`) instead of
   // hardcoding `kCancelled`.
   // `SetState` also transitions the web states to `kInactive` control state.
@@ -289,7 +309,6 @@ void ActorTask::Stop(ActorTaskStoppedReason stop_reason) {
                        stop_reason == ActorTaskStoppedReason::kStoppedByUser;
   background_worker_->OnStopped(success);
 
-  // TODO(crbug.com/496164697): Implement and test.
   // TODO(crbug.com/565875367): Remove once observers migrate to
   // `ActorTaskLifecycleObserver`.
   const ActorTaskId task_id = task_id_;
@@ -297,14 +316,17 @@ void ActorTask::Stop(ActorTaskStoppedReason stop_reason) {
   [observers_ postNotification:^(id<ActorTaskUpdatesObserver> observers) {
     [observers actorTaskDidStopWithID:task_id finalState:final_state];
   }];
+
+  std::move(on_stopped_).Run();
 }
 
 void ActorTask::Pause(bool from_actor) {
-  // TODO(crbug.com/496164697): Implement and test.
+  // TODO(crbug.com/567039302): Implement and test user-triggered pause.
+  // TODO(crbug.com/567040651): Implement and test actor-triggered pause.
 }
 
 void ActorTask::Resume() {
-  // TODO(crbug.com/496164697): Implement and test.
+  // TODO(crbug.com/567039302): Implement and test.
 }
 
 void ActorTask::SetInterventionDelegate(
@@ -316,62 +338,80 @@ void ActorTask::SetInterventionDelegate(
   }
 }
 
-void ActorTask::Interrupt(ActorTaskInterruptReason interrupt_reason,
-                          std::string_view message) {
-  if (state_ != ActorTaskState::kInit &&
-      state_ != ActorTaskState::kReflecting &&
-      state_ != ActorTaskState::kActing) {
-    // TODO(crbug.com/548051839): Enforce valid state transitions with a CHECK
-    // or log a signal when an unexpected interrupt occurs.
+void ActorTask::Interrupt(
+    const InterruptRequest& request,
+    ActorTaskResultCallback<InterruptResponse> on_response) {
+  if (!CanBeInterrupted() || HasPendingOperation()) {
+    PostInterruptReply(std::move(on_response),
+                       base::unexpected(ActorTaskError::kRejected));
     return;
   }
+  std::visit(
+      [&](const auto& interrupt) {
+        InterruptFor(interrupt, std::move(on_response));
+      },
+      request);
+}
 
+void ActorTask::InterruptForTool(base::PassKey<ActorEngine> pass_key) {
+  if (!CanBeInterrupted()) {
+    return;
+  }
+  EnterWaitingOnUser();
+}
+
+void ActorTask::UninterruptForTool(base::PassKey<ActorEngine> pass_key) {
+  ExitWaitingOnUser(ActorTaskState::kActing);
+}
+
+bool ActorTask::CanBeInterrupted() const {
+  // TODO(crbug.com/578539528): Enforce valid state transitions with a CHECK or
+  // log a signal when an unexpected interrupt occurs.
+  switch (state_) {
+    case ActorTaskState::kInit:
+    case ActorTaskState::kActing:
+    case ActorTaskState::kReflecting:
+      return true;
+    case ActorTaskState::kPausedByActor:
+    case ActorTaskState::kPausedByUser:
+    case ActorTaskState::kCancelled:
+    case ActorTaskState::kFinished:
+    case ActorTaskState::kWaitingOnUser:
+    case ActorTaskState::kFailed:
+      return false;
+  }
+  NOTREACHED();
+}
+
+void ActorTask::EnterWaitingOnUser() {
   engine_->PauseOngoingActions();
   SetState(ActorTaskState::kWaitingOnUser);
-
-  switch (interrupt_reason) {
-    case ActorTaskInterruptReason::kWaitingUserConfirmation:
-      RequestInterruptConfirmation(message);
-      break;
-    case ActorTaskInterruptReason::kWaitingUserClarification:
-    case ActorTaskInterruptReason::kWaitingUserTakeover:
-    case ActorTaskInterruptReason::kWaitingIrrelevantUserInput:
-      // TODO(crbug.com/548051839): Support additional interrupt reasons.
-      // TODO(crbug.com/532978481): Route task-initiated stops through
-      // `ActorService::StopTask`.
-      Stop(ActorTaskStoppedReason::kBrowserFailure);
-      break;
-    case ActorTaskInterruptReason::kUnknownReason:
-      // Internal or tool-level interrupts do not request user confirmation.
-      break;
-  }
 }
 
-void ActorTask::RequestInterruptConfirmation(std::string_view message) {
-  if (!intervention_delegate_ || message.empty()) {
-    // TODO(crbug.com/532978481): Route task-initiated stops through
-    // `ActorService::StopTask`.
-    Stop(ActorTaskStoppedReason::kBrowserFailure);
-    return;
-  }
-  base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-      FROM_HERE,
-      base::BindOnce(&ActorTask::ShowInterruptConfirmation,
-                     weak_ptr_factory_.GetWeakPtr(), std::string(message)));
-}
-
-void ActorTask::ShowInterruptConfirmation(const std::string& message) {
-  // The task may have been stopped or uninterrupted since the request was
-  // posted.
+void ActorTask::ExitWaitingOnUser(ActorTaskState resumed_state) {
   if (state_ != ActorTaskState::kWaitingOnUser) {
     return;
   }
-  if (!intervention_delegate_) {
-    // TODO(crbug.com/567037054): Stop the task once task-initiated stops are
-    // reported to `ActorService`. Until then, the task keeps waiting on the
-    // user until it is stopped externally.
+  SetState(resumed_state);
+  engine_->DidUninterruptTask();
+}
+
+void ActorTask::InterruptFor(
+    const ConfirmationInterrupt& confirmation,
+    ActorTaskResultCallback<InterruptResponse> on_response) {
+  if (confirmation.title.empty() || confirmation.button_text.empty() ||
+      !intervention_delegate_) {
+    PostInterruptReply(std::move(on_response),
+                       base::unexpected(ActorTaskError::kRejected));
     return;
   }
+  EnterWaitingOnUser();
+  pending_interrupt_ = std::move(on_response);
+  ShowInterruptConfirmation(confirmation);
+}
+
+void ActorTask::ShowInterruptConfirmation(
+    const ConfirmationInterrupt& confirmation) {
   // Posted so that a delegate completing synchronously never re-enters the
   // task.
   void (^completion)(void) =
@@ -379,34 +419,26 @@ void ActorTask::ShowInterruptConfirmation(const std::string& message) {
           base::BindOnce(&ActorTask::OnInterruptConfirmationResolved,
                          weak_ptr_factory_.GetWeakPtr())));
 
-  // Must remain the last statement: the delegate may stop, and thereby
-  // destroy, the task.
+  NSString* subtitle = confirmation.subtitle.empty()
+                           ? nil
+                           : base::SysUTF8ToNSString(confirmation.subtitle);
   [intervention_delegate_ actorTask:task_id_
-      requestUserInterventionWithTitle:kDefaultConfirmationTitle
-                              subtitle:base::SysUTF8ToNSString(message)
-                            buttonText:kDefaultConfirmationButtonText
+      requestUserInterventionWithTitle:base::SysUTF8ToNSString(
+                                           confirmation.title)
+                              subtitle:subtitle
+                            buttonText:base::SysUTF8ToNSString(
+                                           confirmation.button_text)
                      completionHandler:completion];
 }
 
 void ActorTask::OnInterruptConfirmationResolved() {
-  if (state_ != ActorTaskState::kWaitingOnUser) {
-    // TODO(crbug.com/548051839): Enforce valid state transitions once task
-    // state transitions and async intervention cancellation are fully audited.
-    return;
-  }
-  Uninterrupt(ActorTaskState::kReflecting);
-  const ActorTaskId task_id = task_id_;
-  [observers_ postNotification:^(id<ActorTaskUpdatesObserver> observers) {
-    [observers actorTaskDidResolveConfirmationInterruptWithID:task_id];
-  }];
-}
-
-void ActorTask::Uninterrupt(ActorTaskState resumed_state) {
-  if (state_ != ActorTaskState::kWaitingOnUser) {
-    return;
-  }
-  SetState(resumed_state);
-  engine_->DidUninterruptTask();
+  // Only `Stop()` can move the task out of `kWaitingOnUser` before the user
+  // confirms, and `Stop()` invalidates the weak pointer, cancelling this call.
+  CHECK_EQ(state_, ActorTaskState::kWaitingOnUser);
+  CHECK(pending_interrupt_);
+  PostInterruptReply(std::move(pending_interrupt_),
+                     InterruptResponse::kConfirmed);
+  ExitWaitingOnUser(ActorTaskState::kReflecting);
 }
 
 bool ActorTask::IsControllingWebState(web::WebState* web_state) const {
@@ -520,11 +552,14 @@ void ActorTask::SetControlStateOnWebStates(ActorControlState control_state) {
     if (!tab_helper) {
       continue;
     }
-    tab_helper->SetControlState(control_state);
+    tab_helper->SetControlState(control_state, source_info_);
   }
 }
 
 void ActorTask::SetState(ActorTaskState new_state) {
+  CHECK(!IsCompleted()) << "Transition from terminal state "
+                        << ActorTaskStateToString(state_) << " to "
+                        << ActorTaskStateToString(new_state);
   LogJournalEvent(*journal_, GURL(), task_id_, "ActorTask::SetState",
                   {{"current_state", ActorTaskStateToString(state_)},
                    {"new_state", ActorTaskStateToString(new_state)}});
@@ -547,9 +582,24 @@ void ActorTask::SetState(ActorTaskState new_state) {
   }];
 }
 
+void ActorTask::CancelOngoingActions(mojom::ActionResultCode reason) {
+  // Invalidate first so `CancelOngoingAndPendingActions` does not call back.
+  weak_ptr_factory_.InvalidateWeakPtrs();
+  engine_->CancelOngoingAndPendingActions(
+      ActorEngine::EngineResult::kCancelled);
+  scoped_web_state_observations_.RemoveAllObservations();
+  load_timeout_timer_.Stop();
+  if (std::optional<PendingAct> pending_act =
+          std::exchange(pending_act_, std::nullopt)) {
+    PostActReply(std::move(pending_act->callback), reason);
+  }
+  if (pending_interrupt_) {
+    PostInterruptReply(std::move(pending_interrupt_),
+                       base::unexpected(ActorTaskError::kTaskWentAway));
+  }
+}
+
 void ActorTask::OnActCompleted(std::vector<ActionResult> results) {
-  // `Act()` registers `pending_act_` before starting the engine, and only
-  // `FinishAct()` clears it.
   CHECK(pending_act_);
   // TODO(crbug.com/503054406): Check for tool errors.
 

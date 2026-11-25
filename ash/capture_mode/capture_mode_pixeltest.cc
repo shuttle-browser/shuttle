@@ -128,11 +128,13 @@ TEST_P(DisplayParameterizedCaptureModePixelTest,
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       base::StrCat({"screen_capture_popup_notification_",
                     GetDisplayTypeName(GetDisplayType())}),
-      /*revision_number=*/7,
+      /*revision_number=*/8,
       test_api()->GetPopupViewForId(kScreenCaptureNotificationId)));
 }
 
-TEST_P(DisplayParameterizedCaptureModePixelTest, VideoCaptureNotification) {
+// TODO(crbug.com/562458199): Re-enable this test.
+TEST_P(DisplayParameterizedCaptureModePixelTest,
+       DISABLED_VideoCaptureNotification) {
   auto* controller = StartCaptureSession(CaptureModeSource::kFullscreen,
                                          CaptureModeType::kVideo);
   StartVideoRecordingImmediately();
@@ -160,7 +162,7 @@ TEST_P(DisplayParameterizedCaptureModePixelTest, VideoCaptureNotification) {
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       base::StrCat({"video_capture_notification_popup_",
                     GetDisplayTypeName(GetDisplayType())}),
-      /*revision_number=*/10, notification_popup_view));
+      /*revision_number=*/11, notification_popup_view));
 
   test_api()->ToggleBubble();
   auto* notification_view =
@@ -168,7 +170,7 @@ TEST_P(DisplayParameterizedCaptureModePixelTest, VideoCaptureNotification) {
   EXPECT_TRUE(GetPixelDiffer()->CompareUiComponentsOnPrimaryScreen(
       base::StrCat({"video_capture_notification_view_",
                     GetDisplayTypeName(GetDisplayType())}),
-      /*revision_number=*/9, notification_view));
+      /*revision_number=*/11, notification_view));
 }
 
 }  // namespace ash

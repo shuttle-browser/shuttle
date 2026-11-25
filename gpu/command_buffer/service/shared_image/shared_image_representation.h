@@ -240,6 +240,8 @@ class GPU_GLES2_EXPORT GLTextureImageRepresentationBase
   // RGB.
   gpu::TextureBase* GetTextureBase();
 
+  virtual bool IsBackingCleared() const;
+
  protected:
   friend class SkiaGLImageRepresentation;
   friend class DawnEGLImageRepresentation;
@@ -774,6 +776,8 @@ class GPU_GLES2_EXPORT SkiaGraphiteImageRepresentation
   // update_rect is a hint to the backend about the portion of the image that
   // will be drawn to. Callers shouldn't draw outside of this area, but aren't
   // required to overwrite every pixel inside it.
+  // If external synchronization/transitions are needed at the end of access,
+  // implementations should populate `end_access_state`.
   virtual std::vector<sk_sp<SkSurface>> BeginWriteAccess(
       const SkSurfaceProps& surface_props,
       const gfx::Rect& update_rect,
@@ -781,6 +785,8 @@ class GPU_GLES2_EXPORT SkiaGraphiteImageRepresentation
 
   // Returns a vector of ref counted GraphiteTextureHolder that holds
   // skgpu::graphite::BackendTexture which graphite can use for writing.
+  // If external synchronization/transitions are needed at the end of access,
+  // implementations should populate `end_access_state`.
   // Notes:
   // - If `NeedGraphiteContextSubmitBeforeEndAccess()` returns true: it's only
   // safe to use the contained BackendTexture within the access' scope.
@@ -1171,6 +1177,12 @@ class GPU_GLES2_EXPORT VideoImageRepresentation
       return representation()->GetAHardwareBuffer();
     }
 #endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_APPLE)
+    gfx::ScopedIOSurface GetIOSurface() const {
+      return representation()->GetIOSurface();
+    }
+#endif  // BUILDFLAG(IS_APPLE)
   };
 
   VideoImageRepresentation(SharedImageManager* manager,
@@ -1193,6 +1205,12 @@ class GPU_GLES2_EXPORT VideoImageRepresentation
 #if BUILDFLAG(IS_ANDROID)
   virtual AHardwareBuffer* GetAHardwareBuffer() const = 0;
 #endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_APPLE)
+  // Returns the IOSurface backing the image, for consumers (e.g. the
+  // VideoToolbox encoder) that wrap it in a CVPixelBuffer.
+  virtual gfx::ScopedIOSurface GetIOSurface() const = 0;
+#endif  // BUILDFLAG(IS_APPLE)
 
   virtual bool BeginWriteAccess() = 0;
   virtual void EndWriteAccess() = 0;

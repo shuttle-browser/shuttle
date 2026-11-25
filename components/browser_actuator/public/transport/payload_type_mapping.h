@@ -28,7 +28,7 @@ namespace browser_actuator::transport {
 // LINT.IfChange(RoutablePayloadTypes)
 inline constexpr auto kRoutablePayloadTypes = std::to_array<PayloadType>(
     {PayloadType::kControl, PayloadType::kExperimentalTriggering,
-     PayloadType::kActuation});
+     PayloadType::kActuation, PayloadType::kTaskIngress, PayloadType::kProbe});
 
 // Returns the wire enum used to tag a downstream payload of `payload_type`.
 inline ActuatorDownstreamPayloadType ToDownstreamProtoPayloadType(
@@ -40,6 +40,10 @@ inline ActuatorDownstreamPayloadType ToDownstreamProtoPayloadType(
       return ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_EXPERIMENTAL_TRIGGERING;
     case PayloadType::kActuation:
       return ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_ACTUATION;
+    case PayloadType::kTaskIngress:
+      return ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_TASK_INGRESS;
+    case PayloadType::kProbe:
+      return ACTUATOR_DOWNSTREAM_PAYLOAD_TYPE_PROBE;
     case PayloadType::kUnspecified:
       NOTREACHED();
   }
@@ -52,6 +56,7 @@ inline constexpr std::string_view kTypeUrlPrefix = "type.googleapis.com/";
 // Returns the expected `Any.type_url` for a downstream payload. Spelled as
 // literals because this layer cannot name concrete payload protos; each is
 // pinned to its proto by a test next to that proto's handler.
+// LINT.IfChange(ExpectedTypeUrl)
 inline std::string_view ExpectedTypeUrl(PayloadType payload_type) {
   switch (payload_type) {
     case PayloadType::kControl:
@@ -62,11 +67,17 @@ inline std::string_view ExpectedTypeUrl(PayloadType payload_type) {
     case PayloadType::kActuation:
       return "type.googleapis.com/"
              "chrome.aix.autobrowse.proto.ServerToBrowserPayload";
+    case PayloadType::kTaskIngress:
+      return "type.googleapis.com/"
+             "browser_actuator.TaskIngressDownstreamPayload";
+    case PayloadType::kProbe:
+      return "type.googleapis.com/browser_actuator.TransportProbe";
     case PayloadType::kUnspecified:
       NOTREACHED();
   }
   NOTREACHED();
 }
+// LINT.ThenChange(//components/browser_actuator/public/transport/common.h:PayloadType)
 
 // Returns the payload type that `proto_type` routes to, or `std::nullopt` if it
 // is unspecified or not a value this client knows how to route. Callers must

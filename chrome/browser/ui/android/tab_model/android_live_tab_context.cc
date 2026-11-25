@@ -7,9 +7,13 @@
 #include <memory>
 #include <optional>
 
+#include "base/check.h"
+#include "base/feature_list.h"
 #include "base/notimplemented.h"
+#include "base/strings/string_number_conversions.h"
 #include "base/uuid.h"
 #include "chrome/browser/android/tab_android.h"
+#include "chrome/browser/flags/android/chrome_feature_list.h"
 #include "chrome/browser/glic/glic_tab_restore_helper.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/sessions/session_restore.h"
@@ -27,8 +31,8 @@
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/restore_type.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
-#include "ui/base/window_open_disposition.h"
 
 AndroidLiveTabContext::AndroidLiveTabContext(TabModel* tab_model)
     : tab_model_(tab_model) {}
@@ -88,6 +92,11 @@ std::map<std::string, std::string> AndroidLiveTabContext::GetExtraDataForTab(
   TabAndroid* tab_android = tab_model_->GetTabAt(index);
   if (tab_android) {
     glic::PopulateGlicExtraData(tab_android, &extra_data);
+    if (base::FeatureList::IsEnabled(
+            chrome::android::kUndoableTabClosureRework)) {
+      extra_data[kUndoOldTabIdKey] =
+          base::NumberToString(tab_android->GetAndroidId());
+    }
   }
   return extra_data;
 }
@@ -196,14 +205,10 @@ std::string AndroidLiveTabContext::GetWorkspace() const {
   return std::string();
 }
 
-sessions::LiveTab* AndroidLiveTabContext::AddRestoredTab(
-    const sessions::tab_restore::Tab& tab,
-    int tab_index,
-    bool select,
-    bool is_restoring_group_or_window,
-    sessions::tab_restore::Type original_session_type) {
-  Profile* profile = tab_model_->GetProfile();
-
+std::unique_ptr<content::WebContents>
+AndroidLiveTabContext::CreateRestoredWebContents(
+    Profile* profile,
+    const sessions::tab_restore::Tab& tab) {
   // Prepare navigation history.
   std::vector<std::unique_ptr<content::NavigationEntry>> nav_entries =
       sessions::ContentSerializedNavigationBuilder::ToNavigationEntries(
@@ -222,6 +227,20 @@ sessions::LiveTab* AndroidLiveTabContext::AddRestoredTab(
   web_contents->GetController().Restore(tab.normalized_navigation_index(),
                                         content::RestoreType::kRestored,
                                         &nav_entries);
+  return web_contents;
+}
+
+sessions::LiveTab* AndroidLiveTabContext::AddRestoredTab(
+    const sessions::tab_restore::Tab& tab,
+    int tab_index,
+    bool select,
+    bool is_restoring_group_or_window,
+    sessions::tab_restore::Type original_session_type) {
+  Profile* profile = tab_model_->GetProfile();
+
+  std::unique_ptr<content::WebContents> web_contents =
+      CreateRestoredWebContents(profile, tab);
+  content::WebContents* raw_web_contents = web_contents.get();
 
   // Create new tab. Ownership is passed into java, which in turn creates a new
   // TabAndroid instance to own the WebContents. Only select the restored tab
@@ -256,7 +275,7 @@ sessions::LiveTab* AndroidLiveTabContext::ReplaceRestoredTab(
   // This is called only on replacement of the current tab.
   content::WebContents* web_contents = tab_model_->GetActiveWebContents();
   web_contents = SessionRestore::RestoreForeignSessionTab(
-      web_contents, session_tab, WindowOpenDisposition::kCurrentTab);
+      web_contents, session_tab, ui::mojom::WindowOpenDisposition::kCurrentTab);
   web_contents->GetController().LoadIfNecessary();
   return sessions::ContentLiveTab::GetOrCreateForWebContents(web_contents);
 }
@@ -293,19 +312,27 @@ sessions::LiveTabContext* AndroidLiveTabContext::FindContextForWebContents(
 
 // static.
 sessions::LiveTabContext* AndroidLiveTabContext::FindContextWithID(
-    SessionID desired_id) {
+    SessionID desired_id,
+    Profile* profile) {
+  CHECK(profile);
   // Find the model with desired id.
   TabModel* tab_model =
       TabModelList::FindTabModelWithWindowSessionId(desired_id);
-
-  // If we can't find the correct model, fall back to first non-incognito model.
-  if (!tab_model || tab_model->IsOffTheRecord()) {
-    for (const TabModel* model : TabModelList::models()) {
-      if (!model->IsOffTheRecord()) {
-        return model->GetLiveTabContext();
-      }
-    }
+  if (tab_model && tab_model->GetProfile() == profile &&
+      !tab_model->IsOffTheRecord()) {
+    return tab_model->GetLiveTabContext();
   }
 
-  return tab_model ? tab_model->GetLiveTabContext() : nullptr;
+  // If we can't find the correct model, fall back to first non-incognito model
+  // for `profile`.
+  const TabModel* fallback_model = nullptr;
+  TabModelList::ForEach(profile, [&](TabModel* model) {
+    if (!model->IsOffTheRecord()) {
+      fallback_model = model;
+      return false;
+    }
+    return true;
+  });
+
+  return fallback_model ? fallback_model->GetLiveTabContext() : nullptr;
 }

@@ -700,7 +700,7 @@ TEST_F(AutofillMetricsTest, CreditCardCheckoutFlowUserActions) {
     base::UserActionTester user_action_tester;
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form.global_id(),
-        form.fields().front().global_id(),
+        form.fields().front().global_id(), FillingProduct::kCreditCard,
         paydm().GetCreditCardByGUID(kTestLocalCardId),
         AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
         /*blocked_fields=*/{});
@@ -1009,7 +1009,7 @@ TEST_F(AutofillMetricsTest, CreditCardGetRealPanDuration_ServerCard) {
     base::HistogramTester histogram_tester;
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form.global_id(),
-        form.fields().back().global_id(),
+        form.fields().back().global_id(), FillingProduct::kCreditCard,
         paydm().GetCreditCardByGUID(kTestMaskedCardId),
         AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
         /*blocked_fields=*/{});
@@ -1033,7 +1033,7 @@ TEST_F(AutofillMetricsTest, CreditCardGetRealPanDuration_ServerCard) {
     base::HistogramTester histogram_tester;
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form.global_id(),
-        form.fields().back().global_id(),
+        form.fields().back().global_id(), FillingProduct::kCreditCard,
         paydm().GetCreditCardByGUID(kTestMaskedCardId),
         AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
         /*blocked_fields=*/{});
@@ -1057,7 +1057,7 @@ TEST_F(AutofillMetricsTest, CreditCardGetRealPanDuration_ServerCard) {
     base::HistogramTester histogram_tester;
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form.global_id(),
-        form.fields().back().global_id(),
+        form.fields().back().global_id(), FillingProduct::kCreditCard,
         paydm().GetCreditCardByGUID(kTestMaskedCardId),
         AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
         /*blocked_fields=*/{});
@@ -1094,7 +1094,7 @@ TEST_F(AutofillMetricsTest, CreditCardGetRealPanDuration_BadServerResponse) {
     base::HistogramTester histogram_tester;
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form.global_id(),
-        form.fields().back().global_id(),
+        form.fields().back().global_id(), FillingProduct::kCreditCard,
         paydm().GetCreditCardByGUID(kTestMaskedCardId),
         AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
         /*blocked_fields=*/{});
@@ -1253,9 +1253,6 @@ TEST_F(AutofillMetricsTest, AddressParsedFormEvents) {
        CreateTestFormField("City", "city", "", FormControlType::kInputText),
        CreateTestFormField("Street", "street", "",
                            FormControlType::kInputText)});
-
-  const std::vector<FieldType> field_types = {
-      ADDRESS_HOME_STATE, ADDRESS_HOME_CITY, ADDRESS_HOME_STREET_ADDRESS};
 
   base::HistogramTester histogram_tester;
   SeeForm(form);
@@ -3044,9 +3041,9 @@ class AutofillMetricsCrossFrameFormTest : public AutofillMetricsTest {
         .WillOnce(base::test::RunOnceCallback<2>(credit_card()));
     autofill_manager().FillOrPreviewForm(
         mojom::ActionPersistence::kFill, form_.global_id(),
-        triggering_field.global_id(), &credit_card_,
-        AutofillTriggerSource::kPopup, /*require_user_confirmation=*/false,
-        /*blocked_fields=*/{});
+        triggering_field.global_id(), FillingProduct::kCreditCard,
+        &credit_card_, AutofillTriggerSource::kPopup,
+        /*require_user_confirmation=*/false, /*blocked_fields=*/{});
   }
 
   // Sets the field values of |form_| according to the parameters.

@@ -10,13 +10,14 @@ import org.chromium.build.annotations.Nullable;
 import java.util.Objects;
 
 /**
- * Properties describing a user education feature's UI format, enterprise policy compliance, and
- * cooldown group behavior.
+ * Properties describing a user education feature's UI format and cooldown group behavior.
+ *
+ * <p>Whether a feature is blocked by the {@code PromotionsEnabled} enterprise policy is determined
+ * centrally by {@code EnterprisePolicyBypassAllowlist}.
  */
 @NullMarked
 public class FeatureProperties {
     private final @UiFormat int mFormat;
-    private final boolean mIsBlockedByEnterprisePolicy;
     private final boolean mIsBlockedByCooldownGroup;
     private final boolean mBlocksCooldownGroup;
 
@@ -24,20 +25,14 @@ public class FeatureProperties {
      * Constructs a {@link FeatureProperties} instance.
      *
      * @param format The {@link UiFormat} of the user education surface.
-     * @param isBlockedByEnterprisePolicy Whether the feature is blocked when the PromotionsEnabled
-     *     enterprise policy disables promotions.
      * @param isBlockedByCooldownGroup Whether the feature is blocked by the cooldown group for its
      *     format type.
      * @param blocksCooldownGroup Whether triggering this feature contributes to the cooldown group
      *     for its format type.
      */
     public FeatureProperties(
-            @UiFormat int format,
-            boolean isBlockedByEnterprisePolicy,
-            boolean isBlockedByCooldownGroup,
-            boolean blocksCooldownGroup) {
+            @UiFormat int format, boolean isBlockedByCooldownGroup, boolean blocksCooldownGroup) {
         mFormat = format;
-        mIsBlockedByEnterprisePolicy = isBlockedByEnterprisePolicy;
         mIsBlockedByCooldownGroup = isBlockedByCooldownGroup;
         mBlocksCooldownGroup = blocksCooldownGroup;
     }
@@ -45,14 +40,6 @@ public class FeatureProperties {
     /** Returns the {@link UiFormat} of the user education surface. */
     public @UiFormat int getFormat() {
         return mFormat;
-    }
-
-    /**
-     * Returns whether the feature is blocked when the PromotionsEnabled enterprise policy disables
-     * promotions.
-     */
-    public boolean isBlockedByEnterprisePolicy() {
-        return mIsBlockedByEnterprisePolicy;
     }
 
     /** Returns whether the feature is blocked by the cooldown group for its format type. */
@@ -73,26 +60,19 @@ public class FeatureProperties {
         if (this == o) return true;
         if (!(o instanceof FeatureProperties other)) return false;
         return mFormat == other.mFormat
-                && mIsBlockedByEnterprisePolicy == other.mIsBlockedByEnterprisePolicy
                 && mIsBlockedByCooldownGroup == other.mIsBlockedByCooldownGroup
                 && mBlocksCooldownGroup == other.mBlocksCooldownGroup;
     }
 
     @Override
     public int hashCode() {
-        return Objects.hash(
-                mFormat,
-                mIsBlockedByEnterprisePolicy,
-                mIsBlockedByCooldownGroup,
-                mBlocksCooldownGroup);
+        return Objects.hash(mFormat, mIsBlockedByCooldownGroup, mBlocksCooldownGroup);
     }
 
     @Override
     public String toString() {
         return "FeatureProperties{format="
                 + formatToString(mFormat)
-                + ", isBlockedByEnterprisePolicy="
-                + mIsBlockedByEnterprisePolicy
                 + ", isBlockedByCooldownGroup="
                 + mIsBlockedByCooldownGroup
                 + ", blocksCooldownGroup="
@@ -100,6 +80,7 @@ public class FeatureProperties {
                 + "}";
     }
 
+    // LINT.IfChange(UiFormat)
     private static String formatToString(@UiFormat int format) {
         switch (format) {
             case UiFormat.UNKNOWN:
@@ -128,4 +109,5 @@ public class FeatureProperties {
                 return Integer.toString(format);
         }
     }
+    // LINT.ThenChange(//components/feature_engagement/public/android/java/src/org/chromium/components/feature_engagement/UiFormat.java:UiFormat)
 }

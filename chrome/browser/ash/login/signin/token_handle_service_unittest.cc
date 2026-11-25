@@ -18,9 +18,12 @@
 #include "chrome/test/base/testing_browser_process.h"
 #include "chrome/test/base/testing_profile.h"
 #include "chrome/test/base/testing_profile_manager.h"
+#include "chromeos/ash/components/browser_context_helper/annotated_account_id.h"
+#include "chromeos/ash/components/browser_context_helper/browser_context_helper.h"
 #include "chromeos/ash/components/dbus/userdataauth/userdataauth_client.h"
 #include "components/account_id/account_id.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/user_manager/known_user.h"
@@ -53,6 +56,11 @@ class TokenHandleServiceTest : public testing::Test {
     fake_user_manager_->AddUserWithAffiliationAndTypeAndProfile(
         account_id_, /*is_affiliated=*/false, user_manager::UserType::kRegular,
         profile_);
+    // `TokenHandleService` resolves its owning user via
+    // `BrowserContextHelper::GetUserByBrowserContext()`, which relies on this
+    // annotation (production profiles get it from
+    // `ProfileUserManagerController`).
+    AnnotatedAccountId::Set(profile_, account_id_);
     identity_test_env_adaptor_ =
         std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile_);
 
@@ -92,8 +100,10 @@ class TokenHandleServiceTest : public testing::Test {
   }
 
   void CreateService() {
+    user_manager::User* user =
+        BrowserContextHelper::Get()->GetUserByBrowserContext(profile_);
     service_ = std::make_unique<TokenHandleService>(
-        profile_, identity_test_env()->identity_manager(),
+        user, identity_test_env()->identity_manager(),
         TokenHandleStoreFactory::Get()->GetTokenHandleStore());
   }
 
@@ -103,6 +113,8 @@ class TokenHandleServiceTest : public testing::Test {
             TestingBrowserProcess::GetGlobal()->local_state())
             .FindStringPath(account_id_, kTokenHandleStatusPref));
   }
+
+  std::unique_ptr<TokenHandleService> service_;
 
  private:
   content::BrowserTaskEnvironment task_environment_;
@@ -115,7 +127,6 @@ class TokenHandleServiceTest : public testing::Test {
   std::unique_ptr<IdentityTestEnvironmentProfileAdaptor>
       identity_test_env_adaptor_;
   std::unique_ptr<TokenHandleStoreFactory> token_handle_store_factory_;
-  std::unique_ptr<TokenHandleService> service_;
 };
 
 TEST_F(TokenHandleServiceTest, RefreshTokenUpdateRefetchesTokenHandle) {
@@ -128,6 +139,43 @@ TEST_F(TokenHandleServiceTest, RefreshTokenUpdateRefetchesTokenHandle) {
       access_token_requested.GetCallback());
   identity_test_env()->SetRefreshTokenForPrimaryAccount();
 
+  EXPECT_EQ(GetTokenHandleStatus(), kTokenHandleStatusStale);
+  EXPECT_TRUE(access_token_requested.Wait());
+}
+
+TEST_F(TokenHandleServiceTest,
+       RefreshTokenUpdateBeforeRefreshTokensLoadedIsIgnored) {
+  // Setup.
+  MakePrimaryAccountAvailable();
+  identity_test_env()->ResetToAccountsNotYetLoadedFromDiskState();
+  CreateService();
+
+  // Execute: simulate the refresh token notification sent during the initial
+  // credential load from disk, before `OnRefreshTokensLoaded()` fires.
+  service_->OnRefreshTokenUpdatedForAccount(
+      identity_test_env()->identity_manager()->GetPrimaryAccountInfo(
+          signin::ConsentLevel::kSignin));
+
+  // Verify.
+  EXPECT_FALSE(GetTokenHandleStatus().has_value());
+  EXPECT_FALSE(identity_test_env()->IsAccessTokenRequestPending());
+}
+
+TEST_F(TokenHandleServiceTest,
+       RefreshTokenUpdateAfterRefreshTokensLoadedRefetchesTokenHandle) {
+  // Setup.
+  MakePrimaryAccountAvailable();
+  identity_test_env()->ResetToAccountsNotYetLoadedFromDiskState();
+  CreateService();
+  identity_test_env()->ReloadAccountsFromDisk();
+  base::test::TestFuture<void> access_token_requested;
+  identity_test_env()->SetCallbackForNextAccessTokenRequest(
+      access_token_requested.GetCallback());
+
+  // Execute.
+  identity_test_env()->SetRefreshTokenForPrimaryAccount();
+
+  // Verify.
   EXPECT_EQ(GetTokenHandleStatus(), kTokenHandleStatusStale);
   EXPECT_TRUE(access_token_requested.Wait());
 }

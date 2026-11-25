@@ -7,7 +7,7 @@ package org.chromium.chrome.browser.autofill;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.anyLong;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -16,6 +16,7 @@ import android.widget.TextView;
 
 import androidx.test.filters.SmallTest;
 
+import org.jni_zero.JniRawPtr;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;
@@ -27,9 +28,8 @@ import org.mockito.junit.MockitoRule;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
+import org.chromium.chrome.browser.autofill.AutofillSnackbarController.NativeAutofillSnackbarViewAndroid;
 import org.chromium.chrome.browser.ui.messages.snackbar.Snackbar;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
@@ -40,7 +40,6 @@ import java.util.concurrent.ExecutionException;
 
 /** Instrumentation tests for {@link AutofillSnackbar} */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(Batch.PER_CLASS)
 public class AutofillSnackbarControllerTest {
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
@@ -52,8 +51,8 @@ public class AutofillSnackbarControllerTest {
     private static final String SNACKBAR_MESSAGE_TEXT = "message_text";
     private static final String SNACKBAR_ACTION_TEXT = "action_text";
     private static final int SNACKBAR_DURATION = 10000;
-    private static final long NATIVE_AUTOFILL_SNACKBAR_VIEW = 100L;
 
+    @Mock private JniRawPtr<NativeAutofillSnackbarViewAndroid> mNativeAutofillSnackbarView;
     @Mock private AutofillSnackbarController.Natives mNativeMock;
 
     private AutofillSnackbarController mAutofillSnackbarController;
@@ -64,7 +63,7 @@ public class AutofillSnackbarControllerTest {
         mActivityTestRule.startOnBlankPage();
         mSnackbarManager = mActivityTestRule.getActivity().getSnackbarManager();
         mAutofillSnackbarController =
-                new AutofillSnackbarController(NATIVE_AUTOFILL_SNACKBAR_VIEW, mSnackbarManager);
+                new AutofillSnackbarController(mNativeAutofillSnackbarView, mSnackbarManager);
         AutofillSnackbarControllerJni.setInstanceForTesting(mNativeMock);
     }
 
@@ -124,7 +123,8 @@ public class AutofillSnackbarControllerTest {
         dismissSnackbar();
 
         assertNull(getCurrentSnackbar());
-        verify(mNativeMock, never()).onDismissed(anyLong());
+        verify(mNativeAutofillSnackbarView).release();
+        verify(mNativeMock, never()).onDismissed(any());
     }
 
     @Test
@@ -134,8 +134,9 @@ public class AutofillSnackbarControllerTest {
 
         clickSnackbarAction();
 
-        verify(mNativeMock).onActionClicked(NATIVE_AUTOFILL_SNACKBAR_VIEW);
-        verify(mNativeMock, never()).onDismissed(anyLong());
+        verify(mNativeMock).onActionClicked(mNativeAutofillSnackbarView);
+        verify(mNativeAutofillSnackbarView).release();
+        verify(mNativeMock, never()).onDismissed(any());
     }
 
     @Test
@@ -145,7 +146,8 @@ public class AutofillSnackbarControllerTest {
 
         timeoutSnackbar();
 
-        verify(mNativeMock).onDismissed(NATIVE_AUTOFILL_SNACKBAR_VIEW);
+        verify(mNativeMock).onDismissed(mNativeAutofillSnackbarView);
+        verify(mNativeAutofillSnackbarView).release();
     }
 
     private void showSnackbar() {

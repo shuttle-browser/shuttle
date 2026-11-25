@@ -20,6 +20,7 @@
 #include "components/trusted_vault/local_recovery_factor.h"
 #include "components/trusted_vault/proto/local_trusted_vault.pb.h"
 #include "components/trusted_vault/standalone_trusted_vault_storage.h"
+#include "components/trusted_vault/trusted_vault_client.h"
 #include "components/trusted_vault/trusted_vault_degraded_recoverability_handler.h"
 #include "components/trusted_vault/trusted_vault_histograms.h"
 #include "components/trusted_vault/trusted_vault_server_constants.h"
@@ -32,6 +33,8 @@ class AccountsInCookieJarInfo;
 
 namespace trusted_vault {
 
+class EnrollmentHandler;
+
 // Provides interfaces to store/remove keys to/from file storage.
 // This class performs expensive operations and expected to be run from
 // dedicated sequence (using thread pool). Can be constructed on any thread/
@@ -41,6 +44,9 @@ class StandaloneTrustedVaultBackend
  public:
   using FetchKeysCallback = base::OnceCallback<void(
       const std::vector<std::vector<uint8_t>>& vault_keys)>;
+  using EnrollCallback =
+      base::OnceCallback<void(const std::vector<uint8_t>& new_shared_key,
+                              int new_key_version)>;
 
   class Delegate {
    public:
@@ -50,6 +56,9 @@ class StandaloneTrustedVaultBackend
 
     Delegate& operator=(const Delegate&) = delete;
 
+    virtual void NotifyVaultKeysChanged(
+        SecurityDomainId security_domain,
+        std::optional<TrustedVaultUserActionTriggerForUMA> trigger) = 0;
     virtual void NotifyRecoverabilityDegradedChanged(
         SecurityDomainId security_domain) = 0;
   };
@@ -70,6 +79,25 @@ class StandaloneTrustedVaultBackend
     CreateLocalRecoveryFactors(StandaloneTrustedVaultStorage* storage,
                                TrustedVaultThrottlingConnection* connection,
                                const CoreAccountInfo& primary_account) = 0;
+  };
+
+  class EnrollmentHandlerFactory {
+   public:
+    EnrollmentHandlerFactory() = default;
+    EnrollmentHandlerFactory(const EnrollmentHandlerFactory&) = delete;
+    EnrollmentHandlerFactory& operator=(const EnrollmentHandlerFactory&) =
+        delete;
+    virtual ~EnrollmentHandlerFactory() = default;
+
+    // Creates an `EnrollmentHandler` for `security_domain` and
+    // `primary_account`, or returns null if enrollment is not supported for
+    // `security_domain`. `storage` and `connection` must not be null and must
+    // outlive the returned handler, which retains references to them.
+    virtual std::unique_ptr<EnrollmentHandler> CreateEnrollmentHandler(
+        SecurityDomainId security_domain,
+        const CoreAccountInfo& primary_account,
+        KeyStorage* storage,
+        TrustedVaultConnection* connection) = 0;
   };
 
   enum class RefreshTokenErrorState {
@@ -114,11 +142,14 @@ class StandaloneTrustedVaultBackend
                  SecurityDomainId security_domain,
                  FetchKeysCallback callback);
 
-  // Replaces keys for given |gaia_id| both in memory and on disk.
+  // Replaces keys for given `gaia_id` both in memory and on disk and notifies
+  // the delegate if the vault keys have changed.
   void StoreKeys(const GaiaId& gaia_id,
                  SecurityDomainId security_domain,
                  const std::vector<std::vector<uint8_t>>& keys,
-                 int last_key_version);
+                 int last_key_version,
+                 std::optional<TrustedVaultUserActionTriggerForUMA> trigger =
+                     std::nullopt);
 
   // Marks vault keys as stale.  Afterwards, the next FetchKeys() call for this
   // |account_info| will trigger a key download attempt.
@@ -150,6 +181,19 @@ class StandaloneTrustedVaultBackend
                                 int method_type_hint,
                                 base::OnceCallback<void(bool)> cb);
 
+  // Checks whether `account_info` can be enrolled in `security_domain` without
+  // user interaction.
+  void CanEnroll(const CoreAccountInfo& account_info,
+                 SecurityDomainId security_domain,
+                 base::OnceCallback<void(bool)> cb);
+
+  // Enrolls `account_info` into `security_domain`. On success, `cb` is run
+  // with the newly generated shared key and its version. On failure, `cb` is
+  // run with an empty vector and -1.
+  void Enroll(const CoreAccountInfo& account_info,
+              SecurityDomainId security_domain,
+              EnrollCallback cb);
+
   void ClearLocalDataForAccount(const CoreAccountInfo& account_info);
 
   std::optional<CoreAccountInfo> GetPrimaryAccountForTesting() const;
@@ -168,18 +212,20 @@ class StandaloneTrustedVaultBackend
       std::unique_ptr<Delegate> delegate,
       std::unique_ptr<TrustedVaultThrottlingConnection> connection,
       std::unique_ptr<LocalRecoveryFactorsFactory>
-          local_recovery_factors_factory);
+          local_recovery_factors_factory,
+      std::unique_ptr<EnrollmentHandlerFactory> enrollment_handler_factory);
 
  private:
-  // Constructor which allows specifying a TrustedVaultThrottlingConnection and
-  // a LocalRecoveryFactorsFactory.
+  // Constructor which allows specifying a `TrustedVaultThrottlingConnection`, a
+  // `LocalRecoveryFactorsFactory`, and an `EnrollmentHandlerFactory`.
   // Only used in tests.
   StandaloneTrustedVaultBackend(
       std::unique_ptr<StandaloneTrustedVaultStorage> storage,
       std::unique_ptr<Delegate> delegate,
       std::unique_ptr<TrustedVaultThrottlingConnection> connection,
       std::unique_ptr<LocalRecoveryFactorsFactory>
-          local_recovery_factors_factory);
+          local_recovery_factors_factory,
+      std::unique_ptr<EnrollmentHandlerFactory> enrollment_handler_factory);
 
   static TrustedVaultDownloadKeysStatusForUMA
   GetDownloadKeysStatusForUMAFromResponse(
@@ -217,6 +263,11 @@ class StandaloneTrustedVaultBackend
                                     base::OnceCallback<void(bool)> cb,
                                     TrustedVaultRegistrationStatus status,
                                     int unused_epoch);
+
+  void OnEnrolled(SecurityDomainId security_domain,
+                  EnrollCallback cb,
+                  const std::vector<uint8_t>& new_shared_key,
+                  int new_key_version);
 
   // Invokes |callback| with currently available keys for |gaia_id|.
   void FulfillFetchKeys(
@@ -317,6 +368,15 @@ class StandaloneTrustedVaultBackend
   base::flat_map<SecurityDomainId,
                  std::unique_ptr<TrustedVaultConnection::Request>>
       ongoing_add_recovery_method_requests_;
+
+  // Factory to create `EnrollmentHandler` instances. Can be overridden in
+  // tests.
+  const std::unique_ptr<EnrollmentHandlerFactory> enrollment_handler_factory_;
+  // Handles enrollment into supported security domains for `primary_account_`.
+  // Map entries may be null for security domains that do not support
+  // enrollment. Instances change whenever `primary_account_` changes.
+  base::flat_map<SecurityDomainId, std::unique_ptr<EnrollmentHandler>>
+      enrollment_handlers_;
 
   // Used to take care of polling the degraded recoverability state from the
   // server for the |primary_account|. Instance changes whenever

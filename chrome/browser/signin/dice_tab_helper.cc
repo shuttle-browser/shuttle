@@ -13,16 +13,17 @@
 #include "base/time/time.h"
 #include "chrome/browser/metrics/profile_metrics_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/signin/dice_web_signin_interceptor.h"
+#include "chrome/browser/signin/dice_web_signin_interceptor_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/signin_promo.h"
 #include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/browser_window/public/profile_browser_collection.h"
+#include "chrome/browser/ui/signin/signin_view_controller.h"
 #include "chrome/browser/ui/webui/signin/history_sync_optin_service.h"
 #include "chrome/browser/ui/webui/signin/history_sync_optin_service_factory.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service.h"
-#include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
 #include "components/signin/public/base/signin_metrics.h"
 #include "components/signin/public/base/signin_switches.h"
 #include "components/signin/public/identity_manager/account_info.h"
@@ -109,24 +110,30 @@ DiceTabHelper::GetShowSigninErrorCallbackForBrowser() {
     if (!browser) {
       return;
     }
-    LoginUIServiceFactory::GetForProfile(profile)->DisplayLoginResult(*browser,
-                                                                      error);
+    SigninViewController::From(browser)->ShowModalSigninErrorDialog(error);
   });
 }
 
 DiceTabHelper::ResetableState::ResetableState() = default;
 DiceTabHelper::ResetableState::~ResetableState() = default;
 
+DiceTabHelper::InterceptionRetryParams::InterceptionRetryParams() = default;
+DiceTabHelper::InterceptionRetryParams::InterceptionRetryParams(
+    TokenExchangeInfo token_exchange_info)
+    : token_exchange_info(std::move(token_exchange_info)) {}
+DiceTabHelper::InterceptionRetryParams::~InterceptionRetryParams() = default;
+DiceTabHelper::InterceptionRetryParams::InterceptionRetryParams(
+    InterceptionRetryParams&& other) noexcept = default;
+DiceTabHelper::InterceptionRetryParams&
+DiceTabHelper::InterceptionRetryParams::operator=(
+    InterceptionRetryParams&& other) noexcept = default;
+
 DiceTabHelper::DiceTabHelper(content::WebContents* web_contents)
     : content::WebContentsUserData<DiceTabHelper>(*web_contents),
       content::WebContentsObserver(web_contents),
       state_{std::make_unique<ResetableState>()} {}
 
-DiceTabHelper::~DiceTabHelper() {
-  for (auto& observer : observer_list_) {
-    observer.OnDiceTabHelperWillDestroy();
-  }
-}
+DiceTabHelper::~DiceTabHelper() = default;
 
 void DiceTabHelper::InitializeSigninFlow(
     const GURL& signin_url,
@@ -139,9 +146,11 @@ void DiceTabHelper::InitializeSigninFlow(
     OnSigninHeaderReceived on_signin_header_received_callback,
     ShowSigninErrorCallback show_signin_error_callback) {
   CHECK(signin_url.is_valid(), base::NotFatalUntil::M162);
-  // TODO(crbug.com/578357164): CHECK-exclusion: Convert to a CHECK once we are
-  // confident it won't be triggered.
-  DCHECK(state_->signin_url.is_empty() || state_->signin_url == signin_url);
+  // The signin URL must not change while the tab is still the reusable signin
+  // page (see `IsChromeSigninPage()`). Once the tab navigated away from it,
+  // the previous state is stale and the tab can be reused for a new flow.
+  CHECK(!is_chrome_signin_page_ || state_->signin_url.is_empty() ||
+         state_->signin_url == signin_url, base::NotFatalUntil::M162);
 
   Reset();
   state_->redirect_url = redirect_url;
@@ -213,9 +222,21 @@ void DiceTabHelper::OnSigninFlowComplete() {
   Reset();
 }
 
-void DiceTabHelper::OnTokenExchangeSuccess(
-    base::OnceClosure retry_interception_bubble_callback) {
-  StartInterceptionBubbleTimer(std::move(retry_interception_bubble_callback));
+void DiceTabHelper::OnTokenExchangeSuccess(TokenExchangeInfo info) {
+  StartInterceptionBubbleTimer(std::move(info));
+}
+
+void DiceTabHelper::OnDiceSigninSessionComplete(
+    const CoreAccountId& initiator_account_id,
+    std::vector<CoreAccountId> secondary_accounts) {
+  // Only needed by a pending retry, for the same account.
+  if (!state_->interception_retry_params.has_value() ||
+      state_->interception_retry_params->token_exchange_info.account_id !=
+          initiator_account_id) {
+    return;
+  }
+  state_->interception_retry_params->secondary_accounts =
+      std::move(secondary_accounts);
 }
 
 void DiceTabHelper::UpdateHistorySyncOptinCallback(
@@ -230,14 +251,6 @@ void DiceTabHelper::UpdateSigninErrorCallback(
 
 void DiceTabHelper::UpdateRedirectUrl(const GURL& redirect_url) {
   state_->redirect_url = redirect_url;
-}
-
-void DiceTabHelper::AddObserver(Observer* observer) {
-  observer_list_.AddObserver(observer);
-}
-
-void DiceTabHelper::RemoveObserver(Observer* observer) {
-  observer_list_.RemoveObserver(observer);
 }
 
 // static
@@ -268,16 +281,53 @@ DiceTabHelper::SetScopedInterceptionBubbleTimerForTesting(
 // `elapsed_time_since_lst_arrival_timer` keeps running. If the enable sync
 // header is later received, then `elapsed_time_since_lst_arrival_timer` is
 // stopped and recorded in the histogram `SyncHeaderArrivalTimeWindow`.
-void DiceTabHelper::StartInterceptionBubbleTimer(
-    base::OnceClosure retry_interception_bubble_callback) {
-  base::OnceClosure timer_callback =
-      std::move(base::BindOnce(&RecordDiceSyncHeaderTimeout, true))
-          .Then(std::move(retry_interception_bubble_callback));
+void DiceTabHelper::StartInterceptionBubbleTimer(TokenExchangeInfo info) {
+  state_->interception_retry_params = InterceptionRetryParams(std::move(info));
   state_->elapsed_time_since_lst_arrival_timer =
       std::make_unique<base::ElapsedTimer>();
+  // Unretained is safe because the timer is owned by `this`.
   state_->retry_interception_bubble_timer.Start(
       FROM_HERE, g_delay_before_interception_bubble_retry,
-      std::move(timer_callback));
+      base::BindOnce(&DiceTabHelper::OnRetryInterceptionBubbleTimerFired,
+                     base::Unretained(this)));
+}
+
+void DiceTabHelper::OnRetryInterceptionBubbleTimerFired() {
+  RecordDiceSyncHeaderTimeout(true);
+  CHECK(state_->interception_retry_params.has_value());
+  InterceptionRetryParams params =
+      std::move(state_->interception_retry_params).value();
+  state_->interception_retry_params.reset();
+
+  // No need to trigger the bubble if we are not in a Chrome sign-in tab, or if
+  // we are in a WebSignin case (as this is handled by the first interception
+  // attempt).
+  if (!IsChromeSigninInProgress() ||
+      signin_access_point() == signin_metrics::AccessPoint::kWebSignin) {
+    return;
+  }
+  auto* interceptor = DiceWebSigninInterceptorFactory::GetForProfile(
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext()));
+  if (!interceptor) {
+    return;
+  }
+
+  // Try to show the interception bubble by treating this case as WebSignin on
+  // any regular tab.
+  // TODO(crbug.com/426555085): Remove the access_point argument.
+  const TokenExchangeInfo& info = params.token_exchange_info;
+  interceptor->MaybeInterceptWebSignin(
+      web_contents(), info.account_id, signin_metrics::AccessPoint::kWebSignin,
+      info.is_new_account,
+      /*is_chrome_signin=*/false, info.primary_is_connected);
+
+  // The interceptor has ignored the session completion because the first
+  // attempt was aborted. Replay it, otherwise accepting the bubble may hang,
+  // waiting for it.
+  if (params.secondary_accounts.has_value()) {
+    interceptor->OnDiceSigninSessionComplete(
+        info.account_id, std::move(*params.secondary_accounts));
+  }
 }
 
 void DiceTabHelper::StopInterceptionBubbleTimer() {
@@ -288,6 +338,7 @@ void DiceTabHelper::StopInterceptionBubbleTimer() {
     RecordDiceSyncHeaderTimeout(false);
   }
   state_->retry_interception_bubble_timer.Stop();
+  state_->interception_retry_params.reset();
 
   // Record metrics related to the reception of the Dice Sync header.
   if (!IsTokenExchangeDone()) {
@@ -396,9 +447,6 @@ void DiceTabHelper::SetIsChromeSigninPage(bool is_signin_page) {
   is_chrome_signin_page_ = is_signin_page;
   if (!is_chrome_signin_page_) {
     bluetooth_adapter_.reset();
-  }
-  for (auto& observer : observer_list_) {
-    observer.OnIsChromeSigninPageChanged(is_chrome_signin_page_);
   }
 }
 

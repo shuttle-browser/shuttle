@@ -137,7 +137,12 @@ def _MakeProcessPool(job_params, **job_kwargs):
   pool_size = min(len(job_params), multiprocessing.cpu_count())
   _fork_params = job_params
   _fork_kwargs = job_kwargs
-  ret = multiprocessing.Pool(pool_size)
+  ctx = (
+    multiprocessing.get_context('fork')
+    if 'fork' in multiprocessing.get_all_start_methods()
+    else multiprocessing
+  )
+  ret = ctx.Pool(pool_size)
   _fork_params = None
   _fork_kwargs = None
   return ret
@@ -184,6 +189,34 @@ def BulkForkAndCall(func, arg_tuples, **kwargs):
   finally:
     pool.close()
     pool.join()
+
+
+def BulkForkAndCallAsync(func, arg_tuples, **kwargs):
+  """Like BulkForkAndCall(), but does not block.
+
+  Processes are forked before returning.
+
+  Returns:
+    A Result object (call .get() to get the list of return values)
+  """
+  arg_tuples = list(arg_tuples)
+  if not arg_tuples:
+    return _ImmediateResult([])
+
+  if DISABLE_ASYNC:
+    return _ImmediateResult([func(*args, **kwargs) for args in arg_tuples])
+
+  def CheckForExceptions(values):
+    for value in values:
+      _CheckForException(value)
+    return values
+
+  pool = _MakeProcessPool(arg_tuples, **kwargs)
+  result = pool.map_async(
+    _FuncWrapper(func), range(len(arg_tuples)), chunksize=1
+  )
+  pool.close()
+  return _WrappedResult(result, decode_func=CheckForExceptions)
 
 
 def CallOnThread(func, *args, **kwargs):

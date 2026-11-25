@@ -11,10 +11,12 @@
 #include <variant>
 #include <vector>
 
-#include "base/functional/callback_forward.h"
+#include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/types/pass_key.h"
+#include "chrome/browser/actor/actor_surface_handle.h"
 #include "chrome/browser/glic/host/glic.mojom.h"
 #include "chrome/browser/glic/public/context/glic_sharing_manager.h"
 #include "chrome/browser/glic/public/glic_instance_id.h"
@@ -25,6 +27,7 @@ class BrowserWindowInterface;
 
 namespace glic {
 class GlicInstance;
+class InvokeErrorDiagnosticsPasskeyProvider;
 
 // Use ongoing conversation for the tab if it exists. Otherwise, fall back
 // to the default behavior for opening the UI (typically a new conversation).
@@ -159,8 +162,13 @@ struct Target {
       conversation = DefaultConversation();
 
   // Specifies the target for actuation.
-  mojom::ActuationTarget actuation_target =
-      mojom::ActuationTarget::kAgentDecides;
+  // - mojom::ActuationTarget: Lets the agent decide, or forces a target, such
+  //   as a new tab. kTargetSurface forces the invoked tab, if there is one.
+  // - actor::ActorSurfaceHandle: Forces a specific actor surface, such as a
+  //   headless surface that has no tab or window. The web client receives it
+  //   as kTargetSurface with the surface ID. The handle must not be null.
+  std::variant<mojom::ActuationTarget, actor::ActorSurfaceHandle>
+      actuation_target = mojom::ActuationTarget::kAgentDecides;
 };
 
 // Configuration to override the default ZSS behavior for the invocation,
@@ -213,6 +221,12 @@ struct PromptPolicy {
   PolicyCheck policy_check = PolicyCheck::kClipboard;
 };
 
+// NOTE: Selected values of this enum are mapped to wire `chrome_error_code`
+// strings in `ExperimentalTriggering` `TaskUpdate.metadata` (see
+// `GlicInvokeErrorToChromeErrorCode`) and consumed by downstream server-side
+// (non-UMA) telemetry and alerting. Avoid changing the semantics of existing
+// values or splitting them without updating the downstream mapping and
+// coordinating with `chrome/browser/glic/experimental_triggering/OWNERS`.
 // LINT.IfChange(GlicInvokeError)
 // Possible errors that can occur during a Glic invocation.
 enum class GlicInvokeError {
@@ -337,6 +351,19 @@ struct GlicInvokeOptions {
   // `prompt_policy`. `prompts` must not be empty when `prompt_policy` is set.
   bool RequiresPromptClipboardPolicyCheck() const;
 
+  // Intended for internal diagnostic pass-through only. Reach out to
+  // c/b/glic/API_OWNERS before adding new callers.
+  // Invoked asynchronously alongside `on_error` when the invocation fails. The
+  // second parameter is an opaque, human-readable diagnostic string whose
+  // format and contents reflect internal Glic implementation state and carry no
+  // stability guarantee; callers must not parse or branch on it.
+  void SetOnErrorWithDiagnostics(
+      base::PassKey<InvokeErrorDiagnosticsPasskeyProvider>,
+      base::OnceCallback<void(GlicInvokeError, std::string)> callback);
+  base::OnceCallback<void(GlicInvokeError, std::string)>
+      TakeOnErrorWithDiagnostics(
+          base::PassKey<InvokeErrorDiagnosticsPasskeyProvider>);
+
   // The invocation source or a specific payload.
   std::variant<glic::mojom::InvocationSource, glic::mojom::InvocationPayloadPtr>
       source_or_payload;
@@ -422,8 +449,16 @@ struct GlicInvokeOptions {
   FreCompletionWaitMode fre_completion_wait_mode =
       FreCompletionWaitMode::kDefault;
 
-  // Browser-specific callback for when the side panel is opened (and stabilized
-  // if wait_for_panel_open is true).
+  // Browser-specific callback for when the invocation opens a visible panel.
+  // Called asynchronously. Not called for hidden invocations
+  // (`show_panel = false`) or for inactive background-tab side panels that do
+  // not open a visible panel.
+  // - When `wait_for_panel_open` is false (or for floating targets), posted
+  //   right after showing the panel, before waiting for the client to finish
+  //   loading.
+  // - When `wait_for_panel_open` is true for a tab target, posted after client
+  //   readiness and layout stabilization once showing the instance opened the
+  //   panel, even if the panel was subsequently closed or hidden.
   base::OnceClosure on_panel_opened;
 
   // Browser-specific callback for when the invocation successfully completes.
@@ -437,6 +472,13 @@ struct GlicInvokeOptions {
   // Browser-specific callback for when the invocation fails.
   // This is called asynchronously.
   base::OnceCallback<void(GlicInvokeError)> on_error;
+
+ private:
+  friend class GlicInstanceCoordinatorImpl;
+  friend class GlicInvokeHandler;
+
+  base::OnceCallback<void(GlicInvokeError, std::string)>
+      on_error_with_diagnostics_;
 };
 
 // Configuration options for invoking Glic with auto-submit.

@@ -4,10 +4,14 @@
 
 #include "gpu/command_buffer/service/raster_decoder.h"
 
+#include <array>
+#include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
@@ -31,6 +35,14 @@
 #include "gpu/config/gpu_preferences.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkCanvas.h"
+#include "third_party/skia/include/core/SkImage.h"
+#include "third_party/skia/include/core/SkSurface.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSemaphore.h"
+#include "third_party/skia/include/gpu/ganesh/GrBackendSurface.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLBackendSurface.h"
+#include "third_party/skia/include/gpu/ganesh/gl/GrGLTypes.h"
+#include "third_party/skia/include/private/chromium/GrPromiseImageTexture.h"
 #include "ui/gl/gl_mock.h"
 #include "ui/gl/gl_surface_stub.h"
 #include "ui/gl/init/gl_factory.h"
@@ -276,7 +288,9 @@ class RasterDecoderOOPTest : public testing::Test, public DecoderClient {
                              bool cleared) {
     gpu::Mailbox mailbox = gpu::Mailbox::Generate();
     gfx::Size size(width, height);
-    auto color_space = gfx::ColorSpace::CreateSRGB();
+    auto color_space = format.is_single_plane()
+                           ? gfx::ColorSpace::CreateSRGB()
+                           : gfx::ColorSpace::CreateREC709();
 
     // Via this function, this test creates mailboxes that are used as both the
     // sources of reads and destinations of writes via the raster interface.
@@ -284,7 +298,8 @@ class RasterDecoderOOPTest : public testing::Test, public DecoderClient {
         mailbox,
         SharedImageInfo(
             format, size, color_space, kTopLeft_GrSurfaceOrigin,
-            kPremul_SkAlphaType,
+            format.is_single_plane() ? kPremul_SkAlphaType
+                                     : kOpaque_SkAlphaType,
             SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE,
             "TestLabel"),
         gpu::kNullSurfaceHandle);
@@ -667,6 +682,206 @@ GLErrorOnAccessTestImageBacking::ProduceMemory(SharedImageManager* manager,
       manager, this, tracker);
 }
 
+class CpuSurfaceTestImageBacking;
+
+class CpuScopedWriteAccess : public SkiaImageRepresentation::ScopedWriteAccess {
+ public:
+  CpuScopedWriteAccess(SkiaImageRepresentation* representation,
+                       std::vector<sk_sp<SkSurface>> surfaces)
+      : SkiaImageRepresentation::ScopedWriteAccess(representation,
+                                                   std::move(surfaces)) {}
+  bool HasBackendSurfaceEndState() override { return true; }
+  void ApplyBackendSurfaceEndState() override {}
+};
+
+class CpuScopedReadAccess : public SkiaImageRepresentation::ScopedReadAccess {
+ public:
+  CpuScopedReadAccess(
+      SkiaImageRepresentation* representation,
+      std::vector<sk_sp<GrPromiseImageTexture>> promise_image_textures,
+      sk_sp<SkImage> image)
+      : SkiaImageRepresentation::ScopedReadAccess(
+            representation,
+            std::move(promise_image_textures)),
+        image_(std::move(image)) {}
+
+  sk_sp<SkImage> CreateSkImage(
+      SharedContextState* context_state,
+      SkImages::TextureReleaseProc texture_release_proc = nullptr,
+      SkImages::ReleaseContext release_context = nullptr) override {
+    return image_;
+  }
+
+  sk_sp<SkImage> CreateSkImageForPlane(
+      size_t plane_index,
+      SharedContextState* context_state,
+      SkImages::TextureReleaseProc texture_release_proc = nullptr,
+      SkImages::ReleaseContext release_context = nullptr) override {
+    return nullptr;
+  }
+
+  bool HasBackendSurfaceEndState() override { return false; }
+  void ApplyBackendSurfaceEndState() override {}
+
+ private:
+  sk_sp<SkImage> image_;
+};
+
+class CpuSurfaceTestImageBacking : public TestImageBacking {
+ public:
+  CpuSurfaceTestImageBacking(const Mailbox& mailbox,
+                             const SharedImageInfo& si_info)
+      : TestImageBacking(mailbox, si_info, /*estimated_size=*/0) {
+    const int num_planes = format().NumberOfPlanes();
+    plane_bitmaps_.resize(num_planes);
+    for (int plane = 0; plane < num_planes; ++plane) {
+      gfx::Size plane_size = format().GetPlaneSize(plane, size());
+      SkColorType color_type = viz::ToClosestSkColorType(format(), plane);
+      SkAlphaType alpha =
+          format().is_multi_plane() ? kOpaque_SkAlphaType : alpha_type();
+      SkImageInfo info = SkImageInfo::Make(
+          plane_size.width(), plane_size.height(), color_type, alpha);
+      plane_bitmaps_[plane].allocPixels(info);
+    }
+  }
+
+  SkBitmap& plane_bitmap(int plane) { return plane_bitmaps_[plane]; }
+  const SkBitmap& plane_bitmap(int plane) const {
+    return plane_bitmaps_[plane];
+  }
+
+  void set_fail_produce_skia(bool fail) { fail_produce_skia_ = fail; }
+  bool fail_produce_skia() const { return fail_produce_skia_; }
+
+ protected:
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state) override;
+
+ private:
+  std::vector<SkBitmap> plane_bitmaps_;
+  bool fail_produce_skia_ = false;
+};
+
+class CpuSurfaceSkiaGaneshImageRepresentation
+    : public SkiaGaneshImageRepresentation {
+ public:
+  CpuSurfaceSkiaGaneshImageRepresentation(
+      SharedImageManager* manager,
+      CpuSurfaceTestImageBacking* backing,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state)
+      : SkiaGaneshImageRepresentation(context_state->gr_context(),
+                                      manager,
+                                      backing,
+                                      tracker) {}
+
+  CpuSurfaceTestImageBacking* cpu_backing() {
+    return static_cast<CpuSurfaceTestImageBacking*>(backing());
+  }
+
+  std::unique_ptr<ScopedWriteAccess> BeginScopedWriteAccess(
+      int final_msaa_count,
+      const SkSurfaceProps& surface_props,
+      const gfx::Rect& update_rect,
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores,
+      AllowUnclearedAccess allow_uncleared,
+      bool use_sk_surface = true) override {
+    if (!cpu_backing()->can_access()) {
+      return nullptr;
+    }
+    const int num_planes = format().NumberOfPlanes();
+    std::vector<sk_sp<SkSurface>> surfaces(num_planes);
+    for (int plane = 0; plane < num_planes; ++plane) {
+      surfaces[plane] = SkSurfaces::WrapPixels(
+          cpu_backing()->plane_bitmap(plane).pixmap(), &surface_props);
+      if (!surfaces[plane]) {
+        return nullptr;
+      }
+    }
+    return std::make_unique<CpuScopedWriteAccess>(this, std::move(surfaces));
+  }
+
+  std::unique_ptr<ScopedWriteAccess> BeginScopedWriteAccess(
+      int final_msaa_count,
+      const SkSurfaceProps& surface_props,
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores,
+      AllowUnclearedAccess allow_uncleared,
+      bool use_sk_surface = true) override {
+    return BeginScopedWriteAccess(
+        final_msaa_count, surface_props, gfx::Rect(size()), begin_semaphores,
+        end_semaphores, allow_uncleared, use_sk_surface);
+  }
+
+  std::unique_ptr<ScopedWriteAccess> BeginScopedWriteAccess(
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores,
+      AllowUnclearedAccess allow_uncleared,
+      bool use_sk_surface = true) override {
+    return BeginScopedWriteAccess(1, SkSurfaceProps(), begin_semaphores,
+                                  end_semaphores, allow_uncleared,
+                                  use_sk_surface);
+  }
+
+  std::unique_ptr<ScopedReadAccess> BeginScopedReadAccess(
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores) override {
+    if (!cpu_backing()->can_access()) {
+      return nullptr;
+    }
+    auto backend_texture =
+        GrBackendTextures::MakeGL(1, 1, skgpu::Mipmapped::kNo,
+                                  GrGLTextureInfo{GL_TEXTURE_2D, 1, GL_RGBA8});
+    auto promise_texture = GrPromiseImageTexture::Make(backend_texture);
+    std::vector<sk_sp<GrPromiseImageTexture>> promise_textures;
+    promise_textures.push_back(std::move(promise_texture));
+    sk_sp<SkImage> image =
+        SkImages::RasterFromBitmap(cpu_backing()->plane_bitmap(0));
+    return std::make_unique<CpuScopedReadAccess>(
+        this, std::move(promise_textures), std::move(image));
+  }
+
+ protected:
+  std::vector<sk_sp<SkSurface>> BeginWriteAccess(
+      int final_msaa_count,
+      const SkSurfaceProps& surface_props,
+      const gfx::Rect& update_rect,
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores,
+      std::unique_ptr<skgpu::MutableTextureState>* end_state) override {
+    return {};
+  }
+  std::vector<sk_sp<GrPromiseImageTexture>> BeginWriteAccess(
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores,
+      std::unique_ptr<skgpu::MutableTextureState>* end_state) override {
+    return {};
+  }
+  void EndWriteAccess() override {}
+  std::vector<sk_sp<GrPromiseImageTexture>> BeginReadAccess(
+      std::vector<GrBackendSemaphore>* begin_semaphores,
+      std::vector<GrBackendSemaphore>* end_semaphores,
+      std::unique_ptr<skgpu::MutableTextureState>* end_state) override {
+    return {};
+  }
+  void EndReadAccess() override {}
+};
+
+std::unique_ptr<SkiaGaneshImageRepresentation>
+CpuSurfaceTestImageBacking::ProduceSkiaGanesh(
+    SharedImageManager* manager,
+    MemoryTypeTracker* tracker,
+    scoped_refptr<SharedContextState> context_state) {
+  if (fail_produce_skia_) {
+    return nullptr;
+  }
+  return std::make_unique<CpuSurfaceSkiaGaneshImageRepresentation>(
+      manager, this, tracker, std::move(context_state));
+}
+
 }  // namespace
 
 class RasterDecoderOOPCopyGLErrorTest
@@ -737,6 +952,257 @@ TEST_P(RasterDecoderOOPCopyGLErrorTest, ClearWhenSourceUnavailable) {
   EXPECT_EQ(error::kNoError, ExecuteImmediateCmd(cmd, sizeof(mailboxes)));
   EXPECT_EQ(GL_INVALID_VALUE, GetGLError());
   EXPECT_EQ(!raise_gl_error(), representation->IsCleared());
+}
+
+namespace {
+
+// Source backing which counts attempts to produce a Skia representation, e.g.
+// to check that a command doesn't produce one (which can allocate, see
+// CompoundImageBacking) before validating its arguments.
+class CountingProduceSkiaTestImageBacking : public TestImageBacking {
+ public:
+  CountingProduceSkiaTestImageBacking(const Mailbox& mailbox,
+                                      const SharedImageInfo& si_info)
+      : TestImageBacking(mailbox, si_info, /*estimated_size=*/0) {
+    SetCleared();
+  }
+
+  int produce_skia_count() const { return produce_skia_count_; }
+
+ protected:
+  std::unique_ptr<SkiaGaneshImageRepresentation> ProduceSkiaGanesh(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state) override {
+    ++produce_skia_count_;
+    return nullptr;
+  }
+
+  std::unique_ptr<SkiaGraphiteImageRepresentation> ProduceSkiaGraphite(
+      SharedImageManager* manager,
+      MemoryTypeTracker* tracker,
+      scoped_refptr<SharedContextState> context_state) override {
+    ++produce_skia_count_;
+    return nullptr;
+  }
+
+ private:
+  int produce_skia_count_ = 0;
+};
+
+}  // namespace
+
+// Readbacks must validate their arguments and shared memory before producing
+// the source image. Each param runs a readback whose last shared memory check
+// fails (true), or a valid readback as a control (false).
+class RasterDecoderOOPReadbackOrderTest
+    : public RasterDecoderOOPTest,
+      public testing::WithParamInterface<bool> {
+ public:
+  bool invalid_shm() const { return GetParam(); }
+
+  void SetUp() override {
+    RasterDecoderOOPTest::SetUp();
+    source_mailbox_ = Mailbox::Generate();
+    SharedImageInfo si_info(viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(2, 2),
+                            gfx::ColorSpace::CreateSRGB(),
+                            kTopLeft_GrSurfaceOrigin, kPremul_SkAlphaType,
+                            SHARED_IMAGE_USAGE_RASTER_READ, "TestLabel");
+    auto backing = std::make_unique<CountingProduceSkiaTestImageBacking>(
+        source_mailbox_, si_info);
+    source_backing_ = backing.get();
+    source_ref_ =
+        shared_image_manager()->Register(std::move(backing), &memory_tracker_);
+  }
+
+  void TearDown() override {
+    source_backing_ = nullptr;
+    source_ref_.reset();
+    RasterDecoderOOPTest::TearDown();
+  }
+
+  // Checks that the source was only produced for the valid readback.
+  void ExpectProducedOnlyIfValid() {
+    if (invalid_shm()) {
+      EXPECT_EQ(GL_INVALID_OPERATION, GetGLError());
+      EXPECT_EQ(0, source_backing_->produce_skia_count());
+    } else {
+      // The backing can't produce a Skia representation, so the readback fails
+      // after producing it.
+      EXPECT_EQ(GL_INVALID_VALUE, GetGLError());
+      EXPECT_EQ(1, source_backing_->produce_skia_count());
+    }
+  }
+
+ protected:
+  // Past the end of the shared memory buffer.
+  static constexpr GLuint kOutOfRangeOffset = 4096;
+
+  Mailbox source_mailbox_;
+  raw_ptr<CountingProduceSkiaTestImageBacking> source_backing_ = nullptr;
+  std::unique_ptr<SharedImageRepresentationFactoryRef> source_ref_;
+};
+
+INSTANTIATE_TEST_SUITE_P(All,
+                         RasterDecoderOOPReadbackOrderTest,
+                         testing::Bool());
+
+TEST_P(RasterDecoderOOPReadbackOrderTest, ARGB) {
+  using Result = cmds::ReadbackARGBImagePixelsINTERNALImmediate::Result;
+  const GLuint pixels_offset =
+      invalid_shm() ? kOutOfRangeOffset : sizeof(Result);
+  auto& cmd = *GetImmediateAs<cmds::ReadbackARGBImagePixelsINTERNALImmediate>();
+  cmd.Init(/*src_x=*/0, /*src_y=*/0, /*plane_index=*/0, /*dst_width=*/2,
+           /*dst_height=*/2, /*row_bytes=*/8, kRGBA_8888_SkColorType,
+           kPremul_SkAlphaType, shared_memory_id_, shared_memory_offset_,
+           /*color_space_offset=*/pixels_offset, pixels_offset,
+           source_mailbox_.name);
+  EXPECT_EQ(error::kNoError,
+            ExecuteImmediateCmd(cmd, sizeof(source_mailbox_.name)));
+  ExpectProducedOnlyIfValid();
+}
+
+TEST_P(RasterDecoderOOPReadbackOrderTest, YUV) {
+  using Result = cmds::ReadbackARGBImagePixelsINTERNALImmediate::Result;
+  // 2x2 Y plane followed by 1x1 U and V planes.
+  const GLuint y_offset = sizeof(Result);
+  const GLuint u_offset = y_offset + 4;
+  const GLuint v_offset = invalid_shm() ? kOutOfRangeOffset : u_offset + 1;
+  auto& cmd = *GetImmediateAs<cmds::ReadbackYUVImagePixelsINTERNALImmediate>();
+  cmd.Init(/*src_x=*/0, /*src_y=*/0, /*src_width=*/2, /*src_height=*/2,
+           /*dst_width=*/2, /*dst_height=*/2, shared_memory_id_,
+           shared_memory_offset_, y_offset, /*y_stride=*/2, u_offset,
+           /*u_stride=*/1, v_offset, /*v_stride=*/1, source_mailbox_.name);
+  EXPECT_EQ(error::kNoError,
+            ExecuteImmediateCmd(cmd, sizeof(source_mailbox_.name)));
+  ExpectProducedOnlyIfValid();
+}
+
+TEST_F(RasterDecoderOOPTest, CopySharedImageOddSizeMultiplanar) {
+  gpu::Mailbox source_mailbox = gpu::Mailbox::Generate();
+  SharedImageInfo source_si_info(
+      viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(3, 3),
+      gfx::ColorSpace::CreateSRGB(), kTopLeft_GrSurfaceOrigin,
+      kPremul_SkAlphaType,
+      SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE,
+      "TestLabel");
+  auto source_backing_unique = std::make_unique<CpuSurfaceTestImageBacking>(
+      source_mailbox, source_si_info);
+  source_backing_unique->plane_bitmap(0).eraseColor(
+      SkColorSetARGB(0xFF, 0xFF, 0x00, 0x00));
+  source_backing_unique->SetCleared();
+  auto source_ref = shared_image_manager()->Register(
+      std::move(source_backing_unique), &memory_tracker_);
+
+  gpu::Mailbox dest_mailbox = gpu::Mailbox::Generate();
+  SharedImageInfo dest_si_info(
+      viz::MultiPlaneFormat::kNV12, gfx::Size(3, 3),
+      gfx::ColorSpace::CreateREC709(), kTopLeft_GrSurfaceOrigin,
+      kOpaque_SkAlphaType,
+      SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE,
+      "TestLabel");
+  auto dest_backing_unique =
+      std::make_unique<CpuSurfaceTestImageBacking>(dest_mailbox, dest_si_info);
+  dest_backing_unique->plane_bitmap(0).eraseColor(
+      SkColorSetARGB(0xFF, 0xAB, 0x00, 0x00));
+  dest_backing_unique->plane_bitmap(1).eraseColor(
+      SkColorSetARGB(0xFF, 0xAB, 0xCD, 0x00));
+  CpuSurfaceTestImageBacking* dest_backing = dest_backing_unique.get();
+  auto dest_ref = shared_image_manager()->Register(
+      std::move(dest_backing_unique), &memory_tracker_);
+
+  SharedImageRepresentationFactory repr_factory(shared_image_manager(),
+                                                nullptr);
+  auto dest_repr = repr_factory.ProduceSkia(dest_mailbox, context_state_.get());
+  ASSERT_TRUE(dest_repr);
+  EXPECT_FALSE(dest_repr->IsCleared());
+
+  GLbyte mailboxes[sizeof(gpu::Mailbox) * 2];
+  CopyMailboxes(mailboxes, source_mailbox, dest_mailbox);
+  {
+    auto& cmd = *GetImmediateAs<cmds::CopySharedImageINTERNALImmediate>();
+    cmd.Init(0, 0, 0, 0, 3, 3, 3, 3, mailboxes);
+    EXPECT_EQ(error::kNoError, ExecuteImmediateCmd(cmd, sizeof(mailboxes)));
+    EXPECT_EQ(GL_NO_ERROR, GetGLError());
+  }
+  EXPECT_TRUE(dest_repr->IsCleared());
+  EXPECT_EQ(dest_repr->ClearedRect(), gfx::Rect(3, 3));
+
+  const SkBitmap& uv_bitmap = dest_backing->plane_bitmap(1);
+  const SkPixmap uv_pixmap = uv_bitmap.pixmap();
+  const uint16_t expected_uv = *uv_pixmap.addr16(0, 0);
+  EXPECT_NE(expected_uv, 0xCDABu);
+  const uint8_t u = expected_uv & 0xFF;
+  const uint8_t v = (expected_uv >> 8) & 0xFF;
+  EXPECT_TRUE(u == 90 || u == 102) << "u=" << static_cast<int>(u);
+  EXPECT_EQ(v, 240);
+  for (int y = 0; y < 2; ++y) {
+    for (int x = 0; x < 2; ++x) {
+      EXPECT_EQ(*uv_pixmap.addr16(x, y), expected_uv)
+          << "at (" << x << ", " << y << ")";
+    }
+  }
+}
+
+TEST_F(RasterDecoderOOPTest,
+       CopySharedImageOddSizeMultiplanarClearWhenSourceUnavailable) {
+  gpu::Mailbox source_mailbox = gpu::Mailbox::Generate();
+  SharedImageInfo source_si_info(
+      viz::SinglePlaneFormat::kRGBA_8888, gfx::Size(3, 3),
+      gfx::ColorSpace::CreateSRGB(), kTopLeft_GrSurfaceOrigin,
+      kPremul_SkAlphaType,
+      SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE,
+      "TestLabel");
+  auto source_backing_unique = std::make_unique<CpuSurfaceTestImageBacking>(
+      source_mailbox, source_si_info);
+  source_backing_unique->set_fail_produce_skia(true);
+  auto source_ref = shared_image_manager()->Register(
+      std::move(source_backing_unique), &memory_tracker_);
+
+  gpu::Mailbox dest_mailbox = gpu::Mailbox::Generate();
+  SharedImageInfo dest_si_info(
+      viz::MultiPlaneFormat::kNV12, gfx::Size(3, 3),
+      gfx::ColorSpace::CreateREC709(), kTopLeft_GrSurfaceOrigin,
+      kOpaque_SkAlphaType,
+      SHARED_IMAGE_USAGE_RASTER_READ | SHARED_IMAGE_USAGE_RASTER_WRITE,
+      "TestLabel");
+  auto dest_backing_unique =
+      std::make_unique<CpuSurfaceTestImageBacking>(dest_mailbox, dest_si_info);
+  dest_backing_unique->plane_bitmap(0).eraseColor(
+      SkColorSetARGB(0xFF, 0xCD, 0x00, 0x00));
+  dest_backing_unique->plane_bitmap(1).eraseColor(
+      SkColorSetARGB(0xFF, 0xCD, 0xCD, 0x00));
+  CpuSurfaceTestImageBacking* dest_backing = dest_backing_unique.get();
+  auto dest_ref = shared_image_manager()->Register(
+      std::move(dest_backing_unique), &memory_tracker_);
+
+  SharedImageRepresentationFactory repr_factory(shared_image_manager(),
+                                                nullptr);
+  auto dest_repr = repr_factory.ProduceSkia(dest_mailbox, context_state_.get());
+  ASSERT_TRUE(dest_repr);
+  EXPECT_FALSE(dest_repr->IsCleared());
+
+  GLbyte mailboxes[sizeof(gpu::Mailbox) * 2];
+  CopyMailboxes(mailboxes, source_mailbox, dest_mailbox);
+  {
+    auto& cmd = *GetImmediateAs<cmds::CopySharedImageINTERNALImmediate>();
+    cmd.Init(0, 0, 0, 0, 3, 3, 3, 3, mailboxes);
+    EXPECT_EQ(error::kNoError, ExecuteImmediateCmd(cmd, sizeof(mailboxes)));
+    EXPECT_EQ(GL_INVALID_VALUE, GetGLError());
+  }
+  EXPECT_TRUE(dest_repr->IsCleared());
+  EXPECT_EQ(dest_repr->ClearedRect(), gfx::Rect(3, 3));
+
+  const SkBitmap& uv_bitmap = dest_backing->plane_bitmap(1);
+  const SkPixmap uv_pixmap = uv_bitmap.pixmap();
+  constexpr uint16_t kNeutralChromaUV = 0x8080;
+  for (int y = 0; y < 2; ++y) {
+    for (int x = 0; x < 2; ++x) {
+      EXPECT_EQ(*uv_pixmap.addr16(x, y), kNeutralChromaUV)
+          << "at (" << x << ", " << y << ")";
+      EXPECT_NE(*uv_pixmap.addr16(x, y), 0xCDCDu);
+    }
+  }
 }
 
 TEST_F(RasterDecoderOOPTest, MakeCurrentAndDestroyWithGrContextTypeNone) {

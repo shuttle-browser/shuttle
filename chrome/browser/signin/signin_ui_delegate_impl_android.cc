@@ -8,6 +8,7 @@
 #include <optional>
 
 #include "base/check.h"
+#include "base/functional/callback_helpers.h"
 #include "chrome/browser/android/tab_android.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/android/signin_bridge.h"
@@ -25,13 +26,15 @@ namespace signin_ui_util {
 namespace {
 
 content::WebContents* GetActiveWebContents(Profile* profile) {
-  for (TabModel* tab_model : TabModelList::models()) {
-    if (tab_model->GetProfile() == profile &&
-        tab_model->GetActiveWebContents()) {
-      return tab_model->GetActiveWebContents();
+  content::WebContents* active_web_contents = nullptr;
+  TabModelList::ForEach(profile, [&](TabModel* tab_model) {
+    if (content::WebContents* contents = tab_model->GetActiveWebContents()) {
+      active_web_contents = contents;
+      return false;
     }
-  }
-  return nullptr;
+    return true;
+  });
+  return active_web_contents;
 }
 
 }  // namespace
@@ -67,7 +70,9 @@ void SigninUiDelegateImplAndroid::ShowSigninUI(
       ->OpenAccountPickerBottomSheetForExtensions(
           web_contents,
           /*continue_url=*/web_contents->GetLastCommittedURL(),
-          accounts.front().account_id, extension_name);
+          accounts.front().account_id, extension_name,
+          // TODO(crbug.com/539487000): Report the result to the caller.
+          base::DoNothing());
 }
 
 void SigninUiDelegateImplAndroid::ShowReauthUI(
@@ -90,7 +95,8 @@ void SigninUiDelegateImplAndroid::ShowReauthUI(
   CHECK(!account_id.empty());
   SigninBridgeFactory::GetForProfile(profile)->StartUpdateCredentialsFlow(
       TabAndroid::FromWebContents(web_contents),
-      /*continue_url=*/web_contents->GetLastCommittedURL(), account_id);
+      /*continue_url=*/web_contents->GetLastCommittedURL(),
+      /*account_to_reauth=*/account_id, /*target_account_id=*/account_id);
 }
 
 }  // namespace signin_ui_util

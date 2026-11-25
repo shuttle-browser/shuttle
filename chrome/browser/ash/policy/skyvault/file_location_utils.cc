@@ -11,6 +11,7 @@
 #include "chrome/browser/ash/policy/skyvault/policy_utils.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/webui/ash/cloud_upload/cloud_upload_util.h"
+#include "components/user_manager/user.h"
 
 namespace policy::local_user_files {
 
@@ -29,12 +30,6 @@ base::FilePath GetDriveFsMountPointPath() {
     return base::FilePath();
   }
   return integration_service->GetMountPointPath();
-}
-
-base::FilePath GetUserDefaultDownloadsFolder() {
-  auto* profile = ProfileManager::GetPrimaryUserProfile();
-  return profile ? file_manager::util::GetDownloadsFolderForProfile(profile)
-                 : base::FilePath();
 }
 
 }  // namespace
@@ -67,14 +62,15 @@ base::FilePath GetGoogleDriveRoot() {
   return drive_path.Append("root");
 }
 
-base::FilePath ResolvePath(const std::string& path_str) {
+base::FilePath ResolvePath(const user_manager::User& user,
+                           const std::string& path_str) {
   if (!IsValidLocationString(path_str)) {
     return base::FilePath();
   }
 
   // Empty path in the policy means default downloads directory.
   if (path_str.empty()) {
-    return GetUserDefaultDownloadsFolder();
+    return file_manager::util::GetDownloadsFolder(user);
   }
 
   const size_t google_drive_position =

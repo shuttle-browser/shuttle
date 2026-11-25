@@ -4,7 +4,9 @@
 
 #include "third_party/blink/renderer/core/ad_tracker/display_ad_element_monitor.h"
 
+#include <algorithm>
 #include <cstdlib>
+#include <utility>
 
 #include "base/feature_list.h"
 #include "third_party/blink/public/common/features.h"
@@ -25,7 +27,9 @@
 #include "third_party/blink/renderer/core/page/scrolling/sticky_position_scrolling_constraints.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing.h"
 #include "third_party/blink/renderer/core/probe/core_probes.h"
+#include "third_party/blink/renderer/platform/geometry/physical_offset.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
+#include "third_party/blink/renderer/platform/wtf/functional.h"
 #include "ui/gfx/geometry/point_conversions.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 #include "ui/gfx/geometry/size_conversions.h"
@@ -64,7 +68,10 @@ bool ShouldMonitorElement(Element* element) {
 }
 
 bool MeetsLargeStickyAdGeometry(const gfx::Rect& main_frame_viewport,
-                                const gfx::Rect& ad_visible_rect) {
+                                const gfx::Rect& rect_in_viewport) {
+  gfx::Rect ad_visible_rect =
+      IntersectRects(rect_in_viewport, main_frame_viewport);
+
   constexpr double kLargeAdSizeToViewportSizeThreshold = 0.3;
   bool is_large = (ad_visible_rect.size().Area64() >
                    main_frame_viewport.size().Area64() *
@@ -74,6 +81,30 @@ bool MeetsLargeStickyAdGeometry(const gfx::Rect& main_frame_viewport,
       main_frame_viewport.width() / 2, main_frame_viewport.height() * 9 / 10);
 
   return is_large && is_at_bottom;
+}
+
+// Returns how far (20% of its height) an ad may move within the viewport while
+// the page scrolls and still be considered to have stayed in place, as opposed
+// to having scrolled along with the document. This accommodates JS-driven
+// sticky ads that are not pixel-perfectly sticky but briefly lag behind
+// scrolling before repositioning themselves to visually snap to the same
+// position.
+int StickyAdTolerance(int ad_height) {
+  return ad_height / 5;
+}
+
+// Determines whether a newly sticky ad sticks where it was last seen inline
+// (e.g., a `position: sticky` ad reaching the edge of the viewport), as opposed
+// to having popped out elsewhere. Both rects are relative to the viewport but
+// not clipped to it. Allows for some slack, e.g., due to fast scrolling between
+// observations.
+bool IsStuckInPlace(const gfx::Rect& last_inline_ad_rect,
+                    const gfx::Rect& sticky_ad_rect) {
+  uint64_t overlap_area =
+      IntersectRects(last_inline_ad_rect, sticky_ad_rect).size().Area64();
+  uint64_t larger_area = std::max(last_inline_ad_rect.size().Area64(),
+                                  sticky_ad_rect.size().Area64());
+  return overlap_area * 2 > larger_area;
 }
 
 // How the ad is positioned w.r.t. the main frame's document. For an ad in a
@@ -170,6 +201,28 @@ bool IsTransparentBox(const Node& node) {
          !object->IsLayoutReplaced() && !object->HasBoxDecorationBackground();
 }
 
+// Returns the element that a hit `node` belongs to: the node itself, or for a
+// text node or a pseudo-element, its parent element (like `InnerElement()`).
+const Element* HitElement(const Node& node) {
+  return node.IsElementNode() && !node.IsPseudoElement() ? To<Element>(&node)
+                                                         : node.parentElement();
+}
+
+// Stops the hit test at the first node deciding whether `element` is visible
+// (see CheckOverlayVisibility()), so that the content behind it, which can't
+// change the outcome, isn't hit-tested (e.g., the rest of the page under an
+// anchor ad).
+ListBasedHitTestBehavior StopAtDecidingNode(Element* element,
+                                            const Node& node,
+                                            const PhysicalRect*,
+                                            const gfx::QuadF*,
+                                            const cc::Region*) {
+  return IsRenderedByElement(HitElement(node), *element) ||
+                 !IsTransparentBox(node)
+             ? kStopHitTesting
+             : kContinueHitTesting;
+}
+
 }  // namespace
 
 DisplayAdElementMonitor::DisplayAdElementMonitor(Element* element,
@@ -184,11 +237,16 @@ DisplayAdElementMonitor::DisplayAdElementMonitor(Element* element,
 void DisplayAdElementMonitor::UpdateToVideoAd() {
   if (!is_video_ad_) {
     is_video_ad_ = true;
+    InvalidatePaintForAdLabel();
   }
   MaybeRecordVideoAdUseCounter();
 
   if (is_sticky_ad_ && !is_sticky_video_ad_) {
     UpdateToStickyVideoAd();
+  }
+
+  if (is_sticky_pop_out_ad_ && !is_sticky_pop_out_video_ad_) {
+    UpdateToStickyPopOutVideoAd();
   }
 }
 
@@ -197,10 +255,11 @@ void DisplayAdElementMonitor::SetIsOverlayPopupAd() {
     return;
   }
   is_overlay_popup_ad_ = true;
+  InvalidatePaintForAdLabel();
+}
 
-  // Repaint so the ad highlight picks up the "popup" label. This only affects
-  // painting when the highlight is currently shown and labels are enabled; if
-  // the highlight is turned on later, DidFinishLifecycleUpdate() invalidates
+void DisplayAdElementMonitor::InvalidatePaintForAdLabel() {
+  // If the highlight is turned on later, DidFinishLifecycleUpdate() invalidates
   // paint on that transition.
   if (should_highlight_ &&
       base::FeatureList::IsEnabled(features::kAdHighlightLabel)) {
@@ -331,17 +390,29 @@ void DisplayAdElementMonitor::DidFinishLifecycleUpdate(
       }
 
       if (overlay_visibility_ == OverlayVisibility::kVisible) {
-        // Maps the rectangle from its coordinates within the viewport's
-        // coordinate system to the document's coordinate system before
-        // unscaling by the layout zoom factor to report in CSS pixels. Adding
-        // `OffsetForFixedPosition()` (`ScrolledContentOffset()`) matches the
-        // `LayoutUnit`-floored offset subtracted during
+        // Adding `OffsetForFixedPosition()` (`ScrolledContentOffset()`) matches
+        // the `LayoutUnit`-floored offset subtracted during
         // `AbsoluteBoundingBoxRectF`, ensuring the viewport scroll translation
         // cancels out for non-fixed elements.
-        gfx::PointF origin_in_document =
-            rect_f_in_viewport.origin() +
-            gfx::Vector2dF(local_root_main_frame.ContentLayoutObject()
-                               ->OffsetForFixedPosition());
+        const PhysicalOffset viewport_scroll_offset =
+            local_root_main_frame.ContentLayoutObject()
+                ->OffsetForFixedPosition();
+
+        // Maps the ad's Y-position to the document's coordinate system in
+        // `LayoutUnit`s (see `InlineAdMeasurement`). Flooring loses nothing for
+        // an ad that scrolls along with the document: its viewport Y-position
+        // is its document position less the scroll offset, both `LayoutUnit`s.
+        CalculateInlineAdState(
+            local_root_main_frame, rect_in_viewport,
+            LayoutUnit::FromFloatFloor(rect_f_in_viewport.y()) +
+                viewport_scroll_offset.top,
+            viewport_scroll_offset.top);
+
+        // Maps the rectangle from its coordinates within the viewport's
+        // coordinate system to the document's coordinate system before
+        // unscaling by the layout zoom factor to report in CSS pixels.
+        gfx::PointF origin_in_document = rect_f_in_viewport.origin() +
+                                         gfx::Vector2dF(viewport_scroll_offset);
         rect_to_report = gfx::Rect(gfx::ToRoundedPoint(gfx::ScalePoint(
                                        origin_in_document, inverse_zoom)),
                                    unscaled_size);
@@ -399,28 +470,27 @@ DisplayAdElementMonitor::CheckOverlayVisibility(
   // looked through.
   HitTestRequest::HitTestRequestType hit_type =
       HitTestRequest::kReadOnly | HitTestRequest::kAllowChildFrameContent |
+      HitTestRequest::kIgnorePointerEventsNone |
       HitTestRequest::kIgnoreZeroOpacityObjects |
       HitTestRequest::kHitTestVisualOverflow | HitTestRequest::kListBased |
-      HitTestRequest::kPenetratingList;
+      HitTestRequest::kPenetratingList | HitTestRequest::kAvoidCache;
 
   // No stop node on purpose: it would skip the element's descendants, so a
   // container (e.g., a <body> whose background image is an ad) covered by
-  // non-ad content would still be hit. Instead, descend fully and decide
-  // afterwards whether the front-most content is rendered by the element.
-  HitTestRequest request(hit_type);
+  // non-ad content would still be hit. Instead, stop once a node deciding the
+  // outcome is hit: nodes are hit after their descendants, so the content
+  // covering such a container has been collected by then. Nodes hit in
+  // subframes skip the callback, but are still covered by the walk below.
+  HitTestRequest request(
+      hit_type, /*stop_node=*/nullptr,
+      BindRepeating(&StopAtDecidingNode, WrapPersistent(element_.Get())));
   HitTestResult result(request, location);
 
   main_frame.ContentLayoutObject()->HitTestNoLifecycleUpdate(location, result);
 
   // Walk the nodes from front to back, skipping transparent boxes.
   for (const auto& node : result.ListBasedTestResult()) {
-    // Like `InnerElement()`, map a text node or a pseudo-element to its parent
-    // element.
-    const Element* hit_element =
-        node->IsElementNode() && !node->IsPseudoElement()
-            ? To<Element>(node.Get())
-            : node->parentElement();
-    if (IsRenderedByElement(hit_element, *element_)) {
+    if (IsRenderedByElement(HitElement(*node), *element_)) {
       return OverlayVisibility::kVisible;
     }
     if (!IsTransparentBox(*node)) {
@@ -430,22 +500,61 @@ DisplayAdElementMonitor::CheckOverlayVisibility(
   return OverlayVisibility::kInvisible;
 }
 
+void DisplayAdElementMonitor::CalculateInlineAdState(
+    const LocalFrame& local_root_main_frame,
+    const gfx::Rect& rect_in_viewport,
+    LayoutUnit ad_y_position_in_document,
+    LayoutUnit viewport_scroll_offset) {
+  // Only measure the ad while it's within the viewport.
+  gfx::Rect main_frame_viewport = gfx::Rect(
+      gfx::Point(), local_root_main_frame.GetOutermostMainFrameSize());
+  if (!rect_in_viewport.Intersects(main_frame_viewport)) {
+    return;
+  }
+
+  if (!inline_ad_measurement_) {
+    inline_ad_measurement_ = {viewport_scroll_offset,
+                              ad_y_position_in_document};
+    return;
+  }
+
+  if (ad_y_position_in_document !=
+      inline_ad_measurement_->ad_y_position_in_document) {
+    // The ad has moved relative to the document. Discard the previous anchor
+    // and establish a new one.
+    inline_ad_measurement_ = {viewport_scroll_offset,
+                              ad_y_position_in_document};
+    return;
+  }
+
+  // Mirroring the sticky ad detection, require a scroll beyond the tolerance
+  // since the anchor was set, so that a JS-driven sticky ad isn't seen (or
+  // tracked as last seen) inline while it briefly lags behind scrolling.
+  LayoutUnit scroll_delta =
+      viewport_scroll_offset - inline_ad_measurement_->viewport_scroll_offset;
+  if (scroll_delta.Abs() <= StickyAdTolerance(rect_in_viewport.height())) {
+    return;
+  }
+
+  placement_ = Placement::kInline;
+  last_inline_ad_rect_in_viewport_ = rect_in_viewport;
+}
+
 DisplayAdElementMonitor::OverlayVisibility
 DisplayAdElementMonitor::CalculateStickyAdState(
     const LocalFrame& local_root_main_frame,
     const gfx::Rect& rect_in_viewport) {
-  if (is_sticky_ad_) {
+  // Nothing to measure while the ad is sticky.
+  if (placement_ == Placement::kSticky) {
+    DCHECK(!sticky_ad_measurement_);
     return OverlayVisibility::kSkipped;
   }
 
   gfx::Rect main_frame_viewport = gfx::Rect(
       gfx::Point(), local_root_main_frame.GetOutermostMainFrameSize());
 
-  gfx::Rect ad_visible_rect =
-      IntersectRects(rect_in_viewport, main_frame_viewport);
-
   // If the ad isn't within the viewport, skip the measurement.
-  if (ad_visible_rect.IsEmpty()) {
+  if (!rect_in_viewport.Intersects(main_frame_viewport)) {
     return OverlayVisibility::kSkipped;
   }
 
@@ -455,14 +564,11 @@ DisplayAdElementMonitor::CalculateStickyAdState(
   AdPositioning positioning = ComputeAdPositioning(element_.Get());
 
   if (!sticky_ad_measurement_) {
-    sticky_ad_measurement_ = {
-        current_scroll_position, current_ad_y_position_in_viewport,
-        rect_in_viewport.height(), positioning.viewport_sticky_offset_y};
+    sticky_ad_measurement_ = {current_scroll_position,
+                              current_ad_y_position_in_viewport,
+                              positioning.viewport_sticky_offset_y};
   } else {
-    // Allow a tolerance (20% of the ad's height) to handle JS-driven sticky ads
-    // that are not pixel-perfectly sticky but quickly reposition themselves to
-    // visually snap to the same position.
-    int tolerance = sticky_ad_measurement_->ad_height / 5;
+    int tolerance = StickyAdTolerance(rect_in_viewport.height());
     int y_difference =
         std::abs(sticky_ad_measurement_->ad_y_position_in_viewport -
                  current_ad_y_position_in_viewport);
@@ -470,9 +576,9 @@ DisplayAdElementMonitor::CalculateStickyAdState(
     if (y_difference > tolerance) {
       // The ad has moved beyond the tolerance. Discard the previous anchor and
       // establish a new one.
-      sticky_ad_measurement_ = {
-          current_scroll_position, current_ad_y_position_in_viewport,
-          rect_in_viewport.height(), positioning.viewport_sticky_offset_y};
+      sticky_ad_measurement_ = {current_scroll_position,
+                                current_ad_y_position_in_viewport,
+                                positioning.viewport_sticky_offset_y};
     } else {
       // If the scroll position changes substantially (by more than the ad's
       // height) and the current y-position in the viewport hasn't changed
@@ -483,7 +589,7 @@ DisplayAdElementMonitor::CalculateStickyAdState(
       // parallax or scroller ads that will soon dismiss after a short scroll).
       int scroll_delta = current_scroll_position -
                          sticky_ad_measurement_->viewport_scroll_position;
-      if (std::abs(scroll_delta) > sticky_ad_measurement_->ad_height) {
+      if (std::abs(scroll_delta) > rect_in_viewport.height()) {
         // Avoid declaring in-flow elements sticky when layout shifts (e.g.,
         // scroll anchoring) alter scroll offset without moving the element,
         // unless `position: sticky` kept them in place (i.e., their sticky
@@ -500,15 +606,20 @@ DisplayAdElementMonitor::CalculateStickyAdState(
         // Verify the ad is currently visible before declaring it sticky. This
         // handles edge cases like fast scrolling past a parallax ad before the
         // frequency-capped visibility check updates the state.
-        OverlayVisibility hit_test_result = CheckOverlayVisibility(
-            local_root_main_frame, ad_visible_rect, /*ignore_throttling=*/true);
+        OverlayVisibility hit_test_result =
+            CheckOverlayVisibility(local_root_main_frame, rect_in_viewport,
+                                   /*ignore_throttling=*/true);
         if (hit_test_result != OverlayVisibility::kVisible) {
           sticky_ad_measurement_.reset();
           return hit_test_result;
         }
 
         UpdateToStickyAd(local_root_main_frame, main_frame_viewport,
-                         ad_visible_rect);
+                         rect_in_viewport);
+
+        // Drop the anchor: it's not needed while the ad is sticky, and it'd be
+        // stale by the time the ad is found inline and measuring resumes.
+        sticky_ad_measurement_.reset();
         return hit_test_result;
       }
     }
@@ -520,21 +631,24 @@ DisplayAdElementMonitor::CalculateStickyAdState(
 void DisplayAdElementMonitor::UpdateToStickyAd(
     const LocalFrame& local_root_main_frame,
     const gfx::Rect& main_frame_viewport,
-    const gfx::Rect& ad_visible_rect) {
-  CHECK(!is_sticky_ad_);
+    const gfx::Rect& rect_in_viewport) {
+  CHECK_NE(placement_, Placement::kSticky);
 
+  Placement old_placement = std::exchange(placement_, Placement::kSticky);
   is_sticky_ad_ = true;
+  InvalidatePaintForAdLabel();
 
   // Determine if the newly sticky ad matches any sub-types (e.g., "large
-  // sticky ad", "sticky video ad") to record metrics and send notifications.
+  // sticky ad", "sticky video ad", "sticky pop-out ad") to record metrics and
+  // send notifications.
   //
-  // For large sticky ads, geometry checks are done only once upon initial
-  // stickiness detection. We accept potential false negatives (e.g., if the ad
-  // resizes to become large later) in favor of simplicity and performance.
+  // For large sticky ads, geometry checks are done only upon stickiness
+  // detection. We accept potential false negatives (e.g., if the ad resizes to
+  // become large while it stays sticky) in favor of simplicity and performance.
   // For sticky video ads, detection is recorded either here (if already tagged
   // as a video ad) or when the ad transitions to a video ad later via
   // `UpdateToVideoAd`.
-  if (MeetsLargeStickyAdGeometry(main_frame_viewport, ad_visible_rect)) {
+  if (MeetsLargeStickyAdGeometry(main_frame_viewport, rect_in_viewport)) {
     UseCounter::Count(local_root_main_frame.GetDocument(),
                       WebFeature::kLargeStickyAd);
 
@@ -543,6 +657,14 @@ void DisplayAdElementMonitor::UpdateToStickyAd(
 
   if (is_video_ad_ && !is_sticky_video_ad_) {
     UpdateToStickyVideoAd();
+  }
+
+  // A pop-out ad is displayed inline before it sticks elsewhere within the
+  // viewport, e.g., by docking in a corner of the viewport once the user
+  // scrolls past it, as opposed to sticking in place.
+  if (old_placement == Placement::kInline && !is_sticky_pop_out_ad_ &&
+      !IsStuckInPlace(last_inline_ad_rect_in_viewport_, rect_in_viewport)) {
+    UpdateToStickyPopOutAd();
   }
 }
 
@@ -556,6 +678,31 @@ void DisplayAdElementMonitor::UpdateToStickyVideoAd() {
   if (LocalFrame* frame = element_->GetDocument().GetFrame()) {
     UseCounter::Count(frame->LocalFrameRoot().GetDocument(),
                       WebFeature::kStickyVideoAdDetected);
+  }
+}
+
+void DisplayAdElementMonitor::UpdateToStickyPopOutAd() {
+  CHECK(!is_sticky_pop_out_ad_);
+
+  is_sticky_pop_out_ad_ = true;
+
+  // Like for sticky video ads, detection is recorded either here or in
+  // `UpdateToVideoAd`.
+  if (is_video_ad_ && !is_sticky_pop_out_video_ad_) {
+    UpdateToStickyPopOutVideoAd();
+  }
+}
+
+void DisplayAdElementMonitor::UpdateToStickyPopOutVideoAd() {
+  CHECK(is_sticky_pop_out_ad_);
+  CHECK(is_video_ad_);
+  CHECK(!is_sticky_pop_out_video_ad_);
+
+  is_sticky_pop_out_video_ad_ = true;
+
+  if (LocalFrame* frame = element_->GetDocument().GetFrame()) {
+    UseCounter::Count(frame->LocalFrameRoot().GetDocument(),
+                      WebFeature::kStickyPopOutVideoAdDetected);
   }
 }
 

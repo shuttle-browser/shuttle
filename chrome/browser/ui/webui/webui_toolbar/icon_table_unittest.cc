@@ -9,6 +9,7 @@
 #include "build/branding_buildflags.h"
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/ui/webui/webui_toolbar/webui_toolbar_test_utils.h"
+#include "chrome/grit/theme_resources.h"
 #include "components/browser_apis/ui_controllers/toolbar/toolbar_ui_api_data_model.mojom.h"
 #include "components/omnibox/browser/location_bar_model_util.h"
 #include "components/omnibox/browser/vector_icons.h"
@@ -19,6 +20,7 @@
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/models/image_model.h"
+#include "ui/base/resource/resource_bundle.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/image/image.h"
 #include "ui/gfx/vector_icon_types.h"
@@ -213,6 +215,33 @@ TEST_F(IconTableTest, RegisterColorUrl) {
       icon_table_.GetFullState(),
       testing::UnorderedElementsAre(MatchesIconUpdate(std::ref(expected_i1))));
 }
+
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+TEST_F(IconTableTest, KnownResourceImagesMapToUrls) {
+  toolbar_ui_api::IconHandle i1 =
+      icon_table_.RegisterImageModel(ui::ImageModel::FromImageSkia(
+          *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+              IDR_GOOGLE_G_GRADIENT_16_ALT)));
+  ASSERT_FALSE(i1.is_null());
+
+  auto expected_i1 = toolbar_ui_api::mojom::IconUpdate::New(
+      1u, "chrome://theme/IDR_GOOGLE_G_GRADIENT_16_ALT",
+      IconType::kFullColorUrl, /*color=*/std::nullopt);
+
+  EXPECT_THAT(
+      icon_table_.GetFullState(),
+      testing::UnorderedElementsAre(MatchesIconUpdate(std::ref(expected_i1))));
+
+  // Re-registering a fresh ImageModel for the same resource should reuse the
+  // existing handle.
+  toolbar_ui_api::IconHandle i2 = icon_table_.RegisterImageModelTryReuse(
+      ui::ImageModel::FromImageSkia(
+          *ui::ResourceBundle::GetSharedInstance().GetImageSkiaNamed(
+              IDR_GOOGLE_G_GRADIENT_16_ALT)),
+      i1);
+  EXPECT_EQ(i1.HandleId(), i2.HandleId());
+}
+#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
 
 TEST_F(IconTableTest, RegisterImageModelTryReuse) {
   std::optional<toolbar_ui_api::IconHandle> maybe_i0 =
@@ -545,6 +574,72 @@ TEST_F(IconTableTest, PinnedToolbarActionIconsAreMapped) {
       audio_spark_table.GetFullState(),
       testing::UnorderedElementsAre(MatchesIconUpdate(std::ref(expected))));
 #endif
+}
+
+TEST_F(IconTableTest, HasPendingUpdates) {
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  // Theme change with no registered icons should not queue updates.
+  icon_table_.OnThemeChanged();
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  toolbar_ui_api::IconHandle handle =
+      icon_table_.RegisterImageModel(ui::ImageModel::FromVectorIcon(
+          vector_icons::kPasswordManagerIcon, ui::kColorIcon));
+  ASSERT_FALSE(handle.is_null());
+  EXPECT_TRUE(icon_table_.HasPendingUpdates());
+
+  auto expected_blue = toolbar_ui_api::mojom::IconUpdate::New(
+      1u, "webui-toolbar:password_manager", IconType::kIconSet,
+      /*color=*/SK_ColorBLUE);
+  EXPECT_THAT(icon_table_.TakePendingUpdates(),
+              testing::UnorderedElementsAre(
+                  MatchesIconUpdate(std::ref(expected_blue))));
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  // Theme change marks live icons dirty until TakePendingUpdates() drains them.
+  color_provider_.SetColorForTesting(ui::kColorIcon, SK_ColorRED);
+  icon_table_.OnThemeChanged();
+  EXPECT_TRUE(icon_table_.HasPendingUpdates());
+  auto expected_red = toolbar_ui_api::mojom::IconUpdate::New(
+      1u, "webui-toolbar:password_manager", IconType::kIconSet,
+      /*color=*/SK_ColorRED);
+  EXPECT_THAT(
+      icon_table_.TakePendingUpdates(),
+      testing::UnorderedElementsAre(MatchesIconUpdate(std::ref(expected_red))));
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  // Changing scale factor with only mapped vector icons does not queue updates.
+  scale_factor_ = 2.0f;
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  // Releasing the handle queues a deletion update.
+  handle = toolbar_ui_api::IconHandle();
+  EXPECT_TRUE(icon_table_.HasPendingUpdates());
+  auto expected_delete = toolbar_ui_api::mojom::IconUpdate::New(
+      1u, std::nullopt, IconType::kMaskUrl, /*color=*/std::nullopt);
+  EXPECT_THAT(icon_table_.TakePendingUpdates(),
+              testing::UnorderedElementsAre(
+                  MatchesIconUpdate(std::ref(expected_delete))));
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  // Rasterized icons depend on scale factor and require updates when it
+  // changes.
+  ASSERT_FALSE(
+      icon_table_.RegisterVectorIcon(vector_icons::kCardboardFilledIcon)
+          .has_value());
+  toolbar_ui_api::IconHandle raster_handle = icon_table_.RegisterImageModel(
+      ui::ImageModel::FromVectorIcon(vector_icons::kCardboardFilledIcon));
+  ASSERT_FALSE(raster_handle.is_null());
+  EXPECT_THAT(icon_table_.TakePendingUpdates(),
+              testing::UnorderedElementsAre(MatchesBitmapIconUpdate(2u)));
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
+
+  scale_factor_ = 3.0f;
+  EXPECT_TRUE(icon_table_.HasPendingUpdates());
+  EXPECT_THAT(icon_table_.TakePendingUpdates(),
+              testing::UnorderedElementsAre(MatchesBitmapIconUpdate(2u)));
+  EXPECT_FALSE(icon_table_.HasPendingUpdates());
 }
 
 }  // namespace

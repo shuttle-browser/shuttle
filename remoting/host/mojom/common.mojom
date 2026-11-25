@@ -94,6 +94,16 @@ struct PortRange {
 // Policies to be applied to the CRD host.
 // This struct mirrors remoting::SessionPolicies.
 struct SessionPolicies {
+  // Specifies the allowed direction(s) for audio remoting in the session.
+  // This enum mirrors remoting::SessionPolicies::AudioMode.
+  enum AudioMode {
+    kUnspecified = 0,
+    kNone = 1,
+    kClientToHost = 2,
+    kHostToClient = 3,
+    kBoth = 4,
+  };
+
   // The maximum size, in bytes, that can be transferred between client and
   // host via clipboard synchronization. A null value means to use the default
   // value, which is no restrictions (unlimited size). Setting it to 0
@@ -147,14 +157,19 @@ struct SessionPolicies {
   // A null value means to use the default value, which is true (allowed).
   bool? allow_webauthn_forwarding;
 
-  // Allow the client to service security key (gnubby) requests generated on
-  // the host machine.
+  // Allow the client to service security key requests generated on the host
+  // machine.
   // A null value means to use the default value, which is true (allowed).
-  bool? allow_gnubby_forwarding;
+  bool? allow_security_key_forwarding;
 
   // Allow the client to establish terminal sessions on supported platforms.
   // A null value means to use the default value, which is true (allowed).
   bool? allow_terminal_mode;
+
+  // Restrict the direction of audio remoted between the host and the client.
+  // A null or kUnspecified value means to use the default value, which is
+  // kBoth (allowed in both directions).
+  AudioMode? audio_mode;
 };
 // LINT.ThenChange(//remoting/base/session_policies.h:SessionPolicies)
 
@@ -198,6 +213,10 @@ struct SessionOptions {
   // A null value means the option is unset and uses the default value
   // (codec default speed).
   int32? av1_encoder_speed;
+
+  // Whether to enable the local privacy overlay during a remote session.
+  // A null value means the option is unset and uses the default value (false).
+  bool? enable_privacy_overlay;
 };
 // LINT.ThenChange(//remoting/base/session_options.h:SessionOptions)
 
@@ -205,7 +224,7 @@ struct SessionOptions {
 // Current state of an AI coding agent running on the host.
 // Maps to C++ enum:
 // `::remoting::protocol::TerminalControl_AgentInfo_AgentState`
-// (defined in remoting/proto/control.pb.h).
+// (defined in remoting/proto/terminal.pb.h).
 enum AgentState {
   kIdle = 1,
   kWorking = 2,
@@ -218,16 +237,13 @@ enum AgentState {
 
 // Status of a terminal / AI coding agent running on the host.
 // Maps to C++ type: `::remoting::protocol::TerminalControl_AgentInfo`
-// (defined in remoting/proto/control.pb.h).
+// (defined in remoting/proto/terminal.pb.h).
 struct AgentStatus {
-  // The terminal in which the agent is running.
-  int32 terminal_id;
-
   // The current state of the agent, if being updated.
   AgentState? agent_state;
 
   // The title for the terminal tab, if being updated.
   string? conversation_title;
 };
-// LINT.ThenChange(//remoting/proto/control.proto:AgentStatus)
+// LINT.ThenChange(//remoting/proto/terminal.proto:AgentStatus)
 

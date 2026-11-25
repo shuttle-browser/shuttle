@@ -7,6 +7,7 @@
 
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/scoped_observation.h"
 #include "build/build_config.h"
 #include "chrome/browser/status_icons/status_icon.h"
@@ -15,6 +16,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_collection_observer.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
 #include "components/prefs/pref_member.h"
+#include "components/search_engines/template_url_service_observer.h"
 
 #if BUILDFLAG(IS_WIN)
 #include "chrome/browser/startup/startup_launch_manager.h"
@@ -24,6 +26,7 @@ class BrowserWindowInterface;
 class GlobalBrowserCollection;
 class Profile;
 class ScopedProfileKeepAlive;
+class TemplateURLService;
 
 namespace omnibox_everywhere {
 
@@ -32,7 +35,8 @@ namespace omnibox_everywhere {
 class OmniboxEverywhereBackgroundModeManager
     : public StatusIconObserver,
       public StatusIconMenuModel::Delegate,
-      public BrowserCollectionObserver {
+      public BrowserCollectionObserver,
+      public TemplateURLServiceObserver {
  public:
   using ShowUICallback = base::RepeatingClosure;
   using CloseUICallback = base::RepeatingClosure;
@@ -46,7 +50,8 @@ class OmniboxEverywhereBackgroundModeManager
       const OmniboxEverywhereBackgroundModeManager&) = delete;
   ~OmniboxEverywhereBackgroundModeManager() override;
 
-  // Sets the profile for which to hold a profile keep alive.
+  // Sets the target profile used for the status icon (visibility, default
+  // search engine icon, and settings navigation) and profile keep-alive.
   void SetProfile(Profile* profile);
 
   // Stops the background mode by releasing keep-alives and status icon.
@@ -73,6 +78,10 @@ class OmniboxEverywhereBackgroundModeManager
   // StatusIconMenuModel::Delegate:
   void ExecuteCommand(int command_id, int event_flags) override;
 
+  // TemplateURLServiceObserver:
+  void OnTemplateURLServiceChanged() override;
+  void OnTemplateURLServiceShuttingDown() override;
+
   void UpdateVisibilityOfExitInContextMenu();
 
   void Reset();
@@ -88,6 +97,10 @@ class OmniboxEverywhereBackgroundModeManager
   raw_ptr<StatusIconMenuModel> context_menu_ = nullptr;
   base::ScopedObservation<GlobalBrowserCollection, BrowserCollectionObserver>
       browser_collection_observation_{this};
+  // Observes `profile_`'s default search engine to keep the status icon image
+  // in sync with it.
+  base::ScopedObservation<TemplateURLService, TemplateURLServiceObserver>
+      template_url_service_observation_{this};
   ShowUICallback show_ui_callback_;
   CloseUICallback close_ui_callback_;
 
@@ -97,6 +110,10 @@ class OmniboxEverywhereBackgroundModeManager
       StartupLaunchReason::kOmniboxEverywhere};
   BooleanPrefMember launch_on_startup_pref_member_;
 #endif
+
+  // Used strictly to schedule and cancel deferred `ShowStatusIcon()` tasks.
+  base::WeakPtrFactory<OmniboxEverywhereBackgroundModeManager>
+      deferred_status_icon_weak_factory_{this};
 };
 
 }  // namespace omnibox_everywhere

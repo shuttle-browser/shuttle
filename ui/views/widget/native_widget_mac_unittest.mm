@@ -16,6 +16,7 @@
 #include "base/mac/mac_util.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/scoped_refptr.h"
+#include "base/memory/weak_ptr.h"
 #include "base/run_loop.h"
 #include "base/scoped_observation.h"
 #include "base/strings/sys_string_conversions.h"
@@ -28,8 +29,10 @@
 #include "base/timer/timer.h"
 #include "build/build_config.h"
 #import "components/remote_cocoa/app_shim/bridged_content_view.h"
+#include "components/remote_cocoa/app_shim/features.h"
 #import "components/remote_cocoa/app_shim/native_widget_mac_nswindow.h"
 #import "components/remote_cocoa/app_shim/native_widget_ns_window_bridge.h"
+#import "components/remote_cocoa/app_shim/window_occlusion_checker_mac.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #import "testing/gtest_mac.h"
 #include "third_party/skia/include/core/SkBitmap.h"
@@ -41,12 +44,14 @@
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/base/mojom/dialog_button.mojom.h"
 #include "ui/base/mojom/ui_base_types.mojom-shared.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
 #import "ui/base/test/scoped_fake_full_keyboard_access.h"
 #import "ui/base/test/windowed_nsnotification_observer.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/compositor/layer.h"
 #include "ui/compositor/recyclable_compositor_mac.h"
+#include "ui/display/screen.h"
 #import "ui/events/test/cocoa_test_event_utils.h"
 #include "ui/events/test/event_generator.h"
 #import "ui/gfx/mac/coordinate_conversion.h"
@@ -56,6 +61,7 @@
 #include "ui/native_theme/native_theme_observer.h"
 #include "ui/native_theme/os_settings_provider_mac.h"
 #include "ui/views/bubble/bubble_dialog_delegate_view.h"
+#include "ui/views/cocoa/immersive_mode_reveal_client.h"
 #include "ui/views/cocoa/native_widget_mac_event_monitor.h"
 #include "ui/views/cocoa/native_widget_mac_ns_window_host.h"
 #include "ui/views/controls/button/label_button.h"
@@ -701,9 +707,9 @@ TEST_F(NativeWidgetMacTest, NotImplemented) {
           gfx::NativeWindow(native_parent));
 
   EXPECT_FALSE(window_host->native_widget_mac()->WillExecuteCommand(
-      5001, WindowOpenDisposition::kCurrentTab, true));
+      5001, ui::mojom::WindowOpenDisposition::kCurrentTab, true));
   EXPECT_FALSE(window_host->native_widget_mac()->ExecuteCommand(
-      5001, WindowOpenDisposition::kCurrentTab, true));
+      5001, ui::mojom::WindowOpenDisposition::kCurrentTab, true));
 
   [native_parent close];
 }
@@ -1275,7 +1281,7 @@ TEST_F(NativeWidgetMacTest, CompositorVisibilityOnSpaceChange) {
 
 // Tests for compositor visibility driven by window occlusion
 // (`features::kNotifyCompositorOfWindowOcclusionOnMacOs`). Occlusion is
-// injected through the bridge, as WebContentsOcclusionCheckerMac would.
+// injected through the bridge, as WindowOcclusionCheckerMac would.
 class NativeWidgetMacOcclusionTest : public NativeWidgetMacTest {
  public:
   NativeWidgetMacOcclusionTest()
@@ -1285,12 +1291,17 @@ class NativeWidgetMacOcclusionTest : public NativeWidgetMacTest {
   explicit NativeWidgetMacOcclusionTest(
       const std::vector<base::test::FeatureRef>& enabled_features) {
     // Unless specified otherwise, only the occlusion feature is enabled:
-    // window and space visibility notifications are off by default.
-    feature_list_.InitWithFeatures(enabled_features, {});
+    // window and space visibility notifications are off by default, and
+    // automatic window registration with `WindowOcclusionCheckerMac` is
+    // disabled so tests can manually inject occlusion state.
+    feature_list_.InitWithFeatures(
+        enabled_features,
+        {remote_cocoa::features::kTrackAllTopLevelWindowsForOcclusion});
   }
 
   void SetUp() override {
     NativeWidgetMacTest::SetUp();
+    [WindowOcclusionCheckerMac resetSharedInstanceForTesting];
     Widget::InitParams init_params =
         CreateParams(Widget::InitParams::TYPE_WINDOW);
     init_params.bounds = gfx::Rect(100, 100, 300, 300);
@@ -1543,6 +1554,218 @@ TEST_F(NativeWidgetMacTest, CompositorOcclusionFeatureDisabled) {
           widget->GetNativeWindow());
   EXPECT_FALSE(host->occlusion_hide_timer_for_testing().IsRunning());
   EXPECT_TRUE(widget->GetCompositor()->IsVisible());
+}
+
+// End-to-end integration tests for the real `WindowOcclusionCheckerMac` ->
+// `NativeWidgetNSWindowBridge` -> `NativeWidgetMacNSWindowHost` ->
+// `ui::Compositor` pipeline on pure-Views windows.
+class NativeWidgetMacOcclusionCheckerIntegrationTest
+    : public NativeWidgetMacTest {
+ public:
+  NativeWidgetMacOcclusionCheckerIntegrationTest() {
+    feature_list_.InitWithFeatures(
+        {remote_cocoa::features::kTrackAllTopLevelWindowsForOcclusion,
+         features::kNotifyCompositorOfWindowOcclusionOnMacOs},
+        {});
+  }
+
+  void SetUp() override {
+    NativeWidgetMacTest::SetUp();
+    if (![WindowOcclusionCheckerMac
+            manualOcclusionDetectionSupportedForCurrentMacOSVersion]) {
+      GTEST_SKIP()
+          << "Manual window occlusion detection is broken on macOS 13.0-13.2.";
+    }
+    [WindowOcclusionCheckerMac resetSharedInstanceForTesting];
+  }
+
+  void TearDown() override {
+    NativeWidgetMacTest::TearDown();
+    [WindowOcclusionCheckerMac resetSharedInstanceForTesting];
+  }
+
+ protected:
+  // Creates a shown top-level test window with `fakeOcclusionStateVisible =
+  // YES` and simulates an initial compositor frame swap so its `alphaValue` is
+  // restored to `1.0` under `kAlphaInsteadOfCATransaction`.
+  Widget* CreateOpaqueShownTestWidget(const gfx::Rect& bounds,
+                                      NativeWidgetMacTestWindow** out_window) {
+    Widget* widget = new Widget;
+    Widget::InitParams init_params =
+        CreateParams(Widget::InitParams::TYPE_WINDOW);
+    init_params.bounds = bounds;
+    init_params.native_widget = new TestWindowNativeWidgetMac(widget);
+    widget->Init(std::move(init_params));
+
+    NativeWidgetMacTestWindow* window =
+        base::apple::ObjCCastStrict<NativeWidgetMacTestWindow>(
+            widget->GetNativeWindow().GetNativeNSWindow());
+    window.fakeOcclusionStateVisible = YES;
+
+    widget->Show();
+    BridgedNativeWidgetTestApi(widget).SimulateFrameSwap(
+        widget->GetClientAreaBoundsInScreen().size());
+    EXPECT_EQ(1.0, window.alphaValue);
+
+    *out_window = window;
+    return widget;
+  }
+
+  void FlushOcclusionUpdates() {
+    ASSERT_TRUE(base::test::RunUntil([] {
+      return ![[WindowOcclusionCheckerMac sharedInstance]
+          occlusionStateUpdatesAreScheduledForTesting];
+    }));
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+TEST_F(NativeWidgetMacOcclusionCheckerIntegrationTest,
+       SameSizeWindowOcclusionEndToEnd) {
+  const gfx::Rect kBounds(100, 100, 300, 300);
+  NativeWidgetMacTestWindow* window_a = nil;
+  WidgetAutoclosePtr widget_a(CreateOpaqueShownTestWidget(kBounds, &window_a));
+  auto* view_a = widget_a->GetContentsView()->AddChildView(
+      std::make_unique<PaintCountView>());
+  view_a->WaitForPaintCount(1);
+
+  WindowOcclusionCheckerMac* checker =
+      [WindowOcclusionCheckerMac sharedInstance];
+  ASSERT_TRUE(checker);
+  EXPECT_TRUE([checker isTrackingWindow:window_a]);
+
+  FlushOcclusionUpdates();
+  NativeWidgetMacNSWindowHost* host_a =
+      NativeWidgetMacNSWindowHost::GetFromNativeWindow(
+          widget_a->GetNativeWindow());
+  EXPECT_FALSE([window_a isOccluded]);
+  EXPECT_FALSE(host_a->occlusion_hide_timer_for_testing().IsRunning());
+  EXPECT_TRUE(widget_a->GetCompositor()->IsVisible());
+
+  // Stack an opaque pure-Views window of the exact same frame in front of
+  // `window_a`.
+  NativeWidgetMacTestWindow* window_b = nil;
+  WidgetAutoclosePtr widget_b(CreateOpaqueShownTestWidget(kBounds, &window_b));
+  EXPECT_TRUE([checker isTrackingWindow:window_b]);
+  ASSERT_TRUE(NSEqualRects(window_a.frame, window_b.frame));
+
+  FlushOcclusionUpdates();
+  EXPECT_TRUE([window_a isOccluded]);
+  EXPECT_FALSE([window_b isOccluded]);
+  ASSERT_TRUE(host_a->occlusion_hide_timer_for_testing().IsRunning());
+  EXPECT_TRUE(widget_a->GetCompositor()->IsVisible());
+
+  host_a->occlusion_hide_timer_for_testing().FireNow();
+  EXPECT_FALSE(widget_a->GetCompositor()->IsVisible());
+
+  // Hiding the covering window un-occludes `window_a` on the next checker pass
+  // and immediately restores compositor visibility + triggers a repaint.
+  const int paint_count_before_unocclude = view_a->paint_count();
+  widget_b->Hide();
+  FlushOcclusionUpdates();
+  EXPECT_FALSE([window_a isOccluded]);
+  EXPECT_TRUE(widget_a->GetCompositor()->IsVisible());
+  view_a->WaitForPaintCount(paint_count_before_unocclude + 1);
+}
+
+TEST_F(NativeWidgetMacOcclusionCheckerIntegrationTest,
+       ChildAndTooltipWidgetsIgnored) {
+  const gfx::Rect kBounds(100, 100, 300, 300);
+  NativeWidgetMacTestWindow* parent_window = nil;
+  WidgetAutoclosePtr parent_widget(
+      CreateOpaqueShownTestWidget(kBounds, &parent_window));
+
+  WindowOcclusionCheckerMac* checker =
+      [WindowOcclusionCheckerMac sharedInstance];
+  ASSERT_TRUE(checker);
+  EXPECT_TRUE([checker isTrackingWindow:parent_window]);
+
+  // A child bubble widget is not registered as a tracked top-level window.
+  Widget::InitParams child_params =
+      CreateParams(Widget::InitParams::TYPE_BUBBLE);
+  child_params.parent = parent_widget->GetNativeView();
+  child_params.bounds = kBounds;
+  NativeWidgetMacTestWindow* child_window = nil;
+  WidgetAutoclosePtr child_widget(
+      CreateWidgetWithTestWindow(std::move(child_params), &child_window));
+  EXPECT_FALSE([checker isTrackingWindow:child_window]);
+
+  // Dynamically detaching the child widget makes it a tracked top-level window,
+  // and re-attaching it to `parent_widget` unregisters it again.
+  Widget::ReparentNativeView(child_widget->GetNativeView(), gfx::NativeView());
+  EXPECT_TRUE([checker isTrackingWindow:child_window]);
+  Widget::ReparentNativeView(child_widget->GetNativeView(),
+                             parent_widget->GetNativeView());
+  EXPECT_FALSE([checker isTrackingWindow:child_window]);
+
+  // A tooltip widget is also excluded even without a parent.
+  Widget::InitParams tooltip_params =
+      CreateParams(Widget::InitParams::TYPE_TOOLTIP);
+  tooltip_params.bounds = gfx::Rect(120, 120, 80, 30);
+  NativeWidgetMacTestWindow* tooltip_window = nil;
+  WidgetAutoclosePtr tooltip_widget(
+      CreateWidgetWithTestWindow(std::move(tooltip_params), &tooltip_window));
+  EXPECT_FALSE([checker isTrackingWindow:tooltip_window]);
+
+  // Closing the child/tooltip widgets and then the top-level widget unregisters
+  // `parent_window` cleanly (note: closing `parent_widget` first would destroy
+  // `child_widget` before `WidgetAutoclosePtr` runs).
+  child_widget.reset();
+  tooltip_widget.reset();
+  parent_widget.reset();
+  EXPECT_FALSE([checker isTrackingWindow:parent_window]);
+}
+
+TEST_F(NativeWidgetMacTest,
+       OcclusionCheckerInertWhenTrackAllTopLevelWindowsDisabled) {
+  base::test::ScopedFeatureList feature_list;
+  feature_list.InitWithFeatures(
+      /*enabled_features=*/{features::
+                                kNotifyCompositorOfWindowOcclusionOnMacOs},
+      /*disabled_features=*/{
+          remote_cocoa::features::kTrackAllTopLevelWindowsForOcclusion});
+  [WindowOcclusionCheckerMac resetSharedInstanceForTesting];
+  WindowOcclusionCheckerMac* checker =
+      [WindowOcclusionCheckerMac sharedInstance];
+  ASSERT_TRUE(checker);
+
+  const gfx::Rect kBounds(100, 100, 300, 300);
+  Widget::InitParams params_a = CreateParams(Widget::InitParams::TYPE_WINDOW);
+  params_a.bounds = kBounds;
+  NativeWidgetMacTestWindow* window_a = nil;
+  WidgetAutoclosePtr widget_a(
+      CreateWidgetWithTestWindow(std::move(params_a), &window_a));
+  window_a.fakeOcclusionStateVisible = YES;
+  BridgedNativeWidgetTestApi(widget_a.get())
+      .SimulateFrameSwap(widget_a->GetClientAreaBoundsInScreen().size());
+
+  Widget::InitParams params_b = CreateParams(Widget::InitParams::TYPE_WINDOW);
+  params_b.bounds = kBounds;
+  NativeWidgetMacTestWindow* window_b = nil;
+  WidgetAutoclosePtr widget_b(
+      CreateWidgetWithTestWindow(std::move(params_b), &window_b));
+  window_b.fakeOcclusionStateVisible = YES;
+  BridgedNativeWidgetTestApi(widget_b.get())
+      .SimulateFrameSwap(widget_b->GetClientAreaBoundsInScreen().size());
+
+  EXPECT_FALSE([checker isTrackingWindow:window_a]);
+  EXPECT_FALSE([checker isTrackingWindow:window_b]);
+
+  ASSERT_TRUE(base::test::RunUntil([checker] {
+    return ![checker occlusionStateUpdatesAreScheduledForTesting];
+  }));
+  NativeWidgetMacNSWindowHost* host_a =
+      NativeWidgetMacNSWindowHost::GetFromNativeWindow(
+          widget_a->GetNativeWindow());
+  EXPECT_FALSE([window_a isOccluded]);
+  EXPECT_FALSE(host_a->occlusion_hide_timer_for_testing().IsRunning());
+  EXPECT_TRUE(widget_a->GetCompositor()->IsVisible());
+
+  widget_b.reset();
+  widget_a.reset();
+  [WindowOcclusionCheckerMac resetSharedInstanceForTesting];
 }
 
 TEST_F(NativeWidgetMacTest, MiniaturizeFramelessWindow) {
@@ -2444,15 +2667,7 @@ TEST_F(NativeWidgetMacTest, ShowAnimationControl) {
 }
 
 // Tests behavior of window-modal dialogs, displayed as sheets.
-#if defined(ARCH_CPU_ARM64) || BUILDFLAG(IS_MAC)
-// Bulk-disabled as part of arm64 bot stabilization: https://crbug.com/1154345
-// Disabled on Mac 10.15 and 10.11 failing ([parent_close_button isEnabled])
-// crbug.com/1473423
-#define MAYBE_WindowModalSheet DISABLED_WindowModalSheet
-#else
-#define MAYBE_WindowModalSheet WindowModalSheet
-#endif
-TEST_F(NativeWidgetMacTest, MAYBE_WindowModalSheet) {
+TEST_F(NativeWidgetMacTest, WindowModalSheet) {
   NSWindow* native_parent = MakeClosableTitledNativeParent();
 
   Widget* sheet_widget = views::DialogDelegate::CreateDialogWidget(
@@ -2482,6 +2697,8 @@ TEST_F(NativeWidgetMacTest, MAYBE_WindowModalSheet) {
   EXPECT_TRUE(parent_close_button);
   EXPECT_TRUE([parent_close_button isEnabled]);
 
+  base::RunLoop run_loop;
+  base::RepeatingClosure quit_closure = run_loop.QuitClosure();
   bool did_observe = false;
   bool* did_observe_ptr = &did_observe;
   id observer = [[NSNotificationCenter defaultCenter]
@@ -2494,6 +2711,7 @@ TEST_F(NativeWidgetMacTest, MAYBE_WindowModalSheet) {
                 EXPECT_TRUE(sheet_widget->IsVisible());
                 EXPECT_TRUE(sheet_widget->GetLayer()->IsVisible());
                 *did_observe_ptr = true;
+                quit_closure.Run();
               }];
 
   Widget::Widgets children =
@@ -2501,6 +2719,7 @@ TEST_F(NativeWidgetMacTest, MAYBE_WindowModalSheet) {
   ASSERT_EQ(2u, children.size());
 
   sheet_widget->Show();  // Should run the above block, then animate the sheet.
+  run_loop.Run();
   EXPECT_TRUE(did_observe);
   [[NSNotificationCenter defaultCenter] removeObserver:observer];
 
@@ -3695,6 +3914,25 @@ TEST_F(NativeWidgetMacTest, CenterWindowClampsToScreen) {
   parent->CloseNow();
 }
 
+// Tests that CenterWindow centers a window without a parent in the work area of
+// its display, and sizes its content area to the requested size.
+TEST_F(NativeWidgetMacTest, CenterWindowWithoutParent) {
+  Widget* widget = CreateTopLevelPlatformWidget();
+  const gfx::Size content_size(300, 200);
+  widget->CenterWindow(content_size);
+  EXPECT_EQ(content_size, widget->GetClientAreaBoundsInScreen().size());
+
+  const gfx::Rect bounds = widget->GetWindowBoundsInScreen();
+  EXPECT_EQ(gfx::ScreenRectFromNSRect(
+                widget->GetNativeWindow().GetNativeNSWindow().frame),
+            bounds);
+  const gfx::Rect work_area =
+      display::Screen::Get()->GetDisplayMatching(bounds).work_area();
+  EXPECT_EQ(work_area.CenterPoint(), bounds.CenterPoint());
+
+  widget->CloseNow();
+}
+
 namespace {
 
 class NoopEventMonitorClient : public NativeWidgetMacEventMonitor::Client {
@@ -3893,6 +4131,60 @@ TEST_F(NativeWidgetMacTest, SizeChangeNotifiedBeforeMoveChange) {
   widget->SetBounds(gfx::Rect(200, 200, 400, 400));
 
   widget->RemoveObserver(&observer);
+  widget->CloseNow();
+}
+
+namespace {
+
+class TestImmersiveModeRevealClient : public ImmersiveModeRevealClient {
+ public:
+  void OnImmersiveModeToolbarRevealChanged(bool is_revealed) override {}
+  void OnImmersiveModeMenuBarRevealChanged(double reveal_amount) override {}
+  void OnAutohidingMenuBarHeightChanged(int menu_bar_height) override {}
+  void OnImmersiveModeTitlebarFrameChanged(const gfx::Rect& frame) override {
+    titlebar_frames.push_back(frame);
+  }
+
+  base::WeakPtr<TestImmersiveModeRevealClient> GetWeakPtr() {
+    return weak_ptr_factory_.GetWeakPtr();
+  }
+
+  std::vector<gfx::Rect> titlebar_frames;
+
+ private:
+  base::WeakPtrFactory<TestImmersiveModeRevealClient> weak_ptr_factory_{this};
+};
+
+}  // namespace
+
+// Immersive fullscreen v2: enabling it adds the transparent titlebar accessory,
+// disabling it removes it, and titlebar frame changes reach the reveal client.
+TEST_F(NativeWidgetMacTest, ImmersiveFullscreenWithTransparentTitlebar) {
+  Widget* widget = CreateTopLevelPlatformWidget();
+  widget->Show();
+  NativeWidgetMacNSWindowHost* host =
+      NativeWidgetMacNSWindowHost::GetFromNativeWindow(
+          widget->GetNativeWindow());
+  remote_cocoa::NativeWidgetNSWindowBridge* bridge =
+      host->GetInProcessNSWindowBridge();
+  NSWindow* window = widget->GetNativeWindow().GetNativeNSWindow();
+  const NSUInteger accessory_count =
+      window.titlebarAccessoryViewControllers.count;
+
+  bridge->EnableImmersiveFullscreenWithTransparentTitlebar();
+  EXPECT_TRUE(bridge->ImmersiveFullscreenEnabled());
+  EXPECT_EQ(accessory_count + 1, window.titlebarAccessoryViewControllers.count);
+
+  TestImmersiveModeRevealClient reveal_client;
+  host->set_immersive_mode_reveal_client(reveal_client.GetWeakPtr());
+  const gfx::Rect frame(0, -32, 400, 32);
+  bridge->OnImmersiveFullscreenTitlebarFrameChanged(frame);
+  EXPECT_THAT(reveal_client.titlebar_frames, testing::ElementsAre(frame));
+
+  bridge->DisableImmersiveFullscreen();
+  EXPECT_FALSE(bridge->ImmersiveFullscreenEnabled());
+  EXPECT_EQ(accessory_count, window.titlebarAccessoryViewControllers.count);
+
   widget->CloseNow();
 }
 

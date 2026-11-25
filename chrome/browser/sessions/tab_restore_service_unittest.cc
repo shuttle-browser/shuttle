@@ -43,6 +43,7 @@
 #include "components/sessions/content/content_test_helper.h"
 #include "components/sessions/content/session_tab_helper.h"
 #include "components/sessions/core/command_storage_features.h"
+#include "components/sessions/core/command_storage_manager.h"
 #include "components/sessions/core/live_tab.h"
 #include "components/sessions/core/serialized_navigation_entry_test_helper.h"
 #include "components/sessions/core/session_id.h"
@@ -65,8 +66,8 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/user_agent/user_agent_metadata.h"
+#include "ui/base/mojom/window_open_disposition.mojom.h"
 #include "ui/base/mojom/window_show_state.mojom.h"
-#include "ui/base/window_open_disposition.h"
 
 typedef sessions::tab_restore::Entry Entry;
 typedef sessions::tab_restore::Tab Tab;
@@ -84,6 +85,16 @@ using ::testing::IsEmpty;
 using ::testing::Optional;
 using ::testing::Return;
 using ::testing::UnorderedElementsAre;
+
+// Counts TabRestoreServiceChanged() notifications.
+class ChangeCounter : public sessions::TabRestoreServiceObserver {
+ public:
+  void TabRestoreServiceChanged(sessions::TabRestoreService*) override {
+    ++count;
+  }
+  void TabRestoreServiceDestroyed(sessions::TabRestoreService*) override {}
+  int count = 0;
+};
 
 class MockLiveTab : public sessions::LiveTab {
  public:
@@ -1649,8 +1660,9 @@ TEST_F(TabRestoreServiceImplWithMockClientTest, SplitVisualDataPersistence) {
               ReconstructSplit(_, _, split_id, testing::Eq(visual_data)))
       .Times(1);
 
-  service_->RestoreEntryById(&mock_live_tab_context, entry->id,
-                             WindowOpenDisposition::kNewForegroundTab);
+  service_->RestoreEntryById(
+      &mock_live_tab_context, entry->id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 }
 
 TEST_F(TabRestoreServiceImplWithMockClientTest,
@@ -1697,8 +1709,9 @@ TEST_F(TabRestoreServiceImplWithMockClientTest,
               ReconstructSplit(_, _, split_id, testing::Eq(visual_data)))
       .Times(1);
 
-  service_->RestoreEntryById(&mock_live_tab_context, entry->id,
-                             WindowOpenDisposition::kNewForegroundTab);
+  service_->RestoreEntryById(
+      &mock_live_tab_context, entry->id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 }
 
 TEST_F(TabRestoreServiceImplWithMockClientTest,
@@ -1747,8 +1760,9 @@ TEST_F(TabRestoreServiceImplWithMockClientTest,
               ReconstructSplit(_, _, split_id, testing::Eq(visual_data)))
       .Times(1);
 
-  service_->RestoreEntryById(&mock_live_tab_context, entry->id,
-                             WindowOpenDisposition::kNewForegroundTab);
+  service_->RestoreEntryById(
+      &mock_live_tab_context, entry->id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 }
 
 TEST_F(TabRestoreServiceImplWithMockClientTest, RestoreOneTabFromSplit) {
@@ -1776,8 +1790,9 @@ TEST_F(TabRestoreServiceImplWithMockClientTest, RestoreOneTabFromSplit) {
   SessionID tab2_id = split_entry->tabs[1]->id;
 
   // Restore only tab1 from the split.
-  service_->RestoreEntryById(&mock_live_tab_context, tab1_id,
-                             WindowOpenDisposition::kNewForegroundTab);
+  service_->RestoreEntryById(
+      &mock_live_tab_context, tab1_id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 
   // Verify the Split entry has been replaced by the remaining tab entry.
   ASSERT_EQ(1U, service_->entries().size());
@@ -1791,8 +1806,9 @@ TEST_F(TabRestoreServiceImplWithMockClientTest, RestoreOneTabFromSplit) {
   EXPECT_EQ(std::nullopt, tab_entry->split_visual_data);
 
   // Restore the remaining tab to verify that it does not crash.
-  service_->RestoreEntryById(&mock_live_tab_context, tab2_id,
-                             WindowOpenDisposition::kNewForegroundTab);
+  service_->RestoreEntryById(
+      &mock_live_tab_context, tab2_id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 
   EXPECT_TRUE(service_->entries().empty());
 }
@@ -1863,11 +1879,81 @@ TEST_F(TabRestoreServiceImplWithMockClientTest,
         return nullptr;
       });
 
-  service_->RestoreEntryById(&restore_context, group_entry_id,
-                             WindowOpenDisposition::kNewForegroundTab);
+  service_->RestoreEntryById(
+      &restore_context, group_entry_id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 
   EXPECT_EQ(2, restored_tab_count);
   EXPECT_EQ(max_entries - 1, service_->entries().size());
+}
+
+// A promotion that arrives while another entry is being restored must still be
+// applied. Otherwise the promoted group's closed tabs would stay ephemeral and
+// be written to disk without their group.
+TEST_F(TabRestoreServiceImplWithMockClientTest,
+       PromoteEphemeralTabGroupWhileRestoring) {
+  const tab_groups::TabGroupId group_id = tab_groups::TabGroupId::GenerateNew();
+
+  // An entry closed while `group_id` was ephemeral.
+  auto ephemeral_tab = std::make_unique<Tab>();
+  ephemeral_tab->navigations.push_back(
+      ContentTestHelper::CreateNavigation("http://ephemeral", "E"));
+  ephemeral_tab->current_navigation_index = 0;
+  ephemeral_tab->ephemeral_group = group_id;
+  const Tab* ephemeral_tab_ptr = ephemeral_tab.get();
+  mutable_entries()->push_back(std::move(ephemeral_tab));
+
+  // An unrelated entry that will be restored, plus one more for a baseline
+  // restore without promotion.
+  auto tab_to_restore = std::make_unique<Tab>();
+  tab_to_restore->navigations.push_back(
+      ContentTestHelper::CreateNavigation("http://restore", "R"));
+  tab_to_restore->current_navigation_index = 0;
+  const SessionID tab_to_restore_id = tab_to_restore->id;
+  mutable_entries()->push_front(std::move(tab_to_restore));
+  auto baseline_tab = std::make_unique<Tab>();
+  baseline_tab->navigations.push_back(
+      ContentTestHelper::CreateNavigation("http://baseline", "B"));
+  baseline_tab->current_navigation_index = 0;
+  const SessionID baseline_tab_id = baseline_tab->id;
+  mutable_entries()->push_front(std::move(baseline_tab));
+
+  ChangeCounter change_counter;
+  service_->AddObserver(&change_counter);
+
+  // How many notifications a plain restore sends.
+  testing::NiceMock<MockLiveTabContext> baseline_context;
+  service_->RestoreEntryById(
+      &baseline_context, baseline_tab_id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
+  const int notifications_per_restore = change_counter.count;
+  change_counter.count = 0;
+
+  // Promote the group from inside the restore, as a re-entrant call would.
+  const tab_groups::TabGroupVisualData promoted_visuals(
+      u"Promoted", tab_groups::TabGroupColorId::kBlue);
+  testing::NiceMock<MockLiveTabContext> restore_context;
+  ON_CALL(restore_context, AddRestoredTab(_, _, _, _, _))
+      .WillByDefault([&](const Tab&, int, bool, bool,
+                         sessions::tab_restore::Type) -> sessions::LiveTab* {
+        EXPECT_TRUE(service_->IsRestoring());
+        service_->PromoteEphemeralTabGroup(group_id, promoted_visuals);
+        return nullptr;
+      });
+  service_->RestoreEntryById(
+      &restore_context, tab_to_restore_id,
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
+  service_->RemoveObserver(&change_counter);
+
+  // The promotion must not add a notification mid-restore; the restore's own
+  // notifications cover it.
+  EXPECT_EQ(notifications_per_restore, change_counter.count);
+
+  ASSERT_EQ(1U, service_->entries().size());
+  ASSERT_EQ(ephemeral_tab_ptr, service_->entries().front().get());
+  EXPECT_EQ(std::nullopt, ephemeral_tab_ptr->ephemeral_group);
+  EXPECT_EQ(group_id, ephemeral_tab_ptr->group);
+  EXPECT_EQ(promoted_visuals, ephemeral_tab_ptr->group_visual_data);
 }
 
 // Restoring a window with a tab that's closed again before the restore
@@ -1916,8 +2002,9 @@ TEST_F(TabRestoreServiceImplWithMockClientTest,
   });
 
   std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
-      service_->RestoreEntryById(&restore_context, entry_id,
-                                 WindowOpenDisposition::kNewForegroundTab);
+      service_->RestoreEntryById(
+          &restore_context, entry_id,
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab);
 
   // The result should omit tab 1 (closed during restore) and tab 3 (not
   // created), returning only `restored_tab2`.
@@ -1955,16 +2042,268 @@ TEST_F(TabRestoreServiceImplWithMockClientTest,
   });
 
   std::optional<std::vector<sessions::LiveTab*>> restored_tabs =
-      service_->RestoreEntryById(&restore_context, entry_id,
-                                 WindowOpenDisposition::kNewForegroundTab);
+      service_->RestoreEntryById(
+          &restore_context, entry_id,
+          ui::mojom::WindowOpenDisposition::kNewForegroundTab);
   EXPECT_THAT(restored_tabs, Optional(IsEmpty()));
 }
 
 // Attempting to restore an invalid ID returns nullopt.
 TEST_F(TabRestoreServiceImplWithMockClientTest, RestoreEntryByIdInvalidId) {
   testing::NiceMock<MockLiveTabContext> restore_context;
-  auto restored_tabs =
-      service_->RestoreEntryById(&restore_context, SessionID::NewUnique(),
-                                 WindowOpenDisposition::kNewForegroundTab);
+  auto restored_tabs = service_->RestoreEntryById(
+      &restore_context, SessionID::NewUnique(),
+      ui::mojom::WindowOpenDisposition::kNewForegroundTab);
   EXPECT_EQ(restored_tabs, std::nullopt);
+}
+
+TEST_F(TabRestoreServiceImplWithMockClientTest, PromoteEphemeralTabGroup) {
+  ON_CALL(*mock_tab_restore_service_client_, ShouldTrackURLForRestore(_))
+      .WillByDefault(Return(true));
+
+  testing::NiceMock<MockLiveTabContext> mock_live_tab_context;
+  testing::NiceMock<MockLiveTab> split_tab1, split_tab2, single_tab,
+      unpromoted_tab;
+  const split_tabs::SplitTabId split_id = split_tabs::SplitTabId::GenerateNew();
+  const tab_groups::TabGroupId promoted_group_id =
+      tab_groups::TabGroupId::GenerateNew();
+  const tab_groups::TabGroupId unpromoted_group_id =
+      tab_groups::TabGroupId::GenerateNew();
+  const tab_groups::TabGroupVisualData initial_visuals(
+      u"", tab_groups::TabGroupColorId::kGrey);
+
+  SetupMockSplit(&mock_live_tab_context, &split_tab1, &split_tab2,
+                 GURL("http://split1"), GURL("http://split2"), split_id);
+  ON_CALL(mock_live_tab_context, GetTabGroupForTab(0))
+      .WillByDefault(Return(promoted_group_id));
+  ON_CALL(mock_live_tab_context, GetTabGroupForTab(1))
+      .WillByDefault(Return(promoted_group_id));
+  ON_CALL(mock_live_tab_context, GetTabGroupForTab(2))
+      .WillByDefault(Return(promoted_group_id));
+  ON_CALL(mock_live_tab_context, GetTabGroupForTab(3))
+      .WillByDefault(Return(unpromoted_group_id));
+  ON_CALL(mock_live_tab_context, GetSplitForTab(2))
+      .WillByDefault(Return(std::nullopt));
+  ON_CALL(mock_live_tab_context, GetSplitForTab(3))
+      .WillByDefault(Return(std::nullopt));
+  ON_CALL(mock_live_tab_context, GetVisualDataForGroup(_))
+      .WillByDefault(Return(&initial_visuals));
+  ON_CALL(mock_live_tab_context, IsEphemeralTabGroup(promoted_group_id))
+      .WillByDefault(Return(true));
+  ON_CALL(mock_live_tab_context, IsEphemeralTabGroup(unpromoted_group_id))
+      .WillByDefault(Return(true));
+
+  ON_CALL(single_tab, GetSessionID())
+      .WillByDefault(Return(SessionID::NewUnique()));
+  ON_CALL(single_tab, GetEntryCount()).WillByDefault(Return(1));
+  ON_CALL(single_tab, GetEntryAtIndex(_))
+      .WillByDefault(Return(
+          sessions::ContentTestHelper::CreateNavigation("http://tab3", "T3")));
+
+  ON_CALL(unpromoted_tab, GetSessionID())
+      .WillByDefault(Return(SessionID::NewUnique()));
+  ON_CALL(unpromoted_tab, GetEntryCount()).WillByDefault(Return(1));
+  ON_CALL(unpromoted_tab, GetEntryAtIndex(_))
+      .WillByDefault(Return(
+          sessions::ContentTestHelper::CreateNavigation("http://tab4", "T4")));
+
+  // Record a historical split and a historical tab in `promoted_group_id`, plus
+  // a historical tab in `unpromoted_group_id`.
+  service_->CreateHistoricalSplit(&mock_live_tab_context, split_id);
+  service_->SplitClosed(split_id);
+  service_->CreateHistoricalTab(&single_tab, 2);
+  service_->CreateHistoricalTab(&unpromoted_tab, 3);
+  ASSERT_EQ(3U, service_->entries().size());
+
+  auto it = service_->entries().begin();
+  ASSERT_EQ(sessions::tab_restore::Type::TAB, (*it)->type);
+  const auto* unpromoted_entry =
+      static_cast<const sessions::tab_restore::Tab*>(it->get());
+  EXPECT_EQ(std::nullopt, unpromoted_entry->group);
+  EXPECT_EQ(unpromoted_group_id, unpromoted_entry->ephemeral_group);
+
+  ++it;
+  ASSERT_EQ(sessions::tab_restore::Type::TAB, (*it)->type);
+  const auto* promoted_tab_entry =
+      static_cast<const sessions::tab_restore::Tab*>(it->get());
+  EXPECT_EQ(std::nullopt, promoted_tab_entry->group);
+  EXPECT_EQ(promoted_group_id, promoted_tab_entry->ephemeral_group);
+
+  ++it;
+  ASSERT_EQ(sessions::tab_restore::Type::SPLIT, (*it)->type);
+  const auto* promoted_split_entry =
+      static_cast<const sessions::tab_restore::Split*>(it->get());
+  ASSERT_EQ(2U, promoted_split_entry->tabs.size());
+  EXPECT_EQ(std::nullopt, promoted_split_entry->tabs[0]->group);
+  EXPECT_EQ(promoted_group_id, promoted_split_entry->tabs[0]->ephemeral_group);
+  EXPECT_EQ(std::nullopt, promoted_split_entry->tabs[1]->group);
+  EXPECT_EQ(promoted_group_id, promoted_split_entry->tabs[1]->ephemeral_group);
+
+  ChangeCounter change_counter;
+  service_->AddObserver(&change_counter);
+
+  // A saved group id for a group that is still ephemeral is ignored: the
+  // entry is ungrouped until promoted, so there is nothing to persist.
+  const base::Uuid saved_group_id = base::Uuid::GenerateRandomV4();
+  service_->UpdateSavedTabGroupId(promoted_group_id, saved_group_id);
+  EXPECT_EQ(0, change_counter.count);
+  EXPECT_EQ(std::nullopt, promoted_tab_entry->group);
+  EXPECT_EQ(promoted_group_id, promoted_tab_entry->ephemeral_group);
+  EXPECT_EQ(std::nullopt, promoted_tab_entry->saved_group_id);
+
+  // Flush to disk. All entries are still ephemeral, so the file holds them
+  // without their groups. From here on nothing reaches disk unless the code
+  // under test schedules a rewrite, so the reload below verifies that
+  // PromoteEphemeralTabGroup() does.
+  service_->command_storage_manager_for_testing()->Save();
+
+  // Promote `promoted_group_id`: populates `group` and `group_visual_data` and
+  // clears `ephemeral_group`.
+  const tab_groups::TabGroupVisualData promoted_visuals(
+      u"Promoted", tab_groups::TabGroupColorId::kBlue);
+  service_->PromoteEphemeralTabGroup(promoted_group_id, promoted_visuals);
+  EXPECT_EQ(1, change_counter.count);
+  EXPECT_EQ(std::nullopt, promoted_tab_entry->ephemeral_group);
+  EXPECT_EQ(promoted_group_id, promoted_tab_entry->group);
+  EXPECT_EQ(std::nullopt, promoted_tab_entry->saved_group_id);
+  EXPECT_EQ(promoted_visuals, promoted_tab_entry->group_visual_data);
+  for (const auto& tab : promoted_split_entry->tabs) {
+    EXPECT_EQ(std::nullopt, tab->ephemeral_group);
+    EXPECT_EQ(promoted_group_id, tab->group);
+    EXPECT_EQ(promoted_visuals, tab->group_visual_data);
+  }
+
+  // Promoting again is a no-op: the entries are no longer ephemeral, so their
+  // visuals are not overwritten and nothing is rewritten.
+  service_->PromoteEphemeralTabGroup(
+      promoted_group_id, tab_groups::TabGroupVisualData(
+                             u"Other", tab_groups::TabGroupColorId::kRed));
+  EXPECT_EQ(1, change_counter.count);
+  EXPECT_EQ(promoted_visuals, promoted_tab_entry->group_visual_data);
+
+  // Flush so that the saved id below only reaches disk if
+  // UpdateSavedTabGroupId() schedules a rewrite.
+  service_->command_storage_manager_for_testing()->Save();
+
+  // Once promoted, the saved group id is recorded on every entry of the group.
+  service_->UpdateSavedTabGroupId(promoted_group_id, saved_group_id);
+  EXPECT_EQ(2, change_counter.count);
+  EXPECT_EQ(saved_group_id, promoted_tab_entry->saved_group_id);
+  for (const auto& tab : promoted_split_entry->tabs) {
+    EXPECT_EQ(saved_group_id, tab->saved_group_id);
+  }
+
+  // Recording the same saved group id again is a no-op.
+  service_->UpdateSavedTabGroupId(promoted_group_id, saved_group_id);
+  EXPECT_EQ(2, change_counter.count);
+
+  // Entries of a group that is never promoted are left alone.
+  service_->UpdateSavedTabGroupId(unpromoted_group_id,
+                                  base::Uuid::GenerateRandomV4());
+  EXPECT_EQ(2, change_counter.count);
+  EXPECT_EQ(std::nullopt, unpromoted_entry->group);
+  EXPECT_EQ(unpromoted_group_id, unpromoted_entry->ephemeral_group);
+  EXPECT_EQ(std::nullopt, unpromoted_entry->saved_group_id);
+
+  // Closing an unpromoted ephemeral group clears `ephemeral_group` without
+  // notifying observers or writing to disk.
+  service_->GroupClosed(unpromoted_group_id);
+  EXPECT_EQ(2, change_counter.count);
+  EXPECT_EQ(std::nullopt, unpromoted_entry->ephemeral_group);
+
+  service_->RemoveObserver(&change_counter);
+
+  // Reload. The promoted entries keep their group metadata only if promotion
+  // scheduled a rewrite; the unpromoted ephemeral entry has no group.
+  RecreateService();
+  ON_CALL(*mock_tab_restore_service_client_, ShouldTrackURLForRestore(_))
+      .WillByDefault(Return(true));
+
+  ASSERT_EQ(3U, service_->entries().size());
+  it = service_->entries().begin();
+  ASSERT_EQ(sessions::tab_restore::Type::TAB, (*it)->type);
+  unpromoted_entry = static_cast<const sessions::tab_restore::Tab*>(it->get());
+  EXPECT_EQ(std::nullopt, unpromoted_entry->group);
+  EXPECT_EQ(std::nullopt, unpromoted_entry->ephemeral_group);
+  EXPECT_EQ(std::nullopt, unpromoted_entry->saved_group_id);
+  EXPECT_EQ(std::nullopt, unpromoted_entry->group_visual_data);
+
+  ++it;
+  ASSERT_EQ(sessions::tab_restore::Type::TAB, (*it)->type);
+  promoted_tab_entry =
+      static_cast<const sessions::tab_restore::Tab*>(it->get());
+  EXPECT_EQ(promoted_group_id, promoted_tab_entry->group);
+  EXPECT_EQ(saved_group_id, promoted_tab_entry->saved_group_id);
+  EXPECT_EQ(promoted_visuals, promoted_tab_entry->group_visual_data);
+
+  ++it;
+  ASSERT_EQ(sessions::tab_restore::Type::SPLIT, (*it)->type);
+  promoted_split_entry =
+      static_cast<const sessions::tab_restore::Split*>(it->get());
+  ASSERT_EQ(2U, promoted_split_entry->tabs.size());
+  for (const auto& tab : promoted_split_entry->tabs) {
+    EXPECT_EQ(promoted_group_id, tab->group);
+    EXPECT_EQ(saved_group_id, tab->saved_group_id);
+    EXPECT_EQ(promoted_visuals, tab->group_visual_data);
+  }
+
+  // Re-saving the group under a new id (e.g. migration) after promotion is
+  // persisted only if UpdateSavedTabGroupId() schedules a rewrite. Loading
+  // queued the loaded entries for writing, so flush first.
+  service_->command_storage_manager_for_testing()->Save();
+  const base::Uuid migrated_group_id = base::Uuid::GenerateRandomV4();
+  service_->UpdateSavedTabGroupId(promoted_group_id, migrated_group_id);
+  RecreateService();
+  ON_CALL(*mock_tab_restore_service_client_, ShouldTrackURLForRestore(_))
+      .WillByDefault(Return(true));
+
+  ASSERT_EQ(3U, service_->entries().size());
+  it = std::next(service_->entries().begin());
+  ASSERT_EQ(sessions::tab_restore::Type::TAB, (*it)->type);
+  EXPECT_EQ(migrated_group_id,
+            static_cast<const sessions::tab_restore::Tab*>(it->get())
+                ->saved_group_id);
+  ++it;
+  ASSERT_EQ(sessions::tab_restore::Type::SPLIT, (*it)->type);
+  for (const auto& tab :
+       static_cast<const sessions::tab_restore::Split*>(it->get())->tabs) {
+    EXPECT_EQ(migrated_group_id, tab->saved_group_id);
+  }
+}
+
+TEST_F(TabRestoreServiceImplWithMockClientTest,
+       UpdateSavedTabGroupIdInGroupAndWindowEntries) {
+  const tab_groups::TabGroupId group_id = tab_groups::TabGroupId::GenerateNew();
+  const base::Uuid initial_saved_id = base::Uuid::GenerateRandomV4();
+  const base::Uuid migrated_saved_id = base::Uuid::GenerateRandomV4();
+
+  auto group_entry = std::make_unique<sessions::tab_restore::Group>();
+  group_entry->group_id = group_id;
+  group_entry->saved_group_id = initial_saved_id;
+  auto group_tab = std::make_unique<Tab>();
+  group_tab->group = group_id;
+  group_tab->saved_group_id = initial_saved_id;
+  group_entry->tabs.push_back(std::move(group_tab));
+  const sessions::tab_restore::Group* group_ptr = group_entry.get();
+  mutable_entries()->push_back(std::move(group_entry));
+
+  auto window_entry = std::make_unique<Window>();
+  auto window_tab = std::make_unique<Tab>();
+  window_tab->group = group_id;
+  window_tab->saved_group_id = initial_saved_id;
+  window_entry->tabs.push_back(std::move(window_tab));
+  auto window_group = std::make_unique<sessions::tab_restore::Group>();
+  window_group->group_id = group_id;
+  window_group->saved_group_id = initial_saved_id;
+  window_entry->tab_groups[group_id] = std::move(window_group);
+  const Window* window_ptr = window_entry.get();
+  mutable_entries()->push_back(std::move(window_entry));
+
+  service_->UpdateSavedTabGroupId(group_id, migrated_saved_id);
+
+  EXPECT_EQ(migrated_saved_id, group_ptr->saved_group_id);
+  EXPECT_EQ(migrated_saved_id, group_ptr->tabs[0]->saved_group_id);
+  EXPECT_EQ(migrated_saved_id, window_ptr->tabs[0]->saved_group_id);
+  EXPECT_EQ(migrated_saved_id,
+            window_ptr->tab_groups.at(group_id)->saved_group_id);
 }

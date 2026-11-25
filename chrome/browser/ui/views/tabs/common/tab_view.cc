@@ -53,7 +53,6 @@
 #include "chrome/browser/ui/views/tabs/tab/tab_close_button.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_icon.h"
 #include "chrome/browser/ui/views/tabs/tab/tab_title.h"
-#include "chrome/browser/ui/views/tabs/tab_slot_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_style_views.h"
 #include "chrome/browser/ui/window_metadata/window_metadata_controller.h"
 #include "chrome/common/buildflags.h"
@@ -212,11 +211,12 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
     if (!tab_view_->split()) {
       return false;
     }
-    const views::View* parent = tab_view_->parent();
-    if (!parent || !views::IsViewClass<SplitTabView>(parent)) {
+    const auto* split_view =
+        views::AsViewClass<SplitTabView>(tab_view_->parent());
+    if (!split_view || !split_view->collection_node()) {
       return false;
     }
-    const auto& children = parent->children();
+    const auto children = split_view->collection_node()->GetDirectChildren();
     if (children.size() < 2) {
       return true;
     }
@@ -227,11 +227,12 @@ class TabStyleViewDelegateImpl : public TabStyleViewDelegate {
     if (!tab_view_->split()) {
       return false;
     }
-    const views::View* parent = tab_view_->parent();
-    if (!parent || !views::IsViewClass<SplitTabView>(parent)) {
+    const auto* split_view =
+        views::AsViewClass<SplitTabView>(tab_view_->parent());
+    if (!split_view || !split_view->collection_node()) {
       return false;
     }
-    const auto& children = parent->children();
+    const auto children = split_view->collection_node()->GetDirectChildren();
     if (children.size() < 2) {
       return true;
     }
@@ -434,9 +435,10 @@ const TabView& TabView::LayoutManager::TabView() const {
 }
 
 void TabView::StepLoadingAnimation(const base::TimeDelta& elapsed_time) {
-  // TODO(crbug.com/467710547): Paint favicon to a layer when tab strip isn't
-  // animating or when dragging isn't in progress or in full screen mode.
   icon_->StepLoadingAnimation(elapsed_time);
+  icon_->SetCanPaintToLayer(
+      collection_node_ &&
+      collection_node_->GetController()->CanPaintThrobberToLayer());
 }
 
 void TabView::CreateFreezingVote(FreezingVoteReason reason) {
@@ -495,16 +497,53 @@ void TabView::UpdateHovered(bool hovered) {
     return;
   }
 
-  hovered_ = hovered;
-  if (hover_controller_ && !split_) {
-    if (hovered_) {
-      hover_controller_->SetSubtleOpacityScale(radial_highlight_opacity_);
-      hover_controller_->Show(TabStyle::ShowHoverStyle::kSubtle);
-    } else {
-      hover_controller_->Hide(TabStyle::HideHoverStyle::kGradual);
-    }
+  if (split_) {
+    hovered_ = hovered;
+    UpdateColors();
+    UpdateZOrder();
+    InvalidateLayout();
+    return;
   }
 
+  if (hovered) {
+    ShowHover(TabStyle::ShowHoverStyle::kSubtle);
+  } else {
+    HideHover(TabStyle::HideHoverStyle::kGradual);
+  }
+}
+
+void TabView::ShowHover(TabStyle::ShowHoverStyle style) {
+  if (split_) {
+    if (auto* split_view = views::AsViewClass<SplitTabView>(parent())) {
+      split_view->ShowHover(style);
+    }
+    return;
+  }
+
+  hovered_ = true;
+  if (hover_controller_) {
+    if (style == TabStyle::ShowHoverStyle::kSubtle) {
+      hover_controller_->SetSubtleOpacityScale(radial_highlight_opacity_);
+    }
+    hover_controller_->Show(style);
+  }
+  UpdateColors();
+  UpdateZOrder();
+  InvalidateLayout();
+}
+
+void TabView::HideHover(TabStyle::HideHoverStyle style) {
+  if (split_) {
+    if (auto* split_view = views::AsViewClass<SplitTabView>(parent())) {
+      split_view->HideHover(style);
+    }
+    return;
+  }
+
+  hovered_ = false;
+  if (hover_controller_) {
+    hover_controller_->Hide(style);
+  }
   UpdateColors();
   UpdateZOrder();
   InvalidateLayout();
@@ -546,6 +585,14 @@ void TabView::Layout(PassKey) {
 
 bool TabView::OnKeyPressed(const ui::KeyEvent& event) {
   CHECK(collection_node_);
+
+#if BUILDFLAG(IS_MAC)
+  if (event.key_code() == ui::VKEY_RETURN && event.IsControlDown()) {
+    ShowContextMenu(GetKeyboardContextMenuLocation(),
+                    ui::mojom::MenuSourceType::kKeyboard);
+    return true;
+  }
+#endif
 
   const views::LayoutOrientation layout_orientation =
       orientation_ == TabStripOrientation::kVertical
@@ -619,7 +666,7 @@ bool TabView::OnMousePressed(const ui::MouseEvent& event) {
   auto* controller = collection_node_->GetController();
   shift_pressed_on_mouse_down_ = event.IsShiftDown();
   RecordMousePressedInTab();
-  UpdateHoverCard(nullptr, TabSlotController::HoverCardUpdateType::kEvent);
+  UpdateHoverCard(nullptr, HoverCardUpdateType::kEvent);
 
   // Capture the selection model before selection changes.
   const ui::ListSelectionModel original_selection_model =
@@ -705,7 +752,7 @@ void TabView::OnMouseMoved(const ui::MouseEvent& event) {
 
 void TabView::OnMouseEntered(const ui::MouseEvent& event) {
   CHECK(collection_node_);
-  UpdateHoverCard(this, TabSlotController::HoverCardUpdateType::kHover);
+  UpdateHoverCard(this, HoverCardUpdateType::kHover);
 
   // Hover state is handled by the parent if it is split.
   if (split_) {
@@ -745,7 +792,7 @@ bool TabView::OnMouseDragged(const ui::MouseEvent& event) {
 
 void TabView::OnGestureEvent(ui::GestureEvent* event) {
   CHECK(collection_node_);
-  UpdateHoverCard(nullptr, TabSlotController::HoverCardUpdateType::kEvent);
+  UpdateHoverCard(nullptr, HoverCardUpdateType::kEvent);
 
   auto* controller = collection_node_->GetController();
   CHECK(controller);
@@ -833,7 +880,7 @@ void TabView::PaintChildren(const views::PaintInfo& info) {
 void TabView::OnPaint(gfx::Canvas* canvas) {
   // Split pinned tabs have a merged background that is rendered in
   // `SplitTabView`.
-  if (pinned_ && split_) {
+  if (orientation_ == TabStripOrientation::kVertical && pinned_ && split_) {
     return;
   }
 
@@ -847,11 +894,15 @@ void TabView::AddedToWidget() {
       GetWidget()->RegisterPaintAsActiveChangedCallback(base::BindRepeating(
           &TabView::OnFrameActiveStateChanged, base::Unretained(this)));
 
-  OnTabStateChanged();
+  if (collection_node_) {
+    OnTabStateChanged();
+  }
   UpdateClipPathAndRoundedCorners();
 
   // Recompute accessible name when the structure changes.
-  UpdateAccessibleName();
+  if (collection_node_) {
+    UpdateAccessibleName();
+  }
 
   // Recompute the hovered state as mouse events are not processed if a view
   // removed from the widget and added.
@@ -878,8 +929,10 @@ void TabView::OnFocus() {
   // Update the accessible label before showing the hover card to ensure that
   // the displayed memory usage is in sync with what will be read to screen
   // readers.
-  UpdateAccessibleName();
-  UpdateHoverCard(this, TabSlotController::HoverCardUpdateType::kFocus);
+  if (collection_node_) {
+    UpdateAccessibleName();
+  }
+  UpdateHoverCard(this, HoverCardUpdateType::kFocus);
   InvalidateLayout();
 }
 
@@ -894,7 +947,7 @@ void TabView::OnBlur() {
 
   if (auto* tab_strip_view = GetTabStripView(this)) {
     if (!tab_strip_view->IsFocusInTabStrip()) {
-      UpdateHoverCard(nullptr, TabSlotController::HoverCardUpdateType::kFocus);
+      UpdateHoverCard(nullptr, HoverCardUpdateType::kFocus);
     }
   }
   InvalidateLayout();
@@ -1041,7 +1094,7 @@ views::BubbleBorder::Arrow TabView::GetAnchorPosition() const {
 }
 
 views::BubbleAnchor TabView::GetAnchor() {
-  if (split_ && !collapsed_) {
+  if (orientation_ == TabStripOrientation::kVertical && split_ && !collapsed_) {
     return views::BubbleAnchor(parent());
   }
   return views::BubbleAnchor(this);
@@ -1066,8 +1119,8 @@ void TabView::ResetCollectionNode() {
   collection_node_ = nullptr;
 
   if (hover_card_controller && hover_card_controller->target_tab() == this) {
-    hover_card_controller->UpdateHoverCard(
-        nullptr, TabSlotController::HoverCardUpdateType::kTabRemoved);
+    hover_card_controller->UpdateHoverCard(nullptr,
+                                           HoverCardUpdateType::kTabRemoved);
   }
 
   // Reset the active/selected/hovered states so the tab animates out without a
@@ -1138,6 +1191,7 @@ void TabView::OnTabStateChanged() {
   UpdateFocusFreezing();
 
   UpdateColors();
+  alert_indicator_->UpdateEnabledForMuteToggle();
   UpdateZOrder();
   InvalidateLayout();
 }
@@ -1202,7 +1256,10 @@ void TabView::UpdateTabData(const tabs::TabData& data) {
     UpdateAccessibleName();
   }
 
-  icon_->SetData(tab_data_);
+  icon_->SetData(
+      tab_data_,
+      collection_node_ &&
+          collection_node_->GetController()->CanPaintThrobberToLayer());
   icon_->SetActiveState(tab->IsActivated());
   icon_->SetAttention(TabIcon::AttentionType::kBlockedWebContents,
                       !tab->IsActivated() && tab->IsBlocked());
@@ -1296,9 +1353,8 @@ void TabView::CloseButtonPressed(const ui::Event& event) {
   }
 
   if (split_) {
-    auto* split_view = views::AsViewClass<SplitTabView>(parent());
-    base::RecordAction(base::UserMetricsAction(this == split_view->children()[0]
-                                                   ? "CloseTab_StartTabInSplit"
+    base::RecordAction(base::UserMetricsAction(
+        tab_styling_->delegate()->IsLeftSplitTab() ? "CloseTab_StartTabInSplit"
                                                    : "CloseTab_EndTabInSplit"));
   }
 
@@ -1404,16 +1460,14 @@ const tabs::TabInterface* TabView::GetTabInterface() const {
 }
 
 void TabView::UpdateHoverCard(HoverCardAnchorTarget* target,
-                              int hover_card_update_type) {
+                              HoverCardUpdateType hover_card_update_type) {
   if (!collection_node_ || !collection_node_->GetController()) {
     return;
   }
 
   if (TabHoverCardController* hover_card_controller =
           collection_node_->GetController()->GetHoverCardController()) {
-    hover_card_controller->UpdateHoverCard(
-        target, static_cast<TabSlotController::HoverCardUpdateType>(
-                    hover_card_update_type));
+    hover_card_controller->UpdateHoverCard(target, hover_card_update_type);
   }
 }
 

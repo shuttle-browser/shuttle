@@ -11,7 +11,6 @@
 #include "ui/base/x/x11_drag_drop_client.h"
 #include "ui/base/x/x11_util.h"
 #include "ui/events/platform/platform_event_source.h"
-#include "ui/gfx/x/atom_cache.h"
 #include "ui/gfx/x/connection.h"
 #include "ui/gfx/x/xproto.h"
 
@@ -55,12 +54,13 @@ XDragContext::XDragContext(x11::Window local_window,
   XDragDropClient* source_client =
       XDragDropClient::GetForWindow(source_window_);
   if (!source_client) {
+    auto* connection = x11::Connection::Get();
     bool get_types_from_property = ((event.data.data32[1] & 1) != 0);
 
     if (get_types_from_property) {
-      if (!x11::Connection::Get()->GetArrayProperty(source_window_,
-                                                    x11::GetAtom(kXdndTypeList),
-                                                    &unfetched_targets_)) {
+      if (!connection->GetArrayProperty(source_window_,
+                                        connection->GetAtom(kXdndTypeList),
+                                        &unfetched_targets_)) {
         return;
       }
     } else {
@@ -82,7 +82,7 @@ XDragContext::XDragContext(x11::Window local_window,
 
     // We must perform a full sync here because we could be racing
     // |source_window_|.
-    x11::Connection::Get()->Sync();
+    connection->Sync();
   } else {
     // This drag originates from an aura window within our process. This means
     // that we can shortcut the X11 server and ask the owning SelectionOwner
@@ -100,7 +100,7 @@ void XDragContext::OnXdndPositionMessage(XDragDropClient* client,
                                          x11::Window source_window,
                                          x11::Time time_stamp,
                                          const gfx::Point& screen_point) {
-  DCHECK_EQ(source_window_, source_window);
+  CHECK_EQ(source_window_, source_window, base::NotFatalUntil::M163);
   suggested_action_ = suggested_action;
 
   if (!unfetched_targets_.empty()) {
@@ -119,16 +119,17 @@ void XDragContext::OnXdndPositionMessage(XDragDropClient* client,
 }
 
 void XDragContext::RequestNextTarget() {
-  DCHECK(!unfetched_targets_.empty());
-  DCHECK(drag_drop_client_);
-  DCHECK(waiting_to_handle_position_);
+  CHECK(!unfetched_targets_.empty(), base::NotFatalUntil::M163);
+  CHECK(drag_drop_client_, base::NotFatalUntil::M163);
+  CHECK(waiting_to_handle_position_, base::NotFatalUntil::M163);
 
   x11::Atom target = unfetched_targets_.back();
   unfetched_targets_.pop_back();
 
-  x11::Connection::Get()->ConvertSelection(
-      {local_window_, x11::GetAtom(kXdndSelection), target,
-       x11::GetAtom(kChromiumDragReciever), position_time_stamp_});
+  auto* connection = x11::Connection::Get();
+  connection->ConvertSelection(
+      {local_window_, connection->GetAtom(kXdndSelection), target,
+       connection->GetAtom(kChromiumDragReciever), position_time_stamp_});
 }
 
 void XDragContext::OnSelectionNotify(const x11::SelectionNotifyEvent& event) {
@@ -137,7 +138,7 @@ void XDragContext::OnSelectionNotify(const x11::SelectionNotifyEvent& event) {
     // via XConvertSelection().
     return;
   }
-  DCHECK(drag_drop_client_);
+  CHECK(drag_drop_client_, base::NotFatalUntil::M163);
 
   DVLOG(1) << "SelectionNotify, format " << static_cast<uint32_t>(event.target);
 
@@ -145,16 +146,18 @@ void XDragContext::OnSelectionNotify(const x11::SelectionNotifyEvent& event) {
   auto target = static_cast<x11::Atom>(event.target);
 
   if (event.property != x11::Atom::None) {
-    DCHECK_EQ(property, x11::GetAtom(kChromiumDragReciever));
+    auto* connection = x11::Connection::Get();
+    CHECK_EQ(property, connection->GetAtom(kChromiumDragReciever),
+             base::NotFatalUntil::M163);
 
     scoped_refptr<base::RefCountedMemory> data;
     x11::Atom type = x11::Atom::None;
     if (GetRawBytesOfProperty(local_window_, property, &data, &type)) {
 #if BUILDFLAG(IS_LINUX)
       // If the source provided a portal key, retrieve the files now.
-      if (target == x11::GetAtom(kMimeTypePortalFileTransfer) ||
-          target == x11::GetAtom(kMimeTypePortalFiles)) {
-        if (fetched_targets_.contains(x11::GetAtom(kMimeTypeUriList))) {
+      if (target == connection->GetAtom(kMimeTypePortalFileTransfer) ||
+          target == connection->GetAtom(kMimeTypePortalFiles)) {
+        if (fetched_targets_.contains(connection->GetAtom(kMimeTypeUriList))) {
           RequestNextTargetOrComplete();
           return;
         }
@@ -164,7 +167,7 @@ void XDragContext::OnSelectionNotify(const x11::SelectionNotifyEvent& event) {
                            weak_factory_.GetWeakPtr()));
         return;
       }
-      if (target == x11::GetAtom(kMimeTypeUriList) &&
+      if (target == connection->GetAtom(kMimeTypeUriList) &&
           fetched_targets_.contains(target)) {
         RequestNextTargetOrComplete();
         return;
@@ -202,7 +205,8 @@ void XDragContext::OnPortalPathsExtracted(std::vector<std::string> paths) {
     auto data = base::MakeRefCounted<base::RefCountedString>(
         ui::clipboard_util::GetUriListFromPaths(paths));
     // Store as text/uri-list so the rest of Chrome understands it.
-    fetched_targets_.Insert(x11::GetAtom(kMimeTypeUriList), data);
+    fetched_targets_.Insert(x11::Connection::Get()->GetAtom(kMimeTypeUriList),
+                            data);
   }
   RequestNextTargetOrComplete();
 }
@@ -213,8 +217,10 @@ void XDragContext::ReadActions() {
       XDragDropClient::GetForWindow(source_window_);
   if (!source_client) {
     std::vector<x11::Atom> atom_array;
-    if (!x11::Connection::Get()->GetArrayProperty(
-            source_window_, x11::GetAtom(kXdndActionList), &atom_array)) {
+    auto* connection = x11::Connection::Get();
+    if (!connection->GetArrayProperty(source_window_,
+                                      connection->GetAtom(kXdndActionList),
+                                      &atom_array)) {
       actions_.clear();
     } else {
       actions_.swap(atom_array);
@@ -240,18 +246,19 @@ int XDragContext::GetDragOperation() const {
 
 void XDragContext::MaskOperation(x11::Atom xdnd_operation,
                                  int* drag_operation) const {
-  if (xdnd_operation == x11::GetAtom(kXdndActionCopy)) {
+  auto* connection = x11::Connection::Get();
+  if (xdnd_operation == connection->GetAtom(kXdndActionCopy)) {
     *drag_operation |= DragDropTypes::DRAG_COPY;
-  } else if (xdnd_operation == x11::GetAtom(kXdndActionMove)) {
+  } else if (xdnd_operation == connection->GetAtom(kXdndActionMove)) {
     *drag_operation |= DragDropTypes::DRAG_MOVE;
-  } else if (xdnd_operation == x11::GetAtom(kXdndActionLink)) {
+  } else if (xdnd_operation == connection->GetAtom(kXdndActionLink)) {
     *drag_operation |= DragDropTypes::DRAG_LINK;
   }
 }
 
 bool XDragContext::DispatchPropertyNotifyEvent(
     const x11::PropertyNotifyEvent& prop) {
-  if (prop.atom == x11::GetAtom(kXdndActionList)) {
+  if (prop.atom == x11::Connection::Get()->GetAtom(kXdndActionList)) {
     ReadActions();
     return true;
   }

@@ -6,6 +6,7 @@
 
 #include <string_view>
 
+#include "base/test/run_until.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
 #include "components/safe_browsing/content/common/safe_browsing.mojom.h"
@@ -21,42 +22,13 @@
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 
+#if BUILDFLAG(ENABLE_EXTENSIONS)
+#include "components/safe_browsing/core/common/proto/csd.pb.h"
+#endif
+
 namespace safe_browsing {
 
-class FakeSafeBrowsing : public mojom::SafeBrowsing {
- public:
-  FakeSafeBrowsing() = default;
-
-  void CreateCheckerAndCheck(
-      const std::optional<blink::LocalFrameToken>& frame_token,
-      mojo::PendingReceiver<mojom::SafeBrowsingUrlChecker> receiver,
-      const GURL& url,
-      const std::string& method,
-      const net::HttpRequestHeaders& headers,
-      int32_t load_flags,
-      bool has_user_gesture,
-      bool originated_from_service_worker,
-      CreateCheckerAndCheckCallback callback) override {
-    if (should_delay_callback_) {
-      pending_callback_ = std::move(callback);
-      receiver_ = std::move(receiver);
-    } else {
-      std::move(callback).Run(/*proceed=*/true, /*show_interstitial=*/false);
-    }
-  }
-
-  void Clone(mojo::PendingReceiver<mojom::SafeBrowsing> receiver) override {
-    NOTREACHED();
-  }
-
-  void EnableDelayCallback() { should_delay_callback_ = true; }
-
- private:
-  bool should_delay_callback_ = false;
-  mojo::PendingReceiver<mojom::SafeBrowsingUrlChecker> receiver_;
-  CreateCheckerAndCheckCallback pending_callback_;
-};
-
+#if BUILDFLAG(ENABLE_EXTENSIONS)
 class MockThrottleDelegate : public blink::URLLoaderThrottle::Delegate {
  public:
   ~MockThrottleDelegate() override = default;
@@ -68,11 +40,9 @@ class MockThrottleDelegate : public blink::URLLoaderThrottle::Delegate {
 
 class SBRendererUrlLoaderThrottleTest : public ::testing::Test {
  protected:
-  SBRendererUrlLoaderThrottleTest() : mojo_receiver_(&safe_browsing_) {
-    mojo_receiver_.Bind(safe_browsing_remote_.BindNewPipeAndPassReceiver());
+  SBRendererUrlLoaderThrottleTest() {
     throttle_delegate_ = std::make_unique<MockThrottleDelegate>();
-    throttle_ = std::make_unique<RendererURLLoaderThrottle>(
-        safe_browsing_remote_.get(), std::nullopt);
+    throttle_ = std::make_unique<RendererURLLoaderThrottle>();
     throttle_->set_delegate(throttle_delegate_.get());
   }
 
@@ -87,79 +57,29 @@ class SBRendererUrlLoaderThrottleTest : public ::testing::Test {
 
   base::test::TaskEnvironment message_loop_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
-  FakeSafeBrowsing safe_browsing_;
-  mojo::Receiver<mojom::SafeBrowsing> mojo_receiver_;
-  mojo::Remote<mojom::SafeBrowsing> safe_browsing_remote_;
   // Must outlive `throttle_`.
   std::unique_ptr<MockThrottleDelegate> throttle_delegate_;
   std::unique_ptr<RendererURLLoaderThrottle> throttle_;
 };
 
-TEST_F(SBRendererUrlLoaderThrottleTest, DoesNotDeferHttpsImageUrl) {
-  safe_browsing_.EnableDelayCallback();
-  GURL url("https://example.com/");
-  bool defer = false;
-  network::ResourceRequest request =
-      GetResourceRequest(url, network::mojom::RequestDestination::kImage);
-  throttle_->WillStartRequest(&request, &defer);
-  message_loop_.RunUntilIdle();
-
-  auto response_head = network::mojom::URLResponseHead::New();
-  throttle_->WillProcessResponse(url, response_head.get(), &defer);
-  EXPECT_FALSE(defer);
-}
-
-TEST_F(SBRendererUrlLoaderThrottleTest, DoesNotDeferHttpsScriptUrl) {
-  safe_browsing_.EnableDelayCallback();
-  GURL url("https://example.com/");
-  bool defer = false;
-  network::ResourceRequest request =
-      GetResourceRequest(url, network::mojom::RequestDestination::kScript);
-  throttle_->WillStartRequest(&request, &defer);
-  message_loop_.RunUntilIdle();
-
-  auto response_head = network::mojom::URLResponseHead::New();
-  throttle_->WillProcessResponse(url, response_head.get(), &defer);
-  EXPECT_FALSE(defer);
-}
-
-TEST_F(SBRendererUrlLoaderThrottleTest, DoesNotDeferChromeUrl) {
-  GURL url("chrome://settings/");
-  bool defer = false;
-  network::ResourceRequest request =
-      GetResourceRequest(url, network::mojom::RequestDestination::kScript);
-  throttle_->WillStartRequest(&request, &defer);
-
-  auto response_head = network::mojom::URLResponseHead::New();
-  throttle_->WillProcessResponse(url, response_head.get(), &defer);
-  EXPECT_FALSE(defer);
-}
-
-TEST_F(SBRendererUrlLoaderThrottleTest, DoesNotDeferIframeUrl) {
-  GURL url("https://example.com/");
-  bool defer = false;
-  network::ResourceRequest request =
-      GetResourceRequest(url, network::mojom::RequestDestination::kIframe);
-  throttle_->WillStartRequest(&request, &defer);
-  message_loop_.RunUntilIdle();
-
-  auto response_head = network::mojom::URLResponseHead::New();
-  throttle_->WillProcessResponse(url, response_head.get(), &defer);
-  EXPECT_FALSE(defer);
-}
-
-#if BUILDFLAG(ENABLE_EXTENSIONS)
 class MockExtensionWebRequestReporter
     : public mojom::ExtensionWebRequestReporter {
  public:
+  using RemoteHostInfo = ExtensionTelemetryReportRequest::SignalInfo::
+      RemoteHostContactedInfo::RemoteHostInfo;
+
   MockExtensionWebRequestReporter() = default;
   ~MockExtensionWebRequestReporter() override = default;
 
   void SendWebRequestData(
       const std::string& extension_id,
       const GURL& url,
-      mojom::WebRequestProtocolType protocol_type,
-      mojom::WebRequestContactInitiatorType initiator_type) override {}
+      RemoteHostInfo::ProtocolType protocol_type,
+      RemoteHostInfo::ContactInitiator initiator_type) override {
+    url_ = url;
+    protocol_type_ = protocol_type;
+    initiator_type_ = initiator_type;
+  }
 
   void Clone(mojo::PendingReceiver<mojom::ExtensionWebRequestReporter> receiver)
       override {
@@ -167,6 +87,10 @@ class MockExtensionWebRequestReporter
   }
 
   mojo::Receiver<mojom::ExtensionWebRequestReporter> receiver_{this};
+  GURL url_;
+  RemoteHostInfo::ProtocolType protocol_type_ = RemoteHostInfo::UNSPECIFIED;
+  RemoteHostInfo::ContactInitiator initiator_type_ =
+      RemoteHostInfo::CONTACT_INITIATOR_UNSPECIFIED;
 
  private:
   mojo::Receiver<mojom::ExtensionWebRequestReporter> clone_receiver_{this};
@@ -181,8 +105,8 @@ TEST_F(SBRendererUrlLoaderThrottleTest,
   mojo::PendingRemote<mojom::ExtensionWebRequestReporter> pending_remote;
   remote->Clone(pending_remote.InitWithNewPipeAndPassReceiver());
 
-  throttle_ = std::make_unique<RendererURLLoaderThrottle>(
-      safe_browsing_remote_.get(), std::nullopt, std::move(pending_remote));
+  throttle_ =
+      std::make_unique<RendererURLLoaderThrottle>(std::move(pending_remote));
   throttle_->set_delegate(throttle_delegate_.get());
 
   GURL url("http://example.com/");
@@ -201,6 +125,12 @@ TEST_F(SBRendererUrlLoaderThrottleTest,
   network::HttpRequestHeadersUpdateParams headers_update_params;
   throttle_->WillRedirectRequest(&redirect_info, *response_head, &defer,
                                  &headers_update_params);
+  ASSERT_TRUE(base::test::RunUntil(
+      [&]() { return reporter->url_ == redirect_info.new_url; }));
+  EXPECT_EQ(reporter->protocol_type_,
+            MockExtensionWebRequestReporter::RemoteHostInfo::HTTP_HTTPS);
+  EXPECT_EQ(reporter->initiator_type_,
+            MockExtensionWebRequestReporter::RemoteHostInfo::EXTENSION);
 
   // Destroy the reporter, simulating the URLLoaderThrottleProviderImpl being
   // destroyed. This should cause the pipe in the throttle to be closed.

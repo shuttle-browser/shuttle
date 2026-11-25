@@ -29,13 +29,17 @@ import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxDrawableState;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
 import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties;
+import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.FormFactor;
 import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.PositionalMode;
 import org.chromium.chrome.browser.omnibox.suggestions.SuggestionCommonProperties.RoundSides;
 import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewProperties.Action;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
+import org.chromium.components.browser_ui.widget.chips.ChipView;
+import org.chromium.ui.modelutil.MVCListAdapter.ModelList;
 import org.chromium.ui.modelutil.PropertyKey;
 import org.chromium.ui.modelutil.PropertyModel;
 import org.chromium.ui.modelutil.PropertyModelChangeProcessor.ViewBinder;
+import org.chromium.ui.modelutil.SimpleRecyclerViewAdapter;
 import org.chromium.ui.util.ColorUtils;
 
 import java.util.List;
@@ -74,9 +78,8 @@ public abstract class BaseSuggestionViewBinder<T extends View>
     public void bind(PropertyModel model, BaseSuggestionView<T> view, PropertyKey propertyKey) {
         if (BaseSuggestionViewProperties.ACTION_BUTTONS == propertyKey) {
             bindActionButtons(model, view, model.get(BaseSuggestionViewProperties.ACTION_BUTTONS));
-        } else if (ActionChipsProperties.ACTION_CHIPS == propertyKey
-                || SuggestionCommonProperties.DEVICE_FORM_FACTOR == propertyKey) {
-            ActionChipsBinder.bind(model, view.actionChipsView, propertyKey);
+        } else if (BaseSuggestionViewProperties.ACTION_CHIPS == propertyKey) {
+            bindActionChips(model, view);
         } else if (BaseSuggestionViewProperties.ACTION_CHIP_LEAD_IN_SPACING == propertyKey) {
             view.setActionChipLeadInSpacing(
                     model.get(BaseSuggestionViewProperties.ACTION_CHIP_LEAD_IN_SPACING));
@@ -90,6 +93,9 @@ public abstract class BaseSuggestionViewBinder<T extends View>
         } else if (SuggestionCommonProperties.COLOR_SCHEME == propertyKey) {
             updateColorScheme(model, view);
             bindContent(model, view.contentView, propertyKey);
+        } else if (SuggestionCommonProperties.DEVICE_FORM_FACTOR == propertyKey) {
+            view.setActionChipsHorizontalFadingEdgeEnabled(
+                    model.get(SuggestionCommonProperties.DEVICE_FORM_FACTOR) == FormFactor.TABLET);
         } else if (SuggestionCommonProperties.FUSEBOX_LAYOUT_MODE == propertyKey
                 || SuggestionCommonProperties.GROUP_SEPARATOR_TYPE == propertyKey
                 || SuggestionCommonProperties.HEADER_TITLE == propertyKey
@@ -178,6 +184,63 @@ public abstract class BaseSuggestionViewBinder<T extends View>
         }
     }
 
+    /**
+     * Binds the action chips carousel. The carousel view is created lazily on first use, and its
+     * adapter observes the model-owned {@link BaseSuggestionViewProperties#ACTION_CHIPS} list
+     * directly: it is reused when the bound list instance is unchanged, swapped when it changes,
+     * and detached when the suggestion has no chips. The view itself holds no model state.
+     */
+    private static <T extends View> void bindActionChips(
+            PropertyModel model, BaseSuggestionView<T> view) {
+        ModelList chips = model.get(BaseSuggestionViewProperties.ACTION_CHIPS);
+        if (chips == null) {
+            // Nothing to hide if the carousel was never created for this view.
+            if (view.actionChipsView == null) return;
+            detachChipsAdapter(view.actionChipsView);
+            view.actionChipsView.setSelected(false);
+            view.actionChipsView.setVisibility(View.GONE);
+            return;
+        }
+
+        ActionChipsView carousel = view.ensureActionChipsView();
+        attachChipsAdapter(carousel, chips);
+        carousel.setSelected(false);
+        carousel.setVisibility(View.VISIBLE);
+    }
+
+    /**
+     * Ensures {@code carousel} presents {@code chips}. Reuses the attached adapter when it already
+     * does; otherwise swaps in a new one, retaining the RecycledViewPool.
+     */
+    private static void attachChipsAdapter(ActionChipsView carousel, ModelList chips) {
+        var current = (SimpleRecyclerViewAdapter) carousel.getAdapter();
+        if (current != null && current.getModelList() == chips) return;
+
+        if (current != null) current.destroy();
+        var adapter = new SimpleRecyclerViewAdapter(chips);
+        adapter.registerType(
+                ActionChipProperties.ViewType.CHIP,
+                BaseSuggestionViewBinder::createChipView,
+                ActionChipViewBinder::bind);
+        // swapAdapter (unlike setAdapter) keeps the RecycledViewPool populated.
+        carousel.swapAdapter(adapter, /* removeAndRecycleExistingViews= */ false);
+    }
+
+    /**
+     * Detaches any adapter from {@code carousel}, so it stops observing a suggestion's chip list.
+     * Chip views are returned to the pool for reuse.
+     */
+    private static void detachChipsAdapter(ActionChipsView carousel) {
+        var current = (SimpleRecyclerViewAdapter) carousel.getAdapter();
+        if (current == null) return;
+        current.destroy();
+        carousel.swapAdapter(null, /* removeAndRecycleExistingViews= */ true);
+    }
+
+    private static ChipView createChipView(ViewGroup parent) {
+        return new ChipView(parent.getContext(), R.style.OmniboxActionChipThemeOverlay);
+    }
+
     /** Binds action icons for the suggestion view. */
     private static <T extends View> void bindActionButtons(
             PropertyModel model, BaseSuggestionView<T> view, @Nullable List<Action> actions) {
@@ -242,10 +305,7 @@ public abstract class BaseSuggestionViewBinder<T extends View>
 
         if (sds != null) {
             // Ensure the decoration icon size does not exceed the maximum edge size.
-            int edgeSize =
-                    sds.isLarge
-                            ? resourceProvider.getEdgeSizeLargeIcon()
-                            : resourceProvider.getEdgeSize();
+            int edgeSize = resourceProvider.getEdgeSize(sds.size);
             boolean isTall = sds.drawable.getIntrinsicHeight() > sds.drawable.getIntrinsicWidth();
             rciv.getLayoutParams().width = isTall ? ViewGroup.LayoutParams.WRAP_CONTENT : edgeSize;
             rciv.getLayoutParams().height = isTall ? edgeSize : ViewGroup.LayoutParams.WRAP_CONTENT;
@@ -260,9 +320,7 @@ public abstract class BaseSuggestionViewBinder<T extends View>
 
             rciv.setClipToOutline(sds.useRoundedCorners);
             baseView.decorationIconOutline.setRadius(
-                    sds.isLarge
-                            ? resourceProvider.getLargeIconRoundingRadius()
-                            : resourceProvider.getSmallIconRoundingRadius());
+                    resourceProvider.getIconRoundingRadius(sds.size));
         }
 
         rciv.setVisibility(sds == null ? View.GONE : View.VISIBLE);

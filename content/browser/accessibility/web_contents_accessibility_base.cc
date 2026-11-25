@@ -1493,8 +1493,7 @@ int32_t WebContentsAccessibilityBase::GetRootId(JNIEnv* env) {
 }
 
 bool WebContentsAccessibilityBase::IsNodeValid(JNIEnv* env, int32_t unique_id) {
-  BrowserAccessibilityAndroid* node = GetAXFromUniqueID(unique_id);
-  return node && !node->IsIgnored();
+  return GetAXFromUniqueID(unique_id) != nullptr;
 }
 
 void WebContentsAccessibilityBase::HitTest(JNIEnv* env, int32_t x, int32_t y) {
@@ -2198,7 +2197,7 @@ bool WebContentsAccessibilityBase::PopulateAccessibilityEvent(
     int32_t unique_id,
     int32_t event_type) {
   BrowserAccessibilityAndroid* node = GetAXFromUniqueID(unique_id);
-  if (!node) {
+  if (!node || node->IsIgnored()) {
     return false;
   }
 
@@ -2838,13 +2837,14 @@ void WebContentsAccessibilityBase::MoveAccessibilityFocus(
   }
 
   BrowserAccessibilityAndroid* node = GetAXFromUniqueID(new_unique_id);
+  if (!node) {
+    return;
+  }
 
   int32_t new_dialog_id = ui::kAXAndroidInvalidViewId;
-  if (node) {
-    BrowserAccessibilityAndroid* dialog_ancestor = GetDialogAncestor(node);
-    if (dialog_ancestor) {
-      new_dialog_id = dialog_ancestor->GetUniqueId();
-    }
+  BrowserAccessibilityAndroid* dialog_ancestor = GetDialogAncestor(node);
+  if (dialog_ancestor) {
+    new_dialog_id = dialog_ancestor->GetUniqueId();
   }
   // TODO: Follow up with TalkBack to verify if TalkBack should announce
   // pane closed when transitioning directly from one dialog to another.
@@ -2858,9 +2858,6 @@ void WebContentsAccessibilityBase::MoveAccessibilityFocus(
     active_dialog_unique_id_ = new_dialog_id;
   }
 
-  if (!node) {
-    return;
-  }
   node->manager()->SetAccessibilityFocus(*node);
 
   // When Android sets accessibility focus to a node, we load inline text
@@ -3305,7 +3302,9 @@ static int64_t JNI_WebContentsAccessibilityImpl_Init(
     JNIEnv* env,
     const JavaRef<jobject>& jweb_contents) {
   WebContents* web_contents = WebContents::FromJavaWebContents(jweb_contents);
-  CHECK(web_contents, base::NotFatalUntil::M159);
+  // TODO(crbug.com/584572674): CHECK-exclusion:  Convert to a CHECK once we are
+  // confident it won't be triggered.
+  CHECK(web_contents, base::NotFatalUntil::M163);
 
   return reinterpret_cast<intptr_t>(
       new WebContentsAccessibilityBase(web_contents));

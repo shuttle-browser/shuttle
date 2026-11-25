@@ -24,7 +24,6 @@ import org.mockito.junit.MockitoRule;
 import org.chromium.base.test.params.ParameterAnnotations;
 import org.chromium.base.test.params.ParameterSet;
 import org.chromium.base.test.params.ParameterizedRunner;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.DoNotBatch;
 import org.chromium.base.test.util.Feature;
 import org.chromium.base.test.util.Features.EnableFeatures;
@@ -32,13 +31,13 @@ import org.chromium.chrome.browser.autofill.PersonalDataManager;
 import org.chromium.chrome.browser.autofill.PersonalDataManagerFactory;
 import org.chromium.chrome.browser.autofill.R;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.night_mode.ChromeNightModeTestUtils;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.signin.services.IdentityServicesProvider;
 import org.chromium.chrome.test.ChromeJUnit4RunnerDelegate;
 import org.chromium.chrome.test.transit.ChromeTransitTestRules;
 import org.chromium.chrome.test.transit.FreshCtaTransitTestRule;
+import org.chromium.components.autofill.autofill_ai.EntityAttributeUpdateType;
 import org.chromium.components.autofill.autofill_ai.EntityInstance;
 import org.chromium.components.autofill.autofill_ai.RecordType;
 import org.chromium.components.autofill.autofill_ai.utils.TestUtils;
@@ -56,7 +55,6 @@ import java.util.List;
 @DoNotBatch(reason = "The tests can't be batched because they run for different set-ups.")
 @RunWith(ParameterizedRunner.class)
 @ParameterAnnotations.UseRunnerDelegate(ChromeJUnit4RunnerDelegate.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @EnableFeatures({
     ChromeFeatureList.AUTOFILL_AI_EDIT_ENTITIES_FROM_SAVE_UPDATE_PROMPT,
     ChromeFeatureList.AUTOFILL_AI_WITH_DATA_SCHEMA
@@ -75,8 +73,8 @@ public class AutofillAiSaveUpdateEntityPromptRenderTest {
     @Rule
     public final RenderTestRule mRenderTestRule =
             RenderTestRule.Builder.withPublicCorpus()
-                    .setRevision(3)
-                    .setDescription("Ligatures and contextual alternates disabled in UI text")
+                    .setRevision(4)
+                    .setDescription("Update Wallet entity prompt subtitle notice string")
                     .setBugComponent(Component.UI_BROWSER_AUTOFILL)
                     .build();
 
@@ -172,7 +170,7 @@ public class AutofillAiSaveUpdateEntityPromptRenderTest {
                                                             .NEW_ENTITY_ATTRIBUTE_UNCHANGED)),
                                     /* isUpdatePrompt= */ false);
                             mPrompt.setSourceNotice(
-                                    "Saved to this device", /* insertManageInfoLink= */ false);
+                                    "Saved to this device", /* insertWalletLink= */ false);
                             mPrompt.show();
                             return mPrompt.getDialogViewForTesting();
                         });
@@ -229,14 +227,9 @@ public class AutofillAiSaveUpdateEntityPromptRenderTest {
                             String walletTitle =
                                     context.getString(R.string.autofill_google_wallet_title);
                             String email = "alexpark@gmail.com";
-                            String sourceNotice =
-                                    context.getString(
-                                                    R.string
-                                                            .autofill_ai_save_or_update_entity_in_wallet_source_notice)
-                                            .replace("$1", walletTitle)
-                                            .replace("$2", walletTitle)
-                                            .replace("$3", email);
-                            mPrompt.setSourceNotice(sourceNotice, /* insertManageInfoLink= */ true);
+                            mPrompt.setSourceNotice(
+                                    getUpdateWalletSourceNotice(walletTitle, email),
+                                    /* insertWalletLink= */ true);
                             mPrompt.show();
                             return mPrompt.getDialogViewForTesting();
                         });
@@ -293,17 +286,20 @@ public class AutofillAiSaveUpdateEntityPromptRenderTest {
                             String walletTitle =
                                     context.getString(R.string.autofill_google_wallet_title);
                             String email = "alexpark@gmail.com";
-                            String sourceNotice =
-                                    context.getString(
-                                                    R.string
-                                                            .autofill_ai_save_or_update_entity_in_wallet_source_notice)
-                                            .replace("$1", walletTitle)
-                                            .replace("$2", walletTitle)
-                                            .replace("$3", email);
-                            mPrompt.setSourceNotice(sourceNotice, /* insertManageInfoLink= */ true);
+                            mPrompt.setSourceNotice(
+                                    getUpdateWalletSourceNotice(walletTitle, email),
+                                    /* insertWalletLink= */ true);
                             mPrompt.show();
                             return mPrompt.getDialogViewForTesting();
                         });
         mRenderTestRule.render(dialogView, "autofill_ai_update_entity_without_new_attributes");
+    }
+
+    // Returns the notice text when updating a Wallet entity. This is necessary because the
+    // `IDS_AUTOFILL_AI_UPDATE_ENTITY_TO_WALLET_DIALOG_SUBTITLE` string resource is resolved
+    // in C++ and thus not exported to Java to avoid increasing APK size.
+    private static String getUpdateWalletSourceNotice(String walletTitle, String email) {
+        String walletNotice = "Your info is saved in <link>%1$s</link> for %2$s";
+        return String.format(walletNotice, walletTitle, email);
     }
 }

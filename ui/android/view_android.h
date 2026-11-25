@@ -94,6 +94,8 @@ class UI_ANDROID_EXPORT ViewAndroid {
     void TransferViewAndDelegateFrom(ScopedAnchorView& other);
 
     // Default copy/assign disabled by move constructor.
+
+    bool has_view_ = false;
   };
 
   enum class LayoutType {
@@ -246,8 +248,6 @@ class UI_ANDROID_EXPORT ViewAndroid {
   }
 
   void NotifyVirtualKeyboardOverlayRect(const gfx::Rect& keyboard_rect);
-
-  void ShowInterestInElement(int);
 
   void SetLayoutForTesting(int x, int y, int width, int height);
 
@@ -417,6 +417,7 @@ class UI_ANDROID_EXPORT ViewAndroid {
   HitTestCallback hit_test_callback_;
 
   bool controls_resize_view_ = false;
+  bool has_delegate_ = false;
 
   // Whether the view is showing. This is used to check if the view is eligible
   // for a Check Hit.

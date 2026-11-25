@@ -4,9 +4,12 @@
 
 package org.chromium.base;
 
+import android.app.Activity;
 import android.content.ClipDescription;
 import android.net.Uri;
+import android.os.LocaleList;
 import android.os.ParcelFileDescriptor;
+import android.view.ActionMode;
 import android.webkit.WebViewDelegate;
 import android.window.TrustedPresentationThresholds;
 
@@ -103,6 +106,47 @@ public interface AconfigFlaggedApiDelegate {
      * @param clipDescription ClipDescription.
      */
     default boolean hasContentUri(ClipDescription clipDescription) {
+        return false;
+    }
+
+    /**
+     * Returns whether forwarding text selection to SystemUI via {@link
+     * android.view.ActionMode#setTextSelection} is enabled.
+     */
+    default boolean isForwardTextSelectionToSystemUiEnabled() {
+        return false;
+    }
+
+    /**
+     * Calls {@link android.view.ActionMode#setTextSelection} if supported, otherwise no-op.
+     *
+     * @param mode The {@link ActionMode} on which to set the text selection.
+     * @param text The surrounding text including the selection.
+     * @param start The start index of the selected text within {@code text}.
+     * @param end The end index of the selected text within {@code text}.
+     * @param locales The locales of the text/selection.
+     */
+    default void setTextSelection(
+            ActionMode mode, @Nullable CharSequence text, int start, int end, LocaleList locales) {}
+
+    /**
+     * Calls {@link android.view.ActionMode#clearTextSelection} if supported, otherwise no-op.
+     *
+     * @param mode The {@link ActionMode} on which to clear the text selection.
+     */
+    default void clearTextSelection(ActionMode mode) {}
+
+    /**
+     * Returns whether {@code activity} is currently being projected onto a car display by Android
+     * Auto (phone projection). This is distinct from Chrome running natively on Android Automotive
+     * OS, which is reported by {@code DeviceInfo.isAutomotive()}.
+     *
+     * <p>Detection is only supported on Android 17 (API 37) and later; returns {@code false} on
+     * earlier releases and when the activity is not attached to a display.
+     *
+     * @param activity The activity to check.
+     */
+    default boolean isProjectedToCarDisplay(Activity activity) {
         return false;
     }
 }

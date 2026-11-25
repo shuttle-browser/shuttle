@@ -22,6 +22,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 
 import org.chromium.base.ContextUtils;
+import org.chromium.base.DeviceInfo;
 import org.chromium.base.test.ActivityFinisher;
 import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CommandLineFlags;
@@ -53,6 +54,7 @@ import java.util.concurrent.Callable;
 public class MediaLauncherActivityTest {
     @Before
     public void setUp() {
+        DeviceInfo.setIsDesktopForTesting(false);
         MediaViewerUtils.forceEnableMediaLauncherActivityForTest();
     }
 

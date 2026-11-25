@@ -46,8 +46,10 @@ class AutocompleteResult {
  public:
   typedef ACMatches::const_iterator const_iterator;
   typedef ACMatches::iterator iterator;
-  using MatchDedupComparator = ACMatchKey<std::string,  // URL
-                                          AutocompleteMatchDedupeType>;
+  using MatchDedupComparator =
+      ACMatchKey<std::string,  // URL
+                 AutocompleteMatchDedupeType,
+                 std::string>;  // Suggest template behavior.
 
   // Max number of matches we'll show from the various providers. This limit
   // may be different for zero suggest and non zero suggest. Does not take into
@@ -198,7 +200,11 @@ class AutocompleteResult {
                              const AutocompleteProviderClient& client);
 
   // Sets a takeover action on all matches to issue a contextual search.
-  void AttachContextualSearchFulfillmentActionToMatches();
+  // If `include_lens_search_matches` is true, the action is also attached to
+  // matches that the server marked as fulfillable by Lens; this is used when
+  // contextual suggestions are fulfilled without Lens (e.g. desktop Android).
+  void AttachContextualSearchFulfillmentActionToMatches(
+      bool include_lens_search_matches = false);
 
   // Sets a takeover action on all matches to open Lens.
   void AttachContextualSearchOpenLensActionToMatches();
@@ -364,6 +370,10 @@ class AutocompleteResult {
         default:
           break;
       }
+    }
+
+    if (match.IsAgenticUpdateSuggestion()) {
+      session_.agentic_update_suggestions_shown_in_session |= true;
     }
   }
 

@@ -201,14 +201,6 @@ ProgrammaticScrollAnimator& ScrollableArea::GetProgrammaticScrollAnimator()
   return *programmatic_scroll_animator_;
 }
 
-ScrollbarOrientation ScrollableArea::ScrollbarOrientationFromDirection(
-    mojom::blink::ScrollDirectionPhysical direction) const {
-  return (direction == mojom::blink::ScrollDirectionPhysical::kUp ||
-          direction == mojom::blink::ScrollDirectionPhysical::kDown)
-             ? kVerticalScrollbar
-             : kHorizontalScrollbar;
-}
-
 float ScrollableArea::ScrollStep(ui::ScrollGranularity granularity,
                                  ScrollbarOrientation orientation) const {
   switch (granularity) {
@@ -1212,13 +1204,6 @@ void ScrollableArea::OnScrollFinished(bool enqueue_scrollend) {
       .MarkHoverStateDirty();
 }
 
-void ScrollableArea::SnapAfterScrollbarScrolling(
-    ScrollbarOrientation orientation,
-    cc::ScrollSourceType source_type) {
-  SnapAtCurrentPosition(orientation == kHorizontalScrollbar,
-                        orientation == kVerticalScrollbar, source_type);
-}
-
 bool ScrollableArea::SnapAtCurrentPosition(bool scrolled_x,
                                            bool scrolled_y,
                                            cc::ScrollSourceType source_type) {
@@ -1512,7 +1497,7 @@ LayoutBox* GetEnclosingLayoutBoxCrossingDocumentBoundary(
   return IsA<LayoutView>(layout_box)
              ? static_cast<LayoutBox*>(
                    layout_box->GetFrame()->OwnerLayoutObject())
-             : static_cast<LayoutBox*>(layout_box->ContainingBlock());
+             : layout_box->ContainingBox();
 }
 
 ScrollableArea* GetNearestScrollableArea(LayoutBox* current_box) {
@@ -1530,7 +1515,8 @@ ScrollableArea* GetNearestScrollableArea(LayoutBox* current_box) {
         (next_box->IsScrollContainer() &&
          (next_box->GetScrollableArea()->ScrollsOverflow() ||
           !next_box->GetScrollableArea()->CanPropagateScroll())) ||
-        next_box->IsOverscrollContainer()) {
+        next_box->IsOverscrollContainer() ||
+        next_box->IsOverscrollAreaParent()) {
       CHECK(next_box->GetScrollableArea());
       return next_box->GetScrollableArea();
     }

@@ -45,7 +45,6 @@ import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
@@ -518,6 +517,48 @@ public class TabGridDialogViewTest {
 
     @Test
     @MediumTest
+    public void testSetupDialogAnimation_DetachedDialogView_FallsBackToFade() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    mSourceView = new View(sActivity);
+                    mTestParent.addView(mSourceView, 0, new FrameLayout.LayoutParams(100, 100));
+                });
+        InstrumentationRegistry.getInstrumentation().waitForIdleSync();
+
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    // Detach the dialog view so that the zoom animation cannot be computed.
+                    mTestParent.removeView(mTabGridDialogView);
+                    assertFalse(mTabGridDialogView.isAttachedToWindow());
+
+                    // Should fall back to the basic fade animation instead of throwing an NPE.
+                    mTabGridDialogView.setupDialogAnimation(mSourceView);
+                    assertEquals(0f, mAnimationCardView.getAlpha(), 0.0);
+                    assertEquals(0f, mBackgroundFrameView.getAlpha(), 0.0);
+                    assertFalse(mTabGridDialogContainer.isFocusable());
+                });
+    }
+
+    @Test
+    @MediumTest
+    public void testSetupDialogAnimation_DetachedSourceView_FallsBackToFade() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    // The source view has no parent, but the dialog view stays attached.
+                    View detachedSourceView = new View(sActivity);
+                    assertNull(detachedSourceView.getParent());
+                    assertTrue(mTabGridDialogView.isAttachedToWindow());
+
+                    // Should fall back to the basic fade animation instead of throwing an NPE.
+                    mTabGridDialogView.setupDialogAnimation(detachedSourceView);
+                    assertEquals(0f, mAnimationCardView.getAlpha(), 0.0);
+                    assertEquals(0f, mBackgroundFrameView.getAlpha(), 0.0);
+                    assertFalse(mTabGridDialogContainer.isFocusable());
+                });
+    }
+
+    @Test
+    @MediumTest
     public void testDialog_FadeInFadeOut() {
         // Setup the the basic fade-in and fade-out animation.
         ThreadUtils.runOnUiThreadBlocking(
@@ -631,14 +672,11 @@ public class TabGridDialogViewTest {
 
     @Test
     @MediumTest
-    @DisabledTest(message = "crbug.com/578130472")
     public void testAnimationSourceRect_AtClipTopAndClippedAtBottom() {
         int sourceTop = CLIP_TOP;
         RectF rect = setupDialogAnimationFromSource(sourceTop, sourceTop + SOURCE_HEIGHT - 50);
 
-        // Same as ClippedAtBottom. Fails because the card touching the clip bound is taken as
-        // clipped at the top, so the top padding is dropped (or reduced by the bottom clip, if
-        // that is smaller than the padding).
+        // Not taken as clipped at the top just because it touches the clip bound.
         assertSourceRect(rect, sourceTop + mCardPadding);
     }
 

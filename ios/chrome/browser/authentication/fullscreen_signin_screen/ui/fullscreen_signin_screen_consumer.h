@@ -50,6 +50,10 @@ typedef NS_ENUM(NSUInteger, SigninScreenConsumerScreenIntent) {
 // If there is a signed-in account (in deeplink signin flow) we show the
 // signed-in identity email along with the target account email in the subtitle.
 @property(nonatomic, copy) NSString* targetIdentityEmail;
+// Customized subtitle overriding the default subtitle when a preferred account
+// is selected, or nil if the default subtitle should be used. Once set, it is
+// not updated if the selected account changes.
+@property(nonatomic, copy) NSString* subtitleOverride;
 
 // Sets the `userName`, `email`, `givenName` and `avatar` of the selected
 // identity. The `userName` and `givenName` can be nil. Notifies the UI that an
@@ -64,6 +68,9 @@ typedef NS_ENUM(NSUInteger, SigninScreenConsumerScreenIntent) {
 - (void)noIdentityAvailable;
 // Sets the UI as interactable or not.
 - (void)setUIEnabled:(BOOL)UIEnabled;
+// Notifies the consumer whether the screen content is loading while waiting for
+// the preferred account.
+- (void)setContentLoading:(BOOL)contentLoading;
 
 @end
 

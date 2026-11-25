@@ -12,6 +12,9 @@ import android.widget.ListView;
 import androidx.test.filters.SmallTest;
 
 import org.hamcrest.Matchers;
+import org.jni_zero.JniPtr;
+import org.jni_zero.JniRawPtr;
+import org.junit.After;
 import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Rule;
@@ -20,12 +23,10 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.Criteria;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
 import org.chromium.chrome.R;
-import org.chromium.chrome.browser.flags.ChromeSwitches;
 import org.chromium.chrome.browser.profiles.ProfileManager;
 import org.chromium.chrome.test.ChromeJUnit4ClassRunner;
 import org.chromium.chrome.test.transit.AutoResetCtaTransitTestRule;
@@ -43,7 +44,6 @@ import org.chromium.ui.base.ActivityWindowAndroid;
  * <p>TODO(crbug.com/40187298): Componentize this test.
  */
 @RunWith(ChromeJUnit4ClassRunner.class)
-@CommandLineFlags.Add({ChromeSwitches.DISABLE_FIRST_RUN_EXPERIENCE})
 @Batch(BluetoothChooserDialogTest.DEVICE_DIALOG_BATCH_NAME)
 public class BluetoothScanningPermissionDialogTest {
     @Rule
@@ -58,7 +58,9 @@ public class BluetoothScanningPermissionDialogTest {
     private class TestBluetoothScanningPermissionDialogJni
             implements BluetoothScanningPermissionDialog.Natives {
         @Override
-        public void onDialogFinished(long nativeBluetoothScanningPromptAndroid, int eventType) {
+        public void onDialogFinished(
+                JniPtr<BluetoothScanningPermissionDialog.NativeBluetoothScanningPromptAndroid> self,
+                int eventType) {
             mFinishedEventType = eventType;
         }
     }
@@ -68,6 +70,16 @@ public class BluetoothScanningPermissionDialogTest {
         BluetoothScanningPermissionDialogJni.setInstanceForTesting(
                 new TestBluetoothScanningPermissionDialogJni());
         mPermissionDialog = createDialog();
+    }
+
+    @After
+    public void tearDown() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    if (mPermissionDialog != null) {
+                        mPermissionDialog.closeDialogForTesting();
+                    }
+                });
     }
 
     private BluetoothScanningPermissionDialog createDialog() {
@@ -81,7 +93,7 @@ public class BluetoothScanningPermissionDialogTest {
                                     ConnectionSecurityLevel.SECURE,
                                     new ChromeBluetoothScanningPromptAndroidDelegate(
                                             ProfileManager.getLastUsedRegularProfile()),
-                                    /* nativeBluetoothScanningPermissionDialogPtr= */ 42);
+                                    JniRawPtr.createForTesting(42L));
                     return dialog;
                 });
     }

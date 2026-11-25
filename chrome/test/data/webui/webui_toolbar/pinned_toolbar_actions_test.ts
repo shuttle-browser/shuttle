@@ -2,12 +2,13 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import 'chrome://webui-toolbar.top-chrome/lazy_load.js';
 
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
 import {microtasksFinished} from 'chrome://webui-test/test_util.js';
-import {AnimationTracker, BrowserProxyImpl, PinnedToolbarAction, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
-import type {PinnedToolbarActionsElement} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
+import {AnimationTracker} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+import type {PinnedToolbarActionsElement} from 'chrome://webui-toolbar.top-chrome/lazy_load.js';
+import {BrowserProxyImpl, PinnedToolbarAction, TrackedElementManager} from 'chrome://webui-toolbar.top-chrome/webui_toolbar.js';
 
 suite('PinnedToolbarActions', function() {
   let container: PinnedToolbarActionsElement;
@@ -96,6 +97,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 1n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: 2,  // kShowPasswordsBubbleOrPage
@@ -108,6 +110,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 2n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: PinnedToolbarAction.kDivider,
@@ -120,6 +123,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 0n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
     ];
     await microtasksFinished();
@@ -138,6 +142,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 1n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: PinnedToolbarAction.kDivider,
@@ -150,6 +155,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 0n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: 3,
@@ -162,6 +168,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 3n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
     ];
     await microtasksFinished();
@@ -240,6 +247,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 1n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: 2,
@@ -252,6 +260,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 2n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
     ];
     await microtasksFinished();
@@ -261,7 +270,8 @@ suite('PinnedToolbarActions', function() {
     assertEquals(2, actionElements.length);
     for (const action of actionElements) {
       assertTrue(action.poppedOut);
-      assertFalse(action.shadowRoot.querySelector('cr-icon-button')!.draggable);
+      assertFalse(
+          action.shadowRoot.querySelector('toolbar-chip-button')!.draggable);
     }
 
     // Dragging an action over another one must not reorder them, either.
@@ -310,6 +320,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 1n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: PinnedToolbarAction.kDivider,
@@ -322,6 +333,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 0n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: 3,
@@ -334,6 +346,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 3n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
     ];
     await microtasksFinished();
@@ -390,10 +403,10 @@ suite('PinnedToolbarActions', function() {
     firstAction.focus();
     assertEquals(
         firstAction.shadowRoot.activeElement,
-        firstAction.shadowRoot.querySelector('cr-icon-button'));
+        firstAction.shadowRoot.querySelector('toolbar-chip-button'));
 
     // Trigger keyboard reorder (Ctrl+ArrowRight)
-    const button = firstAction.shadowRoot.querySelector('cr-icon-button')!;
+    const button = firstAction.shadowRoot.querySelector('toolbar-chip-button')!;
     button.dispatchEvent(new KeyboardEvent('keydown', {
       key: 'ArrowRight',
       ctrlKey: true,
@@ -419,6 +432,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 2n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: 1,
@@ -431,6 +445,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 1n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
       {
         action: PinnedToolbarAction.kDivider,
@@ -443,6 +458,7 @@ suite('PinnedToolbarActions', function() {
         icon: {handleId: 0n},
         progressRing: null,
         badgeNumber: null,
+        iconSizeDelta: 0,
       },
     ];
     await microtasksFinished();
@@ -457,7 +473,7 @@ suite('PinnedToolbarActions', function() {
         1, newSecondAction.state.action);  // Verify it is indeed Action 1
     assertEquals(
         newSecondAction.shadowRoot.activeElement,
-        newSecondAction.shadowRoot.querySelector('cr-icon-button'));
+        newSecondAction.shadowRoot.querySelector('toolbar-chip-button'));
   });
 
   test('Cross-window dragover identifies action from broadcast', () => {
@@ -880,7 +896,7 @@ suite('PinnedToolbarActions', function() {
 
         // 1. Simulate local drag start of Action 1 on its internal button
         const firstActionButton =
-            firstAction.shadowRoot.querySelector('cr-icon-button')!;
+            firstAction.shadowRoot.querySelector('toolbar-chip-button')!;
         const dragStartEvent = new DragEvent('dragstart', {
           bubbles: true,
           cancelable: true,
@@ -966,7 +982,7 @@ suite('PinnedToolbarActions', function() {
 
         // 1. Simulate local drag start of Action 1 on its internal button
         const firstActionButton =
-            firstAction.shadowRoot.querySelector('cr-icon-button')!;
+            firstAction.shadowRoot.querySelector('toolbar-chip-button')!;
         const dragStartEvent = new DragEvent('dragstart', {
           bubbles: true,
           cancelable: true,
@@ -1032,7 +1048,7 @@ suite('PinnedToolbarActions', function() {
 
     // 1. Simulate local drag start of Action 1
     const firstActionButton =
-        firstAction.shadowRoot.querySelector('cr-icon-button')!;
+        firstAction.shadowRoot.querySelector('toolbar-chip-button')!;
     const dragStartEvent = new DragEvent('dragstart', {
       bubbles: true,
       cancelable: true,

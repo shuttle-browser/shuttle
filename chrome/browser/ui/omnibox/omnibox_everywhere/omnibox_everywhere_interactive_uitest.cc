@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 #include "base/check_deref.h"
+#include "base/strings/stringprintf.h"
 #include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/run_until.h"
@@ -59,11 +60,11 @@
 #include "services/network/public/cpp/shared_url_loader_factory.h"
 #include "third_party/blink/public/mojom/page/draggable_region.mojom.h"
 #include "ui/base/accelerators/accelerator.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/ozone_buildflags.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/test/ui_controls.h"
 #include "ui/base/webui/web_ui_util.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/display/screen.h"
 #include "ui/events/event_constants.h"
 #include "ui/events/keycodes/keyboard_codes.h"
@@ -273,7 +274,7 @@ class OmniboxEverywhereBrowserTest : public InteractiveBrowserTest {
     auto* service = OmniboxEverywhereServiceFactory::GetForProfile(profile);
     ASSERT_TRUE(service);
     service->OpenUrl(GURL("chrome://version/"),
-                     WindowOpenDisposition::kCurrentTab,
+                     ui::mojom::WindowOpenDisposition::kCurrentTab,
                      ui::PAGE_TRANSITION_TYPED);
 
     // Verify that a new browser window was created.
@@ -800,7 +801,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxEverywherePersistentBrowserTest,
             browser()->GetProfile());
         ASSERT_TRUE(service);
         service->OpenUrl(GURL("https://www.google.com/search?q=test"),
-                         WindowOpenDisposition::kNewForegroundTab,
+                         ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                          ui::PAGE_TRANSITION_GENERATED);
       }),
       // In persistent mode, submitting a query should demote the widget
@@ -829,7 +830,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxEverywhereEphemeralBrowserTest,
             browser()->GetProfile());
         ASSERT_TRUE(service);
         service->OpenUrl(GURL("https://www.google.com/search?q=test"),
-                         WindowOpenDisposition::kNewForegroundTab,
+                         ui::mojom::WindowOpenDisposition::kNewForegroundTab,
                          ui::PAGE_TRANSITION_GENERATED);
       }),
       // In ephemeral mode, submitting a query should close the widget.
@@ -1200,7 +1201,7 @@ IN_PROC_BROWSER_TEST_F(OmniboxEverywhereEphemeralBrowserTest,
   auto* service = OmniboxEverywhereServiceFactory::GetForProfile(profile);
   ASSERT_TRUE(service);
   service->OpenUrl(GURL("chrome://version/"),
-                   WindowOpenDisposition::kCurrentTab,
+                   ui::mojom::WindowOpenDisposition::kCurrentTab,
                    ui::PAGE_TRANSITION_TYPED);
 
   // Verify that only one browser window was created and session restore was

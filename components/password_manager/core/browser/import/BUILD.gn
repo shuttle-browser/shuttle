@@ -5,6 +5,9 @@
 if (is_android) {
   import("//build/config/android/config.gni")
 }
+if (is_ios) {
+  import("//build/config/ios/bundle_data_from_filelist.gni")
+}
 
 source_set("importer") {
   sources = [
@@ -61,8 +64,6 @@ source_set("csv") {
     "csv_field_parser.h",
     "csv_password.cc",
     "csv_password.h",
-    "csv_password_iterator.cc",
-    "csv_password_iterator.h",
     "csv_password_sequence.cc",
     "csv_password_sequence.h",
   ]
@@ -76,9 +77,7 @@ source_set("csv_unit_tests") {
   testonly = true
   sources = [
     "csv_field_parser_unittest.cc",
-    "csv_password_iterator_unittest.cc",
     "csv_password_sequence_unittest.cc",
-    "csv_password_unittest.cc",
     "password_csv_reader_fuzzer.cc",
   ]
   deps = [
@@ -90,8 +89,18 @@ source_set("csv_unit_tests") {
     "//third_party/fuzztest",
     "//url",
   ]
+  if (is_ios) {
+    deps += [ ":csv_unit_tests_bundle_data" ]
+  }
   data = [
     "password_csv_reader_corpus/",
     "password_csv_reader_fuzzer.dict",
   ]
+}
+
+if (is_ios) {
+  bundle_data_from_filelist("csv_unit_tests_bundle_data") {
+    testonly = true
+    filelist_name = "csv_unit_tests_bundle_data.filelist"
+  }
 }

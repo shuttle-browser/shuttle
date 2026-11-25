@@ -36,14 +36,58 @@ bool ShouldExtractImagesForQrCode(const mojom::HeuristicSignals& signals) {
   if (signals.has_facilitated_payment_link) {
     return false;
   }
+  if (!signals.has_square_candidate) {
+    return false;
+  }
   // A square image alone is not enough (logos, avatars or icons), so a keyword
-  // is also required to suggest that the page is about paying.
-  return signals.has_square_candidate &&
-         (signals.url_keyword_match || signals.text_keyword_match);
+  // is also required to suggest that the page is about paying, unless an
+  // exploration arm drops the requirement to measure what it misses.
+  return signals.url_keyword_match || signals.text_keyword_match ||
+         !kQrCodeDetectionRequireKeywordMatch.Get();
 }
 
 // The maximum number of image extractions per page.
+// LINT.IfChange(MaxQrCodeChecksPerPage)
 constexpr int kMaxQrCodeChecksPerPage = 3;
+// LINT.ThenChange(/components/facilitated_payments/core/metrics/facilitated_payments_metrics.cc:MaxQrCodeAttemptIndex)
+
+QrCodeHeuristicSignals GetQrCodeHeuristicSignals(
+    const mojom::HeuristicSignals& signals) {
+  QrCodeHeuristicSignals result;
+  if (signals.has_facilitated_payment_link) {
+    result.Put(QrCodeHeuristicSignal::kFacilitatedPaymentLink);
+  }
+  if (signals.has_square_candidate) {
+    result.Put(QrCodeHeuristicSignal::kSquareCandidate);
+  }
+  if (signals.url_keyword_match) {
+    result.Put(QrCodeHeuristicSignal::kUrlKeywordMatch);
+  }
+  if (signals.text_keyword_match) {
+    result.Put(QrCodeHeuristicSignal::kTextKeywordMatch);
+  }
+  return result;
+}
+
+QrCodeDetectionResult GetQrCodeDetectionResult(
+    wallet::WalletablePassBarcodeDetector::BarcodeDetectionStatus status,
+    size_t qr_code_count) {
+  using BarcodeDetectionStatus =
+      wallet::WalletablePassBarcodeDetector::BarcodeDetectionStatus;
+  switch (status) {
+    case BarcodeDetectionStatus::kImagesNotFound:
+      return QrCodeDetectionResult::kImagesNotFound;
+    case BarcodeDetectionStatus::kDetectorUnavailable:
+      return QrCodeDetectionResult::kDetectorUnavailable;
+    case BarcodeDetectionStatus::kSuccess:
+      break;
+  }
+  if (qr_code_count == 0) {
+    return QrCodeDetectionResult::kQrCodeNotFound;
+  }
+  return qr_code_count == 1 ? QrCodeDetectionResult::kSingleQrCodeFound
+                            : QrCodeDetectionResult::kMultipleQrCodesFound;
+}
 
 }  // namespace
 
@@ -105,13 +149,39 @@ void ContentFacilitatedPaymentsDriverFactory::OnHeuristicSignalsReported(
       base::BindOnce(
           &ContentFacilitatedPaymentsDriverFactory::OnBarcodesDetected,
           weak_ptr_factory_.GetWeakPtr(),
-          render_frame_host->GetWeakDocumentPtr()));
+          render_frame_host->GetWeakDocumentPtr(),
+          GetQrCodeHeuristicSignals(signals), qr_code_check_count_));
 }
 
 void ContentFacilitatedPaymentsDriverFactory::OnBarcodesDetected(
     content::WeakDocumentPtr document,
+    QrCodeHeuristicSignals heuristic_signals,
+    int check_index,
+    wallet::WalletablePassBarcodeDetector::BarcodeDetectionStatus status,
     std::vector<wallet::WalletBarcode> barcodes) {
   is_evaluating_qr_code_ = false;
+
+  // Only QR codes are requested, but are checked again in case a platform
+  // detector ignores the request.
+  const size_t qr_code_count =
+      std::ranges::count_if(barcodes, [](const wallet::WalletBarcode& barcode) {
+        return barcode.format == wallet::WalletBarcodeFormat::QR_CODE;
+      });
+  const bool has_qr_code = qr_code_count > 0;
+
+  // Logged before the page checks below, since they describe the finished
+  // decoding pass even if the page has since changed. The signals and the
+  // check index are bound when the pass starts for the same reason.
+  LogQrCodeDetectionResult(GetQrCodeDetectionResult(status, qr_code_count));
+  // A pass whose detector was unavailable says nothing about whether the
+  // signals predict a QR code, so it would skew the precision of the rule.
+  if (status != wallet::WalletablePassBarcodeDetector::BarcodeDetectionStatus::
+                    kDetectorUnavailable) {
+    LogQrCodeHeuristicSignals(heuristic_signals, has_qr_code);
+  }
+  if (has_qr_code) {
+    LogQrCodeSuccessfulAttemptIndex(check_index);
+  }
 
   // Drops the result if the scanned page is no longer the active page, since
   // decoding is asynchronous.
@@ -122,12 +192,6 @@ void ContentFacilitatedPaymentsDriverFactory::OnBarcodesDetected(
     return;
   }
 
-  // Only QR codes are requested, but are checked again in case a platform
-  // detector ignores the request.
-  const bool has_qr_code =
-      std::ranges::any_of(barcodes, [](const wallet::WalletBarcode& barcode) {
-        return barcode.format == wallet::WalletBarcodeFormat::QR_CODE;
-      });
   if (!has_qr_code && qr_code_check_count_ < kMaxQrCodeChecksPerPage) {
     return;
   }

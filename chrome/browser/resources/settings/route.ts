@@ -2,12 +2,20 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import {assert} from 'chrome://resources/js/assert.js';
+import {assert, assertNotReachedCase} from 'chrome://resources/js/assert.js';
 
 import {loadTimeData} from './i18n_setup.js';
 import {pageVisibility} from './page_visibility.js';
 import type {SettingsRoutes} from './router.js';
 import {Route, Router} from './router.js';
+
+// LINT.IfChange(AiSettingsSection)
+export enum AiSettingsSection {
+  NONE = '',
+  GEMINI = 'gemini',
+  GEMINI_ENTERPRISE = 'geminiEnterprise',
+}
+// LINT.ThenChange(//chrome/browser/glic/public/glic_provider_spec.h:AiSettingsSection)
 
 /**
  * Add all of the child routes that originate from the privacy route,
@@ -54,11 +62,13 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
     r.SITE_SETTINGS_CAPTURED_SURFACE_CONTROL =
         r.SITE_SETTINGS.createChild('capturedSurfaceControl');
   }
-  // <if expr="is_chromeos">
+  // <if expr="enable_smart_card">
   if (loadTimeData.getBoolean('enableSmartCardReadersContentSetting')) {
     r.SITE_SETTINGS_SMART_CARD_READERS =
         r.SITE_SETTINGS.createChild('smartCardReaders');
   }
+  // </if>
+  // <if expr="is_chromeos">
   if (loadTimeData.getBoolean('enableWebPrintingContentSetting')) {
     r.SITE_SETTINGS_WEB_PRINTING = r.SITE_SETTINGS.createChild('webPrinting');
   }
@@ -135,13 +145,38 @@ function addPrivacyChildRoutes(r: Partial<SettingsRoutes>) {
 }
 
 /**
+ * Add all of the child routes that originate from the people/home route.
+ */
+function addSharedPeopleRoutes(r: Partial<SettingsRoutes>, parent: Route) {
+  if (loadTimeData.getBoolean('replaceSyncPromosWithSignInPromos')) {
+    r.ACCOUNT = parent.createChild('/account');
+    r.GOOGLE_SERVICES = parent.createChild('/googleServices');
+  }
+  // <if expr="not is_chromeos">
+  r.SIGN_OUT = parent.createChild('/signOut');
+  r.SIGN_OUT.isNavigableDialog = true;
+  r.IMPORT_DATA = parent.createChild('/importData');
+  r.IMPORT_DATA.isNavigableDialog = true;
+  r.MANAGE_PROFILE = parent.createChild('/manageProfile');
+  // </if>
+
+  r.SYNC = parent.createChild('/syncSetup');
+  r.SYNC_ADVANCED = r.SYNC.createChild('/syncSetup/advanced');
+}
+
+/**
  * Adds Route objects for each path.
  */
 function createRoutes(): SettingsRoutes {
   const r: Partial<SettingsRoutes> = {};
+  const isSettingsRefresh2026Enabled =
+      loadTimeData.getString('settingsRefresh2026') !== '';
 
   // Root page.
   r.BASIC = new Route('/');
+  if (isSettingsRefresh2026Enabled) {
+    r.BASIC.section = 'home';
+  }
 
   r.ABOUT = r.BASIC.createSection(
       '/help', 'about', loadTimeData.getString('aboutPageTitle'));
@@ -155,23 +190,14 @@ function createRoutes(): SettingsRoutes {
 
   const visibility = pageVisibility || {};
 
-  if (visibility.people !== false) {
+  if (isSettingsRefresh2026Enabled) {
+    if (visibility.home !== false) {
+      addSharedPeopleRoutes(r, r.BASIC);
+    }
+  } else if (visibility.people !== false) {
     r.PEOPLE = r.BASIC.createSection(
         '/people', 'people', loadTimeData.getString('peoplePageTitle'));
-    if (loadTimeData.getBoolean('replaceSyncPromosWithSignInPromos')) {
-      r.ACCOUNT = r.PEOPLE.createChild('/account');
-      r.GOOGLE_SERVICES = r.PEOPLE.createChild('/googleServices');
-    }
-    // <if expr="not is_chromeos">
-    r.SIGN_OUT = r.PEOPLE.createChild('/signOut');
-    r.SIGN_OUT.isNavigableDialog = true;
-    r.IMPORT_DATA = r.PEOPLE.createChild('/importData');
-    r.IMPORT_DATA.isNavigableDialog = true;
-    r.MANAGE_PROFILE = r.PEOPLE.createChild('/manageProfile');
-    // </if>
-
-    r.SYNC = r.PEOPLE.createChild('/syncSetup');
-    r.SYNC_ADVANCED = r.SYNC.createChild('/syncSetup/advanced');
+    addSharedPeopleRoutes(r, r.PEOPLE);
   }
 
   if (visibility.ai !== false && loadTimeData.getBoolean('showAiPage')) {
@@ -180,20 +206,26 @@ function createRoutes(): SettingsRoutes {
     if (loadTimeData.getBoolean('enableAiModeSearchSetting')) {
       r.AI_MODE_SEARCH = r.AI.createChild('/ai/aiModeSearch');
     }
-    if (loadTimeData.getBoolean('showHistorySearchControl')) {
-      r.HISTORY_SEARCH = r.AI.createChild('/ai/historySearch');
-    }
     if (loadTimeData.getBoolean('showComposeControl')) {
       r.OFFER_WRITING_HELP = r.AI.createChild('/ai/helpMeWrite');
     }
-    if (loadTimeData.getBoolean('showGlicSettings')) {
-      r.GEMINI = r.AI.createChild('/ai/gemini');
-      if (loadTimeData.getBoolean('actorLoginFederatedLoginSupportEnabled')) {
-        r.GEMINI_LOGIN = r.GEMINI.createChild('/ai/gemini/login');
-      }
-    }
-    if (loadTimeData.getBoolean('showGeicSettings')) {
-      r.GEMINI_ENTERPRISE = r.AI.createChild('/ai/geminienterprise');
+    const aiSettingsSection = loadTimeData.getString(
+        'aiSettingsSection') as AiSettingsSection;
+    switch (aiSettingsSection) {
+      case AiSettingsSection.NONE:
+        break;
+      case AiSettingsSection.GEMINI:
+        r.GEMINI = r.AI.createChild('/ai/gemini');
+        if (loadTimeData.getBoolean(
+                'actorLoginFederatedLoginSupportEnabled')) {
+          r.GEMINI_LOGIN = r.GEMINI.createChild('/ai/gemini/login');
+        }
+        break;
+      case AiSettingsSection.GEMINI_ENTERPRISE:
+        r.GEMINI_ENTERPRISE = r.AI.createChild('/ai/geminienterprise');
+        break;
+      default:
+        assertNotReachedCase(aiSettingsSection);
     }
     if (loadTimeData.getBoolean('showAiSuggestionsControl')) {
       r.AI_SUGGESTIONS = r.AI.createChild('/ai/suggestions');
@@ -207,6 +239,11 @@ function createRoutes(): SettingsRoutes {
     if (loadTimeData.getBoolean('showDictationControl')) {
       r.DICTATION = r.AI.createChild('/ai/dictation');
     }
+    // <if expr="_google_chrome">
+    if (loadTimeData.getBoolean('showOnDeviceAiAdvancedSettings')) {
+      r.ON_DEVICE_AI = r.AI.createChild('/ai/onDeviceAi');
+    }
+    // </if>
   }
 
   if (visibility.appearance !== false) {
@@ -246,14 +283,14 @@ function createRoutes(): SettingsRoutes {
   }
 
   // <if expr="not is_chromeos">
-  if (visibility.defaultBrowser !== false) {
+  if (!isSettingsRefresh2026Enabled && visibility.defaultBrowser !== false) {
     r.DEFAULT_BROWSER = r.BASIC.createSection(
         '/defaultBrowser', 'defaultBrowser',
         loadTimeData.getString('defaultBrowser'));
   }
   // </if>
 
-  if (visibility.onStartup !== false) {
+  if (!isSettingsRefresh2026Enabled && visibility.onStartup !== false) {
     r.ON_STARTUP = r.BASIC.createSection(
         '/onStartup', 'onStartup', loadTimeData.getString('onStartup'));
   }
@@ -270,7 +307,7 @@ function createRoutes(): SettingsRoutes {
     // </if>
   }
 
-  if (visibility.downloads !== false) {
+  if (!isSettingsRefresh2026Enabled && visibility.downloads !== false) {
     r.DOWNLOADS = r.ADVANCED.createSection(
         '/downloads', 'downloads',
         loadTimeData.getString('downloadsPageTitle'));
@@ -285,14 +322,24 @@ function createRoutes(): SettingsRoutes {
     // </if>
   }
 
+  if (isSettingsRefresh2026Enabled && visibility.general !== false) {
+    r.GENERAL = r.ADVANCED.createSection(
+        '/general', 'general', loadTimeData.getString('generalPageTitle'));
+    r.RESET_DIALOG = r.GENERAL.createChild('/resetProfileSettings');
+    r.RESET_DIALOG.isNavigableDialog = true;
+    r.TRIGGERED_RESET_DIALOG =
+        r.GENERAL.createChild('/triggeredResetProfileSettings');
+    r.TRIGGERED_RESET_DIALOG.isNavigableDialog = true;
+  }
+
   // <if expr="not is_chromeos">
-  if (visibility.system !== false) {
+  if (!isSettingsRefresh2026Enabled && visibility.system !== false) {
     r.SYSTEM = r.ADVANCED.createSection(
         '/system', 'system', loadTimeData.getString('systemPageTitle'));
   }
   // </if>
 
-  if (visibility.reset !== false) {
+  if (!isSettingsRefresh2026Enabled && visibility.reset !== false) {
     r.RESET = r.ADVANCED.createSection(
         '/reset', 'reset', loadTimeData.getString('resetPageTitle'));
     r.RESET_DIALOG = r.RESET.createChild('/resetProfileSettings');
@@ -341,7 +388,8 @@ export let routes: SettingsRoutes = Router.getInstance().getRoutes();
 // Returns the "effective" route when at chrome://settings/.
 export function getTopLevelRoute(): Route {
   if (!loadTimeData.getBoolean('isGuest')) {
-    return routes.PEOPLE;
+    return loadTimeData.getString('settingsRefresh2026') !== '' ? routes.BASIC :
+                                                                  routes.PEOPLE;
   }
 
   let guestTopLevelRoute = routes.SEARCH;

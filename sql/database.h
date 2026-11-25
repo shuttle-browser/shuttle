@@ -422,6 +422,41 @@ class COMPONENT_EXPORT(SQL) Database {
   class StatementRef;  // Forward declaration, see real one below.
 
  public:
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  // LINT.IfChange(OpenFailedReason)
+  enum class OpenFailedReason {
+    kAlreadyOpened = 0,
+    kIncorrectPath = 1,
+    kSqliteOpenFailed = 2,
+    kLockingModeFailed = 3,
+    kMetadataLoadingFailed = 4,
+    kPageSizeFailed = 5,
+    kPragmaSynchronousFailed = 6,
+    kPragmaJournalFailed = 7,
+    kMaxValue = kPragmaJournalFailed
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/sql/enums.xml:OpenDatabaseFailedReason)
+
+  // These values are persisted to logs. Entries should not be renumbered and
+  // numeric values should never be reused.
+  // LINT.IfChange(RazeFailedReason)
+  enum class RazeFailedReason {
+    kPoisoned = 0,
+    kPendingTransaction = 1,
+    kCantOpenInMemory = 2,
+    kAutoVacuumFailed = 3,
+    kSchemaFailed = 4,
+    kLocked = 5,
+    kTruncateFailed = 6,
+    kBackupFailed = 7,
+    kPageSizeFailed = 8,
+    kUnknownError = 9,
+    kCheckpointFailed = 10,
+    kMaxValue = kCheckpointFailed
+  };
+  // LINT.ThenChange(//tools/metrics/histograms/metadata/sql/enums.xml:RazeDatabaseFailedReason)
+
   // A convenience struct to
   // 1. Convert (often implicitly) a static const char* string to a database tag
   // to pass to the Database constructors
@@ -497,7 +532,9 @@ class COMPONENT_EXPORT(SQL) Database {
   //
   // The callback will be called on the sequence used for database operations.
   // The callback will never be called after the `Database` instance is
-  // destroyed. The callback must never destroy the `Database` instance.
+  // destroyed. The callback must never destroy the `Database` instance or call
+  // `Open()` / `OpenInMemory()` / `Close()` / `CloseAndDelete()` (use
+  // `Poison()` / `RazeAndPoison()` instead of closing).
   using ErrorCallback = base::RepeatingCallback<void(int, Statement*)>;
   void set_error_callback(ErrorCallback callback) {
     DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
@@ -554,6 +591,8 @@ class COMPONENT_EXPORT(SQL) Database {
   // occurs, this function will invoke the error callback if it is present and
   // then may attempt to open the database a second time. If the second attempt
   // succeeds, it will return true.
+  //
+  // `Open()` cannot be called from within an error callback.
   [[nodiscard]] bool Open(const base::FilePath& db_file_path);
 
   // Alternative to Open() that creates an in-memory database.
@@ -562,6 +601,8 @@ class COMPONENT_EXPORT(SQL) Database {
   //
   // The memory associated with the database will be released when the database
   // is closed.
+  //
+  // `OpenInMemory()` cannot be called from within an error callback.
   [[nodiscard]] bool OpenInMemory();
 
   // Returns true if the database has been successfully opened.
@@ -572,14 +613,19 @@ class COMPONENT_EXPORT(SQL) Database {
   void DetachFromSequence();
 
   // Closes the database. This is automatically performed on destruction for
-  // you, but this allows you to close the database early. You must not call
-  // any other functions after closing it. It is permissable to call Close on
-  // an uninitialized or already-closed database.
+  // you, but this allows you to close the database early. You must not call any
+  // other functions after closing it. This means that `Close()` must never be
+  // called in error callbacks because these could be invoked at any time and
+  // more statements could execute after. In error callbacks, `Poison()` or
+  // `RazeAndPoison()` must be used instead. It is permissible to call `Close()`
+  // on an uninitialized or already-closed database.
   void Close();
 
   // Fast path for closing and deleting an open database. This avoids
   // checkpointing the WAL file (if any) since the data will be deleted right
   // away. When not in WAL mode, this is shorthand for `Close()` + `Delete()`.
+  // Just like `Close()`, `CloseAndDelete()` cannot be used in error callbacks,
+  // `RazeAndPoison()` should be used instead.
   bool CloseAndDelete();
 
   // Release all non-essential memory associated with this database connection.

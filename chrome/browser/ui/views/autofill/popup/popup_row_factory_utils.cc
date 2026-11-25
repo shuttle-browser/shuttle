@@ -52,9 +52,9 @@
 #include "content/public/browser/web_contents.h"
 #include "ui/accessibility/ax_enums.mojom.h"
 #include "ui/base/l10n/l10n_util.h"
+#include "ui/base/mojom/window_open_disposition.mojom-shared.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/base/ui_base_features.h"
-#include "ui/base/window_open_disposition.h"
 #include "ui/color/color_id.h"
 #include "ui/compositor/layer.h"
 #include "ui/gfx/geometry/insets.h"
@@ -103,8 +103,10 @@ constexpr auto kPopupItemTypesUsingLeadingIcons = DenseSet<SuggestionType>(
      SuggestionType::kManageAutofillAiTravel, SuggestionType::kManageIban,
      SuggestionType::kManageLoyaltyCard, SuggestionType::kManageOffers,
      SuggestionType::kManageEnhancedAutofill, SuggestionType::kOpenGmailForOtps,
-     SuggestionType::kPendingStateSignin, SuggestionType::kRemoveAutofillAi,
-     SuggestionType::kUndo, SuggestionType::kViewPasswordDetails,
+     SuggestionType::kPendingStateSignin,
+     SuggestionType::kPendingStateTrustedVaultError,
+     SuggestionType::kRemoveAutofillAi, SuggestionType::kUndo,
+     SuggestionType::kViewPasswordDetails,
      SuggestionType::kWebauthnSignInWithAnotherDevice});
 
 // Max width for the username and masked password.
@@ -390,6 +392,7 @@ std::unique_ptr<PopupRowContentView> CreateFooterPopupRowContentView(
   main_text_label->SetEnabled(!suggestion.is_loading);
 
   if (suggestion.type == SuggestionType::kPendingStateSignin ||
+      suggestion.type == SuggestionType::kPendingStateTrustedVaultError ||
       suggestion.type == SuggestionType::kFreeformFooter) {
     main_text_label->SetMultiLine(true);
     main_text_label->SetHorizontalAlignment(gfx::ALIGN_TO_HEAD);
@@ -436,10 +439,11 @@ void OnCitationClicked(base::WeakPtr<AutofillPopupController> controller,
     return;
   }
   if (content::WebContents* web_contents = controller->GetWebContents()) {
-    content::OpenURLParams params(url, content::Referrer(),
-                                  WindowOpenDisposition::kNewForegroundTab,
-                                  ui::PAGE_TRANSITION_LINK,
-                                  /*is_renderer_initiated=*/false);
+    content::OpenURLParams params(
+        url, content::Referrer(),
+        ui::mojom::WindowOpenDisposition::kNewForegroundTab,
+        ui::PAGE_TRANSITION_LINK,
+        /*is_renderer_initiated=*/false);
     params.user_gesture = true;
     web_contents->OpenURL(params, /*navigation_handle_callback=*/{});
   }
@@ -544,10 +548,11 @@ std::vector<StyledRange> CreateStyleCitationBadges(
                        suggestion.main_text.value,
                        gfx::Range(last_end, citation.range.start())),
                    &CreateStyledRange);
-      citation_ranges.emplace_back(
-          citation.range,
+      views::StyledLabel::RangeStyleInfo style_info =
           views::StyledLabel::RangeStyleInfo::CreateForLink(base::BindRepeating(
-              &OnCitationClicked, controller, citation.url)));
+              &OnCitationClicked, controller, citation.url));
+      style_info.accessible_name = citation.accessible_name;
+      citation_ranges.emplace_back(citation.range, std::move(style_info));
       last_end = citation.range.end();
     }
   }
@@ -1181,6 +1186,7 @@ std::unique_ptr<PopupRowView> CreatePopupRowView(
     case SuggestionType::kOpenGmailForOtps:
     case SuggestionType::kPasswordFieldByFieldFilling:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kPendingStateTrustedVaultError:
     case SuggestionType::kPersonalContextNotice:
     case SuggestionType::kRemoveAutofillAi:
     case SuggestionType::kScanCreditCard:

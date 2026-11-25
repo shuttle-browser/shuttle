@@ -53,6 +53,9 @@ class SystemIdentityManagerObserver;
 // whether the accounts were added through Chrome or through some other Google
 // app. It also allows adding accounts to the device via
 // `SystemIdentityInteractionManager`, and displaying some account-related UIs.
+// This class ignores the `kRestrictAccountsToPatterns` policy and deals with
+// accounts on the device even if they are filtered by
+// `kRestrictAccountsToPatterns`.
 class SystemIdentityManager {
  public:
   using CapabilityResult = SystemIdentityCapabilityResult;
@@ -327,8 +330,7 @@ class SystemIdentityManager {
 
   // Returns whether the `error` is due to restricted access to the scopes in
   // the access token request.
-  // TODO(crbug.com/425592221): Convert to pure virtual method.
-  virtual bool IsScopeLimitedError(id<RefreshAccessTokenError> error);
+  virtual bool IsScopeLimitedError(id<RefreshAccessTokenError> error) = 0;
 
   // Returns whether the `error` associated with `identity` is due to MDM
   // (Mobile Device Management) or not.

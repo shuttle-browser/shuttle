@@ -8,6 +8,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotEquals;
 import static org.junit.Assert.assertNotNull;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertSame;
 import static org.junit.Assert.assertTrue;
 
@@ -16,6 +17,7 @@ import org.junit.runner.RunWith;
 
 import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.components.omnibox.AimModelsProtoIntDef.ModelMode;
+import org.chromium.components.omnibox.InputSourceProtoIntDef.InputSource;
 import org.chromium.components.omnibox.InputTypeConfigProto.InputTypeConfig;
 import org.chromium.components.omnibox.InputTypeProto.InputType;
 import org.chromium.components.omnibox.ModelConfigProto.ModelConfig;
@@ -272,5 +274,65 @@ public class InputStateTest {
         assertEquals(SectionConfig.getDefaultInstance(), state.getToolsSectionConfig());
         assertTrue(state.getModelConfigs().isEmpty());
         assertEquals(SectionConfig.getDefaultInstance(), state.getModelSectionConfig());
+    }
+
+    @Test
+    public void testGetInputTypeConfig() {
+        InputTypeConfig galleryConfig =
+                InputTypeConfig.newBuilder()
+                        .setInputType(InputType.INPUT_TYPE_LENS_IMAGE)
+                        .setInputSourceValue(InputSource.INPUT_SOURCE_GALLERY)
+                        .setMenuLabel("Gallery")
+                        .build();
+        InputTypeConfig cameraConfig =
+                InputTypeConfig.newBuilder()
+                        .setInputType(InputType.INPUT_TYPE_LENS_IMAGE)
+                        .setInputSourceValue(InputSource.INPUT_SOURCE_CAMERA)
+                        .setMenuLabel("Camera")
+                        .build();
+        InputState state =
+                new InputStateBuilder().withInputTypeConfigs(galleryConfig, cameraConfig).build();
+
+        assertEquals(galleryConfig, state.getInputTypeConfig(InputSource.INPUT_SOURCE_GALLERY));
+        assertEquals(cameraConfig, state.getInputTypeConfig(InputSource.INPUT_SOURCE_CAMERA));
+        assertNull(state.getInputTypeConfig(InputSource.INPUT_SOURCE_DRIVE));
+        assertNull(
+                new InputStateBuilder()
+                        .build()
+                        .getInputTypeConfig(InputSource.INPUT_SOURCE_GALLERY));
+    }
+
+    @Test
+    public void testGetToolConfig() {
+        ToolConfig deepSearchConfig =
+                ToolConfig.newBuilder()
+                        .setToolValue(ToolMode.TOOL_MODE_DEEP_SEARCH)
+                        .setMenuLabel("Deep Search")
+                        .build();
+        ToolConfig imageGenConfig =
+                ToolConfig.newBuilder()
+                        .setToolValue(ToolMode.TOOL_MODE_IMAGE_GEN)
+                        .setMenuLabel("Create images")
+                        .build();
+        InputState state =
+                new InputStateBuilder().withToolConfigs(deepSearchConfig, imageGenConfig).build();
+
+        assertEquals(deepSearchConfig, state.getToolConfig(ToolMode.TOOL_MODE_DEEP_SEARCH));
+        assertEquals(imageGenConfig, state.getToolConfig(ToolMode.TOOL_MODE_IMAGE_GEN));
+        assertNull(state.getToolConfig(ToolMode.TOOL_MODE_CANVAS));
+        assertNull(new InputStateBuilder().build().getToolConfig(ToolMode.TOOL_MODE_IMAGE_GEN));
+    }
+
+    @Test
+    public void testGetModelConfig() {
+        ModelConfig regularConfig =
+                ModelConfig.newBuilder().setModelValue(ModelMode.MODEL_MODE_GEMINI_REGULAR).build();
+        ModelConfig proConfig =
+                ModelConfig.newBuilder().setModelValue(ModelMode.MODEL_MODE_GEMINI_PRO).build();
+        InputState state =
+                new InputStateBuilder().withModelConfigs(regularConfig, proConfig).build();
+
+        assertEquals(proConfig, state.getModelConfig(ModelMode.MODEL_MODE_GEMINI_PRO));
+        assertNull(state.getModelConfig(ModelMode.MODEL_MODE_GEMINI_PRO_LATEST));
     }
 }
